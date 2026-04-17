@@ -1,0 +1,17 @@
+{
+  "ticker": "TSLA",
+  "feature_cache_key": "3916e4931a057e04ea81ce422ac6544c1ef85d1239ca48ee516c3f27bc2178dd",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "TSLA",
+    "min_ts_utc": 1774276692.4445152,
+    "max_ts_utc": 1776194152.3227887,
+    "row_count": 2093
+  },
+  "feature_version": "v4_canonical_1m",
+  "preprocessing_version": "v3_rth_decay_m5_additive_canonical",
+  "label_version": "outcome_1c_filled_rth_v1",
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

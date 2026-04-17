@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "method": "replace_with_tools/select_movement_thresholds_percentile_v1.py_output",
+  "notes": "Placeholder thresholds (points) until percentile search runs on governed DB. invalid_for_dir_target=false for all.",
+  "horizons": {
+    "1c": {"threshold_move_pts": 0.04, "invalid_for_dir_target": false, "selected_percentile": null},
+    "3c": {"threshold_move_pts": 0.08, "invalid_for_dir_target": false, "selected_percentile": null},
+    "5c": {"threshold_move_pts": 0.12, "invalid_for_dir_target": false, "selected_percentile": null},
+    "8c": {"threshold_move_pts": 0.16, "invalid_for_dir_target": false, "selected_percentile": null},
+    "13c": {"threshold_move_pts": 0.22, "invalid_for_dir_target": false, "selected_percentile": null},
+    "15c": {"threshold_move_pts": 0.26, "invalid_for_dir_target": false, "selected_percentile": null},
+    "60c": {"threshold_move_pts": 0.65, "invalid_for_dir_target": false, "selected_percentile": null}
+  }
+}

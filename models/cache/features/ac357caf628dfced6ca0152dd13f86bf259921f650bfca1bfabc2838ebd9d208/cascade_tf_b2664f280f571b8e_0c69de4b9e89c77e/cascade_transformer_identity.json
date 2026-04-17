@@ -1,0 +1,21 @@
+{
+  "ticker": "MRVL",
+  "feature_cache_key": "ac357caf628dfced6ca0152dd13f86bf259921f650bfca1bfabc2838ebd9d208",
+  "training_code_fingerprint": "94c16bf4986fc644b250d66b54ac2627f8776206027ce303ba35fcb9d1da8a64",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "MRVL",
+    "min_ts_utc": 1774276721.6680057,
+    "max_ts_utc": 1776282741.8114495,
+    "row_count": 2082
+  },
+  "cascade_bind_slug": "b2664f280f571b8e",
+  "xgb_meta_sha256": "3af2747f4608ff0b4604fd43b8692116e4058e5a8b0ecc12831d0b924368485a",
+  "lstm_checkpoint_sha256": "cb714fb85483697c6927164e90b5cd00a609b9152d04554ab754905f39dcaf15",
+  "xgb_lstm_tensor_sha256": "0c69de4b9e89c77ef35faeb4015d95e7b9228672551a3242d25946c6d4cb0b6f",
+  "n_cascade_rows": 1128,
+  "n_cascade_cols": 6,
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

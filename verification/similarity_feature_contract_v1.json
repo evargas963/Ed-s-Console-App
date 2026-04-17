@@ -1,0 +1,99 @@
+{
+  "schema": "similarity_feature_contract_v1",
+  "production_authority": "db.EdDB.get_similar_setups",
+  "issue_policy_ref": "Issue 19 tier-stop (SIMILARITY_TIER_STOP_OUTCOME_COLUMNS); Issue 21 trace",
+  "pool_membership": {
+    "ticker": {
+      "constraint": "equals",
+      "role": "core_identity"
+    },
+    "timeframe": {
+      "constraint": "equals",
+      "role": "core_identity"
+    },
+    "outcome_1c": {
+      "constraint": "IS NOT NULL",
+      "role": "pool_gate_for_similar_rows"
+    }
+  },
+  "distance_bucketing": {
+    "function": "math_exposure.dist_bucket",
+    "anchor_fields_raw": [
+      "nearest_above_dist",
+      "nearest_below_dist"
+    ],
+    "null_alignment": "anchor NULL iff row column NULL; else BETWEEN bucket_lo/hi inclusive",
+    "note": "Absolute distance before bucket; signed raw preserved on rows"
+  },
+  "tier_progression": {
+    "1": {
+      "active_structural_features": [
+        "zone",
+        "vwap_side",
+        "nearest_above_dist_bucket",
+        "nearest_below_dist_bucket"
+      ],
+      "description": "zone + vwap_side + both distance bucket matches"
+    },
+    "2": {
+      "active_structural_features": [
+        "zone",
+        "vwap_side",
+        "nearest_above_dist_bucket"
+      ],
+      "relaxed_vs_tier_1": [
+        "nearest_below_dist_bucket_match_removed"
+      ]
+    },
+    "3": {
+      "active_structural_features": [
+        "zone",
+        "vwap_side"
+      ],
+      "relaxed_vs_tier_2": [
+        "nearest_above_dist_bucket_match_removed"
+      ]
+    },
+    "4": {
+      "active_structural_features": [
+        "zone"
+      ],
+      "relaxed_vs_tier_3": [
+        "vwap_side_match_removed"
+      ]
+    },
+    "5": {
+      "active_structural_features": [],
+      "relaxed_vs_tier_4": [
+        "zone_match_removed"
+      ],
+      "description": "ticker + timeframe + outcome_1c only (broadest)"
+    }
+  },
+  "tier_stop": {
+    "outcome_columns": [
+      "outcome_1c",
+      "outcome_5c",
+      "outcome_15c"
+    ],
+    "min_labeled_per_column": 30,
+    "selects_narrowest_tier_where_stop_satisfied": true
+  },
+  "auxiliary_empirical_horizons": [
+    "outcome_3c",
+    "outcome_8c",
+    "outcome_13c",
+    "outcome_60c"
+  ],
+  "core_vs_auxiliary_runtime": {
+    "core_tier_driving": [
+      "zone",
+      "vwap_side",
+      "nearest_above_dist (bucketed)",
+      "nearest_below_dist (bucketed)",
+      "ticker",
+      "timeframe"
+    ],
+    "auxiliary_sql": "Session/regime are not SQL filters (explicit in trace notes)."
+  }
+}

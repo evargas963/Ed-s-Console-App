@@ -1,0 +1,17 @@
+{
+  "ticker": "MSFT",
+  "feature_cache_key": "d808c531d9b01f3b7e9b0eb57fbf5f00ceb4a06dab8dfc68681c60a93caffe1d",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "MSFT",
+    "min_ts_utc": 1774276676.074938,
+    "max_ts_utc": 1776109893.3746455,
+    "row_count": 2030
+  },
+  "feature_version": "v4_canonical_1m",
+  "preprocessing_version": "v3_rth_decay_m5_additive_canonical",
+  "label_version": "outcome_1c_filled_rth_v1",
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

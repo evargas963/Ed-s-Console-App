@@ -1,0 +1,17 @@
+{
+  "ticker": "MET",
+  "feature_cache_key": "b1264ae98d43669f34b60a53686f429210921214515ca9128534a31541d243c9",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "MET",
+    "min_ts_utc": 1775745871.849905,
+    "max_ts_utc": 1776104245.4273849,
+    "row_count": 326
+  },
+  "feature_version": "v4_canonical_1m",
+  "preprocessing_version": "v3_rth_decay_m5_additive_canonical",
+  "label_version": "outcome_1c_filled_rth_v1",
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

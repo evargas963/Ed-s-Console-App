@@ -1,0 +1,14 @@
+component,avg_ms_per_iteration,pct,calls,pct_interpretation
+,,,,top rows: pct of total iteration wall; breakdown rows: pct of run_base_models_once only
+build_inference_snapshot_v1,0.056973,0.0037,15,
+build_fusion_model_overlay_for_stack,282.989880,18.4002,15,
+build_xgb_pre_engineering_snapshot_for_tick,30.503993,1.9834,15,
+run_base_models_once,377.445760,24.5418,105,
+monte_carlo.simulate,120.774680,7.8528,105,
+bayesian_fusion.fuse,1.473373,0.0958,105,
+compute_prediction,0.000000,0.0000,0,
+compute_call,0.271853,0.0177,15,
+  (breakdown) xgb [% of run_base_models_once time],103.947607,27.5397,105,
+  (breakdown) lstm [% of run_base_models_once time],179.792560,47.6340,105,
+  (breakdown) transformer [% of run_base_models_once time],14.975220,3.9675,105,
+(unaccounted: vol/regime/rules/mh_bundle/snapshot/etc.),724.457520,47.1047,15,

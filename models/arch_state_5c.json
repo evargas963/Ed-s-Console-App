@@ -1,0 +1,19 @@
+{
+  "SPY": {
+    "active_architecture": "none",
+    "parallel_acc": 0.0,
+    "cascade_acc": 0.0,
+    "parallel_balanced_acc": 0.0,
+    "cascade_balanced_acc": 0.0,
+    "last_trained_at": "2026-04-16 08:23:41",
+    "rows_at_training": 5265,
+    "promoted": false,
+    "promotion_reason": "scheduler does not copy to active/ (use arch_competition.manual_control)",
+    "provenance": null,
+    "governed_competition": {
+      "schema_version": "1",
+      "error": "manifest horizon '1c' != expected '5c'",
+      "failed_closed": true
+    }
+  }
+}

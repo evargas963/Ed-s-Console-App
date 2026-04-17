@@ -1,0 +1,21 @@
+{
+  "ticker": "IWM",
+  "feature_cache_key": "e6e22adae4f48d19d86cf42331d2ae1f54028c99536c80d7621f415df540f07b",
+  "training_code_fingerprint": "94c16bf4986fc644b250d66b54ac2627f8776206027ce303ba35fcb9d1da8a64",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "IWM",
+    "min_ts_utc": 1774276662.6535394,
+    "max_ts_utc": 1776281878.7530148,
+    "row_count": 2164
+  },
+  "cascade_bind_slug": "232d300f798cf194",
+  "xgb_meta_sha256": "a303a6bd39b2130e96defad1ad45af857d6355e9fd1f4f70f034ca134004ab68",
+  "lstm_checkpoint_sha256": "046643f5033ddbd617222582043ab7135c1d0503ee6e5d4cd6a85bdb956718a7",
+  "xgb_lstm_tensor_sha256": "cce94ad4dbd875471e651f52651967f3c023713a3426d0fe0c3f38441809c140",
+  "n_cascade_rows": 1190,
+  "n_cascade_cols": 6,
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

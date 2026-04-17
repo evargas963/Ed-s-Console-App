@@ -1,0 +1,770 @@
+"""
+bayesian_fusion.py
+Single posterior-updating and trust-weighting layer.
+
+Phase 6 of the Canonical Implementation Roadmap.
+
+Combines evidence from:
+  - regime_engine.py       (environment classification)
+  - xgboost_model.py       (structured tabular evidence)
+  - lstm_model.py           (sequence evidence)
+  - monte_carlo.py          (path/range evidence)
+  - rules_engine.py         (deterministic structure evidence)
+
+Produces:
+  - Posterior probabilities for 6 outcome families
+  - Trust weights per evidence source
+  - Dominant posterior call
+  - Evidence/contradiction summaries
+  - Fusion confidence
+
+Consumed by:
+  - prediction_engine.py (future: replace/augment statistical lookups)
+  - call_engine.py (future: posterior-aware trade sizing)
+  - market_state.py (display)
+"""
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+import os
+from typing import Any, Optional
+
+log = logging.getLogger(__name__)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# OUTPUT
+# ══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class FusionPayload:
+    """Structured output from Bayesian fusion."""
+    available:              bool
+
+    # Posterior probabilities for outcome families
+    breakout_posterior:     float = 0.15
+    pinning_posterior:      float = 0.25
+    continuation_posterior: float = 0.20
+    reversal_posterior:     float = 0.15
+    vol_expansion_posterior: float = 0.10
+    mean_reversion_posterior: float = 0.15
+
+    # Trust weights per source (0–1, sum to 1 within active sources)
+    weight_xgboost:        float = 0.0
+    weight_lstm:           float = 0.0
+    weight_transformer:    float = 0.0
+    weight_monte_carlo:    float = 0.0
+    weight_rules:          float = 0.0
+    weight_regime:         float = 0.0
+
+    # Dominant posterior
+    dominant_outcome:      str   = "unknown"   # highest posterior
+    dominant_probability:  float = 0.0
+    fusion_confidence:     str   = "low"       # low / medium / high
+    fusion_confidence_score: float = 0.0       # 0–1
+
+    # Evidence quality
+    n_sources_available:   int   = 0
+    n_sources_active:      int   = 0           # sources that produced real output
+
+    # Summaries
+    evidence_summary:      list  = field(default_factory=list)
+    contradiction_summary: list  = field(default_factory=list)
+    fusion_summary:        str   = ""
+
+    # Monte Carlo pass-through (useful for downstream)
+    mc_available:          bool  = False
+    mc_containment:        Optional[float] = None
+    mc_expansion:          Optional[float] = None
+    mc_efe:                Optional[float] = None  # expected favorable excursion
+    mc_eae:                Optional[float] = None  # expected adverse excursion
+    mc_upper_50:           Optional[float] = None
+    mc_lower_50:           Optional[float] = None
+    mc_paths:              Optional[int]   = None  # path count for interpretability
+    mc_horizon:            Optional[int]   = None  # horizon (bars)
+    mc_vol_source:         Optional[str]   = None  # 'garch' or 'blend'
+    mc_sigma_value:        Optional[float] = None  # scaled/blended sigma used
+
+    # Model agreement (XGB + LSTM + Transformer + MC directional alignment)
+    model_agreement:       float = 0.0   # 0–1: how aligned are available models
+    model_agreement_label: str   = "low"
+
+    # Directional fusion (weighted P(up), P(down), P(flat) from models)
+    prob_up:               float = 0.33
+    prob_down:             float = 0.33
+    prob_flat:             float = 0.34
+    dominant_direction:    str   = "flat"   # "up" | "down" | "flat"
+
+    # Audit: how Monte Carlo enters fusion (not only stored on payload — used in math below)
+    fusion_mc_contribution: Optional[dict] = None
+
+    # Post-fusion MC context adjustment (mc_fusion_adjustment); never used as a probability source in fuse()
+    mc_post_fusion_audit: Optional[dict] = None
+
+    # Optional audit: signal_layer_v1 → directional blend (production path when DB bars present)
+    signal_layer_v1_fusion: Optional[dict] = None
+
+    # Explicit model participation audit (no silent omission)
+    contributing_models: list = field(default_factory=list)
+    missing_models: list = field(default_factory=list)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# REGIME-AWARE TRUST WEIGHTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Base trust weights (before regime adjustment)
+BASE_WEIGHTS = {
+    "xgboost":     0.25,
+    "lstm":        0.20,
+    "transformer": 0.15,
+    "monte_carlo": 0.10,
+    "rules":       0.15,
+    "regime":      0.05,
+}
+
+# Regime-specific weight adjustments (multipliers)
+REGIME_WEIGHT_ADJUSTMENTS = {
+    "pinning": {
+        "rules": 1.5, "monte_carlo": 1.3, "xgboost": 0.8, "transformer": 0.9,
+    },
+    "acceleration": {
+        "lstm": 1.3, "monte_carlo": 1.2, "transformer": 1.1, "rules": 0.7,
+    },
+    "breakout": {
+        "lstm": 1.2, "xgboost": 1.1, "transformer": 1.1, "rules": 0.8,
+    },
+    "mean_reversion": {
+        "rules": 1.4, "monte_carlo": 1.3, "xgboost": 1.0, "transformer": 1.0,
+    },
+    "vol_compression": {
+        "monte_carlo": 1.5, "rules": 1.2, "xgboost": 0.9, "transformer": 0.9,
+    },
+    "vol_expansion": {
+        "monte_carlo": 1.4, "lstm": 1.1, "transformer": 1.0,
+    },
+    "trend_continuation": {
+        "lstm": 1.4, "xgboost": 1.1, "transformer": 1.1, "rules": 0.8,
+    },
+    "reversal_prone": {
+        "rules": 1.3, "monte_carlo": 1.2, "xgboost": 0.9, "transformer": 1.0,
+    },
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PRIOR SELECTION
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Default priors for outcome families (uninformative, near-uniform)
+DEFAULT_PRIORS = {
+    "breakout":       0.15,
+    "pinning":        0.25,
+    "continuation":   0.20,
+    "reversal":       0.15,
+    "vol_expansion":  0.10,
+    "mean_reversion": 0.15,
+}
+
+# Regime-conditioned prior adjustments
+REGIME_PRIORS = {
+    "pinning":          {"pinning": 0.40, "mean_reversion": 0.25, "breakout": 0.10, "continuation": 0.10, "reversal": 0.10, "vol_expansion": 0.05},
+    "acceleration":     {"continuation": 0.30, "breakout": 0.25, "vol_expansion": 0.15, "reversal": 0.10, "pinning": 0.10, "mean_reversion": 0.10},
+    "breakout":         {"breakout": 0.35, "continuation": 0.25, "vol_expansion": 0.15, "reversal": 0.10, "pinning": 0.10, "mean_reversion": 0.05},
+    "mean_reversion":   {"mean_reversion": 0.35, "pinning": 0.25, "continuation": 0.15, "reversal": 0.10, "breakout": 0.10, "vol_expansion": 0.05},
+    "vol_compression":  {"pinning": 0.30, "mean_reversion": 0.20, "breakout": 0.15, "continuation": 0.15, "vol_expansion": 0.10, "reversal": 0.10},
+    "vol_expansion":    {"vol_expansion": 0.30, "continuation": 0.25, "breakout": 0.15, "reversal": 0.15, "pinning": 0.10, "mean_reversion": 0.05},
+    "trend_continuation": {"continuation": 0.40, "breakout": 0.15, "reversal": 0.15, "vol_expansion": 0.10, "pinning": 0.10, "mean_reversion": 0.10},
+    "reversal_prone":   {"reversal": 0.35, "mean_reversion": 0.20, "pinning": 0.15, "continuation": 0.10, "breakout": 0.10, "vol_expansion": 0.10},
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EVIDENCE → LIKELIHOOD TRANSLATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _translate_xgb_evidence(xgb_out, direction_hint: str) -> dict:
+    """Convert XGBoost output into likelihood contributions per outcome family."""
+    if not getattr(xgb_out, "available", False):
+        return {}
+
+    up = xgb_out.prob_up
+    down = xgb_out.prob_down
+    directional = max(up, down)
+
+    return {
+        "breakout":       directional * 0.8,
+        "continuation":   xgb_out.continuation_support,
+        "reversal":       xgb_out.reversal_support,
+        "pinning":        xgb_out.prob_flat * 0.8,
+        "vol_expansion":  directional * 0.5,
+        "mean_reversion": xgb_out.prob_flat * 0.6,
+    }
+
+
+def _translate_lstm_evidence(lstm_out, direction_hint: str) -> dict:
+    """Convert LSTM output into likelihood contributions."""
+    if not getattr(lstm_out, "available", False):
+        return {}
+
+    up = getattr(lstm_out, "prob_up", 0.33)
+    down = getattr(lstm_out, "prob_down", 0.33)
+    flat = getattr(lstm_out, "prob_flat", 0.34)
+    directional = max(up, down)
+
+    return {
+        "breakout":       directional * 0.7,
+        "continuation":   getattr(lstm_out, "continuation_support", 0.0),
+        "reversal":       getattr(lstm_out, "reversal_support", 0.0),
+        "pinning":        flat * 0.8,
+        "vol_expansion":  directional * 0.4,
+        "mean_reversion": flat * 0.6,
+    }
+
+
+def _translate_transformer_evidence(transformer_out, direction_hint: str) -> dict:
+    """Convert Transformer output into likelihood contributions."""
+    if not getattr(transformer_out, "available", False):
+        return {}
+
+    up = getattr(transformer_out, "prob_up", 0.33)
+    down = getattr(transformer_out, "prob_down", 0.33)
+    flat = getattr(transformer_out, "prob_flat", 0.34)
+    directional = max(up, down)
+
+    return {
+        "breakout":       directional * 0.7,
+        "continuation":   getattr(transformer_out, "continuation_support", 0.0),
+        "reversal":       getattr(transformer_out, "reversal_support", 0.0),
+        "pinning":        flat * 0.8,
+        "vol_expansion":  directional * 0.4,
+        "mean_reversion": flat * 0.6,
+    }
+
+
+def _translate_rules_evidence(rules, regime) -> dict:
+    """Convert rules engine output into likelihood contributions."""
+    sig = getattr(rules, "signal", "wait")
+    conv = getattr(rules, "conviction", "low")
+
+    conv_mult = {"high": 1.0, "medium": 0.7, "low": 0.4}.get(conv, 0.3)
+
+    if sig in ("long", "short"):
+        return {
+            "breakout":       0.3 * conv_mult,
+            "continuation":   0.7 * conv_mult,
+            "reversal":       0.1 * conv_mult,
+            "pinning":        0.2 * (1 - conv_mult),
+            "vol_expansion":  0.3 * conv_mult,
+            "mean_reversion": 0.1,
+        }
+    else:  # wait
+        return {
+            "breakout":       0.1,
+            "continuation":   0.1,
+            "reversal":       0.2,
+            "pinning":        0.5,
+            "vol_expansion":  0.1,
+            "mean_reversion": 0.4,
+        }
+
+
+@dataclass(frozen=True)
+class FusionTickCache:
+    """
+    Per-tick, regime+rules fusion prep shared across all governed horizons.
+
+    Priors, regime weight adjustments, and rules→likelihood mapping depend only on
+    (regime, rules) for a single decision tick, while XGB/LSTM/transformer/MC
+    evidence differs per horizon.
+    """
+
+    regime_label: str
+    direction_hint: str
+    priors: dict[str, float]
+    weight_adjustments: dict[str, float]
+    rules_evidence: dict[str, float]
+
+
+def build_fusion_tick_cache(regime, rules) -> FusionTickCache:
+    """Build shared fusion prep once per tick; pass into fuse(..., fusion_tick_cache=...)."""
+    regime_label = getattr(regime, "primary", "unknown")
+    direction_hint = getattr(rules, "signal", "wait")
+    priors = dict(REGIME_PRIORS.get(regime_label, DEFAULT_PRIORS))
+    weight_adjustments = dict(REGIME_WEIGHT_ADJUSTMENTS.get(regime_label, {}))
+    rules_evidence = dict(_translate_rules_evidence(rules, regime))
+    return FusionTickCache(
+        regime_label=regime_label,
+        direction_hint=direction_hint,
+        priors=priors,
+        weight_adjustments=weight_adjustments,
+        rules_evidence=rules_evidence,
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# POSTERIOR UPDATE
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _bayesian_update(priors: dict, evidence_list: list, weights: list) -> dict:
+    """
+    Update priors with weighted evidence using multiplicative Bayesian update.
+
+    For each outcome family:
+      posterior(o) ∝ prior(o) × Π_i [ evidence_i(o) ^ weight_i ]
+
+    Then normalize so posteriors sum to 1.
+    """
+    outcomes = list(priors.keys())
+    posteriors = {o: priors[o] for o in outcomes}
+
+    for evidence, weight in zip(evidence_list, weights):
+        if not evidence:
+            continue
+        for o in outcomes:
+            likelihood = evidence.get(o, 0.5)  # default: neutral evidence
+            # Raise to weight power (higher weight = stronger influence)
+            posteriors[o] *= max(0.01, likelihood) ** weight
+
+    # Normalize
+    total = sum(posteriors.values())
+    if total > 0:
+        posteriors = {o: v / total for o, v in posteriors.items()}
+    else:
+        # Fallback to priors
+        posteriors = dict(priors)
+
+    return posteriors
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PUBLIC API
+# ══════════════════════════════════════════════════════════════════════════════
+
+def fuse(
+    regime,
+    xgb_out,
+    lstm_out,
+    transformer_out,
+    mc_out,
+    rules,
+    *,
+    signal_layer_v1: Optional[dict[str, Any]] = None,
+    fusion_tick_cache: Optional[FusionTickCache] = None,
+) -> FusionPayload:
+    """
+    Combine all evidence sources into a posterior probability bundle.
+
+    Called after all models run. Consumes whatever is available —
+    gracefully handles missing/fallback sources by excluding them
+    from the update.
+
+    Args:
+        regime:         RegimePayload from regime_engine
+        xgb_out:        XGB output (prob_up/down/flat, dominant_class, available)
+        lstm_out:       LSTM output (same interface)
+        transformer_out: Transformer output (same interface)
+        mc_out:         MonteCarloOutput from monte_carlo (pass-through / diagnostics only; not blended as a model)
+        rules:          RulesCard from rules_engine
+        fusion_tick_cache: Optional prep from build_fusion_tick_cache(regime, rules) when fusing
+                            multiple horizons for the same tick (skips repeated priors/rules-evidence work).
+
+    Returns:
+        FusionPayload with setup-family posteriors, directional probs, and summaries.
+    """
+    try:
+        return _fuse_impl(
+            regime,
+            xgb_out,
+            lstm_out,
+            transformer_out,
+            mc_out,
+            rules,
+            signal_layer_v1=signal_layer_v1,
+            fusion_tick_cache=fusion_tick_cache,
+        )
+    except Exception as e:
+        log.warning("bayesian_fusion: fusion failed: %s", e)
+        return FusionPayload(
+            available=False,
+            fusion_summary=f"Fusion error: {e}",
+        )
+
+
+def _fuse_impl(
+    regime,
+    xgb_out,
+    lstm_out,
+    transformer_out,
+    mc_out,
+    rules,
+    *,
+    signal_layer_v1: Optional[dict[str, Any]] = None,
+    fusion_tick_cache: Optional[FusionTickCache] = None,
+) -> FusionPayload:
+    """Internal fusion implementation."""
+
+    if fusion_tick_cache is not None:
+        regime_label = fusion_tick_cache.regime_label
+        direction_hint = fusion_tick_cache.direction_hint
+        priors = fusion_tick_cache.priors
+        adjustments = fusion_tick_cache.weight_adjustments
+    else:
+        regime_label = getattr(regime, "primary", "unknown")
+        direction_hint = getattr(rules, "signal", "wait")
+
+        # ── Select priors based on regime ─────────────────────────────────────────
+        priors = REGIME_PRIORS.get(regime_label, DEFAULT_PRIORS)
+
+        # ── Compute regime-aware trust weights ────────────────────────────────────
+        adjustments = REGIME_WEIGHT_ADJUSTMENTS.get(regime_label, {})
+    weights = {}
+    for source, base_w in BASE_WEIGHTS.items():
+        mult = adjustments.get(source, 1.0)
+        weights[source] = base_w * mult
+
+    # Zero out weights for unavailable sources
+    source_available = {
+        "xgboost":     getattr(xgb_out, "available", False),
+        "lstm":        getattr(lstm_out, "available", False),
+        "transformer": getattr(transformer_out, "available", False),
+        # Monte Carlo is intentionally excluded from fusion weights and likelihoods;
+        # it is applied only as post-fusion context (see mc_fusion_adjustment).
+        "monte_carlo": False,
+        "rules":       True,  # always available
+        "regime":      regime_label != "unknown",
+    }
+
+    for source, avail in source_available.items():
+        if not avail:
+            weights[source] = 0.0
+
+    # Normalize active weights to sum to 1
+    total_w = sum(weights.values())
+    if total_w > 0:
+        weights = {k: v / total_w for k, v in weights.items()}
+
+    n_sources = sum(1 for v in source_available.values() if v)
+    n_active = sum(1 for s, a in source_available.items() if a and s not in ("rules", "regime"))
+
+    contributing_models = sorted(s for s, a in source_available.items() if a)
+    missing_models = sorted(
+        s for s, a in source_available.items() if (not a) and s in ("xgboost", "lstm", "transformer")
+    )
+
+    # ── Translate evidence ────────────────────────────────────────────────────
+    evidence_list = []
+    weight_list = []
+
+    xgb_ev = _translate_xgb_evidence(xgb_out, direction_hint)
+    if xgb_ev:
+        evidence_list.append(xgb_ev)
+        weight_list.append(weights["xgboost"])
+
+    lstm_ev = _translate_lstm_evidence(lstm_out, direction_hint)
+    if lstm_ev:
+        evidence_list.append(lstm_ev)
+        weight_list.append(weights["lstm"])
+
+    transformer_ev = _translate_transformer_evidence(transformer_out, direction_hint)
+    if transformer_ev:
+        evidence_list.append(transformer_ev)
+        weight_list.append(weights["transformer"])
+
+    rules_ev = (
+        fusion_tick_cache.rules_evidence
+        if fusion_tick_cache is not None
+        else _translate_rules_evidence(rules, regime)
+    )
+    evidence_list.append(rules_ev)
+    weight_list.append(weights["rules"])
+
+    # ── Bayesian update ──────────────────────────────────────────────────────
+    posteriors = _bayesian_update(priors, evidence_list, weight_list)
+
+    # ── Determine dominant outcome ───────────────────────────────────────────
+    dominant = max(posteriors, key=posteriors.get)
+    dominant_prob = posteriors[dominant]
+
+    # ── Fusion confidence ────────────────────────────────────────────────────
+    sorted_probs = sorted(posteriors.values(), reverse=True)
+    gap = sorted_probs[0] - sorted_probs[1] if len(sorted_probs) > 1 else 0
+    if dominant_prob >= 0.35 and gap >= 0.10 and n_sources >= 3:
+        conf = "high"
+        conf_score = min(1.0, dominant_prob + gap * 0.5)
+    elif dominant_prob >= 0.25 and gap >= 0.05:
+        conf = "medium"
+        conf_score = min(0.7, dominant_prob + gap * 0.3)
+    else:
+        conf = "low"
+        conf_score = min(0.4, dominant_prob)
+
+    # ── PHASE 1 DAMPENING — conservative until calibration data exists ────────
+    # Count approved PREDICTIVE models (XGB/LSTM), not all sources.
+    # MC and rules are always available — they don't count as ensemble diversity.
+    # A model with available=True passed approval and is producing real output.
+    n_predictive_approved = 0
+    if getattr(xgb_out, "available", False):
+        n_predictive_approved += 1
+    if getattr(lstm_out, "available", False):
+        n_predictive_approved += 1
+    # Damp 1: fewer than 2 approved predictive models → cap at medium
+    if n_predictive_approved < 2 and conf == "high":
+        conf = "medium"
+        conf_score = min(conf_score, 0.65)
+
+    # Damp 2: only 1 approved model → cap confidence score at 0.55
+    if n_predictive_approved <= 1:
+        conf_score = min(conf_score, 0.55)
+
+    # Damp 3: placeholder calibration penalty — all likelihoods are guesses.
+    # Scale confidence score by 0.85 until empirical calibration replaces placeholders.
+    # TODO: remove this multiplier after 60+ days of calibration data.
+    CALIBRATION_PENALTY = 0.85
+    conf_score *= CALIBRATION_PENALTY
+
+    # Damp 4 applied after contradictions are computed (see below)
+
+    # ── Model agreement (XGB + LSTM + Transformer only; MC excluded) ───────────
+    model_dirs = []
+    if getattr(xgb_out, "available", False):
+        model_dirs.append(getattr(xgb_out, "dominant_class", "flat"))
+    if getattr(lstm_out, "available", False):
+        model_dirs.append(getattr(lstm_out, "dominant_class", "flat"))
+    if getattr(transformer_out, "available", False):
+        model_dirs.append(getattr(transformer_out, "dominant_class", "flat"))
+
+    if model_dirs:
+        from collections import Counter
+        most_common = Counter(model_dirs).most_common(1)[0]
+        agreement = most_common[1] / len(model_dirs)
+        agree_label = "high" if agreement >= 0.75 else "medium" if agreement >= 0.5 else "low"
+    else:
+        agreement = 0.0
+        agree_label = "low"
+
+    # ── Directional fusion: weighted P(up), P(down), P(flat) ───────────────────
+    dir_sources = []
+    dir_weights = []
+    for src, out in [
+        ("xgboost", xgb_out),
+        ("lstm", lstm_out),
+        ("transformer", transformer_out),
+    ]:
+        if not getattr(out, "available", False):
+            continue
+        w = weights.get(src, 0.0)
+        if w <= 0:
+            continue
+        up = getattr(out, "prob_up", 0.33)
+        down = getattr(out, "prob_down", 0.33)
+        flat = getattr(out, "prob_flat", 0.34)
+        dir_sources.append((up, down, flat))
+        dir_weights.append(w)
+
+    fusion_mc_contribution = None
+    if dir_sources and dir_weights:
+        total_w = sum(dir_weights)
+        if total_w > 0:
+            prob_up = sum(s[0] * w for s, w in zip(dir_sources, dir_weights)) / total_w
+            prob_down = sum(s[1] * w for s, w in zip(dir_sources, dir_weights)) / total_w
+            prob_flat = sum(s[2] * w for s, w in zip(dir_sources, dir_weights)) / total_w
+            # Renormalize
+            tot = prob_up + prob_down + prob_flat
+            if tot > 0:
+                prob_up /= tot
+                prob_down /= tot
+                prob_flat /= tot
+            dominant_dir = max(
+                "up",
+                "down",
+                "flat",
+                key=lambda d: {"up": prob_up, "down": prob_down, "flat": prob_flat}[d],
+            )
+        else:
+            prob_up = prob_down = prob_flat = 0.33
+            dominant_dir = "flat"
+    else:
+        prob_up = prob_down = prob_flat = 0.33
+        dominant_dir = "flat"
+
+    # ── signal_layer_v1 directional blend (1m bars ≤ decision_ts; no lookahead) ──
+    signal_layer_v1_fusion: Optional[dict] = None
+    if signal_layer_v1:
+        try:
+            nb = int(signal_layer_v1.get("meta.n_bars") or 0)
+        except (TypeError, ValueError):
+            nb = 0
+        if nb >= 25:
+            from features.signal_layer_v1 import signal_layer_v1_to_direction_probs
+
+            w_sl = float(os.environ.get("ED_SIGNAL_LAYER_FUSION_BLEND", "0.38"))
+            w_sl = max(0.0, min(1.0, w_sl))
+            su, sd, sf = signal_layer_v1_to_direction_probs(signal_layer_v1)
+            prob_up = (1.0 - w_sl) * prob_up + w_sl * su
+            prob_down = (1.0 - w_sl) * prob_down + w_sl * sd
+            prob_flat = (1.0 - w_sl) * prob_flat + w_sl * sf
+            tot = prob_up + prob_down + prob_flat
+            if tot > 0:
+                prob_up /= tot
+                prob_down /= tot
+                prob_flat /= tot
+            dominant_dir = max(
+                "up",
+                "down",
+                "flat",
+                key=lambda d: {"up": prob_up, "down": prob_down, "flat": prob_flat}[d],
+            )
+            signal_layer_v1_fusion = {
+                "blend_weight": round(w_sl, 4),
+                "prior_triplet": {"up": round(su, 4), "down": round(sd, 4), "flat": round(sf, 4)},
+                "post_triplet": {"up": round(prob_up, 4), "down": round(prob_down, 4), "flat": round(prob_flat, 4)},
+            }
+
+    # ── Evidence summaries ───────────────────────────────────────────────────
+    evidence = []
+    contradictions = []
+
+    if getattr(mc_out, "available", False):
+        if mc_out.containment_prob and mc_out.containment_prob > 0.6:
+            evidence.append(f"MC: {mc_out.containment_prob:.0%} containment — supports pinning/range")
+        elif mc_out.expansion_prob and mc_out.expansion_prob > 0.5:
+            evidence.append(f"MC: {mc_out.expansion_prob:.0%} expansion probability")
+
+    if getattr(xgb_out, "available", False):
+        evidence.append(f"XGB: {xgb_out.dominant_class} ({xgb_out.confidence_label} confidence)")
+
+    if regime_label != "unknown":
+        evidence.append(f"Regime: {regime_label} ({getattr(regime, 'confidence', 'low')})")
+
+    if direction_hint in ("long", "short"):
+        evidence.append(f"Rules: {direction_hint} lean")
+    else:
+        evidence.append("Rules: no directional lean")
+
+    # Contradictions
+    if model_dirs and agreement < 0.5:
+        contradictions.append(f"Model disagreement: {model_dirs}")
+    if regime_label == "pinning" and direction_hint in ("long", "short"):
+        contradictions.append("Pinning regime vs directional rules lean")
+
+    # ── Damp 4: contradiction penalty (deferred from above) ──────────────────
+    if contradictions:
+        conf_score *= 0.90
+        if len(contradictions) >= 2:
+            conf_score *= 0.90
+
+    # Re-classify confidence after all dampening
+    if conf_score >= 0.65:
+        conf = "high"
+    elif conf_score >= 0.35:
+        conf = "medium"
+    else:
+        conf = "low"
+
+    # ── Summary text ─────────────────────────────────────────────────────────
+    OUTCOME_LABELS = {
+        "breakout": "breakout", "pinning": "pinning",
+        "continuation": "continuation", "reversal": "reversal",
+        "vol_expansion": "volatility expansion",
+        "mean_reversion": "mean reversion",
+    }
+    dom_label = OUTCOME_LABELS.get(dominant, dominant)
+    summary = f"Posterior favors {dom_label} ({dominant_prob:.0%}). "
+    if n_active > 0:
+        summary += f"{n_active} model(s) active. "
+    summary += f"Agreement: {agree_label}."
+
+    # ── MC pass-through ──────────────────────────────────────────────────────
+    mc_avail = getattr(mc_out, "available", False)
+    _assum = getattr(mc_out, "assumptions", None) or {}
+    mc_paths = getattr(mc_out, "n_paths", None) if mc_avail else None
+    mc_horizon = getattr(mc_out, "horizon_bars", None) if mc_avail else None
+    mc_vol_source = ("garch" if _assum.get("garch_active") else "blend") if mc_avail else None
+    mc_sigma_value = _assum.get("scaled_sigma") or _assum.get("blended_sigma") if mc_avail else None
+
+    return FusionPayload(
+        available=True,
+        breakout_posterior=round(posteriors.get("breakout", 0), 3),
+        pinning_posterior=round(posteriors.get("pinning", 0), 3),
+        continuation_posterior=round(posteriors.get("continuation", 0), 3),
+        reversal_posterior=round(posteriors.get("reversal", 0), 3),
+        vol_expansion_posterior=round(posteriors.get("vol_expansion", 0), 3),
+        mean_reversion_posterior=round(posteriors.get("mean_reversion", 0), 3),
+        weight_xgboost=round(weights.get("xgboost", 0), 3),
+        weight_lstm=round(weights.get("lstm", 0), 3),
+        weight_transformer=round(weights.get("transformer", 0), 3),
+        weight_monte_carlo=0.0,
+        weight_rules=round(weights.get("rules", 0), 3),
+        weight_regime=round(weights.get("regime", 0), 3),
+        dominant_outcome=dominant,
+        dominant_probability=round(dominant_prob, 3),
+        fusion_confidence=conf,
+        fusion_confidence_score=round(conf_score, 3),
+        n_sources_available=n_sources,
+        n_sources_active=n_active,
+        evidence_summary=evidence,
+        contradiction_summary=contradictions,
+        fusion_summary=summary,
+        mc_available=mc_avail,
+        mc_containment=getattr(mc_out, "containment_prob", None) if mc_avail else None,
+        mc_expansion=getattr(mc_out, "expansion_prob", None) if mc_avail else None,
+        mc_efe=getattr(mc_out, "expected_favorable_excursion", None) if mc_avail else None,
+        mc_eae=getattr(mc_out, "expected_adverse_excursion", None) if mc_avail else None,
+        mc_upper_50=getattr(mc_out, "upper_50", None) if mc_avail else None,
+        mc_lower_50=getattr(mc_out, "lower_50", None) if mc_avail else None,
+        mc_paths=mc_paths,
+        mc_horizon=mc_horizon,
+        mc_vol_source=mc_vol_source,
+        mc_sigma_value=mc_sigma_value,
+        model_agreement=round(agreement, 3),
+        model_agreement_label=agree_label,
+        prob_up=round(prob_up, 3),
+        prob_down=round(prob_down, 3),
+        prob_flat=round(prob_flat, 3),
+        dominant_direction=dominant_dir,
+        fusion_mc_contribution=None,
+        mc_post_fusion_audit=None,
+        signal_layer_v1_fusion=signal_layer_v1_fusion,
+        contributing_models=contributing_models,
+        missing_models=missing_models,
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SELF-TEST
+# ══════════════════════════════════════════════════════════════════════════════
+
+if __name__ == "__main__":
+    print("bayesian_fusion.py — self-test")
+    # Create minimal mock objects
+    from types import SimpleNamespace
+    regime = SimpleNamespace(primary="pinning", confidence="medium")
+    rules = SimpleNamespace(signal="wait", conviction="medium")
+    xgb = SimpleNamespace(available=False)
+    lstm = SimpleNamespace(available=False)
+    transformer = SimpleNamespace(available=False)
+    mc = SimpleNamespace(
+        available=True,
+        containment_prob=0.6,
+        expansion_prob=0.4,
+        path_dispersion=2.5,
+        expected_favorable_excursion=1.5,
+        expected_adverse_excursion=1.6,
+        upper_50=572.0,
+        lower_50=568.0,
+        mc_feature_dict=lambda: {
+            "expected_move": 1.0,
+            "volatility": 2.5,
+            "skew": 0.0,
+            "tail_risk": 0.1,
+            "directional_bias": 0.0,
+        },
+    )
+    result = fuse(regime, xgb, lstm, transformer, mc, rules)
+    print(f"  Dominant: {result.dominant_outcome} ({result.dominant_probability:.0%})")
+    print(f"  Confidence: {result.fusion_confidence}")
+    print(f"  Sources: {result.n_sources_available} available, {result.n_sources_active} active models")
+    print(f"  Summary: {result.fusion_summary}")
+    print("  OK")

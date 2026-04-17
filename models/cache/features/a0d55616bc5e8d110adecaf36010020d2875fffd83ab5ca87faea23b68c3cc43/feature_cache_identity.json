@@ -1,0 +1,17 @@
+{
+  "ticker": "GOOGL",
+  "feature_cache_key": "a0d55616bc5e8d110adecaf36010020d2875fffd83ab5ca87faea23b68c3cc43",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "GOOGL",
+    "min_ts_utc": 1774276699.1140525,
+    "max_ts_utc": 1776110300.9933994,
+    "row_count": 2022
+  },
+  "feature_version": "v4_canonical_1m",
+  "preprocessing_version": "v3_rth_decay_m5_additive_canonical",
+  "label_version": "outcome_1c_filled_rth_v1",
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

@@ -1,0 +1,21 @@
+{
+  "ticker": "PCG",
+  "feature_cache_key": "c8f96bc3540bb048f9ca9bd60cba261b78606d449977c620fd434514198f8283",
+  "training_code_fingerprint": "94c16bf4986fc644b250d66b54ac2627f8776206027ce303ba35fcb9d1da8a64",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "PCG",
+    "min_ts_utc": 1774455389.6307964,
+    "max_ts_utc": 1776282971.9680567,
+    "row_count": 1640
+  },
+  "cascade_bind_slug": "c03400197d48fdd9",
+  "xgb_meta_sha256": "7911cf671698f03e170e1562e37c5cc1286043c60a72e5e9769c0b5a444f6118",
+  "lstm_checkpoint_sha256": "352b10b2dac342ea64cb81df0a7138143386efe5e2b17dcf07eb2d36936300b6",
+  "xgb_lstm_tensor_sha256": "954b4af1b3af8c7b853b837e4cd2d0004d92769e4943eccaf56d60ccca6f0359",
+  "n_cascade_rows": 808,
+  "n_cascade_cols": 6,
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

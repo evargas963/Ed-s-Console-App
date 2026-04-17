@@ -1,0 +1,216 @@
+{
+  "meta": {
+    "db_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\data\\calibration_accumulation_validation.db",
+    "run_ts_utc": 1775942000.7254078,
+    "canonical_timeframe_expected": "1m"
+  },
+  "tables_present": {
+    "snapshots": true,
+    "price_bars_1m": true,
+    "calibration_decision_log": true
+  },
+  "timeframe_enforcement": {
+    "snapshots_by_timeframe": {
+      "1m": 120
+    },
+    "non_canonical_timeframe_rows": {},
+    "violations_count": 0
+  },
+  "gap_continuity_snapshots_1m": {
+    "per_ticker": {
+      "DIA": {
+        "row_count": 30,
+        "gap_seconds": {
+          "n": 29,
+          "median": null,
+          "p95": null,
+          "max": null,
+          "distribution_sample_gate": {
+            "n": 29,
+            "min_required": 30,
+            "sufficient_sample": false,
+            "status": "insufficient_sample"
+          }
+        },
+        "gaps_gt_120s": 0,
+        "gaps_gt_120s_during_rth": 0
+      },
+      "IWM": {
+        "row_count": 30,
+        "gap_seconds": {
+          "n": 29,
+          "median": null,
+          "p95": null,
+          "max": null,
+          "distribution_sample_gate": {
+            "n": 29,
+            "min_required": 30,
+            "sufficient_sample": false,
+            "status": "insufficient_sample"
+          }
+        },
+        "gaps_gt_120s": 0,
+        "gaps_gt_120s_during_rth": 0
+      },
+      "QQQ": {
+        "row_count": 30,
+        "gap_seconds": {
+          "n": 29,
+          "median": null,
+          "p95": null,
+          "max": null,
+          "distribution_sample_gate": {
+            "n": 29,
+            "min_required": 30,
+            "sufficient_sample": false,
+            "status": "insufficient_sample"
+          }
+        },
+        "gaps_gt_120s": 0,
+        "gaps_gt_120s_during_rth": 0
+      },
+      "SPY": {
+        "row_count": 30,
+        "gap_seconds": {
+          "n": 29,
+          "median": null,
+          "p95": null,
+          "max": null,
+          "distribution_sample_gate": {
+            "n": 29,
+            "min_required": 30,
+            "sufficient_sample": false,
+            "status": "insufficient_sample"
+          }
+        },
+        "gaps_gt_120s": 0,
+        "gaps_gt_120s_during_rth": 0
+      }
+    },
+    "ticker_count": 4
+  },
+  "gap_continuity_price_bars_1m": {
+    "per_ticker": {
+      "DIA": {
+        "bar_rows": 197,
+        "gap_seconds": {
+          "n": 196,
+          "median": 60.0,
+          "p95": 60.0,
+          "max": 60.0,
+          "distribution_sample_gate": {
+            "n": 196,
+            "min_required": 30,
+            "sufficient_sample": true,
+            "status": "ok"
+          }
+        },
+        "gaps_ne_60s": 0
+      },
+      "IWM": {
+        "bar_rows": 197,
+        "gap_seconds": {
+          "n": 196,
+          "median": 60.0,
+          "p95": 60.0,
+          "max": 60.0,
+          "distribution_sample_gate": {
+            "n": 196,
+            "min_required": 30,
+            "sufficient_sample": true,
+            "status": "ok"
+          }
+        },
+        "gaps_ne_60s": 0
+      },
+      "QQQ": {
+        "bar_rows": 197,
+        "gap_seconds": {
+          "n": 196,
+          "median": 60.0,
+          "p95": 60.0,
+          "max": 60.0,
+          "distribution_sample_gate": {
+            "n": 196,
+            "min_required": 30,
+            "sufficient_sample": true,
+            "status": "ok"
+          }
+        },
+        "gaps_ne_60s": 0
+      },
+      "SPY": {
+        "bar_rows": 197,
+        "gap_seconds": {
+          "n": 196,
+          "median": 60.0,
+          "p95": 60.0,
+          "max": 60.0,
+          "distribution_sample_gate": {
+            "n": 196,
+            "min_required": 30,
+            "sufficient_sample": true,
+            "status": "ok"
+          }
+        },
+        "gaps_ne_60s": 0
+      }
+    }
+  },
+  "snapshot_bar_alignment": {
+    "anchor_rule": "BAR_ANCHOR_V1: MAX(bar_end_ts_utc) <= ts_utc from price_bars_1m WHERE ticker=ticker_storage_key(snapshots.ticker)",
+    "random_sample_size": 120,
+    "snapshots_missing_anchor_bar_end_lte_ts": 0,
+    "fraction_missing_anchor": 0.0,
+    "fraction_missing_anchor_gate": {
+      "n": 120,
+      "min_required": 30,
+      "sufficient_sample": true,
+      "status": "ok"
+    },
+    "sample_rows_would_miss_using_raw_ticker_but_hit_with_storage_key": 0
+  },
+  "outcome_label_integrity": {
+    "row_count_1m": 120,
+    "null_rates": {
+      "outcome_1c": 0.0,
+      "outcome_5c": 0.0,
+      "outcome_15c": 0.0,
+      "outcome_60c": 0.0
+    },
+    "null_rates_sample_gate": {
+      "n": 120,
+      "min_required": 30,
+      "sufficient_sample": true,
+      "status": "ok"
+    },
+    "suspect_up_negative_pts_gt_0_25": 0,
+    "suspect_down_positive_pts_gt_0_25": 0,
+    "forward_leakage_note": "Labels are filled by db.fill_outcomes / horizon_outcomes forward-bar contract; features in snapshot row must not include post-ts_utc bars \u2014 audit code cannot prove feature-time isolation without replay; see horizon_outcomes.OUTCOME_BAR_SPECS."
+  },
+  "structural_field_completeness": {
+    "rows": 120,
+    "zone_null_rate": 1.0,
+    "vwap_side_null_rate": 1.0,
+    "structural_null_rates_sample_gate": {
+      "n": 120,
+      "min_required": 30,
+      "sufficient_sample": true,
+      "status": "ok"
+    },
+    "nearest_above_dist_negative_count": 0,
+    "nearest_below_dist_negative_count": 0,
+    "canonical_option_a_violation": false
+  },
+  "symbol_normalization": {
+    "distinct_raw_tickers": 4,
+    "distinct_storage_keys": 4,
+    "fragmented_keys": {},
+    "fragmented_key_count": 0
+  },
+  "notes": [],
+  "statistical_integrity": {
+    "binary_pass": true,
+    "thresholds_reference": "math_probabilities.MIN_SAMPLES_STATISTICAL (30) via calibration.statistical_integrity"
+  }
+}

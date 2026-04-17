@@ -1,0 +1,47 @@
+{
+  "model_type": "dual_stream_lstm",
+  "ticker": "PCG",
+  "trained_at": "2026-03-26T17:56:48.874157",
+  "val_accuracy": 0.7,
+  "n_train": 60,
+  "n_params": 70083,
+  "best_epoch": 43,
+  "n_features_5m": 19,
+  "n_features_1m": 9,
+  "n_confluence": 5,
+  "masked_features": {
+    "masked_5m": [
+      "candle_body_pts",
+      "candle_range_pts",
+      "zone"
+    ],
+    "masked_1m": [
+      "candle_body_pts",
+      "candle_range_pts",
+      "zone"
+    ],
+    "masked_conf": [
+      "cf_greek_support",
+      "feature_6",
+      "feature_7",
+      "feature_8"
+    ]
+  },
+  "training_time_sec": 1.6,
+  "training_timeframe": "1m",
+  "target_definition": "outcome_1c (~1 min ahead with 1m)",
+  "target_column": "outcome_1c",
+  "feature_schema_version": "v4_canonical_1m",
+  "preprocessing_version": "v2_rth_decay",
+  "sequence_length": 60,
+  "train_start": "2026-03-25 14:19:16",
+  "train_end": "2026-03-26 15:55:21",
+  "validation_start": "2026-03-25 14:19:16",
+  "validation_end": "2026-03-26 15:55:21",
+  "rows_used": 60,
+  "promoted_at": "",
+  "source_cache_key": "f9670069d02503d15cd5c5d1",
+  "promotion_metric": "val_accuracy",
+  "promotion_score": 0.7,
+  "balanced_accuracy": null
+}

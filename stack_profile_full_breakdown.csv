@@ -1,0 +1,38 @@
+component,avg_ms_per_iteration,pct,calls,pct_interpretation
+,,,,top rows: pct of total iteration wall; breakdown rows: pct of run_base_models_once only
+build_inference_snapshot_v1,0.072473,0.0038,15,
+build_fusion_model_overlay_for_stack,366.492280,19.4338,15,
+build_xgb_pre_engineering_snapshot_for_tick,46.903847,2.4871,15,
+run_base_models_once,427.606813,22.6744,105,
+monte_carlo.simulate,132.335573,7.0173,105,
+bayesian_fusion.fuse,1.578447,0.0837,105,
+compute_prediction_core,615.965433,32.6624,15,
+compute_prediction_enrichment,3.125220,0.1657,15,
+compute_call,0.378387,0.0201,15,
+  (breakdown) xgb [% of run_base_models_once time],126.192207,29.5113,105,
+  (breakdown) lstm [% of run_base_models_once time],197.504073,46.1882,105,
+  (breakdown) transformer [% of run_base_models_once time],17.819447,4.1673,105,
+(residual unaccounted: overhead + unpatched glue),3.315813,0.1758,15,
+
+# section,unaccounted_breakdown
+component,avg_ms_per_iteration,pct_total_wall,calls,
+classify_volatility_regime,0.025720,0.0014,15,pct of iteration wall
+compute_rules,0.055927,0.0030,15,pct of iteration wall
+classify_regime,0.090440,0.0048,15,pct of iteration wall
+compute_signal_layer_v1_for_calibration,103.557420,5.4913,15,pct of iteration wall
+resolve_monte_carlo_stack_inputs,0.014540,0.0008,15,pct of iteration wall
+build_fusion_tick_cache,0.018620,0.0010,15,pct of iteration wall
+build_shared_sequence_context,182.174053,9.6600,15,pct of iteration wall
+fusion_payload_to_policy_columns,0.240613,0.0128,105,pct of iteration wall
+fuse_payload_apply_mc_adjustment,1.531433,0.0812,105,pct of iteration wall
+build_multi_horizon_ml_fusion_bundle,0.091327,0.0048,15,pct of iteration wall
+canonical_forecast_from_fusion,0.008967,0.0005,15,pct of iteration wall
+compute_multi_horizon_synthesis,0.148653,0.0079,15,pct of iteration wall
+finalize_multi_horizon_bundle,0.047787,0.0025,15,pct of iteration wall
+signals._build_stack_decision_path,0.040153,0.0021,15,pct of iteration wall
+signals._build_snapshot_dict,0.021613,0.0011,15,pct of iteration wall
+signals._maybe_append_calibration_log,0.012173,0.0006,15,pct of iteration wall
+(sum of orchestration + main stack vs iteration),1882.537913,99.8242,15,pct of iteration wall
+(residual after main + orchestration),3.315813,0.1758,15,pct of iteration wall
+
+inference_snapshot_v1_to_engineering_snapshot,0.045027,0.0105,15,pct of run_base_models_once only (nested)

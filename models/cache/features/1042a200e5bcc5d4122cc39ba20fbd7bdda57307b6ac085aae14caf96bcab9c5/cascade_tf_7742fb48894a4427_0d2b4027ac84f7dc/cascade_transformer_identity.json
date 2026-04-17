@@ -1,0 +1,21 @@
+{
+  "ticker": "NFLX",
+  "feature_cache_key": "1042a200e5bcc5d4122cc39ba20fbd7bdda57307b6ac085aae14caf96bcab9c5",
+  "training_code_fingerprint": "94c16bf4986fc644b250d66b54ac2627f8776206027ce303ba35fcb9d1da8a64",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "NFLX",
+    "min_ts_utc": 1775827966.6814322,
+    "max_ts_utc": 1776282940.1898189,
+    "row_count": 340
+  },
+  "cascade_bind_slug": "7742fb48894a4427",
+  "xgb_meta_sha256": "8b458df6162f60c62ef025181650b8e081eda60ed72b1c814db088f0dfe61d83",
+  "lstm_checkpoint_sha256": "30e2ecaf727c24f04e45d81c4f420f754a0dac2e25598775618b48e58674bf33",
+  "xgb_lstm_tensor_sha256": "0d2b4027ac84f7dc5be36753712a789d455110de0d286b6e47b08b7a8262ff78",
+  "n_cascade_rows": 157,
+  "n_cascade_cols": 6,
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

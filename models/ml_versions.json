@@ -1,0 +1,20 @@
+{
+  "SPY": {
+    "last_validated_acc": 0.6106,
+    "model_version": 1,
+    "architecture": "parallel",
+    "promoted": true,
+    "last_trained_at": "2026-03-13T22:29:38",
+    "rows_at_training": 4386,
+    "trading_days_at_training": 7
+  },
+  "TSLA": {
+    "last_validated_acc": 0.6036,
+    "model_version": 1,
+    "architecture": "parallel",
+    "promoted": true,
+    "last_trained_at": "2026-03-13T22:43:35",
+    "rows_at_training": 2291,
+    "trading_days_at_training": 7
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "ticker": "MSFT",
+  "feature_cache_key": "afec042ed7a07ab87883d9f1dbca95bdd84acc12df29dfb4ea7093e651e236f3",
+  "training_code_fingerprint": "94c16bf4986fc644b250d66b54ac2627f8776206027ce303ba35fcb9d1da8a64",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "MSFT",
+    "min_ts_utc": 1774276676.074938,
+    "max_ts_utc": 1776281955.860093,
+    "row_count": 2095
+  },
+  "cascade_bind_slug": "6b0f10fb33ff0298",
+  "xgb_meta_sha256": "6cff3705322072153636a3d21735ed8b01c8f940fc9fb8c00936e3a05c13704f",
+  "lstm_checkpoint_sha256": "f4da7f29d1f60cdc602f39520765e392672e83a8782b54841d1164297c1af901",
+  "xgb_lstm_tensor_sha256": "d74b4986eeadcfc7c2b520eeb3c0a7005931e60a05abed260deea6d4d72f7a49",
+  "n_cascade_rows": 1136,
+  "n_cascade_cols": 6,
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

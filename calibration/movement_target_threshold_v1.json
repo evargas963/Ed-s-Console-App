@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "atr_multiplier": 0.55,
+  "min_fraction_of_anchor": 0.0008,
+  "method": "max_atr_pts_and_anchor_fraction",
+  "calibration_note": "threshold_pts = max(anchor_close * min_fraction_of_anchor, atr * atr_multiplier). Re-fit with: python tools/calibrate_movement_threshold_v1.py --db data/ed_console.db"
+}

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Run tasks — Ed Console</title>
+  <style>
+    :root {
+      --bg: #0a0c0f; --bg2: #111418; --border: #252c36; --text: #e5e7eb;
+      --muted: #9ca3af; --accent: #3b82f6; --green: #22c55e; --red: #ef4444;
+      --amber: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, "Segoe UI", sans-serif; background: var(--bg); color: var(--text);
+      margin: 0; padding: 24px; line-height: 1.5; font-size: 14px; }
+    .wrap { max-width: 56rem; margin: 0 auto; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .nav { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 20px; font-size: 13px; }
+    h1 { font-size: 1.15rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+      color: var(--accent); margin: 0 0 8px 0; }
+    p.lead { color: var(--muted); margin: 0 0 20px 0; max-width: 48rem; }
+    .banner { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+      padding: 14px 16px; margin-bottom: 24px; }
+    .banner.off { border-color: #78350f; background: #1c1410; }
+    .banner.on { border-color: #14532d; background: #0f1a12; }
+    .banner h2 { margin: 0 0 8px 0; font-size: 1rem; }
+    .banner code { font-size: 12px; background: #0006; padding: 2px 6px; border-radius: 4px; }
+    section { margin-bottom: 32px; }
+    section h3 { font-size: 0.95rem; margin: 0 0 12px 0; color: var(--muted); font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em; }
+    .grid { display: grid; gap: 10px; }
+    @media (min-width: 640px) { .grid.cols-2 { grid-template-columns: 1fr 1fr; } }
+    .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+    .card .title { font-weight: 600; margin-bottom: 4px; }
+    .card .cadence { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .card .cmd { font-size: 11px; color: #6b7280; word-break: break-all; font-family: ui-monospace, monospace;
+      margin-bottom: 10px; }
+    .card .warn { font-size: 12px; color: var(--amber); margin-bottom: 8px; }
+    button.run {
+      background: var(--accent); color: #fff; border: none; border-radius: 6px;
+      padding: 8px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    button.run:disabled { opacity: 0.45; cursor: not-allowed; }
+    button.run-seq { background: #6366f1; }
+    button.run:hover:not(:disabled) { filter: brightness(1.08); }
+    .seq-desc { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+    .out { margin-top: 20px; background: #050608; border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px; font-family: ui-monospace, monospace; font-size: 11px; white-space: pre-wrap;
+      word-break: break-word; max-height: 380px; overflow: auto; color: #d1d5db; }
+    .out:empty { display: none; }
+    .bad { color: var(--red); }
+    .good { color: var(--green); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="nav">
+      <a href="/">&larr; Console</a>
+      <a href="/guide/data-stewardship">Data stewardship</a>
+      <a href="/guide/training-and-maintenance">Training &amp; maintenance (doc)</a>
+      <a href="/governance">Architecture governance</a>
+    </div>
+
+    <h1>Run tasks</h1>
+    <p class="lead">
+      Run whitelisted Python maintenance and training scripts from the browser.
+      This only works when the server is allowed to start them (see banner below).
+      For the full checklist and cadence, open the markdown guide linked above.
+    </p>
+
+    <div id="banner" class="banner off">
+      <h2 id="banner-title">Checking…</h2>
+      <p id="banner-body"></p>
+    </div>
+
+    <section>
+      <h3>Sequences</h3>
+      <p class="lead" style="font-size:13px;margin-bottom:12px">Runs steps in order; stops if a step fails.</p>
+      <div id="sequences" class="grid cols-2"></div>
+    </section>
+
+    <section>
+      <h3>Individual jobs</h3>
+      <div id="jobs" class="grid cols-2"></div>
+    </section>
+
+    <h3 style="font-size:0.95rem;color:var(--muted)">Output</h3>
+    <pre id="out" class="out"></pre>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const out = $('out');
+
+    function setBanner(enabled, allowRemote) {
+      const b = $('banner');
+      const bt = $('banner-title');
+      const bb = $('banner-body');
+      if (!enabled) {
+        b.className = 'banner off';
+        bt.textContent = 'Click-to-run is off';
+        bb.innerHTML = 'Set environment variable <code>ED_OPS_RUNNER=1</code>, restart the server (same machine as this project), then refresh. ' +
+          'Runs are limited to <strong>localhost</strong> unless you set <code>ED_OPS_ALLOW_REMOTE=1</code> (only on trusted networks).';
+      } else {
+        b.className = 'banner on';
+        bt.textContent = 'Click-to-run is on';
+        bb.innerHTML = allowRemote
+          ? 'Runner enabled; remote POST is allowed — use only on trusted networks.'
+          : 'Runner enabled; only this machine (localhost) can start jobs from this page.';
+      }
+    }
+
+    function log(obj) {
+      out.textContent = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
+    }
+
+    async function post(path, body) {
+      const r = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json().catch(() => ({ error: 'invalid JSON response', status: r.status }));
+      return { ok: r.ok, status: r.status, data };
+    }
+
+    async function runJob(id, enabled) {
+      if (!enabled) return;
+      log('Starting ' + id + '…');
+      const res = await post('/api/ops/run', { job_id: id });
+      log(res.data);
+    }
+
+    async function runSeq(id, enabled) {
+      if (!enabled) return;
+      log('Starting sequence ' + id + '…');
+      const res = await post('/api/ops/run-sequence', { sequence_id: id });
+      log(res.data);
+    }
+
+    function card(job, enabled, isSeq, seqMeta) {
+      const el = document.createElement('div');
+      el.className = 'card';
+      const title = document.createElement('div');
+      title.className = 'title';
+      title.textContent = isSeq ? seqMeta.label : job.label;
+      el.appendChild(title);
+      const cadence = document.createElement('div');
+      cadence.className = 'cadence';
+      cadence.textContent = isSeq ? ('Cadence: ' + seqMeta.cadence) : ('Cadence: ' + job.cadence);
+      el.appendChild(cadence);
+      if (isSeq && seqMeta.description) {
+        const d = document.createElement('div');
+        d.className = 'seq-desc';
+        d.textContent = seqMeta.description;
+        el.appendChild(d);
+      }
+      if (!isSeq && job.command_preview) {
+        const c = document.createElement('div');
+        c.className = 'cmd';
+        c.textContent = job.command_preview;
+        el.appendChild(c);
+      }
+      if (!isSeq && job.warn) {
+        const w = document.createElement('div');
+        w.className = 'warn';
+        w.textContent = job.warn;
+        el.appendChild(w);
+      }
+      const btn = document.createElement('button');
+      btn.className = 'run' + (isSeq ? ' run-seq' : '');
+      btn.textContent = isSeq ? 'Run sequence' : 'Run';
+      btn.disabled = !enabled;
+      btn.onclick = () => isSeq ? runSeq(seqMeta.id, enabled) : runJob(job.id, enabled);
+      el.appendChild(btn);
+      return el;
+    }
+
+    async function init() {
+      let data;
+      try {
+        const r = await fetch('/api/ops/status');
+        data = await r.json();
+      } catch (e) {
+        setBanner(false, false);
+        log('Failed to load /api/ops/status: ' + e);
+        return;
+      }
+      const enabled = !!data.runner_enabled;
+      setBanner(enabled, !!data.allow_remote);
+
+      const seqRoot = $('sequences');
+      seqRoot.innerHTML = '';
+      (data.sequences || []).forEach((s) => {
+        seqRoot.appendChild(card(null, enabled, true, s));
+      });
+
+      const jobRoot = $('jobs');
+      jobRoot.innerHTML = '';
+      (data.jobs || []).forEach((j) => {
+        jobRoot.appendChild(card(j, enabled, false, null));
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>

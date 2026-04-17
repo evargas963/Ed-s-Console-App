@@ -1,0 +1,17 @@
+{
+  "ticker": "SPY",
+  "feature_cache_key": "fb8b26f0b3645d4155c5854c6a6c08d43f986a32707f7f44142be320d76aaff5",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "SPY",
+    "min_ts_utc": 1774276663.0184414,
+    "max_ts_utc": 1776192134.6912768,
+    "row_count": 5155
+  },
+  "feature_version": "v4_canonical_1m",
+  "preprocessing_version": "v3_rth_decay_m5_additive_canonical",
+  "label_version": "outcome_1c_filled_rth_v1",
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

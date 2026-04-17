@@ -1,0 +1,21 @@
+{
+  "ticker": "GOOG",
+  "feature_cache_key": "859466e2281b17b2a5a84331e3b79cc94dcdeba6ea4e240545e106adeb6ea640",
+  "training_code_fingerprint": "94c16bf4986fc644b250d66b54ac2627f8776206027ce303ba35fcb9d1da8a64",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "GOOG",
+    "min_ts_utc": 1774276734.9950883,
+    "max_ts_utc": 1776282664.039623,
+    "row_count": 2061
+  },
+  "cascade_bind_slug": "a9f7795f7406259b",
+  "xgb_meta_sha256": "625822536fdcdde216af479d39745aaa2a7acdb1ce48efc58eb6ea0b938079d9",
+  "lstm_checkpoint_sha256": "baadd23b7e17061273694f327f9944edea8f7d1a604459807f8f476e3f543fec",
+  "xgb_lstm_tensor_sha256": "16c965ddc20ab174d8a85b82af82ddd1a5af1ee99097ea49de39b8e06040a1fc",
+  "n_cascade_rows": 1110,
+  "n_cascade_cols": 6,
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

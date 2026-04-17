@@ -1,0 +1,60 @@
+{
+  "history": [
+    {
+      "date": "2026-03-13",
+      "parallel_acc": null,
+      "cascade_acc": null,
+      "winner": "parallel",
+      "margin": 0.0,
+      "recommendation": null
+    },
+    {
+      "date": "2026-03-13",
+      "parallel_acc": null,
+      "cascade_acc": null,
+      "winner": "parallel",
+      "margin": 0.0,
+      "recommendation": null
+    },
+    {
+      "date": "2026-03-13",
+      "parallel_acc": null,
+      "cascade_acc": null,
+      "winner": "parallel",
+      "margin": 0.0,
+      "recommendation": null
+    },
+    {
+      "date": "2026-03-13",
+      "parallel_acc": null,
+      "cascade_acc": null,
+      "winner": "parallel",
+      "margin": 0.0,
+      "recommendation": null
+    },
+    {
+      "date": "2026-03-13",
+      "parallel_acc": null,
+      "cascade_acc": null,
+      "winner": "parallel",
+      "margin": 0.0,
+      "recommendation": null
+    },
+    {
+      "date": "2026-03-13",
+      "parallel_acc": null,
+      "cascade_acc": null,
+      "winner": "parallel",
+      "margin": 0.0,
+      "recommendation": null
+    }
+  ],
+  "latest": {
+    "date": "2026-03-13",
+    "parallel_acc": null,
+    "cascade_acc": null,
+    "winner": "parallel",
+    "margin": 0.0,
+    "recommendation": null
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "schema_version": 2,
+  "ticker": "META",
+  "architecture": "cascade",
+  "scheduler_cache_key": "9011c8577a1295e7212a9b6dae27262609b1c560e3b59e585a9f6dddce66ee95",
+  "feature_cache_key": "e86bcd2ed9f63603813c6e1661a11c7581de17a649b16f51684b6ba02d485d26",
+  "training_code_fingerprint": "9e66581a49b398cb50fb504aa839c2af6e025dc4815caddad6b47e086822f4f5",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "META",
+    "min_ts_utc": 1774276684.7975945,
+    "max_ts_utc": 1774555133.5648963,
+    "row_count": 596
+  },
+  "data_start": "1774276684.7975945",
+  "data_end": "1774555133.5648963",
+  "row_count": 596,
+  "feature_version": "v4_canonical_1m",
+  "label_version": "outcome_1c_filled_rth_v1",
+  "pipeline_version": "scheduler_stack_v1",
+  "trained_at": "2026-03-26T16:53:50.510640-05:00",
+  "artifact_paths": {
+    "xgb_META_1c.pkl": "cascade\\META\\xgb_META_1c.pkl",
+    "xgb_META_1c_meta.json": "cascade\\META\\xgb_META_1c_meta.json",
+    "lstm_META_1c.pt": "cascade\\META\\lstm_META_1c.pt",
+    "lstm_META_1c_meta.json": "cascade\\META\\lstm_META_1c_meta.json",
+    "transformer_META_1c.pt": "cascade\\META\\transformer_META_1c.pt",
+    "transformer_META_1c_meta.json": "cascade\\META\\transformer_META_1c_meta.json"
+  },
+  "artifact_sha256": {
+    "xgb_META_1c.pkl": "b7d80d9b8b92356b4b00d50dd9a9a2276a33743690234905d34f9b6387b03eb0",
+    "xgb_META_1c_meta.json": "229de1c254584f7a1531918b4cb3edd6c35c218b7525a5ca9c0f18c381c26c2d",
+    "lstm_META_1c.pt": "79cc64104c81934a047e1b6b14686282e2471792a23f28f3bd2e7457f18e05f8",
+    "lstm_META_1c_meta.json": "d9d5f6d39da2a293cd89cf3d483ecdf2b9d9b49254de26f232ecdc181c75dd8c",
+    "transformer_META_1c.pt": "6d32f479a2064359efba6cbabc3ce7421efdf851c99218bae2f8027b49c2bcce",
+    "transformer_META_1c_meta.json": "c50af94c219df90982de5b90ba62e4394f94654f423e948fd62455b0edaf300f"
+  },
+  "evaluation": {
+    "realized_contract_eval_ref": "realized_contract_eval.py",
+    "eval_accuracy": 0.634315,
+    "balanced_accuracy": 0.636655,
+    "n_rows": 577,
+    "eval_log_loss": 3.300516,
+    "realized_contract_metrics": {
+      "eval_pnl_realized_contract": null,
+      "total_pnl_dollars": null,
+      "avg_pnl_dollars": null,
+      "median_pnl_dollars": null,
+      "win_rate": null,
+      "avg_win": null,
+      "avg_loss": null,
+      "expectancy": null,
+      "total_signals": 577,
+      "skipped_trade_count": 577,
+      "valid_trade_count": 0,
+      "skip_rate": 1.0,
+      "skip_reason_counts": {
+        "missing_replay_context": 309,
+        "missing_chain_selection_proof": 268
+      },
+      "skip_reason_counts_coarse": {
+        "missing_replay_context": 577
+      },
+      "skip_rate_by_reason": {
+        "missing_replay_context": 0.535529,
+        "missing_chain_selection_proof": 0.464471
+      },
+      "skip_rate_warning_threshold": 0.35,
+      "skip_rate_fail_threshold": 0.55,
+      "skip_rate_warning_flag": true,
+      "skip_rate_fail_flag": true,
+      "evaluation_quality_degraded": true,
+      "same_bar_conflict_trade_count": 0,
+      "same_bar_conflict_share_of_valid": 0.0,
+      "chain_selection_quality": {
+        "selected_was_best_rate": null,
+        "selected_was_top2_rate": null,
+        "average_pnl_gap_vs_best": null,
+        "average_score_gap_vs_best": null,
+        "audit_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\models\\chain_selection_quality_audit.json"
+      },
+      "replay_coverage_report_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\models\\replay_coverage_report.json",
+      "pricing_entry_rule": "entry_price = ask (debit to open long option)",
+      "pricing_exit_rule": "exit_price = bid (credit to close long option)",
+      "exit_rule": "Underlying path vs snapshot rules_stop/rules_target on forward 1m OHLC; if neither hits within replay_max_hold_bars \u2192 time_expiry (bars from Call card via call_engine.replay_max_hold_bars_for_setup, stored in replay_context_json). Same-bar stop+target: candle_open/close body-direction ordering when available; else conservative stop-first. Option priced bid/ask at exit/entry bar.",
+      "trade_log_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\models\\realized_contract_trade_log_cascade.csv",
+      "chain_selection_debug_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\models\\option_chain_selection_debug.json",
+      "chain_selection_debug_sample": []
+    }
+  },
+  "promotion_decision": {
+    "winner": "parallel",
+    "primary_metric": "eval_log_loss",
+    "promoted_to_active": false,
+    "promotion_reason": "",
+    "rejection_reason": "new eval_accuracy 0.5268 < existing 0.5303"
+  },
+  "skipped_train": false,
+  "skipped_eval": false,
+  "used_feature_cache": true,
+  "used_cascade_tensor_cache": false,
+  "rolling_window_days_tabular": 0,
+  "rolling_window_days_sequence": 0,
+  "rolling_rth_sessions_tabular": 0,
+  "rolling_rth_sessions_sequence": 0,
+  "consecutive_scheduler_skips": 0,
+  "skip_reason": null,
+  "retrain_reason": "code_fingerprint_mismatch",
+  "cache_miss_reason": "training_sources_changed",
+  "warm_resume": {
+    "lstm_warm_resume": false,
+    "lstm_warm_resume_detail": "",
+    "transformer_warm_resume": false,
+    "transformer_warm_resume_detail": ""
+  }
+}

@@ -1,0 +1,38 @@
+# Credentials & secrets
+schwab_token.json
+*.json.bak
+.env
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Node
+node_modules/
+
+# Logs & temp files
+*.log
+diagnostics.txt
+report.txt
+login_err*.txt
+login_out*.txt
+manual_err.txt
+manual_out.txt
+reauth_capture_*.txt
+feature_contract_validation.txt
+
+# Data files (large/sensitive)
+data/
+
+# Test artifacts
+test-results/
+
+# OS
+.DS_Store
+Thumbs.db

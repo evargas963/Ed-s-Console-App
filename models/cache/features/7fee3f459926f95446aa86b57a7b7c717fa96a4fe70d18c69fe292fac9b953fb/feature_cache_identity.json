@@ -1,0 +1,17 @@
+{
+  "ticker": "NFLX",
+  "feature_cache_key": "7fee3f459926f95446aa86b57a7b7c717fa96a4fe70d18c69fe292fac9b953fb",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "NFLX",
+    "min_ts_utc": 1775827966.6814322,
+    "max_ts_utc": 1776095427.9639897,
+    "row_count": 217
+  },
+  "feature_version": "v4_canonical_1m",
+  "preprocessing_version": "v3_rth_decay_m5_additive_canonical",
+  "label_version": "outcome_1c_filled_rth_v1",
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

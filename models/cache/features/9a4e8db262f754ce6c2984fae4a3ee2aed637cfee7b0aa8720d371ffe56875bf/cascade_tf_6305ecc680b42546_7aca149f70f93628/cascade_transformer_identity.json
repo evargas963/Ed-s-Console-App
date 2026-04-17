@@ -1,0 +1,21 @@
+{
+  "ticker": "META",
+  "feature_cache_key": "9a4e8db262f754ce6c2984fae4a3ee2aed637cfee7b0aa8720d371ffe56875bf",
+  "training_code_fingerprint": "94c16bf4986fc644b250d66b54ac2627f8776206027ce303ba35fcb9d1da8a64",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "META",
+    "min_ts_utc": 1774276684.7975945,
+    "max_ts_utc": 1776352899.445577,
+    "row_count": 2106
+  },
+  "cascade_bind_slug": "6305ecc680b42546",
+  "xgb_meta_sha256": "126386a20a25f4d7f0f4dd4455b4839e5348483c5aa14ce0a7bf4027dc55865e",
+  "lstm_checkpoint_sha256": "003d505d8d3c4d4e2713127db896b8c2f91c6c91e8646d36d81d05b9b01dfd27",
+  "xgb_lstm_tensor_sha256": "7aca149f70f9362885734147a242ec18fd08fa018df5ec6ffeb897ea5e0bdfec",
+  "n_cascade_rows": 1142,
+  "n_cascade_cols": 6,
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

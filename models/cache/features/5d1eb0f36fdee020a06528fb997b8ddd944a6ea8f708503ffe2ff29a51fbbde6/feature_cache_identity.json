@@ -1,0 +1,17 @@
+{
+  "ticker": "IWM",
+  "feature_cache_key": "5d1eb0f36fdee020a06528fb997b8ddd944a6ea8f708503ffe2ff29a51fbbde6",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "IWM",
+    "min_ts_utc": 1774276662.6535394,
+    "max_ts_utc": 1776109496.4341586,
+    "row_count": 2084
+  },
+  "feature_version": "v4_canonical_1m",
+  "preprocessing_version": "v3_rth_decay_m5_additive_canonical",
+  "label_version": "outcome_1c_filled_rth_v1",
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

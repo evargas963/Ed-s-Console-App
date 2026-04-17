@@ -1,0 +1,49 @@
+{
+  "model_type": "dual_stream_lstm",
+  "ticker": "PLTR",
+  "trained_at": "2026-03-25T10:56:41.943545",
+  "val_accuracy": 0.6329,
+  "n_train": 207,
+  "n_params": 69699,
+  "best_epoch": 50,
+  "n_features_5m": 18,
+  "n_features_1m": 8,
+  "n_confluence": 5,
+  "masked_features": {
+    "masked_5m": [
+      "candle_body_pts",
+      "candle_range_pts",
+      "zone",
+      "vwap_side"
+    ],
+    "masked_1m": [
+      "candle_body_pts",
+      "candle_range_pts",
+      "zone",
+      "vwap_side"
+    ],
+    "masked_conf": [
+      "cf_greek_support",
+      "feature_6",
+      "feature_7",
+      "feature_8"
+    ]
+  },
+  "training_time_sec": 14.3,
+  "training_timeframe": "1m",
+  "target_definition": "outcome_1c (~1 min ahead with 1m)",
+  "target_column": "outcome_1c",
+  "feature_schema_version": "v4_canonical_1m",
+  "preprocessing_version": "v2_rth_decay",
+  "sequence_length": 60,
+  "train_start": "2026-03-24 10:50:08",
+  "train_end": "2026-03-24 15:58:15",
+  "validation_start": "2026-03-24 10:50:08",
+  "validation_end": "2026-03-24 15:58:15",
+  "rows_used": 207,
+  "promoted_at": "",
+  "source_cache_key": "898746d23abff22dd1f5a95f",
+  "promotion_metric": "val_accuracy",
+  "promotion_score": 0.6329,
+  "balanced_accuracy": null
+}

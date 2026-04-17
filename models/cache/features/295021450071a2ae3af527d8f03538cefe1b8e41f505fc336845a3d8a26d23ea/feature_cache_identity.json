@@ -1,0 +1,17 @@
+{
+  "ticker": "PLTR",
+  "feature_cache_key": "295021450071a2ae3af527d8f03538cefe1b8e41f505fc336845a3d8a26d23ea",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "PLTR",
+    "min_ts_utc": 1774276730.9485781,
+    "max_ts_utc": 1776196707.5919673,
+    "row_count": 2059
+  },
+  "feature_version": "v4_canonical_1m",
+  "preprocessing_version": "v3_rth_decay_m5_additive_canonical",
+  "label_version": "outcome_1c_filled_rth_v1",
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

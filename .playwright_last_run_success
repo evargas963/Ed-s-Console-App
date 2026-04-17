@@ -1,0 +1,5 @@
+{
+  "ok": true,
+  "finishedAt": "2026-04-12T04:36:00.071Z",
+  "runner": "scripts/run-playwright-e2e.mjs"
+}

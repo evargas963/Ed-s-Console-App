@@ -1,0 +1,21 @@
+{
+  "ticker": "CIFR",
+  "feature_cache_key": "e702ac1dee148ee3a79b8741078d186cb02334c6e8f6e8aa2bb9c22e5a521fd2",
+  "training_code_fingerprint": "94c16bf4986fc644b250d66b54ac2627f8776206027ce303ba35fcb9d1da8a64",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "CIFR",
+    "min_ts_utc": 1774276727.3408508,
+    "max_ts_utc": 1776282424.773995,
+    "row_count": 2080
+  },
+  "cascade_bind_slug": "25c053df7ce315bc",
+  "xgb_meta_sha256": "ce752bf1be693e8a5f9b3fd445c37da6f2e858b75795f3cc9b5eb78a473dc25b",
+  "lstm_checkpoint_sha256": "af4c3e02ebc69d59c93bc00dd1c4c6e698153401a8f7e6eb91c88215919c5de8",
+  "xgb_lstm_tensor_sha256": "cba886a9b9e22614d4d0433c206e87c1b1f05414c3fec06c11dc802e43effc15",
+  "n_cascade_rows": 1127,
+  "n_cascade_cols": 6,
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

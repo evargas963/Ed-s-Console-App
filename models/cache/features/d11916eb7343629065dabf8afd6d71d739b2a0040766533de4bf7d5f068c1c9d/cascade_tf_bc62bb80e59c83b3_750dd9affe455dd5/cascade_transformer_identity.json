@@ -1,0 +1,21 @@
+{
+  "ticker": "QQQ",
+  "feature_cache_key": "d11916eb7343629065dabf8afd6d71d739b2a0040766533de4bf7d5f068c1c9d",
+  "training_code_fingerprint": "94c16bf4986fc644b250d66b54ac2627f8776206027ce303ba35fcb9d1da8a64",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "QQQ",
+    "min_ts_utc": 1774276654.2862122,
+    "max_ts_utc": 1776281847.6672075,
+    "row_count": 2321
+  },
+  "cascade_bind_slug": "bc62bb80e59c83b3",
+  "xgb_meta_sha256": "9f04a2b89122bb41f0cf8c5a1e331cf40856739a27cb08b86227e56408721cdd",
+  "lstm_checkpoint_sha256": "6a75506fc49bb6080ced0f638c3e951c683281f0742fec2f6752e02b1cb47862",
+  "xgb_lstm_tensor_sha256": "750dd9affe455dd5e2d02c229ba79f06af00f956fba0c52093ca98f0a61b0d0f",
+  "n_cascade_rows": 1310,
+  "n_cascade_cols": 6,
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

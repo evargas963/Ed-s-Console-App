@@ -1,0 +1,17 @@
+{
+  "ticker": "MRVL",
+  "feature_cache_key": "ac357caf628dfced6ca0152dd13f86bf259921f650bfca1bfabc2838ebd9d208",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "MRVL",
+    "min_ts_utc": 1774276721.6680057,
+    "max_ts_utc": 1776282741.8114495,
+    "row_count": 2082
+  },
+  "feature_version": "v4_canonical_1m",
+  "preprocessing_version": "v3_rth_decay_m5_additive_canonical",
+  "label_version": "outcome_1c_filled_rth_v1",
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

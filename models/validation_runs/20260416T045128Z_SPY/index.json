@@ -1,0 +1,26 @@
+{
+  "schema_version": "1",
+  "created_at_utc": "2026-04-16T04:56:55.771038+00:00",
+  "db_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\data\\ed_console.db",
+  "ticker": "SPY",
+  "model_dir": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\models\\parallel\\SPY",
+  "horizons": [
+    "1c",
+    "15c"
+  ],
+  "modes": [
+    "xgb_only",
+    "lstm_only",
+    "transformer_only",
+    "xgb_plus_lstm",
+    "xgb_plus_transformer",
+    "xgb_plus_lstm_plus_transformer",
+    "fusion_without_mc",
+    "full_fusion"
+  ],
+  "out_dir": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\models\\validation_runs\\20260416T045128Z_SPY",
+  "artifacts": [
+    "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\models\\validation_runs\\20260416T045128Z_SPY\\stack_bundle_SPY_1c.json",
+    "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\models\\validation_runs\\20260416T045128Z_SPY\\stack_bundle_SPY_15c.json"
+  ]
+}

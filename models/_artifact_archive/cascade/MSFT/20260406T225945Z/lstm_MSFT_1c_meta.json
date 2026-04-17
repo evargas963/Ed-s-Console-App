@@ -1,0 +1,53 @@
+{
+  "model_type": "dual_stream_lstm",
+  "ticker": "MSFT",
+  "trained_at": "2026-04-02T02:28:12.884099",
+  "val_accuracy": 0.6222,
+  "n_train": 90,
+  "n_params": 69715,
+  "best_epoch": 50,
+  "n_features_5m": 18,
+  "n_features_1m": 8,
+  "n_confluence": 6,
+  "masked_features": {
+    "masked_5m": [
+      "candle_body_pts",
+      "candle_range_pts",
+      "qqq_weighted_push",
+      "zone",
+      "vwap_side"
+    ],
+    "masked_1m": [
+      "candle_body_pts",
+      "candle_range_pts",
+      "zone",
+      "vwap_side"
+    ],
+    "masked_conf": [
+      "feature_6",
+      "feature_7",
+      "feature_8"
+    ]
+  },
+  "training_time_sec": 4.4,
+  "training_timeframe": "1m",
+  "target_definition": "outcome_1c ~1 min ahead (1\u00d71m bars)",
+  "target_column": "outcome_1c",
+  "feature_schema_version": "v4_canonical_1m",
+  "preprocessing_version": "v2_rth_decay",
+  "sequence_length": 60,
+  "train_start": "2026-03-31 12:10:49",
+  "train_end": "2026-03-31 15:54:34",
+  "validation_start": "2026-03-31 12:10:49",
+  "validation_end": "2026-03-31 15:54:34",
+  "rows_used": 90,
+  "promoted_at": "",
+  "source_cache_key": "6ded9ff2826124567668cece",
+  "promotion_metric": "val_accuracy",
+  "promotion_score": 0.6222,
+  "balanced_accuracy": null,
+  "label_config_version": "outcome_1c_filled_rth_v1",
+  "horizon_outcome_schema_version": "bar_forward_close_v1",
+  "anchor_contract_version": "bar_close_anchor_v1",
+  "missingness_contract_version": "issue7_v1_empirical_nan_impute"
+}

@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Governance dashboard — Ed Console</title>
+  <style>
+    :root {
+      --bg: #0a0c0f; --bg2: #111418; --border: #252c36; --text: #e5e7eb;
+      --muted: #9ca3af; --accent: #3b82f6;
+      --green: #22c55e; --yellow: #eab308; --red: #ef4444; --gray: #6b7280;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, "Segoe UI", sans-serif; background: var(--bg); color: var(--text);
+      margin: 0; padding: 24px; line-height: 1.5; font-size: 14px; }
+    .wrap { max-width: 64rem; margin: 0 auto; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .nav { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; font-size: 13px; }
+    h1 { font-size: 1.15rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+      color: var(--accent); margin: 0 0 8px 0; }
+    p.lead { color: var(--muted); margin: 0 0 16px 0; max-width: 52rem; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 12px; }
+    label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+    input, select { background: var(--bg2); border: 1px solid var(--border); color: var(--text);
+      padding: 8px 10px; border-radius: 6px; font-size: 13px; min-width: 8rem; }
+    button {
+      background: var(--accent); color: #fff; border: none; border-radius: 6px;
+      padding: 8px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    button.secondary { background: #374151; }
+    button.danger { background: #b91c1c; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .banner { border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; border: 1px solid var(--border); }
+    .banner.err { background: #1c1010; border-color: #7f1d1d; color: #fecaca; }
+    .banner.ok { background: #0f1a12; border-color: #14532d; color: #bbf7d0; }
+    .banner.warn { background: #1c1410; border-color: #78350f; color: #fde68a; }
+    .panel-section {
+      border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 18px;
+      background: var(--bg2);
+    }
+    .panel-section h2 {
+      font-size: 0.82rem; color: var(--muted); margin: 0 0 12px 0; text-transform: uppercase;
+      letter-spacing: 0.07em; font-weight: 600;
+    }
+    .panel-section.border-green { border-color: #14532d; }
+    .panel-section.border-yellow { border-color: #854d0e; }
+    .panel-section.border-red { border-color: #7f1d1d; }
+    .panel-section.border-gray { border-color: #374151; }
+    table.gov { width: 100%; border-collapse: collapse; font-size: 12px; }
+    table.gov th, table.gov td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    table.gov th { color: var(--muted); font-weight: 600; width: 16rem; }
+    pre.gov-json {
+      background: #050608; border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+      font-size: 11px; overflow: auto; max-height: 320px; white-space: pre-wrap; word-break: break-word;
+      margin: 0;
+    }
+    .st-green { color: var(--green); font-weight: 600; }
+    .st-yellow { color: var(--yellow); font-weight: 600; }
+    .st-red { color: var(--red); font-weight: 600; }
+    .st-gray { color: var(--gray); font-weight: 600; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .chk { flex-direction: row; align-items: center; gap: 8px; }
+    .chk input { min-width: auto; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="nav">
+      <a href="/">&larr; Console</a>
+      <a href="/ops">Run tasks</a>
+    </div>
+    <h1>Governance dashboard</h1>
+    <p class="lead">
+      Operator view: data comes only from <code>/api/governance/panel</code> (governed payloads). No client-side drift or policy computation.
+      Manual actions use <code>POST /api/governance/manual-promote</code> and <code>manual-rollback</code> with server intent constants only when
+      <code>ED_GOVERNANCE_UI_ACTIONS=1</code>. Production default runtime remains <strong>parallel</strong> unless manually changed on the server.
+    </p>
+
+    <div class="row">
+      <label>Ticker
+        <input type="text" id="ticker" value="SPY" maxlength="12" autocomplete="off" />
+      </label>
+      <label>Horizon
+        <select id="horizon">
+          <option value="1c" selected>1c</option>
+          <option value="5c">5c</option>
+          <option value="15c">15c</option>
+          <option value="60c">60c</option>
+        </select>
+      </label>
+      <button type="button" id="btn-load">Load panel</button>
+      <label class="chk">
+        <input type="checkbox" id="chk-emit-notify" />
+        Emit notification delivery on this load
+      </label>
+    </div>
+    <div class="row">
+      <label class="chk">
+        <input type="checkbox" id="chk-autorefresh" />
+        Auto-refresh every 60s (no notification emit)
+      </label>
+      <span class="muted" id="load-meta"></span>
+    </div>
+
+    <div id="banner" class="banner" style="display:none"></div>
+
+    <section id="sec-architecture" class="panel-section" aria-label="Architecture state">
+      <h2>A. Architecture state</h2>
+      <table class="gov" id="tbl-architecture"><tbody></tbody></table>
+    </section>
+
+    <section id="sec-drift" class="panel-section" aria-label="Drift and monitoring">
+      <h2>B. Drift &amp; monitoring</h2>
+      <p class="muted" id="drift-headnote"></p>
+      <div id="drift-blocks"></div>
+    </section>
+
+    <section id="sec-operational-policy" class="panel-section" aria-label="Operational policy">
+      <h2>C. Operational policy state</h2>
+      <table class="gov" id="tbl-opstate"><tbody></tbody></table>
+      <h3 class="muted" style="font-size:11px;margin:12px 0 6px;">Active policy reasons (governed)</h3>
+      <pre id="op-reasons" class="gov-json">—</pre>
+    </section>
+
+    <section id="sec-notifications" class="panel-section" aria-label="Notifications">
+      <h2>D. Notification deliveries</h2>
+      <p class="muted" id="notify-path"></p>
+      <table class="gov" id="tbl-notify"><tbody></tbody></table>
+    </section>
+
+    <section id="sec-audit" class="panel-section" aria-label="Audit trail">
+      <h2>E. Audit trail</h2>
+      <pre id="audit" class="gov-json">—</pre>
+    </section>
+
+    <section id="sec-actions" class="panel-section" aria-label="Manual actions">
+      <h2>Manual actions</h2>
+      <p class="muted" id="actions-meta"></p>
+      <div class="row">
+        <label>Operator ID
+          <input type="text" id="operator" placeholder="required for actions" autocomplete="off" />
+        </label>
+      </div>
+      <div class="row">
+        <button type="button" id="btn-cascade" disabled>Promote cascade</button>
+        <button type="button" id="btn-parallel" class="secondary" disabled>Promote parallel</button>
+        <button type="button" id="btn-rollback" class="danger" disabled>Rollback to checkpoint</button>
+      </div>
+      <pre id="action-out" class="gov-json" style="max-height:200px"></pre>
+    </section>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const banner = $('banner');
+    let autoRefreshTimer = null;
+
+    function showBanner(kind, html) {
+      banner.style.display = '';
+      banner.className = 'banner ' + (kind || '');
+      banner.innerHTML = html;
+    }
+    function hideBanner() { banner.style.display = 'none'; }
+
+    function esc(s) {
+      const d = document.createElement('div');
+      d.textContent = s == null ? '' : String(s);
+      return d.innerHTML;
+    }
+
+    /** Colors map only from explicit boolean / state strings in governed payloads — no drift math. */
+    function boolStylePromotionFrozen(v) {
+      if (v === true) return 'st-red';
+      if (v === false) return 'st-green';
+      return 'st-gray';
+    }
+    function boolStyleWarnWhenTrue(v) {
+      if (v === true) return 'st-yellow';
+      if (v === false) return 'st-green';
+      return 'st-gray';
+    }
+    function boolStyleBadWhenTrue(v) {
+      if (v === true) return 'st-red';
+      if (v === false) return 'st-green';
+      return 'st-gray';
+    }
+
+    function trKV(key, valueHtml) {
+      return '<tr><th>' + esc(key) + '</th><td>' + valueHtml + '</td></tr>';
+    }
+
+    function clearDashboard() {
+      $('tbl-architecture').querySelector('tbody').innerHTML = '';
+      $('drift-blocks').innerHTML = '';
+      $('drift-headnote').textContent = '';
+      $('tbl-opstate').querySelector('tbody').innerHTML = '';
+      $('op-reasons').textContent = '—';
+      $('tbl-notify').querySelector('tbody').innerHTML = '';
+      $('notify-path').textContent = '';
+      $('audit').textContent = '—';
+      $('action-out').textContent = '';
+      ['sec-architecture','sec-drift','sec-operational-policy','sec-notifications','sec-audit','sec-actions'].forEach((id) => {
+        const el = document.getElementById(id);
+        el.classList.remove('border-green','border-yellow','border-red','border-gray');
+      });
+    }
+
+    function renderArchitecture(data) {
+      const tb = $('tbl-architecture').querySelector('tbody');
+      const rows = [
+        ['active_architecture_in_state', data.active_architecture_in_state],
+        ['incumbent_architecture', data.incumbent_architecture],
+        ['challenger_architecture', data.challenger_architecture],
+        ['latest_evaluation_timestamp', data.latest_evaluation_timestamp],
+        ['latest_promotion_decision', data.latest_promotion_decision],
+        ['would_promote_challenger', data.would_promote_challenger],
+        ['blocked_promotion_flags', data.blocked_promotion_flags],
+        ['reason_codes', data.reason_codes],
+        ['rollback_demotion_ready', data.rollback_demotion_ready],
+        ['production_default_runtime', data.production_default_runtime],
+      ];
+      rows.forEach(([k, v]) => {
+        let cell = v;
+        if (v !== undefined && v !== null && typeof v === 'object') {
+          cell = '<pre class="gov-json" style="max-height:120px">' + esc(JSON.stringify(v, null, 2)) + '</pre>';
+        } else {
+          cell = esc(v);
+        }
+        tb.insertAdjacentHTML('beforeend', trKV(k, cell));
+      });
+    }
+
+    function driftSectionBorder(ld) {
+      const sec = $('sec-drift');
+      if (!ld || ld.ok !== true) {
+        sec.classList.add('border-red');
+        return;
+      }
+      sec.classList.add('border-green');
+    }
+
+    function renderDrift(data) {
+      const ld = data.live_drift_monitoring;
+      $('drift-headnote').textContent = ld
+        ? ('live_drift_monitoring.ok = ' + JSON.stringify(ld.ok) + (ld.error ? ' — ' + ld.error : ''))
+        : 'live_drift_monitoring not included in payload.';
+      driftSectionBorder(ld);
+      const host = $('drift-blocks');
+      if (!ld) {
+        host.innerHTML = '<p class="st-gray">No drift payload (panel loaded with drift disabled).</p>';
+        return;
+      }
+      const blocks = [
+        ['live_drift_summary', ld.live_drift_summary],
+        ['calibration_drift_summary', ld.calibration_drift_summary],
+        ['confidence_drift_summary', ld.confidence_drift_summary],
+        ['model_freshness_summary', ld.model_freshness_summary],
+        ['evaluation_freshness_summary', ld.evaluation_freshness_summary],
+        ['regime_shift_summary', ld.regime_shift_summary],
+        ['promotion_validity_summary', ld.promotion_validity_summary],
+        ['signals', ld.signals],
+      ];
+      blocks.forEach(([name, obj]) => {
+        const h = document.createElement('h3');
+        h.className = 'muted';
+        h.style.fontSize = '11px';
+        h.style.margin = '10px 0 6px';
+        h.textContent = name;
+        host.appendChild(h);
+        const pre = document.createElement('pre');
+        pre.className = 'gov-json';
+        pre.textContent = obj == null ? '—' : JSON.stringify(obj, null, 2);
+        host.appendChild(pre);
+      });
+    }
+
+    function renderOperationalPolicy(data) {
+      const op = data.operational_policy;
+      const tb = $('tbl-opstate').querySelector('tbody');
+      if (!op) {
+        tb.insertAdjacentHTML('beforeend', trKV('operational_policy', '<span class="st-gray">missing</span>'));
+        $('op-reasons').textContent = '—';
+        $('sec-operational-policy').classList.add('border-gray');
+        return;
+      }
+      const st = op.operational_policy_state || {};
+      const flags = [
+        ['promotion_frozen', st.promotion_frozen, boolStylePromotionFrozen],
+        ['rollback_watch_active', st.rollback_watch_active, boolStyleWarnWhenTrue],
+        ['retraining_required', st.retraining_required, boolStyleWarnWhenTrue],
+        ['system_degraded', st.system_degraded, boolStyleWarnWhenTrue],
+        ['system_untrusted', st.system_untrusted, boolStyleBadWhenTrue],
+      ];
+      flags.forEach(([k, v, fn]) => {
+        const cls = fn(v);
+        const inner = '<span class="' + cls + '">' + esc(JSON.stringify(v)) + '</span>';
+        tb.insertAdjacentHTML('beforeend', trKV(k, inner));
+      });
+      tb.insertAdjacentHTML('beforeend', trKV('operational_policy.state', esc(op.state)));
+      tb.insertAdjacentHTML('beforeend', trKV('last_policy_evaluation_timestamp', esc(op.last_policy_evaluation_timestamp)));
+      const reasons = st.active_policy_reasons;
+      $('op-reasons').textContent = reasons && reasons.length ? JSON.stringify(reasons, null, 2) : '—';
+      if (st.system_untrusted === true || st.promotion_frozen === true) {
+        $('sec-operational-policy').classList.add('border-red');
+      } else if (st.system_degraded === true || st.rollback_watch_active === true) {
+        $('sec-operational-policy').classList.add('border-yellow');
+      } else {
+        $('sec-operational-policy').classList.add('border-green');
+      }
+    }
+
+    function renderNotifications(data) {
+      const path = data.notification_delivery_log_path;
+      $('notify-path').textContent = path ? ('Log: ' + path) : '';
+      const rows = data.recent_notification_deliveries || [];
+      const tb = $('tbl-notify').querySelector('tbody');
+      if (!rows.length) {
+        tb.insertAdjacentHTML('beforeend', trKV('recent_notification_deliveries', '<span class="st-gray">none</span>'));
+        return;
+      }
+      rows.forEach((r) => {
+        const line = [
+          esc(r.timestamp_utc),
+          esc(r.sink_type),
+          esc(r.reason_code),
+          esc(r.severity),
+          esc(r.routing_class),
+          esc(r.delivery_outcome),
+          esc(r.dedup_decision),
+        ].join(' — ');
+        tb.insertAdjacentHTML('beforeend', trKV(esc(r.alert_id || '—'), '<span class="muted">' + line + '</span>'));
+      });
+    }
+
+    function renderAudit(data) {
+      const audits = data.recent_audit_actions || [];
+      $('audit').textContent = audits.length ? JSON.stringify(audits, null, 2) : '—';
+    }
+
+    function setActionButtons(data) {
+      const intents = data.manual_intent_constants || {};
+      const en = data.actions_enabled === true;
+      const pf = !!(data.operational_policy && data.operational_policy.operational_policy_state
+        && data.operational_policy.operational_policy_state.promotion_frozen === true);
+      const blocked = Array.isArray(data.blocked_promotion_flags) && data.blocked_promotion_flags.length > 0;
+
+      const ec = en && data.manual_promote_cascade_enabled && !pf && !blocked;
+      const ep = en && data.manual_promote_parallel_enabled && !pf && !blocked;
+      const er = en && data.manual_rollback_enabled;
+
+      $('btn-cascade').disabled = !ec;
+      $('btn-parallel').disabled = !ep;
+      $('btn-rollback').disabled = !er;
+      if (!en) {
+        $('btn-cascade').disabled = true;
+        $('btn-parallel').disabled = true;
+        $('btn-rollback').disabled = true;
+      }
+
+      $('btn-cascade').dataset.intent = intents.promote_cascade || '';
+      $('btn-parallel').dataset.intent = intents.promote_parallel || '';
+      $('btn-rollback').dataset.intent = intents.rollback || '';
+
+      let meta = en
+        ? 'Governed controls: POST /api/governance/manual-promote | manual-rollback only.'
+        : 'actions_enabled is false — governed artifacts or policy gate.';
+      if (pf) meta += ' promotion_frozen=true (operational policy).';
+      if (blocked) meta += ' blocked_promotion_flags non-empty.';
+      $('actions-meta').textContent = meta;
+    }
+
+    async function loadPanel(opts) {
+      opts = opts || {};
+      const emitNotifications = !!opts.emitNotifications;
+      const t = ($('ticker').value || 'SPY').trim().toUpperCase();
+      const hz = ($('horizon').value || '1c').trim().toLowerCase();
+      hideBanner();
+      clearDashboard();
+      setActionButtons({ actions_enabled: false });
+      $('load-meta').textContent = 'Loading…';
+
+      const params = new URLSearchParams({
+        ticker: t,
+        horizon: hz,
+        emit_notifications: emitNotifications ? 'true' : 'false',
+      });
+      const url = '/api/governance/panel?' + params.toString();
+      let res;
+      try {
+        res = await fetch(url);
+      } catch (e) {
+        showBanner('err', 'Request failed: ' + esc(String(e)));
+        $('load-meta').textContent = '';
+        return;
+      }
+      const data = await res.json();
+
+      if (!data.ok) {
+        showBanner('err', '<strong>Governed artifacts unavailable.</strong><br/>' + esc(data.error || 'unknown'));
+        $('actions-meta').textContent = 'All manual actions disabled — invalid or missing governed artifacts.';
+        $('sec-architecture').classList.add('border-gray');
+        $('sec-drift').classList.add('border-gray');
+        $('sec-operational-policy').classList.add('border-gray');
+        $('sec-notifications').classList.add('border-gray');
+        $('sec-audit').classList.add('border-gray');
+        $('load-meta').textContent = '';
+        return;
+      }
+
+      showBanner('ok', '<strong>Governed payloads loaded.</strong> Schema v' + esc(data.schema_version || '?') + '.');
+      $('load-meta').textContent = 'Last fetch: ' + new Date().toISOString() + (emitNotifications ? ' (notification emit on)' : '');
+
+      renderArchitecture(data);
+      renderDrift(data);
+      renderOperationalPolicy(data);
+      renderNotifications(data);
+      renderAudit(data);
+      setActionButtons(data);
+    }
+
+    function wireActions() {
+      async function postAction(kind) {
+        $('action-out').textContent = '';
+        const t = ($('ticker').value || 'SPY').trim().toUpperCase();
+        const hz = ($('horizon').value || '1c').trim().toLowerCase();
+        const op = ($('operator').value || '').trim();
+        if (!op) {
+          $('action-out').textContent = 'Set Operator ID.';
+          return;
+        }
+        const intents = {
+          cascade: $('btn-cascade').dataset.intent,
+          parallel: $('btn-parallel').dataset.intent,
+          rollback: $('btn-rollback').dataset.intent,
+        };
+        let url, body;
+        if (kind === 'rollback') {
+          url = '/api/governance/manual-rollback';
+          body = { ticker: t, horizon: hz, operator_id: op, manual_intent: intents.rollback };
+        } else {
+          url = '/api/governance/manual-promote';
+          body = {
+            ticker: t,
+            horizon: hz,
+            operator_id: op,
+            target_architecture: kind,
+            manual_intent: kind === 'cascade' ? intents.cascade : intents.parallel,
+          };
+        }
+        let res;
+        try {
+          res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        } catch (e) {
+          $('action-out').textContent = String(e);
+          return;
+        }
+        const out = await res.json();
+        $('action-out').textContent = JSON.stringify(out, null, 2);
+        if (out.ok) loadPanel({ emitNotifications: false });
+      }
+      $('btn-cascade').addEventListener('click', () => postAction('cascade'));
+      $('btn-parallel').addEventListener('click', () => postAction('parallel'));
+      $('btn-rollback').addEventListener('click', () => postAction('rollback'));
+    }
+
+    $('btn-load').addEventListener('click', () => {
+      const emit = $('chk-emit-notify').checked;
+      loadPanel({ emitNotifications: emit });
+    });
+
+    $('chk-autorefresh').addEventListener('change', () => {
+      if (autoRefreshTimer) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+      }
+      if ($('chk-autorefresh').checked) {
+        autoRefreshTimer = setInterval(() => loadPanel({ emitNotifications: false }), 60000);
+      }
+    });
+
+    wireActions();
+    loadPanel({ emitNotifications: false });
+  </script>
+</body>
+</html>

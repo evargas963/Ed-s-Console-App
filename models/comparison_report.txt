@@ -1,0 +1,8 @@
+TRAIN_COMPARE REPORT
+===================
+Data split: train=first 10 days, val=last 3 days (chronological)
+
+BASELINE:   accuracy=31.5%
+PARALLEL:   accuracy=0.0%  F1=0.0%
+CASCADE:    accuracy=0.0%  F1=0.0%
+WINNER: TIE

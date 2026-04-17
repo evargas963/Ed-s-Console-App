@@ -1,0 +1,40 @@
+{
+  "model_type": "dual_stream_lstm",
+  "version": "lstm_v2_per_ticker",
+  "trained_at": "2026-03-13T06:49:43.041829",
+  "approved": false,
+  "per_ticker_approved": {
+    "SPY": false
+  },
+  "per_ticker_stats": {
+    "SPY": {
+      "val_accuracy": 0.496,
+      "majority_baseline": 0.5169,
+      "edge_pp": -2.09,
+      "n_val": 1242,
+      "approved": false
+    }
+  },
+  "val_accuracy": 0.496,
+  "majority_baseline": 0.5169,
+  "edge_pp": -2.09,
+  "best_epoch": 1,
+  "n_train": 6456,
+  "n_val": 1242,
+  "n_params": 71251,
+  "n_features_5m": 22,
+  "n_features_1m": 12,
+  "n_confluence": 6,
+  "per_class_accuracy": {
+    "up": 0.5919,
+    "down": 0.6901,
+    "flat": 0.0
+  },
+  "masked_features": {
+    "masked_5m": [],
+    "masked_1m": [],
+    "masked_conf": []
+  },
+  "training_time_sec": 77.4,
+  "device": "cpu"
+}

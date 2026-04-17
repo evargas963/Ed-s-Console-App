@@ -1,0 +1,17 @@
+{
+  "ticker": "AAPL",
+  "feature_cache_key": "1e698e43fd6ab67f958530e8619788cdfc7b860e27ffd60e88cd291e32144d3b",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "AAPL",
+    "min_ts_utc": 1774276672.5329194,
+    "max_ts_utc": 1776094254.2261112,
+    "row_count": 1963
+  },
+  "feature_version": "v4_canonical_1m",
+  "preprocessing_version": "v3_rth_decay_m5_additive_canonical",
+  "label_version": "outcome_1c_filled_rth_v1",
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}

@@ -1,0 +1,42 @@
+{
+  "model_type": "dual_stream_lstm",
+  "ticker": "SPY",
+  "trained_at": "2026-03-25T11:07:19.174242",
+  "val_accuracy": 0.6154,
+  "n_train": 351,
+  "n_params": 70867,
+  "best_epoch": 50,
+  "n_features_5m": 21,
+  "n_features_1m": 11,
+  "n_confluence": 6,
+  "masked_features": {
+    "masked_5m": [
+      "vwap_side"
+    ],
+    "masked_1m": [
+      "vwap_side"
+    ],
+    "masked_conf": [
+      "feature_6",
+      "feature_7",
+      "feature_8"
+    ]
+  },
+  "training_time_sec": 21.0,
+  "training_timeframe": "1m",
+  "target_definition": "outcome_1c (~1 min ahead with 1m)",
+  "target_column": "outcome_1c",
+  "feature_schema_version": "v4_canonical_1m",
+  "preprocessing_version": "v2_rth_decay",
+  "sequence_length": 60,
+  "train_start": "2026-03-23 12:15:16",
+  "train_end": "2026-03-24 15:58:50",
+  "validation_start": "2026-03-23 12:15:16",
+  "validation_end": "2026-03-24 15:58:50",
+  "rows_used": 351,
+  "promoted_at": "",
+  "source_cache_key": "c0cdf989ae4b7d6418a0a402",
+  "promotion_metric": "val_accuracy",
+  "promotion_score": 0.6154,
+  "balanced_accuracy": null
+}

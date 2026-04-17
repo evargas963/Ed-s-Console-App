@@ -1,0 +1,17 @@
+{
+  "ticker": "CIFR",
+  "feature_cache_key": "4fad8e44d998da7b2c2281c452646d806617d0bc8d4c10bf4254ae5b9134de65",
+  "data_fingerprint": {
+    "table": "snapshots_1m_normalized",
+    "timeframe": "1m",
+    "ticker": "CIFR",
+    "min_ts_utc": 1774276727.3408508,
+    "max_ts_utc": 1776195389.0478277,
+    "row_count": 2066
+  },
+  "feature_version": "v4_canonical_1m",
+  "preprocessing_version": "v3_rth_decay_m5_additive_canonical",
+  "label_version": "outcome_1c_filled_rth_v1",
+  "canonical_feature_contract_version": "v1_1m_mvp",
+  "canonical_timeframe": "1m"
+}
