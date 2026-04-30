@@ -25,6 +25,7 @@ import shutil
 import sqlite3
 import logging
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional, Set
@@ -86,6 +87,21 @@ def _now_et() -> datetime:
 def _scheduler_auto_promote_to_active() -> bool:
     """Never True: production active/ updates use arch_competition.manual_control only (no scheduler/env copy)."""
     return False
+
+
+@contextmanager
+def _strict_off_for_candidate_inference():
+    """Temporarily disable strict-active-only resolution for candidate model inference."""
+    key = "ED_XGB_STRICT_ACTIVE_ONLY"
+    prior = os.environ.get(key)
+    os.environ[key] = "0"
+    try:
+        yield
+    finally:
+        if prior is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = prior
 
 
 def _append_training_report(report: dict):
@@ -271,60 +287,61 @@ def _evaluate_parallel_on_full_rth(
         hz_slug = _infer_slug_from_target_column(target_column)
         htok = mp.set_ml_infer_horizon_slug(hz_slug)
         try:
-            mp.MODEL_DIR = model_dir
-            mp.reset_caches()
+            with _strict_off_for_candidate_inference():
+                mp.MODEL_DIR = model_dir
+                mp.reset_caches()
 
-            preds: list[int] = []
-            y_true: list[int] = []
-            prob_rows: list[list[float]] = []
-            rows_used: list[dict] = []
-            from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
+                preds: list[int] = []
+                y_true: list[int] = []
+                prob_rows: list[list[float]] = []
+                rows_used: list[dict] = []
+                from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
 
-            _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
-            hist_db = (
-                preload_historical_db_for_eval(db_path, ticker, max(_tss))
-                if _tss
-                else None
-            )
-
-            for row in rows:
-                yt = {"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2)
-                inf_v1 = build_inference_snapshot_v1_from_db_row(
-                    ticker=ticker,
-                    expiry=None,
-                    as_of_ts=row.get("ts_utc"),
-                    db_row=row,
+                _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
+                hist_db = (
+                    preload_historical_db_for_eval(db_path, ticker, max(_tss))
+                    if _tss
+                    else None
                 )
-                xgb_p = mp._predict_xgb(inf_v1, ticker, fusion_feature_overlay=row)
-                ts_utc = row.get("ts_utc")
-                lstm_p = tr_p = None
-                if ts_utc and hist_db is not None:
-                    lstm_p = mp._predict_lstm(
-                        ticker, hist_db, inference_snapshot_v1=inf_v1
+
+                for row in rows:
+                    yt = {"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2)
+                    inf_v1 = build_inference_snapshot_v1_from_db_row(
+                        ticker=ticker,
+                        expiry=None,
+                        as_of_ts=row.get("ts_utc"),
+                        db_row=row,
                     )
-                    tr_p = mp._predict_transformer(
-                        ticker, hist_db, inference_snapshot_v1=inf_v1
+                    xgb_p = mp._predict_xgb(inf_v1, ticker, fusion_feature_overlay=row)
+                    ts_utc = row.get("ts_utc")
+                    lstm_p = tr_p = None
+                    if ts_utc and hist_db is not None:
+                        lstm_p = mp._predict_lstm(
+                            ticker, hist_db, inference_snapshot_v1=inf_v1
+                        )
+                        tr_p = mp._predict_transformer(
+                            ticker, hist_db, inference_snapshot_v1=inf_v1
+                        )
+                    if xgb_p is None:
+                        continue
+                    result = mp._predict_meta(ticker, xgb_p, lstm_p, tr_p)
+                    if result is None:
+                        result = mp._weighted_average(ticker, xgb_p, lstm_p, tr_p)
+                    if not result:
+                        continue
+                    pu, pd, pf = (
+                        float(result.get("up", 0.33)),
+                        float(result.get("down", 0.33)),
+                        float(result.get("flat", 0.34)),
                     )
-                if xgb_p is None:
-                    continue
-                result = mp._predict_meta(ticker, xgb_p, lstm_p, tr_p)
-                if result is None:
-                    result = mp._weighted_average(ticker, xgb_p, lstm_p, tr_p)
-                if not result:
-                    continue
-                pu, pd, pf = (
-                    float(result.get("up", 0.33)),
-                    float(result.get("down", 0.33)),
-                    float(result.get("flat", 0.34)),
-                )
-                s = pu + pd + pf
-                if s > 0:
-                    pu, pd, pf = pu / s, pd / s, pf / s
-                prob_rows.append([pu, pd, pf])
-                dom = max(["up", "down", "flat"], key=lambda c: result.get(c, 0))
-                preds.append({"up": 0, "down": 1, "flat": 2}[dom])
-                y_true.append(yt)
-                rows_used.append(row)
+                    s = pu + pd + pf
+                    if s > 0:
+                        pu, pd, pf = pu / s, pd / s, pf / s
+                    prob_rows.append([pu, pd, pf])
+                    dom = max(["up", "down", "flat"], key=lambda c: result.get(c, 0))
+                    preds.append({"up": 0, "down": 1, "flat": 2}[dom])
+                    y_true.append(yt)
+                    rows_used.append(row)
 
             n = len(preds)
             if n < 10:
@@ -402,49 +419,50 @@ def _evaluate_cascade_on_full_rth(
         hz_slug = _infer_slug_from_target_column(target_column)
         htok = mp.set_ml_infer_horizon_slug(hz_slug)
         try:
-            mp.MODEL_DIR = model_dir
-            mp.reset_caches()
+            with _strict_off_for_candidate_inference():
+                mp.MODEL_DIR = model_dir
+                mp.reset_caches()
 
-            preds: list[int] = []
-            y_true: list[int] = []
-            prob_rows: list[list[float]] = []
-            rows_used: list[dict] = []
-            from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
+                preds: list[int] = []
+                y_true: list[int] = []
+                prob_rows: list[list[float]] = []
+                rows_used: list[dict] = []
+                from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
 
-            _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
-            hist_db = (
-                preload_historical_db_for_eval(db_path, ticker, max(_tss))
-                if _tss
-                else None
-            )
-
-            for row in rows:
-                ts_utc = row.get("ts_utc")
-                if not ts_utc or hist_db is None:
-                    continue
-                inf_v1 = build_inference_snapshot_v1_from_db_row(
-                    ticker=ticker,
-                    expiry=None,
-                    as_of_ts=float(ts_utc),
-                    db_row=row,
+                _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
+                hist_db = (
+                    preload_historical_db_for_eval(db_path, ticker, max(_tss))
+                    if _tss
+                    else None
                 )
-                tr_p = mp._predict_transformer(
-                    ticker, hist_db, inference_snapshot_v1=inf_v1
-                )
-                if not tr_p:
-                    continue
-                pu = float(tr_p.get("up", 0.33))
-                pd = float(tr_p.get("down", 0.33))
-                pf = float(tr_p.get("flat", 0.34))
-                s = pu + pd + pf
-                if s > 0:
-                    pu, pd, pf = pu / s, pd / s, pf / s
-                prob_rows.append([pu, pd, pf])
-                yt = {"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2)
-                y_true.append(yt)
-                dom = max(["up", "down", "flat"], key=lambda c: tr_p.get(c, 0))
-                preds.append({"up": 0, "down": 1, "flat": 2}[dom])
-                rows_used.append(row)
+
+                for row in rows:
+                    ts_utc = row.get("ts_utc")
+                    if not ts_utc or hist_db is None:
+                        continue
+                    inf_v1 = build_inference_snapshot_v1_from_db_row(
+                        ticker=ticker,
+                        expiry=None,
+                        as_of_ts=float(ts_utc),
+                        db_row=row,
+                    )
+                    tr_p = mp._predict_transformer(
+                        ticker, hist_db, inference_snapshot_v1=inf_v1
+                    )
+                    if not tr_p:
+                        continue
+                    pu = float(tr_p.get("up", 0.33))
+                    pd = float(tr_p.get("down", 0.33))
+                    pf = float(tr_p.get("flat", 0.34))
+                    s = pu + pd + pf
+                    if s > 0:
+                        pu, pd, pf = pu / s, pd / s, pf / s
+                    prob_rows.append([pu, pd, pf])
+                    yt = {"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2)
+                    y_true.append(yt)
+                    dom = max(["up", "down", "flat"], key=lambda c: tr_p.get(c, 0))
+                    preds.append({"up": 0, "down": 1, "flat": 2}[dom])
+                    rows_used.append(row)
 
             n = len(preds)
             if n < 10:
@@ -702,51 +720,53 @@ def train_parallel_candidate(
     import ml_predict as mp
     orig_mp_dir = mp.MODEL_DIR
     htok_meta = mp.set_ml_infer_horizon_slug(hz)
-    mp.MODEL_DIR = out_dir
-    mp.reset_caches()
-
     X_meta, y_meta = [], []
-    rows = df.to_dict("records")
-    _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
-    hist_db = (
-        preload_historical_db_for_eval(db_path, ticker, max(_tss)) if _tss else None
-    )
-    for row in rows:
-        inf_v1 = build_inference_snapshot_v1_from_db_row(
-            ticker=ticker,
-            expiry=None,
-            as_of_ts=row.get("ts_utc"),
-            db_row=row,
-        )
-        xgb_p = _predict_xgb(inf_v1, ticker, fusion_feature_overlay=row)
-        lstm_p = tr_p = None
-        ts_utc = row.get("ts_utc")
-        if ts_utc and hist_db is not None:
-            # Sequence heads may be unavailable for a row (e.g., insufficient pre-history).
-            # Keep meta assembly robust by degrading to available branches for that row.
-            try:
-                lstm_p = _predict_lstm(ticker, hist_db, inference_snapshot_v1=inf_v1)
-            except Exception as _lstm_e:
-                log.debug("%s meta row: LSTM unavailable at ts=%s (%s)", ticker, ts_utc, _lstm_e)
-                lstm_p = None
-            try:
-                tr_p = _predict_transformer(ticker, hist_db, inference_snapshot_v1=inf_v1)
-            except Exception as _tr_e:
-                log.debug("%s meta row: Transformer unavailable at ts=%s (%s)", ticker, ts_utc, _tr_e)
-                tr_p = None
-        if xgb_p is None:
-            continue
-        vec = (
-            [xgb_p.get(c, 0.333) for c in CLASS_NAMES] +
-            ([lstm_p.get(c, 0.333) for c in CLASS_NAMES] if lstm_p else [0.333, 0.333, 0.334]) +
-            ([tr_p.get(c, 0.333) for c in CLASS_NAMES] if tr_p else [0.333, 0.333, 0.334])
-        )
-        X_meta.append(vec)
-        y_meta.append({"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2))
+    try:
+        with _strict_off_for_candidate_inference():
+            mp.MODEL_DIR = out_dir
+            mp.reset_caches()
 
-    mp.MODEL_DIR = orig_mp_dir
-    mp.reset_caches()
-    mp.reset_ml_infer_horizon_slug(htok_meta)
+            rows = df.to_dict("records")
+            _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
+            hist_db = (
+                preload_historical_db_for_eval(db_path, ticker, max(_tss)) if _tss else None
+            )
+            for row in rows:
+                inf_v1 = build_inference_snapshot_v1_from_db_row(
+                    ticker=ticker,
+                    expiry=None,
+                    as_of_ts=row.get("ts_utc"),
+                    db_row=row,
+                )
+                xgb_p = _predict_xgb(inf_v1, ticker, fusion_feature_overlay=row)
+                lstm_p = tr_p = None
+                ts_utc = row.get("ts_utc")
+                if ts_utc and hist_db is not None:
+                    # Sequence heads may be unavailable for a row (e.g., insufficient pre-history).
+                    # Keep meta assembly robust by degrading to available branches for that row.
+                    try:
+                        lstm_p = _predict_lstm(ticker, hist_db, inference_snapshot_v1=inf_v1)
+                    except Exception as _lstm_e:
+                        log.debug("%s meta row: LSTM unavailable at ts=%s (%s)", ticker, ts_utc, _lstm_e)
+                        lstm_p = None
+                    try:
+                        tr_p = _predict_transformer(ticker, hist_db, inference_snapshot_v1=inf_v1)
+                    except Exception as _tr_e:
+                        log.debug("%s meta row: Transformer unavailable at ts=%s (%s)", ticker, ts_utc, _tr_e)
+                        tr_p = None
+                if xgb_p is None:
+                    continue
+                vec = (
+                    [xgb_p.get(c, 0.333) for c in CLASS_NAMES] +
+                    ([lstm_p.get(c, 0.333) for c in CLASS_NAMES] if lstm_p else [0.333, 0.333, 0.334]) +
+                    ([tr_p.get(c, 0.333) for c in CLASS_NAMES] if tr_p else [0.333, 0.333, 0.334])
+                )
+                X_meta.append(vec)
+                y_meta.append({"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2))
+    finally:
+        mp.MODEL_DIR = orig_mp_dir
+        mp.reset_caches()
+        mp.reset_ml_infer_horizon_slug(htok_meta)
 
     if len(X_meta) >= 10:
         meta_mdl = LogisticRegression(C=1.0, max_iter=1000, random_state=42)
