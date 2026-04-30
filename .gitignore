@@ -36,3 +36,49 @@ test-results/
 # OS
 .DS_Store
 Thumbs.db
+
+# Model artifacts — only models/active/ is tracked
+# Production models in models/active/ are versioned in git.
+# All other model paths (training candidates, archives, caches, per-run state) are untracked.
+models/parallel/
+models/cascade/
+models/_artifact_archive/
+models/cache/
+models/training_report.jsonl
+models/arch_state*.json
+models/arch_eval_proof.json
+models/eval_dashboard_metrics.json
+models/realized_contract_eval_aggregate.json
+models/arch_competition/
+
+# Benchmark and runtime logs
+benchmark_logs/
+.runtime/
+
+# Tooling caches
+.claude/worktrees/
+
+# Model artifacts — only models/active*/ are tracked
+# Tracked production paths:
+#   models/active/        (default fallback active)
+#   models/active_5c/     (horizon-specific active)
+#   models/active_15c/
+#   models/active_60c/
+# All other paths under models/ (candidate dirs, archives, caches, legacy flat files, run outputs, quarantine snapshots) are untracked.
+
+models/**
+!models/active/
+!models/active/**
+!models/active_5c/
+!models/active_5c/**
+!models/active_15c/
+!models/active_15c/**
+!models/active_60c/
+!models/active_60c/**
+
+# Benchmark and runtime logs
+benchmark_logs/
+.runtime/
+
+# Tooling caches
+.claude/worktrees/
