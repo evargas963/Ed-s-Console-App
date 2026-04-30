@@ -1,0 +1,1621 @@
+# FULL PRIMARY-HORIZON RESTORE MANIFEST (PLAN ONLY)
+
+Generated: 2026-04-30T01:07:43.357930
+Input audit: `C:\Users\evarg\AppData\Local\Temp\edwebconsole_phase2\FULL_PRIMARY_HORIZON_AUDIT.md`
+Read-only planning artifact. No restore actions executed.
+
+## MANIFEST SUMMARY
+- total ticker-horizon pairs: 56
+- COMPLETE count: 14
+- PARTIAL count: 26
+- MISSING count: 16
+
+## FULL RESTORE MANIFEST
+### $SPX / 1c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_$SPX_1c.pkl
+  - xgb_$SPX_1c_meta.json
+  - lstm_$SPX_1c.pt
+  - lstm_$SPX_1c_meta.json
+  - transformer_$SPX_1c.pt
+  - transformer_$SPX_1c_meta.json
+  - meta_$SPX_1c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\xgb_$SPX_1c.pkl | exists=true | size_bytes=128315
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\xgb_$SPX_1c_meta.json | exists=true | size_bytes=19630
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\lstm_$SPX_1c.pt | exists=true | size_bytes=292269
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\lstm_$SPX_1c_meta.json | exists=true | size_bytes=1386
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\transformer_$SPX_1c.pt | exists=true | size_bytes=302466
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\transformer_$SPX_1c_meta.json | exists=true | size_bytes=1070
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\meta_$SPX_1c.pkl | exists=false | size_bytes=0
+
+### $SPX / 5c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_$SPX_5c.pkl
+  - xgb_$SPX_5c_meta.json
+  - lstm_$SPX_5c.pt
+  - lstm_$SPX_5c_meta.json
+  - transformer_$SPX_5c.pt
+  - transformer_$SPX_5c_meta.json
+  - meta_$SPX_5c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\xgb_$SPX_5c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\xgb_$SPX_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\lstm_$SPX_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\lstm_$SPX_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\transformer_$SPX_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\transformer_$SPX_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\meta_$SPX_5c.pkl | exists=false | size_bytes=0
+
+### $SPX / 15c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_$SPX_15c.pkl
+  - xgb_$SPX_15c_meta.json
+  - lstm_$SPX_15c.pt
+  - lstm_$SPX_15c_meta.json
+  - transformer_$SPX_15c.pt
+  - transformer_$SPX_15c_meta.json
+  - meta_$SPX_15c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\xgb_$SPX_15c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\xgb_$SPX_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\lstm_$SPX_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\lstm_$SPX_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\transformer_$SPX_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\transformer_$SPX_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\meta_$SPX_15c.pkl | exists=false | size_bytes=0
+
+### $SPX / 60c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_$SPX_60c.pkl
+  - xgb_$SPX_60c_meta.json
+  - lstm_$SPX_60c.pt
+  - lstm_$SPX_60c_meta.json
+  - transformer_$SPX_60c.pt
+  - transformer_$SPX_60c_meta.json
+  - meta_$SPX_60c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\xgb_$SPX_60c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\xgb_$SPX_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\lstm_$SPX_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\lstm_$SPX_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\transformer_$SPX_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\transformer_$SPX_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\$SPX\meta_$SPX_60c.pkl | exists=false | size_bytes=0
+
+### AAPL / 1c
+- status: COMPLETE
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AAPL\20260416T211940Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 20
+- complete candidate sets: 9
+- selected run timestamp: 2026-04-16T21:19:40
+- SOURCE_PATHS:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AAPL\20260416T211940Z\xgb_AAPL_1c.pkl
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AAPL\20260416T211940Z\xgb_AAPL_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AAPL\20260416T211940Z\lstm_AAPL_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AAPL\20260416T211940Z\lstm_AAPL_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AAPL\20260416T211940Z\transformer_AAPL_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AAPL\20260416T211940Z\transformer_AAPL_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AAPL\20260416T211940Z\meta_AAPL_1c.pkl
+- DESTINATION_PATHS:
+  - models/active/AAPL/xgb_AAPL_1c.pkl
+  - models/active/AAPL/xgb_AAPL_1c_meta.json
+  - models/active/AAPL/lstm_AAPL_1c.pt
+  - models/active/AAPL/lstm_AAPL_1c_meta.json
+  - models/active/AAPL/transformer_AAPL_1c.pt
+  - models/active/AAPL/transformer_AAPL_1c_meta.json
+  - models/active/AAPL/meta_AAPL_1c.pkl
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\xgb_AAPL_1c.pkl | exists=true | size_bytes=144130
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\xgb_AAPL_1c_meta.json | exists=true | size_bytes=26319
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\lstm_AAPL_1c.pt | exists=true | size_bytes=292269
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\lstm_AAPL_1c_meta.json | exists=true | size_bytes=1386
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\transformer_AAPL_1c.pt | exists=true | size_bytes=302466
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\transformer_AAPL_1c_meta.json | exists=true | size_bytes=1071
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\meta_AAPL_1c.pkl | exists=true | size_bytes=946
+
+### AAPL / 5c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AAPL\20260416T211940Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 4
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-16T21:19:40
+- MISSING_FILES:
+  - meta_AAPL_5c.pkl
+- FOUND_FILES:
+  - lstm_AAPL_5c.pt
+  - lstm_AAPL_5c_meta.json
+  - transformer_AAPL_5c.pt
+  - transformer_AAPL_5c_meta.json
+  - xgb_AAPL_5c.pkl
+  - xgb_AAPL_5c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\xgb_AAPL_5c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\xgb_AAPL_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\lstm_AAPL_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\lstm_AAPL_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\transformer_AAPL_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\transformer_AAPL_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\meta_AAPL_5c.pkl | exists=false | size_bytes=0
+
+### AAPL / 15c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AAPL\20260416T211940Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 3
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-16T21:19:40
+- MISSING_FILES:
+  - meta_AAPL_15c.pkl
+- FOUND_FILES:
+  - lstm_AAPL_15c.pt
+  - lstm_AAPL_15c_meta.json
+  - transformer_AAPL_15c.pt
+  - transformer_AAPL_15c_meta.json
+  - xgb_AAPL_15c.pkl
+  - xgb_AAPL_15c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\xgb_AAPL_15c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\xgb_AAPL_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\lstm_AAPL_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\lstm_AAPL_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\transformer_AAPL_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\transformer_AAPL_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\meta_AAPL_15c.pkl | exists=false | size_bytes=0
+
+### AAPL / 60c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_AAPL_60c.pkl
+  - xgb_AAPL_60c_meta.json
+  - lstm_AAPL_60c.pt
+  - lstm_AAPL_60c_meta.json
+  - transformer_AAPL_60c.pt
+  - transformer_AAPL_60c_meta.json
+  - meta_AAPL_60c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\xgb_AAPL_60c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\xgb_AAPL_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\lstm_AAPL_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\lstm_AAPL_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\transformer_AAPL_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\transformer_AAPL_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AAPL\meta_AAPL_60c.pkl | exists=false | size_bytes=0
+
+### AMZN / 1c
+- status: COMPLETE
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AMZN\20260416T215758Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 20
+- complete candidate sets: 9
+- selected run timestamp: 2026-04-16T21:57:58
+- SOURCE_PATHS:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AMZN\20260416T215758Z\xgb_AMZN_1c.pkl
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AMZN\20260416T215758Z\xgb_AMZN_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AMZN\20260416T215758Z\lstm_AMZN_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AMZN\20260416T215758Z\lstm_AMZN_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AMZN\20260416T215758Z\transformer_AMZN_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AMZN\20260416T215758Z\transformer_AMZN_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AMZN\20260416T215758Z\meta_AMZN_1c.pkl
+- DESTINATION_PATHS:
+  - models/active/AMZN/xgb_AMZN_1c.pkl
+  - models/active/AMZN/xgb_AMZN_1c_meta.json
+  - models/active/AMZN/lstm_AMZN_1c.pt
+  - models/active/AMZN/lstm_AMZN_1c_meta.json
+  - models/active/AMZN/transformer_AMZN_1c.pt
+  - models/active/AMZN/transformer_AMZN_1c_meta.json
+  - models/active/AMZN/meta_AMZN_1c.pkl
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\xgb_AMZN_1c.pkl | exists=true | size_bytes=145763
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\xgb_AMZN_1c_meta.json | exists=true | size_bytes=26316
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\lstm_AMZN_1c.pt | exists=true | size_bytes=292269
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\lstm_AMZN_1c_meta.json | exists=true | size_bytes=1386
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\transformer_AMZN_1c.pt | exists=true | size_bytes=302466
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\transformer_AMZN_1c_meta.json | exists=true | size_bytes=1071
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\meta_AMZN_1c.pkl | exists=true | size_bytes=946
+
+### AMZN / 5c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AMZN\20260416T215758Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 4
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-16T21:57:58
+- MISSING_FILES:
+  - meta_AMZN_5c.pkl
+- FOUND_FILES:
+  - lstm_AMZN_5c.pt
+  - lstm_AMZN_5c_meta.json
+  - transformer_AMZN_5c.pt
+  - transformer_AMZN_5c_meta.json
+  - xgb_AMZN_5c.pkl
+  - xgb_AMZN_5c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\xgb_AMZN_5c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\xgb_AMZN_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\lstm_AMZN_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\lstm_AMZN_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\transformer_AMZN_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\transformer_AMZN_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\meta_AMZN_5c.pkl | exists=false | size_bytes=0
+
+### AMZN / 15c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AMZN\20260416T215758Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 3
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-16T21:57:58
+- MISSING_FILES:
+  - meta_AMZN_15c.pkl
+- FOUND_FILES:
+  - lstm_AMZN_15c.pt
+  - lstm_AMZN_15c_meta.json
+  - transformer_AMZN_15c.pt
+  - transformer_AMZN_15c_meta.json
+  - xgb_AMZN_15c.pkl
+  - xgb_AMZN_15c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\xgb_AMZN_15c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\xgb_AMZN_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\lstm_AMZN_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\lstm_AMZN_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\transformer_AMZN_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\transformer_AMZN_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\meta_AMZN_15c.pkl | exists=false | size_bytes=0
+
+### AMZN / 60c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_AMZN_60c.pkl
+  - xgb_AMZN_60c_meta.json
+  - lstm_AMZN_60c.pt
+  - lstm_AMZN_60c_meta.json
+  - transformer_AMZN_60c.pt
+  - transformer_AMZN_60c_meta.json
+  - meta_AMZN_60c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\xgb_AMZN_60c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\xgb_AMZN_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\lstm_AMZN_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\lstm_AMZN_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\transformer_AMZN_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\transformer_AMZN_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AMZN\meta_AMZN_60c.pkl | exists=false | size_bytes=0
+
+### AVGO / 1c
+- status: COMPLETE
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AVGO\20260416T223129Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 20
+- complete candidate sets: 9
+- selected run timestamp: 2026-04-16T22:31:29
+- SOURCE_PATHS:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AVGO\20260416T223129Z\xgb_AVGO_1c.pkl
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AVGO\20260416T223129Z\xgb_AVGO_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AVGO\20260416T223129Z\lstm_AVGO_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AVGO\20260416T223129Z\lstm_AVGO_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AVGO\20260416T223129Z\transformer_AVGO_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AVGO\20260416T223129Z\transformer_AVGO_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AVGO\20260416T223129Z\meta_AVGO_1c.pkl
+- DESTINATION_PATHS:
+  - models/active/AVGO/xgb_AVGO_1c.pkl
+  - models/active/AVGO/xgb_AVGO_1c_meta.json
+  - models/active/AVGO/lstm_AVGO_1c.pt
+  - models/active/AVGO/lstm_AVGO_1c_meta.json
+  - models/active/AVGO/transformer_AVGO_1c.pt
+  - models/active/AVGO/transformer_AVGO_1c_meta.json
+  - models/active/AVGO/meta_AVGO_1c.pkl
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\xgb_AVGO_1c.pkl | exists=true | size_bytes=147808
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\xgb_AVGO_1c_meta.json | exists=true | size_bytes=26228
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\lstm_AVGO_1c.pt | exists=true | size_bytes=292269
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\lstm_AVGO_1c_meta.json | exists=true | size_bytes=1386
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\transformer_AVGO_1c.pt | exists=true | size_bytes=302466
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\transformer_AVGO_1c_meta.json | exists=true | size_bytes=1071
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\meta_AVGO_1c.pkl | exists=true | size_bytes=946
+
+### AVGO / 5c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AVGO\20260416T223129Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 3
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-16T22:31:29
+- MISSING_FILES:
+  - meta_AVGO_5c.pkl
+- FOUND_FILES:
+  - lstm_AVGO_5c.pt
+  - lstm_AVGO_5c_meta.json
+  - transformer_AVGO_5c.pt
+  - transformer_AVGO_5c_meta.json
+  - xgb_AVGO_5c.pkl
+  - xgb_AVGO_5c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\xgb_AVGO_5c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\xgb_AVGO_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\lstm_AVGO_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\lstm_AVGO_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\transformer_AVGO_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\transformer_AVGO_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\meta_AVGO_5c.pkl | exists=false | size_bytes=0
+
+### AVGO / 15c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\AVGO\20260416T223129Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 3
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-16T22:31:29
+- MISSING_FILES:
+  - meta_AVGO_15c.pkl
+- FOUND_FILES:
+  - lstm_AVGO_15c.pt
+  - lstm_AVGO_15c_meta.json
+  - transformer_AVGO_15c.pt
+  - transformer_AVGO_15c_meta.json
+  - xgb_AVGO_15c.pkl
+  - xgb_AVGO_15c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\xgb_AVGO_15c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\xgb_AVGO_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\lstm_AVGO_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\lstm_AVGO_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\transformer_AVGO_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\transformer_AVGO_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\meta_AVGO_15c.pkl | exists=false | size_bytes=0
+
+### AVGO / 60c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_AVGO_60c.pkl
+  - xgb_AVGO_60c_meta.json
+  - lstm_AVGO_60c.pt
+  - lstm_AVGO_60c_meta.json
+  - transformer_AVGO_60c.pt
+  - transformer_AVGO_60c_meta.json
+  - meta_AVGO_60c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\xgb_AVGO_60c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\xgb_AVGO_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\lstm_AVGO_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\lstm_AVGO_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\transformer_AVGO_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\transformer_AVGO_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\AVGO\meta_AVGO_60c.pkl | exists=false | size_bytes=0
+
+### CIFR / 1c
+- status: COMPLETE
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\CIFR\20260416T230157Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 20
+- complete candidate sets: 9
+- selected run timestamp: 2026-04-16T23:01:57
+- SOURCE_PATHS:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\CIFR\20260416T230157Z\xgb_CIFR_1c.pkl
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\CIFR\20260416T230157Z\xgb_CIFR_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\CIFR\20260416T230157Z\lstm_CIFR_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\CIFR\20260416T230157Z\lstm_CIFR_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\CIFR\20260416T230157Z\transformer_CIFR_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\CIFR\20260416T230157Z\transformer_CIFR_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\CIFR\20260416T230157Z\meta_CIFR_1c.pkl
+- DESTINATION_PATHS:
+  - models/active/CIFR/xgb_CIFR_1c.pkl
+  - models/active/CIFR/xgb_CIFR_1c_meta.json
+  - models/active/CIFR/lstm_CIFR_1c.pt
+  - models/active/CIFR/lstm_CIFR_1c_meta.json
+  - models/active/CIFR/transformer_CIFR_1c.pt
+  - models/active/CIFR/transformer_CIFR_1c_meta.json
+  - models/active/CIFR/meta_CIFR_1c.pkl
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\xgb_CIFR_1c.pkl | exists=true | size_bytes=141337
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\xgb_CIFR_1c_meta.json | exists=true | size_bytes=26373
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\lstm_CIFR_1c.pt | exists=true | size_bytes=295405
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\lstm_CIFR_1c_meta.json | exists=true | size_bytes=1270
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\transformer_CIFR_1c.pt | exists=true | size_bytes=302466
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\transformer_CIFR_1c_meta.json | exists=true | size_bytes=1071
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\meta_CIFR_1c.pkl | exists=true | size_bytes=946
+
+### CIFR / 5c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\CIFR\20260416T230157Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 3
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-16T23:01:57
+- MISSING_FILES:
+  - meta_CIFR_5c.pkl
+- FOUND_FILES:
+  - lstm_CIFR_5c.pt
+  - lstm_CIFR_5c_meta.json
+  - transformer_CIFR_5c.pt
+  - transformer_CIFR_5c_meta.json
+  - xgb_CIFR_5c.pkl
+  - xgb_CIFR_5c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\xgb_CIFR_5c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\xgb_CIFR_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\lstm_CIFR_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\lstm_CIFR_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\transformer_CIFR_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\transformer_CIFR_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\meta_CIFR_5c.pkl | exists=false | size_bytes=0
+
+### CIFR / 15c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\CIFR\20260416T230157Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 4
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-16T23:01:57
+- MISSING_FILES:
+  - meta_CIFR_15c.pkl
+- FOUND_FILES:
+  - lstm_CIFR_15c.pt
+  - lstm_CIFR_15c_meta.json
+  - transformer_CIFR_15c.pt
+  - transformer_CIFR_15c_meta.json
+  - xgb_CIFR_15c.pkl
+  - xgb_CIFR_15c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\xgb_CIFR_15c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\xgb_CIFR_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\lstm_CIFR_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\lstm_CIFR_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\transformer_CIFR_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\transformer_CIFR_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\meta_CIFR_15c.pkl | exists=false | size_bytes=0
+
+### CIFR / 60c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_CIFR_60c.pkl
+  - xgb_CIFR_60c_meta.json
+  - lstm_CIFR_60c.pt
+  - lstm_CIFR_60c_meta.json
+  - transformer_CIFR_60c.pt
+  - transformer_CIFR_60c_meta.json
+  - meta_CIFR_60c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\xgb_CIFR_60c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\xgb_CIFR_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\lstm_CIFR_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\lstm_CIFR_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\transformer_CIFR_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\transformer_CIFR_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CIFR\meta_CIFR_60c.pkl | exists=false | size_bytes=0
+
+### CRWD / 1c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\CRWD\20260416T233824Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 6
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-16T23:38:24
+- MISSING_FILES:
+  - lstm_CRWD_1c.pt
+  - lstm_CRWD_1c_meta.json
+  - transformer_CRWD_1c.pt
+  - transformer_CRWD_1c_meta.json
+  - meta_CRWD_1c.pkl
+- FOUND_FILES:
+  - xgb_CRWD_1c.pkl
+  - xgb_CRWD_1c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\xgb_CRWD_1c.pkl | exists=true | size_bytes=107931
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\xgb_CRWD_1c_meta.json | exists=true | size_bytes=15449
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\lstm_CRWD_1c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\lstm_CRWD_1c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\transformer_CRWD_1c.pt | exists=true | size_bytes=301890
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\transformer_CRWD_1c_meta.json | exists=true | size_bytes=1064
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\meta_CRWD_1c.pkl | exists=false | size_bytes=0
+
+### CRWD / 5c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\CRWD\20260416T233824Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 2
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-16T23:38:24
+- MISSING_FILES:
+  - lstm_CRWD_5c.pt
+  - lstm_CRWD_5c_meta.json
+  - transformer_CRWD_5c.pt
+  - transformer_CRWD_5c_meta.json
+  - meta_CRWD_5c.pkl
+- FOUND_FILES:
+  - xgb_CRWD_5c.pkl
+  - xgb_CRWD_5c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\xgb_CRWD_5c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\xgb_CRWD_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\lstm_CRWD_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\lstm_CRWD_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\transformer_CRWD_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\transformer_CRWD_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\meta_CRWD_5c.pkl | exists=false | size_bytes=0
+
+### CRWD / 15c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\CRWD\20260416T233824Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 3
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-16T23:38:24
+- MISSING_FILES:
+  - lstm_CRWD_15c.pt
+  - lstm_CRWD_15c_meta.json
+  - transformer_CRWD_15c.pt
+  - transformer_CRWD_15c_meta.json
+  - meta_CRWD_15c.pkl
+- FOUND_FILES:
+  - xgb_CRWD_15c.pkl
+  - xgb_CRWD_15c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\xgb_CRWD_15c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\xgb_CRWD_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\lstm_CRWD_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\lstm_CRWD_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\transformer_CRWD_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\transformer_CRWD_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\meta_CRWD_15c.pkl | exists=false | size_bytes=0
+
+### CRWD / 60c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_CRWD_60c.pkl
+  - xgb_CRWD_60c_meta.json
+  - lstm_CRWD_60c.pt
+  - lstm_CRWD_60c_meta.json
+  - transformer_CRWD_60c.pt
+  - transformer_CRWD_60c_meta.json
+  - meta_CRWD_60c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\xgb_CRWD_60c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\xgb_CRWD_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\lstm_CRWD_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\lstm_CRWD_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\transformer_CRWD_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\transformer_CRWD_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\CRWD\meta_CRWD_60c.pkl | exists=false | size_bytes=0
+
+### GOOGL / 1c
+- status: COMPLETE
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\GOOGL\20260417T002204Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 20
+- complete candidate sets: 9
+- selected run timestamp: 2026-04-17T00:22:04
+- SOURCE_PATHS:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\GOOGL\20260417T002204Z\xgb_GOOGL_1c.pkl
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\GOOGL\20260417T002204Z\xgb_GOOGL_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\GOOGL\20260417T002204Z\lstm_GOOGL_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\GOOGL\20260417T002204Z\lstm_GOOGL_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\GOOGL\20260417T002204Z\transformer_GOOGL_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\GOOGL\20260417T002204Z\transformer_GOOGL_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\GOOGL\20260417T002204Z\meta_GOOGL_1c.pkl
+- DESTINATION_PATHS:
+  - models/active/GOOGL/xgb_GOOGL_1c.pkl
+  - models/active/GOOGL/xgb_GOOGL_1c_meta.json
+  - models/active/GOOGL/lstm_GOOGL_1c.pt
+  - models/active/GOOGL/lstm_GOOGL_1c_meta.json
+  - models/active/GOOGL/transformer_GOOGL_1c.pt
+  - models/active/GOOGL/transformer_GOOGL_1c_meta.json
+  - models/active/GOOGL/meta_GOOGL_1c.pkl
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\xgb_GOOGL_1c.pkl | exists=true | size_bytes=142555
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\xgb_GOOGL_1c_meta.json | exists=true | size_bytes=26633
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\lstm_GOOGL_1c.pt | exists=true | size_bytes=292297
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\lstm_GOOGL_1c_meta.json | exists=true | size_bytes=1387
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\transformer_GOOGL_1c.pt | exists=true | size_bytes=302503
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\transformer_GOOGL_1c_meta.json | exists=true | size_bytes=1071
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\meta_GOOGL_1c.pkl | exists=true | size_bytes=946
+
+### GOOGL / 5c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\GOOGL\20260417T002204Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 3
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-17T00:22:04
+- MISSING_FILES:
+  - meta_GOOGL_5c.pkl
+- FOUND_FILES:
+  - lstm_GOOGL_5c.pt
+  - lstm_GOOGL_5c_meta.json
+  - transformer_GOOGL_5c.pt
+  - transformer_GOOGL_5c_meta.json
+  - xgb_GOOGL_5c.pkl
+  - xgb_GOOGL_5c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\xgb_GOOGL_5c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\xgb_GOOGL_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\lstm_GOOGL_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\lstm_GOOGL_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\transformer_GOOGL_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\transformer_GOOGL_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\meta_GOOGL_5c.pkl | exists=false | size_bytes=0
+
+### GOOGL / 15c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\GOOGL\20260417T002204Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 4
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-17T00:22:04
+- MISSING_FILES:
+  - meta_GOOGL_15c.pkl
+- FOUND_FILES:
+  - lstm_GOOGL_15c.pt
+  - lstm_GOOGL_15c_meta.json
+  - transformer_GOOGL_15c.pt
+  - transformer_GOOGL_15c_meta.json
+  - xgb_GOOGL_15c.pkl
+  - xgb_GOOGL_15c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\xgb_GOOGL_15c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\xgb_GOOGL_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\lstm_GOOGL_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\lstm_GOOGL_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\transformer_GOOGL_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\transformer_GOOGL_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\meta_GOOGL_15c.pkl | exists=false | size_bytes=0
+
+### GOOGL / 60c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_GOOGL_60c.pkl
+  - xgb_GOOGL_60c_meta.json
+  - lstm_GOOGL_60c.pt
+  - lstm_GOOGL_60c_meta.json
+  - transformer_GOOGL_60c.pt
+  - transformer_GOOGL_60c_meta.json
+  - meta_GOOGL_60c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\xgb_GOOGL_60c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\xgb_GOOGL_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\lstm_GOOGL_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\lstm_GOOGL_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\transformer_GOOGL_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\transformer_GOOGL_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\GOOGL\meta_GOOGL_60c.pkl | exists=false | size_bytes=0
+
+### IWM / 1c
+- status: COMPLETE
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\IWM\20260417T005614Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 20
+- complete candidate sets: 9
+- selected run timestamp: 2026-04-17T00:56:14
+- SOURCE_PATHS:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\IWM\20260417T005614Z\xgb_IWM_1c.pkl
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\IWM\20260417T005614Z\xgb_IWM_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\IWM\20260417T005614Z\lstm_IWM_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\IWM\20260417T005614Z\lstm_IWM_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\IWM\20260417T005614Z\transformer_IWM_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\IWM\20260417T005614Z\transformer_IWM_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\IWM\20260417T005614Z\meta_IWM_1c.pkl
+- DESTINATION_PATHS:
+  - models/active/IWM/xgb_IWM_1c.pkl
+  - models/active/IWM/xgb_IWM_1c_meta.json
+  - models/active/IWM/lstm_IWM_1c.pt
+  - models/active/IWM/lstm_IWM_1c_meta.json
+  - models/active/IWM/transformer_IWM_1c.pt
+  - models/active/IWM/transformer_IWM_1c_meta.json
+  - models/active/IWM/meta_IWM_1c.pkl
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\xgb_IWM_1c.pkl | exists=true | size_bytes=141748
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\xgb_IWM_1c_meta.json | exists=true | size_bytes=26026
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\lstm_IWM_1c.pt | exists=true | size_bytes=293329
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\lstm_IWM_1c_meta.json | exists=true | size_bytes=1358
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\transformer_IWM_1c.pt | exists=true | size_bytes=302429
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\transformer_IWM_1c_meta.json | exists=true | size_bytes=1070
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\meta_IWM_1c.pkl | exists=true | size_bytes=946
+
+### IWM / 5c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\IWM\20260417T005614Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 3
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-17T00:56:14
+- MISSING_FILES:
+  - meta_IWM_5c.pkl
+- FOUND_FILES:
+  - lstm_IWM_5c.pt
+  - lstm_IWM_5c_meta.json
+  - transformer_IWM_5c.pt
+  - transformer_IWM_5c_meta.json
+  - xgb_IWM_5c.pkl
+  - xgb_IWM_5c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\xgb_IWM_5c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\xgb_IWM_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\lstm_IWM_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\lstm_IWM_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\transformer_IWM_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\transformer_IWM_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\meta_IWM_5c.pkl | exists=false | size_bytes=0
+
+### IWM / 15c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\IWM\20260417T005614Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 4
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-17T00:56:14
+- MISSING_FILES:
+  - meta_IWM_15c.pkl
+- FOUND_FILES:
+  - lstm_IWM_15c.pt
+  - lstm_IWM_15c_meta.json
+  - transformer_IWM_15c.pt
+  - transformer_IWM_15c_meta.json
+  - xgb_IWM_15c.pkl
+  - xgb_IWM_15c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\xgb_IWM_15c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\xgb_IWM_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\lstm_IWM_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\lstm_IWM_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\transformer_IWM_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\transformer_IWM_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\meta_IWM_15c.pkl | exists=false | size_bytes=0
+
+### IWM / 60c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_IWM_60c.pkl
+  - xgb_IWM_60c_meta.json
+  - lstm_IWM_60c.pt
+  - lstm_IWM_60c_meta.json
+  - transformer_IWM_60c.pt
+  - transformer_IWM_60c_meta.json
+  - meta_IWM_60c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\xgb_IWM_60c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\xgb_IWM_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\lstm_IWM_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\lstm_IWM_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\transformer_IWM_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\transformer_IWM_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\IWM\meta_IWM_60c.pkl | exists=false | size_bytes=0
+
+### META / 1c
+- status: COMPLETE
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\META\20260417T014739Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 20
+- complete candidate sets: 9
+- selected run timestamp: 2026-04-17T01:47:39
+- SOURCE_PATHS:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\META\20260417T014739Z\xgb_META_1c.pkl
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\META\20260417T014739Z\xgb_META_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\META\20260417T014739Z\lstm_META_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\META\20260417T014739Z\lstm_META_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\META\20260417T014739Z\transformer_META_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\META\20260417T014739Z\transformer_META_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\META\20260417T014739Z\meta_META_1c.pkl
+- DESTINATION_PATHS:
+  - models/active/META/xgb_META_1c.pkl
+  - models/active/META/xgb_META_1c_meta.json
+  - models/active/META/lstm_META_1c.pt
+  - models/active/META/lstm_META_1c_meta.json
+  - models/active/META/transformer_META_1c.pt
+  - models/active/META/transformer_META_1c_meta.json
+  - models/active/META/meta_META_1c.pkl
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\xgb_META_1c.pkl | exists=true | size_bytes=148973
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\xgb_META_1c_meta.json | exists=true | size_bytes=26235
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\lstm_META_1c.pt | exists=true | size_bytes=292269
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\lstm_META_1c_meta.json | exists=true | size_bytes=1386
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\transformer_META_1c.pt | exists=true | size_bytes=302466
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\transformer_META_1c_meta.json | exists=true | size_bytes=1070
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\meta_META_1c.pkl | exists=true | size_bytes=946
+
+### META / 5c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\META\20260417T014739Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 3
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-17T01:47:39
+- MISSING_FILES:
+  - meta_META_5c.pkl
+- FOUND_FILES:
+  - lstm_META_5c.pt
+  - lstm_META_5c_meta.json
+  - transformer_META_5c.pt
+  - transformer_META_5c_meta.json
+  - xgb_META_5c.pkl
+  - xgb_META_5c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\xgb_META_5c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\xgb_META_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\lstm_META_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\lstm_META_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\transformer_META_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\transformer_META_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\meta_META_5c.pkl | exists=false | size_bytes=0
+
+### META / 15c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\META\20260417T014739Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 4
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-17T01:47:39
+- MISSING_FILES:
+  - meta_META_15c.pkl
+- FOUND_FILES:
+  - lstm_META_15c.pt
+  - lstm_META_15c_meta.json
+  - transformer_META_15c.pt
+  - transformer_META_15c_meta.json
+  - xgb_META_15c.pkl
+  - xgb_META_15c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\xgb_META_15c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\xgb_META_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\lstm_META_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\lstm_META_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\transformer_META_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\transformer_META_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\meta_META_15c.pkl | exists=false | size_bytes=0
+
+### META / 60c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_META_60c.pkl
+  - xgb_META_60c_meta.json
+  - lstm_META_60c.pt
+  - lstm_META_60c_meta.json
+  - transformer_META_60c.pt
+  - transformer_META_60c_meta.json
+  - meta_META_60c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\xgb_META_60c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\xgb_META_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\lstm_META_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\lstm_META_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\transformer_META_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\transformer_META_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\META\meta_META_60c.pkl | exists=false | size_bytes=0
+
+### MSFT / 1c
+- status: COMPLETE
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\MSFT\20260417T025209Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 20
+- complete candidate sets: 9
+- selected run timestamp: 2026-04-17T02:52:09
+- SOURCE_PATHS:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\MSFT\20260417T025209Z\xgb_MSFT_1c.pkl
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\MSFT\20260417T025209Z\xgb_MSFT_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\MSFT\20260417T025209Z\lstm_MSFT_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\MSFT\20260417T025209Z\lstm_MSFT_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\MSFT\20260417T025209Z\transformer_MSFT_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\MSFT\20260417T025209Z\transformer_MSFT_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\MSFT\20260417T025209Z\meta_MSFT_1c.pkl
+- DESTINATION_PATHS:
+  - models/active/MSFT/xgb_MSFT_1c.pkl
+  - models/active/MSFT/xgb_MSFT_1c_meta.json
+  - models/active/MSFT/lstm_MSFT_1c.pt
+  - models/active/MSFT/lstm_MSFT_1c_meta.json
+  - models/active/MSFT/transformer_MSFT_1c.pt
+  - models/active/MSFT/transformer_MSFT_1c_meta.json
+  - models/active/MSFT/meta_MSFT_1c.pkl
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\xgb_MSFT_1c.pkl | exists=true | size_bytes=143304
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\xgb_MSFT_1c_meta.json | exists=true | size_bytes=26339
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\lstm_MSFT_1c.pt | exists=true | size_bytes=292269
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\lstm_MSFT_1c_meta.json | exists=true | size_bytes=1384
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\transformer_MSFT_1c.pt | exists=true | size_bytes=302466
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\transformer_MSFT_1c_meta.json | exists=true | size_bytes=1071
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\meta_MSFT_1c.pkl | exists=true | size_bytes=946
+
+### MSFT / 5c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\MSFT\20260417T025209Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 3
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-17T02:52:09
+- MISSING_FILES:
+  - meta_MSFT_5c.pkl
+- FOUND_FILES:
+  - lstm_MSFT_5c.pt
+  - lstm_MSFT_5c_meta.json
+  - transformer_MSFT_5c.pt
+  - transformer_MSFT_5c_meta.json
+  - xgb_MSFT_5c.pkl
+  - xgb_MSFT_5c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\xgb_MSFT_5c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\xgb_MSFT_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\lstm_MSFT_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\lstm_MSFT_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\transformer_MSFT_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\transformer_MSFT_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\meta_MSFT_5c.pkl | exists=false | size_bytes=0
+
+### MSFT / 15c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\MSFT\20260417T025209Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 4
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-17T02:52:09
+- MISSING_FILES:
+  - meta_MSFT_15c.pkl
+- FOUND_FILES:
+  - lstm_MSFT_15c.pt
+  - lstm_MSFT_15c_meta.json
+  - transformer_MSFT_15c.pt
+  - transformer_MSFT_15c_meta.json
+  - xgb_MSFT_15c.pkl
+  - xgb_MSFT_15c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\xgb_MSFT_15c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\xgb_MSFT_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\lstm_MSFT_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\lstm_MSFT_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\transformer_MSFT_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\transformer_MSFT_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\meta_MSFT_15c.pkl | exists=false | size_bytes=0
+
+### MSFT / 60c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_MSFT_60c.pkl
+  - xgb_MSFT_60c_meta.json
+  - lstm_MSFT_60c.pt
+  - lstm_MSFT_60c_meta.json
+  - transformer_MSFT_60c.pt
+  - transformer_MSFT_60c_meta.json
+  - meta_MSFT_60c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\xgb_MSFT_60c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\xgb_MSFT_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\lstm_MSFT_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\lstm_MSFT_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\transformer_MSFT_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\transformer_MSFT_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\MSFT\meta_MSFT_60c.pkl | exists=false | size_bytes=0
+
+### NVDA / 1c
+- status: COMPLETE
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\NVDA\20260417T034659Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 20
+- complete candidate sets: 9
+- selected run timestamp: 2026-04-17T03:46:59
+- SOURCE_PATHS:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\NVDA\20260417T034659Z\xgb_NVDA_1c.pkl
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\NVDA\20260417T034659Z\xgb_NVDA_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\NVDA\20260417T034659Z\lstm_NVDA_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\NVDA\20260417T034659Z\lstm_NVDA_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\NVDA\20260417T034659Z\transformer_NVDA_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\NVDA\20260417T034659Z\transformer_NVDA_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\NVDA\20260417T034659Z\meta_NVDA_1c.pkl
+- DESTINATION_PATHS:
+  - models/active/NVDA/xgb_NVDA_1c.pkl
+  - models/active/NVDA/xgb_NVDA_1c_meta.json
+  - models/active/NVDA/lstm_NVDA_1c.pt
+  - models/active/NVDA/lstm_NVDA_1c_meta.json
+  - models/active/NVDA/transformer_NVDA_1c.pt
+  - models/active/NVDA/transformer_NVDA_1c_meta.json
+  - models/active/NVDA/meta_NVDA_1c.pkl
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\xgb_NVDA_1c.pkl | exists=true | size_bytes=146243
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\xgb_NVDA_1c_meta.json | exists=true | size_bytes=26665
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\lstm_NVDA_1c.pt | exists=true | size_bytes=292269
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\lstm_NVDA_1c_meta.json | exists=true | size_bytes=1386
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\transformer_NVDA_1c.pt | exists=true | size_bytes=302466
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\transformer_NVDA_1c_meta.json | exists=true | size_bytes=1070
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\meta_NVDA_1c.pkl | exists=true | size_bytes=946
+
+### NVDA / 5c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\NVDA\20260417T034659Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 3
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-17T03:46:59
+- MISSING_FILES:
+  - meta_NVDA_5c.pkl
+- FOUND_FILES:
+  - lstm_NVDA_5c.pt
+  - lstm_NVDA_5c_meta.json
+  - transformer_NVDA_5c.pt
+  - transformer_NVDA_5c_meta.json
+  - xgb_NVDA_5c.pkl
+  - xgb_NVDA_5c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\xgb_NVDA_5c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\xgb_NVDA_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\lstm_NVDA_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\lstm_NVDA_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\transformer_NVDA_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\transformer_NVDA_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\meta_NVDA_5c.pkl | exists=false | size_bytes=0
+
+### NVDA / 15c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\NVDA\20260417T034659Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 4
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-17T03:46:59
+- MISSING_FILES:
+  - meta_NVDA_15c.pkl
+- FOUND_FILES:
+  - lstm_NVDA_15c.pt
+  - lstm_NVDA_15c_meta.json
+  - transformer_NVDA_15c.pt
+  - transformer_NVDA_15c_meta.json
+  - xgb_NVDA_15c.pkl
+  - xgb_NVDA_15c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\xgb_NVDA_15c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\xgb_NVDA_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\lstm_NVDA_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\lstm_NVDA_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\transformer_NVDA_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\transformer_NVDA_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\meta_NVDA_15c.pkl | exists=false | size_bytes=0
+
+### NVDA / 60c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_NVDA_60c.pkl
+  - xgb_NVDA_60c_meta.json
+  - lstm_NVDA_60c.pt
+  - lstm_NVDA_60c_meta.json
+  - transformer_NVDA_60c.pt
+  - transformer_NVDA_60c_meta.json
+  - meta_NVDA_60c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\xgb_NVDA_60c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\xgb_NVDA_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\lstm_NVDA_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\lstm_NVDA_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\transformer_NVDA_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\transformer_NVDA_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\NVDA\meta_NVDA_60c.pkl | exists=false | size_bytes=0
+
+### QQQ / 1c
+- status: COMPLETE
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\QQQ\20260417T054357Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 20
+- complete candidate sets: 9
+- selected run timestamp: 2026-04-17T05:43:57
+- SOURCE_PATHS:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\QQQ\20260417T054357Z\xgb_QQQ_1c.pkl
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\QQQ\20260417T054357Z\xgb_QQQ_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\QQQ\20260417T054357Z\lstm_QQQ_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\QQQ\20260417T054357Z\lstm_QQQ_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\QQQ\20260417T054357Z\transformer_QQQ_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\QQQ\20260417T054357Z\transformer_QQQ_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\QQQ\20260417T054357Z\meta_QQQ_1c.pkl
+- DESTINATION_PATHS:
+  - models/active/QQQ/xgb_QQQ_1c.pkl
+  - models/active/QQQ/xgb_QQQ_1c_meta.json
+  - models/active/QQQ/lstm_QQQ_1c.pt
+  - models/active/QQQ/lstm_QQQ_1c_meta.json
+  - models/active/QQQ/transformer_QQQ_1c.pt
+  - models/active/QQQ/transformer_QQQ_1c_meta.json
+  - models/active/QQQ/meta_QQQ_1c.pkl
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\xgb_QQQ_1c.pkl | exists=true | size_bytes=139969
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\xgb_QQQ_1c_meta.json | exists=true | size_bytes=26262
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\lstm_QQQ_1c.pt | exists=true | size_bytes=294865
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\lstm_QQQ_1c_meta.json | exists=true | size_bytes=1300
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\transformer_QQQ_1c.pt | exists=true | size_bytes=302429
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\transformer_QQQ_1c_meta.json | exists=true | size_bytes=1070
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\meta_QQQ_1c.pkl | exists=true | size_bytes=946
+
+### QQQ / 5c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\QQQ\20260417T054357Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 3
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-17T05:43:57
+- MISSING_FILES:
+  - meta_QQQ_5c.pkl
+- FOUND_FILES:
+  - lstm_QQQ_5c.pt
+  - lstm_QQQ_5c_meta.json
+  - transformer_QQQ_5c.pt
+  - transformer_QQQ_5c_meta.json
+  - xgb_QQQ_5c.pkl
+  - xgb_QQQ_5c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\xgb_QQQ_5c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\xgb_QQQ_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\lstm_QQQ_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\lstm_QQQ_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\transformer_QQQ_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\transformer_QQQ_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\meta_QQQ_5c.pkl | exists=false | size_bytes=0
+
+### QQQ / 15c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\QQQ\20260417T054357Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 4
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-17T05:43:57
+- MISSING_FILES:
+  - meta_QQQ_15c.pkl
+- FOUND_FILES:
+  - lstm_QQQ_15c.pt
+  - lstm_QQQ_15c_meta.json
+  - transformer_QQQ_15c.pt
+  - transformer_QQQ_15c_meta.json
+  - xgb_QQQ_15c.pkl
+  - xgb_QQQ_15c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\xgb_QQQ_15c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\xgb_QQQ_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\lstm_QQQ_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\lstm_QQQ_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\transformer_QQQ_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\transformer_QQQ_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\meta_QQQ_15c.pkl | exists=false | size_bytes=0
+
+### QQQ / 60c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_QQQ_60c.pkl
+  - xgb_QQQ_60c_meta.json
+  - lstm_QQQ_60c.pt
+  - lstm_QQQ_60c_meta.json
+  - transformer_QQQ_60c.pt
+  - transformer_QQQ_60c_meta.json
+  - meta_QQQ_60c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\xgb_QQQ_60c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\xgb_QQQ_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\lstm_QQQ_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\lstm_QQQ_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\transformer_QQQ_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\transformer_QQQ_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\QQQ\meta_QQQ_60c.pkl | exists=false | size_bytes=0
+
+### SPY / 1c
+- status: COMPLETE
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 18
+- complete candidate sets: 8
+- selected run timestamp: 2026-04-16T14:40:38
+- SOURCE_PATHS:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\xgb_SPY_1c.pkl
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\xgb_SPY_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\lstm_SPY_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\lstm_SPY_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\transformer_SPY_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\transformer_SPY_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\meta_SPY_1c.pkl
+- DESTINATION_PATHS:
+  - models/active/SPY/xgb_SPY_1c.pkl
+  - models/active/SPY/xgb_SPY_1c_meta.json
+  - models/active/SPY/lstm_SPY_1c.pt
+  - models/active/SPY/lstm_SPY_1c_meta.json
+  - models/active/SPY/transformer_SPY_1c.pt
+  - models/active/SPY/transformer_SPY_1c_meta.json
+  - models/active/SPY/meta_SPY_1c.pkl
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\xgb_SPY_1c.pkl | exists=true | size_bytes=151501
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\xgb_SPY_1c_meta.json | exists=true | size_bytes=26469
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\lstm_SPY_1c.pt | exists=true | size_bytes=295377
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\lstm_SPY_1c_meta.json | exists=true | size_bytes=1270
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\transformer_SPY_1c.pt | exists=true | size_bytes=302429
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\transformer_SPY_1c_meta.json | exists=true | size_bytes=1070
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\meta_SPY_1c.pkl | exists=true | size_bytes=946
+
+### SPY / 5c
+- status: COMPLETE
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 6
+- complete candidate sets: 1
+- selected run timestamp: 2026-04-16T14:40:38
+- SOURCE_PATHS:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\xgb_SPY_5c.pkl
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\xgb_SPY_5c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\lstm_SPY_5c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\lstm_SPY_5c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\transformer_SPY_5c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\transformer_SPY_5c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\meta_SPY_5c.pkl
+- DESTINATION_PATHS:
+  - models/active/SPY/xgb_SPY_5c.pkl
+  - models/active/SPY/xgb_SPY_5c_meta.json
+  - models/active/SPY/lstm_SPY_5c.pt
+  - models/active/SPY/lstm_SPY_5c_meta.json
+  - models/active/SPY/transformer_SPY_5c.pt
+  - models/active/SPY/transformer_SPY_5c_meta.json
+  - models/active/SPY/meta_SPY_5c.pkl
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\xgb_SPY_5c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\xgb_SPY_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\lstm_SPY_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\lstm_SPY_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\transformer_SPY_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\transformer_SPY_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\meta_SPY_5c.pkl | exists=false | size_bytes=0
+
+### SPY / 15c
+- status: COMPLETE
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 17
+- complete candidate sets: 8
+- selected run timestamp: 2026-04-16T14:40:38
+- SOURCE_PATHS:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\xgb_SPY_15c.pkl
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\xgb_SPY_15c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\lstm_SPY_15c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\lstm_SPY_15c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\transformer_SPY_15c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\transformer_SPY_15c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\SPY\20260416T144038Z\meta_SPY_15c.pkl
+- DESTINATION_PATHS:
+  - models/active/SPY/xgb_SPY_15c.pkl
+  - models/active/SPY/xgb_SPY_15c_meta.json
+  - models/active/SPY/lstm_SPY_15c.pt
+  - models/active/SPY/lstm_SPY_15c_meta.json
+  - models/active/SPY/transformer_SPY_15c.pt
+  - models/active/SPY/transformer_SPY_15c_meta.json
+  - models/active/SPY/meta_SPY_15c.pkl
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\xgb_SPY_15c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\xgb_SPY_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\lstm_SPY_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\lstm_SPY_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\transformer_SPY_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\transformer_SPY_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\meta_SPY_15c.pkl | exists=false | size_bytes=0
+
+### SPY / 60c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\parallel\SPY`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\parallel`
+- candidate sets scanned: 2
+- complete candidate sets: 0
+- selected run timestamp: (none in path; selected by newest file mtime)
+- MISSING_FILES:
+  - xgb_SPY_60c.pkl
+  - xgb_SPY_60c_meta.json
+- FOUND_FILES:
+  - lstm_SPY_60c.pt
+  - lstm_SPY_60c_meta.json
+  - meta_SPY_60c.pkl
+  - transformer_SPY_60c.pt
+  - transformer_SPY_60c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\xgb_SPY_60c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\xgb_SPY_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\lstm_SPY_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\lstm_SPY_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\transformer_SPY_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\transformer_SPY_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\SPY\meta_SPY_60c.pkl | exists=false | size_bytes=0
+
+### TSLA / 1c
+- status: COMPLETE
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\TSLA\20260416T104002Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 18
+- complete candidate sets: 8
+- selected run timestamp: 2026-04-16T10:40:02
+- SOURCE_PATHS:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\TSLA\20260416T104002Z\xgb_TSLA_1c.pkl
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\TSLA\20260416T104002Z\xgb_TSLA_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\TSLA\20260416T104002Z\lstm_TSLA_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\TSLA\20260416T104002Z\lstm_TSLA_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\TSLA\20260416T104002Z\transformer_TSLA_1c.pt
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\TSLA\20260416T104002Z\transformer_TSLA_1c_meta.json
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\TSLA\20260416T104002Z\meta_TSLA_1c.pkl
+- DESTINATION_PATHS:
+  - models/active/TSLA/xgb_TSLA_1c.pkl
+  - models/active/TSLA/xgb_TSLA_1c_meta.json
+  - models/active/TSLA/lstm_TSLA_1c.pt
+  - models/active/TSLA/lstm_TSLA_1c_meta.json
+  - models/active/TSLA/transformer_TSLA_1c.pt
+  - models/active/TSLA/transformer_TSLA_1c_meta.json
+  - models/active/TSLA/meta_TSLA_1c.pkl
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\xgb_TSLA_1c.pkl | exists=true | size_bytes=147330
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\xgb_TSLA_1c_meta.json | exists=true | size_bytes=26288
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\lstm_TSLA_1c.pt | exists=true | size_bytes=293357
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\lstm_TSLA_1c_meta.json | exists=true | size_bytes=1360
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\transformer_TSLA_1c.pt | exists=true | size_bytes=302466
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\transformer_TSLA_1c_meta.json | exists=true | size_bytes=1071
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\meta_TSLA_1c.pkl | exists=true | size_bytes=946
+
+### TSLA / 5c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\TSLA\20260416T104002Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 2
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-16T10:40:02
+- MISSING_FILES:
+  - meta_TSLA_5c.pkl
+- FOUND_FILES:
+  - lstm_TSLA_5c.pt
+  - lstm_TSLA_5c_meta.json
+  - transformer_TSLA_5c.pt
+  - transformer_TSLA_5c_meta.json
+  - xgb_TSLA_5c.pkl
+  - xgb_TSLA_5c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\xgb_TSLA_5c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\xgb_TSLA_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\lstm_TSLA_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\lstm_TSLA_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\transformer_TSLA_5c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\transformer_TSLA_5c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\meta_TSLA_5c.pkl | exists=false | size_bytes=0
+
+### TSLA / 15c
+- status: PARTIAL
+- best source directory: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel\TSLA\20260416T104002Z`
+- source root: `c:\Users\evarg\Documents\Trading\EdWebConsole\models\_artifact_archive\parallel`
+- candidate sets scanned: 3
+- complete candidate sets: 0
+- selected run timestamp: 2026-04-16T10:40:02
+- MISSING_FILES:
+  - meta_TSLA_15c.pkl
+- FOUND_FILES:
+  - lstm_TSLA_15c.pt
+  - lstm_TSLA_15c_meta.json
+  - transformer_TSLA_15c.pt
+  - transformer_TSLA_15c_meta.json
+  - xgb_TSLA_15c.pkl
+  - xgb_TSLA_15c_meta.json
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\xgb_TSLA_15c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\xgb_TSLA_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\lstm_TSLA_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\lstm_TSLA_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\transformer_TSLA_15c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\transformer_TSLA_15c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\meta_TSLA_15c.pkl | exists=false | size_bytes=0
+
+### TSLA / 60c
+- status: MISSING
+- best source directory: (none)
+- candidate sets scanned: 0
+- complete candidate sets: 0
+- selected run timestamp: (none)
+- MISSING_FILES:
+  - xgb_TSLA_60c.pkl
+  - xgb_TSLA_60c_meta.json
+  - lstm_TSLA_60c.pt
+  - lstm_TSLA_60c_meta.json
+  - transformer_TSLA_60c.pt
+  - transformer_TSLA_60c_meta.json
+  - meta_TSLA_60c.pkl
+- FOUND_FILES:
+  - (none)
+- PRE_OVERWRITE_DESTINATION_STATE:
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\xgb_TSLA_60c.pkl | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\xgb_TSLA_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\lstm_TSLA_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\lstm_TSLA_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\transformer_TSLA_60c.pt | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\transformer_TSLA_60c_meta.json | exists=false | size_bytes=0
+  - c:\Users\evarg\Documents\Trading\EdWebConsole\models\active\TSLA\meta_TSLA_60c.pkl | exists=false | size_bytes=0
+
+## GAPS SECTION (CRITICAL)
+- $SPX/1c: MISSING
+- $SPX/5c: MISSING
+- $SPX/15c: MISSING
+- $SPX/60c: MISSING
+- AAPL/5c: PARTIAL
+- AAPL/15c: PARTIAL
+- AAPL/60c: MISSING
+- AMZN/5c: PARTIAL
+- AMZN/15c: PARTIAL
+- AMZN/60c: MISSING
+- AVGO/5c: PARTIAL
+- AVGO/15c: PARTIAL
+- AVGO/60c: MISSING
+- CIFR/5c: PARTIAL
+- CIFR/15c: PARTIAL
+- CIFR/60c: MISSING
+- CRWD/1c: PARTIAL
+- CRWD/5c: PARTIAL
+- CRWD/15c: PARTIAL
+- CRWD/60c: MISSING
+- GOOGL/5c: PARTIAL
+- GOOGL/15c: PARTIAL
+- GOOGL/60c: MISSING
+- IWM/5c: PARTIAL
+- IWM/15c: PARTIAL
+- IWM/60c: MISSING
+- META/5c: PARTIAL
+- META/15c: PARTIAL
+- META/60c: MISSING
+- MSFT/5c: PARTIAL
+- MSFT/15c: PARTIAL
+- MSFT/60c: MISSING
+- NVDA/5c: PARTIAL
+- NVDA/15c: PARTIAL
+- NVDA/60c: MISSING
+- QQQ/5c: PARTIAL
+- QQQ/15c: PARTIAL
+- QQQ/60c: MISSING
+- SPY/60c: PARTIAL
+- TSLA/5c: PARTIAL
+- TSLA/15c: PARTIAL
+- TSLA/60c: MISSING
+
+## RISK SECTION
+- overwrite risks (existing destination files): 94
+- inconsistent archive runs detected (multiple complete candidates):
+  - AAPL/1c: 9 complete candidate directories
+  - AMZN/1c: 9 complete candidate directories
+  - AVGO/1c: 9 complete candidate directories
+  - CIFR/1c: 9 complete candidate directories
+  - GOOGL/1c: 9 complete candidate directories
+  - IWM/1c: 9 complete candidate directories
+  - META/1c: 9 complete candidate directories
+  - MSFT/1c: 9 complete candidate directories
+  - NVDA/1c: 9 complete candidate directories
+  - QQQ/1c: 9 complete candidate directories
+  - SPY/15c: 8 complete candidate directories
+  - SPY/1c: 8 complete candidate directories
+  - TSLA/1c: 8 complete candidate directories
+- missing meta-related files in chosen source set for: 
+  - $SPX/15c
+  - $SPX/1c
+  - $SPX/5c
+  - $SPX/60c
+  - AAPL/15c
+  - AAPL/5c
+  - AAPL/60c
+  - AMZN/15c
+  - AMZN/5c
+  - AMZN/60c
+  - AVGO/15c
+  - AVGO/5c
+  - AVGO/60c
+  - CIFR/15c
+  - CIFR/5c
+  - CIFR/60c
+  - CRWD/15c
+  - CRWD/1c
+  - CRWD/5c
+  - CRWD/60c
+  - GOOGL/15c
+  - GOOGL/5c
+  - GOOGL/60c
+  - IWM/15c
+  - IWM/5c
+  - IWM/60c
+  - META/15c
+  - META/5c
+  - META/60c
+  - MSFT/15c
+  - MSFT/5c
+  - MSFT/60c
+  - NVDA/15c
+  - NVDA/5c
+  - NVDA/60c
+  - QQQ/15c
+  - QQQ/5c
+  - QQQ/60c
+  - SPY/60c
+  - TSLA/15c
+  - TSLA/5c
+  - TSLA/60c
+- mismatched bundle versions: potential where multiple candidate runs exist; best source selected by latest run timestamp (or latest mtime fallback).
+
+## EXECUTION READINESS
+- READY_FOR_RESTORE: no
+- reason: not all ticker/horizon pairs have COMPLETE source sets
+
+## RESULT: PASS

@@ -1,0 +1,207 @@
+# RESTORE STEP A VERIFICATION
+
+## 1) File copy count
+- expected: 240
+- actual: 240
+- COMPLETE tier: 98
+- PARTIAL-meta-only tier: 132
+- CRWD tier: 6
+- SPY60c tier: 4
+- result: PASS
+
+## 2) SHA verification
+- copy SHA MATCH: 240
+- copy SHA MISMATCH: 0
+- backup SHA MATCH: 86
+- backup SHA MISMATCH: 0
+- result: PASS
+
+## 3) Untouched verification
+- $SPX touched operations: 0
+- non-SPY 60c touched operations: 0
+- application code modifications (git status): 0
+- result: PASS
+
+## 4) Working tree delta
+- before status count: 88
+- after status count: 243
+- new status lines: 155
+  - ?? models/active/AAPL/lstm_AAPL_15c.pt
+  - ?? models/active/AAPL/lstm_AAPL_15c_meta.json
+  - ?? models/active/AAPL/lstm_AAPL_5c.pt
+  - ?? models/active/AAPL/lstm_AAPL_5c_meta.json
+  - ?? models/active/AAPL/transformer_AAPL_15c.pt
+  - ?? models/active/AAPL/transformer_AAPL_15c_meta.json
+  - ?? models/active/AAPL/transformer_AAPL_5c.pt
+  - ?? models/active/AAPL/transformer_AAPL_5c_meta.json
+  - ?? models/active/AAPL/xgb_AAPL_15c.pkl
+  - ?? models/active/AAPL/xgb_AAPL_15c_meta.json
+  - ?? models/active/AAPL/xgb_AAPL_5c.pkl
+  - ?? models/active/AAPL/xgb_AAPL_5c_meta.json
+  - ?? models/active/AMZN/lstm_AMZN_15c.pt
+  - ?? models/active/AMZN/lstm_AMZN_15c_meta.json
+  - ?? models/active/AMZN/lstm_AMZN_5c.pt
+  - ?? models/active/AMZN/lstm_AMZN_5c_meta.json
+  - ?? models/active/AMZN/transformer_AMZN_15c.pt
+  - ?? models/active/AMZN/transformer_AMZN_15c_meta.json
+  - ?? models/active/AMZN/transformer_AMZN_5c.pt
+  - ?? models/active/AMZN/transformer_AMZN_5c_meta.json
+  - ?? models/active/AMZN/xgb_AMZN_15c.pkl
+  - ?? models/active/AMZN/xgb_AMZN_15c_meta.json
+  - ?? models/active/AMZN/xgb_AMZN_5c.pkl
+  - ?? models/active/AMZN/xgb_AMZN_5c_meta.json
+  - ?? models/active/AVGO/lstm_AVGO_15c.pt
+  - ?? models/active/AVGO/lstm_AVGO_15c_meta.json
+  - ?? models/active/AVGO/lstm_AVGO_5c.pt
+  - ?? models/active/AVGO/lstm_AVGO_5c_meta.json
+  - ?? models/active/AVGO/transformer_AVGO_15c.pt
+  - ?? models/active/AVGO/transformer_AVGO_15c_meta.json
+  - ?? models/active/AVGO/transformer_AVGO_5c.pt
+  - ?? models/active/AVGO/transformer_AVGO_5c_meta.json
+  - ?? models/active/AVGO/xgb_AVGO_15c.pkl
+  - ?? models/active/AVGO/xgb_AVGO_15c_meta.json
+  - ?? models/active/AVGO/xgb_AVGO_5c.pkl
+  - ?? models/active/AVGO/xgb_AVGO_5c_meta.json
+  - ?? models/active/CIFR/lstm_CIFR_15c.pt
+  - ?? models/active/CIFR/lstm_CIFR_15c_meta.json
+  - ?? models/active/CIFR/lstm_CIFR_5c.pt
+  - ?? models/active/CIFR/lstm_CIFR_5c_meta.json
+  - ?? models/active/CIFR/transformer_CIFR_15c.pt
+  - ?? models/active/CIFR/transformer_CIFR_15c_meta.json
+  - ?? models/active/CIFR/transformer_CIFR_5c.pt
+  - ?? models/active/CIFR/transformer_CIFR_5c_meta.json
+  - ?? models/active/CIFR/xgb_CIFR_15c.pkl
+  - ?? models/active/CIFR/xgb_CIFR_15c_meta.json
+  - ?? models/active/CIFR/xgb_CIFR_5c.pkl
+  - ?? models/active/CIFR/xgb_CIFR_5c_meta.json
+  - ?? models/active/CRWD/xgb_CRWD_15c.pkl
+  - ?? models/active/CRWD/xgb_CRWD_15c_meta.json
+  - ?? models/active/CRWD/xgb_CRWD_5c.pkl
+  - ?? models/active/CRWD/xgb_CRWD_5c_meta.json
+  - ?? models/active/GOOGL/lstm_GOOGL_15c.pt
+  - ?? models/active/GOOGL/lstm_GOOGL_15c_meta.json
+  - ?? models/active/GOOGL/lstm_GOOGL_5c.pt
+  - ?? models/active/GOOGL/lstm_GOOGL_5c_meta.json
+  - ?? models/active/GOOGL/transformer_GOOGL_15c.pt
+  - ?? models/active/GOOGL/transformer_GOOGL_15c_meta.json
+  - ?? models/active/GOOGL/transformer_GOOGL_5c.pt
+  - ?? models/active/GOOGL/transformer_GOOGL_5c_meta.json
+  - ?? models/active/GOOGL/xgb_GOOGL_15c.pkl
+  - ?? models/active/GOOGL/xgb_GOOGL_15c_meta.json
+  - ?? models/active/GOOGL/xgb_GOOGL_5c.pkl
+  - ?? models/active/GOOGL/xgb_GOOGL_5c_meta.json
+  - ?? models/active/IWM/lstm_IWM_15c.pt
+  - ?? models/active/IWM/lstm_IWM_15c_meta.json
+  - ?? models/active/IWM/lstm_IWM_5c.pt
+  - ?? models/active/IWM/lstm_IWM_5c_meta.json
+  - ?? models/active/IWM/transformer_IWM_15c.pt
+  - ?? models/active/IWM/transformer_IWM_15c_meta.json
+  - ?? models/active/IWM/transformer_IWM_5c.pt
+  - ?? models/active/IWM/transformer_IWM_5c_meta.json
+  - ?? models/active/IWM/xgb_IWM_15c.pkl
+  - ?? models/active/IWM/xgb_IWM_15c_meta.json
+  - ?? models/active/IWM/xgb_IWM_5c.pkl
+  - ?? models/active/IWM/xgb_IWM_5c_meta.json
+  - ?? models/active/META/lstm_META_15c.pt
+  - ?? models/active/META/lstm_META_15c_meta.json
+  - ?? models/active/META/lstm_META_5c.pt
+  - ?? models/active/META/lstm_META_5c_meta.json
+  - ?? models/active/META/transformer_META_15c.pt
+  - ?? models/active/META/transformer_META_15c_meta.json
+  - ?? models/active/META/transformer_META_5c.pt
+  - ?? models/active/META/transformer_META_5c_meta.json
+  - ?? models/active/META/xgb_META_15c.pkl
+  - ?? models/active/META/xgb_META_15c_meta.json
+  - ?? models/active/META/xgb_META_5c.pkl
+  - ?? models/active/META/xgb_META_5c_meta.json
+  - ?? models/active/MSFT/lstm_MSFT_15c.pt
+  - ?? models/active/MSFT/lstm_MSFT_15c_meta.json
+  - ?? models/active/MSFT/lstm_MSFT_5c.pt
+  - ?? models/active/MSFT/lstm_MSFT_5c_meta.json
+  - ?? models/active/MSFT/transformer_MSFT_15c.pt
+  - ?? models/active/MSFT/transformer_MSFT_15c_meta.json
+  - ?? models/active/MSFT/transformer_MSFT_5c.pt
+  - ?? models/active/MSFT/transformer_MSFT_5c_meta.json
+  - ?? models/active/MSFT/xgb_MSFT_15c.pkl
+  - ?? models/active/MSFT/xgb_MSFT_15c_meta.json
+  - ?? models/active/MSFT/xgb_MSFT_5c.pkl
+  - ?? models/active/MSFT/xgb_MSFT_5c_meta.json
+  - ?? models/active/NVDA/lstm_NVDA_15c.pt
+  - ?? models/active/NVDA/lstm_NVDA_15c_meta.json
+  - ?? models/active/NVDA/lstm_NVDA_5c.pt
+  - ?? models/active/NVDA/lstm_NVDA_5c_meta.json
+  - ?? models/active/NVDA/transformer_NVDA_15c.pt
+  - ?? models/active/NVDA/transformer_NVDA_15c_meta.json
+  - ?? models/active/NVDA/transformer_NVDA_5c.pt
+  - ?? models/active/NVDA/transformer_NVDA_5c_meta.json
+  - ?? models/active/NVDA/xgb_NVDA_15c.pkl
+  - ?? models/active/NVDA/xgb_NVDA_15c_meta.json
+  - ?? models/active/NVDA/xgb_NVDA_5c.pkl
+  - ?? models/active/NVDA/xgb_NVDA_5c_meta.json
+  - ?? models/active/QQQ/lstm_QQQ_15c.pt
+  - ?? models/active/QQQ/lstm_QQQ_15c_meta.json
+  - ?? models/active/QQQ/lstm_QQQ_5c.pt
+  - ?? models/active/QQQ/lstm_QQQ_5c_meta.json
+  - ?? models/active/QQQ/transformer_QQQ_15c.pt
+  - ?? models/active/QQQ/transformer_QQQ_15c_meta.json
+  - ?? models/active/QQQ/transformer_QQQ_5c.pt
+  - ?? models/active/QQQ/transformer_QQQ_5c_meta.json
+  - ?? models/active/QQQ/xgb_QQQ_15c.pkl
+  - ?? models/active/QQQ/xgb_QQQ_15c_meta.json
+  - ?? models/active/QQQ/xgb_QQQ_5c.pkl
+  - ?? models/active/QQQ/xgb_QQQ_5c_meta.json
+  - ?? models/active/SPY/lstm_SPY_15c.pt
+  - ?? models/active/SPY/lstm_SPY_15c_meta.json
+  - ?? models/active/SPY/lstm_SPY_5c.pt
+  - ?? models/active/SPY/lstm_SPY_5c_meta.json
+  - ?? models/active/SPY/lstm_SPY_60c.pt
+  - ?? models/active/SPY/lstm_SPY_60c_meta.json
+  - ?? models/active/SPY/meta_SPY_15c.pkl
+  - ?? models/active/SPY/meta_SPY_5c.pkl
+  - ?? models/active/SPY/transformer_SPY_15c.pt
+  - ?? models/active/SPY/transformer_SPY_15c_meta.json
+  - ?? models/active/SPY/transformer_SPY_5c.pt
+  - ?? models/active/SPY/transformer_SPY_5c_meta.json
+  - ?? models/active/SPY/transformer_SPY_60c.pt
+  - ?? models/active/SPY/transformer_SPY_60c_meta.json
+  - ?? models/active/SPY/xgb_SPY_15c.pkl
+  - ?? models/active/SPY/xgb_SPY_15c_meta.json
+  - ?? models/active/SPY/xgb_SPY_5c.pkl
+  - ?? models/active/SPY/xgb_SPY_5c_meta.json
+  - ?? models/active/TSLA/lstm_TSLA_15c.pt
+  - ?? models/active/TSLA/lstm_TSLA_15c_meta.json
+  - ?? models/active/TSLA/lstm_TSLA_5c.pt
+  - ?? models/active/TSLA/lstm_TSLA_5c_meta.json
+  - ?? models/active/TSLA/transformer_TSLA_15c.pt
+  - ?? models/active/TSLA/transformer_TSLA_15c_meta.json
+  - ?? models/active/TSLA/transformer_TSLA_5c.pt
+  - ?? models/active/TSLA/transformer_TSLA_5c_meta.json
+  - ?? models/active/TSLA/xgb_TSLA_15c.pkl
+  - ?? models/active/TSLA/xgb_TSLA_15c_meta.json
+  - ?? models/active/TSLA/xgb_TSLA_5c.pkl
+  - ?? models/active/TSLA/xgb_TSLA_5c_meta.json
+  - ?? models/active/_restore_backup_full_2026-04-30T01-18-27.957958-05-00/
+- unexpected delta outside models/active/: 0
+- result: PASS
+
+## Skipped pairs
+- count: 16
+- $SPX/1c: explicit skip rule
+- $SPX/5c: explicit skip rule
+- $SPX/15c: explicit skip rule
+- $SPX/60c: explicit skip rule
+- AAPL/60c: skip all 60c except SPY/60c
+- AMZN/60c: skip all 60c except SPY/60c
+- AVGO/60c: skip all 60c except SPY/60c
+- CIFR/60c: skip all 60c except SPY/60c
+- CRWD/60c: explicit skip rule
+- GOOGL/60c: skip all 60c except SPY/60c
+- IWM/60c: skip all 60c except SPY/60c
+- META/60c: skip all 60c except SPY/60c
+- MSFT/60c: skip all 60c except SPY/60c
+- NVDA/60c: skip all 60c except SPY/60c
+- QQQ/60c: skip all 60c except SPY/60c
+- TSLA/60c: skip all 60c except SPY/60c
+
+## Overall
+- RESULT: PASS
