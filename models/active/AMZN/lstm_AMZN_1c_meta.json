@@ -1,8 +1,8 @@
 {
   "model_type": "dual_stream_lstm",
   "ticker": "AMZN",
-  "trained_at": "2026-04-17T12:16:06.298762",
-  "val_accuracy": 0.6067,
+  "trained_at": "2026-04-15T16:24:26.172928",
+  "val_accuracy": 0.5593,
   "n_train": 1139,
   "n_params": 70739,
   "best_epoch": 50,
@@ -20,7 +20,7 @@
     ],
     "masked_conf": []
   },
-  "training_time_sec": 151.0,
+  "training_time_sec": 41.0,
   "training_timeframe": "1m",
   "target_definition": "outcome_1c ~1 min ahead (1\u00d71m bars)",
   "target_column": "outcome_1c",
@@ -35,7 +35,7 @@
   "promoted_at": "",
   "source_cache_key": "88c7287e9ebabf40b05948ae",
   "promotion_metric": "val_accuracy",
-  "promotion_score": 0.6067,
+  "promotion_score": 0.5593,
   "balanced_accuracy": null,
   "label_config_version": "outcome_1c_filled_rth_v1",
   "horizon_outcome_schema_version": "bar_forward_close_v1",

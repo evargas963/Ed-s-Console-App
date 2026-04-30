@@ -1,0 +1,13 @@
+## STEP A Restore Execution
+- timestamp: 2026-04-30T01:18:27.957900-05:00
+- branch: main
+- commit: 4b3dce4570e15a0111d437d830e66948a6470248
+- backup directory: `C:\Users\evarg\Documents\Trading\EdWebConsole\models\active\_restore_backup_full_2026-04-30T01-18-27.957958-05-00`
+- files copied: 240
+- files backed up: 86
+- skipped pairs: 16
+- copy sha match/mismatch: 240/0
+- backup sha match/mismatch: 86/0
+- working tree new lines: 155
+- unexpected outside models/active: 0
+- result: PASS

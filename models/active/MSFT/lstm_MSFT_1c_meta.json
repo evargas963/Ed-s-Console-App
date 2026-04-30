@@ -1,8 +1,8 @@
 {
   "model_type": "dual_stream_lstm",
   "ticker": "MSFT",
-  "trained_at": "2026-04-17T15:58:52.754242",
-  "val_accuracy": 0.559,
+  "trained_at": "2026-04-15T17:39:49.812344",
+  "val_accuracy": 0.588,
   "n_train": 1136,
   "n_params": 70739,
   "best_epoch": 47,
@@ -20,7 +20,7 @@
     ],
     "masked_conf": []
   },
-  "training_time_sec": 51.3,
+  "training_time_sec": 67.8,
   "training_timeframe": "1m",
   "target_definition": "outcome_1c ~1 min ahead (1\u00d71m bars)",
   "target_column": "outcome_1c",
@@ -35,7 +35,7 @@
   "promoted_at": "",
   "source_cache_key": "24b1abc2a6aa4d529638003b",
   "promotion_metric": "val_accuracy",
-  "promotion_score": 0.559,
+  "promotion_score": 0.588,
   "balanced_accuracy": null,
   "label_config_version": "outcome_1c_filled_rth_v1",
   "horizon_outcome_schema_version": "bar_forward_close_v1",
