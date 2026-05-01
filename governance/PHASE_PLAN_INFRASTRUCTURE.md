@@ -2,8 +2,8 @@
 
 ## 1. Status and authority
 
-**Status:** **DRAFT for review** — not locked.  
-**Version:** Draft 0.2  
+**Status:** **LOCKED** — approved for implementation.  
+**Version:** 1.0 LOCKED  
 
 **Normative hierarchy for this phase plan:**
 
@@ -18,7 +18,7 @@
   `governance/EXISTING_ARTIFACT_TRANSITION_POLICY.md`,  
   and **`OPEN_ITEMS.md`** (repository root).  
 
-**V3 is locked.** This phase plan is **not** locked until: (1) review of this draft, (2) explicit written approval to promote draft to **LOCKED**, (3) any mandated fixups merged as a new document version.
+**V3 is locked.** This phase plan is **LOCKED** at version 1.0 following: (1) operator review and explicit written approval, (2) governance merge-gate PASS on 2026-05-01, and (3) approved register and aligned upstream artifacts (per §18). Subsequent changes require version bump and updated approval.
 
 **Mandatory doctrine (non-negotiable):**  
 *Design for institutional capability; execute against evidenced gaps; closure = enforceable + auditable + non-bypassable + proof + claim binding.*
@@ -28,8 +28,9 @@
 - V3 is locked.  
 - Pre-INF audit is complete (routes, claims, events, artifacts).  
 - Route Inventory, Claims Register, Governance Event Model, Existing Artifact Transition Policy, and Operator Decision Register are **source artifacts** for this plan.  
-- **Binding operator decisions** live in **`governance/OPERATOR_DECISION_REGISTER.md`** (register **upstream**), **approved 2026-05-01**. Sections **6–14** below **mirror** that register for implementation and review. This document remains **draft** until promoted to **LOCKED** per §18. It is the **draft execution plan** for Workstream 2 (INF-3, INF-2, INF-1, INF-4).  
-- **Final lock** requires review (e.g. Claude + ChatGPT + program owner) and **explicit approval**; until then, conformance rows for INF items remain **non-CONFORMS** per audit.
+- **Binding operator decisions** live in **`governance/OPERATOR_DECISION_REGISTER.md`** (register **upstream**), **approved 2026-05-01**. The **final operator decision set** embedded in **§§6–14** below is **authoritative** for INF implementation and review and **mirrors** that register.  
+- This document is **LOCKED** at version **1.0** following operator approval and merge-gate **PASS** on **2026-05-01**.  
+- **INF implementation** is **not** complete until code, proof artifacts, and tests satisfy §15; until then, conformance rows for INF items remain **non-CONFORMS** per audit taxonomy (document lock ≠ INF closure).
 
 ---
 
@@ -418,7 +419,9 @@ If any proof missing → row stays **`DOES_NOT_CONFORM_TRACKED`** or **`DOES_NOT
 
 ---
 
-## 17. Lock-readiness checklist
+## 17. Lock-maintenance and closure-evidence checklist
+
+Unchecked items below track **evidence** toward INF **implementation closure**; they do **not** contradict this document’s **v1.0 LOCKED** status. Pre-lock items (e.g. merge gate) may already be satisfied — retain for audit trail.
 
 - [ ] **`GOVERNANCE_MERGE_GATE.md`** run → **PASS** (all G1–G7).  
 - [ ] All **§2** source files still present at merge time.  
@@ -438,12 +441,16 @@ If any proof missing → row stays **`DOES_NOT_CONFORM_TRACKED`** or **`DOES_NOT
 | Field | Value |
 |--------|--------|
 | **Document** | `governance/PHASE_PLAN_INFRASTRUCTURE.md` |
-| **Version** | Draft **0.2** |
-| **Status** | **Draft for review** |
+| **Version** | **1.0 LOCKED** |
+| **Status** | **LOCKED** — approved for implementation |
 | **Supersedes** | Draft 0.1; aligns register-upstream + G3-R1 closure + fingerprint without `cwd_sha256` |
 | **Depends on** | §2 artifact list; **`OPERATOR_DECISION_REGISTER.md`** approved **2026-05-01**; **`GOVERNANCE_MERGE_GATE.md`** **PASS** **2026-05-01** |
-| **Lock target** | After Claude + ChatGPT review **and** user **explicit approval** → version **1.0 LOCKED** with changelog entry |
+| **Lock target** | ACHIEVED — promoted to 1.0 LOCKED following operator approval and governance merge-gate PASS on 2026-05-01 |
+
+### Changelog
+
+- 2026-05-01 — Promoted Draft 0.2 to 1.0 LOCKED after operator approval and merge-gate PASS.
 
 ---
 
-*End of draft.*
+*End of document — Version 1.0 LOCKED.*
