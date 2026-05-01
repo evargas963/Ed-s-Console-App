@@ -42,7 +42,7 @@ This merge gate document is **not** evaluated by gates G1–G7 as if it were a p
 | Field | Value |
 |--------|--------|
 | Run date | 2026-05-01 |
-| Commit / PR | *(fill when committing)* |
+| Commit / PR | f423c6d |
 | G1 | ☑ PASS — register **O-01–O-15** approved; phase plan §6–§14 aligned |
 | G2 | ☑ PASS — G3-R1 no waiver (§8 / §15) |
 | G3 | ☑ PASS — operator directed full pass; cross-artifact spot-check accepted |
