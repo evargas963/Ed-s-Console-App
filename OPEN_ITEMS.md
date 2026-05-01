@@ -7,60 +7,103 @@
 
 ## GOVERNANCE REBUILD STATUS
 
-### G1 — Canonical Contract Draft (COMPLETE)
+### Standard
 
-Status: Diagnosis complete. Decisions made.
+V3.0 Institutional Standard is locked. See `governance/INSTITUTIONAL_STANDARD_V3.md` and `governance/V3_LOCK_RECORD.md`. The standard governs the entire system from the lock effective date forward. Amendments follow the V3.X / V4.0 path defined in the standard's Section 20.
 
-**Architectural decision:** Parallel and cascade are PEER COMPETITORS. Both must produce a full stack (xgb + lstm + transformer + meta). Governance evaluates the pair and selects a winner.
+### Conformance audit
 
-Evidence:
-- run_architecture_pair_evaluation evaluates both side-by-side (arch_competition/eval_runner.py:208-280)
-- decide_promotion models incumbent parallel vs challenger cascade (arch_competition/promotion_engine.py:17-19, 60-67)
-- manual_promote_to_active_explicit accepts target_architecture parameter (arch_competition/manual_control.py:136-144)
-- Scheduler trains both every cycle (ml_scheduler.py:1585-1647)
+Lock Condition 1 satisfied. See `governance/V3_CONFORMANCE_AUDIT.md`.
 
-**Implementation gap:** train_cascade_candidate (ml_scheduler.py:816-1201) does not produce meta_<ticker>_<hz>.pkl. This blocks all cascade promotion.
+Result distribution across 32 evaluated rows:
+- CONFORMS: 2
+- DOES_NOT_CONFORM_TRACKED: 17
+- DOES_NOT_CONFORM_NEW_GAP: 15
 
-**Contract authority decision:** A new module governance/artifact_contract.py will become the single source of truth for the artifact contract across all four lifecycle tiers (TRAINED_CANDIDATE, EVALUATABLE_CANDIDATE, PROMOTABLE_CANDIDATE, ACTIVE_SERVING_CANDIDATE). All producers, validators, and tests will import from this module.
+Four of the 15 new gaps are HIGH urgency and constitute a new infrastructure governance workstream (see below).
 
-### Phase Plan
+### Two workstreams (parallel, not sequential)
 
-- G1 Canonical contract draft — COMPLETE
-- G2 Cascade alignment — NEXT
-- G3 Governed path contract unification — PENDING (depends on G2)
-- G4 Direct-write quarantine — PENDING (depends on G3)
-- G5 End-to-end proof — PENDING (depends on G2-G4)
+The rebuild work splits into two workstreams. They are orthogonal: different domains of risk, different failure modes, different validation paths. They run in parallel.
 
-### Deferred to G4 (do not address before G2-G3 complete)
+Governing rule: no infrastructure gap may be allowed to invalidate production claims. If an infrastructure invariant is not fully enforced, the corresponding production claim must be explicitly bounded or withdrawn. This is enforced by the V3 lock record's no-silent-non-conformance condition.
 
-**G4-1: Decide fate of server-side active sync helper.**
-_sync_missing_binaries_to_active in server.py:4426-4453 copies model files into models/active/ during request handling, env-gated. Decision required: keep, gate harder behind manual governance, or remove. This is a governance bypass currently reachable from a live web request path. Risk class: HIGH.
+#### Workstream 1: Model Lifecycle
 
-**G4-2: Quarantine/refactor/prohibit direct-active tool scripts.**
-Five tool scripts write directly to models/active/ outside of the manual governance path:
-- tools/train_all_movement_heads_v1.py:65-67, 90-103
-- tools/train_missing_movement_heads_v1.py:74-76, 110-123
-- tools/clone_sibling_dir_heads_v1.py:19, 26, 33
-- patch_active_artifact_provenance.py:57-59, 63-70
-- (plus manual_control.py which is the sanctioned path — not a violation)
-Decision required per tool: keep as exception with audit trail, refactor to use governance, or prohibit. These scripts are how models/active/ has historically been populated; removing them without replacement breaks the actual production workflow.
+Goal: model correctness, feature integrity, statistical edge, training and evaluation discipline.
 
-**G4-3: Change scheduler fail-open behavior to contract-aware failure reporting.**
-ml_scheduler.py:1701-1707 catches governed pass exceptions and continues. ml_scheduler.py:2133-2135 catches per-ticker exceptions and continues. ml_scheduler.py:2230-2263 (CLI block) does not propagate failure as non-zero exit code. Result: training can exit 0 while producing zero promotable artifacts. Canonical behavior: contract violation must surface as non-zero exit and explicit per-tier status report.
+| Phase | Title | Status | Plan / Result |
+|-------|-------|--------|---------------|
+| G1 | Canonical contract draft | COMPLETE | `governance/G1_DIAGNOSIS.md`, `governance/G1_ADDENDUM_TRAINING_DEPENDENCY.md`, `governance/G1_ADDENDUM_CACHE_CONSISTENCY.md` |
+| G2 | Cascade alignment | NEXT | `governance/G2_PLAN.md` (original; eight refinements pending) |
+| G3 | Governed path contract unification | PENDING | depends on G2 |
+| G4 | Direct-write quarantine | PENDING | depends on G3 |
+| G5 | End-to-end proof | PENDING | depends on G2-G4 |
 
-**G4-4: Disable or remove dormant scheduler auto-copy path.**
-ml_scheduler.py:1780-1783 contains _promote_candidate which copies candidate files directly into models/active/. Currently disabled by _scheduler_auto_promote_to_active() returning False (ml_scheduler.py:87-89). Decision required: remove the dormant code, or formalize when it should be reachable. Dormant code creates risk that a future change re-enables a governance bypass.
+Deferred to G4 within this workstream:
+- G4-1: server-side active sync helper (`server.py:4426-4453`) bypasses governance during request handling. HIGH risk.
+- G4-2: five tool scripts write directly to `models/active/` outside governance.
+- G4-3: scheduler fail-open behavior at `ml_scheduler.py:1701-1707` and `ml_scheduler.py:2133-2135` allows exit 0 with incomplete artifacts.
+- G4-4: dormant scheduler auto-copy path at `ml_scheduler.py:1780-1783`.
 
-### Drifts Found in G1 Beyond the Initial Six (for reference)
+G2 plan refinements (proposed during V3 standard development, not yet applied to `governance/G2_PLAN.md`):
+- Architectural invariant statement (cascade meta MUST NOT read parallel paths)
+- Runtime path validation in cascade meta block
+- `validate_trained_candidate()` runtime contract enforcement (cascade and parallel symmetric)
+- LSTM cache invariant note from `governance/G1_ADDENDUM_CACHE_CONSISTENCY.md`
+- `test_parallel_vs_cascade_artifact_equivalence` test
+- Manifest as REQUIRED clarification
+- New sub-phase G2.0 runtime trace (resolves residual UNKNOWN about `_model_dir_for_ticker` resolution)
+- Reference to `governance/G1_ADDENDUM_TRAINING_DEPENDENCY.md` in plan's architectural reference section
 
-- Server sync endpoint (server.py:4426-4465) bypasses manual governance — escalated to G4-1.
-- Dormant scheduler auto-copy path — escalated to G4-4.
-- Active compliance validator (verify_active_models.py:100-152) and runtime fallback (ml_predict.py:1291-1294) have different completeness expectations — to be reconciled in G3.
-- Manifest "promotion_decision" field in candidate manifest (training_cache.py:980, 1029) is informational, not authoritative — to be removed or marked non-authoritative in G3.
+These refinements are pending decision: apply now to G2_PLAN.md, fold into post-V3 phase plan, or treat as superseded by the V3 audit findings (which now govern more broadly than G2's narrow scope).
 
-### Existing Strict-Mode Refactor TO DO (from prior work)
+##### G3 Reconciliation Queue
 
-Refactor strict_active_only into explicit parameter passing. Currently using option (d) — ml_scheduler.py wraps three candidate-inference sites with a context manager. Coverage gap identified: train_all.py:211/216/220 and other callers (transformer_model.py:229, features/shared_sequence_context.py:46, arch_competition/stack_bundle_eval_v1.py:446) are not within the wrapper scope. Proper fix is option (b): thread an explicit strict_active_only parameter through _model_dir_for_ticker, _load_xgb, _load_lstm, _load_transformer, _predict_xgb, _predict_lstm, _predict_transformer and all callers. Estimated 4-8 hours, ~140-260 LOC across ~8-12 files. To be addressed after G2-G4. Reference: ml_predict.py:209.
+Classification: RECONCILIATION (not new gap). Items where two or more existing implementations disagree about a contract, identified during G1 investigation. To be resolved as part of G3 (governed path contract unification).
+
+- **G3-R1: Active validator vs runtime fallback completeness mismatch.** `verify_active_models.py:100-152` enforces one definition of "complete active bundle" (strict, all artifacts required). `ml_predict.py:1291-1294` enforces a different definition (tolerates missing meta with fallback). The two checks disagree on what counts as a valid active model. Invariants violated: I-01 (no silent degradation), I-05 (train-serve feature identity), I-15 (tuple health before trade impact). Status: PENDING. Resolve in G3.
+
+- **G3-R2: `promotion_decision` field is non-authoritative.** `training_cache.py:980, 1029` writes a `promotion_decision` field into candidate manifests. No code path consumes this field as binding for promotion decisions. The field exists, implies authority, but is informational only. Invariants violated: I-02 (single promotion authority), I-14 (attributable change). Status: PENDING. Resolve in G3 by either removing the field or wiring it as authoritative.
+
+- **G3-R3: Lineage horizon mismatch blocks governed evaluation.** Governed evaluation pass fails with `EvaluationLineageError` when manifest horizon does not match expected horizon (observed: manifest `'1c'` vs expected `'5c'`). Source: `arch_competition/lineage.py:29-87` and `arch_competition/eval_runner.py:229-236`. Consequence: `models/arch_competition/` does not exist on this installation because the governed evaluation pass has never successfully produced output. This is why peer-competitor evaluation is not currently operational. Invariants violated: I-10 (reproducible training identity), I-11 (evaluation integrity). Status: PENDING, hard blocker for governed evaluation. Resolve in G3 — unblocks the entire downstream G3-G5 chain.
+
+#### Workstream 2: Infrastructure Governance
+
+Goal: runtime guarantees, system integrity controls, failure containment.
+
+First-class governance gaps. Not secondary, not supporting work. Created from V3 conformance audit findings that did not fit into the model lifecycle phase plan.
+
+| Item | Invariant | Audit row | Urgency | Status |
+|------|-----------|-----------|---------|--------|
+| INF-1 | I-17 deterministic inference | DOES_NOT_CONFORM_NEW_GAP | HIGH | PENDING |
+| INF-2 | I-19 clock synchronization health | DOES_NOT_CONFORM_NEW_GAP | HIGH | PENDING |
+| INF-3 | I-20 dependency pinning in serving path | DOES_NOT_CONFORM_NEW_GAP | HIGH | PENDING |
+| INF-4 | §14.6 kill switch tri-level halt control | DOES_NOT_CONFORM_NEW_GAP | HIGH | PENDING |
+
+Other 11 NEW_GAP rows (medium urgency) are listed in `governance/V3_CONFORMANCE_AUDIT.md` and will be folded into Infrastructure Workstream phase planning.
+
+Workstream 2 phase plan: not yet written. To be authored as `governance/PHASE_PLAN_INFRASTRUCTURE.md` before any implementation work in this workstream begins, per the working discipline (no code without a phase plan).
+
+### Tracked concerns (do not block either workstream)
+
+Findings from G1 investigations recorded for future review. Each is bounded as not blocking, with citation.
+
+- TC-1: Cascade LSTM `xgb_probs_list != ds.n_samples` fallback at `ml_scheduler.py:1010-1024` may silently degrade cascade-LSTM into parallel-LSTM behavior. Frequency unknown without runtime instrumentation. Source: `governance/G1_ADDENDUM_CACHE_CONSISTENCY.md`. Not blocking G2.
+- TC-2: `force_retrain` active compliance check at `ml_scheduler.py:1737-1741` runs only when `hz_sched == DEFAULT_ML_HORIZON_SLUG` (1c). Other primary horizons skip it. Promotion-related, not training-related. Source: `governance/G1_ADDENDUM_CACHE_CONSISTENCY.md`. Track for G3 review.
+
+### Deferred items from lock record
+
+- D-1: Regime awareness invariant. Deferred at V3.0 lock per `governance/V3_LOCK_RECORD.md`. Reconsidered in V3.X amendment cycle.
+- D-2: Audience separation invariant. Same.
+
+### Pre-existing technical debt
+
+- Strict mode option (b) refactor: `ED_XGB_STRICT_ACTIVE_ONLY` defaults to `"1"` in `ml_predict.py:209`. Currently using option (d) wrapper in `ml_scheduler.py` for three candidate-inference sites (committed in 2524770). Coverage gap: `train_all.py:211/216/220`, `transformer_model.py:229`, `features/shared_sequence_context.py:46`, `arch_competition/stack_bundle_eval_v1.py:446`. Proper fix is option (b): thread explicit `strict_active_only` parameter through `_model_dir_for_ticker`, `_load_*`, `_predict_*`. Estimated 4-8 hours, ~140-260 LOC across ~8-12 files. To be addressed after model lifecycle workstream G4 completion.
+
+### Tooling provenance
+
+All commits in this rebuild authored via Cursor agent extension carry a `Made-with: Cursor` trailer in the commit message body. This is hardcoded in the Cursor application bundle (`cursor-agent/dist/main.js`) and cannot be disabled from this repository or from git config. The trailer is treated as known tooling provenance, not silent substitution. Future commits authored through Cursor will continue to carry the trailer.
 
 ## Critical — label vs presentation
 
