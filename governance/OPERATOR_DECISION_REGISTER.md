@@ -1,8 +1,8 @@
 # Operator Decision Register
 
 **Status:** **APPROVED** — operator sign-off recorded below.  
-**Document date:** 2026-05-01  
-**Approval effective:** 2026-05-01  
+**Document date:** 2026-05-02  
+**Approval effective:** 2026-05-02  
 **Control model:** **Single-Operator Control Model** unless the operator documents a change.
 
 ---
@@ -75,7 +75,7 @@ By signing below, the operator attests that the **Decision** column for **O-01 t
 
 **Signature:** *(electronic approval — Cursor session / directive)*  
 
-**Date:** 2026-05-01  
+**Date:** 2026-05-02  
 
 ---
 

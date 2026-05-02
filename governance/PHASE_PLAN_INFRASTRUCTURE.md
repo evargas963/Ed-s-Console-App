@@ -3,7 +3,7 @@
 ## 1. Status and authority
 
 **Status:** **LOCKED** — approved for implementation.  
-**Version:** 1.0 LOCKED  
+**Version:** 1.0.1 LOCKED  
 
 **Normative hierarchy for this phase plan:**
 
@@ -18,7 +18,7 @@
   `governance/EXISTING_ARTIFACT_TRANSITION_POLICY.md`,  
   and **`OPEN_ITEMS.md`** (repository root).  
 
-**V3 is locked.** This phase plan is **LOCKED** at version 1.0 following: (1) operator review and explicit written approval, (2) governance merge-gate PASS on 2026-05-01, and (3) approved register and aligned upstream artifacts (per §18). Subsequent changes require version bump and updated approval.
+**V3 is locked.** This phase plan was **LOCKED** at version **1.0** on **2026-05-01** following: (1) operator review and explicit written approval, (2) governance merge-gate PASS on **2026-05-01**, and (3) approved register and aligned upstream artifacts (per §18). **Version 1.0.1** (**2026-05-02**) is an **administrative amendment** only: §§1–2 mirror / upstream language and §18 checklist alignment with **`OPERATOR_DECISION_REGISTER.md`** (**O-16–O-19**) and merge gate **G1** scope (**§§6–14**, **including §10** governance-event decisions). **No** change to INF numeric thresholds, execution order, route/claim tables, or closure criteria in §§5–9 / §15. Subsequent changes require version bump and updated approval.
 
 **Mandatory doctrine (non-negotiable):**  
 *Design for institutional capability; execute against evidenced gaps; closure = enforceable + auditable + non-bypassable + proof + claim binding.*
@@ -28,8 +28,8 @@
 - V3 is locked.  
 - Pre-INF audit is complete (routes, claims, events, artifacts).  
 - Route Inventory, Claims Register, Governance Event Model, Existing Artifact Transition Policy, and Operator Decision Register are **source artifacts** for this plan.  
-- **Binding operator decisions** live in **`governance/OPERATOR_DECISION_REGISTER.md`** (register **upstream**), **approved 2026-05-01**. The **final operator decision set** embedded in **§§6–14** below is **authoritative** for INF implementation and review and **mirrors** that register.  
-- This document is **LOCKED** at version **1.0** following operator approval and merge-gate **PASS** on **2026-05-01**.  
+- **Binding operator decisions** are **controlled** by **`governance/OPERATOR_DECISION_REGISTER.md`** (register **upstream**), **approved 2026-05-01**. The **final operator decision set** embedded in **§§6–14** below (**including §10** governance-event decisions) **mirrors** that register and is **authoritative** for INF implementation and review.  
+- This document is **LOCKED** at version **1.0.1** following operator approval, merge-gate **PASS** on **2026-05-01** (v1.0), and **administrative amendment** on **2026-05-02** (v1.0.1, per §18 changelog).  
 - **INF implementation** is **not** complete until code, proof artifacts, and tests satisfy §15; until then, conformance rows for INF items remain **non-CONFORMS** per audit taxonomy (document lock ≠ INF closure).
 
 ---
@@ -45,12 +45,12 @@
 | Open items | `OPEN_ITEMS.md` (repo root) | Cross-workstream tracking; INF row pointers |
 | Route inventory | `governance/TRADE_IMPACTING_ROUTE_INVENTORY.md` | Route IDs R-001–R-035; TI classification |
 | Claims register | `governance/PRODUCTION_CLAIMS_REGISTER.md` | Claim IDs C-SRV-*, C-UI-*, C-GOV-*, C-OPS-*, C-LOG-01 |
-| Operator decision register | `governance/OPERATOR_DECISION_REGISTER.md` | **Upstream authority** for §6–§14 numerics and policies |
-| Governance event model | `governance/GOVERNANCE_EVENT_MODEL.md` | Aligns with §10; operator set refines storage to single table |
+| Operator decision register | `governance/OPERATOR_DECISION_REGISTER.md` | **Upstream authority** for binding numerics and policies in **§§6–14** (**including §10** governance-event decisions) |
+| Governance event model | `governance/GOVERNANCE_EVENT_MODEL.md` | **ACTIVE**; aligns with §10; field semantics and storage bound by register **O-16–O-19** |
 | Artifact transition | `governance/EXISTING_ARTIFACT_TRANSITION_POLICY.md` | Forward-only; aligns with §11 |
 | Target state (strategic) | `governance/PHASE_PLAN_TARGET_STATE.md` | P0–P7 context only; **excluded from minimal governance commit** per register **O-14**; track in `OPEN_ITEMS.md` |
 | Lock reviewer index (optional) | `governance/INFRASTRUCTURE_GOVERNANCE_LOCK_PACKAGE.md` | Non-normative index; disposition per register **O-15** |
-| Mirrored operator decision set | **Sections 6–14 below** | Same thresholds, schemas, and policies as register **O-01–O-15** after sign-off |
+| Mirrored operator decision set | **Sections 6–14 below** (**§10** governance-event binding decisions included) | Same thresholds, schemas, and policies as register **O-01–O-19** after sign-off; **`OPERATOR_DECISION_REGISTER.md`** is **upstream** |
 
 **Missing inputs:** **None** — all listed files exist at paths above (`OPEN_ITEMS.md` at repository root), subject to **O-14** / **O-15** commit-scope rules.
 
@@ -421,13 +421,13 @@ If any proof missing → row stays **`DOES_NOT_CONFORM_TRACKED`** or **`DOES_NOT
 
 ## 17. Lock-maintenance and closure-evidence checklist
 
-Unchecked items below track **evidence** toward INF **implementation closure**; they do **not** contradict this document’s **v1.0 LOCKED** status. Pre-lock items (e.g. merge gate) may already be satisfied — retain for audit trail.
+Unchecked items below track **evidence** toward INF **implementation closure**; they do **not** contradict this document’s **v1.0.1 LOCKED** status. Pre-lock items (e.g. merge gate) may already be satisfied — retain for audit trail.
 
 - [ ] **`GOVERNANCE_MERGE_GATE.md`** run → **PASS** (all G1–G7).  
 - [ ] All **§2** source files still present at merge time.  
 - [ ] **Route IDs** R-001–R-035 mapped in §5.  
 - [ ] **Claim IDs** mapped in §5.3.  
-- [ ] **Operator decisions** in §6–§14 match **`OPERATOR_DECISION_REGISTER.md`** verbatim (diff review).  
+- [ ] **Operator decisions** in **§§6–14** (**including §10** governance-event decisions) match **`OPERATOR_DECISION_REGISTER.md`** verbatim (diff review).  
 - [ ] **No new** operator decisions introduced in prose without amendment.  
 - [ ] **Proof paths** created or adjusted with reviewer names filled.  
 - [ ] **Negative tests** from §14 in CI.  
@@ -441,16 +441,18 @@ Unchecked items below track **evidence** toward INF **implementation closure**; 
 | Field | Value |
 |--------|--------|
 | **Document** | `governance/PHASE_PLAN_INFRASTRUCTURE.md` |
-| **Version** | **1.0 LOCKED** |
+| **Version** | **1.0.1 LOCKED** |
 | **Status** | **LOCKED** — approved for implementation |
 | **Supersedes** | Draft 0.1; aligns register-upstream + G3-R1 closure + fingerprint without `cwd_sha256` |
-| **Depends on** | §2 artifact list; **`OPERATOR_DECISION_REGISTER.md`** approved **2026-05-01**; **`GOVERNANCE_MERGE_GATE.md`** **PASS** **2026-05-01** |
-| **Lock target** | ACHIEVED — promoted to 1.0 LOCKED following operator approval and governance merge-gate PASS on 2026-05-01 |
+| **Depends on** | §2 artifact list; **`OPERATOR_DECISION_REGISTER.md`** approved **2026-05-01** (updated **2026-05-02** for **O-16–O-19** / sign-off refresh); **`GOVERNANCE_MERGE_GATE.md`** **PASS** **2026-05-01**; merge gate run history **2026-05-02** (remediation + v1.0.1 bundle) |
+| **Lock target** | ACHIEVED — v1.0 promoted **2026-05-01**; v1.0.1 administrative amendment **2026-05-02** (§18) |
+| **1.0.1 operator approval** | Program operator — **2026-05-02** — attests the **2026-05-02** changelog entry is accurate; amendment is **administrative alignment only** (no INF technical threshold or execution-order change). |
 
 ### Changelog
 
 - 2026-05-01 — Promoted Draft 0.2 to 1.0 LOCKED after operator approval and merge-gate PASS.
+- 2026-05-02 — **1.0.1** — Administrative alignment: §1 binding-decision bullet; §2 source-artifact rows (mirror / upstream for **§§6–14**, **including §10**; register **O-01–O-19**); §17 checklist operator-decision row; §18 document control. **No** change to INF numeric thresholds, execution order, or closure criteria in §§5–9 / §15.
 
 ---
 
-*End of document — Version 1.0 LOCKED.*
+*End of document — Version 1.0.1 LOCKED.*
