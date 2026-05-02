@@ -444,7 +444,7 @@ Unchecked items below track **evidence** toward INF **implementation closure**; 
 | **Version** | **1.0.1 LOCKED** |
 | **Status** | **LOCKED** — approved for implementation |
 | **Supersedes** | Draft 0.1; aligns register-upstream + G3-R1 closure + fingerprint without `cwd_sha256` |
-| **Depends on** | §2 artifact list; **`OPERATOR_DECISION_REGISTER.md`** approved **2026-05-01** (updated **2026-05-02** for **O-16–O-19** / sign-off refresh); **`GOVERNANCE_MERGE_GATE.md`** **PASS** **2026-05-01**; merge gate run history **2026-05-02** (remediation + v1.0.1 bundle) |
+| **Depends on** | §2 artifact list; **`OPERATOR_DECISION_REGISTER.md`** approved **2026-05-01** (updated **2026-05-02** for **O-16–O-19** / sign-off refresh); **`GOVERNANCE_MERGE_GATE.md`** **PASS** **2026-05-01**; **2026-05-02** merge gate run history (see **`GOVERNANCE_MERGE_GATE.md`**) references bundle commit **72ac0667b9acf81d3ff957e0dcc11b034900a068** |
 | **Lock target** | ACHIEVED — v1.0 promoted **2026-05-01**; v1.0.1 administrative amendment **2026-05-02** (§18) |
 | **1.0.1 operator approval** | Program operator — **2026-05-02** — attests the **2026-05-02** changelog entry is accurate; amendment is **administrative alignment only** (no INF technical threshold or execution-order change). |
 
@@ -452,6 +452,7 @@ Unchecked items below track **evidence** toward INF **implementation closure**; 
 
 - 2026-05-01 — Promoted Draft 0.2 to 1.0 LOCKED after operator approval and merge-gate PASS.
 - 2026-05-02 — **1.0.1** — Administrative alignment: §1 binding-decision bullet; §2 source-artifact rows (mirror / upstream for **§§6–14**, **including §10**; register **O-01–O-19**); §17 checklist operator-decision row; §18 document control. **No** change to INF numeric thresholds, execution order, or closure criteria in §§5–9 / §15.
+- 2026-05-02 — **1.0.1** (follow-up) — §18 **Depends on** clarified for merge gate run history; cross-reference to bundle commit **72ac0667b9acf81d3ff957e0dcc11b034900a068**.
 
 ---
 

@@ -1,7 +1,7 @@
 # Governance merge gate
 
-**Status:** **ACTIVE** — operator approved register 2026-05-01; use this gate before governance commits.  
-**Version:** 2026-05-01  
+**Status:** **ACTIVE** — operator approved register (refresh **2026-05-02**); use this gate before governance commits.  
+**Version:** 2026-05-02  
 **Audience:** Operator, Copilot, reviewers  
 
 ---
@@ -65,13 +65,35 @@ This merge gate document is **not** evaluated by gates G1–G7 as if it were a p
 | G7 | ☑ PASS — closure criteria as written |
 | **Overall** | ☑ **PASS** — operator directive **2026-05-01** |
 
+---
+
+## Run history (append-only)
+
+The **Run log (operator fills)** table above records the **2026-05-01** run for commit **`f423c6d`** and must not be altered.
+
+### 2026-05-02 — Merge gate record (remediation + phase plan v1.0.1 bundle)
+
+| Field | Value |
+|--------|--------|
+| Run date | 2026-05-02 |
+| Commit / PR | 72ac0667b9acf81d3ff957e0dcc11b034900a068 |
+| Scope | **(1)** Post-hoc merge gate record for **`506c0794b27e903d44d4f81939c77dfd37076a0b`** (Step 2: register **O-16–O-19**, **`GOVERNANCE_EVENT_MODEL.md`** **ACTIVE**, **G1** scope) per execution protocol. **(2)** **`PHASE_PLAN_INFRASTRUCTURE.md`** **v1.0.1** administrative amendment and **`OPERATOR_DECISION_REGISTER.md`** date refresh are recorded under **Commit / PR** (the commit object that introduced those files). |
+| G1 | ☑ PASS — `PHASE_PLAN_INFRASTRUCTURE.md` §§6–14, including §10 governance-event decisions, reflected in `OPERATOR_DECISION_REGISTER.md` **O-01–O-19**; **v1.0.1** text matches register / merge gate; no UNKNOWN |
+| G2 | ☑ PASS — no new internal contradictions introduced by amendment |
+| G3 | ☑ PASS — §5 route/claim IDs unchanged; cross-artifact inventory/register relationship unchanged from **2026-05-01** verification |
+| G4 | ☑ PASS — Bundle files: `OPERATOR_DECISION_REGISTER.md`, `GOVERNANCE_EVENT_MODEL.md`, `GOVERNANCE_MERGE_GATE.md`, `PHASE_PLAN_INFRASTRUCTURE.md`; no orphan governance paths |
+| G5 | ☑ PASS — governance-only edit set; no unexplained application code churn |
+| G6 | ☑ PASS — register sign-off refreshed **2026-05-02**; §18 **1.0.1 operator approval** row added |
+| G7 | ☑ PASS — closure semantics unchanged |
+| **Overall** | ☑ **PASS** — operator directive **2026-05-02** (remediation + v1.0.1) |
+
 **Operator approval** is defined as:
 
 - evaluation of the merge gate against the current HEAD commit,
 - confirmation that `OPERATOR_DECISION_REGISTER.md` is aligned and authoritative,
 - Git commit by repository owner representing approval of the evaluated state.
 
-**Operator signature:** **Date:** 2026-05-01  
+**Operator signature:** **Date:** 2026-05-02  
 
 ---
 
