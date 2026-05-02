@@ -16,7 +16,7 @@
 | **R-08** | Any value **not** in this register is **non-authoritative** for committed or authoritative artifacts. |
 | **R-09** | Any value proposed by **any** system is **invalid** until **explicitly approved and recorded** in this register. |
 
-**Register upstream:** `PHASE_PLAN_INFRASTRUCTURE.md` §6–§14 **mirrors** this register. No plan text may assert binding numerics or policies **before** they appear here.
+**Register upstream:** `PHASE_PLAN_INFRASTRUCTURE.md` mirrors this register for all binding INF operator decisions, including §§6–14 and governance-event decisions in §10. No plan text may assert binding numerics or policies **before** they appear here.
 
 ---
 
@@ -41,6 +41,10 @@
 | **O-13** | Synthetic / debug defaults | Synthetic bundle and debug policy per phase plan §5.2, §10, §12 until amended | Program operator | 2026-05-01 | Phase plan |
 | **O-14** | `PHASE_PLAN_TARGET_STATE.md` | **Excluded** from minimal governance commit bundle; **tracked** for separate review (strategic P0–P7; not execution order). Do not leave untracked without disposition. | Program operator | 2026-05-01 | Consensus P-04 |
 | **O-15** | `INFRASTRUCTURE_GOVERNANCE_LOCK_PACKAGE.md` | **Deferred** — reviewer index at lock time; **not** normative vs V3 or phase plan. Include in **optional** lock-review bundle when operator promotes plan to LOCKED; not required for first merge-gate PASS if G4 lists files explicitly. | Program operator | 2026-05-01 | Consensus N-04 |
+| **O-16** | Governance event storage | Governance events are stored in SQLite table **`governance_events`** at **`DB_PATH`**. This intentionally uses the same SQLite database authority as the application data under the current Single-Operator Control Model. This accepts the coupling between application storage and governance-event storage for the current implementation. Separation into a dedicated audit store is deferred and requires a future register decision before any multi-operator or external-audit deployment. Application behavior is **INSERT-only** for **`governance_events`**; no **UPDATE** or **DELETE** from application code. **INSERT** authority is limited to the serving process (`uvicorn server:app` with **`ED_SERVING_PROCESS=1`**) unless a future register decision explicitly authorizes a tool/script writer. Any deviation from this storage or writer model requires a prior update to this register. | Program operator | 2026-05-01 | Phase plan §10; `GOVERNANCE_EVENT_MODEL.md`; Single-Operator Control Model |
+| **O-17** | Required governance event types | Authoritative, required for implementation: **`REPLAY_FAILURE`**, **`CLOCK_SKEW_BREACH`**, **`INFRA_DRIFT`**, **`HALT_ACTIVATION`**, **`HALT_RELEASE`**, **`VALIDATION_FAILURE`**, **`SYNTHETIC_BUNDLE_SERVED`**. No additional event types are binding unless added via a future register decision. | Program operator | 2026-05-01 | `PHASE_PLAN_INFRASTRUCTURE.md` §10; `GOVERNANCE_EVENT_MODEL.md`; register **O-13** (synthetic / debug defaults) |
+| **O-18** | Optional governance event extensions | Event types listed as extensions in `GOVERNANCE_EVENT_MODEL.md`, including but not limited to **`REGRESSION_CONFORMS`**, **`CLAIM_BOUNDARY_CHANGE`**, **`CLAIM_WITHDRAWN`**, and **`GOVERNANCE_OVERRIDE_APPLIED`**, are **non-authoritative** and **optional**. They must not be treated as required, binding, or production-authoritative unless explicitly promoted by a future register entry. | Program operator | 2026-05-01 | `GOVERNANCE_EVENT_MODEL.md`; R-08 / R-09 authority rules |
+| **O-19** | Governance event retention | Governance event retention duration, archival behavior, and deletion policy are **deferred** and **non-authoritative** at this stage. A future register entry must define retention duration and archival/deletion policy before the first implementation PR that adds **INSERT** calls to **`governance_events`** for production serving. | Program operator | 2026-05-01 | Gap identified during INF governance alignment |
 
 ---
 
@@ -65,7 +69,7 @@ The following were **UNKNOWN** in the pre-2026-05-01 audit. Where **O-** IDs abo
 
 ## Operator sign-off
 
-By signing below, the operator attests that the **Decision** column for **O-01 through O-15** is accurate or has been corrected in-line, that **R-08** and **R-09** are accepted, and that **`GOVERNANCE_MERGE_GATE.md`** may be run for the next governance commit.
+By signing below, the operator attests that the **Decision** column for **O-01 through O-19** is accurate or has been corrected in-line, that **R-08** and **R-09** are accepted, and that **`GOVERNANCE_MERGE_GATE.md`** may be run for the next governance commit.
 
 **Printed name:** Program operator  
 
