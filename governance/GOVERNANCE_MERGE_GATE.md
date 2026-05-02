@@ -39,6 +39,8 @@ This merge gate document is **not** evaluated by gates G1–G7 as if it were a p
 
 ## Merge Gate Execution Protocol
 
+Mechanical preflight (encoding, merge-gate `Commit / PR` shape, merge-gate template strings): run `python tools/governance_preflight.py` from repo root before committing any `governance/**/*.md` change — see `governance/OPERATOR_PREFLIGHT.md`.
+
 - Each governance commit requires a new merge gate run.
 - Run logs are append-only; prior runs must not be modified.
 - Each run must record:
