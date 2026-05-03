@@ -1,0 +1,16 @@
+# Pilot-generated run artifacts (v1.1 lock). Do not commit ad hoc outputs from
+# pilot_runner or diagnostics. Tracked .gitkeep files keep empty dirs usable
+# after a fresh clone. (Use 'dir/*' + '!dir/.gitkeep' so .gitkeep can be
+# re-included; 'dir/**' would exclude the directory tree and block negation.)
+
+reports/*
+!reports/.gitkeep
+
+manifests/*
+!manifests/.gitkeep
+
+logs/*
+!logs/.gitkeep
+
+diagnostics/*
+!diagnostics/.gitkeep
