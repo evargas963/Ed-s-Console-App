@@ -55,6 +55,8 @@ def _run_pytest_pilot_tests(root: Path) -> tuple[bool, str]:
         "pytest",
         "tests/test_pilot_step3_trade_labels.py",
         "tests/test_pilot_step3_events.py",
+        "tests/test_pilot_step3_data_loader.py",
+        "tests/test_pilot_step3_sigma_contract.py",
         "tests/test_pilot_prereg_framework_binding.py",
         "-q",
     ]
