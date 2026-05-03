@@ -1,0 +1,150 @@
+{
+  "prereg_id": "pilot_step3_prereg_v1",
+  "framework_doc_id": "governance/Framework-ED-Decision-Engine-v1.1.md",
+  "framework_doc_version": "1.1",
+  "pilot_scope": {
+    "purpose": "Labeling and event-generation validation only for the replacement-core pilot. This pilot does NOT train final models, meta-layer, calibration, walk-forward/OOS execution, or decision policy.",
+    "cusum_k_and_sma_fixed": "Pilot locks CUSUM k=0.7 and SMA(8,21) only. Full Step 2.5 candidate sets (multiple k, SMA pairs) remain deferred to the main grid sweep after pilot PASS.",
+    "output_authority": "pilot_summary.json is authoritative; pilot_summary.csv is a flattened convenience copy for spreadsheets.",
+    "non_promotion": "Pilot results MUST NOT be promoted to production or wired into live signal authority.",
+    "legacy_non_authority": "No legacy directional stack, fusion, multi_horizon_decision, call_engine trade semantics, outcome_*c labels, or prediction cards have authority over this pilot."
+  },
+  "framework_commitments": {
+    "lopez_de_prado": [
+      "event-based sampling (CUSUM events, not every bar)",
+      "triple-barrier labeling WIN/LOSS/TIMEOUT",
+      "meta-labeling planned; OOF-only for meta (not in pilot scaffold)",
+      "purged CV / embargo / sample uniqueness: NOT_IMPLEMENTED_IN_PILOT_V1",
+      "no forward-return proxy as authoritative label for this pilot"
+    ],
+    "hudson_thames_discipline": [
+      "reproducible research pipeline",
+      "feature contracts and label contracts (this prereg + future IDs)",
+      "artifact versioning via run manifests",
+      "walk-forward / OOF: walk-forward not executed in pilot_v1 scaffold",
+      "no silent fallbacks in pilot runner",
+      "separation: data / events / labels / models / meta / policy (models+meta deferred)"
+    ]
+  },
+  "no_legacy_authority_statement": "The legacy directional signal stack, outcome_*c labels, fusion, multi_horizon_decision product authority, call_engine trade semantics, secondary horizons 3c/8c/13c, and prediction cards are NOT authoritative for this pilot. This pilot is research-only and not promoted to production.",
+  "instrument": {
+    "ticker": "SPY"
+  },
+  "candidate_generator": {
+    "candidate_generator_id": "CUSUM_SMA_V1_PILOT",
+    "cusum": {
+      "k": 0.7,
+      "h_threshold": 2.5,
+      "description": "pos=max(0,pos+z-k); neg=max(0,neg-z-k); event when pos>=h or neg>=h; z = simple return / sigma_contract EWM std (continuous RTH tape; optional causal relative floor)"
+    },
+    "ewm_span_bars": 390,
+    "daily_ewm_reset": "DEPRECATED_replaced_by_sigma_contract_continuous_v1",
+    "sigma_contract": {
+      "contract_id": "CONTINUOUS_EWM_REL_FLOOR_V1",
+      "ewm_span_bars": 390,
+      "relative_floor": {
+        "enabled": true,
+        "M": 120,
+        "phi": 0.25
+      }
+    },
+    "exclude_first_30min_rth": true,
+    "min_bar_gap": 5,
+    "sma": {
+      "fast": 8,
+      "slow": 21,
+      "near_equal_tolerance": 1e-09,
+      "near_equal_action": "DROP_EVENT_DO_NOT_STORE_NONE_SIDE"
+    },
+    "side_rule": "SMA_CROSS_TREND_ONLY_V1",
+    "trend_following_only": true
+  },
+  "entry": {
+    "rule": "NEXT_BAR_OPEN_V1",
+    "description": "Entry price is open of first 1m bar strictly after signal bar close; label path simulation starts at that bar."
+  },
+  "atr": {
+    "method": "WILDER_RMA_14",
+    "atr_anchor": "T_MINUS_1",
+    "atr_rule": "WILDER_ATR_14_T_MINUS_1",
+    "description": "ATR-14 using Wilder smoothing computed at close of bar T-1, excluding the event bar to avoid CUSUM-selection bias in barrier sizing.",
+    "source": "1m OHLCV from price_bars_1m",
+    "note": "Do not use math_volatility.compute_atr (SMA of TR) for authoritative pilot labels. Barrier width uses atr_series[i_sig-1], not i_sig."
+  },
+  "barrier_grid": {
+    "stop_atr_multiples": [
+      0.75,
+      1.0,
+      1.25,
+      1.5,
+      2.0
+    ],
+    "target_atr_multiples": [
+      1.0,
+      1.5,
+      2.0,
+      2.5,
+      3.0
+    ],
+    "vertical_minutes": [
+      15,
+      20,
+      25,
+      30,
+      35,
+      45,
+      60
+    ],
+    "total_cells": 175
+  },
+  "session": {
+    "calendar": "RTH_ET_0930_1600_EXCLUSIVE_END",
+    "force_flat": "RTH_CLOSE_MINUS_5MIN_ET",
+    "force_flat_minute_of_day": 955,
+    "force_flat_outcome_class": "TIMEOUT",
+    "force_flat_barrier_audit": "FORCE_FLAT"
+  },
+  "same_bar": {
+    "production_policy": "CONSERVATIVE_V1",
+    "diagnostic_policy": "REJECT_V1",
+    "conservative_long": "if stop and target both touched same bar, assume stop first (LOSS)",
+    "conservative_short": "if stop and target both touched same bar, assume stop first (LOSS)",
+    "reject": "if both touched same bar, label_reject=REJECT for divergence monitoring"
+  },
+  "costs": {
+    "cost_model_id": "COST_V1_UNDERLYING_SPY",
+    "half_spread_bp_per_side": 0.5,
+    "round_trip_bp": 1.0,
+    "commission_usd": 0,
+    "market_impact_bp": 0,
+    "application": "post_label_only",
+    "must_not_change_classification": true
+  },
+  "return_units": {
+    "realized_R": "stop_distance_R_multiple",
+    "realized_return_bp": "raw_bps_on_underlying",
+    "realized_return_bp_post_cost": "bps_after_round_trip_cost"
+  },
+  "data": {
+    "min_bars_required": 5000,
+    "no_silent_repair": true
+  },
+  "pilot_rejection_rules": {
+    "timeout_pct": {
+      "min": 5,
+      "max": 70
+    },
+    "min_win_loss_pct": 15,
+    "min_valid_events": 1000,
+    "same_bar_ambiguous_max_pct": 25
+  },
+  "output_schema": {
+    "per_cell_csv": "research/pilot_step3/reports/pilot_summary.csv",
+    "per_cell_json": "research/pilot_step3/reports/pilot_summary.json",
+    "manifest": "research/pilot_step3/manifests/<run_id>.json",
+    "log": "research/pilot_step3/logs/<run_id>.log",
+    "json_authoritative": true,
+    "csv_convenience_only": true
+  },
+  "content_hash": "fd2b1ab608e5bc5fabac62fe19c2cae0e792c7788c58133ee03e5c1fbd38b855"
+}
