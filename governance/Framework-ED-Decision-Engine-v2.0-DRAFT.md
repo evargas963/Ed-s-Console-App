@@ -128,6 +128,8 @@ Module D outputs must include:
 - user-horizon alignment;
 - what would change the answer.
 
+All decision modes, including Module D, must expose counterfactual sensitivity where practical: what input, regime, price, portfolio, tax, horizon, or execution condition would change the recommendation or decision.
+
 ### Fundamental Data Contract
 
 Fundamental data belongs in the v2.0 data-plane contract even if implementation is deferred for Pilot 1. Required future contract surfaces include earnings, financial statements, analyst revisions, valuation metrics, growth/quality metrics, institutional ownership, short interest, borrow cost, and sector/theme classifications.
@@ -407,7 +409,10 @@ Each policy object requires:
 16.5 Liquidity and capacity caps  
 16.6 Hard max size caps  
 16.7 RL sizing as research candidate only  
-16.8 Sizing policy-object governance
+16.8 Sizing policy-object governance  
+16.9 Pre-trade stress / scenario checks  
+16.10 Gap, volatility, liquidity, and correlation shock scenarios  
+16.11 Stress-driven size reduction or rejection rules
 
 ### 16.5 Lifecycle Policy
 
@@ -430,12 +435,13 @@ Each policy object requires:
 17.5 Required gates before TRADE  
 17.6 AVOID triggers  
 17.7 WAIT semantics  
-17.8 Preferred order type output  
-17.9 Trader-facing reason codes  
-17.10 Machine-readable output schema  
-17.11 Blackout and participation gates  
-17.12 Decision latency budget per event type  
-17.13 Decision TTL and stale-decision behavior
+17.8 Tax overlay for taxable accounts and tax-aware modules  
+17.9 Preferred order type output  
+17.10 Trader-facing reason codes  
+17.11 Machine-readable output schema  
+17.12 Blackout and participation gates  
+17.13 Decision latency budget per event type  
+17.14 Decision TTL and stale-decision behavior
 
 ### 18. Output Schema And Decision Trace
 
@@ -444,11 +450,13 @@ Each policy object requires:
 18.3 Required EV fields  
 18.4 Required execution fields  
 18.5 Required ranking/allocation fields  
-18.6 Required policy object IDs  
-18.7 Required artifact hashes  
-18.8 Required decomposition trace  
-18.9 Schema versioning and semantic change rules  
-18.10 Invalid-output fail-closed behavior
+18.6 Required Module D recommendation fields  
+18.7 Required policy object IDs  
+18.8 Required artifact hashes  
+18.9 Required decomposition trace  
+18.10 Counterfactual sensitivity / "what would change the answer" fields  
+18.11 Schema versioning and semantic change rules  
+18.12 Invalid-output fail-closed behavior
 
 ### 19. Validation Protocol
 
@@ -491,6 +499,17 @@ Each policy object requires:
 20.10 Degraded mode signaling  
 20.11 Hard-fail gates  
 20.12 Governance event emission
+
+### 20.5 Post-Trade Attribution And Learning Loop
+
+20.5.1 Structured close-out record  
+20.5.2 Signal contribution attribution  
+20.5.3 Execution shortfall attribution  
+20.5.4 Portfolio allocation and sizing attribution  
+20.5.5 Lifecycle action attribution  
+20.5.6 Tax impact attribution where applicable  
+20.5.7 Reason-code outcome analysis  
+20.5.8 Feedback into calibration, execution, lifecycle, and refit cycles
 
 ### 21. Promotion And Lifecycle Governance
 
