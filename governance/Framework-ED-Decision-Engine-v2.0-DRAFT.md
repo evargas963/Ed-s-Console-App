@@ -11,9 +11,9 @@ This draft does not supersede `governance/Framework-ED-Decision-Engine-v1.1.md`.
 
 ## Purpose
 
-Define the governance structure for the maximum-edge ED Institutional Trading Decision Engine: a multi-source, multi-horizon, execution-aware, portfolio-aware decision system governed by V3 institutional controls.
+Define the governance structure for the maximum-edge ED Institutional Trading Decision Engine: a multi-strategy, multi-expression, execution-aware, portfolio-aware decision system governed by V3 institutional controls.
 
-This document is a table-of-contents draft only. It establishes the review surface for v2.0; it does not lock semantics, thresholds, labels, or implementation obligations.
+This document is the canonical working target draft for v2.0. It locks the target direction for design work, but it does not create production authority, lock thresholds, bind preregistration, or authorize implementation until separately approved.
 
 ---
 
@@ -37,6 +37,113 @@ Forbidden use:
 
 ---
 
+## Working Target Architecture
+
+v2.0 is a **meta-framework**, not one monolithic strategy stretched across every timeframe. Short-horizon trading, 0DTE options, swing trading, LEAPS, and on-demand portfolio analysis are separate strategy modules or expression profiles under one shared governance framework.
+
+Shared framework responsibilities:
+- define edge domains;
+- define strategy-module contracts;
+- define expression-profile contracts;
+- define portfolio coordination across modules;
+- define lifecycle policy requirements;
+- define validation and approximate-guarantee discipline;
+- define preregistration and artifact governance.
+
+The key distinction:
+
+| Concept | Meaning |
+|---|---|
+| Strategy Module | Why and when the system wants exposure. |
+| Expression Profile | How that exposure is expressed in the market. |
+| Portfolio Layer | Whether the exposure is allowed alongside the current book. |
+| Lifecycle Policy | How the position is managed after entry. |
+
+### Shared Edge Domains
+
+Every strategy module is audited across four edge domains:
+
+1. **Signal Edge** — whether the opportunity is predictive.
+2. **Implementation Edge** — whether the opportunity can be traded at acceptable cost and quality.
+3. **Portfolio Edge** — whether the opportunity is the best use of risk budget across the whole account.
+4. **Lifecycle Edge** — whether the system manages the open position better than a static baseline.
+
+### Strategy Modules And Expression Profiles
+
+| Module | Strategy family | Primary expression profile | Additional / future expression profiles |
+|---|---|---|---|
+| **Module A** | Short-horizon event-driven trading | **A1: Equity / ETF** | **A2: Options / 0DTE** |
+| **Module B** | Swing trading | **B1: Equity / ETF** | B2: Defined-risk options |
+| **Module C** | Long-horizon equity / LEAPS | C1: Equity | C2: LEAPS |
+| **Module D** | On-demand portfolio analysis | Recommendation with rationale | No autonomous trade expression by default |
+
+Pilot sequence:
+- **Pilot 1:** Module A, A1 equity/ETF, SPY, horizons 1m / 5m / 15m / 60m.
+- **Pilot 1B:** Module A, A2 options/0DTE, initially SPY / QQQ unless separately amended.
+- **Later pilots:** Module B swing, Module C long-horizon / LEAPS, Module D on-demand portfolio analysis.
+
+0DTE remains in scope as **Expression Profile A2**. It shares Module A's short-horizon signal logic where appropriate, but it has separate option-chain, IV, Greeks, execution, lifecycle, and validation contracts.
+
+### Cross-Module Portfolio Coordination
+
+The Portfolio Edge layer coordinates across modules, not only within each module. It must aggregate net exposure by ticker, factor, sector, theme, expression type, and module.
+
+Default conflict protocol:
+1. Hard risk gates always win.
+2. Longer-horizon thesis modules may veto contradictory shorter-horizon trades.
+3. Pre-registered hedge contracts may allow apparent conflicts.
+4. Thesis-break events escalate to the longer-horizon module for re-evaluation.
+5. Unclassified conflicts block the lower-priority trade.
+
+Hedges are governed contracts, not runtime discretion. A hedge contract must include:
+- `hedge_contract_id`;
+- `protected_module`;
+- `hedging_module`;
+- ticker / exposure scope;
+- allowed side;
+- max hedge size;
+- max duration;
+- trigger conditions;
+- attribution target;
+- expiry / review cadence.
+
+Conflict outcomes must be machine-readable:
+- `approved_hedge`;
+- `thesis_break_escalation`;
+- `blocked_lower_priority_trade`;
+- `no_conflict`.
+
+### Module D Explainability
+
+Module D is a meta-consumer of all modules, not a wrapper around Module C. It consumes Module A, B, and C context plus portfolio, tax/account, risk, and user-horizon inputs.
+
+Module D outputs must include:
+- recommendation;
+- rationale;
+- contributing modules and weights;
+- confidence and disagreement;
+- factor exposures;
+- tax/account constraints where available;
+- portfolio constraints;
+- user-horizon alignment;
+- what would change the answer.
+
+### Fundamental Data Contract
+
+Fundamental data belongs in the v2.0 data-plane contract even if implementation is deferred for Pilot 1. Required future contract surfaces include earnings, financial statements, analyst revisions, valuation metrics, growth/quality metrics, institutional ownership, short interest, borrow cost, and sector/theme classifications.
+
+### Decision Latency Contract
+
+Every event type or module decision mode must declare:
+- `decision_latency_budget`;
+- `decision_ttl`;
+- stale-decision behavior;
+- which optional layers are synchronous, asynchronous, or advisory.
+
+Optional models that cannot fit inside the latency budget cannot be trade-impacting for that event type.
+
+---
+
 ## Proposed Table Of Contents
 
 ### 0. Scope, Authority, And Binding
@@ -55,10 +162,24 @@ Forbidden use:
 1.1 Signal edge domain  
 1.2 Implementation / execution edge domain  
 1.3 Portfolio allocation edge domain  
-1.4 Required separation between signal, execution, and portfolio logic  
-1.5 No double-counting of costs, liquidity, or risk adjustments  
-1.6 Advisory vs gating vs trade-impacting components  
-1.7 Decision trace requirements across all domains
+1.4 Lifecycle edge domain  
+1.5 Required separation between signal, execution, portfolio, and lifecycle logic  
+1.6 No double-counting of costs, liquidity, risk, or lifecycle adjustments  
+1.7 Advisory vs gating vs trade-impacting components  
+1.8 Decision trace requirements across all domains
+
+### 1.5 Strategy Modules And Expression Profiles
+
+1.5.1 Strategy module contract  
+1.5.2 Expression profile contract  
+1.5.3 Module A: short-horizon event-driven trading  
+1.5.4 Expression Profile A1: equity / ETF  
+1.5.5 Expression Profile A2: options / 0DTE  
+1.5.6 Module B: swing trading  
+1.5.7 Module C: long-horizon equity / LEAPS  
+1.5.8 Module D: on-demand portfolio analysis  
+1.5.9 Pilot 1 and Pilot 1B scope  
+1.5.10 Future module registration process
 
 ### 2. Controlled Vocabulary
 
@@ -75,7 +196,13 @@ Forbidden use:
 2.11 Calibration health  
 2.12 Coverage health  
 2.13 Drift gate  
-2.14 Trade-impacting output
+2.14 Trade-impacting output  
+2.15 Strategy module  
+2.16 Expression profile  
+2.17 Lifecycle policy  
+2.18 Hedge contract  
+2.19 Thesis-break escalation  
+2.20 Decision-plane mode
 
 ### 3. Approximate Guarantees
 
@@ -100,7 +227,10 @@ Reports citing an approximate guarantee must:
 4.6 Revision and backfill policy  
 4.7 Multi-source data quality gates  
 4.8 Broker/API credential and secrets boundaries  
-4.9 Data-source failure modes and response policy
+4.9 Data-source failure modes and response policy  
+4.10 Fundamental data contract surfaces  
+4.11 Option-chain and IV-surface data contracts  
+4.12 Tax-lot and account data contracts where available
 
 ### 5. Event Generation
 
@@ -116,6 +246,14 @@ Reports citing an approximate guarantee must:
 5.10 Liquidity shock events  
 5.11 Event identity, deduplication, and causality  
 5.12 Event proposal vs trade decision distinction
+
+### 5.5 Event Reconciliation
+
+5.5.1 Event clustering by ticker, time window, and catalyst  
+5.5.2 Evidence aggregation  
+5.5.3 Contradiction flags  
+5.5.4 Candidate suppression / split / aggregate policy  
+5.5.5 One candidate per reconciled cluster unless pre-registered otherwise
 
 ### 6. Regime Context
 
@@ -135,13 +273,15 @@ Reports citing an approximate guarantee must:
 7.1 Candidate trade path definition  
 7.2 Triple-barrier labels  
 7.3 Trend-scanning labels  
-7.4 Production label selection per strategy role  
+7.4 Production label selection per strategy module  
 7.5 Diagnostic label use  
 7.6 Label horizon, stop, target, and timeout contracts  
 7.7 Same-bar and force-flat policy  
 7.8 Sample uniqueness weighting  
 7.9 Label leakage controls  
-7.10 Label comparison and change governance
+7.10 Label comparison and change governance  
+7.11 Module-specific label families  
+7.12 Expression-specific payoff labels
 
 ### 8. Feature Contracts
 
@@ -211,18 +351,27 @@ Reports citing an approximate guarantee must:
 13.7 Quote staleness and decision TTL  
 13.8 Execution drift monitoring  
 13.9 Realized vs predicted execution shortfall  
-13.10 Execution-model failure modes
+13.10 Execution-model failure modes  
+13.11 Capacity / participation-rate model  
+13.12 Borrow and shortability gates  
+13.13 Options spread/fill quality model  
+13.14 0DTE expiration, Greeks, and IV execution constraints
 
-### 14. Cross-Sectional Ranking And Portfolio Allocation
+### 14. Cross-Module Portfolio Coordination
 
 14.1 Candidate set construction  
-14.2 Expected utility objective  
-14.3 Correlation and concentration constraints  
-14.4 Liquidity and capacity constraints  
-14.5 Opportunity cost of capital  
-14.6 Rank trace and allocation trace  
-14.7 Dominated-candidate policy  
-14.8 Portfolio-level validation metrics
+14.2 Cross-sectional expected utility objective  
+14.3 Cross-module position aggregation  
+14.4 Cross-module capital budgets  
+14.5 Correlation and concentration constraints  
+14.6 Liquidity and capacity constraints  
+14.7 Opportunity cost of capital  
+14.8 Rank trace and allocation trace  
+14.9 Dominated-candidate policy  
+14.10 Hierarchical conflict protocol  
+14.11 Pre-registered hedge contracts  
+14.12 Thesis-break escalation  
+14.13 Portfolio-level validation metrics
 
 ### 15. Policy Objects Under V3 I-13
 
@@ -260,6 +409,18 @@ Each policy object requires:
 16.7 RL sizing as research candidate only  
 16.8 Sizing policy-object governance
 
+### 16.5 Lifecycle Policy
+
+16.5.1 Lifecycle action sets by strategy module  
+16.5.2 Static baseline policy  
+16.5.3 Dynamic lifecycle policy candidate  
+16.5.4 Hold / tighten / scale-out / exit / extend / convert actions  
+16.5.5 BUY / HOLD / ADD / TRIM / EXIT actions for long-horizon modules  
+16.5.6 Lifecycle validation by same-entry policy substitution  
+16.5.7 Lifecycle-adjusted calibration  
+16.5.8 Lifecycle thrashing and timeout-extension controls  
+16.5.9 Lifecycle policy objects
+
 ### 17. Final Decision Policy
 
 17.1 EV calculation  
@@ -271,7 +432,10 @@ Each policy object requires:
 17.7 WAIT semantics  
 17.8 Preferred order type output  
 17.9 Trader-facing reason codes  
-17.10 Machine-readable output schema
+17.10 Machine-readable output schema  
+17.11 Blackout and participation gates  
+17.12 Decision latency budget per event type  
+17.13 Decision TTL and stale-decision behavior
 
 ### 18. Output Schema And Decision Trace
 
@@ -305,7 +469,13 @@ Each policy object requires:
 19.15 Coverage validation  
 19.16 Execution validation  
 19.17 Portfolio-level validation  
-19.18 Approximate-guarantee disclosures
+19.18 Approximate-guarantee disclosures  
+19.19 Per-module validation contracts  
+19.20 Module A validation: short-horizon event-driven  
+19.21 Module A2 validation: options / 0DTE  
+19.22 Module B validation: swing  
+19.23 Module C validation: long-horizon / LEAPS  
+19.24 Module D validation: recommendation quality and explanation audit
 
 ### 20. Monitoring, Drift, And Failure Modes
 
