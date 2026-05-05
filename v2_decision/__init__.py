@@ -4,6 +4,7 @@ Pilot 1A is advisory only: these helpers expose the v2 shape without changing
 training, promotion, or authoritative v1.1 decision behavior.
 """
 
+from .a2_option_expression import build_a2_option_expression
 from .module_a_adapter import build_module_a_a1_decision
 from .schema import (
     ALLOWED_SOURCE_INDICATORS,
@@ -16,6 +17,7 @@ __all__ = [
     "ALLOWED_SOURCE_INDICATORS",
     "SCHEMA_VERSION",
     "V2_STATUS",
+    "build_a2_option_expression",
     "build_module_a_a1_decision",
     "validate_v2_decision",
 ]

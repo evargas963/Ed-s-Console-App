@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .a2_option_expression import build_a2_option_expression
 from .schema import SCHEMA_VERSION, V2_STATUS, leaf, validate_v2_decision
 
 
@@ -18,7 +19,7 @@ def build_module_a_a1_decision(ms_dict: dict[str, Any]) -> dict[str, Any]:
     and source="not_implemented"/"policy_object_pending" for v2 surfaces that are
     structurally present but not yet governed implementations.
     """
-    decision = {
+    decision: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "v2_status": V2_STATUS,
         "authority": {
@@ -62,6 +63,9 @@ def build_module_a_a1_decision(ms_dict: dict[str, Any]) -> dict[str, Any]:
                 "detail": "No v2 close-out attribution record is attached to this live decision.",
             },
         ],
+    }
+    decision["expression_profiles"] = {
+        "A2": build_a2_option_expression(ms_dict, decision),
     }
     validate_v2_decision(decision)
     return decision
