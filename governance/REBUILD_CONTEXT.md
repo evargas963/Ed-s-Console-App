@@ -32,12 +32,20 @@ Lifecycle tiers:
 | Phase | Title | Status | Deliverable |
 |-------|-------|--------|-------------|
 | G1 | Canonical Contract Draft | COMPLETE | governance/G1_DIAGNOSIS.md |
-| G2 | Cascade Alignment | NEXT | governance/artifact_contract.py + cascade meta writer |
+| G2 | Cascade Alignment | PAUSED | governance/artifact_contract.py + cascade meta writer |
 | G3 | Governed Path Contract Unification | PENDING | reconcile validators with contract |
 | G4 | Direct-Write Quarantine | PENDING | block governance bypass paths |
 | G5 | End-to-End Proof | PENDING | full lifecycle test for one (ticker, horizon) |
 
 Dependencies: G2 depends on G1. G3 depends on G2. G4 depends on G3. G5 depends on G2-G4 all complete.
+
+## G2 Pause State
+
+As of 2026-05-04, G2 is paused pending the `Framework-ED-Decision-Engine-v2.0` decision. The pause is conditional, not indefinite:
+
+- If the maximum-edge v2.0 architecture is rejected, `governance/G2_PLAN.md` remains valid for the existing parallel/cascade architecture and may resume as written.
+- If the maximum-edge v2.0 architecture is adopted, rewrite G2 as `G2.v2` against the new artifact contracts before implementation.
+- Do not implement `governance/artifact_contract.py` or the cascade meta writer from the original G2 plan while this pause is active.
 
 ## Working Discipline
 

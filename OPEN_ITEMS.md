@@ -39,10 +39,15 @@ Goal: model correctness, feature integrity, statistical edge, training and evalu
 | Phase | Title | Status | Plan / Result |
 |-------|-------|--------|---------------|
 | G1 | Canonical contract draft | COMPLETE | `governance/G1_DIAGNOSIS.md`, `governance/G1_ADDENDUM_TRAINING_DEPENDENCY.md`, `governance/G1_ADDENDUM_CACHE_CONSISTENCY.md` |
-| G2 | Cascade alignment | NEXT | `governance/G2_PLAN.md` (original; eight refinements pending) |
+| G2 | Cascade alignment | PAUSED | `governance/G2_PLAN.md` (original; paused pending v2.0 framework decision) |
 | G3 | Governed path contract unification | PENDING | depends on G2 |
 | G4 | Direct-write quarantine | PENDING | depends on G3 |
 | G5 | End-to-end proof | PENDING | depends on G2-G4 |
+
+G2 pause state:
+- G2 is paused pending the `Framework-ED-Decision-Engine-v2.0` decision.
+- If the maximum-edge v2.0 architecture is rejected, the G2 plan as written remains valid for the existing parallel/cascade architecture and may resume.
+- If the maximum-edge v2.0 architecture is adopted, rewrite G2 as `G2.v2` against the new artifact contracts before implementation.
 
 Deferred to G4 within this workstream:
 - G4-1: server-side active sync helper (`server.py:4426-4453`) bypasses governance during request handling. HIGH risk.
@@ -60,7 +65,7 @@ G2 plan refinements (proposed during V3 standard development, not yet applied to
 - New sub-phase G2.0 runtime trace (resolves residual UNKNOWN about `_model_dir_for_ticker` resolution)
 - Reference to `governance/G1_ADDENDUM_TRAINING_DEPENDENCY.md` in plan's architectural reference section
 
-These refinements are pending decision: apply now to G2_PLAN.md, fold into post-V3 phase plan, or treat as superseded by the V3 audit findings (which now govern more broadly than G2's narrow scope).
+These refinements remain attached to the paused G2 plan. Do not apply them while G2 is paused; resume them only if the existing parallel/cascade architecture remains the governed target.
 
 ##### G3 Reconciliation Queue
 
