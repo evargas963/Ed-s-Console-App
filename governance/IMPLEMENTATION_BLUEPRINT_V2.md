@@ -94,12 +94,24 @@ Current A2 limitation:
 
 ### New v2 Decision Object
 
+Design rule:
+
+> The v2 decision schema must be complete in structure and honest in substance.
+
+Fields required by the v2 framework should exist in the schema even when Pilot 1A cannot populate them yet. Each leaf decision field must carry a `source` indicator:
+
+- `v2_compliant`;
+- `v1_approximation`;
+- `not_implemented`;
+- `policy_object_pending`.
+
 Add a nested object to the Tier C `ms_dict`, initially advisory:
 
 ```json
 {
   "v2_decision": {
     "schema_version": "v2_decision_draft_1",
+    "v2_status": "target_architecture_pending_governance_binding",
     "module": "A",
     "expression_profile": "A1",
     "ticker": "SPY",
@@ -114,6 +126,21 @@ Add a nested object to the Tier C `ms_dict`, initially advisory:
     "health": {},
     "artifact_trace": {},
     "decision_latency": {}
+  }
+}
+```
+
+Canonical illustration:
+
+```json
+{
+  "ev_lower": {
+    "value": null,
+    "source": "not_implemented"
+  },
+  "execution_adjusted_ev": {
+    "value": 0.18,
+    "source": "v1_approximation"
   }
 }
 ```
@@ -225,12 +252,20 @@ Promote 0DTE from downstream heuristic expression selection into an explicit exp
 
 ### Build Sequence
 
-1. **A2 deterministic baseline**
+1. **A2 expression-profile contract**
+   - Define A2 inputs, outputs, validation requirements, lifecycle action set, readiness gates, and source indicators.
+   - Do this before reusing existing option-expression modules.
+
+2. **A2 existing-module audit**
+   - Audit `recommend_option_expression`, `score_option_expression`, `realized_contract_eval.py`, and `live_vs_replay_validation.py` against the A2 contract.
+   - Produce a gap list before adapting code.
+
+3. **A2 deterministic baseline**
    - Wrap `recommend_option_expression` and `score_option_expression`.
    - Emit A2 expression fields inside `v2_decision`.
    - Treat this as deterministic baseline, not trained A2 edge.
 
-2. **A2 data contract**
+4. **A2 data contract**
    - Option-chain as-of timestamp.
    - Expiry/strike/side identity.
    - Bid/ask/mid at decision time.
@@ -238,7 +273,7 @@ Promote 0DTE from downstream heuristic expression selection into an explicit exp
    - Spread, liquidity, and fill-quality fields.
    - Assignment/exercise semantics.
 
-3. **A2 label/replay contract**
+5. **A2 label/replay contract**
    - Build from `realized_contract_eval.py` and `live_vs_replay_validation.py`.
    - Define contract-level outcomes:
      - max favorable excursion;
@@ -248,13 +283,13 @@ Promote 0DTE from downstream heuristic expression selection into an explicit exp
      - realized spread/fill slippage;
      - IV/Greeks path impact.
 
-4. **A2 execution model**
+6. **A2 execution model**
    - Spread/fill quality model.
    - Slippage estimate.
    - Capacity/size cap.
    - Reject illiquid chains.
 
-5. **A2 lifecycle baseline**
+7. **A2 lifecycle baseline**
    - Static option exit baseline first.
    - Later dynamic lifecycle actions:
      - hold;
@@ -264,7 +299,7 @@ Promote 0DTE from downstream heuristic expression selection into an explicit exp
      - convert;
      - force exit before defined gamma/theta risk window.
 
-6. **A2 validation**
+8. **A2 validation**
    - Option-chain as-of enforcement.
    - Replay vs live parity.
    - Contract payoff validation.

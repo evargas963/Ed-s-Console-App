@@ -204,11 +204,20 @@ Optional models that cannot fit inside the latency budget cannot be trade-impact
 2.17 Lifecycle policy  
 2.18 Hedge contract  
 2.19 Thesis-break escalation  
-2.20 Decision-plane mode
+2.20 Decision-plane mode  
+2.21 Source indicator
 
 ### 3. Approximate Guarantees
 
 Controlled term:
+
+**Source indicator:** machine-readable status attached to every leaf decision field stating how the field was produced relative to the v2 contract.
+
+Allowed source indicators:
+- `v2_compliant` — field is produced by the v2 contract specified for the relevant module/expression profile.
+- `v1_approximation` — field is approximated from existing v1 data or logic and is not full v2 compliance.
+- `not_implemented` — field is structurally present but not yet produced.
+- `policy_object_pending` — field depends on a governed policy object that has not yet been approved or bound.
 
 **Approximate guarantee:** A procedure whose stated mathematical guarantee depends on data assumptions that financial data may violate. Examples include DSR, conformal prediction, bootstrap confidence intervals, and CV-based estimates.
 
@@ -218,6 +227,8 @@ Reports citing an approximate guarantee must:
 - cite the assumption-relaxed variant used, if any;
 - qualify the correction or interval as approximate, not exact;
 - report empirical diagnostics showing whether the approximation held in the evaluated window.
+
+`v1_approximation` is a companion source-indicator state for v1 metrics reused under v2 output contracts. Such fields must be treated as approximations of the intended v2 metric, not as v2-compliant values.
 
 ### 4. Data Ingestion And Canonical Store
 
@@ -455,8 +466,9 @@ Each policy object requires:
 18.8 Required artifact hashes  
 18.9 Required decomposition trace  
 18.10 Counterfactual sensitivity / "what would change the answer" fields  
-18.11 Schema versioning and semantic change rules  
-18.12 Invalid-output fail-closed behavior
+18.11 Source indicator on every leaf decision field  
+18.12 Schema versioning and semantic change rules  
+18.13 Invalid-output fail-closed behavior
 
 ### 19. Validation Protocol
 

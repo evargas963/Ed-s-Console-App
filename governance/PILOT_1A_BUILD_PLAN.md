@@ -72,11 +72,23 @@ No A2 files are required for Pilot 1A. A2 starts in Pilot 1B.
 
 The draft schema should be a plain Python object or dataclass converted to JSON-compatible dicts.
 
+Schema design rule:
+
+> Complete in structure, honest in substance.
+
+All v2.0 §18 output fields should be represented structurally even when Pilot 1A cannot populate them. Every leaf field must include a `source` indicator:
+
+- `v2_compliant`;
+- `v1_approximation`;
+- `not_implemented`;
+- `policy_object_pending`.
+
 Required top-level fields:
 
 ```text
 schema_version
 status
+v2_status
 module
 expression_profile
 ticker
@@ -98,9 +110,25 @@ Initial values:
 ```text
 schema_version: v2_decision_draft_1
 status: advisory_draft
+v2_status: target_architecture_pending_governance_binding
 module: A
 expression_profile: A1
 horizon_set: [1m, 5m, 15m, 60m]
+```
+
+Canonical field shape:
+
+```json
+{
+  "ev_lower": {
+    "value": null,
+    "source": "not_implemented"
+  },
+  "execution_adjusted_ev": {
+    "value": 0.18,
+    "source": "v1_approximation"
+  }
+}
 ```
 
 The schema validator should fail closed for malformed internal construction but the Tier C attachment should fail soft by omitting `v2_decision` and logging/marking health if construction fails. Pilot 1A must not break the existing app payload.
@@ -130,6 +158,18 @@ Initial mapping:
 | `health` | source availability, stale/missing markers, schema validity |
 | `artifact_trace` | existing model/runtime identifiers where available |
 | `decision_latency` | existing Tier C timing fields where available |
+
+Known Pilot 1A conformance gaps must be explicit:
+
+| Field / concept | Pilot 1A source indicator |
+|---|---|
+| `P_entry_success` | `v1_approximation` if mapped from existing confidence/probability fields |
+| `P_lifecycle_adjusted_success` | `not_implemented` |
+| `p_low` / `p_high` | `not_implemented` unless an existing calibrated interval is proven available |
+| `EV_lower` / `EV_upper` | `not_implemented` |
+| execution-adjusted EV | `v1_approximation` unless a v2 execution model is available |
+| policy object IDs | `policy_object_pending` |
+| portfolio allocation fields | `not_implemented` or `policy_object_pending` |
 
 Initial decision policy should be conservative:
 
@@ -175,12 +215,13 @@ Initial card:
 
 - hidden or "unavailable" when `v2_decision` is missing;
 - displays `module`, `expression_profile`, `decision`, `side`, and `status`;
+- displays persistent banner: "Target architecture pending governance binding - non-authoritative";
 - shows the four edge-domain sections;
 - lists reason codes;
 - shows health and latency status;
 - clearly labels the output as `v2 advisory draft`.
 
-The UI must not remove or replace the existing prediction/fusion display in Pilot 1A.
+The UI must not remove or replace the existing prediction/fusion display in Pilot 1A. The v2 card is read-only and must not expose actionable controls.
 
 ---
 
@@ -193,6 +234,8 @@ Required cases:
 - valid minimal A/A1 decision passes schema validation;
 - invalid decision enum is rejected;
 - missing required top-level field is rejected;
+- every leaf decision field has an allowed `source` indicator;
+- `v2_status == "target_architecture_pending_governance_binding"`;
 - unknown extra fields are either rejected or explicitly allowed according to schema policy;
 - JSON serialization round-trip works.
 
@@ -221,6 +264,13 @@ Pilot 1A is complete when:
 - no promotion or active artifact behavior changes;
 - docs clearly state that output is advisory/draft.
 
+Binary closure criteria:
+
+- **Schema done:** all v2.0 §18 fields are enumerated structurally; every leaf field has a source indicator; schema validator passes.
+- **Adapter done:** every mapped field has a documented source; every unimplemented field is listed; unit tests cover each adapter mapping.
+- **Tier C attachment done:** `v2_decision` reaches Tier C payload; non-authority labeling is present; no v1 contract changes.
+- **UI card done:** all schema sections render; non-authority banner is visible; card is read-only; existing v1 card remains primary.
+
 ---
 
 ## Follow-On: Pilot 1B
@@ -234,5 +284,13 @@ v2_decision/a2_execution.py
 v2_decision/a2_lifecycle.py
 ```
 
-Pilot 1B should wrap existing `market_state.recommend_option_expression`, `math_probabilities.score_option_expression`, and `realized_contract_eval.py` as deterministic baselines before any trained A2 claim.
+Pilot 1B must define the A2 expression-profile contract before reusing existing options code. The required sequence is:
+
+1. Design A2 expression-profile contract.
+2. Audit `market_state.recommend_option_expression`, `math_probabilities.score_option_expression`, `realized_contract_eval.py`, and `live_vs_replay_validation.py` against that contract.
+3. Produce a gap list.
+4. Refactor/adapt existing modules as deterministic baselines.
+5. Attach A2 output to `v2_decision`.
+
+No trained A2 claim is allowed until A2 labels, provenance, replay, and readiness gates exist.
 
