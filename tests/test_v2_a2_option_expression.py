@@ -106,6 +106,72 @@ def test_missing_bid_ask_blocks_trade_output():
     assert "missing_bid_or_ask" in a2["health"]["hard_gates_failed"]["value"]
 
 
+def test_missing_selected_expiry_blocks_trade_output():
+    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L159 - missing selected expiry blocks trade."""
+    a2 = build_a2_option_expression(
+        _ms(selected_exp=None, call_option_expiry=None),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert "missing_selected_expiry" in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_non_same_day_expiry_blocks_strict_0dte_output():
+    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L160 - strict 0DTE requires same-day expiry."""
+    a2 = build_a2_option_expression(
+        _ms(selected_exp="2026-05-06", call_option_expiry="2026-05-06", dte_warn="1DTE"),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert "non_same_day_expiry_strict_0dte" in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_missing_option_chain_proof_blocks_trade_output():
+    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L161 - no option-chain proof rows blocks trade."""
+    a2 = build_a2_option_expression(
+        _ms(option_chain_selection_proof=None),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert "missing_option_chain_selection_proof" in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_no_side_compatible_contract_blocks_trade_output():
+    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L162 - no side-compatible contract blocks trade."""
+    a2 = build_a2_option_expression(
+        _ms(option_chain_selection_proof={"status": "no_trade", "reason": "no_contracts_for_side"}),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert "no_side_compatible_contracts" in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_missing_strike_or_right_blocks_trade_output():
+    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L167 - missing strike or right blocks trade."""
+    winner = _winner()
+    winner.pop("strike")
+    winner.pop("side")
+
+    a2 = build_a2_option_expression(
+        _ms(
+            rec_strike=None,
+            rec_side=None,
+            call_option_right=None,
+            option_chain_selection_proof={"status": "ok", "winner": winner},
+        ),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    gates = a2["health"]["hard_gates_failed"]["value"]
+    assert "missing_selected_strike" in gates
+    assert "missing_option_right" in gates
+
+
 def test_wide_spread_records_soft_gate_until_policy_bound():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L240 - wide spread records gate state."""
     a2 = build_a2_option_expression(_ms(spread=0.35, liq_ok=False), _sample_a1())

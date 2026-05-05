@@ -50,6 +50,9 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
 
     hard_gates = _hard_gates(
         ms_dict=ms_dict,
+        proof=proof,
+        winner=winner,
+        chain_row=chain_row,
         a1_action=a1_action,
         option_right=option_right,
         strike=strike,
@@ -157,6 +160,9 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
 def _hard_gates(
     *,
     ms_dict: dict[str, Any],
+    proof: dict[str, Any],
+    winner: dict[str, Any],
+    chain_row: dict[str, Any],
     a1_action: Any,
     option_right: str,
     strike: float | None,
@@ -167,8 +173,17 @@ def _hard_gates(
     gates: list[str] = []
     if str(a1_action or "").upper() != "TRADE":
         gates.append("module_a_signal_wait_or_unavailable")
-    if not (ms_dict.get("call_option_expiry") or ms_dict.get("selected_exp")):
+    selected_expiry = _clean_str(ms_dict.get("call_option_expiry") or ms_dict.get("selected_exp"))
+    if not selected_expiry:
         gates.append("missing_selected_expiry")
+    elif _dte_value(ms_dict) != 0:
+        gates.append("non_same_day_expiry_strict_0dte")
+    if not proof:
+        gates.append("missing_option_chain_selection_proof")
+    elif proof.get("reason") == "no_contracts_for_side":
+        gates.append("no_side_compatible_contracts")
+    elif not winner or not chain_row:
+        gates.append("missing_option_chain_selection_proof")
     if option_right not in ("CALL", "PUT"):
         gates.append("missing_option_right")
     if strike is None:
