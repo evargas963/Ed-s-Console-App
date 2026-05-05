@@ -3045,6 +3045,29 @@
                 <li>Waiting for Tier C analytics payload.</li>
               </ul>
             </div>
+            <div class="decision-block" id="v2-a2-card">
+              <div class="decision-block-hd">
+                <div class="decision-block-title">A2 0DTE Advisory</div>
+                <span class="v2-source-chip" id="v2-a2-authority">READ ONLY</span>
+              </div>
+              <div class="decision-rail-grid" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)">
+                <div class="decision-kv">
+                  <div class="decision-k">Action</div><div class="decision-v" id="v2-a2-action">—</div>
+                  <div class="decision-k">Contract</div><div class="decision-v" id="v2-a2-contract">—</div>
+                  <div class="decision-k">Theta</div><div class="decision-v" id="v2-a2-theta">—</div>
+                </div>
+                <div class="decision-kv">
+                  <div class="decision-k">Spread</div><div class="decision-v" id="v2-a2-spread">—</div>
+                  <div class="decision-k">Liquidity</div><div class="decision-v" id="v2-a2-liquidity">—</div>
+                  <div class="decision-k">P(underlying)</div><div class="decision-v" id="v2-a2-prob">—</div>
+                </div>
+                <div class="decision-kv">
+                  <div class="decision-k">Hard gates</div><div class="decision-v" id="v2-a2-hard-gates">—</div>
+                  <div class="decision-k">Soft gates</div><div class="decision-v" id="v2-a2-soft-gates">—</div>
+                  <div class="decision-k">Gaps</div><div class="decision-v" id="v2-a2-gaps">—</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -5011,6 +5034,49 @@ function renderV2PilotDecision(d) {
       return `<li><strong>${component}</strong> · ${source}${detail ? ' - ' + detail : ''}</li>`;
     }).join('');
   });
+
+  const a2 = v2.expression_profiles && v2.expression_profiles.A2 && typeof v2.expression_profiles.A2 === 'object'
+    ? v2.expression_profiles.A2
+    : null;
+  const listLeaf = (obj) => {
+    const v = obj && typeof obj === 'object' ? obj.value : null;
+    return Array.isArray(v) && v.length ? v.join(', ') + sourceSuffix(obj) : 'none' + sourceSuffix(obj);
+  };
+  if (!a2) {
+    set('v2-a2-authority', 'READ ONLY');
+    set('v2-a2-action', '—');
+    set('v2-a2-contract', '—');
+    set('v2-a2-theta', '—');
+    set('v2-a2-spread', '—');
+    set('v2-a2-liquidity', '—');
+    set('v2-a2-prob', '—');
+    set('v2-a2-hard-gates', 'A2 unavailable');
+    set('v2-a2-soft-gates', '—');
+    set('v2-a2-gaps', '—');
+    return;
+  }
+
+  const ident = a2.identity || {};
+  const opt = a2.option_expression || {};
+  const greeks = a2.greeks || {};
+  const exec = a2.execution || {};
+  const prob = a2.probability_and_ev || {};
+  const health = a2.health || {};
+  const right = leafVal(opt.option_right);
+  const strike = leafVal(opt.strike);
+  const profile = leafVal(ident.expression_profile_id, 'A2');
+  const family = leafVal(ident.instrument_family, 'options_0dte');
+  set('v2-a2-authority', `${leafVal(ident.authority_mode, 'advisory_non_authoritative')} · read only`);
+  set('v2-a2-action', leafVal(opt.option_action) + sourceSuffix(opt.option_action));
+  set('v2-a2-contract', `${profile} ${family} · ${right} ${strike}${sourceSuffix(opt.option_right)}`);
+  set('v2-a2-theta', leafVal(greeks.theta) + sourceSuffix(greeks.theta));
+  set('v2-a2-spread', leafVal(opt.spread) + sourceSuffix(opt.spread));
+  set('v2-a2-liquidity', leafVal(exec.liquidity_gate_pass) + ' · ' + leafVal(exec.spread_quality) + sourceSuffix(exec.spread_quality));
+  set('v2-a2-prob', pctLeaf(prob.P_underlying_entry_success));
+  set('v2-a2-hard-gates', listLeaf(health.hard_gates_failed));
+  set('v2-a2-soft-gates', listLeaf(health.soft_gates));
+  const a2Gaps = Array.isArray(a2.conformance_gaps) ? a2.conformance_gaps : [];
+  set('v2-a2-gaps', a2Gaps.length ? `${a2Gaps.length} declared` : 'none');
 }
 
 // ── Real-time spot authority: fast quote drives display spot between full-state refreshes ──
