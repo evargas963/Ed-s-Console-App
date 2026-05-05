@@ -1,7 +1,7 @@
 # Open items — horizon, stack, UI consistency
 
 **Rule:** Items stay **open** until there is a merged/code-verified resolution (not just “planned”).  
-**Last reviewed:** 2026-03-27
+**Last reviewed:** 2026-05-04
 
 ---
 
@@ -98,8 +98,8 @@ Findings from G1 investigations recorded for future review. Each is bounded as n
 
 ### Deferred items from lock record
 
-- D-1: Regime awareness invariant. Deferred at V3.0 lock per `governance/V3_LOCK_RECORD.md`. Reconsidered in V3.X amendment cycle.
-- D-2: Audience separation invariant. Same.
+- D-1: Regime awareness invariant. Reconciled at the vocabulary level in `governance/INSTITUTIONAL_STANDARD_V3.md` by defining `regime` as a controlled term. Any new regime-aware trade-impacting behavior still requires a governed framework/plan before implementation.
+- D-2: Audience separation invariant. Deferred at V3.0 lock per `governance/V3_LOCK_RECORD.md`; reconsider in a future amendment cycle.
 
 ### Pre-existing technical debt
 

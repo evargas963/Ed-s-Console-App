@@ -1,5 +1,7 @@
 # Infrastructure Governance — Lock Package (Reviewer Index)
 
+**Status:** DEFERRED per `governance/OPERATOR_DECISION_REGISTER.md` O-15. This file is a reviewer index only and is not normative versus `INSTITUTIONAL_STANDARD_V3.md` or `PHASE_PLAN_INFRASTRUCTURE.md`.
+
 **Purpose:** Single entry point for final review before declaring Workstream 2 plans **locked** for implementation.  
 **Does not replace:** normative text in `INSTITUTIONAL_STANDARD_V3.md` or executable detail in `PHASE_PLAN_INFRASTRUCTURE.md`.
 

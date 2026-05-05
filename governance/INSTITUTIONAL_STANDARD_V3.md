@@ -66,8 +66,9 @@ The standard treats governance and runtime behavior as part of correctness, not 
 
 ## 1.5 Glossary
 
-- **Tuple:** `(architecture, horizon, symbol)` decision unit.
-- **Lifecycle tier:** governance state of an artifact (`TRAINED`, `EVALUATABLE`, `PROMOTABLE`, `ACTIVE_SERVING`).
+- **Tuple:** `(architecture, horizon, ticker)` decision unit.
+- **Ticker:** canonical instrument identifier used by current system contracts. Legacy text may use `symbol`; within V3, `ticker` is the controlled term.
+- **Lifecycle tier:** governance state of an artifact (`TRAINED`, `EVALUATABLE`, `PROMOTABLE_CANDIDATE`, `ACTIVE_SERVING`).
 - **Operational tier:** traffic exposure state (`RESEARCH`, `SHADOW_OBSERVE`, `SHADOW_ACTION`, `LIVE`).
 - **Contract slot:** named boundary role where peer architectures compete under identical boundary contracts.
 - **Manifest chain:** linked identifiers from data snapshot through serving artifact pointer and promotion record.
@@ -84,7 +85,8 @@ The standard treats governance and runtime behavior as part of correctness, not 
 - **Blast radius:** maximum intended impact scope of a failure/change.
 - **Tuple health:** pass/fail status for tuple against validation matrix for operational tier.
 - **Decomposition trace:** decision-level record of component outputs/transforms/composition order/final output.
-- **Expected divergence band:** declared acceptable divergence range per class `(symbol, horizon, regime)`.
+- **Regime:** pre-declared, versioned market-state classification used for evaluation, calibration, monitoring, thresholding, or model conditioning. A regime definition declares its input features, clock/availability policy, class boundaries or model artifact, training window if learned, and whether it is advisory, gating, or trade-impacting.
+- **Expected divergence band:** declared acceptable divergence range per class `(ticker, horizon, regime)`.
 - **Freshness SLA:** maximum allowed age of input data at decision point.
 - **Decision TTL:** maximum age after emit for decision to remain actionable.
 - **Halt authority:** controlled ability to stop inference globally/by architecture/by tuple.
@@ -158,7 +160,7 @@ Unknown architecture IDs or contract mismatches are rejected at build/load.
 Peer competitors running concurrently remain operationally observable for divergence, not only evaluated offline.
 
 #### Invariant
-For each tuple class where two or more peer architectures are deployed, outputs are logged side-by-side. Divergence metrics (KL divergence, directional disagreement rate, prediction range delta) are computed/stored. Expected divergence bands are declared per `(symbol, horizon, regime)` class. Breaches create auditable events.
+For each tuple class where two or more peer architectures are deployed, outputs are logged side-by-side. Divergence metrics (KL divergence, directional disagreement rate, prediction range delta) are computed/stored. Expected divergence bands are declared per `(ticker, horizon, regime)` class. Breaches create auditable events.
 
 #### Enforcement
 E5 runtime monitor, divergence dashboard, threshold policy per class. Breach response is tier-configurable (alert-only or block-action).
@@ -227,7 +229,7 @@ No rule exists without enforcement owner, failure mode, and evidence artifact ty
 Every named failure mode maps to named response.
 
 #### Invariant
-Each failure mode catalog entry declares response (`BLOCK`, `RESTRICT`, `DEGRADE`, `CONTINUE`) plus maximum allowed duration before mandatory escalation. Defaults are published. Runtime override requires governed exception.
+Each failure mode catalog entry declares response (`BLOCK`, `RESTRICT`, `DEGRADE`, `CONTINUE`) plus maximum allowed duration before mandatory escalation. Default responses must be published in the versioned failure-mode catalog or its governing phase plan entry. Runtime override requires governed exception.
 
 #### Enforcement
 E5 monitors classify failure mode; E2 policy rules apply matrix response; matrix is versioned with failure mode catalog and audited with incident records.
@@ -359,7 +361,7 @@ Single promotion authority, pointer integrity checks, and audit events.
 
 ### 12.1 Lifecycle tier vs operational tier
 
-Lifecycle tier (`TRAINED`, `EVALUATABLE`, `PROMOTABLE`, `ACTIVE_SERVING`) and operational tier (`RESEARCH`, `SHADOW_OBSERVE`, `SHADOW_ACTION`, `LIVE`) are independent axes. Artifacts may be `ACTIVE_SERVING` in lifecycle while operating at `SHADOW_OBSERVE` operationally. Lifecycle promotion does not auto-advance operational tier.
+Lifecycle tier (`TRAINED`, `EVALUATABLE`, `PROMOTABLE_CANDIDATE`, `ACTIVE_SERVING`) and operational tier (`RESEARCH`, `SHADOW_OBSERVE`, `SHADOW_ACTION`, `LIVE`) are independent axes. Artifacts may be `ACTIVE_SERVING` in lifecycle while operating at `SHADOW_OBSERVE` operationally. Lifecycle promotion does not auto-advance operational tier.
 
 ### 12.2 Human override logging
 
@@ -407,7 +409,7 @@ System supports immediate external halt without code deploy.
 Halt authority exists at:
 - system-wide
 - per architecture
-- per tuple `(architecture, horizon, symbol)`
+- per tuple `(architecture, horizon, ticker)`
 
 Activation emits auditable event. Reactivation requires separate authority from deactivation. Halt status checked at inference middleware and downstream action gate.
 

@@ -70,7 +70,7 @@ from typing import Callable
 class ModelTier(str, Enum):
     TRAINED = "trained_candidate"
     EVALUATABLE = "evaluatable_candidate"
-    PROMOTABLE = "promotable_candidate"
+    PROMOTABLE_CANDIDATE = "promotable_candidate"
     ACTIVE_SERVING = "active_serving_candidate"
 
 

@@ -23,11 +23,12 @@ All notable changes to this framework document are listed here. This project fol
 - **Meta-labeling** elevated to Step 1: primary layer = candidate trade outcomes; secondary layer = meta filter on candidates (implementation detail remains Step 16).
 - **Pre-registration** framed explicitly as the anti–post-hoc rationalization spine for research claims.
 - **DSR / multiplicity discipline** as non-negotiable before any “we found a cell” claim.
-- **Appendix A**: Contract system reference table (B–H layers, 18 guardrails, 15 definitions) — normative contracts; code is a checked projection.
+- **Appendix A**: Contract system reference to V3 invariants and controlled vocabulary — normative contracts; code is a checked projection.
 
 #### Changed
 
 - Structural numbering: Step 0 inserted; former introductory material folded into Purpose + Step 0 + Step 1 where appropriate.
+- Authority-chain correction: Appendix A now references the actual V3 invariant/glossary structure instead of stale B–H / guardrail / definition counts.
 
 ---
 
@@ -41,7 +42,7 @@ This framework defines how ED-style institutional research and pilot execution r
 
 ### Contracts primary, code projection
 
-The **contract system** (lifecycle and semantics organized in layers B–H, with **18 guardrails** and **15 controlled definitions**; see **Appendix A**) is **primary**. Application code, SQL, and validators are **projections** of those contracts. If code and contract disagree, the run is **non-conformant** until reconciled; the contract is not “adjusted” to match convenience in a locked pilot.
+The **contract system** (V3 invariants, controlled vocabulary, lifecycle semantics, and referenced contract artifacts; see **Appendix A**) is **primary**. Application code, SQL, and validators are **projections** of those contracts. If code and contract disagree, the run is **non-conformant** until reconciled; the contract is not “adjusted” to match convenience in a locked pilot.
 
 ### Locked items (require framework version bump)
 
@@ -200,19 +201,16 @@ Architecture, features, OOF training, and calibration for the **meta layer** liv
 
 ## Appendix A — Contract system reference (normative)
 
-| Layer | Role (summary) |
-|-------|------------------|
-| **B** | Bar and timestamp semantics / RTH grid |
-| **C** | Candidate and event identity |
-| **D** | Label and outcome contracts |
-| **E** | Cost and PnL units |
-| **F** | Model artifact and manifest lifecycle |
-| **G** | Evaluation and comparator integrity |
-| **H** | Operator, promotion, and authority boundaries |
+| Source | Normative role |
+|--------|----------------|
+| `governance/INSTITUTIONAL_STANDARD_V3.md` §1.5 | Controlled vocabulary for governance and runtime terms. |
+| `governance/INSTITUTIONAL_STANDARD_V3.md` §2 | Institutional invariants **I-01** through **I-20**. |
+| `governance/INSTITUTIONAL_STANDARD_V3.md` §§3–16 | Architecture, validation, enforcement, lifecycle, output, observability, operational, and boundary standards. |
+| `governance/G1_DIAGNOSIS.md` and addenda | Current model-lifecycle gap evidence and reconciliation queue. |
+| `governance/V3_LOCK_RECORD.md` | V3 lock scope, amendment path, and deferred-item record. |
+| `governance/G2_PLAN.md` | Alignment work in progress for artifact contracts, unless superseded by a later governed plan. |
 
-**Guardrails (18):** Institutional invariants on silent degradation, train/serve identity, comparator fairness, tuple health, deterministic inference where pledged, and related controls — enumerated in full in the **Institutional Standard** and G1 diagnosis artifacts; this appendix does not replace those sources.
-
-**Definitions (15):** Controlled vocabulary for governance and runtime terms (e.g. authoritative tables, active bundle, horizon identity) — same normative stack.
+The former B–H layer shorthand is non-authoritative in this v1.1 document. If a layered taxonomy is needed, it must be defined in a future governed standard/framework version rather than inferred from this appendix.
 
 **Repository pointers:** `governance/INSTITUTIONAL_STANDARD_V3.md`, `governance/G1_DIAGNOSIS.md`, `governance/V3_LOCK_RECORD.md`, `governance/G2_PLAN.md` (alignment work in progress).
 

@@ -35,7 +35,7 @@ V3.0 governs the entire system from lock date forward. Existing non-conformances
 
 ## Open items deferred from V3.0
 
-- **D-1: Regime awareness** — Tier 3 enhancement candidate, not foundational.
+- **D-1: Regime awareness** — controlled vocabulary definition promoted into V3 to support existing divergence-band language. New regime-aware trade-impacting behavior remains a governed enhancement and must be authorized by a framework/plan before implementation.
 - **D-2: Audience separation annotations** — presentation enhancement, not substantive control.
 
 Deferred items are tracked in `OPEN_ITEMS.md` under governance standard deferred items.

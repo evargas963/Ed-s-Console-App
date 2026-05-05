@@ -7,9 +7,9 @@
 
 ---
 
-## Master consensus and global rules
+## Register authority and global rules
 
-**Normative cross-system consensus:** *Master Governance Consensus Document* (tightened pass, 2026-05-01) — operator sign-off on that master doc **or** this register satisfies **governance process** acknowledgment.
+**Authority:** This register is the authoritative record for the binding operator decisions listed below. Any external consensus notes are non-authoritative unless their decisions are explicitly approved and recorded here.
 
 | Rule | Statement |
 |------|-----------|
