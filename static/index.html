@@ -855,6 +855,38 @@
   @media (max-width: 1100px) {
     .exec-grid { grid-template-columns: 1fr; }
   }
+  #v2-pilot-card {
+    grid-column: 1 / -1;
+    border-color: rgba(59,130,246,0.45);
+    background: linear-gradient(180deg, rgba(59,130,246,0.08), rgba(15,23,42,0.32));
+  }
+  .v2-source-chip {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--blue);
+    border: 1px solid rgba(59,130,246,0.35);
+    border-radius: 999px;
+    padding: 2px 7px;
+    background: rgba(59,130,246,0.08);
+  }
+  .v2-banner {
+    color: var(--text2);
+    font-size: 11px;
+    line-height: 1.35;
+    padding: 8px 9px;
+    border: 1px solid rgba(59,130,246,0.25);
+    border-radius: 7px;
+    background: rgba(2,6,23,0.35);
+  }
+  .v2-gap-list {
+    margin: 0;
+    padding-left: 16px;
+    color: var(--text2);
+    font-size: 11px;
+    line-height: 1.4;
+  }
 
   /* Decision command rail — full width above the three legacy signal cards */
   #decision-rail-card {
@@ -2970,6 +3002,52 @@
           </div>
         </div>
 
+        <div class="signal-card exec-card" id="v2-pilot-card">
+          <div class="signal-card-header">
+            <span class="signal-card-title">V2 Pilot 1A Advisory</span>
+            <span class="v2-source-chip" id="v2-status-chip">DRAFT</span>
+          </div>
+          <div class="signal-card-body">
+            <div class="v2-banner" id="v2-banner">
+              Draft v2 view only. Does not replace the locked v1.1 decision policy.
+            </div>
+            <div class="decision-rail-grid" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)">
+              <div class="decision-block">
+                <div class="decision-block-hd"><div class="decision-block-title">Module / expression</div></div>
+                <div class="decision-kv">
+                  <div class="decision-k">Strategy</div><div class="decision-v" id="v2-module">—</div>
+                  <div class="decision-k">Expression</div><div class="decision-v" id="v2-expression">—</div>
+                  <div class="decision-k">Authority</div><div class="decision-v" id="v2-authority">—</div>
+                </div>
+              </div>
+              <div class="decision-block">
+                <div class="decision-block-hd"><div class="decision-block-title">Advisory decision</div></div>
+                <div class="decision-kv">
+                  <div class="decision-k">Action</div><div class="decision-v" id="v2-action">—</div>
+                  <div class="decision-k">Direction</div><div class="decision-v" id="v2-direction">—</div>
+                  <div class="decision-k">Probability</div><div class="decision-v" id="v2-probability">—</div>
+                  <div class="decision-k">Net EV</div><div class="decision-v" id="v2-net-ev">—</div>
+                </div>
+              </div>
+              <div class="decision-block">
+                <div class="decision-block-hd"><div class="decision-block-title">Honesty checks</div></div>
+                <div class="decision-kv">
+                  <div class="decision-k">Signal</div><div class="decision-v" id="v2-signal-status">—</div>
+                  <div class="decision-k">Execution</div><div class="decision-v" id="v2-implementation-status">—</div>
+                  <div class="decision-k">Portfolio</div><div class="decision-v" id="v2-portfolio-status">—</div>
+                  <div class="decision-k">Lifecycle</div><div class="decision-v" id="v2-lifecycle-status">—</div>
+                </div>
+              </div>
+            </div>
+            <div class="decision-block">
+              <div class="decision-block-hd"><div class="decision-block-title">Known conformance gaps</div></div>
+              <ul class="v2-gap-list" id="v2-gap-list">
+                <li>Waiting for Tier C analytics payload.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
         <div class="exec-grid">
           <div class="signal-card exec-card" id="execution-levels-card">
             <div class="signal-card-header"><span class="signal-card-title">Execution Levels</span></div>
@@ -4863,6 +4941,78 @@ function renderDecisionCommandRail(d) {
   }
 }
 
+function renderV2PilotDecision(d) {
+  const root = document.getElementById('v2-pilot-card');
+  if (!root) return;
+  const v2 = d && d.v2_decision && typeof d.v2_decision === 'object' ? d.v2_decision : null;
+  const leafVal = (obj, fallback = '—') => {
+    if (!obj || typeof obj !== 'object' || !('value' in obj)) return fallback;
+    const v = obj.value;
+    if (v == null || v === '') return fallback;
+    return String(v);
+  };
+  const sourceSuffix = (obj) => {
+    if (!obj || typeof obj !== 'object' || !obj.source) return '';
+    return ` · ${String(obj.source)}`;
+  };
+  const pctLeaf = (obj) => {
+    const v = obj && typeof obj === 'object' ? obj.value : null;
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.round(n * 100) + '%' + sourceSuffix(obj) : '—' + sourceSuffix(obj);
+  };
+  const set = (id, value) => domIf(id, el => { el.textContent = value; });
+
+  if (!v2) {
+    set('v2-status-chip', 'DRAFT');
+    set('v2-module', '—');
+    set('v2-expression', '—');
+    set('v2-authority', 'Tier C advisory only');
+    set('v2-action', '—');
+    set('v2-direction', '—');
+    set('v2-probability', '—');
+    set('v2-net-ev', '—');
+    set('v2-signal-status', '—');
+    set('v2-implementation-status', '—');
+    set('v2-portfolio-status', '—');
+    set('v2-lifecycle-status', '—');
+    domIf('v2-gap-list', el => { el.innerHTML = '<li>Waiting for Tier C analytics payload.</li>'; });
+    return;
+  }
+
+  const auth = v2.authority || {};
+  set('v2-status-chip', String(v2.v2_status || 'DRAFT').replace(/_/g, ' ').toUpperCase());
+  set('v2-banner', auth.banner || 'Draft v2 view only. Does not replace the locked v1.1 decision policy.');
+  set('v2-module', `${leafVal(v2.strategy_module && v2.strategy_module.id)} · ${leafVal(v2.strategy_module && v2.strategy_module.name)}${sourceSuffix(v2.strategy_module && v2.strategy_module.id)}`);
+  set('v2-expression', `${leafVal(v2.expression_profile && v2.expression_profile.id)} · ${leafVal(v2.expression_profile && v2.expression_profile.instrument_family)}${sourceSuffix(v2.expression_profile && v2.expression_profile.id)}`);
+  set('v2-authority', `${auth.mode || 'advisory_non_authoritative'} · ${auth.tier || 'C_analytics_only'}`);
+
+  const dec = v2.decision || {};
+  set('v2-action', leafVal(dec.action) + sourceSuffix(dec.action));
+  set('v2-direction', leafVal(dec.direction) + sourceSuffix(dec.direction));
+  set('v2-probability', pctLeaf(dec.probability));
+  set('v2-net-ev', leafVal(dec.net_expected_value_r) + sourceSuffix(dec.net_expected_value_r));
+
+  const edge = v2.edge_domains || {};
+  set('v2-signal-status', leafVal(edge.signal && edge.signal.status) + sourceSuffix(edge.signal && edge.signal.status));
+  set('v2-implementation-status', leafVal(edge.implementation && edge.implementation.status) + sourceSuffix(edge.implementation && edge.implementation.status));
+  set('v2-portfolio-status', leafVal(edge.portfolio && edge.portfolio.status) + sourceSuffix(edge.portfolio && edge.portfolio.status));
+  set('v2-lifecycle-status', leafVal(edge.lifecycle && edge.lifecycle.status) + sourceSuffix(edge.lifecycle && edge.lifecycle.status));
+
+  const gaps = Array.isArray(v2.conformance_gaps) ? v2.conformance_gaps : [];
+  domIf('v2-gap-list', el => {
+    if (!gaps.length) {
+      el.innerHTML = '<li>No declared gaps.</li>';
+      return;
+    }
+    el.innerHTML = gaps.map(g => {
+      const component = String((g && g.component) || 'gap').replace(/</g, '&lt;');
+      const source = String((g && g.source) || 'unknown').replace(/</g, '&lt;');
+      const detail = String((g && g.detail) || '').replace(/</g, '&lt;');
+      return `<li><strong>${component}</strong> · ${source}${detail ? ' - ' + detail : ''}</li>`;
+    }).join('');
+  });
+}
+
 // ── Real-time spot authority: fast quote drives display spot between full-state refreshes ──
 function _orderFlowInterpFromDeltasAndPrice(deltaBull, deltaBear, priceBull, priceBear) {
   let interpText = 'neutral — neither side dominant · chop likely';
@@ -5650,6 +5800,7 @@ function render(d, fullRenderSource) {
   renderContextLayer(d);
   // Legacy MHAP/The Call surface removed from DOM in the new execution-first layout.
   renderDecisionCommandRail(d);
+  renderV2PilotDecision(d);
   renderTimeframeSignalRow(d);
   // Save scroll position — prevent page jumping on data refresh
   const _scrollY = window.scrollY;

@@ -109,6 +109,7 @@ from market_state import build_market_state, derive_zone
 from ml_horizon import PRIMARY_DECISION_HORIZONS, SECONDARY_SUPPORT_HORIZONS
 from realized_contract_eval import serialize_option_chain_for_eval, build_replay_context_payload
 from live_decision_bundle import stamp_decision_bundle, tick_triggers_coherent_refresh
+from v2_decision import build_module_a_a1_decision
 
 try:
     from db import get_db
@@ -4645,6 +4646,7 @@ def _fetch_state(
     if update_source is not None:
         ms_dict["_update_source"] = update_source
 
+    ms_dict["v2_decision"] = build_module_a_a1_decision(ms_dict)
     _lmp.merge_into_state(ms_dict, ticker)
 
     _prev_ent = _state_cache.get(_cache_key) or {}
