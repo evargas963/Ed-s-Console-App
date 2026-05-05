@@ -56,6 +56,7 @@ def _ms(**overrides) -> dict:
         "ratio": 6.5,
         "vol_oi": 0.279,
         "spot": 499.5,
+        "mins_to_close": 120.0,
         "option_chain_selection_proof": {
             "status": "ok",
             "winner": _winner(),
@@ -248,6 +249,23 @@ def test_theta_is_hard_gate_when_unavailable():
 
     assert a2["option_expression"]["option_action"]["value"] == "WAIT"
     assert "theta_unavailable" in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_black_scholes_theta_fallback_unblocks_missing_chain_theta():
+    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L119 - BS theta fallback is v1 approximation."""
+    winner = _winner()
+    winner["chain_row"].pop("theta")
+
+    a2 = build_a2_option_expression(
+        _ms(option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "TRADE"
+    assert "theta_unavailable" not in a2["health"]["hard_gates_failed"]["value"]
+    assert a2["greeks"]["theta"]["source"] == "v1_approximation"
+    assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation"
+    assert a2["greeks"]["theta"]["value"] < 0
 
 
 def test_required_a2_gap_list_is_named():

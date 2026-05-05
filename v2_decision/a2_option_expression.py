@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from .schema import leaf
@@ -46,7 +47,12 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
     ask = _num(chain_row.get("ask"))
     mid = round((bid + ask) / 2.0, 4) if bid is not None and ask is not None else None
     spread = _first_number(ms_dict.get("spread"), _spread_from_bid_ask(bid, ask))
-    theta = _theta(chain_row)
+    theta, theta_detail = _theta(
+        chain_row=chain_row,
+        ms_dict=ms_dict,
+        strike=strike,
+        option_right=option_right,
+    )
 
     hard_gates = _hard_gates(
         ms_dict=ms_dict,
@@ -121,7 +127,11 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
             "delta": leaf(_num(chain_row.get("delta")), "v1_approximation" if chain_row.get("delta") is not None else "not_implemented"),
             "gamma": leaf(_num(chain_row.get("gamma")), "v1_approximation" if chain_row.get("gamma") is not None else "not_implemented"),
             "vega": leaf(_num(chain_row.get("vega")), "v1_approximation" if chain_row.get("vega") is not None else "not_implemented"),
-            "theta": leaf(theta, "v1_approximation" if theta is not None else "not_implemented"),
+            "theta": leaf(
+                theta,
+                "v1_approximation" if theta is not None else "not_implemented",
+                detail=theta_detail,
+            ),
             "iv": leaf(_num(chain_row.get("volatility")), "v1_approximation" if chain_row.get("volatility") is not None else "not_implemented"),
             "delta_gamma_ratio": leaf(ms_dict.get("ratio"), "v1_approximation" if ms_dict.get("ratio") is not None else "not_implemented"),
             "gamma_x_oi": leaf(_gamma_x_oi(chain_row), "v1_approximation" if _gamma_x_oi(chain_row) is not None else "not_implemented"),
@@ -232,13 +242,77 @@ def _handoff_mapping(a1_direction: Any) -> str:
     return "NO_OPTION_EXPRESSION"
 
 
-def _theta(chain_row: dict[str, Any]) -> float | None:
+def _theta(
+    *,
+    chain_row: dict[str, Any],
+    ms_dict: dict[str, Any],
+    strike: float | None,
+    option_right: str,
+) -> tuple[float | None, str | None]:
     theta = _num(chain_row.get("theta"))
     if theta is not None:
-        return theta
-    # Placeholder for the contracted Black-Scholes approximation. The first
-    # deterministic baseline fails closed until inputs and calendar handling are
-    # wired explicitly.
+        return theta, None
+
+    bs_theta = _black_scholes_theta(
+        spot=_num(ms_dict.get("spot")),
+        strike=strike,
+        iv=_num(chain_row.get("volatility")),
+        option_right=option_right,
+        time_to_expiry_years=_time_to_expiry_years(ms_dict, chain_row),
+    )
+    if bs_theta is None:
+        return None, None
+    return bs_theta, "black_scholes_approximation"
+
+
+def _black_scholes_theta(
+    *,
+    spot: float | None,
+    strike: float | None,
+    iv: float | None,
+    option_right: str,
+    time_to_expiry_years: float | None,
+    risk_free_rate: float = 0.05,
+) -> float | None:
+    if spot is None or strike is None or iv is None or time_to_expiry_years is None:
+        return None
+    if spot <= 0 or strike <= 0 or iv <= 0 or time_to_expiry_years <= 0:
+        return None
+    sigma = iv / 100.0 if iv > 3 else iv
+    if sigma <= 0:
+        return None
+    sqrt_t = math.sqrt(time_to_expiry_years)
+    d1 = (
+        math.log(spot / strike)
+        + (risk_free_rate + 0.5 * sigma * sigma) * time_to_expiry_years
+    ) / (sigma * sqrt_t)
+    d2 = d1 - sigma * sqrt_t
+    pdf_d1 = math.exp(-0.5 * d1 * d1) / math.sqrt(2.0 * math.pi)
+    first = -(spot * pdf_d1 * sigma) / (2.0 * sqrt_t)
+    discount = math.exp(-risk_free_rate * time_to_expiry_years)
+    if option_right == "CALL":
+        annual_theta = first - risk_free_rate * strike * discount * _norm_cdf(d2)
+    elif option_right == "PUT":
+        annual_theta = first + risk_free_rate * strike * discount * _norm_cdf(-d2)
+    else:
+        return None
+    return round(annual_theta / 365.0, 6)
+
+
+def _norm_cdf(x: float) -> float:
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def _time_to_expiry_years(ms_dict: dict[str, Any], chain_row: dict[str, Any]) -> float | None:
+    dte = _num(chain_row.get("daysToExpiration"))
+    if dte is not None and dte > 0:
+        return dte / 365.0
+    mins = _num(ms_dict.get("mins_to_close"))
+    if mins is not None and mins > 0:
+        return mins / (365.0 * 24.0 * 60.0)
+    hours = _num(ms_dict.get("hours_to_expiry"))
+    if hours is not None and hours > 0:
+        return hours / (365.0 * 24.0)
     return None
 
 
