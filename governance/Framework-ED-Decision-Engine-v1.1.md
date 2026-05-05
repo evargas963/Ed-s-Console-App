@@ -10,6 +10,13 @@
 
 All notable changes to this framework document are listed here. This project follows principles aligned with [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+### [1.1 administrative correction] — 2026-05-04
+
+#### Changed
+
+- Corrected the contract-system wording and Appendix A authority references to point at the actual V3 invariant and glossary structure rather than stale B–H / guardrail / definition counts.
+- This is a documentation authority-chain correction only. It does not change framework version `1.1`, prereg binding, label semantics, ATR policy, cost model family, instrument tier, or pilot runtime contract.
+
 ### [1.1] — 2026-05-01
 
 #### Added
@@ -23,12 +30,11 @@ All notable changes to this framework document are listed here. This project fol
 - **Meta-labeling** elevated to Step 1: primary layer = candidate trade outcomes; secondary layer = meta filter on candidates (implementation detail remains Step 16).
 - **Pre-registration** framed explicitly as the anti–post-hoc rationalization spine for research claims.
 - **DSR / multiplicity discipline** as non-negotiable before any “we found a cell” claim.
-- **Appendix A**: Contract system reference to V3 invariants and controlled vocabulary — normative contracts; code is a checked projection.
+- **Appendix A**: Contract system reference appendix — normative contracts; code is a checked projection.
 
 #### Changed
 
 - Structural numbering: Step 0 inserted; former introductory material folded into Purpose + Step 0 + Step 1 where appropriate.
-- Authority-chain correction: Appendix A now references the actual V3 invariant/glossary structure instead of stale B–H / guardrail / definition counts.
 
 ---
 

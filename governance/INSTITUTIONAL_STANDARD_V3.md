@@ -9,11 +9,28 @@ This document uses a three-layer reading pattern in substantive sections:
 - **Invariant:** hard rule that cannot be violated without governed exception
 - **Enforcement:** how violations are surfaced in code/runtime/audit
 
-This is **Version V3.0**. It supersedes:
+This is **Version V3.1**. It supersedes:
 - `governance/INSTITUTIONAL_STANDARD_WISHLIST.md` (V1)
 - `governance/INSTITUTIONAL_STANDARD_V2.md` (V2)
 
 Amendments follow this standard's own governance in Section 20.
+
+---
+
+## Changelog
+
+### [V3.1] — 2026-05-04
+
+Administrative refinement under Section 20's V3.X path; no invariant semantics or governance tier meanings changed.
+
+- Added `Regime` as a controlled glossary term to reconcile existing divergence-band language with the V3 lock record.
+- Added `Ticker` as the controlled instrument identifier and clarified `symbol` as legacy wording.
+- Standardized lifecycle terminology on `PROMOTABLE_CANDIDATE`.
+- Corrected §5.5 wording so degradation defaults must be published in the versioned failure-mode catalog or governing phase plan entry.
+
+### [V3.0] — 2026-05-02
+
+Initial locked V3 standard per `governance/V3_LOCK_RECORD.md`.
 
 ---
 
@@ -492,7 +509,7 @@ The standard versions itself.
 
 ## Document control
 
-- **Version:** V3.0
+- **Version:** V3.1
 - **Supersedes:** V1 (`governance/INSTITUTIONAL_STANDARD_WISHLIST.md`), V2 (`governance/INSTITUTIONAL_STANDARD_V2.md`)
 - **Effective:** on lock per `governance/V3_LOCK_RECORD.md`
 
