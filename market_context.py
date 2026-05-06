@@ -91,6 +91,38 @@ IWM_SECTOR_WEIGHT_SUM = sum(w for _, _, w in IWM_SECTORS)  # ~0.63
 
 CONTEXT_TICKERS_MARKET = ["SPY", "QQQ", "IWM", "$VIX"]
 
+
+def market_context_panel_symbols_excluding_core(core_upper: frozenset[str]) -> list[str]:
+    """
+    Equity / index symbols whose quotes are pulled every ``fetch_market_context`` cycle for the UI
+    cross-instrument panel (SPY/QQQ/IWM tops, IWM sector ETFs, VIX, 10Y).
+
+    Excludes ``core_upper`` so callers do not duplicate ``CORE_TICKERS`` rows in ``logging_universe``.
+    Order is deterministic (tables top-to-bottom, then macro indices).
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+
+    def add(sym: str) -> None:
+        s = (sym or "").upper().strip()
+        if not s or s in seen or s in core_upper:
+            return
+        seen.add(s)
+        out.append(s)
+
+    for sym, _, _ in SPY_TOP:
+        add(sym)
+    for sym, _, _ in QQQ_TOP:
+        add(sym)
+    for sym, _, _ in IWM_TOP_HOLDINGS:
+        add(sym)
+    for sym, _, _ in IWM_SECTORS:
+        add(sym)
+    add("$VIX")
+    add("$TNX")
+    return out
+
+
 # CME index futures (Schwab: root + month/year, e.g. /ESH25, /NQH25, /RTYH25 — not generic /ES in all APIs).
 # Streamer docs use level_one_futures; REST quotes may require full contract symbol from chains.
 # Wire separately when account + symbol validation is confirmed (overnight session % vs cash ETF).

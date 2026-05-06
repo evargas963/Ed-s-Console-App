@@ -1,7 +1,7 @@
 """
 ml_scheduler / training bulk ticker load — Issue 22 single source of truth: EdDB.logging_universe.
 
-Authoritative enrollment = rows in logging_universe (core + pinned + user_persisted).
+Authoritative enrollment = rows in logging_universe (core + pinned + panel_auto + user_persisted).
 There is no parallel ticker list from JSON or from DISTINCT(snapshot tables) for *who is enrolled*.
 
 Historical companion file data/user_scheduler_tickers.json is migrated once into

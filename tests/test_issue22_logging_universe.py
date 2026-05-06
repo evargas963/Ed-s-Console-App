@@ -18,7 +18,12 @@ from db import EdDB
 
 
 def _tickers_by_cat(db: EdDB) -> dict[str, set[str]]:
-    out: dict[str, set[str]] = {"core": set(), "pinned": set(), "user_persisted": set()}
+    out: dict[str, set[str]] = {
+        "core": set(),
+        "pinned": set(),
+        "panel_auto": set(),
+        "user_persisted": set(),
+    }
     for r in db.logging_universe_list_rows():
         c = (r.get("category") or "").lower()
         t = (r.get("ticker") or "").upper().strip()
@@ -167,6 +172,34 @@ def test_issue22_remove_non_core_covers_pinned(tmp_path):
     assert "PINZ" not in [r["ticker"].upper() for r in db.logging_universe_list_rows()]
 
 
+def test_issue22_panel_auto_sync_and_prune_category(tmp_path):
+    from market_context import market_context_panel_symbols_excluding_core
+
+    dbp = tmp_path / "panel_auto.db"
+    t0 = 1_700_000_000.0
+    edb = EdDB(dbp)
+    minimal_core = ["SPY"]
+    edb.logging_universe_sync_core(minimal_core, t0)
+    panel = market_context_panel_symbols_excluding_core(frozenset(x.upper() for x in minimal_core))
+    assert "WMT" in panel
+    assert "NVDA" in panel  # SPY_TOP member; excluded only when present in core_upper
+    r1 = edb.logging_universe_sync_panel_auto(panel, t0 + 1.0)
+    assert r1["desired"] == len(panel)
+    by_t = {row["ticker"].upper(): row["category"] for row in edb.logging_universe_list_rows()}
+    assert by_t["SPY"] == "core"
+    assert by_t.get("WMT") == "panel_auto"
+    auth = edb.logging_universe_authoritative_tickers()
+    assert "WMT" in auth and "SPY" in auth
+
+    r2 = edb.logging_universe_sync_panel_auto(["WMT", "FN"], t0 + 2.0)
+    assert r2["desired"] == 2
+    panel_rows = {row["ticker"].upper() for row in edb.logging_universe_list_rows() if row["category"] == "panel_auto"}
+    assert panel_rows == {"WMT", "FN"}
+
+    removed = edb.logging_universe_prune_invalid_enrollments()
+    assert isinstance(removed, list)
+
+
 def test_issue22_scheduler_tickers_match_logging_universe(tmp_path):
     dbp = tmp_path / "i22sched.db"
     now = time.time()
@@ -267,7 +300,7 @@ def test_api_logger_universe_audit_v2_shape(monkeypatch, tmp_path):
         with srv._logger_lock:
             merged = list(srv.CORE_TICKERS)
             for r in edb.logging_universe_list_rows():
-                if r.get("category") in ("user_persisted", "pinned"):
+                if r.get("category") in ("user_persisted", "pinned", "panel_auto"):
                     t = (r.get("ticker") or "").upper().strip()
                     if t and t not in merged:
                         merged.append(t)
@@ -315,16 +348,16 @@ def test_issue22_add_logger_evicts_only_oldest_user_persisted(monkeypatch, tmp_p
     monkeypatch.setenv("ED_LOGGING_UNIVERSE_FIFO_EVICTION", "1")
     monkeypatch.setattr(srv, "_run_legacy_logger_json_migration", lambda _db: None)
     edb.logging_universe_sync_core(["SPY"], t0)
-    edb.logging_universe_upsert_pinned("PINNED", "s", t0 + 0.5)
+    edb.logging_universe_upsert_pinned("PINK", "s", t0 + 0.5)
     edb.logging_universe_upsert_user_persisted("UOLD", "s", t0 + 1)
     edb.logging_universe_upsert_user_persisted("UMID", "s", t0 + 2)
     srv._hydrate_logger_tickers_from_db()
-    assert srv._add_logger_ticker("UINCOMING", enrollment_source="test") is True
+    assert srv._add_logger_ticker("UNEWO", enrollment_source="test") is True
     by_cat = _tickers_by_cat(edb)
     assert "UOLD" not in by_cat["user_persisted"]
-    assert "UINCOMING" in by_cat["user_persisted"]
+    assert "UNEWO" in by_cat["user_persisted"]
     assert "UMID" in by_cat["user_persisted"]
-    assert "PINNED" in by_cat["pinned"]
+    assert "PINK" in by_cat["pinned"]
     assert "SPY" in by_cat["core"]
     ev = edb.logging_universe_recent_evictions(limit=3)
     assert any(e.get("evicted_ticker") == "UOLD" for e in ev)
@@ -348,8 +381,8 @@ def test_issue22_add_logger_no_eviction_when_fifo_disabled(monkeypatch, tmp_path
     edb.logging_universe_upsert_user_persisted("UOLD", "s", t0 + 1)
     edb.logging_universe_upsert_user_persisted("UMID", "s", t0 + 2)
     srv._hydrate_logger_tickers_from_db()
-    assert srv._add_logger_ticker("UINCOMING", enrollment_source="test") is True
+    assert srv._add_logger_ticker("UNEWO", enrollment_source="test") is True
     by_cat = _tickers_by_cat(edb)
     assert "UOLD" in by_cat["user_persisted"]
     assert "UMID" in by_cat["user_persisted"]
-    assert "UINCOMING" in by_cat["user_persisted"]
+    assert "UNEWO" in by_cat["user_persisted"]

@@ -104,7 +104,13 @@ from math_exposure import (
 )
 from math_snapshot_derive import derive_pressure_trend, derive_vwap_side
 from levels import to_display_rows, walls_to_df_rows, totals_to_df_rows
-from market_context import fetch_market_context, fetch_price_levels, PriceLevels, _derive_session
+from market_context import (
+    fetch_market_context,
+    fetch_price_levels,
+    market_context_panel_symbols_excluding_core,
+    PriceLevels,
+    _derive_session,
+)
 from market_state import build_market_state, derive_zone
 from ml_horizon import PRIMARY_DECISION_HORIZONS, SECONDARY_SUPPORT_HORIZONS
 from realized_contract_eval import serialize_option_chain_for_eval, build_replay_context_payload
@@ -1211,6 +1217,26 @@ MAX_USER_PERSISTED_LOGGING_TICKERS: int | None = None  # None = unlimited (no ev
 MAX_PINNED_LOGGING_TICKERS: int = 24
 
 
+def _market_context_panel_auto_candidates() -> list[str]:
+    """Symbols quoted every ``fetch_market_context`` cycle (excluding ``CORE_TICKERS`` duplicates)."""
+    core_u = frozenset((c or "").upper().strip() for c in CORE_TICKERS)
+    return market_context_panel_symbols_excluding_core(core_u)
+
+
+def _sync_market_context_panel_into_logging_universe(db, now_ts: float) -> None:
+    """Persist cross-panel quote universe into ``logging_universe`` as ``panel_auto`` (data-plane SSOT)."""
+    try:
+        r = db.logging_universe_sync_panel_auto(_market_context_panel_auto_candidates(), now_ts)
+        if r.get("desired"):
+            log.info(
+                "Issue 22: panel_auto sync — desired=%s upsert_round=%s",
+                r.get("desired"),
+                r.get("upserted"),
+            )
+    except Exception as e:
+        log.warning("logging_universe panel_auto sync failed: %s", e)
+
+
 def _logging_universe_fifo_eviction_enabled() -> bool:
     return os.environ.get("ED_LOGGING_UNIVERSE_FIFO_EVICTION", "").strip().lower() in (
         "1",
@@ -1266,7 +1292,10 @@ def _run_legacy_logger_json_migration(db) -> None:
 
 
 def _load_persisted_tickers() -> list[str]:
-    """Authoritative enrolled universe: CORE_TICKERS + logging_universe (pinned + user_persisted).
+    """Authoritative enrolled universe: CORE_TICKERS + logging_universe (pinned + user_persisted + panel_auto).
+
+    ``panel_auto`` rows mirror ``market_context.py`` cross-panel quote symbols (excluding core duplicates)
+    so every name the app fetches for confluence UI also runs the persistent snapshot / 1m pipeline.
 
     Distinct tickers appearing only in snapshots / normalized tables do not auto-enroll (Issue 22).
     ml_scheduler and train_all bulk paths use the same EdDB authority via scheduler_user_tickers.
@@ -1297,8 +1326,9 @@ def _load_persisted_tickers() -> list[str]:
                 log.warning("Issue 22: pruned invalid logging_universe enrollments: %s", removed)
         except Exception as e:
             log.warning("Issue 22: logging_universe prune failed: %s", e)
+        _sync_market_context_panel_into_logging_universe(db, now)
         for row in db.logging_universe_list_rows():
-            if row.get("category") in ("user_persisted", "pinned"):
+            if row.get("category") in ("user_persisted", "pinned", "panel_auto"):
                 t = (row.get("ticker") or "").upper().strip()
                 if t and t not in tickers:
                     tickers.append(t)
@@ -1322,7 +1352,7 @@ def _load_persisted_tickers() -> list[str]:
 
 
 def _hydrate_logger_tickers_from_db() -> None:
-    """Re-merge CORE + user_persisted + pinned from DB (startup / heal drift). Issue 22."""
+    """Re-merge CORE + user_persisted + pinned + panel_auto from DB (startup / heal drift). Issue 22."""
     global _logger_tickers
     if not _HAS_SIGNALS:
         return
@@ -1337,9 +1367,10 @@ def _hydrate_logger_tickers_from_db() -> None:
                 log.warning("Issue 22: pruned invalid logging_universe enrollments: %s", removed)
         except Exception as e:
             log.warning("Issue 22: logging_universe prune failed: %s", e)
+        _sync_market_context_panel_into_logging_universe(db, now)
         merged = list(CORE_TICKERS)
         for row in db.logging_universe_list_rows():
-            if row.get("category") in ("user_persisted", "pinned"):
+            if row.get("category") in ("user_persisted", "pinned", "panel_auto"):
                 t = (row.get("ticker") or "").upper().strip()
                 if t and t not in merged:
                     merged.append(t)
@@ -6068,6 +6099,15 @@ async def logger_remove(ticker: str = Query(..., description="Ticker to remove f
     ticker = ticker.upper().strip()
     if ticker in CORE_TICKERS:
         raise HTTPException(status_code=400, detail=f"{ticker} is a core ticker and cannot be removed")
+    panel_auto = frozenset(_market_context_panel_auto_candidates())
+    if ticker in panel_auto:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{ticker} is auto-enrolled from the market cross-panel (see market_context.py) "
+                "and cannot be removed via /api/logger/remove"
+            ),
+        )
     db_removed = False
     if _HAS_SIGNALS:
         try:

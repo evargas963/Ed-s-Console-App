@@ -44,7 +44,7 @@ from db_authority import (
     is_canonical_db_path,
 )
 from dataclasses import dataclass, field, asdict
-from typing import Callable, Optional, TypeVar
+from typing import Any, Callable, Optional, TypeVar
 
 # ── Canonical timeframe (central config) ───────────────────────────────────
 from timeframe_config import CANONICAL_TIMEFRAME, DERIVED_TIMEFRAME
@@ -1390,6 +1390,71 @@ class EdDB:
                 """
             )
 
+    def logging_universe_sync_panel_auto(self, panel_candidates: list[str], now_ts: float) -> dict[str, Any]:
+        """
+        Upsert ``panel_auto`` rows — symbols the app quotes every market-context refresh and must
+        therefore receive the same persistent snapshot / 1m pipeline as enrolled user tickers.
+
+        Does not alter existing ``core`` / ``user_persisted`` / ``pinned`` rows. Drops ``panel_auto``
+        rows no longer in the desired panel list (e.g. holdings table refresh).
+        """
+        from production_universe import filter_valid_tickers, is_valid_production_ticker, normalize_production_ticker
+
+        want_list = [normalize_production_ticker(x) for x in filter_valid_tickers(panel_candidates)]
+        want_list = [t for t in want_list if t and is_valid_production_ticker(t)]
+        want = frozenset(want_list)
+
+        def _do() -> dict[str, Any]:
+            upserted = 0
+            with self._connect() as conn:
+                if not want:
+                    conn.execute("DELETE FROM logging_universe WHERE category = 'panel_auto'")
+                    return {"upserted": 0, "desired": 0, "symbols": []}
+
+                qmarks = ",".join("?" * len(want))
+                conn.execute(
+                    f"""
+                    DELETE FROM logging_universe
+                    WHERE category = 'panel_auto'
+                      AND UPPER(ticker) NOT IN ({qmarks})
+                    """,
+                    tuple(sorted(want)),
+                )
+
+                for sym in want_list:
+                    row = conn.execute(
+                        "SELECT category FROM logging_universe WHERE ticker = ? COLLATE NOCASE",
+                        (sym,),
+                    ).fetchone()
+                    cat = str(row[0]) if row else None
+                    if cat is None:
+                        conn.execute(
+                            """
+                            INSERT INTO logging_universe
+                                (ticker, category, enrollment_source, enrolled_ts_utc, last_seen_ts_utc)
+                            VALUES (?, 'panel_auto', 'market_context_panel_v1', ?, ?)
+                            """,
+                            (sym, now_ts, now_ts),
+                        )
+                        upserted += 1
+                    elif cat == "panel_auto":
+                        conn.execute(
+                            """
+                            UPDATE logging_universe SET
+                                last_seen_ts_utc = ?,
+                                enrollment_source = 'market_context_panel_v1'
+                            WHERE ticker = ? COLLATE NOCASE AND category = 'panel_auto'
+                            """,
+                            (now_ts, sym),
+                        )
+                        upserted += 1
+                    elif cat in ("core", "user_persisted", "pinned"):
+                        continue
+
+            return {"upserted": upserted, "desired": len(want), "symbols": want_list}
+
+        return _do()
+
     def logging_universe_sync_core(self, core_tickers: list[str], now_ts: float) -> None:
         """Upsert core symbols — always category core (authoritative list from server)."""
 
@@ -1591,7 +1656,7 @@ class EdDB:
                     """
                     SELECT ticker, category
                     FROM logging_universe
-                    WHERE category IN ('user_persisted', 'pinned')
+                    WHERE category IN ('user_persisted', 'pinned', 'panel_auto')
                     """
                 ).fetchall()
                 for r in rows:
@@ -1672,7 +1737,7 @@ class EdDB:
             rows = conn.execute(
                 """
                 SELECT ticker FROM logging_universe
-                WHERE category IN ('core', 'pinned')
+                WHERE category IN ('core', 'pinned', 'panel_auto')
                 ORDER BY ticker COLLATE NOCASE
                 """
             ).fetchall()
@@ -1708,21 +1773,23 @@ class EdDB:
             return [str(r[0]) for r in rows]
 
     def logging_universe_authoritative_tickers(self) -> list[str]:
-        """Sole enrollment authority (Issue 22): core + pinned + user_persisted in logging_universe.
+        """Sole enrollment authority (Issue 22): core + pinned + panel_auto + user_persisted.
 
         Background logger, ml_scheduler, and bulk train entry points use this same set.
+        ``panel_auto`` is maintained by ``logging_universe_sync_panel_auto`` (market_context panel).
         Rows observed in snapshots are not authority — enroll via server/UI/API or sync_core.
         """
         with self._connect() as conn:
             rows = conn.execute(
                 """
                 SELECT ticker FROM logging_universe
-                WHERE category IN ('core', 'pinned', 'user_persisted')
+                WHERE category IN ('core', 'pinned', 'panel_auto', 'user_persisted')
                 ORDER BY CASE category
                     WHEN 'core' THEN 0
                     WHEN 'pinned' THEN 1
-                    WHEN 'user_persisted' THEN 2
-                    ELSE 3 END,
+                    WHEN 'panel_auto' THEN 2
+                    WHEN 'user_persisted' THEN 3
+                    ELSE 4 END,
                     ticker COLLATE NOCASE
                 """
             ).fetchall()
@@ -2091,8 +2158,9 @@ class EdDB:
                 ORDER BY CASE category
                     WHEN 'core' THEN 0
                     WHEN 'pinned' THEN 1
-                    WHEN 'user_persisted' THEN 2
-                    ELSE 3 END,
+                    WHEN 'panel_auto' THEN 2
+                    WHEN 'user_persisted' THEN 3
+                    ELSE 4 END,
                     ticker COLLATE NOCASE
                 """
             ).fetchall()
@@ -2107,7 +2175,7 @@ class EdDB:
         for row in self.logging_universe_list_rows():
             d = dict(row)
             cat = d.get("category") or ""
-            if cat in ("core", "pinned"):
+            if cat in ("core", "pinned", "panel_auto"):
                 d["eviction_status"] = "protected"
                 d["eviction_fifo_position"] = None
             elif cat == "user_persisted":
