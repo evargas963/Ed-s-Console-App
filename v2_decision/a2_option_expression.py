@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from .a2_lifecycle_sidecar import build_a2_lifecycle_sidecar
 from .schema import leaf
 
 
@@ -169,6 +170,7 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
             "forced_exit_time": leaf(None, "policy_object_pending"),
             "allowed_actions": leaf(["hold", "exit", "tighten", "scale_out", "convert", "force_exit"], "policy_object_pending"),
             "lifecycle_policy_id": leaf(None, "policy_object_pending"),
+            "sidecar": build_a2_lifecycle_sidecar(ms_dict),
         },
         "health": {
             "hard_gates_failed": leaf(hard_gates, "v1_approximation"),
