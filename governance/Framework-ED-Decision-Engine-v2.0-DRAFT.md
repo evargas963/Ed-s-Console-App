@@ -205,7 +205,8 @@ Optional models that cannot fit inside the latency budget cannot be trade-impact
 2.18 Hedge contract  
 2.19 Thesis-break escalation  
 2.20 Decision-plane mode  
-2.21 Source indicator
+2.21 Source indicator  
+2.22 Field source classification
 
 ### 3. Approximate Guarantees
 
@@ -218,6 +219,19 @@ Allowed source indicators:
 - `v1_approximation` — field is approximated from existing v1 data or logic and is not full v2 compliance.
 - `not_implemented` — field is structurally present but not yet produced.
 - `policy_object_pending` — field depends on a governed policy object that has not yet been approved or bound.
+
+Controlled term:
+
+**Field source classification:** machine-readable data-origin class attached to, or auditably associated with, market-data fields and derived analytics.
+
+Allowed field source classifications:
+- `schwab_native_normalized` — Schwab provides the primitive field and the app consumes it through the canonical normalization boundary.
+- `schwab_native_raw_fallback` — Schwab provides the primitive field, but the app is reading it from preserved raw payload because normalization has not yet promoted it or a transition path is being audited.
+- `derived_because_schwab_does_not_provide` — Schwab does not provide the requested analytic; the value is legitimately produced by governed app math from declared inputs.
+- `derived_fallback_because_schwab_unavailable` — Schwab normally provides or may provide the primitive, but it was unavailable in the selected payload, so the app used a fallback derivation.
+- `presentation_only` — field is a display label, color, string, arrow, or UI formatting value and is not a data-plane or decision primitive.
+
+Source indicator and field source classification are orthogonal axes. Source indicator states whether a v2 leaf satisfies the v2 contract; field source classification states where the data came from. A field may be `v2_compliant` and `schwab_native_normalized` (for example, normalized Schwab theta), `v2_compliant` and `derived_because_schwab_does_not_provide` (for example, governed GEX), or `v1_approximation` and `derived_fallback_because_schwab_unavailable` (for example, Black-Scholes theta when Schwab theta is missing).
 
 **Approximate guarantee:** A procedure whose stated mathematical guarantee depends on data assumptions that financial data may violate. Examples include DSR, conformal prediction, bootstrap confidence intervals, and CV-based estimates.
 
@@ -244,6 +258,15 @@ Reports citing an approximate guarantee must:
 4.10 Fundamental data contract surfaces  
 4.11 Option-chain and IV-surface data contracts  
 4.12 Tax-lot and account data contracts where available
+
+Current Schwab market-data source inventory:
+
+- `docs/SCHWAB_FIELD_REFERENCE.md` - live Schwab field inventory reference, captured 2026-05-05 after re-authentication.
+- `docs/FIELD_SOURCE_AUDIT.md` - source classification for Schwab-native, normalized, raw-only, derived, and presentation fields.
+- `docs/SCHWAB_FIELD_NORMALIZATION_AUDIT.md` - option-chain normalization gap list and bound fix sequence.
+- `schwab_field_inventory/` - generated inventory artifacts, including the raw path catalog and canonical field dictionary.
+
+These artifacts are data-plane contracts for v2 design work. A Schwab field addition, removal, or semantic change must be treated as a data-governance event, not a silent runtime assumption change. Refresh cadence and artifact hash binding remain policy-object pending until v2.0 preregistration is approved.
 
 ### 5. Event Generation
 
