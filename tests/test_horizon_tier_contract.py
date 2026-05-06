@@ -80,3 +80,27 @@ def test_secondary_not_in_multi_horizon_decision_loop():
     assert set(s.hmap.keys()) == set(PRIMARY_DECISION_HORIZONS)
     for sec in SECONDARY_SUPPORT_HORIZONS:
         assert sec not in s.hmap
+
+
+def test_live_stack_skips_missing_secondary_active_bundles(monkeypatch):
+    import signals
+    import ml_predict
+
+    monkeypatch.setattr(signals, "ALL_GOVERNED_HORIZONS", ("1c", "3c", "5c", "8c"))
+    monkeypatch.setattr(signals, "PRIMARY_DECISION_HORIZONS", ("1c", "5c"))
+    monkeypatch.setattr(signals, "SECONDARY_SUPPORT_HORIZONS", ("3c", "8c"))
+
+    def _fake_model_dir_for_ticker(_ticker: str):
+        hz = ml_predict.get_ml_infer_horizon_slug()
+        if hz in ("3c", "8c"):
+            raise FileNotFoundError(f"no active {hz} bundle")
+        return ROOT
+
+    monkeypatch.setattr(ml_predict, "_model_dir_for_ticker", _fake_model_dir_for_ticker)
+
+    horizons, skipped = signals._live_model_stack_horizons("SPY")
+
+    assert horizons == ("1c", "5c")
+    assert set(skipped) == {"3c", "8c"}
+    assert skipped["3c"]["provenance"] == "skipped_missing_active_bundle"
+    assert skipped["3c"]["non_authoritative"] is True

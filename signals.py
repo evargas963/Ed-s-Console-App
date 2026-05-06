@@ -131,6 +131,38 @@ def _pred_override_allowed() -> bool:
     return os.environ.get("ED_CONSOLE_ALLOW_PRED_OVERRIDE", "").strip() in ("1", "true", "TRUE", "yes", "YES")
 
 
+def _live_model_stack_horizons(ticker: str) -> tuple[tuple[str, ...], dict[str, dict[str, Any]]]:
+    """Primary horizons always run; secondary diagnostics run only with active artifacts."""
+    from ml_predict import _model_dir_for_ticker, reset_ml_infer_horizon_slug, set_ml_infer_horizon_slug
+
+    horizons: list[str] = []
+    skipped_secondary: dict[str, dict[str, Any]] = {}
+    for hz in ALL_GOVERNED_HORIZONS:
+        if hz in PRIMARY_DECISION_HORIZONS:
+            horizons.append(hz)
+            continue
+        tok = set_ml_infer_horizon_slug(hz)
+        try:
+            _model_dir_for_ticker(ticker)
+        except FileNotFoundError as exc:
+            skipped_secondary[hz] = {
+                "horizon_tier": "secondary_support",
+                "non_authoritative": True,
+                "provenance": "skipped_missing_active_bundle",
+                "fusion_available": False,
+                "dominant_direction": None,
+                "prob_up": None,
+                "prob_down": None,
+                "prob_flat": None,
+                "skip_reason": str(exc),
+            }
+            continue
+        finally:
+            reset_ml_infer_horizon_slug(tok)
+        horizons.append(hz)
+    return tuple(horizons), skipped_secondary
+
+
 def _log_decision_bundle(
     ticker: str,
     canonical: CanonicalForecast,
@@ -1000,8 +1032,10 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
     mc_out = None
     ml_bundle: dict[str, Any] = {}
     fusion = None
+    live_stack_horizons, skipped_secondary_support = _live_model_stack_horizons(ticker)
+    secondary_support_fusion_audit.update(skipped_secondary_support)
 
-    for _hz in ALL_GOVERNED_HORIZONS:
+    for _hz in live_stack_horizons:
         _tok = set_ml_infer_horizon_slug(_hz)
         try:
             _xgb, _lstm, _tf, _mc, _mb = _run_model_stack(
