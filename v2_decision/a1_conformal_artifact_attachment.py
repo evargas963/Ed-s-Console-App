@@ -10,13 +10,13 @@ from v2_decision.a1_conformal_artifact_loader import load_a1_conformal_artifact
 def attach_a1_conformal_artifact_to_ms_dict(ms_dict: dict[str, Any], *, ticker: str) -> None:
     """Mutate ``ms_dict`` with the runtime-loadable A1 conformal artifact.
 
-    This intentionally does not inject ``a1_calibrated_probability`` or
-    ``a1_calibrated_probability_lineage_id``. Per
-    ``governance/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md``, the
-    canonical calibration source is not yet wired into runtime; injecting either
-    field here would fake provenance. Preconditions 7 and 8 in
-    ``derive_a1_conformal_bounds`` fail honestly until that canonical path
-    exists.
+    Handles ONLY the conformal artifact attachment. The sibling helper
+    ``attach_a1_isotonic_calibration_to_ms_dict`` in
+    ``v2_decision/a1_isotonic_calibration_attachment.py`` injects
+    ``a1_calibrated_probability`` and
+    ``a1_calibrated_probability_lineage_id`` per
+    ``governance/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md``. Both
+    helpers run in sequence at the server.py call sites.
     """
     horizon = str(ms_dict.get("primary_horizon") or "").strip().lower()
     if not ticker or not horizon:

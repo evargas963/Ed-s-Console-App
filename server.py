@@ -117,6 +117,7 @@ from realized_contract_eval import serialize_option_chain_for_eval, build_replay
 from live_decision_bundle import stamp_decision_bundle, tick_triggers_coherent_refresh
 from v2_decision import build_module_a_a1_decision
 from v2_decision.a1_conformal_artifact_attachment import attach_a1_conformal_artifact_to_ms_dict
+from v2_decision.a1_isotonic_calibration_attachment import attach_a1_isotonic_calibration_to_ms_dict
 
 try:
     from db import get_db
@@ -4177,6 +4178,7 @@ def _fetch_state(
         _apply_trader_horizon_contract(_v2_logging_ms_dict)
         stamp_decision_bundle(_v2_logging_ms_dict)
         attach_a1_conformal_artifact_to_ms_dict(_v2_logging_ms_dict, ticker=ticker)
+        attach_a1_isotonic_calibration_to_ms_dict(_v2_logging_ms_dict, ticker=ticker)
         _v2_decision_for_response = build_module_a_a1_decision(_v2_logging_ms_dict)
 
         from calibration.v2_live_logging import append_live_v2_calibration_decision
@@ -4704,6 +4706,7 @@ def _fetch_state(
         ms_dict["_update_source"] = update_source
 
     attach_a1_conformal_artifact_to_ms_dict(ms_dict, ticker=ticker)
+    attach_a1_isotonic_calibration_to_ms_dict(ms_dict, ticker=ticker)
     ms_dict["v2_decision"] = _v2_decision_for_response or build_module_a_a1_decision(ms_dict)
     _lmp.merge_into_state(ms_dict, ticker)
 
