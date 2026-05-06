@@ -6,6 +6,7 @@ from typing import Any
 
 from .a2_option_expression import build_a2_option_expression
 from .a1_conformal_promotion import derive_a1_conformal_bounds
+from .a1_raw_probability import dominant_probability
 from .schema import SCHEMA_VERSION, V2_STATUS, leaf, validate_v2_decision
 
 
@@ -77,7 +78,7 @@ def _decision_block(ms: dict[str, Any]) -> dict[str, Any]:
     action = "WAIT" if direction == "neutral" else "TRADE"
     if ms.get("is_no_trade") is True or str(ms.get("execution_mode") or "").upper() == "NO_TRADE":
         action = "WAIT"
-    probability = _dominant_probability(ms)
+    probability = dominant_probability(ms)
     p_low, p_high, conformal_status = derive_a1_conformal_bounds(ms)
     conformal_source = "v1_approximation" if p_low is not None and p_high is not None else "not_implemented"
     conformal_detail = f"a1_conformal_interval:{conformal_status}"
@@ -184,21 +185,6 @@ def _direction(ms: dict[str, Any]) -> str:
     if s in ("down", "short", "bear", "bearish", "put"):
         return "short"
     return "neutral"
-
-
-def _dominant_probability(ms: dict[str, Any]) -> float | None:
-    candidates = (
-        ms.get("fusion_dominant_prob") if ms.get("fusion_available") else None,
-        ms.get("dominant_prob"),
-        ms.get("final_confidence"),
-    )
-    for value in candidates:
-        try:
-            if value is not None:
-                return round(float(value), 4)
-        except (TypeError, ValueError):
-            continue
-    return None
 
 
 def _confidence(ms: dict[str, Any]) -> str | None:
