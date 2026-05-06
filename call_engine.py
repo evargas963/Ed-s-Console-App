@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from lifecycle_rule_core import derive_stop_distance_pct, derive_target_levels
 from multi_horizon_decision import MultiHorizonSynthesis
 from datetime import timezone, timedelta
 
@@ -468,36 +469,17 @@ def _stop_distance(inp: SignalInput, risk_multiplier: float = 1.0) -> float:
     risk_multiplier: from volatility regime — scales stop in expansion/unstable
     (e.g. 1.35 in unstable = wider stops). Default 1.0.
     """
-    from math_exposure import (STOP_BASE_PCT, STOP_TIME_DECAY_PCT,
-                                STOP_VIX_MED_PCT, STOP_VIX_HIGH_PCT,
-                                STOP_FLOOR_PCT, STOP_CEILING_PCT)
-
     spot = inp.spot
     mins_elapsed = inp.et_hour * 60 + inp.et_minute - 570  # mins since 9:30 AM
     mins_elapsed = max(0, mins_elapsed)
 
-    # Base percentage
-    pct = STOP_BASE_PCT
-
-    # Tighten by STOP_TIME_DECAY_PCT per hour elapsed
-    pct -= (mins_elapsed / 60.0) * STOP_TIME_DECAY_PCT
-
-    # VIX adjustment
-    vix = inp.vix_level
-    if vix is not None:
-        if vix > 30:
-            pct += STOP_VIX_HIGH_PCT
-        elif vix > 20:
-            pct += STOP_VIX_MED_PCT
-
-    # Volatility regime: risk_multiplier scales stop (expansion/unstable = wider)
-    pct *= max(0.8, min(1.5, risk_multiplier or 1.0))
-
-    # Clamp to floor/ceiling
-    pct = max(STOP_FLOOR_PCT, min(STOP_CEILING_PCT, pct))
-
-    # Convert to points
-    return round(pct * spot, 2)
+    stop_distance = derive_stop_distance_pct(
+        spot=spot,
+        vix_level=inp.vix_level,
+        mins_elapsed_since_open=mins_elapsed,
+        risk_multiplier=risk_multiplier,
+    )
+    return round(stop_distance.final_pct * spot, 2)
 
 def _compute_levels(
     inp: SignalInput,
@@ -539,35 +521,26 @@ def _compute_levels(
     zone      = (governed_zone or "").lower()
     stop_dist = _stop_distance(inp, risk_multiplier=risk_multiplier)
 
-    MAX_RR_T1 = 5.0   # cap T1 at 5:1
-    MAX_RR_T2 = 8.0   # cap T2 at 8:1
-    MIN_RR    = 1.5    # minimum viable R:R
-
     # ── Prediction-based move distances (primary horizons for tradable targets only) ──
-    avg5  = abs(pred.avg_5c_pts)  if pred and pred.avg_5c_pts is not None else None
-    avg15 = abs(pred.avg_15c_pts) if pred and pred.avg_15c_pts is not None else None
-    avg60 = abs(pred.avg_60c_pts) if pred and pred.avg_60c_pts is not None else None
-    move_hi = abs(pred.move_range_hi) if pred and pred.move_range_hi is not None else None
+    avg5  = pred.avg_5c_pts  if pred and pred.avg_5c_pts is not None else None
+    avg15 = pred.avg_15c_pts if pred and pred.avg_15c_pts is not None else None
+    avg60 = pred.avg_60c_pts if pred and pred.avg_60c_pts is not None else None
 
-    def _snap_to_structural(target_price, direction, risk):
-        """If a structural level is within 30% of the predicted target,
-        snap to it — gives the trader a concrete level to watch."""
-        snap_range = risk * 1.5  # ±1.5 risk units
-        cands = []
+    def _structural_levels(direction):
         if direction == "long":
-            if vwap and vwap > spot: cands.append(vwap)
-            if cgw  and cgw  > spot: cands.append(cgw)
-            if coi  and coi  > spot: cands.append(coi)
-            nearby = [c for c in cands if abs(c - target_price) <= snap_range and c > spot]
-        else:
-            if vwap and vwap < spot: cands.append(vwap)
-            if pgw  and pgw  < spot: cands.append(pgw)
-            if poi  and poi  < spot: cands.append(poi)
-            nearby = [c for c in cands if abs(c - target_price) <= snap_range and c < spot]
-        if nearby:
-            # Pick the one closest to the predicted target
-            return min(nearby, key=lambda c: abs(c - target_price))
-        return target_price
+            return [level for level in (vwap, cgw, coi) if level and level > spot]
+        return [level for level in (vwap, pgw, poi) if level and level < spot]
+
+    def _targets(entry, direction, risk):
+        return derive_target_levels(
+            entry=entry,
+            direction=direction,
+            risk=risk,
+            avg5=avg5,
+            avg15=avg15,
+            avg60=avg60,
+            structural_levels=_structural_levels(direction),
+        )
 
     def _long_levels(anchor):
         entry = round(max(anchor + 0.25, spot), 2)
@@ -576,31 +549,8 @@ def _compute_levels(
         if risk <= 0:
             risk = stop_dist
 
-        # T1: prediction-based (5-bar avg move), capped
-        if avg5 and avg5 > risk * MIN_RR:
-            t1_raw = entry + min(avg5, risk * MAX_RR_T1)
-        else:
-            t1_raw = entry + risk * 2.0  # fallback: 2:1
-
-        target = round(_snap_to_structural(t1_raw, "long", risk), 2)
-        # Hard cap
-        target = round(min(target, entry + risk * MAX_RR_T1), 2)
-
-        # T2: 15c / 60c (primary decision horizons) — not secondary 8c/13c empirical
-        if avg15 and avg15 > abs(target - entry):
-            t2_raw = entry + min(avg15, risk * MAX_RR_T2)
-        elif avg60 and avg60 > abs(target - entry):
-            t2_raw = entry + min(avg60, risk * MAX_RR_T2)
-        else:
-            t2_raw = target + risk  # fallback: T1 + 1R
-
-        target2 = round(_snap_to_structural(t2_raw, "long", risk), 2)
-        target2 = round(min(target2, entry + risk * MAX_RR_T2), 2)
-        # T2 must be above T1
-        if target2 <= target:
-            target2 = round(target + risk, 2)
-
-        return entry, stop, target, target2
+        targets = _targets(entry, "long", risk)
+        return entry, stop, targets.target, targets.target2
 
     def _short_levels(anchor):
         entry = round(min(anchor - 0.25, spot), 2)
@@ -609,29 +559,8 @@ def _compute_levels(
         if risk <= 0:
             risk = stop_dist
 
-        # T1: prediction-based
-        if avg5 and avg5 > risk * MIN_RR:
-            t1_raw = entry - min(avg5, risk * MAX_RR_T1)
-        else:
-            t1_raw = entry - risk * 2.0
-
-        target = round(_snap_to_structural(t1_raw, "short", risk), 2)
-        target = round(max(target, entry - risk * MAX_RR_T1), 2)
-
-        # T2: 15c / 60c primary horizons only
-        if avg15 and avg15 > abs(entry - target):
-            t2_raw = entry - min(avg15, risk * MAX_RR_T2)
-        elif avg60 and avg60 > abs(entry - target):
-            t2_raw = entry - min(avg60, risk * MAX_RR_T2)
-        else:
-            t2_raw = target - risk
-
-        target2 = round(_snap_to_structural(t2_raw, "short", risk), 2)
-        target2 = round(max(target2, entry - risk * MAX_RR_T2), 2)
-        if target2 >= target:
-            target2 = round(target - risk, 2)
-
-        return entry, stop, target, target2
+        targets = _targets(entry, "short", risk)
+        return entry, stop, targets.target, targets.target2
 
     # ── PIN ZONE: fade the walls ──────────────────────────────────────────────
     if signal == "short" and is_pin_zone(zone) and cgw:
