@@ -167,7 +167,7 @@ This is an honest-not-optimistic posture: lifecycle availability is not treated 
 
 ## Named Gaps
 
-- `a1_conformal_artifact_persistence_venue_pending` - Filesystem JSON is recommended and described here, but the filesystem-vs-SQLite decision is not formally bound until an operator decision register entry exists.
+- `a1_conformal_artifact_persistence_venue_pending` — **resolved** by **O-28** (filesystem JSON formally bound). SQLite remains a future alternative if query-by-criteria semantics become necessary.
 - `a1_conformal_calibration_lineage_match_pending` — **resolved** by `e2e1dbc` (provenance contract defining the canonical source and match rule), `7c9e124` (precondition 8 amendment to A1 conformal interval promotion contract), and `5bcc138` (precondition 8 implementation in `derive_a1_conformal_bounds`). Note: the lineage match **mechanism** is implemented; runtime promotion continues to fail precondition 8 because the canonical calibration source is not yet wired through a separate gap `a1_runtime_calibration_canonical_source_pending_implementation`.
 - `a1_conformal_artifact_loader_implementation_pending` — **resolved** by `fe3c8a9`. Implementation at `v2_decision/a1_conformal_artifact_loader.py:load_a1_conformal_artifact` matches the loader contract surface defined here in §125-148. R2-lite shared-helper extraction also landed in `v2_decision/a1_conformal_artifact_contract.py`.
 

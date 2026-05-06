@@ -164,9 +164,9 @@ V1 cadence is manual and CLI-driven:
 ## Named Gaps
 
 - `a1_conformal_artifact_production_scheduler_pending` - Manual cadence is v1; scheduler integration awaits future operator decision and a separate contract.
-- `a1_conformal_artifact_governed_max_age_seconds_policy_pending` - Value is operator-CLI-passed in v1. Recommended starting value is 7 days plus tolerance, for example `691200` seconds = 8 days. Operator decision register entry will bind the canonical value.
-- `a1_conformal_artifact_walkforward_window_policy_pending` - Window boundaries are operator-CLI-passed in v1. Future operator decision register entry binds canonical cadence, such as weekly with specific train, calibration, holdout, and eval window lengths.
-- `a1_conformal_artifact_evaluation_window_minimum_size_policy_pending` - V1 uses `A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES` as the default threshold; operator binding is future work.
+- `a1_conformal_artifact_governed_max_age_seconds_policy_pending` — **resolved** by **O-29**. Value is bound to `691200` seconds (8 days) as an operational freshness bound for weekly cadence plus one-day tolerance.
+- `a1_conformal_artifact_walkforward_window_policy_pending` — **resolved** by **O-30**. Window boundaries are bound to weekly cadence with 90 days train / 30 days calibration / 7 days holdout / 7 days post-fit evaluation.
+- `a1_conformal_artifact_evaluation_window_minimum_size_policy_pending` — **resolved** by **O-31**. V1 uses `500` rows, tied to `A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES` (O-24), as the post-fit evaluation window minimum.
 
 ---
 
