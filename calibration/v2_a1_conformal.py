@@ -250,6 +250,7 @@ def _interval_rows(interval_model: dict[str, Any], rows: list[dict[str, Any]]) -
                 "p_low": p_low,
                 "p_high": p_high,
                 "covered": int(row["label"]) >= p_low and int(row["label"]) <= p_high,
+                **{axis: row.get(axis) for axis in A1_CONFORMAL_REGIME_AXES},
             }
         )
     return out

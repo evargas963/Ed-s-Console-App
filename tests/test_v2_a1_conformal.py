@@ -88,6 +88,13 @@ def test_conformal_emits_bounded_interval_model_when_coverage_is_nominal():
     p_low, p_high = apply_a1_conformal_interval(artifact["interval_model"], 0.5)
     assert 0.0 <= p_low <= p_high <= 1.0
     assert artifact["holdout_intervals"]
+    interval = artifact["holdout_intervals"][0]
+    assert interval["volatility_regime"] == "normal"
+    assert interval["time_of_day_bucket"] == "midday"
+    assert interval["expiry_dte_bucket"] == "not_options_applicable"
+    assert interval["ticker"] == "SPY"
+    assert interval["direction"] == "long"
+    assert interval["primary_horizon"] == "5c"
 
 
 def test_conformal_degraded_coverage_does_not_promote_intervals_with_separate_evaluation():
