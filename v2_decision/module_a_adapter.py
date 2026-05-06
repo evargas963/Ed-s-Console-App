@@ -139,7 +139,15 @@ def _edge_domains(ms: dict[str, Any]) -> dict[str, Any]:
             "status": leaf("partially_available", "v1_approximation"),
             "calibration_state": leaf(ms.get("calibration_state"), "not_implemented"),
             "drift_state": leaf(ms.get("drift_state"), "not_implemented"),
-            "post_trade_attribution": leaf(None, "not_implemented"),
+            "post_trade_attribution": leaf(
+                {
+                    "status": "schema_and_log_sink_available",
+                    "live_close_out_record_attached": False,
+                    "learning_enabled": False,
+                },
+                "not_implemented",
+                detail="Log-only scaffold exists; no live close-out hook, replay binding, or learning loop is attached.",
+            ),
         },
     }
 

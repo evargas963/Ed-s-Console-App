@@ -58,6 +58,11 @@ def test_module_a_a1_maps_current_stack_as_v1_approximation():
     assert decision["decision"]["probability"] == {"value": 0.64, "source": "v1_approximation"}
     assert decision["edge_domains"]["implementation"]["slippage_model"]["source"] == "not_implemented"
     assert decision["edge_domains"]["portfolio"]["correlation_adjusted_size"]["source"] == "policy_object_pending"
+    post_trade = decision["edge_domains"]["lifecycle"]["post_trade_attribution"]
+    assert post_trade["source"] == "not_implemented"
+    assert post_trade["value"]["status"] == "schema_and_log_sink_available"
+    assert post_trade["value"]["live_close_out_record_attached"] is False
+    assert post_trade["value"]["learning_enabled"] is False
 
 
 def test_section_18_named_probability_and_ev_fields_are_explicit_leaves():
