@@ -1,8 +1,18 @@
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from lifecycle_rule_core import LIFECYCLE_RULE_CORE_VERSION
 from v2_decision.a2_lifecycle_sidecar import LIFECYCLE_GAP_NAMES, PREVIEW_BLOCKING_GAPS
 from v2_decision.module_a_adapter import build_module_a_a1_decision
+
+
+ET = ZoneInfo("America/New_York")
+
+
+def _epoch_ms_et(year: int, month: int, day: int, hour: int, minute: int) -> int:
+    return int(datetime(year, month, day, hour, minute, tzinfo=ET).timestamp() * 1000)
 
 
 def _winner() -> dict:
@@ -61,7 +71,8 @@ def _ms(**overrides) -> dict:
         "call_gamma_wall": 505.0,
         "call_oi_wall": 506.0,
         "mins_to_close": 120.0,
-        "decision_time_ms": 1778018400000,
+        "decision_time_ms": _epoch_ms_et(2026, 5, 5, 10, 30),
+        "entry_state": "armed",
         "option_chain_selection_proof": {
             "status": "ok",
             "winner": _winner(),
@@ -96,7 +107,7 @@ def test_a2_lifecycle_sidecar_projected_preview_exists():
 
 
 def test_a2_lifecycle_sidecar_emits_all_contract_fields():
-    """Contract: PILOT_1B_A2_LIFECYCLE_CONTRACT.md sections 148-163 - 12-field shape."""
+    """Contract: PILOT_1B_A2_LIFECYCLE_CONTRACT.md sections 148-163 - sidecar shape."""
     sidecar = _a2()["lifecycle"]["sidecar"]
 
     assert set(sidecar) == {
@@ -106,6 +117,7 @@ def test_a2_lifecycle_sidecar_emits_all_contract_fields():
         "authority",
         "static_rule_core_version",
         "lifecycle_action",
+        "cadence_observation_mode",
         "lifecycle_conflict_state",
         "event_sources",
         "threshold_policy_objects",
@@ -159,13 +171,13 @@ def test_projected_preview_status_missing_inputs_when_required_inputs_absent():
 
 
 def test_projected_preview_available_is_currently_unreachable_until_eod_gap_closes():
-    """Contract: lifecycle contract L244 - EOD force-exit gap blocks fully available preview."""
+    """Contract: lifecycle contract L244 - preview remains policy pending until later phases."""
     preview = _a2()["lifecycle"]["sidecar"]["projected_preview"]
 
-    assert "a2_lifecycle_eod_force_exit_logic_not_implemented" in preview["preview_named_gaps"]
+    assert preview["preview_named_gaps"] == []
     assert preview["projected_eod_force_exit_time"]["source"] == "policy_object_pending"
     assert preview["preview_status"] != "available"
-    assert PREVIEW_BLOCKING_GAPS
+    assert PREVIEW_BLOCKING_GAPS == ()
 
 
 def test_projected_preview_policy_fields_remain_policy_object_pending():
@@ -216,7 +228,7 @@ def test_projected_preview_metadata_source_module_and_timestamp():
     preview = _a2()["lifecycle"]["sidecar"]["projected_preview"]
 
     assert preview["derivation_source_module"] == "lifecycle_rule_core"
-    assert preview["would_apply_if_entered_at_time"] == 1778018400000
+    assert preview["would_apply_if_entered_at_time"] == _epoch_ms_et(2026, 5, 5, 10, 30)
 
 
 def test_projected_preview_authority_blocks_runtime_interpretation():
@@ -237,7 +249,7 @@ def test_projected_preview_named_gaps_are_preview_blocking_subset_only():
     preview = _a2()["lifecycle"]["sidecar"]["projected_preview"]
 
     assert preview["preview_named_gaps"] == list(PREVIEW_BLOCKING_GAPS)
-    assert preview["preview_named_gaps"] == ["a2_lifecycle_eod_force_exit_logic_not_implemented"]
+    assert preview["preview_named_gaps"] == []
 
 
 def test_projected_preview_no_silent_partial_fills_when_unavailable():
@@ -263,7 +275,7 @@ def test_projected_preview_does_not_mutate_ms_dict_or_manage_active_position_dat
 
 def test_a2_lifecycle_sidecar_uses_honest_entry_time_posture_alpha():
     """Operator posture alpha: no projected lifecycle action before an active position exists."""
-    sidecar = _a2()["lifecycle"]["sidecar"]
+    sidecar = _a2(_ms(entry_state="armed", decision_time_ms=_epoch_ms_et(2026, 5, 5, 15, 50)))["lifecycle"]["sidecar"]
 
     assert sidecar["lifecycle_action"] == "no_active_position"
     assert sidecar["event_sources"] == []
@@ -288,12 +300,11 @@ def test_a2_lifecycle_sidecar_named_gaps_match_contract_verbatim():
     sidecar = _a2()["lifecycle"]["sidecar"]
 
     assert sidecar["named_gaps"] == list(LIFECYCLE_GAP_NAMES)
-    # Static rule core plus B2-bound timing policy gaps are retired from runtime emission.
-    assert len(sidecar["named_gaps"]) == 11
+    # Static rule core, B2-bound timing policy gaps, and EOD force-exit logic are retired from runtime emission.
+    assert len(sidecar["named_gaps"]) == 10
     assert sidecar["named_gaps"] == [
         "a2_lifecycle_policy_pending",
         "a2_lifecycle_legacy_exit_logic_divergence_audit_pending",
-        "a2_lifecycle_eod_force_exit_logic_not_implemented",
         "a2_lifecycle_iv_crush_handler_not_implemented",
         "a2_lifecycle_pin_risk_handler_not_implemented",
         "a2_lifecycle_gamma_spike_handler_not_implemented",
@@ -391,6 +402,7 @@ def test_v0_sidecar_fields_remain_backward_compatible_with_v1_preview():
         },
         "static_rule_core_version": LIFECYCLE_RULE_CORE_VERSION,
         "lifecycle_action": "no_active_position",
+        "cadence_observation_mode": "event_triggered",
         "lifecycle_conflict_state": "lifecycle_warning_only",
         "event_sources": [],
         "threshold_policy_objects": [],
@@ -402,6 +414,51 @@ def test_v0_sidecar_fields_remain_backward_compatible_with_v1_preview():
         },
         "promotion_state": sidecar["promotion_state"],
     }
+
+
+def test_sidecar_emits_force_exit_recommended_when_predicates_hold():
+    sidecar = _a2(
+        _ms(
+            entry_state="filled",
+            decision_time_ms=_epoch_ms_et(2026, 5, 5, 15, 50),
+            selected_exp="2026-05-05",
+        )
+    )["lifecycle"]["sidecar"]
+
+    assert sidecar["lifecycle_action"] == "force_exit_recommended"
+
+
+def test_sidecar_emits_no_active_position_when_predicates_fail():
+    sidecar = _a2(
+        _ms(
+            entry_state="armed",
+            decision_time_ms=_epoch_ms_et(2026, 5, 5, 15, 50),
+            selected_exp="2026-05-05",
+        )
+    )["lifecycle"]["sidecar"]
+
+    assert sidecar["lifecycle_action"] == "no_active_position"
+
+
+def test_sidecar_emits_cadence_observation_mode_field():
+    assert _a2(_ms(decision_time_ms=_epoch_ms_et(2026, 5, 5, 15, 29)))["lifecycle"]["sidecar"][
+        "cadence_observation_mode"
+    ] == "event_triggered"
+    assert _a2(_ms(decision_time_ms=_epoch_ms_et(2026, 5, 5, 15, 30)))["lifecycle"]["sidecar"][
+        "cadence_observation_mode"
+    ] == "every_tier_c_cycle"
+
+
+def test_sidecar_lifecycle_gap_names_drops_eod_force_exit_logic():
+    sidecar = _a2()["lifecycle"]["sidecar"]
+
+    assert "a2_lifecycle_eod_force_exit_logic_not_implemented" not in sidecar["named_gaps"]
+    assert len(sidecar["named_gaps"]) == 10
+
+
+def test_sidecar_preview_blocking_gaps_is_empty():
+    assert PREVIEW_BLOCKING_GAPS == ()
+    assert _a2()["lifecycle"]["sidecar"]["projected_preview"]["preview_named_gaps"] == []
 
 
 def _projected_values(preview: dict) -> dict:

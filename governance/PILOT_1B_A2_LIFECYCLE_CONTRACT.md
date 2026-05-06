@@ -124,7 +124,7 @@ Child gaps:
 
 - `a2_lifecycle_static_rule_core_pending` — **resolved** by `dcc9968` (lifecycle_rule_core.py extraction with both halves: 6 threshold-derivation functions + 2 exit-firing functions), `abb5587` (replay-side rewire of `_simulate_exit` to consume rule core), and `cd797e1` (live-side rewire of `_stop_distance` and `_compute_levels`). A2 sidecar `available` state remains blocked by separate gap `a2_lifecycle_eod_force_exit_logic_not_implemented`; this retirement narrows only the static rule core child gap.
 - `a2_lifecycle_legacy_exit_logic_divergence_audit_pending`
-- `a2_lifecycle_eod_force_exit_logic_not_implemented`
+- `a2_lifecycle_eod_force_exit_logic_not_implemented` — **resolved** by this EOD implementation commit. Force-exit firing logic + cadence shift implemented per `governance/A2_LIFECYCLE_EOD_FORCE_EXIT_AND_CADENCE_CONTRACT.md` (`20a1c14`). Helper at `v2_decision/a2_eod_force_exit.py` evaluates the 4-predicate firing rule and cadence shift; sidecar emits `lifecycle_action ∈ {"no_active_position", "force_exit_recommended"}` and new `cadence_observation_mode ∈ {"event_triggered", "every_tier_c_cycle"}`. Note: 4 named gaps from the EOD contract (`a2_lifecycle_position_realization_state_pending`, shortened-session, holiday-session, out-of-session) **remain open** by design — v1 is RTH-normal-session-only.
 - `a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending` —
   **resolved** by **O-33** (15:50 ET force-exit clock threshold bound).
   The clock threshold has no consumer until

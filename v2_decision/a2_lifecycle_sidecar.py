@@ -14,12 +14,12 @@ from lifecycle_rule_core import (
     derive_stop_distance_pct,
     derive_target_levels,
 )
+from v2_decision.a2_eod_force_exit import evaluate_a2_eod_force_exit
 
 
 LIFECYCLE_GAP_NAMES = (
     "a2_lifecycle_policy_pending",
     "a2_lifecycle_legacy_exit_logic_divergence_audit_pending",
-    "a2_lifecycle_eod_force_exit_logic_not_implemented",
     "a2_lifecycle_iv_crush_handler_not_implemented",
     "a2_lifecycle_pin_risk_handler_not_implemented",
     "a2_lifecycle_gamma_spike_handler_not_implemented",
@@ -32,9 +32,7 @@ LIFECYCLE_GAP_NAMES = (
 
 THRESHOLD_POLICY_OBJECTS = ()
 
-PREVIEW_BLOCKING_GAPS = (
-    "a2_lifecycle_eod_force_exit_logic_not_implemented",
-)
+PREVIEW_BLOCKING_GAPS = ()
 
 PROMOTION_CRITERIA = (
     (
@@ -71,6 +69,7 @@ PROMOTION_CRITERIA = (
 def build_a2_lifecycle_sidecar(ms_dict: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build the advisory lifecycle sidecar for A2."""
     ms = ms_dict if isinstance(ms_dict, dict) else {}
+    lifecycle_action, cadence_observation_mode = evaluate_a2_eod_force_exit(ms)
     return {
         "schema_version": "v2.0",
         "module_id": "A",
@@ -81,7 +80,8 @@ def build_a2_lifecycle_sidecar(ms_dict: dict[str, Any] | None = None) -> dict[st
             "changes_trade_behavior": False,
         },
         "static_rule_core_version": LIFECYCLE_RULE_CORE_VERSION,
-        "lifecycle_action": "no_active_position",
+        "lifecycle_action": lifecycle_action,
+        "cadence_observation_mode": cadence_observation_mode,
         "lifecycle_conflict_state": "lifecycle_warning_only",
         "event_sources": [],
         "threshold_policy_objects": [
