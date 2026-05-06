@@ -225,7 +225,11 @@ The first A2 adapter must include these gaps at minimum:
 - `a2_calibrated_probability_interval_not_implemented`;
 - `a2_contract_ev_not_implemented`;
 - `a2_pin_risk_handling_not_implemented`;
-- `a2_late_day_gamma_policy_pending`;
+- `a2_late_day_gamma_policy_pending` — **resolved** by **O-34**
+  (advisory-warning-only v1 policy bound). Late-day gamma exposure
+  may raise lifecycle/sidecar warning state but does not independently
+  tighten stops, resize, or force exit. EOD force-exit timing remains
+  governed by O-33.
 - `a2_early_assignment_risk_not_implemented`.
 
 Lifecycle child gaps under `a2_lifecycle_policy_pending` are governed by `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`. That contract extends the umbrella gap without renaming or superseding existing A2 lifecycle leaves (`P_lifecycle_adjusted_profit`, `timeout_policy`, `lifecycle_policy_id`).

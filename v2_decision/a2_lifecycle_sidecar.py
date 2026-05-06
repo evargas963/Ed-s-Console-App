@@ -20,8 +20,6 @@ LIFECYCLE_GAP_NAMES = (
     "a2_lifecycle_policy_pending",
     "a2_lifecycle_legacy_exit_logic_divergence_audit_pending",
     "a2_lifecycle_eod_force_exit_logic_not_implemented",
-    "a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending",
-    "a2_lifecycle_eod_window_threshold_minutes_policy_object_pending",
     "a2_lifecycle_iv_crush_handler_not_implemented",
     "a2_lifecycle_pin_risk_handler_not_implemented",
     "a2_lifecycle_gamma_spike_handler_not_implemented",

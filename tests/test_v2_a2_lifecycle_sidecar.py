@@ -292,14 +292,12 @@ def test_a2_lifecycle_sidecar_named_gaps_match_contract_verbatim():
     sidecar = _a2()["lifecycle"]["sidecar"]
 
     assert sidecar["named_gaps"] == list(LIFECYCLE_GAP_NAMES)
-    # Static rule core gap is retired by this A-gap retirement commit.
-    assert len(sidecar["named_gaps"]) == 13
+    # Static rule core plus B2-bound timing policy gaps are retired from runtime emission.
+    assert len(sidecar["named_gaps"]) == 11
     assert sidecar["named_gaps"] == [
         "a2_lifecycle_policy_pending",
         "a2_lifecycle_legacy_exit_logic_divergence_audit_pending",
         "a2_lifecycle_eod_force_exit_logic_not_implemented",
-        "a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending",
-        "a2_lifecycle_eod_window_threshold_minutes_policy_object_pending",
         "a2_lifecycle_iv_crush_handler_not_implemented",
         "a2_lifecycle_pin_risk_handler_not_implemented",
         "a2_lifecycle_gamma_spike_handler_not_implemented",

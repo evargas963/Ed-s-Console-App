@@ -125,8 +125,14 @@ Child gaps:
 - `a2_lifecycle_static_rule_core_pending` — **resolved** by `dcc9968` (lifecycle_rule_core.py extraction with both halves: 6 threshold-derivation functions + 2 exit-firing functions), `abb5587` (replay-side rewire of `_simulate_exit` to consume rule core), and `cd797e1` (live-side rewire of `_stop_distance` and `_compute_levels`). A2 sidecar `available` state remains blocked by separate gap `a2_lifecycle_eod_force_exit_logic_not_implemented`; this retirement narrows only the static rule core child gap.
 - `a2_lifecycle_legacy_exit_logic_divergence_audit_pending`
 - `a2_lifecycle_eod_force_exit_logic_not_implemented`
-- `a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending`
-- `a2_lifecycle_eod_window_threshold_minutes_policy_object_pending`
+- `a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending` —
+  **resolved** by **O-33** (15:50 ET force-exit clock threshold bound).
+  The clock threshold has no consumer until
+  `a2_lifecycle_eod_force_exit_logic_not_implemented` closes.
+- `a2_lifecycle_eod_window_threshold_minutes_policy_object_pending` —
+  **resolved** by **O-32** (30-minute EOD cadence window bound). Cadence
+  shift to every Tier C cycle is governed by this threshold once the
+  late-day window code path consumes it.
 - `a2_lifecycle_iv_crush_handler_not_implemented`
 - `a2_lifecycle_pin_risk_handler_not_implemented`
 - `a2_lifecycle_gamma_spike_handler_not_implemented`
@@ -138,11 +144,18 @@ Child gaps:
 
 ### Time-Related Gap Disambiguation
 
-`a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending` is the force-exit trigger: the clock threshold at which lifecycle must advise closing a position.
+**O-33** binds the force-exit clock threshold at **15:50 ET**
+(`a2_lifecycle_time_stop_force_exit_clock_threshold_v1`); this is the
+clock threshold at which lifecycle must advise closing a position.
 
-`a2_lifecycle_eod_window_threshold_minutes_policy_object_pending` is the cadence shift: the threshold at which lifecycle observation switches from event-triggered to every Tier C cycle.
+**O-32** binds the EOD cadence window at **30 minutes before close**
+(`a2_lifecycle_eod_window_threshold_minutes_v1`); this is the threshold
+at which lifecycle observation switches from event-triggered to every
+Tier C cycle.
 
-`a2_lifecycle_eod_force_exit_logic_not_implemented` is the firing mechanism gap upstream of `a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending`: force-exit logic must exist before a clock threshold policy can be meaningful.
+`a2_lifecycle_eod_force_exit_logic_not_implemented` **remains the
+separate firing-mechanism gap upstream of using O-33**: the bound
+clock threshold has no consumer until force-exit logic is implemented.
 
 ### Audit Findings
 
