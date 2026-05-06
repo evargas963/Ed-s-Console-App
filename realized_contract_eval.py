@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from chains import contract_fields
+from lifecycle_rule_core import SameBarResolution, fire_exit, resolve_same_bar_conflict
 from market_state import recommend_option_expression
 from math_levels import WallsRow, TotalsRow
 from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
@@ -331,115 +332,50 @@ def _simulate_exit(
     Exit simulation with explicit path metadata. Uses OHLC body-direction ordering when
     open+close exist on the exit bar; otherwise conservative stop-first for same-bar conflicts.
     """
+    outcome = fire_exit(
+        signal=call_signal,
+        stop=stop,
+        target=target,
+        forward_bars=bars,
+        max_hold_bars=len(bars),
+    )
     out: dict[str, Any] = {
         "exit_reason": None,
         "exit_row": None,
         "hold_bars": None,
-        "skip_reason": None,
+        "skip_reason": outcome.skip_reason,
         "path_model_used": "none",
         "same_bar_stop_target_conflict": False,
         "same_bar_resolution_rule": "",
     }
-    sig = (call_signal or "").strip().lower()
-    if not bars:
-        out["skip_reason"] = "no_exit_snapshot"
-        return out
-    if sig not in ("long", "short"):
-        out["skip_reason"] = "invalid_call_signal_for_path"
-        return out
-    if stop is None or target is None:
-        out["skip_reason"] = "missing_stop_target_for_exit"
+    if outcome.skip_reason:
         return out
 
-    for i, bar in enumerate(bars):
-        hi = _f(bar["candle_high"])
-        lo = _f(bar["candle_low"])
-        if hi is None or lo is None:
-            out["skip_reason"] = "missing_ohlc_forward_path"
-            return out
-
-        co = _f(bar["candle_open"]) if "candle_open" in bar.keys() else None
-        cc = _f(bar["candle_close"]) if "candle_close" in bar.keys() else None
-
-        if sig == "long":
-            stop_hit = lo <= float(stop)
-            tgt_hit = hi >= float(target)
-            if stop_hit and tgt_hit:
-                out["same_bar_stop_target_conflict"] = True
-                if co is not None and cc is not None:
-                    out["path_model_used"] = "ohlc_body_direction_intrabar_order"
-                    if cc >= co:
-                        out["same_bar_resolution_rule"] = (
-                            "bull_bar_assume_extreme_low_before_high_stop_priority"
-                        )
-                        _reason = "stop_hit"
-                    else:
-                        out["same_bar_resolution_rule"] = (
-                            "bear_bar_assume_extreme_high_before_low_target_priority"
-                        )
-                        _reason = "target_hit"
-                else:
-                    out["path_model_used"] = "ohlc_stop_priority_no_open_close"
-                    out["same_bar_resolution_rule"] = "conservative_stop_first_missing_body"
-                    _reason = "stop_hit"
-                out["exit_reason"] = _reason
-                out["exit_row"] = bar
-                out["hold_bars"] = i + 1
-                return out
-            if stop_hit:
-                out["path_model_used"] = "ohlc_first_touch_sequential_bars"
-                out["exit_reason"] = "stop_hit"
-                out["exit_row"] = bar
-                out["hold_bars"] = i + 1
-                return out
-            if tgt_hit:
-                out["path_model_used"] = "ohlc_first_touch_sequential_bars"
-                out["exit_reason"] = "target_hit"
-                out["exit_row"] = bar
-                out["hold_bars"] = i + 1
-                return out
-        else:
-            stop_hit = hi >= float(stop)
-            tgt_hit = lo <= float(target)
-            if stop_hit and tgt_hit:
-                out["same_bar_stop_target_conflict"] = True
-                if co is not None and cc is not None:
-                    out["path_model_used"] = "ohlc_body_direction_intrabar_order"
-                    if cc >= co:
-                        out["same_bar_resolution_rule"] = (
-                            "bull_bar_assume_low_before_high_short_target_before_stop"
-                        )
-                        _reason = "target_hit"
-                    else:
-                        out["same_bar_resolution_rule"] = (
-                            "bear_bar_assume_high_before_low_short_stop_before_target"
-                        )
-                        _reason = "stop_hit"
-                else:
-                    out["path_model_used"] = "ohlc_stop_priority_no_open_close"
-                    out["same_bar_resolution_rule"] = "conservative_stop_first_missing_body"
-                    _reason = "stop_hit"
-                out["exit_reason"] = _reason
-                out["exit_row"] = bar
-                out["hold_bars"] = i + 1
-                return out
-            if stop_hit:
-                out["path_model_used"] = "ohlc_first_touch_sequential_bars"
-                out["exit_reason"] = "stop_hit"
-                out["exit_row"] = bar
-                out["hold_bars"] = i + 1
-                return out
-            if tgt_hit:
-                out["path_model_used"] = "ohlc_first_touch_sequential_bars"
-                out["exit_reason"] = "target_hit"
-                out["exit_row"] = bar
-                out["hold_bars"] = i + 1
-                return out
-
-    out["path_model_used"] = "ohlc_time_expiry_max_hold"
-    out["exit_reason"] = "time_expiry"
-    out["exit_row"] = bars[-1]
-    out["hold_bars"] = len(bars)
+    exit_idx = outcome.exit_bar_index
+    if exit_idx is None:
+        return out
+    exit_row = bars[exit_idx]
+    out["exit_reason"] = outcome.exit_reason
+    out["exit_row"] = exit_row
+    out["hold_bars"] = exit_idx + 1
+    out["same_bar_stop_target_conflict"] = outcome.same_bar_conflict
+    if outcome.same_bar_conflict:
+        same_bar = resolve_same_bar_conflict(
+            bar_ohlc=exit_row,
+            stop=float(stop),
+            target=float(target),
+            signal=(call_signal or "").strip().lower(),
+        )
+        out["same_bar_resolution_rule"] = same_bar.same_bar_resolution_rule
+        out["path_model_used"] = (
+            "ohlc_body_direction_intrabar_order"
+            if same_bar.resolution == SameBarResolution.CANDLE_BODY_OPEN_CLOSE
+            else "ohlc_stop_priority_no_open_close"
+        )
+    elif outcome.exit_reason == "time_expiry":
+        out["path_model_used"] = "ohlc_time_expiry_max_hold"
+    else:
+        out["path_model_used"] = "ohlc_first_touch_sequential_bars"
     return out
 
 
