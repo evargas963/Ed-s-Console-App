@@ -100,6 +100,83 @@ def test_selected_contract_snapshot_preserves_schwab_quote_timestamps():
     assert snapshot["value"]["tradeTimeInLong"] == 1778018399000
 
 
+def test_a2_emits_wait_when_quote_age_exceeds_o20_threshold():
+    """Step 3.3 red: stale quote above O-20 threshold blocks A2."""
+    winner = _winner()
+    winner["chain_row"]["quoteTimeInLong"] = 1778018397000
+
+    a2 = build_a2_option_expression(
+        _ms(
+            decision_time_ms=1778018400000,
+            option_chain_selection_proof={"status": "ok", "winner": winner},
+        ),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert a2["execution"]["quote_staleness_ms"] == {
+        "value": 3000,
+        "source": "v2_compliant",
+    }
+    assert "quote_stale_above_threshold" in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_a2_proceeds_when_quote_age_within_o20_threshold():
+    """Step 3.3 red: quote within O-20 threshold preserves normal A2 output."""
+    winner = _winner()
+    winner["chain_row"]["quoteTimeInLong"] = 1778018398500
+
+    a2 = build_a2_option_expression(
+        _ms(
+            decision_time_ms=1778018400000,
+            option_chain_selection_proof={"status": "ok", "winner": winner},
+        ),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "TRADE"
+    assert a2["execution"]["quote_staleness_ms"] == {
+        "value": 1500,
+        "source": "v2_compliant",
+    }
+    assert "quote_stale_above_threshold" not in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_a2_emits_wait_when_quote_timestamp_missing():
+    """Step 3.3 red: missing quote timestamp blocks A2 before staleness gate."""
+    winner = _winner()
+    winner["chain_row"].pop("quoteTimeInLong", None)
+
+    a2 = build_a2_option_expression(
+        _ms(
+            decision_time_ms=1778018400000,
+            option_chain_selection_proof={"status": "ok", "winner": winner},
+        ),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert a2["execution"]["quote_staleness_ms"]["source"] == "not_implemented"
+    assert "missing_quote_timestamp" in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_a2_quote_staleness_ms_source_is_v2_compliant_when_computed():
+    """Step 3.3 red: computed quote staleness is a v2-compliant data-plane field."""
+    winner = _winner()
+    winner["chain_row"]["quoteTimeInLong"] = 1778018399000
+
+    a2 = build_a2_option_expression(
+        _ms(
+            decision_time_ms=1778018400000,
+            option_chain_selection_proof={"status": "ok", "winner": winner},
+        ),
+        _sample_a1(),
+    )
+
+    assert a2["execution"]["quote_staleness_ms"]["value"] == 1000
+    assert a2["execution"]["quote_staleness_ms"]["source"] == "v2_compliant"
+
+
 def test_wait_signal_emits_no_contract_and_records_gate():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L238 - WAIT signal emits no option contract."""
     a1 = _sample_a1()
