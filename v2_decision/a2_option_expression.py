@@ -25,6 +25,10 @@ REQUIRED_A2_GAPS = (
 # Per OPERATOR_DECISION_REGISTER.md O-20 (2026-05-05).
 A2_QUOTE_STALENESS_THRESHOLD_MS = 2000
 
+# Per OPERATOR_DECISION_REGISTER.md O-21 (2026-05-05).
+A2_SPREAD_ABSOLUTE_THRESHOLD = 0.10
+A2_SPREAD_RELATIVE_THRESHOLD_PCT = 0.10
+
 
 def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, Any]) -> dict[str, Any]:
     """Build the Pilot 1B A2 deterministic baseline.
@@ -81,6 +85,8 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
         strike=strike,
         bid=bid,
         ask=ask,
+        mid=mid,
+        spread=spread,
         theta=theta,
         quote_staleness_ms=quote_staleness_ms,
     )
@@ -198,6 +204,8 @@ def _hard_gates(
     strike: float | None,
     bid: float | None,
     ask: float | None,
+    mid: float | None,
+    spread: float | None,
     theta: float | None,
     quote_staleness_ms: float | None,
 ) -> list[str]:
@@ -221,6 +229,8 @@ def _hard_gates(
         gates.append("missing_selected_strike")
     if bid is None or ask is None:
         gates.append("missing_bid_or_ask")
+    elif _spread_exceeds_hard_threshold(spread=spread, mid=mid):
+        gates.append("spread_exceeds_hard_threshold")
     if theta is None:
         gates.append("theta_unavailable")
     if quote_staleness_ms is None:
@@ -228,6 +238,13 @@ def _hard_gates(
     elif quote_staleness_ms > A2_QUOTE_STALENESS_THRESHOLD_MS:
         gates.append("quote_stale_above_threshold")
     return gates
+
+
+def _spread_exceeds_hard_threshold(*, spread: float | None, mid: float | None) -> bool:
+    if spread is None or mid is None or mid <= 0:
+        return False
+    threshold = min(A2_SPREAD_ABSOLUTE_THRESHOLD, A2_SPREAD_RELATIVE_THRESHOLD_PCT * mid)
+    return spread > threshold
 
 
 def _quote_staleness_ms(

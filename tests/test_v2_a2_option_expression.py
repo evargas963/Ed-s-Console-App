@@ -335,11 +335,12 @@ def test_missing_strike_or_right_blocks_trade_output():
     assert "missing_option_right" in gates
 
 
-def test_wide_spread_records_soft_gate_until_policy_bound():
+def test_wide_spread_records_hard_gate_after_policy_bound():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L240 - wide spread records gate state."""
     a2 = build_a2_option_expression(_ms(spread=0.35, liq_ok=False), _sample_a1())
 
-    assert a2["option_expression"]["option_action"]["value"] == "TRADE"
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert "spread_exceeds_hard_threshold" in a2["health"]["hard_gates_failed"]["value"]
     assert "wide_spread_policy_pending" in a2["health"]["soft_gates"]["value"]
 
 
@@ -457,7 +458,8 @@ def test_action_coherence_records_a1_a2_disagreement():
     a2 = build_a2_option_expression(_ms(liq_ok=False, spread=0.5), a1)
 
     assert a1["decision"]["action"]["value"] == "TRADE"
-    assert a2["option_expression"]["option_action"]["value"] == "TRADE"
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert "spread_exceeds_hard_threshold" in a2["health"]["hard_gates_failed"]["value"]
     assert "wide_spread_policy_pending" in a2["health"]["soft_gates"]["value"]
 
 
