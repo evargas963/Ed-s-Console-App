@@ -335,9 +335,11 @@ Pilot 1 adapter work can remain advisory/draft if it does not alter promotion au
 
 Testing strictness scales with decision authority.
 
-For advisory / non-authoritative phases, green-only implementation commits are acceptable when tests reference the governing contract clauses directly and the payload remains draft-labeled, source-indicated, and Tier C-only. This includes deterministic baselines such as Pilot 1A, Pilot 1B, and future first-cut modules that do not alter trade authority.
+Amendment note: commit `7671550` established the original strictness policy. This amendment is forward-looking only; prior red-green pairs, including `ee05ce6`/`8e789c6` and `0b73d9b`/`11ad75d`, remain valid evidence that the policy in force at that time was followed.
 
-For trade-impacting phases, red-green evidence is required. Any change that grants v2 authority, promotes a calibration model, promotes a lifecycle policy, binds a v2 prereg, or otherwise changes live trade behavior must capture failing contract tests before implementation and passing tests after implementation. The failing-test output must be recorded in the commit message, build log, or linked validation artifact.
+For advisory / non-authoritative phases, single green implementation commits are acceptable when tests reference the governing contract clauses directly and the payload remains draft-labeled, source-indicated, and Tier C-only. This includes deterministic baselines such as Pilot 1A, Pilot 1B, and future first-cut modules that do not alter trade authority.
+
+Red-green evidence becomes mandatory again when any one of these triggers is present: a v2 decision becomes preregistered, replay-bound, or trade-authoritative. At that point, any change that grants v2 authority, promotes a calibration model, promotes a lifecycle policy, binds a v2 prereg, binds replay/live parity, or otherwise changes live trade behavior must capture failing contract tests before implementation and passing tests after implementation. The failing-test output must be recorded in the commit message, build log, or linked validation artifact.
 
 This policy prevents advisory scaffolding from carrying unnecessary process weight while requiring stronger audit evidence when the system can affect real decisions.
 
