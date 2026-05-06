@@ -124,6 +124,7 @@ Child gaps:
 
 - `a2_lifecycle_static_rule_core_pending`
 - `a2_lifecycle_legacy_exit_logic_divergence_audit_pending`
+- `a2_lifecycle_eod_force_exit_logic_not_implemented`
 - `a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending`
 - `a2_lifecycle_eod_window_threshold_minutes_policy_object_pending`
 - `a2_lifecycle_iv_crush_handler_not_implemented`
@@ -140,6 +141,12 @@ Child gaps:
 `a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending` is the force-exit trigger: the clock threshold at which lifecycle must advise closing a position.
 
 `a2_lifecycle_eod_window_threshold_minutes_policy_object_pending` is the cadence shift: the threshold at which lifecycle observation switches from event-triggered to every Tier C cycle.
+
+`a2_lifecycle_eod_force_exit_logic_not_implemented` is the firing mechanism gap upstream of `a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending`: force-exit logic must exist before a clock threshold policy can be meaningful.
+
+### Audit Findings
+
+Static lifecycle concern coverage and legacy divergence findings are tracked in `governance/A2_STATIC_LIFECYCLE_DIVERGENCE_AUDIT.md`.
 
 ---
 
