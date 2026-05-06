@@ -54,6 +54,7 @@ All preconditions are required and must be evaluated in this order:
 5. **Horizon match.** Artifact `horizon` equals the decision context's target horizon.
 6. **Freshness discipline.** The artifact carries a numeric `governed_max_age_seconds` field and a numeric `generated_at_epoch_seconds` timestamp. Artifact age = current epoch - `generated_at_epoch_seconds`; promotion requires age <= `governed_max_age_seconds`. The freshness policy object remains unbound (`a1_conformal_artifact_freshness_threshold_policy_object_pending`); v1 does not use any external policy fallback. `calibration_run_id` / `calibration_window_id` must not be used as freshness proxies. If either field is missing or the artifact is stale, precondition 6 fails.
 7. **Calibrated probability available.** `ms_dict["a1_calibrated_probability"]` is a numeric value in [0, 1]. The input probability must have passed through the A1 isotonic calibration before the conformal interval is applied. Banding a raw or uncalibrated probability is invalid because the conformal scaffold's quantile was fit on calibrated probabilities. If `a1_calibrated_probability` is absent or outside [0, 1], precondition 7 fails.
+8. **Calibration lineage match.** `ms_dict["a1_calibrated_probability_lineage_id"]` is a non-empty string that exactly equals `artifact["calibration_lineage_id"]`. Lineage match is required because the conformal quantile was fit on probabilities produced by a specific isotonic calibration model. Applying the band to a probability from a different model is invalid even if the value happens to be in [0, 1].
 
 If any precondition fails, both leaves remain `not_implemented` unless a future contract explicitly permits independent leaf promotion.
 
@@ -91,8 +92,9 @@ The leaves must stay `not_implemented` with `value = None`. A populated value mu
 
 The implementation commit must use red-green evidence. Minimum required tests:
 
-- all seven preconditions pass -> `p_low` and `p_high` are populated and use `source = "v1_approximation"`;
+- all eight preconditions pass -> `p_low` and `p_high` are populated and use `source = "v1_approximation"`;
 - each precondition fails independently -> both leaves remain `not_implemented` with a detail string naming the failed precondition;
+- lineage match failure modes are tested per `governance/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md` test bar (match, mismatch, missing marker, empty marker), with explicit `precondition_8_calibration_lineage_match_failed` status assertion;
 - no-synthetic-intervals regression: `source = "v1_approximation"` if and only if `value` is non-`None`;
 - backward-compatibility regression: when no artifact is loadable, both leaves remain byte-identical to the current baseline in `v2_decision/module_a_adapter.py`;
 - schema regression: `validate_v2_decision` accepts both promoted and unpromoted states.
@@ -147,6 +149,11 @@ The following leaves remain out of scope and must stay under their existing sour
 - `EV_upper`
 - `timeout`
 - `decision_latency_budget_ms`
+
+Related contracts:
+
+- `governance/A1_CONFORMAL_ARTIFACT_LIFECYCLE_CONTRACT.md` (2A) - defines artifact persistence, identity, freshness fields, loader surface, and `calibration_lineage_id` producer-side semantics.
+- `governance/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md` (2B) - defines canonical calibration source, runtime marker shape, lineage match comparison rule, and the failure status emitted when precondition 8 fires.
 
 ---
 
