@@ -47,7 +47,7 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
     ask = _num(chain_row.get("ask"))
     mid = round((bid + ask) / 2.0, 4) if bid is not None and ask is not None else None
     spread = _first_number(ms_dict.get("spread"), _spread_from_bid_ask(bid, ask))
-    theta, theta_detail = _theta(
+    theta, theta_source, theta_detail = _theta(
         chain_row=chain_row,
         ms_dict=ms_dict,
         strike=strike,
@@ -129,7 +129,7 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
             "vega": leaf(_num(chain_row.get("vega")), "v1_approximation" if chain_row.get("vega") is not None else "not_implemented"),
             "theta": leaf(
                 theta,
-                "v1_approximation" if theta is not None else "not_implemented",
+                theta_source,
                 detail=theta_detail,
             ),
             "iv": leaf(_num(chain_row.get("volatility")), "v1_approximation" if chain_row.get("volatility") is not None else "not_implemented"),
@@ -248,10 +248,16 @@ def _theta(
     ms_dict: dict[str, Any],
     strike: float | None,
     option_right: str,
-) -> tuple[float | None, str | None]:
+) -> tuple[float | None, str, str | None]:
     theta = _num(chain_row.get("theta"))
     if theta is not None:
-        return theta, None
+        return theta, "v2_compliant", "schwab_chain_theta"
+
+    raw = chain_row.get("raw")
+    if isinstance(raw, dict):
+        raw_theta = _num(raw.get("theta"))
+        if raw_theta is not None:
+            return raw_theta, "v2_compliant", "schwab_raw_theta"
 
     bs_theta = _black_scholes_theta(
         spot=_num(ms_dict.get("spot")),
@@ -261,8 +267,8 @@ def _theta(
         time_to_expiry_years=_time_to_expiry_years(ms_dict, chain_row),
     )
     if bs_theta is None:
-        return None, None
-    return bs_theta, "black_scholes_approximation"
+        return None, "not_implemented", None
+    return bs_theta, "v1_approximation", "black_scholes_approximation"
 
 
 def _black_scholes_theta(

@@ -76,7 +76,11 @@ def test_valid_a2_deterministic_baseline_has_source_indicators():
     assert a2["option_expression"]["option_action"] == {"value": "TRADE", "source": "v1_approximation"}
     assert a2["option_expression"]["option_right"] == {"value": "CALL", "source": "v1_approximation"}
     assert a2["option_expression"]["strike"] == {"value": 500.0, "source": "v1_approximation"}
-    assert a2["greeks"]["theta"] == {"value": -0.18, "source": "v1_approximation"}
+    assert a2["greeks"]["theta"] == {
+        "value": -0.18,
+        "source": "v2_compliant",
+        "detail": "schwab_chain_theta",
+    }
 
 
 def test_wait_signal_emits_no_contract_and_records_gate():
@@ -251,7 +255,44 @@ def test_theta_is_hard_gate_when_unavailable():
     assert "theta_unavailable" in a2["health"]["hard_gates_failed"]["value"]
 
 
-def test_black_scholes_theta_fallback_unblocks_missing_chain_theta():
+def test_a2_prefers_schwab_theta_over_bs_approximation():
+    """Regression: Schwab theta is primary; BS is not the default path."""
+    winner = _winner()
+    winner["chain_row"]["volatility"] = 500.0
+
+    a2 = build_a2_option_expression(
+        _ms(option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "TRADE"
+    assert a2["greeks"]["theta"] == {
+        "value": -0.18,
+        "source": "v2_compliant",
+        "detail": "schwab_chain_theta",
+    }
+
+
+def test_a2_uses_raw_schwab_theta_as_transitional_bridge():
+    """Raw theta remains a temporary bridge if normalization misses it."""
+    winner = _winner()
+    winner["chain_row"]["raw"] = {"theta": -0.21}
+    winner["chain_row"].pop("theta")
+
+    a2 = build_a2_option_expression(
+        _ms(option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "TRADE"
+    assert a2["greeks"]["theta"] == {
+        "value": -0.21,
+        "source": "v2_compliant",
+        "detail": "schwab_raw_theta",
+    }
+
+
+def test_a2_falls_back_to_bs_only_when_schwab_theta_missing():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L119 - BS theta fallback is v1 approximation."""
     winner = _winner()
     winner["chain_row"].pop("theta")
