@@ -24,6 +24,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Optional
 
+from chains import contract_fields
 from market_state import recommend_option_expression
 from math_levels import WallsRow, TotalsRow
 from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
@@ -140,53 +141,11 @@ def serialize_option_chain_for_eval(contracts: list, selected_exp: str | None) -
     exp_key = str(selected_exp)[:10]
     out: list[dict[str, Any]] = []
     for ct in contracts:
-        raw_exp = ct.get("expirationDate") or ct.get("expiration") or ""
+        normalized = _replay_contract_fields(ct)
+        raw_exp = normalized.get("expirationDate") or ""
         if str(raw_exp)[:10] != exp_key:
             continue
-        out.append(
-            {
-                "symbol": ct.get("symbol"),
-                "underlyingSymbol": ct.get("underlyingSymbol"),
-                "strikePrice": ct.get("strikePrice"),
-                "putCall": ct.get("putCall"),
-                "bid": ct.get("bid"),
-                "ask": ct.get("ask"),
-                "bidSize": ct.get("bidSize"),
-                "askSize": ct.get("askSize"),
-                "last": ct.get("last"),
-                "mark": ct.get("mark"),
-                "totalVolume": ct.get("totalVolume"),
-                "volume": ct.get("volume"),
-                "openInterest": ct.get("openInterest"),
-                "delta": ct.get("delta"),
-                "gamma": ct.get("gamma"),
-                "theta": ct.get("theta"),
-                "vega": ct.get("vega"),
-                "rho": ct.get("rho"),
-                "volatility": ct.get("volatility"),
-                "theoreticalVolatility": ct.get("theoreticalVolatility"),
-                "theoreticalOptionValue": ct.get("theoreticalOptionValue"),
-                "daysToExpiration": ct.get("daysToExpiration"),
-                "quoteTimeInLong": ct.get("quoteTimeInLong"),
-                "tradeTimeInLong": ct.get("tradeTimeInLong"),
-                "openPrice": ct.get("openPrice"),
-                "highPrice": ct.get("highPrice"),
-                "lowPrice": ct.get("lowPrice"),
-                "closePrice": ct.get("closePrice"),
-                "lastSize": ct.get("lastSize"),
-                "bidAskSize": ct.get("bidAskSize"),
-                "expirationType": ct.get("expirationType"),
-                "settlementType": ct.get("settlementType"),
-                "exerciseType": ct.get("exerciseType"),
-                "inTheMoney": ct.get("inTheMoney"),
-                "nonStandard": ct.get("nonStandard"),
-                "mini": ct.get("mini"),
-                "lastTradingDay": ct.get("lastTradingDay"),
-                "multiplier": ct.get("multiplier"),
-                "expirationDate": ct.get("expirationDate"),
-                "expiration": ct.get("expiration"),
-            }
-        )
+        out.append(normalized)
     if not out:
         return None
     return json.dumps(out, default=str)
@@ -315,14 +274,26 @@ def _find_contract_row(chain: list[dict], *, strike: float, put_call: str, symbo
     if symbol_hint:
         for ct in chain:
             if str(ct.get("symbol") or "") == symbol_hint:
-                return ct
+                return _replay_contract_fields(ct)
     for ct in chain:
         if str(ct.get("putCall") or "").upper().strip() != pc:
             continue
         sp = _f(ct.get("strikePrice"))
         if sp is not None and abs(sp - float(strike)) < 0.011:
-            return ct
+            return _replay_contract_fields(ct)
     return None
+
+
+def _replay_contract_fields(ct: dict) -> dict:
+    """Normalize one contract for replay while excluding raw payload passthrough."""
+    normalized = contract_fields(ct)
+    normalized.pop("raw", None)
+    return normalized
+
+
+def _normalize_contract_chain(chain: list[dict]) -> list[dict]:
+    """Normalize archived option-chain rows through the Schwab contract accessor."""
+    return [_replay_contract_fields(ct) for ct in chain if isinstance(ct, dict)]
 
 
 def _parse_expression(expr: str) -> Optional[tuple[float, str]]:
@@ -932,6 +903,10 @@ def evaluate_realized_contract_trades_for_rows(
         if not isinstance(chain, list) or not chain:
             skip("option_chain_empty")
             continue
+        chain = _normalize_contract_chain(chain)
+        if not chain:
+            skip("option_chain_empty")
+            continue
 
         expr, _reasons, proof_replay = recommend_option_expression(
             contracts=chain,
@@ -998,6 +973,10 @@ def evaluate_realized_contract_trades_for_rows(
             continue
         if not isinstance(ex_chain, list):
             skip("option_chain_json_invalid")
+            continue
+        ex_chain = _normalize_contract_chain(ex_chain)
+        if not ex_chain:
+            skip("option_chain_empty")
             continue
 
         sym = entry_ct.get("symbol")

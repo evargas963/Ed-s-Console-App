@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from chains import contract_fields
+import realized_contract_eval as rce
 from realized_contract_eval import serialize_option_chain_for_eval
 
 
@@ -92,4 +93,71 @@ def test_serialize_option_chain_for_eval_preserves_schwab_greeks_and_times():
     assert rows[0]["rho"] == raw["rho"]
     assert rows[0]["quoteTimeInLong"] == raw["quoteTimeInLong"]
     assert rows[0]["tradeTimeInLong"] == raw["tradeTimeInLong"]
+
+
+def test_serialize_option_chain_for_eval_uses_normalized_contract_accessor(monkeypatch):
+    raw = _schwab_contract()
+    calls: list[str | None] = []
+    real_contract_fields = rce.contract_fields
+
+    def tracking_contract_fields(ct: dict) -> dict:
+        calls.append(ct.get("symbol"))
+        return real_contract_fields(ct)
+
+    monkeypatch.setattr(rce, "contract_fields", tracking_contract_fields)
+
+    payload = serialize_option_chain_for_eval([raw], "2026-05-05")
+
+    rows = json.loads(payload or "[]")
+    assert calls == ["SPY260505C00500000"]
+    assert rows[0]["ask"] == raw["ask"]
+    assert rows[0]["bid"] == raw["bid"]
+    assert rows[0]["quoteTimeInLong"] == raw["quoteTimeInLong"]
+    assert "raw" not in rows[0]
+
+
+def test_replay_contract_selection_and_pnl_match_raw_and_normalized_rows():
+    entry_raw = _schwab_contract()
+    exit_raw = {**_schwab_contract(), "bid": 1.55, "ask": 1.65}
+    entry_normalized = contract_fields(entry_raw)
+    exit_normalized = contract_fields(exit_raw)
+
+    raw_pnl = rce._contract_pnl_at_horizon(
+        strike=500.0,
+        put_call="CALL",
+        entry_chain=[entry_raw],
+        exit_chain=[exit_raw],
+        symbol_hint=entry_raw["symbol"],
+    )
+    normalized_pnl = rce._contract_pnl_at_horizon(
+        strike=500.0,
+        put_call="CALL",
+        entry_chain=[entry_normalized],
+        exit_chain=[exit_normalized],
+        symbol_hint=entry_raw["symbol"],
+    )
+
+    assert raw_pnl == normalized_pnl
+    assert raw_pnl == 25.0
+
+
+def test_normalize_contract_chain_uses_accessor_for_replay_archive(monkeypatch):
+    raw = _schwab_contract()
+    calls = 0
+    real_contract_fields = rce.contract_fields
+
+    def tracking_contract_fields(ct: dict) -> dict:
+        nonlocal calls
+        calls += 1
+        return real_contract_fields(ct)
+
+    monkeypatch.setattr(rce, "contract_fields", tracking_contract_fields)
+
+    normalized = rce._normalize_contract_chain([raw])
+
+    assert calls == 1
+    assert normalized[0]["symbol"] == raw["symbol"]
+    assert normalized[0]["bid"] == raw["bid"]
+    assert normalized[0]["ask"] == raw["ask"]
+    assert "raw" not in normalized[0]
 
