@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from lifecycle_rule_core import LIFECYCLE_RULE_CORE_VERSION
-from v2_decision.a2_lifecycle_sidecar import LIFECYCLE_GAP_NAMES
+from v2_decision.a2_lifecycle_sidecar import LIFECYCLE_GAP_NAMES, PREVIEW_BLOCKING_GAPS
 from v2_decision.module_a_adapter import build_module_a_a1_decision
 
 
@@ -50,6 +50,16 @@ def _ms(**overrides) -> dict:
         "ratio": 6.5,
         "vol_oi": 0.279,
         "spot": 499.5,
+        "entry": 500.0,
+        "et_hour": 10,
+        "et_minute": 30,
+        "vix_level": 21.0,
+        "avg_5c_pts": 4.0,
+        "avg_15c_pts": 6.0,
+        "avg_60c_pts": 8.0,
+        "vwap": 503.5,
+        "call_gamma_wall": 505.0,
+        "call_oi_wall": 506.0,
         "mins_to_close": 120.0,
         "decision_time_ms": 1778018400000,
         "option_chain_selection_proof": {
@@ -78,6 +88,13 @@ def test_a2_lifecycle_sidecar_is_nested_under_lifecycle():
     assert "sidecar" in a2["lifecycle"]
 
 
+def test_a2_lifecycle_sidecar_projected_preview_exists():
+    """Contract: PILOT_1B_A2_LIFECYCLE_CONTRACT.md section 193 - projected_preview exists."""
+    sidecar = _a2()["lifecycle"]["sidecar"]
+
+    assert sidecar["projected_preview"]
+
+
 def test_a2_lifecycle_sidecar_emits_all_contract_fields():
     """Contract: PILOT_1B_A2_LIFECYCLE_CONTRACT.md sections 148-163 - 12-field shape."""
     sidecar = _a2()["lifecycle"]["sidecar"]
@@ -95,10 +112,157 @@ def test_a2_lifecycle_sidecar_emits_all_contract_fields():
         "named_gaps",
         "source_classification",
         "promotion_state",
+        "projected_preview",
     }
     assert sidecar["schema_version"] == "v2.0"
     assert sidecar["module_id"] == "A"
     assert sidecar["expression_profile_id"] == "A2"
+
+
+def test_projected_preview_status_policy_pending_when_entry_candidate_derivable():
+    """Contract: lifecycle contract L215-220 - policy_pending field-fill mapping."""
+    preview = _a2()["lifecycle"]["sidecar"]["projected_preview"]
+
+    assert preview["preview_status"] == "policy_pending"
+    assert preview["projected_stop"]["value"] == 498.98
+    assert preview["projected_target"]["value"] == 503.5
+    assert preview["projected_target2"]["value"] == 506.0
+
+
+def test_projected_preview_status_no_entry_candidate_when_a2_has_no_trade_candidate():
+    """Contract: lifecycle contract L218 - no candidate means projected fields are None."""
+    ms = _ms(is_no_trade=True)
+    preview = _a2(ms)["lifecycle"]["sidecar"]["projected_preview"]
+
+    assert preview["preview_status"] == "not_available_no_entry_candidate"
+    assert _projected_values(preview) == {
+        "projected_stop": None,
+        "projected_target": None,
+        "projected_target2": None,
+        "projected_max_hold_bars": None,
+        "projected_eod_force_exit_time": None,
+    }
+
+
+def test_projected_preview_status_missing_inputs_when_required_inputs_absent():
+    """Contract: lifecycle contract L219 - missing required inputs are enumerated."""
+    ms = _ms(entry=None)
+    ms.pop("entry", None)
+    preview = _a2(ms)["lifecycle"]["sidecar"]["projected_preview"]
+
+    assert preview["preview_status"] == "not_available_missing_inputs"
+    assert preview["derivation_inputs"]["entry"]["value"] is None
+    assert preview["derivation_inputs"]["entry"]["source"] == "not_implemented"
+    assert preview["derivation_inputs"]["entry"]["source_classification"] == "missing_from_ms_dict"
+    assert preview["derivation_inputs"]["entry"]["detail"] == "missing_required_preview_input"
+    assert _projected_values(preview)["projected_stop"] is None
+
+
+def test_projected_preview_available_is_currently_unreachable_until_eod_gap_closes():
+    """Contract: lifecycle contract L244 - EOD force-exit gap blocks fully available preview."""
+    preview = _a2()["lifecycle"]["sidecar"]["projected_preview"]
+
+    assert "a2_lifecycle_eod_force_exit_logic_not_implemented" in preview["preview_named_gaps"]
+    assert preview["projected_eod_force_exit_time"]["source"] == "policy_object_pending"
+    assert preview["preview_status"] != "available"
+    assert PREVIEW_BLOCKING_GAPS
+
+
+def test_projected_preview_policy_fields_remain_policy_object_pending():
+    """Contract: lifecycle contract L243-244 - max-hold and EOD fields remain policy pending."""
+    preview = _a2()["lifecycle"]["sidecar"]["projected_preview"]
+
+    assert preview["projected_max_hold_bars"] == {
+        "value": None,
+        "source": "policy_object_pending",
+        "source_classification": "policy_object_pending",
+    }
+    assert preview["projected_eod_force_exit_time"] == {
+        "value": None,
+        "source": "policy_object_pending",
+        "source_classification": "policy_object_pending",
+    }
+
+
+def test_projected_preview_derivation_inputs_enumerate_all_contract_keys():
+    """Contract: lifecycle contract L245 - derivation_inputs enumerates attempted inputs."""
+    inputs = _a2()["lifecycle"]["sidecar"]["projected_preview"]["derivation_inputs"]
+
+    assert set(inputs) == {
+        "spot",
+        "vix_level",
+        "mins_elapsed_since_open",
+        "risk_multiplier",
+        "entry",
+        "direction",
+        "risk",
+        "avg5",
+        "avg15",
+        "avg60",
+        "structural_levels",
+    }
+    for payload in inputs.values():
+        assert {"value", "source", "source_classification"}.issubset(payload)
+    assert inputs["spot"]["value"] == 499.5
+    assert inputs["spot"]["source"] == "v1_approximation"
+    assert inputs["spot"]["source_classification"] == "schwab_native_normalized"
+    assert inputs["mins_elapsed_since_open"]["value"] == 60.0
+    assert inputs["risk_multiplier"]["value"] is None
+    assert inputs["risk_multiplier"]["source_classification"] == "missing_from_ms_dict"
+
+
+def test_projected_preview_metadata_source_module_and_timestamp():
+    """Contract: lifecycle contract L246-247 - source module and timestamp are explicit."""
+    preview = _a2()["lifecycle"]["sidecar"]["projected_preview"]
+
+    assert preview["derivation_source_module"] == "lifecycle_rule_core"
+    assert preview["would_apply_if_entered_at_time"] == 1778018400000
+
+
+def test_projected_preview_authority_blocks_runtime_interpretation():
+    """Contract: lifecycle contract L250-258 - preview_authority is projection-not-decision."""
+    preview = _a2()["lifecycle"]["sidecar"]["projected_preview"]
+
+    assert preview["preview_authority"] == {
+        "mode": "advisory_non_authoritative",
+        "tier": "C_analytics_only",
+        "changes_trade_behavior": False,
+        "projection_not_decision": True,
+        "text": "Projected lifecycle preview only; not an active lifecycle decision. Future lifecycle action may differ.",
+    }
+
+
+def test_projected_preview_named_gaps_are_preview_blocking_subset_only():
+    """Contract: lifecycle contract L226-234 - preview_named_gaps are preview-blocking only."""
+    preview = _a2()["lifecycle"]["sidecar"]["projected_preview"]
+
+    assert preview["preview_named_gaps"] == list(PREVIEW_BLOCKING_GAPS)
+    assert preview["preview_named_gaps"] == [
+        "a2_lifecycle_eod_force_exit_logic_not_implemented",
+        "a2_lifecycle_eod_window_threshold_minutes_policy_object_pending",
+        "a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending",
+    ]
+
+
+def test_projected_preview_no_silent_partial_fills_when_unavailable():
+    """Contract: lifecycle contract L272-274 - unavailable preview fields disclose absence."""
+    preview = _a2(_ms(entry=None))["lifecycle"]["sidecar"]["projected_preview"]
+
+    assert preview["preview_status"] != "available"
+    for key, value in _projected_values(preview).items():
+        assert value is None, f"{key} must not contain a stale/default value"
+
+
+def test_projected_preview_does_not_mutate_ms_dict_or_manage_active_position_data():
+    """Implementation rule: preview remains pre-entry projection and does not mutate ms_dict."""
+    ms = _ms(active_position={"entry": 1.0, "stop": 0.5}, position_state="open")
+    before = dict(ms)
+
+    preview = _a2(ms)["lifecycle"]["sidecar"]["projected_preview"]
+
+    assert ms == before
+    assert preview["preview_status"] == "policy_pending"
+    assert preview["preview_authority"]["projection_not_decision"] is True
 
 
 def test_a2_lifecycle_sidecar_uses_honest_entry_time_posture_alpha():
@@ -224,3 +388,54 @@ def test_a2_lifecycle_crosswalk_source_indicators_remain_unchanged():
     assert a2["probability_and_ev"]["P_lifecycle_adjusted_profit"]["source"] == "not_implemented"
     assert a2["lifecycle"]["timeout_policy"]["source"] == "policy_object_pending"
     assert a2["lifecycle"]["lifecycle_policy_id"]["source"] == "policy_object_pending"
+
+
+def test_v0_sidecar_fields_remain_backward_compatible_with_v1_preview():
+    """Contract: lifecycle contract L278-280 - v0 fields remain unchanged when preview is added."""
+    sidecar = _a2()["lifecycle"]["sidecar"]
+
+    current = {key: value for key, value in sidecar.items() if key != "projected_preview"}
+    assert current == {
+        "schema_version": "v2.0",
+        "module_id": "A",
+        "expression_profile_id": "A2",
+        "authority": {
+            "mode": "advisory_non_authoritative",
+            "tier": "C_analytics_only",
+            "changes_trade_behavior": False,
+        },
+        "static_rule_core_version": LIFECYCLE_RULE_CORE_VERSION,
+        "lifecycle_action": "no_active_position",
+        "lifecycle_conflict_state": "lifecycle_warning_only",
+        "event_sources": [],
+        "threshold_policy_objects": [
+            {
+                "id": "a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending",
+                "source": "policy_object_pending",
+            },
+            {
+                "id": "a2_lifecycle_eod_window_threshold_minutes_policy_object_pending",
+                "source": "policy_object_pending",
+            },
+        ],
+        "named_gaps": list(LIFECYCLE_GAP_NAMES),
+        "source_classification": {
+            "inputs": "schwab_native_normalized",
+            "decision": "derived_because_schwab_does_not_provide",
+            "thresholds": "policy_object_pending",
+        },
+        "promotion_state": sidecar["promotion_state"],
+    }
+
+
+def _projected_values(preview: dict) -> dict:
+    return {
+        key: preview[key]["value"]
+        for key in (
+            "projected_stop",
+            "projected_target",
+            "projected_target2",
+            "projected_max_hold_bars",
+            "projected_eod_force_exit_time",
+        )
+    }
