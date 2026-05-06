@@ -32,6 +32,9 @@ echo.
 :: Enable /ops "Run tasks" buttons (whitelisted scripts only). Still localhost-only by default.
 set ED_OPS_RUNNER=1
 
+:: Enable live calibration_decision_log rows, including advisory v2 snapshots.
+set ED_CALIBRATION_LOG=1
+
 :: Open browser after a short delay (runs in background)
 start "" cmd /c "timeout /t 2 >nul && start http://localhost:8000"
 
