@@ -22,6 +22,9 @@ REQUIRED_A2_GAPS = (
     "a2_early_assignment_risk_not_implemented",
 )
 
+# Per OPERATOR_DECISION_REGISTER.md O-20 (2026-05-05).
+A2_QUOTE_STALENESS_THRESHOLD_MS = 2000
+
 
 def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, Any]) -> dict[str, Any]:
     """Build the Pilot 1B A2 deterministic baseline.
@@ -53,6 +56,10 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
         strike=strike,
         option_right=option_right,
     )
+    quote_staleness_ms, quote_staleness_source = _quote_staleness_ms(
+        ms_dict=ms_dict,
+        chain_row=chain_row,
+    )
 
     selected_audit = _selected_audit_row(proof, winner, strike, option_right)
     pin_risk = _pin_risk_health(
@@ -75,6 +82,7 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
         bid=bid,
         ask=ask,
         theta=theta,
+        quote_staleness_ms=quote_staleness_ms,
     )
     soft_gates = _soft_gates(ms_dict, pin_risk=pin_risk, late_day_gamma=late_day_gamma)
     action = "TRADE" if not hard_gates else "WAIT"
@@ -130,7 +138,7 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
             "fill_probability": leaf(None, "not_implemented"),
             "slippage_estimate": leaf(None, "not_implemented"),
             "adverse_selection_risk": leaf(None, "not_implemented"),
-            "quote_staleness_ms": leaf(None, "not_implemented"),
+            "quote_staleness_ms": leaf(quote_staleness_ms, quote_staleness_source),
             "capacity_size_cap": leaf(None, "policy_object_pending"),
         },
         "greeks": {
@@ -191,6 +199,7 @@ def _hard_gates(
     bid: float | None,
     ask: float | None,
     theta: float | None,
+    quote_staleness_ms: float | None,
 ) -> list[str]:
     gates: list[str] = []
     if str(a1_action or "").upper() != "TRADE":
@@ -214,7 +223,34 @@ def _hard_gates(
         gates.append("missing_bid_or_ask")
     if theta is None:
         gates.append("theta_unavailable")
+    if quote_staleness_ms is None:
+        gates.append("missing_quote_timestamp")
+    elif quote_staleness_ms > A2_QUOTE_STALENESS_THRESHOLD_MS:
+        gates.append("quote_stale_above_threshold")
     return gates
+
+
+def _quote_staleness_ms(
+    *,
+    ms_dict: dict[str, Any],
+    chain_row: dict[str, Any],
+) -> tuple[int | None, str]:
+    decision_time = _first_number(
+        ms_dict.get("decision_time_ms"),
+        ms_dict.get("server_time_ms"),
+        ms_dict.get("timestamp_ms"),
+    )
+    quote_time = _first_number(chain_row.get("quoteTimeInLong"), _raw_value(chain_row, "quoteTimeInLong"))
+    if decision_time is None or quote_time is None:
+        return None, "not_implemented"
+    return max(0, int(round(decision_time - quote_time))), "v2_compliant"
+
+
+def _raw_value(chain_row: dict[str, Any], key: str) -> Any:
+    raw = chain_row.get("raw")
+    if isinstance(raw, dict):
+        return raw.get(key)
+    return None
 
 
 def _soft_gates(

@@ -36,6 +36,8 @@ def _winner() -> dict:
             "totalVolume": 1200,
             "openInterest": 4300,
             "expirationDate": "2026-05-05",
+            "quoteTimeInLong": 1778018399000,
+            "tradeTimeInLong": 1778018398500,
         },
     }
 
@@ -57,6 +59,7 @@ def _ms(**overrides) -> dict:
         "vol_oi": 0.279,
         "spot": 499.5,
         "mins_to_close": 120.0,
+        "decision_time_ms": 1778018400000,
         "option_chain_selection_proof": {
             "status": "ok",
             "winner": _winner(),
