@@ -21,6 +21,8 @@ from math_exposure import (
 )
 
 
+LIFECYCLE_RULE_CORE_VERSION = "0.1.0"
+
 Direction = Literal["long", "short"]
 ExitReason = Literal["stop_hit", "target_hit", "time_expiry"]
 

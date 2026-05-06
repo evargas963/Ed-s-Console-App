@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+import lifecycle_rule_core
 from lifecycle_rule_core import (
     SameBarResolution,
     apply_risk_multiplier,
@@ -21,6 +22,14 @@ from math_exposure import (
     STOP_VIX_HIGH_PCT,
     STOP_VIX_MED_PCT,
 )
+
+
+def test_lifecycle_rule_core_version_constant_exists():
+    version = lifecycle_rule_core.LIFECYCLE_RULE_CORE_VERSION
+
+    assert isinstance(version, str)
+    assert version
+    assert "." in version
 
 
 def _bar(*, high: float, low: float, open_: float | None = None, close: float | None = None) -> dict:

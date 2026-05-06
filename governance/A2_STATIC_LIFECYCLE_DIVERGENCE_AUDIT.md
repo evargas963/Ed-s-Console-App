@@ -28,7 +28,7 @@ Therefore this audit is organized as a **by-concern coverage matrix**, not a by-
 ### In Scope For `call_engine.py`
 
 - `_stop_distance()`
-- `_compute_rules()`
+- `_compute_levels()`
 - nested `_snap_to_structural()`
 - VIX-aware and time-of-day stop-distance adjustment logic
 - direct helpers required by those functions
@@ -77,7 +77,7 @@ Each row uses this schema:
 | Concern | Current owner | Input contract | Output contract | Divergence flag | Coverage gap | Linked named gap | Audit finding |
 |---|---|---|---|---|---|---|---|
 | Stop distance derivation | `call_engine` | `SignalInput`, `risk_multiplier`, `vix_level`, current time via ET clock | Percentage-scaled stop distance | false | false | `a2_lifecycle_static_rule_core_pending` | `_stop_distance()` derives a stop distance before any exit firing exists. Replay consumes final `rules_stop`; it does not derive it. |
-| Target distance derivation | `call_engine` | spot, zone, structural levels, prediction move fields, risk from stop distance | `target`, `target2` levels | false | false | `a2_lifecycle_static_rule_core_pending` | `_compute_rules()` derives targets from prediction move distances with structural snapping and R:R caps. Replay consumes final `rules_target`; it does not derive it. |
+| Target distance derivation | `call_engine` | spot, zone, structural levels, prediction move fields, risk from stop distance | `target`, `target2` levels | false | false | `a2_lifecycle_static_rule_core_pending` | `_compute_levels()` derives targets from prediction move distances with structural snapping and R:R caps. Replay consumes final `rules_target`; it does not derive it. |
 | Time-of-day decay on stop distance | `call_engine` | ET clock through `now_et()`, minutes elapsed since 9:30 | Decayed stop-distance percentage | false | false | `a2_lifecycle_static_rule_core_pending` | `_stop_distance()` tightens stop distance as the session progresses. Replay has no equivalent derivation; it only consumes thresholds already stored on the row. |
 | VIX-aware stop adjustment | `call_engine` | `SignalInput.vix_level` | Wider stop-distance percentage when VIX is elevated | false | false | `a2_lifecycle_static_rule_core_pending` | `_stop_distance()` widens stops for VIX > 20 / > 30. Position sizing has separate VIX logic, but sizing is out of scope for rule-core extraction. |
 | Structural-level snapping | `call_engine` | VWAP, gamma walls, OI walls, direction, predicted target | Snapped target / target2 levels | false | false | `a2_lifecycle_static_rule_core_pending` | Nested `_snap_to_structural()` snaps targets toward nearby structural levels. Replay does not snap; it consumes stored threshold values. |
