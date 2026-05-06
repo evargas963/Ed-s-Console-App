@@ -39,6 +39,25 @@ def compute_calibration_lineage_id(calibration_artifact: dict) -> str:
     return f"{run_id}:{sha256(model_json.encode('utf-8')).hexdigest()}"
 
 
+def augment_artifact_with_lifecycle_fields(
+    *,
+    artifact: dict,
+    ticker: str,
+    governed_max_age_seconds: float,
+    generated_at_epoch_seconds: float,
+    calibration_lineage_id: str,
+) -> dict:
+    """Add 5 lifecycle fields per 2A/3.0 contracts."""
+    return {
+        **artifact,
+        "ticker_universe": [ticker],
+        "governed_max_age_seconds": governed_max_age_seconds,
+        "generated_at_epoch_seconds": generated_at_epoch_seconds,
+        "calibration_lineage_id": calibration_lineage_id,
+        "artifact_lifecycle_schema_version": ARTIFACT_LIFECYCLE_SCHEMA_VERSION,
+    }
+
+
 def augment_conformal_artifact_with_lifecycle_fields(
     *,
     conformal_artifact: dict,
@@ -47,15 +66,14 @@ def augment_conformal_artifact_with_lifecycle_fields(
     generated_at_epoch_seconds: float,
     calibration_lineage_id: str,
 ) -> dict:
-    """Return a copy of a conformal artifact with 2A lifecycle fields added."""
-    return {
-        **conformal_artifact,
-        "ticker_universe": [ticker],
-        "governed_max_age_seconds": governed_max_age_seconds,
-        "generated_at_epoch_seconds": generated_at_epoch_seconds,
-        "calibration_lineage_id": calibration_lineage_id,
-        "artifact_lifecycle_schema_version": ARTIFACT_LIFECYCLE_SCHEMA_VERSION,
-    }
+    """Backward-compat wrapper for conformal artifact lifecycle augmentation."""
+    return augment_artifact_with_lifecycle_fields(
+        artifact=conformal_artifact,
+        ticker=ticker,
+        governed_max_age_seconds=governed_max_age_seconds,
+        generated_at_epoch_seconds=generated_at_epoch_seconds,
+        calibration_lineage_id=calibration_lineage_id,
+    )
 
 
 def write_artifact_atomically(*, artifact: dict, output_path: Path) -> None:
