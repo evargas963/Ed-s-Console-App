@@ -41,6 +41,9 @@ def derive_a1_conformal_bounds(ms_dict: dict[str, Any]) -> tuple[float | None, f
     if calibrated_probability is None:
         return None, None, "precondition_7_calibrated_probability_failed"
 
+    if not _lineage_match_passes(artifact, ms_dict):
+        return None, None, "precondition_8_calibration_lineage_match_failed"
+
     interval_model = artifact.get("interval_model")
     if not isinstance(interval_model, dict):
         return None, None, "precondition_1_artifact_present_failed"
@@ -95,6 +98,18 @@ def _freshness_passes(artifact: dict[str, Any], *, now: float) -> bool:
     if max_age is None or generated_at is None or max_age < 0:
         return False
     return now - generated_at <= max_age
+
+
+def _lineage_match_passes(artifact: dict[str, Any], ms_dict: dict[str, Any]) -> bool:
+    probability_lineage = ms_dict.get("a1_calibrated_probability_lineage_id")
+    artifact_lineage = artifact.get("calibration_lineage_id")
+    return (
+        isinstance(probability_lineage, str)
+        and isinstance(artifact_lineage, str)
+        and probability_lineage != ""
+        and artifact_lineage != ""
+        and probability_lineage == artifact_lineage
+    )
 
 
 def _bounded_probability_or_none(value: Any) -> float | None:

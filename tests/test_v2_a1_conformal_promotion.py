@@ -21,6 +21,7 @@ def _ms(**overrides) -> dict:
         "execution_mode": "STANDARD",
         "primary_horizon": "5c",
         "a1_calibrated_probability": 0.7,
+        "a1_calibrated_probability_lineage_id": "cal-run:test-isotonic-artifact",
         "a1_conformal_artifact": _artifact(now=now),
     }
     base.update(overrides)
@@ -53,6 +54,7 @@ def _artifact(**overrides) -> dict:
         "governed_max_age_seconds": 3600,
         "generated_at_epoch_seconds": now,
         "conformal_run_id": "a1-conformal-test",
+        "calibration_lineage_id": "cal-run:test-isotonic-artifact",
     }
     base.update(overrides)
     return base
@@ -85,7 +87,7 @@ def test_module_a_adapter_delegates_conformal_bounds(monkeypatch):
 
 
 def test_all_preconditions_pass_populates_v1_approximation_bounds():
-    """Contract: all seven preconditions pass -> p_low/p_high populated."""
+    """Contract: all eight preconditions pass -> p_low/p_high populated."""
     low, high = _bounds()
 
     assert low == {
@@ -97,6 +99,65 @@ def test_all_preconditions_pass_populates_v1_approximation_bounds():
         "value": 0.8,
         "source": "v1_approximation",
         "detail": "a1_conformal_interval:ok",
+    }
+
+
+def test_lineage_match_passes_when_marker_matches_artifact():
+    """Contract: precondition 8 passes on exact lineage marker equality."""
+    low, high = _bounds(_ms())
+
+    assert low["source"] == "v1_approximation"
+    assert high["source"] == "v1_approximation"
+
+
+def test_lineage_mismatch_fails_with_precondition_8_status():
+    """Contract: precondition 8 rejects mismatched calibrated-probability lineage."""
+    low, high = _bounds(_ms(a1_calibrated_probability_lineage_id="cal-run:other-isotonic-artifact"))
+
+    assert low == {
+        "value": None,
+        "source": "not_implemented",
+        "detail": "a1_conformal_interval:precondition_8_calibration_lineage_match_failed",
+    }
+    assert high == {
+        "value": None,
+        "source": "not_implemented",
+        "detail": "a1_conformal_interval:precondition_8_calibration_lineage_match_failed",
+    }
+
+
+def test_lineage_missing_marker_fails_with_precondition_8_status():
+    """Contract: precondition 8 rejects missing calibrated-probability lineage marker."""
+    ms = _ms()
+    ms.pop("a1_calibrated_probability_lineage_id")
+
+    low, high = _bounds(ms)
+
+    assert low == {
+        "value": None,
+        "source": "not_implemented",
+        "detail": "a1_conformal_interval:precondition_8_calibration_lineage_match_failed",
+    }
+    assert high == {
+        "value": None,
+        "source": "not_implemented",
+        "detail": "a1_conformal_interval:precondition_8_calibration_lineage_match_failed",
+    }
+
+
+def test_lineage_empty_marker_fails_with_precondition_8_status():
+    """Contract: precondition 8 rejects empty calibrated-probability lineage marker."""
+    low, high = _bounds(_ms(a1_calibrated_probability_lineage_id=""))
+
+    assert low == {
+        "value": None,
+        "source": "not_implemented",
+        "detail": "a1_conformal_interval:precondition_8_calibration_lineage_match_failed",
+    }
+    assert high == {
+        "value": None,
+        "source": "not_implemented",
+        "detail": "a1_conformal_interval:precondition_8_calibration_lineage_match_failed",
     }
 
 
@@ -170,6 +231,10 @@ def test_aggregate_sample_gate_uses_canonical_calibration_threshold(monkeypatch)
             "precondition_6_freshness_failed",
         ),
         ({"a1_calibrated_probability": 1.1}, "precondition_7_calibrated_probability_failed"),
+        (
+            {"a1_calibrated_probability_lineage_id": "cal-run:mismatched-isotonic-artifact"},
+            "precondition_8_calibration_lineage_match_failed",
+        ),
     ],
 )
 def test_precondition_failures_keep_bounds_not_implemented(ms_overrides, expected_status):
