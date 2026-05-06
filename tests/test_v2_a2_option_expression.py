@@ -180,6 +180,67 @@ def test_a2_quote_staleness_ms_source_is_v2_compliant_when_computed():
     assert a2["execution"]["quote_staleness_ms"]["source"] == "v2_compliant"
 
 
+def test_a2_emits_wait_when_spread_exceeds_absolute_threshold():
+    """Step 3.4 red: O-21 absolute spread threshold blocks A2."""
+    winner = _winner()
+    winner["chain_row"]["bid"] = 1.0
+    winner["chain_row"]["ask"] = 1.12
+
+    a2 = build_a2_option_expression(
+        _ms(spread=None, option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert "spread_exceeds_hard_threshold" in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_a2_emits_wait_when_spread_exceeds_relative_threshold():
+    """Step 3.4 red: O-21 relative spread threshold blocks low-mid contracts."""
+    winner = _winner()
+    winner["chain_row"]["bid"] = 0.45
+    winner["chain_row"]["ask"] = 0.51
+
+    a2 = build_a2_option_expression(
+        _ms(spread=None, option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert a2["option_expression"]["mid"]["value"] == 0.48
+    assert "spread_exceeds_hard_threshold" in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_a2_proceeds_when_spread_within_thresholds():
+    """Step 3.4 red: spread within both O-21 thresholds remains eligible."""
+    winner = _winner()
+    winner["chain_row"]["bid"] = 1.0
+    winner["chain_row"]["ask"] = 1.08
+
+    a2 = build_a2_option_expression(
+        _ms(spread=None, option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "TRADE"
+    assert "spread_exceeds_hard_threshold" not in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_a2_spread_gate_picks_tighter_of_absolute_or_relative():
+    """Step 3.4 red: O-21 uses the tighter absolute vs relative threshold."""
+    winner = _winner()
+    winner["chain_row"]["bid"] = 0.95
+    winner["chain_row"]["ask"] = 1.06
+
+    a2 = build_a2_option_expression(
+        _ms(spread=None, option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert "spread_exceeds_hard_threshold" in a2["health"]["hard_gates_failed"]["value"]
+
+
 def test_wait_signal_emits_no_contract_and_records_gate():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L238 - WAIT signal emits no option contract."""
     a1 = _sample_a1()
