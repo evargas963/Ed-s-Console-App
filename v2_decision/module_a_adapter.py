@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .a2_option_expression import build_a2_option_expression
+from .a1_conformal_promotion import derive_a1_conformal_bounds
 from .schema import SCHEMA_VERSION, V2_STATUS, leaf, validate_v2_decision
 
 
@@ -77,6 +78,9 @@ def _decision_block(ms: dict[str, Any]) -> dict[str, Any]:
     if ms.get("is_no_trade") is True or str(ms.get("execution_mode") or "").upper() == "NO_TRADE":
         action = "WAIT"
     probability = _dominant_probability(ms)
+    p_low, p_high, conformal_status = derive_a1_conformal_bounds(ms)
+    conformal_source = "v1_approximation" if p_low is not None and p_high is not None else "not_implemented"
+    conformal_detail = f"a1_conformal_interval:{conformal_status}"
 
     return {
         "action": leaf(action, "v1_approximation"),
@@ -92,8 +96,8 @@ def _decision_block(ms: dict[str, Any]) -> dict[str, Any]:
             "not_implemented",
             detail="Requires v2 lifecycle and calibration adjustment contract.",
         ),
-        "p_low": leaf(None, "not_implemented", detail="Requires conformal/calibrated lower bound."),
-        "p_high": leaf(None, "not_implemented", detail="Requires conformal/calibrated upper bound."),
+        "p_low": leaf(p_low, conformal_source, detail=conformal_detail),
+        "p_high": leaf(p_high, conformal_source, detail=conformal_detail),
         "confidence": leaf(_confidence(ms), "v1_approximation"),
         "net_expected_value_r": leaf(None, "not_implemented", detail="Requires v2 execution-adjusted EV."),
         "EV_lower": leaf(None, "not_implemented", detail="Requires execution-adjusted EV using p_low."),
