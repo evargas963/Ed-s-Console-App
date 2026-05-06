@@ -41,6 +41,11 @@ schwab_field_inventory/**
 # Test artifacts
 test-results/
 
+# Generated daily health reports
+reports/daily_health/history/*.json
+reports/daily_health/history/*.md
+reports/daily_health/latest_daily_health.*
+
 # OS
 .DS_Store
 Thumbs.db
