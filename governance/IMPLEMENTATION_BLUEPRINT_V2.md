@@ -216,7 +216,7 @@ Turn the existing short-horizon equity/ETF path into an explicit v2 Module A/A1 
    - Signal: multi-horizon stack, fusion, regime, direction.
    - Implementation: current spread/liquidity/risk context where available.
    - Portfolio: initially minimal; position/risk hooks added later.
-   - Lifecycle: static stop/target/timeout baseline first.
+   - Lifecycle: static stop/target/timeout baseline first, governed by `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md` before any lifecycle code phase.
 
 5. **Add UI card**
    - Initial render from `v2_decision`.
@@ -291,6 +291,8 @@ Promote 0DTE from downstream heuristic expression selection into an explicit exp
 
 7. **A2 lifecycle baseline**
    - Static option exit baseline first.
+   - Contract first: `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`.
+   - Shared static rule-core extraction must reconcile `realized_contract_eval._simulate_exit` and `call_engine.py` before lifecycle sidecar implementation.
    - Later dynamic lifecycle actions:
      - hold;
      - exit;
@@ -304,7 +306,7 @@ Promote 0DTE from downstream heuristic expression selection into an explicit exp
    - Replay vs live parity.
    - Contract payoff validation.
    - Spread/fill realism.
-   - Lifecycle static baseline comparison.
+   - Lifecycle static baseline comparison and divergence audit per `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`.
 
 ### Done Criteria
 
