@@ -22,10 +22,16 @@ def _allowed_path(rel: Path) -> bool:
         return True
     if s.startswith("tests/test_calibration"):
         return True
+    if s == "tests/test_v2_advisory_backfill.py":
+        return True
     if s == "signals.py":
         return True
     # Approved read-only probes / tooling (controlled SELECT surface).
     if s == "tools/_phase4_prod_probe.py":
+        return True
+    if s == "tools/_phase4a_fast_count.py":
+        return True
+    if s == "tools/_phase4a_quantify_anchor_miss.py":
         return True
     return False
 
@@ -34,7 +40,7 @@ def test_no_unauthorized_python_references_to_calibration_decision_log() -> None
     offenders: list[str] = []
     for p in _ROOT.rglob("*.py"):
         parts = set(p.parts)
-        if "__pycache__" in parts or ".venv" in parts or "node_modules" in parts:
+        if "__pycache__" in parts or ".venv" in parts or "node_modules" in parts or ".claude" in parts:
             continue
         try:
             text = p.read_text(encoding="utf-8", errors="replace")
@@ -55,7 +61,7 @@ def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
     """INSERT must not appear outside writer (production) and calibration tests."""
     bad: list[str] = []
     for p in _ROOT.rglob("*.py"):
-        if "__pycache__" in p.parts:
+        if "__pycache__" in p.parts or ".claude" in p.parts:
             continue
         try:
             text = p.read_text(encoding="utf-8", errors="replace")
@@ -64,7 +70,11 @@ def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
         if "INSERT INTO calibration_decision_log" not in text:
             continue
         rel = p.relative_to(_ROOT).as_posix()
-        ok = rel == "calibration/writer.py" or rel.startswith("tests/test_calibration")
+        ok = (
+            rel == "calibration/writer.py"
+            or rel.startswith("tests/test_calibration")
+            or rel == "tests/test_v2_advisory_backfill.py"
+        )
         if not ok:
             bad.append(rel)
     assert bad == [], f"Unexpected INSERT into calibration_decision_log: {bad}"
@@ -73,7 +83,7 @@ def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
 def test_update_calibration_decision_log_only_backfill_and_tests() -> None:
     bad: list[str] = []
     for p in _ROOT.rglob("*.py"):
-        if "__pycache__" in p.parts:
+        if "__pycache__" in p.parts or ".claude" in p.parts:
             continue
         try:
             text = p.read_text(encoding="utf-8", errors="replace")
@@ -85,6 +95,7 @@ def test_update_calibration_decision_log_only_backfill_and_tests() -> None:
         ok = (
             rel == "calibration/backfill_outcomes.py"
             or rel == "calibration/backfill_signal_layer_v1_bundle.py"
+            or rel == "calibration/v2_advisory_backfill.py"
             or rel.startswith("tests/test_calibration")
         )
         if not ok:

@@ -65,6 +65,14 @@ CREATE TABLE IF NOT EXISTS calibration_decision_log (
     calibration_trust       TEXT    NOT NULL DEFAULT 'legacy',
 
     raw_bundle_json         TEXT,
+
+    advisory_v2_decision_snapshot_json TEXT,
+    advisory_v2_snapshot_schema_version TEXT,
+    advisory_v2_adapter_version TEXT,
+    advisory_v2_backfilled_ts_utc REAL,
+    advisory_v2_backfill_status TEXT,
+    advisory_v2_backfill_reason TEXT,
+
     created_at              TEXT DEFAULT (datetime('now'))
 );
 
@@ -129,6 +137,17 @@ def _migrate_calibration_decision_log_columns(conn: sqlite3.Connection) -> None:
             ADD COLUMN calibration_trust TEXT NOT NULL DEFAULT 'legacy'
             """
         )
+    advisory_cols = {
+        "advisory_v2_decision_snapshot_json": "TEXT",
+        "advisory_v2_snapshot_schema_version": "TEXT",
+        "advisory_v2_adapter_version": "TEXT",
+        "advisory_v2_backfilled_ts_utc": "REAL",
+        "advisory_v2_backfill_status": "TEXT",
+        "advisory_v2_backfill_reason": "TEXT",
+    }
+    for name, decl in advisory_cols.items():
+        if name not in cols:
+            conn.execute(f"ALTER TABLE calibration_decision_log ADD COLUMN {name} {decl}")
     conn.commit()
 
 
