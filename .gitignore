@@ -30,6 +30,14 @@ feature_contract_validation.txt
 # Data files (large/sensitive)
 data/
 
+# Schwab field inventory — track curated canonical references only
+schwab_field_inventory/**
+!schwab_field_inventory/
+!schwab_field_inventory/README.md
+!schwab_field_inventory/schwab_canonical_fields.txt
+!schwab_field_inventory/schwab_field_dictionary.csv
+!schwab_field_inventory/schwab_field_dictionary_grouped.csv
+
 # Test artifacts
 test-results/
 
