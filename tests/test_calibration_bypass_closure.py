@@ -24,6 +24,8 @@ def _allowed_path(rel: Path) -> bool:
         return True
     if s == "tests/test_v2_advisory_backfill.py":
         return True
+    if s == "tests/test_v2_a1_calibration.py":
+        return True
     if s == "signals.py":
         return True
     # Approved read-only probes / tooling (controlled SELECT surface).
@@ -74,6 +76,7 @@ def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
             rel == "calibration/writer.py"
             or rel.startswith("tests/test_calibration")
             or rel == "tests/test_v2_advisory_backfill.py"
+            or rel == "tests/test_v2_a1_calibration.py"
         )
         if not ok:
             bad.append(rel)
