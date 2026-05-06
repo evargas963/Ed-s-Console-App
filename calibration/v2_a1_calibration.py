@@ -1,8 +1,8 @@
 """Fit/apply A1 advisory probability calibration for v2 Pilot 1B.
 
-Scope is intentionally narrow: 5c horizon first, post-fusion
-``P_entry_success`` only, JSON-serializable isotonic artifact, and no runtime
-adapter wiring.
+Scope is intentionally training-time only: post-fusion ``P_entry_success``,
+JSON-serializable isotonic artifacts, separate models per horizon, and no
+runtime adapter wiring.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ except Exception:
 
 A1_CALIBRATION_ARTIFACT_SCHEMA_VERSION = "1"
 A1_CALIBRATION_METHOD = "isotonic_regression"
+A1_CALIBRATION_HORIZONS = ("1c", "5c", "15c", "60c")
 A1_CALIBRATION_HORIZON = "5c"
 A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES = 500  # O-24
 A1_CALIBRATION_PER_REGIME_MIN_SAMPLES = 50  # O-25
@@ -35,8 +36,11 @@ A1_CALIBRATION_PER_RELIABILITY_BIN_MIN_SAMPLES = 30  # O-26
 A1_RELIABILITY_BIN_EDGES = tuple(round(i / 10.0, 1) for i in range(11))
 
 
-def load_a1_5c_calibration_rows(db_path: Path) -> list[dict[str, Any]]:
-    """Load trusted rows with advisory v2 snapshots and 5c outcomes."""
+def load_a1_calibration_rows(db_path: Path, *, horizon: str) -> list[dict[str, Any]]:
+    """Load trusted rows with advisory v2 snapshots and outcomes for one horizon."""
+    hz = _validate_horizon(horizon)
+    outcome_col = f"outcome_{hz}"
+    outcome_pts_col = f"outcome_{hz}_pts"
     conn = sqlite3.connect(str(db_path), timeout=60.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
@@ -49,14 +53,14 @@ def load_a1_5c_calibration_rows(db_path: Path) -> list[dict[str, Any]]:
           decision_ts_utc,
           advisory_v2_decision_snapshot_json,
           advisory_v2_adapter_version,
-          outcome_5c,
-          outcome_5c_pts,
+          {outcome_col} AS outcome,
+          {outcome_pts_col} AS outcome_pts,
           vol_regime,
           session_bucket,
           expiry,
           canonical_timeframe
         FROM calibration_decision_log
-        WHERE outcome_5c IS NOT NULL
+        WHERE {outcome_col} IS NOT NULL
           AND advisory_v2_decision_snapshot_json IS NOT NULL
           AND canonical_timeframe = ?
           AND ({TRUSTED_PREDICATE_SQL})
@@ -65,18 +69,25 @@ def load_a1_5c_calibration_rows(db_path: Path) -> list[dict[str, Any]]:
         (CANONICAL_TIMEFRAME,),
     ).fetchall()
     conn.close()
-    return [_row_to_calibration_example(dict(row)) for row in rows]
+    return [_row_to_calibration_example(dict(row), horizon=hz) for row in rows]
 
 
-def fit_a1_5c_isotonic_artifact(
+def load_a1_5c_calibration_rows(db_path: Path) -> list[dict[str, Any]]:
+    """Load trusted rows with advisory v2 snapshots and 5c outcomes."""
+    return load_a1_calibration_rows(db_path, horizon=A1_CALIBRATION_HORIZON)
+
+
+def fit_a1_isotonic_artifact(
     rows: list[dict[str, Any]],
     *,
+    horizon: str,
     split: WalkForwardSplit,
     calibration_run_id: str | None = None,
     calibration_window_id: str | None = None,
     min_holdout_samples: int = A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES,
 ) -> dict[str, Any]:
     """Fit isotonic calibration and return a JSON-serializable artifact."""
+    hz = _validate_horizon(horizon)
     validate_purged_embargo_splits([split], embargo_span=split.holdout_start - split.calibration_end)
     train_rows, holdout_rows = _rows_for_split(rows, split)
     holdout_gate = {
@@ -86,18 +97,18 @@ def fit_a1_5c_isotonic_artifact(
         "status": "ok" if len(holdout_rows) >= min_holdout_samples else "insufficient_sample",
         "operator_decision": "O-24",
     }
-    run_id = calibration_run_id or _stable_id("a1-calibration-run", rows, split)
-    window_id = calibration_window_id or _stable_id("a1-calibration-window", rows, split)
+    run_id = calibration_run_id or _stable_id(f"a1-{hz}-calibration-run", rows, split)
+    window_id = calibration_window_id or _stable_id(f"a1-{hz}-calibration-window", rows, split)
     base = {
         "schema_version": A1_CALIBRATION_ARTIFACT_SCHEMA_VERSION,
         "calibration_run_id": run_id,
         "calibration_window_id": window_id,
         "module_id": "A",
         "expression_profile_id": "A1",
-        "horizon": A1_CALIBRATION_HORIZON,
+        "horizon": hz,
         "method": A1_CALIBRATION_METHOD,
         "raw_probability_field": "v2_decision.decision.P_entry_success",
-        "target_label": "outcome_5c_direction_matches_v2_direction",
+        "target_label": f"outcome_{hz}_direction_matches_v2_direction",
         "sample_gate": {
             "aggregate_holdout": holdout_gate,
         },
@@ -137,7 +148,8 @@ def fit_a1_5c_isotonic_artifact(
             "raw_probability": row["raw_probability"],
             "calibrated_probability": apply_isotonic_model(model, row["raw_probability"]),
             "label": row["label"],
-            "outcome_5c": row["outcome_5c"],
+            "outcome": row["outcome"],
+            f"outcome_{hz}": row["outcome"],
             "volatility_regime": row.get("volatility_regime"),
             "time_of_day_bucket": row.get("time_of_day_bucket"),
             "expiry_dte_bucket": row.get("expiry_dte_bucket"),
@@ -154,16 +166,36 @@ def fit_a1_5c_isotonic_artifact(
         "fit_sample_count": len(train_rows),
         "holdout_predictions": predictions,
     }
-    artifact["health"] = build_a1_5c_calibration_health(artifact)
+    artifact["health"] = build_a1_calibration_health(artifact)
     return artifact
 
 
-def build_a1_5c_calibration_health(artifact: dict[str, Any]) -> dict[str, Any]:
+def fit_a1_5c_isotonic_artifact(
+    rows: list[dict[str, Any]],
+    *,
+    split: WalkForwardSplit,
+    calibration_run_id: str | None = None,
+    calibration_window_id: str | None = None,
+    min_holdout_samples: int = A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES,
+) -> dict[str, Any]:
+    """Fit the 5c isotonic calibration artifact."""
+    return fit_a1_isotonic_artifact(
+        rows,
+        horizon=A1_CALIBRATION_HORIZON,
+        split=split,
+        calibration_run_id=calibration_run_id,
+        calibration_window_id=calibration_window_id,
+        min_holdout_samples=min_holdout_samples,
+    )
+
+
+def build_a1_calibration_health(artifact: dict[str, Any]) -> dict[str, Any]:
     """Compute holdout ECE, Brier, reliability, and deterministic regime slices."""
+    hz = _validate_horizon(str(artifact.get("horizon") or A1_CALIBRATION_HORIZON))
     predictions = artifact.get("holdout_predictions") or []
     aggregate_gate = _sample_gate(len(predictions), A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES, "O-24")
     health = {
-        "horizon": A1_CALIBRATION_HORIZON,
+        "horizon": hz,
         "sample_gates": {
             "aggregate_holdout": aggregate_gate,
         },
@@ -177,6 +209,11 @@ def build_a1_5c_calibration_health(artifact: dict[str, Any]) -> dict[str, Any]:
         health["ece"] = _expected_calibration_error(health["reliability_table"])
         health["brier_score"] = _brier_score(predictions)
     return health
+
+
+def build_a1_5c_calibration_health(artifact: dict[str, Any]) -> dict[str, Any]:
+    """Compute 5c holdout health metrics."""
+    return build_a1_calibration_health({**artifact, "horizon": A1_CALIBRATION_HORIZON})
 
 
 def write_a1_calibration_artifact(artifact_dir: Path, artifact: dict[str, Any]) -> Path:
@@ -321,14 +358,15 @@ def _rows_for_split(rows: list[dict[str, Any]], split: WalkForwardSplit) -> tupl
     return train_rows, holdout_rows
 
 
-def _row_to_calibration_example(row: dict[str, Any]) -> dict[str, Any]:
+def _row_to_calibration_example(row: dict[str, Any], *, horizon: str) -> dict[str, Any]:
+    hz = _validate_horizon(horizon)
     payload = _json_obj(row.get("advisory_v2_decision_snapshot_json"))
     v2 = payload.get("v2_decision") if isinstance(payload.get("v2_decision"), dict) else {}
     decision = v2.get("decision") if isinstance(v2.get("decision"), dict) else {}
     action = _leaf_value(decision.get("action"))
     direction = _leaf_value(decision.get("direction"))
     raw_p = _float_or_none(_leaf_value(decision.get("P_entry_success")))
-    outcome = str(row.get("outcome_5c") or "").lower()
+    outcome = str(row.get("outcome") or "").lower()
     label = _success_label(direction, outcome)
     if action != "TRADE" or raw_p is None or label is None:
         raise ValueError("row cannot be used for A1 calibration")
@@ -339,13 +377,15 @@ def _row_to_calibration_example(row: dict[str, Any]) -> dict[str, Any]:
         "raw_probability": raw_p,
         "label": label,
         "direction": direction,
-        "outcome_5c": outcome,
-        "outcome_5c_pts": row.get("outcome_5c_pts"),
+        "outcome": outcome,
+        f"outcome_{hz}": outcome,
+        "outcome_pts": row.get("outcome_pts"),
+        f"outcome_{hz}_pts": row.get("outcome_pts"),
         "adapter_version": row.get("advisory_v2_adapter_version"),
         "volatility_regime": row.get("vol_regime"),
         "time_of_day_bucket": row.get("session_bucket"),
         "expiry_dte_bucket": "not_options_applicable",
-        "primary_horizon": A1_CALIBRATION_HORIZON,
+        "primary_horizon": hz,
     }
 
 
@@ -383,6 +423,13 @@ def _float_or_none(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return None
+
+
+def _validate_horizon(horizon: str) -> str:
+    hz = str(horizon or "").strip().lower()
+    if hz not in A1_CALIBRATION_HORIZONS:
+        raise ValueError(f"unsupported A1 calibration horizon: {horizon!r}")
+    return hz
 
 
 def _stable_id(prefix: str, rows: Iterable[dict[str, Any]], split: WalkForwardSplit) -> str:

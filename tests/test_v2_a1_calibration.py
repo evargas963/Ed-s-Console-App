@@ -9,9 +9,13 @@ from calibration.schema import ensure_calibration_schema
 from calibration.v2_a1_calibration import (
     A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES,
     A1_CALIBRATION_HORIZON,
+    A1_CALIBRATION_HORIZONS,
+    build_a1_calibration_health,
     build_a1_5c_calibration_health,
     apply_isotonic_model,
+    fit_a1_isotonic_artifact,
     fit_a1_5c_isotonic_artifact,
+    load_a1_calibration_rows,
     load_a1_5c_calibration_rows,
     write_a1_calibration_artifact,
 )
@@ -56,11 +60,22 @@ def _seed_rows(tmp_path, *, n_train: int = 40, n_holdout: int = A1_CALIBRATION_A
             INSERT INTO calibration_decision_log (
                 decision_ts_utc, ticker, canonical_timeframe, calibration_trust,
                 advisory_v2_decision_snapshot_json, advisory_v2_adapter_version,
-                outcome_5c, outcome_5c_pts, vol_regime, session_bucket
+                outcome_1c, outcome_1c_pts,
+                outcome_5c, outcome_5c_pts,
+                outcome_15c, outcome_15c_pts,
+                outcome_60c, outcome_60c_pts,
+                vol_regime, session_bucket
             )
-            VALUES (?, 'SPY', '1m', 'trusted', ?, 'test-adapter', ?, 0.1, 'normal', 'midday')
+            VALUES (
+                ?, 'SPY', '1m', 'trusted', ?, 'test-adapter',
+                ?, 0.1,
+                ?, 0.1,
+                ?, 0.1,
+                ?, 0.1,
+                'normal', 'midday'
+            )
             """,
-            (ts, _v2_payload(probability=probability), outcome),
+            (ts, _v2_payload(probability=probability), outcome, outcome, outcome, outcome),
         )
     conn.commit()
     conn.close()
@@ -87,6 +102,17 @@ def test_load_a1_calibration_rows_extracts_post_fusion_probability(tmp_path):
     assert rows[0]["expiry_dte_bucket"] == "not_options_applicable"
 
 
+@pytest.mark.parametrize("horizon", A1_CALIBRATION_HORIZONS)
+def test_load_a1_calibration_rows_supports_primary_decision_horizons(tmp_path, horizon):
+    db_path, _split = _seed_rows(tmp_path, n_train=4, n_holdout=4)
+
+    rows = load_a1_calibration_rows(db_path, horizon=horizon)
+
+    assert rows
+    assert rows[0]["primary_horizon"] == horizon
+    assert rows[0][f"outcome_{horizon}"] in {"up", "down"}
+
+
 def test_fit_a1_isotonic_artifact_produces_bounded_holdout_probabilities(tmp_path):
     db_path, split = _seed_rows(tmp_path)
     rows = load_a1_5c_calibration_rows(db_path)
@@ -105,6 +131,37 @@ def test_fit_a1_isotonic_artifact_produces_bounded_holdout_probabilities(tmp_pat
     assert artifact["health"]["sample_gates"]["aggregate_holdout"]["operator_decision"] == "O-24"
     for row in artifact["holdout_predictions"]:
         assert 0.0 <= row["calibrated_probability"] <= 1.0
+
+
+@pytest.mark.parametrize("horizon", ("1c", "15c", "60c"))
+def test_fit_a1_isotonic_artifact_uses_separate_horizon_artifacts(tmp_path, horizon):
+    db_path, split = _seed_rows(tmp_path)
+    rows = load_a1_calibration_rows(db_path, horizon=horizon)
+
+    artifact = fit_a1_isotonic_artifact(rows, horizon=horizon, split=split)
+
+    assert artifact["status"] == "ok"
+    assert artifact["horizon"] == horizon
+    assert artifact["target_label"] == f"outcome_{horizon}_direction_matches_v2_direction"
+    assert artifact["calibration_run_id"].startswith(f"a1-{horizon}-calibration-run-")
+    assert artifact["calibration_window_id"].startswith(f"a1-{horizon}-calibration-window-")
+    assert artifact["health"]["horizon"] == horizon
+    assert artifact["holdout_predictions"][0]["primary_horizon"] == horizon
+    assert artifact["holdout_predictions"][0][f"outcome_{horizon}"] in {"up", "down"}
+
+
+@pytest.mark.parametrize("horizon", ("1c", "15c", "60c"))
+def test_multi_horizon_insufficient_samples_skip_until_accumulation_crosses_o24(tmp_path, horizon):
+    db_path, split = _seed_rows(tmp_path, n_train=20, n_holdout=40)
+    rows = load_a1_calibration_rows(db_path, horizon=horizon)
+
+    artifact = fit_a1_isotonic_artifact(rows, horizon=horizon, split=split)
+
+    assert artifact["status"] == "calibration_skipped_insufficient_samples"
+    assert artifact["reason"] == "aggregate_holdout_below_o24"
+    assert artifact["horizon"] == horizon
+    assert artifact["model"] is None
+    assert artifact["sample_gate"]["aggregate_holdout"]["operator_decision"] == "O-24"
 
 
 def test_insufficient_holdout_samples_skip_with_o24_reason(tmp_path):
@@ -179,8 +236,9 @@ def test_regime_cells_emit_rates_only_above_o25_floor(tmp_path):
     assert normal["sample_gate"]["sufficient_sample"] is True
     assert normal["observed_hit_rate"] is not None
 
-    small = build_a1_5c_calibration_health(
+    small = build_a1_calibration_health(
         {
+            "horizon": "15c",
             "holdout_predictions": [
                 {
                     "calibrated_probability": 0.6,
@@ -190,12 +248,13 @@ def test_regime_cells_emit_rates_only_above_o25_floor(tmp_path):
                     "time_of_day_bucket": "midday",
                     "expiry_dte_bucket": "not_options_applicable",
                     "direction": "long",
-                    "primary_horizon": "5c",
+                    "primary_horizon": "15c",
                 }
                 for _ in range(10)
             ]
         }
     )
+    assert small["horizon"] == "15c"
     assert small["regime_reliability"]["volatility_regime:thin"]["observed_hit_rate"] is None
 
 
