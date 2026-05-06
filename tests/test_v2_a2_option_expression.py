@@ -83,6 +83,23 @@ def test_valid_a2_deterministic_baseline_has_source_indicators():
     }
 
 
+def test_selected_contract_snapshot_preserves_schwab_quote_timestamps():
+    """Tier B: selected contract snapshot carries Schwab quote/trade timestamps."""
+    winner = _winner()
+    winner["chain_row"]["quoteTimeInLong"] = 1778018400000
+    winner["chain_row"]["tradeTimeInLong"] = 1778018399000
+
+    a2 = build_a2_option_expression(
+        _ms(option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+
+    snapshot = a2["option_expression"]["selected_contract_snapshot"]
+    assert snapshot["source"] == "v1_approximation"
+    assert snapshot["value"]["quoteTimeInLong"] == 1778018400000
+    assert snapshot["value"]["tradeTimeInLong"] == 1778018399000
+
+
 def test_wait_signal_emits_no_contract_and_records_gate():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L238 - WAIT signal emits no option contract."""
     a1 = _sample_a1()
