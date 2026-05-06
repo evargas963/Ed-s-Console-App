@@ -167,9 +167,123 @@ threshold_policy_objects
 named_gaps
 source_classification
 promotion_state
+projected_preview
 ```
 
 Initial output must remain advisory and must not change `P_lifecycle_adjusted_profit`, `timeout_policy`, or `lifecycle_policy_id` from their current source indicators.
+
+`projected_preview` is additive to the v0 sidecar shape. It is specified below and does not wrap, rename, or move the existing sidecar fields.
+
+---
+
+## Current State vs Projected Preview
+
+The v0 sidecar fields describe current lifecycle state at v2 decision build time. Fields such as `lifecycle_action`, `lifecycle_conflict_state`, `event_sources`, `threshold_policy_objects`, `named_gaps`, `source_classification`, and `promotion_state` report what the lifecycle sidecar can honestly say now. At entry time, the current lifecycle state is `no_active_position`; no lifecycle exit, hold, force-exit, or re-entry block has fired.
+
+`projected_preview` describes what lifecycle geometry would apply if the A2 entry were taken at the current v2 decision build time. It is a pre-entry projection derived from `lifecycle_rule_core`, not a lifecycle decision and not an instruction to exit or manage an active position.
+
+Both surfaces coexist inside `lifecycle.sidecar`:
+
+- v0 sidecar fields remain the current-state surface.
+- `projected_preview` is the v1 pre-entry preview surface.
+- Neither surface supersedes the other.
+
+---
+
+## Projected Preview Output Shape
+
+`projected_preview` must use this shape:
+
+```text
+preview_status
+preview_named_gaps
+projected_stop
+projected_target
+projected_target2
+projected_max_hold_bars
+projected_eod_force_exit_time
+derivation_inputs
+derivation_source_module
+would_apply_if_entered_at_time
+preview_authority
+```
+
+### `preview_status`
+
+Allowed values:
+
+| `preview_status` | `projected_*` fields shape |
+|---|---|
+| `available` | All populated with rule-core-derived values. |
+| `not_available_no_entry_candidate` | All `None`; no entry candidate exists to project from. |
+| `not_available_missing_inputs` | All `None`; `derivation_inputs` enumerates which inputs were missing. |
+| `policy_pending` | Threshold-derived fields (`projected_eod_force_exit_time`, `projected_max_hold_bars` when policy-bound) are marked `policy_object_pending`; other `projected_*` fields are populated where derivable. |
+
+No implementation may silently partially fill preview fields. If a field is unavailable, its absence must be visible as `None`, a governed sentinel, or `policy_object_pending`; it must never use stale, default, or unrelated values.
+
+### `preview_named_gaps`
+
+`preview_named_gaps` contains only gaps that block honest population of at least one `projected_*` field. A gap is preview-blocking iff it prevents some `projected_*` field from being honestly populated.
+
+Initial preview-blocking gap subset:
+
+- `a2_lifecycle_eod_force_exit_logic_not_implemented`
+- `a2_lifecycle_eod_window_threshold_minutes_policy_object_pending`
+- `a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending`
+
+Handler, dynamic-policy, promotion, and runtime-authority gaps remain in the broader sidecar `named_gaps` inventory unless they directly block a `projected_*` field.
+
+### Preview Fields
+
+| Field | Meaning |
+|---|---|
+| `projected_stop` | Stop level that would apply if the A2 entry were taken now, derived from `lifecycle_rule_core` where inputs are sufficient. |
+| `projected_target` | T1 level that would apply if the A2 entry were taken now, derived from `lifecycle_rule_core` where inputs are sufficient. |
+| `projected_target2` | T2 level that would apply if the A2 entry were taken now, derived from `lifecycle_rule_core` where inputs are sufficient. |
+| `projected_max_hold_bars` | Time-stop projection. It remains `policy_object_pending` unless a governed max-hold policy source is available. |
+| `projected_eod_force_exit_time` | EOD force-exit projection. It remains blocked by `a2_lifecycle_eod_force_exit_logic_not_implemented` and related threshold-policy gaps until force-exit logic exists. |
+| `derivation_inputs` | Sub-dict enumerating inputs used by the rule core, at minimum `spot`, `vix_level`, `mins_elapsed_since_open`, `risk_multiplier`, `entry`, `direction`, `risk`, `avg5`, `avg15`, `avg60`, and `structural_levels` where available. Missing inputs must be named. |
+| `derivation_source_module` | Literal `lifecycle_rule_core`. |
+| `would_apply_if_entered_at_time` | Timestamp of the v2 decision build used for the "if entered now" projection. |
+| `preview_authority` | Non-authority block stating this is a projection, not a lifecycle decision. |
+
+`preview_authority` must include:
+
+```text
+mode = advisory_non_authoritative
+tier = C_analytics_only
+changes_trade_behavior = False
+projection_not_decision = True
+text = "Projected lifecycle preview only; not an active lifecycle decision. Future lifecycle action may differ."
+```
+
+---
+
+## Source Classification for Preview Fields
+
+- `projected_*` value fields use `derived_because_schwab_does_not_provide` when populated from rule-core derivation.
+- Unavailable `projected_*` value fields must use `not_implemented` or `policy_object_pending`, as applicable.
+- `preview_status`, `preview_named_gaps`, and `derivation_source_module` are governance metadata and may remain bare values under the schema-walker option III pattern verified by the v0 sidecar implementation.
+- `derivation_inputs` is a sub-dict where each input value carries source classification.
+- `preview_authority` is a structural metadata block that mirrors the sidecar authority shape and adds explicit projection-not-decision language.
+
+---
+
+## No Silent Partial Fills
+
+Every `projected_*` field must honestly disclose availability. Implementations must not fill missing preview fields with old, default, inferred, or unrelated values. If the preview cannot be computed, the field must be `None`, a governed sentinel, or `policy_object_pending`, and the blocking cause must appear in `preview_status`, `preview_named_gaps`, or `derivation_inputs`.
+
+---
+
+## Backward Compatibility (v1)
+
+The v0 sidecar fields remain unchanged. `projected_preview` is additive. Consumers may rely on the v0 fields being present and unchanged, and consumers should handle both pre-v1 payloads where `projected_preview` is absent and v1+ payloads where it is present.
+
+---
+
+## Follow-Up Intent (non-binding)
+
+The existing 7 lifecycle leaves at the parent level (`entry_policy`, `stop_policy`, `target_policy`, `timeout_policy`, `forced_exit_time`, `allowed_actions`, `lifecycle_policy_id`) are Pilot 1B baseline shape and predate sidecar discipline. A future commit may deprecate them once consumers migrate to `sidecar.projected_preview`. This amendment does not remove or rename them; deprecation requires a separate governed commit.
 
 ---
 
