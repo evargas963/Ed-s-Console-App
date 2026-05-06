@@ -54,6 +54,16 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
         option_right=option_right,
     )
 
+    selected_audit = _selected_audit_row(proof, winner, strike, option_right)
+    pin_risk = _pin_risk_health(
+        selected_audit=selected_audit,
+        strike=strike,
+    )
+    late_day_gamma = _late_day_gamma_health(
+        ms_dict=ms_dict,
+        chain_row=chain_row,
+        selected_audit=selected_audit,
+    )
     hard_gates = _hard_gates(
         ms_dict=ms_dict,
         proof=proof,
@@ -66,7 +76,7 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
         ask=ask,
         theta=theta,
     )
-    soft_gates = _soft_gates(ms_dict)
+    soft_gates = _soft_gates(ms_dict, pin_risk=pin_risk, late_day_gamma=late_day_gamma)
     action = "TRADE" if not hard_gates else "WAIT"
 
     return {
@@ -149,6 +159,8 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
         "health": {
             "hard_gates_failed": leaf(hard_gates, "v1_approximation"),
             "soft_gates": leaf(soft_gates, "v1_approximation"),
+            "pin_risk": leaf(pin_risk, "v1_approximation"),
+            "late_day_gamma": leaf(late_day_gamma, "v1_approximation"),
             "threshold_policy_objects": leaf(
                 {
                     "quote_staleness": "a2_quote_staleness_threshold_ms",
@@ -205,15 +217,144 @@ def _hard_gates(
     return gates
 
 
-def _soft_gates(ms_dict: dict[str, Any]) -> list[str]:
+def _soft_gates(
+    ms_dict: dict[str, Any],
+    *,
+    pin_risk: dict[str, Any],
+    late_day_gamma: dict[str, Any],
+) -> list[str]:
     gates = [
-        "a2_pin_risk_handling_not_implemented",
-        "a2_late_day_gamma_policy_pending",
         "a2_early_assignment_risk_not_implemented",
     ]
+    if pin_risk.get("status") == "elevated":
+        gates.append("pin_risk_near_strike")
+    elif pin_risk.get("status") == "watch":
+        gates.append("pin_risk_watch")
+    if late_day_gamma.get("status") == "elevated":
+        gates.append("late_day_gamma_acceleration")
+    elif late_day_gamma.get("status") == "watch":
+        gates.append("late_day_gamma_watch")
     if ms_dict.get("liq_ok") is False:
         gates.append("wide_spread_policy_pending")
     return gates
+
+
+def _selected_audit_row(
+    proof: dict[str, Any],
+    winner: dict[str, Any],
+    strike: float | None,
+    option_right: str,
+) -> dict[str, Any]:
+    if strike is None:
+        return dict(winner)
+    side = str(option_right or "").upper()
+    candidates = []
+    for key in ("chain_rows_scored", "ranked_candidates_top5"):
+        rows = proof.get(key)
+        if isinstance(rows, list):
+            candidates.extend(row for row in rows if isinstance(row, dict))
+    for row in candidates:
+        row_strike = _num(row.get("strike"))
+        row_side = str(row.get("side") or "").upper()
+        if row_strike is not None and abs(row_strike - strike) < 0.01 and (not side or row_side == side):
+            return row
+    return dict(winner)
+
+
+def _pin_risk_health(
+    *,
+    selected_audit: dict[str, Any],
+    strike: float | None,
+) -> dict[str, Any]:
+    detail = selected_audit.get("wall_contribution_detail")
+    if not isinstance(detail, dict):
+        detail = {}
+    proximity = detail.get("proximity_detail")
+    if not isinstance(proximity, list):
+        proximity = []
+
+    nearest_wall = None
+    if strike is not None:
+        for item in proximity:
+            if not isinstance(item, dict):
+                continue
+            wall_strike = _num(item.get("strike"))
+            if wall_strike is None:
+                continue
+            distance = abs(wall_strike - strike)
+            candidate = {
+                "level": item.get("level"),
+                "strike": wall_strike,
+                "distance": round(distance, 4),
+                "contrib": _num(item.get("contrib")),
+            }
+            if nearest_wall is None or distance < nearest_wall["distance"]:
+                nearest_wall = candidate
+
+    wall_score = _num(selected_audit.get("wall_score_component"))
+    wall_proximity = _num(selected_audit.get("wall_proximity_component"))
+    wall_bias = _num(selected_audit.get("wall_bias_component"))
+    reasons: list[str] = []
+    status = "not_detected"
+
+    if nearest_wall and nearest_wall["distance"] <= 1.0:
+        status = "elevated"
+        reasons.append("selected_strike_near_gamma_or_oi_wall")
+    elif wall_score is not None and wall_score >= 1.0:
+        status = "watch"
+        reasons.append("material_wall_contribution")
+    elif wall_proximity is not None and wall_proximity >= 0.75:
+        status = "watch"
+        reasons.append("material_wall_proximity")
+
+    return {
+        "status": status,
+        "selected_strike": strike,
+        "nearest_wall": nearest_wall,
+        "wall_score_component": wall_score,
+        "wall_proximity_component": wall_proximity,
+        "wall_bias_component": wall_bias,
+        "bias_notes": detail.get("bias_notes") if isinstance(detail.get("bias_notes"), list) else [],
+        "reasons": reasons,
+    }
+
+
+def _late_day_gamma_health(
+    *,
+    ms_dict: dict[str, Any],
+    chain_row: dict[str, Any],
+    selected_audit: dict[str, Any],
+) -> dict[str, Any]:
+    mins_to_close = _first_number(ms_dict.get("mins_to_close"), ms_dict.get("minutes_to_close"))
+    gamma = _first_number(chain_row.get("gamma"), selected_audit.get("gamma"))
+    gamma_x_oi = _first_number(_gamma_x_oi(chain_row), selected_audit.get("gamma_x_oi"))
+    gamma_is_max = bool(selected_audit.get("gamma_is_max"))
+    reasons: list[str] = []
+
+    if mins_to_close is None:
+        status = "unknown"
+        reasons.append("missing_minutes_to_close")
+    elif mins_to_close > 30:
+        status = "not_detected"
+    elif gamma_is_max or (gamma_x_oi is not None and abs(gamma_x_oi) >= 100):
+        status = "elevated"
+        reasons.append("final_30_minutes_with_material_gamma")
+        if gamma_is_max:
+            reasons.append("selected_strike_is_max_gamma")
+    elif gamma is not None and abs(gamma) >= 0.05:
+        status = "watch"
+        reasons.append("final_30_minutes_with_elevated_contract_gamma")
+    else:
+        status = "not_detected"
+
+    return {
+        "status": status,
+        "mins_to_close": mins_to_close,
+        "gamma": gamma,
+        "gamma_x_oi": gamma_x_oi,
+        "gamma_is_max": gamma_is_max,
+        "reasons": reasons,
+    }
 
 
 def _leaf_value(obj: dict[str, Any], *path: str) -> Any:

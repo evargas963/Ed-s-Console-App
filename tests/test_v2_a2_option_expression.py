@@ -185,6 +185,69 @@ def test_wide_spread_records_soft_gate_until_policy_bound():
     assert "wide_spread_policy_pending" in a2["health"]["soft_gates"]["value"]
 
 
+def test_pin_risk_near_strike_is_advisory_soft_health():
+    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L178 - pin risk is advisory."""
+    proof = {
+        "status": "ok",
+        "winner": _winner(),
+        "chain_rows_scored": [
+            {
+                "strike": 500.0,
+                "side": "CALL",
+                "wall_score_component": 1.4,
+                "wall_proximity_component": 1.1,
+                "wall_bias_component": 0.3,
+                "wall_contribution_detail": {
+                    "proximity_detail": [
+                        {"level": "dom_gamma_wall", "strike": 500.5, "contrib": 1.1},
+                    ],
+                    "bias_notes": ["dom_gamma_call_confluence"],
+                },
+            }
+        ],
+    }
+
+    a2 = build_a2_option_expression(
+        _ms(option_chain_selection_proof=proof),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "TRADE"
+    assert a2["health"]["pin_risk"]["source"] == "v1_approximation"
+    assert a2["health"]["pin_risk"]["value"]["status"] == "elevated"
+    assert a2["health"]["pin_risk"]["value"]["nearest_wall"]["level"] == "dom_gamma_wall"
+    assert "pin_risk_near_strike" in a2["health"]["soft_gates"]["value"]
+
+
+def test_late_day_gamma_acceleration_is_advisory_soft_health():
+    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L179 - late-day gamma is advisory."""
+    proof = {
+        "status": "ok",
+        "winner": _winner(),
+        "chain_rows_scored": [
+            {
+                "strike": 500.0,
+                "side": "CALL",
+                "gamma": 0.08,
+                "open_interest": 4300,
+                "gamma_x_oi": 344.0,
+                "gamma_is_max": True,
+            }
+        ],
+    }
+
+    a2 = build_a2_option_expression(
+        _ms(mins_to_close=20.0, option_chain_selection_proof=proof),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "TRADE"
+    assert a2["health"]["late_day_gamma"]["source"] == "v1_approximation"
+    assert a2["health"]["late_day_gamma"]["value"]["status"] == "elevated"
+    assert a2["health"]["late_day_gamma"]["value"]["gamma_is_max"] is True
+    assert "late_day_gamma_acceleration" in a2["health"]["soft_gates"]["value"]
+
+
 def test_required_probability_ev_placeholders_are_present():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L242 - probability/EV placeholders exist."""
     a2 = build_a2_option_expression(_ms(), _sample_a1())
