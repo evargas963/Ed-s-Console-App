@@ -52,7 +52,8 @@ All preconditions are required and must be evaluated in this order:
 3. **Honest evaluation gate (O1).** Separate post-fit evaluation rows are present in the artifact and measured empirical coverage is at least `A1_CONFORMAL_DEGRADED_COVERAGE` (currently `0.85`). Same-holdout coverage alone is insufficient for runtime advisory promotion because the conformal scaffold documents that it can be optimistic.
 4. **Aggregate sample threshold (G3).** The fit set contains at least `A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES` rows.
 5. **Horizon match.** Artifact `horizon` equals the decision context's target horizon.
-6. **Freshness discipline.** Either a freshness policy object is bound, or the artifact carries a governed self-describing freshness field such as `governed_max_age_seconds` and the artifact age is within that window.
+6. **Freshness discipline.** The artifact carries a numeric `governed_max_age_seconds` field and a numeric `generated_at_epoch_seconds` timestamp. Artifact age = current epoch - `generated_at_epoch_seconds`; promotion requires age <= `governed_max_age_seconds`. The freshness policy object remains unbound (`a1_conformal_artifact_freshness_threshold_policy_object_pending`); v1 does not use any external policy fallback. `calibration_run_id` / `calibration_window_id` must not be used as freshness proxies. If either field is missing or the artifact is stale, precondition 6 fails.
+7. **Calibrated probability available.** `ms_dict["a1_calibrated_probability"]` is a numeric value in [0, 1]. The input probability must have passed through the A1 isotonic calibration before the conformal interval is applied. Banding a raw or uncalibrated probability is invalid because the conformal scaffold's quantile was fit on calibrated probabilities. If `a1_calibrated_probability` is absent or outside [0, 1], precondition 7 fails.
 
 If any precondition fails, both leaves remain `not_implemented` unless a future contract explicitly permits independent leaf promotion.
 
@@ -90,7 +91,7 @@ The leaves must stay `not_implemented` with `value = None`. A populated value mu
 
 The implementation commit must use red-green evidence. Minimum required tests:
 
-- all six preconditions pass -> `p_low` and `p_high` are populated and use `source = "v1_approximation"`;
+- all seven preconditions pass -> `p_low` and `p_high` are populated and use `source = "v1_approximation"`;
 - each precondition fails independently -> both leaves remain `not_implemented` with a detail string naming the failed precondition;
 - no-synthetic-intervals regression: `source = "v1_approximation"` if and only if `value` is non-`None`;
 - backward-compatibility regression: when no artifact is loadable, both leaves remain byte-identical to the current baseline in `v2_decision/module_a_adapter.py`;
@@ -103,7 +104,7 @@ The implementation commit message must cite the failing red test invocation and 
 ## Named Gaps
 
 - `a1_conformal_per_regime_coverage_pending` - Per-regime coverage gating is not implemented in v1. Aggregate gating may mask edge-regime undercoverage; future work may adopt per-regime or hybrid gating.
-- `a1_conformal_artifact_freshness_threshold_policy_object_pending` - The freshness threshold policy is unbound. V1 promotion must refuse stale artifacts unless the artifact carries a governed self-describing freshness field and is within that window.
+- `a1_conformal_artifact_freshness_threshold_policy_object_pending` - The freshness threshold policy is unbound. V1 promotion requires the artifact to carry `governed_max_age_seconds` + `generated_at_epoch_seconds` and to be within that window; if either is absent, freshness precondition fails. A future operator decision register entry can bind a freshness policy object that replaces artifact self-description.
 
 These are contract-level discipline gaps. They do not alter A2 lifecycle sidecar preview-blocking gap semantics.
 
@@ -161,4 +162,6 @@ This contract does not:
 - bind a freshness policy;
 - add registry entries;
 - add named gaps beyond the two listed above;
-- edit `v2_decision/module_a_adapter.py`.
+- edit `v2_decision/module_a_adapter.py`;
+- assume any input probability is calibrated; calibrated probability must be explicitly supplied via `ms_dict["a1_calibrated_probability"]`;
+- treat `calibration_run_id` or `calibration_window_id` as freshness signals.
