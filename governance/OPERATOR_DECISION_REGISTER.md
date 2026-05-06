@@ -60,6 +60,8 @@
 | **O-32** | `a2_lifecycle_eod_window_threshold_minutes` | **30** minutes — Cadence shift threshold per `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md` §69; lifecycle observation switches from event-triggered to every Tier C cycle when minutes-to-close ≤ 30. Captures the typical gamma-acceleration window in 0DTE. Policy object identity: `a2_lifecycle_eod_window_threshold_minutes_v1`. | Program operator | 2026-05-06 | `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md` |
 | **O-33** | `a2_lifecycle_time_stop_force_exit_clock_threshold` | **15:50 ET** — Force-exit clock threshold giving 0DTE positions ~10 minutes of liquidation runway before close. Avoids the most volatile last-5-minute window. The clock threshold has no consumer until `a2_lifecycle_eod_force_exit_logic_not_implemented` (firing-mechanism gap) closes. Policy object identity: `a2_lifecycle_time_stop_force_exit_clock_threshold_v1`. | Program operator | 2026-05-06 | `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md` |
 | **O-34** | `a2_late_day_gamma_policy` | **Advisory warning only in v1**; late-day gamma exposure may raise lifecycle/sidecar warning state but does not independently tighten stops, resize, or force exit. EOD force-exit timing remains governed by the A2 lifecycle clock policy (O-33). Preserves non-authoritative discipline and avoids smuggling execution behavior into an A2 policy value before the EOD force-exit contract/code exists. Leaves room for variants (advisory + stop-tighten, advisory + force-exit) after empirical review. Policy object identity: `a2_late_day_gamma_policy_v1`. | Program operator | 2026-05-06 | `governance/PILOT_1B_A2_0DTE_CONTRACT.md` |
+| **O-35** | `a2_force_exit_offset_from_session_close_minutes` | **10** minutes — Session-close-relative force-exit threshold for A2 session-calendar-aware lifecycle logic. Preserves O-33 normal-RTH behavior because 16:00 ET minus 10 minutes yields 15:50 ET, while allowing early-close sessions to derive force-exit timing from actual session close. Applies to advisory A2 lifecycle sidecar only. Policy object identity: `a2_force_exit_offset_from_session_close_minutes_v1`. | Program operator | 2026-05-06 | `governance/A2_LIFECYCLE_SESSION_CALENDAR_HARDENING_CONTRACT.md` |
+| **O-36** | `a2_cadence_shift_offset_from_session_close_minutes` | **30** minutes — Session-close-relative cadence shift threshold for A2 session-calendar-aware lifecycle logic. Preserves O-32 normal-RTH behavior because 16:00 ET minus 30 minutes yields 15:30 ET, while allowing early-close sessions to derive cadence timing from actual session close. Applies to advisory A2 lifecycle sidecar only. Policy object identity: `a2_cadence_shift_offset_from_session_close_minutes_v1`. | Program operator | 2026-05-06 | `governance/A2_LIFECYCLE_SESSION_CALENDAR_HARDENING_CONTRACT.md` |
 
 ---
 
@@ -84,7 +86,7 @@ The following were **UNKNOWN** in the pre-2026-05-01 audit. Where **O-** IDs abo
 
 ## Operator sign-off
 
-By signing below, the operator attests that the **Decision** column for **O-01 through O-34** is accurate or has been corrected in-line, that **R-08** and **R-09** are accepted, and that **`GOVERNANCE_MERGE_GATE.md`** may be run for the next governance commit.
+By signing below, the operator attests that the **Decision** column for **O-01 through O-36** is accurate or has been corrected in-line, that **R-08** and **R-09** are accepted, and that **`GOVERNANCE_MERGE_GATE.md`** may be run for the next governance commit.
 
 **Printed name:** Program operator  
 
