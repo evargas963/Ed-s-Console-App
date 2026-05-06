@@ -122,7 +122,7 @@ Umbrella gap:
 
 Child gaps:
 
-- `a2_lifecycle_static_rule_core_pending`
+- `a2_lifecycle_static_rule_core_pending` — **resolved** by `dcc9968` (lifecycle_rule_core.py extraction with both halves: 6 threshold-derivation functions + 2 exit-firing functions), `abb5587` (replay-side rewire of `_simulate_exit` to consume rule core), and `cd797e1` (live-side rewire of `_stop_distance` and `_compute_levels`). A2 sidecar `available` state remains blocked by separate gap `a2_lifecycle_eod_force_exit_logic_not_implemented`; this retirement narrows only the static rule core child gap.
 - `a2_lifecycle_legacy_exit_logic_divergence_audit_pending`
 - `a2_lifecycle_eod_force_exit_logic_not_implemented`
 - `a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending`
