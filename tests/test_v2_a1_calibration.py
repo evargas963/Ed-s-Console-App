@@ -9,6 +9,7 @@ from calibration.schema import ensure_calibration_schema
 from calibration.v2_a1_calibration import (
     A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES,
     A1_CALIBRATION_HORIZON,
+    build_a1_5c_calibration_health,
     apply_isotonic_model,
     fit_a1_5c_isotonic_artifact,
     load_a1_5c_calibration_rows,
@@ -99,6 +100,9 @@ def test_fit_a1_isotonic_artifact_produces_bounded_holdout_probabilities(tmp_pat
     assert artifact["sample_gate"]["aggregate_holdout"]["sufficient_sample"] is True
     assert artifact["model"]["type"] == "isotonic_regression"
     assert artifact["holdout_predictions"]
+    assert artifact["health"]["ece"] is not None
+    assert artifact["health"]["brier_score"] is not None
+    assert artifact["health"]["sample_gates"]["aggregate_holdout"]["operator_decision"] == "O-24"
     for row in artifact["holdout_predictions"]:
         assert 0.0 <= row["calibrated_probability"] <= 1.0
 
@@ -134,6 +138,65 @@ def test_write_a1_calibration_artifact_is_json_not_pickle(tmp_path):
     assert path.name == "run-1.json"
     assert loaded["calibration_run_id"] == "run-1"
     assert loaded["model"]["type"] == "isotonic_regression"
+    assert "health" in loaded
+
+
+def test_reliability_bins_withhold_rates_below_o26_floor():
+    predictions = [
+        {
+            "calibrated_probability": 0.15,
+            "label": 1,
+            "ticker": "SPY",
+            "volatility_regime": "normal",
+            "time_of_day_bucket": "midday",
+            "expiry_dte_bucket": "not_options_applicable",
+            "direction": "long",
+            "primary_horizon": "5c",
+        }
+        for _ in range(20)
+    ]
+
+    health = build_a1_5c_calibration_health({"holdout_predictions": predictions})
+    first_nonempty = next(row for row in health["reliability_table"] if row["n"] == 20)
+
+    assert health["ece"] is None
+    assert health["brier_score"] is None
+    assert first_nonempty["sample_gate"]["operator_decision"] == "O-26"
+    assert first_nonempty["sample_gate"]["sufficient_sample"] is False
+    assert first_nonempty["predicted_mean"] is None
+    assert first_nonempty["observed_hit_rate"] is None
+
+
+def test_regime_cells_emit_rates_only_above_o25_floor(tmp_path):
+    db_path, split = _seed_rows(tmp_path)
+    rows = load_a1_5c_calibration_rows(db_path)
+
+    artifact = fit_a1_5c_isotonic_artifact(rows, split=split)
+    regime = artifact["health"]["regime_reliability"]
+
+    normal = regime["volatility_regime:normal"]
+    assert normal["sample_gate"]["operator_decision"] == "O-25"
+    assert normal["sample_gate"]["sufficient_sample"] is True
+    assert normal["observed_hit_rate"] is not None
+
+    small = build_a1_5c_calibration_health(
+        {
+            "holdout_predictions": [
+                {
+                    "calibrated_probability": 0.6,
+                    "label": 1,
+                    "ticker": "SPY",
+                    "volatility_regime": "thin",
+                    "time_of_day_bucket": "midday",
+                    "expiry_dte_bucket": "not_options_applicable",
+                    "direction": "long",
+                    "primary_horizon": "5c",
+                }
+                for _ in range(10)
+            ]
+        }
+    )
+    assert small["regime_reliability"]["volatility_regime:thin"]["observed_hit_rate"] is None
 
 
 def test_window_overlap_detection_still_rejects_bad_embargo():

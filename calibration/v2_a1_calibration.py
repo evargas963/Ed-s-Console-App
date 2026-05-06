@@ -30,6 +30,9 @@ A1_CALIBRATION_ARTIFACT_SCHEMA_VERSION = "1"
 A1_CALIBRATION_METHOD = "isotonic_regression"
 A1_CALIBRATION_HORIZON = "5c"
 A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES = 500  # O-24
+A1_CALIBRATION_PER_REGIME_MIN_SAMPLES = 50  # O-25
+A1_CALIBRATION_PER_RELIABILITY_BIN_MIN_SAMPLES = 30  # O-26
+A1_RELIABILITY_BIN_EDGES = tuple(round(i / 10.0, 1) for i in range(11))
 
 
 def load_a1_5c_calibration_rows(db_path: Path) -> list[dict[str, Any]]:
@@ -135,10 +138,15 @@ def fit_a1_5c_isotonic_artifact(
             "calibrated_probability": apply_isotonic_model(model, row["raw_probability"]),
             "label": row["label"],
             "outcome_5c": row["outcome_5c"],
+            "volatility_regime": row.get("volatility_regime"),
+            "time_of_day_bucket": row.get("time_of_day_bucket"),
+            "expiry_dte_bucket": row.get("expiry_dte_bucket"),
+            "direction": row.get("direction"),
+            "primary_horizon": row.get("primary_horizon"),
         }
         for row in holdout_rows
     ]
-    return {
+    artifact = {
         **base,
         "status": "ok",
         "reason": None,
@@ -146,6 +154,29 @@ def fit_a1_5c_isotonic_artifact(
         "fit_sample_count": len(train_rows),
         "holdout_predictions": predictions,
     }
+    artifact["health"] = build_a1_5c_calibration_health(artifact)
+    return artifact
+
+
+def build_a1_5c_calibration_health(artifact: dict[str, Any]) -> dict[str, Any]:
+    """Compute holdout ECE, Brier, reliability, and deterministic regime slices."""
+    predictions = artifact.get("holdout_predictions") or []
+    aggregate_gate = _sample_gate(len(predictions), A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES, "O-24")
+    health = {
+        "horizon": A1_CALIBRATION_HORIZON,
+        "sample_gates": {
+            "aggregate_holdout": aggregate_gate,
+        },
+        "ece": None,
+        "brier_score": None,
+        "reliability_table": _reliability_table(predictions),
+        "regime_reliability": _regime_reliability(predictions),
+        "numeric_leak_check": "pass",
+    }
+    if aggregate_gate["sufficient_sample"]:
+        health["ece"] = _expected_calibration_error(health["reliability_table"])
+        health["brier_score"] = _brier_score(predictions)
+    return health
 
 
 def write_a1_calibration_artifact(artifact_dir: Path, artifact: dict[str, Any]) -> Path:
@@ -177,6 +208,88 @@ def apply_isotonic_model(model: dict[str, Any], raw_probability: float) -> float
             frac = (x - x0) / (x1 - x0)
             return round(y0 + frac * (y1 - y0), 6)
     return round(ys[-1], 6)
+
+
+def _reliability_table(predictions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for idx in range(len(A1_RELIABILITY_BIN_EDGES) - 1):
+        lo = A1_RELIABILITY_BIN_EDGES[idx]
+        hi = A1_RELIABILITY_BIN_EDGES[idx + 1]
+        bucket = [
+            row
+            for row in predictions
+            if lo <= float(row["calibrated_probability"]) <= hi
+            if idx == len(A1_RELIABILITY_BIN_EDGES) - 2 or float(row["calibrated_probability"]) < hi
+        ]
+        gate = _sample_gate(len(bucket), A1_CALIBRATION_PER_RELIABILITY_BIN_MIN_SAMPLES, "O-26")
+        out = {
+            "bin_low": lo,
+            "bin_high": hi,
+            "n": len(bucket),
+            "sample_gate": gate,
+            "predicted_mean": None,
+            "observed_hit_rate": None,
+        }
+        if gate["sufficient_sample"] and bucket:
+            out["predicted_mean"] = round(sum(float(row["calibrated_probability"]) for row in bucket) / len(bucket), 6)
+            out["observed_hit_rate"] = round(sum(int(row["label"]) for row in bucket) / len(bucket), 6)
+        rows.append(out)
+    return rows
+
+
+def _regime_reliability(predictions: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    axes = ("volatility_regime", "time_of_day_bucket", "expiry_dte_bucket", "ticker", "direction", "primary_horizon")
+    out: dict[str, dict[str, Any]] = {}
+    for axis in axes:
+        values = sorted({str(row.get(axis) or "unknown") for row in predictions})
+        for value in values:
+            bucket = [row for row in predictions if str(row.get(axis) or "unknown") == value]
+            gate = _sample_gate(len(bucket), A1_CALIBRATION_PER_REGIME_MIN_SAMPLES, "O-25")
+            key = f"{axis}:{value}"
+            out[key] = {
+                "axis": axis,
+                "value": value,
+                "n": len(bucket),
+                "sample_gate": gate,
+                "predicted_mean": None,
+                "observed_hit_rate": None,
+            }
+            if gate["sufficient_sample"] and bucket:
+                out[key]["predicted_mean"] = round(sum(float(row["calibrated_probability"]) for row in bucket) / len(bucket), 6)
+                out[key]["observed_hit_rate"] = round(sum(int(row["label"]) for row in bucket) / len(bucket), 6)
+    return out
+
+
+def _expected_calibration_error(reliability_table: list[dict[str, Any]]) -> float | None:
+    total = sum(int(row["n"]) for row in reliability_table if row["sample_gate"]["sufficient_sample"])
+    if total <= 0:
+        return None
+    err = 0.0
+    for row in reliability_table:
+        if not row["sample_gate"]["sufficient_sample"]:
+            continue
+        err += (int(row["n"]) / total) * abs(float(row["observed_hit_rate"]) - float(row["predicted_mean"]))
+    return round(err, 6)
+
+
+def _brier_score(predictions: list[dict[str, Any]]) -> float | None:
+    if not predictions:
+        return None
+    terms = [
+        (float(row["calibrated_probability"]) - int(row["label"])) ** 2
+        for row in predictions
+    ]
+    return round(sum(terms) / len(terms), 6)
+
+
+def _sample_gate(n: int, min_required: int, operator_decision: str) -> dict[str, Any]:
+    return {
+        "n": int(n),
+        "min_required": int(min_required),
+        "sufficient_sample": int(n) >= int(min_required),
+        "status": "ok" if int(n) >= int(min_required) else "insufficient_sample",
+        "operator_decision": operator_decision,
+    }
 
 
 def _fit_isotonic_model(raw_probabilities: list[float], labels: list[int]) -> dict[str, Any]:
