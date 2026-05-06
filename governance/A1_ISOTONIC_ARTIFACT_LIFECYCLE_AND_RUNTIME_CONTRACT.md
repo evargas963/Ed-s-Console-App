@@ -8,6 +8,8 @@
 
 This contract defines the additive v2 isotonic artifact path required to produce the canonical `a1_calibrated_probability` and `a1_calibrated_probability_lineage_id` consumed by A1 conformal interval promotion. It is doc-only and does not implement a producer, loader, runtime apply helper, or `ms_dict` injection.
 
+**Track 3 implementation closed** by `fa72201` (3.1 producer) -> `1d177ca` (3.2 loader) -> `f96a5a3` (3.3 apply) -> `bb648db` (pre-3.4 dominant_probability extraction) -> `b4c8f7d` (3.4 attachment). Gap retirements below cite specific closing commits. The `a1_ml_predict_to_v2_calibration_bridge_pending` gap **remains open**.
+
 ---
 
 ## Authority Block
@@ -191,10 +193,13 @@ No new operator decision register entries are required by this contract.
 
 ## Named Gaps
 
-- `a1_isotonic_artifact_producer_implementation_pending` - closes in 3.1.
-- `a1_isotonic_artifact_loader_implementation_pending` - closes in 3.2.
-- `a1_isotonic_runtime_apply_implementation_pending` - closes in 3.3.
-- `a1_isotonic_ms_dict_injection_pending` - closes in 3.4.
+- `a1_isotonic_artifact_producer_implementation_pending` — **resolved** by `fa72201`. Manual CLI producer at `calibration/run_a1_isotonic_artifact_production.py` consuming helpers from `calibration/a1_isotonic_artifact_production.py`. Helper neutralization (`is_eligible_for_current_pointer_isotonic` + `artifact_kind` parametrization on path helpers) co-landed.
+
+- `a1_isotonic_artifact_loader_implementation_pending` — **resolved** by `1d177ca`. `load_a1_isotonic_artifact` at `v2_decision/a1_isotonic_artifact_loader.py` mirrors 2D conformal loader pattern; consumes `is_eligible_for_current_pointer_isotonic` from contract module; never raises in production.
+
+- `a1_isotonic_runtime_apply_implementation_pending` — **resolved** by `f96a5a3`. Pure-function `apply_a1_v2_calibration_to_raw_probability` at `v2_decision/a1_isotonic_runtime.py` wraps `apply_isotonic_model` + `compute_calibration_lineage_id` with never-raises guarantee.
+
+- `a1_isotonic_ms_dict_injection_pending` — **resolved** by `b4c8f7d` (preceded by `bb648db` extracting `dominant_probability` to public helper). `attach_a1_isotonic_calibration_to_ms_dict` at `v2_decision/a1_isotonic_calibration_attachment.py` orchestrates loader + raw probability + apply; server.py call sites added after the existing 2F conformal attachment.
 - `a1_ml_predict_to_v2_calibration_bridge_pending` - referenced from `governance/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md`; stays open.
 
 ---

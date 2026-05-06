@@ -8,6 +8,8 @@
 
 This contract defines how a runtime calibrated probability proves it came from the same isotonic calibration lineage as the conformal artifact used to produce A1 `p_low` / `p_high` intervals. It does not amend the existing promotion contract, implement precondition 8, or rewire runtime calibration.
 
+**Track 3 implementation closed** by commit chain `fa72201` -> `1d177ca` -> `f96a5a3` -> `bb648db` -> `b4c8f7d`. Specific gap retirements with closing-commit citations appear under "Named Gaps" below. The `a1_ml_predict_to_v2_calibration_bridge_pending` gap **remains open** per the additive discipline.
+
 ---
 
 ## Authority Block
@@ -113,8 +115,9 @@ Observers reading the `p_low` / `p_high` leaf detail string can distinguish line
 
 ## Named Gaps
 
-- `a1_runtime_calibration_canonical_source_pending_implementation` - `v2_a1_calibration` is declared canonical, but runtime does not yet produce calibrated probabilities through it. Until then, every entry-time decision fails precondition 8 and may also fail precondition 7.
-- `a1_calibration_lineage_id_propagation_pending_implementation` - Runtime stack does not thread the lineage marker into `ms_dict`. Implementation is deferred to the 2D loader and 2F injection.
+- `a1_runtime_calibration_canonical_source_pending_implementation` — **resolved** by track 3 (`fa72201` isotonic producer, `1d177ca` loader, `f96a5a3` runtime apply, `bb648db` raw probability extraction, `b4c8f7d` ms_dict attachment). The v2 isotonic path is now wired end-to-end through `attach_a1_isotonic_calibration_to_ms_dict`. Note: `ml_predict._apply_5c_xgb_plus_transformer_isotonic_calibration` remains production-active for the existing stack runtime; the v2 path is **additive** per `governance/A1_ISOTONIC_ARTIFACT_LIFECYCLE_AND_RUNTIME_CONTRACT.md`. Runtime preconditions 7 and 8 will pass when isotonic and conformal artifacts exist on disk for the requested (ticker, horizon).
+
+- `a1_calibration_lineage_id_propagation_pending_implementation` — **resolved** by `f96a5a3` (apply helper computes lineage_id via `compute_calibration_lineage_id`) + `b4c8f7d` (attachment helper sets `ms_dict["a1_calibrated_probability_lineage_id"]`). Runtime now threads the lineage marker into ms_dict per the locked SHA-256 recipe.
 - `a1_ml_predict_to_v2_calibration_bridge_pending` - No contract exists declaring `ml_predict` isotonic lineage-equivalent to `v2_a1_calibration` lineage. Future bridge contract is optional; if not pursued, the `ml_predict` path remains permanently ineligible for A1 conformal promotion.
 
 ---
