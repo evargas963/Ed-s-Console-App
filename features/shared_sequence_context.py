@@ -43,7 +43,11 @@ def _max_transformer_seq_len_for_ticker(ticker: str) -> int:
     for hz in ALL_GOVERNED_HORIZONS:
         tok = set_ml_infer_horizon_slug(hz)
         try:
-            base = _model_dir_for_ticker(tkr)
+            try:
+                base = _model_dir_for_ticker(tkr)
+            except FileNotFoundError as e:
+                log.debug("shared sequence context: no active model bundle for %s %s: %s", tkr, hz, e)
+                continue
             mp = base / f"transformer_{tkr}_{hz}_meta.json"
             if mp.is_file():
                 try:

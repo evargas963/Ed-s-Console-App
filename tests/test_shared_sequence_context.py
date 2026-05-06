@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from unittest.mock import MagicMock
+from pathlib import Path
 
 import pytest
 
@@ -84,3 +85,25 @@ def test_build_shared_sequence_context_insufficient_returns_none():
     ctx, err = build_shared_sequence_context(db, "SPY", inf)
     assert ctx is None
     assert err is not None
+
+
+def test_max_transformer_seq_len_skips_missing_secondary_active_bundle(monkeypatch, tmp_path):
+    """Missing diagnostics-only active bundles must not abort shared-context fallback."""
+    from features import shared_sequence_context as ssc
+    import ml_predict
+
+    one_c_dir = tmp_path / "active_1c" / "SPY"
+    one_c_dir.mkdir(parents=True)
+    (one_c_dir / "transformer_SPY_1c_meta.json").write_text('{"seq_len": 48}', encoding="utf-8")
+
+    monkeypatch.setattr(ssc, "ALL_GOVERNED_HORIZONS", ("1c", "3c"))
+
+    def _fake_model_dir(ticker: str) -> Path:
+        hz = ml_predict.get_ml_infer_horizon_slug()
+        if hz == "3c":
+            raise FileNotFoundError("no active 3c bundle")
+        return one_c_dir
+
+    monkeypatch.setattr(ml_predict, "_model_dir_for_ticker", _fake_model_dir)
+
+    assert ssc._max_transformer_seq_len_for_ticker("SPY") == 48
