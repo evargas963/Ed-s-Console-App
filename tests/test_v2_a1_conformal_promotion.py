@@ -100,6 +100,32 @@ def test_all_preconditions_pass_populates_v1_approximation_bounds():
     }
 
 
+def test_aggregate_sample_gate_uses_canonical_calibration_threshold(monkeypatch):
+    """Contract: promotion gate follows calibration source of truth, not a parallel local constant."""
+    import calibration.v2_a1_calibration as calibration_constants
+
+    monkeypatch.setattr(calibration_constants, "A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES", 1000)
+
+    low, high = _bounds(
+        _ms(
+            a1_conformal_artifact=_artifact(
+                sample_gate={"aggregate_holdout": {"sufficient_sample": True, "n": 750}}
+            )
+        )
+    )
+
+    assert low == {
+        "value": None,
+        "source": "not_implemented",
+        "detail": "a1_conformal_interval:precondition_4_aggregate_sample_threshold_failed",
+    }
+    assert high == {
+        "value": None,
+        "source": "not_implemented",
+        "detail": "a1_conformal_interval:precondition_4_aggregate_sample_threshold_failed",
+    }
+
+
 @pytest.mark.parametrize(
     ("ms_overrides", "expected_status"),
     [

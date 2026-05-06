@@ -14,7 +14,6 @@ from typing import Any
 OK_STATUS = "ok"
 A1_CONFORMAL_ARTIFACT_SCHEMA_VERSION = "1"
 A1_CONFORMAL_DEGRADED_COVERAGE = 0.85
-A1_CONFORMAL_AGGREGATE_HOLDOUT_MIN_SAMPLES = 500
 
 
 def derive_a1_conformal_bounds(ms_dict: dict[str, Any]) -> tuple[float | None, float | None, str]:
@@ -79,7 +78,9 @@ def _aggregate_sample_gate_passes(artifact: dict[str, Any]) -> bool:
     if aggregate.get("sufficient_sample") is not True:
         return False
     n = _float_or_none(aggregate.get("n"))
-    return n is None or n >= A1_CONFORMAL_AGGREGATE_HOLDOUT_MIN_SAMPLES
+    from calibration.v2_a1_calibration import A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES
+
+    return n is None or n >= A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES
 
 
 def _horizon_matches(artifact: dict[str, Any], ms_dict: dict[str, Any]) -> bool:
