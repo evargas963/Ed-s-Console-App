@@ -10,10 +10,20 @@ def test_tier_c_attaches_v2_decision_after_decision_bundle_stamp():
     server_source = (ROOT / "server.py").read_text(encoding="utf-8")
 
     stamp_idx = server_source.index("stamp_decision_bundle(ms_dict)")
-    attach_idx = server_source.index('ms_dict["v2_decision"] = build_module_a_a1_decision(ms_dict)')
+    attach_idx = server_source.index('ms_dict["v2_decision"] = _v2_decision_for_response')
     merge_idx = server_source.index("_lmp.merge_into_state(ms_dict, ticker)", attach_idx)
 
     assert stamp_idx < attach_idx < merge_idx
+
+
+def test_tier_c_single_phase_calibration_write_after_v2_before_log_only_return():
+    server_source = (ROOT / "server.py").read_text(encoding="utf-8")
+
+    v2_idx = server_source.index("_v2_decision_for_response = build_module_a_a1_decision")
+    write_idx = server_source.index("append_live_v2_calibration_decision(", v2_idx)
+    log_only_idx = server_source.index("if log_only:", write_idx)
+
+    assert v2_idx < write_idx < log_only_idx
 
 
 def test_tier_c_imports_module_a_a1_adapter():

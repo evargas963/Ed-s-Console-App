@@ -4135,6 +4135,30 @@ def _fetch_state(
         if _diag_on():
             _diag_done("db_snapshot", ticker)
 
+    _v2_decision_for_response = None
+    try:
+        _v2_logging_ms_dict = _ms_to_dict(ms)
+        _v2_logging_ms_dict["selected_exp"] = selected_exp
+        _v2_logging_ms_dict["decision_time_ms"] = int(_refresh_ts_utc * 1000)
+        _v2_logging_ms_dict["_server_build_ts"] = time.time()
+        _attach_stack_runtime_and_governance(_v2_logging_ms_dict, ticker=ticker)
+        _apply_trader_horizon_contract(_v2_logging_ms_dict)
+        stamp_decision_bundle(_v2_logging_ms_dict)
+        _v2_decision_for_response = build_module_a_a1_decision(_v2_logging_ms_dict)
+
+        from calibration.v2_live_logging import append_live_v2_calibration_decision
+        from db import DB_PATH as _calibration_db_path
+
+        _v2_log_result = append_live_v2_calibration_decision(
+            db_path=_calibration_db_path,
+            calibration_payload=getattr(ms, "_calibration_payload", None),
+            v2_decision=_v2_decision_for_response,
+        )
+        if _v2_log_result and _v2_log_result.get("status") != "ok":
+            log.debug("live v2 calibration logging skipped: %s", _v2_log_result)
+    except Exception as _v2_log_e:
+        log.warning("live v2 calibration logging failed: %s", _v2_log_e)
+
     # ── If log_only, cache minimal state and return early ─────────────────────
     if log_only:
         _state_cache[_cache_key] = {
@@ -4646,7 +4670,7 @@ def _fetch_state(
     if update_source is not None:
         ms_dict["_update_source"] = update_source
 
-    ms_dict["v2_decision"] = build_module_a_a1_decision(ms_dict)
+    ms_dict["v2_decision"] = _v2_decision_for_response or build_module_a_a1_decision(ms_dict)
     _lmp.merge_into_state(ms_dict, ticker)
 
     _prev_ent = _state_cache.get(_cache_key) or {}

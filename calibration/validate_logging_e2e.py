@@ -107,6 +107,7 @@ def main() -> int:
     import sqlite3
 
     from calibration.schema import ensure_calibration_schema
+    from calibration.v2_live_logging import append_live_v2_calibration_decision
     from db import (
         CANONICAL_TIMEFRAME,
         SnapshotRow,
@@ -117,6 +118,7 @@ def main() -> int:
         utc_ts,
     )
     from signals import compute_signals
+    from v2_decision import build_module_a_a1_decision
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--calls", type=int, default=3, help="Number of compute_signals invocations")
@@ -133,7 +135,27 @@ def main() -> int:
     for i in range(n_calls):
         t0 = time.time()
         rts = float(utc_ts())
-        out = compute_signals(_inp(refresh_ts_utc=rts), db=db)
+        inp = _inp(refresh_ts_utc=rts)
+        out = compute_signals(inp, db=db)
+        canonical = out.canonical_forecast
+        v2_decision = build_module_a_a1_decision(
+            {
+                "ticker": inp.ticker,
+                "fusion_available": True,
+                "fusion_dominant_direction": canonical.direction,
+                "fusion_dominant_prob": max(
+                    float(canonical.probability_up),
+                    float(canonical.probability_down),
+                    float(canonical.probability_flat),
+                ),
+                "execution_mode": getattr(out.call, "execution_mode", None),
+            }
+        )
+        append_live_v2_calibration_decision(
+            db_path=DB_PATH,
+            calibration_payload=out.calibration_payload,
+            v2_decision=v2_decision,
+        )
         t1 = time.time()
         snap = SnapshotRow(
             ticker="SPY",

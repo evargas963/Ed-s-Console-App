@@ -212,7 +212,28 @@ def run() -> dict[str, Any]:
             name = tickers_src[i]
             inp = _inp(refresh_ts_utc=ts)
             inp2 = replace(inp, ticker=name)
-            compute_signals(inp2, db=edb)
+            out = compute_signals(inp2, db=edb)
+            from calibration.v2_live_logging import append_live_v2_calibration_decision
+            from v2_decision import build_module_a_a1_decision
+
+            canonical = out.canonical_forecast
+            append_live_v2_calibration_decision(
+                db_path=OUT_DB,
+                calibration_payload=out.calibration_payload,
+                v2_decision=build_module_a_a1_decision(
+                    {
+                        "ticker": name,
+                        "fusion_available": True,
+                        "fusion_dominant_direction": canonical.direction,
+                        "fusion_dominant_prob": max(
+                            float(canonical.probability_up),
+                            float(canonical.probability_down),
+                            float(canonical.probability_flat),
+                        ),
+                        "execution_mode": getattr(out.call, "execution_mode", None),
+                    }
+                ),
+            )
             decision_events += 1
 
         bf1 = backfill(OUT_DB, tol_sec=0.0)

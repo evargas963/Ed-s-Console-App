@@ -394,3 +394,4 @@ class SignalOutput:
     vol_regime: Optional[object] = None  # VolRegimePayload from volatility_regime.py (policy layer)
     pred_override_source: Optional[str] = None  # set only when ED_CONSOLE_ALLOW_PRED_OVERRIDE=1
     multi_horizon_bundle: Optional[object] = None  # MultiHorizonForecastBundle (multi_horizon_decision.py)
+    calibration_payload: Optional[dict[str, Any]] = None  # writer inputs; server owns persistence timing

@@ -17,6 +17,7 @@ from calibration.json_utils import dumps_compact
 from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
 from calibration.trust import CALIBRATION_TRUST_TRUSTED
+from calibration.v2_advisory_backfill import ADVISORY_V2_ADAPTER_VERSION, ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION
 from instrument_identity import ticker_storage_key
 from timeframe_config import CANONICAL_TIMEFRAME
 
@@ -66,6 +67,7 @@ def append_calibration_decision(
     mh_bundle: Any,
     db_path: Optional[Path | str] = None,
     signal_layer_v1: Optional[dict[str, Any]] = None,
+    advisory_v2_decision_snapshot: Optional[dict[str, Any]] = None,
 ) -> Optional[int]:
     """
     Insert one analysis-ready row per (ticker_storage_key(ticker), decision_ts_utc).
@@ -147,6 +149,27 @@ def append_calibration_decision(
         "signal_layer_v1": signal_layer_v1,
     }
     raw_bundle_json = dumps_compact(raw_bundle)
+    advisory_v2_decision_snapshot_json = (
+        dumps_compact(advisory_v2_decision_snapshot)
+        if advisory_v2_decision_snapshot is not None
+        else None
+    )
+    advisory_v2_snapshot_schema_version = (
+        ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION
+        if advisory_v2_decision_snapshot is not None
+        else None
+    )
+    advisory_v2_adapter_version = (
+        ADVISORY_V2_ADAPTER_VERSION
+        if advisory_v2_decision_snapshot is not None
+        else None
+    )
+    advisory_v2_backfilled_ts_utc = (
+        time.time()
+        if advisory_v2_decision_snapshot is not None
+        else None
+    )
+    advisory_v2_backfill_status = "ok" if advisory_v2_decision_snapshot is not None else None
 
     expiry = getattr(inp, "expiry", None)
     build_generation = os.environ.get("ED_BUILD_GENERATION", "").strip() or None
@@ -194,6 +217,12 @@ def append_calibration_decision(
         None,
         multi_horizon_json,
         raw_bundle_json,
+        advisory_v2_decision_snapshot_json,
+        advisory_v2_snapshot_schema_version,
+        advisory_v2_adapter_version,
+        advisory_v2_backfilled_ts_utc,
+        advisory_v2_backfill_status,
+        None,
         CALIBRATION_TRUST_TRUSTED,
     )
     insert_sql = """
@@ -204,7 +233,14 @@ def append_calibration_decision(
                 model_outputs_json, monte_carlo_json, fusion_json, canonical_json,
                 final_signal, call_conviction, entry_price, stop_price, target_price, target2_price,
                 validation_summary, wait_blocker_json, multi_horizon_json,
-                raw_bundle_json, calibration_trust
+                raw_bundle_json,
+                advisory_v2_decision_snapshot_json,
+                advisory_v2_snapshot_schema_version,
+                advisory_v2_adapter_version,
+                advisory_v2_backfilled_ts_utc,
+                advisory_v2_backfill_status,
+                advisory_v2_backfill_reason,
+                calibration_trust
             ) VALUES (
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
@@ -212,7 +248,7 @@ def append_calibration_decision(
                 ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?,
-                ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?
             )
             ON CONFLICT(ticker, decision_ts_utc) DO NOTHING
             """

@@ -99,6 +99,7 @@ def test_update_calibration_decision_log_only_backfill_and_tests() -> None:
             rel == "calibration/backfill_outcomes.py"
             or rel == "calibration/backfill_signal_layer_v1_bundle.py"
             or rel == "calibration/v2_advisory_backfill.py"
+            or rel == "calibration/v2_live_logging.py"
             or rel.startswith("tests/test_calibration")
         )
         if not ok:

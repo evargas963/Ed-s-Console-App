@@ -177,82 +177,43 @@ def _log_decision_bundle(
         log.debug("decision bundle log failed: %s", e)
 
 
-def _maybe_append_calibration_log(
+def _build_calibration_payload(
     *,
     inp: SignalInput,
     ticker: str,
-    regime,
-    vol_regime,
-    fusion,
+    regime: Any,
+    vol_regime: Any,
+    fusion: Any,
     canonical: CanonicalForecast,
     pred: PredictiveCard,
     call: TheCall,
-    xgb_out,
-    lstm_out,
-    transformer_out,
-    mc_out,
+    xgb_out: Any,
+    lstm_out: Any,
+    transformer_out: Any,
+    mc_out: Any,
     ml_bundle: dict,
-    mh_bundle,
-    db=None,
-    signal_layer_v1=None,
-) -> None:
-    """Persistent calibration row (Phase 2). Off unless ED_CALIBRATION_LOG=1."""
-    if os.environ.get("ED_CALIBRATION_LOG", "").strip().lower() not in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    ):
-        return
-    try:
-        from calibration.writer import (
-            CALIBRATION_INSERT_IDEMPOTENT,
-            append_calibration_decision,
-            default_decision_ts_utc,
-        )
-
-        _ts = getattr(inp, "refresh_ts_utc", None)
-        if _ts is None:
-            _decision_ts = default_decision_ts_utc()
-        else:
-            try:
-                _tf = float(_ts)
-                _decision_ts = _tf if _tf > 0.0 else default_decision_ts_utc()
-            except (TypeError, ValueError):
-                _decision_ts = default_decision_ts_utc()
-
-        _row_id = append_calibration_decision(
-            decision_ts_utc=_decision_ts,
-            ticker=ticker,
-            canonical_timeframe=getattr(inp, "timeframe", None) or "1m",
-            inp=inp,
-            regime=regime,
-            vol_regime=vol_regime,
-            fusion=fusion,
-            canonical=canonical,
-            pred=pred,
-            call=call,
-            xgb_out=xgb_out,
-            lstm_out=lstm_out,
-            transformer_out=transformer_out,
-            mc_out=mc_out,
-            ml_bundle=ml_bundle if isinstance(ml_bundle, dict) else {},
-            mh_bundle=mh_bundle,
-            db_path=None,
-            signal_layer_v1=signal_layer_v1,
-        )
-        if _row_id is None:
-            log.warning(
-                "calibration_decision_log: insert returned no row_id for ticker=%s "
-                "(DB missing, non-canonical timeframe, or INSERT failed — see calibration.writer logs)",
-                ticker,
-            )
-        elif _row_id == CALIBRATION_INSERT_IDEMPOTENT:
-            log.debug(
-                "calibration_decision_log: idempotent skip (row already exists for ticker/decision_ts_utc)"
-            )
-    except Exception as e:
-        log.warning("calibration decision log failed: %s", e)
+    mh_bundle: Any,
+    signal_layer_v1: Optional[dict[str, Any]],
+) -> dict[str, Any]:
+    """Return calibration writer inputs; persistence is owned by the server lifecycle."""
+    return {
+        "inp": inp,
+        "ticker": ticker,
+        "canonical_timeframe": getattr(inp, "timeframe", None) or "1m",
+        "regime": regime,
+        "vol_regime": vol_regime,
+        "fusion": fusion,
+        "canonical": canonical,
+        "pred": pred,
+        "call": call,
+        "xgb_out": xgb_out,
+        "lstm_out": lstm_out,
+        "transformer_out": transformer_out,
+        "mc_out": mc_out,
+        "ml_bundle": ml_bundle if isinstance(ml_bundle, dict) else {},
+        "mh_bundle": mh_bundle,
+        "signal_layer_v1": signal_layer_v1,
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1279,7 +1240,7 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         },
     )
 
-    _maybe_append_calibration_log(
+    calibration_payload = _build_calibration_payload(
         inp=inp,
         ticker=ticker,
         regime=regime,
@@ -1294,7 +1255,6 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         mc_out=mc_out,
         ml_bundle=ml_bundle,
         mh_bundle=mh_bundle,
-        db=db,
         signal_layer_v1=signal_layer_v1,
     )
 
@@ -1338,4 +1298,5 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         vol_regime=vol_regime,
         pred_override_source=pred_override_source,
         multi_horizon_bundle=mh_bundle,
+        calibration_payload=calibration_payload,
     )

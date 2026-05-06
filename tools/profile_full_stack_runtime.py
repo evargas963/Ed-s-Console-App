@@ -154,7 +154,6 @@ def _apply_patches(stats: StackProfile) -> dict[str, Any]:
     _patch(signals_mod, "canonical_forecast_from_fusion", "canonical_forecast_from_fusion")
     _patch(signals_mod, "_build_stack_decision_path", "signals._build_stack_decision_path")
     _patch(signals_mod, "_build_snapshot_dict", "signals._build_snapshot_dict")
-    _patch(signals_mod, "_maybe_append_calibration_log", "signals._maybe_append_calibration_log")
 
     return originals
 
@@ -211,7 +210,6 @@ def _restore(originals: dict[str, Any]) -> None:
         (signals_mod, "canonical_forecast_from_fusion"),
         (signals_mod, "_build_stack_decision_path"),
         (signals_mod, "_build_snapshot_dict"),
-        (signals_mod, "_maybe_append_calibration_log"),
     ]
     for mod, name in mapping:
         full = f"{mod.__name__}.{name}"
@@ -410,7 +408,6 @@ def main() -> int:
             "finalize_multi_horizon_bundle",
             "signals._build_stack_decision_path",
             "signals._build_snapshot_dict",
-            "signals._maybe_append_calibration_log",
         ]
 
         summary_rows: list[tuple[str, float, float, int]] = []

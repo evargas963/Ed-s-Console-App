@@ -1186,6 +1186,7 @@ def build_market_state(
         )
 
         _sig_out = compute_signals(sig_inp, db=db, pred_override=pred_override)
+        ms._calibration_payload = getattr(_sig_out, "calibration_payload", None)
         if _don():
             _ddone("compute_signals", ticker)
 
@@ -1206,6 +1207,7 @@ def build_market_state(
         ms.pred_headline   = f"⚠ Signal engine error: {_err_short}"
         ms.zone_label      = "ERROR"
         ms.zone_badge_css  = "#dc2626"
+        ms._calibration_payload = None
 
     # ── 9. Populate card fields from signals output ──────────────────────────
     if _sig_out is not None:

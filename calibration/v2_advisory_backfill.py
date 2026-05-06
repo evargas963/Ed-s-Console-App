@@ -29,6 +29,14 @@ except Exception:
 
 ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION = "1"
 ADVISORY_V2_ADAPTER_VERSION = f"module_a_adapter:{SCHEMA_VERSION}:{V2_STATUS}"
+ADVISORY_V2_DECISION_LOG_COLUMNS = (
+    "advisory_v2_decision_snapshot_json",
+    "advisory_v2_snapshot_schema_version",
+    "advisory_v2_adapter_version",
+    "advisory_v2_backfilled_ts_utc",
+    "advisory_v2_backfill_status",
+    "advisory_v2_backfill_reason",
+)
 
 
 @dataclass(frozen=True)
