@@ -30,15 +30,10 @@ LIFECYCLE_GAP_NAMES = (
     "a2_lifecycle_promotion_to_runtime_authority_not_authorized",
 )
 
-THRESHOLD_POLICY_OBJECTS = (
-    "a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending",
-    "a2_lifecycle_eod_window_threshold_minutes_policy_object_pending",
-)
+THRESHOLD_POLICY_OBJECTS = ()
 
 PREVIEW_BLOCKING_GAPS = (
     "a2_lifecycle_eod_force_exit_logic_not_implemented",
-    "a2_lifecycle_eod_window_threshold_minutes_policy_object_pending",
-    "a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending",
 )
 
 PROMOTION_CRITERIA = (

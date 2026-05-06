@@ -237,11 +237,7 @@ def test_projected_preview_named_gaps_are_preview_blocking_subset_only():
     preview = _a2()["lifecycle"]["sidecar"]["projected_preview"]
 
     assert preview["preview_named_gaps"] == list(PREVIEW_BLOCKING_GAPS)
-    assert preview["preview_named_gaps"] == [
-        "a2_lifecycle_eod_force_exit_logic_not_implemented",
-        "a2_lifecycle_eod_window_threshold_minutes_policy_object_pending",
-        "a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending",
-    ]
+    assert preview["preview_named_gaps"] == ["a2_lifecycle_eod_force_exit_logic_not_implemented"]
 
 
 def test_projected_preview_no_silent_partial_fills_when_unavailable():
@@ -324,16 +320,7 @@ def test_a2_lifecycle_sidecar_policy_objects_and_source_classification_are_expli
     """Contract: PILOT_1B_A2_LIFECYCLE_CONTRACT.md sections 26-34 and 148-163."""
     sidecar = _a2()["lifecycle"]["sidecar"]
 
-    assert sidecar["threshold_policy_objects"] == [
-        {
-            "id": "a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending",
-            "source": "policy_object_pending",
-        },
-        {
-            "id": "a2_lifecycle_eod_window_threshold_minutes_policy_object_pending",
-            "source": "policy_object_pending",
-        },
-    ]
+    assert sidecar["threshold_policy_objects"] == []
     assert sidecar["source_classification"] == {
         "inputs": "schwab_native_normalized",
         "decision": "derived_because_schwab_does_not_provide",
@@ -406,16 +393,7 @@ def test_v0_sidecar_fields_remain_backward_compatible_with_v1_preview():
         "lifecycle_action": "no_active_position",
         "lifecycle_conflict_state": "lifecycle_warning_only",
         "event_sources": [],
-        "threshold_policy_objects": [
-            {
-                "id": "a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending",
-                "source": "policy_object_pending",
-            },
-            {
-                "id": "a2_lifecycle_eod_window_threshold_minutes_policy_object_pending",
-                "source": "policy_object_pending",
-            },
-        ],
+        "threshold_policy_objects": [],
         "named_gaps": list(LIFECYCLE_GAP_NAMES),
         "source_classification": {
             "inputs": "schwab_native_normalized",
