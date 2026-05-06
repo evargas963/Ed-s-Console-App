@@ -128,7 +128,7 @@ def test_a2_lifecycle_sidecar_named_gaps_match_contract_verbatim():
     sidecar = _a2()["lifecycle"]["sidecar"]
 
     assert sidecar["named_gaps"] == list(LIFECYCLE_GAP_NAMES)
-    assert len(sidecar["named_gaps"]) == 13
+    assert len(sidecar["named_gaps"]) == 14
     assert sidecar["named_gaps"] == [
         "a2_lifecycle_policy_pending",
         "a2_lifecycle_static_rule_core_pending",
@@ -143,6 +143,7 @@ def test_a2_lifecycle_sidecar_named_gaps_match_contract_verbatim():
         "a2_lifecycle_spread_widening_exit_not_implemented",
         "a2_lifecycle_partial_fill_handler_not_implemented",
         "a2_lifecycle_dynamic_policy_not_implemented",
+        "a2_lifecycle_promotion_to_runtime_authority_not_authorized",
     ]
 
 

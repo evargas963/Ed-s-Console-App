@@ -26,6 +26,7 @@ LIFECYCLE_GAP_NAMES = (
     "a2_lifecycle_spread_widening_exit_not_implemented",
     "a2_lifecycle_partial_fill_handler_not_implemented",
     "a2_lifecycle_dynamic_policy_not_implemented",
+    "a2_lifecycle_promotion_to_runtime_authority_not_authorized",
 )
 
 THRESHOLD_POLICY_OBJECTS = (
