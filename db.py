@@ -748,17 +748,25 @@ class EdDB:
             )
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with _SCHEMA_INIT_LOCK:
-            self._init_schema()
-            self._migrate_schema()
-            self._ensure_logging_universe_table()
-            self._ensure_logging_universe_aux_tables()
-            self._ensure_normalized_table()
+            self._bootstrap_sql_guard_suppress = True
+            try:
+                self._init_schema()
+                self._migrate_schema()
+                self._ensure_logging_universe_table()
+                self._ensure_logging_universe_aux_tables()
+                self._ensure_normalized_table()
+            finally:
+                self._bootstrap_sql_guard_suppress = False
         log.info(f"EdDB initialized at {self.db_path}")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self.db_path), timeout=30.0)
         conn.row_factory = sqlite3.Row
         configure_sqlite_connection(conn)
+        if not getattr(self, "_bootstrap_sql_guard_suppress", False):
+            from db_safety import maybe_install_sql_guard_on_connection
+
+            maybe_install_sql_guard_on_connection(conn, self.db_path)
         return conn
 
     def _tier1_snapshot_write(self, op: str, ticker: Optional[str], fn: Callable[[], T]) -> T:
@@ -2115,6 +2123,16 @@ class EdDB:
     def _migrate_schema(self):
         """Add columns that may be missing from older databases.
         Safe to call repeatedly — silently skips columns that already exist."""
+        from db_safety import (
+            assert_critical_row_counts_no_drop,
+            backup_console_database,
+            critical_table_row_counts,
+            preflight_exclusive_sqlite_write,
+            skip_automatic_backup,
+        )
+
+        _counts_before: dict[str, int] = {}
+
         NEW_COLUMNS = [
             # (column_name, column_type)
             ("charm_magnitude",     "REAL"),
@@ -2279,6 +2297,32 @@ class EdDB:
             ("pre_market_sentiment",     "REAL"),
             ("qqq_weighted_push",        "REAL"),
         ]
+
+        _snapshot_migration_pending = False
+        if is_canonical_db_path(self.db_path) and not skip_automatic_backup():
+            try:
+                with self._connect() as _cxp:
+                    have_cols = {str(r[1]) for r in _cxp.execute("PRAGMA table_info(snapshots)")}
+            except sqlite3.OperationalError:
+                have_cols = set()
+            _snapshot_migration_pending = any(cn not in have_cols for cn, _ in NEW_COLUMNS)
+
+        if (
+            is_canonical_db_path(self.db_path)
+            and not skip_automatic_backup()
+            and _snapshot_migration_pending
+        ):
+            ok_w, err_w = preflight_exclusive_sqlite_write(self.db_path)
+            if not ok_w:
+                raise RuntimeError(f"EdDB._migrate_schema: DB lock preflight failed: {err_w}")
+            with self._connect() as _c0:
+                _counts_before = critical_table_row_counts(_c0)
+            _bpath, _mpath, _ = backup_console_database(
+                self.db_path,
+                operation_name="EdDB._migrate_schema",
+            )
+            log.info("db_safety: pre-migration backup %s manifest %s", _bpath, _mpath)
+
         added = 0
         with self._connect() as conn:
             for col_name, col_type in NEW_COLUMNS:
@@ -2456,6 +2500,11 @@ class EdDB:
 
         self._migrate_horizon_bar_contract_v1()
         self._migrate_outcome_anchor_bar_canonical()
+
+        if _counts_before and is_canonical_db_path(self.db_path) and not skip_automatic_backup():
+            with self._connect() as _c1:
+                _after = critical_table_row_counts(_c1)
+            assert_critical_row_counts_no_drop(_counts_before, _after)
 
     def _migrate_horizon_bar_contract_v1(self) -> None:
         """
