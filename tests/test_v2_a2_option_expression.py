@@ -1,7 +1,17 @@
 from __future__ import annotations
 
-from v2_decision.a2_option_expression import build_a2_option_expression
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from v2_decision.a2_option_expression import _mins_to_close, build_a2_option_expression
 from v2_decision.module_a_adapter import build_module_a_a1_decision
+
+
+ET = ZoneInfo("America/New_York")
+
+
+def _epoch_ms_et(year: int, month: int, day: int, hour: int, minute: int) -> int:
+    return int(datetime(year, month, day, hour, minute, tzinfo=ET).timestamp() * 1000)
 
 
 def _sample_a1() -> dict:
@@ -407,6 +417,36 @@ def test_late_day_gamma_acceleration_is_advisory_soft_health():
     assert "late_day_gamma_acceleration" in a2["health"]["soft_gates"]["value"]
 
 
+def test_late_day_gamma_status_uses_derived_mins_to_close_when_explicit_absent():
+    proof = {
+        "status": "ok",
+        "winner": _winner(),
+        "chain_rows_scored": [
+            {
+                "strike": 500.0,
+                "side": "CALL",
+                "gamma": 0.08,
+                "open_interest": 4300,
+                "gamma_x_oi": 344.0,
+                "gamma_is_max": True,
+            }
+        ],
+    }
+
+    a2 = build_a2_option_expression(
+        _ms(
+            mins_to_close=None,
+            decision_time_ms=_epoch_ms_et(2026, 5, 5, 15, 35),
+            option_chain_selection_proof=proof,
+        ),
+        _sample_a1(),
+    )
+
+    assert a2["health"]["late_day_gamma"]["value"]["mins_to_close"] == 25.0
+    assert a2["health"]["late_day_gamma"]["value"]["status"] == "elevated"
+    assert "late_day_gamma_acceleration" in a2["health"]["soft_gates"]["value"]
+
+
 def test_required_probability_ev_placeholders_are_present():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L242 - probability/EV placeholders exist."""
     a2 = build_a2_option_expression(_ms(), _sample_a1())
@@ -530,6 +570,37 @@ def test_a2_falls_back_to_bs_only_when_schwab_theta_missing():
     assert a2["greeks"]["theta"]["source"] == "v1_approximation"
     assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation"
     assert a2["greeks"]["theta"]["value"] < 0
+
+
+def test_theta_bs_fallback_uses_derived_mins_to_close_when_explicit_absent():
+    winner = _winner()
+    winner["chain_row"].pop("theta")
+
+    a2 = build_a2_option_expression(
+        _ms(
+            mins_to_close=None,
+            decision_time_ms=_epoch_ms_et(2026, 5, 5, 15, 35),
+            option_chain_selection_proof={"status": "ok", "winner": winner},
+        ),
+        _sample_a1(),
+    )
+
+    assert "theta_unavailable" not in a2["health"]["hard_gates_failed"]["value"]
+    assert a2["greeks"]["theta"]["source"] == "v1_approximation"
+    assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation"
+    assert a2["greeks"]["theta"]["value"] < 0
+
+
+def test_mins_to_close_helper_honors_explicit_value_over_derived():
+    assert _mins_to_close({"mins_to_close": 120, "decision_time_ms": _epoch_ms_et(2026, 5, 5, 15, 35)}) == 120.0
+
+
+def test_mins_to_close_helper_returns_none_when_both_absent():
+    assert _mins_to_close({}) is None
+
+
+def test_mins_to_close_helper_returns_zero_post_close():
+    assert _mins_to_close({"decision_time_ms": _epoch_ms_et(2026, 5, 5, 18, 0)}) == 0.0
 
 
 def test_required_a2_gap_list_is_named():

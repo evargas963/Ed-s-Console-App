@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from v2_decision.a2_eod_force_exit import derive_et_clock_from_decision_time_ms
+
 from .a2_lifecycle_sidecar import build_a2_lifecycle_sidecar
 from .schema import leaf
 
@@ -29,6 +31,8 @@ A2_QUOTE_STALENESS_THRESHOLD_MS = 2000
 # Per OPERATOR_DECISION_REGISTER.md O-21 (2026-05-05).
 A2_SPREAD_ABSOLUTE_THRESHOLD = 0.10
 A2_SPREAD_RELATIVE_THRESHOLD_PCT = 0.10
+
+_RTH_CLOSE_MINUTE_TOTAL = 16 * 60
 
 
 def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, Any]) -> dict[str, Any]:
@@ -380,7 +384,7 @@ def _late_day_gamma_health(
     chain_row: dict[str, Any],
     selected_audit: dict[str, Any],
 ) -> dict[str, Any]:
-    mins_to_close = _first_number(ms_dict.get("mins_to_close"), ms_dict.get("minutes_to_close"))
+    mins_to_close = _mins_to_close(ms_dict)
     gamma = _first_number(chain_row.get("gamma"), selected_audit.get("gamma"))
     gamma_x_oi = _first_number(_gamma_x_oi(chain_row), selected_audit.get("gamma_x_oi"))
     gamma_is_max = bool(selected_audit.get("gamma_is_max"))
@@ -509,7 +513,7 @@ def _time_to_expiry_years(ms_dict: dict[str, Any], chain_row: dict[str, Any]) ->
     dte = _num(chain_row.get("daysToExpiration"))
     if dte is not None and dte > 0:
         return dte / 365.0
-    mins = _num(ms_dict.get("mins_to_close"))
+    mins = _mins_to_close(ms_dict)
     if mins is not None and mins > 0:
         return mins / (365.0 * 24.0 * 60.0)
     hours = _num(ms_dict.get("hours_to_expiry"))
@@ -553,6 +557,24 @@ def _gamma_x_oi(chain_row: dict[str, Any]) -> float | None:
     if gamma is None or oi is None:
         return None
     return round(gamma * oi, 4)
+
+
+def _mins_to_close(ms_dict: dict) -> float | None:
+    """Resolve minutes-to-close from explicit fields or decision timestamp."""
+    explicit = _first_number(ms_dict.get("mins_to_close"), ms_dict.get("minutes_to_close"))
+    if explicit is not None:
+        return explicit
+
+    decision_time_ms = ms_dict.get("decision_time_ms")
+    if decision_time_ms is None:
+        return None
+
+    clock = derive_et_clock_from_decision_time_ms(decision_time_ms)
+    if clock is None:
+        return None
+    et_hour, et_minute, _ = clock
+    et_minute_total = et_hour * 60 + et_minute
+    return max(0.0, float(_RTH_CLOSE_MINUTE_TOTAL - et_minute_total))
 
 
 def _first_number(*values: Any) -> float | None:
