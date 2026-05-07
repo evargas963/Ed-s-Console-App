@@ -53,7 +53,6 @@ def strict_float_from_raw(raw: Any, canonical_field: str) -> float:
 def read_optional_float(parent: Mapping[str, Any], key: str, canonical_field: str) -> float | None:
     """
     Missing: key absent, or value is None → None.
-    SQL/DF NaN (non-finite float) → treated as missing (same as None).
     Present non-null: must parse as finite float or raise.
     """
     if not _contains_key(parent, key):
@@ -61,11 +60,6 @@ def read_optional_float(parent: Mapping[str, Any], key: str, canonical_field: st
     raw = parent[key]
     if raw is None:
         return None
-    try:
-        if math.isnan(float(raw)):
-            return None
-    except (TypeError, ValueError):
-        pass
     return strict_float_from_raw(raw, canonical_field)
 
 
