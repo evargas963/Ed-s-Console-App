@@ -35,6 +35,83 @@ A2_QUOTE_STALENESS_THRESHOLD_MS = 2000
 A2_SPREAD_ABSOLUTE_THRESHOLD = 0.10
 A2_SPREAD_RELATIVE_THRESHOLD_PCT = 0.10
 
+HARD_GATE_CONTRACT_MAP = (
+    {
+        "contract_gate": "missing selected expiry",
+        "status": "implemented",
+        "gate_string": "missing_selected_expiry",
+        "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md line 159",
+    },
+    {
+        "contract_gate": "selected expiry is not same-day when strict 0DTE",
+        "status": "implemented",
+        "gate_string": "non_same_day_expiry_strict_0dte",
+        "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md line 160",
+    },
+    {
+        "contract_gate": "no option-chain archive / current chain rows for selected expiry",
+        "status": "implemented",
+        "gate_string": "missing_option_chain_selection_proof",
+        "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md line 161",
+    },
+    {
+        "contract_gate": "no side-compatible contracts",
+        "status": "implemented",
+        "gate_string": "no_side_compatible_contracts",
+        "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md line 162",
+    },
+    {
+        "contract_gate": "missing bid or ask for selected contract",
+        "status": "implemented",
+        "gate_string": "missing_bid_or_ask",
+        "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md line 163",
+    },
+    {
+        "contract_gate": "missing theta from chain row and Black-Scholes approximation inputs",
+        "status": "implemented",
+        "gate_string": "theta_unavailable",
+        "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md lines 119 and 164",
+    },
+    {
+        "contract_gate": "invalid or stale quote timestamp",
+        "status": "implemented",
+        "gate_string": "missing_quote_timestamp|quote_stale_above_threshold",
+        "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md line 165; OPERATOR_DECISION_REGISTER.md O-20",
+    },
+    {
+        "contract_gate": "spread exceeds governed hard threshold",
+        "status": "implemented",
+        "gate_string": "spread_exceeds_hard_threshold",
+        "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md line 166; OPERATOR_DECISION_REGISTER.md O-21",
+    },
+    {
+        "contract_gate": "missing selected strike or option right",
+        "status": "implemented",
+        "gate_string": "missing_selected_strike|missing_option_right",
+        "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md line 167",
+    },
+    {
+        "contract_gate": "Module A signal is WAIT or unavailable",
+        "status": "implemented",
+        "gate_string": "module_a_signal_wait_or_unavailable",
+        "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md line 168",
+    },
+    {
+        "contract_gate": "replay/live parity failing once validation status is available",
+        "status": "deferred_slice_5",
+        "gate_string": None,
+        "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md line 169",
+        "reason": "A2 live-vs-replay parity validation is not attached to runtime payloads until Slice 5.",
+        "registered_gap": "a2_replay_live_parity_not_gating_runtime",
+    },
+)
+
+HARD_GATE_ACTION_POLICY = {
+    "hard_gate_action": "WAIT",
+    "avoid_reserved_for": "future advisory-only soft-gate policy",
+    "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md lines 155-156",
+}
+
 _RTH_CLOSE_MINUTE_TOTAL = 16 * 60
 
 
@@ -104,7 +181,9 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
         quote_staleness_ms=quote_staleness_ms,
     )
     soft_gates = _soft_gates(ms_dict, pin_risk=pin_risk, late_day_gamma=late_day_gamma)
-    action = "TRADE" if not hard_gates else "WAIT"
+    # Slice 2 policy: hard readiness gates always suppress option recommendations
+    # with WAIT. AVOID is reserved for a later advisory-only soft-gate policy.
+    action = "TRADE" if not hard_gates else HARD_GATE_ACTION_POLICY["hard_gate_action"]
 
     return {
         "identity": {

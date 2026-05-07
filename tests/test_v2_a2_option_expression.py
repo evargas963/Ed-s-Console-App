@@ -4,7 +4,14 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from v2_decision.a2_lifecycle_sidecar import LIFECYCLE_GAP_NAMES
-from v2_decision.a2_option_expression import A2_ADAPTER_GAP_REGISTRY, _mins_to_close, build_a2_option_expression
+from v2_decision.a2_option_expression import (
+    A2_ADAPTER_GAP_REGISTRY,
+    HARD_GATE_ACTION_POLICY,
+    HARD_GATE_CONTRACT_MAP,
+    _black_scholes_theta,
+    _mins_to_close,
+    build_a2_option_expression,
+)
 from v2_decision.module_a_adapter import build_module_a_a1_decision
 
 
@@ -94,6 +101,45 @@ def test_valid_a2_deterministic_baseline_has_source_indicators():
         "value": -0.18,
         "source": "v2_compliant",
         "detail": "schwab_chain_theta",
+    }
+
+
+def test_hard_gate_contract_map_accounts_for_every_contract_gate():
+    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L157-L169 - gate crosswalk."""
+    rows = list(HARD_GATE_CONTRACT_MAP)
+
+    assert len(rows) == 11
+    assert [row["contract_gate"] for row in rows] == [
+        "missing selected expiry",
+        "selected expiry is not same-day when strict 0DTE",
+        "no option-chain archive / current chain rows for selected expiry",
+        "no side-compatible contracts",
+        "missing bid or ask for selected contract",
+        "missing theta from chain row and Black-Scholes approximation inputs",
+        "invalid or stale quote timestamp",
+        "spread exceeds governed hard threshold",
+        "missing selected strike or option right",
+        "Module A signal is WAIT or unavailable",
+        "replay/live parity failing once validation status is available",
+    ]
+    implemented = [row for row in rows if row["status"] == "implemented"]
+    assert len(implemented) == 10
+    assert rows[-1] == {
+        "contract_gate": "replay/live parity failing once validation status is available",
+        "status": "deferred_slice_5",
+        "gate_string": None,
+        "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md line 169",
+        "reason": "A2 live-vs-replay parity validation is not attached to runtime payloads until Slice 5.",
+        "registered_gap": "a2_replay_live_parity_not_gating_runtime",
+    }
+
+
+def test_hard_gate_action_policy_is_wait_only_and_avoid_reserved():
+    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L155-L156 - WAIT/AVOID discipline."""
+    assert HARD_GATE_ACTION_POLICY == {
+        "hard_gate_action": "WAIT",
+        "avoid_reserved_for": "future advisory-only soft-gate policy",
+        "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md lines 155-156",
     }
 
 
@@ -215,6 +261,8 @@ def test_a2_emits_wait_when_spread_exceeds_absolute_threshold():
     )
 
     assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert a2["option_expression"]["option_right"]["value"] == "NONE"
+    assert a2["option_expression"]["strike"]["value"] is None
     assert "spread_exceeds_hard_threshold" in a2["health"]["hard_gates_failed"]["value"]
 
 
@@ -322,6 +370,21 @@ def test_missing_option_chain_proof_blocks_trade_output():
     )
 
     assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert "missing_option_chain_selection_proof" in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_missing_winner_chain_row_blocks_trade_output():
+    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L161 - missing current chain row blocks trade."""
+    winner = _winner()
+    winner.pop("chain_row")
+
+    a2 = build_a2_option_expression(
+        _ms(option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert a2["option_expression"]["option_right"]["value"] == "NONE"
     assert "missing_option_chain_selection_proof" in a2["health"]["hard_gates_failed"]["value"]
 
 
@@ -531,6 +594,28 @@ def test_theta_is_hard_gate_when_unavailable():
     assert "theta_unavailable" in a2["health"]["hard_gates_failed"]["value"]
 
 
+def test_black_scholes_theta_returns_none_for_missing_or_invalid_inputs():
+    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L119 - BS fallback must fail honestly."""
+    valid = {
+        "spot": 499.5,
+        "strike": 500.0,
+        "iv": 0.22,
+        "option_right": "CALL",
+        "time_to_expiry_years": 120.0 / (365.0 * 24.0 * 60.0),
+    }
+
+    for key in valid:
+        payload = dict(valid)
+        payload[key] = None
+        assert _black_scholes_theta(**payload) is None
+
+    assert _black_scholes_theta(**{**valid, "spot": 0}) is None
+    assert _black_scholes_theta(**{**valid, "strike": 0}) is None
+    assert _black_scholes_theta(**{**valid, "iv": 0}) is None
+    assert _black_scholes_theta(**{**valid, "time_to_expiry_years": 0}) is None
+    assert _black_scholes_theta(**{**valid, "option_right": "NONE"}) is None
+
+
 def test_a2_prefers_schwab_theta_over_bs_approximation():
     """Regression: Schwab theta is primary; BS is not the default path."""
     winner = _winner()
@@ -583,6 +668,7 @@ def test_a2_falls_back_to_bs_only_when_schwab_theta_missing():
     assert a2["greeks"]["theta"]["source"] == "v1_approximation"
     assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation"
     assert a2["greeks"]["theta"]["value"] < 0
+    assert a2["greeks"]["theta"]["source"] != "v2_compliant"
 
 
 def test_theta_bs_fallback_uses_derived_mins_to_close_when_explicit_absent():
