@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from v2_decision.a2_option_expression import _mins_to_close, build_a2_option_expression
+from v2_decision.a2_lifecycle_sidecar import LIFECYCLE_GAP_NAMES
+from v2_decision.a2_option_expression import A2_ADAPTER_GAP_REGISTRY, _mins_to_close, build_a2_option_expression
 from v2_decision.module_a_adapter import build_module_a_a1_decision
 
 
@@ -93,6 +94,18 @@ def test_valid_a2_deterministic_baseline_has_source_indicators():
         "value": -0.18,
         "source": "v2_compliant",
         "detail": "schwab_chain_theta",
+    }
+
+
+def test_a2_handoff_authority_is_contract_cited_advisory_record_only():
+    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L149 - A2 cannot veto A1."""
+    a2 = build_a2_option_expression(_ms(), _sample_a1())
+
+    assert "trade_impacting_veto" not in a2["handoff"]
+    assert a2["handoff"]["a2_disagreement_authority"] == {
+        "value": "advisory_record_only",
+        "source": "v2_compliant",
+        "detail": "PILOT_1B_A2_0DTE_CONTRACT.md line 149: A2 cannot veto A1 for trade-impacting purposes during Pilot 1B.",
     }
 
 
@@ -613,4 +626,15 @@ def test_required_a2_gap_list_is_named():
     assert "a2_pin_risk_handling_not_implemented" in gaps
     assert "a2_late_day_gamma_policy_pending" in gaps
     assert "a2_early_assignment_risk_not_implemented" in gaps
+
+
+def test_a2_gap_registry_includes_lifecycle_child_gaps_without_duplicates():
+    """Contract: parent L235 delegates lifecycle child gaps to lifecycle contract."""
+    a2 = build_a2_option_expression(_ms(), _sample_a1())
+    gaps = [g["component"] for g in a2["conformance_gaps"]]
+
+    assert gaps == list(A2_ADAPTER_GAP_REGISTRY)
+    assert len(gaps) == len(set(gaps))
+    for gap in LIFECYCLE_GAP_NAMES:
+        assert gap in gaps
 

@@ -8,7 +8,7 @@ from typing import Any
 from v2_decision.a2_eod_force_exit import derive_et_clock_from_decision_time_ms
 
 from .a2_lifecycle_health import derive_a2_pin_risk_health, resolve_a2_option_right, select_a2_pin_risk_audit_row
-from .a2_lifecycle_sidecar import build_a2_lifecycle_sidecar
+from .a2_lifecycle_sidecar import LIFECYCLE_GAP_NAMES, build_a2_lifecycle_sidecar
 from .schema import leaf
 
 
@@ -25,6 +25,8 @@ REQUIRED_A2_GAPS = (
     "a2_late_day_gamma_policy_pending",
     "a2_early_assignment_risk_not_implemented",
 )
+
+A2_ADAPTER_GAP_REGISTRY = tuple(dict.fromkeys(REQUIRED_A2_GAPS + LIFECYCLE_GAP_NAMES))
 
 # Per OPERATOR_DECISION_REGISTER.md O-20 (2026-05-05).
 A2_QUOTE_STALENESS_THRESHOLD_MS = 2000
@@ -122,7 +124,11 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
             "a1_action": leaf(a1_action, "v1_approximation"),
             "a1_direction": leaf(a1_direction, "v1_approximation"),
             "mapping": leaf(_handoff_mapping(a1_direction), "v1_approximation"),
-            "trade_impacting_veto": leaf(False, "v2_compliant"),
+            "a2_disagreement_authority": leaf(
+                "advisory_record_only",
+                "v2_compliant",
+                detail="PILOT_1B_A2_0DTE_CONTRACT.md line 149: A2 cannot veto A1 for trade-impacting purposes during Pilot 1B.",
+            ),
         },
         "option_expression": {
             "option_action": leaf(action, "v1_approximation"),
@@ -200,7 +206,7 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
                 "component": component,
                 "source": "not_implemented" if not component.endswith("_pending") else "policy_object_pending",
             }
-            for component in REQUIRED_A2_GAPS
+            for component in A2_ADAPTER_GAP_REGISTRY
         ],
     }
 
