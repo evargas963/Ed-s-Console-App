@@ -28,7 +28,9 @@ reauth_capture_*.txt
 feature_contract_validation.txt
 
 # Data files (large/sensitive)
-data/
+data/*
+!data/trading_calendar/
+!data/trading_calendar/us_equities.json
 
 # Schwab field inventory — track curated canonical references only
 schwab_field_inventory/**
