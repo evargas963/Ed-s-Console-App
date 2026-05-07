@@ -4,6 +4,9 @@ from copy import deepcopy
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+
+from v2_decision import a2_eod_force_exit
 from v2_decision.a2_eod_force_exit import (
     derive_et_clock_from_decision_time_ms,
     evaluate_a2_eod_force_exit,
@@ -29,6 +32,37 @@ def _ms(**overrides) -> dict:
     }
     base.update(overrides)
     return base
+
+
+def _calendar(**overrides) -> dict:
+    base = {
+        "schema_version": "1",
+        "scope": "us_equities",
+        "exchange": "NYSE/NASDAQ unified",
+        "valid_through_date": "2026-12-31",
+        "last_updated_epoch_seconds": 1778113676,
+        "regular_session": {
+            "open_et": "09:30",
+            "close_et": "16:00",
+        },
+        "full_closures": [
+            "2026-01-01",
+        ],
+        "early_closes": [
+            {
+                "date": "2026-11-27",
+                "close_et": "13:00",
+            },
+        ],
+    }
+    base.update(overrides)
+    return base
+
+
+@pytest.fixture(autouse=True)
+def _isolate_calendar(monkeypatch):
+    """Default to calendar=None so tests are independent of the real fixture file."""
+    monkeypatch.setattr(a2_eod_force_exit, "load_a2_session_calendar", lambda **kw: None, raising=False)
 
 
 def test_derive_et_clock_returns_correct_hour_minute_weekday_for_normal_input():
@@ -126,3 +160,80 @@ def test_orchestrator_does_not_mutate_ms_dict():
     evaluate_a2_eod_force_exit(ms)
 
     assert ms == before
+
+
+def test_calendar_aware_force_exit_fires_at_early_close_minus_10(monkeypatch):
+    monkeypatch.setattr(a2_eod_force_exit, "load_a2_session_calendar", lambda **kw: _calendar(), raising=False)
+
+    assert evaluate_a2_eod_force_exit(
+        _ms(
+            decision_time_ms=_epoch_ms_et(2026, 11, 27, 12, 50),
+            selected_exp="2026-11-27",
+        )
+    ) == ("force_exit_recommended", "every_tier_c_cycle")
+
+
+def test_calendar_aware_cadence_shifts_at_early_close_minus_30(monkeypatch):
+    monkeypatch.setattr(a2_eod_force_exit, "load_a2_session_calendar", lambda **kw: _calendar(), raising=False)
+
+    assert evaluate_a2_eod_force_exit(
+        _ms(
+            decision_time_ms=_epoch_ms_et(2026, 11, 27, 12, 30),
+            selected_exp="2026-11-27",
+        )
+    ) == ("no_active_position", "every_tier_c_cycle")
+
+
+def test_calendar_aware_full_closure_blocks_force_exit(monkeypatch):
+    monkeypatch.setattr(a2_eod_force_exit, "load_a2_session_calendar", lambda **kw: _calendar(), raising=False)
+
+    assert evaluate_a2_eod_force_exit(
+        _ms(
+            decision_time_ms=_epoch_ms_et(2026, 1, 1, 15, 55),
+            selected_exp="2026-01-01",
+        )
+    ) == ("no_active_position", "event_triggered")
+
+
+def test_calendar_aware_weekend_blocks_force_exit_even_with_calendar_present(monkeypatch):
+    monkeypatch.setattr(a2_eod_force_exit, "load_a2_session_calendar", lambda **kw: _calendar(), raising=False)
+
+    assert evaluate_a2_eod_force_exit(
+        _ms(
+            decision_time_ms=_epoch_ms_et(2026, 6, 6, 15, 55),
+            selected_exp="2026-06-06",
+        )
+    ) == ("no_active_position", "event_triggered")
+
+
+def test_calendar_aware_post_early_close_yields_out_of_session(monkeypatch):
+    monkeypatch.setattr(a2_eod_force_exit, "load_a2_session_calendar", lambda **kw: _calendar(), raising=False)
+
+    assert evaluate_a2_eod_force_exit(
+        _ms(
+            decision_time_ms=_epoch_ms_et(2026, 11, 27, 14, 0),
+            selected_exp="2026-11-27",
+        )
+    ) == ("no_active_position", "event_triggered")
+
+
+def test_calendar_missing_falls_back_to_rth_only_v1_logic(monkeypatch):
+    monkeypatch.setattr(a2_eod_force_exit, "load_a2_session_calendar", lambda **kw: None, raising=False)
+
+    assert evaluate_a2_eod_force_exit(
+        _ms(
+            decision_time_ms=_epoch_ms_et(2026, 5, 5, 15, 55),
+            selected_exp="2026-05-05",
+        )
+    ) == ("force_exit_recommended", "every_tier_c_cycle")
+
+
+def test_calendar_aware_normal_rth_15_50_matches_fallback_15_50(monkeypatch):
+    monkeypatch.setattr(a2_eod_force_exit, "load_a2_session_calendar", lambda **kw: _calendar(), raising=False)
+
+    assert evaluate_a2_eod_force_exit(
+        _ms(
+            decision_time_ms=_epoch_ms_et(2026, 5, 5, 15, 50),
+            selected_exp="2026-05-05",
+        )
+    ) == ("force_exit_recommended", "every_tier_c_cycle")

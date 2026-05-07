@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from v2_decision.a2_session_calendar import get_session_info, load_a2_session_calendar
+
 
 ET = ZoneInfo("America/New_York")
 
@@ -14,6 +16,8 @@ FORCE_EXIT_CLOCK_HOUR = 15
 FORCE_EXIT_CLOCK_MINUTE = 50
 RTH_OPEN_MINUTE_TOTAL = 9 * 60 + 30
 RTH_CLOSE_MINUTE_TOTAL = 16 * 60
+A2_FORCE_EXIT_OFFSET_FROM_SESSION_CLOSE_MINUTES = 10
+A2_CADENCE_SHIFT_OFFSET_FROM_SESSION_CLOSE_MINUTES = 30
 
 
 def derive_et_clock_from_decision_time_ms(decision_time_ms) -> tuple[int, int, int] | None:
@@ -64,6 +68,36 @@ def is_0dte(selected_exp, decision_time_ms) -> bool:
         return False
 
 
+def _parse_hhmm_to_min(value) -> int | None:
+    try:
+        if not isinstance(value, str):
+            return None
+        hour_text, minute_text = value.split(":", 1)
+        hour = int(hour_text)
+        minute = int(minute_text)
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            return None
+        return hour * 60 + minute
+    except (TypeError, ValueError):
+        return None
+
+
+def _evaluate_a2_eod_force_exit_fallback(ms: dict[str, Any]) -> tuple[str, str]:
+    clock = derive_et_clock_from_decision_time_ms(ms.get("decision_time_ms"))
+    if clock is None:
+        return "no_active_position", "event_triggered"
+    et_hour, et_minute, et_weekday = clock
+    in_rth = is_in_rth_normal_session(et_hour, et_minute, et_weekday)
+    cadence = "every_tier_c_cycle" if in_rth and is_in_eod_cadence_window(et_hour, et_minute) else "event_triggered"
+    should_force_exit = (
+        str(ms.get("entry_state") or "").strip().lower() == "filled"
+        and in_rth
+        and is_force_exit_clock_threshold_passed(et_hour, et_minute)
+        and is_0dte(ms.get("selected_exp"), ms.get("decision_time_ms"))
+    )
+    return ("force_exit_recommended" if should_force_exit else "no_active_position"), cadence
+
+
 def evaluate_a2_eod_force_exit(ms_dict: dict[str, Any]) -> tuple[str, str]:
     """Returns (lifecycle_action, cadence_observation_mode) per the EOD contract.
 
@@ -74,16 +108,26 @@ def evaluate_a2_eod_force_exit(ms_dict: dict[str, Any]) -> tuple[str, str]:
     """
     try:
         ms = ms_dict if isinstance(ms_dict, dict) else {}
-        clock = derive_et_clock_from_decision_time_ms(ms.get("decision_time_ms"))
-        if clock is None:
+        calendar = load_a2_session_calendar()
+        if calendar is None:
+            return _evaluate_a2_eod_force_exit_fallback(ms)
+
+        session_info = get_session_info(decision_time_ms=ms.get("decision_time_ms"), calendar=calendar)
+        if session_info is None:
+            return _evaluate_a2_eod_force_exit_fallback(ms)
+        if session_info.session_type not in ("normal_rth", "early_close"):
             return "no_active_position", "event_triggered"
-        et_hour, et_minute, et_weekday = clock
-        in_rth = is_in_rth_normal_session(et_hour, et_minute, et_weekday)
-        cadence = "every_tier_c_cycle" if in_rth and is_in_eod_cadence_window(et_hour, et_minute) else "event_triggered"
+
+        session_close_minute = _parse_hhmm_to_min(session_info.session_close_et)
+        if session_close_minute is None:
+            return _evaluate_a2_eod_force_exit_fallback(ms)
+
+        cadence_threshold = session_close_minute - A2_CADENCE_SHIFT_OFFSET_FROM_SESSION_CLOSE_MINUTES
+        force_exit_threshold = session_close_minute - A2_FORCE_EXIT_OFFSET_FROM_SESSION_CLOSE_MINUTES
+        cadence = "every_tier_c_cycle" if session_info.decision_minute_et >= cadence_threshold else "event_triggered"
         should_force_exit = (
             str(ms.get("entry_state") or "").strip().lower() == "filled"
-            and in_rth
-            and is_force_exit_clock_threshold_passed(et_hour, et_minute)
+            and session_info.decision_minute_et >= force_exit_threshold
             and is_0dte(ms.get("selected_exp"), ms.get("decision_time_ms"))
         )
         return ("force_exit_recommended" if should_force_exit else "no_active_position"), cadence

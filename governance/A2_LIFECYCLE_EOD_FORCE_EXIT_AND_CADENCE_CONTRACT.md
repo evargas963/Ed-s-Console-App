@@ -149,22 +149,20 @@ No changes are made to `projected_preview`, `named_gaps`, or other sidecar field
 
 V1 is RTH-normal-session-only. Force-exit logic and cadence shift assume a normal RTH close at 16:00 ET and a normal RTH open at 09:30 ET on weekdays.
 
-Deviations are named gaps:
+The original RTH-normal-session-only deviations are retired by the session-calendar hardening implementation:
 
-- `a2_lifecycle_eod_force_exit_shortened_session_handling_pending` - early-close days, such as 13:00 ET on holiday eves, make the 15:50 threshold post-close; v1 logic still uses 15:50 unconditionally.
-- `a2_lifecycle_eod_force_exit_holiday_session_handling_pending` - full market closures; v1 logic does not check for holiday closures.
-- `a2_lifecycle_eod_force_exit_out_of_session_stale_state_pending` - overnight/weekend stale-state behavior; v1 logic returns `"no_active_position"` for any out-of-session `decision_time_ms`.
-
-A future contract or amendment may bind a trading-calendar source and revise these assumptions.
+- `a2_lifecycle_eod_force_exit_shortened_session_handling_pending` - **resolved** by this implementation commit. Calendar-aware force-exit consumes `session_close_et` from `data/trading_calendar/us_equities.json` (`cac88a6`) and derives threshold = `session_close_et - 10 min` per O-35. Early close days fire force-exit at the early-close-relative threshold rather than 15:50.
+- `a2_lifecycle_eod_force_exit_holiday_session_handling_pending` - **resolved** by this implementation commit. Full closure dates in the calendar yield `session_type = "full_closure"`; force-exit MUST NOT fire and cadence stays `"event_triggered"`.
+- `a2_lifecycle_eod_force_exit_out_of_session_stale_state_pending` - **resolved** by this implementation commit. Pre-open and post-close ranges yield `session_type = "out_of_session"`; force-exit MUST NOT fire and cadence stays `"event_triggered"`. Stale calendar (`current_date > valid_through_date`) falls back to RTH-only v1 normal-session behavior, explicit per `governance/A2_LIFECYCLE_SESSION_CALENDAR_HARDENING_CONTRACT.md` stale-fallback discipline.
 
 ---
 
 ## Named Gaps
 
 - `a2_lifecycle_position_realization_state_pending` - broker-realized position state propagation.
-- `a2_lifecycle_eod_force_exit_shortened_session_handling_pending` - shortened-session handling.
-- `a2_lifecycle_eod_force_exit_holiday_session_handling_pending` - holiday closures.
-- `a2_lifecycle_eod_force_exit_out_of_session_stale_state_pending` - overnight/weekend stale-state behavior.
+- `a2_lifecycle_eod_force_exit_shortened_session_handling_pending` - **resolved** by this implementation commit. Calendar-aware force-exit consumes `session_close_et` from `data/trading_calendar/us_equities.json` (`cac88a6`) and derives threshold = `session_close_et - 10 min` per O-35. Early close days fire force-exit at the early-close-relative threshold rather than 15:50.
+- `a2_lifecycle_eod_force_exit_holiday_session_handling_pending` - **resolved** by this implementation commit. Full closure dates in the calendar yield `session_type = "full_closure"`; force-exit MUST NOT fire and cadence stays `"event_triggered"`.
+- `a2_lifecycle_eod_force_exit_out_of_session_stale_state_pending` - **resolved** by this implementation commit. Pre-open and post-close ranges yield `session_type = "out_of_session"`; force-exit MUST NOT fire and cadence stays `"event_triggered"`. Stale calendar (`current_date > valid_through_date`) falls back to RTH-only v1 normal-session behavior, explicit per `governance/A2_LIFECYCLE_SESSION_CALENDAR_HARDENING_CONTRACT.md` stale-fallback discipline.
 - `a2_lifecycle_eod_force_exit_logic_not_implemented` - referenced from `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`; closes when this contract's code commit lands.
 
 ---
@@ -179,7 +177,7 @@ Promotion criteria:
 - Empirical improvement over baseline: not satisfied; no static baseline measurement exists.
 - Conformal or uncertainty disclosure on force-exit decisions: not satisfied.
 - Broker-realized position state propagation: not satisfied.
-- Session-aware handling: not satisfied; closes the three session gaps above.
+- Session-aware handling: satisfied for shortened sessions, full closures, and out-of-session stale-state behavior by the session-calendar hardening implementation; automated calendar freshness alerting remains tracked separately by `a2_session_calendar_freshness_pending`.
 - Operator decision register entry promoting lifecycle behavior to runtime authority: not satisfied.
 
 V1 is advisory only. Promotion to runtime authority requires a future operator decision.
