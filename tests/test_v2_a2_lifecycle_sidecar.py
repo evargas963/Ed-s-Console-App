@@ -300,13 +300,13 @@ def test_a2_lifecycle_sidecar_named_gaps_match_contract_verbatim():
     sidecar = _a2()["lifecycle"]["sidecar"]
 
     assert sidecar["named_gaps"] == list(LIFECYCLE_GAP_NAMES)
-    # Static rule core, B2-bound timing policy gaps, and EOD force-exit logic are retired from runtime emission.
-    assert len(sidecar["named_gaps"]) == 10
+    # Static rule core, B2-bound timing policy gaps, EOD force-exit logic, and pin-risk handler are retired.
+    assert "a2_lifecycle_pin_risk_handler_not_implemented" not in sidecar["named_gaps"]
+    assert len(sidecar["named_gaps"]) == 9
     assert sidecar["named_gaps"] == [
         "a2_lifecycle_policy_pending",
         "a2_lifecycle_legacy_exit_logic_divergence_audit_pending",
         "a2_lifecycle_iv_crush_handler_not_implemented",
-        "a2_lifecycle_pin_risk_handler_not_implemented",
         "a2_lifecycle_gamma_spike_handler_not_implemented",
         "a2_lifecycle_assignment_risk_handler_not_implemented",
         "a2_lifecycle_spread_widening_exit_not_implemented",
@@ -453,7 +453,7 @@ def test_sidecar_lifecycle_gap_names_drops_eod_force_exit_logic():
     sidecar = _a2()["lifecycle"]["sidecar"]
 
     assert "a2_lifecycle_eod_force_exit_logic_not_implemented" not in sidecar["named_gaps"]
-    assert len(sidecar["named_gaps"]) == 10
+    assert len(sidecar["named_gaps"]) == 9
 
 
 def test_sidecar_preview_blocking_gaps_is_empty():

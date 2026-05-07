@@ -6,7 +6,7 @@
 **Expression profile:** A2 - 0DTE options  
 **Scope:** Advisory pin-risk lifecycle event emission for the A2 lifecycle sidecar.
 
-This contract defines the future advisory pin-risk handler surface for A2. It lifts the existing A2 option-expression pin-risk health logic into a shared lifecycle health helper and emits pin-risk observations through the existing sidecar `event_sources` list. It does not authorize trade behavior, runtime execution, position liquidation, or promotion of lifecycle behavior to runtime authority.
+This contract defines the advisory pin-risk handler surface for A2. It lifts the existing A2 option-expression pin-risk health logic into a shared lifecycle health helper and emits pin-risk observations through the existing sidecar `event_sources` list. It does not authorize trade behavior, runtime execution, position liquidation, or promotion of lifecycle behavior to runtime authority.
 
 ---
 
@@ -28,7 +28,7 @@ In scope:
 
 - pin-risk lifecycle event contract for A2;
 - reuse of the existing A2 pin-risk health shape and thresholds;
-- future shared helper surface at `v2_decision/a2_lifecycle_health.py`;
+- shared helper surface at `v2_decision/a2_lifecycle_health.py`;
 - `event_sources` event-entry schema for pin-risk observations;
 - O-37 threshold binding for the current pin-risk health thresholds;
 - session-aware suppression rules when a session calendar is available;
@@ -36,9 +36,6 @@ In scope:
 
 Out of scope:
 
-- code implementation, deferred to a future commit;
-- edits to `v2_decision/a2_lifecycle_sidecar.py`;
-- retirement of `a2_lifecycle_pin_risk_handler_not_implemented`;
 - lifting or implementing gamma-spike, IV-crush, assignment-risk, spread-widening, partial-fill, or dynamic-policy handlers;
 - broker-realized position state;
 - promotion to runtime authority;
@@ -55,7 +52,7 @@ Canonical detection source:
 v2_decision/a2_lifecycle_health.py::derive_a2_pin_risk_health(...)
 ```
 
-Future code MUST lift the existing `_pin_risk_health` logic from `v2_decision/a2_option_expression.py` into this shared helper. The helper becomes the single source of truth consumed by both:
+The former `_pin_risk_health` logic from `v2_decision/a2_option_expression.py` is lifted into this shared helper. The helper is the single source of truth consumed by both:
 
 - `v2_decision/a2_option_expression.py` for `health.pin_risk`;
 - `v2_decision/a2_lifecycle_sidecar.py` for lifecycle `event_sources`.
@@ -83,7 +80,7 @@ Missing `selected_strike`, missing `nearest_wall`, or `status == "not_detected"`
 
 ## Helper Contract Surface
 
-Future code commit surface:
+Implementation surface:
 
 ```python
 def derive_a2_pin_risk_health(
@@ -258,15 +255,15 @@ No new operator decisions are required for output mechanism or runtime authority
 
 ## Named Gaps
 
-Stays open until code lands:
+Retired by this implementation commit:
 
-- `a2_lifecycle_pin_risk_handler_not_implemented`.
+- `a2_lifecycle_pin_risk_handler_not_implemented` — resolved by adding `v2_decision/a2_lifecycle_health.py`, wiring advisory pin-risk events into `v2_decision/a2_lifecycle_sidecar.py::event_sources`, and preserving `health.pin_risk` parity through the shared helper.
 
 No new named gaps are opened by this contract. O-37 ratifies the pin-risk thresholds, so no threshold-promotion or policy-object-pending gap is introduced.
 
 Retirement discipline:
 
-- `a2_lifecycle_pin_risk_handler_not_implemented` remains in `v2_decision/a2_lifecycle_sidecar.py::LIFECYCLE_GAP_NAMES` until a future code commit implements this contract and retires the gap with a closing citation.
+- `a2_lifecycle_pin_risk_handler_not_implemented` is removed from `v2_decision/a2_lifecycle_sidecar.py::LIFECYCLE_GAP_NAMES` by this implementation commit.
 
 ---
 
@@ -275,7 +272,7 @@ Retirement discipline:
 `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`:
 
 - Names `a2_lifecycle_pin_risk_handler_not_implemented` as an A2 lifecycle gap.
-- This contract defines the future advisory handler surface but does not retire the gap.
+- This contract defines the advisory handler surface and this implementation commit retires the gap.
 
 `governance/A2_STATIC_LIFECYCLE_DIVERGENCE_AUDIT.md`:
 
@@ -287,25 +284,25 @@ Retirement discipline:
 
 `v2_decision/a2_option_expression.py`:
 
-- Current `_pin_risk_health` detection logic is the source to lift into `v2_decision/a2_lifecycle_health.py`.
+- The former local `_pin_risk_health` detection logic is lifted into `v2_decision/a2_lifecycle_health.py`.
 - Existing `health.pin_risk` payload shape must be preserved.
 
 `v2_decision/a2_lifecycle_sidecar.py`:
 
-- Future code consumes the shared helper and appends pin-risk events to `event_sources`.
+- Code consumes the shared helper and appends pin-risk events to `event_sources`.
 - `lifecycle_action` remains delegated to EOD force-exit.
-- `a2_lifecycle_pin_risk_handler_not_implemented` stays in `LIFECYCLE_GAP_NAMES` until code lands.
+- `a2_lifecycle_pin_risk_handler_not_implemented` is retired from `LIFECYCLE_GAP_NAMES` by this implementation commit.
 
 `v2_decision/a2_session_calendar.py`:
 
-- Future code may use the session classifier to suppress pin-risk events on full closures or out-of-session decisions.
+- The session classifier suppresses pin-risk events on full closures or out-of-session decisions.
 - Calendar unavailable means no session-based suppression.
 
 ---
 
 ## Test Bar
 
-Future code commit minimums:
+Implementation commit minimums:
 
 - `health.pin_risk.status == "elevated"` emits one `event_sources` entry with `event_type = "pin_risk"` and `status = "elevated"`.
 - `health.pin_risk.status == "watch"` emits one lower-tier pin-risk event.
@@ -319,26 +316,21 @@ Future code commit minimums:
 - `ms_dict` is not mutated.
 - Existing sidecar shape remains backward compatible except for populated `event_sources`.
 
-This contract:
+This implementation:
 
 ```text
-pytest n/a - doc-only governance
+pytest tests/test_v2_a2_pin_risk.py -q
 ```
 
 ---
 
 ## Non-Goals
 
-This contract does not:
+This implementation does not:
 
-- implement code;
-- edit `v2_decision/a2_lifecycle_sidecar.py`;
-- edit `v2_decision/a2_option_expression.py`;
-- create `v2_decision/a2_lifecycle_health.py`;
 - lift gamma-spike or IV-crush logic;
 - add new top-level sidecar fields;
 - change `lifecycle_action` value range;
 - promote lifecycle behavior to runtime authority;
 - resolve broker-realized position state;
-- retire `a2_lifecycle_pin_risk_handler_not_implemented`;
 - add new named gaps.

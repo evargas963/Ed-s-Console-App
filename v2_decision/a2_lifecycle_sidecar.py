@@ -15,13 +15,19 @@ from lifecycle_rule_core import (
     derive_target_levels,
 )
 from v2_decision.a2_eod_force_exit import evaluate_a2_eod_force_exit
+from v2_decision.a2_lifecycle_health import (
+    build_a2_pin_risk_event_source,
+    derive_a2_pin_risk_health,
+    resolve_a2_option_right,
+    select_a2_pin_risk_audit_row,
+)
+from v2_decision.a2_session_calendar import get_session_info, load_a2_session_calendar
 
 
 LIFECYCLE_GAP_NAMES = (
     "a2_lifecycle_policy_pending",
     "a2_lifecycle_legacy_exit_logic_divergence_audit_pending",
     "a2_lifecycle_iv_crush_handler_not_implemented",
-    "a2_lifecycle_pin_risk_handler_not_implemented",
     "a2_lifecycle_gamma_spike_handler_not_implemented",
     "a2_lifecycle_assignment_risk_handler_not_implemented",
     "a2_lifecycle_spread_widening_exit_not_implemented",
@@ -70,6 +76,7 @@ def build_a2_lifecycle_sidecar(ms_dict: dict[str, Any] | None = None) -> dict[st
     """Build the advisory lifecycle sidecar for A2."""
     ms = ms_dict if isinstance(ms_dict, dict) else {}
     lifecycle_action, cadence_observation_mode = evaluate_a2_eod_force_exit(ms)
+    event_sources = _build_event_sources(ms)
     return {
         "schema_version": "v2.0",
         "module_id": "A",
@@ -83,7 +90,7 @@ def build_a2_lifecycle_sidecar(ms_dict: dict[str, Any] | None = None) -> dict[st
         "lifecycle_action": lifecycle_action,
         "cadence_observation_mode": cadence_observation_mode,
         "lifecycle_conflict_state": "lifecycle_warning_only",
-        "event_sources": [],
+        "event_sources": event_sources,
         "threshold_policy_objects": [
             {"id": policy_id, "source": "policy_object_pending"}
             for policy_id in THRESHOLD_POLICY_OBJECTS
@@ -100,6 +107,55 @@ def build_a2_lifecycle_sidecar(ms_dict: dict[str, Any] | None = None) -> dict[st
         },
         "projected_preview": _build_projected_preview(ms),
     }
+
+
+def _build_event_sources(ms: dict[str, Any]) -> list[dict[str, Any]]:
+    event_sources: list[dict[str, Any]] = []
+    pin_risk_event = _build_pin_risk_event_source(ms)
+    if pin_risk_event is not None:
+        event_sources.append(pin_risk_event)
+    return event_sources
+
+
+def _build_pin_risk_event_source(ms: dict[str, Any]) -> dict[str, Any] | None:
+    try:
+        proof = ms.get("option_chain_selection_proof")
+        if not isinstance(proof, dict):
+            proof = {}
+        winner = proof.get("winner")
+        if not isinstance(winner, dict):
+            winner = {}
+        option_right = resolve_a2_option_right(ms, winner)
+        strike = _selected_strike(ms, winner)
+        selected_audit = select_a2_pin_risk_audit_row(
+            proof=proof,
+            winner=winner,
+            strike=strike,
+            option_right=option_right,
+        )
+        pin_risk = derive_a2_pin_risk_health(selected_audit=selected_audit, strike=strike)
+        return build_a2_pin_risk_event_source(
+            pin_risk_health=pin_risk,
+            session_type=_session_type(ms),
+        )
+    except Exception:
+        return None
+
+
+def _session_type(ms: dict[str, Any]) -> str:
+    try:
+        calendar = load_a2_session_calendar()
+        if calendar is None:
+            return "calendar_unavailable"
+        decision_time_ms = ms.get("decision_time_ms")
+        if decision_time_ms is None:
+            return "calendar_unavailable"
+        session_info = get_session_info(decision_time_ms=int(decision_time_ms), calendar=calendar)
+        if session_info is None:
+            return "calendar_unavailable"
+        return session_info.session_type
+    except Exception:
+        return "calendar_unavailable"
 
 
 def _build_projected_preview(ms: dict[str, Any]) -> dict[str, Any]:
@@ -344,6 +400,10 @@ def _structural_levels(ms: dict[str, Any], direction: str | None) -> list[float]
         keys = ("vwap", "put_gamma_wall", "kl_put_gamma_wall", "put_oi_wall")
         return [value for key in keys if (value := _first_number(ms, key)) is not None and value < spot]
     return []
+
+
+def _selected_strike(ms: dict[str, Any], winner: dict[str, Any]) -> float | None:
+    return _first_number(ms, "rec_strike", "strike", "call_strike", "selected_strike") or _float_or_none(winner.get("strike"))
 
 
 def _decision_timestamp(ms: dict[str, Any]) -> Any:

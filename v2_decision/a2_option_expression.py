@@ -7,6 +7,7 @@ from typing import Any
 
 from v2_decision.a2_eod_force_exit import derive_et_clock_from_decision_time_ms
 
+from .a2_lifecycle_health import derive_a2_pin_risk_health, resolve_a2_option_right, select_a2_pin_risk_audit_row
 from .a2_lifecycle_sidecar import build_a2_lifecycle_sidecar
 from .schema import leaf
 
@@ -70,8 +71,13 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
         chain_row=chain_row,
     )
 
-    selected_audit = _selected_audit_row(proof, winner, strike, option_right)
-    pin_risk = _pin_risk_health(
+    selected_audit = select_a2_pin_risk_audit_row(
+        proof=proof,
+        winner=winner,
+        strike=strike,
+        option_right=option_right,
+    )
+    pin_risk = derive_a2_pin_risk_health(
         selected_audit=selected_audit,
         strike=strike,
     )
@@ -298,86 +304,6 @@ def _soft_gates(
     return gates
 
 
-def _selected_audit_row(
-    proof: dict[str, Any],
-    winner: dict[str, Any],
-    strike: float | None,
-    option_right: str,
-) -> dict[str, Any]:
-    if strike is None:
-        return dict(winner)
-    side = str(option_right or "").upper()
-    candidates = []
-    for key in ("chain_rows_scored", "ranked_candidates_top5"):
-        rows = proof.get(key)
-        if isinstance(rows, list):
-            candidates.extend(row for row in rows if isinstance(row, dict))
-    for row in candidates:
-        row_strike = _num(row.get("strike"))
-        row_side = str(row.get("side") or "").upper()
-        if row_strike is not None and abs(row_strike - strike) < 0.01 and (not side or row_side == side):
-            return row
-    return dict(winner)
-
-
-def _pin_risk_health(
-    *,
-    selected_audit: dict[str, Any],
-    strike: float | None,
-) -> dict[str, Any]:
-    detail = selected_audit.get("wall_contribution_detail")
-    if not isinstance(detail, dict):
-        detail = {}
-    proximity = detail.get("proximity_detail")
-    if not isinstance(proximity, list):
-        proximity = []
-
-    nearest_wall = None
-    if strike is not None:
-        for item in proximity:
-            if not isinstance(item, dict):
-                continue
-            wall_strike = _num(item.get("strike"))
-            if wall_strike is None:
-                continue
-            distance = abs(wall_strike - strike)
-            candidate = {
-                "level": item.get("level"),
-                "strike": wall_strike,
-                "distance": round(distance, 4),
-                "contrib": _num(item.get("contrib")),
-            }
-            if nearest_wall is None or distance < nearest_wall["distance"]:
-                nearest_wall = candidate
-
-    wall_score = _num(selected_audit.get("wall_score_component"))
-    wall_proximity = _num(selected_audit.get("wall_proximity_component"))
-    wall_bias = _num(selected_audit.get("wall_bias_component"))
-    reasons: list[str] = []
-    status = "not_detected"
-
-    if nearest_wall and nearest_wall["distance"] <= 1.0:
-        status = "elevated"
-        reasons.append("selected_strike_near_gamma_or_oi_wall")
-    elif wall_score is not None and wall_score >= 1.0:
-        status = "watch"
-        reasons.append("material_wall_contribution")
-    elif wall_proximity is not None and wall_proximity >= 0.75:
-        status = "watch"
-        reasons.append("material_wall_proximity")
-
-    return {
-        "status": status,
-        "selected_strike": strike,
-        "nearest_wall": nearest_wall,
-        "wall_score_component": wall_score,
-        "wall_proximity_component": wall_proximity,
-        "wall_bias_component": wall_bias,
-        "bias_notes": detail.get("bias_notes") if isinstance(detail.get("bias_notes"), list) else [],
-        "reasons": reasons,
-    }
-
-
 def _late_day_gamma_health(
     *,
     ms_dict: dict[str, Any],
@@ -428,9 +354,7 @@ def _leaf_value(obj: dict[str, Any], *path: str) -> Any:
 
 
 def _option_right(ms_dict: dict[str, Any], winner: dict[str, Any]) -> str:
-    raw = ms_dict.get("call_option_right") or ms_dict.get("rec_side") or winner.get("side")
-    right = str(raw or "").upper().strip()
-    return right if right in ("CALL", "PUT") else "NONE"
+    return resolve_a2_option_right(ms_dict, winner)
 
 
 def _handoff_mapping(a1_direction: Any) -> str:
