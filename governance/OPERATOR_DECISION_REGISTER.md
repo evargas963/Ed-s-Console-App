@@ -62,6 +62,7 @@
 | **O-34** | `a2_late_day_gamma_policy` | **Advisory warning only in v1**; late-day gamma exposure may raise lifecycle/sidecar warning state but does not independently tighten stops, resize, or force exit. EOD force-exit timing remains governed by the A2 lifecycle clock policy (O-33). Preserves non-authoritative discipline and avoids smuggling execution behavior into an A2 policy value before the EOD force-exit contract/code exists. Leaves room for variants (advisory + stop-tighten, advisory + force-exit) after empirical review. Policy object identity: `a2_late_day_gamma_policy_v1`. | Program operator | 2026-05-06 | `governance/PILOT_1B_A2_0DTE_CONTRACT.md` |
 | **O-35** | `a2_force_exit_offset_from_session_close_minutes` | **10** minutes — Session-close-relative force-exit threshold for A2 session-calendar-aware lifecycle logic. Preserves O-33 normal-RTH behavior because 16:00 ET minus 10 minutes yields 15:50 ET, while allowing early-close sessions to derive force-exit timing from actual session close. Applies to advisory A2 lifecycle sidecar only. Policy object identity: `a2_force_exit_offset_from_session_close_minutes_v1`. | Program operator | 2026-05-06 | `governance/A2_LIFECYCLE_SESSION_CALENDAR_HARDENING_CONTRACT.md` |
 | **O-36** | `a2_cadence_shift_offset_from_session_close_minutes` | **30** minutes — Session-close-relative cadence shift threshold for A2 session-calendar-aware lifecycle logic. Preserves O-32 normal-RTH behavior because 16:00 ET minus 30 minutes yields 15:30 ET, while allowing early-close sessions to derive cadence timing from actual session close. Applies to advisory A2 lifecycle sidecar only. Policy object identity: `a2_cadence_shift_offset_from_session_close_minutes_v1`. | Program operator | 2026-05-06 | `governance/A2_LIFECYCLE_SESSION_CALENDAR_HARDENING_CONTRACT.md` |
+| **O-37** | `a2_pin_risk_health_thresholds_v1` | **nearest_wall.distance ≤ 1.0 strike points → elevated; wall_score_component ≥ 1.0 → watch; wall_proximity_component ≥ 0.75 → watch** — Ratifies the existing A2 pin-risk health thresholds for advisory lifecycle event emission. Applies to A2 lifecycle sidecar `event_sources` only; does not authorize lifecycle action changes, force exits, stop tightening, resizing, or runtime authority. Policy object identity: `a2_pin_risk_health_thresholds_v1`. | Program operator | 2026-05-07 | `governance/A2_LIFECYCLE_PIN_RISK_HANDLER_CONTRACT.md` |
 
 ---
 
@@ -86,7 +87,7 @@ The following were **UNKNOWN** in the pre-2026-05-01 audit. Where **O-** IDs abo
 
 ## Operator sign-off
 
-By signing below, the operator attests that the **Decision** column for **O-01 through O-36** is accurate or has been corrected in-line, that **R-08** and **R-09** are accepted, and that **`GOVERNANCE_MERGE_GATE.md`** may be run for the next governance commit.
+By signing below, the operator attests that the **Decision** column for **O-01 through O-37** is accurate or has been corrected in-line, that **R-08** and **R-09** are accepted, and that **`GOVERNANCE_MERGE_GATE.md`** may be run for the next governance commit.
 
 **Printed name:** Program operator  
 
