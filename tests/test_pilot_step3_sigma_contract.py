@@ -84,6 +84,7 @@ def test_session_open_sigma_comparable_no_z_spike_synthetic():
 
 def test_no_fixed_clock_z_explosion_on_staging_if_db_present():
     """Regression: |z|>100 should not all pile on minute 570 (requires local DB)."""
+    import sqlite3
     from pathlib import Path
 
     from research.pilot_step3 import pilot_config
@@ -99,6 +100,12 @@ def test_no_fixed_clock_z_explosion_on_staging_if_db_present():
         DB_PATH = None  # type: ignore[misc, assignment]
     db = DB_PATH
     if not db or not Path(str(db)).is_file():
+        return
+    with sqlite3.connect(str(db)) as conn:
+        has_staging = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='price_bars_1m_staging'"
+        ).fetchone() is not None
+    if not has_staging:
         return
     prereg = pilot_config.load_prereg()
     rep = load_spy_1m_bars(
