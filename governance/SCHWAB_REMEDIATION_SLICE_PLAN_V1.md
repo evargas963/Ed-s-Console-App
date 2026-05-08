@@ -17,11 +17,11 @@ tools/check_schwab_csv_first.py --whole-repo
 ## System Status
 
 ```text
-SLICE STATUS: clustering produced; HIGH-scope slice contracts landed (S002–S005, S009–S012, S014/S015 sub-slices, S017) on 2026-05-08; S013 DATE_DIFF_DTE sub-triage + Bucket E classifier gate landed 2026-05-08
+SLICE STATUS: clustering produced; HIGH-scope slice contracts landed (S002–S005, S009–S012, S014/S015 sub-slices, S017) on 2026-05-08; S013 DATE_DIFF_DTE + S016 BLACK_SCHOLES classifier gates landed 2026-05-08
 SYSTEM STATUS: FAIL
 remediation_slices_identified = 38
 real_residuals_clustered = 998
-manual_residual_rows_current_artifact = 171  # python tools/classify_schwab_csv_crosswalk.py → CROSSWALK_RESIDUAL.csv row count
+manual_residual_rows_current_artifact = 167  # python tools/classify_schwab_csv_crosswalk.py → CROSSWALK_RESIDUAL.csv row count
 whole_repo_guard_status = PASS  # python tools/check_schwab_csv_first.py --whole-repo
 ```
 
@@ -78,7 +78,9 @@ These five aggregates are intentionally broad and require sub-triage by actual l
 | S016 | `BLACK_SCHOLES` | 126 | `prediction_engine.py` (50), `ml_predict.py` (25), `planes/l1_thresholds.py` (14) | Separate true Black-Scholes pricing/theta from generic model math references. |
 | S017 | `TIME_NOW_FALLBACK` | 103 | `server.py` (50), `db.py` (12), `order_flow_streaming.py` (5) | Split market-data timestamp vs decision emit timestamp vs audit wall-clock. |
 
-**S013 sub-triage (2026-05-08):** See [`governance/SCHWAB_REMEDIATION_S013_DATE_DIFF_DTE_SUBTRIAGE_V1.md`](./SCHWAB_REMEDIATION_S013_DATE_DIFF_DTE_SUBTRIAGE_V1.md). Summary: crosswalk `DATE_DIFF_DTE` rows are dominated by **tagger false positives** (e.g. `expiry` parameter names); runtime Schwab DTE on hot paths is already aligned with **S001** (`daysToExpiration`). Next lever is **tightening the mechanical tagger** (Bucket E) before line-by-line “213 fixes.”
+**S013 sub-triage (2026-05-08):** See [`governance/SCHWAB_REMEDIATION_S013_DATE_DIFF_DTE_SUBTRIAGE_V1.md`](./SCHWAB_REMEDIATION_S013_DATE_DIFF_DTE_SUBTRIAGE_V1.md). Summary: crosswalk `DATE_DIFF_DTE` rows are dominated by **tagger false positives** (e.g. `expiry` parameter names); runtime Schwab DTE on hot paths is already aligned with **S001** (`daysToExpiration`). **Bucket E** (classifier gate) shipped 2026-05-08.
+
+**S016 sub-triage (2026-05-08):** See [`governance/SCHWAB_REMEDIATION_S016_BLACK_SCHOLES_SUBTRIAGE_V1.md`](./SCHWAB_REMEDIATION_S016_BLACK_SCHOLES_SUBTRIAGE_V1.md). Summary: crosswalk `BLACK_SCHOLES` rows were dominated by **regex noise** (unrelated `d1`/`delta` locals, ML lines, generic `norm.cdf`); a classifier gate collapses retained tags to the **real BS / theta fallback** cluster (aligns with **S008**). Slice-plan “126 instances” remains the mechanical-cluster count; crosswalk row counts are not comparable without the gate.
 
 Smaller medium slices S018-S027 cover roughly 30 instances total and should be scheduled after S001-S012 plus aggregate sub-triage.
 

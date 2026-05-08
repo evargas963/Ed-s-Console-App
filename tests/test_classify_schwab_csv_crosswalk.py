@@ -235,3 +235,36 @@ def test_bucket_e_strips_only_date_diff_dte_from_compound_tags():
     classification, _reason = classify(row)
     assert row["tags"] == "BLACK_SCHOLES"
     assert classification == "NOT_MARKET_RUNTIME"
+
+
+def test_s016_strips_black_scholes_when_only_variable_name_noise():
+    row = _row(
+        file="prediction_engine.py",
+        tags="BLACK_SCHOLES",
+        code="u1, d1, f1 = _tri_probs(probs_1c)",
+    )
+    classification, _reason = classify(row)
+    assert row["tags"] == ""
+    assert classification == "NOT_MARKET_DATA"
+
+
+def test_s016_keeps_black_scholes_for_theta_fallback_line():
+    row = _row(
+        file="v2_decision/a2_option_expression.py",
+        tags="BLACK_SCHOLES",
+        code='return bs_theta, "v1_approximation", "black_scholes_approximation"',
+    )
+    classification, _reason = classify(row)
+    assert row["tags"] == "BLACK_SCHOLES"
+    assert classification == "DEFAULT_OR_DERIVATION_REVIEW"
+
+
+def test_s016_strips_black_scholes_for_generic_norm_cdf():
+    row = _row(
+        file="tools/_phase5_discrimination_audit_v1.py",
+        tags="BLACK_SCHOLES",
+        code="pval = float(2 * (1 - norm.cdf(abs(z))))",
+    )
+    classification, _reason = classify(row)
+    assert row["tags"] == ""
+    assert classification == "NOT_MARKET_DATA"

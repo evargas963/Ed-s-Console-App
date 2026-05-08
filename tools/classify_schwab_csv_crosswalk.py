@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -175,6 +176,58 @@ def _normalize_date_diff_dte_tag(row: dict[str, str]) -> None:
     if "DATE_DIFF_DTE" not in tags:
         return
     tags.discard("DATE_DIFF_DTE")
+    row["tags"] = "|".join(sorted(tags))
+
+
+_BS_THETA_WORD = re.compile(r"\bbs_theta\b")
+
+
+def _black_scholes_alpha_num_blob(code: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", code.lower())
+
+
+def _black_scholes_tag_plausible(code: str) -> bool:
+    """
+    WORKING crosswalk over-tags BLACK_SCHOLES (d1/delta variable noise, unrelated `bs_` heuristics).
+    Keep the tag only when the line shows BS naming, BS theta fallback, or project BS helpers — not
+    generic `norm.cdf` statistics (e.g. z-tests).
+    """
+    if not code.strip():
+        return False
+    low = code.lower()
+    blob = _black_scholes_alpha_num_blob(code)
+    if "blackscholes" in blob:
+        return True
+    if "bsapproximation" in blob:
+        return True
+    if "_bs_" in code:
+        return True
+    if "_norm_cdf" in code:
+        return True
+    if _BS_THETA_WORD.search(code):
+        return True
+    if "norm.cdf" in low or "norm.pdf" in low:
+        if "blackscholes" in blob:
+            return True
+        if "spot" in low and "strike" in low:
+            return True
+        if "d1" in code and "d2" in code:
+            return True
+        return False
+    return False
+
+
+def _normalize_black_scholes_tag(row: dict[str, str]) -> None:
+    """S016 / Bucket E-style: drop BLACK_SCHOLES when the code line is not a real BS reference."""
+    raw = row.get("tags") or ""
+    if not raw or "BLACK_SCHOLES" not in raw:
+        return
+    if _black_scholes_tag_plausible(row.get("code") or ""):
+        return
+    tags = _split(raw)
+    if "BLACK_SCHOLES" not in tags:
+        return
+    tags.discard("BLACK_SCHOLES")
     row["tags"] = "|".join(sorted(tags))
 
 
@@ -503,6 +556,7 @@ def _disambiguate_mechanical_row(row: dict[str, str]) -> tuple[str, str] | None:
 
 def classify(row: dict[str, str]) -> tuple[str, str]:
     _normalize_date_diff_dte_tag(row)
+    _normalize_black_scholes_tag(row)
     path = row["file"]
     code = row["code"]
     tags = _split(row["tags"])

@@ -43,25 +43,25 @@ Classification pass:
 ```text
 input_rows = 21973
 CSV_FIELD_REFERENCE_REVIEW = 5
-CSV_PRIMITIVE_CANONICAL_REVIEW = 550
-CSV_PRIMITIVE_RISK_REVIEW = 45
-DEFAULT_OR_DERIVATION_REVIEW = 625
+CSV_PRIMITIVE_CANONICAL_REVIEW = 554
+CSV_PRIMITIVE_RISK_REVIEW = 41
+DEFAULT_OR_DERIVATION_REVIEW = 472
 DERIVED_WITH_PROVENANCE_REVIEW = 9
-NOT_MARKET_DATA = 1678
+NOT_MARKET_DATA = 1831
 NOT_MARKET_RUNTIME = 18841
 REVIEW_NONREGISTERED_RUNTIME = 92
 TIME_AUTHORITY_REVIEW = 77
 TRUE_ANALYTIC_REVIEW = 51
-DISPOSITION_CANONICAL_OR_PASS_THROUGH_REVIEWED = 550
+DISPOSITION_CANONICAL_OR_PASS_THROUGH_REVIEWED = 554
 DISPOSITION_GATE_FAIL_CLOSED_OR_PROVENANCE = 40
 DISPOSITION_KEEP_DERIVED_WITH_PROVENANCE = 94
-DISPOSITION_NON_PRIMITIVE_DEFAULT_REVIEWED = 585
-DISPOSITION_NOT_MARKET_DATA = 20519
+DISPOSITION_NON_PRIMITIVE_DEFAULT_REVIEWED = 432
+DISPOSITION_NOT_MARKET_DATA = 20672
 DISPOSITION_OFFLINE_TOOL_OR_MODEL_REVIEWED = 92
 DISPOSITION_REFERENCE_ONLY_REVIEWED = 5
-DISPOSITION_REPLACE_WITH_SCHWAB_OR_GATE = 45
+DISPOSITION_REPLACE_WITH_SCHWAB_OR_GATE = 41
 DISPOSITION_REPLACE_WITH_SCHWAB_OR_SPLIT_CLOCKS = 43
-manual_residual_rows = 171
+manual_residual_rows = 167
 ```
 
 The disposition register assigns an automated first-pass disposition to every mechanical candidate row. The residual file is the remaining human-review queue. This document is evidence, not final proof, until `SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_RESIDUAL.csv` is dispositioned to zero or each remaining row is explicitly registered/governed.
@@ -205,7 +205,7 @@ signals/model-stack degraded-mode behavior
 csv_authority_crosswalk_status = SYNTHESIZED
 mechanical_candidate_classification_status = FIRST_PASS_COMPLETE
 full_disposition_register_status = GENERATED
-manual_residual_rows_requiring_disposition = 171
+manual_residual_rows_requiring_disposition = 167
 runtime_remediation_status = OPEN
 all_consumer_closure_status = OPEN
 remediation_slice_plan = SCHWAB_REMEDIATION_SLICE_PLAN_V1.md
