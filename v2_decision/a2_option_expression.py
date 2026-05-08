@@ -149,6 +149,7 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
         ms_dict=ms_dict,
         chain_row=chain_row,
     )
+    dte = _dte_value(ms_dict, chain_row)
 
     selected_audit = select_a2_pin_risk_audit_row(
         proof=proof,
@@ -195,7 +196,11 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
                 _clean_str(ms_dict.get("call_option_expiry") or ms_dict.get("selected_exp")),
                 "v1_approximation",
             ),
-            "dte": leaf(_dte_value(ms_dict), "v1_approximation"),
+            "dte": leaf(
+                dte,
+                "v2_compliant" if dte is not None else "not_implemented",
+                detail="schwab_chain_daysToExpiration" if dte is not None else "missing_schwab_daysToExpiration",
+            ),
             "decision_plane": leaf("Tier C", "v2_compliant"),
             "authority_mode": leaf("advisory_non_authoritative", "v2_compliant"),
         },
@@ -312,7 +317,7 @@ def _hard_gates(
     selected_expiry = _clean_str(ms_dict.get("call_option_expiry") or ms_dict.get("selected_exp"))
     if not selected_expiry:
         gates.append("missing_selected_expiry")
-    elif _dte_value(ms_dict) != 0:
+    elif _dte_value(ms_dict, chain_row) != 0:
         gates.append("non_same_day_expiry_strict_0dte")
     if not proof:
         gates.append("missing_option_chain_selection_proof")
@@ -531,10 +536,11 @@ def _time_to_expiry_years(ms_dict: dict[str, Any], chain_row: dict[str, Any]) ->
     return None
 
 
-def _dte_value(ms_dict: dict[str, Any]) -> int | None:
-    raw = str(ms_dict.get("dte_warn") or "")
-    if "0DTE" in raw.upper():
-        return 0
+def _dte_value(ms_dict: dict[str, Any], chain_row: dict[str, Any] | None = None) -> int | None:
+    if isinstance(chain_row, dict):
+        schwab_dte = _num(chain_row.get("daysToExpiration"))
+        if schwab_dte is not None and schwab_dte >= 0:
+            return int(schwab_dte)
     return None
 
 

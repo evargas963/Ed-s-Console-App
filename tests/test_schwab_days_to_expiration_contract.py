@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+from market_state import _build_contract_context_ms, _schwab_days_to_expiration_for_contract
+from math_exposure_core import compute_net_charm
+from math_levels import parity_f_minus_spot_from_contracts
+
+
+class _MarketStateStub:
+    ticker = "SPY"
+    selected_exp = "2099-05-05"
+    call_option_expiry = "2099-05-05"
+    rec_strike = 500.0
+    call_option_right = "CALL"
+    rec_side = "CALL"
+    call_signal = "long"
+    is_no_trade = False
+    spot = 499.5
+
+
+def _contract(**overrides) -> dict:
+    base = {
+        "putCall": "CALL",
+        "strikePrice": 500.0,
+        "daysToExpiration": 0,
+        "expirationDate": "2099-05-05",
+        "bid": 1.2,
+        "ask": 1.3,
+        "mark": 1.25,
+        "gamma": 0.08,
+        "delta": 0.52,
+        "volatility": 22.0,
+        "openInterest": 100,
+        "multiplier": 100,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_market_state_contract_context_uses_schwab_days_to_expiration():
+    contracts = [_contract(daysToExpiration=3)]
+
+    assert _schwab_days_to_expiration_for_contract(contracts, 500.0, "CALL") == 3
+    assert "3DTE" in _build_contract_context_ms(_MarketStateStub(), contracts)
+
+
+def test_market_state_contract_context_does_not_derive_dte_when_schwab_field_missing():
+    contract = _contract()
+    contract.pop("daysToExpiration")
+
+    context = _build_contract_context_ms(_MarketStateStub(), [contract])
+
+    assert "DTE" not in context
+
+
+def test_parity_filter_skips_missing_schwab_days_to_expiration():
+    missing_dte_call = _contract(putCall="CALL", daysToExpiration=None)
+    missing_dte_put = _contract(putCall="PUT", daysToExpiration=None)
+
+    assert parity_f_minus_spot_from_contracts(
+        [missing_dte_call, missing_dte_put],
+        spot=500.0,
+        dte_max=0,
+    ) == 0.0
+
+
+def test_charm_filter_skips_missing_schwab_days_to_expiration_when_expiry_date_absent():
+    contract = _contract(expirationDate=None)
+    contract.pop("daysToExpiration")
+
+    result = compute_net_charm([contract], 500.0, "2099-05-05")
+
+    assert result["contracts_used"] == 0

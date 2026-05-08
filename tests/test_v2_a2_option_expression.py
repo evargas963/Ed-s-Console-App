@@ -53,6 +53,7 @@ def _winner() -> dict:
             "volatility": 0.22,
             "totalVolume": 1200,
             "openInterest": 4300,
+            "daysToExpiration": 0,
             "expirationDate": "2026-05-05",
             "quoteTimeInLong": 1778018399000,
             "tradeTimeInLong": 1778018398500,
@@ -101,6 +102,11 @@ def test_valid_a2_deterministic_baseline_has_source_indicators():
         "value": -0.18,
         "source": "v2_compliant",
         "detail": "schwab_chain_theta",
+    }
+    assert a2["identity"]["dte"] == {
+        "value": 0,
+        "source": "v2_compliant",
+        "detail": "schwab_chain_daysToExpiration",
     }
 
 
@@ -353,11 +359,48 @@ def test_missing_selected_expiry_blocks_trade_output():
 
 def test_non_same_day_expiry_blocks_strict_0dte_output():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L160 - strict 0DTE requires same-day expiry."""
+    winner = _winner()
+    winner["chain_row"]["daysToExpiration"] = 1
     a2 = build_a2_option_expression(
-        _ms(selected_exp="2026-05-06", call_option_expiry="2026-05-06", dte_warn="1DTE"),
+        _ms(
+            selected_exp="2026-05-06",
+            call_option_expiry="2026-05-06",
+            dte_warn="0DTE",
+            option_chain_selection_proof={
+                "status": "ok",
+                "winner": winner,
+                "liquidity_summary": {"any_candidate_passed_liq_gate": True},
+            },
+        ),
         _sample_a1(),
     )
 
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert "non_same_day_expiry_strict_0dte" in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_missing_schwab_days_to_expiration_blocks_strict_0dte_even_if_text_says_0dte():
+    """CSV-first S001: strict 0DTE uses chain_row.daysToExpiration, not dte_warn text."""
+    winner = _winner()
+    winner["chain_row"].pop("daysToExpiration")
+
+    a2 = build_a2_option_expression(
+        _ms(
+            dte_warn="0DTE",
+            option_chain_selection_proof={
+                "status": "ok",
+                "winner": winner,
+                "liquidity_summary": {"any_candidate_passed_liq_gate": True},
+            },
+        ),
+        _sample_a1(),
+    )
+
+    assert a2["identity"]["dte"] == {
+        "value": None,
+        "source": "not_implemented",
+        "detail": "missing_schwab_daysToExpiration",
+    }
     assert a2["option_expression"]["option_action"]["value"] == "WAIT"
     assert "non_same_day_expiry_strict_0dte" in a2["health"]["hard_gates_failed"]["value"]
 

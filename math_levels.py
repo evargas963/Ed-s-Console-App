@@ -552,9 +552,10 @@ def parity_f_minus_spot_from_contracts(
     use = []
     for c in contracts or []:
         try:
-            dte = int(float(c.get("daysToExpiration") or 0))
+            raw_dte = c.get("daysToExpiration")
+            dte = int(float(raw_dte)) if raw_dte is not None else None
         except Exception:
-            dte = 0
+            dte = None
         if dte_max is not None and dte != int(dte_max):
             continue
         use.append(c)

@@ -1989,6 +1989,64 @@ def _expiries_from_contracts(contracts: list) -> list[str]:
     return sorted(exps)
 
 
+def _selected_schwab_days_to_expiration(
+    contracts: list,
+    selected_exp: str | None,
+    *,
+    preferred_strike: float | None = None,
+    preferred_side: str | None = None,
+) -> int | None:
+    exp_key = str(selected_exp or "")[:10]
+    side_key = str(preferred_side or "").upper().strip()
+    try:
+        strike_key = float(preferred_strike) if preferred_strike is not None else None
+    except (TypeError, ValueError):
+        strike_key = None
+
+    matches: list[dict] = []
+    for ct in contracts or []:
+        exp = str(ct.get("expirationDate") or ct.get("expiration") or "")[:10]
+        if exp_key and exp != exp_key:
+            continue
+        if side_key in ("CALL", "PUT") and str(ct.get("putCall") or "").upper().strip() != side_key:
+            continue
+        if strike_key is not None:
+            try:
+                if abs(float(ct.get("strikePrice")) - strike_key) >= 0.01:
+                    continue
+            except (TypeError, ValueError):
+                continue
+        matches.append(ct)
+
+    if not matches and (side_key or strike_key is not None):
+        return _selected_schwab_days_to_expiration(contracts, selected_exp)
+
+    for ct in matches:
+        raw_dte = ct.get("daysToExpiration")
+        try:
+            dte = int(float(raw_dte)) if raw_dte is not None else None
+        except (TypeError, ValueError):
+            dte = None
+        if dte is not None and dte >= 0:
+            return dte
+    return None
+
+
+def _snapshot_expiry_hours_from_schwab_dte(
+    schwab_dte: int | None,
+    now_et: datetime,
+) -> float | None:
+    if schwab_dte is None:
+        return None
+    market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
+    if schwab_dte == 0:
+        secs = (market_close - now_et).total_seconds()
+        return round(secs / 3600.0, 2) if secs > 0 else None
+    if schwab_dte > 0:
+        return round((schwab_dte * 24.0) + max(0.0, (market_close - now_et).total_seconds() / 3600.0), 2)
+    return None
+
+
 def _fetch_expiries_light(ticker: str) -> list[str]:
     """
     Option expiries only — quote + option chain, no snapshot insert or MarketState.
@@ -3666,7 +3724,6 @@ def _fetch_state(
         try:
             from db import SnapshotRow, build_ts_et, market_session as _ms_fn
             from math_exposure import _f as _mf
-            from datetime import time as _dt_time
             _snap_ts = _refresh_ts_utc
             _do_insert = _snapshot_row_insert_allowed(ticker, _snap_ts)
             if not _do_insert:
@@ -3677,19 +3734,14 @@ def _fetch_state(
             if _do_insert:
                 _et_now = now_et
 
-                # DTE and hours_to_expiry (ET authority; None if missing/invalid or past 4pm ET on expiry day)
-                _dte = None
-                _hours_to_expiry = None
-                if selected_exp and len(selected_exp) >= 10:
-                    try:
-                        _exp_date = datetime.strptime(selected_exp[:10], "%Y-%m-%d").date()
-                        _today_et = _et_now.date()
-                        _dte = (_exp_date - _today_et).days
-                        _exp_dt_et = datetime.combine(_exp_date, _dt_time(16, 0), tzinfo=ET)
-                        _secs = (_exp_dt_et - _et_now).total_seconds()
-                        _hours_to_expiry = round(_secs / 3600.0, 2) if _secs > 0 else None
-                    except (ValueError, TypeError):
-                        pass
+                # DTE is Schwab-native. Missing daysToExpiration fails closed for snapshot persistence.
+                _dte = _selected_schwab_days_to_expiration(
+                    contracts_use,
+                    selected_exp,
+                    preferred_strike=getattr(ms, "rec_strike", None),
+                    preferred_side=getattr(ms, "call_option_right", None),
+                )
+                _hours_to_expiry = _snapshot_expiry_hours_from_schwab_dte(_dte, _et_now)
     
                 # ── Compute fields from available data ─────────────────────────────
     

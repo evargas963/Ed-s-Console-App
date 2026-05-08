@@ -324,15 +324,12 @@ def compute_net_charm(contracts: list, spot: float, expiry: str, *, rate: float 
     """
     import datetime as _dt2, math as _m
 
-    # Resolve expiry to DTE
     try:
         _target_exp = str(expiry)[:10]
-        _exp_date   = _dt2.date.fromisoformat(_target_exp)
-        _today      = _dt2.date.today()
-        _target_dte = (_exp_date - _today).days
+        if len(_target_exp) != 10:
+            _target_exp = None
     except Exception:
         _target_exp = None
-        _target_dte = None
 
     # For 0DTE: use remaining hours to close as T
     # Prevents formula explosion as T → 0
@@ -359,12 +356,8 @@ def compute_net_charm(contracts: list, spot: float, expiry: str, *, rate: float 
         if ct_exp and _target_exp:
             if str(ct_exp)[:10] != _target_exp:
                 continue
-        elif _target_dte is not None:
-            try:
-                _ct_dte = int(float(ct.get("daysToExpiration") or 99))
-                if abs(_ct_dte - _target_dte) > 1: continue
-            except Exception:
-                continue
+        elif _target_exp:
+            continue
 
         side    = (ct.get("putCall") or "").upper().strip()
         if side not in ("CALL", "PUT"): continue
@@ -454,7 +447,7 @@ def compute_net_charm(contracts: list, spot: float, expiry: str, *, rate: float 
         "drift_toward":     gamma_pin,
         "gamma_pin":        gamma_pin,
         "contracts_used":   used,
-        "error": "" if used > 0 else f"No contracts matched expiry={_target_exp} DTE={_target_dte}",
+        "error": "" if used > 0 else f"No contracts matched expiry={_target_exp}",
     }
 
 

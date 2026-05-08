@@ -506,6 +506,7 @@ def _oe_chain_row_snapshot(ct: dict | None) -> dict | None:
         "symbol",
         "putCall",
         "strikePrice",
+        "daysToExpiration",
         "expirationDate",
         "expiration",
         "expirationType",
@@ -816,11 +817,34 @@ def _oe_bid_ask_mid(contracts, strike: float, side: str):
     return None, None, None
 
 
+def _schwab_days_to_expiration_for_contract(contracts, strike: float | None, side: str | None) -> int | None:
+    if strike is None:
+        return None
+    side_up = str(side or "").upper().strip()
+    if side_up not in ("CALL", "PUT"):
+        return None
+    try:
+        strike_f = float(strike)
+    except Exception:
+        return None
+    for ct in contracts or []:
+        if str(ct.get("putCall", "")).upper().strip() != side_up:
+            continue
+        try:
+            if abs(float(ct.get("strikePrice")) - strike_f) >= 0.01:
+                continue
+        except Exception:
+            continue
+        raw_dte = ct.get("daysToExpiration")
+        try:
+            return int(float(raw_dte)) if raw_dte is not None else None
+        except Exception:
+            return None
+    return None
+
+
 def _build_contract_context_ms(ms: "MarketState", contracts: list) -> str:
     """Contract-first framing: DTE, strike/right, breakeven when bid/ask exist."""
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-
     exp = ms.call_option_expiry or ms.selected_exp
     k = ms.rec_strike
     side = (ms.call_option_right or ms.rec_side or "").upper().strip()
@@ -828,12 +852,7 @@ def _build_contract_context_ms(ms: "MarketState", contracts: list) -> str:
     csig = (ms.call_signal or "wait").strip().lower()
     if csig == "wait" or ms.is_no_trade or side not in ("CALL", "PUT") or k is None or not exp:
         return ""
-    try:
-        d_exp = datetime.strptime(str(exp)[:10], "%Y-%m-%d").date()
-        d0 = datetime.now(ZoneInfo("America/New_York")).date()
-        dte = (d_exp - d0).days
-    except Exception:
-        dte = None
+    dte = _schwab_days_to_expiration_for_contract(contracts, k, side)
     dte_part = " · 0DTE" if dte == 0 else (f" · {dte}DTE" if dte is not None and dte > 0 else "")
     try:
         kf = float(k)
@@ -1026,15 +1045,7 @@ def build_market_state(
     ms.bias_resolved = is_bias_actionable(ms.bias_signal)
     ms.nd_resolved   = (ms.net_delta is not None) and (abs(ms.net_delta) > 1e-6)
 
-    # ── 6. DTE styling (independent of direction) ───────────────────────────
-    try:
-        from datetime import datetime as _dt
-        if selected_exp:
-            _exp_date = _dt.strptime(selected_exp, "%Y-%m-%d").date()
-            _dte      = (_exp_date - _dt.now().date()).days
-            ms.dte_warn, ms.dte_color = dte_style(_dte)
-    except Exception:
-        pass
+    # ── 6. DTE styling (set after selected Schwab contract is known) ─────────
 
     # ── 7. Signals engine: enforces STACK ORDER 1–10 ──────────────────────────
     # compute_signals runs: vol_regime → regime → model stack → fusion → call (8,9,10)
@@ -1607,6 +1618,12 @@ def build_market_state(
         ms.call_option_right = "WAIT"
     else:
         ms.call_option_right = (ms.rec_side or ("CALL" if csig == "long" else "PUT" if csig == "short" else "WAIT"))
+    _selected_dte = _schwab_days_to_expiration_for_contract(
+        contracts_use,
+        ms.rec_strike,
+        ms.call_option_right,
+    )
+    ms.dte_warn, ms.dte_color = dte_style(_selected_dte)
 
     # ── 11. OE gate pill scoring ─────────────────────────────────────────────
     if ms.rec_strike is not None and ms.rec_side is not None:
