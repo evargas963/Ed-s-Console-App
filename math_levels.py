@@ -111,7 +111,11 @@ def _pick_oi_center(exposures: Dict[float, dict], strikes: List[float]) -> float
     best_val = None
     for s in strikes:
         b = exposures.get(s, {})
-        tot = (b.get("call_oi") or 0.0) + (b.get("put_oi") or 0.0)
+        call_oi = b.get("call_oi")
+        put_oi = b.get("put_oi")
+        if call_oi is None and put_oi is None:
+            continue
+        tot = (float(call_oi) if call_oi is not None else 0.0) + (float(put_oi) if put_oi is not None else 0.0)
         if tot <= 0:
             continue
         if best is None or (best_val is not None and tot > best_val):
@@ -480,8 +484,12 @@ def build_totals_rows(
             pg += float(b.get("put_gamma") or 0.0)
             cd += float(b.get("call_delta") or 0.0)
             pd += float(b.get("put_delta") or 0.0)
-            coi += float(b.get("call_oi") or 0.0)
-            poi += float(b.get("put_oi") or 0.0)
+            call_oi = b.get("call_oi")
+            put_oi = b.get("put_oi")
+            if call_oi is not None:
+                coi += float(call_oi)
+            if put_oi is not None:
+                poi += float(put_oi)
             any_row = True
 
         if not any_row:
@@ -587,10 +595,16 @@ def parity_f_minus_spot_from_contracts(
                 if x > 0: return x
             except Exception: continue
         try:
-            b = float(row.get("bid") or 0)
-            a = float(row.get("ask") or 0)
-            if a > 0 and b >= 0: return (a + b) / 2.0
-        except Exception: pass
+            br = row.get("bid")
+            ar = row.get("ask")
+            if br is None or ar is None:
+                return None
+            b = float(br)
+            a = float(ar)
+            if a > 0 and b >= 0:
+                return (a + b) / 2.0
+        except Exception:
+            pass
         return None
 
     resids = []
@@ -724,7 +738,11 @@ def compute_gamma_void_zones(
 
     def _get_oi(bucket):
         """Get total open interest for a strike bucket."""
-        return float(bucket.get("call_oi", 0) or 0) + float(bucket.get("put_oi", 0) or 0)
+        call_oi = bucket.get("call_oi")
+        put_oi = bucket.get("put_oi")
+        if call_oi is None and put_oi is None:
+            return None
+        return (float(call_oi) if call_oi is not None else 0.0) + (float(put_oi) if put_oi is not None else 0.0)
 
     # Find max absolute GEX and max OI for threshold reference
     max_abs_gex = 0.0
@@ -735,7 +753,7 @@ def compute_gamma_void_zones(
         oi = _get_oi(bucket)
         if gex > max_abs_gex:
             max_abs_gex = gex
-        if oi > max_oi:
+        if oi is not None and oi > max_oi:
             max_oi = oi
 
     if max_abs_gex == 0:
@@ -750,7 +768,7 @@ def compute_gamma_void_zones(
         bucket = exposures_by_strike.get(k, {})
         gex = _get_gex(bucket)
         oi = _get_oi(bucket)
-        is_void = (gex < gex_threshold) and (oi < oi_threshold if max_oi > 0 else True)
+        is_void = (gex < gex_threshold) and (oi is not None and oi < oi_threshold if max_oi > 0 else True)
         void_flags.append(is_void)
 
     # Find contiguous void regions
