@@ -497,16 +497,31 @@ def _l1_put_thread_queue_notify(sk: tuple[str, str | None], env: dict) -> None:
 
 # /api/fast-quote uses its own pool: default executor is also used by SSE (N concurrent
 # _fetch_state) and tick coherent refresh — saturated pools would queue the lightweight quote.
-_fast_quote_executor = ThreadPoolExecutor(
-    max_workers=2,
-    thread_name_prefix="ed_fast_quote",
-)
+# Lazily created so repeated TestClient lifespans in the same process get a fresh pool after shutdown.
+_fast_quote_executor: Optional[ThreadPoolExecutor] = None
 
 # Single worker: outcome backfill scans snapshots + bars — must not run on the hot _fetch_state path.
-_db_fill_outcomes_executor = ThreadPoolExecutor(
-    max_workers=1,
-    thread_name_prefix="ed_fill_outcomes",
-)
+_db_fill_outcomes_executor: Optional[ThreadPoolExecutor] = None
+
+
+def _get_fast_quote_executor() -> ThreadPoolExecutor:
+    global _fast_quote_executor
+    if _fast_quote_executor is None:
+        _fast_quote_executor = ThreadPoolExecutor(
+            max_workers=2,
+            thread_name_prefix="ed_fast_quote",
+        )
+    return _fast_quote_executor
+
+
+def _get_db_fill_outcomes_executor() -> ThreadPoolExecutor:
+    global _db_fill_outcomes_executor
+    if _db_fill_outcomes_executor is None:
+        _db_fill_outcomes_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="ed_fill_outcomes",
+        )
+    return _db_fill_outcomes_executor
 
 # Tier C — background _fetch_state only; HTTP handlers never await heavy work.
 _analytics_executor = ThreadPoolExecutor(
@@ -4270,7 +4285,7 @@ def _fetch_state(
                         ex,
                     )
 
-            _db_fill_outcomes_executor.submit(_bg_fill_outcomes)
+            _get_db_fill_outcomes_executor().submit(_bg_fill_outcomes)
             # Heavy normalized-table materialize must not run from every snapshot by default;
             # set ED_LIVE_SNAPSHOT_MATERIALIZE=1 to re-enable debounced refresh on this path, or use ml_scheduler/CLI.
             if os.environ.get("ED_LIVE_SNAPSHOT_MATERIALIZE", "0").strip().lower() in (
@@ -5029,8 +5044,13 @@ async def _app_lifespan(app):
         log.warning("Order flow streaming shutdown: %s", e)
 
     stop_logger()
-    _fast_quote_executor.shutdown(wait=True)
-    _db_fill_outcomes_executor.shutdown(wait=True)
+    global _fast_quote_executor, _db_fill_outcomes_executor
+    if _fast_quote_executor is not None:
+        _fast_quote_executor.shutdown(wait=True)
+        _fast_quote_executor = None
+    if _db_fill_outcomes_executor is not None:
+        _db_fill_outcomes_executor.shutdown(wait=True)
+        _db_fill_outcomes_executor = None
 
 
 app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
@@ -5873,7 +5893,7 @@ async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
     loop = asyncio.get_event_loop()
     submit_ts = time.perf_counter()
     try:
-        payload = await loop.run_in_executor(_fast_quote_executor, _fetch_fast_quote_payload, ticker)
+        payload = await loop.run_in_executor(_get_fast_quote_executor(), _fetch_fast_quote_payload, ticker)
         after_exec = time.perf_counter()
         log.info(
             "fast_quote_route_done ticker=%s asyncio_thread=%s route_total_ms=%.2f await_executor_ms=%.2f",
