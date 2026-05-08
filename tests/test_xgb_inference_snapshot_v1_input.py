@@ -215,3 +215,27 @@ def test_build_inference_snapshot_v1_from_signal_input_uses_adapter_only():
     assert snap["snapshot_type"] == "InferenceSnapshotV1"
     assert snap["features"]["price.spot"] == 400.0
 
+
+def test_build_inference_snapshot_v1_from_signal_input_does_not_fabricate_as_of_ts():
+    from types import SimpleNamespace
+
+    from features.inference_snapshot import build_inference_snapshot_v1_from_signal_input
+
+    inp = SimpleNamespace(
+        ticker="SPY",
+        expiry=None,
+        refresh_ts_utc=None,
+        spot=400.0,
+        spread=0.01,
+        zone="pin_neutral",
+        nearest_above_dist=1.0,
+        nearest_below_dist=1.0,
+        net_gamma=100.0,
+        vwap_side="above",
+        vwap_dist_pts=0.5,
+    )
+
+    snap = build_inference_snapshot_v1_from_signal_input(inp)
+
+    assert snap["as_of_ts"] is None
+

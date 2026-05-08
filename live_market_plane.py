@@ -62,6 +62,20 @@ def _plane_tuple_sig(spot: Any, bid: Any, ask: Any) -> tuple[Optional[float], Op
     )
 
 
+def _positive_float(val: Any) -> Optional[float]:
+    f = _safe_float(val)
+    if f is None or f <= 0:
+        return None
+    return f
+
+
+def _epoch_seconds_from_millis(val: Any) -> Optional[float]:
+    f = _safe_float(val)
+    if f is None or f <= 0:
+        return None
+    return f / 1000.0
+
+
 def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     """
     Ingest one Schwab streaming LEVEL_ONE_EQUITY content row into the plane.
@@ -73,9 +87,10 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     if not t:
         return False
 
-    last = _safe_float(item.get("LAST_PRICE")) or _safe_float(item.get("MARK"))
-    bid = _safe_float(item.get("BID_PRICE")) or _safe_float(item.get("BID"))
-    ask = _safe_float(item.get("ASK_PRICE")) or _safe_float(item.get("ASK"))
+    last = _positive_float(item.get("LAST_PRICE"))
+    mark = _positive_float(item.get("MARK"))
+    bid = _positive_float(item.get("BID_PRICE")) or _positive_float(item.get("BID"))
+    ask = _positive_float(item.get("ASK_PRICE")) or _positive_float(item.get("ASK"))
 
     with _lock:
         prev = _by_ticker.get(t)
@@ -83,24 +98,26 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
         pbid = prev.get("bid") if prev else None
         pask = prev.get("ask") if prev else None
 
-    spot_f = last
-    if spot_f is None or spot_f <= 0:
-        spot_f = pspot if isinstance(pspot, (int, float)) and pspot and pspot > 0 else None
-    if spot_f is None or spot_f <= 0:
-        if bid is not None and ask is not None and bid > 0 and ask > 0:
-            spot_f = (bid + ask) / 2.0
-
-    if bid is None:
-        bid = pbid if isinstance(pbid, (int, float)) else None
-    if ask is None:
-        ask = pask if isinstance(pask, (int, float)) else None
+    spot_f = last or mark
+    spot_source = "LAST_PRICE" if last is not None else ("MARK" if mark is not None else None)
+    bid_source = "BID_PRICE" if _positive_float(item.get("BID_PRICE")) is not None else ("BID" if bid is not None else None)
+    ask_source = "ASK_PRICE" if _positive_float(item.get("ASK_PRICE")) is not None else ("ASK" if ask is not None else None)
 
     if spot_f is None or spot_f <= 0:
         return False
 
+    quote_ts = (
+        _epoch_seconds_from_millis(item.get("QUOTE_TIME_MILLIS"))
+        or _epoch_seconds_from_millis(item.get("TRADE_TIME_MILLIS"))
+    )
     new_sig = _plane_tuple_sig(spot_f, bid, ask)
     prev_sig = _plane_tuple_sig(pspot, pbid, pask) if prev else None
-    if prev_sig == new_sig and (prev or {}).get("quote_ingestion") == "schwab_streaming_level_one":
+    prev_quote_ts = (prev or {}).get("fast_server_ts")
+    if (
+        prev_sig == new_sig
+        and (prev or {}).get("quote_ingestion") == "schwab_streaming_level_one"
+        and (quote_ts is None or prev_quote_ts == quote_ts)
+    ):
         return False
 
     spread_frac = None
@@ -113,7 +130,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     except (TypeError, ValueError):
         pass
 
-    ts = time.time()
+    server_received_ts = time.time()
     out = {
         "ticker": t,
         "spot": float(spot_f),
@@ -123,9 +140,22 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
         "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
         "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
         "spread": spread_frac,
+        "spread_pts": round(float(ask) - float(bid), 4) if bid is not None and ask is not None else None,
         "fast_generation_id": next_fast_generation(t),
-        "fast_server_ts": ts,
+        "fast_server_ts": quote_ts,
+        "quote_time_source": "schwab_streaming_level_one" if quote_ts is not None else "unavailable",
+        "server_received_ts": server_received_ts,
         "quote_ingestion": "schwab_streaming_level_one",
+        "quote_source_detail": {
+            "spot": spot_source,
+            "bid": bid_source,
+            "ask": ask_source,
+            "spread": "schwab_bid_ask" if bid is not None and ask is not None else "unavailable_missing_bid_or_ask",
+            "carried_forward": False,
+            "previous_spot_available": pspot is not None,
+            "previous_bid_available": pbid is not None,
+            "previous_ask_available": pask is not None,
+        },
     }
     with _lock:
         _by_ticker[t] = out

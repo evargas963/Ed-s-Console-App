@@ -285,7 +285,8 @@ _l1_sse_diag: dict[str, int] = {
     "l1_light_sse_duplicate_scope_same_client_warn_total": 0,
     "l1_light_sse_rejected_total": 0,
 }
-_l1_sse_last_drop_wall_ts: float = 0.0
+# Process-local monotonic instant of last SSE backpressure drop (not Schwab/market time).
+_l1_sse_last_drop_mono: float = 0.0
 # Per scope: last (l1_generation, _server_build_ts, fingerprint) emitted on SSE wire.
 _l1_last_emit_identity: dict[tuple[str, str | None], tuple[int, float, str]] = {}
 
@@ -446,7 +447,7 @@ def _l1_put_l1_client_queue(q: asyncio.Queue, env: dict) -> None:
     Per-client asyncio.Queue (maxsize=8): on QueueFull, drop oldest pending event for this
     connection, then enqueue the newest — preserves latest projection under saturation.
     """
-    global _l1_sse_last_drop_wall_ts
+    global _l1_sse_last_drop_mono
     while True:
         try:
             q.put_nowait(env)
@@ -458,7 +459,7 @@ def _l1_put_l1_client_queue(q: asyncio.Queue, env: dict) -> None:
                 _l1_sse_diag["l1_light_sse_client_queue_evicted_oldest"] = int(
                     _l1_sse_diag.get("l1_light_sse_client_queue_evicted_oldest", 0)
                 ) + 1
-                _l1_sse_last_drop_wall_ts = time.time()
+                _l1_sse_last_drop_mono = time.monotonic()
             except asyncio.QueueEmpty:
                 _l1_sse_diag["l1_light_sse_events_dropped_full"] = int(_l1_sse_diag.get("l1_light_sse_events_dropped_full", 0)) + 1
                 return
@@ -476,7 +477,7 @@ def _l1_put_thread_queue_notify(sk: tuple[str, str | None], env: dict) -> None:
       next build. No starvation of the newest event for the producer that is currently pushing.
     - Alternative per-scope thread queues would add complexity and memory; not justified here.
     """
-    global _l1_sse_last_drop_wall_ts
+    global _l1_sse_last_drop_mono
     while True:
         try:
             _l1_sse_thread_queue.put_nowait((sk, env))
@@ -488,7 +489,7 @@ def _l1_put_thread_queue_notify(sk: tuple[str, str | None], env: dict) -> None:
                 _l1_sse_diag["l1_light_sse_thread_queue_evicted_oldest"] = int(
                     _l1_sse_diag.get("l1_light_sse_thread_queue_evicted_oldest", 0)
                 ) + 1
-                _l1_sse_last_drop_wall_ts = time.time()
+                _l1_sse_last_drop_mono = time.monotonic()
             except queue.Empty:
                 _l1_sse_diag["l1_light_sse_events_dropped_full"] = int(_l1_sse_diag.get("l1_light_sse_events_dropped_full", 0)) + 1
                 return
@@ -614,13 +615,13 @@ def _stamp_analytics_freshness_on_completed_fetch(
     exp = md.get("selected_exp")
     ck = (t, exp)
     ent = _state_cache.get(ck)
-    now = time.time()
+    analytics_freshness_eval_wall_ts = time.time()
     sse_live = _sse_subscribers.get(ck, 0) > 0
     _attach_analytics_freshness_contract(
         md,
         data_cache_key=ck,
         entry=ent,
-        now=now,
+        now=analytics_freshness_eval_wall_ts,
         sse_live=sse_live,
         inflight_key=inflight_key,
     )
@@ -630,7 +631,9 @@ def _stamp_analytics_freshness_on_completed_fetch(
     if ent:
         gen_ts = _analytics_generated_ts(ent)
         if gen_ts > 0:
-            md["analytics_age_sec"] = max(0.0, round(now - gen_ts, 3))
+            md["analytics_age_sec"] = max(
+                0.0, round(analytics_freshness_eval_wall_ts - gen_ts, 3)
+            )
 
 
 def _any_sse_viewer_for_ticker(ticker: str) -> bool:
@@ -642,7 +645,7 @@ def _any_sse_viewer_for_ticker(ticker: str) -> bool:
 def _minimal_analytics_pending_dict(ticker: str, expiry: Optional[str]) -> dict:
     """Empty Tier C shell when no cache — client keeps Tier A DOM until SSE/REST delivers full bundle."""
     t = ticker.upper().strip()
-    ts = time.time()
+    pending_shell_ingestion_wall_ts = time.time()
     return {
         "_tier": "C_analytics",
         "analytics_pending_shell": True,
@@ -653,7 +656,7 @@ def _minimal_analytics_pending_dict(ticker: str, expiry: Optional[str]) -> dict:
         "totals_rows": [],
         "summary_rows": [],
         "state_error": None,
-        "_server_build_ts": ts,
+        "_server_build_ts": pending_shell_ingestion_wall_ts,
         "_pipeline_ms": 0,
         "_endpoint": "/api/analytics/state",
     }
@@ -682,7 +685,6 @@ def _evict_old_expiry_entries(ticker: str, keep_expiry: Optional[str]) -> None:
 
 def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
     """Schwab REST quote → plane-shaped dict (does not record)."""
-    t_wall = time.time()
     t0 = time.perf_counter()
     thread_name = threading.current_thread().name
     t_client0 = time.perf_counter()
@@ -709,27 +711,31 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
     q_json = q_resp.json()
     t_parse0 = time.perf_counter()
     parsed = parse_quote_payload(tkr, q_json, session_label)
-    spot = parsed.last or parsed.mark or 0.0
+    spot_source = "lastPrice" if parsed.last and parsed.last > 0 else ("mark" if parsed.mark and parsed.mark > 0 else None)
+    spot = parsed.last if spot_source == "lastPrice" else (parsed.mark if spot_source == "mark" else None)
     bid, ask = parsed.bid, parsed.ask
     try:
-        spot_f = float(spot) if spot else 0.0
+        spot_f = float(spot) if spot and float(spot) > 0 else None
     except (TypeError, ValueError):
-        spot_f = 0.0
+        spot_f = None
     spread_frac = None
+    spread_pts = None
     try:
         if bid is not None and ask is not None:
             bf, af = float(bid), float(ask)
             mid = (bf + af) / 2.0
             if mid > 0:
                 spread_frac = (af - bf) / mid
+                spread_pts = round(af - bf, 4)
     except (TypeError, ValueError):
         pass
     t_parse1 = time.perf_counter()
-    ts = time.time()
+    quote_ts = parsed.quote_time or parsed.trade_time
+    server_received_ts = time.time()
     total_ms = (time.perf_counter() - t0) * 1000.0
     log.info(
         "fast_quote_timing ticker=%s thread=%s total_ms=%.2f get_client_ms=%.3f "
-        "session_cache_ms=%.3f schwab_quote_ms=%.2f parse_ms=%.3f quote_attempts=%s fast_wall_ts=%.3f ingestion=%s",
+        "session_cache_ms=%.3f schwab_quote_ms=%.2f parse_ms=%.3f quote_attempts=%s server_received_ts=%.3f ingestion=%s",
         tkr,
         thread_name,
         total_ms,
@@ -738,21 +744,31 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
         (t_quote1 - t_quote0) * 1000.0,
         (t_parse1 - t_parse0) * 1000.0,
         quote_attempts,
-        t_wall,
+        server_received_ts,
         quote_ingestion,
     )
     return {
         "ticker": tkr,
-        "spot": float(spot_f) if spot_f else None,
+        "spot": float(spot_f) if spot_f is not None else None,
         "bid": float(bid) if bid is not None else None,
         "ask": float(ask) if ask is not None else None,
-        "spot_disp": f"{spot_f:.2f}" if spot_f else "—",
+        "spot_disp": f"{spot_f:.2f}" if spot_f is not None else "—",
         "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
         "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
         "spread": spread_frac,
+        "spread_pts": spread_pts,
         "fast_generation_id": _lmp.next_fast_generation(tkr),
-        "fast_server_ts": ts,
+        "fast_server_ts": quote_ts,
+        "quote_time_source": "schwab_rest_quote" if quote_ts is not None else "unavailable",
+        "server_received_ts": server_received_ts,
         "quote_ingestion": quote_ingestion,
+        "quote_source_detail": {
+            "spot": spot_source or "unavailable_missing_last_and_mark",
+            "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
+            "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
+            "spread": "schwab_bid_ask" if spread_frac is not None else "unavailable_missing_bid_or_ask",
+            "carried_forward": False,
+        },
     }
 
 
@@ -1034,7 +1050,7 @@ class _CandleAccumulator:
             if delta < 0:
                 prev = None
         else:
-            vol_delta = 0.0
+            vol_delta = None
         if total_now is not None:
             self._prev_total_vol[ticker] = total_now
 
@@ -1049,7 +1065,7 @@ class _CandleAccumulator:
                 completed = Candle(
                     ts=cur["ts"], open=cur["o"], high=cur["h"],
                     low=cur["l"], close=cur["c"],
-                    volume=cur.get("v", 0.0)
+                    volume=cur.get("v")
                 )
                 self._bars[ticker].append(completed)
                 if len(self._bars[ticker]) > self.max_bars:
@@ -1062,7 +1078,8 @@ class _CandleAccumulator:
             cur["h"] = max(cur["h"], price)
             cur["l"] = min(cur["l"], price)
             cur["c"] = price
-            cur["v"] = cur.get("v", 0.0) + vol_delta
+            if vol_delta is not None:
+                cur["v"] = (cur.get("v") or 0.0) + vol_delta
 
     def get_bars(self, ticker: str) -> list[Candle]:
         """Return completed bars (not including the in-progress bar)."""
@@ -1084,7 +1101,7 @@ class _CandleAccumulator:
                         high=float(b["high"]),
                         low=float(b["low"]),
                         close=float(b["close"]),
-                        volume=float(b.get("volume", 0)),
+                        volume=float(b["volume"]),
                     ))
                 except (KeyError, ValueError, TypeError):
                     continue
@@ -1319,16 +1336,16 @@ def _load_persisted_tickers() -> list[str]:
         return tickers
     try:
         db = get_db()
-        now = time.time()
+        logging_universe_sync_wall_ts = time.time()
         _run_legacy_logger_json_migration(db)
-        db.logging_universe_sync_core(CORE_TICKERS, now)
+        db.logging_universe_sync_core(CORE_TICKERS, logging_universe_sync_wall_ts)
         try:
             removed = db.logging_universe_prune_invalid_enrollments()
             if removed:
                 log.warning("Issue 22: pruned invalid logging_universe enrollments: %s", removed)
         except Exception as e:
             log.warning("Issue 22: logging_universe prune failed: %s", e)
-        _sync_market_context_panel_into_logging_universe(db, now)
+        _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
         for row in db.logging_universe_list_rows():
             if row.get("category") in ("user_persisted", "pinned", "panel_auto"):
                 t = (row.get("ticker") or "").upper().strip()
@@ -1360,16 +1377,16 @@ def _hydrate_logger_tickers_from_db() -> None:
         return
     try:
         db = get_db()
-        now = time.time()
+        logging_universe_sync_wall_ts = time.time()
         _run_legacy_logger_json_migration(db)
-        db.logging_universe_sync_core(CORE_TICKERS, now)
+        db.logging_universe_sync_core(CORE_TICKERS, logging_universe_sync_wall_ts)
         try:
             removed = db.logging_universe_prune_invalid_enrollments()
             if removed:
                 log.warning("Issue 22: pruned invalid logging_universe enrollments: %s", removed)
         except Exception as e:
             log.warning("Issue 22: logging_universe prune failed: %s", e)
-        _sync_market_context_panel_into_logging_universe(db, now)
+        _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
         merged = list(CORE_TICKERS)
         for row in db.logging_universe_list_rows():
             if row.get("category") in ("user_persisted", "pinned", "panel_auto"):
@@ -1429,12 +1446,12 @@ def _add_logger_ticker(ticker: str, *, enrollment_source: str = "ui_auto") -> bo
     if not is_valid_production_ticker(ticker):
         log.warning("Background logger: refusing invalid ticker %r", ticker)
         return False
-    now = time.time()
+    enrollment_touch_wall_ts = time.time()
     with _logger_lock:
         if ticker in _logger_tickers:
             if _HAS_SIGNALS:
                 try:
-                    get_db().logging_universe_touch_seen(ticker, now)
+                    get_db().logging_universe_touch_seen(ticker, enrollment_touch_wall_ts)
                 except Exception:
                     pass
             return False
@@ -1462,7 +1479,7 @@ def _add_logger_ticker(ticker: str, *, enrollment_source: str = "ui_auto") -> bo
                     break
                 db.logging_universe_record_eviction(
                     evicted_ticker=victim,
-                    evicted_ts_utc=now,
+                    evicted_ts_utc=enrollment_touch_wall_ts,
                     reason="user_persisted_cap_fifo",
                     cap_limit=cap,
                     incoming_ticker=ticker,
@@ -1480,7 +1497,9 @@ def _add_logger_ticker(ticker: str, *, enrollment_source: str = "ui_auto") -> bo
                     cap,
                     ticker,
                 )
-            db.logging_universe_upsert_user_persisted(ticker, enrollment_source, now)
+            db.logging_universe_upsert_user_persisted(
+                ticker, enrollment_source, enrollment_touch_wall_ts
+            )
         except ValueError as e:
             log.warning("logging_universe upsert rejected: %s", e)
         except Exception as e:
@@ -1524,9 +1543,12 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None):
     = 51+ duplicate calls). Now called ONCE per cycle.
     """
     global _cached_mkt_ctx, _cached_mkt_ctx_ts
-    now = time.time()
+    mkt_ctx_cache_eval_wall_ts = time.time()
     with _cached_mkt_ctx_lock:
-        if _cached_mkt_ctx is not None and (now - _cached_mkt_ctx_ts) < MKT_CTX_TTL:
+        if (
+            _cached_mkt_ctx is not None
+            and (mkt_ctx_cache_eval_wall_ts - _cached_mkt_ctx_ts) < MKT_CTX_TTL
+        ):
             # Cache is fresh — update PCR values on the cached object
             # (PCR is per-ticker, comes from the chain, not from market context)
             if pcr is not None:
@@ -1556,7 +1578,7 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None):
         ctx = MarketContext()
     with _cached_mkt_ctx_lock:
         _cached_mkt_ctx = ctx
-        _cached_mkt_ctx_ts = now
+        _cached_mkt_ctx_ts = mkt_ctx_cache_eval_wall_ts
     return ctx
 
 
@@ -1581,17 +1603,17 @@ def _logger_fetch_and_log(ticker: str) -> str:
         # Full pipeline fetch
         _fetch_state(ticker, expiry=None, log_only=True)
 
-        _ts = time.time()
+        logger_cycle_touch_wall_ts = time.time()
         with _logger_lock:
             _logger_stats.setdefault(ticker, {})
-            _logger_stats[ticker]["last_logged"] = _ts
+            _logger_stats[ticker]["last_logged"] = logger_cycle_touch_wall_ts
             _logger_stats[ticker]["count"]       = _logger_stats[ticker].get("count", 0) + 1
             _logger_stats[ticker]["last_error"]  = None
             _logger_stats[ticker]["source"]      = "fetch"
 
         if _HAS_SIGNALS:
             try:
-                get_db().logging_universe_touch_background_log(ticker, _ts)
+                get_db().logging_universe_touch_background_log(ticker, logger_cycle_touch_wall_ts)
             except Exception:
                 pass
 
@@ -1629,7 +1651,7 @@ def _logger_loop():
     time.sleep(10)
 
     while _logger_running:
-        cycle_start = time.time()
+        cycle_start = time.monotonic()
 
         with _logger_lock:
             tickers_this_cycle = list(_logger_tickers)
@@ -1646,14 +1668,14 @@ def _logger_loop():
             status = _logger_fetch_and_log(ticker)
             log.info(f"Logger: {ticker} → {status}")
 
-        # Wait for remainder of the interval
-        elapsed = time.time() - cycle_start
+        # Wait for remainder of the interval (monotonic — not market/quote time)
+        elapsed = time.monotonic() - cycle_start
         wait    = max(0, LOG_INTERVAL - elapsed)
         log.info(f"Logger cycle complete in {elapsed:.1f}s — sleeping {wait:.1f}s")
 
         # Sleep in small chunks so we can exit cleanly if stopped
-        sleep_end = time.time() + wait
-        while _logger_running and time.time() < sleep_end:
+        sleep_end = time.monotonic() + wait
+        while _logger_running and time.monotonic() < sleep_end:
             time.sleep(1)
 
     log.info("Background multi-ticker logger stopped")
@@ -2100,7 +2122,7 @@ def _safe_float_quote(v) -> Optional[float]:
         return None
 
 
-def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float:
+def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float | None:
     """
     Update and return REST-based cum_delta accumulator for ticker.
     Resets at 9:30 ET on RTH open (not midnight). Pre-market trades do not carry into RTH.
@@ -2118,17 +2140,19 @@ def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float:
     except Exception as e:
         log.debug(f"REST cum_delta session check failed: {e}")
     last_price = _safe_float_quote(quote.get("lastPrice"))
-    last_size = _safe_float_quote(quote.get("lastSize")) or 0.0
+    last_size = _safe_float_quote(quote.get("lastSize"))
     bid_price = _safe_float_quote(quote.get("bidPrice"))
     ask_price = _safe_float_quote(quote.get("askPrice"))
-    if last_price is None or last_size <= 0:
-        return _rest_cum_delta.get(ticker, 0.0)
+    if last_price is None or last_size is None or last_size <= 0:
+        return _rest_cum_delta.get(ticker)
     delta = 0.0
     if ask_price is not None and last_price >= ask_price:
         delta = last_size
     elif bid_price is not None and last_price <= bid_price:
         delta = -last_size
-    cur = _rest_cum_delta.get(ticker, 0.0)
+    cur = _rest_cum_delta.get(ticker)
+    if cur is None:
+        cur = 0.0
     _rest_cum_delta[ticker] = cur + delta
     return _rest_cum_delta[ticker]
 
@@ -2164,6 +2188,7 @@ def _compute_vwap_from_bars(bars: list) -> Optional[float]:
 _dpi_normalized_prev_by_ticker: dict[str, Optional[float]] = {}
 # Last good bid-ask width (pts) when quote had both sides — reused if a poll drops one side
 _last_spread_by_ticker: dict[str, float] = {}
+_last_spread_ts_by_ticker: dict[str, float] = {}
 
 
 # L1 generation counter per (ticker, expiry|__auto__) — monotonic for this process.
@@ -2180,7 +2205,7 @@ _l1_scope_lru: OrderedDict[tuple, None] = OrderedDict()
 # Quote-hook OF gating (per ticker): cheap input probe + cached signature — avoids redundant engine.compute.
 _l1_of_probe_by_ticker: dict[str, tuple[Any, ...]] = {}
 _l1_of_sig_cache_by_ticker: dict[str, tuple[Any, ...]] = {}
-_l1_of_last_engine_ts_by_ticker: dict[str, float] = {}
+_l1_of_last_engine_mono_by_ticker: dict[str, float] = {}
 
 # Process-local counters for validation / ops (lightweight; not high-cardinality).
 # Names prefixed l1_* for grep; diagnostics endpoint exposes the same structure.
@@ -2202,7 +2227,7 @@ _l1_instrumentation: dict[str, Any] = {
 
 
 # Monotonic clock anchor for L1 diagnostics rates (operational assessment per /api/diagnostics/l1).
-_l1_diag_start_ts = time.time()
+_l1_diag_start_mono = time.monotonic()
 
 
 def _l1_generation_pop(key: tuple) -> None:
@@ -2319,7 +2344,7 @@ def _l1_attach_freshness_semantics(out: dict[str, Any], now_ts: float) -> None:
 
 
 def _l1_sync_of_probe_cache_from_authoritative_build(
-    tkr: str, row: Optional[dict], out: dict[str, Any], now_ts: float
+    tkr: str, row: Optional[dict], out: dict[str, Any], _now_ts: float
 ) -> None:
     """Keep quote-hook OF probe/sig aligned with _project_l1 (no extra OrderFlowEngine call)."""
     from planes.context_light import build_order_flow_input_probe, order_flow_compact_signature
@@ -2327,7 +2352,7 @@ def _l1_sync_of_probe_cache_from_authoritative_build(
     of_block = out.get("order_flow") or {}
     _l1_of_sig_cache_by_ticker[tkr] = order_flow_compact_signature(of_block)
     _l1_of_probe_by_ticker[tkr] = build_order_flow_input_probe(tkr, row)
-    _l1_of_last_engine_ts_by_ticker[tkr] = now_ts
+    _l1_of_last_engine_mono_by_ticker[tkr] = time.monotonic()
 
 
 def _l1_quote_hook_order_flow_signature(ticker: str) -> tuple[Any, ...]:
@@ -2347,24 +2372,24 @@ def _l1_quote_hook_order_flow_signature(ticker: str) -> tuple[Any, ...]:
 
     tkr = ticker.upper().strip()
     row = _lmp.get_quote(tkr)
-    now = time.time()
+    now_mono = time.monotonic()
     probe = build_order_flow_input_probe(tkr, row)
 
     last_sig = _l1_of_sig_cache_by_ticker.get(tkr)
     last_probe = _l1_of_probe_by_ticker.get(tkr)
-    last_eng = _l1_of_last_engine_ts_by_ticker.get(tkr, 0.0)
+    last_eng_mono = _l1_of_last_engine_mono_by_ticker.get(tkr, 0.0)
 
     if (
         last_sig is not None
         and last_probe is not None
         and probe == last_probe
-        and (now - last_eng) < L1_OF_PROBE_FORCE_REFRESH_SEC
+        and (now_mono - last_eng_mono) < L1_OF_PROBE_FORCE_REFRESH_SEC
     ):
         _l1_instrumentation["l1_of_quote_hook_reuse_total"] += 1
         return last_sig
 
-    if last_sig is not None and (now - last_eng) < L1_OF_MIN_COMPUTE_INTERVAL_SEC:
-        if (now - last_eng) < L1_OF_PROBE_FORCE_REFRESH_SEC:
+    if last_sig is not None and (now_mono - last_eng_mono) < L1_OF_MIN_COMPUTE_INTERVAL_SEC:
+        if (now_mono - last_eng_mono) < L1_OF_PROBE_FORCE_REFRESH_SEC:
             _l1_instrumentation["l1_of_quote_hook_reuse_total"] += 1
             return last_sig
 
@@ -2372,7 +2397,7 @@ def _l1_quote_hook_order_flow_signature(ticker: str) -> tuple[Any, ...]:
     sig = order_flow_compact_signature(ofc)
     _l1_of_probe_by_ticker[tkr] = probe
     _l1_of_sig_cache_by_ticker[tkr] = sig
-    _l1_of_last_engine_ts_by_ticker[tkr] = now
+    _l1_of_last_engine_mono_by_ticker[tkr] = now_mono
     _l1_instrumentation["l1_of_quote_hook_engine_total"] += 1
     return sig
 
@@ -2424,14 +2449,14 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
     gen = _l1_next_generation(key)
     row = _lmp.get_quote(tkr)
     ent = _resolve_l2_cache_entry_for_l1(tkr, expiry)
-    now = time.time()
+    l1_eval_wall_ts = time.time()
     inflight = _l2_refresh_in_progress_for_l1(tkr, expiry)
     ctx = L1BuildContext(
         ticker=tkr,
         request_expiry=expiry,
         l0_row=row,
         l2_cache_entry=ent,
-        now_ts=now,
+        now_ts=l1_eval_wall_ts,
         l2_analytics_refresh_in_progress=inflight,
         l1_generation=gen,
     )
@@ -2453,11 +2478,11 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
         "l1_quote_material_skip_total": int(_l1_instrumentation["l1_quote_material_skip_total"]),
         "l1_cache_eviction_total": int(_l1_instrumentation["l1_cache_eviction_total"]),
     }
-    _l1_attach_freshness_semantics(out, now)
+    _l1_attach_freshness_semantics(out, l1_eval_wall_ts)
     _l1_snapshot_cache[key] = deepcopy(out)
     _l1_touch_scope(key)
-    _l1_cache_maintain(now)
-    _l1_sync_of_probe_cache_from_authoritative_build(tkr, row, out, now)
+    _l1_cache_maintain(l1_eval_wall_ts)
+    _l1_sync_of_probe_cache_from_authoritative_build(tkr, row, out, l1_eval_wall_ts)
     try:
         _l1_notify_sse_after_authoritative_build(ticker, expiry)
     except Exception as ex:
@@ -2518,13 +2543,13 @@ def _l1_maybe_rebuild_quote_scope(
     key = (tkr, expiry if expiry is not None else "__auto__")
     row = _lmp.get_quote(tkr)
     ent = _resolve_l2_cache_entry_for_l1(tkr, expiry)
-    now = time.time()
+    l1_eval_wall_ts = time.time()
     cached = _l1_snapshot_cache.get(key)
-    if cached is not None and snapshot_expired_for_http_serve(cached, now):
+    if cached is not None and snapshot_expired_for_http_serve(cached, l1_eval_wall_ts):
         _project_l1(ticker, expiry, reason="quote_path_serve_age")
         return
     prev_fp = (cached or {}).get("_l1_input_fingerprint")
-    adaptive_ctx = _l1_adaptive_materiality_context(tkr, row, now)
+    adaptive_ctx = _l1_adaptive_materiality_context(tkr, row, l1_eval_wall_ts)
     if input_fingerprint_materially_changed(prev_fp, row, ent, ticker=tkr, adaptive_context=adaptive_ctx):
         _project_l1(ticker, expiry, reason="quote_material")
         return
@@ -2563,8 +2588,8 @@ def _l1_http_get_projection(ticker: str, expiry: Optional[str], *, force: bool =
     from planes.l1_runtime import L1_HTTP_SERVE_MAX_AGE_SEC, snapshot_expired_for_http_serve
 
     tkr = ticker.upper().strip()
-    now = time.time()
-    _l1_cache_maintain(now)
+    l1_eval_wall_ts = time.time()
+    _l1_cache_maintain(l1_eval_wall_ts)
 
     if force:
         return _project_l1(ticker, expiry, reason="http_force_refresh")
@@ -2574,15 +2599,15 @@ def _l1_http_get_projection(ticker: str, expiry: Optional[str], *, force: bool =
     if cached is None:
         return _project_l1(ticker, expiry, reason="cold_start")
 
-    if snapshot_expired_for_http_serve(cached, now):
+    if snapshot_expired_for_http_serve(cached, l1_eval_wall_ts):
         return _project_l1(ticker, expiry, reason="http_serve_stale_rebuild")
 
     _l1_instrumentation["l1_http_cache_hit_total"] += 1
     out = deepcopy(cached)
     _lmp.apply_l1_live_quote_overlay(out, tkr)
     _l1_touch_scope(key)
-    built = float(out.get("as_of_ts") or out.get("_server_build_ts") or now)
-    age = max(0.0, now - built)
+    built = float(out.get("as_of_ts") or out.get("_server_build_ts") or l1_eval_wall_ts)
+    age = max(0.0, l1_eval_wall_ts - built)
     prev_inst = dict(out.get("l1_instrumentation") or {})
     out["l1_projection"] = {
         "mode": "authoritative_cache_read",
@@ -2597,7 +2622,7 @@ def _l1_http_get_projection(ticker: str, expiry: Optional[str], *, force: bool =
         "l1_cache_eviction_total": int(_l1_instrumentation["l1_cache_eviction_total"]),
         "l1_projection_read": True,
     }
-    _l1_attach_freshness_semantics(out, now)
+    _l1_attach_freshness_semantics(out, l1_eval_wall_ts)
     return out
 
 
@@ -2700,7 +2725,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     live_market_plane + optional single REST quote bootstrap. No chain, exposures,
     build_market_state, DB, news, or model health. Session from ET clock only.
     """
-    t0 = time.time()
+    t0_mono = time.monotonic()
     tkr = ticker.upper().strip()
     sess = _derive_session()
     row = _lmp.get_quote(tkr)
@@ -2710,10 +2735,13 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         if q_resp and q_resp.status_code == 200:
             q_json = q_resp.json()
             pq = parse_quote_payload(tkr, q_json, sess)
-            spot = pq.last or pq.mark
+            spot_source = "lastPrice" if pq.last and pq.last > 0 else ("mark" if pq.mark and pq.mark > 0 else None)
+            spot = pq.last if spot_source == "lastPrice" else (pq.mark if spot_source == "mark" else None)
             bid, ask = pq.bid, pq.ask
             if spot and float(spot) > 0:
                 sf = float(spot)
+                quote_ts = pq.quote_time or pq.trade_time
+                server_received_ts = time.time()
                 row = {
                     "ticker": tkr,
                     "spot": sf,
@@ -2723,16 +2751,28 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                     "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
                     "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
                     "spread": None,
+                    "spread_pts": None,
                     "quote_ingestion": "rest_tier_a",
-                    "fast_server_ts": t0,
+                    "fast_server_ts": quote_ts,
+                    "quote_time_source": "schwab_rest_quote" if quote_ts is not None else "unavailable",
+                    "server_received_ts": server_received_ts,
                     "fast_generation_id": _lmp.next_fast_generation(tkr),
+                    "quote_source_detail": {
+                        "spot": spot_source,
+                        "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
+                        "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
+                        "spread": "unavailable_missing_bid_or_ask",
+                        "carried_forward": False,
+                    },
                 }
                 if bid is not None and ask is not None:
                     try:
-                        bf, af = float(bid), float(ask)
-                        mid = (bf + af) / 2.0
+                        b_px, a_px = float(bid), float(ask)
+                        mid = (b_px + a_px) / 2.0
                         if mid > 0:
-                            row["spread"] = (af - bf) / mid
+                            row["spread"] = (a_px - b_px) / mid
+                            row["spread_pts"] = round(a_px - b_px, 4)
+                            row["quote_source_detail"]["spread"] = "schwab_bid_ask"
                     except (TypeError, ValueError):
                         pass
     if not row or row.get("spot") is None:
@@ -2744,7 +2784,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
             "state_error": "no_quote",
             "state_error_detail": "No live plane or REST quote available yet.",
             "_server_build_ts": time.time(),
-            "_pipeline_ms": round((time.time() - t0) * 1000),
+            "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
             "_endpoint": "/api/live/state",
         }
     spot_f = float(row["spot"])
@@ -2768,12 +2808,16 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         "bid_disp": row.get("bid_disp"),
         "ask_disp": row.get("ask_disp"),
         "spread": spread_dollar,
+        "spread_pts": row.get("spread_pts"),
+        "quote_source_detail": row.get("quote_source_detail"),
         "quote_ingestion": row.get("quote_ingestion"),
+        "quote_time_source": row.get("quote_time_source"),
+        "server_received_ts": row.get("server_received_ts"),
         "fast_server_ts": row.get("fast_server_ts"),
         "fast_generation_id": row.get("fast_generation_id"),
         "_live_plane_fast_ts": row.get("fast_server_ts"),
         "_server_build_ts": time.time(),
-        "_pipeline_ms": round((time.time() - t0) * 1000),
+        "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
         "_endpoint": "/api/live/state",
     }
     try:
@@ -2830,7 +2874,7 @@ def _fetch_state(
     *,
     update_source: Optional[str] = None,
 ) -> dict:
-    _fetch_start_ts = time.time()
+    _fetch_start_mono = time.monotonic()
     _register_tracked_ticker(ticker)
     try:
         from live_pipeline_diag import emit_fetch_state_start
@@ -2858,7 +2902,7 @@ def _fetch_state(
     c_json = c_resp.json()
     contracts_raw = list(iter_contracts(c_json))
     contracts     = [contract_fields(ct) for ct in contracts_raw]
-    _t_after_chain = time.time()
+    _t_after_chain_mono = time.monotonic()
 
     # totalVolume: WebSocket TOTAL_VOLUME preferred; else chain underlying (include_underlying_quote)
     _total_vol = None
@@ -2882,21 +2926,26 @@ def _fetch_state(
     if q_resp is None or q_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Quote fetch failed")
     q_json = q_resp.json()
-    _t_after_quote = time.time()
+    _t_after_quote_mono = time.monotonic()
+    _t_after_quote_wall = time.time()
 
     parsed = parse_quote_payload(ticker, q_json, session_label)
-    spot   = parsed.last or parsed.mark or 0.0
+    spot   = parsed.last if parsed.last and parsed.last > 0 else (parsed.mark if parsed.mark and parsed.mark > 0 else None)
     bid    = parsed.bid
     ask    = parsed.ask
 
-    global _last_spread_by_ticker
+    global _last_spread_by_ticker, _last_spread_ts_by_ticker
     _quote_spread = (
         round(float(ask) - float(bid), 4) if (bid is not None and ask is not None) else None
     )
+    _quote_spread_source = "schwab_bid_ask_live" if _quote_spread is not None else "unavailable_missing_bid_or_ask"
+    _quote_spread_age_ms = 0 if _quote_spread is not None else None
     if _quote_spread is not None:
         _last_spread_by_ticker[ticker] = _quote_spread
-    elif ticker in _last_spread_by_ticker:
-        _quote_spread = _last_spread_by_ticker[ticker]
+        _last_spread_ts_by_ticker[ticker] = _t_after_quote_wall
+    elif ticker in _last_spread_by_ticker and ticker in _last_spread_ts_by_ticker:
+        _quote_spread_source = "cached_last_valid_not_tradeable"
+        _quote_spread_age_ms = max(0, int((_t_after_quote_wall - _last_spread_ts_by_ticker[ticker]) * 1000))
 
     # Remaining volume fields from quote REST if stream + chain underlying had none
     if _total_vol is None:
@@ -2959,11 +3008,12 @@ def _fetch_state(
             "dominant_dir": "flat",
             "rules_headline": "—",
         }
+        _minimal_end_mono = time.monotonic()
         _minimal["_server_build_ts"] = time.time()
-        _minimal["_pipeline_ms"] = round((time.time() - _fetch_start_ts) * 1000)
-        _minimal["_chain_ms"] = round((_t_after_chain - _fetch_start_ts) * 1000)
-        _minimal["_quote_ms"] = round((_t_after_quote - _t_after_chain) * 1000)
-        _minimal["_compute_ms"] = round((time.time() - _t_after_quote) * 1000)
+        _minimal["_pipeline_ms"] = round((_minimal_end_mono - _fetch_start_mono) * 1000)
+        _minimal["_chain_ms"] = round((_t_after_chain_mono - _fetch_start_mono) * 1000)
+        _minimal["_quote_ms"] = round((_t_after_quote_mono - _t_after_chain_mono) * 1000)
+        _minimal["_compute_ms"] = round((_minimal_end_mono - _t_after_quote_mono) * 1000)
         if update_source is not None:
             _minimal["_update_source"] = update_source
         _lmp.merge_into_state(_minimal, ticker)
@@ -2973,10 +3023,33 @@ def _fetch_state(
     contracts_use = filtered if filtered else contracts
 
     # ── Exposures ─────────────────────────────────────────────────────────────
+    if spot is None:
+        return stamp_decision_bundle({
+            "ticker": ticker.upper(),
+            "selected_exp": selected_exp,
+            "expiries": [e for e in expiries if e >= _today_str],
+            "state_error": "missing_canonical_spot",
+            "state_error_detail": "Schwab quote missing positive lastPrice and mark; refusing to compute state from synthetic spot.",
+            "spot": None,
+            "spot_disp": "—",
+            "bid": bid,
+            "ask": ask,
+            "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
+            "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
+            "quote_source_detail": {
+                "spot": "unavailable_missing_last_and_mark",
+                "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
+                "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
+                "spread": _quote_spread_source,
+                "spread_age_ms": _quote_spread_age_ms,
+                "carried_forward": _quote_spread_source == "cached_last_valid_not_tradeable",
+            },
+            "server_ts": time.time(),
+        })
     spot_f    = float(spot)
 
     # Feed tick into candle accumulators
-    _tick_ts = time.time()
+    _tick_ts = parsed.quote_time or parsed.trade_time
 
     # Seed candles from Schwab price history if this ticker has no bars yet.
     # Canonical (1m) drives snapshot/state; 5m remains derived context.
@@ -2998,8 +3071,9 @@ def _fetch_state(
         except Exception as e:
             log.debug(f"Candle seeding failed for {ticker}: {e}")
 
-    _candles_5m.tick(ticker, spot_f, _tick_ts, total_volume=_total_vol)
-    _candles_1m.tick(ticker, spot_f, _tick_ts, total_volume=_total_vol)
+    if _tick_ts is not None:
+        _candles_5m.tick(ticker, spot_f, _tick_ts, total_volume=_total_vol)
+        _candles_1m.tick(ticker, spot_f, _tick_ts, total_volume=_total_vol)
 
     _bars_5m_count = len(_candles_5m.get_bars(ticker))
     _bars_1m_count = len(_candles_1m.get_bars(ticker))
@@ -3105,13 +3179,15 @@ def _fetch_state(
     _today_date_str = now_et.strftime("%Y-%m-%d")
     _pl_cache_entry = _state_cache.get(_cache_key, {}).get("price_levels")
     _pl_cache_date  = _state_cache.get(_cache_key, {}).get("pl_date", "")
-    _pl_cache_ts    = _state_cache.get(_cache_key, {}).get("pl_ts", 0)
+    _pl_cache_mono = _state_cache.get(_cache_key, {}).get("pl_mono", None)
     _PL_CACHE_SEC   = 15  # within a day, refresh every 15s (for VWAP)
 
+    _now_mono = time.monotonic()
     _pl_stale = (
         _pl_cache_entry is None
         or _pl_cache_date != _today_date_str          # new trading day → force refresh
-        or (time.time() - _pl_cache_ts) >= _PL_CACHE_SEC  # intraday VWAP refresh
+        or _pl_cache_mono is None
+        or (_now_mono - float(_pl_cache_mono)) >= _PL_CACHE_SEC  # intraday VWAP refresh (process-local)
     )
 
     if not _pl_stale:
@@ -3132,7 +3208,7 @@ def _fetch_state(
         _sc = _state_cache.get(_cache_key, {})
         _sc["price_levels"] = price_levels
         _sc["pl_date"]      = _today_date_str
-        _sc["pl_ts"]        = time.time()
+        _sc["pl_mono"]      = time.monotonic()
         _state_cache[_cache_key] = _sc
 
     # ── Expected Move (straddle + IV-based) ──────────────────────────────────
@@ -3173,13 +3249,12 @@ def _fetch_state(
         # EM progress (use straddle EM if available, fall back to IV)
         _em_up = _em_straddle.get("upper") or _em_iv.get("upper")
         _em_lo = _em_straddle.get("lower") or _em_iv.get("lower")
-        # FIX: fallback EM must be full-session for MC sqrt scaling
-        if (_em_up is None or _em_lo is None) and spot_f > 0:
+        # Fallback EM must still use Schwab IV; never synthesize IV when unavailable.
+        if (_em_up is None or _em_lo is None) and spot_f > 0 and _atm_iv and _atm_iv > 0:
             try:
                 log.warning("MC_FALLBACK _atm_iv=%s _hours_rem=%s _em_up=%s _em_lo=%s", _atm_iv, _hours_rem, _em_up, _em_lo)  # FIX: MC em trace
-                _fallback_iv = (_atm_iv if _atm_iv and _atm_iv > 0 else 20.0)  # FIX: MC em trace — default 20% when no IV
                 _fallback_hours = max(_hours_rem, 6.5) if _hours_rem else 6.5
-                _em_mc = compute_expected_move_iv(spot_f, _fallback_iv, _fallback_hours)
+                _em_mc = compute_expected_move_iv(spot_f, _atm_iv, _fallback_hours)
                 _em_up = _em_up or _em_mc.get("upper")
                 _em_lo = _em_lo or _em_mc.get("lower")
             except Exception as ex:
@@ -3211,7 +3286,7 @@ def _fetch_state(
                 _realized_vol = compute_realized_vol(_closes)
             _atr = compute_atr(_bars)
         # IV Rank/Percentile from DB historical iv_level
-        if _atm_iv and _ed_db:
+        if _atm_iv and _ed_db and _tick_ts is not None:
             try:
                 _iv_hist_rows = _ed_db.get_recent_snapshots(
                     ticker,
@@ -3279,14 +3354,24 @@ def _fetch_state(
     _pin_score_val = {}
     _vol_expansion = {}
     _sweep_score = {}
+    def _bucket_total_oi(_bkt: dict) -> float | None:
+        call_oi = _bkt.get("call_oi")
+        put_oi = _bkt.get("put_oi")
+        if call_oi is None and put_oi is None:
+            return None
+        return (float(call_oi) if call_oi is not None else 0.0) + (float(put_oi) if put_oi is not None else 0.0)
+
     try:
         # Aggregate totals from exposures
-        _sum_gex = _sum_dex = _sum_oi = 0.0
+        _sum_gex = _sum_dex = 0.0
+        _sum_oi = None
         _sum_vanna = 0.0
         for _bkt in exposures.values():
             _sum_gex += float(_bkt.get("net_gex_1pct", 0) or 0)
             _sum_dex += float(_bkt.get("net_dex_dollars", 0) or 0)
-            _sum_oi += float(_bkt.get("call_oi", 0) or 0) + float(_bkt.get("put_oi", 0) or 0)
+            _bucket_oi = _bucket_total_oi(_bkt)
+            if _bucket_oi is not None:
+                _sum_oi = (_sum_oi or 0.0) + _bucket_oi
             _sum_vanna += float(_bkt.get("call_vanna", 0) or 0) + float(_bkt.get("put_vanna", 0) or 0)
 
         # 1. DPI
@@ -3329,12 +3414,12 @@ def _fetch_state(
         # 5. Pin Score
         _pin_strike = getattr(consensus_summary, "gamma_pin", None) if consensus_summary else None
         _gex_at_pin = 0.0
-        _oi_at_pin = 0.0
+        _oi_at_pin = None
         if _pin_strike and exposures:
             _pin_bkt = exposures.get(float(_pin_strike), {})
             _gex_at_pin = abs(float(_pin_bkt.get("call_gamma", 0) or 0)) + abs(float(_pin_bkt.get("put_gamma", 0) or 0))
-            _oi_at_pin = float(_pin_bkt.get("call_oi", 0) or 0) + float(_pin_bkt.get("put_oi", 0) or 0)
-        _oi_concentration = _oi_at_pin / _sum_oi if _sum_oi > 0 else 0
+            _oi_at_pin = _bucket_total_oi(_pin_bkt)
+        _oi_concentration = (_oi_at_pin / _sum_oi) if _oi_at_pin is not None and _sum_oi and _sum_oi > 0 else None
         try:
             _pin_score_val = compute_pin_score(_gex_at_pin, _oi_concentration)
         except Exception as e:
@@ -3483,13 +3568,19 @@ def _fetch_state(
             cgw = _f(getattr(walls[0], "call_gamma_wall", None)) if walls else None
             pgw = _f(getattr(walls[0], "put_gamma_wall",  None)) if walls else None
             if cgw:
-                ceil_tests  = _ed_db.count_level_tests(ticker, "Call Gamma Wall", cgw).get("total", 0)
+                _ceil = _ed_db.count_level_tests(ticker, "Call Gamma Wall", cgw)
+                _ct = _ceil.get("total")
+                ceil_tests = int(_ct) if _ct is not None else 0
             if pgw:
-                floor_tests = _ed_db.count_level_tests(ticker, "Put Gamma Wall",  pgw).get("total", 0)
+                _floor = _ed_db.count_level_tests(ticker, "Put Gamma Wall", pgw)
+                _ft = _floor.get("total")
+                floor_tests = int(_ft) if _ft is not None else 0
             rc = _ed_db.get_recent_crosses(ticker, n=5)
-            now_ts = time.time()
+            recent_cross_eval_wall_ts = time.time()
             for c in rc:
-                bars_ago = int((now_ts - c.get("ts_utc", 0)) / 60)  # 1m bar cadence (canonical)
+                bars_ago = int(
+                    (recent_cross_eval_wall_ts - c.get("ts_utc", 0)) / 60
+                )  # 1m bar cadence (canonical)
                 recent_crosses.append({
                     "level_name": c.get("level_name"),
                     "direction":  c.get("direction"),
@@ -3562,7 +3653,7 @@ def _fetch_state(
     _quote_for_cum.update(_order_flow_data.get("quote") or {})
     _update_rest_cum_delta(ticker, _quote_for_cum, now_et)
 
-    # Candle volume priority: 1) Price history candles.*.volume (primary), 2) accumulator (secondary), 3) 0.0
+    # Candle volume priority: 1) Price history candles.*.volume (primary), 2) accumulator (secondary)
     # Use 1m price history to match canonical (1m) bar timestamps.
     _c_vol = None
     # 1. Price history primary — direct per-bar RTH volume from Schwab
@@ -3608,10 +3699,6 @@ def _fetch_state(
                     _c_vol = v
             except (TypeError, ValueError):
                 pass
-    # 3. Tertiary
-    if _c_vol is None:
-        _c_vol = 0.0
-
     # ── Build MarketState ─────────────────────────────────────────────────────
     if _diag_on():
         _diag_step("pre_build_market_state", ticker)
@@ -3930,7 +4017,7 @@ def _fetch_state(
                     net_vanna=getattr(ms, "net_vanna", None),
                     charm_net=_charm_net, charm_direction=_charm_dir, charm_drift_toward=_charm_toward,
                     charm_magnitude=_charm_mag,
-                    iv_level=float(getattr(totals[0], "atm_iv", 0) or 0) if totals else None,
+                    iv_level=(float(getattr(totals[0], "atm_iv")) if totals and getattr(totals[0], "atm_iv", None) is not None else None),
                     iv_direction=getattr(ms, "iv_direction", None),
                     put_call_oi_ratio=pcr_val,
                     oi_center=getattr(consensus_summary, "oi_center", None) if consensus_summary else None,
@@ -4253,7 +4340,7 @@ def _fetch_state(
             "vix": mkt_ctx.vix if mkt_ctx else None,
             "price_levels": _state_cache.get(_cache_key, {}).get("price_levels"),
             "pl_date":      _state_cache.get(_cache_key, {}).get("pl_date", ""),
-            "pl_ts":        _state_cache.get(_cache_key, {}).get("pl_ts", 0),
+            "pl_mono":      _state_cache.get(_cache_key, {}).get("pl_mono"),
         }
         _evict_old_expiry_entries(ticker, selected_exp)
         return {}
@@ -4262,6 +4349,16 @@ def _fetch_state(
     ms_dict             = _ms_to_dict(ms)
     ms_dict["expiries"] = [e for e in expiries if e >= _today_str]
     ms_dict["selected_exp"] = selected_exp
+    ms_dict["quote_source_detail"] = {
+        "spot": "lastPrice" if parsed.last and parsed.last > 0 else ("mark" if parsed.mark and parsed.mark > 0 else "unavailable_missing_last_and_mark"),
+        "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
+        "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
+        "spread": _quote_spread_source,
+        "spread_age_ms": _quote_spread_age_ms,
+        "carried_forward": _quote_spread_source == "cached_last_valid_not_tradeable",
+    }
+    ms_dict["spread_source"] = _quote_spread_source
+    ms_dict["spread_age_ms"] = _quote_spread_age_ms
     ms_dict["server_ts"]    = time.time()
     # Client diagnostics: when a tab has SSE open for this (ticker, expiry), full pipeline re-runs about this often.
     ms_dict["sse_viewer_refresh_sec"] = round(VIEWER_SSE_REFRESH_SEC, 3)
@@ -4334,14 +4431,16 @@ def _fetch_state(
         # Diagnostic: why no voids?
         _n_strikes = len(exposures)
         _max_gex = max((abs(float(b.get("call_gamma",0) or 0)) + abs(float(b.get("put_gamma",0) or 0)) for b in exposures.values()), default=0)
-        _max_oi = max((float(b.get("call_oi",0) or 0) + float(b.get("put_oi",0) or 0) for b in exposures.values()), default=0)
+        _oi_values = [_bucket_total_oi(b) for b in exposures.values()]
+        _oi_values = [v for v in _oi_values if v is not None]
+        _max_oi = max(_oi_values, default=0)
         log.debug(f"Gamma void: {_n_strikes} strikes, max_gex={_max_gex:.0f}, max_oi={_max_oi:.0f}, spot_passed={'yes' if spot_f else 'no'}")
         # Count how many strikes pass each threshold independently
         _gex_low = sum(1 for b in exposures.values() if (abs(float(b.get("call_gamma",0) or 0)) + abs(float(b.get("put_gamma",0) or 0))) < _max_gex * 0.20) if _max_gex > 0 else 0
-        _oi_low = sum(1 for b in exposures.values() if (float(b.get("call_oi",0) or 0) + float(b.get("put_oi",0) or 0)) < _max_oi * 0.25) if _max_oi > 0 else 0
+        _oi_low = sum(1 for b in exposures.values() if (_bucket_total_oi(b) is not None and _bucket_total_oi(b) < _max_oi * 0.25)) if _max_oi > 0 else 0
         _both_low = sum(1 for b in exposures.values() if
             ((abs(float(b.get("call_gamma",0) or 0)) + abs(float(b.get("put_gamma",0) or 0))) < _max_gex * 0.20 if _max_gex > 0 else False) and
-            ((float(b.get("call_oi",0) or 0) + float(b.get("put_oi",0) or 0)) < _max_oi * 0.25 if _max_oi > 0 else False)
+            ((_bucket_total_oi(b) is not None and _bucket_total_oi(b) < _max_oi * 0.25) if _max_oi > 0 else False)
         ) if _max_gex > 0 else 0
         log.debug(f"Gamma void: gex_low={_gex_low}, oi_low={_oi_low}, both_low={_both_low} (need 2+ consecutive)")
 
@@ -4744,12 +4843,12 @@ def _fetch_state(
     _attach_stack_runtime_and_governance(ms_dict, ticker=ticker)
     _apply_trader_horizon_contract(ms_dict)
     stamp_decision_bundle(ms_dict)
-    _t_pipeline_end = time.time()
-    ms_dict["_server_build_ts"] = _t_pipeline_end
-    ms_dict["_pipeline_ms"] = round((_t_pipeline_end - _fetch_start_ts) * 1000)
-    ms_dict["_chain_ms"] = round((_t_after_chain - _fetch_start_ts) * 1000)
-    ms_dict["_quote_ms"] = round((_t_after_quote - _t_after_chain) * 1000)
-    ms_dict["_compute_ms"] = round((_t_pipeline_end - _t_after_quote) * 1000)
+    _t_pipeline_end_mono = time.monotonic()
+    ms_dict["_server_build_ts"] = time.time()
+    ms_dict["_pipeline_ms"] = round((_t_pipeline_end_mono - _fetch_start_mono) * 1000)
+    ms_dict["_chain_ms"] = round((_t_after_chain_mono - _fetch_start_mono) * 1000)
+    ms_dict["_quote_ms"] = round((_t_after_quote_mono - _t_after_chain_mono) * 1000)
+    ms_dict["_compute_ms"] = round((_t_pipeline_end_mono - _t_after_quote_mono) * 1000)
     log.info(
         f"_fetch_state: {ticker} pipeline_ms={ms_dict['_pipeline_ms']} "
         f"quote_ms={ms_dict['_quote_ms']} chain_ms={ms_dict['_chain_ms']} compute_ms={ms_dict['_compute_ms']} expiry={expiry}"
@@ -4773,7 +4872,7 @@ def _fetch_state(
         "vix": mkt_ctx.vix if mkt_ctx else None,
         "price_levels": _prev_ent.get("price_levels"),
         "pl_date":      _prev_ent.get("pl_date", ""),
-        "pl_ts":        _prev_ent.get("pl_ts", 0),
+        "pl_mono":      _prev_ent.get("pl_mono"),
     }
     _evict_old_expiry_entries(ticker, selected_exp)
     return ms_dict
@@ -5578,8 +5677,9 @@ async def post_streaming_active_ticker(payload: dict = Body(default={})):
 
 def _l1_sse_light_diag_payload() -> dict[str, Any]:
     """Authoritative counters + derived health hints for operators (see l1_sse_field_semantics)."""
-    now = time.time()
-    last = float(_l1_sse_last_drop_wall_ts or 0.0)
+    now_m = time.monotonic()
+    drop_m = float(_l1_sse_last_drop_mono or 0.0)
+    drop_age_sec = float(now_m - drop_m) if drop_m > 0.0 else None
     out: dict[str, Any] = {**dict(_l1_sse_diag)}
     out["l1_sse_backpressure_policy"] = (
         "thread_queue_evict_oldest_on_full; per_client_asyncio_evict_oldest_on_full"
@@ -5588,8 +5688,8 @@ def _l1_sse_light_diag_payload() -> dict[str, Any]:
         "global_fifo_evict_oldest_under_saturation: newest notify always enqueueable; older pending "
         "notify for another scope may be dropped (see _l1_put_thread_queue_notify docstring)."
     )
-    out["l1_sse_last_drop_wall_ts"] = last if last > 0 else None
-    out["l1_sse_saturated_recent"] = bool(last > 0 and (now - last) < 60.0)
+    out["l1_sse_last_drop_age_sec"] = drop_age_sec
+    out["l1_sse_saturated_recent"] = bool(drop_m > 0.0 and drop_age_sec is not None and drop_age_sec < 60.0)
     viol = int(out.get("l1_payload_identity_violation", 0) or 0)
     if viol > 0:
         out["l1_sse_health_hint"] = "identity_violation"
@@ -5617,8 +5717,8 @@ def _l1_sse_light_diag_payload() -> dict[str, Any]:
         "l1_light_sse_connections_by_scope": "derived_snapshot",
         "l1_sse_backpressure_policy": "static_documentation",
         "l1_sse_thread_queue_fairness_policy": "static_documentation",
-        "l1_sse_last_drop_wall_ts": "authoritative_timestamp_or_null",
-        "l1_sse_saturated_recent": "derived_bool_60s_window",
+        "l1_sse_last_drop_age_sec": "derived_seconds_since_last_drop_process_monotonic_or_null",
+        "l1_sse_saturated_recent": "derived_bool_60s_window_monotonic",
         "l1_sse_health_hint": "derived_enum",
     }
     return out
@@ -5644,7 +5744,7 @@ async def get_l1_diagnostics():
     bt = int(_l1_instrumentation["l1_build_total"])
     avg_ms = float(_l1_instrumentation["l1_build_ms_sum"]) / max(1, bt)
     reasons = {str(k): int(v) for k, v in _l1_instrumentation["l1_build_by_reason"].items()}
-    uptime_sec = max(0.0, time.time() - _l1_diag_start_ts)
+    uptime_sec = max(0.0, time.monotonic() - _l1_diag_start_mono)
     operational = build_l1_operational_assessment(
         l1_build_total=bt,
         l1_build_ms_sum=float(_l1_instrumentation["l1_build_ms_sum"]),
@@ -6283,7 +6383,7 @@ def _liquidity_live_1m_overlay_bars(ticker: str) -> list[dict]:
             "high": c.high,
             "low": c.low,
             "close": c.close,
-            "volume": float(c.volume or 0),
+            "volume": float(c.volume) if c.volume is not None else None,
         })
     cur = _candles_1m._current.get(t)
     if cur:
@@ -6294,7 +6394,7 @@ def _liquidity_live_1m_overlay_bars(ticker: str) -> list[dict]:
             "high": float(cur["h"]),
             "low": float(cur["l"]),
             "close": float(cur["c"]),
-            "volume": float(cur.get("v", 0) or 0),
+            "volume": float(cur["v"]) if cur.get("v") is not None else None,
         })
     return out
 
@@ -6615,8 +6715,12 @@ async def debug_charm(ticker: str = DEFAULT_TICKER):
         selected_exp = _default_expiry(expiries, ticker)
 
         # Try charm with all contracts, no filter
-        spot = float(chain_json.get("underlyingPrice", 0) or 0)
-        if spot <= 0:
+        raw_spot = chain_json.get("underlyingPrice")
+        try:
+            spot = float(raw_spot) if raw_spot is not None else None
+        except (TypeError, ValueError):
+            spot = None
+        if spot is None or spot <= 0:
             return {"error": f"underlyingPrice missing or zero in chain response for {ticker}"}
         charm_all = compute_net_charm(contracts, spot, selected_exp or "")
 

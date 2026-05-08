@@ -6,12 +6,22 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from math_exposure_core import _f as _safe_float  # canonical float parser
 
+
+def _positive_float_or_none(val: Any) -> float | None:
+    f = _safe_float(val)
+    if f is None or f <= 0:
+        return None
+    return f
+
+
 @dataclass(frozen=True)
 class QuoteBlock:
     last: float | None
     bid: float | None
     ask: float | None
     mark: float | None
+    quote_time: float | None
+    trade_time: float | None
     session_label: str
     raw: dict
 
@@ -27,7 +37,10 @@ def parse_quote_payload(ticker: str, quote_json: dict, session_label: str) -> Qu
     bid  = _safe_float(q.get("bidPrice"))
     ask  = _safe_float(q.get("askPrice"))
     mark = _safe_float(q.get("mark"))
+    quote_time = _safe_float(q.get("quoteTime"))
+    trade_time = _safe_float(q.get("tradeTime"))
     return QuoteBlock(last=last, bid=bid, ask=ask, mark=mark,
+                      quote_time=quote_time, trade_time=trade_time,
                       session_label=session_label, raw=quote_json)
 
 
@@ -71,7 +84,7 @@ def contract_fields(ct: dict) -> dict:
         "settlementType": ct.get("settlementType"),
         "exerciseType": ct.get("exerciseType"),
         "lastTradingDay": ct.get("lastTradingDay"),
-        "multiplier": ct.get("multiplier", 100),
+        "multiplier": _positive_float_or_none(ct.get("multiplier")),
         "mark": ct.get("mark"),
         "bid": ct.get("bid"),
         "ask": ct.get("ask"),

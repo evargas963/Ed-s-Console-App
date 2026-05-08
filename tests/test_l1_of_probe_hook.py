@@ -18,7 +18,7 @@ def srv_clean_of(monkeypatch):
     import server as srv
 
     monkeypatch.setattr(srv._lmp, "apply_l1_live_quote_overlay", lambda *a, **k: None)
-    for d in (srv._l1_of_sig_cache_by_ticker, srv._l1_of_probe_by_ticker, srv._l1_of_last_engine_ts_by_ticker):
+    for d in (srv._l1_of_sig_cache_by_ticker, srv._l1_of_probe_by_ticker, srv._l1_of_last_engine_mono_by_ticker):
         d.clear()
     monkeypatch.setattr(
         srv._lmp,
