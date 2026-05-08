@@ -17,7 +17,7 @@ tools/check_schwab_csv_first.py --whole-repo
 ## System Status
 
 ```text
-SLICE STATUS: clustering produced; HIGH-scope slice contracts landed (S002–S005, S009–S012, S014/S015 sub-slices, S017) on 2026-05-08; S013/S016 classifier gates landed 2026-05-08; TIME_AUTHORITY residual queue cleared 2026-05-08; GATE_FAIL_CLOSED WORKING sync (40 rows) landed 2026-05-08 — see SCHWAB_REMEDIATION_GATE_FAIL_CLOSED_WORKING_SYNC_V1.md
+SLICE STATUS: clustering produced; HIGH-scope slice contracts landed (S002–S005, S009–S012, S014/S015 sub-slices, S017) on 2026-05-08; S013/S016 classifier gates landed 2026-05-08; TIME_AUTHORITY residual queue cleared 2026-05-08; GATE_FAIL_CLOSED WORKING sync (40 rows) landed 2026-05-08 — see SCHWAB_REMEDIATION_GATE_FAIL_CLOSED_WORKING_SYNC_V1.md; S018–S038 mechanical-tail governance (master + per-ID stubs) landed 2026-05-08 — see SCHWAB_REMEDIATION_S018_S038_MECHANICAL_TAIL_MASTER_CONTRACT_V1.md and SCHWAB_REMEDIATION_SLICE_CLOSURE_AUDIT_V1.md
 SYSTEM STATUS: FAIL
 remediation_slices_identified = 38
 real_residuals_clustered = 998
