@@ -31,7 +31,11 @@ def _fmt(v):
 def _report_ticker(ticker: str, state: dict, mc_cap: dict):
     """One clean per-ticker report."""
     d = state
-    spot = d.get("spot") or d.get("spot_f") or 0
+    raw_spot = d.get("spot") if d.get("spot") is not None else d.get("spot_f")
+    try:
+        spot = float(raw_spot) if raw_spot is not None else None
+    except (TypeError, ValueError):
+        spot = None
     prob_up = mc_cap.get("model_prob_up")
     prob_down = mc_cap.get("model_prob_down")
     mc_conf = mc_cap.get("model_confidence")
@@ -54,7 +58,7 @@ def _report_ticker(ticker: str, state: dict, mc_cap: dict):
     print(f"    mc_upper_50={_fmt(mc_u50)}  mc_lower_50={_fmt(mc_l50)}")
 
     # Directional consistency check
-    if spot and mc_u50 is not None and mc_l50 is not None and prob_up is not None and prob_down is not None:
+    if spot is not None and spot > 0 and mc_u50 is not None and mc_l50 is not None and prob_up is not None and prob_down is not None:
         up_range = mc_u50 - spot
         down_range = spot - mc_l50
         net_model = prob_up - prob_down

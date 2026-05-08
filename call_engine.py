@@ -995,7 +995,12 @@ def _validate_trade(
     if final_signal == "wait":
         return result  # nothing to validate
 
-    spot = inp.spot or 0
+    spot = inp.spot
+    if spot is None or spot <= 0:
+        result["structure_valid"] = False
+        result["structure_reason"] = "missing canonical spot"
+        result["summary"] = "missing canonical spot"
+        return result
     reasons = []
 
     # ══════════════════════════════════════════════════════════════════════════

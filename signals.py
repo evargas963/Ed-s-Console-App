@@ -255,21 +255,23 @@ def _build_calibration_payload(
 def _spot_for_mc_fusion_adjustment(
     mc_spot_ctx: Optional[dict],
     inference_snapshot_v1: dict,
-) -> float:
+) -> Optional[float]:
     """Canonical spot for post-fusion MC adjustment (same lineage as MC simulate)."""
     if isinstance(mc_spot_ctx, dict):
         try:
-            sp = float(mc_spot_ctx.get("spot") or 0.0)
+            raw = mc_spot_ctx.get("spot")
+            sp = float(raw) if raw is not None else None
             if sp > 0.0:
                 return sp
         except (TypeError, ValueError):
             pass
     feats = inference_snapshot_v1.get("features") or {}
     try:
-        sp = float(feats.get("price.spot") or 0.0)
-        return sp if sp > 0.0 else 0.0
+        raw = feats.get("price.spot")
+        sp = float(raw) if raw is not None else None
+        return sp if sp is not None and sp > 0.0 else None
     except (TypeError, ValueError):
-        return 0.0
+        return None
 
 
 def _run_model_stack(
@@ -443,8 +445,8 @@ def _run_model_stack(
                 model_version=f"blocked ({mc_context_error})",
             )
         else:
-            iv = inp.iv_level or 0
-            if iv > 5.0:
+            iv = inp.iv_level
+            if iv is not None and iv > 5.0:
                 iv = iv / 100.0
             _mc_regime = getattr(regime, 'primary', 'unknown') if regime else 'unknown'
             _mc_regime_conf = getattr(regime, 'confidence', 'low') if regime else 'low'
@@ -478,7 +480,7 @@ def _run_model_stack(
             )
             mc_out = monte_carlo.simulate(
                 spot=_mc_ctx["spot"],
-                iv=iv if iv > 0 else 0.20,
+                iv=iv,
                 horizon_bars=_mc_bars,
                 call_gamma_wall=_mc_ctx.get("call_gamma_wall"),
                 put_gamma_wall=_mc_ctx.get("put_gamma_wall"),

@@ -21,14 +21,14 @@ def normalize_mc(mc_output: Mapping[str, Any], spot_price: float) -> dict[str, f
 
     mc_output keys: expected_move, volatility, skew, tail_risk, directional_bias (optional).
     """
-    sp = float(spot_price) if spot_price is not None else 0.0
-    if sp <= 0 or not math.isfinite(sp):
-        sp = 1.0
-
-    em = float(mc_output.get("expected_move") or 0.0)
-    vol = float(mc_output.get("volatility") or 0.0)
-    sk = float(mc_output.get("skew") or 0.0)
-    tr = float(mc_output.get("tail_risk") or 0.0)
+    _em = mc_output.get("expected_move")
+    _vol = mc_output.get("volatility")
+    _sk = mc_output.get("skew")
+    _tr = mc_output.get("tail_risk")
+    em = float(_em) if _em is not None else 0.0
+    vol = float(_vol) if _vol is not None else 0.0
+    sk = float(_sk) if _sk is not None else 0.0
+    tr = float(_tr) if _tr is not None else 0.0
     _b = mc_output.get("directional_bias")
     try:
         b = float(_b) if _b is not None else 0.0
@@ -37,9 +37,12 @@ def normalize_mc(mc_output: Mapping[str, Any], spot_price: float) -> dict[str, f
     if math.isnan(b) or not math.isfinite(b):
         b = 0.0
 
+    sp = float(spot_price) if spot_price is not None else 0.0
+    has_valid_spot = sp > 0 and math.isfinite(sp)
+
     return {
-        "mc_expected_move": em / sp,
-        "mc_volatility": vol / sp,
+        "mc_expected_move": em / sp if has_valid_spot else 0.0,
+        "mc_volatility": vol / sp if has_valid_spot else 0.0,
         "mc_skew": max(-3.0, min(3.0, sk)),
         "mc_tail_risk": max(0.0, min(1.0, tr)),
         "mc_bias": max(-1.0, min(1.0, b)),

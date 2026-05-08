@@ -414,8 +414,12 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
                               feature_names: list, vol_medians: dict = None,
                               ticker: str = None) -> Optional[pd.DataFrame]:
     """Convert one snapshot dict into a feature row."""
-    spot = float(snapshot.get("spot") or 0)
-    if spot <= 0:
+    raw_spot = snapshot.get("spot")
+    try:
+        spot = float(raw_spot) if raw_spot is not None else None
+    except (TypeError, ValueError):
+        spot = None
+    if spot is None or spot <= 0:
         return None
 
     tkr = ticker or snapshot.get("ticker", "?")

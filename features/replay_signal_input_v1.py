@@ -13,11 +13,22 @@ from signal_types import SignalInput
 from timeframe_config import CANONICAL_TIMEFRAME
 
 
+def _positive_float_required(row: dict[str, Any], field: str) -> float:
+    raw = row.get(field)
+    if raw is None or raw == "":
+        raise ValueError(f"{field} is required for replay SignalInput")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field} must be numeric for replay SignalInput") from exc
+    if value <= 0:
+        raise ValueError(f"{field} must be positive for replay SignalInput")
+    return value
+
+
 def signal_input_from_snapshot_row_dict(row: dict[str, Any]) -> SignalInput:
     """Build SignalInput from a sqlite Row-like dict (e.g. snapshots.*)."""
-    spot = float(row.get("spot") or 0.0)
-    if spot <= 0:
-        raise ValueError("spot must be positive for replay SignalInput")
+    spot = _positive_float_required(row, "spot")
 
     kw: dict[str, Any] = {}
     for f in dataclasses.fields(SignalInput):

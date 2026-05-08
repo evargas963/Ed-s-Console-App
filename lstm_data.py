@@ -31,6 +31,16 @@ from typing import Optional
 
 log = logging.getLogger("lstm_data")
 
+
+def _positive_float_or_none(value) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    return out if out > 0 else None
+
 # ── Database location (same resolver as db.DB_PATH / ED_CONSOLE_DB) ─────────
 from db import DB_PATH
 
@@ -165,13 +175,15 @@ def compute_confluence_features(snapshots_5m: list[dict], current_idx: int) -> d
         return result
 
     current = snaps[-1]
-    spot = current.get("spot") or 0.0
-    if spot <= 0:
+    spot = _positive_float_or_none(current.get("spot"))
+    if spot is None:
         return result
 
     # ── 5m momentum (last 3 bars: ~15 min) ────────────────────────────────
     recent_3 = snaps[-3:]
-    spot_start = recent_3[0].get("spot") or spot
+    spot_start = _positive_float_or_none(recent_3[0].get("spot"))
+    if spot_start is None:
+        spot_start = spot
     mom_5m = (spot - spot_start) / spot_start if spot_start > 0 else 0.0
     # Normalize to roughly -1 to +1 range (0.5% move = strong)
     result["cf_momentum_5m"] = max(-1.0, min(1.0, mom_5m / 0.005))
@@ -184,9 +196,9 @@ def compute_confluence_features(snapshots_5m: list[dict], current_idx: int) -> d
         for i in range(0, 12, 3):
             group = bars_12[i:i+3]
             if len(group) == 3:
-                g_start = group[0].get("spot") or 0
-                g_end = group[-1].get("spot") or 0
-                if g_start > 0:
+                g_start = _positive_float_or_none(group[0].get("spot"))
+                g_end = _positive_float_or_none(group[-1].get("spot"))
+                if g_start is not None and g_end is not None:
                     group_dirs.append(1 if g_end > g_start else -1 if g_end < g_start else 0)
 
         if group_dirs:
@@ -195,7 +207,9 @@ def compute_confluence_features(snapshots_5m: list[dict], current_idx: int) -> d
 
     # ── 1h trend (last 12 bars = 60 min of 5m data) ──────────────────────
     if len(snaps) >= 12:
-        trend_start = snaps[-12].get("spot") or spot
+        trend_start = _positive_float_or_none(snaps[-12].get("spot"))
+        if trend_start is None:
+            trend_start = spot
         trend_pct = (spot - trend_start) / trend_start if trend_start > 0 else 0.0
         result["cf_trend_1h"] = max(-1.0, min(1.0, trend_pct / 0.01))
 
