@@ -268,3 +268,39 @@ def test_s016_strips_black_scholes_for_generic_norm_cdf():
     classification, _reason = classify(row)
     assert row["tags"] == ""
     assert classification == "NOT_MARKET_DATA"
+
+
+def test_time_authority_batch_tools_wall_clock_not_tape():
+    classification, reason = classify(
+        _row(
+            file="tools/run_phase9_decision_policy_v1.py",
+            tags="TIME_NOW_FALLBACK",
+            code='"created_ts_utc": time.time(),',
+        )
+    )
+    assert classification == "NOT_MARKET_DATA"
+    assert "offline tools/" in reason
+
+
+def test_time_authority_batch_live_plane_stale_ts_snippet():
+    classification, reason = classify(
+        _row(
+            file="live_market_plane.py",
+            tags="TIME_NOW_FALLBACK",
+            code="ts = time.time()",
+        )
+    )
+    assert classification == "NOT_MARKET_DATA"
+    assert "QUOTE_TIME_MILLIS" in reason or "TRADE_TIME_MILLIS" in reason
+
+
+def test_time_authority_batch_transformer_asof_fallback():
+    classification, reason = classify(
+        _row(
+            file="transformer_model.py",
+            tags="TIME_NOW_FALLBACK",
+            code="_asof = time.time()",
+        )
+    )
+    assert classification == "NOT_MARKET_DATA"
+    assert "as-of" in reason.lower() or "as_of" in reason.lower()

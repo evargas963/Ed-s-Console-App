@@ -551,6 +551,61 @@ def _disambiguate_mechanical_row(row: dict[str, str]) -> tuple[str, str] | None:
                 "HTTP handler wall clock for cache age / freshness math; not Schwab quoteTime substitution",
             )
 
+    # --- TIME_AUTHORITY residual batch (S017): wall clocks that are not Schwab quote/trade tape ---
+    if "TIME_NOW_FALLBACK" in tags:
+        if path.startswith("tools/"):
+            return (
+                "NOT_MARKET_DATA",
+                "offline tools/ batch or audit script wall clock; not Schwab quote/trade tape (S017)",
+            )
+        if path.startswith("calibration/"):
+            return (
+                "NOT_MARKET_DATA",
+                "offline calibration artifact or analysis meta timestamp; not live Schwab market clock (S017)",
+            )
+        if path == "features/inference_snapshot.py" and (
+            code.strip() == "ts = time.time()"
+            or code.strip() == "ts_f = float(time.time())"
+        ):
+            return (
+                "NOT_MARKET_DATA",
+                "superseded mechanical row: signal-input path uses as_of_ts / refresh_ts_utc; no wall as_of (S017)",
+            )
+        if path == "live_market_plane.py" and "time.time()" in code:
+            return (
+                "NOT_MARKET_DATA",
+                "streaming plane ingestion envelope unix (or stale mechanical snippet); quote tape remains QUOTE_TIME_MILLIS / TRADE_TIME_MILLIS parse (S017)",
+            )
+        if path == "order_flow_streaming.py" and "time.time()" in code:
+            return (
+                "NOT_MARKET_DATA",
+                "streaming health/diagnostics/staleness uses wall now vs last tick ts; not a quoteTime substitution (S017)",
+            )
+        if path == "math_probabilities.py" and "now=_time.time()" in code.replace(" ", ""):
+            return (
+                "NOT_MARKET_DATA",
+                "similarity/historical row recency vs stored ts_utc; analytic half-life clock not Schwab tape (S017)",
+            )
+        if path in {"lstm_model.py", "transformer_train.py"} and "time.time()" in code:
+            return (
+                "NOT_MARKET_DATA",
+                "ML training loop duration or timing probe; not market-data quoteTime (S017)",
+            )
+        if path == "transformer_model.py" and "_asof=time.time()" in code.replace(" ", ""):
+            return (
+                "NOT_MARKET_DATA",
+                "model checkpoint/eval as-of wall clock; not Schwab streaming quote time (S017)",
+            )
+        if path in {
+            "v2_decision/a1_conformal_artifact_loader.py",
+            "v2_decision/a1_isotonic_artifact_loader.py",
+            "v2_decision/a1_conformal_promotion.py",
+        }:
+            return (
+                "NOT_MARKET_DATA",
+                "conformal/isotonic artifact loader or promotion freshness uses unix now vs artifact meta; not live quoteTime (S017)",
+            )
+
     return None
 
 
