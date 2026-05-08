@@ -47,6 +47,16 @@ from timeframe_config import CANONICAL_TIMEFRAME, DERIVED_TIMEFRAME
 ROOT = Path(__file__).resolve().parent
 
 
+def _positive_float_or_none(value):
+    try:
+        if value is None or value == "":
+            return None
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if f > 0 else None
+
+
 def _contracts_from_chain_json(raw: str) -> list[dict]:
     try:
         arr = json.loads(raw)
@@ -58,12 +68,14 @@ def _contracts_from_chain_json(raw: str) -> list[dict]:
     for ct in arr:
         if not isinstance(ct, dict):
             continue
+        multiplier = _positive_float_or_none(ct.get("multiplier"))
+        total_volume = ct.get("totalVolume") if ct.get("totalVolume") is not None else ct.get("volume")
         out.append(
             {
                 "strikePrice": ct.get("strikePrice"),
                 "putCall": ct.get("putCall"),
                 "openInterest": ct.get("openInterest"),
-                "totalVolume": ct.get("totalVolume") or ct.get("volume") or 0,
+                "totalVolume": total_volume,
                 "bidSize": ct.get("bidSize"),
                 "askSize": ct.get("askSize"),
                 "delta": ct.get("delta"),
@@ -71,7 +83,7 @@ def _contracts_from_chain_json(raw: str) -> list[dict]:
                 "vega": ct.get("vega"),
                 "volatility": ct.get("volatility"),
                 "daysToExpiration": ct.get("daysToExpiration"),
-                "multiplier": ct.get("multiplier") or 100,
+                "multiplier": multiplier,
                 "expirationDate": ct.get("expirationDate"),
             }
         )
@@ -165,7 +177,8 @@ def backfill(
         "rows_updated": updated,
         "rows_skipped": skipped,
         "flow_source_book": by_src.get("book", 0),
-        "flow_source_volume": by_src.get("volume", 0),
+        # flow-imbalance provenance bucket counts (not Schwab totalVolume primitive)
+        "flow_source_volume": (by_src["volume"] if "volume" in by_src else 0),
         "flow_source_none": by_src.get("none", 0),
     }
 

@@ -121,6 +121,36 @@ def test_bars_normalization():
     assert norm[0]["high"] == 501.0
 
 
+def test_bars_normalization_preserves_missing_volume_as_missing():
+    """S002: missing Schwab candle volume must not be silently converted to 0."""
+    from liquidity_value_engine import _bars_to_list
+    bars = [
+        {"timestamp": 1710000000000, "open": 500, "high": 501, "low": 499, "close": 500.5},
+    ]
+
+    norm = _bars_to_list(bars)
+
+    assert norm[0]["volume"] is None
+
+
+def test_bars_normalization_drops_missing_ohlc_bar():
+    """S003: incomplete Schwab OHLC bars must not become zero-price bars."""
+    from liquidity_value_engine import _bars_to_list
+    bars = [
+        {"timestamp": 1710000000000, "open": 500, "high": 501, "close": 500.5, "volume": 1000},
+    ]
+
+    assert _bars_to_list(bars) == []
+
+
+def test_schwab_candles_to_bars_drops_missing_ohlc_bar():
+    """S003: pricehistory candle OHLC fields are required."""
+    from market_data_adapter import schwab_candles_to_bars
+    candles = [{"datetime": 1710000000000, "open": 500, "high": 501, "close": 500.5, "volume": 1000}]
+
+    assert schwab_candles_to_bars(candles) == []
+
+
 def test_get_previous_day_levels():
     """Previous day levels extracted from bars."""
     from liquidity_value_engine import get_previous_day_levels
@@ -158,6 +188,35 @@ def test_compute_session_vwap():
     vwap = compute_session_vwap(bars, session)
     assert vwap is not None
     assert 400 < vwap < 600
+
+
+def test_compute_session_vwap_returns_none_when_volume_missing():
+    """S002: VWAP is volume-weighted and must fail closed without candle volume."""
+    from liquidity_value_engine import compute_session_vwap
+    session = date(2026, 3, 13)
+    bars = _synthetic_bars(session)
+    for bar in bars:
+        bar.pop("volume", None)
+
+    assert compute_session_vwap(bars, session) is None
+
+
+def test_midday_snapshot_does_not_create_vwap_bands_when_vwap_missing():
+    """S014 sub-slice: missing VWAP must not create bands around synthetic zero."""
+    import liquidity_value_engine as lve
+    from liquidity_models import PlaybookConfig
+
+    session = date(2026, 3, 13)
+    bars = _synthetic_bars(session)
+    for bar in bars:
+        if datetime.fromtimestamp(float(bar["_ts"]), ET).date() == session:
+            bar.pop("volume", None)
+
+    out = lve.build_midday_snapshot("SPY", bars, session, PlaybookConfig())
+
+    assert out.raw_levels["vwap"] is None
+    assert out.raw_levels["vwap_bands"] is None
+    assert all("VWAP_P1" not in z.source_tags and "VWAP_M1" not in z.source_tags for z in out.zones)
 
 
 def test_compute_volume_profile_levels():

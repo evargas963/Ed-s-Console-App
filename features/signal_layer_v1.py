@@ -54,8 +54,14 @@ def _safe_div(a: float, b: float) -> Optional[float]:
 
 
 def _tr(bar: Mapping[str, Any]) -> float:
-    h = _f(bar.get("high")) or _f(bar.get("close")) or 0.0
-    l_ = _f(bar.get("low")) or _f(bar.get("close")) or 0.0
+    h = _f(bar.get("high"))
+    l_ = _f(bar.get("low"))
+    if h is None or l_ is None:
+        c = _f(bar.get("close"))
+        if c is None:
+            return EPS
+        h = c if h is None else h
+        l_ = c if l_ is None else l_
     pc = _f(bar.get("_prev_close"))
     if pc is None:
         return max(h - l_, EPS)
@@ -139,17 +145,18 @@ def _aggregate_bars(bars: Sequence[Mapping[str, Any]], group: int) -> list[dict[
     for b in bars:
         chunk.append(b)
         if len(chunk) == group:
-            o = _f(chunk[0].get("open")) or _f(chunk[0].get("close"))
+            o = _f(chunk[0].get("open"))
             c = _f(chunk[-1].get("close"))
-            hi = max(_f(x.get("high")) or o or 0.0 for x in chunk)
-            lo = min(_f(x.get("low")) or o or 0.0 for x in chunk)
-            vol = sum(_f(x.get("volume")) or 0.0 for x in chunk)
-            if o is not None and c is not None:
+            highs = [_f(x.get("high")) for x in chunk]
+            lows = [_f(x.get("low")) for x in chunk]
+            volumes = [_f(x.get("volume")) for x in chunk]
+            vol = sum(v for v in volumes if v is not None) if all(v is not None for v in volumes) else None
+            if o is not None and c is not None and all(h is not None for h in highs) and all(l is not None for l in lows):
                 out.append(
                     {
                         "open": o,
-                        "high": hi,
-                        "low": lo,
+                        "high": max(float(h) for h in highs if h is not None),
+                        "low": min(float(l) for l in lows if l is not None),
                         "close": c,
                         "volume": vol,
                     }
@@ -179,11 +186,11 @@ def _volume_profile_proxy(
     vols: list[float] = []
     for b in sl:
         c = _f(b.get("close"))
-        v = _f(b.get("volume")) or 0.0
-        if c is None:
+        v = _f(b.get("volume"))
+        if c is None or v is None:
             continue
         prices.append(c)
-        vols.append(max(v, 1.0))
+        vols.append(v)
     if len(prices) < 5:
         return None, None, None
     pmin, pmax = min(prices), max(prices)
@@ -349,12 +356,11 @@ def compute_signal_layer_v1(
         h = _f(b.get("high"))
         l_ = _f(b.get("low"))
         c = _f(b.get("close"))
-        v = _f(b.get("volume")) or 0.0
-        if h and l_ and c:
+        v = _f(b.get("volume"))
+        if h and l_ and c and v is not None:
             tp = (h + l_ + c) / 3.0
-            wv = max(v, 1.0)
-            typ_vol_sum += tp * wv
-            vol_sum += wv
+            typ_vol_sum += tp * v
+            vol_sum += v
     vwap_roll = _safe_div(typ_vol_sum, vol_sum) if vol_sum > EPS else None
 
     vwap_inp = _f(getattr(inp, "vwap", None)) if inp is not None else None

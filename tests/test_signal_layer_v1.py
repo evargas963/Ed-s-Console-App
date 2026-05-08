@@ -94,6 +94,33 @@ def test_synthetic_trend_slope_detectable() -> None:
     assert sl is not None and float(sl) > 0.0
 
 
+def test_missing_volume_does_not_create_synthetic_vwap_features() -> None:
+    """S002: VWAP/value features must not use fake unit or zero volume."""
+    bars = _synth_bars(80)
+    for bar in bars:
+        bar.pop("volume", None)
+    decision_ts = float(bars[-1]["bar_end_ts_utc"])
+
+    layer = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=None)
+
+    assert layer["vl.price_vs_vwap_pct"] is None
+    assert layer["vl.vwap_distance_pts"] is None
+    assert layer["part.relative_volume"] is None
+
+
+def test_missing_ohlc_does_not_create_synthetic_multiframe_bars() -> None:
+    """S003: missing high/low in 1m bars must not become synthetic 0.0 levels."""
+    bars = _synth_bars(80)
+    for bar in bars:
+        bar.pop("high", None)
+    decision_ts = float(bars[-1]["bar_end_ts_utc"])
+
+    layer = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=None)
+
+    assert layer["mtf.trend_5m_from_1m_sign"] == 0.0
+    assert layer["mtf.bias_15m_from_1m_sign"] == 0.0
+
+
 def test_flatten_numeric_strips_meta() -> None:
     layer = {"meta.n_bars": 3, "ps.rolling_trend_slope_log20": 0.01}
     f = flatten_numeric_features(layer)

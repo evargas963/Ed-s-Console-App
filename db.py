@@ -2794,7 +2794,13 @@ class EdDB:
 
         return _do()
 
-    def upsert_1m_bars(self, ticker: str, bars: list) -> int:
+    def upsert_1m_bars(
+        self,
+        ticker: str,
+        bars: list,
+        *,
+        refresh_governed_outcomes: bool = True,
+    ) -> int:
         """
         Authoritative canonical 1m series for horizon labels (Schwab price history + server accumulator).
         Completed bars only; bar_start_ts_utc matches Candle.ts (epoch seconds, bar open).
@@ -2802,8 +2808,10 @@ class EdDB:
         Ticker key uses ticker_storage_key (Issue 19): e.g. SPX -> $SPX for parity with snapshots
         and pin_neutral / fill_outcomes joins; $SPX unchanged.
 
-        After each successful upsert, governed BAR_ANCHOR_V1 snapshot outcomes that depend on any
-        mutated bar_start are recomputed in the same connection so stored labels cannot drift.
+        By default, after each successful upsert, governed BAR_ANCHOR_V1 snapshot outcomes that
+        depend on any mutated bar_start are recomputed in the same connection so stored labels
+        cannot drift. Historical bulk backfills may pass ``refresh_governed_outcomes=False`` and
+        run ``refresh_all_governed_bar_anchor_outcomes_v1`` once after the batch.
 
         Returns count of rows written (after timestamp/OHLC validation), 0 if none.
         """
@@ -2811,12 +2819,21 @@ class EdDB:
         if not tkr or not bars:
             return 0
         rows = []
+        def _volume_or_none(raw):
+            if raw is None:
+                return None
+            try:
+                v = float(raw)
+            except (TypeError, ValueError):
+                return None
+            return v if v >= 0 else None
+
         for b in bars:
             src = AUTHORITATIVE_1M_SOURCE
             if hasattr(b, "ts"):
                 ts = float(b.ts)
                 o, h, lo, c = float(b.open), float(b.high), float(b.low), float(b.close)
-                vol = float(getattr(b, "volume", 0) or 0)
+                vol = _volume_or_none(getattr(b, "volume", None))
             elif isinstance(b, dict):
                 raw_ts = b.get("datetime", b.get("ts", b.get("timestamp", b.get("_ts", 0))))
                 try:
@@ -2831,7 +2848,7 @@ class EdDB:
                     c = float(b["close"])
                 except (KeyError, TypeError, ValueError):
                     continue
-                vol = float(b.get("volume", 0) or 0)
+                vol = _volume_or_none(b.get("volume"))
                 if b.get("source"):
                     src = str(b["source"])
             else:
@@ -2884,14 +2901,15 @@ class EdDB:
                     rows_tuple,
                 )
                 n_written = len(rows_tuple)
-                changed_bar_starts = {float(r[1]) for r in rows_tuple}
-                tz_eval = float(_wall_time.time())
-                _refresh_governed_outcomes_after_bar_mutation(
-                    conn,
-                    tkr=tkr,
-                    changed_bar_starts=changed_bar_starts,
-                    tz=tz_eval,
-                )
+                if refresh_governed_outcomes:
+                    changed_bar_starts = {float(r[1]) for r in rows_tuple}
+                    tz_eval = float(_wall_time.time())
+                    _refresh_governed_outcomes_after_bar_mutation(
+                        conn,
+                        tkr=tkr,
+                        changed_bar_starts=changed_bar_starts,
+                        tz=tz_eval,
+                    )
                 return n_written
 
         return self._tier1_snapshot_write("upsert_1m_bars", tkr, _do)
@@ -2949,7 +2967,7 @@ class EdDB:
 
                 unfilled = conn.execute(
                     """
-                    SELECT snapshot_id, ts_utc, atr
+                    SELECT rowid AS _rowid, snapshot_id, ts_utc, atr
                     FROM snapshots
                     WHERE ticker = ? AND timeframe = ?
                       AND outcome_filled = 0
@@ -3041,7 +3059,7 @@ class EdDB:
             for tkr in tickers:
                 rows = conn.execute(
                     """
-                    SELECT snapshot_id, ts_utc, atr FROM snapshots
+                    SELECT rowid AS _rowid, snapshot_id, ts_utc, atr FROM snapshots
                     WHERE ticker = ? AND timeframe = ?
                       AND COALESCE(horizon_outcome_schema_version, ?) = ?
                       AND ts_utc < ?
@@ -3972,9 +3990,31 @@ def _tf_seconds(timeframe: str) -> float:
     mapping = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}
     return mapping.get(timeframe, 300)
 
-def _already_filled(conn: sqlite3.Connection, snap_id: int, col: str) -> bool:
+def _snapshot_update_key(row) -> tuple[str, int | None]:
+    try:
+        snap_id = row["snapshot_id"]
+    except (KeyError, IndexError, TypeError):
+        snap_id = None
+    if snap_id is not None:
+        try:
+            return "snapshot_id", int(snap_id)
+        except (TypeError, ValueError):
+            pass
+    try:
+        rowid = row["_rowid"]
+    except (KeyError, IndexError, TypeError):
+        rowid = None
+    if rowid is not None:
+        try:
+            return "rowid", int(rowid)
+        except (TypeError, ValueError):
+            pass
+    return "rowid", None
+
+
+def _already_filled(conn: sqlite3.Connection, row_key_col: str, row_key: int, col: str) -> bool:
     row = conn.execute(
-        f"SELECT {col} FROM snapshots WHERE snapshot_id = ?", (snap_id,)
+        f"SELECT {col} FROM snapshots WHERE {row_key_col} = ?", (row_key,)
     ).fetchone()
     return row is not None and row[0] is not None
 
@@ -4003,7 +4043,7 @@ def _snapshot_rows_affected_by_bar_mutations(
     out: list = []
     for row in conn.execute(
         """
-        SELECT snapshot_id, ts_utc, atr FROM snapshots
+        SELECT rowid AS _rowid, snapshot_id, ts_utc, atr FROM snapshots
         WHERE ticker = ? AND timeframe = ?
           AND COALESCE(horizon_outcome_schema_version, ?) = ?
           AND ts_utc < ?
@@ -4071,7 +4111,9 @@ def _apply_bar_based_outcome_updates(
     _mcfg = load_movement_thresholds_by_horizon_v1()
     n_exec = 0
     for row in unfilled_rows:
-        snap_id = int(row["snapshot_id"])
+        row_key_col, row_key = _snapshot_update_key(row)
+        if row_key is None:
+            continue
         t_snap = float(row["ts_utc"])
         anch_idx = bisect.bisect_right(bar_ends, t_snap) - 1
         if anch_idx < 0:
@@ -4123,8 +4165,8 @@ def _apply_bar_based_outcome_updates(
             updates["outcome_filled"] = 1 if all_filled else 0
             set_clause = ", ".join(f"{k} = ?" for k in updates)
             conn.execute(
-                f"UPDATE snapshots SET {set_clause} WHERE snapshot_id = ?",
-                list(updates.values()) + [snap_id],
+                f"UPDATE snapshots SET {set_clause} WHERE {row_key_col} = ?",
+                list(updates.values()) + [row_key],
             )
             n_exec += 1
             continue
@@ -4133,10 +4175,10 @@ def _apply_bar_based_outcome_updates(
         for odir, opt, n_min in OUTCOME_BAR_SPECS:
             spec = next(s for s in OUTCOME_MOVEMENT_V1_SPECS if s[5] == n_min)
             dcol, mcol, vdcol, tmcol, legtcol, _nm, slug = spec
-            if _already_filled(conn, snap_id, odir):
+            if _already_filled(conn, row_key_col, row_key, odir):
                 ex_v = conn.execute(
-                    f"SELECT {vdcol} FROM snapshots WHERE snapshot_id = ?",
-                    (snap_id,),
+                    f"SELECT {vdcol} FROM snapshots WHERE {row_key_col} = ?",
+                    (row_key,),
                 ).fetchone()
                 if ex_v is not None and ex_v[0] is not None:
                     continue
@@ -4166,12 +4208,12 @@ def _apply_bar_based_outcome_updates(
             continue
 
         existing = conn.execute(
-            """
+            f"""
             SELECT outcome_1c, outcome_3c, outcome_5c,
                    outcome_8c, outcome_13c, outcome_15c, outcome_60c
-            FROM snapshots WHERE snapshot_id = ?
+            FROM snapshots WHERE {row_key_col} = ?
             """,
-            (snap_id,),
+            (row_key,),
         ).fetchone()
         all_filled = all(updates.get(c) or existing[c] for c in _outcome_cols)
         if all_filled:
@@ -4179,8 +4221,8 @@ def _apply_bar_based_outcome_updates(
 
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         conn.execute(
-            f"UPDATE snapshots SET {set_clause} WHERE snapshot_id = ?",
-            list(updates.values()) + [snap_id],
+            f"UPDATE snapshots SET {set_clause} WHERE {row_key_col} = ?",
+            list(updates.values()) + [row_key],
         )
         n_exec += 1
     return n_exec

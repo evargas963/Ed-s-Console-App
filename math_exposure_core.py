@@ -57,8 +57,8 @@ def _is_valid_greek(x: float | None) -> bool:
 def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dict:
     if strike not in exposures_by_strike:
         exposures_by_strike[strike] = {
-            "call_oi": 0.0,
-            "put_oi": 0.0,
+            "call_oi": None,
+            "put_oi": None,
             "call_oi_mult": 0.0,
             "put_oi_mult": 0.0,
             # NOTE: These are exposure-scaled buckets (gamma*OI*mult, delta*OI*mult)
@@ -81,8 +81,8 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             "put_oi_dollars": 0.0,
             "total_oi_dollars": 0.0,
             # Option-chain order flow (Schwab: bidSize, askSize, totalVolume per leg)
-            "call_volume": 0.0,
-            "put_volume": 0.0,
+            "call_volume": None,
+            "put_volume": None,
             "call_bid_size": 0.0,
             "call_ask_size": 0.0,
             "put_bid_size": 0.0,
@@ -125,30 +125,40 @@ def compute_exposures_by_strike(
         if use_only_dte_max is not None and dte is not None and dte > use_only_dte_max:
             continue
 
-        oi = _f(ct.get("openInterest")) or 0.0
+        oi = _f(ct.get("openInterest"))
         side = (ct.get("putCall") or "").upper()
         if side not in ("CALL", "PUT"):
             continue
 
+        mult = _f(ct.get("multiplier"))
+        if mult is None or mult <= 0:
+            missing += 1
+            continue
+
         b = _strike_bucket(exposures, strike)
-        vol = _f(ct.get("totalVolume")) or 0.0
+        vol = _f(ct.get("totalVolume"))
         bsz = _f(ct.get("bidSize")) or 0.0
         asz = _f(ct.get("askSize")) or 0.0
         if side == "CALL":
-            b["call_volume"] = b.get("call_volume", 0.0) + vol
+            if vol is not None:
+                current_call_volume = b.get("call_volume")
+                b["call_volume"] = (float(current_call_volume) if current_call_volume is not None else 0.0) + vol
             b["call_bid_size"] = b.get("call_bid_size", 0.0) + bsz
             b["call_ask_size"] = b.get("call_ask_size", 0.0) + asz
         else:
-            b["put_volume"] = b.get("put_volume", 0.0) + vol
+            if vol is not None:
+                current_put_volume = b.get("put_volume")
+                b["put_volume"] = (float(current_put_volume) if current_put_volume is not None else 0.0) + vol
             b["put_bid_size"] = b.get("put_bid_size", 0.0) + bsz
             b["put_ask_size"] = b.get("put_ask_size", 0.0) + asz
 
-        if require_oi and oi <= 0:
+        if oi is None:
+            missing += 1
+        if require_oi and (oi is None or oi <= 0):
             continue
 
         delta = _f(ct.get("delta"))
         gamma = _f(ct.get("gamma"))
-        mult = _f(ct.get("multiplier")) or 100.0
 
         if not _is_valid_greek(delta) or not _is_valid_greek(gamma):
             missing += 1
@@ -156,13 +166,15 @@ def compute_exposures_by_strike(
         used += 1
 
         if side == "CALL":
-            b["call_oi"] += oi
-            b["call_oi_mult"] += oi * mult
-            if _is_valid_greek(delta):
+            if oi is not None:
+                current_call_oi = b.get("call_oi")
+                b["call_oi"] = (float(current_call_oi) if current_call_oi is not None else 0.0) + oi
+                b["call_oi_mult"] += oi * mult
+            if oi is not None and _is_valid_greek(delta):
                 b["call_delta"] += delta * oi * mult
-            if _is_valid_greek(gamma):
+            if oi is not None and _is_valid_greek(gamma):
                 b["call_gamma"] += gamma * oi * mult
-            if spot is not None:
+            if oi is not None and spot is not None:
                 spt = float(spot)
                 b["call_oi_dollars"] += oi * mult * spt
                 if _is_valid_greek(delta):
@@ -173,13 +185,15 @@ def compute_exposures_by_strike(
                 if _is_valid_greek(_vega) and _iv and _iv > 0:
                     b["call_vanna"] += (_vega / (spt * (_iv / 100.0))) * oi * mult
         elif side == "PUT":
-            b["put_oi"] += oi
-            b["put_oi_mult"] += oi * mult
-            if _is_valid_greek(delta):
+            if oi is not None:
+                current_put_oi = b.get("put_oi")
+                b["put_oi"] = (float(current_put_oi) if current_put_oi is not None else 0.0) + oi
+                b["put_oi_mult"] += oi * mult
+            if oi is not None and _is_valid_greek(delta):
                 b["put_delta"] += delta * oi * mult
-            if _is_valid_greek(gamma):
+            if oi is not None and _is_valid_greek(gamma):
                 b["put_gamma"] += gamma * oi * mult
-            if spot is not None:
+            if oi is not None and spot is not None:
                 spt = float(spot)
                 b["put_oi_dollars"] += oi * mult * spt
                 if _is_valid_greek(delta):
@@ -366,16 +380,20 @@ def compute_net_charm(contracts: list, spot: float, expiry: str, *, rate: float 
         gamma   = _f(ct.get("gamma"))
         iv      = _f(ct.get("volatility"))
         delta   = _f(ct.get("delta"))
-        oi      = _f(ct.get("openInterest")) or 0.0
-        mult    = _f(ct.get("multiplier"))   or 100.0
+        oi      = _f(ct.get("openInterest"))
+        mult    = _f(ct.get("multiplier"))
         dte_raw = ct.get("daysToExpiration")
 
         if gamma is None or strike is None:
             continue
+        if oi is None or oi <= 0:
+            continue
+        if mult is None or mult <= 0:
+            continue
         if not _is_valid_greek(gamma):
             continue
         if iv is None or iv <= 0:
-            iv = 20.0
+            continue
 
         T = _resolve_T(dte_raw)
         if T is None or T <= 0: continue

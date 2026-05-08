@@ -45,6 +45,13 @@ def _safe_float(val: Any) -> Optional[float]:
         return None
 
 
+def _nonnegative_float(val: Any) -> Optional[float]:
+    out = _safe_float(val)
+    if out is None or out < 0:
+        return None
+    return out
+
+
 def _safe_int(val: Any) -> Optional[int]:
     """Convert to int; return None if invalid."""
     if val is None:
@@ -161,9 +168,12 @@ def _iter_tape_prints(content_items: list) -> list[dict]:
         tick = c.get("TICK")
         tick_amt = c.get("TICK_AMOUNT")
         if lp is not None or ls is not None or tt is not None:
+            size = _safe_int(ls)
+            if size is None:
+                size = _safe_int(tick_amt)
             out.append({
                 "price": _safe_float(lp),
-                "size": _safe_int(ls) or _safe_int(tick_amt) or 0,
+                "size": size,
                 "time_millis": _safe_int(tt),
                 "tick": tick,
             })
@@ -290,8 +300,8 @@ def _compute_tape_pressure(data: dict, window_sec: float) -> Optional[float]:
         if t is not None and t < cutoff_ms:
             continue
         price = p.get("price")
-        size = p.get("size") or 0
-        if size <= 0:
+        size = p.get("size")
+        if size is None or size <= 0:
             continue
         tick = p.get("tick")
         if tick == "Up" or tick == "UpTick":
@@ -324,14 +334,18 @@ def _compute_cum_delta_proxy(data: dict) -> Optional[float]:
     if not prints:
         return None
     total = 0.0
+    saw_size = False
     for p in prints:
-        size = p.get("size") or 0
+        size = p.get("size")
+        if size is None or size <= 0:
+            continue
+        saw_size = True
         tick = p.get("tick")
         if tick == "Up" or tick == "UpTick":
             total += size
         elif tick == "Down" or tick == "DownTick":
             total -= size
-    return total
+    return total if saw_size else None
 
 
 def _compute_cum_delta_slope(data: dict, window_sec: float = 60.0) -> Optional[float]:
@@ -355,7 +369,9 @@ def _compute_cum_delta_slope(data: dict, window_sec: float = 60.0) -> Optional[f
         t = p.get("time_millis") or 0
         if t < cutoff:
             continue
-        size = p.get("size") or 0
+        size = p.get("size")
+        if size is None or size <= 0:
+            continue
         tick = p.get("tick")
         if tick in ("Up", "UpTick"):
             cum += size
@@ -413,7 +429,7 @@ def _compute_absorption(data: dict) -> tuple[Optional[float], Optional[float], O
     prints = _iter_tape_prints(items)
     if not prints:
         return None, None, None
-    total_sz = sum(p.get("size") or 0 for p in prints)
+    total_sz = sum(p["size"] for p in prints if p.get("size") is not None and p["size"] > 0)
     prices = [p.get("price") for p in prints if p.get("price") is not None]
     price_range = max(prices) - min(prices) if len(prices) >= 2 else 0.0
     # absorption = high volume, low price movement
@@ -470,22 +486,33 @@ def _compute_options_flow(data: dict) -> tuple[Optional[float], Optional[str], O
     puts = _iter_option_exp_levels(data.get("putExpDateMap") or {})
     if not calls and not puts:
         return None, None, None, None
-    call_vol = sum(c.get("totalVolume") or c.get("lastSize") or 0 for c in calls)
-    put_vol = sum(p.get("totalVolume") or p.get("lastSize") or 0 for p in puts)
+    call_vols = [_nonnegative_float(c.get("totalVolume")) for c in calls]
+    put_vols = [_nonnegative_float(p.get("totalVolume")) for p in puts]
+    call_vol = sum(v for v in call_vols if v is not None)
+    put_vol = sum(v for v in put_vols if v is not None)
+    total_opt_vol = call_vol + put_vol
+    if total_opt_vol <= 0:
+        return None, None, None, None
     call_put_ratio = call_vol / (put_vol + 1e-9)
     delta_weighted = 0.0
+    saw_delta_weight = False
     for c in calls:
-        d = c.get("delta") or 0
-        v = c.get("totalVolume") or c.get("lastSize") or 0
+        d = _safe_float(c.get("delta"))
+        v = _nonnegative_float(c.get("totalVolume"))
+        if d is None or v is None:
+            continue
         delta_weighted += d * v
+        saw_delta_weight = True
     for p in puts:
-        d = p.get("delta") or 0
-        v = p.get("totalVolume") or p.get("lastSize") or 0
+        d = _safe_float(p.get("delta"))
+        v = _nonnegative_float(p.get("totalVolume"))
+        if d is None or v is None:
+            continue
         delta_weighted -= d * v  # put delta negative for directional
-    total_opt_vol = call_vol + put_vol
-    options_flow_score = (call_vol - put_vol) / (total_opt_vol + 1e-9) if total_opt_vol else 0.0
+        saw_delta_weight = True
+    options_flow_score = (call_vol - put_vol) / total_opt_vol
     direction = "call" if options_flow_score > 0 else ("put" if options_flow_score < 0 else "neutral")
-    return options_flow_score, direction, call_put_ratio, delta_weighted
+    return options_flow_score, direction, call_put_ratio, delta_weighted if saw_delta_weight else None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

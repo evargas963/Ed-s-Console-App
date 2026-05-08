@@ -33,6 +33,25 @@ RTH_OPEN = time(9, 30)
 RTH_CLOSE = time(16, 0)
 
 
+def _positive_float_or_none(value) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    return out if out > 0 else None
+
+
+def _float_or_none(value) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # BAR NORMALIZATION — accept DataFrame or list of dicts
 # ─────────────────────────────────────────────────────────────────────────────
@@ -54,11 +73,13 @@ def _bars_to_list(bars) -> list[dict]:
         for _, row in bars.iterrows():
             d = row.to_dict() if hasattr(row, "to_dict") else dict(row)
             ts = d.get("timestamp") or d.get("datetime") or d.get("date") or d.get("ts")
-            o = d.get("open") or d.get("o") or 0
-            h = d.get("high") or d.get("h") or 0
-            l_ = d.get("low") or d.get("l") or 0
-            c = d.get("close") or d.get("c") or 0
-            v = d.get("volume") or d.get("vol") or d.get("v") or 0
+            o = _float_or_none(d.get("open") if d.get("open") is not None else d.get("o"))
+            h = _float_or_none(d.get("high") if d.get("high") is not None else d.get("h"))
+            l_ = _float_or_none(d.get("low") if d.get("low") is not None else d.get("l"))
+            c = _float_or_none(d.get("close") if d.get("close") is not None else d.get("c"))
+            v = d.get("volume") if d.get("volume") is not None else d.get("vol", d.get("v"))
+            if o is None or h is None or l_ is None or c is None:
+                continue
             _ts = None
             if ts is not None:
                 if hasattr(ts, "timestamp"):
@@ -67,11 +88,11 @@ def _bars_to_list(bars) -> list[dict]:
                     _ts = ts / 1000.0 if ts > 1e12 else ts
             out.append({
                 "timestamp": ts,
-                "open": float(o) if o is not None else 0.0,
-                "high": float(h) if h is not None else 0.0,
-                "low": float(l_) if l_ is not None else 0.0,
-                "close": float(c) if c is not None else 0.0,
-                "volume": float(v) if v is not None else 0.0,
+                "open": o,
+                "high": h,
+                "low": l_,
+                "close": c,
+                "volume": _positive_float_or_none(v),
             })
             if _ts is not None:
                 out[-1]["_ts"] = _ts
@@ -82,11 +103,11 @@ def _bars_to_list(bars) -> list[dict]:
             row = b
         else:
             row = {
-                "open": getattr(b, "open", getattr(b, "o", 0)),
-                "high": getattr(b, "high", getattr(b, "h", 0)),
-                "low": getattr(b, "low", getattr(b, "l", 0)),
-                "close": getattr(b, "close", getattr(b, "c", 0)),
-                "volume": getattr(b, "volume", getattr(b, "vol", 0)),
+                "open": getattr(b, "open", getattr(b, "o", None)),
+                "high": getattr(b, "high", getattr(b, "h", None)),
+                "low": getattr(b, "low", getattr(b, "l", None)),
+                "close": getattr(b, "close", getattr(b, "c", None)),
+                "volume": getattr(b, "volume", getattr(b, "vol", None)),
             }
             ts = getattr(b, "timestamp", getattr(b, "ts", getattr(b, "datetime", None)))
             if ts is not None:
@@ -94,18 +115,20 @@ def _bars_to_list(bars) -> list[dict]:
             else:
                 row["_ts"] = None
             row["timestamp"] = ts
-        o = row.get("open", row.get("o", 0))
-        h = row.get("high", row.get("h", 0))
-        l_ = row.get("low", row.get("l", 0))
-        c = row.get("close", row.get("c", 0))
-        v = row.get("volume", row.get("vol", row.get("v", 0)))
+        o = _float_or_none(row.get("open") if row.get("open") is not None else row.get("o"))
+        h = _float_or_none(row.get("high") if row.get("high") is not None else row.get("h"))
+        l_ = _float_or_none(row.get("low") if row.get("low") is not None else row.get("l"))
+        c = _float_or_none(row.get("close") if row.get("close") is not None else row.get("c"))
+        v = row.get("volume") if row.get("volume") is not None else row.get("vol", row.get("v"))
+        if o is None or h is None or l_ is None or c is None:
+            continue
         out.append({
             "timestamp": row.get("timestamp"),
-            "open": float(o) if o is not None else 0.0,
-            "high": float(h) if h is not None else 0.0,
-            "low": float(l_) if l_ is not None else 0.0,
-            "close": float(c) if c is not None else 0.0,
-            "volume": float(v) if v is not None else 0.0,
+            "open": o,
+            "high": h,
+            "low": l_,
+            "close": c,
+            "volume": _positive_float_or_none(v),
         })
         if row.get("_ts") is not None:
             out[-1]["_ts"] = row["_ts"]
@@ -283,8 +306,8 @@ def compute_session_vwap(bars: list, session_date: date, cutoff_dt: Optional[dat
         return None
     cum_tpv = cum_vol = 0.0
     for b in rth_bars:
-        vol = b.get("volume") or 0
-        if vol <= 0:
+        vol = _positive_float_or_none(b.get("volume"))
+        if vol is None:
             continue
         tp = (b["high"] + b["low"] + b["close"]) / 3.0
         cum_tpv += tp * vol
@@ -309,8 +332,8 @@ def compute_vwap_bands(
         return None, None, None, None
     cum_var = cum_vol = 0.0
     for b in rth_bars:
-        vol = b.get("volume") or 0
-        if vol <= 0:
+        vol = _positive_float_or_none(b.get("volume"))
+        if vol is None:
             continue
         tp = (b["high"] + b["low"] + b["close"]) / 3.0
         cum_var += (tp - vwap_val) ** 2 * vol
@@ -359,8 +382,8 @@ def _volume_profile_poc_vah_val(
         return None, None, None
     vol_by_price: dict[float, float] = defaultdict(float)
     for b in bars:
-        vol = float(b.get("volume") or 0)
-        if vol <= 0:
+        vol = _positive_float_or_none(b.get("volume"))
+        if vol is None:
             continue
         h, l_, c = b["high"], b["low"], b["close"]
         typical = (h + l_ + c) / 3.0
@@ -445,15 +468,20 @@ def compute_atr_from_bars(
     trs = []
     prev_close = None
     for b in sorted(rth_bars, key=lambda x: x.get("_ts") or 0):
-        h, l_, c = b.get("high", 0), b.get("low", 0), b.get("close", 0)
+        h = _float_or_none(b.get("high"))
+        l_ = _float_or_none(b.get("low"))
+        c = _float_or_none(b.get("close"))
+        if h is None or l_ is None or c is None:
+            prev_close = c if c is not None else prev_close
+            continue
         if prev_close is not None:
             tr = max(
-                float(h) - float(l_),
-                abs(float(h) - prev_close),
-                abs(float(l_) - prev_close),
+                h - l_,
+                abs(h - prev_close),
+                abs(l_ - prev_close),
             )
             trs.append(tr)
-        prev_close = float(c) if c is not None else prev_close
+        prev_close = c
 
     if len(trs) < period:
         return None
@@ -729,9 +757,10 @@ def build_opening_snapshot(
         )
         zones.append(z)
 
-    vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, vwap or 0, cutoff)
+    vwap_p1 = vwap_m1 = vwap_p2 = vwap_m2 = None
     vwap_bands = None
     if vwap is not None:
+        vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, vwap, cutoff)
         vwap_bands = {
             "vwap": vwap,
             "plus1": vwap_p1,
@@ -762,7 +791,9 @@ def build_midday_snapshot(
     orb = compute_opening_range(bars, session_date, config)
     poc, vah, val = compute_volume_profile_levels(bars, session_date, config, cutoff)
     vwap = compute_session_vwap(bars, session_date, cutoff)
-    vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, vwap or 0, cutoff)
+    vwap_p1 = vwap_m1 = vwap_p2 = vwap_m2 = None
+    if vwap is not None:
+        vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, vwap, cutoff)
 
     levels = []
     if prev.get("pdh"):
@@ -877,7 +908,9 @@ def build_afternoon_snapshot(
     prev = get_previous_day_levels(bars, session_date, config)
     poc, vah, val = compute_volume_profile_levels(bars, session_date, config, cutoff)
     vwap = compute_session_vwap(bars, session_date, cutoff)
-    vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, vwap or 0, cutoff)
+    vwap_p1 = vwap_m1 = vwap_p2 = vwap_m2 = None
+    if vwap is not None:
+        vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, vwap, cutoff)
 
     levels = []
     if vah:
@@ -1062,7 +1095,9 @@ def build_live_snapshot(
     orb = compute_opening_range(bars_norm, session_date, config)
     poc, vah, val = compute_volume_profile_levels(bars_norm, session_date, config, cutoff)
     vwap = compute_session_vwap(bars_norm, session_date, cutoff)
-    vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars_norm, session_date, vwap or 0, cutoff)
+    vwap_p1 = vwap_m1 = vwap_p2 = vwap_m2 = None
+    if vwap is not None:
+        vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars_norm, session_date, vwap, cutoff)
 
     levels: list[tuple[float, str]] = []
     if prev.get("pdh"):

@@ -86,7 +86,13 @@ def bars_to_staging_rows(
             c = float(b["close"])
         except (KeyError, TypeError, ValueError):
             continue
-        vol = float(b.get("volume", 0) or 0)
+        raw_vol = b.get("volume")
+        try:
+            vol = float(raw_vol) if raw_vol is not None else None
+        except (TypeError, ValueError):
+            vol = None
+        if vol is not None and vol < 0:
+            vol = None
         raw_ts_f = float(ts)
         bar_start = grid_ts(raw_ts_f)
         if abs(raw_ts_f - bar_start) > 30.0:

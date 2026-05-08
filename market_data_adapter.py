@@ -27,7 +27,7 @@ class NormalizedBar:
     high: float
     low: float
     close: float
-    volume: float = 0.0
+    volume: Optional[float] = None
 
     def to_dict(self) -> dict:
         return {
@@ -48,14 +48,26 @@ def normalize_bar(raw: dict | Any) -> Optional[NormalizedBar]:
     if raw is None:
         return None
 
-    def _f(key: str, default: float = 0.0) -> float:
+    def _f(key: str) -> Optional[float]:
         v = raw.get(key) if isinstance(raw, dict) else getattr(raw, key, None)
         if v is None:
-            return default
+            return None
         try:
             return float(v)
         except (TypeError, ValueError):
-            return default
+            return None
+
+    def _volume() -> Optional[float]:
+        v = raw.get("volume") if isinstance(raw, dict) else getattr(raw, "volume", None)
+        if v is None:
+            v = raw.get("vol") if isinstance(raw, dict) else getattr(raw, "vol", None)
+        if v is None:
+            return None
+        try:
+            out = float(v)
+        except (TypeError, ValueError):
+            return None
+        return out if out >= 0 else None
 
     ts = None
     if isinstance(raw, dict):
@@ -63,13 +75,28 @@ def normalize_bar(raw: dict | Any) -> Optional[NormalizedBar]:
     else:
         ts = getattr(raw, "timestamp", None) or getattr(raw, "datetime", None)
 
+    open_ = _f("open")
+    if open_ is None:
+        open_ = _f("o")
+    high = _f("high")
+    if high is None:
+        high = _f("h")
+    low = _f("low")
+    if low is None:
+        low = _f("l")
+    close = _f("close")
+    if close is None:
+        close = _f("c")
+    if open_ is None or high is None or low is None or close is None:
+        return None
+
     return NormalizedBar(
         timestamp=ts,
-        open=_f("open", _f("o")),
-        high=_f("high", _f("h")),
-        low=_f("low", _f("l")),
-        close=_f("close", _f("c")),
-        volume=_f("volume", _f("vol", 0.0)),
+        open=open_,
+        high=high,
+        low=low,
+        close=close,
+        volume=_volume(),
     )
 
 
@@ -99,14 +126,21 @@ def schwab_candles_to_bars(candles: list) -> list[dict]:
         if not isinstance(c, dict):
             continue
         ts = c.get("datetime")
+        try:
+            open_ = float(c["open"])
+            high = float(c["high"])
+            low = float(c["low"])
+            close = float(c["close"])
+        except (KeyError, TypeError, ValueError):
+            continue
         bar = {
             "datetime": ts,
             "timestamp": ts,
-            "open": float(c.get("open", 0) or 0),
-            "high": float(c.get("high", 0) or 0),
-            "low": float(c.get("low", 0) or 0),
-            "close": float(c.get("close", 0) or 0),
-            "volume": float(c.get("volume", 0) or 0),
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": float(c["volume"]) if c.get("volume") is not None else None,
         }
         if ts is not None:
             bar["_ts"] = float(ts) / 1000.0 if float(ts) > 1e12 else float(ts)
