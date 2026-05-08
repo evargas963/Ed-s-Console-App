@@ -12,6 +12,25 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 
+def _positive_float_or_none(value) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    return out if out > 0 else None
+
+
+def _float_or_none(value) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def configured_index_futures_symbols() -> dict[str, str]:
     """
     Front-month CME index futures for Schwab REST/stream (contract-specific).
@@ -631,12 +650,11 @@ def _volume_profile_poc_vah_val(bars: list, value_area_pct: float = 0.70,
     from collections import defaultdict
     vol_by_price: dict[float, float] = defaultdict(float)
     for c in bars:
-        o = float(c.get("open", 0) or 0)
-        h = float(c.get("high", 0) or 0)
-        l = float(c.get("low", 0) or 0)
-        cl = float(c.get("close", 0) or 0)
-        vol = float(c.get("volume", 0) or 0)
-        if vol <= 0:
+        h = _float_or_none(c.get("high"))
+        l = _float_or_none(c.get("low"))
+        cl = _float_or_none(c.get("close"))
+        vol = _positive_float_or_none(c.get("volume"))
+        if h is None or l is None or cl is None or vol is None:
             continue
         typical = (h + l + cl) / 3.0
         price_bin = round(typical / tick_size) * tick_size
@@ -676,11 +694,11 @@ def _vwap_bands(bars: list, vwap_val: float) -> tuple[Optional[float], Optional[
     cum_var = 0.0
     cum_vol = 0.0
     for c in bars:
-        h = float(c.get("high", 0) or 0)
-        l = float(c.get("low", 0) or 0)
-        cl = float(c.get("close", 0) or 0)
-        vol = float(c.get("volume", 0) or 0)
-        if vol <= 0:
+        h = _float_or_none(c.get("high"))
+        l = _float_or_none(c.get("low"))
+        cl = _float_or_none(c.get("close"))
+        vol = _positive_float_or_none(c.get("volume"))
+        if h is None or l is None or cl is None or vol is None:
             continue
         typical = (h + l + cl) / 3.0
         cum_var += (typical - vwap_val) ** 2 * vol
@@ -879,23 +897,22 @@ def fetch_price_levels(
             orb_bars_seen = 0
 
             for dt_et, c in today_bars:
-                o, h, l, cl, vol = (
-                    float(c.get("open",  0)),
-                    float(c.get("high",  0)),
-                    float(c.get("low",   0)),
-                    float(c.get("close", 0)),
-                    float(c.get("volume", 0)),
-                )
-                typical = (h + l + cl) / 3.0
-                cum_tpv += typical * vol
-                cum_vol += vol
+                o = _float_or_none(c.get("open"))
+                h = _float_or_none(c.get("high"))
+                l = _float_or_none(c.get("low"))
+                cl = _float_or_none(c.get("close"))
+                vol = _positive_float_or_none(c.get("volume"))
+                if h is not None and l is not None and cl is not None and vol is not None:
+                    typical = (h + l + cl) / 3.0
+                    cum_tpv += typical * vol
+                    cum_vol += vol
 
                 # ORB: first orb_minutes of RTH
                 mins_since_open = (
                     (dt_et.hour - RTH_OPEN_HOUR) * 60 +
                     (dt_et.minute - RTH_OPEN_MIN)
                 )
-                if mins_since_open < orb_minutes:
+                if mins_since_open < orb_minutes and h is not None and l is not None:
                     orb_h = max(orb_h, h)
                     orb_l = min(orb_l, l)
                     orb_bars_seen += 1

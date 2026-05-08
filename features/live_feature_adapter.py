@@ -36,7 +36,7 @@ def build_live_mvp_feature_row(l1_payload: dict[str, Any]) -> dict[str, Any]:
 
     out = {
         "price.spot": read_optional_float(l1_payload, "spot", "price.spot"),
-        "price.spread_pts": read_optional_float(l1_payload, "spread", "price.spread_pts"),
+        "price.spread_pts": read_optional_float(l1_payload, "spread_pts", "price.spread_pts"),
         "structure.zone": read_optional_zone(l1_payload, "zone", "structure.zone"),
         "structure.nearest_above_dist": read_optional_float(
             l1_payload, "nearest_above_dist", "structure.nearest_above_dist"

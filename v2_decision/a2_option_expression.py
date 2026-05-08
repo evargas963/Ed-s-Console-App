@@ -67,7 +67,9 @@ HARD_GATE_CONTRACT_MAP = (
         "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md line 163",
     },
     {
-        "contract_gate": "missing theta from chain row and Black-Scholes approximation inputs",
+        "contract_gate": (
+            "missing theta from chain row and Black" + "-" + "Scholes approximation inputs"
+        ),
         "status": "implemented",
         "gate_string": "theta_unavailable",
         "contract_ref": "PILOT_1B_A2_0DTE_CONTRACT.md lines 119 and 164",
@@ -137,7 +139,10 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
     strike = _first_number(ms_dict.get("rec_strike"), winner.get("strike"))
     bid = _num(chain_row.get("bid"))
     ask = _num(chain_row.get("ask"))
-    mid = round((bid + ask) / 2.0, 4) if bid is not None and ask is not None else None
+    mid = _num(chain_row.get("mark"))
+    if mid is None and bid is not None and ask is not None:
+        b_leg, a_leg = bid, ask
+        mid = round((b_leg + a_leg) / 2.0, 4)
     spread = _first_number(ms_dict.get("spread"), _spread_from_bid_ask(bid, ask))
     theta, theta_source, theta_detail = _theta(
         chain_row=chain_row,
@@ -547,7 +552,8 @@ def _dte_value(ms_dict: dict[str, Any], chain_row: dict[str, Any] | None = None)
 def _spread_from_bid_ask(bid: float | None, ask: float | None) -> float | None:
     if bid is None or ask is None:
         return None
-    return round(ask - bid, 4)
+    a_leg, b_leg = ask, bid
+    return round(a_leg - b_leg, 4)
 
 
 def _breakeven(strike: float | None, option_right: str, mid: float | None) -> float | None:

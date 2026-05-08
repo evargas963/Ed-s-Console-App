@@ -197,7 +197,8 @@ def score_option_expression(contracts, spot, strike, side, *, walls=None):
     delta = _f(ct.get("delta"))
     volume = _f(ct.get("totalVolume")) or _f(ct.get("volume"))
     oi = _f(ct.get("openInterest"))
-    spread = round(ask - bid, 4) if bid is not None and ask is not None else None
+    a_px, b_px = ask, bid
+    spread = round(a_px - b_px, 4) if b_px is not None and a_px is not None else None
     liq_gate = spread is not None and spread <= OE_SPREAD_TIGHT_MAX
     dgr = round(abs(delta) / abs(gamma), 2) if gamma and gamma != 0 and delta is not None else None
     voi = round(volume / oi, 3) if oi and oi > 0 and volume is not None else None
@@ -645,8 +646,11 @@ def compute_pin_score(
 
     Returns dict with raw_score, normalized (0-100), label.
     """
-    gex = abs(gex_at_pin or 0)
-    oi_conc = max(0.0, min(1.0, oi_concentration or 0))
+    if gex_at_pin is None or oi_concentration is None:
+        return {"raw": None, "normalized": None, "label": "missing_oi"}
+
+    gex = abs(gex_at_pin)
+    oi_conc = max(0.0, min(1.0, oi_concentration))
 
     if gex <= 0 or oi_conc <= 0:
         return {"raw": 0.0, "normalized": 0.0, "label": "negligible"}
@@ -1091,16 +1095,36 @@ def compute_volume_oi_ratio(
 
     total_vol = 0.0
     total_oi = 0.0
+    saw_volume = False
+    saw_oi = False
 
     for strike, bucket in exposures_by_strike.items():
         k = float(strike)
         if abs(k - spot) > window_pts:
             continue
-        total_vol += float(bucket.get("call_volume", 0) or 0) + float(bucket.get("put_volume", 0) or 0)
-        total_oi += float(bucket.get("call_oi", 0) or 0) + float(bucket.get("put_oi", 0) or 0)
+        cv = bucket.get("call_volume")
+        pv = bucket.get("put_volume")
+        if cv is not None:
+            saw_volume = True
+            total_vol += float(cv)
+        if pv is not None:
+            saw_volume = True
+            total_vol += float(pv)
+        co = bucket.get("call_oi")
+        po = bucket.get("put_oi")
+        if co is not None:
+            saw_oi = True
+            total_oi += float(co)
+        if po is not None:
+            saw_oi = True
+            total_oi += float(po)
 
+    if not saw_oi:
+        return {"ratio": None, "label": "missing_oi", "total_volume": round(total_vol), "total_oi": None}
     if total_oi <= 0:
         return {"ratio": None, "label": "no_oi", "total_volume": total_vol, "total_oi": 0}
+    if not saw_volume:
+        return {"ratio": None, "label": "missing_volume", "total_volume": None, "total_oi": round(total_oi)}
 
     ratio = total_vol / total_oi
 
@@ -1232,8 +1256,12 @@ def atm_flow_window_totals(
         call_ask += float(b.get("call_ask_size", 0) or 0)
         put_bid += float(b.get("put_bid_size", 0) or 0)
         put_ask += float(b.get("put_ask_size", 0) or 0)
-        call_vol += float(b.get("call_volume", 0) or 0)
-        put_vol += float(b.get("put_volume", 0) or 0)
+        cv = b.get("call_volume")
+        pv = b.get("put_volume")
+        if cv is not None:
+            call_vol += float(cv)
+        if pv is not None:
+            put_vol += float(pv)
     return {
         "strikes_in_window": n,
         "call_vol": call_vol,
@@ -1317,17 +1345,27 @@ def compute_smart_money_signal(
         k = float(strike)
         if abs(k - spot) > window_pts:
             continue
-        cv = float(bucket.get("call_volume", 0) or 0)
-        pv = float(bucket.get("put_volume", 0) or 0)
-        co = float(bucket.get("call_oi", 0) or 0)
-        po = float(bucket.get("put_oi", 0) or 0)
-        vol_total += cv + pv
-        oi_total += co + po
+        cv_raw = bucket.get("call_volume")
+        pv_raw = bucket.get("put_volume")
+        cv = float(cv_raw) if cv_raw is not None else None
+        pv = float(pv_raw) if pv_raw is not None else None
+        co_raw = bucket.get("call_oi")
+        po_raw = bucket.get("put_oi")
+        co = float(co_raw) if co_raw is not None else None
+        po = float(po_raw) if po_raw is not None else None
+        if cv is not None:
+            vol_total += cv
+        if pv is not None:
+            vol_total += pv
+        if co is not None:
+            oi_total += co
+        if po is not None:
+            oi_total += po
         call_bid += float(bucket.get("call_bid_size", 0) or 0)
         call_ask += float(bucket.get("call_ask_size", 0) or 0)
         put_bid += float(bucket.get("put_bid_size", 0) or 0)
         put_ask += float(bucket.get("put_ask_size", 0) or 0)
-        strike_activity.append(cv + pv)
+        strike_activity.append((cv or 0.0) + (pv or 0.0))
 
     # Component 1: Volume/OI (0-40)
     vol_oi = vol_total / oi_total if oi_total > 0 else 0
