@@ -25,7 +25,7 @@ The migration repairs SQLite table metadata and durable row identity. It does no
 
 ## Preconditions
 
-Before any dry-run or apply command:
+Before **any** dry-run **or** `--apply` command (same bar for both — dry-run is not “safe pre-window research” while writers are active):
 
 1. Confirm the working tree is clean and the checked-out commit is known:
 
@@ -39,6 +39,8 @@ Before any dry-run or apply command:
 2. Stop the app/server and all DB writers.
 
    No web server, scheduler, backfill, training, notebook, or manual process may hold a write connection to `data/ed_console.db`.
+
+   **Hard requirement for dry-run too:** With active writers (WAL growth, concurrent connections), `PRAGMA integrity_check` and the migration tool’s read probes can **block, stall, or appear hung** for extended periods. Do not run dry-run against a live-writing production DB; treat the **first dry-run JSON as the first artifact of the maintenance window**, after writers are stopped.
 
 3. Verify current DB integrity:
 
@@ -58,7 +60,7 @@ Before any dry-run or apply command:
 
 ## Dry-Run Command
 
-Run dry-run first. Do not use `--apply`.
+All **Preconditions** above must be satisfied (including **all writers stopped**) before running this command. Dry-run first. Do not use `--apply`.
 
 ```powershell
 python tools/migrate_snapshots_schema_repair_v1.py --db-path data/ed_console.db
