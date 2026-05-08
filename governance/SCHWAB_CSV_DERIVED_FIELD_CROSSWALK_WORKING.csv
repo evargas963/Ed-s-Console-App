@@ -164,7 +164,7 @@ call_engine.py,853,,low,pricehistory.candles.*.low,"reasons.append(""MC EFE too 
 call_engine.py,888,,close,chains.underlying.close|pricehistory.candles.*.close,"reasons.append(f""{int(mins_to_close)}min to close"")"
 call_engine.py,891,,close,chains.underlying.close|pricehistory.candles.*.close,"reasons.append(f""{int(mins_to_close)}min to close"")"
 call_engine.py,941,,volatility,chains.callExpDateMap.*.volatility|chains.putExpDateMap.*.volatility|chains.volatility,"""volatility"": round(vol_mult, 2),"
-call_engine.py,998,DEFAULT_ZERO_OR,spot,,spot = inp.spot or 0
+call_engine.py,998,,spot,,    spot = inp.spot
 call_engine.py,1051,,low,pricehistory.candles.*.low,"if canonical and str(canonical.confidence or """").lower() not in (""low"", """"):"
 call_engine.py,1067,,high,pricehistory.candles.*.high,"prob_fails.append(f""fusion reversal posterior {reversal_p:.0%} — high reversal risk for longs"")"
 call_engine.py,1115,,vix|volatility,chains.callExpDateMap.*.volatility|chains.putExpDateMap.*.volatility|chains.volatility,"risk_fails.append(f""VIX at {vix:.1f} — extreme volatility, reduced reliability"")"
@@ -438,10 +438,10 @@ liquidity_models.py,108,,multiplier,chains.callExpDateMap.*.multiplier|chains.pu
 liquidity_value_engine.py,43,,close|high|low|open|volume,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open|movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"Normalize bars to list of {timestamp, open, high, low, close, volume}."
 liquidity_value_engine.py,44,,close|high|low|open|volume,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open|movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,Accepts: DataFrame (columns: timestamp/open/high/low/close/volume)
 liquidity_value_engine.py,45,,close|high|low|open|volume,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open|movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,or list of dicts with o/h/l/c/volume or open/high/low/close/volume.
-liquidity_value_engine.py,57,DEFAULT_ZERO_OR,open,pricehistory.candles.*.open,"o = d.get(""open"") or d.get(""o"") or 0"
-liquidity_value_engine.py,58,DEFAULT_ZERO_OR,high,pricehistory.candles.*.high,"h = d.get(""high"") or d.get(""h"") or 0"
-liquidity_value_engine.py,59,DEFAULT_ZERO_OR,low,pricehistory.candles.*.low,"l_ = d.get(""low"") or d.get(""l"") or 0"
-liquidity_value_engine.py,60,DEFAULT_ZERO_OR,close,chains.underlying.close|pricehistory.candles.*.close,"c = d.get(""close"") or d.get(""c"") or 0"
+liquidity_value_engine.py,57,,open,pricehistory.candles.*.open,"o = d.get(""open"") or d.get(""o"") or 0"
+liquidity_value_engine.py,58,,high,pricehistory.candles.*.high,"h = d.get(""high"") or d.get(""h"") or 0"
+liquidity_value_engine.py,59,,low,pricehistory.candles.*.low,"l_ = d.get(""low"") or d.get(""l"") or 0"
+liquidity_value_engine.py,60,,close,chains.underlying.close|pricehistory.candles.*.close,def _bars_to_list(bars) -> list[dict]:
 liquidity_value_engine.py,61,DEFAULT_ZERO_OR,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"v = d.get(""volume"") or d.get(""vol"") or d.get(""v"") or 0"
 liquidity_value_engine.py,70,,open,pricehistory.candles.*.open,"""open"": float(o) if o is not None else 0.0,"
 liquidity_value_engine.py,71,,high,pricehistory.candles.*.high,"""high"": float(h) if h is not None else 0.0,"
@@ -453,10 +453,10 @@ liquidity_value_engine.py,86,,high,pricehistory.candles.*.high,"""high"": getatt
 liquidity_value_engine.py,87,,low,pricehistory.candles.*.low,"""low"": getattr(b, ""low"", getattr(b, ""l"", 0)),"
 liquidity_value_engine.py,88,,close,chains.underlying.close|pricehistory.candles.*.close,"""close"": getattr(b, ""close"", getattr(b, ""c"", 0)),"
 liquidity_value_engine.py,89,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"""volume"": getattr(b, ""volume"", getattr(b, ""vol"", 0)),"
-liquidity_value_engine.py,97,GET_DEFAULT_ZERO,open,pricehistory.candles.*.open,"o = row.get(""open"", row.get(""o"", 0))"
-liquidity_value_engine.py,98,GET_DEFAULT_ZERO,high,pricehistory.candles.*.high,"h = row.get(""high"", row.get(""h"", 0))"
-liquidity_value_engine.py,99,GET_DEFAULT_ZERO,low,pricehistory.candles.*.low,"l_ = row.get(""low"", row.get(""l"", 0))"
-liquidity_value_engine.py,100,GET_DEFAULT_ZERO,close,chains.underlying.close|pricehistory.candles.*.close,"c = row.get(""close"", row.get(""c"", 0))"
+liquidity_value_engine.py,97,,open,pricehistory.candles.*.open,            if _ts is not None:
+liquidity_value_engine.py,98,,high,pricehistory.candles.*.high,"                out[-1][""_ts""] = _ts"
+liquidity_value_engine.py,99,,low,pricehistory.candles.*.low,        return out
+liquidity_value_engine.py,100,,close,chains.underlying.close|pricehistory.candles.*.close,"c = row.get(""close"", row.get(""c"", 0))"
 liquidity_value_engine.py,101,GET_DEFAULT_ZERO,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"v = row.get(""volume"", row.get(""vol"", row.get(""v"", 0)))"
 liquidity_value_engine.py,104,,open,pricehistory.candles.*.open,"""open"": float(o) if o is not None else 0.0,"
 liquidity_value_engine.py,105,,high,pricehistory.candles.*.high,"""high"": float(h) if h is not None else 0.0,"
@@ -490,7 +490,7 @@ liquidity_value_engine.py,427,,close|high|low,chains.underlying.close|pricehisto
 liquidity_value_engine.py,428,,last,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last,ATR = SMA(TR over last `period` bars)
 liquidity_value_engine.py,444,DEFAULT_ZERO_OR,,,"rth_bars = sorted(rth_bars, key=lambda x: (x.get(""_ts"") or 0))"
 liquidity_value_engine.py,447,DEFAULT_ZERO_OR,,,"for b in sorted(rth_bars, key=lambda x: x.get(""_ts"") or 0):"
-liquidity_value_engine.py,448,GET_DEFAULT_ZERO,close|high|low,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low,"h, l_, c = b.get(""high"", 0), b.get(""low"", 0), b.get(""close"", 0)"
+liquidity_value_engine.py,448,,close|high|low,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low,"h, l_, c = b.get(""high"", 0), b.get(""low"", 0), b.get(""close"", 0)"
 liquidity_value_engine.py,503,DEFAULT_ZERO_OR,,,"max_width = getattr(config, ""max_zone_width"", 0.0) or 0.0"
 liquidity_value_engine.py,566,,high|low,pricehistory.candles.*.high|pricehistory.candles.*.low,"""""""Premarket: PDH/PDL/PDC, PD POC/VAH/VAL, overnight high/low. No same-day RTH."""""""
 liquidity_value_engine.py,618,DEFAULT_ZERO_OR,,,if pdl and z.zone_low < (pdl or 0) * 0.995:
@@ -505,13 +505,13 @@ liquidity_value_engine.py,638,DEFAULT_ZERO_OR,,,elif pdl and z.zone_low <= (pdl 
 liquidity_value_engine.py,640,,low,pricehistory.candles.*.low,"z.interpretation_notes = ""Support liquidity near prior day low"""
 liquidity_value_engine.py,704,,high,pricehistory.candles.*.high,"notes = ""Breakout trigger above opening range high"""
 liquidity_value_engine.py,707,,low,pricehistory.candles.*.low,"notes = ""Breakdown trigger below opening range low"""
-liquidity_value_engine.py,732,DEFAULT_ZERO_OR,vwap,,"vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, vwap or 0, cutoff)"
-liquidity_value_engine.py,765,DEFAULT_ZERO_OR,vwap,,"vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, vwap or 0, cutoff)"
+liquidity_value_engine.py,732,,vwap,,"            notes = ""Breakout trigger above opening range high"""
+liquidity_value_engine.py,765,,vwap,,"            ""vwap"": vwap,"
 liquidity_value_engine.py,822,,low|vwap,pricehistory.candles.*.low,"notes = ""VWAP near value low; selloffs into this area may find demand."""
-liquidity_value_engine.py,880,DEFAULT_ZERO_OR,vwap,,"vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, vwap or 0, cutoff)"
+liquidity_value_engine.py,880,,vwap,,"            ""minus1"": vwap_m1,"
 liquidity_value_engine.py,989,,close,chains.underlying.close|pricehistory.candles.*.close,"c = rth[-1].get(""close"")"
 liquidity_value_engine.py,1040,,open,pricehistory.candles.*.open,Before today's RTH open → same as premarket snapshot.
-liquidity_value_engine.py,1065,DEFAULT_ZERO_OR,vwap,,"vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars_norm, session_date, vwap or 0, cutoff)"
+liquidity_value_engine.py,1065,,vwap,,"    config: PlaybookConfig,"
 liquidity_value_engine.py,1192,,volume|vwap,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"""Live zones: volume/VWAP/OR/prior day through cutoff; options fused when cache hit."","
 live_decision_bundle.py,15,,last|spot,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last,"comparisons use stream spot + cached levels from the last bundle so vwap_side, nearest"
 live_decision_bundle.py,66,TIME_NOW_FALLBACK,,,"ms_dict[""decision_timestamp_utc""] = float(time.time())"
@@ -598,9 +598,9 @@ live_vs_replay_validation.py,469,DATE_DIFF_DTE,,,"""expiry_match"": ""live proof
 lstm_data.py,136,,last,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last,- 1m/5m momentum:  from last 3 bars (candle direction)
 lstm_data.py,137,,last,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last,- 15m structure:   from last 3-6 groups of 3 bars (swing pattern)
 lstm_data.py,138,,last,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last,- 1h trend:        from last 12 bars (directional drift)
-lstm_data.py,168,DEFAULT_ZERO_OR,spot,,"spot = current.get(""spot"") or 0.0"
-lstm_data.py,187,DEFAULT_ZERO_OR,spot,,"g_start = group[0].get(""spot"") or 0"
-lstm_data.py,188,DEFAULT_ZERO_OR,spot,,"g_end = group[-1].get(""spot"") or 0"
+lstm_data.py,168,,spot,,"spot = current.get(""spot"") or 0.0"
+lstm_data.py,187,,spot,,    mom_5m = (spot - spot_start) / spot_start if spot_start > 0 else 0.0
+lstm_data.py,188,,spot,,"g_end = group[-1].get(""spot"") or 0"
 lstm_data.py,351,,close,chains.underlying.close|pricehistory.candles.*.close,conn.close()
 lstm_data.py,362,GET_DEFAULT_ZERO,,,"h = d.get(""et_hour"", 0)"
 lstm_data.py,363,GET_DEFAULT_ZERO,,,"m = d.get(""et_minute"", 0)"
@@ -653,16 +653,16 @@ market_context.py,623,,high|low,pricehistory.candles.*.high|pricehistory.candles
 market_context.py,624,,close|high|low|open|volume,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open|movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"from bars with 'open','high','low','close','volume'."
 market_context.py,625,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,POC = price with max volume. Value area = smallest range containing
 market_context.py,626,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"value_area_pct of volume, centered on POC."
-market_context.py,634,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,open,pricehistory.candles.*.open,"o = float(c.get(""open"", 0) or 0)"
-market_context.py,635,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,high,pricehistory.candles.*.high,"h = float(c.get(""high"", 0) or 0)"
-market_context.py,636,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,low,pricehistory.candles.*.low,"l = float(c.get(""low"", 0) or 0)"
-market_context.py,637,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,close,chains.underlying.close|pricehistory.candles.*.close,"cl = float(c.get(""close"", 0) or 0)"
+market_context.py,634,,open,pricehistory.candles.*.open,"o = float(c.get(""open"", 0) or 0)"
+market_context.py,635,,high,pricehistory.candles.*.high,"h = float(c.get(""high"", 0) or 0)"
+market_context.py,636,,low,pricehistory.candles.*.low,"l = float(c.get(""low"", 0) or 0)"
+market_context.py,637,,close,chains.underlying.close|pricehistory.candles.*.close,"cl = float(c.get(""close"", 0) or 0)"
 market_context.py,638,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"vol = float(c.get(""volume"", 0) or 0)"
 market_context.py,657,GET_DEFAULT_ZERO,,,"v_lo = vol_by_price.get(prices_sorted[lo_idx - 1], 0) if lo_idx > 0 else 0"
 market_context.py,658,GET_DEFAULT_ZERO,,,"v_hi = vol_by_price.get(prices_sorted[hi_idx + 1], 0) if hi_idx < len(prices_sorted) - 1 else 0"
-market_context.py,679,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,high,pricehistory.candles.*.high,"h = float(c.get(""high"", 0) or 0)"
-market_context.py,680,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,low,pricehistory.candles.*.low,"l = float(c.get(""low"", 0) or 0)"
-market_context.py,681,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,close,chains.underlying.close|pricehistory.candles.*.close,"cl = float(c.get(""close"", 0) or 0)"
+market_context.py,679,,high,pricehistory.candles.*.high,            best_vol += v_lo
+market_context.py,680,,low,pricehistory.candles.*.low,            best_lo = prices_sorted[lo_idx]
+market_context.py,681,,close,chains.underlying.close|pricehistory.candles.*.close,        elif hi_idx < len(prices_sorted) - 1:
 market_context.py,682,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"vol = float(c.get(""volume"", 0) or 0)"
 market_context.py,706,,high|low|open,pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open,"- Tier 1 (always available): today open/high/low, PDC from quote{}"
 market_context.py,707,,high|low|vwap,pricehistory.candles.*.high|pricehistory.candles.*.low,"- Tier 2 (needs price history): VWAP, PDH, PDL, ORB high/low"
@@ -685,10 +685,10 @@ market_context.py,862,,low,pricehistory.candles.*.low,"pl.pdl = min(c[""low""] f
 market_context.py,864,,close,chains.underlying.close|pricehistory.candles.*.close,"pl.pdc = prev_bars[-1][1][""close""]"
 market_context.py,869,,high,pricehistory.candles.*.high,"pl.overnight_high = max(c[""high""] for _, c in overnight_bars)"
 market_context.py,870,,low,pricehistory.candles.*.low,"pl.overnight_low  = min(c[""low""] for _, c in overnight_bars)"
-market_context.py,883,GET_DEFAULT_ZERO,open,pricehistory.candles.*.open,"float(c.get(""open"",  0)),"
-market_context.py,884,GET_DEFAULT_ZERO,high,pricehistory.candles.*.high,"float(c.get(""high"",  0)),"
-market_context.py,885,GET_DEFAULT_ZERO,low,pricehistory.candles.*.low,"float(c.get(""low"",   0)),"
-market_context.py,886,GET_DEFAULT_ZERO,close,chains.underlying.close|pricehistory.candles.*.close,"float(c.get(""close"", 0)),"
+market_context.py,883,,open,pricehistory.candles.*.open,"            pl.pd_poc, pl.pd_vah, pl.pd_val = _volume_profile_poc_vah_val(prev_candles)"
+market_context.py,884,,high,pricehistory.candles.*.high,"float(c.get(""high"",  0)),"
+market_context.py,885,,low,pricehistory.candles.*.low,"float(c.get(""low"",   0)),"
+market_context.py,886,,close,chains.underlying.close|pricehistory.candles.*.close,        if overnight_bars:
 market_context.py,887,GET_DEFAULT_ZERO,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"float(c.get(""volume"", 0)),"
 market_data_adapter.py,8,,close|high|low|open|volume,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open|movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"timestamp, open, high, low, close, volume"
 market_data_adapter.py,19,,close|high|low|open|volume,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open|movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"BAR_KEYS = (""timestamp"", ""open"", ""high"", ""low"", ""close"", ""volume"")"
@@ -708,10 +708,10 @@ market_data_adapter.py,70,,low,pricehistory.candles.*.low,"low=_f(""low"", _f(""
 market_data_adapter.py,71,,close,chains.underlying.close|pricehistory.candles.*.close,"close=_f(""close"", _f(""c"")),"
 market_data_adapter.py,72,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"volume=_f(""volume"", _f(""vol"", 0.0)),"
 market_data_adapter.py,94,,close|high|low|open|volume,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open|movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"Schwab format: { datetime: ms, open, high, low, close, volume }"
-market_data_adapter.py,105,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,open,pricehistory.candles.*.open,"""open"": float(c.get(""open"", 0) or 0),"
-market_data_adapter.py,106,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,high,pricehistory.candles.*.high,"""high"": float(c.get(""high"", 0) or 0),"
-market_data_adapter.py,107,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,low,pricehistory.candles.*.low,"""low"": float(c.get(""low"", 0) or 0),"
-market_data_adapter.py,108,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,close,chains.underlying.close|pricehistory.candles.*.close,"""close"": float(c.get(""close"", 0) or 0),"
+market_data_adapter.py,105,,open,pricehistory.candles.*.open,    out = []
+market_data_adapter.py,106,,high,pricehistory.candles.*.high,    for b in raw_bars or []:
+market_data_adapter.py,107,,low,pricehistory.candles.*.low,        nb = normalize_bar(b)
+market_data_adapter.py,108,,close,chains.underlying.close|pricehistory.candles.*.close,        if nb:
 market_data_adapter.py,109,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"""volume"": float(c.get(""volume"", 0) or 0),"
 market_state.py,10,,ask|bid|spot,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"1. Raw inputs    — spot, bid, ask, contracts, walls, totals"
 market_state.py,49,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,"pin_bull    — positive gamma pin with bullish lean (Bull, Tilt Bull)"
@@ -1322,7 +1322,7 @@ ml_scheduler.py,1615,GET_DEFAULT_ZERO,,,"cascade_bal = float(evc.get(""balanced_
 ml_scheduler.py,1616,GET_DEFAULT_ZERO,,,"n_cascade_rows = int(evc.get(""n_rows"", 0))"
 ml_scheduler.py,1972,,ask|bid,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"""entry=ask exit=bid; underlying stop/target/time exit per Call plan; """
 ml_train.py,257,,close,chains.underlying.close|pricehistory.candles.*.close,conn.close()
-ml_train.py,417,DEFAULT_ZERO_OR,spot,,"spot = float(snapshot.get(""spot"") or 0)"
+ml_train.py,417,,spot,,"    raw_spot = snapshot.get(""spot"")"
 ml_train.py,544,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,"gamma=1.0, reg_alpha=1.0, reg_lambda=5.0,"
 ml_train.py,552,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,"gamma=1.0, reg_alpha=1.0, reg_lambda=5.0,"
 ml_train.py,596,DEFAULT_ZERO_OR,,,"if float(b.get(""max_ts_utc"") or 0) + 1e-9 < float(a.get(""max_ts_utc"") or 0):"
@@ -2165,7 +2165,7 @@ server.py,6709,DATE_DIFF_DTE,daysToExpiration,chains.callExpDateMap.*.daysToExpi
 server.py,6710,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,"has_gamma   = sum(1 for ct in contracts if ct.get(""gamma"") is not None)"
 server.py,6711,,openInterest,chains.callExpDateMap.*.openInterest|chains.putExpDateMap.*.openInterest,"has_oi      = sum(1 for ct in contracts if ct.get(""openInterest""))"
 server.py,6715,DATE_DIFF_DTE,,,"selected_exp = _default_expiry(expiries, ticker)"
-server.py,6605,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,spot,,"spot = float(chain_json.get(""underlyingPrice"", 0) or 0)"
+server.py,6738,,spot,,"        raw_spot = chain_json.get(""underlyingPrice"")"
 server.py,6733,DATE_DIFF_DTE,,,"""sample_expirationDate"": sample_exp,"
 server.py,6734,DATE_DIFF_DTE,,,"""sample_daysToExpiration"": sample_dte,"
 server.py,6760,GET_DEFAULT_ZERO|TIME_NOW_FALLBACK,,,"if cached and time.time() - cached.get(""ts"", 0) < ACCURACY_INTERVAL:"
@@ -2187,8 +2187,8 @@ signals.py,100,,low,pricehistory.candles.*.low,"conf = str(getattr(fusion, ""fus
 signals.py,101,,high|low,pricehistory.candles.*.high|pricehistory.candles.*.low,"if conf not in (""low"", ""medium"", ""high""):"
 signals.py,102,,low,pricehistory.candles.*.low,"conf = ""low"""
 signals.py,125,,low,pricehistory.candles.*.low,"confidence=""low"","
-signals.py,262,DEFAULT_ZERO_OR,spot,,"sp = float(mc_spot_ctx.get(""spot"") or 0.0)"
-signals.py,269,DEFAULT_ZERO_OR,spot,,"sp = float(feats.get(""price.spot"") or 0.0)"
+signals.py,262,,spot,,"            raw = mc_spot_ctx.get(""spot"")"
+signals.py,269,,spot,,    try:
 signals.py,317,BLACK_SCHOLES,,,"stack_probs_bundle_key,"
 signals.py,355,BLACK_SCHOLES,,,_spk = stack_probs_bundle_key()
 signals.py,380,,low,pricehistory.candles.*.low,"dominant_class=""flat"", confidence_label=""low"", continuation_support=0.0, reversal_support=0.0)"
@@ -2693,8 +2693,8 @@ features/parallel_stack_schema.py,61,GET_DEFAULT_ZERO,,,"dom = max((""up"", ""do
 features/regime_mvp_context.py,2,,volatility,chains.callExpDateMap.*.volatility|chains.putExpDateMap.*.volatility|chains.volatility,Canonical MVP field reads for regime / volatility scoring.
 features/shared_sequence_context.py,136,,last,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last,"""""""Last ``seq_len`` chronological snapshots (newest at end) — for Transformer merge."""""""
 features/signal_layer_v1.py,7,,volatility|vwap,chains.callExpDateMap.*.volatility|chains.putExpDateMap.*.volatility|chains.volatility,"Categories: price structure, VWAP/value, volatility/compression, candle/imbalance,"
-features/signal_layer_v1.py,57,DEFAULT_ZERO_OR,close|high,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high,"h = _f(bar.get(""high"")) or _f(bar.get(""close"")) or 0.0"
-features/signal_layer_v1.py,58,DEFAULT_ZERO_OR,close|low,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.low,"l_ = _f(bar.get(""low"")) or _f(bar.get(""close"")) or 0.0"
+features/signal_layer_v1.py,57,,close|high,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high,"    h = _f(bar.get(""high""))"
+features/signal_layer_v1.py,58,,close|low,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.low,"    l_ = _f(bar.get(""low""))"
 features/signal_layer_v1.py,72,,close,chains.underlying.close|pricehistory.candles.*.close,"b[""_prev_close""] = _f(bars[i - 1].get(""close""))"
 features/signal_layer_v1.py,120,,high,pricehistory.candles.*.high,"h = _f(bars[i].get(""high""))"
 features/signal_layer_v1.py,121,,low,pricehistory.candles.*.low,"l_ = _f(bars[i].get(""low""))"
@@ -2704,8 +2704,8 @@ features/signal_layer_v1.py,126,,low,pricehistory.candles.*.low,"lp = _f(bars[i 
 features/signal_layer_v1.py,127,,low,pricehistory.candles.*.low,"ln = _f(bars[i + 1].get(""low""))"
 features/signal_layer_v1.py,142,,close|open,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.open,"o = _f(chunk[0].get(""open"")) or _f(chunk[0].get(""close""))"
 features/signal_layer_v1.py,143,,close,chains.underlying.close|pricehistory.candles.*.close,"c = _f(chunk[-1].get(""close""))"
-features/signal_layer_v1.py,144,DEFAULT_ZERO_OR,high,pricehistory.candles.*.high,"hi = max(_f(x.get(""high"")) or o or 0.0 for x in chunk)"
-features/signal_layer_v1.py,145,DEFAULT_ZERO_OR,low,pricehistory.candles.*.low,"lo = min(_f(x.get(""low"")) or o or 0.0 for x in chunk)"
+features/signal_layer_v1.py,144,,high,pricehistory.candles.*.high,"    chunk: list[Mapping[str, Any]] = []"
+features/signal_layer_v1.py,145,,low,pricehistory.candles.*.low,    for b in bars:
 features/signal_layer_v1.py,146,DEFAULT_ZERO_OR,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"vol = sum(_f(x.get(""volume"")) or 0.0 for x in chunk)"
 features/signal_layer_v1.py,150,,open,pricehistory.candles.*.open,"""open"": o,"
 features/signal_layer_v1.py,151,,high,pricehistory.candles.*.high,"""high"": hi,"
