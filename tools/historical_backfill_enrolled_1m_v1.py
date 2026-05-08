@@ -505,7 +505,11 @@ def run(
                 wl["n_candles"] = len(candles)
                 bars = schwab_candles_to_bars(candles)
                 wl["n_bars_parsed"] = len(bars)
-                n = db.upsert_1m_bars(sym_upper, bars)
+                n = db.upsert_1m_bars(
+                    sym_upper,
+                    bars,
+                    refresh_governed_outcomes=False,
+                )
                 wl["bars_upsert_count"] = n
                 total_written += n
             except Exception as e:

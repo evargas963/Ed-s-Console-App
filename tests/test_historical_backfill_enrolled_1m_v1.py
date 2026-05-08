@@ -135,7 +135,7 @@ def test_run_upsert_operational_locked_surfaces_db_locked(
     def _fake_fetch(_client, _sym, _start, _end):
         return Resp()
 
-    def _locked_upsert(_self, _ticker, _bars):
+    def _locked_upsert(_self, _ticker, _bars, **_kwargs):
         raise sqlite3.OperationalError("database is locked")
 
     monkeypatch.setattr(bf, "_fetch_minute_window", _fake_fetch)

@@ -83,6 +83,66 @@ def test_upsert_1m_bars_recomputes_affected_governed_outcomes(tmp_path):
     assert row2["outcome_5c_pts"] != 99.99
 
 
+def test_upsert_1m_bars_can_defer_governed_outcome_refresh_for_bulk_backfill(tmp_path):
+    """Bulk backfill can skip per-window refresh, then repair labels with the explicit bulk refresh."""
+    db = EdDB(tmp_path / "gov_deferred.db")
+    t0 = 1_520_000.0
+    t_snap = t0 + 90.0
+    with db._connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO snapshots (
+                ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
+                horizon_outcome_schema_version, outcome_filled
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            (
+                "SPY",
+                CF,
+                t_snap,
+                "test",
+                10,
+                30,
+                "rth",
+                100.0,
+                HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+            ),
+        )
+    bars = [
+        {
+            "datetime": t0 + i * 60.0,
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.0 + i,
+            "volume": 1.0,
+        }
+        for i in range(80)
+    ]
+
+    db.upsert_1m_bars("SPY", bars, refresh_governed_outcomes=False)
+
+    with db._connect() as conn:
+        stale = conn.execute(
+            "SELECT outcome_5c, outcome_5c_pts FROM snapshots WHERE ticker='SPY' AND timeframe=?",
+            (CF,),
+        ).fetchone()
+    assert stale["outcome_5c"] is None
+    assert stale["outcome_5c_pts"] is None
+
+    audit = db.refresh_all_governed_bar_anchor_outcomes_v1()
+
+    assert audit["updates_executed"] >= 1
+    with db._connect() as conn:
+        refreshed = conn.execute(
+            "SELECT outcome_5c, outcome_5c_pts FROM snapshots WHERE ticker='SPY' AND timeframe=?",
+            (CF,),
+        ).fetchone()
+    assert refreshed["outcome_5c"] is not None
+    assert refreshed["outcome_5c_pts"] is not None
+
+
 def test_refresh_all_governed_bar_anchor_outcomes_v1_aligns_with_bars(tmp_path):
     """Bulk repair forces snapshot labels to match current price_bars_1m."""
     db = EdDB(tmp_path / "gov2.db")
