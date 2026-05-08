@@ -1,7 +1,7 @@
 # Schwab Derived Field Replacement Register V1
 
 **Status:** Draft replacement register - repo-wide closure OPEN  
-**Date:** 2026-05-07  
+**Date:** 2026-05-08  
 **Scope:** Derived/recomputed market-data primitives and formulas crosswalked against Schwab-native field availability  
 **Mode:** Read-only register plus remediation plan; no code changes authorized by this document
 
@@ -44,6 +44,17 @@ No formula may silently stand in for a Schwab-native primitive when that primiti
 | Runtime code fixes | Not started in this register | This file ranks work; implementation slices follow. |
 | Repo-wide replacement closure | OPEN | No claim of all-inclusive completion. |
 
+Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “working tree / pending” rows):
+
+| Finding | Status | Evidence |
+|---|---|---|
+| DFR-001 | CLOSED | `f4e58d9` — A2 proof row preserves Schwab option-chain fields. Post-fix live/archive **theta measurement** (S008 window) still open. |
+| DFR-002 | ADDRESSED | `a03e5ba` (S017 live plane / quote-time wiring). Re-audit if new residuals flag streaming carry-forward. |
+| DFR-003 | ADDRESSED | `a03e5ba` — REST fast-quote / Tier A paths; fail-closed spot + source metadata (see S005 `d4b2f1a` for related consumers). |
+| DFR-004 | ADDRESSED | `a03e5ba` + `569af08` (S009) — spread pts vs fraction + spread age / non-tradeable gating; re-audit sticky cache if residuals return. |
+| DFR-010 / MT-001 | CLOSED | `d4b2f1a` (S005) — `features/replay_signal_input_v1` spot fail-closed. |
+| DFR-021 | CLOSED | `df58fe9` — `build_inference_snapshot_v1_from_signal_input` no `time.time()` fallback (`SCHWAB_REMEDIATION_S017_INFERENCE_SNAPSHOT_TIME_CONTRACT.md`). |
+
 ---
 
 ## Action Classes
@@ -61,7 +72,7 @@ No formula may silently stand in for a Schwab-native primitive when that primiti
 
 | ID | Site | Field/formula | Why it matters | Action | Severity |
 |---|---|---|---|---|---|
-| DFR-001 | `market_state.py::_oe_chain_row_snapshot()` | Selected option proof row field truncation | Dropped Schwab theta/IV/timestamps before A2; fixed in current working tree but still needs review/commit and post-fix measurement. | replace-with-Schwab | High |
+| DFR-001 | `market_state.py::_oe_chain_row_snapshot()` | Selected option proof row field truncation | Dropped Schwab theta/IV/timestamps before A2; addressed in `f4e58d9`; post-fix theta measurement still required. | replace-with-Schwab | High |
 | DFR-002 | `live_market_plane.py::record_from_level_one_equity()` | `spot = LAST_PRICE or MARK or prior spot or bid/ask midpoint`; bid/ask carry-forward | Streaming authority can silently carry stale quote fields into Tier A/B/C overlays. | redesign | High |
 | DFR-003 | `server.py::_build_rest_fast_quote_payload()` | `spot = last or mark or 0.0` | Fast quote can degrade to zero/None without field-level source; trader-visible spot and L1 overlays affected. | gate/fail-closed | High |
 | DFR-004 | `server.py::_fetch_state()` | Cached `_last_spread_by_ticker` reused when current bid/ask missing | Stale spread can affect liquidity and A2 spread gates. | gate/fail-closed | High |
@@ -70,13 +81,21 @@ No formula may silently stand in for a Schwab-native primitive when that primiti
 | DFR-007 | `v2_decision/a2_option_expression.py::_quote_staleness_ms()` | Uses `quoteTimeInLong`; missing means not implemented | Schwab also provides `tradeTimeInLong`; missing quote timestamp can hard-gate A2 despite usable trade timestamp. | gate/fail-closed / governed fallback | High |
 | DFR-008 | `server.py` expected move block | Falls back to IV EM with default IV = 20% and full-session hours | Synthetic default-IV EM can affect risk framing when Schwab IV/marks are unavailable. | gate/fail-closed | Medium/High |
 | DFR-009 | `snapshot_normalizer.py::resample_to_1m()` | Rebuilds OHLCV from snapshots and spot fallback | Can create training/history bars unlike Schwab price-history candles. | redesign | Medium/High |
-| DFR-010 | `features/replay_signal_input_v1.py` | `spot = float(row.get("spot") or 0.0)` | Missing spot becomes 0.0 instead of unavailable; V3 I-01 risk in replay feature path. | gate/fail-closed | High |
+| DFR-010 | `features/replay_signal_input_v1.py` | `spot = float(row.get("spot") or 0.0)` | Missing spot becomes 0.0 instead of unavailable; V3 I-01 risk in replay feature path. **Closed `d4b2f1a` (S005).** | gate/fail-closed | High |
 | DFR-011 | `market_data_adapter.py` | OHLCV missing/unparseable values default to `0.0` | Schwab price-history candles provide native OHLCV; zero-injected bars can pollute ATR/VWAP/volatility/replay. | gate/fail-closed | High |
 | DFR-012 | `features/inference_snapshot.py` | Snapshot-level provenance only | Mixed Schwab-native and derived features lose per-field source lineage before model consumers. | redesign | High |
 | DFR-013 | `features/fusion_model_input.py` | Missing `vwap_side` defaults to `above` | Missing market context becomes deterministic retrieval bucket. | gate/fail-closed / redesign | High |
 | DFR-014 | `ml_train.py` / `ml_predict.py` | Median and zero imputation can hide upstream market-data failures | Model training/inference can continue with degraded inputs without authority downgrade. | redesign | High |
 | DFR-015 | `static/index.html` utility/sidebar | Sticky previous VIX/PCR/bid/ask values when current payload omits fields | Trader can see stale values as current. | gate/fail-closed | High |
 | DFR-016 | `server.py` Tier C VIX payload | `vix_direction` / `vix_vs_prev` computed but not serialized where UI expects them | Trader-visible VIX momentum can show neutral/missing despite movement. | replace-with-Schwab + derived provenance | High |
+| DFR-017 | `chains.py::contract_fields()` / `math_exposure_core.py::compute_exposures_by_strike()` | `multiplier` defaulted to `100` | Missing Schwab multiplier silently coerces non-standard contracts into standard-contract dollarized exposure math. | gate/fail-closed / replace-with-Schwab | High |
+| DFR-018 | `liquidity_value_engine.py` | OHLCV defaults to `0` | Parallel OHLCV zero-injection path outside `market_data_adapter.py`. **ADDRESSED `9a863fc` (S002/S003 overlap) — re-audit if residuals persist.** | gate/fail-closed | High |
+| DFR-019 | `order_flow_engine.py::_compute_rvol()` | RVOL returns `1.0` when average volume is invalid | Missing baseline volume becomes neutral RVOL instead of unavailable. | gate/fail-closed / derived provenance | Medium |
+| DFR-020 | `signals.py::_spot_for_mc_fusion_adjustment()` | spot returns `0.0` in fusion adjustment path | Post-fusion spot consumer can silently substitute zero. **Closed `d4b2f1a` (S005).** | gate/fail-closed | High |
+| DFR-021 | `features/inference_snapshot.py` | `as_of_ts -> refresh_ts_utc -> time.time()` | Decision/input timestamp can fall back to wall clock without source label. **Closed `df58fe9` (S017 inference snapshot amendment).** | gate/fail-closed / provenance | Medium |
+| DFR-022 | `server.py` MC expected move block | fallback hours defaults to `6.5` | Synthetic full-session horizon can affect expected-move framing. | gate/fail-closed | Medium |
+| DFR-023 | `mc_fusion_adjustment.py` | MC output zero-fill via `or 0.0` | Missing MC output can become neutral zero-valued adjustment. | gate/fail-closed | Medium |
+| DFR-024 | `static/index.html` utility bid/ask rendering | sticky bid/ask display | Operator-visible quote fields can persist when current payload omits them. | gate/fail-closed | High |
 
 ---
 
