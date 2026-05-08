@@ -52,7 +52,8 @@ def test_live_db_keys_identical_to_canonical_list():
 
     base_live = {
         "spot": 450.0,
-        "spread": 0.02,
+        "spread": 0.0002,
+        "spread_pts": 0.02,
         "zone": "pin_bull",
         "nearest_above_dist": 1.5,
         "nearest_below_dist": -2.0,
@@ -86,7 +87,8 @@ def test_live_adapter_ignores_spot_anchors_duplicate():
 
     payload = {
         "spot": 450.0,
-        "spread": 0.02,
+        "spread": 0.0002,
+        "spread_pts": 0.02,
         "zone": "pin_bull",
         "nearest_above_dist": 1.5,
         "nearest_below_dist": -2.0,
@@ -131,7 +133,8 @@ def test_cross_path_parity_and_uppercase_normalization():
 
     live = {
         "spot": 100.0,
-        "spread": 0.05,
+        "spread": 0.0005,
+        "spread_pts": 0.05,
         "zone": "PIN_NEUTRAL",
         "nearest_above_dist": 0.5,
         "nearest_below_dist": -0.5,
@@ -158,6 +161,19 @@ def test_cross_path_parity_and_uppercase_normalization():
     assert a == b
     assert a["structure.zone"] == "pin_neutral"
     assert a["anchor.vwap_side"] == "below"
+
+
+def test_live_adapter_uses_spread_pts_not_fractional_spread_for_canonical_points():
+    from features.live_feature_adapter import build_live_mvp_feature_row
+
+    row = build_live_mvp_feature_row({
+        "spot": 100.0,
+        "spread": 0.0005,
+        "spread_pts": 0.05,
+        "liquidity_summary": {},
+    })
+
+    assert row["price.spread_pts"] == 0.05
 
 
 def test_validate_rejects_extra_keys():
@@ -510,7 +526,8 @@ def test_semantic_parity_controlled_fixtures():
 
     live = {
         "spot": 450.0,
-        "spread": 0.02,
+        "spread": 0.0002,
+        "spread_pts": 0.02,
         "zone": "pin_bull",
         "nearest_above_dist": 1.5,
         "nearest_below_dist": -2.0,

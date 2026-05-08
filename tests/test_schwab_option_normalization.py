@@ -84,6 +84,14 @@ def test_contract_fields_promotes_option_chain_context_fields():
         assert normalized[field] == raw[field]
 
 
+def test_contract_fields_preserves_schwab_multiplier_without_defaulting_to_100():
+    mini = {**_schwab_contract(), "multiplier": 5}
+    missing = {k: v for k, v in _schwab_contract().items() if k != "multiplier"}
+
+    assert contract_fields(mini)["multiplier"] == 5.0
+    assert contract_fields(missing)["multiplier"] is None
+
+
 def test_serialize_option_chain_for_eval_preserves_schwab_greeks_and_times():
     raw = _schwab_contract()
     payload = serialize_option_chain_for_eval([contract_fields(raw)], "2026-05-05")
