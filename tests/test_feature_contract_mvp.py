@@ -331,6 +331,31 @@ def test_inference_snapshot_v1_metadata_and_quality():
     assert ok
 
 
+def test_inference_snapshot_v1_ignores_server_build_ts_for_as_of_ts():
+    """D-S017-03: ingestion wall clock must not become InferenceSnapshotV1.as_of_ts."""
+    from features.inference_snapshot import build_inference_snapshot_v1
+
+    l1 = {
+        "spot": 400.0,
+        "spread": 0.01,
+        "zone": "breakout",
+        "nearest_above_dist": 2.0,
+        "nearest_below_dist": -1.0,
+        "net_gamma": 0.5,
+        "vwap_side": "above",
+        "dist_to_vwap_pts": 0.4,
+        "liquidity_summary": {"absorption_score": None, "continuation_score": 0.1},
+        "_server_build_ts": 9_999_999_999.0,
+    }
+    snap = build_inference_snapshot_v1(
+        ticker="SPY",
+        expiry=None,
+        as_of_ts=None,
+        l1_payload=l1,
+    )
+    assert snap["as_of_ts"] is None
+
+
 def test_inference_snapshot_rejects_invalid_features():
     from features.inference_snapshot import build_inference_snapshot_v1
 

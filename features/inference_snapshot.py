@@ -146,7 +146,9 @@ def build_inference_snapshot_v1(
     source values) or if the row fails `validate_feature_contract_row` (e.g. spot ≤ 0).
 
     `expiry` uses the same convention as L1 scope: None means auto / unspecified expiry.
-    `as_of_ts` may be taken from l1_payload `as_of_ts` or `_server_build_ts` if caller passes None.
+    `as_of_ts` comes from the explicit argument, else optional `l1_payload["as_of_ts"]` when the
+    L1 producer stamped a decision instant there. Wall-clock `_server_build_ts` is not used
+    (S017 — no silent ingestion clock in evaluation time).
     """
     features = build_live_mvp_feature_row(l1_payload)
     ok, errs = validate_feature_contract_row(features)
@@ -156,8 +158,6 @@ def build_inference_snapshot_v1(
     ts = as_of_ts
     if ts is None:
         ts = l1_payload.get("as_of_ts")
-    if ts is None:
-        ts = l1_payload.get("_server_build_ts")
     try:
         ts_f = float(ts) if ts is not None else None
     except (TypeError, ValueError):

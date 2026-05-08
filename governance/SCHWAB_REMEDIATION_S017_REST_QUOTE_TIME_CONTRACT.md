@@ -1,6 +1,6 @@
 # Schwab Remediation S017 REST Quote Time Contract
 
-**Status:** IMPLEMENTED_IN_WORKING_TREE  
+**Status:** IMPLEMENTED  
 **Slice:** S017 `TIME_NOW_FALLBACK` aggregate  
 **Authority:** `schwab_field_inventory/schwab_field_dictionary.csv`
 
@@ -31,7 +31,7 @@ REST quote rows must not expose wall-clock `time.time()` as `fast_server_ts`. Ca
 | `server._tier_a_live_state_dict` REST bootstrap row | fixed-in-this-slice | `server.py:2736-2770` | Tier A `quote_ingestion: rest_tier_a` row uses Schwab times for `fast_server_ts` (not `time.time()`); `server_received_ts` is ingestion clock. |
 | `server._tier_a_live_state_dict` response passthrough | fixed-in-this-slice | `server.py:2799-2821` | Echoes `quote_time_source`, `server_received_ts`, `fast_server_ts`, `_live_plane_fast_ts` from the quote row; `_pipeline_ms` from `t0_mono` only. |
 | `server._fetch_state` candle accumulator path | fixed-in-this-slice | `server.py:3052-3068` | `_tick_ts = parsed.quote_time or parsed.trade_time`; ticks skipped when `_tick_ts is None`. |
-| `server._fetch_state` pipeline latency vs quote wall | fixed-in-this-slice | `server.py:2877-3016`, `4846-4851` | Segment timings from `time.monotonic()`; `_server_build_ts` on success path is ingestion unix split from Schwab quote times in the same payload. |
+| `server._fetch_state` pipeline latency vs quote wall | fixed-in-this-slice | `server.py:4861-4866` | `_pipeline_ms` / `_chain_ms` / `_quote_ms` / `_compute_ms` from `time.monotonic()` deltas; `_server_build_ts` is separate ingestion wall clock (`time.time()`), not Schwab quote time. |
 | `server._fetch_state` IV-history lookup | fixed-in-this-slice | `server.py::_fetch_state` | Time-bounded lookup only runs when Schwab quote/trade time is present. |
 | `live_market_plane.record_from_level_one_equity` | fixed-in-this-slice | `live_market_plane.py:115-145` | Streaming: Schwab millis → `fast_server_ts`; see S017 Live Plane contract. |
 | `live_market_plane.merge_into_state` | fixed-in-this-slice | `live_market_plane.py:208-210` | Copies plane `fast_server_ts` into `_live_plane_fast_ts` only when present. |

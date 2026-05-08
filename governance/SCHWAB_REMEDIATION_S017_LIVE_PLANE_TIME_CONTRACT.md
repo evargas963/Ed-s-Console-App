@@ -1,6 +1,6 @@
 # Schwab Remediation S017 Live Plane Time Contract
 
-**Status:** IMPLEMENTED_IN_WORKING_TREE  
+**Status:** IMPLEMENTED  
 **Slice:** S017 `TIME_NOW_FALLBACK` aggregate  
 **Authority:** `schwab_field_inventory/schwab_field_dictionary.csv`
 

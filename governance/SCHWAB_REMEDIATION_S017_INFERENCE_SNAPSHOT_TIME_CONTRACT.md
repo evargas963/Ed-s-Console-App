@@ -19,6 +19,8 @@ All consumers checked: yes
 
 If no authoritative decision timestamp is available, `as_of_ts` remains `None`. Downstream consumers that require time-bounded data must handle `None` explicitly instead of receiving a fabricated current wall-clock value.
 
+L1 payloads may carry `_server_build_ts` for other diagnostics, but **`InferenceSnapshotV1.as_of_ts` must not be derived from it** — that field is ingestion wall clock, not Schwab market-data time and not an asserted decision instant.
+
 ## Implementation lineage
 
 The initial S017 bundle commit set included governance and server/live-plane work but did not include `features/inference_snapshot.py`. Slice closure requires the disposition rows above to match **committed** code: `build_inference_snapshot_v1_from_signal_input` is amended in the same commit series that updates this section (no `time.time()` fallback; invalid/missing timestamps stay `None`).
@@ -28,6 +30,7 @@ The initial S017 bundle commit set included governance and server/live-plane wor
 | Consumer | Status | Evidence | Note |
 |---|---|---|---|
 | `features.inference_snapshot.build_inference_snapshot_v1_from_signal_input` | fixed-in-this-slice | `features/inference_snapshot.py::build_inference_snapshot_v1_from_signal_input` | Uses explicit `as_of_ts` or `SignalInput.refresh_ts_utc`; no `time.time()` fallback. |
+| `features.inference_snapshot.build_inference_snapshot_v1` | fixed-in-this-slice | `features/inference_snapshot.py::build_inference_snapshot_v1` | `as_of_ts` from caller argument or optional `l1_payload["as_of_ts"]` only; **no** `l1_payload["_server_build_ts"]` wall-clock fill (D-S017-03). |
 | `signals.compute_signals` | covered-by-contract | `signals.py::compute_signals` | Builds the shared inference snapshot once; existing calibration tests assert `decision_ts_utc == refresh_ts_utc`. |
 | `signals.compute_signals_parallel` | covered-by-contract | `signals.py::compute_signals_parallel` | Same shared builder path. |
 | `prediction_engine._as_of_ts_utc_for_similarity` | covered-by-contract | `prediction_engine.py::_as_of_ts_utc_for_similarity` | Treats missing inference/signal time as `None`, avoiding future-row cutoff fabrication. |
