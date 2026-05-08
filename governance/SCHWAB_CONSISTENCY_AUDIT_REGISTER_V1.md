@@ -21,6 +21,8 @@ schwab_native_normalized > schwab_native_raw_fallback > governed_derived_fallbac
 
 Derived analytics remain allowed when Schwab does not provide the output directly, for example dealer exposure, gamma walls, breakeven math, model features, replay PnL policy, VWAP side, and liquidity scores. Those are not substitutes for Schwab-native primitive observations.
 
+Source priority enforcement is governed by `ENGINEERING_GATEKEEPING_POLICY.md` §Schwab Same-or-Better Rule.
+
 ---
 
 ## Closure Status

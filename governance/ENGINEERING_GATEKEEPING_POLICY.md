@@ -3,7 +3,7 @@
 **Status:** Binding engineering operating policy  
 **Created:** 2026-05-06  
 **Scope:** All code, data-plane, governance, model, calibration, and tooling changes  
-**Related references:** `governance/DERIVED_ANALYTICS_REGISTRY.md`, `docs/SCHWAB_FIELD_REFERENCE.md`, `schwab_field_inventory/schwab_canonical_fields.txt`
+**Related references:** `governance/DERIVED_ANALYTICS_REGISTRY.md`, `docs/SCHWAB_FIELD_REFERENCE.md`, `schwab_field_inventory/schwab_field_dictionary.csv`
 
 ---
 
@@ -42,11 +42,41 @@ Any code that reads, derives, computes, normalizes, serializes, displays, or gat
 Required check:
 
 ```text
-1. Search `schwab_field_inventory/schwab_canonical_fields.txt`.
-2. Check `docs/SCHWAB_FIELD_REFERENCE.md` and the relevant normalization boundary.
-3. If Schwab provides the primitive, normalize and consume the Schwab-native value first.
-4. Use derived values only as governed fallbacks or legitimate analytics.
+1. Search `schwab_field_inventory/schwab_field_dictionary.csv`.
+2. Confirm the exact `canonical_field` row, endpoint, category, and likely use.
+3. Check `docs/SCHWAB_FIELD_REFERENCE.md` and the relevant normalization boundary.
+4. If Schwab provides the primitive, normalize and consume the Schwab-native value first.
+5. Use derived values only as governed fallbacks or legitimate analytics.
 ```
+
+The CSV is the canonical field authority. Text references, prior audit notes, and memory are subordinate to the CSV. `schwab_field_inventory/schwab_canonical_fields.txt` may be used as a quick index, but a durable code change must cite or check the CSV row.
+
+Every non-trivial market-data code change must include a CSV-first declaration in the review note, commit body, PR body, or governing slice artifact:
+
+```text
+Schwab CSV authority checked: yes
+CSV row(s): <canonical_field rows or NO_SCHWAB_EQUIVALENT>
+Derived-field disposition: REPLACE_WITH_SCHWAB | KEEP_DERIVED_WITH_PROVENANCE | GATE_FAIL_CLOSED | REDESIGN
+All consumers checked: yes/no + disposition list
+```
+
+Minimum standard for implementation work:
+
+```text
+1. If a new field is read, derived, defaulted, renamed, displayed, serialized, or used in a model/gate, search the CSV first.
+2. If the CSV has a native primitive, use that field at the normalization boundary and pass it downstream with source/provenance.
+3. If no CSV field exists, register or cite the derived analytic before relying on it.
+4. If the change touches an existing field, grep all consumers and update or disposition them in the same slice.
+5. If a future-slice deferral remains, add it to the appropriate Schwab register before commit.
+```
+
+## Schwab Same-or-Better Rule
+
+**Default:** For a given site, if the appropriate Schwab field for that context would yield an answer that is the same as the derived path, or strictly more accurate (closer to exchange- or vendor-authoritative truth, fewer assumptions, correct units/plane), you must use the Schwab field — not derived, not "derived + provenance."
+
+**If Schwab looks worse:** That does not silently authorize staying on derived. It means something is wrong or mis-scoped: wrong field choice, wrong plane, stale snapshot, rounding, timing, bad merge order, bug, or a mistaken assumption in the "appropriate" Schwab mapping. That state requires explicit investigation (trace, repro, measurement) and a governed outcome: either fix the integration so Schwab wins, document a temporary blocker with a named gap and owner, or prove with evidence that the comparison was invalid (e.g. comparing unlike things). "Worse" without investigation is not a standing exception.
+
+**Restated:** Same-or-better → Schwab. Worse → stop and investigate, not default to derived.
 
 Using a derived field as a substitute for a Schwab-provided primitive is a policy violation.
 
