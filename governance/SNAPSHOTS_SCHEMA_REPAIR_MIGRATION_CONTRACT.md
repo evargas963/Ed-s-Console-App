@@ -151,7 +151,7 @@ The migration script MUST implement all of the following:
 - backup path recorded in the audit output;
 - `PRAGMA integrity_check` before migration;
 - `PRAGMA integrity_check` after migration;
-- source vs target row-count parity assertion in the audit JSON (`counts_after.snapshots == counts_before.snapshots`); **not** equality to the historical sample `186,347` above — see apply runbook relational checklist;
+- source vs target row-count parity assertion in the audit JSON (`counts_after.snapshots == counts_before.snapshots`); **not** equality to the historical sample `186,347` above — see [`SNAPSHOTS_SCHEMA_REPAIR_APPLY_RUNBOOK_V1.md`](./SNAPSHOTS_SCHEMA_REPAIR_APPLY_RUNBOOK_V1.md) relational checklist;
 - `snapshot_id` uniqueness assertion in target;
 - `snapshot_id IS NOT NULL` assertion in target;
 - explicit recreation of at least:
