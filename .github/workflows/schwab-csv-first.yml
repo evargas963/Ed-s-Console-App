@@ -1,0 +1,30 @@
+name: Schwab CSV First Guard
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  schwab-csv-first:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Run Schwab CSV-first guard
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            git diff "origin/${{ github.base_ref }}"...HEAD > /tmp/schwab_csv_first.diff
+          else
+            git diff HEAD~1..HEAD > /tmp/schwab_csv_first.diff
+          fi
+          python tools/check_schwab_csv_first.py --diff-file /tmp/schwab_csv_first.diff

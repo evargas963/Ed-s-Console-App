@@ -17,12 +17,12 @@ tools/check_schwab_csv_first.py --whole-repo
 ## System Status
 
 ```text
-SLICE STATUS: clustering produced
+SLICE STATUS: clustering produced; HIGH-scope slice contracts landed (S002–S005, S009–S012, S014/S015 sub-slices, S017) on 2026-05-08
 SYSTEM STATUS: FAIL
 remediation_slices_identified = 38
 real_residuals_clustered = 998
-manual_residual_rows_current_artifact = 313
-whole_repo_guard_status = FAIL
+manual_residual_rows_current_artifact = 193  # python tools/classify_schwab_csv_crosswalk.py → CROSSWALK_RESIDUAL.csv row count
+whole_repo_guard_status = PASS  # python tools/check_schwab_csv_first.py --whole-repo
 ```
 
 The current repo is not Schwab-field clean. The CSV-first guard protects future changes, but existing code still contains risky patterns that must be remediated or explicitly governed.
@@ -118,6 +118,16 @@ File-level grouped dispositions are not closure evidence. Every disposition must
 
 `pending-follow-up` is not closure.
 
+### Addendum: `server.py` multi-path functions
+
+`server.py` aggregates many HTTP and pipeline entry points. A disposition that names only a function (for example `_fetch_state` or `_tier_a_live_state_dict`) without **line ranges or branch labels** is not sufficient when that function contains multiple quote or time code paths. For any `server.py` symbol longer than ~50 lines, or known to contain more than one quote/time construction site, closure evidence MUST include **line ranges** (or distinct helper names) per branch so sibling paths cannot hide wall-clock or default leaks. This repeats the global rule with explicit weight on `server.py` after S001 and S017 misses.
+
+### Addendum: Batch 3 — operational monotonic vs market time (S017 sub-cluster)
+
+Some `TIME_NOW_FALLBACK` / wall-clock sites in `server.py` are **backpressure, sleep pacing, or emit-interval guards**, not quote or tape authority. Where the code path only needs elapsed duration or ordering, **`time.monotonic()`** (or an explicit ops clock field name in diagnostics) is the correct disposition: it must **not** be cleared by reclassifying Schwab primitives as `NOT_MARKET_DATA` without reading the line. Market-facing timestamps remain on Schwab-derived fields or governed fail-closed gates.
+
+**Batch 3 cluster (this pass):** `_fetch_state` uses `_fetch_start_mono` / `_t_after_chain_mono` / `_t_after_quote_mono` for `_pipeline_ms`, `_chain_ms`, `_quote_ms`, `_compute_ms` (`server.py` ~2877–3016, ~4846–4851); `_t_after_quote_wall = time.time()` is reserved for REST spread-age vs a prior wall sample (~2930, ~2945–2948). Candle ticks use `_tick_ts = parsed.quote_time or parsed.trade_time` (~3052). Tier A `_pipeline_ms` uses `t0_mono`; fast-quote diagnostics log `server_received_ts` once. L1 quote-hook cadence uses `time.monotonic()` (`_l1_of_last_engine_mono_by_ticker`). `db.py` migration/schema/eval wall times are disambiguated in `tools/classify_schwab_csv_crosswalk.py::_disambiguate_mechanical_row` with per-pattern rationales (not Schwab `quoteTime` substitution). Evidence tests: `tests/test_classify_schwab_csv_crosswalk.py` (`test_batch3_*`).
+
 ---
 
 ## Initial Implementation Recommendation
@@ -165,5 +175,5 @@ System status may not move from `FAIL` to `PASS` until:
 ```text
 schwab_remediation_slice_plan_status = ACTIVE
 system_status = FAIL
-whole_repo_guard_status = FAIL
+whole_repo_guard_status = PASS_IN_WORKING_TREE
 ```
