@@ -17,7 +17,7 @@ tools/check_schwab_csv_first.py --whole-repo
 ## System Status
 
 ```text
-SLICE STATUS: clustering produced; HIGH-scope slice contracts landed (S002–S005, S009–S012, S014/S015 sub-slices, S017) on 2026-05-08
+SLICE STATUS: clustering produced; HIGH-scope slice contracts landed (S002–S005, S009–S012, S014/S015 sub-slices, S017) on 2026-05-08; S013 DATE_DIFF_DTE sub-triage doc added 2026-05-08
 SYSTEM STATUS: FAIL
 remediation_slices_identified = 38
 real_residuals_clustered = 998
@@ -77,6 +77,8 @@ These five aggregates are intentionally broad and require sub-triage by actual l
 | S015 | `GET_DEFAULT_ZERO` | 137 | `server.py` (50), `ml_scheduler.py` (14), `math_exposure_core.py` (11) | Split by field and runtime vs offline analysis. |
 | S016 | `BLACK_SCHOLES` | 126 | `prediction_engine.py` (50), `ml_predict.py` (25), `planes/l1_thresholds.py` (14) | Separate true Black-Scholes pricing/theta from generic model math references. |
 | S017 | `TIME_NOW_FALLBACK` | 103 | `server.py` (50), `db.py` (12), `order_flow_streaming.py` (5) | Split market-data timestamp vs decision emit timestamp vs audit wall-clock. |
+
+**S013 sub-triage (2026-05-08):** See [`governance/SCHWAB_REMEDIATION_S013_DATE_DIFF_DTE_SUBTRIAGE_V1.md`](./SCHWAB_REMEDIATION_S013_DATE_DIFF_DTE_SUBTRIAGE_V1.md). Summary: crosswalk `DATE_DIFF_DTE` rows are dominated by **tagger false positives** (e.g. `expiry` parameter names); runtime Schwab DTE on hot paths is already aligned with **S001** (`daysToExpiration`). Next lever is **tightening the mechanical tagger** (Bucket E) before line-by-line “213 fixes.”
 
 Smaller medium slices S018-S027 cover roughly 30 instances total and should be scheduled after S001-S012 plus aggregate sub-triage.
 
