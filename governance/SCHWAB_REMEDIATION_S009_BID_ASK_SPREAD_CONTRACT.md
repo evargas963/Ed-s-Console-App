@@ -1,6 +1,6 @@
 # Schwab Remediation S009 Bid/Ask Spread Contract
 
-**Status:** IMPLEMENTED_IN_WORKING_TREE  
+**Status:** IMPLEMENTED  
 **Slice:** S009 `ASK_MINUS_BID` x `bid_ask`  
 **Authority:** `schwab_field_inventory/schwab_field_dictionary.csv`
 
@@ -22,6 +22,16 @@ Bid and ask are Schwab-native primitives. Spread is a derived value and must car
 - `price.spread_pts`: canonical MVP feature, must read point spread only.
 
 If either bid or ask is missing, spread fields remain unavailable. No carry-forward or midpoint fabrication is allowed for tradeability decisions.
+
+## Cross-context unit notes (D-S009-02)
+
+The JSON key `spread` is **not** unit-universal:
+
+- **Live plane / REST fast-quote row** (`live_market_plane`, `server._build_rest_fast_quote_payload`): `spread` is **fractional** width \((ask-bid)/midpoint\); `spread_pts` is **point** width.
+- **DB snapshot column** `spread` and **option-expression** `oe.spread`: **point** width (same numeric convention as `spread_pts` on the wire).
+- **A2 `ms_dict["spread"]`** in the evaluated path: **point** width, because `build_market_state` supplies OE spread, not the raw live-plane quote row.
+
+S009 closure does not require renaming every legacy `spread` field; behavior is consistent when each producer’s contract is honored. **Future hygiene:** a follow-up pass could rename fractional usages to e.g. `spread_frac` everywhere so `spread` never ambiguously means two units — reducing the risk of new code mixing a REST-quote row into an `ms_dict` consumer that expects points.
 
 ## All-Consumers Disposition
 
