@@ -499,12 +499,53 @@ def _f_ms(v):
 
 
 def _oe_chain_row_snapshot(ct: dict | None) -> dict | None:
-    """Subset of Schwab option row for audit/API (chain selection proof)."""
+    """Normalized Schwab option row fields preserved for audit/API/A2 proof."""
     if not ct:
         return None
     keys = (
-        "symbol", "expirationDate", "expiration", "strikePrice", "putCall",
-        "bid", "ask", "totalVolume", "volume", "openInterest", "gamma", "delta",
+        "symbol",
+        "putCall",
+        "strikePrice",
+        "expirationDate",
+        "expiration",
+        "expirationType",
+        "settlementType",
+        "exerciseType",
+        "lastTradingDay",
+        "bid",
+        "ask",
+        "mark",
+        "last",
+        "openPrice",
+        "highPrice",
+        "lowPrice",
+        "closePrice",
+        "bidSize",
+        "askSize",
+        "bidAskSize",
+        "lastSize",
+        "totalVolume",
+        "volume",
+        "openInterest",
+        "delta",
+        "gamma",
+        "theta",
+        "vega",
+        "rho",
+        "volatility",
+        "theoreticalVolatility",
+        "theoreticalOptionValue",
+        "quoteTimeInLong",
+        "tradeTimeInLong",
+        "multiplier",
+        "extrinsicValue",
+        "timeValue",
+        "intrinsicValue",
+        "inTheMoney",
+        "nonStandard",
+        "mini",
+        "pennyPilot",
+        "deliverableNote",
     )
     return {k: ct.get(k) for k in keys}
 
@@ -718,6 +759,7 @@ def recommend_option_expression(
         "composite_score": round(best_score, 4),
         "win_reasons": best_reasons,
         "selection_rule": "max composite_score among ATM + one ITM candidate vs spot",
+        "chain_row": _oe_chain_row_snapshot(_oe_first_contract_row(contracts, float(best_strike), side)),
     }
     any_liq = any(r.get("liq_gate_pass") for r in scored_rows if r.get("scored"))
     proof_out["liquidity_summary"] = {
