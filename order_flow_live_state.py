@@ -219,7 +219,7 @@ def push_level_one(symbol: str, content_item: dict) -> None:
 
     print_item = {
         "LAST_PRICE": last_price,
-        "LAST_SIZE": last_size or 0,
+        "LAST_SIZE": last_size,
         "TRADE_TIME_MILLIS": trade_ms,
         "TICK": tick,
     }
