@@ -1,6 +1,6 @@
 # Schwab Remediation S017 Inference Snapshot Time Contract
 
-**Status:** IMPLEMENTED_IN_WORKING_TREE  
+**Status:** IMPLEMENTED  
 **Slice:** S017 `TIME_NOW_FALLBACK` aggregate  
 **Authority:** `schwab_field_inventory/schwab_field_dictionary.csv`
 
@@ -18,6 +18,10 @@ All consumers checked: yes
 `InferenceSnapshotV1.as_of_ts` is an evaluation/decision timestamp. It must come from the caller's explicit `as_of_ts` or `SignalInput.refresh_ts_utc`, which is aligned to the refresh/snapshot decision instant. It must not silently fall back to `time.time()`.
 
 If no authoritative decision timestamp is available, `as_of_ts` remains `None`. Downstream consumers that require time-bounded data must handle `None` explicitly instead of receiving a fabricated current wall-clock value.
+
+## Implementation lineage
+
+The initial S017 bundle commit set included governance and server/live-plane work but did not include `features/inference_snapshot.py`. Slice closure requires the disposition rows above to match **committed** code: `build_inference_snapshot_v1_from_signal_input` is amended in the same commit series that updates this section (no `time.time()` fallback; invalid/missing timestamps stay `None`).
 
 ## All-Consumers Disposition
 

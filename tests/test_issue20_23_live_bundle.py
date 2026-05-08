@@ -166,7 +166,7 @@ def test_api_state_bypasses_cache_when_sse_subscribers(monkeypatch, _cache_test_
             "vix": None,
             "price_levels": None,
             "pl_date": "",
-            "pl_ts": 0,
+            "pl_mono": None,
         }
         return out
 
@@ -188,7 +188,7 @@ def test_api_state_bypasses_cache_when_sse_subscribers(monkeypatch, _cache_test_
         "vix": None,
         "price_levels": None,
         "pl_date": "",
-        "pl_ts": 0,
+        "pl_mono": None,
     }
 
     from starlette.testclient import TestClient

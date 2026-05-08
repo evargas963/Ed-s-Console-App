@@ -93,8 +93,6 @@ def build_inference_snapshot_v1_from_signal_input(inp: Any, *, as_of_ts: float |
     Build InferenceSnapshotV1 from `SignalInput` using the same adapter path as live L1
     (flat dict only — no `liquidity_summary` / `spot_anchors` on the wire).
     """
-    import time
-
     def _dist_to_vwap_pts() -> float | None:
         d = getattr(inp, "vwap_dist_pts", None)
         if d is None:
@@ -118,16 +116,14 @@ def build_inference_snapshot_v1_from_signal_input(inp: Any, *, as_of_ts: float |
         "vwap_side": getattr(inp, "vwap_side", None),
         "dist_to_vwap_pts": _dist_to_vwap_pts(),
     }
-    # Authoritative decision/eval instant: prefer caller as_of, then bar refresh time, then wall clock.
+    # Authoritative decision/eval instant: prefer caller as_of, then bar refresh time.
     ts = as_of_ts
     if ts is None:
         ts = getattr(inp, "refresh_ts_utc", None)
-    if ts is None:
-        ts = time.time()
     try:
-        ts_f = float(ts)
+        ts_f = float(ts) if ts is not None else None
     except (TypeError, ValueError):
-        ts_f = float(time.time())
+        ts_f = None
     return build_inference_snapshot_v1(
         ticker=getattr(inp, "ticker", "") or "",
         expiry=getattr(inp, "expiry", None),
