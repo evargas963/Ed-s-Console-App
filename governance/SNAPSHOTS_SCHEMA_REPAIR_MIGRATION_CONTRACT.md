@@ -66,6 +66,8 @@ The audit also found a table-rebuild signature in the live schema. `CREATE TABLE
 
 Observed production facts at contract time:
 
+**Historical samples only.** These integers describe the database at contract authoring. While production runs **without** this migration, `snapshots` row counts and NULL `snapshot_id` counts **drift upward** (typically in lockstep for new writes). Operators must **not** treat the literals below as current expected values for apply. Production dry-run and apply validation use [`SNAPSHOTS_SCHEMA_REPAIR_APPLY_RUNBOOK_V1.md`](./SNAPSHOTS_SCHEMA_REPAIR_APPLY_RUNBOOK_V1.md) **relational** checks on the migration tool’s emitted JSON (before/after row parity, `id_assignment_preview` math, distinct-ID invariants, etc.), not this block.
+
 - total `snapshots` rows: `186,347`;
 - rows with non-null `snapshot_id`: `179,036`;
 - rows with `snapshot_id IS NULL`: `7,311`;
@@ -73,7 +75,7 @@ Observed production facts at contract time:
 - NULL rows with `rowid <= 179,720`: `664`;
 - NULL rows with `rowid > 179,720`: `6,647`.
 
-Because 664 NULL rows have `rowid` values that collide with existing `snapshot_id` values, `COALESCE(snapshot_id, rowid)` is forbidden as an ID assignment rule.
+Because at contract time 664 NULL rows had `rowid` values that collide with existing `snapshot_id` values, `COALESCE(snapshot_id, rowid)` is forbidden as an ID assignment rule (the count is historical; the rule is permanent).
 
 ---
 
@@ -119,7 +121,7 @@ The migration MUST assign IDs as follows:
 
 1. Rows with non-null `snapshot_id` keep their existing `snapshot_id` value.
 2. Rows with `snapshot_id IS NULL` receive fresh sequential IDs starting at `MAX(snapshot_id) + 1`.
-3. At contract time, `MAX(snapshot_id) + 1 = 179,721`.
+3. At contract time, `MAX(snapshot_id) + 1 = 179,721` (historical illustration; live `MAX` + 1 is taken from the tool’s `id_assignment_preview` at run time).
 4. NULL rows are assigned in source `rowid ASC` order to preserve chronological insertion order.
 5. The repaired target table MUST have no duplicate `snapshot_id` values and no `snapshot_id IS NULL` rows.
 
@@ -149,7 +151,7 @@ The migration script MUST implement all of the following:
 - backup path recorded in the audit output;
 - `PRAGMA integrity_check` before migration;
 - `PRAGMA integrity_check` after migration;
-- source vs target row-count parity assertion; for the current production DB this must equal `186,347`;
+- source vs target row-count parity assertion in the audit JSON (`counts_after.snapshots == counts_before.snapshots`); **not** equality to the historical sample `186,347` above — see apply runbook relational checklist;
 - `snapshot_id` uniqueness assertion in target;
 - `snapshot_id IS NOT NULL` assertion in target;
 - explicit recreation of at least:
