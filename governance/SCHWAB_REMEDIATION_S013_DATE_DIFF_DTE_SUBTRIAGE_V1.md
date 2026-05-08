@@ -1,6 +1,6 @@
 # Schwab Remediation S013 — `DATE_DIFF_DTE` Sub-Triage V1
 
-**Status:** SUBTRIAGE_COMPLETE (method + buckets; no new slice contracts in this artifact)  
+**Status:** SUBTRIAGE_COMPLETE; **Bucket E IMPLEMENTED** (classifier tag-plausibility gate, 2026-05-08)  
 **Date:** 2026-05-08  
 **Parent slice:** S013 `DATE_DIFF_DTE` (Medium aggregate)  
 **Authority:** `schwab_field_inventory/schwab_field_dictionary.csv` — primitive `chains.*.daysToExpiration`
@@ -71,22 +71,26 @@ Spot checks of `CLASSIFIED.csv` show `DATE_DIFF_DTE` attached to lines whose **c
 
 **Disposition:** **Out of S013 REPLACE scope**; charm/theta/BSP math is **S008 / S016** territory. Do not “fix” here as date-diff DTE.
 
-### Bucket E — **TOOLING / hygiene — tighten `DATE_DIFF_DTE` tagging**
+### Bucket E — **TOOLING / hygiene — tighten `DATE_DIFF_DTE` tagging** ✅ **IMPLEMENTED**
 
-**Action:** Update the script that emits `SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv` (or post-filter in classifier) so `DATE_DIFF_DTE` requires evidence such as:
+**Action (shipped):** `tools/classify_schwab_csv_crosswalk.py` applies `_normalize_date_diff_dte_tag()` before classification: `DATE_DIFF_DTE` is **dropped** unless the code line shows real calendar arithmetic — **`.days`**, or (with expiry-context tokens) **`timedelta(` / `total_seconds` / `86400`**. `SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv` is unchanged.
 
-- `.days` on a `timedelta` built from expiry-related dates, or  
-- Explicit `(date_a - date_b).days` where operands tie to **expirationDate** / snapshot expiry, or  
-- Deprecated patterns documented in S001 closure notes.
+**Evidence (classifier re-run, same input row count 21,973):**
 
-**Outcome:** Manual residual count and operator review time drop without changing runtime behavior.
+| Metric | Before Bucket E | After Bucket E |
+|--------|-----------------|----------------|
+| Manual residual rows (`CROSSWALK_RESIDUAL.csv`) | 193 | **171** |
+| Residual rows tagged `DATE_DIFF_DTE` | 23 | **0** |
+| Classified rows (excl. `.claude/`) retaining `DATE_DIFF_DTE` after classify | 562 | **4** (the four `.days` DTE lines) |
+
+**Outcome:** Residual queue and S013 mechanical noise drop without production code churn.
 
 ---
 
 ## 4. Recommended commit / batch sequence (after this doc)
 
-1. **Batch / tooling:** Implement Bucket **E** (tagger tighten) + re-run classifier; expect large **drop in S013-tagged rows** with little or no code churn.  
-2. **Residual batch 4:** Target any **remaining** true positives (if any) after re-tag.  
+1. ~~**Batch / tooling:** Implement Bucket **E** (tagger tighten) + re-run classifier~~ — **done** (see Bucket E table above).  
+2. **Residual batch 4:** Target any **remaining** true positives (if any) on the 171-row baseline.  
 3. **Optional:** Per-file grep for `.days` + `expir` on `main` after tagger update — should be near-zero outside audits and non-DTE date math (`ingest` windowing, etc.).
 
 ---
@@ -97,7 +101,7 @@ Spot checks of `CLASSIFIED.csv` show `DATE_DIFF_DTE` attached to lines whose **c
 Schwab CSV authority checked: yes
 CSV row(s): chains.callExpDateMap.*.daysToExpiration; chains.putExpDateMap.*.daysToExpiration
 Derived-field disposition for true positives: REPLACE_WITH_SCHWAB (already driven by S001 on hot paths)
-All consumers checked: no — mechanical list was inflated; consumer list reset after Bucket E retag
+All consumers checked: no — mechanical list was inflated; consumer list reset after Bucket E classifier gate (WORKING unchanged; CLASSIFIED/residual reflect stripped tags)
 ```
 
 ---

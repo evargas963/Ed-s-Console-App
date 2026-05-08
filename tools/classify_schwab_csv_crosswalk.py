@@ -129,6 +129,55 @@ def _split(value: str) -> set[str]:
     return {v for v in (value or "").split("|") if v}
 
 
+def _expiry_calendar_context(low: str) -> bool:
+    """True when snippet plausibly references option/calendar expiry (not bare 'dte' noise)."""
+    compact = low.replace("_", "")
+    return (
+        "expir" in low
+        or "_expdate" in low
+        or "expdate" in low
+        or "daystoexpiration" in compact
+        or "expirationdate" in compact
+        or "timetoexp" in compact
+        or "hourstoexp" in compact
+    )
+
+
+def _date_diff_dte_tag_plausible(code: str) -> bool:
+    """
+    WORKING crosswalk over-tags DATE_DIFF_DTE on any 'expiry' token (params, docs, monotonic).
+    Keep the tag only when the line shows calendar day arithmetic or expiry-scoped timedelta math.
+    """
+    if not code.strip():
+        return False
+    low = code.lower()
+    if ".days" in code:
+        return True
+    if not _expiry_calendar_context(low):
+        return False
+    if "total_seconds" in low:
+        return True
+    if "86400" in code:
+        return True
+    if "timedelta(" in low:
+        return True
+    return False
+
+
+def _normalize_date_diff_dte_tag(row: dict[str, str]) -> None:
+    """Bucket E: drop DATE_DIFF_DTE when the code line is not real DTE date arithmetic."""
+    raw = row.get("tags") or ""
+    if not raw or "DATE_DIFF_DTE" not in raw:
+        return
+    if _date_diff_dte_tag_plausible(row.get("code") or ""):
+        return
+    tags = _split(raw)
+    if "DATE_DIFF_DTE" not in tags:
+        return
+    tags.discard("DATE_DIFF_DTE")
+    row["tags"] = "|".join(sorted(tags))
+
+
 def _is_non_runtime(path: str) -> bool:
     return path.startswith(NON_RUNTIME_PREFIXES) or path.startswith(NON_RUNTIME_FILES)
 
@@ -453,6 +502,7 @@ def _disambiguate_mechanical_row(row: dict[str, str]) -> tuple[str, str] | None:
 
 
 def classify(row: dict[str, str]) -> tuple[str, str]:
+    _normalize_date_diff_dte_tag(row)
     path = row["file"]
     code = row["code"]
     tags = _split(row["tags"])

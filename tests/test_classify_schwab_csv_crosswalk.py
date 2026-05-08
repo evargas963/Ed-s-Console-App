@@ -203,3 +203,35 @@ def test_batch3_candle_tick_ts_uses_schwab_parse_not_wall():
     )
     assert classification == "NOT_MARKET_DATA"
     assert "schwab" in reason.lower() or "candle" in reason.lower()
+
+
+def test_bucket_e_strips_date_diff_dte_without_calendar_days_evidence():
+    row = _row(
+        tags="DATE_DIFF_DTE",
+        code="_cadence = time.monotonic()",
+    )
+    classification, _reason = classify(row)
+    assert row["tags"] == ""
+    assert classification == "NOT_MARKET_DATA"
+
+
+def test_bucket_e_keeps_date_diff_dte_when_subtraction_days_present():
+    row = _row(
+        file="market_state.py",
+        tags="DATE_DIFF_DTE",
+        code="_dte = (_exp_date - _dt.now().date()).days",
+    )
+    classification, _reason = classify(row)
+    assert row["tags"] == "DATE_DIFF_DTE"
+    assert classification == "DEFAULT_OR_DERIVATION_REVIEW"
+
+
+def test_bucket_e_strips_only_date_diff_dte_from_compound_tags():
+    row = _row(
+        file="tests/test_v2_a2_option_expression.py",
+        tags="DATE_DIFF_DTE|BLACK_SCHOLES",
+        code='assert _black_scholes_theta(**{**valid, "time_to_expiry_years": 0}) is None',
+    )
+    classification, _reason = classify(row)
+    assert row["tags"] == "BLACK_SCHOLES"
+    assert classification == "NOT_MARKET_RUNTIME"

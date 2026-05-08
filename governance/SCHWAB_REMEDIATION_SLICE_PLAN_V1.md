@@ -17,11 +17,11 @@ tools/check_schwab_csv_first.py --whole-repo
 ## System Status
 
 ```text
-SLICE STATUS: clustering produced; HIGH-scope slice contracts landed (S002–S005, S009–S012, S014/S015 sub-slices, S017) on 2026-05-08; S013 DATE_DIFF_DTE sub-triage doc added 2026-05-08
+SLICE STATUS: clustering produced; HIGH-scope slice contracts landed (S002–S005, S009–S012, S014/S015 sub-slices, S017) on 2026-05-08; S013 DATE_DIFF_DTE sub-triage + Bucket E classifier gate landed 2026-05-08
 SYSTEM STATUS: FAIL
 remediation_slices_identified = 38
 real_residuals_clustered = 998
-manual_residual_rows_current_artifact = 193  # python tools/classify_schwab_csv_crosswalk.py → CROSSWALK_RESIDUAL.csv row count
+manual_residual_rows_current_artifact = 171  # python tools/classify_schwab_csv_crosswalk.py → CROSSWALK_RESIDUAL.csv row count
 whole_repo_guard_status = PASS  # python tools/check_schwab_csv_first.py --whole-repo
 ```
 
