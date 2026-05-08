@@ -57,6 +57,10 @@ Every non-trivial market-data code change must include a CSV-first declaration i
 Schwab CSV authority checked: yes
 CSV row(s): <canonical_field rows or NO_SCHWAB_EQUIVALENT>
 Derived-field disposition: REPLACE_WITH_SCHWAB | KEEP_DERIVED_WITH_PROVENANCE | GATE_FAIL_CLOSED | REDESIGN
+  (KEEP_DERIVED_WITH_PROVENANCE requires citation of either
+   (a) "no Schwab primitive at this site", or
+   (b) named governed exception per §Schwab Same-or-Better Rule;
+   "Schwab looked worse" alone is not sufficient)
 All consumers checked: yes/no + disposition list
 ```
 
