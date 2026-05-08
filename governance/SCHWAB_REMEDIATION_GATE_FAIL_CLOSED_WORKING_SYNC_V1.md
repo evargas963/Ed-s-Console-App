@@ -20,6 +20,24 @@ This batch **does not** use classifier disambiguation. It **syncs** `SCHWAB_CSV_
 
 ---
 
+## Commit lineage and scope clarification
+
+Commit **`589d94c`** is a **register / `WORKING.csv` sync**, not a runtime gates batch.
+
+The forty `GATE_FAIL_CLOSED_OR_PROVENANCE` rows it cleared from the manual residual queue were **stale mechanical references** against an earlier code state. The intended fail-closed behavior was **already shipped** in prior commits (e.g. **S002** volume, **S003** OHLCV, **S005** spot, **S006** OHLCV-related paths) and is verified by **existing** tests — notably `tests/test_liquidity_engine.py` and `tests/test_spot_fail_closed_contract.py`.
+
+This batch:
+
+- updated `SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv` to reflect current code reality (line snippets refreshed; e.g. `server.py` `underlyingPrice` row relocated **6605 → 6738**);
+- regenerated `CLASSIFIED` / `RESIDUAL` / `DISPOSITION_REGISTER` outputs;
+- **did not** add new fail-closed branches in production `.py` files.
+
+**For future readers:** residual-cell movement from **`589d94c`** is **register hygiene**, not equivalent to **slice-closure-cell** movement. The substantive fail-closed code work lives in the **cited prior slices** and their tests.
+
+**Accounting:** treat cumulative residual reduction from this commit as **“closed via register/classifier sync,”** separately from residuals closed by **new production diffs** in the same conversation. That keeps the proof components honest when both appear on the scorecard.
+
+---
+
 ## Explicit exclusions (no whitewash)
 
 - **N7** — `mc_fusion_adjustment.py:29` (`volatility` default-zero) remains **`CSV_PRIMITIVE_RISK_REVIEW`**, **`REPLACE_WITH_SCHWAB_OR_GATE`**, **`manual_review_required=yes`**. It was **not** in the 40-row `DEFAULT_OR_DERIVATION` set and was not modified.
