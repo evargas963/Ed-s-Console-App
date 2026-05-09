@@ -8,6 +8,7 @@ from pathlib import Path
 from tools.schwab_market_derivation_catalog_v1 import (
     ROOT,
     csv_candidates_for_tokens,
+    iter_py_files,
     load_schwab_index,
     scan_file,
 )
@@ -50,6 +51,26 @@ v = q.get("volume", 0)
     kinds = {f.pattern_kind for f in findings}
     assert "BINOP_DIV_MARKET_IDENT" in kinds
     assert "DICT_GET_MARKET_DEFAULT" in kinds
+
+
+def test_iter_py_files_skips_dot_claude_by_default(tmp_path: Path) -> None:
+    (tmp_path / ".claude" / "worktrees" / "x").mkdir(parents=True)
+    (tmp_path / ".claude" / "worktrees" / "x" / "dup.py").write_text(
+        "bid=1\nask=2\ny=(bid+ask)/2\n", encoding="utf-8"
+    )
+    (tmp_path / "pkg" / "a.py").parent.mkdir(parents=True)
+    (tmp_path / "pkg" / "a.py").write_text("x=1\n", encoding="utf-8")
+    n_default = len(list(iter_py_files(tmp_path, include_tests=True)))
+    n_with_claude = len(
+        list(
+            iter_py_files(
+                tmp_path,
+                include_tests=True,
+                include_claude_worktrees=True,
+            )
+        )
+    )
+    assert n_with_claude == n_default + 1
 
 
 def test_cli_smoke_writes_csv(tmp_path: Path, monkeypatch) -> None:

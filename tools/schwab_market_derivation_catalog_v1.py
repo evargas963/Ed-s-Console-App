@@ -22,6 +22,8 @@ Output: working CSV for human/machine follow-up (`disposition` defaults to
 ``UNREVIEWED``). Buckets after review: ``REPLACED``, ``GOVERNED_EXCEPTION``,
 ``NO_SCHWAB_EQUIVALENT`` (per operator schema).
 
+By default, ``.claude/`` (Cursor worktrees) is skipped. Use ``--include-claude-worktrees`` to scan it.
+
 Examples:
   python tools/schwab_market_derivation_catalog_v1.py
   python tools/schwab_market_derivation_catalog_v1.py --include-tests --max-files 50
@@ -47,16 +49,20 @@ if str(ROOT) not in sys.path:
 SCHWAB_CSV = ROOT / "schwab_field_inventory" / "schwab_field_dictionary.csv"
 DEFAULT_OUT = ROOT / "governance" / "SCHWAB_COVERAGE_CATALOG_V1_WORKING.csv"
 
-SKIP_DIRS = {
-    ".git",
-    "__pycache__",
-    ".venv",
-    "venv",
-    "node_modules",
-    ".pytest_cache",
-    ".mypy_cache",
-    "backups",
-}
+# Applied per path `parts`; `.claude` excluded by default (Cursor worktrees mirror the repo).
+BASE_SKIP_DIRS = frozenset(
+    {
+        ".git",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "node_modules",
+        ".pytest_cache",
+        ".mypy_cache",
+        "backups",
+    }
+)
+DOT_CLAUDE = ".claude"
 
 # Identifiers / literal keys that suggest market primitives (expand over time).
 MARKET_IDENTS = frozenset(
@@ -355,10 +361,18 @@ class DerivationVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def iter_py_files(root: Path, *, include_tests: bool) -> Iterable[Path]:
+def iter_py_files(
+    root: Path,
+    *,
+    include_tests: bool,
+    include_claude_worktrees: bool = False,
+) -> Iterable[Path]:
+    skip = set(BASE_SKIP_DIRS)
+    if not include_claude_worktrees:
+        skip.add(DOT_CLAUDE)
     for p in root.rglob("*.py"):
         parts = set(p.parts)
-        if SKIP_DIRS & parts:
+        if skip & parts:
             continue
         rel = p.relative_to(root).as_posix()
         if not include_tests and (
@@ -413,6 +427,11 @@ def main() -> int:
         help="Include tests/ and test_*.py (default: production paths only)",
     )
     ap.add_argument(
+        "--include-claude-worktrees",
+        action="store_true",
+        help="Scan .claude/ (e.g. Cursor worktrees); default excludes to avoid duplicate findings.",
+    )
+    ap.add_argument(
         "--max-files",
         type=int,
         default=None,
@@ -424,7 +443,13 @@ def main() -> int:
 
     findings: list[Finding] = []
     n = 0
-    for py in sorted(iter_py_files(root, include_tests=args.include_tests)):
+    for py in sorted(
+        iter_py_files(
+            root,
+            include_tests=args.include_tests,
+            include_claude_worktrees=args.include_claude_worktrees,
+        )
+    ):
         scan_file(py, root, findings)
         n += 1
         if args.max_files is not None and n >= args.max_files:

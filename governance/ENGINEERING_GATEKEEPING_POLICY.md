@@ -5,7 +5,18 @@
 **Scope:** All code, data-plane, governance, model, calibration, and tooling changes  
 **Related references:** `governance/DERIVED_ANALYTICS_REGISTRY.md`, `docs/SCHWAB_FIELD_REFERENCE.md`, `schwab_field_inventory/schwab_field_dictionary.csv`  
 **Status axes (GOVERNANCE vs SYSTEM):** § Status Language (canonical; registers/runbooks point here — do not duplicate definitions)  
-**`GOVERNANCE: COMPLETE` scope bound:** § Completeness vs Coverage Proof
+**`GOVERNANCE: COMPLETE` scope bound:** § Completeness vs Coverage Proof  
+**Active program state (dated):** § Active Status (this codebase)
+
+---
+
+## Active Status (this codebase, as of 2026-05-09)
+
+REMEDIATION PROGRAM (mechanical scan + slice closures + schema repair + A2b): CLOSED  
+COVERAGE PROOF (every derivation evaluated against Schwab CSV with disposition): OPEN — v1 catalog: ~120 main-repo findings `UNREVIEWED` (see `governance/SCHWAB_COVERAGE_CATALOG_V1_WORKING.csv` from `tools/schwab_market_derivation_catalog_v1.py`); AST expansion, disposition pass, and crosswalk reconciliation pending.  
+SYSTEM: FAIL (S008 measurement pending; coverage proof program in progress)
+
+Update this section when remediation scope, coverage proof, or system gates change.
 
 ---
 
