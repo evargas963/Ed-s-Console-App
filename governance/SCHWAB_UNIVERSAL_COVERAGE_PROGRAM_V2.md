@@ -48,6 +48,16 @@
 
 **`.claude/worktrees/*`:** Duplicate of main-repo content by construction. **Scan once** per logical path; **deduplicate** in post-processing so each **unique** source line is examined once.
 
+### G1.1 — Generated, third-party, and source-of-truth artifacts
+
+**Schwab canonical CSV (source-of-truth):** The committed canonical dictionary (e.g. `schwab_field_inventory/schwab_field_dictionary.csv`) is the **authority** for field names — **not** an in-scope “derivation” target to be dispositioned like application code. The scanner **does not** treat the CSV’s own rows as code sites requiring `REPLACED` / `NO_SCHWAB_EQUIVALENT` in the application register. **Rationale:** self-scan would be nonsensical; provenance and hash are governed under **G7** instead.
+
+**Vendored third-party code** (e.g. `node_modules/`, `vendor/`, or paths added later and declared vendored in the scanner config **with contract citation**): **In scope for token presence** — a Schwab field referenced in vendored code **matters** for completeness. Disposition: **`NOT_MARKET_DATA — third_party`** only when the match is **genuinely unrelated** to this product’s market-data obligations (enumerated mechanical path per § Disposition schema); otherwise **`GOVERNED_EXCEPTION`** with **O-XX** (vendor patch policy, fork, or replacement).
+
+**Auto-generated / minified output** (bundles, transpiled JS): **Out of scope** **only when** the **human-authored generating source** is **in repo**, **in scope**, and **scanned**; the closure audit **links** generator output to covered sources. If source is missing or not scanned, generated output is **in scope**.
+
+**Lock files / dependency manifests** (`package-lock.json`, `requirements.txt`, etc.): **In scope** for **token / string scan** as required by G1. Expected disposition is typically **`NOT_MARKET_DATA — dependency_manifest`** when that subtype is **enumerated** in the scanner + this contract (mechanical); otherwise **human-dispositioned**.
+
 ---
 
 ### G2 — Visitor stability (strengthened)
@@ -60,9 +70,9 @@
 
 2. **Decorator / dynamic-dispatch sweep:** The scanner **enumerates** all **decorators** and all sites using **`getattr` / `setattr` / `__getattr__`** (and equivalent reflection). Each site emits a **`DYNAMIC_DISPATCH`** register row requiring **human disposition**.
 
-3. **Registry / factory sweep:** Any **string-keyed** dispatch structure (`HANDLERS = {...}`, `REGISTRY[key]`, factories keyed by string) that can route market-data handling emits a register row (**`REGISTRY_DISPATCH`** or unified under `DYNAMIC_DISPATCH` — **one enum** must be fixed in the scanner spec; default: separate kinds for audit clarity).
+3. **Registry / factory sweep:** Any **string-keyed** dispatch structure (`HANDLERS = {...}`, `REGISTRY[key]`, factories keyed by string) that can route market-data handling emits a register row with **`pattern_kind` = `REGISTRY_DISPATCH`** (distinct from **`DYNAMIC_DISPATCH`** for audit clarity).
 
-**Closure:** Stability requires **three-run rule** **AND** **zero cross-validator misses** **AND** **completed** decorator/dynamic-dispatch and registry sweeps (all such rows dispositioned).
+**Closure:** Stability requires **three-run rule** **AND** **zero cross-validator misses** **AND** **completed** `DYNAMIC_DISPATCH`, **`REGISTRY_DISPATCH`**, and decorator sweeps (all such rows dispositioned).
 
 ---
 
@@ -74,9 +84,11 @@ Beyond token / `category` / `likely-use` matching, **all** of the following are 
 
 2. **Manual synonym table:** `governance/schwab_field_synonyms.yaml` maps common code names to canonical fields (e.g. `iv` → volatility family, `oi` → `openInterest`). **Maintained alongside** the register; scanner **must** consult it for candidate generation.
 
+   **Authority (attack-surface control):** Changes to `governance/schwab_field_synonyms.yaml` require **gatekeeper review** on the same bar as **contract** changes (no silent edits). **Each** synonym row **must** carry an **inline citation** to the target **`canonical_field`** CSV row (or explicit “multi-row family” rationale approved in review) and a **one-line rationale** for the mapping. **Removal or modification** of a synonym row **triggers** a **re-disposition pass** on **every** register row that **previously cited** that synonym (tooling must support query by synonym key).
+
 3. **Reverse lookup:** For **each** CSV `canonical_field` row, the tooling reports **which** register rows cite it. **Orphan canonical fields** (zero citing sites) are an **audit signal** recorded in the closure audit (explain: unused primitive vs scanner gap).
 
-`csv_candidates` remain **informational**; **human** disposition required except where the contract explicitly allows mechanical `NOT_MARKET_DATA` (default: **none** unless enumerated in scanner + contract addendum).
+`csv_candidates` remain **informational**; **human** disposition required except where the contract explicitly allows mechanical `NOT_MARKET_DATA` (see § Disposition schema — enumerated subtypes only).
 
 ---
 
@@ -93,8 +105,8 @@ After initial human disposition, a **second pass** (separate tool run or dispose
 
 The contract requires the Schwab canonical CSV baseline to stay current:
 
-- **Stated cadence:** **Every commit** via CI **recommended**: re-pull or verify freshness; **fail-closed** if Schwab API (or authoritative refresh path) is **unavailable** and no approved stale baseline exception is recorded in `OPERATOR_DECISION_REGISTER.md`.
-- **Minimum:** **Weekly** refresh if per-commit is not technically feasible — **operator documents** the chosen mode in the **provenance** doc; gatekeeper rejects “weaker than weekly” without O-XX.
+- **Per-commit refresh is REQUIRED by default** on the CI path: re-pull or verify freshness against the authoritative source; **fail-closed** if the Schwab API (or other **approved** authoritative refresh path) is **unavailable**, unless a **stale-baseline exception** is explicitly recorded in `governance/OPERATOR_DECISION_REGISTER.md` for that commit window.
+- **Weekly cadence** (or any cadence **weaker** than per-commit) is allowed **only** with an **explicit O-XX downgrade** in `governance/OPERATOR_DECISION_REGISTER.md` citing **technical infeasibility** of per-commit refresh. The **provenance** doc **states** the active cadence and the governing **O-XX**.
 
 **Diff gate:** Any **new** `canonical_field` in the refreshed CSV vs committed baseline **forces** a **full-register re-scan** before the commit can land (CI blocks).
 
@@ -142,7 +154,7 @@ In addition to per-commit CI:
 | 9 | `governance/schwab_field_synonyms.yaml` — **seed** + maintenance process |
 | 10 | Adversarial falsification tool / **second-pass protocol** (G4) |
 | 11 | `governance/SCHWAB_FIELD_DICTIONARY_PROVENANCE_V1.md` (G7) |
-| 12 | `governance/SCHWAB_COVERAGE_PROOF_CLOSURE_AUDIT_V1.md` (or `_V2` if versioned) — closure evidence |
+| 12 | `governance/SCHWAB_COVERAGE_PROOF_CLOSURE_AUDIT_V2.md` — closure evidence (version matches V2 program) |
 
 ---
 
@@ -150,7 +162,9 @@ In addition to per-commit CI:
 
 Each row: **exactly one** of `REPLACED`, `GOVERNED_EXCEPTION`, `NO_SCHWAB_EQUIVALENT`, `NOT_MARKET_DATA`, `UNREVIEWED`.
 
-**Scanner:** **Never** auto-writes `REPLACED`, `GOVERNED_EXCEPTION`, or `NO_SCHWAB_EQUIVALENT`. **`NOT_MARKET_DATA`** only if **explicitly** enumerated in scanner documentation **and** this contract (default: **no** mechanical dispositions).
+**Scanner:** **Never** auto-writes `REPLACED`, `GOVERNED_EXCEPTION`, or `NO_SCHWAB_EQUIVALENT`. **`NOT_MARKET_DATA`** only if **explicitly** enumerated in scanner documentation **and** this contract.
+
+**Enumerated mechanical `NOT_MARKET_DATA` subtypes (V2):** `NOT_MARKET_DATA — third_party`, `NOT_MARKET_DATA — dependency_manifest` — **only** when the scanner proves the site class matches **G1.1**; all other `NOT_MARKET_DATA` rows require **human** disposition with semantic reason. Additional mechanical subtypes require a **contract amendment** + gatekeeper approval.
 
 Additional row kinds for **tooling / process** (e.g. `pattern_kind_miss`, `DYNAMIC_DISPATCH`) must still end in a **non-UNREVIEWED** disposition before closure.
 
@@ -158,7 +172,7 @@ Additional row kinds for **tooling / process** (e.g. `pattern_kind_miss`, `DYNAM
 
 ## Completion criteria — ALL must hold (nine)
 
-1. Every in-scope file scanned across **all** listed languages; **per-language file counts** recorded and auditable.  
+1. Every in-scope file scanned across **all** listed languages; coverage is **falsifiable**: for each extension / language family, the closure audit records **(a)** total files of that type **present in the repo**, **(b)** count **scanned**, **(c)** count **excluded** with **reason** and **contract clause citation** (e.g. G1.1 generated-source exemption, `.claude` dedup), and **(d)** **reconciliation** proving **(a) = (b) + (c)** with **zero unexplained gap**.  
 2. Visitor stability: **three consecutive** runs with **zero new pattern kinds** **AND** **zero cross-validator misses** **AND** decorator/dynamic-dispatch **and** registry sweeps **complete** and dispositioned.  
 3. Every register row has disposition **other than** `UNREVIEWED`.  
 4. `check_schwab_csv_first.py --all-files` passes **whole-repo** (language-universal).  
@@ -166,13 +180,13 @@ Additional row kinds for **tooling / process** (e.g. `pattern_kind_miss`, `DYNAM
 6. **Scheduled** CI job has run **at least one** full pass on `main` **post-disposition** with **zero** new undocumented rows.  
 7. **Adversarial falsification** pass complete with **zero** hits.  
 8. **CSV provenance** hash matches committed canonical CSV.  
-9. **Closure audit** committed; **O-XX** recorded in `governance/OPERATOR_DECISION_REGISTER.md`.
+9. **Closure audit** (`SCHWAB_COVERAGE_PROOF_CLOSURE_AUDIT_V2.md`) committed; **O-XX** recorded in `governance/OPERATOR_DECISION_REGISTER.md`.
 
 ---
 
 ## Sequencing — strictly sequential (no skipping)
 
-1. Cursor drafts **V2** → operator + gatekeeper **approve**.  
+1. Cursor drafts **V2** → operator + gatekeeper **approve**. *(Draft initial 2026-05-09; T1–T4 + polish landed 2026-05-09 — awaiting final lock.)*  
 2. Cursor builds **multi-language scanner** + tests.  
 3. Run scanner; populate **V2** register (`UNREVIEWED`).  
 4. **Human** disposition pass.  
@@ -181,7 +195,7 @@ Additional row kinds for **tooling / process** (e.g. `pattern_kind_miss`, `DYNAM
 7. **Adversarial falsification** pass (G4).  
 8. **`--all-files`** whole-repo guard (language-universal).  
 9. **CI** commit-gate + **scheduled** job (G6).  
-10. **Closure audit** + **O-XX**.
+10. **`SCHWAB_COVERAGE_PROOF_CLOSURE_AUDIT_V2.md`** + **O-XX**.
 
 ---
 
@@ -197,6 +211,9 @@ Additional row kinds for **tooling / process** (e.g. `pattern_kind_miss`, `DYNAM
 - **Closure** without **all nine** completion criteria  
 - Claiming stability with **non-zero** `pattern_kind_miss`  
 - Skipping **adversarial** pass or **provenance** hash check  
+- **CSV refresh cadence weaker than per-commit** without **O-XX** downgrade (G5)  
+- **Silent exclusion** of vendored / generated / lock-file paths without **G1.1** citation in the reconciliation (criterion 1)  
+- **Unreviewed edits** to `schwab_field_synonyms.yaml` (violates G3 authority)
 
 ---
 
