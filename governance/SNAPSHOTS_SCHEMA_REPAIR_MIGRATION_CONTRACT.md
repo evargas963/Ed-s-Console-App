@@ -246,10 +246,8 @@ No runtime trading tests are required for this contract because the migration do
 
 Opened by this contract:
 
-- `db_schema_repair_post_migration_audit_pending` — remains open until the production migration run is verified with row-count parity, non-null/unique `snapshot_id`, integrity check, required indexes, and normalized snapshot rebuild disposition.
+- `db_schema_repair_post_migration_audit_pending` — **RETIRED 2026-05-09.** Production `--apply` verified with row-count parity, non-null/unique `snapshot_id`, `PRAGMA integrity_check` on live DB and pre-migration backup, required indexes, and normalized table rebuild. Evidence: `governance/audits/snapshots_schema_repair_v1_20260509_011607.json` (git blob SHA `847ba97ac49141bcab4999aa1c42477b759c8270` at retirement commit); `governance/OPERATOR_DECISION_REGISTER.md` **O-39**; `SNAPSHOTS_SCHEMA_REPAIR_APPLY_RUNBOOK_V1.md` independent post-condition checklist PASS.
 - `db_schema_drift_detection_pending` — remains open until a future startup or CI drift-detection mechanism compares code-declared critical schemas against live `sqlite_master`/`PRAGMA table_info` state.
-
-No named gaps are retired by this doc-only contract.
 
 ---
 
@@ -278,6 +276,7 @@ Held historical backfill performance patch:
 `governance/OPERATOR_DECISION_REGISTER.md`:
 
 - O-38 binds explicit-DDL / no-CTAS discipline for schema repair migrations.
+- O-39 records production `--apply` closure evidence and retires `db_schema_repair_post_migration_audit_pending`.
 
 ---
 
@@ -292,6 +291,6 @@ This contract does not:
 - repair unrelated tables not identified as drifted;
 - continue historical backfill;
 - change model, strategy, A2 lifecycle, or execution behavior;
-- retire `db_schema_repair_post_migration_audit_pending`;
+- ~~retire `db_schema_repair_post_migration_audit_pending`~~ — **done** (2026-05-09; see Named Gaps and **O-39**);
 - implement schema drift detection.
 

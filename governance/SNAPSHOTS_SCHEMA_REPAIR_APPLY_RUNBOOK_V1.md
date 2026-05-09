@@ -266,6 +266,8 @@ The named gap `db_schema_repair_post_migration_audit_pending` may be retired onl
 - post-condition outputs are recorded in the closure artifact or commit notes
 - `governance/OPERATOR_DECISION_REGISTER.md` is updated in the same closure commit with an audit-file SHA reference
 
+**Status:** Gap retired 2026-05-09 — apply audit `governance/audits/snapshots_schema_repair_v1_20260509_011607.json`, register **O-39**, migration contract Named Gaps.
+
 ---
 
 ## Out Of Scope
