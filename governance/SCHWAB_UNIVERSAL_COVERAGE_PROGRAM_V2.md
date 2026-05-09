@@ -52,9 +52,13 @@
 
 **Schwab canonical CSV (source-of-truth):** The committed canonical dictionary (e.g. `schwab_field_inventory/schwab_field_dictionary.csv`) is the **authority** for field names — **not** an in-scope “derivation” target to be dispositioned like application code. The scanner **does not** treat the CSV’s own rows as code sites requiring `REPLACED` / `NO_SCHWAB_EQUIVALENT` in the application register. **Rationale:** self-scan would be nonsensical; provenance and hash are governed under **G7** instead.
 
-**Vendored third-party code** (e.g. `node_modules/`, `vendor/`, or paths added later and declared vendored in the scanner config **with contract citation**): **In scope for token presence** — a Schwab field referenced in vendored code **matters** for completeness. Disposition: **`NOT_MARKET_DATA — third_party`** only when the match is **genuinely unrelated** to this product’s market-data obligations (enumerated mechanical path per § Disposition schema); otherwise **`GOVERNED_EXCEPTION`** with **O-XX** (vendor patch policy, fork, or replacement).
+**Vendored third-party code** (e.g. `node_modules/`, `vendor/`, or other vendored trees): **In scope for token presence** — a Schwab field referenced in vendored code **matters** for completeness. **Vendor-path declarations** live in **`governance/schwab_vendor_paths.yaml`**. The scanner treats a path as vendored **only** if it matches an entry in that file.
 
-**Auto-generated / minified output** (bundles, transpiled JS): **Out of scope** **only when** the **human-authored generating source** is **in repo**, **in scope**, and **scanned**; the closure audit **links** generator output to covered sources. If source is missing or not scanned, generated output is **in scope**.
+**Authority (parallel to G3 / synonym table):** Changes to `governance/schwab_vendor_paths.yaml` require **gatekeeper review** on the same bar as **contract** changes. **Each** entry **must** include: the **glob or prefix path**, a **one-line provenance citation** (origin URL, package name + version, or vendoring commit SHA), and the **contract clause** invoked (e.g. `G1.1`). **Removal or modification** of an entry **triggers** a **re-disposition pass** on **every** register row that **previously cited** that path under **`NOT_MARKET_DATA — third_party`** (tooling must support query by vendor path key).
+
+Disposition: **`NOT_MARKET_DATA — third_party`** only when the match is **genuinely unrelated** to this product’s market-data obligations **and** the path is **listed** in `schwab_vendor_paths.yaml` (enumerated mechanical path per § Disposition schema); otherwise **`GOVERNED_EXCEPTION`** with **O-XX** (vendor patch policy, fork, or replacement).
+
+**Auto-generated / minified output** (bundles, transpiled JS): **Out of scope** **only when** the **human-authored generating source** is **in repo**, **in scope**, and **scanned**; the closure audit **links** generator output to covered sources. If source is missing or not scanned, generated output is **in scope**. **Any commit** that **touches** an in-scope generator **source** file **forces** **re-verification** of the **link** between that source and its generated artifact(s) in the next closure-relevant audit step (or CI check) before stability is re-claimed.
 
 **Lock files / dependency manifests** (`package-lock.json`, `requirements.txt`, etc.): **In scope** for **token / string scan** as required by G1. Expected disposition is typically **`NOT_MARKET_DATA — dependency_manifest`** when that subtype is **enumerated** in the scanner + this contract (mechanical); otherwise **human-dispositioned**.
 
@@ -68,11 +72,17 @@
 
 1. **Cross-validator:** An **independent** regex (or non-AST) scanner runs on the **same** files. Any **token-bearing line** that **does not** map to an AST (or primary-parser) register row produces a **`pattern_kind_miss`** finding. **Stability cannot be claimed** until **`pattern_kind_miss` count is zero** after full reconciliation (expand visitors or document each miss with a **non-UNREVIEWED** disposition and tool version bump — **no silent drops**).
 
-2. **Decorator / dynamic-dispatch sweep:** The scanner **enumerates** all **decorators** and all sites using **`getattr` / `setattr` / `__getattr__`** (and equivalent reflection). Each site emits a **`DYNAMIC_DISPATCH`** register row requiring **human disposition**.
+2. **Decorator / dynamic-dispatch sweep (per language family):** The scanner **enumerates** decorators and dynamic dispatch **in each language family** covered by G1.
 
-3. **Registry / factory sweep:** Any **string-keyed** dispatch structure (`HANDLERS = {...}`, `REGISTRY[key]`, factories keyed by string) that can route market-data handling emits a register row with **`pattern_kind` = `REGISTRY_DISPATCH`** (distinct from **`DYNAMIC_DISPATCH`** for audit clarity).
+   - **Python:** `getattr` / `setattr` / `__getattr__` (and equivalent reflection). Each site emits **`DYNAMIC_DISPATCH`** unless a more specific `pattern_kind` below applies.
 
-**Closure:** Stability requires **three-run rule** **AND** **zero cross-validator misses** **AND** **completed** `DYNAMIC_DISPATCH`, **`REGISTRY_DISPATCH`**, and decorator sweeps (all such rows dispositioned).
+   - **JavaScript / TypeScript / JSX / TSX:** The following each emit register rows with the given **`pattern_kind`** (all require **human disposition** unless later enumerated otherwise): computed member access **`obj[expr]`** where the property is not a compile-time literal → **`COMPUTED_PROPERTY`**; **`Proxy`** constructions / handler traps relevant to property access → **`PROXY_TRAP`**; **`Reflect.get` / `Reflect.set` / `Reflect.has` / `Reflect.ownKeys`** → **`REFLECT_API`**; **`eval(...)`** / **`new Function(...)`** → **`DYNAMIC_EVAL`**; **`Object.defineProperty`** (or `defineProperties`) with **computed** keys → **`COMPUTED_DEFINE_PROPERTY`**; **`import(expr)`** (dynamic import) → **`DYNAMIC_IMPORT`**.
+
+   - **SQL:** Dynamic SQL built via concatenation or formatting such that Schwab / market tokens may appear in runtime-built strings → **`DYNAMIC_SQL_BUILD`**.
+
+3. **Registry / factory sweep (per language family):** Any **string-keyed** dispatch structure (`HANDLERS = {...}`, `REGISTRY[key]`, object literals used as registries, factories keyed by string) that can route market-data handling emits **`REGISTRY_DISPATCH`** (distinct from **`DYNAMIC_DISPATCH`** for audit clarity). Applies to Python **and** JS/TS **and** any other in-scope language with equivalent patterns.
+
+**Closure:** Stability requires **three-run rule** **AND** **zero cross-validator misses** **AND** **completed** sweeps for **every language family**: Python decorators + `DYNAMIC_DISPATCH` / `REGISTRY_DISPATCH`; **all** JS/TS reflection kinds listed above **where applicable**; **`DYNAMIC_SQL_BUILD`** where applicable; **all** such rows dispositioned. **Stability must not be claimed** until **per-language-family reflection sweep** completion is evidenced in the closure audit.
 
 ---
 
@@ -94,7 +104,16 @@ Beyond token / `category` / `likely-use` matching, **all** of the following are 
 
 ### G4 — Adversarial falsification pass
 
-After initial human disposition, a **second pass** (separate tool run or disposer) **re-examines every** `NO_SCHWAB_EQUIVALENT` row and **attempts** to find a CSV match (including synonyms, embeddings, reverse index).
+After initial human disposition, a **second pass** **re-examines every** `NO_SCHWAB_EQUIVALENT` row and **attempts** to find a CSV match (including synonyms, embeddings, reverse index).
+
+**Independence (mandatory):** The second pass **must** be conducted by **either**:
+
+- **(A)** An **actor distinct from the first-pass disposer** (among Cursor, operator, gatekeeper — whoever performed the **first-pass** disposition for a given row **must not** perform the **second-pass** falsification review for that row), **or**
+- **(B)** A **tool path** that employs **at least one match strategy** that was **not** used in the first pass for that row (e.g. first pass: embeddings + synonym table; second pass: full reverse-lookup index walk + manual canonical-field list scan).
+
+**Same-actor-and-same-strategy** second passes are **not** admissible as falsification evidence.
+
+The **`SCHWAB_COVERAGE_PROOF_CLOSURE_AUDIT_V2.md`** **records**, for **each** pass: **actor(s)**, **tool version(s)**, and **strategies** applied.
 
 - Any flip **`NO_SCHWAB_EQUIVALENT` → `REPLACED`** is a **falsification hit** (logged with before/after evidence).
 - **Closure requires zero falsification hits** in the **final** adversarial pass run recorded in the closure audit.
@@ -117,6 +136,7 @@ The contract requires the Schwab canonical CSV baseline to stay current:
 In addition to per-commit CI:
 
 - A **scheduled** CI job runs **at least weekly** on `main`, executing the full **`--all-files`** (language-universal) scan regardless of commit activity.
+- The workflow file **commits an explicit `cron` schedule** (e.g. `0 12 * * 1` for weekly); **gatekeeper reviews** that the committed schedule **fires at least weekly** at **V2 lock** and on any subsequent workflow edit that changes the schedule.
 - Outputs append under `governance/SCHWAB_COVERAGE_AUDIT_LOG/` (path + naming convention fixed in workflow).
 - **Any new register row** surfaced only on scheduled run is **P0** until dispositioned and root-caused.
 
@@ -151,7 +171,8 @@ In addition to per-commit CI:
 | 6 | `tools/check_schwab_csv_first.py` **`--all-files`** — **language-universal** enforcement per this contract |
 | 7 | CI workflow — **commit gate** and **scheduled** job (G6) |
 | 8 | CSV re-pull tool + **diff-on-commit** gate (G5) |
-| 9 | `governance/schwab_field_synonyms.yaml` — **seed** + maintenance process |
+| 9 | `governance/schwab_field_synonyms.yaml` — **seed** + maintenance process (G3) |
+| 13 | `governance/schwab_vendor_paths.yaml` — vendor path registry (G1.1 authority) |
 | 10 | Adversarial falsification tool / **second-pass protocol** (G4) |
 | 11 | `governance/SCHWAB_FIELD_DICTIONARY_PROVENANCE_V1.md` (G7) |
 | 12 | `governance/SCHWAB_COVERAGE_PROOF_CLOSURE_AUDIT_V2.md` — closure evidence (version matches V2 program) |
@@ -166,19 +187,19 @@ Each row: **exactly one** of `REPLACED`, `GOVERNED_EXCEPTION`, `NO_SCHWAB_EQUIVA
 
 **Enumerated mechanical `NOT_MARKET_DATA` subtypes (V2):** `NOT_MARKET_DATA — third_party`, `NOT_MARKET_DATA — dependency_manifest` — **only** when the scanner proves the site class matches **G1.1**; all other `NOT_MARKET_DATA` rows require **human** disposition with semantic reason. Additional mechanical subtypes require a **contract amendment** + gatekeeper approval.
 
-Additional row kinds for **tooling / process** (e.g. `pattern_kind_miss`, `DYNAMIC_DISPATCH`) must still end in a **non-UNREVIEWED** disposition before closure.
+Additional row kinds for **tooling / process** (e.g. `pattern_kind_miss`, `DYNAMIC_DISPATCH`, `COMPUTED_PROPERTY`, `PROXY_TRAP`, `REFLECT_API`, `DYNAMIC_EVAL`, `COMPUTED_DEFINE_PROPERTY`, `DYNAMIC_IMPORT`, `DYNAMIC_SQL_BUILD`, `REGISTRY_DISPATCH`) must still end in a **non-UNREVIEWED** disposition before closure.
 
 ---
 
 ## Completion criteria — ALL must hold (nine)
 
 1. Every in-scope file scanned across **all** listed languages; coverage is **falsifiable**: for each extension / language family, the closure audit records **(a)** total files of that type **present in the repo**, **(b)** count **scanned**, **(c)** count **excluded** with **reason** and **contract clause citation** (e.g. G1.1 generated-source exemption, `.claude` dedup), and **(d)** **reconciliation** proving **(a) = (b) + (c)** with **zero unexplained gap**.  
-2. Visitor stability: **three consecutive** runs with **zero new pattern kinds** **AND** **zero cross-validator misses** **AND** decorator/dynamic-dispatch **and** registry sweeps **complete** and dispositioned.  
+2. Visitor stability: **three consecutive** runs with **zero new pattern kinds** **AND** **zero cross-validator misses** **AND** **per-language-family** reflection / registry / decorator sweeps (**G2**, including JS/TS/SQL kinds) **complete** and dispositioned.  
 3. Every register row has disposition **other than** `UNREVIEWED`.  
 4. `check_schwab_csv_first.py --all-files` passes **whole-repo** (language-universal).  
 5. **CI commit-gate** green on representative merge to `main`.  
-6. **Scheduled** CI job has run **at least one** full pass on `main` **post-disposition** with **zero** new undocumented rows.  
-7. **Adversarial falsification** pass complete with **zero** hits.  
+6. **Scheduled** CI job has run **at least one** full pass on `main` **post-disposition** with **zero** new undocumented rows; the workflow file’s explicit **`cron`** has been **gatekeeper-reviewed** at lock (G6).  
+7. **Adversarial falsification** pass complete with **zero** hits, satisfying **G4 independence** (distinct actor **or** distinct strategy); closure audit records actors and strategies.  
 8. **CSV provenance** hash matches committed canonical CSV.  
 9. **Closure audit** (`SCHWAB_COVERAGE_PROOF_CLOSURE_AUDIT_V2.md`) committed; **O-XX** recorded in `governance/OPERATOR_DECISION_REGISTER.md`.
 
@@ -186,11 +207,11 @@ Additional row kinds for **tooling / process** (e.g. `pattern_kind_miss`, `DYNAM
 
 ## Sequencing — strictly sequential (no skipping)
 
-1. Cursor drafts **V2** → operator + gatekeeper **approve**. *(Draft initial 2026-05-09; T1–T4 + polish landed 2026-05-09 — awaiting final lock.)*  
+1. Cursor drafts **V2** → operator + gatekeeper **approve**. *(Draft initial 2026-05-09; T1–T4 + polish 2026-05-09; H1–H3 + H4–H5 polish 2026-05-09 — awaiting final lock.)*  
 2. Cursor builds **multi-language scanner** + tests.  
 3. Run scanner; populate **V2** register (`UNREVIEWED`).  
 4. **Human** disposition pass.  
-5. Cross-validator + dynamic-dispatch + registry sweep → expand until **stability** (G2).  
+5. Cross-validator + **per-language-family** reflection / registry / decorator sweeps → expand until **stability** (G2).  
 6. **CSV re-pull** tooling + **provenance** doc (G5, G7).  
 7. **Adversarial falsification** pass (G4).  
 8. **`--all-files`** whole-repo guard (language-universal).  
@@ -213,7 +234,11 @@ Additional row kinds for **tooling / process** (e.g. `pattern_kind_miss`, `DYNAM
 - Skipping **adversarial** pass or **provenance** hash check  
 - **CSV refresh cadence weaker than per-commit** without **O-XX** downgrade (G5)  
 - **Silent exclusion** of vendored / generated / lock-file paths without **G1.1** citation in the reconciliation (criterion 1)  
-- **Unreviewed edits** to `schwab_field_synonyms.yaml` (violates G3 authority)
+- **Unreviewed edits** to `schwab_field_synonyms.yaml` (violates G3 authority)  
+- **Unreviewed edits** to `schwab_vendor_paths.yaml` (violates G1.1 authority)  
+- **Stability claimed** without **per-language-family reflection sweep** completion (G2)  
+- **Adversarial second pass** performed by the **same actor** with the **same strategies** as the first pass (violates G4)  
+- **Scheduled audit workflow** without a **committed, gatekeeper-reviewed** `cron` meeting the weekly minimum (G6)
 
 ---
 

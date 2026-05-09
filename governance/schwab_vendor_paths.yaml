@@ -1,0 +1,13 @@
+# Vendor path registry — SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V2 § G1.1
+# Authority: gatekeeper review required for any add/change/remove (same bar as contract).
+# Each entry: path (glob or prefix), provenance (URL / package+version / commit SHA), contract_clause.
+# Removal or modification triggers re-disposition of register rows that cited NOT_MARKET_DATA — third_party under that path.
+#
+# Example (comment only — uncomment after review):
+# entries:
+#   - path: "node_modules/"
+#     provenance: "npm ecosystem; lockfile package-lock.json"
+#     contract_clause: "G1.1"
+
+version: 1
+entries: []
