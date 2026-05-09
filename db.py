@@ -2967,7 +2967,7 @@ class EdDB:
 
                 unfilled = conn.execute(
                     """
-                    SELECT rowid AS _rowid, snapshot_id, ts_utc, atr
+                    SELECT snapshot_id, ts_utc, atr
                     FROM snapshots
                     WHERE ticker = ? AND timeframe = ?
                       AND outcome_filled = 0
@@ -3059,7 +3059,7 @@ class EdDB:
             for tkr in tickers:
                 rows = conn.execute(
                     """
-                    SELECT rowid AS _rowid, snapshot_id, ts_utc, atr FROM snapshots
+                    SELECT snapshot_id, ts_utc, atr FROM snapshots
                     WHERE ticker = ? AND timeframe = ?
                       AND COALESCE(horizon_outcome_schema_version, ?) = ?
                       AND ts_utc < ?
@@ -3991,25 +3991,25 @@ def _tf_seconds(timeframe: str) -> float:
     return mapping.get(timeframe, 300)
 
 def _snapshot_update_key(row) -> tuple[str, int | None]:
+    """
+    UPDATE key for governed snapshot outcomes — `snapshot_id` only (Stage A2b).
+
+    After snapshots schema repair (O-39), `rowid` must not substitute for application
+    identity. Missing or invalid `snapshot_id` returns ("snapshot_id", None); callers
+    must skip and log (see `_apply_bar_based_outcome_updates`).
+    """
     try:
         snap_id = row["snapshot_id"]
     except (KeyError, IndexError, TypeError):
         snap_id = None
     if snap_id is not None:
         try:
-            return "snapshot_id", int(snap_id)
+            sid = int(snap_id)
         except (TypeError, ValueError):
-            pass
-    try:
-        rowid = row["_rowid"]
-    except (KeyError, IndexError, TypeError):
-        rowid = None
-    if rowid is not None:
-        try:
-            return "rowid", int(rowid)
-        except (TypeError, ValueError):
-            pass
-    return "rowid", None
+            return "snapshot_id", None
+        if sid > 0:
+            return "snapshot_id", sid
+    return "snapshot_id", None
 
 
 def _already_filled(conn: sqlite3.Connection, row_key_col: str, row_key: int, col: str) -> bool:
@@ -4043,7 +4043,7 @@ def _snapshot_rows_affected_by_bar_mutations(
     out: list = []
     for row in conn.execute(
         """
-        SELECT rowid AS _rowid, snapshot_id, ts_utc, atr FROM snapshots
+        SELECT snapshot_id, ts_utc, atr FROM snapshots
         WHERE ticker = ? AND timeframe = ?
           AND COALESCE(horizon_outcome_schema_version, ?) = ?
           AND ts_utc < ?
@@ -4113,6 +4113,19 @@ def _apply_bar_based_outcome_updates(
     for row in unfilled_rows:
         row_key_col, row_key = _snapshot_update_key(row)
         if row_key is None:
+            try:
+                ts_u = float(row["ts_utc"])
+            except (KeyError, IndexError, TypeError, ValueError):
+                ts_u = None
+            try:
+                raw_sid = row["snapshot_id"]
+            except (KeyError, IndexError, TypeError):
+                raw_sid = None
+            log.warning(
+                "governed_outcome_skip_missing_snapshot_id ts_utc=%r snapshot_id=%r",
+                ts_u,
+                raw_sid,
+            )
             continue
         t_snap = float(row["ts_utc"])
         anch_idx = bisect.bisect_right(bar_ends, t_snap) - 1

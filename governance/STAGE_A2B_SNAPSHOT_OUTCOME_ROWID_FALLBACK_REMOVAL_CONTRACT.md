@@ -1,6 +1,6 @@
 # Stage A2b — Snapshot Outcome `rowid` Update-Key Removal Contract
 
-**Status:** DRAFT — awaiting production schema repair gate  
+**Status:** IMPLEMENTED — 2026-05-08 (preconditions verified by O-39 post-checks; `db.py` rowid fallback removed)  
 **Created:** 2026-05-08  
 **Authority:** `governance/SNAPSHOTS_SCHEMA_REPAIR_MIGRATION_CONTRACT.md` (O-38 explicit DDL; **out-of-scope** line: no `rowid` as permanent identity substitute for `snapshot_id`)  
 **Related:** Stage A2a deferred governed-outcome refresh on bulk `upsert_1m_bars` (landed API: `refresh_governed_outcomes=`).

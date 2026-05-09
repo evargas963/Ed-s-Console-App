@@ -273,10 +273,10 @@ The named gap `db_schema_repair_post_migration_audit_pending` may be retired onl
 ## Out Of Scope
 
 - Stage A2 held `db.py` split
-- deleting or landing the `rowid` fallback workaround
+- **`rowid` fallback for governed snapshot outcomes** — removed under Stage A2b (`STAGE_A2B_SNAPSHOT_OUTCOME_ROWID_FALLBACK_REMOVAL_CONTRACT.md`) after O-39; not part of this runbook’s apply step
 - deferred-refresh performance commit
 - Stage B schema drift audit tool
 - Stage C table-specific migrations
 - Stage D startup/CI drift detection
 - backfill or training
-- code changes to `db.py`, the migration tool, tests, or runtime modules
+- ad hoc code changes to `db.py`, the migration tool, tests, or runtime modules **except** follow-on contracts explicitly sequenced after closure (e.g. Stage A2b rowid removal)
