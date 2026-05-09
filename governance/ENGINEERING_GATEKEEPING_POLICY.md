@@ -211,21 +211,16 @@ The avoided phrase **“effectively green”** is a soft synonym for GOVERNANCE:
 
 ## Completeness vs Coverage Proof
 
-`GOVERNANCE: COMPLETE` asserts: the in-scope remediation program (mechanical
-scan + inventory passes, slice contracts, schema migration, A2b, CSV-first
-on commits, closure audit) is closed. Specifically:
+GOVERNANCE: COMPLETE for the surfaced remediation program; exhaustive
+CSV-field coverage proof, whole-repo guard `--all-files`, full 43-field
+post-fix measurement, and periodic re-audit are not in this closure
+scope—tracked as optional Phase 2 if required.
 
-- No known unfixed gaps within the surfaced mechanical-scan + inventory scope.
+**Phase 2 scope (optional, separate program):**
 
-`GOVERNANCE: COMPLETE` does NOT assert exhaustive Schwab-consistency coverage 
-proof. The following are explicitly NOT claimed and remain open scopes:
-
-- Reverse-direction coverage register for all 2,393 canonical Schwab fields 
-  (every CSV field has at least one canonical consumer or documented exclusion).
-- Whole-repo `--all-files` property check (CSV-first guard runs on diffs only).
-- Post-fix measurement covering all 43 proof-row preserved fields (S008 
-  measures 3: theta + quoteTimeInLong + tradeTimeInLong).
-- Periodic re-audit cadence (mechanical scan + classifier + guard scheduled run).
-
-If audience requires the stronger claim, status splits: `GOVERNANCE: COMPLETE 
-(remediation program); COVERAGE PROOF: OPEN` until those four workstreams ship.
+- Reverse-direction coverage register for all 2,393 canonical Schwab fields
+- Whole-repo `--all-files` property check (extends CSV-first guard from
+  diff-only to whole codebase)
+- Post-fix measurement covering all 43 proof-row preserved fields (extends
+  S008 from 3 fields to 43)
+- Periodic re-audit cadence (scheduled mechanical scan + classifier + guard)
