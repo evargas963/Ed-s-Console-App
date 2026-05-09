@@ -4,7 +4,8 @@
 **Created:** 2026-05-06  
 **Scope:** All code, data-plane, governance, model, calibration, and tooling changes  
 **Related references:** `governance/DERIVED_ANALYTICS_REGISTRY.md`, `docs/SCHWAB_FIELD_REFERENCE.md`, `schwab_field_inventory/schwab_field_dictionary.csv`  
-**Status axes (GOVERNANCE vs SYSTEM):** § Status Language (canonical; registers/runbooks point here — do not duplicate definitions)
+**Status axes (GOVERNANCE vs SYSTEM):** § Status Language (canonical; registers/runbooks point here — do not duplicate definitions)  
+**`GOVERNANCE: COMPLETE` scope bound:** § Completeness vs Coverage Proof
 
 ---
 
@@ -205,3 +206,26 @@ Two status axes are tracked separately and never merged into a single “green�
 - Long form: full sentence for footnotes / runbook closure sections.
 
 The avoided phrase **“effectively green”** is a soft synonym for GOVERNANCE: COMPLETE that risks lipstick reads (premature victory vs SYSTEM PASS). Prefer the literal pair above in durable governance.
+
+---
+
+## Completeness vs Coverage Proof
+
+`GOVERNANCE: COMPLETE` asserts: the in-scope remediation program (mechanical
+scan + inventory passes, slice contracts, schema migration, A2b, CSV-first
+on commits, closure audit) is closed. Specifically:
+
+- No known unfixed gaps within the surfaced mechanical-scan + inventory scope.
+
+`GOVERNANCE: COMPLETE` does NOT assert exhaustive Schwab-consistency coverage 
+proof. The following are explicitly NOT claimed and remain open scopes:
+
+- Reverse-direction coverage register for all 2,393 canonical Schwab fields 
+  (every CSV field has at least one canonical consumer or documented exclusion).
+- Whole-repo `--all-files` property check (CSV-first guard runs on diffs only).
+- Post-fix measurement covering all 43 proof-row preserved fields (S008 
+  measures 3: theta + quoteTimeInLong + tradeTimeInLong).
+- Periodic re-audit cadence (mechanical scan + classifier + guard scheduled run).
+
+If audience requires the stronger claim, status splits: `GOVERNANCE: COMPLETE 
+(remediation program); COVERAGE PROOF: OPEN` until those four workstreams ship.
