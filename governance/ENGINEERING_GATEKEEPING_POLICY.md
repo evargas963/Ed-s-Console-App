@@ -3,7 +3,8 @@
 **Status:** Binding engineering operating policy  
 **Created:** 2026-05-06  
 **Scope:** All code, data-plane, governance, model, calibration, and tooling changes  
-**Related references:** `governance/DERIVED_ANALYTICS_REGISTRY.md`, `docs/SCHWAB_FIELD_REFERENCE.md`, `schwab_field_inventory/schwab_field_dictionary.csv`
+**Related references:** `governance/DERIVED_ANALYTICS_REGISTRY.md`, `docs/SCHWAB_FIELD_REFERENCE.md`, `schwab_field_inventory/schwab_field_dictionary.csv`  
+**Status axes (GOVERNANCE vs SYSTEM):** § Status Language (canonical; registers/runbooks point here — do not duplicate definitions)
 
 ---
 
@@ -175,3 +176,32 @@ notes
 ```
 
 The cleanup queue is not a graveyard. Entries must be resolved, archived with rationale, or revalidated during planned cleanup sweeps.
+
+---
+
+## Status Language
+
+**Canonical pair (do not conflate):**
+
+```text
+GOVERNANCE: COMPLETE
+SYSTEM: FAIL (S008 measurement pending)
+```
+
+The parenthetical names the **specific gate** blocking SYSTEM PASS when one exists (e.g. calendar-driven data accumulation, operator-only measurement, external apply window). Replace `S008 measurement` with the active gate when documenting another program phase.
+
+Two status axes are tracked separately and never merged into a single “green” without evidence:
+
+- **GOVERNANCE: COMPLETE** — Every code-addressable, governance-addressable, and production-migration-addressable item **in scope** has been completed and verified. No remaining work that can be done by writing code, drafting governance, or running a migration.
+
+- **SYSTEM: FAIL** — form `SYSTEM: FAIL (<named gate> pending)`. System-level evidence is not yet in. Used when SYSTEM PASS depends on calendar-driven or external events (data accumulation, measurement windows, operator-only actions) that no further engineering work can replace. The parenthetical names the specific gate.
+
+- **SYSTEM: PASS** — All evidence in, all gates closed. Reserved.
+
+**Banner forms:**
+
+- Top-level: `FAIL until <gate>` — tight, scannable, no confusion with PASS.
+- Standard: `GOVERNANCE: COMPLETE / SYSTEM: FAIL (<gate> pending)` — literal.
+- Long form: full sentence for footnotes / runbook closure sections.
+
+The avoided phrase **“effectively green”** is a soft synonym for GOVERNANCE: COMPLETE that risks lipstick reads (premature victory vs SYSTEM PASS). Prefer the literal pair above in durable governance.

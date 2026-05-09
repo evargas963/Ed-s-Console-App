@@ -17,6 +17,7 @@
 5. **Commit SHAs** are `git log -1 --format=%H -- <path>` at audit time (first parent on `main` lineage in this repo). They identify the **latest commit touching** the cited contract file, not necessarily the sole closure commit.  
 6. **Manual crosswalk residual** at audit time: `governance/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_RESIDUAL.csv` is **header-only** (0 manual rows); classifier/regenerate: `python tools/classify_schwab_csv_crosswalk.py`.  
 7. **Whole-repo guard:** `python tools/check_schwab_csv_first.py --whole-repo` → **PASS** (audit-time working tree).
+8. **GOVERNANCE vs SYSTEM axes** (distinct from the slice **Status definitions** table below): canonical vocabulary in `governance/ENGINEERING_GATEKEEPING_POLICY.md` § Status Language — do not paraphrase here.
 
 ---
 

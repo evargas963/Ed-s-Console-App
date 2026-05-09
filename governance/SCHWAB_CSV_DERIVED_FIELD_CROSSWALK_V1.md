@@ -66,6 +66,8 @@ manual_residual_rows = 50
 
 The disposition register assigns an automated first-pass disposition to every mechanical candidate row. The residual file is the remaining human-review queue. This document is evidence, not final proof, until `SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_RESIDUAL.csv` is dispositioned to zero or each remaining row is explicitly registered/governed.
 
+**Status vocabulary:** GOVERNANCE vs SYSTEM axes — canonical definitions: `governance/ENGINEERING_GATEKEEPING_POLICY.md` § Status Language; do not read this document’s **remediation OPEN** header as SYSTEM PASS.
+
 The active closure roadmap is `SCHWAB_REMEDIATION_SLICE_PLAN_V1.md`.
 
 ---

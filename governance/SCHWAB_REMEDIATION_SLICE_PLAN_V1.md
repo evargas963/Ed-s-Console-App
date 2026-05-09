@@ -25,6 +25,8 @@ manual_residual_rows_current_artifact = 50  # python tools/classify_schwab_csv_c
 whole_repo_guard_status = PASS  # python tools/check_schwab_csv_first.py --whole-repo
 ```
 
+**Status vocabulary:** GOVERNANCE vs SYSTEM axes — canonical definitions: `governance/ENGINEERING_GATEKEEPING_POLICY.md` § Status Language (do not paraphrase here).
+
 The current repo is not Schwab-field clean. The CSV-first guard protects future changes, but existing code still contains risky patterns that must be remediated or explicitly governed.
 
 ---
