@@ -1,9 +1,12 @@
+> **SUPERSEDED:** This artifact is **superseded** by `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V2.md`. **Do not** use V1 for scope, closure, or gatekeeping. Retained for history only. V1’s Python-only carve-out (former § scope) was **incorrect** under the verbatim mission and is **not** binding.
+
 # Schwab Universal Coverage Proof Program V1
 
-**Status:** DRAFT CONTRACT — operator + gatekeeper review required before any scanner code  
+**Status:** SUPERSEDED_BY_V2  
 **Artifact:** `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V1.md`  
 **Created:** 2026-05-09  
-**Authority:** Operator execution brief (universal coverage proof; no scope carve-outs)
+**Superseded:** 2026-05-09 → **V2**  
+**Authority:** Operator execution brief (universal coverage proof; no scope carve-outs) — **historical**
 
 ---
 
