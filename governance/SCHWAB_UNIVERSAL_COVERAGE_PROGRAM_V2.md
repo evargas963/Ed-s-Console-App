@@ -1,10 +1,13 @@
+> **SUPERSEDED:** This artifact is **superseded** by `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md`. **Do not** use V2 for scope, closure, or gatekeeping. Retained for history only.
+
 # Schwab Universal Coverage Proof Program V2
 
-**Status:** DRAFT CONTRACT — operator + gatekeeper review required before scanner suite code  
+**Status:** SUPERSEDED_BY_V3  
 **Artifact:** `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V2.md`  
 **Created:** 2026-05-09  
 **Supersedes:** `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V1.md` (**SUPERSEDED_BY_V2**)  
-**Authority:** Operator V2 directive — **no language carve-outs, no Phase 2 deferrals** for G1–G7
+**Superseded:** 2026-05-09 → **V3** (`SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md`)  
+**Authority:** Operator V2 directive — **historical** (no language carve-outs, no Phase 2 deferrals for G1–G7)
 
 ---
 
@@ -242,25 +245,25 @@ Additional row kinds for **tooling / process** (e.g. `pattern_kind_miss`, `DYNAM
 
 ---
 
-## Status until V2 closure
+## Status (historical — V2 superseded)
+
+V2 closure criteria are **not** pursued under the active program. The operator **V3** contract governs new work.
 
 ```text
-PROGRAM: COVERAGE PROOF v2 — IN PROGRESS
-COVERAGE PROOF: OPEN — language-universal, every row UNREVIEWED until disposition complete
-SYSTEM: FAIL
+PROGRAM: COVERAGE PROOF v2 — SUPERSEDED_BY_V3
+COVERAGE PROOF: CLOSED AS A TARGET — see V3
+SYSTEM: N/A (historical artifact)
 ```
-
-These lines do **not** change until **completion criteria 1–9** all hold **simultaneously**.
 
 ---
 
 ## Relation to other artifacts
 
 - `SCHWAB_TRADE_DECISION_ENDPOINTS_V1.yaml` and decision-dependency tooling are **lineage aids only**; they **do not** satisfy this program.  
-- `ENGINEERING_GATEKEEPING_POLICY.md` § Active Status must stay consistent with **OPEN** universal coverage proof until V2 closes.
+- `ENGINEERING_GATEKEEPING_POLICY.md` § Active Status must stay consistent with **OPEN** universal coverage proof until **V3** closes (V2 is historical).
 
 ---
 
 ## Revision
 
-V2 amendments require operator + gatekeeper acknowledgment and version bump (`V3`) or O-XX addendum.
+V2 amendments are **frozen** under supersession. The successor contract is **V3** (`SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md`). Further changes use **V3** revision rules or **O-XX** against **V3**.

@@ -1,4 +1,4 @@
-> **SUPERSEDED:** This artifact is **superseded** by `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V2.md`. **Do not** use V1 for scope, closure, or gatekeeping. Retained for history only. V1’s Python-only carve-out (former § scope) was **incorrect** under the verbatim mission and is **not** binding.
+> **SUPERSEDED:** This artifact is **superseded** by `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V2.md` (**SUPERSEDED_BY_V2**). **Do not** use V1 for scope, closure, or gatekeeping. Retained for history only. V1’s Python-only carve-out (former § scope) was **incorrect** under the verbatim mission and is **not** binding. **Active program:** V2 is **SUPERSEDED_BY_V3**; the current contract is `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md`.
 
 # Schwab Universal Coverage Proof Program V1
 
