@@ -1,4 +1,4 @@
-> **Contract note:** `SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V2.md` is **SUPERSEDED_BY_V3**. New closure work uses **`SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md`** and **`SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V3`**.
+> **Contract note:** `SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V2.md` is historical (**SUPERSEDED_BY_V3** → **SUPERSEDED_BY_V4**). **Active program:** `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md`; **register:** `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv`.
 
 # Schwab Universal Coverage Register V2 — Index
 

@@ -1,12 +1,12 @@
-> **SUPERSEDED:** This artifact is **superseded** by `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md`. **Do not** use V2 for scope, closure, or gatekeeping. Retained for history only.
+> **SUPERSEDED:** This artifact is **superseded** by `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md` (**SUPERSEDED_BY_V3**); V3 is **superseded** by `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md` (**SUPERSEDED_BY_V4**). **Do not** use V2 for scope, closure, or gatekeeping. Retained for history only. **Active program (LOCKED 2026-05-08):** `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md`.
 
 # Schwab Universal Coverage Proof Program V2
 
-**Status:** SUPERSEDED_BY_V3  
+**Status:** SUPERSEDED_BY_V3 (**chain continues:** **SUPERSEDED_BY_V4**)  
 **Artifact:** `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V2.md`  
 **Created:** 2026-05-09  
 **Supersedes:** `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V1.md` (**SUPERSEDED_BY_V2**)  
-**Superseded:** 2026-05-09 → **V3** (`SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md`)  
+**Superseded:** 2026-05-09 → **V3** → **V4** (`SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md`)  
 **Authority:** Operator V2 directive — **historical** (no language carve-outs, no Phase 2 deferrals for G1–G7)
 
 ---

@@ -1,11 +1,14 @@
+> **SUPERSEDED:** This artifact is **superseded** by `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md` (**SUPERSEDED_BY_V4**). **Do not** use V3 for **closure** or **gatekeeping**; the **active** program is **V4** (**LOCKED** 2026-05-08). Retained for **history** and **scanner package** semantics (`tools/schwab_universal_coverage_scanner_v3/` path name unchanged under V4).
+
 # Schwab Universal Coverage Proof Program V3
 
-**Status:** **LOCKED** — gatekeeper-approved; binding for Step 2 scanner build (`tools/schwab_universal_coverage_scanner_v3/`) and all V3 closure claims  
+**Status:** **SUPERSEDED_BY_V4** — historical; was **LOCKED** 2026-05-09 for Step 2 scanner build  
 **Artifact:** `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md`  
 **Created:** 2026-05-09  
-**Locked:** 2026-05-09 — gatekeeper final end-to-end re-read (T1 V3-D enumeration authority, C1 dates, C2/C3 deliverables 1–16); **APPROVED** for implementation  
+**Locked (historical):** 2026-05-09 — gatekeeper final end-to-end re-read (T1 V3-D enumeration authority, C1 dates, C2/C3 deliverables 1–16); **APPROVED** for implementation  
+**Superseded:** 2026-05-09 → **V4** (`SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md`)  
 **Supersedes:** `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V2.md` (**SUPERSEDED_BY_V3**)  
-**Authority:** Operator V3 directive — **CSV-canonical** coverage; **no hand-curated scanner token lists**; **no extension whitelist**
+**Authority:** **Historical** — operator V3 directive; binding only for **archived** V3 closure claims, not new work
 
 ---
 
@@ -177,15 +180,15 @@ Each register row: **exactly one** of `REPLACED`, `GOVERNED_EXCEPTION`, `NO_SCHW
 
 ---
 
-## Status until V3 closure
+## Status until V3 closure (historical snapshot)
 
 ```text
-PROGRAM: COVERAGE PROOF v3 — IN PROGRESS
-COVERAGE PROOF: OPEN — CSV-canonical, every file, every canonical_field
+PROGRAM: COVERAGE PROOF v3 — SUPERSEDED BY V4
+COVERAGE PROOF: SUPERSEDED — see SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md
 SYSTEM: FAIL
 ```
 
-These lines do **not** change until **completion criteria 1–12** all hold **simultaneously**.
+**Active program:** **`SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md`** after V4 lock.
 
 ---
 
@@ -193,7 +196,7 @@ These lines do **not** change until **completion criteria 1–12** all hold **si
 
 - `SCHWAB_TRADE_DECISION_ENDPOINTS_V1.yaml` and decision-dependency tooling are **lineage aids only**; they do **not** satisfy this program.  
 - `ENGINEERING_GATEKEEPING_POLICY.md` § Active Status must stay consistent with **OPEN** universal coverage proof until **V3** closes.  
-- `SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V1.md` and **`_V2.md`** are **historical** after supersession; **V3** is the **sole** active contract for new closure work.
+- `SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V1.md` and **`_V2.md`** are **historical** after supersession; **V3** is **superseded by V4** for new closure work.
 
 ---
 

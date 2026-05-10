@@ -28,3 +28,17 @@ jobs:
             git diff HEAD~1..HEAD > /tmp/schwab_csv_first.diff
           fi
           python tools/check_schwab_csv_first.py --diff-file /tmp/schwab_csv_first.diff
+
+      - name: Schwab V4 register O-XX validation
+        shell: bash
+        run: |
+          python -m tools.schwab_oxx_validator \
+            --register governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv \
+            --operator-register governance/OPERATOR_DECISION_REGISTER.md
+
+      - name: Schwab V4 closure metrics (non-zero exit if UNREVIEWED or bare GOVERNED_EXCEPTION)
+        shell: bash
+        run: |
+          python -m tools.schwab_coverage_v4_metrics \
+            --register governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv \
+            --operator-register governance/OPERATOR_DECISION_REGISTER.md

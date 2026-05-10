@@ -1,0 +1,148 @@
+"""V4 Deliverable 18 — GOVERNED_EXCEPTION rows must cite O-XX in governed_ref with operator-register body."""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import re
+import sys
+from pathlib import Path
+
+OXX_TAG = re.compile(r"\b(O-\d+)\b", re.IGNORECASE)
+DISP_OXX = re.compile(r"GOVERNED_EXCEPTION\s*\(\s*(O-\d+)\s*\)", re.IGNORECASE)
+HEADING = re.compile(
+    r"^(#{1,6})\s+\*{0,2}(O-\d+)\*{0,2}\s*$",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+
+def _sections_by_oxx(md: str) -> dict[str, str]:
+    """Map O-NN (uppercase) to body text after heading until next heading of same or higher level."""
+    matches = list(HEADING.finditer(md))
+    out: dict[str, str] = {}
+    for i, m in enumerate(matches):
+        level = len(m.group(1))
+        oxx = m.group(2).upper()
+        start = m.end()
+        end = len(md)
+        for m2 in matches[i + 1 :]:
+            if len(m2.group(1)) <= level:
+                end = m2.start()
+                break
+        out[oxx] = md[start:end]
+    return out
+
+
+def _body_valid(body: str) -> bool:
+    b = body.strip()
+    if "Why:" not in b:
+        return False
+    if "Constraint:" not in b:
+        return False
+    if "Permanent or interim:" not in b:
+        return False
+    return True
+
+
+def oxx_narrative_valid(operator_md: str, oxx: str) -> bool:
+    oxx_u = oxx.upper()
+    sections = _sections_by_oxx(operator_md)
+    body = sections.get(oxx_u)
+    if body is None:
+        return False
+    return _body_valid(body)
+
+
+def collect_v4_a_violations(register_csv: Path, operator_register_md: Path) -> list[str]:
+    if not register_csv.is_file():
+        return []
+    text = operator_register_md.read_text(encoding="utf-8")
+    bad: list[str] = []
+    with register_csv.open(newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            disp = (row.get("disposition") or "").strip()
+            if not disp.startswith("GOVERNED_EXCEPTION"):
+                continue
+            rid = (row.get("register_id") or "").strip()
+            dm = DISP_OXX.search(disp)
+            if not dm:
+                bad.append(rid)
+                continue
+            disp_id = dm.group(1).upper()
+            gref = (row.get("governed_ref") or "").strip()
+            m = OXX_TAG.search(gref)
+            if not m:
+                bad.append(rid)
+                continue
+            oid = m.group(1).upper()
+            if oid != disp_id:
+                bad.append(rid)
+                continue
+            if not oxx_narrative_valid(text, oid):
+                bad.append(rid)
+    return bad
+
+
+def validate_register_messages(
+    register_csv: Path,
+    operator_register_md: Path,
+) -> list[str]:
+    if not register_csv.is_file():
+        return []
+    text = operator_register_md.read_text(encoding="utf-8")
+    msgs: list[str] = []
+    with register_csv.open(newline="", encoding="utf-8") as f:
+        for i, row in enumerate(csv.DictReader(f), start=2):
+            disp = (row.get("disposition") or "").strip()
+            if not disp.startswith("GOVERNED_EXCEPTION"):
+                continue
+            rid = row.get("register_id", "")
+            dm = DISP_OXX.search(disp)
+            if not dm:
+                msgs.append(
+                    f"row {i} register_id={rid!r}: disposition must be "
+                    "'GOVERNED_EXCEPTION (O-NN)'"
+                )
+                continue
+            disp_id = dm.group(1).upper()
+            gref = (row.get("governed_ref") or "").strip()
+            m = OXX_TAG.search(gref)
+            if not m:
+                msgs.append(
+                    f"row {i} register_id={rid!r}: GOVERNED_EXCEPTION requires O-XX in governed_ref"
+                )
+                continue
+            oid = m.group(1).upper()
+            if oid != disp_id:
+                msgs.append(
+                    f"row {i} register_id={rid!r}: governed_ref {oid} != disposition {disp_id}"
+                )
+                continue
+            if not oxx_narrative_valid(text, oid):
+                msgs.append(
+                    f"row {i} register_id={rid!r}: {oid} missing valid heading narrative "
+                    "(Why: / Constraint: / Permanent or interim:)"
+                )
+    return msgs
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--register", type=Path, required=True)
+    p.add_argument(
+        "--operator-register",
+        type=Path,
+        default=Path("governance/OPERATOR_DECISION_REGISTER.md"),
+    )
+    args = p.parse_args(argv)
+    if not args.operator_register.is_file():
+        print(f"Missing {args.operator_register}", file=sys.stderr)
+        return 2
+    msgs = validate_register_messages(args.register, args.operator_register)
+    for m in msgs:
+        print(m, file=sys.stderr)
+    return 1 if msgs else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

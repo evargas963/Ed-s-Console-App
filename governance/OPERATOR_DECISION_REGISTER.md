@@ -99,4 +99,20 @@ By signing below, the operator attests that the **Decision** column for **O-01 t
 
 ---
 
+## Schwab Universal Coverage Proof — O-XX narrative addendum (V4)
+
+Universal-coverage register rows dispositioned **`GOVERNED_EXCEPTION (O-NN)`** **must** repeat the same **`O-NN`** in the register CSV **`governed_ref`** column **and** add a markdown heading in **this file** using ATX form: `### O-NN` (optional bold on the id: `### **O-NN**`).
+
+The body text **from that heading until the next heading of the same or higher level** **must** contain these three line prefixes (exact spelling and punctuation):
+
+`Why:`
+
+`Constraint:`
+
+`Permanent or interim:`
+
+Older binding decisions recorded **only** in the markdown **table** above remain authoritative for **non-coverage** topics. **Coverage closure** tooling (`tools/schwab_oxx_validator.py`) validates **only** headings under this addendum for cited **`O-NN`** IDs.
+
+---
+
 *End of register.*
