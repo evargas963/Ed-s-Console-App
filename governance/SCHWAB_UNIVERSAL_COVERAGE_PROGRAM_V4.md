@@ -191,6 +191,7 @@ Each register row: exactly one of **`REPLACED`**, **`GOVERNED_EXCEPTION`**, **`N
 - **Inflating `(b)_files_scanned`** with parse errors / `OSError` / binary misclassification (**V3** reconciliation law).
 - **Unreviewed edits** to **`V3_DYNAMIC_PATTERNS.md`**, **`governance/schwab_field_synonyms.yaml`**, **`governance/schwab_vendor_paths.yaml`**.
 - Treating **V3** register or **V3** closure audit as **V4** closure evidence.
+- **Sampling-based dispositions** or **precedent inheritance without operator authorization** (per **`governance/SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md`** § **Evidence bar (V4-A enforcement)**).
 
 ---
 

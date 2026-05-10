@@ -58,6 +58,28 @@ If a **Schwab equivalent fits** the site and **no** operator-cited **constraint*
 
 ---
 
+## Evidence bar (V4-A enforcement)
+
+**Authority:** Disposition and replacement-loop work must satisfy this bar before gatekeeper acceptance and operator **`O-XX`** sign-off. Batches group rows that share the **same disposition decision**; they do **not** merge or substitute for **per-row evidence**.
+
+1. **Per-row evidence:** Every register row carries **individual** evidence in its register columns or a **linked artifact** (path stable under version control or cited in the closure audit). Batches share **disposition logic**, never **evidence**. The phrase *“we sampled N and the rest follow”* is **not admissible** at any closure step. Cursor’s batch memos record **per-row evidence pointers** — not aggregate “spot-checked N of M” claims.
+
+2. **No probability language in proposals:** Dispositions are **verified** or **pending** (`UNREVIEWED`). Words and phrases such as *likely*, *often*, *high-confidence*, *cheap check*, and *common pattern* are **removed** from batch memos before gatekeeper review. Either the disposition has evidence per **(1)** or the row stays **`UNREVIEWED`**.
+
+3. **`NO_SCHWAB_EQUIVALENT` four-channel exhaustion:** Every row closed as **`NO_SCHWAB_EQUIVALENT`** must record that **all four** search channels were exercised — **token** match, **category** match, **likely_use** match, and **embedding top-K**. That record lives in the row’s **`notes`**, **`governed_ref`**, **`canonical_field_citation`**, or a **linked exhaustion workbook** keyed by **`register_id`**. If the four-channel record is missing, the row is **not** closed as **`NO_SCHWAB_EQUIVALENT`**.
+
+4. **`REPLACED` with generic-name origin:** When the **`surface_form`** uses a **generic** accessor (e.g. `row["…"]`, `d["…"]`, `data["…"]`, or `obj.attr` where the object name is **not** clearly Schwab-prefixed / payload-named by project convention), **`REPLACED`** requires a **recorded provenance trace** from the accessor back to a **Schwab API payload boundary** (or an equivalent documented source-of-truth chain). The trace is recorded in **`notes`** or **`governed_ref`**. **No** **`REPLACED`** may be proposed on **`csv_candidates`** / lexical match **alone** for generic-named sites.
+
+5. **Markdown / comment / docstring `NOT_MARKET_DATA`:** Classification is **per row** via **path:line** inspection of the **actual** source context for that row’s **`surface_form`** — fenced code vs prose vs comment is a **per-occurrence** judgment, not an extension-level or file-level shortcut. If inspection is **non-trivial** (long file, tangled control flow, ambiguous fences), the row remains **`UNREVIEWED`** for manual disposition rather than auto-applying **`NOT_MARKET_DATA`**.
+
+6. **Pre-V4 precedent inheritance (S009, S017, S008, any S0xx):** Pre-V4 contracts and **`O-XX`** entries are **not** free citations for V4 closure. Each row in a **pre-V4 precedent** batch resolves via **exactly one** of:
+   - **(a)** Fresh **V4** simulation evidence in **`governance/SCHWAB_FIELD_SIMULATION_<topic>_V1.md`** (or an equivalent gatekeeper-approved path), with **`GOVERNED_EXCEPTION (O-NN)`** citing that artifact; or  
+   - **(b)** An explicit **operator-signed V4 inheritance `O-XX`** in **`governance/OPERATOR_DECISION_REGISTER.md`** (under the **V4 narrative addendum**), with the **three-element** narrative (**Why:** / **Constraint:** / **Permanent or interim:**) documenting why prior contract evidence is admissible **without** fresh measurement.
+
+   **Cursor** never self-authorizes precedent inheritance. Pre-V4 precedent batches **block** at gatekeeper review until **(a)** or **(b)** is in place.
+
+---
+
 ## Exit
 
 Loop until **`bare_governed_exception_count == 0`** and **`python -m tools.schwab_oxx_validator`** passes on the **V4** register.
