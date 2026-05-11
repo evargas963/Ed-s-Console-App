@@ -73,6 +73,9 @@ benchmark_logs/
 # Tooling caches
 .claude/worktrees/
 
+# Full-repo Schwab scanner dumps (multi-GB; keep partial register in git or store offline)
+governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.mock_build.csv
+
 # Model artifacts — only models/active*/ are tracked
 # Tracked production paths:
 #   models/active/        (default fallback active)
@@ -90,10 +93,3 @@ models/**
 !models/active_15c/**
 !models/active_60c/
 !models/active_60c/**
-
-# Benchmark and runtime logs
-benchmark_logs/
-.runtime/
-
-# Tooling caches
-.claude/worktrees/
