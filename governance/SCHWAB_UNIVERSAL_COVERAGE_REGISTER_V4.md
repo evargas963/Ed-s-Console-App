@@ -15,4 +15,5 @@ Same schema as V2/V3 — see `tools/schwab_universal_coverage_scanner_v3/registe
 
 - **Deliverable 17:** `python -m tools.schwab_coverage_v4_metrics --register governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv`
 - **Scoreboard (P + Δ unreviewed):** `python -m tools.schwab_v4_scoreboard` → `governance/artifacts/schwab_v4_scoreboard.json` (requires perf proofs under `governance/artifacts/perf_proof/replacements/`)
+- **Mock-build upper bound (informational):** `python -m tools.schwab_v4_scoreboard --register governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.mock_build.csv --out governance/artifacts/schwab_v4_scoreboard_<date>_mock_upper_bound.json --no-register-meta --no-update-perf-index --mock-upper-bound` — does **not** replace the committed register. See `governance/SCHWAB_V4_SCANNER_VS_INVENTORY_SCOPE.md` (Gate II).
 - **Deliverable 18:** `python -m tools.schwab_oxx_validator --register governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv`
