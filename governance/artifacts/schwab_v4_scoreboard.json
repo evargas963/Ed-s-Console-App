@@ -1,0 +1,32 @@
+{
+  "d17": {
+    "bare_governed_exception_count": 0,
+    "closure_admissible": false,
+    "governed_exception_with_oxx_count": 0,
+    "no_schwab_equivalent_count": 0,
+    "not_market_data_count": 0,
+    "register_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\governance\\SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv",
+    "replaced_count": 0,
+    "scanner_version": "3.0.0",
+    "unreviewed_count": 82402,
+    "v4_a_violations": []
+  },
+  "generated_at_utc": "2026-05-11T04:02:00Z",
+  "perf_proof_dir": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\governance\\artifacts\\perf_proof\\replacements",
+  "register_build": {
+    "embedding_mode": "mock",
+    "files_attempted": 400,
+    "generated_at_utc": "2026-05-11T03:58:00Z",
+    "max_files": 400,
+    "operator_note": "Full-repo scan is long-running (sentence-transformers per hit). Re-run without --max-files for closure; use --embedding-mode minilm for production top-K notes or mock for CI throughput.",
+    "partial_scan": true,
+    "register_rows_written": 82402
+  },
+  "scoreboard": {
+    "P": 4,
+    "delta_unreviewed_count": 82402,
+    "prior_unreviewed_count": 0,
+    "replaced_count_d17": 0,
+    "unreviewed_count": 82402
+  }
+}

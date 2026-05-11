@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "P_count": 4,
+  "perf_proof_files": [
+    "pp_v4b_market_state_oe_chain_snapshot.json",
+    "pp_v4b_schwab_gate_eleven_test_bundle.json",
+    "pp_v4b_server_expiration_date_only.json",
+    "pp_v4b_server_quote_coalesce_trim.json"
+  ],
+  "updated_at_utc": "2026-05-11T04:02:00Z"
+}

@@ -94,7 +94,12 @@ def run_scan(
     *,
     include_dot_claude: bool = False,
     max_files: int | None = None,
+    embedding_mode: str | None = None,
 ) -> dict:
+    if embedding_mode:
+        import os
+
+        os.environ["SCHWAB_SCANNER_EMBEDDINGS"] = embedding_mode
     idx = SchwabCsvIndex(default_dictionary_path())
     syn = load_synonyms()
     vendor_pf = load_vendor_prefixes()
@@ -189,12 +194,19 @@ def main() -> int:
     )
     ap.add_argument("--include-dot-claude", action="store_true")
     ap.add_argument("--max-files", type=int, default=None)
+    ap.add_argument(
+        "--embedding-mode",
+        choices=("minilm", "mock"),
+        default=None,
+        help="Override SCHWAB_SCANNER_EMBEDDINGS: mock is fast (deterministic hash embeddings); minilm loads sentence-transformers.",
+    )
     args = ap.parse_args()
     summary = run_scan(
         args.root.resolve(),
         args.output,
         include_dot_claude=args.include_dot_claude,
         max_files=args.max_files,
+        embedding_mode=args.embedding_mode,
     )
     print(json.dumps(summary, indent=2))
     return 0

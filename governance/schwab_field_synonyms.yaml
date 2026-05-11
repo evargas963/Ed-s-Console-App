@@ -1,0 +1,35 @@
+# Manual synonym map — SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4 § V3-A / G3
+# Extends CSV-derived scanner triggers. Gatekeeper approval for add/change/remove.
+# Fields: code_token (or from), canonical_field (or to), csv_citation, rationale
+
+version: 1
+entries:
+  - code_token: expiration
+    canonical_field: chains.callExpDateMap.*.expirationDate
+    csv_citation: schwab_field_inventory/schwab_field_dictionary.csv
+    rationale: Chain row calendar identity is expirationDate; alias expiration is non-canonical for proof rows.
+
+  - code_token: iv
+    canonical_field: chains.callExpDateMap.*.volatility
+    csv_citation: schwab_field_inventory/schwab_field_dictionary.csv
+    rationale: Implied vol on option chains is wire key volatility, not iv.
+
+  - code_token: open_interest
+    canonical_field: chains.callExpDateMap.*.openInterest
+    csv_citation: schwab_field_inventory/schwab_field_dictionary.csv
+    rationale: Align snake_case token to Schwab camelCase leaf on chain rows.
+
+  - code_token: strike_price
+    canonical_field: chains.callExpDateMap.*.strikePrice
+    csv_citation: schwab_field_inventory/schwab_field_dictionary.csv
+    rationale: Align snake_case token to Schwab strikePrice leaf.
+
+  - code_token: quote_time_in_long
+    canonical_field: chains.callExpDateMap.*.quoteTimeInLong
+    csv_citation: schwab_field_inventory/schwab_field_dictionary.csv
+    rationale: Align snake_case token to Schwab quoteTimeInLong leaf.
+
+  - code_token: trade_time_in_long
+    canonical_field: chains.callExpDateMap.*.tradeTimeInLong
+    csv_citation: schwab_field_inventory/schwab_field_dictionary.csv
+    rationale: Align snake_case token to Schwab tradeTimeInLong leaf.

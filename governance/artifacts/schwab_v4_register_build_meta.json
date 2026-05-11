@@ -1,0 +1,9 @@
+{
+  "partial_scan": true,
+  "max_files": 400,
+  "embedding_mode": "mock",
+  "files_attempted": 400,
+  "register_rows_written": 82402,
+  "generated_at_utc": "2026-05-11T03:58:00Z",
+  "operator_note": "Full-repo scan is long-running (sentence-transformers per hit). Re-run without --max-files for closure; use --embedding-mode minilm for production top-K notes or mock for CI throughput."
+}
