@@ -52,8 +52,8 @@ Current implementation:
 ```text
 market_state._oe_chain_row_snapshot()
   -> emits narrow subset:
-     symbol, expirationDate, expiration, strikePrice, putCall,
-     bid, ask, totalVolume, volume, openInterest, gamma, delta
+     symbol, expirationDate, strikePrice, putCall,
+     bid, ask, totalVolume, openInterest, gamma, delta
 ```
 
 This was acceptable as a lightweight audit proof when the proof row was display/debug context. It is no longer sufficient because A2 consumes `winner.chain_row` for hard inputs and readiness gates.
@@ -109,8 +109,10 @@ Consequences:
 
 | Group | Required fields |
 |---|---|
-| Contract identity | `symbol`, `putCall`, `strikePrice`, `expirationDate`, `expiration`, `expirationType`, `settlementType`, `exerciseType`, `lastTradingDay` |
-| Prices and liquidity | `bid`, `ask`, `mark`, `last`, `openPrice`, `highPrice`, `lowPrice`, `closePrice`, `bidSize`, `askSize`, `bidAskSize`, `lastSize`, `totalVolume`, `volume`, `openInterest` |
+| Contract identity | `symbol`, `putCall`, `strikePrice`, `expirationDate`, `expirationType`, `settlementType`, `exerciseType`, `lastTradingDay` |
+| Prices and liquidity | `bid`, `ask`, `mark`, `last`, `openPrice`, `highPrice`, `lowPrice`, `closePrice`, `bidSize`, `askSize`, `bidAskSize`, `lastSize`, `totalVolume`, `openInterest` |
+
+**Schwab CSV alignment (2026-05-10):** The proof row intentionally omits non-canonical aliases **`expiration`** and **`volume`** — only **`expirationDate`** and **`totalVolume`** have `chains.callExpDateMap.*` dictionary rows. Raw Schwab payloads may still carry aliases; normalization for proof uses canonical leaves only.
 | Greeks and IV | `delta`, `gamma`, `theta`, `vega`, `rho`, `volatility`, `theoreticalVolatility`, `theoreticalOptionValue` |
 | Timestamps | `quoteTimeInLong`, `tradeTimeInLong` |
 | Contract metadata | `multiplier`, `extrinsicValue`, `timeValue`, `intrinsicValue`, `inTheMoney`, `nonStandard`, `mini`, `pennyPilot`, `deliverableNote` |

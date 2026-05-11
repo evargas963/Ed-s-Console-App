@@ -735,12 +735,13 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
         spot_f = None
     spread_frac = None
     spread_pts = None
+    quote_mid = None
     try:
         if bid is not None and ask is not None:
             bf, af = float(bid), float(ask)
-            mid = (bf + af) / 2.0
-            if mid > 0:
-                spread_frac = (af - bf) / mid
+            quote_mid = (bf + af) / 2.0
+            if quote_mid > 0:
+                spread_frac = (af - bf) / quote_mid
                 spread_pts = round(af - bf, 4)
     except (TypeError, ValueError):
         pass
@@ -770,8 +771,12 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
         "spot_disp": f"{spot_f:.2f}" if spot_f is not None else "—",
         "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
         "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
+        "quote_mid": quote_mid,
+        "mid_source": ("derived_bid_ask_mid" if quote_mid is not None else None),
         "spread": spread_frac,
         "spread_pts": spread_pts,
+        "spread_source": ("derived_bid_ask_mid_fraction" if spread_frac is not None else None),
+        "spread_pts_source": ("derived_bid_ask_pts" if spread_pts is not None else None),
         "fast_generation_id": _lmp.next_fast_generation(tkr),
         "fast_server_ts": quote_ts,
         "quote_time_source": "schwab_rest_quote" if quote_ts is not None else "unavailable",
@@ -2018,7 +2023,7 @@ def _trader_accuracy_subset(results: dict) -> dict:
 def _expiries_from_contracts(contracts: list) -> list[str]:
     exps = set()
     for ct in contracts:
-        exp = ct.get("expirationDate") or ct.get("expiration")
+        exp = ct.get("expirationDate")
         if exp:
             s = str(exp)[:10]
             if len(s) == 10:
@@ -2042,7 +2047,7 @@ def _selected_schwab_days_to_expiration(
 
     matches: list[dict] = []
     for ct in contracts or []:
-        exp = str(ct.get("expirationDate") or ct.get("expiration") or "")[:10]
+        exp = str(ct.get("expirationDate") or "")[:10]
         if exp_key and exp != exp_key:
             continue
         if side_key in ("CALL", "PUT") and str(ct.get("putCall") or "").upper().strip() != side_key:
@@ -2785,8 +2790,12 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                         b_px, a_px = float(bid), float(ask)
                         mid = (b_px + a_px) / 2.0
                         if mid > 0:
+                            row["quote_mid"] = mid
+                            row["mid_source"] = "derived_bid_ask_mid"
                             row["spread"] = (a_px - b_px) / mid
                             row["spread_pts"] = round(a_px - b_px, 4)
+                            row["spread_source"] = "derived_bid_ask_mid_fraction"
+                            row["spread_pts_source"] = "derived_bid_ask_pts"
                             row["quote_source_detail"]["spread"] = "schwab_bid_ask"
                     except (TypeError, ValueError):
                         pass
@@ -2822,8 +2831,16 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         "spot_disp": row.get("spot_disp"),
         "bid_disp": row.get("bid_disp"),
         "ask_disp": row.get("ask_disp"),
+        "quote_mid": row.get("quote_mid"),
+        "mid_source": row.get("mid_source"),
         "spread": spread_dollar,
         "spread_pts": row.get("spread_pts"),
+        "spread_source": (
+            "derived_bid_ask_pts"
+            if spread_dollar is not None
+            else row.get("spread_source")
+        ),
+        "spread_pts_source": row.get("spread_pts_source"),
         "quote_source_detail": row.get("quote_source_detail"),
         "quote_ingestion": row.get("quote_ingestion"),
         "quote_time_source": row.get("quote_time_source"),
@@ -2979,7 +2996,6 @@ def _fetch_state(
         _regular = _quote_node.get("regular") or {} if isinstance(_quote_node, dict) else {}
         _extended = _quote_node.get("extended") or {} if isinstance(_quote_node, dict) else {}
         _reference = _quote_node.get("reference") or {} if isinstance(_quote_node, dict) else {}
-        _underlying_node = _quote_node.get("underlying") or {} if isinstance(_quote_node, dict) else {}
         _total_vol = (
             _safe_float_quote(_quote_dict.get("totalVolume"))
             or _safe_float_quote(_quote_dict.get("regularMarketVolume"))
@@ -2987,7 +3003,6 @@ def _fetch_state(
             or _safe_float_quote(_regular.get("regularMarketVolume"))
             or _safe_float_quote(_extended.get("totalVolume"))
             or _safe_float_quote(_reference.get("totalVolume"))
-            or _safe_float_quote(_underlying_node.get("totalVolume"))
         )
 
     # ── Select expiry ─────────────────────────────────────────────────────────
@@ -3034,7 +3049,7 @@ def _fetch_state(
         _lmp.merge_into_state(_minimal, ticker)
         return stamp_decision_bundle(_minimal)
     filtered     = [ct for ct in contracts
-                    if (ct.get("expirationDate") or ct.get("expiration") or "")[:10] == selected_exp]
+                    if (ct.get("expirationDate") or "")[:10] == selected_exp]
     contracts_use = filtered if filtered else contracts
 
     # ── Exposures ─────────────────────────────────────────────────────────────
