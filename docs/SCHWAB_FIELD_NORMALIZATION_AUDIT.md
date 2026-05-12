@@ -5,6 +5,8 @@
 **Observed inventory:** `schwab_field_inventory/schwab_field_dictionary.csv`  
 **Runtime boundary:** `chains.contract_fields()`
 
+**See also:** `docs/SCHWAB_FIELD_REFERENCE.md` (live inventory counts and canonical dictionary layout).
+
 ---
 
 ## Purpose

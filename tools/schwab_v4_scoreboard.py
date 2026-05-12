@@ -233,7 +233,7 @@ def main(argv: list[str] | None = None) -> int:
             "inventory_pending_reference": 3966,
             "scope_mismatch_files_approx": 5056,
             "mock_build_on_disk_gb_approx": 10.06,
-            "reconciliation_doc": "governance/SCHWAB_V4_SCANNER_VS_INVENTORY_SCOPE.md",
+            "reconciliation_doc": "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.md#gate-ii-scanner-vs-file-inventory-scope",
         }
     try:
         doc = build_scoreboard(

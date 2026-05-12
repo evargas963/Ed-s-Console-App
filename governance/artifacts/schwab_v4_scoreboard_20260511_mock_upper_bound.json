@@ -17,7 +17,7 @@
     "inventory_pending_reference": 3966,
     "mock_build_on_disk_gb_approx": 10.06,
     "mock_embeddings": true,
-    "reconciliation_doc": "governance/SCHWAB_V4_SCANNER_VS_INVENTORY_SCOPE.md",
+    "reconciliation_doc": "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.md#gate-ii-scanner-vs-file-inventory-scope",
     "scanner_files_attempted_reference": 9022,
     "scanner_scope_independent_of_inventory": true,
     "scope_mismatch_files_approx": 5056,

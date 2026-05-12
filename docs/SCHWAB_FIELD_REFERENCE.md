@@ -5,6 +5,8 @@
 **Last refreshed:** 2026-05-05 after Schwab re-authentication  
 **Purpose:** Preserve a durable reference for Schwab market-data fields used by EdWebConsole and prevent derived values from silently replacing fields Schwab already provides.
 
+**See also:** `docs/SCHWAB_FIELD_NORMALIZATION_AUDIT.md` (option-chain normalization vs `chains.contract_fields()`).
+
 ---
 
 ## Live Inventory

@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import hashlib
 import json
+import os
+import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .catch_all import scan_catch_all_lines
@@ -27,6 +32,169 @@ from .synonyms import load_synonyms
 from .vendor_paths import load_vendor_prefixes, path_is_vendored
 
 SCANNER_VERSION = "3.0.0"
+REGISTER_BUILD_META_REL = "governance/artifacts/schwab_v4_register_build_meta.json"
+
+
+def _merge_key_from_csv_row(row: dict[str, str]) -> tuple[str, int, int, str, str] | None:
+    try:
+        ln = int(row.get("line") or 0)
+        col = int(row.get("col") or 0)
+    except ValueError:
+        return None
+    path = (row.get("path") or "").strip()
+    pk = (row.get("pattern_kind") or "").strip()
+    lang = (row.get("language") or "").strip()
+    return (path, ln, col, pk, lang)
+
+
+def _merge_surface_key_from_csv_row(row: dict[str, str]) -> tuple[str, str, str, str] | None:
+    path = (row.get("path") or "").strip()
+    if not path:
+        return None
+    surf = (row.get("surface_form") or "").strip()
+    pk = (row.get("pattern_kind") or "").strip()
+    lang = (row.get("language") or "").strip()
+    return (path, surf, pk, lang)
+
+
+def _merge_surface_key_from_register_row(row: RegisterRow) -> tuple[str, str, str, str]:
+    return (row.path, (row.surface_form or "").strip(), row.pattern_kind, row.language)
+
+
+def _load_disposition_merge_maps(
+    register_csv: Path,
+) -> tuple[
+    dict[tuple[str, int, int, str, str], dict[str, str]],
+    dict[str, dict[str, str]],
+    dict[tuple[str, str, str, str], dict[str, str]],
+]:
+    """Prior dispositions keyed by scan site, register_id, and surface+pattern (line-stable rescan)."""
+    by_site: dict[tuple[str, int, int, str, str], dict[str, str]] = {}
+    by_id: dict[str, dict[str, str]] = {}
+    by_surface: dict[tuple[str, str, str, str], dict[str, str]] = {}
+    if not register_csv.is_file():
+        return by_site, by_id, by_surface
+    try:
+        with register_csv.open(newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                d = (row.get("disposition") or "").strip()
+                if not d or d == "UNREVIEWED":
+                    continue
+                payload = {
+                    "disposition": d,
+                    "canonical_field_citation": (row.get("canonical_field_citation") or "").strip(),
+                    "governed_ref": (row.get("governed_ref") or "").strip(),
+                    "notes": (row.get("notes") or "").strip(),
+                }
+                sk = _merge_key_from_csv_row(row)
+                if sk is not None:
+                    by_site[sk] = payload
+                rid = (row.get("register_id") or "").strip()
+                if rid:
+                    by_id[rid] = payload
+                ssk = _merge_surface_key_from_csv_row(row)
+                if ssk is not None:
+                    by_surface[ssk] = payload
+    except (OSError, UnicodeError, csv.Error):
+        return {}, {}, {}
+    return by_site, by_id, by_surface
+
+
+def _apply_disposition_merge(
+    all_rows: list[RegisterRow],
+    by_site: dict[tuple[str, int, int, str, str], dict[str, str]],
+    by_id: dict[str, dict[str, str]],
+    by_surface: dict[tuple[str, str, str, str], dict[str, str]],
+) -> None:
+    if not by_site and not by_id and not by_surface:
+        return
+    for row in all_rows:
+        key = (row.path, int(row.line), int(row.col), row.pattern_kind, row.language)
+        m = (
+            by_site.get(key)
+            or by_id.get(row.register_id)
+            or by_surface.get(_merge_surface_key_from_register_row(row))
+        )
+        if not m:
+            continue
+        row.disposition = m["disposition"]
+        row.canonical_field_citation = m["canonical_field_citation"]
+        row.governed_ref = m["governed_ref"]
+        row.notes = m["notes"]
+
+
+def _git_head_sha(root: Path) -> str | None:
+    proc = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return None
+    s = (proc.stdout or "").strip()
+    return s or None
+
+
+def write_register_build_meta(
+    root: Path,
+    out_csv: Path,
+    summary: dict,
+    *,
+    max_files: int | None,
+    embedding_mode_cli: str | None,
+    include_dot_claude: bool,
+) -> Path:
+    """Emit pinned scan metadata (hashes, flags, HEAD) for audit / CI reproduction."""
+    root = root.resolve()
+    meta_path = root / REGISTER_BUILD_META_REL
+    body = b""
+    if out_csv.is_file():
+        body = out_csv.read_bytes()
+    sha256_hex = hashlib.sha256(body).hexdigest() if body else ""
+    size_b = len(body)
+    emb = embedding_mode_cli or os.environ.get("SCHWAB_SCANNER_EMBEDDINGS") or "mock"
+    scan_sha = _git_head_sha(root)
+    prior: dict = {}
+    if meta_path.is_file():
+        try:
+            prior = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            prior = {}
+
+    rel_csv: str
+    if out_csv.is_file():
+        try:
+            rel_csv = out_csv.resolve().relative_to(root).as_posix()
+        except ValueError:
+            rel_csv = str(out_csv)
+    else:
+        rel_csv = str(out_csv)
+
+    doc = {
+        **prior,
+        "scanner_version": SCANNER_VERSION,
+        "partial_scan": max_files is not None,
+        "max_files": max_files,
+        "embedding_mode": emb,
+        "files_attempted": int(summary.get("files_attempted") or 0),
+        "register_rows_written": int(summary.get("register_rows") or 0),
+        "generated_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "scanner_commit_sha": scan_sha,
+        "scanner_flags": {
+            "max_files": max_files,
+            "embedding_mode": emb,
+            "include_dot_claude": include_dot_claude,
+        },
+        "register_content_sha256": sha256_hex,
+        "register_size_bytes": size_b,
+        "register_csv_path": rel_csv,
+    }
+    if prior.get("operator_note"):
+        doc["operator_note"] = prior["operator_note"]
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
+    meta_path.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return meta_path
 
 
 def _language_tag(suffix: str) -> str:
@@ -117,6 +285,7 @@ def run_scan(
     all_rows: list[RegisterRow] = []
     n_attempts = 0
     root = root.resolve()
+    merge_by_site, merge_by_id, merge_by_surface = _load_disposition_merge_maps(out_csv)
 
     for abs_p in walk_workspace_files(root, on_prune=on_prune):
         if max_files is not None and n_attempts >= max_files:
@@ -167,6 +336,7 @@ def run_scan(
         all_rows.extend(file_rows)
         fam.b_scanned += 1
 
+    _apply_disposition_merge(all_rows, merge_by_site, merge_by_id, merge_by_surface)
     write_register_csv(out_csv, all_rows)
     reverse = build_reverse_coverage_rows(all_rows, idx)
     recon = state.as_report()
@@ -207,6 +377,14 @@ def main() -> int:
         include_dot_claude=args.include_dot_claude,
         max_files=args.max_files,
         embedding_mode=args.embedding_mode,
+    )
+    write_register_build_meta(
+        args.root.resolve(),
+        args.output,
+        summary,
+        max_files=args.max_files,
+        embedding_mode_cli=args.embedding_mode,
+        include_dot_claude=args.include_dot_claude,
     )
     print(json.dumps(summary, indent=2))
     return 0

@@ -95,6 +95,12 @@ Add a pipeline step: if `governance/**/*.md` changed, run the **same** command f
 
 ---
 
+## Schwab V4 register (CSV)
+
+The universal register CSV is **gitignored** (generated). Regeneration, pins, metrics, and Gate II scope notes live in **`governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.md`** — follow that file; do not duplicate commands here.
+
+---
+
 ## Revision history
 
 | Revision | Date | Notes |

@@ -8,9 +8,9 @@ You are the **drafter and executor**. Claude is the **gatekeeper/verifier**; Ed 
 
 - `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md` — program
 - `governance/SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md` — loop discipline + evidence bar
-- `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` — authoritative register (one row = one site)
+- `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` — site register (**not tracked**; regenerate; pins in `governance/artifacts/schwab_v4_register_build_meta.json`)
 - `governance/artifacts/schwab_v4_scoreboard.json` — authoritative scoreboard
-- `governance/SCHWAB_V4_SCANNER_VS_INVENTORY_SCOPE.md` — scope reconciliation
+- `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.md` — register index + **§ Gate II** (scanner vs inventory scope)
 - `governance/OPERATOR_DECISION_REGISTER.md` — O-XX narratives (`Why:` / `Constraint:` / `Permanent or interim:`)
 - `tools/schwab_universal_coverage_scanner_v3/`, `tools/schwab_v4_scoreboard.py`, `tools/schwab_coverage_v4_metrics.py`
 

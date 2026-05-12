@@ -29,6 +29,32 @@ jobs:
           fi
           python tools/check_schwab_csv_first.py --diff-file /tmp/schwab_csv_first.diff
 
+      - name: Generate V4 register (gitignored; pin in schwab_v4_register_build_meta.json)
+        shell: bash
+        run: |
+          python -m tools.schwab_universal_coverage_scanner_v3 \
+            --output governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv \
+            --max-files 400 \
+            --embedding-mode mock
+          python <<'PY'
+          import csv, hashlib, json, pathlib, sys
+          meta = json.loads(pathlib.Path("governance/artifacts/schwab_v4_register_build_meta.json").read_text(encoding="utf-8"))
+          p = pathlib.Path("governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv")
+          h = hashlib.sha256(p.read_bytes()).hexdigest()
+          exp = meta.get("register_content_sha256")
+          if not exp or h != exp:
+              print("register_content_sha256 mismatch", h, exp, file=sys.stderr)
+              sys.exit(1)
+          want_rows = meta.get("register_rows_written")
+          if want_rows:
+              with p.open(newline="", encoding="utf-8") as f:
+                  n = sum(1 for _ in csv.DictReader(f))
+              if n != want_rows:
+                  print("register_rows_written mismatch", n, want_rows, file=sys.stderr)
+                  sys.exit(1)
+          print("V4 register pin OK", h[:16])
+          PY
+
       - name: Schwab V4 register O-XX validation
         shell: bash
         run: |

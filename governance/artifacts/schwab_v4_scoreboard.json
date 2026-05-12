@@ -6,31 +6,41 @@
     "no_schwab_equivalent_count": 0,
     "not_market_data_count": 0,
     "register_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\governance\\SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv",
-    "replaced_count": 12,
+    "replaced_count": 0,
     "scanner_version": "3.0.0",
-    "unreviewed_count": 82390,
+    "unreviewed_count": 82344,
     "v4_a_violations": []
   },
-  "generated_at_utc": "2026-05-12T21:41:39Z",
+  "generated_at_utc": "2026-05-12T21:55:39Z",
   "perf_proof_dir": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\governance\\artifacts\\perf_proof\\replacements",
   "register_build": {
     "embedding_mode": "mock",
     "files_attempted": 400,
-    "generated_at_utc": "2026-05-11T03:58:00Z",
+    "generated_at_utc": "2026-05-12T21:55:15Z",
     "max_files": 400,
     "operator_note": "Full-repo scan is long-running (sentence-transformers per hit). Re-run without --max-files for closure; use --embedding-mode minilm for production top-K notes or mock for CI throughput.",
     "partial_scan": true,
-    "register_rows_written": 82402
+    "register_content_sha256": "98948299a5facff60236bb397abd578a365814354ce98e3491dc2f1caf47afe7",
+    "register_csv_path": "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv",
+    "register_rows_written": 82344,
+    "register_size_bytes": 54412397,
+    "scanner_commit_sha": "b77bbd6d49bd30ce274411b41a49dc2220aca2ba",
+    "scanner_flags": {
+      "embedding_mode": "mock",
+      "include_dot_claude": false,
+      "max_files": 400
+    },
+    "scanner_version": "3.0.0"
   },
   "scoreboard": {
     "P": 4,
-    "delta_replaced_count_d17": 0,
-    "delta_unreviewed_count": 0,
-    "prior_git_ref": "f59581c6f1229b2846991ecb7e8c536a928e6b60",
+    "delta_replaced_count_d17": -12,
+    "delta_unreviewed_count": -46,
+    "prior_git_ref": "b77bbd6d49bd30ce274411b41a49dc2220aca2ba",
     "prior_replaced_count_d17": 12,
     "prior_scoreboard_source": "git_head",
     "prior_unreviewed_count": 82390,
-    "replaced_count_d17": 12,
-    "unreviewed_count": 82390
+    "replaced_count_d17": 0,
+    "unreviewed_count": 82344
   }
 }
