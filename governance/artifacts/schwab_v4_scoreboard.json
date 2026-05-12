@@ -11,7 +11,7 @@
     "unreviewed_count": 82390,
     "v4_a_violations": []
   },
-  "generated_at_utc": "2026-05-12T18:55:28Z",
+  "generated_at_utc": "2026-05-12T21:41:39Z",
   "perf_proof_dir": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\governance\\artifacts\\perf_proof\\replacements",
   "register_build": {
     "embedding_mode": "mock",
@@ -24,7 +24,11 @@
   },
   "scoreboard": {
     "P": 4,
+    "delta_replaced_count_d17": 0,
     "delta_unreviewed_count": 0,
+    "prior_git_ref": "f59581c6f1229b2846991ecb7e8c536a928e6b60",
+    "prior_replaced_count_d17": 12,
+    "prior_scoreboard_source": "git_head",
     "prior_unreviewed_count": 82390,
     "replaced_count_d17": 12,
     "unreviewed_count": 82390
