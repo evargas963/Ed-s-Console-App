@@ -5,7 +5,8 @@
 **Created:** 2026-05-09  
 **Locked:** 2026-05-08 — gatekeeper end-to-end directive verification matrix; **LOCK V4** verdict recorded below  
 **Supersedes:** `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md` (**SUPERSEDED_BY_V4**)  
-**Authority:** Operator V4 directive — **CSV-canonical universal review-and-replacement**; **no carve-outs**, **no “Phase 2”** deferrals for scope covered herein
+**Authority:** Operator V4 directive — **CSV-canonical universal review-and-replacement**; **no carve-outs**, **no “Phase 2”** deferrals for scope covered herein  
+**Executor brief:** see [`CURSOR_V4_AGENT_BRIEF.md`](CURSOR_V4_AGENT_BRIEF.md) for the agent-side workflow and handoff template.
 
 ---
 
