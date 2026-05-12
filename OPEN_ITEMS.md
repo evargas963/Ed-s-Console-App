@@ -1,7 +1,7 @@
 # Open items — horizon, stack, UI consistency
 
 **Rule:** Items stay **open** until there is a merged/code-verified resolution (not just “planned”).  
-**Last reviewed:** 2026-05-04
+**Last reviewed:** 2026-05-12 (reconciled against `fb1e84c` Schwab Field Precedence Principle commit and the A2 lifecycle landings — EOD force-exit `20a1c14`, session-calendar hardening `cac88a6`, pin-risk handler — none of which touch the ML horizon/cascade workstream items below).
 
 ---
 

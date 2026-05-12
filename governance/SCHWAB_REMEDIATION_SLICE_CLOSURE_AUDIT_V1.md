@@ -78,7 +78,7 @@
 
 | Track | Status | Evidence | Next action |
 |-------|--------|----------|-------------|
-| **Stage A2b** (`rowid` removal) | production-gated | `governance/STAGE_A2B_SNAPSHOT_OUTCOME_ROWID_FALLBACK_REMOVAL_CONTRACT.md`; `governance/SNAPSHOTS_SCHEMA_REPAIR_MIGRATION_CONTRACT.md`; runbooks under `governance/SNAPSHOTS_SCHEMA_REPAIR_APPLY_RUNBOOK_V1.md`. | **Gating event:** DDL repair / migration window; remove `rowid` update branch from `db.py` per A2b contract. |
+| **Stage A2b** (`rowid` removal) | IMPLEMENTED 2026-05-08 | `governance/STAGE_A2B_SNAPSHOT_OUTCOME_ROWID_FALLBACK_REMOVAL_CONTRACT.md` (Status: IMPLEMENTED); `governance/SNAPSHOTS_SCHEMA_REPAIR_MIGRATION_CONTRACT.md`; production migration applied per O-39 (`governance/OPERATOR_DECISION_REGISTER.md`). | None — `rowid` fallback removed from `db.py` per A2b contract. |
 
 ---
 
@@ -98,6 +98,6 @@
 schwab_remediation_slice_closure_audit_v1_status = RECORDED
 manual_crosswalk_residual_rows = 0
 whole_repo_guard = PASS
-closure_table_status_counts = formally-closed: 33 slice rows; production-gated: 2 slice rows (S001, S008); out-of-scope production-gated: Stage A2b (separate table)
+closure_table_status_counts = formally-closed: 33 slice rows; production-gated: 2 slice rows (S001, S008); out-of-scope IMPLEMENTED: Stage A2b (separate table; flipped 2026-05-08 per O-39)
 slice_plan_system_status = FAIL  # unchanged until slice-plan §Closure Definition incl. production/maintenance gates (S001 apply, S008 measurement, A2b DDL) and any remaining plan criteria
 ```

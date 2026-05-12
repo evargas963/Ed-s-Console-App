@@ -30,7 +30,7 @@ Source priority enforcement is governed by `ENGINEERING_GATEKEEPING_POLICY.md` �
 | Track | Coverage status | Closure requirement |
 |---|---|---|
 | Schwab fetch paths | Partial inventory complete | Every quote, option-chain, price-history, streaming, and probe path must use an explicit broker-symbol policy. |
-| Normalization boundary | Partial inventory complete | `chains.py`, quote parsing, bar parsing, and stream normalization must preserve Schwab-native primitives or mark them unavailable. |
+| Normalization boundary | Partial inventory complete | Quote parsing, bar parsing, and stream normalization must preserve Schwab-native primitives or mark them unavailable. (Historically: `chains.py`; removed in the Schwab-direct redesign — chain reads now happen inline at each consumer site using Schwab `canonical_field` names per the Precedence Principle.) |
 | Option proof handoff | Blocking defect identified | `market_state` proof rows must preserve A2-required Schwab fields end-to-end. |
 | Runtime consumers | Partial inventory complete | A2, market state, order flow, volatility, exposure, liquidity, and API/UI consumers must document native-vs-derived behavior. |
 | Persistence/archive | Partial inventory complete | `snapshots.option_chain_json`, replay context, bars, calibration logs, and backfills must have source/shape guarantees. |
@@ -52,7 +52,7 @@ Before this register can be upgraded from draft to closure PASS, these file fami
 |---|---|
 | Schwab clients/probes | `schwab_client.py`, `schwab_full_field_inventory.py`, `schwab_full_accessible_field_inventory.py`, `tools/schwab_minute_history_probe_v1.py`, auth/reauth tooling. |
 | Runtime fetch and state | `server.py`, `market_context.py`, `live_market_plane.py`, `polling_adapter.py`, `market_data_adapter.py`. |
-| Option chain normalization and replay | `chains.py`, `market_state.py`, `realized_contract_eval.py`, `v2_decision/a2_option_expression.py`, `v2_decision/a2_replay_labels.py`. |
+| Option chain normalization and replay | `market_state.py`, `realized_contract_eval.py`, `v2_decision/a2_option_expression.py`, `v2_decision/a2_replay_labels.py` (formerly also `chains.py` — removed in the Schwab-direct redesign; reads are now inline). |
 | Option math and derived analytics | `math_exposure_core.py`, `math_exposure.py`, `math_probabilities.py`, `math_volatility.py`, `order_flow_engine.py`, `order_flow_live_state.py`, `order_flow_streaming.py`. |
 | Persistence and DB authority | `db.py`, `db_authority.py`, `db_safety.py`, `snapshot_normalizer.py`, migration and repair scripts under `tools/`, calibration repair/backfill modules. |
 | Historical ingestion/backfill | `bar_rehydration_issue19_v1.py`, `tools/historical_backfill_enrolled_1m_v1.py`, `tools/ingest_1m_to_staging.py`, Issue 19 repair/validation tools. |
@@ -85,7 +85,7 @@ Every finding promoted to a fix slice must include:
 |---|---|---:|---|---|
 | SC-001 | `market_state` truncates selected option proof rows before A2 consumes them. | High | A2 Slice 2+ | Must fix before further A2 slice work. |
 | SC-002 | Historical archive theta null/missing rate was caused by internal normalization/archive omission, not current Schwab API absence. | High | A2 theta governance | Do not authorize Black-Scholes as structural primary path. |
-| SC-003 | Current live Schwab option-chain samples return theta/rho/quote timestamps for SPY and QQQ, and current `chains.contract_fields()` preserves them. | High | A2 proof-row fix | Use as post-fix expected behavior. |
+| SC-003 | Live Schwab option-chain samples returned theta/rho/quote timestamps for SPY and QQQ at audit time; the then-current `chains.contract_fields()` helper preserved them. (Helper removed in the Schwab-direct redesign; current consumers read those Schwab leaves inline.) | High | A2 proof-row fix | Use as post-fix expected behavior. |
 | SC-004 | Index symbol handling is inconsistent for NDX and selected `$`-prefixed migration/reporting paths. | High | Infra data integrity | Separate symbol-policy fix track. |
 | SC-005 | DB authority remains globally incomplete for auxiliary scripts and backup conventions. | Medium/High | Infra data integrity | Separate DB-authority closure track. |
 | SC-006 | Source labeling remains uneven outside v2 leaf structures. | Medium | Infra provenance | Separate source-labeling audit/fix track. |
@@ -157,8 +157,8 @@ Current normalizer:
 
 | Location | Status |
 |---|---|
-| `chains.contract_fields()` | Preserves `theta`, `rho`, `quoteTimeInLong`, `tradeTimeInLong`, implied-vol fields (**`volatility`**, `theoreticalVolatility`, …), prices, sizes, and metadata when present. |
-| `realized_contract_eval.serialize_option_chain_for_eval()` | Uses `contract_fields()` and strips only `raw`, preserving normalized Schwab fields. |
+| Inline `chain_row` reads (formerly `chains.py::contract_fields()` — removed in the Schwab-direct redesign) | Schwab `theta`, `rho`, `quoteTimeInLong`, `tradeTimeInLong`, implied-vol fields (**`volatility`**, `theoreticalVolatility`, …), prices, sizes, and metadata are read inline at each consumer using Schwab `canonical_field` names per the Precedence Principle. |
+| `realized_contract_eval.serialize_option_chain_for_eval()` | Reads `chain_row` fields inline (post Schwab-direct redesign), preserving Schwab leaves and stripping only `raw`. |
 
 ---
 
@@ -190,7 +190,7 @@ Current normalizer:
 | Surface | Current State | Risk | Follow-up |
 |---|---|---:|---|
 | `v2_decision` leaves | Strong source indicator structure exists. | Low/Medium | Expand market-data leaves to distinguish Schwab-native vs approximation consistently. |
-| `chains.py` normalization | Preserves fields but has no per-field source-classification tags. | Medium | Add source-classification digest or tags. |
+| Inline `chain_row` reads (formerly `chains.py` — removed in the Schwab-direct redesign) | Inline reads preserve Schwab leaves but do not yet emit per-field source-classification tags at the consumer boundary. | Medium | Add source-classification digest or tags. |
 | `server.py` API payloads | Some source/update tags exist, not field-level. | Medium | Add field-level provenance for critical primitives. |
 | ML/training features | Envelope-level provenance exists; missingness may become numeric defaults. | Medium | Persist source/missingness masks with artifacts. |
 | Calibration logs | Snapshot-level provenance exists; primitive-field lineage is limited. | Medium | Add compact field-source digest for key primitives. |

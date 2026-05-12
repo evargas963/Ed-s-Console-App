@@ -1,6 +1,6 @@
 # A2 Lifecycle EOD Force-Exit And Cadence Contract
 
-**Status:** Draft lifecycle contract
+**Status:** IMPLEMENTED — EOD force-exit and cadence shift landed (`20a1c14`); session-calendar hardening landed (`cac88a6`). Advisory v1 authority. Promotion to runtime authority requires a future operator decision per §Promotion Criteria.
 **Date:** 2026-05-06
 **Module:** A - short-horizon directional trading
 **Expression profile:** A2 - 0DTE options
@@ -33,17 +33,20 @@ In scope:
 - clock-source declaration;
 - RTH-normal-session-only v1 assumption.
 
-Out of scope:
+Out of scope (still excluded post-implementation):
 
-- code implementation, deferred to a future commit;
-- edits to existing contracts, including lifecycle, A2 0DTE, and sidecar contracts;
+- edits to existing contracts other than the per-status amendments in this document;
 - edits to `MarketState` dataclass or `_ms_to_dict`;
-- trading-calendar dependency;
-- shortened-session, holiday, and out-of-session handling, named as future gaps below;
 - bridge contract drafting;
 - EV, execution-EV, or A1 work;
-- new operator decision register entries;
-- `a2_option_expression.py:383` cleanup for unpropagated `mins_to_close`, deferred to a separate follow-up commit.
+- new operator decision register entries.
+
+Resolved (originally listed out-of-scope; now landed):
+
+- code implementation: landed at `20a1c14`;
+- trading-calendar dependency: landed via `governance/A2_LIFECYCLE_SESSION_CALENDAR_HARDENING_CONTRACT.md` (`cac88a6`);
+- shortened-session, holiday, and out-of-session handling: resolved per §Session Handling below;
+- `a2_option_expression.py:383` cleanup for unpropagated `mins_to_close`: resolved per `governance/REPO_CLEANUP_QUEUE.md` resolution log.
 
 ---
 
@@ -165,7 +168,7 @@ The original RTH-normal-session-only deviations are retired by the session-calen
 - `a2_lifecycle_eod_force_exit_shortened_session_handling_pending` - **resolved** by this implementation commit. Calendar-aware force-exit consumes `session_close_et` from `data/trading_calendar/us_equities.json` (`cac88a6`) and derives threshold = `session_close_et - 10 min` per O-35. Early close days fire force-exit at the early-close-relative threshold rather than 15:50.
 - `a2_lifecycle_eod_force_exit_holiday_session_handling_pending` - **resolved** by this implementation commit. Full closure dates in the calendar yield `session_type = "full_closure"`; force-exit MUST NOT fire and cadence stays `"event_triggered"`.
 - `a2_lifecycle_eod_force_exit_out_of_session_stale_state_pending` - **resolved** by this implementation commit. Pre-open and post-close ranges yield `session_type = "out_of_session"`; force-exit MUST NOT fire and cadence stays `"event_triggered"`. Stale calendar (`current_date > valid_through_date`) falls back to RTH-only v1 normal-session behavior, explicit per `governance/A2_LIFECYCLE_SESSION_CALENDAR_HARDENING_CONTRACT.md` stale-fallback discipline.
-- `a2_lifecycle_eod_force_exit_logic_not_implemented` - referenced from `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`; closes when this contract's code commit lands.
+- `a2_lifecycle_eod_force_exit_logic_not_implemented` - referenced from `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`; **resolved** by this contract's code commit (`20a1c14`).
 
 ---
 
@@ -174,7 +177,7 @@ The original RTH-normal-session-only deviations are retired by the session-calen
 Promotion criteria:
 
 - Bound threshold policies: satisfied by O-32 and O-33.
-- Code implementation: not satisfied.
+- Code implementation: satisfied (`20a1c14`).
 - Replay/live parity passing for force-exit decisions: not satisfied.
 - Empirical improvement over baseline: not satisfied; no static baseline measurement exists.
 - Conformal or uncertainty disclosure on force-exit decisions: not satisfied.
@@ -190,7 +193,7 @@ V1 is advisory only. Promotion to runtime authority requires a future operator d
 
 `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`:
 
-- Names `a2_lifecycle_eod_force_exit_logic_not_implemented`; this contract closes it via a future code commit.
+- Names `a2_lifecycle_eod_force_exit_logic_not_implemented`; this contract closes it via the implementation commit (`20a1c14`).
 - Cadence semantics align with the default lifecycle emission cadence section.
 
 `governance/PILOT_1B_A2_0DTE_CONTRACT.md`:

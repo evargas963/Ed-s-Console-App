@@ -258,15 +258,7 @@ Rollback follows the contract:
 
 ## Gap Closure Criteria
 
-The named gap `db_schema_repair_post_migration_audit_pending` may be retired only after all criteria below are met:
-
-- `--apply` returned `success == true` and `errors == []`
-- apply JSON is saved under `governance/audits/`
-- all independent post-condition checks passed
-- post-condition outputs are recorded in the closure artifact or commit notes
-- `governance/OPERATOR_DECISION_REGISTER.md` is updated in the same closure commit with an audit-file SHA reference
-
-**Status:** Gap retired 2026-05-09 — apply audit `governance/audits/snapshots_schema_repair_v1_20260509_011607.json`, register **O-39**, migration contract Named Gaps.
+**Status:** Gap retired 2026-05-09 — apply audit `governance/audits/snapshots_schema_repair_v1_20260509_011607.json`, register **O-39**, migration contract Named Gaps. The historical retirement preconditions (`--apply` success + apply JSON saved under `governance/audits/` + independent post-condition checks + closure-commit register update with audit-file SHA) were all met at retirement; full evidence is captured in O-39 and the apply audit JSON.
 
 ---
 

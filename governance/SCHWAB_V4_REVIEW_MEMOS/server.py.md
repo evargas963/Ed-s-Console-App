@@ -1,6 +1,8 @@
+> **FROZEN_SNAPSHOT (2026-05-10):** This V4 review memo audited Schwab wire-token sites in `server.py` against the call graph that flowed through `chains.py::parse_quote_payload`, `chains.py::contract_fields`, `chains.py::iter_contracts`, and `chains.QuoteBlock`. **`chains.py` and those helpers were subsequently removed in the Schwab-direct redesign**; quote payloads, contract dicts, and chain iteration are now read inline at the named line numbers using the same Schwab leaf names cited below. The provenance trace text in each S-section still names the historical helper as the boundary symbol; treat those mentions as "formerly `chains.py::<helper>` — removed in Schwab-direct redesign". Dispositions (`REPLACED`, `NOT_MARKET_DATA`) and Schwab `canonical_field` citations remain accurate.
+
 # Review memo — server.py
 
-**Status:** pending gatekeeper re-review (Evidence bar tightening)  
+**Status:** FROZEN_SNAPSHOT (2026-05-10) — pre-Schwab-direct-redesign V4 review; helper symbols cited below were subsequently removed.  
 **Date:** 2026-05-10  
 **Reviewer:** Cursor (proposed) → Gatekeeper (verified) → Operator (O-XX if needed)  
 **File language family:** python  

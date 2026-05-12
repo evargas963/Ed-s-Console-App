@@ -32,7 +32,7 @@ If `daysToExpiration` is absent where a DTE-gated runtime decision is required, 
 | `v2_decision.a2_option_expression._hard_gates` | fixed-in-this-slice | `v2_decision/a2_option_expression.py::_hard_gates` | Strict 0DTE gate uses Schwab `daysToExpiration`; missing value does not pass. |
 | `math_levels.parity_f_minus_spot_from_contracts` | fixed-in-this-slice | `math_levels.py::parity_f_minus_spot_from_contracts` | DTE filter no longer coerces missing `daysToExpiration` to `0`. |
 | `math_exposure_core.compute_net_charm` | fixed-in-this-slice | `math_exposure_core.py::compute_net_charm` | DTE fallback filter no longer coerces missing `daysToExpiration` to `99`. |
-| `chains.contract_fields` | canonical | `chains.py::contract_fields` | Passes through Schwab `daysToExpiration`; no derivation in this slice. |
+| Inline `chain_row.get("daysToExpiration")` (formerly `chains.py::contract_fields` — removed in the Schwab-direct redesign) | canonical | inline at each consumer | Passes through Schwab `daysToExpiration`; no derivation in this slice. |
 | `backfill_flow_imbalance._contracts_from_chain_json` | canonical | `backfill_flow_imbalance.py::_contracts_from_chain_json` | Passes through archived Schwab `daysToExpiration`; no derivation in this slice. |
 | `debug_flow_snapshot` | canonical | `debug_flow_snapshot.py` option snapshot row | Debug snapshot pass-through of Schwab `daysToExpiration`; not a runtime derivation. |
 | `order_flow_engine._iter_option_exp_levels` | canonical | `order_flow_engine.py::_iter_option_exp_levels` | Converts Schwab `daysToExpiration` to int without deriving from dates. |

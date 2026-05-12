@@ -1,7 +1,7 @@
 # Schwab dynamic-site runtime tracing protocol (V3-D / Deliverable 15)
 
 **Status:** Protocol definition — instrumentation may ship after scanner; disposition may use static allow-list or refactor instead.  
-**Contract:** `SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md` § V3-D resolution path 2.
+**Contract:** `SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md` (active program, LOCKED 2026-05-08); the V3-D dynamic-site resolution semantics described here are **inherited by V4 unchanged**. The historical pointer was `SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md` § V3-D resolution path 2.
 
 ## Purpose
 

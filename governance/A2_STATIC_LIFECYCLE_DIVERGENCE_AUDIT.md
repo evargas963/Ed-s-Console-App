@@ -1,6 +1,8 @@
+> **FROZEN_SNAPSHOT:** This audit is a **frozen artifact** captured at `HEAD = 132561f` (2026-05-06). The gap tags and divergence rows below reflect that pinned state and are **not** the current source of truth for A2 lifecycle gap status. **Active gap state lives in `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md` §Named Gaps.** Several gaps tagged `true` in this audit (notably `a2_lifecycle_static_rule_core_pending`, `a2_lifecycle_eod_force_exit_logic_not_implemented`, `a2_lifecycle_pin_risk_handler_not_implemented`, `a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending`) have since been retired per the lifecycle contract and the EOD / pin-risk / session-calendar implementation commits. Read this audit as historical motivation only; do not use it as a current open-gap inventory.
+
 # A2 Static Lifecycle Divergence Audit
 
-**Status:** DRAFT audit artifact
+**Status:** FROZEN_SNAPSHOT audit artifact (pinned at `HEAD = 132561f`); current gap state in `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`
 **Date:** 2026-05-06
 **Source pin:** `origin/main` / `HEAD` at `132561f`
 **Lifecycle contract:** `governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md`

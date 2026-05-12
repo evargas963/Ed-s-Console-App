@@ -19,7 +19,7 @@ Supporting code evidence:
 - `ml_scheduler.py:1585-1647` scheduler path trains/evaluates both architectures per cycle.
 
 ## Contract Authority Decision (G1)
-A new module `governance/artifact_contract.py` is designated as the single source of truth for lifecycle artifact contracts. Producers, validators, and tests will import from this module to avoid duplicated definitions.
+A new module `governance/artifact_contract.py` (planned — pending G2 unpause) is designated as the single source of truth for lifecycle artifact contracts. Producers, validators, and tests will import from this module to avoid duplicated definitions.
 
 Lifecycle tiers:
 - `TRAINED_CANDIDATE`: training pipeline reports success
@@ -87,8 +87,8 @@ governance/
   REBUILD_CONTEXT.md          (this file)
   G1_DIAGNOSIS.md             (full G1 findings)
   G2_PLAN.md                  (when written)
-  G2_RESULT.md                (when complete)
-  artifact_contract.py        (the canonical contract — created in G2)
+  G2_RESULT.md                (planned — pending G2 unpause)
+  artifact_contract.py        (planned — pending G2 unpause; the canonical contract — created in G2)
   ...
 OPEN_ITEMS.md                 (live status tracker)
 ```

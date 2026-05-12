@@ -1,6 +1,8 @@
+> **FROZEN_SNAPSHOT (2026-05-10):** This V4 review memo audited `market_state.py` against the call graph that flowed through `chains.py::contract_fields` and `chains.py::iter_contracts`. **`chains.py` and those helpers were subsequently removed in the Schwab-direct redesign**; chain rows are now read inline. Provenance-trace mentions of `chains.contract_fields` / `iter_contracts(c_json)` should be read as "formerly `chains.py::<helper>` — removed in Schwab-direct redesign". Dispositions and Schwab `canonical_field` citations remain accurate.
+
 # Review memo — market_state.py
 
-**Status:** pending gatekeeper re-review (Evidence bar tightening)  
+**Status:** FROZEN_SNAPSHOT (2026-05-10) — pre-Schwab-direct-redesign V4 review; helper symbols cited below were subsequently removed.  
 **Date:** 2026-05-10  
 **Reviewer:** Cursor (proposed) → Gatekeeper (verified) → Operator (O-XX if needed)  
 **File language family:** python  

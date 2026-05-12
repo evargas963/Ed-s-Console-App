@@ -41,7 +41,7 @@ If the answer is "because an upstream layer did not anticipate a later layer," t
 
 Examples from project history:
 
-- `716abe3` introduced a Black-Scholes theta fallback. It was patch-shaped because the real issue was that `chains.contract_fields()` did not normalize Schwab-native `theta`. The durable fix landed in `286aa65`: normalize Schwab fields first, then use raw Schwab fallback, then derived fallback only when Schwab is unavailable.
+- `716abe3` introduced a Black-Scholes theta fallback. It was patch-shaped because the real issue was that the then-current option-chain normalization helper (formerly `chains.py::contract_fields()` — removed in the Schwab-direct redesign) did not preserve Schwab-native `theta`. The durable fix landed in `286aa65`: normalize Schwab fields first, then use raw Schwab fallback, then derived fallback only when Schwab is unavailable. Subsequent Schwab-direct work moved chain reads inline at each consumer site.
 - The two-phase live v2 logging proposal was rejected as patch-shaped because it updated a v1-created calibration row later only because the v1 logger ran before `v2_decision` existed. The durable history contains `ed8806f`, which logs live advisory v2 snapshots via a single-phase write after the v2 adapter runs.
 
 Borderline cases must be biased toward rejection until the architectural shape is explicitly approved.

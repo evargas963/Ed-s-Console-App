@@ -25,8 +25,8 @@ REST quote rows must not expose wall-clock `time.time()` as `fast_server_ts`. Ca
 
 | Consumer | Status | Evidence | Note |
 |---|---|---|---|
-| `chains.QuoteBlock` | fixed-in-this-slice | `chains.py:18-24` (`QuoteBlock`), `chains.py:40-43` | Preserves Schwab REST `quoteTime` and `tradeTime`. |
-| `chains.parse_quote_payload` | fixed-in-this-slice | `chains.py` (`parse_quote_payload` → `QuoteBlock`) | Normalizes Schwab quote/trade time into `QuoteBlock`. |
+| Inline equity-quote reads in `server.py` (formerly `chains.QuoteBlock` — removed in the Schwab-direct redesign) | fixed-in-this-slice | inline at each consumer | Schwab REST `quoteTime` / `quoteTimeInLong` and `tradeTime` / `tradeTimeInLong` are preserved by reading the Schwab leaves directly per the Precedence Principle. |
+| Inline equity-quote reads in `server.py` (formerly `chains.parse_quote_payload` — removed in the Schwab-direct redesign) | fixed-in-this-slice | inline at each consumer | Schwab quote/trade time leaves are read inline; no helper-side normalization is needed because consumers operate on the raw Schwab leaf. |
 | `server._build_rest_fast_quote_payload` | fixed-in-this-slice | `server.py:732-770` | `fast_server_ts = parsed.quote_time or parsed.trade_time`; `server_received_ts` is wall receipt (logged as `server_received_ts=`). |
 | `server._tier_a_live_state_dict` REST bootstrap row | fixed-in-this-slice | `server.py:2736-2770` | Tier A `quote_ingestion: rest_tier_a` row uses Schwab times for `fast_server_ts` (not `time.time()`); `server_received_ts` is ingestion clock. |
 | `server._tier_a_live_state_dict` response passthrough | fixed-in-this-slice | `server.py:2799-2821` | Echoes `quote_time_source`, `server_received_ts`, `fast_server_ts`, `_live_plane_fast_ts` from the quote row; `_pipeline_ms` from `t0_mono` only. |

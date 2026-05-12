@@ -1,6 +1,6 @@
 # Pilot 1B A2 Lifecycle Contract
 
-**Status:** DRAFT implementation contract
+**Status:** IMPLEMENTED — sidecar landed (`dcc9968` static rule core, `20a1c14` EOD force-exit, `cac88a6` session calendar, pin-risk handler per `governance/A2_LIFECYCLE_PIN_RISK_HANDLER_CONTRACT.md`); advisory v1 authority. Promotion to runtime authority requires a future operator decision per §Promotion Criteria.
 **Date:** 2026-05-06
 **Module:** A - short-horizon event-driven trading
 **Expression profile:** A2 - options / 0DTE
@@ -68,7 +68,7 @@ No implementation phase may skip from contract approval directly to dynamic life
 Default lifecycle emission cadence:
 
 - event-triggered under normal intraday conditions;
-- every Tier C cycle inside the late-day / EOD window once `a2_lifecycle_eod_window_threshold_minutes_policy_object_pending` is bound.
+- every Tier C cycle inside the late-day / EOD window per O-32 (`a2_lifecycle_eod_window_threshold_minutes_v1` = 30 minutes before close).
 
 Event vocabulary:
 
@@ -124,7 +124,7 @@ Umbrella gap:
 
 Child gaps:
 
-- `a2_lifecycle_static_rule_core_pending` — **resolved** by `dcc9968` (lifecycle_rule_core.py extraction with both halves: 6 threshold-derivation functions + 2 exit-firing functions), `abb5587` (replay-side rewire of `_simulate_exit` to consume rule core), and `cd797e1` (live-side rewire of `_stop_distance` and `_compute_levels`). A2 sidecar `available` state remains blocked by separate gap `a2_lifecycle_eod_force_exit_logic_not_implemented`; this retirement narrows only the static rule core child gap.
+- `a2_lifecycle_static_rule_core_pending` — **resolved** by `dcc9968` (lifecycle_rule_core.py extraction with both halves: 6 threshold-derivation functions + 2 exit-firing functions), `abb5587` (replay-side rewire of `_simulate_exit` to consume rule core), and `cd797e1` (live-side rewire of `_stop_distance` and `_compute_levels`). A2 sidecar `available` state is now governed by the EOD force-exit handler (`v2_decision/a2_eod_force_exit.py`); this retirement narrows only the static rule core child gap.
 - `a2_lifecycle_legacy_exit_logic_divergence_audit_pending` —
   **deferred (open with trigger)**. The audit captured missing-data
   behavior divergence between `realized_contract_eval` (explicit skip
@@ -139,17 +139,18 @@ Child gaps:
   advisory sidecar v1 emission. Closing requires an explicit operator
   decision and a behavior-change commit per the audit's row 90/91
   findings (missing-data divergence + reason vocabulary divergence).
-- `a2_lifecycle_eod_force_exit_logic_not_implemented` — **resolved** by this EOD implementation commit. Force-exit firing logic + cadence shift implemented per `governance/A2_LIFECYCLE_EOD_FORCE_EXIT_AND_CADENCE_CONTRACT.md` (`20a1c14`). Helper at `v2_decision/a2_eod_force_exit.py` evaluates the 4-predicate firing rule and cadence shift; sidecar emits `lifecycle_action ∈ {"no_active_position", "force_exit_recommended"}` and new `cadence_observation_mode ∈ {"event_triggered", "every_tier_c_cycle"}`. Note: 4 named gaps from the EOD contract (`a2_lifecycle_position_realization_state_pending`, shortened-session, holiday-session, out-of-session) **remain open** by design — v1 is RTH-normal-session-only.
+- `a2_lifecycle_eod_force_exit_logic_not_implemented` — **resolved** by this EOD implementation commit. Force-exit firing logic + cadence shift implemented per `governance/A2_LIFECYCLE_EOD_FORCE_EXIT_AND_CADENCE_CONTRACT.md` (`20a1c14`). Helper at `v2_decision/a2_eod_force_exit.py` evaluates the 4-predicate firing rule and cadence shift; sidecar emits `lifecycle_action ∈ {"no_active_position", "force_exit_recommended"}` and new `cadence_observation_mode ∈ {"event_triggered", "every_tier_c_cycle"}`. Of the 4 session-handling gaps originally named in the EOD contract, three (`a2_lifecycle_eod_force_exit_shortened_session_handling_pending`, `a2_lifecycle_eod_force_exit_holiday_session_handling_pending`, `a2_lifecycle_eod_force_exit_out_of_session_stale_state_pending`) are **resolved** by the session-calendar hardening implementation (`cac88a6`) per `governance/A2_LIFECYCLE_EOD_FORCE_EXIT_AND_CADENCE_CONTRACT.md` §Session Handling; only `a2_lifecycle_position_realization_state_pending` remains open pending broker-realized position state propagation.
 - `a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending` —
   **resolved** by **O-33** (15:50 ET force-exit clock threshold bound).
-  The clock threshold has no consumer until
-  `a2_lifecycle_eod_force_exit_logic_not_implemented` closes.
+  Consumed by `v2_decision/a2_eod_force_exit.py::evaluate_a2_eod_force_exit`
+  per `governance/A2_LIFECYCLE_EOD_FORCE_EXIT_AND_CADENCE_CONTRACT.md`
+  §Force-Exit Firing Semantics.
 - `a2_lifecycle_eod_window_threshold_minutes_policy_object_pending` —
   **resolved** by **O-32** (30-minute EOD cadence window bound). Cadence
   shift to every Tier C cycle is governed by this threshold once the
   late-day window code path consumes it.
 - `a2_lifecycle_iv_crush_handler_not_implemented`
-- `a2_lifecycle_pin_risk_handler_not_implemented`
+- `a2_lifecycle_pin_risk_handler_not_implemented` — **resolved** by `governance/A2_LIFECYCLE_PIN_RISK_HANDLER_CONTRACT.md`. Pin-risk events emitted via `v2_decision/a2_lifecycle_health.py` and wired into `v2_decision/a2_lifecycle_sidecar.py::event_sources`; gap removed from `LIFECYCLE_GAP_NAMES`.
 - `a2_lifecycle_gamma_spike_handler_not_implemented`
 - `a2_lifecycle_assignment_risk_handler_not_implemented`
 - `a2_lifecycle_spread_widening_exit_not_implemented`
@@ -168,9 +169,12 @@ clock threshold at which lifecycle must advise closing a position.
 at which lifecycle observation switches from event-triggered to every
 Tier C cycle.
 
-`a2_lifecycle_eod_force_exit_logic_not_implemented` **remains the
-separate firing-mechanism gap upstream of using O-33**: the bound
-clock threshold has no consumer until force-exit logic is implemented.
+`a2_lifecycle_eod_force_exit_logic_not_implemented` was the separate
+firing-mechanism gap upstream of using O-33. Per
+`governance/A2_LIFECYCLE_EOD_FORCE_EXIT_AND_CADENCE_CONTRACT.md`
+(`20a1c14`), `v2_decision/a2_eod_force_exit.py::evaluate_a2_eod_force_exit`
+consumes O-33 directly; both the firing logic and the clock-threshold
+consumer are landed.
 
 ### Audit Findings
 
@@ -253,11 +257,7 @@ No implementation may silently partially fill preview fields. If a field is unav
 
 `preview_named_gaps` contains only gaps that block honest population of at least one `projected_*` field. A gap is preview-blocking iff it prevents some `projected_*` field from being honestly populated.
 
-Initial preview-blocking gap subset:
-
-- `a2_lifecycle_eod_force_exit_logic_not_implemented`
-- `a2_lifecycle_eod_window_threshold_minutes_policy_object_pending`
-- `a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending`
+Initial preview-blocking gap subset: **none**. The previous preview-blocking gaps (`a2_lifecycle_eod_force_exit_logic_not_implemented`, `a2_lifecycle_eod_window_threshold_minutes_policy_object_pending`, `a2_lifecycle_time_stop_force_exit_clock_threshold_policy_object_pending`) are resolved per Named Gaps above; `projected_eod_force_exit_time` is now derivable from O-33 / O-35 and the session calendar.
 
 Handler, dynamic-policy, promotion, and runtime-authority gaps remain in the broader sidecar `named_gaps` inventory unless they directly block a `projected_*` field.
 
@@ -269,7 +269,7 @@ Handler, dynamic-policy, promotion, and runtime-authority gaps remain in the bro
 | `projected_target` | T1 level that would apply if the A2 entry were taken now, derived from `lifecycle_rule_core` where inputs are sufficient. |
 | `projected_target2` | T2 level that would apply if the A2 entry were taken now, derived from `lifecycle_rule_core` where inputs are sufficient. |
 | `projected_max_hold_bars` | Time-stop projection. It remains `policy_object_pending` unless a governed max-hold policy source is available. |
-| `projected_eod_force_exit_time` | EOD force-exit projection. It remains blocked by `a2_lifecycle_eod_force_exit_logic_not_implemented` and related threshold-policy gaps until force-exit logic exists. |
+| `projected_eod_force_exit_time` | EOD force-exit projection derived from O-33 (15:50 ET clock threshold) and the session calendar (`governance/A2_LIFECYCLE_SESSION_CALENDAR_HARDENING_CONTRACT.md`); falls back to RTH-only normal-session behavior when calendar is missing or stale. |
 | `derivation_inputs` | Sub-dict enumerating inputs used by the rule core, at minimum `spot` (Schwab-direct from `quotes.quote.lastPrice` ladder; `v2_compliant`), `vix_level` (Schwab-direct from `quotes.$VIX.quote.lastPrice`; `v2_compliant`), `mins_elapsed_since_open`, `risk_multiplier` (consumed from `MarketState.vol_regime_risk_mult`), `entry`, `direction`, `risk`, `avg5`, `avg15`, `avg60`, and `structural_levels` where available. Schwab-direct inputs read the Schwab leaf first; missing inputs must be named. |
 | `derivation_source_module` | Literal `lifecycle_rule_core`. |
 | `would_apply_if_entered_at_time` | Timestamp of the v2 decision build used for the "if entered now" projection. |

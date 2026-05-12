@@ -395,7 +395,7 @@ There is no single canonical artifact contract source in current code. Competing
 
 These definitions do not import a shared contract constant/module and can drift independently.
 
-Decision from G1: create `governance/artifact_contract.py` in G2 as the single source of truth.
+Decision from G1: create `governance/artifact_contract.py` (planned — pending G2 unpause) in G2 as the single source of truth.
 
 ## Open Strategic Questions Deferred to G4
 

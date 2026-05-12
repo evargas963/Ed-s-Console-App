@@ -1,6 +1,6 @@
 # A2 Lifecycle Pin Risk Handler Contract
 
-**Status:** Draft lifecycle handler contract  
+**Status:** IMPLEMENTED — pin-risk handler landed; `v2_decision/a2_lifecycle_health.py` emits advisory pin-risk events into `v2_decision/a2_lifecycle_sidecar.py::event_sources` and `a2_lifecycle_pin_risk_handler_not_implemented` is removed from `LIFECYCLE_GAP_NAMES`. Advisory v1 authority. Promotion to runtime authority requires a future operator decision.  
 **Date:** 2026-05-07  
 **Module:** A - short-horizon directional trading  
 **Expression profile:** A2 - 0DTE options  

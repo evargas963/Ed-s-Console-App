@@ -1,3 +1,5 @@
+> **SUPERSEDED:** This wishlist is **historical aspirational reference only** and is **not** the active gatekeeping authority for this repository. Live policy is enforced by the active governance contracts (`governance/PILOT_1B_*`, `governance/SCHWAB_*`, `governance/A2_LIFECYCLE_*`, `governance/OPERATOR_DECISION_REGISTER.md`, `governance/ENGINEERING_GATEKEEPING_POLICY.md`) and by the active universal coverage program `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md`. Retained for history and as a portability reference.
+
 # Institutional Standard Wishlist — Production ML for Trading Decisions (2026)
 
 This document states what **institutional quality** means for a production system that trains multiple architectures across horizons, stacks models, serves predictions under governance, and is accountable as real capital infrastructure—not a research codebase. It is **normative**: it describes the destination, not a migration plan. A reader should be able to hold any implementation against these expectations without knowing where this file originated.

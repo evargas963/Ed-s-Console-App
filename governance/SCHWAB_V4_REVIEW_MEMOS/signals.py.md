@@ -1,6 +1,8 @@
+> **FROZEN_SNAPSHOT (2026-05-10):** This V4 review memo audited `signals.py` against the call graph that flowed through `chains.py::parse_quote_payload` and related helpers. **`chains.py` and those helpers were subsequently removed in the Schwab-direct redesign**; quote / chain reads are now inline. Provenance-trace mentions of `parse_quote_payload` should be read as "formerly `chains.py::parse_quote_payload` — removed in Schwab-direct redesign". Dispositions and Schwab `canonical_field` citations remain accurate.
+
 # Review memo — signals.py
 
-**Status:** pending gatekeeper re-review (Evidence bar tightening)  
+**Status:** FROZEN_SNAPSHOT (2026-05-10) — pre-Schwab-direct-redesign V4 review; helper symbols cited below were subsequently removed.  
 **Date:** 2026-05-10  
 **Reviewer:** Cursor (proposed) → Gatekeeper (verified) → Operator (O-XX if needed)  
 **File language family:** python  

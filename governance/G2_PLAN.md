@@ -1,5 +1,7 @@
 # G2 Plan - Cascade Alignment
 
+> **G2 PAUSED:** Per `OPEN_ITEMS.md` § Workstream 1 / G2 pause state, this plan is **paused pending the `Framework-ED-Decision-Engine-v2.0` decision**. All file deliverables named below — including **`governance/artifact_contract.py`**, **`governance/G2_RESULT.md`**, **`tests/test_artifact_contract.py`**, and **`tests/test_cascade_meta_assembly.py`** — are **planned — pending G2 unpause** and **do not exist** in the current working tree. Do not implement them while the pause is active. Treat every internal reference below as a planned deliverable, not a present-tense file.
+
 ## Purpose
 
 Phase G2 closes two structural gaps recorded in G1: **(a)** there is no canonical Python module that owns lifecycle artifact contracts (today the trained-candidate basename list lives in `training_cache.py` and is duplicated conceptually elsewhere), and **(b)** cascade training never writes `meta_<ticker>_<hz>.pkl` even though the trained-candidate contract and `artifacts_present` expect it for both architectures (`training_cache.py:918-919` aliases cascade basenames to the parallel list, which includes `meta_*`; `ml_scheduler.py:816-1201` has no meta writer  - see `governance/G1_DIAGNOSIS.md`).

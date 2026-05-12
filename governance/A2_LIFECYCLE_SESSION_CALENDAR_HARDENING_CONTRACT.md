@@ -1,6 +1,6 @@
 # A2 Lifecycle Session Calendar Hardening Contract
 
-**Status:** Draft session-calendar hardening contract  
+**Status:** IMPLEMENTED — calendar loader and consumer landed (`cac88a6`); session-aware force-exit and cadence shifts active. Advisory v1 authority. Promotion to runtime authority requires a future operator decision.  
 **Date:** 2026-05-06  
 **Module:** A - short-horizon directional trading  
 **Expression profile:** A2 - 0DTE options  
@@ -237,11 +237,11 @@ Named gap:
 
 ## Named Gaps
 
-Closes when code lands:
+Closed by this implementation commit (`cac88a6`):
 
-- `a2_lifecycle_eod_force_exit_shortened_session_handling_pending`;
-- `a2_lifecycle_eod_force_exit_holiday_session_handling_pending`;
-- `a2_lifecycle_eod_force_exit_out_of_session_stale_state_pending`.
+- `a2_lifecycle_eod_force_exit_shortened_session_handling_pending` — early-close days fire force-exit at `session_close_et - 10 min` per O-35;
+- `a2_lifecycle_eod_force_exit_holiday_session_handling_pending` — full-closure dates yield `session_type = "full_closure"`; force-exit MUST NOT fire and cadence stays `"event_triggered"`;
+- `a2_lifecycle_eod_force_exit_out_of_session_stale_state_pending` — pre-open and post-close ranges yield `session_type = "out_of_session"`; force-exit MUST NOT fire and cadence stays `"event_triggered"`. Stale calendar (`current_date > valid_through_date`) falls back to RTH-only v1 normal-session behavior per §Stale Calendar Discipline.
 
 Opens in this contract:
 
@@ -259,7 +259,7 @@ Stays open elsewhere:
 
 `governance/A2_LIFECYCLE_EOD_FORCE_EXIT_AND_CADENCE_CONTRACT.md`:
 
-- Its RTH-normal-session-only v1 assumption is replaced by calendar-aware classification when future code lands.
+- Its RTH-normal-session-only v1 assumption is replaced by calendar-aware classification per `cac88a6` (`v2_decision/a2_session_calendar.py` loader + `v2_decision/a2_eod_force_exit.py` consumer).
 - Active-position and 0DTE predicates remain unchanged.
 
 `governance/OPERATOR_DECISION_REGISTER.md`:
@@ -269,8 +269,8 @@ Stays open elsewhere:
 
 `v2_decision/a2_eod_force_exit.py`:
 
-- Future code commit will consume the calendar loader and derive thresholds from session close.
-- The current no-calendar path remains the explicit fallback.
+- The implementation commit (`cac88a6`) consumes the calendar loader and derives thresholds from session close.
+- The no-calendar path remains the explicit fallback per §Stale Calendar Discipline.
 
 Other session-aware code paths:
 

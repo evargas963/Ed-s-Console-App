@@ -77,8 +77,8 @@ Every problem site from the field-first pass maps to an existing finding in `SCH
 
 | Consumer | Status | Register refs | Note |
 |---|---|---|---|
-| `chains.py::contract_fields()` | fixed-in-this-slice | DFR-017 / N1 / R9 | Preserves Schwab-native `multiplier`; missing, blank, invalid, zero, or negative multiplier becomes unavailable instead of default `100`. |
-| `backfill_flow_imbalance.py::_contracts_from_chain_json()` | fixed-in-this-slice | DFR-017 / N1 / R9 | Archive/backfill normalizer follows the same no-default rule as `chains.py`. |
+| Inline `chain_row.get("multiplier")` reads at consumer sites (formerly `chains.py::contract_fields()` — removed in the Schwab-direct redesign) | fixed-in-this-slice | DFR-017 / N1 / R9 | Schwab-native `multiplier` is preserved at each consumer; missing, blank, invalid, zero, or negative multiplier becomes unavailable instead of default `100`. |
+| `backfill_flow_imbalance.py::_contracts_from_chain_json()` | fixed-in-this-slice | DFR-017 / N1 / R9 | Archive/backfill normalizer follows the same no-default rule as the inline `chain_row` consumers. |
 | `math_exposure_core.py::compute_exposures_by_strike()` | fixed-in-this-slice | DFR-017 / N1 / R9 | Dollarized exposure math skips contracts with missing/non-positive multiplier instead of treating them as standard `100` multiplier contracts. |
 | `server.py::_fetch_state()` exposure path | fixed-in-this-slice | DFR-017 / N1 / R9 | Consumes `compute_exposures_by_strike()` result; inherits fail-closed multiplier behavior for live exposure surfaces. |
 | `db_health_audit.py`, `debug_flow_snapshot.py`, `backfill_flow_imbalance.py` exposure callers | fixed-in-this-slice | DFR-017 / N1 / R9 | Consume the shared exposure engine; no separate multiplier default remains in these paths except the fixed backfill normalizer. |

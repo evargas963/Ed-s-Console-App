@@ -104,9 +104,9 @@ These sites derive/default a primitive that the CSV says Schwab provides.
 | CSV-R6 | `v2_decision/a2_option_expression.py::_theta()` | Black-Scholes residual when theta absent | `chains.*.theta` | `GATE_FAIL_CLOSED` or narrow residual fallback after post-fix measurement | High |
 | CSV-R7 | `server.py` MC expected-move fallback | synthetic **`volatility`** = `20%`, fallback hours = `6.5` | `chains.*.volatility` for **`volatility`** input; time must be explicitly governed | `GATE_FAIL_CLOSED` / `REDESIGN` | Medium/High |
 | CSV-R8 | `v2_decision/a2_lifecycle_health.py::resolve_a2_option_right()` | App-side right inference from side/proof | `chains.*.putCall` | `REPLACE_WITH_SCHWAB`: `winner.chain_row.putCall` is the Schwab-primary source; app-side aliases (`call_option_right`, `rec_side`, `winner.side`) are legacy fallbacks only when `chain_row.putCall` is absent. | Medium |
-| CSV-R9 | `chains.py::contract_fields()` and consumers | Missing multiplier became `100` in multiple paths | `chains.*.multiplier` | `REPLACE_WITH_SCHWAB`: Schwab `chains.*.multiplier` is the primary source; the literal `100` default is not a Schwab fallback — fail closed when the Schwab field is absent. | High |
+| CSV-R9 | Inline `chain_row.get("multiplier")` reads at consumer sites (formerly `chains.py::contract_fields()` — removed in the Schwab-direct redesign) | Missing multiplier became `100` in multiple paths | `chains.*.multiplier` | `REPLACE_WITH_SCHWAB`: Schwab `chains.*.multiplier` is the primary source; the literal `100` default is not a Schwab fallback — fail closed when the Schwab field is absent. | High |
 | CSV-R10 | `realized_contract_eval.py` | `OPTION_MULTIPLIER = 100` for replay PnL | `chains.*.multiplier` | `REPLACE_WITH_SCHWAB`: Schwab `chains.*.multiplier` is the primary source for replay PnL; the literal `100` constant is not a Schwab fallback. | Critical |
-| CSV-R11 | `chains.py::parse_quote_payload()` | Reads only `quotes.quote.*` subtree | `quotes.regular.*`, `quotes.extended.*` where CSV provides session fields | `REDESIGN` quote merge policy: Schwab `quotes.quote.*` is the primary subtree; `quotes.regular.*` and `quotes.extended.*` are governed Schwab session fallbacks for fields the primary subtree omits. App-side aliases are legacy fallbacks only when no Schwab subtree carries the field. | High |
+| CSV-R11 | Inline equity-quote reads in `server.py` (formerly `chains.py::parse_quote_payload()` — removed in the Schwab-direct redesign) | Historically read only `quotes.quote.*` subtree | `quotes.regular.*`, `quotes.extended.*` where CSV provides session fields | `REDESIGN` quote merge policy: Schwab `quotes.quote.*` is the primary subtree; `quotes.regular.*` and `quotes.extended.*` are governed Schwab session fallbacks for fields the primary subtree omits. App-side aliases are legacy fallbacks only when no Schwab subtree carries the field. | High |
 | CSV-R12 | `features/inference_snapshot.py` / `calibration/writer.py` time fallback | `time.time()` / wall clock fallback | `quotes.quote.quoteTime`, `quotes.quote.tradeTime`, streaming time fields | `REPLACE_WITH_SCHWAB` for data time: Schwab `quoteTime`/`tradeTime`/streaming time fields are the primary source; wall-clock `time.time()` is not a Schwab fallback. Label the decision clock separately from the data clock. | Medium |
 | CSV-R13 | `order_flow_live_state.py` / utility change fields | Uses stream percent and sometimes non-CSV alias | `streaming.content.*.REGULAR_MARKET_CHANGE_PERCENT`, `quotes.quote.netChange`, `quotes.quote.netPercentChange` | `REPLACE_WITH_SCHWAB`: Schwab streaming `REGULAR_MARKET_CHANGE_PERCENT` and quote `netChange`/`netPercentChange` are the primary sources; non-CSV aliases are legacy fallbacks only when Schwab fields are absent. Reconcile field names against the CSV. | Medium |
 
@@ -161,10 +161,9 @@ These were either missing from the prior register or need explicit register IDs.
 
 | New ID | Site | Finding | Action | Severity |
 |---|---|---|---|---|
-| CSV-N1 | `chains.py`, `math_exposure_core.py`, `backfill_flow_imbalance.py` | multiplier default/cross-consumer inconsistency | `REPLACE_WITH_SCHWAB` / fail closed | High |
+| CSV-N1 | `math_exposure_core.py`, `backfill_flow_imbalance.py` and other inline `chain_row.get("multiplier")` consumers (formerly also `chains.py` — removed in the Schwab-direct redesign) | multiplier default/cross-consumer inconsistency | `REPLACE_WITH_SCHWAB` / fail closed | High |
 | CSV-N2 | `realized_contract_eval.py` | hard-coded replay `OPTION_MULTIPLIER = 100` | `REPLACE_WITH_SCHWAB` | Critical |
-| CSV-N3 | `debug_flow_snapshot.py` | multiplier still defaults to `100` in debug/audit path | `REDESIGN` to shared normalizer | High |
-| CSV-N4 | `chains.py::parse_quote_payload()` | only reads `quotes.quote.*`, not regular/extended quote subtrees | `REDESIGN` | High |
+| CSV-N3 | `debug_flow_snapshot.py` | multiplier extractor reads `ct.get("multiplier")` directly with no `100` coercion at the extractor; downstream `math_exposure_core.compute_exposures_by_strike` skips contracts with missing multiplier (does not coerce `100`). Disposition: NO_REMEDIATION_NEEDED at the extractor; retain row as historical reference until the row is formally retired. | None — current code is fail-closed per `math_exposure_core.compute_exposures_by_strike` | Resolved |
 | CSV-N5 | `server.py::_tier_a_live_state_dict()` | `spread` unit mismatch with plane/Tier C | `REDESIGN` | High |
 | CSV-N6 | `live_market_plane.merge_into_state()` / `apply_l1_live_quote_overlay()` | can overlay fraction `spread` onto dicts expecting dollar spread | `REDESIGN` / `GATE_FAIL_CLOSED` | High |
 | CSV-N7 | `server.py` / `static/index.html` | VIX direction enum mismatch and payload omission | `REDESIGN` | High |
@@ -173,7 +172,7 @@ These were either missing from the prior register or need explicit register IDs.
 | CSV-N10 | `calibration/writer.py` | default decision timestamp uses wall clock | `REPLACE_WITH_SCHWAB` data timestamp where appropriate | Medium |
 | CSV-N11 | `math_exposure_core.py::compute_net_charm()` | **`volatility`** `20%` and multiplier `100` defaults | `GATE_FAIL_CLOSED` | High |
 | CSV-N12 | `v2_decision/a2_option_expression.py::_dte_value()` | parses DTE from UI text | `REPLACE_WITH_SCHWAB` / `REDESIGN` | High |
-| CSV-N13 | `market_state.py::_oe_chain_row_snapshot()` | does not preserve `daysToExpiration` | `REPLACE_WITH_SCHWAB` | High |
+| CSV-N13 | `market_state.py::_oe_chain_row_snapshot()` | Proof-row path: `daysToExpiration` is now preserved (`market_state._oe_chain_row_snapshot` includes the canonical `daysToExpiration` key per `governance/A2_MARKET_STATE_PROOF_ROW_COMPLETENESS_CONTRACT.md`). Disposition: RESOLVED for the proof-row path. Any non-proof-row consumers still parsing DTE from text fall under CSV-N12 above. | Resolved (proof-row); see CSV-N12 for any residual text-parse consumers | Resolved |
 | CSV-N14 | `static/index.html` utility bar | point change derived from stream percent times merged spot | `KEEP_DERIVED_WITH_PROVENANCE` or align to `quotes.quote.netChange` | Medium |
 
 ---
@@ -188,21 +187,27 @@ Already fixed or partially fixed in the current uncommitted working tree:
 | DFR-003 / PQ-001 / PQ-002 | REST fast quote no longer uses `spot=0.0`; emits quote source metadata and `spread_pts`. |
 | DFR-004 / PQ-003 | cached spread is labeled `cached_last_valid_not_tradeable` and not used as current `MarketState.spread`. |
 | DFR-010 / MT-001 | replay signal spot fails closed instead of missing -> `0.0`. |
-| CSV-N1 / R9 | `chains.py`, `backfill_flow_imbalance.py`, and `math_exposure_core.py` stop defaulting missing multiplier to `100`. |
+| CSV-N1 / R9 | Inline `chain_row.get("multiplier")` consumers in `backfill_flow_imbalance.py` and `math_exposure_core.py` stop defaulting missing multiplier to `100` (the historical `chains.py` consumer site was removed in the Schwab-direct redesign). |
 
 Not fixed by current working tree:
 
 ```text
 realized_contract_eval.py OPTION_MULTIPLIER = 100
-debug_flow_snapshot.py multiplier default
-parse_quote_payload regular/extended subtree policy
 spread unit split across Tier A / plane / Tier C / UI
 VIX direction payload and enum contract
-daysToExpiration preservation and A2 DTE text parsing
+A2 DTE text parsing (`v2_decision/a2_option_expression.py::_dte_value()`)
 market_data_adapter OHLCV zero injection
 snapshot_normalizer synthetic OHLCV provenance
 ML/LSTM/XGB zero/imputation semantics
 signals/model-stack degraded-mode behavior
+```
+
+Resolved (no longer in the not-fixed list):
+
+```text
+debug_flow_snapshot.py multiplier default — extractor reads `ct.get("multiplier")` directly with no `100` coercion; `math_exposure_core.compute_exposures_by_strike` skips contracts with missing multiplier (fail-closed)
+parse_quote_payload regular/extended subtree policy — `chains.py::parse_quote_payload` removed in the Schwab-direct redesign; equity-quote reads in `server.py` are inline against Schwab `quotes.quote.*` / `quotes.regular.*` / `quotes.extended.*` per CSV-R11
+daysToExpiration preservation — proof-row path preserves `daysToExpiration` per `governance/A2_MARKET_STATE_PROOF_ROW_COMPLETENESS_CONTRACT.md` (CSV-N13 / CSV-R3)
 ```
 
 ---
@@ -210,9 +215,9 @@ signals/model-stack degraded-mode behavior
 ## Next Remediation Order
 
 1. **Split and govern spread units**: `spread_frac` vs `spread_pts`/`spread_dollars`; update plane, Tier A, Tier C, UI, A2 consumers.
-2. **Complete multiplier remediation**: add `realized_contract_eval.py` and `debug_flow_snapshot.py` to the N1/R9 slice before claiming closure.
-3. **A2 DTE and premium authority**: preserve `daysToExpiration`, replace UI-text DTE parsing, prefer Schwab `mark` for premium/mid policy.
-4. **Quote parsing authority**: extend `parse_quote_payload()` with a governed regular/extended/quote subtree policy based on CSV fields.
+2. **Complete multiplier remediation**: add `realized_contract_eval.py` to the N1/R9 slice before claiming closure (`debug_flow_snapshot.py` extractor is already fail-closed via `math_exposure_core.compute_exposures_by_strike`).
+3. **A2 DTE authority**: replace remaining UI-text DTE parsing in `v2_decision/a2_option_expression.py::_dte_value()`; proof-row `daysToExpiration` preservation is already landed.
+4. **Quote parsing authority**: keep equity-quote reads inline against Schwab `quotes.quote.*` / `quotes.regular.*` / `quotes.extended.*` per CSV-R11; do not reintroduce a `parse_quote_payload`-style helper.
 5. **OHLCV zero injection**: reject or source-label incomplete Schwab bars and synthetic snapshot bars.
 6. **VIX/UI source contract**: serialize VIX direction/change consistently and align enum names.
 7. **Model/training missingness**: replace silent zero/median laundering with provenance, missing masks, or fail-closed rules.

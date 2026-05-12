@@ -347,7 +347,7 @@
 
 **Evidence:**
 - G1 explicitly concludes no single canonical artifact contract authority exists and calls for new module in G2 (`governance/G1_DIAGNOSIS.md:383-399`).
-- G2 plan defines creation of `governance/artifact_contract.py` as first-class remediation (`governance/G2_PLAN.md:11-13`, `38-46`).
+- G2 plan defines creation of `governance/artifact_contract.py` (planned — pending G2 unpause) as first-class remediation (`governance/G2_PLAN.md:11-13`, `38-46`).
 
 **If DOES_NOT_CONFORM_TRACKED:** assigned remediation phase `G2`.
 

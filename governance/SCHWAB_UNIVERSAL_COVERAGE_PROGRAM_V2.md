@@ -250,8 +250,8 @@ Additional row kinds for **tooling / process** (e.g. `pattern_kind_miss`, `DYNAM
 V2 closure criteria are **not** pursued under the active program. The operator **V3** contract governs new work.
 
 ```text
-PROGRAM: COVERAGE PROOF v2 — SUPERSEDED_BY_V3
-COVERAGE PROOF: CLOSED AS A TARGET — see V3
+PROGRAM: COVERAGE PROOF v2 — SUPERSEDED_BY_V3 → SUPERSEDED_BY_V4
+COVERAGE PROOF: CLOSED AS A TARGET — see V4 (active)
 SYSTEM: N/A (historical artifact)
 ```
 
@@ -260,10 +260,10 @@ SYSTEM: N/A (historical artifact)
 ## Relation to other artifacts
 
 - `SCHWAB_TRADE_DECISION_ENDPOINTS_V1.yaml` and decision-dependency tooling are **lineage aids only**; they **do not** satisfy this program.  
-- `ENGINEERING_GATEKEEPING_POLICY.md` § Active Status must stay consistent with **OPEN** universal coverage proof until **V3** closes (V2 is historical).
+- `ENGINEERING_GATEKEEPING_POLICY.md` § Active Status tracks the **active** universal coverage program, which is now **V4** (`SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md`, LOCKED 2026-05-08). V2 and V3 are historical.
 
 ---
 
 ## Revision
 
-V2 amendments are **frozen** under supersession. The successor contract is **V3** (`SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md`). Further changes use **V3** revision rules or **O-XX** against **V3**.
+V2 amendments are **frozen** under supersession. The active successor is **V4** (`SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md`, LOCKED 2026-05-08); **V3** (`SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md`) is itself superseded. Further changes use **V4** revision rules or **O-XX** against **V4**.
