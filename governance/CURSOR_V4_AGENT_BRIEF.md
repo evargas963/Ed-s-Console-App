@@ -36,7 +36,7 @@ You are the **drafter and executor**. Claude is the **gatekeeper/verifier**; Ed 
 
 1. Pick a coherent slice (one module/concern, ≤ a few dozen rows).
 2. Draft code changes + register edits + any required O-XX narrative.
-3. For replacements, write a perf_proof bundle to `governance/artifacts/perf_proof/replacements/pp_*.json` with `verdict=PASS`.
+3. For replacements, write a perf_proof bundle to `governance/artifacts/perf_proof/replacements/pp_*.json` with `verdict=PASS`, list affected **`register_id`**s under **`register_link.replaced_register_ids`**, and flip those register rows to **`REPLACED`** in the **same commit** (see `SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md` § Perf-proof bundle ↔ register).
 4. Run `pytest`; rerun scanner; rebuild scoreboard.
 5. **Hand off to Claude** with the slice handoff block below. Wait for gatekeeper accept before committing.
 6. After accept + Ed's O-XX sign-off (if applicable), commit and push.

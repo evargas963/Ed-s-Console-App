@@ -3,7 +3,9 @@
   "perf_proof_id": "pp_v4b_server_quote_coalesce_trim",
   "landed_batch": "v4b-2026-05-10",
   "replacement_scope": "server.py _fetch_state: remove dead _underlying_node / quote volume coalesce arm; align quote-source and REST cum-delta contracts.",
-  "code_paths": ["server.py"],
+  "code_paths": [
+    "server.py"
+  ],
   "evidence": {
     "pytest_args": [
       "tests/test_server_quote_source_contract.py",
@@ -21,12 +23,25 @@
       "--no-header"
     ],
     "iterations": 3,
-    "timings_ms": [3722.884, 3136.046, 3587.874],
+    "timings_ms": [
+      3722.884,
+      3136.046,
+      3587.874
+    ],
     "median_ms": 3587.874,
     "platform_note": "Windows 10; Python 3.13; wall-clock subprocess; retroactive 2026-05-11"
   },
   "register_link": {
-    "status": "retroactive_pending_disposition",
-    "replaced_register_ids": []
+    "status": "bound_retroactive",
+    "replaced_register_ids": [
+      "0167eb5bbcdea3f7a051",
+      "04fde1296aaf18668dee",
+      "2abb5b4ccddcc4ada8ad",
+      "5fad7a01642e699b7d58",
+      "702d2ff0c8c45ce350d9",
+      "9a98b7873658db7f55c6",
+      "a60939e6fed009b418ca",
+      "d5d1f1fcca9b8ded2234"
+    ]
   }
 }

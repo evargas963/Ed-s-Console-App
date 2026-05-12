@@ -6,12 +6,12 @@
     "no_schwab_equivalent_count": 0,
     "not_market_data_count": 0,
     "register_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\governance\\SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv",
-    "replaced_count": 0,
+    "replaced_count": 12,
     "scanner_version": "3.0.0",
-    "unreviewed_count": 82402,
+    "unreviewed_count": 82390,
     "v4_a_violations": []
   },
-  "generated_at_utc": "2026-05-11T04:02:00Z",
+  "generated_at_utc": "2026-05-12T18:55:28Z",
   "perf_proof_dir": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\governance\\artifacts\\perf_proof\\replacements",
   "register_build": {
     "embedding_mode": "mock",
@@ -24,9 +24,9 @@
   },
   "scoreboard": {
     "P": 4,
-    "delta_unreviewed_count": 82402,
-    "prior_unreviewed_count": 0,
-    "replaced_count_d17": 0,
-    "unreviewed_count": 82402
+    "delta_unreviewed_count": 0,
+    "prior_unreviewed_count": 82390,
+    "replaced_count_d17": 12,
+    "unreviewed_count": 82390
   }
 }

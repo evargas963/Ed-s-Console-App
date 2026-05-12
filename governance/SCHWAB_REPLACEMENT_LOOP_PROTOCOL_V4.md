@@ -40,6 +40,20 @@ Re-import or merge mechanical scanner output with **human disposition** columns 
 
 ---
 
+## Perf-proof bundle ↔ register (mandatory)
+
+A validated replacement bundle under `governance/artifacts/perf_proof/replacements/pp_*.json` proves **code + pytest timing** for a landed replacement. **`scoreboard.P`** counts those bundles; **`replaced_count_d17`** (Deliverable **17**) counts **`disposition=REPLACED`** rows in the V4 register. Those signals **must** stay coherent: **no orphan bundles** and **no `REPLACED` rows for perf-proofed code without a cited bundle**.
+
+**Merge gate (normative):**
+
+1. Any change that **adds or materially updates** a replacement **`pp_*.json`** **must** list every affected **`register_id`** in that file’s **`register_link.replaced_register_ids`**.
+2. The **same commit** **must** flip those register rows to **`REPLACED`** with:
+   - **`canonical_field_citation`**: a Schwab CSV-canonical path that the bundle’s **`replacement_scope`** and landed code **actually** reference for that row. The citation **must** be copied from a **`csv_candidates`** or **`csv_lexical_topk_note`** segment that **literally contains** that path (or an approved equivalent such as `chains.callExpDateMap.*.totalVolume`). **Forbidden:** taking **`csv_candidates.split(";")[0]`**, any unsorted “first segment” default, or any path chosen only from a **token collision** (e.g. Python `return` → `returnOnAssets`). If **no** segment matches the bundle’s Schwab fields for that row, the row is **not** a site of that replacement and **must not** be flipped to **`REPLACED`** for that **`pp_*.json`**.
+   - **`governed_ref`**: relative repo path to that **`pp_*.json`** (perf-proof evidence pointer). Deliverable **18** governs **`GOVERNED_EXCEPTION`** + **`O-NN`** only; **`REPLACED`** rows may use this proof path in **`governed_ref`** without an **`O-NN`**.
+3. **Composite** bundles that only aggregate pytest targets of already-bound slices **must** record **`register_link.wrapped_proof_ids`** and **`replaced_register_ids`** as the **sorted union** of the wrapped bundles’ ids (no extra register flips beyond that union).
+
+---
+
 ## When an `O-XX` is acceptable
 
 Use **`GOVERNED_EXCEPTION (O-NN)`** only when **all** hold:
