@@ -118,6 +118,59 @@ def test_build_scoreboard_delta_uses_git_head_after_double_local_rebuild(
     assert sb["delta_replaced_count_d17"] == 12
 
 
+@patch("tools.schwab_v4_scoreboard._count_perf_proofs", return_value=(4, []))
+@patch("tools.schwab_v4_scoreboard.compute_full_metrics")
+def test_build_scoreboard_prior_from_working_tree_when_prior_from_git_false(
+    mock_metrics: object,
+    _mock_p: object,
+    tmp_path: Path,
+) -> None:
+    """prior_from_git=False skips git; prior comes from on-disk scoreboard (legacy)."""
+    repo = tmp_path / "repo"
+    art = repo / "governance" / "artifacts"
+    art.mkdir(parents=True)
+    out = art / "schwab_v4_scoreboard.json"
+    committed = {
+        "d17": {"unreviewed_count": 82402, "replaced_count": 0},
+        "scoreboard": {"replaced_count_d17": 0},
+    }
+    out.write_text(json.dumps(committed), encoding="utf-8")
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "t@example.com")
+    _git(repo, "config", "user.name", "test")
+    _git(repo, "add", "governance/artifacts/schwab_v4_scoreboard.json")
+    _git(repo, "commit", "-m", "baseline")
+
+    mock_metrics.return_value = _minimal_d17(82390, 12)
+    reg = tmp_path / "register.csv"
+    reg.write_text("register_id,disposition\n", encoding="utf-8")
+    op = tmp_path / "op.md"
+    op.write_text("# op\n", encoding="utf-8")
+    perf = tmp_path / "perf"
+    perf.mkdir()
+
+    out.write_text(
+        json.dumps({"d17": {"unreviewed_count": 82390, "replaced_count": 12}, "scoreboard": {}}),
+        encoding="utf-8",
+    )
+
+    doc = build_scoreboard(
+        register=reg,
+        operator_register=op,
+        perf_dir=perf,
+        out_path=out,
+        use_register_meta=False,
+        update_perf_index=False,
+        repo_root=repo,
+        prior_from_git=False,
+    )
+    sb = doc["scoreboard"]
+    assert sb["prior_scoreboard_source"] == "working_tree"
+    assert sb["prior_git_ref"] is None
+    assert sb["prior_unreviewed_count"] == 82390
+    assert sb["delta_unreviewed_count"] == 0
+
+
 def test_load_prior_relative_path_must_be_under_repo(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
