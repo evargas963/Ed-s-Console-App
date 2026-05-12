@@ -66,6 +66,16 @@ def test_exposures_preserve_missing_open_interest_instead_of_silent_zero():
     assert exposures[500.0]["call_oi_mult"] == 0.0
 
 
+def test_exposures_skip_missing_bidsize_instead_of_coercing_schwab_none_to_zero():
+    ct = _contract()
+    ct.pop("bidSize")
+
+    exposures, diag = compute_exposures_by_strike([ct], spot=500.0)
+
+    assert diag.contracts_used == 1
+    assert exposures[500.0]["call_bid_size"] == 0.0
+
+
 def test_flow_backfill_normalizer_does_not_default_missing_multiplier_to_100():
     raw = json.dumps([_contract(multiplier=5), {k: v for k, v in _contract().items() if k != "multiplier"}])
 

@@ -122,7 +122,7 @@ def _replay_one_row(row: sqlite3.Row) -> tuple[dict[str, Any], Optional[str]]:
 def _live_expiry_from_proof(win: dict, row_expiry: Any) -> str:
     cr = win.get("chain_row")
     if isinstance(cr, dict):
-        ex = cr.get("expirationDate") or cr.get("expiration")
+        ex = cr.get("expirationDate")
         if ex:
             return _exp_key(str(ex))
     return _exp_key(row_expiry)

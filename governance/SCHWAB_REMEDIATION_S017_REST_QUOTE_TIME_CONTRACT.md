@@ -32,7 +32,7 @@ REST quote rows must not expose wall-clock `time.time()` as `fast_server_ts`. Ca
 | `server._tier_a_live_state_dict` response passthrough | fixed-in-this-slice | `server.py:2799-2821` | Echoes `quote_time_source`, `server_received_ts`, `fast_server_ts`, `_live_plane_fast_ts` from the quote row; `_pipeline_ms` from `t0_mono` only. |
 | `server._fetch_state` candle accumulator path | fixed-in-this-slice | `server.py:3052-3068` | `_tick_ts = parsed.quote_time or parsed.trade_time`; ticks skipped when `_tick_ts is None`. |
 | `server._fetch_state` pipeline latency vs quote wall | fixed-in-this-slice | `server.py:4861-4866` | `_pipeline_ms` / `_chain_ms` / `_quote_ms` / `_compute_ms` from `time.monotonic()` deltas; `_server_build_ts` is separate ingestion wall clock (`time.time()`), not Schwab quote time. |
-| `server._fetch_state` IV-history lookup | fixed-in-this-slice | `server.py::_fetch_state` | Time-bounded lookup only runs when Schwab quote/trade time is present. |
+| `server._fetch_state` **`volatility`**-history lookup | fixed-in-this-slice | `server.py::_fetch_state` | Time-bounded lookup only runs when Schwab quote/trade time is present. |
 | `live_market_plane.record_from_level_one_equity` | fixed-in-this-slice | `live_market_plane.py:115-145` | Streaming: Schwab millis → `fast_server_ts`; see S017 Live Plane contract. |
 | `live_market_plane.merge_into_state` | fixed-in-this-slice | `live_market_plane.py:208-210` | Copies plane `fast_server_ts` into `_live_plane_fast_ts` only when present. |
 | `live_market_plane.apply_l1_live_quote_overlay` | fixed-in-this-slice | `live_market_plane.py:231-233` | Same overlay rule as `merge_into_state`. |

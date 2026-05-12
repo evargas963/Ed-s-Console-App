@@ -35,6 +35,7 @@ def main() -> int:
             "skew": 0.0,
             "tail_risk": 0.2,
             "directional_bias": 0.01,
+            "source": "derived_mc_normalized",
         },
     )
 

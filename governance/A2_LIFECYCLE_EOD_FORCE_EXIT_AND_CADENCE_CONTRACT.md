@@ -92,12 +92,14 @@ No new dataclass fields are added to `MarketState`. No `et_hour`, `et_minute`, o
 
 ## Force-Exit Firing Semantics
 
+Per the Schwab Field Precedence Principle (`SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md` §Precedence Principle): for any value where the Schwab field dictionary contains a `canonical_field`, that field is the primary read; ms_dict aliases are legacy fallbacks only when the Schwab field is absent.
+
 Force-exit fires if and only if ALL predicates hold:
 
-1. `ms_dict["entry_state"] == "filled"` (position proxy per `Position State Proxy`);
-2. ET clock is at or after **15:50** per O-33;
+1. `ms_dict["entry_state"] == "filled"` (position proxy per `Position State Proxy`; no Schwab equivalent);
+2. ET clock is at or after **15:50** per O-33 (derived from `decision_time_ms`; no Schwab equivalent);
 3. RTH normal session holds: ET clock between 09:30 and 16:00, weekday only;
-4. 0DTE holds: `ms_dict["selected_exp"]` matches today's date in ET.
+4. 0DTE holds: Schwab `chain_row.daysToExpiration == 0` for the selected contract is the **Schwab-primary** check. `ms_dict["selected_exp"]` matching today's date in ET is a **legacy app-side fallback** used only when no `chain_row` is available (e.g., no `option_chain_selection_proof.winner.chain_row`).
 
 If all predicates hold:
 

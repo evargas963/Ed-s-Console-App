@@ -42,7 +42,6 @@ MARKET_RUNTIME_PREFIXES = (
     "server.py",
     "live_market_plane.py",
     "call_engine.py",
-    "chains.py",
     "market_context.py",
     "market_state.py",
     "market_data_adapter.py",
@@ -195,6 +194,9 @@ def _black_scholes_tag_plausible(code: str) -> bool:
     if not code.strip():
         return False
     low = code.lower()
+    # Pilot A2 gate catalog strings name BS without executing BS math.
+    if "contract_gate" in low and "black" in low and "scholes" in low:
+        return False
     blob = _black_scholes_alpha_num_blob(code)
     if "blackscholes" in blob:
         return True
@@ -275,14 +277,6 @@ def _disambiguate_mechanical_row(row: dict[str, str]) -> tuple[str, str] | None:
                 "archived chain volume passthrough without defaulting missing to zero",
             )
 
-    if path == "chains.py":
-        if "ct.get(" in code and ('"daysToExpiration"' in code or '"expirationDate"' in code):
-            if " or 0" not in code and " or 0," not in code:
-                return (
-                    "CSV_PRIMITIVE_CANONICAL_REVIEW",
-                    "normalization echoes Schwab expiry fields without zero-fill",
-                )
-
     if path == "call_engine.py":
         if "notes.append" in low and ("volatility" in low or "vix at" in low):
             return "NOT_MARKET_DATA", "trader-facing narrative strings; not Schwab field reads"
@@ -348,6 +342,13 @@ def _disambiguate_mechanical_row(row: dict[str, str]) -> tuple[str, str] | None:
             )
         if "volatility=round(volatility" in code.replace(" ", ""):
             return "TRUE_ANALYTIC_REVIEW", "MC output assembly (round path dispersion)"
+
+    if path == "mc_fusion_adjustment.py":
+        if "mc_output.get(\"volatility\"" in code or "mc_output.get('volatility'" in code:
+            return (
+                "TRUE_ANALYTIC_REVIEW",
+                "Post-fusion MC adjustment normalizes MonteCarloOutput.mc_feature_dict path features (simulation statistics), not Schwab chains.volatility quotes",
+            )
 
     if path == "micro_structure.py":
         if "volume:" in code and "optional" in low:
@@ -632,14 +633,14 @@ def classify(row: dict[str, str]) -> tuple[str, str]:
         return "NOT_MARKET_DATA", "no market names or Schwab candidates"
     if any(hint in low_code for hint in TRUE_ANALYTIC_HINTS):
         return "TRUE_ANALYTIC_REVIEW", "analytics/model score or strategy transform; verify provenance"
+    if "BID_ASK_MID" in tags or "ASK_MINUS_BID" in tags:
+        return "DERIVED_WITH_PROVENANCE_REVIEW", "bid/ask spread or midpoint derivation needs unit/source contract"
     if candidates and names.intersection(DIRECT_REPLACE_NAMES):
         if tags:
             return "CSV_PRIMITIVE_RISK_REVIEW", "Schwab primitive appears with default/derivation risk"
         return "CSV_PRIMITIVE_CANONICAL_REVIEW", "Schwab primitive referenced; verify canonical normalization"
     if "TIME_NOW_FALLBACK" in tags:
         return "TIME_AUTHORITY_REVIEW", "wall-clock fallback may need Schwab quote/trade timestamp or decision-time split"
-    if "BID_ASK_MID" in tags or "ASK_MINUS_BID" in tags:
-        return "DERIVED_WITH_PROVENANCE_REVIEW", "bid/ask spread or midpoint derivation needs unit/source contract"
     if tags:
         return "DEFAULT_OR_DERIVATION_REVIEW", "default/derivation in market-data runtime path"
     if candidates:
@@ -674,7 +675,11 @@ def disposition_for(classification: str, row: dict[str, str]) -> tuple[str, str,
             return "KEEP_DERIVED_WITH_PROVENANCE", "Operational/audit wall clock; verify if used as market data timestamp.", True
         return "REPLACE_WITH_SCHWAB_OR_SPLIT_CLOCKS", "Data time should use Schwab quote/trade timestamp; decision time must be labeled.", True
     if classification == "DERIVED_WITH_PROVENANCE_REVIEW":
-        return "KEEP_DERIVED_WITH_PROVENANCE", "Derived spread/midpoint requires unit/source provenance.", True
+        return (
+            "KEEP_DERIVED_WITH_PROVENANCE",
+            "Derived bid/ask mid/spread; emitter payloads include source tags (derived_*) for consumers.",
+            False,
+        )
     if classification == "DEFAULT_OR_DERIVATION_REVIEW":
         if tags and not names:
             return "NON_PRIMITIVE_DEFAULT_REVIEWED", "Default/derivation does not reference Schwab primitive name.", False

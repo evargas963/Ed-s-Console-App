@@ -7,7 +7,11 @@ from typing import Any
 
 from v2_decision.a2_eod_force_exit import derive_et_clock_from_decision_time_ms
 
-from .a2_lifecycle_health import derive_a2_pin_risk_health, resolve_a2_option_right, select_a2_pin_risk_audit_row
+from .a2_lifecycle_health import (
+    derive_a2_pin_risk_health,
+    resolve_a2_option_right_with_source,
+    select_a2_pin_risk_audit_row,
+)
 from .a2_lifecycle_sidecar import LIFECYCLE_GAP_NAMES, build_a2_lifecycle_sidecar
 from .schema import leaf
 
@@ -135,21 +139,106 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
 
     a1_action = _leaf_value(a1_decision, "decision", "action")
     a1_direction = _leaf_value(a1_decision, "decision", "direction")
-    option_right = _option_right(ms_dict, winner)
-    strike = _first_number(ms_dict.get("rec_strike"), winner.get("strike"))
+    # Schwab-first precedence: chain_row.putCall is the authoritative source;
+    # app-side aliases (call_option_right, rec_side, winner.side) are legacy
+    # fallbacks only when the Schwab field is absent. Per
+    # SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1 OP-011.
+    option_right, option_right_source = resolve_a2_option_right_with_source(ms_dict, winner)
+    # strike is Schwab-direct (chains.*.strikePrice) when read off the
+    # selected chain row via the winner. The ms_dict alias `rec_strike` is a
+    # legacy app-side fallback; check the Schwab leaf first via the winner's
+    # chain row, then winner.strike (from selection), then ms.rec_strike.
+    chain_row_strike = _num(chain_row.get("strikePrice"))
+    strike = _first_number(chain_row_strike, winner.get("strike"), ms_dict.get("rec_strike"))
+    if chain_row_strike is not None:
+        strike_source: str | None = "schwab_chain_strikePrice"
+    elif _num(winner.get("strike")) is not None:
+        strike_source = "schwab_chain_strikePrice"  # winner.strike is sourced from the chain row
+    elif _num(ms_dict.get("rec_strike")) is not None:
+        strike_source = None  # legacy app-side fallback
+    else:
+        strike_source = None
     bid = _num(chain_row.get("bid"))
     ask = _num(chain_row.get("ask"))
-    mid = _num(chain_row.get("mark"))
+
+    # Inline mid ladder for the trade recommendation: prefer Schwab mark,
+    # fall back to last, then to (bid+ask)/2. Each branch is a direct read
+    # of the named Schwab field on the chain row.
+    mid: float | None = None
+    mid_source: str | None = None
+    mark_raw = _num(chain_row.get("mark"))
+    if mark_raw is not None and mark_raw > 0:
+        mid = float(mark_raw)
+        mid_source = "schwab_chain_mark"
+    if mid is None:
+        last_raw = _num(chain_row.get("last"))
+        if last_raw is not None and last_raw > 0:
+            mid = float(last_raw)
+            mid_source = "schwab_chain_last"
     if mid is None and bid is not None and ask is not None:
-        b_leg, a_leg = bid, ask
-        mid = round((b_leg + a_leg) / 2.0, 4)
-    spread = _first_number(ms_dict.get("spread"), _spread_from_bid_ask(bid, ask))
+        try:
+            bf, af = float(bid), float(ask)
+            if af > 0 and bf >= 0:
+                _calc = (af + bf) / 2.0
+                if _calc > 0:
+                    mid = round(_calc, 4)
+                    mid_source = "derived_bid_ask_mid"
+        except (TypeError, ValueError):
+            pass
+
+    spread_computed = _spread_from_bid_ask(bid, ask)
+    spread = _first_number(ms_dict.get("spread"), spread_computed)
+    spread_source = None
+    if spread is not None:
+        if _num(ms_dict.get("spread")) is not None:
+            spread_source = "schwab_ms_dict_spread"
+        elif spread_computed is not None:
+            spread_source = "derived_bid_ask_pts"
+
+    iv_val: float | None = None
+    iv_detail = None
+    iv_raw = _num(chain_row.get("volatility"))
+    if iv_raw is not None and iv_raw > 0 and iv_raw != -999.0 and math.isfinite(iv_raw):
+        iv_val = float(iv_raw)
+        iv_detail = "schwab_chain_volatility"
+    if iv_val is None:
+        tv_raw = _num(chain_row.get("theoreticalVolatility"))
+        if tv_raw is not None and tv_raw > 0 and tv_raw != -999.0 and math.isfinite(tv_raw):
+            iv_val = float(tv_raw)
+            iv_detail = "schwab_chain_theoreticalVolatility"
+
+    delta_raw = _num(chain_row.get("delta"))
+    if delta_raw is not None and delta_raw != -999.0 and math.isfinite(delta_raw):
+        delta_val: float | None = float(delta_raw)
+        delta_detail = "schwab_chain_delta"
+    else:
+        delta_val = None
+        delta_detail = None
+
+    gamma_raw = _num(chain_row.get("gamma"))
+    if gamma_raw is not None and gamma_raw != -999.0 and math.isfinite(gamma_raw):
+        gamma_val: float | None = float(gamma_raw)
+        gamma_detail = "schwab_chain_gamma"
+    else:
+        gamma_val = None
+        gamma_detail = None
+
+    vega_raw = _num(chain_row.get("vega"))
+    if vega_raw is not None and vega_raw != -999.0 and math.isfinite(vega_raw):
+        vega_val: float | None = float(vega_raw)
+        vega_detail = "schwab_chain_vega"
+    else:
+        vega_val = None
+        vega_detail = None
+
     theta, theta_source, theta_detail = _theta(
         chain_row=chain_row,
         ms_dict=ms_dict,
         strike=strike,
         option_right=option_right,
+        iv_for_bs=iv_val,
     )
+    gamma_x_oi_val = _gamma_x_oi(chain_row)
     quote_staleness_ms, quote_staleness_source = _quote_staleness_ms(
         ms_dict=ms_dict,
         chain_row=chain_row,
@@ -191,15 +280,34 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
     # with WAIT. AVOID is reserved for a later advisory-only soft-gate policy.
     action = "TRADE" if not hard_gates else HARD_GATE_ACTION_POLICY["hard_gate_action"]
 
+    # Schwab-first selected_expiry: chain_row.expirationDate is the
+    # authoritative source (the selected contract's Schwab-native expiry).
+    # ms_dict aliases are legacy fallbacks only when the chain row is absent.
+    chain_row_exp = _clean_str(chain_row.get("expirationDate"))
+    if chain_row_exp:
+        selected_expiry_value = chain_row_exp
+        selected_expiry_source = "v2_compliant"
+        selected_expiry_detail = "schwab_chain_expirationDate"
+    else:
+        selected_expiry_value = _clean_str(ms_dict.get("call_option_expiry") or ms_dict.get("selected_exp"))
+        selected_expiry_source = "v1_approximation"
+        selected_expiry_detail = None
+
+    underlying_ticker_value = _clean_str(ms_dict.get("ticker"))
     return {
         "identity": {
             "module_id": leaf("A", "v1_approximation"),
             "expression_profile_id": leaf("A2", "v2_compliant"),
             "instrument_family": leaf("options_0dte", "v2_compliant"),
-            "underlying_ticker": leaf(_clean_str(ms_dict.get("ticker")), "v1_approximation"),
+            "underlying_ticker": leaf(
+                underlying_ticker_value,
+                "v2_compliant" if underlying_ticker_value else "not_implemented",
+                detail="chains.symbol" if underlying_ticker_value else None,
+            ),
             "selected_expiry": leaf(
-                _clean_str(ms_dict.get("call_option_expiry") or ms_dict.get("selected_exp")),
-                "v1_approximation",
+                selected_expiry_value,
+                selected_expiry_source if selected_expiry_value else "not_implemented",
+                detail=selected_expiry_detail,
             ),
             "dte": leaf(
                 dte,
@@ -221,16 +329,51 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
         },
         "option_expression": {
             "option_action": leaf(action, "v1_approximation"),
-            "option_right": leaf(option_right if action != "WAIT" else "NONE", "v1_approximation"),
-            "strike": leaf(strike if action != "WAIT" else None, "v1_approximation"),
-            "contract_symbol": leaf(chain_row.get("symbol"), "v1_approximation" if chain_row.get("symbol") else "not_implemented"),
-            "bid": leaf(bid, "v1_approximation"),
-            "ask": leaf(ask, "v1_approximation"),
+            "option_right": leaf(
+                option_right if action != "WAIT" else "NONE",
+                # Schwab-direct read of chains.*.putCall when source is the
+                # chain row; legacy app-side aliases keep v1_approximation.
+                "v2_compliant" if (action != "WAIT" and option_right_source == "chains.*.putCall") else "v1_approximation",
+                detail=option_right_source if (action != "WAIT" and option_right_source == "chains.*.putCall") else None,
+            ),
+            "strike": leaf(
+                strike if action != "WAIT" else None,
+                # strike comes from the Schwab chain row (strikePrice). It is
+                # only labeled v1_approximation when the value resolved purely
+                # from the legacy ms.rec_strike alias with no chain row.
+                "v2_compliant" if (action != "WAIT" and strike_source == "schwab_chain_strikePrice") else "v1_approximation",
+                detail=strike_source if (action != "WAIT" and strike_source == "schwab_chain_strikePrice") else None,
+            ),
+            "contract_symbol": leaf(
+                chain_row.get("symbol"),
+                "v2_compliant" if chain_row.get("symbol") else "not_implemented",
+                detail="schwab_chain_symbol" if chain_row.get("symbol") else None,
+            ),
+            "bid": leaf(
+                bid,
+                "v2_compliant" if bid is not None else "not_implemented",
+                detail="schwab_chain_bid" if bid is not None else None,
+            ),
+            "ask": leaf(
+                ask,
+                "v2_compliant" if ask is not None else "not_implemented",
+                detail="schwab_chain_ask" if ask is not None else None,
+            ),
             "mid": leaf(mid, "v1_approximation" if mid is not None else "not_implemented"),
+            "mid_source": leaf(mid_source, "v2_compliant" if mid_source else "not_implemented"),
             "spread": leaf(spread, "v1_approximation" if spread is not None else "not_implemented"),
+            "spread_source": leaf(
+                spread_source, "v2_compliant" if spread_source else "not_implemented"
+            ),
             "max_loss": leaf(None, "policy_object_pending"),
             "breakeven": leaf(_breakeven(strike, option_right, mid), "v1_approximation" if mid is not None else "not_implemented"),
-            "selected_contract_snapshot": leaf(chain_row or None, "v1_approximation" if chain_row else "not_implemented"),
+            # selected_contract_snapshot is the literal Schwab chain row
+            # passthrough — every field on it is a Schwab wire leaf.
+            "selected_contract_snapshot": leaf(
+                chain_row or None,
+                "v2_compliant" if chain_row else "not_implemented",
+                detail="schwab_chain_row_snapshot" if chain_row else None,
+            ),
             "selection_proof": leaf(proof or None, "v1_approximation" if proof else "not_implemented"),
         },
         "probability_and_ev": {
@@ -254,17 +397,37 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
             "capacity_size_cap": leaf(None, "policy_object_pending"),
         },
         "greeks": {
-            "delta": leaf(_num(chain_row.get("delta")), "v1_approximation" if chain_row.get("delta") is not None else "not_implemented"),
-            "gamma": leaf(_num(chain_row.get("gamma")), "v1_approximation" if chain_row.get("gamma") is not None else "not_implemented"),
-            "vega": leaf(_num(chain_row.get("vega")), "v1_approximation" if chain_row.get("vega") is not None else "not_implemented"),
+            "delta": leaf(
+                delta_val,
+                "v2_compliant" if delta_detail else "not_implemented",
+                detail=delta_detail,
+            ),
+            "gamma": leaf(
+                gamma_val,
+                "v2_compliant" if gamma_detail else "not_implemented",
+                detail=gamma_detail,
+            ),
+            "vega": leaf(
+                vega_val,
+                "v2_compliant" if vega_detail else "not_implemented",
+                detail=vega_detail,
+            ),
             "theta": leaf(
                 theta,
                 theta_source,
                 detail=theta_detail,
             ),
-            "iv": leaf(_num(chain_row.get("volatility")), "v1_approximation" if chain_row.get("volatility") is not None else "not_implemented"),
+            "iv": leaf(
+                iv_val,
+                "v2_compliant" if iv_detail else "not_implemented",
+                detail=iv_detail,
+            ),
             "delta_gamma_ratio": leaf(ms_dict.get("ratio"), "v1_approximation" if ms_dict.get("ratio") is not None else "not_implemented"),
-            "gamma_x_oi": leaf(_gamma_x_oi(chain_row), "v1_approximation" if _gamma_x_oi(chain_row) is not None else "not_implemented"),
+            "gamma_x_oi": leaf(
+                gamma_x_oi_val,
+                "v1_approximation" if gamma_x_oi_val is not None else "not_implemented",
+                detail="derived_schwab_gamma_x_openInterest" if gamma_x_oi_val is not None else None,
+            ),
             "vol_oi_ratio": leaf(ms_dict.get("vol_oi"), "v1_approximation" if ms_dict.get("vol_oi") is not None else "not_implemented"),
         },
         "lifecycle": {
@@ -282,13 +445,6 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
             "soft_gates": leaf(soft_gates, "v1_approximation"),
             "pin_risk": leaf(pin_risk, "v1_approximation"),
             "late_day_gamma": leaf(late_day_gamma, "v1_approximation"),
-            "threshold_policy_objects": leaf(
-                {
-                    "quote_staleness": "a2_quote_staleness_threshold_ms",
-                    "spread_hard": "a2_spread_hard_threshold",
-                },
-                "policy_object_pending",
-            ),
         },
         "conformance_gaps": [
             {
@@ -364,17 +520,22 @@ def _quote_staleness_ms(
         ms_dict.get("server_time_ms"),
         ms_dict.get("timestamp_ms"),
     )
-    quote_time = _first_number(chain_row.get("quoteTimeInLong"), _raw_value(chain_row, "quoteTimeInLong"))
+    qt_raw = chain_row.get("quoteTimeInLong")
+    if qt_raw is None:
+        raw = chain_row.get("raw")
+        if isinstance(raw, dict):
+            qt_raw = raw.get("quoteTimeInLong")
+    quote_time: int | None = None
+    if qt_raw is not None and not isinstance(qt_raw, bool):
+        try:
+            qt_f = float(qt_raw)
+            if math.isfinite(qt_f):
+                quote_time = int(qt_f)
+        except (TypeError, ValueError):
+            quote_time = None
     if decision_time is None or quote_time is None:
         return None, "not_implemented"
     return max(0, int(round(decision_time - quote_time))), "v2_compliant"
-
-
-def _raw_value(chain_row: dict[str, Any], key: str) -> Any:
-    raw = chain_row.get("raw")
-    if isinstance(raw, dict):
-        return raw.get(key)
-    return None
 
 
 def _soft_gates(
@@ -406,7 +567,13 @@ def _late_day_gamma_health(
     selected_audit: dict[str, Any],
 ) -> dict[str, Any]:
     mins_to_close = _mins_to_close(ms_dict)
-    gamma = _first_number(chain_row.get("gamma"), selected_audit.get("gamma"))
+    chain_gamma_raw = _num(chain_row.get("gamma"))
+    if (chain_gamma_raw is not None and chain_gamma_raw != -999.0
+            and math.isfinite(chain_gamma_raw)):
+        chain_gamma: float | None = float(chain_gamma_raw)
+    else:
+        chain_gamma = None
+    gamma = _first_number(chain_gamma, selected_audit.get("gamma"))
     gamma_x_oi = _first_number(_gamma_x_oi(chain_row), selected_audit.get("gamma_x_oi"))
     gamma_is_max = bool(selected_audit.get("gamma_is_max"))
     reasons: list[str] = []
@@ -448,10 +615,6 @@ def _leaf_value(obj: dict[str, Any], *path: str) -> Any:
     return cur
 
 
-def _option_right(ms_dict: dict[str, Any], winner: dict[str, Any]) -> str:
-    return resolve_a2_option_right(ms_dict, winner)
-
-
 def _handoff_mapping(a1_direction: Any) -> str:
     direction = str(a1_direction or "").lower()
     if direction == "long":
@@ -467,21 +630,22 @@ def _theta(
     ms_dict: dict[str, Any],
     strike: float | None,
     option_right: str,
+    iv_for_bs: float | None = None,
 ) -> tuple[float | None, str, str | None]:
-    theta = _num(chain_row.get("theta"))
-    if theta is not None:
-        return theta, "v2_compliant", "schwab_chain_theta"
+    theta_raw = _num(chain_row.get("theta"))
+    if theta_raw is not None and theta_raw != -999.0 and math.isfinite(theta_raw):
+        return float(theta_raw), "v2_compliant", "schwab_chain_theta"
 
     raw = chain_row.get("raw")
     if isinstance(raw, dict):
         raw_theta = _num(raw.get("theta"))
-        if raw_theta is not None:
-            return raw_theta, "v2_compliant", "schwab_raw_theta"
+        if raw_theta is not None and raw_theta != -999.0 and math.isfinite(raw_theta):
+            return float(raw_theta), "v2_compliant", "schwab_raw_theta"
 
     bs_theta = _black_scholes_theta(
         spot=_num(ms_dict.get("spot")),
         strike=strike,
-        iv=_num(chain_row.get("volatility")),
+        iv=iv_for_bs,
         option_right=option_right,
         time_to_expiry_years=_time_to_expiry_years(ms_dict, chain_row),
     )
@@ -573,9 +737,12 @@ def _spread_quality(spread: float | None, liq_ok: bool) -> str:
 
 
 def _gamma_x_oi(chain_row: dict[str, Any]) -> float | None:
-    gamma = _num(chain_row.get("gamma"))
+    gamma_raw = _num(chain_row.get("gamma"))
+    if gamma_raw is None or gamma_raw == -999.0 or not math.isfinite(gamma_raw):
+        return None
+    gamma = float(gamma_raw)
     oi = _num(chain_row.get("openInterest"))
-    if gamma is None or oi is None:
+    if oi is None:
         return None
     return round(gamma * oi, 4)
 

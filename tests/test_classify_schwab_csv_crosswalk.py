@@ -270,6 +270,46 @@ def test_s016_strips_black_scholes_for_generic_norm_cdf():
     assert classification == "NOT_MARKET_DATA"
 
 
+def test_s016_strips_black_scholes_for_a2_contract_gate_catalog_string():
+    row = _row(
+        file="v2_decision/a2_option_expression.py",
+        tags="BLACK_SCHOLES",
+        names="theta",
+        candidate_schwab_fields="chains.callExpDateMap.*.theta",
+        code='"""contract_gate"": ""missing theta from chain row and Black-Scholes approximation inputs"",',
+    )
+    classification, _reason = classify(row)
+    assert row["tags"] == ""
+    assert classification == "CSV_PRIMITIVE_CANONICAL_REVIEW"
+
+
+def test_mc_fusion_normalize_mc_volatility_is_true_analytic_not_schwab_primitive():
+    classification, reason = classify(
+        _row(
+            file="mc_fusion_adjustment.py",
+            tags="DEFAULT_ZERO_OR",
+            names="volatility",
+            candidate_schwab_fields="chains.callExpDateMap.*.volatility",
+            code='vol = float(mc_output.get("volatility") or 0.0)',
+        )
+    )
+    assert classification == "TRUE_ANALYTIC_REVIEW"
+    assert "MonteCarloOutput" in reason or "simulation" in reason.lower()
+
+
+def test_spread_and_mid_tags_route_to_derived_before_primitive_risk():
+    classification, _reason = classify(
+        _row(
+            file="math_probabilities.py",
+            tags="ASK_MINUS_BID|DEFAULT_ZERO_OR",
+            names="bid|ask|spread",
+            candidate_schwab_fields="chains.callExpDateMap.*.ask",
+            code="spread = round(ask - bid, 4) if bid is not None and ask is not None else None",
+        )
+    )
+    assert classification == "DERIVED_WITH_PROVENANCE_REVIEW"
+
+
 def test_time_authority_batch_tools_wall_clock_not_tape():
     classification, reason = classify(
         _row(

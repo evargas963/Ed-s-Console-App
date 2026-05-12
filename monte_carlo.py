@@ -88,14 +88,15 @@ class MonteCarloOutput:
     model_version:      str   = "mc_v3_garch"
     assumptions:        dict  = field(default_factory=dict)
 
-    def mc_feature_dict(self) -> dict[str, float]:
-        """Contract for fusion adjustment: floats only, no probability semantics."""
+    def mc_feature_dict(self) -> dict[str, float | str]:
+        """Contract for fusion adjustment: numeric path features + bundle provenance (not Schwab quotes)."""
         return {
             "expected_move": float(self.expected_move or 0.0),
             "volatility": float(self.volatility or 0.0),
             "skew": float(self.skew or 0.0),
             "tail_risk": float(self.tail_risk or 0.0),
             "directional_bias": float(self.directional_bias or 0.0),
+            "source": "derived_mc_normalized",
         }
 
 
@@ -181,8 +182,6 @@ def simulate(
         return _fallback("invalid spot price")
     if iv is None or iv <= 0:
         return _fallback("invalid IV")
-    if iv > 5.0:
-        iv = iv / 100.0
 
     try:
         rng = np.random.default_rng(seed)

@@ -1008,9 +1008,14 @@ def train_cascade_candidate(
             "warm_resume": lstm_rr,
         }
     if len(xgb_probs_list) != ds.n_samples:
-        delta = len(xgb_probs_list) - ds.n_samples
-        log.warning("%s: LSTM cascade — xgb_probs mismatch %d vs %d (delta=%d), falling back to parallel LSTM",
-                    ticker, len(xgb_probs_list), ds.n_samples, delta)
+        prob_count_mismatch = len(xgb_probs_list) - ds.n_samples
+        log.warning(
+            "%s: LSTM cascade — xgb_probs mismatch %d vs %d (prob_count_mismatch=%d), falling back to parallel LSTM",
+            ticker,
+            len(xgb_probs_list),
+            ds.n_samples,
+            prob_count_mismatch,
+        )
         lr = train_lstm(
             dataset=ds,
             db_path=db_path,

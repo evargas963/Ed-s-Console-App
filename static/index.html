@@ -5069,7 +5069,11 @@ function renderV2PilotDecision(d) {
   set('v2-a2-authority', `${leafVal(ident.authority_mode, 'advisory_non_authoritative')} · read only`);
   set('v2-a2-action', leafVal(opt.option_action) + sourceSuffix(opt.option_action));
   set('v2-a2-contract', `${profile} ${family} · ${right} ${strike}${sourceSuffix(opt.option_right)}`);
-  set('v2-a2-theta', leafVal(greeks.theta) + sourceSuffix(greeks.theta));
+  // Inline Schwab -999.0 sentinel guard: producer already filters at v2_decision/a2_option_expression._theta,
+  // but if the sentinel ever leaks through to the leaf, render "missing" rather than "-999.000000".
+  const _thetaLeafVal = greeks.theta && typeof greeks.theta === 'object' && 'value' in greeks.theta ? greeks.theta.value : null;
+  const _thetaIsSentinel = _thetaLeafVal != null && Number.isFinite(Number(_thetaLeafVal)) && Number(_thetaLeafVal) === -999;
+  set('v2-a2-theta', (_thetaIsSentinel ? 'missing' : leafVal(greeks.theta)) + sourceSuffix(greeks.theta));
   set('v2-a2-spread', leafVal(opt.spread) + sourceSuffix(opt.spread));
   set('v2-a2-liquidity', leafVal(exec.liquidity_gate_pass) + ' · ' + leafVal(exec.spread_quality) + sourceSuffix(exec.spread_quality));
   set('v2-a2-prob', pctLeaf(prob.P_underlying_entry_success));

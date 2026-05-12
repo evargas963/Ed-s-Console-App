@@ -284,27 +284,67 @@ def _projected_fields(
 def _derivation_inputs(ms: dict[str, Any]) -> dict[str, dict[str, Any]]:
     direction = _direction(ms)
     spot = _first_number(ms, "spot")
+    vix_level = _first_number(ms, "vix_level", "vix")
     entry = _first_number(ms, "entry", "rec_entry")
     mins_elapsed = _mins_elapsed_since_open(ms)
+    # MarketState producer key is `vol_regime_risk_mult`
+    # (see market_state.py: ms.vol_regime_risk_mult). The legacy
+    # `risk_multiplier` alias is kept only as a defensive fallback; it is not
+    # written by any current producer.
+    risk_multiplier = _first_number(ms, "vol_regime_risk_mult", "risk_multiplier")
     risk = _risk(ms=ms, entry=entry, direction=direction, spot=spot, mins_elapsed=mins_elapsed)
     structural_levels = _structural_levels(ms, direction)
-    values = {
-        "spot": spot,
-        "vix_level": _first_number(ms, "vix_level", "vix"),
-        "mins_elapsed_since_open": mins_elapsed,
-        "risk_multiplier": _first_number(ms, "vol_regime_risk_multiplier", "risk_multiplier"),
-        "entry": entry,
-        "direction": direction,
-        "risk": risk,
-        "avg5": _first_number(ms, "avg_5c_pts", "avg5"),
-        "avg15": _first_number(ms, "avg_15c_pts", "avg15"),
-        "avg60": _first_number(ms, "avg_60c_pts", "avg60"),
-        "structural_levels": structural_levels,
-    }
-    return {
-        key: _input_leaf(value, "missing_from_ms_dict" if value is None else "schwab_native_normalized")
-        for key, value in values.items()
-    }
+
+    inputs: dict[str, dict[str, Any]] = {}
+
+    # Schwab-direct equity quote (spot) — upstream leaf is the equity
+    # quote ladder beginning at quotes.quote.lastPrice (see
+    # server.py::_extract_quote / market_context.py::_extract_quote).
+    inputs["spot"] = _schwab_leaf(
+        spot, detail="quotes.quote.lastPrice"
+    ) if spot is not None else _missing_leaf()
+
+    # Schwab-direct $VIX quote (see market_context.py: ctx.vix sourced from
+    # _extract_quote("$VIX", ...) — the same equity-quote ladder).
+    inputs["vix_level"] = _schwab_leaf(
+        vix_level, detail="quotes.$VIX.quote.lastPrice"
+    ) if vix_level is not None else _missing_leaf()
+
+    inputs["mins_elapsed_since_open"] = _input_leaf(
+        mins_elapsed,
+        "missing_from_ms_dict" if mins_elapsed is None else "schwab_native_normalized",
+    )
+    inputs["risk_multiplier"] = _input_leaf(
+        risk_multiplier,
+        "missing_from_ms_dict" if risk_multiplier is None else "schwab_native_normalized",
+    )
+    inputs["entry"] = _input_leaf(
+        entry,
+        "missing_from_ms_dict" if entry is None else "schwab_native_normalized",
+    )
+    inputs["direction"] = _input_leaf(
+        direction,
+        "missing_from_ms_dict" if direction is None else "schwab_native_normalized",
+    )
+    inputs["risk"] = _input_leaf(
+        risk,
+        "missing_from_ms_dict" if risk is None else "schwab_native_normalized",
+    )
+    for key, source_keys in (
+        ("avg5", ("avg_5c_pts", "avg5")),
+        ("avg15", ("avg_15c_pts", "avg15")),
+        ("avg60", ("avg_60c_pts", "avg60")),
+    ):
+        value = _first_number(ms, *source_keys)
+        inputs[key] = _input_leaf(
+            value,
+            "missing_from_ms_dict" if value is None else "schwab_native_normalized",
+        )
+    inputs["structural_levels"] = _input_leaf(
+        structural_levels,
+        "missing_from_ms_dict" if structural_levels is None else "schwab_native_normalized",
+    )
+    return inputs
 
 
 def _input_leaf(value: Any, source_classification: str) -> dict[str, Any]:
@@ -318,6 +358,24 @@ def _input_leaf(value: Any, source_classification: str) -> dict[str, Any]:
         "value": value,
         "source": "v1_approximation",
         "source_classification": source_classification,
+    }
+
+
+def _schwab_leaf(value: Any, *, detail: str) -> dict[str, Any]:
+    """Provenance leaf for inputs read directly from a Schwab wire field."""
+    return {
+        "value": value,
+        "source": "v2_compliant",
+        "source_classification": "schwab_native_normalized",
+        "detail": detail,
+    }
+
+
+def _missing_leaf() -> dict[str, Any]:
+    return {
+        "value": None,
+        "source": "not_implemented",
+        "source_classification": "missing_from_ms_dict",
     }
 
 
@@ -383,7 +441,7 @@ def _risk(
         spot=spot,
         vix_level=_first_number(ms, "vix_level", "vix"),
         mins_elapsed_since_open=mins_elapsed,
-        risk_multiplier=_first_number(ms, "vol_regime_risk_multiplier", "risk_multiplier"),
+        risk_multiplier=_first_number(ms, "vol_regime_risk_mult", "risk_multiplier"),
     )
     risk = stop_distance.final_pct * spot
     return round(risk, 4) if risk > 0 else None

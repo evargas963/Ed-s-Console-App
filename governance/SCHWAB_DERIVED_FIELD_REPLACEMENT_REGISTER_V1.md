@@ -17,6 +17,24 @@ Per `ENGINEERING_GATEKEEPING_POLICY.md` §Schwab Same-or-Better Rule, derived fi
 
 ---
 
+## Precedence Principle (binding for every row in this register)
+
+For any value where `schwab_field_inventory/schwab_field_dictionary.csv` contains a `canonical_field`:
+
+```text
+Schwab canonical_field = primary read.
+App-side aliases (ms_dict keys, internal names, alternate keys) = legacy
+fallbacks ONLY when the Schwab field is absent.
+```
+
+The `v1_approximation`, `not_implemented`, and `policy_object_pending` source labels do **not** apply to values whose source traces to a Schwab `canonical_field`. Such leaves must be labeled `v2_compliant` and cite the Schwab leaf in the `detail` field.
+
+Disposition language for every `REPLACE_WITH_SCHWAB` / `replace-with-Schwab` row in this document follows the same pattern: *"Schwab `<canonical_field>` is the primary source; app-side aliases (`<alias>`/`<alias>`) are legacy fallbacks only when the Schwab field is absent."* No row may use "fallback to Schwab," "add Schwab as a final fallback," or any wording that inverts precedence.
+
+CI gate enforcing this principle for the A2 output surface: `tests/test_v2_a2_option_expression.py::test_a2_no_v1_approximation_leaf_traces_to_a_schwab_canonical_field`.
+
+---
+
 ## Source Priority
 
 For primitive market-data fields:
@@ -40,7 +58,7 @@ No formula may silently stand in for a Schwab-native primitive when that primiti
 | Track | Status | Notes |
 |---|---|---|
 | Price/quote primitives | Inventory drafted | Quote/spot/spread/staleness hotspots identified. |
-| Option-chain primitives | Inventory drafted | Greek/IV/timestamp/DTE/identity hotspots identified. |
+| Option-chain primitives | Inventory drafted | Greek, **`volatility`**, timestamp/DTE/identity hotspots identified. |
 | Model/training/calibration derivations | Inventory drafted | Missing-value laundering, imputation, and provenance gaps identified. |
 | API/UI derivations | Inventory drafted | Trader-visible stale/fallback and source-display gaps identified. |
 | Runtime code fixes | Not started in this register | This file ranks work; implementation slices follow. |
@@ -74,14 +92,14 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 
 | ID | Site | Field/formula | Why it matters | Action | Severity |
 |---|---|---|---|---|---|
-| DFR-001 | `market_state.py::_oe_chain_row_snapshot()` | Selected option proof row field truncation | Dropped Schwab theta/IV/timestamps before A2; addressed in `f4e58d9`; post-fix theta measurement still required. | replace-with-Schwab | High |
+| DFR-001 | `market_state.py::_oe_chain_row_snapshot()` | Selected option proof row field truncation | Dropped Schwab theta, **`volatility`**, and timestamps before A2; addressed in `f4e58d9`; post-fix theta measurement still required. | replace-with-Schwab | High |
 | DFR-002 | `live_market_plane.py::record_from_level_one_equity()` | `spot = LAST_PRICE or MARK or prior spot or bid/ask midpoint`; bid/ask carry-forward | Streaming authority can silently carry stale quote fields into Tier A/B/C overlays. | redesign | High |
 | DFR-003 | `server.py::_build_rest_fast_quote_payload()` | `spot = last or mark or 0.0` | Fast quote can degrade to zero/None without field-level source; trader-visible spot and L1 overlays affected. | gate/fail-closed | High |
 | DFR-004 | `server.py::_fetch_state()` | Cached `_last_spread_by_ticker` reused when current bid/ask missing | Stale spread can affect liquidity and A2 spread gates. | gate/fail-closed | High |
 | DFR-005 | `server.py::_fetch_state()` | Selected-expiry filter falls back to full chain when no rows match | Wrong expiry slice can alter strike selection and option expression scoring. | gate/fail-closed | High |
 | DFR-006 | `v2_decision/a2_option_expression.py` | `spread = ms_dict.spread or (ask - bid)` | Underlying spread and contract spread can be semantically mixed unless provenance is explicit. | redesign | High |
 | DFR-007 | `v2_decision/a2_option_expression.py::_quote_staleness_ms()` | Uses `quoteTimeInLong`; missing means not implemented | Schwab also provides `tradeTimeInLong`; missing quote timestamp can hard-gate A2 despite usable trade timestamp. | gate/fail-closed / governed fallback | High |
-| DFR-008 | `server.py` expected move block | Falls back to IV EM with default IV = 20% and full-session hours | Synthetic default-IV EM can affect risk framing when Schwab IV/marks are unavailable. | gate/fail-closed | Medium/High |
+| DFR-008 | `server.py` expected move block | Falls back to expected-move path with default **`volatility`** = 20% and full-session hours | Synthetic default-**`volatility`** EM can affect risk framing when Schwab **`volatility`/marks are unavailable. | gate/fail-closed | Medium/High |
 | DFR-009 | `snapshot_normalizer.py::resample_to_1m()` | Rebuilds OHLCV from snapshots and spot fallback | Can create training/history bars unlike Schwab price-history candles. | redesign | Medium/High |
 | DFR-010 | `features/replay_signal_input_v1.py` | `spot = float(row.get("spot") or 0.0)` | Missing spot becomes 0.0 instead of unavailable; V3 I-01 risk in replay feature path. **Closed `d4b2f1a` (S005).** | gate/fail-closed | High |
 | DFR-011 | `market_data_adapter.py` | OHLCV missing/unparseable values default to `0.0` | Schwab price-history candles provide native OHLCV; zero-injected bars can pollute ATR/VWAP/volatility/replay. | gate/fail-closed | High |
@@ -128,23 +146,23 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 |---|---|---|---|---|---|---|
 | OP-001 | `math_probabilities.py::score_option_expression()` | spread | `ask - bid` | bid/ask native | keep-derived with `schwab_bid_ask` source | Low |
 | OP-002 | `math_probabilities.py::score_option_expression()` | `delta_gamma_ratio` | `abs(delta) / abs(gamma)` | delta/gamma native | keep-derived; guard near-zero gamma | Medium |
-| OP-003 | `math_probabilities.py::score_option_expression()` | `vol_oi_ratio` | `volume / openInterest`, volume = `totalVolume or volume` | `totalVolume`, `openInterest` native | prefer `totalVolume`; fallback with provenance | Medium |
+| OP-003 | `math_probabilities.py::score_option_expression()` | `vol_oi_ratio` | `volume / openInterest`, volume = `totalVolume or volume` | `totalVolume`, `openInterest` native | Schwab `totalVolume` is the primary source; the legacy `volume` alias is a fallback only when `totalVolume` is absent. Per-row chain volume MUST come from `totalVolume`; keep `volume` as fallback only on payloads where Schwab does not emit `totalVolume` (e.g. movers screeners). | Medium |
 | OP-004 | `math_probabilities.py::score_option_expression()` | `gamma_x_oi` | `gamma * openInterest` | inputs native, metric not native | keep-derived; standardize rounding | Low |
-| OP-005 | `market_state.py::_build_contract_context_ms()` | DTE text | expiry date minus current ET date | `daysToExpiration` native | replace-with-Schwab first; date diff fallback only | High |
+| OP-005 | `market_state.py::_build_contract_context_ms()` | DTE text | expiry date minus current ET date | `daysToExpiration` native | Schwab `chains.*.daysToExpiration` is the primary source; the date-diff against current ET date is a legacy app-side fallback only when the Schwab field is absent. Same Schwab-first precedence applies to `is_0dte` (`v2_decision/a2_eod_force_exit.py::is_0dte`) which reads `chain_row.daysToExpiration == 0` first and falls back to `selected_exp` only when `chain_row` is absent. | High |
 | OP-006 | `market_state.py::_oe_bid_ask_mid()` | midpoint/breakeven | `(bid + ask)/2`, strike +/- mid | bid/ask native; BE derived | keep-derived; mark-side-by-side for advisory if needed | Medium |
 | OP-007 | `v2_decision/a2_option_expression.py` | mid/spread/breakeven | midpoint, spread, strike +/- mid | bid/ask native; no native BE | redesign source/price precedence matrix | High |
 | OP-008 | `v2_decision/a2_option_expression.py::_theta()` | theta | `chain_row.theta -> raw.theta -> Black-Scholes` | theta native | replace-with-Schwab; BS residual only after measurement/governance | High |
 | OP-009 | `v2_decision/a2_option_expression.py::_time_to_expiry_years()` | time-to-expiry | `daysToExpiration`, then minutes/hours | `daysToExpiration` native | keep precedence; emit source | Low |
 | OP-010 | `v2_decision/a2_option_expression.py::_quote_staleness_ms()` | quote staleness | decision clock - quote timestamp | `quoteTimeInLong`, `tradeTimeInLong` native | fail closed; consider governed trade-time fallback | High |
-| OP-011 | `v2_decision/a2_lifecycle_health.py::resolve_a2_option_right()` | option right | app fields and winner side | `putCall` native | add final fallback from `winner.chain_row.putCall` | Medium |
-| OP-012 | `math_volatility.py::compute_iv_model_spread()` | IV model spread | `volatility - theoreticalVolatility` | both native | keep-derived | Low |
-| OP-013 | `math_volatility.py::_extract_iv_for_strike()` | IV | reads `volatility`, handles sentinel | `volatility`, `theoreticalVolatility` native | keep; optional theoretical fallback with flag | Low |
+| OP-011 | `v2_decision/a2_lifecycle_health.py::resolve_a2_option_right()` | option right | app fields and winner side | `putCall` native | `winner.chain_row.putCall` is the Schwab-primary source; app-side aliases (`call_option_right`, `rec_side`, `winner.side`) are legacy fallbacks only when `chain_row.putCall` is absent. | Medium |
+| OP-012 | `math_volatility.py::compute_iv_model_spread()` | **`volatility`** model spread | `volatility - theoreticalVolatility` | both native | keep-derived | Low |
+| OP-013 | `math_volatility.py::_extract_iv_for_strike()` | **`volatility`** read | reads `volatility`, handles sentinel | `volatility`, `theoreticalVolatility` native | keep; optional theoretical fallback with flag | Low |
 | OP-014 | `math_levels.py::_mid()` | option mid for parity residual | `mark -> mid -> last -> (bid+ask)/2` | mark/last/bid/ask native | reorder by use case; avoid stale `last` before live bid/ask | Medium |
 | OP-015 | `math_probabilities.py::flow_imbalance_normalized_with_fallback()` | flow imbalance | book-size imbalance else volume ratio | sizes/volume native; metric derived | keep dual path; persist source | Low |
 | OP-016 | `math_exposure_core.py::compute_exposures_by_strike()` | exposure aggregates | Greek/OI/multiplier/spot aggregations; some default 0/100 | inputs native | keep-derived; add missingness counters | Medium |
 | OP-017 | `order_flow_engine.py::_compute_options_flow()` | call/put flow | `totalVolume or lastSize` | both native but different semantics | use `lastSize` only in tick mode with source | Medium |
-| OP-018 | `server.py::_expiries_from_contracts()` and selection | expiry identity | expiration fallback, default nearest non-past, full-chain fallback | `expirationDate`, `daysToExpiration` native | strict expiry match; fail closed unless flagged | Medium/High |
-| OP-019 | `realized_contract_eval.py::_find_contract_row()` | replay identity | symbol first, else side + strike | symbol/expiry native | add expiry constraint before side+strike fallback | Medium |
+| OP-018 | `server.py::_expiries_from_contracts()` and selection | expiry identity | expiration fallback, default nearest non-past, full-chain fallback | `expirationDate`, `daysToExpiration` native | Schwab `expirationDate` / `daysToExpiration` are the primary expiry-identity sources. Strict Schwab-leaf match required; nearest-non-past and full-chain fallbacks are legacy app-side behavior and must fail closed unless explicitly flagged. | Medium/High |
+| OP-019 | `realized_contract_eval.py::_find_contract_row()` | replay identity | symbol first, else side + strike | symbol/expiry native | Schwab `symbol` and `expirationDate` are the primary identity sources; `side + strike` matching is a legacy fallback only when the Schwab `symbol` is absent. Add the Schwab `expirationDate` constraint to gate the legacy `side + strike` fallback. | Medium |
 | OP-020 | `calibration/v2_a1_execution_ev.py` | quote readiness | requires normalized bid/ask/mark/sizes/timestamp/symbol | fields native | keep strict gate for calibration | Low |
 
 ---
@@ -179,7 +197,7 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | UI-004 | A2 selected contract card | selected contract snapshot/source suffix | consumes A2 leaves | Schwab fields native upstream | relabel once producer path proven and governed | High |
 | UI-005 | `server.py::_tier_a_live_state_dict()` | lightweight analytics context | fresh L1 quote mixed with latest cached analytics row | Schwab context native/derived but cached | add `context_age_ms`, `context_expiry_used`, visible stale badge | Medium |
 | UI-006 | `server.py` + `static/index.html` | `vix_direction`, `vix_vs_prev` | backend computes but final Tier C payload omits fields expected by UI | VIX level native, direction/change derived | serialize timestamped fields; reset UI when absent | High |
-| UI-007 | `server.py::compute_iwm_confluence(...)` call | `vix_direction` argument | passes IV direction into parameter named VIX direction | actual VIX direction available from VIX tracker | rename/pass correct value; add semantic assertion | Medium |
+| UI-007 | `server.py::compute_iwm_confluence(...)` call | `vix_direction` argument | passes non-VIX direction into parameter named `vix_direction` | actual VIX direction available from VIX tracker | rename/pass correct value; add semantic assertion | Medium |
 | UI-008 | `static/index.html` sidebar | `sb-vix`, `sb-pcr` | updates only when values present; prior DOM can persist | source values backend/Schwab-derived | reset to `--` plus stale class when omitted | High |
 | UI-009 | `static/index.html::refreshUtilityBar` | bid/ask | can reuse `window._lastData` prior fields when payload partial | bid/ask native when present | current payload first; reuse only with age guard/stale indicator | High |
 | UI-010 | `server.py::_attach_analytics_freshness_contract()` | `analytics_stale` | true when SSE live OR age >= ttl | local freshness state | split `stale_by_age` vs `superseded_by_stream` | Medium |

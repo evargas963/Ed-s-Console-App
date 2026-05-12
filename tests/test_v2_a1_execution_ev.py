@@ -143,7 +143,7 @@ def test_execution_ev_missing_normalized_schwab_inputs_skips_explicitly():
     assert artifact["reason"] == "missing_required_normalized_quote_fields"
     assert artifact["execution_adjusted_ev"] == []
     assert "bid" in artifact["normalized_quote_input_check"]["missing_fields"]
-    assert artifact["normalized_quote_input_check"]["source_boundary"] == "chains.contract_fields"
+    assert artifact["normalized_quote_input_check"]["source_boundary"] == "schwab_chain_row"
 
 
 def test_execution_ev_stale_quote_inputs_skip_explicitly():
@@ -208,7 +208,7 @@ def test_validate_normalized_execution_inputs_documents_schwab_source_paths():
     result = validate_normalized_execution_inputs(_normalized_contract(), decision_time_ms=BASE_MS)
 
     assert result["ok"] is True
-    assert result["source_boundary"] == "chains.contract_fields"
+    assert result["source_boundary"] == "schwab_chain_row"
     assert "chains.callExpDateMap.*.bid" in result["source_paths"]["bid"]
     assert "chains.putExpDateMap.*.bidAskSize" in result["source_paths"]["bidAskSize"]
 

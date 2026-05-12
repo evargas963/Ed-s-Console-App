@@ -158,7 +158,7 @@ Each register row: exactly one of **`REPLACED`**, **`GOVERNED_EXCEPTION`**, **`N
 
 ---
 
-## Completion criteria — ALL must hold (thirteen)
+## Completion criteria — ALL must hold (fourteen)
 
 1. **Universal reconciliation:** Every file **classified**: text **scanned** (minimum catch-all), **excluded** with **clause**, and **(a) = (b) + (c)** per reconciliation families **without unexplained gap**.
 2. **Visitor stability (V2 G2):** Three consecutive runs — **zero** new `pattern_kind` values **and** **zero** cross-validator misses **and** per-language-family sweeps **complete** and dispositioned.
@@ -173,6 +173,7 @@ Each register row: exactly one of **`REPLACED`**, **`GOVERNED_EXCEPTION`**, **`N
 11. **CSV provenance** hash matches committed canonical CSV (**G7**).
 12. **Closure audit** (Deliverable **16**) committed; program closure recorded under **`O-XX`** in `governance/OPERATOR_DECISION_REGISTER.md`.
 13. **V4-A enforcement:** **`bare_governed_exception_count == 0`** and **`unreviewed_count == 0`** per Deliverable **17**; every **`GOVERNED_EXCEPTION`** row has valid **`governed_ref`** and operator **`### O-NN`** narrative with **`Why:`** / **`Constraint:`** / **`Permanent or interim:`**.
+14. **File inventory completeness:** `governance/SCHWAB_V4_FILE_INVENTORY.csv` has **zero** rows with **`status=pending`**; every **`reviewed`** row has a **`memo_ref`** pointing to an **existing** memo file; every **`excluded`** row has a **non-empty** **`clause`**; bulk-exclusion clauses trace to **V4** / **V3-B** / **G1.1** contract clauses (operator **O-40**).
 
 ---
 
@@ -192,6 +193,7 @@ Each register row: exactly one of **`REPLACED`**, **`GOVERNED_EXCEPTION`**, **`N
 - **Unreviewed edits** to **`V3_DYNAMIC_PATTERNS.md`**, **`governance/schwab_field_synonyms.yaml`**, **`governance/schwab_vendor_paths.yaml`**.
 - Treating **V3** register or **V3** closure audit as **V4** closure evidence.
 - **Sampling-based dispositions** or **precedent inheritance without operator authorization** (per **`governance/SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md`** § **Evidence bar (V4-A enforcement)**).
+- **Skipping any file** in **`governance/SCHWAB_V4_FILE_INVENTORY.csv`** without an **explicit clause citation**; every file row reaches **`status=reviewed`** or **`status=excluded`** with a populated **`clause`** (inventory pivot, **O-40**).
 
 ---
 
@@ -225,7 +227,8 @@ SYSTEM: FAIL
 ## Relation to other artifacts
 
 - **`SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V1.md`**, **`_V2.md`**, **`_V3.md`** are **historical** for closure claims; **V4** is the active program after lock.  
-- **`ENGINEERING_GATEKEEPING_POLICY.md`** must stay consistent with **OPEN** coverage proof until **V4** closes.
+- **`ENGINEERING_GATEKEEPING_POLICY.md`** must stay consistent with **OPEN** coverage proof until **V4** closes.  
+- **`governance/SCHWAB_V4_FILE_INVENTORY.csv`** + **`governance/SCHWAB_V4_REVIEW_MEMOS/`** — file-level proof-of-coverage under operator **O-40** (completion criterion **14**); the V4 register remains a **parallel** completeness cross-check vs scanner emissions.
 
 ---
 

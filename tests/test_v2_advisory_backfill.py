@@ -30,6 +30,8 @@ def _proof() -> dict:
             "side": "CALL",
             "chain_row": {
                 "symbol": "SPY260505C00500000",
+                "putCall": "CALL",
+                "strikePrice": 500.0,
                 "bid": 1.2,
                 "ask": 1.28,
                 "delta": 0.52,

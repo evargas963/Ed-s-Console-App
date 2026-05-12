@@ -36,7 +36,7 @@ In scope:
 
 Out of scope:
 
-- lifting or implementing gamma-spike, IV-crush, assignment-risk, spread-widening, partial-fill, or dynamic-policy handlers;
+- lifting or implementing gamma-spike, **`volatility`-crush**, assignment-risk, spread-widening, partial-fill, or dynamic-policy handlers;
 - broker-realized position state;
 - promotion to runtime authority;
 - new top-level sidecar fields;
@@ -135,9 +135,11 @@ Pin-risk event-entry shape:
   "wall_proximity_component": 0.8,
   "selected_strike": 500.0,
   "session_type": "normal_rth",
-  "source_classification": "v1_approximation"
+  "source_classification": "derived_because_schwab_does_not_provide"
 }
 ```
+
+Per the Schwab Field Precedence Principle (`SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md` §Precedence Principle): pin-risk health is a derived analytic with no Schwab `canonical_field` equivalent — Schwab provides the primitive Greeks (`delta`, `gamma`, `openInterest`, etc.) but not the wall-derivation result. The event therefore carries `source_classification: "derived_because_schwab_does_not_provide"`, not `"v1_approximation"`. The latter is a leaf-source label and is reserved for app-side approximations of values that *could* trace to a Schwab leaf.
 
 Allowed `status` values in emitted events:
 
@@ -328,7 +330,7 @@ pytest tests/test_v2_a2_pin_risk.py -q
 
 This implementation does not:
 
-- lift gamma-spike or IV-crush logic;
+- lift gamma-spike or **`volatility`-crush** logic;
 - add new top-level sidecar fields;
 - change `lifecycle_action` value range;
 - promote lifecycle behavior to runtime authority;

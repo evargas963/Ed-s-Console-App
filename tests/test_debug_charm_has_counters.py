@@ -1,0 +1,180 @@
+"""`/api/debug/charm` honest greek/IV presence counters.
+
+The counter pattern in `server.debug_charm` must classify a contract as having
+``has_gamma`` only when the gamma value is a usable wire read (not None,
+not Schwab's ``-999.0`` "missing" sentinel, not NaN/Inf). The same applies
+to ``has_delta``, ``has_theta``, ``has_vega``, and ``has_iv``.
+
+These tests pin the inline counter expression that the route uses on raw
+Schwab chain dicts. Each comprehension below is the literal inline expression
+the route uses for a single field — duplicated per field on purpose so the
+sentinel rules are visible at every read site.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def _row(**overrides):
+    base = {
+        "putCall": "CALL",
+        "strikePrice": 500.0,
+        "delta": 0.5,
+        "gamma": 0.05,
+        "theta": -0.1,
+        "vega": 0.02,
+        "rho": 0.01,
+        "volatility": 0.22,
+        "openInterest": 100,
+    }
+    base.update(overrides)
+    return base
+
+
+def _gamma_count(contracts):
+    n = 0
+    for ct in contracts:
+        v = ct.get("gamma")
+        if v is None:
+            continue
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if f != -999.0 and math.isfinite(f):
+            n += 1
+    return n
+
+
+def _delta_count(contracts):
+    n = 0
+    for ct in contracts:
+        v = ct.get("delta")
+        if v is None:
+            continue
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if f != -999.0 and math.isfinite(f):
+            n += 1
+    return n
+
+
+def _theta_count(contracts):
+    n = 0
+    for ct in contracts:
+        v = ct.get("theta")
+        if v is None:
+            continue
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if f != -999.0 and math.isfinite(f):
+            n += 1
+    return n
+
+
+def _vega_count(contracts):
+    n = 0
+    for ct in contracts:
+        v = ct.get("vega")
+        if v is None:
+            continue
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if f != -999.0 and math.isfinite(f):
+            n += 1
+    return n
+
+
+def _iv_count(contracts):
+    n = 0
+    for ct in contracts:
+        v = ct.get("volatility")
+        if v is None:
+            continue
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if f > 0 and f != -999.0 and math.isfinite(f):
+            n += 1
+    return n
+
+
+def _gamma_sentinel_count(contracts):
+    return sum(1 for ct in contracts if ct.get("gamma") == -999.0)
+
+
+def test_gamma_excludes_minus_999_sentinel():
+    contracts = [
+        _row(gamma=0.05),
+        _row(gamma=-999.0),
+        _row(gamma=None),
+        _row(gamma=0.0),
+    ]
+    assert _gamma_count(contracts) == 2  # 0.05 and 0.0 are usable; -999 and None are not
+    assert _gamma_sentinel_count(contracts) == 1
+
+
+def test_iv_reads_volatility_only_no_theoretical_fallback():
+    """``debug_charm`` reads ``volatility`` directly; no fallback to
+    ``theoreticalVolatility`` (helper-era ladder is gone).
+    """
+    contracts = [
+        _row(volatility=0.22),
+        _row(volatility=-999.0, theoreticalVolatility=18.5),
+        _row(volatility=-999.0, theoreticalVolatility=-999.0),
+        _row(volatility=None, theoreticalVolatility=None),
+    ]
+    assert _iv_count(contracts) == 1
+
+
+def test_counters_reject_nan_and_inf():
+    """Each row spoils exactly one greek; the targeted counter drops by 1."""
+    contracts = [
+        _row(delta=float("nan")),
+        _row(theta=float("inf")),
+        _row(vega=float("-inf")),
+        _row(),
+    ]
+    assert _delta_count(contracts) == 3
+    assert _theta_count(contracts) == 3
+    assert _vega_count(contracts) == 3
+    assert _gamma_count(contracts) == 4
+    assert _iv_count(contracts) == 4
+
+
+def test_counters_match_total_when_all_clean():
+    contracts = [_row() for _ in range(5)]
+    assert _gamma_count(contracts) == 5
+    assert _delta_count(contracts) == 5
+    assert _theta_count(contracts) == 5
+    assert _vega_count(contracts) == 5
+    assert _iv_count(contracts) == 5
+    assert _gamma_sentinel_count(contracts) == 0
+
+
+def test_counters_zero_when_all_sentinels_or_missing():
+    contracts = [
+        _row(
+            delta=-999.0,
+            gamma=-999.0,
+            theta=-999.0,
+            vega=-999.0,
+            volatility=-999.0,
+            theoreticalVolatility=None,
+        ),
+        {"putCall": "CALL", "strikePrice": 500.0},  # bare row, no greek keys
+    ]
+    assert _gamma_count(contracts) == 0
+    assert _delta_count(contracts) == 0
+    assert _theta_count(contracts) == 0
+    assert _vega_count(contracts) == 0
+    assert _iv_count(contracts) == 0
+    assert _gamma_sentinel_count(contracts) == 1

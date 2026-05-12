@@ -244,10 +244,9 @@ def fuse_payload_apply_mc_adjustment(fusion: Any, mc_out: Any, spot_price: Optio
         return fusion
 
     fd = getattr(mc_out, "mc_feature_dict", None)
-    if callable(fd):
-        raw = fd()
-    else:
-        raw = {}
+    raw_in: Mapping[str, Any] = fd() if callable(fd) else {}
+    raw = dict(raw_in) if isinstance(raw_in, dict) else {}
+    mc_bundle_source = raw.pop("source", None)
 
     mc_n = normalize_mc(raw, sp)
     pre = (
@@ -262,6 +261,7 @@ def fuse_payload_apply_mc_adjustment(fusion: Any, mc_out: Any, spot_price: Optio
         "normalized_mc": {k: round(float(v), 6) for k, v in mc_n.items()},
         "base_argmax": _argmax_dir(*pre),
         "final_argmax": _argmax_dir(u, d, fl),
+        "mc_feature_source": mc_bundle_source or "derived_mc_normalized",
     }
     try:
         return replace(

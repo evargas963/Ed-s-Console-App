@@ -21,6 +21,8 @@ import logging
 import math
 from typing import Any, Optional
 
+import math as _of_math
+
 log = logging.getLogger(__name__)
 
 try:
@@ -156,7 +158,7 @@ def _iter_asks_levels(content_item: dict) -> list[tuple[float, float]]:
 
 def _iter_tape_prints(content_items: list) -> list[dict]:
     """
-    Extract tape prints (LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS, TICK) from content.
+    Extract tape prints (LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS) from content.
     """
     out = []
     for c in content_items:
@@ -165,17 +167,11 @@ def _iter_tape_prints(content_items: list) -> list[dict]:
         lp = c.get("LAST_PRICE")
         ls = c.get("LAST_SIZE")
         tt = c.get("TRADE_TIME_MILLIS")
-        tick = c.get("TICK")
-        tick_amt = c.get("TICK_AMOUNT")
         if lp is not None or ls is not None or tt is not None:
-            size = _safe_int(ls)
-            if size is None:
-                size = _safe_int(tick_amt)
             out.append({
                 "price": _safe_float(lp),
-                "size": size,
+                "size": _safe_int(ls),
                 "time_millis": _safe_int(tt),
-                "tick": tick,
             })
     return out
 
@@ -277,8 +273,9 @@ def _compute_spread(data: dict) -> Optional[float]:
 
 def _compute_tape_pressure(data: dict, window_sec: float) -> Optional[float]:
     """
-    Tape pressure over a time window: sum(tick_direction * size) / sum(size).
-    Uses: content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS, TICK, TICK_AMOUNT.
+    Tape pressure over a time window: sum(uptick_direction * size) / sum(size).
+    Direction is inferred from LAST_PRICE movement vs the previous print's price.
+    Uses: content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
     """
     prints = _iter_tape_prints(_iter_content(data))
     if not prints:
@@ -295,20 +292,23 @@ def _compute_tape_pressure(data: dict, window_sec: float) -> Optional[float]:
     total_delta = 0.0
     total_sz = 0
     prev_price = None
-    for p in sorted(prints, key=lambda x: x.get("time_millis") or 0):
+    for p in sorted(prints, key=lambda x: x.get("time_millis") if x.get("time_millis") is not None else 0):
         t = p.get("time_millis")
-        if t is not None and t < cutoff_ms:
-            continue
         price = p.get("price")
+        # Out-of-window prints still seed prev_price so the first in-window
+        # print can be classified vs the most recent prior trade price.
+        if t is not None and t < cutoff_ms:
+            if price is not None:
+                prev_price = price
+            continue
         size = p.get("size")
         if size is None or size <= 0:
+            # No size to add to volume, but the price is still a real trade
+            # — keep it as the comparison anchor for the next sized print.
+            if price is not None:
+                prev_price = price
             continue
-        tick = p.get("tick")
-        if tick == "Up" or tick == "UpTick":
-            total_delta += size
-        elif tick == "Down" or tick == "DownTick":
-            total_delta -= size
-        elif prev_price is not None and price is not None:
+        if prev_price is not None and price is not None:
             if price > prev_price:
                 total_delta += size
             elif price < prev_price:
@@ -328,34 +328,43 @@ def _compute_tape_pressure(data: dict, window_sec: float) -> Optional[float]:
 def _compute_cum_delta_proxy(data: dict) -> Optional[float]:
     """
     Cumulative delta proxy from tape: sum of (direction * size) across prints.
-    Uses: content.*.LAST_SIZE, TICK, TICK_AMOUNT.
+    Direction is inferred from LAST_PRICE movement vs the previous print's price.
+    Uses: content.*.LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS.
+    Returns None when no print contributed a positive Schwab size.
     """
     prints = _iter_tape_prints(_iter_content(data))
     if not prints:
         return None
     total = 0.0
     saw_size = False
-    for p in prints:
+    prev_price = None
+    for p in sorted(prints, key=lambda x: x.get("time_millis") if x.get("time_millis") is not None else 0):
+        price = p.get("price")
         size = p.get("size")
         if size is None or size <= 0:
+            # No size to count, but the price still anchors the next comparison.
+            if price is not None:
+                prev_price = price
             continue
         saw_size = True
-        tick = p.get("tick")
-        if tick == "Up" or tick == "UpTick":
-            total += size
-        elif tick == "Down" or tick == "DownTick":
-            total -= size
+        if prev_price is not None and price is not None:
+            if price > prev_price:
+                total += size
+            elif price < prev_price:
+                total -= size
+        if price is not None:
+            prev_price = price
     return total if saw_size else None
 
 
 def _compute_cum_delta_slope(data: dict, window_sec: float = 60.0) -> Optional[float]:
     """
     Slope of cumulative delta over time (simple linear regression).
+    Direction is inferred from LAST_PRICE movement vs the previous print's price.
     """
     prints = _iter_tape_prints(_iter_content(data))
     if len(prints) < 2:
         return None
-    # sort by time, compute running cum_delta, then slope
     sorted_prints = sorted(
         [p for p in prints if p.get("time_millis") is not None],
         key=lambda x: x.get("time_millis") or 0,
@@ -365,18 +374,27 @@ def _compute_cum_delta_slope(data: dict, window_sec: float = 60.0) -> Optional[f
     cutoff = (sorted_prints[-1].get("time_millis") or 0) - int(window_sec * 1000)
     points = []
     cum = 0.0
+    prev_price = None
     for p in sorted_prints:
         t = p.get("time_millis") or 0
+        price = p.get("price")
+        # Out-of-window prints still seed prev_price.
         if t < cutoff:
+            if price is not None:
+                prev_price = price
             continue
         size = p.get("size")
         if size is None or size <= 0:
+            if price is not None:
+                prev_price = price
             continue
-        tick = p.get("tick")
-        if tick in ("Up", "UpTick"):
-            cum += size
-        elif tick in ("Down", "DownTick"):
-            cum -= size
+        if prev_price is not None and price is not None:
+            if price > prev_price:
+                cum += size
+            elif price < prev_price:
+                cum -= size
+        if price is not None:
+            prev_price = price
         points.append((t / 1000.0, cum))
     if len(points) < 2:
         return None
@@ -454,26 +472,52 @@ def _iter_option_exp_levels(exp_map: dict) -> list[dict]:
             # Schwab: opt is list of contracts; take first. Also support single dict.
             if isinstance(opt, list) and len(opt) > 0:
                 opt = opt[0] if isinstance(opt[0], dict) else None
-            if isinstance(opt, dict):
-                out.append({
-                    "exp": exp_key,
-                    "strike": _safe_float(opt.get("strikePrice")),
-                    "totalVolume": _safe_float(opt.get("totalVolume")),
-                    "openInterest": _safe_float(opt.get("openInterest")),
-                    "lastSize": _safe_float(opt.get("lastSize")),
-                    "bidSize": _safe_float(opt.get("bidSize")),
-                    "askSize": _safe_float(opt.get("askSize")),
-                    "bid": _safe_float(opt.get("bid")),
-                    "ask": _safe_float(opt.get("ask")),
-                    "mark": _safe_float(opt.get("mark")),
-                    "delta": _safe_float(opt.get("delta")),
-                    "gamma": _safe_float(opt.get("gamma")),
-                    "vega": _safe_float(opt.get("vega")),
-                    "theta": _safe_float(opt.get("theta")),
-                    "volatility": _safe_float(opt.get("volatility")),
-                    "daysToExpiration": _safe_int(opt.get("daysToExpiration")),
-                    "tradeTimeInLong": _safe_int(opt.get("tradeTimeInLong")),
-                })
+            if not isinstance(opt, dict):
+                continue
+            d_raw = _safe_float(opt.get("delta"))
+            d_val = d_raw if (d_raw is not None and d_raw != -999.0
+                              and _of_math.isfinite(d_raw)) else None
+            g_raw = _safe_float(opt.get("gamma"))
+            g_val = g_raw if (g_raw is not None and g_raw != -999.0
+                              and _of_math.isfinite(g_raw)) else None
+            v_raw = _safe_float(opt.get("vega"))
+            v_val = v_raw if (v_raw is not None and v_raw != -999.0
+                              and _of_math.isfinite(v_raw)) else None
+            t_raw = _safe_float(opt.get("theta"))
+            t_val = t_raw if (t_raw is not None and t_raw != -999.0
+                              and _of_math.isfinite(t_raw)) else None
+            iv_raw = _safe_float(opt.get("volatility"))
+            iv_val = iv_raw if (iv_raw is not None and iv_raw > 0
+                                and iv_raw != -999.0
+                                and _of_math.isfinite(iv_raw)) else None
+            tt_raw = opt.get("tradeTimeInLong")
+            tt_val: Optional[int] = None
+            if tt_raw is not None and not isinstance(tt_raw, bool):
+                try:
+                    tt_f = float(tt_raw)
+                    if _of_math.isfinite(tt_f):
+                        tt_val = int(tt_f)
+                except (TypeError, ValueError):
+                    tt_val = None
+            out.append({
+                "exp": exp_key,
+                "strike": _safe_float(opt.get("strikePrice")),
+                "totalVolume": _safe_float(opt.get("totalVolume")),
+                "openInterest": _safe_float(opt.get("openInterest")),
+                "lastSize": _safe_float(opt.get("lastSize")),
+                "bidSize": _safe_float(opt.get("bidSize")),
+                "askSize": _safe_float(opt.get("askSize")),
+                "bid": _safe_float(opt.get("bid")),
+                "ask": _safe_float(opt.get("ask")),
+                "mark": _safe_float(opt.get("mark")),
+                "delta": d_val,
+                "gamma": g_val,
+                "vega": v_val,
+                "theta": t_val,
+                "volatility": iv_val,
+                "daysToExpiration": _safe_int(opt.get("daysToExpiration")),
+                "tradeTimeInLong": tt_val,
+            })
     return out
 
 
@@ -497,14 +541,14 @@ def _compute_options_flow(data: dict) -> tuple[Optional[float], Optional[str], O
     delta_weighted = 0.0
     saw_delta_weight = False
     for c in calls:
-        d = _safe_float(c.get("delta"))
+        d = c.get("delta")  # already sentinel-filtered in _iter_option_exp_levels
         v = _nonnegative_float(c.get("totalVolume"))
         if d is None or v is None:
             continue
         delta_weighted += d * v
         saw_delta_weight = True
     for p in puts:
-        d = _safe_float(p.get("delta"))
+        d = p.get("delta")  # already sentinel-filtered in _iter_option_exp_levels
         v = _nonnegative_float(p.get("totalVolume"))
         if d is None or v is None:
             continue
@@ -779,6 +823,11 @@ class OrderFlowEngine:
             "cum_delta_slope": cum_delta_slope,
             "absorption_score": absorption_score,
             "replenishment_score": replenishment_score,
+            "replenishment_score_source": (
+                "derived_bid_ask_depth_change_midpoint"
+                if replenishment_score is not None
+                else None
+            ),
             "absorption_direction": absorption_direction,
             "options_flow_score": options_flow_score,
             "options_flow_direction": options_flow_direction,
@@ -818,6 +867,7 @@ class OrderFlowEngine:
             "cum_delta_slope": None,
             "absorption_score": None,
             "replenishment_score": None,
+            "replenishment_score_source": None,
             "absorption_direction": None,
             "options_flow_score": None,
             "options_flow_direction": None,
@@ -869,20 +919,17 @@ def _mock_data() -> dict:
                 "LAST_PRICE": 150.05,
                 "LAST_SIZE": 100,
                 "TRADE_TIME_MILLIS": 1000000,
-                "TICK": "Up",
                 "BOOK_TIME": 999000,
             },
             {
                 "LAST_PRICE": 150.1,
                 "LAST_SIZE": 75,
                 "TRADE_TIME_MILLIS": 950000,
-                "TICK": "Up",
             },
             {
                 "LAST_PRICE": 149.95,
                 "LAST_SIZE": 50,
                 "TRADE_TIME_MILLIS": 900000,
-                "TICK": "Down",
             },
         ],
         "quote": {

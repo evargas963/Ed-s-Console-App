@@ -5,61 +5,63 @@
 
 ## Totals
 
-Re-running `tools/build_schwab_v4_file_inventory.py` **preserves** prior **`reviewed`** rows (same `path`) that have a non-empty **`memo_ref`**; bulk **`excluded`** clauses are recomputed from the working tree.
+Re-running this builder **preserves** prior **`reviewed`** rows (same `path`) that have a non-empty **`memo_ref`**; bulk **`excluded`** clauses are recomputed from the working tree.
 
-- **Files listed:** 28842
-- **status=pending:** 4567
-- **status=excluded:** 24270
-- **status=reviewed:** 5 *(trade-decision core first batch — gatekeeper ACCEPT 2026-05-10)*
-- **Total bytes (sum of file sizes):** 36209378685
+Paths under prefixes listed in **`governance/schwab_vendor_paths.yaml`** are **`excluded`** with clause **`G1.1 vendored`** (see `tools/schwab_universal_coverage_scanner_v3/vendor_paths.py`).
+
+- **Files listed:** 30204
+- **status=pending:** 3966
+- **status=excluded:** 26233
+- **status=reviewed:** 5
+- **Total bytes (sum of file sizes):** 36303292114
 
 ## Size distribution
 
 | Bucket | Count |
 |--------|------:|
-| 0 | 31 |
-| 1-1K | 3775 |
-| 1K-100K | 14110 |
-| 100K-1M | 10648 |
-| 1M+ | 278 |
+| 0 | 36 |
+| 1-1K | 3891 |
+| 1K-100K | 15098 |
+| 100K-1M | 10895 |
+| 1M+ | 284 |
 
 ## Extension histogram (top 40)
 
 | extension | count |
 |-----------|------:|
-| `(no extension)` | 7015 |
-| `.pt` | 6880 |
-| `.json` | 6709 |
-| `.py` | 2855 |
-| `.pkl` | 2185 |
-| `.pyc` | 1074 |
-| `.md` | 859 |
-| `.js` | 541 |
+| `(no extension)` | 7059 |
+| `.pt` | 7037 |
+| `.json` | 6966 |
+| `.py` | 3418 |
+| `.pkl` | 2281 |
+| `.pyc` | 1075 |
+| `.md` | 1066 |
+| `.js` | 545 |
 | `.npz` | 349 |
-| `.csv` | 78 |
-| `.txt` | 77 |
-| `.html` | 30 |
-| `.mjs` | 24 |
+| `.csv` | 91 |
+| `.txt` | 80 |
+| `.html` | 34 |
+| `.mjs` | 27 |
 | `.log` | 21 |
-| `.ps1` | 14 |
+| `.ps1` | 15 |
+| `.bat` | 14 |
 | `.db` | 14 |
 | `.sample` | 14 |
-| `.bat` | 12 |
 | `.ts` | 10 |
 | `.sh` | 10 |
+| `.png` | 9 |
 | `.css` | 9 |
-| `.png` | 8 |
+| `.migrated_issue22` | 8 |
 | `.db-shm` | 8 |
 | `.db-wal` | 8 |
-| `.migrated_issue22` | 7 |
-| `.worktree` | 5 |
+| `.worktree` | 6 |
+| `.yaml` | 5 |
+| `.sql` | 4 |
 | `.TAG` | 3 |
-| `.sql` | 3 |
+| `.yml` | 3 |
 | `.err` | 3 |
-| `.yaml` | 3 |
 | `.jsonl` | 2 |
 | `.bin` | 2 |
-| `.yml` | 2 |
 | `.cmd` | 2 |
 | `.svg` | 2 |
 | `.ttf` | 2 |

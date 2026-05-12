@@ -51,9 +51,6 @@ class ExposureDiagnostics:
 
 # ── Exposure primitives ──────────────────────────────────────────────────────
 
-def _is_valid_greek(x: float | None) -> bool:
-    return x is not None and x != -999.0
-
 def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dict:
     if strike not in exposures_by_strike:
         exposures_by_strike[strike] = {
@@ -137,20 +134,24 @@ def compute_exposures_by_strike(
 
         b = _strike_bucket(exposures, strike)
         vol = _f(ct.get("totalVolume"))
-        bsz = _f(ct.get("bidSize")) or 0.0
-        asz = _f(ct.get("askSize")) or 0.0
+        bsz = _f(ct.get("bidSize"))
+        asz = _f(ct.get("askSize"))
         if side == "CALL":
             if vol is not None:
                 current_call_volume = b.get("call_volume")
                 b["call_volume"] = (float(current_call_volume) if current_call_volume is not None else 0.0) + vol
-            b["call_bid_size"] = b.get("call_bid_size", 0.0) + bsz
-            b["call_ask_size"] = b.get("call_ask_size", 0.0) + asz
+            if bsz is not None:
+                b["call_bid_size"] = b.get("call_bid_size", 0.0) + bsz
+            if asz is not None:
+                b["call_ask_size"] = b.get("call_ask_size", 0.0) + asz
         else:
             if vol is not None:
                 current_put_volume = b.get("put_volume")
                 b["put_volume"] = (float(current_put_volume) if current_put_volume is not None else 0.0) + vol
-            b["put_bid_size"] = b.get("put_bid_size", 0.0) + bsz
-            b["put_ask_size"] = b.get("put_ask_size", 0.0) + asz
+            if bsz is not None:
+                b["put_bid_size"] = b.get("put_bid_size", 0.0) + bsz
+            if asz is not None:
+                b["put_ask_size"] = b.get("put_ask_size", 0.0) + asz
 
         if oi is None:
             missing += 1
@@ -159,8 +160,10 @@ def compute_exposures_by_strike(
 
         delta = _f(ct.get("delta"))
         gamma = _f(ct.get("gamma"))
+        delta_ok = delta is not None and delta != -999.0 and math.isfinite(delta)
+        gamma_ok = gamma is not None and gamma != -999.0 and math.isfinite(gamma)
 
-        if not _is_valid_greek(delta) or not _is_valid_greek(gamma):
+        if not delta_ok or not gamma_ok:
             missing += 1
 
         used += 1
@@ -170,38 +173,44 @@ def compute_exposures_by_strike(
                 current_call_oi = b.get("call_oi")
                 b["call_oi"] = (float(current_call_oi) if current_call_oi is not None else 0.0) + oi
                 b["call_oi_mult"] += oi * mult
-            if oi is not None and _is_valid_greek(delta):
+            if oi is not None and delta_ok:
                 b["call_delta"] += delta * oi * mult
-            if oi is not None and _is_valid_greek(gamma):
+            if oi is not None and gamma_ok:
                 b["call_gamma"] += gamma * oi * mult
             if oi is not None and spot is not None:
                 spt = float(spot)
                 b["call_oi_dollars"] += oi * mult * spt
-                if _is_valid_greek(delta):
+                if delta_ok:
                     b["call_dex_dollars"] += delta * oi * mult * spt
-                if _is_valid_greek(gamma):
+                if gamma_ok:
                     b["call_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01  # $-GEX per 1% spot move
-                _vega = _f(ct.get("vega")); _iv = _f(ct.get("volatility"))
-                if _is_valid_greek(_vega) and _iv and _iv > 0:
+                _vega = _f(ct.get("vega"))
+                _vega_ok = _vega is not None and _vega != -999.0 and math.isfinite(_vega)
+                _iv = _f(ct.get("volatility"))
+                _iv_ok = _iv is not None and _iv > 0 and _iv != -999.0 and math.isfinite(_iv)
+                if _vega_ok and _iv_ok:
                     b["call_vanna"] += (_vega / (spt * (_iv / 100.0))) * oi * mult
         elif side == "PUT":
             if oi is not None:
                 current_put_oi = b.get("put_oi")
                 b["put_oi"] = (float(current_put_oi) if current_put_oi is not None else 0.0) + oi
                 b["put_oi_mult"] += oi * mult
-            if oi is not None and _is_valid_greek(delta):
+            if oi is not None and delta_ok:
                 b["put_delta"] += delta * oi * mult
-            if oi is not None and _is_valid_greek(gamma):
+            if oi is not None and gamma_ok:
                 b["put_gamma"] += gamma * oi * mult
             if oi is not None and spot is not None:
                 spt = float(spot)
                 b["put_oi_dollars"] += oi * mult * spt
-                if _is_valid_greek(delta):
+                if delta_ok:
                     b["put_dex_dollars"] += delta * oi * mult * spt
-                if _is_valid_greek(gamma):
+                if gamma_ok:
                     b["put_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01   # $-GEX per 1% spot move
-                _vega = _f(ct.get("vega")); _iv = _f(ct.get("volatility"))
-                if _is_valid_greek(_vega) and _iv and _iv > 0:
+                _vega = _f(ct.get("vega"))
+                _vega_ok = _vega is not None and _vega != -999.0 and math.isfinite(_vega)
+                _iv = _f(ct.get("volatility"))
+                _iv_ok = _iv is not None and _iv > 0 and _iv != -999.0 and math.isfinite(_iv)
+                if _vega_ok and _iv_ok:
                     b["put_vanna"] += (_vega / (spt * (_iv / 100.0))) * oi * mult
         else:
             continue
@@ -379,7 +388,6 @@ def compute_net_charm(contracts: list, spot: float, expiry: str, *, rate: float 
         strike  = _f(ct.get("strikePrice"))
         gamma   = _f(ct.get("gamma"))
         iv      = _f(ct.get("volatility"))
-        delta   = _f(ct.get("delta"))
         oi      = _f(ct.get("openInterest"))
         mult    = _f(ct.get("multiplier"))
         dte_raw = ct.get("daysToExpiration")
@@ -390,9 +398,9 @@ def compute_net_charm(contracts: list, spot: float, expiry: str, *, rate: float 
             continue
         if mult is None or mult <= 0:
             continue
-        if not _is_valid_greek(gamma):
+        if gamma == -999.0 or not math.isfinite(gamma):
             continue
-        if iv is None or iv <= 0:
+        if iv is None or iv <= 0 or iv == -999.0 or not math.isfinite(iv):
             continue
 
         T = _resolve_T(dte_raw)

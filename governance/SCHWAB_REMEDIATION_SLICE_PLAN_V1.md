@@ -64,7 +64,7 @@ S010 + S011 = Greeks zero/default remediation
 | S009 | `ASK_MINUS_BID` x `bid_ask` | 3 | 3 | `math_probabilities.py` (1), `server.py` (1), `v2_decision/a2_option_expression.py` (1) | spread unit split | `quotes.quote.bidPrice`, `quotes.quote.askPrice`, `chains.*.bid`, `chains.*.ask`, `chains.*.mark` |
 | S010 | `DEFAULT_ZERO_OR` x `greeks` | 2 | 1 | `order_flow_engine.py` (2) | `GATE_FAIL_CLOSED` on missing Greek | `chains.*.delta`, `chains.*.gamma`, `chains.*.vega`, `chains.*.theta`, `chains.*.rho` |
 | S011 | `GET_DEFAULT_ZERO` x `greeks` | 2 | 1 | `server.py` (2) | merge with S010 | Greek fields listed in S010 |
-| S012 | `DEFAULT_ZERO_OR` x `iv` | 2 | 2 | `mc_fusion_adjustment.py` (1), `signals.py` (1) | `GATE_FAIL_CLOSED` on missing IV | `chains.*.volatility`, `chains.*.theoreticalVolatility` |
+| S012 | `DEFAULT_ZERO_OR` x `iv` | 2 | 2 | `mc_fusion_adjustment.py` (1), `signals.py` (1) | `GATE_FAIL_CLOSED` on missing **`volatility`** | `chains.*.volatility`, `chains.*.theoreticalVolatility` |
 
 ---
 

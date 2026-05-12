@@ -811,7 +811,15 @@ def _oe_bid_ask_mid(contracts, strike: float, side: str):
             a = float(ct.get("ask")) if ct.get("ask") is not None else None
         except (TypeError, ValueError):
             b = a = None
-        mid = (b + a) / 2.0 if b is not None and a is not None else None
+        mid: float | None = None
+        try:
+            mark_raw = ct.get("mark")
+            if mark_raw is not None:
+                mark_val = float(mark_raw)
+                if mark_val > 0:
+                    mid = mark_val
+        except (TypeError, ValueError):
+            pass
         return b, a, mid
     return None, None, None
 

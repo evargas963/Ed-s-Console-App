@@ -35,6 +35,9 @@ def test_rest_fast_quote_payload_exposes_field_sources(monkeypatch):
     payload = server._build_rest_fast_quote_payload("SPY", "rest_fast_quote")
 
     assert payload["spot"] == 501.25
+    assert payload["quote_mid"] == 501.25
+    assert payload["mid_source"] == "schwab_quote_mark"
+    assert payload["spread_source"] == "derived_bid_ask_fraction_schwab_mark_denom"
     assert payload["spread_pts"] == 0.1
     assert payload["fast_server_ts"] == 1_778_018_399.0
     assert payload["quote_time_source"] == "schwab_rest_quote"
@@ -43,6 +46,7 @@ def test_rest_fast_quote_payload_exposes_field_sources(monkeypatch):
         "spot": "mark",
         "bid": "bidPrice",
         "ask": "askPrice",
+        "mid": "schwab_quote_mark",
         "spread": "schwab_bid_ask",
         "carried_forward": False,
     }
@@ -59,6 +63,8 @@ def test_tier_a_live_state_rest_bootstrap_row_uses_schwab_time_not_wall_clock(mo
 
     assert out.get("_tier") == "A_live"
     assert out["quote_ingestion"] == "rest_tier_a"
+    assert out["quote_mid"] == 501.25
+    assert out["mid_source"] == "schwab_quote_mark"
     assert out["fast_server_ts"] == 1_778_018_399.0
     assert out["quote_time_source"] == "schwab_rest_quote"
     assert isinstance(out["server_received_ts"], float)

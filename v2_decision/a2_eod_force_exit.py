@@ -57,8 +57,24 @@ def is_in_eod_cadence_window(et_hour, et_minute) -> bool:
     return minute_total >= RTH_CLOSE_MINUTE_TOTAL - EOD_CADENCE_WINDOW_MINUTES
 
 
-def is_0dte(selected_exp, decision_time_ms) -> bool:
+def is_0dte(selected_exp, decision_time_ms, chain_row=None) -> bool:
+    """Schwab-first 0DTE check.
+
+    Primary: ``chain_row["daysToExpiration"] == 0`` when chain_row is provided
+    and carries the field. Schwab is the authoritative source for the selected
+    contract's days-to-expiration.
+
+    Fallback: when chain_row is absent (or missing daysToExpiration), compare
+    ``selected_exp`` against today's ET date as a legacy app-side proxy.
+    """
     try:
+        if isinstance(chain_row, dict):
+            dte = chain_row.get("daysToExpiration")
+            if dte is not None:
+                try:
+                    return int(dte) == 0
+                except (TypeError, ValueError):
+                    pass
         if selected_exp is None:
             return False
         dt_utc = datetime.fromtimestamp(float(decision_time_ms) / 1000, tz=timezone.utc)
@@ -66,6 +82,19 @@ def is_0dte(selected_exp, decision_time_ms) -> bool:
         return str(selected_exp).strip() == today_et
     except (TypeError, ValueError, OSError):
         return False
+
+
+def _selected_chain_row(ms: dict[str, Any]) -> dict[str, Any] | None:
+    proof = ms.get("option_chain_selection_proof")
+    if not isinstance(proof, dict):
+        return None
+    winner = proof.get("winner")
+    if not isinstance(winner, dict):
+        return None
+    chain_row = winner.get("chain_row")
+    if not isinstance(chain_row, dict) or not chain_row:
+        return None
+    return chain_row
 
 
 def _parse_hhmm_to_min(value) -> int | None:
@@ -93,7 +122,7 @@ def _evaluate_a2_eod_force_exit_fallback(ms: dict[str, Any]) -> tuple[str, str]:
         str(ms.get("entry_state") or "").strip().lower() == "filled"
         and in_rth
         and is_force_exit_clock_threshold_passed(et_hour, et_minute)
-        and is_0dte(ms.get("selected_exp"), ms.get("decision_time_ms"))
+        and is_0dte(ms.get("selected_exp"), ms.get("decision_time_ms"), _selected_chain_row(ms))
     )
     return ("force_exit_recommended" if should_force_exit else "no_active_position"), cadence
 
@@ -128,7 +157,7 @@ def evaluate_a2_eod_force_exit(ms_dict: dict[str, Any]) -> tuple[str, str]:
         should_force_exit = (
             str(ms.get("entry_state") or "").strip().lower() == "filled"
             and session_info.decision_minute_et >= force_exit_threshold
-            and is_0dte(ms.get("selected_exp"), ms.get("decision_time_ms"))
+            and is_0dte(ms.get("selected_exp"), ms.get("decision_time_ms"), _selected_chain_row(ms))
         )
         return ("force_exit_recommended" if should_force_exit else "no_active_position"), cadence
     except Exception:

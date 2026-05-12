@@ -175,7 +175,7 @@ For A2, add:
 
 - option structure;
 - strike / expiry;
-- IV / Greeks;
+- **`volatility`** / Greeks;
 - spread / fill probability;
 - max loss;
 - 0DTE lifecycle plan.
@@ -269,7 +269,7 @@ Promote 0DTE from downstream heuristic expression selection into an explicit exp
    - Option-chain as-of timestamp.
    - Expiry/strike/side identity.
    - Bid/ask/mid at decision time.
-   - IV and Greeks where available.
+   - **`volatility`** and Greeks where available.
    - Spread, liquidity, and fill-quality fields.
    - Assignment/exercise semantics.
 
@@ -281,7 +281,7 @@ Promote 0DTE from downstream heuristic expression selection into an explicit exp
      - hit target / hit stop / timeout;
      - realized option PnL;
      - realized spread/fill slippage;
-     - IV/Greeks path impact.
+     - **`volatility`/Greeks** path impact.
 
 6. **A2 execution model**
    - Spread/fill quality model.

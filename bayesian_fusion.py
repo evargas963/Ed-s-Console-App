@@ -760,6 +760,7 @@ if __name__ == "__main__":
             "skew": 0.0,
             "tail_risk": 0.1,
             "directional_bias": 0.0,
+            "source": "derived_mc_normalized",
         },
     )
     result = fuse(regime, xgb, lstm, transformer, mc, rules)

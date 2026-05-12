@@ -40,13 +40,12 @@ def _contracts_from_chain_json(raw: str) -> list[dict]:
     for ct in arr:
         if not isinstance(ct, dict):
             continue
-        total_volume = ct.get("totalVolume") if ct.get("totalVolume") is not None else ct.get("volume")
         out.append(
             {
                 "strikePrice": ct.get("strikePrice"),
                 "putCall": ct.get("putCall"),
                 "openInterest": ct.get("openInterest"),
-                "totalVolume": total_volume,
+                "totalVolume": ct.get("totalVolume"),
                 "bidSize": ct.get("bidSize"),
                 "askSize": ct.get("askSize"),
                 "delta": ct.get("delta"),

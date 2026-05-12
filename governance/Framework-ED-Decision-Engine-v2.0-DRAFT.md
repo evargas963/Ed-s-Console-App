@@ -82,7 +82,7 @@ Pilot sequence:
 - **Pilot 1B:** Module A, A2 options/0DTE, initially SPY / QQQ unless separately amended.
 - **Later pilots:** Module B swing, Module C long-horizon / LEAPS, Module D on-demand portfolio analysis.
 
-0DTE remains in scope as **Expression Profile A2**. It shares Module A's short-horizon signal logic where appropriate, but it has separate option-chain, IV, Greeks, execution, lifecycle, and validation contracts.
+0DTE remains in scope as **Expression Profile A2**. It shares Module A's short-horizon signal logic where appropriate, but it has separate option-chain, **`volatility`**, Greeks, execution, lifecycle, and validation contracts.
 
 ### Cross-Module Portfolio Coordination
 
@@ -256,7 +256,7 @@ Reports citing an approximate guarantee must:
 4.8 Broker/API credential and secrets boundaries  
 4.9 Data-source failure modes and response policy  
 4.10 Fundamental data contract surfaces  
-4.11 Option-chain and IV-surface data contracts  
+4.11 Option-chain and per-contract **`volatility`** surface data contracts  
 4.12 Tax-lot and account data contracts where available
 
 Current Schwab market-data source inventory:
@@ -391,7 +391,7 @@ These artifacts are data-plane contracts for v2 design work. A Schwab field addi
 13.11 Capacity / participation-rate model  
 13.12 Borrow and shortability gates  
 13.13 Options spread/fill quality model  
-13.14 0DTE expiration, Greeks, and IV execution constraints
+13.14 0DTE expiration, Greeks, and **`volatility`** execution constraints
 
 ### 14. Cross-Module Portfolio Coordination
 

@@ -142,7 +142,7 @@ A2 calibration is pending.
 - selected contract entry price and exit price;
 - governed lifecycle policy or static baseline policy;
 - realized contract PnL decomposition;
-- IV/Greeks path attribution where available;
+- **`volatility`/Greeks** path attribution where available;
 - replay/live parity status for option-chain selection;
 - sufficient holdout sample size after skip/exclusion gates.
 

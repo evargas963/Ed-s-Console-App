@@ -38,7 +38,6 @@ MARKET_NAMES = re.compile(
 MARKET_DATA_PATHS = (
     "server.py",
     "live_market_plane.py",
-    "chains.py",
     "market_context.py",
     "market_state.py",
     "math_",

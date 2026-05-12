@@ -270,11 +270,23 @@ def _dot_color(chg_pct: Optional[float]) -> str:
 def _extract_quote(symbol: str, q_json: dict) -> tuple[Optional[float], Optional[float]]:
     """Return (last, chg_pct) from a single-ticker Schwab quote payload."""
     try:
-        data    = q_json.get(symbol, {})
-        quote   = data.get("quote", {})
-        last    = quote.get("lastPrice") or quote.get("mark") or quote.get("last")
+        data = q_json.get(symbol, {})
+        quote = data.get("quote", {}) or {}
+        ext = data.get("extended", {}) or {}
+        reg = data.get("regular", {}) or {}
+        # Wire-first: quotes.quote.*, then extended/regular session fields (no synthetic last).
+        last = (
+            quote.get("lastPrice")
+            or ext.get("lastPrice")
+            or reg.get("regularMarketLastPrice")
+            or quote.get("mark")
+        )
         pct_chg = quote.get("netPercentChange")
+        if pct_chg is None:
+            pct_chg = reg.get("regularMarketPercentChange")
         net_chg = quote.get("netChange")
+        if net_chg is None:
+            net_chg = reg.get("regularMarketNetChange")
         if last:
             last = float(last)
         if pct_chg is not None:
@@ -802,7 +814,7 @@ def fetch_price_levels(
     if quote_raw:
         try:
             sym_node = quote_raw.get(symbol.upper()) or quote_raw.get(symbol) or {}
-            q = sym_node.get("quote", {}) or sym_node.get("reference", {}) or {}
+            q = sym_node.get("quote", {}) or {}
             def _sf(key):
                 try: return float(q.get(key)) if q.get(key) is not None else None
                 except Exception: return None

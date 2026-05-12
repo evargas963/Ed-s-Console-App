@@ -23,6 +23,7 @@ import threading
 import time
 from typing import Any, Optional
 
+
 _lock = threading.RLock()
 # ticker UPPER -> last plane payload (streaming and/or REST fast quote)
 _by_ticker: dict[str, dict[str, Any]] = {}
@@ -121,12 +122,17 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
         return False
 
     spread_frac = None
+    quote_mid = None
+    mid_source = None
     try:
-        if bid is not None and ask is not None:
+        if mark is not None:
+            mark_f = float(mark)
+            if mark_f > 0:
+                quote_mid = mark_f
+                mid_source = "schwab_streaming_mark"
+        if quote_mid is not None and bid is not None and ask is not None:
             bf, af = float(bid), float(ask)
-            mid = (bf + af) / 2.0
-            if mid > 0:
-                spread_frac = (af - bf) / mid
+            spread_frac = (af - bf) / quote_mid
     except (TypeError, ValueError):
         pass
 
@@ -139,8 +145,22 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
         "spot_disp": f"{float(spot_f):.2f}",
         "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
         "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
+        "quote_mid": quote_mid,
+        "mid_source": mid_source,
         "spread": spread_frac,
         "spread_pts": round(float(ask) - float(bid), 4) if bid is not None and ask is not None else None,
+        "spread_source": (
+            "derived_bid_ask_mid_fraction"
+            if spread_frac is not None and mid_source == "derived_bid_ask_mid"
+            else (
+                "derived_bid_ask_fraction_schwab_mark_denom"
+                if spread_frac is not None and mid_source == "schwab_streaming_mark"
+                else None
+            )
+        ),
+        "spread_pts_source": (
+            "derived_bid_ask_pts" if bid is not None and ask is not None else None
+        ),
         "fast_generation_id": next_fast_generation(t),
         "fast_server_ts": quote_ts,
         "quote_time_source": "schwab_streaming_level_one" if quote_ts is not None else "unavailable",
@@ -150,6 +170,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
             "spot": spot_source,
             "bid": bid_source,
             "ask": ask_source,
+            "mid": mid_source or "unavailable_missing_mark_and_bid_ask",
             "spread": "schwab_bid_ask" if bid is not None and ask is not None else "unavailable_missing_bid_or_ask",
             "carried_forward": False,
             "previous_spot_available": pspot is not None,
@@ -202,7 +223,21 @@ def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
     q = get_quote(ticker)
     if not q:
         return
-    for k in ("spot", "bid", "ask", "spot_disp", "bid_disp", "ask_disp", "spread", "quote_ingestion"):
+    for k in (
+        "spot",
+        "bid",
+        "ask",
+        "spot_disp",
+        "bid_disp",
+        "ask_disp",
+        "quote_mid",
+        "mid_source",
+        "spread",
+        "spread_pts",
+        "spread_source",
+        "spread_pts_source",
+        "quote_ingestion",
+    ):
         if k in q and q[k] is not None:
             ms_dict[k] = q[k]
     fts = q.get("fast_server_ts")
@@ -225,7 +260,21 @@ def apply_l1_live_quote_overlay(l1_payload: dict[str, Any], ticker: str) -> None
     q = get_quote(ticker)
     if not q:
         return
-    for k in ("spot", "bid", "ask", "spot_disp", "bid_disp", "ask_disp", "spread", "quote_ingestion"):
+    for k in (
+        "spot",
+        "bid",
+        "ask",
+        "spot_disp",
+        "bid_disp",
+        "ask_disp",
+        "quote_mid",
+        "mid_source",
+        "spread",
+        "spread_pts",
+        "spread_source",
+        "spread_pts_source",
+        "quote_ingestion",
+    ):
         if k in q and q[k] is not None:
             l1_payload[k] = q[k]
     fts = q.get("fast_server_ts")

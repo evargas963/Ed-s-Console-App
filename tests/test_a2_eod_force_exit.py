@@ -105,8 +105,53 @@ def test_force_exit_does_not_fire_outside_rth_normal_session():
 
 
 def test_force_exit_does_not_fire_for_non_0dte():
+    # Legacy fallback path: chain_row absent, selected_exp drives the check.
     assert is_0dte("2026-05-06", _epoch_ms_et(2026, 5, 5, 15, 50)) is False
     assert evaluate_a2_eod_force_exit(_ms(selected_exp="2026-05-06")) == (
+        "no_active_position",
+        "every_tier_c_cycle",
+    )
+
+
+def test_is_0dte_schwab_chain_row_daysToExpiration_is_primary_source():
+    """Schwab `chain_row.daysToExpiration` is the primary 0DTE check;
+    it overrides any disagreement with the legacy `selected_exp` proxy."""
+    decision_ms = _epoch_ms_et(2026, 5, 5, 15, 50)
+    # Primary == 0 wins even when selected_exp would say not-0DTE.
+    assert is_0dte("2026-05-06", decision_ms, {"daysToExpiration": 0}) is True
+    # Primary != 0 wins even when selected_exp would say 0DTE.
+    assert is_0dte("2026-05-05", decision_ms, {"daysToExpiration": 1}) is False
+    # Empty/missing chain_row falls back to selected_exp comparison.
+    assert is_0dte("2026-05-05", decision_ms, {}) is True
+    assert is_0dte("2026-05-05", decision_ms, None) is True
+
+
+def test_force_exit_uses_chain_row_daysToExpiration_when_proof_present():
+    """Schwab `chain_row.daysToExpiration == 0` from the selection proof is
+    the primary 0DTE source for `evaluate_a2_eod_force_exit`."""
+    proof = {
+        "winner": {"chain_row": {"daysToExpiration": 0, "putCall": "CALL"}},
+    }
+    # selected_exp disagrees (says next day), but Schwab chain_row says 0DTE.
+    ms = _ms(
+        selected_exp="2026-05-06",
+        option_chain_selection_proof=proof,
+    )
+    assert evaluate_a2_eod_force_exit(ms) == (
+        "force_exit_recommended",
+        "every_tier_c_cycle",
+    )
+
+    # And when chain_row says not-0DTE, force-exit does not fire even if
+    # selected_exp says today.
+    proof_not_0dte = {
+        "winner": {"chain_row": {"daysToExpiration": 1, "putCall": "CALL"}},
+    }
+    ms2 = _ms(
+        selected_exp="2026-05-05",
+        option_chain_selection_proof=proof_not_0dte,
+    )
+    assert evaluate_a2_eod_force_exit(ms2) == (
         "no_active_position",
         "every_tier_c_cycle",
     )

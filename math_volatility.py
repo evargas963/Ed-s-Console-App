@@ -48,7 +48,7 @@ def _extract_iv_for_strike(contracts: List[dict], strike: float) -> tuple[float 
         if s is None or float(s) != float(strike):
             continue
         iv = _f(ct.get("volatility"))
-        if iv is None or iv == -999.0:
+        if iv is None or iv <= 0 or iv == -999.0 or not math.isfinite(iv):
             continue
         side = (ct.get("putCall") or "").upper()
         if side == "CALL":

@@ -42,8 +42,12 @@ class NormalizedBar:
 
 def normalize_bar(raw: dict | Any) -> Optional[NormalizedBar]:
     """
-    Convert a raw bar from any provider into NormalizedBar.
-    Handles: Schwab candles, Polygon, Alpaca, generic OHLCV.
+    Convert a raw bar into NormalizedBar.
+
+    Reads the canonical Schwab keys directly: ``open``, ``high``, ``low``,
+    ``close``, ``volume`` (per Schwab field dictionary
+    ``pricehistory.candles.*``) and the canonical timestamp key
+    ``datetime`` (Schwab pricehistory) or ``timestamp`` (NormalizedBar).
     """
     if raw is None:
         return None
@@ -60,8 +64,6 @@ def normalize_bar(raw: dict | Any) -> Optional[NormalizedBar]:
     def _volume() -> Optional[float]:
         v = raw.get("volume") if isinstance(raw, dict) else getattr(raw, "volume", None)
         if v is None:
-            v = raw.get("vol") if isinstance(raw, dict) else getattr(raw, "vol", None)
-        if v is None:
             return None
         try:
             out = float(v)
@@ -69,24 +71,15 @@ def normalize_bar(raw: dict | Any) -> Optional[NormalizedBar]:
             return None
         return out if out >= 0 else None
 
-    ts = None
     if isinstance(raw, dict):
-        ts = raw.get("timestamp") or raw.get("datetime") or raw.get("t") or raw.get("time")
+        ts = raw.get("timestamp") or raw.get("datetime")
     else:
-        ts = getattr(raw, "timestamp", None) or getattr(raw, "datetime", None)
+        ts = getattr(raw, "timestamp", None)
 
     open_ = _f("open")
-    if open_ is None:
-        open_ = _f("o")
     high = _f("high")
-    if high is None:
-        high = _f("h")
     low = _f("low")
-    if low is None:
-        low = _f("l")
     close = _f("close")
-    if close is None:
-        close = _f("c")
     if open_ is None or high is None or low is None or close is None:
         return None
 

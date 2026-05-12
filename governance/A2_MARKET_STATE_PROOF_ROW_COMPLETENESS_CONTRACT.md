@@ -5,7 +5,24 @@
 **Module:** `market_state` option-expression proof handoff to A2  
 **Scope:** Preserve Schwab-native selected contract fields from normalized chain rows into `option_chain_selection_proof.winner.chain_row` and related proof rows.
 
-This contract fixes a data-flow defect: A2 can only use Schwab-native fields if the selected option proof row carries them. The current proof snapshot trims the selected chain row to a small audit subset and drops fields A2 needs for theta, IV, quote freshness, and source labeling.
+This contract fixes a data-flow defect: A2 can only use Schwab-native fields if the selected option proof row carries them. The current proof snapshot trims the selected chain row to a small audit subset and drops fields A2 needs for theta, implied volatility (**Schwab wire `volatility`**), quote freshness, and source labeling.
+
+---
+
+## Schwab canonical binding (normative)
+
+Authoritative leaf list: `schwab_field_inventory/schwab_field_dictionary.csv` (`canonical_field`). Normalized option contract rows in this repo use the same leaf names as **`chains.callExpDateMap.*.<leaf>`** and **`chains.putExpDateMap.*.<leaf>`**. Proof rows and this contract MUST use those wire names — not aliases such as non-canonical **`volume`** (use **`totalVolume`**), **`expiration`** (use **`expirationDate`**), or **`iv`** as a persisted key (use **`volatility`**).
+
+| Topic | Wire / rule |
+|---|---|
+| Contract identity | `symbol`, `putCall`, `strikePrice`, `expirationDate`, `daysToExpiration`, … |
+| Quotes | `bid`, `ask`, `mark`, `last`, sizes, `totalVolume`, `openInterest` |
+| Implied vol | **`volatility`** (+ optional `theoreticalVolatility`, `theoreticalOptionValue`) |
+| Greeks | `delta`, `gamma`, `theta`, `vega`, `rho` |
+| Clock | `quoteTimeInLong`, `tradeTimeInLong` |
+| Derived (not Schwab leaves) | Mid `(bid+ask)/2`, spread width `ask-bid`, DTE from calendar vs `daysToExpiration` — label source accordingly |
+
+Black-Scholes fallback inputs, when used elsewhere, must take underlying price from an equity quote canonical such as **`quotes.regular.regularMarketLastPrice`**, not an unlabeled internal `spot` key as stand-in for Schwab truth.
 
 ---
 
@@ -29,7 +46,7 @@ In scope:
 - preserve these fields in `option_chain_selection_proof.chain_rows_scored[*].chain_row`;
 - preserve these fields in `option_chain_selection_proof.ranked_candidates_top5[*].chain_row`;
 - ensure `option_chain_selection_proof.winner.chain_row` is present for the winning contract, or add it if missing;
-- add tests proving `theta`, `rho`, IV, and quote/trade timestamps survive from normalized contract input into the proof row consumed by A2;
+- add tests proving `theta`, `rho`, **`volatility`**, and quote/trade timestamps survive from normalized contract input into the proof row consumed by A2;
 - add an integration test that builds a proof through `market_state.recommend_option_expression()` and then feeds it to `build_a2_option_expression()`;
 - re-measure theta availability after the fix lands.
 
@@ -111,11 +128,11 @@ Consequences:
 |---|---|
 | Contract identity | `symbol`, `putCall`, `strikePrice`, `expirationDate`, `expirationType`, `settlementType`, `exerciseType`, `lastTradingDay` |
 | Prices and liquidity | `bid`, `ask`, `mark`, `last`, `openPrice`, `highPrice`, `lowPrice`, `closePrice`, `bidSize`, `askSize`, `bidAskSize`, `lastSize`, `totalVolume`, `openInterest` |
-
-**Schwab CSV alignment (2026-05-10):** The proof row intentionally omits non-canonical aliases **`expiration`** and **`volume`** — only **`expirationDate`** and **`totalVolume`** have `chains.callExpDateMap.*` dictionary rows. Raw Schwab payloads may still carry aliases; normalization for proof uses canonical leaves only.
-| Greeks and IV | `delta`, `gamma`, `theta`, `vega`, `rho`, `volatility`, `theoreticalVolatility`, `theoreticalOptionValue` |
+| Greeks and implied vol (`volatility`) | `delta`, `gamma`, `theta`, `vega`, `rho`, `volatility`, `theoreticalVolatility`, `theoreticalOptionValue` |
 | Timestamps | `quoteTimeInLong`, `tradeTimeInLong` |
 | Contract metadata | `multiplier`, `extrinsicValue`, `timeValue`, `intrinsicValue`, `inTheMoney`, `nonStandard`, `mini`, `pennyPilot`, `deliverableNote` |
+
+**Schwab CSV alignment (2026-05-10):** The proof row intentionally omits non-canonical aliases **`expiration`** and **`volume`** — only **`expirationDate`** and **`totalVolume`** have `chains.callExpDateMap.*` dictionary rows. Raw Schwab payloads may still carry aliases; normalization for proof uses canonical leaves only.
 
 The snapshot SHOULD continue to omit the full `raw` payload unless a future contract explicitly authorizes raw passthrough into the proof object. The intended boundary remains normalized Schwab fields first.
 
@@ -149,7 +166,7 @@ After this fix:
 ```text
 chain_row.theta present -> A2 theta source may be v2_compliant / Schwab chain theta
 chain_row.quoteTimeInLong present -> A2 quote staleness gate has real Schwab timestamp input
-chain_row.volatility present -> A2 IV source may be Schwab-native normalized
+chain_row.volatility present -> A2 implied-vol source may be Schwab-native normalized (wire key `volatility`, not `iv`)
 ```
 
 Black-Scholes theta remains only a fallback permitted by the current A2 contract until post-fix measurement and governance decide whether to retain or remove it.
@@ -214,7 +231,7 @@ This contract intentionally does not solve:
 - index symbol canonicalization for NDX;
 - DB backup convention unification;
 - stale quote carry-forward in `live_market_plane`;
-- mark-vs-mid global price precedence.
+- mark-vs-**derived**-mid global price precedence (`mid` is not a Schwab dictionary leaf).
 
 Those are registered separately in `SCHWAB_CONSISTENCY_AUDIT_REGISTER_V1.md`.
 

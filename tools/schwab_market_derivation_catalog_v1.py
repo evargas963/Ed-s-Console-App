@@ -132,7 +132,6 @@ _MARKET_PATH_SUBSTR = (
     "server.py",
     "market_",
     "live_market",
-    "chains.py",
     "signals.py",
     "order_flow",
     "features/",

@@ -587,24 +587,9 @@ def parity_f_minus_spot_from_contracts(
     band = set(strikes[lo : hi + 1])
 
     def _mid(row):
-        for key in ("mark", "mid", "last"):
-            v = row.get(key)
-            try:
-                if v is None: continue
-                x = float(v)
-                if x > 0: return x
-            except Exception: continue
-        try:
-            br = row.get("bid")
-            ar = row.get("ask")
-            if br is None or ar is None:
-                return None
-            b = float(br)
-            a = float(ar)
-            if a > 0 and b >= 0:
-                return (a + b) / 2.0
-        except Exception:
-            pass
+        m = _f(row.get("mark"))
+        if m is not None and m > 0:
+            return m
         return None
 
     resids = []

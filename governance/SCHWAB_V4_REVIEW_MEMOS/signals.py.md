@@ -29,9 +29,9 @@ Audited **this file** for:
 
 - **lines:** 448–450  
 - **surface:** `iv = inp.iv_level` (scaled if > 5.0)  
-- **proposed disposition:** **NOT_MARKET_DATA** at **Schwab JSON literal** layer — `SignalInput` field (**`signal_types.SignalInput.iv_level`**) populated upstream in **`market_state.build_market_state`** from exposure / chain IV pipeline (Schwab-sourced **values**, not `q_json["…"]` reads **here**).  
-- **provenance trace (clause 4 — generic `inp`):** `server._fetch_state` → `compute_exposures_by_strike` / totals → `build_market_state(...)` constructs **`SignalInput`** — IV numeric enters **`inp.iv_level`** off Schwab chain **ATM IV** path (see `market_state.py` memo). **This file** only consumes the dataclass field.  
-- **canonical_field:** IV on options maps to `chains.callExpDateMap.*.volatility` / related rows — **binding occurs upstream**, not at this attribute read.  
+- **proposed disposition:** **NOT_MARKET_DATA** at **Schwab JSON literal** layer — `SignalInput` field (**`signal_types.SignalInput.iv_level`**) populated upstream in **`market_state.build_market_state`** from exposure / chain **`volatility`** pipeline (Schwab-sourced **values**, not `q_json["…"]` reads **here**).  
+- **provenance trace (clause 4 — generic `inp`):** `server._fetch_state` → `compute_exposures_by_strike` / totals → `build_market_state(...)` constructs **`SignalInput`** — **`volatility`** numeric enters **`inp.iv_level`** off Schwab chain **ATM `volatility`** path (see `market_state.py` memo). **This file** only consumes the dataclass field.  
+- **canonical_field:** Chain **`volatility`** maps to `chains.callExpDateMap.*.volatility` / related rows — **binding occurs upstream**, not at this attribute read.  
 - **code edit:** none.
 
 ### S2 — `inp.em_upper`, `inp.em_lower` (log + MC input lineage)

@@ -278,13 +278,13 @@ db.py,2690,TIME_NOW_FALLBACK,,,"_wall_time.time(),"
 db.py,2765,,low,pricehistory.candles.*.low,"impact_level: str = ""LOW"","
 db.py,2806,,open,pricehistory.candles.*.open,"Completed bars only; bar_start_ts_utc matches Candle.ts (epoch seconds, bar open)."
 db.py,2826,,close|high|low|open,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open,"o, h, lo, c = float(b.open), float(b.high), float(b.low), float(b.close)"
-db.py,2827,DEFAULT_ZERO_OR,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"vol = float(getattr(b, ""volume"", 0) or 0)"
+db.py,2836,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"                vol = _volume_or_none(getattr(b, ""volume"", None))"
 db.py,2829,GET_DEFAULT_ZERO,,,"raw_ts = b.get(""datetime"", b.get(""ts"", b.get(""timestamp"", b.get(""_ts"", 0))))"
 db.py,2836,,open,pricehistory.candles.*.open,"o = float(b[""open""])"
 db.py,2837,,high,pricehistory.candles.*.high,"h = float(b[""high""])"
 db.py,2838,,low,pricehistory.candles.*.low,"lo = float(b[""low""])"
 db.py,2839,,close,chains.underlying.close|pricehistory.candles.*.close,"c = float(b[""close""])"
-db.py,2842,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"vol = float(b.get(""volume"", 0) or 0)"
+db.py,2851,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"                vol = _volume_or_none(b.get(""volume""))"
 db.py,2881,,close|high|low|open|volume,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open|movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"open, high, low, close, volume, source)"
 db.py,2885,,open,pricehistory.candles.*.open,"open = excluded.open,"
 db.py,2886,,high,pricehistory.candles.*.high,"high = excluded.high,"
@@ -442,7 +442,7 @@ liquidity_value_engine.py,57,,open,pricehistory.candles.*.open,"o = d.get(""open
 liquidity_value_engine.py,58,,high,pricehistory.candles.*.high,"h = d.get(""high"") or d.get(""h"") or 0"
 liquidity_value_engine.py,59,,low,pricehistory.candles.*.low,"l_ = d.get(""low"") or d.get(""l"") or 0"
 liquidity_value_engine.py,60,,close,chains.underlying.close|pricehistory.candles.*.close,def _bars_to_list(bars) -> list[dict]:
-liquidity_value_engine.py,61,DEFAULT_ZERO_OR,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"v = d.get(""volume"") or d.get(""vol"") or d.get(""v"") or 0"
+liquidity_value_engine.py,95,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"                ""volume"": _positive_float_or_none(v),"
 liquidity_value_engine.py,70,,open,pricehistory.candles.*.open,"""open"": float(o) if o is not None else 0.0,"
 liquidity_value_engine.py,71,,high,pricehistory.candles.*.high,"""high"": float(h) if h is not None else 0.0,"
 liquidity_value_engine.py,72,,low,pricehistory.candles.*.low,"""low"": float(l_) if l_ is not None else 0.0,"
@@ -457,7 +457,7 @@ liquidity_value_engine.py,97,,open,pricehistory.candles.*.open,            if _t
 liquidity_value_engine.py,98,,high,pricehistory.candles.*.high,"                out[-1][""_ts""] = _ts"
 liquidity_value_engine.py,99,,low,pricehistory.candles.*.low,        return out
 liquidity_value_engine.py,100,,close,chains.underlying.close|pricehistory.candles.*.close,"c = row.get(""close"", row.get(""c"", 0))"
-liquidity_value_engine.py,101,GET_DEFAULT_ZERO,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"v = row.get(""volume"", row.get(""vol"", row.get(""v"", 0)))"
+liquidity_value_engine.py,131,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"            ""volume"": _positive_float_or_none(v),"
 liquidity_value_engine.py,104,,open,pricehistory.candles.*.open,"""open"": float(o) if o is not None else 0.0,"
 liquidity_value_engine.py,105,,high,pricehistory.candles.*.high,"""high"": float(h) if h is not None else 0.0,"
 liquidity_value_engine.py,106,,low,pricehistory.candles.*.low,"""low"": float(l_) if l_ is not None else 0.0,"
@@ -475,14 +475,14 @@ liquidity_value_engine.py,267,,high,pricehistory.candles.*.high,"""orb_high"": m
 liquidity_value_engine.py,268,,low,pricehistory.candles.*.low,"""orb_low"": min(b[""low""] for b in orb_bars),"
 liquidity_value_engine.py,269,,high|low,pricehistory.candles.*.high|pricehistory.candles.*.low,"""orb_mid"": (max(b[""high""] for b in orb_bars) + min(b[""low""] for b in orb_bars)) / 2.0,"
 liquidity_value_engine.py,279,,volume|vwap,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"""""""VWAP = Σ(typical_price × volume) / Σ(volume). RTH only."""""""
-liquidity_value_engine.py,286,DEFAULT_ZERO_OR,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"vol = b.get(""volume"") or 0"
+liquidity_value_engine.py,309,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"        vol = _positive_float_or_none(b.get(""volume""))"
 liquidity_value_engine.py,289,,close|high|low,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low,"tp = (b[""high""] + b[""low""] + b[""close""]) / 3.0"
 liquidity_value_engine.py,303,,volume|vwap,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"""""""Volume-weighted std dev. Returns (vwap+1σ, vwap-1σ, vwap+2σ, vwap-2σ)."""""""
-liquidity_value_engine.py,312,DEFAULT_ZERO_OR,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"vol = b.get(""volume"") or 0"
+liquidity_value_engine.py,335,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"        vol = _positive_float_or_none(b.get(""volume""))"
 liquidity_value_engine.py,315,,close|high|low,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low,"tp = (b[""high""] + b[""low""] + b[""close""]) / 3.0"
 liquidity_value_engine.py,354,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,POC = price with max volume.
 liquidity_value_engine.py,355,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"Value area = smallest range containing value_area_pct of volume, centered on POC."
-liquidity_value_engine.py,362,DEFAULT_ZERO_OR,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"vol = float(b.get(""volume"") or 0)"
+liquidity_value_engine.py,385,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"        vol = _positive_float_or_none(b.get(""volume""))"
 liquidity_value_engine.py,365,,close|high|low,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low,"h, l_, c = b[""high""], b[""low""], b[""close""]"
 liquidity_value_engine.py,385,GET_DEFAULT_ZERO,,,"v_lo = vol_by_price.get(prices_sorted[lo_idx - 1], 0) if lo_idx > 0 else 0"
 liquidity_value_engine.py,386,GET_DEFAULT_ZERO,,,"v_hi = vol_by_price.get(prices_sorted[hi_idx + 1], 0) if hi_idx < len(prices_sorted) - 1 else 0"
@@ -657,13 +657,13 @@ market_context.py,634,,open,pricehistory.candles.*.open,"o = float(c.get(""open"
 market_context.py,635,,high,pricehistory.candles.*.high,"h = float(c.get(""high"", 0) or 0)"
 market_context.py,636,,low,pricehistory.candles.*.low,"l = float(c.get(""low"", 0) or 0)"
 market_context.py,637,,close,chains.underlying.close|pricehistory.candles.*.close,"cl = float(c.get(""close"", 0) or 0)"
-market_context.py,638,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"vol = float(c.get(""volume"", 0) or 0)"
+market_context.py,656,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"        vol = _positive_float_or_none(c.get(""volume""))"
 market_context.py,657,GET_DEFAULT_ZERO,,,"v_lo = vol_by_price.get(prices_sorted[lo_idx - 1], 0) if lo_idx > 0 else 0"
 market_context.py,658,GET_DEFAULT_ZERO,,,"v_hi = vol_by_price.get(prices_sorted[hi_idx + 1], 0) if hi_idx < len(prices_sorted) - 1 else 0"
 market_context.py,679,,high,pricehistory.candles.*.high,            best_vol += v_lo
 market_context.py,680,,low,pricehistory.candles.*.low,            best_lo = prices_sorted[lo_idx]
 market_context.py,681,,close,chains.underlying.close|pricehistory.candles.*.close,        elif hi_idx < len(prices_sorted) - 1:
-market_context.py,682,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"vol = float(c.get(""volume"", 0) or 0)"
+market_context.py,700,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"        vol = _positive_float_or_none(c.get(""volume""))"
 market_context.py,706,,high|low|open,pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open,"- Tier 1 (always available): today open/high/low, PDC from quote{}"
 market_context.py,707,,high|low|vwap,pricehistory.candles.*.high|pricehistory.candles.*.low,"- Tier 2 (needs price history): VWAP, PDH, PDL, ORB high/low"
 market_context.py,709,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,Extended (volume profile + bands):
@@ -689,7 +689,7 @@ market_context.py,883,,open,pricehistory.candles.*.open,"            pl.pd_poc, 
 market_context.py,884,,high,pricehistory.candles.*.high,"float(c.get(""high"",  0)),"
 market_context.py,885,,low,pricehistory.candles.*.low,"float(c.get(""low"",   0)),"
 market_context.py,886,,close,chains.underlying.close|pricehistory.candles.*.close,        if overnight_bars:
-market_context.py,887,GET_DEFAULT_ZERO,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"float(c.get(""volume"", 0)),"
+market_context.py,904,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"                vol = _positive_float_or_none(c.get(""volume""))"
 market_data_adapter.py,8,,close|high|low|open|volume,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open|movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"timestamp, open, high, low, close, volume"
 market_data_adapter.py,19,,close|high|low|open|volume,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open|movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"BAR_KEYS = (""timestamp"", ""open"", ""high"", ""low"", ""close"", ""volume"")"
 market_data_adapter.py,26,,open,pricehistory.candles.*.open,open: float
@@ -712,7 +712,7 @@ market_data_adapter.py,105,,open,pricehistory.candles.*.open,    out = []
 market_data_adapter.py,106,,high,pricehistory.candles.*.high,    for b in raw_bars or []:
 market_data_adapter.py,107,,low,pricehistory.candles.*.low,        nb = normalize_bar(b)
 market_data_adapter.py,108,,close,chains.underlying.close|pricehistory.candles.*.close,        if nb:
-market_data_adapter.py,109,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"""volume"": float(c.get(""volume"", 0) or 0),"
+market_data_adapter.py,143,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"            ""volume"": float(c[""volume""]) if c.get(""volume"") is not None else None,"
 market_state.py,10,,ask|bid|spot,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"1. Raw inputs    — spot, bid, ask, contracts, walls, totals"
 market_state.py,49,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,"pin_bull    — positive gamma pin with bullish lean (Bull, Tilt Bull)"
 market_state.py,50,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,"pin_bear    — positive gamma pin with bearish lean (Bear, Tilt Bear)"
@@ -836,9 +836,9 @@ math_exposure_core.py,109,,gamma|multiplier,chains.callExpDateMap.*.gamma|chains
 math_exposure_core.py,111,,gamma|spot,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,"NOTE: Dollarized fields (DEX$, GEX$ per 1%, OI$) are computed when `spot` is provided. Net gamma follows Call - Put convention."
 math_exposure_core.py,124,DATE_DIFF_DTE,daysToExpiration,chains.callExpDateMap.*.daysToExpiration|chains.daysToExpiration|chains.putExpDateMap.*.daysToExpiration,"dte = _f(ct.get(""daysToExpiration""))"
 math_exposure_core.py,125,DATE_DIFF_DTE,,,if use_only_dte_max is not None and dte is not None and dte > use_only_dte_max:
-math_exposure_core.py,128,DEFAULT_ZERO_OR,openInterest,chains.callExpDateMap.*.openInterest|chains.putExpDateMap.*.openInterest,"oi = _f(ct.get(""openInterest"")) or 0.0"
+math_exposure_core.py,128,,openInterest,chains.callExpDateMap.*.openInterest|chains.putExpDateMap.*.openInterest,"        oi = _f(ct.get(""openInterest""))"
 math_exposure_core.py,133,,multiplier,chains.callExpDateMap.*.multiplier|chains.putExpDateMap.*.multiplier,"mult = _f(ct.get(""multiplier""))"
-math_exposure_core.py,139,DEFAULT_ZERO_OR,totalVolume,chains.callExpDateMap.*.totalVolume|chains.putExpDateMap.*.totalVolume|chains.underlying.totalVolume|movers.screeners.*.totalVolume|quotes.extended.totalVolume|quotes.quote.totalVolume,"vol = _f(ct.get(""totalVolume"")) or 0.0"
+math_exposure_core.py,139,,totalVolume,chains.callExpDateMap.*.totalVolume|chains.putExpDateMap.*.totalVolume|chains.underlying.totalVolume|movers.screeners.*.totalVolume|quotes.extended.totalVolume|quotes.quote.totalVolume,"        vol = _f(ct.get(""totalVolume""))"
 math_exposure_core.py,140,DEFAULT_ZERO_OR,,,"bsz = _f(ct.get(""bidSize"")) or 0.0"
 math_exposure_core.py,141,DEFAULT_ZERO_OR,,,"asz = _f(ct.get(""askSize"")) or 0.0"
 math_exposure_core.py,143,GET_DEFAULT_ZERO,,,"b[""call_volume""] = b.get(""call_volume"", 0.0) + vol"
@@ -903,8 +903,8 @@ math_exposure_core.py,369,DATE_DIFF_DTE,,,if abs(_ct_dte - _target_dte) > 1: con
 math_exposure_core.py,377,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,"gamma   = _f(ct.get(""gamma""))"
 math_exposure_core.py,378,,volatility,chains.callExpDateMap.*.volatility|chains.putExpDateMap.*.volatility|chains.volatility,"iv      = _f(ct.get(""volatility""))"
 math_exposure_core.py,379,,delta,chains.callExpDateMap.*.delta|chains.putExpDateMap.*.delta,"delta   = _f(ct.get(""delta""))"
-math_exposure_core.py,380,DEFAULT_ZERO_OR,openInterest,chains.callExpDateMap.*.openInterest|chains.putExpDateMap.*.openInterest,"oi      = _f(ct.get(""openInterest"")) or 0.0"
-math_exposure_core.py,381,DEFAULT_100_OR,multiplier,chains.callExpDateMap.*.multiplier|chains.putExpDateMap.*.multiplier,"mult    = _f(ct.get(""multiplier""))   or 100.0"
+math_exposure_core.py,383,,openInterest,chains.callExpDateMap.*.openInterest|chains.putExpDateMap.*.openInterest,"        strike  = _f(ct.get(""strikePrice""))"
+math_exposure_core.py,384,,multiplier,chains.callExpDateMap.*.multiplier|chains.putExpDateMap.*.multiplier,"        gamma   = _f(ct.get(""gamma""))"
 math_exposure_core.py,382,DATE_DIFF_DTE,daysToExpiration,chains.callExpDateMap.*.daysToExpiration|chains.daysToExpiration|chains.putExpDateMap.*.daysToExpiration,"dte_raw = ct.get(""daysToExpiration"")"
 math_exposure_core.py,384,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,if gamma is None or strike is None:
 math_exposure_core.py,386,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,if not _is_valid_greek(gamma):
@@ -944,12 +944,12 @@ math_levels.py,482,DEFAULT_ZERO_OR,,,"pd += float(b.get(""put_delta"") or 0.0)"
 math_levels.py,483,DEFAULT_ZERO_OR,,,"coi += float(b.get(""call_oi"") or 0.0)"
 math_levels.py,484,DEFAULT_ZERO_OR,,,"poi += float(b.get(""put_oi"") or 0.0)"
 math_levels.py,546,DATE_DIFF_DTE,,,"dte_max = None,"
-math_levels.py,555,DEFAULT_ZERO_OR|DATE_DIFF_DTE,daysToExpiration,chains.callExpDateMap.*.daysToExpiration|chains.daysToExpiration|chains.putExpDateMap.*.daysToExpiration,"dte = int(float(c.get(""daysToExpiration"") or 0))"
+math_levels.py,564,DATE_DIFF_DTE,daysToExpiration,chains.callExpDateMap.*.daysToExpiration|chains.daysToExpiration|chains.putExpDateMap.*.daysToExpiration,            dte = int(float(raw_dte)) if raw_dte is not None else None
 math_levels.py,557,DATE_DIFF_DTE,,,dte = 0
 math_levels.py,558,DATE_DIFF_DTE,,,if dte_max is not None and dte != int(dte_max):
 math_levels.py,581,,last|mark,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last|chains.callExpDateMap.*.mark|chains.putExpDateMap.*.mark|chains.underlying.mark|quotes.extended.mark|quotes.quote.mark|streaming.content.*.MARK,"for key in (""mark"", ""mid"", ""last""):"
-math_levels.py,589,DEFAULT_ZERO_OR,bid,chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"b = float(row.get(""bid"") or 0)"
-math_levels.py,590,DEFAULT_ZERO_OR,ask,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask,"a = float(row.get(""ask"") or 0)"
+math_levels.py,602,,bid,chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,            b = float(br)
+math_levels.py,603,,ask,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask,            a = float(ar)
 math_levels.py,615,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,Find the price level where net gamma exposure crosses zero.
 math_levels.py,617,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,Above gamma flip → positive gamma → dealers dampen movement (mean reversion).
 math_levels.py,618,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,Below gamma flip → negative gamma → dealers amplify movement (acceleration).
@@ -987,7 +987,7 @@ math_probabilities.py,196,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDate
 math_probabilities.py,197,,delta,chains.callExpDateMap.*.delta|chains.putExpDateMap.*.delta,"delta = _f(ct.get(""delta""))"
 math_probabilities.py,198,,totalVolume|volume,chains.callExpDateMap.*.totalVolume|chains.putExpDateMap.*.totalVolume|chains.underlying.totalVolume|movers.screeners.*.totalVolume|quotes.extended.totalVolume|quotes.quote.totalVolume|movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"volume = _f(ct.get(""totalVolume"")) or _f(ct.get(""volume""))"
 math_probabilities.py,199,,openInterest,chains.callExpDateMap.*.openInterest|chains.putExpDateMap.*.openInterest,"oi = _f(ct.get(""openInterest""))"
-math_probabilities.py,200,ASK_MINUS_BID,ask|bid|spread,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"spread = round(ask - bid, 4) if bid is not None and ask is not None else None"
+math_probabilities.py,201,ASK_MINUS_BID,ask|bid|spread,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"    spread = round(a_px - b_px, 4) if b_px is not None and a_px is not None else None"
 math_probabilities.py,202,,delta|gamma,chains.callExpDateMap.*.delta|chains.putExpDateMap.*.delta|chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,"dgr = round(abs(delta) / abs(gamma), 2) if gamma and gamma != 0 and delta is not None else None"
 math_probabilities.py,203,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"voi = round(volume / oi, 3) if oi and oi > 0 and volume is not None else None"
 math_probabilities.py,204,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,gxoi = gamma * oi if gamma is not None and oi is not None else None
@@ -1432,12 +1432,12 @@ order_flow_engine.py,458,DATE_DIFF_DTE,daysToExpiration,chains.callExpDateMap.*.
 order_flow_engine.py,459,,tradeTimeInLong,chains.callExpDateMap.*.tradeTimeInLong|chains.putExpDateMap.*.tradeTimeInLong,"""tradeTimeInLong"": _safe_int(opt.get(""tradeTimeInLong"")),"
 order_flow_engine.py,466,,delta,chains.callExpDateMap.*.delta|chains.putExpDateMap.*.delta,"Options flow score, direction, call/put ratio, delta-weighted flow."
 order_flow_engine.py,467,,ask|bid|delta|totalVolume,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid|chains.callExpDateMap.*.delta|chains.putExpDateMap.*.delta|chains.callExpDateMap.*.totalVolume|chains.putExpDateMap.*.totalVolume|chains.underlying.totalVolume|movers.screeners.*.totalVolume|quotes.extended.totalVolume|quotes.quote.totalVolume,"Uses: callExpDateMap.*, putExpDateMap.* (totalVolume, bid, ask, delta, etc.)"
-order_flow_engine.py,473,DEFAULT_ZERO_OR,totalVolume,chains.callExpDateMap.*.totalVolume|chains.putExpDateMap.*.totalVolume|chains.underlying.totalVolume|movers.screeners.*.totalVolume|quotes.extended.totalVolume|quotes.quote.totalVolume,"call_vol = sum(c.get(""totalVolume"") or c.get(""lastSize"") or 0 for c in calls)"
-order_flow_engine.py,474,DEFAULT_ZERO_OR,totalVolume,chains.callExpDateMap.*.totalVolume|chains.putExpDateMap.*.totalVolume|chains.underlying.totalVolume|movers.screeners.*.totalVolume|quotes.extended.totalVolume|quotes.quote.totalVolume,"put_vol = sum(p.get(""totalVolume"") or p.get(""lastSize"") or 0 for p in puts)"
-order_flow_engine.py,478,DEFAULT_ZERO_OR,delta,chains.callExpDateMap.*.delta|chains.putExpDateMap.*.delta,"d = c.get(""delta"") or 0"
-order_flow_engine.py,479,DEFAULT_ZERO_OR,totalVolume,chains.callExpDateMap.*.totalVolume|chains.putExpDateMap.*.totalVolume|chains.underlying.totalVolume|movers.screeners.*.totalVolume|quotes.extended.totalVolume|quotes.quote.totalVolume,"v = c.get(""totalVolume"") or c.get(""lastSize"") or 0"
-order_flow_engine.py,482,DEFAULT_ZERO_OR,delta,chains.callExpDateMap.*.delta|chains.putExpDateMap.*.delta,"d = p.get(""delta"") or 0"
-order_flow_engine.py,483,DEFAULT_ZERO_OR,totalVolume,chains.callExpDateMap.*.totalVolume|chains.putExpDateMap.*.totalVolume|chains.underlying.totalVolume|movers.screeners.*.totalVolume|quotes.extended.totalVolume|quotes.quote.totalVolume,"v = p.get(""totalVolume"") or p.get(""lastSize"") or 0"
+order_flow_engine.py,489,,totalVolume,chains.callExpDateMap.*.totalVolume|chains.putExpDateMap.*.totalVolume|chains.underlying.totalVolume|movers.screeners.*.totalVolume|quotes.extended.totalVolume|quotes.quote.totalVolume,"    call_vols = [_nonnegative_float(c.get(""totalVolume"")) for c in calls]"
+order_flow_engine.py,490,,totalVolume,chains.callExpDateMap.*.totalVolume|chains.putExpDateMap.*.totalVolume|chains.underlying.totalVolume|movers.screeners.*.totalVolume|quotes.extended.totalVolume|quotes.quote.totalVolume,"    put_vols = [_nonnegative_float(p.get(""totalVolume"")) for p in puts]"
+order_flow_engine.py,501,,delta,chains.callExpDateMap.*.delta|chains.putExpDateMap.*.delta,"        v = _nonnegative_float(c.get(""totalVolume""))"
+order_flow_engine.py,502,,totalVolume,chains.callExpDateMap.*.totalVolume|chains.putExpDateMap.*.totalVolume|chains.underlying.totalVolume|movers.screeners.*.totalVolume|quotes.extended.totalVolume|quotes.quote.totalVolume,        if d is None or v is None:
+order_flow_engine.py,508,,delta,chains.callExpDateMap.*.delta|chains.putExpDateMap.*.delta,"        v = _nonnegative_float(p.get(""totalVolume""))"
+order_flow_engine.py,509,,totalVolume,chains.callExpDateMap.*.totalVolume|chains.putExpDateMap.*.totalVolume|chains.underlying.totalVolume|movers.screeners.*.totalVolume|quotes.extended.totalVolume|quotes.quote.totalVolume,        if d is None or v is None:
 order_flow_engine.py,484,,delta,chains.callExpDateMap.*.delta|chains.putExpDateMap.*.delta,delta_weighted -= d * v  # put delta negative for directional
 order_flow_engine.py,497,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,Relative volume: current volume / average volume.
 order_flow_engine.py,498,,totalVolume,chains.callExpDateMap.*.totalVolume|chains.putExpDateMap.*.totalVolume|chains.underlying.totalVolume|movers.screeners.*.totalVolume|quotes.extended.totalVolume|quotes.quote.totalVolume,"Uses: quote.totalVolume, extended.totalVolume, underlying.totalVolume,"
@@ -1827,14 +1827,14 @@ server.py,1049,,delta,chains.callExpDateMap.*.delta|chains.putExpDateMap.*.delta
 server.py,1050,,delta,chains.callExpDateMap.*.delta|chains.putExpDateMap.*.delta,if delta < 0:
 server.py,1066,,high|open,pricehistory.candles.*.high|pricehistory.candles.*.open,"ts=cur[""ts""], open=cur[""o""], high=cur[""h""],"
 server.py,1067,,close|low,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.low,"low=cur[""l""], close=cur[""c""],"
-server.py,1063,GET_DEFAULT_ZERO,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"volume=cur.get(""v"", 0.0)"
+server.py,1083,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"                    volume=cur.get(""v"")"
 server.py,1076,GET_DEFAULT_ZERO,,,"cur[""v""] = cur.get(""v"", 0.0) + vol_delta"
 server.py,1099,GET_DEFAULT_ZERO,,,"ts=float(b.get(""datetime"", 0)) / 1000.0 if b.get(""datetime"", 0) > 1e10 else float(b.get(""datetime"", 0)),"
 server.py,1100,,open,pricehistory.candles.*.open,"open=float(b[""open""]),"
 server.py,1101,,high,pricehistory.candles.*.high,"high=float(b[""high""]),"
 server.py,1102,,low,pricehistory.candles.*.low,"low=float(b[""low""]),"
 server.py,1103,,close,chains.underlying.close|pricehistory.candles.*.close,"close=float(b[""close""]),"
-server.py,1098,GET_DEFAULT_ZERO,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"volume=float(b.get(""volume"", 0)),"
+server.py,1119,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"                        volume=float(b[""volume""]),"
 server.py,1111,,last,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last,last = candles[-1]
 server.py,1113,,last,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last,"""ts"": self._bar_start(last.ts),"
 server.py,1114,,close|high|last|low|open,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last|pricehistory.candles.*.low|pricehistory.candles.*.open,"""o"": last.open, ""h"": last.high, ""l"": last.low, ""c"": last.close,"
@@ -1922,7 +1922,7 @@ server.py,2629,DATE_DIFF_DTE,,,"def _l1_scope_key(ticker: str, expiry: Optional[
 server.py,2631,DATE_DIFF_DTE,,,"return (t, expiry if expiry is not None else ""__auto__"")"
 server.py,2634,DATE_DIFF_DTE,,,"def _l1_notify_sse_after_authoritative_build(ticker: str, expiry: Optional[str]) -> None:"
 server.py,2640,DATE_DIFF_DTE,,,"sk = _l1_scope_key(ticker, expiry)"
-server.py,2648,GET_DEFAULT_ZERO,last,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last,"last = _l1_sse_last_emit_mono.get(sk, 0.0)"
+server.py,2663,,last,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last,"        last = _l1_sse_last_emit_mono.get(sk, 0.0)"
 server.py,2649,,last,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last,if now_m - last < _L1_SSE_MIN_INTERVAL_SEC:
 server.py,2653,DATE_DIFF_DTE,,,"payload = _l1_http_get_projection(ticker, expiry, force=False)"
 server.py,2654,DEFAULT_ZERO_OR,,,"gen = int(payload.get(""l1_generation"") or 0)"
@@ -1940,9 +1940,6 @@ server.py,756,,bid,chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains
 server.py,757,,ask,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask,"""ask_disp"": f""{float(ask):.2f}"" if ask is not None else ""—"","
 server.py,767,,bid|bidPrice,chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid|quotes.extended.bidPrice|quotes.quote.bidPrice,"""bid"": ""bidPrice"" if bid is not None else ""unavailable_missing_bid"","
 server.py,768,,ask|askPrice,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|quotes.extended.askPrice|quotes.quote.askPrice,"""ask"": ""askPrice"" if ask is not None else ""unavailable_missing_ask"","
-server.py,724,,ask|bid,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,if bid is not None and ask is not None:
-server.py,725,,ask|bid,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"bf, af = float(bid), float(ask)"
-server.py,726,BID_ASK_MID,,,mid = (bf + af) / 2.0
 server.py,2698,ASK_MINUS_BID,spread,,"row[""spread""] = (af - bf) / mid"
 server.py,2699,ASK_MINUS_BID,,,"row[""spread_pts""] = round(af - bf, 4)"
 server.py,653,DATE_DIFF_DTE,,,"""selected_exp"": expiry,"
@@ -1966,7 +1963,7 @@ server.py,2877,TIME_NOW_FALLBACK,,,_fetch_start_mono = time.monotonic()
 server.py,2905,TIME_NOW_FALLBACK,,,_t_after_chain_mono = time.monotonic()
 server.py,2920,,totalVolume,chains.callExpDateMap.*.totalVolume|chains.putExpDateMap.*.totalVolume|chains.underlying.totalVolume|movers.screeners.*.totalVolume|quotes.extended.totalVolume|quotes.quote.totalVolume,"_safe_float_quote(_chain_underlying.get(""totalVolume""))"
 server.py,2929,TIME_NOW_FALLBACK,,,_t_after_quote_mono = time.monotonic()
-server.py,2855,DEFAULT_ZERO_OR,last|mark|spot,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last|chains.callExpDateMap.*.mark|chains.putExpDateMap.*.mark|chains.underlying.mark|quotes.extended.mark|quotes.quote.mark|streaming.content.*.MARK,spot   = parsed.last or parsed.mark or 0.0
+server.py,2948,,last|mark|spot,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last|chains.callExpDateMap.*.mark|chains.putExpDateMap.*.mark|chains.underlying.mark|quotes.extended.mark|quotes.quote.mark|streaming.content.*.MARK,    spot   = parsed.last if parsed.last and parsed.last > 0 else (parsed.mark if parsed.mark and parsed.mark > 0 else None)
 server.py,2934,,bid,chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,bid    = parsed.bid
 server.py,2935,,ask,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask,ask    = parsed.ask
 server.py,2939,,ask|bid,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"round(float(ask) - float(bid), 4) if (bid is not None and ask is not None) else None"
@@ -2014,8 +2011,8 @@ server.py,3420,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,,,"_gex_at_pin = abs(float(_pin_
 server.py,3307,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,,,"_oi_at_pin = float(_pin_bkt.get(""call_oi"", 0) or 0) + float(_pin_bkt.get(""put_oi"", 0) or 0)"
 server.py,3545,GET_DEFAULT_ZERO,,,"if _latest_bar_ts_1m > zt.get(""last_bar_ts_1m"", 0.0):"
 server.py,3548,GET_DEFAULT_ZERO,,,"if _latest_bar_ts_5m > zt.get(""last_bar_ts_5m"", 0.0):"
-server.py,3457,GET_DEFAULT_ZERO,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,"ceil_tests  = _ed_db.count_level_tests(ticker, ""Call Gamma Wall"", cgw).get(""total"", 0)"
-server.py,3459,GET_DEFAULT_ZERO,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,"floor_tests = _ed_db.count_level_tests(ticker, ""Put Gamma Wall"",  pgw).get(""total"", 0)"
+server.py,3587,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,"                _ct = _ceil.get(""total"")"
+server.py,3592,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,                floor_tests = int(_ft) if _ft is not None else 0
 server.py,3579,TIME_NOW_FALLBACK,,,recent_cross_eval_wall_ts = time.time()
 server.py,3463,GET_DEFAULT_ZERO,,,"bars_ago = int((now_ts - c.get(""ts_utc"", 0)) / 60)  # 1m bar cadence (canonical)"
 server.py,3629,,close|high|low|open,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open,"""open"": b.open, ""high"": b.high, ""low"": b.low, ""close"": b.close,"
@@ -2138,12 +2135,12 @@ server.py,6382,,open,pricehistory.candles.*.open,"""open"": c.open,"
 server.py,6383,,high,pricehistory.candles.*.high,"""high"": c.high,"
 server.py,6384,,low,pricehistory.candles.*.low,"""low"": c.low,"
 server.py,6385,,close,chains.underlying.close|pricehistory.candles.*.close,"""close"": c.close,"
-server.py,6273,DEFAULT_ZERO_OR,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"""volume"": float(c.volume or 0),"
+server.py,6406,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"            ""volume"": float(c.volume) if c.volume is not None else None,"
 server.py,6393,,open,pricehistory.candles.*.open,"""open"": float(cur[""o""]),"
 server.py,6394,,high,pricehistory.candles.*.high,"""high"": float(cur[""h""]),"
 server.py,6395,,low,pricehistory.candles.*.low,"""low"": float(cur[""l""]),"
 server.py,6396,,close,chains.underlying.close|pricehistory.candles.*.close,"""close"": float(cur[""c""]),"
-server.py,6284,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"""volume"": float(cur.get(""v"", 0) or 0),"
+server.py,6417,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"            ""volume"": float(cur[""v""]) if cur.get(""v"") is not None else None,"
 server.py,6402,DATE_DIFF_DTE,,,def _liquidity_spot_from_cache_any_expiry(ticker: str) -> Optional[float]:
 server.py,6403,DATE_DIFF_DTE,spot,,"""""""Best-effort spot from any cached /api/state row for this ticker (expiry may differ)."""""""
 server.py,2432,DATE_DIFF_DTE,,,"def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = ""unknown"") -> dict:"
@@ -2706,7 +2703,7 @@ features/signal_layer_v1.py,142,,close|open,chains.underlying.close|pricehistory
 features/signal_layer_v1.py,143,,close,chains.underlying.close|pricehistory.candles.*.close,"c = _f(chunk[-1].get(""close""))"
 features/signal_layer_v1.py,144,,high,pricehistory.candles.*.high,"    chunk: list[Mapping[str, Any]] = []"
 features/signal_layer_v1.py,145,,low,pricehistory.candles.*.low,    for b in bars:
-features/signal_layer_v1.py,146,DEFAULT_ZERO_OR,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"vol = sum(_f(x.get(""volume"")) or 0.0 for x in chunk)"
+features/signal_layer_v1.py,153,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,            vol = sum(v for v in volumes if v is not None) if all(v is not None for v in volumes) else None
 features/signal_layer_v1.py,150,,open,pricehistory.candles.*.open,"""open"": o,"
 features/signal_layer_v1.py,151,,high,pricehistory.candles.*.high,"""high"": hi,"
 features/signal_layer_v1.py,152,,low,pricehistory.candles.*.low,"""low"": lo,"
@@ -2714,7 +2711,7 @@ features/signal_layer_v1.py,153,,close,chains.underlying.close|pricehistory.cand
 features/signal_layer_v1.py,154,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"""volume"": vol,"
 features/signal_layer_v1.py,174,,last|volume,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last|movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"""""""Return (poc, val, vah) price levels from last n bars (volume-weighted histogram)."""""""
 features/signal_layer_v1.py,181,,close,chains.underlying.close|pricehistory.candles.*.close,"c = _f(b.get(""close""))"
-features/signal_layer_v1.py,182,DEFAULT_ZERO_OR,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"v = _f(b.get(""volume"")) or 0.0"
+features/signal_layer_v1.py,189,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"        v = _f(b.get(""volume""))"
 features/signal_layer_v1.py,236,,close|high|low|open|volume,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open|movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"SELECT bar_start_ts_utc, bar_end_ts_utc, open, high, low, close, volume"
 features/signal_layer_v1.py,270,,last,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last,last = bars[-1]
 features/signal_layer_v1.py,271,,last,chains.callExpDateMap.*.last|chains.putExpDateMap.*.last|chains.underlying.last,"be_last = _f(last.get(""bar_end_ts_utc""))"
@@ -2724,7 +2721,7 @@ features/signal_layer_v1.py,336,,close|low,chains.underlying.close|pricehistory.
 features/signal_layer_v1.py,349,,high,pricehistory.candles.*.high,"h = _f(b.get(""high""))"
 features/signal_layer_v1.py,350,,low,pricehistory.candles.*.low,"l_ = _f(b.get(""low""))"
 features/signal_layer_v1.py,351,,close,chains.underlying.close|pricehistory.candles.*.close,"c = _f(b.get(""close""))"
-features/signal_layer_v1.py,352,DEFAULT_ZERO_OR,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"v = _f(b.get(""volume"")) or 0.0"
+features/signal_layer_v1.py,359,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"        v = _f(b.get(""volume""))"
 features/signal_layer_v1.py,372,,close,chains.underlying.close|pricehistory.candles.*.close,"c = _f(b.get(""close""))"
 features/signal_layer_v1.py,431,,high,pricehistory.candles.*.high,"h0 = _f(last_bar.get(""high""))"
 features/signal_layer_v1.py,432,,low,pricehistory.candles.*.low,"l0 = _f(last_bar.get(""low""))"
@@ -3678,7 +3675,7 @@ tools/ingest_1m_to_staging.py,83,,open,pricehistory.candles.*.open,"o = float(b[
 tools/ingest_1m_to_staging.py,84,,high,pricehistory.candles.*.high,"h = float(b[""high""])"
 tools/ingest_1m_to_staging.py,85,,low,pricehistory.candles.*.low,"lo = float(b[""low""])"
 tools/ingest_1m_to_staging.py,86,,close,chains.underlying.close|pricehistory.candles.*.close,"c = float(b[""close""])"
-tools/ingest_1m_to_staging.py,89,DEFAULT_ZERO_OR|GET_DEFAULT_ZERO,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,"vol = float(b.get(""volume"", 0) or 0)"
+tools/ingest_1m_to_staging.py,91,,volume,movers.screeners.*.volume|pricehistory.candles.*.volume|streaming.content.*.VOLUME,            vol = float(raw_vol) if raw_vol is not None else None
 tools/ingest_1m_to_staging.py,217,,close|high|low|open,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open,high >= open AND high >= close AND high >= low
 tools/ingest_1m_to_staging.py,218,,close|high|low|open,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open,AND low <= open AND low <= close AND high >= low
 tools/ingest_1m_to_staging.py,294,,close|high|low|open,chains.underlying.close|pricehistory.candles.*.close|pricehistory.candles.*.high|pricehistory.candles.*.low|pricehistory.candles.*.open,AND NOT (high >= open AND high >= close AND high >= low
@@ -3923,7 +3920,7 @@ v2_decision/a2_option_expression.py,55,DATE_DIFF_DTE,,,"""contract_ref"": ""PILO
 v2_decision/a2_option_expression.py,61,DATE_DIFF_DTE,,,"""contract_ref"": ""PILOT_1B_A2_0DTE_CONTRACT.md line 162"","
 v2_decision/a2_option_expression.py,64,,ask|bid,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"""contract_gate"": ""missing bid or ask for selected contract"","
 v2_decision/a2_option_expression.py,67,DATE_DIFF_DTE,,,"""contract_ref"": ""PILOT_1B_A2_0DTE_CONTRACT.md line 163"","
-v2_decision/a2_option_expression.py,70,BLACK_SCHOLES,theta,chains.callExpDateMap.*.theta|chains.putExpDateMap.*.theta,"""contract_gate"": ""missing theta from chain row and Black-Scholes approximation inputs"","
+v2_decision/a2_option_expression.py,70,,theta,chains.callExpDateMap.*.theta|chains.putExpDateMap.*.theta,"        ""contract_gate"": ("
 v2_decision/a2_option_expression.py,73,DATE_DIFF_DTE,,,"""contract_ref"": ""PILOT_1B_A2_0DTE_CONTRACT.md lines 119 and 164"","
 v2_decision/a2_option_expression.py,79,DATE_DIFF_DTE,,,"""contract_ref"": ""PILOT_1B_A2_0DTE_CONTRACT.md line 165; OPERATOR_DECISION_REGISTER.md O-20"","
 v2_decision/a2_option_expression.py,85,DATE_DIFF_DTE,,,"""contract_ref"": ""PILOT_1B_A2_0DTE_CONTRACT.md line 166; OPERATOR_DECISION_REGISTER.md O-21"","
@@ -3933,7 +3930,7 @@ v2_decision/a2_option_expression.py,103,DATE_DIFF_DTE,,,"""contract_ref"": ""PIL
 v2_decision/a2_option_expression.py,112,DATE_DIFF_DTE,,,"""contract_ref"": ""PILOT_1B_A2_0DTE_CONTRACT.md lines 155-156"","
 v2_decision/a2_option_expression.py,138,,bid,chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"bid = _num(chain_row.get(""bid""))"
 v2_decision/a2_option_expression.py,139,,ask,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask,"ask = _num(chain_row.get(""ask""))"
-v2_decision/a2_option_expression.py,140,BID_ASK_MID,ask|bid,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"mid = round((bid + ask) / 2.0, 4) if bid is not None and ask is not None else None"
+v2_decision/a2_option_expression.py,145,BID_ASK_MID,ask|bid,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"        mid = round((b_leg + a_leg) / 2.0, 4)"
 v2_decision/a2_option_expression.py,141,,ask|bid|spread,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"spread = _first_number(ms_dict.get(""spread""), _spread_from_bid_ask(bid, ask))"
 v2_decision/a2_option_expression.py,142,,theta,chains.callExpDateMap.*.theta|chains.putExpDateMap.*.theta,"theta, theta_source, theta_detail = _theta("
 v2_decision/a2_option_expression.py,176,,bid,chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"bid=bid,"
@@ -3992,7 +3989,7 @@ v2_decision/a2_option_expression.py,535,DATE_DIFF_DTE,,,"raw = str(ms_dict.get("
 v2_decision/a2_option_expression.py,536,DATE_DIFF_DTE,,,"if ""0DTE"" in raw.upper():"
 v2_decision/a2_option_expression.py,541,,ask|bid,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"def _spread_from_bid_ask(bid: float | None, ask: float | None) -> float | None:"
 v2_decision/a2_option_expression.py,542,,ask|bid,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,if bid is None or ask is None:
-v2_decision/a2_option_expression.py,544,ASK_MINUS_BID,ask|bid,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"return round(ask - bid, 4)"
+v2_decision/a2_option_expression.py,556,ASK_MINUS_BID,ask|bid,chains.callExpDateMap.*.ask|chains.putExpDateMap.*.ask|chains.underlying.ask|chains.callExpDateMap.*.bid|chains.putExpDateMap.*.bid|chains.underlying.bid,"return round(a_leg - b_leg, 4)"
 v2_decision/a2_option_expression.py,564,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,"gamma = _num(chain_row.get(""gamma""))"
 v2_decision/a2_option_expression.py,565,,openInterest,chains.callExpDateMap.*.openInterest|chains.putExpDateMap.*.openInterest,"oi = _num(chain_row.get(""openInterest""))"
 v2_decision/a2_option_expression.py,566,,gamma,chains.callExpDateMap.*.gamma|chains.putExpDateMap.*.gamma,if gamma is None or oi is None:

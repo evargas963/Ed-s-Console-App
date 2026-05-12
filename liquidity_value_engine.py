@@ -73,11 +73,11 @@ def _bars_to_list(bars) -> list[dict]:
         for _, row in bars.iterrows():
             d = row.to_dict() if hasattr(row, "to_dict") else dict(row)
             ts = d.get("timestamp") or d.get("datetime") or d.get("date") or d.get("ts")
-            o = _float_or_none(d.get("open") if d.get("open") is not None else d.get("o"))
-            h = _float_or_none(d.get("high") if d.get("high") is not None else d.get("h"))
-            l_ = _float_or_none(d.get("low") if d.get("low") is not None else d.get("l"))
-            c = _float_or_none(d.get("close") if d.get("close") is not None else d.get("c"))
-            v = d.get("volume") if d.get("volume") is not None else d.get("vol", d.get("v"))
+            o = _float_or_none(d.get("open"))
+            h = _float_or_none(d.get("high"))
+            l_ = _float_or_none(d.get("low"))
+            c = _float_or_none(d.get("close"))
+            v = d.get("volume")
             if o is None or h is None or l_ is None or c is None:
                 continue
             _ts = None
@@ -102,24 +102,24 @@ def _bars_to_list(bars) -> list[dict]:
         if isinstance(b, dict):
             row = b
         else:
+            ts = getattr(b, "timestamp", getattr(b, "ts", None))
             row = {
-                "open": getattr(b, "open", getattr(b, "o", None)),
-                "high": getattr(b, "high", getattr(b, "h", None)),
-                "low": getattr(b, "low", getattr(b, "l", None)),
-                "close": getattr(b, "close", getattr(b, "c", None)),
-                "volume": getattr(b, "volume", getattr(b, "vol", None)),
+                "open": getattr(b, "open", None),
+                "high": getattr(b, "high", None),
+                "low": getattr(b, "low", None),
+                "close": getattr(b, "close", None),
+                "volume": getattr(b, "volume", None),
+                "timestamp": ts,
             }
-            ts = getattr(b, "timestamp", getattr(b, "ts", getattr(b, "datetime", None)))
             if ts is not None:
                 row["_ts"] = ts.timestamp() if hasattr(ts, "timestamp") else (ts / 1000.0 if ts > 1e12 else ts)
             else:
                 row["_ts"] = None
-            row["timestamp"] = ts
-        o = _float_or_none(row.get("open") if row.get("open") is not None else row.get("o"))
-        h = _float_or_none(row.get("high") if row.get("high") is not None else row.get("h"))
-        l_ = _float_or_none(row.get("low") if row.get("low") is not None else row.get("l"))
-        c = _float_or_none(row.get("close") if row.get("close") is not None else row.get("c"))
-        v = row.get("volume") if row.get("volume") is not None else row.get("vol", row.get("v"))
+        o = _float_or_none(row.get("open"))
+        h = _float_or_none(row.get("high"))
+        l_ = _float_or_none(row.get("low"))
+        c = _float_or_none(row.get("close"))
+        v = row.get("volume")
         if o is None or h is None or l_ is None or c is None:
             continue
         out.append({

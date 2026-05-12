@@ -40,7 +40,7 @@ class Candle:
     high:   float
     low:    float
     close:  float
-    volume: float = 0.0
+    volume: Optional[float] = None
 
     @property
     def body(self) -> float:
@@ -673,13 +673,11 @@ def compute_session_hl(candles: list) -> tuple:
     low_idx = 0
 
     for i, c in enumerate(candles):
-        h = c.high if hasattr(c, 'high') else c.h
-        l = c.low if hasattr(c, 'low') else c.l
-        if s_high is None or h > s_high:
-            s_high = h
+        if s_high is None or c.high > s_high:
+            s_high = c.high
             high_idx = i
-        if s_low is None or l < s_low:
-            s_low = l
+        if s_low is None or c.low < s_low:
+            s_low = c.low
             low_idx = i
 
     return s_high, s_low, high_idx, low_idx

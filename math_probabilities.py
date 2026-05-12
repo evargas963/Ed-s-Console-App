@@ -79,6 +79,7 @@ class OeResult:
     total_score_before_walls: float = 0.0
     total_score_after_walls: float = 0.0
     wall_contribution_detail: dict | None = None
+    spread_source: str | None = None
 
 
 def _oe_wall_consensus_row(walls):
@@ -193,9 +194,11 @@ def score_option_expression(contracts, spot, strike, side, *, walls=None):
     ct = candidates[0]
     bid = _f(ct.get("bid"))
     ask = _f(ct.get("ask"))
-    gamma = _f(ct.get("gamma"))
-    delta = _f(ct.get("delta"))
-    volume = _f(ct.get("totalVolume")) or _f(ct.get("volume"))
+    gamma_raw = _f(ct.get("gamma"))
+    gamma = gamma_raw if (gamma_raw is not None and gamma_raw != -999.0 and math.isfinite(gamma_raw)) else None
+    delta_raw = _f(ct.get("delta"))
+    delta = delta_raw if (delta_raw is not None and delta_raw != -999.0 and math.isfinite(delta_raw)) else None
+    volume = _f(ct.get("totalVolume"))
     oi = _f(ct.get("openInterest"))
     a_px, b_px = ask, bid
     spread = round(a_px - b_px, 4) if b_px is not None and a_px is not None else None
@@ -209,9 +212,11 @@ def score_option_expression(contracts, spot, strike, side, *, walls=None):
     for c in contracts:
         if str(c.get("putCall", "")).upper().strip() != side_up:
             continue
-        g = _f(c.get("gamma"))
-        if g is not None and abs(g) > abs(max_g):
-            max_g = g
+        g_raw = _f(c.get("gamma"))
+        if g_raw is None or g_raw == -999.0 or not math.isfinite(g_raw):
+            continue
+        if abs(g_raw) > abs(max_g):
+            max_g = g_raw
             max_gs = _f(c.get("strikePrice"))
     if max_gs is not None and abs(max_gs - strike_f) < 0.01:
         gis_max = True
@@ -255,6 +260,7 @@ def score_option_expression(contracts, spot, strike, side, *, walls=None):
         total_score_before_walls=round(base, 4),
         total_score_after_walls=round(total_after, 4),
         wall_contribution_detail=wdbg,
+        spread_source=("derived_chain_bid_ask_pts" if spread is not None else None),
     )
 
 

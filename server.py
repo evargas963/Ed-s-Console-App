@@ -76,7 +76,6 @@ from schwab_client import (
     safe_get_quote,
     safe_get_price_history,
 )
-from chains import parse_quote_payload, iter_contracts, contract_fields
 from math_exposure import (
     _f,
     compute_exposures_by_strike,
@@ -725,28 +724,54 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
         raise HTTPException(status_code=502, detail="Quote fetch failed")
     q_json = q_resp.json()
     t_parse0 = time.perf_counter()
-    parsed = parse_quote_payload(tkr, q_json, session_label)
-    spot_source = "lastPrice" if parsed.last and parsed.last > 0 else ("mark" if parsed.mark and parsed.mark > 0 else None)
-    spot = parsed.last if spot_source == "lastPrice" else (parsed.mark if spot_source == "mark" else None)
-    bid, ask = parsed.bid, parsed.ask
+    _node = q_json.get(tkr.upper()) or q_json.get(tkr) or {}
+    _q = _node.get("quote") or {}
+    _ext = _node.get("extended") or {}
+    _reg = _node.get("regular") or {}
+    last = _safe_float_quote(_q.get("lastPrice"))
+    if last is None or last <= 0:
+        last = _safe_float_quote(_ext.get("lastPrice"))
+    if last is None or last <= 0:
+        last = _safe_float_quote(_reg.get("regularMarketLastPrice"))
+    mark = _safe_float_quote(_q.get("mark"))
+    if mark is None or mark <= 0:
+        mark = _safe_float_quote(_ext.get("mark"))
+    bid = _safe_float_quote(_q.get("bidPrice"))
+    if bid is None:
+        bid = _safe_float_quote(_ext.get("bidPrice"))
+    ask = _safe_float_quote(_q.get("askPrice"))
+    if ask is None:
+        ask = _safe_float_quote(_ext.get("askPrice"))
+    quote_time = _safe_float_quote(_q.get("quoteTime"))
+    if quote_time is None:
+        quote_time = _safe_float_quote(_ext.get("quoteTime"))
+    trade_time = _safe_float_quote(_q.get("tradeTime"))
+    if trade_time is None:
+        trade_time = _safe_float_quote(_ext.get("tradeTime"))
+    if trade_time is None:
+        trade_time = _safe_float_quote(_reg.get("regularMarketTradeTime"))
+    spot_source = "lastPrice" if last and last > 0 else ("mark" if mark and mark > 0 else None)
+    spot = last if spot_source == "lastPrice" else (mark if spot_source == "mark" else None)
     try:
         spot_f = float(spot) if spot and float(spot) > 0 else None
     except (TypeError, ValueError):
         spot_f = None
     spread_frac = None
     spread_pts = None
-    quote_mid = None
+    quote_mid: float | None = None
+    mid_source: str | None = None
     try:
-        if bid is not None and ask is not None:
+        if mark is not None and mark > 0:
+            quote_mid = float(mark)
+            mid_source = "schwab_quote_mark"
+        if quote_mid is not None and quote_mid > 0 and bid is not None and ask is not None:
             bf, af = float(bid), float(ask)
-            quote_mid = (bf + af) / 2.0
-            if quote_mid > 0:
-                spread_frac = (af - bf) / quote_mid
-                spread_pts = round(af - bf, 4)
+            spread_frac = (af - bf) / quote_mid
+            spread_pts = round(af - bf, 4)
     except (TypeError, ValueError):
         pass
     t_parse1 = time.perf_counter()
-    quote_ts = parsed.quote_time or parsed.trade_time
+    quote_ts = quote_time or trade_time
     server_received_ts = time.time()
     total_ms = (time.perf_counter() - t0) * 1000.0
     log.info(
@@ -772,10 +797,18 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
         "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
         "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
         "quote_mid": quote_mid,
-        "mid_source": ("derived_bid_ask_mid" if quote_mid is not None else None),
+        "mid_source": mid_source,
         "spread": spread_frac,
         "spread_pts": spread_pts,
-        "spread_source": ("derived_bid_ask_mid_fraction" if spread_frac is not None else None),
+        "spread_source": (
+            "derived_bid_ask_mid_fraction"
+            if spread_frac is not None and mid_source == "derived_bid_ask_mid"
+            else (
+                "derived_bid_ask_fraction_schwab_mark_denom"
+                if spread_frac is not None and mid_source == "schwab_quote_mark"
+                else None
+            )
+        ),
         "spread_pts_source": ("derived_bid_ask_pts" if spread_pts is not None else None),
         "fast_generation_id": _lmp.next_fast_generation(tkr),
         "fast_server_ts": quote_ts,
@@ -786,6 +819,7 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
             "spot": spot_source or "unavailable_missing_last_and_mark",
             "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
             "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
+            "mid": mid_source or "unavailable_missing_mark_and_bid_ask",
             "spread": "schwab_bid_ask" if spread_frac is not None else "unavailable_missing_bid_or_ask",
             "carried_forward": False,
         },
@@ -990,7 +1024,7 @@ PRE_MARKET_MINS:     int   = 540    # 9:00 AM ET  (logger session buffer start)
 LOGGER_BUFFER_MINS:  int   = 990    # 4:30 PM ET  (logger session buffer end)
 # NOTE: session_label ("RTH"/"Pre-Market"/"After-Hours"/"Closed") is derived ONCE
 # from SPY's quote in market_context._derive_session(), stored on MarketContext.session_label,
-# and passed to every ticker's parse_quote_payload call — it is a global market state.
+# and stamped on the per-request bundle as a global market state.
 MARKET_CLOSE_HOUR:   float = 16.0   # 4:00 PM ET (used for hours-remaining calc)
 
 # Candle accumulator — max bars centralized in math_exposure (CANDLE_5M/1M_MAX_BARS)
@@ -1056,8 +1090,8 @@ class _CandleAccumulator:
 
     def tick(self, ticker: str, price: float, ts: float, total_volume: float | None = None):
         """Feed a new price tick. Automatically closes/opens bars at boundaries.
-        total_volume: totalVolume (or regularMarketVolume) from quote. Delta vs prior
-        reading is accumulated per bar; captures all trades between polls.
+        total_volume: totalVolume from Schwab quote. Delta vs prior reading is
+        accumulated per bar; captures all trades between polls.
         """
         bar_ts = self._bar_start(ts)
         total_now = float(total_volume) if total_volume is not None else None
@@ -2103,8 +2137,21 @@ def _fetch_expiries_light(ticker: str) -> list[str]:
     if c_resp is None or c_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Option chain fetch failed")
     c_json = c_resp.json()
-    contracts_raw = list(iter_contracts(c_json))
-    contracts = [contract_fields(ct) for ct in contracts_raw]
+    contracts_raw: list[dict] = []
+    for _side_key in ("callExpDateMap", "putExpDateMap"):
+        _side_map = c_json.get(_side_key) or {}
+        if not isinstance(_side_map, dict):
+            continue
+        for _exp_map in _side_map.values():
+            if not isinstance(_exp_map, dict):
+                continue
+            for _strike_list in _exp_map.values():
+                if not isinstance(_strike_list, list):
+                    continue
+                for _ct in _strike_list:
+                    if isinstance(_ct, dict):
+                        contracts_raw.append(_ct)
+    contracts = [dict(ct) for ct in contracts_raw]
     expiries = _expiries_from_contracts(contracts)
     today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
     return [e for e in expiries if e >= today]
@@ -2188,17 +2235,11 @@ def _compute_vwap_from_bars(bars: list) -> Optional[float]:
     cum_tp_vol = 0.0
     cum_vol    = 0.0
     for b in bars:
-        vol = getattr(b, 'volume', None)
-        if vol is None or float(vol) <= 0:
+        if b.volume is None or float(b.volume) <= 0:
             continue
-        h = getattr(b, 'high',  None) or getattr(b, 'h', None)
-        l = getattr(b, 'low',   None) or getattr(b, 'l', None)
-        c = getattr(b, 'close', None) or getattr(b, 'c', None)
-        if h is None or l is None or c is None:
-            continue
-        tp = (float(h) + float(l) + float(c)) / 3.0
-        cum_tp_vol += tp * float(vol)
-        cum_vol    += float(vol)
+        tp = (float(b.high) + float(b.low) + float(b.close)) / 3.0
+        cum_tp_vol += tp * float(b.volume)
+        cum_vol    += float(b.volume)
     if cum_vol > 0:
         return round(cum_tp_vol / cum_vol, 4)
     return None
@@ -2754,13 +2795,38 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         q_resp = _safe_get_quote_with_retry(client, tkr)
         if q_resp and q_resp.status_code == 200:
             q_json = q_resp.json()
-            pq = parse_quote_payload(tkr, q_json, sess)
-            spot_source = "lastPrice" if pq.last and pq.last > 0 else ("mark" if pq.mark and pq.mark > 0 else None)
-            spot = pq.last if spot_source == "lastPrice" else (pq.mark if spot_source == "mark" else None)
-            bid, ask = pq.bid, pq.ask
+            _node = q_json.get(tkr.upper()) or q_json.get(tkr) or {}
+            _q = _node.get("quote") or {}
+            _ext = _node.get("extended") or {}
+            _reg = _node.get("regular") or {}
+            pq_last = _safe_float_quote(_q.get("lastPrice"))
+            if pq_last is None or pq_last <= 0:
+                pq_last = _safe_float_quote(_ext.get("lastPrice"))
+            if pq_last is None or pq_last <= 0:
+                pq_last = _safe_float_quote(_reg.get("regularMarketLastPrice"))
+            pq_mark = _safe_float_quote(_q.get("mark"))
+            if pq_mark is None or pq_mark <= 0:
+                pq_mark = _safe_float_quote(_ext.get("mark"))
+            pq_bid = _safe_float_quote(_q.get("bidPrice"))
+            if pq_bid is None:
+                pq_bid = _safe_float_quote(_ext.get("bidPrice"))
+            pq_ask = _safe_float_quote(_q.get("askPrice"))
+            if pq_ask is None:
+                pq_ask = _safe_float_quote(_ext.get("askPrice"))
+            pq_quote_time = _safe_float_quote(_q.get("quoteTime"))
+            if pq_quote_time is None:
+                pq_quote_time = _safe_float_quote(_ext.get("quoteTime"))
+            pq_trade_time = _safe_float_quote(_q.get("tradeTime"))
+            if pq_trade_time is None:
+                pq_trade_time = _safe_float_quote(_ext.get("tradeTime"))
+            if pq_trade_time is None:
+                pq_trade_time = _safe_float_quote(_reg.get("regularMarketTradeTime"))
+            spot_source = "lastPrice" if pq_last and pq_last > 0 else ("mark" if pq_mark and pq_mark > 0 else None)
+            spot = pq_last if spot_source == "lastPrice" else (pq_mark if spot_source == "mark" else None)
+            bid, ask = pq_bid, pq_ask
             if spot and float(spot) > 0:
                 sf = float(spot)
-                quote_ts = pq.quote_time or pq.trade_time
+                quote_ts = pq_quote_time or pq_trade_time
                 server_received_ts = time.time()
                 row = {
                     "ticker": tkr,
@@ -2781,22 +2847,33 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                         "spot": spot_source,
                         "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
                         "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
+                        "mid": "unavailable_missing_mark_and_bid_ask",
                         "spread": "unavailable_missing_bid_or_ask",
                         "carried_forward": False,
                     },
                 }
+                mid: float | None = None
+                mid_src: str | None = None
+                if pq_mark is not None and pq_mark > 0:
+                    mid = float(pq_mark)
+                    mid_src = "schwab_quote_mark"
+                if mid is not None:
+                    row["quote_mid"] = mid
+                    row["mid_source"] = mid_src
+                row["quote_source_detail"]["mid"] = mid_src or "unavailable_missing_mark_and_bid_ask"
                 if bid is not None and ask is not None:
                     try:
                         b_px, a_px = float(bid), float(ask)
-                        mid = (b_px + a_px) / 2.0
-                        if mid > 0:
-                            row["quote_mid"] = mid
-                            row["mid_source"] = "derived_bid_ask_mid"
+                        row["spread_pts"] = round(a_px - b_px, 4)
+                        row["spread_pts_source"] = "derived_bid_ask_pts"
+                        if mid is not None and mid > 0:
                             row["spread"] = (a_px - b_px) / mid
-                            row["spread_pts"] = round(a_px - b_px, 4)
-                            row["spread_source"] = "derived_bid_ask_mid_fraction"
-                            row["spread_pts_source"] = "derived_bid_ask_pts"
-                            row["quote_source_detail"]["spread"] = "schwab_bid_ask"
+                            row["spread_source"] = (
+                                "derived_bid_ask_mid_fraction"
+                                if mid_src == "derived_bid_ask_mid"
+                                else "derived_bid_ask_fraction_schwab_mark_denom"
+                            )
+                        row["quote_source_detail"]["spread"] = "schwab_bid_ask"
                     except (TypeError, ValueError):
                         pass
     if not row or row.get("spot") is None:
@@ -2932,8 +3009,21 @@ def _fetch_state(
     if c_resp is None or c_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Chain fetch failed")
     c_json = c_resp.json()
-    contracts_raw = list(iter_contracts(c_json))
-    contracts     = [contract_fields(ct) for ct in contracts_raw]
+    contracts_raw: list[dict] = []
+    for _side_key in ("callExpDateMap", "putExpDateMap"):
+        _side_map = c_json.get(_side_key) or {}
+        if not isinstance(_side_map, dict):
+            continue
+        for _exp_map in _side_map.values():
+            if not isinstance(_exp_map, dict):
+                continue
+            for _strike_list in _exp_map.values():
+                if not isinstance(_strike_list, list):
+                    continue
+                for _ct in _strike_list:
+                    if isinstance(_ct, dict):
+                        contracts_raw.append(_ct)
+    contracts     = [dict(ct) for ct in contracts_raw]
     _t_after_chain_mono = time.monotonic()
 
     # totalVolume: WebSocket TOTAL_VOLUME preferred; else chain underlying (include_underlying_quote)
@@ -2948,10 +3038,7 @@ def _fetch_state(
     if _total_vol is None:
         _chain_underlying = c_json.get("underlying") or {}
         if isinstance(_chain_underlying, dict):
-            _total_vol = (
-                _safe_float_quote(_chain_underlying.get("totalVolume"))
-                or _safe_float_quote(_chain_underlying.get("regularMarketVolume"))
-            )
+            _total_vol = _safe_float_quote(_chain_underlying.get("totalVolume"))
 
     # ── Quote AFTER chain so spot/bid/ask are not aged by chain RTT + earlier work (live vs charts) ──
     q_resp = _safe_get_quote_with_retry(client, ticker)
@@ -2961,10 +3048,35 @@ def _fetch_state(
     _t_after_quote_mono = time.monotonic()
     _t_after_quote_wall = time.time()
 
-    parsed = parse_quote_payload(ticker, q_json, session_label)
-    spot   = parsed.last if parsed.last and parsed.last > 0 else (parsed.mark if parsed.mark and parsed.mark > 0 else None)
-    bid    = parsed.bid
-    ask    = parsed.ask
+    _node_q = q_json.get(ticker.upper()) or q_json.get(ticker) or {}
+    _q_q = _node_q.get("quote") or {}
+    _ext_q = _node_q.get("extended") or {}
+    _reg_q = _node_q.get("regular") or {}
+    parsed_last = _safe_float_quote(_q_q.get("lastPrice"))
+    if parsed_last is None or parsed_last <= 0:
+        parsed_last = _safe_float_quote(_ext_q.get("lastPrice"))
+    if parsed_last is None or parsed_last <= 0:
+        parsed_last = _safe_float_quote(_reg_q.get("regularMarketLastPrice"))
+    parsed_mark = _safe_float_quote(_q_q.get("mark"))
+    if parsed_mark is None or parsed_mark <= 0:
+        parsed_mark = _safe_float_quote(_ext_q.get("mark"))
+    parsed_bid = _safe_float_quote(_q_q.get("bidPrice"))
+    if parsed_bid is None:
+        parsed_bid = _safe_float_quote(_ext_q.get("bidPrice"))
+    parsed_ask = _safe_float_quote(_q_q.get("askPrice"))
+    if parsed_ask is None:
+        parsed_ask = _safe_float_quote(_ext_q.get("askPrice"))
+    parsed_quote_time = _safe_float_quote(_q_q.get("quoteTime"))
+    if parsed_quote_time is None:
+        parsed_quote_time = _safe_float_quote(_ext_q.get("quoteTime"))
+    parsed_trade_time = _safe_float_quote(_q_q.get("tradeTime"))
+    if parsed_trade_time is None:
+        parsed_trade_time = _safe_float_quote(_ext_q.get("tradeTime"))
+    if parsed_trade_time is None:
+        parsed_trade_time = _safe_float_quote(_reg_q.get("regularMarketTradeTime"))
+    spot   = parsed_last if parsed_last and parsed_last > 0 else (parsed_mark if parsed_mark and parsed_mark > 0 else None)
+    bid    = parsed_bid
+    ask    = parsed_ask
 
     global _last_spread_by_ticker, _last_spread_ts_by_ticker
     _quote_spread = (
@@ -2993,16 +3105,10 @@ def _fetch_state(
         if not _quote_node and isinstance(q_json, dict) and (q_json.get("quote") or q_json.get("regular")):
             _quote_node = q_json
         _quote_dict = _quote_node.get("quote") or {} if isinstance(_quote_node, dict) else {}
-        _regular = _quote_node.get("regular") or {} if isinstance(_quote_node, dict) else {}
         _extended = _quote_node.get("extended") or {} if isinstance(_quote_node, dict) else {}
-        _reference = _quote_node.get("reference") or {} if isinstance(_quote_node, dict) else {}
         _total_vol = (
             _safe_float_quote(_quote_dict.get("totalVolume"))
-            or _safe_float_quote(_quote_dict.get("regularMarketVolume"))
-            or _safe_float_quote(_regular.get("totalVolume"))
-            or _safe_float_quote(_regular.get("regularMarketVolume"))
             or _safe_float_quote(_extended.get("totalVolume"))
-            or _safe_float_quote(_reference.get("totalVolume"))
         )
 
     # ── Select expiry ─────────────────────────────────────────────────────────
@@ -3079,7 +3185,7 @@ def _fetch_state(
     spot_f    = float(spot)
 
     # Feed tick into candle accumulators
-    _tick_ts = parsed.quote_time or parsed.trade_time
+    _tick_ts = parsed_quote_time or parsed_trade_time
 
     # Seed candles from Schwab price history if this ticker has no bars yet.
     # Canonical (1m) drives snapshot/state; 5m remains derived context.
@@ -3178,10 +3284,10 @@ def _fetch_state(
     _completed_bars_now = _candles_1m.get_bars(ticker)
     if _completed_bars_now:
         _lb = _completed_bars_now[-1]
-        _lb_open  = getattr(_lb, 'open',  None) or getattr(_lb, 'o', None)
-        _lb_high  = getattr(_lb, 'high', None) or getattr(_lb, 'h', None)
-        _lb_low   = getattr(_lb, 'low',  None) or getattr(_lb, 'l', None)
-        _lb_close = getattr(_lb, 'close', None) or getattr(_lb, 'c', None)
+        _lb_open  = _lb.open
+        _lb_high  = _lb.high
+        _lb_low   = _lb.low
+        _lb_close = _lb.close
         try:
             if _lb_open is not None:
                 _c_open = float(_lb_open)
@@ -3307,11 +3413,7 @@ def _fetch_state(
         # Realized vol + ATR from canonical (1m) candle bars
         _bars = _candles_1m.get_bars(ticker)
         if _bars:
-            _closes = []
-            for b in _bars:
-                c = getattr(b, 'c', None) or getattr(b, 'close', None)
-                if c is not None:
-                    _closes.append(float(c))
+            _closes = [float(b.close) for b in _bars if b.close is not None]
             if _closes:
                 _realized_vol = compute_realized_vol(_closes)
             _atr = compute_atr(_bars)
@@ -4380,7 +4482,7 @@ def _fetch_state(
     ms_dict["expiries"] = [e for e in expiries if e >= _today_str]
     ms_dict["selected_exp"] = selected_exp
     ms_dict["quote_source_detail"] = {
-        "spot": "lastPrice" if parsed.last and parsed.last > 0 else ("mark" if parsed.mark and parsed.mark > 0 else "unavailable_missing_last_and_mark"),
+        "spot": "lastPrice" if parsed_last and parsed_last > 0 else ("mark" if parsed_mark and parsed_mark > 0 else "unavailable_missing_last_and_mark"),
         "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
         "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
         "spread": _quote_spread_source,
@@ -6723,17 +6825,30 @@ async def debug_charm(ticker: str = DEFAULT_TICKER):
     try:
         ticker = (ticker or DEFAULT_TICKER).upper().strip()
         _register_tracked_ticker(ticker)
-        from chains import iter_contracts, contract_fields
         from math_exposure import compute_net_charm
         import datetime as _dt
+        import math as _charm_math
 
         cl       = get_client()
         c_resp   = safe_get_chain(cl, ticker, strike_count=CHAIN_STRIKE_COUNT)
         if c_resp is None or c_resp.status_code != 200:
             return {"error": f"Chain fetch failed: status={getattr(c_resp, 'status_code', 'None')}"}
         chain_json = c_resp.json()
-        raw_cts  = list(iter_contracts(chain_json))
-        contracts = [contract_fields(ct) for ct in raw_cts]
+        raw_cts: list[dict] = []
+        for _side_key in ("callExpDateMap", "putExpDateMap"):
+            _side_map = chain_json.get(_side_key) or {}
+            if not isinstance(_side_map, dict):
+                continue
+            for _exp_map in _side_map.values():
+                if not isinstance(_exp_map, dict):
+                    continue
+                for _strike_list in _exp_map.values():
+                    if not isinstance(_strike_list, list):
+                        continue
+                    for _ct in _strike_list:
+                        if isinstance(_ct, dict):
+                            raw_cts.append(_ct)
+        contracts = [dict(ct) for ct in raw_cts]
 
         # Sample first contract raw fields
         first_raw = raw_cts[0] if raw_cts else {}
@@ -6742,8 +6857,53 @@ async def debug_charm(ticker: str = DEFAULT_TICKER):
         # Check expiration fields
         sample_exp  = [ct.get("expirationDate") for ct in contracts[:5]]
         sample_dte  = [ct.get("daysToExpiration") for ct in contracts[:5]]
-        has_gamma   = sum(1 for ct in contracts if ct.get("gamma") is not None)
-        has_oi      = sum(1 for ct in contracts if ct.get("openInterest"))
+
+        # Schwab uses -999.0 as a "missing greek" sentinel. The has_* counters
+        # below reflect contracts with USABLE greeks/IV (sentinel-aware: not
+        # None, not -999.0, finite) so this debug surface honestly diagnoses
+        # why charm is or isn't computing.
+        usable_gamma = 0
+        usable_delta = 0
+        usable_theta = 0
+        usable_vega = 0
+        usable_iv = 0
+        sentinel_gamma = 0
+        has_oi = 0
+        for ct in contracts:
+            try:
+                _g = float(ct.get("gamma")) if ct.get("gamma") is not None else None
+            except (TypeError, ValueError):
+                _g = None
+            if _g is not None and _g != -999.0 and _charm_math.isfinite(_g):
+                usable_gamma += 1
+            if ct.get("gamma") == -999.0:
+                sentinel_gamma += 1
+            try:
+                _d = float(ct.get("delta")) if ct.get("delta") is not None else None
+            except (TypeError, ValueError):
+                _d = None
+            if _d is not None and _d != -999.0 and _charm_math.isfinite(_d):
+                usable_delta += 1
+            try:
+                _t = float(ct.get("theta")) if ct.get("theta") is not None else None
+            except (TypeError, ValueError):
+                _t = None
+            if _t is not None and _t != -999.0 and _charm_math.isfinite(_t):
+                usable_theta += 1
+            try:
+                _v = float(ct.get("vega")) if ct.get("vega") is not None else None
+            except (TypeError, ValueError):
+                _v = None
+            if _v is not None and _v != -999.0 and _charm_math.isfinite(_v):
+                usable_vega += 1
+            try:
+                _iv = float(ct.get("volatility")) if ct.get("volatility") is not None else None
+            except (TypeError, ValueError):
+                _iv = None
+            if _iv is not None and _iv > 0 and _iv != -999.0 and _charm_math.isfinite(_iv):
+                usable_iv += 1
+            if ct.get("openInterest"):
+                has_oi += 1
 
         # What expiries exist?
         expiries     = _expiries_from_contracts(contracts)
@@ -6762,7 +6922,12 @@ async def debug_charm(ticker: str = DEFAULT_TICKER):
         return {
             "spot": spot,
             "total_contracts": len(contracts),
-            "has_gamma": has_gamma,
+            "has_gamma": usable_gamma,
+            "has_delta": usable_delta,
+            "has_theta": usable_theta,
+            "has_vega": usable_vega,
+            "has_iv": usable_iv,
+            "gamma_sentinel_count": sentinel_gamma,
             "has_oi": has_oi,
             "raw_keys_sample": raw_keys[:20],
             "sample_expirationDate": sample_exp,

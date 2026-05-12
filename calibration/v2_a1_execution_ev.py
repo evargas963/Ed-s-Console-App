@@ -13,6 +13,7 @@ data.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from calibration.v2_a1_ev_bounds import A1_EV_BOUNDS_METHOD
@@ -155,14 +156,14 @@ def validate_normalized_execution_inputs(
     decision_time_ms: float | None = None,
     quote_staleness_threshold_ms: int = A1_EXECUTION_EV_DEFAULT_QUOTE_STALENESS_MS,
 ) -> dict[str, Any]:
-    """Validate normalized ``chains.contract_fields()`` quote inputs."""
+    """Validate Schwab chain-row quote inputs (raw chain row, no normalizer)."""
     missing = [
         field
         for field in A1_EXECUTION_EV_REQUIRED_NORMALIZED_FIELDS
         if normalized_contract is None or _value_missing(normalized_contract.get(field))
     ]
     base = {
-        "source_boundary": "chains.contract_fields",
+        "source_boundary": "schwab_chain_row",
         "required_normalized_fields": list(A1_EXECUTION_EV_REQUIRED_NORMALIZED_FIELDS),
         "source_paths": A1_EXECUTION_EV_NORMALIZED_SOURCE_PATHS,
         "missing_fields": missing,
@@ -174,7 +175,21 @@ def validate_normalized_execution_inputs(
             "status": "execution_ev_skipped_missing_normalized_schwab_quote_inputs",
             "reason": "missing_required_normalized_quote_fields",
         }
-    quote_time = float(normalized_contract["quoteTimeInLong"])  # type: ignore[index]
+    qt_raw = normalized_contract["quoteTimeInLong"]  # type: ignore[index]
+    if isinstance(qt_raw, bool):
+        qt_raw = None
+    try:
+        qt_f = float(qt_raw) if qt_raw is not None else None
+    except (TypeError, ValueError):
+        qt_f = None
+    if qt_f is None or not math.isfinite(qt_f):
+        return {
+            **base,
+            "ok": False,
+            "status": "execution_ev_skipped_missing_normalized_schwab_quote_inputs",
+            "reason": "quoteTimeInLong_unparseable",
+        }
+    quote_time = qt_f
     if decision_time_ms is not None:
         staleness_ms = max(0.0, float(decision_time_ms) - quote_time)
         if staleness_ms > float(quote_staleness_threshold_ms):

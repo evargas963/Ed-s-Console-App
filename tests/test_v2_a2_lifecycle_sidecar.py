@@ -23,6 +23,8 @@ def _winner() -> dict:
         "composite_score": 8.25,
         "chain_row": {
             "symbol": "SPY260505C00500000",
+            "putCall": "CALL",
+            "strikePrice": 500.0,
             "bid": 1.2,
             "ask": 1.3,
             "delta": 0.52,
@@ -64,6 +66,7 @@ def _ms(**overrides) -> dict:
         "et_hour": 10,
         "et_minute": 30,
         "vix_level": 21.0,
+        "vol_regime_risk_mult": 1.0,
         "avg_5c_pts": 4.0,
         "avg_15c_pts": 6.0,
         "avg_60c_pts": 8.0,
@@ -216,11 +219,21 @@ def test_projected_preview_derivation_inputs_enumerate_all_contract_keys():
     for payload in inputs.values():
         assert {"value", "source", "source_classification"}.issubset(payload)
     assert inputs["spot"]["value"] == 499.5
-    assert inputs["spot"]["source"] == "v1_approximation"
+    # Schwab-direct equity quote ladder; see PILOT_1B_A2_0DTE_CONTRACT.md and
+    # server.py::_extract_quote / market_context.py::_extract_quote.
+    assert inputs["spot"]["source"] == "v2_compliant"
     assert inputs["spot"]["source_classification"] == "schwab_native_normalized"
+    assert inputs["spot"]["detail"] == "quotes.quote.lastPrice"
+    # Schwab-direct $VIX quote payload (same equity-quote ladder).
+    assert inputs["vix_level"]["value"] == 21.0
+    assert inputs["vix_level"]["source"] == "v2_compliant"
+    assert inputs["vix_level"]["source_classification"] == "schwab_native_normalized"
+    assert inputs["vix_level"]["detail"] == "quotes.$VIX.quote.lastPrice"
     assert inputs["mins_elapsed_since_open"]["value"] == 60.0
-    assert inputs["risk_multiplier"]["value"] is None
-    assert inputs["risk_multiplier"]["source_classification"] == "missing_from_ms_dict"
+    # MarketState producer key is `vol_regime_risk_mult` (see market_state.py
+    # ms.vol_regime_risk_mult). The consumer reads the real value, not None.
+    assert inputs["risk_multiplier"]["value"] == 1.0
+    assert inputs["risk_multiplier"]["source_classification"] == "schwab_native_normalized"
 
 
 def test_projected_preview_metadata_source_module_and_timestamp():

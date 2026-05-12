@@ -92,8 +92,8 @@ def test_transformer_prepare_sequence_accepts_reference_spot():
 
     candles = [_C() for _ in range(30)]
     for i, c in enumerate(candles):
-        c.o = c.h = c.l = c.c = 100.0 + i * 0.01
-        c.v = 1.0
+        c.open = c.high = c.low = c.close = 100.0 + i * 0.01
+        c.volume = 1.0
     seq = _prepare_sequence(candles, _Inp(), 200.0)
     assert seq is not None
     assert abs(seq[0]["position"]) > 0.01
@@ -120,8 +120,8 @@ def test_prepare_sequence_does_not_read_inp_spot_for_normalization():
 
     candles = [_C() for _ in range(30)]
     for i, c in enumerate(candles):
-        c.o = c.h = c.l = c.c = 100.0 + i * 0.01
-        c.v = 1.0
+        c.open = c.high = c.low = c.close = 100.0 + i * 0.01
+        c.volume = 1.0
     seq_a = _prepare_sequence(candles, _Inp(), 200.0)
 
     class _Inp2:
@@ -150,8 +150,8 @@ def test_prepare_sequence_requires_reference_spot_positional():
 
     candles = [_C() for _ in range(30)]
     for c in candles:
-        c.o = c.h = c.l = c.c = 100.0
-        c.v = 1.0
+        c.open = c.high = c.low = c.close = 100.0
+        c.volume = 1.0
     with pytest.raises(TypeError):
         _prepare_sequence(candles, _Inp())
 

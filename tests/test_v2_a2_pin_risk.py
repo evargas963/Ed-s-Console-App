@@ -100,7 +100,7 @@ def test_pin_risk_elevated_emits_one_event(monkeypatch):
     assert event["nearest_wall"]["level"] == "dom_gamma_wall"
     assert event["selected_strike"] == 500.0
     assert event["session_type"] == "normal_rth"
-    assert event["source_classification"] == "v1_approximation"
+    assert event["source_classification"] == "derived_because_schwab_does_not_provide"
 
 
 def test_pin_risk_watch_emits_one_event(monkeypatch):
@@ -243,11 +243,23 @@ def test_build_pin_risk_event_source_suppresses_not_detected_missing_strike_and_
 
 
 def test_pin_risk_ingress_resolver_uses_canonical_option_expression_source_order():
+    """Schwab-canonical chain_row.putCall is primary; app-side aliases are
+    legacy fallbacks per OP-011 / CSV-R8 (Schwab-first, not Schwab-last)."""
     winner = {"side": "CALL", "putCall": "PUT"}
 
+    # Schwab-canonical chain_row.putCall wins over conflicting app-side aliases.
+    assert resolve_a2_option_right(
+        {"call_option_right": "CALL", "rec_side": "CALL"},
+        {"side": "CALL", "chain_row": {"putCall": "PUT"}},
+    ) == "PUT"
+
+    # When chain_row.putCall is absent, the app-side aliases serve as fallbacks
+    # in the legacy order: call_option_right -> rec_side -> winner.side.
     assert resolve_a2_option_right({"call_option_right": "PUT", "rec_side": "CALL"}, winner) == "PUT"
     assert resolve_a2_option_right({"rec_side": "PUT"}, winner) == "PUT"
     assert resolve_a2_option_right({"option_right": "PUT"}, winner) == "CALL"
+    # winner.putCall at the root (not under chain_row) is NOT a Schwab-canonical
+    # source: only chain_row.putCall is. Root-level putCall is ignored.
     assert resolve_a2_option_right({}, {"putCall": "PUT"}) == "NONE"
     assert resolve_a2_option_right({"call_option_right": "C"}, winner) == "NONE"
 

@@ -65,6 +65,7 @@
 | **O-37** | `a2_pin_risk_health_thresholds_v1` | **nearest_wall.distance ≤ 1.0 strike points → elevated; wall_score_component ≥ 1.0 → watch; wall_proximity_component ≥ 0.75 → watch** — Ratifies the existing A2 pin-risk health thresholds for advisory lifecycle event emission. Applies to A2 lifecycle sidecar `event_sources` only; does not authorize lifecycle action changes, force exits, stop tightening, resizing, or runtime authority. Policy object identity: `a2_pin_risk_health_thresholds_v1`. | Program operator | 2026-05-07 | `governance/A2_LIFECYCLE_PIN_RISK_HANDLER_CONTRACT.md` |
 | **O-38** | `sqlite_schema_repair_explicit_ddl_no_ctas_policy_v1` | **Schema repair migrations MUST use explicit target-table DDL and MUST NOT use `CREATE TABLE ... AS SELECT ...` for tables where constraints, primary keys, defaults, or indexes are authoritative.** CTAS strips constraints in SQLite and is prohibited for production schema repair. Migration scripts may use `INSERT INTO explicit_table (...) SELECT ...` after the explicit table exists. Policy object identity: `sqlite_schema_repair_explicit_ddl_no_ctas_policy_v1`. | Program operator | 2026-05-07 | `governance/SNAPSHOTS_SCHEMA_REPAIR_MIGRATION_CONTRACT.md` |
 | **O-39** | Snapshots `snapshot_id` schema repair — production `--apply` | **CLOSED 2026-05-09.** `python tools/migrate_snapshots_schema_repair_v1.py --db-path data/ed_console.db --apply` executed in maintenance window with writers quiesced. Pre-migration backup: `backups/db/20260509_023716_pre_schema_repair_v1_ed_console.db` (`PRAGMA integrity_check` = `ok`). Apply audit: `governance/audits/snapshots_schema_repair_v1_20260509_011607.json` (git blob SHA `847ba97ac49141bcab4999aa1c42477b759c8270` in closure commit). Repo `HEAD` recorded at apply: `8ea325603ad53d3252653c03d76d23aa98eb01f2`. Operator gates: `collision_count=664` accepted per migration contract; `target_extra_live_columns` accepted (`pred_model_source`, `pred_override_source`, `reward_risk`, `reward_risk2`). Independent post-checks: `snapshot_id` INTEGER PK, null IDs 0, `COUNT(*)=COUNT(DISTINCT snapshot_id)=187511`, `MAX(snapshot_id)=188195`, normalized rows 77048, required indexes 3/3, backup integrity `ok`. Retires named gap `db_schema_repair_post_migration_audit_pending`. *(Operator sequencing: first production DB identity repair window — not the Schwab remediation slice S001 DTE contract.)* | Program operator | 2026-05-09 | Apply audit + `SNAPSHOTS_SCHEMA_REPAIR_APPLY_RUNBOOK_V1.md` §Independent Post-Condition Verification |
+| **O-40** | Schwab V4 proof mechanism — file inventory as closure artifact | **Pivot (2026-05-10):** Universal coverage **outcomes unchanged**; operational mechanism shifts from register-primary disposition to **file-by-file review** with **`governance/SCHWAB_V4_FILE_INVENTORY.csv`** as **proof-of-coverage**. Scanner + V4 register remain a **parallel completeness check**, not the merge gate. Full narrative under **Schwab Universal Coverage Proof — O-XX narrative addendum (V4)** → **`### O-40`**. | Program operator | 2026-05-10 | `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md` completion **14** + Forbidden; directive 2026-05-10 |
 
 ---
 
@@ -89,13 +90,13 @@ The following were **UNKNOWN** in the pre-2026-05-01 audit. Where **O-** IDs abo
 
 ## Operator sign-off
 
-By signing below, the operator attests that the **Decision** column for **O-01 through O-39** is accurate or has been corrected in-line, that **R-08** and **R-09** are accepted, and that **`GOVERNANCE_MERGE_GATE.md`** may be run for the next governance commit.
+By signing below, the operator attests that the **Decision** column for **O-01 through O-40** is accurate or has been corrected in-line, that **R-08** and **R-09** are accepted, and that **`GOVERNANCE_MERGE_GATE.md`** may be run for the next governance commit.
 
 **Printed name:** Program operator  
 
 **Signature:** *(electronic approval — Cursor session / directive)*  
 
-**Date:** 2026-05-02 (initial); **O-39** recorded 2026-05-09 per snapshots schema repair production closure commit.  
+**Date:** 2026-05-02 (initial); **O-39** recorded 2026-05-09 per snapshots schema repair production closure commit; **O-40** recorded 2026-05-10 per Schwab V4 file-inventory pivot.  
 
 ---
 
@@ -112,6 +113,14 @@ The body text **from that heading until the next heading of the same or higher l
 `Permanent or interim:`
 
 Older binding decisions recorded **only** in the markdown **table** above remain authoritative for **non-coverage** topics. **Coverage closure** tooling (`tools/schwab_oxx_validator.py`) validates **only** headings under this addendum for cited **`O-NN`** IDs.
+
+### O-40
+
+Why: 5+ hours of scanner+register work produced no code replacement; the register-driven disposition mechanism has high engineering overhead. Pivoting to file-by-file review with the file inventory as the proof-of-coverage artifact produces visible code progress per session while preserving universal coverage.
+
+Constraint: V4 outcome bar unchanged — every file dispositioned (review OR clause-excluded); every site dispositioned per V4-A; replacement enforced where Schwab fits; evidence bar from prior amendment applies. The scanner + register pipeline becomes a parallel completeness check, not the gate.
+
+Permanent or interim: Permanent. The scanner remains a tool; the inventory checklist is the closure artifact.
 
 ---
 

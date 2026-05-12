@@ -90,7 +90,7 @@ Every finding promoted to a fix slice must include:
 | SC-005 | DB authority remains globally incomplete for auxiliary scripts and backup conventions. | Medium/High | Infra data integrity | Separate DB-authority closure track. |
 | SC-006 | Source labeling remains uneven outside v2 leaf structures. | Medium | Infra provenance | Separate source-labeling audit/fix track. |
 | SC-007 | Fallback-heavy quote/spread/spot/expiry paths can carry stale or semantically degraded values without enough field-level provenance. | High | Runtime data quality | Separate runtime provenance/gating track. |
-| SC-008 | Mark-vs-mid and IV fallback/recompute policy are under-specified in binding governance. | Medium/High | Governance | Contract/operator decision follow-up. |
+| SC-008 | Mark-vs-mid and **`volatility`** fallback/recompute policy are under-specified in binding governance. | Medium/High | Governance | Contract/operator decision follow-up. |
 
 ---
 
@@ -99,7 +99,7 @@ Every finding promoted to a fix slice must include:
 | Field | Value |
 |---|---|
 | Location | `market_state.py::_oe_chain_row_snapshot()` |
-| Current behavior | Emits only `symbol`, `expirationDate`, `expiration`, `strikePrice`, `putCall`, `bid`, `ask`, `totalVolume`, `volume`, `openInterest`, `gamma`, `delta`. |
+| Prior behavior (pre-2026-05-10 fix) | Emitted a narrow subset and non-canonical aliases; current `_oe_chain_row_snapshot()` emits **canonical leaves only** (no `expiration` / `volume` aliases) and an expanded A2-aligned key set per `A2_MARKET_STATE_PROOF_ROW_COMPLETENESS_CONTRACT.md`. |
 | Missing Schwab-native fields needed by A2 | `theta`, `rho`, `vega`, `volatility`, `theoreticalVolatility`, `theoreticalOptionValue`, `quoteTimeInLong`, `tradeTimeInLong`, `mark`, `last`, `bidSize`, `askSize`, `bidAskSize`, `lastSize`, option OHLC, and contract metadata. |
 | Impact | A2 can fall into Black-Scholes theta, `theta_unavailable`, missing quote timestamp, or weaker source labels even when normalized Schwab fields existed upstream. |
 | Classification | Internal field elision / accidental contract mismatch. |
@@ -157,7 +157,7 @@ Current normalizer:
 
 | Location | Status |
 |---|---|
-| `chains.contract_fields()` | Preserves `theta`, `rho`, `quoteTimeInLong`, `tradeTimeInLong`, IV fields, prices, sizes, and metadata when present. |
+| `chains.contract_fields()` | Preserves `theta`, `rho`, `quoteTimeInLong`, `tradeTimeInLong`, implied-vol fields (**`volatility`**, `theoreticalVolatility`, …), prices, sizes, and metadata when present. |
 | `realized_contract_eval.serialize_option_chain_for_eval()` | Uses `contract_fields()` and strips only `raw`, preserving normalized Schwab fields. |
 
 ---
@@ -219,7 +219,7 @@ This track does not block the proof-row fix, but it is part of the same institut
 |---|---|---|
 | Black-Scholes theta | Contract permits fallback, but live evidence says Schwab theta is currently available and historical missingness was internal. | Revisit only after proof-row fix and post-fix measurement. |
 | Raw-theta bridge | Code/test behavior exists but prose is incomplete. | Contract source order if still needed: normalized theta > raw theta > governed fallback > WAIT. |
-| IV fallback/recompute | A2 contract says use `volatility` when present, but synthetic IV fallback is not explicitly forbidden/authorized. | Add explicit A2 IV policy. |
+| **`volatility`** fallback/recompute | A2 contract says use `volatility` when present, but synthetic **`volatility`** fallback is not explicitly forbidden/authorized. | Add explicit A2 **`volatility`** source policy. |
 | Mark vs midpoint | Audit guidance exists; binding precedence is incomplete. | Add per-field price precedence matrix. |
 | Policy object status | O-20/O-21 are bound, but some status labels can lag as pending. | Require source/status transition once operator decision exists. |
 
@@ -237,7 +237,7 @@ These are not yet closed by this register. They must be expanded into findings, 
 | SBI-004 | `market_state` proof row | Blocking truncation already identified. | Implement contract in `A2_MARKET_STATE_PROOF_ROW_COMPLETENESS_CONTRACT.md`. |
 | SBI-005 | A2 leaf source labels | Some Schwab-native fields are still labeled as `v1_approximation`. | After proof-row fix, relabel only fields proven Schwab-native through the handoff. |
 | SBI-006 | Black-Scholes theta | Fallback exists, but current evidence suggests it should not be primary. | Re-measure after proof-row fix; then decide remove/quarantine/narrow-govern. |
-| SBI-007 | IV policy | Synthetic IV fallback is not clearly forbidden or authorized for A2. | Add binding IV source policy. |
+| SBI-007 | **`volatility`** source policy | Synthetic **`volatility`** fallback is not clearly forbidden or authorized for A2. | Add binding **`volatility`** source policy. |
 | SBI-008 | Mark vs mid | `mark`, `mid`, spread, breakeven, and broker mark semantics are not globally bound. | Add price-field precedence matrix. |
 | SBI-009 | Spot/bid/ask carry-forward | Live plane may carry stale values forward. | Add TTL/provenance and gate stale-derived decision inputs. |
 | SBI-010 | Expiry filter fallback | `server.py` can use unfiltered contracts when selected-expiry filter is empty. | Fail closed and test selected-expiry contract isolation. |

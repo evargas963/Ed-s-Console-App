@@ -27,11 +27,13 @@ This contract does not authorize live exits, live re-entry blocks, dynamic lifec
 
 | Field class | Source classification |
 |---|---|
-| Inputs | `schwab_native_normalized` |
+| Inputs that trace to a Schwab `canonical_field` (e.g. `derivation_inputs.spot` from `quotes.quote.lastPrice`, `derivation_inputs.vix_level` from `quotes.$VIX.quote.lastPrice`) | `schwab_native_normalized`; leaf source label `v2_compliant`; cite the Schwab leaf in `detail` |
+| Inputs that have no Schwab equivalent (e.g. `mins_elapsed_since_open`, `risk_multiplier`, `entry`, `direction`, `risk`, `avg5/15/60`, `structural_levels`) | `derived_because_schwab_does_not_provide`; leaf source label `v1_approximation` |
+| Inputs that should be Schwab-direct but are missing on the upstream `MarketState` | `missing_from_ms_dict`; leaf source label `not_implemented` until Schwab wiring lands |
 | Lifecycle decisions | `derived_because_schwab_does_not_provide` |
 | Thresholds | `policy_object_pending` |
 
-Lifecycle decisions are derived because Schwab provides quote/chain/market primitives, not A2 lifecycle actions such as hold, exit, force-exit, tighten, scale-out, or re-entry block.
+Lifecycle decisions themselves are derived because Schwab provides quote/chain/market primitives, not A2 lifecycle actions such as hold, exit, force-exit, tighten, scale-out, or re-entry block. **Inputs to those decisions, however, follow the Schwab Field Precedence Principle**: any input value that traces to a Schwab `canonical_field` is read Schwab-first and labeled `v2_compliant` with the Schwab leaf cited in `detail`. App-side aliases (ms_dict keys) are legacy fallbacks only when the Schwab field is absent.
 
 ---
 
@@ -76,7 +78,7 @@ Event vocabulary:
 | `target_hit` | Static target threshold fired. |
 | `time_stop_fired` | Clock-based force-exit threshold fired. |
 | `eod_window_entered` | Observation cadence shifts to every Tier C cycle. |
-| `iv_change_threshold_crossed` | IV move crossed a governed lifecycle threshold. |
+| `iv_change_threshold_crossed` | **`volatility`** move crossed a governed lifecycle threshold. |
 | `spread_widening_threshold_crossed` | Spread widening crossed a governed lifecycle threshold. |
 
 Each event must appear as a named source field on any future `v2_decision` lifecycle leaf that depends on it.
@@ -268,7 +270,7 @@ Handler, dynamic-policy, promotion, and runtime-authority gaps remain in the bro
 | `projected_target2` | T2 level that would apply if the A2 entry were taken now, derived from `lifecycle_rule_core` where inputs are sufficient. |
 | `projected_max_hold_bars` | Time-stop projection. It remains `policy_object_pending` unless a governed max-hold policy source is available. |
 | `projected_eod_force_exit_time` | EOD force-exit projection. It remains blocked by `a2_lifecycle_eod_force_exit_logic_not_implemented` and related threshold-policy gaps until force-exit logic exists. |
-| `derivation_inputs` | Sub-dict enumerating inputs used by the rule core, at minimum `spot`, `vix_level`, `mins_elapsed_since_open`, `risk_multiplier`, `entry`, `direction`, `risk`, `avg5`, `avg15`, `avg60`, and `structural_levels` where available. Missing inputs must be named. |
+| `derivation_inputs` | Sub-dict enumerating inputs used by the rule core, at minimum `spot` (Schwab-direct from `quotes.quote.lastPrice` ladder; `v2_compliant`), `vix_level` (Schwab-direct from `quotes.$VIX.quote.lastPrice`; `v2_compliant`), `mins_elapsed_since_open`, `risk_multiplier` (consumed from `MarketState.vol_regime_risk_mult`), `entry`, `direction`, `risk`, `avg5`, `avg15`, `avg60`, and `structural_levels` where available. Schwab-direct inputs read the Schwab leaf first; missing inputs must be named. |
 | `derivation_source_module` | Literal `lifecycle_rule_core`. |
 | `would_apply_if_entered_at_time` | Timestamp of the v2 decision build used for the "if entered now" projection. |
 | `preview_authority` | Non-authority block stating this is a projection, not a lifecycle decision. |
@@ -290,7 +292,7 @@ text = "Projected lifecycle preview only; not an active lifecycle decision. Futu
 - `projected_*` value fields use `derived_because_schwab_does_not_provide` when populated from rule-core derivation.
 - Unavailable `projected_*` value fields must use `not_implemented` or `policy_object_pending`, as applicable.
 - `preview_status`, `preview_named_gaps`, and `derivation_source_module` are governance metadata and may remain bare values under the schema-walker option III pattern verified by the v0 sidecar implementation.
-- `derivation_inputs` is a sub-dict where each input value carries source classification.
+- `derivation_inputs` is a sub-dict where each input value carries source classification. Inputs that trace to a Schwab `canonical_field` (e.g. `spot`, `vix_level`) MUST be `v2_compliant` with `source_classification: "schwab_native_normalized"` and a `detail` citing the Schwab leaf. Inputs with no Schwab equivalent remain `v1_approximation` with `source_classification: "derived_because_schwab_does_not_provide"`.
 - `preview_authority` is a structural metadata block that mirrors the sidecar authority shape and adds explicit projection-not-decision language.
 
 ---

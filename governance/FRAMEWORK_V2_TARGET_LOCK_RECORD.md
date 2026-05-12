@@ -130,7 +130,7 @@ Required outputs:
 Each strategy module requires its own validation contract.
 
 - Module A uses short-horizon event-driven validation: purged CV, embargo, OOF stacking, walk-forward, execution-adjusted EV, DSR/PBO/CSCV where applicable.
-- Module A2 adds options/0DTE validation: option-chain as-of discipline, IV/Greeks, spread/fill simulation, expiration handling, assignment/exercise semantics, and lifecycle validation.
+- Module A2 adds options/0DTE validation: option-chain as-of discipline, **`volatility`/Greeks**, spread/fill simulation, expiration handling, assignment/exercise semantics, and lifecycle validation.
 - Module B uses swing validation: daily-bar walk-forward, event-study logic, lower trade-count correction, factor attribution, and after-tax reporting where applicable.
 - Module C uses long-horizon validation: cross-sectional pooling, Bayesian shrinkage, multi-year holdouts, survivorship-safe universe construction, factor attribution, and fundamental-data as-of discipline.
 - Module D uses recommendation-quality and explanation-audit validation.

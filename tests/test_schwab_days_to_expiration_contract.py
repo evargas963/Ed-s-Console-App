@@ -43,6 +43,12 @@ def test_market_state_contract_context_uses_schwab_days_to_expiration():
     assert "3DTE" in _build_contract_context_ms(_MarketStateStub(), contracts)
 
 
+def test_market_state_contract_context_mid_prefers_schwab_mark_over_bid_ask_mid():
+    contracts = [_contract(mark=1.22, bid=1.2, ask=1.3)]
+    ctx = _build_contract_context_ms(_MarketStateStub(), contracts)
+    assert "mid≈1.22" in ctx
+
+
 def test_market_state_contract_context_does_not_derive_dte_when_schwab_field_missing():
     contract = _contract()
     contract.pop("daysToExpiration")

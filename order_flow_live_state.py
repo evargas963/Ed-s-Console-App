@@ -82,22 +82,11 @@ def push_book(symbol: str, content_item: dict) -> None:
         q.append(item)
 
 
-def _safe_float(val: Any) -> Optional[float]:
-    """Convert to float; return None if invalid."""
-    if val is None:
-        return None
-    try:
-        return float(val)
-    except (TypeError, ValueError):
-        return None
-
-
 def push_level_one(symbol: str, content_item: dict) -> None:
     """
     Push level_one_equity update. Extracts:
     - Top-of-book: BID_PRICE, ASK_PRICE, BID_SIZE, ASK_SIZE
-    - Tape print: when TRADE_TIME_MILLIS changes, treat as new trade (LAST_PRICE, LAST_SIZE, TICK)
-    TICK inferred from last vs bid/ask when available; else price vs previous.
+    - Tape print: when TRADE_TIME_MILLIS changes, treat as new trade (LAST_PRICE, LAST_SIZE)
     """
     if not content_item or not isinstance(content_item, dict):
         return
@@ -133,12 +122,16 @@ def push_level_one(symbol: str, content_item: dict) -> None:
         current_date = now_et.strftime("%Y-%m-%d")
         if is_rth_open() and current_date != _last_rth_date:
             with _lock:
-                for key in list(_tape.keys()):
-                    _tape[key].clear()
-                for sym in list(_top.keys()):
-                    _top[sym] = {}
-                for sym in list(_book.keys()):
-                    _book[sym].clear()
+                # Use loop-local names to avoid shadowing the outer `sym`
+                # (the symbol being pushed). Reassigning `sym` here previously
+                # caused subsequent writes in this call to land on the wrong
+                # symbol when other tickers were already in _top / _book.
+                for _k in list(_tape.keys()):
+                    _tape[_k].clear()
+                for _k in list(_top.keys()):
+                    _top[_k] = {}
+                for _k in list(_book.keys()):
+                    _book[_k].clear()
                 _stream_volume.clear()
                 _stream_chg_pct.clear()
                 _last_rth_date = current_date
@@ -167,7 +160,6 @@ def push_level_one(symbol: str, content_item: dict) -> None:
 
     prev = _prev_trade.get(sym, {})
     prev_ms = prev.get("time_millis")
-    prev_price = prev.get("price")
 
     # New print if time changed or (time same but price/size changed - snapshot refresh)
     is_new = prev_ms != trade_ms
@@ -175,53 +167,10 @@ def push_level_one(symbol: str, content_item: dict) -> None:
         # Same timestamp - could be duplicate, skip unless we're building initial state
         return
 
-    # TICK from stream is authoritative; fall back to bid/ask inference only when missing or Zero
-    tick_raw = content_item.get("TICK")
-    tick = "Zero"
-    if tick_raw is not None:
-        s = str(tick_raw).strip().lower()
-        n = _safe_float(tick_raw)
-        if s in ("up", "uptick", "1") or (n is not None and n == 1):
-            tick = "Up"
-        elif s in ("down", "downtick", "2") or (n is not None and n == 2):
-            tick = "Down"
-        elif s not in ("zero", "0") and (n is None or n != 0):
-            # Unusual value — treat as directional if possible
-            if "up" in s or "down" in s:
-                tick = "Up" if "up" in s else "Down"
-    if tick == "Zero":
-        # Fallback: infer from last_price vs bid/ask
-        bid_price = (
-            _safe_float(content_item.get("BID_PRICE"))
-            or _safe_float(content_item.get("BID"))
-        )
-        ask_price = (
-            _safe_float(content_item.get("ASK_PRICE"))
-            or _safe_float(content_item.get("ASK"))
-        )
-        lp = _safe_float(last_price)
-        if bid_price is not None and ask_price is not None and lp is not None:
-            if lp >= ask_price:
-                tick = "Up"
-            elif lp <= bid_price:
-                tick = "Down"
-        else:
-            # Fallback: price vs previous
-            if prev_price is not None and lp is not None:
-                try:
-                    pp = float(prev_price)
-                    if lp > pp:
-                        tick = "Up"
-                    elif lp < pp:
-                        tick = "Down"
-                except (TypeError, ValueError):
-                    pass
-
     print_item = {
         "LAST_PRICE": last_price,
         "LAST_SIZE": last_size,
         "TRADE_TIME_MILLIS": trade_ms,
-        "TICK": tick,
     }
 
     with _lock:
@@ -234,7 +183,7 @@ def get_content_for_symbol(symbol: str) -> list[dict]:
     """
     Return content list for OrderFlowEngine. Merges:
     1. Book snapshots (BIDS, ASKS)
-    2. Tape prints as content items (LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS, TICK)
+    2. Tape prints as content items (LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS)
     3. Latest top-of-book as a content item (BID_PRICE, ASK_PRICE, BID_SIZE, ASK_SIZE)
     Engine expects content.*.BIDS, content.*.ASKS, content.*.LAST_PRICE, etc.
     """
@@ -266,25 +215,22 @@ def get_l1_stream_input_probe(symbol: str) -> tuple[Any, ...]:
     """
     sym = (symbol or "").upper().strip()
     if not sym:
-        return (0, 0, None, None, None, None)
+        return (0, 0, None, None, None)
     with _lock:
         book = _book.get(sym)
         tape = _tape.get(sym)
         bl = len(book) if book else 0
         tl = len(tape) if tape else 0
-        last_tick = None
         last_ms = None
         if tape and len(tape) > 0:
-            lp = tape[-1]
-            last_tick = lp.get("TICK")
-            last_ms = lp.get("TRADE_TIME_MILLIS")
+            last_ms = tape[-1].get("TRADE_TIME_MILLIS")
         top = _top.get(sym)
         if top:
             tb = top.get("BID_PRICE")
             ta = top.get("ASK_PRICE")
         else:
             tb, ta = None, None
-    return (bl, tl, last_tick, last_ms, tb, ta)
+    return (bl, tl, last_ms, tb, ta)
 
 
 def clear_symbol(symbol: str) -> None:

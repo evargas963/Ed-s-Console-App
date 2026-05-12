@@ -49,3 +49,40 @@ def test_options_flow_does_not_default_missing_delta_weight_to_zero():
     assert direction == "call"
     assert ratio is not None
     assert delta_weighted is None
+
+
+def test_options_flow_treats_minus_999_delta_sentinel_as_missing():
+    """Schwab uses -999.0 to flag 'missing greek'. delta_weighted must not include it."""
+    data = {
+        "callExpDateMap": {
+            "2099-05-05:0": {"500.0": _contract(total_volume=10, delta=-999.0)}
+        },
+        "putExpDateMap": {
+            "2099-05-05:0": {"500.0": _contract(total_volume=30, delta=-999.0)}
+        },
+    }
+
+    score, direction, ratio, delta_weighted = _compute_options_flow(data)
+
+    assert score == -0.5
+    assert direction == "put"
+    assert ratio == 10 / (30 + 1e-9)
+    assert delta_weighted is None
+
+
+def test_options_flow_skips_sentinel_delta_but_uses_real_delta_when_mixed():
+    """If only one side has a real delta, delta_weighted reflects that side only."""
+    data = {
+        "callExpDateMap": {
+            "2099-05-05:0": {"500.0": _contract(total_volume=10, delta=0.5)}
+        },
+        "putExpDateMap": {
+            "2099-05-05:0": {"500.0": _contract(total_volume=30, delta=-999.0)}
+        },
+    }
+
+    score, direction, ratio, delta_weighted = _compute_options_flow(data)
+
+    assert score == -0.5
+    assert direction == "put"
+    assert delta_weighted == 5.0  # 0.5 * 10 from calls only; put sentinel skipped

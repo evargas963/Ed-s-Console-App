@@ -20,6 +20,24 @@ The source of truth for Schwab availability is the tracked CSV file, not memory,
 
 ---
 
+## Precedence Principle (binding for every row in this crosswalk)
+
+For any value where this CSV (`schwab_field_inventory/schwab_field_dictionary.csv`) contains a `canonical_field`:
+
+```text
+Schwab canonical_field = primary read.
+App-side aliases (ms_dict keys, internal names, alternate keys) = legacy
+fallbacks ONLY when the Schwab field is absent.
+```
+
+The `v1_approximation`, `not_implemented`, and `policy_object_pending` source labels do **not** apply to values whose source traces to a Schwab `canonical_field`. Such leaves must be labeled `v2_compliant` and cite the Schwab leaf in the `detail` field.
+
+Disposition language for every `REPLACE_WITH_SCHWAB` row in this document follows the same pattern: *"Schwab `<canonical_field>` is the primary source; app-side aliases are legacy fallbacks only when the Schwab field is absent."* No row may use "fallback to Schwab," "add Schwab as a final fallback," or any wording that inverts precedence.
+
+CI gate enforcing this principle for the A2 output surface: `tests/test_v2_a2_option_expression.py::test_a2_no_v1_approximation_leaf_traces_to_a_schwab_canonical_field`.
+
+---
+
 ## Method
 
 1. Loaded `schwab_field_inventory/schwab_field_dictionary.csv` and indexed `canonical_field` leaves.
@@ -78,19 +96,19 @@ These sites derive/default a primitive that the CSV says Schwab provides.
 
 | ID | Site | Current behavior | Schwab CSV field(s) | Action | Severity |
 |---|---|---|---|---|---|
-| CSV-R1 | `market_context.py::_extract_quote()` | `% change` fallback from `netChange / (last - netChange)` | `quotes.quote.netPercentChange`, `quotes.quote.netChange` | `REPLACE_WITH_SCHWAB` when present; derived fallback must be labeled | Medium |
-| CSV-R2 | `market_state.py` DTE / `dte_style` paths | Calendar/string DTE computation | `chains.callExpDateMap.*.daysToExpiration`, `chains.putExpDateMap.*.daysToExpiration` | `REPLACE_WITH_SCHWAB` | High |
-| CSV-R3 | `market_state.py::_oe_chain_row_snapshot()` | Proof row omits `daysToExpiration` | `chains.*.daysToExpiration` | `REPLACE_WITH_SCHWAB` | High |
-| CSV-R4 | `v2_decision/a2_option_expression.py` mid/premium paths | `mid = (bid + ask) / 2` | `chains.*.mark`, plus `bid`/`ask` when mark unavailable under policy | `REPLACE_WITH_SCHWAB` / `REDESIGN` price precedence | High |
-| CSV-R5 | `math_levels.py::parity_f_minus_spot_from_contracts()` | Accepts non-CSV synthetic `mid` key | `chains.*.mark`, `chains.*.last`, `chains.*.bid`, `chains.*.ask` | `REPLACE_WITH_SCHWAB` | Medium |
+| CSV-R1 | `market_context.py::_extract_quote()` | `% change` fallback from `netChange / (last - netChange)` | `quotes.quote.netPercentChange`, `quotes.quote.netChange` | `REPLACE_WITH_SCHWAB`: `quotes.quote.netPercentChange` is the Schwab-primary source; derive `netChange / (last - netChange)` only when the Schwab field is absent and label the result as a derived fallback. | Medium |
+| CSV-R2 | `market_state.py` DTE / `dte_style` paths | Calendar/string DTE computation | `chains.callExpDateMap.*.daysToExpiration`, `chains.putExpDateMap.*.daysToExpiration` | `REPLACE_WITH_SCHWAB`: `chains.*.daysToExpiration` is the Schwab-primary source; calendar/string DTE computation is a legacy app-side fallback only when Schwab `daysToExpiration` is absent. | High |
+| CSV-R3 | `market_state.py::_oe_chain_row_snapshot()` | Proof row omits `daysToExpiration` | `chains.*.daysToExpiration` | `REPLACE_WITH_SCHWAB`: preserve Schwab `chains.*.daysToExpiration` in the proof row as the Schwab-primary source for downstream A2/lifecycle consumers. | High |
+| CSV-R4 | `v2_decision/a2_option_expression.py` mid/premium paths | `mid = (bid + ask) / 2` | `chains.*.mark`, plus `bid`/`ask` when mark unavailable under policy | `REPLACE_WITH_SCHWAB` / `REDESIGN` price precedence: Schwab `chains.*.mark` is the primary source; Schwab `chains.*.last` is the next Schwab fallback; the derived `(bid+ask)/2` mid is an app-side fallback only when neither Schwab field is present. | High |
+| CSV-R5 | `math_levels.py::parity_f_minus_spot_from_contracts()` | Accepts non-CSV synthetic `mid` key | `chains.*.mark`, `chains.*.last`, `chains.*.bid`, `chains.*.ask` | `REPLACE_WITH_SCHWAB`: Schwab `chains.*.mark` / `last` / `bid` / `ask` are the primary sources; the synthetic `mid` key is a legacy app-side fallback only when no Schwab price leaf is present. | Medium |
 | CSV-R6 | `v2_decision/a2_option_expression.py::_theta()` | Black-Scholes residual when theta absent | `chains.*.theta` | `GATE_FAIL_CLOSED` or narrow residual fallback after post-fix measurement | High |
-| CSV-R7 | `server.py` MC expected-move fallback | synthetic IV = `20%`, fallback hours = `6.5` | `chains.*.volatility` for IV input; time must be explicitly governed | `GATE_FAIL_CLOSED` / `REDESIGN` | Medium/High |
-| CSV-R8 | `v2_decision/a2_lifecycle_health.py::resolve_a2_option_right()` | App-side right inference from side/proof | `chains.*.putCall` | `REPLACE_WITH_SCHWAB` | Medium |
-| CSV-R9 | `chains.py::contract_fields()` and consumers | Missing multiplier became `100` in multiple paths | `chains.*.multiplier` | `REPLACE_WITH_SCHWAB`; fail closed when missing | High |
-| CSV-R10 | `realized_contract_eval.py` | `OPTION_MULTIPLIER = 100` for replay PnL | `chains.*.multiplier` | `REPLACE_WITH_SCHWAB` | Critical |
-| CSV-R11 | `chains.py::parse_quote_payload()` | Reads only `quotes.quote.*` subtree | `quotes.regular.*`, `quotes.extended.*` where CSV provides session fields | `REDESIGN` quote merge policy | High |
-| CSV-R12 | `features/inference_snapshot.py` / `calibration/writer.py` time fallback | `time.time()` / wall clock fallback | `quotes.quote.quoteTime`, `quotes.quote.tradeTime`, streaming time fields | `REPLACE_WITH_SCHWAB` for data time; label decision clock separately | Medium |
-| CSV-R13 | `order_flow_live_state.py` / utility change fields | Uses stream percent and sometimes non-CSV alias | `streaming.content.*.REGULAR_MARKET_CHANGE_PERCENT`, `quotes.quote.netChange`, `quotes.quote.netPercentChange` | `REPLACE_WITH_SCHWAB` / reconcile field names | Medium |
+| CSV-R7 | `server.py` MC expected-move fallback | synthetic **`volatility`** = `20%`, fallback hours = `6.5` | `chains.*.volatility` for **`volatility`** input; time must be explicitly governed | `GATE_FAIL_CLOSED` / `REDESIGN` | Medium/High |
+| CSV-R8 | `v2_decision/a2_lifecycle_health.py::resolve_a2_option_right()` | App-side right inference from side/proof | `chains.*.putCall` | `REPLACE_WITH_SCHWAB`: `winner.chain_row.putCall` is the Schwab-primary source; app-side aliases (`call_option_right`, `rec_side`, `winner.side`) are legacy fallbacks only when `chain_row.putCall` is absent. | Medium |
+| CSV-R9 | `chains.py::contract_fields()` and consumers | Missing multiplier became `100` in multiple paths | `chains.*.multiplier` | `REPLACE_WITH_SCHWAB`: Schwab `chains.*.multiplier` is the primary source; the literal `100` default is not a Schwab fallback — fail closed when the Schwab field is absent. | High |
+| CSV-R10 | `realized_contract_eval.py` | `OPTION_MULTIPLIER = 100` for replay PnL | `chains.*.multiplier` | `REPLACE_WITH_SCHWAB`: Schwab `chains.*.multiplier` is the primary source for replay PnL; the literal `100` constant is not a Schwab fallback. | Critical |
+| CSV-R11 | `chains.py::parse_quote_payload()` | Reads only `quotes.quote.*` subtree | `quotes.regular.*`, `quotes.extended.*` where CSV provides session fields | `REDESIGN` quote merge policy: Schwab `quotes.quote.*` is the primary subtree; `quotes.regular.*` and `quotes.extended.*` are governed Schwab session fallbacks for fields the primary subtree omits. App-side aliases are legacy fallbacks only when no Schwab subtree carries the field. | High |
+| CSV-R12 | `features/inference_snapshot.py` / `calibration/writer.py` time fallback | `time.time()` / wall clock fallback | `quotes.quote.quoteTime`, `quotes.quote.tradeTime`, streaming time fields | `REPLACE_WITH_SCHWAB` for data time: Schwab `quoteTime`/`tradeTime`/streaming time fields are the primary source; wall-clock `time.time()` is not a Schwab fallback. Label the decision clock separately from the data clock. | Medium |
+| CSV-R13 | `order_flow_live_state.py` / utility change fields | Uses stream percent and sometimes non-CSV alias | `streaming.content.*.REGULAR_MARKET_CHANGE_PERCENT`, `quotes.quote.netChange`, `quotes.quote.netPercentChange` | `REPLACE_WITH_SCHWAB`: Schwab streaming `REGULAR_MARKET_CHANGE_PERCENT` and quote `netChange`/`netPercentChange` are the primary sources; non-CSV aliases are legacy fallbacks only when Schwab fields are absent. Reconcile field names against the CSV. | Medium |
 
 ---
 
@@ -153,7 +171,7 @@ These were either missing from the prior register or need explicit register IDs.
 | CSV-N8 | `features/inference_snapshot.py` | VWAP distance sign can be double-applied | `REDESIGN` | Medium |
 | CSV-N9 | `signals.py::_run_model_stack()` | uniform priors and minimal overlays can bypass real feature truth | `GATE_FAIL_CLOSED` | Critical |
 | CSV-N10 | `calibration/writer.py` | default decision timestamp uses wall clock | `REPLACE_WITH_SCHWAB` data timestamp where appropriate | Medium |
-| CSV-N11 | `math_exposure_core.py::compute_net_charm()` | IV `20%` and multiplier `100` defaults | `GATE_FAIL_CLOSED` | High |
+| CSV-N11 | `math_exposure_core.py::compute_net_charm()` | **`volatility`** `20%` and multiplier `100` defaults | `GATE_FAIL_CLOSED` | High |
 | CSV-N12 | `v2_decision/a2_option_expression.py::_dte_value()` | parses DTE from UI text | `REPLACE_WITH_SCHWAB` / `REDESIGN` | High |
 | CSV-N13 | `market_state.py::_oe_chain_row_snapshot()` | does not preserve `daysToExpiration` | `REPLACE_WITH_SCHWAB` | High |
 | CSV-N14 | `static/index.html` utility bar | point change derived from stream percent times merged spot | `KEEP_DERIVED_WITH_PROVENANCE` or align to `quotes.quote.netChange` | Medium |

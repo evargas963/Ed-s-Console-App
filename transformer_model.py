@@ -127,14 +127,12 @@ def _prepare_sequence(
 
     sequence = []
     for candle in bars:
-        # Extract candle fields (Candle objects from micro_structure)
-        o = getattr(candle, 'o', None) or getattr(candle, 'open', 0)
-        h = getattr(candle, 'h', None) or getattr(candle, 'high', 0)
-        l = getattr(candle, 'l', None) or getattr(candle, 'low', 0)
-        c = getattr(candle, 'c', None) or getattr(candle, 'close', 0)
-        v = getattr(candle, 'v', None) or getattr(candle, 'volume', 0)
+        o = candle.open
+        h = candle.high
+        l = candle.low
+        c = candle.close
+        v = candle.volume
 
-        # Normalize relative to current spot
         if spot > 0:
             ret = (c - o) / spot  # return for this bar
             rng = (h - l) / spot  # range for this bar

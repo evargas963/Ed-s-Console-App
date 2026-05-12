@@ -44,6 +44,8 @@ def _winner() -> dict:
         "composite_score": 8.25,
         "chain_row": {
             "symbol": "SPY260505C00500000",
+            "putCall": "CALL",
+            "strikePrice": 500.0,
             "bid": 1.2,
             "ask": 1.3,
             "delta": 0.52,
@@ -90,14 +92,58 @@ def _ms(**overrides) -> dict:
     return base
 
 
+def test_a2_option_expression_emits_mid_and_spread_provenance_tags():
+    a2 = build_a2_option_expression(_ms(), _sample_a1())
+    oe = a2["option_expression"]
+    assert oe["mid"]["value"] == 1.25
+    assert oe["mid_source"]["value"] == "derived_bid_ask_mid"
+    assert oe["spread_source"]["value"] == "schwab_ms_dict_spread"
+
+
+def test_a2_option_expression_prefers_schwab_chain_last_over_bid_ask_mid():
+    w = _winner()
+    w["chain_row"] = {**w["chain_row"], "mark": None, "last": 1.27}
+    ms = _ms()
+    ms["option_chain_selection_proof"] = {
+        "status": "ok",
+        "winner": w,
+        "liquidity_summary": {"any_candidate_passed_liq_gate": True},
+    }
+    a2 = build_a2_option_expression(ms, _sample_a1())
+    assert a2["option_expression"]["mid"]["value"] == 1.27
+    assert a2["option_expression"]["mid_source"]["value"] == "schwab_chain_last"
+
+
 def test_valid_a2_deterministic_baseline_has_source_indicators():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L237 - valid A2 baseline validates shape."""
     a2 = build_a2_option_expression(_ms(), _sample_a1())
 
     assert a2["identity"]["expression_profile_id"] == {"value": "A2", "source": "v2_compliant"}
+    # Schwab-direct identity leaves: ticker is the literal Schwab request /
+    # chains.symbol echo; selected_expiry resolved from chain_row.expirationDate.
+    assert a2["identity"]["underlying_ticker"] == {
+        "value": "SPY",
+        "source": "v2_compliant",
+        "detail": "chains.symbol",
+    }
+    assert a2["identity"]["selected_expiry"] == {
+        "value": "2026-05-05",
+        "source": "v2_compliant",
+        "detail": "schwab_chain_expirationDate",
+    }
     assert a2["option_expression"]["option_action"] == {"value": "TRADE", "source": "v1_approximation"}
-    assert a2["option_expression"]["option_right"] == {"value": "CALL", "source": "v1_approximation"}
-    assert a2["option_expression"]["strike"] == {"value": 500.0, "source": "v1_approximation"}
+    # Schwab-direct option_right: chain_row.putCall wins over app-side aliases.
+    assert a2["option_expression"]["option_right"] == {
+        "value": "CALL",
+        "source": "v2_compliant",
+        "detail": "chains.*.putCall",
+    }
+    # Schwab-direct strike: chain_row.strikePrice is authoritative.
+    assert a2["option_expression"]["strike"] == {
+        "value": 500.0,
+        "source": "v2_compliant",
+        "detail": "schwab_chain_strikePrice",
+    }
     assert a2["greeks"]["theta"] == {
         "value": -0.18,
         "source": "v2_compliant",
@@ -107,6 +153,28 @@ def test_valid_a2_deterministic_baseline_has_source_indicators():
         "value": 0,
         "source": "v2_compliant",
         "detail": "schwab_chain_daysToExpiration",
+    }
+    assert a2["greeks"]["iv"] == {
+        "value": 0.22,
+        "source": "v2_compliant",
+        "detail": "schwab_chain_volatility",
+    }
+
+
+def test_a2_iv_uses_schwab_theoretical_volatility_when_market_volatility_missing():
+    winner = _winner()
+    winner["chain_row"]["volatility"] = None
+    winner["chain_row"]["theoreticalVolatility"] = 18.5
+
+    a2 = build_a2_option_expression(
+        _ms(option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+
+    assert a2["greeks"]["iv"] == {
+        "value": 18.5,
+        "source": "v2_compliant",
+        "detail": "schwab_chain_theoreticalVolatility",
     }
 
 
@@ -173,7 +241,9 @@ def test_selected_contract_snapshot_preserves_schwab_quote_timestamps():
     )
 
     snapshot = a2["option_expression"]["selected_contract_snapshot"]
-    assert snapshot["source"] == "v1_approximation"
+    # The selected_contract_snapshot is the literal Schwab chain row passthrough.
+    assert snapshot["source"] == "v2_compliant"
+    assert snapshot["detail"] == "schwab_chain_row_snapshot"
     assert snapshot["value"]["quoteTimeInLong"] == 1778018400000
     assert snapshot["value"]["tradeTimeInLong"] == 1778018399000
 
@@ -447,6 +517,11 @@ def test_missing_strike_or_right_blocks_trade_output():
     winner = _winner()
     winner.pop("strike")
     winner.pop("side")
+    # Schwab-first precedence: chain_row.strikePrice and chain_row.putCall are
+    # the authoritative sources, so the "missing" scenario must remove them
+    # from the chain row too — not just the legacy app-side aliases.
+    winner["chain_row"].pop("strikePrice", None)
+    winner["chain_row"].pop("putCall", None)
 
     a2 = build_a2_option_expression(
         _ms(
@@ -766,4 +841,333 @@ def test_a2_gap_registry_includes_lifecycle_child_gaps_without_duplicates():
     assert len(gaps) == len(set(gaps))
     for gap in LIFECYCLE_GAP_NAMES:
         assert gap in gaps
+
+
+# ---------------------------------------------------------------------------
+# Schwab-wire greek leaves (delta / gamma / vega) provenance + sentinel safety
+# ---------------------------------------------------------------------------
+
+
+def test_a2_greeks_delta_gamma_vega_are_v2_compliant_when_wire_present():
+    """delta / gamma / vega are Schwab dictionary leaves; A2 must label them as
+    v2_compliant with the schwab_chain_<name> detail when present, not v1_approximation."""
+    a2 = build_a2_option_expression(_ms(), _sample_a1())
+
+    assert a2["greeks"]["delta"] == {
+        "value": 0.52,
+        "source": "v2_compliant",
+        "detail": "schwab_chain_delta",
+    }
+    assert a2["greeks"]["gamma"] == {
+        "value": 0.08,
+        "source": "v2_compliant",
+        "detail": "schwab_chain_gamma",
+    }
+    assert a2["greeks"]["vega"] == {
+        "value": 0.02,
+        "source": "v2_compliant",
+        "detail": "schwab_chain_vega",
+    }
+
+
+def test_a2_greeks_treat_missing_sentinel_as_not_implemented():
+    """Schwab's -999.0 'missing' sentinel must not be advertised as a wire read."""
+    winner = _winner()
+    winner["chain_row"]["delta"] = -999.0
+    winner["chain_row"]["gamma"] = -999.0
+    winner["chain_row"]["vega"] = -999.0
+
+    a2 = build_a2_option_expression(
+        _ms(option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+
+    for greek in ("delta", "gamma", "vega"):
+        assert a2["greeks"][greek] == {"value": None, "source": "not_implemented"}
+
+
+def test_a2_gamma_x_oi_does_not_propagate_missing_sentinel():
+    """gamma_x_oi must be None when gamma is the -999 sentinel, never gamma * OI literally."""
+    winner = _winner()
+    winner["chain_row"]["gamma"] = -999.0
+    winner["chain_row"]["openInterest"] = 4300
+
+    a2 = build_a2_option_expression(
+        _ms(option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+
+    assert a2["greeks"]["gamma_x_oi"] == {"value": None, "source": "not_implemented"}
+
+
+def test_a2_gamma_x_oi_attaches_derived_detail_when_computed():
+    a2 = build_a2_option_expression(_ms(), _sample_a1())
+
+    assert a2["greeks"]["gamma_x_oi"] == {
+        "value": round(0.08 * 4300, 4),
+        "source": "v1_approximation",
+        "detail": "derived_schwab_gamma_x_openInterest",
+    }
+
+
+def test_a2_theta_falls_back_to_bs_when_chain_theta_is_missing_sentinel():
+    """If Schwab returns theta=-999.0, treat it as missing and use the BS approximation."""
+    winner = _winner()
+    winner["chain_row"]["theta"] = -999.0
+
+    a2 = build_a2_option_expression(
+        _ms(option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+
+    assert "theta_unavailable" not in a2["health"]["hard_gates_failed"]["value"]
+    assert a2["greeks"]["theta"]["source"] == "v1_approximation"
+    assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation"
+    assert a2["greeks"]["theta"]["value"] < 0
+
+
+def test_a2_theta_blocks_when_chain_theta_is_missing_sentinel_and_iv_unavailable():
+    """Sentinel theta + no IV ladder => BS cannot run => theta_unavailable hard gate."""
+    winner = _winner()
+    winner["chain_row"]["theta"] = -999.0
+    winner["chain_row"]["volatility"] = -999.0
+    winner["chain_row"]["theoreticalVolatility"] = None
+
+    a2 = build_a2_option_expression(
+        _ms(option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert "theta_unavailable" in a2["health"]["hard_gates_failed"]["value"]
+    assert a2["greeks"]["theta"] == {
+        "value": None,
+        "source": "not_implemented",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Schwab Field Precedence Principle (encoded across this file's surface).
+# Schwab canonical_field reads are primary; app-side aliases (ms_dict keys,
+# winner.* aliases) are legacy fallbacks only when the Schwab field is absent.
+# ---------------------------------------------------------------------------
+
+
+def test_schwab_chain_row_putCall_wins_over_conflicting_app_side_aliases():
+    """Schwab `chain_row.putCall` must override conflicting ms_dict aliases.
+
+    All three legacy aliases (`call_option_right`, `rec_side`, `winner.side`)
+    say PUT. The Schwab chain_row says CALL. The A2 surface MUST report CALL
+    and label the leaf v2_compliant with detail `chains.*.putCall`.
+    """
+    winner = _winner()
+    winner["chain_row"]["putCall"] = "CALL"
+    winner["side"] = "PUT"  # conflicting legacy alias
+
+    a2 = build_a2_option_expression(
+        _ms(
+            call_option_right="PUT",  # conflicting legacy alias
+            rec_side="PUT",  # conflicting legacy alias
+            option_chain_selection_proof={"status": "ok", "winner": winner},
+        ),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["option_right"] == {
+        "value": "CALL",
+        "source": "v2_compliant",
+        "detail": "chains.*.putCall",
+    }
+
+
+def test_schwab_chain_row_strikePrice_wins_over_conflicting_ms_rec_strike():
+    """Schwab `chain_row.strikePrice` must override conflicting `ms.rec_strike`."""
+    winner = _winner()
+    winner["chain_row"]["strikePrice"] = 505.0
+    winner["strike"] = 505.0  # winner.strike sourced from chain_row, kept consistent
+
+    a2 = build_a2_option_expression(
+        _ms(
+            rec_strike=499.0,  # conflicting legacy alias
+            option_chain_selection_proof={"status": "ok", "winner": winner},
+        ),
+        _sample_a1(),
+    )
+
+    assert a2["option_expression"]["strike"] == {
+        "value": 505.0,
+        "source": "v2_compliant",
+        "detail": "schwab_chain_strikePrice",
+    }
+
+
+def test_schwab_chain_row_expirationDate_wins_over_conflicting_ms_selected_exp():
+    """Schwab `chain_row.expirationDate` must override conflicting ms aliases."""
+    winner = _winner()
+    winner["chain_row"]["expirationDate"] = "2026-05-05"
+
+    a2 = build_a2_option_expression(
+        _ms(
+            selected_exp="2026-05-06",  # conflicting legacy alias
+            call_option_expiry="2026-05-06",  # conflicting legacy alias
+            option_chain_selection_proof={"status": "ok", "winner": winner},
+        ),
+        _sample_a1(),
+    )
+
+    assert a2["identity"]["selected_expiry"] == {
+        "value": "2026-05-05",
+        "source": "v2_compliant",
+        "detail": "schwab_chain_expirationDate",
+    }
+
+
+# ---------------------------------------------------------------------------
+# CI gate: Schwab Field Precedence Principle.
+#
+# Every leaf on the A2 output that carries source="v1_approximation" MUST be
+# a derived analytic that Schwab does not provide directly. If a v1_approx
+# leaf is found whose value tracks a Schwab canonical_field, the test fails:
+# that leaf should be labeled v2_compliant with the Schwab leaf cited.
+# ---------------------------------------------------------------------------
+
+
+# Allowlist of A2 output leaf paths (dotted) where source="v1_approximation"
+# is honest because the value is a derived analytic that has no Schwab
+# canonical_field equivalent. Each entry is paired with a brief reason.
+A2_V1_APPROXIMATION_DERIVED_ALLOWLIST: dict[str, str] = {
+    # identity: module/handoff identity strings that are app constants, not
+    # Schwab leaves.
+    "identity.module_id": "literal app constant 'A'; not a Schwab leaf",
+    # handoff: A1 decision outputs (probability, direction) are derived
+    # analytics, not Schwab passthroughs.
+    "handoff.a1_action": "Module A/A1 derived action; not a Schwab leaf",
+    "handoff.a1_direction": "Module A/A1 derived direction; not a Schwab leaf",
+    "handoff.mapping": "app-side LONG_TO_CALL / SHORT_TO_PUT mapping",
+    # option_expression: derived from Schwab inputs but NOT a Schwab leaf
+    # itself.
+    "option_expression.option_action": "internal TRADE/WAIT decision; not a Schwab leaf",
+    "option_expression.option_right": "labeled v1_approximation only when resolved from a legacy app-side alias (chain_row.putCall absent)",
+    "option_expression.strike": "labeled v1_approximation only when resolved from ms.rec_strike with no chain row",
+    "option_expression.mid": "derived from mark/last/(bid+ask)/2; no Schwab single-leaf mid",
+    "option_expression.spread": "derived from ask-bid; no Schwab single-leaf spread",
+    "option_expression.breakeven": "derived from strike +/- mid; no Schwab leaf",
+    "option_expression.selection_proof": "app-side selection_proof object; not a Schwab leaf",
+    # probability_and_ev: A1 stack probability is derived, not Schwab.
+    "probability_and_ev.P_underlying_entry_success": "A1 stack probability; not a Schwab leaf",
+    # execution: gates/quality are policy-derived, not Schwab leaves.
+    "execution.liquidity_gate_pass": "score_option_expression liq gate; not a Schwab leaf",
+    "execution.spread_quality": "policy-derived spread quality; not a Schwab leaf",
+    # greeks: ratios/products are derived from Schwab primitives, not leaves.
+    "greeks.delta_gamma_ratio": "derived |delta|/|gamma|; no Schwab single-leaf ratio",
+    "greeks.gamma_x_oi": "derived gamma * openInterest; no Schwab single-leaf product",
+    "greeks.vol_oi_ratio": "derived volume/openInterest; no Schwab single-leaf ratio",
+    # lifecycle: app-side trade plan / sidecar inputs (not Schwab leaves).
+    "lifecycle.entry_policy": "app-side contract_context display; not a Schwab leaf",
+    "lifecycle.stop_policy": "app-side stop geometry; not a Schwab leaf",
+    "lifecycle.target_policy": "app-side target geometry; not a Schwab leaf",
+    # health: app-side gate/health summaries.
+    "health.hard_gates_failed": "app-side hard-gate decision list; not a Schwab leaf",
+    "health.soft_gates": "app-side soft-gate list; not a Schwab leaf",
+    "health.pin_risk": "derived pin-risk health (no Schwab equivalent)",
+    "health.late_day_gamma": "derived late-day-gamma health (no Schwab equivalent)",
+    # lifecycle sidecar derivation_inputs: derived analytics that are NOT
+    # Schwab passthroughs (spot and vix_level are upgraded to v2_compliant
+    # separately and do not appear here).
+    "lifecycle.sidecar.projected_preview.derivation_inputs.mins_elapsed_since_open": (
+        "derived from decision_time_ms / et clock; no Schwab leaf"
+    ),
+    "lifecycle.sidecar.projected_preview.derivation_inputs.risk_multiplier": (
+        "vol regime risk multiplier; app-side derived, no Schwab leaf"
+    ),
+    "lifecycle.sidecar.projected_preview.derivation_inputs.entry": (
+        "app-side trade plan entry price; no Schwab leaf"
+    ),
+    "lifecycle.sidecar.projected_preview.derivation_inputs.direction": (
+        "app-side signal direction (long/short); no Schwab leaf"
+    ),
+    "lifecycle.sidecar.projected_preview.derivation_inputs.risk": (
+        "derived stop distance * spot; no Schwab leaf"
+    ),
+    "lifecycle.sidecar.projected_preview.derivation_inputs.avg5": (
+        "rolling 5c average points; derived analytic"
+    ),
+    "lifecycle.sidecar.projected_preview.derivation_inputs.avg15": (
+        "rolling 15c average points; derived analytic"
+    ),
+    "lifecycle.sidecar.projected_preview.derivation_inputs.avg60": (
+        "rolling 60c average points; derived analytic"
+    ),
+    "lifecycle.sidecar.projected_preview.derivation_inputs.structural_levels": (
+        "derived structural levels (vwap, walls); no Schwab leaf"
+    ),
+}
+
+
+def _walk_v1_approximation_leaves(obj, path):
+    """Yield (dotted_path, leaf_dict) for every leaf with source=='v1_approximation'.
+
+    A leaf is a dict containing both 'value' and 'source' keys (matches the
+    schema-walker contract in v2_decision/schema.py).
+    """
+    if isinstance(obj, dict):
+        if {"value", "source"}.issubset(obj.keys()):
+            if obj.get("source") == "v1_approximation":
+                yield path, obj
+            return
+        for key, value in obj.items():
+            yield from _walk_v1_approximation_leaves(value, f"{path}.{key}" if path else str(key))
+    elif isinstance(obj, list):
+        for idx, value in enumerate(obj):
+            yield from _walk_v1_approximation_leaves(value, f"{path}[{idx}]")
+
+
+def _comprehensive_ms_for_ci_gate() -> dict:
+    """Build a richly-populated ms_dict so every potential A2 v1_approximation
+    leaf is exercised (including all lifecycle sidecar derivation_inputs)."""
+    return _ms(
+        spot=499.5,
+        entry=500.0,
+        et_hour=10,
+        et_minute=30,
+        vix_level=21.0,
+        vol_regime_risk_mult=1.0,
+        avg_5c_pts=4.0,
+        avg_15c_pts=6.0,
+        avg_60c_pts=8.0,
+        vwap=503.5,
+        call_gamma_wall=505.0,
+        call_oi_wall=506.0,
+        mins_to_close=120.0,
+        decision_time_ms=_epoch_ms_et(2026, 5, 5, 10, 30),
+        entry_state="armed",
+        stop=498.5,
+        target=503.0,
+        target2=505.0,
+        contract_context="SPY 2026-05-05 500C - 0DTE - mid~1.25",
+    )
+
+
+def test_a2_no_v1_approximation_leaf_traces_to_a_schwab_canonical_field():
+    """CI gate for the Schwab Field Precedence Principle.
+
+    Every leaf on the A2 output with source='v1_approximation' MUST be a
+    derived analytic that Schwab does not provide directly. If a new leaf
+    is added that's labeled v1_approximation but actually traces to a
+    Schwab canonical_field, this test fails — promote that leaf to
+    v2_compliant with the Schwab leaf cited in `detail`, and add the path
+    to A2_V1_APPROXIMATION_DERIVED_ALLOWLIST only if it really is derived.
+    """
+    a2 = build_a2_option_expression(_comprehensive_ms_for_ci_gate(), _sample_a1())
+
+    found_paths = {path for path, _ in _walk_v1_approximation_leaves(a2, "")}
+    unexpected = found_paths - set(A2_V1_APPROXIMATION_DERIVED_ALLOWLIST)
+
+    assert not unexpected, (
+        "Schwab Field Precedence violation: the following v1_approximation "
+        "leaves on the A2 output may trace to a Schwab canonical_field. "
+        "Promote each to v2_compliant with the Schwab leaf cited in `detail`, "
+        "or add to A2_V1_APPROXIMATION_DERIVED_ALLOWLIST with a reason if it "
+        f"truly is derived: {sorted(unexpected)}"
+    )
 

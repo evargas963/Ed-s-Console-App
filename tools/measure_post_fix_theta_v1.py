@@ -45,6 +45,7 @@ class Agg:
     theta_key_missing: int = 0
     theta_present_null: int = 0
     theta_present_numeric: int = 0
+    theta_present_sentinel: int = 0
     theta_present_other: int = 0
     quote_time_present: int = 0
     trade_time_present: int = 0
@@ -84,6 +85,13 @@ def _contract_in_scope(ct: dict, scope: str) -> bool:
 
 
 def _classify_theta(ct: dict) -> str:
+    """Bucket a chain row's ``theta`` field for S008 measurement.
+
+    Schwab uses ``-999.0`` to mark a "missing greek" while still emitting the
+    key as numeric. We bucket those separately as ``present_sentinel`` so
+    they cannot inflate the ``present_numeric`` rate the operator uses to
+    choose Branch A/B/C.
+    """
     if "theta" not in ct:
         return "key_missing"
     v = ct["theta"]
@@ -94,12 +102,16 @@ def _classify_theta(ct: dict) -> str:
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         if isinstance(v, float) and not math.isfinite(v):
             return "present_other"
+        if float(v) == -999.0:
+            return "present_sentinel"
         return "present_numeric"
     try:
-        float(v)
-        return "present_numeric"
+        f = float(v)
     except (TypeError, ValueError):
         return "present_other"
+    if f == -999.0:
+        return "present_sentinel"
+    return "present_numeric"
 
 
 def _present_long_field(ct: dict, key: str) -> bool:
@@ -132,6 +144,7 @@ def _branch_hint(
     miss_r: float | None,
     null_r: float | None,
     numeric_r: float | None,
+    sentinel_r: float | None = None,
     n_contracts: int,
 ) -> dict[str, Any]:
     """Heuristic only — operator must pick A/B/C per proof-row contract."""
@@ -149,11 +162,23 @@ def _branch_hint(
     if miss_r is None or null_r is None or numeric_r is None:
         out["rationale"] = "No contract observations in scope."
         return out
+    # Schwab's -999.0 sentinel is functionally equivalent to "theta missing"
+    # even though the key is present and numeric. A high sentinel rate is the
+    # same diagnosis as a high null rate: Schwab is signalling missing theta.
+    sr = sentinel_r if sentinel_r is not None else 0.0
+    if sr >= 0.05:
+        out["branch_hint"] = "Branch_B_or_C_likely"
+        out["rationale"] = (
+            f"Material theta -999 sentinel rate ({sr:.3f}); Schwab is reporting theta missing on a "
+            "non-trivial share of contracts. Investigate Schwab/API conditioning before choosing B vs C."
+        )
+        return out
     # Loose thresholds — large samples should drive interpretation.
-    if miss_r <= 0.001 and null_r <= 0.02:
+    if miss_r <= 0.001 and null_r <= 0.02 and sr <= 0.001:
         out["branch_hint"] = "Branch_A_likely"
         out["rationale"] = (
-            "theta key missingness ~0 and null rate low; consistent with Schwab theta reaching archive."
+            "theta key missingness ~0, null rate low, sentinel rate ~0; "
+            "consistent with Schwab theta reaching archive."
         )
         return out
     if miss_r >= 0.05:
@@ -257,6 +282,9 @@ def run_measure(
                 elif tc == "present_numeric":
                     by_key[key].theta_present_numeric += 1
                     total.theta_present_numeric += 1
+                elif tc == "present_sentinel":
+                    by_key[key].theta_present_sentinel += 1
+                    total.theta_present_sentinel += 1
                 else:
                     by_key[key].theta_present_other += 1
                     total.theta_present_other += 1
@@ -283,6 +311,7 @@ def run_measure(
                     "theta_key_missing_rate": _rate(a.theta_key_missing, n),
                     "theta_present_null_rate": _rate(a.theta_present_null, n),
                     "theta_present_numeric_rate": _rate(a.theta_present_numeric, n),
+                    "theta_present_sentinel_rate": _rate(a.theta_present_sentinel, n),
                     "theta_present_non_numeric_rate": _rate(a.theta_present_other, n),
                     "quoteTimeInLong_present_rate": _rate(a.quote_time_present, n),
                     "tradeTimeInLong_present_rate": _rate(a.trade_time_present, n),
@@ -298,6 +327,7 @@ def run_measure(
             "theta_key_missing_rate": _rate(total.theta_key_missing, tn),
             "theta_present_null_rate": _rate(total.theta_present_null, tn),
             "theta_present_numeric_rate": _rate(total.theta_present_numeric, tn),
+            "theta_present_sentinel_rate": _rate(total.theta_present_sentinel, tn),
             "quoteTimeInLong_present_rate": _rate(total.quote_time_present, tn),
             "tradeTimeInLong_present_rate": _rate(total.trade_time_present, tn),
         }
@@ -305,6 +335,7 @@ def run_measure(
             miss_r=totals_dict["theta_key_missing_rate"],
             null_r=totals_dict["theta_present_null_rate"],
             numeric_r=totals_dict["theta_present_numeric_rate"],
+            sentinel_r=totals_dict["theta_present_sentinel_rate"],
             n_contracts=tn,
         )
 

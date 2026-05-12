@@ -30,7 +30,7 @@ def test_working_server_underlying_price_row_relocated_to_fail_closed_read():
     pytest.fail("expected relocated underlyingPrice row in WORKING.csv")
 
 
-def test_mc_fusion_n7_volatility_row_still_tagged_primitive_risk():
+def test_mc_fusion_n7_volatility_row_classified_true_analytic_after_upstream_trace():
     from tools.classify_schwab_csv_crosswalk import classify
 
     row = {
@@ -42,4 +42,5 @@ def test_mc_fusion_n7_volatility_row_still_tagged_primitive_risk():
         "code": 'vol = float(mc_output.get("volatility") or 0.0)',
     }
     classification, _reason = classify(dict(row))
-    assert classification == "CSV_PRIMITIVE_RISK_REVIEW"
+    assert classification == "TRUE_ANALYTIC_REVIEW"
+    assert "MonteCarloOutput" in _reason or "simulation" in _reason.lower()
