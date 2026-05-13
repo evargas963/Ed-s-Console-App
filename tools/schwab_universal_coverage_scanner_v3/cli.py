@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import subprocess
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -68,10 +69,17 @@ def _load_disposition_merge_maps(
     dict[str, dict[str, str]],
     dict[tuple[str, str, str, str], dict[str, str]],
 ]:
-    """Prior dispositions keyed by scan site, register_id, and surface+pattern (line-stable rescan)."""
+    """Prior dispositions keyed by scan site, register_id, and surface+pattern (line-stable rescan).
+
+    Surface-key merge is dropped when the prior register already has that
+    (path, surface_form, pattern_kind, language) on more than one line — otherwise
+    a second physical site with identical surface text inherits REPLACED without
+    an operator line binding.
+    """
     by_site: dict[tuple[str, int, int, str, str], dict[str, str]] = {}
     by_id: dict[str, dict[str, str]] = {}
     by_surface: dict[tuple[str, str, str, str], dict[str, str]] = {}
+    surface_lines: dict[tuple[str, str, str, str], set[int]] = defaultdict(set)
     if not register_csv.is_file():
         return by_site, by_id, by_surface
     try:
@@ -94,9 +102,17 @@ def _load_disposition_merge_maps(
                     by_id[rid] = payload
                 ssk = _merge_surface_key_from_csv_row(row)
                 if ssk is not None:
+                    try:
+                        ln = int(row.get("line") or 0)
+                    except ValueError:
+                        ln = 0
+                    surface_lines[ssk].add(ln)
                     by_surface[ssk] = payload
     except (OSError, UnicodeError, csv.Error):
         return {}, {}, {}
+    for ssk, lines in surface_lines.items():
+        if len(lines) > 1:
+            by_surface.pop(ssk, None)
     return by_site, by_id, by_surface
 
 

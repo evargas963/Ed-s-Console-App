@@ -432,3 +432,68 @@ def test_register_id_stable() -> None:
     a = RegisterRow.make_id("p.py", 1, 0, "K", "python")
     b = RegisterRow.make_id("p.py", 1, 0, "K", "python")
     assert a == b
+
+
+def test_disposition_merge_surface_omitted_when_duplicate_lines(tmp_path: Path) -> None:
+    """Same surface key on two lines → do not surface-merge (avoids cross-site REPLACED spill)."""
+    from tools.schwab_universal_coverage_scanner_v3.cli import _load_disposition_merge_maps
+    from tools.schwab_universal_coverage_scanner_v3.register import write_register_csv
+
+    surf = "        return {}"
+
+    def make_row(rid: str, line: int) -> RegisterRow:
+        return RegisterRow(
+            register_id=rid,
+            language="py",
+            path="server.py",
+            line=line,
+            col=0,
+            pattern_kind="TEXT_LINE_MARKET_TOKEN",
+            surface_form=surf,
+            tokens="t",
+            csv_candidates="chains.x",
+            csv_lexical_topk_note="",
+            v2_trace="",
+            disposition="REPLACED",
+            canonical_field_citation="chains.callExpDateMap.*.expirationDate",
+            governed_ref="governance/artifacts/perf_proof/replacements/pp_x.json",
+            notes="",
+        )
+
+    reg = tmp_path / "prior.csv"
+    write_register_csv(reg, [make_row("aaaaaaaaaaaaaaaaaaaa", 2050), make_row("bbbbbbbbbbbbbbbbbbbb", 4478)])
+    _by_site, _by_id, by_surface = _load_disposition_merge_maps(reg)
+    key = ("server.py", surf.strip(), "TEXT_LINE_MARKET_TOKEN", "py")
+    assert key not in by_surface
+
+
+def test_disposition_merge_surface_kept_when_single_line(tmp_path: Path) -> None:
+    from tools.schwab_universal_coverage_scanner_v3.cli import _load_disposition_merge_maps
+    from tools.schwab_universal_coverage_scanner_v3.register import write_register_csv
+
+    surf = "        return {}"
+    rows = [
+        RegisterRow(
+            register_id="aaaaaaaaaaaaaaaaaaaa",
+            language="py",
+            path="server.py",
+            line=2050,
+            col=0,
+            pattern_kind="TEXT_LINE_MARKET_TOKEN",
+            surface_form=surf,
+            tokens="t",
+            csv_candidates="chains.x",
+            csv_lexical_topk_note="",
+            v2_trace="",
+            disposition="REPLACED",
+            canonical_field_citation="chains.callExpDateMap.*.expirationDate",
+            governed_ref="governance/artifacts/perf_proof/replacements/pp_x.json",
+            notes="",
+        ),
+    ]
+    reg = tmp_path / "prior2.csv"
+    write_register_csv(reg, rows)
+    _by_site, _by_id, by_surface = _load_disposition_merge_maps(reg)
+    key = ("server.py", surf.strip(), "TEXT_LINE_MARKET_TOKEN", "py")
+    assert key in by_surface
+    assert by_surface[key]["disposition"] == "REPLACED"
