@@ -34,14 +34,12 @@
   "register_link": {
     "status": "bound_retroactive",
     "replaced_register_ids": [
-      "0167eb5bbcdea3f7a051",
-      "04fde1296aaf18668dee",
-      "2abb5b4ccddcc4ada8ad",
-      "5fad7a01642e699b7d58",
-      "702d2ff0c8c45ce350d9",
-      "9a98b7873658db7f55c6",
-      "a60939e6fed009b418ca",
-      "d5d1f1fcca9b8ded2234"
+      "1cd307e938ab36e9cef7",
+      "406c78db9d558e7ada19",
+      "9701c3a704a28d9975b6",
+      "accb9be2be1ea1bf6958",
+      "ed7951c063bf0d5f2ca0",
+      "f9721ce87e339a2839ec"
     ]
   }
 }
