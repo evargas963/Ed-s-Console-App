@@ -29,6 +29,32 @@ jobs:
           fi
           python tools/check_schwab_csv_first.py --diff-file /tmp/schwab_csv_first.diff
 
+      - name: Coherent Schwab meta vs scoreboard (committed artifacts)
+        shell: bash
+        run: |
+          python <<'PY'
+          import json, pathlib, sys
+
+          meta_p = pathlib.Path("governance/artifacts/schwab_v4_register_build_meta.json")
+          sb_p = pathlib.Path("governance/artifacts/schwab_v4_scoreboard.json")
+          meta = json.loads(meta_p.read_text(encoding="utf-8"))
+          sb = json.loads(sb_p.read_text(encoding="utf-8"))
+          m_sha = meta.get("register_content_sha256")
+          s_sha = (sb.get("register_build") or {}).get("register_content_sha256")
+          if not m_sha or m_sha != s_sha:
+              print(
+                  "Committed scoreboard register_build.register_content_sha256 must equal "
+                  "meta.register_content_sha256 (rebuild scoreboard after register/meta pin change).",
+                  "scoreboard:",
+                  s_sha,
+                  "meta:",
+                  m_sha,
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          print("Committed meta/scoreboard register pin coherent", m_sha[:16])
+          PY
+
       - name: Generate V4 register (gitignored; pin in schwab_v4_register_build_meta.json)
         shell: bash
         run: |
@@ -53,6 +79,42 @@ jobs:
                   print("register_rows_written mismatch", n, want_rows, file=sys.stderr)
                   sys.exit(1)
           print("V4 register pin OK", h[:16])
+          PY
+
+      - name: Rebuild V4 scoreboard (D17 + register_build from current register/meta)
+        shell: bash
+        run: |
+          python -m tools.schwab_v4_scoreboard
+
+      - name: Verify register file, meta, and scoreboard register_build SHA256 alignment
+        shell: bash
+        run: |
+          python <<'PY'
+          import csv, hashlib, json, pathlib, sys
+
+          reg = pathlib.Path("governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv")
+          meta = json.loads(
+              pathlib.Path("governance/artifacts/schwab_v4_register_build_meta.json").read_text(encoding="utf-8")
+          )
+          sb = json.loads(
+              pathlib.Path("governance/artifacts/schwab_v4_scoreboard.json").read_text(encoding="utf-8")
+          )
+          h = hashlib.sha256(reg.read_bytes()).hexdigest()
+          m_sha = meta.get("register_content_sha256")
+          s_sha = (sb.get("register_build") or {}).get("register_content_sha256")
+          if not (h == m_sha == s_sha):
+              print("SHA256 misalignment register/meta/scoreboard", h, m_sha, s_sha, file=sys.stderr)
+              sys.exit(1)
+          rep = sum(
+              1
+              for r in csv.DictReader(reg.open(newline="", encoding="utf-8"))
+              if (r.get("disposition") or "").strip() == "REPLACED"
+          )
+          rc = int((sb.get("d17") or {}).get("replaced_count", -1))
+          if rc != rep:
+              print("d17.replaced_count != CSV REPLACED row count", rc, rep, file=sys.stderr)
+              sys.exit(1)
+          print("triple SHA + replaced_count OK", h[:16], "replaced", rep)
           PY
 
       - name: Schwab V4 register O-XX validation
