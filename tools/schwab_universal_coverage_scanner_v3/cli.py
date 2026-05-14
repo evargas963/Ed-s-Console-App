@@ -34,6 +34,12 @@ from .vendor_paths import load_vendor_prefixes, path_is_vendored
 
 SCANNER_VERSION = "3.0.0"
 REGISTER_BUILD_META_REL = "governance/artifacts/schwab_v4_register_build_meta.json"
+# Never ingest another register artifact as scan input (explodes row count / self-scan).
+SKIP_SCAN_REL_PATHS = frozenset(
+    {
+        "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.mock_build.csv",
+    }
+)
 
 
 def _merge_key_from_csv_row(row: dict[str, str]) -> tuple[str, int, int, str, str] | None:
@@ -81,6 +87,8 @@ def _load_disposition_merge_maps(
     by_surface: dict[tuple[str, str, str, str], dict[str, str]] = {}
     surface_lines: dict[tuple[str, str, str, str], set[int]] = defaultdict(set)
     if not register_csv.is_file():
+        return by_site, by_id, by_surface
+    if os.environ.get("SCHWAB_SKIP_DISPOSITION_MERGE", "").strip().lower() in ("1", "true", "yes"):
         return by_site, by_id, by_surface
     try:
         with register_csv.open(newline="", encoding="utf-8") as f:
@@ -302,12 +310,22 @@ def run_scan(
     n_attempts = 0
     root = root.resolve()
     merge_by_site, merge_by_id, merge_by_surface = _load_disposition_merge_maps(out_csv)
+    out_csv = out_csv.resolve()
+    try:
+        skip_output_rel = out_csv.relative_to(root).as_posix().replace("\\", "/")
+    except ValueError:
+        skip_output_rel = None
 
     for abs_p in walk_workspace_files(root, on_prune=on_prune):
         if max_files is not None and n_attempts >= max_files:
             break
-        rel = abs_p.relative_to(root).as_posix()
+        rel = abs_p.relative_to(root).as_posix().replace("\\", "/")
         suffix = abs_p.suffix
+
+        if rel in SKIP_SCAN_REL_PATHS:
+            continue
+        if skip_output_rel is not None and rel == skip_output_rel:
+            continue
 
         route = inventory_mark_present(state, rel, suffix, include_dot_claude=include_dot_claude)
         if route == "skip_dictionary":

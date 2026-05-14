@@ -19,6 +19,7 @@ from tools.schwab_universal_coverage_scanner_v3.paths import (
     is_binary_sample,
     try_decode_utf8,
     walk_workspace_files,
+    PruneBatch,
 )
 from tools.schwab_universal_coverage_scanner_v3.python_scanner import scan_python_complete, scan_python_source
 from tools.schwab_universal_coverage_scanner_v3.reconciliation import (
@@ -404,6 +405,27 @@ def test_binary_file_excluded_from_scan(tmp_path: Path, mini_csv: Path, monkeypa
     assert fam["(c)_files_excluded"] >= 1
     ex = fam["exclusions"]
     assert any("V3-B binary file" in str(e.get("clause", "")) for e in ex)
+
+
+def test_prune_node_modules_and_inventory_dumps(tmp_path: Path) -> None:
+    (tmp_path / "keep.py").write_text("x = 1\n", encoding="utf-8")
+    nm = tmp_path / "node_modules" / "pkg"
+    nm.mkdir(parents=True)
+    (nm / "junk.js").write_text("export const bid = 1\n", encoding="utf-8")
+    inv = tmp_path / "schwab_field_inventory" / "pricehistory" / "raw"
+    inv.mkdir(parents=True)
+    (inv / "big.json").write_text('{"last": 1}\n', encoding="utf-8")
+    batches: list[PruneBatch] = []
+
+    def cb(b: PruneBatch) -> None:
+        batches.append(b)
+
+    files = {p.relative_to(tmp_path).as_posix() for p in walk_workspace_files(tmp_path, on_prune=cb)}
+    assert "keep.py" in files
+    assert "node_modules/pkg/junk.js" not in files
+    assert "schwab_field_inventory/pricehistory/raw/big.json" not in files
+    assert any(b.dir_kind == "node_modules" for b in batches)
+    assert any(b.dir_kind == "inventory_or_backup_dump" for b in batches)
 
 
 def test_prune_records_callback(tmp_path: Path) -> None:

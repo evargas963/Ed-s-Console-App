@@ -15,6 +15,18 @@ DOT_CLAUDE = ".claude"
 # Directory names we do not descend into; contents are aggregated into reconciliation (c).
 PRUNE_DIR_NAMES = frozenset({".git", "__pycache__", ".pytest_cache", ".mypy_cache"})
 
+# Whole subtrees excluded from the universal coverage walk (POSIX path prefixes).
+# Rationale: raw Schwab inventory dumps and npm trees are not operator closure targets;
+# scanning them dominated register row count (~25M) vs ~9k files attempted.
+PRUNE_SUBTREE_PREFIXES: tuple[str, ...] = (
+    "schwab_field_inventory/pricehistory",
+    "schwab_field_inventory/chains",
+    "schwab_field_inventory/instruments",
+    "schwab_field_inventory/streaming",
+    "schwab_field_inventory/market_hours",
+    "backups",
+)
+
 
 def is_csv_source_of_truth(rel_posix: str) -> bool:
     return rel_posix.replace("\\", "/").endswith(CSV_SOURCE_OF_TRUTH_SUFFIX)
@@ -82,6 +94,39 @@ def walk_workspace_files(
                     )
                 )
                 dirnames.remove(d)
+                continue
+
+            rel_sub = (rel_parent / d).as_posix().replace("\\", "/")
+            if d == "node_modules":
+                sub = dirpath_p / d
+                n = count_files_under(sub)
+                on_prune(
+                    PruneBatch(
+                        relative_dir=rel_sub,
+                        dir_kind="node_modules",
+                        file_count=n,
+                        clause="V3 scope — node_modules not scanned (npm vendor tree)",
+                        reason="pruned_directory",
+                    )
+                )
+                dirnames.remove(d)
+                continue
+
+            for prefix in PRUNE_SUBTREE_PREFIXES:
+                if rel_sub == prefix or rel_sub.startswith(prefix + "/"):
+                    sub = dirpath_p / d
+                    n = count_files_under(sub)
+                    on_prune(
+                        PruneBatch(
+                            relative_dir=rel_sub,
+                            dir_kind="inventory_or_backup_dump",
+                            file_count=n,
+                            clause=f"V3 scope — subtree not scanned ({prefix}/*)",
+                            reason="pruned_directory",
+                        )
+                    )
+                    dirnames.remove(d)
+                    break
 
         for fn in sorted(filenames):
             yield dirpath_p / fn

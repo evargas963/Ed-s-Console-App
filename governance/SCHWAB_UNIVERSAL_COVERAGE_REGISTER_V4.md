@@ -5,6 +5,12 @@
 **Machine-readable register:** `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` (**not tracked in git** — see `.gitignore`; regenerate after clone, see below).  
 **Scanner:** `python -m tools.schwab_universal_coverage_scanner_v3` (default `--output` is the CSV above). For CI or long repos, `--embedding-mode mock` avoids per-row MiniLM encode latency; closure runs should document embedding mode in `governance/artifacts/schwab_v4_register_build_meta.json` and refresh the scoreboard.
 
+**Walk scope (2026-05-14):** the scanner **does not descend** into `node_modules/`, `backups/`, or Schwab **raw inventory dumps** under `schwab_field_inventory/{pricehistory,chains,instruments,streaming,market_hours}/` (see `tools/schwab_universal_coverage_scanner_v3/paths.py`). The dictionary CSV at `schwab_field_inventory/schwab_field_dictionary.csv` remains the vocabulary source. The output register path and `…mock_build.csv` are **never scanned as inputs** (avoids self-scan and ~12M-row artifacts).
+
+**Large prior register:** if an old multi-GB CSV sits at the default `--output` path, disposition merge reads the whole file first. Set **`SCHWAB_SKIP_DISPOSITION_MERGE=1`** for one rescan to ignore prior dispositions, or move/delete the old CSV before rescanning.
+
+**Retiring this CSV (directional):** long-term intent is to drop the universal line-register artifact once D17 invariants live on a **scoped** static gate (smaller surface). Until then, keep the CSV **gitignored**, delete it between runs to reclaim disk, and rely on **meta + scoreboard** pins in git.
+
 **After clone:** run the scanner with the same flags recorded in `governance/artifacts/schwab_v4_register_build_meta.json` under `scanner_flags` (until you intentionally refresh that pin), e.g.  
 `python -m tools.schwab_universal_coverage_scanner_v3 --max-files 400 --embedding-mode mock`  
 so the CSV exists at the default path. The meta file pins `register_content_sha256`, `register_size_bytes`, and `scanner_commit_sha` for audit / CI reproduction.
