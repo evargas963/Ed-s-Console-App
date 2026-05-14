@@ -4,26 +4,26 @@
     "closure_admissible": false,
     "governed_exception_with_oxx_count": 0,
     "no_schwab_equivalent_count": 0,
-    "not_market_data_count": 0,
+    "not_market_data_count": 108,
     "register_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\governance\\SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv",
     "replaced_count": 12,
     "scanner_version": "3.0.0",
-    "unreviewed_count": 25134913,
+    "unreviewed_count": 25134805,
     "v4_a_violations": []
   },
-  "generated_at_utc": "2026-05-13T15:14:59Z",
+  "generated_at_utc": "2026-05-14T02:06:15Z",
   "perf_proof_dir": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\governance\\artifacts\\perf_proof\\replacements",
   "register_build": {
     "embedding_mode": "mock",
     "files_attempted": 9364,
-    "generated_at_utc": "2026-05-13T14:26:16Z",
+    "generated_at_utc": "2026-05-14T01:38:35Z",
     "max_files": null,
     "operator_note": "Full-repo closure complete; mock baseline at scanner commit 1bc08e0; rerun on scanner upgrades. Use --embedding-mode minilm for production top-K notes.",
     "partial_scan": false,
-    "register_content_sha256": "062456880d42d8f4949874addebf9646c569142e70f969c9325ebb8745ecef7a",
+    "register_content_sha256": "dc4512ce2e6b8a12e63d991fbde399e6efd38fa0e94bcca2f42f8be059180c83",
     "register_csv_path": "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv",
     "register_rows_written": 25134925,
-    "register_size_bytes": 30194567247,
+    "register_size_bytes": 30194575131,
     "scanner_commit_sha": "1bc08e04e9d2a6cfe38f4ecd4157835837ed55f5",
     "scanner_flags": {
       "embedding_mode": "mock",
@@ -34,13 +34,13 @@
   },
   "scoreboard": {
     "P": 4,
-    "delta_replaced_count_d17": -2,
-    "delta_unreviewed_count": 2,
-    "prior_git_ref": "947bbc74fe9afd01bdf0a6fed2a1473e6847f473",
-    "prior_replaced_count_d17": 14,
+    "delta_replaced_count_d17": 0,
+    "delta_unreviewed_count": -108,
+    "prior_git_ref": "e96271d271ebb6b30c13dfe38c6e2f8edd23ef1a",
+    "prior_replaced_count_d17": 12,
     "prior_scoreboard_source": "git_head",
-    "prior_unreviewed_count": 25134911,
+    "prior_unreviewed_count": 25134913,
     "replaced_count_d17": 12,
-    "unreviewed_count": 25134913
+    "unreviewed_count": 25134805
   }
 }

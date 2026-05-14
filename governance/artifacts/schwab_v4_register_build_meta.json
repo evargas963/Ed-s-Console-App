@@ -1,14 +1,14 @@
 {
   "embedding_mode": "mock",
   "files_attempted": 9364,
-  "generated_at_utc": "2026-05-13T14:26:16Z",
+  "generated_at_utc": "2026-05-14T01:38:35Z",
   "max_files": null,
   "operator_note": "Full-repo closure complete; mock baseline at scanner commit 1bc08e0; rerun on scanner upgrades. Use --embedding-mode minilm for production top-K notes.",
   "partial_scan": false,
-  "register_content_sha256": "062456880d42d8f4949874addebf9646c569142e70f969c9325ebb8745ecef7a",
+  "register_content_sha256": "dc4512ce2e6b8a12e63d991fbde399e6efd38fa0e94bcca2f42f8be059180c83",
   "register_csv_path": "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv",
   "register_rows_written": 25134925,
-  "register_size_bytes": 30194567247,
+  "register_size_bytes": 30194575131,
   "scanner_commit_sha": "1bc08e04e9d2a6cfe38f4ecd4157835837ed55f5",
   "scanner_flags": {
     "embedding_mode": "mock",
