@@ -55,6 +55,8 @@ jobs:
           print("Committed meta/scoreboard register pin coherent", m_sha[:16])
           PY
 
+      # FOLLOW_UP: see governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.md (Open follow-ups)
+      # — full pruned-tree rescan without --max-files; replaced_count / perf_proof reconciliation; CSV sunset.
       - name: Generate V4 register (gitignored; pin in schwab_v4_register_build_meta.json)
         shell: bash
         run: |
