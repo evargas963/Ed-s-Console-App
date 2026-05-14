@@ -12,11 +12,8 @@ You are the **drafter and executor**. Claude is the **gatekeeper/verifier**; Ed 
 - `governance/artifacts/schwab_v4_scoreboard.json` — authoritative scoreboard
 - `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.md` — register index + **§ Gate II** (scanner vs inventory scope)
 - `governance/OPERATOR_DECISION_REGISTER.md` — O-XX narratives (`Why:` / `Constraint:` / `Permanent or interim:`)
+- `OPEN_ITEMS.md` — **deferred Schwab register pipeline** (single checklist; do not duplicate elsewhere)
 - `tools/schwab_universal_coverage_scanner_v3/`, `tools/schwab_v4_scoreboard.py`, `tools/schwab_coverage_v4_metrics.py`
-
-## Deferred register hygiene (must revisit)
-
-Before treating the Schwab V4 **spine** as finished, read **`governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.md`** (section **Open follow-ups (scheduled — do not archive)**). CI pins a **partial** mock register (`--max-files 400`); a **full pruned-tree rescan**, **`replaced_count` / perf_proof reconciliation**, and the long-term **CSV sunset** are explicitly still open.
 
 ## Closure bar
 

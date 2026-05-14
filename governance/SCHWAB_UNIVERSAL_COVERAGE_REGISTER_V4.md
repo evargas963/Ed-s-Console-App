@@ -15,15 +15,7 @@
 `python -m tools.schwab_universal_coverage_scanner_v3 --max-files 400 --embedding-mode mock`  
 so the CSV exists at the default path. The meta file pins `register_content_sha256`, `register_size_bytes`, and `scanner_commit_sha` for audit / CI reproduction.
 
-## Open follow-ups (scheduled — do not archive)
-
-These items are **intentionally left open** after the 2026-05 scanner walk-scope cleanup. Revisit before claiming the V4 register pipeline is “closed” or before a major release audit.
-
-| Item | Why | Suggested trigger |
-|------|-----|-------------------|
-| **Full pruned-tree rescan** | Committed pins today use **`--max-files 400`** (CI proxy). Row counts are not a full-repo baseline under the **new** prunes. | Dedicated maintenance window; then commit `schwab_v4_register_build_meta.json` + `schwab_v4_scoreboard.json` from that run. |
-| **`d17.replaced_count` vs perf_proof** | Partial / merge history may leave **14 vs 12** style drift until reconciled on the **current** CSV. | Next time you touch `server.py` perf_proof slices or D17 gates. |
-| **Register CSV sunset** | Long-term: move D17 invariants off the universal line-register (see **Retiring this CSV** above). | Program / gatekeeper milestone, not ad-hoc. |
+**Deferred register work** is tracked only in **`OPEN_ITEMS.md`** (section **Schwab V4 Universal Coverage (register pipeline)**) to avoid duplicate checklists across governance files.
 
 ## Columns
 
