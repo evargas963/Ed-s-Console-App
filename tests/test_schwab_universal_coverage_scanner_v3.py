@@ -412,6 +412,9 @@ def test_prune_node_modules_and_inventory_dumps(tmp_path: Path) -> None:
     nm = tmp_path / "node_modules" / "pkg"
     nm.mkdir(parents=True)
     (nm / "junk.js").write_text("export const bid = 1\n", encoding="utf-8")
+    venv = tmp_path / ".venv" / "lib"
+    venv.mkdir(parents=True)
+    (venv / "site.py").write_text("rho = 1\n", encoding="utf-8")
     inv = tmp_path / "schwab_field_inventory" / "pricehistory" / "raw"
     inv.mkdir(parents=True)
     (inv / "big.json").write_text('{"last": 1}\n', encoding="utf-8")
@@ -423,8 +426,10 @@ def test_prune_node_modules_and_inventory_dumps(tmp_path: Path) -> None:
     files = {p.relative_to(tmp_path).as_posix() for p in walk_workspace_files(tmp_path, on_prune=cb)}
     assert "keep.py" in files
     assert "node_modules/pkg/junk.js" not in files
+    assert ".venv/lib/site.py" not in files
     assert "schwab_field_inventory/pricehistory/raw/big.json" not in files
     assert any(b.dir_kind == "node_modules" for b in batches)
+    assert any(b.dir_kind == ".venv" for b in batches)
     assert any(b.dir_kind == "inventory_or_backup_dump" for b in batches)
 
 

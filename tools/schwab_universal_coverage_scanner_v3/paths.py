@@ -27,6 +27,21 @@ PRUNE_SUBTREE_PREFIXES: tuple[str, ...] = (
     "backups",
 )
 
+# Generated / vendor directory basenames — never scanned (closure targets source + governance text).
+PRUNE_GENERATED_DIR_NAMES = frozenset(
+    {
+        "node_modules",
+        ".venv",
+        "venv",
+        "dist",
+        "build",
+        "htmlcov",
+        ".tox",
+        ".eggs",
+        "__pypackages__",
+    }
+)
+
 
 def is_csv_source_of_truth(rel_posix: str) -> bool:
     return rel_posix.replace("\\", "/").endswith(CSV_SOURCE_OF_TRUTH_SUFFIX)
@@ -97,15 +112,15 @@ def walk_workspace_files(
                 continue
 
             rel_sub = (rel_parent / d).as_posix().replace("\\", "/")
-            if d == "node_modules":
+            if d in PRUNE_GENERATED_DIR_NAMES:
                 sub = dirpath_p / d
                 n = count_files_under(sub)
                 on_prune(
                     PruneBatch(
                         relative_dir=rel_sub,
-                        dir_kind="node_modules",
+                        dir_kind=d,
                         file_count=n,
-                        clause="V3 scope — node_modules not scanned (npm vendor tree)",
+                        clause=f"V3 scope — generated/vendor directory not scanned ({d}/)",
                         reason="pruned_directory",
                     )
                 )
