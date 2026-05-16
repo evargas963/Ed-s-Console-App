@@ -51,6 +51,11 @@ SECTION7 = sorted(
     if p.name != "__init__.py"
 ) + ["lifecycle_rule_core.py"]
 
+SECTION13 = sorted(
+    ["adaptive_similarity_engine.py"]
+    + [p.name for p in (ROOT / ".").glob("similarity_*.py")]
+)
+
 SECTION12 = [
     "liquidity_models.py",
     "liquidity_value_engine.py",
@@ -141,5 +146,6 @@ if __name__ == "__main__":
         "10": SECTION10,
         "11": SECTION11,
         "12": SECTION12,
+        "13": SECTION13,
     }.get(which, SECTION1)
     main(files)

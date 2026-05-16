@@ -553,6 +553,25 @@ Per-function detail in `governance/section12_derivation_inventory.py`.
 
 ---
 
+## Section 13 derivation audit inventory
+
+Walked **5** similarity modules at **full AST scope**. **68** inventory rows: **0** REPLACED, **32** KEEP_DERIVED, **16** PASS_THROUGH, **20** NONE. Similarity reads persisted snapshot/feature rows and DB pools only; no direct Schwab API. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section13_derivation_inventory.py`. Tests: `tests/test_section13_schwab_derivation_audit.py`.
+
+<!-- SECTION13_DERIVATION_INVENTORY_START -->
+| file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---:|---:|---:|---:|---:|
+| adaptive_similarity_engine.py | 21 | 0 | 14 | 2 | 5 |
+| similarity_audit.py | 20 | 0 | 7 | 2 | 11 |
+| similarity_feature_search.py | 11 | 0 | 4 | 6 | 1 |
+| similarity_feature_universe.py | 9 | 0 | 5 | 3 | 1 |
+| similarity_feature_survivorship.py | 7 | 0 | 2 | 3 | 2 |
+| **total** | **68** | **0** | **32** | **16** | **20** |
+
+Per-function detail in `governance/section13_derivation_inventory.py`.
+<!-- SECTION13_DERIVATION_INVENTORY_END -->
+
+---
+
 ## CAPS allowlist (silent-default substitution family)
 
 Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  
