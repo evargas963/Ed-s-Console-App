@@ -115,6 +115,30 @@ def test_section4_no_or_zero_pair_sum_in_key_levels_files():
     assert hits == [], f"or-zero pair sums remain: {hits}"
 
 
+def test_section4_no_or_zero_pair_sum_repo_wide():
+    """Repo-wide: no (x or 0) + (y or 0) gamma-bucket synthesis in production .py."""
+    skip_parts = {
+        ".claude",
+        ".git",
+        ".venv",
+        "__pycache__",
+        "backups",
+        "governance",
+        "tests",
+        "tools",
+    }
+    hits: list[str] = []
+    for path in ROOT.rglob("*.py"):
+        if any(part in skip_parts for part in path.parts):
+            continue
+        rel = path.relative_to(ROOT).as_posix()
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for i, line in enumerate(text.splitlines(), start=1):
+            if _OR_ZERO_PAIR_SUM.search(line):
+                hits.append(f"{rel}:{i}:{line.strip()}")
+    assert hits == [], f"or-zero pair sums remain repo-wide: {hits}"
+
+
 def test_liquidity_void_get_gex_sums_only_present_gamma():
     from math_levels import compute_gamma_void_zones
 

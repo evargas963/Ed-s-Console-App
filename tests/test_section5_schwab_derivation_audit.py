@@ -72,6 +72,32 @@ def test_order_flow_engine_no_bid_ask_mid_in_spread():
     assert "(float(bid) + float(ask)) / 2" not in src.replace(" ", "")
 
 
+def test_section5_no_bid_ask_mid_spread_fallback_repo_wide():
+    """Repo-wide: no bid+ask/2 spread mid synthesis in production quote paths."""
+    skip_parts = {
+        ".claude",
+        ".git",
+        ".venv",
+        "__pycache__",
+        "backups",
+        "governance",
+        "tests",
+        "tools",
+    }
+    hits: list[str] = []
+    for path in ROOT.rglob("*.py"):
+        if any(part in skip_parts for part in path.parts):
+            continue
+        rel = path.relative_to(ROOT).as_posix()
+        if rel in ("v2_decision/a2_price_precedence.py",):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for i, line in enumerate(text.splitlines(), start=1):
+            if _BID_ASK_MID_SPREAD_PAT.search(line):
+                hits.append(f"{rel}:{i}:{line.strip()}")
+    assert hits == [], f"bid+ask/2 spread mid synthesis remains: {hits}"
+
+
 def test_push_level_one_records_stream_fields():
     import order_flow_live_state as ofs
 
