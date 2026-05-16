@@ -75,7 +75,10 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | DFR-010 / MT-001 | CLOSED | `d4b2f1a` (S005) — `features/replay_signal_input_v1` spot fail-closed. |
 | DFR-021 | CLOSED | `df58fe9` — `build_inference_snapshot_v1_from_signal_input` no `time.time()` fallback (`SCHWAB_REMEDIATION_S017_INFERENCE_SNAPSHOT_TIME_CONTRACT.md`). |
 | DFR-017-REG-MAX-PAIN | CLOSED | `9850a86` — max-pain mult fail-closed; see `math_levels.compute_max_pain`. |
-| DFR-017 | CLOSED | Repo-wide `multiplier` consumers fail-closed; see `tests/test_dfr017_multiplier_repo_sweep.py`. |
+| DFR-017 | CLOSED | `0ee94b8` — repo-wide `multiplier` consumers fail-closed. |
+| DFR-008 / DFR-022 | CLOSED | EM path: no synthetic 6.5h fallback; IV EM requires `_hours_rem > 0`. |
+| DFR-007 / OP-010 | CLOSED | `tradeTimeInLong` governed fallback when `quoteTimeInLong` absent. |
+| OP-008 | CLOSED | Schwab `theta` only; BS behind `_A2_THETA_BS_FALLBACK_GOVERNED`. |
 | DFR-005 / OP-018 | CLOSED | `64c3641` — strict `expirationDate` slice; `kl_expiry_source`; no full-chain fallback. |
 
 ---
@@ -102,7 +105,7 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | DFR-005 | `server.py::_fetch_state()` | Selected-expiry filter falls back to full chain when no rows match | Wrong expiry slice can alter strike selection and option expression scoring. **CLOSED** — strict `expirationDate` slice via `_filter_contracts_by_selected_expiry`; `kl_expiry_source` emitted. | gate/fail-closed | High |
 | DFR-006 | `v2_decision/a2_option_expression.py` | `spread = ms_dict.spread or (ask - bid)` | Underlying spread and contract spread can be semantically mixed unless provenance is explicit. | redesign | High |
 | DFR-007 | `v2_decision/a2_option_expression.py::_quote_staleness_ms()` | Uses `quoteTimeInLong`; missing means not implemented | Schwab also provides `tradeTimeInLong`; missing quote timestamp can hard-gate A2 despite usable trade timestamp. | gate/fail-closed / governed fallback | High |
-| DFR-008 | `server.py` expected move block | Falls back to expected-move path with default **`volatility`** = 20% and full-session hours | Synthetic default-**`volatility`** EM can affect risk framing when Schwab **`volatility`/marks are unavailable. | gate/fail-closed | Medium/High |
+| DFR-008 | `server.py` expected move block | Falls back to expected-move path with default **`volatility`** = 20% and full-session hours | Synthetic default-**`volatility`** EM can affect risk framing when Schwab **`volatility`/marks are unavailable. **CLOSED** — straddle/IV EM only; no synthetic IV. | gate/fail-closed | Medium/High |
 | DFR-009 | `snapshot_normalizer.py::resample_to_1m()` | Rebuilds OHLCV from snapshots and spot fallback | Can create training/history bars unlike Schwab price-history candles. | redesign | Medium/High |
 | DFR-010 | `features/replay_signal_input_v1.py` | `spot = float(row.get("spot") or 0.0)` | Missing spot becomes 0.0 instead of unavailable; V3 I-01 risk in replay feature path. **Closed `d4b2f1a` (S005).** | gate/fail-closed | High |
 | DFR-011 | `market_data_adapter.py` | OHLCV missing/unparseable values default to `0.0` | Schwab price-history candles provide native OHLCV; zero-injected bars can pollute ATR/VWAP/volatility/replay. | gate/fail-closed | High |
@@ -116,7 +119,7 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | DFR-019 | `order_flow_engine.py::_compute_rvol()` | RVOL returns `1.0` when average volume is invalid | Missing baseline volume becomes neutral RVOL instead of unavailable. | gate/fail-closed / derived provenance | Medium |
 | DFR-020 | `signals.py::_spot_for_mc_fusion_adjustment()` | spot returns `0.0` in fusion adjustment path | Post-fusion spot consumer can silently substitute zero. **Closed `d4b2f1a` (S005).** | gate/fail-closed | High |
 | DFR-021 | `features/inference_snapshot.py` | `as_of_ts -> refresh_ts_utc -> time.time()` | Decision/input timestamp can fall back to wall clock without source label. **Closed `df58fe9` (S017 inference snapshot amendment).** | gate/fail-closed / provenance | Medium |
-| DFR-022 | `server.py` MC expected move block | fallback hours defaults to `6.5` | Synthetic full-session horizon can affect expected-move framing. | gate/fail-closed | Medium |
+| DFR-022 | `server.py` MC expected move block | fallback hours defaults to `6.5` | Synthetic full-session horizon can affect expected-move framing. **CLOSED** — removed `max(_hours_rem, 6.5)` MC_FALLBACK block. | gate/fail-closed | Medium |
 | DFR-023 | `mc_fusion_adjustment.py` | MC output zero-fill via `or 0.0` | Missing MC output can become neutral zero-valued adjustment. | gate/fail-closed | Medium |
 | DFR-024 | `static/index.html` utility bid/ask rendering | sticky bid/ask display | Operator-visible quote fields can persist when current payload omits them. | gate/fail-closed | High |
 

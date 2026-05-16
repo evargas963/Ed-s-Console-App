@@ -175,7 +175,8 @@ def compute_expected_move_iv(spot: float, atm_iv: float,
                 "error": "Missing spot or IV"}
 
     if hours_remaining <= 0:
-        return {"em_pts": 0.0, "upper": spot, "lower": spot, "error": ""}
+        return {"em_pts": None, "upper": None, "lower": None,
+                "error": "session_hours_unavailable"}
 
     annualized_hours = TRADING_DAYS_PER_YEAR * TRADING_HOURS_PER_DAY
     em_pts = round(spot * (atm_iv / 100.0) * math.sqrt(hours_remaining / annualized_hours), 2)

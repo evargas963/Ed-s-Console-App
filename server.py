@@ -3464,22 +3464,12 @@ def _fetch_state(
 
         # IV-based EM (shrinks through the day)
         _hours_rem = max(0.0, (MARKET_CLOSE_HOUR * 60 - (now_et.hour * 60 + now_et.minute)) / 60.0)
-        if _atm_iv and _atm_iv > 0 and spot_f > 0:
+        if _atm_iv and _atm_iv > 0 and spot_f > 0 and _hours_rem > 0:
             _em_iv = compute_expected_move_iv(spot_f, _atm_iv, _hours_rem)
 
-        # EM progress (use straddle EM if available, fall back to IV)
+        # EM progress (use straddle EM if available, fall back to IV) — no synthetic 6.5h session fill.
         _em_up = _em_straddle.get("upper") or _em_iv.get("upper")
         _em_lo = _em_straddle.get("lower") or _em_iv.get("lower")
-        # Fallback EM must still use Schwab IV; never synthesize IV when unavailable.
-        if (_em_up is None or _em_lo is None) and spot_f > 0 and _atm_iv and _atm_iv > 0:
-            try:
-                log.warning("MC_FALLBACK _atm_iv=%s _hours_rem=%s _em_up=%s _em_lo=%s", _atm_iv, _hours_rem, _em_up, _em_lo)  # FIX: MC em trace
-                _fallback_hours = max(_hours_rem, 6.5) if _hours_rem else 6.5
-                _em_mc = compute_expected_move_iv(spot_f, _atm_iv, _fallback_hours)
-                _em_up = _em_up or _em_mc.get("upper")
-                _em_lo = _em_lo or _em_mc.get("lower")
-            except Exception as ex:
-                log.debug("MC fallback EM failed: %s", ex)
         if _em_up and _em_lo and _today_open:
             _em_progress = compute_em_progress(spot_f, _today_open, _em_up, _em_lo)
 
