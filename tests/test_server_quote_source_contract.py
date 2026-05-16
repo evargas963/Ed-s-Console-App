@@ -52,6 +52,42 @@ def test_rest_fast_quote_payload_exposes_field_sources(monkeypatch):
     }
 
 
+class _RespNoSpot:
+    status_code = 200
+
+    def json(self) -> dict:
+        return {
+            "SPY": {
+                "quote": {
+                    "lastPrice": None,
+                    "mark": None,
+                    "bidPrice": None,
+                    "askPrice": None,
+                }
+            }
+        }
+
+
+def test_rest_fast_quote_spot_fail_closed_not_zero(monkeypatch):
+    """PQ-001 / DFR-003 re-audit: missing last+mark → spot None, never 0.0."""
+    monkeypatch.setattr(server, "get_client", lambda: object())
+    monkeypatch.setattr(server, "_safe_get_quote_with_retry", lambda *_a, **_k: _RespNoSpot())
+
+    payload = server._build_rest_fast_quote_payload("SPY", "rest_fast_quote")
+
+    assert payload["spot"] is None
+    assert payload.get("spot_source") is None
+    assert payload["quote_source_detail"]["spot"] == "unavailable_missing_last_and_mark"
+
+
+def test_rest_fast_quote_source_has_no_silent_zero_spot_fallback():
+    import inspect
+
+    src = inspect.getsource(server._build_rest_fast_quote_payload)
+    assert "or 0.0" not in src
+    assert "spot = last if" in src or "spot_source" in src
+
+
 def test_tier_a_live_state_rest_bootstrap_row_uses_schwab_time_not_wall_clock(monkeypatch):
     """S017: Tier A GET /api/live/state REST bootstrap must not set fast_server_ts from time.time()."""
     monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: None)
