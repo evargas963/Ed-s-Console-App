@@ -1086,6 +1086,7 @@ class _CandleAccumulator:
         self._bars: dict[str, list[Candle]] = {}       # ticker -> completed bars
         self._current: dict[str, dict] = {}             # ticker -> {ts, o, h, l, c, v}
         self._prev_total_vol: dict[str, float] = {}    # ticker -> prior totalVolume for delta
+        self._bars_source: dict[str, str] = {}         # ticker -> provenance for VWAP path
 
     def _bar_start(self, epoch: float) -> float:
         """Round epoch down to bar boundary."""
@@ -1099,6 +1100,7 @@ class _CandleAccumulator:
         bar_ts = self._bar_start(ts)
         total_now = float(total_volume) if total_volume is not None else None
         prev = self._prev_total_vol.get(ticker)
+        vol_source = "schwab_quote_totalVolume_delta"
 
         # Compute volume delta; reset if value drops (new session)
         if total_now is not None and prev is not None:
@@ -1106,10 +1108,13 @@ class _CandleAccumulator:
             vol_delta = max(0.0, delta) if delta >= 0 else 0.0
             if delta < 0:
                 prev = None
+                vol_source = "schwab_quote_totalVolume_session_reset"
         else:
             vol_delta = None
         if total_now is not None:
             self._prev_total_vol[ticker] = total_now
+        if ticker not in self._bars_source or self._bars_source[ticker] != "schwab_pricehistory":
+            self._bars_source[ticker] = vol_source
 
         if ticker not in self._bars:
             self._bars[ticker] = []
@@ -1129,7 +1134,15 @@ class _CandleAccumulator:
                     self._bars[ticker] = self._bars[ticker][-self.max_bars:]
 
             # Start new bar (reset volume tracker for fresh delta on next tick)
-            self._current[ticker] = {"ts": bar_ts, "o": price, "h": price, "l": price, "c": price, "v": vol_delta}
+            self._current[ticker] = {
+                "ts": bar_ts,
+                "o": price,
+                "h": price,
+                "l": price,
+                "c": price,
+                "v": vol_delta,
+                "volume_source": vol_source,
+            }
         else:
             # Update current bar
             cur["h"] = max(cur["h"], price)
@@ -1137,10 +1150,15 @@ class _CandleAccumulator:
             cur["c"] = price
             if vol_delta is not None:
                 cur["v"] = (cur.get("v") or 0.0) + vol_delta
+            cur["volume_source"] = vol_source
 
     def get_bars(self, ticker: str) -> list[Candle]:
         """Return completed bars (not including the in-progress bar)."""
         return list(self._bars.get(ticker, []))
+
+    def get_bars_source(self, ticker: str) -> str:
+        """Provenance label for bars produced by this accumulator (VWAP / analytics)."""
+        return self._bars_source.get(ticker, "schwab_quote_totalVolume_delta")
 
     def seed(self, ticker: str, bars: list):
         """Seed completed bars from price history. Overwrites existing bars for this ticker."""
@@ -1164,6 +1182,7 @@ class _CandleAccumulator:
                     continue
         if candles:
             self._bars[ticker] = candles[-self.max_bars:]
+            self._bars_source[ticker] = "schwab_pricehistory"
             # Set current bar from last candle so ticks extend properly
             last = candles[-1]
             self._current[ticker] = {
@@ -2263,21 +2282,27 @@ def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float 
 # HELPER — compute VWAP from candle bars (seeded from price history)
 # Used as fallback when fetch_price_levels returns vwap=None (individual equities).
 # ─────────────────────────────────────────────────────────────────────────────
-def _compute_vwap_from_bars(bars: list) -> Optional[float]:
+def _compute_vwap_from_bars(
+    bars: list,
+    *,
+    source_bars: str = "schwab_quote_totalVolume_delta",
+) -> tuple[Optional[float], str]:
     """Compute VWAP = Σ(typical_price × volume) / Σ(volume) from completed bars.
-    Returns None if no bars have volume (live-tick-only bars carry no volume).
+
+    Returns (vwap, source_bars). ``source_bars`` documents Schwab leaf lineage
+    (pricehistory vs quote totalVolume delta per Day 1 OHLCV contract).
     """
     cum_tp_vol = 0.0
-    cum_vol    = 0.0
+    cum_vol = 0.0
     for b in bars:
         if b.volume is None or float(b.volume) <= 0:
             continue
         tp = (float(b.high) + float(b.low) + float(b.close)) / 3.0
         cum_tp_vol += tp * float(b.volume)
-        cum_vol    += float(b.volume)
+        cum_vol += float(b.volume)
     if cum_vol > 0:
-        return round(cum_tp_vol / cum_vol, 4)
-    return None
+        return round(cum_tp_vol / cum_vol, 4), source_bars
+    return None, source_bars
 
 
 # Per-ticker previous DPI normalized score (dealer pressure trend between refreshes)
@@ -3114,13 +3139,29 @@ def _fetch_state(
     ask    = parsed_ask
 
     global _last_spread_by_ticker, _last_spread_ts_by_ticker
-    _quote_spread = (
+    _quote_spread_pts = (
         round(float(ask) - float(bid), 4) if (bid is not None and ask is not None) else None
     )
-    _quote_spread_source = "schwab_bid_ask_live" if _quote_spread is not None else "unavailable_missing_bid_or_ask"
-    _quote_spread_age_ms = 0 if _quote_spread is not None else None
-    if _quote_spread is not None:
-        _last_spread_by_ticker[ticker] = _quote_spread
+    _quote_mid_for_spread = None
+    if parsed_mark is not None and parsed_mark > 0:
+        _quote_mid_for_spread = float(parsed_mark)
+    elif bid is not None and ask is not None:
+        _quote_mid_for_spread = (float(bid) + float(ask)) / 2.0
+    _quote_spread_frac = (
+        round(_quote_spread_pts / _quote_mid_for_spread, 6)
+        if (_quote_spread_pts is not None and _quote_mid_for_spread and _quote_mid_for_spread > 0)
+        else None
+    )
+    _quote_spread = _quote_spread_pts
+    _quote_spread_source = "schwab_bid_ask_live" if _quote_spread_pts is not None else "unavailable_missing_bid_or_ask"
+    _quote_spread_frac_source = (
+        "derived_bid_ask_fraction_schwab_quote"
+        if _quote_spread_frac is not None
+        else None
+    )
+    _quote_spread_age_ms = 0 if _quote_spread_pts is not None else None
+    if _quote_spread_pts is not None:
+        _last_spread_by_ticker[ticker] = _quote_spread_pts
         _last_spread_ts_by_ticker[ticker] = _t_after_quote_wall
     elif ticker in _last_spread_by_ticker and ticker in _last_spread_ts_by_ticker:
         _quote_spread_source = "cached_last_valid_not_tradeable"
@@ -4085,9 +4126,17 @@ def _fetch_state(
                 if _vwap_f is None:
                     _bars_for_vwap = _candles_1m.get_bars(ticker)
                     if _bars_for_vwap:
-                        _vwap_f = _compute_vwap_from_bars(_bars_for_vwap)
+                        _vwap_f, _vwap_source_bars = _compute_vwap_from_bars(
+                            _bars_for_vwap,
+                            source_bars=_candles_1m.get_bars_source(ticker),
+                        )
                         if _vwap_f is not None:
-                            log.debug(f"VWAP: {ticker} computed from accumulator bars: {_vwap_f:.4f}")
+                            log.debug(
+                                "VWAP: %s computed from %s bars: %.4f",
+                                ticker,
+                                _vwap_source_bars,
+                                _vwap_f,
+                            )
                 if _vwap_f is None:
                     _pl_vwap = getattr(price_levels, "vwap", None)
                     _n_bars = len(_bars_for_vwap) if _bars_for_vwap else 0
@@ -4592,7 +4641,14 @@ def _fetch_state(
         "spread_age_ms": _quote_spread_age_ms,
         "carried_forward": _quote_spread_source == "cached_last_valid_not_tradeable",
     }
+    ms_dict["spread"] = _quote_spread_pts
+    ms_dict["spread_frac"] = _quote_spread_frac
+    ms_dict["spread_pts"] = _quote_spread_pts
     ms_dict["spread_source"] = _quote_spread_source
+    ms_dict["spread_frac_source"] = _quote_spread_frac_source
+    ms_dict["spread_pts_source"] = (
+        "derived_bid_ask_pts_schwab_quote" if _quote_spread_pts is not None else None
+    )
     ms_dict["spread_age_ms"] = _quote_spread_age_ms
     if mkt_ctx is not None and getattr(mkt_ctx, "vix", None) is not None:
         try:

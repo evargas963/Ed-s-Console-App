@@ -20,9 +20,10 @@ def test_options_flow_uses_schwab_total_volume_not_last_size_fallback():
         "putExpDateMap": {"2099-05-05:0": {"500.0": _contract(total_volume=30, last_size=999, delta=-0.4)}},
     }
 
-    score, direction, ratio, delta_weighted = _compute_options_flow(data)
+    score, direction, ratio, delta_weighted, vol_src = _compute_options_flow(data)
 
     assert score == -0.5
+    assert vol_src == "schwab_chain_totalVolume"
     assert direction == "put"
     assert ratio == 10 / (30 + 1e-9)
     assert delta_weighted == 17.0
@@ -34,7 +35,7 @@ def test_options_flow_fails_closed_when_schwab_total_volume_missing():
         "putExpDateMap": {"2099-05-05:0": {"500.0": _contract(last_size=999, delta=-0.4)}},
     }
 
-    assert _compute_options_flow(data) == (None, None, None, None)
+    assert _compute_options_flow(data) == (None, None, None, None, None)
 
 
 def test_options_flow_does_not_default_missing_delta_weight_to_zero():
@@ -43,7 +44,7 @@ def test_options_flow_does_not_default_missing_delta_weight_to_zero():
         "putExpDateMap": {},
     }
 
-    score, direction, ratio, delta_weighted = _compute_options_flow(data)
+    score, direction, ratio, delta_weighted, _ = _compute_options_flow(data)
 
     assert score == 1.0
     assert direction == "call"
@@ -62,9 +63,10 @@ def test_options_flow_treats_minus_999_delta_sentinel_as_missing():
         },
     }
 
-    score, direction, ratio, delta_weighted = _compute_options_flow(data)
+    score, direction, ratio, delta_weighted, vol_src = _compute_options_flow(data)
 
     assert score == -0.5
+    assert vol_src == "schwab_chain_totalVolume"
     assert direction == "put"
     assert ratio == 10 / (30 + 1e-9)
     assert delta_weighted is None
@@ -81,8 +83,9 @@ def test_options_flow_skips_sentinel_delta_but_uses_real_delta_when_mixed():
         },
     }
 
-    score, direction, ratio, delta_weighted = _compute_options_flow(data)
+    score, direction, ratio, delta_weighted, vol_src = _compute_options_flow(data)
 
     assert score == -0.5
+    assert vol_src == "schwab_chain_totalVolume"
     assert direction == "put"
     assert delta_weighted == 5.0  # 0.5 * 10 from calls only; put sentinel skipped

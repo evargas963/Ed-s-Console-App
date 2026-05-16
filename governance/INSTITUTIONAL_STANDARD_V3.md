@@ -354,6 +354,21 @@ Bars consumed by liquidity/ATR/VWAP/replay paths must declare provenance and rej
 #### Enforcement
 `tests/test_ohlcv_schwab_first.py`; `market_data_adapter.normalize_bar`, `schwab_candles_to_bars`, `snapshot_normalizer.resample_to_1m`.
 
+### 8.4 Order-flow and spread unit discipline
+
+#### Principle
+Order-flow metrics must use Schwab-native leaves with explicit provenance. Spread width is never unit-ambiguous: point width (`spread_pts`) and fractional width (`spread_frac`) are separate fields.
+
+#### Invariant
+- RVOL returns `None` with `rvol_unavailable_reason` when average volume is invalid; no `1.0` neutral fallback.
+- Order-flow spread emits `spread_pts` (ask − bid points) and `spread_frac` (pts ÷ midpoint) separately, each with `*_source` and Schwab bid/ask leaf labels.
+- Options flow uses `chains.*.totalVolume` by default; `lastSize` only when `options_flow_tick_mode` is set, labeled `schwab_chain_lastSize_tick_mode`.
+- Top-of-book pressure documents `top_book_pressure_source` (`schwab_stream`, `schwab_quote`, or `unavailable`).
+- Per-bar volume from `_CandleAccumulator` documents `schwab_quote_totalVolume_delta` or session-reset provenance; VWAP from bars declares `source_bars` (`schwab_pricehistory` vs quote-delta path).
+
+#### Enforcement
+`tests/test_order_flow_schwab_first.py`, `tests/test_order_flow_volume_contract.py`; `order_flow_engine.py`, `server.py` VWAP/accumulator/spread paths.
+
 ---
 
 ## 9. Horizon parity and economic labels

@@ -221,50 +221,109 @@ def _latest_quote_snapshot(items: list) -> Optional[dict]:
     return None
 
 
-def _compute_top_book_pressure(data: dict) -> Optional[float]:
+def _compute_top_book_pressure(data: dict) -> tuple[Optional[float], Optional[str]]:
     """
     Top-of-book pressure: (bid_size - ask_size) / (bid_size + ask_size).
     Uses: content.*.BID_SIZE, ASK_SIZE or quote.bidSize, quote.askSize.
+    Returns (pressure, source_tier).
     """
     items = _iter_content(data)
     bid_sz, ask_sz = None, None
+    source_tier = "unavailable"
     snapshot = _latest_quote_snapshot(items)
     if snapshot:
         bid_sz = _safe_float(snapshot.get("BID_SIZE"))
         ask_sz = _safe_float(snapshot.get("ASK_SIZE"))
+        if bid_sz is not None and ask_sz is not None:
+            source_tier = "schwab_stream"
     if bid_sz is None or ask_sz is None:
         quote = data.get("quote") or {}
         extended = data.get("extended") or {}
         bid_sz = bid_sz or _safe_float(quote.get("bidSize")) or _safe_float(extended.get("bidSize"))
         ask_sz = ask_sz or _safe_float(quote.get("askSize")) or _safe_float(extended.get("askSize"))
+        if bid_sz is not None and ask_sz is not None and source_tier == "unavailable":
+            source_tier = "schwab_quote"
     if bid_sz is None or ask_sz is None:
-        return None
+        return None, "unavailable"
     total = bid_sz + ask_sz
     if total <= 0:
-        return None
-    return (bid_sz - ask_sz) / total
+        return None, source_tier
+    return (bid_sz - ask_sz) / total, source_tier
 
 
-def _compute_spread(data: dict) -> Optional[float]:
-    """
-    Bid-ask spread: ask_price - bid_price.
-    Uses: content.*.BID_PRICE, ASK_PRICE or quote.bidPrice, quote.askPrice.
-    """
+def _resolve_bid_ask_prices(data: dict) -> tuple[Optional[float], Optional[float], Optional[str], Optional[str]]:
+    """Resolve Schwab bid/ask prices and leaf provenance labels."""
     items = _iter_content(data)
     bid_p, ask_p = None, None
+    bid_leaf, ask_leaf = None, None
     snapshot = _latest_quote_snapshot(items)
     if snapshot:
         bid_p = _safe_float(snapshot.get("BID_PRICE"))
         ask_p = _safe_float(snapshot.get("ASK_PRICE"))
+        if bid_p is not None:
+            bid_leaf = "streaming.BID_PRICE"
+        if ask_p is not None:
+            ask_leaf = "streaming.ASK_PRICE"
     if bid_p is None or ask_p is None:
         quote = data.get("quote") or {}
         extended = data.get("extended") or {}
         underlying = data.get("underlying") or {}
-        bid_p = bid_p or _safe_float(quote.get("bidPrice")) or _safe_float(extended.get("bidPrice")) or _safe_float(underlying.get("bid"))
-        ask_p = ask_p or _safe_float(quote.get("askPrice")) or _safe_float(extended.get("askPrice")) or _safe_float(underlying.get("ask"))
+        if bid_p is None:
+            bid_p = _safe_float(quote.get("bidPrice"))
+            if bid_p is not None:
+                bid_leaf = "quotes.quote.bidPrice"
+        if bid_p is None:
+            bid_p = _safe_float(extended.get("bidPrice"))
+            if bid_p is not None:
+                bid_leaf = "quotes.extended.bidPrice"
+        if bid_p is None:
+            bid_p = _safe_float(underlying.get("bid"))
+            if bid_p is not None:
+                bid_leaf = "chains.underlying.bid"
+        if ask_p is None:
+            ask_p = _safe_float(quote.get("askPrice"))
+            if ask_p is not None:
+                ask_leaf = "quotes.quote.askPrice"
+        if ask_p is None:
+            ask_p = _safe_float(extended.get("askPrice"))
+            if ask_p is not None:
+                ask_leaf = "quotes.extended.askPrice"
+        if ask_p is None:
+            ask_p = _safe_float(underlying.get("ask"))
+            if ask_p is not None:
+                ask_leaf = "chains.underlying.ask"
+    return bid_p, ask_p, bid_leaf, ask_leaf
+
+
+def _compute_spread(data: dict) -> dict[str, Any]:
+    """
+    Bid-ask spread with explicit unit discipline: ``spread_pts`` (ask-bid points)
+    and ``spread_frac`` (pts / midpoint). Never mix units on a single field.
+    """
+    bid_p, ask_p, bid_leaf, ask_leaf = _resolve_bid_ask_prices(data)
     if bid_p is None or ask_p is None:
-        return None
-    return ask_p - bid_p
+        return {
+            "spread_pts": None,
+            "spread_frac": None,
+            "spread_pts_source": None,
+            "spread_frac_source": None,
+            "spread_bid_leaf": bid_leaf,
+            "spread_ask_leaf": ask_leaf,
+        }
+    spread_pts = round(ask_p - bid_p, 4)
+    mid = (bid_p + ask_p) / 2.0
+    spread_frac = round(spread_pts / mid, 6) if mid > 0 else None
+    leaf_tag = bid_leaf or ask_leaf or "schwab_bid_ask"
+    return {
+        "spread_pts": spread_pts,
+        "spread_frac": spread_frac,
+        "spread_pts_source": f"derived_bid_ask_pts_{leaf_tag}",
+        "spread_frac_source": (
+            f"derived_bid_ask_fraction_{leaf_tag}" if spread_frac is not None else None
+        ),
+        "spread_bid_leaf": bid_leaf,
+        "spread_ask_leaf": ask_leaf,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -521,55 +580,96 @@ def _iter_option_exp_levels(exp_map: dict) -> list[dict]:
     return out
 
 
-def _compute_options_flow(data: dict) -> tuple[Optional[float], Optional[str], Optional[float], Optional[float]]:
+def _option_contract_volume(c: dict, *, tick_mode: bool) -> tuple[Optional[float], Optional[str]]:
+    """Schwab volume leaf: totalVolume default; lastSize only when tick_mode is explicit."""
+    if tick_mode:
+        v = _nonnegative_float(c.get("lastSize"))
+        if v is not None:
+            return v, "schwab_chain_lastSize_tick_mode"
+        return None, None
+    v = _nonnegative_float(c.get("totalVolume"))
+    if v is not None:
+        return v, "schwab_chain_totalVolume"
+    return None, None
+
+
+def _compute_options_flow(
+    data: dict,
+) -> tuple[Optional[float], Optional[str], Optional[float], Optional[float], Optional[str]]:
     """
-    Options flow score, direction, call/put ratio, delta-weighted flow.
-    Uses: callExpDateMap.*, putExpDateMap.* (totalVolume, bid, ask, delta, etc.)
+    Options flow score, direction, call/put ratio, delta-weighted flow, volume_source.
+    Uses: callExpDateMap.*, putExpDateMap.* (totalVolume; lastSize only in tick_mode).
     """
+    tick_mode = bool(data.get("options_flow_tick_mode"))
     calls = _iter_option_exp_levels(data.get("callExpDateMap") or {})
     puts = _iter_option_exp_levels(data.get("putExpDateMap") or {})
     if not calls and not puts:
-        return None, None, None, None
-    call_vols = [_nonnegative_float(c.get("totalVolume")) for c in calls]
-    put_vols = [_nonnegative_float(p.get("totalVolume")) for p in puts]
-    call_vol = sum(v for v in call_vols if v is not None)
-    put_vol = sum(v for v in put_vols if v is not None)
+        return None, None, None, None, None
+    call_vols: list[float] = []
+    put_vols: list[float] = []
+    volume_sources: set[str] = set()
+    for c in calls:
+        v, src = _option_contract_volume(c, tick_mode=tick_mode)
+        if v is not None:
+            call_vols.append(v)
+            if src:
+                volume_sources.add(src)
+    for p in puts:
+        v, src = _option_contract_volume(p, tick_mode=tick_mode)
+        if v is not None:
+            put_vols.append(v)
+            if src:
+                volume_sources.add(src)
+    call_vol = sum(call_vols)
+    put_vol = sum(put_vols)
     total_opt_vol = call_vol + put_vol
     if total_opt_vol <= 0:
-        return None, None, None, None
+        return None, None, None, None, None
+    vol_source = next(iter(volume_sources)) if len(volume_sources) == 1 else (
+        "mixed_schwab_chain_volume" if volume_sources else None
+    )
     call_put_ratio = call_vol / (put_vol + 1e-9)
     delta_weighted = 0.0
     saw_delta_weight = False
     for c in calls:
-        d = c.get("delta")  # already sentinel-filtered in _iter_option_exp_levels
-        v = _nonnegative_float(c.get("totalVolume"))
+        d = c.get("delta")
+        v, _ = _option_contract_volume(c, tick_mode=tick_mode)
         if d is None or v is None:
             continue
         delta_weighted += d * v
         saw_delta_weight = True
     for p in puts:
-        d = p.get("delta")  # already sentinel-filtered in _iter_option_exp_levels
-        v = _nonnegative_float(p.get("totalVolume"))
+        d = p.get("delta")
+        v, _ = _option_contract_volume(p, tick_mode=tick_mode)
         if d is None or v is None:
             continue
-        delta_weighted -= d * v  # put delta negative for directional
+        delta_weighted -= d * v
         saw_delta_weight = True
     options_flow_score = (call_vol - put_vol) / total_opt_vol
     direction = "call" if options_flow_score > 0 else ("put" if options_flow_score < 0 else "neutral")
-    return options_flow_score, direction, call_put_ratio, delta_weighted if saw_delta_weight else None
+    return (
+        options_flow_score,
+        direction,
+        call_put_ratio,
+        delta_weighted if saw_delta_weight else None,
+        vol_source,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # VOLUME CONTEXT (RVOL)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _compute_rvol(data: dict) -> Optional[float]:
+def _compute_rvol(data: dict) -> tuple[Optional[float], Optional[str]]:
     """
     Relative volume: current volume / average volume.
     Uses: quote.totalVolume, extended.totalVolume, underlying.totalVolume,
           screeners.*.totalVolume, screeners.*.volume,
           fundamental.avg10DaysVolume, fundamental.avg1YearVolume,
           instruments.*.fundamental.avg10DaysVolume, etc.
+
+    Returns (rvol, unavailable_reason). Never substitutes 1.0 when average volume
+    is missing or invalid.
     """
     quote = data.get("quote") or {}
     extended = data.get("extended") or {}
@@ -585,7 +685,7 @@ def _compute_rvol(data: dict) -> Optional[float]:
             s = screeners[0] if isinstance(screeners[0], dict) else {}
             current = _safe_float(s.get("totalVolume")) or _safe_float(s.get("volume"))
     if current is None:
-        return None
+        return None, "current_volume_unavailable"
     fund = data.get("fundamental") or {}
     avg = _safe_float(fund.get("avg10DaysVolume"))
     if avg is None or avg <= 0:
@@ -606,8 +706,8 @@ def _compute_rvol(data: dict) -> Optional[float]:
             if vols:
                 avg = sum(vols) / len(vols)
     if avg is None or avg <= 0:
-        return 1.0  # no avg available, assume normal
-    return current / avg
+        return None, "avg_volume_unavailable"
+    return current / avg, None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -621,7 +721,7 @@ def _compute_institutional_flow_proxy(data: dict) -> Optional[float]:
     """
     cum = _compute_cum_delta_proxy(data)
     book_imb = _compute_book_imbalance(data, 5)
-    opt_score, _, _, delta_w = _compute_options_flow(data)
+    opt_score, _, _, delta_w, _ = _compute_options_flow(data)
     components = []
     if cum is not None:
         components.append(max(-1, min(1, cum / 10000.0)))  # normalize
@@ -665,7 +765,7 @@ def _compute_order_flow_score(
     n_delta = _normalize(cum_delta, -1, 1)
     n_abs = _normalize(absorption)
     n_opt = _normalize(options_flow)
-    n_rvol = _normalize((rvol or 1.0) - 1.0, -0.5, 0.5)
+    n_rvol = _normalize((rvol - 1.0) if rvol is not None else None, -0.5, 0.5)
     return (
         0.25 * n_book
         + 0.20 * n_tape
@@ -725,7 +825,7 @@ class OrderFlowEngine:
         book_imbalance_5 = _compute_book_imbalance(data, 5)
 
         # Top of book (quote.bidSize/askSize — always from REST)
-        top_book_pressure = _compute_top_book_pressure(data)
+        top_book_pressure, top_book_pressure_source = _compute_top_book_pressure(data)
 
         # REST fallback: when streamer has no depth, use top-of-book only
         # Store in same field so frontend renders without changes. Streamer takes precedence.
@@ -735,7 +835,8 @@ class OrderFlowEngine:
 
         # Use 5-level for scoring when available
         book_for_score = book_imbalance_5 or book_imbalance_3 or book_imbalance_1
-        spread = _compute_spread(data)
+        spread_d = _compute_spread(data)
+        spread_pts = spread_d.get("spread_pts")
 
         # Tape metrics
         tape_pressure_30s = _compute_tape_pressure(data, 30.0)
@@ -751,12 +852,16 @@ class OrderFlowEngine:
         absorption_score, replenishment_score, absorption_direction = _compute_absorption(data)
 
         # Options flow
-        options_flow_score, options_flow_direction, call_put_flow_ratio, delta_weighted_options_flow = (
-            _compute_options_flow(data)
-        )
+        (
+            options_flow_score,
+            options_flow_direction,
+            call_put_flow_ratio,
+            delta_weighted_options_flow,
+            options_flow_volume_source,
+        ) = _compute_options_flow(data)
 
         # Volume context
-        rvol = _compute_rvol(data)
+        rvol, rvol_unavailable_reason = _compute_rvol(data)
 
         # Institutional proxy
         institutional_flow_proxy_score = _compute_institutional_flow_proxy(data)
@@ -815,7 +920,14 @@ class OrderFlowEngine:
             "book_imbalance_3": book_imbalance_3,
             "book_imbalance_5": book_imbalance_5,
             "top_book_pressure": top_book_pressure,
-            "spread": spread,
+            "top_book_pressure_source": top_book_pressure_source,
+            "spread": spread_pts,
+            "spread_pts": spread_pts,
+            "spread_frac": spread_d.get("spread_frac"),
+            "spread_pts_source": spread_d.get("spread_pts_source"),
+            "spread_frac_source": spread_d.get("spread_frac_source"),
+            "spread_bid_leaf": spread_d.get("spread_bid_leaf"),
+            "spread_ask_leaf": spread_d.get("spread_ask_leaf"),
             "tape_pressure_30s": tape_pressure_30s,
             "tape_pressure_2m": tape_pressure_2m,
             "tape_pressure_5m": tape_pressure_5m,
@@ -833,7 +945,9 @@ class OrderFlowEngine:
             "options_flow_direction": options_flow_direction,
             "call_put_flow_ratio": call_put_flow_ratio,
             "delta_weighted_options_flow": delta_weighted_options_flow,
+            "options_flow_volume_source": options_flow_volume_source,
             "rvol": rvol,
+            "rvol_unavailable_reason": rvol_unavailable_reason,
             "institutional_flow_proxy_score": institutional_flow_proxy_score,
             "order_flow_score": order_flow_score,
             "order_flow_direction": order_flow_direction,
@@ -859,7 +973,14 @@ class OrderFlowEngine:
             "book_imbalance_3": None,
             "book_imbalance_5": None,
             "top_book_pressure": None,
+            "top_book_pressure_source": None,
             "spread": None,
+            "spread_pts": None,
+            "spread_frac": None,
+            "spread_pts_source": None,
+            "spread_frac_source": None,
+            "spread_bid_leaf": None,
+            "spread_ask_leaf": None,
             "tape_pressure_30s": None,
             "tape_pressure_2m": None,
             "tape_pressure_5m": None,
@@ -873,7 +994,9 @@ class OrderFlowEngine:
             "options_flow_direction": None,
             "call_put_flow_ratio": None,
             "delta_weighted_options_flow": None,
+            "options_flow_volume_source": None,
             "rvol": None,
+            "rvol_unavailable_reason": None,
             "institutional_flow_proxy_score": None,
             "order_flow_score": 0.0,
             "order_flow_direction": "neutral",
