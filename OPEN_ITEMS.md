@@ -191,7 +191,7 @@ Files touched by prior commits still need to be re-walked under this method when
 
 The pattern-shape regression net from these commits stays in place as a safety floor going forward. It does not substitute for the section-by-section derivation audit.
 
-- [ ] **§1 Schwab client + adapters** — `schwab_client.py`, `reauth_schwab.py`, `websocket_adapter.py`, `polling_adapter.py`, `sse_adapter.py`, `market_data_adapter.py`, `snapshot_normalizer.py`, `snapshot_access.py`. SHA: __________
+- [x] **§1 Schwab client + adapters** — `schwab_client.py`, `reauth_schwab.py`, `websocket_adapter.py`, `polling_adapter.py`, `sse_adapter.py`, `market_data_adapter.py`, `snapshot_normalizer.py`, `snapshot_access.py`. SHA: `2703c52` + `d40b537`
 - [ ] **§2 Server + live state** — `server.py`, `live_market_plane.py`, `live_decision_bundle.py`, `live_pipeline_diag.py`, `live_vs_replay_validation.py`. SHA: __________
 - [ ] **§3 Market data + state** — `market_context.py`, `market_state.py`, `math_snapshot_derive.py`. SHA: __________
 - [ ] **§4 Math / KEY LEVELS (re-verify only)** — `math_exposure*.py`, `math_levels.py`, `math_volatility.py`, `math_probabilities.py`, `levels.py`. Prior KEY LEVELS YES at `82615fa`; must re-walk under dictionary audit. SHA: __________
