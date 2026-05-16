@@ -749,14 +749,12 @@ def compute_max_pain(exposures_by_strike: Dict[float, dict]) -> float | None:
             b = exposures_by_strike.get(k, {})
             call_w = float(b.get("call_oi_mult") or 0.0)
             put_w = float(b.get("put_oi_mult") or 0.0)
-            if call_w <= 0:
-                co = float(b.get("call_oi") or 0.0)
-                if co > 0:
-                    call_w = co * 100.0
-            if put_w <= 0:
-                po = float(b.get("put_oi") or 0.0)
-                if po > 0:
-                    put_w = po * 100.0
+            # Fail-closed per DFR-017: Schwab `multiplier` is the only legitimate
+            # source for OI-weighted dollar payout. If a strike was built with
+            # missing/invalid multiplier, oi_mult is 0 and the strike is excluded
+            # from max-pain instead of getting a synthetic 100.
+            if call_w <= 0 and put_w <= 0:
+                continue
             if call_w > 0 and settlement > k:
                 pain += (settlement - k) * call_w
             if put_w > 0 and settlement < k:

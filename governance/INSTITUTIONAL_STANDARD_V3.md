@@ -310,6 +310,7 @@ Charted key levels are derived from Schwab chain leaves (`delta`, `gamma`, `open
 - Dollar GEX per 1%: `gamma × openInterest × multiplier × spot² × 0.01` aggregated per strike; net = call − put.
 - UI key levels use **full chain** strikes that passed OI and Greek validity gates at bucket build; no silent raw-γ fallback when spot/dollar GEX is unavailable (`kl_institutional_ready=false`).
 - Section 8 dealer aggregates and `kl_net_gex` use the same full-chain `aggregate_net_gex` helper.
+- Max pain uses `call_oi_mult` / `put_oi_mult` accumulated from Schwab `multiplier` only. Strikes with missing multiplier are excluded; no synthetic `*100` fallback in payout math.
 
 #### KEY LEVELS UI row registry (23 charted rows + metadata)
 
