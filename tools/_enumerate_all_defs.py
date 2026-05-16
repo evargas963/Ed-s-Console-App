@@ -51,6 +51,30 @@ SECTION7 = sorted(
     if p.name != "__init__.py"
 ) + ["lifecycle_rule_core.py"]
 
+SECTION15 = sorted(
+    p.name
+    for p in list(ROOT.glob("audit_*.py"))
+    + list(ROOT.glob("verify_*.py"))
+    + list(ROOT.glob("ticker_*.py"))
+    + list(ROOT.glob("feature_contract_*.py"))
+    + [
+        ROOT / "inspect_trading_data.py",
+        ROOT / "config.py",
+        ROOT / "setup_readiness.py",
+        ROOT / "scheduler_user_tickers.py",
+        ROOT / "production_universe.py",
+        ROOT / "instrument_identity.py",
+        ROOT / "timeframe_config.py",
+        ROOT / "model_contract.py",
+        ROOT / "horizon_outcomes.py",
+        ROOT / "movement_target_threshold.py",
+        ROOT / "institutional_behavior.py",
+        ROOT / "canonical_distances.py",
+        ROOT / "tier3_design.py",
+    ]
+    if p.is_file()
+)
+
 SECTION14 = sorted(
     p.name
     for p in list(ROOT.glob("db*.py"))
@@ -165,5 +189,6 @@ if __name__ == "__main__":
         "12": SECTION12,
         "13": SECTION13,
         "14": SECTION14,
+        "15": SECTION15,
     }.get(which, SECTION1)
     main(files)

@@ -600,6 +600,46 @@ Per-function detail in `governance/section14_derivation_inventory.py`.
 
 ---
 
+## Section 15 derivation audit inventory
+
+Walked **27** audit/verify/config/contract modules at **full AST scope** (`timeframe_config.py` is constants-only, 0 defs). **89** inventory rows: **0** REPLACED, **21** KEEP_DERIVED, **0** PASS_THROUGH, **68** NONE. Audit/verify reads persisted snapshots and artifacts; contracts are schema-only. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section15_derivation_inventory.py`. Tests: `tests/test_section15_schwab_derivation_audit.py`.
+
+<!-- SECTION15_DERIVATION_INVENTORY_START -->
+| file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---:|---:|---:|---:|---:|
+| verify_snapshot_pipeline.py | 9 | 0 | 7 | 0 | 2 |
+| feature_contract_validation.py | 8 | 0 | 0 | 0 | 8 |
+| movement_target_threshold.py | 8 | 0 | 0 | 0 | 8 |
+| tier3_design.py | 8 | 0 | 0 | 0 | 8 |
+| horizon_outcomes.py | 5 | 0 | 0 | 0 | 5 |
+| model_contract.py | 5 | 0 | 0 | 0 | 5 |
+| audit_model_readiness.py | 4 | 0 | 3 | 0 | 1 |
+| production_universe.py | 4 | 0 | 0 | 0 | 4 |
+| setup_readiness.py | 4 | 0 | 2 | 0 | 2 |
+| verify_active_models.py | 4 | 0 | 3 | 0 | 1 |
+| verify_mc_directional.py | 3 | 0 | 1 | 0 | 2 |
+| verify_model_outputs.py | 3 | 0 | 1 | 0 | 2 |
+| verify_prefusion_mc.py | 3 | 0 | 1 | 0 | 2 |
+| audit_snapshot_data.py | 2 | 0 | 2 | 0 | 0 |
+| canonical_distances.py | 2 | 0 | 0 | 0 | 2 |
+| inspect_trading_data.py | 2 | 0 | 1 | 0 | 1 |
+| institutional_behavior.py | 2 | 0 | 0 | 0 | 2 |
+| scheduler_user_tickers.py | 2 | 0 | 0 | 0 | 2 |
+| ticker_readiness_lookup.py | 2 | 0 | 0 | 0 | 2 |
+| ticker_switch_diagnostics.py | 2 | 0 | 0 | 0 | 2 |
+| verify_ml_pipeline.py | 2 | 0 | 0 | 0 | 2 |
+| audit_expiry_data.py | 1 | 0 | 0 | 0 | 1 |
+| audit_gate_labels.py | 1 | 0 | 0 | 0 | 1 |
+| audit_training_data.py | 1 | 0 | 0 | 0 | 1 |
+| config.py | 1 | 0 | 0 | 0 | 1 |
+| instrument_identity.py | 1 | 0 | 0 | 0 | 1 |
+| **total** | **89** | **0** | **21** | **0** | **68** |
+
+Per-function detail in `governance/section15_derivation_inventory.py`.
+<!-- SECTION15_DERIVATION_INVENTORY_END -->
+
+---
+
 ## CAPS allowlist (silent-default substitution family)
 
 Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  
