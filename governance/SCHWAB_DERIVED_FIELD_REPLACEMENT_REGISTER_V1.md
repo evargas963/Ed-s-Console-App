@@ -535,6 +535,24 @@ Per-function detail in `governance/section11_derivation_inventory.py`.
 
 ---
 
+## Section 12 derivation audit inventory
+
+Walked **4** liquidity modules at **full AST scope**. **37** inventory rows: **1** REPLACED, **23** KEEP_DERIVED, **1** PASS_THROUGH, **12** NONE. Engine consumes normalized OHLCV bars; `_resolve_bar_timestamp` fail-closed on Schwab datetime (§1 align). CLI scripts may fetch via `polling_adapter`. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section12_derivation_inventory.py`. Tests: `tests/test_section12_schwab_derivation_audit.py`.
+
+<!-- SECTION12_DERIVATION_INVENTORY_START -->
+| file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---:|---:|---:|---:|---:|
+| liquidity_value_engine.py | 31 | 1 | 22 | 0 | 8 |
+| liquidity_models.py | 2 | 0 | 0 | 0 | 2 |
+| print_liquidity_value_snapshot.py | 3 | 0 | 0 | 1 | 2 |
+| run_liquidity_sample.py | 1 | 0 | 0 | 0 | 1 |
+| **total** | **37** | **1** | **23** | **1** | **12** |
+
+Per-function detail in `governance/section12_derivation_inventory.py`.
+<!-- SECTION12_DERIVATION_INVENTORY_END -->
+
+---
+
 ## CAPS allowlist (silent-default substitution family)
 
 Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  

@@ -51,6 +51,13 @@ SECTION7 = sorted(
     if p.name != "__init__.py"
 ) + ["lifecycle_rule_core.py"]
 
+SECTION12 = [
+    "liquidity_models.py",
+    "liquidity_value_engine.py",
+    "print_liquidity_value_snapshot.py",
+    "run_liquidity_sample.py",
+]
+
 SECTION11 = sorted(
     p.relative_to(ROOT).as_posix().replace("\\", "/")
     for p in list((ROOT / "calibration").rglob("*.py"))
@@ -133,5 +140,6 @@ if __name__ == "__main__":
         "9": SECTION9,
         "10": SECTION10,
         "11": SECTION11,
+        "12": SECTION12,
     }.get(which, SECTION1)
     main(files)
