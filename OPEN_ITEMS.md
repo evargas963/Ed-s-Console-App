@@ -175,10 +175,26 @@ All commits in this rebuild authored via Cursor agent extension carry a `Made-wi
 
 **Section rule:** Within each section, every file is walked for derivations with Schwab-leaf equivalents. Each derivation found is replaced + repo-wide-grepped for matching patterns + every repo-wide hit fixed. **One section = one commit** accumulating all that work.
 
-- [x] **§1 Schwab client + adapters** — `schwab_client.py`, `reauth_schwab.py`, `websocket_adapter.py`, `polling_adapter.py`, `sse_adapter.py`, `market_data_adapter.py`, `snapshot_normalizer.py`, `snapshot_access.py`. SHA: `13b0365`
+### Why prior commits do NOT count toward section closure
+
+Days 1, 1.5, 2, 3, and CAPS (`cab3ef4`) closed *pattern-shape* regression gates (silent-default substitution patterns). They did NOT perform the section-by-section Schwab-leaf-derivation audit defined here. That audit is: walk every file in the section, identify every derivation, check `schwab_field_inventory/schwab_field_dictionary.csv` for a Schwab leaf equivalent, replace the derivation when a leaf exists, then repo-wide-grep for the same derivation pattern and fix every matching hit found anywhere in the repo.
+
+Files touched by prior commits still need to be re-walked under this method when their section comes up. Specifically:
+
+| Prior commit | Files touched | Sections that must re-walk these files |
+|---|---|---|
+| Day 1 `03ca199` | `market_data_adapter.py`, `snapshot_normalizer.py`, `liquidity_value_engine.py` | §1, §12 |
+| Day 1.5 `17ccf30` | `math_exposure_core.py`, `math_levels.py`, `math_probabilities.py`, `news_sentiment.py`, `server.py` | §2, §4, §16 |
+| Day 2 `92b85ff` | `order_flow_engine.py`, `server.py` | §2, §5 |
+| Day 3 `c527b82` | `features/inference_snapshot.py`, `features/fusion_model_input.py`, `features/lstm_sequence_input.py`, `ml_data_common.py` | §9, §10 |
+| CAPS `cab3ef4` | `lstm_data.py`, `math_levels.py` | §4, §10 |
+
+The pattern-shape regression net from these commits stays in place as a safety floor going forward. It does not substitute for the section-by-section derivation audit.
+
+- [ ] **§1 Schwab client + adapters** — `schwab_client.py`, `reauth_schwab.py`, `websocket_adapter.py`, `polling_adapter.py`, `sse_adapter.py`, `market_data_adapter.py`, `snapshot_normalizer.py`, `snapshot_access.py`. SHA: __________
 - [ ] **§2 Server + live state** — `server.py`, `live_market_plane.py`, `live_decision_bundle.py`, `live_pipeline_diag.py`, `live_vs_replay_validation.py`. SHA: __________
 - [ ] **§3 Market data + state** — `market_context.py`, `market_state.py`, `math_snapshot_derive.py`. SHA: __________
-- [x] **§4 Math / KEY LEVELS (re-verify only)** — `math_exposure*.py`, `math_levels.py`, `math_volatility.py`, `math_probabilities.py`, `levels.py`. CLOSED `82615fa` + CAPS `cab3ef4`; no rework unless new finding. SHA: `82615fa` / `cab3ef4`
+- [ ] **§4 Math / KEY LEVELS (re-verify only)** — `math_exposure*.py`, `math_levels.py`, `math_volatility.py`, `math_probabilities.py`, `levels.py`. Prior KEY LEVELS YES at `82615fa`; must re-walk under dictionary audit. SHA: __________
 - [ ] **§5 Order flow** — `order_flow_engine.py`, `order_flow_live_state.py`, `order_flow_streaming.py`, `debug_flow_snapshot.py`. SHA: __________
 - [ ] **§6 Signals + decision** — `signals.py`, `signal_helpers.py`, `signal_types.py`, `rules_engine.py`, `prediction_engine.py`, `call_engine.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`. SHA: __________
 - [ ] **§7 V2 decision + A2 lifecycle** — `v2_decision/*.py`, `lifecycle_rule_core.py`. SHA: __________
