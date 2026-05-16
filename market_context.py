@@ -867,7 +867,15 @@ def fetch_price_levels(
         overnight_bars = []
 
         for c in candles:
-            dt_ms  = c.get("datetime", 0)
+            dt_ms = c.get("datetime")
+            if dt_ms is None:
+                continue
+            try:
+                dt_ms = float(dt_ms)
+            except (TypeError, ValueError):
+                continue
+            if dt_ms <= 0:
+                continue
             dt_utc = datetime.fromtimestamp(dt_ms / 1000, tz=timezone.utc)
             dt_et  = dt_utc.astimezone(ET)
             is_rth = (

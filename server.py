@@ -1171,8 +1171,15 @@ class _CandleAccumulator:
                 candles.append(b)
             elif isinstance(b, dict):
                 try:
+                    dt_raw = b.get("datetime")
+                    if dt_raw is None:
+                        continue
+                    dt_f = float(dt_raw)
+                    if dt_f <= 0:
+                        continue
+                    ts = dt_f / 1000.0 if dt_f > 1e10 else dt_f
                     candles.append(Candle(
-                        ts=float(b.get("datetime", 0)) / 1000.0 if b.get("datetime", 0) > 1e10 else float(b.get("datetime", 0)),
+                        ts=ts,
                         open=float(b["open"]),
                         high=float(b["high"]),
                         low=float(b["low"]),
@@ -3959,8 +3966,24 @@ def _fetch_state(
                 ph_candles = resp_ph.json().get("candles", [])
                 if ph_candles and _completed_for_vol:
                     last_ts = getattr(_completed_for_vol[-1], "ts", None)
-                    if last_ts is not None:
-                        best = min(ph_candles, key=lambda b: abs((b.get("datetime", 0) / 1000.0) - last_ts))
+
+                    def _ph_candle_ts_sec(bar: dict) -> Optional[float]:
+                        dt = bar.get("datetime")
+                        if dt is None:
+                            return None
+                        try:
+                            dt_f = float(dt)
+                        except (TypeError, ValueError):
+                            return None
+                        if dt_f <= 0:
+                            return None
+                        return dt_f / 1000.0 if dt_f > 1e10 else dt_f
+
+                    timed = [b for b in ph_candles if _ph_candle_ts_sec(b) is not None]
+                    if last_ts is not None and timed:
+                        best = min(timed, key=lambda b: abs(_ph_candle_ts_sec(b) - last_ts))
+                    elif timed:
+                        best = timed[-1]
                     else:
                         best = ph_candles[-1]
                     ph_vol = best.get("volume")

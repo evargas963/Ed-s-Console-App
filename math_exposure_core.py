@@ -838,9 +838,15 @@ def returns_from_candles(candles: list) -> list:
 
     daily_close = OrderedDict()
     for c in candles:
-        dt_ms = c.get("datetime", 0)
+        dt_ms = c.get("datetime")
         close = c.get("close")
-        if not close or not dt_ms:
+        if close is None or dt_ms is None:
+            continue
+        try:
+            dt_ms = float(dt_ms)
+        except (TypeError, ValueError):
+            continue
+        if dt_ms <= 0:
             continue
         dt = datetime.fromtimestamp(dt_ms / 1000, tz=timezone.utc)
         day = dt.strftime("%Y-%m-%d")

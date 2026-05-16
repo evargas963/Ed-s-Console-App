@@ -255,6 +255,7 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | CAPS silent-default family | DFR-009/011/018 repo-wide (full family) | CLOSED | `cab3ef4` — `tools/anti_pattern_sweep.py` + `test_anti_pattern_family_repo_wide.py`; 108-prefix allowlist |
 | Section 1 Schwab client + adapters | DFR-009, DFR-011, PQ-009, PQ-010 | CLOSED | dictionary derivation audit; inventory below; `test_section1_schwab_derivation_audit.py` |
 | Section 2 Server + live state | PQ-001/002/005, OP-015, S017 | CLOSED | dictionary derivation audit; inventory below; `test_section2_schwab_derivation_audit.py` |
+| Section 3 Market data + state | MT-*, PQ-*, price levels | CLOSED | dictionary derivation audit; inventory below; `test_section3_schwab_derivation_audit.py` |
 
 ---
 
@@ -310,6 +311,29 @@ Walked 5 files. **16** derivation records (**2** REPLACED in-section + **1** cro
 | live_pipeline_diag.py | — | ML diagnostics | — | NONE | no market derivations |
 | live_vs_replay_validation.py | 97-172 | replay proof reads | snapshots.* | PASS_THROUGH | DB validation only |
 <!-- SECTION2_DERIVATION_INVENTORY_END -->
+
+---
+
+## Section 3 derivation audit inventory
+
+Walked 3 files. **12** derivation records (**3** REPLACED in-section/cross-section on `pricehistory.candles.datetime`, **5** KEEP_DERIVED, **3** PASS_THROUGH). Source: `governance/section3_derivation_inventory.py`. Tests: `tests/test_section3_schwab_derivation_audit.py`.
+
+<!-- SECTION3_DERIVATION_INVENTORY_START -->
+| file | line | derivation | schwab_leaf | disposition | justification |
+|---|---|---|---|---|
+| market_context.py | 270-296 | quote last + chg_pct | quotes.quote.* | PASS_THROUGH | Schwab hierarchy |
+| market_context.py | 421-442 | session label ET clock | — | KEEP_DERIVED | no session leaf |
+| market_context.py | 651-726 | POC/VWAP bands | pricehistory.candles.* | KEEP_DERIVED | no POC/VWAP leaf |
+| market_context.py | 813-826 | Tier-1 quote OHLC | quotes.quote.*Price | PASS_THROUGH | direct leaves |
+| market_context.py | 869-941 | candle datetime VWAP/ORB | pricehistory.candles.datetime | REPLACED | skip missing datetime |
+| market_state.py | 44-72 | derive_zone | — | KEEP_DERIVED | regime taxonomy |
+| market_state.py | 794-848 | option mid ladder | chains.*.mark | KEEP_DERIVED | OP-006 mark-first |
+| market_state.py | 916-985 | build_market_state | inputs | PASS_THROUGH | assembly only |
+| math_snapshot_derive.py | 11-25 | derive_vwap_side | — | KEEP_DERIVED | no vwap_side leaf |
+| math_snapshot_derive.py | 28-53 | derive_pressure_trend | — | KEEP_DERIVED | DPI trend |
+| math_exposure_core.py | 839-847 | returns_from_candles | pricehistory.candles.datetime | REPLACED | cross-section datetime fix |
+| server.py | 1173-1183 | CandleAccumulator seed | pricehistory.candles.datetime | REPLACED | cross-section datetime fix |
+<!-- SECTION3_DERIVATION_INVENTORY_END -->
 
 ---
 
