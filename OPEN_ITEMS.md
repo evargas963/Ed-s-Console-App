@@ -149,9 +149,9 @@ All commits in this rebuild authored via Cursor agent extension carry a `Made-wi
 
 ## Schwab repo-wide replacement — post-KEY LEVELS sweep schedule
 
-**Bound to:** `governance/SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md`. Each day below closes the cited register IDs with a real on-branch SHA. Standing rules from KEY LEVELS sweep carry forward: per-commit shape (code + repo-wide grep + regression test that fails on parent + register row update + §8.2 invariant if applicable), no scope creep, Cursor drafts / Claude gates / no orphan SHA pre-records.
+**SUPERSEDED 2026-05-16** — day-by-day plan replaced by section-by-section structure below. Completed day commits remain valid; their work counts toward the sections they cover.
 
-**CAPS (mandatory every commit):** `tests/test_anti_pattern_family_repo_wide.py` runs the full silent-default-substitution pattern family via `tools/anti_pattern_sweep.py` on all production `.py` files. New code introducing an unallowlisted family hit on a Schwab-leaf path must fix or add a register allowlist entry in the same commit. Per-day narrow grep tests (Days 1–3) remain belt-and-suspenders only.
+~~**Bound to:** `governance/SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md`. Each day below closes the cited register IDs with a real on-branch SHA.~~
 
 - [x] **Day 1 — OHLCV / bar adapters** — DFR-009, DFR-011, MT-006, MT-007, PQ-009, PQ-010 + DFR-018 re-audit. Files: `market_data_adapter.py`, `snapshot_normalizer.py`, `liquidity_value_engine.py`. Kill zero-injection; reject incomplete Schwab candles; tag synthetic 1m bars. SHA: `03ca199`
 - [x] **Day 1.5 — OHLCV pattern repo-wide** — DFR-009/011/018/MT-006/007/PQ-009/010 repo-wide. Files: `server.py`, `math_levels.py`, `math_exposure_core.py`, `math_probabilities.py`, `news_sentiment.py` + repo-wide grep test. `bucket_metric()` fail-closed; ALLOWLIST for manifest/counter paths. SHA: `17ccf30`
@@ -159,11 +159,39 @@ All commits in this rebuild authored via Cursor agent extension carry a `Made-wi
 - [x] **CAPS — comprehensive anti-pattern sweep** — full silent-default family; `tools/anti_pattern_sweep.py`; register allowlist; `lstm_data` zone/vwap sentinels; Schwab chain fail-closed in `math_levels`. SHA: `cab3ef4`
 - [x] **Day 2 — Order flow + spread** — DFR-019, PQ-002, PQ-005, PQ-007, PQ-008, PQ-011, PQ-012, PQ-013, OP-015, OP-017. Files: `order_flow_engine.py`, `server.py` VWAP + accumulator + fast-quote spread. RVOL unavailable not 1.0; spread units split; per-bar volume source. SHA: `92b85ff`
 - [x] **Day 3 — ML feature provenance** — DFR-012, DFR-013, MT-002, MT-003, MT-005, MT-008, MT-012. Files: `features/inference_snapshot.py`, `features/fusion_model_input.py`, `features/lstm_sequence_input.py`, `ml_data_common.py`, `calibration/v2_advisory_backfill.py`, `tests/test_ml_feature_provenance.py`. Per-field lineage; fusion `unknown`; LSTM masks; `m5_source_timeframe`. SHA: `c527b82`
-- [ ] **Day 4 — ML training imputation** — DFR-014, MT-004, MT-009, MT-010, MT-011. Files: `ml_train.py`, `ml_predict.py`, `lstm_data.py`. Kill median imputation; hard-fail thresholds; missingness masks; authority downgrade telemetry. SHA: __________
-- [ ] **Day 5 — Calibration + replay** — MT-013, DFR-010 re-verify, OP-019, OP-020 verify, MT-005. Files: `calibration/writer.py`, `features/replay_signal_input_v1.py`, `realized_contract_eval.py`, `calibration/v2_a1_execution_ev.py`. Feature lineage JSON; decision_ts_source; replay identity gating. SHA: __________
-- [ ] **Day 6 — Trader-visible A2 + UI remnants** — UI-001 verify, UI-002, UI-004, UI-005, UI-010, UI-012, UI-013. Files: `server.py` Tier A live state + freshness, `static/index.html` order-flow + A2 card. Source suffix on A2 card; cum_delta_proxy provenance; analytics_stale split. SHA: __________
-- [ ] **Day 7 — Market context + remaining PQ** — PQ-006, PQ-014, OP-001, OP-002, OP-003 verify, OP-004, OP-009 verify. Files: `market_context.py`, `order_flow_streaming.py` diagnostics, `math_probabilities.py::score_option_expression`. netPercentChange primary; stream staleness gating; option scoring provenance. SHA: __________
-- [ ] **Day 8 — Final repo-wide zero-OPEN sweep** — extend `tests/test_key_levels_schwab_zero_open_sweep.py` pattern grep to all touched subsystems; cross-reference every Schwab leaf in `schwab_field_dictionary.csv` against every consumer in the broader app. Append closure row to register; set `repo_wide_derived_field_replacement_status = CLOSED` once zero new findings. SHA: __________
+- [ ] ~~**Day 4 — ML training imputation**~~ — superseded by Section 10
+- [ ] ~~**Day 5 — Calibration + replay**~~ — superseded by Section 11
+- [ ] ~~**Day 6 — Trader-visible A2 + UI remnants**~~ — superseded by Section 17
+- [ ] ~~**Day 7 — Market context + remaining PQ**~~ — superseded by Sections 2–3
+- [ ] ~~**Day 8 — Final repo-wide zero-OPEN sweep**~~ — superseded by section closure cert (Section 17)
+
+---
+
+## Schwab Schwab-leaf replacement — section-by-section sweep
+
+**Bound to:** `governance/SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md`.
+
+**CAPS (mandatory every commit):** `tests/test_anti_pattern_family_repo_wide.py` + `tools/anti_pattern_sweep.py` — zero unallowlisted production hits.
+
+**Section rule:** Within each section, every file is walked for derivations with Schwab-leaf equivalents. Each derivation found is replaced + repo-wide-grepped for matching patterns + every repo-wide hit fixed. **One section = one commit** accumulating all that work.
+
+- [ ] **§1 Schwab client + adapters** — `schwab_client.py`, `reauth_schwab.py`, `websocket_adapter.py`, `polling_adapter.py`, `sse_adapter.py`, `market_data_adapter.py`, `snapshot_normalizer.py`, `snapshot_access.py`. SHA: __________
+- [ ] **§2 Server + live state** — `server.py`, `live_market_plane.py`, `live_decision_bundle.py`, `live_pipeline_diag.py`, `live_vs_replay_validation.py`. SHA: __________
+- [ ] **§3 Market data + state** — `market_context.py`, `market_state.py`, `math_snapshot_derive.py`. SHA: __________
+- [x] **§4 Math / KEY LEVELS (re-verify only)** — `math_exposure*.py`, `math_levels.py`, `math_volatility.py`, `math_probabilities.py`, `levels.py`. CLOSED `82615fa` + CAPS `cab3ef4`; no rework unless new finding. SHA: `82615fa` / `cab3ef4`
+- [ ] **§5 Order flow** — `order_flow_engine.py`, `order_flow_live_state.py`, `order_flow_streaming.py`, `debug_flow_snapshot.py`. SHA: __________
+- [ ] **§6 Signals + decision** — `signals.py`, `signal_helpers.py`, `signal_types.py`, `rules_engine.py`, `prediction_engine.py`, `call_engine.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`. SHA: __________
+- [ ] **§7 V2 decision + A2 lifecycle** — `v2_decision/*.py`, `lifecycle_rule_core.py`. SHA: __________
+- [ ] **§8 MC + regime + volatility** — `monte_carlo.py`, `mc_fusion_adjustment.py`, `volatility_regime.py`, `regime_engine.py`. SHA: __________
+- [ ] **§9 Features (ML inputs)** — `features/*.py`. SHA: __________
+- [ ] **§10 ML training + predict** — `ml_*.py`, `lstm_*.py`, `xgboost_model.py`, `transformer_*.py`, `train_*.py`, `training_*.py`, `normalized_training_sync.py`, `smoke_predict_active.py`. SHA: __________
+- [ ] **§11 Calibration + fusion** — `calibration/*.py`, `bayesian_fusion.py`, `governed_stack_contract.py`, `arch_competition/*.py`. SHA: __________
+- [ ] **§12 Liquidity** — `liquidity_models.py`, `liquidity_value_engine.py`, `print_liquidity_value_snapshot.py`, `run_liquidity_sample.py`. SHA: __________
+- [ ] **§13 Similarity** — `adaptive_similarity_engine.py`, `similarity_*.py`. SHA: __________
+- [ ] **§14 DB + backfill + repair** — `db*.py`, `clean_db.py`, `eval_metrics_store.py`, `backfill_*.py`, `bar_rehydration_*.py`, `pin_neutral_outcome_repair_v1.py`, `distance_option_a_backfill_v1.py`, `patch_active_artifact_provenance.py`, `replay_bundle_coverage.py`, `realized_contract_eval.py`. SHA: __________
+- [ ] **§15 Audit + verify + config + contracts** — `audit_*.py`, `verify_*.py`, `inspect_trading_data.py`, `config.py`, `setup_readiness.py`, `scheduler_user_tickers.py`, `ticker_*.py`, `production_universe.py`, `instrument_identity.py`, `timeframe_config.py`, `model_contract.py`, `feature_contract_*.py`, `horizon_outcomes.py`, `movement_target_threshold.py`, `institutional_behavior.py`, `canonical_distances.py`, `tier3_design.py`. SHA: __________
+- [ ] **§16 External signals** — `news_sentiment.py`, `api_pressure.py`, `event_risk.py`. SHA: __________
+- [ ] **§17 Planes + research + UI + misc** — `planes/*.py`, `research/*.py`, `static/*`, `ops_runner.py`, `crash_trace.py`, `schwab_*_inventory*.py`, `schwab_field_dictionary_builder.py`, `micro_structure.py`, `adaptive_shadow_v2_calibration.py`, `print_*.py`, `compare_clustering_modes.py`. SHA: __________
 
 ---
 
