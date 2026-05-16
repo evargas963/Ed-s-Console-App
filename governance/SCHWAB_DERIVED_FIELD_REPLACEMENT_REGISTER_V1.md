@@ -456,6 +456,85 @@ Per-function detail in `governance/section10_derivation_inventory.py`.
 
 ---
 
+## Section 11 derivation audit inventory
+
+Walked **66** modules (51 calibration + 13 arch_competition + bayesian_fusion + governed_stack_contract) at **full AST scope**. **466** inventory rows: **0** REPLACED, **338** KEEP_DERIVED, **0** PASS_THROUGH, **128** NONE. Calibration/fusion reads persisted snapshots/outcomes and model outputs only; no direct Schwab API. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section11_derivation_inventory.py`. Tests: `tests/test_section11_schwab_derivation_audit.py`.
+
+<!-- SECTION11_DERIVATION_INVENTORY_START -->
+| file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---:|---:|---:|---:|---:|
+| calibration/phase65_edge_isolation_v1.py | 25 | 0 | 24 | 0 | 1 |
+| calibration/signal_engineering.py | 24 | 0 | 23 | 0 | 1 |
+| calibration/v2_a1_calibration.py | 22 | 0 | 21 | 0 | 1 |
+| arch_competition/notification_delivery.py | 22 | 0 | 2 | 0 | 20 |
+| calibration/edge_discovery.py | 21 | 0 | 20 | 0 | 1 |
+| arch_competition/manual_control.py | 15 | 0 | 4 | 0 | 11 |
+| calibration/phase6_edge_discovery_governed_v1.py | 14 | 0 | 13 | 0 | 1 |
+| calibration/v2_a1_conformal.py | 14 | 0 | 14 | 0 | 0 |
+| arch_competition/metrics.py | 14 | 0 | 3 | 0 | 11 |
+| calibration/v2_a1_ev_bounds.py | 13 | 0 | 12 | 0 | 1 |
+| calibration/v2_advisory_backfill.py | 13 | 0 | 12 | 0 | 1 |
+| calibration/statistical_integrity.py | 12 | 0 | 12 | 0 | 0 |
+| arch_competition/scheduler_integration.py | 12 | 0 | 2 | 0 | 10 |
+| calibration/movement_target_eval_common_v1.py | 11 | 0 | 11 | 0 | 0 |
+| calibration/anchor_audit.py | 10 | 0 | 7 | 0 | 3 |
+| calibration/phase65_cleanup_v1.py | 10 | 0 | 9 | 0 | 1 |
+| calibration/v2_a1_execution_ev.py | 10 | 0 | 8 | 0 | 2 |
+| arch_competition/stack_bundle_eval_v1.py | 10 | 0 | 5 | 0 | 5 |
+| calibration/analyze_phase3.py | 9 | 0 | 8 | 0 | 1 |
+| calibration/movement_target_phase65_cleanup_v1.py | 9 | 0 | 8 | 0 | 1 |
+| calibration/movement_target_phase65_isolation_v1.py | 9 | 0 | 8 | 0 | 1 |
+| calibration/edge_validation.py | 8 | 0 | 7 | 0 | 1 |
+| calibration/signal_layer_discrimination.py | 8 | 0 | 7 | 0 | 1 |
+| bayesian_fusion.py | 8 | 0 | 8 | 0 | 0 |
+| calibration/run_production_accumulation_validation.py | 7 | 0 | 6 | 0 | 1 |
+| arch_competition/governance_visibility.py | 7 | 0 | 1 | 0 | 6 |
+| arch_competition/live_drift_monitoring.py | 7 | 0 | 2 | 0 | 5 |
+| calibration/a1_conformal_artifact_production.py | 6 | 0 | 6 | 0 | 0 |
+| calibration/analyze_phase4.py | 6 | 0 | 5 | 0 | 1 |
+| calibration/canonical_enforcement.py | 6 | 0 | 5 | 0 | 1 |
+| calibration/movement_target_phase6_edge_v1.py | 6 | 0 | 5 | 0 | 1 |
+| arch_competition/operational_policy.py | 6 | 0 | 1 | 0 | 5 |
+| calibration/audit_phase1.py | 5 | 0 | 3 | 0 | 2 |
+| calibration/backfill_outcomes.py | 5 | 0 | 4 | 0 | 1 |
+| calibration/movement_target_phase5_discrimination_v1.py | 5 | 0 | 4 | 0 | 1 |
+| calibration/schema.py | 5 | 0 | 3 | 0 | 2 |
+| arch_competition/eval_runner.py | 5 | 0 | 2 | 0 | 3 |
+| calibration/writer.py | 4 | 0 | 4 | 0 | 0 |
+| arch_competition/audit.py | 4 | 0 | 1 | 0 | 3 |
+| calibration/build_trusted_anchor_proof_dataset.py | 3 | 0 | 2 | 0 | 1 |
+| calibration/canonical_1m_grid.py | 3 | 0 | 3 | 0 | 0 |
+| calibration/db_guard.py | 3 | 0 | 3 | 0 | 0 |
+| calibration/eval_movement_targets_phase_style_v1.py | 3 | 0 | 2 | 0 | 1 |
+| calibration/repair_anchor_coverage_pad_v1.py | 3 | 0 | 2 | 0 | 1 |
+| calibration/repair_canonical_1m_bars_for_outcomes.py | 3 | 0 | 2 | 0 | 1 |
+| calibration/repair_canonical_1m_edge_carry_v1.py | 3 | 0 | 2 | 0 | 1 |
+| calibration/repair_canonical_1m_interior_gaps_v1.py | 3 | 0 | 2 | 0 | 1 |
+| calibration/v2_live_logging.py | 3 | 0 | 3 | 0 | 0 |
+| calibration/validate_outcome_join.py | 3 | 0 | 2 | 0 | 1 |
+| arch_competition/promotion_engine.py | 3 | 0 | 1 | 0 | 2 |
+| governed_stack_contract.py | 3 | 0 | 0 | 0 | 3 |
+| calibration/backfill_signal_layer_v1_bundle.py | 2 | 0 | 1 | 0 | 1 |
+| calibration/canonical_1m_grid_scan.py | 2 | 0 | 2 | 0 | 0 |
+| calibration/json_utils.py | 2 | 0 | 2 | 0 | 0 |
+| calibration/legacy_report.py | 2 | 0 | 1 | 0 | 1 |
+| calibration/payload_audit.py | 2 | 0 | 1 | 0 | 1 |
+| calibration/run_a1_conformal_artifact_production.py | 2 | 0 | 1 | 0 | 1 |
+| calibration/run_a1_isotonic_artifact_production.py | 2 | 0 | 1 | 0 | 1 |
+| calibration/validate_logging_e2e.py | 2 | 0 | 1 | 0 | 1 |
+| arch_competition/lineage.py | 2 | 0 | 1 | 0 | 1 |
+| calibration/a1_isotonic_artifact_production.py | 1 | 0 | 1 | 0 | 0 |
+| calibration/paths.py | 1 | 0 | 1 | 0 | 0 |
+| calibration/run_movement_target_evaluation_bundle_v1.py | 1 | 0 | 0 | 0 | 1 |
+| calibration/trust.py | 1 | 0 | 1 | 0 | 0 |
+| calibration/validate_logging.py | 1 | 0 | 0 | 0 | 1 |
+| **total** | **466** | **0** | **338** | **0** | **128** |
+
+Per-function detail in `governance/section11_derivation_inventory.py`.
+<!-- SECTION11_DERIVATION_INVENTORY_END -->
+
+---
+
 ## CAPS allowlist (silent-default substitution family)
 
 Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  

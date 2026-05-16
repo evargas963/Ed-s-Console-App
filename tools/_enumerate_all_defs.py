@@ -51,6 +51,14 @@ SECTION7 = sorted(
     if p.name != "__init__.py"
 ) + ["lifecycle_rule_core.py"]
 
+SECTION11 = sorted(
+    p.relative_to(ROOT).as_posix().replace("\\", "/")
+    for p in list((ROOT / "calibration").rglob("*.py"))
+    + list((ROOT / "arch_competition").glob("*.py"))
+    + [ROOT / "bayesian_fusion.py", ROOT / "governed_stack_contract.py"]
+    if p.name != "__init__.py"
+)
+
 SECTION10 = sorted(
     [
         "ml_data_common.py",
@@ -124,5 +132,6 @@ if __name__ == "__main__":
         "8": SECTION8,
         "9": SECTION9,
         "10": SECTION10,
+        "11": SECTION11,
     }.get(which, SECTION1)
     main(files)
