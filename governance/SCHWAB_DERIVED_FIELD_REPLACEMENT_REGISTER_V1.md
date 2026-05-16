@@ -252,7 +252,7 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | Order flow + spread | DFR-019, PQ-002/005/007/008/011/012/013, OP-015/017 | CLOSED | `92b85ff` — RVOL fail-closed; spread_pts/frac split; OF volume + VWAP provenance |
 | ML feature provenance | DFR-012, DFR-013, MT-002, MT-003, MT-005, MT-008, MT-012 | CLOSED | `c527b82` — per-field `feature_lineage`; fusion `unknown` + fallback flags; LSTM masks; `m5_source_timeframe` |
 | Repo-wide register | all non-KL rows | OPEN | MT/OHLCV/deferred paths out of KEY LEVELS scope |
-| CAPS silent-default family | DFR-009/011/018 repo-wide (full family) | CLOSED | CAPS — `tools/anti_pattern_sweep.py` + `test_anti_pattern_family_repo_wide.py` |
+| CAPS silent-default family | DFR-009/011/018 repo-wide (full family) | CLOSED | `cab3ef4` — `tools/anti_pattern_sweep.py` + `test_anti_pattern_family_repo_wide.py`; 108-prefix allowlist |
 
 ---
 
