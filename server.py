@@ -93,6 +93,9 @@ from math_exposure import (
     compute_garch_forecast, blend_garch_sigma,
     compute_iv_model_spread,
     compute_gamma_flip, compute_gamma_void_zones, compute_level_density,
+    compute_hvl, compute_max_pain, hvl_gamma_strength, max_pain_oi_strength,
+    pick_gamma_pin_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
+    aggregate_net_gex, total_gex_dollars_at_strike,
     compute_dealer_pressure_index, compute_hedging_flow_score,
     compute_gamma_gradient, compute_breakout_score,
     compute_pin_score, compute_vol_expansion_signal, compute_sweep_score,
@@ -3216,6 +3219,14 @@ def _fetch_state(
     log.info(f"Candles: {ticker} 5m={_bars_5m_count} bars, 1m={_bars_1m_count} bars")
 
     exposures, diag = compute_exposures_by_strike(contracts_use, spot=spot_f, require_oi=True)
+    from math_exposure_core import key_level_strikes_with_gamma
+    _cons_strikes = sorted(float(k) for k in exposures.keys())
+    _gamma_strikes = key_level_strikes_with_gamma(exposures) or _cons_strikes
+    _institutional_pin = (
+        pick_gamma_pin_strike(exposures, _gamma_strikes, institutional=True)
+        if _gamma_strikes
+        else None
+    )
 
     rows      = build_summary_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS)
     walls     = build_walls_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS)
@@ -3224,6 +3235,8 @@ def _fetch_state(
     # ── Gamma Flip + Void Zones ───────────────────────────────────────────────
     _gamma_flip = compute_gamma_flip(exposures, spot_f)
     _gamma_voids = compute_gamma_void_zones(exposures, spot_f)
+    _hvl = compute_hvl(exposures)
+    _max_pain = compute_max_pain(exposures)
 
     # Feed ATM IV into tracker for direction detection (vanna context)
     _t0 = totals[0] if totals else None
@@ -3244,7 +3257,9 @@ def _fetch_state(
     try:
         from math_exposure import compute_net_charm
         log.info(f"Charm: {ticker} calling compute_net_charm with {len(contracts_use)} contracts, exp={selected_exp}")
-        _charm_raw = compute_net_charm(contracts_use, spot_f, selected_exp)
+        _charm_raw = compute_net_charm(
+            contracts_use, spot_f, selected_exp, drift_toward_strike=_institutional_pin
+        )
         _charm_used = _charm_raw.get("contracts_used", 0)
         _charm_err  = _charm_raw.get("error", "")
         if _charm_used > 0:
@@ -3494,12 +3509,12 @@ def _fetch_state(
         return (float(call_oi) if call_oi is not None else 0.0) + (float(put_oi) if put_oi is not None else 0.0)
 
     try:
-        # Aggregate totals from exposures
-        _sum_gex = _sum_dex = 0.0
+        # Aggregate totals — same full-chain Σ net_gex_1pct as kl_net_gex / ExposureRow CONSENSUS
+        _sum_gex = float(aggregate_net_gex(exposures, _cons_strikes) or 0.0)
+        _sum_dex = 0.0
         _sum_oi = None
         _sum_vanna = 0.0
         for _bkt in exposures.values():
-            _sum_gex += float(_bkt.get("net_gex_1pct", 0) or 0)
             _sum_dex += float(_bkt.get("net_dex_dollars", 0) or 0)
             _bucket_oi = _bucket_total_oi(_bkt)
             if _bucket_oi is not None:
@@ -3549,7 +3564,10 @@ def _fetch_state(
         _oi_at_pin = None
         if _pin_strike and exposures:
             _pin_bkt = exposures.get(float(_pin_strike), {})
-            _gex_at_pin = abs(float(_pin_bkt.get("call_gamma", 0) or 0)) + abs(float(_pin_bkt.get("put_gamma", 0) or 0))
+            if exposures_have_dollar_gex(exposures):
+                _gex_at_pin = total_gex_dollars_at_strike(_pin_bkt)
+            else:
+                _gex_at_pin = abs(float(_pin_bkt.get("call_gamma", 0) or 0)) + abs(float(_pin_bkt.get("put_gamma", 0) or 0))
             _oi_at_pin = _bucket_total_oi(_pin_bkt)
         _oi_concentration = (_oi_at_pin / _sum_oi) if _oi_at_pin is not None and _sum_oi and _sum_oi > 0 else None
         try:
@@ -4543,6 +4561,14 @@ def _fetch_state(
             return f"${f:.0f}/pt"
         except: return "—"
 
+    def _foi(v):
+        try:
+            f = float(v)
+            if f >= 1_000_000: return f"{f/1_000_000:.1f}M OI"
+            if f >= 1_000:     return f"{f/1_000:.0f}K OI"
+            return f"{f:.0f} OI"
+        except: return "—"
+
     ms_dict["kl_call_gamma_str"]  = _fs(getattr(w0, "call_gamma_strength", None))
     ms_dict["kl_put_gamma_str"]   = _fs(getattr(w0, "put_gamma_strength",  None))
     ms_dict["kl_call_delta_str"]  = _fs(getattr(w0, "call_delta_strength", None))
@@ -4554,8 +4580,30 @@ def _fetch_state(
 
     # ── New institutional levels ───────────────────────────────────────────────
     ms_dict["kl_gamma_pin"]    = _fv(getattr(cs, "gamma_pin", None))
+    ms_dict["kl_hvl"]          = _fv(_hvl)
+    ms_dict["kl_max_pain"]     = _fv(_max_pain)
+    ms_dict["kl_hvl_str"]      = _fs(hvl_gamma_strength(exposures, _hvl))
+    ms_dict["kl_max_pain_str"] = _foi(max_pain_oi_strength(exposures, _max_pain))
     ms_dict["kl_oi_center"]    = _fv(getattr(cs, "oi_center", None))
     ms_dict["kl_gamma_flip"]   = _fv(_gamma_flip)
+    _net_gex_raw = getattr(cs, "net_gamma", None) if cs else None
+    try:
+        _net_gex_f = float(_net_gex_raw) if _net_gex_raw is not None else None
+    except (TypeError, ValueError):
+        _net_gex_f = None
+    ms_dict["kl_net_gex"] = round(_net_gex_f, 2) if _net_gex_f is not None else None
+    if _net_gex_f is not None:
+        from math_exposure import fmt_money as _fmt_gex_money
+        ms_dict["kl_net_gex_disp"] = _fmt_gex_money(_net_gex_f)
+        ms_dict["kl_net_gex_mag"] = gex_magnitude_label(_net_gex_f)
+        ms_dict["kl_net_gex_regime"] = gex_regime_label(_net_gex_f)
+    else:
+        ms_dict["kl_net_gex_disp"] = "—"
+        ms_dict["kl_net_gex_mag"] = "negligible"
+        ms_dict["kl_net_gex_regime"] = "neutral"
+    ms_dict["kl_level_window"] = "full_chain"
+    ms_dict["kl_metrics_dollarized"] = bool(exposures and exposures_have_dollar_gex(exposures))
+    ms_dict["kl_institutional_ready"] = ms_dict["kl_metrics_dollarized"]
     ms_dict["kl_em_upper"]     = _fv(_em_straddle.get("upper")) or _fv(_em_iv.get("upper"))
     ms_dict["kl_em_lower"]     = _fv(_em_straddle.get("lower")) or _fv(_em_iv.get("lower"))
     ms_dict["kl_gamma_voids"]  = _gamma_voids or []
@@ -6582,6 +6630,8 @@ def _liquidity_fusion_from_cache(
         (d.get("kl_gamma_inflection"), "GAMMA_INFLECTION"),
         (d.get("kl_delta_inflection"), "DELTA_INFLECTION"),
         (d.get("kl_gamma_pin"), "GAMMA_PIN"),
+        (d.get("kl_hvl"), "HVL"),
+        (d.get("kl_max_pain"), "MAX_PAIN"),
         (d.get("kl_gamma_flip"), "GAMMA_FLIP"),
         (d.get("kl_oi_center"), "OI_CENTER"),
         (d.get("kl_em_upper"), "EM_UPPER"),

@@ -1034,7 +1034,7 @@ def _classify_live_cluster(tags: list[str], orb: dict) -> tuple[ZoneType, str]:
     ts = " ".join(tags)
     opt_markers = (
         "GAMMA_CALL", "GAMMA_PUT", "DELTA_CALL", "DELTA_PUT",
-        "OI_CALL", "OI_PUT", "GAMMA_PIN", "GAMMA_FLIP",
+        "OI_CALL", "OI_PUT", "GAMMA_PIN", "HVL", "MAX_PAIN", "GAMMA_FLIP",
         "GAMMA_INFLECTION", "DELTA_INFLECTION", "OI_CENTER", "EM_UPPER", "EM_LOWER", "SYNTH_FWD",
     )
     has_opt = any(m in ts for m in opt_markers)

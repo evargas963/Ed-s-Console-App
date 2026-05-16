@@ -111,6 +111,8 @@ def test_formula_ownership():
         "compute_exposures_by_strike": "math_exposure_core.py",
         "compute_net_charm": "math_exposure_core.py",
         "compute_gamma_flip": "math_levels.py",
+        "compute_hvl": "math_levels.py",
+        "compute_max_pain": "math_levels.py",
         "compute_gamma_void_zones": "math_levels.py",
         "compute_level_density": "math_levels.py",
         "compute_expected_move_straddle": "math_volatility.py",

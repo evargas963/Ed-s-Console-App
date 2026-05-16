@@ -10,7 +10,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from math_exposure_core import ExposureRow, _f, _nearest_strike, _window_strikes
+from math_exposure_core import (
+    ExposureRow,
+    KEY_LEVEL_STRIKE_WINDOW,
+    _f,
+    _nearest_strike,
+    _window_strikes,
+    aggregate_net_dex,
+    aggregate_net_gex,
+    exposures_have_dollar_gex,
+    gex_magnitude_label,
+    gex_regime_label,
+    key_level_strikes_with_gamma,
+    key_level_strikes_with_oi,
+    net_gex_dollars_at_strike,
+    pick_delta_wall_strikes,
+    pick_gamma_pin_strike,
+    pick_gamma_wall_strikes,
+    pick_hvl_strike,
+    total_gex_dollars_at_strike,
+    total_gamma_raw_at_strike,
+)
 
 
 # ── Data classes ──────────────────────────────────────────────────────────────
@@ -92,18 +112,8 @@ APPROACH_PTS  = 1.5
 # ── Pin / inflection / OI helpers ─────────────────────────────────────────────
 
 def _pick_gamma_pin(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
-    # strike with max abs NET gamma
-    best = None
-    best_val = None
-    for s in strikes:
-        ng = exposures.get(s, {}).get("net_gamma")
-        if ng is None:
-            continue
-        v = abs(ng)
-        if best is None or (best_val is not None and v > best_val):
-            best = s
-            best_val = v
-    return best
+    """Institutional gamma pin — delegates to math_exposure_core.pick_gamma_pin_strike."""
+    return pick_gamma_pin_strike(exposures, strikes)
 
 def _pick_oi_center(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
     # strike with max total OI (call+put)
@@ -124,7 +134,12 @@ def _pick_oi_center(exposures: Dict[float, dict], strikes: List[float]) -> float
     return best
 
 def _pick_inflection_closest_zero(exposures: Dict[float, dict], strikes: List[float], key: str) -> float | None:
-    # Find strike where exposure (net_delta or net_gamma) is closest to 0
+    # Find strike where net exposure is closest to zero (dollar GEX/DEX when available).
+    if exposures_have_dollar_gex(exposures):
+        if key == "net_gamma":
+            key = "net_gex_1pct"
+        elif key == "net_delta":
+            key = "net_dex_dollars"
     best = None
     best_val = None
     for s in strikes:
@@ -140,11 +155,16 @@ def _pick_inflection_closest_zero(exposures: Dict[float, dict], strikes: List[fl
 def _pin_strength(exposures: Dict[float, dict], gamma_pin: float | None, strikes: List[float]) -> str:
     if gamma_pin is None:
         return "Very Low"
-    gp = abs(exposures.get(gamma_pin, {}).get("net_gamma") or 0.0)
+    b = exposures.get(gamma_pin, {}) or exposures.get(float(gamma_pin), {})
+    if exposures_have_dollar_gex(exposures):
+        gp = abs(net_gex_dollars_at_strike(b))
+        vals = [abs(net_gex_dollars_at_strike(exposures.get(s, {}))) for s in strikes]
+    else:
+        gp = abs(b.get("net_gamma") or 0.0)
+        vals = [abs(exposures.get(s, {}).get("net_gamma") or 0.0) for s in strikes]
     if gp <= 0:
         return "Very Low"
 
-    vals = [abs(exposures.get(s, {}).get("net_gamma") or 0.0) for s in strikes]
     vals = [v for v in vals if v > 0]
     if not vals:
         return "Very Low"
@@ -200,29 +220,18 @@ def build_summary_rows(
         ]
 
     def aggregate(strikes: List[float]) -> tuple[float | None, float | None]:
-        ng = 0.0
-        nd = 0.0
-        any_g = False
-        any_d = False
-        for s in strikes:
-            b = exposures.get(s, {})
-            if b.get("net_gamma") is not None:
-                ng += float(b.get("net_gamma") or 0.0)
-                any_g = True
-            if b.get("net_delta") is not None:
-                nd += float(b.get("net_delta") or 0.0)
-                any_d = True
-        return (ng if any_g else None), (nd if any_d else None)
+        return aggregate_net_gex(exposures, strikes), aggregate_net_dex(exposures, strikes)
 
     rows: List[ExposureRow] = []
 
     cons_strikes = strikes_all
+    cons_gamma_strikes = key_level_strikes_with_gamma(exposures) or cons_strikes
     cons_net_gamma, cons_net_delta = aggregate(cons_strikes)
-    cons_gamma_pin = _pick_gamma_pin(exposures, cons_strikes)
-    cons_delta_inf = _pick_inflection_closest_zero(exposures, cons_strikes, "net_delta")
-    cons_gamma_inf = _pick_inflection_closest_zero(exposures, cons_strikes, "net_gamma")
+    cons_gamma_pin = _pick_gamma_pin(exposures, cons_gamma_strikes)
+    cons_delta_inf = _pick_inflection_closest_zero(exposures, cons_gamma_strikes, "net_delta")
+    cons_gamma_inf = _pick_inflection_closest_zero(exposures, cons_gamma_strikes, "net_gamma")
     cons_oi_center = _pick_oi_center(exposures, cons_strikes)
-    cons_pin_strength = _pin_strength(exposures, cons_gamma_pin, cons_strikes)
+    cons_pin_strength = _pin_strength(exposures, cons_gamma_pin, cons_gamma_strikes)
     cons_bias = _bias_from_net(cons_net_gamma, cons_net_delta, cons_pin_strength)
     rows.append(
         ExposureRow(
@@ -341,14 +350,17 @@ def build_walls_rows(
     for label, w in [("CONSENSUS", None)] + [(f"±{x}", x) for x in windows]:
         sset = strikes_for(w)
 
-        # Gamma walls: use exposure buckets call_gamma / put_gamma
-        cg_s, cg_v = _pick_wall_abs(exposures, sset, "call_gamma")
-        pg_s, pg_v = _pick_wall_abs(exposures, sset, "put_gamma")
+        # Gamma / delta walls — institutional dollar metrics when spot known
+        if label == "CONSENSUS" and KEY_LEVEL_STRIKE_WINDOW is None:
+            g_strikes = key_level_strikes_with_gamma(exposures) or sset
+            (cg_s, cg_v), (pg_s, pg_v) = pick_gamma_wall_strikes(exposures, g_strikes)
+            (cd_s, cd_v), (pd_s, pd_v) = pick_delta_wall_strikes(exposures, g_strikes)
+        else:
+            cg_s, cg_v = _pick_wall_abs(exposures, sset, "call_gamma")
+            pg_s, pg_v = _pick_wall_abs(exposures, sset, "put_gamma")
+            cd_s, cd_v = _pick_wall_abs(exposures, sset, "call_delta")
+            pd_s, pd_v = _pick_wall_abs(exposures, sset, "put_delta")
         domg_side, domg_s, domg_v = _dominant(cg_s, cg_v, pg_s, pg_v)
-
-        # Delta walls
-        cd_s, cd_v = _pick_wall_abs(exposures, sset, "call_delta")
-        pd_s, pd_v = _pick_wall_abs(exposures, sset, "put_delta")
         domd_side, domd_s, domd_v = _dominant(cd_s, cd_v, pd_s, pd_v)
 
         # OI walls: max OI (non-negative)
@@ -651,12 +663,18 @@ def compute_gamma_flip(exposures_by_strike: Dict[float, dict], spot: float) -> f
             prev_val = val
         return None
 
-    # Primary: per-strike net_gamma (call_gamma - put_gamma)
+    # Institutional: prefer per-strike net_gex_1pct (dollar GEX) when populated.
+    if exposures_have_dollar_gex(exposures_by_strike):
+        result = _find_crossing("net_gex_1pct")
+        if result is not None:
+            return result
+
+    # Fallback: per-strike net_gamma (γ×OI×mult)
     result = _find_crossing("net_gamma")
     if result is not None:
         return result
 
-    # Fallback: cumulative net_gex_1pct (dollarized, needs spot)
+    # Last resort: cumulative net_gex_1pct along strike chain
     cum_gex = 0.0
     prev_strike = None
     prev_cum = None
@@ -673,6 +691,98 @@ def compute_gamma_flip(exposures_by_strike: Dict[float, dict], spot: float) -> f
         prev_cum = cum_gex
 
     return None
+
+
+# ── HVL — strike with largest total gamma (call + put) ───────────────────────
+
+def _total_gamma_at_strike(bucket: dict, *, dollarized: bool = False) -> float:
+    if dollarized or (
+        float(bucket.get("call_gex_1pct", 0) or 0) != 0
+        or float(bucket.get("put_gex_1pct", 0) or 0) != 0
+    ):
+        return total_gex_dollars_at_strike(bucket)
+    return total_gamma_raw_at_strike(bucket)
+
+
+def compute_hvl(exposures_by_strike: Dict[float, dict]) -> float | None:
+    """
+    High Volatility Level: strike with largest total gamma (|call|+|put| GEX$ or γ×OI×mult).
+    Distinct from gamma pin (max |net GEX$|).
+    """
+    if not exposures_by_strike:
+        return None
+    strikes = key_level_strikes_with_gamma(exposures_by_strike)
+    if not strikes:
+        return None
+    return pick_hvl_strike(exposures_by_strike, strikes)
+
+
+def hvl_gamma_strength(exposures_by_strike: Dict[float, dict], hvl: float | None) -> float | None:
+    if hvl is None:
+        return None
+    bucket = exposures_by_strike.get(hvl) or exposures_by_strike.get(float(hvl))
+    if not bucket:
+        return None
+    v = _total_gamma_at_strike(bucket, dollarized=exposures_have_dollar_gex(exposures_by_strike))
+    return v if v > 0 else None
+
+
+# ── Max Pain — OI-weighted expiry settlement magnet ────────────────────────────
+
+def compute_max_pain(exposures_by_strike: Dict[float, dict]) -> float | None:
+    """
+    Classic max pain: settlement strike that minimizes total ITM option holder payout.
+
+    For each candidate settlement S on the actual strike grid:
+      pain += max(0, S-K)*call_oi(K)*mult + max(0, K-S)*put_oi(K)*mult
+    Uses bucket sums call_oi_mult / put_oi_mult (= Σ OI×multiplier per strike).
+    """
+    if not exposures_by_strike:
+        return None
+    strikes = key_level_strikes_with_oi(exposures_by_strike)
+    if len(strikes) < 2:
+        return None
+
+    def _pain_at(settlement: float) -> float:
+        pain = 0.0
+        for k in strikes:
+            b = exposures_by_strike.get(k, {})
+            call_w = float(b.get("call_oi_mult") or 0.0)
+            put_w = float(b.get("put_oi_mult") or 0.0)
+            if call_w <= 0:
+                co = float(b.get("call_oi") or 0.0)
+                if co > 0:
+                    call_w = co * 100.0
+            if put_w <= 0:
+                po = float(b.get("put_oi") or 0.0)
+                if po > 0:
+                    put_w = po * 100.0
+            if call_w > 0 and settlement > k:
+                pain += (settlement - k) * call_w
+            if put_w > 0 and settlement < k:
+                pain += (k - settlement) * put_w
+        return pain
+
+    best_s: float | None = None
+    best_pain: float | None = None
+    for s in strikes:
+        p = _pain_at(s)
+        if best_pain is None or p < best_pain:
+            best_pain = p
+            best_s = s
+    return round(best_s, 2) if best_s is not None else None
+
+
+def max_pain_oi_strength(exposures_by_strike: Dict[float, dict], max_pain: float | None) -> float | None:
+    if max_pain is None:
+        return None
+    b = exposures_by_strike.get(max_pain) or exposures_by_strike.get(float(max_pain))
+    if not b:
+        return None
+    call_oi = float(b.get("call_oi") or 0.0)
+    put_oi = float(b.get("put_oi") or 0.0)
+    tot = call_oi + put_oi
+    return tot if tot > 0 else None
 
 
 # ── Low Gamma Void Zones — acceleration corridors ────────────────────────────
@@ -712,10 +822,10 @@ def compute_gamma_void_zones(
     if len(strikes) < 5:
         return []
 
-    # Use total gamma (call + put, always available) as primary measure.
-    # Falls back to dollarized net_gex_1pct if total gamma is zero.
     def _get_gex(bucket):
-        """Get absolute gamma exposure for a strike bucket."""
+        """Same measure for void detection and avg_gex_pct (institutional dollar GEX when available)."""
+        if exposures_have_dollar_gex(exposures_by_strike):
+            return total_gex_dollars_at_strike(bucket)
         total_gamma = abs(float(bucket.get("call_gamma", 0) or 0)) + abs(float(bucket.get("put_gamma", 0) or 0))
         if total_gamma > 0:
             return total_gamma
@@ -775,7 +885,7 @@ def compute_gamma_void_zones(
                 avg_gex = 0.0
                 for j in range(zone_start, i):
                     bucket = exposures_by_strike.get(strikes[j], {})
-                    avg_gex += abs(float(bucket.get("net_gex_1pct", 0) or 0))
+                    avg_gex += _get_gex(bucket)
                 avg_gex = (avg_gex / zone_len) / max_abs_gex if zone_len > 0 else 0
 
                 zones.append({
@@ -799,7 +909,7 @@ def compute_gamma_void_zones(
             avg_gex = 0.0
             for j in range(zone_start, len(strikes)):
                 bucket = exposures_by_strike.get(strikes[j], {})
-                avg_gex += abs(float(bucket.get("net_gex_1pct", 0) or 0))
+                avg_gex += _get_gex(bucket)
             avg_gex = (avg_gex / zone_len) / max_abs_gex if zone_len > 0 else 0
 
             zones.append({

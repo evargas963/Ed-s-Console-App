@@ -260,6 +260,218 @@ def _window_strikes(strikes: List[float], spot: float, window: int) -> List[floa
     return strikes_sorted[lo:hi]
 
 
+# ── Institutional key-level primitives (single source of truth) ───────────────
+# Window policy for UI/chart key levels: full option chain (CONSENSUS), not ATM±N.
+KEY_LEVEL_STRIKE_WINDOW: int | None = None
+
+# Dollar GEX per 1% spot move: gamma × OI × mult × spot² × 0.01 (see compute_exposures_by_strike).
+
+
+def exposures_have_dollar_gex(exposures: Dict[float, dict]) -> bool:
+    """True when spot was provided at bucket build and at least one strike has dollar GEX."""
+    for b in exposures.values():
+        if float(b.get("call_gex_1pct", 0) or 0) != 0 or float(b.get("put_gex_1pct", 0) or 0) != 0:
+            return True
+    return False
+
+
+def key_level_strikes_with_oi(exposures: Dict[float, dict]) -> List[float]:
+    """Strikes with Schwab OI present (post require_oi gate in compute_exposures_by_strike)."""
+    out: List[float] = []
+    for s in sorted(float(k) for k in exposures.keys()):
+        b = exposures.get(s, {})
+        co = b.get("call_oi")
+        po = b.get("put_oi")
+        tot = (float(co) if co is not None else 0.0) + (float(po) if po is not None else 0.0)
+        if tot > 0:
+            out.append(s)
+    return out
+
+
+def key_level_strikes_with_gamma(exposures: Dict[float, dict]) -> List[float]:
+    """Strikes with usable gamma buckets (excludes OI-only / invalid-greek tails)."""
+    if not exposures:
+        return []
+    dollar = exposures_have_dollar_gex(exposures)
+    out: List[float] = []
+    for s in sorted(float(k) for k in exposures.keys()):
+        b = exposures.get(s, {})
+        if dollar:
+            if total_gex_dollars_at_strike(b) > 0 or abs(net_gex_dollars_at_strike(b)) > 1e-12:
+                out.append(s)
+        elif total_gamma_raw_at_strike(b) > 0:
+            out.append(s)
+    return out
+
+
+def total_gex_dollars_at_strike(bucket: dict) -> float:
+    """Peak gamma concentration: |call GEX$| + |put GEX$| per 1% move."""
+    return abs(float(bucket.get("call_gex_1pct", 0) or 0)) + abs(float(bucket.get("put_gex_1pct", 0) or 0))
+
+
+def net_gex_dollars_at_strike(bucket: dict) -> float:
+    return float(bucket.get("net_gex_1pct", 0) or 0)
+
+
+def total_gamma_raw_at_strike(bucket: dict) -> float:
+    return abs(float(bucket.get("call_gamma", 0) or 0)) + abs(float(bucket.get("put_gamma", 0) or 0))
+
+
+def net_gamma_raw_at_strike(bucket: dict) -> float:
+    return float(bucket.get("net_gamma", 0) or 0)
+
+
+def _pick_strike_max_metric(
+    exposures: Dict[float, dict],
+    strikes: List[float],
+    metric_fn,
+) -> tuple[float | None, float | None]:
+    best_s: float | None = None
+    best_v: float | None = None
+    for s in strikes:
+        b = exposures.get(s, {})
+        v = metric_fn(b)
+        if v is None or v <= 0:
+            continue
+        if best_v is None or v > best_v:
+            best_s = float(s)
+            best_v = float(v)
+    return best_s, best_v
+
+
+def pick_gamma_pin_strike(
+    exposures: Dict[float, dict],
+    strikes: List[float],
+    *,
+    institutional: bool = True,
+) -> float | None:
+    """
+    Gamma pin: strike with largest |net GEX$| per 1% (institutional).
+    When institutional=True and spot/dollar GEX unavailable, returns None (no raw fallback).
+  """
+    if exposures_have_dollar_gex(exposures):
+        s, _ = _pick_strike_max_metric(
+            exposures, strikes, lambda b: abs(net_gex_dollars_at_strike(b))
+        )
+        return round(s, 2) if s is not None else None
+    if institutional:
+        return None
+    s, _ = _pick_strike_max_metric(
+        exposures, strikes, lambda b: abs(net_gamma_raw_at_strike(b))
+    )
+    return round(s, 2) if s is not None else None
+
+
+def pick_hvl_strike(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
+    """
+    HVL: strike with largest total gamma concentration.
+    Institutional: max (|call GEX$| + |put GEX$|); fallback: max (|call_γ| + |put_γ|).
+    """
+    if exposures_have_dollar_gex(exposures):
+        s, _ = _pick_strike_max_metric(exposures, strikes, total_gex_dollars_at_strike)
+        return round(s, 2) if s is not None else None
+    s, _ = _pick_strike_max_metric(exposures, strikes, total_gamma_raw_at_strike)
+    return round(s, 2) if s is not None else None
+
+
+def pick_gamma_wall_strikes(
+    exposures: Dict[float, dict], strikes: List[float]
+) -> tuple[tuple[float | None, float | None], tuple[float | None, float | None]]:
+    """Call/put gamma walls: max |side GEX$| (or |side γ| fallback)."""
+    if exposures_have_dollar_gex(exposures):
+        return (
+            _pick_strike_max_metric(
+                exposures, strikes, lambda b: abs(float(b.get("call_gex_1pct", 0) or 0))
+            ),
+            _pick_strike_max_metric(
+                exposures, strikes, lambda b: abs(float(b.get("put_gex_1pct", 0) or 0))
+            ),
+        )
+    return (
+        _pick_strike_max_metric(
+            exposures, strikes, lambda b: abs(float(b.get("call_gamma", 0) or 0))
+        ),
+        _pick_strike_max_metric(
+            exposures, strikes, lambda b: abs(float(b.get("put_gamma", 0) or 0))
+        ),
+    )
+
+
+def pick_delta_wall_strikes(
+    exposures: Dict[float, dict], strikes: List[float]
+) -> tuple[tuple[float | None, float | None], tuple[float | None, float | None]]:
+    if exposures_have_dollar_gex(exposures):
+        return (
+            _pick_strike_max_metric(
+                exposures, strikes, lambda b: abs(float(b.get("call_dex_dollars", 0) or 0))
+            ),
+            _pick_strike_max_metric(
+                exposures, strikes, lambda b: abs(float(b.get("put_dex_dollars", 0) or 0))
+            ),
+        )
+    return (
+        _pick_strike_max_metric(
+            exposures, strikes, lambda b: abs(float(b.get("call_delta", 0) or 0))
+        ),
+        _pick_strike_max_metric(
+            exposures, strikes, lambda b: abs(float(b.get("put_delta", 0) or 0))
+        ),
+    )
+
+
+def aggregate_net_gex(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
+    """Chain-aggregate net GEX$: Σ net_gex_1pct (institutional); fallback Σ net_gamma."""
+    if not strikes:
+        return None
+    if exposures_have_dollar_gex(exposures):
+        total = sum(net_gex_dollars_at_strike(exposures.get(s, {})) for s in strikes)
+        return float(total)
+    total = 0.0
+    any_g = False
+    for s in strikes:
+        b = exposures.get(s, {})
+        if b.get("net_gamma") is not None:
+            total += net_gamma_raw_at_strike(b)
+            any_g = True
+    return float(total) if any_g else None
+
+
+def aggregate_net_dex(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
+    if not strikes:
+        return None
+    if exposures_have_dollar_gex(exposures):
+        return float(
+            sum(float(exposures.get(s, {}).get("net_dex_dollars", 0) or 0) for s in strikes)
+        )
+    total = 0.0
+    any_d = False
+    for s in strikes:
+        b = exposures.get(s, {})
+        if b.get("net_delta") is not None:
+            total += float(b.get("net_delta") or 0)
+            any_d = True
+    return float(total) if any_d else None
+
+
+def gex_magnitude_label(net_gex: float | None) -> str:
+    if net_gex is None:
+        return "negligible"
+    a = abs(float(net_gex))
+    if a >= 50_000_000:
+        return "large"
+    if a >= 10_000_000:
+        return "moderate"
+    if a >= 1_000_000:
+        return "small"
+    return "negligible"
+
+
+def gex_regime_label(net_gex: float | None) -> str:
+    if net_gex is None or abs(float(net_gex)) < 1e-6:
+        return "neutral"
+    return "positive" if float(net_gex) > 0 else "negative"
+
+
 # ── Validation / sanitization ────────────────────────────────────────────────
 
 def greeks_validity(contracts_used: int, greeks_missing: int) -> bool:
@@ -312,7 +524,14 @@ def strike_agg(exposures, strike):
 
 # ── Charm ─────────────────────────────────────────────────────────────────────
 
-def compute_net_charm(contracts: list, spot: float, expiry: str, *, rate: float = 0.05) -> dict:
+def compute_net_charm(
+    contracts: list,
+    spot: float,
+    expiry: str,
+    *,
+    rate: float = 0.05,
+    drift_toward_strike: float | None = None,
+) -> dict:
     """
     Compute dealer net charm exposure for a given expiry.
 
@@ -333,15 +552,13 @@ def compute_net_charm(contracts: list, spot: float, expiry: str, *, rate: float 
     Net charm > 0 → net dealer delta buying  → Bullish flow
     Net charm < 0 → net dealer delta selling → Bearish flow
 
-    Gamma pin (drift_toward): strike with highest TOTAL OI-weighted GEX (calls+puts).
-    This is where price is mechanically pinned by dealer hedging, independent of charm flow.
-    The gamma pin and charm direction CAN conflict — price wants to pin at gamma_pin
-    while charm creates a directional unwind force.
+    drift_toward_strike: institutional gamma pin from pick_gamma_pin_strike (caller-supplied).
+    Charm flow direction is independent of pin location.
 
     Returns:
         net_charm_daily  : net delta-equivalents unwound per day (negative = selling)
         charm_direction  : "buying" | "selling" | "neutral"  (for signals engine)
-        drift_toward     : strike of gamma pin (TOTAL GEX, not call-only)
+        drift_toward     : drift_toward_strike when provided
         gamma_pin        : same as drift_toward
         contracts_used   : number of contracts that contributed
     """
@@ -370,7 +587,6 @@ def compute_net_charm(contracts: list, spot: float, expiry: str, *, rate: float 
         return dte_f / 365.0
 
     call_charm = put_charm = 0.0
-    total_gex_by_strike: dict = {}   # strike → total abs GEX (calls + puts)
     used = 0
 
     for ct in contracts:
@@ -450,11 +666,6 @@ def compute_net_charm(contracts: list, spot: float, expiry: str, *, rate: float 
         else:
             put_charm  += weighted
 
-        # Gamma pin: track total OI-weighted GEX per strike (calls + puts)
-        if strike is not None:
-            g_weighted = abs(gamma) * oi * mult
-            total_gex_by_strike[strike] = total_gex_by_strike.get(strike, 0.0) + g_weighted
-
         used += 1
 
     net = call_charm + put_charm
@@ -462,8 +673,7 @@ def compute_net_charm(contracts: list, spot: float, expiry: str, *, rate: float 
     # Direction: positive net = dealers net buying delta (bullish), negative = selling (bearish)
     direction = "neutral" if abs(net) < 1.0 else ("buying" if net > 0 else "selling")
 
-    # Gamma pin = strike with highest TOTAL (call + put) OI-weighted GEX
-    gamma_pin = max(total_gex_by_strike, key=total_gex_by_strike.get) if total_gex_by_strike else None
+    gamma_pin = drift_toward_strike
 
     return {
         "net_charm_daily":  round(net, 2),

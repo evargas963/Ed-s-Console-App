@@ -301,6 +301,32 @@ Revision emits event. Artifacts trained on revised snapshot are auto-marked `POT
 #### Enforcement
 E2 on data revision workflows, E5 staleness monitor, V-DATA checks include snapshot currency status.
 
+### 8.2 Options key levels (derived dealer structure)
+
+#### Principle
+Charted key levels are derived from Schwab chain leaves (`delta`, `gamma`, `openInterest`, `strikePrice`, `multiplier`, `putCall`, `volatility`, `vega`, `daysToExpiration`, `expirationDate`). GEX$, DEX$, pin, HVL, max pain, flip, and inflection have no Schwab primitive; they must use one canonical derivation in `math_exposure_core` / `math_levels` and Schwab Field Precedence (`fb1e84c`).
+
+#### Invariant
+- Dollar GEX per 1%: `gamma × openInterest × multiplier × spot² × 0.01` aggregated per strike; net = call − put.
+- UI key levels use **full chain** strikes that passed OI and Greek validity gates at bucket build; no silent raw-γ fallback when spot/dollar GEX is unavailable (`kl_institutional_ready=false`).
+- Section 8 dealer aggregates and `kl_net_gex` use the same full-chain `aggregate_net_gex` helper.
+
+#### Canonical levels
+| Level | Definition |
+| --- | --- |
+| Gamma pin | `argmax_strike \|net_gex_1pct\|` |
+| HVL | `argmax_strike (\|call_gex_1pct\| + \|put_gex_1pct\|)` |
+| Max pain | `argmin_settlement Σ_K [ call_oi_mult·max(S−K,0) + put_oi_mult·max(K−S,0) ]` on strike grid |
+| Gamma flip | zero-cross per-strike `net_gex_1pct`, else `net_gamma`, else cumulative GEX |
+| Gamma inflection | `argmin \|net_gex_1pct\|` (else raw net_gamma) |
+| Delta inflection | `argmin \|net_dex_dollars\|` (else raw net_delta) |
+| Gamma walls | `argmax \|call_gex_1pct\|`, `argmax \|put_gex_1pct\|` |
+| Net GEX | `Σ net_gex_1pct` full chain |
+| Charm drift target | `pick_gamma_pin_strike` (not a separate charm-internal pin) |
+
+#### Enforcement
+`tests/test_institutional_key_levels.py`, `tests/test_math_levels_hvl_max_pain.py`; payload fields `kl_*`, `kl_institutional_ready`, `kl_metrics_dollarized`.
+
 ---
 
 ## 9. Horizon parity and economic labels

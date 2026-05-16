@@ -992,7 +992,11 @@ def build_market_state(
         _ng             = _f(getattr(consensus_summary, "net_gamma", None))
         ms.net_delta    = _nd
         ms.net_gamma    = _ng
-        ms.gex_magnitude = str(getattr(consensus_summary, "gex_magnitude", "negligible") or "negligible")
+        try:
+            from math_exposure_core import gex_magnitude_label
+            ms.gex_magnitude = gex_magnitude_label(_ng)
+        except Exception:
+            ms.gex_magnitude = str(getattr(consensus_summary, "gex_magnitude", "negligible") or "negligible")
         ms.dex_magnitude = str(getattr(consensus_summary, "dex_magnitude", "negligible") or "negligible")
     else:
         ms.bias_signal  = "Neutral"

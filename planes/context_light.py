@@ -55,6 +55,11 @@ _STRUCTURAL_KEYS = (
     "charm_direction_display",
     "charm_drift_toward",
     "kl_gamma_pin",
+    "kl_hvl",
+    "kl_max_pain",
+    "kl_net_gex",
+    "kl_net_gex_disp",
+    "kl_net_gex_regime",
 )
 
 _ORDER_FLOW_KEYS = (

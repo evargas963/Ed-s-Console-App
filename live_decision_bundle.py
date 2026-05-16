@@ -107,6 +107,10 @@ def _key_levels_from_ms_dict(ms_dict: dict) -> list[tuple[float, str]]:
 
         (ms_dict.get("kl_put_gamma_wall"), "Put g-Wall"),
 
+        (ms_dict.get("kl_hvl"), "HVL"),
+
+        (ms_dict.get("kl_max_pain"), "Max Pain"),
+
         (ms_dict.get("kl_gamma_inflection"), "g-Inflection"),
 
         (ms_dict.get("kl_call_delta_wall"), "Call d-Wall"),

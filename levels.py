@@ -32,9 +32,9 @@ def _fmt_plain_2(x: float | None) -> str:
 
 
 def to_display_rows(rows: List[ExposureRow]) -> List[DisplayRow]:
-    # NOTE: ExposureRow net_gamma/net_delta are already dollarized in math_exposure:
-    #   - net_gamma = net GEX$ per 1% move (aggregated across strikes)
-    #   - net_delta = net DEX$ (aggregated across strikes)
+    # NOTE: ExposureRow net_gamma/net_delta use institutional aggregates when spot is known:
+    #   - net_gamma = Σ net_gex_1pct (GEX$ per 1% move); else Σ net_gamma (γ×OI×mult)
+    #   - net_delta = Σ net_dex_dollars; else Σ net_delta
     out: List[DisplayRow] = []
     for r in rows:
         out.append(

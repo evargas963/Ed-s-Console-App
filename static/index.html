@@ -438,6 +438,24 @@
     letter-spacing: 0.08em;
     white-space: nowrap;
   }
+  .utility-bar .ub-voice-close-opts {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 5px;
+    margin-top: 4px;
+    max-width: 14rem;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--text-sec);
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    user-select: none;
+    text-align: right;
+    line-height: 1.25;
+  }
+  .utility-bar .ub-voice-close-opts input { cursor: pointer; flex-shrink: 0; }
 
   /* Secondary diagnostics row (below utility bar; same mono) */
   .operator-diagnostics-strip {
@@ -2619,6 +2637,11 @@
     <div class="ub-timeblock">
       <div class="ub-clock-time" id="ub-clock-time">--:--:--</div>
       <div class="ub-clock-date" id="ub-clock-date">—</div>
+      <label class="ub-voice-close-opts"
+        title="Announces at 60,50,40,30,20,10, then each second to 0 in the last minute before 4:00 PM ET. RTH only. Early-close days may drift from exchange clock.">
+        <input type="checkbox" id="ed-voice-rth-close-countdown" aria-label="Voice countdown last minute to RTH close">
+        <span>Voice · last min to 4:00 PM ET</span>
+      </label>
     </div>
   </div>
 
@@ -2719,10 +2742,6 @@
           <div class="metric-row">
             <span class="metric-label">Net Delta</span>
             <span class="metric-value" id="sb-nd">—</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-label">Net Gamma</span>
-            <span class="metric-value dim" id="sb-ng">—</span>
           </div>
         </div>
       </div>
@@ -5731,6 +5750,7 @@ function renderTierALive(d, fullRenderSource) {
     const freshnessEl = $('data-freshness');
     if (freshnessEl) freshnessEl.textContent = ageSec <= 0 ? '<1s' : ageSec + 's ago';
   }
+  window.__edSessionLabel = String(d.session_label || '');
   domIf('sb-session', el => { el.textContent = d.session_label || '—'; });
   domIf('sb-spot', el => { el.textContent = d.spot_disp || '—'; });
   domIf('sb-bidask', el => { el.textContent = `${d.bid_disp || '—'} / ${d.ask_disp || '—'}`; });
@@ -5896,6 +5916,7 @@ function render(d, fullRenderSource) {
     return String(x.dominant_dir || x.prediction_dir || 'flat').toLowerCase();
   }
   // ── Sidebar: Instrument ───────────────────────────────────────────────────
+  window.__edSessionLabel = String(d.session_label || '');
   domIf('sb-session', el => { el.textContent = d.session_label || '—'; });
   if (!_slowStaleVsFast) {
     domIf('sb-spot', el => { el.textContent = d.spot_disp || '—'; });
@@ -6693,6 +6714,10 @@ function render(d, fullRenderSource) {
           return `Hedging center of gravity. Charm drift diverges ${charm > pin ? 'above' : 'below'} — watch which wins after 2pm.`;
         return 'Hedging center of gravity. Price magnetically attracted here.';
       }},
+    { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'HVL', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9',
+      desc: d => 'High Volatility Level — strike with the largest total gamma (calls + puts). Peak hedging friction / vol sensitivity.' },
+    { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef',
+      desc: d => 'Expiry settlement strike that minimizes total ITM option payout (OI-weighted). Classic pin magnet into close.' },
     { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316',
       desc: (d, spot, v) => {
         if (!v || !spot) return 'Regime boundary — above = dealers dampen (pin), below = dealers amplify (acceleration).';
@@ -6821,6 +6846,35 @@ function render(d, fullRenderSource) {
     html += '<div class="kl-section-hdr">ALWAYS CHART<span>Primary institutional structure + acceleration zones</span></div>';
     KL_PRIMARY.sort((a, b) => (parseFloat(d[b.key]) || 0) - (parseFloat(d[a.key]) || 0))
       .forEach(level => { html += renderRow(level, d, false); });
+
+    // Net GEX — aggregate dealer gamma regime (not a price level)
+    {
+      const gexRaw = d.kl_net_gex != null ? parseFloat(d.kl_net_gex) : (d.net_gamma != null ? parseFloat(d.net_gamma) : NaN);
+      const gexDisp = d.kl_net_gex_disp || (Number.isFinite(gexRaw)
+        ? (gexRaw >= 0 ? '+' : '') + (Math.abs(gexRaw) >= 1e6 ? `$${(gexRaw / 1e6).toFixed(2)}M` : Math.abs(gexRaw) >= 1e3 ? `$${(gexRaw / 1e3).toFixed(1)}K` : `$${gexRaw.toFixed(0)}`)
+        : '—');
+      const regime = (d.kl_net_gex_regime || '').toLowerCase();
+      const regimeLbl = regime === 'positive' ? 'Positive Γ' : regime === 'negative' ? 'Negative Γ' : 'Neutral';
+      const regimeSr = regime === 'positive' ? 'bull' : regime === 'negative' ? 'bear' : 'net';
+      const gflip = parseFloat(d.kl_gamma_flip || 0);
+      const aboveFlip = spot && gflip && spot > gflip;
+      const regimeDesc = regime === 'positive'
+        ? `Net GEX ${gexDisp} — positive gamma regime. Dealers tend to dampen moves${aboveFlip ? ' (spot above flip).' : ' (spot below flip — check flip).'}.`
+        : regime === 'negative'
+        ? `Net GEX ${gexDisp} — negative gamma regime. Dealers tend to amplify moves; breakout/acceleration risk elevated.`
+        : 'Net GEX unavailable or near zero — no clear dealer gamma bias.';
+      const mag = d.kl_net_gex_mag || 'negligible';
+      const magLbl = mag.charAt(0).toUpperCase() + mag.slice(1);
+      html += `<div class="kl-grid">
+        <div class="kl-prox" style="background:${regime === 'negative' ? '#ef4444' : regime === 'positive' ? '#22c55e' : 'transparent'}"></div>
+        <div class="kl-name">Net GEX</div>
+        <div class="kl-price">${gexDisp}</div>
+        <div style="text-align:center"><span class="kl-sr ${regimeSr}">${regimeLbl}</span></div>
+        <div class="kl-dist">—</div>
+        <div class="kl-str">${magLbl}</div>
+        <div class="kl-context">${regimeDesc}</div>
+      </div>`;
+    }
 
     // Charm Drift row
     {
@@ -9344,6 +9398,69 @@ setTimeout(() => {
 // Poll logger status every 15s — lightweight, non-critical
 fetchLoggerStatus();
 setInterval(fetchLoggerStatus, 15000);
+
+/** RTH last minute: voice at 60,50,40,30,20,10,9…0 seconds before 4:00 PM America/New_York (opt-in checkbox). */
+(function edRthCloseVoiceCountdown() {
+  const CB_ID = 'ed-voice-rth-close-countdown';
+  const LS_KEY = 'ed_voice_rth_close_last_min';
+  const MILESTONES = new Set([60, 50, 40, 30, 20, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]);
+  let _prevWhole = null;
+
+  function secondsUntilRthCloseEt() {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hour12: false,
+    }).formatToParts(new Date());
+    const hour = parseInt(parts.find((p) => p.type === 'hour').value, 10);
+    const minute = parseInt(parts.find((p) => p.type === 'minute').value, 10);
+    const second = parseInt(parts.find((p) => p.type === 'second').value, 10);
+    const nowInDay = hour * 3600 + minute * 60 + second;
+    return 16 * 3600 - nowInDay;
+  }
+
+  function speakCountdown(text) {
+    if (typeof window.speechSynthesis === 'undefined') return;
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'en-US';
+      u.rate = 1.0;
+      window.speechSynthesis.speak(u);
+    } catch (e) { /* ignore */ }
+  }
+
+  function tickRthVoice() {
+    const cb = document.getElementById(CB_ID);
+    if (!cb || !cb.checked) {
+      _prevWhole = null;
+      return;
+    }
+    if (String(window.__edSessionLabel || '').trim() !== 'RTH') {
+      _prevWhole = null;
+      return;
+    }
+    const rem = secondsUntilRthCloseEt();
+    if (rem < 0 || rem > 60) {
+      _prevWhole = null;
+      return;
+    }
+    const whole = Math.floor(rem);
+    if (whole !== _prevWhole && MILESTONES.has(whole)) {
+      speakCountdown(whole === 0 ? '0' : whole + ' seconds');
+    }
+    _prevWhole = whole;
+  }
+
+  const cb0 = document.getElementById(CB_ID);
+  if (cb0) {
+    cb0.checked = localStorage.getItem(LS_KEY) === '1';
+    cb0.addEventListener('change', () => localStorage.setItem(LS_KEY, cb0.checked ? '1' : '0'));
+  }
+  setInterval(tickRthVoice, 250);
+})();
 </script>
 </body>
 </html>
