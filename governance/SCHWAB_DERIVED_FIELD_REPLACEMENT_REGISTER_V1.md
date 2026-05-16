@@ -246,7 +246,7 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | A2 spread matrix | DFR-006, OP-006, OP-007 | CLOSED | `eb36afe` (`a2_price_precedence.py`); `2439281` (`_oe_bid_ask_mid` mid_source) |
 | PQ re-audit | DFR-003, PQ-001 | CLOSED | `4ef5864` — `test_server_quote_source_contract.py` fail-closed spot |
 | Zero-OPEN KL sweep | item 19 | CLOSED | `a48f964` — 13 KL data-flow files; 0 forbidden patterns |
-| OHLCV bar adapter | DFR-009, DFR-011, MT-006, MT-007, PQ-009, PQ-010, DFR-018 re-audit | CLOSED | Day 1 — zero OHLCV injection; `missing_fields` + `source` on every bar; synthetic bars tagged |
+| OHLCV bar adapter | DFR-009, DFR-011, MT-006, MT-007, PQ-009, PQ-010, DFR-018 re-audit | CLOSED | `03ca199` — zero OHLCV injection; `missing_fields` + `source` on every bar; synthetic bars tagged |
 | Repo-wide register | all non-KL rows | OPEN | MT/OHLCV/deferred paths out of KEY LEVELS scope |
 
 ---
