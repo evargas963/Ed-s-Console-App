@@ -74,7 +74,9 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | DFR-004 | ADDRESSED | `a03e5ba` + `569af08` (S009) — spread pts vs fraction + spread age / non-tradeable gating; re-audit sticky cache if residuals return. |
 | DFR-010 / MT-001 | CLOSED | `d4b2f1a` (S005) — `features/replay_signal_input_v1` spot fail-closed. |
 | DFR-021 | CLOSED | `df58fe9` — `build_inference_snapshot_v1_from_signal_input` no `time.time()` fallback (`SCHWAB_REMEDIATION_S017_INFERENCE_SNAPSHOT_TIME_CONTRACT.md`). |
-| DFR-017-REG-MAX-PAIN | CLOSED | `9850a86` — max-pain mult fail-closed; see `math_levels.compute_max_pain`. Repo-wide DFR-017 sweep still OPEN at remaining multiplier consumers. |
+| DFR-017-REG-MAX-PAIN | CLOSED | `9850a86` — max-pain mult fail-closed; see `math_levels.compute_max_pain`. |
+| DFR-017 | CLOSED | Repo-wide `multiplier` consumers fail-closed; see `tests/test_dfr017_multiplier_repo_sweep.py`. |
+| DFR-005 / OP-018 | CLOSED | `64c3641` — strict `expirationDate` slice; `kl_expiry_source`; no full-chain fallback. |
 
 ---
 
@@ -109,7 +111,7 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | DFR-014 | `ml_train.py` / `ml_predict.py` | Median and zero imputation can hide upstream market-data failures | Model training/inference can continue with degraded inputs without authority downgrade. | redesign | High |
 | DFR-015 | `static/index.html` utility/sidebar | Sticky previous VIX/PCR/bid/ask values when current payload omits fields | Trader can see stale values as current. | gate/fail-closed | High |
 | DFR-016 | `server.py` Tier C VIX payload | `vix_direction` / `vix_vs_prev` computed but not serialized where UI expects them | Trader-visible VIX momentum can show neutral/missing despite movement. | replace-with-Schwab + derived provenance | High |
-| DFR-017 | Inline `chain_row.get("multiplier")` reads at consumer sites including `math_exposure_core.py::compute_exposures_by_strike()` (formerly also `chains.py::contract_fields()` — removed in the Schwab-direct redesign). Closure slice: `math_levels.compute_max_pain` hardened — synthetic `*100` removed; strike skipped when `oi_mult` missing. `9850a86`. | `multiplier` defaulted to `100` | Missing Schwab multiplier silently coerces non-standard contracts into standard-contract dollarized exposure math. | gate/fail-closed / replace-with-Schwab | High |
+| DFR-017 | Inline `chain_row.get("multiplier")` reads at consumer sites — **CLOSED repo-wide** (`math_exposure_core`, `backfill_flow_imbalance`, `max_pain`; no `or 100`). | `multiplier` defaulted to `100` | Missing Schwab multiplier silently coerces non-standard contracts into standard-contract dollarized exposure math. | gate/fail-closed / replace-with-Schwab | High |
 | DFR-018 | `liquidity_value_engine.py` | OHLCV defaults to `0` | Parallel OHLCV zero-injection path outside `market_data_adapter.py`. **ADDRESSED `9a863fc` (S002/S003 overlap) — re-audit if residuals persist.** | gate/fail-closed | High |
 | DFR-019 | `order_flow_engine.py::_compute_rvol()` | RVOL returns `1.0` when average volume is invalid | Missing baseline volume becomes neutral RVOL instead of unavailable. | gate/fail-closed / derived provenance | Medium |
 | DFR-020 | `signals.py::_spot_for_mc_fusion_adjustment()` | spot returns `0.0` in fusion adjustment path | Post-fusion spot consumer can silently substitute zero. **Closed `d4b2f1a` (S005).** | gate/fail-closed | High |
