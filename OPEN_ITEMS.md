@@ -197,8 +197,8 @@ The pattern-shape regression net from these commits stays in place as a safety f
 - [x] **§4 Math / KEY LEVELS** — `math_exposure*.py`, `math_levels.py`, `math_volatility.py`, `math_probabilities.py`, `levels.py`. Full-scope AST inventory (131 rows). SHA: `3c7b1d1`
 - [x] **§5 Order flow** — `order_flow_engine.py`, `order_flow_live_state.py`, `order_flow_streaming.py`, `debug_flow_snapshot.py`. Full-scope AST inventory (70 rows). SHA: `3209941`
 - [x] **§6 Signals + decision** — `signals.py`, `signal_helpers.py`, `signal_types.py`, `rules_engine.py`, `prediction_engine.py`, `call_engine.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`. Full-scope AST inventory (88 rows). SHA: `b85fb28`
-- [ ] **§7 V2 decision + A2 lifecycle** — `v2_decision/*.py`, `lifecycle_rule_core.py`. Full-scope AST re-walk `07d1ed4` (139 rows). SHA: __________
-- [ ] **§8 MC + regime + volatility** — `monte_carlo.py`, `mc_fusion_adjustment.py`, `volatility_regime.py`, `regime_engine.py`. SHA: __________
+- [x] **§7 V2 decision + A2 lifecycle** — `v2_decision/*.py`, `lifecycle_rule_core.py`. Full-scope AST inventory (139 rows). SHA: `07d1ed4` (docs `766b30f`)
+- [ ] **§8 MC + regime + volatility** — `monte_carlo.py`, `mc_fusion_adjustment.py`, `volatility_regime.py`, `regime_engine.py`. Full-scope AST re-walk `f4ca14a` (29 rows). SHA: __________
 - [ ] **§9 Features (ML inputs)** — `features/*.py`. SHA: __________
 - [ ] **§10 ML training + predict** — `ml_*.py`, `lstm_*.py`, `xgboost_model.py`, `transformer_*.py`, `train_*.py`, `training_*.py`, `normalized_training_sync.py`, `smoke_predict_active.py`. SHA: __________
 - [ ] **§11 Calibration + fusion** — `calibration/*.py`, `bayesian_fusion.py`, `governed_stack_contract.py`, `arch_competition/*.py`. SHA: __________

@@ -51,6 +51,13 @@ SECTION7 = sorted(
     if p.name != "__init__.py"
 ) + ["lifecycle_rule_core.py"]
 
+SECTION8 = [
+    "monte_carlo.py",
+    "mc_fusion_adjustment.py",
+    "volatility_regime.py",
+    "regime_engine.py",
+]
+
 SECTION5 = [
     "order_flow_engine.py",
     "order_flow_live_state.py",
@@ -86,5 +93,6 @@ if __name__ == "__main__":
         "5": SECTION5,
         "6": SECTION6,
         "7": SECTION7,
+        "8": SECTION8,
     }.get(which, SECTION1)
     main(files)

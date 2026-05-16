@@ -392,6 +392,24 @@ Per-function detail in `governance/section7_derivation_inventory.py`.
 
 ---
 
+## Section 8 derivation audit inventory
+
+Walked 4 files at **full AST scope** (module + class + nested `def`). **29** inventory rows: **0** REPLACED, **19** KEEP_DERIVED, **0** PASS_THROUGH, **10** NONE. MC/regime consumes upstream SignalInput vol/spot/levels; no direct Schwab API. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section8_derivation_inventory.py`. Tests: `tests/test_section8_schwab_derivation_audit.py`.
+
+<!-- SECTION8_DERIVATION_INVENTORY_START -->
+| file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---:|---:|---:|---:|---:|
+| monte_carlo.py | 5 | 0 | 4 | 0 | 1 |
+| mc_fusion_adjustment.py | 11 | 0 | 2 | 0 | 9 |
+| volatility_regime.py | 2 | 0 | 2 | 0 | 0 |
+| regime_engine.py | 11 | 0 | 11 | 0 | 0 |
+| **total** | **29** | **0** | **19** | **0** | **10** |
+
+Per-function detail in `governance/section8_derivation_inventory.py`.
+<!-- SECTION8_DERIVATION_INVENTORY_END -->
+
+---
+
 ## CAPS allowlist (silent-default substitution family)
 
 Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  
