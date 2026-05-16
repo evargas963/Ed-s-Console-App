@@ -580,8 +580,6 @@ def parity_f_minus_spot_from_contracts(
             continue
         use.append(c)
     if not use:
-        use = list(contracts or [])
-    if not use:
         return 0.0
     strikes = []
     for c in use:

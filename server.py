@@ -2068,6 +2068,38 @@ def _expiries_from_contracts(contracts: list) -> list[str]:
     return sorted(exps)
 
 
+def _filter_contracts_by_selected_expiry(
+    contracts: list,
+    selected_exp: str | None,
+) -> tuple[list[dict], str]:
+    """
+    Strict Schwab ``expirationDate`` slice for the selected expiry key.
+    No silent full-chain fallback (DFR-005 / OP-018).
+    """
+    exp_key = str(selected_exp or "")[:10]
+    if not exp_key or len(exp_key) != 10:
+        return [], "unavailable_missing_selected_expiry"
+    filtered = [
+        ct for ct in (contracts or [])
+        if str(ct.get("expirationDate") or "")[:10] == exp_key
+    ]
+    if not filtered:
+        return [], "unavailable_no_contracts_for_expiry"
+    return filtered, "schwab_expirationDate"
+
+
+def _kl_expiry_source_label(
+    *,
+    expiry_param: str | None,
+    slice_source: str,
+) -> str:
+    if slice_source != "schwab_expirationDate":
+        return slice_source
+    if expiry_param:
+        return "schwab_expirationDate_user"
+    return "schwab_expirationDate_default_nearest"
+
+
 def _selected_schwab_days_to_expiration(
     contracts: list,
     selected_exp: str | None,
@@ -3157,9 +3189,47 @@ def _fetch_state(
             _minimal["_update_source"] = update_source
         _lmp.merge_into_state(_minimal, ticker)
         return stamp_decision_bundle(_minimal)
-    filtered     = [ct for ct in contracts
-                    if (ct.get("expirationDate") or "")[:10] == selected_exp]
-    contracts_use = filtered if filtered else contracts
+    contracts_use, _exp_slice_source = _filter_contracts_by_selected_expiry(contracts, selected_exp)
+    _kl_expiry_source = _kl_expiry_source_label(
+        expiry_param=expiry,
+        slice_source=_exp_slice_source,
+    )
+    if not contracts_use:
+        log.warning(
+            "_fetch_state: no contracts for selected_exp=%s ticker=%s (strict expirationDate slice)",
+            selected_exp,
+            ticker,
+        )
+        try:
+            spot_disp = f"{float(spot):.2f}" if spot else "—"
+        except (TypeError, ValueError):
+            spot_disp = "—"
+        _exp_err = stamp_decision_bundle({
+            "ticker": ticker.upper(),
+            "selected_exp": selected_exp,
+            "expiries": [e for e in expiries if e >= _today_str],
+            "state_error": "expiry_slice_empty",
+            "state_error_detail": (
+                f"No option contracts with Schwab expirationDate={selected_exp}. "
+                "Refusing full-chain fallback for KEY LEVELS / exposures."
+            ),
+            "kl_expiry_source": _kl_expiry_source,
+            "spot": float(spot) if spot else None,
+            "spot_disp": spot_disp,
+            "bid_disp": "—",
+            "ask_disp": "—",
+            "session_label": session_label,
+            "call_signal": "wait",
+            "call_conviction": "low",
+            "fusion_available": False,
+            "dominant_dir": "flat",
+            "rules_headline": "—",
+        })
+        _exp_err["_server_build_ts"] = time.time()
+        if update_source is not None:
+            _exp_err["_update_source"] = update_source
+        _lmp.merge_into_state(_exp_err, ticker)
+        return _exp_err
 
     # ── Exposures ─────────────────────────────────────────────────────────────
     if spot is None:
@@ -4601,7 +4671,8 @@ def _fetch_state(
         ms_dict["kl_net_gex_disp"] = "—"
         ms_dict["kl_net_gex_mag"] = "negligible"
         ms_dict["kl_net_gex_regime"] = "neutral"
-    ms_dict["kl_level_window"] = "full_chain"
+    ms_dict["kl_expiry_source"] = _kl_expiry_source
+    ms_dict["kl_level_window"] = "selected_expiry"
     ms_dict["kl_metrics_dollarized"] = bool(exposures and exposures_have_dollar_gex(exposures))
     ms_dict["kl_institutional_ready"] = ms_dict["kl_metrics_dollarized"]
     _em_up_straddle = _fv(_em_straddle.get("upper"))
