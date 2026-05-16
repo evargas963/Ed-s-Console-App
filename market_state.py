@@ -439,6 +439,8 @@ class MarketState:
     mc_horizon:             Optional[int]   = None
     mc_vol_source:          Optional[str]   = None
     mc_sigma_value:         Optional[float] = None
+    mc_em_anchor:           Optional[str]   = None
+    mc_iv_source:           Optional[str]   = None
 
     # ── Individual model outputs (stack visibility from ml_predict) ───────────
     xgb_available:          Optional[bool]  = None
@@ -790,11 +792,12 @@ def recommend_option_expression(
 
 
 def _oe_bid_ask_mid(contracts, strike: float, side: str):
+    """Return (bid, ask, mid, mid_source) with Schwab mark-first mid ladder (OP-006)."""
     su = str(side).upper().strip()
     try:
         kf = float(strike)
     except Exception:
-        return None, None, None
+        return None, None, None, None
     for ct in contracts or []:
         if str(ct.get("putCall", "")).upper().strip() != su:
             continue
@@ -812,16 +815,38 @@ def _oe_bid_ask_mid(contracts, strike: float, side: str):
         except (TypeError, ValueError):
             b = a = None
         mid: float | None = None
+        mid_source: str | None = None
         try:
             mark_raw = ct.get("mark")
             if mark_raw is not None:
                 mark_val = float(mark_raw)
                 if mark_val > 0:
                     mid = mark_val
+                    mid_source = "schwab_chain_mark"
         except (TypeError, ValueError):
             pass
-        return b, a, mid
-    return None, None, None
+        if mid is None:
+            try:
+                last_raw = ct.get("last")
+                if last_raw is not None:
+                    last_val = float(last_raw)
+                    if last_val > 0:
+                        mid = last_val
+                        mid_source = "schwab_chain_last"
+            except (TypeError, ValueError):
+                pass
+        if mid is None and b is not None and a is not None:
+            try:
+                bf, af = float(b), float(a)
+                if af > 0 and bf >= 0:
+                    calc = (af + bf) / 2.0
+                    if calc > 0:
+                        mid = round(calc, 4)
+                        mid_source = "derived_bid_ask_mid"
+            except (TypeError, ValueError):
+                pass
+        return b, a, mid, mid_source
+    return None, None, None, None
 
 
 def _schwab_days_to_expiration_for_contract(contracts, strike: float | None, side: str | None) -> int | None:
@@ -867,7 +892,7 @@ def _build_contract_context_ms(ms: "MarketState", contracts: list) -> str:
     except Exception:
         strike_disp = str(k)
     leg = f"{t} {str(exp)[:10]} {strike_disp}{'C' if side == 'CALL' else 'P'}{dte_part}"
-    bid, ask, mid = _oe_bid_ask_mid(contracts, float(k), side)
+    bid, ask, mid, mid_source = _oe_bid_ask_mid(contracts, float(k), side)
     try:
         spot_f = float(ms.spot) if ms.spot is not None else None
     except (TypeError, ValueError):
@@ -876,7 +901,8 @@ def _build_contract_context_ms(ms: "MarketState", contracts: list) -> str:
     if mid is not None and spot_f is not None:
         fk = float(k)
         be = fk + mid if side == "CALL" else fk - mid
-        parts.append(f"mid≈{mid:.2f} → BE≈{be:.2f} vs spot {spot_f:.2f}")
+        src = f" ({mid_source})" if mid_source else ""
+        parts.append(f"mid≈{mid:.2f}{src} → BE≈{be:.2f} vs spot {spot_f:.2f}")
     elif bid is not None and ask is not None:
         parts.append(f"bid/ask {bid:.2f}/{ask:.2f} (mid needed for breakeven)")
     else:
@@ -933,6 +959,9 @@ def build_market_state(
     # Expected Move boundaries (for MC simulation)
     em_upper: float | None = None,
     em_lower: float | None = None,
+    mc_iv_level: float | None = None,
+    mc_em_anchor: str | None = None,
+    mc_iv_source: str | None = None,
     # Volatility context for MC v2
     realized_vol: float | None = None,
     atr: float | None = None,
@@ -1051,6 +1080,8 @@ def build_market_state(
     ms.pcr_color       = getattr(mkt_ctx, "pcr_color",      "#9ca3af")
     ms.pcr_label       = getattr(mkt_ctx, "pcr_label",      "")
     ms.iv_direction    = iv_direction or "flat"
+    ms.mc_em_anchor    = mc_em_anchor
+    ms.mc_iv_source    = mc_iv_source
 
     # ── 5. Bias gate — exact match only ─────────────────────────────────────
     ms.bias_resolved = is_bias_actionable(ms.bias_signal)
@@ -1144,9 +1175,13 @@ def build_market_state(
         if consensus_summary:
             _net_gamma     = _f(getattr(consensus_summary, "net_gamma", None)) or None
             _net_delta_sig = _f(getattr(consensus_summary, "net_delta", None)) or None
+        if mc_iv_level is not None and mc_iv_level > 0:
+            _iv_level = _f(mc_iv_level)
+        elif totals:
+            t0 = totals[0]
+            _iv_level = _f(getattr(t0, "atm_iv", None)) or None
         if totals:
             t0 = totals[0]
-            _iv_level  = _f(getattr(t0, "atm_iv", None)) or None
             _pcr_ratio = _f(getattr(t0, "pcr_oi", None)) or None
         # Charm: use values passed in from server (computed via compute_net_charm before this call)
         # "neutral"/"buying"/"selling" — signals engine needs exact these strings

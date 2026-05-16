@@ -191,6 +191,51 @@ def compute_expected_move_iv(spot: float, atm_iv: float,
         "error": "",
     }
 
+
+def resolve_kl_em_anchor(em_straddle: dict, em_iv: dict) -> str:
+    """Which EM path KEY LEVELS and Monte Carlo must share."""
+    if em_straddle.get("upper") is not None:
+        return "straddle_open"
+    if em_iv.get("upper") is not None:
+        return "iv_spot"
+    return "unavailable"
+
+
+def iv_percent_from_em_pts(spot: float, em_pts: float, hours_remaining: float) -> float | None:
+    """Invert IV-EM formula: em_pts = spot × (iv/100) × sqrt(h / annualized_hours)."""
+    if not (spot and spot > 0 and em_pts and em_pts > 0 and hours_remaining and hours_remaining > 0):
+        return None
+    annualized_hours = TRADING_DAYS_PER_YEAR * TRADING_HOURS_PER_DAY
+    denom = spot * math.sqrt(hours_remaining / annualized_hours)
+    if denom <= 0:
+        return None
+    iv = 100.0 * em_pts / denom
+    return iv if iv > 0 and math.isfinite(iv) else None
+
+
+def resolve_mc_iv_for_kl_em_anchor(
+    *,
+    kl_em_anchor: str,
+    atm_iv: float | None,
+    spot: float | None,
+    em_straddle: dict,
+    hours_remaining: float | None,
+) -> tuple[float | None, str]:
+    """Monte Carlo IV (percent) aligned with ``kl_em_anchor`` — not raw chain ATM when straddle wins."""
+    if kl_em_anchor == "iv_spot":
+        if atm_iv is not None and atm_iv > 0:
+            return float(atm_iv), "mc_iv_kl_anchor_iv_spot"
+        return None, "unavailable"
+    if kl_em_anchor == "straddle_open":
+        em_pts = _f(em_straddle.get("em_pts"))
+        if spot is not None and em_pts is not None and hours_remaining is not None:
+            iv = iv_percent_from_em_pts(float(spot), float(em_pts), float(hours_remaining))
+            if iv is not None:
+                return iv, "mc_iv_kl_anchor_straddle_em_pts"
+        return None, "unavailable"
+    return None, "unavailable"
+
+
 def compute_em_progress(spot: float, today_open: float,
                          em_upper: float, em_lower: float) -> dict:
     """How far through the expected move has price traveled.

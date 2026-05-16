@@ -313,6 +313,7 @@ Charted key levels are derived from Schwab chain leaves (`delta`, `gamma`, `open
 - Max pain uses `call_oi_mult` / `put_oi_mult` accumulated from Schwab `multiplier` only. Strikes with missing multiplier are excluded; no synthetic `*100` fallback in payout math.
 - KEY LEVELS exposures and dealer metrics use contracts filtered by Schwab `expirationDate` for `selected_exp` only; no silent full-chain fallback; `kl_expiry_source` documents user vs default-nearest selection.
 - IV expected move uses Schwab `volatility` and session hours only; no synthetic 20% IV or 6.5h session fill when Schwab inputs are absent (`kl_em_anchor=unavailable`).
+- Monte Carlo `SignalInput.iv_level` uses `resolve_mc_iv_for_kl_em_anchor` (straddle `em_pts` back-solve or IV-spot `atm_iv`); must match `kl_em_anchor` / `mc_em_anchor`.
 - UI utility/sidebar metrics reset to `—` with `stale-metric` when payload omits VIX/PCR/bid/ask; no sticky `window._lastData` reuse for bid/ask.
 - Derived GEX/DEX payloads include `kl_gex_input_completeness` (contracts_used / contracts_total).
 
@@ -334,7 +335,7 @@ Charted key levels are derived from Schwab chain leaves (`delta`, `gamma`, `open
 | Vanna Wall Call/Put | `kl_*_vanna_*` | Derived `(vega/(spot·iv/100))·OI·mult` per bucket |
 | Synthetic Forward | `kl_synth_fwd*` | Put-call parity on Schwab `mark`, ATM±2 strikes |
 | Net GEX (metric row) | `kl_net_gex*` | `aggregate_net_gex` full chain — same as Section 8 `_sum_gex` |
-| MC EFE/EAE/Containment/Expansion | `mc_*` | Separate Monte Carlo subsystem; IV anchor must be reconciled with EM separately |
+| MC EFE/EAE/Containment/Expansion | `mc_*` | Monte Carlo IV follows `kl_em_anchor` (`mc_em_anchor`, `mc_iv_source` on payload); straddle path back-solves IV from `em_pts`, IV path uses Schwab `volatility` |
 
 Rows not dollarized by design: OI walls/center (Schwab-canonical OI). MC rows: path simulation, not exposure buckets.
 

@@ -3438,6 +3438,10 @@ def _fetch_state(
     _em_progress = {"progress_pct": None, "breached": False, "direction": None, "severity": "unknown"}
     _em_up = None
     _em_lo = None
+    _hours_rem = max(0.0, (MARKET_CLOSE_HOUR * 60 - (now_et.hour * 60 + now_et.minute)) / 60.0)
+    _kl_em_anchor = "unavailable"
+    _mc_iv_level = None
+    _mc_iv_source = "unavailable"
 
     try:
         _today_open = getattr(price_levels, "today_open", None)
@@ -3463,7 +3467,6 @@ def _fetch_state(
                 _em_straddle = compute_expected_move_straddle(_c_mark, _p_mark, _today_open)
 
         # IV-based EM (shrinks through the day)
-        _hours_rem = max(0.0, (MARKET_CLOSE_HOUR * 60 - (now_et.hour * 60 + now_et.minute)) / 60.0)
         if _atm_iv and _atm_iv > 0 and spot_f > 0 and _hours_rem > 0:
             _em_iv = compute_expected_move_iv(spot_f, _atm_iv, _hours_rem)
 
@@ -3472,6 +3475,17 @@ def _fetch_state(
         _em_lo = _em_straddle.get("lower") or _em_iv.get("lower")
         if _em_up and _em_lo and _today_open:
             _em_progress = compute_em_progress(spot_f, _today_open, _em_up, _em_lo)
+
+        from math_volatility import resolve_kl_em_anchor, resolve_mc_iv_for_kl_em_anchor
+
+        _kl_em_anchor = resolve_kl_em_anchor(_em_straddle, _em_iv)
+        _mc_iv_level, _mc_iv_source = resolve_mc_iv_for_kl_em_anchor(
+            kl_em_anchor=_kl_em_anchor,
+            atm_iv=_atm_iv,
+            spot=spot_f,
+            em_straddle=_em_straddle,
+            hours_remaining=_hours_rem,
+        )
 
     except Exception as e:
         log.warning(f"Expected move calc failed: {e}")
@@ -3961,6 +3975,9 @@ def _fetch_state(
         iv_direction=_iv_direction,
         em_upper=_em_up,
         em_lower=_em_lo,
+        mc_iv_level=_mc_iv_level,
+        mc_em_anchor=_kl_em_anchor,
+        mc_iv_source=_mc_iv_source,
         realized_vol=_realized_vol,
         atr=_atr,
         garch_sigma_bars=_garch_sigma_bars,
@@ -4699,11 +4716,9 @@ def _fetch_state(
     _em_lo_iv = _fv(_em_iv.get("lower"))
     ms_dict["kl_em_upper"] = _em_up_straddle or _em_up_iv
     ms_dict["kl_em_lower"] = _em_lo_straddle or _em_lo_iv
-    ms_dict["kl_em_anchor"] = (
-        "straddle_open" if _em_up_straddle is not None else
-        "iv_spot" if _em_up_iv is not None else
-        "unavailable"
-    )
+    ms_dict["kl_em_anchor"] = _kl_em_anchor
+    ms_dict["mc_em_anchor"] = _kl_em_anchor
+    ms_dict["mc_iv_source"] = _mc_iv_source
     ms_dict["kl_gamma_voids"]  = _gamma_voids or []
     if not _gamma_voids:
         # Diagnostic: why no voids?
