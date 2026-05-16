@@ -12,31 +12,37 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-SECTION3_FILES = frozenset(
-    {
-        "market_context.py",
-        "market_state.py",
-        "math_snapshot_derive.py",
-    }
-)
-
 _DATETIME_DEFAULT_ZERO = re.compile(r"""\.get\(\s*["']datetime["']\s*,\s*0\s*\)""")
 
 
-def test_section3_inventory_covers_all_three_files():
-    from governance.section3_derivation_inventory import SECTION3_DERIVATION_INVENTORY
+def test_section3_inventory_covers_every_function_all_scopes():
+    from governance.section3_derivation_inventory import (
+        SECTION3_DERIVATION_INVENTORY,
+        SECTION3_FILES,
+    )
+    from governance.section_inventory_gate import assert_inventory_covers_all_functions
 
-    covered = {r.file for r in SECTION3_DERIVATION_INVENTORY}
-    assert SECTION3_FILES <= covered
+    assert_inventory_covers_all_functions(
+        ROOT, SECTION3_FILES, SECTION3_DERIVATION_INVENTORY
+    )
 
 
 def test_section3_inventory_counts_and_dispositions():
-    from governance.section3_derivation_inventory import SECTION3_DERIVATION_INVENTORY
+    from governance.section3_derivation_inventory import (
+        SECTION3_DERIVATION_INVENTORY,
+        SECTION3_FILES,
+    )
+    from governance.section_inventory_gate import all_functions_in_file
 
-    assert len(SECTION3_DERIVATION_INVENTORY) >= 11
+    assert len(SECTION3_DERIVATION_INVENTORY) >= 38
+    for rel in SECTION3_FILES:
+        required = len(all_functions_in_file(ROOT, rel))
+        inventoried = len({r.derivation for r in SECTION3_DERIVATION_INVENTORY if r.file == rel})
+        assert inventoried == required, f"{rel}: {inventoried} != {required}"
+
     replaced = [r for r in SECTION3_DERIVATION_INVENTORY if r.disposition == "REPLACED"]
-    assert len(replaced) >= 3
-    assert any(r.file == "market_context.py" for r in replaced)
+    assert len(replaced) >= 1
+    assert any(r.file == "market_context.py" and r.derivation == "fetch_price_levels" for r in replaced)
 
 
 def test_section3_inventory_registered_in_replacement_register():
@@ -44,6 +50,7 @@ def test_section3_inventory_registered_in_replacement_register():
         encoding="utf-8"
     )
     assert "<!-- SECTION3_DERIVATION_INVENTORY_START -->" in reg
+    assert "38" in reg or "full AST scope" in reg
     assert "market_context.py" in reg
 
 
@@ -67,6 +74,7 @@ def test_market_context_price_history_requires_datetime_leaf():
 
 
 def test_returns_from_candles_skips_missing_datetime():
+    """Cross-section regression (math_exposure_core is §4 file)."""
     from math_exposure_core import returns_from_candles
 
     out = returns_from_candles(

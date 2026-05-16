@@ -301,23 +301,17 @@ REPLACED: `_fetch_state`, `_build_rest_fast_quote_payload` (mark-denom spread_fr
 
 ## Section 3 derivation audit inventory
 
-Walked 3 files. **12** derivation records (**3** REPLACED in-section/cross-section on `pricehistory.candles.datetime`, **5** KEEP_DERIVED, **3** PASS_THROUGH). Source: `governance/section3_derivation_inventory.py`. Tests: `tests/test_section3_schwab_derivation_audit.py`.
+Walked 3 files at **full AST scope** (module + class + nested `def`). **38** inventory rows: **1** REPLACED, **17** KEEP_DERIVED, **9** PASS_THROUGH, **11** NONE. Cross-section datetime fixes in `math_exposure_core` (§4) and `server` (§2) tested separately. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section3_derivation_inventory.py`. Tests: `tests/test_section3_schwab_derivation_audit.py`.
 
 <!-- SECTION3_DERIVATION_INVENTORY_START -->
-| file | line | derivation | schwab_leaf | disposition | justification |
-|---|---|---|---|---|
-| market_context.py | 270-296 | quote last + chg_pct | quotes.quote.* | PASS_THROUGH | Schwab hierarchy |
-| market_context.py | 421-442 | session label ET clock | — | KEEP_DERIVED | no session leaf |
-| market_context.py | 651-726 | POC/VWAP bands | pricehistory.candles.* | KEEP_DERIVED | no POC/VWAP leaf |
-| market_context.py | 813-826 | Tier-1 quote OHLC | quotes.quote.*Price | PASS_THROUGH | direct leaves |
-| market_context.py | 869-941 | candle datetime VWAP/ORB | pricehistory.candles.datetime | REPLACED | skip missing datetime |
-| market_state.py | 44-72 | derive_zone | — | KEEP_DERIVED | regime taxonomy |
-| market_state.py | 794-848 | option mid ladder | chains.*.mark | KEEP_DERIVED | OP-006 mark-first |
-| market_state.py | 916-985 | build_market_state | inputs | PASS_THROUGH | assembly only |
-| math_snapshot_derive.py | 11-25 | derive_vwap_side | — | KEEP_DERIVED | no vwap_side leaf |
-| math_snapshot_derive.py | 28-53 | derive_pressure_trend | — | KEEP_DERIVED | DPI trend |
-| math_exposure_core.py | 839-847 | returns_from_candles | pricehistory.candles.datetime | REPLACED | cross-section datetime fix |
-| server.py | 1173-1183 | CandleAccumulator seed | pricehistory.candles.datetime | REPLACED | cross-section datetime fix |
+| file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---:|---:|---:|---:|---:|
+| market_context.py | 20 | 1 | 9 | 5 | 5 |
+| market_state.py | 16 | 0 | 6 | 4 | 6 |
+| math_snapshot_derive.py | 2 | 0 | 2 | 0 | 0 |
+| **total** | **38** | **1** | **17** | **9** | **11** |
+
+REPLACED: `fetch_price_levels` (skip candles missing `pricehistory.candles.datetime`). Per-function detail in `governance/section3_derivation_inventory.py`.
 <!-- SECTION3_DERIVATION_INVENTORY_END -->
 
 ---

@@ -28,6 +28,12 @@ SECTION2 = [
     "live_vs_replay_validation.py",
 ]
 
+SECTION3 = [
+    "market_context.py",
+    "market_state.py",
+    "math_snapshot_derive.py",
+]
+
 SECTION4 = [
     "math_exposure.py",
     "math_exposure_core.py",
@@ -48,5 +54,5 @@ def main(files: list[str]) -> None:
 
 if __name__ == "__main__":
     which = sys.argv[1] if len(sys.argv) > 1 else "1"
-    files = {"1": SECTION1, "2": SECTION2, "4": SECTION4}.get(which, SECTION1)
+    files = {"1": SECTION1, "2": SECTION2, "3": SECTION3, "4": SECTION4}.get(which, SECTION1)
     main(files)
