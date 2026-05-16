@@ -254,6 +254,7 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | Repo-wide register | all non-KL rows | OPEN | MT/OHLCV/deferred paths out of KEY LEVELS scope |
 | CAPS silent-default family | DFR-009/011/018 repo-wide (full family) | CLOSED | `cab3ef4` — `tools/anti_pattern_sweep.py` + `test_anti_pattern_family_repo_wide.py`; 108-prefix allowlist |
 | Section 1 Schwab client + adapters | DFR-009, DFR-011, PQ-009, PQ-010 | CLOSED | dictionary derivation audit; inventory below; `test_section1_schwab_derivation_audit.py` |
+| Section 2 Server + live state | PQ-001/002/005, OP-015, S017 | CLOSED | dictionary derivation audit; inventory below; `test_section2_schwab_derivation_audit.py` |
 
 ---
 
@@ -282,6 +283,33 @@ Walked 8 files. **15** derivation records (**3** REPLACED with Schwab `pricehist
 | snapshot_normalizer.py | 209-211 | vwap_side | — | KEEP_DERIVED | No Schwab vwap_side leaf |
 | snapshot_access.py | — | timeframe SQL guard | — | NONE | No field derivations |
 <!-- SECTION1_DERIVATION_INVENTORY_END -->
+
+---
+
+## Section 2 derivation audit inventory
+
+Walked 5 files. **16** derivation records (**2** REPLACED in-section + **1** cross-section REPLACED in `order_flow_engine.py`, **6** KEEP_DERIVED, **5** PASS_THROUGH, **2** NONE). Source: `governance/section2_derivation_inventory.py`. Tests: `tests/test_section2_schwab_derivation_audit.py`.
+
+<!-- SECTION2_DERIVATION_INVENTORY_START -->
+| file | line | derivation | schwab_leaf | disposition | justification |
+|---|---|---|---|---|
+| server.py | 735-758 | REST quote cascade | quotes.quote\|extended\|regular.* | PASS_THROUGH | Schwab hierarchy; spot fail-closed |
+| server.py | 768-774 | fast-lane spread_frac | quotes.quote.mark | KEEP_DERIVED | mark-denom; no spread leaf |
+| server.py | 3146-3162 | _fetch_state spread_frac | quotes.quote.mark | REPLACED | removed bid+ask/2 mid fallback |
+| server.py | 1092-1154 | CandleAccumulator ticks | totalVolume, candles | KEEP_DERIVED | poll-synthesized bars |
+| server.py | 1175-1186 | pricehistory seed | pricehistory.candles.* | PASS_THROUGH | datetime required |
+| server.py | 2286-2306 | VWAP from bars | — | KEEP_DERIVED | no VWAP leaf |
+| server.py | 2247-2278 | REST cum-delta proxy | lastPrice, bid/ask | KEEP_DERIVED | stream fallback |
+| live_market_plane.py | 91-135 | streaming spot/spread | streaming.*.MARK,LAST_PRICE | PASS_THROUGH | mark-denom spread |
+| live_market_plane.py | 215-284 | plane merge overlay | plane row | PASS_THROUGH | no new derivations |
+| live_decision_bundle.py | 220-228 | session label refresh | market_hours | KEEP_DERIVED | trigger only |
+| live_decision_bundle.py | 278-290 | derive_zone gate | — | KEEP_DERIVED | coherence check |
+| live_decision_bundle.py | 390-408 | derive_vwap_side | — | KEEP_DERIVED | no vwap_side leaf |
+| live_decision_bundle.py | 147-192 | nearest struct geometry | — | KEEP_DERIVED | cached levels |
+| order_flow_engine.py | 298-340 | _compute_spread | quotes.quote.mark | REPLACED | cross-section repo-wide grep fix |
+| live_pipeline_diag.py | — | ML diagnostics | — | NONE | no market derivations |
+| live_vs_replay_validation.py | 97-172 | replay proof reads | snapshots.* | PASS_THROUGH | DB validation only |
+<!-- SECTION2_DERIVATION_INVENTORY_END -->
 
 ---
 

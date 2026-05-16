@@ -295,6 +295,27 @@ def _resolve_bid_ask_prices(data: dict) -> tuple[Optional[float], Optional[float
     return bid_p, ask_p, bid_leaf, ask_leaf
 
 
+def _resolve_quote_mark(data: dict) -> tuple[Optional[float], Optional[str]]:
+    """Schwab mark leaf for spread fraction denominator (no bid+ask midpoint synthesis)."""
+    items = _iter_content(data)
+    snapshot = _latest_quote_snapshot(items)
+    if snapshot:
+        mark_p = _safe_float(snapshot.get("MARK"))
+        if mark_p is not None and mark_p > 0:
+            return mark_p, "streaming.MARK"
+    quote = data.get("quote") or {}
+    extended = data.get("extended") or {}
+    regular = data.get("regular") or {}
+    for val, leaf in (
+        (_safe_float(quote.get("mark")), "quotes.quote.mark"),
+        (_safe_float(extended.get("mark")), "quotes.extended.mark"),
+        (_safe_float(regular.get("mark")), "quotes.regular.mark"),
+    ):
+        if val is not None and val > 0:
+            return val, leaf
+    return None, None
+
+
 def _compute_spread(data: dict) -> dict[str, Any]:
     """
     Bid-ask spread with explicit unit discipline: ``spread_pts`` (ask-bid points)
@@ -311,16 +332,18 @@ def _compute_spread(data: dict) -> dict[str, Any]:
             "spread_ask_leaf": ask_leaf,
         }
     spread_pts = round(ask_p - bid_p, 4)
-    mid = (bid_p + ask_p) / 2.0
-    spread_frac = round(spread_pts / mid, 6) if mid > 0 else None
+    mark_p, mark_leaf = _resolve_quote_mark(data)
+    spread_frac = None
+    spread_frac_source = None
+    if mark_p is not None and mark_p > 0:
+        spread_frac = round(spread_pts / mark_p, 6)
+        spread_frac_source = f"derived_bid_ask_fraction_schwab_mark_{mark_leaf or 'mark'}"
     leaf_tag = bid_leaf or ask_leaf or "schwab_bid_ask"
     return {
         "spread_pts": spread_pts,
         "spread_frac": spread_frac,
         "spread_pts_source": f"derived_bid_ask_pts_{leaf_tag}",
-        "spread_frac_source": (
-            f"derived_bid_ask_fraction_{leaf_tag}" if spread_frac is not None else None
-        ),
+        "spread_frac_source": spread_frac_source,
         "spread_bid_leaf": bid_leaf,
         "spread_ask_leaf": ask_leaf,
     }

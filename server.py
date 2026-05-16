@@ -3146,17 +3146,19 @@ def _fetch_state(
     _quote_mid_for_spread = None
     if parsed_mark is not None and parsed_mark > 0:
         _quote_mid_for_spread = float(parsed_mark)
-    elif bid is not None and ask is not None:
-        _quote_mid_for_spread = (float(bid) + float(ask)) / 2.0
     _quote_spread_frac = (
         round(_quote_spread_pts / _quote_mid_for_spread, 6)
-        if (_quote_spread_pts is not None and _quote_mid_for_spread and _quote_mid_for_spread > 0)
+        if (
+            _quote_spread_pts is not None
+            and _quote_mid_for_spread is not None
+            and _quote_mid_for_spread > 0
+        )
         else None
     )
     _quote_spread = _quote_spread_pts
     _quote_spread_source = "schwab_bid_ask_live" if _quote_spread_pts is not None else "unavailable_missing_bid_or_ask"
     _quote_spread_frac_source = (
-        "derived_bid_ask_fraction_schwab_quote"
+        "derived_bid_ask_fraction_schwab_mark_denom"
         if _quote_spread_frac is not None
         else None
     )

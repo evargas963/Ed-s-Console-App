@@ -37,15 +37,22 @@ def test_rvol_returns_none_not_one_point_zero_fallback():
 
 def test_spread_pts_and_frac_units_not_mixed():
     data = {
-        "quote": {"bidPrice": 500.0, "askPrice": 500.1},
+        "quote": {"bidPrice": 500.0, "askPrice": 500.1, "mark": 500.05},
     }
     spread_d = _compute_spread(data)
     assert spread_d["spread_pts"] == 0.1
     assert spread_d["spread_frac"] is not None
     assert abs(spread_d["spread_frac"] - (0.1 / 500.05)) < 1e-6
     assert spread_d["spread_pts_source"] is not None
-    assert "fraction" in (spread_d["spread_frac_source"] or "")
+    assert "schwab_mark" in (spread_d["spread_frac_source"] or "")
     assert spread_d["spread_pts"] != spread_d["spread_frac"]
+
+
+def test_spread_frac_fail_closed_without_mark():
+    data = {"quote": {"bidPrice": 500.0, "askPrice": 500.1}}
+    spread_d = _compute_spread(data)
+    assert spread_d["spread_pts"] == 0.1
+    assert spread_d["spread_frac"] is None
 
 
 def test_options_flow_lastsize_requires_tick_mode_source():
@@ -129,7 +136,7 @@ def test_order_flow_engine_no_rvol_one_point_zero_in_source():
 
 
 def test_order_flow_compute_exposes_split_spread_fields():
-    out = OrderFlowEngine().compute({"quote": {"bidPrice": 10.0, "askPrice": 10.2}})
+    out = OrderFlowEngine().compute({"quote": {"bidPrice": 10.0, "askPrice": 10.2, "mark": 10.1}})
     assert out["spread_pts"] == 0.2
     assert out["spread_frac"] is not None
     assert out["spread_pts"] != out["spread_frac"]
