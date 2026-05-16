@@ -32,6 +32,9 @@ REQUIRED_A2_GAPS = (
 
 A2_ADAPTER_GAP_REGISTRY = tuple(dict.fromkeys(REQUIRED_A2_GAPS + LIFECYCLE_GAP_NAMES))
 
+# OP-008: Black-Scholes theta residual disabled unless explicitly governed on.
+_A2_THETA_BS_FALLBACK_GOVERNED = False
+
 # Per OPERATOR_DECISION_REGISTER.md O-20 (2026-05-05).
 A2_QUOTE_STALENESS_THRESHOLD_MS = 2000
 
@@ -510,6 +513,18 @@ def _spread_exceeds_hard_threshold(*, spread: float | None, mid: float | None) -
     return spread > threshold
 
 
+def _parse_schwab_time_ms(raw: Any) -> int | None:
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        ts_f = float(raw)
+        if math.isfinite(ts_f):
+            return int(ts_f)
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
 def _quote_staleness_ms(
     *,
     ms_dict: dict[str, Any],
@@ -525,17 +540,19 @@ def _quote_staleness_ms(
         raw = chain_row.get("raw")
         if isinstance(raw, dict):
             qt_raw = raw.get("quoteTimeInLong")
-    quote_time: int | None = None
-    if qt_raw is not None and not isinstance(qt_raw, bool):
-        try:
-            qt_f = float(qt_raw)
-            if math.isfinite(qt_f):
-                quote_time = int(qt_f)
-        except (TypeError, ValueError):
-            quote_time = None
+    quote_time = _parse_schwab_time_ms(qt_raw)
+    source = "v2_compliant"
+    if quote_time is None:
+        tt_raw = chain_row.get("tradeTimeInLong")
+        if tt_raw is None and isinstance(chain_row.get("raw"), dict):
+            tt_raw = chain_row["raw"].get("tradeTimeInLong")
+        trade_time = _parse_schwab_time_ms(tt_raw)
+        if trade_time is not None:
+            quote_time = trade_time
+            source = "v2_compliant_tradeTimeInLong_governed_fallback"
     if decision_time is None or quote_time is None:
         return None, "not_implemented"
-    return max(0, int(round(decision_time - quote_time))), "v2_compliant"
+    return max(0, int(round(decision_time - quote_time))), source
 
 
 def _soft_gates(
@@ -642,6 +659,8 @@ def _theta(
         if raw_theta is not None and raw_theta != -999.0 and math.isfinite(raw_theta):
             return float(raw_theta), "v2_compliant", "schwab_raw_theta"
 
+    if not _A2_THETA_BS_FALLBACK_GOVERNED:
+        return None, "not_implemented", "schwab_theta_missing"
     bs_theta = _black_scholes_theta(
         spot=_num(ms_dict.get("spot")),
         strike=strike,
@@ -651,7 +670,7 @@ def _theta(
     )
     if bs_theta is None:
         return None, "not_implemented", None
-    return bs_theta, "v1_approximation", "black_scholes_approximation"
+    return bs_theta, "v1_approximation", "black_scholes_approximation_governed"
 
 
 def _black_scholes_theta(

@@ -4,6 +4,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from v2_decision.a2_lifecycle_sidecar import LIFECYCLE_GAP_NAMES
+import v2_decision.a2_option_expression as a2oe
 from v2_decision.a2_option_expression import (
     A2_ADAPTER_GAP_REGISTRY,
     HARD_GATE_ACTION_POLICY,
@@ -291,9 +292,10 @@ def test_a2_proceeds_when_quote_age_within_o20_threshold():
 
 
 def test_a2_emits_wait_when_quote_timestamp_missing():
-    """Step 3.3 red: missing quote timestamp blocks A2 before staleness gate."""
+    """Step 3.3 red: missing quote and trade timestamps blocks A2 before staleness gate."""
     winner = _winner()
     winner["chain_row"].pop("quoteTimeInLong", None)
+    winner["chain_row"].pop("tradeTimeInLong", None)
 
     a2 = build_a2_option_expression(
         _ms(
@@ -771,8 +773,9 @@ def test_a2_uses_raw_schwab_theta_as_transitional_bridge():
     }
 
 
-def test_a2_falls_back_to_bs_only_when_schwab_theta_missing():
-    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L119 - BS theta fallback is v1 approximation."""
+def test_a2_falls_back_to_bs_only_when_schwab_theta_missing(monkeypatch):
+    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L119 - BS theta fallback is governed v1 approximation."""
+    monkeypatch.setattr(a2oe, "_A2_THETA_BS_FALLBACK_GOVERNED", True)
     winner = _winner()
     winner["chain_row"].pop("theta")
 
@@ -784,12 +787,13 @@ def test_a2_falls_back_to_bs_only_when_schwab_theta_missing():
     assert a2["option_expression"]["option_action"]["value"] == "TRADE"
     assert "theta_unavailable" not in a2["health"]["hard_gates_failed"]["value"]
     assert a2["greeks"]["theta"]["source"] == "v1_approximation"
-    assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation"
+    assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation_governed"
     assert a2["greeks"]["theta"]["value"] < 0
     assert a2["greeks"]["theta"]["source"] != "v2_compliant"
 
 
-def test_theta_bs_fallback_uses_derived_mins_to_close_when_explicit_absent():
+def test_theta_bs_fallback_uses_derived_mins_to_close_when_explicit_absent(monkeypatch):
+    monkeypatch.setattr(a2oe, "_A2_THETA_BS_FALLBACK_GOVERNED", True)
     winner = _winner()
     winner["chain_row"].pop("theta")
 
@@ -804,7 +808,7 @@ def test_theta_bs_fallback_uses_derived_mins_to_close_when_explicit_absent():
 
     assert "theta_unavailable" not in a2["health"]["hard_gates_failed"]["value"]
     assert a2["greeks"]["theta"]["source"] == "v1_approximation"
-    assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation"
+    assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation_governed"
     assert a2["greeks"]["theta"]["value"] < 0
 
 
@@ -910,8 +914,9 @@ def test_a2_gamma_x_oi_attaches_derived_detail_when_computed():
     }
 
 
-def test_a2_theta_falls_back_to_bs_when_chain_theta_is_missing_sentinel():
-    """If Schwab returns theta=-999.0, treat it as missing and use the BS approximation."""
+def test_a2_theta_falls_back_to_bs_when_chain_theta_is_missing_sentinel(monkeypatch):
+    """If Schwab returns theta=-999.0, treat it as missing and use governed BS approximation."""
+    monkeypatch.setattr(a2oe, "_A2_THETA_BS_FALLBACK_GOVERNED", True)
     winner = _winner()
     winner["chain_row"]["theta"] = -999.0
 
@@ -922,7 +927,7 @@ def test_a2_theta_falls_back_to_bs_when_chain_theta_is_missing_sentinel():
 
     assert "theta_unavailable" not in a2["health"]["hard_gates_failed"]["value"]
     assert a2["greeks"]["theta"]["source"] == "v1_approximation"
-    assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation"
+    assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation_governed"
     assert a2["greeks"]["theta"]["value"] < 0
 
 
@@ -943,6 +948,7 @@ def test_a2_theta_blocks_when_chain_theta_is_missing_sentinel_and_iv_unavailable
     assert a2["greeks"]["theta"] == {
         "value": None,
         "source": "not_implemented",
+        "detail": "schwab_theta_missing",
     }
 
 
