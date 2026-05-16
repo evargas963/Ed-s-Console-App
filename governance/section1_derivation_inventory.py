@@ -1,7 +1,8 @@
 """
 Section 1 Schwab-leaf derivation audit inventory (source of truth for tests).
 
-One inventory row per module-level function (public and private).
+One inventory row per ``def`` (module, class method, nested helper).
+``derivation`` uses qualified names for class/nested scopes.
 Disposition: REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE
 """
 
@@ -39,14 +40,26 @@ SECTION1_DERIVATION_INVENTORY: tuple[DerivationRecord, ...] = (
     DerivationRecord("schwab_client.py", "337", "safe_get_quote", "quotes.quote|extended|regular.*", "PASS_THROUGH", "Schwab get_quote wrapper; returns raw quote JSON."),
     DerivationRecord("schwab_client.py", "381", "safe_get_price_history", "pricehistory.candles.*", "PASS_THROUGH", "Schwab price history wrapper; candles passed downstream."),
     DerivationRecord("schwab_client.py", "421", "safe_get_chain", "chains.*", "PASS_THROUGH", "Schwab option chain wrapper."),
+    DerivationRecord("schwab_client.py", "258", "run_login_flow._run", "—", "NONE", "Nested OAuth callback runner inside run_login_flow."),
     DerivationRecord("reauth_schwab.py", "30", "reauth", "—", "NONE", "CLI OAuth reauth; no market-field reads."),
+    DerivationRecord("websocket_adapter.py", "24", "WebSocketBarStream.connect", "—", "NONE", "Abstract transport contract; no Schwab read."),
+    DerivationRecord("websocket_adapter.py", "29", "WebSocketBarStream.disconnect", "—", "NONE", "Abstract transport contract; no Schwab read."),
+    DerivationRecord("websocket_adapter.py", "34", "WebSocketBarStream.set_bar_callback", "—", "NONE", "Abstract transport contract; no Schwab read."),
+    DerivationRecord("websocket_adapter.py", "39", "WebSocketBarStream.is_connected", "—", "NONE", "Abstract transport contract; no Schwab read."),
     DerivationRecord("websocket_adapter.py", "44", "websocket_bars_stub", "—", "NONE", "Unimplemented transport stub."),
+    DerivationRecord("sse_adapter.py", "24", "SSEBarStream.connect", "—", "NONE", "Abstract transport contract; no Schwab read."),
+    DerivationRecord("sse_adapter.py", "29", "SSEBarStream.disconnect", "—", "NONE", "Abstract transport contract; no Schwab read."),
+    DerivationRecord("sse_adapter.py", "34", "SSEBarStream.set_bar_callback", "—", "NONE", "Abstract transport contract; no Schwab read."),
+    DerivationRecord("sse_adapter.py", "39", "SSEBarStream.is_connected", "—", "NONE", "Abstract transport contract; no Schwab read."),
     DerivationRecord("sse_adapter.py", "43", "sse_bars_stub", "—", "NONE", "Unimplemented transport stub."),
     DerivationRecord("polling_adapter.py", "22", "_prev_trading_day", "—", "KEEP_DERIVED", "Calendar helper for session window; no Schwab leaf."),
     DerivationRecord("polling_adapter.py", "30", "fetch_bars_via_schwab_for_session", "pricehistory.candles.*", "PASS_THROUGH", "Session-bounded pricehistory → schwab_candles_to_bars."),
     DerivationRecord("polling_adapter.py", "69", "fetch_bars_via_schwab", "pricehistory.candles.*", "PASS_THROUGH", "Day-period pricehistory → schwab_candles_to_bars."),
     DerivationRecord("polling_adapter.py", "121", "poll_and_callback", "pricehistory.candles.*", "PASS_THROUGH", "Poll loop delegates to fetch_bars_via_schwab."),
+    DerivationRecord("market_data_adapter.py", "49", "NormalizedBar.to_dict", "pricehistory.candles.*", "PASS_THROUGH", "Serializes NormalizedBar; fields already Schwab-mapped."),
     DerivationRecord("market_data_adapter.py", "62", "normalize_bar", "pricehistory.candles.*", "REPLACED", "Schwab path requires datetime leaf; reject incomplete OHLC."),
+    DerivationRecord("market_data_adapter.py", "77", "normalize_bar._f", "pricehistory.candles.*", "NONE", "Nested float parse inside normalize_bar; covered by parent REPLACED."),
+    DerivationRecord("market_data_adapter.py", "86", "normalize_bar._volume", "pricehistory.candles.volume", "NONE", "Nested volume parse inside normalize_bar; covered by parent REPLACED."),
     DerivationRecord("market_data_adapter.py", "139", "normalize_bars", "pricehistory.candles.*", "PASS_THROUGH", "Batch normalize_bar."),
     DerivationRecord("market_data_adapter.py", "154", "schwab_candles_to_bars", "pricehistory.candles.*", "PASS_THROUGH", "Schwab JSON candles → normalized bars + _ts."),
     DerivationRecord("snapshot_normalizer.py", "54", "_connect", "—", "NONE", "SQLite connection helper."),

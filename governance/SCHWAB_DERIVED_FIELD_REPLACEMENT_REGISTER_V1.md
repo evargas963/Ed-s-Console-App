@@ -262,19 +262,20 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 
 ## Section 1 derivation audit inventory
 
-Walked 8 files at **function** granularity. **47** inventory rows (one per module-level `def`): **1** REPLACED, **4** KEEP_DERIVED, **15** PASS_THROUGH, **27** NONE. Cross-section REPLACED (`liquidity_value_engine._resolve_bar_timestamp`, `d40b537`) documented in §12. Full rows: `governance/section1_derivation_inventory.py`. Tests: `tests/test_section1_schwab_derivation_audit.py` (coverage gate: every `def` has a row).
+Walked 8 files at **full AST scope** (module + class + nested `def`). **59** inventory rows: **1** REPLACED, **4** KEEP_DERIVED, **16** PASS_THROUGH, **38** NONE. Cross-section REPLACED (`liquidity_value_engine._resolve_bar_timestamp`, `d40b537`) documented in §12. Gate: `governance/section_inventory_gate.py` (`assert_inventory_covers_all_functions`). Full rows: `governance/section1_derivation_inventory.py`.
 
 <!-- SECTION1_DERIVATION_INVENTORY_START -->
 | file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
 |---|---|---|---|---|---|
-| schwab_client.py | 17 | 0 | 0 | 4 | 13 |
+| schwab_client.py | 18 | 0 | 0 | 4 | 14 |
 | reauth_schwab.py | 1 | 0 | 0 | 0 | 1 |
-| websocket_adapter.py | 1 | 0 | 0 | 0 | 1 |
-| sse_adapter.py | 1 | 0 | 0 | 0 | 1 |
+| websocket_adapter.py | 5 | 0 | 0 | 0 | 5 |
+| sse_adapter.py | 5 | 0 | 0 | 0 | 5 |
 | polling_adapter.py | 4 | 0 | 1 | 3 | 0 |
-| market_data_adapter.py | 3 | 1 | 0 | 2 | 0 |
+| market_data_adapter.py | 6 | 1 | 0 | 3 | 2 |
 | snapshot_normalizer.py | 18 | 0 | 3 | 5 | 10 |
 | snapshot_access.py | 2 | 0 | 0 | 1 | 1 |
+| **total** | **59** | **1** | **4** | **16** | **38** |
 <!-- SECTION1_DERIVATION_INVENTORY_END -->
 
 ---
@@ -331,18 +332,18 @@ Walked 3 files. **12** derivation records (**3** REPLACED in-section/cross-secti
 
 ## Section 4 derivation audit inventory
 
-Walked 6 files (KEY LEVELS re-walk). **118** function-level records (**2** REPLACED, **77** KEEP_DERIVED, **19** PASS_THROUGH, **20** NONE). One row per module-level `def`. Prior `82615fa`/`cab3ef4` remain regression floors only. Full inventory: `governance/section4_derivation_inventory.py`. Tests: `tests/test_section4_schwab_derivation_audit.py` (AST walk proves every function inventoried).
+Walked 6 files at **full AST scope** (module + class + nested `def`). **131** inventory rows: **2** REPLACED, **84** KEEP_DERIVED, **22** PASS_THROUGH, **23** NONE. Prior `82615fa`/`cab3ef4`/`4740fa8` remain regression floors only. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section4_derivation_inventory.py`. Tests: `tests/test_section4_schwab_derivation_audit.py`.
 
 <!-- SECTION4_DERIVATION_INVENTORY_START -->
 | file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
 |---|---:|---:|---:|---:|---:|
 | math_exposure.py | 10 | 0 | 1 | 0 | 9 |
-| math_exposure_core.py | 32 | 0 | 22 | 10 | 0 |
-| math_levels.py | 21 | 1 | 19 | 1 | 0 |
-| math_volatility.py | 21 | 0 | 16 | 4 | 1 |
+| math_exposure_core.py | 33 | 0 | 22 | 11 | 0 |
+| math_levels.py | 29 | 1 | 26 | 2 | 0 |
+| math_volatility.py | 22 | 0 | 16 | 5 | 1 |
 | math_probabilities.py | 28 | 1 | 18 | 4 | 5 |
-| levels.py | 6 | 0 | 1 | 0 | 5 |
-| **total** | **118** | **2** | **77** | **19** | **20** |
+| levels.py | 9 | 0 | 1 | 0 | 8 |
+| **total** | **131** | **2** | **84** | **22** | **23** |
 
 REPLACED: `compute_gamma_void_zones` (or-zero gamma sum), `compute_smart_money_signal` (volume sum). Per-function detail in `governance/section4_derivation_inventory.py`.
 <!-- SECTION4_DERIVATION_INVENTORY_END -->

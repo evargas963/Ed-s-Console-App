@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import re
 import sys
 from pathlib import Path
@@ -29,22 +28,13 @@ _OR_ZERO_PAIR_SUM = re.compile(
 )
 
 _MIN_PER_FILE = {
-    "math_exposure.py": 8,
-    "math_exposure_core.py": 28,
-    "math_levels.py": 18,
-    "math_volatility.py": 20,
-    "math_probabilities.py": 24,
-    "levels.py": 5,
+    "math_exposure.py": 10,
+    "math_exposure_core.py": 33,
+    "math_levels.py": 29,
+    "math_volatility.py": 22,
+    "math_probabilities.py": 28,
+    "levels.py": 9,
 }
-
-
-def _module_functions(rel: str) -> set[str]:
-    tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
-    return {
-        node.name
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef)
-    }
 
 
 def test_section4_inventory_covers_all_six_files():
@@ -57,7 +47,7 @@ def test_section4_inventory_covers_all_six_files():
 def test_section4_inventory_function_walk_scale():
     from governance.section4_derivation_inventory import SECTION4_DERIVATION_INVENTORY
 
-    assert len(SECTION4_DERIVATION_INVENTORY) >= 100
+    assert len(SECTION4_DERIVATION_INVENTORY) >= 131
     by_file: dict[str, int] = {}
     for r in SECTION4_DERIVATION_INVENTORY:
         by_file[r.file] = by_file.get(r.file, 0) + 1
@@ -65,26 +55,36 @@ def test_section4_inventory_function_walk_scale():
         assert by_file.get(f, 0) >= minimum, f"{f}: {by_file.get(f, 0)} < {minimum}"
 
 
-def test_section4_every_module_function_inventoried():
-    from governance.section4_derivation_inventory import SECTION4_DERIVATION_INVENTORY
+def test_section4_every_function_inventoried_all_scopes():
+    from governance.section4_derivation_inventory import (
+        SECTION4_DERIVATION_INVENTORY,
+        SECTION4_FILES,
+    )
+    from governance.section_inventory_gate import (
+        all_functions_in_file,
+        assert_inventory_covers_all_functions,
+    )
 
-    inventoried: dict[str, set[str]] = {f: set() for f in SECTION4_FILES}
-    for r in SECTION4_DERIVATION_INVENTORY:
-        inventoried[r.file].add(r.derivation)
+    assert_inventory_covers_all_functions(
+        ROOT, SECTION4_FILES, SECTION4_DERIVATION_INVENTORY
+    )
+    assert len(SECTION4_DERIVATION_INVENTORY) >= 131
     for rel in sorted(SECTION4_FILES):
-        mod_fns = _module_functions(rel)
-        inv_fns = inventoried[rel]
-        missing = mod_fns - inv_fns
-        assert not missing, f"{rel} missing inventory for: {sorted(missing)}"
+        required = {fn.qualified_name for fn in all_functions_in_file(ROOT, rel)}
+        inventoried = {
+            r.derivation for r in SECTION4_DERIVATION_INVENTORY if r.file == rel
+        }
+        assert inventoried >= required, f"{rel}: {required - inventoried}"
 
 
 def test_section4_math_volatility_all_functions_present():
     from governance.section4_derivation_inventory import SECTION4_DERIVATION_INVENTORY
+    from governance.section_inventory_gate import all_functions_in_file
 
     vol_fns = {r.derivation for r in SECTION4_DERIVATION_INVENTORY if r.file == "math_volatility.py"}
-    expected = _module_functions("math_volatility.py")
+    expected = {fn.qualified_name for fn in all_functions_in_file(ROOT, "math_volatility.py")}
     assert vol_fns == expected
-    assert len(vol_fns) >= 20
+    assert len(vol_fns) >= 22
 
 
 def test_section4_inventory_counts_and_dispositions():
@@ -101,7 +101,7 @@ def test_section4_inventory_registered_in_replacement_register():
         encoding="utf-8"
     )
     assert "<!-- SECTION4_DERIVATION_INVENTORY_START -->" in reg
-    assert "118" in reg or "function" in reg.lower()
+    assert "131" in reg or "function" in reg.lower()
     assert "section4_derivation_inventory.py" in reg
 
 

@@ -12,22 +12,30 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-def test_section1_inventory_covers_every_module_function():
+def test_section1_inventory_covers_every_function_all_scopes():
     from governance.section1_derivation_inventory import (
         SECTION1_DERIVATION_INVENTORY,
         SECTION1_FILES,
     )
-    from governance.section_inventory_gate import assert_inventory_covers_module_functions
+    from governance.section_inventory_gate import assert_inventory_covers_all_functions
 
-    assert_inventory_covers_module_functions(
+    assert_inventory_covers_all_functions(
         ROOT, SECTION1_FILES, SECTION1_DERIVATION_INVENTORY
     )
 
 
 def test_section1_inventory_counts_and_dispositions():
-    from governance.section1_derivation_inventory import SECTION1_DERIVATION_INVENTORY
+    from governance.section1_derivation_inventory import (
+        SECTION1_DERIVATION_INVENTORY,
+        SECTION1_FILES,
+    )
+    from governance.section_inventory_gate import all_functions_in_file
 
-    assert len(SECTION1_DERIVATION_INVENTORY) >= 47
+    assert len(SECTION1_DERIVATION_INVENTORY) >= 59
+    for rel in SECTION1_FILES:
+        assert len({r.derivation for r in SECTION1_DERIVATION_INVENTORY if r.file == rel}) >= len(
+            all_functions_in_file(ROOT, rel)
+        )
     replaced = [r for r in SECTION1_DERIVATION_INVENTORY if r.disposition == "REPLACED"]
     assert len(replaced) >= 1
     assert all(

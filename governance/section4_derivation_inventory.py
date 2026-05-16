@@ -1,7 +1,9 @@
 """
 Section 4 Schwab-leaf derivation audit inventory (KEY LEVELS re-walk).
 
-One row per module-level function. Disposition: REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE
+One row per ``def`` (module, class method, nested helper).
+``derivation`` uses qualified names for class/nested scopes.
+Disposition: REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE
 """
 
 from __future__ import annotations
@@ -138,6 +140,19 @@ SECTION4_DERIVATION_INVENTORY: tuple[DerivationRecord, ...] = (
     DerivationRecord("levels.py", "56", "walls_to_df_rows", "WallsRow", "NONE", "Walls display mapping."),
     DerivationRecord("levels.py", "91", "totals_to_df_rows", "TotalsRow", "NONE", "Totals display mapping."),
     DerivationRecord("levels.py", "118", "key_levels_to_plot_rows", "KL levels,spot", "NONE", "Plot row formatter; no derivation."),
+    DerivationRecord("levels.py", "147", "key_levels_to_plot_rows._sr", "—", "NONE", "Nested support/resistance label helper."),
+    DerivationRecord("levels.py", "190", "key_levels_to_plot_rows._oe_flag", "—", "NONE", "Nested OE flag formatter."),
+    DerivationRecord("levels.py", "198", "key_levels_to_plot_rows._row", "—", "NONE", "Nested plot row builder."),
+    DerivationRecord("math_exposure_core.py", "622", "compute_net_charm._resolve_T", "chains.*.daysToExpiration", "PASS_THROUGH", "Nested DTE parse for charm window."),
+    DerivationRecord("math_levels.py", "231", "build_summary_rows.aggregate", "exposure buckets", "KEEP_DERIVED", "Nested strike-window aggregate inside build_summary_rows."),
+    DerivationRecord("math_levels.py", "353", "build_totals_rows.strikes_for", "exposure keys", "KEEP_DERIVED", "Nested strike list filter inside build_totals_rows."),
+    DerivationRecord("math_levels.py", "486", "build_walls_rows.strikes_for", "exposure keys", "KEEP_DERIVED", "Nested strike list filter inside build_walls_rows."),
+    DerivationRecord("math_levels.py", "618", "parity_f_minus_spot_from_contracts._mid", "chains.*.bid,ask,mark", "PASS_THROUGH", "Nested mid from Schwab bid/ask/mark only."),
+    DerivationRecord("math_levels.py", "675", "compute_gamma_flip._find_crossing", "net_gamma buckets", "KEEP_DERIVED", "Nested zero-cross search inside compute_gamma_flip."),
+    DerivationRecord("math_levels.py", "776", "compute_max_pain._pain_at", "chains.*.openInterest", "KEEP_DERIVED", "Nested pain calc at settlement inside compute_max_pain."),
+    DerivationRecord("math_levels.py", "859", "compute_gamma_void_zones._get_gex", "gamma buckets", "KEEP_DERIVED", "Nested GEX reader; parent REPLACED forbids or-zero synthesis."),
+    DerivationRecord("math_levels.py", "876", "compute_gamma_void_zones._get_oi", "chains.*.openInterest", "KEEP_DERIVED", "Nested OI reader inside compute_gamma_void_zones."),
+    DerivationRecord("math_volatility.py", "403", "compute_atr._get", "pricehistory.candles OHLC", "PASS_THROUGH", "Nested candle field reader inside compute_atr."),
 )
 
 SECTION4_FILES = frozenset({
