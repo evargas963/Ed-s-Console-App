@@ -252,6 +252,129 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | Order flow + spread | DFR-019, PQ-002/005/007/008/011/012/013, OP-015/017 | CLOSED | `92b85ff` — RVOL fail-closed; spread_pts/frac split; OF volume + VWAP provenance |
 | ML feature provenance | DFR-012, DFR-013, MT-002, MT-003, MT-005, MT-008, MT-012 | CLOSED | `c527b82` — per-field `feature_lineage`; fusion `unknown` + fallback flags; LSTM masks; `m5_source_timeframe` |
 | Repo-wide register | all non-KL rows | OPEN | MT/OHLCV/deferred paths out of KEY LEVELS scope |
+| CAPS silent-default family | DFR-009/011/018 repo-wide (full family) | CLOSED | CAPS — `tools/anti_pattern_sweep.py` + `test_anti_pattern_family_repo_wide.py` |
+
+---
+
+## CAPS allowlist (silent-default substitution family)
+
+Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  
+Regression gate: `tests/test_anti_pattern_family_repo_wide.py` (production `.py` outside `tests/`/`tools/` must have zero unallowlisted hits).
+
+<!-- CAPS_ALLOWLIST_START -->
+| file | line | variant | justification |
+|---|---:|---|---|
+| `tests/` | * | * | test fixtures and gate documentation |
+| `tools/` | * | * | scanner/CLI tooling not production data path |
+| `calibration/` | * | * | calibration audit SQL aggregates and phase cleanup counters |
+| `verification/` | * | * | verification harness diagnostics |
+| `arch_competition/` | * | * | offline arch competition harness |
+| `adaptive_shadow_v2_calibration.py` | * | * | shadow calibration ranking aggregates |
+| `adaptive_similarity_engine.py` | * | * | adaptive similarity pool diagnostics |
+| `replay_bundle_coverage.py` | * | * | replay bundle join row-count audit |
+| `bar_rehydration_issue19_v1.py` | * | * | rehydration repair counters |
+| `db_health_audit.py` | * | * | DB health audit counters |
+| `similarity_audit.py` | * | * | similarity trace diagnostics |
+| `similarity_feature_search.py` | * | * | shadow feature-search counters |
+| `similarity_feature_universe.py` | * | * | feature universe report counters |
+| `training_cache.py` | * | * | training manifest fingerprint counters |
+| `training_provenance.py` | * | * | training manifest rows_used counter |
+| `ml_scheduler.py` | * | * | scheduler manifest skip/row counters |
+| `patch_active_artifact_provenance.py` | * | * | artifact patch counters |
+| `planes/` | * | * | L1/runtime plane timestamps and version counters |
+| `lifecycle_rule_core.py` | * | * | session minutes-since-open derived input |
+| `setup_readiness.py` | * | * | readiness display probability coercion |
+| `call_engine.py` | * | * | rules-engine display percent coercion |
+| `ml_train.py` | * | * | training window max_ts comparison guard |
+| `realized_contract_eval.py` | * | * | contract eval PnL + SQL pool counts |
+| `liquidity_value_engine.py` | * | * | internal bar _ts sort keys |
+| `order_flow_engine.py` | * | * | Schwab print time_millis sort/cutoff |
+| `snapshot_normalizer.py` | * | * | materialize row-count audit |
+| `market_state.py` | * | * | wall-score audit diff derived metrics |
+| `db.py` | * | * | SQL COUNT aggregate int coercion |
+| `server.py` | * | * | L1/SSE instrumentation timestamps and volume deltas |
+| `monte_carlo.py` | * | * | MC output dict serialization of derived sim metrics |
+| `live_vs_replay_validation.py` | * | * | replay validation row counts |
+| `live_market_plane.py` | * | * | streaming plane timestamps and carry-forward guards |
+| `bayesian_fusion.py` | * | * | fusion stack model-output defaults when sub-model unavailable |
+| `features/signal_layer_v1.py` | * | * | derived signal layer counters |
+| `features/fusion_policy_contract.py` | * | * | fusion policy prob normalization |
+| `api_pressure.py` | * | * | HTTP client status_code getattr default |
+| `tier3_design.py` | * | * | design-only similarity documentation |
+| `distance_option_a_backfill_v1.py` | * | * | distance backfill counters |
+| `inspect_trading_data.py` | * | * | inspection script |
+| `feature_contracts.py` | * | * | legacy contract test helpers |
+| `signals.py` | * | * | signal orchestration derived defaults (non-Schwab-leaf paths) |
+| `prediction_engine.py` | * | * | prediction orchestration derived defaults and empirical pools |
+| `multi_horizon_decision.py` | * | * | horizon decision orchestration derived defaults |
+| `ml_predict.py` | * | * | inference orchestration derived defaults |
+| `live_pipeline_diag.py` | * | * | live pipeline diagnostic counters |
+| `lstm_model.py` | * | * | LSTM model wrapper derived defaults |
+| `lstm_data.py` | * | * | training dataset builder — zone/vwap sentinels; non-leaf session fields |
+| `transformer_model.py` | * | * | transformer wrapper derived defaults |
+| `transformer_train.py` | * | * | transformer training script counters |
+| `train_all.py` | * | * | training driver counters |
+| `train_compare.py` | * | * | training comparison script |
+| `verify_ml_pipeline.py` | * | * | ML pipeline verification counters |
+| `levels.py` | * | * | legacy levels helper derived defaults |
+| `news_sentiment.py` | * | * | news API optional field coercion |
+| `mc_fusion_adjustment.py` | * | * | MC fusion adjustment derived metrics |
+| `micro_structure.py` | * | * | microstructure derived metrics |
+| `movement_target_threshold.py` | * | * | movement target threshold derived metrics |
+| `order_flow_live_state.py` | * | * | order-flow live state derived metrics |
+| `order_flow_streaming.py` | * | * | order-flow streaming diagnostics |
+| `institutional_behavior.py` | * | * | institutional behavior derived metrics |
+| `polling_adapter.py` | * | * | polling adapter timestamps |
+| `governed_stack_contract.py` | * | * | stack contract validation defaults |
+| `math_volatility.py` | * | * | volatility derived metrics |
+| `multi_horizon_ml_bundle.py` | * | * | ML bundle orchestration defaults |
+| `training_cache_policy.py` | * | * | training cache policy counters |
+| `similarity_feature_survivorship.py` | * | * | similarity survivorship audit |
+| `similarity_feature_universe.py` | * | * | similarity universe audit |
+| `research/` | * | * | research pilot scripts |
+| `schwab_full_accessible_field_inventory.py` | * | * | field inventory scanner |
+| `schwab_full_field_inventory.py` | * | * | field inventory scanner |
+| `v2_decision/` | * | * | v2 decision adapter derived defaults |
+| `audit_` | * | * | audit script counters and diagnostics |
+| `backfill_` | * | * | backfill script counters |
+| `compare_clustering_modes.py` | * | * | clustering comparison CLI |
+| `debug_` | * | * | debug utilities |
+| `crash_trace.py` | * | * | crash trace env flag |
+| `db_authority.py` | * | * | DB authority env flags |
+| `db_safety.py` | * | * | sqlite3 constant getattr defaults |
+| `feature_contract_validation.py` | * | * | feature contract validation CLI |
+| `feature_presence_contract.py` | * | * | feature presence validation CLI |
+| `rules_engine.py` | * | * | rules engine display coercion |
+| `market_context.py` | * | * | Schwab quote envelope nesting (quote/extended/regular dict shells) |
+| `features/inference_snapshot.py` | * | * | SignalInput getattr with None default — fail-closed read |
+| `features/monte_carlo_stack_input.py` | * | * | MC stack input derived defaults |
+| `features/live_feature_adapter.py` | * | * | live feature adapter optional reads |
+| `features/db_feature_adapter.py` | * | * | DB feature adapter optional reads |
+| `features/regime_mvp_context.py` | * | * | regime MVP context derived defaults |
+| `features/replay_signal_input_v1.py` | * | * | replay signal input derived defaults |
+| `features/training_canonical_input.py` | * | * | training canonical merge path |
+| `features/xgb_model_input.py` | * | * | XGB tabular envelope path |
+| `features/shared_sequence_context.py` | * | * | shared sequence context derived defaults |
+| `math_exposure_core.py` | * | * | explicit None branches on bucket aggregates |
+| `math_probabilities.py` | * | * | probability derived metrics |
+| `features/parallel_stack_schema.py` | * | * | parallel stack prob triplet defaults when probs dict partial |
+| `features/fusion_model_input.py` | * | * | explicit unknown semantics for missing zone/vwap (Day 3) |
+| `live_decision_bundle.py` | * | * | env config thresholds not Schwab leaves |
+| `ml_data_common.py` | * | * | pandas merge empty-frame guards |
+| `normalized_training_sync.py` | * | * | training sync env/debounce config |
+| `ops_runner.py` | * | * | ops runner env flags |
+| `pin_neutral_outcome_repair_v1.py` | * | * | outcome repair CLI |
+| `print_liquidity_value_snapshot.py` | * | * | CLI display script |
+| `regime_engine.py` | * | * | regime engine micro attribute read |
+| `schwab_field_dictionary_builder.py` | * | * | field dictionary builder tooling |
+| `math_levels.py` | * | * | structural window index default (non-price) |
+| `market_data_adapter.py` | * | * | Schwab timestamp key alias (datetime vs timestamp) not numeric default |
+| `smoke_predict_active.py` | * | * | smoke test CLI |
+| `ticker_readiness_lookup.py` | * | * | readiness lookup API envelope |
+| `verify_snapshot_pipeline.py` | * | * | snapshot pipeline verification counters |
+| `xgboost_model.py` | * | * | XGB model prob triplet defaults when partial dict |
+| `calibration/v2_advisory_backfill.py` | * | SETDEFAULT | reconstructed Tier C ms dict setdefault for optional blocks |
+<!-- CAPS_ALLOWLIST_END -->
 
 ---
 

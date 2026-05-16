@@ -623,8 +623,18 @@ def parity_f_minus_spot_from_contracts(
 
     resids = []
     for k in band:
-        calls = [c for c in use if str(c.get("putCall") or "").upper() == "CALL" and float(c.get("strikePrice") or -1) == k]
-        puts = [c for c in use if str(c.get("putCall") or "").upper() == "PUT" and float(c.get("strikePrice") or -1) == k]
+        def _chain_match(c: dict, right: str) -> bool:
+            pc = c.get("putCall")
+            sp = c.get("strikePrice")
+            if pc is None or sp is None:
+                return False
+            try:
+                return str(pc).upper() == right and float(sp) == k
+            except (TypeError, ValueError):
+                return False
+
+        calls = [c for c in use if _chain_match(c, "CALL")]
+        puts = [c for c in use if _chain_match(c, "PUT")]
         if not calls or not puts: continue
         call_mid = _mid(calls[0])
         put_mid = _mid(puts[0])

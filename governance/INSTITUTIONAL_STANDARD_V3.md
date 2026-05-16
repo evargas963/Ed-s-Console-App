@@ -287,6 +287,17 @@ Lineage and leakage control are mandatory.
 ### Invariant
 Immutable/raw authority + derived lineage + blocking leakage checks on material changes.
 
+### CAPS — silent default substitution (binding, repo-wide)
+
+#### Principle
+No silent default substitution on any Schwab-leaf-derived value anywhere in the repo.
+
+#### Invariant
+The silent-default pattern **family** is enumerated in `tools/anti_pattern_sweep.py` (read shapes: `dict.get(key, default)`, `dict.get(key) or default`, `int/float(x or default)`, `x if x is not None else default`, `getattr(..., default)`, `setdefault`, `next(iter, default)`, guarded `try/except` returns; default values: `0`, `0.0`, `1`, `1.0`, `100`, `6.5`, `"above"`, `"unknown"`, `"neutral"`, `"flat"`, `False`, `True`). Production `.py` outside `tests/` and `tools/` must have **zero** unallowlisted hits. Exceptions require an entry in `governance/SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md` CAPS allowlist (mirrored in `CAPS_PREFIX_ALLOWLIST` / `CAPS_LINE_ALLOWLIST`).
+
+#### Enforcement
+`tests/test_anti_pattern_family_repo_wide.py` runs on every commit; `python tools/anti_pattern_sweep.py` for human audit output.
+
 ### Enforcement
 Policy-as-code on feature/data changes, leakage suite evidence in tuple health.
 

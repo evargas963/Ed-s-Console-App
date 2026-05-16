@@ -129,6 +129,23 @@ ZONE_MAP = {
     "breakout": 4, "breakdown": 5,
 }
 VWAP_SIDE_MAP = {"above": 1.0, "below": -1.0}
+# Missing categorical sentinels (aligned with features/lstm_sequence_input.py).
+ZONE_MISSING_ENCODED = -1.0
+VWAP_SIDE_UNKNOWN_ENCODED = 2.0
+
+
+def _encode_zone_feature(snap: dict) -> float:
+    zr = snap.get("zone")
+    if zr is None:
+        return ZONE_MISSING_ENCODED
+    return float(ZONE_MAP.get(str(zr).lower(), 2))
+
+
+def _encode_vwap_side_feature(snap: dict) -> float:
+    vs = snap.get("vwap_side")
+    if vs is None:
+        return VWAP_SIDE_UNKNOWN_ENCODED
+    return float(VWAP_SIDE_MAP.get(str(vs).lower(), VWAP_SIDE_UNKNOWN_ENCODED))
 
 # Columns that should be log-transformed (large magnitude, sign matters)
 LOG_TRANSFORM_COLS = {"net_gamma", "net_delta", "charm_net"}
@@ -464,11 +481,9 @@ def encode_snapshot_5m(snap: dict, ref_spot: float) -> list:
         if col in CATEGORICAL_COLS:
             # Encode categoricals
             if col == "zone":
-                zone_val = (snap.get("zone") or "pin_neutral").lower()
-                features.append(float(ZONE_MAP.get(zone_val, 2)))
+                features.append(_encode_zone_feature(snap))
             elif col == "vwap_side":
-                side = (snap.get("vwap_side") or "").lower()
-                features.append(VWAP_SIDE_MAP.get(side, 0.0))
+                features.append(_encode_vwap_side_feature(snap))
         elif col == "spot":
             # Normalize spot as % change from reference
             if ref_spot > 0:
@@ -506,11 +521,9 @@ def encode_snapshot_1m(snap: dict, ref_spot: float) -> list:
     for col in FEATURES_1M:
         if col in CATEGORICAL_COLS:
             if col == "zone":
-                zone_val = (snap.get("zone") or "pin_neutral").lower()
-                features.append(float(ZONE_MAP.get(zone_val, 2)))
+                features.append(_encode_zone_feature(snap))
             elif col == "vwap_side":
-                side = (snap.get("vwap_side") or "").lower()
-                features.append(VWAP_SIDE_MAP.get(side, 0.0))
+                features.append(_encode_vwap_side_feature(snap))
         elif col == "spot":
             if ref_spot > 0:
                 features.append((spot - ref_spot) / ref_spot)
