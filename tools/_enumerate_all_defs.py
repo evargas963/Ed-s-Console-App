@@ -51,6 +51,23 @@ SECTION7 = sorted(
     if p.name != "__init__.py"
 ) + ["lifecycle_rule_core.py"]
 
+SECTION14 = sorted(
+    p.name
+    for p in list(ROOT.glob("db*.py"))
+    + list(ROOT.glob("backfill_*.py"))
+    + list(ROOT.glob("bar_rehydration_*.py"))
+    + [
+        ROOT / "clean_db.py",
+        ROOT / "eval_metrics_store.py",
+        ROOT / "pin_neutral_outcome_repair_v1.py",
+        ROOT / "distance_option_a_backfill_v1.py",
+        ROOT / "patch_active_artifact_provenance.py",
+        ROOT / "replay_bundle_coverage.py",
+        ROOT / "realized_contract_eval.py",
+    ]
+    if p.is_file()
+)
+
 SECTION13 = sorted(
     ["adaptive_similarity_engine.py"]
     + [p.name for p in (ROOT / ".").glob("similarity_*.py")]
@@ -147,5 +164,6 @@ if __name__ == "__main__":
         "11": SECTION11,
         "12": SECTION12,
         "13": SECTION13,
+        "14": SECTION14,
     }.get(which, SECTION1)
     main(files)

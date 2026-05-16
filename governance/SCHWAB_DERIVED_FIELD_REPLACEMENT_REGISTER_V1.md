@@ -572,6 +572,34 @@ Per-function detail in `governance/section13_derivation_inventory.py`.
 
 ---
 
+## Section 14 derivation audit inventory
+
+Walked **14** DB/backfill/repair modules at **full AST scope**. **229** inventory rows: **0** REPLACED, **39** KEEP_DERIVED, **38** PASS_THROUGH, **152** NONE. Persistence and repair operate on stored snapshots/outcomes; no direct Schwab API. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section14_derivation_inventory.py`. Tests: `tests/test_section14_schwab_derivation_audit.py`.
+
+<!-- SECTION14_DERIVATION_INVENTORY_START -->
+| file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---:|---:|---:|---:|---:|
+| db.py | 125 | 0 | 4 | 23 | 98 |
+| realized_contract_eval.py | 26 | 0 | 10 | 8 | 8 |
+| db_safety.py | 17 | 0 | 1 | 2 | 14 |
+| distance_option_a_backfill_v1.py | 12 | 0 | 10 | 0 | 2 |
+| db_health_audit.py | 10 | 0 | 5 | 1 | 4 |
+| db_authority.py | 8 | 0 | 0 | 0 | 8 |
+| replay_bundle_coverage.py | 8 | 0 | 2 | 1 | 5 |
+| eval_metrics_store.py | 6 | 0 | 0 | 1 | 5 |
+| bar_rehydration_issue19_v1.py | 5 | 0 | 1 | 2 | 2 |
+| backfill_flow_imbalance.py | 4 | 0 | 3 | 0 | 1 |
+| backfill_snapshot_derived.py | 3 | 0 | 2 | 0 | 1 |
+| patch_active_artifact_provenance.py | 2 | 0 | 0 | 0 | 2 |
+| pin_neutral_outcome_repair_v1.py | 2 | 0 | 1 | 0 | 1 |
+| clean_db.py | 1 | 0 | 0 | 0 | 1 |
+| **total** | **229** | **0** | **39** | **38** | **152** |
+
+Per-function detail in `governance/section14_derivation_inventory.py`.
+<!-- SECTION14_DERIVATION_INVENTORY_END -->
+
+---
+
 ## CAPS allowlist (silent-default substitution family)
 
 Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  
