@@ -4604,8 +4604,17 @@ def _fetch_state(
     ms_dict["kl_level_window"] = "full_chain"
     ms_dict["kl_metrics_dollarized"] = bool(exposures and exposures_have_dollar_gex(exposures))
     ms_dict["kl_institutional_ready"] = ms_dict["kl_metrics_dollarized"]
-    ms_dict["kl_em_upper"]     = _fv(_em_straddle.get("upper")) or _fv(_em_iv.get("upper"))
-    ms_dict["kl_em_lower"]     = _fv(_em_straddle.get("lower")) or _fv(_em_iv.get("lower"))
+    _em_up_straddle = _fv(_em_straddle.get("upper"))
+    _em_lo_straddle = _fv(_em_straddle.get("lower"))
+    _em_up_iv = _fv(_em_iv.get("upper"))
+    _em_lo_iv = _fv(_em_iv.get("lower"))
+    ms_dict["kl_em_upper"] = _em_up_straddle or _em_up_iv
+    ms_dict["kl_em_lower"] = _em_lo_straddle or _em_lo_iv
+    ms_dict["kl_em_anchor"] = (
+        "straddle_open" if _em_up_straddle is not None else
+        "iv_spot" if _em_up_iv is not None else
+        "unavailable"
+    )
     ms_dict["kl_gamma_voids"]  = _gamma_voids or []
     if not _gamma_voids:
         # Diagnostic: why no voids?

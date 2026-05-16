@@ -311,21 +311,30 @@ Charted key levels are derived from Schwab chain leaves (`delta`, `gamma`, `open
 - UI key levels use **full chain** strikes that passed OI and Greek validity gates at bucket build; no silent raw-γ fallback when spot/dollar GEX is unavailable (`kl_institutional_ready=false`).
 - Section 8 dealer aggregates and `kl_net_gex` use the same full-chain `aggregate_net_gex` helper.
 
-#### Canonical levels
-| Level | Definition |
-| --- | --- |
-| Gamma pin | `argmax_strike \|net_gex_1pct\|` |
-| HVL | `argmax_strike (\|call_gex_1pct\| + \|put_gex_1pct\|)` |
-| Max pain | `argmin_settlement Σ_K [ call_oi_mult·max(S−K,0) + put_oi_mult·max(K−S,0) ]` on strike grid |
-| Gamma flip | zero-cross per-strike `net_gex_1pct`, else `net_gamma`, else cumulative GEX |
-| Gamma inflection | `argmin \|net_gex_1pct\|` (else raw net_gamma) |
-| Delta inflection | `argmin \|net_dex_dollars\|` (else raw net_delta) |
-| Gamma walls | `argmax \|call_gex_1pct\|`, `argmax \|put_gex_1pct\|` |
-| Net GEX | `Σ net_gex_1pct` full chain |
-| Charm drift target | `pick_gamma_pin_strike` (not a separate charm-internal pin) |
+#### KEY LEVELS UI row registry (23 charted rows + metadata)
+
+| UI row | Payload | Basis in `feature/institutional-key-levels` |
+| --- | --- | --- |
+| Gamma Wall Call/Put | `kl_call/put_gamma_wall` | Dollar GEX$ pickers on CONSENSUS (`pick_gamma_wall_strikes`) |
+| Gamma Pin | `kl_gamma_pin` | `pick_gamma_pin_strike` → max \|net_gex_1pct\| |
+| HVL | `kl_hvl` | `pick_hvl_strike` → max (\|call_gex_1pct\|+\|put_gex_1pct\|) |
+| Max Pain | `kl_max_pain` | `compute_max_pain` on strike grid, OI×mult payout |
+| Gamma Flip | `kl_gamma_flip` | `net_gex_1pct` zero-cross first |
+| EM Upper/Lower | `kl_em_upper/lower` | Straddle EM (Schwab `mark`, open anchor) preferred; IV EM (`volatility`, spot anchor) fallback; `kl_em_anchor` documents which |
+| Charm Drift | `charm_net` + pin target | Flow from `compute_net_charm`; **target strike = `kl_gamma_pin`** when `kl_institutional_ready` |
+| Gamma Void above/below | `kl_gamma_voids[]` | Unified `_get_gex` for detection and `avg_gex_pct` |
+| Gamma/Delta inflection | `kl_*_inflection` | Dollar \|net_gex_1pct\| / \|net_dex_dollars\| when available |
+| Delta Wall Call/Put | `kl_call/put_delta_wall` | Dollar DEX$ pickers on CONSENSUS (`pick_delta_wall_strikes`) |
+| OI Wall Call/Put, OI Center | `kl_*_oi_*` | Schwab `openInterest` argmax / sum (no dollarization) |
+| Vanna Wall Call/Put | `kl_*_vanna_*` | Derived `(vega/(spot·iv/100))·OI·mult` per bucket |
+| Synthetic Forward | `kl_synth_fwd*` | Put-call parity on Schwab `mark`, ATM±2 strikes |
+| Net GEX (metric row) | `kl_net_gex*` | `aggregate_net_gex` full chain — same as Section 8 `_sum_gex` |
+| MC EFE/EAE/Containment/Expansion | `mc_*` | Separate Monte Carlo subsystem; IV anchor must be reconciled with EM separately |
+
+Rows not dollarized by design: OI walls/center (Schwab-canonical OI). MC rows: path simulation, not exposure buckets.
 
 #### Enforcement
-`tests/test_institutional_key_levels.py`, `tests/test_math_levels_hvl_max_pain.py`; payload fields `kl_*`, `kl_institutional_ready`, `kl_metrics_dollarized`.
+`tests/test_institutional_key_levels.py`, `tests/test_math_levels_hvl_max_pain.py`; payload `kl_institutional_ready`, `kl_metrics_dollarized`, `kl_em_anchor`.
 
 ---
 

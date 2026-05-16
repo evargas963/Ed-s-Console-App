@@ -6707,13 +6707,7 @@ function render(d, fullRenderSource) {
     { key: 'kl_put_gamma_wall', strKey: 'kl_put_gamma_str', label: 'Gamma Wall Put', proxColor: '#22c55e',
       desc: d => 'Strong floor — dealers are buying below this level to stay hedged.' },
     { key: 'kl_gamma_pin', strKey: null, label: 'Gamma Pin', sr: 'pin', srLabel: 'Pin', proxColor: '#a855f7',
-      desc: d => {
-        const charm = parseFloat(d.charm_drift_toward || 0);
-        const pin = parseFloat(d.kl_gamma_pin || 0);
-        if (charm && pin && Math.abs(charm - pin) > 1.0)
-          return `Hedging center of gravity. Charm drift diverges ${charm > pin ? 'above' : 'below'} — watch which wins after 2pm.`;
-        return 'Hedging center of gravity. Price magnetically attracted here.';
-      }},
+      desc: d => 'Hedging center of gravity — strike with largest |net GEX$| per 1% (institutional pin).' },
     { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'HVL', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9',
       desc: d => 'High Volatility Level — strike with the largest total gamma (calls + puts). Peak hedging friction / vol sensitivity.' },
     { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef',
@@ -6876,9 +6870,12 @@ function render(d, fullRenderSource) {
       </div>`;
     }
 
-    // Charm Drift row
+    // Charm Drift row — target strike = kl_gamma_pin when institutional (same as Gamma Pin row)
     {
-      const charmTarget = parseFloat(d.charm_drift_toward || 0);
+      const pinStrike = parseFloat(d.kl_gamma_pin || 0);
+      const charmTarget = (d.kl_institutional_ready && pinStrike > 0)
+        ? pinStrike
+        : parseFloat(d.charm_drift_toward || 0);
       const charmNetRaw = parseFloat(d.charm_net || 0);
       const flowBull = charmNetRaw > 0;
       const flowBear = charmNetRaw < 0;
@@ -6899,10 +6896,7 @@ function render(d, fullRenderSource) {
         : flowBear
         ? 'MM unwinding call hedges — mechanical delta selling.'
         : 'Charm flows balanced — no directional pressure.';
-      const pinConflict = (flowBull && charmTarget < (spot||0)) || (flowBear && charmTarget > (spot||0));
-      const mechanic = pinConflict
-        ? `${flowDesc} Pin gravity pulls ${charmTarget > (spot||0) ? 'up' : 'down'} to ${tgtStr} — conflicting forces, expect chop.`
-        : `${flowDesc}${charmTarget > 0 ? ` Pin gravity toward ${tgtStr}.` : ''}`;
+      const mechanic = `${flowDesc}${charmTarget > 0 ? ` Institutional pin target ${tgtStr}.` : ''}`;
 
       const charmProxColor = (charmTarget > 0 && spot && Math.abs(charmTarget - spot) <= prox) ? '#f97316'
         : (charmTarget > 0 && spot && charmTarget > spot && (charmTarget - spot) <= 3 && !nearAboveKey) ? '#818cf8'
