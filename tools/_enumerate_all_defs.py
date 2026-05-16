@@ -34,6 +34,17 @@ SECTION3 = [
     "math_snapshot_derive.py",
 ]
 
+SECTION6 = [
+    "signals.py",
+    "signal_helpers.py",
+    "signal_types.py",
+    "rules_engine.py",
+    "prediction_engine.py",
+    "call_engine.py",
+    "multi_horizon_decision.py",
+    "multi_horizon_ml_bundle.py",
+]
+
 SECTION5 = [
     "order_flow_engine.py",
     "order_flow_live_state.py",
@@ -61,5 +72,12 @@ def main(files: list[str]) -> None:
 
 if __name__ == "__main__":
     which = sys.argv[1] if len(sys.argv) > 1 else "1"
-    files = {"1": SECTION1, "2": SECTION2, "3": SECTION3, "4": SECTION4, "5": SECTION5}.get(which, SECTION1)
+    files = {
+        "1": SECTION1,
+        "2": SECTION2,
+        "3": SECTION3,
+        "4": SECTION4,
+        "5": SECTION5,
+        "6": SECTION6,
+    }.get(which, SECTION1)
     main(files)

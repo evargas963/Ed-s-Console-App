@@ -354,6 +354,28 @@ REPLACED: `_compute_spread` (mark-denom `spread_frac`; no bid+ask/2). Per-functi
 
 ---
 
+## Section 6 derivation audit inventory
+
+Walked 8 files at **full AST scope** (module + class + nested `def`). **88** inventory rows: **0** REPLACED, **45** KEEP_DERIVED, **6** PASS_THROUGH, **37** NONE. Decision layer does not call Schwab APIs directly; consumes upstream Schwab-first state. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section6_derivation_inventory.py`. Tests: `tests/test_section6_schwab_derivation_audit.py`.
+
+<!-- SECTION6_DERIVATION_INVENTORY_START -->
+| file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---:|---:|---:|---:|---:|
+| signals.py | 14 | 0 | 6 | 2 | 6 |
+| signal_helpers.py | 1 | 0 | 0 | 0 | 1 |
+| signal_types.py | 1 | 0 | 1 | 0 | 0 |
+| rules_engine.py | 2 | 0 | 2 | 0 | 0 |
+| prediction_engine.py | 18 | 0 | 12 | 0 | 6 |
+| call_engine.py | 29 | 0 | 17 | 1 | 11 |
+| multi_horizon_decision.py | 18 | 0 | 6 | 1 | 11 |
+| multi_horizon_ml_bundle.py | 5 | 0 | 1 | 2 | 2 |
+| **total** | **88** | **0** | **45** | **6** | **37** |
+
+Per-function detail in `governance/section6_derivation_inventory.py`.
+<!-- SECTION6_DERIVATION_INVENTORY_END -->
+
+---
+
 ## CAPS allowlist (silent-default substitution family)
 
 Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  
