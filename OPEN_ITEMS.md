@@ -149,7 +149,7 @@ All commits in this rebuild authored via Cursor agent extension carry a `Made-wi
 
 ## Schwab repo-wide replacement — post-KEY LEVELS sweep schedule
 
-**SUPERSEDED 2026-05-16** — day-by-day plan replaced by section-by-section structure below. Completed day commits remain valid; their work counts toward the sections they cover.
+**SUPERSEDED 2026-05-16** — day-by-day plan replaced by section-by-section structure below. Prior day/CAPS SHAs remain in git history as pattern-shape safety floors only; they do **not** close any section row below.
 
 ~~**Bound to:** `governance/SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md`. Each day below closes the cited register IDs with a real on-branch SHA.~~
 
