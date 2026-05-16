@@ -376,6 +376,22 @@ Per-function detail in `governance/section6_derivation_inventory.py`.
 
 ---
 
+## Section 7 derivation audit inventory
+
+Walked 19 files at **full AST scope** (`v2_decision/*.py` + `lifecycle_rule_core.py`). **139** inventory rows: **0** REPLACED, **66** KEEP_DERIVED, **2** PASS_THROUGH, **71** NONE. V2 layer consumes upstream Schwab-first state; `a2_price_precedence` documents OP-006 contract mid ladder. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section7_derivation_inventory.py`. Tests: `tests/test_section7_schwab_derivation_audit.py`.
+
+<!-- SECTION7_DERIVATION_INVENTORY_START -->
+| file group | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---:|---:|---:|---:|---:|
+| v2_decision/*.py (17 modules) | 126 | 0 | 61 | 2 | 63 |
+| lifecycle_rule_core.py | 13 | 0 | 5 | 0 | 8 |
+| **total** | **139** | **0** | **66** | **2** | **71** |
+
+Per-function detail in `governance/section7_derivation_inventory.py`.
+<!-- SECTION7_DERIVATION_INVENTORY_END -->
+
+---
+
 ## CAPS allowlist (silent-default substitution family)
 
 Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  

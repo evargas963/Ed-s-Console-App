@@ -45,6 +45,12 @@ SECTION6 = [
     "multi_horizon_ml_bundle.py",
 ]
 
+SECTION7 = sorted(
+    f"v2_decision/{p.name}"
+    for p in (ROOT / "v2_decision").glob("*.py")
+    if p.name != "__init__.py"
+) + ["lifecycle_rule_core.py"]
+
 SECTION5 = [
     "order_flow_engine.py",
     "order_flow_live_state.py",
@@ -79,5 +85,6 @@ if __name__ == "__main__":
         "4": SECTION4,
         "5": SECTION5,
         "6": SECTION6,
+        "7": SECTION7,
     }.get(which, SECTION1)
     main(files)
