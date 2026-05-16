@@ -103,7 +103,7 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | DFR-003 | `server.py::_build_rest_fast_quote_payload()` | `spot = last or mark or 0.0` | Fast quote can degrade to zero/None without field-level source; trader-visible spot and L1 overlays affected. | gate/fail-closed | High |
 | DFR-004 | `server.py::_fetch_state()` | Cached `_last_spread_by_ticker` reused when current bid/ask missing | Stale spread can affect liquidity and A2 spread gates. | gate/fail-closed | High |
 | DFR-005 | `server.py::_fetch_state()` | Selected-expiry filter falls back to full chain when no rows match | Wrong expiry slice can alter strike selection and option expression scoring. **CLOSED** — strict `expirationDate` slice via `_filter_contracts_by_selected_expiry`; `kl_expiry_source` emitted. | gate/fail-closed | High |
-| DFR-006 | `v2_decision/a2_option_expression.py` | `spread = ms_dict.spread or (ask - bid)` | Underlying spread and contract spread can be semantically mixed unless provenance is explicit. | redesign | High |
+| DFR-006 | `v2_decision/a2_option_expression.py` | `spread = ms_dict.spread or (ask - bid)` | Underlying spread and contract spread can be semantically mixed unless provenance is explicit. **CLOSED** — `a2_price_precedence.py` matrix; contract spread chain-only; underlying on separate payload leaves. | redesign | High |
 | DFR-007 | `v2_decision/a2_option_expression.py::_quote_staleness_ms()` | Uses `quoteTimeInLong`; missing means not implemented | Schwab also provides `tradeTimeInLong`; missing quote timestamp can hard-gate A2 despite usable trade timestamp. | gate/fail-closed / governed fallback | High |
 | DFR-008 | `server.py` expected move block | Falls back to expected-move path with default **`volatility`** = 20% and full-session hours | Synthetic default-**`volatility`** EM can affect risk framing when Schwab **`volatility`/marks are unavailable. **CLOSED** — straddle/IV EM only; no synthetic IV. | gate/fail-closed | Medium/High |
 | DFR-009 | `snapshot_normalizer.py::resample_to_1m()` | Rebuilds OHLCV from snapshots and spot fallback | Can create training/history bars unlike Schwab price-history candles. | redesign | Medium/High |
@@ -155,8 +155,8 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | OP-003 | `math_probabilities.py::score_option_expression()` | `vol_oi_ratio` | `volume / openInterest`, volume = `totalVolume or volume` | `totalVolume`, `openInterest` native | Schwab `totalVolume` is the primary source; the legacy `volume` alias is a fallback only when `totalVolume` is absent. Per-row chain volume MUST come from `totalVolume`; keep `volume` as fallback only on payloads where Schwab does not emit `totalVolume` (e.g. movers screeners). | Medium |
 | OP-004 | `math_probabilities.py::score_option_expression()` | `gamma_x_oi` | `gamma * openInterest` | inputs native, metric not native | keep-derived; standardize rounding | Low |
 | OP-005 | `market_state.py::_build_contract_context_ms()` | DTE text | expiry date minus current ET date | `daysToExpiration` native | Schwab `chains.*.daysToExpiration` is the primary source; the date-diff against current ET date is a legacy app-side fallback only when the Schwab field is absent. Same Schwab-first precedence applies to `is_0dte` (`v2_decision/a2_eod_force_exit.py::is_0dte`) which reads `chain_row.daysToExpiration == 0` first and falls back to `selected_exp` only when `chain_row` is absent. | High |
-| OP-006 | `market_state.py::_oe_bid_ask_mid()` | midpoint/breakeven | `(bid + ask)/2`, strike +/- mid | bid/ask native; BE derived | keep-derived; mark-side-by-side for advisory if needed | Medium |
-| OP-007 | `v2_decision/a2_option_expression.py` | mid/spread/breakeven | midpoint, spread, strike +/- mid | bid/ask native; no native BE | redesign source/price precedence matrix | High |
+| OP-006 | `market_state.py::_oe_bid_ask_mid()` | midpoint/breakeven | `(bid + ask)/2`, strike +/- mid | bid/ask native; BE derived | **CLOSED** — mark→last→bid/ask mid ladder with `mid_source` on contract context string. | keep-derived; mark-side-by-side for advisory if needed | Medium |
+| OP-007 | `v2_decision/a2_option_expression.py` | mid/spread/breakeven | midpoint, spread, strike +/- mid | bid/ask native; no native BE | **CLOSED** — shared `a2_price_precedence.py` with contract vs underlying spread separation. | redesign source/price precedence matrix | High |
 | OP-008 | `v2_decision/a2_option_expression.py::_theta()` | theta | `chain_row.theta -> raw.theta -> Black-Scholes` | theta native | replace-with-Schwab; BS residual only after measurement/governance | High |
 | OP-009 | `v2_decision/a2_option_expression.py::_time_to_expiry_years()` | time-to-expiry | `daysToExpiration`, then minutes/hours | `daysToExpiration` native | keep precedence; emit source | Low |
 | OP-010 | `v2_decision/a2_option_expression.py::_quote_staleness_ms()` | quote staleness | decision clock - quote timestamp | `quoteTimeInLong`, `tradeTimeInLong` native | fail closed; consider governed trade-time fallback | High |
@@ -240,9 +240,12 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | VIX serialize + IWM arg | DFR-016, UI-006, UI-007 | CLOSED | `1a366eb` |
 | GEX completeness | UI-011 | CLOSED | `1a366eb` |
 | MC fusion zero-fill | DFR-023 | CLOSED | `1a366eb` |
-| Re-audit quote stack | DFR-002/003/004, PQ-001 | ADDRESSED holds | `_build_rest_fast_quote_payload` fail-closed spot |
+| Re-audit quote stack | DFR-002/003/004, PQ-001 | CLOSED | `4ef5864` |
 | DTE / putCall / parity mid | OP-005, OP-011, OP-014 | VERIFIED | existing Schwab-first paths |
-| MC-EM-ANCHOR | MC-EM-ANCHOR (new) | OPEN | MC IV anchor vs `kl_em_anchor` reconciliation deferred |
+| MC-EM-ANCHOR | MC-EM-ANCHOR (new) | CLOSED | `2439281` — `resolve_mc_iv_for_kl_em_anchor`; `mc_em_anchor`/`mc_iv_source`; MC `iv_level` aligned |
+| A2 spread matrix | DFR-006, OP-006, OP-007 | CLOSED | `eb36afe` (`a2_price_precedence.py`); `2439281` (`_oe_bid_ask_mid` mid_source) |
+| PQ re-audit | DFR-003, PQ-001 | CLOSED | `4ef5864` — `test_server_quote_source_contract.py` fail-closed spot |
+| Zero-OPEN KL sweep | item 19 | CLOSED | `a48f964` — 13 KL data-flow files; 0 forbidden patterns |
 | Repo-wide register | all non-KL rows | OPEN | MT/OHLCV/deferred paths out of KEY LEVELS scope |
 
 ---
@@ -253,7 +256,7 @@ This register is not yet complete. It is the active replacement plan.
 
 ```text
 repo_wide_derived_field_replacement_status = OPEN
-key_levels_input_sweep_status = OPEN
+key_levels_input_sweep_status = CLOSED
 price_quote_inventory = DRAFTED
 option_chain_inventory = DRAFTED
 model_training_inventory = DRAFTED
