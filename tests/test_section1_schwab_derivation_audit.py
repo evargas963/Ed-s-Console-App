@@ -12,35 +12,27 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-SECTION1_FILES = frozenset(
-    {
-        "schwab_client.py",
-        "reauth_schwab.py",
-        "websocket_adapter.py",
-        "polling_adapter.py",
-        "sse_adapter.py",
-        "market_data_adapter.py",
-        "snapshot_normalizer.py",
-        "snapshot_access.py",
-    }
-)
+def test_section1_inventory_covers_every_module_function():
+    from governance.section1_derivation_inventory import (
+        SECTION1_DERIVATION_INVENTORY,
+        SECTION1_FILES,
+    )
+    from governance.section_inventory_gate import assert_inventory_covers_module_functions
 
-
-def test_section1_inventory_covers_all_eight_files():
-    from governance.section1_derivation_inventory import SECTION1_DERIVATION_INVENTORY
-
-    covered = {r.file for r in SECTION1_DERIVATION_INVENTORY}
-    assert SECTION1_FILES <= covered
+    assert_inventory_covers_module_functions(
+        ROOT, SECTION1_FILES, SECTION1_DERIVATION_INVENTORY
+    )
 
 
 def test_section1_inventory_counts_and_dispositions():
     from governance.section1_derivation_inventory import SECTION1_DERIVATION_INVENTORY
 
-    records = [r for r in SECTION1_DERIVATION_INVENTORY if r.disposition != "NONE"]
-    assert len(SECTION1_DERIVATION_INVENTORY) >= 15
-    replaced = [r for r in records if r.disposition == "REPLACED"]
-    assert len(replaced) >= 3
-    assert all(r.schwab_leaf.startswith("pricehistory") or "candles" in r.schwab_leaf for r in replaced)
+    assert len(SECTION1_DERIVATION_INVENTORY) >= 47
+    replaced = [r for r in SECTION1_DERIVATION_INVENTORY if r.disposition == "REPLACED"]
+    assert len(replaced) >= 1
+    assert all(
+        "pricehistory" in r.schwab_leaf or "candles" in r.schwab_leaf for r in replaced
+    )
 
 
 def test_section1_inventory_registered_in_replacement_register():

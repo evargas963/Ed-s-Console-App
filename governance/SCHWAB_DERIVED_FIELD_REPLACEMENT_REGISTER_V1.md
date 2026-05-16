@@ -262,28 +262,19 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 
 ## Section 1 derivation audit inventory
 
-Walked 8 files. **15** derivation records (**3** REPLACED with Schwab `pricehistory.candles.*` leaves, **9** KEEP_DERIVED justified, **3** NONE). Source: `governance/section1_derivation_inventory.py`. Tests: `tests/test_section1_schwab_derivation_audit.py`.
+Walked 8 files at **function** granularity. **47** inventory rows (one per module-level `def`): **1** REPLACED, **4** KEEP_DERIVED, **15** PASS_THROUGH, **27** NONE. Cross-section REPLACED (`liquidity_value_engine._resolve_bar_timestamp`, `d40b537`) documented in §12. Full rows: `governance/section1_derivation_inventory.py`. Tests: `tests/test_section1_schwab_derivation_audit.py` (coverage gate: every `def` has a row).
 
 <!-- SECTION1_DERIVATION_INVENTORY_START -->
-| file | line | derivation | schwab_leaf | disposition | justification |
-|---|---|---|---|---|
-| schwab_client.py | — | OAuth client / token | — | NONE | No market-field derivations |
-| reauth_schwab.py | — | Manual OAuth CLI | — | NONE | No market-field derivations |
-| websocket_adapter.py | — | Abstract WS contract | — | NONE | No field reads |
-| sse_adapter.py | — | Abstract SSE contract | — | NONE | No field reads |
-| polling_adapter.py | 65-66 | pricehistory → bars | pricehistory.candles.* | PASS_THROUGH | schwab_candles_to_bars only |
-| polling_adapter.py | 102-110 | camelCase API fallback | pricehistory.candles | KEEP_DERIVED | SDK transport compat |
-| market_data_adapter.py | 67-95 | OHLCV read | pricehistory.candles.{open,high,low,close,volume} | REPLACED | Reject if any leaf missing |
-| market_data_adapter.py | 86-89 | timestamp | pricehistory.candles.datetime | REPLACED | Schwab path requires datetime |
-| market_data_adapter.py | 154-158 | _ts from datetime ms | pricehistory.candles.datetime | KEEP_DERIVED | ms→s conversion only |
-| liquidity_value_engine.py | 55-88, 127-131 | bar timestamp resolution | pricehistory.candles.datetime | REPLACED | cross-section repo-wide grep fix |
-| snapshot_normalizer.py | 118-210 | resample_to_1m synthetic OHLC | pricehistory.candles.* (native via polling) | KEEP_DERIVED | Fallback; tagged synthetic |
-| snapshot_normalizer.py | 120-125 | open spot proxy | snapshots.spot | KEEP_DERIVED | missing_fields tag |
-| snapshot_normalizer.py | 127-151 | high/low spot proxy | snapshots.spot | KEEP_DERIVED | missing_fields tag |
-| snapshot_normalizer.py | 168-175 | spot close proxy | snapshots.spot | KEEP_DERIVED | missing_fields tag |
-| snapshot_normalizer.py | 204-207 | body/range from OHLC | derived from candles | KEEP_DERIVED | presentation metric |
-| snapshot_normalizer.py | 209-211 | vwap_side | — | KEEP_DERIVED | No Schwab vwap_side leaf |
-| snapshot_access.py | — | timeframe SQL guard | — | NONE | No field derivations |
+| file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---|---|---|---|---|
+| schwab_client.py | 17 | 0 | 0 | 4 | 13 |
+| reauth_schwab.py | 1 | 0 | 0 | 0 | 1 |
+| websocket_adapter.py | 1 | 0 | 0 | 0 | 1 |
+| sse_adapter.py | 1 | 0 | 0 | 0 | 1 |
+| polling_adapter.py | 4 | 0 | 1 | 3 | 0 |
+| market_data_adapter.py | 3 | 1 | 0 | 2 | 0 |
+| snapshot_normalizer.py | 18 | 0 | 3 | 5 | 10 |
+| snapshot_access.py | 2 | 0 | 0 | 1 | 1 |
 <!-- SECTION1_DERIVATION_INVENTORY_END -->
 
 ---
