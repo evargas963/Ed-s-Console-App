@@ -425,6 +425,37 @@ Per-function detail in `governance/section9_derivation_inventory.py`.
 
 ---
 
+## Section 10 derivation audit inventory
+
+Walked **17** ML modules at **full AST scope**. **247** inventory rows: **0** REPLACED, **153** KEEP_DERIVED, **0** PASS_THROUGH, **94** NONE. Training/inference reads snapshots and canonical features only; no direct Schwab API. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section10_derivation_inventory.py`. Tests: `tests/test_section10_schwab_derivation_audit.py`.
+
+<!-- SECTION10_DERIVATION_INVENTORY_START -->
+| file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---:|---:|---:|---:|---:|
+| ml_predict.py | 43 | 0 | 29 | 0 | 14 |
+| training_cache.py | 48 | 0 | 20 | 0 | 28 |
+| ml_scheduler.py | 26 | 0 | 21 | 0 | 5 |
+| lstm_model.py | 17 | 0 | 11 | 0 | 6 |
+| lstm_data.py | 16 | 0 | 11 | 0 | 5 |
+| ml_train.py | 15 | 0 | 10 | 0 | 5 |
+| transformer_train.py | 13 | 0 | 10 | 0 | 3 |
+| ml_horizon.py | 11 | 0 | 9 | 0 | 2 |
+| training_provenance.py | 11 | 0 | 2 | 0 | 9 |
+| train_all.py | 10 | 0 | 8 | 0 | 2 |
+| ml_data_common.py | 9 | 0 | 7 | 0 | 2 |
+| normalized_training_sync.py | 10 | 0 | 7 | 0 | 3 |
+| train_compare.py | 7 | 0 | 1 | 0 | 6 |
+| transformer_model.py | 4 | 0 | 3 | 0 | 1 |
+| xgboost_model.py | 3 | 0 | 2 | 0 | 1 |
+| smoke_predict_active.py | 2 | 0 | 2 | 0 | 0 |
+| training_cache_policy.py | 2 | 0 | 0 | 0 | 2 |
+| **total** | **247** | **0** | **153** | **0** | **94** |
+
+Per-function detail in `governance/section10_derivation_inventory.py`.
+<!-- SECTION10_DERIVATION_INVENTORY_END -->
+
+---
+
 ## CAPS allowlist (silent-default substitution family)
 
 Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  

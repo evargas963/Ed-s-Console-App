@@ -51,6 +51,28 @@ SECTION7 = sorted(
     if p.name != "__init__.py"
 ) + ["lifecycle_rule_core.py"]
 
+SECTION10 = sorted(
+    [
+        "ml_data_common.py",
+        "ml_horizon.py",
+        "ml_predict.py",
+        "ml_train.py",
+        "ml_scheduler.py",
+        "lstm_model.py",
+        "lstm_data.py",
+        "xgboost_model.py",
+        "transformer_train.py",
+        "transformer_model.py",
+        "train_all.py",
+        "train_compare.py",
+        "training_cache.py",
+        "training_provenance.py",
+        "training_cache_policy.py",
+        "normalized_training_sync.py",
+        "smoke_predict_active.py",
+    ]
+)
+
 SECTION9 = sorted(
     f"features/{p.name}"
     for p in (ROOT / "features").glob("*.py")
@@ -101,5 +123,6 @@ if __name__ == "__main__":
         "7": SECTION7,
         "8": SECTION8,
         "9": SECTION9,
+        "10": SECTION10,
     }.get(which, SECTION1)
     main(files)
