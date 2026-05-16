@@ -336,6 +336,24 @@ REPLACED: `compute_gamma_void_zones` (or-zero gamma sum), `compute_smart_money_s
 
 ---
 
+## Section 5 derivation audit inventory
+
+Walked 4 files at **full AST scope** (module + class + nested `def`). **70** inventory rows: **1** REPLACED, **29** KEEP_DERIVED, **34** PASS_THROUGH, **6** NONE. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section5_derivation_inventory.py`. Tests: `tests/test_section5_schwab_derivation_audit.py`.
+
+<!-- SECTION5_DERIVATION_INVENTORY_START -->
+| file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---:|---:|---:|---:|---:|
+| order_flow_engine.py | 34 | 1 | 26 | 4 | 3 |
+| order_flow_live_state.py | 13 | 0 | 3 | 8 | 2 |
+| order_flow_streaming.py | 21 | 0 | 0 | 21 | 0 |
+| debug_flow_snapshot.py | 2 | 0 | 0 | 1 | 1 |
+| **total** | **70** | **1** | **29** | **34** | **6** |
+
+REPLACED: `_compute_spread` (mark-denom `spread_frac`; no bid+ask/2). Per-function detail in `governance/section5_derivation_inventory.py`.
+<!-- SECTION5_DERIVATION_INVENTORY_END -->
+
+---
+
 ## CAPS allowlist (silent-default substitution family)
 
 Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  

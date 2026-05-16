@@ -193,9 +193,9 @@ The pattern-shape regression net from these commits stays in place as a safety f
 
 - [ ] **§1 Schwab client + adapters** — `schwab_client.py`, `reauth_schwab.py`, `websocket_adapter.py`, `polling_adapter.py`, `sse_adapter.py`, `market_data_adapter.py`, `snapshot_normalizer.py`, `snapshot_access.py`. Prior `2703c52`/`d40b537` fixes kept; full-scope AST re-walk `657d4e4` (59 rows). SHA: __________
 - [x] **§2 Server + live state** — `server.py`, `live_market_plane.py`, `live_decision_bundle.py`, `live_pipeline_diag.py`, `live_vs_replay_validation.py`. Full-scope AST inventory (208 rows). SHA: `e52fee6`
-- [ ] **§3 Market data + state** — `market_context.py`, `market_state.py`, `math_snapshot_derive.py`. Prior `86d4bc4` fixes kept; full-scope AST re-walk `0b4e0fb` (38 rows). SHA: __________
-- [ ] **§4 Math / KEY LEVELS** — `math_exposure*.py`, `math_levels.py`, `math_volatility.py`, `math_probabilities.py`, `levels.py`. Prior `4740fa8`/`82615fa` fixes kept; full-scope AST re-walk `657d4e4` (131 rows). SHA: __________
-- [ ] **§5 Order flow** — `order_flow_engine.py`, `order_flow_live_state.py`, `order_flow_streaming.py`, `debug_flow_snapshot.py`. SHA: __________
+- [x] **§3 Market data + state** — `market_context.py`, `market_state.py`, `math_snapshot_derive.py`. Full-scope AST inventory (38 rows). SHA: `aece812`
+- [x] **§4 Math / KEY LEVELS** — `math_exposure*.py`, `math_levels.py`, `math_volatility.py`, `math_probabilities.py`, `levels.py`. Full-scope AST inventory (131 rows). SHA: `3c7b1d1`
+- [ ] **§5 Order flow** — `order_flow_engine.py`, `order_flow_live_state.py`, `order_flow_streaming.py`, `debug_flow_snapshot.py`. Full-scope AST re-walk `beb2875` (70 rows). SHA: __________
 - [ ] **§6 Signals + decision** — `signals.py`, `signal_helpers.py`, `signal_types.py`, `rules_engine.py`, `prediction_engine.py`, `call_engine.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`. SHA: __________
 - [ ] **§7 V2 decision + A2 lifecycle** — `v2_decision/*.py`, `lifecycle_rule_core.py`. SHA: __________
 - [ ] **§8 MC + regime + volatility** — `monte_carlo.py`, `mc_fusion_adjustment.py`, `volatility_regime.py`, `regime_engine.py`. SHA: __________
