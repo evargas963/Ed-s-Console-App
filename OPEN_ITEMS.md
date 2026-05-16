@@ -207,7 +207,9 @@ The pattern-shape regression net from these commits stays in place as a safety f
 - [x] **§14 DB + backfill + repair** — `db*.py`, `clean_db.py`, `eval_metrics_store.py`, `backfill_*.py`, `bar_rehydration_*.py`, `pin_neutral_outcome_repair_v1.py`, `distance_option_a_backfill_v1.py`, `patch_active_artifact_provenance.py`, `replay_bundle_coverage.py`, `realized_contract_eval.py`. Full-scope AST inventory (229 rows, 14 files). SHA: `e2640f6`
 - [x] **§15 Audit + verify + config + contracts** — `audit_*.py`, `verify_*.py`, `inspect_trading_data.py`, `config.py`, `setup_readiness.py`, `scheduler_user_tickers.py`, `ticker_*.py`, `production_universe.py`, `instrument_identity.py`, `timeframe_config.py`, `model_contract.py`, `feature_contract_*.py`, `horizon_outcomes.py`, `movement_target_threshold.py`, `institutional_behavior.py`, `canonical_distances.py`, `tier3_design.py`. Full-scope AST inventory (89 rows, 27 files). SHA: `e7a0974`
 - [ ] **§16 External signals** — `news_sentiment.py`, `api_pressure.py`, `event_risk.py`. Full-scope AST re-walk (19 rows, 3 files). SHA: __________
-- [ ] **§17 Planes + research + UI + misc** — `planes/*.py`, `research/*.py`, `static/*`, `ops_runner.py`, `crash_trace.py`, `schwab_*_inventory*.py`, `schwab_field_dictionary_builder.py`, `micro_structure.py`, `adaptive_shadow_v2_calibration.py`, `print_*.py`, `compare_clustering_modes.py`. SHA: __________
+- [ ] **§17 Planes + research + UI + misc** — `planes/*.py`, `research/*.py`, `static/*`, … **BLOCKED** until chain-of-trust audit closes (`governance/chain_of_trust_audit.py`). SHA: __________
+
+**Chain-of-trust gate (blocks §17):** Producer→consumer graph from section inventories + AST reads. Priority fields (spot, walls, IV, MVP) must close; full sweep currently reports open gaps — run `python governance/chain_of_trust_audit.py`.
 
 ---
 
