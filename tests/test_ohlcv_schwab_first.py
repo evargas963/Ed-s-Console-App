@@ -1,8 +1,9 @@
-"""Day 1 / 1.5 — OHLCV bar adapters + repo-wide zero-injection enforcement."""
+"""Day 1 / 1.5 / 1.6 — OHLCV adapters + silent-zero pattern family enforcement."""
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from market_data_adapter import normalize_bar, schwab_candles_to_bars
@@ -10,8 +11,6 @@ from math_exposure_core import bucket_metric, net_gex_dollars_at_strike
 from snapshot_normalizer import resample_to_1m
 
 ROOT = Path(__file__).resolve().parent.parent
-
-ZERO_INJECTION_RE = re.compile(r"\.get\([^)]+,\s*0\)\s*or\s*0")
 
 SKIP_DIR_PARTS = frozenset(
     {
@@ -29,39 +28,88 @@ SKIP_DIR_PARTS = frozenset(
 )
 
 
-def _line_counts_as_violation(line: str) -> bool:
+@dataclass(frozen=True)
+class _PatternSpec:
+    name: str
+    regex: re.Pattern[str]
+
+
+# Silent-zero pattern family (variants and equivalent forms).
+SILENT_ZERO_PATTERN_FAMILY: tuple[_PatternSpec, ...] = (
+    _PatternSpec("get_default_or_zero", re.compile(r"\.get\([^)]+,\s*0\)\s*or\s*0")),
+    _PatternSpec("get_no_default_or_zero", re.compile(r"\.get\([^,)]+\)\s+or\s+0(?:\.0)?")),
+    _PatternSpec(
+        "get_none_default_or_zero",
+        re.compile(r"\.get\([^)]+,\s*None\)\s+or\s+0(?:\.0)?"),
+    ),
+    _PatternSpec(
+        "cast_or_zero",
+        re.compile(r"(?:int|float)\([^)]+\s+or\s+0(?:\.0)?\)"),
+    ),
+)
+
+# Whole-file / prefix allowlist: path prefix → one-line justification.
+ZERO_INJECTION_FILE_ALLOWLIST: tuple[tuple[str, str], ...] = (
+    ("tests/", "fixtures and gate tests document forbidden patterns"),
+    ("tools/", "profiling and scanner tooling not production data path"),
+    ("calibration/", "audit SQL aggregates, null-rate denominators, phase cleanup counters"),
+    ("verification/", "health-check counters and gap diagnostics"),
+    ("arch_competition/", "offline eval harness metrics"),
+    ("adaptive_shadow_v2_calibration.py", "shadow calibration ranking aggregates"),
+    ("adaptive_similarity_engine.py", "similarity pool size / tier diagnostics"),
+    ("replay_bundle_coverage.py", "bundle join row-count audit"),
+    ("bar_rehydration_issue19_v1.py", "rehydration repair counters"),
+    ("db_health_audit.py", "DB health audit counters"),
+    ("similarity_audit.py", "similarity trace diagnostics"),
+    ("similarity_feature_search.py", "shadow feature-search counters"),
+    ("training_cache.py", "training manifest row_count fingerprint"),
+    ("training_provenance.py", "training manifest rows_used counter"),
+    ("ml_scheduler.py", "scheduler manifest skip/row counters"),
+    ("patch_active_artifact_provenance.py", "artifact patch counters"),
+    ("planes/", "L1/runtime plane timestamps and version counters"),
+    ("bayesian_fusion.py", "signal_layer meta.n_bars gate counter"),
+    ("features/signal_layer_v1.py", "derived signal layer counters (meta.n_bars)"),
+    ("monte_carlo.py", "MC output dict serialization of derived sim metrics"),
+    ("live_vs_replay_validation.py", "replay validation row counts"),
+    ("lifecycle_rule_core.py", "session minutes-since-open derived input"),
+    ("setup_readiness.py", "readiness probability coercion for display"),
+    ("call_engine.py", "rules-engine display percent coercion"),
+    ("ml_train.py", "training window max_ts_utc comparison guard"),
+    ("realized_contract_eval.py", "contract eval PnL + SQL pool counts"),
+    ("liquidity_value_engine.py", "bar sort key _ts (internal timestamp)"),
+    ("order_flow_engine.py", "Schwab print time_millis sort/cutoff (native leaf present)"),
+    ("snapshot_normalizer.py", "materialize row-count audit counters"),
+    ("market_state.py", "wall-score audit diff (derived scores)"),
+    ("db.py", "SQL COUNT aggregate int coercion"),
+    ("server.py", "L1/SSE instrumentation timestamps, generations, volume deltas"),
+)
+
+
+def _line_counts_as_violation(line: str, pattern: _PatternSpec) -> bool:
     stripped = line.strip()
     if stripped.startswith("#"):
         return False
-    if not ZERO_INJECTION_RE.search(line):
+    if not pattern.regex.search(line):
         return False
-    # Docstring documenting the forbidden pattern (not executable code).
     if '"""' in line or "'''" in line:
-        if "silent default" in line or "without ``" in line:
+        if "silent default" in line or "without ``" in line or "pattern family" in line:
             return False
     return True
 
-# (repo-relative path prefix, one-line justification)
-ZERO_INJECTION_ALLOWLIST: tuple[tuple[str, str], ...] = (
-    ("training_cache.py", "training manifest row_count default for cache fingerprint"),
-    ("ml_scheduler.py", "scheduler manifest consecutive_scheduler_skips / n_rows counters"),
-    (
-        "calibration/run_production_accumulation_validation.py",
-        "calibration audit counter fields skipped_ambiguous_duplicate_snapshots",
-    ),
-    ("server.py", "L1 SSE instrumentation counter l1_payload_identity_violation"),
-    ("tests/", "test fixtures may document forbidden patterns intentionally"),
-    ("tools/", "profiling / scanner tooling not production data path"),
-)
+
+def _file_allowlisted(rel_posix: str) -> bool:
+    for prefix, _reason in ZERO_INJECTION_FILE_ALLOWLIST:
+        if rel_posix == prefix or rel_posix.startswith(prefix):
+            return True
+    return False
 
 
 def _iter_repo_py_files() -> list[Path]:
     out: list[Path] = []
     for path in ROOT.rglob("*.py"):
-        parts = set(path.parts)
-        if parts & SKIP_DIR_PARTS:
+        if set(path.parts) & SKIP_DIR_PARTS:
             continue
-        if "tools" in parts and path.name != "__init__.py":
+        if "tools" in set(path.parts) and path.name != "__init__.py":
             rel = path.relative_to(ROOT).as_posix()
             if rel.startswith("tools/"):
                 continue
@@ -69,22 +117,17 @@ def _iter_repo_py_files() -> list[Path]:
     return out
 
 
-def _allowlisted(rel_posix: str) -> bool:
-    for prefix, _reason in ZERO_INJECTION_ALLOWLIST:
-        if rel_posix == prefix or rel_posix.startswith(prefix):
-            return True
-    return False
-
-
-def _repo_wide_zero_injection_hits() -> list[str]:
+def _repo_wide_silent_zero_hits() -> list[str]:
     hits: list[str] = []
     for path in _iter_repo_py_files():
         rel = path.relative_to(ROOT).as_posix()
-        if _allowlisted(rel):
+        if _file_allowlisted(rel):
             continue
         for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-            if _line_counts_as_violation(line):
-                hits.append(f"{rel}:{lineno}:{line.strip()}")
+            for spec in SILENT_ZERO_PATTERN_FAMILY:
+                if _line_counts_as_violation(line, spec):
+                    hits.append(f"{rel}:{lineno}:{spec.name}:{line.strip()}")
+                    break
     return hits
 
 
@@ -173,15 +216,26 @@ def test_bucket_metric_missing_returns_none_not_zero():
 
 
 def test_no_schwab_leaf_zero_injection_repo_wide():
-    hits = _repo_wide_zero_injection_hits()
-    assert not hits, "repo-wide .get(*, 0) or 0 violations:\n" + "\n".join(hits[:80])
+    """Pattern family gate — all variants must be fixed or explicitly allowlisted."""
+    hits = _repo_wide_silent_zero_hits()
+    assert not hits, "repo-wide silent-zero pattern family violations:\n" + "\n".join(hits[:80])
 
 
 def test_market_data_adapter_no_zero_injection_pattern():
     text = (ROOT / "market_data_adapter.py").read_text(encoding="utf-8")
-    assert not ZERO_INJECTION_RE.search(text)
+    assert not SILENT_ZERO_PATTERN_FAMILY[0].regex.search(text)
 
 
 def test_snapshot_normalizer_no_open_zero_fallback():
     text = (ROOT / "snapshot_normalizer.py").read_text(encoding="utf-8")
     assert "o = 0.0" not in text
+
+
+def test_math_levels_no_get_or_zero_on_exposure_buckets():
+    text = (ROOT / "math_levels.py").read_text(encoding="utf-8")
+    assert not SILENT_ZERO_PATTERN_FAMILY[1].regex.search(text)
+
+
+def test_math_exposure_core_no_get_or_zero_on_buckets():
+    text = (ROOT / "math_exposure_core.py").read_text(encoding="utf-8")
+    assert not SILENT_ZERO_PATTERN_FAMILY[1].regex.search(text)

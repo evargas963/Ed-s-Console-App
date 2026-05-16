@@ -350,7 +350,7 @@ Bars consumed by liquidity/ATR/VWAP/replay paths must declare provenance and rej
 #### Invariant
 - OHLCV bars downstream of `market_data_adapter` carry `source` and `missing_fields` provenance. Bars with `close == 0` or any of OHLC missing are rejected (`None`); no zero-injection.
 - Synthetic 1m bars from `snapshot_normalizer.resample_to_1m` are tagged `synthetic = True` with `source = snapshot_synthetic` and are not eligible for training/replay paths that require Schwab candles without an explicit synthetic allowance.
-- Repo-wide enforcement: ``(*.get(*, 0) or 0)`` and equivalent silent-default patterns over Schwab numeric leaves are forbidden across the entire repo, not only adapters. Exceptions require an explicit ALLOWLIST entry in `tests/test_ohlcv_schwab_first.py` with justification.
+- Repo-wide enforcement: the **silent-zero pattern family** is forbidden over Schwab numeric leaves across the entire repo, not only adapters. Family members include ``(*.get(*, 0) or 0)``, ``(*.get(*) or 0)`` (no default arg), ``(*.get(*, None) or 0)``, and ``int(* or 0)`` / ``float(* or 0)`` on leaf reads. Exceptions require an explicit file- or line-level ALLOWLIST entry in `tests/test_ohlcv_schwab_first.py` with justification.
 
 #### Enforcement
 `tests/test_ohlcv_schwab_first.py`; `market_data_adapter.normalize_bar`, `schwab_candles_to_bars`, `snapshot_normalizer.resample_to_1m`.

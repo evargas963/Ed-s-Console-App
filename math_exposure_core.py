@@ -486,9 +486,9 @@ def aggregate_net_dex(exposures: Dict[float, dict], strikes: List[float]) -> flo
     total = 0.0
     any_d = False
     for s in strikes:
-        b = exposures.get(s, {})
-        if b.get("net_delta") is not None:
-            total += float(b.get("net_delta") or 0)
+        v = bucket_metric(exposures.get(s, {}), "net_delta")
+        if v is not None:
+            total += float(v)
             any_d = True
     return float(total) if any_d else None
 
@@ -552,10 +552,16 @@ def window_summary(exposures_by_strike: dict[float, dict], spot: float, strike_w
     use = [k for k in strikes if lo <= k <= hi]
     net_gex = net_dex = tot_oi = 0.0
     for k in use:
-        b = (exposures_by_strike.get(k, {}) or {})
-        net_gex += float(b.get("net_gex_1pct") or 0.0)
-        net_dex += float(b.get("net_dex_dollars") or 0.0)
-        tot_oi += float(b.get("total_oi_dollars") or 0.0)
+        b = exposures_by_strike.get(k, {}) or {}
+        g = bucket_metric(b, "net_gex_1pct")
+        d = bucket_metric(b, "net_dex_dollars")
+        o = bucket_metric(b, "total_oi_dollars")
+        if g is not None:
+            net_gex += float(g)
+        if d is not None:
+            net_dex += float(d)
+        if o is not None:
+            tot_oi += float(o)
     return {"spot": float(spot), "atm": float(atm), "net_gex_1pct": float(net_gex), "net_dex_dollars": float(net_dex), "total_oi_dollars": float(tot_oi)}
 
 def strike_agg(exposures, strike):

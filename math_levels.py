@@ -162,8 +162,15 @@ def _pin_strength(exposures: Dict[float, dict], gamma_pin: float | None, strikes
         gp = abs(net_gex_dollars_at_strike(b))
         vals = [abs(net_gex_dollars_at_strike(exposures.get(s, {}))) for s in strikes]
     else:
-        gp = abs(b.get("net_gamma") or 0.0)
-        vals = [abs(exposures.get(s, {}).get("net_gamma") or 0.0) for s in strikes]
+        gp_raw = bucket_metric(b, "net_gamma")
+        if gp_raw is None:
+            return "Very Low"
+        gp = abs(gp_raw)
+        vals = [
+            abs(v)
+            for s in strikes
+            if (v := bucket_metric(exposures.get(s, {}), "net_gamma")) is not None
+        ]
     if gp <= 0:
         return "Very Low"
 
@@ -303,7 +310,9 @@ def _pick_wall_pos(exposures: Dict[float, dict], strikes: List[float], key: str)
     best_s = None
     best_v = None
     for s in strikes:
-        v0 = exposures.get(s, {}).get(key) or 0.0
+        v0 = bucket_metric(exposures.get(s, {}), key)
+        if v0 is None:
+            continue
         v = float(v0)
         if v <= 0:
             continue
@@ -494,10 +503,18 @@ def build_totals_rows(
 
         for s in sset:
             b = exposures.get(s, {})
-            cg += float(b.get("call_gamma") or 0.0)
-            pg += float(b.get("put_gamma") or 0.0)
-            cd += float(b.get("call_delta") or 0.0)
-            pd += float(b.get("put_delta") or 0.0)
+            _cg = bucket_metric(b, "call_gamma")
+            _pg = bucket_metric(b, "put_gamma")
+            _cd = bucket_metric(b, "call_delta")
+            _pd = bucket_metric(b, "put_delta")
+            if _cg is not None:
+                cg += float(_cg)
+            if _pg is not None:
+                pg += float(_pg)
+            if _cd is not None:
+                cd += float(_cd)
+            if _pd is not None:
+                pd += float(_pd)
             call_oi = b.get("call_oi")
             put_oi = b.get("put_oi")
             if call_oi is not None:
@@ -750,8 +767,10 @@ def compute_max_pain(exposures_by_strike: Dict[float, dict]) -> float | None:
         pain = 0.0
         for k in strikes:
             b = exposures_by_strike.get(k, {})
-            call_w = float(b.get("call_oi_mult") or 0.0)
-            put_w = float(b.get("put_oi_mult") or 0.0)
+            call_w_raw = bucket_metric(b, "call_oi_mult")
+            put_w_raw = bucket_metric(b, "put_oi_mult")
+            call_w = float(call_w_raw) if call_w_raw is not None else 0.0
+            put_w = float(put_w_raw) if put_w_raw is not None else 0.0
             # Fail-closed per DFR-017: Schwab `multiplier` is the only legitimate
             # source for OI-weighted dollar payout. If a strike was built with
             # missing/invalid multiplier, oi_mult is 0 and the strike is excluded
@@ -780,8 +799,12 @@ def max_pain_oi_strength(exposures_by_strike: Dict[float, dict], max_pain: float
     b = exposures_by_strike.get(max_pain) or exposures_by_strike.get(float(max_pain))
     if not b:
         return None
-    call_oi = float(b.get("call_oi") or 0.0)
-    put_oi = float(b.get("put_oi") or 0.0)
+    call_oi_raw = bucket_metric(b, "call_oi")
+    put_oi_raw = bucket_metric(b, "put_oi")
+    if call_oi_raw is None and put_oi_raw is None:
+        return None
+    call_oi = float(call_oi_raw) if call_oi_raw is not None else 0.0
+    put_oi = float(put_oi_raw) if put_oi_raw is not None else 0.0
     tot = call_oi + put_oi
     return tot if tot > 0 else None
 

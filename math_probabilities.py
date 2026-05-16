@@ -1322,7 +1322,9 @@ def flow_imbalance_normalized_with_fallback(
     total_book = call_bid + call_ask + put_bid + put_ask
     if total_book >= 1.0:
         r = compute_option_flow_imbalance(exposures_by_strike, spot_f, window_pts=window_pts)
-        return float(r.get("normalized") or 0.0), "book"
+        norm = r.get("normalized")
+        if norm is not None:
+            return float(norm), "book"
     tot_v = call_vol + put_vol
     if tot_v > 0:
         x = (call_vol - put_vol) / tot_v
