@@ -115,12 +115,14 @@ def resample_to_1m(
         first = group[0]
         last = group[-1]
 
-        # OHLC rules
+        # OHLC rules — fail closed when no usable open (no silent o=0.0 spot fallback).
+        missing_fields: list[str] = []
         o = _safe_float(first.get("candle_open"))
         if o is None:
+            missing_fields.append("candle_open")
             o = _safe_float(first.get("spot"))
         if o is None:
-            o = 0.0
+            continue
 
         highs = [
             _safe_float(r.get("candle_high")) or _safe_float(r.get("spot"))
@@ -130,16 +132,25 @@ def resample_to_1m(
             _safe_float(r.get("candle_low")) or _safe_float(r.get("spot"))
             for r in group
         ]
-        h = max((x for x in highs if x is not None), default=o)
-        l = min((x for x in lows if x is not None), default=o)
+        h = max((x for x in highs if x is not None), default=None)
+        l = min((x for x in lows if x is not None), default=None)
+        if h is None or l is None:
+            continue
+        if h == 0 or l == 0:
+            continue
 
         c = _safe_float(last.get("candle_close"))
         if c is None:
+            missing_fields.append("candle_close")
             c = _safe_float(last.get("spot"))
         if c is None:
-            c = o
+            continue
+        if c == 0:
+            continue
 
         vol = _safe_float(last.get("candle_volume"))
+        if vol is None:
+            missing_fields.append("candle_volume")
 
         # Build normalized row: base on last snapshot, overwrite OHLC and timeframe
         norm = dict(last)
@@ -150,6 +161,9 @@ def resample_to_1m(
         norm["candle_volume"] = vol
         norm["timeframe"] = NORMALIZED_TIMEFRAME
         norm["normalized_from_subminute"] = normalized_from_subminute
+        norm["source"] = "snapshot_synthetic"
+        norm["synthetic"] = True
+        norm["missing_fields"] = missing_fields
         # Ensure spot is last snapshot's spot
         norm["spot"] = _safe_float(last.get("spot")) or c
         # Recompute OHLC-derived fields from normalized OHLC

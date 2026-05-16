@@ -5,18 +5,23 @@ Consumes data from any transport (WebSocket, SSE, polling) and emits
 a unified bar format for the liquidity_value_engine.
 
 Output: list of dicts with keys:
-  timestamp, open, high, low, close, volume
+  timestamp, open, high, low, close, volume, source, missing_fields
 
 The engine is transport-agnostic; it only sees normalized bars.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Callable, Iterator, Optional
+import logging
+from dataclasses import dataclass, field
+from typing import Any, Optional
+
+log = logging.getLogger(__name__)
 
 # Canonical bar keys expected by liquidity_value_engine
-BAR_KEYS = ("timestamp", "open", "high", "low", "close", "volume")
+BAR_KEYS = ("timestamp", "open", "high", "low", "close", "volume", "source", "missing_fields")
+
+_OHLC_KEYS = ("open", "high", "low", "close")
 
 
 @dataclass
@@ -28,6 +33,8 @@ class NormalizedBar:
     low: float
     close: float
     volume: Optional[float] = None
+    source: str = ""
+    missing_fields: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -37,10 +44,12 @@ class NormalizedBar:
             "low": self.low,
             "close": self.close,
             "volume": self.volume,
+            "source": self.source,
+            "missing_fields": list(self.missing_fields),
         }
 
 
-def normalize_bar(raw: dict | Any) -> Optional[NormalizedBar]:
+def normalize_bar(raw: dict | Any, *, source: str = "") -> Optional[NormalizedBar]:
     """
     Convert a raw bar into NormalizedBar.
 
@@ -48,6 +57,9 @@ def normalize_bar(raw: dict | Any) -> Optional[NormalizedBar]:
     ``close``, ``volume`` (per Schwab field dictionary
     ``pricehistory.candles.*``) and the canonical timestamp key
     ``datetime`` (Schwab pricehistory) or ``timestamp`` (NormalizedBar).
+
+    Rejects bars with any OHLC missing or ``close == 0``. Emits ``missing_fields``
+    (empty when clean) and ``source`` when provided by the caller.
     """
     if raw is None:
         return None
@@ -76,12 +88,24 @@ def normalize_bar(raw: dict | Any) -> Optional[NormalizedBar]:
     else:
         ts = getattr(raw, "timestamp", None)
 
+    missing_fields: list[str] = []
     open_ = _f("open")
     high = _f("high")
     low = _f("low")
     close = _f("close")
-    if open_ is None or high is None or low is None or close is None:
+    for key, val in zip(_OHLC_KEYS, (open_, high, low, close), strict=True):
+        if val is None:
+            missing_fields.append(key)
+    if missing_fields:
+        log.debug("normalize_bar rejected: missing OHLC %s", missing_fields)
         return None
+    if close == 0:
+        log.debug("normalize_bar rejected: close == 0")
+        return None
+
+    vol = _volume()
+    if isinstance(raw, dict) and raw.get("volume") is None:
+        missing_fields.append("volume")
 
     return NormalizedBar(
         timestamp=ts,
@@ -89,15 +113,17 @@ def normalize_bar(raw: dict | Any) -> Optional[NormalizedBar]:
         high=high,
         low=low,
         close=close,
-        volume=_volume(),
+        volume=vol,
+        source=source,
+        missing_fields=missing_fields,
     )
 
 
-def normalize_bars(raw_bars: list) -> list[dict]:
+def normalize_bars(raw_bars: list, *, source: str = "") -> list[dict]:
     """Convert a list of raw bars to engine-ready dicts."""
     out = []
     for b in raw_bars or []:
-        nb = normalize_bar(b)
+        nb = normalize_bar(b, source=source)
         if nb:
             out.append(nb.to_dict())
     return out
@@ -118,24 +144,19 @@ def schwab_candles_to_bars(candles: list) -> list[dict]:
     for c in candles or []:
         if not isinstance(c, dict):
             continue
-        ts = c.get("datetime")
-        try:
-            open_ = float(c["open"])
-            high = float(c["high"])
-            low = float(c["low"])
-            close = float(c["close"])
-        except (KeyError, TypeError, ValueError):
+        raw = dict(c)
+        if raw.get("timestamp") is None and raw.get("datetime") is not None:
+            raw["timestamp"] = raw["datetime"]
+        nb = normalize_bar(raw, source="schwab_pricehistory")
+        if nb is None:
             continue
-        bar = {
-            "datetime": ts,
-            "timestamp": ts,
-            "open": open_,
-            "high": high,
-            "low": low,
-            "close": close,
-            "volume": float(c["volume"]) if c.get("volume") is not None else None,
-        }
+        bar = nb.to_dict()
+        ts = c.get("datetime")
         if ts is not None:
-            bar["_ts"] = float(ts) / 1000.0 if float(ts) > 1e12 else float(ts)
+            try:
+                ts_f = float(ts)
+                bar["_ts"] = ts_f / 1000.0 if ts_f > 1e12 else ts_f
+            except (TypeError, ValueError):
+                pass
         out.append(bar)
     return out

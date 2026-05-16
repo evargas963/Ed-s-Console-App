@@ -342,6 +342,18 @@ Rows not dollarized by design: OI walls/center (Schwab-canonical OI). MC rows: p
 #### Enforcement
 `tests/test_institutional_key_levels.py`, `tests/test_math_levels_hvl_max_pain.py`; payload `kl_institutional_ready`, `kl_metrics_dollarized`, `kl_em_anchor`.
 
+### 8.3 OHLCV bar provenance (Schwab price history and snapshot synthesis)
+
+#### Principle
+Bars consumed by liquidity/ATR/VWAP/replay paths must declare provenance and reject corrupted or incomplete OHLC. Schwab `pricehistory.candles.*` is the authoritative OHLCV source when available; snapshot-derived 1m bars are explicitly synthetic.
+
+#### Invariant
+- OHLCV bars downstream of `market_data_adapter` carry `source` and `missing_fields` provenance. Bars with `close == 0` or any of OHLC missing are rejected (`None`); no zero-injection.
+- Synthetic 1m bars from `snapshot_normalizer.resample_to_1m` are tagged `synthetic = True` with `source = snapshot_synthetic` and are not eligible for training/replay paths that require Schwab candles without an explicit synthetic allowance.
+
+#### Enforcement
+`tests/test_ohlcv_schwab_first.py`; `market_data_adapter.normalize_bar`, `schwab_candles_to_bars`, `snapshot_normalizer.resample_to_1m`.
+
 ---
 
 ## 9. Horizon parity and economic labels
