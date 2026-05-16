@@ -256,6 +256,7 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | Section 1 Schwab client + adapters | DFR-009, DFR-011, PQ-009, PQ-010 | CLOSED | dictionary derivation audit; inventory below; `test_section1_schwab_derivation_audit.py` |
 | Section 2 Server + live state | PQ-001/002/005, OP-015, S017 | CLOSED | dictionary derivation audit; inventory below; `test_section2_schwab_derivation_audit.py` |
 | Section 3 Market data + state | MT-*, PQ-*, price levels | CLOSED | dictionary derivation audit; inventory below; `test_section3_schwab_derivation_audit.py` |
+| Section 4 Math / KEY LEVELS | KL items 16-19, DFR-* | CLOSED | dictionary re-walk; inventory below; `test_section4_schwab_derivation_audit.py` |
 
 ---
 
@@ -334,6 +335,32 @@ Walked 3 files. **12** derivation records (**3** REPLACED in-section/cross-secti
 | math_exposure_core.py | 839-847 | returns_from_candles | pricehistory.candles.datetime | REPLACED | cross-section datetime fix |
 | server.py | 1173-1183 | CandleAccumulator seed | pricehistory.candles.datetime | REPLACED | cross-section datetime fix |
 <!-- SECTION3_DERIVATION_INVENTORY_END -->
+
+---
+
+## Section 4 derivation audit inventory
+
+Walked 6 files (KEY LEVELS re-walk). **15** derivation records (**2** REPLACED, **7** KEEP_DERIVED, **4** PASS_THROUGH, **2** NONE). Prior `82615fa`/`cab3ef4` remain regression floors only. Source: `governance/section4_derivation_inventory.py`. Tests: `tests/test_section4_schwab_derivation_audit.py`.
+
+<!-- SECTION4_DERIVATION_INVENTORY_START -->
+| file | line | derivation | schwab_leaf | disposition | justification |
+|---|---|---|---|---|
+| math_exposure_core.py | 29-38 | bucket_metric | chains.* | PASS_THROUGH | fail-closed reads |
+| math_exposure_core.py | 105-232 | compute_exposures_by_strike | chains.*.greeks,OI | PASS_THROUGH | Schwab chain leaves |
+| math_exposure_core.py | 370-451 | pin/HVL/wall pickers | chains.*.gamma | KEEP_DERIVED | institutional metrics |
+| math_exposure.py | — | OF verdict re-exports | — | NONE | no ingest |
+| math_levels.py | 116-400 | summary/walls rows | exposures | KEEP_DERIVED | KEY LEVELS UI |
+| math_levels.py | 618-647 | parity residual mid | chains.*.mark | PASS_THROUGH | mark-only mid |
+| math_levels.py | 859-872 | void zone _get_gex | chains.*.gamma | REPLACED | no (c or 0)+(p or 0) |
+| math_levels.py | 652-690 | gamma_flip | net_gamma buckets | KEEP_DERIVED | interpolation |
+| math_volatility.py | 121-140 | expected move straddle | chains.*.mark | KEEP_DERIVED | EM formula |
+| math_volatility.py | 288-320 | IV skew | chains.*.volatility | PASS_THROUGH | Schwab IV leaf |
+| math_volatility.py | 65-91 | charm banner | charm_result | KEEP_DERIVED | presentation |
+| math_probabilities.py | 176-264 | score_option_expression | chains.*.bid,ask | KEEP_DERIVED | spread pts only |
+| math_probabilities.py | 1370-1411 | smart_money strike_activity | chains.*.volume | REPLACED | sum only present volumes |
+| math_probabilities.py | 539-770 | signal composites | — | KEEP_DERIVED | model math |
+| levels.py | — | display formatters | — | NONE | no derivations |
+<!-- SECTION4_DERIVATION_INVENTORY_END -->
 
 ---
 

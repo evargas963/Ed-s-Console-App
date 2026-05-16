@@ -1399,7 +1399,16 @@ def compute_smart_money_signal(
             put_bid += pb
         if pa is not None:
             put_ask += pa
-        strike_activity.append((cv or 0.0) + (pv or 0.0))
+        strike_act = 0.0
+        has_vol = False
+        if cv is not None:
+            strike_act += cv
+            has_vol = True
+        if pv is not None:
+            strike_act += pv
+            has_vol = True
+        if has_vol:
+            strike_activity.append(strike_act)
 
     # Component 1: Volume/OI (0-40)
     vol_oi = vol_total / oi_total if oi_total > 0 else 0

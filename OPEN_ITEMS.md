@@ -193,7 +193,7 @@ The pattern-shape regression net from these commits stays in place as a safety f
 
 - [x] **§1 Schwab client + adapters** — `schwab_client.py`, `reauth_schwab.py`, `websocket_adapter.py`, `polling_adapter.py`, `sse_adapter.py`, `market_data_adapter.py`, `snapshot_normalizer.py`, `snapshot_access.py`. SHA: `2703c52` + `d40b537`
 - [x] **§2 Server + live state** — `server.py`, `live_market_plane.py`, `live_decision_bundle.py`, `live_pipeline_diag.py`, `live_vs_replay_validation.py`. SHA: `06964e5`
-- [ ] **§3 Market data + state** — `market_context.py`, `market_state.py`, `math_snapshot_derive.py`. SHA: __________
+- [x] **§3 Market data + state** — `market_context.py`, `market_state.py`, `math_snapshot_derive.py`. SHA: `86d4bc4`
 - [ ] **§4 Math / KEY LEVELS (re-verify only)** — `math_exposure*.py`, `math_levels.py`, `math_volatility.py`, `math_probabilities.py`, `levels.py`. Prior KEY LEVELS YES at `82615fa`; must re-walk under dictionary audit. SHA: __________
 - [ ] **§5 Order flow** — `order_flow_engine.py`, `order_flow_live_state.py`, `order_flow_streaming.py`, `debug_flow_snapshot.py`. SHA: __________
 - [ ] **§6 Signals + decision** — `signals.py`, `signal_helpers.py`, `signal_types.py`, `rules_engine.py`, `prediction_engine.py`, `call_engine.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`. SHA: __________

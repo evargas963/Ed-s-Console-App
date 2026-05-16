@@ -865,9 +865,11 @@ def compute_gamma_void_zones(
             return total_gamma
         c = bucket_metric_abs(bucket, "call_gamma")
         p = bucket_metric_abs(bucket, "put_gamma")
-        raw = (c or 0.0) + (p or 0.0)
-        if raw > 0:
-            return raw
+        parts = [v for v in (c, p) if v is not None]
+        if parts:
+            raw = sum(parts)
+            if raw > 0:
+                return raw
         ng = bucket_metric_abs(bucket, "net_gex_1pct")
         return ng if ng is not None else 0.0
 
