@@ -175,7 +175,7 @@ All commits in this rebuild authored via Cursor agent extension carry a `Made-wi
 
 **Section rule:** Within each section, every file is walked for derivations with Schwab-leaf equivalents. Each derivation found is replaced + repo-wide-grepped for matching patterns + every repo-wide hit fixed. **One section = one commit** accumulating all that work.
 
-- [ ] **§1 Schwab client + adapters** — `schwab_client.py`, `reauth_schwab.py`, `websocket_adapter.py`, `polling_adapter.py`, `sse_adapter.py`, `market_data_adapter.py`, `snapshot_normalizer.py`, `snapshot_access.py`. SHA: __________
+- [x] **§1 Schwab client + adapters** — `schwab_client.py`, `reauth_schwab.py`, `websocket_adapter.py`, `polling_adapter.py`, `sse_adapter.py`, `market_data_adapter.py`, `snapshot_normalizer.py`, `snapshot_access.py`. SHA: __________
 - [ ] **§2 Server + live state** — `server.py`, `live_market_plane.py`, `live_decision_bundle.py`, `live_pipeline_diag.py`, `live_vs_replay_validation.py`. SHA: __________
 - [ ] **§3 Market data + state** — `market_context.py`, `market_state.py`, `math_snapshot_derive.py`. SHA: __________
 - [x] **§4 Math / KEY LEVELS (re-verify only)** — `math_exposure*.py`, `math_levels.py`, `math_volatility.py`, `math_probabilities.py`, `levels.py`. CLOSED `82615fa` + CAPS `cab3ef4`; no rework unless new finding. SHA: `82615fa` / `cab3ef4`

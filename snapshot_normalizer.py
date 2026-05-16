@@ -107,7 +107,13 @@ def resample_to_1m(
 
     # Sort each bucket by ts_utc (input should already be ordered)
     for bucket_rows in buckets.values():
-        bucket_rows.sort(key=lambda x: (_safe_float(x.get("ts_utc")) or 0,))
+        bucket_rows.sort(
+            key=lambda x: (
+                _safe_float(x.get("ts_utc"))
+                if _safe_float(x.get("ts_utc")) is not None
+                else float("inf")
+            )
+        )
 
     out: list[dict] = []
     for bucket in sorted(buckets.keys()):
@@ -121,19 +127,40 @@ def resample_to_1m(
         if o is None:
             missing_fields.append("candle_open")
             o = _safe_float(first.get("spot"))
+            if o is not None:
+                missing_fields.append("candle_open_spot_proxy")
         if o is None:
             continue
 
-        highs = [
-            _safe_float(r.get("candle_high")) or _safe_float(r.get("spot"))
-            for r in group
-        ]
-        lows = [
-            _safe_float(r.get("candle_low")) or _safe_float(r.get("spot"))
-            for r in group
-        ]
-        h = max((x for x in highs if x is not None), default=None)
-        l = min((x for x in lows if x is not None), default=None)
+        highs: list[float] = []
+        lows: list[float] = []
+        for r in group:
+            ch = _safe_float(r.get("candle_high"))
+            if ch is not None:
+                highs.append(ch)
+            else:
+                sp = _safe_float(r.get("spot"))
+                if sp is None:
+                    highs = []
+                    break
+                highs.append(sp)
+                if "candle_high_spot_proxy" not in missing_fields:
+                    missing_fields.append("candle_high_spot_proxy")
+            cl = _safe_float(r.get("candle_low"))
+            if cl is not None:
+                lows.append(cl)
+            else:
+                sp = _safe_float(r.get("spot"))
+                if sp is None:
+                    lows = []
+                    break
+                lows.append(sp)
+                if "candle_low_spot_proxy" not in missing_fields:
+                    missing_fields.append("candle_low_spot_proxy")
+        if not highs or not lows:
+            continue
+        h = max(highs)
+        l = min(lows)
         if h is None or l is None:
             continue
         if h == 0 or l == 0:
@@ -143,6 +170,8 @@ def resample_to_1m(
         if c is None:
             missing_fields.append("candle_close")
             c = _safe_float(last.get("spot"))
+            if c is not None:
+                missing_fields.append("candle_close_spot_proxy")
         if c is None:
             continue
         if c == 0:
@@ -164,8 +193,13 @@ def resample_to_1m(
         norm["source"] = "snapshot_synthetic"
         norm["synthetic"] = True
         norm["missing_fields"] = missing_fields
-        # Ensure spot is last snapshot's spot
-        norm["spot"] = _safe_float(last.get("spot")) or c
+        spot_last = _safe_float(last.get("spot"))
+        if spot_last is None:
+            missing_fields.append("spot")
+            norm["spot"] = c
+            missing_fields.append("spot_close_proxy")
+        else:
+            norm["spot"] = spot_last
         # Recompute OHLC-derived fields from normalized OHLC
         norm["candle_body_pts"] = abs(c - o) if (c is not None and o is not None) else None
         norm["candle_range_pts"] = (h - l) if (h is not None and l is not None) else None
