@@ -95,7 +95,8 @@ from math_exposure import (
     compute_gamma_flip, compute_gamma_void_zones, compute_level_density,
     compute_hvl, compute_max_pain, hvl_gamma_strength, max_pain_oi_strength,
     pick_gamma_pin_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
-    aggregate_net_gex, total_gex_dollars_at_strike,
+    aggregate_net_gex, total_gex_dollars_at_strike, total_gamma_raw_at_strike,
+    bucket_metric, bucket_metric_abs,
     compute_dealer_pressure_index, compute_hedging_flow_score,
     compute_gamma_gradient, compute_breakout_score,
     compute_pin_score, compute_vol_expansion_signal, compute_sweep_score,
@@ -3495,12 +3496,20 @@ def _fetch_state(
         ))
         if _all_strikes and spot_f > 0:
             _atm_k = min(_all_strikes, key=lambda k: abs(k - spot_f))
-            _atm_calls = [ct for ct in contracts_use
-                          if str(ct.get("putCall", "")).upper() == "CALL"
-                          and abs(float(ct.get("strikePrice", 0)) - _atm_k) < 0.01]
-            _atm_puts = [ct for ct in contracts_use
-                         if str(ct.get("putCall", "")).upper() == "PUT"
-                         and abs(float(ct.get("strikePrice", 0)) - _atm_k) < 0.01]
+            _atm_calls = [
+                ct
+                for ct in contracts_use
+                if str(ct.get("putCall", "")).upper() == "CALL"
+                and (sp := _f(ct.get("strikePrice"))) is not None
+                and abs(sp - _atm_k) < 0.01
+            ]
+            _atm_puts = [
+                ct
+                for ct in contracts_use
+                if str(ct.get("putCall", "")).upper() == "PUT"
+                and (sp := _f(ct.get("strikePrice"))) is not None
+                and abs(sp - _atm_k) < 0.01
+            ]
             _c_mark = _f(_atm_calls[0].get("mark")) if _atm_calls else None
             _p_mark = _f(_atm_puts[0].get("mark")) if _atm_puts else None
 
@@ -3630,11 +3639,18 @@ def _fetch_state(
         _sum_oi = None
         _sum_vanna = 0.0
         for _bkt in exposures.values():
-            _sum_dex += float(_bkt.get("net_dex_dollars", 0) or 0)
+            _dex = bucket_metric(_bkt, "net_dex_dollars")
+            if _dex is not None:
+                _sum_dex += _dex
             _bucket_oi = _bucket_total_oi(_bkt)
             if _bucket_oi is not None:
                 _sum_oi = (_sum_oi or 0.0) + _bucket_oi
-            _sum_vanna += float(_bkt.get("call_vanna", 0) or 0) + float(_bkt.get("put_vanna", 0) or 0)
+            _cv = bucket_metric(_bkt, "call_vanna")
+            _pv = bucket_metric(_bkt, "put_vanna")
+            if _cv is not None:
+                _sum_vanna += _cv
+            if _pv is not None:
+                _sum_vanna += _pv
 
         # 1. DPI
         _dpi = compute_dealer_pressure_index(_sum_dex, _sum_gex, _sum_oi)
@@ -3655,11 +3671,13 @@ def _fetch_state(
         _gamma_gradient = compute_gamma_gradient(exposures, spot_f)
 
         # 4. Breakout Score
-        _gex_near_spot = sum(
-            abs(float(b.get("net_gex_1pct", 0) or 0))
-            for k, b in exposures.items()
-            if abs(float(k) - spot_f) <= GEX_NEAR_SPOT_RADIUS
-        )
+        _gex_near_spot = 0.0
+        for k, b in exposures.items():
+            if abs(float(k) - spot_f) > GEX_NEAR_SPOT_RADIUS:
+                continue
+            _ng = bucket_metric(b, "net_gex_1pct")
+            if _ng is not None:
+                _gex_near_spot += abs(_ng)
         _void_factor = 0.0
         for _vz in (_gamma_voids or []):
             if _vz.get("contains_spot"):
@@ -3682,7 +3700,7 @@ def _fetch_state(
             if exposures_have_dollar_gex(exposures):
                 _gex_at_pin = total_gex_dollars_at_strike(_pin_bkt)
             else:
-                _gex_at_pin = abs(float(_pin_bkt.get("call_gamma", 0) or 0)) + abs(float(_pin_bkt.get("put_gamma", 0) or 0))
+                _gex_at_pin = total_gamma_raw_at_strike(_pin_bkt)
             _oi_at_pin = _bucket_total_oi(_pin_bkt)
         _oi_concentration = (_oi_at_pin / _sum_oi) if _oi_at_pin is not None and _sum_oi and _sum_oi > 0 else None
         try:
@@ -4779,17 +4797,28 @@ def _fetch_state(
     if not _gamma_voids:
         # Diagnostic: why no voids?
         _n_strikes = len(exposures)
-        _max_gex = max((abs(float(b.get("call_gamma",0) or 0)) + abs(float(b.get("put_gamma",0) or 0)) for b in exposures.values()), default=0)
+        _max_gex = max((total_gamma_raw_at_strike(b) for b in exposures.values()), default=0)
         _oi_values = [_bucket_total_oi(b) for b in exposures.values()]
         _oi_values = [v for v in _oi_values if v is not None]
         _max_oi = max(_oi_values, default=0)
         log.debug(f"Gamma void: {_n_strikes} strikes, max_gex={_max_gex:.0f}, max_oi={_max_oi:.0f}, spot_passed={'yes' if spot_f else 'no'}")
         # Count how many strikes pass each threshold independently
-        _gex_low = sum(1 for b in exposures.values() if (abs(float(b.get("call_gamma",0) or 0)) + abs(float(b.get("put_gamma",0) or 0))) < _max_gex * 0.20) if _max_gex > 0 else 0
+        _gex_low = sum(
+            1 for b in exposures.values() if total_gamma_raw_at_strike(b) < _max_gex * 0.20
+        ) if _max_gex > 0 else 0
         _oi_low = sum(1 for b in exposures.values() if (_bucket_total_oi(b) is not None and _bucket_total_oi(b) < _max_oi * 0.25)) if _max_oi > 0 else 0
-        _both_low = sum(1 for b in exposures.values() if
-            ((abs(float(b.get("call_gamma",0) or 0)) + abs(float(b.get("put_gamma",0) or 0))) < _max_gex * 0.20 if _max_gex > 0 else False) and
-            ((_bucket_total_oi(b) is not None and _bucket_total_oi(b) < _max_oi * 0.25) if _max_oi > 0 else False)
+        _both_low = sum(
+            1
+            for b in exposures.values()
+            if (
+                (total_gamma_raw_at_strike(b) < _max_gex * 0.20 if _max_gex > 0 else False)
+                and (
+                    _bucket_total_oi(b) is not None
+                    and _bucket_total_oi(b) < _max_oi * 0.25
+                    if _max_oi > 0
+                    else False
+                )
+            )
         ) if _max_gex > 0 else 0
         log.debug(f"Gamma void: gex_low={_gex_low}, oi_low={_oi_low}, both_low={_both_low} (need 2+ consecutive)")
 

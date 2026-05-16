@@ -274,9 +274,13 @@ def fetch_alpha_vantage_sentiment(symbols: list[str]) -> dict[str, float]:
             sym = (ts.get("ticker") or "").upper()
             if not sym:
                 continue
+            rel_raw = ts.get("relevance_score")
+            sc_raw = ts.get("ticker_sentiment_score")
+            if rel_raw is None or sc_raw is None:
+                continue
             try:
-                rel = float(ts.get("relevance_score", 0) or 0)
-                sc = float(ts.get("ticker_sentiment_score", 0) or 0)
+                rel = float(rel_raw)
+                sc = float(sc_raw)
             except (TypeError, ValueError):
                 continue
             if rel < 0.25:

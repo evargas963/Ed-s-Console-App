@@ -26,6 +26,18 @@ def _f(x) -> float | None:
         return None
 
 
+def bucket_metric(bucket: dict, key: str) -> float | None:
+    """Exposure-bucket field read without ``.get(key, 0) or 0`` silent default."""
+    if not isinstance(bucket, dict) or key not in bucket:
+        return None
+    return _f(bucket[key])
+
+
+def bucket_metric_abs(bucket: dict, key: str) -> float | None:
+    v = bucket_metric(bucket, key)
+    return abs(v) if v is not None else None
+
+
 # ── Data classes ──────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -270,7 +282,9 @@ KEY_LEVEL_STRIKE_WINDOW: int | None = None
 def exposures_have_dollar_gex(exposures: Dict[float, dict]) -> bool:
     """True when spot was provided at bucket build and at least one strike has dollar GEX."""
     for b in exposures.values():
-        if float(b.get("call_gex_1pct", 0) or 0) != 0 or float(b.get("put_gex_1pct", 0) or 0) != 0:
+        c = bucket_metric(b, "call_gex_1pct")
+        p = bucket_metric(b, "put_gex_1pct")
+        if (c is not None and c != 0) or (p is not None and p != 0):
             return True
     return False
 
@@ -306,19 +320,33 @@ def key_level_strikes_with_gamma(exposures: Dict[float, dict]) -> List[float]:
 
 def total_gex_dollars_at_strike(bucket: dict) -> float:
     """Peak gamma concentration: |call GEX$| + |put GEX$| per 1% move."""
-    return abs(float(bucket.get("call_gex_1pct", 0) or 0)) + abs(float(bucket.get("put_gex_1pct", 0) or 0))
+    total = 0.0
+    c = bucket_metric_abs(bucket, "call_gex_1pct")
+    p = bucket_metric_abs(bucket, "put_gex_1pct")
+    if c is not None:
+        total += c
+    if p is not None:
+        total += p
+    return total
 
 
-def net_gex_dollars_at_strike(bucket: dict) -> float:
-    return float(bucket.get("net_gex_1pct", 0) or 0)
+def net_gex_dollars_at_strike(bucket: dict) -> float | None:
+    return bucket_metric(bucket, "net_gex_1pct")
 
 
 def total_gamma_raw_at_strike(bucket: dict) -> float:
-    return abs(float(bucket.get("call_gamma", 0) or 0)) + abs(float(bucket.get("put_gamma", 0) or 0))
+    total = 0.0
+    c = bucket_metric_abs(bucket, "call_gamma")
+    p = bucket_metric_abs(bucket, "put_gamma")
+    if c is not None:
+        total += c
+    if p is not None:
+        total += p
+    return total
 
 
-def net_gamma_raw_at_strike(bucket: dict) -> float:
-    return float(bucket.get("net_gamma", 0) or 0)
+def net_gamma_raw_at_strike(bucket: dict) -> float | None:
+    return bucket_metric(bucket, "net_gamma")
 
 
 def _pick_strike_max_metric(
@@ -351,13 +379,13 @@ def pick_gamma_pin_strike(
   """
     if exposures_have_dollar_gex(exposures):
         s, _ = _pick_strike_max_metric(
-            exposures, strikes, lambda b: abs(net_gex_dollars_at_strike(b))
+            exposures, strikes, lambda b: bucket_metric_abs(b, "net_gex_1pct")
         )
         return round(s, 2) if s is not None else None
     if institutional:
         return None
     s, _ = _pick_strike_max_metric(
-        exposures, strikes, lambda b: abs(net_gamma_raw_at_strike(b))
+        exposures, strikes, lambda b: bucket_metric_abs(b, "net_gamma")
     )
     return round(s, 2) if s is not None else None
 
@@ -381,18 +409,18 @@ def pick_gamma_wall_strikes(
     if exposures_have_dollar_gex(exposures):
         return (
             _pick_strike_max_metric(
-                exposures, strikes, lambda b: abs(float(b.get("call_gex_1pct", 0) or 0))
+                exposures, strikes, lambda b: bucket_metric_abs(b, "call_gex_1pct")
             ),
             _pick_strike_max_metric(
-                exposures, strikes, lambda b: abs(float(b.get("put_gex_1pct", 0) or 0))
+                exposures, strikes, lambda b: bucket_metric_abs(b, "put_gex_1pct")
             ),
         )
     return (
         _pick_strike_max_metric(
-            exposures, strikes, lambda b: abs(float(b.get("call_gamma", 0) or 0))
+            exposures, strikes, lambda b: bucket_metric_abs(b, "call_gamma")
         ),
         _pick_strike_max_metric(
-            exposures, strikes, lambda b: abs(float(b.get("put_gamma", 0) or 0))
+            exposures, strikes, lambda b: bucket_metric_abs(b, "put_gamma")
         ),
     )
 
@@ -403,18 +431,18 @@ def pick_delta_wall_strikes(
     if exposures_have_dollar_gex(exposures):
         return (
             _pick_strike_max_metric(
-                exposures, strikes, lambda b: abs(float(b.get("call_dex_dollars", 0) or 0))
+                exposures, strikes, lambda b: bucket_metric_abs(b, "call_dex_dollars")
             ),
             _pick_strike_max_metric(
-                exposures, strikes, lambda b: abs(float(b.get("put_dex_dollars", 0) or 0))
+                exposures, strikes, lambda b: bucket_metric_abs(b, "put_dex_dollars")
             ),
         )
     return (
         _pick_strike_max_metric(
-            exposures, strikes, lambda b: abs(float(b.get("call_delta", 0) or 0))
+            exposures, strikes, lambda b: bucket_metric_abs(b, "call_delta")
         ),
         _pick_strike_max_metric(
-            exposures, strikes, lambda b: abs(float(b.get("put_delta", 0) or 0))
+            exposures, strikes, lambda b: bucket_metric_abs(b, "put_delta")
         ),
     )
 
@@ -424,14 +452,21 @@ def aggregate_net_gex(exposures: Dict[float, dict], strikes: List[float]) -> flo
     if not strikes:
         return None
     if exposures_have_dollar_gex(exposures):
-        total = sum(net_gex_dollars_at_strike(exposures.get(s, {})) for s in strikes)
-        return float(total)
+        total = 0.0
+        any_v = False
+        for s in strikes:
+            v = net_gex_dollars_at_strike(exposures.get(s, {}))
+            if v is not None:
+                total += v
+                any_v = True
+        return float(total) if any_v else None
     total = 0.0
     any_g = False
     for s in strikes:
         b = exposures.get(s, {})
-        if b.get("net_gamma") is not None:
-            total += net_gamma_raw_at_strike(b)
+        ng = net_gamma_raw_at_strike(b)
+        if ng is not None:
+            total += ng
             any_g = True
     return float(total) if any_g else None
 
@@ -440,9 +475,14 @@ def aggregate_net_dex(exposures: Dict[float, dict], strikes: List[float]) -> flo
     if not strikes:
         return None
     if exposures_have_dollar_gex(exposures):
-        return float(
-            sum(float(exposures.get(s, {}).get("net_dex_dollars", 0) or 0) for s in strikes)
-        )
+        total = 0.0
+        any_v = False
+        for s in strikes:
+            v = bucket_metric(exposures.get(s, {}), "net_dex_dollars")
+            if v is not None:
+                total += v
+                any_v = True
+        return float(total) if any_v else None
     total = 0.0
     any_d = False
     for s in strikes:

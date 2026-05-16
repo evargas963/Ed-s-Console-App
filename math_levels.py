@@ -14,6 +14,8 @@ from math_exposure_core import (
     ExposureRow,
     KEY_LEVEL_STRIKE_WINDOW,
     _f,
+    bucket_metric,
+    bucket_metric_abs,
     _nearest_strike,
     _window_strikes,
     aggregate_net_dex,
@@ -648,7 +650,9 @@ def compute_gamma_flip(exposures_by_strike: Dict[float, dict], spot: float) -> f
         prev_val = None
         for strike in strikes:
             bucket = exposures_by_strike.get(strike, {})
-            val = float(bucket.get(field, 0) or 0)
+            val = bucket_metric(bucket, field)
+            if val is None:
+                continue
             if val == 0:
                 continue
             if prev_val is not None and prev_val * val < 0:
@@ -678,7 +682,9 @@ def compute_gamma_flip(exposures_by_strike: Dict[float, dict], spot: float) -> f
     prev_cum = None
     for strike in strikes:
         bucket = exposures_by_strike.get(strike, {})
-        net_gex = float(bucket.get("net_gex_1pct", 0) or 0)
+        net_gex = bucket_metric(bucket, "net_gex_1pct")
+        if net_gex is None:
+            continue
         cum_gex += net_gex
         if prev_cum is not None and prev_cum * cum_gex < 0:
             if abs(cum_gex - prev_cum) > 0:
@@ -694,10 +700,9 @@ def compute_gamma_flip(exposures_by_strike: Dict[float, dict], spot: float) -> f
 # ── HVL — strike with largest total gamma (call + put) ───────────────────────
 
 def _total_gamma_at_strike(bucket: dict, *, dollarized: bool = False) -> float:
-    if dollarized or (
-        float(bucket.get("call_gex_1pct", 0) or 0) != 0
-        or float(bucket.get("put_gex_1pct", 0) or 0) != 0
-    ):
+    c = bucket_metric(bucket, "call_gex_1pct")
+    p = bucket_metric(bucket, "put_gex_1pct")
+    if dollarized or ((c is not None and c != 0) or (p is not None and p != 0)):
         return total_gex_dollars_at_strike(bucket)
     return total_gamma_raw_at_strike(bucket)
 
@@ -822,10 +827,16 @@ def compute_gamma_void_zones(
         """Same measure for void detection and avg_gex_pct (institutional dollar GEX when available)."""
         if exposures_have_dollar_gex(exposures_by_strike):
             return total_gex_dollars_at_strike(bucket)
-        total_gamma = abs(float(bucket.get("call_gamma", 0) or 0)) + abs(float(bucket.get("put_gamma", 0) or 0))
+        total_gamma = total_gex_dollars_at_strike(bucket)
         if total_gamma > 0:
             return total_gamma
-        return abs(float(bucket.get("net_gex_1pct", 0) or 0))
+        c = bucket_metric_abs(bucket, "call_gamma")
+        p = bucket_metric_abs(bucket, "put_gamma")
+        raw = (c or 0.0) + (p or 0.0)
+        if raw > 0:
+            return raw
+        ng = bucket_metric_abs(bucket, "net_gex_1pct")
+        return ng if ng is not None else 0.0
 
     def _get_oi(bucket):
         """Get total open interest for a strike bucket."""

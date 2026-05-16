@@ -11,7 +11,7 @@ from dataclasses import dataclass as _oe_dc
 from typing import Optional
 import math
 
-from math_exposure_core import _f
+from math_exposure_core import _f, bucket_metric
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -566,7 +566,9 @@ def compute_gamma_gradient(
 
     for strike, bucket in exposures_by_strike.items():
         k = float(strike)
-        gex = float(bucket.get("net_gex_1pct", 0) or 0)
+        gex = bucket_metric(bucket, "net_gex_1pct")
+        if gex is None:
+            continue
         if abs(k - spot) > window_pts:
             continue
         if k < spot:
@@ -1185,10 +1187,18 @@ def compute_option_flow_imbalance(
         k = float(strike)
         if abs(k - spot) > window_pts:
             continue
-        call_bid += float(bucket.get("call_bid_size", 0) or 0)
-        call_ask += float(bucket.get("call_ask_size", 0) or 0)
-        put_bid += float(bucket.get("put_bid_size", 0) or 0)
-        put_ask += float(bucket.get("put_ask_size", 0) or 0)
+        cb = bucket_metric(bucket, "call_bid_size")
+        ca = bucket_metric(bucket, "call_ask_size")
+        pb = bucket_metric(bucket, "put_bid_size")
+        pa = bucket_metric(bucket, "put_ask_size")
+        if cb is not None:
+            call_bid += cb
+        if ca is not None:
+            call_ask += ca
+        if pb is not None:
+            put_bid += pb
+        if pa is not None:
+            put_ask += pa
 
     # Call imbalance: bid > ask = buyers accumulating calls (bullish)
     call_imb = call_bid - call_ask
@@ -1258,10 +1268,18 @@ def atm_flow_window_totals(
             continue
         n += 1
         b = bucket or {}
-        call_bid += float(b.get("call_bid_size", 0) or 0)
-        call_ask += float(b.get("call_ask_size", 0) or 0)
-        put_bid += float(b.get("put_bid_size", 0) or 0)
-        put_ask += float(b.get("put_ask_size", 0) or 0)
+        cb = bucket_metric(b, "call_bid_size")
+        ca = bucket_metric(b, "call_ask_size")
+        pb = bucket_metric(b, "put_bid_size")
+        pa = bucket_metric(b, "put_ask_size")
+        if cb is not None:
+            call_bid += cb
+        if ca is not None:
+            call_ask += ca
+        if pb is not None:
+            put_bid += pb
+        if pa is not None:
+            put_ask += pa
         cv = b.get("call_volume")
         pv = b.get("put_volume")
         if cv is not None:
@@ -1367,10 +1385,18 @@ def compute_smart_money_signal(
             oi_total += co
         if po is not None:
             oi_total += po
-        call_bid += float(bucket.get("call_bid_size", 0) or 0)
-        call_ask += float(bucket.get("call_ask_size", 0) or 0)
-        put_bid += float(bucket.get("put_bid_size", 0) or 0)
-        put_ask += float(bucket.get("put_ask_size", 0) or 0)
+        cb = bucket_metric(bucket, "call_bid_size")
+        ca = bucket_metric(bucket, "call_ask_size")
+        pb = bucket_metric(bucket, "put_bid_size")
+        pa = bucket_metric(bucket, "put_ask_size")
+        if cb is not None:
+            call_bid += cb
+        if ca is not None:
+            call_ask += ca
+        if pb is not None:
+            put_bid += pb
+        if pa is not None:
+            put_ask += pa
         strike_activity.append((cv or 0.0) + (pv or 0.0))
 
     # Component 1: Volume/OI (0-40)
