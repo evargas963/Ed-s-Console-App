@@ -93,6 +93,14 @@ SECTION1_DERIVATION_INVENTORY: tuple[DerivationRecord, ...] = (
         "Unit conversion of Schwab ms leaf for engine filter; not alternate price source.",
     ),
     DerivationRecord(
+        "liquidity_value_engine.py",
+        "55-88, 127-131",
+        "Bar timestamp from datetime (repo-wide grep hit)",
+        "pricehistory.candles.datetime",
+        "REPLACED",
+        "Cross-section fix (§12 file); Schwab source requires datetime leaf, not timestamp-or-datetime synthesis.",
+    ),
+    DerivationRecord(
         "snapshot_normalizer.py",
         "118-210",
         "resample_to_1m synthetic OHLC from sub-minute snapshot rows",

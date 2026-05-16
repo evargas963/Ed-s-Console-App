@@ -259,7 +259,7 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 
 ## Section 1 derivation audit inventory
 
-Walked 8 files. **14** derivation records (**2** REPLACED with Schwab `pricehistory.candles.*` leaves, **9** KEEP_DERIVED justified, **3** NONE). Source: `governance/section1_derivation_inventory.py`. Tests: `tests/test_section1_schwab_derivation_audit.py`.
+Walked 8 files. **15** derivation records (**3** REPLACED with Schwab `pricehistory.candles.*` leaves, **9** KEEP_DERIVED justified, **3** NONE). Source: `governance/section1_derivation_inventory.py`. Tests: `tests/test_section1_schwab_derivation_audit.py`.
 
 <!-- SECTION1_DERIVATION_INVENTORY_START -->
 | file | line | derivation | schwab_leaf | disposition | justification |
@@ -273,6 +273,7 @@ Walked 8 files. **14** derivation records (**2** REPLACED with Schwab `pricehist
 | market_data_adapter.py | 67-95 | OHLCV read | pricehistory.candles.{open,high,low,close,volume} | REPLACED | Reject if any leaf missing |
 | market_data_adapter.py | 86-89 | timestamp | pricehistory.candles.datetime | REPLACED | Schwab path requires datetime |
 | market_data_adapter.py | 154-158 | _ts from datetime ms | pricehistory.candles.datetime | KEEP_DERIVED | ms→s conversion only |
+| liquidity_value_engine.py | 55-88, 127-131 | bar timestamp resolution | pricehistory.candles.datetime | REPLACED | cross-section repo-wide grep fix |
 | snapshot_normalizer.py | 118-210 | resample_to_1m synthetic OHLC | pricehistory.candles.* (native via polling) | KEEP_DERIVED | Fallback; tagged synthetic |
 | snapshot_normalizer.py | 120-125 | open spot proxy | snapshots.spot | KEEP_DERIVED | missing_fields tag |
 | snapshot_normalizer.py | 127-151 | high/low spot proxy | snapshots.spot | KEEP_DERIVED | missing_fields tag |

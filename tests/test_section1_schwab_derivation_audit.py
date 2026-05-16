@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -36,9 +37,9 @@ def test_section1_inventory_counts_and_dispositions():
     from governance.section1_derivation_inventory import SECTION1_DERIVATION_INVENTORY
 
     records = [r for r in SECTION1_DERIVATION_INVENTORY if r.disposition != "NONE"]
-    assert len(SECTION1_DERIVATION_INVENTORY) >= 14
+    assert len(SECTION1_DERIVATION_INVENTORY) >= 15
     replaced = [r for r in records if r.disposition == "REPLACED"]
-    assert len(replaced) >= 2
+    assert len(replaced) >= 3
     assert all(r.schwab_leaf.startswith("pricehistory") or "candles" in r.schwab_leaf for r in replaced)
 
 
@@ -129,3 +130,51 @@ def test_vwap_side_not_invented_without_inputs():
 
     assert derive_vwap_side(None, 500.0) is None
     assert derive_vwap_side(500.0, None) is None
+
+
+def test_liquidity_engine_schwab_bar_requires_datetime_leaf():
+    from liquidity_value_engine import _bars_to_list
+
+    missing_dt = [
+        {
+            "source": "schwab_pricehistory",
+            "open": 500.0,
+            "high": 501.0,
+            "low": 499.0,
+            "close": 500.5,
+            "volume": 1000,
+        }
+    ]
+    assert _bars_to_list(missing_dt) == []
+
+    with_dt = [
+        {
+            "source": "schwab_pricehistory",
+            "datetime": 1_710_000_000_000,
+            "open": 500.0,
+            "high": 501.0,
+            "low": 499.0,
+            "close": 500.5,
+            "volume": 1000,
+        }
+    ]
+    norm = _bars_to_list(with_dt)
+    assert len(norm) == 1
+    assert norm[0].get("_ts") is not None
+
+
+def test_section1_no_timestamp_or_datetime_synthesis_repo_wide():
+    """Repo-wide grep: no timestamp-or-datetime fallback synthesis in production .py."""
+    pat = re.compile(
+        r"""\.get\(["']timestamp["']\)\s+or\s+.*\.get\(["']datetime["']\)"""
+    )
+    skip_parts = {".claude", ".git", ".venv", "__pycache__", "backups", "tests", "tools"}
+    hits: list[str] = []
+    for path in ROOT.rglob("*.py"):
+        if any(part in skip_parts for part in path.parts):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for i, line in enumerate(text.splitlines(), start=1):
+            if pat.search(line):
+                hits.append(f"{path.relative_to(ROOT)}:{i}:{line.strip()}")
+    assert hits == [], f"timestamp-or-datetime synthesis remains: {hits}"
