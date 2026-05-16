@@ -1,7 +1,8 @@
-"""Section 4 — KEY LEVELS Schwab dictionary derivation audit (re-walk)."""
+"""Section 4 — KEY LEVELS Schwab dictionary derivation audit (full function walk)."""
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -9,7 +10,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
+if str(str(ROOT)) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 SECTION4_FILES = frozenset(
@@ -27,6 +28,24 @@ _OR_ZERO_PAIR_SUM = re.compile(
     r"""\(\s*\w+\s+or\s+0(?:\.0)?\s*\)\s*\+\s*\(\s*\w+\s+or\s+0(?:\.0)?\s*\)"""
 )
 
+_MIN_PER_FILE = {
+    "math_exposure.py": 8,
+    "math_exposure_core.py": 28,
+    "math_levels.py": 18,
+    "math_volatility.py": 20,
+    "math_probabilities.py": 24,
+    "levels.py": 5,
+}
+
+
+def _module_functions(rel: str) -> set[str]:
+    tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
+    return {
+        node.name
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+    }
+
 
 def test_section4_inventory_covers_all_six_files():
     from governance.section4_derivation_inventory import SECTION4_DERIVATION_INVENTORY
@@ -35,10 +54,42 @@ def test_section4_inventory_covers_all_six_files():
     assert SECTION4_FILES <= covered
 
 
+def test_section4_inventory_function_walk_scale():
+    from governance.section4_derivation_inventory import SECTION4_DERIVATION_INVENTORY
+
+    assert len(SECTION4_DERIVATION_INVENTORY) >= 100
+    by_file: dict[str, int] = {}
+    for r in SECTION4_DERIVATION_INVENTORY:
+        by_file[r.file] = by_file.get(r.file, 0) + 1
+    for f, minimum in _MIN_PER_FILE.items():
+        assert by_file.get(f, 0) >= minimum, f"{f}: {by_file.get(f, 0)} < {minimum}"
+
+
+def test_section4_every_module_function_inventoried():
+    from governance.section4_derivation_inventory import SECTION4_DERIVATION_INVENTORY
+
+    inventoried: dict[str, set[str]] = {f: set() for f in SECTION4_FILES}
+    for r in SECTION4_DERIVATION_INVENTORY:
+        inventoried[r.file].add(r.derivation)
+    for rel in sorted(SECTION4_FILES):
+        mod_fns = _module_functions(rel)
+        inv_fns = inventoried[rel]
+        missing = mod_fns - inv_fns
+        assert not missing, f"{rel} missing inventory for: {sorted(missing)}"
+
+
+def test_section4_math_volatility_all_functions_present():
+    from governance.section4_derivation_inventory import SECTION4_DERIVATION_INVENTORY
+
+    vol_fns = {r.derivation for r in SECTION4_DERIVATION_INVENTORY if r.file == "math_volatility.py"}
+    expected = _module_functions("math_volatility.py")
+    assert vol_fns == expected
+    assert len(vol_fns) >= 20
+
+
 def test_section4_inventory_counts_and_dispositions():
     from governance.section4_derivation_inventory import SECTION4_DERIVATION_INVENTORY
 
-    assert len(SECTION4_DERIVATION_INVENTORY) >= 14
     replaced = [r for r in SECTION4_DERIVATION_INVENTORY if r.disposition == "REPLACED"]
     assert len(replaced) >= 2
     assert any(r.file == "math_levels.py" for r in replaced)
@@ -50,15 +101,14 @@ def test_section4_inventory_registered_in_replacement_register():
         encoding="utf-8"
     )
     assert "<!-- SECTION4_DERIVATION_INVENTORY_START -->" in reg
-    assert "math_exposure_core.py" in reg
+    assert "118" in reg or "function" in reg.lower()
+    assert "section4_derivation_inventory.py" in reg
 
 
 def test_section4_no_or_zero_pair_sum_in_key_levels_files():
-    """Repo-wide within §4 scope: no (x or 0) + (y or 0) on exposure metrics."""
     hits: list[str] = []
     for rel in sorted(SECTION4_FILES):
-        path = ROOT / rel
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
         for i, line in enumerate(text.splitlines(), start=1):
             if _OR_ZERO_PAIR_SUM.search(line):
                 hits.append(f"{rel}:{i}:{line.strip()}")
@@ -76,6 +126,18 @@ def test_liquidity_void_get_gex_sums_only_present_gamma():
     }
     voids = compute_gamma_void_zones(exposures, spot=502.0, min_width_strikes=1)
     assert isinstance(voids, list)
+
+
+def test_extract_iv_for_strike_reads_schwab_volatility_leaf():
+    from math_volatility import _extract_iv_for_strike
+
+    contracts = [
+        {"strikePrice": 500, "putCall": "CALL", "volatility": 22.5},
+        {"strikePrice": 500, "putCall": "PUT", "volatility": 24.0},
+    ]
+    c_iv, p_iv = _extract_iv_for_strike(contracts, 500.0)
+    assert c_iv == 22.5
+    assert p_iv == 24.0
 
 
 def test_strike_activity_skips_missing_volumes():

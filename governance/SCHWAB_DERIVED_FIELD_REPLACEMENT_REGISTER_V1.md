@@ -340,26 +340,20 @@ Walked 3 files. **12** derivation records (**3** REPLACED in-section/cross-secti
 
 ## Section 4 derivation audit inventory
 
-Walked 6 files (KEY LEVELS re-walk). **15** derivation records (**2** REPLACED, **7** KEEP_DERIVED, **4** PASS_THROUGH, **2** NONE). Prior `82615fa`/`cab3ef4` remain regression floors only. Source: `governance/section4_derivation_inventory.py`. Tests: `tests/test_section4_schwab_derivation_audit.py`.
+Walked 6 files (KEY LEVELS re-walk). **118** function-level records (**2** REPLACED, **77** KEEP_DERIVED, **19** PASS_THROUGH, **20** NONE). One row per module-level `def`. Prior `82615fa`/`cab3ef4` remain regression floors only. Full inventory: `governance/section4_derivation_inventory.py`. Tests: `tests/test_section4_schwab_derivation_audit.py` (AST walk proves every function inventoried).
 
 <!-- SECTION4_DERIVATION_INVENTORY_START -->
-| file | line | derivation | schwab_leaf | disposition | justification |
-|---|---|---|---|---|
-| math_exposure_core.py | 29-38 | bucket_metric | chains.* | PASS_THROUGH | fail-closed reads |
-| math_exposure_core.py | 105-232 | compute_exposures_by_strike | chains.*.greeks,OI | PASS_THROUGH | Schwab chain leaves |
-| math_exposure_core.py | 370-451 | pin/HVL/wall pickers | chains.*.gamma | KEEP_DERIVED | institutional metrics |
-| math_exposure.py | — | OF verdict re-exports | — | NONE | no ingest |
-| math_levels.py | 116-400 | summary/walls rows | exposures | KEEP_DERIVED | KEY LEVELS UI |
-| math_levels.py | 618-647 | parity residual mid | chains.*.mark | PASS_THROUGH | mark-only mid |
-| math_levels.py | 859-872 | void zone _get_gex | chains.*.gamma | REPLACED | no (c or 0)+(p or 0) |
-| math_levels.py | 652-690 | gamma_flip | net_gamma buckets | KEEP_DERIVED | interpolation |
-| math_volatility.py | 121-140 | expected move straddle | chains.*.mark | KEEP_DERIVED | EM formula |
-| math_volatility.py | 288-320 | IV skew | chains.*.volatility | PASS_THROUGH | Schwab IV leaf |
-| math_volatility.py | 65-91 | charm banner | charm_result | KEEP_DERIVED | presentation |
-| math_probabilities.py | 176-264 | score_option_expression | chains.*.bid,ask | KEEP_DERIVED | spread pts only |
-| math_probabilities.py | 1370-1411 | smart_money strike_activity | chains.*.volume | REPLACED | sum only present volumes |
-| math_probabilities.py | 539-770 | signal composites | — | KEEP_DERIVED | model math |
-| levels.py | — | display formatters | — | NONE | no derivations |
+| file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---:|---:|---:|---:|---:|
+| math_exposure.py | 10 | 0 | 1 | 0 | 9 |
+| math_exposure_core.py | 32 | 0 | 22 | 10 | 0 |
+| math_levels.py | 21 | 1 | 19 | 1 | 0 |
+| math_volatility.py | 21 | 0 | 16 | 4 | 1 |
+| math_probabilities.py | 28 | 1 | 18 | 4 | 5 |
+| levels.py | 6 | 0 | 1 | 0 | 5 |
+| **total** | **118** | **2** | **77** | **19** | **20** |
+
+REPLACED: `compute_gamma_void_zones` (or-zero gamma sum), `compute_smart_money_signal` (volume sum). Per-function detail in `governance/section4_derivation_inventory.py`.
 <!-- SECTION4_DERIVATION_INVENTORY_END -->
 
 ---
