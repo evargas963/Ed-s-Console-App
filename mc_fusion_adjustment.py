@@ -197,9 +197,12 @@ def apply_mc_adjustment(
     u0, d0, f0 = _triplet(probs)
     base_winner = _argmax_dir(u0, d0, f0)
 
-    vol = float(mc_features.get("mc_volatility", 0.0) or 0.0)
-    tail = float(mc_features.get("mc_tail_risk", 0.0) or 0.0)
-    bias = float(mc_features.get("mc_bias", 0.0) or 0.0)
+    if any(mc_features.get(k) is None for k in ("mc_volatility", "mc_tail_risk", "mc_bias")):
+        log.debug("apply_mc_adjustment: missing MC feature(s); no adjustment")
+        return u0, d0, f0
+    vol = float(mc_features["mc_volatility"])
+    tail = float(mc_features["mc_tail_risk"])
+    bias = float(mc_features["mc_bias"])
 
     max_lam = min(0.22, 0.14 * max(0.0, vol))
     lam = _max_uniform_blend_preserving_argmax(u0, d0, f0, base_winner, max_lam)

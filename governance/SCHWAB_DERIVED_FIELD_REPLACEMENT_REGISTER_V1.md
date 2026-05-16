@@ -225,12 +225,35 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 
 ---
 
+## KEY LEVELS sweep closure summary (2026-05-16, branch `feature/institutional-key-levels`)
+
+| Item | Register IDs | Status | Evidence commit(s) |
+|------|----------------|--------|-------------------|
+| Max-pain mult | DFR-017-REG-MAX-PAIN | CLOSED | `9850a86`, register typo `7b84758` |
+| Expiry slice | DFR-005, OP-018 | CLOSED | `64c3641` |
+| Multiplier repo-wide | DFR-017 | CLOSED | `0ee94b8` |
+| EM synthetic session | DFR-008, DFR-022 | CLOSED | `db91a47` |
+| Quote staleness | DFR-007, OP-010 | CLOSED | `4d71167` |
+| Theta Schwab-first | OP-008 | CLOSED | `4d71167`, tests `6a25b53` |
+| IV extract | OP-013 | CLOSED | `9fdfbe7` |
+| UI sticky reset | DFR-015, DFR-024, UI-008, UI-009 | CLOSED | (pending commit) |
+| VIX serialize + IWM arg | DFR-016, UI-006, UI-007 | CLOSED | (pending commit) |
+| GEX completeness | UI-011 | CLOSED | (pending commit) |
+| MC fusion zero-fill | DFR-023 | CLOSED | (pending commit) |
+| Re-audit quote stack | DFR-002/003/004, PQ-001 | ADDRESSED holds | `_build_rest_fast_quote_payload` fail-closed spot |
+| DTE / putCall / parity mid | OP-005, OP-011, OP-014 | VERIFIED | existing Schwab-first paths |
+| MC-EM-ANCHOR | MC-EM-ANCHOR (new) | OPEN | MC IV anchor vs `kl_em_anchor` reconciliation deferred |
+| Repo-wide register | all non-KL rows | OPEN | MT/OHLCV/deferred paths out of KEY LEVELS scope |
+
+---
+
 ## Non-Closure Statement
 
 This register is not yet complete. It is the active replacement plan.
 
 ```text
 repo_wide_derived_field_replacement_status = OPEN
+key_levels_input_sweep_status = OPEN
 price_quote_inventory = DRAFTED
 option_chain_inventory = DRAFTED
 model_training_inventory = DRAFTED

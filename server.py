@@ -3711,7 +3711,15 @@ def _fetch_state(
                 _sector_data[_sym] = float(_chg)
         _sector_strength = compute_sector_strength(_sector_data) if _sector_data else {}
 
-        # IWM deep confluence analysis
+        # IWM deep confluence analysis (VIX direction from $VIX tracker, not IV tracker)
+        if getattr(mkt_ctx, "vix", None) is not None:
+            try:
+                _vix_tracker.tick(float(mkt_ctx.vix))
+            except (TypeError, ValueError):
+                pass
+        _vix_dir_for_confluence = (
+            _vix_tracker.direction if getattr(mkt_ctx, "vix", None) is not None else None
+        )
         _iwm_deep = compute_iwm_confluence(
             spy_chg=mkt_ctx.spy_chg_pct,
             qqq_chg=mkt_ctx.qqq_chg_pct,
@@ -3721,7 +3729,7 @@ def _fetch_state(
             psci_chg=_sector_data.get('PSCI'),
             xrt_chg=_sector_data.get('XRT'),
             vix_level=mkt_ctx.vix,
-            vix_direction=_iv_direction,
+            vix_direction=_vix_dir_for_confluence,
         )
     except Exception as e:
         log.debug(f"Envelope/density/sector calc: {e}")
@@ -4569,6 +4577,21 @@ def _fetch_state(
     }
     ms_dict["spread_source"] = _quote_spread_source
     ms_dict["spread_age_ms"] = _quote_spread_age_ms
+    if mkt_ctx is not None and getattr(mkt_ctx, "vix", None) is not None:
+        try:
+            _vix_tracker.tick(float(mkt_ctx.vix))
+        except (TypeError, ValueError):
+            pass
+    _prev_vix_live = _state_cache.get(_cache_key, {}).get("vix")
+    ms_dict["vix"] = float(mkt_ctx.vix) if mkt_ctx and mkt_ctx.vix is not None else None
+    ms_dict["vix_direction"] = (
+        _vix_tracker.direction if mkt_ctx and mkt_ctx.vix is not None else None
+    )
+    ms_dict["vix_vs_prev"] = (
+        round(float(mkt_ctx.vix) - float(_prev_vix_live), 4)
+        if mkt_ctx and mkt_ctx.vix is not None and _prev_vix_live is not None
+        else None
+    )
     ms_dict["server_ts"]    = time.time()
     # Client diagnostics: when a tab has SSE open for this (ticker, expiry), full pipeline re-runs about this often.
     ms_dict["sse_viewer_refresh_sec"] = round(VIEWER_SSE_REFRESH_SEC, 3)
@@ -4665,6 +4688,11 @@ def _fetch_state(
     ms_dict["kl_level_window"] = "selected_expiry"
     ms_dict["kl_metrics_dollarized"] = bool(exposures and exposures_have_dollar_gex(exposures))
     ms_dict["kl_institutional_ready"] = ms_dict["kl_metrics_dollarized"]
+    _kl_contracts_total = max(int(getattr(diag, "contracts_total", 0) or 0), 1)
+    ms_dict["kl_gex_input_completeness"] = round(
+        float(getattr(diag, "contracts_used", 0) or 0) / _kl_contracts_total,
+        4,
+    )
     _em_up_straddle = _fv(_em_straddle.get("upper"))
     _em_lo_straddle = _fv(_em_straddle.get("lower"))
     _em_up_iv = _fv(_em_iv.get("upper"))

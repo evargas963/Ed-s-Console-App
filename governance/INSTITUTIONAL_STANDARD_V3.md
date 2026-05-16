@@ -313,6 +313,8 @@ Charted key levels are derived from Schwab chain leaves (`delta`, `gamma`, `open
 - Max pain uses `call_oi_mult` / `put_oi_mult` accumulated from Schwab `multiplier` only. Strikes with missing multiplier are excluded; no synthetic `*100` fallback in payout math.
 - KEY LEVELS exposures and dealer metrics use contracts filtered by Schwab `expirationDate` for `selected_exp` only; no silent full-chain fallback; `kl_expiry_source` documents user vs default-nearest selection.
 - IV expected move uses Schwab `volatility` and session hours only; no synthetic 20% IV or 6.5h session fill when Schwab inputs are absent (`kl_em_anchor=unavailable`).
+- UI utility/sidebar metrics reset to `—` with `stale-metric` when payload omits VIX/PCR/bid/ask; no sticky `window._lastData` reuse for bid/ask.
+- Derived GEX/DEX payloads include `kl_gex_input_completeness` (contracts_used / contracts_total).
 
 #### KEY LEVELS UI row registry (23 charted rows + metadata)
 

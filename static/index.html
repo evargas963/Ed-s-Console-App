@@ -5762,14 +5762,26 @@ function renderTierALive(d, fullRenderSource) {
     });
   }
   const vixEl = $('sb-vix');
-  if (vixEl && lw.vix != null && !Number.isNaN(parseFloat(lw.vix))) {
-    const v = parseFloat(lw.vix).toFixed(2);
-    const dir = lw.vix_direction === 'up' ? '↑' : lw.vix_direction === 'down' ? '↓' : '→';
-    vixEl.textContent = `VIX ${v} ${dir}`;
+  if (vixEl) {
+    if (lw.vix != null && !Number.isNaN(parseFloat(lw.vix))) {
+      const v = parseFloat(lw.vix).toFixed(2);
+      const dir = lw.vix_direction === 'up' ? '↑' : lw.vix_direction === 'down' ? '↓' : '→';
+      vixEl.textContent = `VIX ${v} ${dir}`;
+      vixEl.classList.remove('stale-metric');
+    } else {
+      vixEl.textContent = '—';
+      vixEl.classList.add('stale-metric');
+    }
   }
   const pcrEl = $('sb-pcr');
-  if (pcrEl && lw.pcr_val != null && !Number.isNaN(parseFloat(lw.pcr_val))) {
-    pcrEl.textContent = `${lw.pcr_arrow || ''} ${parseFloat(lw.pcr_val).toFixed(2)}`.trim();
+  if (pcrEl) {
+    if (lw.pcr_val != null && !Number.isNaN(parseFloat(lw.pcr_val))) {
+      pcrEl.textContent = `${lw.pcr_arrow || ''} ${parseFloat(lw.pcr_val).toFixed(2)}`.trim();
+      pcrEl.classList.remove('stale-metric');
+    } else {
+      pcrEl.textContent = '—';
+      pcrEl.classList.add('stale-metric');
+    }
   }
   function setChg(elId, chg) {
     const el = $(elId);
@@ -5962,16 +5974,28 @@ function render(d, fullRenderSource) {
 
   // ── Sidebar: Market Context ───────────────────────────────────────────────
   const vixEl = $('sb-vix');
-  if (vixEl && d.vix != null && !Number.isNaN(parseFloat(d.vix))) {
-    const v = parseFloat(d.vix).toFixed(2);
-    const dir = d.vix_direction === 'up' ? '↑' : d.vix_direction === 'down' ? '↓' : '→';
-    vixEl.textContent = `VIX ${v} ${dir}`;
-    vixEl.style.color = d.vix_color || 'var(--text2)';
+  if (vixEl) {
+    if (d.vix != null && !Number.isNaN(parseFloat(d.vix))) {
+      const v = parseFloat(d.vix).toFixed(2);
+      const dir = d.vix_direction === 'up' ? '↑' : d.vix_direction === 'down' ? '↓' : '→';
+      vixEl.textContent = `VIX ${v} ${dir}`;
+      vixEl.style.color = d.vix_color || 'var(--text2)';
+      vixEl.classList.remove('stale-metric');
+    } else {
+      vixEl.textContent = '—';
+      vixEl.classList.add('stale-metric');
+    }
   }
   const pcrEl = $('sb-pcr');
-  if (pcrEl && d.pcr_val != null && !Number.isNaN(parseFloat(d.pcr_val))) {
-    pcrEl.textContent = `${d.pcr_arrow || ''} ${parseFloat(d.pcr_val).toFixed(2)}`.trim();
-    pcrEl.style.color = d.pcr_color || 'var(--text2)';
+  if (pcrEl) {
+    if (d.pcr_val != null && !Number.isNaN(parseFloat(d.pcr_val))) {
+      pcrEl.textContent = `${d.pcr_arrow || ''} ${parseFloat(d.pcr_val).toFixed(2)}`.trim();
+      pcrEl.style.color = d.pcr_color || 'var(--text2)';
+      pcrEl.classList.remove('stale-metric');
+    } else {
+      pcrEl.textContent = '—';
+      pcrEl.classList.add('stale-metric');
+    }
   }
   // SPY/QQQ/IWM — use fields from mkt_ctx embedded in ms
   function setChg(elId, chg) {
@@ -8346,10 +8370,8 @@ function refreshUtilityBar() {
     }
   }
 
-  const bidP = (window._lastData && window._lastData.bid_disp != null) ? window._lastData.bid_disp
-    : (dRowOk && d.bid_disp != null) ? d.bid_disp : '—';
-  const askP = (window._lastData && window._lastData.ask_disp != null) ? window._lastData.ask_disp
-    : (dRowOk && d.ask_disp != null) ? d.ask_disp : '—';
+  const bidP = (dRowOk && d && d.bid_disp != null) ? d.bid_disp : '—';
+  const askP = (dRowOk && d && d.ask_disp != null) ? d.ask_disp : '—';
   domIf('ub-bid-price', el => { el.textContent = bidP; });
   domIf('ub-ask-price', el => { el.textContent = askP; });
   const bs = plane && plane.bid_size != null ? plane.bid_size : null;
