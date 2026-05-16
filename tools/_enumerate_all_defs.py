@@ -51,6 +51,12 @@ SECTION7 = sorted(
     if p.name != "__init__.py"
 ) + ["lifecycle_rule_core.py"]
 
+SECTION16 = [
+    "news_sentiment.py",
+    "api_pressure.py",
+    "event_risk.py",
+]
+
 SECTION15 = sorted(
     p.name
     for p in list(ROOT.glob("audit_*.py"))
@@ -190,5 +196,6 @@ if __name__ == "__main__":
         "13": SECTION13,
         "14": SECTION14,
         "15": SECTION15,
+        "16": SECTION16,
     }.get(which, SECTION1)
     main(files)

@@ -640,6 +640,23 @@ Per-function detail in `governance/section15_derivation_inventory.py`.
 
 ---
 
+## Section 16 derivation audit inventory
+
+Walked **3** external-signal modules (`news_sentiment.py`, `api_pressure.py`, `event_risk.py`) at **full AST scope**. **19** inventory rows: **0** REPLACED, **5** KEEP_DERIVED, **6** PASS_THROUGH, **8** NONE. Finnhub/Alpha Vantage/calendar layers; no Schwab quote/chain/pricehistory wrappers. `api_pressure` is HTTP 429 observability only. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section16_derivation_inventory.py`. Tests: `tests/test_section16_schwab_derivation_audit.py`.
+
+<!-- SECTION16_DERIVATION_INVENTORY_START -->
+| file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---:|---:|---:|---:|---:|
+| news_sentiment.py | 15 | 0 | 5 | 6 | 4 |
+| api_pressure.py | 2 | 0 | 0 | 0 | 2 |
+| event_risk.py | 2 | 0 | 0 | 0 | 2 |
+| **total** | **19** | **0** | **5** | **6** | **8** |
+
+Per-function detail in `governance/section16_derivation_inventory.py`.
+<!-- SECTION16_DERIVATION_INVENTORY_END -->
+
+---
+
 ## CAPS allowlist (silent-default substitution family)
 
 Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  
