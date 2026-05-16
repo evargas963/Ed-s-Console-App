@@ -236,10 +236,10 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | Quote staleness | DFR-007, OP-010 | CLOSED | `4d71167` |
 | Theta Schwab-first | OP-008 | CLOSED | `4d71167`, tests `6a25b53` |
 | IV extract | OP-013 | CLOSED | `9fdfbe7` |
-| UI sticky reset | DFR-015, DFR-024, UI-008, UI-009 | CLOSED | (pending commit) |
-| VIX serialize + IWM arg | DFR-016, UI-006, UI-007 | CLOSED | (pending commit) |
-| GEX completeness | UI-011 | CLOSED | (pending commit) |
-| MC fusion zero-fill | DFR-023 | CLOSED | (pending commit) |
+| UI sticky reset | DFR-015, DFR-024, UI-008, UI-009 | CLOSED | `1a366eb` |
+| VIX serialize + IWM arg | DFR-016, UI-006, UI-007 | CLOSED | `1a366eb` |
+| GEX completeness | UI-011 | CLOSED | `1a366eb` |
+| MC fusion zero-fill | DFR-023 | CLOSED | `1a366eb` |
 | Re-audit quote stack | DFR-002/003/004, PQ-001 | ADDRESSED holds | `_build_rest_fast_quote_payload` fail-closed spot |
 | DTE / putCall / parity mid | OP-005, OP-011, OP-014 | VERIFIED | existing Schwab-first paths |
 | MC-EM-ANCHOR | MC-EM-ANCHOR (new) | OPEN | MC IV anchor vs `kl_em_anchor` reconciliation deferred |
