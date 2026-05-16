@@ -410,6 +410,21 @@ Per-function detail in `governance/section8_derivation_inventory.py`.
 
 ---
 
+## Section 9 derivation audit inventory
+
+Walked **22** `features/*.py` modules at **full AST scope**. **92** inventory rows: **0** REPLACED, **48** KEEP_DERIVED, **1** PASS_THROUGH, **43** NONE. Feature layer reads canonical snapshots/DB rows; no direct Schwab API. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section9_derivation_inventory.py`. Tests: `tests/test_section9_schwab_derivation_audit.py`.
+
+<!-- SECTION9_DERIVATION_INVENTORY_START -->
+| file group | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---:|---:|---:|---:|---:|
+| features/*.py (22 modules) | 92 | 0 | 48 | 1 | 43 |
+| **total** | **92** | **0** | **48** | **1** | **43** |
+
+Per-function detail in `governance/section9_derivation_inventory.py`.
+<!-- SECTION9_DERIVATION_INVENTORY_END -->
+
+---
+
 ## CAPS allowlist (silent-default substitution family)
 
 Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  

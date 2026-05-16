@@ -51,6 +51,12 @@ SECTION7 = sorted(
     if p.name != "__init__.py"
 ) + ["lifecycle_rule_core.py"]
 
+SECTION9 = sorted(
+    f"features/{p.name}"
+    for p in (ROOT / "features").glob("*.py")
+    if p.name != "__init__.py"
+)
+
 SECTION8 = [
     "monte_carlo.py",
     "mc_fusion_adjustment.py",
@@ -94,5 +100,6 @@ if __name__ == "__main__":
         "6": SECTION6,
         "7": SECTION7,
         "8": SECTION8,
+        "9": SECTION9,
     }.get(which, SECTION1)
     main(files)
