@@ -147,6 +147,21 @@ All commits in this rebuild authored via Cursor agent extension carry a `Made-wi
 
 ---
 
+## Schwab repo-wide replacement — post-KEY LEVELS sweep schedule
+
+**Bound to:** `governance/SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md`. Each day below closes the cited register IDs with a real on-branch SHA. Standing rules from KEY LEVELS sweep carry forward: per-commit shape (code + repo-wide grep + regression test that fails on parent + register row update + §8.2 invariant if applicable), no scope creep, Cursor drafts / Claude gates / no orphan SHA pre-records.
+
+- [ ] **Day 1 — OHLCV / bar adapters** — DFR-009, DFR-011, MT-006, MT-007, PQ-009, PQ-010 + DFR-018 re-audit. Files: `market_data_adapter.py`, `snapshot_normalizer.py`, `liquidity_value_engine.py`. Kill zero-injection; reject incomplete Schwab candles; tag synthetic 1m bars. SHA: __________
+- [ ] **Day 2 — Order flow + spread** — DFR-019, PQ-002, PQ-005, PQ-007, PQ-008, PQ-011, PQ-012, PQ-013, OP-015, OP-017. Files: `order_flow_engine.py`, `server.py` VWAP + accumulator + fast-quote spread. RVOL unavailable not 1.0; spread units split; per-bar volume source. SHA: __________
+- [ ] **Day 3 — ML feature provenance** — DFR-012, DFR-013, MT-002, MT-003, MT-005, MT-008, MT-012. Files: `features/inference_snapshot.py`, `features/fusion_model_input.py`, `features/lstm_sequence_input.py`, `ml_data_common.py`, `calibration/v2_advisory_backfill.py`. Per-field lineage; no silent defaults; m5_asof labeling. SHA: __________
+- [ ] **Day 4 — ML training imputation** — DFR-014, MT-004, MT-009, MT-010, MT-011. Files: `ml_train.py`, `ml_predict.py`, `lstm_data.py`. Kill median imputation; hard-fail thresholds; missingness masks; authority downgrade telemetry. SHA: __________
+- [ ] **Day 5 — Calibration + replay** — MT-013, DFR-010 re-verify, OP-019, OP-020 verify, MT-005. Files: `calibration/writer.py`, `features/replay_signal_input_v1.py`, `realized_contract_eval.py`, `calibration/v2_a1_execution_ev.py`. Feature lineage JSON; decision_ts_source; replay identity gating. SHA: __________
+- [ ] **Day 6 — Trader-visible A2 + UI remnants** — UI-001 verify, UI-002, UI-004, UI-005, UI-010, UI-012, UI-013. Files: `server.py` Tier A live state + freshness, `static/index.html` order-flow + A2 card. Source suffix on A2 card; cum_delta_proxy provenance; analytics_stale split. SHA: __________
+- [ ] **Day 7 — Market context + remaining PQ** — PQ-006, PQ-014, OP-001, OP-002, OP-003 verify, OP-004, OP-009 verify. Files: `market_context.py`, `order_flow_streaming.py` diagnostics, `math_probabilities.py::score_option_expression`. netPercentChange primary; stream staleness gating; option scoring provenance. SHA: __________
+- [ ] **Day 8 — Final repo-wide zero-OPEN sweep** — extend `tests/test_key_levels_schwab_zero_open_sweep.py` pattern grep to all touched subsystems; cross-reference every Schwab leaf in `schwab_field_dictionary.csv` against every consumer in the broader app. Append closure row to register; set `repo_wide_derived_field_replacement_status = CLOSED` once zero new findings. SHA: __________
+
+---
+
 ## Resolved (archive)
 
 _Move rows here with date + short note when closed._
