@@ -537,7 +537,7 @@ Per-function detail in `governance/section11_derivation_inventory.py`.
 
 ## Section 12 derivation audit inventory
 
-Walked **4** liquidity modules at **full AST scope**. **37** inventory rows: **1** REPLACED, **23** KEEP_DERIVED, **1** PASS_THROUGH, **12** NONE. Engine consumes normalized OHLCV bars; `_resolve_bar_timestamp` fail-closed on Schwab datetime (§1 align). CLI scripts may fetch via `polling_adapter`. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section12_derivation_inventory.py`. Tests: `tests/test_section12_schwab_derivation_audit.py`.
+Walked **4** liquidity modules at **full AST scope**. **37** inventory rows: **1** REPLACED, **23** KEEP_DERIVED, **1** PASS_THROUGH, **12** NONE. Engine consumes normalized OHLCV bars; `_resolve_bar_timestamp` fail-closed on Schwab datetime (§1 align; Day 1.5 `d40b537`). REPLACED repo-wide regression: `test_section1_no_timestamp_or_datetime_synthesis_repo_wide` + `test_section3_no_datetime_default_zero_repo_wide` (aliased in §12 tests). CLI scripts may fetch via `polling_adapter`. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section12_derivation_inventory.py`. Tests: `tests/test_section12_schwab_derivation_audit.py`.
 
 <!-- SECTION12_DERIVATION_INVENTORY_START -->
 | file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |

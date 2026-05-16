@@ -99,3 +99,19 @@ def test_section12_resolve_bar_timestamp_replaced():
     }
     assert rows["_resolve_bar_timestamp"].disposition == "REPLACED"
     assert rows["_resolve_bar_timestamp"].schwab_leaf == "pricehistory.candles.datetime"
+
+
+def test_section12_resolve_bar_timestamp_repo_wide_regression_via_section1_and_3():
+    """
+    §12 REPLACED formalizes Day 1.5 bar-datetime enforcement (d40b537); repo-wide
+    nets live in §1 and §3 — re-run those tests here so readers find the chain.
+    """
+    from tests.test_section1_schwab_derivation_audit import (
+        test_section1_no_timestamp_or_datetime_synthesis_repo_wide,
+    )
+    from tests.test_section3_schwab_derivation_audit import (
+        test_section3_no_datetime_default_zero_repo_wide,
+    )
+
+    test_section1_no_timestamp_or_datetime_synthesis_repo_wide()
+    test_section3_no_datetime_default_zero_repo_wide()
