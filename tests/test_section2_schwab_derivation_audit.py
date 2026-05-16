@@ -12,36 +12,39 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-SECTION2_FILES = frozenset(
-    {
-        "server.py",
-        "live_market_plane.py",
-        "live_decision_bundle.py",
-        "live_pipeline_diag.py",
-        "live_vs_replay_validation.py",
-    }
-)
-
 _BID_ASK_MID_SPREAD_PAT = re.compile(
     r"""\(float\(\s*bid\s*\)\s*\+\s*float\(\s*ask\s*\)\)\s*/\s*2"""
 )
 
 
-def test_section2_inventory_covers_all_five_files():
-    from governance.section2_derivation_inventory import SECTION2_DERIVATION_INVENTORY
+def test_section2_inventory_covers_every_function_all_scopes():
+    from governance.section2_derivation_inventory import (
+        SECTION2_DERIVATION_INVENTORY,
+        SECTION2_FILES,
+    )
+    from governance.section_inventory_gate import assert_inventory_covers_all_functions
 
-    covered = {r.file for r in SECTION2_DERIVATION_INVENTORY}
-    assert SECTION2_FILES <= covered
+    assert_inventory_covers_all_functions(
+        ROOT, SECTION2_FILES, SECTION2_DERIVATION_INVENTORY
+    )
 
 
 def test_section2_inventory_counts_and_dispositions():
-    from governance.section2_derivation_inventory import SECTION2_DERIVATION_INVENTORY
+    from governance.section2_derivation_inventory import (
+        SECTION2_DERIVATION_INVENTORY,
+        SECTION2_FILES,
+    )
+    from governance.section_inventory_gate import all_functions_in_file
 
-    assert len(SECTION2_DERIVATION_INVENTORY) >= 15
+    assert len(SECTION2_DERIVATION_INVENTORY) >= 208
+    for rel in SECTION2_FILES:
+        required = len(all_functions_in_file(ROOT, rel))
+        inventoried = len({r.derivation for r in SECTION2_DERIVATION_INVENTORY if r.file == rel})
+        assert inventoried == required, f"{rel}: {inventoried} != {required}"
+
     replaced = [r for r in SECTION2_DERIVATION_INVENTORY if r.disposition == "REPLACED"]
     assert len(replaced) >= 2
-    assert any(r.file == "server.py" for r in replaced)
-    assert any(r.file == "order_flow_engine.py" for r in replaced)
+    assert all(r.file == "server.py" for r in replaced)
 
 
 def test_section2_inventory_registered_in_replacement_register():
@@ -49,6 +52,7 @@ def test_section2_inventory_registered_in_replacement_register():
         encoding="utf-8"
     )
     assert "<!-- SECTION2_DERIVATION_INVENTORY_START -->" in reg
+    assert "208" in reg or "full AST scope" in reg
     assert "live_market_plane.py" in reg
     assert "REPLACED" in reg
 
@@ -76,6 +80,7 @@ def test_section2_no_bid_ask_mid_spread_fallback_repo_wide():
 
 
 def test_order_flow_spread_requires_schwab_mark_for_frac():
+    """Cross-section regression (order_flow_engine is §5 file)."""
     from order_flow_engine import _compute_spread
 
     with_mark = {"quote": {"bidPrice": 100.0, "askPrice": 100.2, "mark": 100.1}}

@@ -282,27 +282,19 @@ Walked 8 files at **full AST scope** (module + class + nested `def`). **59** inv
 
 ## Section 2 derivation audit inventory
 
-Walked 5 files. **16** derivation records (**2** REPLACED in-section + **1** cross-section REPLACED in `order_flow_engine.py`, **6** KEEP_DERIVED, **5** PASS_THROUGH, **2** NONE). Source: `governance/section2_derivation_inventory.py`. Tests: `tests/test_section2_schwab_derivation_audit.py`.
+Walked 5 files at **full AST scope** (module + class + nested `def`). **208** inventory rows: **2** REPLACED, **72** KEEP_DERIVED, **16** PASS_THROUGH, **118** NONE. Cross-section spread fix in `order_flow_engine.py` (§5) tested separately. Gate: `governance/section_inventory_gate.py`. Full rows: `governance/section2_derivation_inventory.py`. Tests: `tests/test_section2_schwab_derivation_audit.py`.
 
 <!-- SECTION2_DERIVATION_INVENTORY_START -->
-| file | line | derivation | schwab_leaf | disposition | justification |
-|---|---|---|---|---|
-| server.py | 735-758 | REST quote cascade | quotes.quote\|extended\|regular.* | PASS_THROUGH | Schwab hierarchy; spot fail-closed |
-| server.py | 768-774 | fast-lane spread_frac | quotes.quote.mark | KEEP_DERIVED | mark-denom; no spread leaf |
-| server.py | 3146-3162 | _fetch_state spread_frac | quotes.quote.mark | REPLACED | removed bid+ask/2 mid fallback |
-| server.py | 1092-1154 | CandleAccumulator ticks | totalVolume, candles | KEEP_DERIVED | poll-synthesized bars |
-| server.py | 1175-1186 | pricehistory seed | pricehistory.candles.* | PASS_THROUGH | datetime required |
-| server.py | 2286-2306 | VWAP from bars | — | KEEP_DERIVED | no VWAP leaf |
-| server.py | 2247-2278 | REST cum-delta proxy | lastPrice, bid/ask | KEEP_DERIVED | stream fallback |
-| live_market_plane.py | 91-135 | streaming spot/spread | streaming.*.MARK,LAST_PRICE | PASS_THROUGH | mark-denom spread |
-| live_market_plane.py | 215-284 | plane merge overlay | plane row | PASS_THROUGH | no new derivations |
-| live_decision_bundle.py | 220-228 | session label refresh | market_hours | KEEP_DERIVED | trigger only |
-| live_decision_bundle.py | 278-290 | derive_zone gate | — | KEEP_DERIVED | coherence check |
-| live_decision_bundle.py | 390-408 | derive_vwap_side | — | KEEP_DERIVED | no vwap_side leaf |
-| live_decision_bundle.py | 147-192 | nearest struct geometry | — | KEEP_DERIVED | cached levels |
-| order_flow_engine.py | 298-340 | _compute_spread | quotes.quote.mark | REPLACED | cross-section repo-wide grep fix |
-| live_pipeline_diag.py | — | ML diagnostics | — | NONE | no market derivations |
-| live_vs_replay_validation.py | 97-172 | replay proof reads | snapshots.* | PASS_THROUGH | DB validation only |
+| file | functions inventoried | REPLACED | KEEP_DERIVED | PASS_THROUGH | NONE |
+|---|---:|---:|---:|---:|---:|
+| server.py | 170 | 2 | 64 | 7 | 97 |
+| live_market_plane.py | 12 | 0 | 2 | 6 | 4 |
+| live_decision_bundle.py | 8 | 0 | 5 | 0 | 3 |
+| live_pipeline_diag.py | 8 | 0 | 0 | 0 | 8 |
+| live_vs_replay_validation.py | 10 | 0 | 1 | 3 | 6 |
+| **total** | **208** | **2** | **72** | **16** | **118** |
+
+REPLACED: `_fetch_state`, `_build_rest_fast_quote_payload` (mark-denom spread_frac). Per-function detail in `governance/section2_derivation_inventory.py`.
 <!-- SECTION2_DERIVATION_INVENTORY_END -->
 
 ---

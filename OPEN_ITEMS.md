@@ -192,7 +192,7 @@ Files touched by prior commits still need to be re-walked under this method when
 The pattern-shape regression net from these commits stays in place as a safety floor going forward. It does not substitute for the section-by-section derivation audit.
 
 - [ ] **§1 Schwab client + adapters** — `schwab_client.py`, `reauth_schwab.py`, `websocket_adapter.py`, `polling_adapter.py`, `sse_adapter.py`, `market_data_adapter.py`, `snapshot_normalizer.py`, `snapshot_access.py`. Prior `2703c52`/`d40b537` fixes kept; full-scope AST re-walk `657d4e4` (59 rows). SHA: __________
-- [ ] **§2 Server + live state** — `server.py`, `live_market_plane.py`, `live_decision_bundle.py`, `live_pipeline_diag.py`, `live_vs_replay_validation.py`. Prior `06964e5` fixes kept; function-walk re-opened. SHA: __________
+- [ ] **§2 Server + live state** — `server.py`, `live_market_plane.py`, `live_decision_bundle.py`, `live_pipeline_diag.py`, `live_vs_replay_validation.py`. Prior `06964e5` fixes kept; full-scope AST re-walk `db43b7f` (208 rows). SHA: __________
 - [ ] **§3 Market data + state** — `market_context.py`, `market_state.py`, `math_snapshot_derive.py`. Prior `86d4bc4` fixes kept; function-walk re-opened. SHA: __________
 - [ ] **§4 Math / KEY LEVELS** — `math_exposure*.py`, `math_levels.py`, `math_volatility.py`, `math_probabilities.py`, `levels.py`. Prior `4740fa8`/`82615fa` fixes kept; full-scope AST re-walk `657d4e4` (131 rows). SHA: __________
 - [ ] **§5 Order flow** — `order_flow_engine.py`, `order_flow_live_state.py`, `order_flow_streaming.py`, `debug_flow_snapshot.py`. SHA: __________
