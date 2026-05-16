@@ -48,7 +48,27 @@ from features.fusion_model_input import FusionModelInputError, validate_inferenc
 from features.xgb_model_input import CANONICAL_TO_XGB_TABULAR, MVP_LEGACY_KEYS
 
 # Re-export for callers documenting sequence length (single source in lstm_data).
-from lstm_data import STREAM_1M_LOOKBACK, STREAM_5M_LOOKBACK  # noqa: F401
+from lstm_data import (  # noqa: F401
+    FEATURES_1M,
+    FEATURES_5M,
+    STREAM_1M_LOOKBACK,
+    STREAM_5M_LOOKBACK,
+    VWAP_SIDE_MAP,
+    ZONE_MAP,
+    encode_snapshot_1m,
+    encode_snapshot_5m,
+)
+
+# Encoded sentinel when canonical zone is missing (distinct from pin_neutral=2).
+ZONE_MISSING_ENCODED = -1.0
+# Encoded sentinel when canonical vwap_side is missing (distinct from above=1, below=-1).
+VWAP_SIDE_UNKNOWN_ENCODED = 2.0
+
+# Canonical MVP numerics mirrored in LSTM feature lists → missingness mask channel (1=present).
+_CANONICAL_NUMERIC_MASK_ORDER: tuple[str, ...] = (
+    "structure.net_gamma",
+    "anchor.vwap_dist_pts",
+)
 
 
 class LstmSequenceInputError(ValueError):
@@ -57,6 +77,59 @@ class LstmSequenceInputError(ValueError):
 
 class TransformerSequenceInputError(LstmSequenceInputError):
     """Transformer encoder-window preparation failed (canonical MVP / contract / history)."""
+
+
+def _canonical_missing_masks(canonical_features: dict[str, Any]) -> list[float]:
+    return [1.0 if canonical_features.get(k) is not None else 0.0 for k in _CANONICAL_NUMERIC_MASK_ORDER]
+
+
+def _patch_lstm_categoricals(
+    features: list[float],
+    feature_names: list[str],
+    canonical_features: dict[str, Any],
+) -> None:
+    if "zone" in feature_names:
+        zi = feature_names.index("zone")
+        z = canonical_features.get("structure.zone")
+        if z is None:
+            features[zi] = ZONE_MISSING_ENCODED
+        else:
+            features[zi] = float(ZONE_MAP.get(str(z).lower(), 2))
+    if "vwap_side" in feature_names:
+        vi = feature_names.index("vwap_side")
+        vs = canonical_features.get("anchor.vwap_side")
+        if vs is None:
+            features[vi] = VWAP_SIDE_UNKNOWN_ENCODED
+        else:
+            features[vi] = float(VWAP_SIDE_MAP.get(str(vs).lower(), VWAP_SIDE_UNKNOWN_ENCODED))
+
+
+def encode_lstm_structure_bar_with_masks(
+    merged_row: Mapping[str, Any],
+    canonical_features: dict[str, Any],
+    ref_spot: float,
+) -> dict[str, Any]:
+    """
+    Structure-stream encode with canonical missingness masks and categorical sentinels.
+
+    Missing canonical numerics are accompanied by mask=0 (value may be 0.0 from encoder).
+    """
+    base = list(encode_snapshot_5m(dict(merged_row), ref_spot))
+    _patch_lstm_categoricals(base, FEATURES_5M, canonical_features)
+    masks = _canonical_missing_masks(canonical_features)
+    return {"features": base + masks, "canonical_missing_masks": masks}
+
+
+def encode_lstm_micro_bar_with_masks(
+    merged_row: Mapping[str, Any],
+    canonical_features: dict[str, Any],
+    ref_spot: float,
+) -> dict[str, Any]:
+    """Micro-stream encode with the same missingness / sentinel contract as structure."""
+    base = list(encode_snapshot_1m(dict(merged_row), ref_spot))
+    _patch_lstm_categoricals(base, FEATURES_1M, canonical_features)
+    masks = _canonical_missing_masks(canonical_features)
+    return {"features": base + masks, "canonical_missing_masks": masks}
 
 
 def merge_db_row_with_canonical_mvp(

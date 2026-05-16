@@ -370,6 +370,21 @@ Order-flow metrics must use Schwab-native leaves with explicit provenance. Sprea
 #### Enforcement
 `tests/test_order_flow_schwab_first.py`, `tests/test_order_flow_volume_contract.py`; `order_flow_engine.py`, `server.py` VWAP/accumulator/spread paths.
 
+### 8.5 ML feature provenance (inference snapshot and model inputs)
+
+#### Principle
+Model-facing features must declare per-field lineage and must not silently substitute missing market context with neutral defaults. Sequence encoders expose missingness explicitly.
+
+#### Invariant
+- `InferenceSnapshotV1` carries `feature_lineage` with `source`, `transform`, and `fallback_flag` for every MVP canonical feature key.
+- Fusion similarity filters use `unknown` (with `vwap_side_fallback` / `zone_fallback` flags) when canonical categoricals are missing — never `above`.
+- LSTM structure/micro encoders append canonical missingness mask channels; missing zone uses encoded sentinel `ZONE_MISSING_ENCODED` (not `pin_neutral`).
+- `attach_5m_additive_context` stamps `m5_source_timeframe = 1m_asof` when proxy columns are merged from canonical 1m snapshots (not native 5m history).
+- Calibration v2 advisory backfill stamps `live_ms_field_sources` / `reconstructed_from_snapshot` on reconstructed Tier C fields.
+
+#### Enforcement
+`tests/test_ml_feature_provenance.py`; `features/inference_snapshot.py`, `features/fusion_model_input.py`, `features/lstm_sequence_input.py`, `ml_data_common.py`, `calibration/v2_advisory_backfill.py`.
+
 ---
 
 ## 9. Horizon parity and economic labels

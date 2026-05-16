@@ -29,6 +29,8 @@ except Exception:
 
 ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION = "1"
 ADVISORY_V2_ADAPTER_VERSION = f"module_a_adapter:{SCHEMA_VERSION}:{V2_STATUS}"
+RECONSTRUCTED_LIVE_MS_SOURCE = "reconstructed_from_snapshot"
+
 ADVISORY_V2_DECISION_LOG_COLUMNS = (
     "advisory_v2_decision_snapshot_json",
     "advisory_v2_snapshot_schema_version",
@@ -52,20 +54,26 @@ class WalkForwardSplit:
 def ms_dict_from_snapshot_row(row: Mapping[str, Any]) -> dict[str, Any]:
     """Reconstruct the subset of Tier C state needed by the v2 advisory adapter."""
     ms = dict(row)
+    field_sources: dict[str, str] = {}
     ticker = _first_present(ms, "ticker")
     ts_utc = _float_or_none(_first_present(ms, "ts_utc", "decision_ts_utc"))
     snapshot_id = _first_present(ms, "snapshot_id", "id")
 
-    _alias_if_absent(ms, "rules_headline", "rules_summary")
-    _alias_if_absent(ms, "entry", "rules_entry")
-    _alias_if_absent(ms, "stop", "rules_stop")
-    _alias_if_absent(ms, "target", "rules_target")
-    _alias_if_absent(ms, "target2", "call_target2")
-    _alias_if_absent(ms, "selected_exp", "expiry")
-    _alias_if_absent(ms, "call_option_expiry", "expiry")
-    _alias_if_absent(ms, "spread", "call_spread")
-    _alias_if_absent(ms, "rec_strike", "call_strike")
-    _alias_if_absent(ms, "rec_side", "call_option_right")
+    def _alias_if_absent_stamped(target: str, source: str) -> None:
+        if ms.get(target) is None and ms.get(source) is not None:
+            ms[target] = ms.get(source)
+            field_sources[target] = RECONSTRUCTED_LIVE_MS_SOURCE
+
+    _alias_if_absent_stamped("rules_headline", "rules_summary")
+    _alias_if_absent_stamped("entry", "rules_entry")
+    _alias_if_absent_stamped("stop", "rules_stop")
+    _alias_if_absent_stamped("target", "rules_target")
+    _alias_if_absent_stamped("target2", "call_target2")
+    _alias_if_absent_stamped("selected_exp", "expiry")
+    _alias_if_absent_stamped("call_option_expiry", "expiry")
+    _alias_if_absent_stamped("spread", "call_spread")
+    _alias_if_absent_stamped("rec_strike", "call_strike")
+    _alias_if_absent_stamped("rec_side", "call_option_right")
     if ms.get("dte_warn") is None and ms.get("dte") is not None:
         ms["dte_warn"] = f"{ms.get('dte')}DTE"
 
@@ -86,15 +94,20 @@ def ms_dict_from_snapshot_row(row: Mapping[str, Any]) -> dict[str, Any]:
         ):
             if ms.get(key) is None and replay_context.get(key) is not None:
                 ms[key] = replay_context.get(key)
+                field_sources[key] = RECONSTRUCTED_LIVE_MS_SOURCE
 
     _infer_fusion_fields(ms)
     ms.setdefault("ticker", ticker)
     ms.setdefault("decision_generation_id", snapshot_id)
     ms.setdefault("_server_build_ts", ts_utc)
     ms.setdefault("decision_time_ms", int(ts_utc * 1000) if ts_utc is not None else None)
-    ms.setdefault("stack_runtime", {"source": "reconstructed_from_snapshot"})
-    ms.setdefault("stack_governance", {"source": "reconstructed_from_snapshot"})
-    ms.setdefault("signal_chain", {"source": "reconstructed_from_snapshot"})
+    ms.setdefault("stack_runtime", {"source": RECONSTRUCTED_LIVE_MS_SOURCE})
+    ms.setdefault("stack_governance", {"source": RECONSTRUCTED_LIVE_MS_SOURCE})
+    ms.setdefault("signal_chain", {"source": RECONSTRUCTED_LIVE_MS_SOURCE})
+    for block in ("stack_runtime", "stack_governance", "signal_chain"):
+        field_sources[block] = RECONSTRUCTED_LIVE_MS_SOURCE
+    ms["live_ms_field_sources"] = field_sources
+    ms["live_ms_reconstruction_source"] = RECONSTRUCTED_LIVE_MS_SOURCE
     return ms
 
 
@@ -105,7 +118,8 @@ def build_v2_advisory_snapshot(snapshot_row: Mapping[str, Any]) -> dict[str, Any
     return {
         "snapshot_schema_version": ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION,
         "adapter_version": ADVISORY_V2_ADAPTER_VERSION,
-        "source": "reconstructed_from_snapshot",
+        "source": RECONSTRUCTED_LIVE_MS_SOURCE,
+        "live_ms_field_sources": dict(ms_dict.get("live_ms_field_sources") or {}),
         "ticker": ms_dict.get("ticker"),
         "snapshot_id": ms_dict.get("snapshot_id"),
         "decision_ts_utc": ms_dict.get("ts_utc"),

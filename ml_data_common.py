@@ -106,6 +106,9 @@ def _db_default_path() -> str:
 
 
 # Columns copied from canonical 1m snapshot rows only (merged as m5_*).
+M5_SOURCE_TIMEFRAME_COL = "m5_source_timeframe"
+M5_SOURCE_TIMEFRAME_1M_ASOF = "1m_asof"
+
 M5_ADDITIVE_SOURCE_COLS: tuple[str, ...] = (
     "zone_since_bars_5m",
     "net_gamma",
@@ -163,7 +166,9 @@ def fetch_m5_additive_dict(
     if not row:
         return {}
     d = dict(row)
-    return {f"m5_{k}": d[k] for k in d}
+    out = {f"m5_{k}": d[k] for k in d}
+    out[M5_SOURCE_TIMEFRAME_COL] = M5_SOURCE_TIMEFRAME_1M_ASOF
+    return out
 
 
 def snapshot_with_m5_additive(snapshot: dict, db_path: str | None = None) -> dict:
@@ -266,6 +271,8 @@ def attach_5m_additive_context(
                 f"after sort {asof_sort!r} (required by pandas merge_asof before `by=` grouping)"
             )
 
+    m5_keys[M5_SOURCE_TIMEFRAME_COL] = M5_SOURCE_TIMEFRAME_1M_ASOF
+
     out = pd.merge_asof(
         left_s,
         m5_keys,
@@ -278,4 +285,9 @@ def attach_5m_additive_context(
         .drop(columns=["_asof_row_order"])
         .reset_index(drop=True)
     )
+    # Rows without a matching 1m as-of snapshot keep NaN m5_*; do not stamp proxy timeframe.
+    if M5_SOURCE_TIMEFRAME_COL in out.columns:
+        m5_proxy_cols = [f"m5_{c}" for c in M5_ADDITIVE_SOURCE_COLS]
+        has_proxy = out[m5_proxy_cols].notna().any(axis=1) if m5_proxy_cols else False
+        out.loc[~has_proxy, M5_SOURCE_TIMEFRAME_COL] = None
     return out
