@@ -23,6 +23,16 @@ BAR_KEYS = ("timestamp", "open", "high", "low", "close", "volume", "source", "mi
 
 _OHLC_KEYS = ("open", "high", "low", "close")
 
+# Schwab field dictionary mapping (pricehistory.candles.*)
+SCHWAB_CANDLE_LEAF_MAP: dict[str, str] = {
+    "open": "pricehistory.candles.*.open",
+    "high": "pricehistory.candles.*.high",
+    "low": "pricehistory.candles.*.low",
+    "close": "pricehistory.candles.*.close",
+    "volume": "pricehistory.candles.*.volume",
+    "datetime": "pricehistory.candles.*.datetime",
+}
+
 
 @dataclass
 class NormalizedBar:
@@ -83,12 +93,19 @@ def normalize_bar(raw: dict | Any, *, source: str = "") -> Optional[NormalizedBa
             return None
         return out if out >= 0 else None
 
-    if isinstance(raw, dict):
-        ts = raw.get("timestamp") or raw.get("datetime")
-    else:
-        ts = getattr(raw, "timestamp", None)
-
     missing_fields: list[str] = []
+
+    if isinstance(raw, dict):
+        if source == "schwab_pricehistory":
+            ts = raw.get("datetime")
+            if ts is None:
+                missing_fields.append("datetime")
+        else:
+            ts = raw.get("datetime") if raw.get("datetime") is not None else raw.get("timestamp")
+    else:
+        ts = getattr(raw, "datetime", None) if source == "schwab_pricehistory" else getattr(
+            raw, "timestamp", None
+        )
     open_ = _f("open")
     high = _f("high")
     low = _f("low")
@@ -97,7 +114,7 @@ def normalize_bar(raw: dict | Any, *, source: str = "") -> Optional[NormalizedBa
         if val is None:
             missing_fields.append(key)
     if missing_fields:
-        log.debug("normalize_bar rejected: missing OHLC %s", missing_fields)
+        log.debug("normalize_bar rejected: missing OHLC/datetime %s", missing_fields)
         return None
     if close == 0:
         log.debug("normalize_bar rejected: close == 0")
@@ -145,8 +162,6 @@ def schwab_candles_to_bars(candles: list) -> list[dict]:
         if not isinstance(c, dict):
             continue
         raw = dict(c)
-        if raw.get("timestamp") is None and raw.get("datetime") is not None:
-            raw["timestamp"] = raw["datetime"]
         nb = normalize_bar(raw, source="schwab_pricehistory")
         if nb is None:
             continue
