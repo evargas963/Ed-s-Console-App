@@ -13,6 +13,11 @@ from .a2_lifecycle_health import (
     select_a2_pin_risk_audit_row,
 )
 from .a2_lifecycle_sidecar import LIFECYCLE_GAP_NAMES, build_a2_lifecycle_sidecar
+from .a2_price_precedence import (
+    resolve_a2_contract_mid,
+    resolve_a2_contract_spread,
+    resolve_a2_underlying_spread_pts,
+)
 from .schema import leaf
 
 
@@ -164,39 +169,11 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
     bid = _num(chain_row.get("bid"))
     ask = _num(chain_row.get("ask"))
 
-    # Inline mid ladder for the trade recommendation: prefer Schwab mark,
-    # fall back to last, then to (bid+ask)/2. Each branch is a direct read
-    # of the named Schwab field on the chain row.
-    mid: float | None = None
-    mid_source: str | None = None
-    mark_raw = _num(chain_row.get("mark"))
-    if mark_raw is not None and mark_raw > 0:
-        mid = float(mark_raw)
-        mid_source = "schwab_chain_mark"
-    if mid is None:
-        last_raw = _num(chain_row.get("last"))
-        if last_raw is not None and last_raw > 0:
-            mid = float(last_raw)
-            mid_source = "schwab_chain_last"
-    if mid is None and bid is not None and ask is not None:
-        try:
-            bf, af = float(bid), float(ask)
-            if af > 0 and bf >= 0:
-                _calc = (af + bf) / 2.0
-                if _calc > 0:
-                    mid = round(_calc, 4)
-                    mid_source = "derived_bid_ask_mid"
-        except (TypeError, ValueError):
-            pass
-
-    spread_computed = _spread_from_bid_ask(bid, ask)
-    spread = _first_number(ms_dict.get("spread"), spread_computed)
-    spread_source = None
-    if spread is not None:
-        if _num(ms_dict.get("spread")) is not None:
-            spread_source = "schwab_ms_dict_spread"
-        elif spread_computed is not None:
-            spread_source = "derived_bid_ask_pts"
+    mid, mid_source = resolve_a2_contract_mid(chain_row=chain_row)
+    spread, spread_source = resolve_a2_contract_spread(bid=bid, ask=ask)
+    underlying_spread_pts, underlying_spread_source = resolve_a2_underlying_spread_pts(
+        ms_dict=ms_dict
+    )
 
     iv_val: float | None = None
     iv_detail = None
@@ -367,6 +344,14 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
             "spread": leaf(spread, "v1_approximation" if spread is not None else "not_implemented"),
             "spread_source": leaf(
                 spread_source, "v2_compliant" if spread_source else "not_implemented"
+            ),
+            "underlying_spread_pts": leaf(
+                underlying_spread_pts,
+                "v2_compliant" if underlying_spread_source else "not_implemented",
+            ),
+            "underlying_spread_source": leaf(
+                underlying_spread_source,
+                "v2_compliant" if underlying_spread_source else "not_implemented",
             ),
             "max_loss": leaf(None, "policy_object_pending"),
             "breakeven": leaf(_breakeven(strike, option_right, mid), "v1_approximation" if mid is not None else "not_implemented"),

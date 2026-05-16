@@ -98,7 +98,9 @@ def test_a2_option_expression_emits_mid_and_spread_provenance_tags():
     oe = a2["option_expression"]
     assert oe["mid"]["value"] == 1.25
     assert oe["mid_source"]["value"] == "derived_bid_ask_mid"
-    assert oe["spread_source"]["value"] == "schwab_ms_dict_spread"
+    assert oe["spread"]["value"] == 0.1
+    assert oe["spread_source"]["value"] == "schwab_chain_bid_ask_pts"
+    assert oe["underlying_spread_pts"]["value"] == 0.1
 
 
 def test_a2_option_expression_prefers_schwab_chain_last_over_bid_ask_mid():
