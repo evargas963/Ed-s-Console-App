@@ -247,7 +247,7 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 | PQ re-audit | DFR-003, PQ-001 | CLOSED | `4ef5864` — `test_server_quote_source_contract.py` fail-closed spot |
 | Zero-OPEN KL sweep | item 19 | CLOSED | `a48f964` — 13 KL data-flow files; 0 forbidden patterns |
 | OHLCV bar adapter | DFR-009, DFR-011, MT-006, MT-007, PQ-009, PQ-010, DFR-018 re-audit | CLOSED | `03ca199` — zero OHLCV injection; `missing_fields` + `source` on every bar; synthetic bars tagged |
-| Day 1.5 OHLCV pattern repo-wide | DFR-009/011/018/MT-006/007/PQ-009/010 repo-wide | CLOSED | `978d4d5` — pattern swept across 11-file initial finding; `bucket_metric()`; ALLOWLIST in `test_ohlcv_schwab_first.py` |
+| Day 1.5 OHLCV pattern repo-wide | DFR-009/011/018/MT-006/007/PQ-009/010 repo-wide | CLOSED | `17ccf30` — pattern swept across 11-file initial finding; `bucket_metric()`; ALLOWLIST in `test_ohlcv_schwab_first.py` |
 | Order flow + spread | DFR-019, PQ-002/005/007/008/011/012/013, OP-015/017 | CLOSED | `92b85ff` — RVOL fail-closed; spread_pts/frac split; OF volume + VWAP provenance |
 | Repo-wide register | all non-KL rows | OPEN | MT/OHLCV/deferred paths out of KEY LEVELS scope |
 
