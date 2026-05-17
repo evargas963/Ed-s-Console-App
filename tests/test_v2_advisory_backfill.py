@@ -9,6 +9,7 @@ from calibration.schema import ensure_calibration_schema
 from calibration.v2_advisory_backfill import (
     ADVISORY_V2_ADAPTER_VERSION,
     ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION,
+    _direction_from_triplet,
     backfill_v2_advisory_decisions,
     build_v2_advisory_snapshot,
     build_walk_forward_splits,
@@ -268,3 +269,10 @@ def test_walk_forward_validation_rejects_embargo_violation():
 
     with pytest.raises(ValueError, match="embargo"):
         validate_purged_embargo_splits(splits, embargo_span=5.0)
+
+
+def test_direction_from_triplet_flat_matches_bayesian_fusion_canonical() -> None:
+    """Backfill must emit 'flat' (not 'neutral') when flat prob wins argmax."""
+    assert _direction_from_triplet(0.2, 0.25, 0.55) == "flat"
+    assert _direction_from_triplet(0.5, 0.3, 0.2) == "up"
+    assert _direction_from_triplet(None, None, None) is None

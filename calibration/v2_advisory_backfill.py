@@ -295,7 +295,7 @@ def _direction_from_triplet(up: Any, down: Any, flat: Any) -> str | None:
     vals = {
         "up": _float_or_none(up),
         "down": _float_or_none(down),
-        "neutral": _float_or_none(flat),
+        "flat": _float_or_none(flat),
     }
     present = {k: v for k, v in vals.items() if v is not None}
     if not present:
