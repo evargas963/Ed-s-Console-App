@@ -33,6 +33,7 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
 )
 
+from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
 from ml_horizon import normalize_ml_horizon_slug, outcome_column
 from ml_predict import stack_probs_bundle_key
 
@@ -98,42 +99,50 @@ MODE_DEFINITIONS: dict[str, str] = {
 }
 
 
-def _norm_triplet(pu: float, pd: float, pf: float) -> list[float]:
-    s = pu + pd + pf
+def _norm_triplet(pu: float, pd: float, pf: float) -> Optional[list[float]]:
+    s = float(pu) + float(pd) + float(pf)
     if s <= 0:
-        return [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0]
-    return [pu / s, pd / s, pf / s]
+        return None
+    return [float(pu) / s, float(pd) / s, float(pf) / s]
 
 
 def _dict_to_probs(d: Optional[dict]) -> Optional[list[float]]:
     if not d:
         return None
-    pu = float(d.get("up", 0.0))
-    pd = float(d.get("down", 0.0))
-    pf = float(d.get("flat", 0.0))
-    return _norm_triplet(pu, pd, pf)
+    if not all(k in d for k in ("up", "down", "flat")):
+        return None
+    try:
+        return _norm_triplet(float(d["up"]), float(d["down"]), float(d["flat"]))
+    except (TypeError, ValueError):
+        return None
 
 
 def _probs_from_fusion_branch(b: Optional[dict]) -> Optional[list[float]]:
     """run_base_models_once fusion.* uses prob_up / prob_down / prob_flat."""
     if not b or not b.get("available"):
         return None
-    return _norm_triplet(
-        float(b.get("prob_up", 0.0)),
-        float(b.get("prob_down", 0.0)),
-        float(b.get("prob_flat", 0.0)),
-    )
+    if not all(k in b for k in ("prob_up", "prob_down", "prob_flat")):
+        return None
+    try:
+        return _norm_triplet(float(b["prob_up"]), float(b["prob_down"]), float(b["prob_flat"]))
+    except (TypeError, ValueError):
+        return None
 
 
 def _fusion_branch_to_prob_dict(b: Optional[dict]) -> Optional[dict]:
     """Convert fusion branch to {up,down,flat} for _weighted_average."""
     if not b or not b.get("available"):
         return None
-    return {
-        "up": float(b.get("prob_up", 0.33)),
-        "down": float(b.get("prob_down", 0.33)),
-        "flat": float(b.get("prob_flat", 0.34)),
-    }
+    if not all(k in b for k in ("prob_up", "prob_down", "prob_flat")):
+        return None
+    try:
+        return {
+            "up": float(b["prob_up"]),
+            "down": float(b["prob_down"]),
+            "flat": float(b["prob_flat"]),
+        }
+    except (TypeError, ValueError):
+        return None
 
 
 def _weighted_blend_probs(
@@ -169,7 +178,7 @@ def _pack_full_metrics(
     )
 
     n = len(y_true)
-    if n < 10 or len(prob_rows) != n:
+    if n < MIN_SAMPLES_STATISTICAL or len(prob_rows) != n:
         return {
             "config": name,
             "n_rows_scored": n,
@@ -583,7 +592,7 @@ def run_stack_bundle_evaluation(
     for m in modes:
         probs = buffers.get(m) or []
         y = y_paired
-        if len(probs) == len(y) and len(y) >= 10:
+        if len(probs) == len(y) and len(y) >= MIN_SAMPLES_STATISTICAL:
             by_config[m] = _pack_full_metrics(m, y, probs, rows_paired)
         else:
             by_config[m] = {
