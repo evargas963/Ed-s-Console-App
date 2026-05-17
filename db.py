@@ -3301,7 +3301,7 @@ class EdDB:
         return [dict(r) for r in rows]
 
     def get_similar_setups(self, ticker: str, timeframe: str,
-                            zone: str, vwap_side: str,
+                            zone: Optional[str], vwap_side: Optional[str],
                             nearest_above_dist: Optional[float],
                             nearest_below_dist: Optional[float],
                             n_similar: int = 500,
@@ -3485,101 +3485,111 @@ class EdDB:
             )
             return None
 
+        # When canonical zone/vwap are withheld, do not SQL-match fabricated sentinels.
+        if zone is None:
+            _start_tier = 5
+        elif vwap_side is None:
+            _start_tier = 4
+        else:
+            _start_tier = 1
+
         with self._connect() as conn:
 
-            # ── Tier 1: zone + vwap_side + both distance buckets ──────────
-            _p1 = (
-                ticker, timeframe, zone, vwap_side,
-                nearest_above_dist,
-                _bucket_lo(above_bucket), _bucket_hi(above_bucket),
-                nearest_below_dist,
-                _bucket_lo(below_bucket), _bucket_hi(below_bucket),
-            )
-            if as_of_ts_utc is not None:
-                _p1 = _p1 + (as_of_ts_utc, n_similar)
-            else:
-                _p1 = _p1 + (n_similar,)
-            rows = conn.execute("""
-                SELECT *, 1 as match_tier FROM snapshots
-                WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
-                  AND outcome_1c IS NOT NULL
-                  AND (
-                    (nearest_above_dist IS NULL AND ? IS NULL)
-                    OR (nearest_above_dist BETWEEN ? AND ?)
-                  )
-                  AND (
-                    (nearest_below_dist IS NULL AND ? IS NULL)
-                    OR (nearest_below_dist BETWEEN ? AND ?)
-                  )
-                """ + _asof_sql + """
-                ORDER BY ts_utc DESC LIMIT ?
-            """, _p1).fetchall()
+            if _start_tier <= 1:
+                # ── Tier 1: zone + vwap_side + both distance buckets ──────────
+                _p1 = (
+                    ticker, timeframe, zone, vwap_side,
+                    nearest_above_dist,
+                    _bucket_lo(above_bucket), _bucket_hi(above_bucket),
+                    nearest_below_dist,
+                    _bucket_lo(below_bucket), _bucket_hi(below_bucket),
+                )
+                if as_of_ts_utc is not None:
+                    _p1 = _p1 + (as_of_ts_utc, n_similar)
+                else:
+                    _p1 = _p1 + (n_similar,)
+                rows = conn.execute("""
+                    SELECT *, 1 as match_tier FROM snapshots
+                    WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
+                      AND outcome_1c IS NOT NULL
+                      AND (
+                        (nearest_above_dist IS NULL AND ? IS NULL)
+                        OR (nearest_above_dist BETWEEN ? AND ?)
+                      )
+                      AND (
+                        (nearest_below_dist IS NULL AND ? IS NULL)
+                        OR (nearest_below_dist BETWEEN ? AND ?)
+                      )
+                    """ + _asof_sql + """
+                    ORDER BY ts_utc DESC LIMIT ?
+                """, _p1).fetchall()
 
-            done = _maybe_return_tier(rows, 1)
-            if done is not None:
-                return done
+                done = _maybe_return_tier(rows, 1)
+                if done is not None:
+                    return done
 
-            # ── Tier 2: zone + vwap_side + above distance only ────────────
-            _p2 = (
-                ticker, timeframe, zone, vwap_side,
-                nearest_above_dist,
-                _bucket_lo(above_bucket), _bucket_hi(above_bucket),
-            )
-            if as_of_ts_utc is not None:
-                _p2 = _p2 + (as_of_ts_utc, n_similar)
-            else:
-                _p2 = _p2 + (n_similar,)
-            rows = conn.execute("""
-                SELECT *, 2 as match_tier FROM snapshots
-                WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
-                  AND outcome_1c IS NOT NULL
-                  AND (
-                    (nearest_above_dist IS NULL AND ? IS NULL)
-                    OR (nearest_above_dist BETWEEN ? AND ?)
-                  )
-                """ + _asof_sql + """
-                ORDER BY ts_utc DESC LIMIT ?
-            """, _p2).fetchall()
+                # ── Tier 2: zone + vwap_side + above distance only ────────────
+                _p2 = (
+                    ticker, timeframe, zone, vwap_side,
+                    nearest_above_dist,
+                    _bucket_lo(above_bucket), _bucket_hi(above_bucket),
+                )
+                if as_of_ts_utc is not None:
+                    _p2 = _p2 + (as_of_ts_utc, n_similar)
+                else:
+                    _p2 = _p2 + (n_similar,)
+                rows = conn.execute("""
+                    SELECT *, 2 as match_tier FROM snapshots
+                    WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
+                      AND outcome_1c IS NOT NULL
+                      AND (
+                        (nearest_above_dist IS NULL AND ? IS NULL)
+                        OR (nearest_above_dist BETWEEN ? AND ?)
+                      )
+                    """ + _asof_sql + """
+                    ORDER BY ts_utc DESC LIMIT ?
+                """, _p2).fetchall()
 
-            done = _maybe_return_tier(rows, 2)
-            if done is not None:
-                return done
+                done = _maybe_return_tier(rows, 2)
+                if done is not None:
+                    return done
 
-            # ── Tier 3: zone + vwap_side only ─────────────────────────────
-            _p3 = (ticker, timeframe, zone, vwap_side)
-            if as_of_ts_utc is not None:
-                _p3 = _p3 + (as_of_ts_utc, n_similar)
-            else:
-                _p3 = _p3 + (n_similar,)
-            rows = conn.execute("""
-                SELECT *, 3 as match_tier FROM snapshots
-                WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
-                  AND outcome_1c IS NOT NULL
-                """ + _asof_sql + """
-                ORDER BY ts_utc DESC LIMIT ?
-            """, _p3).fetchall()
+                # ── Tier 3: zone + vwap_side only ─────────────────────────────
+                _p3 = (ticker, timeframe, zone, vwap_side)
+                if as_of_ts_utc is not None:
+                    _p3 = _p3 + (as_of_ts_utc, n_similar)
+                else:
+                    _p3 = _p3 + (n_similar,)
+                rows = conn.execute("""
+                    SELECT *, 3 as match_tier FROM snapshots
+                    WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
+                      AND outcome_1c IS NOT NULL
+                    """ + _asof_sql + """
+                    ORDER BY ts_utc DESC LIMIT ?
+                """, _p3).fetchall()
 
-            done = _maybe_return_tier(rows, 3)
-            if done is not None:
-                return done
+                done = _maybe_return_tier(rows, 3)
+                if done is not None:
+                    return done
 
-            # ── Tier 4: zone only ─────────────────────────────────────────
-            _p4 = (ticker, timeframe, zone)
-            if as_of_ts_utc is not None:
-                _p4 = _p4 + (as_of_ts_utc, n_similar)
-            else:
-                _p4 = _p4 + (n_similar,)
-            rows = conn.execute("""
-                SELECT *, 4 as match_tier FROM snapshots
-                WHERE ticker = ? AND timeframe = ? AND zone = ?
-                  AND outcome_1c IS NOT NULL
-                """ + _asof_sql + """
-                ORDER BY ts_utc DESC LIMIT ?
-            """, _p4).fetchall()
+            if _start_tier <= 4:
+                # ── Tier 4: zone only ─────────────────────────────────────────
+                _p4 = (ticker, timeframe, zone)
+                if as_of_ts_utc is not None:
+                    _p4 = _p4 + (as_of_ts_utc, n_similar)
+                else:
+                    _p4 = _p4 + (n_similar,)
+                rows = conn.execute("""
+                    SELECT *, 4 as match_tier FROM snapshots
+                    WHERE ticker = ? AND timeframe = ? AND zone = ?
+                      AND outcome_1c IS NOT NULL
+                    """ + _asof_sql + """
+                    ORDER BY ts_utc DESC LIMIT ?
+                """, _p4).fetchall()
 
-            done = _maybe_return_tier(rows, 4)
-            if done is not None:
-                return done
+                done = _maybe_return_tier(rows, 4)
+                if done is not None:
+                    return done
 
             # ── Tier 5: all filled snapshots for this ticker ──────────────
             _p5 = (ticker, timeframe)

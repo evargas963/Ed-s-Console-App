@@ -35,13 +35,11 @@ def similar_setup_filters_from_canonical_features(features: dict[str, Any]) -> d
     nad = features.get("structure.nearest_above_dist")
     nbd = features.get("structure.nearest_below_dist")
     nad_f, nbd_f = canonicalize_distance_read(nad, nbd)
-    zone_missing = z is None
-    vwap_missing = vs is None
     return {
-        "zone": z if z is not None else "unknown",
-        "vwap_side": vs if vs is not None else "unknown",
-        "zone_fallback": zone_missing,
-        "vwap_side_fallback": vwap_missing,
+        "zone": z,
+        "vwap_side": vs,
+        "zone_fallback": z is None,
+        "vwap_side_fallback": vs is None,
         "nearest_above_dist": nad_f,
         "nearest_below_dist": nbd_f,
     }
