@@ -204,8 +204,18 @@ def _mc_reasoning_snippet(fusion, final_signal: str) -> str:
     # Fusion gets MC from bayesian_fusion which passes mc_out — fusion doesn't have sim_prob_*
     # We get mc_containment, mc_expansion from fusion. For directional: use fusion_dominant_direction
     # vs call. MC contributes containment/expansion to fusion evidence.
-    mode = "expansion" if (exp or 0) >= (cont or 0) else "containment"
-    pct = int(100 * (exp if (exp or 0) >= (cont or 0) else cont) or 0)
+    if exp is None and cont is None:
+        return ""
+    if exp is not None and cont is not None:
+        is_expansion = exp >= cont
+        mode = "expansion" if is_expansion else "containment"
+        pct = int(100 * (exp if is_expansion else cont))
+    elif exp is not None:
+        mode = "expansion"
+        pct = int(100 * exp)
+    else:
+        mode = "containment"
+        pct = int(100 * cont)
     # Directional: fusion has dominant_direction; MC's path outcomes inform fusion
     # Simple: state MC mode and whether it supports directional trade
     if final_signal == "wait":
@@ -379,8 +389,10 @@ def _index_basket_vote(
                 return -1
         except (TypeError, ValueError):
             pass
+    if etf_chg_pct is None:
+        return 0
     try:
-        c = float(etf_chg_pct or 0.0)
+        c = float(etf_chg_pct)
     except (TypeError, ValueError):
         return 0
     if c > min_lean:
@@ -390,7 +402,7 @@ def _index_basket_vote(
     return 0
 
 
-def _cross_instrument_signal(inp: SignalInput) -> str:
+def _cross_instrument_signal(inp: SignalInput) -> str | None:
     """
     Continuous cross-instrument alignment score for **narrative / notes** only
     (e.g. `_cross_instrument_notes`, regime copy) — **not** used for stack_vote;
@@ -399,27 +411,31 @@ def _cross_instrument_signal(inp: SignalInput) -> str:
     Treats direction agreement × magnitude across SPY, QQQ, IWM. Full agreement is
     a strong contextual label; divergence is a warning in text — not a hard gate.
     """
-    spy = inp.spy_chg_pct or 0.0
-    qqq = inp.qqq_chg_pct or 0.0
-    iwm = inp.iwm_chg_pct or 0.0
+    spy = inp.spy_chg_pct
+    qqq = inp.qqq_chg_pct
+    iwm = inp.iwm_chg_pct
+    present = [v for v in (spy, qqq, iwm) if v is not None]
+    if len(present) < 2:
+        return None
 
-    # All three directions (chg_pct is in percentage points, e.g. -1.65 = -1.65%)
+    # Directions for instruments with data (chg_pct in percentage points)
     dirs = []
-    for v in (spy, qqq, iwm):
-        if v > 0.1:    dirs.append(1)     # > +0.1%
-        elif v < -0.1: dirs.append(-1)    # < -0.1%
-        else:          dirs.append(0)
+    for v in present:
+        if v > 0.1:
+            dirs.append(1)
+        elif v < -0.1:
+            dirs.append(-1)
+        else:
+            dirs.append(0)
 
-    # Agreement: do they all point the same way?
     nonzero = [d for d in dirs if d != 0]
     if len(nonzero) < 2:
-        return "neutral"  # not enough movement to judge
+        return "neutral"
 
     all_same = len(set(nonzero)) == 1
     has_conflict = 1 in nonzero and -1 in nonzero
 
-    # Magnitude: average absolute move across instruments (in pct points)
-    avg_mag = (abs(spy) + abs(qqq) + abs(iwm)) / 3.0
+    avg_mag = sum(abs(v) for v in present) / len(present)
     STRONG_THRESHOLD = 0.40   # 0.4% average move = strong signal
     WEAK_THRESHOLD   = 0.10   # 0.1% average move = barely moving
 
@@ -433,27 +449,25 @@ def _cross_instrument_notes(inp: SignalInput) -> list:
     """Plain English notes from cross-instrument reads with magnitude context."""
     notes = []
 
-    spy = inp.spy_chg_pct or 0.0
-    qqq = inp.qqq_chg_pct or 0.0
-    iwm = inp.iwm_chg_pct or 0.0
+    spy = inp.spy_chg_pct
+    qqq = inp.qqq_chg_pct
+    iwm = inp.iwm_chg_pct
 
-    # QQQ vs SPY — magnitude matters (values in percentage points)
-    delta = qqq - spy
-    if abs(delta) > 0.20:  # meaningful divergence (0.2% spread)
-        if delta > 0:
-            notes.append(f"QQQ leading SPY by {abs(delta):.2f}% — tech pulling market up")
-        else:
-            notes.append(f"QQQ lagging SPY by {abs(delta):.2f}% — tech is a drag")
+    if spy is not None and qqq is not None:
+        delta = qqq - spy
+        if abs(delta) > 0.20:
+            if delta > 0:
+                notes.append(f"QQQ leading SPY by {abs(delta):.2f}% — tech pulling market up")
+            else:
+                notes.append(f"QQQ lagging SPY by {abs(delta):.2f}% — tech is a drag")
 
-    # IWM — risk appetite with magnitude
-    if iwm < -0.50:
+    if iwm is not None and iwm < -0.50:
         notes.append(f"Small caps down {abs(iwm):.2f}% — risk-off, be careful with longs")
-    elif iwm > 0.50:
+    elif iwm is not None and iwm > 0.50:
         notes.append(f"Small caps up {iwm:.2f}% — risk-on, longs favored")
 
-    # All three aligned strongly
     cross_sig = _cross_instrument_signal(inp)
-    if cross_sig == "strong_confirm":
+    if cross_sig == "strong_confirm" and spy is not None and qqq is not None and iwm is not None:
         avg_dir = "bullish" if (spy + qqq + iwm) > 0 else "bearish"
         notes.append(f"SPY/QQQ/IWM all moving strongly {avg_dir} — broad market conviction")
     elif cross_sig in ("diverging", "strong_diverge"):
@@ -1047,9 +1061,14 @@ def _validate_trade(
 
     # 2a. Model agreement strongly disagrees (threshold raised in unstable vol regime)
     if _fusion_available:
-        agree = getattr(fusion, 'model_agreement', 0.5)
-        n_active = getattr(fusion, 'n_sources_active', 0)
-        if agree < _agree_threshold and n_active >= 2:
+        agree = getattr(fusion, 'model_agreement', None)
+        n_active = getattr(fusion, 'n_sources_active', None)
+        if (
+            agree is not None
+            and n_active is not None
+            and agree < _agree_threshold
+            and n_active >= 2
+        ):
             prob_fails.append(f"model agreement below threshold ({agree:.0%} < {_agree_threshold:.0%}) with {n_active} models active")
 
     # 2b. Canonical forward forecast opposes the call with sufficient marginal probability
@@ -1067,8 +1086,12 @@ def _validate_trade(
     if _fusion_available:
         try:
             if final_signal == "long":
-                reversal_p = getattr(fusion, 'reversal_posterior', 0.0)
-                if reversal_p and reversal_p > 0.50:
+                reversal_p = getattr(fusion, 'reversal_posterior', None)
+                if reversal_p is None:
+                    prob_fails.append(
+                        "fusion reversal posterior unavailable — cannot validate long safety"
+                    )
+                elif reversal_p > 0.50:
                     prob_fails.append(f"fusion reversal posterior {reversal_p:.0%} — high reversal risk for longs")
                     log.debug(
                         "validate_trade: reversal gate fired — %s "
@@ -1076,10 +1099,17 @@ def _validate_trade(
                         symbol, reversal_p, final_signal
                     )
             elif final_signal == "short":
-                continuation_p = getattr(fusion, 'continuation_posterior', 0.0)
-                breakout_p = getattr(fusion, 'breakout_posterior', 0.0)
-                if (continuation_p > CONTINUATION_BLOCK_THRESHOLD and breakout_p > BREAKOUT_BLOCK_THRESHOLD
-                        and (continuation_p + breakout_p) > 0.60):
+                continuation_p = getattr(fusion, 'continuation_posterior', None)
+                breakout_p = getattr(fusion, 'breakout_posterior', None)
+                if continuation_p is None or breakout_p is None:
+                    prob_fails.append(
+                        "fusion continuation/breakout posteriors unavailable — cannot validate short safety"
+                    )
+                elif (
+                    continuation_p > CONTINUATION_BLOCK_THRESHOLD
+                    and breakout_p > BREAKOUT_BLOCK_THRESHOLD
+                    and (continuation_p + breakout_p) > 0.60
+                ):
                     prob_fails.append(f"fusion continuation+breakout {(continuation_p+breakout_p):.0%} — strong upside momentum for shorts")
                     log.debug(
                         "validate_trade: continuation/breakout gate fired — %s "
@@ -1242,14 +1272,15 @@ def compute_call(
     _mh_promoted_directional = False
 
     # Regime + zone directional bias (breakout/breakdown from derive_zone)
-    nd = inp.net_delta or 0.0
+    nd = inp.net_delta
     regime_vote = 0
     if zone == "breakout":
         regime_vote = 1  # expansion up
     elif zone == "breakdown":
         regime_vote = -1  # expansion down
     elif _regime_label in ("trend_continuation", "breakout", "acceleration"):
-        regime_vote = 1 if nd >= 0 else (-1 if nd < 0 else 0)
+        if nd is not None:
+            regime_vote = 1 if nd >= 0 else (-1 if nd < 0 else 0)
 
     # Stack votes: 1=long, -1=short, 0=abstain (9 sources; fusion slot = authoritative model dir, no duplicate canonical+fusion)
     stack_votes = {
