@@ -4653,9 +4653,10 @@ function renderDecisionCommandRail(d) {
   }
   const confPill = $('dr-confidence-pill');
   if (confPill) {
-    const cc = String(d.call_conviction || d.confidence || 'low').toLowerCase();
-    confPill.textContent = (cc || 'low').toUpperCase();
-    confPill.className = 'conviction-pill ' + (cc === 'high' ? 'high' : cc === 'medium' ? 'medium' : 'low');
+    const ccRaw = optStr(d.call_conviction) || optStr(d.confidence);
+    const cc = ccRaw ? ccRaw.toLowerCase() : '';
+    confPill.textContent = cc ? cc.toUpperCase() : '—';
+    confPill.className = 'conviction-pill ' + (cc === 'high' ? 'high' : cc === 'medium' ? 'medium' : cc === 'low' ? 'low' : '');
     confPill.title = `Desk conviction: ${cc} · multi-horizon confidence: ${numf(d.final_confidence, 2)}`;
   }
 
@@ -5927,12 +5928,48 @@ function render(d, fullRenderSource) {
     }
   }
 
-  /** Direction for WDS + Call fusion band: if fusion ran, trust it (including flat); else stack (dominant_dir). Default server "flat" is not truthy-skipped in JS. */
+  /** Non-empty string or null — never fabricate directional labels. */
+  function optStr(v) {
+    return (v != null && String(v).trim() !== '') ? String(v).trim() : null;
+  }
+
+  /** expanding | contracting | flat, or null when IV direction withheld. */
+  function ivDirectionKey(d) {
+    const iv = optStr(d && d.iv_direction);
+    if (!iv) return null;
+    const s = iv.toLowerCase();
+    return (s === 'expanding' || s === 'contracting' || s === 'flat') ? s : null;
+  }
+
+  /** up | down | flat, or null when stack direction withheld. */
+  function stackDirKey(v) {
+    const s = optStr(v);
+    if (!s) return null;
+    const k = s.toLowerCase();
+    return (k === 'up' || k === 'down' || k === 'flat') ? k : null;
+  }
+
+  function fusionDirLabel(dir) {
+    if (dir === 'up') return '↑ UP';
+    if (dir === 'down') return '↓ DOWN';
+    if (dir === 'flat') return '→ FLAT';
+    return '—';
+  }
+
+  function fusionDirCss(dir) {
+    if (dir === 'up') return 'up';
+    if (dir === 'down') return 'down';
+    if (dir === 'flat') return 'flat';
+    return 'withheld';
+  }
+
+  /** Direction for WDS + Call fusion band; null when producer withheld (no fabricated flat). */
   function effectiveDirection(x) {
+    if (!x || typeof x !== 'object') return null;
     if (x.fusion_available) {
-      return String(x.fusion_dominant_direction || 'flat').toLowerCase();
+      return stackDirKey(x.fusion_dominant_direction);
     }
-    return String(x.dominant_dir || x.prediction_dir || 'flat').toLowerCase();
+    return stackDirKey(x.dominant_dir) || stackDirKey(x.prediction_dir);
   }
   // ── Sidebar: Instrument ───────────────────────────────────────────────────
   window.__edSessionLabel = String(d.session_label || '');
@@ -6215,7 +6252,7 @@ function render(d, fullRenderSource) {
   const wb = (cr && cr.wait_blocker) || null;
   if (DIAG) {
     const cc = d.confluence_count != null && !Number.isNaN(Number(d.confluence_count)) ? Number(d.confluence_count) : null;
-    const ct = d.confluence_total != null && !Number.isNaN(Number(d.confluence_total)) ? Number(d.confluence_total) : 9;
+    const ct = d.confluence_total != null && !Number.isNaN(Number(d.confluence_total)) ? Number(d.confluence_total) : null;
     const confStr = cc != null ? `${cc}/${ct}` : '—';
     console.log('[render] The Call', {
       call_signal: d.call_signal,
@@ -6246,19 +6283,19 @@ function render(d, fullRenderSource) {
   const zFus = $('call-zone-fusion');
   if (zFus) {
     zFus.classList.remove('up', 'down', 'flat');
-    zFus.classList.add(fusDir === 'up' ? 'up' : fusDir === 'down' ? 'down' : 'flat');
+    zFus.classList.add(fusionDirCss(fusDir));
   }
   const fusDirEl = $('call-fusion-direction');
   if (fusDirEl) {
-    fusDirEl.textContent = fusDir === 'up' ? '↑ UP' : fusDir === 'down' ? '↓ DOWN' : '→ FLAT';
-    fusDirEl.className = 'fusion-direction ' + (fusDir === 'up' ? 'up' : fusDir === 'down' ? 'down' : 'flat');
+    fusDirEl.textContent = fusionDirLabel(fusDir);
+    fusDirEl.className = 'fusion-direction ' + fusionDirCss(fusDir);
   }
   const fusConf = $('call-fusion-confidence');
   if (fusConf) {
-    const fcSrc = d.fusion_available ? (d.fusion_confidence || 'low') : (d.confidence || 'low');
-    const fc = String(fcSrc).toLowerCase();
-    fusConf.className = 'conviction-pill ' + (fc === 'high' ? 'badge-high' : fc === 'medium' ? 'badge-medium' : 'badge-low');
-    fusConf.textContent = fc;
+    const fcSrc = d.fusion_available ? optStr(d.fusion_confidence) : optStr(d.confidence);
+    const fc = fcSrc ? fcSrc.toLowerCase() : '';
+    fusConf.className = 'conviction-pill ' + (fc === 'high' ? 'badge-high' : fc === 'medium' ? 'badge-medium' : fc === 'low' ? 'badge-low' : '');
+    fusConf.textContent = fc || '—';
     fusConf.title = d.fusion_available ? 'Fusion confidence' : 'Model stack confidence (fusion inactive)';
   }
   const fusOutcome = $('call-fusion-outcome');
@@ -6354,7 +6391,7 @@ function render(d, fullRenderSource) {
   const overrideBlock = $('call-override-block');
   const overrideText = $('call-override-text');
   if (overrideBlock && overrideText) {
-    const showOverride = isWait && fusDir !== 'flat';
+    const showOverride = isWait && fusDir != null && fusDir !== 'flat';
     overrideBlock.style.display = showOverride ? '' : 'none';
     overrideText.textContent = showOverride ? (d.call_headline || '—') : '';
   }
@@ -6461,10 +6498,10 @@ function render(d, fullRenderSource) {
   // Headline: ↑ LEAN LONG / ↓ LEAN SHORT / → NEUTRAL
   const mainHL = $('pred-main-headline');
   if (mainHL) {
-    let hlText = '→ NEUTRAL';
+    let hlText = '—';
     if (pdir === 'up') hlText = '↑ LEAN LONG';
     else if (pdir === 'down') hlText = '↓ LEAN SHORT';
-    else if (Number(d.samples_used) > 0) hlText = '→ NEUTRAL';
+    else if (pdir === 'flat') hlText = '→ NEUTRAL';
     mainHL.textContent = hlText;
   }
 
@@ -6529,7 +6566,7 @@ function render(d, fullRenderSource) {
       { name: 'LSTM', l1k: 'lstm', available: d.lstm_available, dominant: d.lstm_dominant, conf: d.lstm_confidence },
       { name: 'Transformer', l1k: 'transformer', available: d.transformer_available, dominant: d.transformer_dominant, conf: d.transformer_confidence },
       { name: 'Monte Carlo', l1k: null, available: (d.mc_containment != null || d.mc_expansion != null), dominant: (d.mc_expansion || 0) >= (d.mc_containment || 0) ? 'up' : 'down', conf: null, pct: Math.round(((d.mc_expansion || 0) >= (d.mc_containment || 0) ? (d.mc_expansion || 0) : (d.mc_containment || 0)) * 100) },
-      { name: 'Fusion', l1k: null, available: !!d.fusion_available, dominant: (d.fusion_available ? (d.fusion_dominant_direction || String(d.fusion_dominant || 'flat').split('_')[0] || 'flat') : displayDir), conf: null, pct: d.fusion_available && d.fusion_dominant_prob != null ? Math.round(Number(d.fusion_dominant_prob) * 100) : null }
+      { name: 'Fusion', l1k: null, available: !!d.fusion_available, dominant: (d.fusion_available ? (stackDirKey(d.fusion_dominant_direction) || stackDirKey(String(d.fusion_dominant || '').split('_')[0])) : displayDir), conf: null, pct: d.fusion_available && d.fusion_dominant_prob != null ? Math.round(Number(d.fusion_dominant_prob) * 100) : null }
     ];
     const mhMap = {};
     (Array.isArray(d.model_health) ? d.model_health : []).forEach(m => {
@@ -6785,17 +6822,19 @@ function render(d, fullRenderSource) {
       desc: d => 'Max put open interest — strong expiry magnet, price gravitates here into close.' },
     { key: 'kl_call_vanna_wall', strKey: 'kl_call_vanna_str', label: 'Vanna Wall Call', proxColor: '#aaaaaa',
       desc: d => {
-        const iv = d.iv_direction || 'flat';
+        const iv = ivDirectionKey(d);
         if (iv === 'expanding') return 'IV EXPANDING — vanna active. Dealers buying here, pushing price up.';
         if (iv === 'contracting') return 'IV CONTRACTING — vanna reversed. Dealers selling despite call positioning.';
-        return 'IV flat — vanna dormant. Level exists structurally but has no active flow right now.';
+        if (iv === 'flat') return 'IV flat — vanna dormant. Level exists structurally but has no active flow right now.';
+        return 'IV direction unavailable — vanna context withheld.';
       }},
     { key: 'kl_put_vanna_wall', strKey: 'kl_put_vanna_str', label: 'Vanna Wall Put', proxColor: '#aaaaaa',
       desc: d => {
-        const iv = d.iv_direction || 'flat';
+        const iv = ivDirectionKey(d);
         if (iv === 'expanding') return 'IV EXPANDING — vanna active. Dealers selling here, pushing price down.';
         if (iv === 'contracting') return 'IV CONTRACTING — vanna reversed. Dealers buying despite put positioning.';
-        return 'IV flat — vanna dormant. Level exists structurally but has no active flow right now.';
+        if (iv === 'flat') return 'IV flat — vanna dormant. Level exists structurally but has no active flow right now.';
+        return 'IV direction unavailable — vanna context withheld.';
       }},
     { key: 'kl_oi_center', strKey: null, label: 'OI Center', sr: 'pin', srLabel: 'Pin', proxColor: '#aaaaaa',
       desc: d => 'Open interest center of mass. Supports gamma pin convergence.' },
@@ -6906,18 +6945,18 @@ function render(d, fullRenderSource) {
       const pinStrike = parseFloat(d.kl_gamma_pin || 0);
       const charmTarget = (d.kl_institutional_ready && pinStrike > 0)
         ? pinStrike
-        : parseFloat(d.charm_drift_toward || 0);
-      const charmNetRaw = parseFloat(d.charm_net || 0);
-      const flowBull = charmNetRaw > 0;
-      const flowBear = charmNetRaw < 0;
-      const flowLbl = flowBull ? 'Bullish' : flowBear ? 'Bearish' : 'Neutral';
+        : (d.charm_drift_toward != null && !Number.isNaN(Number(d.charm_drift_toward)) ? Number(d.charm_drift_toward) : 0);
+      const charmNetRaw = d.charm_net != null && !Number.isNaN(Number(d.charm_net)) ? Number(d.charm_net) : null;
+      const flowBull = charmNetRaw != null && charmNetRaw > 0;
+      const flowBear = charmNetRaw != null && charmNetRaw < 0;
+      const flowLbl = flowBull ? 'Bullish' : flowBear ? 'Bearish' : (charmNetRaw == null ? '—' : 'Neutral');
       const flowSr = flowBull ? 'bull' : flowBear ? 'bear' : 'net';
       const tgtStr = charmTarget > 0 ? charmTarget.toFixed(2) : '—';
       const dist = (charmTarget > 0 && spot) ? (charmTarget - spot) : null;
       const distStr = dist !== null ? (dist > 0 ? '+' : '') + dist.toFixed(2) : '—';
-      const charmAbs = Math.abs(charmNetRaw);
-      const charmSign = charmNetRaw >= 0 ? '+' : '-';
-      const rateStr = charmNetRaw !== 0
+      const charmAbs = charmNetRaw != null ? Math.abs(charmNetRaw) : 0;
+      const charmSign = charmNetRaw != null && charmNetRaw >= 0 ? '+' : '-';
+      const rateStr = charmNetRaw != null && charmNetRaw !== 0
         ? (charmAbs >= 1000000 ? `${charmSign}${(charmAbs/1000000).toFixed(2)}M Δ/day`
            : charmAbs >= 1000 ? `${charmSign}${(charmAbs/1000).toFixed(0)}K Δ/day`
            : `${charmSign}${charmAbs.toFixed(1)} Δ/day`)
@@ -6926,7 +6965,7 @@ function render(d, fullRenderSource) {
         ? 'MM unwinding put hedges — mechanical delta buying.'
         : flowBear
         ? 'MM unwinding call hedges — mechanical delta selling.'
-        : 'Charm flows balanced — no directional pressure.';
+        : (charmNetRaw == null ? 'Charm flow unavailable — withheld.' : 'Charm flows balanced — no directional pressure.');
       const mechanic = `${flowDesc}${charmTarget > 0 ? ` Institutional pin target ${tgtStr}.` : ''}`;
 
       const charmProxColor = (charmTarget > 0 && spot && Math.abs(charmTarget - spot) <= prox) ? '#f97316'
@@ -7124,14 +7163,14 @@ function render(d, fullRenderSource) {
 
   function renderCharmDriftRow(d) {
     if (!d || typeof d !== 'object') return;
-    const charmNetRaw = parseFloat(d.charm_net || 0);
-    const charmTarget = parseFloat(d.charm_drift_toward || 0);
+    const charmNetRaw = d.charm_net != null && !Number.isNaN(Number(d.charm_net)) ? Number(d.charm_net) : null;
+    const charmTarget = d.charm_drift_toward != null && !Number.isNaN(Number(d.charm_drift_toward)) ? Number(d.charm_drift_toward) : 0;
     const spot_ = effectiveDisplaySpot(d) || 0;
 
-    const flowBull = charmNetRaw > 0;
-    const flowBear = charmNetRaw < 0;
+    const flowBull = charmNetRaw != null && charmNetRaw > 0;
+    const flowBear = charmNetRaw != null && charmNetRaw < 0;
     const flowClr  = flowBull ? 'var(--green)' : flowBear ? 'var(--red)' : 'var(--text2)';
-    const flowLbl  = flowBull ? 'Bullish' : flowBear ? 'Bearish' : 'Neutral';
+    const flowLbl  = flowBull ? 'Bullish' : flowBear ? 'Bearish' : (charmNetRaw == null ? '—' : 'Neutral');
 
     const pinAbove  = charmTarget > 0 && charmTarget > spot_;
     const pinBelow  = charmTarget > 0 && charmTarget < spot_;
@@ -7155,17 +7194,17 @@ function render(d, fullRenderSource) {
       charmTgtEl.style.color = pinClr;
     }
     if (charmRateEl) {
-      const abs_ = Math.abs(charmNetRaw);
-      const sign_ = charmNetRaw >= 0 ? '+' : '-';
+      const abs_ = charmNetRaw != null ? Math.abs(charmNetRaw) : 0;
+      const sign_ = charmNetRaw != null && charmNetRaw >= 0 ? '+' : '-';
       const rate_ = abs_ >= 1000000 ? `${sign_}${(abs_/1000000).toFixed(2)}M` : abs_ >= 1000 ? `${sign_}${(abs_/1000).toFixed(0)}K` : `${sign_}${abs_.toFixed(1)}`;
-      charmRateEl.textContent = charmNetRaw !== 0 ? `${rate_} Δ/day` : '—';
+      charmRateEl.textContent = charmNetRaw != null && charmNetRaw !== 0 ? `${rate_} Δ/day` : '—';
     }
     if (charmDescEl) {
       const flowDesc = flowBull
         ? 'MM unwinding put hedges — mechanical delta buying.'
         : flowBear
         ? 'MM unwinding call hedges — mechanical delta selling.'
-        : 'Charm flows balanced — no directional pressure.';
+        : (charmNetRaw == null ? 'Charm flow unavailable — withheld.' : 'Charm flows balanced — no directional pressure.');
       const pinDesc = charmTarget > 0
         ? ` Pin gravity ${pinAbove ? 'above' : 'below'} at ${charmTarget.toFixed(2)}.`
         : '';
