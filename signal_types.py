@@ -135,9 +135,9 @@ class SignalInput:
     em_lower:           Optional[float] = None   # expected move lower boundary (price)
 
     # ── Time context ──────────────────────────────────────────────────────────
-    et_hour:            int = 10
-    et_minute:          int = 30
-    mins_to_close:      float = 390.0
+    et_hour:            Optional[int] = None
+    et_minute:          Optional[int] = None
+    mins_to_close:      Optional[float] = None
     session_bucket:     Optional[str] = None  # 'open','morning','midday','afternoon','close'
     vix_bucket:         Optional[str] = None  # 'vix_low','vix_normal','vix_elevated','vix_high'
 

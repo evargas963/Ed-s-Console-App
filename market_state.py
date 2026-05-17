@@ -172,7 +172,7 @@ class MarketState:
     pcr_label:          str             = ""
 
     # ── IV Direction (for vanna context) ──────────────────────────────────────
-    iv_direction:       str             = "flat"     # expanding | contracting | flat
+    iv_direction:       Optional[str]   = None     # expanding | contracting | flat
 
     # ── Bias gate (single authoritative flag) ─────────────────────────────────
     bias_resolved:      bool            = False     # True only for Bull/Bear/Expansion
@@ -246,7 +246,7 @@ class MarketState:
     trade_type_label:   str             = ""
     invalidation:       str             = ""
     confluence_count:   int             = 0
-    confluence_total:   int             = 4
+    confluence_total:   Optional[int]   = None
     confluence_detail:  str             = ""
     time_qualifier:     str             = ""
     replay_max_hold_bars: int           = 0   # 1m bars for eval time_expiry (Call policy)
@@ -478,10 +478,10 @@ class MarketState:
     # charm_direction is the raw signals-engine string: "buying" | "selling" | "neutral"
     # charm_direction_display is the UI string: "Bullish" | "Bearish" | "Neutral"
     charm_net:               Optional[float] = None
-    charm_direction:         str             = "neutral"
-    charm_direction_display: str             = "Neutral"
+    charm_direction:         Optional[str]   = None
+    charm_direction_display: str             = "—"
     charm_drift_toward:      Optional[float] = None
-    charm_magnitude:         str             = "negligible"  # large/moderate/small/negligible
+    charm_magnitude:         Optional[str]   = None  # large/moderate/small/negligible
     charm_top_drivers:       list            = field(default_factory=list)
 
     # ── Feed card ─────────────────────────────────────────────────────────────
@@ -939,19 +939,18 @@ def build_market_state(
     recent_crosses: list = None,
     total_snapshots: int = 0,
     filled_snapshots: int = 0,
-    # Time
-    et_hour: int = 9,
-    et_minute: int = 30,
-    mins_to_close: float = 390.0,
+    # Time — None when caller has no session clock (no fabricated 9:30 / 390 min)
+    et_hour: Optional[int] = None,
+    et_minute: Optional[int] = None,
+    mins_to_close: Optional[float] = None,
     # Charm — computed by server BEFORE calling this function, passed in directly
-    # so the signals engine receives real charm values (not placeholders)
     charm_net: float | None = None,
-    charm_direction: str = "neutral",        # "buying" | "selling" | "neutral"
-    charm_drift_toward: float | None = None, # gamma pin strike
-    charm_magnitude: str = "negligible",     # "large" | "moderate" | "small" | "negligible"
-    charm_top_drivers: list | None = None,   # top 5 strikes driving charm flow
+    charm_direction: Optional[str] = None,   # "buying" | "selling" | "neutral"
+    charm_drift_toward: float | None = None,
+    charm_magnitude: Optional[str] = None,
+    charm_top_drivers: list | None = None,
     # IV direction — computed by server from _IVTracker
-    iv_direction: str = "flat",             # "expanding" | "contracting" | "flat"
+    iv_direction: Optional[str] = None,
     # Candle momentum — derived from prev_spot in server.py
     candle_direction: str | None = None,  # 'up', 'down', 'flat'
     candle_body_pts: float | None = None, # absolute point move since last refresh
@@ -1081,7 +1080,9 @@ def build_market_state(
     ms.pcr_arrow       = getattr(mkt_ctx, "pcr_arrow",      "")
     ms.pcr_color       = getattr(mkt_ctx, "pcr_color",      "#9ca3af")
     ms.pcr_label       = getattr(mkt_ctx, "pcr_label",      "")
-    ms.iv_direction    = iv_direction or "flat"
+    ms.iv_direction = (
+        iv_direction if iv_direction in ("expanding", "contracting", "flat") else None
+    )
     ms.mc_em_anchor    = mc_em_anchor
     ms.mc_iv_source    = mc_iv_source
 
@@ -1094,7 +1095,11 @@ def build_market_state(
     # ── 7. Signals engine: enforces STACK ORDER 1–10 ──────────────────────────
     # compute_signals runs: vol_regime → regime → model stack → fusion → call (8,9,10)
     _sig_out = None
-    _charm_dir = charm_direction if charm_direction in ("buying", "selling", "neutral") else "neutral"
+    _charm_dir = (
+        charm_direction
+        if charm_direction in ("buying", "selling", "neutral")
+        else None
+    )
     if spot_f is None:
         _spot_unavail = "Spot unavailable — no signals"
         ms.rules_headline = f"⚠ {_spot_unavail}"
@@ -1199,7 +1204,6 @@ def build_market_state(
             # Charm: use values passed in from server (computed via compute_net_charm before this call)
             # "neutral"/"buying"/"selling" — signals engine needs exact these strings
             _charm_net = charm_net
-            _charm_dir = charm_direction if charm_direction in ("buying", "selling", "neutral") else "neutral"
             _charm_toward = charm_drift_toward
 
             # Cross-instrument
@@ -1219,7 +1223,11 @@ def build_market_state(
                          "risk_off" if _iwm_chg < -0.10 else "neutral")
 
             # Time and volatility regime buckets for prediction matching
-            _session_bkt = _sb_fn(et_hour, et_minute)
+            _session_bkt = (
+                _sb_fn(et_hour, et_minute)
+                if et_hour is not None and et_minute is not None
+                else None
+            )
             _vix_bkt     = _vb_fn(mkt_ctx.vix) if mkt_ctx.vix is not None else None
 
             sig_inp = SignalInput(
@@ -1376,7 +1384,7 @@ def build_market_state(
             ms.trade_type_label = _tt.replace('_', ' ').title() if _tt and _tt != 'none' else ''
             ms.invalidation     = getattr(_call, 'invalidation', '')
             ms.confluence_count = getattr(_call, 'confluence_count', 0)
-            ms.confluence_total = getattr(_call, 'confluence_total', 4)
+            ms.confluence_total = getattr(_call, 'confluence_total', None)
             ms.confluence_detail = getattr(_call, 'confluence_detail', '')
             ms.time_qualifier   = getattr(_call, 'time_qualifier', '')
             ms.replay_max_hold_bars = int(getattr(_call, 'replay_max_hold_bars', 0) or 0)
@@ -1653,9 +1661,12 @@ def build_market_state(
     # ── 9b. Store charm on MarketState — single source for ms_dict ─────────
     ms.charm_net               = charm_net
     ms.charm_direction         = _charm_dir
-    ms.charm_direction_display = ("Bullish" if _charm_dir == "buying"
-                                  else "Bearish" if _charm_dir == "selling"
-                                  else "Neutral")
+    ms.charm_direction_display = (
+        "Bullish" if _charm_dir == "buying"
+        else "Bearish" if _charm_dir == "selling"
+        else "Neutral" if _charm_dir == "neutral"
+        else "—"
+    )
     ms.charm_drift_toward      = charm_drift_toward
     ms.charm_magnitude         = charm_magnitude
     ms.charm_top_drivers       = charm_top_drivers or []
