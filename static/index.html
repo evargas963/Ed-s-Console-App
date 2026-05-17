@@ -4669,7 +4669,7 @@ function renderDecisionCommandRail(d) {
   const reason = txt(d.wait_reason, '') || txt(d.validation_summary, '') || txt(d.call_reasoning, '') || txt(d.pred_headline, '—');
   domIf('dr-exact-reason', el => { el.textContent = reason; });
 
-  const valOk = !!d.validation_passed;
+  const valOk = d.validation_passed === true;
   const thr = $('dr-threshold-gate');
   if (thr) {
     thr.textContent = valOk ? 'PASS (validation gate)' : 'FAIL (validation gate)';
@@ -4762,9 +4762,15 @@ function renderDecisionCommandRail(d) {
     else { el.textContent = 'UNKNOWN'; el.style.color = 'var(--text3)'; }
   });
   domIf('dr-trust-policy', el => {
-    const ok = !!d.probability_valid && !!d.structure_valid && !!d.risk_valid;
-    el.textContent = ok ? 'OK (probability/structure/risk)' : 'FAIL (policy fields)';
-    el.style.color = ok ? 'var(--green)' : 'var(--red)';
+    const pv = d.probability_valid, sv = d.structure_valid, rv = d.risk_valid;
+    if (pv == null && sv == null && rv == null) {
+      el.textContent = '— (validation unavailable)';
+      el.style.color = 'var(--text3)';
+    } else {
+      const ok = pv === true && sv === true && rv === true;
+      el.textContent = ok ? 'OK (probability/structure/risk)' : 'FAIL (policy fields)';
+      el.style.color = ok ? 'var(--green)' : 'var(--red)';
+    }
   });
   domIf('dr-trust-edge', el => {
     const e = d.eval_accuracy_oos;

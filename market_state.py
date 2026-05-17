@@ -67,8 +67,9 @@ def derive_zone(bias_signal: str | None, net_delta: float | None) -> str:
     if b == "chaos zone":
         return "pin_chaos"
     if b == "expansion":
-        nd = net_delta or 0.0
-        return "breakout" if nd >= 0 else "breakdown"
+        if net_delta is None:
+            return "pin_neutral"
+        return "breakout" if float(net_delta) >= 0 else "breakdown"
     return "pin_neutral"  # safe default
 
 
@@ -213,11 +214,11 @@ class MarketState:
     last_sweep_level:   Optional[float] = None
     last_sweep_held:    Optional[bool]  = None   # True = failed sweep (reversal)
     n_sweeps_today:     int             = 0
-    # Trade Validation Gate
-    validation_passed:  bool            = True
-    structure_valid:    bool            = True
-    probability_valid:  bool            = True
-    risk_valid:         bool            = True
+    # Trade Validation Gate — None until call_engine populates (no fabricated pass)
+    validation_passed:  Optional[bool]  = None
+    structure_valid:    Optional[bool]  = None
+    probability_valid:  Optional[bool]  = None
+    risk_valid:         Optional[bool]  = None
     validation_summary: str             = ""
     # Formal Position Sizing
     r_units:            float           = 0.0
@@ -340,9 +341,9 @@ class MarketState:
     historical_5c_dominant_dir: Optional[str] = None
     historical_5c_dominant_prob: Optional[float] = None
     empirical_confidence: str = "low"
-    forward_prob_up:    float = 0.33
-    forward_prob_down:  float = 0.33
-    forward_prob_flat:  float = 0.34
+    forward_prob_up:    Optional[float] = None
+    forward_prob_down:  Optional[float] = None
+    forward_prob_flat:  Optional[float] = None
     forward_provenance: str = ""
     canonical_provenance: str = ""  # SignalOutput.canonical_forecast.provenance (decision driver; fusion policy)
     samples_used:       int             = 0
@@ -367,8 +368,8 @@ class MarketState:
     # ── Volatility regime (from volatility_regime.py — policy layer) ─────────
     vol_regime:         str             = "unknown"  # compression | expansion | unstable
     vol_regime_summary: str             = ""
-    vol_regime_conviction_mult: float   = 1.0
-    vol_regime_risk_mult: float         = 1.0
+    vol_regime_conviction_mult: Optional[float] = None
+    vol_regime_risk_mult: Optional[float] = None
 
     # ── Order Flow (from order_flow_engine.py — inside Market Regime) ────────────
     order_flow_score:              Optional[float] = None
@@ -405,22 +406,22 @@ class MarketState:
     # ── Bayesian fusion (from bayesian_fusion.py) ─────────────────────────────
     fusion_available:       bool            = False
     fusion_dominant:        str             = "unknown"
-    fusion_dominant_prob:   float           = 0.0
+    fusion_dominant_prob:   Optional[float] = None
     fusion_confidence:      str             = "low"
-    fusion_confidence_score: float          = 0.0
+    fusion_confidence_score: Optional[float] = None
     fusion_summary:         str             = ""
-    fusion_breakout:        float           = 0.0
-    fusion_pinning:         float           = 0.0
-    fusion_continuation:    float           = 0.0
-    fusion_reversal:        float           = 0.0
-    fusion_vol_expansion:   float           = 0.0
-    fusion_mean_reversion:  float           = 0.0
+    fusion_breakout:        Optional[float] = None
+    fusion_pinning:         Optional[float] = None
+    fusion_continuation:    Optional[float] = None
+    fusion_reversal:        Optional[float] = None
+    fusion_vol_expansion:   Optional[float] = None
+    fusion_mean_reversion:  Optional[float] = None
     fusion_model_agreement: float           = 0.0
     fusion_agreement_label: str             = "low"
     fusion_n_models_active: int             = 0
-    fusion_prob_up:         float           = 0.33
-    fusion_prob_down:       float           = 0.33
-    fusion_prob_flat:       float           = 0.34
+    fusion_prob_up:         Optional[float] = None
+    fusion_prob_down:       Optional[float] = None
+    fusion_prob_flat:       Optional[float] = None
     fusion_dominant_direction: str          = "flat"
     fusion_evidence:        list            = field(default_factory=list)
     fusion_contradictions:  list            = field(default_factory=list)
@@ -1382,11 +1383,11 @@ def build_market_state(
             ms.rules_pred_agree = _call.rules_pred_agree
             ms.time_warning     = _call.time_warning
             ms.size_note        = _call.size_note
-            # Validation gate
-            ms.validation_passed  = getattr(_call, 'validation_passed', True)
-            ms.structure_valid    = getattr(_call, 'structure_valid', True)
-            ms.probability_valid  = getattr(_call, 'probability_valid', True)
-            ms.risk_valid         = getattr(_call, 'risk_valid', True)
+            # Validation gate — fail-closed when call omits flags
+            ms.validation_passed  = getattr(_call, 'validation_passed', None)
+            ms.structure_valid    = getattr(_call, 'structure_valid', None)
+            ms.probability_valid  = getattr(_call, 'probability_valid', None)
+            ms.risk_valid         = getattr(_call, 'risk_valid', None)
             ms.validation_summary = getattr(_call, 'validation_summary', '')
             # Position sizing
             ms.r_units          = getattr(_call, 'r_units', 0.0)
@@ -1488,9 +1489,12 @@ def build_market_state(
             ms.historical_5c_dominant_dir = _pred.historical_5c_dominant_dir
             ms.historical_5c_dominant_prob = _pred.historical_5c_dominant_prob
             ms.empirical_confidence = _pred.empirical_confidence
-            ms.forward_prob_up = float(_pred.forward_prob_up)
-            ms.forward_prob_down = float(_pred.forward_prob_down)
-            ms.forward_prob_flat = float(_pred.forward_prob_flat)
+            if _pred.forward_prob_up is not None:
+                ms.forward_prob_up = float(_pred.forward_prob_up)
+            if _pred.forward_prob_down is not None:
+                ms.forward_prob_down = float(_pred.forward_prob_down)
+            if _pred.forward_prob_flat is not None:
+                ms.forward_prob_flat = float(_pred.forward_prob_flat)
             ms.forward_provenance = _pred.forward_provenance or ""
             _cf = getattr(_sig_out, "canonical_forecast", None)
             if _cf is not None:
@@ -1500,15 +1504,14 @@ def build_market_state(
                 ms.canonical_provenance = str(getattr(_cf, "provenance", "") or "")
             else:
                 ms.dominant_dir = _pred.forward_direction
-                ms.dominant_prob = float(
-                    _pred.forward_prob_up
-                    if _pred.forward_direction == "up"
-                    else (
-                        _pred.forward_prob_down
-                        if _pred.forward_direction == "down"
-                        else _pred.forward_prob_flat
-                    )
-                )
+                _fwd_dir = _pred.forward_direction
+                if _fwd_dir == "up":
+                    _dom_p = _pred.forward_prob_up
+                elif _fwd_dir == "down":
+                    _dom_p = _pred.forward_prob_down
+                else:
+                    _dom_p = _pred.forward_prob_flat
+                ms.dominant_prob = float(_dom_p) if _dom_p is not None else None
                 ms.confidence = _pred.forward_confidence
                 ms.canonical_provenance = ms.forward_provenance or ""
             ms.samples_used    = _pred.samples_used
@@ -1574,24 +1577,28 @@ def build_market_state(
         # Bayesian fusion
         _fusion = getattr(_sig_out, 'fusion', None)
         if _fusion and getattr(_fusion, 'available', False):
+            def _fusion_f(name: str) -> Optional[float]:
+                v = getattr(_fusion, name, None)
+                return None if v is None else float(v)
+
             ms.fusion_available       = True
             ms.fusion_dominant        = getattr(_fusion, 'dominant_outcome', 'unknown')
-            ms.fusion_dominant_prob   = getattr(_fusion, 'dominant_probability', 0.0)
+            ms.fusion_dominant_prob   = _fusion_f('dominant_probability')
             ms.fusion_confidence      = getattr(_fusion, 'fusion_confidence', 'low')
-            ms.fusion_confidence_score = getattr(_fusion, 'fusion_confidence_score', 0.0)
+            ms.fusion_confidence_score = _fusion_f('fusion_confidence_score')
             ms.fusion_summary         = getattr(_fusion, 'fusion_summary', '')
-            ms.fusion_breakout        = getattr(_fusion, 'breakout_posterior', 0.0)
-            ms.fusion_pinning         = getattr(_fusion, 'pinning_posterior', 0.0)
-            ms.fusion_continuation    = getattr(_fusion, 'continuation_posterior', 0.0)
-            ms.fusion_reversal        = getattr(_fusion, 'reversal_posterior', 0.0)
-            ms.fusion_vol_expansion   = getattr(_fusion, 'vol_expansion_posterior', 0.0)
-            ms.fusion_mean_reversion  = getattr(_fusion, 'mean_reversion_posterior', 0.0)
-            ms.fusion_model_agreement = getattr(_fusion, 'model_agreement', 0.0)
+            ms.fusion_breakout        = _fusion_f('breakout_posterior')
+            ms.fusion_pinning         = _fusion_f('pinning_posterior')
+            ms.fusion_continuation    = _fusion_f('continuation_posterior')
+            ms.fusion_reversal        = _fusion_f('reversal_posterior')
+            ms.fusion_vol_expansion   = _fusion_f('vol_expansion_posterior')
+            ms.fusion_mean_reversion  = _fusion_f('mean_reversion_posterior')
+            ms.fusion_model_agreement = _fusion_f('model_agreement')
             ms.fusion_agreement_label = getattr(_fusion, 'model_agreement_label', 'low')
             ms.fusion_n_models_active = getattr(_fusion, 'n_sources_active', 0)
-            ms.fusion_prob_up         = getattr(_fusion, 'prob_up', 0.33)
-            ms.fusion_prob_down       = getattr(_fusion, 'prob_down', 0.33)
-            ms.fusion_prob_flat       = getattr(_fusion, 'prob_flat', 0.34)
+            ms.fusion_prob_up         = _fusion_f('prob_up')
+            ms.fusion_prob_down       = _fusion_f('prob_down')
+            ms.fusion_prob_flat       = _fusion_f('prob_flat')
             ms.fusion_dominant_direction = getattr(_fusion, 'dominant_direction', 'flat')
             ms.fusion_evidence        = list(getattr(_fusion, 'evidence_summary', []))
             ms.fusion_contradictions  = list(getattr(_fusion, 'contradiction_summary', []))
@@ -1614,8 +1621,10 @@ def build_market_state(
         if _vr is not None:
             ms.vol_regime = getattr(_vr, 'vol_regime', 'unknown')
             ms.vol_regime_summary = getattr(_vr, 'summary', '')
-            ms.vol_regime_conviction_mult = getattr(_vr, 'conviction_multiplier', 1.0) or 1.0
-            ms.vol_regime_risk_mult = getattr(_vr, 'risk_multiplier', 1.0) or 1.0
+            _cvm = getattr(_vr, 'conviction_multiplier', None)
+            ms.vol_regime_conviction_mult = float(_cvm) if _cvm is not None else None
+            _rmm = getattr(_vr, 'risk_multiplier', None)
+            ms.vol_regime_risk_mult = float(_rmm) if _rmm is not None else None
 
         # Stack decision path (ordered: XGB → LSTM → Transformer → MC → Fusion → Call)
         _path = getattr(_sig_out, 'stack_decision_path', None)

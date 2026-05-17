@@ -4494,10 +4494,10 @@ def _fetch_state(
                     last_sweep_held=getattr(ms, 'last_sweep_held', None),
                     n_sweeps_today=getattr(ms, 'n_sweeps_today', 0),
                     # ── Trade Validation Gate ──────────────────────────
-                    validation_passed=getattr(ms, 'validation_passed', True),
-                    structure_valid=getattr(ms, 'structure_valid', True),
-                    probability_valid=getattr(ms, 'probability_valid', True),
-                    risk_valid=getattr(ms, 'risk_valid', True),
+                    validation_passed=getattr(ms, 'validation_passed', None),
+                    structure_valid=getattr(ms, 'structure_valid', None),
+                    probability_valid=getattr(ms, 'probability_valid', None),
+                    risk_valid=getattr(ms, 'risk_valid', None),
                     validation_summary=getattr(ms, 'validation_summary', ''),
                     # ── Position Sizing ────────────────────────────────────
                     r_units=getattr(ms, 'r_units', 0.0),
@@ -4937,10 +4937,10 @@ def _fetch_state(
     ms_dict["n_sweeps_today"]        = getattr(ms, "n_sweeps_today", 0)
 
     # ── Trade Validation Gate ─────────────────────────────────────────────────
-    ms_dict["validation_passed"]     = getattr(ms, "validation_passed", True)
-    ms_dict["structure_valid"]       = getattr(ms, "structure_valid", True)
-    ms_dict["probability_valid"]     = getattr(ms, "probability_valid", True)
-    ms_dict["risk_valid"]            = getattr(ms, "risk_valid", True)
+    ms_dict["validation_passed"]     = getattr(ms, "validation_passed", None)
+    ms_dict["structure_valid"]       = getattr(ms, "structure_valid", None)
+    ms_dict["probability_valid"]     = getattr(ms, "probability_valid", None)
+    ms_dict["risk_valid"]            = getattr(ms, "risk_valid", None)
     ms_dict["validation_summary"]    = getattr(ms, "validation_summary", "")
 
     # ── Call Readiness (from MarketState; computed in call_engine.py) ──────────
