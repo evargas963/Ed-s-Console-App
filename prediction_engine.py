@@ -117,6 +117,16 @@ def _literal_empirical_horizon(
             n,
         )
     p = compute_probs(similar, outcome_col)
+    if p is None:
+        return (
+            None,
+            f"no_weighted_outcomes_{outcome_col}",
+            (
+                f"Labeled {outcome_col} rows present ({n}) but no decay-weighted outcomes "
+                f"for empirical histogram — probabilities withheld."
+            ),
+            n,
+        )
     return (
         p,
         f"empirical_{outcome_col}",

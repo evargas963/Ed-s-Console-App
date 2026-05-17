@@ -328,7 +328,7 @@ def compute_probs(similar: list, outcome_col: str,
         weights[val] += w
         total_weight += w
     if total_weight < 1e-9:
-        return {"up": 0.33, "down": 0.33, "flat": 0.34}
+        return None
     return {k: round(v / total_weight, 3) for k, v in weights.items()}
 
 
@@ -448,7 +448,7 @@ def compute_dealer_pressure_index(
     Returns dict with raw_dpi, normalized (0-100), direction, magnitude.
     """
     if total_oi is None or total_oi <= 0 or net_gex is None or net_dex is None:
-        return {"raw": None, "normalized": None, "direction": "neutral", "magnitude": "negligible"}
+        return {"raw": None, "normalized": None, "direction": None, "magnitude": None}
 
     sign = 1.0 if net_dex >= 0 else -1.0
     raw = sign * abs(net_gex) / total_oi
@@ -507,12 +507,19 @@ def compute_hedging_flow_score(
 
     Returns dict with raw_score, normalized (0-100), direction, magnitude.
     """
-    raw = (
-        w_gex * (net_gex_normalized or 0) +
-        w_dex * (net_dex_normalized or 0) +
-        w_charm * (charm_normalized or 0) +
-        w_vanna * (vanna_normalized or 0)
-    )
+    terms: list[tuple[float, float]] = []
+    if net_gex_normalized is not None:
+        terms.append((w_gex, float(net_gex_normalized)))
+    if net_dex_normalized is not None:
+        terms.append((w_dex, float(net_dex_normalized)))
+    if charm_normalized is not None:
+        terms.append((w_charm, float(charm_normalized)))
+    if vanna_normalized is not None:
+        terms.append((w_vanna, float(vanna_normalized)))
+    if not terms:
+        return {"raw": None, "normalized": None, "direction": None, "magnitude": None}
+    w_sum = sum(w for w, _ in terms)
+    raw = sum(w * v for w, v in terms) / w_sum
 
     # Map from -1..+1 range to 0..100
     normalized = max(0.0, min(100.0, (raw + 1.0) * 50.0))
@@ -605,15 +612,24 @@ def compute_breakout_score(
 
     Returns dict with raw_score, normalized (0-100), label.
     """
-    inv_gex = 0.0
-    if net_gex_at_spot and abs(net_gex_at_spot) > 0:
-        # Normalize: low GEX → high inverse. Cap at reasonable value.
+    inv_gex = grad_comp = void_comp = None
+    if net_gex_at_spot is not None and abs(net_gex_at_spot) > 0:
         inv_gex = min(1.0, 1000.0 / abs(net_gex_at_spot))
+    if gamma_gradient is not None:
+        grad_comp = abs(min(1.0, max(-1.0, gamma_gradient)))
+    if void_factor is not None:
+        void_comp = max(0.0, min(1.0, void_factor))
 
-    grad = min(1.0, max(-1.0, gamma_gradient or 0))
-    void = max(0.0, min(1.0, void_factor or 0))
+    parts = [x for x in (inv_gex, grad_comp, void_comp) if x is not None]
+    if not parts:
+        return {
+            "raw": None,
+            "normalized": None,
+            "label": None,
+            "components": {"inv_gex": None, "gradient": None, "void_factor": None},
+        }
 
-    raw = inv_gex + abs(grad) + void  # 0 to ~3 range
+    raw = sum(parts)  # 0 to ~3 range
     normalized = min(100.0, raw / 3.0 * 100.0)
 
     if normalized >= 70:
@@ -630,9 +646,9 @@ def compute_breakout_score(
         "normalized": round(normalized, 1),
         "label": label,
         "components": {
-            "inv_gex": round(inv_gex, 4),
-            "gradient": round(abs(grad), 4),
-            "void_factor": round(void, 4),
+            "inv_gex": round(inv_gex, 4) if inv_gex is not None else None,
+            "gradient": round(grad_comp, 4) if grad_comp is not None else None,
+            "void_factor": round(void_comp, 4) if void_comp is not None else None,
         },
     }
 
@@ -705,16 +721,26 @@ def compute_vol_expansion_signal(
 
     Returns dict with raw_score, normalized (0-100), label.
     """
-    # Negative GEX contributes positively to expansion signal
-    neg_gex_component = 0.0
+    neg_gex_component = iv_comp = grad_comp = None
     if net_gex is not None:
-        # Normalize: large negative GEX → high expansion signal
-        neg_gex_component = max(0.0, min(1.0, -net_gex / 100000.0)) if net_gex < 0 else 0.0
+        neg_gex_component = (
+            max(0.0, min(1.0, -net_gex / 100000.0)) if net_gex < 0 else 0.0
+        )
+    if iv_change is not None:
+        iv_comp = max(0.0, min(1.0, iv_change))
+    if gamma_gradient is not None:
+        grad_comp = min(1.0, abs(gamma_gradient))
 
-    iv_comp = max(0.0, min(1.0, (iv_change or 0)))
-    grad_comp = min(1.0, abs(gamma_gradient or 0))
+    parts = [x for x in (neg_gex_component, iv_comp, grad_comp) if x is not None]
+    if not parts:
+        return {
+            "raw": None,
+            "normalized": None,
+            "label": None,
+            "components": {"neg_gex": None, "iv_change": None, "gradient": None},
+        }
 
-    raw = neg_gex_component + iv_comp + grad_comp  # 0-3 range
+    raw = sum(parts)  # 0-3 range
     normalized = min(100.0, raw / 3.0 * 100.0)
 
     if normalized >= 65:
@@ -731,9 +757,9 @@ def compute_vol_expansion_signal(
         "normalized": round(normalized, 1),
         "label": label,
         "components": {
-            "neg_gex": round(neg_gex_component, 4),
-            "iv_change": round(iv_comp, 4),
-            "gradient": round(grad_comp, 4),
+            "neg_gex": round(neg_gex_component, 4) if neg_gex_component is not None else None,
+            "iv_change": round(iv_comp, 4) if iv_comp is not None else None,
+            "gradient": round(grad_comp, 4) if grad_comp is not None else None,
         },
     }
 
@@ -758,15 +784,24 @@ def compute_sweep_score(
 
     Returns dict with raw_score, normalized (0-100), label.
     """
-    # Inverse distance: closer = higher sweep probability
-    inv_dist = 0.0
-    if dist_to_nearest_wall and dist_to_nearest_wall > 0:
-        inv_dist = min(1.0, 2.0 / dist_to_nearest_wall)  # 2pts away = 1.0
+    inv_dist = void_comp = momentum_comp = None
+    if dist_to_nearest_wall is not None and dist_to_nearest_wall > 0:
+        inv_dist = min(1.0, 2.0 / dist_to_nearest_wall)
+    if void_factor is not None:
+        void_comp = max(0.0, min(1.0, void_factor))
+    if momentum_factor is not None:
+        momentum_comp = max(0.0, min(1.0, momentum_factor))
 
-    void = max(0.0, min(1.0, void_factor or 0))
-    momentum = max(0.0, min(1.0, momentum_factor or 0))
+    parts = [x for x in (inv_dist, void_comp, momentum_comp) if x is not None]
+    if not parts:
+        return {
+            "raw": None,
+            "normalized": None,
+            "label": None,
+            "components": {"inv_dist": None, "void_factor": None, "momentum": None},
+        }
 
-    raw = inv_dist + void + momentum  # 0-3 range
+    raw = sum(parts)  # 0-3 range
     normalized = min(100.0, raw / 3.0 * 100.0)
 
     if normalized >= 65:
@@ -783,9 +818,9 @@ def compute_sweep_score(
         "normalized": round(normalized, 1),
         "label": label,
         "components": {
-            "inv_dist": round(inv_dist, 4),
-            "void_factor": round(void, 4),
-            "momentum": round(momentum, 4),
+            "inv_dist": round(inv_dist, 4) if inv_dist is not None else None,
+            "void_factor": round(void_comp, 4) if void_comp is not None else None,
+            "momentum": round(momentum_comp, 4) if momentum_comp is not None else None,
         },
     }
 
@@ -845,6 +880,26 @@ def compute_sector_strength(
 
 # ── IWM Deep Confluence Analysis ─────────────────────────────────────────────
 
+def _iwm_confluence_unavailable() -> dict:
+    return {
+        "risk_regime": None,
+        "risk_regime_confidence": None,
+        "spy_iwm_divergence": None,
+        "spy_iwm_divergence_label": None,
+        "spy_iwm_fragile": None,
+        "qqq_iwm_spread": None,
+        "rotation_signal": None,
+        "sector_breadth_quality": None,
+        "n_sectors_positive": None,
+        "n_sectors_negative": None,
+        "early_warning": None,
+        "early_warning_type": None,
+        "risk_score": None,
+        "risk_score_label": None,
+        "summary": None,
+    }
+
+
 def compute_iwm_confluence(
     spy_chg: float | None,
     qqq_chg: float | None,
@@ -881,100 +936,77 @@ def compute_iwm_confluence(
 
     Returns dict with all confluence signals.
     """
-    result = {
-        # Signal 1: Risk regime
-        "risk_regime": "unknown",
-        "risk_regime_confidence": "low",
+    if spy_chg is None and qqq_chg is None and iwm_chg is None:
+        return _iwm_confluence_unavailable()
 
-        # Signal 2: SPY-IWM divergence
-        "spy_iwm_divergence": 0.0,       # IWM - SPY spread (positive = IWM outperforming)
-        "spy_iwm_divergence_label": "aligned",  # 'aligned', 'iwm_leading', 'iwm_lagging', 'diverging'
-        "spy_iwm_fragile": False,         # True if SPY up but IWM down → fragile rally
+    result = _iwm_confluence_unavailable()
+    spread: float | None = None
 
-        # Signal 3: QQQ-IWM rotation
-        "qqq_iwm_spread": 0.0,           # QQQ - IWM (positive = growth > value)
-        "rotation_signal": "neutral",     # 'growth_favored', 'value_favored', 'neutral'
+    # ── Signal 1: Risk Regime (requires IWM) ─────────────────────────────────
+    if iwm_chg is not None:
+        iwm = iwm_chg
+        if iwm > 0.5:
+            result["risk_regime"] = "risk_on"
+            result["risk_regime_confidence"] = "high" if iwm > 1.0 else "medium"
+        elif iwm > 0.1:
+            result["risk_regime"] = "risk_on"
+            result["risk_regime_confidence"] = "low"
+        elif iwm < -0.5:
+            result["risk_regime"] = "risk_off"
+            result["risk_regime_confidence"] = "high" if iwm < -1.0 else "medium"
+        elif iwm < -0.1:
+            result["risk_regime"] = "risk_off"
+            result["risk_regime_confidence"] = "low"
+        else:
+            result["risk_regime"] = "neutral"
+            result["risk_regime_confidence"] = "low"
 
-        # Signal 4: Sector breadth quality
-        "sector_breadth_quality": "unknown",  # 'broad_strength', 'narrow', 'broad_weakness', 'rotation'
-        "n_sectors_positive": 0,
-        "n_sectors_negative": 0,
+        if vix_level is not None and vix_level > 25 and iwm < -0.3:
+            result["risk_regime"] = "risk_off"
+            result["risk_regime_confidence"] = "high"
+        elif vix_level is not None and vix_level < 15 and iwm > 0.3:
+            result["risk_regime"] = "risk_on"
+            result["risk_regime_confidence"] = "high"
 
-        # Signal 5: IWM early warning
-        "early_warning": False,           # True if IWM weak while SPY/QQQ hold
-        "early_warning_type": None,       # 'risk_off_forming', 'small_cap_stress', None
+    # ── Signal 2: SPY-IWM Divergence ─────────────────────────────────────────
+    if spy_chg is not None and iwm_chg is not None:
+        spy = spy_chg
+        iwm = iwm_chg
+        spread = round(iwm - spy, 2)
+        result["spy_iwm_divergence"] = spread
+        result["spy_iwm_fragile"] = False
 
-        # Signal 6: Composite risk score (0-100, 50=neutral)
-        "risk_score": 50.0,
-        "risk_score_label": "neutral",    # 'strong_risk_on', 'risk_on', 'neutral', 'risk_off', 'strong_risk_off'
+        if abs(spread) < 0.15:
+            result["spy_iwm_divergence_label"] = "aligned"
+        elif spread > 0.5:
+            result["spy_iwm_divergence_label"] = "iwm_leading"
+        elif spread > 0.15:
+            result["spy_iwm_divergence_label"] = "iwm_leading"
+        elif spread < -0.5:
+            result["spy_iwm_divergence_label"] = "iwm_lagging"
+        elif spread < -0.15:
+            result["spy_iwm_divergence_label"] = "iwm_lagging"
+        else:
+            result["spy_iwm_divergence_label"] = "aligned"
 
-        # Summary
-        "summary": "",
-    }
-
-    spy = spy_chg or 0
-    qqq = qqq_chg or 0
-    iwm = iwm_chg or 0
-
-    # ── Signal 1: Risk Regime ─────────────────────────────────────────────────
-    # IWM is the cleanest risk barometer. Strong IWM = risk appetite.
-    if iwm > 0.5:
-        result["risk_regime"] = "risk_on"
-        result["risk_regime_confidence"] = "high" if iwm > 1.0 else "medium"
-    elif iwm > 0.1:
-        result["risk_regime"] = "risk_on"
-        result["risk_regime_confidence"] = "low"
-    elif iwm < -0.5:
-        result["risk_regime"] = "risk_off"
-        result["risk_regime_confidence"] = "high" if iwm < -1.0 else "medium"
-    elif iwm < -0.1:
-        result["risk_regime"] = "risk_off"
-        result["risk_regime_confidence"] = "low"
-    else:
-        result["risk_regime"] = "neutral"
-        result["risk_regime_confidence"] = "low"
-
-    # VIX confirmation — elevated VIX + IWM weakness = high confidence risk-off
-    if vix_level and vix_level > 25 and iwm < -0.3:
-        result["risk_regime"] = "risk_off"
-        result["risk_regime_confidence"] = "high"
-    elif vix_level and vix_level < 15 and iwm > 0.3:
-        result["risk_regime"] = "risk_on"
-        result["risk_regime_confidence"] = "high"
-
-    # ── Signal 2: SPY-IWM Divergence ──────────────────────────────────────────
-    spread = round(iwm - spy, 2)
-    result["spy_iwm_divergence"] = spread
-
-    if abs(spread) < 0.15:
-        result["spy_iwm_divergence_label"] = "aligned"
-    elif spread > 0.5:
-        result["spy_iwm_divergence_label"] = "iwm_leading"
-    elif spread > 0.15:
-        result["spy_iwm_divergence_label"] = "iwm_leading"
-    elif spread < -0.5:
-        result["spy_iwm_divergence_label"] = "iwm_lagging"
-    elif spread < -0.15:
-        result["spy_iwm_divergence_label"] = "iwm_lagging"
-
-    # Fragile rally: SPY positive, IWM negative
-    if spy > 0.1 and iwm < -0.1:
-        result["spy_iwm_fragile"] = True
-        result["spy_iwm_divergence_label"] = "diverging"
+        if spy > 0.1 and iwm < -0.1:
+            result["spy_iwm_fragile"] = True
+            result["spy_iwm_divergence_label"] = "diverging"
 
     # ── Signal 3: QQQ-IWM Rotation ───────────────────────────────────────────
-    qqq_iwm = round(qqq - iwm, 2)
-    result["qqq_iwm_spread"] = qqq_iwm
-
-    if qqq_iwm > 0.5:
-        result["rotation_signal"] = "growth_favored"
-    elif qqq_iwm < -0.5:
-        result["rotation_signal"] = "value_favored"
-    else:
-        result["rotation_signal"] = "neutral"
+    if qqq_chg is not None and iwm_chg is not None:
+        qqq_iwm = round(qqq_chg - iwm_chg, 2)
+        result["qqq_iwm_spread"] = qqq_iwm
+        if qqq_iwm > 0.5:
+            result["rotation_signal"] = "growth_favored"
+        elif qqq_iwm < -0.5:
+            result["rotation_signal"] = "value_favored"
+        else:
+            result["rotation_signal"] = "neutral"
 
     # ── Signal 4: Sector Breadth Quality ─────────────────────────────────────
     sectors = [v for v in [kre_chg, xbi_chg, psci_chg, xrt_chg] if v is not None]
+    n_pos = n_neg = 0
     if sectors:
         n_pos = sum(1 for v in sectors if v > 0.05)
         n_neg = sum(1 for v in sectors if v < -0.05)
@@ -993,67 +1025,81 @@ def compute_iwm_confluence(
             result["sector_breadth_quality"] = "narrow"
 
     # ── Signal 5: Early Warning ──────────────────────────────────────────────
-    # IWM weakening while mega-caps hold = risk-off forming
-    if iwm < -0.3 and spy > -0.1 and qqq > -0.1:
-        result["early_warning"] = True
-        result["early_warning_type"] = "risk_off_forming"
-    # IWM weak + financials (KRE) weak = rate stress
-    elif iwm < -0.3 and kre_chg is not None and kre_chg < -0.3:
-        result["early_warning"] = True
-        result["early_warning_type"] = "small_cap_stress"
+    if iwm_chg is not None:
+        if (
+            spy_chg is not None
+            and qqq_chg is not None
+            and iwm_chg < -0.3
+            and spy_chg > -0.1
+            and qqq_chg > -0.1
+        ):
+            result["early_warning"] = True
+            result["early_warning_type"] = "risk_off_forming"
+        elif iwm_chg < -0.3 and kre_chg is not None and kre_chg < -0.3:
+            result["early_warning"] = True
+            result["early_warning_type"] = "small_cap_stress"
+        else:
+            result["early_warning"] = False
 
     # ── Signal 6: Composite Risk Score ───────────────────────────────────────
-    # 0 = strong risk-off, 50 = neutral, 100 = strong risk-on
     score = 50.0
-
-    # IWM direction is the primary driver
-    score += iwm * 15  # ±1% IWM = ±15 points
-
-    # SPY-IWM alignment bonus/penalty
-    if spy > 0 and iwm > 0:
-        score += 5  # both up = confirmation
-    elif spy > 0 and iwm < 0:
-        score -= 10  # divergence = fragile
-    elif spy < 0 and iwm < 0:
-        score -= 5  # both down = confirmation of weakness
-
-    # Sector breadth
+    has_score_input = False
+    if iwm_chg is not None:
+        score += iwm_chg * 15
+        has_score_input = True
+    if spy_chg is not None and iwm_chg is not None:
+        if spy_chg > 0 and iwm_chg > 0:
+            score += 5
+        elif spy_chg > 0 and iwm_chg < 0:
+            score -= 10
+        elif spy_chg < 0 and iwm_chg < 0:
+            score -= 5
+        has_score_input = True
     if sectors:
-        breadth_pct = n_pos / len(sectors) if sectors else 0
-        score += (breadth_pct - 0.5) * 10  # 100% positive = +5, 0% = -5
-
-    # VIX impact
-    if vix_level:
+        breadth_pct = n_pos / len(sectors)
+        score += (breadth_pct - 0.5) * 10
+        has_score_input = True
+    if vix_level is not None:
         if vix_level > 30:
             score -= 15
         elif vix_level > 25:
             score -= 8
         elif vix_level < 15:
             score += 5
+        has_score_input = True
 
-    score = max(0, min(100, round(score, 1)))
-    result["risk_score"] = score
-
-    if score >= 70:
-        result["risk_score_label"] = "strong_risk_on"
-    elif score >= 55:
-        result["risk_score_label"] = "risk_on"
-    elif score >= 45:
-        result["risk_score_label"] = "neutral"
-    elif score >= 30:
-        result["risk_score_label"] = "risk_off"
-    else:
-        result["risk_score_label"] = "strong_risk_off"
+    if has_score_input:
+        score = max(0, min(100, round(score, 1)))
+        result["risk_score"] = score
+        if score >= 70:
+            result["risk_score_label"] = "strong_risk_on"
+        elif score >= 55:
+            result["risk_score_label"] = "risk_on"
+        elif score >= 45:
+            result["risk_score_label"] = "neutral"
+        elif score >= 30:
+            result["risk_score_label"] = "risk_off"
+        else:
+            result["risk_score_label"] = "strong_risk_off"
 
     # ── Summary ──────────────────────────────────────────────────────────────
-    parts = []
-    parts.append(f"Risk: {result['risk_regime']} ({result['risk_regime_confidence']})")
+    parts: list[str] = []
+    if result["risk_regime"] is not None:
+        parts.append(
+            f"Risk: {result['risk_regime']} ({result['risk_regime_confidence']})"
+        )
 
     if result["spy_iwm_fragile"]:
         parts.append("SPY-IWM DIVERGING — fragile rally, small caps selling")
-    elif result["spy_iwm_divergence_label"] == "iwm_leading":
+    elif (
+        spread is not None
+        and result["spy_iwm_divergence_label"] == "iwm_leading"
+    ):
         parts.append(f"IWM leading by {spread:+.2f}% — broad risk appetite")
-    elif result["spy_iwm_divergence_label"] == "iwm_lagging":
+    elif (
+        spread is not None
+        and result["spy_iwm_divergence_label"] == "iwm_lagging"
+    ):
         parts.append(f"IWM lagging by {spread:.2f}% — narrow leadership")
 
     if result["rotation_signal"] == "growth_favored":
@@ -1071,7 +1117,7 @@ def compute_iwm_confluence(
     elif result["sector_breadth_quality"] == "rotation":
         parts.append("Sector rotation in progress")
 
-    result["summary"] = " | ".join(parts)
+    result["summary"] = " | ".join(parts) if parts else None
 
     return result
 
@@ -1302,7 +1348,7 @@ def flow_imbalance_normalized_with_fallback(
     spot: float,
     *,
     window_pts: float = 5.0,
-) -> tuple[float, str]:
+) -> tuple[float | None, str]:
     """
     Prefer book imbalance (bid/ask sizes) near ATM; if combined book size is ~0,
     use call vs put volume ratio in the same window (archived chains often lack sizes).
@@ -1311,7 +1357,7 @@ def flow_imbalance_normalized_with_fallback(
     """
     sums = atm_flow_window_totals(exposures_by_strike, spot, window_pts=window_pts)
     if not exposures_by_strike or not spot:
-        return 0.0, "none"
+        return None, "none"
     spot_f = float(spot)
     call_bid = float(sums["call_bid"])
     call_ask = float(sums["call_ask"])
@@ -1330,7 +1376,7 @@ def flow_imbalance_normalized_with_fallback(
         x = (call_vol - put_vol) / tot_v
         x = max(-1.0, min(1.0, x))
         return round(x, 3), "volume"
-    return 0.0, "none"
+    return None, "none"
 
 
 def compute_smart_money_signal(
@@ -1358,9 +1404,16 @@ def compute_smart_money_signal(
 
     Returns dict with score (0-100), direction (bullish/bearish/neutral), components.
     """
+    _sm_unavailable = {
+        "score": None,
+        "direction": None,
+        "label": None,
+        "vol_oi_component": None,
+        "flow_component": None,
+        "concentration_component": None,
+    }
     if not exposures_by_strike or not spot:
-        return {"score": 0, "direction": "neutral", "label": "no_data",
-                "vol_oi_component": 0, "flow_component": 0, "concentration_component": 0}
+        return dict(_sm_unavailable)
 
     # Gather data near ATM
     vol_total = oi_total = 0.0
@@ -1410,6 +1463,10 @@ def compute_smart_money_signal(
         if has_vol:
             strike_activity.append(strike_act)
 
+    total_size = call_bid + call_ask + put_bid + put_ask
+    if vol_total <= 0 and oi_total <= 0 and total_size <= 0:
+        return dict(_sm_unavailable)
+
     # Component 1: Volume/OI (0-40)
     vol_oi = vol_total / oi_total if oi_total > 0 else 0
     vol_oi_score = min(40, vol_oi / 2.0 * 40)  # ratio 2.0 = max score
@@ -1418,7 +1475,6 @@ def compute_smart_money_signal(
     call_imb = call_bid - call_ask
     put_imb = put_bid - put_ask
     net_flow = call_imb - put_imb
-    total_size = call_bid + call_ask + put_bid + put_ask
     flow_ratio = abs(net_flow) / total_size if total_size > 0 else 0
     flow_score = min(40, flow_ratio / 0.5 * 40)  # 50% imbalance = max
 
