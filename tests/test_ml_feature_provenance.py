@@ -121,8 +121,8 @@ def test_fusion_input_vwap_side_unknown_not_above_when_missing():
 
     feats = _minimal_features(**{"anchor.vwap_side": None, "structure.zone": None})
     out = similar_setup_filters_from_canonical_features(feats)
-    assert out["vwap_side"] == "unknown"
-    assert out["zone"] == "unknown"
+    assert out["vwap_side"] is None
+    assert out["zone"] is None
     assert out["vwap_side_fallback"] is True
     assert out["zone_fallback"] is True
 

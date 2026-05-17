@@ -543,9 +543,22 @@ def test_missing_strike_or_right_blocks_trade_output():
     assert "missing_option_right" in gates
 
 
+def _wide_spread_ms(**overrides):
+    winner = _winner()
+    winner["chain_row"]["bid"] = 1.0
+    winner["chain_row"]["ask"] = 1.50
+    base = _ms(
+        spread=None,
+        liq_ok=False,
+        option_chain_selection_proof={"status": "ok", "winner": winner},
+    )
+    base.update(overrides)
+    return base
+
+
 def test_wide_spread_records_hard_gate_after_policy_bound():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L240 - wide spread records gate state."""
-    a2 = build_a2_option_expression(_ms(spread=0.35, liq_ok=False), _sample_a1())
+    a2 = build_a2_option_expression(_wide_spread_ms(), _sample_a1())
 
     assert a2["option_expression"]["option_action"]["value"] == "WAIT"
     assert "spread_exceeds_hard_threshold" in a2["health"]["hard_gates_failed"]["value"]
@@ -693,7 +706,7 @@ def test_a2_output_is_nested_under_v2_decision():
 def test_action_coherence_records_a1_a2_disagreement():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L244 - A2 action is coherent with A1."""
     a1 = _sample_a1()
-    a2 = build_a2_option_expression(_ms(liq_ok=False, spread=0.5), a1)
+    a2 = build_a2_option_expression(_wide_spread_ms(), a1)
 
     assert a1["decision"]["action"]["value"] == "TRADE"
     assert a2["option_expression"]["option_action"]["value"] == "WAIT"

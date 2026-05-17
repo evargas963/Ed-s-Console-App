@@ -73,11 +73,28 @@ def test_after_fill_outcomes_ensure_refreshes_normalized_and_skips_second(tmp_db
             """
             INSERT INTO snapshots (
                 ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
+                candle_open, candle_high, candle_low, candle_close, candle_volume,
                 horizon_outcome_schema_version, outcome_filled
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            ("SPY", CF, t_snap, "test", 10, 30, "rth", 9999.0, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1),
+            (
+                "SPY",
+                CF,
+                t_snap,
+                "test",
+                10,
+                30,
+                "rth",
+                9999.0,
+                100.0,
+                101.0,
+                99.0,
+                100.0,
+                1.0,
+                HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+                0,
+            ),
         )
         conn.commit()
     bars = []

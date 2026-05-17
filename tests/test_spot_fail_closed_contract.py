@@ -15,10 +15,18 @@ def test_mc_fusion_spot_returns_none_when_context_spot_missing():
 
 
 def test_mc_normalization_does_not_scale_by_synthetic_one_when_spot_missing():
-    out = normalize_mc({"expected_move": 10.0, "volatility": 5.0}, spot_price=None)
+    out = normalize_mc(
+        {
+            "expected_move": 10.0,
+            "volatility": 5.0,
+            "skew": 0.0,
+            "tail_risk": 0.0,
+            "directional_bias": 0.0,
+        },
+        spot_price=None,
+    )
 
-    assert out["mc_expected_move"] == 0.0
-    assert out["mc_volatility"] == 0.0
+    assert out is None
 
 
 def test_lstm_confluence_features_fail_closed_without_spot():

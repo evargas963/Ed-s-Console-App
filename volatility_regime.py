@@ -181,7 +181,9 @@ def classify_volatility_regime(
 
     garch_rising, garch_falling = _garch_trend(garch, thresholds=thresholds, context=ctx)
 
-    atr_pct = (atr / spot * 100.0) if atr is not None else None
+    atr_pct = None
+    if atr is not None and spot:
+        atr_pct = atr / spot * 100.0
 
     t = thresholds
     if vix is not None and vix > t.extreme_vix:

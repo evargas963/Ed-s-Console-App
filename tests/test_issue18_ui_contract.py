@@ -15,9 +15,10 @@ def test_the_call_card_title_present():
 
 def test_mhap_card_present_with_required_columns():
     h = _html()
-    assert "MULTI-HORIZON ALIGNMENT PANEL" in h
-    for col in ("Horizon", "Role", "Call", "Confidence", "Entry Ref", "Effect"):
-        assert f">{col}<" in h
+    assert "Horizon alignment" in h
+    assert "renderMultiHorizon" in h
+    for el_id in ("dr-align-1m", "dr-align-5m", "dr-align-15m", "dr-align-60m"):
+        assert el_id in h
 
 
 def test_mhap_fixed_row_order_in_renderer():

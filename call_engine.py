@@ -484,8 +484,11 @@ def _stop_distance(inp: SignalInput, risk_multiplier: float = 1.0) -> float:
     (e.g. 1.35 in unstable = wider stops). Default 1.0.
     """
     spot = inp.spot
-    mins_elapsed = inp.et_hour * 60 + inp.et_minute - 570  # mins since 9:30 AM
-    mins_elapsed = max(0, mins_elapsed)
+    if inp.et_hour is None or inp.et_minute is None:
+        mins_elapsed = 0
+    else:
+        mins_elapsed = inp.et_hour * 60 + inp.et_minute - 570  # mins since 9:30 AM
+        mins_elapsed = max(0, mins_elapsed)
 
     stop_distance = derive_stop_distance_pct(
         spot=spot,

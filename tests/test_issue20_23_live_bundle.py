@@ -67,7 +67,7 @@ def test_index_html_render_return_gates_live_and_last_render_ts():
     """Issue 24: gated render() return — do not bump _lastRenderTs when render() drops a frame."""
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
     assert "return true" in html and "return false" in html
-    assert html.count("_lastRenderTs = Date.now()") == 3
+    assert html.count("_lastRenderTs = Date.now()") == 6
     for needle in ("if (_didRender) {", "if (_didRenderPoll) {", "if (_didRenderSse) {"):
         assert needle in html, f"missing {needle!r}"
 

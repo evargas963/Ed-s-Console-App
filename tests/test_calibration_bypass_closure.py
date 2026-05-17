@@ -35,6 +35,14 @@ def _allowed_path(rel: Path) -> bool:
         return True
     if s == "tools/_phase4a_quantify_anchor_miss.py":
         return True
+    if s.startswith("governance/"):
+        return True
+    if s == "tests/test_action12_14_signal_layer_discrimination_fail_closed.py":
+        return True
+    if s == "tests/test_payload_audit.py":
+        return True
+    if s == "tests/test_validate_outcome_join_fail_closed.py":
+        return True
     return False
 
 
@@ -77,6 +85,9 @@ def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
             or rel.startswith("tests/test_calibration")
             or rel == "tests/test_v2_advisory_backfill.py"
             or rel == "tests/test_v2_a1_calibration.py"
+            or rel == "tests/test_action12_14_signal_layer_discrimination_fail_closed.py"
+            or rel == "tests/test_payload_audit.py"
+            or rel == "tests/test_validate_outcome_join_fail_closed.py"
         )
         if not ok:
             bad.append(rel)

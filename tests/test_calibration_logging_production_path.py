@@ -55,7 +55,13 @@ def _compute_then_log(inp, *, db_path: Path, edb: EdDB):
 
 
 def _fake_run_base_models_once(
-    snap, ticker, db, direction_hint: str = "wait", *, inference_snapshot_v1=None
+    snap,
+    ticker,
+    db,
+    direction_hint: str = "wait",
+    *,
+    inference_snapshot_v1=None,
+    **kwargs: object,
 ):
     """Deterministic parallel-stack output without on-disk models or snapshot history (CI-safe)."""
     from ml_predict import PARALLEL_STACK_SCHEMA_VERSION, stack_probs_bundle_key

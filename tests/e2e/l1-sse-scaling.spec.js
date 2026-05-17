@@ -2,6 +2,8 @@
 // Issue 31 — measure simultaneous EventSource connections to L1 light SSE (browser limits).
 const { test, expect } = require('@playwright/test');
 
+test.describe.configure({ mode: 'serial' });
+
 /**
  * Opens N parallel EventSources to the same stream URL, waits, counts OPEN (readyState === 1).
  * Records a table for docs/l1_sse_scaling.md (browser-specific; run locally or in CI).
@@ -53,17 +55,25 @@ test('measure simultaneous EventSource connections (same ticker)', async ({ page
 
 test('different tickers each get their own EventSource URL', async ({ page, baseURL }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1000);
   const origin = baseURL || 'http://127.0.0.1:8765';
   const a = `${origin}/api/analytics/light/stream?ticker=SPY`;
   const b = `${origin}/api/analytics/light/stream?ticker=QQQ`;
 
   const { openA, openB } = await page.evaluate(async (urls) => {
+    async function waitOpen(es, attempts = 32) {
+      for (let i = 0; i < attempts; i += 1) {
+        await new Promise((r) => setTimeout(r, 250));
+        if (es.readyState === 1) return 1;
+      }
+      return 0;
+    }
     const esA = new EventSource(urls.a);
-    const esB = new EventSource(urls.b);
-    await new Promise((r) => setTimeout(r, 1500));
-    const oa = esA.readyState === 1 ? 1 : 0;
-    const ob = esB.readyState === 1 ? 1 : 0;
+    const oa = await waitOpen(esA);
     esA.close();
+    await new Promise((r) => setTimeout(r, 500));
+    const esB = new EventSource(urls.b);
+    const ob = await waitOpen(esB);
     esB.close();
     return { openA: oa, openB: ob };
   }, { a, b });

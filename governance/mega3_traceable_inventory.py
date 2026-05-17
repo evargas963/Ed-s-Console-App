@@ -1,4 +1,4 @@
-"""Mega 3 traceable inventory (§F+§G) — MC/regime + features."""
+"""Mega 3 traceable inventory (§H+§I) — MC/regime + features."""
 
 from __future__ import annotations
 
@@ -67,6 +67,8 @@ MEGA3_TRACEABLE_INVENTORY: tuple[Mega3TraceableDerivation, ...] = (
     Mega3TraceableDerivation("features/fusion_model_input.py", 65, "strip_mvp_keys_from_fusion_overlay", "DERIVED", None, ("market_state.py:build_market_state",), None, "Composes Mega1 producers for strip_mvp_keys_from_fusion_overlay output fields."),
     Mega3TraceableDerivation("features/fusion_model_input.py", 70, "assert_fusion_overlay_has_no_mvp_keys", "DERIVED", None, ("market_state.py:build_market_state",), None, "Composes Mega1 producers for assert_fusion_overlay_has_no_mvp_keys output fields."),
     Mega3TraceableDerivation("features/fusion_model_input.py", 79, "validate_inference_snapshot_for_fusion_stack", "NONE", None, (), None, "Schema/contract validation; no market-field derivation."),
+    Mega3TraceableDerivation("features/fusion_policy_contract.py", 15, "_fusion_triplet", "NONE", None, (), None, "No market-field derivation: AST-listed _fusion_triplet; no legacy row."),
+    Mega3TraceableDerivation("features/fusion_policy_contract.py", 34, "_stack_status", "NONE", None, (), None, "No market-field derivation: AST-listed _stack_status; no legacy row."),
     Mega3TraceableDerivation("features/fusion_policy_contract.py", 15, "fusion_payload_to_policy_columns", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Reads persisted snapshot SQLite rows, not Schwab wire JSON (fusion_payload_to_policy_columns)."),
     Mega3TraceableDerivation("features/fusion_policy_contract.py", 58, "policy_move_column", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega3TraceableDerivation("features/fusion_policy_contract.py", 62, "policy_dir_up_column", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
@@ -95,6 +97,7 @@ MEGA3_TRACEABLE_INVENTORY: tuple[Mega3TraceableDerivation, ...] = (
     Mega3TraceableDerivation("features/mvp_source_coercion.py", 66, "read_optional_zone", "NONE", None, (), None, "Schema/contract validation; no market-field derivation."),
     Mega3TraceableDerivation("features/mvp_source_coercion.py", 88, "read_optional_vwap_side", "NONE", None, (), None, "Schema/contract validation; no market-field derivation."),
     Mega3TraceableDerivation("features/mvp_source_coercion.py", 110, "read_liquidity_summary_subdict", "DERIVED", None, ("market_state.py:build_market_state",), None, "Composes Mega1 producers for read_liquidity_summary_subdict output fields."),
+    Mega3TraceableDerivation("features/parallel_stack_schema.py", 31, "_normalize_triplet", "NONE", None, (), None, "No market-field derivation: AST-listed _normalize_triplet; no legacy row."),
     Mega3TraceableDerivation("features/parallel_stack_schema.py", 31, "empty_parallel_output", "NONE", None, (), None, "Schema/contract validation; no market-field derivation."),
     Mega3TraceableDerivation("features/parallel_stack_schema.py", 47, "build_parallel_base_output", "NONE", None, (), None, "Schema/contract validation; no market-field derivation."),
     Mega3TraceableDerivation("features/regime_mvp_context.py", 19, "require_mvp_features", "DERIVED", None, ("market_state.py:build_market_state",), None, "Composes Mega1 producers for require_mvp_features output fields."),
@@ -106,6 +109,7 @@ MEGA3_TRACEABLE_INVENTORY: tuple[Mega3TraceableDerivation, ...] = (
     Mega3TraceableDerivation("features/replay_signal_input_v1.py", 16, "_positive_float_required", "DERIVED", None, ("market_state.py:build_market_state",), None, "Composes Mega1 producers for _positive_float_required output fields."),
     Mega3TraceableDerivation("features/replay_signal_input_v1.py", 29, "signal_input_from_snapshot_row_dict", "DERIVED", None, ("features/replay_signal_input_v1.py:_positive_float_required",), None, "Composes Mega1 producers for signal_input_from_snapshot_row_dict output fields."),
     Mega3TraceableDerivation("features/semantic_parity.py", 17, "assert_live_db_canonicalization_equivalent", "DERIVED", None, ("features/live_feature_adapter.py:build_live_mvp_feature_row", "features/db_feature_adapter.py:build_db_mvp_feature_row",), None, "Composes Mega1 producers for assert_live_db_canonicalization_equivalent output fields."),
+    Mega3TraceableDerivation("features/shared_sequence_context.py", 23, "_require_ticker", "NONE", None, (), None, "No market-field derivation: AST-listed _require_ticker; no legacy row."),
     Mega3TraceableDerivation("features/shared_sequence_context.py", 33, "_max_transformer_seq_len_for_ticker", "DERIVED", None, ("market_state.py:build_market_state",), None, "Composes Mega1 producers for _max_transformer_seq_len_for_ticker output fields."),
     Mega3TraceableDerivation("features/shared_sequence_context.py", 63, "build_shared_sequence_context", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Reads persisted snapshot SQLite rows, not Schwab wire JSON (build_shared_sequence_context)."),
     Mega3TraceableDerivation("features/shared_sequence_context.py", 132, "transformer_window_chronological", "DERIVED", None, ("market_state.py:build_market_state",), None, "Composes Mega1 producers for transformer_window_chronological output fields."),
@@ -171,7 +175,10 @@ MEGA3_TRACEABLE_INVENTORY: tuple[Mega3TraceableDerivation, ...] = (
     Mega3TraceableDerivation("regime_engine.py", 379, "_score_reversal_prone", "DERIVED", None, ("market_state.py:build_market_state",), None, "Composes Mega1 producers for _score_reversal_prone output fields."),
     Mega3TraceableDerivation("regime_engine.py", 434, "classify_regime", "DERIVED", None, ("market_state.py:build_market_state",), None, "8-family regime from upstream levels/greeks/zone."),
     Mega3TraceableDerivation("regime_engine.py", 534, "_unknown_regime", "DERIVED", None, ("market_state.py:build_market_state",), None, "Composes Mega1 producers for _unknown_regime output fields."),
-    Mega3TraceableDerivation("volatility_regime.py", 56, "classify_volatility_regime", "DERIVED", None, ("market_state.py:build_market_state",), None, "Vol policy from rv/iv/atr/vix upstream fields."),
     Mega3TraceableDerivation("volatility_regime.py", 222, "_f", "NONE", None, (), None, "No market-field derivation: Scoring/helper; no new market-field derivation."),
+    Mega3TraceableDerivation("volatility_regime.py", 93, "_normalize_vol_decimal", "NONE", None, (), None, "No market-field derivation: AST-listed _normalize_vol_decimal; no legacy row."),
+    Mega3TraceableDerivation("volatility_regime.py", 112, "_safe_floats", "NONE", None, (), None, "No market-field derivation: AST-listed _safe_floats; no legacy row."),
+    Mega3TraceableDerivation("volatility_regime.py", 130, "_garch_trend", "NONE", None, (), None, "No market-field derivation: AST-listed _garch_trend; no legacy row."),
+    Mega3TraceableDerivation("volatility_regime.py", 56, "classify_volatility_regime", "DERIVED", None, ("market_state.py:build_market_state",), None, "Vol policy from rv/iv/atr/vix upstream fields."),
 )
 

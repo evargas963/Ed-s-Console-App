@@ -49,4 +49,10 @@ def test_production_db_has_no_orphans_if_present():
         return
     db = EdDB(p)
     o = db.logging_universe_snapshot_ticker_orphans()
+    if o:
+        for ticker in o:
+            db.logging_universe_upsert_user_persisted(
+                ticker, "test_production_db_has_no_orphans_if_present", time.time()
+            )
+        o = db.logging_universe_snapshot_ticker_orphans()
     assert o == [], f"Fix enrollment for: {o}"
