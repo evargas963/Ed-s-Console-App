@@ -247,6 +247,20 @@ def test_load_visibility_prefers_tick_summary_empty_blocked_list(tmp_path: Path)
     assert v["blocked_reasons"] == []
 
 
+def test_validate_persisted_returns_parsed_artifacts(tmp_path: Path):
+    from arch_competition.eval_runner import EVALUATION_MANIFEST_SCHEMA_VERSION
+    from arch_competition.promotion_engine import PROMOTION_RECORD_SCHEMA_VERSION
+
+    ev = evaluation_manifest_path(tmp_path, "1c", "SPY")
+    pr = promotion_decision_path(tmp_path, "1c", "SPY")
+    ev.parent.mkdir(parents=True)
+    ev.write_text(json.dumps({"schema_version": EVALUATION_MANIFEST_SCHEMA_VERSION, "ticker": "SPY"}), encoding="utf-8")
+    pr.write_text(json.dumps({"schema_version": PROMOTION_RECORD_SCHEMA_VERSION, "ticker": "SPY"}), encoding="utf-8")
+    manifest, record = validate_persisted_governed_artifacts_or_raise(tmp_path, "1c", "SPY")
+    assert manifest["schema_version"] == EVALUATION_MANIFEST_SCHEMA_VERSION
+    assert record["schema_version"] == PROMOTION_RECORD_SCHEMA_VERSION
+
+
 def test_validate_persisted_schema_mismatch_includes_versions(tmp_path: Path):
     ev = evaluation_manifest_path(tmp_path, "1c", "SPY")
     pr = promotion_decision_path(tmp_path, "1c", "SPY")

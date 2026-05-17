@@ -343,8 +343,8 @@ def validate_persisted_governed_artifacts_or_raise(
     model_dir: Path,
     ml_horizon_slug: str,
     ticker: str,
-) -> None:
-    """Fail-closed loader guard: both files must exist and match schema versions."""
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Fail-closed loader guard: both files must exist, match schema versions, and return parsed payloads."""
     ev = evaluation_manifest_path(model_dir, ml_horizon_slug, ticker)
     pr = promotion_decision_path(model_dir, ml_horizon_slug, ticker)
     if not ev.is_file():
@@ -366,6 +366,7 @@ def validate_persisted_governed_artifacts_or_raise(
             f"promotion record schema mismatch: expected={PROMOTION_RECORD_SCHEMA_VERSION!r} "
             f"got={pj.get('schema_version')!r}"
         )
+    return mj, pj
 
 
 def assert_no_active_directory_write(scheduler_fn: str = "ml_scheduler.run_once") -> None:

@@ -258,9 +258,7 @@ def manual_promote_to_active_explicit(
     else:
         raise ManualGovernanceError("target_architecture must be cascade or parallel")
 
-    validate_persisted_governed_artifacts_or_raise(model_dir, hz, tku)
-    manifest = _read_json(ev_path)
-    record = _read_json(pr_path)
+    manifest, record = validate_persisted_governed_artifacts_or_raise(model_dir, hz, tku)
 
     _validate_manifest_record_lineage(manifest, record)
     _validate_manifest_paths_match_canonical(manifest, model_dir, tku)
