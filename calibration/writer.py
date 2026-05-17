@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sqlite3
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -38,6 +39,11 @@ def sqlite_busy_retry_sleep_seconds(attempt: int) -> float:
     return min(_SQLITE_BUSY_RETRY_MAX_SLEEP_S, _SQLITE_BUSY_RETRY_BASE_SLEEP_S * (2**attempt))
 
 
+def _sqlite_busy_or_locked(exc: sqlite3.OperationalError) -> bool:
+    code = getattr(exc, "sqlite_errorcode", None)
+    return code in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
+
+
 def _json_excerpt(obj: Any, limit: int = _RAW_BUNDLE_EXCERPT_LIMIT) -> str | None:
     """Serialize for storage; truncate only for human/audit preview (not guaranteed parseable)."""
     if obj is None:
@@ -45,7 +51,10 @@ def _json_excerpt(obj: Any, limit: int = _RAW_BUNDLE_EXCERPT_LIMIT) -> str | Non
     text = dumps_compact(obj)
     if len(text) <= limit:
         return text
-    return text[:limit]
+    sentinel = '..."[TRUNCATED]"'
+    if limit <= len(sentinel):
+        return sentinel[:limit]
+    return text[: limit - len(sentinel)] + sentinel
 
 
 def _db_path_for_write(explicit: Optional[Path | str] = None) -> Path:
@@ -110,8 +119,6 @@ def append_calibration_decision(
         return None
 
     try:
-        import sqlite3
-
         from db import configure_sqlite_connection
     except ImportError as e:
         log.warning("calibration writer sqlite/db import failed: %s", e)
@@ -221,6 +228,14 @@ def append_calibration_decision(
         return None
     t_key = ticker_storage_key(t_raw)
 
+    validation_summary = getattr(call, "validation_summary", None) or ""
+    if len(validation_summary) > 2000:
+        log.info(
+            "calibration_decision_log: validation_summary truncated from %d to 2000 chars",
+            len(validation_summary),
+        )
+        validation_summary = validation_summary[:2000]
+
     row_params = (
         float(decision_ts_utc),
         t_key,
@@ -249,7 +264,7 @@ def append_calibration_decision(
         getattr(call, "stop", None),
         getattr(call, "target", None),
         getattr(call, "target2", None),
-        (getattr(call, "validation_summary", None) or "")[:2000],
+        validation_summary,
         None,  # wait_blocker_json: reserved for future multi-horizon wait-blocker capture
         multi_horizon_json,
         raw_bundle_json,
@@ -295,35 +310,33 @@ def append_calibration_decision(
         try:
             configure_sqlite_connection(conn)
             ensure_calibration_schema(conn)
-            _chg0 = conn.total_changes
             cur = conn.execute(insert_sql, row_params)
             conn.commit()
-            if conn.total_changes == _chg0:
+            if cur.rowcount == 0:
                 return CALIBRATION_INSERT_IDEMPOTENT
             return int(cur.lastrowid)
         except sqlite3.OperationalError as e:
             last_exc = e
             try:
                 conn.rollback()
-            except Exception:
+            except sqlite3.Error:
                 pass
-            msg = str(e).lower()
-            if ("locked" in msg or "busy" in msg) and attempt < 11:
+            if _sqlite_busy_or_locked(e) and attempt < 11:
                 time.sleep(sqlite_busy_retry_sleep_seconds(attempt))
                 continue
             log.warning("calibration_decision_log insert failed: %s", e)
             return None
-        except Exception as e:
+        except sqlite3.Error as e:
             log.warning("calibration_decision_log insert failed: %s", e)
             try:
                 conn.rollback()
-            except Exception:
+            except sqlite3.Error:
                 pass
             return None
         finally:
             try:
                 conn.close()
-            except Exception:
+            except sqlite3.Error:
                 pass
 
     if last_exc is not None:
