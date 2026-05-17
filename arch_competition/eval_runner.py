@@ -18,6 +18,7 @@ from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
 
 from arch_competition.atomic_io import write_json_file_atomically
 from arch_competition.exceptions import EvaluationLineageError
+from arch_competition.numeric_safe import safe_float
 from arch_competition.lineage import validate_parallel_cascade_manifest_lineage
 from arch_competition.metrics import (
     architecture_win_consistency_by_window,
@@ -249,7 +250,12 @@ def run_architecture_pair_evaluation(
             "manifests_skipped": True,
         }
 
-    from ml_scheduler import _evaluate_cascade_on_full_rth, _evaluate_parallel_on_full_rth
+    try:
+        from ml_scheduler import _evaluate_cascade_on_full_rth, _evaluate_parallel_on_full_rth
+    except ImportError as e:
+        raise EvaluationLineageError(
+            "ml_scheduler evaluation entrypoints required for architecture pair evaluation"
+        ) from e
 
     pr = _evaluate_parallel_on_full_rth(
         db_path,
@@ -287,7 +293,9 @@ def run_architecture_pair_evaluation(
     )
 
     rolling_windows: list[dict[str, Any]] = []
-    # Single-window trial: expose halves stability as rolling proxy (spec §5.2 multi-roll can extend)
+    # Single-window trial: halves stability as rolling proxy (locked by promotion rolling-stability
+    # gates in tests/test_arch_competition_eval_promotion.py + half_split_log_loss_std in metrics).
+    # Multi-window rolling extension deferred (operator calibration 2026-05).
     rolling_windows.append(
         {
             "window_id": "full_oos",
@@ -304,20 +312,28 @@ def run_architecture_pair_evaluation(
             json.dumps(sorted(allowed_et_dates), separators=(",", ":")).encode("utf-8")
         ).hexdigest()
 
+    pll_s = safe_float(pll)
+    cll_s = safe_float(cll)
+    pbal_s = safe_float(pbal)
+    cbal_s = safe_float(cbal)
+    p_ece_s = safe_float(parallel_metrics.get("calibration_ece"))
+    c_ece_s = safe_float(cascade_metrics.get("calibration_ece"))
+
     arch_summary = {
         "primary_metric_name": "log_loss",
         "delta_log_loss_parallel_minus_cascade": (
-            (float(pll) - float(cll)) if pll is not None and cll is not None else None
+            (pll_s - cll_s) if pll_s is not None and cll_s is not None else None
         ),
-        "delta_balanced_accuracy_cascade_minus_parallel": float(cbal) - float(pbal),
+        "delta_balanced_accuracy_cascade_minus_parallel": (
+            (cbal_s - pbal_s) if cbal_s is not None and pbal_s is not None else None
+        ),
         "delta_ece_cascade_minus_parallel": (
-            (float(cascade_metrics.get("calibration_ece") or 0) - float(parallel_metrics.get("calibration_ece") or 0))
-            if cascade_metrics.get("calibration_ece") is not None
-            and parallel_metrics.get("calibration_ece") is not None
-            else None
+            (c_ece_s - p_ece_s) if c_ece_s is not None and p_ece_s is not None else None
         ),
         "n_rows_scored": pn,
-        "parallel_wins_log_loss": bool(pll is not None and cll is not None and float(pll) < float(cll)),
+        "parallel_wins_log_loss": bool(
+            pll_s is not None and cll_s is not None and pll_s < cll_s
+        ),
         "note": "Summary only; promotion uses promotion_engine.decide_promotion (multi-metric + empirical gates).",
     }
 

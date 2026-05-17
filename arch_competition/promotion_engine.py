@@ -4,7 +4,6 @@ Promotion decision layer — consumes evaluation manifests; does **not** copy to
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +16,7 @@ from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
 from arch_competition.atomic_io import write_json_file_atomically
 from arch_competition.eval_runner import EVALUATION_MANIFEST_SCHEMA_VERSION
 from arch_competition.exceptions import PromotionGovernanceError
+from arch_competition.numeric_safe import safe_float
 
 PROMOTION_RECORD_SCHEMA_VERSION = "1"
 
@@ -89,18 +89,6 @@ class PromotionPolicy:
 
 def _reason(code: str, detail: str = "") -> dict[str, str]:
     return {"code": code, "detail": detail}
-
-
-def _safe_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        out = float(value)
-    except (TypeError, ValueError):
-        return None
-    if math.isnan(out) or math.isinf(out):
-        return None
-    return out
 
 
 def decide_promotion(
@@ -187,8 +175,8 @@ def decide_promotion(
     p_stab = mp.get("stability_log_loss_std_halves")
     c_stab = mc.get("stability_log_loss_std_halves")
 
-    pll_f = _safe_float(pll)
-    cll_f = _safe_float(cll)
+    pll_f = safe_float(pll)
+    cll_f = safe_float(cll)
     if pll_f is None or cll_f is None:
         blocked.append(_reason("MISSING_LOG_LOSS", "log_loss required and numeric for primary metric"))
     else:
@@ -207,8 +195,8 @@ def decide_promotion(
     # Multi-metric gates (no single-metric promotion)
     calibration_ok = True
     if pol.require_calibration_pass:
-        p_brier_f = _safe_float(p_brier)
-        c_brier_f = _safe_float(c_brier)
+        p_brier_f = safe_float(p_brier)
+        c_brier_f = safe_float(c_brier)
         if p_brier_f is None or c_brier_f is None:
             calibration_ok = False
             blocked.append(
@@ -227,8 +215,8 @@ def decide_promotion(
 
     stability_ok = True
     if pol.require_stability_pass:
-        p_stab_f = _safe_float(p_stab)
-        c_stab_f = _safe_float(c_stab)
+        p_stab_f = safe_float(p_stab)
+        c_stab_f = safe_float(c_stab)
         if p_stab_f is None or c_stab_f is None:
             stability_ok = False
             blocked.append(
@@ -277,8 +265,8 @@ def decide_promotion(
                 )
             )
         else:
-            rp_bal = _safe_float(rp.get("balanced_accuracy"))
-            rc_bal = _safe_float(rc.get("balanced_accuracy"))
+            rp_bal = safe_float(rp.get("balanced_accuracy"))
+            rc_bal = safe_float(rc.get("balanced_accuracy"))
             if rp_bal is None or rc_bal is None:
                 regime_ok = False
                 blocked.append(
@@ -297,8 +285,8 @@ def decide_promotion(
     p_ece = mp.get("calibration_ece")
     c_ece = mc.get("calibration_ece")
     if pol.require_calibration_ece_pass:
-        p_ece_f = _safe_float(p_ece)
-        c_ece_f = _safe_float(c_ece)
+        p_ece_f = safe_float(p_ece)
+        c_ece_f = safe_float(c_ece)
         if p_ece_f is None or c_ece_f is None:
             empirical_ok = False
             blocked.append(
@@ -333,8 +321,8 @@ def decide_promotion(
             crc = (crs.get("by_architecture") or {}).get("cascade") or {}
             p_corr = crp.get("confidence_hit_correlation")
             c_corr = crc.get("confidence_hit_correlation")
-            p_corr_f = _safe_float(p_corr)
-            c_corr_f = _safe_float(c_corr)
+            p_corr_f = safe_float(p_corr)
+            c_corr_f = safe_float(c_corr)
             if p_corr_f is None or c_corr_f is None:
                 empirical_ok = False
                 blocked.append(
