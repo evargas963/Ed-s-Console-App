@@ -221,9 +221,9 @@ class PredictiveCard:
     prediction_dir:     str             # aligned with forward direction / target semantics ('up','down','flat','none')
     prediction_target:  Optional[float]  # level from historical avg move when forward lean exists
     # Historical match quality (outcome_5c similar-set — NOT the trade decision driver)
-    historical_5c_dominant_dir: str      # 'up', 'down', 'flat'
-    historical_5c_dominant_prob: float
-    empirical_confidence:     str       # 'low', 'medium', 'high' from tier/samples on 5c empirical only
+    historical_5c_dominant_dir: Optional[str]  # 'up', 'down', 'flat' when labeled 5c sufficient; None when withheld
+    historical_5c_dominant_prob: Optional[float]
+    empirical_confidence: Optional[str]  # 'low', 'medium', 'high' from tier/samples on 5c empirical only
     # Forward forecast (copy of canonical for card rendering)
     forward_direction:          str     # 'up', 'down', 'flat'
     forward_prob_up:            float

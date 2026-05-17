@@ -8,9 +8,15 @@ from types import SimpleNamespace
 from prediction_engine import (
     _fusion_snap_triplet,
     _overlay_multi_horizon_ml_on_product_triplets,
+    _pack_horizon_row,
     _tri_probs,
 )
-from multi_horizon_decision import _infer_trade_mode, _norm_triplet
+from multi_horizon_decision import (
+    _infer_trade_mode,
+    _norm_triplet,
+    _primary_order_for_mode,
+    compute_multi_horizon_synthesis,
+)
 from volatility_regime import classify_volatility_regime
 from math_exposure_core import compute_beta
 from tests.mvp_test_fixtures import minimal_mvp_features
@@ -75,8 +81,58 @@ def test_norm_triplet_none_when_inputs_missing():
     assert _norm_triplet(None, None, None) is None
 
 
-def test_infer_trade_mode_no_fabricated_mins():
-    assert _infer_trade_mode(SimpleNamespace(mins_to_close=None)) == "intraday"
+def test_infer_trade_mode_none_when_mins_missing():
+    assert _infer_trade_mode(SimpleNamespace(mins_to_close=None)) is None
+
+
+def test_infer_trade_mode_scalp_when_near_close():
+    assert _infer_trade_mode(SimpleNamespace(mins_to_close=40)) == "scalp"
+
+
+def test_primary_order_unknown_matches_intraday_default():
+    assert _primary_order_for_mode("unknown") == _primary_order_for_mode("intraday")
+
+
+def test_pack_horizon_row_no_triplet_defaults():
+    row = _pack_horizon_row(
+        {"up": 0.5},
+        "ok",
+        "note",
+        method="test",
+        empirical_forward_bars=5,
+        labeled_count=10,
+    )
+    assert row["up"] is None and row["down"] is None and row["flat"] is None
+
+
+def test_mh_synthesis_mode_unknown_when_mins_missing():
+    pred = SimpleNamespace(
+        up_prob_1c=0.5,
+        down_prob_1c=0.25,
+        flat_prob_1c=0.25,
+        up_prob_5c=0.5,
+        down_prob_5c=0.25,
+        flat_prob_5c=0.25,
+        up_prob_15c=0.5,
+        down_prob_15c=0.25,
+        flat_prob_15c=0.25,
+        up_prob_60c=0.5,
+        down_prob_60c=0.25,
+        flat_prob_60c=0.25,
+        mh_prob_source_by_horizon={},
+    )
+    canonical = SimpleNamespace(
+        direction="up",
+        probability_up=0.5,
+        probability_down=0.25,
+        probability_flat=0.25,
+        confidence="medium",
+        provenance="test",
+    )
+    synth = compute_multi_horizon_synthesis(
+        _inp(mins_to_close=None), pred, canonical, mh_ml_bundle=None
+    )
+    assert synth.mode == "unknown"
 
 
 def test_compute_beta_r_squared_none_when_ticker_variance_zero():
@@ -99,3 +155,5 @@ def test_vol_regime_default_not_trade_permissive():
 def test_prediction_engine_no_fusion_prob_one_third_default():
     text = (ROOT / "prediction_engine.py").read_text(encoding="utf-8")
     assert 'getattr(snap, "prob_up", 1.0 / 3.0)' not in text
+    assert "0.33" not in text
+    assert "0.34" not in text

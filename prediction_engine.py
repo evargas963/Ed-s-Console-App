@@ -283,9 +283,10 @@ def _pack_horizon_row(
         row["labeled_count"] = labeled_count
         row["min_samples_required"] = MIN_SAMPLES_STATISTICAL
     else:
-        row["up"] = float(probs.get("up", 0.33))
-        row["down"] = float(probs.get("down", 0.33))
-        row["flat"] = float(probs.get("flat", 0.34))
+        u, d, f = _tri_probs(probs)
+        row["up"] = u
+        row["down"] = d
+        row["flat"] = f
     return row
 
 
@@ -617,9 +618,9 @@ def _empty_prediction(
         headline=msg,
         prediction_dir="none",
         prediction_target=None,
-        historical_5c_dominant_dir="flat",
-        historical_5c_dominant_prob=0.0,
-        empirical_confidence="low",
+        historical_5c_dominant_dir=None,
+        historical_5c_dominant_prob=None,
+        empirical_confidence=None,
         forward_direction=canonical.direction,
         forward_prob_up=canonical.probability_up,
         forward_prob_down=canonical.probability_down,
@@ -784,17 +785,18 @@ def compute_prediction_core(
     _fusion_available = fusion is not None and getattr(fusion, "available", False)
 
     if probs_5c is None:
-        emp_dom, emp_prob = "flat", 0.0
-        empirical_confidence = "low"
+        emp_dom, emp_prob = None, None
+        empirical_confidence = None
     else:
-        emp_dom, emp_prob = dominant_direction(
-            float(probs_5c.get("up", 0.33)),
-            float(probs_5c.get("down", 0.33)),
-            float(probs_5c.get("flat", 0.34)),
-        )
-        empirical_confidence = determine_confidence(
-            match_tier, n_used, emp_prob, similar=similar, outcome_col="outcome_5c"
-        )
+        _pu, _pd, _pf = _tri_probs(probs_5c)
+        if _pu is None:
+            emp_dom, emp_prob = None, None
+            empirical_confidence = None
+        else:
+            emp_dom, emp_prob = dominant_direction(_pu, _pd, _pf)
+            empirical_confidence = determine_confidence(
+                match_tier, n_used, emp_prob, similar=similar, outcome_col="outcome_5c"
+            )
 
     avg5 = _avg_outcome_pts(similar, "outcome_5c_pts")
     avg15 = _avg_outcome_pts(similar, "outcome_15c_pts")
@@ -982,17 +984,18 @@ def compute_prediction_enrichment(
 
     reversal_risk = None
     reversal_label = ""
-    if probs_5c is not None:
-        pu = float(probs_5c.get("up", 0.33))
-        pd = float(probs_5c.get("down", 0.33))
-        pf = float(probs_5c.get("flat", 0.34))
-        if emp_dom == "up":
+    if probs_5c is not None and emp_dom in ("up", "down", "flat"):
+        pu, pd, pf = _tri_probs(probs_5c)
+        if pu is None:
+            pu = pd = pf = None
+        if emp_dom == "up" and pd is not None:
             reversal_risk = round(pd, 2)
-        elif emp_dom == "down":
+        elif emp_dom == "down" and pu is not None:
             reversal_risk = round(pu, 2)
-        elif emp_dom == "flat":
+        elif emp_dom == "flat" and pu is not None and pd is not None:
             reversal_risk = round(max(pu, pd), 2)
-        reversal_label = classify_reversal_risk(reversal_risk)
+        if reversal_risk is not None:
+            reversal_label = classify_reversal_risk(reversal_risk)
 
     _regime_label = getattr(regime, "primary", None) if regime else None
     if reversal_risk is not None and _regime_label == "reversal_prone":
@@ -1026,7 +1029,7 @@ def compute_prediction_enrichment(
 
     prediction_dir = pred_core.prediction_dir
     prediction_target = pred_core.prediction_target
-    pct = int(emp_prob * 100)
+    pct = int(emp_prob * 100) if emp_prob is not None else None
     fwd = (canonical.direction or "flat").lower()
     dir_labels = {"up": "UP", "down": "DOWN", "flat": "FLAT", "none": "NO EDGE"}
     fwd_lbl = dir_labels.get(fwd, "FLAT")
@@ -1042,11 +1045,16 @@ def compute_prediction_enrichment(
             f"Fusion forward {fwd_lbl} ({canonical.confidence}) — illustrative target {prediction_target:.2f} "
             f"from signed avg 5m move in similar setups (historical 5c mode {emp_dom}, match {empirical_confidence})."
         )
-    elif prediction_dir in ("up", "down"):
+    elif prediction_dir in ("up", "down") and emp_dom is not None and pct is not None:
         headline = (
             f"Fusion forward {fwd_lbl} ({canonical.confidence}); historical 5c mode {emp_dom} at {pct}%."
         )
-    elif n_used >= MIN_SAMPLES_STATISTICAL and match_tier <= 4:
+    elif (
+        n_used >= MIN_SAMPLES_STATISTICAL
+        and match_tier <= 4
+        and emp_dom is not None
+        and pct is not None
+    ):
         headline = (
             f"Fusion: {fwd_lbl} ({canonical.confidence}). Historical 5c balanced ({pct}% {emp_dom})."
         )
@@ -1088,10 +1096,12 @@ def compute_prediction_enrichment(
             f"{n_used:,} similar setups; {_n5} labeled outcome_5c (need {MIN_SAMPLES_STATISTICAL} for empirical %)."
         )
     else:
-        up_pct = int(float(probs_5c.get("up", 0.33)) * 100)
-        dn_pct = int(float(probs_5c.get("down", 0.33)) * 100)
-        fl_pct = int(float(probs_5c.get("flat", 0.34)) * 100)
-        parts.append(f"{n_used:,} similar setups found. {up_pct}% went up, {dn_pct}% down, {fl_pct}% flat.")
+        _pu, _pd, _pf = _tri_probs(probs_5c)
+        if _pu is not None:
+            up_pct = int(_pu * 100)
+            dn_pct = int(_pd * 100)
+            fl_pct = int(_pf * 100)
+            parts.append(f"{n_used:,} similar setups found. {up_pct}% went up, {dn_pct}% down, {fl_pct}% flat.")
 
     if empirical_confidence == "high" and emp_dom in ("up", "down"):
         parts.append(f"Historically strong lean {emp_dom} in this 5c bucket.")

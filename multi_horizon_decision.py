@@ -192,7 +192,8 @@ def compute_multi_horizon_synthesis(
     canonical,
     mh_ml_bundle: Optional[MultiHorizonMLFusionBundle] = None,
 ) -> MultiHorizonSynthesis:
-    mode = _infer_trade_mode(inp)
+    raw_mode = _infer_trade_mode(inp)
+    mode = raw_mode if raw_mode is not None else "unknown"
     hmap = {
         hz: _forecast_horizon_live(pred, inp, hz, canonical=canonical, mh_ml_bundle=mh_ml_bundle)
         for hz in PRODUCT_HORIZONS
@@ -282,6 +283,8 @@ def compute_multi_horizon_synthesis(
         else "Session continuation"
         if mode == "session"
         else "Intraday continuation"
+        if mode == "intraday"
+        else "Mode unknown — default intraday horizon stack"
     )
     if align.contradiction_state in ("structural", "tactical"):
         hold_style = "Tactical / reduced hold"
@@ -500,14 +503,14 @@ def _confidence_from_probs(up: float, dn: float, fl: float) -> tuple[float, floa
     return top, margin, "wait"
 
 
-def _infer_trade_mode(inp) -> str:
+def _infer_trade_mode(inp) -> Optional[str]:
     m2c = getattr(inp, "mins_to_close", None)
     if m2c is None:
-        return "intraday"
+        return None
     try:
         mins = float(m2c)
     except (TypeError, ValueError):
-        return "intraday"
+        return None
     if mins <= 75:
         return "scalp"
     if mins <= 240:
@@ -515,11 +518,12 @@ def _infer_trade_mode(inp) -> str:
     return "session"
 
 
-def _primary_order_for_mode(mode: str) -> tuple[str, ...]:
+def _primary_order_for_mode(mode: Optional[str]) -> tuple[str, ...]:
     if mode == "scalp":
         return ("1c", "5c", "15c", "60c")
     if mode == "session":
         return ("60c", "15c", "5c", "1c")
+    # intraday + unknown: same default stack (no fabricated mins_to_close)
     return ("15c", "5c", "1c", "60c")
 
 
