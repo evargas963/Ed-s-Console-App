@@ -184,6 +184,13 @@ CHAIN_OF_TRUST_ALLOWLIST: tuple[AllowlistEntry, ...] = (
         added_in_sha="1ece9b3",
         category="internal_state",
     ),
+    AllowlistEntry(
+        id="mega3_internal_helper",
+        justification="Pure MC/regime/feature contract helper with no Schwab wire or snapshot field output.",
+        owner_section="Mega3",
+        added_in_sha="PENDING",
+        category="internal_state",
+    ),
 )
 
 ALLOWLIST_BY_ID: dict[str, AllowlistEntry] = {e.id: e for e in CHAIN_OF_TRUST_ALLOWLIST}

@@ -225,9 +225,9 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 
 ---
 
-## KEY LEVELS sweep closure summary (2026-05-16, branch `feature/institutional-key-levels`) — WITHDRAWN pending §D
+## KEY LEVELS sweep closure summary (2026-05-16, branch `feature/institutional-key-levels`) — YES restored (Mega 2 §D)
 
-**Status:** Prior YES at `82615fa` withdrawn. Categorical §4 inventory archived; §D requires `TraceableDerivation` + chain-of-trust closure before re-acceptance.
+**Status:** YES restored at Mega 2 SHA `a9208de` (stamp `a9208de`). **Basis:** `governance/mega2_traceable_inventory.py` (201 rows) + `governance/mega_chain_of_trust.py` cross-mega closure with Mega 1. Supersedes empirical-only `82615fa` (pattern-grep + archived categorical §4 inventory). Regression floors: `82615fa`, `cab3ef4`, `4740fa8`, `tests/test_institutional_key_levels.py`, `tests/test_math_levels_hvl_max_pain.py`.
 
 | Item | Register IDs | Status | Evidence commit(s) |
 |------|----------------|--------|-------------------|
@@ -697,6 +697,25 @@ Per-function detail in `governance/mega2_traceable_inventory.py`.
 
 ---
 
+## Mega 3 traceable inventory (§H + §I)
+
+Walked **26** modules at **full AST scope**. **121** `Mega3TraceableDerivation` rows in `governance/mega3_traceable_inventory.py`. Cross-mega chain-of-trust via `governance/mega_chain_of_trust.py` (resolves Mega 3 `DERIVED` producer_refs into Mega 1 + Mega 2 + Mega 3 merged index). Gate: `tests/test_mega3_traceable_audit.py`. **Inventory-only commit; no production code changes.**
+
+| disposition | count |
+|---|---:|
+| SCHWAB_LEAF | 0 |
+| REPLACED | 0 |
+| DERIVED | 61 |
+| ALLOWLISTED | 11 |
+| NONE | 49 |
+| **total** | **121** |
+
+**Scope (exactly 26 files):** `monte_carlo.py`, `mc_fusion_adjustment.py`, `volatility_regime.py`, `regime_engine.py`, and **22** `features/*.py` modules listed in `governance/mega3_traceable_inventory.py` (`MEGA3_FILES`).
+
+Per-function detail in `governance/mega3_traceable_inventory.py`.
+
+---
+
 ## CAPS allowlist (silent-default substitution family)
 
 Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  
@@ -825,7 +844,7 @@ This register is not yet complete. It is the active replacement plan.
 
 ```text
 repo_wide_derived_field_replacement_status = OPEN
-key_levels_input_sweep_status = WITHDRAWN_PENDING_SECTION_D
+key_levels_input_sweep_status = YES_MEGA2_A9208DE_CHAIN_OF_TRUST
 price_quote_inventory = DRAFTED
 option_chain_inventory = DRAFTED
 model_training_inventory = DRAFTED

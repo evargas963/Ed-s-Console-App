@@ -328,6 +328,10 @@ Charted key levels are derived from Schwab chain leaves (`delta`, `gamma`, `open
 - UI utility/sidebar metrics reset to `—` with `stale-metric` when payload omits VIX/PCR/bid/ask; no sticky `window._lastData` reuse for bid/ask.
 - Derived GEX/DEX payloads include `kl_gex_input_completeness` (contracts_used / contracts_total).
 
+#### KEY LEVELS traceable closure (Mega 2 §D, SHA `a9208de`)
+
+KEY LEVELS YES is restored on **chain-of-trust**, not categorical inventory alone. Every function in `math_exposure_core.py`, `math_exposure.py`, `math_levels.py`, `math_volatility.py`, `math_probabilities.py`, and `levels.py` has a `Mega2TraceableDerivation` row; `governance/mega_chain_of_trust.py::assert_mega_chain_closes` walks Mega 1 + Mega 2 merged producer graphs. Example: `compute_max_pain` → `compute_exposures_by_strike` → `server.py:_fetch_state` → `schwab_client.py:safe_get_chain`. Prior `82615fa` remains a regression floor only.
+
 #### KEY LEVELS UI row registry (23 charted rows + metadata)
 
 | UI row | Payload | Basis in `feature/institutional-key-levels` |
