@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import math
 import sqlite3
 import statistics
 import sys
@@ -21,6 +23,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from arch_competition.atomic_io import write_json_file_atomically
 from calibration.anchor_audit import snapshot_has_bar_anchor
 from calibration.canonical_enforcement import (
     CalibrationCanonicalViolationError,
@@ -46,15 +49,24 @@ from calibration.statistical_integrity import (
     thresholds_dict,
     verify_phase3_no_numeric_leak,
 )
+from calibration.v2_a1_calibration import axis_reliability_bucket_value
+
+log = logging.getLogger(__name__)
 
 try:
     from db import configure_sqlite_connection
-except Exception:
+except ImportError as e:
+    log.warning(
+        "db.configure_sqlite_connection not available — using no-op stub: %s",
+        e,
+    )
 
     def configure_sqlite_connection(conn, **kwargs):
         pass
 
 from db import get_snapshot_sql
+
+_CANONICAL_PROB_KEYS = ("probability_up", "probability_down", "probability_flat")
 
 
 def _brier_triplet(p_up: float, p_dn: float, p_fl: float, y: str) -> float:
@@ -73,21 +85,29 @@ def _load_json_col(s: str | None) -> dict[str, Any]:
     if not s:
         return {}
     try:
-        return json.loads(s)
-    except Exception:
+        obj = json.loads(s)
+    except (json.JSONDecodeError, ValueError) as e:
+        log.warning("analyze_phase3: could not parse JSON column: %s", e)
         return {}
+    if not isinstance(obj, dict):
+        log.warning("analyze_phase3: JSON column root is not an object")
+        return {}
+    return obj
 
 
 def _canonical_prob_triplet(canonical_json: str | None) -> tuple[float, float, float] | None:
-    d = _load_json_col(canonical_json)
-    try:
-        return (
-            float(d.get("probability_up", 0)),
-            float(d.get("probability_down", 0)),
-            float(d.get("probability_flat", 0)),
-        )
-    except Exception:
+    if not (canonical_json or "").strip():
         return None
+    d = _load_json_col(canonical_json)
+    if not d or not all(k in d for k in _CANONICAL_PROB_KEYS):
+        return None
+    try:
+        vals = tuple(float(d[k]) for k in _CANONICAL_PROB_KEYS)
+    except (TypeError, ValueError):
+        return None
+    if any(math.isnan(v) or math.isinf(v) for v in vals):
+        return None
+    return vals
 
 
 def _confidence_bucket(label: str | None) -> str:
@@ -384,8 +404,8 @@ def analyze(db_path: Path) -> dict[str, Any]:
     # Regime × vol_regime (model stack context buckets; fail-closed per cell)
     mbr_pts: dict[str, list[float]] = defaultdict(list)
     for r in rows:
-        rp = r["regime_primary"] or "unknown"
-        vr = r["vol_regime"] or "unknown"
+        rp = axis_reliability_bucket_value(r["regime_primary"])
+        vr = axis_reliability_bucket_value(r["vol_regime"])
         pts = r["outcome_5c_pts"]
         if pts is not None:
             key = f"{rp}|{vr}"
@@ -463,8 +483,7 @@ def main() -> int:
         print(json.dumps({"error": str(e), "binary_pass": False}))
         return 2
     outp = Path(__file__).resolve().parent.parent / "models" / "calibration_runs" / f"phase3_analysis_{int(time.time())}.json"
-    outp.parent.mkdir(parents=True, exist_ok=True)
-    outp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    write_json_file_atomically(outp, data, indent=2)
     print(
         json.dumps(
             {
@@ -474,7 +493,7 @@ def main() -> int:
             indent=2,
         )
     )
-    return 0
+    return 0 if data.get("statistical_integrity", {}).get("binary_pass") else 3
 
 
 if __name__ == "__main__":
