@@ -334,8 +334,69 @@ def test_row_to_calibration_example_rejects_missing_outcome() -> None:
         "vol_regime": "normal",
         "session_bucket": "midday",
     }
-    with pytest.raises(ValueError, match="cannot be used for A1 calibration"):
+    with pytest.raises(ValueError, match="unusable_label:"):
         _row_to_calibration_example(row, horizon="5c")
+
+
+def test_row_to_calibration_example_rejects_non_trade_with_distinct_reason() -> None:
+    row = {
+        "id": 1,
+        "ticker": "SPY",
+        "decision_ts_utc": BASE_TS,
+        "advisory_v2_decision_snapshot_json": json.dumps(
+            {
+                "v2_decision": {
+                    "decision": {
+                        "action": {"value": "WAIT"},
+                        "direction": {"value": "long"},
+                        "P_entry_success": {"value": 0.6},
+                    }
+                }
+            }
+        ),
+        "advisory_v2_adapter_version": "test-adapter",
+        "outcome": "up",
+        "outcome_pts": 0.1,
+        "vol_regime": "normal",
+        "session_bucket": "midday",
+    }
+    with pytest.raises(ValueError, match="non_trade_action:'WAIT'"):
+        _row_to_calibration_example(row, horizon="5c")
+
+
+def test_build_a1_calibration_health_runs_numeric_leak_verifier():
+    artifact = {
+        "horizon": "5c",
+        "holdout_predictions": [
+            {
+                "calibrated_probability": 0.9,
+                "label": 1,
+                "volatility_regime": "normal",
+                "time_of_day_bucket": "midday",
+                "expiry_dte_bucket": "not_options_applicable",
+                "ticker": "SPY",
+                "direction": "long",
+                "primary_horizon": "5c",
+            }
+            for _ in range(A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES)
+        ],
+    }
+    health = build_a1_calibration_health(artifact)
+    assert health["numeric_leak_check"] == "pass"
+
+
+def test_apply_isotonic_model_warns_on_out_of_range_input(caplog):
+    import logging
+
+    model = {
+        "x_thresholds": [0.2, 0.8],
+        "y_thresholds": [0.1, 0.9],
+        "x_train_min": 0.2,
+        "x_train_max": 0.8,
+    }
+    with caplog.at_level(logging.WARNING):
+        apply_isotonic_model(model, 1.5)
+    assert any("outside [0, 1]" in r.message for r in caplog.records)
 
 
 def test_build_a1_calibration_health_requires_horizon() -> None:

@@ -222,9 +222,19 @@ def build_a1_calibration_health(artifact: dict[str, Any]) -> dict[str, Any]:
     if horizon_raw is None or not str(horizon_raw).strip():
         raise ValueError("artifact horizon is required for A1 calibration health")
     hz = _validate_horizon(str(horizon_raw))
-    predictions = artifact.get("holdout_predictions") or []
+    holdout_raw = artifact.get("holdout_predictions")
+    if holdout_raw is None:
+        predictions: list[dict[str, Any]] = []
+    elif not isinstance(holdout_raw, list):
+        log.warning(
+            "v2_a1_calibration: holdout_predictions is not a list (%s); treating as empty",
+            type(holdout_raw).__name__,
+        )
+        predictions = []
+    else:
+        predictions = holdout_raw
     aggregate_gate = _sample_gate(len(predictions), A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES, "O-24")
-    health = {
+    health: dict[str, Any] = {
         "horizon": hz,
         "sample_gates": {
             "aggregate_holdout": aggregate_gate,
@@ -233,11 +243,15 @@ def build_a1_calibration_health(artifact: dict[str, Any]) -> dict[str, Any]:
         "brier_score": None,
         "reliability_table": _reliability_table(predictions),
         "regime_reliability": _regime_reliability(predictions),
-        "numeric_leak_check": "pass",
     }
     if aggregate_gate["sufficient_sample"]:
         health["ece"] = _expected_calibration_error(health["reliability_table"])
         health["brier_score"] = _brier_score(predictions)
+    from calibration.statistical_integrity import verify_a1_calibration_health_no_numeric_leak
+
+    health["numeric_leak_check"] = (
+        "pass" if verify_a1_calibration_health_no_numeric_leak(health) else "fail"
+    )
     return health
 
 
@@ -261,7 +275,25 @@ def apply_isotonic_model(model: dict[str, Any], raw_probability: float) -> float
     ys = [float(y) for y in model.get("y_thresholds", [])]
     if not xs or not ys or len(xs) != len(ys):
         raise ValueError("invalid isotonic model thresholds")
-    x = min(1.0, max(0.0, float(raw_probability)))
+    x_raw = float(raw_probability)
+    if x_raw < 0.0 or x_raw > 1.0:
+        log.warning(
+            "apply_isotonic_model: raw_probability %s outside [0, 1]; clamping before interpolation",
+            x_raw,
+        )
+    x_train_min = model.get("x_train_min")
+    x_train_max = model.get("x_train_max")
+    if x_train_min is not None and x_train_max is not None:
+        tmin, tmax = float(x_train_min), float(x_train_max)
+        if x_raw < tmin or x_raw > tmax:
+            log.warning(
+                "apply_isotonic_model: raw_probability %s outside training range [%s, %s] "
+                "(sklearn out_of_bounds=clip applies at apply time)",
+                x_raw,
+                tmin,
+                tmax,
+            )
+    x = min(1.0, max(0.0, x_raw))
     if x <= xs[0]:
         return round(ys[0], 6)
     if x >= xs[-1]:
@@ -274,7 +306,7 @@ def apply_isotonic_model(model: dict[str, Any], raw_probability: float) -> float
                 return round(y1, 6)
             frac = (x - x0) / (x1 - x0)
             return round(y0 + frac * (y1 - y0), 6)
-    return round(ys[-1], 6)
+    raise ValueError("apply_isotonic_model: x not bracketed by isotonic thresholds")
 
 
 def _reliability_table(predictions: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -374,10 +406,13 @@ def _fit_isotonic_model(raw_probabilities: list[float], labels: list[int]) -> di
 
     iso = IsotonicRegression(y_min=0.0, y_max=1.0, increasing=True, out_of_bounds="clip")
     iso.fit(raw_probabilities, labels)
+    train_x = [float(v) for v in raw_probabilities]
     return {
         "type": "isotonic_regression",
         "x_thresholds": [round(float(v), 10) for v in iso.X_thresholds_],
         "y_thresholds": [round(float(v), 10) for v in iso.y_thresholds_],
+        "x_train_min": round(min(train_x), 10),
+        "x_train_max": round(max(train_x), 10),
     }
 
 
@@ -409,8 +444,12 @@ def _row_to_calibration_example(row: dict[str, Any], *, horizon: str) -> dict[st
     outcome_raw = row.get("outcome")
     outcome = str(outcome_raw).lower() if outcome_raw is not None else None
     label = _success_label(direction, outcome)
-    if action != "TRADE" or raw_p is None or label is None:
-        raise ValueError("row cannot be used for A1 calibration")
+    if action != "TRADE":
+        raise ValueError(f"non_trade_action:{action!r}")
+    if raw_p is None:
+        raise ValueError("missing_p_entry_success")
+    if label is None:
+        raise ValueError(f"unusable_label:direction={direction!r}_outcome={outcome!r}")
     return {
         "calibration_row_id": int(row["id"]),
         "ticker": row.get("ticker"),

@@ -116,6 +116,30 @@ def verify_phase3_no_numeric_leak(out: dict[str, Any]) -> bool:
     return True
 
 
+def verify_a1_calibration_health_no_numeric_leak(health: dict[str, Any]) -> bool:
+    """
+    Defensive check for A1 isotonic health: gated means/rates only when sample_gate passes.
+    """
+    for row in health.get("reliability_table") or []:
+        g = row.get("sample_gate")
+        if not _gate_ok_for_value(row.get("predicted_mean"), g):
+            return False
+        if not _gate_ok_for_value(row.get("observed_hit_rate"), g):
+            return False
+    for _key, row in (health.get("regime_reliability") or {}).items():
+        g = row.get("sample_gate")
+        if not _gate_ok_for_value(row.get("predicted_mean"), g):
+            return False
+        if not _gate_ok_for_value(row.get("observed_hit_rate"), g):
+            return False
+    agg = (health.get("sample_gates") or {}).get("aggregate_holdout")
+    if not _gate_ok_for_value(health.get("ece"), agg):
+        return False
+    if not _gate_ok_for_value(health.get("brier_score"), agg):
+        return False
+    return True
+
+
 def verify_phase4_no_numeric_leak(out: dict[str, Any]) -> bool:
     for _sig, row in out.get("decision_performance_from_log", {}).items():
         g = row.get("sample_gate")
