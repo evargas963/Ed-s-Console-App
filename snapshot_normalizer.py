@@ -129,40 +129,17 @@ def resample_to_1m(
             o = _safe_float(first.get("spot"))
             if o is not None:
                 missing_fields.append("candle_open_spot_proxy")
-        if o is None:
+        if o is None or o == 0:
             continue
 
-        highs: list[float] = []
-        lows: list[float] = []
-        for r in group:
-            ch = _safe_float(r.get("candle_high"))
-            if ch is not None:
-                highs.append(ch)
-            else:
-                sp = _safe_float(r.get("spot"))
-                if sp is None:
-                    highs = []
-                    break
-                highs.append(sp)
-                if "candle_high_spot_proxy" not in missing_fields:
-                    missing_fields.append("candle_high_spot_proxy")
-            cl = _safe_float(r.get("candle_low"))
-            if cl is not None:
-                lows.append(cl)
-            else:
-                sp = _safe_float(r.get("spot"))
-                if sp is None:
-                    lows = []
-                    break
-                lows.append(sp)
-                if "candle_low_spot_proxy" not in missing_fields:
-                    missing_fields.append("candle_low_spot_proxy")
-        if not highs or not lows:
+        highs = [_safe_float(r.get("candle_high")) for r in group]
+        lows = [_safe_float(r.get("candle_low")) for r in group]
+        highs_clean = [x for x in highs if x is not None]
+        lows_clean = [x for x in lows if x is not None]
+        if not highs_clean or not lows_clean:
             continue
-        h = max(highs)
-        l = min(lows)
-        if h is None or l is None:
-            continue
+        h = max(highs_clean)
+        l = min(lows_clean)
         if h == 0 or l == 0:
             continue
 
@@ -193,13 +170,11 @@ def resample_to_1m(
         norm["source"] = "snapshot_synthetic"
         norm["synthetic"] = True
         norm["missing_fields"] = missing_fields
-        spot_last = _safe_float(last.get("spot"))
-        if spot_last is None:
-            missing_fields.append("spot")
-            norm["spot"] = c
+        spot_val = _safe_float(last.get("spot"))
+        if spot_val is None:
+            spot_val = c
             missing_fields.append("spot_close_proxy")
-        else:
-            norm["spot"] = spot_last
+        norm["spot"] = spot_val
         # Recompute OHLC-derived fields from normalized OHLC
         norm["candle_body_pts"] = abs(c - o) if (c is not None and o is not None) else None
         norm["candle_range_pts"] = (h - l) if (h is not None and l is not None) else None
