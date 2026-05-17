@@ -6,17 +6,19 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from calibration.analyze_phase4 import (
+    _MHAP_ALIGNED_STATES,
+    _MHAP_MISALIGNED_STATES,
     _directional_pnl,
     _load_json,
     analyze,
     main,
 )
 from calibration.schema import ensure_calibration_schema
+from calibration.statistical_integrity import MIN_N_BASELINE_COMPARISON
 from calibration.trust import CALIBRATION_TRUST_TRUSTED
 from db import EdDB, configure_sqlite_connection
 
@@ -76,6 +78,30 @@ def _seed_mhap_alignment_db(db_path: Path) -> None:
     conn.close()
 
 
+@pytest.mark.parametrize(
+    "align,expected",
+    [
+        ("fully_aligned", "aligned"),
+        ("mostly_aligned", "aligned"),
+        ("contradictory", "misaligned"),
+        ("weak", "misaligned"),
+        ("mixed", "misaligned"),
+        ("unusable", "skip"),
+        ("unknown", "skip"),
+        ("", "skip"),
+    ],
+)
+def test_mhap_alignment_state_bucket(align, expected):
+    st = (align or "").strip().upper()
+    if expected == "aligned":
+        assert st in _MHAP_ALIGNED_STATES
+    elif expected == "misaligned":
+        assert st in _MHAP_MISALIGNED_STATES
+    else:
+        assert st not in _MHAP_ALIGNED_STATES
+        assert st not in _MHAP_MISALIGNED_STATES
+
+
 def test_analyze_mhap_skips_unusable_and_partitions_alignment_states(tmp_path, monkeypatch):
     db_path = tmp_path / "phase4_mhap.db"
     _seed_mhap_alignment_db(db_path)
@@ -86,7 +112,131 @@ def test_analyze_mhap_skips_unusable_and_partitions_alignment_states(tmp_path, m
     out = analyze(db_path)
     mh = out["mhap_alignment"]
     assert mh["aligned_n"] == 2
-    assert mh["misaligned_n"] == 1
+    assert mh["misaligned_n"] == 3
+
+
+def _seed_baseline_snapshots(db_path: Path, *, n: int, outcome: str, pts: float) -> None:
+    _ = EdDB(db_path)
+    conn = sqlite3.connect(str(db_path))
+    configure_sqlite_connection(conn)
+    ensure_calibration_schema(conn)
+    for i in range(n):
+        conn.execute(
+            """
+            INSERT INTO snapshots (
+                ticker, timeframe, ts_utc, ts_et, spot,
+                outcome_5c, outcome_5c_pts, vwap_side
+            )
+            VALUES ('SPY', '1m', ?, 'et', 100.0, ?, ?, NULL)
+            """,
+            (7000.0 + i, outcome, pts),
+        )
+    conn.commit()
+    conn.close()
+
+
+def test_analyze_baselines_always_down_positive_on_down_outcomes(tmp_path):
+    db_path = tmp_path / "phase4_baselines.db"
+    n = MIN_N_BASELINE_COMPARISON
+    _seed_baseline_snapshots(db_path, n=n, outcome="down", pts=2.0)
+    out = analyze(db_path)
+    bl = out["baselines_from_snapshots"]
+    assert bl["always_down_mean_5c_pts"] is not None
+    assert bl["always_down_mean_5c_pts"] > 0
+    assert bl["always_down_mean_gate"]["sufficient_sample"]
+
+
+def test_analyze_baselines_match_directional_pnl_per_row(tmp_path):
+    db_path = tmp_path / "phase4_baseline_consistency.db"
+    _ = EdDB(db_path)
+    conn = sqlite3.connect(str(db_path))
+    configure_sqlite_connection(conn)
+    ensure_calibration_schema(conn)
+    rows = [
+        ("up", 1.5),
+        ("down", -2.0),
+        ("flat", 0.25),
+    ]
+    for i, (oc, pts) in enumerate(rows):
+        conn.execute(
+            """
+            INSERT INTO snapshots (
+                ticker, timeframe, ts_utc, ts_et, spot,
+                outcome_5c, outcome_5c_pts, vwap_side
+            )
+            VALUES ('SPY', '1m', ?, 'et', 100.0, ?, ?, NULL)
+            """,
+            (8000.0 + i, oc, pts),
+        )
+    conn.commit()
+    conn.close()
+
+    snap = sqlite3.connect(str(db_path))
+    snap.row_factory = sqlite3.Row
+    snap_rows = snap.execute(
+        "SELECT outcome_5c, outcome_5c_pts FROM snapshots WHERE outcome_5c_pts IS NOT NULL"
+    ).fetchall()
+    snap.close()
+
+    always_up = []
+    always_down = []
+    for r in snap_rows:
+        p = float(r["outcome_5c_pts"])
+        oc = r["outcome_5c"]
+        up_pnl = _directional_pnl("long", oc, p)
+        dn_pnl = _directional_pnl("short", oc, p)
+        if up_pnl is not None:
+            always_up.append(up_pnl)
+        if dn_pnl is not None:
+            always_down.append(dn_pnl)
+
+    assert always_up == [
+        _directional_pnl("long", oc, float(pts)) for oc, pts in rows
+    ]
+    assert always_down == [
+        _directional_pnl("short", oc, float(pts)) for oc, pts in rows
+    ]
+
+
+def test_analyze_vwap_mr_proxy_matches_directional_pnl(tmp_path):
+    db_path = tmp_path / "phase4_vwap_mr.db"
+    _ = EdDB(db_path)
+    conn = sqlite3.connect(str(db_path))
+    configure_sqlite_connection(conn)
+    ensure_calibration_schema(conn)
+    n_half = MIN_N_BASELINE_COMPARISON // 2
+    for i in range(n_half):
+        conn.execute(
+            """
+            INSERT INTO snapshots (
+                ticker, timeframe, ts_utc, ts_et, spot,
+                outcome_5c, outcome_5c_pts, vwap_side
+            )
+            VALUES ('SPY', '1m', ?, 'et', 100.0, 'up', 3.0, 'below')
+            """,
+            (9000.0 + i,),
+        )
+        conn.execute(
+            """
+            INSERT INTO snapshots (
+                ticker, timeframe, ts_utc, ts_et, spot,
+                outcome_5c, outcome_5c_pts, vwap_side
+            )
+            VALUES ('SPY', '1m', ?, 'et', 100.0, 'down', 4.0, 'above')
+            """,
+            (9100.0 + i,),
+        )
+    conn.commit()
+    conn.close()
+
+    out = analyze(db_path)
+    bl = out["baselines_from_snapshots"]
+    assert bl["vwap_side_mean_reversion_proxy_n"] == MIN_N_BASELINE_COMPARISON
+    expected_mean = (
+        n_half * _directional_pnl("long", "up", 3.0)
+        + n_half * _directional_pnl("short", "down", 4.0)
+    ) / MIN_N_BASELINE_COMPARISON
+    assert bl["vwap_side_mean_reversion_proxy_mean"] == pytest.approx(expected_mean)
 
 
 @pytest.mark.parametrize("binary_pass,expected_code", [(True, 0), (False, 3)])

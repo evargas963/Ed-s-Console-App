@@ -59,7 +59,7 @@ from db import get_snapshot_sql
 
 # multi_horizon_decision._alignment_state producer vocabulary (uppercased at parse time).
 _MHAP_ALIGNED_STATES = frozenset({"FULLY_ALIGNED", "MOSTLY_ALIGNED"})
-_MHAP_MISALIGNED_STATES = frozenset({"CONTRADICTORY"})
+_MHAP_MISALIGNED_STATES = frozenset({"CONTRADICTORY", "WEAK", "MIXED"})
 
 
 def _directional_pnl(call_signal: str, outcome: str, pts: float | None) -> float | None:
@@ -281,21 +281,31 @@ def analyze(db_path: Path) -> dict[str, Any]:
     ).fetchall()
     conn.close()
 
-    always_up = [float(r["outcome_5c_pts"]) for r in snap if r["outcome_5c_pts"] is not None]
-    always_down = [-abs(float(r["outcome_5c_pts"])) for r in snap if r["outcome_5c_pts"] is not None]
-    # naive MR: if below vwap, bet up (simplified)
+    # outcome_5c_pts is signed (forward_close - anchor_close); see horizon_outcomes producer.
+    always_up: list[float] = []
+    always_down: list[float] = []
     mr_pts: list[float] = []
     for r in snap:
-        vs = (r["vwap_side"] or "").lower()
         pts = r["outcome_5c_pts"]
-        oc = (r["outcome_5c"] or "").lower()
         if pts is None:
             continue
         p = float(pts)
-        if vs == "below" and oc in ("up", "down", "flat"):
-            mr_pts.append(p if oc == "up" else (-p if oc == "down" else 0.0))
-        elif vs == "above" and oc in ("up", "down", "flat"):
-            mr_pts.append(-p if oc == "down" else (p if oc == "up" else 0.0))
+        oc = r["outcome_5c"]
+        up_pnl = _directional_pnl("long", oc, p)
+        dn_pnl = _directional_pnl("short", oc, p)
+        if up_pnl is not None:
+            always_up.append(up_pnl)
+        if dn_pnl is not None:
+            always_down.append(dn_pnl)
+        vs = (r["vwap_side"] or "").strip().lower()
+        if vs == "below":
+            mr = _directional_pnl("long", oc, p)
+        elif vs == "above":
+            mr = _directional_pnl("short", oc, p)
+        else:
+            mr = None
+        if mr is not None:
+            mr_pts.append(mr)
 
     up_m, up_g = gated_mean(always_up, MIN_N_BASELINE_COMPARISON)
     dn_m, dn_g = gated_mean(always_down, MIN_N_BASELINE_COMPARISON)
