@@ -3381,9 +3381,9 @@ def _fetch_state(
     # receives real values. charm_direction uses raw strings "buying"/"selling"/"neutral"
     # which is what signals.py expects for Greek bias scoring.
     _charm_net    = None
-    _charm_dir    = "neutral"
+    _charm_dir    = None
     _charm_toward = None
-    _charm_mag    = "negligible"
+    _charm_mag    = None
     _charm_drivers = []
     try:
         from math_exposure import compute_net_charm
@@ -3397,7 +3397,7 @@ def _fetch_state(
             _charm_net     = _charm_raw["net_charm_daily"]
             _charm_dir     = _charm_raw["charm_direction"]
             _charm_toward  = _charm_raw.get("drift_toward")
-            _charm_mag     = _charm_raw.get("charm_magnitude", "negligible")
+            _charm_mag     = _charm_raw.get("charm_magnitude")
             _charm_drivers = _charm_raw.get("top_drivers", [])
             log.info(f"Charm: {ticker} ✅ net={_charm_net:.0f} dir={_charm_dir} mag={_charm_mag} pin={_charm_toward} "
                      f"({_charm_used} contracts)")
@@ -3783,7 +3783,7 @@ def _fetch_state(
         _idx_data = {}
         for _ik, _ig in [('SPY', mkt_ctx.spy_chg_pct), ('QQQ', mkt_ctx.qqq_chg_pct), ('IWM', mkt_ctx.iwm_chg_pct)]:
             if _ig is not None: _idx_data[_ik] = float(_ig)
-        _index_strength = compute_sector_strength(_idx_data) if _idx_data else {}
+        _index_strength = compute_sector_strength(_idx_data)
 
         # Group 2: SPY top holdings (from mkt_ctx.constituents)
         _spy_holdings = {}
@@ -3792,7 +3792,7 @@ def _fetch_state(
             _chg = getattr(_cq, 'chg_pct', None)
             if _sym and _chg is not None:
                 _spy_holdings[_sym] = float(_chg)
-        _spy_strength = compute_sector_strength(_spy_holdings) if _spy_holdings else {}
+        _spy_strength = compute_sector_strength(_spy_holdings)
 
         # Group 3: IWM sector proxies (from mkt_ctx.iwm_sectors)
         _sector_data = {}
@@ -3801,7 +3801,7 @@ def _fetch_state(
             _chg = getattr(_sq, 'chg_pct', None)
             if _sym and _chg is not None:
                 _sector_data[_sym] = float(_chg)
-        _sector_strength = compute_sector_strength(_sector_data) if _sector_data else {}
+        _sector_strength = compute_sector_strength(_sector_data)
 
         # IWM deep confluence analysis (VIX direction from $VIX tracker, not IV tracker)
         if getattr(mkt_ctx, "vix", None) is not None:
@@ -4930,20 +4930,22 @@ def _fetch_state(
     # ── Section 8 — Predictive Positioning Signals ────────────────────────────
     ms_dict["dpi_raw"]               = _dpi.get("raw")
     ms_dict["dpi_normalized"]        = _dpi.get("normalized")
-    ms_dict["dpi_direction"]         = _dpi.get("direction", "neutral")
-    ms_dict["dpi_magnitude"]         = _dpi.get("magnitude", "negligible")
+    # Fail-closed labels: helpers (Action 11.4) emit None when inputs absent; defaults removed
+    # so snapshots persist NULL (functional shift landed in 11.4, this pass is structural).
+    ms_dict["dpi_direction"]         = _dpi.get("direction")
+    ms_dict["dpi_magnitude"]         = _dpi.get("magnitude")
     ms_dict["hedging_flow_raw"]      = _hedging_flow.get("raw")
     ms_dict["hedging_flow_normalized"] = _hedging_flow.get("normalized")
-    ms_dict["hedging_flow_direction"]  = _hedging_flow.get("direction", "neutral")
+    ms_dict["hedging_flow_direction"]  = _hedging_flow.get("direction")
     ms_dict["gamma_gradient"]        = _gamma_gradient
     ms_dict["breakout_score"]        = _breakout_score.get("normalized")
-    ms_dict["breakout_label"]        = _breakout_score.get("label", "negligible")
+    ms_dict["breakout_label"]        = _breakout_score.get("label")
     ms_dict["pin_score"]             = _pin_score_val.get("normalized")
-    ms_dict["pin_label"]             = _pin_score_val.get("label", "negligible")
+    ms_dict["pin_label"]             = _pin_score_val.get("label")
     ms_dict["vol_expansion_score"]   = _vol_expansion.get("normalized")
-    ms_dict["vol_expansion_label"]   = _vol_expansion.get("label", "negligible")
+    ms_dict["vol_expansion_label"]   = _vol_expansion.get("label")
     ms_dict["sweep_score"]           = _sweep_score.get("normalized")
-    ms_dict["sweep_label"]           = _sweep_score.get("label", "negligible")
+    ms_dict["sweep_label"]           = _sweep_score.get("label")
 
     # ── Session levels + liquidity sweeps ─────────────────────────────────────
     ms_dict["session_high"]          = getattr(ms, "session_high", None)
@@ -5000,35 +5002,35 @@ def _fetch_state(
     ms_dict["index_leader"]          = _index_strength.get("leader")
     ms_dict["index_laggard"]         = _index_strength.get("laggard")
     ms_dict["index_breadth"]         = _index_strength.get("breadth")
-    ms_dict["index_risk_signal"]     = _index_strength.get("risk_signal", "unknown")
+    ms_dict["index_risk_signal"]     = _index_strength.get("risk_signal")
     ms_dict["index_spread"]          = _index_strength.get("spread")
 
     ms_dict["spy_holdings_leader"]   = _spy_strength.get("leader")
     ms_dict["spy_holdings_laggard"]  = _spy_strength.get("laggard")
     ms_dict["spy_holdings_breadth"]  = _spy_strength.get("breadth")
-    ms_dict["spy_holdings_risk"]     = _spy_strength.get("risk_signal", "unknown")
+    ms_dict["spy_holdings_risk"]     = _spy_strength.get("risk_signal")
     ms_dict["spy_holdings_spread"]   = _spy_strength.get("spread")
 
     ms_dict["sector_leader"]         = _sector_strength.get("leader")
     ms_dict["sector_laggard"]        = _sector_strength.get("laggard")
     ms_dict["sector_breadth"]        = _sector_strength.get("breadth")
-    ms_dict["sector_risk_signal"]    = _sector_strength.get("risk_signal", "unknown")
+    ms_dict["sector_risk_signal"]    = _sector_strength.get("risk_signal")
     ms_dict["sector_spread"]         = _sector_strength.get("spread")
 
     # ── IWM Deep Confluence ───────────────────────────────────────────────────
-    ms_dict["iwm_risk_regime"]       = _iwm_deep.get("risk_regime", "unknown")
-    ms_dict["iwm_risk_confidence"]   = _iwm_deep.get("risk_regime_confidence", "low")
-    ms_dict["spy_iwm_divergence"]    = _iwm_deep.get("spy_iwm_divergence", 0)
-    ms_dict["spy_iwm_div_label"]     = _iwm_deep.get("spy_iwm_divergence_label", "aligned")
-    ms_dict["spy_iwm_fragile"]       = _iwm_deep.get("spy_iwm_fragile", False)
-    ms_dict["qqq_iwm_spread"]        = _iwm_deep.get("qqq_iwm_spread", 0)
-    ms_dict["rotation_signal"]       = _iwm_deep.get("rotation_signal", "neutral")
-    ms_dict["sector_breadth_quality"] = _iwm_deep.get("sector_breadth_quality", "unknown")
-    ms_dict["iwm_early_warning"]     = _iwm_deep.get("early_warning", False)
+    ms_dict["iwm_risk_regime"]       = _iwm_deep.get("risk_regime")
+    ms_dict["iwm_risk_confidence"]   = _iwm_deep.get("risk_regime_confidence")
+    ms_dict["spy_iwm_divergence"]    = _iwm_deep.get("spy_iwm_divergence")
+    ms_dict["spy_iwm_div_label"]     = _iwm_deep.get("spy_iwm_divergence_label")
+    ms_dict["spy_iwm_fragile"]       = _iwm_deep.get("spy_iwm_fragile")
+    ms_dict["qqq_iwm_spread"]        = _iwm_deep.get("qqq_iwm_spread")
+    ms_dict["rotation_signal"]       = _iwm_deep.get("rotation_signal")
+    ms_dict["sector_breadth_quality"] = _iwm_deep.get("sector_breadth_quality")
+    ms_dict["iwm_early_warning"]     = _iwm_deep.get("early_warning")
     ms_dict["iwm_early_warning_type"] = _iwm_deep.get("early_warning_type")
-    ms_dict["iwm_risk_score"]        = _iwm_deep.get("risk_score", 50)
-    ms_dict["iwm_risk_score_label"]  = _iwm_deep.get("risk_score_label", "neutral")
-    ms_dict["iwm_confluence_summary"] = _iwm_deep.get("summary", "")
+    ms_dict["iwm_risk_score"]        = _iwm_deep.get("risk_score")
+    ms_dict["iwm_risk_score_label"]  = _iwm_deep.get("risk_score_label")
+    ms_dict["iwm_confluence_summary"] = _iwm_deep.get("summary")
 
     # ── Bond Yields ───────────────────────────────────────────────────────────
     ms_dict["tnx_yield"]             = getattr(mkt_ctx, "tnx_yield", None)
@@ -5038,11 +5040,11 @@ def _fetch_state(
     # ── Order Flow Signals ────────────────────────────────────────────────────
     ms_dict["vol_oi_ratio"]          = _vol_oi_ratio.get("ratio")
     ms_dict["vol_oi_label"]          = _vol_oi_ratio.get("label", "unknown")
-    ms_dict["flow_imbalance"]        = _flow_imbalance.get("normalized", 0)
-    ms_dict["flow_imbalance_label"]  = _flow_imbalance.get("label", "unknown")
-    ms_dict["smart_money_score"]     = _smart_money.get("score", 0)
-    ms_dict["smart_money_direction"] = _smart_money.get("direction", "neutral")
-    ms_dict["smart_money_label"]     = _smart_money.get("label", "no_signal")
+    ms_dict["flow_imbalance"]        = _flow_imbalance.get("normalized")
+    ms_dict["flow_imbalance_label"]  = _flow_imbalance.get("label")
+    ms_dict["smart_money_score"]     = _smart_money.get("score")
+    ms_dict["smart_money_direction"] = _smart_money.get("direction")
+    ms_dict["smart_money_label"]     = _smart_money.get("label")
     ms_dict["iv_model_spread"]       = _iv_model_spread.get("spread")
     ms_dict["iv_model_spread_label"] = _iv_model_spread.get("label", "unknown")
 
