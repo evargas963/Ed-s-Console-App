@@ -1265,9 +1265,9 @@ def run_base_models_once(
             r["flat"] = r["prob_flat"]
             r["confidence"] = r["confidence_score"]
         else:
-            r["up"] = 0.333
-            r["down"] = 0.333
-            r["flat"] = 0.334
+            r["up"] = None
+            r["down"] = None
+            r["flat"] = None
             r["confidence"] = None
             r["dominant"] = None
         return r
@@ -1384,9 +1384,9 @@ def run_cascade_models_once(
             r["flat"] = r["prob_flat"]
             r["confidence"] = r["confidence_score"]
         else:
-            r["up"] = 0.333
-            r["down"] = 0.333
-            r["flat"] = 0.334
+            r["up"] = None
+            r["down"] = None
+            r["flat"] = None
             r["confidence"] = None
             r["dominant"] = None
         return r

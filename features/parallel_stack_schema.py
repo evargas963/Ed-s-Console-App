@@ -6,7 +6,7 @@ All base models run independently; outputs share this schema for fusion and UI.
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any, Optional, TypedDict
 
 
 PARALLEL_STACK_SCHEMA_VERSION = "1"
@@ -18,14 +18,28 @@ class ParallelBaseModelOutput(TypedDict, total=False):
     schema_version: str
     architecture: str  # always "parallel" for this path
     available: bool
-    prob_up: float
-    prob_down: float
-    prob_flat: float
-    confidence_score: float
-    dominant: str
+    prob_up: Optional[float]
+    prob_down: Optional[float]
+    prob_flat: Optional[float]
+    confidence_score: Optional[float]
+    dominant: Optional[str]
     approved: bool
     metadata: dict[str, Any]
     error: str
+
+
+def _normalize_triplet(probs: dict[str, Any]) -> Optional[tuple[float, float, float]]:
+    u, d, f = probs.get("up"), probs.get("down"), probs.get("flat")
+    if u is None or d is None or f is None:
+        return None
+    try:
+        pu, pd, pf = float(u), float(d), float(f)
+    except (TypeError, ValueError):
+        return None
+    t = pu + pd + pf
+    if t <= 0:
+        return None
+    return pu / t, pd / t, pf / t
 
 
 def empty_parallel_output(*, reason: str = "unavailable") -> ParallelBaseModelOutput:
@@ -33,11 +47,11 @@ def empty_parallel_output(*, reason: str = "unavailable") -> ParallelBaseModelOu
         "schema_version": PARALLEL_STACK_SCHEMA_VERSION,
         "architecture": "parallel",
         "available": False,
-        "prob_up": 0.33,
-        "prob_down": 0.33,
-        "prob_flat": 0.34,
-        "confidence_score": 0.0,
-        "dominant": "flat",
+        "prob_up": None,
+        "prob_down": None,
+        "prob_flat": None,
+        "confidence_score": None,
+        "dominant": None,
         "approved": False,
         "metadata": {},
         "error": reason,
@@ -55,18 +69,22 @@ def build_parallel_base_output(
         if metadata:
             o["metadata"] = metadata
         return o
-    up = float(probs.get("up", 0.333))
-    down = float(probs.get("down", 0.333))
-    flat = float(probs.get("flat", 0.334))
-    dom = max(("up", "down", "flat"), key=lambda c: probs.get(c, 0.0))
-    conf = round(float(probs.get(dom, 0.333)) - 0.333, 4)
+    tri = _normalize_triplet(probs)
+    if tri is None:
+        o = empty_parallel_output(reason="incomplete_triplet")
+        if metadata:
+            o["metadata"] = metadata
+        return o
+    pu, pd, pf = tri
+    dom = max(("up", "down", "flat"), key=lambda c: {"up": pu, "down": pd, "flat": pf}[c])
+    conf = round(max(pu, pd, pf) - (1.0 / 3.0), 4)
     return {
         "schema_version": PARALLEL_STACK_SCHEMA_VERSION,
         "architecture": "parallel",
         "available": True,
-        "prob_up": round(up, 4),
-        "prob_down": round(down, 4),
-        "prob_flat": round(flat, 4),
+        "prob_up": round(pu, 4),
+        "prob_down": round(pd, 4),
+        "prob_flat": round(pf, 4),
         "confidence_score": conf,
         "dominant": dom,
         "approved": approved,
