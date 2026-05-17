@@ -108,9 +108,10 @@ def _bootstrap_gated(
 ) -> dict[str, Any]:
     boot = _bootstrap_delta(actual, baseline) if len(actual) >= 2 else {"n": len(actual)}
     if gate_ok:
-        return boot
+        return {**boot, "gate_sufficient": True}
     return {
         "n": boot.get("n", len(actual)),
+        "gate_sufficient": False,
         "mean_delta": None,
         "ci95_low": None,
         "ci95_high": None,

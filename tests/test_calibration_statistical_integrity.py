@@ -149,3 +149,104 @@ def test_gate_ok_for_value_rejects_non_finite_when_gate_passes():
     }
     assert verify_phase4_no_numeric_leak(out) is False
     assert math.isnan(out["decision_performance_from_log"]["long"]["mean_pnl_proxy"])
+
+
+def _phase4_leak_safe_base() -> dict:
+    return {
+        "decision_performance_from_log": {},
+        "mhap_alignment": {},
+        "baselines_from_snapshots": {
+            "always_up_mean_gate": {"sufficient_sample": True},
+            "always_down_mean_gate": {"sufficient_sample": True},
+            "vwap_mr_proxy_gate": {"sufficient_sample": True},
+            "decision_log_vs_baseline_comparison": {"status": "insufficient_sample"},
+        },
+    }
+
+
+def test_verify_phase4_hcl_finite_sample_passes_when_publishable():
+    gate = bucket_gate(MIN_SAMPLES_STATISTICAL, MIN_SAMPLES_STATISTICAL)
+    out = {
+        **_phase4_leak_safe_base(),
+        "high_confidence_losses": {
+            "count": MIN_SAMPLES_STATISTICAL,
+            "sample_gate": gate,
+            "descriptive_only": False,
+            "sample": [{"pnl_proxy": -0.05}],
+        },
+    }
+    assert verify_phase4_no_numeric_leak(out) is True
+
+
+def test_verify_phase4_hcl_rejects_nan_pnl_when_publishable():
+    gate = bucket_gate(MIN_SAMPLES_STATISTICAL, MIN_SAMPLES_STATISTICAL)
+    out = {
+        **_phase4_leak_safe_base(),
+        "high_confidence_losses": {
+            "count": MIN_SAMPLES_STATISTICAL,
+            "sample_gate": gate,
+            "descriptive_only": False,
+            "sample": [{"pnl_proxy": float("nan")}],
+        },
+    }
+    assert verify_phase4_no_numeric_leak(out) is False
+
+
+def test_verify_phase4_hcl_descriptive_only_skips_sample_walk():
+    out = {
+        **_phase4_leak_safe_base(),
+        "high_confidence_losses": {
+            "count": 5,
+            "sample_gate": bucket_gate(5, MIN_SAMPLES_STATISTICAL),
+            "descriptive_only": True,
+            "sample": [{"pnl_proxy": float("nan")}],
+        },
+    }
+    assert verify_phase4_no_numeric_leak(out) is True
+
+
+def test_verify_edge_discovery_bootstrap_honors_gate_sufficient_false():
+    report = {
+        "slices_all": [
+            {
+                "n": MIN_SAMPLES_STATISTICAL,
+                "gate_sufficient": True,
+                "bootstrap_actual_minus_long": {
+                    "n": MIN_SAMPLES_STATISTICAL,
+                    "gate_sufficient": False,
+                    "mean_delta": 0.05,
+                    "ci95_low": None,
+                    "ci95_high": None,
+                },
+            }
+        ],
+        "feature_importance_naive": {
+            "pearson_n": 0,
+            "pearson_sample_gate": {"sufficient_sample": False},
+            "pearson_fusion_prob_up_vs_outcome_5c_pts": None,
+        },
+    }
+    assert verify_edge_discovery_no_numeric_leak(report) is False
+
+
+def test_verify_edge_discovery_bootstrap_without_gate_sufficient_uses_n():
+    report = {
+        "slices_all": [
+            {
+                "n": MIN_SAMPLES_STATISTICAL,
+                "gate_sufficient": True,
+                "bootstrap_actual_minus_long": {
+                    "n": MIN_SAMPLES_STATISTICAL,
+                    "mean_delta": 0.05,
+                    "ci95_low": 0.01,
+                    "ci95_high": 0.09,
+                },
+            }
+        ],
+        "feature_importance_naive": {
+            "pearson_n": 0,
+            "pearson_sample_gate": {"sufficient_sample": False},
+            "pearson_fusion_prob_up_vs_outcome_5c_pts": None,
+        },
+    }
+    assert verify_edge_discovery_no_numeric_leak(report) is True

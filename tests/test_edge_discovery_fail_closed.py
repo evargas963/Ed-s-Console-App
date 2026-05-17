@@ -9,6 +9,7 @@ import pytest
 from calibration.edge_discovery import (
     MIN_N,
     _alignment_state_bucket,
+    _bootstrap_gated,
     _canonical_confidence_bucket,
     aggregate_slice,
     feature_importance_naive,
@@ -101,6 +102,20 @@ def test_feature_importance_pearson_gate_matches_bucket_gate(n, expected_ok):
     assert gate["min_required"] == base["min_required"]
     assert gate["sufficient_sample"] is expected_ok
     assert gate["status"] == base["status"]
+
+
+def test_bootstrap_gated_sets_gate_sufficient_from_gate_ok():
+    actual = [0.1, 0.2, 0.3, 0.4]
+    baseline = [0.0, 0.1, 0.2, 0.3]
+    ok_boot = _bootstrap_gated(actual, baseline, gate_ok=True)
+    assert ok_boot["gate_sufficient"] is True
+    assert ok_boot["mean_delta"] is not None
+
+    withheld = _bootstrap_gated(actual, baseline, gate_ok=False)
+    assert withheld["gate_sufficient"] is False
+    assert withheld["mean_delta"] is None
+    assert withheld["ci95_low"] is None
+    assert withheld["ci95_high"] is None
 
 
 def test_pearson_gate_coerces_negative_n_via_bucket_gate():

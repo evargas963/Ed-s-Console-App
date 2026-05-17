@@ -116,6 +116,26 @@ def _edge_discovery_slice_gate(slice_row: dict[str, Any]) -> dict[str, Any]:
     return g
 
 
+def _edge_discovery_bootstrap_gate(boot: dict[str, Any]) -> dict[str, Any]:
+    g = bucket_gate(int(boot.get("n") or 0), MIN_SAMPLES_STATISTICAL)
+    if boot.get("gate_sufficient") is False:
+        return {
+            **g,
+            "sufficient_sample": False,
+            "status": "insufficient_sample",
+        }
+    return g
+
+
+def _phase4_hcl_sample_pnl_finite(pnl: Any) -> bool:
+    if pnl is None:
+        return True
+    try:
+        return math.isfinite(float(pnl))
+    except (TypeError, ValueError):
+        return False
+
+
 def verify_phase3_no_numeric_leak(out: dict[str, Any]) -> bool:
     """
     Defensive check: no empirical rate/mean should be present without sufficient_sample.
@@ -216,6 +236,14 @@ def verify_phase4_no_numeric_leak(out: dict[str, Any]) -> bool:
             comp.get("baseline_always_up_mean_5c_pts"), comp.get("baseline_always_up_gate")
         ):
             return False
+    hcl = out.get("high_confidence_losses") or {}
+    if hcl.get("descriptive_only") is False:
+        hcl_gate = hcl.get("sample_gate")
+        if not _gate_ok_for_value(hcl.get("count"), hcl_gate):
+            return False
+        for sample in hcl.get("sample") or []:
+            if not _phase4_hcl_sample_pnl_finite(sample.get("pnl_proxy")):
+                return False
     return True
 
 
@@ -332,7 +360,7 @@ def verify_edge_discovery_no_numeric_leak(out: dict[str, Any]) -> bool:
                 return False
         for boot_key in ("bootstrap_actual_minus_long", "bootstrap_actual_minus_random"):
             boot = s.get(boot_key) or {}
-            bg = bucket_gate(int(boot.get("n") or 0), MIN_SAMPLES_STATISTICAL)
+            bg = _edge_discovery_bootstrap_gate(boot)
             for k in _EDGE_DISCOVERY_BOOTSTRAP_NUMERIC_KEYS:
                 if not _gate_ok_for_value(boot.get(k), bg):
                     return False
