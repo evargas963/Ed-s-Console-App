@@ -195,7 +195,7 @@ CHAIN_OF_TRUST_ALLOWLIST: tuple[AllowlistEntry, ...] = (
         id="mega4_governed_stack_contract",
         justification="Governed stack contract validation and horizon slug mapping; no Schwab wire field output.",
         owner_section="Mega4",
-        added_in_sha="PENDING",
+        added_in_sha="f41c0c5",
         category="internal_state",
     ),
 )
