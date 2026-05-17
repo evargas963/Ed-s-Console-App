@@ -52,6 +52,7 @@ class PromotionPolicy:
     require_confidence_reliability_summary: bool = True
     require_min_samples_statistical: bool = True
     veto_regime_degradation: bool = True
+    max_regime_balanced_accuracy_regression: float = 0.05  # cascade mid-VIX balanced_accuracy may lag parallel by this much
     # Empirical validation (calibration / rolling stability) — applied when manifest includes summaries.
     max_ece_regression_vs_incumbent: float = 0.12  # cascade ECE may not exceed parallel ECE by more than this
     veto_cascade_rolling_calibration_degradation: bool = True  # cascade-only rolling ECE degradation flag
@@ -85,7 +86,12 @@ def decide_promotion(
     if lineage.get("manifests_skipped"):
         raise PromotionGovernanceError("cannot promote without lineage manifests (manifests_skipped)")
 
-    required = ("feature_cache_key", "data_fingerprint", "ml_horizon_suffix")
+    required = (
+        "feature_cache_key",
+        "data_fingerprint",
+        "ml_horizon_suffix",
+        "training_code_fingerprint",
+    )
     for k in required:
         if lineage.get(k) in (None, ""):
             raise PromotionGovernanceError(f"missing lineage.{k} in evaluation manifest")
@@ -202,7 +208,7 @@ def decide_promotion(
                     "regime_slices.mid balanced_accuracy required for both architectures",
                 )
             )
-        elif float(rc["balanced_accuracy"]) < float(rp["balanced_accuracy"]) - 0.05:
+        elif float(rc["balanced_accuracy"]) < float(rp["balanced_accuracy"]) - pol.max_regime_balanced_accuracy_regression:
             regime_ok = False
             blocked.append(_reason("REGIME_MID_BUCKET_REGRESSION", "mid VIX bucket accuracy degraded"))
         else:
@@ -290,6 +296,13 @@ def decide_promotion(
                 )
             elif not d_c:
                 reasons.append(_reason("ROLLING_CALIBRATION_STABLE_OK", ""))
+            elif d_c and d_p:
+                reasons.append(
+                    _reason(
+                        "ROLLING_CALIBRATION_BOTH_DEGRADED",
+                        "both architectures show time-ordered calibration degradation — cascade-specific veto not triggered",
+                    )
+                )
 
     promoted = (
         len(blocked) == 0
@@ -320,12 +333,15 @@ def decide_promotion(
             "min_delta_log_loss": pol.min_delta_log_loss,
             "max_brier_regression_vs_incumbent": pol.max_brier_regression_vs_incumbent,
             "max_stability_std_vs_incumbent": pol.max_stability_std_vs_incumbent,
+            "require_calibration_pass": pol.require_calibration_pass,
+            "require_stability_pass": pol.require_stability_pass,
             "require_calibration_ece_pass": pol.require_calibration_ece_pass,
             "require_confidence_reliability_summary": pol.require_confidence_reliability_summary,
             "require_min_samples_statistical": pol.require_min_samples_statistical,
             "max_ece_regression_vs_incumbent": pol.max_ece_regression_vs_incumbent,
             "veto_cascade_rolling_calibration_degradation": pol.veto_cascade_rolling_calibration_degradation,
             "veto_regime_degradation": pol.veto_regime_degradation,
+            "max_regime_balanced_accuracy_regression": pol.max_regime_balanced_accuracy_regression,
             "min_confidence_hit_correlation_vs_incumbent": pol.min_confidence_hit_correlation_vs_incumbent,
         },
         "reason_codes": reasons,

@@ -40,6 +40,7 @@ def _base_lineage():
         "feature_cache_key": "shared_cache_key",
         "data_fingerprint": _dfp(),
         "ml_horizon_suffix": "1c",
+        "training_code_fingerprint": "train-fp-test",
         "canonical_feature_contract_version": "v-test",
         "canonical_timeframe": "1m",
     }
@@ -112,6 +113,46 @@ def _manifest(mp, mc, lineage=None):
         "metrics": {"parallel": mp, "cascade": mc},
         **_empirical_shell(),
     }
+
+
+def test_promotion_policy_record_includes_all_governance_flags():
+    m = _promotable_manifest()
+    rec = decide_promotion(m)
+    pol = rec["policy"]
+    assert "require_calibration_pass" in pol
+    assert "require_stability_pass" in pol
+    assert pol["max_regime_balanced_accuracy_regression"] == 0.05
+
+
+def test_missing_training_code_fingerprint_raises():
+    lg = _base_lineage()
+    lg.pop("training_code_fingerprint", None)
+    m = _promotable_manifest()
+    m["lineage"] = lg
+    with pytest.raises(PromotionGovernanceError, match="training_code_fingerprint"):
+        decide_promotion(m)
+
+
+def test_rolling_calibration_both_degraded_records_informational_reason():
+    m = _promotable_manifest()
+    m["rolling_stability_summary"]["by_architecture"]["parallel"]["calibration_degradation_flag"] = True
+    m["rolling_stability_summary"]["by_architecture"]["cascade"]["calibration_degradation_flag"] = True
+    rec = decide_promotion(m)
+    codes = [x["code"] for x in rec["reason_codes"]]
+    assert "ROLLING_CALIBRATION_BOTH_DEGRADED" in codes
+    assert not any(x["code"] == "ROLLING_CALIBRATION_DEGRADATION" for x in rec["blocked_promotion_flags"])
+
+
+def test_regime_regression_uses_policy_threshold():
+    m = _manifest(
+        _metrics("parallel", n=100, ll=0.8, bal=0.5, brier=0.2, stab=0.01, mid_bucket_bal=0.60),
+        _metrics("cascade", n=100, ll=0.7, bal=0.55, brier=0.21, stab=0.02, mid_bucket_bal=0.56),
+    )
+    rec = decide_promotion(m, PromotionPolicy(min_delta_log_loss=0.02, max_regime_balanced_accuracy_regression=0.10))
+    assert not any(x["code"] == "REGIME_MID_BUCKET_REGRESSION" for x in rec["blocked_promotion_flags"])
+
+    rec_strict = decide_promotion(m, PromotionPolicy(min_delta_log_loss=0.02, max_regime_balanced_accuracy_regression=0.02))
+    assert any(x["code"] == "REGIME_MID_BUCKET_REGRESSION" for x in rec_strict["blocked_promotion_flags"])
 
 
 def test_promotion_record_schema_stable_keys():
