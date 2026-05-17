@@ -311,18 +311,26 @@ def key_level_strikes_with_gamma(exposures: Dict[float, dict]) -> List[float]:
     for s in sorted(float(k) for k in exposures.keys()):
         b = exposures.get(s, {})
         if dollar:
-            if total_gex_dollars_at_strike(b) > 0 or abs(net_gex_dollars_at_strike(b)) > 1e-12:
+            tg = total_gex_dollars_at_strike(b)
+            ng = net_gex_dollars_at_strike(b)
+            if (tg is not None and tg > 0) or (
+                ng is not None and abs(ng) > 1e-12
+            ):
                 out.append(s)
-        elif total_gamma_raw_at_strike(b) > 0:
-            out.append(s)
+        else:
+            tg = total_gamma_raw_at_strike(b)
+            if tg is not None and tg > 0:
+                out.append(s)
     return out
 
 
-def total_gex_dollars_at_strike(bucket: dict) -> float:
+def total_gex_dollars_at_strike(bucket: dict) -> float | None:
     """Peak gamma concentration: |call GEX$| + |put GEX$| per 1% move."""
-    total = 0.0
     c = bucket_metric_abs(bucket, "call_gex_1pct")
     p = bucket_metric_abs(bucket, "put_gex_1pct")
+    if c is None and p is None:
+        return None
+    total = 0.0
     if c is not None:
         total += c
     if p is not None:
@@ -334,10 +342,12 @@ def net_gex_dollars_at_strike(bucket: dict) -> float | None:
     return bucket_metric(bucket, "net_gex_1pct")
 
 
-def total_gamma_raw_at_strike(bucket: dict) -> float:
-    total = 0.0
+def total_gamma_raw_at_strike(bucket: dict) -> float | None:
     c = bucket_metric_abs(bucket, "call_gamma")
     p = bucket_metric_abs(bucket, "put_gamma")
+    if c is None and p is None:
+        return None
+    total = 0.0
     if c is not None:
         total += c
     if p is not None:

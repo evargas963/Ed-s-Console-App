@@ -3712,7 +3712,7 @@ def _fetch_state(
 
         # 5. Pin Score
         _pin_strike = getattr(consensus_summary, "gamma_pin", None) if consensus_summary else None
-        _gex_at_pin = 0.0
+        _gex_at_pin = None
         _oi_at_pin = None
         if _pin_strike and exposures:
             _pin_bkt = exposures.get(float(_pin_strike), {})
@@ -4837,21 +4837,38 @@ def _fetch_state(
     if not _gamma_voids:
         # Diagnostic: why no voids?
         _n_strikes = len(exposures)
-        _max_gex = max((total_gamma_raw_at_strike(b) for b in exposures.values()), default=0)
+        _gex_vals = [
+            v
+            for b in exposures.values()
+            if (v := total_gamma_raw_at_strike(b)) is not None
+        ]
+        _max_gex = max(_gex_vals, default=0)
         _oi_values = [_bucket_total_oi(b) for b in exposures.values()]
         _oi_values = [v for v in _oi_values if v is not None]
         _max_oi = max(_oi_values, default=0)
         log.debug(f"Gamma void: {_n_strikes} strikes, max_gex={_max_gex:.0f}, max_oi={_max_oi:.0f}, spot_passed={'yes' if spot_f else 'no'}")
         # Count how many strikes pass each threshold independently
-        _gex_low = sum(
-            1 for b in exposures.values() if total_gamma_raw_at_strike(b) < _max_gex * 0.20
-        ) if _max_gex > 0 else 0
+        _gex_low = (
+            sum(
+                1
+                for b in exposures.values()
+                if (v := total_gamma_raw_at_strike(b)) is not None
+                and v < _max_gex * 0.20
+            )
+            if _max_gex > 0
+            else 0
+        )
         _oi_low = sum(1 for b in exposures.values() if (_bucket_total_oi(b) is not None and _bucket_total_oi(b) < _max_oi * 0.25)) if _max_oi > 0 else 0
         _both_low = sum(
             1
             for b in exposures.values()
             if (
-                (total_gamma_raw_at_strike(b) < _max_gex * 0.20 if _max_gex > 0 else False)
+                (
+                    (v := total_gamma_raw_at_strike(b)) is not None
+                    and v < _max_gex * 0.20
+                    if _max_gex > 0
+                    else False
+                )
                 and (
                     _bucket_total_oi(b) is not None
                     and _bucket_total_oi(b) < _max_oi * 0.25

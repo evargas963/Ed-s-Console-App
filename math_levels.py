@@ -111,6 +111,20 @@ class TotalsRow:
 WALL_MIN_MULT = 1.5
 APPROACH_PTS  = 1.5
 
+
+def _strike_total_oi(bucket: dict) -> float | None:
+    """Total OI at strike — both call and put legs required (no silent 0 for missing openInterest)."""
+    call_oi = bucket.get("call_oi")
+    put_oi = bucket.get("put_oi")
+    if call_oi is None or put_oi is None:
+        return None
+    try:
+        tot = float(call_oi) + float(put_oi)
+    except (TypeError, ValueError):
+        return None
+    return tot if tot > 0 else None
+
+
 # ── Pin / inflection / OI helpers ─────────────────────────────────────────────
 
 def _pick_gamma_pin(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
@@ -123,12 +137,8 @@ def _pick_oi_center(exposures: Dict[float, dict], strikes: List[float]) -> float
     best_val = None
     for s in strikes:
         b = exposures.get(s, {})
-        call_oi = b.get("call_oi")
-        put_oi = b.get("put_oi")
-        if call_oi is None and put_oi is None:
-            continue
-        tot = (float(call_oi) if call_oi is not None else 0.0) + (float(put_oi) if put_oi is not None else 0.0)
-        if tot <= 0:
+        tot = _strike_total_oi(b)
+        if tot is None:
             continue
         if best is None or (best_val is not None and tot > best_val):
             best = s
@@ -493,13 +503,9 @@ def build_totals_rows(
     for label, w in [("CONSENSUS", None)] + [(f"±{x}", x) for x in windows]:
         sset = strikes_for(w)
 
-        cg = 0.0
-        pg = 0.0
-        cd = 0.0
-        pd = 0.0
-        coi = 0.0
-        poi = 0.0
-        any_row = False
+        cg = pg = cd = pd = coi = poi = None
+        any_cg = any_pg = any_cd = any_pd = any_coi = any_poi = False
+        _cg_sum = _pg_sum = _cd_sum = _pd_sum = _coi_sum = _poi_sum = 0.0
 
         for s in sset:
             b = exposures.get(s, {})
@@ -508,29 +514,46 @@ def build_totals_rows(
             _cd = bucket_metric(b, "call_delta")
             _pd = bucket_metric(b, "put_delta")
             if _cg is not None:
-                cg += float(_cg)
+                _cg_sum += float(_cg)
+                any_cg = True
             if _pg is not None:
-                pg += float(_pg)
+                _pg_sum += float(_pg)
+                any_pg = True
             if _cd is not None:
-                cd += float(_cd)
+                _cd_sum += float(_cd)
+                any_cd = True
             if _pd is not None:
-                pd += float(_pd)
-            call_oi = b.get("call_oi")
-            put_oi = b.get("put_oi")
-            if call_oi is not None:
-                coi += float(call_oi)
-            if put_oi is not None:
-                poi += float(put_oi)
-            any_row = True
+                _pd_sum += float(_pd)
+                any_pd = True
+            _tot_oi = _strike_total_oi(b)
+            if _tot_oi is not None:
+                call_oi = b.get("call_oi")
+                put_oi = b.get("put_oi")
+                if call_oi is not None:
+                    _coi_sum += float(call_oi)
+                    any_coi = True
+                if put_oi is not None:
+                    _poi_sum += float(put_oi)
+                    any_poi = True
 
-        if not any_row:
-            cg = pg = cd = pd = coi = poi = 0.0
+        if any_cg:
+            cg = _cg_sum
+        if any_pg:
+            pg = _pg_sum
+        if any_cd:
+            cd = _cd_sum
+        if any_pd:
+            pd = _pd_sum
+        if any_coi:
+            coi = _coi_sum
+        if any_poi:
+            poi = _poi_sum
 
-        ng = cg - pg
-        nd = cd - pd
-        noi = coi - poi
+        ng = (cg - pg) if cg is not None and pg is not None else None
+        nd = (cd - pd) if cd is not None and pd is not None else None
+        noi = (coi - poi) if coi is not None and poi is not None else None
 
-        pcr = (poi / coi) if coi > 0 else None
+        pcr = (poi / coi) if coi is not None and coi > 0 and poi is not None else None
 
         # ATM IV + skew proxy
         atm = _spot_atm_strike(sset, spot)
@@ -726,7 +749,7 @@ def compute_gamma_flip(exposures_by_strike: Dict[float, dict], spot: float) -> f
 
 # ── HVL — strike with largest total gamma (call + put) ───────────────────────
 
-def _total_gamma_at_strike(bucket: dict, *, dollarized: bool = False) -> float:
+def _total_gamma_at_strike(bucket: dict, *, dollarized: bool = False) -> float | None:
     c = bucket_metric(bucket, "call_gex_1pct")
     p = bucket_metric(bucket, "put_gex_1pct")
     if dollarized or ((c is not None and c != 0) or (p is not None and p != 0)):
@@ -754,7 +777,7 @@ def hvl_gamma_strength(exposures_by_strike: Dict[float, dict], hvl: float | None
     if not bucket:
         return None
     v = _total_gamma_at_strike(bucket, dollarized=exposures_have_dollar_gex(exposures_by_strike))
-    return v if v > 0 else None
+    return v if v is not None and v > 0 else None
 
 
 # ── Max Pain — OI-weighted expiry settlement magnet ────────────────────────────
@@ -777,14 +800,18 @@ def compute_max_pain(exposures_by_strike: Dict[float, dict]) -> float | None:
         pain = 0.0
         for k in strikes:
             b = exposures_by_strike.get(k, {})
+            if _strike_total_oi(b) is None:
+                continue
+            call_oi_raw = bucket_metric(b, "call_oi")
+            put_oi_raw = bucket_metric(b, "put_oi")
             call_w_raw = bucket_metric(b, "call_oi_mult")
             put_w_raw = bucket_metric(b, "put_oi_mult")
+            if call_oi_raw is not None and float(call_oi_raw) > 0 and call_w_raw is None:
+                continue
+            if put_oi_raw is not None and float(put_oi_raw) > 0 and put_w_raw is None:
+                continue
             call_w = float(call_w_raw) if call_w_raw is not None else 0.0
             put_w = float(put_w_raw) if put_w_raw is not None else 0.0
-            # Fail-closed per DFR-017: Schwab `multiplier` is the only legitimate
-            # source for OI-weighted dollar payout. If a strike was built with
-            # missing/invalid multiplier, oi_mult is 0 and the strike is excluded
-            # from max-pain instead of getting a synthetic 100.
             if call_w <= 0 and put_w <= 0:
                 continue
             if call_w > 0 and settlement > k:
@@ -809,14 +836,7 @@ def max_pain_oi_strength(exposures_by_strike: Dict[float, dict], max_pain: float
     b = exposures_by_strike.get(max_pain) or exposures_by_strike.get(float(max_pain))
     if not b:
         return None
-    call_oi_raw = bucket_metric(b, "call_oi")
-    put_oi_raw = bucket_metric(b, "put_oi")
-    if call_oi_raw is None and put_oi_raw is None:
-        return None
-    call_oi = float(call_oi_raw) if call_oi_raw is not None else 0.0
-    put_oi = float(put_oi_raw) if put_oi_raw is not None else 0.0
-    tot = call_oi + put_oi
-    return tot if tot > 0 else None
+    return _strike_total_oi(b)
 
 
 # ── Low Gamma Void Zones — acceleration corridors ────────────────────────────
@@ -860,9 +880,9 @@ def compute_gamma_void_zones(
         """Same measure for void detection and avg_gex_pct (institutional dollar GEX when available)."""
         if exposures_have_dollar_gex(exposures_by_strike):
             return total_gex_dollars_at_strike(bucket)
-        total_gamma = total_gex_dollars_at_strike(bucket)
-        if total_gamma > 0:
-            return total_gamma
+        tg = total_gamma_raw_at_strike(bucket)
+        if tg is not None and tg > 0:
+            return tg
         c = bucket_metric_abs(bucket, "call_gamma")
         p = bucket_metric_abs(bucket, "put_gamma")
         parts = [v for v in (c, p) if v is not None]
@@ -870,16 +890,10 @@ def compute_gamma_void_zones(
             raw = sum(parts)
             if raw > 0:
                 return raw
-        ng = bucket_metric_abs(bucket, "net_gex_1pct")
-        return ng if ng is not None else 0.0
+        return bucket_metric_abs(bucket, "net_gex_1pct")
 
     def _get_oi(bucket):
-        """Get total open interest for a strike bucket."""
-        call_oi = bucket.get("call_oi")
-        put_oi = bucket.get("put_oi")
-        if call_oi is None and put_oi is None:
-            return None
-        return (float(call_oi) if call_oi is not None else 0.0) + (float(put_oi) if put_oi is not None else 0.0)
+        return _strike_total_oi(bucket)
 
     # Find max absolute GEX and max OI for threshold reference
     max_abs_gex = 0.0
@@ -888,7 +902,7 @@ def compute_gamma_void_zones(
         bucket = exposures_by_strike.get(k, {})
         gex = _get_gex(bucket)
         oi = _get_oi(bucket)
-        if gex > max_abs_gex:
+        if gex is not None and gex > max_abs_gex:
             max_abs_gex = gex
         if oi is not None and oi > max_oi:
             max_oi = oi
@@ -905,7 +919,12 @@ def compute_gamma_void_zones(
         bucket = exposures_by_strike.get(k, {})
         gex = _get_gex(bucket)
         oi = _get_oi(bucket)
-        is_void = (gex < gex_threshold) and (oi is not None and oi < oi_threshold if max_oi > 0 else True)
+        if gex is None:
+            is_void = False
+        else:
+            is_void = (gex < gex_threshold) and (
+                oi is not None and oi < oi_threshold if max_oi > 0 else True
+            )
         void_flags.append(is_void)
 
     # Find contiguous void regions
@@ -924,11 +943,17 @@ def compute_gamma_void_zones(
                 lower = strikes[zone_start]
                 upper = strikes[i - 1]
                 # Average GEX in the void as % of max
-                avg_gex = 0.0
+                gex_samples = []
                 for j in range(zone_start, i):
                     bucket = exposures_by_strike.get(strikes[j], {})
-                    avg_gex += _get_gex(bucket)
-                avg_gex = (avg_gex / zone_len) / max_abs_gex if zone_len > 0 else 0
+                    gv = _get_gex(bucket)
+                    if gv is not None:
+                        gex_samples.append(gv)
+                avg_gex = (
+                    (sum(gex_samples) / len(gex_samples)) / max_abs_gex
+                    if gex_samples and max_abs_gex > 0
+                    else 0.0
+                )
 
                 zones.append({
                     "lower": lower,
