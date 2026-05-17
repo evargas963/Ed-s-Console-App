@@ -716,35 +716,81 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
     mc_avail = getattr(mc_out, "available", False)
     cont = getattr(mc_out, "containment_prob", None)
     exp = getattr(mc_out, "expansion_prob", None)
-    d_bias = float(getattr(mc_out, "directional_bias", None) or 0.0)
-    t_risk = float(getattr(mc_out, "tail_risk", None) or 0.0)
+    _d_bias_raw = getattr(mc_out, "directional_bias", None)
+    d_bias = float(_d_bias_raw) if _d_bias_raw is not None else None
+    _t_risk_raw = getattr(mc_out, "tail_risk", None)
+    t_risk = float(_t_risk_raw) if _t_risk_raw is not None else None
 
     if not mc_avail:
         mc_stage = StackStage(stage_id="monte_carlo", status="inactive", note="Monte Carlo: inactive")
     else:
-        is_expansion = (exp or 0) >= (cont or 0)
-        mode = "expansion" if is_expansion else "containment"
-        pct = int(100 * (exp if is_expansion else cont) or 0)
-        skew = "upside skew" if d_bias > 1e-4 else "downside skew" if d_bias < -1e-4 else "neutral"
-        call_sig = getattr(call, "signal", "wait")
-        mc_dir = "up" if d_bias > 1e-4 else "down" if d_bias < -1e-4 else "flat"
-        supports = (
-            (mc_dir == "up" and call_sig == "long") or
-            (mc_dir == "down" and call_sig == "short") or
-            (mc_dir == "flat" and call_sig == "wait")
-        )
-        contr = (
-            (mc_dir == "up" and call_sig == "short") or
-            (mc_dir == "down" and call_sig == "long")
-        )
-        support_note = "supports stack" if supports else "contradicts stack" if contr else "neutral"
-        note = f"Monte Carlo: {mode} {pct}% | {skew} | {support_note}"
+        mode = pct = None
+        if exp is not None and cont is not None:
+            is_expansion = exp >= cont
+            mode = "expansion" if is_expansion else "containment"
+            pct = int(100 * (exp if is_expansion else cont))
+        elif exp is not None:
+            mode = "expansion"
+            pct = int(100 * exp)
+        elif cont is not None:
+            mode = "containment"
+            pct = int(100 * cont)
+
+        if d_bias is None:
+            skew = None
+            mc_dir = None
+            support_note = None
+        else:
+            skew = (
+                "upside skew" if d_bias > 1e-4
+                else "downside skew" if d_bias < -1e-4
+                else "neutral"
+            )
+            call_sig = getattr(call, "signal", "wait")
+            mc_dir = "up" if d_bias > 1e-4 else "down" if d_bias < -1e-4 else "flat"
+            supports = (
+                (mc_dir == "up" and call_sig == "long")
+                or (mc_dir == "down" and call_sig == "short")
+                or (mc_dir == "flat" and call_sig == "wait")
+            )
+            contr = (
+                (mc_dir == "up" and call_sig == "short")
+                or (mc_dir == "down" and call_sig == "long")
+            )
+            if supports:
+                support_note = "supports stack"
+            elif contr:
+                support_note = "contradicts stack"
+            else:
+                support_note = "neutral"
+
+        note_parts = ["Monte Carlo: active"]
+        if mode is not None and pct is not None:
+            note_parts.append(f"{mode} {pct}%")
+        if skew is not None:
+            note_parts.append(skew)
+        if support_note is not None:
+            note_parts.append(support_note)
+        note = " | ".join(note_parts)
+
+        prob_val = None
+        if t_risk is not None and t_risk > 0:
+            prob_val = t_risk
+        elif mode == "expansion" and exp is not None:
+            prob_val = exp
+        elif mode == "containment" and cont is not None:
+            prob_val = cont
+
         mc_stage = StackStage(
             stage_id="monte_carlo",
             status="active",
             direction=mc_dir,
-            confidence="high" if pct > 60 else "medium" if pct > 40 else "low",
-            probability=t_risk if t_risk > 0 else (exp if is_expansion else cont),
+            confidence=(
+                "high" if pct is not None and pct > 60
+                else "medium" if pct is not None and pct > 40
+                else "low"
+            ),
+            probability=prob_val,
             note=note,
         )
 
@@ -753,13 +799,17 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
     if not fus_avail:
         fus_stage = StackStage(stage_id="fusion", status="inactive", note="Fusion: inactive")
     else:
-        dom = getattr(fusion, "dominant_outcome", "unknown")
+        dom = getattr(fusion, "dominant_outcome", None)
         dom_dir = getattr(fusion, "dominant_direction", "flat")
-        prob = getattr(fusion, "dominant_probability", 0.0)
+        prob = getattr(fusion, "dominant_probability", None)
         conf = getattr(fusion, "fusion_confidence", "low")
-        agree = getattr(fusion, "model_agreement", 0.0)
-        agree_pct = int(agree * 100) if agree is not None else 0
-        note = f"Fusion: {dom} ({conf}) | dir={dom_dir} @ {int(prob*100)}% | agreement {agree_pct}%"
+        agree = getattr(fusion, "model_agreement", None)
+        agree_pct = int(agree * 100) if agree is not None else None
+        dom_label = dom if dom is not None else "—"
+        prob_pct = int(prob * 100) if prob is not None else None
+        agree_suffix = f" | agreement {agree_pct}%" if agree_pct is not None else ""
+        prob_suffix = f" @ {prob_pct}%" if prob_pct is not None else ""
+        note = f"Fusion: {dom_label} ({conf}) | dir={dom_dir}{prob_suffix}{agree_suffix}"
         fus_stage = StackStage(stage_id="fusion", status="active", direction=dom_dir, confidence=conf, probability=prob, note=note)
 
     # 6. Final Call
