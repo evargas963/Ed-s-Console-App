@@ -274,7 +274,8 @@ def filter_vol_known(r: dict[str, Any]) -> bool:
 
 
 def filter_vix_bucket_set(r: dict[str, Any]) -> bool:
-    return (r.get("vix_bucket") or "") not in ("", None, "unknown")
+    v = axis_reliability_bucket_value(r.get("vix_bucket")).strip().lower()
+    return v not in ("", "unknown", "__missing__")
 
 
 def filter_utc_us_cash_hours(r: dict[str, Any]) -> bool:
