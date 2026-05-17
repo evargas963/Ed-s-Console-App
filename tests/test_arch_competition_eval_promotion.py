@@ -193,6 +193,13 @@ def test_missing_calibration_metric_blocks():
     assert any(x["code"] == "MISSING_CALIBRATION_METRIC" for x in rec["blocked_promotion_flags"])
 
 
+def _promotable_manifest():
+    return _manifest(
+        _metrics("parallel", n=100, ll=0.8, bal=0.5, brier=0.2, stab=0.01),
+        _metrics("cascade", n=100, ll=0.7, bal=0.55, brier=0.21, stab=0.02),
+    )
+
+
 def test_horizon_mismatch_fails_closed():
     lg = _base_lineage()
     lg["ml_horizon_suffix"] = "5c"
@@ -204,6 +211,34 @@ def test_horizon_mismatch_fails_closed():
     m["ml_horizon_slug"] = "1c"
     with pytest.raises(PromotionGovernanceError, match="horizon mismatch"):
         decide_promotion(m)
+
+
+def test_missing_ml_horizon_slug_raises():
+    m = _promotable_manifest()
+    m.pop("ml_horizon_slug", None)
+    with pytest.raises(PromotionGovernanceError, match="ml_horizon_slug"):
+        decide_promotion(m)
+
+
+@pytest.mark.parametrize(
+    "mutator,expected_code",
+    [
+        (lambda m: m["metrics"]["parallel"].pop("regime_slices", None), "MISSING_REGIME_METRIC"),
+        (lambda m: m["metrics"]["parallel"].pop("calibration_ece", None), "MISSING_CALIBRATION_ECE_METRIC"),
+        (lambda m: m.pop("confidence_reliability_summary", None), "MISSING_CONFIDENCE_RELIABILITY_SUMMARY"),
+        (
+            lambda m: m["rolling_stability_summary"].pop("schema_version", None),
+            "MISSING_ROLLING_STABILITY_SUMMARY",
+        ),
+    ],
+)
+def test_promotion_policy_gates_block_when_required_data_missing(mutator, expected_code):
+    m = _promotable_manifest()
+    mutator(m)
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    codes = [x["code"] for x in rec["blocked_promotion_flags"]]
+    assert expected_code in codes
 
 
 def test_auto_promote_forbidden():

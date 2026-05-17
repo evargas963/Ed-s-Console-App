@@ -46,6 +46,8 @@ class PromotionPolicy:
     max_stability_std_vs_incumbent: float = 0.05  # cascade stability std may not exceed parallel + this
     require_calibration_pass: bool = True
     require_stability_pass: bool = True
+    require_calibration_ece_pass: bool = True
+    require_confidence_reliability_summary: bool = True
     veto_regime_degradation: bool = True
     # Empirical validation (calibration / rolling stability) — applied when manifest includes summaries.
     max_ece_regression_vs_incumbent: float = 0.12  # cascade ECE may not exceed parallel ECE by more than this
@@ -86,8 +88,10 @@ def decide_promotion(
             raise PromotionGovernanceError(f"missing lineage.{k} in evaluation manifest")
 
     hz_eval = str(evaluation_manifest.get("ml_horizon_slug") or "").strip().lower()
+    if not hz_eval:
+        raise PromotionGovernanceError("missing evaluation_manifest.ml_horizon_slug")
     hz_lineage = str(lineage.get("ml_horizon_suffix") or "").strip().lower()
-    if hz_eval and hz_lineage and hz_eval != hz_lineage:
+    if hz_eval != hz_lineage:
         raise PromotionGovernanceError(
             f"horizon mismatch: manifest ml_horizon_slug={hz_eval!r} vs lineage ml_horizon_suffix={hz_lineage!r}"
         )
@@ -161,23 +165,43 @@ def decide_promotion(
     if pol.veto_regime_degradation:
         rp = (mp.get("regime_slices") or {}).get("mid")
         rc = (mc.get("regime_slices") or {}).get("mid")
-        if (
-            rp
-            and rc
-            and not rp.get("skipped_low_support")
-            and not rc.get("skipped_low_support")
-            and rp.get("balanced_accuracy") is not None
-            and rc.get("balanced_accuracy") is not None
-            and float(rc["balanced_accuracy"]) < float(rp["balanced_accuracy"]) - 0.05
-        ):
+        if not isinstance(rp, dict) or not isinstance(rc, dict):
+            regime_ok = False
+            blocked.append(
+                _reason(
+                    "MISSING_REGIME_METRIC",
+                    "policy veto requires regime_slices.mid for both architectures",
+                )
+            )
+        elif rp.get("skipped_low_support") or rc.get("skipped_low_support"):
+            reasons.append(_reason("REGIME_MID_SKIPPED_LOW_SUPPORT", ""))
+        elif rp.get("balanced_accuracy") is None or rc.get("balanced_accuracy") is None:
+            regime_ok = False
+            blocked.append(
+                _reason(
+                    "MISSING_REGIME_METRIC",
+                    "regime_slices.mid balanced_accuracy required for both architectures",
+                )
+            )
+        elif float(rc["balanced_accuracy"]) < float(rp["balanced_accuracy"]) - 0.05:
             regime_ok = False
             blocked.append(_reason("REGIME_MID_BUCKET_REGRESSION", "mid VIX bucket accuracy degraded"))
+        else:
+            reasons.append(_reason("REGIME_OK", ""))
 
     empirical_ok = True
     p_ece = mp.get("calibration_ece")
     c_ece = mc.get("calibration_ece")
-    if p_ece is not None and c_ece is not None:
-        if float(c_ece) > float(p_ece) + pol.max_ece_regression_vs_incumbent:
+    if pol.require_calibration_ece_pass:
+        if p_ece is None or c_ece is None:
+            empirical_ok = False
+            blocked.append(
+                _reason(
+                    "MISSING_CALIBRATION_ECE_METRIC",
+                    "calibration_ece required for both architectures",
+                )
+            )
+        elif float(c_ece) > float(p_ece) + pol.max_ece_regression_vs_incumbent:
             empirical_ok = False
             blocked.append(
                 _reason(
@@ -189,13 +213,29 @@ def decide_promotion(
             reasons.append(_reason("CALIBRATION_ECE_OK", ""))
 
     crs = evaluation_manifest.get("confidence_reliability_summary") or {}
-    if crs.get("schema_version"):
-        crp = (crs.get("by_architecture") or {}).get("parallel") or {}
-        crc = (crs.get("by_architecture") or {}).get("cascade") or {}
-        p_corr = crp.get("confidence_hit_correlation")
-        c_corr = crc.get("confidence_hit_correlation")
-        if p_corr is not None and c_corr is not None:
-            if float(c_corr) < float(p_corr) + pol.min_confidence_hit_correlation_vs_incumbent:
+    if pol.require_confidence_reliability_summary:
+        if not crs.get("schema_version"):
+            empirical_ok = False
+            blocked.append(
+                _reason(
+                    "MISSING_CONFIDENCE_RELIABILITY_SUMMARY",
+                    "policy requires confidence_reliability_summary.schema_version",
+                )
+            )
+        else:
+            crp = (crs.get("by_architecture") or {}).get("parallel") or {}
+            crc = (crs.get("by_architecture") or {}).get("cascade") or {}
+            p_corr = crp.get("confidence_hit_correlation")
+            c_corr = crc.get("confidence_hit_correlation")
+            if p_corr is None or c_corr is None:
+                empirical_ok = False
+                blocked.append(
+                    _reason(
+                        "MISSING_CONFIDENCE_RELIABILITY_METRIC",
+                        "confidence_hit_correlation required for both architectures",
+                    )
+                )
+            elif float(c_corr) < float(p_corr) + pol.min_confidence_hit_correlation_vs_incumbent:
                 empirical_ok = False
                 blocked.append(
                     _reason(
@@ -209,19 +249,28 @@ def decide_promotion(
     rss = evaluation_manifest.get("rolling_stability_summary") or {}
     rbp = (rss.get("by_architecture") or {}).get("parallel") or {}
     rbc = (rss.get("by_architecture") or {}).get("cascade") or {}
-    if pol.veto_cascade_rolling_calibration_degradation and rss.get("schema_version"):
-        d_p = bool(rbp.get("calibration_degradation_flag"))
-        d_c = bool(rbc.get("calibration_degradation_flag"))
-        if d_c and not d_p:
+    if pol.veto_cascade_rolling_calibration_degradation:
+        if not rss.get("schema_version"):
             empirical_ok = False
             blocked.append(
                 _reason(
-                    "ROLLING_CALIBRATION_DEGRADATION",
-                    "cascade shows time-ordered calibration degradation vs parallel",
+                    "MISSING_ROLLING_STABILITY_SUMMARY",
+                    "policy veto requires rolling_stability_summary.schema_version",
                 )
             )
-        elif not d_c:
-            reasons.append(_reason("ROLLING_CALIBRATION_STABLE_OK", ""))
+        else:
+            d_p = bool(rbp.get("calibration_degradation_flag"))
+            d_c = bool(rbc.get("calibration_degradation_flag"))
+            if d_c and not d_p:
+                empirical_ok = False
+                blocked.append(
+                    _reason(
+                        "ROLLING_CALIBRATION_DEGRADATION",
+                        "cascade shows time-ordered calibration degradation vs parallel",
+                    )
+                )
+            elif not d_c:
+                reasons.append(_reason("ROLLING_CALIBRATION_STABLE_OK", ""))
 
     promoted = (
         len(blocked) == 0
@@ -252,8 +301,11 @@ def decide_promotion(
             "min_delta_log_loss": pol.min_delta_log_loss,
             "max_brier_regression_vs_incumbent": pol.max_brier_regression_vs_incumbent,
             "max_stability_std_vs_incumbent": pol.max_stability_std_vs_incumbent,
+            "require_calibration_ece_pass": pol.require_calibration_ece_pass,
+            "require_confidence_reliability_summary": pol.require_confidence_reliability_summary,
             "max_ece_regression_vs_incumbent": pol.max_ece_regression_vs_incumbent,
             "veto_cascade_rolling_calibration_degradation": pol.veto_cascade_rolling_calibration_degradation,
+            "veto_regime_degradation": pol.veto_regime_degradation,
             "min_confidence_hit_correlation_vs_incumbent": pol.min_confidence_hit_correlation_vs_incumbent,
         },
         "reason_codes": reasons,
