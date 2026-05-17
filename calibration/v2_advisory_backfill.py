@@ -7,6 +7,7 @@ v2 table so existing calibration outcome joins keep their row identity.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -19,9 +20,15 @@ from calibration.schema import ensure_calibration_schema
 from timeframe_config import CANONICAL_TIMEFRAME
 from v2_decision import SCHEMA_VERSION, V2_STATUS, build_module_a_a1_decision
 
+log = logging.getLogger(__name__)
+
 try:
     from db import configure_sqlite_connection
-except Exception:
+except ImportError as e:
+    log.warning(
+        "db.configure_sqlite_connection not available — using no-op stub: %s",
+        e,
+    )
 
     def configure_sqlite_connection(conn: sqlite3.Connection, **kwargs: Any) -> None:
         return None
@@ -101,11 +108,13 @@ def ms_dict_from_snapshot_row(row: Mapping[str, Any]) -> dict[str, Any]:
     ms.setdefault("decision_generation_id", snapshot_id)
     ms.setdefault("_server_build_ts", ts_utc)
     ms.setdefault("decision_time_ms", int(ts_utc * 1000) if ts_utc is not None else None)
-    ms.setdefault("stack_runtime", {"source": RECONSTRUCTED_LIVE_MS_SOURCE})
-    ms.setdefault("stack_governance", {"source": RECONSTRUCTED_LIVE_MS_SOURCE})
-    ms.setdefault("signal_chain", {"source": RECONSTRUCTED_LIVE_MS_SOURCE})
     for block in ("stack_runtime", "stack_governance", "signal_chain"):
-        field_sources[block] = RECONSTRUCTED_LIVE_MS_SOURCE
+        existing = ms.get(block)
+        if existing is None:
+            ms[block] = {"source": RECONSTRUCTED_LIVE_MS_SOURCE}
+            field_sources[block] = RECONSTRUCTED_LIVE_MS_SOURCE
+        elif isinstance(existing, dict) and existing.get("source") == RECONSTRUCTED_LIVE_MS_SOURCE:
+            field_sources[block] = RECONSTRUCTED_LIVE_MS_SOURCE
     ms["live_ms_field_sources"] = field_sources
     ms["live_ms_reconstruction_source"] = RECONSTRUCTED_LIVE_MS_SOURCE
     return ms
@@ -144,6 +153,7 @@ def backfill_v2_advisory_decisions(
         "candidates": 0,
         "updated": 0,
         "skipped": 0,
+        "errored": 0,
         "tol_sec": tol_sec,
         "adapter_version": ADVISORY_V2_ADAPTER_VERSION,
     }
@@ -164,39 +174,44 @@ def backfill_v2_advisory_decisions(
 
     for row in rows:
         rid = int(row["id"])
-        snap, reason, _method = resolve_snapshot_for_backfill(
-            conn,
-            str(row["ticker"]),
-            float(row["decision_ts_utc"]),
-            tol_sec,
-        )
-        if snap is None:
-            _mark_backfill_status(conn, rid, "skipped", reason, now)
-            stats["skipped"] += 1
-            stats[f"skipped_{reason}"] = int(stats.get(f"skipped_{reason}", 0)) + 1
-            continue
+        try:
+            snap, reason, _method = resolve_snapshot_for_backfill(
+                conn,
+                str(row["ticker"]),
+                float(row["decision_ts_utc"]),
+                tol_sec,
+            )
+            if snap is None:
+                _mark_backfill_status(conn, rid, "skipped", reason, now)
+                stats["skipped"] += 1
+                stats[f"skipped_{reason}"] = int(stats.get(f"skipped_{reason}", 0)) + 1
+                continue
 
-        payload = build_v2_advisory_snapshot(snap)
-        conn.execute(
-            """
-            UPDATE calibration_decision_log SET
-              advisory_v2_decision_snapshot_json=?,
-              advisory_v2_snapshot_schema_version=?,
-              advisory_v2_adapter_version=?,
-              advisory_v2_backfilled_ts_utc=?,
-              advisory_v2_backfill_status='ok',
-              advisory_v2_backfill_reason=NULL
-            WHERE id=?
-            """,
-            (
-                json.dumps(payload, default=str, sort_keys=True),
-                ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION,
-                ADVISORY_V2_ADAPTER_VERSION,
-                now,
-                rid,
-            ),
-        )
-        stats["updated"] += 1
+            payload = build_v2_advisory_snapshot(snap)
+            conn.execute(
+                """
+                UPDATE calibration_decision_log SET
+                  advisory_v2_decision_snapshot_json=?,
+                  advisory_v2_snapshot_schema_version=?,
+                  advisory_v2_adapter_version=?,
+                  advisory_v2_backfilled_ts_utc=?,
+                  advisory_v2_backfill_status='ok',
+                  advisory_v2_backfill_reason=NULL
+                WHERE id=?
+                """,
+                (
+                    json.dumps(payload, default=str, sort_keys=True),
+                    ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION,
+                    ADVISORY_V2_ADAPTER_VERSION,
+                    now,
+                    rid,
+                ),
+            )
+            stats["updated"] += 1
+        except Exception as e:
+            err_reason = f"build_failed:{type(e).__name__}:{str(e)[:200]}"
+            _mark_backfill_status(conn, rid, "error", err_reason, now)
+            stats["errored"] += 1
 
     conn.commit()
     conn.close()
@@ -269,11 +284,6 @@ def _mark_backfill_status(
     )
 
 
-def _alias_if_absent(ms: dict[str, Any], target: str, source: str) -> None:
-    if ms.get(target) is None and ms.get(source) is not None:
-        ms[target] = ms.get(source)
-
-
 def _infer_fusion_fields(ms: dict[str, Any]) -> None:
     if "fusion_available" not in ms or ms.get("fusion_available") is None:
         ms["fusion_available"] = any(
@@ -310,7 +320,11 @@ def _json_obj(value: Any) -> dict[str, Any]:
         return {}
     try:
         parsed = json.loads(str(value))
-    except (TypeError, ValueError, json.JSONDecodeError):
+    except (TypeError, ValueError, json.JSONDecodeError) as e:
+        log.warning(
+            "v2_advisory_backfill: replay_context_json unparseable, treating as empty: %s",
+            e,
+        )
         return {}
     return parsed if isinstance(parsed, dict) else {}
 

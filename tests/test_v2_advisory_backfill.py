@@ -9,7 +9,9 @@ from calibration.schema import ensure_calibration_schema
 from calibration.v2_advisory_backfill import (
     ADVISORY_V2_ADAPTER_VERSION,
     ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION,
+    RECONSTRUCTED_LIVE_MS_SOURCE,
     _direction_from_triplet,
+    _json_obj,
     backfill_v2_advisory_decisions,
     build_v2_advisory_snapshot,
     build_walk_forward_splits,
@@ -32,6 +34,7 @@ def _proof() -> dict:
             "chain_row": {
                 "symbol": "SPY260505C00500000",
                 "putCall": "CALL",
+                "daysToExpiration": 0,
                 "strikePrice": 500.0,
                 "bid": 1.2,
                 "ask": 1.28,
@@ -276,3 +279,68 @@ def test_direction_from_triplet_flat_matches_bayesian_fusion_canonical() -> None
     assert _direction_from_triplet(0.2, 0.25, 0.55) == "flat"
     assert _direction_from_triplet(0.5, 0.3, 0.2) == "up"
     assert _direction_from_triplet(None, None, None) is None
+
+
+def test_json_obj_logs_on_corrupt_replay_context(caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        out = _json_obj("{not valid json")
+    assert out == {}
+    assert any("replay_context_json unparseable" in r.message for r in caplog.records)
+
+
+def test_ms_dict_does_not_stamp_live_stack_blocks():
+    row = {
+        "ticker": "SPY",
+        "ts_utc": BASE_TS,
+        "stack_runtime": {"fusion_active": True, "source": "live_parallel_stack"},
+        "stack_governance": {"policy": "ok", "source": "live_parallel_stack"},
+        "signal_chain": {"chain_id": "abc", "source": "live_parallel_stack"},
+    }
+    ms = ms_dict_from_snapshot_row(row)
+    assert "stack_runtime" not in ms["live_ms_field_sources"]
+    assert "stack_governance" not in ms["live_ms_field_sources"]
+    assert "signal_chain" not in ms["live_ms_field_sources"]
+    assert ms["stack_runtime"]["source"] == "live_parallel_stack"
+
+
+def test_ms_dict_stamps_missing_stack_blocks():
+    ms = ms_dict_from_snapshot_row({"ticker": "SPY", "ts_utc": BASE_TS})
+    for block in ("stack_runtime", "stack_governance", "signal_chain"):
+        assert ms[block]["source"] == RECONSTRUCTED_LIVE_MS_SOURCE
+        assert ms["live_ms_field_sources"][block] == RECONSTRUCTED_LIVE_MS_SOURCE
+
+
+def test_backfill_marks_row_error_and_continues(tmp_path, monkeypatch):
+    db_path, conn = _seed_db(tmp_path)
+    _insert_calibration_row(conn, ts=BASE_TS, ticker="SPY")
+    _insert_calibration_row(conn, ts=BASE_TS + 60.0, ticker="QQQ")
+    _insert_snapshot(conn, ts=BASE_TS, ticker="SPY")
+    _insert_snapshot(conn, ts=BASE_TS + 60.0, ticker="QQQ")
+    conn.commit()
+    conn.close()
+
+    def _fake_build(snap):
+        if float(snap["ts_utc"]) == BASE_TS:
+            raise ValueError("malformed snapshot row")
+        return build_v2_advisory_snapshot(snap)
+
+    monkeypatch.setattr(
+        "calibration.v2_advisory_backfill.build_v2_advisory_snapshot",
+        _fake_build,
+    )
+
+    stats = backfill_v2_advisory_decisions(db_path)
+
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    rows = {r["ticker"]: r for r in conn.execute("SELECT * FROM calibration_decision_log").fetchall()}
+    conn.close()
+
+    assert stats["updated"] == 1
+    assert stats["errored"] == 1
+    assert rows["SPY"]["advisory_v2_backfill_status"] == "error"
+    assert rows["SPY"]["advisory_v2_backfill_reason"].startswith("build_failed:ValueError:")
+    assert rows["QQQ"]["advisory_v2_backfill_status"] == "ok"
+    assert rows["QQQ"]["advisory_v2_decision_snapshot_json"] is not None
