@@ -188,7 +188,7 @@ CHAIN_OF_TRUST_ALLOWLIST: tuple[AllowlistEntry, ...] = (
         id="mega3_internal_helper",
         justification="Pure MC/regime/feature contract helper with no Schwab wire or snapshot field output.",
         owner_section="Mega3",
-        added_in_sha="PENDING",
+        added_in_sha="6a9746d",
         category="internal_state",
     ),
 )
