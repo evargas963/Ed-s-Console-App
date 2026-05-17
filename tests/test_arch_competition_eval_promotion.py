@@ -292,6 +292,16 @@ def test_lineage_empty_ticker_argument_raises(tmp_path: Path):
         validate_parallel_cascade_manifest_lineage(pdir, cdir, ticker="")
 
 
+def test_lineage_both_missing_manifest_ticker_raises(tmp_path: Path):
+    pdir, cdir = _write_lineage_manifest_pair(
+        tmp_path,
+        parallel={"ticker": None},
+        cascade={"ticker": None},
+    )
+    with pytest.raises(EvaluationLineageError, match="missing ticker"):
+        validate_parallel_cascade_manifest_lineage(pdir, cdir, ticker="SPY", expected_ml_horizon_suffix="1c")
+
+
 def test_lineage_both_missing_feature_cache_key_raises(tmp_path: Path):
     pdir, cdir = _write_lineage_manifest_pair(
         tmp_path,

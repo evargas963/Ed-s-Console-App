@@ -53,7 +53,14 @@ def validate_parallel_cascade_manifest_lineage(
     if not mc:
         raise EvaluationLineageError(f"cascade manifest missing under {cascade_dir}")
 
-    if mp.get("ticker", "").upper() != ticker.upper() or mc.get("ticker", "").upper() != ticker.upper():
+    mp_ticker = mp.get("ticker")
+    mc_ticker = mc.get("ticker")
+    if mp_ticker is None or not str(mp_ticker).strip():
+        raise EvaluationLineageError("parallel manifest missing ticker")
+    if mc_ticker is None or not str(mc_ticker).strip():
+        raise EvaluationLineageError("cascade manifest missing ticker")
+    tku = str(ticker).strip().upper()
+    if str(mp_ticker).strip().upper() != tku or str(mc_ticker).strip().upper() != tku:
         raise EvaluationLineageError("manifest ticker does not match evaluation ticker")
 
     fcp = mp.get("feature_cache_key")
