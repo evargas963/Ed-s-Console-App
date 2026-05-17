@@ -5,8 +5,10 @@ import pytest
 from calibration.v2_a1_conformal import build_a1_conformal_artifact
 from calibration.v2_a1_ev_bounds import build_a1_ev_bounds_artifact
 from calibration.v2_a1_execution_ev import (
+    A1_EXECUTION_EV_DEFAULT_MIN_FILL_HISTORY_N,
     A1_EXECUTION_EV_REQUIRED_REGISTRY_ENTRIES,
     build_a1_execution_ev_artifact,
+    validate_execution_cost_model,
     validate_normalized_execution_inputs,
 )
 from v2_decision.a2_option_expression import build_a2_option_expression
@@ -87,6 +89,50 @@ def _valid_cost_model(**overrides) -> dict:
         "expected_cost_r": 0.1,
     }
     return {**base, **overrides}
+
+
+def test_execution_ev_skips_when_upstream_status_missing():
+    ev = _ev_bounds()
+    ev.pop("status", None)
+    artifact = build_a1_execution_ev_artifact(ev)
+
+    assert artifact["status"] == "execution_ev_skipped_missing_upstream_status"
+    assert artifact["reason"] == "ev_bounds_artifact_status_field_missing"
+    assert artifact["execution_adjusted_ev"] == []
+
+
+def test_execution_ev_horizon_null_when_upstream_horizon_missing():
+    ev = _ev_bounds()
+    ev.pop("horizon", None)
+    artifact = build_a1_execution_ev_artifact(ev)
+
+    assert artifact["horizon"] is None
+
+
+def test_execution_ev_skips_when_ev_bounds_run_id_missing():
+    ev = _ev_bounds()
+    ev.pop("ev_bounds_run_id", None)
+    artifact = build_a1_execution_ev_artifact(ev)
+
+    assert artifact["status"] == "execution_ev_skipped_missing_ev_bounds_run_id"
+    assert artifact["reason"] == "ev_bounds_run_id_missing"
+    assert artifact["execution_ev_run_id"] is None
+
+
+def test_validate_execution_cost_model_rejects_explicit_zero_min_fill_history():
+    result = validate_execution_cost_model(_valid_cost_model(min_fill_history_n=0))
+
+    assert result["ok"] is False
+    assert result["reason"] == "min_fill_history_n_explicit_zero_or_negative"
+
+
+def test_validate_execution_cost_model_defaults_missing_min_fill_history_n():
+    model = _valid_cost_model()
+    model.pop("min_fill_history_n", None)
+    result = validate_execution_cost_model(model)
+
+    assert result["ok"] is True
+    assert result["min_fill_history_n"] == A1_EXECUTION_EV_DEFAULT_MIN_FILL_HISTORY_N
 
 
 def test_execution_ev_missing_model_skips_without_synthetic_adjusted_ev():
