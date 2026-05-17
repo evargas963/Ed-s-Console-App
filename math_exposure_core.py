@@ -150,16 +150,16 @@ def compute_exposures_by_strike(
         asz = _f(ct.get("askSize"))
         if side == "CALL":
             if vol is not None:
-                current_call_volume = b.get("call_volume")
-                b["call_volume"] = (float(current_call_volume) if current_call_volume is not None else 0.0) + vol
+                prev = b.get("call_volume")
+                b["call_volume"] = vol if prev is None else float(prev) + vol
             if bsz is not None:
                 b["call_bid_size"] = b.get("call_bid_size", 0.0) + bsz
             if asz is not None:
                 b["call_ask_size"] = b.get("call_ask_size", 0.0) + asz
         else:
             if vol is not None:
-                current_put_volume = b.get("put_volume")
-                b["put_volume"] = (float(current_put_volume) if current_put_volume is not None else 0.0) + vol
+                prev = b.get("put_volume")
+                b["put_volume"] = vol if prev is None else float(prev) + vol
             if bsz is not None:
                 b["put_bid_size"] = b.get("put_bid_size", 0.0) + bsz
             if asz is not None:
@@ -182,8 +182,8 @@ def compute_exposures_by_strike(
 
         if side == "CALL":
             if oi is not None:
-                current_call_oi = b.get("call_oi")
-                b["call_oi"] = (float(current_call_oi) if current_call_oi is not None else 0.0) + oi
+                prev = b.get("call_oi")
+                b["call_oi"] = oi if prev is None else float(prev) + oi
                 b["call_oi_mult"] += oi * mult
             if oi is not None and delta_ok:
                 b["call_delta"] += delta * oi * mult
@@ -204,8 +204,8 @@ def compute_exposures_by_strike(
                     b["call_vanna"] += (_vega / (spt * (_iv / 100.0))) * oi * mult
         elif side == "PUT":
             if oi is not None:
-                current_put_oi = b.get("put_oi")
-                b["put_oi"] = (float(current_put_oi) if current_put_oi is not None else 0.0) + oi
+                prev = b.get("put_oi")
+                b["put_oi"] = oi if prev is None else float(prev) + oi
                 b["put_oi_mult"] += oi * mult
             if oi is not None and delta_ok:
                 b["put_delta"] += delta * oi * mult
@@ -296,7 +296,12 @@ def key_level_strikes_with_oi(exposures: Dict[float, dict]) -> List[float]:
         b = exposures.get(s, {})
         co = b.get("call_oi")
         po = b.get("put_oi")
-        tot = (float(co) if co is not None else 0.0) + (float(po) if po is not None else 0.0)
+        if co is None or po is None:
+            continue
+        try:
+            tot = float(co) + float(po)
+        except (TypeError, ValueError):
+            continue
         if tot > 0:
             out.append(s)
     return out

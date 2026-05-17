@@ -810,8 +810,12 @@ def compute_max_pain(exposures_by_strike: Dict[float, dict]) -> float | None:
                 continue
             if put_oi_raw is not None and float(put_oi_raw) > 0 and put_w_raw is None:
                 continue
-            call_w = float(call_w_raw) if call_w_raw is not None else 0.0
-            put_w = float(put_w_raw) if put_w_raw is not None else 0.0
+            call_w = 0.0
+            if call_w_raw is not None:
+                call_w = float(call_w_raw)
+            put_w = 0.0
+            if put_w_raw is not None:
+                put_w = float(put_w_raw)
             if call_w <= 0 and put_w <= 0:
                 continue
             if call_w > 0 and settlement > k:
@@ -949,11 +953,11 @@ def compute_gamma_void_zones(
                     gv = _get_gex(bucket)
                     if gv is not None:
                         gex_samples.append(gv)
-                avg_gex = (
-                    (sum(gex_samples) / len(gex_samples)) / max_abs_gex
-                    if gex_samples and max_abs_gex > 0
-                    else 0.0
-                )
+                avg_gex_pct: float | None = None
+                if gex_samples and max_abs_gex > 0:
+                    avg_gex_pct = round(
+                        (sum(gex_samples) / len(gex_samples)) / max_abs_gex * 100, 1
+                    )
 
                 zones.append({
                     "lower": lower,
@@ -962,7 +966,7 @@ def compute_gamma_void_zones(
                     "above_spot": lower > spot,
                     "below_spot": upper < spot,
                     "contains_spot": lower <= spot <= upper,
-                    "avg_gex_pct": round(avg_gex * 100, 1),
+                    "avg_gex_pct": avg_gex_pct,
                     "dist_to_spot": round(min(abs(lower - spot), abs(upper - spot)), 2),
                 })
             in_void = False
@@ -973,11 +977,17 @@ def compute_gamma_void_zones(
         if zone_len >= min_width_strikes:
             lower = strikes[zone_start]
             upper = strikes[-1]
-            avg_gex = 0.0
+            gex_samples_end: list[float] = []
             for j in range(zone_start, len(strikes)):
                 bucket = exposures_by_strike.get(strikes[j], {})
-                avg_gex += _get_gex(bucket)
-            avg_gex = (avg_gex / zone_len) / max_abs_gex if zone_len > 0 else 0
+                gv = _get_gex(bucket)
+                if gv is not None:
+                    gex_samples_end.append(gv)
+            avg_gex_pct_end: float | None = None
+            if gex_samples_end and max_abs_gex > 0:
+                avg_gex_pct_end = round(
+                    (sum(gex_samples_end) / len(gex_samples_end)) / max_abs_gex * 100, 1
+                )
 
             zones.append({
                 "lower": lower,
@@ -986,7 +996,7 @@ def compute_gamma_void_zones(
                 "above_spot": lower > spot,
                 "below_spot": upper < spot,
                 "contains_spot": lower <= spot <= upper,
-                "avg_gex_pct": round(avg_gex * 100, 1),
+                "avg_gex_pct": avg_gex_pct_end,
                 "dist_to_spot": round(min(abs(lower - spot), abs(upper - spot)), 2),
             })
 
