@@ -167,49 +167,44 @@ All commits in this rebuild authored via Cursor agent extension carry a `Made-wi
 
 ---
 
-## Schwab Schwab-leaf replacement — section-by-section sweep
+## Schwab repo-wide replacement — TraceableDerivation sweep (§A–§Q)
 
 **Bound to:** `governance/SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md`.
 
-**CAPS (mandatory every commit):** `tests/test_anti_pattern_family_repo_wide.py` + `tools/anti_pattern_sweep.py` — zero unallowlisted production hits.
+**Commit 1 foundation (schema restart):** `governance/traceable_derivation.py` — structured `inputs` + validated `schwab_leaves` or `allowlist_id`; categorical `schwab_leaf` strings **rejected by construction**. Legacy §1–§16 categorical inventories archived under `governance/archive/legacy_categorical_inventories_v1/` (not closure evidence). Gap intel from rejected resolver: `governance/CHAIN_OF_TRUST_GAP_INTEL_290.md`.
 
-**Section rule:** Within each section, every file is walked for derivations with Schwab-leaf equivalents. Each derivation found is replaced + repo-wide-grepped for matching patterns + every repo-wide hit fixed. **One section = one commit** accumulating all that work.
+**CAPS (mandatory every commit):** `tests/test_anti_pattern_family_repo_wide.py` — zero unallowlisted production hits.
 
-### Why prior commits do NOT count toward section closure
+**Section rule:** Dependency-ordered walk (§A before §B, …). Each section: full AST scope, `TraceableDerivation` rows only, `assert_traceable_inventory_covers_all_functions`, producer→consumer graph must close before `[x]`. **One section = one commit.**
 
-Days 1, 1.5, 2, 3, and CAPS (`cab3ef4`) closed *pattern-shape* regression gates (silent-default substitution patterns). They did NOT perform the section-by-section Schwab-leaf-derivation audit defined here. That audit is: walk every file in the section, identify every derivation, check `schwab_field_inventory/schwab_field_dictionary.csv` for a Schwab leaf equivalent, replace the derivation when a leaf exists, then repo-wide-grep for the same derivation pattern and fix every matching hit found anywhere in the repo.
+**KEY LEVELS (`82615fa`) — WITHDRAWN** pending **§D** traceable re-walk + chain-of-trust closure. Prior YES was empirical on pattern-shape gates + categorical inventories; not sufficient under new schema.
 
-Files touched by prior commits still need to be re-walked under this method when their section comes up. Specifically:
+### Why prior §1–§16 `[x]` and categorical inventories do NOT count
 
-| Prior commit | Files touched | Sections that must re-walk these files |
+Categorical inventories (`DerivationRecord` with free-text `schwab_leaf` like `"upstream ms_dict / SignalInput"`) are archived. They are reference-only for migration. Closure requires `TraceableDerivation` + structured producer links.
+
+| Legacy § | Maps to | Status |
 |---|---|---|
-| Day 1 `03ca199` | `market_data_adapter.py`, `snapshot_normalizer.py`, `liquidity_value_engine.py` | §1, §12 |
-| Day 1.5 `17ccf30` | `math_exposure_core.py`, `math_levels.py`, `math_probabilities.py`, `news_sentiment.py`, `server.py` | §2, §4, §16 |
-| Day 2 `92b85ff` | `order_flow_engine.py`, `server.py` | §2, §5 |
-| Day 3 `c527b82` | `features/inference_snapshot.py`, `features/fusion_model_input.py`, `features/lstm_sequence_input.py`, `ml_data_common.py` | §9, §10 |
-| CAPS `cab3ef4` | `lstm_data.py`, `math_levels.py` | §4, §10 |
+| §1–§16 | §A–§P | **RESET** — re-walk required |
+| §17 | §Q | Not started |
 
-The pattern-shape regression net from these commits stays in place as a safety floor going forward. It does not substitute for the section-by-section derivation audit.
-
-- [x] **§1 Schwab client + adapters** — `schwab_client.py`, `reauth_schwab.py`, `websocket_adapter.py`, `polling_adapter.py`, `sse_adapter.py`, `market_data_adapter.py`, `snapshot_normalizer.py`, `snapshot_access.py`. Full-scope AST inventory (59 rows). SHA: `3c7b1d1`
-- [x] **§2 Server + live state** — `server.py`, `live_market_plane.py`, `live_decision_bundle.py`, `live_pipeline_diag.py`, `live_vs_replay_validation.py`. Full-scope AST inventory (208 rows). SHA: `e52fee6`
-- [x] **§3 Market data + state** — `market_context.py`, `market_state.py`, `math_snapshot_derive.py`. Full-scope AST inventory (38 rows). SHA: `aece812`
-- [x] **§4 Math / KEY LEVELS** — `math_exposure*.py`, `math_levels.py`, `math_volatility.py`, `math_probabilities.py`, `levels.py`. Full-scope AST inventory (131 rows). SHA: `3c7b1d1`
-- [x] **§5 Order flow** — `order_flow_engine.py`, `order_flow_live_state.py`, `order_flow_streaming.py`, `debug_flow_snapshot.py`. Full-scope AST inventory (70 rows). SHA: `3209941`
-- [x] **§6 Signals + decision** — `signals.py`, `signal_helpers.py`, `signal_types.py`, `rules_engine.py`, `prediction_engine.py`, `call_engine.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`. Full-scope AST inventory (88 rows). SHA: `b85fb28`
-- [x] **§7 V2 decision + A2 lifecycle** — `v2_decision/*.py`, `lifecycle_rule_core.py`. Full-scope AST inventory (139 rows). SHA: `07d1ed4` (docs `766b30f`)
-- [x] **§8 MC + regime + volatility** — `monte_carlo.py`, `mc_fusion_adjustment.py`, `volatility_regime.py`, `regime_engine.py`. Full-scope AST inventory (29 rows). SHA: `71194dc`
-- [x] **§9 Features (ML inputs)** — `features/*.py`. Full-scope AST inventory (92 rows, 22 modules). SHA: `28dd641`
-- [x] **§10 ML training + predict** — `ml_*.py`, `lstm_*.py`, `xgboost_model.py`, `transformer_*.py`, `train_*.py`, `training_*.py`, `normalized_training_sync.py`, `smoke_predict_active.py`. Full-scope AST inventory (247 rows). SHA: `95cddb6`
-- [x] **§11 Calibration + fusion** — `calibration/*.py`, `bayesian_fusion.py`, `governed_stack_contract.py`, `arch_competition/*.py`. Full-scope AST inventory (466 rows, 66 files). SHA: `55df1d5`
-- [x] **§12 Liquidity** — `liquidity_models.py`, `liquidity_value_engine.py`, `print_liquidity_value_snapshot.py`, `run_liquidity_sample.py`. Full-scope AST inventory (37 rows, 4 files). SHA: `d50f8f8`
-- [x] **§13 Similarity** — `adaptive_similarity_engine.py`, `similarity_*.py`. Full-scope AST inventory (68 rows, 5 files). SHA: `26694cd`
-- [x] **§14 DB + backfill + repair** — `db*.py`, `clean_db.py`, `eval_metrics_store.py`, `backfill_*.py`, `bar_rehydration_*.py`, `pin_neutral_outcome_repair_v1.py`, `distance_option_a_backfill_v1.py`, `patch_active_artifact_provenance.py`, `replay_bundle_coverage.py`, `realized_contract_eval.py`. Full-scope AST inventory (229 rows, 14 files). SHA: `e2640f6`
-- [x] **§15 Audit + verify + config + contracts** — `audit_*.py`, `verify_*.py`, `inspect_trading_data.py`, `config.py`, `setup_readiness.py`, `scheduler_user_tickers.py`, `ticker_*.py`, `production_universe.py`, `instrument_identity.py`, `timeframe_config.py`, `model_contract.py`, `feature_contract_*.py`, `horizon_outcomes.py`, `movement_target_threshold.py`, `institutional_behavior.py`, `canonical_distances.py`, `tier3_design.py`. Full-scope AST inventory (89 rows, 27 files). SHA: `e7a0974`
-- [ ] **§16 External signals** — `news_sentiment.py`, `api_pressure.py`, `event_risk.py`. Full-scope AST re-walk (19 rows, 3 files). SHA: __________
-- [ ] **§17 Planes + research + UI + misc** — `planes/*.py`, `research/*.py`, `static/*`, … **BLOCKED** until chain-of-trust audit closes (`governance/chain_of_trust_audit.py`). SHA: __________
-
-**Chain-of-trust gate (blocks §17):** Producer→consumer graph from section inventories + AST reads. Priority fields (spot, walls, IV, MVP) must close; full sweep currently reports open gaps — run `python governance/chain_of_trust_audit.py`.
+- [ ] **§A Schwab client + adapters** — `schwab_client.py`, `reauth_schwab.py`, `websocket_adapter.py`, `polling_adapter.py`, `sse_adapter.py`, `market_data_adapter.py`, `snapshot_normalizer.py`, `snapshot_access.py`. Depends: —. SHA: __________
+- [ ] **§B Server + live state** — `server.py`, `live_market_plane.py`, `live_decision_bundle.py`, `live_pipeline_diag.py`, `live_vs_replay_validation.py`. Depends: §A. SHA: __________
+- [ ] **§C Market data + state** — `market_context.py`, `market_state.py`, `math_snapshot_derive.py`. Depends: §A, §B. SHA: __________
+- [ ] **§D Math / KEY LEVELS** — `math_exposure*.py`, `math_levels.py`, `math_volatility.py`, `math_probabilities.py`, `levels.py`. Depends: §C. **Gate:** chain-of-trust closes for all fields in section; supersedes `82615fa` YES. SHA: __________
+- [ ] **§E Order flow** — `order_flow_engine.py`, `order_flow_live_state.py`, `order_flow_streaming.py`, `debug_flow_snapshot.py`. Depends: §C. SHA: __________
+- [ ] **§F Signals + decision** — `signals.py`, `signal_helpers.py`, `signal_types.py`, `rules_engine.py`, `prediction_engine.py`, `call_engine.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`. Depends: §C, §D, §E. SHA: __________
+- [ ] **§G V2 decision + A2 lifecycle** — `v2_decision/*.py`, `lifecycle_rule_core.py`. Depends: §F. SHA: __________
+- [ ] **§H MC + regime + volatility** — `monte_carlo.py`, `mc_fusion_adjustment.py`, `volatility_regime.py`, `regime_engine.py`. Depends: §F. SHA: __________
+- [ ] **§I Features (ML inputs)** — `features/*.py`. Depends: §C. SHA: __________
+- [ ] **§J ML training + predict** — `ml_*.py`, `lstm_*.py`, `xgboost_model.py`, `transformer_*.py`, `train_*.py`, `training_*.py`, `normalized_training_sync.py`, `smoke_predict_active.py`. Depends: §I. SHA: __________
+- [ ] **§K Calibration + fusion** — `calibration/*.py`, `bayesian_fusion.py`, `governed_stack_contract.py`, `arch_competition/*.py`. Depends: §J. SHA: __________
+- [ ] **§L Liquidity** — `liquidity_models.py`, `liquidity_value_engine.py`, `print_liquidity_value_snapshot.py`, `run_liquidity_sample.py`. Depends: §A, §C. SHA: __________
+- [ ] **§M Similarity** — `adaptive_similarity_engine.py`, `similarity_*.py`. Depends: §C, snapshots. SHA: __________
+- [ ] **§N DB + backfill + repair** — `db*.py`, `clean_db.py`, `eval_metrics_store.py`, `backfill_*.py`, `bar_rehydration_*.py`, `pin_neutral_outcome_repair_v1.py`, `distance_option_a_backfill_v1.py`, `patch_active_artifact_provenance.py`, `replay_bundle_coverage.py`, `realized_contract_eval.py`. Depends: §A–§M. SHA: __________
+- [ ] **§O Audit + verify + config + contracts** — `audit_*.py`, `verify_*.py`, `inspect_trading_data.py`, `config.py`, `setup_readiness.py`, `scheduler_user_tickers.py`, `ticker_*.py`, `production_universe.py`, `instrument_identity.py`, `timeframe_config.py`, `model_contract.py`, `feature_contract_*.py`, `horizon_outcomes.py`, `movement_target_threshold.py`, `institutional_behavior.py`, `canonical_distances.py`, `tier3_design.py`. Depends: §A–§N. SHA: __________
+- [ ] **§P External signals** — `news_sentiment.py`, `api_pressure.py`, `event_risk.py`. Depends: — (parallel). SHA: __________
+- [ ] **§Q Planes + research + UI + misc** — `planes/*.py`, `research/*.py`, `static/*`, `ops_runner.py`, `crash_trace.py`, `schwab_*_inventory*.py`, `schwab_field_dictionary_builder.py`, `micro_structure.py`, `adaptive_shadow_v2_calibration.py`, `print_*.py`, `compare_clustering_modes.py`. Depends: §B, §C. SHA: __________
 
 ---
 

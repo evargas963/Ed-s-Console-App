@@ -225,7 +225,9 @@ Commit closure notes (reconciled to `main`; supersedes informal 2026-05-07 “wo
 
 ---
 
-## KEY LEVELS sweep closure summary (2026-05-16, branch `feature/institutional-key-levels`)
+## KEY LEVELS sweep closure summary (2026-05-16, branch `feature/institutional-key-levels`) — WITHDRAWN pending §D
+
+**Status:** Prior YES at `82615fa` withdrawn. Categorical §4 inventory archived; §D requires `TraceableDerivation` + chain-of-trust closure before re-acceptance.
 
 | Item | Register IDs | Status | Evidence commit(s) |
 |------|----------------|--------|-------------------|
@@ -785,7 +787,7 @@ This register is not yet complete. It is the active replacement plan.
 
 ```text
 repo_wide_derived_field_replacement_status = OPEN
-key_levels_input_sweep_status = CLOSED
+key_levels_input_sweep_status = WITHDRAWN_PENDING_SECTION_D
 price_quote_inventory = DRAFTED
 option_chain_inventory = DRAFTED
 model_training_inventory = DRAFTED

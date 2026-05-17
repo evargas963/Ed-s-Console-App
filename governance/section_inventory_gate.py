@@ -2,11 +2,11 @@
 Shared inventory coverage gate for section-by-section Schwab derivation audits.
 
 Every ``def`` / ``async def`` in a section file (module, class method, nested helper)
-must have an inventory row whose ``derivation`` equals the qualified name:
+must have an inventory row whose ``derivation`` equals the qualified name.
 
-- module-level: ``normalize_bar``
-- class method: ``WebSocketBarStream.connect``
-- nested helper: ``normalize_bar._f``
+Active inventories use ``governance.traceable_derivation.TraceableDerivation``
+(structured inputs + validated Schwab paths). Legacy categorical inventories live under
+``governance/archive/legacy_categorical_inventories_v1/``.
 """
 
 from __future__ import annotations
@@ -158,6 +158,35 @@ def assert_inventory_covers_all_functions(
             )
 
     assert not errors, "Section inventory coverage gaps:\n" + "\n".join(errors)
+
+
+def assert_traceable_inventory_covers_all_functions(
+    repo_root: Path,
+    section_files: frozenset[str],
+    inventory: tuple,
+    *,
+    derivation_attr: str = "derivation",
+    file_attr: str = "file",
+) -> None:
+    """AST coverage gate + TraceableDerivation schema validation."""
+    from governance.traceable_derivation import TraceableDerivation, assert_inventory_is_traceable
+
+    assert_inventory_covers_all_functions(
+        repo_root,
+        section_files,
+        inventory,
+        derivation_attr=derivation_attr,
+        file_attr=file_attr,
+    )
+    rows = tuple(
+        r for r in inventory if isinstance(r, TraceableDerivation)
+    )
+    if len(rows) != len(inventory):
+        raise AssertionError(
+            "inventory must be tuple[TraceableDerivation, ...]; "
+            "legacy DerivationRecord is archived"
+        )
+    assert_inventory_is_traceable(rows)
 
 
 # Backward-compatible alias (module-level only — prefer assert_inventory_covers_all_functions)
