@@ -1,4 +1,4 @@
-"""Mega 3 (§H+§I) traceable inventory gate — cross-mega chain-of-trust with Mega 1+2."""
+"""Mega 3 (§F+§G) traceable inventory gate — cross-mega chain-of-trust with Mega 1+2."""
 
 from __future__ import annotations
 

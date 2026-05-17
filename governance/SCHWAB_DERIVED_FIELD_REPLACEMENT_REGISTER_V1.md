@@ -697,7 +697,7 @@ Per-function detail in `governance/mega2_traceable_inventory.py`.
 
 ---
 
-## Mega 3 traceable inventory (§H + §I)
+## Mega 3 traceable inventory (§F + §G)
 
 Walked **26** modules at **full AST scope**. **121** `Mega3TraceableDerivation` rows in `governance/mega3_traceable_inventory.py`. Cross-mega chain-of-trust via `governance/mega_chain_of_trust.py` (resolves Mega 3 `DERIVED` producer_refs into Mega 1 + Mega 2 + Mega 3 merged index). Gate: `tests/test_mega3_traceable_audit.py`. **Inventory-only commit; no production code changes.**
 
@@ -713,6 +713,25 @@ Walked **26** modules at **full AST scope**. **121** `Mega3TraceableDerivation` 
 **Scope (exactly 26 files):** `monte_carlo.py`, `mc_fusion_adjustment.py`, `volatility_regime.py`, `regime_engine.py`, and **22** `features/*.py` modules listed in `governance/mega3_traceable_inventory.py` (`MEGA3_FILES`).
 
 Per-function detail in `governance/mega3_traceable_inventory.py`.
+
+---
+
+## Mega 4 traceable inventory (§H + §I)
+
+Walked **82** modules at **full AST scope** (85 schedule paths; excludes zero-def `calibration/__init__.py`, `arch_competition/__init__.py`, `arch_competition/exceptions.py`). **713** `Mega4TraceableDerivation` rows in `governance/mega4_traceable_inventory.py`. Cross-mega chain-of-trust via `governance/mega_chain_of_trust.py` (resolves Mega 4 `DERIVED` producer_refs into Mega 1 + Mega 2 + Mega 3 + Mega 4 merged index). Gate: `tests/test_mega4_traceable_audit.py`. **Inventory-only commit; no production code changes.**
+
+| disposition | count |
+|---|---:|
+| SCHWAB_LEAF | 0 |
+| REPLACED | 0 |
+| DERIVED | 37 |
+| ALLOWLISTED | 457 |
+| NONE | 219 |
+| **total** | **713** |
+
+**Scope (82 files):** 17 ML/training modules, 49 `calibration/*.py`, `bayesian_fusion.py`, `governed_stack_contract.py`, 13 `arch_competition/*.py` — see `MEGA4_FILES` in `governance/mega4_traceable_inventory.py`.
+
+Per-function detail in `governance/mega4_traceable_inventory.py`.
 
 ---
 

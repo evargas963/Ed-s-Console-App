@@ -1,4 +1,4 @@
-"""Mega 3 traceable inventory (§H+§I) — MC/regime + features."""
+"""Mega 3 traceable inventory (§F+§G) — MC/regime + features."""
 
 from __future__ import annotations
 
