@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
+
+log = logging.getLogger(__name__)
 
 AUDIT_RECORD_SCHEMA_VERSION = "1"
 
@@ -67,7 +70,8 @@ def load_recent_audit_records(model_dir: Path, *, limit: int = 50) -> list[dict[
             continue
         try:
             out.append(json.loads(line))
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            log.warning("governance audit log line corrupted (skipped): %s", exc)
             continue
     return out
 
