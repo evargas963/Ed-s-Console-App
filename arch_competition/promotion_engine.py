@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
+
 from arch_competition.exceptions import PromotionGovernanceError
 
 PROMOTION_RECORD_SCHEMA_VERSION = "1"
@@ -48,6 +50,7 @@ class PromotionPolicy:
     require_stability_pass: bool = True
     require_calibration_ece_pass: bool = True
     require_confidence_reliability_summary: bool = True
+    require_min_samples_statistical: bool = True
     veto_regime_degradation: bool = True
     # Empirical validation (calibration / rolling stability) — applied when manifest includes summaries.
     max_ece_regression_vs_incumbent: float = 0.12  # cascade ECE may not exceed parallel ECE by more than this
@@ -105,6 +108,22 @@ def decide_promotion(
 
     blocked: list[dict[str, str]] = []
     reasons: list[dict[str, str]] = []
+
+    if pol.require_min_samples_statistical:
+        below_min = evaluation_manifest.get("evaluation_n_below_min_samples_statistical")
+        if below_min is None:
+            try:
+                n_scored = int(mp.get("n_rows_scored") or 0)
+            except (TypeError, ValueError):
+                n_scored = 0
+            below_min = n_scored < MIN_SAMPLES_STATISTICAL
+        if below_min:
+            blocked.append(
+                _reason(
+                    "MISSING_MIN_SAMPLES_STATISTICAL",
+                    f"evaluation n_rows_scored below MIN_SAMPLES_STATISTICAL ({MIN_SAMPLES_STATISTICAL})",
+                )
+            )
 
     pll = mp.get("log_loss")
     cll = mc.get("log_loss")
@@ -303,6 +322,7 @@ def decide_promotion(
             "max_stability_std_vs_incumbent": pol.max_stability_std_vs_incumbent,
             "require_calibration_ece_pass": pol.require_calibration_ece_pass,
             "require_confidence_reliability_summary": pol.require_confidence_reliability_summary,
+            "require_min_samples_statistical": pol.require_min_samples_statistical,
             "max_ece_regression_vs_incumbent": pol.max_ece_regression_vs_incumbent,
             "veto_cascade_rolling_calibration_degradation": pol.veto_cascade_rolling_calibration_degradation,
             "veto_regime_degradation": pol.veto_regime_degradation,

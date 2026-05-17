@@ -376,11 +376,14 @@ def test_row_count_mismatch_fails():
 
 
 def test_missing_probability_vectors_fail_closed_when_n_sufficient():
+    from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
+
     detail = {"prob_rows": [], "y_true": [], "rows_used": []}
+    n = MIN_SAMPLES_STATISTICAL
     with (
         patch("arch_competition.eval_runner.validate_parallel_cascade_manifest_lineage", return_value=_base_lineage()),
-        patch("ml_scheduler._evaluate_parallel_on_full_rth", return_value=(0.5, 0.5, 20, 0.5, {}, detail)),
-        patch("ml_scheduler._evaluate_cascade_on_full_rth", return_value=(0.5, 0.5, 20, 0.5, {}, detail)),
+        patch("ml_scheduler._evaluate_parallel_on_full_rth", return_value=(0.5, 0.5, n, 0.5, {}, detail)),
+        patch("ml_scheduler._evaluate_cascade_on_full_rth", return_value=(0.5, 0.5, n, 0.5, {}, detail)),
     ):
         with pytest.raises(EvaluationLineageError, match="missing prob_rows"):
             run_architecture_pair_evaluation(
@@ -390,6 +393,25 @@ def test_missing_probability_vectors_fail_closed_when_n_sufficient():
                 cascade_model_dir=Path("/c"),
                 ml_horizon_slug="1c",
             )
+
+
+def test_promotion_blocks_when_below_min_samples_statistical_flag():
+    m = _promotable_manifest()
+    m["evaluation_n_below_min_samples_statistical"] = True
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    codes = [x["code"] for x in rec["blocked_promotion_flags"]]
+    assert "MISSING_MIN_SAMPLES_STATISTICAL" in codes
+
+
+def test_promotion_blocks_when_n_below_floor_without_flag():
+    m = _promotable_manifest()
+    m["metrics"]["parallel"]["n_rows_scored"] = 15
+    m["metrics"]["cascade"]["n_rows_scored"] = 15
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    codes = [x["code"] for x in rec["blocked_promotion_flags"]]
+    assert "MISSING_MIN_SAMPLES_STATISTICAL" in codes
 
 
 def test_arch_competition_modules_do_not_call_run_base_models_once():

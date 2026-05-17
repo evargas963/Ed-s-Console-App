@@ -14,6 +14,8 @@ from typing import Any, Optional, Set
 
 from ml_horizon import normalize_ml_horizon_slug, outcome_column
 
+from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
+
 from arch_competition.exceptions import EvaluationLineageError
 from arch_competition.lineage import validate_parallel_cascade_manifest_lineage
 from arch_competition.metrics import (
@@ -65,7 +67,7 @@ def _validate_probability_detail(
     detail: dict[str, Any],
 ) -> None:
     """Fail-closed when calibration requires aligned probability vectors."""
-    if n_rows_scored < 10:
+    if n_rows_scored < MIN_SAMPLES_STATISTICAL:
         return
     y_true = detail.get("y_true") or []
     prob_rows = detail.get("prob_rows") or []
@@ -355,6 +357,7 @@ def run_architecture_pair_evaluation(
         "confidence_reliability_summary": confidence_reliability_summary,
         "rolling_stability_summary": rolling_stability_summary,
         "empirical_validation": empirical_validation,
+        "evaluation_n_below_min_samples_statistical": pn < MIN_SAMPLES_STATISTICAL,
     }
     missing = EVALUATION_MANIFEST_REQUIRED_KEYS - manifest.keys()
     if missing:
