@@ -18,6 +18,7 @@ from arch_competition.scheduler_integration import (
     evaluation_manifest_path,
     promotion_decision_path,
 )
+from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
 from training_cache import _normalize_data_fp, compute_training_code_fingerprint, db_training_fingerprint
 
 LIVE_DRIFT_MONITORING_SCHEMA_VERSION = "1"
@@ -38,6 +39,7 @@ REASON_DATA_FINGERPRINT_COMPARE_UNAVAILABLE = "DATA_FINGERPRINT_COMPARE_UNAVAILA
 REASON_CODE_FINGERPRINT_DRIFT = "TRAINING_CODE_FINGERPRINT_DRIFT_VS_LINEAGE"
 REASON_EVALUATION_STALE = "EVALUATION_MANIFEST_STALE_AGE"
 REASON_MODEL_MANIFEST_STALE = "CANDIDATE_MODEL_MANIFEST_STALE_AGE"
+REASON_MODEL_DIR_UNAVAILABLE = "MODEL_DIR_UNAVAILABLE"
 REASON_RECENT_SLICE_INSUFFICIENT = "RECENT_SLICE_INSUFFICIENT_REALIZED_ROWS"
 REASON_RECENT_SLICE_DISABLED = "RECENT_SLICE_EVALUATION_DISABLED"
 REASON_RECENT_SLICE_FAILED = "RECENT_SLICE_EVALUATION_FAILED"
@@ -250,10 +252,40 @@ def build_live_drift_monitoring_payload(
             }
         )
 
-    par_dir = Path(str(manifest.get("parallel_model_dir") or ""))
-    cas_dir = Path(str(manifest.get("cascade_model_dir") or ""))
-    pm_par = par_dir / "scheduler_run_manifest.json" if par_dir.is_dir() else None
-    pm_cas = cas_dir / "scheduler_run_manifest.json" if cas_dir.is_dir() else None
+    par_raw = manifest.get("parallel_model_dir")
+    cas_raw = manifest.get("cascade_model_dir")
+    par_dir = Path(str(par_raw)) if par_raw not in (None, "") else None
+    cas_dir = Path(str(cas_raw)) if cas_raw not in (None, "") else None
+    model_dirs_ok = (
+        par_dir is not None
+        and par_dir.is_dir()
+        and cas_dir is not None
+        and cas_dir.is_dir()
+    )
+    if not model_dirs_ok:
+        missing_dirs: list[str] = []
+        if par_dir is None or not par_dir.is_dir():
+            missing_dirs.append("parallel")
+        if cas_dir is None or not cas_dir.is_dir():
+            missing_dirs.append("cascade")
+        out["signals"].append(
+            {
+                "severity": DRIFT_SEVERITY_WARNING,
+                "reason_code": REASON_MODEL_DIR_UNAVAILABLE,
+                "evidence": f"candidate model_dir unavailable: {', '.join(missing_dirs)}",
+                "source": "evaluation_manifest.parallel_model_dir|cascade_model_dir",
+            }
+        )
+    pm_par = (
+        par_dir / "scheduler_run_manifest.json"
+        if par_dir is not None and par_dir.is_dir()
+        else None
+    )
+    pm_cas = (
+        cas_dir / "scheduler_run_manifest.json"
+        if cas_dir is not None and cas_dir.is_dir()
+        else None
+    )
     trained_ts: list[tuple[str, float | None]] = []
     for label, pm in ("parallel", pm_par), ("cascade", pm_cas):
         if pm is None or not pm.is_file():
@@ -305,13 +337,19 @@ def build_live_drift_monitoring_payload(
             "data_fingerprint_matches_lineage": not data_drift,
         }
     out["evaluation_freshness_summary"] = eval_fresh
-    out["model_freshness_summary"] = {
-        "state": "ok",
-        "parallel_model_dir": str(par_dir.resolve()) if par_dir.is_dir() else None,
-        "cascade_model_dir": str(cas_dir.resolve()) if cas_dir.is_dir() else None,
+    model_freshness: dict[str, Any] = {
+        "state": "ok" if model_dirs_ok else "unavailable",
+        "parallel_model_dir": str(par_dir.resolve()) if par_dir is not None and par_dir.is_dir() else None,
+        "cascade_model_dir": str(cas_dir.resolve()) if cas_dir is not None and cas_dir.is_dir() else None,
         "candidate_trained_age_days": {k: v for k, v in trained_ts},
         "stale_candidate_warning": model_stale,
     }
+    if not model_dirs_ok:
+        model_freshness["reason_code"] = REASON_MODEL_DIR_UNAVAILABLE
+        model_freshness["evidence"] = (
+            "evaluation manifest parallel_model_dir and/or cascade_model_dir missing or not a directory"
+        )
+    out["model_freshness_summary"] = model_freshness
     out["promotion_validity_summary"] = {
         "state": "ok",
         "promotion_decision_source": str(pr_path.resolve()),
@@ -404,11 +442,14 @@ def build_live_drift_monitoring_payload(
             r_ece_p = rp.get("calibration_ece")
             r_ece_c = rc.get("calibration_ece")
             n_recent = rp.get("n_rows_scored")
-            if n_recent is not None and int(n_recent) < 10:
+            if n_recent is not None and int(n_recent) < MIN_SAMPLES_STATISTICAL:
                 out["calibration_drift_summary"] = {
                     "state": "unavailable",
                     "reason_code": REASON_RECENT_SLICE_INSUFFICIENT,
-                    "evidence": f"recent slice n_rows_scored={n_recent}",
+                    "evidence": (
+                        f"recent slice n_rows_scored={n_recent} "
+                        f"(requires >= {MIN_SAMPLES_STATISTICAL})"
+                    ),
                     "baseline_ece_parallel": base_ece_p,
                     "baseline_ece_cascade": base_ece_c,
                 }
