@@ -1,0 +1,127 @@
+"""Fail-closed: production code must not use .get('datetime', 0) silent synthesis."""
+
+from __future__ import annotations
+
+import re
+from datetime import datetime, timedelta
+from pathlib import Path
+from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+
+_DATETIME_DEFAULT_ZERO = re.compile(r"""\.get\(\s*["']datetime["']\s*,\s*0\s*\)""")
+
+_SKIP_DIR_PARTS = frozenset(
+    {
+        ".git",
+        ".claude",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "node_modules",
+        ".pytest_cache",
+        "backups",
+        "governance",
+        "tests",
+        "tools",
+        "calibration",
+        "verification",
+        "arch_competition",
+    }
+)
+
+# Explicit allowlist only if a documented exception is required (empty by default).
+_DATETIME_DEFAULT_ZERO_ALLOWLIST: frozenset[str] = frozenset()
+
+
+def test_no_datetime_default_zero_in_production_py():
+    hits: list[str] = []
+    for path in ROOT.rglob("*.py"):
+        if any(part in _SKIP_DIR_PARTS for part in path.parts):
+            continue
+        rel = path.relative_to(ROOT).as_posix()
+        if rel in _DATETIME_DEFAULT_ZERO_ALLOWLIST:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for i, line in enumerate(text.splitlines(), start=1):
+            if _DATETIME_DEFAULT_ZERO.search(line):
+                hits.append(f"{rel}:{i}:{line.strip()}")
+    assert hits == [], f".get('datetime', 0) remains in production code: {hits}"
+
+
+def test_fetch_price_levels_skips_candle_missing_datetime():
+    from market_context import fetch_price_levels
+
+    et = ZoneInfo("America/New_York")
+    yday = (datetime.now(et) - timedelta(days=1)).replace(
+        hour=11, minute=0, second=0, microsecond=0
+    )
+    dt_ms = int(yday.timestamp() * 1000)
+
+    valid = {
+        "datetime": dt_ms,
+        "open": 40.0,
+        "high": 50.0,
+        "low": 39.0,
+        "close": 45.0,
+        "volume": 1000,
+    }
+    poison = {
+        "open": 1.0,
+        "high": 888.0,
+        "low": 1.0,
+        "close": 2.0,
+        "volume": 50,
+    }
+
+    client = MagicMock()
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {"candles": [valid, poison]}
+    client.get_price_history.return_value = resp
+
+    pl = fetch_price_levels(client, "SPY")
+    assert pl.pdh == 50.0
+
+
+def test_candle_accumulator_seed_skips_missing_datetime():
+    from server import _CandleAccumulator
+
+    acc = _CandleAccumulator(bar_seconds=60, max_bars=25)
+    bars = [
+        {
+            "datetime": 1_710_000_000_000,
+            "open": 1.0,
+            "high": 2.0,
+            "low": 0.5,
+            "close": 1.5,
+            "volume": 100.0,
+        },
+        {
+            "open": 9.0,
+            "high": 9.0,
+            "low": 9.0,
+            "close": 9.0,
+            "volume": 9.0,
+        },
+    ]
+    acc.seed("SPY", bars)
+    seeded = acc.get_bars("SPY")
+    assert len(seeded) == 1
+    assert seeded[0].high == 2.0
+
+
+def test_returns_from_candles_skips_missing_datetime():
+    from math_exposure_core import returns_from_candles
+
+    out = returns_from_candles(
+        [
+            {"close": 100.0},
+            {"datetime": 1_704_067_800_000, "close": 101.0},
+            {"datetime": 1_704_154_200_000, "close": 102.0},
+        ]
+    )
+    assert len(out) == 1
