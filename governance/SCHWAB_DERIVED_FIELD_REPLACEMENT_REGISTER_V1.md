@@ -659,6 +659,25 @@ Per-function detail in `governance/section16_derivation_inventory.py`.
 
 ---
 
+## Mega 1 traceable inventory (§A + §B + §C)
+
+Walked **17** modules at **full AST scope** (module + class + nested `def`). **305** `Mega1TraceableDerivation` rows in `governance/mega1_traceable_inventory.py`: **25** SCHWAB_LEAF, **4** REPLACED, **108** DERIVED, **5** ALLOWLISTED, **163** NONE. Legacy categorical §1–§3 inventories archived — not closure evidence. Gate: `tests/test_mega1_traceable_audit.py` (`test_mega1_inventory_covers_every_function`, `test_mega1_chain_of_trust_closes`, `test_mega1_scope_complete`). Allowlist: `governance/CHAIN_OF_TRUST_ALLOWLIST.py`. **Inventory-only commit; no production code changes.**
+
+| disposition | count |
+|---|---:|
+| SCHWAB_LEAF | 25 |
+| REPLACED | 4 |
+| DERIVED | 108 |
+| ALLOWLISTED | 5 |
+| NONE | 163 |
+| **total** | **305** |
+
+**Scope (exactly 17 files):** `schwab_client.py`, `reauth_schwab.py`, `websocket_adapter.py`, `polling_adapter.py`, `sse_adapter.py`, `market_data_adapter.py`, `snapshot_normalizer.py`, `snapshot_access.py`, `server.py`, `live_market_plane.py`, `live_decision_bundle.py`, `live_pipeline_diag.py`, `live_vs_replay_validation.py`, `market_context.py`, `market_state.py`, `math_snapshot_derive.py`.
+
+Per-function detail in `governance/mega1_traceable_inventory.py`.
+
+---
+
 ## CAPS allowlist (silent-default substitution family)
 
 Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  
