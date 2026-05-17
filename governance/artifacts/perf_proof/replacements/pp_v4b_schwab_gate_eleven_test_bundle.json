@@ -43,18 +43,16 @@
   "register_link": {
     "status": "composite_bundle_retroactive",
     "replaced_register_ids": [
-      "08f4d7635ae6d1af4de4",
-      "1cd307e938ab36e9cef7",
-      "2d1e07d36bc82771c52b",
-      "406c78db9d558e7ada19",
-      "9701c3a704a28d9975b6",
-      "a097ac90251efab43d75",
-      "accb9be2be1ea1bf6958",
-      "b26e314387485b8314ce",
-      "ed7951c063bf0d5f2ca0",
-      "f0001a762e26a2405f48",
-      "f9721ce87e339a2839ec",
-      "faec0c2b0585f21a3389"
+      "08cd89d370d7acdd3f51",
+      "0de26661012987e4ea34",
+      "59174121eab85464b266",
+      "7dd4bae6afb1f64c3857",
+      "8a8b08dc2614f232ac31",
+      "8ad3d3ee35c8cdab4ed1",
+      "92548e5fe218f65460e1",
+      "a60be743d367ba4e7b58",
+      "e59fae4fec292a2935b6",
+      "eef2850e2b283c57adc1"
     ],
     "wrapped_proof_ids": [
       "pp_v4b_market_state_oe_chain_snapshot.json",

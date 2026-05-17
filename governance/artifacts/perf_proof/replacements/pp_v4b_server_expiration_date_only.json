@@ -32,12 +32,10 @@
   "register_link": {
     "status": "bound_retroactive",
     "replaced_register_ids": [
-      "08f4d7635ae6d1af4de4",
-      "2d1e07d36bc82771c52b",
-      "a097ac90251efab43d75",
-      "b26e314387485b8314ce",
-      "f0001a762e26a2405f48",
-      "faec0c2b0585f21a3389"
+      "8a8b08dc2614f232ac31",
+      "a60be743d367ba4e7b58",
+      "e59fae4fec292a2935b6",
+      "eef2850e2b283c57adc1"
     ]
   }
 }

@@ -38,6 +38,27 @@ def _proof_suffix(governed_ref: str) -> str | None:
     return None
 
 
+def _collect_replaced_by_proof(register_path: Path) -> tuple[int, dict[str, list[str]]]:
+    """Stream register once; group REPLACED register_ids by perf_proof governed_ref suffix."""
+    replaced_by_proof: dict[str, list[str]] = defaultdict(list)
+    n_rows = 0
+    with register_path.open(newline="", encoding="utf-8") as fin:
+        reader = csv.DictReader(fin)
+        if not reader.fieldnames:
+            raise SystemExit("register CSV missing header")
+        for row in reader:
+            n_rows += 1
+            disp = (row.get("disposition") or "").strip()
+            if disp != "REPLACED":
+                continue
+            proof = _proof_suffix(row.get("governed_ref") or "")
+            if proof:
+                replaced_by_proof[proof].append((row.get("register_id") or "").strip())
+    for k in list(replaced_by_proof.keys()):
+        replaced_by_proof[k] = sorted({x for x in replaced_by_proof[k] if x})
+    return n_rows, dict(replaced_by_proof)
+
+
 def _stream_patch_and_collect(
     register_path: Path,
     tmp_path: Path,
@@ -127,6 +148,11 @@ def main() -> int:
         help="Comma-separated register_id values to revert to UNREVIEWED.",
     )
     ap.add_argument(
+        "--sync-only",
+        action="store_true",
+        help="Resync perf_proof register_link arrays from register CSV only (no row reverts).",
+    )
+    ap.add_argument(
         "--dry-run",
         action="store_true",
         help="Print actions only; do not write register or JSON.",
@@ -137,6 +163,31 @@ def main() -> int:
     if not reg.is_file():
         print(f"missing register: {reg}", flush=True)
         return 2
+
+    if args.sync_only:
+        if args.dry_run:
+            print(f"would sync perf_proof links from {reg}", flush=True)
+            return 0
+        n_rows, by_proof = _collect_replaced_by_proof(reg)
+        _write_perf_json(by_proof)
+        sha256_hex, size_b = _sha256_and_size(reg)
+        _update_register_meta(sha256_hex, size_b, n_rows)
+        union = sorted({rid for ids in by_proof.values() for rid in ids})
+        print(
+            json.dumps(
+                {
+                    "sync_only": True,
+                    "n_rows": n_rows,
+                    "replaced_by_proof": by_proof,
+                    "replaced_union_count": len(union),
+                    "register_content_sha256": sha256_hex,
+                    "register_size_bytes": size_b,
+                },
+                indent=2,
+            ),
+            flush=True,
+        )
+        return 0
 
     tmp = reg.with_suffix(reg.suffix + ".stream_patch_tmp")
     if args.dry_run:
