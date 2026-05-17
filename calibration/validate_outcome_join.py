@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sqlite3
 import sys
 from pathlib import Path
@@ -19,14 +20,20 @@ from calibration.canonical_enforcement import (
     CalibrationCanonicalViolationError,
     enforce_calibration_decision_log_only_1m,
 )
+from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
-from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.trust import CALIBRATION_TRUST_LEGACY, CALIBRATION_TRUST_TRUSTED
+
+log = logging.getLogger(__name__)
 
 try:
     from db import configure_sqlite_connection
-except Exception:
+except ImportError as e:
+    log.warning(
+        "db.configure_sqlite_connection not available — using no-op stub: %s",
+        e,
+    )
 
     def configure_sqlite_connection(conn, **kwargs):
         pass
@@ -140,15 +147,14 @@ def analyze(db_path: Path, *, trusted_only: bool = True) -> dict[str, Any]:
         """
     ).fetchall()
 
+    snap_verify_sql = get_snapshot_sql("calibration/validate_outcome_join.py:118")
+
     for r in joined:
         key_ts = r["matched_snapshot_ts_utc"]
         if key_ts is None:
             key_ts = r["decision_ts_utc"]
         key_ts = float(key_ts)
-        snap = conn.execute(
-            get_snapshot_sql("calibration/validate_outcome_join.py:118"),
-            (r["ticker"], key_ts),
-        ).fetchall()
+        snap = conn.execute(snap_verify_sql, (r["ticker"], key_ts)).fetchall()
         if len(snap) != 1:
             out["verification_fail"] += 1
             out["verification_fail_examples"].append(
@@ -162,14 +168,14 @@ def analyze(db_path: Path, *, trusted_only: bool = True) -> dict[str, Any]:
             )
             continue
         s0 = snap[0]
-        ok = True
+        mismatch_field = None
         for col in _OUTCOME_COLS:
             cv = r[col]
             sv = s0[col]
             if not _outcome_field_equal(cv, sv, numeric=col.endswith("_pts")):
-                ok = False
+                mismatch_field = col
                 break
-        if ok:
+        if mismatch_field is None:
             out["verification_pass"] += 1
         else:
             out["verification_fail"] += 1
@@ -179,15 +185,18 @@ def analyze(db_path: Path, *, trusted_only: bool = True) -> dict[str, Any]:
                     "reason": "outcome_mismatch_vs_snapshot",
                     "ticker": r["ticker"],
                     "key_ts_utc": key_ts,
+                    "mismatch_field": mismatch_field,
+                    "calib_value": r[mismatch_field],
+                    "snap_value": s0[mismatch_field],
                 }
             )
 
-    # C) Manual sample: random 20 rows with outcomes that passed verification (or first 20)
+    # C) Manual sample: same outcome contract as §B (labels + pts)
     sample_src = conn.execute(
         f"""
-        SELECT c.id, c.ticker, c.decision_ts_utc, c.matched_snapshot_ts_utc,
+        SELECT c.id, c.ticker, c.decision_ts_utc, c.matched_snapshot_ts_utc, c.outcome_join_method,
                c.outcome_1c, c.outcome_5c, c.outcome_15c, c.outcome_60c,
-               c.outcome_join_method
+               c.outcome_1c_pts, c.outcome_5c_pts, c.outcome_15c_pts, c.outcome_60c_pts
         FROM calibration_decision_log c
         WHERE c.outcome_5c IS NOT NULL AND ({cc})
         ORDER BY RANDOM() LIMIT 20
@@ -197,19 +206,13 @@ def analyze(db_path: Path, *, trusted_only: bool = True) -> dict[str, Any]:
         kt = r["matched_snapshot_ts_utc"]
         if kt is None:
             kt = r["decision_ts_utc"]
-        s = conn.execute(
-            get_snapshot_sql("calibration/validate_outcome_join.py:181"),
-            (r["ticker"], float(kt)),
-        ).fetchone()
-        horizons_ok = True
+        s = conn.execute(snap_verify_sql, (r["ticker"], float(kt))).fetchone()
+        mismatch_field = None
         if s:
-            for hc in ("outcome_1c", "outcome_5c", "outcome_15c", "outcome_60c"):
-                cv, sv = r[hc], s[hc]
-                if not _outcome_field_equal(cv, sv, numeric=False):
-                    horizons_ok = False
+            for col in _OUTCOME_COLS:
+                if not _outcome_field_equal(r[col], s[col], numeric=col.endswith("_pts")):
+                    mismatch_field = col
                     break
-        else:
-            horizons_ok = False
         out["manual_sample"].append(
             {
                 "calib_id": r["id"],
@@ -226,8 +229,11 @@ def analyze(db_path: Path, *, trusted_only: bool = True) -> dict[str, Any]:
                 "outcome_15c_snap": s["outcome_15c"] if s else None,
                 "outcome_60c_calib": r["outcome_60c"],
                 "outcome_60c_snap": s["outcome_60c"] if s else None,
+                "outcome_5c_pts_calib": r["outcome_5c_pts"],
+                "outcome_5c_pts_snap": s["outcome_5c_pts"] if s else None,
                 "snapshot_row_found": s is not None,
-                "all_horizons_match_snapshot_row": horizons_ok,
+                "all_outcome_fields_match_snapshot_row": mismatch_field is None and s is not None,
+                "mismatch_field": mismatch_field,
             }
         )
 
@@ -260,8 +266,8 @@ def analyze(db_path: Path, *, trusted_only: bool = True) -> dict[str, Any]:
         out["ambiguous_exact_ts_duplicate_snapshots"] == 0
         and out["verification_fail"] == 0
         and out["rows_with_outcomes"] == out["verification_pass"]
+        and out["rows_with_outcomes"] > 0
     )
-    # Production-scope gate: trusted rows must have outcomes attached (no vacuous pass on 0 rows).
     out["binary_pass_strict_production"] = bool(
         out["binary_pass"]
         and (not trusted_only or int(out.get("rows_pending_outcomes") or 0) == 0)
@@ -285,7 +291,7 @@ def main() -> int:
     register_allow_noncanonical_flag(ap)
     args = ap.parse_args()
     if not args.db.is_file():
-        print(json.dumps({"error": "db not found"}))
+        print(json.dumps({"error": "db not found", "binary_pass": False}, indent=2))
         return 1
     require_canonical_db_target(
         args,
@@ -295,7 +301,7 @@ def main() -> int:
     try:
         data = analyze(args.db, trusted_only=not args.include_legacy)
     except CalibrationCanonicalViolationError as e:
-        print(json.dumps({"error": str(e), "binary_pass": False}))
+        print(json.dumps({"error": str(e), "binary_pass": False}, indent=2))
         return 2
     print(json.dumps(data, indent=2))
     if args.strict_production:
