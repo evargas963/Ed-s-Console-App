@@ -298,9 +298,18 @@ def _authority_block(
     )
 
     policy_calibration_ok = False
+    policy_calibration_status = "no_winner"
     if winner:
         ece = by_config[winner].get("calibration_top_predicted_class_ece")
-        policy_calibration_ok = ece is None or float(ece) < 0.35
+        if ece is None:
+            policy_calibration_status = "missing_ece"
+            policy_calibration_ok = False
+        elif float(ece) < 0.35:
+            policy_calibration_status = "ok"
+            policy_calibration_ok = True
+        else:
+            policy_calibration_status = "above_threshold"
+            policy_calibration_ok = False
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -327,6 +336,7 @@ def _authority_block(
         "uniform_baseline_log_loss": UNIFORM_3CLASS_LOG_LOSS,
         "deployable_now_governance_heuristic": deployable,
         "policy_calibration_may_proceed_heuristic": policy_calibration_ok,
+        "policy_calibration_status": policy_calibration_status,
         "trade_plan_work_may_proceed_heuristic": bool(deployable and policy_calibration_ok),
         "notes": (
             "Heuristic gates only — arch_competition.promotion_engine.decide_promotion applies to "
