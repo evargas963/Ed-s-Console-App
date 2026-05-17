@@ -7,19 +7,32 @@ Does not promote, rollback, or change ``run_base_models_once`` / production defa
 from __future__ import annotations
 
 import json
-import os
+import logging
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from ml_horizon import normalize_ml_horizon_slug, outcome_column
 
+from arch_competition.atomic_io import write_json_file_atomically
+from arch_competition.eval_runner import run_architecture_pair_evaluation
+from arch_competition.exceptions import EvaluationLineageError, PromotionGovernanceError
 from arch_competition.scheduler_integration import (
+    arch_competition_ticker_dir,
     evaluation_manifest_path,
     promotion_decision_path,
+    validate_persisted_governed_artifacts_or_raise,
 )
 from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
-from training_cache import _normalize_data_fp, compute_training_code_fingerprint, db_training_fingerprint
+from training_cache import (
+    _normalize_data_fp,
+    compute_training_code_fingerprint,
+    db_distinct_rth_et_dates_for_ticker,
+    db_training_fingerprint,
+)
+
+log = logging.getLogger(__name__)
 
 LIVE_DRIFT_MONITORING_SCHEMA_VERSION = "1"
 
@@ -31,6 +44,7 @@ DRIFT_SEVERITY_PROMOTION_BLOCKER = "promotion_blocker"
 DRIFT_SEVERITY_ROLLBACK_WATCH = "rollback_watch"
 
 REASON_BASELINE_MANIFEST_MISSING = "GOVERNED_BASELINE_MANIFEST_MISSING"
+REASON_BASELINE_MANIFEST_INVALID = "GOVERNED_BASELINE_MANIFEST_INVALID"
 REASON_LINEAGE_INCOMPLETE = "LINEAGE_INCOMPLETE_FOR_DRIFT"
 REASON_HORIZON_MISMATCH = "HORIZON_MISMATCH_BASELINE_VS_REQUEST"
 REASON_DB_PATH_UNAVAILABLE = "DB_PATH_UNAVAILABLE"
@@ -39,6 +53,7 @@ REASON_DATA_FINGERPRINT_COMPARE_UNAVAILABLE = "DATA_FINGERPRINT_COMPARE_UNAVAILA
 REASON_CODE_FINGERPRINT_DRIFT = "TRAINING_CODE_FINGERPRINT_DRIFT_VS_LINEAGE"
 REASON_EVALUATION_STALE = "EVALUATION_MANIFEST_STALE_AGE"
 REASON_MODEL_MANIFEST_STALE = "CANDIDATE_MODEL_MANIFEST_STALE_AGE"
+REASON_MODEL_MANIFEST_INVALID = "CANDIDATE_MODEL_MANIFEST_INVALID"
 REASON_MODEL_DIR_UNAVAILABLE = "MODEL_DIR_UNAVAILABLE"
 REASON_RECENT_SLICE_INSUFFICIENT = "RECENT_SLICE_INSUFFICIENT_REALIZED_ROWS"
 REASON_RECENT_SLICE_DISABLED = "RECENT_SLICE_EVALUATION_DISABLED"
@@ -47,10 +62,6 @@ REASON_CALIBRATION_DRIFT_MATERIAL = "CALIBRATION_DRIFT_MATERIAL_VS_BASELINE"
 REASON_CONFIDENCE_DRIFT_MATERIAL = "CONFIDENCE_RELIABILITY_DRIFT_VS_BASELINE"
 REASON_REGIME_SHIFT = "REGIME_CONDITIONAL_CALIBRATION_SHIFT"
 REASON_ARCH_BASE_MISMATCH = "ARCHITECTURE_COMPARISON_BASE_MISMATCH"
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _parse_iso_utc(s: str | None) -> datetime | None:
@@ -62,7 +73,8 @@ def _parse_iso_utc(s: str | None) -> datetime | None:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt
-    except Exception:
+    except (ValueError, TypeError) as e:
+        log.warning("live_drift_monitoring: could not parse iso utc %r: %s", s, e)
         return None
 
 
@@ -73,18 +85,28 @@ def _age_days_utc(dt: datetime | None, now: datetime | None = None) -> float | N
     return max(0.0, (now - dt).total_seconds() / 86400.0)
 
 
+def _governed_baseline_failure_reason(error_message: str) -> str:
+    msg = error_message.lower()
+    if "missing evaluation manifest" in msg or "missing promotion decision" in msg:
+        return REASON_BASELINE_MANIFEST_MISSING
+    return REASON_BASELINE_MANIFEST_INVALID
+
+
 def _resolve_db_path(db_path: str | Path | None) -> Path | None:
     if db_path is not None:
         p = Path(db_path)
-        return p if str(p) else None
+        if not str(p).strip():
+            return None
+        return p
     from db import DB_PATH
 
+    if not str(DB_PATH or "").strip():
+        return None
     return Path(DB_PATH)
 
 
 def live_drift_monitoring_artifact_path(model_dir: Path, ml_horizon_slug: str, ticker: str) -> Path:
-    hz = str(ml_horizon_slug).strip().lower()
-    return model_dir / "arch_competition" / hz / ticker.upper() / "live_drift_monitoring.json"
+    return arch_competition_ticker_dir(model_dir, ml_horizon_slug, ticker) / "live_drift_monitoring.json"
 
 
 def persist_live_drift_monitoring(
@@ -95,8 +117,7 @@ def persist_live_drift_monitoring(
 ) -> Path:
     """Write governed live drift snapshot for UI/diagnostics (file-backed)."""
     p = live_drift_monitoring_artifact_path(model_dir, ml_horizon_slug, ticker)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    write_json_file_atomically(p, payload, indent=2, default=str)
     return p
 
 
@@ -145,24 +166,19 @@ def build_live_drift_monitoring_payload(
 
     ev_path = evaluation_manifest_path(model_dir, hz, tku)
     pr_path = promotion_decision_path(model_dir, hz, tku)
-    if not ev_path.is_file():
-        out["error"] = f"missing governed evaluation manifest: {ev_path}"
-        out["live_drift_summary"] = {"state": "error", "reason_code": REASON_BASELINE_MANIFEST_MISSING}
-        return out
-    if not pr_path.is_file():
-        out["error"] = f"missing governed promotion decision: {pr_path}"
-        out["live_drift_summary"] = {"state": "error", "reason_code": REASON_BASELINE_MANIFEST_MISSING}
-        return out
-
     try:
-        manifest = _read_json(ev_path)
-        prom = _read_json(pr_path)
-    except Exception as e:
-        out["error"] = f"invalid governed JSON: {e}"
-        out["live_drift_summary"] = {"state": "error", "reason_code": REASON_BASELINE_MANIFEST_MISSING}
+        manifest, prom = validate_persisted_governed_artifacts_or_raise(model_dir, hz, tku)
+    except PromotionGovernanceError as e:
+        err = str(e)
+        log.warning("live_drift_monitoring: governed baseline validation failed: %s", err)
+        out["error"] = err
+        out["live_drift_summary"] = {
+            "state": "error",
+            "reason_code": _governed_baseline_failure_reason(err),
+        }
         return out
 
-    if str(manifest.get("ml_horizon_slug", "")).strip().lower() != hz:
+    if normalize_ml_horizon_slug(str(manifest.get("ml_horizon_slug", ""))) != hz:
         out["error"] = "evaluation manifest horizon mismatch"
         out["live_drift_summary"] = {"state": "error", "reason_code": REASON_HORIZON_MISMATCH}
         out["signals"].append(
@@ -223,7 +239,8 @@ def build_live_drift_monitoring_payload(
 
     code_now = compute_training_code_fingerprint()
     code_lineage = str(lineage.get("training_code_fingerprint") or "")
-    code_drift = bool(code_lineage and code_now != code_lineage)
+    # lineage completeness validated above; empty training_code_fingerprint cannot reach here.
+    code_drift = code_now != code_lineage
     if code_drift:
         out["signals"].append(
             {
@@ -254,8 +271,8 @@ def build_live_drift_monitoring_payload(
 
     par_raw = manifest.get("parallel_model_dir")
     cas_raw = manifest.get("cascade_model_dir")
-    par_dir = Path(str(par_raw)) if par_raw not in (None, "") else None
-    cas_dir = Path(str(cas_raw)) if cas_raw not in (None, "") else None
+    par_dir = Path(par_raw) if isinstance(par_raw, (str, Path)) and str(par_raw).strip() else None
+    cas_dir = Path(cas_raw) if isinstance(cas_raw, (str, Path)) and str(cas_raw).strip() else None
     model_dirs_ok = (
         par_dir is not None
         and par_dir.is_dir()
@@ -292,11 +309,20 @@ def build_live_drift_monitoring_payload(
             trained_ts.append((label, None))
             continue
         try:
-            sm = _read_json(pm)
+            sm = json.loads(pm.read_text(encoding="utf-8"))
             tr = _parse_iso_utc(str(sm.get("trained_at") or ""))
             trained_ts.append((label, _age_days_utc(tr)))
-        except Exception:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+            log.warning("live_drift_monitoring: invalid scheduler manifest %s: %s", pm, e)
             trained_ts.append((label, None))
+            out["signals"].append(
+                {
+                    "severity": DRIFT_SEVERITY_WARNING,
+                    "reason_code": REASON_MODEL_MANIFEST_INVALID,
+                    "evidence": str(e),
+                    "source": str(pm),
+                }
+            )
 
     model_stale = False
     for label, age in trained_ts:
@@ -341,7 +367,7 @@ def build_live_drift_monitoring_payload(
         "state": "ok" if model_dirs_ok else "unavailable",
         "parallel_model_dir": str(par_dir.resolve()) if par_dir is not None and par_dir.is_dir() else None,
         "cascade_model_dir": str(cas_dir.resolve()) if cas_dir is not None and cas_dir.is_dir() else None,
-        "candidate_trained_age_days": {k: v for k, v in trained_ts},
+        "candidate_trained_age_days": dict(trained_ts),
         "stale_candidate_warning": model_stale,
     }
     if not model_dirs_ok:
@@ -396,8 +422,6 @@ def build_live_drift_monitoring_payload(
             recent_err = "db unavailable"
         else:
             try:
-                from training_cache import db_distinct_rth_et_dates_for_ticker
-
                 dates = db_distinct_rth_et_dates_for_ticker(
                     str(resolved_db), tku, label_column=target_column,
                 )
@@ -413,8 +437,6 @@ def build_live_drift_monitoring_payload(
                     )
                 else:
                     recent_dates = set(dates[-recent_rth_sessions:])
-                    from arch_competition.eval_runner import run_architecture_pair_evaluation
-
                     recent_payload = run_architecture_pair_evaluation(
                         db_path=str(resolved_db.resolve()),
                         ticker=tku,
@@ -425,7 +447,16 @@ def build_live_drift_monitoring_payload(
                         require_manifest_lineage=True,
                         expected_ml_horizon_suffix=hz,
                     )
-            except Exception as e:
+            except (
+                EvaluationLineageError,
+                PromotionGovernanceError,
+                OSError,
+                ValueError,
+                KeyError,
+                json.JSONDecodeError,
+                sqlite3.Error,
+            ) as e:
+                log.warning("live_drift_monitoring: recent slice evaluation failed: %s", e)
                 recent_err = str(e)
                 out["signals"].append(
                     {
@@ -569,9 +600,10 @@ def build_live_drift_monitoring_payload(
         DRIFT_SEVERITY_PROMOTION_BLOCKER,
         DRIFT_SEVERITY_ROLLBACK_WATCH,
     )
+    order_index = {sev: i for i, sev in enumerate(order)}
     for s in out["signals"]:
-        si = order.index(s["severity"]) if s["severity"] in order else 0
-        mi = order.index(max_sev) if max_sev in order else 0
+        si = order_index.get(s["severity"], 0)
+        mi = order_index.get(max_sev, 0)
         if si >= mi:
             max_sev = s["severity"]
 
@@ -587,4 +619,3 @@ def build_live_drift_monitoring_payload(
     }
     out["ok"] = True
     return out
-
