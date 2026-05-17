@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dry-run or delete contaminated snapshots_1m_normalized rows (candle_open == 0.0)."""
+"""Dry-run or delete contaminated snapshot rows (candle_open == 0.0, spot == 0.0)."""
 
 from __future__ import annotations
 
@@ -30,54 +30,88 @@ def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
     return row is not None
 
 
+def _report_table_contamination(
+    conn: sqlite3.Connection, table: str, column: str, label: str
+) -> int:
+    if not _table_exists(conn, table):
+        print(f"Table {table} does not exist.")
+        return 0
+    if column not in _table_column_set(conn, table):
+        print(f"Table {table} has no column {column}; skipping {label}.")
+        return 0
+
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM {table} WHERE {column} = 0.0"
+    ).fetchone()[0]
+    print(f"\n{label} ({table}.{column} = 0.0): {total}")
+    if total == 0:
+        return 0
+
+    print("  By ticker:")
+    for row in conn.execute(
+        f"""
+        SELECT ticker, COUNT(*) AS cnt
+        FROM {table}
+        WHERE {column} = 0.0
+        GROUP BY ticker
+        ORDER BY cnt DESC, ticker
+        """
+    ):
+        print(f"    {row['ticker']}: {row['cnt']}")
+
+    bounds = conn.execute(
+        f"""
+        SELECT MIN(ts_utc) AS min_ts, MAX(ts_utc) AS max_ts
+        FROM {table}
+        WHERE {column} = 0.0
+        """
+    ).fetchone()
+    print(f"  ts_utc range: {bounds['min_ts']} .. {bounds['max_ts']}")
+    return int(total)
+
+
+def _table_column_set(conn: sqlite3.Connection, table: str) -> set[str]:
+    cur = conn.execute(f"PRAGMA table_info({table})")
+    return {row[1] for row in cur.fetchall()}
+
+
 def report_contamination(db_path: Path) -> int:
     conn = _connect(db_path)
     try:
-        if not _table_exists(conn, "snapshots_1m_normalized"):
-            print("Table snapshots_1m_normalized does not exist.")
-            return 0
-
-        total = conn.execute(
-            "SELECT COUNT(*) FROM snapshots_1m_normalized WHERE candle_open = 0.0"
-        ).fetchone()[0]
-        print(f"Contaminated rows (candle_open = 0.0): {total}")
-        if total == 0:
-            return 0
-
-        print("\nBy ticker:")
-        for row in conn.execute(
-            """
-            SELECT ticker, COUNT(*) AS cnt
-            FROM snapshots_1m_normalized
-            WHERE candle_open = 0.0
-            GROUP BY ticker
-            ORDER BY cnt DESC, ticker
-            """
-        ):
-            print(f"  {row['ticker']}: {row['cnt']}")
-
-        bounds = conn.execute(
-            """
-            SELECT MIN(ts_utc) AS min_ts, MAX(ts_utc) AS max_ts
-            FROM snapshots_1m_normalized
-            WHERE candle_open = 0.0
-            """
-        ).fetchone()
-        print(f"\nts_utc range: {bounds['min_ts']} .. {bounds['max_ts']}")
-        return int(total)
+        total = 0
+        total += _report_table_contamination(
+            conn,
+            "snapshots_1m_normalized",
+            "candle_open",
+            "Normalized candle contamination",
+        )
+        total += _report_table_contamination(
+            conn,
+            "snapshots",
+            "spot",
+            "Raw snapshot spot contamination",
+        )
+        return total
     finally:
         conn.close()
 
 
 def apply_cleanup(db_path: Path) -> int:
     conn = _connect(db_path)
+    deleted = 0
     try:
-        cur = conn.execute(
-            "DELETE FROM snapshots_1m_normalized WHERE candle_open = 0.0"
-        )
+        if _table_exists(conn, "snapshots_1m_normalized"):
+            cur = conn.execute(
+                "DELETE FROM snapshots_1m_normalized WHERE candle_open = 0.0"
+            )
+            deleted += cur.rowcount
+        if _table_exists(conn, "snapshots") and "spot" in _table_column_set(
+            conn, "snapshots"
+        ):
+            cur = conn.execute("DELETE FROM snapshots WHERE spot = 0.0")
+            deleted += cur.rowcount
         conn.commit()
-        deleted = cur.rowcount
-        print(f"Deleted {deleted} contaminated row(s).")
+        print(f"Deleted {deleted} contaminated row(s) total.")
         return deleted
     finally:
         conn.close()
@@ -85,7 +119,7 @@ def apply_cleanup(db_path: Path) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Report or delete snapshots_1m_normalized rows with candle_open=0.0"
+        description="Report or delete rows with candle_open=0.0 or snapshots.spot=0.0"
     )
     parser.add_argument(
         "--db",
