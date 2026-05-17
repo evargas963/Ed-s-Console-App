@@ -17,7 +17,12 @@ from ml_horizon import normalize_ml_horizon_slug, outcome_column
 
 from arch_competition.atomic_io import write_json_file_atomically
 from arch_competition.eval_runner import run_architecture_pair_evaluation
-from arch_competition.exceptions import EvaluationLineageError, PromotionGovernanceError
+from arch_competition.exceptions import (
+    EvaluationLineageError,
+    PromotionGovernanceError,
+    PromotionGovernanceInvalidError,
+    PromotionGovernanceMissingError,
+)
 from arch_competition.scheduler_integration import (
     arch_competition_ticker_dir,
     evaluation_manifest_path,
@@ -85,10 +90,11 @@ def _age_days_utc(dt: datetime | None, now: datetime | None = None) -> float | N
     return max(0.0, (now - dt).total_seconds() / 86400.0)
 
 
-def _governed_baseline_failure_reason(error_message: str) -> str:
-    msg = error_message.lower()
-    if "missing evaluation manifest" in msg or "missing promotion decision" in msg:
+def _governed_baseline_failure_reason(error: PromotionGovernanceError) -> str:
+    if isinstance(error, PromotionGovernanceMissingError):
         return REASON_BASELINE_MANIFEST_MISSING
+    if isinstance(error, PromotionGovernanceInvalidError):
+        return REASON_BASELINE_MANIFEST_INVALID
     return REASON_BASELINE_MANIFEST_INVALID
 
 
@@ -174,7 +180,7 @@ def build_live_drift_monitoring_payload(
         out["error"] = err
         out["live_drift_summary"] = {
             "state": "error",
-            "reason_code": _governed_baseline_failure_reason(err),
+            "reason_code": _governed_baseline_failure_reason(e),
         }
         return out
 

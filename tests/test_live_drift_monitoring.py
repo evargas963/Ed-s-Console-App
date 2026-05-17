@@ -10,6 +10,11 @@ from unittest.mock import patch
 import pytest
 
 from arch_competition.governance_visibility import build_governance_panel_payload
+from arch_competition.exceptions import (
+    PromotionGovernanceError,
+    PromotionGovernanceInvalidError,
+    PromotionGovernanceMissingError,
+)
 from arch_competition.live_drift_monitoring import (
     LIVE_DRIFT_MONITORING_SCHEMA_VERSION,
     REASON_BASELINE_MANIFEST_INVALID,
@@ -19,6 +24,7 @@ from arch_competition.live_drift_monitoring import (
     REASON_MODEL_MANIFEST_INVALID,
     REASON_RECENT_SLICE_DISABLED,
     REASON_RECENT_SLICE_INSUFFICIENT,
+    _governed_baseline_failure_reason,
     build_live_drift_monitoring_payload,
     live_drift_monitoring_artifact_path,
     persist_live_drift_monitoring,
@@ -202,6 +208,18 @@ def test_live_drift_schema_and_sections(tmp_path: Path):
     assert "evaluation_freshness_summary" in payload
     assert "promotion_validity_summary" in payload
     assert "regime_shift_summary" in payload
+
+
+def test_governed_baseline_failure_reason_dispatches_via_isinstance():
+    assert (
+        _governed_baseline_failure_reason(PromotionGovernanceMissingError("missing evaluation manifest: /x"))
+        == REASON_BASELINE_MANIFEST_MISSING
+    )
+    assert (
+        _governed_baseline_failure_reason(PromotionGovernanceInvalidError("invalid JSON in governed artifacts"))
+        == REASON_BASELINE_MANIFEST_INVALID
+    )
+    assert _governed_baseline_failure_reason(PromotionGovernanceError("legacy base")) == REASON_BASELINE_MANIFEST_INVALID
 
 
 def test_missing_baseline_manifest_error(tmp_path: Path):

@@ -18,7 +18,12 @@ from arch_competition.eval_runner import (
     write_evaluation_manifest,
     run_architecture_pair_evaluation,
 )
-from arch_competition.exceptions import EvaluationLineageError, PromotionGovernanceError
+from arch_competition.exceptions import (
+    EvaluationLineageError,
+    PromotionGovernanceError,
+    PromotionGovernanceInvalidError,
+    PromotionGovernanceMissingError,
+)
 from arch_competition.promotion_engine import (
     PROMOTION_RECORD_SCHEMA_VERSION,
     decide_promotion,
@@ -348,21 +353,21 @@ def validate_persisted_governed_artifacts_or_raise(
     ev = evaluation_manifest_path(model_dir, ml_horizon_slug, ticker)
     pr = promotion_decision_path(model_dir, ml_horizon_slug, ticker)
     if not ev.is_file():
-        raise PromotionGovernanceError(f"missing evaluation manifest: {ev}")
+        raise PromotionGovernanceMissingError(f"missing evaluation manifest: {ev}")
     if not pr.is_file():
-        raise PromotionGovernanceError(f"missing promotion decision: {pr}")
+        raise PromotionGovernanceMissingError(f"missing promotion decision: {pr}")
     try:
         mj = json.loads(ev.read_text(encoding="utf-8"))
         pj = json.loads(pr.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as e:
-        raise PromotionGovernanceError(f"invalid JSON in governed artifacts: {e}") from e
+        raise PromotionGovernanceInvalidError(f"invalid JSON in governed artifacts: {e}") from e
     if mj.get("schema_version") != EVALUATION_MANIFEST_SCHEMA_VERSION:
-        raise PromotionGovernanceError(
+        raise PromotionGovernanceInvalidError(
             f"evaluation manifest schema mismatch: expected={EVALUATION_MANIFEST_SCHEMA_VERSION!r} "
             f"got={mj.get('schema_version')!r}"
         )
     if pj.get("schema_version") != PROMOTION_RECORD_SCHEMA_VERSION:
-        raise PromotionGovernanceError(
+        raise PromotionGovernanceInvalidError(
             f"promotion record schema mismatch: expected={PROMOTION_RECORD_SCHEMA_VERSION!r} "
             f"got={pj.get('schema_version')!r}"
         )

@@ -8,7 +8,11 @@ from unittest.mock import patch
 
 import pytest
 
-from arch_competition.exceptions import PromotionGovernanceError
+from arch_competition.exceptions import (
+    PromotionGovernanceError,
+    PromotionGovernanceInvalidError,
+    PromotionGovernanceMissingError,
+)
 from arch_competition.scheduler_integration import (
     GOVERNED_ARCH_STATE_REQUIRED_KEYS,
     GOVERNED_ARCH_STATE_SCHEMA_VERSION,
@@ -137,8 +141,41 @@ def test_run_governed_writes_manifest_and_record(tmp_path: Path, monkeypatch):
 
 
 def test_validate_persisted_missing_file_fails(tmp_path: Path):
-    with pytest.raises(PromotionGovernanceError, match="missing evaluation manifest"):
+    with pytest.raises(PromotionGovernanceMissingError, match="missing evaluation manifest"):
         validate_persisted_governed_artifacts_or_raise(tmp_path, "1c", "SPY")
+
+
+def test_validate_persisted_raises_missing_subtype_when_promotion_absent(tmp_path: Path):
+    ev = evaluation_manifest_path(tmp_path, "1c", "SPY")
+    ev.parent.mkdir(parents=True)
+    ev.write_text(json.dumps({"schema_version": EVALUATION_MANIFEST_SCHEMA_VERSION}), encoding="utf-8")
+    with pytest.raises(PromotionGovernanceMissingError, match="missing promotion decision"):
+        validate_persisted_governed_artifacts_or_raise(tmp_path, "1c", "SPY")
+
+
+def test_validate_persisted_raises_invalid_subtype_on_corrupt_json(tmp_path: Path):
+    ev = evaluation_manifest_path(tmp_path, "1c", "SPY")
+    pr = promotion_decision_path(tmp_path, "1c", "SPY")
+    ev.parent.mkdir(parents=True)
+    ev.write_text("{bad", encoding="utf-8")
+    pr.write_text(json.dumps({"schema_version": PROMOTION_RECORD_SCHEMA_VERSION}), encoding="utf-8")
+    with pytest.raises(PromotionGovernanceInvalidError, match="invalid JSON"):
+        validate_persisted_governed_artifacts_or_raise(tmp_path, "1c", "SPY")
+
+
+def test_validate_persisted_raises_invalid_subtype_on_schema_mismatch(tmp_path: Path):
+    ev = evaluation_manifest_path(tmp_path, "1c", "SPY")
+    pr = promotion_decision_path(tmp_path, "1c", "SPY")
+    ev.parent.mkdir(parents=True)
+    ev.write_text(json.dumps({"schema_version": "wrong"}), encoding="utf-8")
+    pr.write_text(json.dumps({"schema_version": PROMOTION_RECORD_SCHEMA_VERSION}), encoding="utf-8")
+    with pytest.raises(PromotionGovernanceInvalidError, match="schema mismatch"):
+        validate_persisted_governed_artifacts_or_raise(tmp_path, "1c", "SPY")
+
+
+def test_validate_persisted_subtypes_inherit_parent():
+    assert issubclass(PromotionGovernanceMissingError, PromotionGovernanceError)
+    assert issubclass(PromotionGovernanceInvalidError, PromotionGovernanceError)
 
 
 def test_governed_arch_state_schema_stable():
@@ -267,7 +304,7 @@ def test_validate_persisted_schema_mismatch_includes_versions(tmp_path: Path):
     ev.parent.mkdir(parents=True)
     ev.write_text(json.dumps({"schema_version": "wrong"}), encoding="utf-8")
     pr.write_text(json.dumps({"schema_version": PROMOTION_RECORD_SCHEMA_VERSION}), encoding="utf-8")
-    with pytest.raises(PromotionGovernanceError, match="expected='1' got='wrong'"):
+    with pytest.raises(PromotionGovernanceInvalidError, match="expected='1' got='wrong'"):
         validate_persisted_governed_artifacts_or_raise(tmp_path, "1c", "SPY")
 
 
