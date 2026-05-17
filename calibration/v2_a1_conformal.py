@@ -15,6 +15,7 @@ from __future__ import annotations
 import math
 from typing import Any, Iterable
 
+from calibration.statistical_integrity import bucket_gate
 from calibration.v2_a1_calibration import (
     A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES,
     A1_CALIBRATION_PER_REGIME_MIN_SAMPLES,
@@ -274,13 +275,7 @@ def _bounded_probability(value: float) -> float:
 
 
 def _sample_gate(n: int, min_required: int, operator_decision: str) -> dict[str, Any]:
-    return {
-        "n": int(n),
-        "min_required": int(min_required),
-        "sufficient_sample": int(n) >= int(min_required),
-        "status": "ok" if int(n) >= int(min_required) else "insufficient_sample",
-        "operator_decision": operator_decision,
-    }
+    return {**bucket_gate(n, min_required), "operator_decision": operator_decision}
 
 
 def _float_or_none(value: Any) -> float | None:

@@ -3,9 +3,11 @@ from __future__ import annotations
 import pytest
 
 from calibration.v2_a1_calibration import A1_REGIME_AXIS_MISSING
+from calibration.statistical_integrity import bucket_gate
 from calibration.v2_a1_conformal import (
     A1_CONFORMAL_REGIME_AXES,
     _regime_coverage,
+    _sample_gate,
     apply_a1_conformal_interval,
     build_a1_conformal_artifact,
 )
@@ -228,3 +230,21 @@ def test_conformal_scaffold_does_not_change_runtime_probability_or_ev_fields():
     assert dec["p_high"]["source"] == "not_implemented"
     assert dec["EV_lower"]["source"] == "not_implemented"
     assert dec["EV_upper"]["source"] == "not_implemented"
+
+
+@pytest.mark.parametrize("n,min_required,expected_ok", [(29, 30, False), (30, 30, True)])
+def test_sample_gate_delegates_to_bucket_gate(n, min_required, expected_ok):
+    gate = _sample_gate(n, min_required, "O-23")
+    base = bucket_gate(n, min_required)
+    assert gate["n"] == base["n"]
+    assert gate["min_required"] == base["min_required"]
+    assert gate["sufficient_sample"] is expected_ok
+    assert gate["status"] == base["status"]
+    assert gate["operator_decision"] == "O-23"
+
+
+def test_sample_gate_coerces_negative_n_via_bucket_gate():
+    gate = _sample_gate(-5, 30, "O-23")
+    assert gate["n"] == 0
+    assert gate["sufficient_sample"] is False
+    assert gate["status"] == "insufficient_sample"
