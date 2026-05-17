@@ -232,7 +232,7 @@ class MarketContext:
     # Bond yields
     tnx_yield:       Optional[float] = None   # 10Y Treasury yield (e.g. 4.25)
     tnx_chg:         Optional[float] = None   # change today (basis points concept: 4.25 → 4.30 = +0.05)
-    bond_signal:     str             = "neutral"  # 'flight_to_safety', 'risk_on', 'neutral', 'rate_stress'
+    bond_signal:     Optional[str]   = None  # set when TNX move is known; 'flight_to_safety', 'risk_on', 'neutral', 'rate_stress'
 
     pcr:             Optional[float] = None
     pcr_arrow:       str             = "→"
@@ -240,8 +240,8 @@ class MarketContext:
     pcr_label:       str             = ""
 
     # Session label — derived once from ET clock, shared across all tickers.
-    # Values: "RTH" | "Pre-Market" | "After-Hours" | "Closed"
-    session_label:   str             = "Closed"
+    # Values: "RTH" | "Pre-Market" | "After-Hours" | "Closed" (None until _derive_session runs)
+    session_label:   Optional[str]   = None
 
     error:           str             = ""
 
@@ -598,14 +598,20 @@ def fetch_market_context(client, safe_get_quote_fn,
     return ctx
 
 
-def proximity_alerts(spot: float, walls_rows: list, pins_rows: list,
-                     threshold_pct: float = 0.005) -> list[dict]:
+def proximity_alerts(
+    spot: Optional[float],
+    walls_rows: list,
+    pins_rows: list,
+    threshold_pct: float = 0.005,
+) -> list[dict]:
     """
     Return alert dicts for any wall/pin level within threshold_pct of spot.
     Works with WallRow / SummaryRow objects from math_exposure.
     """
+    if spot is None or spot <= 0:
+        return []
     alerts    = []
-    threshold = spot * threshold_pct
+    threshold = float(spot) * threshold_pct
 
     def _check(level_obj, name_hint):
         level = None

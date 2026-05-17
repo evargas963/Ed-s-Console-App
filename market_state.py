@@ -50,8 +50,9 @@ def derive_zone(bias_signal: str | None, net_delta: float | None) -> str:
       pin_bear    — positive gamma pin with bearish lean (Bear, Tilt Bear)
       pin_neutral — positive gamma pin, balanced (Balanced, Neutral)
       pin_chaos   — very low pin strength, no structure (Chaos Zone)
-      breakout    — negative gamma, expansion up (net_delta >= 0)
-      breakdown   — negative gamma, expansion down (net_delta < 0)
+      breakout           — negative gamma, expansion up (net_delta >= 0)
+      breakdown          — negative gamma, expansion down (net_delta < 0)
+      expansion_unknown  — negative gamma, expansion bias but net_delta missing
 
     Why this matters: the prediction engine matches by zone. Old "pin" lumped
     bullish-pin against bearish-pin — fundamentally different setups treated
@@ -68,7 +69,7 @@ def derive_zone(bias_signal: str | None, net_delta: float | None) -> str:
         return "pin_chaos"
     if b == "expansion":
         if net_delta is None:
-            return "pin_neutral"
+            return "expansion_unknown"
         return "breakout" if float(net_delta) >= 0 else "breakdown"
     return "pin_neutral"  # safe default
 
@@ -416,7 +417,7 @@ class MarketState:
     fusion_reversal:        Optional[float] = None
     fusion_vol_expansion:   Optional[float] = None
     fusion_mean_reversion:  Optional[float] = None
-    fusion_model_agreement: float           = 0.0
+    fusion_model_agreement: Optional[float] = None
     fusion_agreement_label: str             = "low"
     fusion_n_models_active: int             = 0
     fusion_prob_up:         Optional[float] = None

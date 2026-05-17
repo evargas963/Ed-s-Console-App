@@ -711,9 +711,9 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
     t_sess0 = time.perf_counter()
     with _cached_mkt_ctx_lock:
         _cmc = _cached_mkt_ctx
-    session_label = getattr(_cmc, "session_label", "") if _cmc is not None else ""
-    if not (session_label or "").strip():
-        session_label = "Closed"
+    session_label = getattr(_cmc, "session_label", None) if _cmc is not None else None
+    if session_label is not None and not str(session_label).strip():
+        session_label = None
     t_sess1 = time.perf_counter()
     quote_attempts = 0
 
@@ -4316,7 +4316,7 @@ def _fetch_state(
                     ts_et=build_ts_et(_et_now),
                     et_hour=et_h,
                     et_minute=et_m,
-                    market_session=session_label.lower().replace("-", ""),
+                    market_session=(session_label or "unknown").lower().replace("-", ""),
                     session_bucket=_session_bucket(et_h, et_m),
                     spot=spot_f,
                     spread=_quote_spread,
@@ -5016,7 +5016,7 @@ def _fetch_state(
     # ── Bond Yields ───────────────────────────────────────────────────────────
     ms_dict["tnx_yield"]             = getattr(mkt_ctx, "tnx_yield", None)
     ms_dict["tnx_chg"]              = getattr(mkt_ctx, "tnx_chg", None)
-    ms_dict["bond_signal"]          = getattr(mkt_ctx, "bond_signal", "neutral")
+    ms_dict["bond_signal"]          = getattr(mkt_ctx, "bond_signal", None)
 
     # ── Order Flow Signals ────────────────────────────────────────────────────
     ms_dict["vol_oi_ratio"]          = _vol_oi_ratio.get("ratio")

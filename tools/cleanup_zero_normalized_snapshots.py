@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Dry-run or delete contaminated snapshot rows (candle_open == 0.0, spot == 0.0)."""
+"""Dry-run or delete contaminated snapshot rows (candle_open == 0.0, spot == 0.0).
+
+Also reports snapshots with validation_passed=1 but empty validation_summary (orphan
+True-default rows from pre fail-closed MarketState). Dry-run only for that check.
+"""
 
 from __future__ import annotations
 
@@ -75,6 +79,55 @@ def _table_column_set(conn: sqlite3.Connection, table: str) -> set[str]:
     return {row[1] for row in cur.fetchall()}
 
 
+def _report_validation_passed_orphans(conn: sqlite3.Connection) -> int:
+    """validation_passed=1 with no validation_summary may be stale True-default rows."""
+    if not _table_exists(conn, "snapshots"):
+        print("Table snapshots does not exist.")
+        return 0
+    cols = _table_column_set(conn, "snapshots")
+    if "validation_passed" not in cols:
+        print("snapshots.validation_passed missing; skipping orphan validation check.")
+        return 0
+    summary_col = "validation_summary" if "validation_summary" in cols else None
+    if summary_col is None:
+        where = "validation_passed = 1"
+        label = "validation_passed=1 (no validation_summary column)"
+    else:
+        where = (
+            "validation_passed = 1 AND "
+            "(validation_summary IS NULL OR TRIM(validation_summary) = '')"
+        )
+        label = "validation_passed=1 with empty validation_summary"
+
+    total = conn.execute(f"SELECT COUNT(*) FROM snapshots WHERE {where}").fetchone()[0]
+    print(f"\nOrphan validation_passed rows ({label}): {total}")
+    if total == 0:
+        return 0
+
+    print("  By ticker:")
+    for row in conn.execute(
+        f"""
+        SELECT ticker, COUNT(*) AS cnt
+        FROM snapshots
+        WHERE {where}
+        GROUP BY ticker
+        ORDER BY cnt DESC, ticker
+        """
+    ):
+        print(f"    {row['ticker']}: {row['cnt']}")
+
+    bounds = conn.execute(
+        f"""
+        SELECT MIN(ts_utc) AS min_ts, MAX(ts_utc) AS max_ts
+        FROM snapshots
+        WHERE {where}
+        """
+    ).fetchone()
+    print(f"  ts_utc range: {bounds['min_ts']} .. {bounds['max_ts']}")
+    print("  (dry-run only — not deleted by --apply)")
+    return int(total)
+
+
 def report_contamination(db_path: Path) -> int:
     conn = _connect(db_path)
     try:
@@ -91,6 +144,7 @@ def report_contamination(db_path: Path) -> int:
             "spot",
             "Raw snapshot spot contamination",
         )
+        total += _report_validation_passed_orphans(conn)
         return total
     finally:
         conn.close()
