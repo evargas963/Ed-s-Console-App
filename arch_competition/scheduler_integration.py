@@ -7,10 +7,12 @@ Does not copy artifacts to models/active/ or call run_base_models_once.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from arch_competition.atomic_io import write_json_file_atomically
 from arch_competition.eval_runner import (
     EVALUATION_MANIFEST_SCHEMA_VERSION,
     write_evaluation_manifest,
@@ -49,9 +51,26 @@ EVALUATION_MANIFEST_FILENAME = "evaluation_manifest.json"
 PROMOTION_DECISION_FILENAME = "promotion_decision.json"
 ARCH_COMPETITION_SUMMARY_FILENAME = "arch_competition_summary.json"
 
+log = logging.getLogger(__name__)
+
+
+def _normalize_ml_horizon_slug(ml_horizon_slug: str) -> str:
+    return str(ml_horizon_slug).strip().lower()
+
+
+def _blocked_promotion_flags_from_sources(
+    tick_summary: dict[str, Any] | None,
+    governed: dict[str, Any] | None,
+) -> Any:
+    if isinstance(tick_summary, dict) and "blocked_promotion_flags" in tick_summary:
+        return tick_summary["blocked_promotion_flags"]
+    if isinstance(governed, dict):
+        return governed.get("blocked_promotion_flags")
+    return None
+
 
 def arch_competition_ticker_dir(model_dir: Path, ml_horizon_slug: str, ticker: str) -> Path:
-    su = str(ml_horizon_slug).strip().lower()
+    su = _normalize_ml_horizon_slug(ml_horizon_slug)
     return model_dir / "arch_competition" / su / ticker.upper()
 
 
@@ -64,7 +83,7 @@ def promotion_decision_path(model_dir: Path, ml_horizon_slug: str, ticker: str) 
 
 
 def arch_competition_summary_path(model_dir: Path, ml_horizon_slug: str) -> Path:
-    su = str(ml_horizon_slug).strip().lower()
+    su = _normalize_ml_horizon_slug(ml_horizon_slug)
     return model_dir / "arch_competition" / su / ARCH_COMPETITION_SUMMARY_FILENAME
 
 
@@ -89,7 +108,7 @@ def run_governed_architecture_competition_pass(
     Raises:
         EvaluationLineageError, PromotionGovernanceError: fail-closed inputs.
     """
-    hz = str(ml_horizon_slug).strip().lower()
+    hz = _normalize_ml_horizon_slug(ml_horizon_slug)
     manifest = run_architecture_pair_evaluation(
         db_path=db_path,
         ticker=ticker,
@@ -101,11 +120,17 @@ def run_governed_architecture_competition_pass(
         expected_ml_horizon_suffix=hz,
     )
     if manifest.get("schema_version") != EVALUATION_MANIFEST_SCHEMA_VERSION:
-        raise PromotionGovernanceError("evaluation manifest schema mismatch")
+        raise PromotionGovernanceError(
+            f"evaluation manifest schema mismatch: expected={EVALUATION_MANIFEST_SCHEMA_VERSION!r} "
+            f"got={manifest.get('schema_version')!r}"
+        )
 
     record = decide_promotion(manifest, auto_promote=False)
     if record.get("schema_version") != PROMOTION_RECORD_SCHEMA_VERSION:
-        raise PromotionGovernanceError("promotion record schema mismatch")
+        raise PromotionGovernanceError(
+            f"promotion record schema mismatch: expected={PROMOTION_RECORD_SCHEMA_VERSION!r} "
+            f"got={record.get('schema_version')!r}"
+        )
 
     ev_path = evaluation_manifest_path(model_dir, hz, ticker)
     pr_path = promotion_decision_path(model_dir, hz, ticker)
@@ -162,7 +187,8 @@ def build_arch_competition_summary_tick(
         "manifest_paths": paths,
         "evaluation_manifest_schema": manifest.get("schema_version"),
         "promotion_record_schema": promotion_record.get("schema_version"),
-        "n_rows_scored": (manifest.get("metrics") or {}).get("parallel", {}).get("n_rows_scored"),
+        "n_rows_scored_parallel": (manifest.get("metrics") or {}).get("parallel", {}).get("n_rows_scored"),
+        "n_rows_scored_cascade": (manifest.get("metrics") or {}).get("cascade", {}).get("n_rows_scored"),
     }
 
 
@@ -212,21 +238,38 @@ def build_governed_arch_state_slice(
     return out
 
 
+def _read_json_object_file(path: Path, *, context: str) -> dict[str, Any]:
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise PromotionGovernanceError(f"{context}: cannot read {path}: {e}") from e
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise PromotionGovernanceError(f"{context}: invalid JSON in {path}: {e}") from e
+    if not isinstance(data, dict):
+        raise PromotionGovernanceError(f"{context}: expected JSON object in {path}")
+    return data
+
+
 def _merge_summary_file(path: Path, ticker: str, tick_summary: dict[str, Any]) -> None:
     prev: dict[str, Any] = {}
     if path.exists():
-        try:
-            prev = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            prev = {}
-    tickers = prev.get("tickers") if isinstance(prev.get("tickers"), dict) else {}
+        prev = _read_json_object_file(path, context="_merge_summary_file")
+    prev_tickers = prev.get("tickers", {})
+    if not isinstance(prev_tickers, dict):
+        raise PromotionGovernanceError(
+            f"_merge_summary_file: existing summary {path} has non-dict 'tickers' "
+            f"(got {type(prev_tickers).__name__}); schema v1 violation"
+        )
+    tickers = prev_tickers
     tickers[ticker.upper()] = tick_summary
     out = {
         "schema_version": "1",
         "updated_at_utc": datetime.now(timezone.utc).isoformat(),
         "tickers": tickers,
     }
-    path.write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
+    write_json_file_atomically(path, out, indent=2, default=str)
 
 
 def load_architecture_competition_visibility(
@@ -240,18 +283,22 @@ def load_architecture_competition_visibility(
 
     Fail-closed: raises FileNotFoundError / PromotionGovernanceError if required files missing (optional strict).
     """
-    hz = str(ml_horizon_slug).strip().lower()
+    hz = _normalize_ml_horizon_slug(ml_horizon_slug)
     arch_path = (
         model_dir / "arch_state.json"
         if hz == "1c"
         else model_dir / f"arch_state_{hz}.json"
     )
-    active = "parallel"
     state: dict[str, Any] = {}
     if arch_path.exists():
         try:
             state = json.loads(arch_path.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, json.JSONDecodeError) as e:
+            log.warning(
+                "load_architecture_competition_visibility: failed to parse arch_state %s: %s",
+                arch_path,
+                e,
+            )
             state = {}
 
     summary_path = arch_competition_summary_path(model_dir, hz)
@@ -259,7 +306,12 @@ def load_architecture_competition_visibility(
     if summary_path.exists():
         try:
             summary_blob = json.loads(summary_path.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, json.JSONDecodeError) as e:
+            log.warning(
+                "load_architecture_competition_visibility: failed to parse summary %s: %s",
+                summary_path,
+                e,
+            )
             summary_blob = {}
 
     tickers_summary = summary_blob.get("tickers") if isinstance(summary_blob.get("tickers"), dict) else {}
@@ -274,7 +326,7 @@ def load_architecture_competition_visibility(
             "governed_competition": gv,
             "last_comparison": ts,
             "manifest_paths": (ts or {}).get("manifest_paths"),
-            "blocked_reasons": (ts or {}).get("blocked_promotion_flags") or (gv or {}).get("blocked_promotion_flags"),
+            "blocked_reasons": _blocked_promotion_flags_from_sources(ts, gv),
             "reason_codes": (ts or {}).get("reason_codes"),
         }
 
@@ -302,12 +354,18 @@ def validate_persisted_governed_artifacts_or_raise(
     try:
         mj = json.loads(ev.read_text(encoding="utf-8"))
         pj = json.loads(pr.read_text(encoding="utf-8"))
-    except Exception as e:
+    except (OSError, json.JSONDecodeError) as e:
         raise PromotionGovernanceError(f"invalid JSON in governed artifacts: {e}") from e
     if mj.get("schema_version") != EVALUATION_MANIFEST_SCHEMA_VERSION:
-        raise PromotionGovernanceError("evaluation manifest schema mismatch")
+        raise PromotionGovernanceError(
+            f"evaluation manifest schema mismatch: expected={EVALUATION_MANIFEST_SCHEMA_VERSION!r} "
+            f"got={mj.get('schema_version')!r}"
+        )
     if pj.get("schema_version") != PROMOTION_RECORD_SCHEMA_VERSION:
-        raise PromotionGovernanceError("promotion record schema mismatch")
+        raise PromotionGovernanceError(
+            f"promotion record schema mismatch: expected={PROMOTION_RECORD_SCHEMA_VERSION!r} "
+            f"got={pj.get('schema_version')!r}"
+        )
 
 
 def assert_no_active_directory_write(scheduler_fn: str = "ml_scheduler.run_once") -> None:

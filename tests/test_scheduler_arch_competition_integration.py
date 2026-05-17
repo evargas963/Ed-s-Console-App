@@ -12,8 +12,10 @@ from arch_competition.exceptions import PromotionGovernanceError
 from arch_competition.scheduler_integration import (
     GOVERNED_ARCH_STATE_REQUIRED_KEYS,
     GOVERNED_ARCH_STATE_SCHEMA_VERSION,
+    _merge_summary_file,
     arch_competition_summary_path,
     assert_no_active_directory_write,
+    build_arch_competition_summary_tick,
     build_governed_arch_state_slice,
     evaluation_manifest_path,
     promotion_decision_path,
@@ -151,6 +153,120 @@ def test_governed_arch_state_schema_stable():
     assert sl["production_write_held"] is True
     assert sl["latest_promotion_decision"] == "keep_incumbent"
     assert sl["blocked_promotion_flags"][0]["code"] == "PRIMARY_METRIC_INSUFFICIENT"
+
+
+def test_merge_summary_file_raises_on_corrupt_existing(tmp_path: Path):
+    path = tmp_path / "arch_competition" / "1c" / "arch_competition_summary.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{not valid json", encoding="utf-8")
+    tick = build_arch_competition_summary_tick(
+        ticker="QQQ",
+        ml_horizon_slug="1c",
+        manifest=_minimal_manifest(),
+        promotion_record=_minimal_record(),
+        paths={"evaluation_manifest": "/e", "promotion_decision": "/p"},
+    )
+    with pytest.raises(PromotionGovernanceError, match="invalid JSON"):
+        _merge_summary_file(path, "QQQ", tick)
+
+
+def test_merge_summary_file_raises_on_corrupt_tickers_field(tmp_path: Path):
+    path = tmp_path / "arch_competition" / "1c" / "arch_competition_summary.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"schema_version": "1", "tickers": ["SPY"]}),
+        encoding="utf-8",
+    )
+    tick = build_arch_competition_summary_tick(
+        ticker="QQQ",
+        ml_horizon_slug="1c",
+        manifest=_minimal_manifest(),
+        promotion_record=_minimal_record(),
+        paths={"evaluation_manifest": "/e", "promotion_decision": "/p"},
+    )
+    with pytest.raises(PromotionGovernanceError, match="non-dict 'tickers'"):
+        _merge_summary_file(path, "QQQ", tick)
+
+
+def test_merge_summary_file_preserves_other_tickers(tmp_path: Path):
+    path = tmp_path / "arch_competition" / "1c" / "arch_competition_summary.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "tickers": {"SPY": {"ticker": "SPY", "latest_promotion_decision": "keep_incumbent"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    tick = build_arch_competition_summary_tick(
+        ticker="QQQ",
+        ml_horizon_slug="1c",
+        manifest=_minimal_manifest(),
+        promotion_record=_minimal_record(),
+        paths={"evaluation_manifest": "/e", "promotion_decision": "/p"},
+    )
+    _merge_summary_file(path, "QQQ", tick)
+    merged = json.loads(path.read_text(encoding="utf-8"))
+    assert merged["tickers"]["SPY"]["ticker"] == "SPY"
+    assert merged["tickers"]["QQQ"]["ticker"] == "QQQ"
+
+
+def test_load_visibility_prefers_tick_summary_empty_blocked_list(tmp_path: Path):
+    hz_path = tmp_path / "arch_state.json"
+    hz_path.write_text(
+        json.dumps(
+            {
+                "SPY": {
+                    "active_architecture": "parallel",
+                    "governed_competition": {
+                        "latest_promotion_decision": "keep_incumbent",
+                        "blocked_promotion_flags": [{"code": "STALE_GV"}],
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "arch_competition" / "1c").mkdir(parents=True)
+    (tmp_path / "arch_competition" / "1c" / "arch_competition_summary.json").write_text(
+        json.dumps(
+            {
+                "tickers": {
+                    "SPY": {
+                        "blocked_promotion_flags": [],
+                        "manifest_paths": {"evaluation_manifest": "/e"},
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    v = load_architecture_competition_visibility(tmp_path, "1c", ticker="SPY")
+    assert v["blocked_reasons"] == []
+
+
+def test_validate_persisted_schema_mismatch_includes_versions(tmp_path: Path):
+    ev = evaluation_manifest_path(tmp_path, "1c", "SPY")
+    pr = promotion_decision_path(tmp_path, "1c", "SPY")
+    ev.parent.mkdir(parents=True)
+    ev.write_text(json.dumps({"schema_version": "wrong"}), encoding="utf-8")
+    pr.write_text(json.dumps({"schema_version": PROMOTION_RECORD_SCHEMA_VERSION}), encoding="utf-8")
+    with pytest.raises(PromotionGovernanceError, match="expected='1' got='wrong'"):
+        validate_persisted_governed_artifacts_or_raise(tmp_path, "1c", "SPY")
+
+
+def test_build_summary_tick_surfaces_both_architecture_row_counts():
+    tick = build_arch_competition_summary_tick(
+        ticker="SPY",
+        ml_horizon_slug="1c",
+        manifest=_minimal_manifest(),
+        promotion_record=_minimal_record(),
+        paths={},
+    )
+    assert tick["n_rows_scored_parallel"] == 100
+    assert tick["n_rows_scored_cascade"] == 100
 
 
 def test_load_visibility_single_ticker(tmp_path: Path):

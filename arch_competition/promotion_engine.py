@@ -4,7 +4,6 @@ Promotion decision layer — consumes evaluation manifests; does **not** copy to
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,6 +11,7 @@ from typing import Any
 
 from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
 
+from arch_competition.atomic_io import write_json_file_atomically
 from arch_competition.exceptions import PromotionGovernanceError
 
 PROMOTION_RECORD_SCHEMA_VERSION = "1"
@@ -361,5 +361,4 @@ def decide_promotion(
 
 
 def write_promotion_record(path: Path, record: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(record, indent=2, default=str), encoding="utf-8")
+    write_json_file_atomically(path, record, indent=2, default=str)
