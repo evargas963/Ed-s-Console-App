@@ -43,6 +43,15 @@ def _positive_float_or_none(value) -> Optional[float]:
     return out if out > 0 else None
 
 
+def _cluster_reference_price(*candidates) -> Optional[float]:
+    """First positive price among candidates; None when no valid reference (no 500.0 fabrication)."""
+    for value in candidates:
+        p = _positive_float_or_none(value)
+        if p is not None:
+            return p
+    return None
+
+
 def _float_or_none(value) -> Optional[float]:
     try:
         if value is None:
@@ -578,7 +587,7 @@ def cluster_price_levels_into_zones(
         if p and p > 0:
             tag_map[p].append(tag)
 
-    max_width = getattr(config, "max_zone_width", 0.0) or 0.0
+    max_width = _positive_float_or_none(getattr(config, "max_zone_width", None))
 
     def _flush_current(cur):
         if not cur:
@@ -599,7 +608,7 @@ def cluster_price_levels_into_zones(
         cand = current + [prices[i]]
         cand_lo, cand_hi = min(cand), max(cand)
         within_thresh = prices[i] - current[-1] <= thresh
-        would_exceed = max_width > 0 and (cand_hi - cand_lo) > max_width
+        would_exceed = max_width is not None and (cand_hi - cand_lo) > max_width
 
         if within_thresh and not would_exceed:
             current.append(prices[i])
@@ -665,9 +674,12 @@ def build_premarket_snapshot(
     if over.get("overnight_low"):
         levels.append((over["overnight_low"], "OVERNIGHT_LOW"))
 
-    ref = prev.get("pdc") or prev.get("pd_poc") or 500.0
-    atr_val = compute_atr_from_bars(bars_norm, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
-    clusters = cluster_price_levels_into_zones(levels, ref, config, atr_val)
+    ref = _cluster_reference_price(prev.get("pdc"), prev.get("pd_poc"))
+    if ref is None:
+        clusters = []
+    else:
+        atr_val = compute_atr_from_bars(bars_norm, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
+        clusters = cluster_price_levels_into_zones(levels, ref, config, atr_val)
 
     zones = []
     for lo, hi, mid, tags, source_pairs in clusters:
@@ -693,7 +705,7 @@ def build_premarket_snapshot(
         pdh, pdl = prev.get("pdh"), prev.get("pdl")
         for z in zones:
             tags_str = " ".join(z.source_tags)
-            if pdl and z.zone_low < (pdl or 0) * 0.995:
+            if pdl is not None and z.zone_low < pdl * 0.995:
                 z.zone_type = ZoneType.SELL_SIDE_LIQUIDITY
                 z.interpretation_notes = "Sell-side liquidity below prior day low"
             elif "PDH" in tags_str or "OVERNIGHT_HIGH" in tags_str:
@@ -710,10 +722,10 @@ def build_premarket_snapshot(
             elif "PD_POC" in tags_str or "PDC" in tags_str or "PD_VAL" in tags_str:
                 z.zone_type = ZoneType.PIVOT_VALUE
                 z.interpretation_notes = "Fair value reference from prior day POC/close"
-            elif pdh and z.zone_high >= (pdh or 0) * 0.998:
+            elif pdh is not None and z.zone_high >= pdh * 0.998:
                 z.zone_type = ZoneType.RESISTANCE_LIQUIDITY
                 z.interpretation_notes = "Resistance liquidity above prior day high"
-            elif pdl and z.zone_low <= (pdl or 0) * 1.002:
+            elif pdl is not None and z.zone_low <= pdl * 1.002:
                 z.zone_type = ZoneType.SUPPORT_LIQUIDITY
                 z.interpretation_notes = "Support liquidity near prior day low"
             out_zones.append(z)
@@ -768,9 +780,12 @@ def build_opening_snapshot(
     if over.get("overnight_low"):
         levels.append((over["overnight_low"], "OVERNIGHT_LOW"))
 
-    ref = prev.get("pdc") or orb.get("orb_mid") or 500.0
-    atr_val = compute_atr_from_bars(bars, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
-    clusters = cluster_price_levels_into_zones(levels, ref, config, atr_val)
+    ref = _cluster_reference_price(orb.get("orb_mid"), prev.get("pdc"), prev.get("pd_poc"))
+    if ref is None:
+        clusters = []
+    else:
+        atr_val = compute_atr_from_bars(bars, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
+        clusters = cluster_price_levels_into_zones(levels, ref, config, atr_val)
 
     zones = []
     orb_h, orb_l = orb.get("orb_high"), orb.get("orb_low")
@@ -865,14 +880,17 @@ def build_midday_snapshot(
     if orb.get("orb_low"):
         levels.append((orb["orb_low"], "ORB_LOW"))
 
-    ref = poc or prev.get("pd_poc") or 500.0
-    atr_val = compute_atr_from_bars(bars, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
-    clusters = cluster_price_levels_into_zones(levels, ref, config, atr_val)
+    ref = _cluster_reference_price(poc, prev.get("pd_poc"))
+    if ref is None:
+        clusters = []
+    else:
+        atr_val = compute_atr_from_bars(bars, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
+        clusters = cluster_price_levels_into_zones(levels, ref, config, atr_val)
 
     # Value shift: compare today POC vs prev POC
     value_state = "unchanged"
     if poc and prev.get("pd_poc"):
-        d = (poc - prev["pd_poc"]) / prev["pd_poc"] if prev["pd_poc"] else 0
+        d = (poc - prev["pd_poc"]) / prev["pd_poc"]
         if d > 0.002:
             value_state = "shifted_higher"
         elif d < -0.002:
@@ -885,7 +903,7 @@ def build_midday_snapshot(
         elif vwap < poc * 0.999:
             vwap_relation = "below_value"
 
-    auction_interp = "neutral"
+    auction_interp = ""
     if value_state == "shifted_higher" and vwap_relation == "above_value":
         auction_interp = "bullish_acceptance"
     elif value_state == "shifted_lower" and vwap_relation == "below_value":
@@ -976,14 +994,17 @@ def build_afternoon_snapshot(
     if prev.get("pdl"):
         levels.append((prev["pdl"], "PDL"))
 
-    ref = poc or 500.0
-    atr_val = compute_atr_from_bars(bars, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
-    clusters = cluster_price_levels_into_zones(levels, ref, config, atr_val)
+    ref = _cluster_reference_price(poc)
+    if ref is None:
+        clusters = []
+    else:
+        atr_val = compute_atr_from_bars(bars, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
+        clusters = cluster_price_levels_into_zones(levels, ref, config, atr_val)
 
     # Value shift: compare today POC vs prev POC (same logic as midday)
     value_state = "unchanged"
     if poc and prev.get("pd_poc"):
-        d = (poc - prev["pd_poc"]) / prev["pd_poc"] if prev["pd_poc"] else 0
+        d = (poc - prev["pd_poc"]) / prev["pd_poc"]
         if d > 0.002:
             value_state = "shifted_higher"
         elif d < -0.002:
@@ -996,7 +1017,7 @@ def build_afternoon_snapshot(
         elif vwap < poc * 0.999:
             vwap_relation = "below_value"
 
-    auction_interp = "neutral"
+    auction_interp = ""
     if value_state == "shifted_higher" and vwap_relation == "above_value":
         auction_interp = "bullish_acceptance"
     elif value_state == "shifted_lower" and vwap_relation == "below_value":
@@ -1204,10 +1225,15 @@ def build_live_snapshot(
             pass
     if ref is None or ref <= 0:
         lx = _last_rth_close_price(bars_norm, session_date, cutoff)
-        ref = lx or vwap or poc or prev.get("pdc") or prev.get("pd_poc") or 500.0
+        ref = _cluster_reference_price(
+            lx, vwap, poc, prev.get("pdc"), prev.get("pd_poc"),
+        )
 
-    atr_val = compute_atr_from_bars(bars_norm, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
-    clusters = cluster_price_levels_into_zones(levels, float(ref), config, atr_val)
+    if ref is None:
+        clusters = []
+    else:
+        atr_val = compute_atr_from_bars(bars_norm, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
+        clusters = cluster_price_levels_into_zones(levels, float(ref), config, atr_val)
 
     value_state = "unchanged"
     if poc and prev.get("pd_poc"):
@@ -1225,7 +1251,7 @@ def build_live_snapshot(
         elif vwap < poc * 0.999:
             vwap_relation = "below_value"
 
-    auction_interp = "neutral"
+    auction_interp = ""
     if value_state == "shifted_higher" and vwap_relation == "above_value":
         auction_interp = "bullish_acceptance"
     elif value_state == "shifted_lower" and vwap_relation == "below_value":
@@ -1417,8 +1443,6 @@ def generate_playbook_state(
             session_bias = "bullish"
         elif latest_summary.value_state == "shifted_lower":
             session_bias = "bearish"
-        else:
-            session_bias = "neutral"
 
     return PlaybookState(
         ticker=ticker,
