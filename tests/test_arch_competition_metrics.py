@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+from sklearn.metrics import balanced_accuracy_score
+
 from arch_competition.metrics import (
     confidence_reliability_proxy,
+    max_calibration_error_bins,
     regime_bucket_metrics,
 )
 
@@ -25,6 +29,27 @@ def test_regime_bucket_metrics_missing_vix_separate_from_mid():
     assert out["mid"]["n"] == 6
     assert out["low"]["n"] == 0
     assert out["high"]["n"] == 0
+
+
+def test_regime_slice_accuracy_differs_from_balanced_accuracy_on_skew():
+    """slice_accuracy is plain hit rate; balanced_accuracy is sklearn macro-recall."""
+    n = 10
+    y_true = [2] * 8 + [0] * 2
+    prob_rows = [[0.05, 0.05, 0.9]] * n
+    rows_used = [{"vix_level": 18.0}] * n
+    out = regime_bucket_metrics(y_true, prob_rows, rows_used, min_support=5)
+    mid = out["mid"]
+    ps = [2] * n
+    assert mid["slice_accuracy"] == pytest.approx(0.8)
+    assert mid["balanced_accuracy"] == pytest.approx(float(balanced_accuracy_score(y_true, ps)))
+    assert mid["balanced_accuracy"] < mid["slice_accuracy"]
+
+
+def test_mce_none_when_no_bin_qualifies():
+    y = list(range(10))
+    confs = [0.4 + i * 0.06 for i in range(10)]
+    probs = [[c, (1.0 - c) / 2.0, (1.0 - c) / 2.0] for c in confs]
+    assert max_calibration_error_bins(y, probs, n_bins=10) is None
 
 
 def test_confidence_reliability_proxy_none_when_insufficient_samples():

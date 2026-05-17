@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 import numpy as np
-from sklearn.metrics import log_loss
+from sklearn.metrics import balanced_accuracy_score, log_loss
 
 
 def multiclass_brier_score(y_true: list[int], prob_rows: list[list[float]]) -> Optional[float]:
@@ -28,8 +28,6 @@ def half_split_log_loss_std(y_true: list[int], prob_rows: list[list[float]]) -> 
     y1, y2 = y_true[:mid], y_true[mid:]
     p1 = np.asarray(prob_rows[:mid], dtype=np.float64)
     p2 = np.asarray(prob_rows[mid:], dtype=np.float64)
-    if len(y1) < 5 or len(y2) < 5:
-        return None
     ll1 = float(log_loss(y1, p1, labels=[0, 1, 2]))
     ll2 = float(log_loss(y2, p2, labels=[0, 1, 2]))
     return float(np.std([ll1, ll2], ddof=0))
@@ -42,7 +40,12 @@ def regime_bucket_metrics(
     *,
     min_support: int = 5,
 ) -> dict[str, Any]:
-    """Slice balanced accuracy by coarse VIX bucket from row dict."""
+    """
+    Per VIX bucket slice metrics from row ``vix_level``.
+
+    - ``slice_accuracy``: plain argmax hit rate (majority-class dominated when skewed).
+    - ``balanced_accuracy``: sklearn macro-recall (promotion_engine REGIME_MID_BUCKET_REGRESSION).
+    """
     buckets = {"low": [], "mid": [], "high": [], "missing": []}
     for yt, pr, row in zip(y_true, prob_rows, rows_used):
         v = row.get("vix_level")
@@ -64,14 +67,20 @@ def regime_bucket_metrics(
     out: dict[str, Any] = {}
     for name, pairs in buckets.items():
         if len(pairs) < min_support:
-            out[name] = {"n": len(pairs), "balanced_accuracy": None, "skipped_low_support": True}
+            out[name] = {
+                "n": len(pairs),
+                "slice_accuracy": None,
+                "balanced_accuracy": None,
+                "skipped_low_support": True,
+            }
             continue
         ys = [a for a, _ in pairs]
         ps = [b for _, b in pairs]
         correct = sum(1 for a, b in zip(ys, ps) if a == b)
         out[name] = {
             "n": len(pairs),
-            "balanced_accuracy": float(correct / len(pairs)),
+            "slice_accuracy": float(correct / len(pairs)),
+            "balanced_accuracy": float(balanced_accuracy_score(ys, ps)),
             "skipped_low_support": False,
         }
     return out
@@ -89,7 +98,6 @@ def confidence_reliability_proxy(prob_rows: list[list[float]], y_true: list[int]
         conf = float(np.max(p))
         edges.append(conf)
         hits.append(1.0 if pred == yt else 0.0)
-    # correlation between confidence and hit — simple proxy
     if len(edges) < 10:
         return {"confidence_hit_correlation": None, "mean_confidence": float(np.mean(edges))}
     c = float(np.corrcoef(edges, hits)[0, 1]) if np.std(edges) > 1e-9 else None
@@ -150,7 +158,7 @@ def max_calibration_error_bins(
         confs.append(float(np.max(p)))
         correct.append(1.0 if pred == yt else 0.0)
     edges = np.linspace(0.0, 1.0, n_bins + 1)
-    mce = 0.0
+    mce: Optional[float] = None
     for b in range(n_bins):
         lo, hi = edges[b], edges[b + 1]
         mask = [i for i, c in enumerate(confs) if (c >= lo if b == 0 else c > lo) and c <= hi]
@@ -158,8 +166,9 @@ def max_calibration_error_bins(
             continue
         acc_b = float(np.mean([correct[i] for i in mask]))
         conf_b = float(np.mean([confs[i] for i in mask]))
-        mce = max(mce, abs(acc_b - conf_b))
-    return float(mce)
+        gap = abs(acc_b - conf_b)
+        mce = gap if mce is None else max(mce, gap)
+    return mce
 
 
 def reliability_bins_table(
@@ -382,7 +391,7 @@ def regime_conditional_calibration(
         "high": ([], []),
         "missing": ([], []),
     }
-    for i, row in enumerate(rows_used):
+    for yt, pr, row in zip(y_true, prob_rows, rows_used):
         v = row.get("vix_level")
         try:
             vf = float(v) if v is not None else None
@@ -396,9 +405,9 @@ def regime_conditional_calibration(
             key = "mid"
         else:
             key = "high"
-        yt, pr = buckets[key]
-        yt.append(y_true[i])
-        pr.append(prob_rows[i])
+        yt_l, pr_l = buckets[key]
+        yt_l.append(yt)
+        pr_l.append(pr)
 
     out: dict[str, Any] = {}
     for name, (yt_l, pr_l) in buckets.items():
