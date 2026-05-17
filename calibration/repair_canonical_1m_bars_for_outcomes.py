@@ -15,11 +15,14 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 import sqlite3
 import sys
 import time
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 from horizon_outcomes import OUTCOME_BAR_SPECS, forward_bar_start_utc
 
@@ -29,7 +32,11 @@ from db_authority import is_canonical_db_path
 
 try:
     from db import EdDB, configure_sqlite_connection
-except Exception:
+except ImportError as e:
+    log.warning(
+        "db.EdDB / configure_sqlite_connection not available — governed outcome refresh disabled: %s",
+        e,
+    )
     EdDB = None  # type: ignore[misc, assignment]
 
     def configure_sqlite_connection(conn, **kwargs):
@@ -123,17 +130,37 @@ def repair_snapshot_horizon_bars(
             )
         inserted.append(b_start)
 
-    if not dry_run:
-        conn.commit()
-    conn.close()
-
     refresh_n = 0
-    if inserted and not dry_run and EdDB is not None:
+    if not inserted:
+        refresh_status = "skipped_no_inserts"
+        if not dry_run:
+            conn.commit()
+        conn.close()
+    elif dry_run:
+        refresh_status = "skipped_dry_run"
+        conn.close()
+    else:
+        if EdDB is None:
+            conn.rollback()
+            conn.close()
+            return {
+                "error": "outcome_refresh_unavailable_eddb_import_failed",
+                "snapshot_id": snapshot_id,
+                "ticker": raw_ticker,
+                "ticker_key": tkr,
+                "planned_inserted_bar_starts": inserted,
+                "governed_outcome_refresh_rows": 0,
+                "governed_outcome_refresh_status": "skipped_eddb_unavailable",
+                "note": "gap-fill inserts rolled back — governed outcome refresh requires db.EdDB",
+            }
+        conn.commit()
+        conn.close()
         edb = EdDB(
             db_path,
             allow_noncanonical=not is_canonical_db_path(db_path.resolve()),
         )
         refresh_n = edb.refresh_governed_outcomes_for_mutated_bar_starts(tkr, set(inserted))
+        refresh_status = "ok"
 
     return {
         "snapshot_id": snapshot_id,
@@ -146,6 +173,7 @@ def repair_snapshot_horizon_bars(
         "dry_run": dry_run,
         "source_tag": GAP_FILL_SOURCE,
         "governed_outcome_refresh_rows": refresh_n,
+        "governed_outcome_refresh_status": refresh_status,
     }
 
 
