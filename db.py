@@ -112,6 +112,11 @@ SQLITE_LOCK_WAIT_WARN_MS = float(os.environ.get("ED_SQLITE_LOCK_WAIT_WARN_MS", "
 SQLITE_WRITE_SLOW_MS = float(os.environ.get("ED_SQLITE_WRITE_SLOW_MS", "500"))
 
 
+def _sqlite_busy_or_locked(exc: sqlite3.OperationalError) -> bool:
+    code = getattr(exc, "sqlite_errorcode", None)
+    return code in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
+
+
 def configure_sqlite_connection(
     conn: sqlite3.Connection, *, busy_timeout_ms: int = 30000
 ) -> None:
@@ -821,8 +826,7 @@ class EdDB:
                 return out
             except sqlite3.OperationalError as e:
                 last_exc = e
-                em = str(e).lower()
-                retryable = "locked" in em or "busy" in em
+                retryable = _sqlite_busy_or_locked(e)
                 if not retryable or attempt >= SQLITE_BUSY_MAX_RETRIES:
                     log.error(
                         "sqlite_tier1_fail op=%s ticker=%s db_path=%s attempts=%s thread=%s err=%s",
