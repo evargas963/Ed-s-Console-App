@@ -3319,13 +3319,23 @@ def _fetch_state(
             # 5-minute bars
             resp_5m = safe_get_price_history(client, ticker, frequency_minutes=5, period_days=1)
             if resp_5m and resp_5m.status_code == 200:
-                raw_bars = resp_5m.json().get("candles", [])
+                payload_5m = resp_5m.json()
+                if "candles" not in payload_5m:
+                    raise ValueError(
+                        f"Schwab pricehistory response missing 'candles' key (status={resp_5m.status_code})"
+                    )
+                raw_bars = payload_5m["candles"]
                 _candles_5m.seed(ticker, raw_bars)
                 log.info(f"Seeded {ticker} 5m candles: {len(raw_bars)} bars from price history")
             # 1-minute bars
             resp_1m = safe_get_price_history(client, ticker, frequency_minutes=1, period_days=1)
             if resp_1m and resp_1m.status_code == 200:
-                raw_bars_1m = resp_1m.json().get("candles", [])
+                payload_1m = resp_1m.json()
+                if "candles" not in payload_1m:
+                    raise ValueError(
+                        f"Schwab pricehistory response missing 'candles' key (status={resp_1m.status_code})"
+                    )
+                raw_bars_1m = payload_1m["candles"]
                 _candles_1m.seed(ticker, raw_bars_1m)
                 log.info(f"Seeded {ticker} 1m candles: {len(raw_bars_1m)} bars from price history")
         except Exception as e:
@@ -3963,7 +3973,12 @@ def _fetch_state(
             if (not resp_ph or resp_ph.status_code != 200 or not resp_ph.json().get("candles")) and ticker.startswith("$"):
                 resp_ph = safe_get_price_history(client, ticker[1:], frequency_minutes=1, period_days=1)
             if resp_ph and resp_ph.status_code == 200:
-                ph_candles = resp_ph.json().get("candles", [])
+                payload_ph = resp_ph.json()
+                if "candles" not in payload_ph:
+                    raise ValueError(
+                        f"Schwab pricehistory response missing 'candles' key (status={resp_ph.status_code})"
+                    )
+                ph_candles = payload_ph["candles"]
                 if ph_candles and _completed_for_vol:
                     last_ts = getattr(_completed_for_vol[-1], "ts", None)
 

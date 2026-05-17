@@ -62,7 +62,12 @@ def fetch_bars_via_schwab_for_session(
     if resp is None or resp.status_code != 200:
         raise ValueError(f"Schwab price history failed: status={getattr(resp, 'status_code', '?')}")
 
-    candles = resp.json().get("candles", [])
+    payload = resp.json()
+    if "candles" not in payload:
+        raise ValueError(
+            f"Schwab pricehistory response missing 'candles' key (status={resp.status_code})"
+        )
+    candles = payload["candles"]
     return schwab_candles_to_bars(candles)
 
 
@@ -114,7 +119,12 @@ def fetch_bars_via_schwab(
     if resp is None or resp.status_code != 200:
         raise ValueError(f"Schwab price history failed: status={getattr(resp, 'status_code', '?')}")
 
-    candles = resp.json().get("candles", [])
+    payload = resp.json()
+    if "candles" not in payload:
+        raise ValueError(
+            f"Schwab pricehistory response missing 'candles' key (status={resp.status_code})"
+        )
+    candles = payload["candles"]
     return schwab_candles_to_bars(candles)
 
 
