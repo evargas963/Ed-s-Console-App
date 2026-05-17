@@ -524,3 +524,118 @@ def test_disposition_merge_surface_kept_when_single_line(tmp_path: Path) -> None
     key = ("server.py", surf.strip(), "TEXT_LINE_MARKET_TOKEN", "py")
     assert key in by_surface
     assert by_surface[key]["disposition"] == "REPLACED"
+
+
+def test_disposition_merge_surface_omitted_cross_pattern_kind(tmp_path: Path) -> None:
+    """Same surface on two lines with different pattern_kind → no surface merge (947bbc7+)."""
+    from tools.schwab_universal_coverage_scanner_v3.cli import _load_disposition_merge_maps
+    from tools.schwab_universal_coverage_scanner_v3.register import write_register_csv
+
+    surf = "        return {}"
+    rows = [
+        RegisterRow(
+            register_id="aaaaaaaaaaaaaaaaaaaa",
+            language="py",
+            path="server.py",
+            line=2050,
+            col=0,
+            pattern_kind="TEXT_LINE_MARKET_TOKEN",
+            surface_form=surf,
+            tokens="t",
+            csv_candidates="chains.x",
+            csv_lexical_topk_note="",
+            v2_trace="",
+            disposition="REPLACED",
+            canonical_field_citation="chains.callExpDateMap.*.expirationDate",
+            governed_ref="governance/artifacts/perf_proof/replacements/pp_x.json",
+            notes="",
+        ),
+        RegisterRow(
+            register_id="bbbbbbbbbbbbbbbbbbbb",
+            language="cross_validator",
+            path="server.py",
+            line=4478,
+            col=0,
+            pattern_kind="pattern_kind_miss",
+            surface_form=surf,
+            tokens="t",
+            csv_candidates="chains.x",
+            csv_lexical_topk_note="",
+            v2_trace="",
+            disposition="REPLACED",
+            canonical_field_citation="chains.callExpDateMap.*.expirationDate",
+            governed_ref="governance/artifacts/perf_proof/replacements/pp_x.json",
+            notes="independent path vs python AST",
+        ),
+    ]
+    reg = tmp_path / "cross_kind.csv"
+    write_register_csv(reg, rows)
+    _by_site, _by_id, by_surface = _load_disposition_merge_maps(reg)
+    assert not by_surface
+
+
+def test_apply_disposition_merge_skips_by_id_when_surface_differs(tmp_path: Path) -> None:
+    from tools.schwab_universal_coverage_scanner_v3.cli import (
+        _apply_disposition_merge,
+        _load_disposition_merge_maps,
+    )
+    from tools.schwab_universal_coverage_scanner_v3.register import write_register_csv
+
+    prior_surf = "        return {}"
+    new_surf = "    transformer_available=getattr(ms, 'transformer_available', None)"
+    rid = RegisterRow.make_id("server.py", 4478, 0, "pattern_kind_miss", "cross_validator")
+    write_register_csv(
+        tmp_path / "prior.csv",
+        [
+            RegisterRow(
+                register_id=rid,
+                language="cross_validator",
+                path="server.py",
+                line=4478,
+                col=0,
+                pattern_kind="pattern_kind_miss",
+                surface_form=prior_surf,
+                tokens="t",
+                csv_candidates="",
+                csv_lexical_topk_note="",
+                v2_trace="",
+                disposition="REPLACED",
+                canonical_field_citation="chains.x",
+                governed_ref="governance/artifacts/perf_proof/replacements/pp_x.json",
+                notes="",
+            ),
+        ],
+    )
+    _by_site, by_id, _by_surface = _load_disposition_merge_maps(tmp_path / "prior.csv")
+    row = RegisterRow(
+        register_id=rid,
+        language="cross_validator",
+        path="server.py",
+        line=4478,
+        col=0,
+        pattern_kind="pattern_kind_miss",
+        surface_form=new_surf,
+        tokens="t",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+        canonical_field_citation="",
+        governed_ref="",
+        notes="independent path vs python AST",
+    )
+    _apply_disposition_merge([row], {}, by_id, {})
+    assert row.disposition == "UNREVIEWED"
+    assert row.canonical_field_citation == ""
+
+
+def test_cross_validator_skips_line_covered_by_catch_all(tmp_path: Path, idx: SchwabCsvIndex) -> None:
+    """Catch-all (language=py) coverage prevents spurious pattern_kind_miss on same line."""
+    from tools.schwab_universal_coverage_scanner_v3.catch_all import scan_catch_all_lines
+    from tools.schwab_universal_coverage_scanner_v3.cross_validate import cross_validate_python_file
+
+    src = "v = getattr(o, 'theta')\n"
+    py_rows = scan_catch_all_lines("t.py", src, idx, {}, language="py")
+    assert py_rows
+    miss = cross_validate_python_file("t.py", src, py_rows, idx)
+    assert not any(r.line == py_rows[0].line for r in miss)

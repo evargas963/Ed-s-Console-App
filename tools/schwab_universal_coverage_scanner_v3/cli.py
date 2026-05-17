@@ -86,6 +86,7 @@ def _load_disposition_merge_maps(
     by_id: dict[str, dict[str, str]] = {}
     by_surface: dict[tuple[str, str, str, str], dict[str, str]] = {}
     surface_lines: dict[tuple[str, str, str, str], set[int]] = defaultdict(set)
+    cross_surface_lines: dict[tuple[str, str], set[int]] = defaultdict(set)
     if not register_csv.is_file():
         return by_site, by_id, by_surface
     if os.environ.get("SCHWAB_SKIP_DISPOSITION_MERGE", "").strip().lower() in ("1", "true", "yes"):
@@ -101,6 +102,7 @@ def _load_disposition_merge_maps(
                     "canonical_field_citation": (row.get("canonical_field_citation") or "").strip(),
                     "governed_ref": (row.get("governed_ref") or "").strip(),
                     "notes": (row.get("notes") or "").strip(),
+                    "surface_form": (row.get("surface_form") or "").strip(),
                 }
                 sk = _merge_key_from_csv_row(row)
                 if sk is not None:
@@ -116,12 +118,27 @@ def _load_disposition_merge_maps(
                         ln = 0
                     surface_lines[ssk].add(ln)
                     by_surface[ssk] = payload
+                    cross_surface_lines[(ssk[0], ssk[1])].add(ln)
     except (OSError, UnicodeError, csv.Error):
         return {}, {}, {}
     for ssk, lines in surface_lines.items():
         if len(lines) > 1:
             by_surface.pop(ssk, None)
+    for cross_key, lines in cross_surface_lines.items():
+        if len(lines) > 1:
+            path, surf = cross_key
+            for key in list(by_surface):
+                if key[0] == path and key[1] == surf:
+                    by_surface.pop(key, None)
     return by_site, by_id, by_surface
+
+
+def _merge_payload_applies_to_row(row: RegisterRow, payload: dict[str, str]) -> bool:
+    """Do not inherit disposition when prior surface text differs (stable line, changed code)."""
+    prior_surface = (payload.get("surface_form") or "").strip()
+    if not prior_surface:
+        return True
+    return (row.surface_form or "").strip() == prior_surface
 
 
 def _apply_disposition_merge(
@@ -134,11 +151,17 @@ def _apply_disposition_merge(
         return
     for row in all_rows:
         key = (row.path, int(row.line), int(row.col), row.pattern_kind, row.language)
-        m = (
-            by_site.get(key)
-            or by_id.get(row.register_id)
-            or by_surface.get(_merge_surface_key_from_register_row(row))
-        )
+        candidates: list[dict[str, str]] = []
+        site_m = by_site.get(key)
+        if site_m is not None:
+            candidates.append(site_m)
+        id_m = by_id.get(row.register_id)
+        if id_m is not None:
+            candidates.append(id_m)
+        surf_m = by_surface.get(_merge_surface_key_from_register_row(row))
+        if surf_m is not None:
+            candidates.append(surf_m)
+        m = next((c for c in candidates if _merge_payload_applies_to_row(row, c)), None)
         if not m:
             continue
         row.disposition = m["disposition"]
