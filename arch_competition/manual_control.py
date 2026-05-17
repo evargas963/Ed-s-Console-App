@@ -7,10 +7,16 @@ All mutations require manual_promote_to_active_explicit / manual_rollback_to_che
 from __future__ import annotations
 
 import json
+import logging
+import os
 import shutil
+import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
+
+log = logging.getLogger(__name__)
 
 from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug
 
@@ -96,11 +102,47 @@ def _validate_manifest_paths_match_canonical(manifest: dict[str, Any], model_dir
         )
 
 
+def _replace_active_dir_from_source(
+    src: Path,
+    active_ticker_dir: Path,
+    *,
+    exclude_names: frozenset[str] = frozenset(),
+) -> None:
+    """Atomically replace active ticker directory contents from src (staging + os.replace)."""
+    parent = active_ticker_dir.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    staging = parent / f".{active_ticker_dir.name}.staging.tmp"
+    backup = parent / f".{active_ticker_dir.name}.old.tmp"
+
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+    try:
+        for f in src.glob("*"):
+            if f.is_file() and f.name not in exclude_names:
+                shutil.copy2(f, staging / f.name)
+
+        if backup.exists():
+            shutil.rmtree(backup)
+        if active_ticker_dir.exists():
+            os.replace(active_ticker_dir, backup)
+        try:
+            os.replace(staging, active_ticker_dir)
+        except Exception:
+            if not active_ticker_dir.exists() and backup.exists():
+                os.replace(backup, active_ticker_dir)
+            raise
+        finally:
+            if backup.exists():
+                shutil.rmtree(backup, ignore_errors=True)
+    except Exception:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+
 def _copy_candidate_to_active(src: Path, active_ticker_dir: Path) -> None:
-    active_ticker_dir.mkdir(parents=True, exist_ok=True)
-    for f in src.glob("*"):
-        if f.is_file():
-            shutil.copy2(f, active_ticker_dir / f.name)
+    _replace_active_dir_from_source(src, active_ticker_dir)
 
 
 def _snapshot_active_to_checkpoint(
@@ -133,14 +175,62 @@ def _load_arch_state(model_dir: Path, hz: str) -> dict[str, Any]:
         return {}
     try:
         return json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+        quarantine = p.with_suffix(f"{p.suffix}.corrupt.{int(time.time())}")
+        try:
+            p.rename(quarantine)
+        except OSError:
+            log.warning("could not quarantine corrupt arch_state at %s", p)
+        raise ManualGovernanceError(
+            f"arch_state at {p} is corrupt or unreadable ({e}); "
+            f"quarantined to {quarantine.name if quarantine.exists() else 'n/a'}; "
+            "manual recovery required before further promotions or rollbacks"
+        ) from e
 
 
 def _write_arch_state(model_dir: Path, hz: str, state: dict[str, Any]) -> None:
     p = arch_state_path_for_horizon(model_dir, hz)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    fd, tmp_name = tempfile.mkstemp(dir=p.parent, prefix=f"{p.name}.", suffix=".tmp")
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(state, handle, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, p)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
+def _write_promotion_pending(
+    model_dir: Path,
+    hz: str,
+    tku: str,
+    *,
+    checkpoint_id: str,
+    target_architecture: str,
+    prior_active_architecture: str,
+) -> None:
+    state = _load_arch_state(model_dir, hz)
+    tick = dict(state.get(tku) or {}) if isinstance(state.get(tku), dict) else {}
+    tick["promotion_pending"] = {
+        "schema_version": CONTROL_RECORD_SCHEMA_VERSION,
+        "checkpoint_id": checkpoint_id,
+        "target_architecture": target_architecture,
+        "prior_active_architecture": prior_active_architecture,
+    }
+    state[tku] = tick
+    _write_arch_state(model_dir, hz, state)
+
+
+def _clear_promotion_pending(model_dir: Path, hz: str, tku: str) -> None:
+    state = _load_arch_state(model_dir, hz)
+    tick = dict(state.get(tku) or {}) if isinstance(state.get(tku), dict) else {}
+    tick.pop("promotion_pending", None)
+    state[tku] = tick
+    _write_arch_state(model_dir, hz, state)
 
 
 def manual_promote_to_active_explicit(
@@ -228,10 +318,23 @@ def manual_promote_to_active_explicit(
         ),
     )
 
+    _write_promotion_pending(
+        model_dir,
+        hz,
+        tku,
+        checkpoint_id=checkpoint_id,
+        target_architecture=target_architecture,
+        prior_active_architecture=prior_arch,
+    )
+
     try:
         _snapshot_active_to_checkpoint(active_ticker_dir, ck_dir, prior_arch)
         _copy_candidate_to_active(src, active_ticker_dir)
     except Exception as e:
+        try:
+            _clear_promotion_pending(model_dir, hz, tku)
+        except ManualGovernanceError:
+            pass
         append_audit_record(
             model_dir,
             build_audit_record(
@@ -254,6 +357,7 @@ def manual_promote_to_active_explicit(
     state = _load_arch_state(model_dir, hz)
     tick = state.get(tku) if isinstance(state.get(tku), dict) else {}
     tick = dict(tick)
+    tick.pop("promotion_pending", None)
     tick["active_architecture"] = target_architecture
     tick["manual_promotion"] = {
         "schema_version": CONTROL_RECORD_SCHEMA_VERSION,
@@ -360,14 +464,11 @@ def manual_rollback_to_checkpoint_explicit(
             raise ManualGovernanceError(
                 "checkpoint has no prior active files; rollback requires a non-empty prior snapshot"
             )
-        # Replace active contents: clear files then copy checkpoint (excluding manifest)
-        if active_ticker_dir.is_dir():
-            for f in active_ticker_dir.glob("*"):
-                if f.is_file():
-                    f.unlink()
-        for f in ck.glob("*"):
-            if f.is_file() and f.name != "checkpoint_manifest.json":
-                shutil.copy2(f, active_ticker_dir / f.name)
+        _replace_active_dir_from_source(
+            ck,
+            active_ticker_dir,
+            exclude_names=frozenset({"checkpoint_manifest.json"}),
+        )
     except ManualGovernanceError:
         raise
     except Exception as e:
@@ -390,12 +491,7 @@ def manual_rollback_to_checkpoint_explicit(
         )
         raise ManualGovernanceError(f"rollback failed: {e}") from e
 
-    # Restore prior architecture label from checkpoint meta if stored
-    try:
-        full_meta = _read_json(ck / "checkpoint_manifest.json")
-        restored_arch = full_meta.get("prior_active_architecture")
-    except Exception:
-        restored_arch = None
+    restored_arch = meta.get("prior_active_architecture")
     if not restored_arch:
         raise ManualGovernanceError("checkpoint_manifest missing prior_active_architecture")
 

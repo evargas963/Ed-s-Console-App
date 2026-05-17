@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from arch_competition.manual_control import (
     MANUAL_PROMOTE_CASCADE_INTENT,
     MANUAL_PROMOTE_PARALLEL_INTENT,
     MANUAL_ROLLBACK_INTENT,
+    arch_state_path_for_horizon,
     assert_active_mutation_only_via_manual_control,
     load_governance_visibility,
     manual_promote_to_active_explicit,
@@ -139,6 +141,49 @@ def test_manual_promote_cascade_blocked_by_record(tmp_path: Path):
         )
 
 
+def test_load_arch_state_rejects_corrupt_file(tmp_path: Path):
+    from arch_competition.manual_control import _load_arch_state
+
+    p = arch_state_path_for_horizon(tmp_path, "1c")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("{not valid json", encoding="utf-8")
+    with pytest.raises(ManualGovernanceError, match="arch_state at .* corrupt"):
+        _load_arch_state(tmp_path, "1c")
+    assert not p.is_file()
+    assert any(p.parent.glob("arch_state.json.corrupt.*"))
+
+
+def test_promote_copy_failure_leaves_prior_active_unchanged(tmp_path: Path, monkeypatch):
+    _minimal_governed_files(tmp_path, cascade_ok=True)
+    active = tmp_path / "active" / "SPY"
+    active.mkdir(parents=True)
+    (active / "stable.pkl").write_bytes(b"stable")
+
+    calls = {"n": 0}
+    real_copy2 = shutil.copy2
+
+    def flaky_copy2(src, dst):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise OSError("simulated disk full during staging copy")
+        return real_copy2(src, dst)
+
+    monkeypatch.setattr(shutil, "copy2", flaky_copy2)
+
+    with pytest.raises(ManualGovernanceError, match="promotion copy failed"):
+        manual_promote_to_active_explicit(
+            tmp_path,
+            "SPY",
+            "1c",
+            target_architecture="cascade",
+            operator_id="op1",
+            manual_intent=MANUAL_PROMOTE_CASCADE_INTENT,
+        )
+
+    assert (active / "stable.pkl").read_bytes() == b"stable"
+    assert not (active / "xgb_SPY_1c.pkl").exists()
+
+
 def test_manual_promote_cascade_success_writes_active_and_audit(tmp_path: Path):
     _minimal_governed_files(tmp_path, cascade_ok=True)
     active = tmp_path / "active" / "SPY"
@@ -156,6 +201,9 @@ def test_manual_promote_cascade_success_writes_active_and_audit(tmp_path: Path):
     assert (active / "xgb_SPY_1c.pkl").read_bytes() == b"y"
     assert (tmp_path / "arch_competition" / "governance_audit.jsonl").is_file()
     assert "checkpoint_id" in out
+    state = json.loads((tmp_path / "arch_state.json").read_text(encoding="utf-8"))
+    assert state["SPY"]["active_architecture"] == "cascade"
+    assert "promotion_pending" not in state["SPY"]
 
 
 def test_missing_governed_files_fail_closed(tmp_path: Path):
