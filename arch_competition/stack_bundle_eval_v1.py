@@ -41,6 +41,8 @@ log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = "1"
 UNIFORM_3CLASS_LOG_LOSS = float(math.log(3.0))
+# Heuristic stack-bundle gate (distinct from promotion_engine.PromotionPolicy.max_ece_regression_vs_incumbent).
+POLICY_CALIBRATION_MAX_ECE = 0.35
 
 # Full component matrix (default CLI). All scored on the same row intersection.
 DEFAULT_ALL_MODES: tuple[str, ...] = (
@@ -99,11 +101,24 @@ MODE_DEFINITIONS: dict[str, str] = {
 }
 
 
+def _outcome_class_index(outcome_raw: Any) -> Optional[int]:
+    """Map outcome column value to {up:0, down:1, flat:2}; None if missing or invalid."""
+    if outcome_raw is None:
+        return None
+    key = str(outcome_raw).strip().lower()
+    if not key:
+        return None
+    return {"up": 0, "down": 1, "flat": 2}.get(key)
+
+
 def _norm_triplet(pu: float, pd: float, pf: float) -> Optional[list[float]]:
-    s = float(pu) + float(pd) + float(pf)
+    fpu, fpd, fpf = float(pu), float(pd), float(pf)
+    if not all(math.isfinite(v) for v in (fpu, fpd, fpf)):
+        return None
+    s = fpu + fpd + fpf
     if s <= 0:
         return None
-    return [float(pu) / s, float(pd) / s, float(pf) / s]
+    return [fpu / s, fpd / s, fpf / s]
 
 
 def _dict_to_probs(d: Optional[dict]) -> Optional[list[float]]:
@@ -174,6 +189,8 @@ def _pack_full_metrics(
         half_split_log_loss_std,
         multiclass_brier_score,
         overconfidence_diagnostics,
+        regime_bucket_metrics,
+        regime_conditional_calibration,
         reliability_bins_table,
     )
 
@@ -235,6 +252,8 @@ def _pack_full_metrics(
         "overconfidence_diagnostics": occ,
         "stability_log_loss_std_halves": stab,
         "directional_separation_mean_p_correct_minus_max_p_wrong": dir_sep,
+        "regime_slices": regime_bucket_metrics(y_true, prob_rows, rows_used),
+        "regime_conditional_ece": regime_conditional_calibration(y_true, prob_rows, rows_used),
     }
 
 
@@ -304,7 +323,7 @@ def _authority_block(
         if ece is None:
             policy_calibration_status = "missing_ece"
             policy_calibration_ok = False
-        elif float(ece) < 0.35:
+        elif float(ece) < POLICY_CALIBRATION_MAX_ECE:
             policy_calibration_status = "ok"
             policy_calibration_ok = True
         else:
@@ -583,7 +602,11 @@ def run_stack_bundle_evaluation(
                         float(fusion_payload_full.prob_flat),
                     )
 
-            yt = {"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2)
+            outcome_raw = row.get(target_column)
+            yt = _outcome_class_index(outcome_raw)
+            if yt is None:
+                _bump(f"missing_or_invalid_outcome:{outcome_raw!r}")
+                continue
 
             if all(row_probs.get(m) is not None for m in modes):
                 for m in modes:
@@ -626,10 +649,12 @@ def run_stack_bundle_evaluation(
             "ml_horizon_slug": hz,
             "pairing": "A row is scored only if every requested mode produced a probability triplet.",
             "leakage_audit": (
-                "InferenceSnapshotV1 built with as_of_ts = row ts_utc; LSTM/Transformer history uses "
-                "HistoricalDB with ts_utc < as_of_ts; fusion overlay DB lookups use same hist_db shim "
-                "(get_similar_setups absent — empirical horizons in overlay may be null, caught in engine)."
+                "InferenceSnapshotV1 built with as_of_ts = row ts_utc. preload_historical_db_for_eval loads "
+                "rows with ts_utc < max(row ts_utc) once; PreloadedHistoricalDB.get_recent_snapshots filters "
+                "each call to ts_utc < as_of_ts_utc (per-row causal slice). Outcomes excluded when "
+                "target_column is null or not in {up, down, flat} (never fabricated as flat)."
             ),
+            "outcome_validity": "Rows without valid outcome labels are skipped before pairing (see skip_reason_counts).",
             "primary_metric": "multiclass_log_loss",
             "promotion_engine_note": (
                 "arch_competition.promotion_engine.decide_promotion remains the governed contract for "
@@ -663,5 +688,4 @@ def pack_metrics_for_probs(
     prob_rows: list[list[float]],
     rows_used: Optional[list[dict]] = None,
 ) -> dict[str, Any]:
-    ru = rows_used or [{}] * len(y_true)
-    return _pack_full_metrics(name, y_true, prob_rows, ru)
+    return _pack_full_metrics(name, y_true, prob_rows, rows_used or [])

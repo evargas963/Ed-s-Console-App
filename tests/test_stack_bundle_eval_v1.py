@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from arch_competition.stack_bundle_eval_v1 import (
+    POLICY_CALIBRATION_MAX_ECE,
     _authority_block,
     _dict_to_probs,
     _fusion_branch_to_prob_dict,
     _norm_triplet,
+    _outcome_class_index,
     _probs_from_fusion_branch,
     pack_metrics_for_probs,
 )
@@ -15,6 +17,18 @@ from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
 
 def test_norm_triplet_none_on_degenerate_sum():
     assert _norm_triplet(0.0, 0.0, 0.0) is None
+
+
+def test_norm_triplet_none_on_nan_inputs():
+    assert _norm_triplet(float("nan"), 0.5, 0.5) is None
+
+
+def test_outcome_class_index_none_for_missing_or_invalid():
+    assert _outcome_class_index(None) is None
+    assert _outcome_class_index("") is None
+    assert _outcome_class_index("sideways") is None
+    assert _outcome_class_index("up") == 0
+    assert _outcome_class_index("FLAT") == 2
 
 
 def test_dict_to_probs_none_when_any_key_missing():
@@ -76,7 +90,7 @@ def test_authority_policy_calibration_ok_when_ece_below_threshold():
         "xgb_only": {
             "multiclass_log_loss": 0.9,
             "n_rows_scored": 100,
-            "calibration_top_predicted_class_ece": 0.1,
+            "calibration_top_predicted_class_ece": POLICY_CALIBRATION_MAX_ECE - 0.05,
         },
         "full_fusion": {
             "multiclass_log_loss": 1.0,
@@ -87,4 +101,34 @@ def test_authority_policy_calibration_ok_when_ece_below_threshold():
     auth = _authority_block(by_config, min_rows=50, min_delta_log_loss=0.02)
     assert auth["policy_calibration_status"] == "ok"
     assert auth["policy_calibration_may_proceed_heuristic"] is True
+
+
+def test_authority_policy_calibration_above_threshold():
+    by_config = {
+        "xgb_only": {
+            "multiclass_log_loss": 0.9,
+            "n_rows_scored": 100,
+            "calibration_top_predicted_class_ece": POLICY_CALIBRATION_MAX_ECE + 0.01,
+        },
+        "full_fusion": {
+            "multiclass_log_loss": 1.0,
+            "n_rows_scored": 100,
+            "calibration_top_predicted_class_ece": 0.2,
+        },
+    }
+    auth = _authority_block(by_config, min_rows=50, min_delta_log_loss=0.02)
+    assert auth["policy_calibration_status"] == "above_threshold"
+    assert auth["policy_calibration_may_proceed_heuristic"] is False
+
+
+def test_pack_metrics_includes_regime_slices_when_rows_provided():
+    n = MIN_SAMPLES_STATISTICAL
+    y = [i % 3 for i in range(n)]
+    templates = [[0.7, 0.2, 0.1], [0.2, 0.7, 0.1], [0.1, 0.2, 0.7]]
+    probs = [templates[i % 3] for i in range(n)]
+    rows = [{"vix_level": 12.0 if i % 2 == 0 else 20.0} for i in range(n)]
+    m = pack_metrics_for_probs("test", y, probs, rows_used=rows)
+    assert "regime_slices" in m
+    assert "regime_conditional_ece" in m
+    assert "low" in m["regime_slices"]
 
