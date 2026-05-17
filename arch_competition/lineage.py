@@ -15,13 +15,17 @@ def _normalize_fp(a: Any, b: Any) -> bool:
     if a is None or b is None:
         return False
     if isinstance(a, dict) and isinstance(b, dict):
+        t_a = str(a.get("ticker") or "").strip()
+        t_b = str(b.get("ticker") or "").strip()
+        if not t_a or not t_b:
+            return False
         return (
             a.get("min_ts_utc") == b.get("min_ts_utc")
             and a.get("max_ts_utc") == b.get("max_ts_utc")
             and a.get("row_count") == b.get("row_count")
             and a.get("table") == b.get("table")
             and a.get("timeframe") == b.get("timeframe")
-            and a.get("ticker", "").upper() == b.get("ticker", "").upper()
+            and t_a.upper() == t_b.upper()
         )
     return a == b
 
@@ -62,24 +66,40 @@ def validate_parallel_cascade_manifest_lineage(
             f"data_fingerprint mismatch between parallel and cascade manifests: {dfp!r} vs {dfc!r}"
         )
 
-    hz_p = str(mp.get("ml_horizon_suffix") or "").strip().lower()
-    hz_c = str(mc.get("ml_horizon_suffix") or "").strip().lower()
+    hz_p_raw = mp.get("ml_horizon_suffix")
+    hz_c_raw = mc.get("ml_horizon_suffix")
+    if hz_p_raw is None or not str(hz_p_raw).strip():
+        raise EvaluationLineageError("parallel manifest missing ml_horizon_suffix")
+    if hz_c_raw is None or not str(hz_c_raw).strip():
+        raise EvaluationLineageError("cascade manifest missing ml_horizon_suffix")
+    hz_p = str(hz_p_raw).strip().lower()
+    hz_c = str(hz_c_raw).strip().lower()
     if hz_p != hz_c:
         raise EvaluationLineageError(f"ml_horizon_suffix mismatch: {hz_p!r} vs {hz_c!r}")
 
     if expected_ml_horizon_suffix is not None:
-        ex = expected_ml_horizon_suffix.strip().lower()
+        if not str(expected_ml_horizon_suffix).strip():
+            raise EvaluationLineageError(
+                "expected_ml_horizon_suffix must be omitted or non-empty; empty string is not allowed"
+            )
+        ex = str(expected_ml_horizon_suffix).strip().lower()
         if hz_p != ex:
             raise EvaluationLineageError(f"manifest horizon {hz_p!r} != expected {ex!r}")
 
-    if mp.get("training_code_fingerprint") != mc.get("training_code_fingerprint"):
+    tfp = mp.get("training_code_fingerprint")
+    tfc = mc.get("training_code_fingerprint")
+    if tfp is None or not str(tfp).strip():
+        raise EvaluationLineageError("parallel manifest missing training_code_fingerprint")
+    if tfc is None or not str(tfc).strip():
+        raise EvaluationLineageError("cascade manifest missing training_code_fingerprint")
+    if tfp != tfc:
         raise EvaluationLineageError("training_code_fingerprint mismatch between parallel and cascade manifests")
 
     return {
         "feature_cache_key": mp.get("feature_cache_key"),
         "data_fingerprint": dfp,
         "ml_horizon_suffix": hz_p,
-        "training_code_fingerprint": mp.get("training_code_fingerprint"),
+        "training_code_fingerprint": tfp,
         "canonical_feature_contract_version": CANONICAL_FEATURE_CONTRACT_VERSION,
         "canonical_timeframe": CANONICAL_FEATURE_TIMEFRAME,
         "parallel_schema_version": mp.get("schema_version"),

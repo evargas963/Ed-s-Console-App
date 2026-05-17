@@ -250,7 +250,12 @@ def test_auto_promote_forbidden():
         decide_promotion(m, auto_promote=True)
 
 
-def test_lineage_mismatch_raises(tmp_path: Path):
+def _write_lineage_manifest_pair(
+    tmp_path: Path,
+    *,
+    parallel: dict | None = None,
+    cascade: dict | None = None,
+) -> tuple[Path, Path]:
     fp = _dfp()
     common = {
         "schema_version": "2",
@@ -258,20 +263,65 @@ def test_lineage_mismatch_raises(tmp_path: Path):
         "ml_horizon_suffix": "1c",
         "data_fingerprint": fp,
         "training_code_fingerprint": "trainfp",
+        "feature_cache_key": "shared",
     }
     pdir = tmp_path / "p"
     cdir = tmp_path / "c"
     pdir.mkdir()
     cdir.mkdir()
-    (pdir / "scheduler_run_manifest.json").write_text(
-        json.dumps({**common, "feature_cache_key": "A"}),
-        encoding="utf-8",
-    )
-    (cdir / "scheduler_run_manifest.json").write_text(
-        json.dumps({**common, "feature_cache_key": "B"}),
-        encoding="utf-8",
+    p_body = {**common, **(parallel or {})}
+    c_body = {**common, **(cascade or {})}
+    (pdir / "scheduler_run_manifest.json").write_text(json.dumps(p_body), encoding="utf-8")
+    (cdir / "scheduler_run_manifest.json").write_text(json.dumps(c_body), encoding="utf-8")
+    return pdir, cdir
+
+
+def test_lineage_mismatch_raises(tmp_path: Path):
+    pdir, cdir = _write_lineage_manifest_pair(
+        tmp_path,
+        parallel={"feature_cache_key": "A"},
+        cascade={"feature_cache_key": "B"},
     )
     with pytest.raises(EvaluationLineageError, match="feature_cache_key"):
+        validate_parallel_cascade_manifest_lineage(pdir, cdir, ticker="SPY", expected_ml_horizon_suffix="1c")
+
+
+def test_lineage_both_missing_ml_horizon_suffix_raises(tmp_path: Path):
+    pdir, cdir = _write_lineage_manifest_pair(
+        tmp_path,
+        parallel={"ml_horizon_suffix": None},
+        cascade={"ml_horizon_suffix": None},
+    )
+    with pytest.raises(EvaluationLineageError, match="missing ml_horizon_suffix"):
+        validate_parallel_cascade_manifest_lineage(pdir, cdir, ticker="SPY")
+
+
+def test_lineage_both_missing_training_code_fingerprint_raises(tmp_path: Path):
+    pdir, cdir = _write_lineage_manifest_pair(
+        tmp_path,
+        parallel={"training_code_fingerprint": None},
+        cascade={"training_code_fingerprint": None},
+    )
+    with pytest.raises(EvaluationLineageError, match="missing training_code_fingerprint"):
+        validate_parallel_cascade_manifest_lineage(pdir, cdir, ticker="SPY", expected_ml_horizon_suffix="1c")
+
+
+def test_lineage_empty_expected_horizon_raises(tmp_path: Path):
+    pdir, cdir = _write_lineage_manifest_pair(tmp_path)
+    with pytest.raises(EvaluationLineageError, match="expected_ml_horizon_suffix"):
+        validate_parallel_cascade_manifest_lineage(
+            pdir, cdir, ticker="SPY", expected_ml_horizon_suffix=""
+        )
+
+
+def test_lineage_both_missing_fingerprint_ticker_raises(tmp_path: Path):
+    fp = {k: v for k, v in _dfp().items() if k != "ticker"}
+    pdir, cdir = _write_lineage_manifest_pair(
+        tmp_path,
+        parallel={"data_fingerprint": fp},
+        cascade={"data_fingerprint": dict(fp)},
+    )
+    with pytest.raises(EvaluationLineageError, match="data_fingerprint mismatch"):
         validate_parallel_cascade_manifest_lineage(pdir, cdir, ticker="SPY", expected_ml_horizon_suffix="1c")
 
 
