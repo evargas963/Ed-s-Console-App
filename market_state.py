@@ -1011,7 +1011,7 @@ def build_market_state(
     ms.spot_disp    = f"{spot:.2f}" if spot is not None else "—"
     ms.bid_disp     = f"{bid:.2f}"  if bid  is not None else "—"
     ms.ask_disp     = f"{ask:.2f}"  if ask  is not None else "—"
-    spot_f          = float(spot) if spot is not None else 0.0
+    spot_f          = float(spot) if spot is not None else None
 
     # ── 2. Regime — from consensus_summary ──────────────────────────────────
     if consensus_summary is not None:
@@ -1093,220 +1093,235 @@ def build_market_state(
     # compute_signals runs: vol_regime → regime → model stack → fusion → call (8,9,10)
     _sig_out = None
     _charm_dir = charm_direction if charm_direction in ("buying", "selling", "neutral") else "neutral"
-    try:
-        from crash_trace import step as _dstep, step_done as _ddone, trace_crash as _dcrash, _on as _don
-    except ImportError:
-        _don = lambda: False
-        _dstep = _ddone = lambda n, t="": None
-        def _dcrash(_sn, _ex, _t=""): pass
-    try:
-        if _don():
-            _dstep("market_state_pre_signals", ticker)
-        from signals import SignalInput, compute_signals
-        from market_context import iwm_blended_participation_push
+    if spot_f is None:
+        _spot_unavail = "Spot unavailable — no signals"
+        ms.rules_headline = f"⚠ {_spot_unavail}"
+        ms.rules_detail = "Quote/spot missing; cannot compute level distances or signal stack."
+        ms.rules_alerts = [_spot_unavail]
+        ms.call_headline = f"⚠ {_spot_unavail}"
+        ms.call_reasoning = "Cards degraded until Schwab quote provides a valid spot."
+        ms.pred_headline = f"⚠ {_spot_unavail}"
+        ms.zone_label = "—"
+        ms.zone_badge_css = "#374151"
+    else:
+        try:
+            from crash_trace import step as _dstep, step_done as _ddone, trace_crash as _dcrash, _on as _don
+        except ImportError:
+            _don = lambda: False
+            _dstep = _ddone = lambda n, t="": None
+            def _dcrash(_sn, _ex, _t=""): pass
+        try:
+            if _don():
+                _dstep("market_state_pre_signals", ticker)
+            from signals import SignalInput, compute_signals
+            from market_context import iwm_blended_participation_push
 
-        _vwap_val  = getattr(price_levels, "vwap", None)
-        _vwap_side = None
-        if _vwap_val and spot_f:
-            _vwap_side = "above" if spot_f > _vwap_val else "below"
+            _vwap_val  = getattr(price_levels, "vwap", None)
+            _vwap_side = None
+            if _vwap_val and spot_f:
+                _vwap_side = "above" if spot_f > _vwap_val else "below"
 
-        def _dist(lvl):
-            if lvl is None or spot_f is None: return None
-            return round(lvl - spot_f, 4)
+            def _dist(lvl):
+                if lvl is None or spot_f is None: return None
+                return round(lvl - spot_f, 4)
 
-        # Extract key levels from walls/price_levels
-        _cgw = _pgw = _gi = _cdw = _pdw = _di = _coi = _poi = _cvw = _pvw = None
-        if walls:
-            w0 = walls[0]
-            _cgw = _f(getattr(w0, "call_gamma_wall",  None))
-            _pgw = _f(getattr(w0, "put_gamma_wall",   None))
-            _cdw = _f(getattr(w0, "call_delta_wall",  None))
-            _pdw = _f(getattr(w0, "put_delta_wall",   None))
-            _coi = _f(getattr(w0, "call_oi_wall",     None))
-            _poi = _f(getattr(w0, "put_oi_wall",      None))
-            _cvw = _f(getattr(w0, "call_vanna_wall",  None))
-            _pvw = _f(getattr(w0, "put_vanna_wall",   None))
-        # Inflections come from ExposureRow (consensus_summary), not WallsRow
-        if consensus_summary is not None:
-            _gi = _f(getattr(consensus_summary, "gamma_inflection", None))
-            _di = _f(getattr(consensus_summary, "delta_inflection", None))
+            # Extract key levels from walls/price_levels
+            _cgw = _pgw = _gi = _cdw = _pdw = _di = _coi = _poi = _cvw = _pvw = None
+            if walls:
+                w0 = walls[0]
+                _cgw = _f(getattr(w0, "call_gamma_wall",  None))
+                _pgw = _f(getattr(w0, "put_gamma_wall",   None))
+                _cdw = _f(getattr(w0, "call_delta_wall",  None))
+                _pdw = _f(getattr(w0, "put_delta_wall",   None))
+                _coi = _f(getattr(w0, "call_oi_wall",     None))
+                _poi = _f(getattr(w0, "put_oi_wall",      None))
+                _cvw = _f(getattr(w0, "call_vanna_wall",  None))
+                _pvw = _f(getattr(w0, "put_vanna_wall",   None))
+            # Inflections come from ExposureRow (consensus_summary), not WallsRow
+            if consensus_summary is not None:
+                _gi = _f(getattr(consensus_summary, "gamma_inflection", None))
+                _di = _f(getattr(consensus_summary, "delta_inflection", None))
 
-        _pin_w = ((_cgw - _pgw) if _cgw and _pgw else None)
+            _pin_w = ((_cgw - _pgw) if _cgw and _pgw else None)
 
-        # Nearest above/below
-        _nearest_above_name = _nearest_above_val = None
-        _nearest_below_name = _nearest_below_val = None
-        _all_lvls = [
-            (_cgw, "Call g-Wall"), (_pgw, "Put g-Wall"),
-            (_gi,  "g-Inflection"), (_cdw, "Call d-Wall"),
-            (_pdw, "Put d-Wall"),  (_di,  "D-Inflection"),
-            (_coi, "Call OI Wall"),(_poi, "Put OI Wall"),
-            (_vwap_val, "VWAP"),
-        ]
-        for _lv, _ln in _all_lvls:
-            if _lv is None: continue
-            if _lv > spot_f:
-                if _nearest_above_val is None or _lv < _nearest_above_val:
-                    _nearest_above_val  = _lv
-                    _nearest_above_name = _ln
-            elif _lv < spot_f:
-                if _nearest_below_val is None or _lv > _nearest_below_val:
-                    _nearest_below_val  = _lv
-                    _nearest_below_name = _ln
+            # Nearest above/below
+            _nearest_above_name = _nearest_above_val = None
+            _nearest_below_name = _nearest_below_val = None
+            _all_lvls = [
+                (_cgw, "Call g-Wall"), (_pgw, "Put g-Wall"),
+                (_gi,  "g-Inflection"), (_cdw, "Call d-Wall"),
+                (_pdw, "Put d-Wall"),  (_di,  "D-Inflection"),
+                (_coi, "Call OI Wall"),(_poi, "Put OI Wall"),
+                (_vwap_val, "VWAP"),
+            ]
+            for _lv, _ln in _all_lvls:
+                if _lv is None: continue
+                if _lv > spot_f:
+                    if _nearest_above_val is None or _lv < _nearest_above_val:
+                        _nearest_above_val  = _lv
+                        _nearest_above_name = _ln
+                elif _lv < spot_f:
+                    if _nearest_below_val is None or _lv > _nearest_below_val:
+                        _nearest_below_val  = _lv
+                        _nearest_below_name = _ln
 
-        _nearest_above_dist, _nearest_below_dist = canonical_nearest_distances(
-            spot_f, _nearest_above_val, _nearest_below_val
-        )
+            _nearest_above_dist, _nearest_below_dist = canonical_nearest_distances(
+                spot_f, _nearest_above_val, _nearest_below_val
+            )
 
-        # ── Store nearest levels and vwap_side on MarketState for DB logging ──
-        ms.nearest_above_name = _nearest_above_name
-        ms.nearest_above_val  = _nearest_above_val
-        ms.nearest_above_dist = _nearest_above_dist
-        ms.nearest_below_name = _nearest_below_name
-        ms.nearest_below_val  = _nearest_below_val
-        ms.nearest_below_dist = _nearest_below_dist
-        ms.vwap_side          = _vwap_side
+            # ── Store nearest levels and vwap_side on MarketState for DB logging ──
+            ms.nearest_above_name = _nearest_above_name
+            ms.nearest_above_val  = _nearest_above_val
+            ms.nearest_above_dist = _nearest_above_dist
+            ms.nearest_below_name = _nearest_below_name
+            ms.nearest_below_val  = _nearest_below_val
+            ms.nearest_below_dist = _nearest_below_dist
+            ms.vwap_side          = _vwap_side
 
-        # Greeks — net gamma/delta from ExposureRow; charm passed in from server
-        _net_gamma = _net_delta_sig = _net_vanna = None
-        _iv_level  = _pcr_ratio = _oi_center = None
-        if consensus_summary is not None:
-            _oi_center = _f_ms(getattr(consensus_summary, "oi_center", None))
-        if consensus_summary:
-            _net_gamma     = _f(getattr(consensus_summary, "net_gamma", None)) or None
-            _net_delta_sig = _f(getattr(consensus_summary, "net_delta", None)) or None
-        if mc_iv_level is not None and mc_iv_level > 0:
-            _iv_level = _f(mc_iv_level)
-        elif totals:
-            t0 = totals[0]
-            _iv_level = _f(getattr(t0, "atm_iv", None)) or None
-        if totals:
-            t0 = totals[0]
-            _pcr_ratio = _f(getattr(t0, "pcr_oi", None)) or None
-        # Charm: use values passed in from server (computed via compute_net_charm before this call)
-        # "neutral"/"buying"/"selling" — signals engine needs exact these strings
-        _charm_net = charm_net
-        _charm_dir = charm_direction if charm_direction in ("buying", "selling", "neutral") else "neutral"
-        _charm_toward = charm_drift_toward
+            # Greeks — net gamma/delta from ExposureRow; charm passed in from server
+            _net_gamma = _net_delta_sig = _net_vanna = None
+            _iv_level  = _pcr_ratio = _oi_center = None
+            if consensus_summary is not None:
+                _oi_center = _f_ms(getattr(consensus_summary, "oi_center", None))
+            if consensus_summary:
+                _net_gamma     = _f(getattr(consensus_summary, "net_gamma", None))
+                _net_delta_sig = _f(getattr(consensus_summary, "net_delta", None))
+            if mc_iv_level is not None and mc_iv_level > 0:
+                _iv_level = _f(mc_iv_level)
+            elif totals:
+                t0 = totals[0]
+                _iv_level = _f(getattr(t0, "atm_iv", None))
+            if totals:
+                t0 = totals[0]
+                _pcr_ratio = _f(getattr(t0, "pcr_oi", None))
+            # Charm: use values passed in from server (computed via compute_net_charm before this call)
+            # "neutral"/"buying"/"selling" — signals engine needs exact these strings
+            _charm_net = charm_net
+            _charm_dir = charm_direction if charm_direction in ("buying", "selling", "neutral") else "neutral"
+            _charm_toward = charm_drift_toward
 
-        # Cross-instrument
-        _spy_chg  = getattr(mkt_ctx, "spy_chg_pct",  None) or 0
-        _qqq_chg  = getattr(mkt_ctx, "qqq_chg_pct",  None) or 0
-        _iwm_chg  = getattr(mkt_ctx, "iwm_chg_pct",  None) or 0
-        _qqq_delta = round(_qqq_chg - _spy_chg, 4) if (mkt_ctx.spy_chg_pct and mkt_ctx.qqq_chg_pct) else None
-        _qqq_vs_spy = (None if _qqq_delta is None else
-                       "leading" if _qqq_delta > 0.10 else
-                       "lagging" if _qqq_delta < -0.10 else "inline")
-        _iwm_risk = (None if mkt_ctx.iwm_chg_pct is None else
-                     "risk_on"  if _iwm_chg > 0.10 else
-                     "risk_off" if _iwm_chg < -0.10 else "neutral")
+            # Cross-instrument
+            _spy_chg  = getattr(mkt_ctx, "spy_chg_pct",  None)
+            _qqq_chg  = getattr(mkt_ctx, "qqq_chg_pct",  None)
+            _iwm_chg  = getattr(mkt_ctx, "iwm_chg_pct",  None)
+            _qqq_delta = (
+                round(_qqq_chg - _spy_chg, 4)
+                if (_spy_chg is not None and _qqq_chg is not None)
+                else None
+            )
+            _qqq_vs_spy = (None if _qqq_delta is None else
+                           "leading" if _qqq_delta > 0.10 else
+                           "lagging" if _qqq_delta < -0.10 else "inline")
+            _iwm_risk = (None if _iwm_chg is None else
+                         "risk_on"  if _iwm_chg > 0.10 else
+                         "risk_off" if _iwm_chg < -0.10 else "neutral")
 
-        # Time and volatility regime buckets for prediction matching
-        _session_bkt = _sb_fn(et_hour, et_minute)
-        _vix_bkt     = _vb_fn(mkt_ctx.vix) if mkt_ctx.vix is not None else None
+            # Time and volatility regime buckets for prediction matching
+            _session_bkt = _sb_fn(et_hour, et_minute)
+            _vix_bkt     = _vb_fn(mkt_ctx.vix) if mkt_ctx.vix is not None else None
 
-        sig_inp = SignalInput(
-            ticker=ticker, timeframe=CANONICAL_TIMEFRAME,
-            expiry=selected_exp, dte=None,
-            spot=spot_f,
-            candle_open=getattr(price_levels, "today_open", None),
-            candle_high=getattr(price_levels, "today_high", None),
-            candle_low=getattr(price_levels,  "today_low",  None),
-            candle_close=spot_f,
-            candle_direction=candle_direction, candle_body_pts=candle_body_pts, candle_range_pts=None,
-            vwap=_vwap_val, vwap_side=_vwap_side,
-            vwap_dist_pts=round(abs(spot_f - _vwap_val), 4) if _vwap_val else None,
-            zone=ms.zone, prev_zone=(prev_zone or ms.zone),
-            zone_since_bars=zone_since_bars,           # alias (model compat)
-            zone_since_bars_1m=zone_since_bars,        # execution-layer (1m)
-            zone_since_bars_5m=zone_since_bars_5m,     # 5m structure context
-            call_gamma_wall=_cgw, put_gamma_wall=_pgw,
-            call_delta_wall=_cdw, put_delta_wall=_pdw,
-            gamma_inflection=_gi, delta_inflection=_di,
-            call_oi_wall=_coi, put_oi_wall=_poi,
-            call_vanna_wall=_cvw, put_vanna_wall=_pvw,
-            pin_width_pts=_pin_w,
-            dist_call_gamma_wall=_dist(_cgw), dist_put_gamma_wall=_dist(_pgw),
-            dist_call_delta_wall=_dist(_cdw), dist_put_delta_wall=_dist(_pdw),
-            dist_gamma_inflection=_dist(_gi),  dist_delta_inflection=_dist(_di),
-            dist_call_oi_wall=_dist(_coi),     dist_put_oi_wall=_dist(_poi),
-            dist_call_vanna_wall=_dist(_cvw),  dist_put_vanna_wall=_dist(_pvw),
-            nearest_above_name=_nearest_above_name, nearest_above_val=_nearest_above_val,
-            nearest_above_dist=_nearest_above_dist,
-            nearest_below_name=_nearest_below_name, nearest_below_val=_nearest_below_val,
-            nearest_below_dist=_nearest_below_dist,
-            net_gamma=_net_gamma, net_delta=_net_delta_sig, net_vanna=_net_vanna,
-            charm_net=_charm_net, charm_direction=_charm_dir,
-            charm_drift_toward=_charm_toward,
-            charm_magnitude=charm_magnitude,      # use function param — ms.charm_magnitude not set yet at this point
-            dex_magnitude=ms.dex_magnitude,
-            iv_level=_iv_level, iv_direction=iv_direction,
-            realized_vol=realized_vol, atr=atr,
-            garch_sigma_bars=garch_sigma_bars,
-            put_call_oi_ratio=_pcr_ratio, oi_center=_oi_center,
-            recent_crosses=(recent_crosses or []),
-            ceiling_tests_today=ceiling_tests_today,
-            floor_tests_today=floor_tests_today,
-            spy_zone=None, spy_vwap_side=None,
-            spy_chg_pct=mkt_ctx.spy_chg_pct,
-            qqq_zone=None, qqq_vwap_side=None,
-            qqq_chg_pct=mkt_ctx.qqq_chg_pct,
-            qqq_vs_spy=_qqq_vs_spy, qqq_vs_spy_delta=_qqq_delta,
-            iwm_zone=None, iwm_vwap_side=None,
-            iwm_chg_pct=mkt_ctx.iwm_chg_pct,
-            iwm_risk_signal=_iwm_risk,
-            spy_weighted_push=getattr(getattr(mkt_ctx, "confluence", None), "weighted_push", None),
-            qqq_weighted_push=getattr(getattr(mkt_ctx, "qqq_confluence", None), "weighted_push", None),
-            iwm_weighted_push=iwm_blended_participation_push(mkt_ctx),
-            event_risk_level=ms.event_risk_level,
-            event_risk_detail=ms.event_risk_detail or "",
-            vix_level=mkt_ctx.vix, vix_direction=None,
-            et_hour=et_hour, et_minute=et_minute,
-            mins_to_close=mins_to_close,
-            session_bucket=_session_bkt,
-            vix_bucket=_vix_bkt,
-            refresh_ts_utc=refresh_ts_utc,
-            total_snapshots=total_snapshots,
-            filled_snapshots=filled_snapshots,
-            candles_5m=candles_5m or [],
-            candles_1m=candles_1m or [],
-            em_upper=em_upper,
-            em_lower=em_lower,
-            candle_volume=candle_volume,
-            flow_imbalance=flow_imbalance,
-            spread=spread,
-            order_flow_score=ms.order_flow_score,
-            order_flow_direction=ms.order_flow_direction,
-            order_flow_readiness=ms.order_flow_readiness,
-            iv_rank=iv_rank,
-            smart_money_score=smart_money_score,
-            breakout_score=breakout_score,
-            pin_score=pin_score,
-        )
+            sig_inp = SignalInput(
+                ticker=ticker, timeframe=CANONICAL_TIMEFRAME,
+                expiry=selected_exp, dte=None,
+                spot=spot_f,
+                candle_open=getattr(price_levels, "today_open", None),
+                candle_high=getattr(price_levels, "today_high", None),
+                candle_low=getattr(price_levels,  "today_low",  None),
+                candle_close=spot_f,
+                candle_direction=candle_direction, candle_body_pts=candle_body_pts, candle_range_pts=None,
+                vwap=_vwap_val, vwap_side=_vwap_side,
+                vwap_dist_pts=round(abs(spot_f - _vwap_val), 4) if _vwap_val else None,
+                zone=ms.zone, prev_zone=(prev_zone or ms.zone),
+                zone_since_bars=zone_since_bars,           # alias (model compat)
+                zone_since_bars_1m=zone_since_bars,        # execution-layer (1m)
+                zone_since_bars_5m=zone_since_bars_5m,     # 5m structure context
+                call_gamma_wall=_cgw, put_gamma_wall=_pgw,
+                call_delta_wall=_cdw, put_delta_wall=_pdw,
+                gamma_inflection=_gi, delta_inflection=_di,
+                call_oi_wall=_coi, put_oi_wall=_poi,
+                call_vanna_wall=_cvw, put_vanna_wall=_pvw,
+                pin_width_pts=_pin_w,
+                dist_call_gamma_wall=_dist(_cgw), dist_put_gamma_wall=_dist(_pgw),
+                dist_call_delta_wall=_dist(_cdw), dist_put_delta_wall=_dist(_pdw),
+                dist_gamma_inflection=_dist(_gi),  dist_delta_inflection=_dist(_di),
+                dist_call_oi_wall=_dist(_coi),     dist_put_oi_wall=_dist(_poi),
+                dist_call_vanna_wall=_dist(_cvw),  dist_put_vanna_wall=_dist(_pvw),
+                nearest_above_name=_nearest_above_name, nearest_above_val=_nearest_above_val,
+                nearest_above_dist=_nearest_above_dist,
+                nearest_below_name=_nearest_below_name, nearest_below_val=_nearest_below_val,
+                nearest_below_dist=_nearest_below_dist,
+                net_gamma=_net_gamma, net_delta=_net_delta_sig, net_vanna=_net_vanna,
+                charm_net=_charm_net, charm_direction=_charm_dir,
+                charm_drift_toward=_charm_toward,
+                charm_magnitude=charm_magnitude,      # use function param — ms.charm_magnitude not set yet at this point
+                dex_magnitude=ms.dex_magnitude,
+                iv_level=_iv_level, iv_direction=iv_direction,
+                realized_vol=realized_vol, atr=atr,
+                garch_sigma_bars=garch_sigma_bars,
+                put_call_oi_ratio=_pcr_ratio, oi_center=_oi_center,
+                recent_crosses=(recent_crosses or []),
+                ceiling_tests_today=ceiling_tests_today,
+                floor_tests_today=floor_tests_today,
+                spy_zone=None, spy_vwap_side=None,
+                spy_chg_pct=mkt_ctx.spy_chg_pct,
+                qqq_zone=None, qqq_vwap_side=None,
+                qqq_chg_pct=mkt_ctx.qqq_chg_pct,
+                qqq_vs_spy=_qqq_vs_spy, qqq_vs_spy_delta=_qqq_delta,
+                iwm_zone=None, iwm_vwap_side=None,
+                iwm_chg_pct=mkt_ctx.iwm_chg_pct,
+                iwm_risk_signal=_iwm_risk,
+                spy_weighted_push=getattr(getattr(mkt_ctx, "confluence", None), "weighted_push", None),
+                qqq_weighted_push=getattr(getattr(mkt_ctx, "qqq_confluence", None), "weighted_push", None),
+                iwm_weighted_push=iwm_blended_participation_push(mkt_ctx),
+                event_risk_level=ms.event_risk_level,
+                event_risk_detail=ms.event_risk_detail or "",
+                vix_level=mkt_ctx.vix, vix_direction=None,
+                et_hour=et_hour, et_minute=et_minute,
+                mins_to_close=mins_to_close,
+                session_bucket=_session_bkt,
+                vix_bucket=_vix_bkt,
+                refresh_ts_utc=refresh_ts_utc,
+                total_snapshots=total_snapshots,
+                filled_snapshots=filled_snapshots,
+                candles_5m=candles_5m or [],
+                candles_1m=candles_1m or [],
+                em_upper=em_upper,
+                em_lower=em_lower,
+                candle_volume=candle_volume,
+                flow_imbalance=flow_imbalance,
+                spread=spread,
+                order_flow_score=ms.order_flow_score,
+                order_flow_direction=ms.order_flow_direction,
+                order_flow_readiness=ms.order_flow_readiness,
+                iv_rank=iv_rank,
+                smart_money_score=smart_money_score,
+                breakout_score=breakout_score,
+                pin_score=pin_score,
+            )
 
-        _sig_out = compute_signals(sig_inp, db=db, pred_override=pred_override)
-        ms._calibration_payload = getattr(_sig_out, "calibration_payload", None)
-        if _don():
-            _ddone("compute_signals", ticker)
+            _sig_out = compute_signals(sig_inp, db=db, pred_override=pred_override)
+            ms._calibration_payload = getattr(_sig_out, "calibration_payload", None)
+            if _don():
+                _ddone("compute_signals", ticker)
 
-    except Exception as _e:
-        if _don():
-            _dcrash("compute_signals", _e, ticker)
-        import logging, traceback
-        _tb = traceback.format_exc()
-        logging.warning(f"market_state: signals engine error: {_e}\n{_tb}")
-        _sig_out = None
-        # Surface the crash on all three cards — silent WAIT is invisible and misleading
-        _err_short = f"{type(_e).__name__}: {str(_e)[:120]}"
-        ms.rules_headline  = f"⚠ Signal engine error: {_err_short}"
-        ms.rules_detail    = "Check server console for full traceback. Restart server if this persists."
-        ms.rules_alerts    = [f"ENGINE CRASH — {_err_short}"]
-        ms.call_headline   = f"⚠ Signal engine error: {_err_short}"
-        ms.call_reasoning  = "Cards in error state — no signals until engine recovers."
-        ms.pred_headline   = f"⚠ Signal engine error: {_err_short}"
-        ms.zone_label      = "ERROR"
-        ms.zone_badge_css  = "#dc2626"
-        ms._calibration_payload = None
+        except Exception as _e:
+            if _don():
+                _dcrash("compute_signals", _e, ticker)
+            import logging, traceback
+            _tb = traceback.format_exc()
+            logging.warning(f"market_state: signals engine error: {_e}\n{_tb}")
+            _sig_out = None
+            # Surface the crash on all three cards — silent WAIT is invisible and misleading
+            _err_short = f"{type(_e).__name__}: {str(_e)[:120]}"
+            ms.rules_headline  = f"⚠ Signal engine error: {_err_short}"
+            ms.rules_detail    = "Check server console for full traceback. Restart server if this persists."
+            ms.rules_alerts    = [f"ENGINE CRASH — {_err_short}"]
+            ms.call_headline   = f"⚠ Signal engine error: {_err_short}"
+            ms.call_reasoning  = "Cards in error state — no signals until engine recovers."
+            ms.pred_headline   = f"⚠ Signal engine error: {_err_short}"
+            ms.zone_label      = "ERROR"
+            ms.zone_badge_css  = "#dc2626"
+            ms._calibration_payload = None
 
     # ── 9. Populate card fields from signals output ──────────────────────────
     if _sig_out is not None:
@@ -1638,26 +1653,30 @@ def build_market_state(
     # ── 10. OE recommendation — direction from The Call, not bias ───────────
     # The Call has already run. Its signal (long/short/wait) drives OE direction.
     # This guarantees both cards always tell the same directional story.
-    try:
-        _reco, _, _oe_proof = recommend_option_expression(
-            contracts=contracts_use,
-            spot=spot_f,
-            call_signal=ms.call_signal,
-            walls=walls,
-            selected_expiry=selected_exp,
-        )
-        ms.option_chain_selection_proof = _oe_proof
-        _reco_str      = (_reco or "").strip()
-        ms.is_no_trade = _reco_str.upper().startswith("NO TRADE")
-        if not ms.is_no_trade:
-            _parts = _reco_str.split()
-            if len(_parts) >= 2:
-                ms.rec_strike = float(_parts[0])
-                ms.rec_side   = _parts[1].upper()
-    except Exception as _oe_e:
-        import logging
-        logging.warning(f"market_state: OE recommendation error: {_oe_e}")
+    if spot_f is None:
         ms.is_no_trade = True
+        ms.call_option_right = "WAIT"
+    else:
+        try:
+            _reco, _, _oe_proof = recommend_option_expression(
+                contracts=contracts_use,
+                spot=spot_f,
+                call_signal=ms.call_signal,
+                walls=walls,
+                selected_expiry=selected_exp,
+            )
+            ms.option_chain_selection_proof = _oe_proof
+            _reco_str      = (_reco or "").strip()
+            ms.is_no_trade = _reco_str.upper().startswith("NO TRADE")
+            if not ms.is_no_trade:
+                _parts = _reco_str.split()
+                if len(_parts) >= 2:
+                    ms.rec_strike = float(_parts[0])
+                    ms.rec_side   = _parts[1].upper()
+        except Exception as _oe_e:
+            import logging
+            logging.warning(f"market_state: OE recommendation error: {_oe_e}")
+            ms.is_no_trade = True
 
     csig = (ms.call_signal or "wait").strip().lower()
     if csig == "wait" or ms.is_no_trade:
@@ -1672,7 +1691,7 @@ def build_market_state(
     ms.dte_warn, ms.dte_color = dte_style(_selected_dte)
 
     # ── 11. OE gate pill scoring ─────────────────────────────────────────────
-    if ms.rec_strike is not None and ms.rec_side is not None:
+    if spot_f is not None and ms.rec_strike is not None and ms.rec_side is not None:
         _oe_score = score_option_expression(
             contracts_use, spot_f, ms.rec_strike, ms.rec_side, walls=walls
         )
