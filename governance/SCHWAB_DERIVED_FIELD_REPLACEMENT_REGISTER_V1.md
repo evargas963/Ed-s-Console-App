@@ -678,6 +678,25 @@ Per-function detail in `governance/mega1_traceable_inventory.py`.
 
 ---
 
+## Mega 2 traceable inventory (§D + §E)
+
+Walked **10** modules at **full AST scope**. **201** `Mega2TraceableDerivation` rows in `governance/mega2_traceable_inventory.py`. Cross-mega chain-of-trust via `governance/mega_chain_of_trust.py` (resolves Mega 2 `DERIVED` producer_refs into Mega 1 + Mega 2 merged index). Gate: `tests/test_mega2_traceable_audit.py`. **Inventory-only commit; no production code changes.**
+
+| disposition | count |
+|---|---:|
+| SCHWAB_LEAF | 13 |
+| REPLACED | 0 |
+| DERIVED | 101 |
+| ALLOWLISTED | 66 |
+| NONE | 21 |
+| **total** | **201** |
+
+**Scope (exactly 10 files):** `math_exposure_core.py`, `math_exposure.py`, `math_levels.py`, `math_volatility.py`, `math_probabilities.py`, `levels.py`, `order_flow_engine.py`, `order_flow_live_state.py`, `order_flow_streaming.py`, `debug_flow_snapshot.py`.
+
+Per-function detail in `governance/mega2_traceable_inventory.py`.
+
+---
+
 ## CAPS allowlist (silent-default substitution family)
 
 Source of truth for allowlist rules: `tools/anti_pattern_sweep.py` (`CAPS_PREFIX_ALLOWLIST`, `CAPS_LINE_ALLOWLIST`).  

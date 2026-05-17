@@ -149,6 +149,41 @@ CHAIN_OF_TRUST_ALLOWLIST: tuple[AllowlistEntry, ...] = (
         added_in_sha="2407d06",
         category="internal_state",
     ),
+    AllowlistEntry(
+        id="mega2_schwab_stream_l1",
+        justification="Schwab LEVEL_ONE/stream bid-ask-book fields not modeled as REST quote/chain/pricehistory leaves.",
+        owner_section="Mega2",
+        added_in_sha="PENDING",
+        category="transport",
+    ),
+    AllowlistEntry(
+        id="mega2_display_formatter",
+        justification="UI/display formatting of already-derived level rows; no new market field read.",
+        owner_section="Mega2",
+        added_in_sha="PENDING",
+        category="internal_state",
+    ),
+    AllowlistEntry(
+        id="mega2_mc_simulation",
+        justification="Monte Carlo path simulation uses upstream IV/spot inputs; no Schwab wire leaf.",
+        owner_section="Mega2",
+        added_in_sha="PENDING",
+        category="internal_state",
+    ),
+    AllowlistEntry(
+        id="mega2_test_fixture",
+        justification="Mock/stream fixture data for order-flow engine self-test only.",
+        owner_section="Mega2",
+        added_in_sha="PENDING",
+        category="internal_state",
+    ),
+    AllowlistEntry(
+        id="mega2_internal_helper",
+        justification="Pure parse/math helper with no Schwab wire or persisted snapshot field output.",
+        owner_section="Mega2",
+        added_in_sha="PENDING",
+        category="internal_state",
+    ),
 )
 
 ALLOWLIST_BY_ID: dict[str, AllowlistEntry] = {e.id: e for e in CHAIN_OF_TRUST_ALLOWLIST}

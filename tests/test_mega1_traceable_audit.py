@@ -178,11 +178,11 @@ def test_mega1_chain_of_trust_closes():
 
 
 def test_mega1_allowlist_entries_complete():
-    assert len(CHAIN_OF_TRUST_ALLOWLIST) >= 10
-    for entry in CHAIN_OF_TRUST_ALLOWLIST:
+    mega1 = [e for e in CHAIN_OF_TRUST_ALLOWLIST if e.owner_section == "Mega1"]
+    assert len(mega1) >= 10
+    for entry in mega1:
         assert entry.id
         assert entry.justification and "TODO" not in entry.justification.upper()
-        assert entry.owner_section == "Mega1"
         assert entry.added_in_sha
         assert entry.category in REQUIRED_CATEGORIES
 
