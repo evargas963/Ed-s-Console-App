@@ -43,7 +43,7 @@ def regime_bucket_metrics(
     min_support: int = 5,
 ) -> dict[str, Any]:
     """Slice balanced accuracy by coarse VIX bucket from row dict."""
-    buckets = {"low": [], "mid": [], "high": []}
+    buckets = {"low": [], "mid": [], "high": [], "missing": []}
     for yt, pr, row in zip(y_true, prob_rows, rows_used):
         v = row.get("vix_level")
         try:
@@ -51,7 +51,7 @@ def regime_bucket_metrics(
         except (TypeError, ValueError):
             vf = None
         if vf is None:
-            key = "mid"
+            key = "missing"
         elif vf < 16:
             key = "low"
         elif vf < 24:
@@ -77,7 +77,7 @@ def regime_bucket_metrics(
     return out
 
 
-def confidence_reliability_proxy(prob_rows: list[list[float]], y_true: list[int]) -> dict[str, float]:
+def confidence_reliability_proxy(prob_rows: list[list[float]], y_true: list[int]) -> dict[str, Any]:
     """Map max-prob 'confidence' bins to empirical hit rate (multiclass)."""
     if not prob_rows or len(prob_rows) != len(y_true):
         return {}
@@ -91,8 +91,8 @@ def confidence_reliability_proxy(prob_rows: list[list[float]], y_true: list[int]
         hits.append(1.0 if pred == yt else 0.0)
     # correlation between confidence and hit — simple proxy
     if len(edges) < 10:
-        return {"confidence_hit_correlation": 0.0, "mean_confidence": float(np.mean(edges))}
-    c = float(np.corrcoef(edges, hits)[0, 1]) if np.std(edges) > 1e-9 else 0.0
+        return {"confidence_hit_correlation": None, "mean_confidence": float(np.mean(edges))}
+    c = float(np.corrcoef(edges, hits)[0, 1]) if np.std(edges) > 1e-9 else None
     return {
         "confidence_hit_correlation": c,
         "mean_confidence": float(np.mean(edges)),
@@ -380,6 +380,7 @@ def regime_conditional_calibration(
         "low": ([], []),
         "mid": ([], []),
         "high": ([], []),
+        "missing": ([], []),
     }
     for i, row in enumerate(rows_used):
         v = row.get("vix_level")
@@ -388,7 +389,7 @@ def regime_conditional_calibration(
         except (TypeError, ValueError):
             vf = None
         if vf is None:
-            key = "mid"
+            key = "missing"
         elif vf < 16:
             key = "low"
         elif vf < 24:
