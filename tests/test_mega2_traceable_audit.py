@@ -46,7 +46,11 @@ CATEGORICAL_JUST_RE = re.compile(
     re.I,
 )
 CLOSING_DISPOSITIONS = frozenset({"SCHWAB_LEAF", "REPLACED", "ALLOWLISTED"})
-MEGA2_ROW_COUNT = 201
+# Strict row count for test_mega2_scope_complete — bump when adding Mega2TraceableDerivation rows.
+#   201 — baseline (1ece9b3)
+#   205 — +3 (1fc5ce7): _strike_total_oi, _verdict_unavailable, _iwm_confluence_unavailable
+#         +1 (a00e78e): _sector_strength_unavailable
+MEGA2_ROW_COUNT = 205
 
 
 def _mega_bundles() -> tuple[MegaInventoryBundle, ...]:
