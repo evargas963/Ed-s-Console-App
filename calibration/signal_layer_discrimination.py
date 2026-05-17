@@ -131,7 +131,9 @@ def run_discrimination(db_path: Path) -> dict[str, Any]:
     y: list[float] = []
     layers: list[dict[str, Any]] = []
     fusion_probs: list[tuple[float, float, float]] = []
-    final_signals: list[str] = []
+    fusion_n_present = 0
+    fusion_n_missing = 0
+    final_signals: list[str | None] = []
     layer_policies: list[str] = []
 
     for r in rows:
@@ -147,17 +149,24 @@ def run_discrimination(db_path: Path) -> dict[str, Any]:
         layer_policies.append(layer_direction_policy(layer))
 
         fj = r["fusion_json"]
-        pu, pd, pf = 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0
         if fj:
             try:
                 d = json.loads(fj)
-                pu = float(d.get("prob_up", pu))
-                pd = float(d.get("prob_down", pd))
-                pf = float(d.get("prob_flat", pf))
+                pu_raw = d.get("prob_up")
+                pd_raw = d.get("prob_down")
+                pf_raw = d.get("prob_flat")
+                if pu_raw is not None and pd_raw is not None and pf_raw is not None:
+                    fusion_probs.append((float(pu_raw), float(pd_raw), float(pf_raw)))
+                    fusion_n_present += 1
+                else:
+                    fusion_n_missing += 1
             except Exception:
-                pass
-        fusion_probs.append((pu, pd, pf))
-        final_signals.append(str(r["final_signal"] or "wait"))
+                fusion_n_missing += 1
+        else:
+            fusion_n_missing += 1
+
+        fs = r["final_signal"]
+        final_signals.append(fs if fs else None)
 
     conn.close()
 
@@ -196,43 +205,56 @@ def run_discrimination(db_path: Path) -> dict[str, Any]:
         )
     uni.sort(key=lambda d: abs(d["pearson_r"] or 0.0), reverse=True)
 
-    # Fusion spread
-    means = [sum(t[i] for t in fusion_probs) / len(fusion_probs) for i in range(3)]
-    stds = [
-        math.sqrt(sum((t[i] - means[i]) ** 2 for t in fusion_probs) / max(len(fusion_probs) - 1, 1))
-        for i in range(3)
-    ]
-    triplet_spread = float(sum(stds))
+    # Fusion spread (only rows with complete prob_up/down/flat triplets)
+    if fusion_probs:
+        means = [sum(t[i] for t in fusion_probs) / len(fusion_probs) for i in range(3)]
+        stds = [
+            math.sqrt(sum((t[i] - means[i]) ** 2 for t in fusion_probs) / max(len(fusion_probs) - 1, 1))
+            for i in range(3)
+        ]
+        triplet_spread = float(sum(stds))
+        fusion_near_flat = max(means) - min(means)
+    else:
+        means = [None, None, None]
+        stds = [None, None, None]
+        triplet_spread = None
+        fusion_near_flat = None
 
-    def _sig_dist(sigs: list[str]) -> dict[str, float]:
+    def _sig_dist(sigs: list[str | None]) -> dict[str, Any]:
         n = len(sigs)
-        c = {"long": 0, "short": 0, "wait": 0}
+        if n == 0:
+            return {"long": None, "short": None, "wait": None, "missing": None}
+        c = {"long": 0, "short": 0, "wait": 0, "missing": 0}
         for s in sigs:
-            s = (s or "wait").strip().lower()
-            if s in c:
-                c[s] += 1
+            if s is None:
+                c["missing"] += 1
+                continue
+            key = s.strip().lower()
+            if key in c:
+                c[key] += 1
+            else:
+                c["missing"] += 1
         return {k: round(100.0 * v / n, 2) for k, v in c.items()}
-
-    collapse_fusion = max(means) - min(means) < 0.02
-    collapse_layer = (
-        len(set(layer_policies)) <= 1
-        if layer_policies
-        else True
-    )
 
     return {
         "n_rows": len(y),
         "univariate": uni[:60],
         "top_10_pearson": uni[:10],
+        "fusion_n_present_in_log": fusion_n_present,
+        "fusion_n_missing_in_log": fusion_n_missing,
         "fusion_mean_p_up_down_flat": means,
         "fusion_std_p_up_down_flat": stds,
         "fusion_triplet_spread_l1": triplet_spread,
-        "fusion_near_flat_max_min_gap": max(means) - min(means),
+        "fusion_near_flat_max_min_gap": fusion_near_flat,
         "final_signal_pct": _sig_dist(final_signals),
         "layer_policy_pct": _sig_dist(layer_policies),
         "flags": {
-            "fusion_triplet_near_collapse": collapse_fusion,
-            "layer_policy_single_bucket": collapse_layer,
+            "fusion_triplet_near_collapse": (
+                fusion_near_flat is not None and fusion_near_flat < 0.02
+            ),
+            "layer_policy_single_bucket": (
+                len(set(layer_policies)) <= 1 if layer_policies else True
+            ),
         },
     }
 
