@@ -1,13 +1,18 @@
-"""eval_runner sample-size floor and manifest flags (Finding Y)."""
+"""eval_runner sample-size floor, manifest flags, and atomic manifest writes."""
 
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from arch_competition.eval_runner import run_architecture_pair_evaluation
+from arch_competition.eval_runner import (
+    run_architecture_pair_evaluation,
+    write_evaluation_manifest,
+)
 from arch_competition.exceptions import EvaluationLineageError
 from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
 
@@ -66,3 +71,26 @@ def test_eval_missing_prob_rows_raises_at_min_samples_statistical():
     n = MIN_SAMPLES_STATISTICAL
     with pytest.raises(EvaluationLineageError, match="missing prob_rows"):
         _run_mocked_eval(n, _detail(n=n, prob_rows=[]))
+
+
+def test_write_evaluation_manifest_round_trip(tmp_path: Path) -> None:
+    path = tmp_path / "eval" / "evaluation_manifest.json"
+    manifest = {"schema_version": "arch_eval_v1", "metrics": {"parallel": {"n_rows_scored": 3}}}
+    write_evaluation_manifest(path, manifest)
+    assert json.loads(path.read_text(encoding="utf-8")) == manifest
+    assert not list(tmp_path.rglob("*.tmp"))
+
+
+def test_write_evaluation_manifest_removes_temp_on_replace_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "evaluation_manifest.json"
+
+    def _fail_replace(_src: os.PathLike[str], _dst: os.PathLike[str]) -> None:
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr(os, "replace", _fail_replace)
+    with pytest.raises(OSError, match="simulated replace failure"):
+        write_evaluation_manifest(path, {"ok": True})
+    assert not path.exists()
+    assert not list(tmp_path.glob("*.tmp"))

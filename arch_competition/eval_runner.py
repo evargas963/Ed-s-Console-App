@@ -16,6 +16,7 @@ from ml_horizon import normalize_ml_horizon_slug, outcome_column
 
 from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
 
+from arch_competition.atomic_io import write_json_file_atomically
 from arch_competition.exceptions import EvaluationLineageError
 from arch_competition.lineage import validate_parallel_cascade_manifest_lineage
 from arch_competition.metrics import (
@@ -366,5 +367,4 @@ def run_architecture_pair_evaluation(
 
 
 def write_evaluation_manifest(path: Path, manifest: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(manifest, indent=2, default=str), encoding="utf-8")
+    write_json_file_atomically(path, manifest, indent=2, default=str)

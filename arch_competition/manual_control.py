@@ -10,7 +10,6 @@ import json
 import logging
 import os
 import shutil
-import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -189,19 +188,10 @@ def _load_arch_state(model_dir: Path, hz: str) -> dict[str, Any]:
 
 
 def _write_arch_state(model_dir: Path, hz: str, state: dict[str, Any]) -> None:
+    from arch_competition.atomic_io import write_json_file_atomically
+
     p = arch_state_path_for_horizon(model_dir, hz)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(dir=p.parent, prefix=f"{p.name}.", suffix=".tmp")
-    tmp_path = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(state, handle, indent=2)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp_path, p)
-    except Exception:
-        tmp_path.unlink(missing_ok=True)
-        raise
+    write_json_file_atomically(p, state, indent=2)
 
 
 def _write_promotion_pending(

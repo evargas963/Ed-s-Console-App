@@ -26,6 +26,27 @@ log = logging.getLogger(__name__)
 # append_calibration_decision return: idempotent skip (UNIQUE conflict, no duplicate row)
 CALIBRATION_INSERT_IDEMPOTENT: int = -1
 
+# Max chars for raw_bundle JSON excerpts (audit preview; may be unparseable if truncated).
+_RAW_BUNDLE_EXCERPT_LIMIT = 4000
+
+# SQLite locked/busy retries (attempts 0..10): ~3.13s total sleep worst case (linear was ~3.3s).
+_SQLITE_BUSY_RETRY_MAX_SLEEP_S = 0.5
+_SQLITE_BUSY_RETRY_BASE_SLEEP_S = 0.01
+
+
+def sqlite_busy_retry_sleep_seconds(attempt: int) -> float:
+    return min(_SQLITE_BUSY_RETRY_MAX_SLEEP_S, _SQLITE_BUSY_RETRY_BASE_SLEEP_S * (2**attempt))
+
+
+def _json_excerpt(obj: Any, limit: int = _RAW_BUNDLE_EXCERPT_LIMIT) -> str | None:
+    """Serialize for storage; truncate only for human/audit preview (not guaranteed parseable)."""
+    if obj is None:
+        return None
+    text = dumps_compact(obj)
+    if len(text) <= limit:
+        return text
+    return text[:limit]
+
 
 def _db_path_for_write(explicit: Optional[Path | str] = None) -> Path:
     if explicit is not None:
@@ -34,7 +55,8 @@ def _db_path_for_write(explicit: Optional[Path | str] = None) -> Path:
         from db import DB_PATH
 
         return Path(DB_PATH)
-    except Exception:
+    except ImportError as e:
+        log.warning("db.DB_PATH not available — using DEFAULT_DB: %s", e)
         return DEFAULT_DB
 
 
@@ -81,15 +103,18 @@ def append_calibration_decision(
         return None
     path = _db_path_for_write(db_path)
     if not path.is_file():
-        log.debug("calibration: DB not found at %s", path)
+        log.warning(
+            "calibration logging enabled (ED_CALIBRATION_LOG=1) but DB not found at %s — row dropped",
+            path,
+        )
         return None
 
     try:
         import sqlite3
 
         from db import configure_sqlite_connection
-    except Exception as e:
-        log.debug("calibration import: %s", e)
+    except ImportError as e:
+        log.warning("calibration writer sqlite/db import failed: %s", e)
         return None
 
     zone = getattr(inp, "zone", None)
@@ -116,15 +141,16 @@ def append_calibration_decision(
 
     fusion_json = dumps_compact(fusion) if fusion is not None else None
     canonical_json = dumps_compact(canonical) if canonical is not None else None
+    # Single JSON encode: xgb/lstm/transformer are objects in the outer JSON (not nested JSON strings).
+    # Downstream readers still accept legacy double-encoded string values via isinstance(blk, str).
     model_outputs = {
-        "xgb": dumps_compact(xgb_out),
-        "lstm": dumps_compact(lstm_out),
-        "transformer": dumps_compact(transformer_out),
+        "xgb": xgb_out,
+        "lstm": lstm_out,
+        "transformer": transformer_out,
         "stack_probs_bundle": ml_bundle,
     }
     model_outputs_json = dumps_compact(model_outputs)
     monte_carlo_json = dumps_compact(mc_out)
-    pred_json = dumps_compact(pred)
 
     mh_dec = getattr(mh_bundle, "final_decision", None) if mh_bundle is not None else None
     multi_horizon_json = None
@@ -144,8 +170,8 @@ def append_calibration_decision(
         )
 
     raw_bundle = {
-        "predictive_card_excerpt": pred_json[:4000] if pred_json else None,
-        "fusion_excerpt": fusion_json[:4000] if fusion_json else None,
+        "predictive_card_excerpt": _json_excerpt(pred),
+        "fusion_excerpt": _json_excerpt(fusion),
         "signal_layer_v1": signal_layer_v1,
     }
     raw_bundle_json = dumps_compact(raw_bundle)
@@ -199,7 +225,7 @@ def append_calibration_decision(
         float(decision_ts_utc),
         t_key,
         ct_raw,
-        None,
+        None,  # session_label: reserved; live path uses session_bucket only
         expiry,
         build_generation,
         zone,
@@ -224,7 +250,7 @@ def append_calibration_decision(
         getattr(call, "target", None),
         getattr(call, "target2", None),
         (getattr(call, "validation_summary", None) or "")[:2000],
-        None,
+        None,  # wait_blocker_json: reserved for future multi-horizon wait-blocker capture
         multi_horizon_json,
         raw_bundle_json,
         advisory_v2_decision_snapshot_json,
@@ -283,7 +309,7 @@ def append_calibration_decision(
                 pass
             msg = str(e).lower()
             if ("locked" in msg or "busy" in msg) and attempt < 11:
-                time.sleep(0.05 * (attempt + 1))
+                time.sleep(sqlite_busy_retry_sleep_seconds(attempt))
                 continue
             log.warning("calibration_decision_log insert failed: %s", e)
             return None
@@ -311,5 +337,6 @@ def default_decision_ts_utc() -> float:
         from db import utc_ts
 
         return float(utc_ts())
-    except Exception:
+    except ImportError as e:
+        log.warning("db.utc_ts not available — using time.time(): %s", e)
         return float(time.time())
