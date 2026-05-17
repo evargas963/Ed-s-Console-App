@@ -142,6 +142,7 @@ MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("math_probabilities.py", 640, "compute_pin_score", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Pin score from GEX."),
     Mega2TraceableDerivation("math_probabilities.py", 688, "compute_vol_expansion_signal", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Vol expansion signal."),
     Mega2TraceableDerivation("math_probabilities.py", 741, "compute_sweep_score", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Sweep detection score."),
+    Mega2TraceableDerivation("math_probabilities.py", 831, "_sector_strength_unavailable", "NONE", None, (), None, "No market-field derivation: Unavailable sector strength template."),
     Mega2TraceableDerivation("math_probabilities.py", 796, "compute_sector_strength", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "Sector strength from context quotes."),
     Mega2TraceableDerivation("math_probabilities.py", 883, "_iwm_confluence_unavailable", "NONE", None, (), None, "No market-field derivation: Unavailable IWM confluence template."),
     Mega2TraceableDerivation("math_probabilities.py", 848, "compute_iwm_confluence", "DERIVED", None, ("server.py:_fetch_state", "market_state.py:build_market_state",), None, "IWM blended participation."),

@@ -828,6 +828,17 @@ def compute_sweep_score(
 
 # ── Sector Strength Ranking ──────────────────────────────────────────────────
 
+def _sector_strength_unavailable() -> dict:
+    return {
+        "ranking": [],
+        "leader": None,
+        "laggard": None,
+        "breadth": None,
+        "risk_signal": None,
+        "spread": None,
+    }
+
+
 def compute_sector_strength(
     sectors: dict,
 ) -> dict:
@@ -846,13 +857,11 @@ def compute_sector_strength(
         spread:         difference between leader and laggard
     """
     if not sectors:
-        return {"ranking": [], "leader": None, "laggard": None,
-                "breadth": 0.0, "risk_signal": "unknown", "spread": 0.0}
+        return _sector_strength_unavailable()
 
     valid = {k: v for k, v in sectors.items() if v is not None}
     if not valid:
-        return {"ranking": [], "leader": None, "laggard": None,
-                "breadth": 0.0, "risk_signal": "unknown", "spread": 0.0}
+        return _sector_strength_unavailable()
 
     ranking = sorted(valid.items(), key=lambda x: x[1], reverse=True)
     leader = ranking[0][0]
