@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import json
+from dataclasses import fields
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -121,6 +122,7 @@ def test_promotion_policy_record_includes_all_governance_flags():
     pol = rec["policy"]
     assert "require_calibration_pass" in pol
     assert "require_stability_pass" in pol
+    assert pol["require_regime_comparability"] is True
     assert pol["max_regime_balanced_accuracy_regression"] == 0.05
 
 
@@ -479,6 +481,116 @@ def test_promotion_blocks_when_n_below_floor_without_flag():
     assert rec["would_promote_challenger"] is False
     codes = [x["code"] for x in rec["blocked_promotion_flags"]]
     assert "MISSING_MIN_SAMPLES_STATISTICAL" in codes
+
+
+def test_non_numeric_n_rows_scored_raises():
+    m = _promotable_manifest()
+    m["metrics"]["parallel"]["n_rows_scored"] = "bad"
+    m["metrics"]["cascade"]["n_rows_scored"] = "bad"
+    with pytest.raises(PromotionGovernanceError, match="non-numeric n_rows_scored"):
+        decide_promotion(m)
+
+
+def test_schema_version_mismatch_includes_expected_and_got():
+    m = _promotable_manifest()
+    m["schema_version"] = "2"
+    with pytest.raises(
+        PromotionGovernanceError,
+        match=f"expected={EVALUATION_MANIFEST_SCHEMA_VERSION!r}.*got='2'",
+    ):
+        decide_promotion(m)
+
+
+def test_missing_n_rows_scored_raises_distinct_message():
+    m = _promotable_manifest()
+    m["metrics"]["parallel"].pop("n_rows_scored", None)
+    with pytest.raises(PromotionGovernanceError, match="missing n_rows_scored"):
+        decide_promotion(m)
+
+
+def test_mismatched_n_rows_scored_raises_distinct_message():
+    m = _promotable_manifest()
+    m["metrics"]["parallel"]["n_rows_scored"] = 100
+    m["metrics"]["cascade"]["n_rows_scored"] = 50
+    with pytest.raises(PromotionGovernanceError, match="mismatched n_rows_scored"):
+        decide_promotion(m)
+
+
+def test_both_zero_n_rows_scored_blocks_via_min_samples_gate():
+    m = _promotable_manifest()
+    m["metrics"]["parallel"]["n_rows_scored"] = 0
+    m["metrics"]["cascade"]["n_rows_scored"] = 0
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    codes = [x["code"] for x in rec["blocked_promotion_flags"]]
+    assert "MISSING_MIN_SAMPLES_STATISTICAL" in codes
+
+
+def test_regime_mid_skipped_blocks_incomparable():
+    m = _promotable_manifest()
+    m["metrics"]["parallel"]["regime_slices"]["mid"]["skipped_low_support"] = True
+    m["metrics"]["cascade"]["regime_slices"]["mid"]["skipped_low_support"] = True
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    codes = [x["code"] for x in rec["blocked_promotion_flags"]]
+    assert "REGIME_MID_INCOMPARABLE" in codes
+
+
+def test_regime_mid_skipped_one_architecture_blocks_incomparable():
+    m = _promotable_manifest()
+    m["metrics"]["cascade"]["regime_slices"]["mid"]["skipped_low_support"] = True
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    assert "REGIME_MID_INCOMPARABLE" in [x["code"] for x in rec["blocked_promotion_flags"]]
+
+
+def test_regime_mid_skipped_waived_when_comparability_not_required():
+    m = _promotable_manifest()
+    m["metrics"]["parallel"]["regime_slices"]["mid"]["skipped_low_support"] = True
+    m["metrics"]["cascade"]["regime_slices"]["mid"]["skipped_low_support"] = True
+    rec = decide_promotion(m, PromotionPolicy(require_regime_comparability=False))
+    assert rec["would_promote_challenger"] is True
+    reason_codes = [x["code"] for x in rec["reason_codes"]]
+    assert "REGIME_MID_SKIPPED_LOW_SUPPORT" in reason_codes
+    assert "REGIME_MID_INCOMPARABLE" not in [x["code"] for x in rec["blocked_promotion_flags"]]
+
+
+def test_calibration_ece_non_numeric_blocks_without_value_error():
+    m = _promotable_manifest()
+    m["metrics"]["cascade"]["calibration_ece"] = "NaN"
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    assert "MISSING_CALIBRATION_ECE_METRIC" in [x["code"] for x in rec["blocked_promotion_flags"]]
+
+
+def test_confidence_correlation_non_numeric_blocks_without_value_error():
+    m = _promotable_manifest()
+    m["confidence_reliability_summary"]["by_architecture"]["cascade"]["confidence_hit_correlation"] = "abc"
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    assert "MISSING_CONFIDENCE_RELIABILITY_METRIC" in [x["code"] for x in rec["blocked_promotion_flags"]]
+
+
+def test_no_empty_blocked_with_unpromoted_outcome():
+    cases = [
+        _promotable_manifest(),
+        _manifest(
+            _metrics("parallel", n=100, ll=0.81, bal=0.5, brier=0.2, stab=0.01),
+            _metrics("cascade", n=100, ll=0.80, bal=0.99, brier=0.19, stab=0.01),
+        ),
+    ]
+    m_low_n = _promotable_manifest()
+    m_low_n["metrics"]["parallel"]["n_rows_scored"] = 15
+    m_low_n["metrics"]["cascade"]["n_rows_scored"] = 15
+    cases.append(m_low_n)
+    for m in cases:
+        rec = decide_promotion(m)
+        if not rec["would_promote_challenger"]:
+            assert rec["blocked_promotion_flags"]
+
+
+def test_promotion_policy_has_no_dead_primary_metric_field():
+    assert "primary_metric" not in {f.name for f in fields(PromotionPolicy)}
 
 
 def test_arch_competition_modules_do_not_call_run_base_models_once():
