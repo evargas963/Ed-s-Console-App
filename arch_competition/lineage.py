@@ -43,6 +43,9 @@ def validate_parallel_cascade_manifest_lineage(
     Raises:
         EvaluationLineageError: missing manifest, mismatched keys, or data fingerprint drift.
     """
+    if not ticker or not str(ticker).strip():
+        raise EvaluationLineageError("ticker argument required (non-empty)")
+
     mp = load_run_manifest(parallel_dir)
     mc = load_run_manifest(cascade_dir)
     if not mp:
@@ -53,10 +56,15 @@ def validate_parallel_cascade_manifest_lineage(
     if mp.get("ticker", "").upper() != ticker.upper() or mc.get("ticker", "").upper() != ticker.upper():
         raise EvaluationLineageError("manifest ticker does not match evaluation ticker")
 
-    if mp.get("feature_cache_key") != mc.get("feature_cache_key"):
+    fcp = mp.get("feature_cache_key")
+    fcc = mc.get("feature_cache_key")
+    if fcp is None or not str(fcp).strip():
+        raise EvaluationLineageError("parallel manifest missing feature_cache_key")
+    if fcc is None or not str(fcc).strip():
+        raise EvaluationLineageError("cascade manifest missing feature_cache_key")
+    if fcp != fcc:
         raise EvaluationLineageError(
-            f"feature_cache_key mismatch: parallel={mp.get('feature_cache_key')!r} "
-            f"cascade={mc.get('feature_cache_key')!r}"
+            f"feature_cache_key mismatch: parallel={fcp!r} cascade={fcc!r}"
         )
 
     dfp = mp.get("data_fingerprint")
@@ -95,13 +103,20 @@ def validate_parallel_cascade_manifest_lineage(
     if tfp != tfc:
         raise EvaluationLineageError("training_code_fingerprint mismatch between parallel and cascade manifests")
 
+    sv_p = mp.get("schema_version")
+    sv_c = mc.get("schema_version")
+    if sv_p is None or not str(sv_p).strip():
+        raise EvaluationLineageError("parallel manifest missing schema_version")
+    if sv_c is None or not str(sv_c).strip():
+        raise EvaluationLineageError("cascade manifest missing schema_version")
+
     return {
-        "feature_cache_key": mp.get("feature_cache_key"),
+        "feature_cache_key": fcp,
         "data_fingerprint": dfp,
         "ml_horizon_suffix": hz_p,
         "training_code_fingerprint": tfp,
         "canonical_feature_contract_version": CANONICAL_FEATURE_CONTRACT_VERSION,
         "canonical_timeframe": CANONICAL_FEATURE_TIMEFRAME,
-        "parallel_schema_version": mp.get("schema_version"),
-        "cascade_schema_version": mc.get("schema_version"),
+        "parallel_schema_version": sv_p,
+        "cascade_schema_version": sv_c,
     }
