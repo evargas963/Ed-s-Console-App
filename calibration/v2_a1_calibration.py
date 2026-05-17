@@ -14,8 +14,10 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Iterable
 
+from arch_competition.atomic_io import write_json_file_atomically
 from calibration.json_utils import parse_json_mapping
 from calibration.schema import ensure_calibration_schema
+from calibration.statistical_integrity import bucket_gate
 from calibration.trust import TRUSTED_PREDICATE_SQL
 from calibration.v2_advisory_backfill import WalkForwardSplit, validate_purged_embargo_splits
 from timeframe_config import CANONICAL_TIMEFRAME
@@ -265,7 +267,7 @@ def write_a1_calibration_artifact(artifact_dir: Path, artifact: dict[str, Any]) 
     artifact_dir.mkdir(parents=True, exist_ok=True)
     run_id = str(artifact["calibration_run_id"])
     path = artifact_dir / f"{run_id}.json"
-    path.write_text(json.dumps(artifact, indent=2, sort_keys=True, default=str), encoding="utf-8")
+    write_json_file_atomically(path, artifact, indent=2, default=str, sort_keys=True)
     return path
 
 
@@ -389,19 +391,13 @@ def _brier_score(predictions: list[dict[str, Any]]) -> float | None:
 
 
 def _sample_gate(n: int, min_required: int, operator_decision: str) -> dict[str, Any]:
-    return {
-        "n": int(n),
-        "min_required": int(min_required),
-        "sufficient_sample": int(n) >= int(min_required),
-        "status": "ok" if int(n) >= int(min_required) else "insufficient_sample",
-        "operator_decision": operator_decision,
-    }
+    return {**bucket_gate(n, min_required), "operator_decision": operator_decision}
 
 
 def _fit_isotonic_model(raw_probabilities: list[float], labels: list[int]) -> dict[str, Any]:
     try:
         from sklearn.isotonic import IsotonicRegression
-    except Exception as exc:  # pragma: no cover
+    except ImportError as exc:
         raise RuntimeError(f"sklearn IsotonicRegression is required for A1 calibration: {exc}") from exc
 
     iso = IsotonicRegression(y_min=0.0, y_max=1.0, increasing=True, out_of_bounds="clip")

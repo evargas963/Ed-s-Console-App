@@ -1,18 +1,23 @@
 from __future__ import annotations
 
+import builtins
 import json
 import sqlite3
+from pathlib import Path
 
 import pytest
 
 from calibration.schema import ensure_calibration_schema
+from calibration.statistical_integrity import bucket_gate
 from calibration.v2_a1_calibration import (
     A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES,
     A1_CALIBRATION_HORIZON,
     A1_CALIBRATION_HORIZONS,
     A1_REGIME_AXIS_MISSING,
+    _fit_isotonic_model,
     _regime_reliability,
     _row_to_calibration_example,
+    _sample_gate,
     _success_label,
     build_a1_calibration_health,
     build_a1_5c_calibration_health,
@@ -200,6 +205,57 @@ def test_write_a1_calibration_artifact_is_json_not_pickle(tmp_path):
     assert loaded["calibration_run_id"] == "run-1"
     assert loaded["model"]["type"] == "isotonic_regression"
     assert "health" in loaded
+
+
+def test_write_a1_calibration_artifact_uses_atomic_json_write(monkeypatch, tmp_path):
+    captured: list[tuple] = []
+
+    def _capture(path, payload, **kw):
+        captured.append((path, payload, kw))
+
+    monkeypatch.setattr(
+        "calibration.v2_a1_calibration.write_json_file_atomically",
+        _capture,
+    )
+    artifact = {"calibration_run_id": "run-atomic", "model": {"type": "isotonic_regression"}}
+    out = write_a1_calibration_artifact(tmp_path / "artifacts", artifact)
+    assert out.name == "run-atomic.json"
+    assert len(captured) == 1
+    assert captured[0][1] == artifact
+    assert captured[0][2].get("sort_keys") is True
+
+
+def test_v2_a1_calibration_module_has_no_write_text():
+    source = Path(__file__).resolve().parents[1] / "calibration" / "v2_a1_calibration.py"
+    assert ".write_text(" not in source.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("n,min_required,expected_ok", [(29, 30, False), (30, 30, True)])
+def test_sample_gate_delegates_to_bucket_gate(n, min_required, expected_ok):
+    gate = _sample_gate(n, min_required, "O-26")
+    base = bucket_gate(n, min_required)
+    assert gate["n"] == base["n"]
+    assert gate["min_required"] == base["min_required"]
+    assert gate["sufficient_sample"] is expected_ok
+    assert gate["status"] == base["status"]
+    assert gate["operator_decision"] == "O-26"
+
+
+def test_fit_isotonic_model_raises_runtime_error_on_sklearn_import_error(monkeypatch):
+    real_import = builtins.__import__
+
+    def _mock_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "sklearn.isotonic" or (
+            name == "sklearn" and fromlist and "isotonic" in fromlist
+        ):
+            raise ImportError("mocked sklearn missing")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _mock_import)
+    with pytest.raises(RuntimeError, match="sklearn IsotonicRegression is required") as exc_info:
+        _fit_isotonic_model([0.2, 0.8], [0, 1])
+    assert isinstance(exc_info.value.__cause__, ImportError)
+    assert "mocked sklearn missing" in str(exc_info.value.__cause__)
 
 
 def test_reliability_bins_withhold_rates_below_o26_floor():
