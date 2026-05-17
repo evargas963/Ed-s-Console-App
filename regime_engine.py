@@ -226,8 +226,10 @@ def _score_breakout(inp: SignalInput, micro_regime: str, mr: dict, mvp: dict) ->
         support.append(f"breakout from pin zone ({prev} → {zone})")
 
     # Very recent zone change — execution-layer (1m) recency
-    zone_fresh_bars_1m = (inp.zone_since_bars_1m or inp.zone_since_bars) or 0
-    if zone_fresh_bars_1m <= 3 and zone in ("breakout", "breakdown"):
+    zone_fresh_bars_1m = inp.zone_since_bars_1m
+    if zone_fresh_bars_1m is None:
+        zone_fresh_bars_1m = inp.zone_since_bars
+    if zone_fresh_bars_1m is not None and zone_fresh_bars_1m <= 3 and zone in ("breakout", "breakdown"):
         score += 1.0
         support.append(f"fresh breakout ({zone_fresh_bars_1m} 1m bars ago)")
 
@@ -496,8 +498,11 @@ def classify_regime(
     scores[R_REVERSAL_PRONE] = s; all_support[R_REVERSAL_PRONE] = sup; all_contra[R_REVERSAL_PRONE] = con
 
     # ── Determine primary regime (highest score) ──────────────────────────────
+    primary_score = max(scores.values()) if scores else 0.0
+    if primary_score <= 0:
+        return _unknown_regime()
+
     primary = max(scores, key=scores.get)
-    primary_score = scores[primary]
 
     # ── Secondary tags: any regime above threshold (excluding primary) ─────────
     secondary_tags = [r for r in ALL_REGIMES

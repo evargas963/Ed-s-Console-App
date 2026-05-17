@@ -184,6 +184,45 @@ REGIME_PRIORS = {
 # EVIDENCE → LIKELIHOOD TRANSLATION
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _resolved_regime_label(regime) -> Optional[str]:
+    """Classified regime primary, or None when absent / unknown (fail-closed for fusion trust)."""
+    if regime is None:
+        return None
+    raw = getattr(regime, "primary", None)
+    if raw is None:
+        return None
+    label = str(raw).strip().lower()
+    if not label or label == "unknown":
+        return None
+    return label
+
+
+def _model_dominant_class(out) -> Optional[str]:
+    """Dominant class from model output; None when unavailable or not derivable."""
+    if not getattr(out, "available", False):
+        return None
+    dc = getattr(out, "dominant_class", None)
+    if dc is not None:
+        dc = str(dc).strip().lower()
+        if dc in ("up", "down", "flat"):
+            return dc
+    triplet = _model_direction_triplet(out)
+    if triplet is None:
+        return None
+    up, down, flat = triplet
+    return max("up", "down", "flat", key=lambda lab: {"up": up, "down": down, "flat": flat}[lab])
+
+
+def _optional_support(out, attr: str) -> Optional[float]:
+    val = getattr(out, attr, None)
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
 def _model_direction_triplet(out) -> Optional[tuple[float, float, float]]:
     """Read normalized (up, down, flat) from an available model output; None if attrs missing."""
     if not getattr(out, "available", False):
@@ -214,10 +253,14 @@ def _translate_xgb_evidence(xgb_out, direction_hint: str) -> dict:
     up, down, flat = triplet
     directional = max(up, down)
 
+    cont = _optional_support(xgb_out, "continuation_support")
+    rev = _optional_support(xgb_out, "reversal_support")
+    if cont is None or rev is None:
+        return {}
     return {
         "breakout":       directional * 0.8,
-        "continuation":   xgb_out.continuation_support,
-        "reversal":       xgb_out.reversal_support,
+        "continuation":   cont,
+        "reversal":       rev,
         "pinning":        flat * 0.8,
         "vol_expansion":  directional * 0.5,
         "mean_reversion": flat * 0.6,
@@ -235,10 +278,14 @@ def _translate_lstm_evidence(lstm_out, direction_hint: str) -> dict:
     up, down, flat = triplet
     directional = max(up, down)
 
+    cont = _optional_support(lstm_out, "continuation_support")
+    rev = _optional_support(lstm_out, "reversal_support")
+    if cont is None or rev is None:
+        return {}
     return {
         "breakout":       directional * 0.7,
-        "continuation":   getattr(lstm_out, "continuation_support", 0.0),
-        "reversal":       getattr(lstm_out, "reversal_support", 0.0),
+        "continuation":   cont,
+        "reversal":       rev,
         "pinning":        flat * 0.8,
         "vol_expansion":  directional * 0.4,
         "mean_reversion": flat * 0.6,
@@ -256,10 +303,14 @@ def _translate_transformer_evidence(transformer_out, direction_hint: str) -> dic
     up, down, flat = triplet
     directional = max(up, down)
 
+    cont = _optional_support(transformer_out, "continuation_support")
+    rev = _optional_support(transformer_out, "reversal_support")
+    if cont is None or rev is None:
+        return {}
     return {
         "breakout":       directional * 0.7,
-        "continuation":   getattr(transformer_out, "continuation_support", 0.0),
-        "reversal":       getattr(transformer_out, "reversal_support", 0.0),
+        "continuation":   cont,
+        "reversal":       rev,
         "pinning":        flat * 0.8,
         "vol_expansion":  directional * 0.4,
         "mean_reversion": flat * 0.6,
@@ -303,7 +354,7 @@ class FusionTickCache:
     evidence differs per horizon.
     """
 
-    regime_label: str
+    regime_label: Optional[str]
     direction_hint: str
     priors: dict[str, float]
     weight_adjustments: dict[str, float]
@@ -312,10 +363,14 @@ class FusionTickCache:
 
 def build_fusion_tick_cache(regime, rules) -> FusionTickCache:
     """Build shared fusion prep once per tick; pass into fuse(..., fusion_tick_cache=...)."""
-    regime_label = getattr(regime, "primary", "unknown")
+    regime_label = _resolved_regime_label(regime)
     direction_hint = getattr(rules, "signal", "wait")
-    priors = dict(REGIME_PRIORS.get(regime_label, DEFAULT_PRIORS))
-    weight_adjustments = dict(REGIME_WEIGHT_ADJUSTMENTS.get(regime_label, {}))
+    priors = (
+        dict(REGIME_PRIORS[regime_label])
+        if regime_label in REGIME_PRIORS
+        else dict(DEFAULT_PRIORS)
+    )
+    weight_adjustments = dict(REGIME_WEIGHT_ADJUSTMENTS.get(regime_label or "", {}))
     rules_evidence = dict(_translate_rules_evidence(rules, regime))
     return FusionTickCache(
         regime_label=regime_label,
@@ -346,9 +401,11 @@ def _bayesian_update(priors: dict, evidence_list: list, weights: list) -> dict:
         if not evidence:
             continue
         for o in outcomes:
-            likelihood = evidence.get(o, 0.5)  # default: neutral evidence
+            if o not in evidence:
+                continue
+            likelihood = evidence[o]
             # Raise to weight power (higher weight = stronger influence)
-            posteriors[o] *= max(0.01, likelihood) ** weight
+            posteriors[o] *= max(0.01, float(likelihood)) ** weight
 
     # Normalize
     total = sum(posteriors.values())
@@ -434,14 +491,18 @@ def _fuse_impl(
         priors = fusion_tick_cache.priors
         adjustments = fusion_tick_cache.weight_adjustments
     else:
-        regime_label = getattr(regime, "primary", "unknown")
+        regime_label = _resolved_regime_label(regime)
         direction_hint = getattr(rules, "signal", "wait")
 
         # ── Select priors based on regime ─────────────────────────────────────────
-        priors = REGIME_PRIORS.get(regime_label, DEFAULT_PRIORS)
+        priors = (
+            dict(REGIME_PRIORS[regime_label])
+            if regime_label in REGIME_PRIORS
+            else dict(DEFAULT_PRIORS)
+        )
 
         # ── Compute regime-aware trust weights ────────────────────────────────────
-        adjustments = REGIME_WEIGHT_ADJUSTMENTS.get(regime_label, {})
+        adjustments = dict(REGIME_WEIGHT_ADJUSTMENTS.get(regime_label or "", {}))
     weights = {}
     for source, base_w in BASE_WEIGHTS.items():
         mult = adjustments.get(source, 1.0)
@@ -456,7 +517,7 @@ def _fuse_impl(
         # it is applied only as post-fusion context (see mc_fusion_adjustment).
         "monte_carlo": False,
         "rules":       True,  # always available
-        "regime":      regime_label != "unknown",
+        "regime":      regime_label is not None,
     }
 
     for source, avail in source_available.items():
@@ -551,12 +612,10 @@ def _fuse_impl(
 
     # ── Model agreement (XGB + LSTM + Transformer only; MC excluded) ───────────
     model_dirs = []
-    if getattr(xgb_out, "available", False):
-        model_dirs.append(getattr(xgb_out, "dominant_class", "flat"))
-    if getattr(lstm_out, "available", False):
-        model_dirs.append(getattr(lstm_out, "dominant_class", "flat"))
-    if getattr(transformer_out, "available", False):
-        model_dirs.append(getattr(transformer_out, "dominant_class", "flat"))
+    for _out in (xgb_out, lstm_out, transformer_out):
+        _dc = _model_dominant_class(_out)
+        if _dc is not None:
+            model_dirs.append(_dc)
 
     if model_dirs:
         from collections import Counter
@@ -656,8 +715,9 @@ def _fuse_impl(
     if getattr(xgb_out, "available", False):
         evidence.append(f"XGB: {xgb_out.dominant_class} ({xgb_out.confidence_label} confidence)")
 
-    if regime_label != "unknown":
-        evidence.append(f"Regime: {regime_label} ({getattr(regime, 'confidence', 'low')})")
+    if regime_label is not None:
+        _rc = getattr(regime, "confidence", None) or "—"
+        evidence.append(f"Regime: {regime_label} ({_rc})")
 
     if direction_hint in ("long", "short"):
         evidence.append(f"Rules: {direction_hint} lean")
@@ -708,12 +768,12 @@ def _fuse_impl(
 
     return FusionPayload(
         available=True,
-        breakout_posterior=round(posteriors.get("breakout", 0), 3),
-        pinning_posterior=round(posteriors.get("pinning", 0), 3),
-        continuation_posterior=round(posteriors.get("continuation", 0), 3),
-        reversal_posterior=round(posteriors.get("reversal", 0), 3),
-        vol_expansion_posterior=round(posteriors.get("vol_expansion", 0), 3),
-        mean_reversion_posterior=round(posteriors.get("mean_reversion", 0), 3),
+        breakout_posterior=round(posteriors["breakout"], 3),
+        pinning_posterior=round(posteriors["pinning"], 3),
+        continuation_posterior=round(posteriors["continuation"], 3),
+        reversal_posterior=round(posteriors["reversal"], 3),
+        vol_expansion_posterior=round(posteriors["vol_expansion"], 3),
+        mean_reversion_posterior=round(posteriors["mean_reversion"], 3),
         weight_xgboost=round(weights.get("xgboost", 0), 3),
         weight_lstm=round(weights.get("lstm", 0), 3),
         weight_transformer=round(weights.get("transformer", 0), 3),
