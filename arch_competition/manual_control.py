@@ -63,11 +63,21 @@ def _validate_manifest_record_lineage(manifest: dict[str, Any], record: dict[str
     ref = record.get("evaluation_manifest_reference") or {}
     m_lineage = manifest.get("lineage") or {}
     fk = ref.get("lineage_feature_cache_key")
-    if fk is not None and fk != m_lineage.get("feature_cache_key"):
+    if not fk:
+        raise ManualGovernanceError(
+            "promotion_record.evaluation_manifest_reference.lineage_feature_cache_key required"
+        )
+    if fk != m_lineage.get("feature_cache_key"):
         raise ManualGovernanceError("lineage_feature_cache_key mismatch between promotion record and manifest")
-    hz_m = str(manifest.get("ml_horizon_slug") or "").lower()
-    hz_r = str(ref.get("ml_horizon_slug") or "").lower()
-    if hz_r and hz_m and hz_r != hz_m:
+    hz_m_raw = manifest.get("ml_horizon_slug")
+    hz_r_raw = ref.get("ml_horizon_slug")
+    if not (hz_m_raw and str(hz_m_raw).strip()):
+        raise ManualGovernanceError("manifest.ml_horizon_slug required")
+    if not (hz_r_raw and str(hz_r_raw).strip()):
+        raise ManualGovernanceError(
+            "promotion_record.evaluation_manifest_reference.ml_horizon_slug required"
+        )
+    if str(hz_m_raw).strip().lower() != str(hz_r_raw).strip().lower():
         raise ManualGovernanceError("ml_horizon mismatch between promotion record and manifest")
 
 
