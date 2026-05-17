@@ -28,7 +28,9 @@ def test_net_charm_skips_contract_missing_schwab_open_interest():
     out = compute_net_charm([ct], 500.0, "2099-05-05")
 
     assert out["contracts_used"] == 0
-    assert out["net_charm_daily"] == 0.0
+    assert out["net_charm_daily"] is None
+    assert out["charm_direction"] is None
+    assert out["charm_magnitude"] is None
 
 
 def test_net_charm_skips_contract_missing_schwab_volatility():
@@ -38,7 +40,7 @@ def test_net_charm_skips_contract_missing_schwab_volatility():
     out = compute_net_charm([ct], 500.0, "2099-05-05")
 
     assert out["contracts_used"] == 0
-    assert out["net_charm_daily"] == 0.0
+    assert out["charm_direction"] is None
 
 
 def test_gamma_void_does_not_classify_missing_oi_as_low_oi():

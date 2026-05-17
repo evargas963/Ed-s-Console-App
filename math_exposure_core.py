@@ -729,22 +729,45 @@ def compute_net_charm(
 
         used += 1
 
+    if used <= 0:
+        return {
+            "net_charm_daily": None,
+            "call_charm_daily": None,
+            "put_charm_daily": None,
+            "charm_direction": None,
+            "charm_magnitude": None,
+            "drift_toward": drift_toward_strike,
+            "gamma_pin": drift_toward_strike,
+            "contracts_used": 0,
+            "error": f"No contracts matched expiry={_target_exp}",
+        }
+
     net = call_charm + put_charm
 
     # Direction: positive net = dealers net buying delta (bullish), negative = selling (bearish)
     direction = "neutral" if abs(net) < 1.0 else ("buying" if net > 0 else "selling")
+    abs_net = abs(net)
+    if abs_net >= 5000:
+        magnitude = "large"
+    elif abs_net >= 1000:
+        magnitude = "moderate"
+    elif abs_net >= 100:
+        magnitude = "small"
+    else:
+        magnitude = "negligible"
 
     gamma_pin = drift_toward_strike
 
     return {
-        "net_charm_daily":  round(net, 2),
+        "net_charm_daily": round(net, 2),
         "call_charm_daily": round(call_charm, 2),
-        "put_charm_daily":  round(put_charm, 2),
-        "charm_direction":  direction,
-        "drift_toward":     gamma_pin,
-        "gamma_pin":        gamma_pin,
-        "contracts_used":   used,
-        "error": "" if used > 0 else f"No contracts matched expiry={_target_exp}",
+        "put_charm_daily": round(put_charm, 2),
+        "charm_direction": direction,
+        "charm_magnitude": magnitude,
+        "drift_toward": gamma_pin,
+        "gamma_pin": gamma_pin,
+        "contracts_used": used,
+        "error": "",
     }
 
 
