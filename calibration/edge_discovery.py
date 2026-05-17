@@ -33,7 +33,7 @@ from calibration.anchor_audit import snapshot_has_bar_anchor
 from calibration.analyze_phase3 import _brier_triplet, _canonical_prob_triplet, _load_json_col
 from calibration.analyze_phase4 import _directional_pnl
 from calibration.edge_validation import _effective_directional_signal
-from arch_competition.atomic_io import write_json_file_atomically
+from arch_competition.atomic_io import write_json_file_atomically, write_text_atomically
 from calibration.canonical_enforcement import CANONICAL_TIMEFRAME, enforce_calibration_decision_log_only_1m
 from calibration.db_guard import enforce_resolved_path, register_allow_noncanonical_flag
 from calibration.json_utils import parse_json_mapping
@@ -41,6 +41,7 @@ from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
 from calibration.statistical_integrity import (
     MIN_SAMPLES_STATISTICAL,
+    bucket_gate,
     verify_edge_discovery_no_numeric_leak,
 )
 from calibration.trust import TRUSTED_PREDICATE_SQL
@@ -441,7 +442,7 @@ def feature_importance_naive(rows: list[dict[str, Any]]) -> dict[str, Any]:
             except (TypeError, ValueError):
                 pass
     pearson_n = len(fp_list)
-    pearson_gate = {"sufficient_sample": pearson_n >= MIN_N, "n": pearson_n, "min_required": MIN_N}
+    pearson_gate = bucket_gate(pearson_n, MIN_N)
     corr = None
     if pearson_n >= MIN_N:
         mx = statistics.mean(fp_list)
@@ -714,7 +715,7 @@ def main() -> int:
         f"- **marginal EDGE slices found:** {rep['system_level']['any_marginal_EDGE']}",
         "",
     ]
-    md_path.write_text("\n".join(md_lines), encoding="utf-8")
+    write_text_atomically(md_path, "\n".join(md_lines))
 
     final = rep["system_level"]["FINAL_SYSTEM_EDGE"]
     leak_ok = bool((rep.get("statistical_integrity") or {}).get("binary_pass"))
