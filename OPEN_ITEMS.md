@@ -224,6 +224,24 @@ Categorical inventories (`DerivationRecord` with free-text `schwab_leaf` like `"
 
 ---
 
+## GitHub backup state — local-vs-remote-vs-main
+
+**Reality:** operator runs from local launch folder; GitHub is backup only (no other puller).
+
+| Location | Branch | Tip | Status |
+|---|---|---|---|
+| Local `C:\Users\evarg\Documents\Trading\EdWebConsole` | `feature/institutional-key-levels` | latest local | Source of truth |
+| origin/feature/institutional-key-levels | (same branch on GitHub) | sometimes behind by unpushed commits | Backup target |
+| origin/main | `main` | `4b8ba2d` (frozen) | Stale by 82+ commits |
+
+**Action items:**
+- [ ] **Backup sync** — keep `origin/feature/institutional-key-levels` exactly equal to local after each commit. Operator can `git push origin feature/institutional-key-levels` from launch folder.
+- [ ] **Main merge (deferred)** — when audit is complete (Layer 3+ done, all Action 10.x closed), open PR `feature → main` so main becomes canonical. No urgency since no other puller; durability concern only.
+
+**Rule going forward:** every commit on this branch should be pushed to origin same day. Local-only commits = single point of failure.
+
+---
+
 ## Resolved (archive)
 
 _Move rows here with date + short note when closed._

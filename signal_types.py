@@ -323,11 +323,11 @@ class TheCall:
     rules_pred_agree:   bool
     time_warning:       Optional[str]       # None or warning if <2hrs to close
     size_note:          str
-    # ── Trade Validation Gate ─────────────────────────────────────────────────
-    validation_passed:  bool            = True
-    structure_valid:    bool            = True
-    probability_valid:  bool            = True
-    risk_valid:         bool            = True
+    # ── Trade Validation Gate — None until call_engine populates (no fabricated pass)
+    validation_passed:  Optional[bool]  = None
+    structure_valid:    Optional[bool]  = None
+    probability_valid:  Optional[bool]  = None
+    risk_valid:         Optional[bool]  = None
     validation_summary: str             = ""
     # ── Formal Position Sizing ────────────────────────────────────────────────
     r_units:            float           = 0.0     # 0.00 to 1.25

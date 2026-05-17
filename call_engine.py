@@ -692,7 +692,7 @@ def compute_position_size(
     has_void_ahead: bool = False,
     # Risk
     reward_risk: float | None = None,
-    validation_passed: bool = True,
+    validation_passed: Optional[bool] = None,
     # Time
     mins_to_close: float = 390.0,
     # Volatility regime: risk_multiplier > 1 = wider stops → reduce position for same $ risk
