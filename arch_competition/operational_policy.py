@@ -400,23 +400,35 @@ def build_operational_policy_payload(
                 }
             )
 
-    # Lineage: manifest horizon must match request (cross-check)
-    mhz = str(evaluation_manifest.get("ml_horizon_slug") or "").strip().lower()
-    if mhz and mhz != hz:
+    # Lineage: manifest horizon must be present and match request (cross-check)
+    mhz_raw = evaluation_manifest.get("ml_horizon_slug")
+    if mhz_raw is None or not str(mhz_raw).strip():
+        horizon_reason_code = "MANIFEST_HORIZON_MISSING"
+        horizon_evidence = "evaluation_manifest.ml_horizon_slug is missing or empty"
+        sk_lm = f"{tku}|{hz}|manifest_horizon_missing"
+    else:
+        mhz = str(mhz_raw).strip().lower()
+        if mhz == hz:
+            horizon_reason_code = None
+        else:
+            horizon_reason_code = "MANIFEST_HORIZON_MISMATCH_POLICY"
+            horizon_evidence = f"manifest={mhz!r} policy={hz!r}"
+            sk_lm = f"{tku}|{hz}|lineage_mismatch_horizon"
+
+    if horizon_reason_code:
         system_untrusted = True
         promotion_frozen = True
         reasons.append(
             {
-                "code": "MANIFEST_HORIZON_MISMATCH_POLICY",
+                "code": horizon_reason_code,
                 "source": "evaluation_manifest",
-                "evidence": f"manifest={mhz!r} policy={hz!r}",
+                "evidence": horizon_evidence,
             }
         )
-        sk_lm = f"{tku}|{hz}|lineage_mismatch_horizon"
         alerts.append(
             {
                 "alert_id": _alert_id(sk_lm),
-                "reason_code": "MANIFEST_HORIZON_MISMATCH_POLICY",
+                "reason_code": horizon_reason_code,
                 "severity": DRIFT_SEVERITY_CRITICAL,
                 "routing_class": ROUTING_GOVERNANCE,
                 "recommended_operator_action": ACTION_REVIEW_GOVERNANCE,
