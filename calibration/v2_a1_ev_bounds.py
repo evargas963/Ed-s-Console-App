@@ -12,7 +12,10 @@ designed.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Iterable
+
+log = logging.getLogger(__name__)
 
 from calibration.v2_a1_calibration import (
     A1_CALIBRATION_PER_REGIME_MIN_SAMPLES,
@@ -235,7 +238,13 @@ def _validate_geometry(*, reward_r: float, risk_r: float) -> dict[str, float]:
 
 
 def _bounded_probability(value: float) -> float:
-    return min(1.0, max(0.0, float(value)))
+    raw = float(value)
+    if raw < 0.0 or raw > 1.0:
+        log.warning(
+            "v2_a1_ev_bounds: probability %s outside [0, 1]; clamping before EV computation",
+            raw,
+        )
+    return min(1.0, max(0.0, raw))
 
 
 def _sample_gate(n: int, min_required: int, operator_decision: str) -> dict[str, Any]:

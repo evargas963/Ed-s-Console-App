@@ -114,6 +114,16 @@ def test_ev_bounds_warning_conformal_emits_rows_with_warning_status():
     assert artifact["ev_bounds"]
 
 
+def test_bounded_probability_warns_when_outside_unit_interval(caplog):
+    import logging
+
+    from calibration.v2_a1_ev_bounds import _bounded_probability
+
+    with caplog.at_level(logging.WARNING):
+        assert _bounded_probability(1.5) == 1.0
+    assert any("outside [0, 1]" in r.message for r in caplog.records)
+
+
 def test_ev_bounds_compute_expected_r_math_from_probability_band():
     assert compute_ev_bound(0.25, reward_r=2.0, risk_r=1.0) == pytest.approx(-0.25)
     assert compute_ev_bound(0.75, reward_r=2.0, risk_r=1.0) == pytest.approx(1.25)
