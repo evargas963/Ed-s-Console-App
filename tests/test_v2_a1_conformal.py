@@ -125,6 +125,28 @@ def test_conformal_warning_below_nominal_keeps_interval_model_with_explicit_stat
     assert artifact["evaluation_diagnostics"]["empirical_coverage"] == pytest.approx(0.87)
 
 
+def test_conformal_run_id_null_when_calibration_run_id_missing():
+    artifact = build_a1_conformal_artifact(
+        {
+            "holdout_predictions": _clean_rows(500),
+        }
+    )
+    assert artifact["calibration_run_id"] is None
+    assert artifact["conformal_run_id"] is None
+
+
+def test_conformal_module_ids_null_when_upstream_artifact_omits_them():
+    artifact = build_a1_conformal_artifact(
+        {
+            "calibration_run_id": "run-x",
+            "holdout_predictions": _clean_rows(500),
+        }
+    )
+    assert artifact["conformal_run_id"] == "run-x-conformal"
+    assert artifact["module_id"] is None
+    assert artifact["expression_profile_id"] is None
+
+
 def test_conformal_horizon_null_when_calibration_artifact_missing_horizon():
     artifact = build_a1_conformal_artifact(
         {

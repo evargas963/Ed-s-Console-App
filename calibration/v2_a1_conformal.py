@@ -48,13 +48,15 @@ def build_a1_conformal_artifact(
     eval_rows = _usable_predictions(evaluation_predictions if evaluation_predictions is not None else fit_rows)
     aggregate_gate = _sample_gate(len(fit_rows), min_holdout_samples, "O-24")
     horizon = calibration_artifact.get("horizon")
+    cal_run_id = calibration_artifact.get("calibration_run_id")
+    conformal_run_id = f"{cal_run_id}-conformal" if cal_run_id else None
     base = {
         "schema_version": A1_CONFORMAL_ARTIFACT_SCHEMA_VERSION,
-        "calibration_run_id": calibration_artifact.get("calibration_run_id"),
+        "calibration_run_id": cal_run_id,
         "calibration_window_id": calibration_artifact.get("calibration_window_id"),
-        "conformal_run_id": f"{calibration_artifact.get('calibration_run_id') or 'a1'}-conformal",
-        "module_id": calibration_artifact.get("module_id") or "A",
-        "expression_profile_id": calibration_artifact.get("expression_profile_id") or "A1",
+        "conformal_run_id": conformal_run_id,
+        "module_id": calibration_artifact.get("module_id"),
+        "expression_profile_id": calibration_artifact.get("expression_profile_id"),
         "horizon": horizon,
         "method": A1_CONFORMAL_METHOD,
         "nominal_coverage": float(nominal_coverage),
