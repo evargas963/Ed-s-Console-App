@@ -17,6 +17,14 @@ from ml_horizon import ALL_GOVERNED_HORIZONS
 
 log = logging.getLogger(__name__)
 
+_DEFAULT_TRANSFORMER_SEQ_LEN = 20
+
+
+def _require_ticker(ticker: str) -> str:
+    if not ticker or not str(ticker).strip():
+        raise ValueError("ticker is required")
+    return str(ticker).strip().upper()
+
 
 @dataclass(frozen=True)
 class SharedSequenceContext:
@@ -32,8 +40,8 @@ class SharedSequenceContext:
 
 def _max_transformer_seq_len_for_ticker(ticker: str) -> int:
     """Scan transformer meta on disk per governed horizon; default 20 when missing."""
-    tkr = (ticker or "").strip().upper()
-    m = 20
+    tkr = _require_ticker(ticker)
+    m = _DEFAULT_TRANSFORMER_SEQ_LEN
     from ml_predict import (  # lazy: ml_predict already loaded when builder runs from signals
         _model_dir_for_ticker,
         reset_ml_infer_horizon_slug,
@@ -51,10 +59,57 @@ def _max_transformer_seq_len_for_ticker(ticker: str) -> int:
             mp = base / f"transformer_{tkr}_{hz}_meta.json"
             if mp.is_file():
                 try:
-                    meta = json.loads(mp.read_text(encoding="utf-8"))
-                    m = max(m, int(meta.get("seq_len", 20)))
-                except (OSError, ValueError, TypeError, json.JSONDecodeError):
-                    pass
+                    raw = mp.read_text(encoding="utf-8")
+                except OSError as e:
+                    log.warning(
+                        "transformer meta unreadable for %s %s at %s: %s — using default seq_len",
+                        tkr,
+                        hz,
+                        mp,
+                        e,
+                    )
+                    continue
+                try:
+                    meta_data = json.loads(raw)
+                except json.JSONDecodeError as e:
+                    log.warning(
+                        "transformer meta JSON corrupt for %s %s at %s: %s — using default seq_len",
+                        tkr,
+                        hz,
+                        mp,
+                        e,
+                    )
+                    continue
+                seq_raw = meta_data.get("seq_len")
+                if seq_raw is None:
+                    log.warning(
+                        "transformer meta for %s %s at %s missing seq_len key — using default seq_len",
+                        tkr,
+                        hz,
+                        mp,
+                    )
+                    continue
+                try:
+                    seq_int = int(seq_raw)
+                except (ValueError, TypeError):
+                    log.warning(
+                        "transformer meta for %s %s at %s has non-int seq_len %r — using default seq_len",
+                        tkr,
+                        hz,
+                        mp,
+                        seq_raw,
+                    )
+                    continue
+                if seq_int < 1:
+                    log.warning(
+                        "transformer meta for %s %s at %s has invalid seq_len %r — using default seq_len",
+                        tkr,
+                        hz,
+                        mp,
+                        seq_int,
+                    )
+                    continue
+                m = max(m, seq_int)
         finally:
             reset_ml_infer_horizon_slug(tok)
     return max(1, m)
@@ -74,7 +129,7 @@ def build_shared_sequence_context(
     from features.lstm_sequence_input import LstmSequenceInputError, build_lstm_merged_windows
     from ml_predict import _require_as_of_ts_utc_for_sequence_db
 
-    tkr = (ticker or "").strip().upper()
+    tkr = _require_ticker(ticker)
     try:
         _asof = _require_as_of_ts_utc_for_sequence_db(inference_snapshot_v1)
     except LstmSequenceInputError as e:
@@ -98,6 +153,15 @@ def build_shared_sequence_context(
         return None, f"insufficient_snapshots:{len(rows or [])}"
 
     chron = tuple(reversed(rows))
+    if len(chron) >= 2:
+        t_first = chron[0].get("ts_utc")
+        t_last = chron[-1].get("ts_utc")
+        if t_first is not None and t_last is not None:
+            try:
+                if float(t_first) > float(t_last):
+                    return None, "snapshot_order_not_chronological"
+            except (TypeError, ValueError):
+                return None, "snapshot_ts_utc_not_comparable"
     lstm_window = list(chron[-STREAM_5M_LOOKBACK:])
     day_snaps = list(chron[-100:]) if len(chron) >= 100 else list(chron)
 
