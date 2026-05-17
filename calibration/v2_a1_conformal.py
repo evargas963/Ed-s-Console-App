@@ -18,6 +18,7 @@ from typing import Any, Iterable
 from calibration.v2_a1_calibration import (
     A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES,
     A1_CALIBRATION_PER_REGIME_MIN_SAMPLES,
+    axis_reliability_bucket_value,
 )
 
 A1_CONFORMAL_ARTIFACT_SCHEMA_VERSION = "1"
@@ -46,7 +47,7 @@ def build_a1_conformal_artifact(
     fit_rows = _usable_predictions(calibration_artifact.get("holdout_predictions") or [])
     eval_rows = _usable_predictions(evaluation_predictions if evaluation_predictions is not None else fit_rows)
     aggregate_gate = _sample_gate(len(fit_rows), min_holdout_samples, "O-24")
-    horizon = str(calibration_artifact.get("horizon") or "unknown")
+    horizon = calibration_artifact.get("horizon")
     base = {
         "schema_version": A1_CONFORMAL_ARTIFACT_SCHEMA_VERSION,
         "calibration_run_id": calibration_artifact.get("calibration_run_id"),
@@ -210,9 +211,9 @@ def _regime_coverage(
 ) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for axis in A1_CONFORMAL_REGIME_AXES:
-        values = sorted({str(row.get(axis) or "unknown") for row in rows})
+        values = sorted({axis_reliability_bucket_value(row.get(axis)) for row in rows})
         for value in values:
-            bucket = [row for row in rows if str(row.get(axis) or "unknown") == value]
+            bucket = [row for row in rows if axis_reliability_bucket_value(row.get(axis)) == value]
             gate = _sample_gate(len(bucket), A1_CALIBRATION_PER_REGIME_MIN_SAMPLES, "O-25")
             key = f"{axis}:{value}"
             entry = {

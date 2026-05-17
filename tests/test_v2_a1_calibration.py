@@ -10,6 +10,10 @@ from calibration.v2_a1_calibration import (
     A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES,
     A1_CALIBRATION_HORIZON,
     A1_CALIBRATION_HORIZONS,
+    A1_REGIME_AXIS_MISSING,
+    _regime_reliability,
+    _row_to_calibration_example,
+    _success_label,
     build_a1_calibration_health,
     build_a1_5c_calibration_health,
     apply_isotonic_model,
@@ -256,6 +260,53 @@ def test_regime_cells_emit_rates_only_above_o25_floor(tmp_path):
     )
     assert small["horizon"] == "15c"
     assert small["regime_reliability"]["volatility_regime:thin"]["observed_hit_rate"] is None
+
+
+def test_success_label_none_when_outcome_missing() -> None:
+    assert _success_label("long", None) is None
+    assert _success_label("long", "") is None
+
+
+def test_row_to_calibration_example_rejects_missing_outcome() -> None:
+    row = {
+        "id": 1,
+        "ticker": "SPY",
+        "decision_ts_utc": BASE_TS,
+        "advisory_v2_decision_snapshot_json": _v2_payload(probability=0.6),
+        "advisory_v2_adapter_version": "test-adapter",
+        "outcome": None,
+        "outcome_pts": 0.1,
+        "vol_regime": "normal",
+        "session_bucket": "midday",
+    }
+    with pytest.raises(ValueError, match="cannot be used for A1 calibration"):
+        _row_to_calibration_example(row, horizon="5c")
+
+
+def test_build_a1_calibration_health_requires_horizon() -> None:
+    with pytest.raises(ValueError, match="horizon is required"):
+        build_a1_calibration_health({"holdout_predictions": []})
+
+
+def test_regime_reliability_separates_missing_from_unknown_vol_regime() -> None:
+    base = {
+        "calibrated_probability": 0.6,
+        "label": 1,
+        "ticker": "SPY",
+        "time_of_day_bucket": "midday",
+        "expiry_dte_bucket": "not_options_applicable",
+        "direction": "long",
+        "primary_horizon": "5c",
+    }
+    predictions = [
+        {**base, "volatility_regime": "unknown"},
+        {**base, "volatility_regime": None},
+    ]
+    regime = _regime_reliability(predictions)
+    assert "volatility_regime:unknown" in regime
+    assert f"volatility_regime:{A1_REGIME_AXIS_MISSING}" in regime
+    assert regime["volatility_regime:unknown"]["n"] == 1
+    assert regime[f"volatility_regime:{A1_REGIME_AXIS_MISSING}"]["n"] == 1
 
 
 def test_window_overlap_detection_still_rejects_bad_embargo():

@@ -34,6 +34,8 @@ A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES = 500  # O-24
 A1_CALIBRATION_PER_REGIME_MIN_SAMPLES = 50  # O-25
 A1_CALIBRATION_PER_RELIABILITY_BIN_MIN_SAMPLES = 30  # O-26
 A1_RELIABILITY_BIN_EDGES = tuple(round(i / 10.0, 1) for i in range(11))
+# Distinct from volatility_regime classifier vocabulary ("unknown" is a real class).
+A1_REGIME_AXIS_MISSING = "__missing__"
 
 
 def load_a1_calibration_rows(db_path: Path, *, horizon: str) -> list[dict[str, Any]]:
@@ -191,7 +193,10 @@ def fit_a1_5c_isotonic_artifact(
 
 def build_a1_calibration_health(artifact: dict[str, Any]) -> dict[str, Any]:
     """Compute holdout ECE, Brier, reliability, and deterministic regime slices."""
-    hz = _validate_horizon(str(artifact.get("horizon") or A1_CALIBRATION_HORIZON))
+    horizon_raw = artifact.get("horizon")
+    if horizon_raw is None or not str(horizon_raw).strip():
+        raise ValueError("artifact horizon is required for A1 calibration health")
+    hz = _validate_horizon(str(horizon_raw))
     predictions = artifact.get("holdout_predictions") or []
     aggregate_gate = _sample_gate(len(predictions), A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES, "O-24")
     health = {
@@ -274,13 +279,20 @@ def _reliability_table(predictions: list[dict[str, Any]]) -> list[dict[str, Any]
     return rows
 
 
+def axis_reliability_bucket_value(raw: Any) -> str:
+    if raw is None:
+        return A1_REGIME_AXIS_MISSING
+    text = str(raw).strip()
+    return text if text else A1_REGIME_AXIS_MISSING
+
+
 def _regime_reliability(predictions: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     axes = ("volatility_regime", "time_of_day_bucket", "expiry_dte_bucket", "ticker", "direction", "primary_horizon")
     out: dict[str, dict[str, Any]] = {}
     for axis in axes:
-        values = sorted({str(row.get(axis) or "unknown") for row in predictions})
+        values = sorted({axis_reliability_bucket_value(row.get(axis)) for row in predictions})
         for value in values:
-            bucket = [row for row in predictions if str(row.get(axis) or "unknown") == value]
+            bucket = [row for row in predictions if axis_reliability_bucket_value(row.get(axis)) == value]
             gate = _sample_gate(len(bucket), A1_CALIBRATION_PER_REGIME_MIN_SAMPLES, "O-25")
             key = f"{axis}:{value}"
             out[key] = {
@@ -366,7 +378,8 @@ def _row_to_calibration_example(row: dict[str, Any], *, horizon: str) -> dict[st
     action = _leaf_value(decision.get("action"))
     direction = _leaf_value(decision.get("direction"))
     raw_p = _float_or_none(_leaf_value(decision.get("P_entry_success")))
-    outcome = str(row.get("outcome") or "").lower()
+    outcome_raw = row.get("outcome")
+    outcome = str(outcome_raw).lower() if outcome_raw is not None else None
     label = _success_label(direction, outcome)
     if action != "TRADE" or raw_p is None or label is None:
         raise ValueError("row cannot be used for A1 calibration")
@@ -389,7 +402,9 @@ def _row_to_calibration_example(row: dict[str, Any], *, horizon: str) -> dict[st
     }
 
 
-def _success_label(direction: Any, outcome: str) -> int | None:
+def _success_label(direction: Any, outcome: str | None) -> int | None:
+    if not outcome:
+        return None
     d = str(direction or "").lower()
     if d == "long":
         return 1 if outcome == "up" else 0
