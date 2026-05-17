@@ -386,9 +386,9 @@ def analyze(db_path: Path) -> dict[str, Any]:
     # Regime × outcome pts
     reg_pts: dict[str, list[float]] = defaultdict(list)
     for r in rows:
-        rp = r["regime_primary"]
+        rp = axis_reliability_bucket_value(r["regime_primary"])
         pts = r["outcome_5c_pts"]
-        if rp and pts is not None:
+        if pts is not None:
             reg_pts[rp].append(float(pts))
     regime_out: dict[str, Any] = {}
     for k, v in sorted(reg_pts.items(), key=lambda x: -len(x[1])):

@@ -137,6 +137,22 @@ def test_analyze_model_by_regime_buckets_separates_missing_from_unknown(tmp_path
     assert out["model_by_regime_buckets"][missing_key]["n"] == 2
 
 
+def test_analyze_regime_buckets_separates_missing_from_unknown(tmp_path, monkeypatch):
+    db_path = tmp_path / "phase3_regime_buckets_sentinel.db"
+    _seed_regime_model_bucket_db(db_path)
+    monkeypatch.setattr(
+        "calibration.analyze_phase3.snapshot_has_bar_anchor",
+        lambda _c, _t, _ts: True,
+    )
+    out = analyze(db_path)
+    rb = out.get("regime_buckets", {})
+    missing = axis_reliability_bucket_value(None)
+    assert missing in rb
+    assert rb[missing]["n"] == 2
+    assert "unknown" in rb
+    assert "compression" in rb
+
+
 @pytest.mark.parametrize("binary_pass,expected_code", [(True, 0), (False, 3)])
 def test_main_exit_code_reflects_binary_pass(binary_pass, expected_code, monkeypatch, tmp_path):
     monkeypatch.setattr(
