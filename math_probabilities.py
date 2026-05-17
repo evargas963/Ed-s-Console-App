@@ -1154,7 +1154,7 @@ def compute_volume_oi_ratio(
     Returns dict with ratio, interpretation, total_volume, total_oi.
     """
     if not exposures_by_strike or not spot:
-        return {"ratio": None, "label": "unknown", "total_volume": 0, "total_oi": 0}
+        return {"ratio": None, "label": None, "total_volume": None, "total_oi": None}
 
     total_vol = 0.0
     total_oi = 0.0

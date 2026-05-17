@@ -1028,7 +1028,12 @@ def compute_level_density(
     Returns dict with count, level_names, density_label.
     """
     if not levels or not spot:
-        return {"count": 0, "level_names": [], "density_label": "unknown", "radius": radius_pts}
+        return {
+            "count": None,
+            "level_names": None,
+            "density_label": None,
+            "radius": radius_pts,
+        }
 
     nearby = []
     for name, price in levels.items():

@@ -249,13 +249,23 @@ def compute_em_progress(spot: float, today_open: float,
         severity: 'normal', 'warning', 'danger', 'breached'
     """
     if not all(v is not None for v in [spot, today_open, em_upper, em_lower]):
-        return {"progress_pct": None, "breached": False, "direction": None,
-                "severity": "unknown", "error": "Missing data"}
+        return {
+            "progress_pct": None,
+            "breached": None,
+            "direction": None,
+            "severity": None,
+            "error": "Missing data",
+        }
 
     em_half = (em_upper - em_lower) / 2.0
     if em_half <= 0:
-        return {"progress_pct": None, "breached": False, "direction": None,
-                "severity": "unknown", "error": "EM range is zero"}
+        return {
+            "progress_pct": None,
+            "breached": None,
+            "direction": None,
+            "severity": None,
+            "error": "EM range is zero",
+        }
 
     move = spot - today_open
     direction = "up" if move >= 0 else "down"
@@ -299,8 +309,12 @@ def compute_iv_skew(contracts: List[dict], spot: float) -> dict:
     Returns dict with skew, atm_call_iv, atm_put_iv, interpretation.
     """
     if not contracts or not spot or spot <= 0:
-        return {"skew": None, "atm_call_iv": None, "atm_put_iv": None,
-                "interpretation": "unavailable"}
+        return {
+            "skew": None,
+            "atm_call_iv": None,
+            "atm_put_iv": None,
+            "interpretation": None,
+        }
 
     # Find ATM strike
     strikes = sorted(set(
@@ -309,15 +323,23 @@ def compute_iv_skew(contracts: List[dict], spot: float) -> dict:
         if ct.get("strikePrice") is not None
     ))
     if not strikes:
-        return {"skew": None, "atm_call_iv": None, "atm_put_iv": None,
-                "interpretation": "no strikes"}
+        return {
+            "skew": None,
+            "atm_call_iv": None,
+            "atm_put_iv": None,
+            "interpretation": None,
+        }
 
     atm_k = _nearest_strike(strikes, spot)
     call_iv, put_iv = _extract_iv_for_strike(contracts, atm_k)
 
     if call_iv is None or put_iv is None:
-        return {"skew": None, "atm_call_iv": call_iv, "atm_put_iv": put_iv,
-                "interpretation": "missing IV"}
+        return {
+            "skew": None,
+            "atm_call_iv": call_iv,
+            "atm_put_iv": put_iv,
+            "interpretation": None,
+        }
 
     skew = round(put_iv - call_iv, 2)
 
@@ -782,7 +804,7 @@ def compute_iv_model_spread(
     Returns dict with spread, interpretation.
     """
     if not contracts or not spot:
-        return {"spread": None, "label": "unknown", "market_iv": None, "model_iv": None}
+        return {"spread": None, "label": None, "market_iv": None, "model_iv": None}
 
     market_ivs = []
     model_ivs = []
@@ -808,7 +830,7 @@ def compute_iv_model_spread(
                 continue
 
     if not market_ivs or not model_ivs:
-        return {"spread": None, "label": "unknown", "market_iv": None, "model_iv": None}
+        return {"spread": None, "label": None, "market_iv": None, "model_iv": None}
 
     avg_market = sum(market_ivs) / len(market_ivs)
     avg_model = sum(model_ivs) / len(model_ivs)

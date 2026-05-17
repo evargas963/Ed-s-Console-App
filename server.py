@@ -3496,7 +3496,12 @@ def _fetch_state(
     # ── Expected Move (straddle + IV-based) ──────────────────────────────────
     _em_straddle = {"straddle": None, "em_pts": None, "upper": None, "lower": None}
     _em_iv = {"em_pts": None, "upper": None, "lower": None}
-    _em_progress = {"progress_pct": None, "breached": False, "direction": None, "severity": "unknown"}
+    _em_progress = {
+        "progress_pct": None,
+        "breached": None,
+        "direction": None,
+        "severity": None,
+    }
     _em_up = None
     _em_lo = None
     _hours_rem = max(0.0, (MARKET_CLOSE_HOUR * 60 - (now_et.hour * 60 + now_et.minute)) / 60.0)
@@ -4914,14 +4919,14 @@ def _fetch_state(
     ms_dict["em_iv_upper"]       = _fv(_em_iv.get("upper"))
     ms_dict["em_iv_lower"]       = _fv(_em_iv.get("lower"))
     ms_dict["em_progress_pct"]   = _em_progress.get("progress_pct")
-    ms_dict["em_breached"]       = _em_progress.get("breached", False)
+    ms_dict["em_breached"]       = _em_progress.get("breached")
     ms_dict["em_direction"]      = _em_progress.get("direction")
-    ms_dict["em_severity"]       = _em_progress.get("severity", "unknown")
+    ms_dict["em_severity"]       = _em_progress.get("severity")
     ms_dict["em_move_pts"]       = _em_progress.get("move_pts")
 
     # ── Volatility signals ────────────────────────────────────────────────────
     ms_dict["iv_skew"]           = _iv_skew.get("skew")
-    ms_dict["iv_skew_interp"]    = _iv_skew.get("interpretation", "")
+    ms_dict["iv_skew_interp"]    = _iv_skew.get("interpretation")
     ms_dict["realized_vol"]      = _realized_vol
     ms_dict["atr"]               = _atr
     ms_dict["iv_rank"]           = _iv_rank
@@ -4994,9 +4999,9 @@ def _fetch_state(
     ms_dict["vol_env_width"]         = _vol_envelope.get("width_pts")
 
     # ── Level Density ─────────────────────────────────────────────────────────
-    ms_dict["level_density_count"]   = _level_density.get("count", 0)
-    ms_dict["level_density_label"]   = _level_density.get("density_label", "unknown")
-    ms_dict["level_density_names"]   = _level_density.get("level_names", [])
+    ms_dict["level_density_count"]   = _level_density.get("count")
+    ms_dict["level_density_label"]   = _level_density.get("density_label")
+    ms_dict["level_density_names"]   = _level_density.get("level_names")
 
     # ── Sector Strength (3 groups) ───────────────────────────────────────────
     ms_dict["index_leader"]          = _index_strength.get("leader")
@@ -5039,14 +5044,14 @@ def _fetch_state(
 
     # ── Order Flow Signals ────────────────────────────────────────────────────
     ms_dict["vol_oi_ratio"]          = _vol_oi_ratio.get("ratio")
-    ms_dict["vol_oi_label"]          = _vol_oi_ratio.get("label", "unknown")
+    ms_dict["vol_oi_label"]          = _vol_oi_ratio.get("label")
     ms_dict["flow_imbalance"]        = _flow_imbalance.get("normalized")
     ms_dict["flow_imbalance_label"]  = _flow_imbalance.get("label")
     ms_dict["smart_money_score"]     = _smart_money.get("score")
     ms_dict["smart_money_direction"] = _smart_money.get("direction")
     ms_dict["smart_money_label"]     = _smart_money.get("label")
     ms_dict["iv_model_spread"]       = _iv_model_spread.get("spread")
-    ms_dict["iv_model_spread_label"] = _iv_model_spread.get("label", "unknown")
+    ms_dict["iv_model_spread_label"] = _iv_model_spread.get("label")
 
     # ── Model Health Dashboard (per-ticker ML stack artifacts from active/) ─────────
     # Status semantics: LIVE = binary + meta + provenance compliant; NON-COMPLIANT = binary+meta, no provenance;
@@ -5120,7 +5125,7 @@ def _fetch_state(
         from verify_active_models import check_artifact_compliance
         _comp = check_artifact_compliance(_dashboard_ticker)
     except Exception:
-        _comp = {"compliant": False, "artifacts": {}}
+        _comp = {"compliant": False, "artifacts": {}, "issues": None}
     _artifacts = _comp.get("artifacts", {})
 
     def _model_status_from_artifact(name: str, display_name: str, meta_path: Path, edge_key: str, version_key: str = "version") -> dict:
@@ -5166,7 +5171,7 @@ def _fetch_state(
     ms_dict["n_models_live"] = sum(1 for m in _model_health if m["status"] == "LIVE")
     ms_dict["model_sync_used"] = _sync_count > 0  # True when binaries were recovered via sync (publication problem)
     ms_dict["active_compliant"] = _comp.get("compliant")
-    ms_dict["active_compliance_issues"] = _comp.get("issues", [])
+    ms_dict["active_compliance_issues"] = _comp.get("issues")
 
     # ── Confluence (market context) ────────────────────────────────────────────
     ms_dict["spy_chg_pct"]    = getattr(mkt_ctx, "spy_chg_pct",  None)
