@@ -44,17 +44,20 @@ except ImportError as e:
 
 from instrument_identity import ticker_storage_key
 
-GAP_FILL_SOURCE = "gap_fill_canonical_1m_grid_v1"
+from calibration.repair_canonical_1m_shared import GAP_FILL_CANONICAL_1M_GRID_V1, carry_basis_source_sql
+
+GAP_FILL_SOURCE = GAP_FILL_CANONICAL_1M_GRID_V1
 
 
 def _prev_close(conn: sqlite3.Connection, tkr: str, b_start: float) -> float | None:
+    src_clause, src_params = carry_basis_source_sql()
     r = conn.execute(
-        """
+        f"""
         SELECT close FROM price_bars_1m
-        WHERE ticker = ? AND bar_start_ts_utc < ?
+        WHERE ticker = ? AND bar_start_ts_utc < ? AND {src_clause}
         ORDER BY bar_start_ts_utc DESC LIMIT 1
         """,
-        (tkr, b_start),
+        (tkr, b_start, *src_params),
     ).fetchone()
     if r is None or r[0] is None:
         return None
