@@ -32,10 +32,7 @@ _FORBIDDEN_CALL_ENGINE_PATTERNS = (
     "getattr(fusion, 'model_agreement', 0.5)",
 )
 
-# Action 11.9b (deferred): n_sources_active default in compute_position_size call site
-_DEFERRED_11_9B_PATTERNS = (
-    "getattr(fusion, 'n_sources_active', 0)",
-)
+_DEFERRED_11_9B_PATTERNS: tuple[str, ...] = ()
 
 
 def _minimal_inp(**overrides) -> SignalInput:
@@ -122,11 +119,6 @@ def _minimal_inp(**overrides) -> SignalInput:
 def test_call_engine_file_has_no_fail_open_high_priority_patterns():
     for pattern in _FORBIDDEN_CALL_ENGINE_PATTERNS:
         assert pattern not in CALL_ENGINE, f"fail-open pattern still present: {pattern}"
-
-
-def test_call_engine_deferred_11_9b_patterns_documented():
-    for pattern in _DEFERRED_11_9B_PATTERNS:
-        assert pattern in CALL_ENGINE, f"expected deferred 11.9b pattern: {pattern}"
 
 
 def test_index_label_none_when_all_three_indexes_missing():

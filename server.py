@@ -3682,12 +3682,17 @@ def _fetch_state(
         # 2. Hedging Flow Score — normalize inputs to -1..+1
         _max_gex = max(abs(_sum_gex), 1.0)
         _max_dex = max(abs(_sum_dex), 1.0)
-        _max_charm = max(abs(_charm_net or 0), 1.0) if _charm_net else 1.0
+        _max_charm = max(abs(_charm_net), 1.0) if _charm_net is not None else 1.0
         _max_vanna = max(abs(_sum_vanna), 1.0)
+        _charm_norm = (
+            _charm_net / _max_charm
+            if _charm_net is not None and _max_charm > 0
+            else None
+        )
         _hedging_flow = compute_hedging_flow_score(
             net_gex_normalized=_sum_gex / _max_gex if _max_gex > 0 else 0,
             net_dex_normalized=_sum_dex / _max_dex if _max_dex > 0 else 0,
-            charm_normalized=(_charm_net or 0) / _max_charm if _max_charm > 0 else 0,
+            charm_normalized=_charm_norm,
             vanna_normalized=_sum_vanna / _max_vanna if _max_vanna > 0 else 0,
         )
 

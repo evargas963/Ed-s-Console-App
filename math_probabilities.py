@@ -477,10 +477,10 @@ def compute_dealer_pressure_index(
 
 
 def compute_hedging_flow_score(
-    net_gex_normalized: float,
-    net_dex_normalized: float,
-    charm_normalized: float,
-    vanna_normalized: float,
+    net_gex_normalized: float | None,
+    net_dex_normalized: float | None,
+    charm_normalized: float | None,
+    vanna_normalized: float | None,
     *,
     w_gex: float = 0.25,
     w_dex: float = 0.25,

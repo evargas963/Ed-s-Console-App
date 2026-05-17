@@ -88,16 +88,37 @@ def canonical_forecast_from_fusion(fusion) -> CanonicalForecast:
             confidence="low",
             provenance="fusion_unavailable",
         )
-    pu = float(getattr(fusion, "prob_up", u))
-    pd = float(getattr(fusion, "prob_down", u))
-    pf = float(getattr(fusion, "prob_flat", u))
+    pu_raw = getattr(fusion, "prob_up", None)
+    pd_raw = getattr(fusion, "prob_down", None)
+    pf_raw = getattr(fusion, "prob_flat", None)
+    if pu_raw is None or pd_raw is None or pf_raw is None:
+        return CanonicalForecast(
+            direction="flat",
+            probability_up=u,
+            probability_down=u,
+            probability_flat=u,
+            confidence="low",
+            provenance="fusion_directional_missing",
+        )
+    pu, pd, pf = float(pu_raw), float(pd_raw), float(pf_raw)
     s = pu + pd + pf
     if s > 0:
         pu, pd, pf = pu / s, pd / s, pf / s
-    d = str(getattr(fusion, "dominant_direction", "flat") or "flat").strip().lower()
+    else:
+        return CanonicalForecast(
+            direction="flat",
+            probability_up=u,
+            probability_down=u,
+            probability_flat=u,
+            confidence="low",
+            provenance="fusion_directional_invalid",
+        )
+    d_raw = getattr(fusion, "dominant_direction", None)
+    d = str(d_raw).strip().lower() if d_raw is not None else None
     if d not in ("up", "down", "flat"):
-        d = "flat"
-    conf = str(getattr(fusion, "fusion_confidence", "low") or "low").strip().lower()
+        d = max("up", "down", "flat", key=lambda lab: {"up": pu, "down": pd, "flat": pf}[lab])
+    conf_raw = getattr(fusion, "fusion_confidence", None)
+    conf = str(conf_raw).strip().lower() if conf_raw is not None else None
     if conf not in ("low", "medium", "high"):
         conf = "low"
     return CanonicalForecast(
@@ -448,8 +469,10 @@ def _run_model_stack(
             iv = inp.iv_level
             if iv is not None and iv > 5.0:
                 iv = iv / 100.0
-            _mc_regime = getattr(regime, 'primary', 'unknown') if regime else 'unknown'
-            _mc_regime_conf = getattr(regime, 'confidence', 'low') if regime else 'low'
+            _mc_regime = getattr(regime, 'primary', None) if regime else None
+            if _mc_regime == 'unknown':
+                _mc_regime = None
+            _mc_regime_conf = getattr(regime, 'confidence', None) if regime else None
             _mc_ctx = (
                 mc_spot_ctx
                 if mc_spot_ctx is not None
@@ -800,17 +823,26 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
         fus_stage = StackStage(stage_id="fusion", status="inactive", note="Fusion: inactive")
     else:
         dom = getattr(fusion, "dominant_outcome", None)
-        dom_dir = getattr(fusion, "dominant_direction", "flat")
+        dom_dir = getattr(fusion, "dominant_direction", None)
         prob = getattr(fusion, "dominant_probability", None)
-        conf = getattr(fusion, "fusion_confidence", "low")
+        conf = getattr(fusion, "fusion_confidence", None)
         agree = getattr(fusion, "model_agreement", None)
         agree_pct = int(agree * 100) if agree is not None else None
         dom_label = dom if dom is not None else "—"
+        conf_label = conf if conf is not None else "—"
+        dir_label = dom_dir if dom_dir is not None else "—"
         prob_pct = int(prob * 100) if prob is not None else None
         agree_suffix = f" | agreement {agree_pct}%" if agree_pct is not None else ""
         prob_suffix = f" @ {prob_pct}%" if prob_pct is not None else ""
-        note = f"Fusion: {dom_label} ({conf}) | dir={dom_dir}{prob_suffix}{agree_suffix}"
-        fus_stage = StackStage(stage_id="fusion", status="active", direction=dom_dir, confidence=conf, probability=prob, note=note)
+        note = f"Fusion: {dom_label} ({conf_label}) | dir={dir_label}{prob_suffix}{agree_suffix}"
+        fus_stage = StackStage(
+            stage_id="fusion",
+            status="active",
+            direction=dom_dir,
+            confidence=conf,
+            probability=prob,
+            note=note,
+        )
 
     # 6. Final Call
     call_sig = getattr(call, "signal", "wait")

@@ -751,7 +751,7 @@ def compute_position_size(
         reasons.append("very low conviction")
 
     # Model agreement boost/cut
-    if model_agreement is not None and n_models_active >= 2:
+    if model_agreement is not None and n_models_active is not None and n_models_active >= 2:
         if model_agreement >= 0.80:
             conf_mult = min(1.25, conf_mult * 1.10)
         elif model_agreement < 0.35:
@@ -1151,8 +1151,8 @@ def _validate_trade(
 
     # 3c. Compression detected — risk of violent breakout in either direction
     if micro and getattr(micro, 'is_compressing', False):
-        comp_bars = getattr(micro, 'compression_bars', 0)
-        if comp_bars >= 10:
+        comp_bars = getattr(micro, 'compression_bars', None)
+        if comp_bars is not None and comp_bars >= 10:
             risk_fails.append(f"compression ({comp_bars} bars) — risk of unpredictable breakout")
 
     if risk_fails:
@@ -1383,7 +1383,7 @@ def compute_call(
     # 2. CONVICTION — canonical forecast (confidence + marginal p) + env downgrades only
     # ══════════════════════════════════════════════════════════════════════════
     zone_fresh_bars_1m  = (inp.zone_since_bars_1m or inp.zone_since_bars) or 0   # execution timing
-    zone_stable_bars_5m = (inp.zone_since_bars_5m or 0)                          # structure persistence
+    zone_stable_bars_5m = inp.zone_since_bars_5m                                 # structure persistence (None if unknown)
     prev_z = (inp.prev_zone or "").lower()
 
     if final_signal == "wait":
@@ -1558,7 +1558,9 @@ def compute_call(
         mc_expansion=getattr(fusion, 'mc_expansion', None) if _fusion_available else None,
         model_agreement=getattr(fusion, 'model_agreement', None) if _fusion_available else None,
         fusion_confidence=getattr(fusion, 'fusion_confidence', 'low') if _fusion_available else 'low',
-        n_models_active=getattr(fusion, 'n_sources_active', 0) if _fusion_available else 0,
+        n_models_active=(
+            getattr(fusion, 'n_sources_active', None) if _fusion_available else 0
+        ),
         dist_to_nearest_opposing_wall=_opp_wall_dist,
         has_void_ahead=_void_ahead,
         reward_risk=rr1,
@@ -1664,7 +1666,9 @@ def compute_call(
             "breakout_ready": zone in ("breakout", "breakdown"),
         }
         _rdy = compute_call_readiness(_call_input)
-        _readiness_score = _rdy.get("readiness_score", 0)
+        _rs = _rdy.get("readiness_score")
+        if _rs is not None:
+            _readiness_score = _rs
         _readiness_call_state = _rdy.get("call_state", "WAIT")
         _readiness_forecast_state = _rdy.get("forecast_state", "dormant")
         _readiness_reasons = _rdy.get("reasons", []) or []
@@ -1708,7 +1712,9 @@ def compute_call(
             "breakdown_ready": zone == "breakdown",
         }
         _prdy = compute_put_readiness(_put_input)
-        _put_score = _prdy.get("readiness_score", 0)
+        _ps = _prdy.get("readiness_score")
+        if _ps is not None:
+            _put_score = _ps
         _put_state = _prdy.get("call_state", "WAIT")
         _put_forecast = _prdy.get("forecast_state", "dormant")
         _put_reasons = _prdy.get("reasons", []) or []
