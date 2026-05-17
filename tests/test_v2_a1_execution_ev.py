@@ -101,6 +101,15 @@ def test_execution_ev_skips_when_upstream_status_missing():
     assert artifact["execution_adjusted_ev"] == []
 
 
+def test_execution_ev_module_ids_null_when_upstream_omits_them():
+    ev = _ev_bounds()
+    ev.pop("module_id", None)
+    ev.pop("expression_profile_id", None)
+    artifact = build_a1_execution_ev_artifact(ev)
+    assert artifact["module_id"] is None
+    assert artifact["expression_profile_id"] is None
+
+
 def test_execution_ev_horizon_null_when_upstream_horizon_missing():
     ev = _ev_bounds()
     ev.pop("horizon", None)

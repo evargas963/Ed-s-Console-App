@@ -58,6 +58,24 @@ def _ok_conformal(rows: list[dict] | None = None) -> dict:
     return build_a1_conformal_artifact(_calibration_artifact(rows or _clean_rows()))
 
 
+def test_ev_bounds_run_id_null_when_conformal_run_id_missing():
+    conformal = build_a1_conformal_artifact(
+        {
+            "holdout_predictions": _clean_rows(500),
+        }
+    )
+    artifact = build_a1_ev_bounds_artifact(conformal, reward_r=2.0)
+    assert artifact["conformal_run_id"] is None
+    assert artifact["ev_bounds_run_id"] is None
+
+
+def test_ev_bounds_skips_when_conformal_status_missing():
+    conformal = {**_ok_conformal(), "status": None}
+    artifact = build_a1_ev_bounds_artifact(conformal, reward_r=2.0)
+    assert artifact["status"] == "ev_bounds_skipped_missing_upstream_conformal_status"
+    assert artifact["reason"] == "conformal_artifact_status_field_missing"
+
+
 def test_ev_bounds_cascade_skipped_conformal_without_synthetic_values():
     conformal = build_a1_conformal_artifact(_calibration_artifact(_clean_rows(40)))
 

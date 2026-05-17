@@ -71,8 +71,8 @@ def build_a1_execution_ev_artifact(
         "execution_ev_run_id": (
             f"{ev_bounds_run_id}-execution-ev" if ev_bounds_run_id else None
         ),
-        "module_id": ev_bounds_artifact.get("module_id") or "A",
-        "expression_profile_id": ev_bounds_artifact.get("expression_profile_id") or "A1",
+        "module_id": ev_bounds_artifact.get("module_id"),
+        "expression_profile_id": ev_bounds_artifact.get("expression_profile_id"),
         "horizon": ev_bounds_artifact.get("horizon"),
         "method": A1_EXECUTION_EV_METHOD,
         "input_ev_bounds_status": ev_status_raw,
