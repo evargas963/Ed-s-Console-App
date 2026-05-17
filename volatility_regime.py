@@ -115,9 +115,6 @@ def classify_volatility_regime(
     # ATR relative to spot (rough vol proxy)
     atr_pct = (atr / spot * 100) if (atr and spot) else None
 
-    # VIX change magnitude
-    vix_chg_abs = abs(vix_chg) if vix_chg is not None else 0.0
-
     # ── Unstable: high VIX + rapid change or conflicting signals ────────────
     if vix is not None and vix > 28:
         # Extreme VIX → unstable
@@ -131,7 +128,7 @@ def classify_volatility_regime(
             trade_permissive=False,
             summary="High VIX — unstable vol; reduce conviction, require stronger model agreement.",
         )
-    if vix_chg_abs > 3.0 and vix is not None and vix > 20:
+    if vix_chg is not None and abs(vix_chg) > 3.0 and vix is not None and vix > 20:
         # VIX jumping quickly
         return VolRegimePayload(
             vol_regime=VOL_UNSTABLE,
@@ -206,7 +203,7 @@ def classify_volatility_regime(
             summary="Vol expansion — allow continuation trades; reduced breakout threshold.",
         )
 
-    # ── Default: unknown / neutral ───────────────────────────────────────────
+    # ── Default: insufficient signal — fail-closed (not permissive neutral policy) ─
     return VolRegimePayload(
         vol_regime=VOL_UNKNOWN,
         breakout_bias=0.6,
@@ -214,8 +211,8 @@ def classify_volatility_regime(
         reversal_bias=0.5,
         conviction_multiplier=0.95,
         risk_multiplier=1.05,
-        trade_permissive=True,
-        summary="Vol regime unclear — neutral policy.",
+        trade_permissive=False,
+        summary="Vol regime unclear — inputs insufficient; require stronger confirmation.",
     )
 
 

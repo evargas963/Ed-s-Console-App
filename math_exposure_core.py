@@ -850,7 +850,7 @@ def compute_beta(ticker_returns: list, spy_returns: list) -> dict:
 
     # R-squared
     var_t = sum((tr[i] - mean_t) ** 2 for i in range(n)) / n
-    r_sq = round((cov ** 2) / (var_s * var_t), 4) if var_t > 1e-12 else 0.0
+    r_sq = round((cov ** 2) / (var_s * var_t), 4) if var_t > 1e-12 else None
 
     return {"beta": beta, "r_squared": r_sq, "n": n, "error": ""}
 

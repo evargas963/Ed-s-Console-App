@@ -460,25 +460,29 @@ def finalize_multi_horizon_bundle(
     )
 
 
-def _safe_prob(v: Optional[float], fallback: float = 1.0 / 3.0) -> float:
+def _safe_prob_optional(v: Optional[float]) -> Optional[float]:
+    if v is None:
+        return None
     try:
         x = float(v)
-    except Exception:
-        return fallback
-    if x < 0:
-        return 0.0
-    if x > 1:
-        return 1.0
+    except (TypeError, ValueError):
+        return None
+    if not (0.0 <= x <= 1.0):
+        return None
     return x
 
 
-def _norm_triplet(u: Optional[float], d: Optional[float], f: Optional[float]) -> tuple[float, float, float]:
-    up = _safe_prob(u)
-    dn = _safe_prob(d)
-    fl = _safe_prob(f)
+def _norm_triplet(
+    u: Optional[float], d: Optional[float], f: Optional[float]
+) -> Optional[tuple[float, float, float]]:
+    up = _safe_prob_optional(u)
+    dn = _safe_prob_optional(d)
+    fl = _safe_prob_optional(f)
+    if up is None or dn is None or fl is None:
+        return None
     s = up + dn + fl
     if s <= 0:
-        return (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
+        return None
     return (up / s, dn / s, fl / s)
 
 
@@ -498,10 +502,12 @@ def _confidence_from_probs(up: float, dn: float, fl: float) -> tuple[float, floa
 
 def _infer_trade_mode(inp) -> str:
     m2c = getattr(inp, "mins_to_close", None)
+    if m2c is None:
+        return "intraday"
     try:
         mins = float(m2c)
-    except Exception:
-        mins = 180.0
+    except (TypeError, ValueError):
+        return "intraday"
     if mins <= 75:
         return "scalp"
     if mins <= 240:
@@ -539,34 +545,54 @@ def _forecast_horizon_live(
     empirical-only triplets (default 0.0 — empirical + fusion per horizon only).
     """
     if hz == "1c":
-        up, dn, fl = _norm_triplet(
+        triplet = _norm_triplet(
             getattr(pred, "up_prob_1c", None),
             getattr(pred, "down_prob_1c", None),
             getattr(pred, "flat_prob_1c", None),
         )
-        # Expected-move context: use primary 5c empirical only — not secondary 3c.
         em = getattr(pred, "avg_5c_pts", None)
     elif hz == "5c":
-        up, dn, fl = _norm_triplet(
+        triplet = _norm_triplet(
             getattr(pred, "up_prob_5c", None),
             getattr(pred, "down_prob_5c", None),
             getattr(pred, "flat_prob_5c", None),
         )
         em = getattr(pred, "avg_5c_pts", None)
     elif hz == "15c":
-        up, dn, fl = _norm_triplet(
+        triplet = _norm_triplet(
             getattr(pred, "up_prob_15c", None),
             getattr(pred, "down_prob_15c", None),
             getattr(pred, "flat_prob_15c", None),
         )
         em = getattr(pred, "avg_15c_pts", None)
     else:
-        up, dn, fl = _norm_triplet(
+        triplet = _norm_triplet(
             getattr(pred, "up_prob_60c", None),
             getattr(pred, "down_prob_60c", None),
             getattr(pred, "flat_prob_60c", None),
         )
         em = getattr(pred, "avg_60c_pts", None)
+
+    if triplet is None:
+        miss = True
+        return HorizonForecast(
+            horizon=hz,
+            direction="wait",
+            probability_up=0.0,
+            probability_down=0.0,
+            probability_flat=0.0,
+            confidence=0.0,
+            provenance="predictive_probs_unavailable",
+            tradeable=False,
+            unavailable=True,
+            missing=True,
+            valid_contract=False,
+            dominant_probability=0.0,
+            probability_margin=0.0,
+            expected_move_pts=(float(em) if em is not None else None),
+            entry_ref=None,
+        )
+    up, dn, fl = triplet
 
     ml_snap = mh_ml_bundle.snapshot(hz) if mh_ml_bundle else None
     fusion_ml = bool(ml_snap and ml_snap.fusion_available)
@@ -578,16 +604,21 @@ def _forecast_horizon_live(
             wfb = 0.0
         wfb = max(0.0, min(1.0, wfb))
         if canonical is not None and wfb > 0.0:
-            cu = float(getattr(canonical, "probability_up", 1.0 / 3.0))
-            cd = float(getattr(canonical, "probability_down", 1.0 / 3.0))
-            cf = float(getattr(canonical, "probability_flat", 1.0 / 3.0))
-            up = (1.0 - wfb) * up + wfb * cu
-            dn = (1.0 - wfb) * dn + wfb * cd
-            fl = (1.0 - wfb) * fl + wfb * cf
-            s = up + dn + fl
-            if s > 0:
-                up, dn, fl = up / s, dn / s, fl / s
-            provenance = f"predictive_empirical_fallback_{hz}_stabilized"
+            cu = getattr(canonical, "probability_up", None)
+            cd = getattr(canonical, "probability_down", None)
+            cf = getattr(canonical, "probability_flat", None)
+            if cu is not None and cd is not None and cf is not None:
+                cu, cd, cf = float(cu), float(cd), float(cf)
+            else:
+                cu = cd = cf = None
+            if cu is not None and cd is not None and cf is not None:
+                up = (1.0 - wfb) * up + wfb * cu
+                dn = (1.0 - wfb) * dn + wfb * cd
+                fl = (1.0 - wfb) * fl + wfb * cf
+                s = up + dn + fl
+                if s > 0:
+                    up, dn, fl = up / s, dn / s, fl / s
+                provenance = f"predictive_empirical_fallback_{hz}_stabilized"
         else:
             provenance = f"predictive_empirical_fallback_{hz}"
 

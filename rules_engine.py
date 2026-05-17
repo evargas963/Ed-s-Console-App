@@ -178,12 +178,14 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
         alerts.append(f"⏰ {int(inp.mins_to_close)}min to close — reduce size")
 
     # Zone transition context — separate execution-layer (1m) from structure-layer (5m)
-    zone_fresh_bars_1m  = (inp.zone_since_bars_1m or inp.zone_since_bars) or 0   # execution timing
-    zone_stable_bars_5m = (inp.zone_since_bars_5m or 0)                          # structure persistence
+    zone_fresh_bars_1m = inp.zone_since_bars_1m
+    if zone_fresh_bars_1m is None:
+        zone_fresh_bars_1m = inp.zone_since_bars
+    zone_stable_bars_5m = inp.zone_since_bars_5m
     prev_z = (inp.prev_zone or "").lower()
     cur_z = mvp_zone(mvp_features)
 
-    if zone_fresh_bars_1m <= 2 and prev_z and prev_z != cur_z:
+    if zone_fresh_bars_1m is not None and zone_fresh_bars_1m <= 2 and prev_z and prev_z != cur_z:
         # Fresh transition — 1m recency = execution timing (high-information event)
         alerts.append(f"🔄 Zone just changed: {prev_z} → {cur_z} ({zone_fresh_bars_1m} 1m bars ago)")
         if cur_z == "breakout" and is_pin_zone(prev_z):
@@ -192,7 +194,7 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
             alerts.append("⚡ Breakdown from pin zone — sellers taking control")
         elif is_pin_zone(cur_z) and prev_z in ("breakout", "breakdown"):
             alerts.append("🛑 Failed breakout — reverting to pin. Fade the move.")
-    elif zone_stable_bars_5m >= 20 and is_pin_zone(cur_z):
+    elif zone_stable_bars_5m is not None and zone_stable_bars_5m >= 20 and is_pin_zone(cur_z):
         # Stable structure — 5m recency = structure persistence (~100+ min in pin)
         alerts.append(f"📌 Stable pin zone for {zone_stable_bars_5m} five-min bars — fade edges, expect chop")
 

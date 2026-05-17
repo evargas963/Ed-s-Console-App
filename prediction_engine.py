@@ -138,11 +138,22 @@ def _literal_empirical_horizon(
 def _tri_probs(p: Optional[dict]) -> tuple[Optional[float], Optional[float], Optional[float]]:
     if p is None:
         return None, None, None
-    return (
-        float(p.get("up", 0.33)),
-        float(p.get("down", 0.33)),
-        float(p.get("flat", 0.34)),
-    )
+    u, d, f = p.get("up"), p.get("down"), p.get("flat")
+    if u is None or d is None or f is None:
+        return None, None, None
+    return float(u), float(d), float(f)
+
+
+def _fusion_snap_triplet(snap) -> Optional[tuple[float, float, float]]:
+    """Per-horizon fusion directional triplet; None when fusion_available but probs missing."""
+    if snap is None or not getattr(snap, "fusion_available", False):
+        return None
+    pu = getattr(snap, "prob_up", None)
+    pd = getattr(snap, "prob_down", None)
+    pf = getattr(snap, "prob_flat", None)
+    if pu is None or pd is None or pf is None:
+        return None
+    return _norm_triplet_floats(float(pu), float(pd), float(pf))
 
 
 def _norm_triplet_floats(u: float, d: float, f: float) -> tuple[float, float, float]:
@@ -216,14 +227,16 @@ def _overlay_multi_horizon_ml_on_product_triplets(
     for hz in PRIMARY_DECISION_HORIZONS:
         snap = by_h.get(hz)
         eu, ed, ef = empirical[hz]
-        if snap is None or not getattr(snap, "fusion_available", False):
+        fusion_triplet = _fusion_snap_triplet(snap)
+        if fusion_triplet is None:
             out[hz] = (eu, ed, ef)
-            src[hz] = "empirical_histogram"
+            src[hz] = (
+                "empirical_histogram"
+                if snap is None or not getattr(snap, "fusion_available", False)
+                else "fusion_directional_missing"
+            )
             continue
-        mu = float(getattr(snap, "prob_up", 1.0 / 3.0))
-        md = float(getattr(snap, "prob_down", 1.0 / 3.0))
-        mf = float(getattr(snap, "prob_flat", 1.0 / 3.0))
-        mu, md, mf = _norm_triplet_floats(mu, md, mf)
+        mu, md, mf = fusion_triplet
         emp_ok = all(x is not None for x in (eu, ed, ef))
         if emp_ok and w_sup > 0.0:
             u = (1.0 - w_sup) * mu + w_sup * float(eu)
@@ -1093,10 +1106,17 @@ def compute_prediction_enrichment(
         sign = "+" if avg5 >= 0 else ""
         parts.append(f"Avg 5m move: {sign}{avg5:.1f} pts.")
 
-    zone_fresh_bars_1m = (inp.zone_since_bars_1m or inp.zone_since_bars) or 0
+    zone_fresh_bars_1m = inp.zone_since_bars_1m
+    if zone_fresh_bars_1m is None:
+        zone_fresh_bars_1m = inp.zone_since_bars
     prev_z = (inp.prev_zone or "").lower()
     cur_z = mvp_zone(mvp)
-    if zone_fresh_bars_1m <= 3 and prev_z and prev_z != cur_z:
+    if (
+        zone_fresh_bars_1m is not None
+        and zone_fresh_bars_1m <= 3
+        and prev_z
+        and prev_z != cur_z
+    ):
         parts.append(f"Zone just changed ({prev_z} → {cur_z}) — setup still forming.")
 
     if multi_horizon_ml_bundle is not None:
@@ -1112,16 +1132,18 @@ def compute_prediction_enrichment(
 
     _regime_label = getattr(regime, "primary", None) if regime else None
     if _regime_label and _regime_label != "unknown":
-        _regime_conf = getattr(regime, "confidence", "low")
+        _regime_conf = getattr(regime, "confidence", None) or "—"
         parts.append(f"Regime: {_regime_label} ({_regime_conf}).")
 
     if _fusion_available:
-        _dom = getattr(fusion, "dominant_outcome", "unknown")
-        _dom_p = getattr(fusion, "dominant_probability", 0)
-        _agree_label = getattr(fusion, "model_agreement_label", "low")
-        _n_active = getattr(fusion, "n_sources_active", 0)
-        if _n_active > 0:
-            parts.append(f"Fusion: {_dom} ({_dom_p:.0%}), model agreement {_agree_label}.")
+        _dom = getattr(fusion, "dominant_outcome", None)
+        _dom_p = getattr(fusion, "dominant_probability", None)
+        _agree_label = getattr(fusion, "model_agreement_label", None)
+        _n_active = getattr(fusion, "n_sources_active", None)
+        if _dom is not None and _dom_p is not None:
+            _agree_suffix = f", model agreement {_agree_label}" if _agree_label else ""
+            _n_suffix = f" ({_n_active} models)" if _n_active is not None and _n_active > 0 else ""
+            parts.append(f"Fusion: {_dom} ({_dom_p:.0%}){_agree_suffix}{_n_suffix}.")
 
     if _fusion_available and getattr(fusion, "mc_available", False):
         _mc_efe = getattr(fusion, "mc_efe", None)
