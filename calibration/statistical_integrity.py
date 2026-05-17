@@ -253,3 +253,42 @@ def verify_audit_phase1_no_numeric_leak(out: dict[str, Any]) -> bool:
         return False
 
     return True
+
+
+_EDGE_DISCOVERY_SLICE_NUMERIC_KEYS = (
+    "mean_outcome_5c_pts",
+    "mean_ev_actual_final_signal",
+    "mean_ev_always_long",
+    "mean_ev_always_short",
+    "mean_ev_random_long_short",
+    "delta_ev_actual_minus_long",
+    "delta_ev_actual_minus_random",
+    "win_rate_strict_positive",
+    "mean_brier",
+)
+
+_EDGE_DISCOVERY_BOOTSTRAP_NUMERIC_KEYS = ("mean_delta", "ci95_low", "ci95_high")
+
+
+def verify_edge_discovery_no_numeric_leak(out: dict[str, Any]) -> bool:
+    """Slice aggregates and naive Pearson must not report rates/means below MIN_SAMPLES_STATISTICAL."""
+    for s in out.get("slices_all") or []:
+        g = bucket_gate(int(s.get("n") or 0), MIN_SAMPLES_STATISTICAL)
+        for k in _EDGE_DISCOVERY_SLICE_NUMERIC_KEYS:
+            if not _gate_ok_for_value(s.get(k), g):
+                return False
+        for boot_key in ("bootstrap_actual_minus_long", "bootstrap_actual_minus_random"):
+            boot = s.get(boot_key) or {}
+            bg = bucket_gate(int(boot.get("n") or 0), MIN_SAMPLES_STATISTICAL)
+            for k in _EDGE_DISCOVERY_BOOTSTRAP_NUMERIC_KEYS:
+                if not _gate_ok_for_value(boot.get(k), bg):
+                    return False
+    fi = out.get("feature_importance_naive") or {}
+    pearson_gate = fi.get("pearson_sample_gate")
+    if pearson_gate is None:
+        pearson_gate = bucket_gate(int(fi.get("pearson_n") or 0), MIN_SAMPLES_STATISTICAL)
+    if not _gate_ok_for_value(
+        fi.get("pearson_fusion_prob_up_vs_outcome_5c_pts"), pearson_gate
+    ):
+        return False
+    return True

@@ -81,7 +81,7 @@ def test_duplicate_alerts_suppressed(tmp_path: Path):
     r2 = process_notification_deliveries(tmp_path, "1c", "SPY", p2, config=cfg)
     assert r1["ok"] and r2["ok"]
     recent = read_recent_notification_delivery_records(tmp_path, "1c", "SPY", limit=20)
-    assert any(x.get("dedup_decision") == "suppressed_same_policy_cycle" for x in recent)
+    assert any(x.get("dedup_decision") in ("suppressed_same_policy_cycle", "suppressed_utc_day") for x in recent)
 
 
 def test_malformed_alert_fail_closed(tmp_path: Path):

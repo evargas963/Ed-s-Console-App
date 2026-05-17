@@ -23,6 +23,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
+import logging
 import sqlite3
 import sys
 import time
@@ -37,9 +39,15 @@ from calibration.db_guard import register_allow_noncanonical_flag, require_canon
 from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
 
+log = logging.getLogger(__name__)
+
 try:
     from db import configure_sqlite_connection
-except Exception:
+except ImportError as e:
+    log.warning(
+        "db.configure_sqlite_connection not available — using no-op stub: %s",
+        e,
+    )
 
     def configure_sqlite_connection(conn, **kwargs):
         pass
@@ -288,7 +296,7 @@ def main() -> int:
     except CalibrationCanonicalViolationError as e:
         print(f"CANONICAL_ENFORCEMENT_FAIL: {e}", file=sys.stderr)
         return 2
-    print(s)
+    print(json.dumps(s, indent=2, default=str))
     return 0
 
 

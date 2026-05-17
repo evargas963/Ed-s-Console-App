@@ -2,15 +2,19 @@
 Downstream notification delivery for governed operational policy / alert_routing only.
 
 Does not evaluate policy, promote, rollback, or change runtime. Emits delivery audit records.
+
+Dedup: one successful delivery per (UTC calendar day, sink, alert fingerprint) — aligned with
+operational_policy alert_routing dedup_semantics (suppression_key coalescing per UTC day).
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
@@ -18,10 +22,16 @@ from urllib.request import Request, urlopen
 
 from ml_horizon import normalize_ml_horizon_slug
 
+from arch_competition.atomic_io import write_json_file_atomically
 from arch_competition.operational_policy import ALERT_ROUTING_SCHEMA_VERSION
+
+log = logging.getLogger(__name__)
 
 NOTIFICATION_DELIVERY_RECORD_SCHEMA_VERSION = "1"
 DEDUP_STATE_SCHEMA_VERSION = "1"
+DEDUP_TTL_SECONDS = 86400
+DEDUP_KEEP_DAYS = 7
+MAX_DELIVERED_FINGERPRINTS = 2000
 
 SINK_FILE = "file"
 SINK_WEBHOOK = "webhook"
@@ -86,8 +96,32 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _utc_day() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%d")
+
+
+def _parse_iso_utc(ts: str) -> datetime | None:
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (TypeError, ValueError):
+        return None
+
+
+def _within_dedup_ttl(iso_ts: str) -> bool:
+    dt = _parse_iso_utc(iso_ts)
+    if dt is None:
+        return False
+    age = (datetime.now(timezone.utc) - dt).total_seconds()
+    return 0 <= age < DEDUP_TTL_SECONDS
+
+
 def _dedup_fingerprint(sink: str, alert: dict[str, Any]) -> str:
-    """Stable across policy evaluation timestamps when alert routing fields are unchanged (approved fields only)."""
+    """Stable across policy evaluation timestamps when alert routing fields are unchanged."""
     raw = "|".join(
         [
             sink,
@@ -99,6 +133,42 @@ def _dedup_fingerprint(sink: str, alert: dict[str, Any]) -> str:
         ]
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _dedup_store_key(sink_type: str, fingerprint: str) -> str:
+    return f"{_utc_day()}|{sink_type}:{fingerprint}"
+
+
+def _fingerprint_suppressed(fingerprints: dict[str, Any], store_key: str) -> bool:
+    ts = fingerprints.get(store_key)
+    if ts is None:
+        return False
+    return _within_dedup_ttl(str(ts))
+
+
+def _prune_fingerprints(fp: dict[str, Any]) -> dict[str, Any]:
+    """Drop expired UTC-day buckets; cap by most recent delivery timestamp."""
+    today = datetime.now(timezone.utc).date()
+    cutoff = today - timedelta(days=DEDUP_KEEP_DAYS)
+    kept: dict[str, Any] = {}
+    for key, delivered_at in fp.items():
+        if "|" in key:
+            day_s, _rest = key.split("|", 1)
+            if len(day_s) == 8 and day_s.isdigit():
+                try:
+                    day = datetime.strptime(day_s, "%Y%m%d").date()
+                except ValueError:
+                    continue
+                if day < cutoff:
+                    continue
+                kept[key] = delivered_at
+                continue
+        if _within_dedup_ttl(str(delivered_at)):
+            kept[key] = delivered_at
+    if len(kept) > MAX_DELIVERED_FINGERPRINTS:
+        sorted_items = sorted(kept.items(), key=lambda kv: str(kv[1]), reverse=True)[:MAX_DELIVERED_FINGERPRINTS]
+        kept = dict(sorted_items)
+    return kept
 
 
 def _validate_evidence_refs(refs: Any) -> None:
@@ -139,24 +209,38 @@ def _load_dedup_state(path: Path) -> dict[str, Any]:
         return {"schema_version": DEDUP_STATE_SCHEMA_VERSION, "delivered_fingerprints": {}}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        log.warning(
+            "notification dedup state corrupt or unreadable at %s — re-firing suppressed alerts: %s",
+            path,
+            e,
+        )
         return {"schema_version": DEDUP_STATE_SCHEMA_VERSION, "delivered_fingerprints": {}}
     if not isinstance(data, dict):
+        log.warning("notification dedup state not an object at %s — resetting", path)
         return {"schema_version": DEDUP_STATE_SCHEMA_VERSION, "delivered_fingerprints": {}}
     fp = data.get("delivered_fingerprints")
     if not isinstance(fp, dict):
         fp = {}
+    fp = _prune_fingerprints(fp)
     return {"schema_version": DEDUP_STATE_SCHEMA_VERSION, "delivered_fingerprints": fp}
 
 
 def _save_dedup_state(path: Path, state: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # cap fingerprints to last 2000 sink:key entries
     fp = state.get("delivered_fingerprints")
-    if isinstance(fp, dict) and len(fp) > 2000:
-        keys = sorted(fp.keys())[-2000:]
-        state = {**state, "delivered_fingerprints": {k: fp[k] for k in keys}}
-    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    if isinstance(fp, dict):
+        state = {**state, "delivered_fingerprints": _prune_fingerprints(fp)}
+    write_json_file_atomically(path, state, indent=2, default=str)
+
+
+def _register_delivery_fingerprint(
+    dedup_path: Path,
+    dedup_state: dict[str, Any],
+    fingerprints: dict[str, Any],
+    store_key: str,
+) -> None:
+    fingerprints[store_key] = _now_iso()
+    _save_dedup_state(dedup_path, dedup_state)
 
 
 def _append_jsonl(path: Path, record: dict[str, Any]) -> None:
@@ -175,7 +259,7 @@ def _validate_config_for_enabled_sinks(cfg: NotificationDeliveryConfig) -> None:
 
 def deliver_webhook(url: str, body: dict[str, Any]) -> tuple[bool, str | None]:
     try:
-        payload = json.dumps(body).encode("utf-8")
+        payload = json.dumps(body, default=str).encode("utf-8")
         req = Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
         with urlopen(req, timeout=15) as resp:
             code = getattr(resp, "status", None) or resp.getcode()
@@ -190,7 +274,6 @@ def deliver_webhook(url: str, body: dict[str, Any]) -> tuple[bool, str | None]:
         return False, str(e)
 
 
-# Application code may assign real callables; defaults fail closed when sink enabled without impl.
 EmailDeliverFn = Callable[[dict[str, Any]], tuple[bool, str | None]]
 SlackDeliverFn = Callable[[dict[str, Any]], tuple[bool, str | None]]
 
@@ -308,7 +391,7 @@ def process_notification_deliveries(
 
         for sink_type, enabled, extra in sinks:
             fp = _dedup_fingerprint(sink_type, va)
-            key = f"{sink_type}:{fp}"
+            store_key = _dedup_store_key(sink_type, fp)
 
             if not enabled:
                 rec = _delivery_record(
@@ -324,14 +407,14 @@ def process_notification_deliveries(
                 summary["records_written"] += 1
                 continue
 
-            if fingerprints.get(key):
+            if _fingerprint_suppressed(fingerprints, store_key):
                 rec = _delivery_record(
                     sink_type=sink_type,
                     alert=va,
                     policy_ts=policy_ts,
                     outcome="suppressed_duplicate",
                     err=None,
-                    dedup="suppressed_same_policy_cycle",
+                    dedup="suppressed_utc_day",
                     evidence_refs=evidence_refs,
                 )
                 _append_jsonl(log_path, rec)
@@ -359,7 +442,7 @@ def process_notification_deliveries(
                     evidence_refs=evidence_refs,
                 )
                 _append_jsonl(log_path, rec)
-                fingerprints[key] = _now_iso()
+                _register_delivery_fingerprint(dedup_path, dedup_state, fingerprints, store_key)
                 summary["records_written"] += 1
                 continue
 
@@ -383,7 +466,7 @@ def process_notification_deliveries(
             _append_jsonl(log_path, rec)
             summary["records_written"] += 1
             if ok:
-                fingerprints[key] = _now_iso()
+                _register_delivery_fingerprint(dedup_path, dedup_state, fingerprints, store_key)
 
     if had_alert_validation_error:
         summary["ok"] = False
@@ -391,8 +474,8 @@ def process_notification_deliveries(
 
     try:
         _save_dedup_state(dedup_path, dedup_state)
-    except OSError:
-        pass
+    except OSError as e:
+        log.warning("notification dedup state not persisted to %s: %s", dedup_path, e)
 
     return summary
 
@@ -456,6 +539,7 @@ def read_recent_notification_delivery_records(
             continue
         try:
             out.append(json.loads(line))
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            log.warning("notification delivery log line unparseable at %s: %s", path, e)
             continue
     return out
