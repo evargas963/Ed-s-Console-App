@@ -925,18 +925,16 @@ class OrderFlowEngine:
             of_score_label = order_flow_score_label(order_flow_score)
             of_book_arrow = order_flow_field_arrow(book_imbalance_5, use_book=True)
             of_book_label = order_flow_book_label(book_imbalance_5)
-            of_delta_arrow = order_flow_field_arrow(
-                1.0 if (cum_delta_proxy or 0) > 0 else (-1.0 if (cum_delta_proxy or 0) < 0 else 0.0)
-            )
+            of_delta_arrow = order_flow_field_arrow(cum_delta_proxy)
             of_opt_arrow = order_flow_field_arrow(options_flow_score)
             of_opt_label = order_flow_opt_label(options_flow_score)
         except ImportError:
-            of_verdict = "FLOW NEUTRAL"
-            of_verdict_color = "gray"
-            of_arrow = "→"
-            of_agreement = "weak | conflicted"
-            of_score_arrow = of_book_arrow = of_delta_arrow = of_opt_arrow = "→"
-            of_score_label = of_book_label = of_opt_label = "neutral"
+            of_verdict = None
+            of_verdict_color = None
+            of_arrow = None
+            of_agreement = "unavailable"
+            of_score_arrow = of_book_arrow = of_delta_arrow = of_opt_arrow = None
+            of_score_label = of_book_label = of_opt_label = None
 
         return {
             "book_imbalance_1": book_imbalance_1,
@@ -1021,21 +1019,21 @@ class OrderFlowEngine:
             "rvol": None,
             "rvol_unavailable_reason": None,
             "institutional_flow_proxy_score": None,
-            "order_flow_score": 0.0,
-            "order_flow_direction": "neutral",
-            "order_flow_regime": "neutral",
-            "order_flow_readiness": "red",
-            "order_flow_verdict": "FLOW NEUTRAL",
-            "order_flow_verdict_color": "gray",
-            "order_flow_arrow": "→",
-            "order_flow_agreement": "weak | conflicted",
-            "order_flow_score_arrow": "→",
-            "order_flow_score_label": "neutral",
-            "order_flow_book_arrow": "→",
-            "order_flow_book_label": "balanced",
-            "order_flow_delta_arrow": "→",
-            "order_flow_opt_arrow": "→",
-            "order_flow_opt_label": "neutral",
+            "order_flow_score": None,
+            "order_flow_direction": None,
+            "order_flow_regime": None,
+            "order_flow_readiness": None,
+            "order_flow_verdict": None,
+            "order_flow_verdict_color": None,
+            "order_flow_arrow": None,
+            "order_flow_agreement": "unavailable",
+            "order_flow_score_arrow": None,
+            "order_flow_score_label": None,
+            "order_flow_book_arrow": None,
+            "order_flow_book_label": None,
+            "order_flow_delta_arrow": None,
+            "order_flow_opt_arrow": None,
+            "order_flow_opt_label": None,
         }
 
 

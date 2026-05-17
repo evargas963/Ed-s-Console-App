@@ -374,26 +374,26 @@ class MarketState:
 
     # ── Order Flow (from order_flow_engine.py — inside Market Regime) ────────────
     order_flow_score:              Optional[float] = None
-    order_flow_direction:          str             = "neutral"
-    order_flow_regime:             str             = "neutral"
-    order_flow_readiness:          str             = "red"
+    order_flow_direction:          Optional[str]   = None
+    order_flow_regime:             Optional[str]   = None
+    order_flow_readiness:          Optional[str]   = None
     book_imbalance_5:              Optional[float] = None
     cum_delta_proxy:               Optional[float] = None
     options_flow_score:            Optional[float] = None
     institutional_flow_proxy_score: Optional[float] = None
     # Flow Verdict (composite headline)
-    order_flow_verdict:            str             = "FLOW NEUTRAL"
-    order_flow_verdict_color:      str             = "gray"
-    order_flow_arrow:              str             = "→"
-    order_flow_agreement:          str             = "weak | conflicted"
+    order_flow_verdict:            Optional[str]   = None
+    order_flow_verdict_color:      Optional[str]   = None
+    order_flow_arrow:              Optional[str]   = None
+    order_flow_agreement:          Optional[str]   = None
     # Per-field arrows and labels
-    order_flow_score_arrow:        str             = "→"
-    order_flow_score_label:        str             = "neutral"
-    order_flow_book_arrow:         str             = "→"
-    order_flow_book_label:         str             = "balanced"
-    order_flow_delta_arrow:        str             = "→"
-    order_flow_opt_arrow:          str             = "→"
-    order_flow_opt_label:          str             = "neutral"
+    order_flow_score_arrow:        Optional[str]   = None
+    order_flow_score_label:        Optional[str]   = None
+    order_flow_book_arrow:         Optional[str]   = None
+    order_flow_book_label:         Optional[str]   = None
+    order_flow_delta_arrow:        Optional[str]   = None
+    order_flow_opt_arrow:          Optional[str]   = None
+    order_flow_opt_label:          Optional[str]   = None
 
     # ── Market regime (from regime_engine.py) ─────────────────────────────────
     regime_primary:     str             = "unknown"  # pinning, acceleration, breakout, etc.
@@ -1049,24 +1049,24 @@ def build_market_state(
             from order_flow_engine import OrderFlowEngine
             _of_result = OrderFlowEngine().compute(order_flow_data)
             ms.order_flow_score              = _of_result.get("order_flow_score")
-            ms.order_flow_direction          = _of_result.get("order_flow_direction") or "neutral"
-            ms.order_flow_regime             = _of_result.get("order_flow_regime") or "neutral"
-            ms.order_flow_readiness          = _of_result.get("order_flow_readiness") or "red"
+            ms.order_flow_direction          = _of_result.get("order_flow_direction")
+            ms.order_flow_regime             = _of_result.get("order_flow_regime")
+            ms.order_flow_readiness          = _of_result.get("order_flow_readiness")
             ms.book_imbalance_5              = _of_result.get("book_imbalance_5")
             ms.cum_delta_proxy               = _of_result.get("cum_delta_proxy")
             ms.options_flow_score            = _of_result.get("options_flow_score")
             ms.institutional_flow_proxy_score = _of_result.get("institutional_flow_proxy_score")
-            ms.order_flow_verdict             = _of_result.get("order_flow_verdict") or "FLOW NEUTRAL"
-            ms.order_flow_verdict_color       = _of_result.get("order_flow_verdict_color") or "gray"
-            ms.order_flow_arrow              = _of_result.get("order_flow_arrow") or "→"
-            ms.order_flow_agreement          = _of_result.get("order_flow_agreement") or "weak | conflicted"
-            ms.order_flow_score_arrow        = _of_result.get("order_flow_score_arrow") or "→"
-            ms.order_flow_score_label        = _of_result.get("order_flow_score_label") or "neutral"
-            ms.order_flow_book_arrow         = _of_result.get("order_flow_book_arrow") or "→"
-            ms.order_flow_book_label         = _of_result.get("order_flow_book_label") or "balanced"
-            ms.order_flow_delta_arrow        = _of_result.get("order_flow_delta_arrow") or "→"
-            ms.order_flow_opt_arrow          = _of_result.get("order_flow_opt_arrow") or "→"
-            ms.order_flow_opt_label          = _of_result.get("order_flow_opt_label") or "neutral"
+            ms.order_flow_verdict             = _of_result.get("order_flow_verdict")
+            ms.order_flow_verdict_color       = _of_result.get("order_flow_verdict_color")
+            ms.order_flow_arrow              = _of_result.get("order_flow_arrow")
+            ms.order_flow_agreement          = _of_result.get("order_flow_agreement")
+            ms.order_flow_score_arrow        = _of_result.get("order_flow_score_arrow")
+            ms.order_flow_score_label        = _of_result.get("order_flow_score_label")
+            ms.order_flow_book_arrow         = _of_result.get("order_flow_book_arrow")
+            ms.order_flow_book_label         = _of_result.get("order_flow_book_label")
+            ms.order_flow_delta_arrow        = _of_result.get("order_flow_delta_arrow")
+            ms.order_flow_opt_arrow          = _of_result.get("order_flow_opt_arrow")
+            ms.order_flow_opt_label          = _of_result.get("order_flow_opt_label")
         except Exception as _of_e:
             import logging
             logging.getLogger(__name__).warning(f"Order Flow Engine error: {_of_e}")

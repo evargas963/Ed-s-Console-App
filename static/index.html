@@ -4807,9 +4807,10 @@ function renderDecisionCommandRail(d) {
   domIf('dr-lvl-eml', el => { el.textContent = pxTxt(d.em_straddle_lower || d.kl_em_lower); });
 
   // Order flow compact operator read.
-  const ofDir = String(d.order_flow_direction || 'neutral').toLowerCase();
+  const ofDirRaw = d.order_flow_direction;
+  const ofDir = ofDirRaw != null ? String(ofDirRaw).toLowerCase() : '';
   const ofScore = d.order_flow_score;
-  const ofBiasTxt = ofDir === 'buying' || ofDir === 'bullish' ? 'BUYING' : ofDir === 'selling' || ofDir === 'bearish' ? 'SELLING' : 'NEUTRAL';
+  const ofBiasTxt = ofDir === 'buying' || ofDir === 'bullish' ? 'BUYING' : ofDir === 'selling' || ofDir === 'bearish' ? 'SELLING' : (ofDirRaw == null ? '—' : 'NEUTRAL');
   domIf('dr-of-bias', el => {
     el.textContent = ofBiasTxt;
     el.style.color = ofBiasTxt === 'BUYING' ? 'var(--green)' : ofBiasTxt === 'SELLING' ? 'var(--red)' : 'var(--text2)';
@@ -6127,9 +6128,9 @@ function render(d, fullRenderSource) {
   const vArrow = $('of-verdict-arrow');
   const vLabel = $('of-verdict-label');
   const vAgree = $('of-verdict-agreement');
-  if (vArrow) { vArrow.textContent = d.order_flow_arrow || '→'; vArrow.style.color = ofArrowColor(d.order_flow_arrow); }
+  if (vArrow) { vArrow.textContent = d.order_flow_arrow || '—'; vArrow.style.color = ofArrowColor(d.order_flow_arrow); }
   if (vLabel) {
-    vLabel.textContent = d.order_flow_verdict || 'FLOW NEUTRAL';
+    vLabel.textContent = d.order_flow_verdict != null ? String(d.order_flow_verdict) : '—';
     const vc = d.order_flow_verdict_color || 'gray';
     vLabel.style.color = vc === 'green' ? 'var(--green)' : (vc === 'green-dim' ? 'var(--green-dim)' : (vc === 'red' ? 'var(--red)' : (vc === 'red-dim' ? 'var(--red-dim)' : 'var(--text3)')));
   }

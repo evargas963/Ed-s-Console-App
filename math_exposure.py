@@ -49,21 +49,21 @@ CONTINUATION_BLOCK_THRESHOLD: float = 0.45
 BREAKOUT_BLOCK_THRESHOLD: float = 0.45
 
 
-def _of_sign(v: float | None) -> float:
-    """Return -1, 0, or +1 based on sign of v (for cum_delta in verdict)."""
+def _of_sign(v: float | None) -> float | None:
+    """Return -1, 0, or +1 based on sign of v (for cum_delta in verdict). None when input missing."""
     if v is None:
-        return 0.0
+        return None
     try:
         f = float(v)
         return 1.0 if f > 0 else (-1.0 if f < 0 else 0.0)
     except (TypeError, ValueError):
-        return 0.0
+        return None
 
 
-def _of_direction(v: float | None) -> str:
-    """Return 'bullish', 'bearish', or 'neutral' for arrow/label."""
+def _of_direction(v: float | None) -> str | None:
+    """Return 'bullish', 'bearish', or 'neutral' for arrow/label; None when input missing."""
     if v is None:
-        return "neutral"
+        return None
     try:
         f = float(v)
         if f > OF_SCORE_BULLISH:
@@ -71,8 +71,17 @@ def _of_direction(v: float | None) -> str:
         if f < OF_SCORE_BEARISH:
             return "bearish"
     except (TypeError, ValueError):
-        pass
+        return None
     return "neutral"
+
+
+def _verdict_unavailable() -> dict:
+    return {
+        "verdict": None,
+        "verdict_color": None,
+        "arrow": None,
+        "agreement": "unavailable",
+    }
 
 
 def compute_order_flow_verdict(
@@ -83,19 +92,30 @@ def compute_order_flow_verdict(
 ) -> dict:
     """
     Compute Flow Verdict composite and metadata.
-    Returns dict: verdict, verdict_color, arrow, agreement.
+    Returns dict: verdict, verdict_color, arrow, agreement (all None + agreement unavailable when no inputs).
     """
-    s = float(score) if score is not None else 0.0
-    b = float(book_imb) if book_imb is not None else 0.0
-    c_sign = _of_sign(cum_delta)
-    o = float(opt_flow) if opt_flow is not None else 0.0
+    if all(x is None for x in (score, book_imb, cum_delta, opt_flow)):
+        return _verdict_unavailable()
 
-    composite = (
-        s * OF_VERDICT_W_SCORE
-        + b * OF_VERDICT_W_BOOK
-        + c_sign * OF_VERDICT_W_CUM
-        + o * OF_VERDICT_W_OPT
-    )
+    composite = 0.0
+    weight_sum = 0.0
+    if score is not None:
+        composite += float(score) * OF_VERDICT_W_SCORE
+        weight_sum += OF_VERDICT_W_SCORE
+    if book_imb is not None:
+        composite += float(book_imb) * OF_VERDICT_W_BOOK
+        weight_sum += OF_VERDICT_W_BOOK
+    c_sign = _of_sign(cum_delta)
+    if c_sign is not None:
+        composite += c_sign * OF_VERDICT_W_CUM
+        weight_sum += OF_VERDICT_W_CUM
+    if opt_flow is not None:
+        composite += float(opt_flow) * OF_VERDICT_W_OPT
+        weight_sum += OF_VERDICT_W_OPT
+
+    if weight_sum <= 0:
+        return _verdict_unavailable()
+    composite /= weight_sum
 
     if composite >= OF_VERDICT_BUYING:
         verdict = "BUYING PRESSURE"
@@ -118,29 +138,36 @@ def compute_order_flow_verdict(
         color = "red"
         arrow = "▼"
 
-    # Agreement: count how many signals agree (bullish, bearish, neutral)
-    dirs = [_of_direction(score), _book_direction(book_imb), _of_direction(opt_flow)]
-    cum_dir = "bullish" if c_sign > 0 else ("bearish" if c_sign < 0 else "neutral")
-    dirs.append(cum_dir)
+    # Agreement: count only inputs that were present (no fabricated neutral votes)
+    dirs: list[str] = []
+    for d in (_of_direction(score), _book_direction(book_imb), _of_direction(opt_flow)):
+        if d is not None:
+            dirs.append(d)
+    if c_sign is not None:
+        dirs.append("bullish" if c_sign > 0 else ("bearish" if c_sign < 0 else "neutral"))
 
-    bull = sum(1 for d in dirs if d == "bullish")
-    bear = sum(1 for d in dirs if d == "bearish")
-    neut = sum(1 for d in dirs if d == "neutral")
-    best = max(bull, bear, neut)
-    if best >= 4:
-        agreement = "strong | confirming"
-    elif best >= 3:
-        agreement = "moderate | mixed"
+    if not dirs:
+        agreement = "unavailable"
     else:
-        agreement = "weak | conflicted"
+        bull = sum(1 for d in dirs if d == "bullish")
+        bear = sum(1 for d in dirs if d == "bearish")
+        neut = sum(1 for d in dirs if d == "neutral")
+        best = max(bull, bear, neut)
+        n = len(dirs)
+        if n >= 4 and best >= 4:
+            agreement = "strong | confirming"
+        elif n >= 3 and best >= 3:
+            agreement = "moderate | mixed"
+        else:
+            agreement = "weak | conflicted"
 
     return {"verdict": verdict, "verdict_color": color, "arrow": arrow, "agreement": agreement}
 
 
-def _book_direction(v: float | None) -> str:
-    """Return bid-heavy, ask-heavy, or neutral for book imbalance."""
+def _book_direction(v: float | None) -> str | None:
+    """Return bid-heavy, ask-heavy, or neutral for book imbalance; None when input missing."""
     if v is None:
-        return "neutral"
+        return None
     try:
         f = float(v)
         if f > OF_BOOK_BID_HEAVY:
@@ -152,16 +179,18 @@ def _book_direction(v: float | None) -> str:
     return "neutral"
 
 
-def order_flow_score_label(score: float | None) -> str:
+def order_flow_score_label(score: float | None) -> str | None:
     """Plain-english label for score."""
     d = _of_direction(score)
+    if d is None:
+        return None
     return "bullish" if d == "bullish" else ("bearish" if d == "bearish" else "neutral")
 
 
-def order_flow_book_label(book_imb: float | None) -> str:
+def order_flow_book_label(book_imb: float | None) -> str | None:
     """Plain-english label for book imbalance."""
     if book_imb is None:
-        return "neutral"
+        return None
     try:
         f = float(book_imb)
         if f > OF_BOOK_BID_HEAVY:
@@ -173,10 +202,10 @@ def order_flow_book_label(book_imb: float | None) -> str:
     return "balanced"
 
 
-def order_flow_opt_label(opt_flow: float | None) -> str:
+def order_flow_opt_label(opt_flow: float | None) -> str | None:
     """Plain-english label for options flow."""
     if opt_flow is None:
-        return "neutral"
+        return None
     try:
         f = float(opt_flow)
         if f > OF_OPT_CALL_HEAVY:
@@ -188,12 +217,14 @@ def order_flow_opt_label(opt_flow: float | None) -> str:
     return "neutral"
 
 
-def order_flow_field_arrow(val: float | None, *, use_book: bool = False) -> str:
-    """Return ▲, ▼, or → for a single field."""
+def order_flow_field_arrow(val: float | None, *, use_book: bool = False) -> str | None:
+    """Return ▲, ▼, or → for a single field; None when input missing."""
     if use_book:
         d = _book_direction(val)
     else:
         d = _of_direction(val)
+    if d is None:
+        return None
     return "▲" if d == "bullish" else ("▼" if d == "bearish" else "→")
 
 
