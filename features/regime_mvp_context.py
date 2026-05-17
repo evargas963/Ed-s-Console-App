@@ -7,7 +7,7 @@ SignalInput is not read for structure / anchor / price MVP fields — no paralle
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from canonical_distances import canonicalize_distance_read
 
@@ -24,6 +24,7 @@ def require_mvp_features(mvp_features: dict[str, Any] | None, *, context: str) -
 
 
 def mvp_zone(mvp: dict[str, Any]) -> str:
+    """Returns canonical zone or ``\"unknown\"`` sentinel — consumers MUST treat ``\"unknown\"`` as withheld."""
     v = mvp.get("structure.zone")
     if v is not None:
         return str(v).strip().lower()
@@ -42,11 +43,12 @@ def mvp_spot(mvp: dict[str, Any]) -> float | None:
     return f if f > 0 else None
 
 
-def mvp_vwap_side(mvp: dict[str, Any]) -> str:
+def mvp_vwap_side(mvp: dict[str, Any]) -> Optional[str]:
     v = mvp.get("anchor.vwap_side")
-    if v is not None:
-        return str(v).strip().lower()
-    return "above"
+    if v is None:
+        return None
+    s = str(v).strip().lower()
+    return s if s in ("above", "below") else None
 
 
 def mvp_nearest_distances_for_regime(mvp: dict[str, Any]) -> tuple[Any, Any]:

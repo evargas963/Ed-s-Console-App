@@ -337,6 +337,8 @@ def _timeframe_reads(inp: SignalInput, *, mvp_features: dict) -> dict:
         reads["15m"] = "Bearish structure — lower highs, below VWAP"
     elif is_pin_zone(zone) and vwap_side == "above":
         reads["15m"] = "Bullish structure — holding above VWAP"
+    elif is_pin_zone(zone) and vwap_side is None:
+        reads["15m"] = "Pin zone — VWAP side unavailable"
     elif zone == "breakout":
         reads["15m"] = "Breakout structure — price above gamma walls"
     elif zone == "breakdown":

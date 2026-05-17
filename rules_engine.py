@@ -78,10 +78,10 @@ def _derive_bias_from_micro(micro, approaching_ceiling, approaching_floor,
             return "short", "medium"
         if approaching_floor:
             return "long", "medium"
-        # Middle of range: VWAP side gives a slight lean
+        # Middle of range: slight lean only when canonical VWAP side is known
         if vwap_side == "above":
             return "long", "low"
-        elif vwap_side == "below":
+        if vwap_side == "below":
             return "short", "low"
         return "wait", "low"
 
