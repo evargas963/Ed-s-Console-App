@@ -16,6 +16,7 @@ from typing import Any, Mapping
 
 from calibration.backfill_outcomes import resolve_snapshot_for_backfill
 from calibration.canonical_enforcement import enforce_calibration_decision_log_only_1m
+from calibration.json_utils import parse_json_mapping
 from calibration.schema import ensure_calibration_schema
 from timeframe_config import CANONICAL_TIMEFRAME
 from v2_decision import SCHEMA_VERSION, V2_STATUS, build_module_a_a1_decision
@@ -85,7 +86,10 @@ def ms_dict_from_snapshot_row(row: Mapping[str, Any]) -> dict[str, Any]:
         ms["dte_warn"] = f"{ms.get('dte')}DTE"
 
     if "option_chain_selection_proof" not in ms:
-        replay_context = _json_obj(ms.get("replay_context_json"))
+        replay_context = parse_json_mapping(
+            ms.get("replay_context_json"),
+            context="v2_advisory_backfill: replay_context_json",
+        )
         proof = replay_context.get("option_chain_selection_proof")
         if proof is not None:
             ms["option_chain_selection_proof"] = proof
@@ -311,22 +315,6 @@ def _direction_from_triplet(up: Any, down: Any, flat: Any) -> str | None:
     if not present:
         return None
     return max(present.items(), key=lambda kv: kv[1])[0]
-
-
-def _json_obj(value: Any) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return value
-    if not value:
-        return {}
-    try:
-        parsed = json.loads(str(value))
-    except (TypeError, ValueError, json.JSONDecodeError) as e:
-        log.warning(
-            "v2_advisory_backfill: replay_context_json unparseable, treating as empty: %s",
-            e,
-        )
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
 
 
 def _float_or_none(value: Any) -> float | None:

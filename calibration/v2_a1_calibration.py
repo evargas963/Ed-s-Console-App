@@ -9,18 +9,26 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Any, Iterable
 
+from calibration.json_utils import parse_json_mapping
 from calibration.schema import ensure_calibration_schema
 from calibration.trust import TRUSTED_PREDICATE_SQL
 from calibration.v2_advisory_backfill import WalkForwardSplit, validate_purged_embargo_splits
 from timeframe_config import CANONICAL_TIMEFRAME
 
+log = logging.getLogger(__name__)
+
 try:
     from db import configure_sqlite_connection
-except Exception:
+except ImportError as e:
+    log.warning(
+        "db.configure_sqlite_connection not available — using no-op stub: %s",
+        e,
+    )
 
     def configure_sqlite_connection(conn: sqlite3.Connection, **kwargs: Any) -> None:
         return None
@@ -47,31 +55,48 @@ def load_a1_calibration_rows(db_path: Path, *, horizon: str) -> list[dict[str, A
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
     ensure_calibration_schema(conn)
-    rows = conn.execute(
-        f"""
-        SELECT
-          id,
-          ticker,
-          decision_ts_utc,
-          advisory_v2_decision_snapshot_json,
-          advisory_v2_adapter_version,
-          {outcome_col} AS outcome,
-          {outcome_pts_col} AS outcome_pts,
-          vol_regime,
-          session_bucket,
-          expiry,
-          canonical_timeframe
-        FROM calibration_decision_log
-        WHERE {outcome_col} IS NOT NULL
-          AND advisory_v2_decision_snapshot_json IS NOT NULL
-          AND canonical_timeframe = ?
-          AND ({TRUSTED_PREDICATE_SQL})
-        ORDER BY decision_ts_utc, id
-        """,
-        (CANONICAL_TIMEFRAME,),
-    ).fetchall()
-    conn.close()
-    return [_row_to_calibration_example(dict(row), horizon=hz) for row in rows]
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT
+              id,
+              ticker,
+              decision_ts_utc,
+              advisory_v2_decision_snapshot_json,
+              advisory_v2_adapter_version,
+              {outcome_col} AS outcome,
+              {outcome_pts_col} AS outcome_pts,
+              vol_regime,
+              session_bucket,
+              expiry,
+              canonical_timeframe
+            FROM calibration_decision_log
+            WHERE {outcome_col} IS NOT NULL
+              AND advisory_v2_decision_snapshot_json IS NOT NULL
+              AND canonical_timeframe = ?
+              AND ({TRUSTED_PREDICATE_SQL})
+            ORDER BY decision_ts_utc, id
+            """,
+            (CANONICAL_TIMEFRAME,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    examples: list[dict[str, Any]] = []
+    skipped_reasons: dict[str, int] = {}
+    for row in rows:
+        try:
+            examples.append(_row_to_calibration_example(dict(row), horizon=hz))
+        except ValueError as e:
+            reason = str(e)[:80] or "row_not_calibratable"
+            skipped_reasons[reason] = skipped_reasons.get(reason, 0) + 1
+    if skipped_reasons:
+        log.info(
+            "a1_calibration load: skipped %d unusable rows, reasons=%s",
+            sum(skipped_reasons.values()),
+            skipped_reasons,
+        )
+    return examples
 
 
 def load_a1_5c_calibration_rows(db_path: Path) -> list[dict[str, Any]]:
@@ -372,7 +397,10 @@ def _rows_for_split(rows: list[dict[str, Any]], split: WalkForwardSplit) -> tupl
 
 def _row_to_calibration_example(row: dict[str, Any], *, horizon: str) -> dict[str, Any]:
     hz = _validate_horizon(horizon)
-    payload = _json_obj(row.get("advisory_v2_decision_snapshot_json"))
+    payload = parse_json_mapping(
+        row.get("advisory_v2_decision_snapshot_json"),
+        context="v2_a1_calibration: advisory_v2_decision_snapshot_json",
+    )
     v2 = payload.get("v2_decision") if isinstance(payload.get("v2_decision"), dict) else {}
     decision = v2.get("decision") if isinstance(v2.get("decision"), dict) else {}
     action = _leaf_value(decision.get("action"))
@@ -417,18 +445,6 @@ def _leaf_value(value: Any) -> Any:
     if isinstance(value, dict) and "value" in value:
         return value.get("value")
     return value
-
-
-def _json_obj(value: Any) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return value
-    if not value:
-        return {}
-    try:
-        parsed = json.loads(str(value))
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
 
 
 def _float_or_none(value: Any) -> float | None:

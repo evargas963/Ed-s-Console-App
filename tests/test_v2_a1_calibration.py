@@ -267,6 +267,61 @@ def test_success_label_none_when_outcome_missing() -> None:
     assert _success_label("long", "") is None
 
 
+def _wait_payload() -> str:
+    return json.dumps(
+        {
+            "adapter_version": "test-adapter",
+            "v2_decision": {
+                "decision": {
+                    "action": {"value": "WAIT", "source": "v1_approximation"},
+                    "direction": {"value": "long", "source": "v1_approximation"},
+                    "P_entry_success": {"value": 0.6, "source": "v1_approximation"},
+                }
+            },
+        }
+    )
+
+
+def test_load_a1_calibration_rows_skips_non_trade_without_aborting(tmp_path, caplog):
+    import logging
+
+    db_path, _split = _seed_rows(tmp_path, n_train=4, n_holdout=4)
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        """
+        INSERT INTO calibration_decision_log (
+            decision_ts_utc, ticker, canonical_timeframe, calibration_trust,
+            advisory_v2_decision_snapshot_json, advisory_v2_adapter_version,
+            outcome_5c, outcome_5c_pts, vol_regime, session_bucket
+        )
+        VALUES (?, 'SPY', '1m', 'trusted', ?, 'test-adapter', 'up', 0.1, 'normal', 'midday')
+        """,
+        (BASE_TS + 9999 * 60.0, _wait_payload()),
+    )
+    conn.commit()
+    conn.close()
+
+    with caplog.at_level(logging.INFO):
+        rows = load_a1_5c_calibration_rows(db_path)
+
+    assert rows
+    assert any("skipped" in r.message and "unusable rows" in r.message for r in caplog.records)
+
+
+def test_parse_json_mapping_logs_corrupt_advisory_snapshot(caplog):
+    import logging
+
+    from calibration.json_utils import parse_json_mapping
+
+    with caplog.at_level(logging.WARNING):
+        out = parse_json_mapping(
+            "{bad json",
+            context="v2_a1_calibration: advisory_v2_decision_snapshot_json",
+        )
+    assert out == {}
+    assert any("advisory_v2_decision_snapshot_json unparseable" in r.message for r in caplog.records)
+
+
 def test_row_to_calibration_example_rejects_missing_outcome() -> None:
     row = {
         "id": 1,

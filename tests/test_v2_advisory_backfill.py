@@ -5,13 +5,13 @@ import sqlite3
 
 import pytest
 
+from calibration.json_utils import parse_json_mapping
 from calibration.schema import ensure_calibration_schema
 from calibration.v2_advisory_backfill import (
     ADVISORY_V2_ADAPTER_VERSION,
     ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION,
     RECONSTRUCTED_LIVE_MS_SOURCE,
     _direction_from_triplet,
-    _json_obj,
     backfill_v2_advisory_decisions,
     build_v2_advisory_snapshot,
     build_walk_forward_splits,
@@ -285,7 +285,10 @@ def test_json_obj_logs_on_corrupt_replay_context(caplog):
     import logging
 
     with caplog.at_level(logging.WARNING):
-        out = _json_obj("{not valid json")
+        out = parse_json_mapping(
+            "{not valid json",
+            context="v2_advisory_backfill: replay_context_json",
+        )
     assert out == {}
     assert any("replay_context_json unparseable" in r.message for r in caplog.records)
 
