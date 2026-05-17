@@ -679,28 +679,34 @@ def _fuse_impl(
         if nb >= 25 and prob_up is not None and prob_down is not None and prob_flat is not None:
             from features.signal_layer_v1 import signal_layer_v1_to_direction_probs
 
-            w_sl = float(os.environ.get("ED_SIGNAL_LAYER_FUSION_BLEND", "0.38"))
-            w_sl = max(0.0, min(1.0, w_sl))
-            su, sd, sf = signal_layer_v1_to_direction_probs(signal_layer_v1)
-            prob_up = (1.0 - w_sl) * prob_up + w_sl * su
-            prob_down = (1.0 - w_sl) * prob_down + w_sl * sd
-            prob_flat = (1.0 - w_sl) * prob_flat + w_sl * sf
-            tot = prob_up + prob_down + prob_flat
-            if tot > 0:
-                prob_up /= tot
-                prob_down /= tot
-                prob_flat /= tot
-                dominant_dir = max(
-                    "up",
-                    "down",
-                    "flat",
-                    key=lambda d: {"up": prob_up, "down": prob_down, "flat": prob_flat}[d],
-                )
-            signal_layer_v1_fusion = {
-                "blend_weight": round(w_sl, 4),
-                "prior_triplet": {"up": round(su, 4), "down": round(sd, 4), "flat": round(sf, 4)},
-                "post_triplet": {"up": round(prob_up, 4), "down": round(prob_down, 4), "flat": round(prob_flat, 4)},
-            }
+            triplet = signal_layer_v1_to_direction_probs(signal_layer_v1)
+            if triplet is not None:
+                w_sl = float(os.environ.get("ED_SIGNAL_LAYER_FUSION_BLEND", "0.38"))
+                w_sl = max(0.0, min(1.0, w_sl))
+                su, sd, sf = triplet
+                prob_up = (1.0 - w_sl) * prob_up + w_sl * su
+                prob_down = (1.0 - w_sl) * prob_down + w_sl * sd
+                prob_flat = (1.0 - w_sl) * prob_flat + w_sl * sf
+                tot = prob_up + prob_down + prob_flat
+                if tot > 0:
+                    prob_up /= tot
+                    prob_down /= tot
+                    prob_flat /= tot
+                    dominant_dir = max(
+                        "up",
+                        "down",
+                        "flat",
+                        key=lambda d: {"up": prob_up, "down": prob_down, "flat": prob_flat}[d],
+                    )
+                signal_layer_v1_fusion = {
+                    "blend_weight": round(w_sl, 4),
+                    "prior_triplet": {"up": round(su, 4), "down": round(sd, 4), "flat": round(sf, 4)},
+                    "post_triplet": {
+                        "up": round(prob_up, 4),
+                        "down": round(prob_down, 4),
+                        "flat": round(prob_flat, 4),
+                    },
+                }
 
     # ── Evidence summaries ───────────────────────────────────────────────────
     evidence = []

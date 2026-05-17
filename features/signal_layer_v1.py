@@ -544,7 +544,7 @@ def compute_signal_layer_v1(
         s5 = _ols_log_slope_close(c5)
         out["mtf.trend_5m_from_1m_sign"] = _sign_trend(s5)
     else:
-        out["mtf.trend_5m_from_1m_sign"] = 0.0
+        out["mtf.trend_5m_from_1m_sign"] = None
 
     tail15 = bars[-(15 * 8) :] if len(bars) >= 15 * 4 else bars
     agg15 = _aggregate_bars(tail15, 15)
@@ -553,18 +553,19 @@ def compute_signal_layer_v1(
         s15 = _ols_log_slope_close(c15)
         out["mtf.bias_15m_from_1m_sign"] = _sign_trend(s15)
     else:
-        out["mtf.bias_15m_from_1m_sign"] = 0.0
+        out["mtf.bias_15m_from_1m_sign"] = None
 
     s1 = out["mtf.trend_1m_sign"]
     s5 = out["mtf.trend_5m_from_1m_sign"]
     s15 = out["mtf.bias_15m_from_1m_sign"]
-    if s1 == s5 == s15 and s1 != 0.0:
-        align = 1.0
+    if s1 is None or s5 is None or s15 is None:
+        out["mtf.alignment_state"] = None
+    elif s1 == s5 == s15 and s1 != 0.0:
+        out["mtf.alignment_state"] = 1.0
     elif s1 != 0.0 and s5 != 0.0 and (s1 * s5 < 0 or s1 * s15 < 0):
-        align = -1.0
+        out["mtf.alignment_state"] = -1.0
     else:
-        align = 0.0
-    out["mtf.alignment_state"] = align
+        out["mtf.alignment_state"] = 0.0
 
     # ── F. Participation ─────────────────────────────────────────────────
     vols = [_f(b.get("volume")) for b in bars[-W_VOL_PART:]]
@@ -651,6 +652,8 @@ def layer_direction_policy(layer: Mapping[str, Any], *, thresh: float = 0.85) ->
         s += _clip(float(vz) / 2.5, -1.25, 1.25)
     for k in ("mtf.trend_1m_sign", "mtf.trend_5m_from_1m_sign", "mtf.bias_15m_from_1m_sign"):
         v = layer.get(k)
+        if v is None:
+            continue
         if isinstance(v, (int, float)):
             s += float(v)
     if s > thresh:
@@ -660,15 +663,17 @@ def layer_direction_policy(layer: Mapping[str, Any], *, thresh: float = 0.85) ->
     return "wait"
 
 
-def signal_layer_v1_to_direction_probs(layer: Mapping[str, Any]) -> tuple[float, float, float]:
+def signal_layer_v1_to_direction_probs(
+    layer: Mapping[str, Any],
+) -> Optional[tuple[float, float, float]]:
     """
     Map numeric v1 layer to a calibrated (up, down, flat) triple for fusion blending.
     Uses directional score → softmax; flat mass rises when |score| is small.
+    Returns None when bar history is insufficient (no uniform 1/3 placeholder).
     """
     fn = flatten_numeric_features(layer)
     if int(layer.get("meta.n_bars") or 0) < 25:
-        u = 1.0 / 3.0
-        return (u, u, u)
+        return None
 
     score = 0.0
     s = fn.get("ps.rolling_trend_slope_log20")
@@ -677,9 +682,16 @@ def signal_layer_v1_to_direction_probs(layer: Mapping[str, Any]) -> tuple[float,
     vz = fn.get("vl.vwap_zscore")
     if vz is not None:
         score += float(vz) * 0.18
-    score += float(fn.get("mtf.trend_1m_sign", 0.0)) * 0.42
-    score += float(fn.get("mtf.trend_5m_from_1m_sign", 0.0)) * 0.38
-    score += float(fn.get("mtf.bias_15m_from_1m_sign", 0.0)) * 0.28
+    for k, w in (
+        ("mtf.trend_1m_sign", 0.42),
+        ("mtf.trend_5m_from_1m_sign", 0.38),
+        ("mtf.bias_15m_from_1m_sign", 0.28),
+    ):
+        v = layer.get(k)
+        if v is None:
+            continue
+        if isinstance(v, (int, float)):
+            score += float(v) * w
 
     score = max(-3.0, min(3.0, score))
 

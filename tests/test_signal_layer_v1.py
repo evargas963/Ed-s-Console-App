@@ -117,8 +117,8 @@ def test_missing_ohlc_does_not_create_synthetic_multiframe_bars() -> None:
 
     layer = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=None)
 
-    assert layer["mtf.trend_5m_from_1m_sign"] == 0.0
-    assert layer["mtf.bias_15m_from_1m_sign"] == 0.0
+    assert layer["mtf.trend_5m_from_1m_sign"] is None
+    assert layer["mtf.bias_15m_from_1m_sign"] is None
 
 
 def test_flatten_numeric_strips_meta() -> None:
