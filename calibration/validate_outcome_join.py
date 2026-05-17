@@ -56,6 +56,17 @@ def _fclose(a: Any, b: Any) -> bool:
         return str(a) == str(b)
 
 
+def _outcome_field_equal(calib_val: Any, snap_val: Any, *, numeric: bool) -> bool:
+    """Strict None vs empty-string — do not conflate missing with recorded empty label."""
+    if numeric:
+        return _fclose(calib_val, snap_val)
+    if calib_val is None and snap_val is None:
+        return True
+    if calib_val is None or snap_val is None:
+        return False
+    return str(calib_val) == str(snap_val)
+
+
 def analyze(db_path: Path, *, trusted_only: bool = True) -> dict[str, Any]:
     conn = sqlite3.connect(str(db_path), timeout=60.0)
     conn.row_factory = sqlite3.Row
@@ -155,14 +166,9 @@ def analyze(db_path: Path, *, trusted_only: bool = True) -> dict[str, Any]:
         for col in _OUTCOME_COLS:
             cv = r[col]
             sv = s0[col]
-            if col.endswith("_pts"):
-                if not _fclose(cv, sv):
-                    ok = False
-                    break
-            else:
-                if (cv or None) != (sv or None) and str(cv or "") != str(sv or ""):
-                    ok = False
-                    break
+            if not _outcome_field_equal(cv, sv, numeric=col.endswith("_pts")):
+                ok = False
+                break
         if ok:
             out["verification_pass"] += 1
         else:
@@ -199,7 +205,7 @@ def analyze(db_path: Path, *, trusted_only: bool = True) -> dict[str, Any]:
         if s:
             for hc in ("outcome_1c", "outcome_5c", "outcome_15c", "outcome_60c"):
                 cv, sv = r[hc], s[hc]
-                if (cv or None) != (sv or None) and str(cv or "") != str(sv or ""):
+                if not _outcome_field_equal(cv, sv, numeric=False):
                     horizons_ok = False
                     break
         else:

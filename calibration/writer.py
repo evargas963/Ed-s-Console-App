@@ -174,21 +174,31 @@ def append_calibration_decision(
     expiry = getattr(inp, "expiry", None)
     build_generation = os.environ.get("ED_BUILD_GENERATION", "").strip() or None
 
-    ct = (canonical_timeframe or CANONICAL_TIMEFRAME).strip()
-    if ct != CANONICAL_TIMEFRAME:
+    ct_raw = (canonical_timeframe or "").strip()
+    if not ct_raw:
+        log.error(
+            "calibration_decision_log: canonical_timeframe required, got %r",
+            canonical_timeframe,
+        )
+        return None
+    if ct_raw != CANONICAL_TIMEFRAME:
         log.error(
             "calibration_decision_log: refusing non-canonical timeframe %r (expected %r)",
-            ct,
+            ct_raw,
             CANONICAL_TIMEFRAME,
         )
         return None
 
-    t_key = ticker_storage_key((ticker or "").strip())
+    t_raw = (ticker or "").strip()
+    if not t_raw:
+        log.error("calibration_decision_log: ticker required, got %r", ticker)
+        return None
+    t_key = ticker_storage_key(t_raw)
 
     row_params = (
         float(decision_ts_utc),
         t_key,
-        ct,
+        ct_raw,
         None,
         expiry,
         build_generation,
