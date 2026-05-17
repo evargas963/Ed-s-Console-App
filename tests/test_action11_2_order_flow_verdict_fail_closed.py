@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import fields
 
 from market_state import MarketState
-from math_exposure import compute_order_flow_verdict
+from math_exposure import (
+    compute_order_flow_verdict,
+    order_flow_book_label,
+    order_flow_opt_label,
+    _book_direction,
+)
 from order_flow_engine import OrderFlowEngine
 
 
@@ -37,6 +42,12 @@ def test_market_state_order_flow_verdict_defaults_none():
     assert ms.order_flow_verdict_color is None
     assert ms.order_flow_direction is None
     assert ms.order_flow_score_label is None
+
+
+def test_book_and_opt_label_helpers_return_none_on_bad_coercion():
+    assert _book_direction("not-a-number") is None
+    assert order_flow_book_label("bad") is None
+    assert order_flow_opt_label("bad") is None
 
 
 def test_market_state_unpopulated_verdict_fields_none():

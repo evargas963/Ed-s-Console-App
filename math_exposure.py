@@ -175,7 +175,7 @@ def _book_direction(v: float | None) -> str | None:
         if f < OF_BOOK_ASK_HEAVY:
             return "bearish"
     except (TypeError, ValueError):
-        pass
+        return None
     return "neutral"
 
 
@@ -198,7 +198,7 @@ def order_flow_book_label(book_imb: float | None) -> str | None:
         if f < OF_BOOK_ASK_HEAVY:
             return "ask-heavy"
     except (TypeError, ValueError):
-        pass
+        return None
     return "balanced"
 
 
@@ -213,7 +213,7 @@ def order_flow_opt_label(opt_flow: float | None) -> str | None:
         if f < OF_OPT_PUT_HEAVY:
             return "put-heavy"
     except (TypeError, ValueError):
-        pass
+        return None
     return "neutral"
 
 
