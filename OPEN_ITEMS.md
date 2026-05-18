@@ -122,7 +122,7 @@ Reference ticker for parametric tests: **SPY**.
 |-------|--------|--------|
 | **A** | Decouple 4 primary M cards — `UNAVAILABLE` + `PRIMARY_HORIZON_DATA_MISSING` when native horizon data missing; no silent 3c/8c/13c substitution | **Done** (`c8a3b0b`) |
 | **2** | `verify_active_models.py` — 4×3 slots for production tickers | **Done** (2026-05-17 run; see Universe model coverage below) |
-| **B** | Stop producing 3c/8c/13c (signals payload, ml_predict loop, `SECONDARY_SUPPORT_HORIZONS = ()`) | Planned |
+| **B** | Stop producing 3c/8c/13c (signals payload, ml_predict loop, `SECONDARY_SUPPORT_HORIZONS = ()`) | **Done** — production-side (`eab7ff2`, `4010965`); `signals.py` None-key schema residue rides **Phase D** |
 | **C** | 4-primary regression vs legacy 7-horizon path | **Done** (`89e3ddc`; C1 `eab7ff2`, C2 `4010965`, C3 tier-contract gaps) |
 | **D** | Schema drop `outcome_3c/8c/13c` (+ pts) after backup | Planned |
 | **E** | Tools + tests cleanup (~10 scripts, calibration `HORIZONS_MV`) | Planned |
