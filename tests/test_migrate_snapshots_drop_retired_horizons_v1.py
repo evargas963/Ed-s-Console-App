@@ -16,8 +16,23 @@ def _connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _retired_col_sql_type(col: str) -> str:
+    if col.startswith("fused_contributing_models_") or col.startswith("fused_stack_status_"):
+        return "TEXT"
+    if col.startswith("outcome_dir_") or col.startswith("outcome_move_"):
+        return "TEXT"
+    if col.startswith("outcome_") and not col.endswith("_pts"):
+        return "TEXT"
+    if col.startswith("valid_dir_"):
+        return "INTEGER"
+    return "REAL"
+
+
 def _create_seeded_db(path: Path, *, n_rows: int = 4) -> None:
-    retired_defs = ",\n                ".join(f"{c} REAL" for c in RETIRED_COLUMNS)
+    assert len(RETIRED_COLUMNS) == 69
+    retired_defs = ",\n                ".join(
+        f"{c} {_retired_col_sql_type(c)}" for c in RETIRED_COLUMNS
+    )
     with _connect(path) as conn:
         conn.executescript(
             f"""
@@ -56,7 +71,7 @@ def _column_names(path: Path) -> list[str]:
         return [r["name"] for r in conn.execute("PRAGMA table_info(snapshots)").fetchall()]
 
 
-def test_dry_run_does_not_mutate_and_reports_minus_fifteen_delta(tmp_path: Path) -> None:
+def test_dry_run_does_not_mutate_and_reports_full_retired_delta(tmp_path: Path) -> None:
     db_path = tmp_path / "ed_console.db"
     audit_root = tmp_path / "audits"
     _create_seeded_db(db_path)

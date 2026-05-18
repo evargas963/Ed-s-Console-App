@@ -24,23 +24,46 @@ log = logging.getLogger(__name__)
 SCHEMA = "migrate_snapshots_drop_retired_horizons_v1"
 FLAG_KEY = "snapshots_drop_retired_horizons_v1"
 
-RETIRED_COLUMNS: tuple[str, ...] = (
-    "pred_3c_up_prob",
-    "pred_3c_down_prob",
-    "pred_3c_flat_prob",
-    "pred_8c_up_prob",
-    "pred_8c_down_prob",
-    "pred_8c_flat_prob",
-    "pred_13c_up_prob",
-    "pred_13c_down_prob",
-    "pred_13c_flat_prob",
-    "outcome_3c",
-    "outcome_3c_pts",
-    "outcome_8c",
-    "outcome_8c_pts",
-    "outcome_13c",
-    "outcome_13c_pts",
-)
+_RETIRED_HORIZONS: tuple[str, ...] = ("3c", "8c", "13c")
+
+
+def _build_retired_columns() -> tuple[str, ...]:
+    """All snapshot columns tied to retired 3c/8c/13c product horizons (69 total)."""
+    cols: list[str] = []
+    for hz in _RETIRED_HORIZONS:
+        cols.extend(
+            (
+                f"pred_{hz}_up_prob",
+                f"pred_{hz}_down_prob",
+                f"pred_{hz}_flat_prob",
+                f"outcome_{hz}",
+                f"outcome_{hz}_pts",
+                f"outcome_dir_{hz}",
+                f"outcome_move_{hz}",
+                f"valid_dir_{hz}",
+                f"threshold_move_{hz}",
+                f"outcome_move_thr_pts_{hz}",
+                f"pred_{hz}_dir_up_prob",
+                f"pred_{hz}_dir_down_prob",
+                f"pred_{hz}_move_prob",
+                f"pred_{hz}_no_move_prob",
+                f"pred_dir_up_prob_{hz}",
+                f"pred_dir_down_prob_{hz}",
+                f"pred_move_prob_{hz}",
+                f"pred_no_move_prob_{hz}",
+                f"fused_move_prob_{hz}",
+                f"fused_dir_up_prob_{hz}",
+                f"fused_confidence_{hz}",
+                f"fused_contributing_models_{hz}",
+                f"fused_stack_status_{hz}",
+            )
+        )
+    return tuple(cols)
+
+
+RETIRED_COLUMNS: tuple[str, ...] = _build_retired_columns()
+assert len(RETIRED_COLUMNS) == 69, f"expected 69 retired columns, got {len(RETIRED_COLUMNS)}"
+assert len(RETIRED_COLUMNS) == len(set(RETIRED_COLUMNS)), "duplicate retired column slug"
 RETIRED_SET = frozenset(RETIRED_COLUMNS)
 
 AUDIT_EXPECTED_KEYS = frozenset(
