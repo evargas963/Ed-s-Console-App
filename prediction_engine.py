@@ -457,7 +457,7 @@ def build_fusion_model_overlay_for_stack(
     validate_inference_snapshot_for_fusion_stack(inference_snapshot_v1)
     _filters = similar_setup_filters_from_canonical_features(inference_snapshot_v1["features"])
 
-    probs_1c = probs_5c = probs_3c = probs_8c = probs_13c = None
+    probs_1c = probs_5c = None
     probs_15m = probs_60m = None
     _asof_sim = _as_of_ts_utc_for_similarity(inp, inference_snapshot_v1)
     if db is not None:
@@ -472,21 +472,15 @@ def build_fusion_model_overlay_for_stack(
                 as_of_ts_utc=_asof_sim,
             )
             probs_1c, _, _, _ = _literal_empirical_horizon(similar, "outcome_1c", 1)
-            probs_3c, _, _, _ = _literal_empirical_horizon(similar, "outcome_3c", 3)
             probs_5c, _, _, _ = _literal_empirical_horizon(similar, "outcome_5c", 5)
-            probs_8c, _, _, _ = _literal_empirical_horizon(similar, "outcome_8c", 8)
-            probs_13c, _, _, _ = _literal_empirical_horizon(similar, "outcome_13c", 13)
             probs_15m, _, _, _ = _literal_empirical_horizon(similar, "outcome_15c", 15)
             probs_60m, _, _, _ = _literal_empirical_horizon(similar, "outcome_60c", 60)
         except Exception as e:
             log.debug("build_fusion_model_overlay_for_stack: DB lookup failed: %s", e)
-            probs_1c = probs_3c = probs_5c = probs_8c = probs_13c = None
+            probs_1c = probs_5c = None
             probs_15m = probs_60m = None
     u1, d1, f1 = _tri_probs(probs_1c)
-    u3, d3, f3 = _tri_probs(probs_3c)
     u5, d5, f5 = _tri_probs(probs_5c)
-    u8, d8, f8 = _tri_probs(probs_8c)
-    u13, d13, f13 = _tri_probs(probs_13c)
     u15, d15, f15 = _tri_probs(probs_15m)
     u60, d60, f60 = _tri_probs(probs_60m)
 
@@ -570,15 +564,6 @@ def build_fusion_model_overlay_for_stack(
         "pred_5c_up_prob": u5,
         "pred_5c_down_prob": d5,
         "pred_5c_flat_prob": f5,
-        "pred_3c_up_prob": u3,
-        "pred_3c_down_prob": d3,
-        "pred_3c_flat_prob": f3,
-        "pred_8c_up_prob": u8,
-        "pred_8c_down_prob": d8,
-        "pred_8c_flat_prob": f8,
-        "pred_13c_up_prob": u13,
-        "pred_13c_down_prob": d13,
-        "pred_13c_flat_prob": f13,
         "pred_15c_up_prob": u15,
         "pred_15c_down_prob": d15,
         "pred_15c_flat_prob": f15,
@@ -912,8 +897,9 @@ def compute_prediction_enrichment(
     inference_snapshot_v1: Optional[dict[str, Any]] = None,
 ) -> PredictiveCard:
     """
-    Cold path: secondary horizons (3c/8c/13c), eval dashboard metrics, reversal analytics,
-    horizon UI bars, headline, and model_note. Must run before snapshot persistence.
+    Cold path: eval dashboard metrics, reversal analytics, horizon UI bars (primary 1m/5m/15m/60m),
+    headline, and model_note. Secondary horizons (3c/8c/13c) are not produced (Phase 3 C1).
+    Must run before snapshot persistence.
     """
     del inference_snapshot_v1  # reserved for API symmetry with compute_prediction
 
@@ -950,12 +936,6 @@ def compute_prediction_enrichment(
     except Exception:
         pass
 
-    lit_3c = _literal_empirical_horizon(similar, "outcome_3c", 3)
-    lit_8c = _literal_empirical_horizon(similar, "outcome_8c", 8)
-    lit_13c = _literal_empirical_horizon(similar, "outcome_13c", 13)
-    probs_3c, _, _, _ = lit_3c
-    probs_8c, _, _, _ = lit_8c
-    probs_13c, _, _, _ = lit_13c
     probs_5c, _, _, _ = lit_5c
 
     _mb = ml_bundle or {}
@@ -967,17 +947,8 @@ def compute_prediction_enrichment(
         _spk = "stack_probs_1c"
     ml_stack_probs = _mb.get(_spk)
 
-    up_3c, down_3c, flat_3c = _tri_probs(probs_3c)
-    up_8c, down_8c, flat_8c = _tri_probs(probs_8c)
-    up_13c, down_13c, flat_13c = _tri_probs(probs_13c)
-
     n_used = pred_core.samples_used
     _fusion_available = fusion is not None and getattr(fusion, "available", False)
-
-    avg3 = _avg_outcome_pts(similar, "outcome_3c_pts")
-    avg8 = _avg_outcome_pts(similar, "outcome_8c_pts")
-    avg13 = _avg_outcome_pts(similar, "outcome_13c_pts")
-    med3 = avg_move.get("median_3c_pts")
 
     emp_dom = pred_core.historical_5c_dominant_dir
     emp_prob = pred_core.historical_5c_dominant_prob
@@ -1205,19 +1176,6 @@ def compute_prediction_enrichment(
         pred_core,
         headline=headline,
         model_note=model_note,
-        up_prob_3c=up_3c,
-        down_prob_3c=down_3c,
-        flat_prob_3c=flat_3c,
-        up_prob_8c=up_8c,
-        down_prob_8c=down_8c,
-        flat_prob_8c=flat_8c,
-        up_prob_13c=up_13c,
-        down_prob_13c=down_13c,
-        flat_prob_13c=flat_13c,
-        avg_3c_pts=avg3,
-        avg_8c_pts=avg8,
-        avg_13c_pts=avg13,
-        median_3c_pts=med3,
         reversal_risk=reversal_risk,
         reversal_label=reversal_label,
         reversal_shortfall=reversal_shortfall,

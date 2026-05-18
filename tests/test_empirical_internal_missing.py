@@ -81,10 +81,13 @@ def test_build_ml_snapshot_null_pred_when_similar_set_too_small():
     assert snap["pred_5c_flat_prob"] is None
     for k in (
         "pred_1c_up_prob",
-        "pred_3c_up_prob",
-        "pred_8c_up_prob",
-        "pred_13c_up_prob",
         "pred_15c_up_prob",
         "pred_60c_up_prob",
     ):
-        assert snap[k] is None, k
+        assert snap.get(k) is None, k
+    for legacy_k in (
+        "pred_3c_up_prob",
+        "pred_8c_up_prob",
+        "pred_13c_up_prob",
+    ):
+        assert legacy_k not in snap, legacy_k
