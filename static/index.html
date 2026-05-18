@@ -2119,7 +2119,7 @@
   #kl-container { overflow-x: auto; }
   .kl-grid {
     display: grid;
-    grid-template-columns: 6px 170px 80px 90px 65px 90px 1fr;
+    grid-template-columns: 6px 170px 80px 90px 65px 90px;
     align-items: center;
     padding: 9px 12px;
     border-bottom: 1px solid var(--border);
@@ -2151,8 +2151,6 @@
   .kl-dist.near  { color: #fbbf24; font-weight: 700; }
   .kl-str    { font-family: var(--sans); font-size: 12px; font-weight: 500; color: #dddddd; text-align: right; }
   .kl-str.dimmed { color: #777777; }
-  .kl-context { font-family: var(--sans); font-size: 12px; font-weight: 400; color: #cccccc; padding-left: 16px; line-height: 1.4; }
-  .kl-context.dimmed { color: #777777; }
   .kl-section-hdr {
     font-family: var(--sans); font-size: 10px; font-weight: 700; color: var(--text);
     letter-spacing: 1.5px; padding: 8px 12px; border-bottom: 1px solid var(--border);
@@ -3184,7 +3182,6 @@
           <span style="font-family:var(--sans);font-size:10px;font-weight:700;color:#aaaaaa;letter-spacing:1px;text-align:center">S/R</span>
           <span style="font-family:var(--sans);font-size:10px;font-weight:700;color:#aaaaaa;letter-spacing:1px;text-align:right">DIST</span>
           <span style="font-family:var(--sans);font-size:10px;font-weight:700;color:#aaaaaa;letter-spacing:1px;text-align:right">STRENGTH</span>
-          <span style="font-family:var(--sans);font-size:10px;font-weight:700;color:#aaaaaa;letter-spacing:1px;padding-left:16px">WHAT IT MEANS RIGHT NOW</span>
         </div>
         <div id="kl-container" class="kl-scroll"></div>
       </div>
@@ -6800,74 +6797,29 @@ function render(d, fullRenderSource) {
 
   // Level definitions organized into groups
   const KL_PRIMARY = [
-    { key: 'kl_call_gamma_wall', strKey: 'kl_call_gamma_str', label: 'Gamma Wall Call', proxColor: '#ef4444',
-      desc: d => 'Hard ceiling — dealers are selling above this level to hedge their books.' },
-    { key: 'kl_put_gamma_wall', strKey: 'kl_put_gamma_str', label: 'Gamma Wall Put', proxColor: '#22c55e',
-      desc: d => 'Strong floor — dealers are buying below this level to stay hedged.' },
-    { key: 'kl_gamma_pin', strKey: null, label: 'Gamma Pin', sr: 'pin', srLabel: 'Pin', proxColor: '#a855f7',
-      desc: d => 'Hedging center of gravity — strike with largest |net GEX$| per 1% (institutional pin).' },
-    { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'HVL', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9',
-      desc: d => 'High Volatility Level — strike with the largest total gamma (calls + puts). Peak hedging friction / vol sensitivity.' },
-    { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef',
-      desc: d => 'Expiry settlement strike that minimizes total ITM option payout (OI-weighted). Classic pin magnet into close.' },
-    { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316',
-      desc: (d, spot, v) => {
-        if (!v || !spot) return 'Regime boundary — above = dealers dampen (pin), below = dealers amplify (acceleration).';
-        const above = spot > v;
-        const dist = Math.abs(spot - v).toFixed(1);
-        return above
-          ? `Currently ${dist}pts ABOVE flip — dealers dampening moves (stable/pin regime). Break below = acceleration.`
-          : `Currently ${dist}pts BELOW flip — dealers amplifying moves (acceleration regime). Expect fast directional movement.`;
-      }},
-    { key: 'kl_em_upper', strKey: null, label: 'EM Upper', sr: 'em', srLabel: 'EM Ceiling', proxColor: '#3b82f6',
-      desc: d => {
-        const pct = d.em_progress_pct;
-        if (d.em_breached) return 'EM BREACHED — price outside expected range. Volatility expansion regime active.';
-        if (pct != null) return `Expected move ceiling. Price has used ${Math.round(pct)}% of EM. Breaking this = volatility expansion.`;
-        return 'Expected move ceiling for the day.';
-      }},
-    { key: 'kl_em_lower', strKey: null, label: 'EM Lower', sr: 'em', srLabel: 'EM Floor', proxColor: '#3b82f6',
-      desc: (d, spot, v) => {
-        const cushion = spot && v ? (spot - v).toFixed(1) : '?';
-        if (d.em_breached) return 'EM BREACHED — price outside expected range. Volatility expansion regime active.';
-        return `Expected move floor. ${cushion}pts of cushion below. Breaking this = expansion, stop cascades likely.`;
-      }},
+    { key: 'kl_call_gamma_wall', strKey: 'kl_call_gamma_str', label: 'Gamma Wall Call', proxColor: '#ef4444' },
+    { key: 'kl_put_gamma_wall', strKey: 'kl_put_gamma_str', label: 'Gamma Wall Put', proxColor: '#22c55e' },
+    { key: 'kl_gamma_pin', strKey: null, label: 'Gamma Pin', sr: 'pin', srLabel: 'Pin', proxColor: '#a855f7' },
+    { key: 'kl_hvl', strKey: 'kl_hvl_str', label: 'HVL', sr: 'pin', srLabel: 'Peak Γ', proxColor: '#e879f9' },
+    { key: 'kl_max_pain', strKey: 'kl_max_pain_str', label: 'Max Pain', sr: 'pin', srLabel: 'OI Magnet', proxColor: '#d946ef' },
+    { key: 'kl_gamma_flip', strKey: null, label: 'Gamma Flip', sr: 'flip', srLabel: 'Flip Zone', proxColor: '#f97316' },
+    { key: 'kl_em_upper', strKey: null, label: 'EM Upper', sr: 'em', srLabel: 'EM Ceiling', proxColor: '#3b82f6' },
+    { key: 'kl_em_lower', strKey: null, label: 'EM Lower', sr: 'em', srLabel: 'EM Floor', proxColor: '#3b82f6' },
   ];
 
   const KL_CONDITIONAL = [
-    { key: 'kl_gamma_inflection', strKey: null, label: 'Gamma Inflection', proxColor: '#a78bfa',
-      desc: d => 'Regime line — above it price tends to bounce, below it moves can trend and accelerate.' },
-    { key: 'kl_delta_inflection', strKey: null, label: 'Delta Inflection', proxColor: '#a78bfa',
-      desc: d => 'Delta flip zone — dealer hedging shifts direction here, expect choppiness or a pause.' },
-    { key: 'kl_call_delta_wall', strKey: 'kl_call_delta_str', label: 'Delta Wall Call', proxColor: '#f87171',
-      desc: d => 'Institutional call positioning — heavy resistance, large orders sitting here.' },
-    { key: 'kl_put_delta_wall', strKey: 'kl_put_delta_str', label: 'Delta Wall Put', proxColor: '#4ade80',
-      desc: d => 'Institutional put positioning — heavy support, large orders sitting here.' },
+    { key: 'kl_gamma_inflection', strKey: null, label: 'Gamma Inflection', proxColor: '#a78bfa' },
+    { key: 'kl_delta_inflection', strKey: null, label: 'Delta Inflection', proxColor: '#a78bfa' },
+    { key: 'kl_call_delta_wall', strKey: 'kl_call_delta_str', label: 'Delta Wall Call', proxColor: '#f87171' },
+    { key: 'kl_put_delta_wall', strKey: 'kl_put_delta_str', label: 'Delta Wall Put', proxColor: '#4ade80' },
   ];
 
   const KL_REFERENCE = [
-    { key: 'kl_call_oi_wall', strKey: 'kl_call_oi_str', label: 'OI Wall Call', proxColor: '#aaaaaa',
-      desc: d => 'Max call open interest — strong expiry magnet, price gravitates here into close.' },
-    { key: 'kl_put_oi_wall', strKey: 'kl_put_oi_str', label: 'OI Wall Put', proxColor: '#aaaaaa',
-      desc: d => 'Max put open interest — strong expiry magnet, price gravitates here into close.' },
-    { key: 'kl_call_vanna_wall', strKey: 'kl_call_vanna_str', label: 'Vanna Wall Call', proxColor: '#aaaaaa',
-      desc: d => {
-        const iv = ivDirectionKey(d);
-        if (iv === 'expanding') return 'IV EXPANDING — vanna active. Dealers buying here, pushing price up.';
-        if (iv === 'contracting') return 'IV CONTRACTING — vanna reversed. Dealers selling despite call positioning.';
-        if (iv === 'flat') return 'IV flat — vanna dormant. Level exists structurally but has no active flow right now.';
-        return 'IV direction unavailable — vanna context withheld.';
-      }},
-    { key: 'kl_put_vanna_wall', strKey: 'kl_put_vanna_str', label: 'Vanna Wall Put', proxColor: '#aaaaaa',
-      desc: d => {
-        const iv = ivDirectionKey(d);
-        if (iv === 'expanding') return 'IV EXPANDING — vanna active. Dealers selling here, pushing price down.';
-        if (iv === 'contracting') return 'IV CONTRACTING — vanna reversed. Dealers buying despite put positioning.';
-        if (iv === 'flat') return 'IV flat — vanna dormant. Level exists structurally but has no active flow right now.';
-        return 'IV direction unavailable — vanna context withheld.';
-      }},
-    { key: 'kl_oi_center', strKey: null, label: 'OI Center', sr: 'pin', srLabel: 'Pin', proxColor: '#aaaaaa',
-      desc: d => 'Open interest center of mass. Supports gamma pin convergence.' },
+    { key: 'kl_call_oi_wall', strKey: 'kl_call_oi_str', label: 'OI Wall Call', proxColor: '#aaaaaa' },
+    { key: 'kl_put_oi_wall', strKey: 'kl_put_oi_str', label: 'OI Wall Put', proxColor: '#aaaaaa' },
+    { key: 'kl_call_vanna_wall', strKey: 'kl_call_vanna_str', label: 'Vanna Wall Call', proxColor: '#aaaaaa' },
+    { key: 'kl_put_vanna_wall', strKey: 'kl_put_vanna_str', label: 'Vanna Wall Put', proxColor: '#aaaaaa' },
+    { key: 'kl_oi_center', strKey: null, label: 'OI Center', sr: 'pin', srLabel: 'Pin', proxColor: '#aaaaaa' },
   ];
 
   function renderKeyLevels(d) {
@@ -6921,8 +6873,6 @@ function render(d, fullRenderSource) {
       const sr = level.sr || (isNull ? 'net' : v > (spot||0) ? 'res' : 'sup');
       const srLbl = level.srLabel || (isNull ? '—' : v > (spot||0) ? 'Resistance' : 'Support');
       const pColor = proxColor(v, level);
-      const ctx = typeof level.desc === 'function' ? level.desc(d, spot, v) : level.desc;
-
       return `<div class="kl-grid">
         <div class="kl-prox" style="background:${pColor}"></div>
         <div class="kl-name${dimmed ? ' dimmed' : ''}">${level.label}</div>
@@ -6930,7 +6880,6 @@ function render(d, fullRenderSource) {
         <div style="text-align:center"><span class="kl-sr ${sr}">${srLbl}</span></div>
         <div class="kl-dist ${distClass(dist)}">${distStr}</div>
         <div class="kl-str${dimmed ? ' dimmed' : ''}">${str}</div>
-        <div class="kl-context${dimmed ? ' dimmed' : ''}">${ctx}</div>
       </div>`;
     }
 
@@ -6950,13 +6899,6 @@ function render(d, fullRenderSource) {
       const regime = (d.kl_net_gex_regime || '').toLowerCase();
       const regimeLbl = regime === 'positive' ? 'Positive Γ' : regime === 'negative' ? 'Negative Γ' : 'Neutral';
       const regimeSr = regime === 'positive' ? 'bull' : regime === 'negative' ? 'bear' : 'net';
-      const gflip = parseFloat(d.kl_gamma_flip || 0);
-      const aboveFlip = spot && gflip && spot > gflip;
-      const regimeDesc = regime === 'positive'
-        ? `Net GEX ${gexDisp} — positive gamma regime. Dealers tend to dampen moves${aboveFlip ? ' (spot above flip).' : ' (spot below flip — check flip).'}.`
-        : regime === 'negative'
-        ? `Net GEX ${gexDisp} — negative gamma regime. Dealers tend to amplify moves; breakout/acceleration risk elevated.`
-        : 'Net GEX unavailable or near zero — no clear dealer gamma bias.';
       const mag = d.kl_net_gex_mag || 'negligible';
       const magLbl = mag.charAt(0).toUpperCase() + mag.slice(1);
       html += `<div class="kl-grid">
@@ -6966,7 +6908,6 @@ function render(d, fullRenderSource) {
         <div style="text-align:center"><span class="kl-sr ${regimeSr}">${regimeLbl}</span></div>
         <div class="kl-dist">—</div>
         <div class="kl-str">${magLbl}</div>
-        <div class="kl-context">${regimeDesc}</div>
       </div>`;
     }
 
@@ -6991,12 +6932,6 @@ function render(d, fullRenderSource) {
            : charmAbs >= 1000 ? `${charmSign}${(charmAbs/1000).toFixed(0)}K Δ/day`
            : `${charmSign}${charmAbs.toFixed(1)} Δ/day`)
         : '—';
-      const flowDesc = flowBull
-        ? 'MM unwinding put hedges — mechanical delta buying.'
-        : flowBear
-        ? 'MM unwinding call hedges — mechanical delta selling.'
-        : (charmNetRaw == null ? 'Charm flow unavailable — withheld.' : 'Charm flows balanced — no directional pressure.');
-      const mechanic = `${flowDesc}${charmTarget > 0 ? ` Institutional pin target ${tgtStr}.` : ''}`;
 
       const charmProxColor = (charmTarget > 0 && spot && Math.abs(charmTarget - spot) <= prox) ? '#f97316'
         : (charmTarget > 0 && spot && charmTarget > spot && (charmTarget - spot) <= 3 && !nearAboveKey) ? '#818cf8'
@@ -7010,7 +6945,6 @@ function render(d, fullRenderSource) {
         <div style="text-align:center"><span class="kl-sr ${flowSr}">${flowLbl}</span></div>
         <div class="kl-dist ${distClass(dist)}">${distStr}</div>
         <div class="kl-str">${rateStr}</div>
-        <div class="kl-context">${mechanic}</div>
       </div>`;
     }
 
@@ -7025,11 +6959,6 @@ function render(d, fullRenderSource) {
       const voidAboveOk = Number.isFinite(alo) && Number.isFinite(ahi);
       const zDist = voidAboveOk && spot ? Math.abs(alo - spot) : null;
       const distStr = zDist !== null ? '+' + zDist.toFixed(2) : '—';
-      const voidDesc = !voidAboveOk
-        ? 'Void data incomplete for this snapshot.'
-        : voidAbove.contains_spot
-        ? 'Price INSIDE void — no hedging friction. Expect fast directional movement, do not fade.'
-        : `Acceleration corridor above. If ${alo.toFixed(0)} breaks, no friction until ${ahi.toFixed(0)}. Fast move likely.`;
       const pctStr = voidAbove.avg_gex_pct != null && Number.isFinite(Number(voidAbove.avg_gex_pct)) ? `${Number(voidAbove.avg_gex_pct)}% GEX` : '—';
       html += `<div class="kl-grid kl-void-row">
         <div class="kl-prox" style="background:#ff8800"></div>
@@ -7038,7 +6967,6 @@ function render(d, fullRenderSource) {
         <div style="text-align:center"><span class="kl-sr accel">Accel Zone</span></div>
         <div class="kl-dist above">${distStr}</div>
         <div class="kl-str">${pctStr}</div>
-        <div class="kl-context">${voidDesc}</div>
       </div>`;
     } else {
       html += `<div class="kl-grid kl-void-row">
@@ -7048,7 +6976,6 @@ function render(d, fullRenderSource) {
         <div style="text-align:center"><span class="kl-sr accel">Accel Zone</span></div>
         <div class="kl-dist">—</div>
         <div class="kl-str">—</div>
-        <div class="kl-context">No upside void detected. Gamma exposure distributed above spot — no acceleration corridor.</div>
       </div>`;
     }
 
@@ -7058,11 +6985,6 @@ function render(d, fullRenderSource) {
       const voidBelowOk = Number.isFinite(blo) && Number.isFinite(bhi);
       const zDist = voidBelowOk && spot ? Math.abs(bhi - spot) : null;
       const distStr = zDist !== null ? '-' + zDist.toFixed(2) : '—';
-      const voidDesc = !voidBelowOk
-        ? 'Void data incomplete for this snapshot.'
-        : voidBelow.contains_spot
-        ? 'Price INSIDE void — no hedging friction. Expect fast directional movement, do not fade.'
-        : `Acceleration corridor below. If ${bhi.toFixed(0)} breaks, stop cascades into void. Dealers amplify here.`;
       const bpctStr = voidBelow.avg_gex_pct != null && Number.isFinite(Number(voidBelow.avg_gex_pct)) ? `${Number(voidBelow.avg_gex_pct)}% GEX` : '—';
       html += `<div class="kl-grid kl-void-row">
         <div class="kl-prox" style="background:#ff8800"></div>
@@ -7071,7 +6993,6 @@ function render(d, fullRenderSource) {
         <div style="text-align:center"><span class="kl-sr accel">Accel Zone</span></div>
         <div class="kl-dist below">${distStr}</div>
         <div class="kl-str">${bpctStr}</div>
-        <div class="kl-context">${voidDesc}</div>
       </div>`;
     } else {
       html += `<div class="kl-grid kl-void-row">
@@ -7081,7 +7002,6 @@ function render(d, fullRenderSource) {
         <div style="text-align:center"><span class="kl-sr accel">Accel Zone</span></div>
         <div class="kl-dist">—</div>
         <div class="kl-str">—</div>
-        <div class="kl-context">No downside void detected. Gamma exposure distributed below spot — no acceleration corridor.</div>
       </div>`;
     }
 
@@ -7102,15 +7022,6 @@ function render(d, fullRenderSource) {
         const resid = parseFloat(d.kl_synth_fwd_resid || 0);
         const dist = spot ? sf - spot : null;
         const distStr = dist !== null ? (dist > 0 ? '+' : '') + dist.toFixed(2) : '—';
-        const absResid = Math.abs(resid);
-        let sfCtx = '';
-        if (absResid < 1.0) sfCtx = 'Put-call parity fair value. Spot aligned — no institutional skew.';
-        else if (sf > (spot||0)) sfCtx = absResid >= 3.0
-          ? `Calls rich by ${resid.toFixed(1)}pts — strong institutional bullish positioning.`
-          : `Calls slightly rich — mild bullish lean (+${resid.toFixed(1)}pts).`;
-        else sfCtx = absResid >= 3.0
-          ? `Puts rich by ${Math.abs(resid).toFixed(1)}pts — strong institutional bearish positioning.`
-          : `Puts slightly rich — mild bearish lean (${resid.toFixed(1)}pts).`;
 
         const sfProxColor = (spot && Math.abs(sf - spot) <= prox) ? '#f97316' : 'transparent';
 
@@ -7121,7 +7032,6 @@ function render(d, fullRenderSource) {
           <div style="text-align:center"><span class="kl-sr fv">Fair Value</span></div>
           <div class="kl-dist ${distClass(dist)}">${distStr}</div>
           <div class="kl-str dimmed">${resid >= 0 ? '+' : ''}${resid.toFixed(2)} pts</div>
-          <div class="kl-context dimmed">${sfCtx}</div>
         </div>`;
       }
     }
@@ -7136,12 +7046,6 @@ function render(d, fullRenderSource) {
       const mcExpand = d.mc_expansion != null ? Math.round(d.mc_expansion * 100) + '%' : '—';
       const efePrice = mcEfe && spot ? (spot + parseFloat(mcEfe)).toFixed(2) : '—';
       const eaePrice = mcEae && spot ? (spot - parseFloat(mcEae)).toFixed(2) : '—';
-      let eaeCtx = mcEae ? `−${mcEae} pts — expected max drawdown before recovery.` : '';
-      if (d.stop && mcEae) {
-        const stopDist = Math.abs(parseFloat(d.entry || spot) - parseFloat(d.stop));
-        if (parseFloat(mcEae) > stopDist * 1.5) eaeCtx += ' Stop tighter than EAE — likely hit even on winners.';
-        else if (parseFloat(mcEae) <= stopDist) eaeCtx += ' Stop wider than EAE — good positioning.';
-      }
 
       if (mcEfe) html += `<div class="kl-grid">
         <div class="kl-prox" style="background:#06b6d4"></div>
@@ -7150,7 +7054,6 @@ function render(d, fullRenderSource) {
         <div style="text-align:center"><span class="kl-sr sup">Target</span></div>
         <div class="kl-dist above">+${mcEfe}</div>
         <div class="kl-str">10K paths</div>
-        <div class="kl-context">+${mcEfe} pts — realistic upside target from simulated paths.</div>
       </div>`;
       if (mcEae) html += `<div class="kl-grid">
         <div class="kl-prox" style="background:#f59e0b"></div>
@@ -7159,7 +7062,6 @@ function render(d, fullRenderSource) {
         <div style="text-align:center"><span class="kl-sr res">Risk</span></div>
         <div class="kl-dist below">-${mcEae}</div>
         <div class="kl-str">10K paths</div>
-        <div class="kl-context">${eaeCtx}</div>
       </div>`;
       html += `<div class="kl-grid">
         <div class="kl-prox" style="background:transparent"></div>
@@ -7167,7 +7069,6 @@ function render(d, fullRenderSource) {
         <div class="kl-price">${mcContain}</div>
         <div style="text-align:center"><span class="kl-sr net">Prob</span></div>
         <div class="kl-dist"></div><div class="kl-str"></div>
-        <div class="kl-context">Probability price stays inside EM boundaries for next 65 min.</div>
       </div>`;
       html += `<div class="kl-grid">
         <div class="kl-prox" style="background:transparent"></div>
@@ -7175,7 +7076,6 @@ function render(d, fullRenderSource) {
         <div class="kl-price">${mcExpand}</div>
         <div style="text-align:center"><span class="kl-sr net">Prob</span></div>
         <div class="kl-dist"></div><div class="kl-str"></div>
-        <div class="kl-context">Probability price breaks EM boundary.${d.regime_primary === 'pinning' ? ' Pinning regime — fade expansions.' : ''}</div>
       </div>`;
     } else {
       html += `<div class="kl-grid">
@@ -7184,7 +7084,6 @@ function render(d, fullRenderSource) {
         <div class="kl-price">—</div>
         <div style="text-align:center"><span class="kl-sr net">—</span></div>
         <div class="kl-dist"></div><div class="kl-str"></div>
-        <div class="kl-context">Simulation not available — requires RTH data with IV.</div>
       </div>`;
     }
 
