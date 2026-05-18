@@ -122,10 +122,10 @@ Reference ticker for parametric tests: **SPY**.
 |-------|--------|--------|
 | **A** | Decouple 4 primary M cards — `UNAVAILABLE` + `PRIMARY_HORIZON_DATA_MISSING` when native horizon data missing; no silent 3c/8c/13c substitution | **Done** (`c8a3b0b`) |
 | **2** | `verify_active_models.py` — 4×3 slots for production tickers | **Done** (2026-05-17 run; see Universe model coverage below) |
-| **B** | Stop producing 3c/8c/13c (signals payload, ml_predict loop, `SECONDARY_SUPPORT_HORIZONS = ()`) | **Done** — production-side (`eab7ff2`, `4010965`); `signals.py` None-key schema residue rides **Phase D** |
+| **B** | Stop producing 3c/8c/13c (signals payload, ml_predict loop, `SECONDARY_SUPPORT_HORIZONS = ()`) | **Done** (`eab7ff2`, `4010965`; schema/code residue cleared in **D**) |
 | **C** | 4-primary regression vs legacy 7-horizon path | **Done** (`89e3ddc`; C1 `eab7ff2`, C2 `4010965`, C3 tier-contract gaps) |
-| **D** | Schema drop `outcome_3c/8c/13c` (+ pts) after backup | Planned |
-| **E** | Tools + tests cleanup (~10 scripts, calibration `HORIZONS_MV`) | Planned |
+| **D** | Schema drop `outcome_3c/8c/13c` (+ pts) after backup | **Done** — D1 `87bb131`, D1 amend `75aa9eb`, D2 `062f02a`, D3 **applied** on canonical DB 2026-05-18 (`ddl_column_delta: -69`, 198362 rows preserved); audit `governance/audits/snapshots_schema_drop_retired_horizons_v1_20260518_035734.json` |
+| **E** | Tools + tests cleanup (~10 scripts, calibration `HORIZONS_MV`; optional bayesian_fusion/ml_predict 0.33 audit) | Planned |
 
 ## Universe model coverage (Phase 2 verify — 2026-05-17)
 
