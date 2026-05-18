@@ -120,11 +120,18 @@ Reference ticker for parametric tests: **SPY**.
 
 | Phase | Scope | Status |
 |-------|--------|--------|
-| **A** | Decouple 4 primary M cards — `UNAVAILABLE` + `PRIMARY_HORIZON_DATA_MISSING` when native horizon data missing; no silent 3c/8c/13c substitution | **In progress** (`multi_horizon_decision`, `market_state`, `static/index.html`, tests) |
+| **A** | Decouple 4 primary M cards — `UNAVAILABLE` + `PRIMARY_HORIZON_DATA_MISSING` when native horizon data missing; no silent 3c/8c/13c substitution | **Done** (`c8a3b0b`) |
+| **2** | `verify_active_models.py` — 4×3 slots for production tickers | **Done** (2026-05-17 run; see Universe model coverage below) |
 | **B** | Stop producing 3c/8c/13c (signals payload, ml_predict loop, `SECONDARY_SUPPORT_HORIZONS = ()`) | Planned |
-| **C** | 4-primary regression vs legacy 7-horizon path | Planned |
+| **C** | 4-primary regression vs legacy 7-horizon path | **Done** (`89e3ddc`; C1 `eab7ff2`, C2 `4010965`, C3 tier-contract gaps) |
 | **D** | Schema drop `outcome_3c/8c/13c` (+ pts) after backup | Planned |
 | **E** | Tools + tests cleanup (~10 scripts, calibration `HORIZONS_MV`) | Planned |
+
+## Universe model coverage (Phase 2 verify — 2026-05-17)
+
+- [ ] **CRWD partial-bundle**: missing all 4 lstm + 60c transformer. Run `ml_scheduler.py --run-now --force-retrain` for CRWD. ~1–2h.
+- [ ] **27-ticker NON-COMPLIANT backlog**: ASTS, GOOG, MET, MRVL, MU, NFLX, PCG, PLTR, RKLB, SMCI, TSL, $VIX, AEIS, BBIO, BE, CDE, CRDO, FN, KRE, KTOS, NXT, PSCI, SATS, STRL, WMT, XBI, XRT — never trained (bundle dirs missing). Universe-expansion workstream; not a Phase A/B/C/D/E blocker (Phase A UNAVAILABLE is honest).
+- [x] **Production tickers (~13 inc. SPY/QQQ/$SPX)**: all 4×3 model slots present (verified Phase 2 run 2026-05-17 post-`c8a3b0b`).
 
 ## Critical — label vs presentation
 
