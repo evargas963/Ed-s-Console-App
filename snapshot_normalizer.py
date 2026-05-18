@@ -22,7 +22,7 @@ Transformation rules:
 - volume: last snapshot's candle_volume (accumulated bar volume)
 - timestamp: last snapshot's ts_utc, ts_et (bar close)
 - All state-derived fields (zone, net_gamma, vwap_side, etc.): from last snapshot
-- Outcomes (outcome_1c, outcome_3c, …, outcome_15c, outcome_60c): from last snapshot
+- Outcomes (outcome_1c, outcome_5c, outcome_15c, outcome_60c): from last snapshot
   in the minute bucket (Issue 16: snapshots_1m_normalized columns must stay aligned with
   `snapshots` so INSERT succeeds; after `fill_outcomes` backfill, run materialize to refresh).
 
