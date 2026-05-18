@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_batch_backfill_module_loads():
-    p = ROOT / "tools" / "batch_backfill_movement_predictions_v1.py"
+    p = ROOT / "tools" / "legacy" / "horizon_7" / "batch_backfill_movement_predictions_v1.py"
     spec = importlib.util.spec_from_file_location("batch_backfill_movement_predictions_v1", p)
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
@@ -20,4 +20,4 @@ def test_batch_backfill_module_loads():
 
 
 def test_validate_script_exists():
-    assert (ROOT / "tools" / "validate_movement_prediction_coverage_v1.py").is_file()
+    assert (ROOT / "tools" / "legacy" / "horizon_7" / "validate_movement_prediction_coverage_v1.py").is_file()

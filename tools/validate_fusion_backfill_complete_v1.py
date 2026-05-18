@@ -17,7 +17,7 @@ from lstm_data import STREAM_5M_LOOKBACK
 from ml_horizon import ML_HORIZON_SLUGS
 from timeframe_config import CANONICAL_TIMEFRAME
 
-from tools.backfill_fusion_policy_columns_v1 import _incomplete_fused_sql
+from tools.legacy.horizon_7.backfill_fusion_policy_columns_v1 import _incomplete_fused_sql
 
 MIN_COMPARABLE = 500
 

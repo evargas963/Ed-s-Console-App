@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+
+# DEPRECATED — 7-horizon era (pre Phase D3 schema drop).
+# Targets retired outcome_3c/8c/13c columns; do not run against post-D3 databases.
+# Relocated to tools/legacy/horizon_7/ for audit history only.
 """Phase 4E — governed dataset adequacy metrics (stdout JSON)."""
 from __future__ import annotations
 
@@ -9,7 +13,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 DEFAULT_DB = ROOT / "data" / "ed_console.db"

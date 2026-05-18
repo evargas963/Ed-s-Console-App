@@ -1,7 +1,11 @@
+
+# DEPRECATED — 7-horizon era (pre Phase D3 schema drop).
+# Targets retired outcome_3c/8c/13c columns; do not run against post-D3 databases.
+# Relocated to tools/legacy/horizon_7/ for audit history only.
 import sqlite3
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[3]
 GOV = """
 s.timeframe = '1m' AND s.horizon_outcome_schema_version = 3
 AND EXISTS (SELECT 1 FROM price_bars_1m p WHERE p.ticker = s.ticker AND p.bar_end_ts_utc <= s.ts_utc)

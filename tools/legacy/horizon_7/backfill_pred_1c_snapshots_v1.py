@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+
+# DEPRECATED — 7-horizon era (pre Phase D3 schema drop).
+# Targets retired outcome_3c/8c/13c columns; do not run against post-D3 databases.
+# Relocated to tools/legacy/horizon_7/ for audit history only.
 """
 Backfill snapshots.pred_1c_* from the same empirical histogram path as live inference
 (prediction_engine._literal_empirical_horizon on outcome_1c).
@@ -17,7 +21,7 @@ import sys
 import traceback
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 

@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+
+# DEPRECATED — 7-horizon era (pre Phase D3 schema drop).
+# Targets retired outcome_3c/8c/13c columns; do not run against post-D3 databases.
+# Relocated to tools/legacy/horizon_7/ for audit history only.
 """
 Phase 4C — prove real-time (stored governed labels) equals backfill (recompute from price_bars_1m).
 
@@ -18,7 +22,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 from horizon_outcomes import OUTCOME_BAR_SPECS, bar_complete_by_utc, forward_bar_start_utc  # noqa: E402

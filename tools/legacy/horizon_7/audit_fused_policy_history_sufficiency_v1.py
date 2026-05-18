@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+
+# DEPRECATED — 7-horizon era (pre Phase D3 schema drop).
+# Targets retired outcome_3c/8c/13c columns; do not run against post-D3 databases.
+# Relocated to tools/legacy/horizon_7/ for audit history only.
 """
 Task 1: fused_* history sufficiency for fused vs XGB policy comparison.
 
@@ -11,7 +15,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target

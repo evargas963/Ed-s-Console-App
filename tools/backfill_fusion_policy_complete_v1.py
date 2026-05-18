@@ -34,7 +34,7 @@ from ml_horizon import ML_HORIZON_SLUGS
 from signals import compute_fusion_policy_flat_for_replay
 from timeframe_config import CANONICAL_TIMEFRAME
 
-from tools.backfill_fusion_policy_columns_v1 import _incomplete_fused_sql
+from tools.legacy.horizon_7.backfill_fusion_policy_columns_v1 import _incomplete_fused_sql
 
 
 def _sqlite_exec_retry(conn: sqlite3.Connection, sql: str, params: tuple, *, label: str = "") -> None:
