@@ -14,14 +14,10 @@ from typing import Any, Optional
 from math_exposure import MIN_SAMPLES_STATISTICAL, bucket_hi, bucket_lo, dist_bucket
 
 # ── Mirror db.py Issue 19 (avoid circular import) ─────────────────────────────
-SIMILARITY_EMPIRICAL_OUTCOME_COLUMNS: tuple[str, ...] = (
-    "outcome_1c",
-    "outcome_3c",
-    "outcome_5c",
-    "outcome_8c",
-    "outcome_13c",
-    "outcome_15c",
-    "outcome_60c",
+from ml_horizon import PRIMARY_DECISION_HORIZONS
+
+SIMILARITY_EMPIRICAL_OUTCOME_COLUMNS: tuple[str, ...] = tuple(
+    f"outcome_{hz}" for hz in PRIMARY_DECISION_HORIZONS
 )
 SIMILARITY_TIER_STOP_OUTCOME_COLUMNS: tuple[str, ...] = (
     "outcome_1c",
@@ -473,13 +469,7 @@ def inspection_row_projection(row: dict) -> dict[str, Any]:
         "nearest_above_dist_bucket_derived": _b(nad),
         "nearest_below_dist_bucket_derived": _b(nbd),
         "match_tier": row.get("match_tier"),
-        "outcome_1c": row.get("outcome_1c"),
-        "outcome_3c": row.get("outcome_3c"),
-        "outcome_5c": row.get("outcome_5c"),
-        "outcome_8c": row.get("outcome_8c"),
-        "outcome_13c": row.get("outcome_13c"),
-        "outcome_15c": row.get("outcome_15c"),
-        "outcome_60c": row.get("outcome_60c"),
+        **{f"outcome_{hz}": row.get(f"outcome_{hz}") for hz in PRIMARY_DECISION_HORIZONS},
     }
 
 

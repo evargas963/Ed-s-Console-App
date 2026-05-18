@@ -43,10 +43,10 @@ def _insert_viable_row(
         INSERT INTO snapshots (
           ticker, timeframe, ts_utc, ts_et, spot, zone, vwap_side,
           nearest_above_dist, nearest_below_dist,
-          outcome_1c, outcome_3c, outcome_5c, outcome_8c, outcome_13c, outcome_15c, outcome_60c,
+          outcome_1c, outcome_5c, outcome_15c, outcome_60c,
           horizon_outcome_schema_version
         )
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             ticker,
@@ -58,9 +58,6 @@ def _insert_viable_row(
             vwap_side,
             nad,
             nbd,
-            direction,
-            direction,
-            direction,
             direction,
             direction,
             direction,
@@ -166,19 +163,20 @@ def _insert_row_tier_stop_only(
     vwap_side: str,
     nad: float,
     nbd: float,
-    outcome_aux: str | None,
+    outcome_5c: str | None,
+    outcome_15c: str | None,
     outcome_60: str | None,
 ):
-    """1c / 5c / 15c always 'up'; optional labels for auxiliary horizons (None = unlabeled)."""
+    """Primary horizons; None marks unlabeled cells for tier-stop / empirical tests."""
     conn.execute(
         """
         INSERT INTO snapshots (
           ticker, timeframe, ts_utc, ts_et, spot, zone, vwap_side,
           nearest_above_dist, nearest_below_dist,
-          outcome_1c, outcome_3c, outcome_5c, outcome_8c, outcome_13c, outcome_15c, outcome_60c,
+          outcome_1c, outcome_5c, outcome_15c, outcome_60c,
           horizon_outcome_schema_version
         )
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             ticker,
@@ -191,11 +189,8 @@ def _insert_row_tier_stop_only(
             nad,
             nbd,
             "up",
-            outcome_aux,
-            "up",
-            outcome_aux,
-            outcome_aux,
-            "up",
+            outcome_5c,
+            outcome_15c,
             outcome_60,
             3,
         ),
@@ -217,7 +212,8 @@ def test_issue19_does_not_broaden_for_sparse_60c_when_tier_stop_ok(tmp_path):
                 vwap_side="below",
                 nad=1.0,
                 nbd=1.0,
-                outcome_aux="up",
+                outcome_5c="up",
+                outcome_15c="up",
                 outcome_60=None,
             )
         conn.commit()
@@ -241,44 +237,6 @@ def test_issue19_does_not_broaden_for_sparse_60c_when_tier_stop_ok(tmp_path):
     assert p60 is None and n60 < MIN_SAMPLES_STATISTICAL
     p5, src5, _n5, n5 = _literal_empirical_horizon(similar, "outcome_5c", 5)
     assert p5 is not None and n5 >= MIN_SAMPLES_STATISTICAL
-
-
-def test_issue19_does_not_broaden_for_sparse_38613_when_tier_stop_ok(tmp_path):
-    """ML/auxiliary 3c/8c/13c sparse must not force widening when 1c/5c/15c are deep."""
-    dbp = tmp_path / "i19_aux.db"
-    db = EdDB(dbp)
-    base_ts = 1_780_000_000.0
-    with db._connect() as conn:
-        for i in range(40):
-            _insert_row_tier_stop_only(
-                conn,
-                ticker="XLE",
-                ts=base_ts + i * 60,
-                zone="ix19_aux",
-                vwap_side="below",
-                nad=1.0,
-                nbd=1.0,
-                outcome_aux=None,
-                outcome_60="up",
-            )
-        conn.commit()
-    similar, tr = db.get_similar_setups(
-        ticker="XLE",
-        timeframe=CANONICAL_TIMEFRAME,
-        zone="ix19_aux",
-        vwap_side="below",
-        nearest_above_dist=_FAR_NAD,
-        nearest_below_dist=_FAR_NBD,
-        return_trace=True,
-    )
-    assert tr["chosen_tier"] == 3
-    counts = similarity_labeled_counts(similar)
-    assert similarity_tier_stop_viable(counts)
-    assert counts["outcome_3c"] < MIN_SAMPLES_STATISTICAL
-    from prediction_engine import _literal_empirical_horizon
-
-    p3, _s3, _n3, n3 = _literal_empirical_horizon(similar, "outcome_3c", 3)
-    assert p3 is None and n3 < MIN_SAMPLES_STATISTICAL
 
 
 def test_issue19_honest_no_viable_set_sparse_long_horizon(tmp_path):

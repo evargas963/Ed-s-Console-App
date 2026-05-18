@@ -57,18 +57,9 @@ def test_build_snapshot_dict_passes_pred_1c_from_predictive_card():
         up_prob_1c=0.41,
         down_prob_1c=0.31,
         flat_prob_1c=0.28,
-        up_prob_3c=0.4,
-        down_prob_3c=0.3,
-        flat_prob_3c=0.3,
         up_prob_5c=0.4,
         down_prob_5c=0.3,
         flat_prob_5c=0.3,
-        up_prob_8c=0.4,
-        down_prob_8c=0.3,
-        flat_prob_8c=0.3,
-        up_prob_13c=0.4,
-        down_prob_13c=0.3,
-        flat_prob_13c=0.3,
     )
     call = TheCall(
         signal="wait",
@@ -139,10 +130,10 @@ def test_empirical_backfill_sets_pred_1c_when_similar_pool_sufficient(tmp_path):
             INSERT INTO snapshots (
               ticker, timeframe, ts_utc, ts_et, spot, zone, vwap_side,
               nearest_above_dist, nearest_below_dist,
-              outcome_1c, outcome_3c, outcome_5c, outcome_8c, outcome_13c, outcome_15c, outcome_60c,
+              outcome_1c, outcome_5c, outcome_15c, outcome_60c,
               horizon_outcome_schema_version
             )
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 "SPY",
@@ -154,9 +145,6 @@ def test_empirical_backfill_sets_pred_1c_when_similar_pool_sufficient(tmp_path):
                 vwap_side,
                 nad,
                 nbd,
-                "up",
-                "up",
-                "up",
                 "up",
                 "up",
                 "up",

@@ -245,10 +245,7 @@ def test_net_delta_none_propagates_to_call_sizing_decision():
         samples_used=40,
         model_note="test",
         timeframe_reads={},
-        up_prob_3c=0.55, down_prob_3c=0.25, flat_prob_3c=0.20,
         up_prob_5c=0.55, down_prob_5c=0.25, flat_prob_5c=0.20,
-        up_prob_8c=0.55, down_prob_8c=0.25, flat_prob_8c=0.20,
-        up_prob_13c=0.55, down_prob_13c=0.25, flat_prob_13c=0.20,
     )
     canonical = CanonicalForecast(
         direction="up",

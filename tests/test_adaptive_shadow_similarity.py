@@ -22,10 +22,10 @@ def _seed_rows(conn, ticker: str, zone: str, n: int, base_ts: float) -> None:
             INSERT INTO snapshots (
               ticker, timeframe, ts_utc, ts_et, spot, zone, vwap_side,
               nearest_above_dist, nearest_below_dist,
-              outcome_1c, outcome_3c, outcome_5c, outcome_8c, outcome_13c, outcome_15c, outcome_60c,
+              outcome_1c, outcome_5c, outcome_15c, outcome_60c,
               horizon_outcome_schema_version
             )
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 ticker,
@@ -37,9 +37,6 @@ def _seed_rows(conn, ticker: str, zone: str, n: int, base_ts: float) -> None:
                 "above" if i % 2 == 0 else "below",
                 1.0,
                 1.0,
-                "up",
-                "up",
-                "up",
                 "up",
                 "up",
                 "up",

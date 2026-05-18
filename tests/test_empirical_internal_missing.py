@@ -28,10 +28,7 @@ def test_build_ml_snapshot_null_pred_when_similar_set_too_small():
     tiny_similar = [
         {
             "outcome_1c": "up",
-            "outcome_3c": "up",
             "outcome_5c": "flat",
-            "outcome_8c": "up",
-            "outcome_13c": "up",
             "outcome_15c": "down",
             "outcome_60c": "flat",
             "ts_utc": 1_700_000_000.0 + float(i),

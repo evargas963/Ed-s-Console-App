@@ -97,10 +97,7 @@ def test_low_conf_prediction_lean_counts_for_stack_threshold():
         samples_used=40,
         model_note="weak lean",
         timeframe_reads={},
-        up_prob_3c=0.47, down_prob_3c=0.30, flat_prob_3c=0.23,
         up_prob_5c=0.47, down_prob_5c=0.30, flat_prob_5c=0.23,
-        up_prob_8c=0.45, down_prob_8c=0.30, flat_prob_8c=0.25,
-        up_prob_13c=0.45, down_prob_13c=0.30, flat_prob_13c=0.25,
     )
     regime = SimpleNamespace(primary="trend_continuation", confidence="medium")
     fusion = SimpleNamespace(

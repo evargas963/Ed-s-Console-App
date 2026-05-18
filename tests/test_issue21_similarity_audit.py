@@ -41,10 +41,10 @@ def _insert_full_row(conn, *, ticker: str, ts: float, zone: str, vwap_side: str,
         INSERT INTO snapshots (
           ticker, timeframe, ts_utc, ts_et, spot, zone, vwap_side,
           nearest_above_dist, nearest_below_dist,
-          outcome_1c, outcome_3c, outcome_5c, outcome_8c, outcome_13c, outcome_15c, outcome_60c,
+          outcome_1c, outcome_5c, outcome_15c, outcome_60c,
           horizon_outcome_schema_version
         )
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             ticker,
@@ -56,7 +56,7 @@ def _insert_full_row(conn, *, ticker: str, ts: float, zone: str, vwap_side: str,
             vwap_side,
             nad,
             nbd,
-            "up", "up", "up", "up", "up", "up", "up",
+            "up", "up", "up", "up",
             3,
         ),
     )

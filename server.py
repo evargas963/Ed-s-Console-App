@@ -1822,22 +1822,6 @@ def _ms_to_dict(ms) -> dict:
 # Trader-facing REST/SSE payload: primary decision horizons only (Issue 2 + tier contract).
 _TRADER_ACCURACY_HORIZONS_UI = frozenset(PRIMARY_DECISION_HORIZONS)
 _TRADER_UI_PRODUCT_HORIZONS = frozenset(PRIMARY_DECISION_HORIZONS)
-_TRADER_PAYLOAD_STRIP_HORIZON_KEYS = (
-    "up_prob_3c",
-    "down_prob_3c",
-    "flat_prob_3c",
-    "up_prob_8c",
-    "down_prob_8c",
-    "flat_prob_8c",
-    "up_prob_13c",
-    "down_prob_13c",
-    "flat_prob_13c",
-    "avg_3c_pts",
-    "avg_8c_pts",
-    "avg_13c_pts",
-    "median_3c_pts",
-)
-
 _TRADER_HIDDEN_BAR_HORIZONS = tuple(SECONDARY_SUPPORT_HORIZONS)
 
 
@@ -1886,8 +1870,6 @@ def _filter_horizon_prob_bars_primary_only(ms_dict: dict) -> None:
 
 def _apply_trader_horizon_contract(ms_dict: dict) -> None:
     """Strip legacy/non-product horizon fields from JSON sent to the browser."""
-    for _k in _TRADER_PAYLOAD_STRIP_HORIZON_KEYS:
-        ms_dict.pop(_k, None)
     _strip_trader_hidden_horizon_keys(ms_dict)
     _filter_horizon_prob_bars_primary_only(ms_dict)
     _acc = ms_dict.get("accuracy")
@@ -4424,14 +4406,8 @@ def _fetch_state(
                     rules_summary=ms.rules_headline,
                     pred_1c_up_prob=ms.up_prob_1c, pred_1c_down_prob=ms.down_prob_1c,
                     pred_1c_flat_prob=ms.flat_prob_1c,
-                    pred_3c_up_prob=ms.up_prob_3c, pred_3c_down_prob=ms.down_prob_3c,
-                    pred_3c_flat_prob=ms.flat_prob_3c,
                     pred_5c_up_prob=ms.up_prob_5c, pred_5c_down_prob=ms.down_prob_5c,
                     pred_5c_flat_prob=ms.flat_prob_5c,
-                    pred_8c_up_prob=ms.up_prob_8c, pred_8c_down_prob=ms.down_prob_8c,
-                    pred_8c_flat_prob=ms.flat_prob_8c,
-                    pred_13c_up_prob=ms.up_prob_13c, pred_13c_down_prob=ms.down_prob_13c,
-                    pred_13c_flat_prob=ms.flat_prob_13c,
                     pred_15c_up_prob=ms.up_prob_15c, pred_15c_down_prob=ms.down_prob_15c,
                     pred_15c_flat_prob=ms.flat_prob_15c,
                     pred_60c_up_prob=getattr(ms, "up_prob_60c", None),

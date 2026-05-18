@@ -361,18 +361,9 @@ class SnapshotRow:
     pred_1c_up_prob:    Optional[float] = None
     pred_1c_down_prob:  Optional[float] = None
     pred_1c_flat_prob:  Optional[float] = None
-    pred_3c_up_prob:    Optional[float] = None
-    pred_3c_down_prob:  Optional[float] = None
-    pred_3c_flat_prob:  Optional[float] = None
     pred_5c_up_prob:    Optional[float] = None
     pred_5c_down_prob:  Optional[float] = None
     pred_5c_flat_prob:  Optional[float] = None
-    pred_8c_up_prob:    Optional[float] = None
-    pred_8c_down_prob:  Optional[float] = None
-    pred_8c_flat_prob:  Optional[float] = None
-    pred_13c_up_prob:   Optional[float] = None
-    pred_13c_down_prob: Optional[float] = None
-    pred_13c_flat_prob: Optional[float] = None
     pred_15c_up_prob:   Optional[float] = None  # 15×1m forward — product 15m clock
     pred_15c_down_prob: Optional[float] = None
     pred_15c_flat_prob: Optional[float] = None
@@ -550,15 +541,9 @@ class SnapshotRow:
 
     # ── Outcomes (NULL until fill_outcomes — Issue 4 anchor + Issue 3 forward bar close) ─
     outcome_1c:         Optional[str]   = None  # 'up', 'down', 'flat'
-    outcome_3c:         Optional[str]   = None
     outcome_5c:         Optional[str]   = None
     outcome_1c_pts:     Optional[float] = None  # actual point move
-    outcome_3c_pts:     Optional[float] = None
     outcome_5c_pts:     Optional[float] = None
-    outcome_8c:         Optional[str]   = None
-    outcome_8c_pts:     Optional[float] = None
-    outcome_13c:        Optional[str]   = None
-    outcome_13c_pts:    Optional[float] = None
     outcome_15c:        Optional[str]   = None  # 15×1m bars — true 15m label
     outcome_15c_pts:    Optional[float] = None
     outcome_60c:        Optional[str]   = None  # 60×1m bars — true 60m label
@@ -567,18 +552,9 @@ class SnapshotRow:
     outcome_dir_1c:     Optional[str]   = None
     outcome_move_1c:    Optional[str]   = None
     outcome_move_thr_pts_1c: Optional[float] = None
-    outcome_dir_3c:     Optional[str]   = None
-    outcome_move_3c:    Optional[str]   = None
-    outcome_move_thr_pts_3c: Optional[float] = None
     outcome_dir_5c:     Optional[str]   = None
     outcome_move_5c:    Optional[str]   = None
     outcome_move_thr_pts_5c: Optional[float] = None
-    outcome_dir_8c:     Optional[str]   = None
-    outcome_move_8c:    Optional[str]   = None
-    outcome_move_thr_pts_8c: Optional[float] = None
-    outcome_dir_13c:    Optional[str]   = None
-    outcome_move_13c:   Optional[str]   = None
-    outcome_move_thr_pts_13c: Optional[float] = None
     outcome_dir_15c:    Optional[str]   = None
     outcome_move_15c:   Optional[str]   = None
     outcome_move_thr_pts_15c: Optional[float] = None
@@ -587,14 +563,8 @@ class SnapshotRow:
     outcome_move_thr_pts_60c: Optional[float] = None
     valid_dir_1c:       Optional[int]   = None
     threshold_move_1c:  Optional[float] = None
-    valid_dir_3c:       Optional[int]   = None
-    threshold_move_3c:  Optional[float] = None
     valid_dir_5c:       Optional[int]   = None
     threshold_move_5c:  Optional[float] = None
-    valid_dir_8c:       Optional[int]   = None
-    threshold_move_8c:  Optional[float] = None
-    valid_dir_13c:      Optional[int]   = None
-    threshold_move_13c: Optional[float] = None
     valid_dir_15c:      Optional[int]   = None
     threshold_move_15c: Optional[float] = None
     valid_dir_60c:      Optional[int]   = None
@@ -638,26 +608,11 @@ class SnapshotRow:
     fused_confidence_1c: Optional[float] = None
     fused_contributing_models_1c: Optional[str] = None
     fused_stack_status_1c: Optional[str] = None
-    fused_move_prob_3c: Optional[float] = None
-    fused_dir_up_prob_3c: Optional[float] = None
-    fused_confidence_3c: Optional[float] = None
-    fused_contributing_models_3c: Optional[str] = None
-    fused_stack_status_3c: Optional[str] = None
     fused_move_prob_5c: Optional[float] = None
     fused_dir_up_prob_5c: Optional[float] = None
     fused_confidence_5c: Optional[float] = None
     fused_contributing_models_5c: Optional[str] = None
     fused_stack_status_5c: Optional[str] = None
-    fused_move_prob_8c: Optional[float] = None
-    fused_dir_up_prob_8c: Optional[float] = None
-    fused_confidence_8c: Optional[float] = None
-    fused_contributing_models_8c: Optional[str] = None
-    fused_stack_status_8c: Optional[str] = None
-    fused_move_prob_13c: Optional[float] = None
-    fused_dir_up_prob_13c: Optional[float] = None
-    fused_confidence_13c: Optional[float] = None
-    fused_contributing_models_13c: Optional[str] = None
-    fused_stack_status_13c: Optional[str] = None
     fused_move_prob_15c: Optional[float] = None
     fused_dir_up_prob_15c: Optional[float] = None
     fused_confidence_15c: Optional[float] = None
@@ -1055,18 +1010,9 @@ class EdDB:
                 pred_1c_up_prob     REAL,
                 pred_1c_down_prob   REAL,
                 pred_1c_flat_prob   REAL,
-                pred_3c_up_prob     REAL,
-                pred_3c_down_prob   REAL,
-                pred_3c_flat_prob   REAL,
                 pred_5c_up_prob     REAL,
                 pred_5c_down_prob   REAL,
                 pred_5c_flat_prob   REAL,
-                pred_8c_up_prob     REAL,
-                pred_8c_down_prob   REAL,
-                pred_8c_flat_prob   REAL,
-                pred_13c_up_prob    REAL,
-                pred_13c_down_prob  REAL,
-                pred_13c_flat_prob  REAL,
                 pred_15c_up_prob    REAL,
                 pred_15c_down_prob  REAL,
                 pred_15c_flat_prob  REAL,
@@ -1211,15 +1157,9 @@ class EdDB:
 
                 -- Outcomes (NULL until filled)
                 outcome_1c          TEXT,
-                outcome_3c          TEXT,
                 outcome_5c          TEXT,
                 outcome_1c_pts      REAL,
-                outcome_3c_pts      REAL,
                 outcome_5c_pts      REAL,
-                outcome_8c          TEXT,
-                outcome_8c_pts      REAL,
-                outcome_13c         TEXT,
-                outcome_13c_pts     REAL,
                 outcome_15c         TEXT,
                 outcome_15c_pts     REAL,
                 outcome_60c         TEXT,
@@ -2210,19 +2150,9 @@ class EdDB:
             ("charm_magnitude",     "REAL"),
             ("session_bucket",      "TEXT"),
             ("vix_bucket",          "TEXT"),
-            ("pred_8c_up_prob",     "REAL"),
-            ("pred_8c_down_prob",   "REAL"),
-            ("pred_8c_flat_prob",   "REAL"),
-            ("pred_13c_up_prob",    "REAL"),
-            ("pred_13c_down_prob",  "REAL"),
-            ("pred_13c_flat_prob",  "REAL"),
             ("pred_15c_up_prob",    "REAL"),
             ("pred_15c_down_prob",  "REAL"),
             ("pred_15c_flat_prob",  "REAL"),
-            ("outcome_8c",          "TEXT"),
-            ("outcome_8c_pts",      "REAL"),
-            ("outcome_13c",         "TEXT"),
-            ("outcome_13c_pts",     "REAL"),
             ("outcome_15c",         "TEXT"),
             ("outcome_15c_pts",     "REAL"),
             ("outcome_60c",         "TEXT"),
@@ -2624,16 +2554,14 @@ class EdDB:
                 "Rows set horizon_outcome_schema_version=%s.",
                 HORIZON_OUTCOME_SCHEMA_BAR_V1,
             )
+            _null_outcomes = ", ".join(
+                f"{odir} = NULL, {opt} = NULL"
+                for odir, opt, _n in OUTCOME_BAR_SPECS
+            )
             conn.execute(
                 f"""
                 UPDATE snapshots SET
-                    outcome_1c = NULL, outcome_1c_pts = NULL,
-                    outcome_3c = NULL, outcome_3c_pts = NULL,
-                    outcome_5c = NULL, outcome_5c_pts = NULL,
-                    outcome_8c = NULL, outcome_8c_pts = NULL,
-                    outcome_13c = NULL, outcome_13c_pts = NULL,
-                    outcome_15c = NULL, outcome_15c_pts = NULL,
-                    outcome_60c = NULL, outcome_60c_pts = NULL,
+                    {_null_outcomes},
                     outcome_filled = 0,
                     horizon_outcome_schema_version = {int(HORIZON_OUTCOME_SCHEMA_BAR_V1)}
                 """
@@ -2668,16 +2596,14 @@ class EdDB:
                 "Rows set horizon_outcome_schema_version=%s.",
                 HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
             )
+            _null_outcomes = ", ".join(
+                f"{odir} = NULL, {opt} = NULL"
+                for odir, opt, _n in OUTCOME_BAR_SPECS
+            )
             conn.execute(
                 f"""
                 UPDATE snapshots SET
-                    outcome_1c = NULL, outcome_1c_pts = NULL,
-                    outcome_3c = NULL, outcome_3c_pts = NULL,
-                    outcome_5c = NULL, outcome_5c_pts = NULL,
-                    outcome_8c = NULL, outcome_8c_pts = NULL,
-                    outcome_13c = NULL, outcome_13c_pts = NULL,
-                    outcome_15c = NULL, outcome_15c_pts = NULL,
-                    outcome_60c = NULL, outcome_60c_pts = NULL,
+                    {_null_outcomes},
                     outcome_filled = 0,
                     horizon_outcome_schema_version = {int(HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1)}
                 WHERE COALESCE(horizon_outcome_schema_version, 0) < {int(HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1)}
@@ -3668,9 +3594,9 @@ class EdDB:
 
         Returns:
           avg_1c_pts   : average move over next 1 candle (signed, +up/-down)
-          avg_3c_pts   : average move over next 3 candles
+          avg_5c_pts   : average move over next 5 candles (product 5m clock)
           median_1c_pts: median move
-          median_3c_pts: median
+          median_5c_pts: median over 5c window
           n            : sample count used
         """
         timeframe = require_snapshot_timeframe(timeframe, caller="EdDB.get_avg_move")
@@ -3682,9 +3608,9 @@ class EdDB:
             )
             return {
                 "avg_1c_pts": None,
-                "avg_3c_pts": None,
+                "avg_5c_pts": None,
                 "median_1c_pts": None,
-                "median_3c_pts": None,
+                "median_5c_pts": None,
                 "n": 0,
                 "reject_reason": "non_canonical_timeframe",
             }
@@ -3704,7 +3630,7 @@ class EdDB:
             if as_of_ts_utc is not None:
                 _params = _params + (as_of_ts_utc,)
             rows = conn.execute(f"""
-                SELECT outcome_1c_pts, outcome_3c_pts
+                SELECT outcome_1c_pts, outcome_5c_pts
                 FROM snapshots
                 WHERE ticker = ?
                   AND timeframe = ?
@@ -3725,11 +3651,11 @@ class EdDB:
             """, _params).fetchall()
 
         if not rows:
-            return {"avg_1c_pts": None, "avg_3c_pts": None,
-                    "median_1c_pts": None, "median_3c_pts": None, "n": 0}
+            return {"avg_1c_pts": None, "avg_5c_pts": None,
+                    "median_1c_pts": None, "median_5c_pts": None, "n": 0}
 
         pts1 = [r["outcome_1c_pts"] for r in rows if r["outcome_1c_pts"] is not None]
-        pts3 = [r["outcome_3c_pts"] for r in rows if r["outcome_3c_pts"] is not None]
+        pts5 = [r["outcome_5c_pts"] for r in rows if r["outcome_5c_pts"] is not None]
 
         def _avg(lst):
             return round(sum(lst) / len(lst), 2) if lst else None
@@ -3742,9 +3668,9 @@ class EdDB:
 
         return {
             "avg_1c_pts":    _avg(pts1),
-            "avg_3c_pts":    _avg(pts3),
+            "avg_5c_pts":    _avg(pts5),
             "median_1c_pts": _median(pts1),
-            "median_3c_pts": _median(pts3),
+            "median_5c_pts": _median(pts5),
             "n":             len(pts1),
         }
 
@@ -3842,7 +3768,9 @@ class EdDB:
         """
         timeframe = require_snapshot_timeframe(timeframe, caller="EdDB.compute_accuracy")
         results = {}
-        for horizon in ("1c", "3c", "5c", "8c", "13c", "15c", "60c"):
+        from ml_horizon import PRIMARY_DECISION_HORIZONS
+
+        for horizon in PRIMARY_DECISION_HORIZONS:
             pred_col    = f"pred_{horizon}_up_prob"
             outcome_col = f"outcome_{horizon}"
 
@@ -4234,10 +4162,10 @@ def _apply_bar_based_outcome_updates(
         if not updates:
             continue
 
+        _outcome_dir_cols = ", ".join(s[0] for s in OUTCOME_BAR_SPECS)
         existing = conn.execute(
             f"""
-            SELECT outcome_1c, outcome_3c, outcome_5c,
-                   outcome_8c, outcome_13c, outcome_15c, outcome_60c
+            SELECT {_outcome_dir_cols}
             FROM snapshots WHERE {row_key_col} = ?
             """,
             (row_key,),

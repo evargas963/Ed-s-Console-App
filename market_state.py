@@ -314,18 +314,9 @@ class MarketState:
     up_prob_1c:         Optional[float] = None
     down_prob_1c:       Optional[float] = None
     flat_prob_1c:       Optional[float] = None
-    up_prob_3c:         Optional[float] = None
-    down_prob_3c:       Optional[float] = None
-    flat_prob_3c:       Optional[float] = None
     up_prob_5c:         Optional[float] = None
     down_prob_5c:       Optional[float] = None
     flat_prob_5c:       Optional[float] = None
-    up_prob_8c:         Optional[float] = None
-    down_prob_8c:       Optional[float] = None
-    flat_prob_8c:       Optional[float] = None
-    up_prob_13c:        Optional[float] = None
-    down_prob_13c:      Optional[float] = None
-    flat_prob_13c:      Optional[float] = None
     up_prob_15c:        Optional[float] = None
     down_prob_15c:      Optional[float] = None
     flat_prob_15c:      Optional[float] = None
@@ -353,10 +344,7 @@ class MarketState:
     pred_model_source:  Optional[str]   = None   # 'ml', 'rules', 'statistical' — which engine produced probs
     pred_override_source: Optional[str] = None   # 'user', 'manual' — when user overrode prediction
     timeframe_reads:    dict            = field(default_factory=dict)
-    avg_3c_pts:         Optional[float] = None
     avg_5c_pts:         Optional[float] = None
-    avg_8c_pts:         Optional[float] = None
-    avg_13c_pts:        Optional[float] = None
     avg_15c_pts:        Optional[float] = None
     avg_60c_pts:        Optional[float] = None
 
@@ -1480,18 +1468,9 @@ def build_market_state(
             ms.up_prob_1c      = getattr(_pred, "up_prob_1c", None)
             ms.down_prob_1c    = getattr(_pred, "down_prob_1c", None)
             ms.flat_prob_1c    = getattr(_pred, "flat_prob_1c", None)
-            ms.up_prob_3c      = _pred.up_prob_3c
-            ms.down_prob_3c    = _pred.down_prob_3c
-            ms.flat_prob_3c    = _pred.flat_prob_3c
             ms.up_prob_5c      = _pred.up_prob_5c
             ms.down_prob_5c    = _pred.down_prob_5c
             ms.flat_prob_5c    = _pred.flat_prob_5c
-            ms.up_prob_8c      = _pred.up_prob_8c
-            ms.down_prob_8c    = _pred.down_prob_8c
-            ms.flat_prob_8c    = _pred.flat_prob_8c
-            ms.up_prob_13c     = _pred.up_prob_13c
-            ms.down_prob_13c   = _pred.down_prob_13c
-            ms.flat_prob_13c   = _pred.flat_prob_13c
             ms.up_prob_15c     = getattr(_pred, "up_prob_15c", None)
             ms.down_prob_15c   = getattr(_pred, "down_prob_15c", None)
             ms.flat_prob_15c   = getattr(_pred, "flat_prob_15c", None)
@@ -1533,10 +1512,7 @@ def build_market_state(
             ms.model_version   = getattr(_pred, 'model_version', 'rules_v1')
             ms.pred_model_source = getattr(_pred, 'model_source', None)
             ms.pred_override_source = getattr(_sig_out, 'pred_override_source', None)
-            ms.avg_3c_pts      = _pred.avg_3c_pts
             ms.avg_5c_pts      = _pred.avg_5c_pts
-            ms.avg_8c_pts      = _pred.avg_8c_pts
-            ms.avg_13c_pts     = _pred.avg_13c_pts
             ms.avg_15c_pts     = getattr(_pred, "avg_15c_pts", None)
             ms.avg_60c_pts     = getattr(_pred, "avg_60c_pts", None)
             ms.timeframe_reads = dict(_pred.timeframe_reads or {})

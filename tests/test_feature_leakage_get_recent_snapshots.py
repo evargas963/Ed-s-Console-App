@@ -22,7 +22,7 @@ def _insert_row(conn, *, ts_utc: float) -> None:
             ticker, timeframe, ts_utc, ts_et, spot,
             zone, vwap_side, outcome_1c,
             nearest_above_dist, nearest_below_dist,
-            outcome_1c_pts, outcome_3c_pts,
+            outcome_1c_pts, outcome_5c_pts,
             horizon_outcome_schema_version, outcome_filled
         )
         VALUES (?, ?, ?, 'et', 100.0, 'pin_bull', 'above', 'up', 1.0, 1.0, 0.1, 0.2, ?, 0)

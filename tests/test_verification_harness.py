@@ -205,7 +205,6 @@ def test_no_valid_primary_sets_wait_reason():
         up_prob_60c=None,
         down_prob_60c=None,
         flat_prob_60c=None,
-        avg_3c_pts=0.1,
         avg_5c_pts=0.1,
         avg_15c_pts=0.1,
         avg_60c_pts=0.1,

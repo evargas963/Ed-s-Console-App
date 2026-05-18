@@ -69,8 +69,6 @@ def test_secondary_not_in_multi_horizon_decision_loop():
         up_prob_5c = down_prob_5c = flat_prob_5c = 0.34
         up_prob_15c = down_prob_15c = flat_prob_15c = 0.34
         up_prob_60c = down_prob_60c = flat_prob_60c = 0.34
-        avg_3c_pts = None
-
     class _Inp:
         mins_to_close = 200.0
 
@@ -159,11 +157,10 @@ def test_trader_payload_strips_legacy_horizon_prob_bar_keys():
     ms = {
         "horizon_prob_bars": {
             "1m": {"up": 0.4, "down": 0.3, "flat": 0.3},
+            "5m": {"up": 0.35, "down": 0.35, "flat": 0.3},
             "8c": {"up": 0.5, "down": 0.25, "flat": 0.25},
             "13c": {"up": 0.5, "down": 0.25, "flat": 0.25},
         },
-        "up_prob_8c": 0.5,
     }
     _apply_trader_horizon_contract(ms)
-    assert set(ms["horizon_prob_bars"].keys()) == {"1m"}
-    assert "up_prob_8c" not in ms
+    assert set(ms["horizon_prob_bars"].keys()) == {"1m", "5m"}

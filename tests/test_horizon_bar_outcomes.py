@@ -33,10 +33,7 @@ def test_outcome_specs_cover_all_nc():
     names = [s[0] for s in OUTCOME_BAR_SPECS]
     assert names == [
         "outcome_1c",
-        "outcome_3c",
         "outcome_5c",
-        "outcome_8c",
-        "outcome_13c",
         "outcome_15c",
         "outcome_60c",
     ]
@@ -116,10 +113,7 @@ def test_migration_issue4_clears_v2_labels(tmp_path: Path):
                 ticker TEXT, timeframe TEXT, ts_utc REAL, ts_et TEXT,
                 et_hour INTEGER, et_minute INTEGER, market_session TEXT, spot REAL,
                 outcome_1c TEXT, outcome_1c_pts REAL,
-                outcome_3c TEXT, outcome_3c_pts REAL,
                 outcome_5c TEXT, outcome_5c_pts REAL,
-                outcome_8c TEXT, outcome_8c_pts REAL,
-                outcome_13c TEXT, outcome_13c_pts REAL,
                 outcome_15c TEXT, outcome_15c_pts REAL,
                 outcome_60c TEXT, outcome_60c_pts REAL,
                 horizon_outcome_schema_version INTEGER DEFAULT 2,
