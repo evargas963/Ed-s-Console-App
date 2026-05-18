@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from multi_horizon_decision import build_multi_horizon_bundle
+import pytest
+
+from multi_horizon_decision import (
+    REASON_PRIMARY_HORIZON_DATA_MISSING,
+    build_multi_horizon_bundle,
+)
 
 
 def _inp(spot: float = 441.5, mins_to_close: float = 180.0):
@@ -112,3 +117,37 @@ def test_mhap_rows_have_fixed_horizon_set():
     b = build_multi_horizon_bundle(_inp(), _pred(), _canonical(), _call())
     got = [r.horizon for r in b.final_decision.supporting_assessments]
     assert set(got) == {"1c", "5c", "15c", "60c"}
+
+
+@pytest.mark.parametrize("hz,attr_prefix", [
+    ("1c", "1c"),
+    ("5c", "5c"),
+    ("15c", "15c"),
+    ("60c", "60c"),
+])
+def test_missing_native_horizon_assessment_unavailable(hz, attr_prefix):
+    """Phase A: null native probs → UNAVAILABLE + reason (no secondary substitution)."""
+    p = _pred()
+    setattr(p, f"up_prob_{attr_prefix}", None)
+    setattr(p, f"down_prob_{attr_prefix}", None)
+    setattr(p, f"flat_prob_{attr_prefix}", None)
+    b = build_multi_horizon_bundle(_inp(mins_to_close=180), p, _canonical(), _call())
+    row = next(x for x in b.final_decision.supporting_assessments if x.horizon == hz)
+    assert row.missing is True
+    assert row.call == "UNAVAILABLE"
+    assert row.row_state == "missing"
+    assert row.reason_code == REASON_PRIMARY_HORIZON_DATA_MISSING
+    assert hz in b.missing_horizons
+
+
+def test_missing_15c_does_not_substitute_13c_probs():
+    """Regression: 15c missing must not show tradeable LONG from unrelated horizons."""
+    p = _pred(u15=0.67, d15=0.2, f15=0.15)
+    p.up_prob_15c = None
+    p.down_prob_15c = None
+    p.flat_prob_15c = None
+    b = build_multi_horizon_bundle(_inp(mins_to_close=180), p, _canonical(), _call())
+    row = next(x for x in b.final_decision.supporting_assessments if x.horizon == "15c")
+    assert row.missing is True
+    assert row.call == "UNAVAILABLE"
+    assert row.confidence == 0.0

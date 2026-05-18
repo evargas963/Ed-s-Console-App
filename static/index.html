@@ -4311,7 +4311,14 @@ function renderTimeframeSignalRow(d) {
     const u = String(v || '').toUpperCase();
     if (u === 'LONG') return 'LONG';
     if (u === 'SHORT') return 'SHORT';
+    if (u === 'UNAVAILABLE') return 'UNAVAILABLE';
     return 'FLAT';
+  }
+
+  function horizonRowMissing(r) {
+    if (!r || typeof r !== 'object') return false;
+    if (r.state === 'missing' || r.row_state === 'missing') return true;
+    return String(r.call || '').toUpperCase() === 'UNAVAILABLE';
   }
 
   function parseConf(cv) {
@@ -4363,10 +4370,16 @@ function renderTimeframeSignalRow(d) {
     } else {
       const r = mhap.find((x) => String(x.horizon || '').toLowerCase() === slug);
       if (r) {
-        dir = normDir(r.call);
-        confPct = parseConf(r.confidence);
+        if (horizonRowMissing(r)) {
+          dir = 'UNAVAILABLE';
+          confPct = 0;
+          tag = null;
+        } else {
+          dir = normDir(r.call);
+          confPct = parseConf(r.confidence);
+          tag = deriveTag(slug, dir);
+        }
       }
-      tag = deriveTag(slug, dir);
     }
 
     let state = 'dim';
@@ -4394,10 +4407,25 @@ function renderTimeframeSignalRow(d) {
     if (arr) arr.textContent = state === 'dim' ? '→' : (state === 'up' ? '↑' : '↓');
 
     const dirEl = card.querySelector('.tf-dir');
-    if (dirEl) dirEl.textContent = dir === 'FLAT' ? 'NEUTRAL' : dir;
+    if (dirEl) {
+      if (dir === 'UNAVAILABLE') dirEl.textContent = 'UNAVAILABLE';
+      else dirEl.textContent = dir === 'FLAT' ? 'NEUTRAL' : dir;
+    }
 
     const pctEl = card.querySelector('.tf-pct');
-    if (pctEl) pctEl.textContent = confPct + '%';
+    if (pctEl) {
+      if (dir === 'UNAVAILABLE') {
+        const r = mhap.find((x) => String(x.horizon || '').toLowerCase() === slug);
+        const rc = r && r.reason_code ? String(r.reason_code) : 'NO DATA';
+        pctEl.textContent = rc;
+        pctEl.title = r && r.missing_horizon
+          ? `missing_horizon=${r.missing_horizon}`
+          : rc;
+      } else {
+        pctEl.textContent = confPct + '%';
+        pctEl.removeAttribute('title');
+      }
+    }
 
     const tagEl = card.querySelector('.tf-tag');
     if (tagEl) {

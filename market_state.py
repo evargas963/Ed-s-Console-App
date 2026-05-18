@@ -1446,15 +1446,20 @@ def build_market_state(
                 ms.size_modifier_display = str(getattr(_pt, "size_modifier_display", "0.00x") or "0.00x")
             _rows = []
             for _a in list(getattr(_mhd, "supporting_assessments", []) or []):
+                _missing = bool(getattr(_a, "missing", False))
+                _hz = str(getattr(_a, "horizon", ""))
                 _rows.append(
                     {
-                        "horizon": str(getattr(_a, "horizon", "")),
+                        "horizon": _hz,
                         "role": str(getattr(_a, "role", "")),
                         "call": str(getattr(_a, "call", "")),
                         "confidence": float(getattr(_a, "confidence", 0.0) or 0.0),
                         "entry_ref": getattr(_a, "entry_ref", None),
                         "effect": str(getattr(_a, "effect", "")),
-                        "row_state": str(getattr(_a, "row_state", "weak")),
+                        "row_state": "missing" if _missing else str(getattr(_a, "row_state", "weak")),
+                        "state": "missing" if _missing else "ok",
+                        "reason_code": str(getattr(_a, "reason_code", "") or ""),
+                        "missing_horizon": _hz if _missing else None,
                     }
                 )
             _rank = {"1c": 0, "5c": 1, "15c": 2, "60c": 3}

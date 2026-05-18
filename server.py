@@ -1875,11 +1875,21 @@ def _strip_trader_hidden_horizon_keys(ms_dict: dict) -> None:
     _scrub_mapping("fusion_policy_snapshot_cols")
 
 
+def _filter_horizon_prob_bars_primary_only(ms_dict: dict) -> None:
+    """Product UI keys only (1m/5m/15m/60m); drop legacy secondary bar keys if present."""
+    hpb = ms_dict.get("horizon_prob_bars")
+    if not isinstance(hpb, dict):
+        return
+    allow = frozenset({"1m", "5m", "15m", "60m"})
+    ms_dict["horizon_prob_bars"] = {k: v for k, v in hpb.items() if k in allow}
+
+
 def _apply_trader_horizon_contract(ms_dict: dict) -> None:
     """Strip legacy/non-product horizon fields from JSON sent to the browser."""
     for _k in _TRADER_PAYLOAD_STRIP_HORIZON_KEYS:
         ms_dict.pop(_k, None)
     _strip_trader_hidden_horizon_keys(ms_dict)
+    _filter_horizon_prob_bars_primary_only(ms_dict)
     _acc = ms_dict.get("accuracy")
     if isinstance(_acc, dict):
         _filt = {

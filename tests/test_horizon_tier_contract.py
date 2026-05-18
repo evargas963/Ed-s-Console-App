@@ -104,3 +104,19 @@ def test_live_stack_skips_missing_secondary_active_bundles(monkeypatch):
     assert set(skipped) == {"3c", "8c"}
     assert skipped["3c"]["provenance"] == "skipped_missing_active_bundle"
     assert skipped["3c"]["non_authoritative"] is True
+
+
+def test_trader_payload_strips_legacy_horizon_prob_bar_keys():
+    from server import _apply_trader_horizon_contract
+
+    ms = {
+        "horizon_prob_bars": {
+            "1m": {"up": 0.4, "down": 0.3, "flat": 0.3},
+            "8c": {"up": 0.5, "down": 0.25, "flat": 0.25},
+            "13c": {"up": 0.5, "down": 0.25, "flat": 0.25},
+        },
+        "up_prob_8c": 0.5,
+    }
+    _apply_trader_horizon_contract(ms)
+    assert set(ms["horizon_prob_bars"].keys()) == {"1m"}
+    assert "up_prob_8c" not in ms

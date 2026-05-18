@@ -17,6 +17,9 @@ from multi_horizon_ml_bundle import MultiHorizonMLFusionBundle
 PRODUCT_HORIZONS: tuple[str, ...] = PRIMARY_DECISION_HORIZONS
 HORIZON_MINUTES: dict[str, int] = {"1c": 1, "5c": 5, "15c": 15, "60c": 60}
 
+# Stable reason codes for operator surfaces (mirrors arch_competition REASON_* pattern).
+REASON_PRIMARY_HORIZON_DATA_MISSING = "PRIMARY_HORIZON_DATA_MISSING"
+
 
 @dataclass
 class HorizonForecast:
@@ -62,6 +65,8 @@ class SupportingHorizonAssessment:
     risk_modifier: bool
     effect: str
     row_state: str
+    missing: bool = False
+    reason_code: str = ""
     notes: list[str] = field(default_factory=list)
 
 
@@ -225,6 +230,26 @@ def compute_multi_horizon_synthesis(
     assessments: list[SupportingHorizonAssessment] = []
     for hz in PRODUCT_HORIZONS:
         f = hmap[hz]
+        if f.missing:
+            assessments.append(
+                SupportingHorizonAssessment(
+                    horizon=hz,
+                    role="Unavailable",
+                    call="UNAVAILABLE",
+                    confidence=0.0,
+                    entry_ref=None,
+                    supports_primary=False,
+                    contradicts_primary=False,
+                    timing_only=False,
+                    risk_modifier=False,
+                    effect="Native horizon data missing",
+                    row_state="missing",
+                    missing=True,
+                    reason_code=REASON_PRIMARY_HORIZON_DATA_MISSING,
+                    notes=[f"predictive probs unavailable for {hz}"],
+                )
+            )
+            continue
         role, sup, con, tr = _support_role(mode, selected, hz, f, primary.direction)
         eff = "Governs" if role == "Primary" else "Conflicts" if con else "Supports" if sup else "Timing weak" if role == "Timing" else "Low conviction"
         assessments.append(
@@ -240,6 +265,8 @@ def compute_multi_horizon_synthesis(
                 risk_modifier=(role == "Risk"),
                 effect=eff,
                 row_state=_row_state(role, sup, con),
+                missing=False,
+                reason_code="",
             )
         )
 
