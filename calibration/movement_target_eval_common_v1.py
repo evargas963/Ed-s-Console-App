@@ -13,7 +13,7 @@ import statistics
 from collections import Counter
 from typing import Any
 
-HORIZONS_MV = ("1c", "3c", "5c", "8c", "13c", "15c", "60c")
+HORIZONS_MV = ("1c", "5c", "15c", "60c")
 
 
 def col_move(hz: str) -> str:

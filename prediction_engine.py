@@ -1208,9 +1208,8 @@ def compute_prediction(
     Uses progressive relaxation in db.get_similar_setups (Issue 19):
       Tiers 1–4: zone/vwap/distance SQL filters; stops at the **narrowest** tier where
       outcome_1c / outcome_5c / outcome_15c each have >= MIN_SAMPLES_STATISTICAL labeled
-      rows (aligned with multi_horizon primary horizons except sparse 60c; same bar as
-      _literal_empirical_horizon for those columns). Auxiliary horizons (3c/8c/13c/60c)
-      may still be withheld without broadening the tier.
+      rows (aligned with multi_horizon primary horizons; same bar as _literal_empirical_horizon
+      for those columns). Sparse 60c may still be withheld without broadening the tier.
       Tier 5: broadest pool (ticker+timeframe+outcome_1c) — always used if tiers 1–4 fail
       tier-stop viability; per-horizon withholding may still apply where counts are low.
 

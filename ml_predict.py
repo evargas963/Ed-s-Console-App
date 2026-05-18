@@ -35,6 +35,7 @@ from typing import Optional, Any
 
 from ml_horizon import (
     DEFAULT_ML_HORIZON_SLUG,
+    PRIMARY_DECISION_HORIZONS,
     live_inference_horizon_slug,
     normalize_ml_horizon_slug,
 )
@@ -1567,7 +1568,7 @@ def predict_all_horizons(
     """Predict for UI horizon keys; only the live ML product horizon runs the trained stack."""
     result = {}
     live_ml_hz = live_inference_horizon_slug()
-    for hz in ["1c", "3c", "5c", "8c", "13c", "15c", "60c"]:
+    for hz in PRIMARY_DECISION_HORIZONS:
         result[hz] = (
             predict_direction(snapshot, ticker, db, inference_snapshot_v1=inference_snapshot_v1)
             if hz == live_ml_hz

@@ -21,8 +21,9 @@ def test_partition_and_constants():
     )
 
     assert ALL_GOVERNED_HORIZONS == ML_HORIZON_SLUGS
+    assert ALL_GOVERNED_HORIZONS == PRIMARY_DECISION_HORIZONS
     assert PRIMARY_DECISION_HORIZONS == ("1c", "5c", "15c", "60c")
-    assert SECONDARY_SUPPORT_HORIZONS == ("3c", "8c", "13c")
+    assert SECONDARY_SUPPORT_HORIZONS == ()
     assert set(ALL_GOVERNED_HORIZONS) == set(PRIMARY_DECISION_HORIZONS) | set(
         SECONDARY_SUPPORT_HORIZONS
     )
@@ -83,12 +84,20 @@ def test_secondary_not_in_multi_horizon_decision_loop():
 
 
 def test_live_stack_skips_missing_secondary_active_bundles(monkeypatch):
+    import ml_horizon
     import signals
     import ml_predict
 
-    monkeypatch.setattr(signals, "ALL_GOVERNED_HORIZONS", ("1c", "3c", "5c", "8c"))
-    monkeypatch.setattr(signals, "PRIMARY_DECISION_HORIZONS", ("1c", "5c"))
-    monkeypatch.setattr(signals, "SECONDARY_SUPPORT_HORIZONS", ("3c", "8c"))
+    governed = ("1c", "3c", "5c", "8c")
+    primary = ("1c", "5c")
+    secondary = ("3c", "8c")
+    monkeypatch.setattr(ml_horizon, "ALL_GOVERNED_HORIZONS", governed)
+    monkeypatch.setattr(ml_horizon, "ML_HORIZON_SLUGS", governed)
+    monkeypatch.setattr(ml_horizon, "PRIMARY_DECISION_HORIZONS", primary)
+    monkeypatch.setattr(ml_horizon, "SECONDARY_SUPPORT_HORIZONS", secondary)
+    monkeypatch.setattr(signals, "ALL_GOVERNED_HORIZONS", governed)
+    monkeypatch.setattr(signals, "PRIMARY_DECISION_HORIZONS", primary)
+    monkeypatch.setattr(signals, "SECONDARY_SUPPORT_HORIZONS", secondary)
 
     def _fake_model_dir_for_ticker(_ticker: str):
         hz = ml_predict.get_ml_infer_horizon_slug()

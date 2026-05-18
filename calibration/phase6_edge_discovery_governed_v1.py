@@ -41,10 +41,7 @@ except Exception:
 HORIZONS: list[tuple[str, str, str, str]] = [
     # outcome_col, pts_col, pred prefix e.g. pred_5c_
     ("outcome_1c", "outcome_1c_pts", "pred_1c_", "1c"),
-    ("outcome_3c", "outcome_3c_pts", "pred_3c_", "3c"),
     ("outcome_5c", "outcome_5c_pts", "pred_5c_", "5c"),
-    ("outcome_8c", "outcome_8c_pts", "pred_8c_", "8c"),
-    ("outcome_13c", "outcome_13c_pts", "pred_13c_", "13c"),
     ("outcome_15c", "outcome_15c_pts", "pred_15c_", "15c"),
     ("outcome_60c", "outcome_60c_pts", "pred_60c_", "60c"),
 ]
@@ -169,10 +166,7 @@ def load_rows(db_path: Path) -> tuple[list[sqlite3.Row], dict[str, Any]]:
     WHERE timeframe = '1m'
       AND COALESCE(horizon_outcome_schema_version, 3) = 3
       AND outcome_1c IS NOT NULL AND outcome_1c_pts IS NOT NULL
-      AND outcome_3c IS NOT NULL AND outcome_3c_pts IS NOT NULL
       AND outcome_5c IS NOT NULL AND outcome_5c_pts IS NOT NULL
-      AND outcome_8c IS NOT NULL AND outcome_8c_pts IS NOT NULL
-      AND outcome_13c IS NOT NULL AND outcome_13c_pts IS NOT NULL
       AND outcome_15c IS NOT NULL AND outcome_15c_pts IS NOT NULL
       AND outcome_60c IS NOT NULL AND outcome_60c_pts IS NOT NULL
     """

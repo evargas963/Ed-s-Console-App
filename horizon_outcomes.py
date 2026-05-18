@@ -32,21 +32,15 @@ SYNTHETIC_ANCHOR_COVERAGE_PAD_V1: str = "synthetic_anchor_coverage_pad_v1"
 # outcome column -> exact forward offset in minutes (canonical 1m clock).
 OUTCOME_HORIZON_MINUTES: dict[str, int] = {
     "outcome_1c": 1,
-    "outcome_3c": 3,
     "outcome_5c": 5,
-    "outcome_8c": 8,
-    "outcome_13c": 13,
     "outcome_15c": 15,
     "outcome_60c": 60,
 }
 
-# (direction column, points column, forward minutes)
+# (direction column, points column, forward minutes) — primary product horizons only (Phase 3 C2).
 OUTCOME_BAR_SPECS: tuple[tuple[str, str, int], ...] = (
     ("outcome_1c", "outcome_1c_pts", 1),
-    ("outcome_3c", "outcome_3c_pts", 3),
     ("outcome_5c", "outcome_5c_pts", 5),
-    ("outcome_8c", "outcome_8c_pts", 8),
-    ("outcome_13c", "outcome_13c_pts", 13),
     ("outcome_15c", "outcome_15c_pts", 15),
     ("outcome_60c", "outcome_60c_pts", 60),
 )

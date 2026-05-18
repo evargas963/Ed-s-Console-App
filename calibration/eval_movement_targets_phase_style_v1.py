@@ -40,8 +40,10 @@ def main() -> None:
 
     raw = str(args.horizon).strip().lower()
     hz = raw if raw.endswith("c") else raw + "c"
-    if hz not in ("1c", "3c", "5c", "8c", "13c", "15c", "60c"):
-        raise SystemExit("horizon must be like 5c")
+    from ml_horizon import PRIMARY_DECISION_HORIZONS
+
+    if hz not in PRIMARY_DECISION_HORIZONS:
+        raise SystemExit("horizon must be one of primary slugs: 1c, 5c, 15c, 60c")
 
     rows, meta = load_rows(args.db.resolve())
     o_move = f"outcome_move_{hz}"

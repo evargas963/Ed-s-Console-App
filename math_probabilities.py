@@ -392,7 +392,7 @@ def _binomial_p_value(k: int, n: int, p0: float) -> float:
 
 # ── Percentile / range helpers ───────────────────────────────────────────────
 
-def compute_percentile_range(similar: list, col: str = "outcome_3c_pts",
+def compute_percentile_range(similar: list, col: str = "outcome_5c_pts",
                              lo_pct: float = 0.25, hi_pct: float = 0.75,
                              min_samples: int = 10) -> tuple:
     pts = [r.get(col) for r in similar if r.get(col) is not None]

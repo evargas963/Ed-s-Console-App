@@ -16,7 +16,7 @@ def test_phase_eval_modules_import():
     from calibration import movement_target_phase65_isolation_v1 as p65
     from calibration import movement_target_phase65_cleanup_v1 as p65c
 
-    assert len(HORIZONS_MV) == 7
+    assert len(HORIZONS_MV) == 4
     assert binary_baselines_move([1, 0, 1])["prior_majority_accuracy"] is not None
     assert callable(p5.run)
     assert callable(p6.run)
