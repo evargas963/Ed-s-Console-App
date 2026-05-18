@@ -60,6 +60,22 @@ from features.stack_integrity_v1 import finalize_stack_integrity_v1, record_stac
 
 log = logging.getLogger(__name__)
 
+
+def _unavailable_model_namespace():
+    """Fail-closed placeholder when a base model fusion branch is missing or inference failed."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        available=False,
+        prob_up=None,
+        prob_down=None,
+        prob_flat=None,
+        dominant_class=None,
+        confidence_label=None,
+        continuation_support=None,
+        reversal_support=None,
+    )
+
 try:
     from crash_trace import step as _dstep, step_done as _ddone, trace_crash as _dcrash, _on as _don
 except ImportError:
@@ -399,18 +415,15 @@ def _run_model_stack(
         if fused.get("xgb"):
             xgb_out = SimpleNamespace(**fused["xgb"])
         else:
-            xgb_out = SimpleNamespace(available=False, prob_up=0.33, prob_down=0.33, prob_flat=0.34,
-                dominant_class="flat", confidence_label="low", continuation_support=0.0, reversal_support=0.0)
+            xgb_out = _unavailable_model_namespace()
         if fused.get("lstm"):
             lstm_out = SimpleNamespace(**fused["lstm"])
         else:
-            lstm_out = SimpleNamespace(available=False, prob_up=0.33, prob_down=0.33, prob_flat=0.34,
-                dominant_class="flat", confidence_label="low", continuation_support=0.0, reversal_support=0.0)
+            lstm_out = _unavailable_model_namespace()
         if fused.get("transformer"):
             transformer_out = SimpleNamespace(**fused["transformer"])
         else:
-            transformer_out = SimpleNamespace(available=False, prob_up=0.33, prob_down=0.33, prob_flat=0.34,
-                dominant_class="flat", confidence_label="low", continuation_support=0.0, reversal_support=0.0)
+            transformer_out = _unavailable_model_namespace()
         if _don():
             _ddone("ml_models", ticker)
     except Exception as e:
@@ -431,7 +444,7 @@ def _run_model_stack(
             raise
         if _don():
             _dcrash("run_base_models_once", e, ticker)
-        log.warning("run_base_models_once failed (uniform prior fallback): %s", e, exc_info=True)
+        log.warning("run_base_models_once failed (models marked unavailable): %s", e, exc_info=True)
         if stack_integrity_events is not None:
             record_stack_degradation(
                 stack_integrity_events,
@@ -444,9 +457,7 @@ def _run_model_stack(
                 authority_intact=False,
                 dedupe_key="run_base_models_once",
             )
-        from types import SimpleNamespace
-        _fallback = SimpleNamespace(available=False, prob_up=0.33, prob_down=0.33, prob_flat=0.34,
-            dominant_class="flat", confidence_label="low", continuation_support=0.0, reversal_support=0.0)
+        _fallback = _unavailable_model_namespace()
         xgb_out = lstm_out = transformer_out = _fallback
         ml_bundle = {"model_outputs": None, _spk: None, "movement_head_probs": {}}
 
@@ -716,13 +727,13 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
     def _model_stage(name, out, stage_id) -> StackStage:
         if not getattr(out, "available", False):
             return StackStage(stage_id=stage_id, status="inactive", note=f"{name}: inactive")
-        dom = getattr(out, "dominant_class", None) or getattr(out, "dominant_dir", "flat")
-        conf = getattr(out, "confidence_label", None) or getattr(out, "confidence", "low")
-        prob = getattr(out, "prob_up", 0.33)
+        dom = getattr(out, "dominant_class", None) or getattr(out, "dominant_dir", None)
+        conf = getattr(out, "confidence_label", None) or getattr(out, "confidence", None)
+        prob = getattr(out, "prob_up", None)
         if dom == "down":
-            prob = getattr(out, "prob_down", 0.33)
+            prob = getattr(out, "prob_down", None)
         elif dom == "flat":
-            prob = getattr(out, "prob_flat", 0.34)
+            prob = getattr(out, "prob_flat", None)
         note = f"{name}: {dom} ({conf})"
         return StackStage(stage_id=stage_id, status="active", direction=dom, confidence=conf, probability=prob, note=note)
 
