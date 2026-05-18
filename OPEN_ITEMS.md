@@ -1,7 +1,7 @@
 # Open items — horizon, stack, UI consistency
 
 **Rule:** Items stay **open** until there is a merged/code-verified resolution (not just “planned”).  
-**Last reviewed:** 2026-05-14 (Schwab V4 register deferred work consolidated into this file; reconciled against `fb1e84c` Schwab Field Precedence Principle commit and the A2 lifecycle landings — EOD force-exit `20a1c14`, session-calendar hardening `cac88a6`, pin-risk handler — none of which touch the ML horizon/cascade workstream items below).
+**Last reviewed:** 2026-05-18 — All work bound by **SCHWAB FULL REPO DIRECTIVE** in [`CLAUDE.md`](CLAUDE.md) (entire codebase; Canopy→Trunk→Branch→Leaf; Read, not scan). No file out of scope. Closure inadmissible until three-PR gate (governance pin → CI diff-emission gate → full-tree scanner regen) per V4 § Scope.
 
 ---
 

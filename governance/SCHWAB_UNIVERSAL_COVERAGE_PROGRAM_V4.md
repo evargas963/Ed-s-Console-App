@@ -18,6 +18,26 @@
 
 ---
 
+## Scope (binding)
+
+**Authoritative operator directive:** [`CLAUDE.md`](../CLAUDE.md) at the repository root — **SCHWAB FULL REPO DIRECTIVE**. All agents and executors are bound by that text for scope, Read discipline, **Canopy → Trunk → Branch → Leaf** tracing, CSV disposition, collateral, and forbidden narrowing phrases.
+
+**Repo root (file tree):** Every path under this repository is in the V4 **search space** unless excluded by **V3-B** / **G1.1** contract clauses recorded in reconciliation — not by phase, section, mega, scanner capability, ticket scope, or “collateral.” **`static/**/*`**, **`templates/**/*`**, **`tests/**/*`**, and fixture files are normative surfaces (canopy / branch) per `CLAUDE.md`.
+
+**Program anchor:** This file, [`SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md`](SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md), and [`SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv`](SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv) are the **only** Schwab universal-coverage program. No parallel “Mandatory Leaf Program,” SMLP charter, closure certificate MD, or `governance/traces/` per-PR trace tables.
+
+**Closure admissibility (three-PR gate):** A **Deliverable 17** closure claim is **inadmissible** until all of the following have landed in order:
+
+1. **(PR 1) Governance pin** — `CLAUDE.md` + this Scope section + `OPEN_ITEMS.md` banner (text only; **no** closure claim after this step alone).
+2. **(PR 2) CI diff-emission gate** — PR diffs that emit new market-fact sites without matching register rows **fail** CI (`tools/check_schwab_csv_first.py` extension + `.github/workflows/schwab-csv-first.yml`).
+3. **(PR 3) Full-tree scanner build** — `register_build.partial_scan == false`; no `--max-files` cap in the canonical scanner build or CI regen step; register and `governance/artifacts/schwab_v4_register_build_meta.json` regenerated and repinned.
+
+**Normative landing order:** PR 1 → PR 2 → PR 3 → field work under the gate (see `CLAUDE.md`). A post–PR 3 jump in **`unreviewed_count`** is expected and correct.
+
+**Inherited scanner mechanics:** **V3-B** (universal text-file walk) applies to the **full** repo tree only after item **3** (full-tree scanner regen) has landed; until then, any committed register built with **`partial_scan: true`** or **`max_files`** MUST NOT support closure language (see [`CURSOR_V4_AGENT_BRIEF.md`](CURSOR_V4_AGENT_BRIEF.md)).
+
+---
+
 ## Architectural shift: V3 → V4
 
 | Dimension | V3 | V4 |
