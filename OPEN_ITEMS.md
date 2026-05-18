@@ -125,7 +125,7 @@ Reference ticker for parametric tests: **SPY**.
 | **B** | Stop producing 3c/8c/13c (signals payload, ml_predict loop, `SECONDARY_SUPPORT_HORIZONS = ()`) | **Done** (`eab7ff2`, `4010965`; schema/code residue cleared in **D**) |
 | **C** | 4-primary regression vs legacy 7-horizon path | **Done** (`89e3ddc`; C1 `eab7ff2`, C2 `4010965`, C3 tier-contract gaps) |
 | **D** | Schema drop `outcome_3c/8c/13c` (+ pts) after backup | **Done** — D1 `87bb131`, D1 amend `75aa9eb`, D2 `062f02a`, D3 **applied** on canonical DB 2026-05-18 (`ddl_column_delta: -69`, 198362 rows preserved); audit `governance/audits/snapshots_schema_drop_retired_horizons_v1_20260518_035734.json` |
-| **E** | Tools + tests cleanup (~10 scripts, calibration `HORIZONS_MV`; optional bayesian_fusion/ml_predict 0.33 audit) | Planned |
+| **E** | Residue cleanup: fail-closed `ml_predict`/`signals` (no silent 0.33), quarantine 7-horizon tools, `timeframe_config` trim, root demo + normalizer doc | **Done** — E(c) `83b02fb`, E(c.1) `22cd294`, E(a) `794862d`+`216b96b`, E(b) `95c07fc` |
 
 ## Universe model coverage (Phase 2 verify — 2026-05-17)
 
