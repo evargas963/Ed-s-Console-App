@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Run Schwab CSV-first guard
+      - name: Prepare PR diff for Schwab guards
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -27,7 +27,10 @@ jobs:
           else
             git diff HEAD~1..HEAD > /tmp/schwab_csv_first.diff
           fi
-          python tools/check_schwab_csv_first.py --diff-file /tmp/schwab_csv_first.diff
+
+      - name: Run Schwab CSV-first guard
+        shell: bash
+        run: python tools/check_schwab_csv_first.py --diff-file /tmp/schwab_csv_first.diff
 
       - name: Coherent Schwab meta vs scoreboard (committed artifacts)
         shell: bash
@@ -81,6 +84,14 @@ jobs:
                   sys.exit(1)
           print("V4 register pin OK", h[:16])
           PY
+
+      - name: V4 diff-emission register gate (PR 2)
+        shell: bash
+        run: |
+          python tools/check_schwab_csv_first.py \
+            --diff-file /tmp/schwab_csv_first.diff \
+            --diff-emission-gate \
+            --register governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv
 
       - name: Rebuild V4 scoreboard (D17 + register_build from current register/meta)
         shell: bash
