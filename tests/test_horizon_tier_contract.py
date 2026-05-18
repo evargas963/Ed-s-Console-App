@@ -115,6 +115,44 @@ def test_live_stack_skips_missing_secondary_active_bundles(monkeypatch):
     assert skipped["3c"]["non_authoritative"] is True
 
 
+@pytest.mark.parametrize("slug", ("3c", "8c", "13c"))
+def test_normalize_ml_horizon_slug_rejects_retired_secondary(slug: str):
+    from ml_horizon import normalize_ml_horizon_slug
+
+    with pytest.raises(ValueError, match="invalid slug"):
+        normalize_ml_horizon_slug(slug)
+
+
+def test_predict_all_horizons_keys_match_primary_only(monkeypatch):
+    from ml_horizon import PRIMARY_DECISION_HORIZONS
+    import ml_predict
+
+    monkeypatch.setattr(ml_predict, "live_inference_horizon_slug", lambda: "1c")
+    monkeypatch.setattr(
+        ml_predict,
+        "predict_direction",
+        lambda *args, **kwargs: {"direction": "up"},
+    )
+
+    out = ml_predict.predict_all_horizons({})
+
+    assert set(out.keys()) == set(PRIMARY_DECISION_HORIZONS)
+
+
+def test_outcome_bar_specs_four_primary_slugs():
+    from horizon_outcomes import OUTCOME_BAR_SPECS
+
+    assert len(OUTCOME_BAR_SPECS) == 4
+    slugs = tuple(odir[len("outcome_") :] for odir, _opt, _n in OUTCOME_BAR_SPECS)
+    assert slugs == ("1c", "5c", "15c", "60c")
+
+
+def test_movement_target_slugs_derived_from_bar_specs():
+    from horizon_outcomes import MOVEMENT_TARGET_SLUGS
+
+    assert MOVEMENT_TARGET_SLUGS == ("1c", "5c", "15c", "60c")
+
+
 def test_trader_payload_strips_legacy_horizon_prob_bar_keys():
     from server import _apply_trader_horizon_contract
 
