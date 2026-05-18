@@ -201,6 +201,75 @@ _trans_registry = {}   # _model_registry_key -> (model, checkpoint)
 CLASS_NAMES = ["up", "down", "flat"]
 
 
+def _require_direction_probability_triplet(
+    p: Optional[dict],
+) -> Optional[tuple[float, float, float]]:
+    """All three class probabilities must be present; no silent 0.33 fabrication."""
+    if not isinstance(p, dict):
+        return None
+    up, down, flat = p.get("up"), p.get("down"), p.get("flat")
+    if up is None or down is None or flat is None:
+        return None
+    try:
+        return float(up), float(down), float(flat)
+    except (TypeError, ValueError):
+        return None
+
+
+def _model_probs_to_fusion_out(p: Optional[dict], hint: str) -> Optional[dict]:
+    tri = _require_direction_probability_triplet(p)
+    if tri is None:
+        return None
+    up, down, flat = tri
+    by_class = {"up": up, "down": down, "flat": flat}
+    dominant = max(CLASS_NAMES, key=lambda c: by_class[c])
+    edge = by_class[dominant] - (1.0 / 3.0)
+    conf_label = "high" if edge >= 0.15 else "medium" if edge >= 0.08 else "low"
+    if hint == "long":
+        cont_support, rev_support = up, down
+    elif hint == "short":
+        cont_support, rev_support = down, up
+    else:
+        cont_support, rev_support = flat, max(up, down)
+    return {
+        "available": True,
+        "prob_up": up,
+        "prob_down": down,
+        "prob_flat": flat,
+        "dominant_class": dominant,
+        "confidence_label": conf_label,
+        "continuation_support": cont_support,
+        "reversal_support": rev_support,
+    }
+
+
+def _model_probs_to_ui_output(p: Optional[dict], approved: bool) -> dict:
+    unavailable = {
+        "available": False,
+        "dominant": None,
+        "confidence": None,
+        "approved": False,
+    }
+    if p is None:
+        return unavailable
+    tri = _require_direction_probability_triplet(p)
+    if tri is None:
+        return unavailable
+    up, down, flat = tri
+    by_class = {"up": up, "down": down, "flat": flat}
+    dominant = max(CLASS_NAMES, key=lambda c: by_class[c])
+    confidence = round(by_class[dominant] - (1.0 / 3.0), 4)
+    return {
+        "available": True,
+        "dominant": dominant,
+        "confidence": confidence,
+        "approved": approved,
+        "up": round(up, 4),
+        "down": round(down, 4),
+        "flat": round(flat, 4),
+    }
+
+
 def _model_dir_for_ticker(ticker: str) -> Path:
     """RULE 4: Read arch_state.json, load from models/active/{ticker}/. Default parallel if missing.
 
@@ -1212,51 +1281,10 @@ def run_base_models_once(
         shared_sequence_context=shared_sequence_context,
     )
 
-    def _to_fusion_out(p: Optional[dict], hint: str) -> Optional[dict]:
-        if p is None:
-            return None
-        up = p.get("up", 0.33)
-        down = p.get("down", 0.33)
-        flat = p.get("flat", 0.34)
-        dominant = max(CLASS_NAMES, key=lambda c: p.get(c, 0))
-        edge = p.get(dominant, 0.333) - 0.333
-        conf_label = "high" if edge >= 0.15 else "medium" if edge >= 0.08 else "low"
-        if hint == "long":
-            cont_support, rev_support = up, down
-        elif hint == "short":
-            cont_support, rev_support = down, up
-        else:
-            cont_support, rev_support = flat, max(up, down)
-        return {
-            "available": True,
-            "prob_up": up, "prob_down": down, "prob_flat": flat,
-            "dominant_class": dominant,
-            "confidence_label": conf_label,
-            "continuation_support": cont_support,
-            "reversal_support": rev_support,
-        }
-
-    def _to_ui_output(p: Optional[dict], approved: bool) -> dict:
-        if p is None:
-            return {"available": False, "dominant": None, "confidence": None, "approved": False}
-        probs = p
-        dominant = max(CLASS_NAMES, key=lambda c: probs.get(c, 0))
-        max_prob = probs.get(dominant, 0.333)
-        confidence = round(max_prob - 0.333, 4)
-        return {
-            "available": True,
-            "dominant": dominant,
-            "confidence": confidence,
-            "approved": approved,
-            "up": round(float(probs.get("up", 0.333)), 4),
-            "down": round(float(probs.get("down", 0.333)), 4),
-            "flat": round(float(probs.get("flat", 0.334)), 4),
-        }
-
     fusion_pack = {
-        "xgb": _to_fusion_out(xgb_p, direction_hint),
-        "lstm": _to_fusion_out(lstm_p, direction_hint),
-        "transformer": _to_fusion_out(tr_p, direction_hint),
+        "xgb": _model_probs_to_fusion_out(xgb_p, direction_hint),
+        "lstm": _model_probs_to_fusion_out(lstm_p, direction_hint),
+        "transformer": _model_probs_to_fusion_out(tr_p, direction_hint),
     }
     def _parallel_model_output_record(p: Optional[dict], approved: bool) -> dict:
         r = build_parallel_base_output(probs=p, approved=approved and p is not None)
@@ -1351,32 +1379,6 @@ def run_cascade_models_once(
     )
     assert_no_legacy_mvp_in_fusion_overlay(snapshot)
 
-    def _fusion_out(p: Optional[dict], hint: str) -> Optional[dict]:
-        if p is None:
-            return None
-        up = p.get("up", 0.33)
-        down = p.get("down", 0.33)
-        flat = p.get("flat", 0.34)
-        dominant = max(CLASS_NAMES, key=lambda c: p.get(c, 0))
-        edge = p.get(dominant, 0.333) - 0.333
-        conf_label = "high" if edge >= 0.15 else "medium" if edge >= 0.08 else "low"
-        if hint == "long":
-            cont_support, rev_support = up, down
-        elif hint == "short":
-            cont_support, rev_support = down, up
-        else:
-            cont_support, rev_support = flat, max(up, down)
-        return {
-            "available": True,
-            "prob_up": up,
-            "prob_down": down,
-            "prob_flat": flat,
-            "dominant_class": dominant,
-            "confidence_label": conf_label,
-            "continuation_support": cont_support,
-            "reversal_support": rev_support,
-        }
-
     def _parallel_model_output_record(p: Optional[dict], approved: bool) -> dict:
         r = build_parallel_base_output(probs=p, approved=approved and p is not None)
         if r.get("available"):
@@ -1423,9 +1425,9 @@ def run_cascade_models_once(
             raise CascadeStageError(f"{tkr}: cascade stage 3 (Transformer) produced no probabilities")
 
         fusion_pack = {
-            "xgb": _fusion_out(xgb_p, direction_hint),
-            "lstm": _fusion_out(lstm_p, direction_hint),
-            "transformer": _fusion_out(tr_p, direction_hint),
+            "xgb": _model_probs_to_fusion_out(xgb_p, direction_hint),
+            "lstm": _model_probs_to_fusion_out(lstm_p, direction_hint),
+            "transformer": _model_probs_to_fusion_out(tr_p, direction_hint),
         }
         model_outputs = {
             "xgb": _parallel_model_output_record(xgb_p, True),
