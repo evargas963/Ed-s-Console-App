@@ -4609,6 +4609,50 @@ function renderSignalChain(host, chain) {
   host.appendChild(svg);
 }
 
+/** Non-empty string or null — never fabricate directional labels. */
+function optStr(v) {
+  return (v != null && String(v).trim() !== '') ? String(v).trim() : null;
+}
+
+/** expanding | contracting | flat, or null when IV direction withheld. */
+function ivDirectionKey(d) {
+  const iv = optStr(d && d.iv_direction);
+  if (!iv) return null;
+  const s = iv.toLowerCase();
+  return (s === 'expanding' || s === 'contracting' || s === 'flat') ? s : null;
+}
+
+/** up | down | flat, or null when stack direction withheld. */
+function stackDirKey(v) {
+  const s = optStr(v);
+  if (!s) return null;
+  const k = s.toLowerCase();
+  return (k === 'up' || k === 'down' || k === 'flat') ? k : null;
+}
+
+function fusionDirLabel(dir) {
+  if (dir === 'up') return '↑ UP';
+  if (dir === 'down') return '↓ DOWN';
+  if (dir === 'flat') return '→ FLAT';
+  return '—';
+}
+
+function fusionDirCss(dir) {
+  if (dir === 'up') return 'up';
+  if (dir === 'down') return 'down';
+  if (dir === 'flat') return 'flat';
+  return 'withheld';
+}
+
+/** Direction for WDS + Call fusion band; null when producer withheld (no fabricated flat). */
+function effectiveDirection(x) {
+  if (!x || typeof x !== 'object') return null;
+  if (x.fusion_available) {
+    return stackDirKey(x.fusion_dominant_direction);
+  }
+  return stackDirKey(x.dominant_dir) || stackDirKey(x.prediction_dir);
+}
+
 /** Product-only operator rail: decision-first, horizons labeled 1m/5m/15m/60m (internal slugs remain 1c/5c/15c/60c). */
 function renderDecisionCommandRail(d) {
   const $ = (id) => document.getElementById(id);
@@ -5957,49 +6001,6 @@ function render(d, fullRenderSource) {
     }
   }
 
-  /** Non-empty string or null — never fabricate directional labels. */
-  function optStr(v) {
-    return (v != null && String(v).trim() !== '') ? String(v).trim() : null;
-  }
-
-  /** expanding | contracting | flat, or null when IV direction withheld. */
-  function ivDirectionKey(d) {
-    const iv = optStr(d && d.iv_direction);
-    if (!iv) return null;
-    const s = iv.toLowerCase();
-    return (s === 'expanding' || s === 'contracting' || s === 'flat') ? s : null;
-  }
-
-  /** up | down | flat, or null when stack direction withheld. */
-  function stackDirKey(v) {
-    const s = optStr(v);
-    if (!s) return null;
-    const k = s.toLowerCase();
-    return (k === 'up' || k === 'down' || k === 'flat') ? k : null;
-  }
-
-  function fusionDirLabel(dir) {
-    if (dir === 'up') return '↑ UP';
-    if (dir === 'down') return '↓ DOWN';
-    if (dir === 'flat') return '→ FLAT';
-    return '—';
-  }
-
-  function fusionDirCss(dir) {
-    if (dir === 'up') return 'up';
-    if (dir === 'down') return 'down';
-    if (dir === 'flat') return 'flat';
-    return 'withheld';
-  }
-
-  /** Direction for WDS + Call fusion band; null when producer withheld (no fabricated flat). */
-  function effectiveDirection(x) {
-    if (!x || typeof x !== 'object') return null;
-    if (x.fusion_available) {
-      return stackDirKey(x.fusion_dominant_direction);
-    }
-    return stackDirKey(x.dominant_dir) || stackDirKey(x.prediction_dir);
-  }
   // ── Sidebar: Instrument ───────────────────────────────────────────────────
   window.__edSessionLabel = String(d.session_label || '');
   domIf('sb-session', el => { el.textContent = d.session_label || '—'; });
