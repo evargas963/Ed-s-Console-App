@@ -201,6 +201,7 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-19 | `features/xgb_model_input.py` Layer 5 chunk-1 walk (0 REPLACED; 7 KEEP_DERIVED; FIND-XGB1/XGB2 disclosed pending ml_predict caller audit) |
 | 2026-05-19 | `features/lstm_sequence_input.py` Layer 5 chunk-1 walk (0 REPLACED; 9 KEEP_DERIVED; FIND-LSI1/LSI2 disclosed) |
 | 2026-05-19 | `features/canonical_contract.py` Layer 5 chunk-1 walk (0 REPLACED; 5 KEEP_DERIVED; clean — OBS-CC1/CC2 informational disclosures) |
+| 2026-05-19 | `features/mvp_source_coercion.py` Layer 5 chunk-1 walk + MSC1 paired fix (`_require_mapping` at coercion entry points; closes non-Mapping silent-all-None laundering) |
 
 ---
 

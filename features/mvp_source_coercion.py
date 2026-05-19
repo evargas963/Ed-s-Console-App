@@ -31,6 +31,14 @@ def _contains_key(m: Mapping[str, Any], key: str) -> bool:
         return False
 
 
+def _require_mapping(parent: Any, canonical_field: str) -> Mapping[str, Any]:
+    if not isinstance(parent, Mapping):
+        raise MvpFeatureSourceError(
+            f"{canonical_field}: parent must be a Mapping, got {type(parent).__name__!r}"
+        )
+    return parent
+
+
 def strict_float_from_raw(raw: Any, canonical_field: str) -> float:
     """Parse a required numeric; raises MvpFeatureSourceError if value is not a legal finite float."""
     if isinstance(raw, bool):
@@ -55,6 +63,7 @@ def read_optional_float(parent: Mapping[str, Any], key: str, canonical_field: st
     Missing: key absent, or value is None → None.
     Present non-null: must parse as finite float or raise.
     """
+    parent = _require_mapping(parent, canonical_field)
     if not _contains_key(parent, key):
         return None
     raw = parent[key]
@@ -64,6 +73,7 @@ def read_optional_float(parent: Mapping[str, Any], key: str, canonical_field: st
 
 
 def read_optional_zone(parent: Mapping[str, Any], key: str, canonical_field: str) -> str | None:
+    parent = _require_mapping(parent, canonical_field)
     if not _contains_key(parent, key):
         return None
     raw = parent[key]
@@ -86,6 +96,7 @@ def read_optional_zone(parent: Mapping[str, Any], key: str, canonical_field: str
 
 
 def read_optional_vwap_side(parent: Mapping[str, Any], key: str, canonical_field: str) -> str | None:
+    parent = _require_mapping(parent, canonical_field)
     if not _contains_key(parent, key):
         return None
     raw = parent[key]
@@ -115,6 +126,7 @@ def read_liquidity_summary_subdict(l1_payload: Mapping[str, Any]) -> dict[str, A
     Null → {}.
     Non-dict, non-null → MvpFeatureSourceError.
     """
+    l1_payload = _require_mapping(l1_payload, "liquidity_summary")
     if not _contains_key(l1_payload, "liquidity_summary"):
         return {}
     raw = l1_payload["liquidity_summary"]
