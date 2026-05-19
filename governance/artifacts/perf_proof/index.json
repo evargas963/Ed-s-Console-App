@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "P_count": 8,
+  "P_count": 9,
   "perf_proof_files": [
     "pp_v4b_market_state_oe_chain_snapshot.json",
     "pp_v4b_schwab_gate_eleven_test_bundle.json",
@@ -9,7 +9,8 @@
     "pp_v4b_server_fast_quote_leaf_provenance.json",
     "pp_v4b_server_tier_a_quote_leaf_provenance.json",
     "pp_v4b_server_quote_session_fallbacks_dedupe.json",
-    "pp_v4b_server_fetch_state_leaf_provenance.json"
+    "pp_v4b_server_fetch_state_leaf_provenance.json",
+    "pp_v4b_server_fetch_state_response_leaf_provenance.json"
   ],
-  "updated_at_utc": "2026-05-19T06:30:00Z"
+  "updated_at_utc": "2026-05-19T12:00:00Z"
 }
