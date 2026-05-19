@@ -729,45 +729,16 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
     q_json = q_resp.json()
     t_parse0 = time.perf_counter()
     _node = q_json.get(tkr.upper()) or q_json.get(tkr) or {}
-    _q = _node.get("quote") or {}
-    _ext = _node.get("extended") or {}
-    _reg = _node.get("regular") or {}
-    last = _safe_float_quote(_q.get("lastPrice"))
-    if last is None or last <= 0:
-        last = _safe_float_quote(_ext.get("lastPrice"))
-    if last is None or last <= 0:
-        last = _safe_float_quote(_reg.get("regularMarketLastPrice"))
-    mark = _safe_float_quote(_q.get("mark"))
-    if mark is None or mark <= 0:
-        mark = _safe_float_quote(_ext.get("mark"))
-    bid = _safe_float_quote(_q.get("bidPrice"))
-    if bid is None:
-        bid = _safe_float_quote(_ext.get("bidPrice"))
-    ask = _safe_float_quote(_q.get("askPrice"))
-    if ask is None:
-        ask = _safe_float_quote(_ext.get("askPrice"))
-    quote_time = _safe_float_quote(_q.get("quoteTime"))
-    if quote_time is None:
-        quote_time = _safe_float_quote(_ext.get("quoteTime"))
-    trade_time = _safe_float_quote(_q.get("tradeTime"))
-    if trade_time is None:
-        trade_time = _safe_float_quote(_ext.get("tradeTime"))
-    if trade_time is None:
-        trade_time = _safe_float_quote(_reg.get("regularMarketTradeTime"))
-    spot_source = "lastPrice" if last and last > 0 else ("mark" if mark and mark > 0 else None)
-    spot = last if spot_source == "lastPrice" else (mark if spot_source == "mark" else None)
-    try:
-        spot_f = float(spot) if spot and float(spot) > 0 else None
-    except (TypeError, ValueError):
-        spot_f = None
+    pq = _parse_quote_node_session_fields(_node)
+    spot_f = pq["spot"]
+    spot_source = pq["spot_source"]
+    bid = pq["bid"]
+    ask = pq["ask"]
+    quote_mid = pq["quote_mid"]
+    mid_source = pq["mid_source"]
     spread_frac = None
     spread_pts = None
-    quote_mid: float | None = None
-    mid_source: str | None = None
     try:
-        if mark is not None and mark > 0:
-            quote_mid = float(mark)
-            mid_source = "schwab_quote_mark"
         if quote_mid is not None and quote_mid > 0 and bid is not None and ask is not None:
             bf, af = float(bid), float(ask)
             spread_frac = (af - bf) / quote_mid
@@ -775,7 +746,7 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
     except (TypeError, ValueError):
         pass
     t_parse1 = time.perf_counter()
-    quote_ts = quote_time or trade_time
+    quote_ts = pq["quote_ts"]
     server_received_ts = time.time()
     total_ms = (time.perf_counter() - t0) * 1000.0
     log.info(
@@ -2243,6 +2214,62 @@ def _safe_float_quote(v) -> Optional[float]:
         return None
 
 
+def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
+    """
+    Canonical Schwab REST per-ticker quote node: quote → extended → regular fallbacks.
+    ``node`` is the ticker object from GET /quotes JSON (keys quote, extended, regular).
+    """
+    _q = node.get("quote") or {}
+    _ext = node.get("extended") or {}
+    _reg = node.get("regular") or {}
+    last = _safe_float_quote(_q.get("lastPrice"))
+    if last is None or last <= 0:
+        last = _safe_float_quote(_ext.get("lastPrice"))
+    if last is None or last <= 0:
+        last = _safe_float_quote(_reg.get("regularMarketLastPrice"))
+    mark = _safe_float_quote(_q.get("mark"))
+    if mark is None or mark <= 0:
+        mark = _safe_float_quote(_ext.get("mark"))
+    bid = _safe_float_quote(_q.get("bidPrice"))
+    if bid is None:
+        bid = _safe_float_quote(_ext.get("bidPrice"))
+    ask = _safe_float_quote(_q.get("askPrice"))
+    if ask is None:
+        ask = _safe_float_quote(_ext.get("askPrice"))
+    quote_time = _safe_float_quote(_q.get("quoteTime"))
+    if quote_time is None:
+        quote_time = _safe_float_quote(_ext.get("quoteTime"))
+    trade_time = _safe_float_quote(_q.get("tradeTime"))
+    if trade_time is None:
+        trade_time = _safe_float_quote(_ext.get("tradeTime"))
+    if trade_time is None:
+        trade_time = _safe_float_quote(_reg.get("regularMarketTradeTime"))
+    spot_source = "lastPrice" if last and last > 0 else ("mark" if mark and mark > 0 else None)
+    spot = last if spot_source == "lastPrice" else (mark if spot_source == "mark" else None)
+    try:
+        spot_f = float(spot) if spot and float(spot) > 0 else None
+    except (TypeError, ValueError):
+        spot_f = None
+    quote_mid: float | None = None
+    mid_source: str | None = None
+    if mark is not None and mark > 0:
+        quote_mid = float(mark)
+        mid_source = "schwab_quote_mark"
+    return {
+        "last": last,
+        "mark": mark,
+        "bid": bid,
+        "ask": ask,
+        "quote_time": quote_time,
+        "trade_time": trade_time,
+        "quote_ts": quote_time or trade_time,
+        "spot_source": spot_source,
+        "spot": spot_f,
+        "quote_mid": quote_mid,
+        "mid_source": mid_source,
+    }
+
+
 def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float | None:
     """
     Update and return REST-based cum_delta accumulator for ticker.
@@ -2856,37 +2883,14 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         if q_resp and q_resp.status_code == 200:
             q_json = q_resp.json()
             _node = q_json.get(tkr.upper()) or q_json.get(tkr) or {}
-            _q = _node.get("quote") or {}
-            _ext = _node.get("extended") or {}
-            _reg = _node.get("regular") or {}
-            pq_last = _safe_float_quote(_q.get("lastPrice"))
-            if pq_last is None or pq_last <= 0:
-                pq_last = _safe_float_quote(_ext.get("lastPrice"))
-            if pq_last is None or pq_last <= 0:
-                pq_last = _safe_float_quote(_reg.get("regularMarketLastPrice"))
-            pq_mark = _safe_float_quote(_q.get("mark"))
-            if pq_mark is None or pq_mark <= 0:
-                pq_mark = _safe_float_quote(_ext.get("mark"))
-            pq_bid = _safe_float_quote(_q.get("bidPrice"))
-            if pq_bid is None:
-                pq_bid = _safe_float_quote(_ext.get("bidPrice"))
-            pq_ask = _safe_float_quote(_q.get("askPrice"))
-            if pq_ask is None:
-                pq_ask = _safe_float_quote(_ext.get("askPrice"))
-            pq_quote_time = _safe_float_quote(_q.get("quoteTime"))
-            if pq_quote_time is None:
-                pq_quote_time = _safe_float_quote(_ext.get("quoteTime"))
-            pq_trade_time = _safe_float_quote(_q.get("tradeTime"))
-            if pq_trade_time is None:
-                pq_trade_time = _safe_float_quote(_ext.get("tradeTime"))
-            if pq_trade_time is None:
-                pq_trade_time = _safe_float_quote(_reg.get("regularMarketTradeTime"))
-            spot_source = "lastPrice" if pq_last and pq_last > 0 else ("mark" if pq_mark and pq_mark > 0 else None)
-            spot = pq_last if spot_source == "lastPrice" else (pq_mark if spot_source == "mark" else None)
-            bid, ask = pq_bid, pq_ask
+            pq = _parse_quote_node_session_fields(_node)
+            spot_source = pq["spot_source"]
+            spot = pq["spot"]
+            bid, ask = pq["bid"], pq["ask"]
+            pq_mark = pq["mark"]
             if spot and float(spot) > 0:
                 sf = float(spot)
-                quote_ts = pq_quote_time or pq_trade_time
+                quote_ts = pq["quote_ts"]
                 server_received_ts = time.time()
                 row = {
                     "ticker": tkr,
@@ -2912,11 +2916,8 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                         "carried_forward": False,
                     },
                 }
-                mid: float | None = None
-                mid_src: str | None = None
-                if pq_mark is not None and pq_mark > 0:
-                    mid = float(pq_mark)
-                    mid_src = "schwab_quote_mark"
+                mid = pq["quote_mid"]
+                mid_src = pq["mid_source"]
                 if mid is not None:
                     row["quote_mid"] = mid
                     row["mid_source"] = mid_src

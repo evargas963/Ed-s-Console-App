@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.0",
+  "perf_proof_id": "pp_v4b_server_quote_session_fallbacks_dedupe",
+  "landed_batch": "v4b-2026-05-18",
+  "replacement_scope": "Extract _parse_quote_node_session_fields: single canonical quote\u2192extended\u2192regular fallback chain shared by _build_rest_fast_quote_payload and _tier_a_live_state_dict.",
+  "code_paths": [
+    "server.py"
+  ],
+  "evidence": {
+    "pytest_args": [
+      "tests/test_server_quote_source_contract.py"
+    ]
+  },
+  "benchmark": {
+    "command": [
+      "python",
+      "-m",
+      "pytest",
+      "tests/test_server_quote_source_contract.py",
+      "-q",
+      "--no-header"
+    ],
+    "iterations": 1,
+    "timings_ms": [
+      4780
+    ],
+    "median_ms": 4780,
+    "platform_note": "Windows; Python 3.13; dedupe 2026-05-18"
+  },
+  "register_link": {
+    "status": "bound",
+    "replaced_register_ids": [
+      "873f513b5c959a693c8c",
+      "0bea39b4f629a86f7581",
+      "084f1e9fc8cc754898ad",
+      "174e213bb329878e3a2c",
+      "2c2006e67cf4a1967402",
+      "bf73fedd1efdeefd8725",
+      "21e8a34cf455ae4e419a",
+      "97d70273b8c94820677a",
+      "0c74545cc1af8e60c9c0",
+      "f9aaff161773bfdc10f0",
+      "57bd91bac8e58a2ff556",
+      "1838bef8960de95df6ac",
+      "a21515d4d93a9e6771a4",
+      "d09fdc7094625420e588"
+    ]
+  }
+}

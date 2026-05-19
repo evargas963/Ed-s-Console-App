@@ -88,6 +88,29 @@ def test_rest_fast_quote_source_has_no_silent_zero_spot_fallback():
     assert "spot = last if" in src or "spot_source" in src
 
 
+def test_parse_quote_node_session_fields_extended_regular_fallbacks():
+    node = {
+        "quote": {"lastPrice": None, "mark": None, "bidPrice": None, "askPrice": None},
+        "extended": {
+            "lastPrice": 100.5,
+            "mark": 100.4,
+            "bidPrice": 100.3,
+            "askPrice": 100.6,
+            "quoteTime": 10.0,
+            "tradeTime": 9.0,
+        },
+        "regular": {"regularMarketLastPrice": 99.0, "regularMarketTradeTime": 8.0},
+    }
+    pq = server._parse_quote_node_session_fields(node)
+    assert pq["spot"] == 100.5
+    assert pq["spot_source"] == "lastPrice"
+    assert pq["bid"] == 100.3
+    assert pq["ask"] == 100.6
+    assert pq["quote_mid"] == 100.4
+    assert pq["mid_source"] == "schwab_quote_mark"
+    assert pq["quote_ts"] == 10.0
+
+
 def test_tier_a_live_state_rest_bootstrap_row_uses_schwab_time_not_wall_clock(monkeypatch):
     """S017: Tier A GET /api/live/state REST bootstrap must not set fast_server_ts from time.time()."""
     monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: None)
