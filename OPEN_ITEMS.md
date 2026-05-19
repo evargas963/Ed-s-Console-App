@@ -5,6 +5,21 @@
 
 ---
 
+## Current track (signed 2026-05-18)
+
+**Full plan:** [`governance/PILOT_1_SCHWAB_WALK_AND_AUTHORITY_UX_STAGING.md`](governance/PILOT_1_SCHWAB_WALK_AND_AUTHORITY_UX_STAGING.md) — operator + Claude + Cursor aligned. **Motto:** honest, consistent, traceable UI from real data; edge proven separately.
+
+| Track | Status | What |
+|-------|--------|------|
+| **TRACK 1 / NOW** | Active | Schwab V4 file-by-file walk (primary daily thread). Next spine files: `multi_horizon_decision.py` → `bayesian_fusion.py` → `signals.py` → `market_context.py`. Walk commits only — no Phase 2 UI mixed in. |
+| **TRACK 2 / NEXT** | Gated | One PR: desk headline `final_confidence`, v2 adapter + Decision Command + hz breakdown. After TRACK 1 items above walked; operator says **go Track 2**. Includes `market_state.py` ~1420 `or 0.0` fix (I-01). |
+| **TRACK 3 / LATER** | Planned | Pilot 1B A2 per blueprint. |
+| **TRACK 4 / DEFERRED** | Gated | Four parallel horizon stacks + four Calls (L145/L147). After TRACK 2 + horizon honesty + retrain plan + go/no-go. |
+
+**Trigger chunk 1:** `signed, go multi_horizon` on `multi_horizon_decision.py`.
+
+---
+
 ## GOVERNANCE REBUILD STATUS
 
 ### Standard
@@ -142,9 +157,9 @@ Reference ticker for parametric tests: **SPY**.
 
 ## Stack / training / UI alignment
 
-- [ ] **Four parallel stacks (1 / 5 / 15 / 60)** — → **Phase 7** (post-A/B) Implement **per-horizon** training targets, inference, and stack votes (not one head smeared across mismatched labels). **Retrain** after schema alignment.
+- [ ] **[TRACK 4 / DEFERRED] Four parallel stacks (1 / 5 / 15 / 60)** — → **Phase 7** (post-A/B) Implement **per-horizon** training targets, inference, and stack votes (not one head smeared across mismatched labels). **Retrain** after schema alignment. Gate: [`PILOT_1_SCHWAB_WALK_AND_AUTHORITY_UX_STAGING.md`](governance/PILOT_1_SCHWAB_WALK_AND_AUTHORITY_UX_STAGING.md) Phase 4.
 - [ ] **Training horizons vs UI** — Add **`15c`** to `ml_train.HORIZONS` (and `audit_model_readiness` XGB pred columns) **when you retrain** so `rules_15c_*` match shipped model feature count; `pred_15c_*` is already persisted from the prediction card for training rows.
-- [ ] **Four horizon-specific Call payloads** — Surface **one call per product horizon** (or primary + three secondaries) **after** probabilities/stack votes are **honest per H**. (Useful; depends on items above.)
+- [ ] **[TRACK 4 / DEFERRED] Four horizon-specific Call payloads** — Surface **one call per product horizon** (or primary + three secondaries) **after** probabilities/stack votes are **honest per H**. (Useful; depends on items above.)
 - [ ] **Candidate inference strictness scope (Option D)** — `ml_scheduler.py` now uses a scoped context manager to set `ED_XGB_STRICT_ACTIVE_ONLY=0` only during candidate-model inference (parallel eval, cascade eval, parallel meta assembly), with guaranteed restore afterward. Keep live serving strict-active-only fail-closed by default; retire this scope helper if candidate prediction stops reusing `ml_predict` active-path resolution.
 
 ## MC / fusion behavior (clarity + policy)
@@ -157,6 +172,8 @@ Reference ticker for parametric tests: **SPY**.
 - [ ] **Index futures** — Env-based (`ED_FUTURES_*`) wired; confirm Schwab contract symbols per roll; optional: auto-roll or admin doc.
 
 ## Schwab V4 Universal Coverage (register pipeline)
+
+**[TRACK 1 / NOW]** — Primary daily thread per [`PILOT_1_SCHWAB_WALK_AND_AUTHORITY_UX_STAGING.md`](governance/PILOT_1_SCHWAB_WALK_AND_AUTHORITY_UX_STAGING.md). Next spine walks: `multi_horizon_decision.py`, `bayesian_fusion.py`, `signals.py`, `market_context.py`.
 
 **Canonical tracker for deferred Schwab register work.** (Scanner walk scope was tightened 2026-05; CI still pins a **partial** mock register — see `governance/artifacts/schwab_v4_register_build_meta.json` `scanner_flags`.)
 

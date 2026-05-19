@@ -6,7 +6,8 @@
 **Expression profile:** A1 - equity / ETF  
 **Initial ticker:** SPY  
 **Target architecture:** `governance/FRAMEWORK_V2_TARGET_LOCK_RECORD.md`  
-**Implementation blueprint:** `governance/IMPLEMENTATION_BLUEPRINT_V2.md`
+**Implementation blueprint:** `governance/IMPLEMENTATION_BLUEPRINT_V2.md`  
+**Active execution staging (signed 2026-05-18):** `governance/PILOT_1_SCHWAB_WALK_AND_AUTHORITY_UX_STAGING.md` — Schwab walk (primary) + gated authority UX (`final_confidence` headline). Tracker: `OPEN_ITEMS.md` § Current track.
 
 Pilot 1A creates the visible v2 spine inside the existing app without changing model training, active promotion, or L1/Tier B contracts.
 
