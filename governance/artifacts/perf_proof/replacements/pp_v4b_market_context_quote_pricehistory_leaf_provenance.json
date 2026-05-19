@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0",
+  "perf_proof_id": "pp_v4b_market_context_quote_pricehistory_leaf_provenance",
+  "landed_batch": "v4b-2026-05-19",
+  "replacement_scope": "market_context.py chunk-1: direct Schwab quote.* and pricehistory.candles.* reads in _extract_quote (~25 tickers), fetch_price_levels (OHLC/PDH/PDL/PDC/ORB/POC/VAH/VAL/VWAP), _volume_profile_poc_vah_val, _vwap_bands; producer for mkt_ctx.* and price_levels.",
+  "code_paths": [
+    "market_context.py"
+  ],
+  "evidence": {
+    "pytest_args": [
+      "tests/test_market_context_fetch_fail_closed.py"
+    ],
+    "note": "I-01 partial context on quote failure; 32 REPLACED emission sites."
+  },
+  "benchmark": {
+    "command": [
+      "python",
+      "-m",
+      "pytest",
+      "tests/test_market_context_fetch_fail_closed.py",
+      "-q",
+      "--no-header"
+    ],
+    "iterations": 1,
+    "timings_ms": [
+      500
+    ],
+    "median_ms": 500,
+    "platform_note": "Windows; chunk-1 2026-05-19"
+  },
+  "register_link": {
+    "status": "bound",
+    "replaced_register_ids": [
+      "b7b72535ccad467a702c",
+      "96da2dc733b9156bb3fe",
+      "b346b0eb524ae8623a4f",
+      "5eff9129586a2a6cc3fe",
+      "2acdf23616c441281bcf",
+      "122b36f2fe376e8597b5",
+      "61df46eddb9ca83dcc69",
+      "d846bc0ad09dd5a7d1f9",
+      "c94ea0558cf44ba2b44f",
+      "807680e6c1c8d95fa6c9",
+      "3e3687ca25499a72cd87",
+      "a987a3cee2c6a1301842",
+      "1f9bc8de47409f7c3224",
+      "85f0095ffb4c48874b7c",
+      "435a3171b6792a0b86d2",
+      "d534455798aa46446ded",
+      "a62282d2871b49d6f8c3",
+      "c0e1af43dfefedc5925f",
+      "f67899899232185f0dc8",
+      "55fab546154a5ce11b77",
+      "3d970463e614d5e3cbfc",
+      "4fce5dad64cc0eeeea0e",
+      "bfb8284ca88fec02c513",
+      "10cc11dec3acf981c0b9",
+      "4ae872bd50993d1f052c",
+      "381f054e57b60b8a9ddb",
+      "788d0a0ffcf7a86e45a8",
+      "fabf76016e6ea16abe68",
+      "68a51e48ad9833c71760",
+      "ea8858d042164dafb490",
+      "cf068834a2db6bbd8fa1",
+      "b83ef96c1b06458a5805"
+    ],
+    "producer_note": "First walk with net-new REPLACED since server chunk-5; 6 net-new canonical leaves (quote OHLC + regular change fields)."
+  }
+}
