@@ -24,6 +24,37 @@ set: Read every file in the producer/consumer cone end-to-end. Program
 closure: the full repo file tree.
 
 ──────────────────────────────────────────────────────────────────────────────
+REVIEW METHOD — LINE-BY-LINE, FILE-BY-FILE (binding)
+──────────────────────────────────────────────────────────────────────────────
+The unit of work is one file. The action is reading every line of that file
+end-to-end. For every market-field reference encountered, take one of three
+actions in the same change set:
+
+  • REPLACE the derivation with the Schwab canonical leaf, OR
+  • Add an O-NN narrative in OPERATOR_DECISION_REGISTER.md if no Schwab
+    leaf exists and the derivation must stay (Why / Constraint /
+    Permanent-or-interim), OR
+  • Confirm the reference already uses a Schwab leaf and cite the canonical
+    path in the same diff.
+
+  • Each disposition that changes code or adds an O-NN must include the
+    matching V4 register row update (or REGISTER_ROW: cite) in the same change
+    set so PR 2's diff-emission gate passes.
+
+Then move to the next file.
+
+Scanner reports, the V4 register's unreviewed_count, scoreboards, and
+aggregated metrics are RECORD-KEEPING. They are NOT the unit of work. The
+4.1M unreviewed_count is a measurement artifact — a typical file produces
+a handful of real dispositions; scanner-row false positives do not require
+individual operator attention.
+
+Tuning classifiers, rerunning scans, or producing more reports in place of
+file-by-file end-to-end Read is a violation of this method. Any agent that
+proposes a report-driven loop instead of opening the next file and reading
+it is to be rejected on first look.
+
+──────────────────────────────────────────────────────────────────────────────
 CANOPY → TRUNK → BRANCH → LEAF (mandatory trace, every market field)
 ──────────────────────────────────────────────────────────────────────────────
 For every market-data field, value, derivation, or display element, trace the
