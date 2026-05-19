@@ -166,14 +166,16 @@ Reference ticker for parametric tests: **SPY**.
 
 ### Repo hygiene / size reduction (deferred — after Schwab disposition walk + V4 gate)
 
-**Do not start until:** `static/index.html` chunk walk is complete and verified, chunk follow-ups (e.g. `faa597b` class) are closed, and operator signs off on the active disposition slice set. **Not** during an open chunk or mid-register regen.
+**Sign-off (2026-05-18):** `static/index.html` disposition walk complete (chunks 1–7b, 512 slice rows + voice checkbox amend). Commit-range drift audit: no missing market canopies beyond voice fix. **Phase B authorized** — proceed with dead-code cleanup below.
+
+**Do not start Phase B until sign-off above.** (Met.) **Not** during an open chunk or mid-register regen.
 
 **Safe anytime before then (local only, no commit required):** delete scratch and backups that are not cited by an open ticket — `backups/db/*.db`, `caps_*.txt`, `dry_run_*.json`, `static/mockups/` if design compare is done.
 
 | Phase | When | What to remove / trim |
 |-------|------|----------------------|
 | **A — working tree** | First cleanup commit after disposition gate opens | Untracked scratch (`caps_*`, `dry_run_*`, extra `governance/audits/*` not tied to closure); local **~4 GB** `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` if slice CSVs for finished chunks are committed (slices are the auditable export). |
-| **B — dead code + tools** | After `static/index.html` walk done | Land flagged dead paths (orphan CSS chunk 1, `__renderCharmDriftRowLive`, acc-chart / cum-delta / multi-horizon, exec-grid cluster, sse-legacy); drop one-off `tools/_build_*` / `_patch_*` not needed to regenerate slices. |
+| **B — dead code + tools** | After walk sign-off (2026-05-18) | **Landed in working tree** (`tools/_phase_b_index_html_cleanup.py`): ~1.5k lines removed from `static/index.html` — orphan `.call-card`/`.mh-*`/`.mhap-*`/`.wds-*`/`.of-*` CSS, acc-chart / cum-delta / `renderMultiHorizon`, `render()` Right Now→WTDS block, `renderCharmDriftRow` + `__renderCharmDriftRowLive`, fast-lane OF overlay to orphan DOM, override-btn listeners/CSS. **Operator:** SPY hard refresh + 4-anchor smoke. Commit when ready. |
 | **C — post V4 closure** | After program closure / `O-XX` sign-off | Old scan artifacts, superseded governance drafts (only if nothing cites them), duplicate audit JSONs. |
 | **D — git history** | Separate deliberate PR only if `.git` is huge from **committed** blobs | History rewrite (e.g. remove committed DBs/large files) — **not** the same as deleting local untracked files; requires operator sign-off and force-push policy review. |
 
