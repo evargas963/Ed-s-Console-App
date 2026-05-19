@@ -64,7 +64,6 @@ jobs:
         run: |
           python -m tools.schwab_universal_coverage_scanner_v3 \
             --output governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv \
-            --max-files 400 \
             --embedding-mode mock
           python <<'PY'
           import csv, hashlib, json, pathlib, sys
