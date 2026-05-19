@@ -210,6 +210,14 @@ Constraint: Canonical aggregation in confluence render path only; must not silen
 
 Permanent or interim: Permanent.
 
+### O-52
+
+Why: The Liquidity & flow context card displays `context_layer.liquidity_behavior` fields derived from order-flow and bar structure; external `news` / sentiment fields are informational (Finnhub-class provider), not Schwab wire primitives.
+
+Constraint: Liquidity behavior subfields remain O-49 model-derived trunks; news subfields are NOT_MARKET_DATA and must respect `available` / `timed_out` / error gates without fabricating sentiment scores.
+
+Permanent or interim: Permanent.
+
 ---
 
 *End of register.*
