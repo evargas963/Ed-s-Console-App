@@ -76,11 +76,8 @@ def build_parallel_base_output(
             o["metadata"] = metadata
         return o
     pu, pd, pf = tri
+    dom = max(("up", "down", "flat"), key=lambda c: {"up": pu, "down": pd, "flat": pf}[c])
     conf = round(max(pu, pd, pf) - (1.0 / 3.0), 4)
-    if conf == 0.0:
-        dom = None
-    else:
-        dom = max(("up", "down", "flat"), key=lambda c: {"up": pu, "down": pd, "flat": pf}[c])
     return {
         "schema_version": PARALLEL_STACK_SCHEMA_VERSION,
         "architecture": "parallel",

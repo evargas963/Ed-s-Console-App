@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build governance/register_slices/parallel_stack_schema_py_1_95.csv — Layer 5 walk."""
+"""Build governance/register_slices/parallel_stack_schema_py_1_92.csv — Layer 5 chunk-1 walk (slice-only)."""
 from __future__ import annotations
 
 import csv
@@ -12,48 +12,23 @@ sys.path.insert(0, str(ROOT))
 
 from tools.schwab_universal_coverage_scanner_v3.register import REGISTER_COLUMNS, RegisterRow
 
-SLICE = ROOT / "governance" / "register_slices" / "parallel_stack_schema_py_1_95.csv"
+SLICE = ROOT / "governance" / "register_slices" / "parallel_stack_schema_py_1_92.csv"
 DICT_PATH = ROOT / "schwab_field_inventory" / "schwab_field_dictionary.csv"
 _CITE_RE = re.compile(r"CSV row (\d+) \(canonical_field=([^)]+)\)")
-TRACE = "CLAUDE Layer 5 disposition features/parallel_stack_schema.py 1-95"
+TRACE = "CLAUDE Layer 5 chunk-1 disposition features/parallel_stack_schema.py 1-92"
 PATH = "features/parallel_stack_schema.py"
-LO, HI = 1, 95
+LO, HI = 1, 92
 ANCHOR = (
     "line anchored HEAD b402ba3; Action 12.11 aa13245 fail-closed; "
-    "FIND-PSS1 uniform triplet dominant=None when confidence_score==0"
+    "FIND-PSS1/PSS2 disclosed slice-only (no production change)"
 )
-
-
-def zero(symbol: str) -> str:
-    return f"CSV grep zero hits for {symbol}"
-
-
-def _load_csv_row_to_canonical() -> dict[int, str]:
-    out: dict[int, str] = {}
-    with DICT_PATH.open(encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f)
-        for line_no, row in enumerate(reader, start=2):
-            out[line_no] = (row["canonical_field"] or "").strip()
-    return out
-
-
-def validate_formal_replaced_citations(row_map: dict[int, str]) -> None:
-    for line, surf, citation, _notes in FORMAL_REPLACED:
-        if citation and "CSV row " in citation:
-            for m in _CITE_RE.finditer(citation):
-                row_n = int(m.group(1))
-                cited = m.group(2).strip()
-                if row_map.get(row_n) != cited:
-                    raise SystemExit(f"Citation mismatch L{line} {surf}")
-
 
 FORMAL_REPLACED: list[tuple[int, str, str, str]] = []
 
 FORMAL_KEEP_DERIVED: list[tuple[int, str, str]] = [
-    (15, "ParallelBaseModelOutput TypedDict schema", zero("ParallelBaseModelOutput")),
-    (31, "_normalize_triplet (fail-closed incomplete/non-numeric/sum<=0)", zero("_normalize_triplet")),
-    (45, "empty_parallel_output labeled-unavailable factory", zero("empty_parallel_output")),
-    (61, "build_parallel_base_output (FIND-PSS1 conf==0 dominant None)", zero("build_parallel_base_output")),
+    (31, "_normalize_triplet (fail-closed incomplete/non-numeric/sum<=0)", "CSV grep zero hits for _normalize_triplet"),
+    (45, "empty_parallel_output labeled-unavailable factory", "CSV grep zero hits for empty_parallel_output"),
+    (61, "build_parallel_base_output main builder", "CSV grep zero hits for build_parallel_base_output"),
 ]
 
 FORMAL_PASS_THROUGH: list[tuple[int, str, str]] = []
@@ -91,9 +66,6 @@ def _synth_row(
 
 
 def main() -> None:
-    row_map = _load_csv_row_to_canonical()
-    validate_formal_replaced_citations(row_map)
-
     out_by_id: dict[str, dict[str, str]] = {}
     col = 100
     for line, surf, evidence in FORMAL_KEEP_DERIVED:
