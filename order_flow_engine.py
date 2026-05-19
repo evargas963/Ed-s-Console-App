@@ -856,8 +856,11 @@ class OrderFlowEngine:
             book_imbalance_5 = top_book_pressure
             log.debug("Book Imb: REST proxy (top of book only)")
 
-        # Use 5-level for scoring when available
-        book_for_score = book_imbalance_5 or book_imbalance_3 or book_imbalance_1
+        # Use 5-level for scoring when available (preserve measured 0.0 — FIND-OF1)
+        book_for_score = next(
+            (v for v in (book_imbalance_5, book_imbalance_3, book_imbalance_1) if v is not None),
+            None,
+        )
         spread_d = _compute_spread(data)
         spread_pts = spread_d.get("spread_pts")
 
@@ -865,7 +868,10 @@ class OrderFlowEngine:
         tape_pressure_30s = _compute_tape_pressure(data, 30.0)
         tape_pressure_2m = _compute_tape_pressure(data, 120.0)
         tape_pressure_5m = _compute_tape_pressure(data, 300.0)
-        tape_for_score = tape_pressure_2m or tape_pressure_30s or tape_pressure_5m
+        tape_for_score = next(
+            (v for v in (tape_pressure_2m, tape_pressure_30s, tape_pressure_5m) if v is not None),
+            None,
+        )
 
         # Cumulative delta
         cum_delta_proxy = _compute_cum_delta_proxy(data)
