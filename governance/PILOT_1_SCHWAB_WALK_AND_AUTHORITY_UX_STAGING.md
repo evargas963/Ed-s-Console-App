@@ -190,6 +190,7 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-19 | `liquidity_value_engine.py` chunk-1 walk (0 REPLACED; 26 KEEP_DERIVED; 4 PASS_THROUGH; FIND-LVE1/STYLE-LVE2 disclosed; 1520-line HEAD) |
 | 2026-05-19 | **Phase 2** authority UX — `final_confidence` desk headline (Track 2) |
 | 2026-05-19 | **Phase 1 closure** — 14 producer walks + 2 paired fixes; deferred FINDs → `OPEN_ITEMS.md` |
+| 2026-05-19 | `order_flow_engine.py` chunk-3 paired fix (FIND-OF3/OF4/OF5 — renormalize-over-present composite + rvol_is_None readiness branching) |
 
 ---
 

@@ -770,6 +770,29 @@ def _normalize(val: Optional[float], low: float = -1.0, high: float = 1.0) -> fl
     return max(low, min(high, float(val)))
 
 
+def _weighted_mean_present(
+    terms: list[tuple[float, Optional[float], float, float]],
+    *,
+    min_present: int = 2,
+) -> Optional[float]:
+    """
+    Weighted mean over present (non-None) legs; renormalize present weights to 1.0.
+    Each term is (weight, raw_value, clip_low, clip_high). Returns None when fewer
+    than min_present legs are available (no silent neutral mass from missing inputs).
+    """
+    present: list[tuple[float, float]] = []
+    for weight, raw, low, high in terms:
+        if raw is None:
+            continue
+        present.append((weight, _normalize(raw, low, high)))
+    if len(present) < min_present:
+        return None
+    total_w = sum(w for w, _ in present)
+    if total_w <= 0:
+        return None
+    return sum((w / total_w) * v for w, v in present)
+
+
 def _compute_order_flow_score(
     book_imbalance: Optional[float],
     tape_pressure: Optional[float],
@@ -777,30 +800,29 @@ def _compute_order_flow_score(
     absorption: Optional[float],
     options_flow: Optional[float],
     rvol: Optional[float],
-) -> float:
+) -> Optional[float]:
     """
-    Composite score:
-      0.25 * book_imbalance + 0.20 * tape_pressure + 0.20 * cum_delta +
-      0.15 * absorption + 0.15 * options_flow + 0.05 * rvol
+    Composite score over present legs only (FIND-OF3/OF4):
+      0.25 book + 0.20 tape + 0.20 cum_delta + 0.15 absorption +
+      0.15 options + 0.05 rvol(term = rvol - 1.0). None when < 2 legs present.
     """
-    n_book = _normalize(book_imbalance)
-    n_tape = _normalize(tape_pressure)
-    n_delta = _normalize(cum_delta, -1, 1)
-    n_abs = _normalize(absorption)
-    n_opt = _normalize(options_flow)
-    n_rvol = _normalize((rvol - 1.0) if rvol is not None else None, -0.5, 0.5)
-    return (
-        0.25 * n_book
-        + 0.20 * n_tape
-        + 0.20 * n_delta
-        + 0.15 * n_abs
-        + 0.15 * n_opt
-        + 0.05 * n_rvol
+    return _weighted_mean_present(
+        [
+            (0.25, book_imbalance, -1.0, 1.0),
+            (0.20, tape_pressure, -1.0, 1.0),
+            (0.20, cum_delta, -1.0, 1.0),
+            (0.15, absorption, -1.0, 1.0),
+            (0.15, options_flow, -1.0, 1.0),
+            (0.05, (rvol - 1.0) if rvol is not None else None, -0.5, 0.5),
+        ],
+        min_present=2,
     )
 
 
-def _direction(score: float) -> str:
-    """score > 0.15 → bullish, < -0.15 → bearish, else neutral."""
+def _direction(score: Optional[float]) -> Optional[str]:
+    """score > 0.15 → bullish, < -0.15 → bearish, else neutral; None when score unavailable."""
+    if score is None:
+        return None
     if score > 0.15:
         return "bullish"
     if score < -0.15:
@@ -808,15 +830,23 @@ def _direction(score: float) -> str:
     return "neutral"
 
 
-def _readiness(score: float, rvol: Optional[float]) -> str:
+def _readiness(score: Optional[float], rvol: Optional[float]) -> str:
     """
     green: score strong and rvol > 1.2
-    yellow: score moderate
-    red: else
+    yellow: score moderate, or strong with rvol unknown/unconfirmed (rvol is None)
+    red: weak score, or composite unavailable
+
+    When rvol is None, strong readings downgrade to yellow (no fabricated rvol_ok).
     """
+    if score is None:
+        return "red"
     strong = abs(score) > 0.25
     moderate = 0.1 <= abs(score) <= 0.25
-    rvol_ok = (rvol or 0) > 1.2
+    if rvol is None:
+        if strong or moderate:
+            return "yellow"
+        return "red"
+    rvol_ok = rvol > 1.2
     if strong and rvol_ok:
         return "green"
     if moderate or (strong and not rvol_ok):
@@ -906,7 +936,12 @@ class OrderFlowEngine:
         )
         order_flow_direction = _direction(order_flow_score)
         order_flow_regime = order_flow_direction
-        order_flow_readiness = _readiness(order_flow_score, rvol)
+        order_flow_readiness = (
+            "red" if order_flow_score is None else _readiness(order_flow_score, rvol)
+        )
+        order_flow_readiness_rvol = (
+            "unavailable" if rvol is None and order_flow_score is not None else None
+        )
 
         # Flow Verdict (composite headline) + field arrows/labels
         try:
@@ -1029,6 +1064,7 @@ class OrderFlowEngine:
             "order_flow_direction": None,
             "order_flow_regime": None,
             "order_flow_readiness": None,
+            "order_flow_readiness_rvol": None,
             "order_flow_verdict": None,
             "order_flow_verdict_color": None,
             "order_flow_arrow": None,

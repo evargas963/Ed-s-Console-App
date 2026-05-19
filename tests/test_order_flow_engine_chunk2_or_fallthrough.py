@@ -119,16 +119,20 @@ def test_compute_score_uses_depth_5_zero_not_depth_3_fallback():
     assert depth3 is not None
     assert abs(depth3 - 0.5) < 0.02
 
-    out = OrderFlowEngine().compute(data)
+    # Chunk-3 requires ≥2 present legs for a composite; neutral tape pairs with depth-5 zero book.
+    with patch("order_flow_engine._compute_tape_pressure", return_value=0.0):
+        out = OrderFlowEngine().compute(data)
     score_with_depth5_zero = out["order_flow_score"]
     score_if_depth3_substituted = _compute_order_flow_score(
         _compute_book_imbalance(data, 3),
-        None,
+        0.0,
         None,
         None,
         None,
         None,
     )
-    assert score_with_depth5_zero == 0.0
+    assert score_with_depth5_zero is not None
+    assert abs(score_with_depth5_zero) < 0.01
+    assert score_if_depth3_substituted is not None
     assert score_if_depth3_substituted > 0.1
     assert out["book_imbalance_5"] == 0.0
