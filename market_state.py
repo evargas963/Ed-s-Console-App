@@ -1417,7 +1417,8 @@ def build_market_state(
             _mr = getattr(_mhd, "alignment_report", None)
             _pt = getattr(_mhd, "final_trade_plan", None)
             ms.final_bias = str(getattr(_mhd, "final_bias", "WAIT") or "WAIT")
-            ms.final_confidence = float(getattr(_mhd, "final_confidence", 0.0) or 0.0)
+            _fc = getattr(_mhd, "final_confidence", None)
+            ms.final_confidence = float(_fc) if _fc is not None else None
             ms.final_quality = str(getattr(_mhd, "final_quality", "D") or "D")
             ms.final_tradeable = bool(getattr(_mhd, "final_tradeable", False))
             ms.primary_horizon = str(getattr(_mhd, "primary_horizon", "1c") or "1c")
