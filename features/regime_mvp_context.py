@@ -58,5 +58,11 @@ def mvp_nearest_distances_for_regime(mvp: dict[str, Any]) -> tuple[Any, Any]:
     )
 
 
-def mvp_net_gamma(mvp: dict[str, Any]) -> Any:
-    return mvp.get("structure.net_gamma")
+def mvp_net_gamma(mvp: dict[str, Any]) -> float | None:
+    v = mvp.get("structure.net_gamma")
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
