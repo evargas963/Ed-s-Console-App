@@ -280,6 +280,12 @@ Reference ticker for parametric tests: **SPY**.
   - [ ] OBS-A2OE1 — `deferred_slice_5` replay/live parity gate (registered gap `a2_replay_live_parity_not_gating_runtime`).
   - [ ] OBS-A2OE2 — BS theta fallback disabled (`_A2_THETA_BS_FALLBACK_GOVERNED=False`); `theta_unavailable` hard gate when Schwab theta absent (accepted).
   - [ ] OBS-A2OE3 — `conformance_gaps` registry lists intentional not-implemented A2 surfaces (accepted).
+  - [x] FIND-RCE1 — `evaluate_realized_contract_trades_for_rows` silently defaulted missing/invalid `replay_max_hold_bars` to 30; closed via `replay_max_hold_bars_from_context` + skip `missing_replay_max_hold_bars`.
+  - [x] FIND-RCE2 — `_chain_selection_quality_row` used `row.get("strike", 0)`; closed skip when strike absent.
+  - [x] FIND-RCE3 — exit path allowed `exit_bid <= 0` while entry required `ask > 0`; closed symmetric skip `missing_exit_bid`.
+  - [x] FIND-RCE4 — `score_gap_vs_best` sorted with `float(score or 0)`; closed exclude None scores from best-score ladder.
+  - [ ] OBS-RCE1 — `replay_max_hold_bars_for_trade_type` / `build_replay_context_payload` trade-type fallback documented in payload metadata (accepted; eval path no longer uses silent default).
+  - [ ] OBS-RCE2 — `compare_parallel_cascade_trade_logs` uses `pnl_dollars or 0` for diff stats on valid rows only (accepted).
   - [ ] OBS-FPC1 — `fusion_payload_to_policy_columns` `json.dumps` failure → `cm_json = "[]"` (audit metadata only; not policy prob authority).
   - [ ] OBS-FPC2 — `fused_stack_status_*` uses `dom`/`fconf` `"?"` when fusion attrs missing (audit string; accepted disclosure).
   - [ ] OBS-PNSC1 — `features/parallel_stack_contract.py` does not exist; parallel model output contract is `features/parallel_stack_schema.py` (Layer 5 walked c80d536). Degradation audit trail is `features/stack_integrity_v1.py` (Layer 5 walked as schema sibling).

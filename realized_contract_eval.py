@@ -99,6 +99,20 @@ _COARSE_BUCKETS = (
 )
 
 
+def replay_max_hold_bars_from_context(replay_obj: dict) -> int | None:
+    """Require explicit replay_max_hold_bars in replay_context_json (no silent 30-bar default)."""
+    raw = replay_obj.get("replay_max_hold_bars")
+    if raw is None:
+        return None
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if n < 1:
+        return None
+    return min(n, 390)
+
+
 def replay_max_hold_bars_for_trade_type(trade_type: str | None) -> int:
     t = (trade_type or "").strip().lower()
     if t == "trend_continuation":
@@ -408,8 +422,10 @@ def _chain_selection_quality_row(
     by_strike_score: dict[float, Any] = {}
     seen_strikes: set[float] = set()
     for row in (ranked_top5 or [])[:5]:
+        if row.get("strike") is None:
+            continue
         try:
-            sk = float(row.get("strike", 0))
+            sk = float(row["strike"])
         except (TypeError, ValueError):
             continue
         if sk in seen_strikes:
@@ -609,6 +625,7 @@ def _coarse_skip(reason: str) -> str:
         return "no_contract_selected"
     if reason.startswith("missing_replay") or reason in (
         "missing_chain_selection_proof",
+        "missing_replay_max_hold_bars",
         "replay_context_invalid",
         "walls_deserialize_failed",
     ):
@@ -810,13 +827,10 @@ def evaluate_realized_contract_trades_for_rows(
             skip("missing_chain_selection_proof")
             continue
 
-        try:
-            max_hold = int(replay_obj["replay_max_hold_bars"])
-        except (KeyError, TypeError, ValueError):
-            max_hold = 30
-        if max_hold < 1:
-            max_hold = 30
-        max_hold = min(max_hold, 390)
+        max_hold = replay_max_hold_bars_from_context(replay_obj)
+        if max_hold is None:
+            skip("missing_replay_max_hold_bars")
+            continue
 
         if not chain_raw:
             skip("no_option_chain_archive")
@@ -916,7 +930,7 @@ def evaluate_realized_contract_trades_for_rows(
             skip("exit_contract_not_found")
             continue
         exit_bid = _f(exit_ct.get("bid"))
-        if exit_bid is None:
+        if exit_bid is None or exit_bid <= 0:
             skip("missing_exit_bid")
             continue
 
