@@ -50,12 +50,14 @@ BREAKOUT_BLOCK_THRESHOLD: float = 0.45
 
 
 def _of_sign(v: float | None) -> float | None:
-    """Return -1, 0, or +1 based on sign of v (for cum_delta in verdict). None when input missing."""
+    """Return -1 or +1 based on sign of v (for cum_delta in verdict). None when missing or exactly zero."""
     if v is None:
         return None
     try:
         f = float(v)
-        return 1.0 if f > 0 else (-1.0 if f < 0 else 0.0)
+        if f == 0.0:
+            return None
+        return 1.0 if f > 0 else -1.0
     except (TypeError, ValueError):
         return None
 
@@ -148,8 +150,10 @@ def compute_order_flow_verdict(
     for d in (_of_direction(score), _book_direction(book_imb), _of_direction(opt_flow)):
         if d is not None:
             dirs.append(d)
-    if c_sign is not None:
-        dirs.append("bullish" if c_sign > 0 else ("bearish" if c_sign < 0 else "neutral"))
+    if c_sign is not None and c_sign > 0:
+        dirs.append("bullish")
+    elif c_sign is not None and c_sign < 0:
+        dirs.append("bearish")
 
     if not dirs:
         agreement = "unavailable"

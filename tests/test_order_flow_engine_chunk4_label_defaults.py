@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from math_exposure import (
+    _of_sign,
     compute_order_flow_verdict,
     order_flow_score_label,
 )
@@ -20,6 +21,18 @@ def test_direction_exact_zero_is_none_weak_band_still_neutral():
 def test_order_flow_score_label_exact_zero_is_none():
     assert order_flow_score_label(0.0) is None
     assert order_flow_score_label(0.05) == "neutral"
+
+
+def test_of_sign_zero_is_none_not_neutral_vote():
+    assert _of_sign(0.0) is None
+    assert _of_sign(0.01) == 1.0
+    assert _of_sign(-0.01) == -1.0
+
+
+def test_verdict_with_zero_cum_delta_still_emits_when_score_directional():
+    out = compute_order_flow_verdict(0.5, None, 0.0, None)
+    assert out["verdict"] is not None
+    assert out["agreement"] != "unavailable"
 
 
 def test_compute_order_flow_verdict_score_only_zero_is_unavailable():

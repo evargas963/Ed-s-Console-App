@@ -194,6 +194,7 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-19 | `liquidity_value_engine.py` chunk-2 paired fix (FIND-LVE1 — log info on ATR→percent threshold fallback) |
 | 2026-05-19 | `order_flow_engine.py` chunk-4 paired fix (FIND-OF6/OF7 — withhold direction/verdict labels at exact-zero composite) |
 | 2026-05-19 | `call_engine.py` Layer 5 chunk-2B (FIND-CE3/CE4/CE6/CE7/CE8 — gate/sizing/vol_regime fail-closed) |
+| 2026-05-19 | FIND-OF8 + disclosure-accept (STYLE-LVE2, magic thresholds); Phase 1 deferred list closed |
 
 ---
 
@@ -240,15 +241,11 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | Paired fixes landed | 2 (FIND-RE1 audit message; FIND-OF1/OF2 0.0-preservation) |
 | P_count (Schwab register pinned) | 12 → 12 unchanged |
 | Walk-cumulative REPLACED (V4 program) | ~95 + 32 = ~127 |
-| Disclosure backlog (deferred) | 7 items — cross-linked to OPEN_ITEMS.md |
+| Disclosure backlog (deferred) | Closed 2026-05-19 — see OPEN_ITEMS.md Pilot 1 subsection |
 
-### Deferred items
+### Deferred items (historical — all substantive FINDs closed)
 
-Tracked under `OPEN_ITEMS.md` → Layer 4 fail-closed section (new subsection "Pilot 1 Schwab walk — deferred FINDs"):
+Substantive items closed in paired-fix commits (OF1–OF8, LVE1, FIND-RE1, FIND-CE3–CE8). Remaining accepted disclosures only:
 
-- FIND-OF3/OF4 — `_normalize(None)→0.0` in `_compute_order_flow_score` (order_flow_engine.py L768–791)
-- FIND-OF5 — `(rvol or 0) > 1.2` in `_readiness` (order_flow_engine.py L819)
-- FIND-OF6/OF7 — semantic label defaults at `score==0` / math_exposure ImportError fallback (order_flow_engine.py L805–811)
-- FIND-LVE1 — `clustering_mode=="atr"` silent percent fallback (liquidity_value_engine.py L580–583)
-- STYLE-LVE2 — mixed `in tags` vs `in str(tags)` matching pattern (liquidity_value_engine.py)
-- Magic-threshold disclosures — POC shift 0.002, VWAP-vs-POC 0.001, new_value_area 0.005, zone-edge proximities 0.995/0.998/1.002 (liquidity_value_engine.py)
+- **STYLE-LVE2** — mixed `in tags` vs `in str(tags)` in liquidity_value_engine snapshot builders; accepted (substring match intentional for VWAP band tags).
+- **Magic thresholds** — POC shift 0.002, VWAP-vs-POC 0.001, new_value_area 0.005, zone-edge proximities 0.995/0.998/1.002; accepted informational disclosures in liquidity_value_engine.py.
