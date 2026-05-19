@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -108,6 +109,8 @@ def ms_dict_from_snapshot_row(row: Mapping[str, Any]) -> dict[str, Any]:
                 field_sources[key] = RECONSTRUCTED_LIVE_MS_SOURCE
 
     _infer_fusion_fields(ms)
+    if ts_utc is not None:
+        ms.setdefault("ts_utc", ts_utc)
     ms.setdefault("ticker", ticker)
     ms.setdefault("decision_generation_id", snapshot_id)
     ms.setdefault("_server_build_ts", ts_utc)
@@ -135,7 +138,9 @@ def build_v2_advisory_snapshot(snapshot_row: Mapping[str, Any]) -> dict[str, Any
         "live_ms_field_sources": dict(ms_dict.get("live_ms_field_sources") or {}),
         "ticker": ms_dict.get("ticker"),
         "snapshot_id": ms_dict.get("snapshot_id"),
-        "decision_ts_utc": ms_dict.get("ts_utc"),
+        "decision_ts_utc": _float_or_none(
+            _first_present(ms_dict, "ts_utc", "decision_ts_utc")
+        ),
         "v2_decision": v2_decision,
     }
 
@@ -288,21 +293,32 @@ def _mark_backfill_status(
     )
 
 
+def _fusion_prob_triplet(ms: Mapping[str, Any]) -> tuple[float | None, float | None, float | None]:
+    return (
+        _float_or_none(ms.get("fusion_prob_up")),
+        _float_or_none(ms.get("fusion_prob_down")),
+        _float_or_none(ms.get("fusion_prob_flat")),
+    )
+
+
+def _fusion_triplet_complete(ms: Mapping[str, Any]) -> bool:
+    return all(p is not None for p in _fusion_prob_triplet(ms))
+
+
 def _infer_fusion_fields(ms: dict[str, Any]) -> None:
+    up, down, flat = _fusion_prob_triplet(ms)
     if "fusion_available" not in ms or ms.get("fusion_available") is None:
-        ms["fusion_available"] = any(
-            ms.get(key) is not None
-            for key in ("fusion_dominant_prob", "fusion_prob_up", "fusion_prob_down", "fusion_prob_flat")
+        dominant_dir = ms.get("fusion_dominant_direction")
+        dominant_prob = _float_or_none(ms.get("fusion_dominant_prob"))
+        ms["fusion_available"] = _fusion_triplet_complete(ms) or (
+            dominant_dir is not None and dominant_prob is not None
         )
-    if ms.get("fusion_dominant_direction") is None:
-        direction = _direction_from_triplet(ms.get("fusion_prob_up"), ms.get("fusion_prob_down"), ms.get("fusion_prob_flat"))
+    if ms.get("fusion_dominant_direction") is None and _fusion_triplet_complete(ms):
+        direction = _direction_from_triplet(up, down, flat)
         if direction is not None:
             ms["fusion_dominant_direction"] = direction
-    if ms.get("fusion_dominant_prob") is None:
-        probs = [_float_or_none(ms.get(key)) for key in ("fusion_prob_up", "fusion_prob_down", "fusion_prob_flat")]
-        vals = [p for p in probs if p is not None]
-        if vals:
-            ms["fusion_dominant_prob"] = max(vals)
+    if ms.get("fusion_dominant_prob") is None and _fusion_triplet_complete(ms):
+        ms["fusion_dominant_prob"] = max((up, down, flat))
 
 
 def _direction_from_triplet(up: Any, down: Any, flat: Any) -> str | None:
@@ -320,7 +336,9 @@ def _direction_from_triplet(up: Any, down: Any, flat: Any) -> str | None:
 def _float_or_none(value: Any) -> float | None:
     try:
         if value is not None:
-            return float(value)
+            v = float(value)
+            if math.isfinite(v):
+                return v
     except (TypeError, ValueError):
         return None
     return None

@@ -274,6 +274,43 @@ def test_walk_forward_validation_rejects_embargo_violation():
         validate_purged_embargo_splits(splits, embargo_span=5.0)
 
 
+def test_infer_fusion_fields_partial_triplet_does_not_mark_available() -> None:
+    ms: dict = {"fusion_prob_up": 0.9}
+    from calibration.v2_advisory_backfill import _infer_fusion_fields
+
+    _infer_fusion_fields(ms)
+    assert ms["fusion_available"] is False
+    assert ms.get("fusion_dominant_direction") is None
+    assert ms.get("fusion_dominant_prob") is None
+
+
+def test_infer_fusion_fields_complete_triplet_infers_direction_and_prob() -> None:
+    ms: dict = {
+        "fusion_prob_up": 0.2,
+        "fusion_prob_down": 0.25,
+        "fusion_prob_flat": 0.55,
+    }
+    from calibration.v2_advisory_backfill import _infer_fusion_fields
+
+    _infer_fusion_fields(ms)
+    assert ms["fusion_available"] is True
+    assert ms["fusion_dominant_direction"] == "flat"
+    assert ms["fusion_dominant_prob"] == pytest.approx(0.55)
+
+
+def test_build_snapshot_decision_ts_from_decision_ts_utc_alias() -> None:
+    row = {
+        "ticker": "SPY",
+        "decision_ts_utc": BASE_TS,
+        "fusion_available": True,
+        "fusion_dominant_direction": "up",
+        "fusion_dominant_prob": 0.6,
+        "execution_mode": "STANDARD",
+    }
+    payload = build_v2_advisory_snapshot(row)
+    assert payload["decision_ts_utc"] == BASE_TS
+
+
 def test_direction_from_triplet_flat_matches_bayesian_fusion_canonical() -> None:
     """Backfill must emit 'flat' (not 'neutral') when flat prob wins argmax."""
     assert _direction_from_triplet(0.2, 0.25, 0.55) == "flat"
