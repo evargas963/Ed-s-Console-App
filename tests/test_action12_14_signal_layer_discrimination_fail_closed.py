@@ -120,6 +120,26 @@ def test_run_discrimination_preserves_null_final_signal_via_missing_category(tmp
     assert dist["wait"] == 0.0
 
 
+def test_run_discrimination_treats_non_numeric_fusion_probs_as_missing(
+    tmp_path: Path,
+) -> None:
+    db_path = _seed_db(tmp_path)
+    conn = sqlite3.connect(str(db_path))
+    _insert_row(
+        conn,
+        fusion_json=json.dumps(
+            {"prob_up": "not-a-number", "prob_down": 0.3, "prob_flat": 0.2}
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    out = run_discrimination(db_path)
+    assert out["fusion_n_present_in_log"] == 0
+    assert out["fusion_n_missing_in_log"] == 1
+    assert out["fusion_mean_p_up_down_flat"] == [None, None, None]
+
+
 def test_run_discrimination_reports_fusion_n_present_vs_missing_counts(tmp_path: Path) -> None:
     db_path = _seed_db(tmp_path)
     conn = sqlite3.connect(str(db_path))

@@ -156,11 +156,21 @@ def run_discrimination(db_path: Path) -> dict[str, Any]:
                 pd_raw = d.get("prob_down")
                 pf_raw = d.get("prob_flat")
                 if pu_raw is not None and pd_raw is not None and pf_raw is not None:
-                    fusion_probs.append((float(pu_raw), float(pd_raw), float(pf_raw)))
-                    fusion_n_present += 1
+                    try:
+                        pu = float(pu_raw)
+                        pd = float(pd_raw)
+                        pf = float(pf_raw)
+                    except (TypeError, ValueError):
+                        fusion_n_missing += 1
+                    else:
+                        if all(math.isfinite(v) for v in (pu, pd, pf)):
+                            fusion_probs.append((pu, pd, pf))
+                            fusion_n_present += 1
+                        else:
+                            fusion_n_missing += 1
                 else:
                     fusion_n_missing += 1
-            except Exception:
+            except (json.JSONDecodeError, TypeError):
                 fusion_n_missing += 1
         else:
             fusion_n_missing += 1
