@@ -329,7 +329,11 @@ class MarketState:
     # Predictive card — Issue 13: dominant_* = canonical forward (decision-aligned); historical_* = empirical 5c only
     dominant_dir:       Optional[str]   = None
     dominant_prob:      Optional[float] = None
-    confidence:         str             = "low"   # forward (fusion) confidence for trader-facing fallback
+    # CONFIDENCE-1a (canopy ms.confidence): canonical-forward / WTDS card confidence only.
+    # Not mhap_rows[h].confidence (per-horizon MHAP panel) nor
+    # fusion_policy_snapshot_cols["fused_confidence_<hz>"] (per-horizon fusion trunk).
+    # Set in build_market_state from canonical_forecast.confidence or pred.forward_confidence.
+    confidence:         str             = "low"
     historical_5c_dominant_dir: Optional[str] = None
     historical_5c_dominant_prob: Optional[float] = None
     empirical_confidence: str = "low"
