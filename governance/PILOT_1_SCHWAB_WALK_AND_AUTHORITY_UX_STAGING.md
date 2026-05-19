@@ -180,4 +180,5 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-18 | `call_engine.py` chunk-1 walk (0 REPLACED; Decision Command / validation / sizing producer chain) |
 | 2026-05-19 | `prediction_engine.py` chunk-1 walk (0 REPLACED; PredictiveCard / WTDS / MHA per-horizon inputs) |
 | 2026-05-19 | `rules_engine.py` chunk-1 walk (0 REPLACED; Right Now + stack micro vote; **TRACK 1 priority complete**) |
+| 2026-05-19 | `regime_engine.py` chunk-1 walk (0 REPLACED; FIND-RE1 L372 audit-message fix; Mega queue #1) |
 | 2026-05-19 | **Phase 2** authority UX — `final_confidence` desk headline (Track 2) |

@@ -369,7 +369,7 @@ def _score_trend_continuation(inp: SignalInput, micro_regime: str, mr: dict,
     if (sig == "long" and vs == "above") or (sig == "short" and vs == "below"):
         score += 1.0
         support.append(f"VWAP side ({vs}) aligned with {sig} lean")
-    elif sig in ("long", "short") and vs and vs != "above" if sig == "long" else vs != "below":
+    elif (sig == "long" and vs and vs != "above") or (sig == "short" and vs and vs != "below"):
         contra.append(f"VWAP side ({vs}) conflicts with {sig} lean")
 
     if micro_regime in (mr["reversal_up"], mr["reversal_dn"], mr["choch_bull"], mr["choch_bear"]):
