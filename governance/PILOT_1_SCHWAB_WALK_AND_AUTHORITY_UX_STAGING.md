@@ -195,6 +195,7 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-19 | `order_flow_engine.py` chunk-4 paired fix (FIND-OF6/OF7 — withhold direction/verdict labels at exact-zero composite) |
 | 2026-05-19 | `call_engine.py` Layer 5 chunk-2B (FIND-CE3/CE4/CE6/CE7/CE8 — gate/sizing/vol_regime fail-closed) |
 | 2026-05-19 | FIND-OF8 + disclosure-accept (STYLE-LVE2, magic thresholds); Phase 1 deferred list closed |
+| 2026-05-19 | `features/parallel_stack_schema.py` Layer 5 walk (0 REPLACED; FIND-PSS1 uniform triplet dominant withhold) |
 
 ---
 
