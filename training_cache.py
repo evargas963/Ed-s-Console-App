@@ -71,8 +71,8 @@ def compute_training_code_fingerprint() -> str:
 
 
 def xgb_meta_content_sha256(meta_path: Path) -> str:
-    if not meta_path.exists():
-        return ""
+    if not meta_path.is_file():
+        return f"MISSING:{meta_path.resolve()}"
     return file_sha256_hex(meta_path)
 
 
@@ -146,11 +146,11 @@ def compute_scheduler_cache_key(
             architecture,
             CANONICAL_FEATURE_CONTRACT_VERSION,
             CANONICAL_FEATURE_TIMEFRAME,
-            str(data_fp.get("min_ts_utc", "")),
-            str(data_fp.get("max_ts_utc", "")),
-            str(data_fp.get("row_count", 0)),
-            str(data_fp.get("table", "")),
-            str(data_fp.get("timeframe", "")),
+            _fingerprint_key_part(data_fp, "min_ts_utc"),
+            _fingerprint_key_part(data_fp, "max_ts_utc"),
+            _fingerprint_row_count_part(data_fp),
+            _fingerprint_key_part(data_fp, "table"),
+            _fingerprint_key_part(data_fp, "timeframe"),
             FEATURE_SCHEMA_VERSION,
             PREPROCESSING_VERSION,
             LABEL_CONFIG_VERSION,
@@ -185,11 +185,11 @@ def compute_feature_cache_key(
             "shared_features",
             CANONICAL_FEATURE_CONTRACT_VERSION,
             CANONICAL_FEATURE_TIMEFRAME,
-            str(data_fp.get("min_ts_utc", "")),
-            str(data_fp.get("max_ts_utc", "")),
-            str(data_fp.get("row_count", 0)),
-            str(data_fp.get("table", "")),
-            str(data_fp.get("timeframe", "")),
+            _fingerprint_key_part(data_fp, "min_ts_utc"),
+            _fingerprint_key_part(data_fp, "max_ts_utc"),
+            _fingerprint_row_count_part(data_fp),
+            _fingerprint_key_part(data_fp, "table"),
+            _fingerprint_key_part(data_fp, "timeframe"),
             FEATURE_SCHEMA_VERSION,
             PREPROCESSING_VERSION,
             LABEL_CONFIG_VERSION,
@@ -292,6 +292,21 @@ def compare_tabular_data_fingerprint_from_df(df, ticker: str) -> dict:
     }
 
 
+def _fingerprint_key_part(data_fp: dict, field: str) -> str:
+    if field not in data_fp or data_fp.get(field) is None:
+        return ""
+    return str(data_fp[field])
+
+
+def _fingerprint_row_count_part(data_fp: dict) -> str:
+    if "row_count" not in data_fp or data_fp.get("row_count") is None:
+        return ""
+    try:
+        return str(int(data_fp["row_count"]))
+    except (TypeError, ValueError):
+        return ""
+
+
 def _normalize_data_fp(d: Optional[dict]) -> dict:
     """Stable compare across JSON round-trip (int/float for ts_utc, row_count)."""
     if not d:
@@ -302,14 +317,35 @@ def _normalize_data_fp(d: Optional[dict]) -> dict:
             return None
         return float(x)
 
+    rc_raw = d.get("row_count")
+    if rc_raw is None:
+        row_count = None
+    else:
+        try:
+            row_count = int(rc_raw)
+        except (TypeError, ValueError):
+            row_count = None
+
     return {
         "table": str(d.get("table", "")),
         "timeframe": str(d.get("timeframe", "")),
         "ticker": str(d.get("ticker", "")),
         "min_ts_utc": _num(d.get("min_ts_utc")),
         "max_ts_utc": _num(d.get("max_ts_utc")),
-        "row_count": int(d.get("row_count", 0) or 0),
+        "row_count": row_count,
     }
+
+
+def _meta_required_positive_int(meta: dict, key: str) -> int | None:
+    if key not in meta or meta.get(key) is None:
+        return None
+    try:
+        value = int(meta[key])
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return value
 
 
 def _canonical_lineage_identity_ok(stored: dict) -> bool:
@@ -428,6 +464,18 @@ def load_lstm_feature_cache(
     if not _canonical_lineage_identity_ok(meta):
         log.info("LSTM feature cache meta canonical lineage mismatch: %s", cache_dir)
         return None
+    n_features_5m = _meta_required_positive_int(meta, "n_features_5m")
+    n_features_1m = _meta_required_positive_int(meta, "n_features_1m")
+    n_confluence = _meta_required_positive_int(meta, "n_confluence")
+    if n_features_5m is None or n_features_1m is None or n_confluence is None:
+        log.info("LSTM feature cache meta missing feature dimensions: %s", cache_dir)
+        return None
+    n_samples = _meta_required_positive_int(meta, "n_samples")
+    if n_samples is None:
+        n_samples = int(len(z["y"]))
+    if n_samples <= 0:
+        log.info("LSTM feature cache meta invalid n_samples: %s", cache_dir)
+        return None
     return LSTMDataset(
         X_5m=z["X_5m"],
         X_1m=z["X_1m"],
@@ -440,10 +488,10 @@ def load_lstm_feature_cache(
         target_column=str(meta.get("target_column") or ""),
         ml_horizon_slug=str(meta.get("ml_horizon_slug") or ""),
         target_definition=meta.get("target_definition", ""),
-        n_features_5m=int(meta.get("n_features_5m", 0)),
-        n_features_1m=int(meta.get("n_features_1m", 0)),
-        n_confluence=int(meta.get("n_confluence", 0)),
-        n_samples=int(meta.get("n_samples", len(z["y"]))),
+        n_features_5m=n_features_5m,
+        n_features_1m=n_features_1m,
+        n_confluence=n_confluence,
+        n_samples=n_samples,
         n_days=int(meta.get("n_days", 0)),
         n_tickers=int(meta.get("n_tickers", 0)),
         class_distribution=meta.get("class_distribution", {}),
@@ -1018,7 +1066,7 @@ def build_manifest(
         "data_fingerprint": data_fp,
         "data_start": _ts_label(data_fp.get("min_ts_utc")),
         "data_end": _ts_label(data_fp.get("max_ts_utc")),
-        "row_count": int(data_fp.get("row_count", 0)),
+        "row_count": _normalize_data_fp(data_fp).get("row_count"),
         "feature_version": FEATURE_SCHEMA_VERSION,
         "label_version": LABEL_CONFIG_VERSION,
         "pipeline_version": SCHEDULER_PIPELINE_VERSION,
