@@ -5251,7 +5251,6 @@ function scheduleMtmSpotDerivedCardsRefresh() {
     if (!d || typeof d !== 'object') return;
     try {
       if (typeof window.__renderKeyLevelsLive === 'function') window.__renderKeyLevelsLive(d);
-      if (typeof window.__renderCharmDriftRowLive === 'function') window.__renderCharmDriftRowLive(d);
       patchLiquidityMapSummaryFromLivePlane();
     } catch (e) { console.warn('[mtm spot refresh]', e); }
   }, 150);
@@ -9440,7 +9439,7 @@ setInterval(fetchLoggerStatus, 15000);
     }
     const whole = Math.floor(rem);
     if (whole !== _prevWhole && MILESTONES.has(whole)) {
-      speakCountdown(whole === 0 ? '0' : whole + ' seconds');
+      speakCountdown(String(whole));
     }
     _prevWhole = whole;
   }
