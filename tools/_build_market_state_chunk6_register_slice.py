@@ -130,9 +130,9 @@ FORMAL_REPLACED: list[tuple[int, str, str, str]] = [
 
 FORMAL_KEEP_DERIVED: list[tuple[int, str, str]] = [
     (332, "CONFIDENCE-1a ms.confidence field", "canopy WTDS forward confidence; not MHAP/fused_confidence_*"),
-    (1496, "ms.confidence canonical_forecast", zero("confidence")),
-    (1508, "ms.confidence forward_confidence fallback", zero("forward_confidence")),
-    (1435, "mhap_rows confidence per horizon", zero("mhap_confidence")),
+    (1500, "ms.confidence canonical_forecast", zero("confidence")),
+    (1512, "ms.confidence forward_confidence fallback", zero("forward_confidence")),
+    (1448, "mhap_rows confidence per horizon", zero("mhap_confidence")),
     (297, "mhap_rows field", zero("mhap_rows")),
     (328, "fusion_policy_snapshot_cols", zero("fusion_policy_snapshot_cols")),
     (625, "recommend_option_expression", "math_exposure score_option_expression"),
