@@ -210,6 +210,7 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-19 | CE9 follow-on: put_readiness log.warning mirror (missing from 9630bad) |
 | 2026-05-19 | `features/stack_integrity_v1.py` Layer 5 walk (parallel_stack_contract path absent — OBS-PNSC1; 0 REPLACED; 3 KEEP_DERIVED) |
 | 2026-05-19 | `features/shared_sequence_context.py` Layer 5 chunk-1 walk — **11/11 features sweep complete** (0 REPLACED; 4 KEEP_DERIVED; 2 PASS_THROUGH; OBS-SSC1) |
+| 2026-05-19 | `features/cascade_stack_schema.py` + `cascade_stack_contract.py` Layer 5 bundled walk (0 REPLACED; 5 KEEP_DERIVED; 2 PASS_THROUGH; OBS-CSC1/CSC2) |
 
 ---
 
