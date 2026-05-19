@@ -189,3 +189,62 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-19 | `order_flow_engine.py` chunk-2 paired fix (FIND-OF1/OF2 — preserve 0.0 measurements through book_for_score / tape_for_score selection) |
 | 2026-05-19 | `liquidity_value_engine.py` chunk-1 walk (0 REPLACED; 26 KEEP_DERIVED; 4 PASS_THROUGH; FIND-LVE1/STYLE-LVE2 disclosed; 1520-line HEAD) |
 | 2026-05-19 | **Phase 2** authority UX — `final_confidence` desk headline (Track 2) |
+| 2026-05-19 | **Phase 1 closure** — 14 producer walks + 2 paired fixes; deferred FINDs → `OPEN_ITEMS.md` |
+
+---
+
+## Phase 1 closure — 2026-05-19
+
+### Walks completed
+
+| # | File | Commit | Tally (REPLACED/KD/PT/NMD) | Notes |
+|---|------|--------|----------------------------|-------|
+| 1 | multi_horizon_decision.py | 33a7a2f | 0/22/14/818 | TRACK 1 priority |
+| 2 | bayesian_fusion.py | d3f0ce8 | 0/32/16/811 | TRACK 1 priority |
+| 3 | signals.py + features/fusion_policy_contract.py | a4d46c2 | 0/28/26/1474 (combined) | TRACK 1 priority |
+| 4 | market_context.py | 03c6a8f | 32/23/5/901 | TRACK 1 — first net-new REPLACED since V4-A chunk-5 |
+| 5 | call_engine.py | 3a55cfe | 0/39/15/1714 | TRACK 1 priority |
+| 6 | prediction_engine.py | ec5d8a3 | 0/21/11/1217 | TRACK 1 priority |
+| 7 | rules_engine.py | ddfd853 | 0/9/12/233 | TRACK 1 priority complete |
+| 8 | regime_engine.py | 5b1c1f4 | 0/16/15/532 | Mega #1 + FIND-RE1 paired fix |
+| 9 | volatility_regime.py | e4dc72b | 0/13/8/270 | Mega #2 |
+| 10 | monte_carlo.py | 6b66a31 | 0/13/5/407 | Mega #3 |
+| 11 | mc_fusion_adjustment.py | 4a2f5ab | 0/10/5/568 | Mega #4 |
+| 12 | ml_predict.py | fbc69fa | 0/19/6/1606 | Mega #5 |
+| 13 | order_flow_engine.py | dfa1f82 | 0/14/5/1142 | Slice-only; FIND-OF1–7 disclosed |
+| 14 | liquidity_value_engine.py | 73bb17f | 0/26/4/1490 | Slice-only; FIND-LVE1/STYLE-LVE2 disclosed |
+
+### Paired fixes landed
+
+| # | Fix | Commit | Files | Tests added |
+|---|-----|--------|-------|-------------|
+| 1 | FIND-RE1 — VWAP-contra audit message (regime_engine.py L372) | within 5b1c1f4 | regime_engine.py | 1 |
+| 2 | FIND-OF1/OF2 — preserve 0.0 measurements through book/tape score selection | e8559ea | order_flow_engine.py L860/L868 | 6 |
+
+### Phase 2 (Track 2, separately tracked)
+
+| Track | Status | Commit |
+|---|---|---|
+| Authority UX — `final_confidence` desk headline | Done | fadc9be + b23a1e6 |
+
+### Scoreboard at closure
+
+| Metric | Value |
+|---|---|
+| Producer files walked this pilot | 14 (12 unique + 1 combined signals/fusion_policy + 1 paired-fix-only) |
+| REPLACED rows added this pilot | 32 (from market_context.py only) |
+| Paired fixes landed | 2 (FIND-RE1 audit message; FIND-OF1/OF2 0.0-preservation) |
+| P_count (Schwab register pinned) | 12 → 12 unchanged |
+| Walk-cumulative REPLACED (V4 program) | ~95 + 32 = ~127 |
+| Disclosure backlog (deferred) | 7 items — cross-linked to OPEN_ITEMS.md |
+
+### Deferred items
+
+Tracked under `OPEN_ITEMS.md` → Layer 4 fail-closed section (new subsection "Pilot 1 Schwab walk — deferred FINDs"):
+
+- FIND-OF3/OF4 — `_normalize(None)→0.0` in `_compute_order_flow_score` (order_flow_engine.py L768–791)
+- FIND-OF5 — `(rvol or 0) > 1.2` in `_readiness` (order_flow_engine.py L819)
+- FIND-OF6/OF7 — semantic label defaults at `score==0` / math_exposure ImportError fallback (order_flow_engine.py L805–811)
+- FIND-LVE1 — `clustering_mode=="atr"` silent percent fallback (liquidity_value_engine.py L580–583)
+- STYLE-LVE2 — mixed `in tags` vs `in str(tags)` matching pattern (liquidity_value_engine.py)
+- Magic-threshold disclosures — POC shift 0.002, VWAP-vs-POC 0.001, new_value_area 0.005, zone-edge proximities 0.995/0.998/1.002 (liquidity_value_engine.py)
