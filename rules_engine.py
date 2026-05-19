@@ -185,7 +185,13 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
     prev_z = (inp.prev_zone or "").lower()
     cur_z = mvp_zone(mvp_features)
 
-    if zone_fresh_bars_1m is not None and zone_fresh_bars_1m <= 2 and prev_z and prev_z != cur_z:
+    if (
+        zone_fresh_bars_1m is not None
+        and zone_fresh_bars_1m <= 2
+        and prev_z
+        and cur_z is not None
+        and prev_z != cur_z
+    ):
         # Fresh transition — 1m recency = execution timing (high-information event)
         alerts.append(f"🔄 Zone just changed: {prev_z} → {cur_z} ({zone_fresh_bars_1m} 1m bars ago)")
         if cur_z == "breakout" and is_pin_zone(prev_z):

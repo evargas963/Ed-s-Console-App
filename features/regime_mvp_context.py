@@ -23,12 +23,13 @@ def require_mvp_features(mvp_features: dict[str, Any] | None, *, context: str) -
     return mvp_features
 
 
-def mvp_zone(mvp: dict[str, Any]) -> str:
-    """Returns canonical zone or ``\"unknown\"`` sentinel — consumers MUST treat ``\"unknown\"`` as withheld."""
+def mvp_zone(mvp: dict[str, Any]) -> Optional[str]:
+    """Canonical ``structure.zone`` or None when missing (no fabricated sentinel)."""
     v = mvp.get("structure.zone")
-    if v is not None:
-        return str(v).strip().lower()
-    return "unknown"
+    if v is None:
+        return None
+    s = str(v).strip().lower()
+    return s if s else None
 
 
 def mvp_spot(mvp: dict[str, Any]) -> float | None:

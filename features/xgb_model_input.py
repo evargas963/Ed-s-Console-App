@@ -62,6 +62,16 @@ def validate_inference_snapshot_v1_envelope(snap: Any) -> None:
             f"canonical_timeframe must be {CANONICAL_FEATURE_TIMEFRAME!r}, "
             f"got {snap.get('canonical_timeframe')!r}"
         )
+    tkr = snap.get("ticker")
+    if tkr is None or not str(tkr).strip():
+        raise XgbInferenceInputError("InferenceSnapshotV1 missing non-empty ticker")
+    ts = snap.get("as_of_ts")
+    if ts is None:
+        raise XgbInferenceInputError("InferenceSnapshotV1 missing as_of_ts")
+    try:
+        float(ts)
+    except (TypeError, ValueError) as e:
+        raise XgbInferenceInputError(f"as_of_ts not numeric: {ts!r}") from e
     feats = snap.get("features")
     if not isinstance(feats, dict):
         raise XgbInferenceInputError("InferenceSnapshotV1 missing features dict")
@@ -105,14 +115,13 @@ def inference_snapshot_v1_to_engineering_snapshot(
     for canon, leg in CANONICAL_TO_XGB_TABULAR.items():
         out[leg] = feats.get(canon)
 
-    tkr = inference_snapshot_v1.get("ticker") or ""
+    tkr = inference_snapshot_v1["ticker"]
     out["ticker"] = str(tkr).upper().strip()
-    ts = inference_snapshot_v1.get("as_of_ts")
-    if ts is not None:
-        out["ts_utc"] = float(ts)
-        eh, em = _et_from_ts_utc(float(ts))
-        out["et_hour"] = eh
-        out["et_minute"] = em
+    ts = float(inference_snapshot_v1["as_of_ts"])
+    out["ts_utc"] = ts
+    eh, em = _et_from_ts_utc(ts)
+    out["et_hour"] = eh
+    out["et_minute"] = em
     return out
 
 

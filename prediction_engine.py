@@ -1106,6 +1106,7 @@ def compute_prediction_enrichment(
         zone_fresh_bars_1m is not None
         and zone_fresh_bars_1m <= 3
         and prev_z
+        and cur_z is not None
         and prev_z != cur_z
     ):
         parts.append(f"Zone just changed ({prev_z} → {cur_z}) — setup still forming.")

@@ -151,8 +151,8 @@ Reference ticker for parametric tests: **SPY**.
 ## Critical — label vs presentation
 
 - [ ] **`outcome_13c` vs product “15m”** — **Partial (2026-03-27):** → rolled into **Phase B–E** above `outcome_15c` / `pred_15c` columns + fill window + prediction/UI prefer **15×1m** with honest fallback to **13c** when sparse. **Still open:** retire 13c from training/UI after backfill + full retrain; **`outcome_filled` now requires 15c** — very old stuck rows may need one-time DB fix.
-- [ ] **`60m` column semantics** — → **Phase A** (honest UNAVAILABLE) + **Phase B–D** (retire 8c/13c stand-ins). Today may be: MC, fusion, **duplicate 13c empirical**, or legacy **8c** (~8m) depending on code path. Resolve with **single contract**: e.g. **`outcome_60c`** (60×1m) and/or **explicit** “60m = fusion/MC only” with **no** 8c/13c standing in.
-- [ ] **8c (~8m) vs product set {1,5,15,60}** — → **Phase B–E** `outcome_8c` / `pred_8c` are **legacy bar counts** in DB and training (`ml_train.HORIZONS`). Either **drop from product surface**, **map to a named role**, or **retire** in favor of **60m** label. Until then: **do not** treat 8c as the long-horizon user story.
+- [ ] **`60m` column semantics** — Primary product horizon is **`outcome_60c`** (60×1m). Still open: codify when 60m card uses MC/fusion vs empirical-only (no 8c/13c stand-ins after Phase D).
+- [x] **8c (~8m) vs product set {1,5,15,60}** — **Retired** Phase D/E (`outcome_3c/8c/13c` schema drop 2026-05-18; governed horizons = 1c/5c/15c/60c only). Residual mentions: legacy tools/tests/audit only.
 - [ ] **Prob grid fallback vs `prediction_engine`** — → **Phase A** (primary-only `horizon_prob_bars` keys) + **Phase 7** retrain UI fallback row and disclaimer can describe **8c** while engine path may **reuse 13c** for the “60m” slot when MC/fusion off. **Reconcile** so disclaimer, fallback, and `horizon_prob_bars` **always agree**.
 
 ## Stack / training / UI alignment
@@ -259,10 +259,10 @@ Reference ticker for parametric tests: **SPY**.
   - [ ] FIND-PSS2 — success record omits `error` key; asymmetric with `empty_parallel_output` (INFO; accepted disclosure).
   - [x] FIND-MCF1 — `mc_fusion_adjustment._triplet` L117–121 silent 1/3 on degenerate/non-finite; `_triplet→Optional`, callers passthrough/skip; `fuse_payload` finite/sum>0 guard.
   - [x] FIND-MCF2 — `prediction_engine._norm_triplet_floats` L159–164 same pattern; `Optional` + `_fusion_snap_triplet`/blend fallback.
-  - [ ] FIND-MVP1 — `mvp_zone` returns `"unknown"` sentinel when `structure.zone` missing; defer pending consumer audit (`rules_engine`, `regime_engine`, `call_engine`, `prediction_engine`).
+  - [x] FIND-MVP1 — `mvp_zone` returned `"unknown"` sentinel when `structure.zone` missing; closed: returns `None` + transition gates in `rules_engine` / `prediction_engine` require `cur_z is not None`.
   - [x] FIND-MVP2 — `mvp_net_gamma` float-or-None coerce (mirrors `mvp_spot`; Layer 5 chunk-2 fix).
-  - [ ] FIND-XGB1 — `inference_snapshot_v1_to_engineering_snapshot` silent `ticker=""` when missing (L108–109); defer pending `ml_predict` caller audit.
-  - [ ] FIND-XGB2 — `as_of_ts` None omits `ts_utc`/`et_hour`/`et_minute` keys (L110–115); defer pending `ml_predict` caller audit.
+  - [x] FIND-XGB1 — silent `ticker=""` default; closed via envelope non-empty `ticker` check + `ml_predict._resolve_ml_inference_ticker` fail-closed.
+  - [x] FIND-XGB2 — `as_of_ts` None omitted time keys; closed via envelope `as_of_ts` required + engineering snapshot always emits `ts_utc`/`et_hour`/`et_minute`.
   - [ ] FIND-LSI1 — `_patch_lstm_categoricals` unknown zone string defaults to pin_neutral code (L97); defer pending training-skew check.
   - [ ] FIND-LSI2 — `_ts_close` 1e-3 epsilon undocumented (L149–155); doc-only fix deferred.
   - [ ] OBS-CC1 — signed-distance sign convention per spec (informational; validator allows any finite sign).

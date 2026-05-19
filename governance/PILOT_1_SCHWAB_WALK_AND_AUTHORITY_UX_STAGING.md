@@ -204,6 +204,7 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-19 | `features/mvp_source_coercion.py` Layer 5 chunk-1 walk + MSC1 paired fix (`_require_mapping` at coercion entry points; closes non-Mapping silent-all-None laundering) |
 | 2026-05-19 | `features/db_feature_adapter.py` Layer 5 chunk-1 walk (0 REPLACED; 1 KEEP_DERIVED; 10 PASS_THROUGH; clean; MSC1 propagation locked) |
 | 2026-05-19 | `features/fusion_model_input.py` Layer 5 chunk-1 walk + FMI1 paired fix (Mapping guard in similar_setup_filters_from_db_snapshot_row; pairs with MSC1) |
+| 2026-05-19 | Combined paired fix MVP1 + XGB1 + XGB2 (mvp_zone None; envelope ticker/as_of_ts strict; ml_predict ticker resolve) |
 
 ---
 

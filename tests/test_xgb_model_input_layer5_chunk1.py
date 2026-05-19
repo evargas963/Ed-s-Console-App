@@ -130,12 +130,10 @@ def test_engineering_snapshot_includes_time_keys_when_as_of_ts_present():
     assert "et_minute" in tab
 
 
-def test_engineering_snapshot_omits_time_keys_when_as_of_ts_missing():
+def test_engineering_snapshot_rejects_missing_as_of_ts_at_envelope():
     snap = _minimal_valid_inference_v1(as_of_ts=None)
-    tab = inference_snapshot_v1_to_engineering_snapshot(snap)
-    assert "ts_utc" not in tab
-    assert "et_hour" not in tab
-    assert "et_minute" not in tab
+    with pytest.raises(XgbInferenceInputError, match="missing as_of_ts"):
+        inference_snapshot_v1_to_engineering_snapshot(snap)
 
 
 def test_merge_overlay_empty_returns_base():

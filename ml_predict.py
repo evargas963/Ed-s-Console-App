@@ -1209,6 +1209,27 @@ def _apply_5c_xgb_plus_transformer_isotonic_calibration(
 # FUSION API — model outputs with probabilities for bayesian_fusion
 # ══════════════════════════════════════════════════════════════════════════════
 
+
+def _resolve_ml_inference_ticker(
+    ticker: str | None,
+    snapshot: dict,
+    *,
+    inference_snapshot_v1: dict | None = None,
+) -> str:
+    """Resolve ticker for ML paths; fail closed when none of ticker / snapshot / envelope provide it."""
+    for raw in (
+        ticker,
+        snapshot.get("ticker") if isinstance(snapshot, dict) else None,
+        inference_snapshot_v1.get("ticker") if isinstance(inference_snapshot_v1, dict) else None,
+    ):
+        if raw is not None and str(raw).strip():
+            return str(raw).strip().upper()
+    raise ValueError(
+        "ML inference requires a resolvable ticker (ticker=, snapshot['ticker'], or "
+        "inference_snapshot_v1['ticker'])"
+    )
+
+
 def run_base_models_once(
     snapshot: dict,
     ticker: str,
@@ -1234,26 +1255,15 @@ def run_base_models_once(
     Optional ``shared_sequence_context`` (from ``features.shared_sequence_context.build_shared_sequence_context``)
     supplies one DB fetch + one LSTM merge for the tick; LSTM/Transformer skip redundant history reads.
     """
-    tkr = ticker or snapshot.get("ticker", "") or ""
-    if not tkr:
-        return {
-            "fusion": {"xgb": None, "lstm": None, "transformer": None},
-            "model_outputs": {
-                "xgb": {"available": False, "dominant": None, "confidence": None, "approved": False},
-                "lstm": {"available": False, "dominant": None, "confidence": None, "approved": False},
-                "transformer": {"available": False, "dominant": None, "confidence": None, "approved": False},
-            },
-            stack_probs_bundle_key(): None,
-            "movement_head_probs": {},
-            "parallel_runtime": True,
-            "stack_schema_version": PARALLEL_STACK_SCHEMA_VERSION,
-        }
-
     if inference_snapshot_v1 is None:
         raise ValueError(
             "run_base_models_once requires inference_snapshot_v1= (InferenceSnapshotV1 dict). "
             "Raw fusion snapshots are not accepted for XGB."
         )
+
+    tkr = _resolve_ml_inference_ticker(
+        ticker, snapshot, inference_snapshot_v1=inference_snapshot_v1
+    )
 
     xgb_p = _predict_xgb(
         inference_snapshot_v1,
