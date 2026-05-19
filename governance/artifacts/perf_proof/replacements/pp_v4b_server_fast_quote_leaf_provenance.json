@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "perf_proof_id": "pp_v4b_server_fast_quote_leaf_provenance",
+  "landed_batch": "v4b-2026-05-18",
+  "replacement_scope": "server.py:_build_rest_fast_quote_payload + _stream_spot_and_of_regime \u2014 provenance trace from accessors to Schwab REST/streaming payload boundary; no derivation substitution (code already at leaf).",
+  "code_paths": [
+    "server.py"
+  ],
+  "evidence": {
+    "pytest_args": [
+      "tests/test_server_quote_source_contract.py"
+    ],
+    "note": "Provenance-only REPLACED; existing leaf wiring verified by contract tests."
+  },
+  "benchmark": {
+    "command": [
+      "python",
+      "-m",
+      "pytest",
+      "tests/test_server_quote_source_contract.py",
+      "-q",
+      "--no-header"
+    ],
+    "iterations": 1,
+    "timings_ms": [4080],
+    "median_ms": 4080,
+    "platform_note": "Windows; Python 3.13; provenance pass 2026-05-18"
+  },
+  "register_link": {
+    "status": "bound",
+    "replaced_register_ids": [
+      "144f6e67d2c37ad780e4",
+      "a90de1d455976e679c7a",
+      "88b9086893c86c9dfc56",
+      "a598fd4e976e5aeae49d",
+      "b30218a390a7309f312d",
+      "4a25bd529ce4764f5716",
+      "096f83160cf89f5b3f23",
+      "8888ab7e8a8a8436f180",
+      "b272e3a06845fa7d025b",
+      "28c214dcebf6e96b023c",
+      "0e99f16895403d2e7964",
+      "11b7a3c018534af622d6",
+      "50c6a0b1f1741ca27965",
+      "162995c1996caf50190e",
+      "7988821ce6b3336a2c7e",
+      "428d3d15ac4af7ce36c7"
+    ]
+  }
+}

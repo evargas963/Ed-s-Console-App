@@ -218,6 +218,14 @@ Constraint: Liquidity behavior subfields remain O-49 model-derived trunks; news 
 
 Permanent or interim: Permanent.
 
+### O-53
+
+Why: IV, VIX, and ETF zone trackers convert a tick or quote stream into categorical direction labels (`expanding` / `contracting` / `flat`, `rising` / `falling`) using small relative thresholds. Schwab does not publish a direction leaf for these series.
+
+Constraint: One canonical producer per tracker class in `server.py`; thresholds (`IV_DIRECTION_THRESHOLD`, `VIX_DIRECTION_THRESHOLD`, `ETF_ZONE_THRESHOLD_PCT`) live in the server constants block; changes require an operator-signed amendment.
+
+Permanent or interim: Permanent.
+
 ---
 
 *End of register.*
