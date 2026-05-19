@@ -997,6 +997,44 @@
   .decision-verdict-pill.bias-long { border-color: rgba(34,197,94,0.45); color: var(--green); }
   .decision-verdict-pill.bias-short { border-color: rgba(239,68,68,0.45); color: var(--red); }
   .decision-verdict-pill.bias-neutral { color: var(--text3); }
+  .desk-confidence-pill {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    padding: 5px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(56,189,248,0.45);
+    background: rgba(56,189,248,0.10);
+    color: #7dd3fc;
+  }
+  .desk-confidence-pill.unavailable {
+    border-color: rgba(250,204,21,0.45);
+    background: rgba(250,204,21,0.08);
+    color: var(--amber);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  details.hz-breakdown {
+    margin: 8px 0 4px;
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 6px 8px 8px;
+    background: rgba(2,6,23,0.20);
+  }
+  details.hz-breakdown > summary {
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text2);
+    margin-bottom: 6px;
+    list-style: none;
+  }
+  details.hz-breakdown > summary::-webkit-details-marker { display: none; }
   .decision-chip-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
   .signal-chain-bar {
     margin-top: 8px;
@@ -2432,11 +2470,15 @@
             <div class="decision-verdict-row">
               <span class="decision-verdict-pill trade-no" id="dr-trade-pill">NO TRADE</span>
               <span class="decision-verdict-pill bias-neutral" id="dr-bias-pill">NEUTRAL</span>
-              <span class="conviction-pill low" id="dr-confidence-pill" title="Desk conviction / confidence">CONF —</span>
+              <span class="desk-confidence-pill" id="dr-desk-confidence" title="Multi-horizon desk aggregate (final_confidence)">—</span>
+              <span class="conviction-pill low" id="dr-confidence-pill" title="Call-layer conviction band (qualitative)">CONF —</span>
             </div>
             <div class="signal-chain-bar" id="dr-signal-chain-host" aria-label="Signal chain status"></div>
 
-            <div class="hz-panels" id="dr-hz-panels" aria-label="Per-horizon decision panels"></div>
+            <details class="hz-breakdown" id="dr-hz-breakdown">
+              <summary>Per-horizon breakdown</summary>
+              <div class="hz-panels" id="dr-hz-panels" aria-label="Per-horizon decision panels"></div>
+            </details>
 
             <div class="decision-rail-grid">
               <div class="decision-block">
@@ -2560,6 +2602,7 @@
                   <div class="decision-k">Action</div><div class="decision-v" id="v2-action">—</div>
                   <div class="decision-k">Direction</div><div class="decision-v" id="v2-direction">—</div>
                   <div class="decision-k">Probability</div><div class="decision-v" id="v2-probability">—</div>
+                  <div class="decision-k">Desk confidence</div><div class="decision-v" id="v2-confidence">—</div>
                   <div class="decision-k">Net EV</div><div class="decision-v" id="v2-net-ev">—</div>
                 </div>
               </div>
@@ -3949,13 +3992,31 @@ function renderDecisionCommandRail(d) {
       bias === 'LONG' ? 'bias-long' : bias === 'SHORT' ? 'bias-short' : 'bias-neutral'
     );
   }
+  const deskConf = $('dr-desk-confidence');
+  if (deskConf) {
+    const fc = d.final_confidence;
+    if (fc == null || fc === '' || Number.isNaN(Number(fc))) {
+      const why = txt(d.wait_reason, '') || 'Multi-horizon aggregate unavailable';
+      deskConf.textContent = 'UNAVAILABLE';
+      deskConf.className = 'desk-confidence-pill unavailable';
+      deskConf.title = `Desk confidence (final_confidence): ${why}`;
+    } else {
+      deskConf.textContent = `${Math.round(Number(fc) * 100)}%`;
+      deskConf.className = 'desk-confidence-pill';
+      const ph = txt(d.primary_horizon, '—');
+      deskConf.title = `Desk confidence (final_confidence) · primary horizon ${ph} · MHA aggregate`;
+    }
+  }
   const confPill = $('dr-confidence-pill');
   if (confPill) {
     const ccRaw = optStr(d.call_conviction) || optStr(d.confidence);
     const cc = ccRaw ? ccRaw.toLowerCase() : '';
     confPill.textContent = cc ? cc.toUpperCase() : '—';
     confPill.className = 'conviction-pill ' + (cc === 'high' ? 'high' : cc === 'medium' ? 'medium' : cc === 'low' ? 'low' : '');
-    confPill.title = `Desk conviction: ${cc} · multi-horizon confidence: ${numf(d.final_confidence, 2)}`;
+    const fcTxt = (d.final_confidence == null || Number.isNaN(Number(d.final_confidence)))
+      ? 'unavailable'
+      : numf(d.final_confidence, 2);
+    confPill.title = `Call-layer conviction: ${cc || '—'} · desk aggregate: ${fcTxt}`;
   }
 
   const rt = (d.stack_runtime && typeof d.stack_runtime === 'object') ? d.stack_runtime : {};
@@ -4270,12 +4331,11 @@ function renderDecisionCommandRail(d) {
       grid.className = 'hz-mini-kv';
       addKV(grid, 'Bias', biasHz);
       addKV(grid, 'Move P', num01pct(moveProb));
-      const isFused = fuseConf != null && !Number.isNaN(Number(fuseConf));
-      const confLabel = isFused ? 'Fused Confidence' : 'Horizon Confidence';
-      const confTxt = isFused
+      const fusedTxt = (fuseConf != null && !Number.isNaN(Number(fuseConf)))
         ? `${Math.round(Number(fuseConf) * 100)}%`
-        : confMH;
-      addKV(grid, confLabel, confTxt);
+        : '—';
+      addKV(grid, 'Fused Confidence', fusedTxt);
+      addKV(grid, 'Horizon Confidence', confMH);
       addKV(grid, 'Eligibility', elig);
       addKV(grid, 'Stack', txt(st, '—'));
       addKV(grid, 'Models', contribTxt);
@@ -4320,6 +4380,7 @@ function renderV2PilotDecision(d) {
     set('v2-action', '—');
     set('v2-direction', '—');
     set('v2-probability', '—');
+    set('v2-confidence', '—');
     set('v2-net-ev', '—');
     set('v2-signal-status', '—');
     set('v2-implementation-status', '—');
@@ -4340,6 +4401,15 @@ function renderV2PilotDecision(d) {
   set('v2-action', leafVal(dec.action) + sourceSuffix(dec.action));
   set('v2-direction', leafVal(dec.direction) + sourceSuffix(dec.direction));
   set('v2-probability', pctLeaf(dec.probability));
+  const deskConfLeaf = dec.confidence;
+  const deskConfVal = deskConfLeaf && typeof deskConfLeaf === 'object' ? deskConfLeaf.value : null;
+  const deskConfNum = Number(deskConfVal);
+  set(
+    'v2-confidence',
+    Number.isFinite(deskConfNum)
+      ? `${Math.round(deskConfNum * 100)}%${sourceSuffix(deskConfLeaf)}`
+      : `UNAVAILABLE${sourceSuffix(deskConfLeaf)}`,
+  );
   set('v2-net-ev', leafVal(dec.net_expected_value_r) + sourceSuffix(dec.net_expected_value_r));
 
   const edge = v2.edge_domains || {};

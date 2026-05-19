@@ -28,5 +28,14 @@ def test_no_ambiguous_confidence_literal_in_tf_conf_lbl():
 def test_decision_command_uses_disambiguated_addkv_labels():
     html = INDEX.read_text(encoding="utf-8")
     assert "addKV(grid, 'Confidence'," not in html
-    assert "const confLabel = isFused ? 'Fused Confidence' : 'Horizon Confidence';" in html
-    assert "addKV(grid, confLabel, confTxt);" in html
+    assert "addKV(grid, 'Fused Confidence'," in html
+    assert "addKV(grid, 'Horizon Confidence'," in html
+    assert "const confLabel = isFused ? 'Fused Confidence' : 'Horizon Confidence';" not in html
+
+
+def test_track2_desk_confidence_headline_and_breakdown():
+    html = INDEX.read_text(encoding="utf-8")
+    assert 'id="dr-desk-confidence"' in html
+    assert "deskConf.textContent = 'UNAVAILABLE'" in html
+    assert 'details class="hz-breakdown"' in html
+    assert 'id="v2-confidence"' in html

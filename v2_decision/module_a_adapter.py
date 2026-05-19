@@ -99,7 +99,11 @@ def _decision_block(ms: dict[str, Any]) -> dict[str, Any]:
         ),
         "p_low": leaf(p_low, conformal_source, detail=conformal_detail),
         "p_high": leaf(p_high, conformal_source, detail=conformal_detail),
-        "confidence": leaf(_confidence(ms), "v1_approximation"),
+        "confidence": leaf(
+            _confidence(ms),
+            "v1_approximation",
+            detail="Desk aggregate: multi_horizon_decision.final_confidence when present.",
+        ),
         "net_expected_value_r": leaf(None, "not_implemented", detail="Requires v2 execution-adjusted EV."),
         "EV_lower": leaf(None, "not_implemented", detail="Requires execution-adjusted EV using p_low."),
         "EV_upper": leaf(None, "not_implemented", detail="Requires execution-adjusted EV using p_high."),
@@ -187,10 +191,20 @@ def _direction(ms: dict[str, Any]) -> str:
     return "neutral"
 
 
-def _confidence(ms: dict[str, Any]) -> str | None:
-    value = ms.get("fusion_confidence") if ms.get("fusion_available") else None
-    value = value or ms.get("confidence") or ms.get("final_quality")
-    return str(value) if value is not None else None
+def _desk_confidence_value(ms: dict[str, Any]) -> float | None:
+    """Desk aggregate from multi_horizon_decision (Pilot 1 A1 headline)."""
+    fc = ms.get("final_confidence")
+    if fc is None:
+        return None
+    try:
+        return round(float(fc), 4)
+    except (TypeError, ValueError):
+        return None
+
+
+def _confidence(ms: dict[str, Any]) -> float | None:
+    """Advisory v2 confidence leaf — same numeric as Decision Command desk headline."""
+    return _desk_confidence_value(ms)
 
 
 def _position_size_fraction(ms: dict[str, Any]) -> float | None:
