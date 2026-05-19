@@ -476,8 +476,12 @@ def _chain_selection_quality_row(
         99,
     )
 
-    score_sorted = sorted(by_strike_score.items(), key=lambda x: float(x[1] or 0), reverse=True)
-    best_score = float(score_sorted[0][1]) if score_sorted and score_sorted[0][1] is not None else None
+    score_sorted = sorted(
+        [(sk, float(sc)) for sk, sc in by_strike_score.items() if sc is not None],
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    best_score = score_sorted[0][1] if score_sorted else None
     sel_score = None
     for sk, sc in by_strike_score.items():
         if abs(sk - float(selected_strike)) < 0.02:
