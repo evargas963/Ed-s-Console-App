@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "perf_proof_id": "pp_v4b_server_fetch_state_leaf_provenance",
+  "landed_batch": "v4b-2026-05-19",
+  "replacement_scope": "server.py chunk 3: _fetch_state FIX-1 dedupe (_parse_quote_node_session_fields); 25 net-new Schwab leaf emission sites; chain/quote/streaming/pricehistory handoffs.",
+  "code_paths": [
+    "server.py"
+  ],
+  "evidence": {
+    "pytest_args": [
+      "tests/test_server_quote_source_contract.py"
+    ],
+    "note": "FIX-1 third call site; quote helper contract tests."
+  },
+  "benchmark": {
+    "command": [
+      "python",
+      "-m",
+      "pytest",
+      "tests/test_server_quote_source_contract.py",
+      "-q",
+      "--no-header"
+    ],
+    "iterations": 1,
+    "timings_ms": [
+      6000
+    ],
+    "median_ms": 6000,
+    "platform_note": "Windows; chunk-3 FIX-1 2026-05-19"
+  },
+  "register_link": {
+    "status": "bound",
+    "replaced_register_ids": [
+      "a68704d90dc14e37d36b",
+      "9e66062c407a0ce1aafc",
+      "b8c4f71b287bf37544b2",
+      "8543afa57013a1782f11",
+      "54c293c4cab7303862c8",
+      "5b5d87260fe093049c5c",
+      "639de516b26bb9b7b326",
+      "59a8151f790aecfe5da9",
+      "bf5fcc3e4b5c5a1fe05f",
+      "5b6ce01fec800d748e58",
+      "32536b9705745ce32df9",
+      "0d629714a9f97c45bec5",
+      "12a27b7319915079a4b7",
+      "0067e0ca4e65ff6f8fff",
+      "8c5b747ba5f308a740ba",
+      "473a58e0d791ff346692",
+      "ddf0b7b59e39ffe28e1e",
+      "84ed3e605fd727c26e55",
+      "2408bb37bfb6ff753ffd",
+      "03e10890ccf7991f1d23",
+      "94a694b038e9137f85db",
+      "03c70dfd7d77bb144c5f",
+      "7c466d90ba4c7b35d659",
+      "cd5ddb8fd2dca52dced1",
+      "269877b53cc274a1ca04"
+    ],
+    "fix1_dedupe_note": "18 quote session leaves collapse to L3113 helper call (canonical L2217)"
+  }
+}

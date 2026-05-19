@@ -3110,32 +3110,16 @@ def _fetch_state(
     _t_after_quote_wall = time.time()
 
     _node_q = q_json.get(ticker.upper()) or q_json.get(ticker) or {}
-    _q_q = _node_q.get("quote") or {}
-    _ext_q = _node_q.get("extended") or {}
-    _reg_q = _node_q.get("regular") or {}
-    parsed_last = _safe_float_quote(_q_q.get("lastPrice"))
-    if parsed_last is None or parsed_last <= 0:
-        parsed_last = _safe_float_quote(_ext_q.get("lastPrice"))
-    if parsed_last is None or parsed_last <= 0:
-        parsed_last = _safe_float_quote(_reg_q.get("regularMarketLastPrice"))
-    parsed_mark = _safe_float_quote(_q_q.get("mark"))
-    if parsed_mark is None or parsed_mark <= 0:
-        parsed_mark = _safe_float_quote(_ext_q.get("mark"))
-    parsed_bid = _safe_float_quote(_q_q.get("bidPrice"))
-    if parsed_bid is None:
-        parsed_bid = _safe_float_quote(_ext_q.get("bidPrice"))
-    parsed_ask = _safe_float_quote(_q_q.get("askPrice"))
-    if parsed_ask is None:
-        parsed_ask = _safe_float_quote(_ext_q.get("askPrice"))
-    parsed_quote_time = _safe_float_quote(_q_q.get("quoteTime"))
-    if parsed_quote_time is None:
-        parsed_quote_time = _safe_float_quote(_ext_q.get("quoteTime"))
-    parsed_trade_time = _safe_float_quote(_q_q.get("tradeTime"))
-    if parsed_trade_time is None:
-        parsed_trade_time = _safe_float_quote(_ext_q.get("tradeTime"))
-    if parsed_trade_time is None:
-        parsed_trade_time = _safe_float_quote(_reg_q.get("regularMarketTradeTime"))
-    spot   = parsed_last if parsed_last and parsed_last > 0 else (parsed_mark if parsed_mark and parsed_mark > 0 else None)
+    _session_q = _parse_quote_node_session_fields(_node_q)
+    parsed_last = _session_q["last"]
+    parsed_mark = _session_q["mark"]
+    parsed_bid = _session_q["bid"]
+    parsed_ask = _session_q["ask"]
+    parsed_quote_time = _session_q["quote_time"]
+    parsed_trade_time = _session_q["trade_time"]
+    spot = parsed_last if parsed_last and parsed_last > 0 else (
+        parsed_mark if parsed_mark and parsed_mark > 0 else None
+    )
     bid    = parsed_bid
     ask    = parsed_ask
 
@@ -3172,17 +3156,19 @@ def _fetch_state(
 
     # Remaining volume fields from quote REST if stream + chain underlying had none
     if _total_vol is None:
-        _quote_node = q_json.get(ticker.upper()) or q_json.get(ticker) or {}
-        if not isinstance(_quote_node, dict):
-            if isinstance(q_json, list):
-                for item in q_json:
-                    if isinstance(item, dict) and (item.get("symbol") or item.get("key") or "").upper() == ticker.upper():
-                        _quote_node = item
-                        break
-            else:
-                _quote_node = {}
-        if not _quote_node and isinstance(q_json, dict) and (q_json.get("quote") or q_json.get("regular")):
-            _quote_node = q_json
+        _quote_node = _node_q if isinstance(_node_q, dict) else {}
+        if not (_quote_node.get("quote") or _quote_node.get("extended")):
+            _quote_node = q_json.get(ticker.upper()) or q_json.get(ticker) or {}
+            if not isinstance(_quote_node, dict):
+                if isinstance(q_json, list):
+                    for item in q_json:
+                        if isinstance(item, dict) and (item.get("symbol") or item.get("key") or "").upper() == ticker.upper():
+                            _quote_node = item
+                            break
+                else:
+                    _quote_node = {}
+            if not _quote_node and isinstance(q_json, dict) and (q_json.get("quote") or q_json.get("regular")):
+                _quote_node = q_json
         _quote_dict = _quote_node.get("quote") or {} if isinstance(_quote_node, dict) else {}
         _extended = _quote_node.get("extended") or {} if isinstance(_quote_node, dict) else {}
         _total_vol = (
