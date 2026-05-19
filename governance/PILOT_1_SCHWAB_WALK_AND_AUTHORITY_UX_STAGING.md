@@ -177,4 +177,5 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-18 | `bayesian_fusion.py` chunk-1 walk (slice; fusion_policy_contract deferred to signals.py) |
 | 2026-05-18 | `signals.py` + `fusion_policy_contract.py` chunk-1 walk (fused_confidence_<hz> chain complete) |
 | 2026-05-19 | `market_context.py` chunk-1 walk (32 REPLACED; P_count 12; Phase 1 spine complete) |
+| 2026-05-18 | `call_engine.py` chunk-1 walk (0 REPLACED; Decision Command / validation / sizing producer chain) |
 | 2026-05-19 | **Phase 2** authority UX — `final_confidence` desk headline (Track 2) |
