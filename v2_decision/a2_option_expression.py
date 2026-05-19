@@ -259,19 +259,14 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
     # Slice 2 policy: hard readiness gates always suppress option recommendations
     # with WAIT. AVOID is reserved for a later advisory-only soft-gate policy.
     action = "TRADE" if not hard_gates else HARD_GATE_ACTION_POLICY["hard_gate_action"]
+    liq_ok_val = _liq_ok_value(ms_dict)
 
     # Schwab-first selected_expiry: chain_row.expirationDate is the
     # authoritative source (the selected contract's Schwab-native expiry).
     # ms_dict aliases are legacy fallbacks only when the chain row is absent.
-    chain_row_exp = _clean_str(chain_row.get("expirationDate"))
-    if chain_row_exp:
-        selected_expiry_value = chain_row_exp
-        selected_expiry_source = "v2_compliant"
-        selected_expiry_detail = "schwab_chain_expirationDate"
-    else:
-        selected_expiry_value = _clean_str(ms_dict.get("call_option_expiry") or ms_dict.get("selected_exp"))
-        selected_expiry_source = "v1_approximation"
-        selected_expiry_detail = None
+    selected_expiry_value, selected_expiry_source, selected_expiry_detail = _resolve_selected_expiry(
+        ms_dict, chain_row
+    )
 
     underlying_ticker_value = _clean_str(ms_dict.get("ticker"))
     return {
@@ -376,8 +371,11 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
             "execution_adjusted_EV": leaf(None, "not_implemented"),
         },
         "execution": {
-            "liquidity_gate_pass": leaf(bool(ms_dict.get("liq_ok")), "v1_approximation"),
-            "spread_quality": leaf(_spread_quality(spread, bool(ms_dict.get("liq_ok"))), "v1_approximation"),
+            "liquidity_gate_pass": leaf(
+                liq_ok_val,
+                "v1_approximation" if liq_ok_val is not None else "not_implemented",
+            ),
+            "spread_quality": leaf(_spread_quality(spread, liq_ok_val), "v1_approximation"),
             "fill_probability": leaf(None, "not_implemented"),
             "slippage_estimate": leaf(None, "not_implemented"),
             "adverse_selection_risk": leaf(None, "not_implemented"),
@@ -463,7 +461,7 @@ def _hard_gates(
     gates: list[str] = []
     if str(a1_action or "").upper() != "TRADE":
         gates.append("module_a_signal_wait_or_unavailable")
-    selected_expiry = _clean_str(ms_dict.get("call_option_expiry") or ms_dict.get("selected_exp"))
+    selected_expiry, _, _ = _resolve_selected_expiry(ms_dict, chain_row)
     if not selected_expiry:
         gates.append("missing_selected_expiry")
     elif _dte_value(ms_dict, chain_row) != 0:
@@ -479,6 +477,9 @@ def _hard_gates(
     if strike is None:
         gates.append("missing_selected_strike")
     if bid is None or ask is None:
+        gates.append("missing_bid_or_ask")
+    elif spread is None or mid is None:
+        # Fail-closed: cannot evaluate O-21 spread policy without contract mid + spread.
         gates.append("missing_bid_or_ask")
     elif _spread_exceeds_hard_threshold(spread=spread, mid=mid):
         gates.append("spread_exceeds_hard_threshold")
@@ -734,8 +735,31 @@ def _breakeven(strike: float | None, option_right: str, mid: float | None) -> fl
     return None
 
 
-def _spread_quality(spread: float | None, liq_ok: bool) -> str:
-    if spread is None:
+def _resolve_selected_expiry(
+    ms_dict: dict[str, Any],
+    chain_row: dict[str, Any],
+) -> tuple[str | None, str, str | None]:
+    """Schwab-first expiry: chain_row.expirationDate, then ms_dict legacy aliases."""
+    chain_row_exp = _clean_str(chain_row.get("expirationDate")) if isinstance(chain_row, dict) else None
+    if chain_row_exp:
+        return chain_row_exp, "v2_compliant", "schwab_chain_expirationDate"
+    legacy = _clean_str(ms_dict.get("call_option_expiry") or ms_dict.get("selected_exp"))
+    if legacy:
+        return legacy, "v1_approximation", None
+    return None, "not_implemented", None
+
+
+def _liq_ok_value(ms_dict: dict[str, Any]) -> bool | None:
+    if "liq_ok" not in ms_dict:
+        return None
+    raw = ms_dict.get("liq_ok")
+    if raw is None:
+        return None
+    return bool(raw)
+
+
+def _spread_quality(spread: float | None, liq_ok: bool | None) -> str:
+    if spread is None or liq_ok is None:
         return "unknown"
     return "tight" if liq_ok else "wide_policy_pending"
 

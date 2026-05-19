@@ -422,13 +422,60 @@ def test_missing_bid_ask_blocks_trade_output():
 
 def test_missing_selected_expiry_blocks_trade_output():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L159 - missing selected expiry blocks trade."""
+    winner = _winner()
+    winner["chain_row"].pop("expirationDate", None)
     a2 = build_a2_option_expression(
-        _ms(selected_exp=None, call_option_expiry=None),
+        _ms(
+            selected_exp=None,
+            call_option_expiry=None,
+            option_chain_selection_proof={"status": "ok", "winner": winner},
+        ),
         _sample_a1(),
     )
 
     assert a2["option_expression"]["option_action"]["value"] == "WAIT"
     assert "missing_selected_expiry" in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_schwab_chain_expiration_satisfies_selected_expiry_hard_gate():
+    """Schwab-first: chain_row.expirationDate counts when ms_dict aliases are absent."""
+    winner = _winner()
+    a2 = build_a2_option_expression(
+        _ms(
+            selected_exp=None,
+            call_option_expiry=None,
+            option_chain_selection_proof={"status": "ok", "winner": winner},
+        ),
+        _sample_a1(),
+    )
+    assert a2["identity"]["selected_expiry"]["source"] == "v2_compliant"
+    assert a2["option_expression"]["option_action"]["value"] == "TRADE"
+    assert "missing_selected_expiry" not in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_liquidity_gate_pass_withheld_when_liq_ok_missing():
+    ms = _ms()
+    ms.pop("liq_ok", None)
+    a2 = build_a2_option_expression(ms, _sample_a1())
+    assert a2["execution"]["liquidity_gate_pass"] == {
+        "value": None,
+        "source": "not_implemented",
+    }
+    assert a2["execution"]["spread_quality"]["value"] == "unknown"
+
+
+def test_invalid_ask_blocks_spread_evaluation_fail_closed():
+    winner = _winner()
+    winner["chain_row"]["bid"] = 1.0
+    winner["chain_row"]["ask"] = 0.0
+    winner["chain_row"]["mark"] = None
+    winner["chain_row"]["last"] = None
+    a2 = build_a2_option_expression(
+        _ms(option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert "missing_bid_or_ask" in a2["health"]["hard_gates_failed"]["value"]
 
 
 def test_non_same_day_expiry_blocks_strict_0dte_output():
