@@ -11,6 +11,7 @@ All calculations derived from bars; no Schwab-specific logic.
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
@@ -27,6 +28,8 @@ from liquidity_models import (
     Zone,
     ZoneType,
 )
+
+log = logging.getLogger(__name__)
 
 ET = ZoneInfo("America/New_York")
 RTH_OPEN = time(9, 30)
@@ -580,6 +583,8 @@ def cluster_price_levels_into_zones(
     elif mode == "atr" and atr_value is not None and atr_value > 0:
         thresh = max(atr_value * config.clustering_threshold_atr_mult, 0.01)
     else:
+        if mode == "atr":
+            log.info("cluster: atr_value unavailable, falling back to percent threshold")
         thresh = max(reference_price * config.clustering_threshold_pct, 0.01)
 
     tag_map: dict[float, list[str]] = defaultdict(list)
