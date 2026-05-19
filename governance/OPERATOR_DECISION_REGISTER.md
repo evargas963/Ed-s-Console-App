@@ -194,6 +194,22 @@ Constraint: Each canopy must fail-closed when the analytical bundle is stale or 
 
 Permanent or interim: Permanent until a preregistered research leaf is operator-signed.
 
+### O-50
+
+Why: Bid/ask spread and liquidity rating chips are derived from `quotes.quote.bidPrice`, `askPrice`, `bidSize`, and `askSize`; Schwab does not publish a single spread or liquidity-score leaf for the A2 advisory panel.
+
+Constraint: One canonical producer computes spread and liquidity display from L1 quotes; fail-closed when quotes incomplete.
+
+Permanent or interim: Permanent.
+
+### O-51
+
+Why: Basket confluence aggregates (SPY/QQQ/IWM top-N weight×change, holdings/sector blends, read badges) are portfolio-weighted composites; no Schwab basket-score or participation leaf exists.
+
+Constraint: Canonical aggregation in confluence render path only; must not silently default when component quotes missing.
+
+Permanent or interim: Permanent.
+
 ---
 
 *End of register.*
