@@ -286,11 +286,13 @@ Reference ticker for parametric tests: **SPY**.
   - [x] FIND-RCE4 — `score_gap_vs_best` sorted with `float(score or 0)`; closed exclude None scores from best-score ladder. Follow-on `b87a24e`: sort key still used `x[1] or 0` — fixed in RCE4 follow-on commit (filter None pre-comparison).
   - [ ] OBS-RCE1 — `replay_max_hold_bars_for_trade_type` / `build_replay_context_payload` trade-type fallback documented in payload metadata (accepted; eval path no longer uses silent default).
   - [ ] OBS-RCE2 — `compare_parallel_cascade_trade_logs` uses `pnl_dollars or 0` for diff stats on valid rows only (accepted).
-  - [x] FIND-TC1 — `_normalize_data_fp` / cache keys treated missing `row_count` as `0` via `get(..., 0)` and `or 0`; closed via `_fingerprint_row_count_part` + tri-state `row_count` in normalize.
-  - [x] FIND-TC2 — `load_lstm_feature_cache` defaulted missing `n_features_*` to 0; closed via `_meta_required_positive_int` reject path.
-  - [x] FIND-TC3 — `xgb_meta_content_sha256` returned `""` when meta missing (bind collision); closed via `MISSING:{resolved_path}` sentinel.
-  - [ ] OBS-TC1 — `load_lstm` still defaults `n_days`/`n_tickers` to 0 when meta omits (diagnostic-only; not tensor shape authority).
-  - [ ] OBS-TC2 — Legacy `cache_exists` / `read_cache_meta` helpers at file tail marked unused by scheduler (accepted).
+  - [x] FIND-TC1 — `compute_artifact_sha256_map` omitted missing files from saved `artifact_sha256` (operator inspection gap); closed via `MISSING:{path.resolve()}` marker (mirrors `xgb_meta_content_sha256`). Prior session: row_count/LSTM-dim/xgb-bind fixes in `da69147` (FIND-TC-FP1–FP3).
+  - [x] FIND-TC-FP1 — `_normalize_data_fp` / cache keys treated missing `row_count` as `0`; closed `_fingerprint_row_count_part` + tri-state `row_count` (`da69147`).
+  - [x] FIND-TC-FP2 — `load_lstm_feature_cache` defaulted missing `n_features_*` to 0; closed `_meta_required_positive_int` (`da69147`).
+  - [x] FIND-TC-FP3 — `xgb_meta_content_sha256` returned `""` when meta missing; closed `MISSING:{resolved_path}` (`da69147`).
+  - [ ] OBS-TC1 — `load_lstm_feature_cache` metadata defaults (`tickers`/`days`/`n_days`/`n_tickers` empty or 0); accepted — structural dims fail-closed via `_meta_required_positive_int`.
+  - [ ] OBS-TC2 — `_normalize_data_fp({})` returns `{}` vs 6-key shape for non-empty; accepted — conservative cache miss on legacy empty identity.
+  - [ ] OBS-TC3 — Legacy `cache_exists` / `read_cache_meta` at file tail unused by scheduler (accepted).
   - [ ] OBS-FPC1 — `fusion_payload_to_policy_columns` `json.dumps` failure → `cm_json = "[]"` (audit metadata only; not policy prob authority).
   - [ ] OBS-FPC2 — `fused_stack_status_*` uses `dom`/`fconf` `"?"` when fusion attrs missing (audit string; accepted disclosure).
   - [ ] OBS-PNSC1 — `features/parallel_stack_contract.py` does not exist; parallel model output contract is `features/parallel_stack_schema.py` (Layer 5 walked c80d536). Degradation audit trail is `features/stack_integrity_v1.py` (Layer 5 walked as schema sibling).

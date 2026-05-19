@@ -265,3 +265,5 @@ Substantive items closed in paired-fix commits (OF1–OF8, LVE1, FIND-RE1, FIND-
 
 - **STYLE-LVE2** — mixed `in tags` vs `in str(tags)` in liquidity_value_engine snapshot builders; accepted (substring match intentional for VWAP band tags).
 - **Magic thresholds** — POC shift 0.002, VWAP-vs-POC 0.001, new_value_area 0.005, zone-edge proximities 0.995/0.998/1.002; accepted informational disclosures in liquidity_value_engine.py.
+
+`training_cache.py` Layer 5 chunk-1 walk + FIND-TC1 paired fix (`compute_artifact_sha256_map` `MISSING:` marker for missing files; mirrors `xgb_meta_content_sha256` pattern).

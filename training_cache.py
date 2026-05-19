@@ -698,6 +698,8 @@ def compute_artifact_sha256_map(out_dir: Path, basenames: list[str]) -> dict[str
         p = out_dir / n
         if p.is_file():
             out[n] = file_sha256_hex(p)
+        else:
+            out[n] = f"MISSING:{p.resolve()}"
     return out
 
 
