@@ -485,6 +485,9 @@ def _stop_distance(inp: SignalInput, risk_multiplier: float = 1.0) -> float:
     """
     spot = inp.spot
     if inp.et_hour is None or inp.et_minute is None:
+        log.debug(
+            "call_engine._stop_distance: et_hour/et_minute missing — using mins_elapsed=0 (open default)"
+        )
         mins_elapsed = 0
     else:
         mins_elapsed = inp.et_hour * 60 + inp.et_minute - 570  # mins since 9:30 AM
@@ -630,10 +633,17 @@ def _conviction_from_canonical_forecast(
         return "low"
     c = str(getattr(canonical, "confidence", "low") or "low").strip().lower()
     if c not in _CONV_ORDER:
+        log.debug(
+            "call_engine._conviction_from_canonical_forecast: invalid confidence %r — using low",
+            getattr(canonical, "confidence", None),
+        )
         c = "low"
     try:
         dom_p = float(canonical.dominant_probability())
     except (TypeError, ValueError):
+        log.debug(
+            "call_engine._conviction_from_canonical_forecast: dominant_probability unavailable — using 1/3"
+        )
         dom_p = 1.0 / 3.0
     margin = dom_p - (1.0 / 3.0)
     ceil_ord = _CONV_ORDER[c]
@@ -1715,7 +1725,7 @@ def compute_call(
         _readiness_missing = _rdy.get("missing_conditions", []) or []
         _readiness_component_scores = _rdy.get("component_scores", {}) or {}
     except Exception as _re:
-        log.debug("call_readiness: %s", _re)
+        log.warning("call_readiness: %s", _re)
 
     # ══════════════════════════════════════════════════════════════════════════
     # 11. PUT READINESS (V1, bearish mirror)

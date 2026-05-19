@@ -147,6 +147,13 @@ def merge_db_row_with_canonical_mvp(
 
 
 def _ts_close(a: Any, b: Any, *, eps: float = 1e-3) -> bool:
+    """
+    True when both UTC timestamps are within ``eps`` seconds (default **1e-3**, ~1 ms).
+
+    Used by ``build_lstm_merged_windows`` to align ``day_snaps`` rows with the live
+    window's last bar. Callers must pass comparable ``ts_utc`` values (same epoch
+    units); the epsilon tolerates float serialization jitter only, not missing bars.
+    """
     try:
         if a is None or b is None:
             return False
@@ -165,6 +172,10 @@ def build_lstm_merged_windows(
     Build merged snapshot dicts for LSTM encode + confluence. Per bar, MVP comes from
     `build_db_mvp_feature_row` except the **last bar of `window`**, which uses
     `inference_snapshot_v1["features"]` when provided (live current bar).
+
+    Day-bar alignment: when ``inference_snapshot_v1`` is set, rows in ``day_snaps`` whose
+    ``ts_utc`` is within **1 ms** of the window's last bar (see ``_ts_close``, default
+    ``eps=1e-3``) also receive live canonical features.
 
     Raises:
         LstmSequenceInputError: invalid canonical rows or adapter failure.

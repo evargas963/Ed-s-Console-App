@@ -191,3 +191,15 @@ def test_merge_strips_all_mvp_legacy_keys():
         if leg in ("absorption_score", "continuation_score"):
             continue
         assert m[leg] != 999.0 or leg not in db
+
+
+def test_ts_close_docstring_documents_epsilon():
+    from features import lstm_sequence_input as lsi
+
+    doc = (lsi._ts_close.__doc__ or "").lower()
+    assert "epsilon" in doc or "eps" in doc
+    assert "1e-3" in doc
+    assert "1 ms" in doc
+    merged_doc = (lsi.build_lstm_merged_windows.__doc__ or "").lower()
+    assert "_ts_close" in merged_doc
+    assert "1e-3" in merged_doc or "1 ms" in merged_doc

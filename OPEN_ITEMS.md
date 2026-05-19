@@ -251,6 +251,9 @@ Reference ticker for parametric tests: **SPY**.
   - [x] FIND-CE4 — EAE gate `_stop_distance` uses `vol_regime.risk_multiplier` (matches sizing path).
   - [x] FIND-CE6 — `vol_regime is None` forces WAIT with labeled `wait_blocker` (Layer 5 chunk-2B).
   - [x] FIND-CE7/CE8 — `mins_to_close is None` → sizing NO_TRADE; time-warning guards + WAIT (no TypeError).
+  - [x] FIND-CE1 — `_stop_distance` logs when `et_hour`/`et_minute` missing (mins_elapsed=0 default).
+  - [x] FIND-CE2 — `_conviction_from_canonical_forecast` logs invalid confidence + `dominant_probability` fallback paths.
+  - [x] FIND-CE9 — `call_readiness` exception → `log.warning` (surfaces in standard logs).
   - [x] FIND-OF8 — `_of_sign(0.0)→None`; verdict agreement no longer casts zero cum_delta as neutral (chunk-4b / math_exposure).
   - [x] STYLE-LVE2 — tag matching `in tags` vs `in str(tags)`; **accepted disclosure** (intentional substring match for VWAP_* tags; no code change).
   - [x] Magic-threshold disclosures — POC 0.002, VWAP-vs-POC 0.001, new_value_area 0.005, zone-edge 0.995/0.998/1.002; **accepted disclosure** (documented tuning constants; no code change).
@@ -264,7 +267,7 @@ Reference ticker for parametric tests: **SPY**.
   - [x] FIND-XGB1 — silent `ticker=""` default; closed via envelope non-empty `ticker` check + `ml_predict._resolve_ml_inference_ticker` fail-closed.
   - [x] FIND-XGB2 — `as_of_ts` None omitted time keys; closed via envelope `as_of_ts` required + engineering snapshot always emits `ts_utc`/`et_hour`/`et_minute`.
   - [ ] FIND-LSI1 — `_patch_lstm_categoricals` unknown zone string defaults to pin_neutral code (L97); defer pending training-skew check.
-  - [ ] FIND-LSI2 — `_ts_close` 1e-3 epsilon undocumented (L149–155); doc-only fix deferred.
+  - [x] FIND-LSI2 — `_ts_close` 1e-3 epsilon documented on `_ts_close` + `build_lstm_merged_windows` (caller alignment expectation).
   - [ ] OBS-CC1 — signed-distance sign convention per spec (informational; validator allows any finite sign).
   - [ ] OBS-CC2 — `_MVP_SPECS` / `_MVP_FIELD_SEMANTICS` parallel dicts; maintenance hygiene (key-alignment test locked in Layer 5 chunk-1).
   - [x] FIND-MSC1 — non-Mapping parent silent-all-None laundering via `_contains_key` TypeError catch; closed via `_require_mapping` at all 4 coercion entry points.
