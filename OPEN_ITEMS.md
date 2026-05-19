@@ -253,7 +253,7 @@ Reference ticker for parametric tests: **SPY**.
   - [x] FIND-CE7/CE8 — `mins_to_close is None` → sizing NO_TRADE; time-warning guards + WAIT (no TypeError).
   - [x] FIND-CE1 — `_stop_distance` logs when `et_hour`/`et_minute` missing (mins_elapsed=0 default).
   - [x] FIND-CE2 — `_conviction_from_canonical_forecast` logs invalid confidence + `dominant_probability` fallback paths.
-  - [x] FIND-CE9 — `call_readiness` exception → `log.warning` (surfaces in standard logs).
+  - [x] FIND-CE9 — `call_readiness` and `put_readiness` exceptions → `log.warning` (surfaces in standard logs; put mirror landed post-9630bad).
   - [x] FIND-OF8 — `_of_sign(0.0)→None`; verdict agreement no longer casts zero cum_delta as neutral (chunk-4b / math_exposure).
   - [x] STYLE-LVE2 — tag matching `in tags` vs `in str(tags)`; **accepted disclosure** (intentional substring match for VWAP_* tags; no code change).
   - [x] Magic-threshold disclosures — POC 0.002, VWAP-vs-POC 0.001, new_value_area 0.005, zone-edge 0.995/0.998/1.002; **accepted disclosure** (documented tuning constants; no code change).

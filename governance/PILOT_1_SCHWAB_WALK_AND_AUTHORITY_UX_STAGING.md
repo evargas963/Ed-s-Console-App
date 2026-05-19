@@ -207,6 +207,7 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-19 | Combined paired fix MVP1 + XGB1 + XGB2 (mvp_zone None; envelope ticker/as_of_ts strict; ml_predict ticker resolve) |
 | 2026-05-19 | `features/fusion_policy_contract.py` Layer 5 chunk-1 walk (0 REPLACED; 6 KEEP_DERIVED; 5 PASS_THROUGH; Action 12.8 verified; OBS-FPC1/FPC2) |
 | 2026-05-19 | LSI2 docstring + call_engine chunk-2C audit-trail logs (CE1/CE2/CE9 close-out) |
+| 2026-05-19 | CE9 follow-on: put_readiness log.warning mirror (missing from 9630bad) |
 
 ---
 

@@ -1771,7 +1771,7 @@ def compute_call(
         _put_missing = _prdy.get("missing_conditions", []) or []
         _put_component_scores = _prdy.get("component_scores", {}) or {}
     except Exception as _re:
-        log.debug("put_readiness: %s", _re)
+        log.warning("put_readiness: %s", _re)
 
     return TheCall(
         signal=final_signal, conviction=conviction,

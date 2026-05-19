@@ -132,3 +132,51 @@ def test_ce9_call_readiness_failure_logs_warning(caplog):
                 mh_policy=None,
             )
     assert any(r.levelname == "WARNING" and "call_readiness:" in r.message for r in caplog.records)
+
+
+def test_ce9_put_readiness_failure_logs_warning(caplog):
+    inp = _strong_long_stack_input()
+    fusion = SimpleNamespace(
+        available=True,
+        fusion_dominant_direction="up",
+        dominant_direction="up",
+        model_agreement=0.8,
+        n_sources_active=3,
+        fusion_confidence="high",
+        mc_available=False,
+    )
+    vol = SimpleNamespace(
+        vol_regime="normal",
+        trade_permissive=True,
+        conviction_multiplier=1.0,
+        risk_multiplier=1.0,
+        breakout_bias=0.6,
+        reversal_bias=0.5,
+    )
+    with patch(
+        "setup_readiness.compute_call_readiness",
+        return_value={
+            "readiness_score": 50,
+            "call_state": "WAIT",
+            "forecast_state": "dormant",
+            "reasons": [],
+            "missing_conditions": [],
+            "component_scores": {},
+        },
+    ), patch(
+        "setup_readiness.compute_put_readiness",
+        side_effect=RuntimeError("put readiness module broken"),
+    ):
+        with caplog.at_level(logging.WARNING, logger="call_engine"):
+            ce.compute_call(
+                inp,
+                _rules_long(),
+                _pred(),
+                regime=SimpleNamespace(primary="trend_continuation", confidence="medium"),
+                fusion=fusion,
+                vol_regime=vol,
+                canonical=_canonical(),
+                mvp_features=minimal_mvp_features(zone="breakout"),
+                mh_policy=None,
+            )
+    assert any(r.levelname == "WARNING" and "put_readiness:" in r.message for r in caplog.records)
