@@ -198,6 +198,7 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-19 | `features/parallel_stack_schema.py` Layer 5 chunk-1 walk (0 REPLACED; 3 KEEP_DERIVED; FIND-PSS1/PSS2 disclosed; Action 12.11 contracts locked) |
 | 2026-05-19 | `mc_fusion_adjustment` + `prediction_engine` Layer 5 chunk-2 paired fix (FIND-MCF1/MCF2 — degenerate `_triplet` / `_norm_triplet_floats` fail-closed instead of silent 1/3) |
 | 2026-05-19 | `features/regime_mvp_context.py` Layer 5 chunk-1 walk + MVP2 paired fix (`mvp_net_gamma` float coerce; FIND-MVP1 `mvp_zone` "unknown" sentinel disclosed pending consumer audit) |
+| 2026-05-19 | `features/xgb_model_input.py` Layer 5 chunk-1 walk (0 REPLACED; 7 KEEP_DERIVED; FIND-XGB1/XGB2 disclosed pending ml_predict caller audit) |
 
 ---
 
