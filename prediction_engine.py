@@ -6,6 +6,7 @@ Extracted Phase 1 Card 2 logic from signals.py
 from __future__ import annotations
 
 import logging
+import math
 import os
 from dataclasses import dataclass, replace
 from datetime import timezone, timedelta
@@ -156,12 +157,14 @@ def _fusion_snap_triplet(snap) -> Optional[tuple[float, float, float]]:
     return _norm_triplet_floats(float(pu), float(pd), float(pf))
 
 
-def _norm_triplet_floats(u: float, d: float, f: float) -> tuple[float, float, float]:
-    s = u + d + f
-    if s <= 0:
-        t = 1.0 / 3.0
-        return t, t, t
-    return u / s, d / s, f / s
+def _norm_triplet_floats(u: float, d: float, f: float) -> Optional[tuple[float, float, float]]:
+    fu, fd, ff = float(u), float(d), float(f)
+    if not all(math.isfinite(x) for x in (fu, fd, ff)):
+        return None
+    s = fu + fd + ff
+    if s <= 0 or not math.isfinite(s):
+        return None
+    return fu / s, fd / s, ff / s
 
 
 def _overlay_multi_horizon_ml_on_product_triplets(
@@ -242,9 +245,14 @@ def _overlay_multi_horizon_ml_on_product_triplets(
             u = (1.0 - w_sup) * mu + w_sup * float(eu)
             d = (1.0 - w_sup) * md + w_sup * float(ed)
             fl = (1.0 - w_sup) * mf + w_sup * float(ef)
-            u, d, fl = _norm_triplet_floats(u, d, fl)
-            out[hz] = (u, d, fl)
-            src[hz] = "empirical_support_blend"
+            blended = _norm_triplet_floats(u, d, fl)
+            if blended is None:
+                out[hz] = (mu, md, mf)
+                src[hz] = "fusion_ml_primary"
+            else:
+                u, d, fl = blended
+                out[hz] = (u, d, fl)
+                src[hz] = "empirical_support_blend"
         else:
             out[hz] = (mu, md, mf)
             src[hz] = "fusion_ml_primary"

@@ -196,6 +196,7 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-19 | `call_engine.py` Layer 5 chunk-2B (FIND-CE3/CE4/CE6/CE7/CE8 — gate/sizing/vol_regime fail-closed) |
 | 2026-05-19 | FIND-OF8 + disclosure-accept (STYLE-LVE2, magic thresholds); Phase 1 deferred list closed |
 | 2026-05-19 | `features/parallel_stack_schema.py` Layer 5 chunk-1 walk (0 REPLACED; 3 KEEP_DERIVED; FIND-PSS1/PSS2 disclosed; Action 12.11 contracts locked) |
+| 2026-05-19 | `mc_fusion_adjustment` + `prediction_engine` Layer 5 chunk-2 paired fix (FIND-MCF1/MCF2 — degenerate `_triplet` / `_norm_triplet_floats` fail-closed instead of silent 1/3) |
 
 ---
 
