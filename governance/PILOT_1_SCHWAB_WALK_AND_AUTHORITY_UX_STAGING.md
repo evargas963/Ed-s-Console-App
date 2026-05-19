@@ -186,4 +186,5 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-19 | `mc_fusion_adjustment.py` chunk-1 walk (0 REPLACED; post-fusion MC adjust; Mega queue #4) |
 | 2026-05-19 | `ml_predict.py` chunk-1 walk (0 REPLACED; parallel stack XGB/LSTM/TR; Mega queue #5) |
 | 2026-05-19 | `order_flow_engine.py` chunk-1 walk (0 REPLACED; slice-only; FIND-OF1–7 disclosed; 1161-line HEAD) |
+| 2026-05-19 | `liquidity_value_engine.py` chunk-1 walk (0 REPLACED; 26 KEEP_DERIVED; 4 PASS_THROUGH; FIND-LVE1/STYLE-LVE2 disclosed; 1520-line HEAD) |
 | 2026-05-19 | **Phase 2** authority UX — `final_confidence` desk headline (Track 2) |
