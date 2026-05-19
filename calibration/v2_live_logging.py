@@ -14,13 +14,15 @@ from calibration.writer import (
     CALIBRATION_INSERT_IDEMPOTENT,
     append_calibration_decision,
     calibration_logging_enabled,
-    default_decision_ts_utc,
 )
 from instrument_identity import ticker_storage_key
 
 LIVE_ADVISORY_V2_DECISION_LOG_COLUMNS = ADVISORY_V2_DECISION_LOG_COLUMNS
 LIVE_ADVISORY_V2_SOURCE = "live_tier_c_advisory"
 LIVE_ADVISORY_V2_SKIP_NO_PAYLOAD = "v2_advisory_log_skipped_no_signal_payload"
+LIVE_ADVISORY_V2_SKIP_MISSING_DECISION_TS = (
+    "v2_advisory_log_skipped_missing_decision_ts"
+)
 
 
 def build_live_v2_advisory_snapshot(
@@ -59,9 +61,15 @@ def append_live_v2_calibration_decision(
             "reason": LIVE_ADVISORY_V2_SKIP_NO_PAYLOAD,
         }
 
+    decision_ts_utc = _decision_ts_utc_from_payload(calibration_payload)
+    if decision_ts_utc is None:
+        return {
+            "status": "skipped",
+            "reason": LIVE_ADVISORY_V2_SKIP_MISSING_DECISION_TS,
+        }
+
     inp = calibration_payload["inp"]
     ticker = calibration_payload["ticker"]
-    decision_ts_utc = _decision_ts_utc_from_payload(calibration_payload)
     advisory_snapshot = build_live_v2_advisory_snapshot(
         ticker=ticker,
         decision_ts_utc=decision_ts_utc,
@@ -95,7 +103,8 @@ def append_live_v2_calibration_decision(
     return {"status": "ok", "row_id": row_id}
 
 
-def _decision_ts_utc_from_payload(calibration_payload: dict[str, Any]) -> float:
+def _decision_ts_utc_from_payload(calibration_payload: dict[str, Any]) -> float | None:
+    """Authoritative decision instant from SignalInput.refresh_ts_utc only."""
     ts = getattr(calibration_payload["inp"], "refresh_ts_utc", None)
     try:
         if ts is not None:
@@ -104,4 +113,4 @@ def _decision_ts_utc_from_payload(calibration_payload: dict[str, Any]) -> float:
                 return value
     except (TypeError, ValueError):
         pass
-    return default_decision_ts_utc()
+    return None

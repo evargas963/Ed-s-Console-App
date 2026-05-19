@@ -12,7 +12,7 @@
 | **Server refresh** | `from db import utc_ts as _utc_ts_refresh` then `_refresh_ts_utc = _utc_ts_refresh()` **once** immediately before `build_market_state(...)`. |
 | **Snapshot insert** | `SnapshotRow.ts_utc = _snap_ts` where `_snap_ts = _refresh_ts_utc` (replaces a second `utc_ts()` at insert). |
 | **Signals / calibration** | `SignalInput.refresh_ts_utc = refresh_ts_utc` from `build_market_state`; `_maybe_append_calibration_log` passes `float(inp.refresh_ts_utc)` into `append_calibration_decision(decision_ts_utc=...)`. |
-| **Fallback** | If `refresh_ts_utc` is missing or invalid, `default_decision_ts_utc()` (insert-time) — tests/offline callers only. |
+| **Fallback** | Legacy v1-only paths may use `default_decision_ts_utc()` when unset. **Live v2** (`calibration/v2_live_logging.py`) skips insert with `v2_advisory_log_skipped_missing_decision_ts` — no wall-clock substitute. |
 
 ---
 
