@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -18,6 +19,8 @@ PERF_FETCH = ROOT / "governance" / "artifacts" / "perf_proof" / "replacements" /
     "pp_v4b_server_fetch_state_leaf_provenance.json"
 )
 PERF_INDEX = ROOT / "governance" / "artifacts" / "perf_proof" / "index.json"
+DICT_PATH = ROOT / "schwab_field_inventory" / "schwab_field_dictionary.csv"
+_CITE_RE = re.compile(r"CSV row (\d+) \(canonical_field=([^)]+)\)")
 TRACE = "CLAUDE chunk-3 disposition server.py 3001-4500"
 
 # 25 net-new emission sites vs chunks 1/2 (quote session leaves on helper L2217).
@@ -58,6 +61,46 @@ def zero(symbol: str) -> str:
     return f"CSV grep zero hits for {symbol}"
 
 
+def _load_csv_row_to_canonical() -> dict[int, str]:
+    out: dict[int, str] = {}
+    with DICT_PATH.open(encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for line_no, row in enumerate(reader, start=2):
+            out[line_no] = (row["canonical_field"] or "").strip()
+    return out
+
+
+def validate_citation_text(text: str, row_map: dict[int, str], *, context: str) -> None:
+    for m in _CITE_RE.finditer(text):
+        row_n = int(m.group(1))
+        cited = m.group(2).strip()
+        actual = row_map.get(row_n)
+        if actual != cited:
+            raise SystemExit(
+                f"Citation row mismatch [{context}]: CSV row {row_n} is {actual!r}, "
+                f"cited canonical_field={cited!r}"
+            )
+
+
+def validate_formal_replaced_citations(row_map: dict[int, str]) -> None:
+    for line, surf, citation, _notes in FORMAL_REPLACED:
+        validate_citation_text(citation, row_map, context=f"L{line} {surf}")
+
+
+def validate_slice_replaced_citations(rows: list[dict[str, str]], row_map: dict[int, str]) -> None:
+    for r in rows:
+        if r.get("disposition") != "REPLACED":
+            continue
+        cit = r.get("canonical_field_citation") or ""
+        if not cit or "CSV row " not in cit:
+            continue
+        validate_citation_text(
+            cit,
+            row_map,
+            context=f"slice register_id={r.get('register_id')} L{r.get('line')}",
+        )
+
+
 # (line, surface, citation, notes) — 43 REPLACED emission sites (post-FIX-1 lines)
 FORMAL_REPLACED: list[tuple[int, str, str, str]] = [
     (3074, "c_json.get(callExpDateMap)", cite(4, "chains.callExpDateMap"), "chain flatten"),
@@ -83,7 +126,7 @@ FORMAL_REPLACED: list[tuple[int, str, str, str]] = [
     (3909, "order_flow quote envelope", cite(2275, "quotes.quote.lastPrice"), "quotes.quote.* family handoff"),
     (3910, "order_flow extended envelope", cite(2240, "quotes.extended.lastPrice"), "quotes.extended.* family"),
     (3911, "order_flow regular envelope", cite(2301, "quotes.regular.regularMarketLastPrice"), "quotes.regular.* family"),
-    (3912, "order_flow fundamental envelope", cite(2246, "quotes.fundamental.divAmount"), "quotes.fundamental.* family"),
+    (3912, "order_flow fundamental envelope", cite(2249, "quotes.fundamental.divAmount"), "quotes.fundamental.* family"),
     (3913, "order_flow reference envelope", cite(2292, "quotes.reference.cusip"), "quotes.reference.* family"),
     (3921, "callExpDateMap handoff", cite(4, "chains.callExpDateMap"), "order_flow_data"),
     (3922, "putExpDateMap handoff", cite(71, "chains.putExpDateMap"), "order_flow_data"),
@@ -317,6 +360,9 @@ def _synth_row(
 
 
 def main() -> None:
+    row_map = _load_csv_row_to_canonical()
+    validate_formal_replaced_citations(row_map)
+
     out_by_id: dict[str, dict[str, str]] = {}
 
     # Scanner baseline → NMD
@@ -387,6 +433,7 @@ def main() -> None:
     _rt = list(csv.DictReader(SLICE.open(encoding="utf-8", newline="")))
     if len(_rt) != len(out_rows):
         raise SystemExit(f"slice CSV round-trip row mismatch: wrote {len(out_rows)} read {len(_rt)}")
+    validate_slice_replaced_citations(_rt, row_map)
     if any(len(r) != len(REGISTER_COLUMNS) for r in _rt):
         raise SystemExit("slice CSV round-trip column mismatch")
 
