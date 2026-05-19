@@ -160,6 +160,7 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 - `market_state.py` chunks 6–7  
 - **`multi_horizon_decision.py` chunk 1 (L1–854)** — register slice + I-01 `final_confidence` consumer fix (`market_state.py:1420`)  
 - **`bayesian_fusion.py` chunk 1 (L1–859)** — register slice; `FusionPayload` producer (fail-closed; no code change)  
+- **`signals.py` chunk 1 (L1–1422)** + **`features/fusion_policy_contract.py` (L1–106)** — `fused_confidence_<hz>` producer chain bound  
 - b23a1e6 — horizon vs fused labels  
 - CONFIDENCE-1a — `MarketState.confidence` docstring  
 - `v2_decision` adapter, schema, Tier C attach, `#v2-pilot-card` (advisory; authority UX gap remains)
@@ -173,3 +174,4 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-18 | Initial signed staging plan (operator + Claude + Cursor) |
 | 2026-05-18 | `multi_horizon_decision.py` chunk-1 walk (slice + L1420 fix) |
 | 2026-05-18 | `bayesian_fusion.py` chunk-1 walk (slice; fusion_policy_contract deferred to signals.py) |
+| 2026-05-18 | `signals.py` + `fusion_policy_contract.py` chunk-1 walk (fused_confidence_<hz> chain complete) |
