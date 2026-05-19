@@ -122,6 +122,78 @@ Constraint: V4 outcome bar unchanged — every file dispositioned (review OR cla
 
 Permanent or interim: Permanent. The scanner remains a tool; the inventory checklist is the closure artifact.
 
+### O-41
+
+Why: Direction arrows (↑/↓/→) are visual encodings of the sign of net change; Schwab provides `quotes.quote.netChange` but no leaf for a discrete arrow glyph.
+
+Constraint: UI must remain fail-closed when net change is missing; arrow must not invent direction from stale cache.
+
+Permanent or interim: Permanent.
+
+### O-42
+
+Why: Session badge (PRE/RTH/AH) is derived from America/New_York clock vs exchange session window; Schwab does not expose a single session-label leaf for this UI chip.
+
+Constraint: Must align with `session_calendar` / RTH helpers used for trading gates; label is display-only.
+
+Permanent or interim: Permanent.
+
+### O-43
+
+Why: Regime zone badge is model output from gamma/positioning aggregation; no Schwab regime-zone primitive in the field dictionary.
+
+Constraint: Canonical producer is exposure/regime stack; UI must not show a zone when upstream marks data unavailable.
+
+Permanent or interim: Permanent.
+
+### O-44
+
+Why: Regime bias text is model output; no Schwab bias leaf.
+
+Constraint: Must trace to the same producer as regime zone; fail-closed when model bundle incomplete.
+
+Permanent or interim: Permanent.
+
+### O-45
+
+Why: Pin strength is KEEP_DERIVED from chain gamma and open-interest aggregation (`math_exposure` / pin pipeline); no single Schwab leaf substitutes the composite score.
+
+Constraint: One canonical producer; UI reads trunk from analytical bundle only.
+
+Permanent or interim: Permanent.
+
+### O-46
+
+Why: Net delta display aggregates `chains.*.delta * openInterest * multiplier`; Schwab supplies per-strike deltas, not this portfolio net in one leaf.
+
+Constraint: Must use the same aggregation path as exposure core; no silent zero when chain incomplete.
+
+Permanent or interim: Permanent.
+
+### O-47
+
+Why: Put/call ratio is derived from call/put volume or OI maps; Schwab does not publish a single PCR leaf for the sidebar chip.
+
+Constraint: Single canonical PCR producer; fail-closed when either side missing.
+
+Permanent or interim: Permanent.
+
+### O-48
+
+Why: DTE warning text is a threshold narrative on days-to-expiration; the numeric DTE may use `chains.callExpDateMap.*.daysToExpiration` but the warning copy is UI policy.
+
+Constraint: Warning must not fire on fabricated DTE; binds to selected expiry from chain map.
+
+Permanent or interim: Permanent.
+
+### O-49
+
+Why: Horizon cards, Decision Rail pills, gates, trade plan, trust/stack debug, order-flow read, and liquidity-path chips are model or fusion outputs (`mhap_rows`, `final_*`, Key Levels / LM mirrors). No Schwab horizon-move probability or desk-conviction leaf exists in the dictionary.
+
+Constraint: Each canopy must fail-closed when the analytical bundle is stale or incomplete; duplicate surfaces flagged in register `notes` for UI dedup (top cards canonical over `dr-hz-panels` / `dr-align-*` / `dr-lvl-*` / `dr-liq-*`).
+
+Permanent or interim: Permanent until a preregistered research leaf is operator-signed.
+
 ---
 
 *End of register.*
