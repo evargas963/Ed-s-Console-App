@@ -53,6 +53,11 @@ def similar_setup_filters_from_db_snapshot_row(snapshot_row: Mapping[str, Any]) 
     Replay / diagnostics must use this (or full InferenceSnapshotV1) — not parallel reads of
     legacy columns into SQL without the adapter.
     """
+    if not isinstance(snapshot_row, Mapping):
+        raise FusionModelInputError(
+            f"snapshot_row must be a Mapping for similar_setup_filters, "
+            f"got {type(snapshot_row).__name__!r}"
+        )
     try:
         canon = build_db_mvp_feature_row(dict(snapshot_row))
     except MvpFeatureSourceError as e:
