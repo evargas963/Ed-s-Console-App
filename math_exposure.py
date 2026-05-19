@@ -61,11 +61,13 @@ def _of_sign(v: float | None) -> float | None:
 
 
 def _of_direction(v: float | None) -> str | None:
-    """Return 'bullish', 'bearish', or 'neutral' for arrow/label; None when input missing."""
+    """Return 'bullish', 'bearish', or 'neutral' for arrow/label; None when input missing or exactly zero."""
     if v is None:
         return None
     try:
         f = float(v)
+        if f == 0.0:
+            return None
         if f > OF_SCORE_BULLISH:
             return "bullish"
         if f < OF_SCORE_BEARISH:
@@ -116,6 +118,9 @@ def compute_order_flow_verdict(
     if weight_sum <= 0:
         return _verdict_unavailable()
     composite /= weight_sum
+
+    if abs(composite) < 1e-12:
+        return _verdict_unavailable()
 
     if composite >= OF_VERDICT_BUYING:
         verdict = "BUYING PRESSURE"

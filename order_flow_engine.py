@@ -820,8 +820,10 @@ def _compute_order_flow_score(
 
 
 def _direction(score: Optional[float]) -> Optional[str]:
-    """score > 0.15 → bullish, < -0.15 → bearish, else neutral; None when score unavailable."""
+    """score > 0.15 → bullish, < -0.15 → bearish, else neutral; None when unavailable or exactly zero."""
     if score is None:
+        return None
+    if score == 0.0:
         return None
     if score > 0.15:
         return "bullish"
