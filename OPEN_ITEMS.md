@@ -164,6 +164,21 @@ Reference ticker for parametric tests: **SPY**.
 - [x] **`d17.replaced_count` vs perf_proof (14 vs 12 drift)** — Scanner fix SHA `3000fb9` (cross-pattern surface dedup + merge surface guard + cross_validate coverage). Post-regen: `replaced_count_d17=10`, `delta_replaced_count_d17=-4`, `server.py:4478` REPLACED=0. Register_id instability vs perf_proof bundles: resync via `tools/stream_revert_v4_register_and_sync_perf.py --sync-only` → `replacements_landed/with_perf_proof=10/10` (10 REPLACED rows, 4 bundles; market_state bundle 0 rows on partial scan). Perf_proof + meta + scoreboard pin SHA: `77b6991`. Register CSV gitignored.
 - [ ] **Register CSV sunset** — Program-level: move D17 invariants off the universal line-register when a scoped static gate exists; until then CSV stays gitignored (see `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.md`).
 
+### Repo hygiene / size reduction (deferred — after Schwab disposition walk + V4 gate)
+
+**Do not start until:** `static/index.html` chunk walk is complete and verified, chunk follow-ups (e.g. `faa597b` class) are closed, and operator signs off on the active disposition slice set. **Not** during an open chunk or mid-register regen.
+
+**Safe anytime before then (local only, no commit required):** delete scratch and backups that are not cited by an open ticket — `backups/db/*.db`, `caps_*.txt`, `dry_run_*.json`, `static/mockups/` if design compare is done.
+
+| Phase | When | What to remove / trim |
+|-------|------|----------------------|
+| **A — working tree** | First cleanup commit after disposition gate opens | Untracked scratch (`caps_*`, `dry_run_*`, extra `governance/audits/*` not tied to closure); local **~4 GB** `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` if slice CSVs for finished chunks are committed (slices are the auditable export). |
+| **B — dead code + tools** | After `static/index.html` walk done | Land flagged dead paths (orphan CSS chunk 1, `__renderCharmDriftRowLive`, acc-chart / cum-delta / multi-horizon, exec-grid cluster, sse-legacy); drop one-off `tools/_build_*` / `_patch_*` not needed to regenerate slices. |
+| **C — post V4 closure** | After program closure / `O-XX` sign-off | Old scan artifacts, superseded governance drafts (only if nothing cites them), duplicate audit JSONs. |
+| **D — git history** | Separate deliberate PR only if `.git` is huge from **committed** blobs | History rewrite (e.g. remove committed DBs/large files) — **not** the same as deleting local untracked files; requires operator sign-off and force-push policy review. |
+
+**Deliverable:** one or more labeled cleanup commits (`chore: repo hygiene phase A`, …) with a short manifest in the commit body (paths removed, approximate size saved). **Do not** mix hygiene deletes with disposition/register commits.
+
 ---
 
 ## Schwab repo-wide replacement — post-KEY LEVELS sweep schedule
