@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -19,8 +20,17 @@ PERF_CHAIN = ROOT / "governance" / "artifacts" / "perf_proof" / "replacements" /
     "pp_v4b_market_state_chunk6_chain_leaf_provenance.json"
 )
 PERF_INDEX = ROOT / "governance" / "artifacts" / "perf_proof" / "index.json"
+DICT_PATH = ROOT / "schwab_field_inventory" / "schwab_field_dictionary.csv"
+_CITE_RE = re.compile(r"CSV row (\d+) \(canonical_field=([^)]+)\)")
 TRACE = "CLAUDE chunk-6 disposition market_state.py 1-1500"
 LO, HI = 1, 1500
+
+# Option (c): function-level S1 — 42 keys in _oe_chain_row_snapshot (L497-540); twin call/put map families.
+S1_SNAPSHOT_CITATION = (
+    "CSV rows 4-65 (chains.callExpDateMap.* family) + 71-130 (chains.putExpDateMap.*); "
+    "42-key _oe_chain_row_snapshot ct.get projection; representative: "
+    + "CSV row 14 (canonical_field=chains.callExpDateMap.*.delta)"
+)
 
 NET_NEW_REPLACED_ORDERED: tuple[str, ...] = (
     "_oe_chain_row_snapshot ct.get keys",
@@ -55,25 +65,66 @@ def zero(symbol: str) -> str:
     return f"CSV grep zero hits for {symbol}"
 
 
+def _load_csv_row_to_canonical() -> dict[int, str]:
+    """File line number (row 1 = header) → canonical_field for data rows."""
+    out: dict[int, str] = {}
+    with DICT_PATH.open(encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for line_no, row in enumerate(reader, start=2):
+            out[line_no] = (row["canonical_field"] or "").strip()
+    return out
+
+
+def validate_citation_text(text: str, row_map: dict[int, str], *, context: str) -> None:
+    for m in _CITE_RE.finditer(text):
+        row_n = int(m.group(1))
+        cited = m.group(2).strip()
+        actual = row_map.get(row_n)
+        if actual != cited:
+            raise SystemExit(
+                f"Citation row mismatch [{context}]: CSV row {row_n} is {actual!r}, "
+                f"cited canonical_field={cited!r}"
+            )
+
+
+def validate_formal_replaced_citations(row_map: dict[int, str]) -> None:
+    for line, surf, citation, _notes in FORMAL_REPLACED:
+        validate_citation_text(citation, row_map, context=f"L{line} {surf}")
+
+
+def validate_slice_replaced_citations(rows: list[dict[str, str]], row_map: dict[int, str]) -> None:
+    for r in rows:
+        if r.get("disposition") != "REPLACED":
+            continue
+        cit = r.get("canonical_field_citation") or ""
+        if not cit or "CSV row " not in cit:
+            continue
+        validate_citation_text(
+            cit,
+            row_map,
+            context=f"slice register_id={r.get('register_id')} L{r.get('line')}",
+        )
+
+
 FORMAL_REPLACED: list[tuple[int, str, str, str]] = [
     (
         541,
         "_oe_chain_row_snapshot ct.get keys",
-        cite(14, "chains.callExpDateMap.*.delta") + "; S1 memo: 40-key projection",
-        "V4 memo S1; each key maps chains.callExpDateMap.*.<k> | putExpDateMap.*.<k>",
+        S1_SNAPSHOT_CITATION,
+        "V4 memo S1; 42-key projection — each k maps chains.*.<k> call+put twin",
     ),
-    (547, "ct.get putCall L547", pair_cite(17, 84, "putCall"), "_oe_first_contract_row filter"),
-    (549, "ct.get strikePrice L549", pair_cite(15, 82, "strikePrice"), "_oe_first_contract_row filter"),
-    (668, "c.get putCall L668", pair_cite(17, 84, "putCall"), "recommend_option_expression side filter"),
-    (670, "c.get strikePrice L670", pair_cite(15, 82, "strikePrice"), "recommend_option_expression strikes"),
-    (792, "ct.get putCall L792", pair_cite(17, 84, "putCall"), "_oe_bid_ask_mid filter"),
-    (794, "ct.get strikePrice L794", pair_cite(15, 82, "strikePrice"), "_oe_bid_ask_mid filter"),
+    (547, "ct.get putCall L547", pair_cite(49, 116, "putCall"), "_oe_first_contract_row filter"),
+    (549, "ct.get strikePrice L549", pair_cite(53, 120, "strikePrice"), "_oe_first_contract_row filter"),
+    (668, "c.get putCall L668", pair_cite(49, 116, "putCall"), "recommend_option_expression side filter"),
+    (670, "c.get strikePrice L670", pair_cite(53, 120, "strikePrice"), "recommend_option_expression strikes"),
+    (792, "ct.get putCall L792", pair_cite(49, 116, "putCall"), "_oe_bid_ask_mid filter"),
+    (794, "ct.get strikePrice L794", pair_cite(53, 120, "strikePrice"), "_oe_bid_ask_mid filter"),
     (803, "ct.get bid L803", pair_cite(8, 75, "bid"), "_oe_bid_ask_mid"),
     (804, "ct.get ask L804", pair_cite(6, 73, "ask"), "_oe_bid_ask_mid"),
     (810, "ct.get mark L810", pair_cite(31, 98, "mark"), "_oe_bid_ask_mid mark path"),
     (820, "ct.get last L820", pair_cite(26, 93, "last"), "_oe_bid_ask_mid last fallback"),
-    (853, "ct.get putCall L853", pair_cite(17, 84, "putCall"), "_schwab_days_to_expiration_for_contract"),
-    (856, "ct.get strikePrice L856", pair_cite(15, 82, "strikePrice"), "_schwab_days_to_expiration_for_contract"),
+    (853, "ct.get putCall L853", pair_cite(49, 116, "putCall"), "_schwab_days_to_expiration_for_contract"),
+    (856, "ct.get strikePrice L856", pair_cite(53, 120, "strikePrice"), "_schwab_days_to_expiration_for_contract"),
     (860, "ct.get daysToExpiration L860", pair_cite(12, 79, "daysToExpiration"), "CSV-R2 Schwab-primary DTE"),
 ]
 
@@ -156,6 +207,9 @@ def main() -> None:
     if not BASELINE.is_file():
         export_baseline()
 
+    row_map = _load_csv_row_to_canonical()
+    validate_formal_replaced_citations(row_map)
+
     out_by_id: dict[str, dict[str, str]] = {}
     for raw in csv.DictReader(BASELINE.open(encoding="utf-8", newline="")):
         row = dict(raw)
@@ -202,6 +256,7 @@ def main() -> None:
     _rt = list(csv.DictReader(SLICE.open(encoding="utf-8", newline="")))
     if len(_rt) != len(out_rows) or any(len(r) != len(REGISTER_COLUMNS) for r in _rt):
         raise SystemExit("slice CSV round-trip failed")
+    validate_slice_replaced_citations(_rt, row_map)
 
     rep = sum(1 for r in out_rows if r["disposition"] == "REPLACED")
     kd = sum(1 for r in out_rows if r["disposition"] == "KEEP_DERIVED")
