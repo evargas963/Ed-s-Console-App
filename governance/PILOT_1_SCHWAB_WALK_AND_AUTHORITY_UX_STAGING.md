@@ -193,6 +193,7 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-19 | `order_flow_engine.py` chunk-3 paired fix (FIND-OF3/OF4/OF5 — renormalize-over-present composite + rvol_is_None readiness branching) |
 | 2026-05-19 | `liquidity_value_engine.py` chunk-2 paired fix (FIND-LVE1 — log info on ATR→percent threshold fallback) |
 | 2026-05-19 | `order_flow_engine.py` chunk-4 paired fix (FIND-OF6/OF7 — withhold direction/verdict labels at exact-zero composite) |
+| 2026-05-19 | `call_engine.py` Layer 5 chunk-2B (FIND-CE3/CE4/CE6/CE7/CE8 — gate/sizing/vol_regime fail-closed) |
 
 ---
 

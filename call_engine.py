@@ -652,8 +652,10 @@ def _conviction_from_canonical_forecast(
     return "low"
 
 
-def _size_note(conviction: str, mins_to_close: float, vix: Optional[float]) -> str:
+def _size_note(conviction: str, mins_to_close: float | None, vix: Optional[float]) -> str:
     """Plain English sizing guidance."""
+    if mins_to_close is None:
+        return "Session close time unknown — size conservatively."
     if mins_to_close <= 30:
         return "No new positions — too close to close."
     elif mins_to_close <= 120:
@@ -711,7 +713,7 @@ def compute_position_size(
     reward_risk: float | None = None,
     validation_passed: Optional[bool] = None,
     # Time
-    mins_to_close: float = 390.0,
+    mins_to_close: float | None = None,
     # Volatility regime: risk_multiplier > 1 = wider stops → reduce position for same $ risk
     vol_regime_risk_multiplier: float = 1.0,
 ) -> dict:
@@ -734,6 +736,16 @@ def compute_position_size(
             "multipliers": {},
             "reduction_reasons": ["no active trade" if signal == "wait" else "validation gate failed"],
             "summary": "No trade.",
+        }
+
+    if mins_to_close is None:
+        return {
+            "r_units": 0.0,
+            "execution_mode": "NO_TRADE",
+            "size_cue": "SKIP",
+            "multipliers": {},
+            "reduction_reasons": ["mins_to_close unavailable"],
+            "summary": "No trade — session close time unknown.",
         }
 
     reasons = []
@@ -1121,6 +1133,7 @@ def _validate_trade(
                     )
         except Exception as e:
             log.debug("validate_trade: probability gate 2c error — %s", e)
+            prob_fails.append("fusion posterior gate error — cannot validate")
 
     if prob_fails:
         result["probability_valid"] = False
@@ -1134,7 +1147,10 @@ def _validate_trade(
     # 3a. MC adverse excursion exceeds stop distance — regime-aware threshold
     if _fusion_available and getattr(fusion, 'mc_available', False):
         mc_eae = getattr(fusion, 'mc_eae', None)
-        stop_dist = _stop_distance(inp)
+        _risk_mult = 1.0
+        if vol_regime is not None:
+            _risk_mult = getattr(vol_regime, "risk_multiplier", 1.0) or 1.0
+        stop_dist = _stop_distance(inp, risk_multiplier=_risk_mult)
         if mc_eae is not None and stop_dist > 0:
             # Regime-aware EAE threshold: breakout/expansion tolerate larger EAE
             eae_gate_mult = 2.0  # default: EAE > 2x stop = fail
@@ -1426,6 +1442,17 @@ def compute_call(
     # Override logic removed — stack synthesis (all 9 sources) already determines
     # direction. No single layer can veto; consensus of 2+ sources wins.
 
+    # ── Volatility regime: required for directional trades (Layer 5 CE6) ───────
+    if vol_regime is None and final_signal in ("long", "short"):
+        final_signal = "wait"
+        conviction = "low"
+        confluence_detail = (confluence_detail or "no stack alignment") + " | vol_regime unavailable"
+        wait_blocker = {
+            "reason": "vol_regime",
+            "detail": "vol_regime unavailable",
+            "full_detail": "Vol regime unavailable — no directional trade.",
+        }
+
     # ── Volatility regime: trade permissibility ───────────────────────────────
     # Policy layer — compression requires stronger breakout confirmation;
     # unstable may require stricter model agreement or force WAIT.
@@ -1585,7 +1612,7 @@ def compute_call(
     # 8. TIME WARNING (market close) — MUST run before headlines so final_signal,
     #    wait_blocker, and display fields stay consistent. No new entries ≤30min.
     # ══════════════════════════════════════════════════════════════════════════
-    if inp.mins_to_close <= 30 and inp.mins_to_close > 0:
+    if inp.mins_to_close is not None and inp.mins_to_close <= 30 and inp.mins_to_close > 0:
         time_warning = f"🛑 Only {int(inp.mins_to_close)}min to close — no new entries."
         final_signal = "wait"
         conviction   = "low"
@@ -1595,10 +1622,20 @@ def compute_call(
             "detail": f"≤{int(inp.mins_to_close)} min to close",
             "full_detail": f"Only {int(inp.mins_to_close)} min to close — no new entries.",
         }
-    elif inp.mins_to_close <= 120 and inp.mins_to_close > 0:
+    elif inp.mins_to_close is not None and inp.mins_to_close <= 120 and inp.mins_to_close > 0:
         time_warning = f"⏰ {int(inp.mins_to_close)}min to close — reduce size, quick trades only."
         if size_cue == "FULL":
             size_cue = "HALF"
+    elif inp.mins_to_close is None and final_signal in ("long", "short"):
+        time_warning = "Session close time unknown — no new entries."
+        final_signal = "wait"
+        conviction = "low"
+        size_cue = "SKIP"
+        wait_blocker = {
+            "reason": "time",
+            "detail": "mins_to_close unavailable",
+            "full_detail": "Session close time unknown — no new entries.",
+        }
     else:
         time_warning = None
 
