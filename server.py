@@ -6918,7 +6918,7 @@ def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
         d = min(abs(sf - lo), abs(sf - hi))
     zp["distance_to_spot"] = round(d, 4)
     zp["spot_inside_zone"] = inside
-    dist_pen = min(d * 0.12, 10.0)
+    dist_pen = min((d / sf) * 12.0, 10.0)
     zp["tradeable_score"] = round(3.0 * len(tags) + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen, 2)
 
 
