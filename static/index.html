@@ -9439,7 +9439,7 @@ setInterval(fetchLoggerStatus, 15000);
     }
     const whole = Math.floor(rem);
     if (whole !== _prevWhole && MILESTONES.has(whole)) {
-      speakCountdown(String(whole));
+      speakCountdown(whole === 0 ? '0' : whole + ' seconds');
     }
     _prevWhole = whole;
   }
