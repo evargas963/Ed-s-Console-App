@@ -2381,7 +2381,7 @@
             <div class="tf-arrow">→</div>
             <div class="tf-dir">NEUTRAL</div>
             <div class="tf-pct">0%</div>
-            <div class="tf-conf-lbl">CONFIDENCE</div>
+            <div class="tf-conf-lbl" title="Per-horizon supporting assessment (mhap_rows[i].confidence)">HORIZON CONF</div>
             <span class="tf-tag tf-tag--hidden">—</span>
           </div>
           <div class="tf-signal-card tf-state-dim" id="tf-signal-5c" role="group" aria-label="5 minute horizon">
@@ -2390,7 +2390,7 @@
             <div class="tf-arrow">→</div>
             <div class="tf-dir">NEUTRAL</div>
             <div class="tf-pct">0%</div>
-            <div class="tf-conf-lbl">CONFIDENCE</div>
+            <div class="tf-conf-lbl" title="Per-horizon supporting assessment (mhap_rows[i].confidence)">HORIZON CONF</div>
             <span class="tf-tag tf-tag--hidden">—</span>
           </div>
           <div class="tf-signal-card tf-state-dim" id="tf-signal-15c" role="group" aria-label="15 minute horizon">
@@ -2399,7 +2399,7 @@
             <div class="tf-arrow">→</div>
             <div class="tf-dir">NEUTRAL</div>
             <div class="tf-pct">0%</div>
-            <div class="tf-conf-lbl">CONFIDENCE</div>
+            <div class="tf-conf-lbl" title="Per-horizon supporting assessment (mhap_rows[i].confidence)">HORIZON CONF</div>
             <span class="tf-tag tf-tag--hidden">—</span>
           </div>
           <div class="tf-signal-card tf-state-dim" id="tf-signal-60c" role="group" aria-label="60 minute horizon">
@@ -2408,7 +2408,7 @@
             <div class="tf-arrow">→</div>
             <div class="tf-dir">NEUTRAL</div>
             <div class="tf-pct">0%</div>
-            <div class="tf-conf-lbl">CONFIDENCE</div>
+            <div class="tf-conf-lbl" title="Per-horizon supporting assessment (mhap_rows[i].confidence)">HORIZON CONF</div>
             <span class="tf-tag tf-tag--hidden">—</span>
           </div>
         </div>
@@ -4270,10 +4270,12 @@ function renderDecisionCommandRail(d) {
       grid.className = 'hz-mini-kv';
       addKV(grid, 'Bias', biasHz);
       addKV(grid, 'Move P', num01pct(moveProb));
-      const confTxt = (fuseConf != null && !Number.isNaN(Number(fuseConf)))
-        ? `${Math.round(Number(fuseConf) * 100)}% (fusion)`
-        : `${confMH} (MH)`;
-      addKV(grid, 'Confidence', confTxt);
+      const isFused = fuseConf != null && !Number.isNaN(Number(fuseConf));
+      const confLabel = isFused ? 'Fused Confidence' : 'Horizon Confidence';
+      const confTxt = isFused
+        ? `${Math.round(Number(fuseConf) * 100)}%`
+        : confMH;
+      addKV(grid, confLabel, confTxt);
       addKV(grid, 'Eligibility', elig);
       addKV(grid, 'Stack', txt(st, '—'));
       addKV(grid, 'Models', contribTxt);
