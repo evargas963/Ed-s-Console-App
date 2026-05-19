@@ -110,11 +110,11 @@ def test_max_transformer_seq_len_warns_on_corrupt_meta(monkeypatch, tmp_path, ca
     one_c_dir = tmp_path / "active_1c" / "SPY"
     one_c_dir.mkdir(parents=True)
     (one_c_dir / "transformer_SPY_1c_meta.json").write_text('{"seq_len": 48}', encoding="utf-8")
-    bad_dir = tmp_path / "active_3c" / "SPY"
+    bad_dir = tmp_path / "active_5c" / "SPY"
     bad_dir.mkdir(parents=True)
-    (bad_dir / "transformer_SPY_3c_meta.json").write_text("not-json", encoding="utf-8")
+    (bad_dir / "transformer_SPY_5c_meta.json").write_text("not-json", encoding="utf-8")
 
-    monkeypatch.setattr(ssc, "ALL_GOVERNED_HORIZONS", ("1c", "3c"))
+    monkeypatch.setattr(ssc, "ALL_GOVERNED_HORIZONS", ("1c", "5c"))
 
     def _fake_model_dir(ticker: str) -> Path:
         hz = ml_predict.get_ml_infer_horizon_slug()
@@ -149,12 +149,12 @@ def test_max_transformer_seq_len_skips_missing_secondary_active_bundle(monkeypat
     one_c_dir.mkdir(parents=True)
     (one_c_dir / "transformer_SPY_1c_meta.json").write_text('{"seq_len": 48}', encoding="utf-8")
 
-    monkeypatch.setattr(ssc, "ALL_GOVERNED_HORIZONS", ("1c", "3c"))
+    monkeypatch.setattr(ssc, "ALL_GOVERNED_HORIZONS", ("1c", "5c"))
 
     def _fake_model_dir(ticker: str) -> Path:
         hz = ml_predict.get_ml_infer_horizon_slug()
-        if hz == "3c":
-            raise FileNotFoundError("no active 3c bundle")
+        if hz == "5c":
+            raise FileNotFoundError("no active 5c bundle")
         return one_c_dir
 
     monkeypatch.setattr(ml_predict, "_model_dir_for_ticker", _fake_model_dir)

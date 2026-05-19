@@ -209,6 +209,7 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-19 | LSI2 docstring + call_engine chunk-2C audit-trail logs (CE1/CE2/CE9 close-out) |
 | 2026-05-19 | CE9 follow-on: put_readiness log.warning mirror (missing from 9630bad) |
 | 2026-05-19 | `features/stack_integrity_v1.py` Layer 5 walk (parallel_stack_contract path absent — OBS-PNSC1; 0 REPLACED; 3 KEEP_DERIVED) |
+| 2026-05-19 | `features/shared_sequence_context.py` Layer 5 chunk-1 walk — **11/11 features sweep complete** (0 REPLACED; 4 KEEP_DERIVED; 2 PASS_THROUGH; OBS-SSC1) |
 
 ---
 
