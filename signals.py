@@ -61,6 +61,17 @@ from features.stack_integrity_v1 import finalize_stack_integrity_v1, record_stac
 log = logging.getLogger(__name__)
 
 
+def canonical_forward_probs_for_display(
+    canonical: CanonicalForecast,
+) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """Withhold forward probability mass on the prediction card when canonical is non-tradable."""
+    from signal_types import NON_TRADABLE_CANONICAL_PROVENANCE
+
+    if (canonical.provenance or "") in NON_TRADABLE_CANONICAL_PROVENANCE:
+        return None, None, None
+    return canonical.probability_up, canonical.probability_down, canonical.probability_flat
+
+
 def _unavailable_model_namespace():
     """Fail-closed placeholder when a base model fusion branch is missing or inference failed."""
     from types import SimpleNamespace
@@ -93,7 +104,13 @@ except ImportError:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def canonical_forecast_from_fusion(fusion) -> CanonicalForecast:
-    """Build CanonicalForecast from Bayesian fusion posterior (directional triplet)."""
+    """
+    Build CanonicalForecast from Bayesian fusion posterior (directional triplet).
+
+    When fusion is unavailable or directional probs are missing/invalid, returns a
+    max-entropy **placeholder** triplet (1/3 each) with non-tradable ``provenance``.
+    Consumers must gate on ``NON_TRADABLE_CANONICAL_PROVENANCE`` — not treat placeholders as signal.
+    """
     u = 1.0 / 3.0
     if fusion is None or not getattr(fusion, "available", False):
         return CanonicalForecast(

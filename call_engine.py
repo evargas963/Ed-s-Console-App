@@ -21,7 +21,14 @@ from math_exposure import (
     CONTINUATION_BLOCK_THRESHOLD,
     BREAKOUT_BLOCK_THRESHOLD,
 )
-from signal_types import SignalInput, RulesCard, PredictiveCard, TheCall, CanonicalForecast
+from signal_types import (
+    SignalInput,
+    RulesCard,
+    PredictiveCard,
+    TheCall,
+    CanonicalForecast,
+    NON_TRADABLE_CANONICAL_PROVENANCE,
+)
 
 log = logging.getLogger(__name__)
 ET = timezone(timedelta(hours=-5))
@@ -613,7 +620,7 @@ def _downgrade(conviction: str) -> str:
 
 
 # Issue 13 closeout: directional trades require a real posterior; uniform fallback is non-tradable.
-_NON_TRADABLE_CANONICAL_PROVENANCE = frozenset({"fusion_unavailable", "missing_canonical_fallback"})
+# Source of truth: signal_types.NON_TRADABLE_CANONICAL_PROVENANCE (includes fusion_directional_*).
 
 _CONV_ORDER = {"low": 0, "medium": 1, "high": 2}
 
@@ -1356,7 +1363,7 @@ def compute_call(
     wait_blocker = None
     _prov = str(getattr(canonical, "provenance", "") or "")
     if (
-        _prov in _NON_TRADABLE_CANONICAL_PROVENANCE
+        _prov in NON_TRADABLE_CANONICAL_PROVENANCE
         and final_signal in ("long", "short")
     ):
         final_signal = "wait"
@@ -1386,7 +1393,7 @@ def compute_call(
         elif (
             final_signal == "wait"
             and mh_policy.final_tradeable_decision
-            and str(getattr(canonical, "provenance", "") or "") not in _NON_TRADABLE_CANONICAL_PROVENANCE
+            and str(getattr(canonical, "provenance", "") or "") not in NON_TRADABLE_CANONICAL_PROVENANCE
         ):
             _mh_promoted_directional = True
             final_signal = "long" if mh_policy.final_bias == "long" else "short"

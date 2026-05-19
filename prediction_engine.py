@@ -18,7 +18,7 @@ from math_exposure import (
     MIN_SAMPLES_STATISTICAL, MIN_SAMPLES_CONFIDENT, APPROACH_PTS,
     REVERSAL_RISK_LOW_MAX, REVERSAL_RISK_MOD_MAX,
 )
-from signal_types import SignalInput, PredictiveCard, CanonicalForecast
+from signal_types import SignalInput, PredictiveCard, CanonicalForecast, NON_TRADABLE_CANONICAL_PROVENANCE
 from timeframe_config import CANONICAL_TIMEFRAME
 from features.regime_mvp_context import mvp_spot, mvp_zone, mvp_vwap_side
 from db import (
@@ -583,6 +583,16 @@ def build_fusion_model_overlay_for_stack(
     assert_fusion_overlay_has_no_mvp_keys(out)
     return out
 
+
+def _forward_probs_from_canonical(
+    canonical: CanonicalForecast,
+) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """Do not surface uniform placeholder triplets on the prediction card."""
+    if (canonical.provenance or "") in NON_TRADABLE_CANONICAL_PROVENANCE:
+        return None, None, None
+    return canonical.probability_up, canonical.probability_down, canonical.probability_flat
+
+
 def _empty_prediction(
     inp: SignalInput,
     canonical: CanonicalForecast,
@@ -609,6 +619,7 @@ def _empty_prediction(
     u5, d5, f5 = _tri_f["5c"]
     u15, d15, f15 = _tri_f["15c"]
     u60, d60, f60 = _tri_f["60c"]
+    fwd_up, fwd_dn, fwd_fl = _forward_probs_from_canonical(canonical)
     return PredictiveCard(
         headline=msg,
         prediction_dir="none",
@@ -617,9 +628,9 @@ def _empty_prediction(
         historical_5c_dominant_prob=None,
         empirical_confidence=None,
         forward_direction=canonical.direction,
-        forward_prob_up=canonical.probability_up,
-        forward_prob_down=canonical.probability_down,
-        forward_prob_flat=canonical.probability_flat,
+        forward_prob_up=fwd_up,
+        forward_prob_down=fwd_dn,
+        forward_prob_flat=fwd_fl,
         forward_confidence=canonical.confidence,
         forward_provenance=canonical.provenance,
         samples_used=0,
@@ -836,6 +847,7 @@ def compute_prediction_core(
         mvp=mvp,
     )
 
+    fwd_up, fwd_dn, fwd_fl = _forward_probs_from_canonical(canonical)
     card = PredictiveCard(
         headline="",
         prediction_dir=prediction_dir,
@@ -844,9 +856,9 @@ def compute_prediction_core(
         historical_5c_dominant_prob=emp_prob,
         empirical_confidence=empirical_confidence,
         forward_direction=canonical.direction,
-        forward_prob_up=canonical.probability_up,
-        forward_prob_down=canonical.probability_down,
-        forward_prob_flat=canonical.probability_flat,
+        forward_prob_up=fwd_up,
+        forward_prob_down=fwd_dn,
+        forward_prob_flat=fwd_fl,
         forward_confidence=canonical.confidence,
         forward_provenance=canonical.provenance,
         samples_used=n_used,
