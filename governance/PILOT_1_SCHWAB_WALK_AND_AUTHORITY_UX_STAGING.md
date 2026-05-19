@@ -184,4 +184,5 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 | 2026-05-19 | `volatility_regime.py` chunk-1 walk (0 REPLACED; STACK ORDER 2 policy producer; Mega queue #2) |
 | 2026-05-19 | `monte_carlo.py` chunk-1 walk (0 REPLACED; mc_eae/efe/containment producer; Mega queue #3) |
 | 2026-05-19 | `mc_fusion_adjustment.py` chunk-1 walk (0 REPLACED; post-fusion MC adjust; Mega queue #4) |
+| 2026-05-19 | `ml_predict.py` chunk-1 walk (0 REPLACED; parallel stack XGB/LSTM/TR; Mega queue #5) |
 | 2026-05-19 | **Phase 2** authority UX — `final_confidence` desk headline (Track 2) |
