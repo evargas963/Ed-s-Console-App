@@ -1335,8 +1335,8 @@ def run_once(
                 db_only[:30],
                 "…" if len(db_only) > 30 else "",
             )
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("db_only ticker diagnostic block failed: %s", e, exc_info=True)
 
     _subset = (os.environ.get("ED_ML_SCHEDULER_TICKERS") or "").strip()
     if _subset:
@@ -1815,8 +1815,13 @@ def run_once(
                             if bal_acc is not None:
                                 m["balanced_accuracy"] = bal_acc
                             mp.write_text(json.dumps(m, indent=2))
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            log.warning(
+                                "promotion metadata write failed path=%s: %s",
+                                mp,
+                                e,
+                                exc_info=True,
+                            )
                 return True, "ok"
 
             pprov = parallel_prov or cascade_prov
@@ -1857,8 +1862,12 @@ def run_once(
                 from realized_contract_eval import compare_parallel_cascade_trade_logs
 
                 report["realized_parallel_cascade_comparison"] = compare_parallel_cascade_trade_logs()
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug(
+                    "compare_parallel_cascade_trade_logs failed: %s",
+                    e,
+                    exc_info=True,
+                )
 
             # Primary comparison: lower log loss wins; tie → accuracy → balanced accuracy → realized contract PnL (avg $ / valid trade).
             _par_avg = parallel_realized_metrics.get("eval_pnl_realized_contract")
@@ -1986,8 +1995,8 @@ def run_once(
                     from eval_metrics_store import load_dashboard_eval_metrics
 
                     _prev = load_dashboard_eval_metrics()
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug("load_dashboard_eval_metrics failed: %s", e, exc_info=True)
                 _prev["updated_at"] = run_ts
                 _prev["primary_metric"] = "eval_log_loss"
                 _prev["realized_contract_pricing"] = (

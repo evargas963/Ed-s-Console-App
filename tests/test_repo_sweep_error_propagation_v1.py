@@ -1,4 +1,4 @@
-"""REPO_SWEEP #1 — error-propagation baseline guards (bare except + silent pass)."""
+"""REPO_SWEEP error-propagation baseline guards (bare except + silent pass)."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ _SKIP_PY_TREE_DIRS = frozenset(
     {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__", "tests"}
 )
 
-# Repo-wide silent ``except Exception: pass`` after sweep #1 completion (production tree).
-_BASELINE_SILENT_EXCEPTION_PASS = 42
+# Repo-wide silent ``except Exception: pass`` after sweep #2 (production tree).
+_BASELINE_SILENT_EXCEPTION_PASS = 27
 
 _BARE_EXCEPT = re.compile(r"^\s*except\s*:\s*", re.MULTILINE)
 _SILENT_PASS = re.compile(
@@ -35,6 +35,8 @@ _CRITICAL_SILENT_PASS_FILES = frozenset(
         "features/signal_layer_v1.py",
         "features/inference_snapshot.py",
         "features/fusion_policy_contract.py",
+        "server.py",
+        "ml_scheduler.py",
     }
 )
 
@@ -104,3 +106,20 @@ def test_audit_json_class_c_fixed_count_matches_array():
     assert count == len(entries), (
         f"summary.class_c_fixed_count={count} != len(class_c_fixed)={len(entries)}"
     )
+
+
+def test_error_propagation_audit_v2_artifact_exists():
+    audit = _repo_root() / "governance" / "audits" / "repo_sweep_error_propagation_v2_20260518.json"
+    assert audit.is_file(), "governance sweep #2 audit artifact missing"
+
+
+def test_audit_v2_json_class_c_fixed_count_matches_array():
+    audit_path = _repo_root() / "governance" / "audits" / "repo_sweep_error_propagation_v2_20260518.json"
+    payload = json.loads(audit_path.read_text(encoding="utf-8"))
+    entries = payload.get("class_c_fixed") or []
+    summary = payload.get("summary") or {}
+    count = summary.get("class_c_fixed_count")
+    assert count == len(entries), (
+        f"v2 summary.class_c_fixed_count={count} != len(class_c_fixed)={len(entries)}"
+    )
+    assert summary.get("silent_exception_pass_after") == _BASELINE_SILENT_EXCEPTION_PASS

@@ -667,8 +667,8 @@ def _schedule_analytics_recompute(
                     from planes.l1_events import notify_l2_snapshot_ready
 
                     notify_l2_snapshot_ready(ticker, result.get("selected_exp"))
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug("notify_l2_snapshot_ready failed ticker=%s: %s", ticker, e, exc_info=True)
             if result and _main_event_loop is not None:
                 asyncio.run_coroutine_threadsafe(_broadcast_snapshot(result), _main_event_loop)
         except HTTPException:
@@ -1568,8 +1568,13 @@ def _add_logger_ticker(ticker: str, *, enrollment_source: str = "ui_auto") -> bo
             if _HAS_SIGNALS:
                 try:
                     get_db().logging_universe_touch_seen(ticker, enrollment_touch_wall_ts)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug(
+                        "logging_universe_touch_seen failed ticker=%s: %s",
+                        ticker,
+                        e,
+                        exc_info=True,
+                    )
             return False
     if _HAS_SIGNALS and ticker not in CORE_TICKERS:
         try:
@@ -1646,8 +1651,8 @@ def _register_tracked_ticker(ticker: str, *, enrollment_source: str = "ui_auto")
         from scheduler_user_tickers import record_user_ticker
 
         record_user_ticker(t)
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("record_user_ticker failed ticker=%s: %s", t, e, exc_info=True)
     return added
 
 
@@ -1730,8 +1735,13 @@ def _logger_fetch_and_log(ticker: str) -> str:
         if _HAS_SIGNALS:
             try:
                 get_db().logging_universe_touch_background_log(ticker, logger_cycle_touch_wall_ts)
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug(
+                    "logging_universe_touch_background_log failed ticker=%s: %s",
+                    ticker,
+                    e,
+                    exc_info=True,
+                )
 
         return "ok:fetch"
 
@@ -3111,8 +3121,8 @@ def _fetch_state(
         from live_pipeline_diag import emit_fetch_state_start
 
         emit_fetch_state_start(ticker=ticker, log_only=log_only)
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("emit_fetch_state_start failed ticker=%s: %s", ticker, e, exc_info=True)
 
     client = get_client()
     from time_et import now_et as _eastern_now
@@ -3638,8 +3648,13 @@ def _fetch_state(
                 if _iv_history:
                     _iv_rank = compute_iv_rank(_atm_iv, _iv_history)
                     _iv_percentile = compute_iv_percentile(_atm_iv, _iv_history)
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug(
+                    "IV rank/percentile history load failed ticker=%s: %s",
+                    ticker,
+                    e,
+                    exc_info=True,
+                )
     except Exception as e:
         log.debug(f"Volatility signals calc: {e}")
     if _atr is None and _bars:
@@ -5114,8 +5129,8 @@ def _fetch_state(
         try:
             _arch = _json.loads(_arch_path.read_text())
             _dashboard_ticker = next((t for t in ("SPY", "QQQ", "IWM") if t in _arch), next(iter(_arch), "SPY"))
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("dashboard arch_state.json parse failed: %s", e, exc_info=True)
     _active_dir = _models_dir / "active" / _dashboard_ticker
 
     # Sync missing binaries: if active has meta but not .pt/.pkl, copy from parallel/cascade/flat.
@@ -5333,8 +5348,13 @@ def _fetch_state(
                 from features.stack_integrity_v1 import finalize_stack_integrity_v1
 
                 ms_dict["stack_integrity_v1"] = finalize_stack_integrity_v1(_events)
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning(
+                    "finalize_stack_integrity_v1 failed after signals_engine_error ticker=%s: %s",
+                    ticker,
+                    e,
+                    exc_info=True,
+                )
     _attach_stack_runtime_and_governance(ms_dict, ticker=ticker)
     if ms_dict.get("signals_engine_failed"):
         sr = ms_dict.get("stack_runtime")
@@ -5995,8 +6015,8 @@ def _tier_c_analytics_json_response(
                 cache_hit=True,
                 ttl=ttl,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("emit_api_state_cache (hit) failed ticker=%s: %s", ticker, e, exc_info=True)
         md = dict(entry["ms_dict"])
         _lmp.merge_into_state(md, ticker)
         md["_tier"] = "C_analytics"
@@ -6022,8 +6042,8 @@ def _tier_c_analytics_json_response(
         from live_pipeline_diag import emit_api_state_cache
 
         emit_api_state_cache(ticker=ticker, expiry=expiry, cache_hit=False, ttl=None)
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("emit_api_state_cache (miss) failed ticker=%s: %s", ticker, e, exc_info=True)
     md = _minimal_analytics_pending_dict(ticker, expiry)
     _lmp.merge_into_state(md, ticker)
     _attach_analytics_freshness_contract(
@@ -6157,8 +6177,13 @@ async def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
         if _scp is not None:
             base["stream_chg_pct"] = _scp
         base.update(get_top_of_book_sizes(t))
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning(
+            "order_flow_live_state merge failed for /api/state ticker=%s: %s",
+            t,
+            e,
+            exc_info=True,
+        )
     return JSONResponse(base)
 
 
