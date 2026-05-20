@@ -1140,6 +1140,11 @@
   }
   .hz-mini-k { color: var(--text3); font-family: var(--mono); font-size: 8px; letter-spacing: 0.05em; text-transform: uppercase; }
   .hz-mini-v { color: var(--text); font-weight: 650; word-break: break-word; }
+  .hz-mini-v.stack-status--ok { color: var(--green); }
+  .hz-mini-v.stack-status--unavailable { color: var(--amber); }
+  .hz-mini-v.stack-status--failed { color: var(--red); }
+  .hz-mini-v.stack-status--missing { color: var(--text3); font-weight: 500; }
+  .hz-mini-v.stack-status--unknown { color: var(--text2); }
 
   .signal-card {
     background: var(--bg2);
@@ -3912,6 +3917,47 @@ function fusionDirCss(dir) {
   return 'withheld';
 }
 
+/**
+ * Parse fused_stack_status_{hz} from fusion_policy_snapshot_cols (COH-I-J / LIVE-UI-D).
+ * Server: fusion_ok|dir=…|lbl=… | fusion_unavailable|… | stack_failed|ExcType
+ */
+function parseFusedStackStatus(raw) {
+  if (raw == null || raw === '') {
+    return { kind: 'missing', label: '—', detail: '', title: 'No stack status for this horizon' };
+  }
+  const s = String(raw).trim();
+  if (!s) {
+    return { kind: 'missing', label: '—', detail: '', title: 'No stack status for this horizon' };
+  }
+  if (s.startsWith('stack_failed|')) {
+    const reason = s.slice('stack_failed|'.length).trim() || 'error';
+    return { kind: 'failed', label: 'STACK FAILED', detail: reason, title: s };
+  }
+  if (s.startsWith('fusion_unavailable|')) {
+    const tail = s.slice('fusion_unavailable|'.length).trim();
+    const detail = tail.length > 56 ? `${tail.slice(0, 53)}…` : tail;
+    return { kind: 'unavailable', label: 'FUSION OFF', detail, title: s };
+  }
+  if (s.startsWith('fusion_ok|')) {
+    let dir = '';
+    let lbl = '';
+    s.split('|').slice(1).forEach((part) => {
+      if (part.startsWith('dir=')) dir = part.slice(4).trim();
+      else if (part.startsWith('lbl=')) lbl = part.slice(4).trim();
+    });
+    const detail = [dir, lbl].filter(Boolean).join(' · ');
+    return { kind: 'ok', label: 'FUSION OK', detail, title: s };
+  }
+  const short = s.length > 48 ? `${s.slice(0, 45)}…` : s;
+  return { kind: 'unknown', label: short, detail: '', title: s };
+}
+
+function formatFusedStackStatusDisplay(parsed) {
+  if (!parsed || parsed.kind === 'missing') return '—';
+  if (parsed.detail) return `${parsed.label} · ${parsed.detail}`;
+  return parsed.label;
+}
+
 /** Direction for WDS + Call fusion band; null when producer withheld (no fabricated flat). */
 function effectiveDirection(x) {
   if (!x || typeof x !== 'object') return null;
@@ -4337,7 +4383,18 @@ function renderDecisionCommandRail(d) {
       addKV(grid, 'Fused Confidence', fusedTxt);
       addKV(grid, 'Horizon Confidence', confMH);
       addKV(grid, 'Eligibility', elig);
-      addKV(grid, 'Stack', txt(st, '—'));
+      {
+        const stackParsed = parseFusedStackStatus(st);
+        const kk = document.createElement('motionless' in document ? 'div' : 'div');
+        kk.className = 'hz-mini-k';
+        kk.textContent = 'Stack';
+        const vv = document.createElement('div');
+        vv.className = `hz-mini-v stack-status stack-status--${stackParsed.kind}`;
+        vv.textContent = formatFusedStackStatusDisplay(stackParsed);
+        vv.title = stackParsed.title || vv.textContent;
+        grid.appendChild(kk);
+        grid.appendChild(vv);
+      }
       addKV(grid, 'Models', contribTxt);
       const empTxt = (u == null || dn == null || fl == null)
         ? 'insufficient'

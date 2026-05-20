@@ -37,6 +37,7 @@
 
 - [ ] **LIVE-UI-D — Tri-state None semantics on cards (priority candidate)**  
   Empirical `None` (MIN_SAMPLES), fusion withheld, and “no data yet” all arrive as `None` (signal_types.py ~L237–283; signals canonical path). **Fix direction:** distinct UI labels — withheld / unavailable / loading; map from provenance + component reason codes.
+- [x] **LIVE-UI-D (stack status column)** — `parseFusedStackStatus` / `formatFusedStackStatusDisplay` in `static/index.html`; horizon panel Stack row discriminates `stack_failed|`, `fusion_unavailable|`, `fusion_ok|` (COH-I-J → operator). Broader LIVE-UI-D tri-state None still open.
 
 - [ ] **LIVE-UI-E — MH promotion without headline WHY (priority candidate)**  
   call_engine.py ~L1384–1407: MH can promote WAIT→directional (`_mh_promoted_directional`); conviction floored low (L1456–1457) but headline still LONG/SHORT. **Fix direction:** surface promotion + blocker in Decision Command / call reasoning text, not diag-only.
