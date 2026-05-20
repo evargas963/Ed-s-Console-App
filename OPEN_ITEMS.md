@@ -122,6 +122,12 @@
 
 **LIVE-UI-A/E** @ `1b27d03` — transport badge, bundle age, lane-stale dim (signed off).
 
+- [x] **LIVE-UI-A/E + LIVE-UI-2 + LIVE-UI-D extension (LIVE_UI_INTEGRITY_V1)** @ `57c9950` — FIND-LIVEUI-1..5: `#coherence-headline`, `#dr-stack-mode-chip`, `#dr-lane-stale-chip` (`LANE STALE — QUOTE AHEAD` / `LANE STALE — CARDS PAINTING…`), `· PRICE AHEAD` on `#dr-freshness-pill`, `window._priceAheadOfBundle`; extends `_updateLiveUiAe` only; `#dr-trust-stack` compliance unchanged. Tests: `tests/test_live_ui_integrity_v1.py`.
+
+- [ ] **FIND-LIVEUI-6 — Phase 2 direction/fusion withhold** — when `quoteAhead || genStale || pending`, withhold or badge direction-bearing horizon fields (not price DOM); after FIND-LIVEUI-3 observability validates prevalence in prod.
+
+- [ ] **FIND-LIVEUI-7 — L1 SSE diag counters on ops/governance UI** — expose `server.py` `_l1_sse_diag` (`l1_payload_identity_violation`, throttled, evicted, connections_peak) via `/ops` or `/governance` dashboard (supersedes OBS-LIVEUI-DIAG-1).
+
 **FIND-CAL-TS-RDERIVE** (items 1–5) @ `83ca92b` — signed off.
 
 **FIND-CAL-TS item-6** @ `1509c2d` (backfill engine + CLI) + tooling @ `39410ca`. Runbook: `docs/operations/backfill_et_clock_runbook.md`. **Operator:** execute backfill on live DB; then calibration widen resumes.

@@ -507,6 +507,18 @@
     color: var(--text2);
     white-space: nowrap;
   }
+  .coherence-headline {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text2);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .coherence-headline.coherence--warn { color: var(--amber, #c9a227); }
+  #dr-stack-mode-chip.decision-chip.bad { display: inline-flex !important; }
 
   /* Legacy SSE hooks (hidden; _setSseUi + diagnostics) */
   .ub-sse-legacy {
@@ -2245,6 +2257,7 @@
 
   <div class="operator-diagnostics-strip">
     <div style="font-weight:800;letter-spacing:0.08em;color:var(--green)">NEW UI ACTIVE</div>
+    <div id="coherence-headline" class="coherence-headline" title="Fast quote vs analytical bundle vs generation (four-clock summary)">Coherence —</div>
     <div class="status-strip">
       <div class="status-dot" id="status-dot"></div>
       <div class="status-label" id="status-label">—</div>
@@ -2506,6 +2519,8 @@
               </span>
             </div>
             <span class="conviction-pill low" id="dr-freshness-pill" title="Analytical bundle freshness">FRESH —</span>
+            <span class="decision-chip dim" id="dr-stack-mode-chip" title="Global stack_runtime.stack_mode (not artifact compliance)" style="display:none">STACK —</span>
+            <span class="decision-chip dim" id="dr-lane-stale-chip" title="Fast lane ahead of analytical paint or cards repainting" style="display:none">LANE —</span>
           </div>
           <div class="signal-card-body">
             <div class="decision-verdict-row">
@@ -6332,37 +6347,126 @@ function _updateEdTransportBadge() {
   el.title = 'Transport: ' + label + (t.ssePayloadAgeMs != null ? ' · SSE payload ' + Math.round(t.ssePayloadAgeMs / 1000) + 's' : '');
 }
 
+function _formatLaneAgeSec(ts) {
+  const n = ts != null ? Number(ts) : NaN;
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  const ageSec = Math.max(0, Math.round((Date.now() / 1000) - n));
+  return ageSec <= 0 ? '<1s' : ageSec + 's';
+}
+
+/** Client derivations for LIVE_UI_INTEGRITY_V1 — no new timestamp authority. */
+function _refreshLiveUiIntegrityDerivations(opts) {
+  opts = opts || {};
+  const ld = window._lastData;
+  const bundleTsRaw = opts.serverTs != null ? opts.serverTs : window._lastFullStateServerTs;
+  const bundleTs = bundleTsRaw != null ? Number(bundleTsRaw) : NaN;
+  const quoteAhead = lastFastTs > 0 && lastRenderTimestamp > 0 && lastFastTs > lastRenderTimestamp;
+  const pending = !!(ld && ld._tier_a_pending_full_analytics);
+  const gen = ld && ld.decision_generation_id != null ? Number(ld.decision_generation_id) : NaN;
+  const painted = window._tierCCardsPaintedAtGen ?? 0;
+  const genStale = Number.isFinite(gen) && gen > painted;
+  const slowStaleVsFast = Number.isFinite(bundleTs) && bundleTs > 0 && lastFastTs > 0 && bundleTs < lastFastTs;
+  const rt = (ld && ld.stack_runtime) || {};
+  const stackMode = String(rt.stack_mode || '').toUpperCase();
+  window._priceAheadOfBundle = slowStaleVsFast;
+  const integrity = {
+    bundleTs,
+    quoteAhead,
+    pending,
+    genStale,
+    slowStaleVsFast,
+    gen: Number.isFinite(gen) ? gen : null,
+    stackMode,
+  };
+  window._liveUiIntegrity = integrity;
+  return integrity;
+}
+
 function _updateDecisionBundleAgeUI(opts) {
   opts = opts || {};
   const ts = opts.serverTs != null ? opts.serverTs : window._lastFullStateServerTs;
   const ageText = _formatBuiltAgeSec(ts);
   const bel = $('data-bundle-freshness');
   if (bel) bel.textContent = ageText || 'Built —';
+  const priceAhead = window._priceAheadOfBundle === true;
   const fp = $('dr-freshness-pill');
   if (fp) {
+    let pillText;
     if (!ageText) {
-      fp.textContent = 'FRESH —';
+      pillText = 'FRESH —';
       fp.className = 'conviction-pill low';
     } else {
       const ageSec = Math.max(0, Math.round((Date.now() / 1000) - Number(ts)));
-      fp.textContent = ageSec <= 1 ? 'FRESH <2s' : 'FRESH ' + ageSec + 's';
+      pillText = ageSec <= 1 ? 'FRESH <2s' : 'FRESH ' + ageSec + 's';
       fp.className = 'conviction-pill ' + (ageSec <= 6 ? 'high' : ageSec <= 20 ? 'medium' : 'low');
     }
+    if (priceAhead) pillText += ' · PRICE AHEAD';
+    fp.textContent = pillText;
   }
   domIf('dr-trust-fresh', el => { el.textContent = ageText || '—'; });
+}
+
+function _updateCoherenceHeadline(integrity) {
+  const el = $('coherence-headline');
+  if (!el) return;
+  integrity = integrity || window._liveUiIntegrity || {};
+  const quoteAge = _formatLaneAgeSec(lastFastTs);
+  const bundleAge = _formatLaneAgeSec(integrity.bundleTs);
+  const genPart = integrity.gen != null ? 'Gen #' + integrity.gen : 'Gen —';
+  let flags = '';
+  if (integrity.slowStaleVsFast) flags += ' · PRICE>BUNDLE';
+  if (integrity.genStale) flags += ' · CARDS PAINTING';
+  else if (integrity.quoteAhead) flags += ' · QUOTE AHEAD';
+  else if (integrity.pending) flags += ' · PENDING';
+  const text = 'Quote ' + quoteAge + ' · Bundle ' + bundleAge + ' · ' + genPart + flags;
+  el.textContent = text;
+  el.className = 'coherence-headline' + (integrity.slowStaleVsFast || integrity.quoteAhead || integrity.genStale ? ' coherence--warn' : '');
+  el.title = 'Fast quote vs analytical bundle vs decision generation' + (flags ? ' (' + flags.trim().slice(2) + ')' : '');
+}
+
+function _updateStackModeChip(integrity) {
+  const el = $('dr-stack-mode-chip');
+  if (!el) return;
+  integrity = integrity || window._liveUiIntegrity || {};
+  const mode = integrity.stackMode || '';
+  if (mode === 'INVALID') {
+    el.style.display = '';
+    el.textContent = 'STACK INVALID (fusion/MC prerequisites)';
+    el.className = 'decision-chip bad';
+    el.title = 'stack_runtime.stack_mode=INVALID — fusion/MC prerequisites missing';
+    return;
+  }
+  el.style.display = 'none';
+  el.textContent = 'STACK —';
+  el.className = 'decision-chip dim';
+}
+
+function _updateLaneStaleChip(integrity) {
+  const el = $('dr-lane-stale-chip');
+  if (!el) return;
+  integrity = integrity || window._liveUiIntegrity || {};
+  let label = '';
+  if (integrity.genStale) label = 'LANE STALE — CARDS PAINTING…';
+  else if (integrity.quoteAhead || integrity.slowStaleVsFast) label = 'LANE STALE — QUOTE AHEAD';
+  else if (integrity.pending) label = 'LANE STALE — PENDING ANALYTICS';
+  if (!label) {
+    el.style.display = 'none';
+    el.textContent = 'LANE —';
+    el.className = 'decision-chip dim';
+    return;
+  }
+  el.style.display = '';
+  el.textContent = label;
+  el.className = 'decision-chip bad';
+  el.title = 'Tier C lane stale: ' + label;
 }
 
 /** Dim Tier-C cards when fast lane disagrees with last analytical paint (maintain data-ed-tier-c list when adding cards). */
 function _updateTierCLaneStaleMarkers() {
   const cards = document.querySelectorAll('.signal-card[data-ed-tier-c="1"]');
   if (!cards.length) return;
-  const quoteAhead = lastFastTs > 0 && lastRenderTimestamp > 0 && lastFastTs > lastRenderTimestamp;
-  const ld = window._lastData;
-  const pending = !!(ld && ld._tier_a_pending_full_analytics);
-  const gen = ld && ld.decision_generation_id != null ? Number(ld.decision_generation_id) : NaN;
-  const painted = window._tierCCardsPaintedAtGen ?? 0;
-  const genStale = Number.isFinite(gen) && gen > painted;
-  const stale = quoteAhead || pending || genStale;
+  const integrity = window._liveUiIntegrity || _refreshLiveUiIntegrityDerivations();
+  const stale = integrity.quoteAhead || integrity.pending || integrity.genStale;
   cards.forEach(c => {
     if (stale) c.setAttribute('data-lane-stale', 'tier-c');
     else c.removeAttribute('data-lane-stale');
@@ -6370,9 +6474,13 @@ function _updateTierCLaneStaleMarkers() {
 }
 
 function _updateLiveUiAe(opts) {
+  const integrity = _refreshLiveUiIntegrityDerivations(opts);
   _updateEdTransportBadge();
   _updateDecisionBundleAgeUI(opts);
   _updateTierCLaneStaleMarkers();
+  _updateCoherenceHeadline(integrity);
+  _updateStackModeChip(integrity);
+  _updateLaneStaleChip(integrity);
 }
 
 /** Fast-lane rollout counters (no console spam). Inspect: window._edFastRollout */
