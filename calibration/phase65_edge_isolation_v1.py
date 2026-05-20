@@ -479,7 +479,9 @@ def run_phase65(db_path: Path) -> dict[str, Any]:
     # session
     by_s: dict[str, list[sqlite3.Row]] = defaultdict(list)
     for r in rows:
-        by_s[_session_bucket(r["market_session"], r["session_bucket"])].append(r)
+        from calibration.phase6_edge_discovery_governed_v1 import _row_market_session
+
+        by_s[_session_bucket(_row_market_session(r), r["session_bucket"])].append(r)
     for sname, mem in by_s.items():
         for hid in FROZEN["horizons_analyzed"]:
             primary["by_session"].setdefault(sname, {})[hid] = _evaluate_slice(

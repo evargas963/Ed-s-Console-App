@@ -87,9 +87,10 @@ Pre-`99ea0e0` snapshot rows may carry **EST-fixed** `et_hour`, `et_minute`, `mar
 |------|--------|
 | Live Tier C / v2 advisory backfill | **OPEN** for widen (A) |
 | Day-bucket / `decision_time_ms` paths | **OPEN** |
-| Widen with `min_ts_utc` cutover post-99ea0e0 | **OPEN** after RDERIVE (items 1–5) |
-| `rth_where_clause` SQL training/calibration | **GATED** until RDERIVE |
-| `market_session` cohort calibration | **GATED** until RDERIVE |
+| Widen with `min_ts_utc` cutover post-99ea0e0 | **OPEN** (`--calibration-widen-cohort` on phase6) |
+| Training/calibration RTH + TOD from `ts_utc` | **OPEN** (RDERIVE items 1–5) |
 | Full historical replay / promoted models on old EDT | **GATED** until backfill (item 6) |
 
-**Next:** `FIND-CAL-TS-RDERIVE` (items 1–5) → calibration widen on cutover cohort → backfill (item 6) for full historical closure.
+**RDERIVE (items 1–5):** implemented (commit after `c8b0c13`; pending operator sign-off).
+
+**Next:** calibration widen on cutover cohort → historical backfill (item 6) → COH-SA.

@@ -154,7 +154,17 @@ def _session_bucket(ms: str | None, sb: str | None) -> str:
     return "unknown"
 
 
-def load_rows(db_path: Path) -> tuple[list[sqlite3.Row], dict[str, Any]]:
+def _row_market_session(r: sqlite3.Row) -> str:
+    from ml_data_common import row_market_session_from_ts_utc
+
+    return row_market_session_from_ts_utc(r)
+
+
+def load_rows(
+    db_path: Path,
+    *,
+    min_ts_utc: float | None = None,
+) -> tuple[list[sqlite3.Row], dict[str, Any]]:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
@@ -178,6 +188,9 @@ def load_rows(db_path: Path) -> tuple[list[sqlite3.Row], dict[str, Any]]:
             rows.append(r)
         else:
             excl += 1
+    if min_ts_utc is not None:
+        floor = float(min_ts_utc)
+        rows = [r for r in rows if float(r["ts_utc"]) >= floor]
     conn.close()
     meta = {
         "db": str(db_path.resolve()),
@@ -185,6 +198,7 @@ def load_rows(db_path: Path) -> tuple[list[sqlite3.Row], dict[str, Any]]:
         "snapshots_raw_all_outcomes": len(raw),
         "snapshots_after_anchor": len(rows),
         "excluded_no_anchor": excl,
+        "min_ts_utc": min_ts_utc,
     }
     return rows, meta
 
@@ -278,8 +292,8 @@ def split_time_quartiles(rows: list[sqlite3.Row]) -> dict[str, list[sqlite3.Row]
     return dict(out)
 
 
-def run_phase6(db_path: Path) -> dict[str, Any]:
-    rows, meta = load_rows(db_path)
+def run_phase6(db_path: Path, *, min_ts_utc: float | None = None) -> dict[str, Any]:
+    rows, meta = load_rows(db_path, min_ts_utc=min_ts_utc)
     out: dict[str, Any] = {
         "meta": meta,
         "horizons": {},
@@ -373,7 +387,7 @@ def run_phase6(db_path: Path) -> dict[str, Any]:
     # --- Session ---
     by_s: dict[str, list[sqlite3.Row]] = defaultdict(list)
     for r in rows:
-        by_s[_session_bucket(r["market_session"], r["session_bucket"])].append(r)
+        by_s[_session_bucket(_row_market_session(r), r["session_bucket"])].append(r)
     sess_h: dict[str, Any] = {}
     for ocol3, pcol3, prefix3, hid3 in HORIZONS:
         sess_h[hid3] = {}
@@ -404,7 +418,7 @@ def run_phase6(db_path: Path) -> dict[str, Any]:
             continue
         by_s2: dict[str, list[sqlite3.Row]] = defaultdict(list)
         for r in mem:
-            by_s2[_session_bucket(r["market_session"], r["session_bucket"])].append(r)
+            by_s2[_session_bucket(_row_market_session(r), r["session_bucket"])].append(r)
         for sname, mem2 in by_s2.items():
             if len(mem2) < MIN_N_SLICE:
                 continue
@@ -502,6 +516,17 @@ def run_phase6(db_path: Path) -> dict[str, Any]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
+    ap.add_argument(
+        "--calibration-widen-cohort",
+        action="store_true",
+        help="Restrict to ts_utc >= COH-I-A fix landing (99ea0e0 / time_et.COH_I_A_ET_AUTHORITY_TS_UTC)",
+    )
+    ap.add_argument(
+        "--min-ts-utc",
+        type=float,
+        default=None,
+        help="Explicit ts_utc floor (overrides --calibration-widen-cohort when set)",
+    )
     register_allow_noncanonical_flag(ap)
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="phase6_edge_discovery_governed_v1", write_capable=False)
@@ -509,7 +534,12 @@ def main() -> int:
     if not db_path.is_file():
         print(json.dumps({"error": f"missing db {db_path}"}))
         return 2
-    rep = run_phase6(db_path)
+    min_ts: float | None = args.min_ts_utc
+    if min_ts is None and args.calibration_widen_cohort:
+        from ml_data_common import calibration_widen_min_ts_utc
+
+        min_ts = calibration_widen_min_ts_utc()
+    rep = run_phase6(db_path, min_ts_utc=min_ts)
     ensure_artifacts_dir()
     outp = ROOT / "data" / "phase6_edge_discovery_governed_v1_report.json"
     outp.write_text(json.dumps(rep, indent=2, default=str), encoding="utf-8")

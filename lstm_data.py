@@ -390,17 +390,29 @@ def extract_rth_snapshots(
     for row in rows:
         total_rows += 1
         d = dict(row)
-        h = d.get("et_hour", 0)
-        m = d.get("et_minute", 0)
+        ts_u = d.get("ts_utc")
+        if ts_u is not None:
+            try:
+                from time_et import et_clock_from_ts_utc, et_date_str_from_ts_utc, is_rth_ts_utc
 
-        if not _is_rth(h, m):
-            skipped_non_rth += 1
-            continue
+                if not is_rth_ts_utc(float(ts_u)):
+                    skipped_non_rth += 1
+                    continue
+                h, m, _ = et_clock_from_ts_utc(float(ts_u))
+                day_key = et_date_str_from_ts_utc(float(ts_u))
+            except (TypeError, ValueError):
+                skipped_non_rth += 1
+                continue
+        else:
+            h = d.get("et_hour", 0)
+            m = d.get("et_minute", 0)
+            if not _is_rth(h, m):
+                skipped_non_rth += 1
+                continue
+            ts_et = d.get("ts_et", "")
+            day_key = ts_et[:10] if len(ts_et) >= 10 else "unknown"
 
         rth_rows += 1
-        # Extract date from ts_et string: "2026-03-04 10:30:00 ET" -> "2026-03-04"
-        ts_et = d.get("ts_et", "")
-        day_key = ts_et[:10] if len(ts_et) >= 10 else "unknown"
 
         if day_key not in days:
             days[day_key] = []

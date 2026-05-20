@@ -111,6 +111,16 @@ def ms_dict_from_snapshot_row(row: Mapping[str, Any]) -> dict[str, Any]:
     _infer_fusion_fields(ms)
     if ts_utc is not None:
         ms.setdefault("ts_utc", ts_utc)
+        from ml_data_common import market_session_from_ts_utc
+        from time_et import et_clock_from_ts_utc
+
+        eh, em, _ = et_clock_from_ts_utc(ts_utc)
+        ms["et_hour"] = eh
+        ms["et_minute"] = em
+        ms["market_session"] = market_session_from_ts_utc(ts_utc)
+        field_sources["et_hour"] = RECONSTRUCTED_LIVE_MS_SOURCE
+        field_sources["et_minute"] = RECONSTRUCTED_LIVE_MS_SOURCE
+        field_sources["market_session"] = RECONSTRUCTED_LIVE_MS_SOURCE
     ms.setdefault("ticker", ticker)
     ms.setdefault("decision_generation_id", snapshot_id)
     ms.setdefault("_server_build_ts", ts_utc)

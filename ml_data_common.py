@@ -16,17 +16,124 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-# RTH: 09:30–16:00 ET weekdays
-# et_hour * 60 + et_minute: 570 = 9:30, 960 = 16:00 (exclusive)
-RTH_START_MINS = 570   # 09:30 ET
-RTH_END_MINS   = 960   # 16:00 ET (exclusive; 959 is last valid minute)
+# RTH: 09:30–16:00 ET weekdays (re-exported from time_et for single authority)
+from time_et import (
+    COH_I_A_ET_AUTHORITY_TS_UTC,
+    RTH_END_MINS,
+    RTH_START_MINS,
+    calibration_widen_min_ts_utc,
+    et_clock_from_ts_utc,
+    et_date_str_from_ts_utc,
+    is_rth_ts_utc,
+)
+
 
 def rth_where_clause() -> str:
-    """SQL fragment: (et_hour * 60 + et_minute) >= 570 AND (et_hour * 60 + et_minute) < 960"""
+    """
+    LEGACY SQL on stored et_hour/et_minute columns.
+
+    Do not use for training/calibration eligibility after FIND-CAL-TS-RDERIVE — pre-99ea0e0 EDT
+    rows skew cohort by ~1h. Prefer filter_df_to_rth_ts_utc / filter_ts_utc_list_to_rth.
+    """
     return (
         "(et_hour * 60 + et_minute) >= " + str(RTH_START_MINS) + " "
         "AND (et_hour * 60 + et_minute) < " + str(RTH_END_MINS)
     )
+
+
+def filter_ts_utc_list_to_rth(ts_values: list[float]) -> list[float]:
+    out: list[float] = []
+    for t in ts_values:
+        try:
+            if is_rth_ts_utc(float(t)):
+                out.append(float(t))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def filter_df_to_rth_ts_utc(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep rows whose ts_utc is in RTH per DST-aware ET (ignores stored et_hour)."""
+    if df.empty or "ts_utc" not in df.columns:
+        return df
+    ts = pd.to_numeric(df["ts_utc"], errors="coerce")
+
+    def _keep(v: float) -> bool:
+        try:
+            return bool(is_rth_ts_utc(float(v)))
+        except (TypeError, ValueError):
+            return False
+
+    mask = ts.apply(lambda v: _keep(v) if pd.notna(v) else False)
+    return df.loc[mask].copy()
+
+
+def stamp_et_clock_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Overwrite et_hour/et_minute from ts_utc (DST-safe)."""
+    if df.empty or "ts_utc" not in df.columns:
+        return df
+    out = df.copy()
+    ts = pd.to_numeric(out["ts_utc"], errors="coerce")
+
+    def _clock(v: float) -> tuple[int, int]:
+        h, m, _ = et_clock_from_ts_utc(float(v))
+        return h, m
+
+    clocks = ts.apply(lambda v: _clock(v) if pd.notna(v) else (np.nan, np.nan))
+    out["et_hour"] = [c[0] for c in clocks]
+    out["et_minute"] = [c[1] for c in clocks]
+    return out
+
+
+def et_hour_minute_arrays_from_ts_utc(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Model time-of-day features from ts_utc only (never trust stored et_hour on old rows)."""
+    n = len(df)
+    hrs = np.full(n, np.nan, dtype=float)
+    mns = np.full(n, np.nan, dtype=float)
+    if "ts_utc" not in df.columns:
+        return hrs, mns
+    ts = pd.to_numeric(df["ts_utc"], errors="coerce")
+    for i, v in enumerate(ts):
+        if pd.isna(v):
+            continue
+        h, m, _ = et_clock_from_ts_utc(float(v))
+        hrs[i], mns[i] = float(h), float(m)
+    return hrs, mns
+
+
+def market_session_from_ts_utc(ts_utc: float) -> str:
+    from db import market_session
+
+    h, m, _ = et_clock_from_ts_utc(ts_utc)
+    return market_session(h, m)
+
+
+def row_market_session_from_ts_utc(row: Any) -> str:
+    """Session label for sqlite3.Row / dict with ts_utc."""
+    try:
+        return market_session_from_ts_utc(float(row["ts_utc"]))
+    except (TypeError, ValueError, KeyError):
+        ms = row.get("market_session") if isinstance(row, dict) else None
+        if ms is None and hasattr(row, "keys") and "market_session" in row.keys():
+            ms = row["market_session"]
+        return str(ms or "").strip().lower() or "unknown"
+
+def training_base_where_clause(
+    label_column: str | None = None,
+    *,
+    include_ticker: bool = False,
+) -> str:
+    """SQL WHERE without RTH on stored et_hour (RTH applied post-fetch via ts_utc)."""
+    from ml_horizon import DEFAULT_TRAINING_LABEL_COLUMN
+
+    col = (label_column if label_column is not None else DEFAULT_TRAINING_LABEL_COLUMN).strip()
+    parts = ["timeframe = ?"]
+    if include_ticker:
+        parts.append("ticker = ?")
+    parts.append(training_label_where_clause(col))
+    parts.append(f"({weekday_where_clause()})")
+    return " AND ".join(parts)
+
 
 def training_label_where_clause(label_column: str | None = None) -> str:
     """

@@ -98,8 +98,10 @@ def validate_inference_snapshot_v1_for_xgb(snap: Any) -> None:
 
 
 def _et_from_ts_utc(ts_utc: float) -> tuple[int, int]:
-    dt = datetime.fromtimestamp(float(ts_utc), tz=_ET)
-    return int(dt.hour), int(dt.minute)
+    from time_et import et_clock_from_ts_utc
+
+    h, m, _ = et_clock_from_ts_utc(ts_utc)
+    return h, m
 
 
 def inference_snapshot_v1_to_engineering_snapshot(

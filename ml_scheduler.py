@@ -158,7 +158,7 @@ def _training_ticker_union(
 def _get_tickers_with_rth_data(
     db_path: str, timeframe: str = None, *, label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
 ) -> list[str]:
-    from ml_data_common import rth_where_clause, training_label_where_clause, weekday_where_clause
+    from ml_data_common import is_rth_ts_utc, training_base_where_clause
     from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
     _tf = timeframe or CANONICAL_TIMEFRAME
     if _tf != CANONICAL_TIMEFRAME:
@@ -167,17 +167,23 @@ def _get_tickers_with_rth_data(
         )
     table = SNAPSHOT_TABLE_1M
     conn = sqlite3.connect(db_path)
+    where = training_base_where_clause(label_column, include_ticker=False)
     rows = conn.execute(
-        f"""
-        SELECT DISTINCT ticker FROM {table}
-        WHERE timeframe = ? AND {training_label_where_clause(label_column)}
-        AND {rth_where_clause()} AND ({weekday_where_clause()})
-        ORDER BY ticker
-        """,
-        (_tf,)
+        f"SELECT ticker, ts_utc FROM {table} WHERE {where} ORDER BY ticker",
+        (_tf,),
     ).fetchall()
     conn.close()
-    return [r[0] for r in rows if not r[0].startswith("$")]
+    tickers: set[str] = set()
+    for r in rows:
+        tkr = r[0]
+        if not tkr or str(tkr).startswith("$"):
+            continue
+        try:
+            if is_rth_ts_utc(float(r[1])):
+                tickers.add(tkr)
+        except (TypeError, ValueError):
+            continue
+    return sorted(tickers)
 
 
 def _diagnostic_db_tickers_not_enrolled(
@@ -201,7 +207,7 @@ def _diagnostic_db_tickers_not_enrolled(
 def _load_rth_rows_for_ticker(
     db_path: str, ticker: str, timeframe: str = None, *, label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
 ) -> list[dict]:
-    from ml_data_common import rth_where_clause, training_label_where_clause, weekday_where_clause
+    from ml_data_common import filter_ts_utc_list_to_rth, training_base_where_clause
     from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
     _tf = timeframe or CANONICAL_TIMEFRAME
     if _tf != CANONICAL_TIMEFRAME:
@@ -211,18 +217,25 @@ def _load_rth_rows_for_ticker(
     table = SNAPSHOT_TABLE_1M
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    where = training_base_where_clause(label_column, include_ticker=False)
     rows = conn.execute(
         f"""
         SELECT * FROM {table}
-        WHERE ticker = ? AND timeframe = ?
-        AND {training_label_where_clause(label_column)} AND {rth_where_clause()}
-        AND ({weekday_where_clause()})
+        WHERE ticker = ? AND {where}
         ORDER BY ts_utc ASC
         """,
         (ticker, _tf),
     ).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    out: list[dict] = []
+    for r in rows:
+        d = dict(r)
+        try:
+            if filter_ts_utc_list_to_rth([float(d["ts_utc"])]):
+                out.append(d)
+        except (TypeError, ValueError, KeyError):
+            continue
+    return out
 
 
 def _empty_realized_metrics(n_rows: int) -> dict[str, Any]:

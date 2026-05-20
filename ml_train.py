@@ -205,7 +205,9 @@ def load_data(
     """
     from ml_data_common import (
         attach_5m_additive_context,
-        rth_where_clause,
+        et_hour_minute_arrays_from_ts_utc,
+        filter_df_to_rth_ts_utc,
+        stamp_et_clock_columns,
         training_label_where_clause,
         weekday_where_clause,
     )
@@ -234,7 +236,7 @@ def load_data(
     if label_col == directional_label_column(_hz_norm):
         _extra_dir = f" AND CAST(valid_dir_{_hz_norm} AS INTEGER) = 1"
     where = (
-        f"timeframe = ? AND {training_label_where_clause(label_col)}{_extra_dir} AND {rth_where_clause()} "
+        f"timeframe = ? AND {training_label_where_clause(label_col)}{_extra_dir} "
         f"AND ({weekday_where_clause()})"
     )
     params: list = [_tf]
@@ -258,6 +260,11 @@ def load_data(
     if len(df) == 0:
         print("  Loaded 0 RTH rows (run: python snapshot_normalizer.py to materialize)")
         return df
+    df = filter_df_to_rth_ts_utc(df)
+    df = stamp_et_clock_columns(df)
+    if len(df) == 0:
+        print("  Loaded 0 RTH rows after ts_utc-derived RTH filter")
+        return df
     df = attach_5m_additive_context(df, db_path)
     extra_m5 = sum(1 for c in df.columns if str(c).startswith("m5_"))
     print(f"  m5 additive context: {extra_m5} m5_* columns (as-of merge; 1m snapshots preferred, else 5m)")
@@ -278,6 +285,8 @@ def load_data(
 
 def engineer_features(df: pd.DataFrame) -> tuple:
     """Build normalized feature matrix. Returns (X, feature_names, category_maps, aux_stats)."""
+    from ml_data_common import et_hour_minute_arrays_from_ts_utc
+
     spot  = pd.to_numeric(df["spot"], errors="coerce").values
     feats = {}
     aux_stats = {}
@@ -331,9 +340,8 @@ def engineer_features(df: pd.DataFrame) -> tuple:
         if col not in skip and col in df.columns:
             feats[col] = pd.to_numeric(df[col], errors="coerce").values
 
-    if "et_hour" in df.columns and "et_minute" in df.columns:
-        hrs  = pd.to_numeric(df["et_hour"],   errors="coerce").values
-        mns  = pd.to_numeric(df["et_minute"], errors="coerce").values
+    hrs, mns = et_hour_minute_arrays_from_ts_utc(df)
+    if np.any(np.isfinite(hrs)) and np.any(np.isfinite(mns)):
         prog = np.clip((hrs * 60 + mns - 570) / 390.0, 0, 1)
         feats["time_sin"]      = np.sin(2 * np.pi * prog)
         feats["time_cos"]      = np.cos(2 * np.pi * prog)
@@ -368,11 +376,12 @@ def engineer_features(df: pd.DataFrame) -> tuple:
         vol = pd.to_numeric(df["candle_volume"], errors="coerce").values.copy()
         vol[vol <= 0] = np.nan
         feats["candle_volume_log"] = np.log1p(np.nan_to_num(vol, nan=0.0))
-        if "et_hour" in df.columns and "et_minute" in df.columns:
-            hrs_s = pd.to_numeric(df["et_hour"],   errors="coerce").fillna(0).astype(int)
-            mns_s = pd.to_numeric(df["et_minute"], errors="coerce").fillna(0).astype(int)
+        hrs_s, mns_s = et_hour_minute_arrays_from_ts_utc(df)
+        if np.any(np.isfinite(hrs_s)) and np.any(np.isfinite(mns_s)):
+            hrs_i = np.nan_to_num(hrs_s, nan=0).astype(int)
+            mns_i = np.nan_to_num(mns_s, nan=0).astype(int)
             tkr_s = df["ticker"].astype(str) if "ticker" in df.columns else pd.Series(["?"]*len(df))
-            tod   = tkr_s + "_" + hrs_s.astype(str) + "_" + mns_s.astype(str)
+            tod   = tkr_s + "_" + hrs_i.astype(str) + "_" + mns_i.astype(str)
             vseries    = pd.Series(vol, index=df.index)
             med_by_tod = vseries.groupby(tod).transform("median")
             avg_vol    = med_by_tod.values

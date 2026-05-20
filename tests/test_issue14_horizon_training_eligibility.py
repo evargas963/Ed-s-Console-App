@@ -78,14 +78,12 @@ def test_row_counts_decoupled_sql_evidence():
 def test_ml_train_where_contract_matches_issue14():
     """load_data builds WHERE from training_label(TARGET_COL) — no outcome_filled."""
     from ml_train import TARGET_COL
-    from ml_data_common import training_label_where_clause, rth_where_clause, weekday_where_clause
+    from ml_data_common import training_base_where_clause
 
-    where = (
-        f"timeframe = ? AND {training_label_where_clause(TARGET_COL)} AND {rth_where_clause()} "
-        f"AND ({weekday_where_clause()})"
-    )
+    where = training_base_where_clause(TARGET_COL, include_ticker=False)
     assert "outcome_filled" not in where.lower()
     assert f"{TARGET_COL} IS NOT NULL" in where
+    assert "et_hour" not in where
 
 
 def test_lstm_sequence_source_rows_filtered_by_target_horizon_only():

@@ -243,7 +243,9 @@ def run_phase65_movement(db_path: Path) -> dict[str, Any]:
         by_t[str(r["ticker"])].append(r)
     by_s: dict[str, list[Any]] = defaultdict(list)
     for r in rows:
-        by_s[_session_bucket(r["market_session"], r["session_bucket"])].append(r)
+        from calibration.phase6_edge_discovery_governed_v1 import _row_market_session
+
+        by_s[_session_bucket(_row_market_session(r), r["session_bucket"])].append(r)
     by_rg: dict[str, list[Any]] = defaultdict(list)
     for r in rows:
         rp = (r["regime_primary"] or "unknown").strip() or "unknown"

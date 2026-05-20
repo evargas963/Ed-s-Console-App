@@ -83,21 +83,21 @@ def db_training_fingerprint(
     Raw-data identity for one ticker: table, min/max ts_utc, row count.
     Must match ml_train.load_data filter (RTH, label column, weekday).
     """
-    from ml_data_common import rth_where_clause, training_label_where_clause, weekday_where_clause
+    from ml_data_common import filter_ts_utc_list_to_rth, training_base_where_clause
     from timeframe_config import CANONICAL_TIMEFRAME
 
     t = ticker
     conn = sqlite3.connect(db_path)
-    where = (
-        f"timeframe = ? AND ticker = ? AND "
-        f"{training_label_where_clause(label_column)} AND {rth_where_clause()} AND ({weekday_where_clause()})"
-    )
-    row = conn.execute(
-        f"SELECT MIN(ts_utc), MAX(ts_utc), COUNT(*) FROM snapshots_1m_normalized WHERE {where}",
+    where = training_base_where_clause(label_column, include_ticker=True)
+    rows = conn.execute(
+        f"SELECT ts_utc FROM snapshots_1m_normalized WHERE {where}",
         (CANONICAL_TIMEFRAME, t),
-    ).fetchone()
+    ).fetchall()
     conn.close()
-    if not row or row[2] is None:
+    ts_list = filter_ts_utc_list_to_rth(
+        [float(r[0]) for r in rows if r[0] is not None]
+    )
+    if not ts_list:
         return {
             "table": "snapshots_1m_normalized",
             "timeframe": CANONICAL_TIMEFRAME,
@@ -110,9 +110,9 @@ def db_training_fingerprint(
         "table": "snapshots_1m_normalized",
         "timeframe": CANONICAL_TIMEFRAME,
         "ticker": str(t),
-        "min_ts_utc": float(row[0]) if row[0] is not None else None,
-        "max_ts_utc": float(row[1]) if row[1] is not None else None,
-        "row_count": int(row[2]),
+        "min_ts_utc": float(min(ts_list)),
+        "max_ts_utc": float(max(ts_list)),
+        "row_count": len(ts_list),
     }
 
 
@@ -211,22 +211,26 @@ def db_distinct_rth_et_dates_for_ticker(
     db_path: str, ticker: str, *, label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
 ) -> list[str]:
     """Ordered YYYY-MM-DD session labels from DB (same filter as db_training_fingerprint)."""
-    from ml_data_common import rth_where_clause, training_label_where_clause, weekday_where_clause
+    from ml_data_common import et_date_str_from_ts_utc, filter_ts_utc_list_to_rth, training_base_where_clause
     from timeframe_config import CANONICAL_TIMEFRAME
 
     t = ticker.upper()
     conn = sqlite3.connect(db_path)
-    where = (
-        f"timeframe = ? AND ticker = ? AND "
-        f"{training_label_where_clause(label_column)} AND {rth_where_clause()} AND ({weekday_where_clause()})"
-    )
+    where = training_base_where_clause(label_column, include_ticker=True)
     rows = conn.execute(
-        f"SELECT DISTINCT substr(ts_et, 1, 10) AS d FROM snapshots_1m_normalized "
-        f"WHERE {where} ORDER BY d",
+        f"SELECT ts_utc FROM snapshots_1m_normalized WHERE {where} ORDER BY ts_utc",
         (CANONICAL_TIMEFRAME, t),
     ).fetchall()
     conn.close()
-    return [r[0] for r in rows if r[0] and len(str(r[0])) >= 10]
+    ts_list = filter_ts_utc_list_to_rth([float(r[0]) for r in rows if r[0] is not None])
+    dates: list[str] = []
+    seen: set[str] = set()
+    for ts in ts_list:
+        d = et_date_str_from_ts_utc(ts)
+        if d not in seen:
+            seen.add(d)
+            dates.append(d)
+    return dates
 
 
 def min_ts_utc_for_last_n_rth_sessions(
@@ -243,24 +247,27 @@ def min_ts_utc_for_last_n_rth_sessions(
     if len(dates) <= ns:
         return None
     keep = dates[-ns:]
-    from ml_data_common import rth_where_clause, training_label_where_clause, weekday_where_clause
+    from ml_data_common import et_date_str_from_ts_utc, filter_ts_utc_list_to_rth, training_base_where_clause
     from timeframe_config import CANONICAL_TIMEFRAME
 
-    ph = ",".join(["?"] * len(keep))
     conn = sqlite3.connect(db_path)
-    where = (
-        f"timeframe = ? AND ticker = ? AND "
-        f"{training_label_where_clause(label_column)} AND {rth_where_clause()} AND ({weekday_where_clause()}) "
-        f"AND substr(ts_et, 1, 10) IN ({ph})"
-    )
-    row = conn.execute(
-        f"SELECT MIN(ts_utc) FROM snapshots_1m_normalized WHERE {where}",
-        (CANONICAL_TIMEFRAME, ticker.upper(), *keep),
-    ).fetchone()
+    where = training_base_where_clause(label_column, include_ticker=True)
+    rows = conn.execute(
+        f"SELECT ts_utc FROM snapshots_1m_normalized WHERE {where}",
+        (CANONICAL_TIMEFRAME, ticker.upper()),
+    ).fetchall()
     conn.close()
-    if not row or row[0] is None:
+    keep_set = set(keep)
+    ts_list = [
+        float(r[0])
+        for r in rows
+        if r[0] is not None
+        and et_date_str_from_ts_utc(float(r[0])) in keep_set
+    ]
+    ts_list = filter_ts_utc_list_to_rth(ts_list)
+    if not ts_list:
         return None
-    return float(row[0])
+    return float(min(ts_list))
 
 
 def compare_tabular_data_fingerprint_from_df(df, ticker: str) -> dict:

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from db import now_et as db_now_et
-from time_et import ET, now_et
+from time_et import ET, et_clock_from_ts_utc, now_et
 
 
 def test_now_et_uses_america_new_york_zone():
@@ -18,6 +18,14 @@ def test_now_et_uses_america_new_york_zone():
 
 def test_db_now_et_matches_time_et_module():
     assert db_now_et().tzinfo == now_et().tzinfo
+
+
+def test_et_clock_from_ts_utc_matches_now_et_zone():
+    dt = now_et()
+    h, m, wd = et_clock_from_ts_utc(dt.timestamp())
+    assert h == dt.hour
+    assert m == dt.minute
+    assert wd == dt.weekday()
 
 
 def test_dst_offset_differs_summer_vs_winter():

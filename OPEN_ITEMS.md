@@ -109,7 +109,9 @@
 
 **LIVE-UI-A/E** @ `1b27d03` — transport badge, bundle age, lane-stale dim (signed off).
 
-**Next:** FIND-CAL-TS-RDERIVE (items 1–5 in audit doc: `et_clock_from_ts_utc`, training RTH + TOD features from `ts_utc`, phase6 session re-derive, v2 ms_dict stamp, `min_ts_utc` cutover) → calibration widen on cutover cohort → historical backfill (item 6) → COH-SA.
+**FIND-CAL-TS-RDERIVE** (items 1–5) — landed pending operator sign-off; item 6 (historical UPDATE backfill) next commit.
+
+**Next:** calibration widen with `--calibration-widen-cohort` → historical backfill (item 6) → COH-SA.
 
 **Unread for coherence lens (post–batch 1 queue):** `features/signal_layer_v1.py`, `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
 
