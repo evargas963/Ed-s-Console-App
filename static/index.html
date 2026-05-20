@@ -2938,9 +2938,8 @@
 //   requestGeneration — monotonic counter, incremented on every ticker commit.
 //                   Every in-flight request captures its generation at launch.
 //                   Responses from earlier generations are UNCONDITIONALLY discarded.
-//   lastRenderTimestamp — _server_build_ts of the last successfully rendered
-//                   response (updated only after decision_generation_id passes too).
-//                   Prevents out-of-order slow responses from overwriting newer data.
+//   lastRenderTimestamp — analytical Tier C full-render gate only (never Tier A/B).
+//   lastFastTs — Tier A quote lane monotonic _server_build_ts (separate from analytical).
 //
 // DOM input is READ-ONLY at commit time. It is never a source of truth.
 // Backend responses NEVER update activeTicker. Ticker flows one direction only:
@@ -2949,7 +2948,7 @@
 let activeTicker        = 'SPY';   // authoritative ticker
 let activeExpiry        = null;    // authoritative expiry
 let requestGeneration   = 0;       // incremented on every ticker commit
-let lastRenderTimestamp = 0;       // _server_build_ts of last rendered response
+let lastRenderTimestamp = 0;       // analytical full-render _server_build_ts gate (Tier C only)
 // Fast lane (quote-only): independent of decision_generation_id / slow timestamps
 let lastFastGen = 0;
 let lastFastTs = 0;
@@ -4925,9 +4924,6 @@ function renderTierBLight(d, fullRenderSource) {
     if (d[k] !== undefined) merged[k] = d[k];
   }
   window._lastData = merged;
-  if (d._server_build_ts) {
-    lastRenderTimestamp = Math.max(lastRenderTimestamp || 0, d._server_build_ts);
-  }
   try {
     window._edRtDiag = Object.assign(window._edRtDiag || {}, {
       lastFullRenderSource: fullRenderSource || 'tier_b_light',
@@ -5088,46 +5084,61 @@ function updateAnalyticsFreshnessUI(d) {
 function _updateErrorBarFromPayload(d) {
   const errBar = $('error-bar');
   if (!errBar || !d) return;
-  if (d.state_error && d.state_error_detail) {
+  if (d.state_error || d.state_error_detail) {
     errBar.style.display = 'block';
-    errBar.textContent = String(d.state_error_detail);
-  } else if (!d.state_error) {
+    errBar.textContent = String(d.state_error_detail || d.state_error || 'Engine error');
+  } else {
     errBar.style.display = 'none';
   }
+}
+
+function _validServerBuildTs(d) {
+  const raw = d && d._server_build_ts != null ? Number(d._server_build_ts) : NaN;
+  return Number.isFinite(raw) && raw > 0 ? raw : null;
 }
 
 function _renderCoherenceGuards(d, opts) {
   opts = opts || {};
   const checkGen = opts.checkDecisionGen !== false;
+  const tsLane = opts.timestampLane || 'analytical';
   if (d == null || typeof d !== 'object' || Array.isArray(d)) return { ok: false, reason: 'null' };
   if (d.ticker && d.ticker.toUpperCase() !== activeTicker) return { ok: false, reason: 'ticker' };
-  if (d._server_build_ts && d._server_build_ts < lastRenderTimestamp) {
-    return { ok: false, reason: 'ts' };
-  }
   if (checkGen) {
     const decGen = d.decision_generation_id != null ? Number(d.decision_generation_id) : NaN;
     if (Number.isFinite(decGen)) {
       const prev = window._lastRenderedDecisionGen ?? 0;
       if (decGen < prev) return { ok: false, reason: 'gen' };
+      return { ok: true };
     }
+  }
+  const ts = _validServerBuildTs(d);
+  if (ts != null && tsLane === 'analytical' && ts < lastRenderTimestamp) {
+    return { ok: false, reason: 'ts' };
+  }
+  if (ts != null && tsLane === 'fast' && ts < lastFastTs) {
+    return { ok: false, reason: 'ts_fast' };
   }
   return { ok: true };
 }
 
-function _commitRenderTimestampAndGen(d) {
-  if (d._server_build_ts) {
-    lastRenderTimestamp = Math.max(lastRenderTimestamp || 0, d._server_build_ts);
-  }
+function _commitAnalyticalRenderTimestampAndGen(d) {
+  const ts = _validServerBuildTs(d);
+  if (ts != null) lastRenderTimestamp = Math.max(lastRenderTimestamp || 0, ts);
   const decGen = d.decision_generation_id != null ? Number(d.decision_generation_id) : NaN;
   if (Number.isFinite(decGen)) {
     window._lastRenderedDecisionGen = Math.max(window._lastRenderedDecisionGen ?? 0, decGen);
   }
 }
 
+function _commitTierAFastTimestamp(d) {
+  const ts = _validServerBuildTs(d);
+  if (ts != null) lastFastTs = Math.max(lastFastTs || 0, ts);
+}
+
 /** Tier C pending shell — no chain yet; merge flags only so Tier A DOM stays visible. */
 function renderTierCPendingShell(d, fullRenderSource) {
   if (d == null || typeof d !== 'object' || Array.isArray(d)) return false;
-  const guard = _renderCoherenceGuards(d, { checkDecisionGen: false });
+  const guard = _renderCoherenceGuards(d, { checkDecisionGen: false, timestampLane: 'analytical' });
   if (!guard.ok) {
     if (typeof DIAG !== 'undefined' && DIAG) {
       console.warn('[renderTierCPendingShell] REJECTED', guard.reason, { incoming: d._server_build_ts, last: lastRenderTimestamp });
@@ -5160,7 +5171,7 @@ function renderTierCPendingShell(d, fullRenderSource) {
 function renderTierALive(d, fullRenderSource) {
   if (d == null || typeof d !== 'object' || Array.isArray(d)) return false;
   if (d.error && d.error === 'token_invalid') return false;
-  const guard = _renderCoherenceGuards(d, { checkDecisionGen: false });
+  const guard = _renderCoherenceGuards(d, { checkDecisionGen: false, timestampLane: 'fast' });
   if (!guard.ok) {
     if (typeof DIAG !== 'undefined' && DIAG) console.warn('[renderTierALive] REJECTED', guard.reason);
     return false;
@@ -5169,7 +5180,7 @@ function renderTierALive(d, fullRenderSource) {
   const merged = Object.assign({}, window._lastData || {}, d, lw);
   merged._tier_a_pending_full_analytics = true;
   window._lastData = merged;
-  _commitRenderTimestampAndGen(d);
+  _commitTierAFastTimestamp(d);
   try {
     window._edRtDiag = Object.assign(window._edRtDiag || {}, {
       lastFullRenderSource: fullRenderSource || 'tier_a_live',
@@ -5250,7 +5261,7 @@ function render(d, fullRenderSource) {
   if (d._tier === 'C_analytics' && d.analytics_pending_shell) {
     return renderTierCPendingShell(d, fullRenderSource);
   }
-  const guard = _renderCoherenceGuards(d, { checkDecisionGen: true });
+  const guard = _renderCoherenceGuards(d, { checkDecisionGen: true, timestampLane: 'analytical' });
   if (!guard.ok) {
     if (typeof DIAG !== 'undefined' && DIAG) {
       console.warn('[render] REJECTED', guard.reason, { incoming: d.ticker, active: activeTicker });
@@ -5261,7 +5272,7 @@ function render(d, fullRenderSource) {
     window._lastPayloadUpdateSource = d._update_source;
   }
   window._lastData = d;
-  _commitRenderTimestampAndGen(d);
+  _commitAnalyticalRenderTimestampAndGen(d);
   // Layer C payload: server merges live_market_plane (Layer A) into ms_dict — client does not patch spot here.
   window._lastFullStateServerTs = d._server_build_ts != null ? d._server_build_ts : null;
   try {

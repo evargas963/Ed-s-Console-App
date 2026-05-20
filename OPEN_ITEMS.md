@@ -101,8 +101,10 @@
 
 **Batch 2 — audit lanes @ `f560bce`:**
 
-- [x] **B2-COH-I-E-REACH** — `state_error`/`state_error_detail` on `market_state` catch; `stack_integrity_events`; `stamp_decision_bundle` skip + `decision_tick_kind`; bg fail-counter invalidates cache after N failures (`ED_ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES`, default 3).
-- [x] **B2-TIER-RENDER-GUARDS** — `_renderCoherenceGuards`, `_updateErrorBarFromPayload`, `_commitRenderTimestampAndGen` in `static/index.html`.
+- [x] **B2-COH-I-E-REACH** — `state_error`/`state_error_detail` on `market_state` catch; `stack_integrity_events`; `stamp_decision_bundle` skip + `decision_tick_kind`; bg fail-counter wired in `_work()` (`_record_analytics_bg_failure` / `_reset_analytics_bg_fail_count`; `ED_ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES`, default 3).
+- [x] **B2-TIER-RENDER-GUARDS** — `_renderCoherenceGuards`, `_updateErrorBarFromPayload`, analytical vs fast timestamp lanes in `static/index.html`.
+- [x] **B2-FIND-TIER-A-BLOCKS-C** — Tier A commits `lastFastTs` only (`_commitTierAFastTimestamp`); `lastRenderTimestamp` + `decision_generation_id` gate analytical full render only; Tier B no longer writes `lastRenderTimestamp`; full render accepts newer `decision_generation_id` even when `_server_build_ts` regresses.
+- [x] **B2 error-bar** — fires on `state_error || state_error_detail` (not both required).
 - [ ] **B2-FIND-CAL-TS** — day-bucket (`ts_et[:10]`) safe; hour-resolution consumers still gated before calibration widen.
 
 **B2 next:** LIVE-UI-A/E transport badges.

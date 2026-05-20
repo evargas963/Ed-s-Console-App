@@ -30,3 +30,27 @@ def test_index_html_shared_render_guards():
     assert "function _renderCoherenceGuards(" in html
     assert "function _updateErrorBarFromPayload(" in html
     assert "renderTierCPendingShell" in html and "checkDecisionGen: false" in html
+
+
+def test_tier_a_does_not_advance_analytical_last_render_timestamp():
+    from pathlib import Path
+
+    html = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    assert "function _commitTierAFastTimestamp(" in html
+    assert "function _commitAnalyticalRenderTimestampAndGen(" in html
+    assert "_commitTierAFastTimestamp(d)" in html
+    assert "timestampLane: 'fast'" in html
+    tier_a = html.split("function renderTierALive")[1].split("function render(")[0]
+    assert "lastRenderTimestamp" not in tier_a
+    assert "_commitAnalyticalRenderTimestampAndGen" not in tier_a
+
+
+def test_error_bar_fires_on_either_state_error_field():
+    from pathlib import Path
+
+    html = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    assert "d.state_error || d.state_error_detail" in html

@@ -550,10 +550,16 @@ def _invalidate_analytics_cache_after_bg_failures(
     ticker: str,
     *,
     reason: str,
+    failure_count: Optional[int] = None,
 ) -> None:
     """Drop cached Tier C payload after repeated background recompute failures."""
     t = ticker.upper().strip()
     exp = inflight_key[1] if len(inflight_key) > 1 else "__auto__"
+    n_fail = (
+        failure_count
+        if failure_count is not None
+        else _analytics_bg_fail_counts.get(inflight_key, 0)
+    )
     removed: list[tuple] = []
     for key in list(_state_cache.keys()):
         if not isinstance(key, tuple) or len(key) < 2 or key[0] != t:
@@ -567,10 +573,29 @@ def _invalidate_analytics_cache_after_bg_failures(
             "analytics cache invalidated after bg failures ticker=%s exp=%s n=%s reason=%s keys=%s",
             t,
             exp,
-            _analytics_bg_fail_counts.get(inflight_key, 0),
+            n_fail,
             reason,
             removed,
         )
+
+
+def _reset_analytics_bg_fail_count(inflight_key: tuple) -> None:
+    _analytics_bg_fail_counts.pop(inflight_key, None)
+
+
+def _record_analytics_bg_failure(
+    inflight_key: tuple,
+    ticker: str,
+    *,
+    reason: str,
+) -> None:
+    n = _analytics_bg_fail_counts.get(inflight_key, 0) + 1
+    _analytics_bg_fail_counts[inflight_key] = n
+    if n >= ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES:
+        _invalidate_analytics_cache_after_bg_failures(
+            inflight_key, ticker, reason=reason, failure_count=n
+        )
+        _analytics_bg_fail_counts.pop(inflight_key, None)
 
 
 def _analytics_generated_ts(entry: dict) -> float:
@@ -635,6 +660,7 @@ def _schedule_analytics_recompute(
         try:
             result = _fetch_state(ticker, expiry, update_source=update_source)
             if result:
+                _reset_analytics_bg_fail_count(inflight_key)
                 _stamp_analytics_freshness_on_completed_fetch(result, ticker, inflight_key)
                 try:
                     from planes.l1_events import notify_l2_snapshot_ready
@@ -646,8 +672,10 @@ def _schedule_analytics_recompute(
                 asyncio.run_coroutine_threadsafe(_broadcast_snapshot(result), _main_event_loop)
         except HTTPException:
             log.warning("analytics bg HTTPException for %s", inflight_key)
+            _record_analytics_bg_failure(inflight_key, ticker, reason="http_exception")
         except Exception as ex:
             log.error("analytics bg failed %s: %s", inflight_key, ex, exc_info=True)
+            _record_analytics_bg_failure(inflight_key, ticker, reason="generic_exception")
         finally:
             with _analytics_bg_lock:
                 _analytics_inflight.discard(inflight_key)
