@@ -65,14 +65,11 @@
 
 **TIER 1 — critical**
 
-- [ ] **COH-I-A — Hardcoded EST vs America/New_York (DST)**  
-  `call_engine.py` L34: `ET = timezone(timedelta(hours=-5))` (fixed EST). `prediction_engine.py` L38 same. **`v2_decision/a2_eod_force_exit.py` L12 uses `ZoneInfo("America/New_York")` correctly** for `derive_et_clock_from_decision_time_ms` (tests cover DST). **Verify:** whether `call_engine` L34 `ET` is dead (may be unused) vs `inp.et_hour`/`inp.mins_to_close` from `market_state`/`server` (true clock). **`_stop_distance` L500** uses `inp.et_hour`/`et_minute` minus 570 — wrong if upstream ET fields are EST during EDT. **Fix:** remove dead constants; single `ZoneInfo("America/New_York")` authority; audit all `et_hour` producers.
+- [x] **COH-I-A — Single ET authority (`time_et.py`)** — Live `_fetch_state` already used `ZoneInfo`; **`db.now_et()` and `ml_scheduler` used fixed EST** (real DST bug for calibration timestamps / 16:15 scheduler). Closed @ `99ea0e0`: `time_et.now_et()`; `db` re-export; `server` `_eastern_now()`; dead EST constants removed; `test_time_et_authority.py`.
 
-- [ ] **COH-I-E — `__debug__` asserts for horizon completeness (signals.py ~L1231-1233)**  
-  Stripped under `python -O`. **Fix:** explicit fail-closed `RuntimeError` or completeness check before bundle emit.
+- [x] **COH-I-E — Horizon completeness under `python -O`** — Closed @ `99ea0e0`: `RuntimeError` if primary `fusion_by_hz` incomplete; `multi_horizon_ml_fusion_bundle` production checks (no `__debug__` asserts).
 
-- [ ] **COH-I-J — Partial `fusion_policy_snapshot_cols` on per-horizon fusion failure (signals.py ~L1188-1189, L1235)**  
-  Missing horizon → NULL cols; replay can't distinguish exception vs legitimate None. **Fix:** stamp failure provenance per horizon or withhold entire snapshot row section.
+- [x] **COH-I-J — Partial `fusion_policy_snapshot_cols` on stack failure** — Closed @ `99ea0e0`: `fusion_policy_columns_horizon_failed()` → NULL cols + `stack_failed|{exc}` in `fused_stack_status_{hz}`.
 
 **TIER 2 — architectural**
 
