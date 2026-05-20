@@ -129,7 +129,7 @@
 
 ### Audit queue — surfaced by MADA producer-cone Read (not blockers for lifecycle)
 
-- [x] **AUDIT-CAND-MS-FP1 — `canonical_provenance` gate allow-list** — FIND-FP1-1..4 @ paired-fix: `TRADABLE_CANONICAL_PROVENANCE` (`bayesian_fusion` only); `canonical_provenance_is_tradable` inverted fail-closed; closes `debug_override:*`, `""`, calibration-replay leaks. OBS-FP1-2: dataclass defaults safe post-fix (no change). Tests: `tests/test_fusion_contract.py`, `tests/test_v2_advisory_backfill.py::test_calibration_backfill_v2_advisory_rejects_legacy_empty_provenance_row`.
+- [x] **AUDIT-CAND-MS-FP1 — `canonical_provenance` gate allow-list** @ `7b23b70` — FIND-FP1-1..4: `TRADABLE_CANONICAL_PROVENANCE` (`bayesian_fusion` only); `canonical_provenance_is_tradable` inverted fail-closed; closes `debug_override:*`, `""`, calibration-replay leaks. OBS-FP1-2: dataclass defaults safe post-fix (no change). Tests: `tests/test_fusion_contract.py`, `tests/test_v2_advisory_backfill.py::test_calibration_backfill_v2_advisory_rejects_legacy_empty_provenance_row`.
 - [ ] **OBS-MHMLB-NS1 — `fusion_available` name collision** — `HorizonMLFusionSnapshot.fusion_available` (`multi_horizon_ml_bundle.py` ~L68) vs `ms.fusion_available` (Tier C). Different scopes; document or rename in a consolidation slice to avoid future reader traps.
 
 ### COHERENCE-AUDIT workstream (full Read — not “files already walked”)
