@@ -1,7 +1,32 @@
 # Open items — horizon, stack, UI consistency
 
 **Rule:** Items stay **open** until there is a merged/code-verified resolution (not just “planned”).  
-**Last reviewed:** 2026-05-18 — All work bound by **SCHWAB FULL REPO DIRECTIVE** in [`CLAUDE.md`](CLAUDE.md) (entire codebase; Canopy→Trunk→Branch→Leaf; Read, not scan). No file out of scope. Closure inadmissible until three-PR gate (governance pin → CI diff-emission gate → full-tree scanner regen) per V4 § Scope.
+**Last reviewed:** 2026-05-19 — All work bound by **SCHWAB FULL REPO DIRECTIVE** in [`CLAUDE.md`](CLAUDE.md) (entire codebase; Canopy→Trunk→Branch→Leaf; Read, not scan). No file out of scope. Closure inadmissible until three-PR gate (governance pin → CI diff-emission gate → full-tree scanner regen) per V4 § Scope.
+
+---
+
+## NEXT — after current project (operator priority #1)
+
+**Gate:** Activate when Layer 5 / Pilot 1 Schwab walk + stack sign-off queue is closed (or operator says **go live-ui latency**). Do not defer behind new feature work.
+
+- [ ] **LIVE-UI-1 — Near-real-time decision cards vs operator expectation (WebSocket/SSE)**  
+  **Reported (2026-05-19):** UI cards showed directional “up” while tape was selling off; operator believed WebSocket path delivers updates **almost instantly**. Observed behavior includes **~30s REST polling** on parts of the stack — **not acceptable** for live trading awareness.  
+  **Scope:** Inventory live data plane end-to-end: what is truly push (e.g. `/api/analytics/light/stream`, `/api/stream`, tick-coherent `_fetch_state`) vs poll-bound; which card fields come from which tier (L0/L1 cache vs full Tier C recompute); document max staleness per surface.  
+  **Target:** Sub-second **visible** card refresh for price-critical direction/signal fields during RTH (define SLO with operator); full Tier C recompute may remain async if UI shows `decision_generation_id` / stale badge when behind.  
+  **Validation tie-in (ablation / calibration / training):** Log `decision_ts_utc`, `decision_generation_id`, and dominant direction per refresh so last-30m sessions can be replayed from `snapshots` / `calibration_decision_log` and compared to tape (latency skew ≠ edge skew).  
+  **Files (starting points):** `server.py` (poll intervals, SSE, `_fetch_state`, `tick_triggers_coherent_refresh`), `static/index.html` (card bind + refresh hooks), `live_decision_bundle.py`.  
+  **Not in scope for current walk:** implementation deferred until gate above.
+
+- [ ] **LIVE-UI-2 — Multi-transport coherence (should have been flagged during stack walks)**  
+  **Evidence in repo today (`static/index.html`):** (a) live quote SSE / `live_quote` path; (b) separate L1 `/api/analytics/light/stream`; (c) Tier C `/api/analytics/state` + 2s poll fallback when SSE stale; (d) fast-quote REST 2.5–12s; (e) liquidity map **60s** poll. Comments at L2937–2948 explicitly allow **fast lane independent of `decision_generation_id`**. Cards can show fresh price with **stale** fusion/direction until Tier C completes. **Fix direction:** one visible “bundle age” + block direction cards from rendering fields older than headline generation (or show stale badge per field).
+
+- [ ] **LIVE-UI-3 — Operator-visible “same moment” acceptance test**  
+  Automated: after any tick/SSE, assert all signal surfaces share `decision_generation_id` (and spot direction not contradicting canonical without explicit “structural vs tape” label). Manual: 30m RTH tape vs logged snapshots replay (ties to calibration).
+
+- [ ] **LIVE-UI-4 — UI honesty pass (beyond fail-closed numerics)**  
+  Re-audit `static/index.html` for: mixed L1 overlay + Tier C merge (`_lastData`), horizon row vs Decision Command rail vs legacy Call/Put cards, withheld vs flat styling, transport badge vs actual field ages. Prior 12.9 UI work fixed fabrication; did **not** prove single-clock coherence.
+
+  **Process note (2026-05-19):** Operator correctly expects cross-cutting UX/architecture risks to be raised when seen in code review, not only when listed on an audit sheet. Cursor/Claude should flag split-path live UI on first `server.py` / `index.html` touch.
 
 ---
 
@@ -296,6 +321,9 @@ Reference ticker for parametric tests: **SPY**.
   - [x] FIND-V2AB2 — partial triplet inferred direction/dominant_prob via max of present keys; closed infer from triplet only when `_fusion_triplet_complete`; `_float_or_none` rejects non-finite.
   - [x] FIND-V2AB3 — advisory payload `decision_ts_utc` used `ms_dict.get("ts_utc")` only; closed `setdefault("ts_utc")` + `_first_present` in `build_v2_advisory_snapshot`.
   - [x] FIND-BO1 — `backfill_outcomes` / `resolve_snapshot_for_backfill` joined snapshots on raw calibration `ticker` while writer/snapshots use `ticker_storage_key`; closed normalize at resolve + pending/resync loops.
+  - [x] FIND-SLVB1 — `backfill_signal_layer_v1_bundle` skipped recompute when `meta.n_bars==0` but `meta.error is None` (treated empty layer as done); closed skip only when `meta.n_bars > 0`.
+  - [x] FIND-SLVB2 — bundle backfill scanned all `calibration_decision_log` rows (including `legacy`); closed `TRUSTED_PREDICATE_SQL` on SELECT.
+  - [x] FIND-SLVB3 — no `enforce_calibration_decision_log_only_1m` before writes; closed + `CalibrationCanonicalViolationError` exit 2 in `main`.
   - [ ] OBS-TC1 — `load_lstm_feature_cache` metadata defaults (`tickers`/`days`/`n_days`/`n_tickers` empty or 0); accepted — structural dims fail-closed via `_meta_required_positive_int`.
   - [ ] OBS-TC2 — `_normalize_data_fp({})` returns `{}` vs 6-key shape for non-empty; accepted — conservative cache miss on legacy empty identity.
   - [ ] OBS-TC3 — Legacy `cache_exists` / `read_cache_meta` at file tail unused by scheduler (accepted).
@@ -305,7 +333,7 @@ Reference ticker for parametric tests: **SPY**.
   - [ ] OBS-SSC1 — `_max_transformer_seq_len_for_ticker` lazy-imports `ml_predict` (horizon slug + model dir scan); `ED_XGB_STRICT_ACTIVE_ONLY` scope tracked under model-lifecycle G4 (accepted).
   - [ ] OBS-CSC1 — `validate_cascade_inference_lineage` re-wraps `XgbInferenceInputError` (inherits XGB1/XGB2 envelope strictness); accepted challenger-only path.
   - [ ] OBS-CSC2 — cascade upstream tensor names (`xgb_prob_*`, `lstm_prob_*`) are stage-contract labels, not Schwab leaves; locked by assert len 3/6 vs `ml_predict` cascade extras.
-- [ ] **Action 12.7+ — Layer 5 remaining unread surface** (wide-grep re-pass on audited files; `call_engine.py` full body) — `call_engine.py` full body; `ml_predict`/`ml_scheduler`/`ml_train`; `features/*` (11 files); `calibration/*` (~~`v2_live_logging.py`~~ FIND-V2LL1 closed; ~~`signal_layer_discrimination.py`~~ FIND-SLD1 closed; ~~`v2_advisory_backfill.py`~~ FIND-V2AB1–3 closed; ~~`backfill_outcomes.py`~~ FIND-BO1 closed; `backfill_signal_layer_v1_bundle` remain); `arch_competition/*`; `lstm_*`/`transformer_*`; ~~`v2_decision/a2_option_expression.py`~~ (FIND-A2OE1–3 closed); ~~`realized_contract_eval.py`~~ (FIND-RCE1–4 closed); ~~`training_cache.py`~~ (FIND-TC1–3 closed); re-read `server.py`/`market_state.py`; ~~`signals.py` L91-102 + ML fallback namespaces~~ (FIND-SIG1 closed).
+- [ ] **Action 12.7+ — Layer 5 remaining unread surface** (wide-grep re-pass on audited files; `call_engine.py` full body) — `call_engine.py` full body; `ml_predict`/`ml_scheduler`/`ml_train`; `features/*` (11 files); `calibration/*` (~~`v2_live_logging.py`~~ FIND-V2LL1 closed; ~~`signal_layer_discrimination.py`~~ FIND-SLD1 closed; ~~`v2_advisory_backfill.py`~~ FIND-V2AB1–3 closed; ~~`backfill_outcomes.py`~~ FIND-BO1 closed; ~~`backfill_signal_layer_v1_bundle.py`~~ FIND-SLVB1–3 closed); `arch_competition/*`; `lstm_*`/`transformer_*`; ~~`v2_decision/a2_option_expression.py`~~ (FIND-A2OE1–3 closed); ~~`realized_contract_eval.py`~~ (FIND-RCE1–4 closed); ~~`training_cache.py`~~ (FIND-TC1–3 closed); re-read `server.py`/`market_state.py`; ~~`signals.py` L91-102 + ML fallback namespaces~~ (FIND-SIG1 closed).
 - [ ] **Stack foundation sign-off (post–Layer 4/5 sweep, pre–G2/G3)** — Operator request: after Actions 11–12.x + 12.7+ are closed, run a structured final review so the signal/stack layer is solid before model-lifecycle work. **Not** another ad-hoc patch pass; explicit sign-off or filed actions only. Passes: (1) **Contract inventory** — Schwab-leaf → derived → fusion → UI/calibration; every unavailable path is `None`/withheld, documented. (2) **Consumer grep** — no downstream re-fabrication (pattern: producer fixed, consumer still emits 0.33/`"flat"`/`"wait"`). (3) **Live vs replay** — `compute_signals`, calibration backfill/audit CLIs, and replay paths behave consistently on missing inputs. (4) **UI / operator truth** — `static/index.html` and diagnostics do not re-label null as flat/neutral. (5) **Residual allowlist** — any remaining defaults are named, tested, justified (not accidental). (6) **Smoke** — one trusted ticker/session: thin `price_bars_1m` → withhold; full bars → unchanged where data exists. Deliverable: findings table + OPEN_ITEMS actions for anything still warranted; optional short written report if operator asks. **Trigger:** operator says `go on stack foundation sign-off` after 12.7+ queue is drained. **Ownership split:** operator calibration batch in parallel; assistant `call_engine.py` E2E + any filed vertical slices.
 - [x] **Action 11.8 — signals.py MC + fusion attributes fail-closed** — `signals.py:719,720,725,727,728,740,756,758,760` fabricated 0/`"neutral"`/`"unknown"` when mc_out/fusion attributes absent; return None and skip downstream label emit. Schwab-leaf path: `pricehistory.candles[].close` → MC; chain greeks → fusion. SHA: `a0b161b`
 - [x] **Action 11.9 — call_engine.py fail-closed on missing index quotes + fusion posteriors** — 11 high-priority sites + 5 lower-priority deferred; fusion posterior gate semantic: **block** trade when posterior is None (fail-closed). Schwab-leaf paths: `quotes.{SPY,QQQ,IWM}.netChange`, chain delta, fusion engine output. SHA: `4a64a69`
