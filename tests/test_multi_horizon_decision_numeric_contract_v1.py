@@ -185,11 +185,11 @@ def test_finalize_display_withholds_nan_target_and_stop():
     assert plan.stop is None
 
 
-def test_entry_state_machine_nan_spot_stays_forming():
+def test_entry_state_machine_nan_spot_fail_closed_no_setup():
     from multi_horizon_decision import _entry_state_machine
 
     one_c = _forecast_horizon_live(_pred(), SimpleNamespace(), "1c")
-    state, px, _txt = _entry_state_machine(
+    state, px, txt = _entry_state_machine(
         "long",
         True,
         SimpleNamespace(spot=float("nan"), nearest_below_val=440.0, nearest_above_val=442.0),
@@ -197,5 +197,6 @@ def test_entry_state_machine_nan_spot_stays_forming():
         None,
         "WATCH",
     )
-    assert state == "forming"
+    assert state == "no_setup"
     assert px is None
+    assert "missing or invalid zone/spot" in txt

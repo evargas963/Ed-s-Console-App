@@ -820,7 +820,7 @@ def _entry_state_machine(
     zh = _finite_price_optional(getattr(inp, "nearest_above_val", None))
     spot = _finite_price_optional(getattr(inp, "spot", None))
     if zl is None or zh is None or spot is None:
-        return ("forming", None, "Wait for pullback into —\u2014—\n(1c confirmation required)")
+        return ("no_setup", None, "missing or invalid zone/spot")
     lo = min(zl, zh)
     hi = max(zl, zh)
     in_zone = lo <= spot <= hi
