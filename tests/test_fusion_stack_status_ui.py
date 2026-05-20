@@ -18,3 +18,4 @@ def test_index_html_fused_stack_status_parser_and_styles():
     assert "stack-status--unavailable" in html
     assert "parseFusedStackStatus(st)" in html
     assert "formatFusedStackStatusDisplay(stackParsed)" in html
+    assert "vv.title = stackParsed.title" in html
