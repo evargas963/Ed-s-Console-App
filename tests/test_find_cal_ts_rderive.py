@@ -15,6 +15,8 @@ from ml_data_common import (
 )
 from time_et import (
     COH_I_A_ET_AUTHORITY_TS_UTC,
+    COH_I_A_ET_BACKFILL_CEILING_TS_UTC,
+    build_ts_et_from_ts_utc,
     et_clock_from_ts_utc,
     is_rth_ts_utc,
 )
@@ -74,6 +76,15 @@ def test_market_session_from_ts_utc_rth():
 
 def test_calibration_widen_min_ts_matches_coh_i_a():
     assert calibration_widen_min_ts_utc() == COH_I_A_ET_AUTHORITY_TS_UTC
+
+
+def test_backfill_ceiling_includes_one_hour_pad():
+    assert COH_I_A_ET_BACKFILL_CEILING_TS_UTC == COH_I_A_ET_AUTHORITY_TS_UTC + 3600.0
+
+
+def test_build_ts_et_from_ts_utc_dst():
+    t = datetime(2026, 7, 7, 15, 0, tzinfo=timezone.utc).timestamp()
+    assert build_ts_et_from_ts_utc(t) == "2026-07-07 11:00:00 ET"
 
 
 def test_ml_train_load_data_where_has_no_rth_where_clause():

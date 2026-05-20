@@ -7,11 +7,11 @@ train_all, ml_scheduler.
 
 from __future__ import annotations
 
-from db import sql_select_snapshots_columns
-
-
 import sqlite3
+import warnings
 from typing import Any
+
+from db import sql_select_snapshots_columns
 
 import numpy as np
 import pandas as pd
@@ -28,13 +28,25 @@ from time_et import (
 )
 
 
+_RTH_WHERE_DEPRECATION_WARNED = False
+
+
 def rth_where_clause() -> str:
     """
-    LEGACY SQL on stored et_hour/et_minute columns.
+    DEPRECATED: use filter_df_to_rth_ts_utc post-fetch — this SQL clause skews EDT cohorts on
+    pre-99ea0e0 rows where stored et_hour/et_minute were logged under fixed EST.
 
-    Do not use for training/calibration eligibility after FIND-CAL-TS-RDERIVE — pre-99ea0e0 EDT
-    rows skew cohort by ~1h. Prefer filter_df_to_rth_ts_utc / filter_ts_utc_list_to_rth.
+    Prefer filter_df_to_rth_ts_utc / filter_ts_utc_list_to_rth / training_base_where_clause.
     """
+    global _RTH_WHERE_DEPRECATION_WARNED
+    if not _RTH_WHERE_DEPRECATION_WARNED:
+        warnings.warn(
+            "rth_where_clause() is deprecated: filter on ts_utc via filter_df_to_rth_ts_utc "
+            "after fetch — stored et_hour skews EDT cohorts on pre-COH-I-A rows.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        _RTH_WHERE_DEPRECATION_WARNED = True
     return (
         "(et_hour * 60 + et_minute) >= " + str(RTH_START_MINS) + " "
         "AND (et_hour * 60 + et_minute) < " + str(RTH_END_MINS)
