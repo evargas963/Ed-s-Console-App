@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -138,3 +139,30 @@ def test_audit_v3_json_class_c_fixed_count_matches_array():
     count = summary.get("class_c_fixed_count")
     assert count == len(entries) == 27
     assert summary.get("silent_exception_pass_after") == _BASELINE_SILENT_EXCEPTION_PASS
+
+
+def test_ml_predict_arch_state_probe_exception_falls_through_not_nameerror(
+    tmp_path, monkeypatch, caplog
+):
+    """SWEEP-EP-28: arch_state probe must log via module ``logger``, not undefined ``log``."""
+    import ml_predict as mp
+
+    monkeypatch.setenv("ED_XGB_STRICT_ACTIVE_ONLY", "0")
+    models = tmp_path / "models"
+    models.mkdir()
+    arch = models / "arch_state.json"
+    arch.write_text("{not-json", encoding="utf-8")
+    ticker = "EP28"
+    hz = mp.get_ml_infer_horizon_slug()
+    parallel = models / "parallel" / ticker
+    parallel.mkdir(parents=True)
+    (parallel / f"xgb_{ticker}_{hz}.pkl").write_bytes(b"\x00")
+
+    monkeypatch.setattr(mp, "MODEL_DIR", models)
+    monkeypatch.setattr(mp, "ARCH_STATE_PATH", arch)
+
+    caplog.set_level(logging.DEBUG, logger=mp.logger.name)
+    result = mp._model_dir_for_ticker(ticker)
+
+    assert result == parallel
+    assert "active model dir probe" in caplog.text
