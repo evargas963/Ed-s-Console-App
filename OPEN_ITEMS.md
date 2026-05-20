@@ -71,9 +71,14 @@
 
 - [x] **COH-I-J — Partial `fusion_policy_snapshot_cols` on stack failure** — Closed @ `99ea0e0`: `fusion_policy_columns_horizon_failed()` → NULL cols + `stack_failed|{exc}` in `fused_stack_status_{hz}`.
 
+**TIER 1.5 — single-authority (behavioral divergence today)**
+
+- [ ] **COH-SA-FLOAT — Four float-validation helpers → one module** — `v2_advisory_backfill`, `v2_live_logging`, `realized_contract_eval`, `call_engine._num`; explicit semantics per callsite; golden edge-case tests.
+- [ ] **COH-SA-TRIPLET — Direction from probability triplet** — agreement test across all triplets; shared helper; subsumes COH-I-H.
+
 **TIER 2 — architectural**
 
-- [ ] **COH-I-H — Argmax tie-break: up wins on flat ties** — `canonical_forecast_from_fusion` (signals.py ~L132-135) and `_direction_from_triplet` (v2_advisory_backfill.py ~L324-333). Document or shared helper.
+- [ ] **COH-I-H — Argmax tie-break: up wins on flat ties** — `canonical_forecast_from_fusion` (signals.py ~L132-135) and `_direction_from_triplet` (v2_advisory_backfill.py ~L324-333). **COH-SA / TIER-1.5:** triplet agreement test + shared `direction_from_triplet()` helper.
 
 - [ ] **COH-I-C — `shared_sequence_context` under-fetch when transformer meta missing (~L138-139)** — can cascade MC/transformer inactive. Ties FIND-SSC1 / OBS-SSC1.
 
@@ -91,7 +96,9 @@
 
 **SLVB minor (operator note, not blocking 3177fdd):** `meta.n_bars` non-numeric string → `int()` can abort loop (`backfill_signal_layer_v1_bundle.py` ~L84); wrap in try if hardened.
 
-**Unread for coherence lens (independent audit queue):** `server.py`, `static/index.html`, `features/signal_layer_v1.py`, `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py`, `lifecycle_rule_core.py`.
+**Batch 1 (authorized @ `50405b8`, operator sign-off `99ea0e0`):** `server.py` full Read + `static/index.html` full Read — in progress. Gatekeeper + Cursor; brief → paired-fix queue.
+
+**Unread for coherence lens (post–batch 1 queue):** `features/signal_layer_v1.py`, `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
 
 ### COHERENCE-AUDIT workstream (full Read — not “files already walked”)
 
@@ -119,11 +126,49 @@
 
 | Path | When | Note |
 |------|------|------|
-| **A (recommended)** | Now | TIER-1 fixes → full audit → resume Layer 5 / calibration |
+| **A (recommended)** | Now | TIER-1 @ `99ea0e0` → TIER-1.5 (float + triplet) → COH-SA sweep → full audit → resume Layer 5 / calibration |
 | **B** | Now | Interleaved audit + calibration (higher context cost) |
 | **C** | After Pilot | Risks DST-tainted backfill + rework |
 
-**TIER-1 pull-forward:** COH-I-A/E/J closed @ tier-1 commit (operator `go coherence tier-1`). Optional same batch still open: LIVE-UI-D, LIVE-UI-E, LIVE-UI-B.
+**TIER-1 pull-forward:** COH-I-A/E/J closed @ `99ea0e0` (+ `50405b8` OPEN_ITEMS). Optional same batch still open: LIVE-UI-D, LIVE-UI-E, LIVE-UI-B.
+
+### COH-SA — single-authority audit lane (operator 2026-05-19)
+
+**Framing:** Single-authority is **not** repo-wide today — it is case-by-case. COH-I-A (`time_et.py`) is the template: (1) inventory every derivation site, (2) group by concept, (3) one helper + module, (4) redirect callsites. Escalate when a **second** implementation of the same concept has **different semantics**, not only when one file is internally consistent.
+
+**Already single-authority (verified / walked):**
+
+| Concept | Single source |
+|---------|----------------|
+| `NON_TRADABLE_CANONICAL_PROVENANCE` | `signal_types.py` L195–203 — imported by call_engine, signals |
+| `TRUSTED_PREDICATE_SQL` | `calibration/trust.py` — all four calibration tools |
+| `ticker_storage_key()` | `instrument_identity.py` — FIND-BO1 backfill_outcomes |
+| `enforce_calibration_decision_log_only_1m()` | `calibration/canonical_enforcement.py` |
+| `CANONICAL_FEATURE_CONTRACT_VERSION` / timeframe | `features/canonical_contract.py` |
+| `ADVISORY_V2_*` | `calibration/v2_advisory_backfill.py` — v2_live_logging imports |
+| `CANONICAL_TIMEFRAME` | `timeframe_config.py` — `lstm_data` re-exports; `shared_sequence_context` imports via `lstm_data` (aliased, not a second definition) |
+
+**Gap inventory (not single-authority — COH-SA sweep):**
+
+| Concept | Multiple sites | Risk | Priority |
+|---------|----------------|------|----------|
+| **ET derivation** | server, db, ml_scheduler, v2 A2, ad-hoc ZoneInfo | DST / session drift | **Closed @ `99ea0e0`** (`time_et.py`); satellite `ZoneInfo` calls remain for later redirect |
+| **Float validation** | `v2_advisory_backfill._float_or_none` (finite); `v2_live_logging` (>0); `realized_contract_eval._f` (bare float); `call_engine._num` | **Different verdicts on same input today** | **TIER-1.5** |
+| **Direction from triplet** | `signals.canonical_forecast_from_fusion`; `v2_advisory_backfill._direction_from_triplet`; `signals._model_stage` | Coincidentally aligned (up-first); third consumer can drift | TIER-1.5 test + helper; overlaps COH-I-H |
+| **Fusion availability** | `getattr(fusion, "available", False)` inlined (signals, call_engine) | No `fusion_is_authoritative()` | COH-SA |
+| **Tradability predicate** | frozenset shared; `_prov in NON_TRADABLE…` inlined | No `is_canonical_tradable()` | COH-SA |
+| **Replay max-hold bars** | `replay_max_hold_bars_for_trade_type` / `_from_context` / `_for_setup` | Live vs replay drift | COH-SA (COH-I-K) |
+| **Magic thresholds** | Per-module inlines (call_engine, signal_layer_discrimination, …) | Policy drift | COH-SA (document or config table) |
+| **Regime multipliers** | `REGIME_MULT` in `compute_position_size` | Embedded dict | COH-SA |
+
+**COH-SA run order (additive to Path A):**
+
+1. **TIER-1** — COH-I-A/E/J @ `99ea0e0` (done).
+2. **TIER-1.5** — `numeric_finite.py` (or `calibration/numbers.py`): one `float_or_none` with explicit modes (`finite`, `positive`, `non_negative`); redirect four helpers; golden tests on edge inputs (NaN, inf, 0, −1).
+3. **COH-SA full sweep** — remaining rows + repo-wide gap inventory for operator-visible state (brief schema: FIND/OBS + cross-cutting).
+4. **Then** full ~30-file COHERENCE-AUDIT **or** resume calibration (operator choice).
+
+**Deliverable for COH-SA close:** `governance/coherence_single_authority_inventory.json` (or markdown) — concept → canonical module → callsite list → closed/open.
 
 **Calibration walk status:** `backfill_signal_layer_v1_bundle` signed @ `3177fdd`. **Paused** for path choice. **Not invalidated** — deprioritized until coherence gate.
 
