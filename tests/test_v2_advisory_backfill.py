@@ -144,6 +144,7 @@ def test_reconstructed_ms_dict_validates_through_v2_adapter(tmp_path):
     conn.commit()
 
     ms = ms_dict_from_snapshot_row(_snapshot_row(conn))
+    ms["canonical_provenance"] = "bayesian_fusion"
     decision = build_module_a_a1_decision(ms)
     conn.close()
 
@@ -162,6 +163,7 @@ def test_snapshot_alias_mapping_matches_equivalent_ms_dict(tmp_path):
     equivalent = {
         "ticker": "SPY",
         "fusion_available": True,
+        "canonical_provenance": "bayesian_fusion",
         "fusion_dominant_direction": "up",
         "fusion_dominant_prob": 0.64,
         "fusion_confidence": "high",
@@ -176,6 +178,7 @@ def test_snapshot_alias_mapping_matches_equivalent_ms_dict(tmp_path):
     }
     conn.close()
 
+    ms["canonical_provenance"] = "bayesian_fusion"
     reconstructed = build_module_a_a1_decision(ms)
     expected = build_module_a_a1_decision(equivalent)
     assert reconstructed["decision"]["action"] == expected["decision"]["action"]
@@ -188,7 +191,9 @@ def test_replay_context_proof_extraction_populates_a2_selection(tmp_path):
     _insert_snapshot(conn)
     conn.commit()
 
-    payload = build_v2_advisory_snapshot(_snapshot_row(conn))
+    row = dict(_snapshot_row(conn))
+    row["canonical_provenance"] = "bayesian_fusion"
+    payload = build_v2_advisory_snapshot(row)
     conn.close()
 
     a2 = payload["v2_decision"]["expression_profiles"]["A2"]
@@ -282,6 +287,27 @@ def test_infer_fusion_fields_partial_triplet_does_not_mark_available() -> None:
     assert ms["fusion_available"] is False
     assert ms.get("fusion_dominant_direction") is None
     assert ms.get("fusion_dominant_prob") is None
+
+
+def test_calibration_backfill_v2_advisory_rejects_legacy_empty_provenance_row() -> None:
+    """FIND-FP1-4: inferred fusion_available must not bypass empty provenance gate."""
+    row = {
+        "ticker": "SPY",
+        "ts_utc": BASE_TS,
+        "fusion_prob_up": 0.1,
+        "fusion_prob_down": 0.1,
+        "fusion_prob_flat": 0.8,
+        "canonical_provenance": "",
+        "dominant_dir": "down",
+        "execution_mode": "STANDARD",
+    }
+    ms = ms_dict_from_snapshot_row(row)
+    assert ms.get("fusion_available") is True
+    from fusion_contract import is_ms_dict_fusion_authoritative
+
+    assert is_ms_dict_fusion_authoritative(ms) is False
+    payload = build_v2_advisory_snapshot(row)
+    assert payload["v2_decision"]["decision"]["direction"]["value"] == "short"
 
 
 def test_infer_fusion_fields_complete_triplet_infers_direction_and_prob() -> None:

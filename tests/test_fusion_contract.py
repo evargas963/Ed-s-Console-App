@@ -12,7 +12,11 @@ from fusion_contract import (
     is_canonical_tradable,
     is_ms_dict_fusion_authoritative,
 )
-from signal_types import NON_TRADABLE_CANONICAL_PROVENANCE, CanonicalForecast
+from signal_types import (
+    NON_TRADABLE_CANONICAL_PROVENANCE,
+    TRADABLE_CANONICAL_PROVENANCE,
+    CanonicalForecast,
+)
 
 _SKIP_PY_TREE_DIRS = frozenset(
     {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__"}
@@ -49,7 +53,7 @@ def test_fusion_is_authoritative_none_and_false():
 
 def test_is_ms_dict_fusion_authoritative_provenance_gate():
     assert is_ms_dict_fusion_authoritative({"fusion_available": False}) is False
-    assert is_ms_dict_fusion_authoritative({"fusion_available": True}) is True
+    assert is_ms_dict_fusion_authoritative({"fusion_available": True}) is False
     prov = next(iter(NON_TRADABLE_CANONICAL_PROVENANCE))
     assert (
         is_ms_dict_fusion_authoritative(
@@ -57,6 +61,35 @@ def test_is_ms_dict_fusion_authoritative_provenance_gate():
         )
         is False
     )
+    assert (
+        is_ms_dict_fusion_authoritative(
+            {
+                "fusion_available": True,
+                "canonical_provenance": next(iter(TRADABLE_CANONICAL_PROVENANCE)),
+            }
+        )
+        is True
+    )
+
+
+def test_gate_rejects_empty_canonical_provenance_when_fusion_available():
+    ms = {"fusion_available": True, "canonical_provenance": ""}
+    assert canonical_provenance_is_tradable("") is False
+    assert is_ms_dict_fusion_authoritative(ms) is False
+
+
+def test_gate_rejects_debug_override_canonical_provenance_when_fusion_available():
+    prov = "debug_override:api"
+    ms = {"fusion_available": True, "canonical_provenance": prov}
+    assert canonical_provenance_is_tradable(prov) is False
+    assert is_ms_dict_fusion_authoritative(ms) is False
+
+
+def test_gate_admits_bayesian_fusion_provenance_when_fusion_available():
+    prov = "bayesian_fusion"
+    ms = {"fusion_available": True, "canonical_provenance": prov}
+    assert canonical_provenance_is_tradable(prov) is True
+    assert is_ms_dict_fusion_authoritative(ms) is True
 
 
 def test_is_canonical_tradable_placeholders():

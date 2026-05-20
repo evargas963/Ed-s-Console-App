@@ -192,6 +192,9 @@ class CanonicalForecast:
         return float(self.probability_flat)
 
 
+# Sole tradable canonical provenance values (producer cone audit FIND-FP1-3 @ 4edeefc).
+TRADABLE_CANONICAL_PROVENANCE: frozenset[str] = frozenset({"bayesian_fusion"})
+
 # Uniform 1/3 placeholders in canonical_forecast_from_fusion are non-tradable; do not treat as real mass.
 NON_TRADABLE_CANONICAL_PROVENANCE: frozenset[str] = frozenset(
     {
