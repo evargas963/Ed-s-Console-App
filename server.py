@@ -4797,8 +4797,10 @@ def _fetch_state(
     cs = consensus_summary
 
     def _fv(v):
-        try: return round(float(v), 2)
-        except: return None
+        try:
+            return round(float(v), 2)
+        except (TypeError, ValueError):
+            return None
 
     ms_dict["kl_call_gamma_wall"]  = _fv(getattr(w0, "call_gamma_wall",  None))
     ms_dict["kl_put_gamma_wall"]   = _fv(getattr(w0, "put_gamma_wall",   None))
@@ -4818,7 +4820,8 @@ def _fetch_state(
             if f >= 1_000_000: return f"${f/1_000_000:.1f}M/pt"
             if f >= 1_000:     return f"${f/1_000:.0f}K/pt"
             return f"${f:.0f}/pt"
-        except: return "—"
+        except (TypeError, ValueError):
+            return "—"
 
     def _foi(v):
         try:
@@ -4826,7 +4829,8 @@ def _fetch_state(
             if f >= 1_000_000: return f"{f/1_000_000:.1f}M OI"
             if f >= 1_000:     return f"{f/1_000:.0f}K OI"
             return f"{f:.0f} OI"
-        except: return "—"
+        except (TypeError, ValueError):
+            return "—"
 
     ms_dict["kl_call_gamma_str"]  = _fs(getattr(w0, "call_gamma_strength", None))
     ms_dict["kl_put_gamma_str"]   = _fs(getattr(w0, "put_gamma_strength",  None))

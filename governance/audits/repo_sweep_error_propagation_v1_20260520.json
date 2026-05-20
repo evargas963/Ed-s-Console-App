@@ -1,0 +1,85 @@
+{
+  "sweep_id": "error_propagation_v1",
+  "date_utc": "2026-05-20",
+  "slice": "REPO_SWEEP",
+  "scope_in": "Production *.py excluding tests/, .claude/, venvs, __pycache__",
+  "scope_out": "tests/, vendor, third-party",
+  "summary": {
+    "bare_except_before": 4,
+    "bare_except_after": 0,
+    "silent_exception_pass_after": 43,
+    "class_c_fixed_count": 8,
+    "class_b_accepted_documented": 12
+  },
+  "class_c_fixed": [
+    {
+      "id": "SWEEP-EP-1",
+      "file": "market_state.py",
+      "lines": "498-501",
+      "was": "bare except in _f_ms",
+      "fix": "float_finite_or_none via numeric_contract"
+    },
+    {
+      "id": "SWEEP-EP-2",
+      "file": "server.py",
+      "lines": "4799-4833",
+      "was": "bare except in _fv/_fs/_foi display helpers",
+      "fix": "except (TypeError, ValueError)"
+    },
+    {
+      "id": "SWEEP-EP-3",
+      "file": "market_state.py",
+      "lines": "1351-1352",
+      "was": "silent pass after record_stack_degradation failure",
+      "fix": "logging.warning with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-4",
+      "file": "live_decision_bundle.py",
+      "lines": "289-445",
+      "was": "silent pass on coherence checks — stale bundle could persist",
+      "fix": "log.warning + return True (schedule full refresh)"
+    },
+    {
+      "id": "SWEEP-EP-5",
+      "file": "prediction_engine.py",
+      "lines": "955-956",
+      "was": "silent pass on eval metrics load",
+      "fix": "log.debug with exc_info"
+    }
+  ],
+  "class_a_examples": [
+    "market_state.py:1316-1336 — compute_signals except stamps state_error + card ERROR text",
+    "arch_competition/atomic_io.py — except re-raises after tmp cleanup"
+  ],
+  "class_b_accepted": [
+    {
+      "file": "signals.py",
+      "line": 1443,
+      "rationale": "Optional dev-only diag hook; documented; must not affect decision path"
+    },
+    {
+      "file": "features/signal_layer_v1.py",
+      "line": 653,
+      "rationale": "DB connection close cleanup; non-authority"
+    },
+    {
+      "file": "ml_predict.py",
+      "line": 358,
+      "rationale": "Model dir probe fallback to parallel path"
+    },
+    {
+      "file": "server.py",
+      "note": "11 silent passes — mostly dashboard/diag/SSE optional paths; sweep #2 may promote high-traffic routes"
+    }
+  ],
+  "top_silent_pass_files_after": {
+    "server.py": 11,
+    "ml_scheduler.py": 4,
+    "schwab_full_accessible_field_inventory.py": 4,
+    "levels.py": 2,
+    "live_market_plane.py": 2
+  },
+  "regression": "tests/test_repo_sweep_error_propagation_v1.py",
+  "next_sweep": "error_propagation_v2 — server.py + ml_scheduler high-traffic routes"
+}

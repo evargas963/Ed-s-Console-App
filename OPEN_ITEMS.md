@@ -82,6 +82,7 @@
 - [x] **FIND-STACK-DIR1 — Stack display direction** — operator decision **ALIGN**: `signals._model_stage` uses `direction_from_normalized_triplet` on finite probs only (no `dominant_class`); test `test_stack_model_stage_ignores_dominant_class_uses_triplet`.
 - [x] **COH-SA-5 — regime size multipliers → `position_sizing_policy.py`** — `REGIME_SIZE_MULTIPLIERS` + `regime_size_multiplier` (base + confidence nudge); `compute_position_size` redirected; `tests/test_position_sizing_policy.py` rglob guard. Sibling inline thresholds in same function flagged for magic-thresholds slice.
 - [x] **COH-SA-TRIPLET** @ `31c4f45` — `direction_from_triplet` / `direction_from_normalized_triplet`; subsumes COH-I-H. Tie-break: up → down → flat (docstring + tests).
+- [x] **REPO_SWEEP #1 — error-propagation** — bare `except:` eliminated (4→0); Class-C fixes on `market_state`, `live_decision_bundle`, `prediction_engine`; baseline lock `tests/test_repo_sweep_error_propagation_v1.py`; audit `governance/audits/repo_sweep_error_propagation_v1_20260520.json`. Remaining 43 silent `except Exception: pass` classified B in audit (server/ml_scheduler deferred to sweep #2).
 
 **TIER 2 — architectural**
 

@@ -953,7 +953,7 @@ def compute_prediction_enrichment(
             if eval_realized is not None:
                 eval_realized = float(eval_realized)
     except Exception:
-        pass
+        log.debug("prediction_engine: dashboard eval metrics load failed", exc_info=True)
 
     probs_5c, _, _, _ = lit_5c
 

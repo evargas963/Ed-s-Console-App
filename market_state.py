@@ -24,6 +24,7 @@ from typing import Optional
 from canonical_distances import canonical_nearest_distances
 from math_probabilities import OE_SPREAD_TIGHT_MAX
 from fusion_contract import fusion_is_authoritative
+from numeric_contract import float_finite_or_none
 from timeframe_config import CANONICAL_TIMEFRAME
 
 
@@ -496,9 +497,8 @@ class MarketState:
 # Direction driven exclusively by The Call signal (long/short/wait)
 # ─────────────────────────────────────────────────────────────────────────────
 def _f_ms(v):
-    """Safe float conversion."""
-    try: return float(v)
-    except: return None
+    """Safe float conversion (finite-only)."""
+    return float_finite_or_none(v)
 
 
 def _oe_chain_row_snapshot(ct: dict | None) -> dict | None:
@@ -1348,8 +1348,12 @@ def build_market_state(
                     authority_intact=False,
                     dedupe_key="signals_engine",
                 )
-            except Exception:
-                pass
+            except Exception as _deg_e:
+                logging.warning(
+                    "market_state: record_stack_degradation failed after signals_engine_error: %s",
+                    _deg_e,
+                    exc_info=True,
+                )
 
     # ── 9. Populate card fields from signals output ──────────────────────────
     if _sig_out is not None:

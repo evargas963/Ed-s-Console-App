@@ -20,13 +20,12 @@ wall choice, distance buckets, and session boundaries cannot drift across genera
 
 from __future__ import annotations
 
-
-
+import logging
 import os
-
 import threading
-
 import time
+
+log = logging.getLogger(__name__)
 
 from datetime import datetime, timezone
 
@@ -225,7 +224,7 @@ def _live_session_label() -> Optional[str]:
         return str(_derive_session())
 
     except Exception:
-
+        log.debug("_live_session_label: session derive failed", exc_info=True)
         return None
 
 
@@ -287,10 +286,8 @@ def tick_triggers_coherent_refresh(
             return True
 
     except Exception:
-
-        pass
-
-
+        log.warning("tick_triggers: zone integrity check failed — scheduling refresh", exc_info=True)
+        return True
 
     # ── Market session label (RTH / Pre / After / Closed) — ET clock boundary
 
@@ -307,10 +304,8 @@ def tick_triggers_coherent_refresh(
                 return True
 
     except Exception:
-
-        pass
-
-
+        log.warning("tick_triggers: session label check failed — scheduling refresh", exc_info=True)
+        return True
 
     # ── Intraday session_bucket vs bucket at decision stamp (signals time-of-day regime)
 
@@ -329,10 +324,8 @@ def tick_triggers_coherent_refresh(
                 return True
 
     except Exception:
-
-        pass
-
-
+        log.warning("tick_triggers: session_bucket check failed — scheduling refresh", exc_info=True)
+        return True
 
     pct_thr = float(os.environ.get("ED_TICK_REFRESH_SPOT_PCT", "0.0003"))
 
@@ -405,10 +398,8 @@ def tick_triggers_coherent_refresh(
                     return True
 
         except Exception:
-
-            pass
-
-
+            log.warning("tick_triggers: vwap_side check failed — scheduling refresh", exc_info=True)
+            return True
 
         # Nearest wall identity + empirical distance buckets (tier / similar-set drivers)
 
@@ -441,10 +432,8 @@ def tick_triggers_coherent_refresh(
                 return True
 
         except Exception:
-
-            pass
-
-
+            log.warning("tick_triggers: nearest-wall bucket check failed — scheduling refresh", exc_info=True)
+            return True
 
     old_r = ms_dict.get("order_flow_regime")
 
