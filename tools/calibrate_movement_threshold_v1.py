@@ -31,6 +31,7 @@ from timeframe_config import CANONICAL_TIMEFRAME
 DEFAULT_DB = ROOT / "data" / "ed_console.db"
 OUT_PATH = ROOT / "calibration" / "movement_target_threshold_v1.json"
 # Oversample SQL LIMIT then filter RTH on ts_utc (stored et_hour may skew pre-backfill rows).
+# Assumes ~50%+ RTH coverage in typical snapshots; tune up if dataset shifts off-hours-heavy.
 _RTH_FETCH_OVERSAMPLE = 4
 
 

@@ -109,9 +109,11 @@
 
 **LIVE-UI-A/E** @ `1b27d03` — transport badge, bundle age, lane-stale dim (signed off).
 
-**FIND-CAL-TS-RDERIVE** (items 1–5) — landed pending operator sign-off; item 6 (historical UPDATE backfill) next commit.
+**FIND-CAL-TS-RDERIVE** (items 1–5) @ `83ca92b` — signed off.
 
-**Next:** calibration widen with `--calibration-widen-cohort` → historical backfill (item 6) → COH-SA.
+**FIND-CAL-TS item-6** @ `1509c2d` (backfill engine + CLI) + tooling @ `39410ca`. Runbook: `docs/operations/backfill_et_clock_runbook.md`. **Operator:** execute backfill on live DB; then calibration widen resumes.
+
+**Next:** operator backfill → calibration widen (`--calibration-widen-cohort`) → COH-SA.
 
 **Unread for coherence lens (post–batch 1 queue):** `features/signal_layer_v1.py`, `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
 

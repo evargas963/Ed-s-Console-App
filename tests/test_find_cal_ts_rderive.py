@@ -97,19 +97,39 @@ def test_ml_train_load_data_where_has_no_rth_where_clause():
     assert "rth_where_clause()" not in src
 
 
-def test_training_paths_have_no_rth_where_clause():
-    """Regression: stored-et_hour SQL must not re-enter training/calibration paths."""
+_SKIP_PY_TREE_DIRS = frozenset(
+    {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__"}
+)
+_ISSUE14_DIAGNOSTIC_BANNER = (
+    "Diagnostic only — not referenced by production runbooks or schedulers"
+)
+
+
+def test_no_rth_where_clause_callers_repo_wide():
+    """Regression: rth_where_clause() must not appear outside ml_data_common (definition)."""
     root = Path(__file__).resolve().parents[1]
-    paths = (
-        "training_cache.py",
-        "ml_scheduler.py",
-        "tools/calibrate_movement_threshold_v1.py",
-        "tools/select_movement_thresholds_percentile_v1.py",
-        "tools/_issue14_rowcount_proof.py",
-    )
-    for rel in paths:
-        src = (root / rel).read_text(encoding="utf-8")
-        assert "rth_where_clause()" not in src, rel
+    offenders: list[str] = []
+    for path in root.rglob("*.py"):
+        rel = path.relative_to(root)
+        if rel.parts and rel.parts[0] == "tests":
+            continue
+        if rel.name == "ml_data_common.py":
+            continue
+        if any(part in _SKIP_PY_TREE_DIRS for part in rel.parts):
+            continue
+        src = path.read_text(encoding="utf-8")
+        if "rth_where_clause()" in src:
+            offenders.append(str(rel).replace("\\", "/"))
+    assert not offenders, f"rth_where_clause() callers: {offenders}"
+
+
+def test_issue14_rowcount_proof_diagnostic_only_docstring():
+    import ast
+
+    path = Path(__file__).resolve().parents[1] / "tools/_issue14_rowcount_proof.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    doc = ast.get_docstring(tree) or ""
+    assert _ISSUE14_DIAGNOSTIC_BANNER in doc
 
 
 def test_v2_advisory_backfill_stamps_et_clock_from_ts_utc():

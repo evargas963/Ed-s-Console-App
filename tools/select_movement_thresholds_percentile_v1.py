@@ -36,6 +36,7 @@ OUT_CFG = ROOT / "calibration" / "movement_target_thresholds_by_horizon_v1.json"
 OUT_REPORT = ROOT / "data" / "movement_threshold_search_report_v1.json"
 
 PERCENTILES = (50, 60, 70, 80)
+# Assumes ~50%+ RTH coverage in typical snapshots; tune up if dataset shifts off-hours-heavy.
 _RTH_FETCH_OVERSAMPLE = 4
 
 
