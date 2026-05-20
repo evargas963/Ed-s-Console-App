@@ -97,7 +97,15 @@
 
 **SLVB minor (operator note, not blocking 3177fdd):** `meta.n_bars` non-numeric string → `int()` can abort loop (`backfill_signal_layer_v1_bundle.py` ~L84); wrap in try if hardened.
 
-**Batch 1 (authorized @ `50405b8`, operator sign-off `99ea0e0`):** `server.py` full Read + `static/index.html` full Read — in progress. Gatekeeper + Cursor; brief → paired-fix queue.
+**Batch 1** @ `50405b8` — brief + operator sign-off (`99ea0e0`). **LIVE-UI-D stack column** @ `f560bce` (operator sign-off).
+
+**Batch 2 — audit lanes @ `f560bce`:**
+
+- [x] **B2-COH-I-E-REACH** — `signals` RuntimeError never reaches `_schedule_analytics_recompute` except; caught `market_state.py` L1309–1326. Fetch completes, cache updates, SSE broadcasts. Cards show `Signal engine error`; **no** `state_error` → error-bar hidden; `decision_generation_id` still advances. Whole `_fetch_state` throw → log only, **stale cache** (L617–618). Not max-entropy fail-open.
+- [ ] **B2-TIER-RENDER-GUARDS** — `renderTierALive` / `renderTierBLight` / `renderTierCPendingShell` vs full `render()` L5209+ guards.
+- [ ] **B2-FIND-CAL-TS** — `lstm_data` `ts_et[:10]` vs `v2_advisory_backfill` `decision_time_ms` from `ts_utc`.
+
+**B2 paired-fix queue (after audits):** `state_error` on signals-engine failure; optional skip `stamp_decision_bundle` on engine ERROR; LIVE-UI-A/E transport badges.
 
 **Unread for coherence lens (post–batch 1 queue):** `features/signal_layer_v1.py`, `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
 
