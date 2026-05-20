@@ -105,11 +105,11 @@
 - [x] **B2-TIER-RENDER-GUARDS** — `_renderCoherenceGuards`, `_updateErrorBarFromPayload`, analytical vs fast timestamp lanes in `static/index.html`.
 - [x] **B2-FIND-TIER-A-BLOCKS-C** — Tier A commits `lastFastTs` only (`_commitTierAFastTimestamp`); `lastRenderTimestamp` + `decision_generation_id` gate analytical full render only; Tier B no longer writes `lastRenderTimestamp`; full render accepts newer `decision_generation_id` even when `_server_build_ts` regresses.
 - [x] **B2 error-bar** — fires on `state_error || state_error_detail` (not both required).
-- [ ] **B2-FIND-CAL-TS** — day-bucket (`ts_et[:10]`) safe; hour-resolution consumers still gated before calibration widen.
+- [x] **B2-FIND-CAL-TS** — audit @ `governance/audits/find_cal_ts_hour_resolution_v1_20260519.md`: day-bucket (`ts_et[:10]`) safe; **A** paths (live/`decision_time_ms`/`ts_utc` re-derive) open for widen; **B** paths (`rth_where_clause`, stored `market_session`, lifecycle `et_hour` fallback) gated until re-derive or backfill.
 
-**LIVE-UI-A/E** — transport mode badge (`ed-transport-badge`), bundle age (`data-bundle-freshness`), SSE STALE override, Tier-C lane stale dim (`data-lane-stale`).
+**LIVE-UI-A/E** @ `1b27d03` — transport badge, bundle age, lane-stale dim (signed off).
 
-**B2 next:** FIND-CAL-TS hour-resolution consumer audit.
+**Next:** FIND-CAL-TS-RDERIVE (items 1–5 in audit doc: `et_clock_from_ts_utc`, training RTH + TOD features from `ts_utc`, phase6 session re-derive, v2 ms_dict stamp, `min_ts_utc` cutover) → calibration widen on cutover cohort → historical backfill (item 6) → COH-SA.
 
 **Unread for coherence lens (post–batch 1 queue):** `features/signal_layer_v1.py`, `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
 
