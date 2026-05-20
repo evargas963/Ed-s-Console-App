@@ -121,7 +121,7 @@
 
 **Gate B (2026-05-20):** No consolidation slices until audit lane 1 closes. **SSC1 @ `bb4b6b8`** on feature. **SIG test:** identical feature vs hybrid. **Audit lane 1 @ tip:** `features/signal_layer_v1.py` — brief + paired fixes FIND-SLV1-1..3; operator sign-off pending. **Temp dirs:** all eight session `*_tmp` paths absent in worktree (cleanup N/A).
 
-**Unread for coherence lens (post–batch 1 queue):** ~~`features/signal_layer_v1.py`~~ (lane 1 read + paired fix — pending operator sign-off), `inference_snapshot.py` (lane 2 next), `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
+**Unread for coherence lens (post–batch 1 queue):** ~~`features/signal_layer_v1.py`~~ (lane 1 closed @ `eb933ea`), ~~`features/inference_snapshot.py`~~ (lane 2 brief @ tip — operator sign-off pending), `monte_carlo_stack_input.py` (lane 2b consumer), `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
 
 ### COHERENCE-AUDIT workstream (full Read — not “files already walked”)
 
@@ -494,7 +494,12 @@ Reference ticker for parametric tests: **SPY**.
   - [x] **FIND-SLV1-1** — `_f` → `numeric_contract.float_finite_or_none` (audit lane 1 paired fix).
   - [x] **FIND-SLV1-2** — `meta_n_bars_int()`; `backfill_signal_layer_v1_bundle` + `signal_layer_v1_to_direction_probs` + `bayesian_fusion` use safe parse (audit lane 1).
   - [x] **FIND-SLV1-3** — `meta.error=missing_last_close` on early return when last close absent (audit lane 1).
-  - [x] **OBS-SLV1-1** — `meta.vwap_source` records `inp` vs `bars_roll` (audit lane 1).
+  - [x] **OBS-SLV1-1** — `meta.vwap_source` records `inp` vs `roll` (audit lane 1 @ `eb933ea`).
+  - [ ] **FIND-VR-1** — `volatility_regime.py:83` `_f(v)` — inline `float()` only; **does not** reject NaN/inf (confirmed). Redirect to `numeric_contract.float_finite_or_none`. Owner: Cursor. Next paired-fix slot.
+  - [ ] **FIND-MEC-1** — `math_exposure_core.py:20` `_f(x)` — same pattern as FIND-VR-1 (no NaN/inf guard). Owner: Cursor. Pair with FIND-VR-1 + extend COH-SA-1 rglob to `def _f(` delegates.
+  - [ ] **FIND-ISNAP-1 (HIGH)** — `build_inference_snapshot_v1_from_signal_input` maps `inp.spread` → `l1_equiv["spread"]` but `build_live_mvp_feature_row` reads **`spread_pts`** (`live_feature_adapter.py:39`). Live stack path always yields `price.spread_pts=None` in MVP features. Owner: Cursor. Lane-2 paired-fix.
+  - [ ] **OBS-ISNAP-1** — `_dist_to_vwap_pts`: non-`below` vwap_side returns positive magnitude only (no negative for above). Accepted if contract is magnitude-only.
+  - [ ] **OBS-ISNAP-2** — `as_of_ts` None allowed when caller omits ts and `refresh_ts_utc` invalid; test `test_build_inference_snapshot_v1_from_signal_input_does_not_fabricate_as_of_ts` locks no wall-clock. Consumers must fail closed on missing as_of (ml_predict/xgb do).
   - [ ] OBS-TC1 — `load_lstm_feature_cache` metadata defaults (`tickers`/`days`/`n_days`/`n_tickers` empty or 0); accepted — structural dims fail-closed via `_meta_required_positive_int`.
   - [ ] OBS-TC2 — `_normalize_data_fp({})` returns `{}` vs 6-key shape for non-empty; accepted — conservative cache miss on legacy empty identity.
   - [ ] OBS-TC3 — Legacy `cache_exists` / `read_cache_meta` at file tail unused by scheduler (accepted).
