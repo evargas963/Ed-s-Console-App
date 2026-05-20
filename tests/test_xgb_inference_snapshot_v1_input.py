@@ -214,6 +214,7 @@ def test_build_inference_snapshot_v1_from_signal_input_uses_adapter_only():
     snap = build_inference_snapshot_v1_from_signal_input(inp, as_of_ts=1_700_000_000.0)
     assert snap["snapshot_type"] == "InferenceSnapshotV1"
     assert snap["features"]["price.spot"] == 400.0
+    assert snap["features"]["price.spread_pts"] == 0.02
 
 
 def test_build_inference_snapshot_v1_from_signal_input_does_not_fabricate_as_of_ts():

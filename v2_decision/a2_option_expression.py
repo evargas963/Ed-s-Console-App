@@ -802,12 +802,9 @@ def _first_number(*values: Any) -> float | None:
 
 
 def _num(value: Any) -> float | None:
-    try:
-        if value is None or value == "":
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    from numeric_contract import float_finite_or_none
+
+    return float_finite_or_none(value)
 
 
 def _clean_str(value: Any) -> str | None:

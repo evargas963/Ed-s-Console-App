@@ -116,6 +116,13 @@ def build_inference_snapshot_v1_from_signal_input(inp: Any, *, as_of_ts: float |
     (flat dict only — no `liquidity_summary` / `spot_anchors` on the wire).
     """
     def _dist_to_vwap_pts() -> float | None:
+        """
+        Map SignalInput.vwap_dist_pts to anchor.vwap_dist_pts (signed distance).
+
+        Magnitude-only contract: only ``vwap_side == "below"`` negates; all other sides
+        (including ``above`` and empty) return positive magnitude. Replay must use the
+        same side convention as live L1 when comparing distances.
+        """
         d = getattr(inp, "vwap_dist_pts", None)
         if d is None:
             return None
@@ -128,9 +135,10 @@ def build_inference_snapshot_v1_from_signal_input(inp: Any, *, as_of_ts: float |
             return -mag
         return mag
 
+    # Keys must match live_feature_adapter.build_live_mvp_feature_row (spread_pts not spread).
     l1_equiv: dict[str, Any] = {
         "spot": getattr(inp, "spot", None),
-        "spread": getattr(inp, "spread", None),
+        "spread_pts": getattr(inp, "spread", None),
         "zone": getattr(inp, "zone", None),
         "nearest_above_dist": getattr(inp, "nearest_above_dist", None),
         "nearest_below_dist": getattr(inp, "nearest_below_dist", None),

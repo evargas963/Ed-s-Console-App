@@ -32,6 +32,14 @@ _INLINE_FLOAT_TRY_EXCEPT = re.compile(
     r"def\s+_float_or_none\s*\([^)]*\)[^:]*:\s*\n\s+try:",
     re.MULTILINE,
 )
+_INLINE_F_TRY_EXCEPT = re.compile(
+    r"def\s+_f\s*\([^)]*\)[^:]*:\s*\n\s+try:",
+    re.MULTILINE,
+)
+_INLINE_NUM_TRY_EXCEPT = re.compile(
+    r"def\s+_num\s*\([^)]*\)[^:]*:\s*\n\s+try:",
+    re.MULTILINE,
+)
 
 
 def _repo_root() -> Path:
@@ -135,6 +143,39 @@ def test_coh_sa1_f_wrappers_delegate_to_numeric_contract(module_name: str, attr:
     text = src.read_text(encoding="utf-8")
     assert "float_finite_or_none" in text
     assert f"def {attr}" in text
+
+
+_MODULE_LEVEL_F = re.compile(r"^def _f\s*\(", re.MULTILINE)
+_MODULE_LEVEL_NUM = re.compile(r"^def _num\s*\(", re.MULTILINE)
+
+
+def test_all_module_level_f_helpers_delegate_to_numeric_contract():
+    """Module-level ``def _f`` parsers (not nested locals in ml_train / adapters)."""
+    root = _repo_root()
+    offenders: list[str] = []
+    for path, rel in _iter_repo_py_files(root):
+        src = path.read_text(encoding="utf-8")
+        if not _MODULE_LEVEL_F.search(src):
+            continue
+        if "float_finite_or_none" not in src:
+            offenders.append(f"{rel}: missing float_finite_or_none delegation")
+        elif _INLINE_F_TRY_EXCEPT.search(src):
+            offenders.append(f"{rel}: inline try/except _f body")
+    assert not offenders, offenders
+
+
+def test_all_module_level_num_helpers_delegate_to_numeric_contract():
+    root = _repo_root()
+    offenders: list[str] = []
+    for path, rel in _iter_repo_py_files(root):
+        src = path.read_text(encoding="utf-8")
+        if not _MODULE_LEVEL_NUM.search(src):
+            continue
+        if "float_finite_or_none" not in src:
+            offenders.append(f"{rel}: missing float_finite_or_none delegation")
+        elif _INLINE_NUM_TRY_EXCEPT.search(src):
+            offenders.append(f"{rel}: inline try/except _num body")
+    assert not offenders, offenders
 
 
 def test_no_legacy_inline_float_or_none_try_body():

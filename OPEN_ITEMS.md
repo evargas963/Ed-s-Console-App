@@ -79,7 +79,7 @@
 - [x] **COH-SA-2 — ET ZoneInfo satellites → `time_et`** — production + research paths import `ET` / `now_et()` from `time_et.py`; `tests/test_coh_sa2_et_authority.py` rglob guards.
 - [x] **COH-SA-3 — fusion-predicates → `fusion_contract.py`** — `fusion_is_authoritative`, `is_canonical_tradable` / `canonical_provenance_is_tradable`; redirected signals, call_engine, prediction_engine, mc_fusion_adjustment, fusion_policy_contract, market_state, multi_horizon_ml_bundle; `tests/test_fusion_contract.py` rglob guards (`getattr(_?fusion*, "available")` + `in NON_TRADABLE_CANONICAL_PROVENANCE`).
 - [x] **COH-SA-4 / COH-I-K — replay max-hold bars → `replay_hold_bars.py`** — live setup prescription, strict context read, trade-type fallback; provenance in replay payload; `tests/test_replay_hold_bars.py`.
-- [x] **FIND-STACK-DIR1 — Stack display direction** — operator decision **ALIGN**: `signals._model_stage` uses `direction_from_triplet` only (no `dominant_class`); test `test_stack_model_stage_ignores_dominant_class_uses_triplet`.
+- [x] **FIND-STACK-DIR1 — Stack display direction** — operator decision **ALIGN**: `signals._model_stage` uses `direction_from_normalized_triplet` on finite probs only (no `dominant_class`); test `test_stack_model_stage_ignores_dominant_class_uses_triplet`.
 - [x] **COH-SA-5 — regime size multipliers → `position_sizing_policy.py`** — `REGIME_SIZE_MULTIPLIERS` + `regime_size_multiplier` (base + confidence nudge); `compute_position_size` redirected; `tests/test_position_sizing_policy.py` rglob guard. Sibling inline thresholds in same function flagged for magic-thresholds slice.
 - [x] **COH-SA-TRIPLET** @ `31c4f45` — `direction_from_triplet` / `direction_from_normalized_triplet`; subsumes COH-I-H. Tie-break: up → down → flat (docstring + tests).
 
@@ -121,7 +121,7 @@
 
 **Gate B (2026-05-20):** No consolidation slices until audit lane 1 closes. **SSC1 @ `bb4b6b8`** on feature. **SIG test:** identical feature vs hybrid. **Audit lane 1 @ tip:** `features/signal_layer_v1.py` — brief + paired fixes FIND-SLV1-1..3; operator sign-off pending. **Temp dirs:** all eight session `*_tmp` paths absent in worktree (cleanup N/A).
 
-**Unread for coherence lens (post–batch 1 queue):** ~~`features/signal_layer_v1.py`~~ (lane 1 closed @ `eb933ea`), ~~`features/inference_snapshot.py`~~ (lane 2 brief @ tip — operator sign-off pending), `monte_carlo_stack_input.py` (lane 2b consumer), `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
+**Unread for coherence lens (post–batch 1 queue):** ~~`features/signal_layer_v1.py`~~ (lane 1 closed @ `eb933ea`), ~~`features/inference_snapshot.py`~~ (lane 2 paired-fix closed), `monte_carlo_stack_input.py` (lane 3 recommendation), `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
 
 ### COHERENCE-AUDIT workstream (full Read — not “files already walked”)
 
@@ -497,10 +497,10 @@ Reference ticker for parametric tests: **SPY**.
   - [x] **OBS-SLV1-1** — `meta.vwap_source` records `inp` vs `roll` (audit lane 1 @ `eb933ea`).
   - [x] **FIND-VR-1** — `volatility_regime._f` → `float_finite_or_none`.
   - [x] **FIND-MEC-1** — `math_exposure_core._f` → `float_finite_or_none` (fix-as-we-find with VR-1).
-  - [x] **COH-SA-1b** — `test_def_f_helpers_delegate_to_numeric_contract` extends float guard to `def _f`.
-  - [ ] **FIND-ISNAP-1 (HIGH)** — `build_inference_snapshot_v1_from_signal_input` maps `inp.spread` → `l1_equiv["spread"]` but `build_live_mvp_feature_row` reads **`spread_pts`** (`live_feature_adapter.py:39`). Live stack path always yields `price.spread_pts=None` in MVP features. Owner: Cursor. Lane-2 paired-fix.
-  - [ ] **OBS-ISNAP-1** — `_dist_to_vwap_pts`: non-`below` vwap_side returns positive magnitude only (no negative for above). Accepted if contract is magnitude-only.
-  - [ ] **OBS-ISNAP-2** — `as_of_ts` None allowed when caller omits ts and `refresh_ts_utc` invalid; test `test_build_inference_snapshot_v1_from_signal_input_does_not_fabricate_as_of_ts` locks no wall-clock. Consumers must fail closed on missing as_of (ml_predict/xgb do).
+  - [x] **COH-SA-1b** — repo-wide guards for module-level `def _f` / `def _num` → `float_finite_or_none` (`tests/test_coh_sa1_float_consolidation.py`).
+  - [x] **FIND-ISNAP-1 (HIGH)** — `l1_equiv["spread_pts"]` matches `live_feature_adapter` reader; `tests/test_inference_snapshot_l1_equiv_contract.py` locks all six key pairs.
+  - [x] **OBS-ISNAP-1** — `_dist_to_vwap_pts` magnitude-only contract documented in `inference_snapshot.py`.
+  - [x] **OBS-ISNAP-2** — `test_build_inference_snapshot_v1_from_signal_input_does_not_fabricate_as_of_ts` verified; `price.spread_pts` asserted in adapter test.
   - [ ] OBS-TC1 — `load_lstm_feature_cache` metadata defaults (`tickers`/`days`/`n_days`/`n_tickers` empty or 0); accepted — structural dims fail-closed via `_meta_required_positive_int`.
   - [ ] OBS-TC2 — `_normalize_data_fp({})` returns `{}` vs 6-key shape for non-empty; accepted — conservative cache miss on legacy empty identity.
   - [ ] OBS-TC3 — Legacy `cache_exists` / `read_cache_meta` at file tail unused by scheduler (accepted).

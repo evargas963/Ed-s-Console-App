@@ -44,7 +44,7 @@ from prediction_engine import (
 )
 from call_engine import compute_call
 from fusion_contract import fusion_is_authoritative, is_canonical_tradable
-from numeric_contract import direction_from_normalized_triplet, direction_from_triplet
+from numeric_contract import float_finite_or_none, direction_from_normalized_triplet
 from regime_engine import classify_regime
 from volatility_regime import classify_volatility_regime
 import bayesian_fusion
@@ -744,10 +744,13 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
     def _model_stage(name, out, stage_id) -> StackStage:
         if not getattr(out, "available", False):
             return StackStage(stage_id=stage_id, status="inactive", note=f"{name}: inactive")
-        dom = direction_from_triplet(
-            getattr(out, "prob_up", None),
-            getattr(out, "prob_down", None),
-            getattr(out, "prob_flat", None),
+        pu = float_finite_or_none(getattr(out, "prob_up", None))
+        pd = float_finite_or_none(getattr(out, "prob_down", None))
+        pf = float_finite_or_none(getattr(out, "prob_flat", None))
+        dom = (
+            direction_from_normalized_triplet(pu, pd, pf)
+            if pu is not None and pd is not None and pf is not None
+            else None
         )
         conf = getattr(out, "confidence_label", None) or getattr(out, "confidence", None)
         prob = getattr(out, "prob_up", None)
