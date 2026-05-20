@@ -322,26 +322,15 @@ def _infer_fusion_fields(ms: dict[str, Any]) -> None:
 
 
 def _direction_from_triplet(up: Any, down: Any, flat: Any) -> str | None:
-    vals = {
-        "up": _float_or_none(up),
-        "down": _float_or_none(down),
-        "flat": _float_or_none(flat),
-    }
-    present = {k: v for k, v in vals.items() if v is not None}
-    if not present:
-        return None
-    return max(present.items(), key=lambda kv: kv[1])[0]
+    from numeric_contract import direction_from_triplet
+
+    return direction_from_triplet(up, down, flat)
 
 
 def _float_or_none(value: Any) -> float | None:
-    try:
-        if value is not None:
-            v = float(value)
-            if math.isfinite(v):
-                return v
-    except (TypeError, ValueError):
-        return None
-    return None
+    from numeric_contract import float_finite_or_none
+
+    return float_finite_or_none(value)
 
 
 def _first_present(mapping: Mapping[str, Any], *keys: str) -> Any:

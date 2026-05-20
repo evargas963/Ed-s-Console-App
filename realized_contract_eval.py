@@ -242,12 +242,9 @@ def build_replay_context_payload(
 
 
 def _f(v) -> Optional[float]:
-    if v is None:
-        return None
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+    from numeric_contract import float_finite_or_none
+
+    return float_finite_or_none(v)
 
 
 def _walls_from_replay(obj: dict) -> list[WallsRow] | None:

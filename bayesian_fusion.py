@@ -210,7 +210,9 @@ def _model_dominant_class(out) -> Optional[str]:
     if triplet is None:
         return None
     up, down, flat = triplet
-    return max("up", "down", "flat", key=lambda lab: {"up": up, "down": down, "flat": flat}[lab])
+    from numeric_contract import direction_from_normalized_triplet
+
+    return direction_from_normalized_triplet(up, down, flat)
 
 
 def _optional_support(out, attr: str) -> Optional[float]:

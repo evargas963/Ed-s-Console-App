@@ -129,8 +129,9 @@ def _triplet(p: Tuple[float, float, float]) -> Optional[Tuple[float, float, floa
 
 
 def _argmax_dir(u: float, d: float, f: float) -> str:
+    from numeric_contract import direction_from_normalized_triplet
 
-    return max("up", "down", "flat", key=lambda lab: {"up": u, "down": d, "flat": f}[lab])
+    return direction_from_normalized_triplet(u, d, f)
 
 
 

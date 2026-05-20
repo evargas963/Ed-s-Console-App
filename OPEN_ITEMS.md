@@ -73,12 +73,12 @@
 
 **TIER 1.5 — single-authority (behavioral divergence today)**
 
-- [ ] **COH-SA-FLOAT — Four float-validation helpers → one module** — `v2_advisory_backfill`, `v2_live_logging`, `realized_contract_eval`, `call_engine._num`; explicit semantics per callsite; golden edge-case tests.
-- [ ] **COH-SA-TRIPLET — Direction from probability triplet** — agreement test across all triplets; shared helper; subsumes COH-I-H.
+- [x] **COH-SA-FLOAT — `numeric_contract.py`** — `float_finite_or_none`, `float_positive_or_none`; redirected `v2_advisory_backfill`, `v2_live_logging`, `realized_contract_eval`; `tests/test_numeric_contract_tier15.py`. (call_engine had no `_num` @ 50405b8 — see brief.)
+- [x] **COH-SA-TRIPLET — `direction_from_triplet` / `direction_from_normalized_triplet`** — `signals`, `v2_advisory_backfill`, `bayesian_fusion`, `mc_fusion_adjustment`; subsumes COH-I-H tie-break tests.
 
 **TIER 2 — architectural**
 
-- [ ] **COH-I-H — Argmax tie-break: up wins on flat ties** — `canonical_forecast_from_fusion` (signals.py ~L132-135) and `_direction_from_triplet` (v2_advisory_backfill.py ~L324-333). **COH-SA / TIER-1.5:** triplet agreement test + shared `direction_from_triplet()` helper.
+- [x] **COH-I-H — Argmax tie-break** — Closed via COH-SA-TRIPLET @ tier-1.5 (`numeric_contract.direction_from_triplet`, up-first on ties).
 
 - [ ] **COH-I-C — `shared_sequence_context` under-fetch when transformer meta missing (~L138-139)** — can cascade MC/transformer inactive. Ties FIND-SSC1 / OBS-SSC1.
 

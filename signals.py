@@ -149,7 +149,9 @@ def canonical_forecast_from_fusion(fusion) -> CanonicalForecast:
     d_raw = getattr(fusion, "dominant_direction", None)
     d = str(d_raw).strip().lower() if d_raw is not None else None
     if d not in ("up", "down", "flat"):
-        d = max("up", "down", "flat", key=lambda lab: {"up": pu, "down": pd, "flat": pf}[lab])
+        from numeric_contract import direction_from_normalized_triplet
+
+        d = direction_from_normalized_triplet(pu, pd, pf)
     conf_raw = getattr(fusion, "fusion_confidence", None)
     conf = str(conf_raw).strip().lower() if conf_raw is not None else None
     if conf not in ("low", "medium", "high"):

@@ -105,12 +105,7 @@ def append_live_v2_calibration_decision(
 
 def _decision_ts_utc_from_payload(calibration_payload: dict[str, Any]) -> float | None:
     """Authoritative decision instant from SignalInput.refresh_ts_utc only."""
+    from numeric_contract import float_positive_or_none
+
     ts = getattr(calibration_payload["inp"], "refresh_ts_utc", None)
-    try:
-        if ts is not None:
-            value = float(ts)
-            if value > 0.0:
-                return value
-    except (TypeError, ValueError):
-        pass
-    return None
+    return float_positive_or_none(ts)
