@@ -28,6 +28,9 @@ _FUSION_AVAILABLE_GETATTR = re.compile(
 _NON_TRADABLE_MEMBERSHIP = re.compile(
     r"""in\s+NON_TRADABLE_CANONICAL_PROVENANCE"""
 )
+_TRADABLE_MEMBERSHIP = re.compile(
+    r"""in\s+TRADABLE_CANONICAL_PROVENANCE"""
+)
 
 
 def _repo_root() -> Path:
@@ -137,5 +140,18 @@ def test_no_inline_non_tradable_membership_outside_authority():
             continue
         src = path.read_text(encoding="utf-8")
         if _NON_TRADABLE_MEMBERSHIP.search(src):
+            offenders.append(str(rel).replace("\\", "/"))
+    assert not offenders, offenders
+
+
+def test_no_inline_tradable_membership_outside_authority():
+    root = _repo_root()
+    allowed = {"fusion_contract.py", "signal_types.py"}
+    offenders: list[str] = []
+    for path, rel in _iter_production_py(root):
+        if rel.name in allowed:
+            continue
+        src = path.read_text(encoding="utf-8")
+        if _TRADABLE_MEMBERSHIP.search(src):
             offenders.append(str(rel).replace("\\", "/"))
     assert not offenders, offenders

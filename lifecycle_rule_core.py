@@ -29,6 +29,8 @@ ExitReason = Literal["stop_hit", "target_hit", "time_expiry"]
 MAX_RR_T1 = 5.0
 MAX_RR_T2 = 8.0
 MIN_RR = 1.5
+T1_FALLBACK_R_MULTIPLE = 2.0
+T2_OFFSET_R_MULTIPLE = 1.0
 
 
 class SameBarResolution(str, Enum):
@@ -202,7 +204,7 @@ def derive_target_levels(
         target_raw = entry_f + sign * min(avg5_abs, risk_f * MAX_RR_T1)
         target_source = "5c_avg_move"
     else:
-        target_raw = entry_f + sign * risk_f * 2.0
+        target_raw = entry_f + sign * risk_f * T1_FALLBACK_R_MULTIPLE
         target_source = "2r_fallback"
 
     target_snapped_raw = snap_target_to_structural(
@@ -222,7 +224,7 @@ def derive_target_levels(
         target2_raw = entry_f + sign * min(avg60_abs, risk_f * MAX_RR_T2)
         target2_source = "60c_avg_move"
     else:
-        target2_raw = target + sign * risk_f
+        target2_raw = target + sign * risk_f * T2_OFFSET_R_MULTIPLE
         target2_source = "1r_offset_from_t1"
 
     target2_snapped_raw = snap_target_to_structural(

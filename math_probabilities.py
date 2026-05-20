@@ -11,7 +11,7 @@ from dataclasses import dataclass as _oe_dc
 from typing import Optional
 import math
 
-from math_exposure_core import _f, bucket_metric
+from math_exposure_core import MISSING_GREEK_SENTINEL, _f, bucket_metric
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -195,9 +195,9 @@ def score_option_expression(contracts, spot, strike, side, *, walls=None):
     bid = _f(ct.get("bid"))
     ask = _f(ct.get("ask"))
     gamma_raw = _f(ct.get("gamma"))
-    gamma = gamma_raw if (gamma_raw is not None and gamma_raw != -999.0 and math.isfinite(gamma_raw)) else None
+    gamma = gamma_raw if (gamma_raw is not None and gamma_raw != MISSING_GREEK_SENTINEL and math.isfinite(gamma_raw)) else None
     delta_raw = _f(ct.get("delta"))
-    delta = delta_raw if (delta_raw is not None and delta_raw != -999.0 and math.isfinite(delta_raw)) else None
+    delta = delta_raw if (delta_raw is not None and delta_raw != MISSING_GREEK_SENTINEL and math.isfinite(delta_raw)) else None
     volume = _f(ct.get("totalVolume"))
     oi = _f(ct.get("openInterest"))
     a_px, b_px = ask, bid
@@ -213,7 +213,7 @@ def score_option_expression(contracts, spot, strike, side, *, walls=None):
         if str(c.get("putCall", "")).upper().strip() != side_up:
             continue
         g_raw = _f(c.get("gamma"))
-        if g_raw is None or g_raw == -999.0 or not math.isfinite(g_raw):
+        if g_raw is None or g_raw == MISSING_GREEK_SENTINEL or not math.isfinite(g_raw):
             continue
         if abs(g_raw) > abs(max_g):
             max_g = g_raw

@@ -85,6 +85,7 @@
 - [x] **REPO_SWEEP #1 — error-propagation** — bare `except:` eliminated (4→0); Class-C fixes SWEEP-EP-1..5; baseline 42 silent passes + money-path zero-tolerance frozenset; audit JSON count reconciled; 5 tick-trigger fail-closed tests. Completion @ sweep-1-completion commit. Remaining silent passes: server/ml_scheduler (sweep #2).
 - [x] **REPO_SWEEP #2 — error-propagation** @ `1599d75` — SWEEP-EP-6..20; money-path + `server.py` + `ml_scheduler.py` cleared; repo-wide baseline 27 residual silent passes; audit `repo_sweep_error_propagation_v2_20260518.json`.
 - [x] **REPO_SWEEP #3 — error-propagation** — SWEEP-EP-21..47 (27 sites): residual `except Exception: pass` → `log.debug` + `exc_info=True` in adjacent/support modules (`levels.py`, `live_market_plane.py`, `schwab_client.py`, calibration/*, etc.); money-path roster re-read — 0 silent passes; baseline 0; audit `repo_sweep_error_propagation_v3_20260520.json`; guard tests in `tests/test_repo_sweep_error_propagation_v1.py`.
+- [x] **REPO_SWEEP magic-thresholds** — SWEEP-MT-1..13 @ paired-fix: `T1_FALLBACK_R_MULTIPLE` / `T2_OFFSET_R_MULTIPLE` (`lifecycle_rule_core.py`); `MISSING_GREEK_SENTINEL` (`math_exposure_core.py`, imported `math_probabilities.py`, re-export `math_exposure.py`); tests `tests/test_repo_sweep_magic_thresholds_v1.py`; OBS-FP1-5 tradable-membership grep guard in `tests/test_fusion_contract.py`.
 - [x] **SWEEP-1-COMPLETION** — audit `class_c_fixed_count` reconciled (5); `_CRITICAL_SILENT_PASS_FILES` expanded (11 money-path modules); EP-4 five coherence branches tested; `signals`/`signal_layer_v1` silent pass → log.debug; rules #22-27 in AGENT_SELF_GOVERNANCE.md.
 
 **TIER 2 — architectural**
@@ -553,7 +554,9 @@ Reference ticker for parametric tests: **SPY**.
   - [x] **FIND-LRC-6** — `derive_target_levels` finite entry/risk gate.
   - [x] **FIND-LRC-7** — `fire_exit` non-finite stop/target → `missing_stop_target_for_exit`.
   - [x] **FIND-LRC-8** — `_cap_target` finite inputs.
-  - [ ] OBS-LRC-1 — magic `2.0` / `1.0` R-multiples → named constants (dim #11).
+  - [x] **OBS-LRC-1** — magic `2.0` / `1.0` R-multiples → `T1_FALLBACK_R_MULTIPLE` / `T2_OFFSET_R_MULTIPLE` (`lifecycle_rule_core.py`); closed via REPO_SWEEP SWEEP-MT-1..2.
+  - [x] **OBS-MP-2** — Schwab missing-greek `-999.0` sentinel → `MISSING_GREEK_SENTINEL` in `math_exposure_core.py` (11 sites); closed via REPO_SWEEP SWEEP-MT-3..13.
+  - [x] **OBS-FP1-5** — symmetric grep guard `in TRADABLE_CANONICAL_PROVENANCE` outside authority; `test_no_inline_tradable_membership_outside_authority` in `tests/test_fusion_contract.py`.
   - [ ] OBS-LRC-3 — `int(max_hold_bars or 1)` NaN guard (low pri).
   - [ ] OBS-LRC-4 — `apply_time_decay` / `apply_vix_adjustment` / `apply_risk_multiplier`: non-finite `distance_pct` falls back to `float(distance_pct)` (NaN passthrough on first arg); consider fail-closed or STOP_BASE_PCT seed.
   - [ ] OBS-TC1 — `load_lstm_feature_cache` metadata defaults (`tickers`/`days`/`n_days`/`n_tickers` empty or 0); accepted — structural dims fail-closed via `_meta_required_positive_int`.

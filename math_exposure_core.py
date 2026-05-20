@@ -16,6 +16,8 @@ from numeric_contract import float_finite_or_none
 
 log = logging.getLogger(__name__)
 
+# Schwab options API missing-greek sentinel (documented wire value).
+MISSING_GREEK_SENTINEL: float = -999.0
 
 # ── Formatting helpers ────────────────────────────────────────────────────────
 
@@ -169,8 +171,8 @@ def compute_exposures_by_strike(
 
         delta = _f(ct.get("delta"))
         gamma = _f(ct.get("gamma"))
-        delta_ok = delta is not None and delta != -999.0 and math.isfinite(delta)
-        gamma_ok = gamma is not None and gamma != -999.0 and math.isfinite(gamma)
+        delta_ok = delta is not None and delta != MISSING_GREEK_SENTINEL and math.isfinite(delta)
+        gamma_ok = gamma is not None and gamma != MISSING_GREEK_SENTINEL and math.isfinite(gamma)
 
         if not delta_ok or not gamma_ok:
             missing += 1
@@ -194,9 +196,9 @@ def compute_exposures_by_strike(
                 if gamma_ok:
                     b["call_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01  # $-GEX per 1% spot move
                 _vega = _f(ct.get("vega"))
-                _vega_ok = _vega is not None and _vega != -999.0 and math.isfinite(_vega)
+                _vega_ok = _vega is not None and _vega != MISSING_GREEK_SENTINEL and math.isfinite(_vega)
                 _iv = _f(ct.get("volatility"))
-                _iv_ok = _iv is not None and _iv > 0 and _iv != -999.0 and math.isfinite(_iv)
+                _iv_ok = _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and math.isfinite(_iv)
                 if _vega_ok and _iv_ok:
                     b["call_vanna"] += (_vega / (spt * (_iv / 100.0))) * oi * mult
         elif side == "PUT":
@@ -216,9 +218,9 @@ def compute_exposures_by_strike(
                 if gamma_ok:
                     b["put_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01   # $-GEX per 1% spot move
                 _vega = _f(ct.get("vega"))
-                _vega_ok = _vega is not None and _vega != -999.0 and math.isfinite(_vega)
+                _vega_ok = _vega is not None and _vega != MISSING_GREEK_SENTINEL and math.isfinite(_vega)
                 _iv = _f(ct.get("volatility"))
-                _iv_ok = _iv is not None and _iv > 0 and _iv != -999.0 and math.isfinite(_iv)
+                _iv_ok = _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and math.isfinite(_iv)
                 if _vega_ok and _iv_ok:
                     b["put_vanna"] += (_vega / (spt * (_iv / 100.0))) * oi * mult
         else:
@@ -673,9 +675,9 @@ def compute_net_charm(
             continue
         if mult is None or mult <= 0:
             continue
-        if gamma == -999.0 or not math.isfinite(gamma):
+        if gamma == MISSING_GREEK_SENTINEL or not math.isfinite(gamma):
             continue
-        if iv is None or iv <= 0 or iv == -999.0 or not math.isfinite(iv):
+        if iv is None or iv <= 0 or iv == MISSING_GREEK_SENTINEL or not math.isfinite(iv):
             continue
 
         T = _resolve_T(dte_raw)

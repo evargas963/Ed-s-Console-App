@@ -263,7 +263,11 @@ from math_probabilities import *                                               #
 
 # Underscore names are excluded from import * — re-export explicitly
 from math_exposure_core import (                                               # noqa: F401
-    _f, _nearest_strike, _window_strikes, _strike_bucket,
+    MISSING_GREEK_SENTINEL,
+    _f,
+    _nearest_strike,
+    _window_strikes,
+    _strike_bucket,
 )
 from math_levels import (                                                      # noqa: F401
     _pick_gamma_pin, _pick_oi_center, _pick_inflection_closest_zero,
