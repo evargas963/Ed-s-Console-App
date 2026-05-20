@@ -37,7 +37,7 @@
 
 - [ ] **LIVE-UI-D — Tri-state None semantics on cards (priority candidate)**  
   Empirical `None` (MIN_SAMPLES), fusion withheld, and “no data yet” all arrive as `None` (signal_types.py ~L237–283; signals canonical path). **Fix direction:** distinct UI labels — withheld / unavailable / loading; map from provenance + component reason codes.
-- [x] **LIVE-UI-D (stack status column)** — `parseFusedStackStatus` / `formatFusedStackStatusDisplay` in `static/index.html`; horizon panel Stack row discriminates `stack_failed|`, `fusion_unavailable|`, `fusion_ok|` (COH-I-J → operator). Broader LIVE-UI-D tri-state None still open.
+- [x] **LIVE-UI-D (stack status column)** @ `f560bce` — `parseFusedStackStatus` / `formatFusedStackStatusDisplay`; horizon Stack row discriminates `stack_failed|`, `fusion_unavailable|`, `fusion_ok|`. Broader tri-state None still open.
 
 - [ ] **LIVE-UI-E — MH promotion without headline WHY (priority candidate)**  
   call_engine.py ~L1384–1407: MH can promote WAIT→directional (`_mh_promoted_directional`); conviction floored low (L1456–1457) but headline still LONG/SHORT. **Fix direction:** surface promotion + blocker in Decision Command / call reasoning text, not diag-only.
@@ -74,8 +74,8 @@
 
 **TIER 1.5 — single-authority (behavioral divergence today)**
 
-- [x] **COH-SA-FLOAT — `numeric_contract.py`** — `float_finite_or_none`, `float_positive_or_none`; redirected `v2_advisory_backfill`, `v2_live_logging`, `realized_contract_eval`; `tests/test_numeric_contract_tier15.py`. (call_engine had no `_num` @ 50405b8 — see brief.)
-- [x] **COH-SA-TRIPLET — `direction_from_triplet` / `direction_from_normalized_triplet`** — `signals`, `v2_advisory_backfill`, `bayesian_fusion`, `mc_fusion_adjustment`; subsumes COH-I-H tie-break tests.
+- [x] **COH-SA-FLOAT — `numeric_contract.py`** @ `31c4f45` — `float_finite_or_none`, `float_positive_or_none`; redirected `v2_advisory_backfill`, `v2_live_logging`, `realized_contract_eval`. **Substantive fix:** `realized_contract_eval._f` no longer passes NaN/inf into PnL (was silent corruption pre-fix). `tests/test_numeric_contract_tier15.py`.
+- [x] **COH-SA-TRIPLET** @ `31c4f45` — `direction_from_triplet` / `direction_from_normalized_triplet`; subsumes COH-I-H. Tie-break: up → down → flat (docstring + tests).
 
 **TIER 2 — architectural**
 
@@ -154,8 +154,8 @@
 | Concept | Multiple sites | Risk | Priority |
 |---------|----------------|------|----------|
 | **ET derivation** | server, db, ml_scheduler, v2 A2, ad-hoc ZoneInfo | DST / session drift | **Closed @ `99ea0e0`** (`time_et.py`); satellite `ZoneInfo` calls remain for later redirect |
-| **Float validation** | `v2_advisory_backfill._float_or_none` (finite); `v2_live_logging` (>0); `realized_contract_eval._f` (bare float); `call_engine._num` | **Different verdicts on same input today** | **TIER-1.5** |
-| **Direction from triplet** | `signals.canonical_forecast_from_fusion`; `v2_advisory_backfill._direction_from_triplet`; `signals._model_stage` | Coincidentally aligned (up-first); third consumer can drift | TIER-1.5 test + helper; overlaps COH-I-H |
+| **Float validation** | 10+ duplicate `_float_or_none` (lifecycle, live_decision_bundle, v2_a1_*, …) | NaN/inf still accepted at non-redirected sites | **Partial @ `31c4f45`**; COH-SA sweep |
+| **Direction from triplet** | Model `dominant_class` path unchanged | By design, not argmax | **Closed @ `31c4f45`** for argmax sites |
 | **Fusion availability** | `getattr(fusion, "available", False)` inlined (signals, call_engine) | No `fusion_is_authoritative()` | COH-SA |
 | **Tradability predicate** | frozenset shared; `_prov in NON_TRADABLE…` inlined | No `is_canonical_tradable()` | COH-SA |
 | **Replay max-hold bars** | `replay_max_hold_bars_for_trade_type` / `_from_context` / `_for_setup` | Live vs replay drift | COH-SA (COH-I-K) |
