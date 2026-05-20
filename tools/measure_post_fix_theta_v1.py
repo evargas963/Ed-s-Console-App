@@ -34,6 +34,7 @@ if str(ROOT) not in sys.path:
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
+from math_exposure import MISSING_GREEK_SENTINEL
 
 
 @dataclass
@@ -102,14 +103,14 @@ def _classify_theta(ct: dict) -> str:
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         if isinstance(v, float) and not math.isfinite(v):
             return "present_other"
-        if float(v) == -999.0:
+        if float(v) == MISSING_GREEK_SENTINEL:
             return "present_sentinel"
         return "present_numeric"
     try:
         f = float(v)
     except (TypeError, ValueError):
         return "present_other"
-    if f == -999.0:
+    if f == MISSING_GREEK_SENTINEL:
         return "present_sentinel"
     return "present_numeric"
 
