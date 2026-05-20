@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from fusion_contract import canonical_provenance_is_tradable
+from numeric_contract import float_finite_or_none
+
 from .a2_option_expression import build_a2_option_expression
 from .a1_conformal_promotion import derive_a1_conformal_bounds
 from .a1_raw_probability import dominant_probability
@@ -177,10 +180,20 @@ def _trace_block(ms: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _fusion_ms_authoritative(ms: dict[str, Any]) -> bool:
+    """True when Tier C fusion direction is safe to read (available + tradable provenance)."""
+    if not ms.get("fusion_available"):
+        return False
+    prov = ms.get("canonical_provenance")
+    if prov is None:
+        return True
+    return canonical_provenance_is_tradable(str(prov))
+
+
 def _direction(ms: dict[str, Any]) -> str:
     raw = (
         ms.get("fusion_dominant_direction")
-        if ms.get("fusion_available")
+        if _fusion_ms_authoritative(ms)
         else ms.get("dominant_dir")
     ) or ms.get("prediction_dir") or ms.get("final_bias")
     s = str(raw or "").strip().lower()
@@ -193,13 +206,8 @@ def _direction(ms: dict[str, Any]) -> str:
 
 def _desk_confidence_value(ms: dict[str, Any]) -> float | None:
     """Desk aggregate from multi_horizon_decision (Pilot 1 A1 headline)."""
-    fc = ms.get("final_confidence")
-    if fc is None:
-        return None
-    try:
-        return round(float(fc), 4)
-    except (TypeError, ValueError):
-        return None
+    x = float_finite_or_none(ms.get("final_confidence"))
+    return round(x, 4) if x is not None else None
 
 
 def _confidence(ms: dict[str, Any]) -> float | None:
@@ -208,13 +216,8 @@ def _confidence(ms: dict[str, Any]) -> float | None:
 
 
 def _position_size_fraction(ms: dict[str, Any]) -> float | None:
-    r_units = ms.get("r_units")
-    try:
-        if r_units is not None:
-            return round(float(r_units), 4)
-    except (TypeError, ValueError):
-        return None
-    return None
+    x = float_finite_or_none(ms.get("r_units"))
+    return round(x, 4) if x is not None else None
 
 
 def _targets(ms: dict[str, Any]) -> list[Any]:
