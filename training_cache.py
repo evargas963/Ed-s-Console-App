@@ -320,9 +320,9 @@ def _normalize_data_fp(d: Optional[dict]) -> dict:
         return {}
 
     def _num(x):
-        if x is None:
-            return None
-        return float(x)
+        from numeric_contract import float_finite_or_none
+
+        return float_finite_or_none(x)
 
     rc_raw = d.get("row_count")
     if rc_raw is None:

@@ -81,20 +81,9 @@ def stamp_decision_bundle(ms_dict: dict) -> dict:
 
 
 def _float_or_none(x: Any) -> Optional[float]:
+    from numeric_contract import float_finite_or_none
 
-    if x is None:
-
-        return None
-
-    try:
-
-        v = float(x)
-
-    except (TypeError, ValueError):
-
-        return None
-
-    return v
+    return float_finite_or_none(x)
 
 
 

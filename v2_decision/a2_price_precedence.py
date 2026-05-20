@@ -6,15 +6,9 @@ from typing import Any
 
 
 def _num(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        out = float(value)
-    except (TypeError, ValueError):
-        return None
-    if not (out == out):  # NaN
-        return None
-    return out
+    from numeric_contract import float_finite_or_none
+
+    return float_finite_or_none(value)
 
 
 def contract_spread_pts_from_bid_ask(bid: float | None, ask: float | None) -> float | None:

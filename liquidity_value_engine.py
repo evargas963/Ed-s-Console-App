@@ -37,13 +37,9 @@ RTH_CLOSE = time(16, 0)
 
 
 def _positive_float_or_none(value) -> Optional[float]:
-    try:
-        if value is None:
-            return None
-        out = float(value)
-    except (TypeError, ValueError):
-        return None
-    return out if out > 0 else None
+    from numeric_contract import float_positive_or_none
+
+    return float_positive_or_none(value)
 
 
 def _cluster_reference_price(*candidates) -> Optional[float]:
@@ -56,12 +52,9 @@ def _cluster_reference_price(*candidates) -> Optional[float]:
 
 
 def _float_or_none(value) -> Optional[float]:
-    try:
-        if value is None:
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    from numeric_contract import float_finite_or_none
+
+    return float_finite_or_none(value)
 
 
 _SCHWAB_PRICEHISTORY_SOURCE = "schwab_pricehistory"

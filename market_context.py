@@ -13,22 +13,15 @@ from typing import Callable, Optional
 
 
 def _positive_float_or_none(value) -> Optional[float]:
-    try:
-        if value is None:
-            return None
-        out = float(value)
-    except (TypeError, ValueError):
-        return None
-    return out if out > 0 else None
+    from numeric_contract import float_positive_or_none
+
+    return float_positive_or_none(value)
 
 
 def _float_or_none(value) -> Optional[float]:
-    try:
-        if value is None:
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    from numeric_contract import float_finite_or_none
+
+    return float_finite_or_none(value)
 
 
 def configured_index_futures_symbols() -> dict[str, str]:

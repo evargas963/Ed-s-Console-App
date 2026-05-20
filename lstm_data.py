@@ -33,13 +33,9 @@ log = logging.getLogger("lstm_data")
 
 
 def _positive_float_or_none(value) -> Optional[float]:
-    try:
-        if value is None:
-            return None
-        out = float(value)
-    except (TypeError, ValueError):
-        return None
-    return out if out > 0 else None
+    from numeric_contract import float_positive_or_none
+
+    return float_positive_or_none(value)
 
 # ── Database location (same resolver as db.DB_PATH / ED_CONSOLE_DB) ─────────
 from db import DB_PATH
