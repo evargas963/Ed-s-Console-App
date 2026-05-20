@@ -526,6 +526,12 @@ Reference ticker for parametric tests: **SPY**.
   - [x] **FIND-MS-8** — call entry/stop/target display via `_ms_price_disp`.
   - [x] **FIND-MS-9** — `final_confidence` via `float_finite_or_none`.
   - [x] **FIND-MS-10** — `rec_strike` via `float_finite_or_none`; non-finite → `is_no_trade`.
+  - [x] **FIND-BF-1** — `_model_direction_triplet` via `float_finite_or_none` + `math.isfinite(tot)`.
+  - [x] **FIND-BF-2** — `_model_dominant_class` triplet-only via `direction_from_normalized_triplet`.
+  - [x] **FIND-BF-3** — `_optional_support` via `float_finite_or_none`.
+  - [x] **FIND-BF-4** — `_bayesian_update` skips non-finite likelihoods.
+  - [x] **FIND-BF-5** — `float_finite_or_none` imported from `numeric_contract`.
+  - [x] **FIND-BF-6** — malformed `ED_SIGNAL_LAYER_FUSION_BLEND` → `log.debug` + default 0.38.
   - [ ] OBS-TC1 — `load_lstm_feature_cache` metadata defaults (`tickers`/`days`/`n_days`/`n_tickers` empty or 0); accepted — structural dims fail-closed via `_meta_required_positive_int`.
   - [ ] OBS-TC2 — `_normalize_data_fp({})` returns `{}` vs 6-key shape for non-empty; accepted — conservative cache miss on legacy empty identity.
   - [ ] OBS-TC3 — Legacy `cache_exists` / `read_cache_meta` at file tail unused by scheduler (accepted).

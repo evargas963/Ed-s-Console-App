@@ -26,11 +26,12 @@ Consumed by:
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 import os
 from typing import Any, Optional
 
-from numeric_contract import direction_from_normalized_triplet
+from numeric_contract import direction_from_normalized_triplet, float_finite_or_none
 
 log = logging.getLogger(__name__)
 
@@ -200,14 +201,9 @@ def _resolved_regime_label(regime) -> Optional[str]:
 
 
 def _model_dominant_class(out) -> Optional[str]:
-    """Dominant class from model output; None when unavailable or not derivable."""
+    """Dominant class from normalized model triplet only (ignore upstream label)."""
     if not getattr(out, "available", False):
         return None
-    dc = getattr(out, "dominant_class", None)
-    if dc is not None:
-        dc = str(dc).strip().lower()
-        if dc in ("up", "down", "flat"):
-            return dc
     triplet = _model_direction_triplet(out)
     if triplet is None:
         return None
@@ -216,13 +212,7 @@ def _model_dominant_class(out) -> Optional[str]:
 
 
 def _optional_support(out, attr: str) -> Optional[float]:
-    val = getattr(out, attr, None)
-    if val is None:
-        return None
-    try:
-        return float(val)
-    except (TypeError, ValueError):
-        return None
+    return float_finite_or_none(getattr(out, attr, None))
 
 
 def _model_direction_triplet(out) -> Optional[tuple[float, float, float]]:
@@ -234,12 +224,13 @@ def _model_direction_triplet(out) -> Optional[tuple[float, float, float]]:
     flat = getattr(out, "prob_flat", None)
     if up is None or down is None or flat is None:
         return None
-    try:
-        up, down, flat = float(up), float(down), float(flat)
-    except (TypeError, ValueError):
+    up = float_finite_or_none(up)
+    down = float_finite_or_none(down)
+    flat = float_finite_or_none(flat)
+    if up is None or down is None or flat is None:
         return None
     tot = up + down + flat
-    if tot <= 0:
+    if tot <= 0 or not math.isfinite(tot):
         return None
     return up / tot, down / tot, flat / tot
 
@@ -406,8 +397,10 @@ def _bayesian_update(priors: dict, evidence_list: list, weights: list) -> dict:
             if o not in evidence:
                 continue
             likelihood = evidence[o]
-            # Raise to weight power (higher weight = stronger influence)
-            posteriors[o] *= max(0.01, float(likelihood)) ** weight
+            lh = float_finite_or_none(likelihood)
+            if lh is None:
+                continue
+            posteriors[o] *= max(0.01, lh) ** weight
 
     # Normalize
     total = sum(posteriors.values())
@@ -675,7 +668,14 @@ def _fuse_impl(
         if nb >= 25 and prob_up is not None and prob_down is not None and prob_flat is not None:
             triplet = signal_layer_v1_to_direction_probs(signal_layer_v1)
             if triplet is not None:
-                w_sl = float(os.environ.get("ED_SIGNAL_LAYER_FUSION_BLEND", "0.38"))
+                _env_blend = os.environ.get("ED_SIGNAL_LAYER_FUSION_BLEND", "0.38")
+                w_sl = float_finite_or_none(_env_blend)
+                if w_sl is None:
+                    log.debug(
+                        "ED_SIGNAL_LAYER_FUSION_BLEND ignored (malformed) value=%r",
+                        _env_blend,
+                    )
+                    w_sl = 0.38
                 w_sl = max(0.0, min(1.0, w_sl))
                 su, sd, sf = triplet
                 prob_up = (1.0 - w_sl) * prob_up + w_sl * su
