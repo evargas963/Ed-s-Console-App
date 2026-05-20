@@ -78,6 +78,7 @@
 - [x] **COH-SA-1 — float wrapper consolidation** — COH-SA-1 ten + repo-wide guard caught six more (`market_context`, `liquidity_value_engine`, `backfill_flow_imbalance`, `a2_replay_labels`, `a1_conformal_*`); all `_*float_or_none` / `_positive_float_or_none` delegate to `numeric_contract`; `tests/test_coh_sa1_float_consolidation.py`.
 - [x] **COH-SA-2 — ET ZoneInfo satellites → `time_et`** — production + research paths import `ET` / `now_et()` from `time_et.py`; `tests/test_coh_sa2_et_authority.py` rglob guards.
 - [x] **COH-SA-3 — fusion-predicates → `fusion_contract.py`** — `fusion_is_authoritative`, `is_canonical_tradable` / `canonical_provenance_is_tradable`; redirected signals, call_engine, prediction_engine, mc_fusion_adjustment, fusion_policy_contract, market_state, multi_horizon_ml_bundle; `tests/test_fusion_contract.py` rglob guards (`getattr(_?fusion*, "available")` + `in NON_TRADABLE_CANONICAL_PROVENANCE`).
+- [x] **COH-SA-4 / COH-I-K — replay max-hold bars → `replay_hold_bars.py`** — live setup prescription, strict context read, trade-type fallback; provenance in replay payload; `tests/test_replay_hold_bars.py`.
 - [x] **COH-SA-TRIPLET** @ `31c4f45` — `direction_from_triplet` / `direction_from_normalized_triplet`; subsumes COH-I-H. Tie-break: up → down → flat (docstring + tests).
 
 **TIER 2 — architectural**
@@ -86,7 +87,7 @@
 
 - [ ] **COH-I-C — `shared_sequence_context` under-fetch when transformer meta missing (~L138-139)** — can cascade MC/transformer inactive. Ties FIND-SSC1 / OBS-SSC1.
 
-- [ ] **COH-I-K — Legacy `replay_max_hold_bars: 30` baked in `replay_context_json`** — historical replay PnL vs live call prescription. Migration or provenance flag.
+- [x] **COH-I-K — Replay max-hold bars authority** — `replay_hold_bars.py` (`for_setup` / `from_context` / `for_trade_type` + `resolve_replay_max_hold_bars_for_payload`); payload provenance fields in `build_replay_context_payload`; `tests/test_replay_hold_bars.py` rglob guard. **Historical:** pre-FIND-RCE-RESID3 rows may still have `replay_max_hold_bars: 30` baked in — forward path closed; optional backfill of old `replay_context_json` remains lower priority.
 
 **TIER 3 — lower**
 
@@ -116,7 +117,7 @@
 
 **FIND-CAL-TS item-6** @ `1509c2d` (backfill engine + CLI) + tooling @ `39410ca`. Runbook: `docs/operations/backfill_et_clock_runbook.md`. **Operator:** execute backfill on live DB; then calibration widen resumes.
 
-**Next:** remaining COH-SA sweep rows (replay max-hold bars, magic thresholds, regime multipliers, …).
+**Next:** remaining COH-SA sweep rows (magic thresholds, regime multipliers, coherence audit lanes, …).
 
 **Unread for coherence lens (post–batch 1 queue):** `features/signal_layer_v1.py`, `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
 
@@ -177,7 +178,7 @@
 | **Direction from triplet** | Model `dominant_class` path unchanged | By design, not argmax | **Closed @ `31c4f45`** for argmax sites |
 | **Fusion availability** | signals, call_engine, prediction_engine, … | Drift on `available` gate | **Closed — COH-SA-3** (`fusion_contract.fusion_is_authoritative`) |
 | **Tradability predicate** | frozenset in `signal_types`; membership inlined | Drift on placeholder provenance | **Closed — COH-SA-3** (`fusion_contract.is_canonical_tradable`) |
-| **Replay max-hold bars** | `replay_max_hold_bars_for_trade_type` / `_from_context` / `_for_setup` | Live vs replay drift | COH-SA (COH-I-K) |
+| **Replay max-hold bars** | was split across call_engine + realized_contract_eval | Live vs replay drift | **Closed — COH-I-K** (`replay_hold_bars.py`; historical 30-bar rows note in tier-2 item) |
 | **Magic thresholds** | Per-module inlines (call_engine, signal_layer_discrimination, …) | Policy drift | COH-SA (document or config table) |
 | **Regime multipliers** | `REGIME_MULT` in `compute_position_size` | Embedded dict | COH-SA |
 
@@ -473,7 +474,7 @@ Reference ticker for parametric tests: **SPY**.
   - [x] FIND-RCE2 — `_chain_selection_quality_row` used `row.get("strike", 0)`; closed skip when strike absent.
   - [x] FIND-RCE3 — exit path allowed `exit_bid <= 0` while entry required `ask > 0`; closed symmetric skip `missing_exit_bid`.
   - [x] FIND-RCE4 — `score_gap_vs_best` sorted with `float(score or 0)`; closed exclude None scores from best-score ladder. Follow-on `b87a24e`: sort key still used `x[1] or 0` — fixed in RCE4 follow-on commit (filter None pre-comparison).
-  - [ ] OBS-RCE1 — `replay_max_hold_bars_for_trade_type` / `build_replay_context_payload` trade-type fallback documented in payload metadata (accepted; eval path no longer uses silent default).
+  - [x] OBS-RCE1 — `replay_max_hold_bars_for_trade_type` / `build_replay_context_payload` trade-type fallback documented in payload metadata (`replay_max_hold_bars_source`, `_fallback`, `replay_time_expiry_policy`; closed @ COH-I-K).
   - [ ] OBS-RCE2 — `compare_parallel_cascade_trade_logs` uses `pnl_dollars or 0` for diff stats on valid rows only (accepted).
   - [x] FIND-TC1 — `compute_artifact_sha256_map` omitted missing files from saved `artifact_sha256` (operator inspection gap); closed via `MISSING:{path.resolve()}` marker (mirrors `xgb_meta_content_sha256`). Prior session: row_count/LSTM-dim/xgb-bind fixes in `da69147` (FIND-TC-FP1–FP3).
   - [x] FIND-TC-FP1 — `_normalize_data_fp` / cache keys treated missing `row_count` as `0`; closed `_fingerprint_row_count_part` + tri-state `row_count` (`da69147`).

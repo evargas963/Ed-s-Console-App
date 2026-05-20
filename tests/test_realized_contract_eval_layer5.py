@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from realized_contract_eval import (
-    _chain_selection_quality_row,
-    replay_max_hold_bars_from_context,
-)
+from realized_contract_eval import _chain_selection_quality_row
+from replay_hold_bars import replay_max_hold_bars_from_context
 
 
 def test_replay_max_hold_bars_from_context_requires_explicit_value():

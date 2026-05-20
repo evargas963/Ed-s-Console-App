@@ -27,6 +27,10 @@ from typing import Any, Optional
 from lifecycle_rule_core import SameBarResolution, fire_exit, resolve_same_bar_conflict
 from market_state import recommend_option_expression
 from math_levels import WallsRow, TotalsRow
+from replay_hold_bars import (
+    replay_max_hold_bars_from_context,
+    resolve_replay_max_hold_bars_for_payload,
+)
 from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
 
 log = logging.getLogger(__name__)
@@ -39,7 +43,7 @@ PRICING_EXIT_RULE = "exit_price = bid (credit to close long option)"
 EXIT_RULE_DOC = (
     "Underlying path vs snapshot rules_stop/rules_target on forward 1m OHLC; "
     "if neither hits within replay_max_hold_bars → time_expiry (bars from Call card via "
-    "call_engine.replay_max_hold_bars_for_setup, stored in replay_context_json). "
+    "replay_hold_bars.replay_max_hold_bars_for_setup, stored in replay_context_json). "
     "Same-bar stop+target: candle_open/close body-direction ordering when available; "
     "else conservative stop-first. Option priced bid/ask at exit/entry bar."
 )
@@ -97,35 +101,6 @@ _COARSE_BUCKETS = (
     "missing_replay_context",
     "other",
 )
-
-
-def replay_max_hold_bars_from_context(replay_obj: dict) -> int | None:
-    """Require explicit replay_max_hold_bars in replay_context_json (no silent 30-bar default)."""
-    raw = replay_obj.get("replay_max_hold_bars")
-    if raw is None:
-        return None
-    try:
-        n = int(raw)
-    except (TypeError, ValueError):
-        return None
-    if n < 1:
-        return None
-    return min(n, 390)
-
-
-def replay_max_hold_bars_for_trade_type(trade_type: str | None) -> int:
-    t = (trade_type or "").strip().lower()
-    if t == "trend_continuation":
-        return 60
-    if t == "breakout":
-        return 15
-    if t == "reversal":
-        return 20
-    if t in ("fade", "mean_reversion"):
-        return 30
-    if t == "none":
-        return 20
-    return 30
 
 
 def trade_log_path_for_architecture(architecture_type: str) -> Path:
@@ -196,17 +171,10 @@ def build_replay_context_payload(
             total_dicts.append(asdict(t))
         elif isinstance(t, dict):
             total_dicts.append(t)
-    hold_fb = replay_max_hold_bars_for_trade_type(trade_type)
-    try:
-        live = int(replay_max_hold_bars_live) if replay_max_hold_bars_live is not None else None
-    except (TypeError, ValueError):
-        live = None
-    if live is not None and live > 0:
-        hold_resolved = live
-        hold_src = "call_card"
-    else:
-        hold_resolved = hold_fb
-        hold_src = "trade_type_fallback"
+    hold_resolved, hold_src, hold_fb = resolve_replay_max_hold_bars_for_payload(
+        trade_type=trade_type,
+        replay_max_hold_bars_live=replay_max_hold_bars_live,
+    )
     payload = {
         "version": 1,
         "walls": wall_dicts,

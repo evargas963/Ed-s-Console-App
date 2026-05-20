@@ -20,6 +20,7 @@ from math_exposure import (
     BREAKOUT_BLOCK_THRESHOLD,
 )
 from fusion_contract import canonical_provenance_is_tradable, fusion_is_authoritative
+from replay_hold_bars import replay_max_hold_bars_for_setup
 from signal_types import (
     SignalInput,
     RulesCard,
@@ -171,31 +172,6 @@ def _time_qualifier(micro_regime: str, trade_type: str) -> str:
 
     return ""
 
-
-def replay_max_hold_bars_for_setup(micro_regime: str, trade_type: str) -> int:
-    """
-    Max 1m bars for historical replay time_expiry — branches stay aligned with _time_qualifier().
-    Canonical 1m snapshots: one bar ≈ one minute of RTH cadence in the training table.
-    """
-    from micro_structure import R_COMPRESSION, R_RANGE
-
-    if trade_type == "none":
-        return 0
-    if micro_regime == R_COMPRESSION:
-        return 15
-    if trade_type == "fade":
-        return 30
-    if trade_type == "breakout":
-        return 15
-    if trade_type == "reversal":
-        return 20
-    if trade_type == "trend_continuation":
-        return 60
-    if trade_type == "mean_reversion":
-        return 30
-    if micro_regime == R_RANGE:
-        return 30
-    return 30
 
 def _mc_reasoning_snippet(fusion, final_signal: str) -> str:
     """Build Monte Carlo snippet for call reasoning when MC is available and relevant."""
