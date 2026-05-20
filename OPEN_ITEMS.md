@@ -107,7 +107,9 @@
 - [x] **B2 error-bar** — fires on `state_error || state_error_detail` (not both required).
 - [ ] **B2-FIND-CAL-TS** — day-bucket (`ts_et[:10]`) safe; hour-resolution consumers still gated before calibration widen.
 
-**B2 next:** LIVE-UI-A/E transport badges.
+**LIVE-UI-A/E** — transport mode badge (`ed-transport-badge`), bundle age (`data-bundle-freshness`), SSE STALE override, Tier-C lane stale dim (`data-lane-stale`).
+
+**B2 next:** FIND-CAL-TS hour-resolution consumer audit.
 
 **Unread for coherence lens (post–batch 1 queue):** `features/signal_layer_v1.py`, `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
 

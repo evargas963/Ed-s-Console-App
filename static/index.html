@@ -478,6 +478,35 @@
     gap: 12px;
     flex-wrap: wrap;
   }
+  .ed-transport-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .ed-transport-badge.ed-transport--sse-live {
+    color: var(--green);
+    border-color: rgba(34, 197, 94, 0.45);
+    background: rgba(34, 197, 94, 0.08);
+  }
+  .ed-transport-badge.ed-transport--sse-idle,
+  .ed-transport-badge.ed-transport--poll,
+  .ed-transport-badge.ed-transport--sse-stale {
+    color: var(--amber, #c9a227);
+    border-color: rgba(201, 162, 39, 0.45);
+    background: rgba(201, 162, 39, 0.08);
+  }
+  #data-bundle-freshness {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text2);
+    white-space: nowrap;
+  }
 
   /* Legacy SSE hooks (hidden; _setSseUi + diagnostics) */
   .ub-sse-legacy {
@@ -1158,6 +1187,11 @@
     opacity: 0.88;
     filter: saturate(0.92);
     border-color: rgba(201,162,39,0.55);
+  }
+  /* Tier-C lane disagreement: fast quote ahead of last analytical card paint. */
+  .signal-card[data-lane-stale="tier-c"] {
+    opacity: 0.82;
+    filter: saturate(0.85);
   }
   .signal-card-header {
     padding: 8px 12px 6px;
@@ -2214,7 +2248,9 @@
     <div class="status-strip">
       <div class="status-dot" id="status-dot"></div>
       <div class="status-label" id="status-label">—</div>
-      <div id="data-freshness" title="Age of last full (slow) analytical snapshot"></div>
+      <span id="ed-transport-badge" class="ed-transport-badge ed-transport--poll" title="Transport mode (SSE vs poll)">POLLING</span>
+      <div id="data-bundle-freshness" title="Decision bundle (Tier C) server build age">Built —</div>
+      <div id="data-freshness" title="Legacy alias; see bundle + price freshness" style="display:none" aria-hidden="true"></div>
       <div id="analytics-freshness" title="Tier C analytics cache: stale vs fresh, background refresh" style="max-width:14rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
       <div id="b-light-freshness" class="b-l1-freshness" title="L1: quote overlay age vs order-flow snapshot age (independent timelines)" aria-label="L1 freshness">
         <span id="b-l1-fresh-quote" class="b-l1-chip">
@@ -2461,7 +2497,7 @@
       <div class="signal-grid">
 
         <!-- Decision command rail (product horizons only: 1m/5m/15m/60m) -->
-        <div class="signal-card" id="decision-rail-card">
+        <div class="signal-card" id="decision-rail-card" data-ed-tier-c="1">
           <div class="signal-card-header">
             <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
               <span class="signal-card-title">Decision Command</span>
@@ -2583,7 +2619,7 @@
           </div>
         </div>
 
-        <div class="signal-card exec-card" id="v2-pilot-card">
+        <div class="signal-card exec-card" id="v2-pilot-card" data-ed-tier-c="1">
           <div class="signal-card-header">
             <span class="signal-card-title">V2 Pilot 1A Advisory</span>
             <span class="v2-source-chip" id="v2-status-chip">DRAFT</span>
@@ -2654,7 +2690,7 @@
         </div>
 
         <div class="exec-grid">
-          <div class="signal-card exec-card" id="execution-levels-card">
+          <div class="signal-card exec-card" id="execution-levels-card" data-ed-tier-c="1">
             <div class="signal-card-header"><span class="signal-card-title">Execution Levels</span></div>
             <div class="signal-card-body">
               <div class="decision-kv">
@@ -2669,7 +2705,7 @@
               </div>
             </div>
           </div>
-          <div class="signal-card exec-card" id="horizon-stack-card">
+          <div class="signal-card exec-card" id="horizon-stack-card" data-ed-tier-c="1">
             <div class="signal-card-header"><span class="signal-card-title">Horizon Stack</span></div>
             <div class="signal-card-body">
               <div class="decision-kv">
@@ -2681,7 +2717,7 @@
               </div>
             </div>
           </div>
-          <div class="signal-card exec-card" id="order-flow-card">
+          <div class="signal-card exec-card" id="order-flow-card" data-ed-tier-c="1">
             <div class="signal-card-header"><span class="signal-card-title">Order Flow</span></div>
             <div class="signal-card-body">
               <div class="decision-kv">
@@ -2692,7 +2728,7 @@
               </div>
             </div>
           </div>
-          <div class="signal-card exec-card" id="liquidity-path-card">
+          <div class="signal-card exec-card" id="liquidity-path-card" data-ed-tier-c="1">
             <div class="signal-card-header"><span class="signal-card-title">Liquidity Path</span></div>
             <div class="signal-card-body">
               <div class="decision-kv">
@@ -3091,6 +3127,7 @@ function setActiveTicker(rawTicker, rawExpiry) {
     try { window._l1LastSseIdentityByScope = {}; } catch (e) {}
     try { window._l1FreshnessPaintByScope = {}; } catch (e) {}
     window._lastRenderedDecisionGen = 0;
+    window._tierCCardsPaintedAtGen = 0;
     lastFastGen = 0;
     lastFastTs = 0;
     window._lastPlaneDiag = null;
@@ -4271,14 +4308,6 @@ function renderDecisionCommandRail(d) {
   domIf('of-confirm-new', el => { el.textContent = ofConfirm; el.style.color = ofConfirm === 'CONFIRM' ? 'var(--green)' : ofConfirm === 'DIVERGENCE' ? 'var(--amber)' : 'var(--text2)'; });
   domIf('of-read-new', el => { el.textContent = String(d.order_flow_regime || d.of_interpretation || '').trim() || 'No dominant flow edge'; });
 
-  // Freshness pill (duplicate of header freshness, but scoped to this rail)
-  const fp = $('dr-freshness-pill');
-  if (fp && d._server_build_ts) {
-    const ageSec = Math.max(0, Math.round((Date.now() / 1000) - Number(d._server_build_ts)));
-    fp.textContent = ageSec <= 1 ? 'FRESH <2s' : `FRESH ${ageSec}s`;
-    fp.className = 'conviction-pill ' + (ageSec <= 6 ? 'high' : ageSec <= 20 ? 'medium' : 'low');
-  }
-
   // Per-horizon panels
   const hp = (d.horizon_prob_bars && typeof d.horizon_prob_bars === 'object') ? d.horizon_prob_bars : {};
   const finalCall = (() => {
@@ -4702,6 +4731,8 @@ function renderFast(f, laneGenCapture) {
   _livePlaneApplyCore(f, 'http_fast_quote');
 
   if (typeof DIAG !== 'undefined' && DIAG) console.log('[renderFast] OK', { ticker: f.ticker, fg: _fg, fts: _fts });
+  _updateTierCLaneStaleMarkers();
+  _updateLiveUiAe();
   return true;
 }
 
@@ -5108,6 +5139,7 @@ function _renderCoherenceGuards(d, opts) {
     if (Number.isFinite(decGen)) {
       const prev = window._lastRenderedDecisionGen ?? 0;
       if (decGen < prev) return { ok: false, reason: 'gen' };
+      // Intentional: newer decision_generation_id accepts even when _server_build_ts regresses (slow Tier C / cache).
       return { ok: true };
     }
   }
@@ -5164,6 +5196,8 @@ function renderTierCPendingShell(d, fullRenderSource) {
   _updateErrorBarFromPayload(window._lastData);
   _lastRenderTs = Date.now();
   clearHardStaleUi();
+  _updateTierCLaneStaleMarkers();
+  _updateLiveUiAe();
   return true;
 }
 
@@ -5190,11 +5224,6 @@ function renderTierALive(d, fullRenderSource) {
     });
   } catch (e) {}
   window._lastFullStateServerTs = d._server_build_ts != null ? d._server_build_ts : null;
-  if (d._server_build_ts) {
-    const ageSec = Math.round((Date.now() / 1000) - d._server_build_ts);
-    const freshnessEl = $('data-freshness');
-    if (freshnessEl) freshnessEl.textContent = ageSec <= 0 ? '<1s' : ageSec + 's ago';
-  }
   window.__edSessionLabel = String(d.session_label || '');
   domIf('sb-session', el => { el.textContent = d.session_label || '—'; });
   domIf('sb-spot', el => { el.textContent = d.spot_disp || '—'; });
@@ -5244,6 +5273,8 @@ function renderTierALive(d, fullRenderSource) {
   _lastRenderTs = Date.now();
   clearHardStaleUi();
   try { renderTimeframeSignalRow(window._lastData); } catch (e) {}
+  _updateTierCLaneStaleMarkers();
+  _updateLiveUiAe();
   return true;
 }
 
@@ -5284,12 +5315,6 @@ function render(d, fullRenderSource) {
       renderKind: 'full_analytical',
     });
   } catch (e) {}
-  // ── Freshness indicator: show server-stamped age ───────────────────────────
-  if (d._server_build_ts) {
-    const ageSec = Math.round((Date.now() / 1000) - d._server_build_ts);
-    const freshnessEl = $('data-freshness');
-    if (freshnessEl) freshnessEl.textContent = ageSec <= 0 ? '<1s' : ageSec + 's ago';
-  }
   updateAnalyticsFreshnessUI(d);
 
   _updateErrorBarFromPayload(d);
@@ -6019,6 +6044,9 @@ function render(d, fullRenderSource) {
     }
     return false;
   }
+  window._tierCCardsPaintedAtGen = window._lastRenderedDecisionGen ?? 0;
+  _updateTierCLaneStaleMarkers();
+  _updateLiveUiAe({ serverTs: d._server_build_ts });
   if (fullRenderSource) {
     window._lastFullRenderSource = fullRenderSource;
     _edTransportSync({ lastFullRenderSource: fullRenderSource });
@@ -6251,12 +6279,14 @@ function _edTransportSync(extra) {
   const sseOpen = _eventSource && _eventSource.readyState === 1;
   const age = _lastSsePayloadAcceptedMs ? (Date.now() - _lastSsePayloadAcceptedMs) : null;
   const sseFresh = age != null && age < SSE_POLL_SUPPRESS_MS;
+  const sseStale = sseOpen && age != null && age >= SSE_POLL_SUPPRESS_MS;
   let mode = 'poll_only';
   if (sseOpen && sseFresh) mode = 'sse_primary';
   else if (sseOpen && !sseFresh) mode = 'sse_idle';
   else if (!sseOpen) mode = 'poll_only';
   window.__edTransport = Object.assign({
     mode,
+    sseStale,
     sseReadyState: _eventSource ? _eventSource.readyState : -1,
     sseBadge: (function () { const el = $('sse-label'); return el ? el.textContent : ''; })(),
     mainStatus: (function () { const el = $('status-label'); return el ? el.textContent : ''; })(),
@@ -6268,7 +6298,81 @@ function _edTransportSync(extra) {
     pollRuns: _transportPollRuns,
     pollIntervalMs: POLL_FALLBACK_MS,
     fastQuoteMs: 650,
+    lastFullStateServerTs: window._lastFullStateServerTs != null ? window._lastFullStateServerTs : null,
   }, extra || {});
+  _updateLiveUiAe();
+}
+
+function _formatBuiltAgeSec(serverTs) {
+  const ts = serverTs != null ? Number(serverTs) : NaN;
+  if (!Number.isFinite(ts) || ts <= 0) return null;
+  const ageSec = Math.max(0, Math.round((Date.now() / 1000) - ts));
+  return ageSec <= 0 ? 'Built <1s ago' : 'Built ' + ageSec + 's ago';
+}
+
+function _updateEdTransportBadge() {
+  const el = $('ed-transport-badge');
+  if (!el) return;
+  const t = window.__edTransport || {};
+  let label = 'POLLING';
+  let cls = 'ed-transport--poll';
+  // SSE STALE clears on next _edTransportSync after a fresh payload (age < SSE_POLL_SUPPRESS_MS); no hysteresis.
+  if (t.sseStale === true) {
+    label = 'SSE STALE';
+    cls = 'ed-transport--sse-stale';
+  } else if (t.mode === 'sse_primary') {
+    label = 'SSE LIVE';
+    cls = 'ed-transport--sse-live';
+  } else if (t.mode === 'sse_idle') {
+    label = 'SSE IDLE';
+    cls = 'ed-transport--sse-idle';
+  }
+  el.textContent = label;
+  el.className = 'ed-transport-badge ' + cls;
+  el.title = 'Transport: ' + label + (t.ssePayloadAgeMs != null ? ' · SSE payload ' + Math.round(t.ssePayloadAgeMs / 1000) + 's' : '');
+}
+
+function _updateDecisionBundleAgeUI(opts) {
+  opts = opts || {};
+  const ts = opts.serverTs != null ? opts.serverTs : window._lastFullStateServerTs;
+  const ageText = _formatBuiltAgeSec(ts);
+  const bel = $('data-bundle-freshness');
+  if (bel) bel.textContent = ageText || 'Built —';
+  const fp = $('dr-freshness-pill');
+  if (fp) {
+    if (!ageText) {
+      fp.textContent = 'FRESH —';
+      fp.className = 'conviction-pill low';
+    } else {
+      const ageSec = Math.max(0, Math.round((Date.now() / 1000) - Number(ts)));
+      fp.textContent = ageSec <= 1 ? 'FRESH <2s' : 'FRESH ' + ageSec + 's';
+      fp.className = 'conviction-pill ' + (ageSec <= 6 ? 'high' : ageSec <= 20 ? 'medium' : 'low');
+    }
+  }
+  domIf('dr-trust-fresh', el => { el.textContent = ageText || '—'; });
+}
+
+/** Dim Tier-C cards when fast lane disagrees with last analytical paint (maintain data-ed-tier-c list when adding cards). */
+function _updateTierCLaneStaleMarkers() {
+  const cards = document.querySelectorAll('.signal-card[data-ed-tier-c="1"]');
+  if (!cards.length) return;
+  const quoteAhead = lastFastTs > 0 && lastRenderTimestamp > 0 && lastFastTs > lastRenderTimestamp;
+  const ld = window._lastData;
+  const pending = !!(ld && ld._tier_a_pending_full_analytics);
+  const gen = ld && ld.decision_generation_id != null ? Number(ld.decision_generation_id) : NaN;
+  const painted = window._tierCCardsPaintedAtGen ?? 0;
+  const genStale = Number.isFinite(gen) && gen > painted;
+  const stale = quoteAhead || pending || genStale;
+  cards.forEach(c => {
+    if (stale) c.setAttribute('data-lane-stale', 'tier-c');
+    else c.removeAttribute('data-lane-stale');
+  });
+}
+
+function _updateLiveUiAe(opts) {
+  _updateEdTransportBadge();
+  _updateDecisionBundleAgeUI(opts);
+  _updateTierCLaneStaleMarkers();
 }
 
 /** Fast-lane rollout counters (no console spam). Inspect: window._edFastRollout */
@@ -7941,6 +8045,8 @@ fetchState();
 startStatePollFallback();  // Poll fallback when SSE idle; suppressed while SSE delivers fresh payloads
 _edTransportSync({ boot: true });
 setInterval(refreshStreamingDiagnostics, 2000);
+// Tick bundle-age + transport badge between render paths (event-driven updates also run on each render/SSE).
+setInterval(function () { _updateLiveUiAe(); }, 1000);
 startLiquidityMapPoll();
 
 window.addEventListener('beforeunload', () => {
