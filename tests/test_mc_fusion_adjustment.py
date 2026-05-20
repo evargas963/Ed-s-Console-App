@@ -8,8 +8,11 @@ from bayesian_fusion import FusionPayload
 from mc_fusion_adjustment import apply_mc_adjustment, fuse_payload_apply_mc_adjustment, normalize_mc
 
 
+from numeric_contract import direction_from_normalized_triplet
+
+
 def _argmax3(u: float, d: float, f: float) -> str:
-    return max("up", "down", "flat", key=lambda lab: {"up": u, "down": d, "flat": f}[lab])
+    return direction_from_normalized_triplet(u, d, f)
 
 
 def test_normalize_mc_clips():

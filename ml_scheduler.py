@@ -47,6 +47,7 @@ TRAINING_REPORT_PATH = MODEL_DIR / "training_report.jsonl"
 RUN_AT_HOUR = 16
 RUN_AT_MINUTE = 15
 
+from numeric_contract import direction_from_normalized_triplet
 from time_et import ET
 
 log = logging.getLogger("ml_scheduler")
@@ -354,7 +355,7 @@ def _evaluate_parallel_on_full_rth(
                     if s > 0:
                         pu, pd, pf = pu / s, pd / s, pf / s
                     prob_rows.append([pu, pd, pf])
-                    dom = max(["up", "down", "flat"], key=lambda c: result.get(c, 0))
+                    dom = direction_from_normalized_triplet(pu, pd, pf)
                     preds.append({"up": 0, "down": 1, "flat": 2}[dom])
                     y_true.append(yt)
                     rows_used.append(row)
@@ -476,7 +477,7 @@ def _evaluate_cascade_on_full_rth(
                     prob_rows.append([pu, pd, pf])
                     yt = {"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2)
                     y_true.append(yt)
-                    dom = max(["up", "down", "flat"], key=lambda c: tr_p.get(c, 0))
+                    dom = direction_from_normalized_triplet(pu, pd, pf)
                     preds.append({"up": 0, "down": 1, "flat": 2}[dom])
                     rows_used.append(row)
 

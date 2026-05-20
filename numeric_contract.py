@@ -63,3 +63,20 @@ def direction_from_normalized_triplet(
 ) -> DirectionLabel:
     """Argmax on already-finite normalized probabilities (no parsing)."""
     return max(_TRIPLET_LABELS, key=lambda lab: {"up": up, "down": down, "flat": flat}[lab])
+
+
+def direction_from_model_output(out: Any) -> DirectionLabel | None:
+    """
+    Stack display direction: prefer model ``dominant_class`` / ``dominant_dir`` when valid;
+    else argmax ``prob_up`` / ``prob_down`` / ``prob_flat`` via ``direction_from_triplet``.
+    """
+    dom_raw = getattr(out, "dominant_class", None) or getattr(out, "dominant_dir", None)
+    if dom_raw is not None:
+        dom = str(dom_raw).strip().lower()
+        if dom in _TRIPLET_LABELS:
+            return dom  # type: ignore[return-value]
+    return direction_from_triplet(
+        getattr(out, "prob_up", None),
+        getattr(out, "prob_down", None),
+        getattr(out, "prob_flat", None),
+    )

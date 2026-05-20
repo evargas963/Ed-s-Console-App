@@ -21,6 +21,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from arch_competition.atomic_io import write_json_file_atomically
+from numeric_contract import direction_from_normalized_triplet
 from calibration.analyze_phase4 import _directional_pnl
 from calibration.db_guard import enforce_resolved_path, register_allow_noncanonical_flag
 from calibration.edge_discovery import (
@@ -76,8 +77,8 @@ def signal_fusion_margin_factory(margin: float) -> SignalFn:
         srt = sorted(probs, reverse=True)
         if srt[0] - srt[1] < margin:
             return "wait"
-        best = max([("up", float(pu)), ("down", float(pd)), ("flat", float(pf))], key=lambda x: x[1])
-        return {"up": "long", "down": "short", "flat": "wait"}[best[0]]
+        best_lab = direction_from_normalized_triplet(float(pu), float(pd), float(pf))
+        return {"up": "long", "down": "short", "flat": "wait"}[best_lab]
 
     _fn.__name__ = f"fusion_margin_{margin}"
     return _fn

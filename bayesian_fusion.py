@@ -30,6 +30,8 @@ from dataclasses import dataclass, field
 import os
 from typing import Any, Optional
 
+from numeric_contract import direction_from_normalized_triplet
+
 log = logging.getLogger(__name__)
 
 
@@ -210,8 +212,6 @@ def _model_dominant_class(out) -> Optional[str]:
     if triplet is None:
         return None
     up, down, flat = triplet
-    from numeric_contract import direction_from_normalized_triplet
-
     return direction_from_normalized_triplet(up, down, flat)
 
 
@@ -661,12 +661,7 @@ def _fuse_impl(
                 prob_up /= tot
                 prob_down /= tot
                 prob_flat /= tot
-                dominant_dir = max(
-                    "up",
-                    "down",
-                    "flat",
-                    key=lambda d: {"up": prob_up, "down": prob_down, "flat": prob_flat}[d],
-                )
+                dominant_dir = direction_from_normalized_triplet(prob_up, prob_down, prob_flat)
             else:
                 prob_up = prob_down = prob_flat = None
                 dominant_dir = None
@@ -694,12 +689,7 @@ def _fuse_impl(
                     prob_up /= tot
                     prob_down /= tot
                     prob_flat /= tot
-                    dominant_dir = max(
-                        "up",
-                        "down",
-                        "flat",
-                        key=lambda d: {"up": prob_up, "down": prob_down, "flat": prob_flat}[d],
-                    )
+                    dominant_dir = direction_from_normalized_triplet(prob_up, prob_down, prob_flat)
                 signal_layer_v1_fusion = {
                     "blend_weight": round(w_sl, 4),
                     "prior_triplet": {"up": round(su, 4), "down": round(sd, 4), "flat": round(sf, 4)},
