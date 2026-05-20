@@ -651,7 +651,7 @@ def compute_signal_layer_v1_for_calibration(
             if callable(close):
                 close()
         except Exception:
-            pass
+            log.debug("signal_layer_v1: connection close failed", exc_info=True)
 
 
 def layer_direction_policy(layer: Mapping[str, Any], *, thresh: float = 0.85) -> str:

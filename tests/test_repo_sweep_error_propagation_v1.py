@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -11,8 +12,8 @@ _SKIP_PY_TREE_DIRS = frozenset(
     {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__", "tests"}
 )
 
-# Repo-wide silent ``except Exception: pass`` after sweep #1 (production tree excl. tests).
-_BASELINE_SILENT_EXCEPTION_PASS = 43
+# Repo-wide silent ``except Exception: pass`` after sweep #1 completion (production tree).
+_BASELINE_SILENT_EXCEPTION_PASS = 42
 
 _BARE_EXCEPT = re.compile(r"^\s*except\s*:\s*", re.MULTILINE)
 _SILENT_PASS = re.compile(
@@ -20,10 +21,20 @@ _SILENT_PASS = re.compile(
     re.MULTILINE,
 )
 
+# Decision pipeline modules: zero tolerance for ``except Exception: pass`` (rule #25).
 _CRITICAL_SILENT_PASS_FILES = frozenset(
     {
-        "live_decision_bundle.py",
+        "signals.py",
+        "call_engine.py",
+        "prediction_engine.py",
+        "realized_contract_eval.py",
+        "bayesian_fusion.py",
+        "mc_fusion_adjustment.py",
         "market_state.py",
+        "live_decision_bundle.py",
+        "features/signal_layer_v1.py",
+        "features/inference_snapshot.py",
+        "features/fusion_policy_contract.py",
     }
 )
 
@@ -82,3 +93,14 @@ def test_critical_paths_have_no_silent_exception_pass():
 def test_error_propagation_audit_artifact_exists():
     audit = _repo_root() / "governance" / "audits" / "repo_sweep_error_propagation_v1_20260520.json"
     assert audit.is_file(), "governance audit artifact missing"
+
+
+def test_audit_json_class_c_fixed_count_matches_array():
+    audit_path = _repo_root() / "governance" / "audits" / "repo_sweep_error_propagation_v1_20260520.json"
+    payload = json.loads(audit_path.read_text(encoding="utf-8"))
+    entries = payload.get("class_c_fixed") or []
+    summary = payload.get("summary") or {}
+    count = summary.get("class_c_fixed_count")
+    assert count == len(entries), (
+        f"summary.class_c_fixed_count={count} != len(class_c_fixed)={len(entries)}"
+    )

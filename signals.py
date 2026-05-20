@@ -1442,7 +1442,7 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         )
     except Exception:
         # Optional dev-only diag hook; failures here must not affect the decision path.
-        pass
+        log.debug("emit_compute_signals_diag failed", exc_info=True)
 
     return SignalOutput(
         rules=rules,

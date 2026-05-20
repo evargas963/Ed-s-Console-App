@@ -7,8 +7,8 @@
   "summary": {
     "bare_except_before": 4,
     "bare_except_after": 0,
-    "silent_exception_pass_after": 43,
-    "class_c_fixed_count": 8,
+    "silent_exception_pass_after": 42,
+    "class_c_fixed_count": 5,
     "class_b_accepted_documented": 12
   },
   "class_c_fixed": [
@@ -56,12 +56,12 @@
     {
       "file": "signals.py",
       "line": 1443,
-      "rationale": "Optional dev-only diag hook; documented; must not affect decision path"
+      "rationale": "Was silent pass; sweep-1-completion → log.debug (money-path critical set)"
     },
     {
       "file": "features/signal_layer_v1.py",
       "line": 653,
-      "rationale": "DB connection close cleanup; non-authority"
+      "rationale": "Was silent pass; sweep-1-completion → log.debug on conn close"
     },
     {
       "file": "ml_predict.py",

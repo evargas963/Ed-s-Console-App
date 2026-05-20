@@ -70,7 +70,7 @@ Scope artifact #7 must list adjacent patterns (e.g. grep hits outside slice). Ei
 | **OPEN_ITEMS** | Single backlog; `[x]` only with commit SHA |
 | **Pairing** | Audit commit does not close code FINDs; following `OPEN_ITEM_FIX` does |
 
-## Additional rules (recommended)
+## Additional rules (binding)
 
 | Rule | Requirement |
 |------|-------------|
@@ -78,6 +78,19 @@ Scope artifact #7 must list adjacent patterns (e.g. grep hits outside slice). Ei
 | **#19** | Docs-only commits cannot close code FINDs (ledger-only ok) |
 | **#20** | Any new `dict` mapping between modules: grep consumer keys same turn |
 | **#21** | Both agents cite this file path when stating protocol |
+
+## Independent verification (no trust debt)
+
+| Rule | Requirement |
+|------|-------------|
+| **#22** | **Independent verification** — each agent re-Reads / re-greps at tip; never sign off from the other agent’s summary alone. |
+| **#23** | **Retract sign-off** — if full re-verification surfaces gaps, prior grant is void until a completion commit closes them. |
+| **#24** | **Artifact arithmetic** — audit JSON counts (`class_c_fixed_count`, backlog deltas) must equal enumerated entries; add a test when feasible. |
+| **#25** | **Critical enumerations** — `_CRITICAL_*` frozensets list the full money-path domain (signals → call → prediction → fusion → realized eval), not only files touched this slice. |
+| **#26** | **N-site parity** — a commit that fixes the same pattern in N places needs ≥ N regression tests (or one parametrized test with N cases). |
+| **#27** | **Exhaustive verification** — sampling is not sufficient for sign-off when operator requires 100% repo discipline. |
+
+**Money-path modules (rule #25 reference):** `signals.py`, `call_engine.py`, `prediction_engine.py`, `realized_contract_eval.py`, `bayesian_fusion.py`, `mc_fusion_adjustment.py`, `market_state.py`, `live_decision_bundle.py`, `features/signal_layer_v1.py`, `features/inference_snapshot.py`, `features/fusion_policy_contract.py`.
 
 ## Current authority modules (reference)
 
