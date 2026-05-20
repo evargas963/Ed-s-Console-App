@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from features.canonical_contract import (
     CANONICAL_FEATURE_CONTRACT_VERSION,
@@ -21,7 +20,7 @@ from features.canonical_contract import (
     validate_feature_contract_row,
 )
 
-_ET = ZoneInfo("America/New_York")
+from time_et import ET as _ET
 
 # Exact canonical → legacy tabular keys (single source for XGB engineering row).
 CANONICAL_TO_XGB_TABULAR: dict[str, str] = {

@@ -15,9 +15,7 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-ET = ZoneInfo("America/New_York")
-
-
+from time_et import ET
 def _mk_bar(dt: datetime, o: float, h: float, l: float, c: float, vol: float = 1000.0) -> dict:
     return {
         "timestamp": int(dt.timestamp() * 1000),

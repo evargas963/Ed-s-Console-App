@@ -12,8 +12,6 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
-
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -26,7 +24,7 @@ from market_state import build_market_state
 from math_volatility import session_bucket
 from timeframe_config import CANONICAL_TIMEFRAME
 
-ET = ZoneInfo("America/New_York")
+from time_et import ET
 N_INSERTS = 110
 TICKER = "PHASE2VERIFY"
 

@@ -54,7 +54,7 @@ def test_snapshot_dte_fails_closed_when_schwab_days_to_expiration_missing():
 
 
 def test_snapshot_hours_to_expiry_uses_schwab_dte_without_date_subtraction():
-    now_et = datetime(2026, 5, 5, 10, 30, tzinfo=ZoneInfo("America/New_York"))
+    now_et = datetime(2026, 5, 5, 10, 30, tzinfo=__import__('time_et', fromlist=['ET']).ET)
 
     assert server._snapshot_expiry_hours_from_schwab_dte(0, now_et) == 5.5
     assert server._snapshot_expiry_hours_from_schwab_dte(None, now_et) is None

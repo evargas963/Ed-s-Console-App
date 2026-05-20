@@ -32,7 +32,6 @@ from datetime import datetime, timezone
 
 from typing import Any, Optional, Tuple
 
-from zoneinfo import ZoneInfo
 
 from canonical_distances import canonical_nearest_distances
 
@@ -43,7 +42,7 @@ _next_generation_id: int = 0
 
 
 
-_ET = ZoneInfo("America/New_York")
+from time_et import ET as _ET
 
 
 

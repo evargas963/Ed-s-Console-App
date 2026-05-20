@@ -20,9 +20,9 @@ import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
-
 import numpy as np
+
+from time_et import ET as _ET
 
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
@@ -36,8 +36,6 @@ from research.pilot_step3.event_generation import (
     _in_first_30min_rth,
     build_sigma_for_cusum,
 )
-
-_ET = ZoneInfo("America/New_York")
 
 SIGMA_EXTREME = 1e-6
 Z_EXTREME = 100.0

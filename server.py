@@ -39,12 +39,13 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 from pathlib import Path
 from collections import OrderedDict, defaultdict
 from copy import deepcopy
 from typing import Any, Optional
 from dataclasses import asdict
+
+from time_et import now_et
 
 import html
 import hashlib
@@ -1543,7 +1544,7 @@ def _is_loggable_session() -> bool:
     """
     if not RTH_ONLY:
         return True
-    et = datetime.now(ZoneInfo("America/New_York"))
+    et = now_et()
     mins = et.hour * 60 + et.minute
     return PRE_MARKET_MINS <= mins <= LOGGER_BUFFER_MINS
 
@@ -2238,7 +2239,7 @@ def _fetch_expiries_light(ticker: str) -> list[str]:
                         contracts_raw.append(_ct)
     contracts = [dict(ct) for ct in contracts_raw]
     expiries = _expiries_from_contracts(contracts)
-    today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    today = now_et().strftime("%Y-%m-%d")
     return [e for e in expiries if e >= today]
 
 
@@ -2246,7 +2247,7 @@ def _default_expiry(expiries: list[str], ticker: str = "?") -> Optional[str]:
     """Pick today's expiry if exists, else nearest future. Never returns a past date."""
     if not expiries:
         return None
-    today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    today = now_et().strftime("%Y-%m-%d")
     # Never return an expired date
     valid = [e for e in expiries if e >= today]
     if valid:
@@ -7014,7 +7015,7 @@ async def get_liquidity_snapshot(
         from liquidity_value_engine import build_live_snapshot, generate_liquidity_value_snapshot
         from liquidity_models import SnapshotType, PlaybookConfig
 
-        session_date = date or datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+        session_date = date or now_et().strftime("%Y-%m-%d")
         ticker_upper = ticker.upper().strip()
         _register_tracked_ticker(ticker_upper)
         client = get_client()
@@ -7037,7 +7038,7 @@ async def get_liquidity_snapshot(
         bar_merge_note = "schwab"
 
         if snap_raw == "live":
-            today_ld = datetime.now(ZoneInfo("America/New_York")).date()
+            today_ld = now_et().date()
             if session_date_obj == today_ld:
                 from liquidity_value_engine import merge_schwab_bars_with_live_overlay
 
@@ -7156,7 +7157,7 @@ async def get_liquidity_playbook_state(
         from liquidity_value_engine import generate_playbook_state, playbook_state_to_dict
         from liquidity_models import PlaybookConfig
 
-        session_date = date or datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+        session_date = date or now_et().strftime("%Y-%m-%d")
         ticker_upper = ticker.upper().strip()
         _register_tracked_ticker(ticker_upper)
         client = get_client()

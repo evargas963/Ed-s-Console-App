@@ -12,13 +12,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from zoneinfo import ZoneInfo
+from time_et import ET as _ET
 
 from .atr import wilder_atr_14
 from .data_loader import Bar1m
 from .event_generation import PilotEvent
-
-_ET = ZoneInfo("America/New_York")
 
 BarrierHit = Literal["WIN", "LOSS", "TIMEOUT", "FORCE_FLAT"]
 LabelTri = Literal["WIN", "LOSS", "TIMEOUT"]

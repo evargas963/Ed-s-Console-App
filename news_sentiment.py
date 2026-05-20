@@ -26,11 +26,9 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Optional
-from zoneinfo import ZoneInfo
-
 log = logging.getLogger(__name__)
 
-_ET = ZoneInfo("America/New_York")
+from time_et import ET as _ET
 
 _throttle_sec = float(__import__("os").environ.get("ED_NEWS_THROTTLE_SEC", "90"))
 _lock = threading.Lock()

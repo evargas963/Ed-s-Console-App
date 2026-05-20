@@ -12,14 +12,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
-from zoneinfo import ZoneInfo
-
 import numpy as np
+
+from time_et import ET as _ET
 
 from . import pilot_config
 from .data_loader import Bar1m, RTH_START_MINS
-
-_ET = ZoneInfo("America/New_York")
 
 
 def _et_calendar_key(ts_utc: float) -> str:

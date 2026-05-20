@@ -11,12 +11,11 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, time
 from typing import Callable, Optional
-from zoneinfo import ZoneInfo
+from time_et import ET
 
 from market_data_adapter import schwab_candles_to_bars
 
 BarCallback = Callable[[list[dict]], None]
-ET = ZoneInfo("America/New_York")
 
 
 def _prev_trading_day(d: date) -> date:

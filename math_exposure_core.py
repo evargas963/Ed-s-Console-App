@@ -639,8 +639,9 @@ def compute_net_charm(
         dte_f = float(dte_raw)
         if dte_f <= 0:
             try:
-                from zoneinfo import ZoneInfo
-                _now_et = _dt2.datetime.now(ZoneInfo("America/New_York"))
+                from time_et import now_et
+
+                _now_et = now_et()
             except Exception:
                 _now_et = _dt2.datetime.now()
             hours_left = max(0.5, 16.0 - (_now_et.hour + _now_et.minute / 60.0))

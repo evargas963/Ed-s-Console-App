@@ -76,6 +76,7 @@
 
 - [x] **COH-SA-FLOAT — `numeric_contract.py`** @ `31c4f45` — `float_finite_or_none`, `float_positive_or_none`; redirected `v2_advisory_backfill`, `v2_live_logging`, `realized_contract_eval`. **Substantive fix:** `realized_contract_eval._f` no longer passes NaN/inf into PnL (was silent corruption pre-fix). `tests/test_numeric_contract_tier15.py`.
 - [x] **COH-SA-1 — float wrapper consolidation** — COH-SA-1 ten + repo-wide guard caught six more (`market_context`, `liquidity_value_engine`, `backfill_flow_imbalance`, `a2_replay_labels`, `a1_conformal_*`); all `_*float_or_none` / `_positive_float_or_none` delegate to `numeric_contract`; `tests/test_coh_sa1_float_consolidation.py`.
+- [x] **COH-SA-2 — ET ZoneInfo satellites → `time_et`** — production + research paths import `ET` / `now_et()` from `time_et.py`; `tests/test_coh_sa2_et_authority.py` rglob guards.
 - [x] **COH-SA-TRIPLET** @ `31c4f45` — `direction_from_triplet` / `direction_from_normalized_triplet`; subsumes COH-I-H. Tie-break: up → down → flat (docstring + tests).
 
 **TIER 2 — architectural**
@@ -114,7 +115,7 @@
 
 **FIND-CAL-TS item-6** @ `1509c2d` (backfill engine + CLI) + tooling @ `39410ca`. Runbook: `docs/operations/backfill_et_clock_runbook.md`. **Operator:** execute backfill on live DB; then calibration widen resumes.
 
-**Next:** COH-SA-2 (ZoneInfo satellites → `time_et.ET`) → remaining COH-SA sweep rows.
+**Next:** remaining COH-SA sweep rows (fusion predicates, tradability, etc.).
 
 **Unread for coherence lens (post–batch 1 queue):** `features/signal_layer_v1.py`, `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
 
@@ -170,7 +171,7 @@
 
 | Concept | Multiple sites | Risk | Priority |
 |---------|----------------|------|----------|
-| **ET derivation** | server, db, ml_scheduler, v2 A2, ad-hoc ZoneInfo | DST / session drift | **Closed @ `99ea0e0`** (`time_et.py`); satellite `ZoneInfo` calls remain for later redirect |
+| **ET derivation** | server, db, ml_scheduler, v2 A2, ad-hoc ZoneInfo | DST / session drift | **Closed @ `99ea0e0` + COH-SA-2** (`time_et.py` sole `ZoneInfo("America/New_York")` + `now_et()`) |
 | **Float validation** | 10+ duplicate `_float_or_none` (lifecycle, live_decision_bundle, v2_a1_*, …) | NaN/inf still accepted at non-redirected sites | **Partial @ `31c4f45`**; COH-SA sweep |
 | **Direction from triplet** | Model `dominant_class` path unchanged | By design, not argmax | **Closed @ `31c4f45`** for argmax sites |
 | **Fusion availability** | `getattr(fusion, "available", False)` inlined (signals, call_engine) | No `fusion_is_authoritative()` | COH-SA |

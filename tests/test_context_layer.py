@@ -38,7 +38,7 @@ def test_article_datetime_parse():
 
     from news_sentiment import _parse_article_datetime
 
-    et = ZoneInfo("America/New_York")
+    from time_et import ET as et  # noqa: F401
     ts = int(datetime(2026, 3, 1, 10, 0, 0, tzinfo=et).timestamp())
     d = _parse_article_datetime(ts)
     assert d is not None and d.year == 2026

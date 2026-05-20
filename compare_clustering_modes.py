@@ -17,7 +17,8 @@ import json
 import sys
 from pathlib import Path
 from datetime import datetime
-from zoneinfo import ZoneInfo
+
+from time_et import ET, now_et
 
 APP_DIR = str(Path(__file__).parent.resolve())
 sys.path.insert(0, APP_DIR)
@@ -26,8 +27,6 @@ sys.path.insert(0, APP_DIR)
 def _synthetic_bars_for_session(session_date) -> list[dict]:
     """Generate synthetic bars for a Friday session (Thu prev + Fri today + overnight)."""
     from datetime import timedelta
-    from zoneinfo import ZoneInfo
-    ET = ZoneInfo("America/New_York")
     bars = []
     base = 580.0
     prev_date = session_date - timedelta(days=1)
@@ -329,12 +328,11 @@ def main():
     from liquidity_models import PlaybookConfig
 
     # Default: most recent Friday (ensure within Schwab's date range)
-    from zoneinfo import ZoneInfo
-    now_et = datetime.now(ZoneInfo("America/New_York")).date()
+    now_et_date = now_et().date()
     days_back = 0
-    while (now_et - timedelta(days=days_back)).weekday() != 4:  # 4 = Friday
+    while (now_et_date - timedelta(days=days_back)).weekday() != 4:  # 4 = Friday
         days_back += 1
-    session_date_str = (now_et - timedelta(days=days_back)).isoformat()
+    session_date_str = (now_et_date - timedelta(days=days_back)).isoformat()
     bars_file = None
     use_synthetic = "--synthetic" in sys.argv
     if "--date" in sys.argv:

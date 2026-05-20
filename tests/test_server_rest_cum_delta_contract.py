@@ -7,7 +7,7 @@ import server
 
 
 def _rth_dt() -> datetime:
-    return datetime(2026, 5, 8, 10, 30, tzinfo=ZoneInfo("America/New_York"))
+    return datetime(2026, 5, 8, 10, 30, tzinfo=__import__('time_et', fromlist=['ET']).ET)
 
 
 def test_rest_cum_delta_preserves_missing_last_size_as_unavailable():

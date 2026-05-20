@@ -11,11 +11,8 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
-from zoneinfo import ZoneInfo
-
 from instrument_identity import ticker_storage_key
-
-_ET = ZoneInfo("America/New_York")
+from time_et import ET as _ET
 
 SOURCE_TABLE_CANONICAL = "price_bars_1m"
 SOURCE_TABLE_STAGING = "price_bars_1m_staging"

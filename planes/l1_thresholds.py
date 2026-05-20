@@ -11,11 +11,8 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
-from zoneinfo import ZoneInfo
-
 from planes.l1_runtime import L1_SPREAD_FRAC_ABS_EPS, L1_SPOT_REL_EPS
-
-_ET = ZoneInfo("America/New_York")
+from time_et import ET as _ET
 
 # --- Absolute bounds (guardrails) ---
 L1_SPOT_REL_EPS_MIN = 8e-5

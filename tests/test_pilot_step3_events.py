@@ -5,9 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-_ET = ZoneInfo("America/New_York")
-
-
+from time_et import ET as _ET
 def _minimal_prereg(**overrides):
     """Minimal prereg dict for generate_events (subset of prereg_v1.json)."""
     base = {

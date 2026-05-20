@@ -422,9 +422,9 @@ def _derive_session() -> str:
       After-Hours: 16:00 – 19:59
       Closed:      20:00 – 03:59 (overnight)
     """
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-    now = datetime.now(ZoneInfo("America/New_York"))
+    from time_et import now_et
+
+    now = now_et()
     mins = now.hour * 60 + now.minute
     if 570 <= mins <= 959:    # 09:30 – 15:59
         return "RTH"
@@ -801,10 +801,10 @@ def fetch_price_levels(
     include_extended_hours: if True, fetches pre-market for overnight high/low.
     """
     from datetime import datetime, date, timezone, timedelta
-    from zoneinfo import ZoneInfo
+
+    from time_et import ET, now_et
 
     pl = PriceLevels(orb_minutes=orb_minutes)
-    ET = ZoneInfo("America/New_York")
     RTH_OPEN_HOUR  = 9
     RTH_OPEN_MIN   = 30
     RTH_CLOSE_HOUR = 16
@@ -860,7 +860,7 @@ def fetch_price_levels(
         if not candles:
             raise ValueError("empty candles")
 
-        today_date = datetime.now(ET).date()
+        today_date = now_et().date()
         today_bars = []
         prev_bars  = []
         overnight_bars = []

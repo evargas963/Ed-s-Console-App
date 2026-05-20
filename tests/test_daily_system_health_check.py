@@ -9,8 +9,7 @@ from pathlib import Path
 import pytest
 from zoneinfo import ZoneInfo
 
-_ET = ZoneInfo("America/New_York")
-
+from time_et import ET as _ET
 from verification.daily_health import (
     INTRADAY_SEVERE_GAP_SEC,
     STALE_BAR_DATA_SEC,

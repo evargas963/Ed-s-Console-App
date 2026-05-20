@@ -16,7 +16,6 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import Any, Optional
-from zoneinfo import ZoneInfo
 
 from liquidity_models import (
     PlaybookConfig,
@@ -31,7 +30,7 @@ from liquidity_models import (
 
 log = logging.getLogger(__name__)
 
-ET = ZoneInfo("America/New_York")
+from time_et import ET, now_et
 RTH_OPEN = time(9, 30)
 RTH_CLOSE = time(16, 0)
 
@@ -1453,7 +1452,7 @@ def generate_playbook_state(
         latest_summary=latest_summary,
         session_bias=session_bias,
         auction_state=auction_state,
-        generated_at=datetime.now(ET).isoformat(),
+        generated_at=now_et().isoformat(),
     )
 
 

@@ -4,12 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
-from zoneinfo import ZoneInfo
+from time_et import ET
 
 from v2_decision.a2_session_calendar import get_session_info, load_a2_session_calendar
-
-
-ET = ZoneInfo("America/New_York")
 
 EOD_CADENCE_WINDOW_MINUTES = 30
 FORCE_EXIT_CLOCK_HOUR = 15

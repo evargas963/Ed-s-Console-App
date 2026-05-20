@@ -50,7 +50,7 @@ def test_generate_events_revalidates_frozen_prereg():
     from datetime import datetime, timedelta
     from zoneinfo import ZoneInfo
 
-    et = ZoneInfo("America/New_York")
+    from time_et import ET as et  # noqa: F401
     prereg = pilot_config.load_prereg(validate=False)
     prereg = {**prereg, "framework_doc_version": "0.0", "content_hash": pilot_config.prereg_content_hash({**prereg, "framework_doc_version": "0.0"})}
 

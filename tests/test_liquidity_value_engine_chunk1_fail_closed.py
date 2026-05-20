@@ -7,8 +7,7 @@ from datetime import date, datetime
 import pytest
 from zoneinfo import ZoneInfo
 
-ET = ZoneInfo("America/New_York")
-
+from time_et import ET
 from liquidity_value_engine import (
     _cluster_reference_price,
     _schwab_pricehistory_bar_missing_datetime,

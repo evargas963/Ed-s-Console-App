@@ -7,9 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest  # noqa: F401 — used by approx in several tests
 
-_ET = ZoneInfo("America/New_York")
-
-
+from time_et import ET as _ET
 def _b(start_et: str, o: float, h: float, lo: float, c: float):
     from research.pilot_step3.data_loader import Bar1m
 

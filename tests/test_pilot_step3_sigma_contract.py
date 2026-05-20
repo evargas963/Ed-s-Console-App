@@ -7,9 +7,7 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 
-_ET = ZoneInfo("America/New_York")
-
-
+from time_et import ET as _ET
 def test_prereg_v1_content_hash_validates():
     from research.pilot_step3 import pilot_config
 

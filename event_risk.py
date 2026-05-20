@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import List, Tuple
-from zoneinfo import ZoneInfo
+from time_et import now_et
 
 # US session date (ET) — ISO strings. Broad risk: CPI, FOMC, NFP-heavy days, major quad witching.
 # Keep tight: only days where you want elevated or high event_risk.
@@ -37,7 +37,7 @@ SYMBOL_EARNINGS: dict[str, List[str]] = {
 
 def session_date_et(now: datetime | None = None) -> date:
     if now is None:
-        now = datetime.now(ZoneInfo("America/New_York"))
+        now = now_et()
     return now.date()
 
 

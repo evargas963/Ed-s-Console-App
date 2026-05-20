@@ -63,7 +63,9 @@ def main():
 
     from datetime import datetime
     from zoneinfo import ZoneInfo
-    today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    from time_et import now_et
+
+    today = now_et().strftime("%Y-%m-%d")
 
     print(f"Date: {today}")
     print(f"Ticker: {ticker}")

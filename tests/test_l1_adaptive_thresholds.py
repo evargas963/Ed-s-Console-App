@@ -238,7 +238,7 @@ def test_rth_open_vs_midday_differ_via_intraday_ramp():
 
     from planes.l1_thresholds import AdaptiveMaterialityContext, resolve_l1_materiality_engine
 
-    et = ZoneInfo("America/New_York")
+    from time_et import ET as et  # noqa: F401
     ts_open = datetime(2024, 6, 14, 9, 35, tzinfo=et).timestamp()
     ts_mid = datetime(2024, 6, 14, 12, 15, tzinfo=et).timestamp()
     ctx = dict(session_label="RTH", vix_level=18.0, spot=500.0, spread_frac=0.0002)

@@ -55,7 +55,7 @@ def test_no_datetime_default_zero_in_production_py():
 def test_fetch_price_levels_skips_candle_missing_datetime():
     from market_context import fetch_price_levels
 
-    et = ZoneInfo("America/New_York")
+    from time_et import ET as et  # noqa: F401
     yday = (datetime.now(et) - timedelta(days=1)).replace(
         hour=11, minute=0, second=0, microsecond=0
     )

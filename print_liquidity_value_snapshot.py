@@ -143,7 +143,9 @@ def main():
     if not session_date:
         from datetime import datetime
         from zoneinfo import ZoneInfo
-        session_date = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+        from time_et import now_et
+
+        session_date = now_et().strftime("%Y-%m-%d")
 
     # Load bars
     if args.bars_file:
