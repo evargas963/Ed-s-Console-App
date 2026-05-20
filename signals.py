@@ -44,7 +44,7 @@ from prediction_engine import (
 )
 from call_engine import compute_call
 from fusion_contract import fusion_is_authoritative, is_canonical_tradable
-from numeric_contract import direction_from_model_output, direction_from_normalized_triplet
+from numeric_contract import direction_from_normalized_triplet, direction_from_triplet
 from regime_engine import classify_regime
 from volatility_regime import classify_volatility_regime
 import bayesian_fusion
@@ -744,14 +744,18 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
     def _model_stage(name, out, stage_id) -> StackStage:
         if not getattr(out, "available", False):
             return StackStage(stage_id=stage_id, status="inactive", note=f"{name}: inactive")
-        dom = direction_from_model_output(out)
+        dom = direction_from_triplet(
+            getattr(out, "prob_up", None),
+            getattr(out, "prob_down", None),
+            getattr(out, "prob_flat", None),
+        )
         conf = getattr(out, "confidence_label", None) or getattr(out, "confidence", None)
         prob = getattr(out, "prob_up", None)
         if dom == "down":
             prob = getattr(out, "prob_down", None)
         elif dom == "flat":
             prob = getattr(out, "prob_flat", None)
-        note = f"{name}: {dom} ({conf})"
+        note = f"{name}: {dom or '—'} ({conf})"
         return StackStage(stage_id=stage_id, status="active", direction=dom, confidence=conf, probability=prob, note=note)
 
     # 1. XGBoost

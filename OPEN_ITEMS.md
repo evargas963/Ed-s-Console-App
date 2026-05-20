@@ -79,7 +79,7 @@
 - [x] **COH-SA-2 — ET ZoneInfo satellites → `time_et`** — production + research paths import `ET` / `now_et()` from `time_et.py`; `tests/test_coh_sa2_et_authority.py` rglob guards.
 - [x] **COH-SA-3 — fusion-predicates → `fusion_contract.py`** — `fusion_is_authoritative`, `is_canonical_tradable` / `canonical_provenance_is_tradable`; redirected signals, call_engine, prediction_engine, mc_fusion_adjustment, fusion_policy_contract, market_state, multi_horizon_ml_bundle; `tests/test_fusion_contract.py` rglob guards (`getattr(_?fusion*, "available")` + `in NON_TRADABLE_CANONICAL_PROVENANCE`).
 - [x] **COH-SA-4 / COH-I-K — replay max-hold bars → `replay_hold_bars.py`** — live setup prescription, strict context read, trade-type fallback; provenance in replay payload; `tests/test_replay_hold_bars.py`.
-- [ ] **FIND-STACK-DIR1 — Stack display vs tradable canonical direction** @ `d9a3f3c` — `signals._model_stage` uses `direction_from_model_output` (display path); tradable mass uses `canonical_forecast_from_fusion` + provenance gates. **Decision pending (operator):** fully align stack card labels with `direction_from_normalized_triplet` only, OR document explicit stack-display exception (native `dominant_class` when valid). Owner: operator + Cursor. Not closed as COH-SA.
+- [x] **FIND-STACK-DIR1 — Stack display direction** — operator decision **ALIGN**: `signals._model_stage` uses `direction_from_triplet` only (no `dominant_class`); test `test_stack_model_stage_ignores_dominant_class_uses_triplet`.
 - [x] **COH-SA-5 — regime size multipliers → `position_sizing_policy.py`** — `REGIME_SIZE_MULTIPLIERS` + `regime_size_multiplier` (base + confidence nudge); `compute_position_size` redirected; `tests/test_position_sizing_policy.py` rglob guard. Sibling inline thresholds in same function flagged for magic-thresholds slice.
 - [x] **COH-SA-TRIPLET** @ `31c4f45` — `direction_from_triplet` / `direction_from_normalized_triplet`; subsumes COH-I-H. Tie-break: up → down → flat (docstring + tests).
 
@@ -177,7 +177,7 @@
 |---------|----------------|------|----------|
 | **ET derivation** | server, db, ml_scheduler, v2 A2, ad-hoc ZoneInfo | DST / session drift | **Closed @ `99ea0e0` + COH-SA-2** (`time_et.py` sole `ZoneInfo("America/New_York")` + `now_et()`) |
 | **Float validation** | 10+ duplicate `_float_or_none` (lifecycle, live_decision_bundle, v2_a1_*, …) | NaN/inf still accepted at non-redirected sites | **Partial @ `31c4f45`**; COH-SA sweep |
-| **Direction from triplet** | argmax sites + scheduler + fusion posterior | Inline `max(up,down,flat)` drift | **Partial @ `d9a3f3c`** — rglob clean; **FIND-STACK-DIR1** stack-display policy pending |
+| **Direction from triplet** | stack display + argmax sites + fusion | Fourth inference path drift | **Closed @ FIND-STACK-DIR1** — stack uses `direction_from_triplet` only; rglob @ `d9a3f3c` |
 | **Fusion availability** | signals, call_engine, prediction_engine, … | Drift on `available` gate | **Closed — COH-SA-3** (`fusion_contract.fusion_is_authoritative`) |
 | **Tradability predicate** | frozenset in `signal_types`; membership inlined | Drift on placeholder provenance | **Closed — COH-SA-3** (`fusion_contract.is_canonical_tradable`) |
 | **Replay max-hold bars** | was split across call_engine + realized_contract_eval | Live vs replay drift | **Closed — COH-I-K** (`replay_hold_bars.py`; historical 30-bar rows note in tier-2 item) |
@@ -495,8 +495,9 @@ Reference ticker for parametric tests: **SPY**.
   - [x] **FIND-SLV1-2** — `meta_n_bars_int()`; `backfill_signal_layer_v1_bundle` + `signal_layer_v1_to_direction_probs` + `bayesian_fusion` use safe parse (audit lane 1).
   - [x] **FIND-SLV1-3** — `meta.error=missing_last_close` on early return when last close absent (audit lane 1).
   - [x] **OBS-SLV1-1** — `meta.vwap_source` records `inp` vs `roll` (audit lane 1 @ `eb933ea`).
-  - [ ] **FIND-VR-1** — `volatility_regime.py:83` `_f(v)` — inline `float()` only; **does not** reject NaN/inf (confirmed). Redirect to `numeric_contract.float_finite_or_none`. Owner: Cursor. Next paired-fix slot.
-  - [ ] **FIND-MEC-1** — `math_exposure_core.py:20` `_f(x)` — same pattern as FIND-VR-1 (no NaN/inf guard). Owner: Cursor. Pair with FIND-VR-1 + extend COH-SA-1 rglob to `def _f(` delegates.
+  - [x] **FIND-VR-1** — `volatility_regime._f` → `float_finite_or_none`.
+  - [x] **FIND-MEC-1** — `math_exposure_core._f` → `float_finite_or_none` (fix-as-we-find with VR-1).
+  - [x] **COH-SA-1b** — `test_def_f_helpers_delegate_to_numeric_contract` extends float guard to `def _f`.
   - [ ] **FIND-ISNAP-1 (HIGH)** — `build_inference_snapshot_v1_from_signal_input` maps `inp.spread` → `l1_equiv["spread"]` but `build_live_mvp_feature_row` reads **`spread_pts`** (`live_feature_adapter.py:39`). Live stack path always yields `price.spread_pts=None` in MVP features. Owner: Cursor. Lane-2 paired-fix.
   - [ ] **OBS-ISNAP-1** — `_dist_to_vwap_pts`: non-`below` vwap_side returns positive magnitude only (no negative for above). Accepted if contract is magnitude-only.
   - [ ] **OBS-ISNAP-2** — `as_of_ts` None allowed when caller omits ts and `refresh_ts_utc` invalid; test `test_build_inference_snapshot_v1_from_signal_input_does_not_fabricate_as_of_ts` locks no wall-clock. Consumers must fail closed on missing as_of (ml_predict/xgb do).

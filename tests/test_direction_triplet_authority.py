@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from types import SimpleNamespace
 
-from numeric_contract import direction_from_model_output, direction_from_normalized_triplet
+from numeric_contract import direction_from_normalized_triplet
 
 _SKIP_PY_TREE_DIRS = frozenset(
     {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__"}
@@ -31,14 +31,22 @@ def _iter_production_py(root: Path):
         yield path, rel
 
 
-def test_direction_from_model_output_prefers_valid_dominant_class():
-    out = SimpleNamespace(dominant_class="UP", prob_up=0.1, prob_down=0.8, prob_flat=0.1)
-    assert direction_from_model_output(out) == "up"
+def test_stack_model_stage_ignores_dominant_class_uses_triplet():
+    """FIND-STACK-DIR1: stack display direction = triplet argmax only."""
+    from signals import _build_stack_decision_path
+    from tests.test_action11_8_signals_mc_fusion_fail_closed import _call
 
-
-def test_direction_from_model_output_falls_back_to_triplet():
-    out = SimpleNamespace(dominant_class="sideways", prob_up=0.1, prob_down=0.7, prob_flat=0.2)
-    assert direction_from_model_output(out) == "down"
+    xgb = SimpleNamespace(
+        available=True,
+        dominant_class="up",
+        prob_up=0.1,
+        prob_down=0.7,
+        prob_flat=0.2,
+        confidence_label="medium",
+    )
+    inactive = SimpleNamespace(available=False)
+    path = _build_stack_decision_path(xgb, inactive, inactive, inactive, None, _call())
+    assert path.xgboost.direction == "down"
 
 
 def test_no_inline_triplet_max_outside_numeric_contract():

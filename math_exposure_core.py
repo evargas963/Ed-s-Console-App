@@ -12,18 +12,15 @@ from typing import Dict, List, Optional, Tuple
 import math
 import logging
 
+from numeric_contract import float_finite_or_none
+
 log = logging.getLogger(__name__)
 
 
 # ── Formatting helpers ────────────────────────────────────────────────────────
 
 def _f(x) -> float | None:
-    try:
-        if x is None:
-            return None
-        return float(x)
-    except Exception:
-        return None
+    return float_finite_or_none(x)
 
 
 def bucket_metric(bucket: dict, key: str) -> float | None:

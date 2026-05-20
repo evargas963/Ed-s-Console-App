@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import math
 import re
 from pathlib import Path
@@ -108,6 +109,32 @@ def test_all_positive_float_helpers_delegate_to_numeric_contract():
         if "float_positive_or_none" not in src:
             offenders.append(str(rel))
     assert not offenders, offenders
+
+
+_COH_SA1_F_DELEGATE: tuple[tuple[str, str], ...] = (
+    ("volatility_regime", "_f"),
+    ("math_exposure_core", "_f"),
+    ("features.signal_layer_v1", "_f"),
+    ("realized_contract_eval", "_f"),
+)
+
+
+@pytest.mark.parametrize("module_name,attr", _COH_SA1_F_DELEGATE)
+def test_coh_sa1_f_wrappers_reject_nan_and_inf(module_name: str, attr: str):
+    mod = importlib.import_module(module_name)
+    fn = getattr(mod, attr)
+    assert fn(float("nan")) is None
+    assert fn(float("inf")) is None
+    assert fn(1.25) == 1.25
+
+
+@pytest.mark.parametrize("module_name,attr", _COH_SA1_F_DELEGATE)
+def test_coh_sa1_f_wrappers_delegate_to_numeric_contract(module_name: str, attr: str):
+    mod = importlib.import_module(module_name)
+    src = Path(importlib.util.find_spec(module_name).origin)  # type: ignore[union-attr]
+    text = src.read_text(encoding="utf-8")
+    assert "float_finite_or_none" in text
+    assert f"def {attr}" in text
 
 
 def test_no_legacy_inline_float_or_none_try_body():
