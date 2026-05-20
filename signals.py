@@ -44,7 +44,7 @@ from prediction_engine import (
 )
 from call_engine import compute_call
 from fusion_contract import fusion_is_authoritative, is_canonical_tradable
-from numeric_contract import float_finite_or_none, direction_from_normalized_triplet
+from numeric_contract import float_finite_or_none, float_positive_or_none, direction_from_normalized_triplet
 from regime_engine import classify_regime
 from volatility_regime import classify_volatility_regime
 import bayesian_fusion
@@ -310,22 +310,11 @@ def _spot_for_mc_fusion_adjustment(
     mc_spot_ctx: Optional[dict],
     inference_snapshot_v1: dict,
 ) -> Optional[float]:
-    """Canonical spot for post-fusion MC adjustment (same lineage as MC simulate)."""
-    if isinstance(mc_spot_ctx, dict):
-        try:
-            raw = mc_spot_ctx.get("spot")
-            sp = float(raw) if raw is not None else None
-            if sp > 0.0:
-                return sp
-        except (TypeError, ValueError):
-            pass
+    """Canonical spot for post-fusion MC adjustment (same numeric_contract authority as MC resolve)."""
+    if isinstance(mc_spot_ctx, dict) and "spot" in mc_spot_ctx:
+        return float_positive_or_none(mc_spot_ctx.get("spot"))
     feats = inference_snapshot_v1.get("features") or {}
-    try:
-        raw = feats.get("price.spot")
-        sp = float(raw) if raw is not None else None
-        return sp if sp is not None and sp > 0.0 else None
-    except (TypeError, ValueError):
-        return None
+    return float_positive_or_none(feats.get("price.spot"))
 
 
 def _run_model_stack(

@@ -42,6 +42,39 @@ def test_monte_carlo_fail_closed_on_spot_mismatch():
         resolve_monte_carlo_stack_inputs(inp, _snap(450.0))
 
 
+def _snap_raw_spot(spot):
+    from features.canonical_contract import get_mvp_feature_names
+
+    feats = {k: None for k in get_mvp_feature_names()}
+    feats["price.spot"] = spot
+    return {
+        "snapshot_type": "InferenceSnapshotV1",
+        "feature_contract_version": "v1_1m_mvp",
+        "canonical_timeframe": "1m",
+        "features": feats,
+    }
+
+
+@pytest.mark.parametrize("bad_spot", [float("inf"), float("nan"), -1.0, 0.0])
+def test_monte_carlo_rejects_non_positive_finite_canonical_spot(bad_spot):
+    inp = SimpleNamespace(spot=450.0)
+    with pytest.raises(MonteCarloStackInputError):
+        resolve_monte_carlo_stack_inputs(inp, _snap_raw_spot(bad_spot))
+
+
+def test_monte_carlo_non_canonical_nan_em_upper_stripped_to_none():
+    inp = SimpleNamespace(
+        spot=450.0,
+        em_upper=float("nan"),
+        em_lower=440.0,
+        call_gamma_wall=1.0,
+        put_gamma_wall=1.0,
+    )
+    ctx = resolve_monte_carlo_stack_inputs(inp, _snap(450.0))
+    assert ctx["em_upper"] is None
+    assert ctx["em_lower"] == 440.0
+
+
 def test_monte_carlo_fail_closed_missing_canonical_spot():
     from features.inference_snapshot import build_inference_snapshot_v1_from_feature_row
     from features.canonical_contract import get_mvp_feature_names

@@ -123,7 +123,7 @@
 
 **Gate B (2026-05-20):** No consolidation slices until audit lane 1 closes. **SSC1 @ `bb4b6b8`** on feature. **SIG test:** identical feature vs hybrid. **Audit lane 1 @ tip:** `features/signal_layer_v1.py` — brief + paired fixes FIND-SLV1-1..3; operator sign-off pending. **Temp dirs:** all eight session `*_tmp` paths absent in worktree (cleanup N/A).
 
-**Unread for coherence lens (post–batch 1 queue):** ~~`features/signal_layer_v1.py`~~ (lane 1 closed @ `eb933ea`), ~~`features/inference_snapshot.py`~~ (lane 2 paired-fix closed), `monte_carlo_stack_input.py` (lane 3 recommendation), `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
+**Unread for coherence lens (post–batch 1 queue):** ~~`features/signal_layer_v1.py`~~ (lane 1 closed @ `eb933ea`), ~~`features/inference_snapshot.py`~~ (lane 2 paired-fix closed), ~~`features/monte_carlo_stack_input.py`~~ (lane 3 paired-fix closed), `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
 
 ### COHERENCE-AUDIT workstream (full Read — not “files already walked”)
 
@@ -503,6 +503,9 @@ Reference ticker for parametric tests: **SPY**.
   - [x] **FIND-ISNAP-1 (HIGH)** — `l1_equiv["spread_pts"]` matches `live_feature_adapter` reader; `tests/test_inference_snapshot_l1_equiv_contract.py` locks all six key pairs.
   - [x] **OBS-ISNAP-1** — `_dist_to_vwap_pts` magnitude-only contract documented in `inference_snapshot.py`.
   - [x] **OBS-ISNAP-2** — `test_build_inference_snapshot_v1_from_signal_input_does_not_fabricate_as_of_ts` verified; `price.spread_pts` asserted in adapter test.
+  - [x] **FIND-MCSI-1** — non-canonical MC scalars via `float_finite_or_none` in `resolve_monte_carlo_stack_inputs` (audit lane 3 paired-fix).
+  - [x] **FIND-MCSI-2** — canonical `price.spot` + lineage `inp.spot` via `float_positive_or_none` (audit lane 3 paired-fix).
+  - [x] **FIND-MCSI-3** — `_spot_for_mc_fusion_adjustment` both read paths use `float_positive_or_none` (audit lane 3 paired-fix).
   - [ ] OBS-TC1 — `load_lstm_feature_cache` metadata defaults (`tickers`/`days`/`n_days`/`n_tickers` empty or 0); accepted — structural dims fail-closed via `_meta_required_positive_int`.
   - [ ] OBS-TC2 — `_normalize_data_fp({})` returns `{}` vs 6-key shape for non-empty; accepted — conservative cache miss on legacy empty identity.
   - [ ] OBS-TC3 — Legacy `cache_exists` / `read_cache_meta` at file tail unused by scheduler (accepted).
