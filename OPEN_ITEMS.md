@@ -86,7 +86,7 @@
 - [x] **REPO_SWEEP #2 — error-propagation** @ `1599d75` — SWEEP-EP-6..20; money-path + `server.py` + `ml_scheduler.py` cleared; repo-wide baseline 27 residual silent passes; audit `repo_sweep_error_propagation_v2_20260518.json`.
 - [x] **REPO_SWEEP #3 — error-propagation** — SWEEP-EP-21..47 (27 sites): residual `except Exception: pass` → `log.debug` + `exc_info=True` in adjacent/support modules (`levels.py`, `live_market_plane.py`, `schwab_client.py`, calibration/*, etc.); money-path roster re-read — 0 silent passes; baseline 0; audit `repo_sweep_error_propagation_v3_20260520.json`; guard tests in `tests/test_repo_sweep_error_propagation_v1.py`.
 - [x] **REPO_SWEEP magic-thresholds** @ `ef42d67` + `27f4fdf` + `a7380a9` — SWEEP-MT-1..13 (lifecycle + greeks producer cone); SWEEP-MT-FULL-TREE (repo-wide `-999.0` → `MISSING_GREEK_SENTINEL` in `order_flow_engine.py`, `math_volatility.py`, `v2_decision/a2_option_expression.py`, `server.py`; `market_state.py` strike-score init → `float("-inf")` not greek sentinel); guard `test_no_inline_missing_greek_sentinel_literal_in_production_outside_authority` walks full production tree (sweep-3 shape).
-- [x] **FP1/MT test-tool alignment** @ `d818649` — `test_v2_a2_option_expression._sample_a1` stamps `canonical_provenance=bayesian_fusion` (FP1 fixture gap; restores 13 a2 tests); `test_debug_charm_has_counters` + `tools/measure_post_fix_theta_v1.py` use `MISSING_GREEK_SENTINEL`.
+- [x] **FP1/MT test-tool alignment** @ `d818649` — closes `test_v2_a2_option_expression` FP1 fixture gap (`canonical_provenance="bayesian_fusion"`); aligns `test_debug_charm_has_counters` + `tools/measure_post_fix_theta_v1.py` with `MISSING_GREEK_SENTINEL` authority. No production delta.
 - [x] **SWEEP-1-COMPLETION** — audit `class_c_fixed_count` reconciled (5); `_CRITICAL_SILENT_PASS_FILES` expanded (11 money-path modules); EP-4 five coherence branches tested; `signals`/`signal_layer_v1` silent pass → log.debug; rules #22-27 in AGENT_SELF_GOVERNANCE.md.
 
 **TIER 2 — architectural**
@@ -106,6 +106,7 @@
 - [ ] **COH-I-I — MC None in sizing path silent skip** (`call_engine.py` ~L848, L1602-1606) — no `size_reasons` "MC unavailable."
 - [ ] **COH-I-L — `dte_warn` reconstruction without `field_sources` stamp** (`v2_advisory_backfill.py` ~L86-87).
 - [ ] **COH-I-M — Unicode in `time_warning` strings** (`call_engine.py` ~L1633) — console/consumer risk.
+- [ ] **OBS-CLUSTER-RANK-1** — `compare_clustering_modes.py` `scores[mode] = -999` (int, clustering rank floor for "no zones" outcome). Different semantic from `MISSING_GREEK_SENTINEL` (float, Schwab missing-greek). Promote to dedicated named constant in a future consolidation slice; do NOT alias to greek sentinel.
 
 **SLVB minor (operator note, not blocking 3177fdd):** `meta.n_bars` non-numeric string → `int()` can abort loop (`backfill_signal_layer_v1_bundle.py` ~L84); wrap in try if hardened.
 
