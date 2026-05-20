@@ -79,7 +79,7 @@
 - [x] **COH-SA-2 — ET ZoneInfo satellites → `time_et`** — production + research paths import `ET` / `now_et()` from `time_et.py`; `tests/test_coh_sa2_et_authority.py` rglob guards.
 - [x] **COH-SA-3 — fusion-predicates → `fusion_contract.py`** — `fusion_is_authoritative`, `is_canonical_tradable` / `canonical_provenance_is_tradable`; redirected signals, call_engine, prediction_engine, mc_fusion_adjustment, fusion_policy_contract, market_state, multi_horizon_ml_bundle; `tests/test_fusion_contract.py` rglob guards (`getattr(_?fusion*, "available")` + `in NON_TRADABLE_CANONICAL_PROVENANCE`).
 - [x] **COH-SA-4 / COH-I-K — replay max-hold bars → `replay_hold_bars.py`** — live setup prescription, strict context read, trade-type fallback; provenance in replay payload; `tests/test_replay_hold_bars.py`.
-- [x] **COH-SA-6 — direction triplet authority** — `direction_from_model_output` for `signals._model_stage`; rglob bans inline `max(up,down,flat)` outside `numeric_contract.py`; redirected `bayesian_fusion`, `ml_scheduler`, `calibration/signal_engineering`. `tests/test_direction_triplet_authority.py`.
+- [ ] **FIND-STACK-DIR1 — Stack display vs tradable canonical direction** @ `d9a3f3c` — `signals._model_stage` uses `direction_from_model_output` (display path); tradable mass uses `canonical_forecast_from_fusion` + provenance gates. **Decision pending (operator):** fully align stack card labels with `direction_from_normalized_triplet` only, OR document explicit stack-display exception (native `dominant_class` when valid). Owner: operator + Cursor. Not closed as COH-SA.
 - [x] **COH-SA-5 — regime size multipliers → `position_sizing_policy.py`** — `REGIME_SIZE_MULTIPLIERS` + `regime_size_multiplier` (base + confidence nudge); `compute_position_size` redirected; `tests/test_position_sizing_policy.py` rglob guard. Sibling inline thresholds in same function flagged for magic-thresholds slice.
 - [x] **COH-SA-TRIPLET** @ `31c4f45` — `direction_from_triplet` / `direction_from_normalized_triplet`; subsumes COH-I-H. Tie-break: up → down → flat (docstring + tests).
 
@@ -177,7 +177,7 @@
 |---------|----------------|------|----------|
 | **ET derivation** | server, db, ml_scheduler, v2 A2, ad-hoc ZoneInfo | DST / session drift | **Closed @ `99ea0e0` + COH-SA-2** (`time_et.py` sole `ZoneInfo("America/New_York")` + `now_et()`) |
 | **Float validation** | 10+ duplicate `_float_or_none` (lifecycle, live_decision_bundle, v2_a1_*, …) | NaN/inf still accepted at non-redirected sites | **Partial @ `31c4f45`**; COH-SA sweep |
-| **Direction from triplet** | stack display + fusion + scheduler | Fourth inference path drift | **Closed — COH-SA-6** (`direction_from_model_output` + rglob `max(up,down,flat)`) |
+| **Direction from triplet** | argmax sites + scheduler + fusion posterior | Inline `max(up,down,flat)` drift | **Partial @ `d9a3f3c`** — rglob clean; **FIND-STACK-DIR1** stack-display policy pending |
 | **Fusion availability** | signals, call_engine, prediction_engine, … | Drift on `available` gate | **Closed — COH-SA-3** (`fusion_contract.fusion_is_authoritative`) |
 | **Tradability predicate** | frozenset in `signal_types`; membership inlined | Drift on placeholder provenance | **Closed — COH-SA-3** (`fusion_contract.is_canonical_tradable`) |
 | **Replay max-hold bars** | was split across call_engine + realized_contract_eval | Live vs replay drift | **Closed — COH-I-K** (`replay_hold_bars.py`; historical 30-bar rows note in tier-2 item) |
