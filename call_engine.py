@@ -20,6 +20,7 @@ from math_exposure import (
     BREAKOUT_BLOCK_THRESHOLD,
 )
 from fusion_contract import canonical_provenance_is_tradable, fusion_is_authoritative
+from position_sizing_policy import regime_size_multiplier
 from replay_hold_bars import replay_max_hold_bars_for_setup
 from signal_types import (
     SignalInput,
@@ -741,6 +742,7 @@ def compute_position_size(
     reasons = []
 
     # == 1. CONFIDENCE MULTIPLIER =============================================
+    # COH-SA queue: conf_mult buckets, VIX/ATR vol_mult, mc_mult branches — policy table slice next.
     # From fusion confidence + model agreement + confluence
     if conviction == "high" and confluence_count >= 3:
         conf_mult = 1.00
@@ -768,24 +770,8 @@ def compute_position_size(
         conf_mult = min(1.0, conf_mult * 1.10)
 
     # == 2. REGIME MULTIPLIER =================================================
-    REGIME_MULT = {
-        "pinning":            0.60,
-        "mean_reversion":     0.60,
-        "reversal_prone":     0.50,
-        "vol_compression":    0.70,
-        "vol_expansion":      0.85,
-        "breakout":           0.90,
-        "acceleration":       0.90,
-        "trend_continuation": 1.00,
-        "unknown":            0.70,
-    }
-    regime_mult = REGIME_MULT.get(regime_label, 0.70)
-
-    # Regime confidence adjustment
-    if regime_confidence == "high" and regime_mult < 1.0:
-        regime_mult = min(1.0, regime_mult + 0.10)
-    elif regime_confidence == "low":
-        regime_mult = max(0.40, regime_mult - 0.10)
+    regime_mult = regime_size_multiplier(regime_label, regime_confidence)
+    if regime_confidence == "low":
         reasons.append("low regime confidence")
 
     if regime_label in ("pinning", "reversal_prone"):

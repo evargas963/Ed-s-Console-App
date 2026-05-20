@@ -79,6 +79,7 @@
 - [x] **COH-SA-2 — ET ZoneInfo satellites → `time_et`** — production + research paths import `ET` / `now_et()` from `time_et.py`; `tests/test_coh_sa2_et_authority.py` rglob guards.
 - [x] **COH-SA-3 — fusion-predicates → `fusion_contract.py`** — `fusion_is_authoritative`, `is_canonical_tradable` / `canonical_provenance_is_tradable`; redirected signals, call_engine, prediction_engine, mc_fusion_adjustment, fusion_policy_contract, market_state, multi_horizon_ml_bundle; `tests/test_fusion_contract.py` rglob guards (`getattr(_?fusion*, "available")` + `in NON_TRADABLE_CANONICAL_PROVENANCE`).
 - [x] **COH-SA-4 / COH-I-K — replay max-hold bars → `replay_hold_bars.py`** — live setup prescription, strict context read, trade-type fallback; provenance in replay payload; `tests/test_replay_hold_bars.py`.
+- [x] **COH-SA-5 — regime size multipliers → `position_sizing_policy.py`** — `REGIME_SIZE_MULTIPLIERS` + `regime_size_multiplier` (base + confidence nudge); `compute_position_size` redirected; `tests/test_position_sizing_policy.py` rglob guard. Sibling inline thresholds in same function flagged for magic-thresholds slice.
 - [x] **COH-SA-TRIPLET** @ `31c4f45` — `direction_from_triplet` / `direction_from_normalized_triplet`; subsumes COH-I-H. Tie-break: up → down → flat (docstring + tests).
 
 **TIER 2 — architectural**
@@ -117,7 +118,7 @@
 
 **FIND-CAL-TS item-6** @ `1509c2d` (backfill engine + CLI) + tooling @ `39410ca`. Runbook: `docs/operations/backfill_et_clock_runbook.md`. **Operator:** execute backfill on live DB; then calibration widen resumes.
 
-**Next:** remaining COH-SA sweep rows (magic thresholds, regime multipliers, coherence audit lanes, …).
+**Next:** remaining COH-SA sweep rows (magic thresholds → policy table, coherence audit lanes, …).
 
 **Unread for coherence lens (post–batch 1 queue):** `features/signal_layer_v1.py`, `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
 
@@ -180,7 +181,7 @@
 | **Tradability predicate** | frozenset in `signal_types`; membership inlined | Drift on placeholder provenance | **Closed — COH-SA-3** (`fusion_contract.is_canonical_tradable`) |
 | **Replay max-hold bars** | was split across call_engine + realized_contract_eval | Live vs replay drift | **Closed — COH-I-K** (`replay_hold_bars.py`; historical 30-bar rows note in tier-2 item) |
 | **Magic thresholds** | Per-module inlines (call_engine, signal_layer_discrimination, …) | Policy drift | COH-SA (document or config table) |
-| **Regime multipliers** | `REGIME_MULT` in `compute_position_size` | Embedded dict | COH-SA |
+| **Regime multipliers** | was inline in `compute_position_size` | Policy drift on regime scale | **Closed — COH-SA-5** (`position_sizing_policy.regime_size_multiplier`) |
 
 **COH-SA run order (additive to Path A):**
 
