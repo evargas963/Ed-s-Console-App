@@ -57,11 +57,24 @@ def test_compute_signal_layer_v1_missing_last_close_sets_meta_error() -> None:
     assert layer.get("ps.rolling_trend_slope_log20") is None
 
 
+def test_signal_layer_f_rejects_nan() -> None:
+    from pathlib import Path
+
+    from features.signal_layer_v1 import _f
+
+    assert _f(float("nan")) is None
+    assert _f(float("inf")) is None
+    src = Path(__file__).resolve().parents[1] / "features" / "signal_layer_v1.py"
+    body = src.read_text(encoding="utf-8")
+    assert "return float_finite_or_none(x)" in body
+    assert "math.isnan" not in body.split("def _f")[1].split("\ndef ")[0]
+
+
 def test_vwap_source_inp_vs_bars_roll() -> None:
     bars = _synth_bars(80)
     decision_ts = float(bars[-1]["bar_end_ts_utc"])
     layer_roll = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=None)
-    assert layer_roll.get("meta.vwap_source") == "bars_roll"
+    assert layer_roll.get("meta.vwap_source") == "roll"
     inp = SimpleNamespace(vwap=101.5)
     layer_inp = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=inp)
     assert layer_inp.get("meta.vwap_source") == "inp"

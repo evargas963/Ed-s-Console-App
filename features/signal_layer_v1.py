@@ -10,10 +10,13 @@ multi-timeframe (derived from stacked 1m), participation.
 
 from __future__ import annotations
 
+import logging
 import math
 from typing import Any, Mapping, Optional, Sequence
 
 from numeric_contract import float_finite_or_none
+
+log = logging.getLogger(__name__)
 
 EPS = 1e-12
 DEFAULT_MAX_BARS = 256
@@ -45,6 +48,7 @@ def meta_n_bars_int(layer: Mapping[str, Any]) -> int:
     try:
         n = int(raw)
     except (TypeError, ValueError):
+        log.debug("meta_n_bars_int: unparseable meta.n_bars=%r", raw)
         return 0
     return n if n > 0 else 0
 
@@ -376,7 +380,7 @@ def compute_signal_layer_v1(
         out["meta.vwap_source"] = "inp"
     else:
         vwap_use = vwap_roll
-        out["meta.vwap_source"] = "bars_roll" if vwap_roll is not None else None
+        out["meta.vwap_source"] = "roll" if vwap_roll is not None else None
 
     if vwap_use is not None:
         out["vl.price_vs_vwap_pct"] = _safe_div(c_now - vwap_use, c_now) * 100.0

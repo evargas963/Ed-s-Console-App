@@ -81,10 +81,14 @@ def backfill(
                 continue
 
         if not force and bundle.get("signal_layer_v1") and isinstance(bundle["signal_layer_v1"], dict):
-            nb = meta_n_bars_int(bundle["signal_layer_v1"])
+            sl = bundle["signal_layer_v1"]
+            raw_nb = sl.get("meta.n_bars")
+            nb = meta_n_bars_int(sl)
             if nb > 0:
                 skipped_nonempty += 1
                 continue
+            if raw_nb is not None and str(raw_nb).strip() != "" and nb == 0:
+                errors.append({"id": rid, "error": "signal_layer_v1_invalid_meta_n_bars"})
 
         try:
             layer = compute_signal_layer_v1_for_calibration(
