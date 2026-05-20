@@ -119,9 +119,9 @@
 
 **FIND-CAL-TS item-6** @ `1509c2d` (backfill engine + CLI) + tooling @ `39410ca`. Runbook: `docs/operations/backfill_et_clock_runbook.md`. **Operator:** execute backfill on live DB; then calibration widen resumes.
 
-**Next:** remaining COH-SA sweep rows (magic thresholds → policy table, coherence audit lanes, …).
+**Gate B (2026-05-20):** No consolidation slices until audit lane 1 closes. **SSC1 @ `bb4b6b8`** on `feature/institutional-key-levels` (matches hybrid `517e674` chronology guard). **SIG test:** `tests/test_signals_canonical_forecast_layer5.py` identical feature vs hybrid — no cherry-pick. **Audit lane 1:** `features/signal_layer_v1.py` — Cursor brief delivered this turn; operator sign-off pending.
 
-**Unread for coherence lens (post–batch 1 queue):** `features/signal_layer_v1.py`, `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
+**Unread for coherence lens (post–batch 1 queue):** ~~`features/signal_layer_v1.py`~~ (lane 1 — this turn), `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
 
 ### COHERENCE-AUDIT workstream (full Read — not “files already walked”)
 
@@ -491,6 +491,10 @@ Reference ticker for parametric tests: **SPY**.
   - [x] FIND-SLVB1 — `backfill_signal_layer_v1_bundle` skipped recompute when `meta.n_bars==0` but `meta.error is None` (treated empty layer as done); closed skip only when `meta.n_bars > 0`.
   - [x] FIND-SLVB2 — bundle backfill scanned all `calibration_decision_log` rows (including `legacy`); closed `TRUSTED_PREDICATE_SQL` on SELECT.
   - [x] FIND-SLVB3 — no `enforce_calibration_decision_log_only_1m` before writes; closed + `CalibrationCanonicalViolationError` exit 2 in `main`.
+  - [ ] **FIND-SLV1-1** — `features/signal_layer_v1.py` `_f` (L34-43) duplicates `numeric_contract.float_finite_or_none` instead of delegating (COH-SA-1 drift). Owner: Cursor. Fix in post-lane-1 consolidation or paired with `backfill_signal_layer_v1_bundle`.
+  - [ ] **FIND-SLV1-2** — `int(layer.get("meta.n_bars") or 0)` @ L675 and `backfill_signal_layer_v1_bundle.py` L84: non-numeric `meta.n_bars` string aborts backfill skip path / direction_probs. Owner: Cursor. Extends SLVB minor note.
+  - [ ] **FIND-SLV1-3** — `compute_signal_layer_v1` L283-284: missing last close returns partial layer without `meta.error` (consumers may treat as usable). Owner: Cursor.
+  - [ ] **OBS-SLV1-1** — `vwap_use` prefers `inp.vwap` over roll VWAP (L366-367) with no meta field recording which source was used (replay/debug ambiguity). Accepted until calibration replay needs provenance.
   - [ ] OBS-TC1 — `load_lstm_feature_cache` metadata defaults (`tickers`/`days`/`n_days`/`n_tickers` empty or 0); accepted — structural dims fail-closed via `_meta_required_positive_int`.
   - [ ] OBS-TC2 — `_normalize_data_fp({})` returns `{}` vs 6-key shape for non-empty; accepted — conservative cache miss on legacy empty identity.
   - [ ] OBS-TC3 — Legacy `cache_exists` / `read_cache_meta` at file tail unused by scheduler (accepted).
