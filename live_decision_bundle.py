@@ -53,6 +53,11 @@ def stamp_decision_bundle(ms_dict: dict) -> dict:
 
     """Assign monotonic decision_generation_id and decision_timestamp_utc (mutates ms_dict)."""
 
+    if ms_dict.get("signals_engine_failed"):
+        ms_dict["decision_tick_kind"] = "signals_engine_error"
+        ms_dict["decision_generation_skipped"] = True
+        return ms_dict
+
     global _next_generation_id
 
     with _lock:
@@ -64,6 +69,10 @@ def stamp_decision_bundle(ms_dict: dict) -> dict:
     ms_dict["decision_generation_id"] = int(gid)
 
     ms_dict["decision_timestamp_utc"] = float(time.time())
+
+    ms_dict["decision_tick_kind"] = "live"
+
+    ms_dict["decision_generation_skipped"] = False
 
     return ms_dict
 

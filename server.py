@@ -532,13 +532,45 @@ _analytics_executor = ThreadPoolExecutor(
     thread_name_prefix="ed_analytics_bg",
 )
 _analytics_inflight: set[tuple] = set()
+_analytics_bg_fail_counts: dict[tuple, int] = {}
 _analytics_bg_lock = threading.Lock()
 _main_event_loop: Optional[asyncio.AbstractEventLoop] = None
+ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES = int(
+    os.environ.get("ED_ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES", "3")
+)
 
 
 def _tier_c_inflight_key(ticker: str, expiry: Optional[str]) -> tuple:
     """Dedupe key for REST/SSE/tick refresh jobs (expiry None → '__auto__')."""
     return (ticker.upper().strip(), expiry if expiry is not None else "__auto__")
+
+
+def _invalidate_analytics_cache_after_bg_failures(
+    inflight_key: tuple,
+    ticker: str,
+    *,
+    reason: str,
+) -> None:
+    """Drop cached Tier C payload after repeated background recompute failures."""
+    t = ticker.upper().strip()
+    exp = inflight_key[1] if len(inflight_key) > 1 else "__auto__"
+    removed: list[tuple] = []
+    for key in list(_state_cache.keys()):
+        if not isinstance(key, tuple) or len(key) < 2 or key[0] != t:
+            continue
+        if exp != "__auto__" and key[1] != exp:
+            continue
+        _state_cache.pop(key, None)
+        removed.append(key)
+    if removed:
+        log.warning(
+            "analytics cache invalidated after bg failures ticker=%s exp=%s n=%s reason=%s keys=%s",
+            t,
+            exp,
+            _analytics_bg_fail_counts.get(inflight_key, 0),
+            reason,
+            removed,
+        )
 
 
 def _analytics_generated_ts(entry: dict) -> float:
@@ -5261,7 +5293,20 @@ def _fetch_state(
     else:
         ms_dict["accuracy"] = None
 
+    if getattr(ms, "signals_engine_failed", False):
+        _events = list(getattr(ms, "stack_integrity_events", None) or [])
+        if _events:
+            try:
+                from features.stack_integrity_v1 import finalize_stack_integrity_v1
+
+                ms_dict["stack_integrity_v1"] = finalize_stack_integrity_v1(_events)
+            except Exception:
+                pass
     _attach_stack_runtime_and_governance(ms_dict, ticker=ticker)
+    if ms_dict.get("signals_engine_failed"):
+        sr = ms_dict.get("stack_runtime")
+        if isinstance(sr, dict):
+            sr["stack_mode"] = "signals_engine_error"
     _apply_trader_horizon_contract(ms_dict)
     stamp_decision_bundle(ms_dict)
     _t_pipeline_end_mono = time.monotonic()

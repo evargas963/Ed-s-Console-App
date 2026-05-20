@@ -479,6 +479,12 @@ class MarketState:
     # ── Feed card ─────────────────────────────────────────────────────────────
     live_on:            bool            = False
 
+    # ── API / transport error contract (batch-2 COH-I-E reachability) ─────────
+    state_error:            Optional[str]   = None
+    state_error_detail:     Optional[str]   = None
+    signals_engine_failed:  bool            = False
+    stack_integrity_events: list            = field(default_factory=list)
+
     # ── Additive context (liquidity behavior + news/sentiment; non-authoritative) ──
     liquidity_behavior: Optional[dict] = None
     news_context:       Optional[dict] = None
@@ -1324,6 +1330,25 @@ def build_market_state(
             ms.zone_label      = "ERROR"
             ms.zone_badge_css  = "#dc2626"
             ms._calibration_payload = None
+            ms.state_error = "signals_engine_error"
+            ms.state_error_detail = _err_short
+            ms.signals_engine_failed = True
+            try:
+                from features.stack_integrity_v1 import record_stack_degradation
+
+                record_stack_degradation(
+                    ms.stack_integrity_events,
+                    component="signals_engine",
+                    severity="error",
+                    reason="compute_signals_failed",
+                    exc_type=type(_e).__name__,
+                    detail=_err_short,
+                    fallback_used=False,
+                    authority_intact=False,
+                    dedupe_key="signals_engine",
+                )
+            except Exception:
+                pass
 
     # ── 9. Populate card fields from signals output ──────────────────────────
     if _sig_out is not None:

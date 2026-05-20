@@ -59,7 +59,7 @@ def test_index_html_rejects_older_decision_generation():
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
     assert "_lastRenderedDecisionGen" in html
     assert "decision_generation_id" in html
-    assert "_decGen < _prevGen" in html
+    assert "_renderCoherenceGuards" in html and "reason: 'gen'" in html
     assert "canonical snapshot" in html.lower() or "render(d) only" in html
 
 

@@ -5084,10 +5084,56 @@ function updateAnalyticsFreshnessUI(d) {
   el.style.color = stale || prog ? 'var(--warn, #c9a227)' : 'var(--text3)';
 }
 
+/** Error bar + monotonic guards shared across Tier A/B/C render paths (batch-2). */
+function _updateErrorBarFromPayload(d) {
+  const errBar = $('error-bar');
+  if (!errBar || !d) return;
+  if (d.state_error && d.state_error_detail) {
+    errBar.style.display = 'block';
+    errBar.textContent = String(d.state_error_detail);
+  } else if (!d.state_error) {
+    errBar.style.display = 'none';
+  }
+}
+
+function _renderCoherenceGuards(d, opts) {
+  opts = opts || {};
+  const checkGen = opts.checkDecisionGen !== false;
+  if (d == null || typeof d !== 'object' || Array.isArray(d)) return { ok: false, reason: 'null' };
+  if (d.ticker && d.ticker.toUpperCase() !== activeTicker) return { ok: false, reason: 'ticker' };
+  if (d._server_build_ts && d._server_build_ts < lastRenderTimestamp) {
+    return { ok: false, reason: 'ts' };
+  }
+  if (checkGen) {
+    const decGen = d.decision_generation_id != null ? Number(d.decision_generation_id) : NaN;
+    if (Number.isFinite(decGen)) {
+      const prev = window._lastRenderedDecisionGen ?? 0;
+      if (decGen < prev) return { ok: false, reason: 'gen' };
+    }
+  }
+  return { ok: true };
+}
+
+function _commitRenderTimestampAndGen(d) {
+  if (d._server_build_ts) {
+    lastRenderTimestamp = Math.max(lastRenderTimestamp || 0, d._server_build_ts);
+  }
+  const decGen = d.decision_generation_id != null ? Number(d.decision_generation_id) : NaN;
+  if (Number.isFinite(decGen)) {
+    window._lastRenderedDecisionGen = Math.max(window._lastRenderedDecisionGen ?? 0, decGen);
+  }
+}
+
 /** Tier C pending shell — no chain yet; merge flags only so Tier A DOM stays visible. */
 function renderTierCPendingShell(d, fullRenderSource) {
   if (d == null || typeof d !== 'object' || Array.isArray(d)) return false;
-  if (d.ticker && d.ticker.toUpperCase() !== activeTicker) return false;
+  const guard = _renderCoherenceGuards(d, { checkDecisionGen: false });
+  if (!guard.ok) {
+    if (typeof DIAG !== 'undefined' && DIAG) {
+      console.warn('[renderTierCPendingShell] REJECTED', guard.reason, { incoming: d._server_build_ts, last: lastRenderTimestamp });
+    }
+    return false;
+  }
   window._lastData = Object.assign({}, window._lastData || {}, {
     analytics_stale: d.analytics_stale,
     analytics_version: d.analytics_version,
@@ -5104,6 +5150,7 @@ function renderTierCPendingShell(d, fullRenderSource) {
     });
   } catch (e) {}
   updateAnalyticsFreshnessUI(d);
+  _updateErrorBarFromPayload(window._lastData);
   _lastRenderTs = Date.now();
   clearHardStaleUi();
   return true;
@@ -5113,13 +5160,16 @@ function renderTierCPendingShell(d, fullRenderSource) {
 function renderTierALive(d, fullRenderSource) {
   if (d == null || typeof d !== 'object' || Array.isArray(d)) return false;
   if (d.error && d.error === 'token_invalid') return false;
-  if (d.ticker && d.ticker.toUpperCase() !== activeTicker) return false;
-  if (d._server_build_ts && d._server_build_ts < lastRenderTimestamp) return false;
+  const guard = _renderCoherenceGuards(d, { checkDecisionGen: false });
+  if (!guard.ok) {
+    if (typeof DIAG !== 'undefined' && DIAG) console.warn('[renderTierALive] REJECTED', guard.reason);
+    return false;
+  }
   const lw = d.analytics_lightweight || {};
   const merged = Object.assign({}, window._lastData || {}, d, lw);
   merged._tier_a_pending_full_analytics = true;
   window._lastData = merged;
-  lastRenderTimestamp = d._server_build_ts;
+  _commitRenderTimestampAndGen(d);
   try {
     window._edRtDiag = Object.assign(window._edRtDiag || {}, {
       lastFullRenderSource: fullRenderSource || 'tier_a_live',
@@ -5179,13 +5229,7 @@ function renderTierALive(d, fullRenderSource) {
   setChg('sb-spy', lw.spy_chg_pct);
   setChg('sb-qqq', lw.qqq_chg_pct);
   setChg('sb-iwm', lw.iwm_chg_pct);
-  const errBar = $('error-bar');
-  if (errBar && d.state_error && d.state_error_detail) {
-    errBar.style.display = 'block';
-    errBar.textContent = String(d.state_error_detail);
-  } else if (errBar && !d.state_error) {
-    errBar.style.display = 'none';
-  }
+  _updateErrorBarFromPayload(merged);
   _lastRenderTs = Date.now();
   clearHardStaleUi();
   try { renderTimeframeSignalRow(window._lastData); } catch (e) {}
@@ -5206,38 +5250,18 @@ function render(d, fullRenderSource) {
   if (d._tier === 'C_analytics' && d.analytics_pending_shell) {
     return renderTierCPendingShell(d, fullRenderSource);
   }
-  // Guard 1 — wrong ticker: never render data for a ticker other than activeTicker.
-  if (d.ticker && d.ticker.toUpperCase() !== activeTicker) {
-    if (typeof DIAG !== 'undefined' && DIAG) console.warn('[render] REJECTED wrong ticker', { incoming: d.ticker, active: activeTicker });
+  const guard = _renderCoherenceGuards(d, { checkDecisionGen: true });
+  if (!guard.ok) {
+    if (typeof DIAG !== 'undefined' && DIAG) {
+      console.warn('[render] REJECTED', guard.reason, { incoming: d.ticker, active: activeTicker });
+    }
     return false;
-  }
-  // Guard 2 — out-of-order: discard responses whose server timestamp is older than
-  // the last rendered response. Prevents a slow in-flight request (even for the
-  // correct ticker) from overwriting fresher data that already rendered.
-  if (d._server_build_ts) {
-    if (d._server_build_ts < lastRenderTimestamp) {
-      if (typeof DIAG !== 'undefined' && DIAG) console.warn('[render] REJECTED out-of-order', { incoming: d._server_build_ts, last: lastRenderTimestamp, delta_ms: Math.round((lastRenderTimestamp - d._server_build_ts) * 1000) });
-      return false;
-    }
-  }
-  const _decGen = d.decision_generation_id != null ? Number(d.decision_generation_id) : NaN;
-  if (Number.isFinite(_decGen)) {
-    const _prevGen = window._lastRenderedDecisionGen ?? 0;
-    if (_decGen < _prevGen) {
-      if (typeof DIAG !== 'undefined' && DIAG) console.warn('[render] REJECTED older decision_generation_id', { incoming: _decGen, last: _prevGen });
-      return false;
-    }
-  }
-  if (d._server_build_ts) {
-    lastRenderTimestamp = d._server_build_ts;
   }
   if (d._update_source) {
     window._lastPayloadUpdateSource = d._update_source;
   }
   window._lastData = d;
-  if (Number.isFinite(_decGen)) {
-    window._lastRenderedDecisionGen = Math.max(window._lastRenderedDecisionGen ?? 0, _decGen);
-  }
+  _commitRenderTimestampAndGen(d);
   // Layer C payload: server merges live_market_plane (Layer A) into ms_dict — client does not patch spot here.
   window._lastFullStateServerTs = d._server_build_ts != null ? d._server_build_ts : null;
   try {
@@ -5257,11 +5281,7 @@ function render(d, fullRenderSource) {
   }
   updateAnalyticsFreshnessUI(d);
 
-  const _errBar = $('error-bar');
-  if (_errBar && d.state_error && d.state_error_detail) {
-    _errBar.style.display = 'block';
-    _errBar.textContent = String(d.state_error_detail);
-  }
+  _updateErrorBarFromPayload(d);
 
   try {
   // Slow vs fast overlap: do not let stale slow snapshot overwrite fresher fast quote fields
