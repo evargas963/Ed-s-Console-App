@@ -30,6 +30,10 @@ from db import get_snapshot_sql
 from math_probabilities import MIN_SAMPLES_STATISTICAL
 from instrument_identity import ticker_storage_key
 from timeframe_config import CANONICAL_TIMEFRAME
+import logging
+
+log = logging.getLogger(__name__)
+
 
 # BAR_ANCHOR_V1: bar lookups use ticker_storage_key (same as db.fill_outcomes).
 
@@ -41,8 +45,8 @@ def _connect(db_path: Path) -> sqlite3.Connection:
         from db import configure_sqlite_connection
 
         configure_sqlite_connection(conn)
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("audit phase1: %s", e, exc_info=True)
     return conn
 
 
@@ -102,8 +106,8 @@ def run_audit(db_path: Path) -> dict[str, Any]:
     try:
         try:
             ensure_calibration_schema(conn)
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("audit phase1: %s", e, exc_info=True)
         out["tables_present"]["snapshots"] = _table_exists(conn, "snapshots")
         out["tables_present"]["price_bars_1m"] = _table_exists(conn, "price_bars_1m")
         out["tables_present"]["calibration_decision_log"] = _table_exists(

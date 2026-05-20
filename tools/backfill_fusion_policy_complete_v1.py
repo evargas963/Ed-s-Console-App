@@ -35,6 +35,10 @@ from signals import compute_fusion_policy_flat_for_replay
 from timeframe_config import CANONICAL_TIMEFRAME
 
 from tools.legacy.horizon_7.backfill_fusion_policy_columns_v1 import _incomplete_fused_sql
+import logging
+
+log = logging.getLogger(__name__)
+
 
 
 def _sqlite_exec_retry(conn: sqlite3.Connection, sql: str, params: tuple, *, label: str = "") -> None:
@@ -335,9 +339,8 @@ def main() -> int:
 
         try:
             conn.close()
-        except Exception:
-            pass
-
+        except Exception as e:
+            log.debug("conn close: %s", e, exc_info=True)
     print(json.dumps(summary, indent=2, default=str))
     return 0
 

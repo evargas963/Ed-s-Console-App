@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from typing import List
 
 from math_exposure import ExposureRow, WallsRow, TotalsRow, fmt_money as _fmt_money_abbrev, fmt_money_gex as _fmt_gamma_money_1pct
+import logging
+
+log = logging.getLogger(__name__)
+
 
 
 @dataclass(frozen=True)
@@ -202,8 +206,8 @@ def key_levels_to_plot_rows(
             try:
                 if abs(float(level) - float(spot)) > float(spot) * filter_pct:
                     return None
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug("level filter / parity row: %s", e, exc_info=True)
         sr  = _sr(level)
         oe  = _oe_flag(level)
         return {
@@ -315,9 +319,8 @@ def key_levels_to_plot_rows(
                 )
                 if r:
                     rows.append(r)
-        except Exception:
-            pass
-
+        except Exception as e:
+            log.debug("level filter / parity row: %s", e, exc_info=True)
     # ── Regime row ───────────────────────────────────────────────────────────
     rows.append({
         "Metric":      "Regime",

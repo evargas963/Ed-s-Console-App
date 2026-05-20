@@ -39,6 +39,10 @@ except Exception:
 
 from db import get_snapshot_sql
 from instrument_identity import ticker_storage_key
+import logging
+
+log = logging.getLogger(__name__)
+
 
 
 def _miss_rate_gated(miss: int, n: int) -> tuple[float | None, dict[str, Any]]:
@@ -283,9 +287,8 @@ def run_anchor_audit(
 
     try:
         ensure_calibration_schema(conn)
-    except Exception:
-        pass
-
+    except Exception as e:
+        log.debug("anchor audit: %s", e, exc_info=True)
     # Population: all 1m snapshots (or sample)
     base_sql = get_snapshot_sql("calibration/anchor_audit.py:base_population")
     params: list[Any] = [CANONICAL_TIMEFRAME]

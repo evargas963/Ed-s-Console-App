@@ -19,9 +19,13 @@ Layers (see server lifespan / architecture docs):
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from typing import Any, Optional
+
+log = logging.getLogger(__name__)
+
 
 
 _lock = threading.RLock()
@@ -184,8 +188,8 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
         from planes.l1_events import notify_quote_updated
 
         notify_quote_updated(t)
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("notify_quote_updated: %s", e, exc_info=True)
     return True
 
 
@@ -200,8 +204,8 @@ def record_quote(ticker: str, payload: dict[str, Any]) -> None:
         from planes.l1_events import notify_quote_updated
 
         notify_quote_updated(t)
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("notify_quote_updated: %s", e, exc_info=True)
 
 
 def get_quote(ticker: str) -> Optional[dict[str, Any]]:

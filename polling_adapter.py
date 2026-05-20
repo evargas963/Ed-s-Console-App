@@ -14,6 +14,10 @@ from typing import Callable, Optional
 from time_et import ET
 
 from market_data_adapter import schwab_candles_to_bars
+import logging
+
+log = logging.getLogger(__name__)
+
 
 BarCallback = Callable[[list[dict]], None]
 
@@ -143,6 +147,6 @@ def poll_and_callback(
             bars = fetch_bars_via_schwab(client, symbol)
             if bars:
                 on_bars(bars)
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("on_bars callback: %s", e, exc_info=True)
         time.sleep(interval_seconds)

@@ -43,6 +43,10 @@ from typing import Any, Iterator, Optional
 from db import DB_PATH, get_snapshot_sql
 from timeframe_config import CANONICAL_TIMEFRAME
 from math_snapshot_derive import derive_vwap_side
+import logging
+
+log = logging.getLogger(__name__)
+
 
 # Legacy label for raw sub-minute rows (historical DBs only; live now writes CANONICAL_TIMEFRAME)
 SUBMINUTE_SOURCE_TIMEFRAME = "5m"
@@ -535,9 +539,8 @@ if __name__ == "__main__":
     if sys.stdout.encoding and "cp1252" in (sys.stdout.encoding or "").lower():
         try:
             sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
-
+        except Exception as e:
+            log.debug("stdout reconfigure: %s", e, exc_info=True)
     db = Path(DB_PATH)
     if not db.exists():
         print(f"ERROR: Database not found: {db}")

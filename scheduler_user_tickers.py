@@ -14,6 +14,10 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+import logging
+
+log = logging.getLogger(__name__)
+
 
 _ROOT = Path(__file__).resolve().parent
 _PATH = _ROOT / "data" / "user_scheduler_tickers.json"
@@ -51,5 +55,5 @@ def record_user_ticker(ticker: str) -> None:
         get_db().logging_universe_upsert_user_persisted(
             s, "scheduler_shim", time.time()
         )
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("scheduler user tickers: %s", e, exc_info=True)

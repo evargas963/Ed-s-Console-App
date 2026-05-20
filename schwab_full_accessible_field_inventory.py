@@ -20,6 +20,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+import logging
+
+log = logging.getLogger(__name__)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -152,9 +156,8 @@ def run_rest(client, output_root: Path) -> list[AttemptResult]:
         r = client.get_account_numbers()
         if r.status_code == 200 and r.json():
             account_hash = r.json()[0].get("hashValue", "") or r.json()[0].get("accountNumber", "")
-    except Exception:
-        pass
-
+    except Exception as e:
+        log.debug("schwab inventory probe: %s", e, exc_info=True)
     for disc in REST_DISCOVERY:
         method_name = disc["method"]
         endpoint = disc["endpoint"]
@@ -368,8 +371,8 @@ def run_streaming(client, output_root: Path, account_id, symbols: list[str]) -> 
                         break
                 try:
                     await stream_client.logout()
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug("schwab inventory probe: %s", e, exc_info=True)
                 return samples
 
             loop = asyncio.new_event_loop()
@@ -384,8 +387,8 @@ def run_streaming(client, output_root: Path, account_id, symbols: list[str]) -> 
             finally:
                 try:
                     loop.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug("schwab inventory probe: %s", e, exc_info=True)
         except Exception as e:
             r.failed = True
             r.reason = str(e)[:200]
@@ -558,8 +561,8 @@ def main() -> int:
                         account_id = data[0].get("accountNumber") or data[0].get("hashValue")
                         if account_id and str(account_id).isdigit():
                             account_id = int(account_id)
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug("schwab inventory probe: %s", e, exc_info=True)
             break
 
     # Streaming

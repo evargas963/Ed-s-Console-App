@@ -355,8 +355,8 @@ def _model_dir_for_ticker(ticker: str) -> Path:
                     )
                     if has_any:
                         return active
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("active model dir probe: %s", e, exc_info=True)
     # Default to parallel: models/parallel/{ticker}/
     parallel = MODEL_DIR / "parallel" / ticker
     if parallel.exists():

@@ -83,6 +83,8 @@
 - [x] **COH-SA-5 — regime size multipliers → `position_sizing_policy.py`** — `REGIME_SIZE_MULTIPLIERS` + `regime_size_multiplier` (base + confidence nudge); `compute_position_size` redirected; `tests/test_position_sizing_policy.py` rglob guard. Sibling inline thresholds in same function flagged for magic-thresholds slice.
 - [x] **COH-SA-TRIPLET** @ `31c4f45` — `direction_from_triplet` / `direction_from_normalized_triplet`; subsumes COH-I-H. Tie-break: up → down → flat (docstring + tests).
 - [x] **REPO_SWEEP #1 — error-propagation** — bare `except:` eliminated (4→0); Class-C fixes SWEEP-EP-1..5; baseline 42 silent passes + money-path zero-tolerance frozenset; audit JSON count reconciled; 5 tick-trigger fail-closed tests. Completion @ sweep-1-completion commit. Remaining silent passes: server/ml_scheduler (sweep #2).
+- [x] **REPO_SWEEP #2 — error-propagation** @ `1599d75` — SWEEP-EP-6..20; money-path + `server.py` + `ml_scheduler.py` cleared; repo-wide baseline 27 residual silent passes; audit `repo_sweep_error_propagation_v2_20260518.json`.
+- [x] **REPO_SWEEP #3 — error-propagation** — SWEEP-EP-21..47 (27 sites): residual `except Exception: pass` → `log.debug` + `exc_info=True` in adjacent/support modules (`levels.py`, `live_market_plane.py`, `schwab_client.py`, calibration/*, etc.); money-path roster re-read — 0 silent passes; baseline 0; audit `repo_sweep_error_propagation_v3_20260520.json`; guard tests in `tests/test_repo_sweep_error_propagation_v1.py`.
 - [x] **SWEEP-1-COMPLETION** — audit `class_c_fixed_count` reconciled (5); `_CRITICAL_SILENT_PASS_FILES` expanded (11 money-path modules); EP-4 five coherence branches tested; `signals`/`signal_layer_v1` silent pass → log.debug; rules #22-27 in AGENT_SELF_GOVERNANCE.md.
 
 **TIER 2 — architectural**
@@ -123,7 +125,7 @@
 
 **Gate B (2026-05-20):** No consolidation slices until audit lane 1 closes. **SSC1 @ `bb4b6b8`** on feature. **SIG test:** identical feature vs hybrid. **Audit lane 1 @ tip:** `features/signal_layer_v1.py` — brief + paired fixes FIND-SLV1-1..3; operator sign-off pending. **Temp dirs:** all eight session `*_tmp` paths absent in worktree (cleanup N/A).
 
-**Unread for coherence lens (post–batch 1 queue):** ~~`features/signal_layer_v1.py`~~ (lane 1 closed @ `eb933ea`), ~~`features/inference_snapshot.py`~~ (lane 2 paired-fix closed), ~~`features/monte_carlo_stack_input.py`~~ (lane 3 paired-fix closed), ~~`v2_decision/module_a_adapter.py`~~ (MADA closed @ `8ad00ba`), ~~`lifecycle_rule_core.py`~~ (LRC paired-fix pending sign-off), `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens).
+**Unread for coherence lens (post–batch 1 queue):** ~~`features/signal_layer_v1.py`~~ (lane 1 closed @ `eb933ea`), ~~`features/inference_snapshot.py`~~ (lane 2 paired-fix closed), ~~`features/monte_carlo_stack_input.py`~~ (lane 3 paired-fix closed), ~~`v2_decision/module_a_adapter.py`~~ (MADA closed @ `8ad00ba`), ~~`lifecycle_rule_core.py`~~ (LRC closed @ `951931b`, sign-off), `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens).
 
 ### Audit queue — surfaced by MADA producer-cone Read (not blockers for lifecycle)
 
@@ -553,6 +555,7 @@ Reference ticker for parametric tests: **SPY**.
   - [x] **FIND-LRC-8** — `_cap_target` finite inputs.
   - [ ] OBS-LRC-1 — magic `2.0` / `1.0` R-multiples → named constants (dim #11).
   - [ ] OBS-LRC-3 — `int(max_hold_bars or 1)` NaN guard (low pri).
+  - [ ] OBS-LRC-4 — `apply_time_decay` / `apply_vix_adjustment` / `apply_risk_multiplier`: non-finite `distance_pct` falls back to `float(distance_pct)` (NaN passthrough on first arg); consider fail-closed or STOP_BASE_PCT seed.
   - [ ] OBS-TC1 — `load_lstm_feature_cache` metadata defaults (`tickers`/`days`/`n_days`/`n_tickers` empty or 0); accepted — structural dims fail-closed via `_meta_required_positive_int`.
   - [ ] OBS-TC2 — `_normalize_data_fp({})` returns `{}` vs 6-key shape for non-empty; accepted — conservative cache miss on legacy empty identity.
   - [ ] OBS-TC3 — Legacy `cache_exists` / `read_cache_meta` at file tail unused by scheduler (accepted).

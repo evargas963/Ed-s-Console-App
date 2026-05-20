@@ -10,6 +10,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from typing import Callable, Optional
+import logging
+
+log = logging.getLogger(__name__)
+
 
 
 def _positive_float_or_none(value) -> Optional[float]:
@@ -613,8 +617,8 @@ def proximity_alerts(
             if v is not None:
                 try:
                     level = float(v); break
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug("strike level parse: %s", e, exc_info=True)
         if level is None:
             return
         dist = level - spot

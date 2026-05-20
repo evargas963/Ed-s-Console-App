@@ -14,6 +14,10 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from schwab import auth
+import logging
+
+log = logging.getLogger(__name__)
+
 
 # schwab-py raises this when token expired/invalid
 try:
@@ -345,8 +349,8 @@ def safe_get_quote(client, ticker: str, *, refresh_client_fn=None, attempt_hook=
     if attempt_hook is not None:
         try:
             attempt_hook()
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("quote attempt_hook: %s", e, exc_info=True)
     try:
         resp = client.get_quote(ticker)
         try:
@@ -364,8 +368,8 @@ def safe_get_quote(client, ticker: str, *, refresh_client_fn=None, attempt_hook=
                     if attempt_hook is not None:
                         try:
                             attempt_hook()
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            log.debug("quote attempt_hook: %s", e, exc_info=True)
                     resp = new_client.get_quote(ticker)
                     try:
                         from api_pressure import record_schwab_http_response

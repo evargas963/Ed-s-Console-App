@@ -23,15 +23,15 @@ def json_safe(obj: Any) -> Any:
     if is_dataclass(obj):
         try:
             return json_safe(asdict(obj))
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("calibration json_utils: %s", e, exc_info=True)
     if isinstance(obj, SimpleNamespace):
         return json_safe(vars(obj))
     if hasattr(obj, "__dict__"):
         try:
             return json_safe(vars(obj))
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("calibration json_utils: %s", e, exc_info=True)
     return str(obj)
 
 

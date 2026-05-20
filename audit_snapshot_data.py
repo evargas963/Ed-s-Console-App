@@ -1,3 +1,7 @@
+import logging
+
+log = logging.getLogger(__name__)
+
 #!/usr/bin/env python3
 """
 audit_snapshot_data.py - Factual audit of snapshots table
@@ -16,9 +20,8 @@ import sys
 if sys.stdout.encoding and "cp1252" in sys.stdout.encoding.lower():
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
-
+    except Exception as e:
+        log.debug("stdout reconfigure: %s", e, exc_info=True)
 import sqlite3
 from pathlib import Path
 from collections import defaultdict

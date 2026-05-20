@@ -21,6 +21,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, date, timezone
 from pathlib import Path
 from typing import Any
+import logging
+
+log = logging.getLogger(__name__)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -429,16 +433,15 @@ def run_streaming_probes(client, output_root: Path, symbols: list[str], account_
             try:
                 stream_client.add_nasdaq_book_handler(make_handler("NASDAQ_BOOK", book_samples))
                 await stream_client.nasdaq_book_subs(symbols[:2])
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug("schwab field inventory: %s", e, exc_info=True)
             # Chart equity
             chart_samples = []
             try:
                 stream_client.add_chart_equity_handler(make_handler("CHART_EQUITY", chart_samples))
                 await stream_client.chart_equity_subs(symbols[:2])
-            except Exception:
-                pass
-
+            except Exception as e:
+                log.debug("schwab field inventory: %s", e, exc_info=True)
             # Wait for a few messages
             for _ in range(30):
                 try:

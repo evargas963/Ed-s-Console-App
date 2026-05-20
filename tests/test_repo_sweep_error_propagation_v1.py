@@ -12,8 +12,8 @@ _SKIP_PY_TREE_DIRS = frozenset(
     {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__", "tests"}
 )
 
-# Repo-wide silent ``except Exception: pass`` after sweep #2 (production tree).
-_BASELINE_SILENT_EXCEPTION_PASS = 27
+# Repo-wide silent ``except Exception: pass`` after sweep #3 (production tree).
+_BASELINE_SILENT_EXCEPTION_PASS = 0
 
 _BARE_EXCEPT = re.compile(r"^\s*except\s*:\s*", re.MULTILINE)
 _SILENT_PASS = re.compile(
@@ -78,11 +78,11 @@ def test_no_bare_except_in_production_tree():
     assert not bare, f"bare except: clauses remain: {bare}"
 
 
-def test_silent_exception_pass_at_or_below_baseline():
+def test_no_silent_exception_pass_in_production_tree():
     _, silent, per_file = _scan_patterns()
-    assert len(silent) <= _BASELINE_SILENT_EXCEPTION_PASS, (
-        f"silent except Exception: pass count {len(silent)} > baseline {_BASELINE_SILENT_EXCEPTION_PASS}; "
-        f"new hits: {silent[:20]}"
+    assert len(silent) == _BASELINE_SILENT_EXCEPTION_PASS, (
+        f"silent except Exception: pass count {len(silent)} != baseline {_BASELINE_SILENT_EXCEPTION_PASS}; "
+        f"hits: {silent[:30]}; per_file={per_file}"
     )
 
 
@@ -122,4 +122,19 @@ def test_audit_v2_json_class_c_fixed_count_matches_array():
     assert count == len(entries), (
         f"v2 summary.class_c_fixed_count={count} != len(class_c_fixed)={len(entries)}"
     )
+    assert summary.get("silent_exception_pass_after") == 27
+
+
+def test_error_propagation_audit_v3_artifact_exists():
+    audit = _repo_root() / "governance" / "audits" / "repo_sweep_error_propagation_v3_20260520.json"
+    assert audit.is_file(), "governance sweep #3 audit artifact missing"
+
+
+def test_audit_v3_json_class_c_fixed_count_matches_array():
+    audit_path = _repo_root() / "governance" / "audits" / "repo_sweep_error_propagation_v3_20260520.json"
+    payload = json.loads(audit_path.read_text(encoding="utf-8"))
+    entries = payload.get("class_c_fixed") or []
+    summary = payload.get("summary") or {}
+    count = summary.get("class_c_fixed_count")
+    assert count == len(entries) == 27
     assert summary.get("silent_exception_pass_after") == _BASELINE_SILENT_EXCEPTION_PASS

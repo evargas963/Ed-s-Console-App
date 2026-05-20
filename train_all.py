@@ -22,6 +22,10 @@ DB_PATH = str(_DB_PATH_OBJ)
 MODEL_DIR = Path("models")
 
 from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug, outcome_column
+import logging
+
+log = logging.getLogger(__name__)
+
 
 
 def run_xgb(
@@ -404,8 +408,8 @@ def main():
     try:
         import ml_predict
         ml_predict.reset_caches()
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("train_all: %s", e, exc_info=True)
 
 
 if __name__ == "__main__":
