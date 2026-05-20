@@ -11,7 +11,7 @@ from typing import List
 import math
 import logging
 
-from math_exposure_core import _f, _nearest_strike
+from math_exposure_core import MISSING_GREEK_SENTINEL, _f, _nearest_strike
 
 log = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def _extract_iv_for_strike(contracts: List[dict], strike: float) -> tuple[float 
         if s is None or float(s) != float(strike):
             continue
         iv = _f(ct.get("volatility"))
-        if iv is None or iv <= 0 or iv == -999.0 or not math.isfinite(iv):
+        if iv is None or iv <= 0 or iv == MISSING_GREEK_SENTINEL or not math.isfinite(iv):
             continue
         side = (ct.get("putCall") or "").upper()
         if side == "CALL":

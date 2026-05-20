@@ -23,6 +23,8 @@ from typing import Any, Optional
 
 import math as _of_math
 
+from math_exposure import MISSING_GREEK_SENTINEL
+
 log = logging.getLogger(__name__)
 
 try:
@@ -557,20 +559,20 @@ def _iter_option_exp_levels(exp_map: dict) -> list[dict]:
             if not isinstance(opt, dict):
                 continue
             d_raw = _safe_float(opt.get("delta"))
-            d_val = d_raw if (d_raw is not None and d_raw != -999.0
+            d_val = d_raw if (d_raw is not None and d_raw != MISSING_GREEK_SENTINEL
                               and _of_math.isfinite(d_raw)) else None
             g_raw = _safe_float(opt.get("gamma"))
-            g_val = g_raw if (g_raw is not None and g_raw != -999.0
+            g_val = g_raw if (g_raw is not None and g_raw != MISSING_GREEK_SENTINEL
                               and _of_math.isfinite(g_raw)) else None
             v_raw = _safe_float(opt.get("vega"))
-            v_val = v_raw if (v_raw is not None and v_raw != -999.0
+            v_val = v_raw if (v_raw is not None and v_raw != MISSING_GREEK_SENTINEL
                               and _of_math.isfinite(v_raw)) else None
             t_raw = _safe_float(opt.get("theta"))
-            t_val = t_raw if (t_raw is not None and t_raw != -999.0
+            t_val = t_raw if (t_raw is not None and t_raw != MISSING_GREEK_SENTINEL
                               and _of_math.isfinite(t_raw)) else None
             iv_raw = _safe_float(opt.get("volatility"))
             iv_val = iv_raw if (iv_raw is not None and iv_raw > 0
-                                and iv_raw != -999.0
+                                and iv_raw != MISSING_GREEK_SENTINEL
                                 and _of_math.isfinite(iv_raw)) else None
             tt_raw = opt.get("tradeTimeInLong")
             tt_val: Optional[int] = None

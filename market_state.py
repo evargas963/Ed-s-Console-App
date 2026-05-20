@@ -706,7 +706,7 @@ def recommend_option_expression(
             candidates.append(s)
 
     best_strike = None
-    best_score = -999.0
+    best_score = float("-inf")
     best_reasons: list[str] = []
     scored_rows: list[dict] = []
     pool_set = {float(x) for x in candidates}

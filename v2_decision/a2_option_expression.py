@@ -18,6 +18,8 @@ from .a2_price_precedence import (
     resolve_a2_contract_spread,
     resolve_a2_underlying_spread_pts,
 )
+from math_exposure import MISSING_GREEK_SENTINEL
+
 from .schema import leaf
 
 
@@ -178,17 +180,17 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
     iv_val: float | None = None
     iv_detail = None
     iv_raw = _num(chain_row.get("volatility"))
-    if iv_raw is not None and iv_raw > 0 and iv_raw != -999.0 and math.isfinite(iv_raw):
+    if iv_raw is not None and iv_raw > 0 and iv_raw != MISSING_GREEK_SENTINEL and math.isfinite(iv_raw):
         iv_val = float(iv_raw)
         iv_detail = "schwab_chain_volatility"
     if iv_val is None:
         tv_raw = _num(chain_row.get("theoreticalVolatility"))
-        if tv_raw is not None and tv_raw > 0 and tv_raw != -999.0 and math.isfinite(tv_raw):
+        if tv_raw is not None and tv_raw > 0 and tv_raw != MISSING_GREEK_SENTINEL and math.isfinite(tv_raw):
             iv_val = float(tv_raw)
             iv_detail = "schwab_chain_theoreticalVolatility"
 
     delta_raw = _num(chain_row.get("delta"))
-    if delta_raw is not None and delta_raw != -999.0 and math.isfinite(delta_raw):
+    if delta_raw is not None and delta_raw != MISSING_GREEK_SENTINEL and math.isfinite(delta_raw):
         delta_val: float | None = float(delta_raw)
         delta_detail = "schwab_chain_delta"
     else:
@@ -196,7 +198,7 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
         delta_detail = None
 
     gamma_raw = _num(chain_row.get("gamma"))
-    if gamma_raw is not None and gamma_raw != -999.0 and math.isfinite(gamma_raw):
+    if gamma_raw is not None and gamma_raw != MISSING_GREEK_SENTINEL and math.isfinite(gamma_raw):
         gamma_val: float | None = float(gamma_raw)
         gamma_detail = "schwab_chain_gamma"
     else:
@@ -204,7 +206,7 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
         gamma_detail = None
 
     vega_raw = _num(chain_row.get("vega"))
-    if vega_raw is not None and vega_raw != -999.0 and math.isfinite(vega_raw):
+    if vega_raw is not None and vega_raw != MISSING_GREEK_SENTINEL and math.isfinite(vega_raw):
         vega_val: float | None = float(vega_raw)
         vega_detail = "schwab_chain_vega"
     else:
@@ -571,7 +573,7 @@ def _late_day_gamma_health(
 ) -> dict[str, Any]:
     mins_to_close = _mins_to_close(ms_dict)
     chain_gamma_raw = _num(chain_row.get("gamma"))
-    if (chain_gamma_raw is not None and chain_gamma_raw != -999.0
+    if (chain_gamma_raw is not None and chain_gamma_raw != MISSING_GREEK_SENTINEL
             and math.isfinite(chain_gamma_raw)):
         chain_gamma: float | None = float(chain_gamma_raw)
     else:
@@ -636,13 +638,13 @@ def _theta(
     iv_for_bs: float | None = None,
 ) -> tuple[float | None, str, str | None]:
     theta_raw = _num(chain_row.get("theta"))
-    if theta_raw is not None and theta_raw != -999.0 and math.isfinite(theta_raw):
+    if theta_raw is not None and theta_raw != MISSING_GREEK_SENTINEL and math.isfinite(theta_raw):
         return float(theta_raw), "v2_compliant", "schwab_chain_theta"
 
     raw = chain_row.get("raw")
     if isinstance(raw, dict):
         raw_theta = _num(raw.get("theta"))
-        if raw_theta is not None and raw_theta != -999.0 and math.isfinite(raw_theta):
+        if raw_theta is not None and raw_theta != MISSING_GREEK_SENTINEL and math.isfinite(raw_theta):
             return float(raw_theta), "v2_compliant", "schwab_raw_theta"
 
     if not _A2_THETA_BS_FALLBACK_GOVERNED:
@@ -766,7 +768,7 @@ def _spread_quality(spread: float | None, liq_ok: bool | None) -> str:
 
 def _gamma_x_oi(chain_row: dict[str, Any]) -> float | None:
     gamma_raw = _num(chain_row.get("gamma"))
-    if gamma_raw is None or gamma_raw == -999.0 or not math.isfinite(gamma_raw):
+    if gamma_raw is None or gamma_raw == MISSING_GREEK_SENTINEL or not math.isfinite(gamma_raw):
         return None
     gamma = float(gamma_raw)
     oi = _num(chain_row.get("openInterest"))

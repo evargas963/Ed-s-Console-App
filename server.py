@@ -78,6 +78,7 @@ from schwab_client import (
     safe_get_price_history,
 )
 from math_exposure import (
+    MISSING_GREEK_SENTINEL,
     _f,
     compute_exposures_by_strike,
     build_summary_rows,
@@ -7268,33 +7269,33 @@ async def debug_charm(ticker: str = DEFAULT_TICKER):
                 _g = float(ct.get("gamma")) if ct.get("gamma") is not None else None
             except (TypeError, ValueError):
                 _g = None
-            if _g is not None and _g != -999.0 and _charm_math.isfinite(_g):
+            if _g is not None and _g != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_g):
                 usable_gamma += 1
-            if ct.get("gamma") == -999.0:
+            if ct.get("gamma") == MISSING_GREEK_SENTINEL:
                 sentinel_gamma += 1
             try:
                 _d = float(ct.get("delta")) if ct.get("delta") is not None else None
             except (TypeError, ValueError):
                 _d = None
-            if _d is not None and _d != -999.0 and _charm_math.isfinite(_d):
+            if _d is not None and _d != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_d):
                 usable_delta += 1
             try:
                 _t = float(ct.get("theta")) if ct.get("theta") is not None else None
             except (TypeError, ValueError):
                 _t = None
-            if _t is not None and _t != -999.0 and _charm_math.isfinite(_t):
+            if _t is not None and _t != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_t):
                 usable_theta += 1
             try:
                 _v = float(ct.get("vega")) if ct.get("vega") is not None else None
             except (TypeError, ValueError):
                 _v = None
-            if _v is not None and _v != -999.0 and _charm_math.isfinite(_v):
+            if _v is not None and _v != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_v):
                 usable_vega += 1
             try:
                 _iv = float(ct.get("volatility")) if ct.get("volatility") is not None else None
             except (TypeError, ValueError):
                 _iv = None
-            if _iv is not None and _iv > 0 and _iv != -999.0 and _charm_math.isfinite(_iv):
+            if _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_iv):
                 usable_iv += 1
             if ct.get("openInterest"):
                 has_oi += 1

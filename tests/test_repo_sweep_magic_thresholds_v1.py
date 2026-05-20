@@ -16,9 +16,20 @@ from math_exposure import MISSING_GREEK_SENTINEL
 from math_exposure_core import MISSING_GREEK_SENTINEL as CORE_SENTINEL
 
 _SKIP_PY_TREE_DIRS = frozenset(
-    {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__", "tests"}
+    {
+        ".claude",
+        ".git",
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        "tests",
+        "tools",
+        "governance",
+    }
 )
 _MISSING_GREEK_SENTINEL_LITERAL = re.compile(r"-999\.0")
+_AUTHORITY_FILE = "math_exposure_core.py"
 
 
 def _repo_root() -> Path:
@@ -33,6 +44,22 @@ def _iter_production_py(root: Path):
         if any(part in _SKIP_PY_TREE_DIRS for part in rel.parts):
             continue
         yield path, rel
+
+
+def _offending_literal_lines(src: str, rel_name: str) -> list[str]:
+    offenders: list[str] = []
+    for i, line in enumerate(src.splitlines(), start=1):
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        if _MISSING_GREEK_SENTINEL_LITERAL.search(line) is None:
+            continue
+        if rel_name == _AUTHORITY_FILE and "MISSING_GREEK_SENTINEL" in line:
+            continue
+        if "(-999)" in line:
+            continue
+        offenders.append(f"{rel_name}:{i}")
+    return offenders
 
 
 def test_missing_greek_sentinel_constant_value_is_negative_999_point_0():
@@ -58,25 +85,12 @@ def test_t1_fallback_and_t2_offset_constants_pin_expected_r_multiples():
     assert levels.target2 == pytest.approx(103.0)
 
 
-def test_no_inline_missing_greek_sentinel_literal_in_greeks_math_modules():
-    """SWEEP-MT-3..13 producer cone: literals only in math_exposure_core authority."""
+def test_no_inline_missing_greek_sentinel_literal_in_production_outside_authority():
+    """Repo-wide guard (sweep-3 shape): only math_exposure_core may define -999.0."""
     root = _repo_root()
-    scoped = ("math_exposure_core.py", "math_probabilities.py")
     offenders: list[str] = []
-    for name in scoped:
-        path = root / name
+    for path, rel in _iter_production_py(root):
+        rel_s = str(rel).replace("\\", "/")
         src = path.read_text(encoding="utf-8")
-        if name == "math_exposure_core.py":
-            # Authority: one definition line may use -999.0; diagnostic note uses (-999) text.
-            lines = [
-                line
-                for line in src.splitlines()
-                if _MISSING_GREEK_SENTINEL_LITERAL.search(line)
-                and "MISSING_GREEK_SENTINEL" not in line
-                and "(-999)" not in line
-            ]
-            if len(lines) > 0:
-                offenders.append(f"{name}: unexpected literal lines {len(lines)}")
-        elif _MISSING_GREEK_SENTINEL_LITERAL.search(src):
-            offenders.append(name)
+        offenders.extend(_offending_literal_lines(src, rel_s))
     assert not offenders, offenders
