@@ -13,8 +13,6 @@ from typing import Any, Optional
 
 from lifecycle_rule_core import derive_stop_distance_pct, derive_target_levels
 from multi_horizon_decision import MultiHorizonSynthesis
-from datetime import timezone, timedelta
-
 from math_exposure import (
     greek_bias,
     is_pin_zone,
@@ -31,7 +29,6 @@ from signal_types import (
 )
 
 log = logging.getLogger(__name__)
-ET = timezone(timedelta(hours=-5))
 
 
 def _mh_size_tier_from_modifier(mh_mod: float) -> int:

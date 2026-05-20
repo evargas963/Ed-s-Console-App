@@ -47,7 +47,8 @@ TRAINING_REPORT_PATH = MODEL_DIR / "training_report.jsonl"
 RUN_AT_HOUR = 16
 RUN_AT_MINUTE = 15
 
-ET = timezone(timedelta(hours=-5))
+from time_et import ET
+
 log = logging.getLogger("ml_scheduler")
 
 from ml_horizon import (
@@ -81,7 +82,9 @@ def _infer_slug_from_target_column(target_column: str) -> str:
 
 
 def _now_et() -> datetime:
-    return datetime.now(ET)
+    from time_et import now_et
+
+    return now_et()
 
 
 def _scheduler_auto_promote_to_active() -> bool:

@@ -3054,8 +3054,9 @@ def _fetch_state(
         pass
 
     client = get_client()
-    ET     = ZoneInfo("America/New_York")
-    now_et = datetime.now(ET)
+    from time_et import now_et as _eastern_now
+
+    now_et = _eastern_now()
 
     # ── Global market context — session_label before quote parse (shared across tickers) ──
     if mkt_ctx is None:

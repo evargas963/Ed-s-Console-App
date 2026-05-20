@@ -1205,8 +1205,20 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
                 fusion = _fus
         except Exception as e:
             log.warning("signals: per-horizon stack+fusion failed hz=%s ticker=%s: %s", _hz, ticker, e)
+            from features.fusion_policy_contract import fusion_policy_columns_horizon_failed
+
+            fusion_policy_flat.update(
+                fusion_policy_columns_horizon_failed(_hz, reason=type(e).__name__)
+            )
         finally:
             reset_ml_infer_horizon_slug(_tok)
+
+    _missing_primary = [hz for hz in PRIMARY_DECISION_HORIZONS if hz not in fusion_by_hz]
+    if _missing_primary:
+        raise RuntimeError(
+            f"signals: incomplete primary fusion_by_hz missing={_missing_primary!r} "
+            f"ticker={ticker!r} live_hz={_live_hz!r}"
+        )
 
     if fusion is None or xgb_out is None:
         raise RuntimeError(
@@ -1228,9 +1240,11 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         fusion_by_hz,
         live_canonical_horizon_slug=_live_hz,
     )
-    if __debug__:
-        assert set(fusion_by_hz.keys()) <= set(PRIMARY_DECISION_HORIZONS)
-        assert set(mh_ml_fusion_bundle.by_horizon.keys()) == set(PRIMARY_DECISION_HORIZONS)
+    if set(mh_ml_fusion_bundle.by_horizon.keys()) != set(PRIMARY_DECISION_HORIZONS):
+        raise RuntimeError(
+            f"signals: multi_horizon_ml_fusion_bundle incomplete "
+            f"ticker={ticker!r} keys={sorted(mh_ml_fusion_bundle.by_horizon.keys())!r}"
+        )
     if isinstance(ml_bundle, dict):
         ml_bundle["fusion_policy_snapshot_cols"] = fusion_policy_flat
         ml_bundle["horizon_governance_contract"] = {

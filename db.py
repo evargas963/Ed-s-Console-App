@@ -184,14 +184,11 @@ def _resolve_console_db_path() -> Path:
 
 DB_PATH = _resolve_console_db_path()
 
-# ── ET timezone ───────────────────────────────────────────────────────────────
-ET = timezone(timedelta(hours=-5))   # EST; DST handled by using fixed offset + awareness
+# ── ET timezone (DST-aware; see time_et.py) ───────────────────────────────────
+from time_et import ET, now_et  # noqa: E402  — re-export for legacy `from db import now_et`
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
-
-def now_et() -> datetime:
-    return datetime.now(ET)
 
 def utc_ts() -> float:
     return _wall_time.time()

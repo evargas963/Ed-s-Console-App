@@ -260,13 +260,15 @@ def build_multi_horizon_ml_fusion_bundle(
 
     )
 
-    if __debug__:
-
-        assert set(bundle.by_horizon.keys()) == set(PRIMARY_DECISION_HORIZONS)
-
-        for _snap in bundle.by_horizon.values():
-
-            assert getattr(_snap, "horizon_tier", None) == "primary_decision"
-
+    if set(bundle.by_horizon.keys()) != set(PRIMARY_DECISION_HORIZONS):
+        raise RuntimeError(
+            "multi_horizon_ml_fusion_bundle: incomplete primary horizons "
+            f"missing={sorted(set(PRIMARY_DECISION_HORIZONS) - set(bundle.by_horizon))!r}"
+        )
+    for _snap in bundle.by_horizon.values():
+        if getattr(_snap, "horizon_tier", None) != "primary_decision":
+            raise RuntimeError(
+                f"multi_horizon_ml_fusion_bundle: unexpected tier {getattr(_snap, 'horizon_tier', None)!r}"
+            )
     return bundle
 

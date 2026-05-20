@@ -26,7 +26,109 @@
 - [ ] **LIVE-UI-4 — UI honesty pass (beyond fail-closed numerics)**  
   Re-audit `static/index.html` for: mixed L1 overlay + Tier C merge (`_lastData`), horizon row vs Decision Command rail vs legacy Call/Put cards, withheld vs flat styling, transport badge vs actual field ages. Prior 12.9 UI work fixed fabrication; did **not** prove single-clock coherence.
 
-  **Process note (2026-05-19):** Operator correctly expects cross-cutting UX/architecture risks to be raised when seen in code review, not only when listed on an audit sheet. Cursor/Claude should flag split-path live UI on first `server.py` / `index.html` touch.
+- [ ] **LIVE-UI-A — Canonical 1/3 triplet consumer audit**  
+  `canonical_forward_probs_for_display` (signals.py ~L64–72) withholds max-entropy display for one consumer; `canonical_forecast_from_fusion` (~L106–148) may still expose `probability_*` with `provenance="fusion_unavailable"`. **Risk:** any card reading `canonical.probability_up` without provenance shows fake 0.333. **Fix direction:** grep all canonical triplet consumers; single display helper or provenance gate everywhere.
+
+- [ ] **LIVE-UI-B — Degraded stack visibility**  
+  `stack_integrity_v1` events in `ml_bundle` / `PredictiveCard.stack_integrity_v1` (signals.py degradation sites; signal_types.py ~L283). **Risk:** `authority_intact=False` while UI looks healthy. **Fix direction:** operator-visible degraded badge when `stack_integrity_events` non-empty or `degraded=True`.
+
+- [ ] **LIVE-UI-C — Secondary horizon “skipped bundle” display**  
+  `secondary_support_fusion_audit` skip path (signals.py ~L185–195, ~L1190–1200): `dominant_direction=None`, all probs None, `provenance="skipped_missing_active_bundle"`. **Risk:** blank / zero / stale-last-tick for missing secondaries. **Fix direction:** one withheld UX for “no active bundle.”
+
+- [ ] **LIVE-UI-D — Tri-state None semantics on cards (priority candidate)**  
+  Empirical `None` (MIN_SAMPLES), fusion withheld, and “no data yet” all arrive as `None` (signal_types.py ~L237–283; signals canonical path). **Fix direction:** distinct UI labels — withheld / unavailable / loading; map from provenance + component reason codes.
+
+- [ ] **LIVE-UI-E — MH promotion without headline WHY (priority candidate)**  
+  call_engine.py ~L1384–1407: MH can promote WAIT→directional (`_mh_promoted_directional`); conviction floored low (L1456–1457) but headline still LONG/SHORT. **Fix direction:** surface promotion + blocker in Decision Command / call reasoning text, not diag-only.
+
+- [ ] **LIVE-UI-F — Live vs replay v2_advisory parity**  
+  v2_advisory_backfill stamps missing stack blocks `reconstructed_from_snapshot` (~L118–126). **Risk:** `module_a_a1_decision` behavior differs replay vs live. **Fix direction:** measured parity test (live ms_dict vs reconstructed row); calibration docs state bounds.
+
+- [ ] **LIVE-UI-G — Session boundary UX (mins_to_close)**  
+  call_engine.py ~L1632–1655: ≤30m → WAIT; ≤120m → size down. **Risk:** sudden card flips at rolling boundaries without explanation. **Fix direction:** badge “trade window closing” / “boundary in N min” on affected cards.
+
+- [ ] **LIVE-UI-H — StackDecisionPath not surfaced**  
+  Six-stage path in signal_types.py ~L348–378; built in signals.py ~L739–892. **Risk:** Final Call shown without per-stage disagree trail. **Fix direction:** render stage trail or collapse with “N of 5 agree” summary.
+
+**Coherence audit protocol (post-project; applies to all future Layer 5 briefs):**
+
+1. **Per-file brief addendum:** after FIND/OBS, mandatory **“Cross-cutting risks (not paired in this slice)”** — any producer contract that depends on UI/downstream behaving correctly, named by file + consumer.
+2. **Single-bundle invariant:** test that every card/route for one tick shares `decision_generation_id` (or add field if missing).
+3. **Provenance-on-display:** each fail-closed sentinel (None, max-entropy, NOT_AVAILABLE) has a distinct visible label in `static/index.html`.
+4. **Operator scenarios:** scripted checks — fast selloff, fast rip, expiry boundary, RTH→AH — bundle coherence during transients.
+
+**Process note (2026-05-19):** Cross-cutting risks must be escalated when visible during any walked file, not only when on an audit checklist. Applies to Cursor and Claude. **Immediate-priority candidates if operator preempts gate:** LIVE-UI-D, LIVE-UI-E, LIVE-UI-B (say which to pair-fix before project close).
+
+### COHERENCE-AUDIT — infrastructure / cross-file (operator 2026-05-19)
+
+**Preempt gate:** Operator may say **go coherence tier-1** before further calibration widen. DST / production-assert / partial fusion snapshot cols affect live money and replay truth.
+
+**TIER 1 — critical**
+
+- [ ] **COH-I-A — Hardcoded EST vs America/New_York (DST)**  
+  `call_engine.py` L34: `ET = timezone(timedelta(hours=-5))` (fixed EST). `prediction_engine.py` L38 same. **`v2_decision/a2_eod_force_exit.py` L12 uses `ZoneInfo("America/New_York")` correctly** for `derive_et_clock_from_decision_time_ms` (tests cover DST). **Verify:** whether `call_engine` L34 `ET` is dead (may be unused) vs `inp.et_hour`/`inp.mins_to_close` from `market_state`/`server` (true clock). **`_stop_distance` L500** uses `inp.et_hour`/`et_minute` minus 570 — wrong if upstream ET fields are EST during EDT. **Fix:** remove dead constants; single `ZoneInfo("America/New_York")` authority; audit all `et_hour` producers.
+
+- [ ] **COH-I-E — `__debug__` asserts for horizon completeness (signals.py ~L1231-1233)**  
+  Stripped under `python -O`. **Fix:** explicit fail-closed `RuntimeError` or completeness check before bundle emit.
+
+- [ ] **COH-I-J — Partial `fusion_policy_snapshot_cols` on per-horizon fusion failure (signals.py ~L1188-1189, L1235)**  
+  Missing horizon → NULL cols; replay can't distinguish exception vs legitimate None. **Fix:** stamp failure provenance per horizon or withhold entire snapshot row section.
+
+**TIER 2 — architectural**
+
+- [ ] **COH-I-H — Argmax tie-break: up wins on flat ties** — `canonical_forecast_from_fusion` (signals.py ~L132-135) and `_direction_from_triplet` (v2_advisory_backfill.py ~L324-333). Document or shared helper.
+
+- [ ] **COH-I-C — `shared_sequence_context` under-fetch when transformer meta missing (~L138-139)** — can cascade MC/transformer inactive. Ties FIND-SSC1 / OBS-SSC1.
+
+- [ ] **COH-I-K — Legacy `replay_max_hold_bars: 30` baked in `replay_context_json`** — historical replay PnL vs live call prescription. Migration or provenance flag.
+
+**TIER 3 — lower**
+
+- [ ] **COH-I-B — `trained_at_age_days` 1e9 sentinel** (`training_cache.py` ~L734-745) — parse-fail vs stale conflation.
+- [ ] **COH-I-G — `cm_json[:8000]` truncation** (`fusion_policy_contract.py` ~L62-68) — OBS-FPC1; replay parse risk.
+- [ ] **COH-I-D — Async calibration write ordering** — idempotent dup guard only; logical-time inversions possible.
+- [ ] **COH-I-F — `SharedSequenceContext` frozen but nested dicts mutable** (`shared_sequence_context.py` ~L29-38).
+- [ ] **COH-I-I — MC None in sizing path silent skip** (`call_engine.py` ~L848, L1602-1606) — no `size_reasons` "MC unavailable."
+- [ ] **COH-I-L — `dte_warn` reconstruction without `field_sources` stamp** (`v2_advisory_backfill.py` ~L86-87).
+- [ ] **COH-I-M — Unicode in `time_warning` strings** (`call_engine.py` ~L1633) — console/consumer risk.
+
+**SLVB minor (operator note, not blocking 3177fdd):** `meta.n_bars` non-numeric string → `int()` can abort loop (`backfill_signal_layer_v1_bundle.py` ~L84); wrap in try if hardened.
+
+**Unread for coherence lens (independent audit queue):** `server.py`, `static/index.html`, `features/signal_layer_v1.py`, `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py`, `lifecycle_rule_core.py`.
+
+### COHERENCE-AUDIT workstream (full Read — not “files already walked”)
+
+**Operator decision (2026-05-19):** Default **Path A** unless overridden — pause calibration widen after `3177fdd`; TIER-1 paired fixes first; then ~30-file full-Read audit; calibration resumes on audited foundation. **Do not** backfill calibration widely while DST drift may taint `et_*` / session gates (~8 months/year).
+
+**Brief schema (every file):** identity → FIND/OBS → **cross-cutting (mandatory)** → display contract → freshness contract. Batch (~5 files) → consolidate coherence map. End state: operator scenarios (ES dump/rip 2m, RTH→AH, DST boundary, vol spike) as regression bar.
+
+| Lane | Files (full Read queue) |
+|------|-------------------------|
+| UI render | `static/index.html` (full), `static/*.js`, partials |
+| UI routes | `server.py` (full), all `/api/*`, SSE/WS, cache/shaping |
+| Time & session | `v2_decision/a2_eod_force_exit.py`, `timeframe_config.py`, session-bucket logic; trace all `et_*` producers |
+| Decision authority | `v2_decision/*`, `build_module_a_a1_decision`, `expression_profile*`, `a2_*` |
+| Signal recompute | `features/signal_layer_v1.py`, `inference_snapshot.py`, `monte_carlo_stack_input.py` |
+| Fusion math | `bayesian_fusion.py`, `mc_fusion_adjustment.py`, `multi_horizon_ml_bundle.py` |
+| Position sizing | `call_engine` sizing paths, `math_exposure.py`, `math_decay.py`, `math_levels.py` |
+| Lifecycle / exits | `lifecycle_rule_core.py`, `realized_contract_eval` exit sim, same-bar policy |
+| Market state | `market_state.py`, `recommend_option_expression`, ms_dict contract |
+| Snapshot writer | snapshot INSERT path, schema / migrations |
+| Setup readiness | `setup_readiness.py`, call/put readiness mirrors |
+| Order flow | `order_flow_engine.py` (coherence re-read), OF → stack vote path |
+| Inputs builder | `build_market_state`, `SignalInput` population |
+
+**Path options**
+
+| Path | When | Note |
+|------|------|------|
+| **A (recommended)** | Now | TIER-1 fixes → full audit → resume Layer 5 / calibration |
+| **B** | Now | Interleaved audit + calibration (higher context cost) |
+| **C** | After Pilot | Risks DST-tainted backfill + rework |
+
+**TIER-1 pull-forward:** COH-I-A/E/J closed @ tier-1 commit (operator `go coherence tier-1`). Optional same batch still open: LIVE-UI-D, LIVE-UI-E, LIVE-UI-B.
+
+**Calibration walk status:** `backfill_signal_layer_v1_bundle` signed @ `3177fdd`. **Paused** for path choice. **Not invalidated** — deprioritized until coherence gate.
 
 ---
 

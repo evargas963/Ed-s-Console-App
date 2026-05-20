@@ -9,7 +9,6 @@ import logging
 import math
 import os
 from dataclasses import dataclass, replace
-from datetime import timezone, timedelta
 from typing import Any, Dict, List, Optional
 
 from math_exposure import (
@@ -35,7 +34,6 @@ from features.stack_integrity_v1 import (
 )
 
 log = logging.getLogger(__name__)
-ET = timezone(timedelta(hours=-5))
 
 _TIER_LABELS: dict[int, str] = {
     1: "exact setup + session + VIX match",

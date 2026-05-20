@@ -6,7 +6,6 @@ Phase 1 extracted Card 1 logic from signals.py.
 from __future__ import annotations
 
 import logging
-from datetime import timezone, timedelta
 
 from micro_structure import analyze_micro
 from math_exposure import greek_bias, is_pin_zone, APPROACH_PTS
@@ -15,7 +14,7 @@ from features.regime_mvp_context import mvp_vwap_side, mvp_zone
 from signal_helpers import _ordinal
 
 log = logging.getLogger(__name__)
-ET = timezone(timedelta(hours=-5))
+
 
 def _derive_bias_from_micro(micro, approaching_ceiling, approaching_floor,
                              near_inflection, vwap_side, zone) -> tuple[str, str]:

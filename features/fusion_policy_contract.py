@@ -38,6 +38,18 @@ def _stack_status(fusion: Any, *, avail: bool, dom: str, fconf: str) -> str:
     return f"fusion_unavailable|{summary}"[:500]
 
 
+def fusion_policy_columns_horizon_failed(hz: str, *, reason: str) -> dict[str, Any]:
+    """Explicit NULL policy columns when per-horizon stack+fusion raised (replay discrimination)."""
+    status = f"stack_failed|{reason}"[:500]
+    return {
+        f"fused_move_prob_{hz}": None,
+        f"fused_dir_up_prob_{hz}": None,
+        f"fused_confidence_{hz}": None,
+        f"fused_contributing_models_{hz}": None,
+        f"fused_stack_status_{hz}": status,
+    }
+
+
 def fusion_payload_to_policy_columns(hz: str, fusion: Any) -> dict[str, Any]:
     """
     Map a FusionPayload (or duck-typed fusion output) to snapshot column dict.
