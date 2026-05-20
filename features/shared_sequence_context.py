@@ -156,12 +156,13 @@ def build_shared_sequence_context(
     if len(chron) >= 2:
         t_first = chron[0].get("ts_utc")
         t_last = chron[-1].get("ts_utc")
-        if t_first is not None and t_last is not None:
-            try:
-                if float(t_first) > float(t_last):
-                    return None, "snapshot_order_not_chronological"
-            except (TypeError, ValueError):
-                return None, "snapshot_ts_utc_not_comparable"
+        if t_first is None or t_last is None:
+            return None, "snapshot_ts_utc_missing"
+        try:
+            if float(t_first) > float(t_last):
+                return None, "snapshot_order_not_chronological"
+        except (TypeError, ValueError):
+            return None, "snapshot_ts_utc_not_comparable"
     lstm_window = list(chron[-STREAM_5M_LOOKBACK:])
     day_snaps = list(chron[-100:]) if len(chron) >= 100 else list(chron)
 

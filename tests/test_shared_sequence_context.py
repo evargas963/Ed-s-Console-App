@@ -127,6 +127,50 @@ def test_max_transformer_seq_len_warns_on_corrupt_meta(monkeypatch, tmp_path, ca
     assert any("JSON corrupt" in r.message or "corrupt" in r.message.lower() for r in caplog.records)
 
 
+def test_build_shared_sequence_context_rejects_missing_ts_utc_first_bound(monkeypatch):
+    from unittest.mock import patch
+
+    from features import shared_sequence_context as ssc
+    from tests.test_parallel_stack_runtime import _minimal_inf_v1
+
+    monkeypatch.setattr(ssc, "_max_transformer_seq_len_for_ticker", lambda _t: 20)
+    rows = [{"ts_utc": 2000.0 - i, "spot": 450.0} for i in range(100)]
+    rows[99]["ts_utc"] = None
+    db = MagicMock()
+    db.get_recent_snapshots.return_value = rows
+    mw = [{"ts_utc": float(i)} for i in range(60)]
+    md = [{"ts_utc": float(i)} for i in range(100)]
+    with patch(
+        "features.lstm_sequence_input.build_lstm_merged_windows",
+        return_value=(mw, md),
+    ):
+        ctx, err = ssc.build_shared_sequence_context(db, "SPY", _minimal_inf_v1())
+    assert ctx is None
+    assert err == "snapshot_ts_utc_missing"
+
+
+def test_build_shared_sequence_context_rejects_missing_ts_utc_last_bound(monkeypatch):
+    from unittest.mock import patch
+
+    from features import shared_sequence_context as ssc
+    from tests.test_parallel_stack_runtime import _minimal_inf_v1
+
+    monkeypatch.setattr(ssc, "_max_transformer_seq_len_for_ticker", lambda _t: 20)
+    rows = [{"ts_utc": 2000.0 - i, "spot": 450.0} for i in range(100)]
+    rows[0]["ts_utc"] = None
+    db = MagicMock()
+    db.get_recent_snapshots.return_value = rows
+    mw = [{"ts_utc": float(i)} for i in range(60)]
+    md = [{"ts_utc": float(i)} for i in range(100)]
+    with patch(
+        "features.lstm_sequence_input.build_lstm_merged_windows",
+        return_value=(mw, md),
+    ):
+        ctx, err = ssc.build_shared_sequence_context(db, "SPY", _minimal_inf_v1())
+    assert ctx is None
+    assert err == "snapshot_ts_utc_missing"
+
+
 def test_build_shared_sequence_context_rejects_non_chronological_rows(monkeypatch):
     from features import shared_sequence_context as ssc
     from tests.test_parallel_stack_runtime import _minimal_inf_v1
