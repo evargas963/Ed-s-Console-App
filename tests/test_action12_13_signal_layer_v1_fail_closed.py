@@ -12,6 +12,7 @@ import pytest
 from features.signal_layer_v1 import (
     compute_signal_layer_v1,
     layer_direction_policy,
+    meta_n_bars_int,
     signal_layer_v1_to_direction_probs,
 )
 
@@ -39,6 +40,31 @@ def _synth_bars(n: int, t0: float = 1_000_000.0) -> list[dict]:
 def test_signal_layer_v1_to_direction_probs_returns_none_when_n_bars_lt_25() -> None:
     layer = {"meta.n_bars": 24, "mtf.trend_1m_sign": 1.0}
     assert signal_layer_v1_to_direction_probs(layer) is None
+
+
+def test_meta_n_bars_int_rejects_non_numeric_string() -> None:
+    assert meta_n_bars_int({"meta.n_bars": "not-a-number"}) == 0
+    assert signal_layer_v1_to_direction_probs({"meta.n_bars": "not-a-number", "mtf.trend_1m_sign": 1.0}) is None
+    assert meta_n_bars_int({"meta.n_bars": "30"}) == 30
+
+
+def test_compute_signal_layer_v1_missing_last_close_sets_meta_error() -> None:
+    bars = _synth_bars(30)
+    bars[-1]["close"] = None
+    decision_ts = float(bars[-1]["bar_end_ts_utc"])
+    layer = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=None)
+    assert layer.get("meta.error") == "missing_last_close"
+    assert layer.get("ps.rolling_trend_slope_log20") is None
+
+
+def test_vwap_source_inp_vs_bars_roll() -> None:
+    bars = _synth_bars(80)
+    decision_ts = float(bars[-1]["bar_end_ts_utc"])
+    layer_roll = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=None)
+    assert layer_roll.get("meta.vwap_source") == "bars_roll"
+    inp = SimpleNamespace(vwap=101.5)
+    layer_inp = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=inp)
+    assert layer_inp.get("meta.vwap_source") == "inp"
 
 
 def test_mtf_trend_signs_none_when_aggregated_bars_insufficient() -> None:

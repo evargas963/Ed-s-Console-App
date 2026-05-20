@@ -44,7 +44,7 @@ def backfill(
     force: bool = False,
     allow_noncanonical: bool = False,
 ) -> dict[str, Any]:
-    from features.signal_layer_v1 import compute_signal_layer_v1_for_calibration
+    from features.signal_layer_v1 import compute_signal_layer_v1_for_calibration, meta_n_bars_int
 
     if not db_path.is_file():
         return {"error": "db_not_found", "path": str(db_path)}
@@ -81,7 +81,7 @@ def backfill(
                 continue
 
         if not force and bundle.get("signal_layer_v1") and isinstance(bundle["signal_layer_v1"], dict):
-            nb = int(bundle["signal_layer_v1"].get("meta.n_bars") or 0)
+            nb = meta_n_bars_int(bundle["signal_layer_v1"])
             if nb > 0:
                 skipped_nonempty += 1
                 continue

@@ -669,13 +669,10 @@ def _fuse_impl(
     # ── signal_layer_v1 directional blend (1m bars ≤ decision_ts; no lookahead) ──
     signal_layer_v1_fusion: Optional[dict] = None
     if signal_layer_v1:
-        try:
-            nb = int(signal_layer_v1.get("meta.n_bars") or 0)
-        except (TypeError, ValueError):
-            nb = 0
-        if nb >= 25 and prob_up is not None and prob_down is not None and prob_flat is not None:
-            from features.signal_layer_v1 import signal_layer_v1_to_direction_probs
+        from features.signal_layer_v1 import meta_n_bars_int, signal_layer_v1_to_direction_probs
 
+        nb = meta_n_bars_int(signal_layer_v1)
+        if nb >= 25 and prob_up is not None and prob_down is not None and prob_flat is not None:
             triplet = signal_layer_v1_to_direction_probs(signal_layer_v1)
             if triplet is not None:
                 w_sl = float(os.environ.get("ED_SIGNAL_LAYER_FUSION_BLEND", "0.38"))

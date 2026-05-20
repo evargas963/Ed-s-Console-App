@@ -13,6 +13,8 @@ from __future__ import annotations
 import math
 from typing import Any, Mapping, Optional, Sequence
 
+from numeric_contract import float_finite_or_none
+
 EPS = 1e-12
 DEFAULT_MAX_BARS = 256
 
@@ -32,15 +34,19 @@ W_MTF15 = 45  # 15×1m bars aggregated as 15m proxy
 
 
 def _f(x: Any) -> Optional[float]:
+    return float_finite_or_none(x)
+
+
+def meta_n_bars_int(layer: Mapping[str, Any]) -> int:
+    """Parse ``meta.n_bars`` without raising on corrupt bundle strings."""
+    raw = layer.get("meta.n_bars")
+    if raw is None or raw == "":
+        return 0
     try:
-        if x is None:
-            return None
-        v = float(x)
-        if math.isnan(v) or math.isinf(v):
-            return None
-        return v
+        n = int(raw)
     except (TypeError, ValueError):
-        return None
+        return 0
+    return n if n > 0 else 0
 
 
 def _clip(x: float, lo: float, hi: float) -> float:
@@ -281,6 +287,7 @@ def compute_signal_layer_v1(
 
     closes = [_f(b.get("close")) for b in bars]
     if not closes or closes[-1] is None:
+        out["meta.error"] = "missing_last_close"
         return out
 
     # ── A. Price structure ─────────────────────────────────────────────────
@@ -364,7 +371,12 @@ def compute_signal_layer_v1(
     vwap_roll = _safe_div(typ_vol_sum, vol_sum) if vol_sum > EPS else None
 
     vwap_inp = _f(getattr(inp, "vwap", None)) if inp is not None else None
-    vwap_use = vwap_inp if vwap_inp is not None else vwap_roll
+    if vwap_inp is not None:
+        vwap_use = vwap_inp
+        out["meta.vwap_source"] = "inp"
+    else:
+        vwap_use = vwap_roll
+        out["meta.vwap_source"] = "bars_roll" if vwap_roll is not None else None
 
     if vwap_use is not None:
         out["vl.price_vs_vwap_pct"] = _safe_div(c_now - vwap_use, c_now) * 100.0
@@ -672,7 +684,7 @@ def signal_layer_v1_to_direction_probs(
     Returns None when bar history is insufficient (no uniform 1/3 placeholder).
     """
     fn = flatten_numeric_features(layer)
-    if int(layer.get("meta.n_bars") or 0) < 25:
+    if meta_n_bars_int(layer) < 25:
         return None
 
     score = 0.0
