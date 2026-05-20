@@ -17,7 +17,8 @@ from math_exposure import (
     MIN_SAMPLES_STATISTICAL, MIN_SAMPLES_CONFIDENT, APPROACH_PTS,
     REVERSAL_RISK_LOW_MAX, REVERSAL_RISK_MOD_MAX,
 )
-from signal_types import SignalInput, PredictiveCard, CanonicalForecast, NON_TRADABLE_CANONICAL_PROVENANCE
+from fusion_contract import fusion_is_authoritative, is_canonical_tradable
+from signal_types import SignalInput, PredictiveCard, CanonicalForecast
 from timeframe_config import CANONICAL_TIMEFRAME
 from features.regime_mvp_context import mvp_spot, mvp_zone, mvp_vwap_side
 from db import (
@@ -586,7 +587,7 @@ def _forward_probs_from_canonical(
     canonical: CanonicalForecast,
 ) -> tuple[Optional[float], Optional[float], Optional[float]]:
     """Do not surface uniform placeholder triplets on the prediction card."""
-    if (canonical.provenance or "") in NON_TRADABLE_CANONICAL_PROVENANCE:
+    if not is_canonical_tradable(canonical):
         return None, None, None
     return canonical.probability_up, canonical.probability_down, canonical.probability_flat
 
@@ -786,7 +787,7 @@ def compute_prediction_core(
 
     n_used = len(similar)
 
-    _fusion_available = fusion is not None and getattr(fusion, "available", False)
+    _fusion_available = fusion_is_authoritative(fusion)
 
     if probs_5c is None:
         emp_dom, emp_prob = None, None
@@ -966,7 +967,7 @@ def compute_prediction_enrichment(
     ml_stack_probs = _mb.get(_spk)
 
     n_used = pred_core.samples_used
-    _fusion_available = fusion is not None and getattr(fusion, "available", False)
+    _fusion_available = fusion_is_authoritative(fusion)
 
     emp_dom = pred_core.historical_5c_dominant_dir
     emp_prob = pred_core.historical_5c_dominant_prob

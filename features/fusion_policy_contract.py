@@ -11,10 +11,12 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
+from fusion_contract import fusion_is_authoritative
+
 
 def _fusion_triplet(fusion: Any) -> Optional[tuple[float, float, float]]:
     """Normalized (up, down, flat) or None when fusion unavailable or probs incomplete."""
-    if fusion is None or not bool(getattr(fusion, "available", False)):
+    if not fusion_is_authoritative(fusion):
         return None
     pu = getattr(fusion, "prob_up", None)
     pd_ = getattr(fusion, "prob_down", None)
@@ -64,7 +66,7 @@ def fusion_payload_to_policy_columns(hz: str, fusion: Any) -> dict[str, Any]:
     When fusion is unavailable or directional probabilities are incomplete, probability
     columns are None (not fabricated from 1/3 placeholders or ``or 0.0`` coercion).
     """
-    avail = bool(getattr(fusion, "available", False)) if fusion is not None else False
+    avail = fusion_is_authoritative(fusion)
     dom = str(getattr(fusion, "dominant_direction", "?") or "?") if fusion is not None else "?"
     fconf = str(getattr(fusion, "fusion_confidence", "?") or "?") if fusion is not None else "?"
     status = _stack_status(fusion, avail=avail, dom=dom, fconf=fconf)[:500]

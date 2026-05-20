@@ -22,6 +22,7 @@ from typing import Any, Optional
 
 
 
+from fusion_contract import fusion_is_authoritative
 from ml_horizon import PRIMARY_DECISION_HORIZONS
 
 
@@ -120,7 +121,7 @@ class MultiHorizonMLFusionBundle:
 
 def fusion_payload_to_horizon_snapshot(hz: str, fus: Any) -> HorizonMLFusionSnapshot:
 
-    if fus is None or not getattr(fus, "available", False):
+    if not fusion_is_authoritative(fus):
 
         t = 1.0 / 3.0
 

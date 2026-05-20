@@ -1596,7 +1596,9 @@ def build_market_state(
 
         # Bayesian fusion
         _fusion = getattr(_sig_out, 'fusion', None)
-        if _fusion and getattr(_fusion, 'available', False):
+        from fusion_contract import fusion_is_authoritative
+
+        if fusion_is_authoritative(_fusion):
             def _fusion_f(name: str) -> Optional[float]:
                 v = getattr(_fusion, name, None)
                 return None if v is None else float(v)

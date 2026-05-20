@@ -43,6 +43,7 @@ from prediction_engine import (
     _empty_prediction,
 )
 from call_engine import compute_call
+from fusion_contract import fusion_is_authoritative, is_canonical_tradable
 from regime_engine import classify_regime
 from volatility_regime import classify_volatility_regime
 import bayesian_fusion
@@ -65,9 +66,7 @@ def canonical_forward_probs_for_display(
     canonical: CanonicalForecast,
 ) -> tuple[Optional[float], Optional[float], Optional[float]]:
     """Withhold forward probability mass on the prediction card when canonical is non-tradable."""
-    from signal_types import NON_TRADABLE_CANONICAL_PROVENANCE
-
-    if (canonical.provenance or "") in NON_TRADABLE_CANONICAL_PROVENANCE:
+    if not is_canonical_tradable(canonical):
         return None, None, None
     return canonical.probability_up, canonical.probability_down, canonical.probability_flat
 
@@ -112,7 +111,7 @@ def canonical_forecast_from_fusion(fusion) -> CanonicalForecast:
     Consumers must gate on ``NON_TRADABLE_CANONICAL_PROVENANCE`` — not treat placeholders as signal.
     """
     u = 1.0 / 3.0
-    if fusion is None or not getattr(fusion, "available", False):
+    if not fusion_is_authoritative(fusion):
         return CanonicalForecast(
             direction="flat",
             probability_up=u,
@@ -848,7 +847,7 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
         )
 
     # 5. Fusion
-    fus_avail = fusion and getattr(fusion, "available", False)
+    fus_avail = fusion_is_authoritative(fusion)
     if not fus_avail:
         fus_stage = StackStage(stage_id="fusion", status="inactive", note="Fusion: inactive")
     else:
@@ -1194,7 +1193,7 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
                     "horizon_tier": "secondary_support",
                     "non_authoritative": True,
                     "provenance": "governed_stack_diagnostics_only",
-                    "fusion_available": bool(getattr(_fus, "available", False)),
+                    "fusion_available": fusion_is_authoritative(_fus),
                     "dominant_direction": getattr(_fus, "dominant_direction", None),
                     "prob_up": getattr(_fus, "prob_up", None),
                     "prob_down": getattr(_fus, "prob_down", None),
@@ -1257,7 +1256,7 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         ml_bundle["secondary_support_fusion_audit"] = secondary_support_fusion_audit
         ml_bundle["multi_horizon_ml_fusion_bundle"] = mh_ml_fusion_bundle
         ml_bundle["stack_health"] = classify_stack_health(
-            fusion_available=bool(getattr(fusion, "available", False)),
+            fusion_available=fusion_is_authoritative(fusion),
             mc_available=bool(getattr(mc_out, "available", False)),
             n_base_available=_n_base_live,
         )
@@ -1376,7 +1375,7 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
     _log_decision_bundle(
         ticker,
         canonical,
-        getattr(fusion, "available", False) if fusion is not None else False,
+        fusion_is_authoritative(fusion),
         final_signal=call.signal,
         call_conviction=call.conviction,
         size_cue=call.size_cue,

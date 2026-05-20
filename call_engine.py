@@ -19,13 +19,13 @@ from math_exposure import (
     CONTINUATION_BLOCK_THRESHOLD,
     BREAKOUT_BLOCK_THRESHOLD,
 )
+from fusion_contract import canonical_provenance_is_tradable, fusion_is_authoritative
 from signal_types import (
     SignalInput,
     RulesCard,
     PredictiveCard,
     TheCall,
     CanonicalForecast,
-    NON_TRADABLE_CANONICAL_PROVENANCE,
 )
 
 log = logging.getLogger(__name__)
@@ -1083,7 +1083,7 @@ def _validate_trade(
     # ══════════════════════════════════════════════════════════════════════════
     prob_fails = []
 
-    _fusion_available = fusion is not None and getattr(fusion, 'available', False)
+    _fusion_available = fusion_is_authoritative(fusion)
     _vol_unstable = vol_regime and getattr(vol_regime, 'vol_regime', '') == "unstable"
     # Slightly lenient in normal vol: 0.25 veto'd almost all multi-model splits; stack still needs 2+ votes.
     _agree_threshold = 0.50 if _vol_unstable else 0.18
@@ -1279,7 +1279,7 @@ def compute_call(
     # 1. STACK-DERIVED SIGNAL — full stack synthesis, no rules-first lock
     # Every layer (1–7) contributes; final signal from stack consensus.
     # ══════════════════════════════════════════════════════════════════════════
-    _fusion_available = fusion is not None and getattr(fusion, 'available', False)
+    _fusion_available = fusion_is_authoritative(fusion)
     _regime_label = getattr(regime, 'primary', 'unknown') if regime else 'unknown'
     greek_b = greek_bias(inp.net_delta, inp.charm_direction, inp.put_call_oi_ratio,
                          dex_magnitude=inp.dex_magnitude or "moderate",
@@ -1360,7 +1360,7 @@ def compute_call(
     wait_blocker = None
     _prov = str(getattr(canonical, "provenance", "") or "")
     if (
-        _prov in NON_TRADABLE_CANONICAL_PROVENANCE
+        not canonical_provenance_is_tradable(_prov)
         and final_signal in ("long", "short")
     ):
         final_signal = "wait"
@@ -1390,7 +1390,7 @@ def compute_call(
         elif (
             final_signal == "wait"
             and mh_policy.final_tradeable_decision
-            and str(getattr(canonical, "provenance", "") or "") not in NON_TRADABLE_CANONICAL_PROVENANCE
+            and canonical_provenance_is_tradable(str(getattr(canonical, "provenance", "") or ""))
         ):
             _mh_promoted_directional = True
             final_signal = "long" if mh_policy.final_bias == "long" else "short"

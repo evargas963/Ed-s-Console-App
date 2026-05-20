@@ -24,6 +24,7 @@ from dataclasses import replace
 
 from typing import Any, Mapping, Optional, Tuple
 
+from fusion_contract import fusion_is_authoritative
 
 
 log = logging.getLogger(__name__)
@@ -523,7 +524,7 @@ def fuse_payload_apply_mc_adjustment(fusion: Any, mc_out: Any, spot_price: Optio
 
     """
 
-    if fusion is None or not getattr(fusion, "available", False):
+    if not fusion_is_authoritative(fusion):
 
         return fusion
 
