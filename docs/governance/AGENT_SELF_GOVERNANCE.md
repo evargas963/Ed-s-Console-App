@@ -65,6 +65,7 @@ Scope artifact #7 must list adjacent patterns (e.g. grep hits outside slice). Ei
 |-------|-----------|
 | **Git** | Commit prefix: `fix(audit-lane-N):`, `fix(open-item):`, `fix(coh-sa):`, `chore(repo-sweep):`, `docs(audit):` only for ledger |
 | **Tests** | Repo-wide guards: `tests/test_coh_sa*.py`, `tests/test_fusion_contract.py`, `tests/test_*_l1_equiv*.py`, etc. — **CI must run** `pytest tests/test_coh_sa1_float_consolidation.py tests/test_fusion_contract.py tests/test_inference_snapshot_l1_equiv_contract.py` on every PR |
+| **Sweeps** | REPO_SWEEP #1 error-propagation: `governance/audits/repo_sweep_error_propagation_v1_20260520.json` + `tests/test_repo_sweep_error_propagation_v1.py` |
 | **Operator** | 7-artifact verification; refuse docs-only closure for code FINDs |
 | **OPEN_ITEMS** | Single backlog; `[x]` only with commit SHA |
 | **Pairing** | Audit commit does not close code FINDs; following `OPEN_ITEM_FIX` does |
