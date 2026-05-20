@@ -123,7 +123,12 @@
 
 **Gate B (2026-05-20):** No consolidation slices until audit lane 1 closes. **SSC1 @ `bb4b6b8`** on feature. **SIG test:** identical feature vs hybrid. **Audit lane 1 @ tip:** `features/signal_layer_v1.py` — brief + paired fixes FIND-SLV1-1..3; operator sign-off pending. **Temp dirs:** all eight session `*_tmp` paths absent in worktree (cleanup N/A).
 
-**Unread for coherence lens (post–batch 1 queue):** ~~`features/signal_layer_v1.py`~~ (lane 1 closed @ `eb933ea`), ~~`features/inference_snapshot.py`~~ (lane 2 paired-fix closed), ~~`features/monte_carlo_stack_input.py`~~ (lane 3 paired-fix closed), ~~`v2_decision/module_a_adapter.py`~~ (MADA @ `52737e9` + completion), `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
+**Unread for coherence lens (post–batch 1 queue):** ~~`features/signal_layer_v1.py`~~ (lane 1 closed @ `eb933ea`), ~~`features/inference_snapshot.py`~~ (lane 2 paired-fix closed), ~~`features/monte_carlo_stack_input.py`~~ (lane 3 paired-fix closed), ~~`v2_decision/module_a_adapter.py`~~ (MADA closed @ `8ad00ba`), ~~`lifecycle_rule_core.py`~~ (LRC paired-fix pending sign-off), `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens).
+
+### Audit queue — surfaced by MADA producer-cone Read (not blockers for lifecycle)
+
+- [ ] **AUDIT-CAND-MS-FP1 — `forward_provenance` fallback → `canonical_provenance`** @ `market_state.py:1547` — when `canonical_forecast` is None, `ms.canonical_provenance = ms.forward_provenance or ""`. If `forward_provenance` (from `prediction_engine.py`) can hold a string outside `NON_TRADABLE_CANONICAL_PROVENANCE`, `is_ms_dict_fusion_authoritative` may admit fusion fields incorrectly. **Slice:** `go audit-prediction-engine` or `go audit-market-state-coherence` (Read `prediction_engine.py` value space + gate).
+- [ ] **OBS-MHMLB-NS1 — `fusion_available` name collision** — `HorizonMLFusionSnapshot.fusion_available` (`multi_horizon_ml_bundle.py` ~L68) vs `ms.fusion_available` (Tier C). Different scopes; document or rename in a consolidation slice to avoid future reader traps.
 
 ### COHERENCE-AUDIT workstream (full Read — not “files already walked”)
 
@@ -538,6 +543,16 @@ Reference ticker for parametric tests: **SPY**.
   - [x] **FIND-MADA-4** — `_position_size_fraction` via `float_finite_or_none`.
   - [x] **FIND-MADA-5** — `_probability_candidate` finite + [0,1] bound.
   - [x] **FIND-MADA-6** — duplicate fusion gate → `is_ms_dict_fusion_authoritative` in `fusion_contract.py` (completion after `52737e9`).
+  - [x] **FIND-LRC-1** — `apply_time_decay` NaN mins → 0 (no decay).
+  - [x] **FIND-LRC-2** — `apply_vix_adjustment` + `derive_stop_distance_pct` `vix_unavailable` tag on non-finite VIX.
+  - [x] **FIND-LRC-3** — `apply_risk_multiplier` NaN → 1.0; preserves `0.0` → 1.0 (`or` semantic).
+  - [x] **FIND-LRC-4** — `_abs_or_none` via `float_finite_or_none`.
+  - [x] **FIND-LRC-5** — `snap_target_to_structural` finite levels; `level is not None` (0.0 eligible).
+  - [x] **FIND-LRC-6** — `derive_target_levels` finite entry/risk gate.
+  - [x] **FIND-LRC-7** — `fire_exit` non-finite stop/target → `missing_stop_target_for_exit`.
+  - [x] **FIND-LRC-8** — `_cap_target` finite inputs.
+  - [ ] OBS-LRC-1 — magic `2.0` / `1.0` R-multiples → named constants (dim #11).
+  - [ ] OBS-LRC-3 — `int(max_hold_bars or 1)` NaN guard (low pri).
   - [ ] OBS-TC1 — `load_lstm_feature_cache` metadata defaults (`tickers`/`days`/`n_days`/`n_tickers` empty or 0); accepted — structural dims fail-closed via `_meta_required_positive_int`.
   - [ ] OBS-TC2 — `_normalize_data_fp({})` returns `{}` vs 6-key shape for non-empty; accepted — conservative cache miss on legacy empty identity.
   - [ ] OBS-TC3 — Legacy `cache_exists` / `read_cache_meta` at file tail unused by scheduler (accepted).
