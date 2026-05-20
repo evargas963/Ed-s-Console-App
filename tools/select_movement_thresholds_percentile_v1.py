@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import sqlite3
 import sys
 from pathlib import Path
+
+import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -27,7 +28,7 @@ sys.path.insert(0, str(ROOT))
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from db import configure_sqlite_connection
 from horizon_outcomes import OUTCOME_BAR_SPECS
-from ml_data_common import rth_where_clause, weekday_where_clause
+from ml_data_common import head_rth_df_from_ts_utc, weekday_where_clause
 from timeframe_config import CANONICAL_TIMEFRAME
 
 DEFAULT_DB = ROOT / "data" / "ed_console.db"
@@ -35,6 +36,7 @@ OUT_CFG = ROOT / "calibration" / "movement_target_thresholds_by_horizon_v1.json"
 OUT_REPORT = ROOT / "data" / "movement_threshold_search_report_v1.json"
 
 PERCENTILES = (50, 60, 70, 80)
+_RTH_FETCH_OVERSAMPLE = 4
 
 
 def _pct_sorted(vals: list[float], p: int) -> float:
@@ -78,8 +80,10 @@ def main() -> None:
         print(json.dumps({"error": "db_missing", "path": str(dbp)}))
         raise SystemExit(2)
 
+    max_rows = int(args.max_rows)
+    fetch_limit = max(max_rows * _RTH_FETCH_OVERSAMPLE, max_rows)
+
     conn = sqlite3.connect(str(dbp))
-    conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
 
     report: dict = {"db": str(dbp), "horizons": {}}
@@ -89,16 +93,16 @@ def main() -> None:
         slug = odir.replace("outcome_", "")
         pts_col = opt
         sql = f"""
-        SELECT {pts_col} AS pts FROM snapshots
+        SELECT ts_utc, {pts_col} AS pts FROM snapshots
         WHERE timeframe = ?
           AND {pts_col} IS NOT NULL
-          AND {rth_where_clause()}
           AND ({weekday_where_clause()})
         ORDER BY ts_utc DESC
         LIMIT ?
         """
-        rows = conn.execute(sql, (CANONICAL_TIMEFRAME, int(args.max_rows))).fetchall()
-        signed = [float(r["pts"]) for r in rows]
+        df = pd.read_sql_query(sql, conn, params=(CANONICAL_TIMEFRAME, fetch_limit))
+        df = head_rth_df_from_ts_utc(df, max_rows)
+        signed = df["pts"].astype(float).tolist()
         abs_pts = [abs(x) for x in signed]
         n0 = len(abs_pts)
         horizon_entry: dict = {

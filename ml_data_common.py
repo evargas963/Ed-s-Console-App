@@ -80,6 +80,14 @@ def filter_df_to_rth_ts_utc(df: pd.DataFrame) -> pd.DataFrame:
     return df.loc[mask].copy()
 
 
+def head_rth_df_from_ts_utc(df: pd.DataFrame, max_rows: int | None) -> pd.DataFrame:
+    """Post-fetch RTH filter via ts_utc, then cap row count (for SQL LIMIT oversample paths)."""
+    out = filter_df_to_rth_ts_utc(df)
+    if max_rows is not None and int(max_rows) > 0:
+        out = out.head(int(max_rows))
+    return out
+
+
 def stamp_et_clock_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Overwrite et_hour/et_minute from ts_utc (DST-safe)."""
     if df.empty or "ts_utc" not in df.columns:

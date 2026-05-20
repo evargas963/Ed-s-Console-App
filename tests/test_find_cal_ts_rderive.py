@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pandas as pd
 
@@ -94,6 +95,21 @@ def test_ml_train_load_data_where_has_no_rth_where_clause():
 
     src = inspect.getsource(load_data)
     assert "rth_where_clause()" not in src
+
+
+def test_training_paths_have_no_rth_where_clause():
+    """Regression: stored-et_hour SQL must not re-enter training/calibration paths."""
+    root = Path(__file__).resolve().parents[1]
+    paths = (
+        "training_cache.py",
+        "ml_scheduler.py",
+        "tools/calibrate_movement_threshold_v1.py",
+        "tools/select_movement_thresholds_percentile_v1.py",
+        "tools/_issue14_rowcount_proof.py",
+    )
+    for rel in paths:
+        src = (root / rel).read_text(encoding="utf-8")
+        assert "rth_where_clause()" not in src, rel
 
 
 def test_v2_advisory_backfill_stamps_et_clock_from_ts_utc():

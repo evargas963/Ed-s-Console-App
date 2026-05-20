@@ -12,6 +12,7 @@ import pytest
 from ml_data_common import (
     et_hour_minute_arrays_from_ts_utc,
     filter_df_to_rth_ts_utc,
+    head_rth_df_from_ts_utc,
     market_session_from_ts_utc,
     rth_where_clause,
     stamp_et_clock_columns,
@@ -51,3 +52,12 @@ def test_training_base_where_clause_has_no_rth_on_stored_hour():
 def test_market_session_from_ts_utc_premarket():
     t = datetime(2026, 7, 7, 12, 0, tzinfo=timezone.utc).timestamp()  # 8:00 ET
     assert market_session_from_ts_utc(t) == "premarket"
+
+
+def test_head_rth_df_from_ts_utc_caps_after_filter():
+    t_rth = datetime(2026, 7, 7, 15, 0, tzinfo=timezone.utc).timestamp()
+    t_pre = datetime(2026, 7, 7, 12, 0, tzinfo=timezone.utc).timestamp()
+    df = pd.DataFrame({"ts_utc": [t_pre, t_rth, t_rth]})
+    out = head_rth_df_from_ts_utc(df, 1)
+    assert len(out) == 1
+    assert float(out["ts_utc"].iloc[0]) == t_rth

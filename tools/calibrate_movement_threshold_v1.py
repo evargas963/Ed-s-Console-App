@@ -17,17 +17,21 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from db import configure_sqlite_connection
-from ml_data_common import rth_where_clause, weekday_where_clause
+from ml_data_common import head_rth_df_from_ts_utc, weekday_where_clause
 from movement_target_threshold import movement_threshold_pts_v1
 from timeframe_config import CANONICAL_TIMEFRAME
 
 DEFAULT_DB = ROOT / "data" / "ed_console.db"
 OUT_PATH = ROOT / "calibration" / "movement_target_threshold_v1.json"
+# Oversample SQL LIMIT then filter RTH on ts_utc (stored et_hour may skew pre-backfill rows).
+_RTH_FETCH_OVERSAMPLE = 4
 
 
 def main() -> None:
@@ -45,28 +49,32 @@ def main() -> None:
     if not pts_col.replace("_", "").isalnum():
         raise SystemExit("invalid horizon col")
 
+    max_rows = int(args.max_rows)
+    fetch_limit = max(max_rows * _RTH_FETCH_OVERSAMPLE, max_rows)
+
     conn = sqlite3.connect(str(args.db.resolve()))
-    conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
     sql = f"""
-    SELECT {pts_col} AS pts, atr, spot
+    SELECT ts_utc, {pts_col} AS pts, atr, spot
     FROM snapshots
     WHERE timeframe = ?
       AND {pts_col} IS NOT NULL
       AND spot IS NOT NULL AND spot > 0
-      AND {rth_where_clause()}
       AND ({weekday_where_clause()})
     ORDER BY ts_utc DESC
     LIMIT ?
     """
-    rows = conn.execute(sql, (CANONICAL_TIMEFRAME, int(args.max_rows))).fetchall()
+    df = pd.read_sql_query(sql, conn, params=(CANONICAL_TIMEFRAME, fetch_limit))
     conn.close()
-    if len(rows) < 5000:
-        print(f"WARN: only {len(rows)} rows; statistics noisy")
+    df = head_rth_df_from_ts_utc(df, max_rows)
+    if len(df) < 5000:
+        print(f"WARN: only {len(df)} RTH rows after ts_utc filter; statistics noisy")
 
-    pts_l = [float(r["pts"]) for r in rows]
-    atr_l = [float(r["atr"]) if r["atr"] is not None else float("nan") for r in rows]
-    spot_l = [float(r["spot"]) for r in rows]
+    pts_l = df["pts"].astype(float).tolist()
+    atr_l = [
+        float(v) if pd.notna(v) and float(v) > 0 else float("nan") for v in df["atr"]
+    ]
+    spot_l = df["spot"].astype(float).tolist()
     abs_m = [abs(p) for p in pts_l]
 
     best = None
@@ -78,7 +86,7 @@ def main() -> None:
             params = {"atr_multiplier": k_atr, "min_fraction_of_anchor": frac}
             moves = 0
             up_w = down_w = 0
-            for i in range(len(rows)):
+            for i in range(len(df)):
                 ac = spot_l[i]
                 atr = atr_l[i] if not math.isnan(atr_l[i]) and atr_l[i] > 0 else None
                 thr = movement_threshold_pts_v1(ac, atr, params)
@@ -88,11 +96,11 @@ def main() -> None:
                         up_w += 1
                     elif pts_l[i] < 0:
                         down_w += 1
-            rate = moves / max(len(rows), 1)
+            rate = moves / max(len(df), 1)
             bal = abs(up_w - down_w) / max(up_w + down_w, 1)
             # Prefer move rate near target; secondary minimize imbalance
             score = (rate - tgt) ** 2 * 10 + bal * 0.5
-            if moves < max(500, len(rows) * 0.05):
+            if moves < max(500, len(df) * 0.05):
                 continue
             if score < best_score:
                 best_score = score
@@ -108,7 +116,7 @@ def main() -> None:
         "min_fraction_of_anchor": round(params["min_fraction_of_anchor"], 6),
         "method": "max_atr_pts_and_anchor_fraction",
         "calibration": {
-            "rows_used": len(rows),
+            "rows_used": len(df),
             "pts_column": pts_col,
             "target_move_rate": tgt,
             "achieved_move_rate": round(rate, 4),
