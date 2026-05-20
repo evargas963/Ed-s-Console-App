@@ -27,6 +27,7 @@ from typing import Any, Optional
 from lifecycle_rule_core import SameBarResolution, fire_exit, resolve_same_bar_conflict
 from market_state import recommend_option_expression
 from math_levels import WallsRow, TotalsRow
+from numeric_contract import float_finite_or_none
 from replay_hold_bars import (
     replay_max_hold_bars_from_context,
     resolve_replay_max_hold_bars_for_payload,
@@ -210,8 +211,6 @@ def build_replay_context_payload(
 
 
 def _f(v) -> Optional[float]:
-    from numeric_contract import float_finite_or_none
-
     return float_finite_or_none(v)
 
 

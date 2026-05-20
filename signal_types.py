@@ -15,7 +15,7 @@ from micro_structure import Candle, MicroRead
 class SignalInput:
     """
     Current market state passed into the signals engine each refresh.
-    Built by ed_console_app.py from existing data structures.
+    Built by market_state.build_market_state from existing data structures.
     """
     # ── Identity ──────────────────────────────────────────────────────────────
     ticker:             str

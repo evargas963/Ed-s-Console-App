@@ -23,6 +23,7 @@ from typing import Optional
 
 from canonical_distances import canonical_nearest_distances
 from math_probabilities import OE_SPREAD_TIGHT_MAX
+from fusion_contract import fusion_is_authoritative
 from timeframe_config import CANONICAL_TIMEFRAME
 
 
@@ -1596,8 +1597,6 @@ def build_market_state(
 
         # Bayesian fusion
         _fusion = getattr(_sig_out, 'fusion', None)
-        from fusion_contract import fusion_is_authoritative
-
         if fusion_is_authoritative(_fusion):
             def _fusion_f(name: str) -> Optional[float]:
                 v = getattr(_fusion, name, None)

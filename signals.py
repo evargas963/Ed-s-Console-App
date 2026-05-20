@@ -44,6 +44,7 @@ from prediction_engine import (
 )
 from call_engine import compute_call
 from fusion_contract import fusion_is_authoritative, is_canonical_tradable
+from numeric_contract import direction_from_normalized_triplet
 from regime_engine import classify_regime
 from volatility_regime import classify_volatility_regime
 import bayesian_fusion
@@ -148,8 +149,6 @@ def canonical_forecast_from_fusion(fusion) -> CanonicalForecast:
     d_raw = getattr(fusion, "dominant_direction", None)
     d = str(d_raw).strip().lower() if d_raw is not None else None
     if d not in ("up", "down", "flat"):
-        from numeric_contract import direction_from_normalized_triplet
-
         d = direction_from_normalized_triplet(pu, pd, pf)
     conf_raw = getattr(fusion, "fusion_confidence", None)
     conf = str(conf_raw).strip().lower() if conf_raw is not None else None

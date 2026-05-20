@@ -74,7 +74,7 @@
 
 **TIER 1.5 — single-authority (behavioral divergence today)**
 
-- [x] **COH-SA-FLOAT — `numeric_contract.py`** @ `31c4f45` — `float_finite_or_none`, `float_positive_or_none`; redirected `v2_advisory_backfill`, `v2_live_logging`, `realized_contract_eval`. **Substantive fix:** `realized_contract_eval._f` no longer passes NaN/inf into PnL (was silent corruption pre-fix). `tests/test_numeric_contract_tier15.py`.
+- [x] **COH-SA-FLOAT — `numeric_contract.py`** @ `31c4f45` — `float_finite_or_none`, `float_positive_or_none`; redirected `v2_advisory_backfill`, `v2_live_logging`, `realized_contract_eval`. **Substantive fix (traceability):** `realized_contract_eval._f` → `float_finite_or_none` — commit message understated severity; pre-`31c4f45`, NaN/inf in snapshot fields could flow into contract PnL silently. `tests/test_numeric_contract_tier15.py`.
 - [x] **COH-SA-1 — float wrapper consolidation** — COH-SA-1 ten + repo-wide guard caught six more (`market_context`, `liquidity_value_engine`, `backfill_flow_imbalance`, `a2_replay_labels`, `a1_conformal_*`); all `_*float_or_none` / `_positive_float_or_none` delegate to `numeric_contract`; `tests/test_coh_sa1_float_consolidation.py`.
 - [x] **COH-SA-2 — ET ZoneInfo satellites → `time_et`** — production + research paths import `ET` / `now_et()` from `time_et.py`; `tests/test_coh_sa2_et_authority.py` rglob guards.
 - [x] **COH-SA-3 — fusion-predicates → `fusion_contract.py`** — `fusion_is_authoritative`, `is_canonical_tradable` / `canonical_provenance_is_tradable`; redirected signals, call_engine, prediction_engine, mc_fusion_adjustment, fusion_policy_contract, market_state, multi_horizon_ml_bundle; `tests/test_fusion_contract.py` rglob guards (`getattr(_?fusion*, "available")` + `in NON_TRADABLE_CANONICAL_PROVENANCE`).
@@ -86,9 +86,9 @@
 
 - [x] **COH-I-H — Argmax tie-break** — Closed via COH-SA-TRIPLET @ tier-1.5 (`numeric_contract.direction_from_triplet`, up-first on ties).
 
-- [ ] **COH-I-C — `shared_sequence_context` under-fetch when transformer meta missing (~L138-139)** — can cascade MC/transformer inactive. Ties FIND-SSC1 / OBS-SSC1.
+- [x] **COH-I-C / FIND-SSC1 — `shared_sequence_context` chronology fail-closed** — missing `ts_utc` on chron bounds → `snapshot_ts_utc_missing` (was silent pass); tests `test_build_shared_sequence_context_rejects_missing_ts_utc_*`. Under-fetch when transformer meta missing (~L138-139) remains OBS-SSC1 (accepted).
 
-- [x] **COH-I-K — Replay max-hold bars authority** — `replay_hold_bars.py` (`for_setup` / `from_context` / `for_trade_type` + `resolve_replay_max_hold_bars_for_payload`); payload provenance fields in `build_replay_context_payload`; `tests/test_replay_hold_bars.py` rglob guard. **Historical:** pre-FIND-RCE-RESID3 rows may still have `replay_max_hold_bars: 30` baked in — forward path closed; optional backfill of old `replay_context_json` remains lower priority.
+- [x] **COH-I-K — Replay max-hold bars authority** — `replay_hold_bars.py` (`for_setup` / `from_context` / `for_trade_type` + `resolve_replay_max_hold_bars_for_payload`); payload provenance fields in `build_replay_context_payload`; `tests/test_replay_hold_bars.py` rglob guard. **Historical data (eval bias):** pre-FIND-RCE-RESID3 `replay_context_json` rows may still carry baked-in `replay_max_hold_bars: 30` (trade-type fallback before live card provenance); forward path closed; optional DB backfill to re-resolve from setup — lower priority unless re-running old eval windows.
 
 **TIER 3 — lower**
 
