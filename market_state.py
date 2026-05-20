@@ -24,7 +24,7 @@ from typing import Optional
 from canonical_distances import canonical_nearest_distances
 from math_probabilities import OE_SPREAD_TIGHT_MAX
 from fusion_contract import fusion_is_authoritative
-from numeric_contract import float_finite_or_none
+from numeric_contract import float_finite_or_none, float_positive_or_none
 from timeframe_config import CANONICAL_TIMEFRAME
 
 
@@ -499,6 +499,12 @@ class MarketState:
 def _f_ms(v):
     """Safe float conversion (finite-only)."""
     return float_finite_or_none(v)
+
+
+def _ms_price_disp(v) -> str:
+    """Format price for UI; non-finite → em dash (FIND-MS-7/8)."""
+    x = _f_ms(v)
+    return f"{x:.2f}" if x is not None else "—"
 
 
 def _oe_chain_row_snapshot(ct: dict | None) -> dict | None:
@@ -1008,10 +1014,10 @@ def build_market_state(
     ms.spot         = spot
     ms.bid          = bid
     ms.ask          = ask
-    ms.spot_disp    = f"{spot:.2f}" if spot is not None else "—"
-    ms.bid_disp     = f"{bid:.2f}"  if bid  is not None else "—"
-    ms.ask_disp     = f"{ask:.2f}"  if ask  is not None else "—"
-    spot_f          = float(spot) if spot is not None else None
+    ms.spot_disp    = _ms_price_disp(spot)
+    ms.bid_disp     = _ms_price_disp(bid)
+    ms.ask_disp     = _ms_price_disp(ask)
+    spot_f          = _f_ms(spot)
 
     # ── 2. Regime — from consensus_summary ──────────────────────────────────
     if consensus_summary is not None:
@@ -1393,10 +1399,10 @@ def build_market_state(
             ms.target2          = _call.target2
             ms.reward_risk      = _call.reward_risk
             ms.reward_risk2     = getattr(_call, 'reward_risk2', None)
-            ms.entry_disp       = f"{_call.entry:.2f}"  if _call.entry  else "—"
-            ms.stop_disp        = f"{_call.stop:.2f}"   if _call.stop   else "—"
-            ms.target_disp      = f"{_call.target:.2f}" if _call.target else "—"
-            ms.target2_disp     = f"{_call.target2:.2f}" if _call.target2 else "—"
+            ms.entry_disp       = _ms_price_disp(_call.entry)
+            ms.stop_disp        = _ms_price_disp(_call.stop)
+            ms.target_disp      = _ms_price_disp(_call.target)
+            ms.target2_disp     = _ms_price_disp(_call.target2)
             ms.rr_disp          = f"{_call.reward_risk:.1f}x" if _call.reward_risk else "—"
             ms.rr2_disp         = f"{_call.reward_risk2:.1f}x" if getattr(_call, 'reward_risk2', None) else "—"
             ms.call_headline    = _call.headline
@@ -1448,7 +1454,7 @@ def build_market_state(
             _pt = getattr(_mhd, "final_trade_plan", None)
             ms.final_bias = str(getattr(_mhd, "final_bias", "WAIT") or "WAIT")
             _fc = getattr(_mhd, "final_confidence", None)
-            ms.final_confidence = float(_fc) if _fc is not None else None
+            ms.final_confidence = float_finite_or_none(_fc)
             ms.final_quality = str(getattr(_mhd, "final_quality", "D") or "D")
             ms.final_tradeable = bool(getattr(_mhd, "final_tradeable", False))
             ms.primary_horizon = str(getattr(_mhd, "primary_horizon", "1c") or "1c")
@@ -1517,12 +1523,9 @@ def build_market_state(
             ms.historical_5c_dominant_dir = _pred.historical_5c_dominant_dir
             ms.historical_5c_dominant_prob = _pred.historical_5c_dominant_prob
             ms.empirical_confidence = _pred.empirical_confidence
-            if _pred.forward_prob_up is not None:
-                ms.forward_prob_up = float(_pred.forward_prob_up)
-            if _pred.forward_prob_down is not None:
-                ms.forward_prob_down = float(_pred.forward_prob_down)
-            if _pred.forward_prob_flat is not None:
-                ms.forward_prob_flat = float(_pred.forward_prob_flat)
+            ms.forward_prob_up = float_finite_or_none(_pred.forward_prob_up)
+            ms.forward_prob_down = float_finite_or_none(_pred.forward_prob_down)
+            ms.forward_prob_flat = float_finite_or_none(_pred.forward_prob_flat)
             ms.forward_provenance = _pred.forward_provenance or ""
             _cf = getattr(_sig_out, "canonical_forecast", None)
             if _cf is not None:
@@ -1568,7 +1571,12 @@ def build_market_state(
                     u, dn, fl = z.get("up"), z.get("down"), z.get("flat")
                     if u is None or dn is None or fl is None:
                         return None
-                    return {"up": float(u), "down": float(dn), "flat": float(fl)}
+                    u_f = float_finite_or_none(u)
+                    dn_f = float_finite_or_none(dn)
+                    fl_f = float_finite_or_none(fl)
+                    if u_f is None or dn_f is None or fl_f is None:
+                        return None
+                    return {"up": u_f, "down": dn_f, "flat": fl_f}
 
                 ms.layer1_probs = {
                     "xgb": _pack_probs(_x),
@@ -1603,8 +1611,7 @@ def build_market_state(
         _fusion = getattr(_sig_out, 'fusion', None)
         if fusion_is_authoritative(_fusion):
             def _fusion_f(name: str) -> Optional[float]:
-                v = getattr(_fusion, name, None)
-                return None if v is None else float(v)
+                return float_finite_or_none(getattr(_fusion, name, None))
 
             ms.fusion_available       = True
             ms.fusion_dominant        = getattr(_fusion, 'dominant_outcome', 'unknown')
@@ -1647,9 +1654,9 @@ def build_market_state(
             ms.vol_regime = getattr(_vr, 'vol_regime', 'unknown')
             ms.vol_regime_summary = getattr(_vr, 'summary', '')
             _cvm = getattr(_vr, 'conviction_multiplier', None)
-            ms.vol_regime_conviction_mult = float(_cvm) if _cvm is not None else None
+            ms.vol_regime_conviction_mult = float_finite_or_none(_cvm)
             _rmm = getattr(_vr, 'risk_multiplier', None)
-            ms.vol_regime_risk_mult = float(_rmm) if _rmm is not None else None
+            ms.vol_regime_risk_mult = float_finite_or_none(_rmm)
 
         # Stack decision path (ordered: XGB → LSTM → Transformer → MC → Fusion → Call)
         _path = getattr(_sig_out, 'stack_decision_path', None)
@@ -1708,8 +1715,12 @@ def build_market_state(
             if not ms.is_no_trade:
                 _parts = _reco_str.split()
                 if len(_parts) >= 2:
-                    ms.rec_strike = float(_parts[0])
-                    ms.rec_side   = _parts[1].upper()
+                    _strike = float_finite_or_none(_parts[0])
+                    if _strike is None:
+                        ms.is_no_trade = True
+                    else:
+                        ms.rec_strike = _strike
+                        ms.rec_side = _parts[1].upper()
         except Exception as _oe_e:
             import logging
             logging.warning(f"market_state: OE recommendation error: {_oe_e}")

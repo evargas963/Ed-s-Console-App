@@ -4,6 +4,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from market_state import MarketState
+from numeric_contract import float_finite_or_none
 from multi_horizon_decision import build_multi_horizon_bundle
 from tests.test_issue18_multi_horizon_decision import _call, _canonical, _inp, _pred
 
@@ -14,7 +15,7 @@ def _apply_mha_confidence_from_sig_out(ms: MarketState, sig_out) -> None:
     if _mhb is not None and getattr(_mhb, "final_decision", None) is not None:
         _mhd = _mhb.final_decision
         _fc = getattr(_mhd, "final_confidence", None)
-        ms.final_confidence = float(_fc) if _fc is not None else None
+        ms.final_confidence = float_finite_or_none(_fc)
 
 
 def test_final_confidence_none_without_multi_horizon_bundle() -> None:

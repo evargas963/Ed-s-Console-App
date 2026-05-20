@@ -516,6 +516,16 @@ Reference ticker for parametric tests: **SPY**.
   - [x] **FIND-MHD-6** — finalize target/stop via `_finite_price_optional`; NaN/inf → display "—".
   - [x] **FIND-MHD-7** — `_entry_state_machine` spot/zone/entry via `_finite_price_optional`.
   - [x] **FIND-MHD-8** — `_norm_triplet` rejects non-finite sum (`math.isfinite(s)`).
+  - [x] **FIND-MS-1** — `spot_f = _f_ms(spot)`; non-finite spot → degraded cards (no signals).
+  - [x] **FIND-MS-2** — `mc_iv_level` via `float_positive_or_none`.
+  - [x] **FIND-MS-3** — `forward_prob_*` / `dominant_prob` via `float_finite_or_none`.
+  - [x] **FIND-MS-4** — `_fusion_f` → `float_finite_or_none` (all fusion numeric fields).
+  - [x] **FIND-MS-5** — `_pack_probs` legs via `float_finite_or_none`.
+  - [x] **FIND-MS-6** — vol regime multipliers via `float_finite_or_none`.
+  - [x] **FIND-MS-7** — `_ms_price_disp` on spot/bid/ask.
+  - [x] **FIND-MS-8** — call entry/stop/target display via `_ms_price_disp`.
+  - [x] **FIND-MS-9** — `final_confidence` via `float_finite_or_none`.
+  - [x] **FIND-MS-10** — `rec_strike` via `float_finite_or_none`; non-finite → `is_no_trade`.
   - [ ] OBS-TC1 — `load_lstm_feature_cache` metadata defaults (`tickers`/`days`/`n_days`/`n_tickers` empty or 0); accepted — structural dims fail-closed via `_meta_required_positive_int`.
   - [ ] OBS-TC2 — `_normalize_data_fp({})` returns `{}` vs 6-key shape for non-empty; accepted — conservative cache miss on legacy empty identity.
   - [ ] OBS-TC3 — Legacy `cache_exists` / `read_cache_meta` at file tail unused by scheduler (accepted).
