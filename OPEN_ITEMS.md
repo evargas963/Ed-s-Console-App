@@ -509,6 +509,13 @@ Reference ticker for parametric tests: **SPY**.
   - [x] **FIND-MHMLB-1** — `fusion_payload_to_horizon_snapshot` parses probs/fcs via `float_finite_or_none`; non-finite → unavailable row.
   - [x] **FIND-MHMLB-2** — `dominant_direction` from `direction_from_normalized_triplet`; upstream label discarded.
   - [x] **FIND-MHMLB-3** — `_safe_norm_triplet` logs raw_sum drift; `provenance=bayesian_fusion_renormalized` when `|sum-1|>0.01`.
+  - [x] **FIND-MHD-1** — `_safe_prob_optional` routes through `float_finite_or_none` + range gate.
+  - [x] **FIND-MHD-2** — canonical fallback blend uses `float_finite_or_none`; non-finite → skip blend + `_canonical_nonfinite` provenance.
+  - [x] **FIND-MHD-3** — `_confidence_from_probs` direction via `direction_from_normalized_triplet`; margin gates overlay wait.
+  - [x] **FIND-MHD-5** — malformed `ED_MH_FALLBACK_CANONICAL_BLEND` → `log.debug` + `wfb=0.0`.
+  - [x] **FIND-MHD-6** — finalize target/stop via `_finite_price_optional`; NaN/inf → display "—".
+  - [x] **FIND-MHD-7** — `_entry_state_machine` spot/zone/entry via `_finite_price_optional`.
+  - [x] **FIND-MHD-8** — `_norm_triplet` rejects non-finite sum (`math.isfinite(s)`).
   - [ ] OBS-TC1 — `load_lstm_feature_cache` metadata defaults (`tickers`/`days`/`n_days`/`n_tickers` empty or 0); accepted — structural dims fail-closed via `_meta_required_positive_int`.
   - [ ] OBS-TC2 — `_normalize_data_fp({})` returns `{}` vs 6-key shape for non-empty; accepted — conservative cache miss on legacy empty identity.
   - [ ] OBS-TC3 — Legacy `cache_exists` / `read_cache_meta` at file tail unused by scheduler (accepted).

@@ -6,12 +6,19 @@ canonical safety semantics (downgrades/blocks are allowed; synthetic conviction 
 """
 from __future__ import annotations
 
+import logging
+import math
 import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from ml_horizon import PRIMARY_DECISION_HORIZONS
 from multi_horizon_ml_bundle import MultiHorizonMLFusionBundle
+from numeric_contract import direction_from_normalized_triplet, float_finite_or_none
+
+log = logging.getLogger(__name__)
+
+_TRIPLET_LABEL_TO_FORECAST = {"up": "long", "down": "short", "flat": "wait"}
 
 # Authoritative multi-horizon decision inputs only (must match PRIMARY_DECISION_HORIZONS).
 PRODUCT_HORIZONS: tuple[str, ...] = PRIMARY_DECISION_HORIZONS
@@ -414,25 +421,28 @@ def finalize_multi_horizon_bundle(
     target = getattr(call, "target", None)
     target2 = getattr(call, "target2", None)
     tlad = []
-    if target is not None:
-        tlad.append(f"T1: {float(target):.2f}")
+    t1 = _finite_price_optional(target)
+    if t1 is not None:
+        tlad.append(f"T1: {t1:.2f}")
     else:
         tlad.append("T1: —")
-    if target2 is not None:
-        tlad.append(f"T2: {float(target2):.2f}")
-        tlad.append(f"Runner: {float(target2):.2f}")
+    t2 = _finite_price_optional(target2)
+    if t2 is not None:
+        tlad.append(f"T2: {t2:.2f}")
+        tlad.append(f"Runner: {t2:.2f}")
     else:
         tlad.append("T2: —")
         tlad.append("Runner: —")
     tdisp = " | ".join(tlad)
-    sdisp = "—" if stop is None else f"{float(stop):.2f}"
+    stop_px = _finite_price_optional(stop)
+    sdisp = "—" if stop_px is None else f"{stop_px:.2f}"
     size_disp = "0.00x" if size <= 0 else f"{size:.2f}x"
 
     plan = FinalTradePlan(
         entry_state=e_state,
         entry=e_px,
         entry_display_text=e_txt,
-        stop=(float(stop) if stop is not None else None),
+        stop=stop_px,
         stop_display_text=sdisp if final_bias != "wait" else "—",
         target_ladder=tlad,
         targets_display=tdisp if final_bias != "wait" else "—",
@@ -491,15 +501,15 @@ def finalize_multi_horizon_bundle(
 
 
 def _safe_prob_optional(v: Optional[float]) -> Optional[float]:
-    if v is None:
-        return None
-    try:
-        x = float(v)
-    except (TypeError, ValueError):
-        return None
-    if not (0.0 <= x <= 1.0):
+    x = float_finite_or_none(v)
+    if x is None or not (0.0 <= x <= 1.0):
         return None
     return x
+
+
+def _finite_price_optional(v: Any) -> Optional[float]:
+    """Finite price for display/plan fields; rejects NaN/inf (FIND-MHD-6/7)."""
+    return float_finite_or_none(v)
 
 
 def _norm_triplet(
@@ -511,7 +521,7 @@ def _norm_triplet(
     if up is None or dn is None or fl is None:
         return None
     s = up + dn + fl
-    if s <= 0:
+    if s <= 0 or not math.isfinite(s):
         return None
     return (up / s, dn / s, fl / s)
 
@@ -520,14 +530,14 @@ def _confidence_from_probs(up: float, dn: float, fl: float) -> tuple[float, floa
     vals = sorted([up, dn, fl], reverse=True)
     top = vals[0]
     margin = top - vals[1]
-    # Slightly looser vs legacy so fusion+signal_layer canonical blends can resolve a side.
+    # Product-policy margin gates; direction from numeric_contract triplet authority.
     if top < 0.37 or margin < 0.025:
         return top, margin, "wait"
-    if up >= dn and up >= fl:
-        return top, margin, "long"
-    if dn >= up and dn >= fl:
-        return top, margin, "short"
-    return top, margin, "wait"
+    dom_label = direction_from_normalized_triplet(up, dn, fl)
+    call = _TRIPLET_LABEL_TO_FORECAST.get(dom_label, "wait")
+    if call == "wait":
+        return top, margin, "wait"
+    return top, margin, call
 
 
 def _infer_trade_mode(inp) -> Optional[str]:
@@ -629,27 +639,33 @@ def _forecast_horizon_live(
     fusion_ml = bool(ml_snap and ml_snap.fusion_available)
     provenance = f"predictive_mh_fusion_primary_{hz}"
     if not fusion_ml:
+        env_blend = os.environ.get("ED_MH_FALLBACK_CANONICAL_BLEND", "0.0")
         try:
-            wfb = float(os.environ.get("ED_MH_FALLBACK_CANONICAL_BLEND", "0.0"))
+            wfb = float(env_blend)
         except ValueError:
+            log.debug(
+                "ED_MH_FALLBACK_CANONICAL_BLEND ignored (malformed) value=%r horizon=%s",
+                env_blend,
+                hz,
+            )
             wfb = 0.0
         wfb = max(0.0, min(1.0, wfb))
         if canonical is not None and wfb > 0.0:
-            cu = getattr(canonical, "probability_up", None)
-            cd = getattr(canonical, "probability_down", None)
-            cf = getattr(canonical, "probability_flat", None)
-            if cu is not None and cd is not None and cf is not None:
-                cu, cd, cf = float(cu), float(cd), float(cf)
-            else:
-                cu = cd = cf = None
+            cu = float_finite_or_none(getattr(canonical, "probability_up", None))
+            cd = float_finite_or_none(getattr(canonical, "probability_down", None))
+            cf = float_finite_or_none(getattr(canonical, "probability_flat", None))
             if cu is not None and cd is not None and cf is not None:
                 up = (1.0 - wfb) * up + wfb * cu
                 dn = (1.0 - wfb) * dn + wfb * cd
                 fl = (1.0 - wfb) * fl + wfb * cf
                 s = up + dn + fl
-                if s > 0:
+                if s > 0 and math.isfinite(s):
                     up, dn, fl = up / s, dn / s, fl / s
-                provenance = f"predictive_empirical_fallback_{hz}_stabilized"
+                    provenance = f"predictive_empirical_fallback_{hz}_stabilized"
+                else:
+                    provenance = f"predictive_empirical_fallback_{hz}_canonical_nonfinite"
+            else:
+                provenance = f"predictive_empirical_fallback_{hz}_canonical_nonfinite"
         else:
             provenance = f"predictive_empirical_fallback_{hz}"
 
@@ -800,25 +816,26 @@ def _entry_state_machine(
 ) -> tuple[str, Optional[float], str]:
     if final_bias == "wait" or not tradeable:
         return ("no_setup", None, "No valid setup")
-    zl = getattr(inp, "nearest_below_val", None)
-    zh = getattr(inp, "nearest_above_val", None)
-    spot = getattr(inp, "spot", None)
+    zl = _finite_price_optional(getattr(inp, "nearest_below_val", None))
+    zh = _finite_price_optional(getattr(inp, "nearest_above_val", None))
+    spot = _finite_price_optional(getattr(inp, "spot", None))
     if zl is None or zh is None or spot is None:
         return ("forming", None, "Wait for pullback into —\u2014—\n(1c confirmation required)")
-    lo = float(min(zl, zh))
-    hi = float(max(zl, zh))
-    in_zone = lo <= float(spot) <= hi
+    lo = min(zl, zh)
+    hi = max(zl, zh)
+    in_zone = lo <= spot <= hi
     confirm_1c = one_c.direction == final_bias and one_c.confidence >= 0.54
     cs = str(call_state or "WAIT").upper()
-    if cs == "ACTIVE" and call_entry is not None:
-        return ("filled", float(call_entry), f"{float(call_entry):.2f} (FILLED)")
+    entry_px = _finite_price_optional(call_entry)
+    if cs == "ACTIVE" and entry_px is not None:
+        return ("filled", entry_px, f"{entry_px:.2f} (FILLED)")
     if not in_zone:
         return ("forming", None, f"Wait for pullback into {lo:.2f}\u2013{hi:.2f}\n(1c confirmation required)")
     if in_zone and not confirm_1c:
         return ("armed", None, f"In zone ({lo:.2f}\u2013{hi:.2f})\nWaiting for 1c confirmation")
-    if call_entry is not None:
-        return ("confirmed", float(call_entry), f"{float(call_entry):.2f} (CONFIRMED)")
-    return ("confirmed", float(spot), f"{float(spot):.2f} (CONFIRMED)")
+    if entry_px is not None:
+        return ("confirmed", entry_px, f"{entry_px:.2f} (CONFIRMED)")
+    return ("confirmed", spot, f"{spot:.2f} (CONFIRMED)")
 
 
 def _ml_consensus_vote(hmap: dict[str, HorizonForecast]) -> tuple[Optional[str], int, int]:
