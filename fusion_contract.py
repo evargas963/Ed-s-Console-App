@@ -27,3 +27,13 @@ def is_canonical_tradable(canonical: Any) -> bool:
     if prov is None and isinstance(canonical, dict):
         prov = canonical.get("provenance")
     return canonical_provenance_is_tradable(str(prov or ""))
+
+
+def is_ms_dict_fusion_authoritative(ms: dict[str, Any]) -> bool:
+    """True when Tier C ``ms_dict`` fusion fields are safe to read (available + tradable provenance)."""
+    if not ms.get("fusion_available"):
+        return False
+    prov = ms.get("canonical_provenance")
+    if prov is None:
+        return True
+    return canonical_provenance_is_tradable(str(prov))

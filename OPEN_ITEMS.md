@@ -123,7 +123,7 @@
 
 **Gate B (2026-05-20):** No consolidation slices until audit lane 1 closes. **SSC1 @ `bb4b6b8`** on feature. **SIG test:** identical feature vs hybrid. **Audit lane 1 @ tip:** `features/signal_layer_v1.py` — brief + paired fixes FIND-SLV1-1..3; operator sign-off pending. **Temp dirs:** all eight session `*_tmp` paths absent in worktree (cleanup N/A).
 
-**Unread for coherence lens (post–batch 1 queue):** ~~`features/signal_layer_v1.py`~~ (lane 1 closed @ `eb933ea`), ~~`features/inference_snapshot.py`~~ (lane 2 paired-fix closed), ~~`features/monte_carlo_stack_input.py`~~ (lane 3 paired-fix closed), `v2_decision/module_a_adapter.py`, `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
+**Unread for coherence lens (post–batch 1 queue):** ~~`features/signal_layer_v1.py`~~ (lane 1 closed @ `eb933ea`), ~~`features/inference_snapshot.py`~~ (lane 2 paired-fix closed), ~~`features/monte_carlo_stack_input.py`~~ (lane 3 paired-fix closed), ~~`v2_decision/module_a_adapter.py`~~ (MADA @ `52737e9` + completion), `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens), `lifecycle_rule_core.py`.
 
 ### COHERENCE-AUDIT workstream (full Read — not “files already walked”)
 
@@ -532,6 +532,12 @@ Reference ticker for parametric tests: **SPY**.
   - [x] **FIND-BF-4** — `_bayesian_update` skips non-finite likelihoods.
   - [x] **FIND-BF-5** — `float_finite_or_none` imported from `numeric_contract`.
   - [x] **FIND-BF-6** — malformed `ED_SIGNAL_LAYER_FUSION_BLEND` → `log.debug` + default 0.38.
+  - [x] **FIND-MADA-1** — `_direction` gates fusion on `is_ms_dict_fusion_authoritative` (`fusion_contract.py`).
+  - [x] **FIND-MADA-2** — `dominant_probability` fusion prob uses same gate; no `final_confidence` cross-wire (fail-closed).
+  - [x] **FIND-MADA-3** — `_desk_confidence_value` via `float_finite_or_none`.
+  - [x] **FIND-MADA-4** — `_position_size_fraction` via `float_finite_or_none`.
+  - [x] **FIND-MADA-5** — `_probability_candidate` finite + [0,1] bound.
+  - [x] **FIND-MADA-6** — duplicate fusion gate → `is_ms_dict_fusion_authoritative` in `fusion_contract.py` (completion after `52737e9`).
   - [ ] OBS-TC1 — `load_lstm_feature_cache` metadata defaults (`tickers`/`days`/`n_days`/`n_tickers` empty or 0); accepted — structural dims fail-closed via `_meta_required_positive_int`.
   - [ ] OBS-TC2 — `_normalize_data_fp({})` returns `{}` vs 6-key shape for non-empty; accepted — conservative cache miss on legacy empty identity.
   - [ ] OBS-TC3 — Legacy `cache_exists` / `read_cache_meta` at file tail unused by scheduler (accepted).

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fusion_contract import canonical_provenance_is_tradable
+from fusion_contract import is_ms_dict_fusion_authoritative
 from numeric_contract import float_finite_or_none
 
 from .a2_option_expression import build_a2_option_expression
@@ -180,20 +180,10 @@ def _trace_block(ms: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _fusion_ms_authoritative(ms: dict[str, Any]) -> bool:
-    """True when Tier C fusion direction is safe to read (available + tradable provenance)."""
-    if not ms.get("fusion_available"):
-        return False
-    prov = ms.get("canonical_provenance")
-    if prov is None:
-        return True
-    return canonical_provenance_is_tradable(str(prov))
-
-
 def _direction(ms: dict[str, Any]) -> str:
     raw = (
         ms.get("fusion_dominant_direction")
-        if _fusion_ms_authoritative(ms)
+        if is_ms_dict_fusion_authoritative(ms)
         else ms.get("dominant_dir")
     ) or ms.get("prediction_dir") or ms.get("final_bias")
     s = str(raw or "").strip().lower()

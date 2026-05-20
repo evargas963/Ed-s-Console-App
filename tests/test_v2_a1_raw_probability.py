@@ -28,8 +28,8 @@ def test_dominant_probability_byte_equivalent_to_legacy_for_representative_input
         ({"fusion_available": True, "fusion_dominant_prob": "0.87654", "dominant_prob": 0.1}, 0.8765),
         ({"fusion_available": False, "fusion_dominant_prob": 0.9, "dominant_prob": "0.23456"}, 0.2346),
         ({"fusion_available": True, "fusion_dominant_prob": "bad", "dominant_prob": 0.34567}, 0.3457),
-        ({"dominant_prob": None, "final_confidence": "0.45678"}, 0.4568),
-        ({"dominant_prob": object(), "final_confidence": 0.56789}, 0.5679),
+        ({"dominant_prob": None, "final_confidence": "0.45678"}, None),
+        ({"dominant_prob": object(), "final_confidence": 0.56789}, None),
     ]
 
     for ms_dict, expected in cases:

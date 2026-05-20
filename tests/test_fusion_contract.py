@@ -10,6 +10,7 @@ from fusion_contract import (
     canonical_provenance_is_tradable,
     fusion_is_authoritative,
     is_canonical_tradable,
+    is_ms_dict_fusion_authoritative,
 )
 from signal_types import NON_TRADABLE_CANONICAL_PROVENANCE, CanonicalForecast
 
@@ -44,6 +45,18 @@ def test_fusion_is_authoritative_none_and_false():
     assert fusion_is_authoritative(SimpleNamespace(available=False)) is False
     assert fusion_is_authoritative(SimpleNamespace(available=True)) is True
     assert fusion_is_authoritative(SimpleNamespace()) is False
+
+
+def test_is_ms_dict_fusion_authoritative_provenance_gate():
+    assert is_ms_dict_fusion_authoritative({"fusion_available": False}) is False
+    assert is_ms_dict_fusion_authoritative({"fusion_available": True}) is True
+    prov = next(iter(NON_TRADABLE_CANONICAL_PROVENANCE))
+    assert (
+        is_ms_dict_fusion_authoritative(
+            {"fusion_available": True, "canonical_provenance": prov}
+        )
+        is False
+    )
 
 
 def test_is_canonical_tradable_placeholders():
