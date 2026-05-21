@@ -166,3 +166,36 @@ def test_ml_predict_arch_state_probe_exception_falls_through_not_nameerror(
 
     assert result == parallel
     assert "active model dir probe" in caplog.text
+
+
+def test_normalized_training_sync_debounce_cancel_falls_through_not_nameerror(
+    tmp_path, caplog
+):
+    """Gap-audit regression (parent fix @ 61b60f1): the debounce-timer cancel exception
+    handler must log via the module ``_log``, not an undefined ``log`` (sweep3 generator
+    blindly emitted ``log.debug`` for every site).
+    """
+    import normalized_training_sync as nts
+
+    class _FakeTimer:
+        def cancel(self):
+            raise RuntimeError("forced cancel failure for regression test")
+
+    # Seed the global debounce slot so schedule_debounced_normalized_refresh
+    # exercises the cancel() exception branch.
+    prior = nts._debounce_timer
+    nts._debounce_timer = _FakeTimer()  # type: ignore[assignment]
+    try:
+        caplog.set_level(logging.DEBUG, logger=nts._log.name)
+        # delay_s large so the new timer never fires during the test
+        nts.schedule_debounced_normalized_refresh(tmp_path / "no_such.db", delay_s=3600.0)
+        assert "debounce timer cancel" in caplog.text
+    finally:
+        # Cancel the new real timer scheduled by the call above
+        t = nts._debounce_timer
+        if t is not None and not isinstance(t, _FakeTimer):
+            try:
+                t.cancel()
+            except Exception:
+                pass
+        nts._debounce_timer = prior
