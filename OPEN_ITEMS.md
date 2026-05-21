@@ -139,7 +139,7 @@
 ### Audit queue — surfaced by MADA producer-cone Read (not blockers for lifecycle)
 
 - [x] **AUDIT-CAND-MS-FP1 — `canonical_provenance` gate allow-list** @ `7b23b70` + fixture follow-on `d818649` — FIND-FP1-1..4: `TRADABLE_CANONICAL_PROVENANCE` (`bayesian_fusion` only); `canonical_provenance_is_tradable` inverted fail-closed; closes `debug_override:*`, `""`, calibration-replay leaks. OBS-FP1-2: dataclass defaults safe post-fix (no change). Tests: `tests/test_fusion_contract.py`, `tests/test_v2_advisory_backfill.py::test_calibration_backfill_v2_advisory_rejects_legacy_empty_provenance_row`, `tests/test_v2_a2_option_expression.py` (`_sample_a1` provenance).
-- [x] **AUDIT-CAND-FP1-FIXTURE-COMPLETENESS** @ `<SHA>` — FIND-FP1-FIX-1..6: stamp `provenance="bayesian_fusion"` on 6 planned sites (chunk2b×4, prediction_vote, time_warning) + 1 runtime catch (action11_9 L256); 4 files no-change; 2 verify-only green. Full FP1 fixture cone 101 passed @ SHA.
+- [x] **AUDIT-CAND-FP1-FIXTURE-COMPLETENESS** @ `056d791` — FIND-FP1-FIX-1..6: stamp `provenance="bayesian_fusion"` on 6 planned sites (chunk2b×4, prediction_vote, time_warning) + 1 runtime catch (action11_9 L256); 4 files no-change; 2 verify-only green. Full FP1 fixture cone 101 passed @ SHA.
 - [ ] **OBS-MHMLB-NS1 — `fusion_available` name collision** — `HorizonMLFusionSnapshot.fusion_available` (`multi_horizon_ml_bundle.py` ~L68) vs `ms.fusion_available` (Tier C). Different scopes; document or rename in a consolidation slice to avoid future reader traps.
 
 ### COHERENCE-AUDIT workstream (full Read — not “files already walked”)
