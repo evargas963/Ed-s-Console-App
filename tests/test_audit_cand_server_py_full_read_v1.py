@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import builtins
 import inspect
 import re
 from pathlib import Path
@@ -22,6 +23,141 @@ def _fn_src(name: str) -> str:
     import server
 
     return inspect.getsource(getattr(server, name))
+
+
+def _unresolved_free_names_in_module(source: str) -> list[tuple[str, int]]:
+    """Load names with no binding in module globals or enclosing function scopes."""
+    tree = ast.parse(source)
+    builtin_names = {n for n in dir(builtins) if not n.startswith("_")} | {
+        "Exception",
+        "BaseException",
+        "StopIteration",
+        "GeneratorExit",
+        "__file__",
+        "__name__",
+        "__doc__",
+    }
+    typing_names = {
+        "Any",
+        "Callable",
+        "Dict",
+        "Iterable",
+        "List",
+        "Literal",
+        "Mapping",
+        "Optional",
+        "Sequence",
+        "Set",
+        "Tuple",
+        "Union",
+    }
+    globals_defined: set[str] = set(builtin_names) | typing_names
+
+    def _add_target_names(node: ast.AST, into: set[str]) -> None:
+        if isinstance(node, ast.Name):
+            into.add(node.id)
+        elif isinstance(node, (ast.Tuple, ast.List)):
+            for elt in node.elts:
+                _add_target_names(elt, into)
+
+    def _register_module_stmt(stmt: ast.stmt) -> None:
+        if isinstance(stmt, ast.Try):
+            for child in (*stmt.body, *stmt.orelse, *stmt.finalbody):
+                _register_module_stmt(child)
+            for handler in stmt.handlers:
+                for child in handler.body:
+                    _register_module_stmt(child)
+            return
+        if isinstance(stmt, (ast.Import, ast.ImportFrom)):
+            for alias in stmt.names:
+                globals_defined.add(alias.asname or alias.name.split(".")[0])
+        elif isinstance(stmt, ast.Assign):
+            for tgt in stmt.targets:
+                _add_target_names(tgt, globals_defined)
+        elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+            globals_defined.add(stmt.target.id)
+        elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            globals_defined.add(stmt.name)
+
+    for node in tree.body:
+        _register_module_stmt(node)
+
+    class _Scope:
+        __slots__ = ("names", "parent", "global_decls")
+
+        def __init__(self, parent: _Scope | None = None) -> None:
+            self.parent = parent
+            self.names: set[str] = set()
+            self.global_decls: set[str] = set()
+
+        def resolve(self, name: str) -> bool:
+            if name in self.names or name in self.global_decls:
+                return True
+            if self.parent is not None:
+                return self.parent.resolve(name)
+            return name in globals_defined
+
+    def _collect_local_defs(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+        local: set[str] = set()
+        for arg in fn.args.posonlyargs + fn.args.args + fn.args.kwonlyargs:
+            local.add(arg.arg)
+        if fn.args.vararg:
+            local.add(fn.args.vararg.arg)
+        if fn.args.kwarg:
+            local.add(fn.args.kwarg.arg)
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                local.add(node.id)
+            elif isinstance(node, ast.arg):
+                local.add(node.arg)
+            elif isinstance(node, ast.Global):
+                local.update(node.names)
+            elif isinstance(node, ast.Nonlocal):
+                local.update(node.names)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                local.add(node.name)
+            elif isinstance(node, ast.ExceptHandler) and node.name:
+                local.add(node.name)
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    local.add(alias.asname or alias.name.split(".")[0])
+            elif isinstance(node, ast.Assign):
+                for tgt in node.targets:
+                    _add_target_names(tgt, local)
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                local.add(node.target.id)
+        return local
+
+    unresolved: list[tuple[str, int]] = []
+
+    def _check_function(fn: ast.FunctionDef | ast.AsyncFunctionDef, parent: _Scope) -> None:
+        scope = _Scope(parent)
+        scope.names.update(_collect_local_defs(fn))
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+                if not scope.resolve(node.id):
+                    unresolved.append((node.id, node.lineno))
+
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            _check_function(node, _Scope())
+        elif isinstance(node, ast.ClassDef):
+            for child in node.body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    method_scope = _Scope()
+                    method_scope.names.add("self")
+                    method_scope.names.update(_collect_local_defs(child))
+                    for sub in ast.walk(child):
+                        if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load):
+                            if not method_scope.resolve(sub.id):
+                                unresolved.append((sub.id, sub.lineno))
+
+    for node in tree.body:
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            if node.id not in globals_defined:
+                unresolved.append((node.id, node.lineno))
+
+    return unresolved
 
 
 # FIND-SERVERPY-1
@@ -120,6 +256,40 @@ def test_ed_db_bound_before_iv_rank_references():
     assert ed_assign < iv_use
 
 
+def test_iv_rank_non_none_when_atm_iv_and_db_history(monkeypatch):
+    """Flow: hoisted _ed_db must be bound before IV rank block (FIND-8)."""
+    import server
+    from server import CANONICAL_TIMEFRAME, IV_HISTORY_LOOKBACK, compute_iv_rank
+
+    mock_db = MagicMock()
+    mock_db.get_recent_snapshots.return_value = [
+        {"iv_level": 0.15 + 0.01 * i} for i in range(25)
+    ]
+    monkeypatch.setattr(server, "_HAS_SIGNALS", True)
+    monkeypatch.setattr(server, "get_db", lambda: mock_db)
+
+    _atm_iv = 0.25
+    _ed_db = server.get_db() if server._HAS_SIGNALS else None
+    _tick_ts = 1_700_000_000.0
+    _iv_rank = None
+    assert _ed_db is not None
+    _iv_hist_rows = _ed_db.get_recent_snapshots(
+        "SPY",
+        CANONICAL_TIMEFRAME,
+        n=IV_HISTORY_LOOKBACK,
+        filled_only=False,
+        as_of_ts_utc=_tick_ts,
+    )
+    _iv_history = [
+        float(r.get("iv_level"))
+        for r in _iv_hist_rows
+        if r.get("iv_level") is not None and float(r.get("iv_level", 0)) > 0
+    ]
+    if _atm_iv and _ed_db and _tick_ts is not None and _iv_history:
+        _iv_rank = compute_iv_rank(_atm_iv, _iv_history)
+    assert _iv_rank is not None
+
+
 # FIND-SERVERPY-9
 def test_pressure_label_unavailable_when_no_dpi_or_hedging_flow():
     src = _fn_src("_fetch_state")
@@ -215,10 +385,15 @@ def test_debug_prediction_returns_populated_distribution():
 
 
 # FIND-SERVERPY-20 / cross-cutting
-def test_server_module_imports_under_strict_name_resolution():
-    tree = ast.parse(_server_src())
+def test_server_module_imports_with_strict_name_resolution():
+    src = _server_src()
+    tree = ast.parse(src)
     assert isinstance(tree, ast.Module)
-    compile(_server_src(), str(SERVER_PY), "exec")
+    compile(src, str(SERVER_PY), "exec")
+    import server  # noqa: F401
+
+    unresolved = _unresolved_free_names_in_module(src)
+    assert unresolved == [], f"unresolved free names: {unresolved[:20]}"
 
 
 def test_liquidity_zone_tradeable_score_authority_roundtrip():
