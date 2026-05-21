@@ -35,7 +35,12 @@ def load_user_scheduler_tickers() -> list[str]:
             archive_path=_ARCHIVE_PATH,
         )
         return db.logging_universe_authoritative_tickers()
-    except Exception:
+    except Exception as e:
+        log.warning(
+            "load_user_scheduler_tickers: DB-bound load failed; returning empty list "
+            "(caller will see no enrollments): %s",
+            e,
+        )
         return []
 
 
