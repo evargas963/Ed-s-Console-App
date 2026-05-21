@@ -26,6 +26,7 @@ from math_probabilities import OE_SPREAD_TIGHT_MAX
 from fusion_contract import fusion_is_authoritative
 from numeric_contract import float_finite_or_none, float_positive_or_none
 from timeframe_config import CANONICAL_TIMEFRAME
+from ml_horizon import PRIMARY_DECISION_HORIZONS
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1494,7 +1495,7 @@ def build_market_state(
                         "missing_horizon": _hz if _missing else None,
                     }
                 )
-            _rank = {"1c": 0, "5c": 1, "15c": 2, "60c": 3}
+            _rank = {hz: i for i, hz in enumerate(PRIMARY_DECISION_HORIZONS)}
             _rows.sort(key=lambda x: _rank.get(x.get("horizon", ""), 99))
             ms.mhap_rows = _rows
 
@@ -1548,7 +1549,7 @@ def build_market_state(
                     _dom_p = _pred.forward_prob_flat
                 ms.dominant_prob = float(_dom_p) if _dom_p is not None else None
                 ms.confidence = _pred.forward_confidence
-                ms.canonical_provenance = ms.forward_provenance or ""
+                ms.canonical_provenance = "canonical_forecast_missing"
             ms.samples_used    = _pred.samples_used
             ms.model_note      = _pred.model_note
             ms.model_version   = getattr(_pred, 'model_version', 'rules_v1')

@@ -22,7 +22,63 @@ _TRIPLET_LABEL_TO_FORECAST = {"up": "long", "down": "short", "flat": "wait"}
 
 # Authoritative multi-horizon decision inputs only (must match PRIMARY_DECISION_HORIZONS).
 PRODUCT_HORIZONS: tuple[str, ...] = PRIMARY_DECISION_HORIZONS
-HORIZON_MINUTES: dict[str, int] = {"1c": 1, "5c": 5, "15c": 15, "60c": 60}
+HORIZON_MINUTES: dict[str, int] = {s: int(s[:-1]) for s in PRIMARY_DECISION_HORIZONS}
+
+# Per-mode primary-horizon search order (permutations of PRIMARY_DECISION_HORIZONS).
+PRIMARY_ORDER_BY_MODE: dict[str, tuple[str, ...]] = {
+    "scalp": ("1c", "5c", "15c", "60c"),
+    "intraday": ("15c", "5c", "1c", "60c"),
+    "session": ("60c", "15c", "5c", "1c"),
+}
+
+# ── Confidence / tradeable gates (FIND-WIRE2-2/3; Phase 6 ablation tune surface) ──
+TRADEABLE_DOM_MIN: float = 0.38
+TRADEABLE_MARGIN_MIN: float = 0.03
+ENTRY_CONFIRMATION_CONFIDENCE_MIN: float = 0.54
+WEAK_SUPPORT_PRIMARY_CONF_MAX: float = 0.34
+WAIT_CONFIDENCE_CAP: float = 0.45
+
+# ── Quality ladder ──
+QUALITY_BOOST_FULLY_ALIGNED: float = 0.10
+QUALITY_BOOST_MOSTLY_ALIGNED: float = 0.05
+QUALITY_PENALTY_MIXED: float = 0.08
+QUALITY_PENALTY_CONTRADICTORY: float = 0.16
+QUALITY_PENALTY_STRUCTURAL_CONTRADICTION: float = 0.18
+QUALITY_PENALTY_TACTICAL_CONTRADICTION: float = 0.08
+QUALITY_THRESHOLD_A: float = 0.74
+QUALITY_THRESHOLD_B_PLUS: float = 0.66
+QUALITY_THRESHOLD_B: float = 0.58
+QUALITY_THRESHOLD_C: float = 0.50
+
+# ── Alignment state counts ──
+ALIGNMENT_FULLY_ALIGNED_MIN_SUPPORT: int = 2
+ALIGNMENT_CONTRADICTORY_MIN_COUNT: int = 2
+ALIGNMENT_WEAK_MIN_COUNT: int = 2
+STRUCTURAL_HORIZONS_FOR_CONTRADICTION: tuple[str, ...] = ("15c", "60c")
+
+# ── Trade mode boundaries (mins-to-close) ──
+TRADE_MODE_SCALP_MAX_MINS: int = 75
+TRADE_MODE_INTRADAY_MAX_MINS: int = 240
+
+# ── ML consensus voting ──
+CONSENSUS_MAJORITY_VOTE_MIN: int = 3
+CONSENSUS_DISSENT_VOTE_MAX: int = 1
+
+# ── Sizing modifier factors ──
+SIZING_STRUCTURAL_CONTRADICTION_FACTOR: float = 0.5
+SIZING_TACTICAL_CONTRADICTION_FACTOR: float = 0.75
+SIZING_WEAK_ALIGNMENT_FACTOR: float = 0.75
+SIZING_MIN_FLOOR: float = 0.25
+
+# ── Confidence adjustment factors ──
+CONFIDENCE_SUPPORT_BOOST_FACTOR: float = 0.04
+CONFIDENCE_CONTRADICTION_PENALTY_FACTOR: float = 0.08
+
+# ── Wait reasons (operator-visible; FIND-WIRE2-4) ──
+WAIT_REASON_NO_PRIMARY = "no valid primary horizon"
+WAIT_REASON_STRUCTURAL_CONTRADICTION = "severe structural contradiction"
+WAIT_REASON_WEAK_SUPPORT = "weak multi-horizon support"
+WAIT_REASON_CONSENSUS_DISAGREES = "multi_horizon ML consensus disagrees with mode-selected primary"
 
 # Stable reason codes for operator surfaces (mirrors arch_competition REASON_* pattern).
 REASON_PRIMARY_HORIZON_DATA_MISSING = "PRIMARY_HORIZON_DATA_MISSING"
@@ -284,31 +340,31 @@ def compute_multi_horizon_synthesis(
     if align.unusable or not tradeable:
         final_bias = "wait"
         tradeable = False
-        wait_reason = "no valid primary horizon"
+        wait_reason = WAIT_REASON_NO_PRIMARY
     elif align.contradiction_state == "structural":
         final_bias = "wait"
         tradeable = False
-        wait_reason = "severe structural contradiction"
-    elif align.alignment_state in ("weak", "mixed") and primary.confidence < 0.34:
+        wait_reason = WAIT_REASON_STRUCTURAL_CONTRADICTION
+    elif align.alignment_state in ("weak", "mixed") and primary.confidence < WEAK_SUPPORT_PRIMARY_CONF_MAX:
         final_bias = "wait"
         tradeable = False
-        wait_reason = "weak multi-horizon support"
+        wait_reason = WAIT_REASON_WEAK_SUPPORT
     elif (
         consensus_dir is not None
         and primary.direction in ("long", "short")
         and primary.direction != consensus_dir
-        and (cv_long >= 3 or cv_short >= 3)
+        and (cv_long >= CONSENSUS_MAJORITY_VOTE_MIN or cv_short >= CONSENSUS_MAJORITY_VOTE_MIN)
     ):
         final_bias = "wait"
         tradeable = False
-        wait_reason = "multi_horizon ML consensus disagrees with mode-selected primary"
+        wait_reason = WAIT_REASON_CONSENSUS_DISAGREES
 
     conf = primary.confidence
-    conf += 0.04 * align.support_score
-    conf -= 0.08 * align.contradiction_score
+    conf += CONFIDENCE_SUPPORT_BOOST_FACTOR * align.support_score
+    conf -= CONFIDENCE_CONTRADICTION_PENALTY_FACTOR * align.contradiction_score
     conf = max(0.0, min(1.0, conf))
     if final_bias == "wait":
-        conf = min(conf, 0.45)
+        conf = min(conf, WAIT_CONFIDENCE_CAP)
 
     qual = _quality_from_alignment(conf, align.alignment_state, align.contradiction_state)
     hold_style = (
@@ -323,12 +379,18 @@ def compute_multi_horizon_synthesis(
     if align.contradiction_state in ("structural", "tactical"):
         hold_style = "Tactical / reduced hold"
     size = 1.0
-    size *= 0.5 if align.contradiction_state == "structural" else 0.75 if align.contradiction_state == "tactical" else 1.0
+    size *= (
+        SIZING_STRUCTURAL_CONTRADICTION_FACTOR
+        if align.contradiction_state == "structural"
+        else SIZING_TACTICAL_CONTRADICTION_FACTOR
+        if align.contradiction_state == "tactical"
+        else 1.0
+    )
     if align.alignment_state == "fully_aligned":
         size *= 1.0
     elif align.alignment_state in ("weak", "mixed"):
-        size *= 0.75
-    size = max(0.25, min(1.0, size))
+        size *= SIZING_WEAK_ALIGNMENT_FACTOR
+    size = max(SIZING_MIN_FLOOR, min(1.0, size))
     if final_bias == "wait":
         size = 0.0
 
@@ -531,7 +593,7 @@ def _confidence_from_probs(up: float, dn: float, fl: float) -> tuple[float, floa
     top = vals[0]
     margin = top - vals[1]
     # Product-policy margin gates; direction from numeric_contract triplet authority.
-    if top < 0.37 or margin < 0.025:
+    if top < TRADEABLE_DOM_MIN or margin < TRADEABLE_MARGIN_MIN:
         return top, margin, "wait"
     dom_label = direction_from_normalized_triplet(up, dn, fl)
     call = _TRIPLET_LABEL_TO_FORECAST.get(dom_label, "wait")
@@ -548,20 +610,21 @@ def _infer_trade_mode(inp) -> Optional[str]:
         mins = float(m2c)
     except (TypeError, ValueError):
         return None
-    if mins <= 75:
+    if mins <= TRADE_MODE_SCALP_MAX_MINS:
         return "scalp"
-    if mins <= 240:
+    if mins <= TRADE_MODE_INTRADAY_MAX_MINS:
         return "intraday"
     return "session"
 
 
 def _primary_order_for_mode(mode: Optional[str]) -> tuple[str, ...]:
     if mode == "scalp":
-        return ("1c", "5c", "15c", "60c")
+        return PRIMARY_ORDER_BY_MODE["scalp"]
     if mode == "session":
-        return ("60c", "15c", "5c", "1c")
-    # intraday + unknown: same default stack (no fabricated mins_to_close)
-    return ("15c", "5c", "1c", "60c")
+        return PRIMARY_ORDER_BY_MODE["session"]
+    if mode == "intraday":
+        return PRIMARY_ORDER_BY_MODE["intraday"]
+    return PRIMARY_ORDER_BY_MODE["intraday"]
 
 
 HORIZON_SEMANTIC_ROLE: dict[str, str] = {
@@ -674,8 +737,8 @@ def _forecast_horizon_live(
     empirical_ok = (not miss) or fusion_ml or (canonical is not None)
     tradeable = (
         (call in ("long", "short"))
-        and dom >= 0.38
-        and margin >= 0.03
+        and dom >= TRADEABLE_DOM_MIN
+        and margin >= TRADEABLE_MARGIN_MIN
         and empirical_ok
     )
     up_ref = getattr(inp, "nearest_below_val", None)
@@ -703,25 +766,25 @@ def _forecast_horizon_live(
 def _quality_from_alignment(base_conf: float, align_state: str, contradiction: str) -> str:
     score = base_conf
     if align_state == "fully_aligned":
-        score += 0.10
+        score += QUALITY_BOOST_FULLY_ALIGNED
     elif align_state == "mostly_aligned":
-        score += 0.05
+        score += QUALITY_BOOST_MOSTLY_ALIGNED
     elif align_state == "mixed":
-        score -= 0.08
+        score -= QUALITY_PENALTY_MIXED
     elif align_state == "contradictory":
-        score -= 0.16
+        score -= QUALITY_PENALTY_CONTRADICTORY
     if contradiction == "structural":
-        score -= 0.18
+        score -= QUALITY_PENALTY_STRUCTURAL_CONTRADICTION
     elif contradiction == "tactical":
-        score -= 0.08
+        score -= QUALITY_PENALTY_TACTICAL_CONTRADICTION
     score = max(0.0, min(1.0, score))
-    if score >= 0.74:
+    if score >= QUALITY_THRESHOLD_A:
         return "A"
-    if score >= 0.66:
+    if score >= QUALITY_THRESHOLD_B_PLUS:
         return "B+"
-    if score >= 0.58:
+    if score >= QUALITY_THRESHOLD_B:
         return "B"
-    if score >= 0.50:
+    if score >= QUALITY_THRESHOLD_C:
         return "C"
     return "D"
 
@@ -738,30 +801,36 @@ def _alignment_state(primary: HorizonForecast, supports: list[SupportingHorizonA
 
     if not primary.tradeable:
         state = "unusable"
-    elif con == 0 and sup >= 2:
+    elif con == 0 and sup >= ALIGNMENT_FULLY_ALIGNED_MIN_SUPPORT:
         state = "fully_aligned"
     elif con <= 1 and sup >= 1:
         state = "mostly_aligned"
-    elif con >= 2:
+    elif con >= ALIGNMENT_CONTRADICTORY_MIN_COUNT:
         state = "contradictory"
-    elif weak >= 2:
+    elif weak >= ALIGNMENT_WEAK_MIN_COUNT:
         state = "weak"
     else:
         state = "mixed"
 
     contradiction_state = "none"
-    if con >= 2 and primary.horizon in ("15c", "60c"):
+    if con >= ALIGNMENT_CONTRADICTORY_MIN_COUNT and primary.horizon in STRUCTURAL_HORIZONS_FOR_CONTRADICTION:
         contradiction_state = "structural"
     elif con >= 1:
         contradiction_state = "tactical"
-    elif weak >= 2:
+    elif weak >= ALIGNMENT_WEAK_MIN_COUNT:
         contradiction_state = "weakness"
 
     return HorizonAlignmentReport(
         alignment_score=round(align_score, 4),
         contradiction_score=round(contradiction_score, 4),
         support_score=round(support_score, 4),
-        conflict_level=("high" if con >= 2 else "medium" if con == 1 else "low"),
+        conflict_level=(
+            "high"
+            if con >= ALIGNMENT_CONTRADICTORY_MIN_COUNT
+            else "medium"
+            if con == 1
+            else "low"
+        ),
         alignment_state=state,
         contradiction_state=contradiction_state,
         fully_aligned=(state == "fully_aligned"),
@@ -824,7 +893,7 @@ def _entry_state_machine(
     lo = min(zl, zh)
     hi = max(zl, zh)
     in_zone = lo <= spot <= hi
-    confirm_1c = one_c.direction == final_bias and one_c.confidence >= 0.54
+    confirm_1c = one_c.direction == final_bias and one_c.confidence >= ENTRY_CONFIRMATION_CONFIDENCE_MIN
     cs = str(call_state or "WAIT").upper()
     entry_px = _finite_price_optional(call_entry)
     if cs == "ACTIVE" and entry_px is not None:
@@ -849,9 +918,9 @@ def _ml_consensus_vote(hmap: dict[str, HorizonForecast]) -> tuple[Optional[str],
             long_v += 1
         else:
             short_v += 1
-    if long_v >= 3 and short_v <= 1:
+    if long_v >= CONSENSUS_MAJORITY_VOTE_MIN and short_v <= CONSENSUS_DISSENT_VOTE_MAX:
         return "long", long_v, short_v
-    if short_v >= 3 and long_v <= 1:
+    if short_v >= CONSENSUS_MAJORITY_VOTE_MIN and long_v <= CONSENSUS_DISSENT_VOTE_MAX:
         return "short", long_v, short_v
     return None, long_v, short_v
 
