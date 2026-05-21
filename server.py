@@ -3936,10 +3936,6 @@ def _fetch_state(
 
     # ── DB counts + crosses ───────────────────────────────────────────────────
     if _diag_on():
-        _diag_step("pre_get_db", ticker)
-    if _diag_on():
-        _diag_done("get_db", ticker)
-    if _diag_on():
         _diag_step("pre_db_counts", ticker)
     db_counts  = {"total": 0, "filled": 0}
     ceil_tests = floor_tests = 0

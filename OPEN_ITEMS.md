@@ -152,7 +152,12 @@
 **Umbrella deliverable:** `governance/STACK_WIRING_INTEGRITY_MAP.md` (or JSON) — one table: **surface** (Decision Command rail, per-hz cards, Call/Put legacy, diagnostics strip) × **field** × **producer module** × **transport** (SSE `live_quote`, SSE Tier C JSON, L1 light, poll) × **client clock** (`lastFastTs`, `lastRenderTimestamp`, `decision_generation_id`, `l1_generation`) × **stale/when-withhold rule** × **test/fixture** × **OPEN_ITEMS id**. Sign-off only when map is complete and regression bar green.
 
 **Phase 0 — ingest server.py audit (blocking)**
-- [ ] **STACK-WIRE-0** — File every FIND from AUDIT-CAND-SERVER-PY-FULL-READ into OPEN_ITEMS (paired-fix rows or OBS); no “pre-existing” deferral without a row. Reconcile with already-walked slices (L1989 `stack_mode`, L278–292 L1 diag, L6437–6502 multiplex SSE) so server findings do not duplicate closed lanes.
+- [x] **STACK-WIRE-0** @ `<STACK-WIRE-0-SHA>` — `governance/STACK_WIRING_INTEGRITY_MAP.md` seeded (17 FIND rows + 4 anchors + schema); `server.py` stale `pre_get_db`/`get_db` diag removed post FIND-8 hoist; tests `tests/test_stack_wire_0_v1.py`. **Phase 3 follow-ons filed (not implemented here):** `STACK-WIRE-3-UI-SPREAD-SEMANTIC`, `STACK-WIRE-3-UI-PRESSURE-UNAVAILABLE`, `STACK-WIRE-3-UI-R-UNITS-NONE`, `STACK-WIRE-3-UI-SIGNALS-ENGINE-FAILED-BADGE`. **Gate:** STACK-WIRE-1 unblocked.
+
+- [ ] **STACK-WIRE-3-UI-SPREAD-SEMANTIC** — `static/index.html`: consumer dispatch on `spread_semantic` (`fraction` vs `dollar`); legacy back-compat when key absent. Producer: FIND-SERVERPY-5 @ `05c48d8`.
+- [ ] **STACK-WIRE-3-UI-PRESSURE-UNAVAILABLE** — Confirm `pressure_label` UI treats `unavailable_no_dpi_or_hedging_flow_direction` as withheld (grep `static/index.html`; close fast if already correct). Producer: FIND-SERVERPY-9 @ `05c48d8`.
+- [ ] **STACK-WIRE-3-UI-R-UNITS-NONE** — Confirm UI treats `r_units=None` as withheld (not zero); verify SnapshotRow NULL-ability. Producer: FIND-SERVERPY-11 @ `05c48d8`.
+- [ ] **STACK-WIRE-3-UI-SIGNALS-ENGINE-FAILED-BADGE** — Add UI surface for `stack_runtime.signals_engine_failed` (distinguish signals crash vs fusion/MC-only INVALID). Producer: FIND-SERVERPY-15 @ `05c48d8`.
 
 **Phase 1 — backend producer / payload cone (money path)**
 - [ ] **STACK-WIRE-1** — Trace map: `signals.py` → `build_market_state` / `compute_signals` → `live_decision_bundle.stamp_decision_bundle` → `server.py` emit paths (`/api/analytics/state`, `/api/stream`, fast quote, L1 light). Verify `decision_generation_id`, `_server_build_ts`, `stack_runtime.stack_mode`, `canonical_provenance`, `state_error` / `state_error_detail`, `stack_integrity_events` on every tick path. Include bg analytics skip (`decision_generation_skipped`) vs live tick.
