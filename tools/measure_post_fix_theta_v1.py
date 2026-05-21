@@ -28,6 +28,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, DefaultDict, Iterable, TextIO
 
+from replay_bundle_coverage import REPLAY_BUNDLE_MIN_JSON_LENGTH
+
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -208,7 +210,7 @@ def _load_rows(
         WHERE ticker IN ({placeholders})
           AND created_at > ?
           AND option_chain_json IS NOT NULL
-          AND length(option_chain_json) > 10
+          AND length(option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
         ORDER BY ticker ASC, created_at ASC
     """
     params = [*tickers, since]

@@ -28,6 +28,7 @@ from lifecycle_rule_core import SameBarResolution, fire_exit, resolve_same_bar_c
 from market_state import recommend_option_expression
 from math_levels import WallsRow, TotalsRow
 from numeric_contract import float_finite_or_none
+from replay_bundle_coverage import REPLAY_BUNDLE_MIN_JSON_LENGTH
 from replay_hold_bars import (
     replay_max_hold_bars_from_context,
     resolve_replay_max_hold_bars_for_payload,
@@ -36,8 +37,18 @@ from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
 
 log = logging.getLogger(__name__)
 
-OPTION_MULTIPLIER = 100
+# STACK-WIRE-6b FIND-WIRE6-3: per-contract multiplier is derived from the
+# Schwab leaf ``chains.callExpDateMap.*.multiplier`` / ``putExpDateMap.*.multiplier``
+# via ``_contract_multiplier`` (fail-closed when leaf missing). No hardcoded 100.
 DEFAULT_CONTRACTS = 1
+
+# STACK-WIRE-6b FIND-WIRE6-4: strike-match tolerances.
+STRIKE_MATCH_TOL_PENNY: float = 0.011  # strike-to-strike row match (sub-penny float drift)
+STRIKE_MATCH_TOL_NICKEL: float = 0.02  # expression / alternate-strike comparisons (wider band)
+
+# STACK-WIRE-6b FIND-WIRE6-6: artifact ring-buffer retention limits.
+CHAIN_QUALITY_AUDIT_MAX_RECORDS: int = 5000
+CHAIN_DEBUG_MAX_RECORDS: int = 200
 
 PRICING_ENTRY_RULE = "entry_price = ask (debit to open long option)"
 PRICING_EXIT_RULE = "exit_price = bid (credit to close long option)"
@@ -98,6 +109,7 @@ _COARSE_BUCKETS = (
     "no_option_chain_archive",
     "no_exit_snapshot",
     "missing_bid_ask",
+    "missing_multiplier",
     "no_contract_selected",
     "missing_replay_context",
     "other",
@@ -214,6 +226,27 @@ def _f(v) -> Optional[float]:
     return float_finite_or_none(v)
 
 
+def _contract_multiplier(ct: dict) -> Optional[int]:
+    """Read Schwab ``chains.*.multiplier`` leaf from a chain row (FIND-WIRE6-3).
+
+    Fail-closed: returns None when leaf is missing or invalid. No hardcoded 100
+    default — equity options carry 100, but mini and index contracts carry
+    different values. Per SCHWAB FULL REPO directive, the leaf is read every time.
+    """
+    if not isinstance(ct, dict):
+        return None
+    raw = ct.get("multiplier")
+    if raw is None:
+        return None
+    try:
+        n = int(float(raw))
+    except (TypeError, ValueError):
+        return None
+    if n <= 0:
+        return None
+    return n
+
+
 def _walls_from_replay(obj: dict) -> list[WallsRow] | None:
     raw = obj.get("walls")
     if not isinstance(raw, list) or len(raw) == 0:
@@ -260,7 +293,7 @@ def _find_contract_row(chain: list[dict], *, strike: float, put_call: str, symbo
         if str(ct.get("putCall") or "").upper().strip() != pc:
             continue
         sp = _f(ct.get("strikePrice"))
-        if sp is not None and abs(sp - float(strike)) < 0.011:
+        if sp is not None and abs(sp - float(strike)) < STRIKE_MATCH_TOL_PENNY:
             return dict(ct)
     return None
 
@@ -285,7 +318,7 @@ def _expressions_match_live(replay_expr: str, proof: dict | None) -> bool:
     a = _parse_expression(replay_expr)
     b = _parse_expression(str(live_e))
     if a and b:
-        return abs(a[0] - b[0]) < 0.02 and a[1] == b[1]
+        return abs(a[0] - b[0]) < STRIKE_MATCH_TOL_NICKEL and a[1] == b[1]
     return (replay_expr or "").strip().upper() == str(live_e).strip().upper()
 
 
@@ -365,7 +398,10 @@ def _contract_pnl_at_horizon(
     b = _f(ex.get("bid"))
     if a is None or a <= 0 or b is None:
         return None
-    return (b - a) * OPTION_MULTIPLIER * DEFAULT_CONTRACTS
+    mult = _contract_multiplier(en)
+    if mult is None:
+        return None  # fail-closed when Schwab multiplier leaf missing
+    return (b - a) * mult * DEFAULT_CONTRACTS
 
 
 def _chain_selection_quality_row(
@@ -396,7 +432,7 @@ def _chain_selection_quality_row(
             continue
         seen_strikes.add(sk)
         by_strike_score[sk] = row.get("composite_score")
-        if abs(sk - float(selected_strike)) < 0.02:
+        if abs(sk - float(selected_strike)) < STRIKE_MATCH_TOL_NICKEL:
             by_strike_pnl[sk] = float(selected_pnl)
         else:
             by_strike_pnl[sk] = _contract_pnl_at_horizon(
@@ -413,7 +449,7 @@ def _chain_selection_quality_row(
     valid_pnl = {k: v for k, v in by_strike_pnl.items() if v is not None}
     alts_out: list[dict[str, Any]] = []
     for sk, sc in sorted(by_strike_score.items(), key=lambda x: float(x[0])):
-        if abs(sk - float(selected_strike)) < 0.02:
+        if abs(sk - float(selected_strike)) < STRIKE_MATCH_TOL_NICKEL:
             continue
         alts_out.append(
             {
@@ -436,7 +472,7 @@ def _chain_selection_quality_row(
         reverse=True,
     )
     rank_idx = next(
-        (i for i, x in enumerate(ordered_by_pnl) if abs(float(x[0]) - float(selected_strike)) < 0.02),
+        (i for i, x in enumerate(ordered_by_pnl) if abs(float(x[0]) - float(selected_strike)) < STRIKE_MATCH_TOL_NICKEL),
         99,
     )
 
@@ -448,14 +484,14 @@ def _chain_selection_quality_row(
     best_score = score_sorted[0][1] if score_sorted else None
     sel_score = None
     for sk, sc in by_strike_score.items():
-        if abs(sk - float(selected_strike)) < 0.02:
+        if abs(sk - float(selected_strike)) < STRIKE_MATCH_TOL_NICKEL:
             try:
                 sel_score = float(sc) if sc is not None else None
             except (TypeError, ValueError):
                 sel_score = None
             break
 
-    n_alt_known = sum(1 for k in by_strike_pnl if abs(k - float(selected_strike)) >= 0.02 and by_strike_pnl[k] is not None)
+    n_alt_known = sum(1 for k in by_strike_pnl if abs(k - float(selected_strike)) >= STRIKE_MATCH_TOL_NICKEL and by_strike_pnl[k] is not None)
     selected_was_best = (
         bool(valid_pnl and global_best is not None and float(selected_pnl) + 1e-6 >= global_best)
         if n_alt_known > 0
@@ -499,12 +535,12 @@ def compute_replay_coverage_stats(
         f"""
         SELECT
           COUNT(*) AS n_all,
-          SUM(CASE WHEN replay_context_json IS NOT NULL AND length(replay_context_json) > 10
+          SUM(CASE WHEN replay_context_json IS NOT NULL AND length(replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
               THEN 1 ELSE 0 END) AS n_replay_ctx,
-          SUM(CASE WHEN option_chain_json IS NOT NULL AND length(option_chain_json) > 10
+          SUM(CASE WHEN option_chain_json IS NOT NULL AND length(option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
               THEN 1 ELSE 0 END) AS n_chain,
-          SUM(CASE WHEN replay_context_json IS NOT NULL AND length(replay_context_json) > 10
-               AND option_chain_json IS NOT NULL AND length(option_chain_json) > 10
+          SUM(CASE WHEN replay_context_json IS NOT NULL AND length(replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
+               AND option_chain_json IS NOT NULL AND length(option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
               THEN 1 ELSE 0 END) AS n_full
         FROM {table}
         WHERE {wh}
@@ -564,7 +600,7 @@ def _append_chain_quality_audit(entries: list[dict]) -> None:
     if not isinstance(cur, list):
         cur = []
     cur.extend(entries)
-    cur = cur[-5000:]
+    cur = cur[-CHAIN_QUALITY_AUDIT_MAX_RECORDS:]
     CHAIN_QUALITY_JSON.write_text(json.dumps(cur, indent=2, default=str), encoding="utf-8")
 
 
@@ -583,6 +619,8 @@ def _coarse_skip(reason: str) -> str:
         return "no_exit_snapshot"
     if reason in ("missing_entry_ask", "missing_exit_bid"):
         return "missing_bid_ask"
+    if reason == "missing_multiplier":
+        return "missing_multiplier"
     if reason in (
         "call_no_trade_or_wait",
         "parse_expression_failed",
@@ -627,7 +665,7 @@ def _update_chain_debug_file(samples: list[dict]) -> None:
     if not isinstance(cur, list):
         cur = []
     cur.extend(samples)
-    cur = cur[-200:]
+    cur = cur[-CHAIN_DEBUG_MAX_RECORDS:]
     CHAIN_DEBUG_JSON.write_text(json.dumps(cur, indent=2, default=str), encoding="utf-8")
 
 
@@ -744,7 +782,7 @@ def evaluate_realized_contract_trades_for_rows(
             "entry_price": "",
             "exit_price": "",
             "contracts": DEFAULT_CONTRACTS,
-            "multiplier": OPTION_MULTIPLIER,
+            "multiplier": "",  # filled from Schwab chain leaf when entry_ct resolves; "" if skipped
             "pnl_dollars": "",
             "pnl_percent": "",
             "exit_reason": "",
@@ -845,6 +883,10 @@ def evaluate_realized_contract_trades_for_rows(
         if entry_ask is None or entry_ask <= 0:
             skip("missing_entry_ask")
             continue
+        multiplier = _contract_multiplier(entry_ct)
+        if multiplier is None:
+            skip("missing_multiplier")
+            continue
 
         bars = _forward_path_rows(conn, table, ticker, float(ts_utc), max_hold)
         if not bars:
@@ -902,7 +944,7 @@ def evaluate_realized_contract_trades_for_rows(
             skip("missing_exit_bid")
             continue
 
-        pnl_per_contract = (exit_bid - entry_ask) * OPTION_MULTIPLIER * DEFAULT_CONTRACTS
+        pnl_per_contract = (exit_bid - entry_ask) * multiplier * DEFAULT_CONTRACTS
         pnl_pct = ((exit_bid - entry_ask) / entry_ask) * 100.0 if entry_ask > 0 else None
 
         valid += 1
@@ -952,6 +994,7 @@ def evaluate_realized_contract_trades_for_rows(
                 "contract_symbol": sym or "",
                 "entry_price": entry_ask,
                 "exit_price": exit_bid,
+                "multiplier": multiplier,
                 "pnl_dollars": round(pnl_per_contract, 4),
                 "pnl_percent": round(pnl_pct, 4) if pnl_pct is not None else "",
                 "exit_reason": exit_reason,

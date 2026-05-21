@@ -28,8 +28,14 @@ DEFAULT_MIN_REQUIRED_ROWS = 20
 
 ALLOWED_TABLES = frozenset({"snapshots", "snapshots_1m_normalized"})
 
-_RC_OK = "replay_context_json IS NOT NULL AND length(replay_context_json) > 10"
-_OC_OK = "option_chain_json IS NOT NULL AND length(option_chain_json) > 10"
+# STACK-WIRE-6b FIND-WIRE6-5: single-authority minimum-non-trivial JSON length.
+# Used in SQL ``length(<column>) > REPLAY_BUNDLE_MIN_JSON_LENGTH`` predicates that
+# distinguish empty/trivial bundles from real captures. Imported by
+# realized_contract_eval, live_vs_replay_validation, tools/measure_post_fix_theta_v1.
+REPLAY_BUNDLE_MIN_JSON_LENGTH: int = 10
+
+_RC_OK = f"replay_context_json IS NOT NULL AND length(replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}"
+_OC_OK = f"option_chain_json IS NOT NULL AND length(option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}"
 _FULL = f"({_RC_OK}) AND ({_OC_OK})"
 
 

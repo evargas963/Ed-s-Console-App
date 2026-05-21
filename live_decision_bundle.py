@@ -43,6 +43,10 @@ _next_generation_id: int = 0
 
 from time_et import ET as _ET
 
+# STACK-WIRE-6b FIND-WIRE6-7: tick-refresh thresholds for spot drift (env-overridable).
+TICK_REFRESH_SPOT_PCT_DEFAULT: float = 0.0003  # 3 bp percent move triggers full _fetch_state refresh
+TICK_REFRESH_SPOT_ABS_DEFAULT: float = 0.05    # nickel absolute move triggers full _fetch_state refresh
+
 
 
 
@@ -333,9 +337,9 @@ def tick_triggers_coherent_refresh(
         log.warning("tick_triggers: session_bucket check failed — scheduling refresh", exc_info=True)
         return True
 
-    pct_thr = float(os.environ.get("ED_TICK_REFRESH_SPOT_PCT", "0.0003"))
+    pct_thr = float(os.environ.get("ED_TICK_REFRESH_SPOT_PCT", str(TICK_REFRESH_SPOT_PCT_DEFAULT)))
 
-    abs_thr = float(os.environ.get("ED_TICK_REFRESH_SPOT_ABS", "0.05"))
+    abs_thr = float(os.environ.get("ED_TICK_REFRESH_SPOT_ABS", str(TICK_REFRESH_SPOT_ABS_DEFAULT)))
 
 
 

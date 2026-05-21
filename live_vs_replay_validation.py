@@ -21,6 +21,7 @@ from typing import Any, Optional
 from market_state import recommend_option_expression
 from replay_bundle_coverage import (
     DEFAULT_MIN_REQUIRED_ROWS,
+    REPLAY_BUNDLE_MIN_JSON_LENGTH,
     build_replay_bundle_coverage,
 )
 from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
@@ -197,8 +198,8 @@ def run_live_vs_replay_validation(
         SELECT COUNT(*) AS c FROM {table}
         WHERE timeframe = ?
           AND {wh_t}
-          AND replay_context_json IS NOT NULL AND length(replay_context_json) > 10
-          AND option_chain_json IS NOT NULL AND length(option_chain_json) > 10
+          AND replay_context_json IS NOT NULL AND length(replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
+          AND option_chain_json IS NOT NULL AND length(option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
         """,
         tuple(params_count),
     ).fetchone()
@@ -217,8 +218,8 @@ def run_live_vs_replay_validation(
         FROM {table}
         WHERE timeframe = ?
           AND {wh_t}
-          AND replay_context_json IS NOT NULL AND length(replay_context_json) > 10
-          AND option_chain_json IS NOT NULL AND length(option_chain_json) > 10
+          AND replay_context_json IS NOT NULL AND length(replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
+          AND option_chain_json IS NOT NULL AND length(option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
         ORDER BY ts_utc DESC
         LIMIT ?
     """
