@@ -149,6 +149,47 @@ def test_ms_dict_reconstruction_does_not_overwrite_existing_keys():
     assert "entry" not in fs
 
 
+def test_ms_dict_reconstruction_sets_decision_id_buildts_timems_defaults():
+    """FIND-WIRE6c-7 (audit-added): decision_generation_id ← snapshot_id; _server_build_ts ← ts_utc;
+    decision_time_ms ← int(ts_utc * 1000). Each set via setdefault so live values pass through."""
+    row = _sample_snapshot_row()
+    ms = ms_dict_from_snapshot_row(row)
+    assert ms["decision_generation_id"] == 12345  # snapshot_id
+    assert ms["_server_build_ts"] == 1715000000.0  # ts_utc passthrough
+    assert ms["decision_time_ms"] == int(1715000000.0 * 1000)
+
+
+def test_ms_dict_reconstruction_passes_through_existing_decision_id():
+    """FIND-WIRE6c-7 (audit-added): live decision_generation_id is preserved (setdefault contract)."""
+    row = _sample_snapshot_row()
+    row["decision_generation_id"] = 99999  # already-stamped live value
+    ms = ms_dict_from_snapshot_row(row)
+    assert ms["decision_generation_id"] == 99999  # NOT clobbered by snapshot_id
+
+
+def test_ms_dict_reconstruction_infers_fusion_fields_from_triplet():
+    """FIND-WIRE6c-8 (audit-added): _infer_fusion_fields fills fusion_available + dominant_direction + dominant_prob from complete triplet."""
+    row = _sample_snapshot_row()
+    row["fusion_prob_up"] = 0.6
+    row["fusion_prob_down"] = 0.2
+    row["fusion_prob_flat"] = 0.2
+    ms = ms_dict_from_snapshot_row(row)
+    assert ms["fusion_available"] is True  # complete triplet
+    assert ms["fusion_dominant_direction"] == "up"  # 0.6 > 0.2, 0.2
+    assert ms["fusion_dominant_prob"] == 0.6  # max of triplet
+
+
+def test_ms_dict_reconstruction_fusion_unavailable_when_triplet_incomplete_and_no_dominant():
+    """FIND-WIRE6c-8 (audit-added): no triplet + no dominant_direction → fusion_available stays False."""
+    row = _sample_snapshot_row()
+    # Triplet partial (one None); no fusion_dominant_direction or _prob
+    row["fusion_prob_up"] = 0.6
+    row["fusion_prob_down"] = None
+    row["fusion_prob_flat"] = 0.2
+    ms = ms_dict_from_snapshot_row(row)
+    assert ms["fusion_available"] is False
+
+
 def test_ms_dict_reconstruction_handles_missing_replay_context():
     """FIND-WIRE6c-6: when replay_context_json is missing/invalid, replay-context-sourced fields stay None
     (no fabricated defaults); reconstruction still completes for ts_utc-derived clock + alias chain."""
