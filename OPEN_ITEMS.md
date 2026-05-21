@@ -122,7 +122,7 @@
 
 **LIVE-UI-A/E** @ `1b27d03` — transport badge, bundle age, lane-stale dim (signed off).
 
-- [x] **LIVE-UI-A/E + LIVE-UI-2 + LIVE-UI-D extension (LIVE_UI_INTEGRITY_V1)** @ `57c9950` — FIND-LIVEUI-1..5: `#coherence-headline`, `#dr-stack-mode-chip`, `#dr-lane-stale-chip` (`LANE STALE — QUOTE AHEAD` / `LANE STALE — CARDS PAINTING…`), `· PRICE AHEAD` on `#dr-freshness-pill`, `window._priceAheadOfBundle`; extends `_updateLiveUiAe` only; `#dr-trust-stack` compliance unchanged. Tests: `tests/test_live_ui_integrity_v1.py`.
+- [x] **LIVE-UI-A/E + LIVE-UI-2 + LIVE-UI-D extension (LIVE_UI_INTEGRITY_V1)** @ `5994aeb` — FIND-LIVEUI-1..5: `#coherence-headline`, `#dr-stack-mode-chip`, `#dr-lane-stale-chip` (`LANE STALE — QUOTE AHEAD` / `LANE STALE — CARDS PAINTING…`), `· PRICE AHEAD` on `#dr-freshness-pill`, `window._priceAheadOfBundle`; extends `_updateLiveUiAe` only; `#dr-trust-stack` compliance unchanged. Tests: `tests/test_live_ui_integrity_v1.py`.
 
 - [ ] **FIND-LIVEUI-6 — Phase 2 direction/fusion withhold** — when `quoteAhead || genStale || pending`, withhold or badge direction-bearing horizon fields (not price DOM); after FIND-LIVEUI-3 observability validates prevalence in prod.
 
