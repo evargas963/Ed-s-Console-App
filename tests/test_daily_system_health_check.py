@@ -60,7 +60,7 @@ def _seed_good(conn, *, t0: float, n: int = 120) -> None:
               pred_15c_up_prob, pred_15c_down_prob, pred_15c_flat_prob,
               pred_60c_up_prob, pred_60c_down_prob, pred_60c_flat_prob,
               outcome_1c, outcome_5c, outcome_15c, outcome_60c
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 "SPY",
@@ -134,7 +134,7 @@ def _snap_only(conn, t0: float, n: int) -> None:
               pred_15c_up_prob, pred_15c_down_prob, pred_15c_flat_prob,
               pred_60c_up_prob, pred_60c_down_prob, pred_60c_flat_prob,
               outcome_1c, outcome_5c, outcome_15c, outcome_60c
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 "SPY",
@@ -198,7 +198,7 @@ def _snap_for(conn, ticker: str, t0: float, n: int) -> None:
               pred_15c_up_prob, pred_15c_down_prob, pred_15c_flat_prob,
               pred_60c_up_prob, pred_60c_down_prob, pred_60c_flat_prob,
               outcome_1c, outcome_5c, outcome_15c, outcome_60c
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 ticker,
@@ -332,7 +332,7 @@ def test_daily_health_thin_snapshots_skip_pred_triad_gate(tmp_path: Path) -> Non
               pred_15c_up_prob, pred_15c_down_prob, pred_15c_flat_prob,
               pred_60c_up_prob, pred_60c_down_prob, pred_60c_flat_prob,
               outcome_1c, outcome_5c, outcome_15c, outcome_60c
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 "SPY",

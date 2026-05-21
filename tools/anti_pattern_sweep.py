@@ -366,6 +366,8 @@ CAPS_PREFIX_ALLOWLIST: tuple[tuple[str, str], ...] = (
 # Line-level exceptions (file, line or *, variant or *, justification).
 CAPS_LINE_ALLOWLIST: tuple[tuple[str, int | str, str, str], ...] = (
     ("calibration/v2_advisory_backfill.py", "*", "SETDEFAULT", "reconstructed Tier C ms dict setdefault for optional blocks"),
+    ("fusion_contract.py", "*", "GETATTR_DEFAULT", "duck-typing on fusion + CanonicalForecast objects (FusionOutput.available, CanonicalForecast.provenance); not a silent-default fabrication"),
+    ("numeric_contract.py", "*", "GETATTR_DEFAULT", "duck-typing on base-model output objects (prob_up/prob_down/prob_flat, dominant_class/dominant_dir); not a silent-default fabrication"),
 )
 
 
