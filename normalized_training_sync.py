@@ -292,6 +292,6 @@ def schedule_debounced_normalized_refresh(
             try:
                 _debounce_timer.cancel()
             except Exception as e:
-                log.debug("debounce timer cancel: %s", e, exc_info=True)
+                _log.debug("debounce timer cancel: %s", e, exc_info=True)
         _debounce_timer = t
     t.start()
