@@ -9,6 +9,8 @@
 
 **Gate:** Activate when Layer 5 / Pilot 1 Schwab walk + stack sign-off queue is closed (or operator says **go live-ui latency**). Do not defer behind new feature work.
 
+**Cadence (2026-05-20):** **AUDIT-CAND-SERVER-PY-FULL-READ** (in flight) → **STACK-WIRING-INTEGRITY** program (below, immediately after server.py lane closes). Individual LIVE-UI rows remain authoritative; umbrella program ensures nothing from reliability assessment is dropped.
+
 - [ ] **LIVE-UI-1 — Near-real-time decision cards vs operator expectation (WebSocket/SSE)**  
   **Reported (2026-05-19):** UI cards showed directional “up” while tape was selling off; operator believed WebSocket path delivers updates **almost instantly**. Observed behavior includes **~30s REST polling** on parts of the stack — **not acceptable** for live trading awareness.  
   **Scope:** Inventory live data plane end-to-end: what is truly push (e.g. `/api/analytics/light/stream`, `/api/stream`, tick-coherent `_fetch_state`) vs poll-bound; which card fields come from which tier (L0/L1 cache vs full Tier C recompute); document max staleness per surface.  
@@ -134,14 +136,75 @@
 
 **Gate B (2026-05-20):** No consolidation slices until audit lane 1 closes. **SSC1 @ `bb4b6b8`** on feature. **SIG test:** identical feature vs hybrid. **Audit lane 1 @ tip:** `features/signal_layer_v1.py` — brief + paired fixes FIND-SLV1-1..3; operator sign-off pending. **Temp dirs:** all eight session `*_tmp` paths absent in worktree (cleanup N/A).
 
-**Unread for coherence lens (post–batch 1 queue):** ~~`features/signal_layer_v1.py`~~ (lane 1 closed @ `eb933ea`), ~~`features/inference_snapshot.py`~~ (lane 2 paired-fix closed), ~~`features/monte_carlo_stack_input.py`~~ (lane 3 paired-fix closed), ~~`v2_decision/module_a_adapter.py`~~ (MADA closed @ `8ad00ba`), ~~`lifecycle_rule_core.py`~~ (LRC closed @ `951931b`, sign-off), `multi_horizon_decision.py`, `multi_horizon_ml_bundle.py`, `market_state.py` (re-read coherence lens).
+**Unread for coherence lens (post–batch 1 queue):** ~~`features/signal_layer_v1.py`~~ (lane 1 closed @ `eb933ea`), ~~`features/inference_snapshot.py`~~ (lane 2 paired-fix closed), ~~`features/monte_carlo_stack_input.py`~~ (lane 3 paired-fix closed), ~~`v2_decision/module_a_adapter.py`~~ (MADA closed @ `8ad00ba`), ~~`lifecycle_rule_core.py`~~ (LRC closed @ `951931b`, sign-off), ~~`multi_horizon_ml_bundle.py`~~ (MHMLB-NS1 @ `f14d655`). Remaining → **STACK-WIRE-2**: `multi_horizon_decision.py`, `market_state.py`, `signals.py` full re-read.
 
 ### Audit queue — surfaced by MADA producer-cone Read (not blockers for lifecycle)
 
 - [x] **AUDIT-CAND-MS-FP1 — `canonical_provenance` gate allow-list** @ `7b23b70` + fixture follow-on `d818649` — FIND-FP1-1..4: `TRADABLE_CANONICAL_PROVENANCE` (`bayesian_fusion` only); `canonical_provenance_is_tradable` inverted fail-closed; closes `debug_override:*`, `""`, calibration-replay leaks. OBS-FP1-2: dataclass defaults safe post-fix (no change). Tests: `tests/test_fusion_contract.py`, `tests/test_v2_advisory_backfill.py::test_calibration_backfill_v2_advisory_rejects_legacy_empty_provenance_row`, `tests/test_v2_a2_option_expression.py` (`_sample_a1` provenance).
 - [x] **AUDIT-CAND-FP1-FIXTURE-COMPLETENESS** @ `056d791` — FIND-FP1-FIX-1..6: stamp `provenance="bayesian_fusion"` on 6 planned sites (chunk2b×4, prediction_vote, time_warning) + 1 runtime catch (action11_9 L256); 4 files no-change; 2 verify-only green. Full FP1 fixture cone 101 passed @ SHA.
 - [x] **OBS-MHMLB-NS1 — `fusion_available` name collision** @ `f14d655` — `HorizonMLFusionSnapshot.horizon_fusion_available` + `MultiHorizonMLFusionBundle.horizon_fusion_available(hz)`; consumers updated in `multi_horizon_decision.py`, `prediction_engine.py`. `MarketState.fusion_available` / `ms_dict["fusion_available"]` unchanged. Tests: `tests/test_mhmlb_namespace_v1.py`.
-- [ ] **AUDIT-CAND-SERVER-PY-FULL-READ** — `server.py` end-to-end Read — money-path module per gate-b roster; targeted slices walked across MADA/FP1/MT/LIVE_UI lanes but never full file walk. Substantial (7427 lines, multi-turn cone walk). Defer until next session resumes audit cadence.
+- [x] **AUDIT-CAND-SERVER-PY-FULL-READ** @ `<SHA>` — FIND-SERVERPY-1..19 (excl. demoted 10/16): IV rank/percentile `_ed_db` hoist (8), model health `json.loads` (14), debug prediction `get_zone_distribution` (19), spread_semantic (5), pressure_label fail-closed (9), r_units None (11), stack_mode authority + `signals_engine_failed` (15), L1 gen RuntimeError (7), constants RTH/PL/RECENT_CROSSES (1-4,6,13), liquidity_zone_tradeable_score authority (18), prediction empty direction 400 (17). Tests: `tests/test_audit_cand_server_py_full_read_v1.py` (21 passed). **Gate:** STACK-WIRING-INTEGRITY Phase 0 (STACK-WIRE-0) may proceed.
+
+### STACK-WIRING-INTEGRITY — post–`server.py` full-read program (operator cadence)
+
+**Trigger (Gate B alternation):** immediately after **AUDIT-CAND-SERVER-PY-FULL-READ** closes (brief + verify @ SHA). **Goal:** prove end-to-end that Schwab leaf → signal/stack → `ms_dict` / Tier payloads → `static/index.html` cards is wired correctly for RTH operator truth — not only fail-closed numerics and observability labels.
+
+**Umbrella deliverable:** `governance/STACK_WIRING_INTEGRITY_MAP.md` (or JSON) — one table: **surface** (Decision Command rail, per-hz cards, Call/Put legacy, diagnostics strip) × **field** × **producer module** × **transport** (SSE `live_quote`, SSE Tier C JSON, L1 light, poll) × **client clock** (`lastFastTs`, `lastRenderTimestamp`, `decision_generation_id`, `l1_generation`) × **stale/when-withhold rule** × **test/fixture** × **OPEN_ITEMS id**. Sign-off only when map is complete and regression bar green.
+
+**Phase 0 — ingest server.py audit (blocking)**
+- [ ] **STACK-WIRE-0** — File every FIND from AUDIT-CAND-SERVER-PY-FULL-READ into OPEN_ITEMS (paired-fix rows or OBS); no “pre-existing” deferral without a row. Reconcile with already-walked slices (L1989 `stack_mode`, L278–292 L1 diag, L6437–6502 multiplex SSE) so server findings do not duplicate closed lanes.
+
+**Phase 1 — backend producer / payload cone (money path)**
+- [ ] **STACK-WIRE-1** — Trace map: `signals.py` → `build_market_state` / `compute_signals` → `live_decision_bundle.stamp_decision_bundle` → `server.py` emit paths (`/api/analytics/state`, `/api/stream`, fast quote, L1 light). Verify `decision_generation_id`, `_server_build_ts`, `stack_runtime.stack_mode`, `canonical_provenance`, `state_error` / `state_error_detail`, `stack_integrity_events` on every tick path. Include bg analytics skip (`decision_generation_skipped`) vs live tick.
+- [ ] **STACK-WIRE-2** — Coherence re-read (full file, not slice): **`market_state.py`**, **`multi_horizon_decision.py`**, **`signals.py`** (listed “Unread for coherence lens” @ L137). **`multi_horizon_ml_bundle.py`** post–MHMLB-NS1 verify only if server audit surfaces new consumers.
+- [ ] **STACK-WIRE-3** — **`call_engine.py` full body** + **`prediction_engine.py`** overlay path (`_overlay_multi_horizon_ml_on_product_triplets`, `_fusion_snap_triplet` / `horizon_fusion_available`) — completes Action 12.7+ money-path slice.
+- [ ] **STACK-WIRE-4** — **`live_decision_bundle.py`** + **`fusion_contract.py` / `governed_stack_contract.py`** consumer grep: no second tradability predicate; `stack_mode` / `classify_stack_health` consumers baselined (UI chip is not the only surface).
+- [ ] **STACK-WIRE-5** — **`order_flow_engine.py` → stack vote** re-read (COHERENCE-AUDIT lane table); OF freshness vs Tier C independence documented in wiring map.
+- [ ] **STACK-WIRE-6** — **Live vs replay parity** — parent item **LIVE-UI-F** + `v2_advisory_backfill` / `realized_contract_eval` / `replay_hold_bars` provenance; measured test live `ms_dict` vs reconstructed snapshot row.
+- [ ] **STACK-WIRE-7** — **Layer 5 remainder** — **Action 12.7+** queue (`ml_predict`, `ml_scheduler`, `features/*` not yet closed, `calibration/*` residual) — only modules that feed live card fields or `ms_dict` authority; file OBS or paired-fix per brief schema.
+
+**Phase 2 — client transport + clocks (cards “same moment”)**
+- [ ] **LIVE-UI-1** — Near-real-time card refresh SLO; inventory push vs poll per field; ties to server.py findings.
+- [ ] **LIVE-UI-2** — Multi-transport coherence **behavior** (parent row still open; labeling closed @ `5994aeb`). Fix direction: unified bundle age + **withhold or per-field stale badge** on direction/fusion when behind fast lane — see **FIND-LIVEUI-6**.
+- [ ] **LIVE-UI-3** — Automated + manual “same moment” acceptance (`decision_generation_id` + tape replay).
+- [ ] **FIND-LIVEUI-6** — Phase 2: when `quoteAhead || genStale || pending || window._priceAheadOfBundle`, withhold or visibly badge **direction-bearing** horizon fields (fusion direction, prob bars, mhap confidences); **do not** block `renderFast` / price DOM. **Gate:** review `_priceAheadOfBundle` prevalence in prod (FIND-LIVEUI-3 observability) before implementation brief.
+- [ ] **FIND-LIVEUI-7** — Expose `server.py` `_l1_sse_diag` on `/ops` or `/governance` (identity violations, throttle, evicted, connections peak).
+- [ ] **STACK-WIRE-8** — **`static/js/l1_sse_guards.js`** ↔ server L1 identity tuple contract test; no drift vs `l1_generation` / scope key at [server.py:295-296].
+- [ ] **STACK-WIRE-9** — Preserve intentional asymmetry: `_renderCoherenceGuards` (newer `decision_generation_id` wins when `_server_build_ts` regresses), `_commitTierAFastTimestamp` vs `_commitAnalyticalRenderTimestampAndGen`, `_slowStaleVsFast` price-DOM guard — document in wiring map as **designed**, not bugs.
+
+**Phase 3 — UI honesty / operator surfaces (cards + rail)**
+- [ ] **LIVE-UI-4** — Full UI honesty pass: L1 overlay + Tier C merge (`_lastData`), horizon row vs Decision Command vs legacy Call/Put, withheld vs flat styling, transport badge vs field ages.
+- [ ] **LIVE-UI-A** — Canonical 1/3 triplet consumer audit; no card reads `canonical.probability_*` without provenance gate.
+- [ ] **LIVE-UI-B** — `stack_integrity_v1` / `authority_intact=False` operator-visible degraded badge (not healthy-green while degraded).
+- [ ] **LIVE-UI-C** — Secondary horizon “skipped bundle” withheld UX (`skipped_missing_active_bundle`).
+- [ ] **LIVE-UI-D** — Tri-state None on cards (withheld / unavailable / loading); stack status column closed @ `f560bce`; **global `stack_mode` INVALID chip** closed @ `5994aeb` — remainder is card-level None semantics.
+- [ ] **LIVE-UI-E** — MH promotion WAIT→directional: headline WHY / blocker visible (not diag-only).
+- [ ] **LIVE-UI-G** — Session boundary UX (`mins_to_close` flips explained on card).
+- [ ] **LIVE-UI-H** — `StackDecisionPath` stage trail or “N of 5 agree” summary on operator surface.
+- [ ] **STACK-WIRE-10** — **`#dr-trust-stack`** remains **compliance only** (`active_compliant`); **`#dr-stack-mode-chip`** remains **`stack_runtime.stack_mode` only** — regression guard in wiring sign-off checklist.
+
+**Phase 4 — regression bar + sign-off (closes umbrella)**
+- [ ] **STACK-WIRE-11** — **Single-bundle invariant test** (coherence protocol #2): after any tick/SSE, all signal surfaces share `decision_generation_id` OR explicit stale badge per surface (automated).
+- [ ] **STACK-WIRE-12** — **Provenance-on-display** (protocol #3): each fail-closed sentinel (None, max-entropy, NOT_AVAILABLE) has distinct visible label in `static/index.html` (grep + test).
+- [ ] **STACK-WIRE-13** — **Operator scenarios** (protocol #4): fast selloff, fast rip, expiry boundary, RTH→AH — bundle coherence during transients; scripted checklist + log capture.
+- [ ] **STACK-WIRE-14** — **Full money-path pytest** at sign-off SHA (broader than per-slice cones: FP1 + MADA + LRC + LIVE_UI + server-py regression tests); operator PowerShell report required per FP1 lesson.
+- [ ] **STACK-WIRE-15** — **Consumer re-fabrication grep** — no downstream 0.33 / `"flat"` / `"wait"` when producer withheld (extends stack foundation pass #2).
+- [ ] **Stack foundation sign-off** — **merged into this program** @ L583: run passes (1)–(6) as part of Phase 4; trigger `go stack-wiring-integrity-signoff` when Phases 0–3 complete. **Do not** duplicate a separate ad-hoc pass.
+
+**Phase 5 — residual / lower priority (file if wiring audit surfaces impact)**
+- [ ] **COH-I-B, COH-I-D, COH-I-F, COH-I-G, COH-I-I, COH-I-L, COH-I-M** — tier-3 COHERENCE-AUDIT rows; promote to paired-fix only if STACK-WIRE map shows live/card impact.
+- [ ] **OBS-CLUSTER-RANK-1** — clustering int `-999` (not greek sentinel); promote if any live scoring path reads it.
+- [ ] **OBS-FPC1, OBS-FPC2** — fusion policy audit strings; replay parse risk if wiring map touches calibration replay UI.
+- [ ] **OBS-TC1/2/3** — training cache metadata (accepted fail-closed; re-verify if server.py scheduler paths change).
+- [ ] **Action 12.7+** non-card modules — complete for repo hygiene; not blocking STACK-WIRING sign-off unless they feed live authority fields.
+
+**Already closed (do not re-open; verify in wiring map only)**
+- Coherence tier-1/1.5: `time_et`, `fusion_contract`, `numeric_contract`, REPO_SWEEP EP/MT, MADA, LRC, FP1 + fixture completeness, MHMLB-NS1, LIVE_UI_INTEGRITY_V1 @ `5994aeb`, SWEEP-LRC-NAN, B2 render guards / tier-A blocks, COH-I-A/E/J, FIND-STACK-DIR1, etc. (see `[x]` rows above).
+
+**Process (this program)**
+1. One canonical commit per paired-fix slice; docs-only SHA pointer follow-up (LIVE_UI / LRC-NAN pattern).
+2. Brief §5 cone non-empty; §6 tests at implementation SHA; server.py FINDs filed before UI behavior changes where transport is root cause.
+3. **Schwab three-PR gate** (OPEN_ITEMS header) still applies before declaring repo closure — STACK-WIRING is **operator-truth** gate, not governance pin replacement.
 
 ### COHERENCE-AUDIT workstream (full Read — not “files already walked”)
 
@@ -580,7 +643,7 @@ Reference ticker for parametric tests: **SPY**.
   - [ ] OBS-CSC1 — `validate_cascade_inference_lineage` re-wraps `XgbInferenceInputError` (inherits XGB1/XGB2 envelope strictness); accepted challenger-only path.
   - [ ] OBS-CSC2 — cascade upstream tensor names (`xgb_prob_*`, `lstm_prob_*`) are stage-contract labels, not Schwab leaves; locked by assert len 3/6 vs `ml_predict` cascade extras.
 - [ ] **Action 12.7+ — Layer 5 remaining unread surface** (wide-grep re-pass on audited files; `call_engine.py` full body) — `call_engine.py` full body; `ml_predict`/`ml_scheduler`/`ml_train`; `features/*` (11 files); `calibration/*` (~~`v2_live_logging.py`~~ FIND-V2LL1 closed; ~~`signal_layer_discrimination.py`~~ FIND-SLD1 closed; ~~`v2_advisory_backfill.py`~~ FIND-V2AB1–3 closed; ~~`backfill_outcomes.py`~~ FIND-BO1 closed; ~~`backfill_signal_layer_v1_bundle.py`~~ FIND-SLVB1–3 closed); `arch_competition/*`; `lstm_*`/`transformer_*`; ~~`v2_decision/a2_option_expression.py`~~ (FIND-A2OE1–3 closed); ~~`realized_contract_eval.py`~~ (FIND-RCE1–4 closed); ~~`training_cache.py`~~ (FIND-TC1–3 closed); re-read `server.py`/`market_state.py`; ~~`signals.py` L91-102 + ML fallback namespaces~~ (FIND-SIG1 closed).
-- [ ] **Stack foundation sign-off (post–Layer 4/5 sweep, pre–G2/G3)** — Operator request: after Actions 11–12.x + 12.7+ are closed, run a structured final review so the signal/stack layer is solid before model-lifecycle work. **Not** another ad-hoc patch pass; explicit sign-off or filed actions only. Passes: (1) **Contract inventory** — Schwab-leaf → derived → fusion → UI/calibration; every unavailable path is `None`/withheld, documented. (2) **Consumer grep** — no downstream re-fabrication (pattern: producer fixed, consumer still emits 0.33/`"flat"`/`"wait"`). (3) **Live vs replay** — `compute_signals`, calibration backfill/audit CLIs, and replay paths behave consistently on missing inputs. (4) **UI / operator truth** — `static/index.html` and diagnostics do not re-label null as flat/neutral. (5) **Residual allowlist** — any remaining defaults are named, tested, justified (not accidental). (6) **Smoke** — one trusted ticker/session: thin `price_bars_1m` → withhold; full bars → unchanged where data exists. Deliverable: findings table + OPEN_ITEMS actions for anything still warranted; optional short written report if operator asks. **Trigger:** operator says `go on stack foundation sign-off` after 12.7+ queue is drained. **Ownership split:** operator calibration batch in parallel; assistant `call_engine.py` E2E + any filed vertical slices.
+- [ ] **Stack foundation sign-off** — **Absorbed into STACK-WIRING-INTEGRITY** (Phase 4 / **STACK-WIRE-15**). Original six passes: (1) contract inventory → **STACK-WIRE-1** + map; (2) consumer grep → **STACK-WIRE-15**; (3) live vs replay → **STACK-WIRE-6** / **LIVE-UI-F**; (4) UI operator truth → Phase 3 LIVE-UI rows; (5) residual allowlist → Phase 4; (6) smoke → **STACK-WIRE-13**. **Trigger:** `go stack-wiring-integrity-signoff` after Phases 0–3 complete (not before **AUDIT-CAND-SERVER-PY-FULL-READ** closes).
 - [x] **Action 11.8 — signals.py MC + fusion attributes fail-closed** — `signals.py:719,720,725,727,728,740,756,758,760` fabricated 0/`"neutral"`/`"unknown"` when mc_out/fusion attributes absent; return None and skip downstream label emit. Schwab-leaf path: `pricehistory.candles[].close` → MC; chain greeks → fusion. SHA: `a0b161b`
 - [x] **Action 11.9 — call_engine.py fail-closed on missing index quotes + fusion posteriors** — 11 high-priority sites + 5 lower-priority deferred; fusion posterior gate semantic: **block** trade when posterior is None (fail-closed). Schwab-leaf paths: `quotes.{SPY,QQQ,IWM}.netChange`, chain delta, fusion engine output. SHA: `4a64a69`
 - [x] **Action 11.9b — call_engine.py lower-priority fail-open** — bundled in Action 12.0 batch 1.

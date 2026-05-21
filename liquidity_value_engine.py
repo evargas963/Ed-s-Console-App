@@ -56,6 +56,20 @@ def _float_or_none(value) -> Optional[float]:
     return float_finite_or_none(value)
 
 
+def liquidity_zone_tradeable_score(
+    *,
+    n_tags: int,
+    n_opt: int,
+    inside: bool,
+    dist_pen: float,
+    spot: Optional[float] = None,
+) -> float:
+    """Spot-normalized liquidity zone tradeability score (LM-1 authority)."""
+    if spot is None:
+        return round(3.0 * n_tags + 2.5 * n_opt, 2)
+    return round(3.0 * n_tags + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen, 2)
+
+
 _SCHWAB_PRICEHISTORY_SOURCE = "schwab_pricehistory"
 
 

@@ -3702,6 +3702,27 @@ class EdDB:
             """, (ticker, n)).fetchall()
         return [dict(r) for r in rows]
 
+    def get_zone_distribution(self, ticker: str, timeframe: str) -> dict[str, int]:
+        """Count snapshots per zone for ticker/timeframe (debug / diagnostics)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT zone, COUNT(*) AS cnt
+                FROM snapshots
+                WHERE ticker = ? AND timeframe = ? AND zone IS NOT NULL
+                GROUP BY zone
+                ORDER BY cnt DESC
+                """,
+                (ticker, timeframe),
+            ).fetchall()
+        out: dict[str, int] = {}
+        for row in rows:
+            r = dict(row)
+            zone = r.get("zone")
+            if zone is not None:
+                out[str(zone)] = int(r.get("cnt") or 0)
+        return out
+
     def count_level_tests(self, ticker: str, level_name: str,
                            level_value: float, lookback_hours: float = 6.5) -> dict:
         """

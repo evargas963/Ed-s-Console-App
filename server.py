@@ -836,6 +836,7 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
         "quote_mid": quote_mid,
         "mid_source": mid_source,
         "spread": spread_frac,
+        "spread_semantic": "fraction",
         "spread_pts": spread_pts,
         "spread_source": (
             "derived_bid_ask_mid_fraction"
@@ -1056,6 +1057,7 @@ def _on_tick_broadcast_sync(symbol: str, main_loop: asyncio.AbstractEventLoop) -
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Market session boundaries (Eastern, minutes-since-midnight)
+RTH_OPEN_MINS:       int   = 570    # 9:30 AM ET  (RTH window start)
 RTH_CLOSE_MINS:      int   = 960    # 4:00 PM ET  (used for mins_to_close calc)
 PRE_MARKET_MINS:     int   = 540    # 9:00 AM ET  (logger session buffer start)
 LOGGER_BUFFER_MINS:  int   = 990    # 4:30 PM ET  (logger session buffer end)
@@ -1102,6 +1104,8 @@ PARITY_RESID_MIN:    float = 0.10   # ignore residuals smaller than 10 cents
 
 # Accuracy history display limit
 ACCURACY_HISTORY_LIMIT: int = 50    # rows returned by get_accuracy_history
+RECENT_CROSSES_DISPLAY_LIMIT: int = 5  # level-cross events in operator UI
+PRICE_LEVELS_CACHE_SEC: int = 15  # intraday VWAP refresh (process-local)
 # Builds OHLC bars from spot price ticks. Server polls every ~30s, so:
 #   5-min bars = ~10 ticks per bar
 #   1-min bars = ~2 ticks per bar
@@ -1114,7 +1118,7 @@ from timeframe_config import CANONICAL_TIMEFRAME, DERIVED_TIMEFRAME
 class _CandleAccumulator:
     """Accumulate spot ticks into OHLCV candle bars."""
 
-    def __init__(self, bar_seconds: int, max_bars: int = 25):
+    def __init__(self, bar_seconds: int, max_bars: int):
         self.bar_seconds = bar_seconds
         self.max_bars = max_bars
         self._bars: dict[str, list[Candle]] = {}       # ticker -> completed bars
@@ -1865,6 +1869,7 @@ def _ms_to_dict(ms) -> dict:
 # Trader-facing REST/SSE payload: primary decision horizons only (Issue 2 + tier contract).
 _TRADER_ACCURACY_HORIZONS_UI = frozenset(PRIMARY_DECISION_HORIZONS)
 _TRADER_UI_PRODUCT_HORIZONS = frozenset(PRIMARY_DECISION_HORIZONS)
+_PRIMARY_UI_HORIZON_MINUTES = frozenset(f"{int(s[:-1])}m" for s in PRIMARY_DECISION_HORIZONS)
 _TRADER_HIDDEN_BAR_HORIZONS = tuple(SECONDARY_SUPPORT_HORIZONS)
 
 
@@ -1907,7 +1912,7 @@ def _filter_horizon_prob_bars_primary_only(ms_dict: dict) -> None:
     hpb = ms_dict.get("horizon_prob_bars")
     if not isinstance(hpb, dict):
         return
-    allow = frozenset({"1m", "5m", "15m", "60m"})
+    allow = _PRIMARY_UI_HORIZON_MINUTES
     ms_dict["horizon_prob_bars"] = {k: v for k, v in hpb.items() if k in allow}
 
 
@@ -2211,7 +2216,7 @@ def _snapshot_expiry_hours_from_schwab_dte(
 ) -> float | None:
     if schwab_dte is None:
         return None
-    market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
+    market_close = now_et.replace(hour=int(MARKET_CLOSE_HOUR), minute=0, second=0, microsecond=0)
     if schwab_dte == 0:
         secs = (market_close - now_et).total_seconds()
         return round(secs / 3600.0, 2) if secs > 0 else None
@@ -2351,7 +2356,7 @@ def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float 
     try:
         hour, minute = now_et.hour, now_et.minute
         mins = hour * 60 + minute
-        in_rth = 9 * 60 + 30 <= mins < 16 * 60 and now_et.weekday() < 5
+        in_rth = RTH_OPEN_MINS <= mins < RTH_CLOSE_MINS and now_et.weekday() < 5
         date_str = now_et.strftime("%Y-%m-%d")
         session_key = date_str if in_rth else f"{date_str}-premarket"
         if session_key != _rest_cum_delta_session:
@@ -2466,15 +2471,16 @@ def _l1_next_generation(key: tuple) -> int:
         prev = _l1_generation.get(key, 0)
         new_gen = prev + 1
         last = _l1_last_generation_seen.get(key)
-        if last is not None:
-            assert new_gen > last, (
+        if last is not None and new_gen <= last:
+            raise RuntimeError(
                 f"L1 generation regression or duplicate for scope {key!r}: "
                 f"next={new_gen} last_seen={last}"
             )
-        assert new_gen > prev, (
-            f"L1 generation non-monotonic increment for scope {key!r}: "
-            f"next={new_gen} prev={prev}"
-        )
+        if new_gen <= prev:
+            raise RuntimeError(
+                f"L1 generation non-monotonic increment for scope {key!r}: "
+                f"next={new_gen} prev={prev}"
+            )
         _l1_generation[key] = new_gen
         _l1_last_generation_seen[key] = new_gen
         _l1_instrumentation["l1_generation_assign_total"] = (
@@ -3044,6 +3050,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         "quote_mid": row.get("quote_mid"),
         "mid_source": row.get("mid_source"),
         "spread": spread_dollar,
+        "spread_semantic": "dollar",
         "spread_pts": row.get("spread_pts"),
         "spread_source": (
             "derived_bid_ask_pts"
@@ -3118,6 +3125,7 @@ def _fetch_state(
 ) -> dict:
     _fetch_start_mono = time.monotonic()
     _register_tracked_ticker(ticker)
+    _ed_db = get_db() if _HAS_SIGNALS else None
     try:
         from live_pipeline_diag import emit_fetch_state_start
 
@@ -3514,14 +3522,13 @@ def _fetch_state(
     _pl_cache_entry = _state_cache.get(_cache_key, {}).get("price_levels")
     _pl_cache_date  = _state_cache.get(_cache_key, {}).get("pl_date", "")
     _pl_cache_mono = _state_cache.get(_cache_key, {}).get("pl_mono", None)
-    _PL_CACHE_SEC   = 15  # within a day, refresh every 15s (for VWAP)
 
     _now_mono = time.monotonic()
     _pl_stale = (
         _pl_cache_entry is None
         or _pl_cache_date != _today_date_str          # new trading day → force refresh
         or _pl_cache_mono is None
-        or (_now_mono - float(_pl_cache_mono)) >= _PL_CACHE_SEC  # intraday VWAP refresh (process-local)
+        or (_now_mono - float(_pl_cache_mono)) >= PRICE_LEVELS_CACHE_SEC  # intraday VWAP refresh (process-local)
     )
 
     if not _pl_stale:
@@ -3930,7 +3937,6 @@ def _fetch_state(
     # ── DB counts + crosses ───────────────────────────────────────────────────
     if _diag_on():
         _diag_step("pre_get_db", ticker)
-    _ed_db     = get_db() if _HAS_SIGNALS else None
     if _diag_on():
         _diag_done("get_db", ticker)
     if _diag_on():
@@ -3952,7 +3958,7 @@ def _fetch_state(
                 _floor = _ed_db.count_level_tests(ticker, "Put Gamma Wall", pgw)
                 _ft = _floor.get("total")
                 floor_tests = int(_ft) if _ft is not None else 0
-            rc = _ed_db.get_recent_crosses(ticker, n=5)
+            rc = _ed_db.get_recent_crosses(ticker, n=RECENT_CROSSES_DISPLAY_LIMIT)
             recent_cross_eval_wall_ts = time.time()
             for c in rc:
                 bars_ago = int(
@@ -4102,7 +4108,6 @@ def _fetch_state(
         _diag_step("pre_build_market_state", ticker)
     from db import utc_ts as _utc_ts_refresh
     _refresh_ts_utc = _utc_ts_refresh()
-    log.warning("MC_EM_PRE_BMS em_upper=%s em_lower=%s spot=%s", _em_up, _em_lo, spot_f)  # FIX: MC em trace
     try:
         ms = build_market_state(
         ticker=ticker,
@@ -4288,7 +4293,7 @@ def _fetch_state(
                 if not _pressure_label_live and _hedging_flow:
                     _pressure_label_live = _hedging_flow.get("direction")
                 if not _pressure_label_live:
-                    _pressure_label_live = "neutral"
+                    _pressure_label_live = "unavailable_no_dpi_or_hedging_flow_direction"
     
                 # Wall absolute values
                 _cgw = _mf(getattr(walls[0], "call_gamma_wall", None)) if walls else None
@@ -4561,7 +4566,7 @@ def _fetch_state(
                     risk_valid=getattr(ms, 'risk_valid', None),
                     validation_summary=getattr(ms, 'validation_summary', ''),
                     # ── Position Sizing ────────────────────────────────────
-                    r_units=getattr(ms, 'r_units', 0.0),
+                    r_units=getattr(ms, 'r_units', None),
                     execution_mode=getattr(ms, 'execution_mode', 'NO_TRADE'),
                     # ── Catalog signals ────────────────────────────────────
                     vol_env_upper=_vol_envelope.get("upper"),
@@ -5049,7 +5054,7 @@ def _fetch_state(
     }
 
     # ── Formal Position Sizing ────────────────────────────────────────────────
-    ms_dict["r_units"]               = getattr(ms, "r_units", 0.0)
+    ms_dict["r_units"]               = getattr(ms, "r_units", None)
     ms_dict["execution_mode"]        = getattr(ms, "execution_mode", "NO_TRADE")
     ms_dict["sizing_summary"]        = getattr(ms, "sizing_summary", "")
 
@@ -5128,7 +5133,7 @@ def _fetch_state(
     _dashboard_ticker = "SPY"
     if _arch_path.exists():
         try:
-            _arch = _json.loads(_arch_path.read_text())
+            _arch = json.loads(_arch_path.read_text())
             _dashboard_ticker = next((t for t in ("SPY", "QQQ", "IWM") if t in _arch), next(iter(_arch), "SPY"))
         except Exception as e:
             log.debug("dashboard arch_state.json parse failed: %s", e, exc_info=True)
@@ -5199,7 +5204,7 @@ def _fetch_state(
             issues = "; ".join(art.get("issues", [])) or "Metadata lacks provenance"
             return {"model": display_name, "status": "NON-COMPLIANT", "status_reason": issues, "edge": 0, "version": "—", "ticker": _dashboard_ticker}
         try:
-            _m = _json.loads(meta_path.read_text())
+            _m = json.loads(meta_path.read_text())
             raw = _m.get(edge_key, _m.get("val_accuracy", 0))
             edge = float(raw) * 100 if edge_key == "val_accuracy" else float(raw or 0)
             version = _m.get(version_key, _m.get("model_version", "—"))
@@ -5360,7 +5365,7 @@ def _fetch_state(
     if ms_dict.get("signals_engine_failed"):
         sr = ms_dict.get("stack_runtime")
         if isinstance(sr, dict):
-            sr["stack_mode"] = "signals_engine_error"
+            sr["signals_engine_failed"] = True
     _apply_trader_horizon_contract(ms_dict)
     stamp_decision_bundle(ms_dict)
     _t_pipeline_end_mono = time.monotonic()
@@ -6824,7 +6829,7 @@ async def prediction_override(ticker: str = Query(...), direction: str = Query(.
     """Set manual override for prediction direction. direction: up|flat|down. source: user|manual."""
     ticker = ticker.upper().strip()
     _register_tracked_ticker(ticker)
-    d = (direction or "flat").lower()
+    d = (direction or "").strip().lower()
     if d not in ("up", "flat", "down"):
         raise HTTPException(status_code=400, detail="direction must be up, flat, or down")
     src = (source or "user").lower()
@@ -6998,6 +7003,8 @@ def _liquidity_fusion_from_cache(
 
 def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
     """Add anchor, distance_to_spot, tradeable_score, options_level_count (mutates zp)."""
+    from liquidity_value_engine import liquidity_zone_tradeable_score
+
     tags = zp.get("source_tags") or []
     lo, hi = float(zp["zone_low"]), float(zp["zone_high"])
     mid = zp.get("zone_mid")
@@ -7013,7 +7020,9 @@ def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
     if spot is None:
         zp["distance_to_spot"] = None
         zp["spot_inside_zone"] = None
-        zp["tradeable_score"] = round(3.0 * len(tags) + 2.5 * n_opt, 2)
+        zp["tradeable_score"] = liquidity_zone_tradeable_score(
+            n_tags=len(tags), n_opt=n_opt, inside=False, dist_pen=0.0, spot=None
+        )
         return
     sf = float(spot)
     inside = lo <= sf <= hi
@@ -7024,7 +7033,9 @@ def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
     zp["distance_to_spot"] = round(d, 4)
     zp["spot_inside_zone"] = inside
     dist_pen = min((d / sf) * 12.0, 10.0)
-    zp["tradeable_score"] = round(3.0 * len(tags) + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen, 2)
+    zp["tradeable_score"] = liquidity_zone_tradeable_score(
+        n_tags=len(tags), n_opt=n_opt, inside=inside, dist_pen=dist_pen, spot=sf
+    )
 
 
 @app.get("/api/liquidity-snapshot")
@@ -7400,9 +7411,7 @@ async def debug_prediction(ticker: str = DEFAULT_TICKER):
         if _HAS_SIGNALS:
             db = get_db()
             if db:
-                with db._connect() as conn:
-                    rows = conn.execute(get_snapshot_sql("server.py:6235"), (ticker, CANONICAL_TIMEFRAME)).fetchall()
-                    zone_counts = {r[0]: r[1] for r in rows}
+                zone_counts = db.get_zone_distribution(ticker, CANONICAL_TIMEFRAME)
 
         return {
             "current_query": {
