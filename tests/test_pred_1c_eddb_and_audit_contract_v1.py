@@ -56,7 +56,7 @@ def test_snapshots_table_accepts_pred_1c_triple_minimal_insert(tmp_path):
 
 
 def test_phase5_audit_module_defines_governed_pred_1c_metric():
-    p = ROOT / "tools" / "_phase5_discrimination_audit_v1.py"
+    p = ROOT / "tools" / "legacy" / "horizon_7" / "_phase5_discrimination_audit_v1.py"
     src = p.read_text(encoding="utf-8")
     assert "governed_rows_with_pred_1c_nonnull" in src
     assert "n_gov_pred1c" in src or "governed_rows_with_pred_1c_nonnull" in src
@@ -101,15 +101,18 @@ def test_freshest_snapshot_row_with_pred_1c_readable():
 
 
 def test_subprocess_phase5_json_includes_governed_pred_1c_key():
-    if not (ROOT / "data" / "ed_console.db").is_file():
-        pytest.skip("no DB")
-    proc = subprocess.run(
-        [sys.executable, str(ROOT / "tools" / "_phase5_discrimination_audit_v1.py"), "--db", str(ROOT / "data" / "ed_console.db")],
-        capture_output=True,
-        text=True,
-        timeout=120,
+    """Legacy phase5 audit tool was quarantined to tools/legacy/horizon_7/ (commit 794862d)
+    when the 7-horizon system migrated to 4 horizons (1c, 5c, 15c, 60c). The tool's SQL
+    references obsolete columns (e.g. ``outcome_13c``) that no longer exist in the snapshots
+    schema. Running the tool against the current DB raises ``sqlite3.OperationalError: no
+    such column: s.outcome_13c``.
+
+    The metric-name contract is exercised by ``test_phase5_audit_module_defines_governed_pred_1c_metric``
+    (source-string check on the same file). Re-enabling the subprocess invocation requires
+    either backfilling the obsolete columns or rewriting the legacy tool against the current
+    ML_HORIZON_SLUGS schema — both out of scope for the legacy quarantine.
+    """
+    pytest.skip(
+        "Legacy phase5 tool's SQL references outcome_13c (7-horizon era); current schema "
+        "is 4-horizon. Source-contract still checked by test_phase5_audit_module_defines_governed_pred_1c_metric."
     )
-    assert proc.returncode == 0, proc.stderr
-    d = json.loads(proc.stdout)
-    assert "governed_rows_with_pred_1c_nonnull" in d
-    assert d["governed_rows_with_pred_1c_nonnull"] >= 0
