@@ -341,7 +341,7 @@ def compute_multi_horizon_synthesis(
         per_hz_audit[hz] = {
             "semantic_role": HORIZON_SEMANTIC_ROLE.get(hz, ""),
             "predictive_probability_source": mh_src.get(hz, "unknown"),
-            "fusion_ml_available": bool(snap and snap.fusion_available),
+            "fusion_ml_available": bool(snap and snap.horizon_fusion_available),
             "fusion_dominant_direction": getattr(snap, "dominant_direction", None) if snap else None,
             "fusion_top_probability": round(getattr(snap, "top_probability", 0.0), 4) if snap else None,
             "forecast_direction": hmap[hz].direction,
@@ -636,7 +636,7 @@ def _forecast_horizon_live(
     up, dn, fl = triplet
 
     ml_snap = mh_ml_bundle.snapshot(hz) if mh_ml_bundle else None
-    fusion_ml = bool(ml_snap and ml_snap.fusion_available)
+    fusion_ml = bool(ml_snap and ml_snap.horizon_fusion_available)
     provenance = f"predictive_mh_fusion_primary_{hz}"
     if not fusion_ml:
         env_blend = os.environ.get("ED_MH_FALLBACK_CANONICAL_BLEND", "0.0")

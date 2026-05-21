@@ -24,7 +24,7 @@ def test_nan_prob_up_yields_unavailable_snapshot():
         missing_models=[],
     )
     snap = fusion_payload_to_horizon_snapshot("1c", fus)
-    assert snap.fusion_available is False
+    assert snap.horizon_fusion_available is False
     assert snap.provenance == "fusion_unavailable_non_finite_probs"
     assert snap.dominant_direction == "flat"
 
@@ -43,7 +43,7 @@ def test_dominant_direction_from_triplet_not_upstream_label():
         missing_models=[],
     )
     snap = fusion_payload_to_horizon_snapshot("5c", fus)
-    assert snap.fusion_available is True
+    assert snap.horizon_fusion_available is True
     assert snap.dominant_direction == "down"
     assert snap.prob_down == pytest.approx(0.7)
 

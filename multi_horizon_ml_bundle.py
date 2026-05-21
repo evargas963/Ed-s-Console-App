@@ -28,7 +28,7 @@ def _unavailable_horizon_snapshot(hz: str, *, provenance: str) -> HorizonMLFusio
     t = 1.0 / 3.0
     return HorizonMLFusionSnapshot(
         horizon_slug=hz,
-        fusion_available=False,
+        horizon_fusion_available=False,
         prob_up=t,
         prob_down=t,
         prob_flat=t,
@@ -65,7 +65,7 @@ def _safe_norm_triplet(
 @dataclass(frozen=True)
 class HorizonMLFusionSnapshot:
     horizon_slug: str
-    fusion_available: bool
+    horizon_fusion_available: bool
     prob_up: float
     prob_down: float
     prob_flat: float
@@ -89,9 +89,9 @@ class MultiHorizonMLFusionBundle:
     def snapshot(self, hz: str) -> Optional[HorizonMLFusionSnapshot]:
         return self.by_horizon.get(hz)
 
-    def fusion_available(self, hz: str) -> bool:
+    def horizon_fusion_available(self, hz: str) -> bool:
         s = self.by_horizon.get(hz)
-        return bool(s and s.fusion_available)
+        return bool(s and s.horizon_fusion_available)
 
 
 def fusion_payload_to_horizon_snapshot(hz: str, fus: Any) -> HorizonMLFusionSnapshot:
@@ -118,7 +118,7 @@ def fusion_payload_to_horizon_snapshot(hz: str, fus: Any) -> HorizonMLFusionSnap
     mm = tuple(str(x) for x in (getattr(fus, "missing_models", None) or []) if x)
     return HorizonMLFusionSnapshot(
         horizon_slug=hz,
-        fusion_available=True,
+        horizon_fusion_available=True,
         prob_up=pu,
         prob_down=pd,
         prob_flat=pf,

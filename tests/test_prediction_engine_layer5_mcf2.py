@@ -24,12 +24,12 @@ def test_norm_triplet_floats_valid():
 
 
 def test_fusion_snap_triplet_none_when_norm_degenerate():
-    snap = SimpleNamespace(fusion_available=True, prob_up=0.0, prob_down=0.0, prob_flat=0.0)
+    snap = SimpleNamespace(horizon_fusion_available=True, prob_up=0.0, prob_down=0.0, prob_flat=0.0)
     assert _fusion_snap_triplet(snap) is None
 
 
 def test_fusion_snap_triplet_valid_when_probs_ok():
-    snap = SimpleNamespace(fusion_available=True, prob_up=0.5, prob_down=0.3, prob_flat=0.2)
+    snap = SimpleNamespace(horizon_fusion_available=True, prob_up=0.5, prob_down=0.3, prob_flat=0.2)
     tri = _fusion_snap_triplet(snap)
     assert tri is not None
     assert math.isclose(tri[0], 0.5)

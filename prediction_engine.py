@@ -145,8 +145,8 @@ def _tri_probs(p: Optional[dict]) -> tuple[Optional[float], Optional[float], Opt
 
 
 def _fusion_snap_triplet(snap) -> Optional[tuple[float, float, float]]:
-    """Per-horizon fusion directional triplet; None when fusion_available but probs missing."""
-    if snap is None or not getattr(snap, "fusion_available", False):
+    """Per-horizon fusion directional triplet; None when horizon_fusion_available but probs missing."""
+    if snap is None or not getattr(snap, "horizon_fusion_available", False):
         return None
     pu = getattr(snap, "prob_up", None)
     pd = getattr(snap, "prob_down", None)
@@ -234,7 +234,7 @@ def _overlay_multi_horizon_ml_on_product_triplets(
             out[hz] = (eu, ed, ef)
             src[hz] = (
                 "empirical_histogram"
-                if snap is None or not getattr(snap, "fusion_available", False)
+                if snap is None or not getattr(snap, "horizon_fusion_available", False)
                 else "fusion_directional_missing"
             )
             continue
