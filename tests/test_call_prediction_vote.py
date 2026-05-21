@@ -58,7 +58,7 @@ def test_low_conf_prediction_lean_counts_for_stack_threshold():
         probability_down=0.30,
         probability_flat=0.23,
         confidence="low",
-        provenance="test",
+        provenance="bayesian_fusion",
     )
 
     rules = RulesCard(

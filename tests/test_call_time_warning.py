@@ -64,7 +64,7 @@ def _minimal_rules_pred_regime_fusion():
         probability_down=0.24,
         probability_flat=0.18,
         confidence="high",
-        provenance="test",
+        provenance="bayesian_fusion",
     )
 
     rules = RulesCard(

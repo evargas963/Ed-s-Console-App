@@ -28,7 +28,7 @@ def test_validate_trade_fusion_gate_exception_fails_probability_layer():
         probability_down=0.2,
         probability_flat=0.2,
         confidence="high",
-        provenance="fusion",
+        provenance="bayesian_fusion",
     )
     inp = SimpleNamespace(
         ticker="SPY",
@@ -63,7 +63,7 @@ def test_validate_trade_eae_gate_uses_vol_regime_risk_multiplier():
         probability_down=0.2,
         probability_flat=0.2,
         confidence="high",
-        provenance="fusion",
+        provenance="bayesian_fusion",
     )
     with patch("call_engine._stop_distance", return_value=2.0) as stop_fn:
         _validate_trade(
@@ -131,7 +131,7 @@ def _pred() -> PredictiveCard:
         forward_prob_down=0.2,
         forward_prob_flat=0.2,
         forward_confidence="high",
-        forward_provenance="fusion",
+        forward_provenance="bayesian_fusion",
         samples_used=10,
         model_note="",
         timeframe_reads={},
@@ -150,7 +150,7 @@ def test_compute_call_none_mins_to_close_does_not_crash():
         probability_down=0.2,
         probability_flat=0.2,
         confidence="high",
-        provenance="fusion",
+        provenance="bayesian_fusion",
     )
     fusion = SimpleNamespace(
         available=True,
@@ -192,7 +192,7 @@ def test_compute_call_none_vol_regime_forces_wait():
         probability_down=0.2,
         probability_flat=0.2,
         confidence="high",
-        provenance="fusion",
+        provenance="bayesian_fusion",
     )
     fusion = SimpleNamespace(
         available=True,

@@ -253,7 +253,7 @@ def test_net_delta_none_propagates_to_call_sizing_decision():
         probability_down=0.25,
         probability_flat=0.20,
         confidence="medium",
-        provenance="test",
+        provenance="bayesian_fusion",
     )
     regime = SimpleNamespace(primary="trend_continuation", confidence="medium")
     vol_regime = SimpleNamespace(
