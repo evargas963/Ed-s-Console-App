@@ -10,17 +10,29 @@ import calibration.run_production_accumulation_validation as accum
 
 
 def test_production_accumulation_harness_passes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Production _TICKERS_ROT is (SPY*30 + QQQ*30 + IWM*30 + DIA*30) = 120.
+    # In environments that don't have every ticker trained (e.g. DIA model bundle
+    # absent in local dev), restrict the rotation to whatever tickers ARE trained
+    # — the harness mechanism is what's being verified, not coverage of every
+    # production ticker. At least 1 ticker present is required; if zero, real fail.
     repo_root = Path(__file__).resolve().parents[1]
-    required_tickers = set(accum._TICKERS_ROT)
+    full_set = set(accum._TICKERS_ROT)
     model_roots = (repo_root / "models" / "active_1c", repo_root / "models" / "active")
-    missing = sorted(
-        ticker for ticker in required_tickers if not any((root / ticker).is_dir() for root in model_roots)
+    present = sorted(
+        ticker for ticker in full_set
+        if any((root / ticker).is_dir() for root in model_roots)
     )
-    if missing:
-        pytest.skip(
-            f"accumulation harness needs trained 1c model bundles for: {missing} "
-            f"(checked: {[str(root) for root in model_roots]})"
-        )
+    assert present, (
+        f"accumulation harness needs at least one trained 1c model bundle from "
+        f"{sorted(full_set)} present under {[str(r) for r in model_roots]}"
+    )
+
+    per_ticker = 30
+    restricted_rot = []
+    for tk in present:
+        restricted_rot.extend([tk] * per_ticker)
+    monkeypatch.setattr(accum, "_TICKERS_ROT", restricted_rot)
+    monkeypatch.setattr(accum, "N_ACCUM", len(restricted_rot))
 
     db = tmp_path / "acc.db"
     rep = tmp_path / "rep.json"
