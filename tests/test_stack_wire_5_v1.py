@@ -26,18 +26,19 @@ def test_order_flow_engine_composite_constants_exist_and_used():
     assert ofe.OF_COMPOSITE_MIN_LEGS == 2
 
     body = inspect.getsource(ofe)
+    # STACK-WIRE-5-CAND-TEST-SLICE-TIGHTEN fix: cover the full _compute_order_flow_score
+    # body (not just the ~4 closing lines between min_present= and def _direction).
     tail = body[
-        body.index("min_present=OF_COMPOSITE_MIN_LEGS") : body.index("def _direction")
+        body.index("def _compute_order_flow_score") : body.index("def _direction")
     ]
     banned = [
         r"(?<![\w.])0\.25(?![\w.])",
         r"(?<![\w.])0\.20(?![\w.])",
         r"(?<![\w.])0\.15(?![\w.])",
         r"(?<![\w.])0\.05(?![\w.])",
-        r"(?<![\w.])0\.15(?![\w.])",
     ]
     for pat in banned:
-        assert re.search(pat, tail) is None, f"literal still in order_flow_engine scoring tail: {pat}"
+        assert re.search(pat, tail) is None, f"literal still in _compute_order_flow_score: {pat}"
 
 
 def test_call_engine_consumes_order_flow_direction_not_second_score():
