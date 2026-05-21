@@ -152,12 +152,13 @@
 **Umbrella deliverable:** `governance/STACK_WIRING_INTEGRITY_MAP.md` (or JSON) — one table: **surface** (Decision Command rail, per-hz cards, Call/Put legacy, diagnostics strip) × **field** × **producer module** × **transport** (SSE `live_quote`, SSE Tier C JSON, L1 light, poll) × **client clock** (`lastFastTs`, `lastRenderTimestamp`, `decision_generation_id`, `l1_generation`) × **stale/when-withhold rule** × **test/fixture** × **OPEN_ITEMS id**. Sign-off only when map is complete and regression bar green.
 
 **Phase 0 — ingest server.py audit (blocking)**
-- [x] **STACK-WIRE-0** @ `054c873` — `governance/STACK_WIRING_INTEGRITY_MAP.md` seeded (17 FIND rows + 4 anchors + schema); `server.py` stale `pre_get_db`/`get_db` diag removed post FIND-8 hoist; tests `tests/test_stack_wire_0_v1.py`. **Phase 3 follow-ons filed (not implemented here):** `STACK-WIRE-3-UI-SPREAD-SEMANTIC`, `STACK-WIRE-3-UI-PRESSURE-UNAVAILABLE`, `STACK-WIRE-3-UI-R-UNITS-NONE`, `STACK-WIRE-3-UI-SIGNALS-ENGINE-FAILED-BADGE`. **Gate:** STACK-WIRE-1 unblocked.
+- [x] **STACK-WIRE-0** @ `054c873` — `governance/STACK_WIRING_INTEGRITY_MAP.md` seeded (17 FIND rows + 4 anchors + schema); `server.py` stale `pre_get_db`/`get_db` diag removed post FIND-8 hoist; tests `tests/test_stack_wire_0_v1.py`. **Phase 3 follow-ons filed (not implemented here):** `STACK-WIRE-3-UI-SPREAD-SEMANTIC`, `STACK-WIRE-3-UI-PRESSURE-UNAVAILABLE`, `STACK-WIRE-3-UI-R-UNITS-NONE`, `STACK-WIRE-3-UI-SIGNALS-ENGINE-FAILED-BADGE`, `STACK-WIRE-3-UI-IV-RANK`. **Gate:** STACK-WIRE-1 unblocked.
 
 - [ ] **STACK-WIRE-3-UI-SPREAD-SEMANTIC** — `static/index.html`: consumer dispatch on `spread_semantic` (`fraction` vs `dollar`); legacy back-compat when key absent. Producer: FIND-SERVERPY-5 @ `05c48d8`.
 - [ ] **STACK-WIRE-3-UI-PRESSURE-UNAVAILABLE** — Confirm `pressure_label` UI treats `unavailable_no_dpi_or_hedging_flow_direction` as withheld (grep `static/index.html`; close fast if already correct). Producer: FIND-SERVERPY-9 @ `05c48d8`.
 - [ ] **STACK-WIRE-3-UI-R-UNITS-NONE** — Confirm UI treats `r_units=None` as withheld (not zero); verify SnapshotRow NULL-ability. Producer: FIND-SERVERPY-11 @ `05c48d8`.
 - [ ] **STACK-WIRE-3-UI-SIGNALS-ENGINE-FAILED-BADGE** — Add UI surface for `stack_runtime.signals_engine_failed` (distinguish signals crash vs fusion/MC-only INVALID). Producer: FIND-SERVERPY-15 @ `05c48d8`.
+- [ ] **STACK-WIRE-3-UI-IV-RANK** — Confirm `iv_rank` / `iv_percentile` card bind in `static/index.html` (no consumer grep @ STACK-WIRE-0); wire UI element or withhold when `None`. Producer: FIND-SERVERPY-8 @ `05c48d8`.
 
 **Phase 1 — backend producer / payload cone (money path)**
 - [ ] **STACK-WIRE-1** — Trace map: `signals.py` → `build_market_state` / `compute_signals` → `live_decision_bundle.stamp_decision_bundle` → `server.py` emit paths (`/api/analytics/state`, `/api/stream`, fast quote, L1 light). Verify `decision_generation_id`, `_server_build_ts`, `stack_runtime.stack_mode`, `canonical_provenance`, `state_error` / `state_error_detail`, `stack_integrity_events` on every tick path. Include bg analytics skip (`decision_generation_skipped`) vs live tick.
@@ -202,6 +203,33 @@
 - [ ] **OBS-FPC1, OBS-FPC2** — fusion policy audit strings; replay parse risk if wiring map touches calibration replay UI.
 - [ ] **OBS-TC1/2/3** — training cache metadata (accepted fail-closed; re-verify if server.py scheduler paths change).
 - [ ] **Action 12.7+** non-card modules — complete for repo hygiene; not blocking STACK-WIRING sign-off unless they feed live authority fields.
+
+**Phase 6 — edge measurement framework (parking slot; no implementation until Phases 0–5 close and ablation justifies)**
+- [ ] **STACK-WIRE-6-EDGE-MEASUREMENT-FRAMEWORK** — **Heart-of-system** measurement program: prove which **(component × horizon)** contributions carry real edge before expanding live surface or training scope. **Not the same row as STACK-WIRE-6** (live vs replay parity @ Phase 1).
+
+  **Intent — per-horizon feature scoping:** Score and ablate features **per decision horizon** (1m / 5m / 15m / 60m product slugs), not one global feature bag. Each horizon’s live card + fusion path gets an explicit “what moved the needle?” ledger tied to `PRIMARY_DECISION_HORIZONS` authority.
+
+  **Inventory gap:** ~**25 registered analytics** in repo/feature contracts vs **~10-field MVP** currently driving operator-facing cards — map the delta; anything not on a card path is a candidate for ablation inclusion or deliberate deferral (document why).
+
+  **Unused / under-wired feature candidates (first ablation roster):**
+  - ETF **constituent-weighted confluence**
+  - **Sector strength** aggregate
+  - **IWM deep confluence**
+  - **Charm** (net charm / charm-direction family — see `math_exposure_core`, model meta feature lists)
+
+  **Cheapest first step — MC ablation toggle:** Reuse existing stack eval pattern (`fusion_without_mc` / dead `MonteCarloOutput` path in `arch_competition/stack_bundle_eval_v1.py` class of tooling). Toggle MC participation per horizon slice before touching new feature engineering. Establishes baseline “does MC earn its complexity?” on SPY/QQQ walk-forward slices.
+
+  **Methodology — walk-forward purged CV:** Time-ordered evaluation only; **purged** train/test splits with embargo (AFML Ch. 7–12 class). No random k-fold on overlapping bars. Report log loss / Brier / calibration drift + stability across folds — not single in-sample peak.
+
+  **Literature anchors (design vocabulary, not implementation mandates):**
+  - **Numerai** — neutralized, per-era feature importance / stake-weighted validation discipline
+  - **TFT** (Temporal Fusion Transformer) — static vs time-varying covariate split; horizon-specific decoder heads
+  - **AFML** (*Advances in Financial Machine Learning*, López de Prado) — purged k-fold, meta-labeling, feature importance under leakage controls
+  - **Kearns–Nevmyvaka** — market microstructure + ML evaluation rigor for sequential decision data
+
+  **Gate rule:** **Nothing in Phase 6 ships to production** (new card fields, scheduler features, fusion weights) until ablation manifests show **justified lift** on held-out purged folds. STACK-WIRING Phases 0–5 must close first so producer→UI wiring is trustworthy before edge claims.
+
+  **Trigger:** `go stack-wire-6-edge` after `go stack-wiring-integrity-signoff` + operator review of ablation backlog. **Deliverable (future):** `governance/EDGE_MEASUREMENT_FRAMEWORK.md` or extension rows in `STACK_WIRING_INTEGRITY_MAP.md` under a fifth anchor **Edge / ablation**.
 
 **Already closed (do not re-open; verify in wiring map only)**
 - Coherence tier-1/1.5: `time_et`, `fusion_contract`, `numeric_contract`, REPO_SWEEP EP/MT, MADA, LRC, FP1 + fixture completeness, MHMLB-NS1, LIVE_UI_INTEGRITY_V1 @ `5994aeb`, SWEEP-LRC-NAN, B2 render guards / tier-A blocks, COH-I-A/E/J, FIND-STACK-DIR1, etc. (see `[x]` rows above).
