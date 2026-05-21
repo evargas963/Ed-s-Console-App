@@ -348,11 +348,14 @@ MEGA1_TRACEABLE_INVENTORY: tuple[Mega1TraceableDerivation, ...] = (
     Mega1TraceableDerivation("websocket_adapter.py", 39, "WebSocketBarStream.is_connected", "NONE", None, (), None, "No market-field derivation: Abstract transport contract; no Schwab read."),
     Mega1TraceableDerivation("websocket_adapter.py", 44, "websocket_bars_stub", "NONE", None, (), None, "No market-field derivation: Unimplemented transport stub."),
     # ── big-audit inventory sync (functions added to production since last inventory pass) ──
-    Mega1TraceableDerivation("market_state.py", 505, "_ms_price_disp", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Display formatter helper for persisted ms_dict price fields; no Schwab wire derivation (_ms_price_disp)."),
-    Mega1TraceableDerivation("server.py", 550, "_invalidate_analytics_cache_after_bg_failures", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Internal analytics cache invalidation helper / no Schwab wire derivation (_invalidate_analytics_cache_after_bg_failures)."),
-    Mega1TraceableDerivation("server.py", 584, "_reset_analytics_bg_fail_count", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Internal background-failure counter reset helper (_reset_analytics_bg_fail_count)."),
-    Mega1TraceableDerivation("server.py", 588, "_record_analytics_bg_failure", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Internal background-failure counter increment helper (_record_analytics_bg_failure)."),
-    Mega1TraceableDerivation("server.py", 1911, "_filter_horizon_prob_bars_primary_only", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Reads persisted snapshot SQLite rows / horizon filter helper, not Schwab wire JSON (_filter_horizon_prob_bars_primary_only)."),
-    Mega1TraceableDerivation("server.py", 2295, "_parse_quote_node_session_fields", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Parses persisted quote-node session fields; not Schwab wire JSON (_parse_quote_node_session_fields)."),
+    # Reclassified post-Cursor independent audit (2026-05-21): _ms_price_disp + _filter_horizon_prob_bars_primary_only → NONE
+    # (pure formatter / pure ms_dict key filter, no derivation); _parse_quote_node_session_fields → DERIVED with
+    # producer_ref schwab_client.py:safe_get_quote (it IS a Schwab quote-leaf reader; specific leaves listed in justification).
+    Mega1TraceableDerivation("market_state.py", 505, "_ms_price_disp", "NONE", None, (), None, "Pure UI display formatter (`{x:.2f}` or em-dash). No market-field derivation."),
+    Mega1TraceableDerivation("server.py", 550, "_invalidate_analytics_cache_after_bg_failures", "NONE", None, (), None, "Internal analytics cache invalidation control flow. No market-field derivation."),
+    Mega1TraceableDerivation("server.py", 584, "_reset_analytics_bg_fail_count", "NONE", None, (), None, "Internal counter reset. No market-field derivation."),
+    Mega1TraceableDerivation("server.py", 588, "_record_analytics_bg_failure", "NONE", None, (), None, "Internal counter increment. No market-field derivation."),
+    Mega1TraceableDerivation("server.py", 1911, "_filter_horizon_prob_bars_primary_only", "NONE", None, (), None, "Filters ms_dict[`horizon_prob_bars`] to UI primary horizons (1m/5m/15m/60m). No Schwab wire derivation."),
+    Mega1TraceableDerivation("server.py", 2295, "_parse_quote_node_session_fields", "DERIVED", None, ("schwab_client.py:safe_get_quote",), None, "Canonical Schwab quote-node reader (quote → extended → regular fallbacks). Reads Schwab quote leaves (lastPrice / mark / bid / ask / quoteTime / tradeTime + extended + regular variants) and derives ``spot`` + ``spot_source`` via lastPrice/mark precedence."),
 )
 
