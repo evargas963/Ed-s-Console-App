@@ -180,5 +180,9 @@ MEGA3_TRACEABLE_INVENTORY: tuple[Mega3TraceableDerivation, ...] = (
     Mega3TraceableDerivation("volatility_regime.py", 112, "_safe_floats", "NONE", None, (), None, "No market-field derivation: AST-listed _safe_floats; no legacy row."),
     Mega3TraceableDerivation("volatility_regime.py", 130, "_garch_trend", "NONE", None, (), None, "No market-field derivation: AST-listed _garch_trend; no legacy row."),
     Mega3TraceableDerivation("volatility_regime.py", 56, "classify_volatility_regime", "DERIVED", None, ("market_state.py:build_market_state",), None, "Vol policy from rv/iv/atr/vix upstream fields."),
+    # ── big-audit inventory sync (functions added to production since last inventory pass) ──
+    Mega3TraceableDerivation("features/fusion_policy_contract.py", 43, "fusion_policy_columns_horizon_failed", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Internal helper returning the canonical-failed column tuple for a horizon; not Schwab wire derivation (fusion_policy_columns_horizon_failed)."),
+    Mega3TraceableDerivation("features/mvp_source_coercion.py", 34, "_require_mapping", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Internal type-guard helper for source-mapping inputs; not Schwab wire derivation (_require_mapping)."),
+    Mega3TraceableDerivation("features/signal_layer_v1.py", 43, "meta_n_bars_int", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Internal meta-bar count coercion helper; not Schwab wire derivation (meta_n_bars_int)."),
 )
 

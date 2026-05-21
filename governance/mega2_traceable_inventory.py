@@ -241,5 +241,7 @@ MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("order_flow_streaming.py", 437, "start_order_flow_stream", "DERIVED", None, ("order_flow_live_state.py:get_content_for_symbol",), None, "Delegates to Schwab transport producers for start_order_flow_stream."),
     Mega2TraceableDerivation("order_flow_streaming.py", 468, "stop_order_flow_stream", "ALLOWLISTED", None, (), "mega2_schwab_stream_l1", "Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (stop_order_flow_stream)."),
     Mega2TraceableDerivation("order_flow_streaming.py", 504, "get_stream_thread", "ALLOWLISTED", None, (), "mega2_schwab_stream_l1", "Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (get_stream_thread)."),
+    # ── big-audit inventory sync (functions added to production since last inventory pass) ──
+    Mega2TraceableDerivation("order_flow_engine.py", 799, "_weighted_mean_present", "DERIVED", None, ("order_flow_engine.py:OrderFlowEngine.compute",), None, "Composite mean over present legs only — derives order_flow composite from Schwab-derived inputs (_weighted_mean_present)."),
 )
 

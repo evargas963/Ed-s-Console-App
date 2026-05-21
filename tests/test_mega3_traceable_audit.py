@@ -49,7 +49,7 @@ CATEGORICAL_JUST_RE = re.compile(
     r"no single schwab|reads or composes market fields)\b",
     re.I,
 )
-MEGA3_ROW_COUNT = 128
+MEGA3_ROW_COUNT = 131  # 128 + 3 big-audit inventory sync
 _PRIOR_MEGA_FILES = MEGA1_FILES | MEGA2_FILES
 
 

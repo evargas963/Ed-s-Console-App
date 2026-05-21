@@ -50,7 +50,8 @@ CLOSING_DISPOSITIONS = frozenset({"SCHWAB_LEAF", "REPLACED", "ALLOWLISTED"})
 #   201 — baseline (1ece9b3)
 #   205 — +3 (1fc5ce7): _strike_total_oi, _verdict_unavailable, _iwm_confluence_unavailable
 #         +1 (a00e78e): _sector_strength_unavailable
-MEGA2_ROW_COUNT = 205
+#   206 — +1 big-audit inventory sync: _weighted_mean_present (order_flow_engine.py)
+MEGA2_ROW_COUNT = 206
 
 
 def _mega_bundles() -> tuple[MegaInventoryBundle, ...]:

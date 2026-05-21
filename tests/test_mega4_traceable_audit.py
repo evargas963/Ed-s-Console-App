@@ -53,7 +53,7 @@ CATEGORICAL_JUST_RE = re.compile(
     r"no single schwab|reads or composes market fields)\b",
     re.I,
 )
-MEGA4_ROW_COUNT = 750
+MEGA4_ROW_COUNT = 769  # 750 + 22 big-audit inventory sync - 3 stale ml_predict.py removals
 MEGA4_FILE_COUNT = 82
 _PRIOR_MEGA_FILES = MEGA1_FILES | MEGA2_FILES | MEGA3_FILES
 
