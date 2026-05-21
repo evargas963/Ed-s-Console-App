@@ -11,6 +11,13 @@ from typing import Any, Optional
 
 from ml_horizon import ALL_GOVERNED_HORIZONS, ML_HORIZON_SLUGS
 
+# ── STACK-WIRE-4: named thresholds (Phase 6 ablation surface) ──
+MC_BASE_MODEL_WEIGHT_XGBOOST: float = 0.40
+MC_BASE_MODEL_WEIGHT_LSTM: float = 0.35
+MC_BASE_MODEL_WEIGHT_TRANSFORMER: float = 0.25
+MC_DIRECTION_CONFIDENCE_HIGH_THRESHOLD: float = 0.5
+MC_DIRECTION_CONFIDENCE_MEDIUM_THRESHOLD: float = 0.4
+
 # Full inference loop uses all governed slugs (primary + secondary).
 GOVERNED_STACK_HORIZONS: tuple[str, ...] = ALL_GOVERNED_HORIZONS
 assert GOVERNED_STACK_HORIZONS == ML_HORIZON_SLUGS
@@ -59,13 +66,23 @@ def mc_model_direction_inputs(
             if tot > 0:
                 nu, nd = float(u) / tot, float(d) / tot
                 mx = max(nu, nd, float(f) / tot)
-                conf = "high" if mx >= 0.5 else "medium" if mx >= 0.4 else "low"
+                conf = (
+                    "high"
+                    if mx >= MC_DIRECTION_CONFIDENCE_HIGH_THRESHOLD
+                    else "medium"
+                    if mx >= MC_DIRECTION_CONFIDENCE_MEDIUM_THRESHOLD
+                    else "low"
+                )
                 return nu, nd, conf, avail, "stack_probs_meta_or_weighted"
 
     ups: list[float] = []
     dns: list[float] = []
     weights: list[float] = []
-    wmap = {"xgboost": 0.40, "lstm": 0.35, "transformer": 0.25}
+    wmap = {
+        "xgboost": MC_BASE_MODEL_WEIGHT_XGBOOST,
+        "lstm": MC_BASE_MODEL_WEIGHT_LSTM,
+        "transformer": MC_BASE_MODEL_WEIGHT_TRANSFORMER,
+    }
     for name, out, w in (
         ("xgboost", xgb_out, wmap["xgboost"]),
         ("lstm", lstm_out, wmap["lstm"]),
@@ -84,7 +101,13 @@ def mc_model_direction_inputs(
         au = sum(p * w for p, w in zip(ups, weights)) / tw
         ad = sum(p * w for p, w in zip(dns, weights)) / tw
         mx = max(au, ad, 1.0 - au - ad)
-        conf = "high" if mx >= 0.5 else "medium" if mx >= 0.4 else "low"
+        conf = (
+            "high"
+            if mx >= MC_DIRECTION_CONFIDENCE_HIGH_THRESHOLD
+            else "medium"
+            if mx >= MC_DIRECTION_CONFIDENCE_MEDIUM_THRESHOLD
+            else "low"
+        )
         return au, ad, conf, avail, "average_available_base_models"
 
     return (1.0 / 3.0, 1.0 / 3.0, "low", avail, "uniform_no_base_tri_class_signal")

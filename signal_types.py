@@ -195,7 +195,8 @@ class CanonicalForecast:
 # Sole tradable canonical provenance values (producer cone audit FIND-FP1-3 @ 4edeefc).
 TRADABLE_CANONICAL_PROVENANCE: frozenset[str] = frozenset({"bayesian_fusion"})
 
-# Uniform 1/3 placeholders in canonical_forecast_from_fusion are non-tradable; do not treat as real mass.
+# Diagnostic / known-emitted subset only. Authority is the inverted allow-list
+# ``fusion_contract.canonical_provenance_is_tradable``. Do NOT use this set as a gate.
 NON_TRADABLE_CANONICAL_PROVENANCE: frozenset[str] = frozenset(
     {
         "fusion_unavailable",
