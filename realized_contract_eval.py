@@ -39,8 +39,11 @@ log = logging.getLogger(__name__)
 
 # STACK-WIRE-6b FIND-WIRE6-3: per-contract multiplier is derived from the
 # Schwab leaf ``chains.callExpDateMap.*.multiplier`` / ``putExpDateMap.*.multiplier``
-# via ``_contract_multiplier`` (fail-closed when leaf missing). No hardcoded 100.
+# via ``_contract_multiplier``. Modern captures include the leaf; legacy archived
+# snapshot rows (pre-multiplier-emission date) fall back to LEGACY_CHAIN_MULTIPLIER_DEFAULT
+# per GOVERNED_EXCEPTION O-54 (interim — sunset when legacy snapshots backfilled or aged out).
 DEFAULT_CONTRACTS = 1
+LEGACY_CHAIN_MULTIPLIER_DEFAULT: int = 100  # GOVERNED_EXCEPTION O-54 — see OPERATOR_DECISION_REGISTER.md
 
 # STACK-WIRE-6b FIND-WIRE6-4: strike-match tolerances.
 STRIKE_MATCH_TOL_PENNY: float = 0.011  # strike-to-strike row match (sub-penny float drift)
@@ -229,21 +232,28 @@ def _f(v) -> Optional[float]:
 def _contract_multiplier(ct: dict) -> Optional[int]:
     """Read Schwab ``chains.*.multiplier`` leaf from a chain row (FIND-WIRE6-3).
 
-    Fail-closed: returns None when leaf is missing or invalid. No hardcoded 100
-    default — equity options carry 100, but mini and index contracts carry
-    different values. Per SCHWAB FULL REPO directive, the leaf is read every time.
+    Three outcomes per GOVERNED_EXCEPTION O-54:
+    - Leaf present + valid: return the int (Schwab authority — equity 100, mini 10, etc.).
+    - Leaf ABSENT (key not in row or None): return ``LEGACY_CHAIN_MULTIPLIER_DEFAULT`` (= 100).
+      Archived snapshot capture predates the multiplier-emission upgrade; ~50% of historical
+      ``option_chain_json`` rows lack the field. Standard equity options use 100.
+    - Leaf present but INVALID (non-numeric, zero, negative): return None — fail-closed on
+      data corruption, NOT on legacy absence. Caller skips the row.
+
+    Modern (post-leaf-emission) captures use the Schwab leaf directly. Going-forward snapshot
+    captures MUST preserve the leaf via ``serialize_option_chain_for_eval``.
     """
     if not isinstance(ct, dict):
         return None
-    raw = ct.get("multiplier")
-    if raw is None:
-        return None
+    if "multiplier" not in ct or ct["multiplier"] is None:
+        return LEGACY_CHAIN_MULTIPLIER_DEFAULT  # O-54 legacy fallback
+    raw = ct["multiplier"]
     try:
         n = int(float(raw))
     except (TypeError, ValueError):
-        return None
+        return None  # invalid (corrupt data) — fail-closed
     if n <= 0:
-        return None
+        return None  # invalid (non-positive) — fail-closed
     return n
 
 

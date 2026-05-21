@@ -41,18 +41,25 @@ def test_realized_contract_eval_named_constants_present():
     assert not hasattr(rce, "OPTION_MULTIPLIER"), "OPTION_MULTIPLIER constant must be removed"
 
 
-def test_contract_multiplier_reads_schwab_leaf_fail_closed():
-    """FIND-WIRE6-3: _contract_multiplier reads chains.*.multiplier; fail-closed on missing."""
+def test_contract_multiplier_reads_schwab_leaf_with_legacy_fallback():
+    """FIND-WIRE6-3 (revised per GOVERNED_EXCEPTION O-54): _contract_multiplier reads chains.*.multiplier.
+
+    Three outcomes:
+    - Leaf PRESENT + valid → return int (Schwab authority).
+    - Leaf ABSENT → LEGACY_CHAIN_MULTIPLIER_DEFAULT (= 100). Archived snapshots
+      captured pre-multiplier-emission have ~50% missing-multiplier rows.
+    - Leaf present but INVALID → None (fail-closed on data corruption).
+    """
     # Valid Schwab leaf — equity option (multiplier=100)
     assert rce._contract_multiplier({"multiplier": 100}) == 100
     # String coercion (Schwab can send as string)
     assert rce._contract_multiplier({"multiplier": "100"}) == 100
     # Mini contract (non-standard multiplier)
     assert rce._contract_multiplier({"multiplier": 10}) == 10
-    # Fail-closed: missing leaf, no fabricated 100 default
-    assert rce._contract_multiplier({}) is None
-    assert rce._contract_multiplier({"multiplier": None}) is None
-    # Fail-closed: invalid value
+    # O-54 legacy fallback: leaf absent → default to LEGACY_CHAIN_MULTIPLIER_DEFAULT
+    assert rce._contract_multiplier({}) == rce.LEGACY_CHAIN_MULTIPLIER_DEFAULT == 100
+    assert rce._contract_multiplier({"multiplier": None}) == rce.LEGACY_CHAIN_MULTIPLIER_DEFAULT == 100
+    # Fail-closed: invalid value (data corruption, NOT legacy absence)
     assert rce._contract_multiplier({"multiplier": 0}) is None
     assert rce._contract_multiplier({"multiplier": -1}) is None
     assert rce._contract_multiplier({"multiplier": "bad"}) is None

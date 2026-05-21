@@ -226,6 +226,14 @@ Constraint: One canonical producer per tracker class in `server.py`; thresholds 
 
 Permanent or interim: Permanent.
 
+### O-54
+
+Why: Schwab `chains.callExpDateMap.*.multiplier` / `putExpDateMap.*.multiplier` leaf is emitted in current API responses, but archived snapshot `option_chain_json` rows captured before the snapshot pipeline's multiplier-preservation upgrade lack the field. Sampling shows ~50% of archived rows are missing `multiplier` (snapshot 111555 @ 2026-03-25 = 0/40 rows with leaf; snapshot 207658 @ 2026-05-21 = 40/40). Strict fail-closed in `realized_contract_eval._contract_multiplier` would discard half the historical evaluation dataset and spike `skip_rate` above the 0.55 fail threshold.
+
+Constraint: `realized_contract_eval._contract_multiplier` returns `LEGACY_CHAIN_MULTIPLIER_DEFAULT = 100` ONLY when the `multiplier` key is ABSENT from the chain row (legacy capture). When the key is present but INVALID (non-numeric, zero, negative), the function still fail-closes (returns None → row skip via "missing_multiplier"). Modern (post-multiplier-emission) captures use the Schwab leaf directly. Going-forward snapshot captures already preserve the leaf via `realized_contract_eval.serialize_option_chain_for_eval` (which calls `dict(ct)`). The fallback value 100 reflects the standard equity-option multiplier (SPY / QQQ / IWM). Mini contracts (10) and index-future options (varies) on archived data MAY be misattributed if mixed in the legacy window — sample inspection of the legacy date range shows only SPY / QQQ / IWM tickers.
+
+Permanent or interim: Interim. Sunset when (a) legacy snapshots prior to the multiplier-emission date are backfilled via Schwab's archive endpoint, OR (b) the legacy time window ages out of the operational evaluation horizon. Until sunset, every trade row written by `_evaluate_realized_contract_trades_for_rows` carries the resolved multiplier in the CSV column; downstream consumers (`v2_decision/post_trade_attribution.py:180`) treat it as metadata pass-through.
+
 ---
 
 *End of register.*
