@@ -1,0 +1,146 @@
+"""STACK-WIRE-1 — backend producer/payload cone (FIND-WIRE1-1..6)."""
+
+from __future__ import annotations
+
+import inspect
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
+
+from features.stack_integrity_v1 import finalize_stack_integrity_v1, record_stack_degradation
+from live_decision_bundle import stamp_decision_bundle
+from market_state import MarketState
+from signals import canonical_forecast_from_fusion
+
+
+def test_decision_generation_id_always_present():
+    failed = {"signals_engine_failed": True}
+    stamp_decision_bundle(failed)
+    assert "decision_generation_id" in failed
+    assert failed["decision_generation_id"] is None
+    assert failed["decision_timestamp_utc"] is None
+    assert failed["decision_generation_skipped"] is True
+    assert failed["decision_tick_kind"] == "signals_engine_error"
+
+    ok = {"signals_engine_failed": False}
+    stamp_decision_bundle(ok)
+    assert isinstance(ok["decision_generation_id"], int)
+    assert ok["decision_generation_id"] > 0
+    assert isinstance(ok["decision_timestamp_utc"], float)
+    assert ok["decision_generation_skipped"] is False
+    assert ok["decision_tick_kind"] == "live"
+
+
+def test_server_build_ts_always_set():
+    import server
+
+    src = inspect.getsource(server._fetch_state)
+    stamp_idx = src.rindex("stamp_decision_bundle(ms_dict)")
+    ts_idx = src.rindex('ms_dict["_server_build_ts"] = time.time()')
+    assert stamp_idx < ts_idx
+
+
+def test_stack_runtime_fields_propagate():
+    import server
+
+    ms_dict = {
+        "fusion_available": True,
+        "mc_available": True,
+        "xgb_available": True,
+        "lstm_available": False,
+        "transformer_available": True,
+        "fusion_contributing_models": ["xgb", "transformer"],
+    }
+    server._attach_stack_runtime_and_governance(ms_dict, ticker="SPY")
+    rt = ms_dict["stack_runtime"]
+    assert rt["fusion_active"] is True
+    assert rt["mc_participated"] is True
+    assert rt["n_base_models_live"] == 2
+    assert rt["stack_mode"] in {"FULL", "PARTIAL", "DEGRADED", "INVALID"}
+    assert rt["contributing_models"] == ["xgb", "transformer"]
+
+
+def test_state_error_truncation_constant():
+    import market_state
+    import server
+
+    assert server.STATE_ERROR_DETAIL_MAX_CHARS == 120
+    ms_src = inspect.getsource(market_state.build_market_state)
+    srv_src = inspect.getsource(server._logger_fetch_and_log)
+    assert "[:120]" not in ms_src or "STATE_ERROR_DETAIL_MAX_CHARS" in ms_src
+    assert "[:120]" not in srv_src
+
+
+def test_stack_integrity_v1_propagates_mid_pipeline_events():
+    ms = MarketState()
+    record_stack_degradation(
+        ms.stack_integrity_events,
+        component="mc_fusion_payload_adjustment",
+        severity="warning",
+        reason="adjustment_failed",
+        authority_intact=False,
+    )
+    assert ms.signals_engine_failed is False
+    ms_dict: dict = {}
+    events = list(ms.stack_integrity_events)
+    ms_dict["stack_integrity_v1"] = finalize_stack_integrity_v1(events)
+    assert ms_dict["stack_integrity_v1"] is not None
+    assert ms_dict["stack_integrity_v1"].get("degraded") is True
+    pub = ms_dict["stack_integrity_v1"].get("events") or []
+    assert any(e.get("component") == "mc_fusion_payload_adjustment" for e in pub)
+
+
+def test_canonical_provenance_enum_complete():
+    u = 1.0 / 3.0
+    unavailable = canonical_forecast_from_fusion(None)
+    assert unavailable.provenance == "fusion_unavailable"
+
+    missing = canonical_forecast_from_fusion(
+        SimpleNamespace(available=True, prob_up=None, prob_down=None, prob_flat=None)
+    )
+    assert missing.provenance == "fusion_directional_missing"
+
+    invalid = canonical_forecast_from_fusion(
+        SimpleNamespace(
+            available=True,
+            prob_up=0.0,
+            prob_down=0.0,
+            prob_flat=0.0,
+            dominant_direction="up",
+            fusion_confidence="high",
+        )
+    )
+    assert invalid.provenance == "fusion_directional_invalid"
+
+    good = canonical_forecast_from_fusion(
+        SimpleNamespace(
+            available=True,
+            prob_up=0.5,
+            prob_down=0.3,
+            prob_flat=0.2,
+            dominant_direction="up",
+            fusion_confidence="high",
+        )
+    )
+    assert good.provenance == "bayesian_fusion"
+
+    from signals import _debug_canonical_override
+
+    override = _debug_canonical_override(good, "down", "user")
+    assert override.provenance == "debug_override:user"
+
+
+def test_r_units_none_propagates_end_to_end():
+    ms = MarketState()
+    assert ms.r_units is None
+    import server
+
+    assert getattr(ms, "r_units", None) is None
+
+
+def test_classify_stack_health_called_once_per_tick():
+    import signals
+
+    src = inspect.getsource(signals._compute_signals_impl)
+    assert "classify_stack_health(" not in src

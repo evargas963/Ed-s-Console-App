@@ -2,7 +2,10 @@
 
 **Program:** STACK-WIRING-INTEGRITY (OPEN_ITEMS rider @ `0a2e5ee` L148+)  
 **Phase 0 seed:** STACK-WIRE-0 @ AUDIT-CAND-SERVER-PY-FULL-READ code `05c48d8`  
+**Phase 1 seed:** STACK-WIRE-1 @ producer cone trace (FIND-WIRE1-1..6)  
 **Authority:** One row per `surface × field` wiring concern. Phases 1–4 extend this file; sign-off requires money-path roster complete.
+
+**`stack_integrity_v1` UI dispatch (STACK-WIRE-1):** Events with `authority_intact=False` → operator-visible degraded badge; `authority_intact=True` → info-tier (may be silent in UI).
 
 ## Schema (required columns — use verbatim for new rows)
 
@@ -34,7 +37,18 @@
 | surface | field | producer | transport | client_clock | stale_rule | test | open_items_id | phase_2_3 |
 |---------|-------|----------|-------------|--------------|------------|------|---------------|-------------|
 | Decision Command rail | `stack_runtime.stack_mode` | `server.py:1993` (`classify_stack_health` in `_attach_stack_runtime_and_governance`) | SSE Tier C (`/api/analytics/state`, `/api/stream`) | `decision_generation_id` + `_server_build_ts` | Enum only: FULL / PARTIAL / DEGRADED / INVALID; never inject non-authority values | `tests/test_audit_cand_server_py_full_read_v1.py::test_stack_mode_value_is_authority_only` | FIND-SERVERPY-15 | producer-only closed @ 05c48d8 |
-| Decision Command rail | `stack_runtime.signals_engine_failed` | `server.py:5365-5368` (`sr["signals_engine_failed"] = True` when `ms_dict.signals_engine_failed`) | SSE Tier C | `decision_generation_id` | When true, UI must distinguish signals crash from fusion/MC-only INVALID | `tests/test_audit_cand_server_py_full_read_v1.py::test_stack_mode_value_is_authority_only` | FIND-SERVERPY-15 | **Phase 3:** `STACK-WIRE-3-UI-SIGNALS-ENGINE-FAILED-BADGE` (no `static/index.html` consumer yet) |
+| Decision Command rail | `stack_runtime.signals_engine_failed` | `server.py:5365-5368` (`sr["signals_engine_failed"] = True` when `ms_dict.signals_engine_failed`) | SSE Tier C | `decision_generation_id` | When true, UI must distinguish signals crash from fusion/MC-only INVALID | `tests/test_audit_cand_server_py_full_read_v1.py::test_stack_mode_value_is_authority_only` | FIND-SERVERPY-15 | **Phase 3:** `STACK-WIRE-3-UI-SIGNALS-ENGINE-FAILED-BADGE` (mid-pipeline events require FIND-WIRE1-2 @ STACK-WIRE-1) |
+| Decision Command rail | `decision_generation_id` | `live_decision_bundle.stamp_decision_bundle` (`server.py:5368` call site) | SSE Tier C | `decision_generation_id` | Key always present; `None` when `signals_engine_failed`; check `decision_generation_skipped` first | `tests/test_stack_wire_1_v1.py::test_decision_generation_id_always_present` | STACK-WIRE-1 / FIND-WIRE1-4 |
+| Decision Command rail | `decision_timestamp_utc` | same | SSE Tier C | n/a | `None` when signals_engine_failed | (same test) | STACK-WIRE-1 / FIND-WIRE1-4 |
+| Decision Command rail | `decision_generation_skipped` | same (`True` on signals_engine_failed) | SSE Tier C | n/a | UI guards on this before comparing `decision_generation_id` | (same test) | STACK-WIRE-1 |
+| Decision Command rail | `decision_tick_kind` | same (`"live"` / `"signals_engine_error"`) | SSE Tier C | n/a | Operator-visible tick category | (same test) | STACK-WIRE-1 |
+| Decision Command rail | `_server_build_ts` | `server.py:5370` (after `stamp_decision_bundle`) | SSE Tier C / Tier A / fast quote | `lastRenderTimestamp` | Always set, even on signals_engine_failed | `tests/test_stack_wire_1_v1.py::test_server_build_ts_always_set` | STACK-WIRE-1 |
+| Decision Command rail | `stack_runtime.fusion_active` | `server.py:1992` (`_attach_stack_runtime_and_governance`) | SSE Tier C | `decision_generation_id` | From `ms_dict["fusion_available"]` | `tests/test_stack_wire_1_v1.py::test_stack_runtime_fields_propagate` | STACK-WIRE-1 |
+| Decision Command rail | `stack_runtime.mc_participated` | `server.py:1993` | SSE Tier C | `decision_generation_id` | From `ms_dict["mc_available"]` | (same test) | STACK-WIRE-1 |
+| Decision Command rail | `stack_runtime.n_base_models_live` | `server.py:1994` | SSE Tier C | `decision_generation_id` | 0–3 count | (same test) | STACK-WIRE-1 |
+| Decision Command rail | `stack_runtime.contributing_models` | `server.py:2000` | SSE Tier C | `decision_generation_id` | From `fusion_contributing_models` or policy cols | (same test) | STACK-WIRE-1 |
+| Decision Command rail | `state_error` + `state_error_detail` | `market_state.py:1340-1341` + server minimal-dict paths | SSE Tier C | `decision_generation_id` | Truncated to `STATE_ERROR_DETAIL_MAX_CHARS=120` | `tests/test_stack_wire_1_v1.py::test_state_error_truncation_constant` | STACK-WIRE-1 / FIND-WIRE1-6 |
+| Decision Command rail | `stack_integrity_v1` + `stack_integrity_events` | `server.py:5347-5354` (`finalize_stack_integrity_v1` when `ms.stack_integrity_events` non-empty) | SSE Tier C | `decision_generation_id` | Post-FIND-WIRE1-2: mid-pipeline WARNING-tier events included | `tests/test_stack_wire_1_v1.py::test_stack_integrity_v1_propagates_mid_pipeline_events` | STACK-WIRE-1 / FIND-WIRE1-2 |
 
 ---
 
@@ -42,9 +56,10 @@
 
 | surface | field | producer | transport | client_clock | stale_rule | test | open_items_id | phase_2_3 |
 |---------|-------|----------|-------------|--------------|------------|------|---------------|-------------|
-| Card cluster: Volatility / IV strip | `iv_rank`, `iv_percentile` | `server.py:3128` (`_ed_db` hoist) → `3657-3658` → `4997-4998` | SSE Tier C | `decision_generation_id` | Withhold (em-dash) when `None`; never synthetic IV rank | `tests/test_audit_cand_server_py_full_read_v1.py::test_ed_db_bound_before_iv_rank_references`, `::test_iv_rank_non_none_when_atm_iv_and_db_history` | FIND-SERVERPY-8 | producer-only closed @ 05c48d8 (**Phase 3 verify:** no `static/index.html` grep for keys — confirm card bind in prod or open UI row) |
+| Card cluster: Volatility / IV strip | `iv_rank`, `iv_percentile` | `server.py:3128` (`_ed_db` hoist) → `3657-3658` → `4997-4998` | SSE Tier C | `decision_generation_id` | Withhold (em-dash) when `None`; never synthetic IV rank | `tests/test_audit_cand_server_py_full_read_v1.py::test_ed_db_bound_before_iv_rank_references`, `::test_iv_rank_non_none_when_atm_iv_and_db_history` | FIND-SERVERPY-8 | producer-only closed @ 05c48d8 (**Phase 3:** `STACK-WIRE-3-UI-IV-RANK`) |
+| Card cluster: canonical provenance | `canonical_provenance` | `signals.canonical_forecast_from_fusion` → `market_state.py` L1535+ → `ms_dict` | SSE Tier C | `decision_generation_id` | `bayesian_fusion` tradable; `fusion_unavailable` / `fusion_directional_missing` / `fusion_directional_invalid` / `debug_override:*` withheld | `tests/test_stack_wire_1_v1.py::test_canonical_provenance_enum_complete` | STACK-WIRE-1 |
+| Card cluster: Position sizing strip | `r_units` | `market_state.py:1433` (post-FIND-WIRE1-1: `None` default) + `server.py:4569` / `5057` | SSE Tier C | `decision_generation_id` | Post-FIND-WIRE1-1: `None` reaches wire when call omits sizing | `tests/test_stack_wire_1_v1.py::test_r_units_none_propagates_end_to_end` | FIND-WIRE1-1 completes FIND-SERVERPY-11; **Phase 3:** `STACK-WIRE-3-UI-R-UNITS-NONE` |
 | Card cluster: Pressure / DPI strip | `pressure_label` (snapshot + `ms_dict`) | `server.py:4296` (`unavailable_no_dpi_or_hedging_flow_direction`) | SSE Tier C | `decision_generation_id` | Treat `unavailable_*` as withheld, not neutral styling | `tests/test_audit_cand_server_py_full_read_v1.py::test_pressure_label_unavailable_when_no_dpi_or_hedging_flow` | FIND-SERVERPY-9 | **Phase 3:** `STACK-WIRE-3-UI-PRESSURE-UNAVAILABLE` (grep verify; likely fast close) |
-| Card cluster: Position sizing strip | `r_units` | `server.py:4569` (snapshot), `5057` (response) | SSE Tier C + snapshot row | `decision_generation_id` | UI treats `None` as withheld, not `0.0` | `tests/test_audit_cand_server_py_full_read_v1.py::test_r_units_none_default_not_zero_float` | FIND-SERVERPY-11 | **Phase 3:** `STACK-WIRE-3-UI-R-UNITS-NONE` |
 
 ---
 

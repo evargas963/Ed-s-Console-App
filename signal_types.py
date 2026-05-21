@@ -295,6 +295,7 @@ class PredictiveCard:
     mh_prob_source_by_horizon: Optional[dict[str, str]] = None
     # Machine-visible degradation / fallback audit (see features/stack_integrity_v1.py)
     stack_integrity_v1: Optional[dict[str, Any]] = None
+    stack_integrity_events: Optional[list] = None
 
 @dataclass
 class TheCall:

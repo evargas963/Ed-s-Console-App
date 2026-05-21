@@ -1034,7 +1034,6 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         _dstep("signals_model_stack", ticker)
     # ── STACK ORDER 4, 5, 6: Feature Engineering, ML Models, Monte Carlo ──────
     # One stack + fusion per **governed** horizon (slug sets MC horizon bars + model artifacts).
-    from governed_stack_contract import classify_stack_health
     from features.fusion_policy_contract import fusion_payload_to_policy_columns
     from features.monte_carlo_stack_input import MonteCarloStackInputError, resolve_monte_carlo_stack_inputs
     from ml_predict import (
@@ -1250,11 +1249,6 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         }
         ml_bundle["secondary_support_fusion_audit"] = secondary_support_fusion_audit
         ml_bundle["multi_horizon_ml_fusion_bundle"] = mh_ml_fusion_bundle
-        ml_bundle["stack_health"] = classify_stack_health(
-            fusion_available=fusion_is_authoritative(fusion),
-            mc_available=bool(getattr(mc_out, "available", False)),
-            n_base_available=_n_base_live,
-        )
         ml_bundle["fusion_contributing_models"] = list(getattr(fusion, "contributing_models", []) or [])
         ml_bundle["fusion_missing_models"] = list(getattr(fusion, "missing_models", []) or [])
         ml_bundle["stack_integrity_events"] = stack_integrity_events

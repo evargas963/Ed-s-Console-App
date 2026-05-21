@@ -10,7 +10,9 @@ def test_stamp_decision_bundle_skips_generation_on_signals_engine_failed():
     out = stamp_decision_bundle(md)
     assert out["decision_tick_kind"] == "signals_engine_error"
     assert out.get("decision_generation_skipped") is True
-    assert "decision_generation_id" not in out
+    assert "decision_generation_id" in out
+    assert out["decision_generation_id"] is None
+    assert out.get("decision_timestamp_utc") is None
 
 
 def test_stamp_decision_bundle_increments_on_success():

@@ -652,6 +652,7 @@ def _empty_prediction(
         mh_empirical_product_triplets=dict(_mh_empirical_product),
         mh_prob_source_by_horizon=dict(mh_prob_source_by_horizon),
         stack_integrity_v1=_stack_integrity_v1,
+        stack_integrity_events=list(_mh_overlay_events) if _mh_overlay_events else None,
     )
 
 
@@ -898,6 +899,7 @@ def compute_prediction_core(
         mh_empirical_product_triplets=dict(_mh_empirical_product),
         mh_prob_source_by_horizon=dict(mh_prob_source_by_horizon),
         stack_integrity_v1=_stack_integrity_v1,
+        stack_integrity_events=list(_integrity_events) if _integrity_events else None,
     )
     return card, state
 

@@ -1105,6 +1105,7 @@ PARITY_RESID_MIN:    float = 0.10   # ignore residuals smaller than 10 cents
 # Accuracy history display limit
 ACCURACY_HISTORY_LIMIT: int = 50    # rows returned by get_accuracy_history
 RECENT_CROSSES_DISPLAY_LIMIT: int = 5  # level-cross events in operator UI
+STATE_ERROR_DETAIL_MAX_CHARS: int = 120  # truncate exception detail strings for UI / log carry
 PRICE_LEVELS_CACHE_SEC: int = 15  # intraday VWAP refresh (process-local)
 # Builds OHLC bars from spot price ticks. Server polls every ~30s, so:
 #   5-min bars = ~10 ticks per bar
@@ -1751,7 +1752,7 @@ def _logger_fetch_and_log(ticker: str) -> str:
         return "ok:fetch"
 
     except Exception as e:
-        err = str(e)[:120]
+        err = str(e)[:STATE_ERROR_DETAIL_MAX_CHARS]
         log.warning(f"Logger: {ticker} failed — {err}")
         with _logger_lock:
             _logger_stats.setdefault(ticker, {})
@@ -5343,20 +5344,20 @@ def _fetch_state(
     else:
         ms_dict["accuracy"] = None
 
-    if getattr(ms, "signals_engine_failed", False):
-        _events = list(getattr(ms, "stack_integrity_events", None) or [])
-        if _events:
-            try:
-                from features.stack_integrity_v1 import finalize_stack_integrity_v1
+    _events = list(getattr(ms, "stack_integrity_events", None) or [])
+    if _events:
+        try:
+            from features.stack_integrity_v1 import finalize_stack_integrity_v1
 
-                ms_dict["stack_integrity_v1"] = finalize_stack_integrity_v1(_events)
-            except Exception as e:
-                log.warning(
-                    "finalize_stack_integrity_v1 failed after signals_engine_error ticker=%s: %s",
-                    ticker,
-                    e,
-                    exc_info=True,
-                )
+            ms_dict["stack_integrity_events"] = _events
+            ms_dict["stack_integrity_v1"] = finalize_stack_integrity_v1(_events)
+        except Exception as e:
+            log.warning(
+                "finalize_stack_integrity_v1 failed ticker=%s: %s",
+                ticker,
+                e,
+                exc_info=True,
+            )
     _attach_stack_runtime_and_governance(ms_dict, ticker=ticker)
     if ms_dict.get("signals_engine_failed"):
         sr = ms_dict.get("stack_runtime")

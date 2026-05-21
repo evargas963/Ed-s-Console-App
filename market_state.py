@@ -224,7 +224,7 @@ class MarketState:
     risk_valid:         Optional[bool]  = None
     validation_summary: str             = ""
     # Formal Position Sizing
-    r_units:            float           = 0.0
+    r_units:            Optional[float] = None
     execution_mode:     str             = "NO_TRADE"
     sizing_summary:     str             = ""
     # The Call card — entry/stop/target are THE authoritative values
@@ -1125,6 +1125,7 @@ def build_market_state(
         try:
             if _don():
                 _dstep("market_state_pre_signals", ticker)
+            # function-local import: signals → market_state cycle via derive_zone; keep local to avoid ImportError at module load.
             from signals import SignalInput, compute_signals
             from market_context import iwm_blended_participation_push
 
@@ -1327,7 +1328,9 @@ def build_market_state(
             logging.warning(f"market_state: signals engine error: {_e}\n{_tb}")
             _sig_out = None
             # Surface the crash on all three cards — silent WAIT is invisible and misleading
-            _err_short = f"{type(_e).__name__}: {str(_e)[:120]}"
+            from server import STATE_ERROR_DETAIL_MAX_CHARS
+
+            _err_short = f"{type(_e).__name__}: {str(_e)[:STATE_ERROR_DETAIL_MAX_CHARS]}"
             ms.rules_headline  = f"⚠ Signal engine error: {_err_short}"
             ms.rules_detail    = "Check server console for full traceback. Restart server if this persists."
             ms.rules_alerts    = [f"ENGINE CRASH — {_err_short}"]
@@ -1427,7 +1430,7 @@ def build_market_state(
             ms.risk_valid         = getattr(_call, 'risk_valid', None)
             ms.validation_summary = getattr(_call, 'validation_summary', '')
             # Position sizing
-            ms.r_units          = getattr(_call, 'r_units', 0.0)
+            ms.r_units          = getattr(_call, 'r_units', None)
             ms.execution_mode   = getattr(_call, 'execution_mode', 'NO_TRADE')
             ms.sizing_summary   = getattr(_call, 'sizing_summary', '')
             # Call Readiness
@@ -1498,6 +1501,7 @@ def build_market_state(
         # What the Data Says
         _pred = _sig_out.predictive
         if _pred:
+            ms.stack_integrity_events.extend(getattr(_pred, "stack_integrity_events", None) or [])
             ms.horizon_prob_bars = getattr(_pred, "horizon_prob_bars", None)
             ms.eval_accuracy_oos = getattr(_pred, "eval_accuracy_oos", None)
             ms.eval_log_loss_oos = getattr(_pred, "eval_log_loss_oos", None)

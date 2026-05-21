@@ -48,12 +48,18 @@ from time_et import ET as _ET
 
 
 def stamp_decision_bundle(ms_dict: dict) -> dict:
+    """
+    Assign monotonic decision_generation_id and decision_timestamp_utc (mutates ms_dict).
 
-    """Assign monotonic decision_generation_id and decision_timestamp_utc (mutates ms_dict)."""
+    Keys decision_generation_id and decision_timestamp_utc are always present.
+    Values are None when signals_engine_failed; consumers check decision_generation_skipped first.
+    """
 
     if ms_dict.get("signals_engine_failed"):
         ms_dict["decision_tick_kind"] = "signals_engine_error"
         ms_dict["decision_generation_skipped"] = True
+        ms_dict["decision_generation_id"] = None
+        ms_dict["decision_timestamp_utc"] = None
         return ms_dict
 
     global _next_generation_id
