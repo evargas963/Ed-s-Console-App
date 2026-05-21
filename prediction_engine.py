@@ -28,11 +28,26 @@ from db import (
 )
 
 from ml_horizon import PRIMARY_DECISION_HORIZONS
+from time_et import RTH_OPEN_MINS
 from features.stack_integrity_v1 import (
     finalize_stack_integrity_v1,
     merge_stack_integrity_events,
     record_stack_degradation,
 )
+
+# ── STACK-WIRE-3: named thresholds (Phase 6 ablation surface) ──
+MC_EAE_EFE_AMPLIFY_THRESHOLD: float = 1.2
+MC_EAE_EFE_SEVERE_THRESHOLD: float = 1.3
+CONTAINMENT_LOW_THRESHOLD: float = 0.40
+CONTAINMENT_HIGH_THRESHOLD: float = 0.60
+CONTAINMENT_BREAKOUT_FAIL_THRESHOLD: float = 0.60
+CANONICAL_DOM_PROB_ACTION_MIN: float = 0.50
+CANONICAL_DOM_PROB_PREDICTION_DIR_MIN: float = 0.45
+ZONE_FRESH_BARS_DISPLAY_MAX: int = 3
+MOVE_SEVERITY_SEVERE_PCT_OF_SPOT: float = 0.004
+MOVE_SEVERITY_MODERATE_PCT_OF_SPOT: float = 0.002
+AVG_OUTCOME_MIN_SAMPLES: int = 5
+REVERSAL_RISK_REGIME_BOOST: float = 1.25
 
 log = logging.getLogger(__name__)
 
@@ -260,7 +275,7 @@ def _overlay_multi_horizon_ml_on_product_triplets(
 
 def _avg_outcome_pts(similar: list, pts_col: str) -> Optional[float]:
     pts = [float(r[pts_col]) for r in similar if r.get(pts_col) is not None]
-    if len(pts) < 5:
+    if len(pts) < AVG_OUTCOME_MIN_SAMPLES:
         return None
     return round(sum(pts) / len(pts), 2)
 
@@ -465,7 +480,7 @@ def build_fusion_model_overlay_for_stack(
     _filters = similar_setup_filters_from_canonical_features(inference_snapshot_v1["features"])
 
     probs_1c = probs_5c = None
-    probs_15m = probs_60m = None
+    probs_15c = probs_60c = None
     _asof_sim = _as_of_ts_utc_for_similarity(inp, inference_snapshot_v1)
     if db is not None:
         try:
@@ -480,16 +495,16 @@ def build_fusion_model_overlay_for_stack(
             )
             probs_1c, _, _, _ = _literal_empirical_horizon(similar, "outcome_1c", 1)
             probs_5c, _, _, _ = _literal_empirical_horizon(similar, "outcome_5c", 5)
-            probs_15m, _, _, _ = _literal_empirical_horizon(similar, "outcome_15c", 15)
-            probs_60m, _, _, _ = _literal_empirical_horizon(similar, "outcome_60c", 60)
+            probs_15c, _, _, _ = _literal_empirical_horizon(similar, "outcome_15c", 15)
+            probs_60c, _, _, _ = _literal_empirical_horizon(similar, "outcome_60c", 60)
         except Exception as e:
             log.debug("build_fusion_model_overlay_for_stack: DB lookup failed: %s", e)
             probs_1c = probs_5c = None
-            probs_15m = probs_60m = None
+            probs_15c = probs_60c = None
     u1, d1, f1 = _tri_probs(probs_1c)
     u5, d5, f5 = _tri_probs(probs_5c)
-    u15, d15, f15 = _tri_probs(probs_15m)
-    u60, d60, f60 = _tri_probs(probs_60m)
+    u15, d15, f15 = _tri_probs(probs_15c)
+    u60, d60, f60 = _tri_probs(probs_60c)
 
     _cvol = getattr(inp, "candle_volume", None)
     if _cvol is None and getattr(inp, "candles_1m", None):
@@ -514,7 +529,11 @@ def build_fusion_model_overlay_for_stack(
     _imb = float(_imb) if _imb is not None and isinstance(_imb, (int, float)) else None
     _csig = getattr(rules, "signal", None) if rules else None
     _cconv = getattr(rules, "conviction", None) if rules else None
-    _mins_open = (inp.et_hour - 9) * 60 + (inp.et_minute - 30) if inp.et_hour is not None and inp.et_minute is not None else None
+    _mins_open = (
+        inp.et_hour * 60 + inp.et_minute - RTH_OPEN_MINS
+        if inp.et_hour is not None and inp.et_minute is not None
+        else None
+    )
     if _mins_open is not None and _mins_open < 0:
         _mins_open = 0.0
 
@@ -737,13 +756,13 @@ def compute_prediction_core(
     lit_60c = _literal_empirical_horizon(similar, "outcome_60c", 60)
     probs_1c, _, _, _ = lit_1c
     probs_5c, _, _, _ = lit_5c
-    probs_15m, _, _, _ = lit_15c
-    probs_60m, _, _, _ = lit_60c
+    probs_15c, _, _, _ = lit_15c
+    probs_60c, _, _, _ = lit_60c
 
     su1, sd1, sf1 = _tri_probs(probs_1c)
     su5, sd5, sf5 = _tri_probs(probs_5c)
-    su15, sd15, sf15 = _tri_probs(probs_15m)
-    su60, sd60, sf60 = _tri_probs(probs_60m)
+    su15, sd15, sf15 = _tri_probs(probs_15c)
+    su60, sd60, sf60 = _tri_probs(probs_60c)
 
     _mh_empirical_product = {
         "1c": (su1, sd1, sf1),
@@ -825,10 +844,10 @@ def compute_prediction_core(
         if canonical.confidence != "low" and avg5 is not None:
             prediction_dir = fwd
             prediction_target = round(spot + avg5, 2)
-        elif canonical.dominant_probability() >= 0.45 and avg5 is not None:
+        elif canonical.dominant_probability() >= CANONICAL_DOM_PROB_PREDICTION_DIR_MIN and avg5 is not None:
             prediction_dir = fwd
             prediction_target = round(spot + avg5, 2)
-        elif canonical.dominant_probability() >= 0.45:
+        elif canonical.dominant_probability() >= CANONICAL_DOM_PROB_PREDICTION_DIR_MIN:
             prediction_dir = fwd
 
     _stack_integrity_v1 = finalize_stack_integrity_v1(_integrity_events)
@@ -996,8 +1015,8 @@ def compute_prediction_enrichment(
         if _fusion_available and getattr(fusion, "mc_available", False):
             _mc_eae = getattr(fusion, "mc_eae", None)
             _mc_efe = getattr(fusion, "mc_efe", None)
-            if _mc_eae and _mc_efe and _mc_eae > _mc_efe * 1.2:
-                reversal_risk = min(1.0, reversal_risk * 1.25)
+            if _mc_eae and _mc_efe and _mc_eae > _mc_efe * MC_EAE_EFE_AMPLIFY_THRESHOLD:
+                reversal_risk = min(1.0, reversal_risk * REVERSAL_RISK_REGIME_BOOST)
                 reversal_label = classify_reversal_risk(reversal_risk)
 
     reversal_shortfall = None
@@ -1014,9 +1033,9 @@ def compute_prediction_enrichment(
             avg_bad = sum(bad_moves) / len(bad_moves)
             reversal_shortfall = round(avg_bad, 2)
             spot_pct = abs(avg_bad) / spot if spot > 0 else 0
-            if spot_pct >= 0.004:
+            if spot_pct >= MOVE_SEVERITY_SEVERE_PCT_OF_SPOT:
                 reversal_severity = "severe"
-            elif spot_pct >= 0.002:
+            elif spot_pct >= MOVE_SEVERITY_MODERATE_PCT_OF_SPOT:
                 reversal_severity = "moderate"
             else:
                 reversal_severity = "mild"
@@ -1117,7 +1136,7 @@ def compute_prediction_enrichment(
     cur_z = mvp_zone(mvp)
     if (
         zone_fresh_bars_1m is not None
-        and zone_fresh_bars_1m <= 3
+        and zone_fresh_bars_1m <= ZONE_FRESH_BARS_DISPLAY_MAX
         and prev_z
         and cur_z is not None
         and prev_z != cur_z
@@ -1159,17 +1178,17 @@ def compute_prediction_enrichment(
             parts.append(f"MC: EFE {_mc_efe:.1f}pts / EAE {_mc_eae:.1f}pts.")
         if _mc_contain is not None and _regime_label:
             if _regime_label in ("pinning", "mean_reversion", "vol_compression"):
-                if _mc_contain < 0.40:
+                if _mc_contain < CONTAINMENT_LOW_THRESHOLD:
                     parts.append(f"⚠ Low containment ({_mc_contain:.0%}) despite {_regime_label} — breakout risk.")
                 else:
                     parts.append(f"Containment: {_mc_contain:.0%} (normal for {_regime_label}).")
             elif _regime_label in ("breakout", "acceleration", "vol_expansion"):
-                if _mc_contain > 0.60:
+                if _mc_contain > CONTAINMENT_HIGH_THRESHOLD:
                     parts.append(f"⚠ High containment ({_mc_contain:.0%}) despite {_regime_label} — breakout may fail.")
                 else:
                     parts.append(f"Expansion: {_mc_expand:.0%} (confirms {_regime_label}).")
             elif _regime_label == "reversal_prone":
-                if _mc_eae is not None and _mc_efe is not None and _mc_eae > _mc_efe * 1.3:
+                if _mc_eae is not None and _mc_efe is not None and _mc_eae > _mc_efe * MC_EAE_EFE_SEVERE_THRESHOLD:
                     parts.append(f"⚠ EAE exceeds EFE by {(_mc_eae/_mc_efe - 1):.0%} — adverse tail risk elevated.")
                 else:
                     parts.append(f"Containment: {_mc_contain:.0%}.")
@@ -1184,7 +1203,7 @@ def compute_prediction_enrichment(
         _action = "→ Forward stack: slight call bias — size per The Call."
     elif canonical.confidence == "medium" and fwd == "down":
         _action = "→ Forward stack: slight put bias — size per The Call."
-    elif fwd == "flat" and canonical.dominant_probability() >= 0.50:
+    elif fwd == "flat" and canonical.dominant_probability() >= CANONICAL_DOM_PROB_ACTION_MIN:
         _action = "→ Forward stack balanced — favor patience unless The Call fires."
     else:
         _action = "→ Forward conviction low — default wait unless confluence clears gates."

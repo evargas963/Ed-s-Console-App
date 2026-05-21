@@ -45,7 +45,7 @@ from copy import deepcopy
 from typing import Any, Optional
 from dataclasses import asdict
 
-from time_et import now_et
+from time_et import now_et, RTH_OPEN_MINS
 
 import html
 import hashlib
@@ -1057,7 +1057,7 @@ def _on_tick_broadcast_sync(symbol: str, main_loop: asyncio.AbstractEventLoop) -
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Market session boundaries (Eastern, minutes-since-midnight)
-RTH_OPEN_MINS:       int   = 570    # 9:30 AM ET  (RTH window start)
+# RTH_OPEN_MINS — single authority in time_et.py (STACK-WIRE-3)
 RTH_CLOSE_MINS:      int   = 960    # 4:00 PM ET  (used for mins_to_close calc)
 PRE_MARKET_MINS:     int   = 540    # 9:00 AM ET  (logger session buffer start)
 LOGGER_BUFFER_MINS:  int   = 990    # 4:30 PM ET  (logger session buffer end)
