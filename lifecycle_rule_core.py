@@ -78,14 +78,14 @@ def apply_time_decay(distance_pct: float, mins_elapsed_since_open: float | None)
     mins = max(0.0, mins_f if mins_f is not None else 0.0)
     base = _float_or_none(distance_pct)
     if base is None:
-        return float(distance_pct)
+        base = STOP_BASE_PCT
     return base - (mins / 60.0) * STOP_TIME_DECAY_PCT
 
 
 def apply_vix_adjustment(distance_pct: float, vix_level: float | None) -> float:
     base = _float_or_none(distance_pct)
     if base is None:
-        return float(distance_pct)
+        base = STOP_BASE_PCT
     if vix_level is None:
         return base
     vix = _float_or_none(vix_level)
@@ -101,7 +101,7 @@ def apply_vix_adjustment(distance_pct: float, vix_level: float | None) -> float:
 def apply_risk_multiplier(distance_pct: float, risk_multiplier: float | None) -> float:
     base = _float_or_none(distance_pct)
     if base is None:
-        return float(distance_pct)
+        base = STOP_BASE_PCT
     mult = _float_or_none(risk_multiplier)
     if mult is None or mult == 0.0:
         mult = 1.0
@@ -303,7 +303,9 @@ def fire_exit(
     max_hold_bars: int,
 ) -> ExitOutcome:
     sig = (signal or "").strip().lower()
-    bars = list(forward_bars or [])[: max(1, int(max_hold_bars or 1))]
+    _mhb_f = _float_or_none(max_hold_bars)
+    _mhb_int = int(_mhb_f) if _mhb_f is not None and _mhb_f >= 1 else 1
+    bars = list(forward_bars or [])[: max(1, _mhb_int)]
     if not bars:
         return _skip("no_exit_snapshot")
     if sig not in ("long", "short"):

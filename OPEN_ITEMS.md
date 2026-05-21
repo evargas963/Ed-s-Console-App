@@ -565,8 +565,9 @@ Reference ticker for parametric tests: **SPY**.
   - [x] **OBS-LRC-1** — magic `2.0` / `1.0` R-multiples → `T1_FALLBACK_R_MULTIPLE` / `T2_OFFSET_R_MULTIPLE` (`lifecycle_rule_core.py`); closed via REPO_SWEEP SWEEP-MT-1..2.
   - [x] **OBS-MP-2** — Schwab missing-greek `-999.0` sentinel → `MISSING_GREEK_SENTINEL` (authority `math_exposure_core.py`; full production tree promoted SWEEP-MT-FULL-TREE).
   - [x] **OBS-FP1-5** — symmetric grep guard `in TRADABLE_CANONICAL_PROVENANCE` outside authority; `test_no_inline_tradable_membership_outside_authority` in `tests/test_fusion_contract.py`.
-  - [ ] OBS-LRC-3 — `int(max_hold_bars or 1)` NaN guard (low pri).
-  - [ ] OBS-LRC-4 — `apply_time_decay` / `apply_vix_adjustment` / `apply_risk_multiplier`: non-finite `distance_pct` falls back to `float(distance_pct)` (NaN passthrough on first arg); consider fail-closed or STOP_BASE_PCT seed.
+  - [x] **SWEEP-LRC-NAN** @ `63b6459` — SWEEP-LRC-NAN-1..4: `fire_exit` max_hold_bars NaN guard; `apply_*` non-finite `distance_pct` seeds `STOP_BASE_PCT`; banned `return float(distance_pct)` pattern. Tests: `tests/test_repo_sweep_lrc_nan_guards_v1.py`. Closes OBS-LRC-3 + OBS-LRC-4.
+  - [x] **OBS-LRC-3** — closed via SWEEP-LRC-NAN @ `63b6459`.
+  - [x] **OBS-LRC-4** — closed via SWEEP-LRC-NAN @ `63b6459`.
   - [ ] OBS-TC1 — `load_lstm_feature_cache` metadata defaults (`tickers`/`days`/`n_days`/`n_tickers` empty or 0); accepted — structural dims fail-closed via `_meta_required_positive_int`.
   - [ ] OBS-TC2 — `_normalize_data_fp({})` returns `{}` vs 6-key shape for non-empty; accepted — conservative cache miss on legacy empty identity.
   - [ ] OBS-TC3 — Legacy `cache_exists` / `read_cache_meta` at file tail unused by scheduler (accepted).
