@@ -11,7 +11,7 @@ import threading
 from collections import deque
 from datetime import datetime
 from typing import Any, Optional
-from time_et import now_et
+from time_et import now_et, RTH_END_MINS, RTH_OPEN_MINS
 
 # Limits to prevent unbounded growth
 MAX_BOOK_SNAPSHOTS = 20
@@ -38,7 +38,7 @@ def is_rth_open() -> bool:
             return False
         hour, minute = now.hour, now.minute
         mins = hour * 60 + minute
-        return 9 * 60 + 30 <= mins < 16 * 60  # 09:30 to 16:00
+        return RTH_OPEN_MINS <= mins < RTH_END_MINS
     except Exception:
         return False
 

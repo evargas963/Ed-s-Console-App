@@ -27,6 +27,30 @@ from math_exposure import MISSING_GREEK_SENTINEL
 
 log = logging.getLogger(__name__)
 
+# ── STACK-WIRE-5: named thresholds (Phase 6 ablation surface) ──
+OF_COMPOSITE_WEIGHT_BOOK: float = 0.25
+OF_COMPOSITE_WEIGHT_TAPE: float = 0.20
+OF_COMPOSITE_WEIGHT_CUM_DELTA: float = 0.20
+OF_COMPOSITE_WEIGHT_ABSORPTION: float = 0.15
+OF_COMPOSITE_WEIGHT_OPTIONS: float = 0.15
+OF_COMPOSITE_WEIGHT_RVOL: float = 0.05
+OF_COMPOSITE_MIN_LEGS: int = 2
+OF_CLIP_LOW: float = -1.0
+OF_CLIP_HIGH: float = 1.0
+OF_RVOL_TERM_LOW: float = -0.5
+OF_RVOL_TERM_HIGH: float = 0.5
+OF_DIRECTION_BULLISH_THRESHOLD: float = 0.15
+OF_DIRECTION_BEARISH_THRESHOLD: float = -0.15
+OF_READINESS_STRONG_ABS: float = 0.25
+OF_READINESS_MODERATE_ABS: float = 0.1
+OF_RVOL_READINESS_OK: float = 1.2
+OF_TAPE_WINDOW_30S_SEC: float = 30.0
+OF_TAPE_WINDOW_2M_SEC: float = 120.0
+OF_TAPE_WINDOW_5M_SEC: float = 300.0
+OF_CUM_DELTA_NORM_DIVISOR: float = 10000.0
+OF_OPTIONS_DELTA_NORM_DIVISOR: float = 50000.0
+OF_ABSORPTION_PRICE_EPS: float = 0.01
+
 try:
     import numpy as np
     import pandas as pd
@@ -535,7 +559,7 @@ def _compute_absorption(data: dict) -> tuple[Optional[float], Optional[float], O
     prices = [p.get("price") for p in prints if p.get("price") is not None]
     price_range = max(prices) - min(prices) if len(prices) >= 2 else 0.0
     # absorption = high volume, low price movement
-    absorption = (total_sz / (price_range + 0.01)) if total_sz > 0 else 0.0
+    absorption = (total_sz / (price_range + OF_ABSORPTION_PRICE_EPS)) if total_sz > 0 else 0.0
     direction = "bid" if bid_change > ask_change else ("ask" if ask_change > bid_change else "neutral")
     return absorption, replenishment, direction
 
@@ -749,13 +773,13 @@ def _compute_institutional_flow_proxy(data: dict) -> Optional[float]:
     opt_score, _, _, delta_w, _ = _compute_options_flow(data)
     components = []
     if cum is not None:
-        components.append(max(-1, min(1, cum / 10000.0)))  # normalize
+        components.append(max(-1, min(1, cum / OF_CUM_DELTA_NORM_DIVISOR)))
     if book_imb is not None:
         components.append(book_imb)
     if opt_score is not None:
         components.append(opt_score)
     if delta_w is not None and abs(delta_w) > 0:
-        components.append(max(-1, min(1, delta_w / 50000.0)))
+        components.append(max(-1, min(1, delta_w / OF_OPTIONS_DELTA_NORM_DIVISOR)))
     if not components:
         return None
     return sum(components) / len(components)
@@ -804,20 +828,24 @@ def _compute_order_flow_score(
     rvol: Optional[float],
 ) -> Optional[float]:
     """
-    Composite score over present legs only (FIND-OF3/OF4):
-      0.25 book + 0.20 tape + 0.20 cum_delta + 0.15 absorption +
-      0.15 options + 0.05 rvol(term = rvol - 1.0). None when < 2 legs present.
+    Composite score over present legs only (FIND-OF3/OF4 / STACK-WIRE-5 weights).
+    Uses OF_COMPOSITE_WEIGHT_* constants; None when fewer than OF_COMPOSITE_MIN_LEGS legs.
     """
     return _weighted_mean_present(
         [
-            (0.25, book_imbalance, -1.0, 1.0),
-            (0.20, tape_pressure, -1.0, 1.0),
-            (0.20, cum_delta, -1.0, 1.0),
-            (0.15, absorption, -1.0, 1.0),
-            (0.15, options_flow, -1.0, 1.0),
-            (0.05, (rvol - 1.0) if rvol is not None else None, -0.5, 0.5),
+            (OF_COMPOSITE_WEIGHT_BOOK, book_imbalance, OF_CLIP_LOW, OF_CLIP_HIGH),
+            (OF_COMPOSITE_WEIGHT_TAPE, tape_pressure, OF_CLIP_LOW, OF_CLIP_HIGH),
+            (OF_COMPOSITE_WEIGHT_CUM_DELTA, cum_delta, OF_CLIP_LOW, OF_CLIP_HIGH),
+            (OF_COMPOSITE_WEIGHT_ABSORPTION, absorption, OF_CLIP_LOW, OF_CLIP_HIGH),
+            (OF_COMPOSITE_WEIGHT_OPTIONS, options_flow, OF_CLIP_LOW, OF_CLIP_HIGH),
+            (
+                OF_COMPOSITE_WEIGHT_RVOL,
+                (rvol - 1.0) if rvol is not None else None,
+                OF_RVOL_TERM_LOW,
+                OF_RVOL_TERM_HIGH,
+            ),
         ],
-        min_present=2,
+        min_present=OF_COMPOSITE_MIN_LEGS,
     )
 
 
@@ -827,9 +855,9 @@ def _direction(score: Optional[float]) -> Optional[str]:
         return None
     if score == 0.0:
         return None
-    if score > 0.15:
+    if score > OF_DIRECTION_BULLISH_THRESHOLD:
         return "bullish"
-    if score < -0.15:
+    if score < OF_DIRECTION_BEARISH_THRESHOLD:
         return "bearish"
     return "neutral"
 
@@ -844,13 +872,13 @@ def _readiness(score: Optional[float], rvol: Optional[float]) -> str:
     """
     if score is None:
         return "red"
-    strong = abs(score) > 0.25
-    moderate = 0.1 <= abs(score) <= 0.25
+    strong = abs(score) > OF_READINESS_STRONG_ABS
+    moderate = OF_READINESS_MODERATE_ABS <= abs(score) <= OF_READINESS_STRONG_ABS
     if rvol is None:
         if strong or moderate:
             return "yellow"
         return "red"
-    rvol_ok = rvol > 1.2
+    rvol_ok = rvol > OF_RVOL_READINESS_OK
     if strong and rvol_ok:
         return "green"
     if moderate or (strong and not rvol_ok):
@@ -899,9 +927,9 @@ class OrderFlowEngine:
         spread_pts = spread_d.get("spread_pts")
 
         # Tape metrics
-        tape_pressure_30s = _compute_tape_pressure(data, 30.0)
-        tape_pressure_2m = _compute_tape_pressure(data, 120.0)
-        tape_pressure_5m = _compute_tape_pressure(data, 300.0)
+        tape_pressure_30s = _compute_tape_pressure(data, OF_TAPE_WINDOW_30S_SEC)
+        tape_pressure_2m = _compute_tape_pressure(data, OF_TAPE_WINDOW_2M_SEC)
+        tape_pressure_5m = _compute_tape_pressure(data, OF_TAPE_WINDOW_5M_SEC)
         tape_for_score = next(
             (v for v in (tape_pressure_2m, tape_pressure_30s, tape_pressure_5m) if v is not None),
             None,
