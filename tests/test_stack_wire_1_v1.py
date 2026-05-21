@@ -132,7 +132,34 @@ def test_canonical_provenance_enum_complete():
 
 
 def test_r_units_none_propagates_end_to_end():
+    from signal_types import TheCall
+
     ms = MarketState()
+    assert ms.r_units is None
+    call = TheCall(
+        signal="wait",
+        conviction="low",
+        entry=None,
+        stop=None,
+        target=None,
+        target2=None,
+        reward_risk=None,
+        reward_risk2=None,
+        headline="",
+        reasoning="",
+        trade_type="none",
+        invalidation="",
+        confluence_count=0,
+        confluence_total=0,
+        confluence_detail="",
+        time_qualifier="",
+        size_cue="SKIP",
+        rules_pred_agree=False,
+        time_warning=None,
+        size_note="",
+    )
+    assert call.r_units is None
+    ms.r_units = getattr(call, "r_units", None)
     assert ms.r_units is None
     import server
 

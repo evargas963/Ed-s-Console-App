@@ -19,6 +19,10 @@ def test_thecall_validation_fields_default_none_not_true():
     assert _field_default("risk_valid") is None
 
 
+def test_thecall_r_units_defaults_none_not_zero():
+    assert _field_default("r_units") is None
+
+
 def test_thecall_instance_validation_fields_none_when_omitted():
     call = TheCall(
         signal="wait",

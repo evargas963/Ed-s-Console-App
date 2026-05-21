@@ -332,7 +332,7 @@ class TheCall:
     risk_valid:         Optional[bool]  = None
     validation_summary: str             = ""
     # ── Formal Position Sizing ────────────────────────────────────────────────
-    r_units:            float           = 0.0     # 0.00 to 1.25
+    r_units:            Optional[float] = None    # 0.00 to 1.25 when sized; None until call_engine sets
     execution_mode:     str             = "NO_TRADE"  # NO_TRADE, PROBE, REDUCED, STANDARD, MAX
     sizing_multipliers: dict            = field(default_factory=dict)
     sizing_reasons:     list            = field(default_factory=list)
