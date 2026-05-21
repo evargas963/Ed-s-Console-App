@@ -65,8 +65,12 @@ def test_fusion_snap_triplet_none_when_probs_missing():
 
 
 def test_overlay_uses_empirical_when_fusion_triplet_missing():
+    # prediction_engine._overlay_multi_horizon_ml_on_product_triplets at L252 reads
+    # ``horizon_fusion_available`` (not ``fusion_available``) on each per-horizon snap
+    # to distinguish "empirical_histogram" (no fusion attempted) from
+    # "fusion_directional_missing" (fusion claimed available but probs missing).
     empirical = {hz: (0.6, 0.2, 0.2) for hz in ("1c", "5c", "15c", "60c")}
-    snap = SimpleNamespace(fusion_available=True)
+    snap = SimpleNamespace(fusion_available=True, horizon_fusion_available=True)
     bundle = SimpleNamespace(by_horizon={"1c": snap, "5c": snap, "15c": snap, "60c": snap})
     out, src, _ev = _overlay_multi_horizon_ml_on_product_triplets(empirical, bundle)
     assert src["1c"] == "fusion_directional_missing"
