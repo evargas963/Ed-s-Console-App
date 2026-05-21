@@ -898,7 +898,10 @@ def evaluate_realized_contract_trades_for_rows(
             skip("missing_multiplier")
             continue
 
-        bars = _forward_path_rows(conn, table, ticker, float(ts_utc), max_hold)
+        # Convert sqlite3.Row to dict at the boundary so downstream consumers (_simulate_exit
+        # → lifecycle_rule_core.fire_exit → _bar_value) get the dict-shape they declare.
+        # sqlite3.Row supports __getitem__ but not .get(), and _bar_value uses .get().
+        bars = [dict(r) for r in _forward_path_rows(conn, table, ticker, float(ts_utc), max_hold)]
         if not bars:
             skip("no_exit_snapshot")
             continue

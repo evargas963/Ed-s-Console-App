@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import inspect
+
+import realized_contract_eval as rce
 from realized_contract_eval import _chain_selection_quality_row
 from replay_hold_bars import replay_max_hold_bars_from_context
 
@@ -54,6 +57,20 @@ def test_chain_selection_quality_best_score_ignores_none_scores():
         exit_chain=[],
     )
     assert row["score_gap_vs_best"] is None
+
+
+def test_forward_path_bars_converted_to_dict_before_simulate_exit():
+    """Big-audit regression: _forward_path_rows returns sqlite3.Row objects, but
+    _simulate_exit → lifecycle_rule_core.fire_exit → _bar_value uses .get() which
+    sqlite3.Row does not support. The integration path requires dict-conversion
+    at the boundary. Without this conversion the entire historical evaluation
+    crashes with AttributeError on the very first bar.
+    """
+    src = inspect.getsource(rce.evaluate_realized_contract_trades_for_rows)
+    assert "[dict(r) for r in _forward_path_rows" in src, (
+        "bars must be converted to dict before passing to _simulate_exit; "
+        "see lifecycle_rule_core._bar_value which uses .get()"
+    )
 
 
 def test_chain_selection_quality_best_score_with_all_negative_real_scores():
