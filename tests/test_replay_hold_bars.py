@@ -14,6 +14,7 @@ from replay_hold_bars import (
     resolve_replay_max_hold_bars_for_payload,
 )
 from realized_contract_eval import build_replay_context_payload
+from time_et import RTH_SESSION_MINUTES
 
 _SKIP_PY_TREE_DIRS = frozenset(
     {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__"}
@@ -44,7 +45,7 @@ def test_replay_max_hold_bars_from_context_requires_explicit_value():
 
 def test_replay_max_hold_bars_from_context_accepts_valid_and_caps():
     assert replay_max_hold_bars_from_context({"replay_max_hold_bars": 15}) == 15
-    assert replay_max_hold_bars_from_context({"replay_max_hold_bars": 500}) == 390
+    assert replay_max_hold_bars_from_context({"replay_max_hold_bars": 500}) == RTH_SESSION_MINUTES
 
 
 def test_setup_and_trade_type_fallback_agree_on_shared_trade_types():
@@ -55,6 +56,9 @@ def test_setup_and_trade_type_fallback_agree_on_shared_trade_types():
         ("reversal", R_CHOP, 20),
         ("fade", R_TREND_UP, 30),
         ("mean_reversion", R_TREND_UP, 30),
+        # STACK-WIRE-6 FIND-WIRE6-2: "none" trade_type means no trade — 0-bar hold
+        # in BOTH paths (prior divergence had fallback returning 20).
+        ("none", R_TREND_UP, 0),
     ]
     for trade_type, micro_regime, expected in cases:
         assert replay_max_hold_bars_for_trade_type(trade_type) == expected

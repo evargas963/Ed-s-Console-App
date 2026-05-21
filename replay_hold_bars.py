@@ -5,9 +5,35 @@ Three related helpers with distinct inputs:
 - ``replay_max_hold_bars_for_setup`` — live Call card prescription (micro_regime + trade_type).
 - ``replay_max_hold_bars_from_context`` — strict read from persisted ``replay_context_json``.
 - ``replay_max_hold_bars_for_trade_type`` — trade-type-only fallback when live card value absent.
+
+STACK-WIRE-6 (FIND-WIRE6-1, FIND-WIRE6-2): ``TRADE_TYPE_HOLD_BARS`` is the single
+source of truth for trade_type → max 1m hold bars; both setup and fallback paths
+read from it. ``trade_type="none"`` returns 0 in BOTH paths (prior divergence had
+the fallback returning 20 vs the live setup returning 0). The
+``replay_max_hold_bars_from_context`` upper cap derives from
+``time_et.RTH_SESSION_MINUTES`` (= ``RTH_END_MINS - RTH_START_MINS = 390``).
 """
 
 from __future__ import annotations
+
+from time_et import RTH_SESSION_MINUTES
+
+# ── STACK-WIRE-6: single source of truth for trade_type → max 1m hold bars ──
+# Both ``replay_max_hold_bars_for_setup`` and ``replay_max_hold_bars_for_trade_type``
+# MUST return the same value for the same trade_type. "none" means no trade →
+# 0-bar hold (FIND-WIRE6-2 parity break: fallback used to return 20).
+TRADE_TYPE_HOLD_BARS: dict[str, int] = {
+    "trend_continuation": 60,
+    "breakout": 15,
+    "reversal": 20,
+    "fade": 30,
+    "mean_reversion": 30,
+    "none": 0,
+}
+TRADE_TYPE_HOLD_BARS_DEFAULT: int = 30
+# Micro_regime override applies only in the live ``for_setup`` path (compression
+# squeezes hold to 15 bars regardless of trade_type, except "none" which is 0).
+MICRO_REGIME_HOLD_BARS_COMPRESSION: int = 15
 
 
 def replay_max_hold_bars_from_context(replay_obj: dict) -> int | None:
@@ -21,23 +47,13 @@ def replay_max_hold_bars_from_context(replay_obj: dict) -> int | None:
         return None
     if n < 1:
         return None
-    return min(n, 390)
+    return min(n, RTH_SESSION_MINUTES)
 
 
 def replay_max_hold_bars_for_trade_type(trade_type: str | None) -> int:
     """Fallback max 1m bars when Call card did not supply ``replay_max_hold_bars_live``."""
     t = (trade_type or "").strip().lower()
-    if t == "trend_continuation":
-        return 60
-    if t == "breakout":
-        return 15
-    if t == "reversal":
-        return 20
-    if t in ("fade", "mean_reversion"):
-        return 30
-    if t == "none":
-        return 20
-    return 30
+    return TRADE_TYPE_HOLD_BARS.get(t, TRADE_TYPE_HOLD_BARS_DEFAULT)
 
 
 def replay_max_hold_bars_for_setup(micro_regime: str, trade_type: str) -> int:
@@ -49,22 +65,14 @@ def replay_max_hold_bars_for_setup(micro_regime: str, trade_type: str) -> int:
     from micro_structure import R_COMPRESSION, R_RANGE
 
     if trade_type == "none":
-        return 0
+        return TRADE_TYPE_HOLD_BARS["none"]  # 0 — no-trade signal short-circuits micro_regime
     if micro_regime == R_COMPRESSION:
-        return 15
-    if trade_type == "fade":
-        return 30
-    if trade_type == "breakout":
-        return 15
-    if trade_type == "reversal":
-        return 20
-    if trade_type == "trend_continuation":
-        return 60
-    if trade_type == "mean_reversion":
-        return 30
+        return MICRO_REGIME_HOLD_BARS_COMPRESSION  # 15 — compression overrides trade_type defaults
+    if trade_type in TRADE_TYPE_HOLD_BARS:
+        return TRADE_TYPE_HOLD_BARS[trade_type]
     if micro_regime == R_RANGE:
-        return 30
-    return 30
+        return TRADE_TYPE_HOLD_BARS_DEFAULT
+    return TRADE_TYPE_HOLD_BARS_DEFAULT
 
 
 def resolve_replay_max_hold_bars_for_payload(
