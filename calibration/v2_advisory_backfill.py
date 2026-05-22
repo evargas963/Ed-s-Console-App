@@ -85,6 +85,9 @@ def ms_dict_from_snapshot_row(row: Mapping[str, Any]) -> dict[str, Any]:
     _alias_if_absent_stamped("rec_side", "call_option_right")
     if ms.get("dte_warn") is None and ms.get("dte") is not None:
         ms["dte_warn"] = f"{ms.get('dte')}DTE"
+        # COH-I-L: stamp field_sources for the reconstructed dte_warn so replay readers can
+        # tell this value came from snapshot reconstruction (not live live-tier-c).
+        field_sources["dte_warn"] = RECONSTRUCTED_LIVE_MS_SOURCE
 
     if "option_chain_selection_proof" not in ms:
         replay_context = parse_json_mapping(

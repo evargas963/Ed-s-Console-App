@@ -944,6 +944,13 @@ def compute_position_size(
     # == 4. MONTE CARLO RISK MULTIPLIER (regime-aware v2) =======================
     mc_mult = 1.00
 
+    # COH-I-I: when all four MC inputs are None, MC simulation was unavailable for this
+    # tick — surface that to the operator via reduction_reasons (was a silent skip).
+    # The numeric size is unaffected (mc_mult stays 1.0), but the sizing summary now
+    # shows "MC unavailable — sizing without MC risk validation".
+    if mc_eae is None and mc_efe is None and mc_containment is None and mc_expansion is None:
+        reasons.append("MC unavailable — sizing without MC risk validation")
+
     if mc_eae is not None and stop_distance and stop_distance > 0:
         eae_ratio = mc_eae / stop_distance
         # Regime-aware EAE thresholds: expansion regimes tolerate more
