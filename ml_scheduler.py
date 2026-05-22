@@ -2282,13 +2282,37 @@ if __name__ == "__main__":
         default=os.environ.get("ED_ML_SCHEDULER_HORIZON", DEFAULT_ML_HORIZON_SLUG),
         help="ML horizon slug for this scheduler run (1c, 5c, 15c, 60c). Non-1c promotes to models/active_{slug}/.",
     )
+    ap.add_argument(
+        "--all-horizons",
+        action="store_true",
+        help=(
+            "Sequentially invoke run_once for every governed horizon (1c, 5c, 15c, 60c) "
+            "in one CLI call. Each horizon still runs the full per-horizon gate (training "
+            "cache, governed competition, training_report.jsonl entry); promotion remains "
+            "manual via arch_competition.manual_control. Overrides --horizon when set."
+        ),
+    )
     args = ap.parse_args()
     run_now = bool(args.run_now or args.promote_from_manifests)
-    run_once(
-        wait=False if run_now else args.wait,
-        force_retrain=args.force_retrain,
-        bypass_cache=args.bypass_cache,
-        allow_non_market_day=run_now,
-        promote_from_manifests_only=bool(args.promote_from_manifests),
-        ml_horizon_slug=str(args.horizon),
-    )
+    if args.all_horizons:
+        from ml_horizon import ALL_GOVERNED_HORIZONS
+        for _hz in ALL_GOVERNED_HORIZONS:
+            log.info("ml_scheduler --all-horizons: starting horizon %s", _hz)
+            run_once(
+                wait=False if run_now else args.wait,
+                force_retrain=args.force_retrain,
+                bypass_cache=args.bypass_cache,
+                allow_non_market_day=run_now,
+                promote_from_manifests_only=bool(args.promote_from_manifests),
+                ml_horizon_slug=str(_hz),
+            )
+            log.info("ml_scheduler --all-horizons: finished horizon %s", _hz)
+    else:
+        run_once(
+            wait=False if run_now else args.wait,
+            force_retrain=args.force_retrain,
+            bypass_cache=args.bypass_cache,
+            allow_non_market_day=run_now,
+            promote_from_manifests_only=bool(args.promote_from_manifests),
+            ml_horizon_slug=str(args.horizon),
+        )
