@@ -1955,7 +1955,11 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
                 return "PARTIAL"
             return "DEGRADED"
 
-    fusion_ok = bool(ms_dict.get("fusion_available"))
+    # STACK-WIRE-4-CAND-MS-DICT-ADOPTION: tradability gate, not bare .available flag.
+    # fusion_available=True + canonical_provenance="canonical_forecast_missing" is a
+    # non-tradable split-brain state — surface it as fusion_active=False / stack_mode=INVALID.
+    from fusion_contract import is_ms_dict_fusion_authoritative
+    fusion_ok = is_ms_dict_fusion_authoritative(ms_dict)
     mc_ok = bool(ms_dict.get("mc_available"))
     xgb_ok = bool(ms_dict.get("xgb_available"))
     lstm_ok = bool(ms_dict.get("lstm_available"))

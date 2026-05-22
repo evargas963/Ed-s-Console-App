@@ -46,6 +46,7 @@ def test_stack_runtime_fields_propagate():
 
     ms_dict = {
         "fusion_available": True,
+        "canonical_provenance": "bayesian_fusion",  # STACK-WIRE-4-CAND: tradable provenance required
         "mc_available": True,
         "xgb_available": True,
         "lstm_available": False,
@@ -59,6 +60,59 @@ def test_stack_runtime_fields_propagate():
     assert rt["n_base_models_live"] == 2
     assert rt["stack_mode"] in {"FULL", "PARTIAL", "DEGRADED", "INVALID"}
     assert rt["contributing_models"] == ["xgb", "transformer"]
+
+
+def test_stack_runtime_fusion_active_uses_tradability_gate_not_bare_flag():
+    """STACK-WIRE-4-CAND-MS-DICT-ADOPTION regression: ``fusion_available=True`` with a
+    non-tradable ``canonical_provenance`` must resolve to ``fusion_active=False`` and
+    ``stack_mode=INVALID`` — otherwise the Decision Command stack chip lies to the
+    operator while v2 tradability is blocked.
+    """
+    import server
+
+    # Split-brain case 1: canonical_forecast missing → fusion_available stays True but
+    # canonical is unsafe to read as tradable.
+    ms_missing = {
+        "fusion_available": True,
+        "canonical_provenance": "canonical_forecast_missing",
+        "mc_available": True,
+        "xgb_available": True,
+        "lstm_available": True,
+        "transformer_available": True,
+    }
+    server._attach_stack_runtime_and_governance(ms_missing, ticker="SPY")
+    rt = ms_missing["stack_runtime"]
+    assert rt["fusion_active"] is False, "tradability gate must veto fusion_active when provenance non-tradable"
+    assert rt["stack_mode"] == "INVALID"
+
+    # Split-brain case 2: empty provenance string (legacy / pre-stamp).
+    ms_empty = {
+        "fusion_available": True,
+        "canonical_provenance": "",
+        "mc_available": True,
+        "xgb_available": True,
+    }
+    server._attach_stack_runtime_and_governance(ms_empty, ticker="SPY")
+    assert ms_empty["stack_runtime"]["fusion_active"] is False
+    assert ms_empty["stack_runtime"]["stack_mode"] == "INVALID"
+
+    # Authoritative case: bayesian_fusion stays active.
+    ms_ok = {
+        "fusion_available": True,
+        "canonical_provenance": "bayesian_fusion",
+        "mc_available": True,
+        "xgb_available": True,
+        "lstm_available": True,
+        "transformer_available": True,
+    }
+    server._attach_stack_runtime_and_governance(ms_ok, ticker="SPY")
+    assert ms_ok["stack_runtime"]["fusion_active"] is True
+    assert ms_ok["stack_runtime"]["stack_mode"] == "FULL"
+
+    # Source-level guarantee: server keys off the contract gate, not the bare flag.
+    attach_src = inspect.getsource(server._attach_stack_runtime_and_governance)
+    assert "is_ms_dict_fusion_authoritative(ms_dict)" in attach_src
+    assert 'bool(ms_dict.get("fusion_available"))' not in attach_src
 
 
 def test_state_error_truncation_constant():
