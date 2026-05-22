@@ -310,6 +310,27 @@ def append_calibration_decision(
         try:
             configure_sqlite_connection(conn)
             ensure_calibration_schema(conn)
+            # COH-I-D: logical-time inversion diagnostic. The UNIQUE (ticker, decision_ts_utc)
+            # constraint plus INSERT ... ON CONFLICT DO NOTHING guarantees idempotent dedup,
+            # but does NOT prevent out-of-order writes (a delayed writer for an older tick
+            # can insert after a newer-tick row already landed). Log a warning so the operator
+            # can detect this in production. Diagnostic-only — the insert proceeds either way.
+            try:
+                prior = conn.execute(
+                    "SELECT MAX(decision_ts_utc) FROM calibration_decision_log WHERE ticker = ?",
+                    (ticker_storage_key(ticker),),
+                ).fetchone()
+                prior_max = prior[0] if prior and prior[0] is not None else None
+                if prior_max is not None and float(prior_max) > float(decision_ts_utc):
+                    log.warning(
+                        "calibration_decision_log logical-time inversion: ticker=%s incoming_ts=%.6f prior_max_ts=%.6f (proceeding with insert; COH-I-D diagnostic)",
+                        ticker,
+                        float(decision_ts_utc),
+                        float(prior_max),
+                    )
+            except sqlite3.Error as e:
+                # Diagnostic-only — do not block the insert on the inversion check.
+                log.debug("calibration_decision_log inversion check skipped: %s", e)
             cur = conn.execute(insert_sql, row_params)
             conn.commit()
             if cur.rowcount == 0:
