@@ -247,6 +247,10 @@ def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
     fts = q.get("fast_server_ts")
     if fts is not None:
         ms_dict["_live_plane_fast_ts"] = fts
+        ms_dict["fast_server_ts"] = fts
+    fg = q.get("fast_generation_id")
+    if fg is not None:
+        ms_dict["fast_generation_id"] = fg
     ms_dict["_quote_authority"] = "live_market_plane"
 
 

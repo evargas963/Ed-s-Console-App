@@ -94,6 +94,31 @@ def get_plane_authority_for_ticker(ticker: str) -> str:
     return "rest_fallback_explicit"
 
 
+# Max age of last L1 tick before /api/fast-quote must not serve frozen plane cache.
+FAST_QUOTE_STREAM_CACHE_MAX_AGE_MS = 5_000.0
+
+
+def streaming_l1_cache_usable(ticker: str) -> bool:
+    """
+    True only when plane authority is streaming AND the active ticker received a
+    recent L1 tick. Prevents serving a stale cached row after the websocket died
+    but before STREAMING_STALE_MS (25s) expires.
+    """
+    t = (ticker or "").upper().strip()
+    if get_plane_authority_for_ticker(t) != "streaming":
+        return False
+    last = _streaming_last_update_ts
+    if last is None:
+        return False
+    return (time.time() - last) * 1000.0 <= FAST_QUOTE_STREAM_CACHE_MAX_AGE_MS
+
+
+def _is_stream_disconnect_error(exc: BaseException) -> bool:
+    """Websocket clean/error close from schwab-py / websockets — exit recv loop."""
+    name = type(exc).__name__
+    return name in ("ConnectionClosedOK", "ConnectionClosedError", "ConnectionClosed")
+
+
 def _stale_bucket(staleness_ms: Optional[float], healthy: bool) -> str:
     """Coarse bucket for STREAM_STALENESS_TRANSITION lines."""
     if not healthy and staleness_ms is None:
@@ -281,6 +306,7 @@ async def _message_loop_until_shutdown(sc: Any) -> None:
     Process stream messages without asyncio.wait_for timeouts.
     Race handle_message against shutdown so we only cancel recv on intentional stop.
     """
+    global _streaming_logged_in
     ev = _stream_shutdown_event
     assert ev is not None
     while _stream_running:
@@ -300,9 +326,22 @@ async def _message_loop_until_shutdown(sc: Any) -> None:
         if shut_task in done:
             _log_stream("STREAM_MESSAGE_LOOP_EXIT", reason="shutdown_event")
             break
-        # One message handled; continue unless stopped
         if not _stream_running:
             break
+        # msg_task finished: consume exception so asyncio does not log "never retrieved"
+        if msg_task.cancelled():
+            continue
+        err = msg_task.exception()
+        if err is not None:
+            _streaming_logged_in = False
+            reason = "websocket_closed" if _is_stream_disconnect_error(err) else "handle_message_error"
+            _log_stream(
+                "STREAM_MESSAGE_LOOP_EXIT",
+                reason=reason,
+                err=f"{type(err).__name__}: {err}",
+            )
+            break
+        # One message handled successfully; continue recv loop
 
 
 def _run_stream_loop(
@@ -471,10 +510,11 @@ def stop_order_flow_stream(*, join_timeout: float = STREAM_THREAD_JOIN_TIMEOUT_S
 
     Must be called from app shutdown **before** the process exits or the main event loop closes.
     """
-    global _stream_running, _stream_shutdown_event, _stream_loop, _stream_thread
+    global _stream_running, _stream_shutdown_event, _stream_loop, _stream_thread, _streaming_logged_in
 
     _log_stream("STREAM_THREAD_JOIN_START", join_timeout_sec=join_timeout)
     _stream_running = False
+    _streaming_logged_in = False
     loop = _stream_loop
     ev = _stream_shutdown_event
     if loop is not None and ev is not None:

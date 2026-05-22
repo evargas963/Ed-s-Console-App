@@ -877,10 +877,23 @@ def _fetch_fast_quote_payload(ticker: str) -> dict:
     prev = _lmp.get_quote(tkr)
 
     if auth == "streaming":
-        if prev and prev.get("quote_ingestion") == "schwab_streaming_level_one":
+        try:
+            from order_flow_streaming import streaming_l1_cache_usable
+        except ImportError:
+            streaming_l1_cache_usable = None  # type: ignore[misc, assignment]
+        if (
+            streaming_l1_cache_usable is not None
+            and prev
+            and prev.get("quote_ingestion") == "schwab_streaming_level_one"
+            and streaming_l1_cache_usable(tkr)
+        ):
             return dict(prev)
         if prev and prev.get("quote_ingestion") == "rest_bootstrap_pending_stream":
             return dict(prev)
+        if prev and prev.get("quote_ingestion") == "schwab_streaming_level_one":
+            out = _build_rest_fast_quote_payload(tkr, "rest_fallback_explicit")
+            _lmp.record_quote(tkr, out)
+            return out
         out = _build_rest_fast_quote_payload(tkr, "rest_bootstrap_pending_stream")
         _lmp.record_quote(tkr, out)
         return out
