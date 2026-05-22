@@ -43,10 +43,10 @@ def _get_active_tickers() -> list[str]:
     import sqlite3
 
     from production_universe import filter_valid_tickers, normalize_production_ticker
-    from scheduler_user_tickers import load_user_scheduler_tickers
+    from scheduler_user_tickers import load_user_scheduler_tickers_or_empty
     from db import get_db
 
-    tickers = filter_valid_tickers(load_user_scheduler_tickers())
+    tickers = filter_valid_tickers(load_user_scheduler_tickers_or_empty())
     # Operational gate: must have at least one normalized 1m snapshot row.
     con = sqlite3.connect(str(get_db().db_path))
     cur = con.cursor()

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Optional
 import logging
 
 log = logging.getLogger(__name__)
@@ -24,8 +25,18 @@ _PATH = _ROOT / "data" / "user_scheduler_tickers.json"
 _ARCHIVE_PATH = _ROOT / "data" / "user_scheduler_tickers.json.migrated_issue22"
 
 
-def load_user_scheduler_tickers() -> list[str]:
-    """Return authoritative enrolled tickers (same universe as background logger)."""
+def load_user_scheduler_tickers() -> Optional[list[str]]:
+    """Return authoritative enrolled tickers (same universe as background logger).
+
+    Returns:
+      ``list[str]`` (possibly empty) on success — the enrolled-ticker list.
+      ``None`` on DB-bound load failure — distinct from "no tickers enrolled".
+
+    STACK-VERIFY-CAND-LOAD-TICKERS-RETURN-TYPE closure: callers can now distinguish
+    "DB unavailable" (None) from "DB OK but nobody enrolled" (empty list). Use
+    ``load_user_scheduler_tickers_or_empty()`` for legacy callers that want the
+    pre-fix list-or-empty semantic.
+    """
     try:
         from db import get_db
 
@@ -37,11 +48,21 @@ def load_user_scheduler_tickers() -> list[str]:
         return db.logging_universe_authoritative_tickers()
     except Exception as e:
         log.warning(
-            "load_user_scheduler_tickers: DB-bound load failed; returning empty list "
-            "(caller will see no enrollments): %s",
+            "load_user_scheduler_tickers: DB-bound load failed; returning None "
+            "(caller distinguishes DB-unavailable from empty enrollment): %s",
             e,
         )
-        return []
+        return None
+
+
+def load_user_scheduler_tickers_or_empty() -> list[str]:
+    """Legacy convenience: ``load_user_scheduler_tickers() or []``.
+
+    Use when the caller treats DB-unavailable identically to no-enrollment and
+    doesn't need the distinction. Prefer the typed version + explicit None handling
+    in new code so DB failures are visible.
+    """
+    return load_user_scheduler_tickers() or []
 
 
 def record_user_ticker(ticker: str) -> None:

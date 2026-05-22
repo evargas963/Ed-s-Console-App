@@ -674,9 +674,9 @@ def build_lstm_dataset(
     tdef = horizon_target_definition(hz)
     if tickers is None:
         try:
-            from scheduler_user_tickers import load_user_scheduler_tickers
+            from scheduler_user_tickers import load_user_scheduler_tickers_or_empty
 
-            tickers = load_user_scheduler_tickers()
+            tickers = load_user_scheduler_tickers_or_empty()
         except Exception:
             tickers = []
         tickers = [t for t in (tickers or []) if t and not str(t).startswith("$")]
@@ -887,9 +887,9 @@ if __name__ == "__main__":
     conn.close()
 
     try:
-        from scheduler_user_tickers import load_user_scheduler_tickers
+        from scheduler_user_tickers import load_user_scheduler_tickers_or_empty
 
-        tickers = [t for t in load_user_scheduler_tickers() if t and not t.startswith("$")]
+        tickers = [t for t in load_user_scheduler_tickers_or_empty() if t and not t.startswith("$")]
     except Exception:
         tickers = []
     if not tickers:

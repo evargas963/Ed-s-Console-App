@@ -148,9 +148,9 @@ def _training_ticker_union(
     RTH-labeled rows in snapshots determine whether training *runs* per ticker, not *membership*.
     """
     try:
-        from scheduler_user_tickers import load_user_scheduler_tickers
+        from scheduler_user_tickers import load_user_scheduler_tickers_or_empty
 
-        tickers = load_user_scheduler_tickers()
+        tickers = load_user_scheduler_tickers_or_empty()
     except Exception:
         tickers = []
     return sorted({t for t in tickers if t and not str(t).startswith("$")})
