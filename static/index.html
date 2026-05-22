@@ -3772,6 +3772,20 @@ const SIGNAL_CHAIN_LABELS = ['FEATURES', 'RULES', 'XGB', 'LSTM', 'TRANS', 'MC', 
 const SIGNAL_CHAIN_CX = [28, 140, 231, 308, 392, 490, 560, 658, 756];
 const SIGNAL_CHAIN_COL = { active: '#1D9E75', degraded: '#BA7517', off: '#E24B4A' };
 
+// STACK-WIRE-3-UI-FUSION-TRADABILITY-GATE: UI mirror of
+// fusion_contract.is_ms_dict_fusion_authoritative + TRADABLE_CANONICAL_PROVENANCE.
+// stack_runtime.fusion_active is the server-stamped truth (it now keys off the
+// authoritative gate). When stack_runtime is absent (legacy/error payload), fall
+// back to fusion_available AND canonical_provenance === "bayesian_fusion" so the
+// UI never reports "active" for a non-tradable split-brain payload.
+function isFusionAuthoritative(d) {
+  const rt = (d && d.stack_runtime && typeof d.stack_runtime === 'object') ? d.stack_runtime : null;
+  if (rt && typeof rt.fusion_active === 'boolean') return rt.fusion_active;
+  const flag = !!(d && d.fusion_available);
+  const prov = String((d && d.canonical_provenance) || '').toLowerCase();
+  return flag && prov === 'bayesian_fusion';
+}
+
 function resolveSignalChain(d) {
   const tri = (on, deg = false) => {
     if (deg) return 'degraded';
@@ -3779,7 +3793,8 @@ function resolveSignalChain(d) {
   };
   const rt = (d.stack_runtime && typeof d.stack_runtime === 'object') ? d.stack_runtime : {};
   const sm = String(rt.stack_mode || '').toUpperCase();
-  const fusionOk = !!d.fusion_available;
+  // STACK-WIRE-3-UI-FUSION-TRADABILITY-GATE: tradability gate, not bare flag.
+  const fusionOk = isFusionAuthoritative(d);
   const mcOk = !!d.mc_available;
   const spotOk = d.spot != null;
   const rulesOk = !!(d.rules_headline || d.micro_5m_headline || d.rules_conviction);
@@ -4009,10 +4024,13 @@ function formatFusedStackStatusDisplay(parsed) {
   return parsed.label;
 }
 
-/** Direction for WDS + Call fusion band; null when producer withheld (no fabricated flat). */
+/** Direction for WDS + Call fusion band; null when producer withheld (no fabricated flat).
+ *  STACK-WIRE-3-UI-FUSION-TRADABILITY-GATE: gate on tradability, not bare fusion_available;
+ *  a non-tradable split-brain payload must not steer direction off fusion_dominant_direction.
+ */
 function effectiveDirection(x) {
   if (!x || typeof x !== 'object') return null;
-  if (x.fusion_available) {
+  if (isFusionAuthoritative(x)) {
     return stackDirKey(x.fusion_dominant_direction);
   }
   return stackDirKey(x.dominant_dir) || stackDirKey(x.prediction_dir);
@@ -4239,7 +4257,9 @@ function renderDecisionCommandRail(d) {
   const contrib = Array.isArray(rt.contributing_models) ? rt.contributing_models.map(modelDisplayName) : [];
   const uniq = Array.from(new Set(contrib));
   domIf('dr-stack-contrib', el => { el.textContent = uniq.length ? uniq.join(', ') : '—'; });
-  domIf('dr-stack-fusion', el => { el.textContent = d.fusion_available ? 'active' : 'inactive'; el.style.color = d.fusion_available ? 'var(--green)' : 'var(--red)'; });
+  // STACK-WIRE-3-UI-FUSION-TRADABILITY-GATE: detail chip mirrors rail truth — non-tradable
+  // provenance (e.g. canonical_forecast_missing) shows 'inactive' even when bare flag is True.
+  domIf('dr-stack-fusion', el => { const fOk = isFusionAuthoritative(d); el.textContent = fOk ? 'active' : 'inactive'; el.style.color = fOk ? 'var(--green)' : 'var(--red)'; });
   domIf('dr-stack-mc', el => { el.textContent = d.mc_available ? 'participated' : 'not participating'; el.style.color = d.mc_available ? 'var(--green)' : 'var(--red)'; });
   domIf('dr-stack-bases', el => { el.textContent = `${Number(rt.n_base_models_live ?? 0)}/3 sequence+tabular bases live`; });
   domIf('dr-stack-gov', el => {
