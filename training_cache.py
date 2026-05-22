@@ -738,9 +738,24 @@ def validate_manifest_artifact_hashes(
     return True, "ok"
 
 
+_TRAINED_AT_UNAVAILABLE_AGE_DAYS: float = 1e9
+"""COH-I-B sentinel: marker age returned when the trained_at field is missing OR
+unparseable. Callers compare ``age > MANIFEST_SKIP_MAX_AGE_DAYS`` and treat this
+as "force retrain"; the bare 1e9 magic is named so callers can also detect the
+sentinel case explicitly when they need to distinguish "trained_at unavailable"
+from "trained_at is real but old"."""
+
+
 def trained_at_age_days(trained_at_iso: str, now: Optional[datetime] = None) -> float:
+    """Age in days since trained_at; ``_TRAINED_AT_UNAVAILABLE_AGE_DAYS`` when missing/unparseable.
+
+    COH-I-B closure: the two unavailable branches (missing field vs parse fail) are kept
+    separate at the log layer so the operator can tell them apart, while the numeric
+    return value still trips the same retrain gate.
+    """
     if not trained_at_iso:
-        return 1e9
+        log.debug("training_cache.trained_at_age_days: manifest missing trained_at field; sentinel age applied")
+        return _TRAINED_AT_UNAVAILABLE_AGE_DAYS
     now = now or datetime.now(timezone.utc)
     try:
         ts = trained_at_iso.replace("Z", "+00:00")
@@ -748,8 +763,9 @@ def trained_at_age_days(trained_at_iso: str, now: Optional[datetime] = None) -> 
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return max(0.0, (now - dt).total_seconds() / 86400.0)
-    except Exception:
-        return 1e9
+    except (ValueError, TypeError, AttributeError) as e:
+        log.debug("training_cache.trained_at_age_days: manifest trained_at unparseable (%r): %s — sentinel age applied", trained_at_iso, e)
+        return _TRAINED_AT_UNAVAILABLE_AGE_DAYS
 
 
 def full_skip_eligible(
@@ -808,6 +824,11 @@ def full_skip_eligible(
 
     if MANIFEST_SKIP_MAX_AGE_DAYS > 0:
         age = trained_at_age_days(str(manifest.get("trained_at", "")), now)
+        if age >= _TRAINED_AT_UNAVAILABLE_AGE_DAYS:
+            # COH-I-B: distinguish "trained_at unavailable" from "trained_at is real but old"
+            # in the caller-visible reason string. The numeric age still trips the same
+            # retrain gate either way.
+            return False, None, "manifest_trained_at_unavailable", "max_age_exceeded"
         if age > MANIFEST_SKIP_MAX_AGE_DAYS:
             return False, None, f"manifest_stale_age_{age:.1f}d", "max_age_exceeded"
 

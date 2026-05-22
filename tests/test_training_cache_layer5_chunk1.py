@@ -51,7 +51,30 @@ def test_validate_manifest_artifact_hashes_rejects_missing_marker(tmp_path: Path
 
 
 def test_trained_at_age_days_empty_string_fail_closed_stale():
-    assert trained_at_age_days("") == pytest.approx(1e9)
+    # COH-I-B: missing trained_at returns the named sentinel (still 1e9 numeric).
+    from training_cache import _TRAINED_AT_UNAVAILABLE_AGE_DAYS
+    assert trained_at_age_days("") == pytest.approx(_TRAINED_AT_UNAVAILABLE_AGE_DAYS)
+    assert _TRAINED_AT_UNAVAILABLE_AGE_DAYS == pytest.approx(1e9)
+
+
+def test_trained_at_age_days_unparseable_returns_same_sentinel_but_logs_distinct_reason(caplog):
+    """COH-I-B: missing field and parse failure both produce the sentinel age (so the
+    retrain gate trips identically), but log distinct diagnostic strings so the operator
+    can tell them apart.
+    """
+    import logging
+    from training_cache import _TRAINED_AT_UNAVAILABLE_AGE_DAYS
+
+    with caplog.at_level(logging.DEBUG, logger="training_cache"):
+        caplog.clear()
+        empty = trained_at_age_days("")
+        assert empty == pytest.approx(_TRAINED_AT_UNAVAILABLE_AGE_DAYS)
+        assert any("missing trained_at field" in rec.message for rec in caplog.records)
+
+        caplog.clear()
+        bad = trained_at_age_days("not-an-iso-string")
+        assert bad == pytest.approx(_TRAINED_AT_UNAVAILABLE_AGE_DAYS)
+        assert any("trained_at unparseable" in rec.message for rec in caplog.records)
 
 
 def test_meta_required_positive_int_rejects_missing_non_int_non_positive():
