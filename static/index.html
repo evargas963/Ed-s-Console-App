@@ -2520,6 +2520,7 @@
             </div>
             <span class="conviction-pill low" id="dr-freshness-pill" title="Analytical bundle freshness">FRESH —</span>
             <span class="decision-chip dim" id="dr-stack-mode-chip" title="Global stack_runtime.stack_mode (not artifact compliance)" style="display:none">STACK —</span>
+            <span class="decision-chip dim" id="dr-signals-engine-fail-chip" title="stack_runtime.signals_engine_failed — signals/market-state pipeline crashed (distinct from fusion/MC-only INVALID)" style="display:none">SIGNALS —</span>
             <span class="decision-chip dim" id="dr-lane-stale-chip" title="Fast lane ahead of analytical paint or cards repainting" style="display:none">LANE —</span>
           </div>
           <div class="signal-card-body">
@@ -3596,6 +3597,15 @@ function renderContextLayer(d) {
   } else {
     parts.push('<div class="ctx-note" style="margin-top:0">No liquidity behavior object in this response.</div>');
   }
+  // STACK-WIRE-3-UI-IV-RANK: bind iv_rank / iv_percentile from ms_dict to operator-visible volatility
+  // regime subsection. Withheld (em-dash) when None — never substituted with zero. Producer:
+  // server.py:4998-4999 (ms_dict stamp) ← math_volatility.compute_iv_rank / compute_iv_percentile.
+  parts.push('<div class="ctx-subhd"><span class="ctx-layer-title">Volatility regime</span></div>');
+  const _ivRank = d.iv_rank;
+  const _ivPct = d.iv_percentile;
+  const _fmtIvBp = (v) => (v == null || Number.isNaN(Number(v))) ? '—' : `${Number(v).toFixed(0)}`;
+  parts.push(`<div class="ctx-row" id="ctx-iv-rank-row"><span class="ctx-k">IV rank</span><span class="ctx-v" id="ctx-iv-rank">${escHtmlCtx(_fmtIvBp(_ivRank))}</span></div>`);
+  parts.push(`<div class="ctx-row" id="ctx-iv-percentile-row"><span class="ctx-k">IV percentile</span><span class="ctx-v" id="ctx-iv-percentile">${escHtmlCtx(_fmtIvBp(_ivPct))}</span></div>`);
   parts.push('<div class="ctx-subhd"><span class="ctx-layer-title">News / sentiment</span></div>');
   if (nw && typeof nw === 'object') {
     const src = (nw.sources && nw.sources.length) ? nw.sources.join(', ') : '—';
@@ -3765,6 +3775,40 @@ function renderTimeframeSignalRow(d) {
       }
     }
   });
+}
+
+// STACK-WIRE-3-UI-SPREAD-SEMANTIC: testable dispatcher mirror used by render() at the
+// SPD-gate site and exercised directly in tests/e2e/stack-wire-3-ui-phase3-behavioral.spec.js.
+// Keep this function and the inline dispatcher at render() in sync.
+//   inputs: { spread, spread_semantic, spot, _slowStaleVsFast, _fastLaneSpread, _fastLaneSpot }
+//   output: { spdForGate, spdIsPxWidth, gateOk, label }
+function computeSpreadGate(inp) {
+  inp = inp || {};
+  const sem = (typeof inp.spread_semantic === 'string') ? inp.spread_semantic.toLowerCase() : '';
+  const isFraction = sem === 'fraction';
+  const isDollar = sem === 'dollar';
+  const flsRaw = (inp._fastLaneSpread != null && !Number.isNaN(Number(inp._fastLaneSpread))) ? Number(inp._fastLaneSpread) : null;
+  const refSpot = (inp._fastLaneSpot != null && Number(inp._fastLaneSpot) > 0)
+    ? Number(inp._fastLaneSpot)
+    : parseFloat(inp.spot);
+  const pxWidthRaw = !!inp._slowStaleVsFast && flsRaw != null;
+  const isPxWidth = isFraction
+    ? false  // fraction is already unitless; gate compares against 0.05 directly
+    : (isDollar
+        ? false
+        : pxWidthRaw && Number.isFinite(refSpot) && refSpot > 0);
+  const spdForGate = isFraction
+    ? inp.spread
+    : (isPxWidth ? flsRaw : inp.spread);
+  const spdNum = (spdForGate == null || spdForGate === '') ? null : parseFloat(spdForGate);
+  const gateOk = isPxWidth
+    ? (spdNum != null && Number.isFinite(refSpot) && refSpot > 0 && spdNum < (0.05 / refSpot))
+    : (spdNum != null && spdNum < 0.05);
+  let label;
+  if (spdForGate == null) label = 'SPD —';
+  else if (isPxWidth) label = `Px SPD ${(spdNum * 100).toFixed(2)}%`;
+  else label = `SPD ${(spdNum * 100).toFixed(1)}%`;
+  return { spdForGate, spdIsPxWidth: isPxWidth, gateOk, label };
 }
 
 const SIGNAL_CHAIN_KEYS = ['features', 'rules', 'xgb', 'lstm', 'trans', 'mc', 'fusion', 'policy', 'trade'];
@@ -5359,12 +5403,29 @@ function render(d, fullRenderSource) {
   const _slowStaleVsFast = !!(d._server_build_ts && lastFastTs > 0 && d._server_build_ts < lastFastTs);
   if (_slowStaleVsFast) _fastRolloutBump('slowPriceDomSkipped');
   // Slow d.spread = bid–ask in dollars (liq gate); fast spread = (ask-bid)/mid fraction — never mix thresholds/labels.
+  // STACK-WIRE-3-UI-SPREAD-SEMANTIC: producer stamps spread_semantic ∈ {"fraction", "dollar"} on
+  // fast quote / Tier A payloads (server.py:839 fast, server.py:3058 Tier A). Consumer dispatches on
+  // that tag when present; legacy heuristic fallback (slow-vs-fast overlap + spot check) is preserved
+  // for payloads that predate the stamp (back-compat).
+  const _spdSemRaw = (typeof d.spread_semantic === 'string') ? d.spread_semantic.toLowerCase() : '';
+  const _spdSemFraction = _spdSemRaw === 'fraction';
+  const _spdSemDollar = _spdSemRaw === 'dollar';
   const _spdPxWidthRaw = _slowStaleVsFast && window._fastLaneSpreadFrac != null && !Number.isNaN(window._fastLaneSpreadFrac);
   const _refSpotForSpd = (window._fastLaneSpot != null && window._fastLaneSpot > 0)
     ? window._fastLaneSpot
     : parseFloat(d.spot);
-  const _spdIsPxWidth = _spdPxWidthRaw && Number.isFinite(_refSpotForSpd) && _refSpotForSpd > 0;
-  const _spdForGate = _spdIsPxWidth ? window._fastLaneSpreadFrac : d.spread;
+  // Authoritative dispatch: spread_semantic="fraction" → treat d.spread as fraction directly
+  // (no spot conversion, gate compares against 0.05 = 5% directly);
+  // spread_semantic="dollar" → treat d.spread as dollar width (legacy gate);
+  // else heuristic (px-width when slow-stale vs fast + spot valid).
+  const _spdIsPxWidth = _spdSemFraction
+    ? false  // fraction is already unitless — no /spot conversion in the gate
+    : (_spdSemDollar
+        ? false
+        : _spdPxWidthRaw && Number.isFinite(_refSpotForSpd) && _refSpotForSpd > 0);
+  const _spdForGate = _spdSemFraction
+    ? d.spread
+    : (_spdIsPxWidth ? window._fastLaneSpreadFrac : d.spread);
   const _spdGateOk = _spdIsPxWidth
     ? (_spdForGate != null && _spdForGate < (0.05 / _refSpotForSpd))
     : (_spdForGate != null && parseFloat(_spdForGate) < 0.05);
@@ -6388,6 +6449,10 @@ function _refreshLiveUiIntegrityDerivations(opts) {
   const slowStaleVsFast = Number.isFinite(bundleTs) && bundleTs > 0 && lastFastTs > 0 && bundleTs < lastFastTs;
   const rt = (ld && ld.stack_runtime) || {};
   const stackMode = String(rt.stack_mode || '').toUpperCase();
+  // STACK-WIRE-3-UI-SIGNALS-ENGINE-FAILED-BADGE: surface stack_runtime.signals_engine_failed
+  // separately from stack_mode=INVALID so operator can distinguish a signals/market-state pipeline
+  // crash from a fusion/MC-only INVALID stack. Producer stamps at server.py:5365-5368.
+  const signalsEngineFailed = rt.signals_engine_failed === true;
   window._priceAheadOfBundle = slowStaleVsFast;
   const integrity = {
     bundleTs,
@@ -6397,6 +6462,7 @@ function _refreshLiveUiIntegrityDerivations(opts) {
     slowStaleVsFast,
     gen: Number.isFinite(gen) ? gen : null,
     stackMode,
+    signalsEngineFailed,
   };
   window._liveUiIntegrity = integrity;
   return integrity;
@@ -6461,6 +6527,25 @@ function _updateStackModeChip(integrity) {
   el.className = 'decision-chip dim';
 }
 
+// STACK-WIRE-3-UI-SIGNALS-ENGINE-FAILED-BADGE: dedicated chip for signals/market-state pipeline
+// crash. Shown only when stack_runtime.signals_engine_failed === true. Distinct from stack_mode=
+// INVALID — a signals crash means upstream fields are unreliable, not just fusion/MC missing.
+function _updateSignalsEngineFailChip(integrity) {
+  const el = $('dr-signals-engine-fail-chip');
+  if (!el) return;
+  integrity = integrity || window._liveUiIntegrity || {};
+  if (integrity.signalsEngineFailed === true) {
+    el.style.display = '';
+    el.textContent = 'SIGNALS ENGINE FAILED';
+    el.className = 'decision-chip bad';
+    el.title = 'stack_runtime.signals_engine_failed=true — market-state/signals pipeline crashed; payload fields may be partial or stale';
+    return;
+  }
+  el.style.display = 'none';
+  el.textContent = 'SIGNALS —';
+  el.className = 'decision-chip dim';
+}
+
 function _updateLaneStaleChip(integrity) {
   const el = $('dr-lane-stale-chip');
   if (!el) return;
@@ -6500,6 +6585,7 @@ function _updateLiveUiAe(opts) {
   _updateTierCLaneStaleMarkers();
   _updateCoherenceHeadline(integrity);
   _updateStackModeChip(integrity);
+  _updateSignalsEngineFailChip(integrity);
   _updateLaneStaleChip(integrity);
 }
 
