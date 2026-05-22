@@ -208,7 +208,7 @@
 - [ ] **STACK-WIRE-13** — **Operator scenarios** (protocol #4): fast selloff, fast rip, expiry boundary, RTH→AH — bundle coherence during transients; scripted checklist + log capture.
 - [ ] **STACK-WIRE-14** — **Full money-path pytest** at sign-off SHA (broader than per-slice cones: FP1 + MADA + LRC + LIVE_UI + server-py regression tests); operator PowerShell report required per FP1 lesson.
 - [ ] **STACK-WIRE-15** — **Consumer re-fabrication grep** — no downstream 0.33 / `"flat"` / `"wait"` when producer withheld (extends stack foundation pass #2).
-- [ ] **Stack foundation sign-off** — **merged into this program** @ L583: run passes (1)–(6) as part of Phase 4; trigger `go stack-wiring-integrity-signoff` when Phases 0–3 complete. **Do not** duplicate a separate ad-hoc pass.
+- [x] **Stack foundation sign-off** — **merged into this program** @ L583: run passes (1)–(6) as part of Phase 4; trigger `go stack-wiring-integrity-signoff` when Phases 0–3 complete. **Do not** duplicate a separate ad-hoc pass. (No longer a standalone open item — the underlying Phase 4 sign-off passes track this; this row is cross-reference only.)
 
 **Phase 5 — residual / lower priority (file if wiring audit surfaces impact)**
 - [ ] **COH-I-B, COH-I-D, COH-I-F, COH-I-G, COH-I-I, COH-I-L, COH-I-M** — tier-3 COHERENCE-AUDIT rows; promote to paired-fix only if STACK-WIRE map shows live/card impact.
@@ -689,17 +689,17 @@ Reference ticker for parametric tests: **SPY**.
   - [ ] OBS-CSC1 — `validate_cascade_inference_lineage` re-wraps `XgbInferenceInputError` (inherits XGB1/XGB2 envelope strictness); accepted challenger-only path.
   - [ ] OBS-CSC2 — cascade upstream tensor names (`xgb_prob_*`, `lstm_prob_*`) are stage-contract labels, not Schwab leaves; locked by assert len 3/6 vs `ml_predict` cascade extras.
 - [ ] **Action 12.7+ — Layer 5 remaining unread surface** (wide-grep re-pass on audited files; `call_engine.py` full body) — `call_engine.py` full body; `ml_predict`/`ml_scheduler`/`ml_train`; `features/*` (11 files); `calibration/*` (~~`v2_live_logging.py`~~ FIND-V2LL1 closed; ~~`signal_layer_discrimination.py`~~ FIND-SLD1 closed; ~~`v2_advisory_backfill.py`~~ FIND-V2AB1–3 closed; ~~`backfill_outcomes.py`~~ FIND-BO1 closed; ~~`backfill_signal_layer_v1_bundle.py`~~ FIND-SLVB1–3 closed); `arch_competition/*`; `lstm_*`/`transformer_*`; ~~`v2_decision/a2_option_expression.py`~~ (FIND-A2OE1–3 closed); ~~`realized_contract_eval.py`~~ (FIND-RCE1–4 closed); ~~`training_cache.py`~~ (FIND-TC1–3 closed); re-read `server.py`/`market_state.py`; ~~`signals.py` L91-102 + ML fallback namespaces~~ (FIND-SIG1 closed).
-- [ ] **Stack foundation sign-off** — **Absorbed into STACK-WIRING-INTEGRITY** (Phase 4 / **STACK-WIRE-15**). Original six passes: (1) contract inventory → **STACK-WIRE-1** + map; (2) consumer grep → **STACK-WIRE-15**; (3) live vs replay → **STACK-WIRE-6** / **LIVE-UI-F**; (4) UI operator truth → Phase 3 LIVE-UI rows; (5) residual allowlist → Phase 4; (6) smoke → **STACK-WIRE-13**. **Trigger:** `go stack-wiring-integrity-signoff` after Phases 0–3 complete (not before **AUDIT-CAND-SERVER-PY-FULL-READ** closes).
+- [x] **Stack foundation sign-off** — **Absorbed into STACK-WIRING-INTEGRITY** (Phase 4 / **STACK-WIRE-15**). Original six passes: (1) contract inventory → **STACK-WIRE-1** + map; (2) consumer grep → **STACK-WIRE-15**; (3) live vs replay → **STACK-WIRE-6** / **LIVE-UI-F**; (4) UI operator truth → Phase 3 LIVE-UI rows; (5) residual allowlist → Phase 4; (6) smoke → **STACK-WIRE-13**. **Trigger:** `go stack-wiring-integrity-signoff` after Phases 0–3 complete (not before **AUDIT-CAND-SERVER-PY-FULL-READ** closes). (Cross-reference only; not a standalone open item.)
 - [x] **Action 11.8 — signals.py MC + fusion attributes fail-closed** — `signals.py:719,720,725,727,728,740,756,758,760` fabricated 0/`"neutral"`/`"unknown"` when mc_out/fusion attributes absent; return None and skip downstream label emit. Schwab-leaf path: `pricehistory.candles[].close` → MC; chain greeks → fusion. SHA: `a0b161b`
 - [x] **Action 11.9 — call_engine.py fail-closed on missing index quotes + fusion posteriors** — 11 high-priority sites + 5 lower-priority deferred; fusion posterior gate semantic: **block** trade when posterior is None (fail-closed). Schwab-leaf paths: `quotes.{SPY,QQQ,IWM}.netChange`, chain delta, fusion engine output. SHA: `4a64a69`
 - [x] **Action 11.9b — call_engine.py lower-priority fail-open** — bundled in Action 12.0 batch 1.
 - [x] **Day 2 — Order flow + spread** — DFR-019, PQ-002, PQ-005, PQ-007, PQ-008, PQ-011, PQ-012, PQ-013, OP-015, OP-017. Files: `order_flow_engine.py`, `server.py` VWAP + accumulator + fast-quote spread. RVOL unavailable not 1.0; spread units split; per-bar volume source. SHA: `92b85ff`
 - [x] **Day 3 — ML feature provenance** — DFR-012, DFR-013, MT-002, MT-003, MT-005, MT-008, MT-012. Files: `features/inference_snapshot.py`, `features/fusion_model_input.py`, `features/lstm_sequence_input.py`, `ml_data_common.py`, `calibration/v2_advisory_backfill.py`, `tests/test_ml_feature_provenance.py`. Per-field lineage; fusion `unknown`; LSTM masks; `m5_source_timeframe`. SHA: `c527b82`
-- [ ] ~~**Day 4 — ML training imputation**~~ — superseded by Section 10
-- [ ] ~~**Day 5 — Calibration + replay**~~ — superseded by Section 11
-- [ ] ~~**Day 6 — Trader-visible A2 + UI remnants**~~ — superseded by Section 17
-- [ ] ~~**Day 7 — Market context + remaining PQ**~~ — superseded by Sections 2–3
-- [ ] ~~**Day 8 — Final repo-wide zero-OPEN sweep**~~ — superseded by section closure cert (Section 17)
+- [x] ~~**Day 4 — ML training imputation**~~ — superseded by Section 10
+- [x] ~~**Day 5 — Calibration + replay**~~ — superseded by Section 11
+- [x] ~~**Day 6 — Trader-visible A2 + UI remnants**~~ — superseded by Section 17
+- [x] ~~**Day 7 — Market context + remaining PQ**~~ — superseded by Sections 2–3
+- [x] ~~**Day 8 — Final repo-wide zero-OPEN sweep**~~ — superseded by section closure cert (Section 17)
 
 ---
 
