@@ -64,3 +64,40 @@ def test_order_flow_engine_has_no_tradability_gate():
     assert "canonical_provenance_is_tradable" not in src
     assert "fusion_is_authoritative" not in src
     assert "is_canonical_tradable" not in src
+
+
+def test_order_flow_engine_residual_magics_named():
+    """STACK-WIRE-5-CAND-OF-RESIDUAL-MAGICS: bare integer depths and RVOL center named."""
+    # Constants exist with expected values.
+    assert ofe.OF_BOOK_DEPTH_TOP == 1
+    assert ofe.OF_BOOK_DEPTH_SHALLOW == 3
+    assert ofe.OF_BOOK_DEPTH_DEEP == 5
+    assert ofe.OF_RVOL_NEUTRAL_CENTER == 1.0
+    assert ofe.OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT == 2
+
+    # _compute_institutional_flow_proxy and OrderFlowEngine.compute use the named depths,
+    # not bare integers.
+    src_inst = inspect.getsource(ofe._compute_institutional_flow_proxy)
+    assert "OF_BOOK_DEPTH_DEEP" in src_inst
+    assert "_compute_book_imbalance(data, 5)" not in src_inst
+
+    src_compute = inspect.getsource(ofe.OrderFlowEngine.compute)
+    assert "OF_BOOK_DEPTH_TOP" in src_compute
+    assert "OF_BOOK_DEPTH_SHALLOW" in src_compute
+    assert "OF_BOOK_DEPTH_DEEP" in src_compute
+    assert "_compute_book_imbalance(data, 1)" not in src_compute
+    assert "_compute_book_imbalance(data, 3)" not in src_compute
+    assert "_compute_book_imbalance(data, 5)" not in src_compute
+
+    # _compute_order_flow_score uses OF_RVOL_NEUTRAL_CENTER (not bare 1.0) for the rvol term.
+    body = inspect.getsource(ofe)
+    score_body = body[
+        body.index("def _compute_order_flow_score") : body.index("def _direction")
+    ]
+    assert "OF_RVOL_NEUTRAL_CENTER" in score_body
+    assert "(rvol - 1.0)" not in score_body
+
+    # _weighted_mean_present default uses the named constant, not bare 2.
+    wm_src = inspect.getsource(ofe._weighted_mean_present)
+    assert "min_present: int = OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT" in wm_src
+    assert "min_present: int = 2" not in wm_src

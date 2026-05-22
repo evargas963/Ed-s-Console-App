@@ -50,6 +50,15 @@ OF_TAPE_WINDOW_5M_SEC: float = 300.0
 OF_CUM_DELTA_NORM_DIVISOR: float = 10000.0
 OF_OPTIONS_DELTA_NORM_DIVISOR: float = 50000.0
 OF_ABSORPTION_PRICE_EPS: float = 0.01
+# Book-depth ladder for _compute_book_imbalance: top of book, shallow, deep.
+OF_BOOK_DEPTH_TOP: int = 1
+OF_BOOK_DEPTH_SHALLOW: int = 3
+OF_BOOK_DEPTH_DEEP: int = 5
+# RVOL neutral center: RVOL = 1.0 means realized volume == average; the composite uses (rvol - center).
+OF_RVOL_NEUTRAL_CENTER: float = 1.0
+# Default minimum legs for _weighted_mean_present when callers omit min_present.
+# (Composite scoring explicitly passes OF_COMPOSITE_MIN_LEGS; this is a safe-default fallback.)
+OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT: int = 2
 
 try:
     import numpy as np
@@ -769,7 +778,7 @@ def _compute_institutional_flow_proxy(data: dict) -> Optional[float]:
     Uses: tape (large LAST_SIZE), options flow, book imbalance.
     """
     cum = _compute_cum_delta_proxy(data)
-    book_imb = _compute_book_imbalance(data, 5)
+    book_imb = _compute_book_imbalance(data, OF_BOOK_DEPTH_DEEP)
     opt_score, _, _, delta_w, _ = _compute_options_flow(data)
     components = []
     if cum is not None:
@@ -799,7 +808,7 @@ def _normalize(val: Optional[float], low: float = -1.0, high: float = 1.0) -> fl
 def _weighted_mean_present(
     terms: list[tuple[float, Optional[float], float, float]],
     *,
-    min_present: int = 2,
+    min_present: int = OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT,
 ) -> Optional[float]:
     """
     Weighted mean over present (non-None) legs; renormalize present weights to 1.0.
@@ -840,7 +849,7 @@ def _compute_order_flow_score(
             (OF_COMPOSITE_WEIGHT_OPTIONS, options_flow, OF_CLIP_LOW, OF_CLIP_HIGH),
             (
                 OF_COMPOSITE_WEIGHT_RVOL,
-                (rvol - 1.0) if rvol is not None else None,
+                (rvol - OF_RVOL_NEUTRAL_CENTER) if rvol is not None else None,
                 OF_RVOL_TERM_LOW,
                 OF_RVOL_TERM_HIGH,
             ),
@@ -905,9 +914,9 @@ class OrderFlowEngine:
             return self._empty_result()
 
         # Book metrics (from Level 2 BIDS/ASKS when streamer available)
-        book_imbalance_1 = _compute_book_imbalance(data, 1)
-        book_imbalance_3 = _compute_book_imbalance(data, 3)
-        book_imbalance_5 = _compute_book_imbalance(data, 5)
+        book_imbalance_1 = _compute_book_imbalance(data, OF_BOOK_DEPTH_TOP)
+        book_imbalance_3 = _compute_book_imbalance(data, OF_BOOK_DEPTH_SHALLOW)
+        book_imbalance_5 = _compute_book_imbalance(data, OF_BOOK_DEPTH_DEEP)
 
         # Top of book (quote.bidSize/askSize — always from REST)
         top_book_pressure, top_book_pressure_source = _compute_top_book_pressure(data)
