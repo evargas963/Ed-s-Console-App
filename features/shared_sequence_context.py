@@ -10,7 +10,8 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
+from types import MappingProxyType
+from typing import Any, Mapping, Optional
 
 from lstm_data import CANONICAL_TIMEFRAME, STREAM_5M_LOOKBACK
 from ml_horizon import ALL_GOVERNED_HORIZONS
@@ -28,14 +29,23 @@ def _require_ticker(ticker: str) -> str:
 
 @dataclass(frozen=True)
 class SharedSequenceContext:
-    """Immutable handles to shared sequence data (do not mutate nested dicts)."""
+    """Immutable handles to shared sequence data.
+
+    COH-I-F closure: ``@dataclass(frozen=True)`` prevents attribute reassignment, but
+    the typed ``dict`` fields used to be mutable in place. ``meta`` is now a
+    ``MappingProxyType`` view (raises ``TypeError`` on write). The snapshot tuples
+    are tuples-of-dicts: per-row dict contents are NOT individually frozen because
+    snapshot dicts flow through other consumer code (mass-freezing here would have
+    too wide a blast radius); the tuple wrapper itself prevents row insertion /
+    removal and is the structural guarantee callers can rely on.
+    """
 
     as_of_ts: float
     chron_snapshots: tuple[dict[str, Any], ...]
     lstm_merged_window: tuple[dict[str, Any], ...]
     lstm_merged_days: tuple[dict[str, Any], ...]
     n_fetch: int
-    meta: dict[str, Any]
+    meta: Mapping[str, Any]
 
 
 def _max_transformer_seq_len_for_ticker(ticker: str) -> int:
@@ -188,7 +198,7 @@ def build_shared_sequence_context(
             lstm_merged_window=tuple(merged_window),
             lstm_merged_days=tuple(merged_days),
             n_fetch=n_fetch,
-            meta=meta,
+            meta=MappingProxyType(meta),  # COH-I-F: read-only view
         ),
         None,
     )

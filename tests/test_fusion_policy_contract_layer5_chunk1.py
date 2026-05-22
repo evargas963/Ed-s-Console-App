@@ -101,3 +101,42 @@ def test_stack_status_uses_question_marks_when_dominant_direction_missing():
     )
     cols = fusion_payload_to_policy_columns("5c", fus)
     assert "dir=?" in cols["fused_stack_status_5c"]
+
+
+def test_coh_i_g_contributing_models_json_truncation_named():
+    """COH-I-G: cm_json truncation cap is a named constant, not a bare 8000 magic.
+    The replay parser must tolerate truncated JSON; this guard locks the cap into a
+    named symbol so it stays grep-discoverable and can be widened without churn.
+    """
+    import inspect
+    from features.fusion_policy_contract import (
+        FUSION_CONTRIBUTING_MODELS_JSON_MAX_CHARS,
+        FUSION_STACK_STATUS_MAX_CHARS,
+        fusion_payload_to_policy_columns,
+    )
+    import features.fusion_policy_contract as fpc
+
+    assert FUSION_CONTRIBUTING_MODELS_JSON_MAX_CHARS == 8000
+    assert FUSION_STACK_STATUS_MAX_CHARS == 500
+
+    src = inspect.getsource(fpc)
+    # The constant declaration line is allowed to have the literal; usage sites must use the name.
+    body_only = src.replace("FUSION_CONTRIBUTING_MODELS_JSON_MAX_CHARS: int = 8000", "")
+    body_only = body_only.replace("FUSION_STACK_STATUS_MAX_CHARS: int = 500", "")
+    assert "[:8000]" not in body_only, "bare 8000 truncation still present"
+    assert "[:500]" not in body_only, "bare 500 truncation still present"
+
+    # Behavioral: cap honored when contributing_models is huge.
+    from types import SimpleNamespace
+    huge = [f"model_{i}" for i in range(10000)]
+    fus = SimpleNamespace(
+        available=True,
+        prob_up=0.5, prob_down=0.3, prob_flat=0.2,
+        fusion_confidence_score=0.7,
+        contributing_models=huge,
+        dominant_direction="up", fusion_confidence="high",
+    )
+    cols = fusion_payload_to_policy_columns("5c", fus)
+    cm = cols["fused_contributing_models_5c"]
+    assert cm is not None
+    assert len(cm) <= FUSION_CONTRIBUTING_MODELS_JSON_MAX_CHARS

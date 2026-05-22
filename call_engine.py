@@ -50,6 +50,12 @@ MINS_TO_CLOSE_NO_NEW_ENTRIES: int = 30
 MINS_TO_CLOSE_HALVE_SIZE: int = 60
 MINS_TO_CLOSE_REDUCE_SIZE: int = 120
 
+# COH-I-M: time-warning visual prefixes. Kept in named constants so the unicode
+# symbols are grep-discoverable and can be swapped to ASCII tokens for downstream
+# consumers that don't render the emoji (terminals, JSON pretty-printers, etc).
+TIME_WARNING_PREFIX_STOP: str = "\U0001f6d1"  # 🛑  no-new-entries (≤30 min)
+TIME_WARNING_PREFIX_ALERT: str = "⏰"      # ⏰  reduce-size warning (≤120 min)
+
 # Validate trade gates
 WALL_TOO_CLOSE_PTS: float = 1.0
 CHOP_CONFLUENCE_MIN: int = 4
@@ -1715,7 +1721,7 @@ def compute_call(
     #    wait_blocker, and display fields stay consistent. No new entries ≤30min.
     # ══════════════════════════════════════════════════════════════════════════
     if inp.mins_to_close is not None and inp.mins_to_close <= MINS_TO_CLOSE_NO_NEW_ENTRIES and inp.mins_to_close > 0:
-        time_warning = f"🛑 Only {int(inp.mins_to_close)}min to close — no new entries."
+        time_warning = f"{TIME_WARNING_PREFIX_STOP} Only {int(inp.mins_to_close)}min to close — no new entries."
         final_signal = "wait"
         conviction   = "low"
         size_cue     = "SKIP"
@@ -1725,7 +1731,7 @@ def compute_call(
             "full_detail": f"Only {int(inp.mins_to_close)} min to close — no new entries.",
         }
     elif inp.mins_to_close is not None and inp.mins_to_close <= MINS_TO_CLOSE_REDUCE_SIZE and inp.mins_to_close > 0:
-        time_warning = f"⏰ {int(inp.mins_to_close)}min to close — reduce size, quick trades only."
+        time_warning = f"{TIME_WARNING_PREFIX_ALERT} {int(inp.mins_to_close)}min to close — reduce size, quick trades only."
         if size_cue == "FULL":
             size_cue = "HALF"
     elif inp.mins_to_close is None and final_signal in ("long", "short"):

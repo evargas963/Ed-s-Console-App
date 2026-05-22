@@ -13,6 +13,16 @@ from typing import Any, Optional
 
 from fusion_contract import fusion_is_authoritative
 
+# COH-I-G: contributing-models JSON column truncation guard.
+# Max chars retained when serializing fusion.contributing_models for the snapshot column;
+# replay layer must parse the (possibly-truncated) JSON tolerantly. Sized to fit the
+# longest expected stack (xgb / lstm / transformer / meta + future cascade variants) with
+# headroom for forward extension.
+FUSION_CONTRIBUTING_MODELS_JSON_MAX_CHARS: int = 8000
+# COH-I-G: stack-status string truncation guard. The status column is a short audit string;
+# the cap exists to bound DB row width on degraded paths (fusion_unavailable with a long summary).
+FUSION_STACK_STATUS_MAX_CHARS: int = 500
+
 
 def _fusion_triplet(fusion: Any) -> Optional[tuple[float, float, float]]:
     """Normalized (up, down, flat) or None when fusion unavailable or probs incomplete."""
@@ -37,12 +47,12 @@ def _stack_status(fusion: Any, *, avail: bool, dom: str, fconf: str) -> str:
     if avail:
         return f"fusion_ok|dir={dom}|lbl={fconf}"
     summary = (getattr(fusion, "fusion_summary", None) or "")[:200]
-    return f"fusion_unavailable|{summary}"[:500]
+    return f"fusion_unavailable|{summary}"[:FUSION_STACK_STATUS_MAX_CHARS]
 
 
 def fusion_policy_columns_horizon_failed(hz: str, *, reason: str) -> dict[str, Any]:
     """Explicit NULL policy columns when per-horizon stack+fusion raised (replay discrimination)."""
-    status = f"stack_failed|{reason}"[:500]
+    status = f"stack_failed|{reason}"[:FUSION_STACK_STATUS_MAX_CHARS]
     return {
         f"fused_move_prob_{hz}": None,
         f"fused_dir_up_prob_{hz}": None,
@@ -69,7 +79,7 @@ def fusion_payload_to_policy_columns(hz: str, fusion: Any) -> dict[str, Any]:
     avail = fusion_is_authoritative(fusion)
     dom = str(getattr(fusion, "dominant_direction", "?") or "?") if fusion is not None else "?"
     fconf = str(getattr(fusion, "fusion_confidence", "?") or "?") if fusion is not None else "?"
-    status = _stack_status(fusion, avail=avail, dom=dom, fconf=fconf)[:500]
+    status = _stack_status(fusion, avail=avail, dom=dom, fconf=fconf)[:FUSION_STACK_STATUS_MAX_CHARS]
 
     tri = _fusion_triplet(fusion)
     if tri is None:
@@ -77,7 +87,7 @@ def fusion_payload_to_policy_columns(hz: str, fusion: Any) -> dict[str, Any]:
         if fusion is not None and avail:
             cm = getattr(fusion, "contributing_models", None) or []
             try:
-                cm_json = json.dumps(list(cm), separators=(",", ":"))[:8000]
+                cm_json = json.dumps(list(cm), separators=(",", ":"))[:FUSION_CONTRIBUTING_MODELS_JSON_MAX_CHARS]
             except (TypeError, ValueError):
                 cm_json = "[]"
         return {
@@ -99,7 +109,7 @@ def fusion_payload_to_policy_columns(hz: str, fusion: Any) -> dict[str, Any]:
             conf = None
     cm = getattr(fusion, "contributing_models", None) or []
     try:
-        cm_json = json.dumps(list(cm), separators=(",", ":"))[:8000]
+        cm_json = json.dumps(list(cm), separators=(",", ":"))[:FUSION_CONTRIBUTING_MODELS_JSON_MAX_CHARS]
     except (TypeError, ValueError):
         cm_json = "[]"
 

@@ -100,3 +100,30 @@ def test_shared_sequence_context_dataclass_is_immutable():
     )
     with pytest.raises(Exception):
         ctx.n_fetch = 2  # type: ignore[misc]
+
+
+def test_coh_i_f_meta_is_read_only_mapping_view(monkeypatch):
+    """COH-I-F: meta is wrapped in MappingProxyType in build_shared_sequence_context, so
+    mutating ctx.meta raises TypeError. Frozen dataclass attribute-reassign guard already
+    locked above; this guard locks the nested-dict mutation surface.
+    """
+    from types import MappingProxyType
+
+    from features import shared_sequence_context as ssc
+    from tests.test_parallel_stack_runtime import _minimal_inf_v1
+
+    monkeypatch.setattr(ssc, "_max_transformer_seq_len_for_ticker", lambda _t: 20)
+    rows = [{"ts_utc": 3000.0 - i, "spot": 450.0} for i in range(100)]  # newest first
+    db = MagicMock()
+    db.get_recent_snapshots.return_value = rows
+    mw = [{"ts_utc": float(i)} for i in range(60)]
+    md = [{"ts_utc": float(i)} for i in range(80)]
+    with patch(
+        "features.lstm_sequence_input.build_lstm_merged_windows",
+        return_value=(mw, md),
+    ):
+        ctx, err = build_shared_sequence_context(db, "SPY", _minimal_inf_v1())
+    assert err is None and ctx is not None
+    assert isinstance(ctx.meta, MappingProxyType)
+    with pytest.raises(TypeError):
+        ctx.meta["new_key"] = "no"  # type: ignore[index]
