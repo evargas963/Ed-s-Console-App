@@ -5404,36 +5404,17 @@ function render(d, fullRenderSource) {
   if (_slowStaleVsFast) _fastRolloutBump('slowPriceDomSkipped');
   // Slow d.spread = bid–ask in dollars (liq gate); fast spread = (ask-bid)/mid fraction — never mix thresholds/labels.
   // STACK-WIRE-3-UI-SPREAD-SEMANTIC: producer stamps spread_semantic ∈ {"fraction", "dollar"} on
-  // fast quote / Tier A payloads (server.py:839 fast, server.py:3058 Tier A). Consumer dispatches on
-  // that tag when present; legacy heuristic fallback (slow-vs-fast overlap + spot check) is preserved
-  // for payloads that predate the stamp (back-compat).
-  const _spdSemRaw = (typeof d.spread_semantic === 'string') ? d.spread_semantic.toLowerCase() : '';
-  const _spdSemFraction = _spdSemRaw === 'fraction';
-  const _spdSemDollar = _spdSemRaw === 'dollar';
-  const _spdPxWidthRaw = _slowStaleVsFast && window._fastLaneSpreadFrac != null && !Number.isNaN(window._fastLaneSpreadFrac);
-  const _refSpotForSpd = (window._fastLaneSpot != null && window._fastLaneSpot > 0)
-    ? window._fastLaneSpot
-    : parseFloat(d.spot);
-  // Authoritative dispatch: spread_semantic="fraction" → treat d.spread as fraction directly
-  // (no spot conversion, gate compares against 0.05 = 5% directly);
-  // spread_semantic="dollar" → treat d.spread as dollar width (legacy gate);
-  // else heuristic (px-width when slow-stale vs fast + spot valid).
-  const _spdIsPxWidth = _spdSemFraction
-    ? false  // fraction is already unitless — no /spot conversion in the gate
-    : (_spdSemDollar
-        ? false
-        : _spdPxWidthRaw && Number.isFinite(_refSpotForSpd) && _refSpotForSpd > 0);
-  const _spdForGate = _spdSemFraction
-    ? d.spread
-    : (_spdIsPxWidth ? window._fastLaneSpreadFrac : d.spread);
-  const _spdGateOk = _spdIsPxWidth
-    ? (_spdForGate != null && _spdForGate < (0.05 / _refSpotForSpd))
-    : (_spdForGate != null && parseFloat(_spdForGate) < 0.05);
-  const _spdGateLabel = _spdForGate == null
-    ? 'SPD —'
-    : (_spdIsPxWidth
-      ? `Px SPD ${(parseFloat(_spdForGate) * 100).toFixed(2)}%`
-      : `SPD ${(parseFloat(_spdForGate) * 100).toFixed(1)}%`);
+  // fast quote / Tier A payloads (server.py:839 fast, server.py:3058 Tier A). Dispatch via the single
+  // computeSpreadGate() authority defined above — both render() and Playwright behavioral spec use
+  // the same function (no duplicated logic that can drift on a future edit).
+  const { gateOk: _spdGateOk, label: _spdGateLabel } = computeSpreadGate({
+    spread: d.spread,
+    spread_semantic: d.spread_semantic,
+    spot: d.spot,
+    _slowStaleVsFast,
+    _fastLaneSpread: window._fastLaneSpreadFrac,
+    _fastLaneSpot: window._fastLaneSpot,
+  });
 
   renderContextLayer(d);
   // Legacy MHAP/The Call surface removed from DOM in the new execution-first layout.

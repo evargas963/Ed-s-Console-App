@@ -22,17 +22,36 @@ HTML = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="repl
 
 def test_wire3_ui_spread_semantic_consumer_dispatch():
     """UI dispatches on producer-stamped d.spread_semantic ∈ {"fraction", "dollar"} with
-    legacy heuristic preserved as back-compat when the field is absent.
+    legacy heuristic preserved as back-compat when the field is absent. Single authority:
+    computeSpreadGate(inp) — render() and Playwright spec both call the same function so
+    they cannot drift on a future edit.
     Producer: server.py:839 (fast quote, "fraction"), server.py:3058 (Tier A, "dollar").
     """
-    # Explicit dispatch on the producer tag.
-    assert "d.spread_semantic" in HTML, "consumer must read d.spread_semantic"
-    assert "_spdSemFraction" in HTML
-    assert "_spdSemDollar" in HTML
+    # Single authority defined.
+    assert "function computeSpreadGate(inp)" in HTML, (
+        "Single authority computeSpreadGate(inp) must exist (called by both render() and "
+        "Playwright behavioral spec)."
+    )
+    # Dispatcher gates on the producer tag inside the helper.
+    assert "isFraction = sem === 'fraction'" in HTML
+    assert "isDollar = sem === 'dollar'" in HTML
+    # Fraction is unit-less — must NOT do /spot conversion (the Cursor-flagged bug).
+    assert "isFraction\n    ? false" in HTML, (
+        "Fraction path must force isPxWidth=false (fraction is already unit-less; gate "
+        "compares against 0.05 directly, not 0.05/spot). This is the Cursor-flagged "
+        "fraction regression."
+    )
+    # render() consumes via the helper — no duplicated inline dispatcher.
+    assert "computeSpreadGate({" in HTML, "render() must call computeSpreadGate (no inline dup)"
+    # The pre-dedup inline pattern (introduced be67e57 first attempt, removed in dedup commit)
+    # must not be re-introduced.
+    assert "const _spdSemFraction = _spdSemRaw" not in HTML, (
+        "render() must not re-inline the dispatcher (use computeSpreadGate via destructure)."
+    )
     assert "STACK-WIRE-3-UI-SPREAD-SEMANTIC" in HTML, "marker comment for grep traceability"
-    # Back-compat: legacy heuristic dispatch path still present for payloads predating the stamp.
-    assert "_spdPxWidthRaw" in HTML
-    assert "_fastLaneSpreadFrac" in HTML
+    # Back-compat: legacy heuristic dispatch path still present inside the helper.
+    assert "pxWidthRaw" in HTML
+    assert "_fastLaneSpread" in HTML
 
 
 def test_wire3_ui_pressure_label_unavailable_treated_as_withheld():
