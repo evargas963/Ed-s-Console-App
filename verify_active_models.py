@@ -1,7 +1,3 @@
-import logging
-
-log = logging.getLogger(__name__)
-
 #!/usr/bin/env python3
 """
 verify_active_models.py — Active Artifact Compliance & Verification
@@ -19,8 +15,11 @@ Exit codes:
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 # Windows cp1252: avoid UnicodeEncodeError for console
 if sys.stdout.encoding and "cp1252" in sys.stdout.encoding.lower():
