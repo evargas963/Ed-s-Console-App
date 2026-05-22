@@ -21,6 +21,13 @@ from datetime import datetime
 from time_et import ET, now_et
 
 APP_DIR = str(Path(__file__).parent.resolve())
+
+# OBS-CLUSTER-RANK-1: clustering-rank floor for the "no zones produced" outcome.
+# This is an integer rank sentinel (lower score = worse ranking) used by
+# _recommend_default_clustering to sort modes against each other. NOT the same
+# semantic as MISSING_GREEK_SENTINEL (which is a float Schwab-missing-greek
+# placeholder) — kept distinct so the two never alias.
+CLUSTERING_RANK_NO_ZONES_FLOOR: int = -999
 sys.path.insert(0, APP_DIR)
 
 
@@ -252,7 +259,7 @@ def _recommend_default_clustering(results: dict, snapshot_types: list) -> str:
         for st in snapshot_types:
             all_zones.extend(results[mode][st]["zones"])
         if not all_zones:
-            scores[mode] = -999
+            scores[mode] = CLUSTERING_RANK_NO_ZONES_FLOOR
             continue
         diag = _zone_diagnostics(all_zones)
         # Prefer: moderate zone count (not too fragmented), tight widths, few overly broad
