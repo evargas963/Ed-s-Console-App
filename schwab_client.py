@@ -409,7 +409,11 @@ def safe_get_price_history(client, ticker: str, *, frequency_minutes: int = 5, p
             frequency=freq,
             need_extended_hours_data=False,
         )
-    except Exception:
+    except Exception as e_enum:
+        # STACK-VERIFY-CAND-SILENT-FALLBACK-SWEEP: legacy raw-kwargs fallback for
+        # older schwab-py versions; emit diagnostic so silent fallback to None on
+        # the second branch is visible to the operator instead of a black-box drop.
+        log.debug("safe_get_price_history: enum-API path failed (%s); trying raw kwargs", e_enum)
         try:
             return client.get_price_history(
                 ticker,
@@ -419,7 +423,12 @@ def safe_get_price_history(client, ticker: str, *, frequency_minutes: int = 5, p
                 frequency=frequency_minutes,
                 needExtendedHoursData=False,
             )
-        except Exception:
+        except Exception as e_raw:
+            log.warning(
+                "safe_get_price_history: both enum + raw kwargs failed for ticker=%s freq=%s days=%s "
+                "(enum_err=%r raw_err=%r); returning None",
+                ticker, frequency_minutes, period_days, e_enum, e_raw,
+            )
             return None
 
 def safe_get_chain(client, ticker: str, *, strike_count: int = 20, from_date=None, to_date=None):

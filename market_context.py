@@ -819,8 +819,13 @@ def fetch_price_levels(
             sym_node = quote_raw.get(symbol.upper()) or quote_raw.get(symbol) or {}
             q = sym_node.get("quote", {}) or {}
             def _sf(key):
-                try: return float(q.get(key)) if q.get(key) is not None else None
-                except Exception: return None
+                # STACK-VERIFY-CAND-SILENT-FALLBACK-SWEEP: tighten exception scope to
+                # the actual float coercion failure modes; broad bare-except was hiding
+                # other bugs (AttributeError on q being non-dict, KeyError, etc.).
+                try:
+                    return float(q.get(key)) if q.get(key) is not None else None
+                except (TypeError, ValueError):
+                    return None
             pl.today_open = _sf("openPrice")
             pl.today_high = _sf("highPrice")
             pl.today_low  = _sf("lowPrice")
