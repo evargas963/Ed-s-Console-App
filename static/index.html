@@ -2242,9 +2242,9 @@
       <div class="ub-clock-time" id="ub-clock-time">--:--:--</div>
       <div class="ub-clock-date" id="ub-clock-date">—</div>
       <label class="ub-voice-close-opts"
-        title="Announces at 60,50,40,30,20,10, then each second to 0 in the last minute before 4:00 PM ET. RTH only. Early-close days may drift from exchange clock.">
-        <input type="checkbox" id="ed-voice-rth-close-countdown" aria-label="Voice countdown last minute to RTH close">
-        <span>Voice · last min to 4:00 PM ET</span>
+        title="RTH only: top of each hour speaks ET time (e.g. 2 PM). Last minute before 4:00 PM: 60,50,40,30,20,10, then 9…0 (no “seconds”). Early-close days may drift from exchange clock.">
+        <input type="checkbox" id="ed-voice-rth-close-countdown" aria-label="Voice clock: hourly time and last minute to RTH close">
+        <span>Voice · hour + last min to close</span>
       </label>
     </div>
   </div>
@@ -2991,7 +2991,7 @@
 //                   Every in-flight request captures its generation at launch.
 //                   Responses from earlier generations are UNCONDITIONALLY discarded.
 //   lastRenderTimestamp — analytical Tier C full-render gate only (never Tier A/B).
-//   lastFastTs — Tier A quote lane monotonic _server_build_ts (separate from analytical).
+//   lastFastTs — quote lane monotonic fast_server_ts (never analytical _server_build_ts).
 //
 // DOM input is READ-ONLY at commit time. It is never a source of truth.
 // Backend responses NEVER update activeTicker. Ticker flows one direction only:
@@ -3146,6 +3146,7 @@ function setActiveTicker(rawTicker, rawExpiry) {
     window._tierCCardsPaintedAtGen = 0;
     lastFastGen = 0;
     lastFastTs = 0;
+    _quoteLaneRejectLogCount = 0;
     window._lastPlaneDiag = null;
     window._planeDiagMeta = null;
     try {
@@ -4781,35 +4782,82 @@ function _livePlaneApplyCore(f, sourceTag) {
   }
 }
 
+/** True when quote fields should paint (gen/ts advanced or visible spot changed). */
+function _quoteLaneShouldApply(f) {
+  if (f == null || typeof f !== 'object' || Array.isArray(f)) return false;
+  const _fg = f.fast_generation_id != null ? Number(f.fast_generation_id) : NaN;
+  const _fts = f.fast_server_ts != null ? Number(f.fast_server_ts)
+    : (f._live_plane_fast_ts != null ? Number(f._live_plane_fast_ts) : NaN);
+  if (Number.isFinite(_fg) && _fg > lastFastGen) return true;
+  if (Number.isFinite(_fts) && _fts > lastFastTs) return true;
+  const spot = f.spot != null && f.spot !== '' ? Number(f.spot) : NaN;
+  if (Number.isFinite(spot) && spot > 0 && spot !== window._fastLaneSpot) return true;
+  const disp = f.spot_disp != null ? String(f.spot_disp) : '';
+  if (disp && disp !== String(window._fastLaneSpotDisp || '')) return true;
+  return false;
+}
+
+let _quoteLaneRejectLogCount = 0;
+function _quoteLaneRejectLog(tag, reason, detail) {
+  if (typeof DIAG !== 'undefined' && DIAG) {
+    console.warn('[' + tag + '] REJECTED ' + reason, detail || {});
+    return;
+  }
+  if (_quoteLaneRejectLogCount >= 8) return;
+  _quoteLaneRejectLogCount++;
+  console.warn('[' + tag + '] REJECTED ' + reason, detail || {});
+}
+
+function _commitQuoteLaneFromPayload(f) {
+  const _fg = f.fast_generation_id != null ? Number(f.fast_generation_id) : NaN;
+  const _fts = f.fast_server_ts != null ? Number(f.fast_server_ts)
+    : (f._live_plane_fast_ts != null ? Number(f._live_plane_fast_ts) : NaN);
+  if (Number.isFinite(_fg)) lastFastGen = Math.max(lastFastGen, _fg);
+  if (Number.isFinite(_fts)) lastFastTs = Math.max(lastFastTs, _fts);
+}
+
+/** Tier C merge — seed fast lane when poll/SSE have not painted yet. */
+function _syncQuoteLaneFromMergedState(d) {
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return;
+  if (!d.spot_disp && d.spot == null) return;
+  if (d.ticker && d.ticker.toUpperCase() !== activeTicker) return;
+  const qts = _validQuoteLaneTs(d);
+  if (qts != null && qts < lastFastTs && window._fastLaneSpotDisp) return;
+  if (!_quoteLaneShouldApply(d) && window._fastLaneSpotDisp) return;
+  _commitQuoteLaneFromPayload(d);
+  _livePlaneApplyCore(d, 'tier_c_merge');
+}
+
 // ── Fast lane (quote-only): strict allowlist — no session/decision/fusion/levels ──
 /** @returns {boolean} */
 function renderFast(f, laneGenCapture) {
   if (f == null || typeof f !== 'object' || Array.isArray(f)) return false;
   if (f.error === 'token_invalid') return false;
   if (f.ticker && f.ticker.toUpperCase() !== activeTicker) {
-    if (typeof DIAG !== 'undefined' && DIAG) console.warn('[renderFast] REJECTED wrong ticker', { incoming: f.ticker, active: activeTicker });
+    _quoteLaneRejectLog('renderFast', 'ticker', { incoming: f.ticker, active: activeTicker });
     return false;
   }
   if (laneGenCapture !== requestGeneration) {
-    if (typeof DIAG !== 'undefined' && DIAG) console.warn('[renderFast] REJECTED lane gen mismatch', { laneGenCapture, current: requestGeneration });
+    _quoteLaneRejectLog('renderFast', 'lane_gen', { laneGenCapture, current: requestGeneration });
     return false;
   }
-  const _fg = f.fast_generation_id != null ? Number(f.fast_generation_id) : NaN;
-  const _fts = f.fast_server_ts != null ? Number(f.fast_server_ts) : NaN;
-  if (Number.isFinite(_fg) && _fg <= lastFastGen) {
-    if (typeof DIAG !== 'undefined' && DIAG) console.warn('[renderFast] REJECTED duplicate fast_generation_id', { incoming: _fg, last: lastFastGen });
+  if (!_quoteLaneShouldApply(f)) {
+    const _fg = f.fast_generation_id != null ? Number(f.fast_generation_id) : NaN;
+    const _fts = f.fast_server_ts != null ? Number(f.fast_server_ts) : NaN;
+    _quoteLaneRejectLog('renderFast', 'no_material_change', { incoming_fg: _fg, last_fg: lastFastGen, incoming_fts: _fts, last_fts: lastFastTs });
     return false;
   }
-  if (Number.isFinite(_fts) && _fts < lastFastTs) {
-    if (typeof DIAG !== 'undefined' && DIAG) console.warn('[renderFast] REJECTED stale fast_server_ts', { incoming: _fts, last: lastFastTs });
-    return false;
-  }
-  if (Number.isFinite(_fg)) lastFastGen = Math.max(lastFastGen, _fg);
-  if (Number.isFinite(_fts)) lastFastTs = Math.max(lastFastTs, _fts);
+  _commitQuoteLaneFromPayload(f);
 
   _livePlaneApplyCore(f, 'http_fast_quote');
 
-  if (typeof DIAG !== 'undefined' && DIAG) console.log('[renderFast] OK', { ticker: f.ticker, fg: _fg, fts: _fts });
+  if (typeof DIAG !== 'undefined' && DIAG) {
+    console.log('[renderFast] OK', {
+      ticker: f.ticker,
+      fg: f.fast_generation_id,
+      fts: f.fast_server_ts != null ? f.fast_server_ts : f._live_plane_fast_ts,
+    });
+  }
   _updateTierCLaneStaleMarkers();
   _updateLiveUiAe();
   return true;
@@ -5207,6 +5255,14 @@ function _validServerBuildTs(d) {
   return Number.isFinite(raw) && raw > 0 ? raw : null;
 }
 
+function _validQuoteLaneTs(d) {
+  const fts = d && d.fast_server_ts != null ? Number(d.fast_server_ts) : NaN;
+  if (Number.isFinite(fts) && fts > 0) return fts;
+  const alt = d && d._live_plane_fast_ts != null ? Number(d._live_plane_fast_ts) : NaN;
+  if (Number.isFinite(alt) && alt > 0) return alt;
+  return null;
+}
+
 function _renderCoherenceGuards(d, opts) {
   opts = opts || {};
   const checkGen = opts.checkDecisionGen !== false;
@@ -5226,8 +5282,12 @@ function _renderCoherenceGuards(d, opts) {
   if (ts != null && tsLane === 'analytical' && ts < lastRenderTimestamp) {
     return { ok: false, reason: 'ts' };
   }
-  if (ts != null && tsLane === 'fast' && ts < lastFastTs) {
-    return { ok: false, reason: 'ts_fast' };
+  if (tsLane === 'quote' || tsLane === 'fast') {
+    const qts = _validQuoteLaneTs(d);
+    if (qts != null && qts < lastFastTs) {
+      return { ok: false, reason: 'ts_quote' };
+    }
+    return { ok: true };
   }
   return { ok: true };
 }
@@ -5241,9 +5301,19 @@ function _commitAnalyticalRenderTimestampAndGen(d) {
   }
 }
 
+function _commitQuoteLaneTimestamps(d) {
+  /** Quote-lane clock only — never use analytical _server_build_ts (always newer than Schwab quote time). */
+  const ftsRaw = d && d.fast_server_ts != null ? d.fast_server_ts
+    : (d && d._live_plane_fast_ts != null ? d._live_plane_fast_ts : null);
+  const fts = ftsRaw != null ? Number(ftsRaw) : NaN;
+  if (Number.isFinite(fts) && fts > 0) lastFastTs = Math.max(lastFastTs || 0, fts);
+  const fg = d && d.fast_generation_id != null ? Number(d.fast_generation_id) : NaN;
+  if (Number.isFinite(fg)) lastFastGen = Math.max(lastFastGen || 0, fg);
+}
+
+/** @deprecated alias — Tier A must not advance lastFastTs from _server_build_ts */
 function _commitTierAFastTimestamp(d) {
-  const ts = _validServerBuildTs(d);
-  if (ts != null) lastFastTs = Math.max(lastFastTs || 0, ts);
+  _commitQuoteLaneTimestamps(d);
 }
 
 /** Tier C pending shell — no chain yet; merge flags only so Tier A DOM stays visible. */
@@ -5284,7 +5354,7 @@ function renderTierCPendingShell(d, fullRenderSource) {
 function renderTierALive(d, fullRenderSource) {
   if (d == null || typeof d !== 'object' || Array.isArray(d)) return false;
   if (d.error && d.error === 'token_invalid') return false;
-  const guard = _renderCoherenceGuards(d, { checkDecisionGen: false, timestampLane: 'fast' });
+  const guard = _renderCoherenceGuards(d, { checkDecisionGen: false, timestampLane: 'quote' });
   if (!guard.ok) {
     if (typeof DIAG !== 'undefined' && DIAG) console.warn('[renderTierALive] REJECTED', guard.reason);
     return false;
@@ -5293,7 +5363,6 @@ function renderTierALive(d, fullRenderSource) {
   const merged = Object.assign({}, window._lastData || {}, d, lw);
   merged._tier_a_pending_full_analytics = true;
   window._lastData = merged;
-  _commitTierAFastTimestamp(d);
   try {
     window._edRtDiag = Object.assign(window._edRtDiag || {}, {
       lastFullRenderSource: fullRenderSource || 'tier_a_live',
@@ -5305,8 +5374,13 @@ function renderTierALive(d, fullRenderSource) {
   window._lastFullStateServerTs = d._server_build_ts != null ? d._server_build_ts : null;
   window.__edSessionLabel = String(d.session_label || '');
   domIf('sb-session', el => { el.textContent = d.session_label || '—'; });
-  domIf('sb-spot', el => { el.textContent = d.spot_disp || '—'; });
-  domIf('sb-bidask', el => { el.textContent = `${d.bid_disp || '—'} / ${d.ask_disp || '—'}`; });
+  if (d.spot != null || d.spot_disp) {
+    _commitQuoteLaneTimestamps(d);
+    _livePlaneApplyCore(d, 'tier_a_live');
+  } else {
+    domIf('sb-spot', el => { el.textContent = d.spot_disp || '—'; });
+    domIf('sb-bidask', el => { el.textContent = `${d.bid_disp || '—'} / ${d.ask_disp || '—'}`; });
+  }
   domIf('sb-expiry', el => { el.textContent = d.selected_exp || merged.selected_exp || '—'; });
   if (lw.dte_warn != null) {
     domIf('sb-dte', el => {
@@ -5440,7 +5514,8 @@ function render(d, fullRenderSource) {
   // ── Sidebar: Instrument ───────────────────────────────────────────────────
   window.__edSessionLabel = String(d.session_label || '');
   domIf('sb-session', el => { el.textContent = d.session_label || '—'; });
-  if (!_slowStaleVsFast) {
+  // Never let Tier C analytical bundle time clobber a fresher fast-lane quote on the strip.
+  if (!_slowStaleVsFast && !window._fastLaneSpotDisp) {
     domIf('sb-spot', el => { el.textContent = d.spot_disp || '—'; });
     domIf('sb-bidask', el => { el.textContent = `${d.bid_disp || '—'} / ${d.ask_disp || '—'}`; });
   }
@@ -6131,6 +6206,7 @@ function render(d, fullRenderSource) {
   try {
     if (d.analytics_version != null) window._lastUiVersion = String(d.analytics_version);
   } catch (e) {}
+  try { _syncQuoteLaneFromMergedState(d); } catch (eSync) {}
   try { refreshUtilityBar(); } catch (e2) {}
   return true;
 }
@@ -6798,7 +6874,14 @@ async function fetchState(force = false) {
 
     const _anMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _analyticsT0;
     if (_didRender) {
-      _logTickerSwitch('FIRST_FULL_STATE_APPLIED', { pipeline_ms: data._pipeline_ms, fetch_ms: Math.round(_anMs), tier: data._tier || '' });
+      _logTickerSwitch('FIRST_FULL_STATE_APPLIED', {
+        pipeline_ms: data._pipeline_ms,
+        fetch_ms: Math.round(_anMs),
+        tier: data._tier || '',
+        spot_disp: data.spot_disp || null,
+        fast_rollout: window._edFastRollout || null,
+        fast_lane_spot: window._fastLaneSpotDisp || null,
+      });
       if (willChange && _switchDiagSession && _switchDiagSession.first_full_state_ms == null && data._tier !== 'A_live' && !data.analytics_pending_shell) {
         const t0 = _switchDiagSession.t0;
         _switchDiagSession.first_full_state_ms = t0 != null
@@ -6950,17 +7033,20 @@ function startStatePollFallback() {
 
 // Fast lane: REST `/api/fast-quote` is secondary. Primary quote path is Schwab Level One → live_market_plane → SSE `live_quote`.
 // When `streaming_level_one_connected`, use a long poll interval (health / token backfill). Otherwise REST is the main quote source.
-const FAST_POLL_MS_STREAMING_SECONDARY = 12000;
+const FAST_POLL_MS_STREAMING_SECONDARY = 2500;
 const FAST_POLL_MS_REST_PRIMARY = 2500;
 let _fastPollMs = FAST_POLL_MS_STREAMING_SECONDARY;
 
 function _applyPlaneQuoteAuthorityToPollMs(j) {
   if (!j || typeof j !== 'object') return;
   const auth = j.plane_quote_authority || '';
-  if (auth === 'streaming') {
-    _fastPollMs = FAST_POLL_MS_STREAMING_SECONDARY;
-  } else {
-    _fastPollMs = FAST_POLL_MS_REST_PRIMARY;
+  const nextMs = auth === 'streaming'
+    ? FAST_POLL_MS_STREAMING_SECONDARY
+    : FAST_POLL_MS_REST_PRIMARY;
+  const changed = nextMs !== _fastPollMs;
+  _fastPollMs = nextMs;
+  if (changed && _fastPollTid) {
+    startFastLanePoll();
   }
 }
 
@@ -7797,18 +7883,14 @@ function connectSSE(opts) {
       if (!p || typeof p !== 'object' || p._plane_layer !== 'tick') return;
       if (sseGen !== requestGeneration) return;
       if ((p.ticker || '').toUpperCase() !== activeTicker) return;
-      const _fg = p.fast_generation_id != null ? Number(p.fast_generation_id) : NaN;
-      const _fts = p.fast_server_ts != null ? Number(p.fast_server_ts) : NaN;
-      if (Number.isFinite(_fg) && _fg <= lastFastGen) return;
-      if (Number.isFinite(_fts) && _fts < lastFastTs) return;
-      if (Number.isFinite(_fg)) lastFastGen = Math.max(lastFastGen, _fg);
-      if (Number.isFinite(_fts)) lastFastTs = Math.max(lastFastTs, _fts);
+      if (!_quoteLaneShouldApply(p)) return;
+      _commitQuoteLaneFromPayload(p);
       _lastSsePayloadAcceptedMs = Date.now();
       _setSseUi('live', { reason: 'live_plane_tick', update_source: p._update_source || 'live_plane_sse' });
       _edTransportSync({ ssePhase: 'live_quote_plane' });
       _livePlaneApplyCore(p, 'sse_live_plane');
       if (typeof DIAG !== 'undefined' && DIAG) {
-        console.log('SSE_LIVE_QUOTE_APPLIED', { ticker: p.ticker, fg: _fg, fts: _fts });
+        console.log('SSE_LIVE_QUOTE_APPLIED', { ticker: p.ticker, fg: p.fast_generation_id, fts: p.fast_server_ts });
       }
     } catch (err) {
       console.warn('SSE live_quote parse error:', err);
@@ -8238,6 +8320,12 @@ window.__edFeedVerificationRun = function __edFeedVerificationRun() {
 // ── Init ──────────────────────────────────────────────────────────────────────
 fetchState();
 startStatePollFallback();  // Poll fallback when SSE idle; suppressed while SSE delivers fresh payloads
+// Start fast-lane poll immediately; fetchState also starts it after streaming POST.
+startFastLanePoll();
+// Failsafe if the interval was cleared elsewhere.
+setTimeout(function () {
+  if (!_fastPollTid) startFastLanePoll();
+}, 4000);
 _edTransportSync({ boot: true });
 setInterval(refreshStreamingDiagnostics, 2000);
 // Tick bundle-age + transport badge between render paths (event-driven updates also run on each render/SSE).
@@ -8275,30 +8363,52 @@ setTimeout(() => {
 fetchLoggerStatus();
 setInterval(fetchLoggerStatus, 15000);
 
-/** RTH last minute: voice at 60,50,40,30,20,10,9…0 seconds before 4:00 PM America/New_York (opt-in checkbox). */
-(function edRthCloseVoiceCountdown() {
+/** Voice clock (opt-in): top of each ET hour speaks the time; RTH last minute counts 60…0 (no “seconds”). */
+(function edVoiceClock() {
   const CB_ID = 'ed-voice-rth-close-countdown';
   const LS_KEY = 'ed_voice_rth_close_last_min';
   const MILESTONES = new Set([60, 50, 40, 30, 20, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]);
   let _prevWhole = null;
+  let _lastHourSpokenKey = null;
 
-  function secondsUntilRthCloseEt() {
+  function getEtClockParts() {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/New_York',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
       hour: 'numeric',
       minute: 'numeric',
       second: 'numeric',
       hour12: false,
     }).formatToParts(new Date());
-    const hour = parseInt(parts.find((p) => p.type === 'hour').value, 10);
-    const minute = parseInt(parts.find((p) => p.type === 'minute').value, 10);
-    const second = parseInt(parts.find((p) => p.type === 'second').value, 10);
+    const pick = (t) => parseInt(parts.find((p) => p.type === t).value, 10);
+    return {
+      year: pick('year'),
+      month: pick('month'),
+      day: pick('day'),
+      hour: pick('hour'),
+      minute: pick('minute'),
+      second: pick('second'),
+    };
+  }
+
+  function secondsUntilRthCloseEt() {
+    const { hour, minute, second } = getEtClockParts();
     const nowInDay = hour * 3600 + minute * 60 + second;
     return 16 * 3600 - nowInDay;
   }
 
-  function speakCountdown(text) {
-    if (typeof window.speechSynthesis === 'undefined') return;
+  function formatTopOfHourSpeech() {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      hour: 'numeric',
+      hour12: true,
+    }).format(new Date());
+  }
+
+  function speakVoice(text) {
+    if (typeof window.speechSynthesis === 'undefined' || !text) return;
     try {
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
@@ -8308,12 +8418,20 @@ setInterval(fetchLoggerStatus, 15000);
     } catch (e) { /* ignore */ }
   }
 
-  function tickRthVoice() {
-    const cb = document.getElementById(CB_ID);
-    if (!cb || !cb.checked) {
-      _prevWhole = null;
+  function tickHourlyVoice() {
+    if (String(window.__edSessionLabel || '').trim() !== 'RTH') {
+      _lastHourSpokenKey = null;
       return;
     }
+    const { year, month, day, hour, minute, second } = getEtClockParts();
+    if (minute !== 0 || second > 2) return;
+    const hourKey = `${year}-${month}-${day}-${hour}`;
+    if (_lastHourSpokenKey === hourKey) return;
+    _lastHourSpokenKey = hourKey;
+    speakVoice(formatTopOfHourSpeech());
+  }
+
+  function tickRthCloseCountdown() {
     if (String(window.__edSessionLabel || '').trim() !== 'RTH') {
       _prevWhole = null;
       return;
@@ -8325,9 +8443,20 @@ setInterval(fetchLoggerStatus, 15000);
     }
     const whole = Math.floor(rem);
     if (whole !== _prevWhole && MILESTONES.has(whole)) {
-      speakCountdown(whole === 0 ? '0' : whole + ' seconds');
+      speakVoice(String(whole));
     }
     _prevWhole = whole;
+  }
+
+  function tickVoiceClock() {
+    const cb = document.getElementById(CB_ID);
+    if (!cb || !cb.checked) {
+      _prevWhole = null;
+      _lastHourSpokenKey = null;
+      return;
+    }
+    tickHourlyVoice();
+    tickRthCloseCountdown();
   }
 
   const cb0 = document.getElementById(CB_ID);
@@ -8335,7 +8464,7 @@ setInterval(fetchLoggerStatus, 15000);
     cb0.checked = localStorage.getItem(LS_KEY) === '1';
     cb0.addEventListener('change', () => localStorage.setItem(LS_KEY, cb0.checked ? '1' : '0'));
   }
-  setInterval(tickRthVoice, 250);
+  setInterval(tickVoiceClock, 250);
 })();
 </script>
 </body>
