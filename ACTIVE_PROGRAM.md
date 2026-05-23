@@ -1,14 +1,16 @@
+> **Classification:** Active Rule Source | **Scope:** Current epic, conflicts, deferred work, known risks.
+
 # ACTIVE_PROGRAM.md — what we are doing now
 
-**Updated:** 2026-05-23 (Phase 1a)  
-**Branch:** `feature/institutional-key-levels` @ consolidation Phase 1a  
+**Updated:** 2026-05-23 (Phases 2–4 landing)  
+**Branch:** `feature/institutional-key-levels` @ consolidation Phases 0–1c complete; **2–4 landing in canonical workspace**  
 **Execution plan:** [`docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md`](docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md)
 
 ---
 
 ## Active program
 
-**Governance consolidation & repo cleanup** — Phases 0–4 per execution plan. Phase 0 complete @ `f12bf75`. Phase 1a in progress / landing.
+**Governance consolidation & repo cleanup** — Phases 0–1c complete @ `747bf56`. Phases 2–4 landing (MD classification, cleanup artifacts, pre-commit enforcement). **Next after consolidation push:** Schwab V4 walk (concurrent Training PR5–PR7).
 
 ## Concurrent epic (not blocking consolidation)
 
@@ -43,7 +45,7 @@
 - **Long branch:** prefer small consolidation commits; no force-push.
 - **`config.py` credentials:** hardcoded Schwab API key/secret in tracked file — queue credential-hygiene slice (env-only, rotate, history scrub if ever public).
 - **`verify_active_models.py`:** exit 1 on many non-core tickers; SPY/QQQ/IWM compliant — expected, not broken stack.
-- **Consolidation limit:** reduces forgetfulness drift, not silent rule violation after Read.
+- **Pre-commit (Phase 4):** optional local hook — `pre-commit install` runs governance slice + `check_no_grep_subprocess.py` on staged Python.
 
 ---
 

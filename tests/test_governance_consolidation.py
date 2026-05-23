@@ -81,3 +81,66 @@ def test_memory_archive_has_all_source_files():
     assert (ROOT / "MEMORY.md").is_file()
     body = (ROOT / "MEMORY.md").read_text(encoding="utf-8")
     assert "AGENTS.md" in body and "OPERATOR-ONLY" in body
+
+
+SCOPE_HEADER_RE = re.compile(
+    r"\*\*(?:Classification|Scope|Historical|SUPERSEDED)",
+    re.I,
+)
+
+
+def _iter_repo_md() -> list[Path]:
+    skip = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", "backups"}
+    out: list[Path] = []
+    for path in ROOT.rglob("*.md"):
+        rel = path.relative_to(ROOT)
+        if any(part in skip for part in rel.parts):
+            continue
+        if ".claude" in rel.parts and "worktrees" in rel.parts:
+            continue
+        out.append(path)
+    return out
+
+
+def test_phase2_md_classification_spreadsheet():
+    csv_path = ROOT / "governance/consolidation/phase2/md_classification.csv"
+    assert csv_path.is_file(), "run tools/build_phase2_md_classification.py"
+    import csv
+
+    with csv_path.open(encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) >= 250
+    categories = {r["category"] for r in rows}
+    for cat in (
+        "Active Rule Source",
+        "Policy Specification",
+        "Historical Record",
+        "Operational Ledger",
+        "Operator Runbook",
+    ):
+        assert cat in categories
+
+
+def test_phase2_all_md_have_scope_headers():
+    missing: list[str] = []
+    for path in _iter_repo_md():
+        head = "\n".join(path.read_text(encoding="utf-8").splitlines()[:15])
+        if not SCOPE_HEADER_RE.search(head):
+            missing.append(path.relative_to(ROOT).as_posix())
+    assert not missing, f"missing scope headers: {missing[:20]}"
+
+
+def test_phase3_cleanup_artifacts():
+    phase3 = ROOT / "governance/consolidation/phase3"
+    for name in (
+        "baseline_delta.json",
+        "duplicate_md_report.json",
+        "protected_py_audit.json",
+        "worktree_cleanup_notes.md",
+    ):
+        assert (phase3 / name).is_file(), f"missing {name}; run tools/build_phase3_repo_cleanup.py"
+
+
+def test_phase4_pre_commit_config():
+    assert (ROOT / ".pre-commit-config.yaml").is_file()
+    assert (ROOT / "tools/check_no_grep_subprocess.py").is_file()

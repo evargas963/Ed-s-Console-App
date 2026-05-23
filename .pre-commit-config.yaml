@@ -1,0 +1,14 @@
+repos:
+  - repo: local
+    hooks:
+      - id: governance-consolidation-tests
+        name: governance consolidation tests
+        entry: python -m pytest tests/test_governance_consolidation.py tests/test_forbidden_phrases.py tests/test_money_path_roster.py -q
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: no-grep-subprocess
+        name: no grep/rg subprocess in staged Python
+        entry: python tools/check_no_grep_subprocess.py
+        language: system
+        types: [python]
