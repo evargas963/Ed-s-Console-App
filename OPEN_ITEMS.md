@@ -13,7 +13,9 @@
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 0** @ `dbb57c9` — Baseline snapshot, CI path inventory, do-not-rename list (114 paths), rule-source classification (38 rows / 35 memory files), memory gap read (`feedback_no_new_md_deliverables.md`). Auto-load tests documented pending post-1a. **Operator decisions:** defaults confirmed 2026-05-23.
 
-- [ ] **GOVERNANCE-CONSOLIDATION — Phase 1a** — `AGENTS.md`, `ACTIVE_PROGRAM.md`, `.cursor/rules/00-always.mdc`, `tests/test_governance_consolidation.py`. **Unblocked.**
+- [x] **GOVERNANCE-CONSOLIDATION — Phase 1a** @ tip — `AGENTS.md`, `ACTIVE_PROGRAM.md`, `.cursor/rules/00-always.mdc`, `tests/test_governance_consolidation.py`. **Gate:** consolidation tests pass; re-run `.mdc` always-apply test in fresh Cursor session.
+
+- [ ] **GOVERNANCE-CONSOLIDATION — Phase 1b** — slim AGENT_SELF_GOVERNANCE, forbidden phrases test, money-path roster test. Blocked on 1a gate sign-off.
 
 - [ ] **TRAINING-HOST-PREFLIP-E2E** — Operator preflip harness verify on real candidate roots (not git-gated). **Host:** before `ED_SCHEDULER_AUTO_PROMOTE=1`.
 

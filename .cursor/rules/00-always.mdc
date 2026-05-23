@@ -1,0 +1,22 @@
+---
+description: EdWebConsole always-on governance pointers and non-negotiable bans
+alwaysApply: true
+---
+
+# EdWebConsole — always apply
+
+**Read order:** `ACTIVE_PROGRAM.md` → `AGENTS.md` → `CLAUDE.md` (when Schwab/market-field work).
+
+**Conflicts:** ACTIVE_PROGRAM names epic; AGENTS wins agent behavior; CLAUDE wins Schwab work; project rules beat user rules; MCP tools are tool-scoped (`move_agent_to_root` is operational only); Cursor Skills are task-scoped — follow when invoked, do not override AGENTS. Single always-apply rule until further notice.
+
+**Workspace:** if not in EdWebConsole, call `move_agent_to_root` before project edits.
+
+**Binding scope:** do not treat `governance/*.md` or `docs/plans/*.md` as binding unless ACTIVE_PROGRAM or AGENTS points there **for the current epic**.
+
+## No grep `[PROMOTED]`
+
+Never use grep/rg/awk-pattern/sed-pattern or any tool returning matched **lines** instead of full file content. Use Read end-to-end; Glob for paths only.
+
+## No permission asks `[PROMOTED]`
+
+Full repo access is pre-authorized. Do not ask "Want me to…?" / "Should I…?" / "Your call." / end-of-turn menus. Act and report; confirm only high-blast-radius writes not pre-authorized.

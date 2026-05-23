@@ -7,9 +7,9 @@
     "fallback_if_fail": "Merge AGENTS content into CLAUDE.md; record in ACTIVE_PROGRAM Tool-Specific Notes."
   },
   "cursor_mdc_always_apply": {
-    "status": "pending_pre_phase_1a",
-    "reason": ".cursor/rules/00-always.mdc created in Phase 1a.",
-    "procedure": "After Phase 1a: fresh Cursor Agent session; ask for always-apply rule description; must surface 00-always.mdc.",
-    "pre_1a_baseline": "No project .cursor/rules/ tracked yet (Phase 1a adds !.cursor/rules/**)."
+    "status": "ready_post_phase_1a",
+    "file": ".cursor/rules/00-always.mdc",
+    "procedure": "Fresh Cursor Agent session; ask for always-apply rule description; must surface EdWebConsole governance pointers.",
+    "note": "Created Phase 1a @ consolidation commit."
   }
 }

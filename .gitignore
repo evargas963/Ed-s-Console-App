@@ -79,6 +79,11 @@ benchmark_logs/
 host_manifest.json
 host_manifest.*.json
 
+# Cursor IDE — track project rules only
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+
 # Full-repo Schwab scanner dumps (multi-GB; keep partial register in git or store offline)
 governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.mock_build.csv
 # V4 register CSV — generated locally / in CI; audit pins in schwab_v4_register_build_meta.json
