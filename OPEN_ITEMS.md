@@ -15,7 +15,7 @@
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 1a** @ `6357c4b` — `AGENTS.md`, `ACTIVE_PROGRAM.md`, `.cursor/rules/00-always.mdc`, `tests/test_governance_consolidation.py` (8 passed). **Gate:** re-run `.mdc` always-apply test in fresh Cursor session.
 
-- [ ] **GOVERNANCE-CONSOLIDATION — Phase 1b** @ tip — slim AGENT_SELF_GOVERNANCE, CLAUDE scope+V4 meta+3 gatekeeping rules, PROMOTION_POLICY historical, forbidden-phrases + money-path tests.
+- [x] **GOVERNANCE-CONSOLIDATION — Phase 1b** @ `8bc2bdb` — AGENT_SELF_GOVERNANCE 69 lines (grep-free #17/#20/#22); CLAUDE scope+V4 meta+gatekeeping rules; PROMOTION_POLICY historical; tests 14/14 on governance slice.
 
 - [ ] **GOVERNANCE-CONSOLIDATION — Phase 1c** — thin MEMORY.md, archive memories. Blocked on 1b gate.
 
