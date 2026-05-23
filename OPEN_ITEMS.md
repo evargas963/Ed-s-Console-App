@@ -9,7 +9,17 @@
 
 **Gate:** Activate when Layer 5 / Pilot 1 Schwab walk + stack sign-off queue is closed (or operator says **go live-ui latency**). Do not defer behind new feature work.
 
-**Immediate next (training pipeline automation):** PR1–PR4.1 **pushed to origin** (see GitHub backup table). PR5–PR7 not started. **Host:** keep `ED_SCHEDULER_AUTO_PROMOTE=0` until preflip e2e + live reload on console URL.
+**Active program (2026-05-23):** **Governance consolidation** — [`docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md`](docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md). Phase 0 begins after operator confirms content decisions in that plan. **Concurrent epic:** Training Pipeline PR5–PR7 (not started).
+
+- [ ] **GOVERNANCE-CONSOLIDATION — Phase 0** @ `230724a` — Prerequisites + Phase 0.5 classification. **Plan:** execution plan above. **Gate:** pytest green (2619), baseline snapshot, auto-load tests documented, user rules exported. **Operator confirms:** V4 register tracked-meta; OPEN_ITEMS 90/30 aging; active program / deferred list.
+
+- [ ] **GOVERNANCE-CONSOLIDATION — Phase 1a** — `AGENTS.md`, `ACTIVE_PROGRAM.md`, `.cursor/rules/00-always.mdc`, `tests/test_governance_consolidation.py`. Blocked on Phase 0 gate.
+
+- [ ] **TRAINING-HOST-PREFLIP-E2E** — Operator preflip harness verify on real candidate roots (not git-gated). **Host:** before `ED_SCHEDULER_AUTO_PROMOTE=1`.
+
+- [ ] **TRAINING-HOST-LIVE-RELOAD** — Promote + `POST /api/internal/reload_models` → `live_reload.succeeded: true` on launch console URL.
+
+**Training pipeline (background):** PR1–PR4.1 **pushed to origin** (see GitHub backup table). PR5–PR7 not started. **Host:** keep `ED_SCHEDULER_AUTO_PROMOTE=0` until preflip + live reload rows close.
 
 - [x] **TRAINING-PIPELINE-PUSH-REVIEW** @ push 2026-05-21 — Full branch `1c0ec96..tip` pushed to `origin/feature/institutional-key-levels` (133 commits). **Verification at push:** pytest **2619 passed**; SPY/QQQ/IWM compliant; mega4 **821 rows / 88 files**; writer inventory post-PR4 refresh. **Held on host (not git):** `ED_SCHEDULER_AUTO_PROMOTE=1`, strict core freshness flip, preflip e2e on automation host.
 
