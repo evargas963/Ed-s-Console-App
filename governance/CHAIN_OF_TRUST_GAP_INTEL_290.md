@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `CHAIN_OF_TRUST_GAP_INTEL_290.md`.
+
 # Chain-of-trust gap intel (preserved from rejected `61358a6`)
 
 **Status:** Intel only — not a closure gate. Produced by categorical-inventory resolver before Commit 1 restart.

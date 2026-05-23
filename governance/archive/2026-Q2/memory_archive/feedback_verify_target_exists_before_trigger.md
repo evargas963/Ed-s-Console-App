@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: verify-target-exists-before-trigger
 description: "Before sending `go layer-5 <path>` (or any walk trigger naming a file), verify the file exists at the operational tip with `git ls-tree` or `git show <branch>:<path>`. Do NOT trust file names from earlier conversation lists."

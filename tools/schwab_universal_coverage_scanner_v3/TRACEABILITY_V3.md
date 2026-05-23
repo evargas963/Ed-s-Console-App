@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Repository documentation `tools/schwab_universal_coverage_scanner_v3/TRACEABILITY_V3.md`.
+
 # Traceability: scanner modules → `SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md`
 
 | Module | V3 clauses |

@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: project-gate-b-state-2026-05-20
 description: "Gate B audit/paired-fix session bookmark — closed lanes, pending bayesian_fusion paired-fix, queue, cadence lessons learned"

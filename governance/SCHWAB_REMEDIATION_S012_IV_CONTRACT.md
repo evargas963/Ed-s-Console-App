@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `SCHWAB_REMEDIATION_S012_IV_CONTRACT.md`.
+
 # Schwab Remediation S012 — chain `volatility` contract
 
 **Status:** IMPLEMENTED_IN_WORKING_TREE  

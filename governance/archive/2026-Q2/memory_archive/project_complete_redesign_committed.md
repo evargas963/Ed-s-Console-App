@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Complete redesign committed
 description: Operator has decided — this is a complete redesign of the trading system, not incremental fixes; existing artifacts only kept where they pass review and updated to current standard

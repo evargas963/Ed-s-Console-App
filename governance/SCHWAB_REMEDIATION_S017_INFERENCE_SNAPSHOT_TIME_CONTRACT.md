@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `SCHWAB_REMEDIATION_S017_INFERENCE_SNAPSHOT_TIME_CONTRACT.md`.
+
 # Schwab Remediation S017 Inference Snapshot Time Contract
 
 **Status:** IMPLEMENTED  

@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 # Memory archive — 2026-Q2
 
 Claude Code project memory imported **2026-05-23** during governance consolidation Phase 1c.

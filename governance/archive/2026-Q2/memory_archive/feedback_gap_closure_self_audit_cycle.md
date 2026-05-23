@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: gap-closure-self-audit-cycle
 description: "Standing order — after EACH fix, self-audit every standing rule, name any violations + why, then re-audit + re-fix; applied retroactively to all work-in-flight"

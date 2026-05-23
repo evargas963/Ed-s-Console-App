@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Point-in-time audit artifact `docs/_consolidation/restore/FULL_PRIMARY_HORIZON_AUDIT.md`.
+
 # Full Primary-Horizon Foundation Audit
 
 Generated: 2026-04-30T00:58:00.703014

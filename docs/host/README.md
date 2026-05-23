@@ -1,3 +1,5 @@
+> **Classification:** Operator Runbook | **Scope:** Host-local secrets, backup, and environment guidance.
+
 # Host vs Git — operator mirror guide
 
 This folder documents what belongs in **Git** (reproducible code + tracked production models) versus what stays on the **launch machine** (database, secrets, training caches, OS env).

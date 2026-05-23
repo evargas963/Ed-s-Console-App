@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/phase4a_canonical_1m_full_closure.md`.
+
 # Phase 4A — Canonical 1m grid integrity FULL closure (evidence)
 
 ## A. Commands executed (exact, copy-pasteable)

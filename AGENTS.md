@@ -1,3 +1,5 @@
+> **Classification:** Active Rule Source | **Scope:** Always-on agent behavior rules (Cursor + Claude Code).
+
 # AGENTS.md — always-on agent rules (EdWebConsole)
 
 **Status:** Phase 1a consolidation (2026-05-23)  

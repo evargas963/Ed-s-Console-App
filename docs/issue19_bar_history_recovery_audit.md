@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/issue19_bar_history_recovery_audit.md`.
+
 # Issue 19 — Bar history recovery audit (pin_neutral labeling)
 
 **Date:** 2026-04-03  

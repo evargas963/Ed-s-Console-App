@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/calibration_canonical_enforcement_v1.md`.
+
 # Calibration canonical 1m enforcement (v1)
 
 This document proves that **calibration workflows** cannot silently mix **non-1m** snapshot rows into canonical studies. Enforcement is **fail loud** (exceptions / exit code **2**), not warnings.

@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: No new governance MDs as task deliverables
 description: Never frame a task's deliverable as a new governance MD file. Decisions and rationale go in commit messages or existing protocol/program/brief docs.

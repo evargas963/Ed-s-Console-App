@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Repository documentation `tools/schwab_universal_coverage_scanner_v3/V3_DYNAMIC_PATTERNS.md`.
+
 # V3-D dynamic-pattern enumeration (normative)
 
 **Authority:** `SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md` § V3-D. **Edits require gatekeeper review** (same bar as contract changes). Each removal or modification triggers re-disposition of affected register rows.

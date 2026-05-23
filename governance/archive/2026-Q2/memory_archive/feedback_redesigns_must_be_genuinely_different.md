@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Redesigns must be genuinely different, not variations on a theme
 description: When proposing N design alternatives, each must come from a different philosophy/primitive — not 3 versions of "rearrange the same blocks"

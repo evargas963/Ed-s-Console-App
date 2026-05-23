@@ -1,3 +1,5 @@
+> **Classification:** Operational Ledger | **Scope:** Governance register/inventory `OPERATOR_DECISION_REGISTER.md`.
+
 # Operator Decision Register
 
 **Status:** **APPROVED** — operator sign-off recorded below.  

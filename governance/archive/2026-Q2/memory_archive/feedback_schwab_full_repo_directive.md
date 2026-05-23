@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: schwab-full-repo-directive
 description: "Operator-issued binding directive — every file in the repo, full Read, canopy→trunk→branch→leaf trace to Schwab CSV or NO_PRIMITIVE+canonical+fail-closed; no narrowing by scanner scope, section, file extension, or \"current task.\" Cursor's SMLP charter / Rule SMLP-N / Phase 0 governance lock is REJECTED."

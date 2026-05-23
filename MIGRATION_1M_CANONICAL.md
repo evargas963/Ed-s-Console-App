@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Root historical reference `MIGRATION_1M_CANONICAL.md`.
+
 # Migration: 1m Canonical Timeframe
 
 ## Summary

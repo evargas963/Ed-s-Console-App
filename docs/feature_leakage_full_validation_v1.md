@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/feature_leakage_full_validation_v1.md`.
+
 # Feature / time leakage — full validation (v1)
 
 **Document purpose:** Enumerate every audited path that feeds ML inference, fusion overlays, replay, or DB-backed rolling history; record causal enforcement; list code changes; record test proof.

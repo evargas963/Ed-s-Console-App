@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Schwab consistency is first-principles, not contract-derived
 description: When reviewing code that touches market-data fields, ask "where does this come from? Is the Schwab canonical value reaching this code?" BEFORE checking contract compliance — contracts can themselves encode workarounds

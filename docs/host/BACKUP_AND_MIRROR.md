@@ -1,3 +1,5 @@
+> **Classification:** Operator Runbook | **Scope:** Host-local secrets, backup, and environment guidance.
+
 # Backup and mirror — what Git holds vs the launch host
 
 Git is **not** a full-disk mirror. It holds everything needed to **rebuild and operate** the console from a fresh clone, plus **production model weights** under `models/active*`. Everything else on the host needs a separate backup strategy.

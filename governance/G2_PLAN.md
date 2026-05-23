@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `G2_PLAN.md`.
+
 # G2 Plan - Cascade Alignment
 
 > **G2 PAUSED:** Per `OPEN_ITEMS.md` § Workstream 1 / G2 pause state, this plan is **paused pending the `Framework-ED-Decision-Engine-v2.0` decision**. All file deliverables named below — including **`governance/artifact_contract.py`**, **`governance/G2_RESULT.md`**, **`tests/test_artifact_contract.py`**, and **`tests/test_cascade_meta_assembly.py`** — are **planned — pending G2 unpause** and **do not exist** in the current working tree. Do not implement them while the pause is active. Treat every internal reference below as a planned deliverable, not a present-tense file.

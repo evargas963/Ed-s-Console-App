@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/calibration_legacy_quarantine_v1.md`.
+
 # Calibration legacy quarantine v1
 
 ## A. Exact files changed

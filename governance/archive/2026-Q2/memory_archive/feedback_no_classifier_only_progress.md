@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Real fixes only — classifier disambiguation is a tool, not progress
 description: Classifier/tagger tuning that moves the residual scorecard without changing running production code is NOT progress; reject framing it as such

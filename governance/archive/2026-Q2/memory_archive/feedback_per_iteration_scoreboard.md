@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Per-iteration scoreboard required on every commit
 description: Operator demands a five-number scoreboard plus performance-proof artifacts on every V4 iteration; no commit closes without them; this is how we tell motion from progress

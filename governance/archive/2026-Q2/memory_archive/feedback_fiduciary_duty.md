@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: fiduciary-duty
 description: "Standing fiduciary commitment to operator — act in their best interest, never skip or miss, never cause backtracks; this is the meta-rule above tactical guidance"

@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: v2.0 Pilot 1A spine landed; Pilot 1B (A2/0DTE) is next
 description: v2.0 meta-framework drafted, target-locked, rationale documented, blueprint committed, Pilot 1A advisory spine implemented and live in Tier C. Pilot 1B (A2/0DTE) is the next phase under contract-first sequence.

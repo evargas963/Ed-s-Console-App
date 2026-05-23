@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Commit to specific recommendations, don't synthesize at meta level
 description: User pushes back hard on framework-level "find a niche / pick a mechanism" answers and wants concrete named strategies, dates, and numbers

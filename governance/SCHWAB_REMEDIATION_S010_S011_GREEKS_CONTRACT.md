@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `SCHWAB_REMEDIATION_S010_S011_GREEKS_CONTRACT.md`.
+
 # Schwab Remediation S010/S011 Greeks Contract
 
 **Status:** IMPLEMENTED_IN_WORKING_TREE  

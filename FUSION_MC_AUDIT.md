@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Root point-in-time audit `FUSION_MC_AUDIT.md`; not binding unless ACTIVE_PROGRAM cites.
+
 # Fusion & Monte Carlo Audit
 
 ## 1. Fusion Agreement Calculation

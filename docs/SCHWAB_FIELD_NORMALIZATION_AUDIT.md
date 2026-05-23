@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Point-in-time audit artifact `docs/SCHWAB_FIELD_NORMALIZATION_AUDIT.md`.
+
 # Schwab Field Normalization Audit
 
 **Status:** Initial option-chain normalization audit  

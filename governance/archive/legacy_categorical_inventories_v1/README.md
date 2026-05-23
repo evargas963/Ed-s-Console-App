@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 # Archived categorical section inventories (v1)
 
 **Superseded:** Commit 1 restart (`TraceableDerivation` schema in `governance/traceable_derivation.py`).

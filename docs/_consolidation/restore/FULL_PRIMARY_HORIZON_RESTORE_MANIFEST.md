@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/_consolidation/restore/FULL_PRIMARY_HORIZON_RESTORE_MANIFEST.md`.
+
 # FULL PRIMARY-HORIZON RESTORE MANIFEST (PLAN ONLY)
 
 Generated: 2026-04-30T01:07:43.357930

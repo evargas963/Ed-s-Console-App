@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/repo_wide_canonical_enforcement_v2.md`.
+
 # Repo-wide canonical snapshot timeframe enforcement (v2)
 
 **Supersedes:** `repo_wide_canonical_enforcement_v1.md` for policy wording; v2 closes all **UNSAFE** paths identified in `repo_wide_canonical_enforcement_proof_v1.md`.

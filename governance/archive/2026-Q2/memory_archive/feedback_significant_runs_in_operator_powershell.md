@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Significant runs happen in operator's PowerShell
 description: Neither Claude nor Cursor executes pytest, migration tools, schedulers, model training, DB writes, or other significant runs. Operator runs them in PowerShell and shares output for verification.

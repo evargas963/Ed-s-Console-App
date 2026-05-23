@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Point-in-time audit artifact `governance/V3_CONFORMANCE_AUDIT.md`.
+
 # V3.0 Conformance Audit
 
 - **Audit author:** Cursor (read-only assessment task)

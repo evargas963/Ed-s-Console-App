@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Root historical reference `PIPELINE_QUALITY.md`.
+
 # Pipeline quality (TQM checkpoints)
 
 **Goal:** Catch bad or noisy data **before** it leaves the “factory” (training, dashboards, automation). Use this as a **station checklist** along the path from live ingest to model-ready tables.

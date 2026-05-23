@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/final_system_validation_pre_accumulation.md`.
+
 # Final system validation — pre-accumulation
 
 **Date:** 2026-04-03  

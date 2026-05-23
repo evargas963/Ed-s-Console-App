@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `PILOT_1_SCHWAB_WALK_AND_AUTHORITY_UX_STAGING.md`.
+
 # Pilot 1 — Schwab walk + authority UX staging plan
 
 **Status:** SIGNED — operator, Claude, and Cursor aligned (2026-05-18)  

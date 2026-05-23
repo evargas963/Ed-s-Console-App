@@ -1,3 +1,5 @@
+> **Classification:** Operator Runbook | **Scope:** Training, maintenance, and data stewardship procedures.
+
 # Data stewardship — EdWebConsole
 
 **Guiding principle:** The database is the **king**; the fields and rows that drive your decisions are the **crown jewels**; written rules, automated checks, and routine habits are the **guards**. Nothing precious sits in the vault without guards — and nothing is “true” only because it was saved.

@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: No patches or workarounds — solid fixes only
 description: Operator explicitly forbids patch-shaped or workaround-shaped solutions. When tempted to propose a "small hook," "two-phase write," "fallback," or other routing-around of an architectural issue, recognize it as a patch and propose the solid fix instead.

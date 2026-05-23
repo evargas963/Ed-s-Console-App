@@ -1,3 +1,5 @@
+> **Classification:** Operational Ledger | **Scope:** Governance register/inventory `STACK_WIRING_INTEGRITY_MAP.md`.
+
 # STACK_WIRING_INTEGRITY_MAP
 
 **Program:** STACK-WIRING-INTEGRITY (OPEN_ITEMS rider @ `0a2e5ee` L148+)  

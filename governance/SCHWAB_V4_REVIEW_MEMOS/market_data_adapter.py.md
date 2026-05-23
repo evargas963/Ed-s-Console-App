@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `market_data_adapter.py.md`.
+
 # Review memo — market_data_adapter.py
 
 **Status:** pending gatekeeper re-review  

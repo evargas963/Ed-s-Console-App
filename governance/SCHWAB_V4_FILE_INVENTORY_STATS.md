@@ -1,3 +1,5 @@
+> **Classification:** Operational Ledger | **Scope:** Governance register/inventory `SCHWAB_V4_FILE_INVENTORY_STATS.md`.
+
 # Schwab V4 file inventory — statistics
 
 **Root:** repository root (path where `tools/build_schwab_v4_file_inventory.py` was run)

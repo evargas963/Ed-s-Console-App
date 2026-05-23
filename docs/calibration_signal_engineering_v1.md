@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/calibration_signal_engineering_v1.md`.
+
 # Calibration signal engineering (v1)
 
 ## Before vs after (population aggregates)

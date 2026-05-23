@@ -1,3 +1,5 @@
+> **Classification:** Active Rule Source | **Scope:** Process alternation, sign-off contract, verification matrix.
+
 # Agent self-governance (Cursor + Claude)
 
 **Procedural mechanics only.** Detectable behavior rules → [`AGENTS.md`](../../AGENTS.md). Current program → [`ACTIVE_PROGRAM.md`](../../ACTIVE_PROGRAM.md). Schwab methodology → [`CLAUDE.md`](../../CLAUDE.md).

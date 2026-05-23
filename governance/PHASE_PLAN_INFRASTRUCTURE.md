@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `PHASE_PLAN_INFRASTRUCTURE.md`.
+
 # Infrastructure Governance Phase Plan
 
 ## 1. Status and authority

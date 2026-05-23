@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/UNIVERSAL_TICKER_READINESS_ENFORCEMENT_V1.md`.
+
 ## 1. Universal ticker contract
 
 Canonical statuses are emitted per ticker in `data/ticker_readiness_matrix_v1.json` under `tickers[*]`:

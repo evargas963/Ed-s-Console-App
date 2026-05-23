@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: No grep, ever — Read end-to-end every single word
 description: Absolute ban on ALL forms of pattern-matching search. Originally about the Grep tool (2026-05-18); escalated 2026-05-22 to include shell grep, ripgrep, awk-pattern, find -name-with-grep-pipe — anything that returns matched-line excerpts instead of full file content.

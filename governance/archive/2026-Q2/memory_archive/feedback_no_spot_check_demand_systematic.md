@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: No batches — line-by-line, period
 description: Operator forbids the batch framing entirely; unit of work is the single register row (one file, one line, one surface_form); the V4 scanner enumerates the lines and every line is dispositioned individually

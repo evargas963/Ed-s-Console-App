@@ -1,3 +1,5 @@
+> **Classification:** Operator Runbook | **Scope:** Host-local secrets, backup, and environment guidance.
+
 # Environment variables (`ED_*` and related)
 
 Copy [`.env.example`](../../.env.example) to `.env` in the repo root. **Never commit `.env`.**

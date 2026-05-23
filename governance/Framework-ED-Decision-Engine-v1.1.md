@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `Framework-ED-Decision-Engine-v1.1.md`.
+
 # Framework: ED Institutional Decision Engine
 
 **Document ID:** `governance/Framework-ED-Decision-Engine-v1.1.md`  

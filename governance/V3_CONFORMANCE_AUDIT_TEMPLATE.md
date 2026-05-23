@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Governance audit/memo `V3_CONFORMANCE_AUDIT_TEMPLATE.md`.
+
 # V3.0 Conformance Audit Template
 
 ## Purpose

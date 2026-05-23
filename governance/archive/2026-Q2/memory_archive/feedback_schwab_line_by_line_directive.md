@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Line-by-line Schwab field review — recite at every response
 description: Standing operator directive — every field bumped against the Schwab list, use Schwab fields over derived when indicated, recite the directive at the start of every reply

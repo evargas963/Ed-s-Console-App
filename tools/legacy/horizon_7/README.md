@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Repository documentation `tools/legacy/horizon_7/README.md`.
+
 # Legacy 7-horizon era tools (quarantined)
 
 Scripts here target the pre–Phase D3 snapshot schema (`outcome_3c` / `outcome_8c` / `outcome_13c` and related columns).

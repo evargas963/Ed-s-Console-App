@@ -1,3 +1,5 @@
+> **Classification:** Operational Ledger | **Scope:** Model restore/promotion event log.
+
 ## STEP A Restore Execution
 - timestamp: 2026-04-30T01:18:27.957900-05:00
 - branch: main

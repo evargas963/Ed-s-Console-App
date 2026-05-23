@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/CHECKPOINT_PROVENANCE_LOCK_REPORT_V1.md`.
+
 # Checkpoint + provenance lock (v1)
 
 ## 1. Checkpoint manifest

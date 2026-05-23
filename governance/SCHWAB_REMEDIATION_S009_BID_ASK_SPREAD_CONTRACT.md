@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `SCHWAB_REMEDIATION_S009_BID_ASK_SPREAD_CONTRACT.md`.
+
 # Schwab Remediation S009 Bid/Ask Spread Contract
 
 **Status:** IMPLEMENTED  

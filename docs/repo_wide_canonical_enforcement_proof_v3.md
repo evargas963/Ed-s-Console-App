@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/repo_wide_canonical_enforcement_proof_v3.md`.
+
 # Repo-wide canonical enforcement proof (v3)
 
 **Definitions (locked, v1):**

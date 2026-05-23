@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Cursor pushes; Claude verifies and consults — never push
 description: Operator's role separation rule. Claude Code is verification + consulting expert. All git push operations belong to Cursor. Memory created after Claude pushed afe2385 unprompted in the role of "ratifying" an operator instruction.

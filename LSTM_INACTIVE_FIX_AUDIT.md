@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Root point-in-time audit `LSTM_INACTIVE_FIX_AUDIT.md`; not binding unless ACTIVE_PROGRAM cites.
+
 # LSTM Inactive Fix — Closure Audit
 
 ## Root Cause

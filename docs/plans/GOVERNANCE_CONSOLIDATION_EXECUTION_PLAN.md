@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Execution plan; binding when ACTIVE_PROGRAM points here.
+
 # EdWebConsole Governance Consolidation & Repo Cleanup — Final Execution-Ready Plan
 
 **Date:** 2026-05-23 (Round 3 final)  

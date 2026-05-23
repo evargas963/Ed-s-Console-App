@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Cursor drafts; Claude researches and verifies
 description: Cursor authors all code and materials; Claude is research/verification/gatekeeping only — never draft fix scopes, code edits, or document content

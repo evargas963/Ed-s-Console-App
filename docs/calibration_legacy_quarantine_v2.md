@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/calibration_legacy_quarantine_v2.md`.
+
 # Calibration legacy quarantine — complete proof package (v2)
 
 Independent audit checklist: criteria, counts, every reader, no-mixing proof, validation commands.

@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_logging_production_validation_v1.md`.
+
 # Calibration logging — production-path validation (v1)
 
 **FINAL: PASS**

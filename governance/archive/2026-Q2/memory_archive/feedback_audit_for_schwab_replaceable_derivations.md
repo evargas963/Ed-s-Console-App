@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Audit-for-Schwab-replaceable-derivations on every review
 description: Every code review, no matter the scope, must sweep for derived formulas that could use a Schwab leaf instead; never block on prerequisites

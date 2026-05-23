@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: training-pipeline-pr4-1-state-2026-05-23
 description: "Session bookmark for training pipeline PR1-PR4.1 — tip cd7d615/8feab6b on feature/institutional-key-levels, 133 commits ahead of origin, pytest 2619 passed, host-enable gate enforceable."

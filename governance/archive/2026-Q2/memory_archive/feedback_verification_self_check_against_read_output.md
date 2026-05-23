@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Verification claims must match actual Read output
 description: When reporting verification, every claim must be supported by the actual Read tool output in the same turn. Don't synthesize from expectations. If Read content disagrees with disk (per git/shell), the Read is stale — re-read or fall back to shell sed.

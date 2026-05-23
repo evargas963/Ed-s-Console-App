@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Strict gatekeeping role — reject patches on first look, enforce Schwab field consistency, clean dead code as we go
 description: Operator explicitly requires strict gatekeeping role for me and Cursor. Past failures (BS theta fallback, two-phase live logging) showed surface-level refinement instead of first-principles rejection. Three directives: gatekeeping, Schwab field consistency, dead code cleanup.

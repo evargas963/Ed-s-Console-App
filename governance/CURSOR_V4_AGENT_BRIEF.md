@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `CURSOR_V4_AGENT_BRIEF.md`.
+
 # Cursor — Schwab V4 Universal Coverage execution
 
 Canonical agent brief for V4 Schwab line-by-line work. Paste the whole document into a new Cursor thread when cold-starting, or point agents at this path.

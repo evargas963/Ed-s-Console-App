@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `PILOT_1B_A2_LIFECYCLE_CONTRACT.md`.
+
 # Pilot 1B A2 Lifecycle Contract
 
 **Status:** IMPLEMENTED — sidecar landed (`dcc9968` static rule core, `20a1c14` EOD force-exit, `cac88a6` session calendar, pin-risk handler per `governance/A2_LIFECYCLE_PIN_RISK_HANDLER_CONTRACT.md`); advisory v1 authority. Promotion to runtime authority requires a future operator decision per §Promotion Criteria.

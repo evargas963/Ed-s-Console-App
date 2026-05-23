@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `PHASE_PLAN_TARGET_STATE.md`.
+
 # Phase Plan — Institutional Target State (Strategic)
 
 **Document class:** Strategic north-star and gap map.  

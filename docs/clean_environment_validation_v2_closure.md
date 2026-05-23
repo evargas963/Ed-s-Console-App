@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/clean_environment_validation_v2_closure.md`.
+
 # Clean environment validation v2 — closure
 
 ## 1. Executive result

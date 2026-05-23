@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `OPERATOR_PREFLIGHT.md`.
+
 # Operator preflight (governance)
 
 **Status:** **ACTIVE** — mandatory before any commit that changes `governance/**/*.md`.  

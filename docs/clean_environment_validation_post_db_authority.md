@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/clean_environment_validation_post_db_authority.md`.
+
 # Clean environment validation (post DB authority enforcement)
 
 ## 1. Executive result

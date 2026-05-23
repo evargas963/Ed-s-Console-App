@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/signal_layer_rebuild_v1.md`.
+
 # Signal layer rebuild v1 — audit & discrimination report
 
 This document records the canonical **1m signal_layer_v1** block (price-only + optional same-tick `SignalInput` VWAP), wiring into `calibration_decision_log`, leakage rules, univariate tests vs `outcome_5c_pts`, and discrimination of **fusion** vs **layer policy**.

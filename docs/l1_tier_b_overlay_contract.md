@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/l1_tier_b_overlay_contract.md`.
+
 # L1 Tier B — overlay vs projection (Issue 28)
 
 ## Decision: `full_overlay` (OPTION B)

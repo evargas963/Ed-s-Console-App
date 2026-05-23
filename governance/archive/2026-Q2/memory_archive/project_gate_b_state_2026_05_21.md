@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: gate-b-state-2026-05-21
 description: Session bookmark 2026-05-21 — WIRE-4..6c LANDED under fiduciary override (Cursor down); tip 5fbcada; WIRE-6 parent CLOSED; gap-closure + big-audit found + fixed 5 issues (sweep3 NameError, strike tolerance, silent fallback, DFR-017 consumer list, WIRE-5 test slice) + extended WIRE-6c tests + filed 4 new candidates

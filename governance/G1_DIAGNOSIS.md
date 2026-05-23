@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `G1_DIAGNOSIS.md`.
+
 # G1 Diagnosis — Canonical Contract Drift Report
 
 ## Purpose

@@ -1,3 +1,5 @@
+> **Classification:** Operational Ledger | **Scope:** Model restore/promotion event log.
+
 # MODEL_RESTORE_LOG
 
 **Pre-overwrite backup directory:** `models/active/.restore_backup_20260430T053742Z`

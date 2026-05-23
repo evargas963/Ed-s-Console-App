@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `SCHWAB_REMEDIATION_S017_REST_QUOTE_TIME_CONTRACT.md`.
+
 # Schwab Remediation S017 REST Quote Time Contract
 
 **Status:** IMPLEMENTED  

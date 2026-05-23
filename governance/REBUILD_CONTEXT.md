@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `REBUILD_CONTEXT.md`.
+
 # EdWebConsole Governance Rebuild — Master Context
 
 ## Purpose of This Document

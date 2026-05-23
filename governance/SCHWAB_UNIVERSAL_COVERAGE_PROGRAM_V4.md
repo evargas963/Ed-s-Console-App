@@ -1,3 +1,5 @@
+> **Classification:** Superseded | **Scope:** Superseded index or forwarding stub for `SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md`.
+
 # Schwab Universal Coverage Proof Program V4
 
 **Status:** **LOCKED** — gatekeeper Step 2 final review **APPROVED**; binding for sequencing steps **3–12** and all V4 closure claims under this contract  

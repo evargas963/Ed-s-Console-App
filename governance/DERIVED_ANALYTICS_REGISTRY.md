@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `DERIVED_ANALYTICS_REGISTRY.md`.
+
 # Derived Analytics Registry
 
 **Status:** Initial v2 data-plane governance registry  

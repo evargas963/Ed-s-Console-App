@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `G1_ADDENDUM_CACHE_CONSISTENCY.md`.
+
 # G1 Addendum - Cache Consistency Investigation
 
 ## Purpose

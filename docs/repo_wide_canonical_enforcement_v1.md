@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/repo_wide_canonical_enforcement_v1.md`.
+
 # Repo-wide canonical snapshot timeframe enforcement (v1)
 
 Hard gate: **no silent unscoped reads** of the multi-timeframe `snapshots` table for analytical or production metrics. Canonical live and calibration paths use **`timeframe_config.CANONICAL_TIMEFRAME`** (`'1m'`).

@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `PILOT_1B_CALIBRATION_CONTRACT.md`.
+
 # Pilot 1B Calibration Scaffold Contract
 
 **Status:** DRAFT implementation contract  

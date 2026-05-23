@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Point-in-time audit artifact `governance/audits/find_cal_ts_hour_resolution_v1_20260519.md`.
+
 # FIND-CAL-TS — hour-resolution consumer audit
 
 **Tip:** `1b27d03` · **COH-I-A fix:** `99ea0e0` (`time_et.now_et`, DST-aware `America/New_York`)

@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_production_accumulation_validation_v1.md`.
+
 # Calibration production accumulation validation (v1)
 
 **Purpose:** Prove the full calibration pipeline remains correct across a **non-trivial accumulation window** of **trusted** `calibration_decision_log` rows using the **real** production stack (`compute_signals` → `calibration.writer` → `backfill_outcomes` → validators).

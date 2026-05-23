@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_feature_leakage_validation_v1.md`.
+
 # Calibration / decision feature leakage validation (v1)
 
 This document traces the **live** feature path for `compute_signals` → decision/calibration logging, proves **no lookahead** in the **empirical similarity** and **inference snapshot** cutoffs, and records **residual** risks outside that fix.

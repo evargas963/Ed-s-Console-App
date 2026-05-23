@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/canonical_1m_grid_global_closure.md`.
+
 # Canonical 1m grid defect class — global closure
 
 ## 1. Executive result

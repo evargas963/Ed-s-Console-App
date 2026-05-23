@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/operations/backfill_et_clock_runbook.md`.
+
 # ET clock backfill runbook (FIND-CAL-TS item-6)
 
 Rewrites pre-cutover `et_hour`, `et_minute`, `market_session`, and `ts_et` on `snapshots` and `snapshots_1m_normalized` from authoritative `ts_utc` (DST-aware).

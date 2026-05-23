@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_anchor_stability_validation_v3.md`.
+
 # Calibration anchor stability validation v3 (actual dataset)
 
 This proof package records **verbatim output** from `python -m calibration.anchor_audit` against the **current** default console database at repository path `data/ed_console.db`, executed during the v3 closure (full snapshot scan, no random sampling).

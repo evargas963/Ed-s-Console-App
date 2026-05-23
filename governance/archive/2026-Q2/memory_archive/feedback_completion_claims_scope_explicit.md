@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: completion-claims-scope-explicit
 description: "Operator caught me 2026-05-21 declaring \"100% done\" / \"guarantee this is 100% right\" when only a server-side layer was closed and UI/inventory consumers were still open. Subsequent Cursor re-audits puncture the claim layer-by-layer."

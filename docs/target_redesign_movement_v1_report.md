@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/target_redesign_movement_v1_report.md`.
+
 # Target redesign — movement v1
 
 ## 1. Target definitions

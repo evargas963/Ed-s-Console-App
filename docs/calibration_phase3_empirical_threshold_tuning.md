@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/calibration_phase3_empirical_threshold_tuning.md`.
+
 # Phase 3 — Empirical threshold tuning & confidence calibration
 
 ## Scripts

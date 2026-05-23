@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `PILOT_1B_A2_0DTE_CONTRACT.md`.
+
 # Pilot 1B A2 0DTE Contract
 
 **Status:** DRAFT implementation contract  

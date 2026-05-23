@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `SCHWAB_REMEDIATION_GATE_FAIL_CLOSED_WORKING_SYNC_V1.md`.
+
 # Schwab Remediation — GATE_FAIL_CLOSED WORKING Sync V1
 
 **Status:** IMPLEMENTED (2026-05-08)  

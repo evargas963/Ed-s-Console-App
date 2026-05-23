@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: no-audit-deferral-across-walks
 description: "ANY small fix with no real gate (no telemetry, no training-skew, no audit-of-unwalked-file) must land in the same chunk's commit. \"Logging-only,\" \"doc-only,\" \"chunk-2C optional,\" \"low-priority audit-trail\" are NOT real gates — they're rationalizations."

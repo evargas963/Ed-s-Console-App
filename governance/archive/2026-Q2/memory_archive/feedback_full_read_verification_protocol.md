@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Full-Read verification, not grep+spot
 description: Post-commit verification must Read every line of changed files, not grep + targeted Read sections. Same standard as source audit.

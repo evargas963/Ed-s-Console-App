@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/calibration_statistical_integrity_v1.md`.
+
 # Calibration statistical integrity (v1)
 
 Fail-closed minimum sample rules for Phase 3 / Phase 4 calibration scripts so empirical means, hit rates, and Brier scores are not presented as actionable when cell counts are below the production empirical floor.

@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Root point-in-time audit `CALL_CARD_SEMANTICS_FIX_AUDIT.md`; not binding unless ACTIVE_PROGRAM cites.
+
 # Call Card Semantics Fix — Closure Audit
 
 ## Root Cause

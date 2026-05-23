@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/db_authority_enforcement_v2_global_closure.md`.
+
 # DB authority enforcement — v2 global closure
 
 ## 1. Executive result

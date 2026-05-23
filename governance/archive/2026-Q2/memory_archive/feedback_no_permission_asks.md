@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Stop asking for permission or access
 description: Operator has standing authorization for full access on this project; do not ask "may I look for X?" or "want me to run Y?" — just do read-only research and report findings

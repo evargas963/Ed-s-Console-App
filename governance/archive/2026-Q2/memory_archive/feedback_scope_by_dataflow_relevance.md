@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Scope by data-flow relevance, then line-by-line within scope
 description: Directive's "entire repo, no exclusions" is a closure standard, not a uniform-attention rule; operator/gatekeeper bandwidth goes to the trade-decision data flow; long-tail noise is mechanically classified with per-row evidence

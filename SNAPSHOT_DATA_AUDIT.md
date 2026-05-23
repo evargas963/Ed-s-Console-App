@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Root point-in-time audit `SNAPSHOT_DATA_AUDIT.md`; not binding unless ACTIVE_PROGRAM cites.
+
 # Snapshot Data Audit — Factual Findings
 
 ## 1. Exact Snapshot Write Cadence (from code)

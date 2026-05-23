@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/playwright.md`.
+
 # Playwright E2E (Issue 40 & 46)
 
 ## Required full suite: `make test-all` or `npm run test:all`

@@ -1,3 +1,5 @@
+> **Classification:** Operational Ledger | **Scope:** Governance register/inventory `ACTIVE_DIRECTORY_WRITER_INVENTORY.md`.
+
 # Active Directory Writer Inventory
 
 **Audit date:** 2026-05-21 (post-PR4 refresh)  

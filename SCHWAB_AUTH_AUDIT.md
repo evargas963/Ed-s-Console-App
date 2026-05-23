@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Root point-in-time audit `SCHWAB_AUTH_AUDIT.md`; not binding unless ACTIVE_PROGRAM cites.
+
 # Schwab Auth Hardening — Root Cause & Fix
 
 ## Root Cause

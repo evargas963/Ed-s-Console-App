@@ -1,3 +1,5 @@
+> **Classification:** Active Rule Source | **Scope:** Thin pointer to AGENTS/ACTIVE_PROGRAM and [OPERATOR-ONLY] archive prefs.
+
 # MEMORY.md — thin pointer (Phase 1c)
 
 **Portable rules live in [`AGENTS.md`](AGENTS.md) and [`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md).**  

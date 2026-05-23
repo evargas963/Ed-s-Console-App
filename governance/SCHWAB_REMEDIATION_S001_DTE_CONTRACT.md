@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `SCHWAB_REMEDIATION_S001_DTE_CONTRACT.md`.
+
 # Schwab Remediation S001 DTE Contract
 
 **Status:** IMPLEMENTED_IN_WORKING_TREE  

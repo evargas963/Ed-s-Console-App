@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/feature_contract_source_mapping.md`.
+
 # MVP source → canonical mapping (`v1_1m_mvp`)
 
 Exact field mapping used by `build_live_mvp_feature_row` and `build_db_mvp_feature_row`.

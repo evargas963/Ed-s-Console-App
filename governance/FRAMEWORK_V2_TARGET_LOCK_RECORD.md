@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `FRAMEWORK_V2_TARGET_LOCK_RECORD.md`.
+
 # Framework v2.0 Target Lock Record
 
 **Status:** TARGET LOCKED FOR DESIGN WORK  

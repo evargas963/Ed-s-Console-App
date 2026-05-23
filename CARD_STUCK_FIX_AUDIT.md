@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Root point-in-time audit `CARD_STUCK_FIX_AUDIT.md`; not binding unless ACTIVE_PROGRAM cites.
+
 # Card Stuck Fix — Closure Audit
 
 ## Root Cause

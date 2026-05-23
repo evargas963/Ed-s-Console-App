@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/calibration_phase2_logging_layer.md`.
+
 # Phase 2 — Calibration logging layer
 
 ## Objective

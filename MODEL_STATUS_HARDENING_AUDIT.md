@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Root point-in-time audit `MODEL_STATUS_HARDENING_AUDIT.md`; not binding unless ACTIVE_PROGRAM cites.
+
 # Model Status Hardening — Closure Audit
 
 ## Root Cause

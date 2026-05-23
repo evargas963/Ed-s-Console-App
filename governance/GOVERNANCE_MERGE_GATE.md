@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `GOVERNANCE_MERGE_GATE.md`.
+
 # Governance merge gate
 
 **Status:** **ACTIVE** — operator approved register (refresh **2026-05-02**); use this gate before governance commits.  

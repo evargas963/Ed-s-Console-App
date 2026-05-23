@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: gate-b-file-review-ruleset
 description: "Binding consolidated Gate B file-review ruleset — 7-artifact sign-off contract, 16-dim verification matrix, 5-section audit brief schema, process rules"

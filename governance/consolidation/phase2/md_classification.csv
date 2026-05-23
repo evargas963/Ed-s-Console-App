@@ -1,0 +1,287 @@
+rel_path,category,scope,header_added
+ACTIVE_PROGRAM.md,Active Rule Source,"Current epic, conflicts, deferred work, known risks.",yes
+AGENTS.md,Active Rule Source,Always-on agent behavior rules (Cursor + Claude Code).,yes
+CALL_CARD_SEMANTICS_FIX_AUDIT.md,Historical Record,Root point-in-time audit `CALL_CARD_SEMANTICS_FIX_AUDIT.md`; not binding unless ACTIVE_PROGRAM cites.,yes
+CARD_STUCK_FIX_AUDIT.md,Historical Record,Root point-in-time audit `CARD_STUCK_FIX_AUDIT.md`; not binding unless ACTIVE_PROGRAM cites.,yes
+CLAUDE.md,Active Rule Source,Schwab program law; Read-not-scan methodology.,no
+data/policy_usable_inventory_v1_summary.md,Policy Specification,Repository documentation `data/policy_usable_inventory_v1_summary.md`.,yes
+DATA_STEWARDSHIP.md,Operator Runbook,"Training, maintenance, and data stewardship procedures.",yes
+docs/_consolidation/restore/FULL_PRIMARY_HORIZON_AUDIT.md,Historical Record,Point-in-time audit artifact `docs/_consolidation/restore/FULL_PRIMARY_HORIZON_AUDIT.md`.,yes
+docs/_consolidation/restore/FULL_PRIMARY_HORIZON_RESTORE_MANIFEST.md,Policy Specification,Technical documentation `docs/_consolidation/restore/FULL_PRIMARY_HORIZON_RESTORE_MANIFEST.md`.,yes
+docs/_consolidation/restore/POST_RESTORE_SIGNAL_TEST.md,Policy Specification,Technical documentation `docs/_consolidation/restore/POST_RESTORE_SIGNAL_TEST.md`.,yes
+docs/_consolidation/restore/POST_RESTORE_VERIFICATION_SUMMARY.md,Policy Specification,Technical documentation `docs/_consolidation/restore/POST_RESTORE_VERIFICATION_SUMMARY.md`.,yes
+docs/_consolidation/restore/RESTORE_STEP_A_EXECUTION_LOG.md,Policy Specification,Technical documentation `docs/_consolidation/restore/RESTORE_STEP_A_EXECUTION_LOG.md`.,yes
+docs/_consolidation/restore/RESTORE_STEP_A_VERIFICATION.md,Policy Specification,Technical documentation `docs/_consolidation/restore/RESTORE_STEP_A_VERIFICATION.md`.,yes
+docs/architecture_parallel_vs_cascade_competition_spec.md,Policy Specification,Technical documentation `docs/architecture_parallel_vs_cascade_competition_spec.md`.,no
+docs/calibration_anchor_stability_validation_v2.md,Historical Record,Completed analysis or validation `docs/calibration_anchor_stability_validation_v2.md`.,yes
+docs/calibration_anchor_stability_validation_v3.md,Historical Record,Completed analysis or validation `docs/calibration_anchor_stability_validation_v3.md`.,yes
+docs/calibration_anchor_stability_validation_v4.md,Historical Record,Completed analysis or validation `docs/calibration_anchor_stability_validation_v4.md`.,yes
+docs/calibration_anchor_validation_v1.md,Historical Record,Completed analysis or validation `docs/calibration_anchor_validation_v1.md`.,yes
+docs/calibration_bypass_validation_v1.md,Historical Record,Completed analysis or validation `docs/calibration_bypass_validation_v1.md`.,yes
+docs/calibration_canonical_enforcement_v1.md,Policy Specification,Technical documentation `docs/calibration_canonical_enforcement_v1.md`.,yes
+docs/calibration_edge_discovery_v1.md,Policy Specification,Technical documentation `docs/calibration_edge_discovery_v1.md`.,yes
+docs/calibration_edge_validation_v1.md,Historical Record,Completed analysis or validation `docs/calibration_edge_validation_v1.md`.,yes
+docs/calibration_feature_leakage_validation_v1.md,Historical Record,Completed analysis or validation `docs/calibration_feature_leakage_validation_v1.md`.,yes
+docs/calibration_legacy_quarantine_v1.md,Policy Specification,Technical documentation `docs/calibration_legacy_quarantine_v1.md`.,yes
+docs/calibration_legacy_quarantine_v2.md,Policy Specification,Technical documentation `docs/calibration_legacy_quarantine_v2.md`.,yes
+docs/calibration_logging_production_validation_v1.md,Historical Record,Completed analysis or validation `docs/calibration_logging_production_validation_v1.md`.,yes
+docs/calibration_logging_production_validation_v2.md,Historical Record,Completed analysis or validation `docs/calibration_logging_production_validation_v2.md`.,yes
+docs/calibration_logging_validation_v1.md,Historical Record,Completed analysis or validation `docs/calibration_logging_validation_v1.md`.,yes
+docs/calibration_logging_validation_v2.md,Historical Record,Completed analysis or validation `docs/calibration_logging_validation_v2.md`.,yes
+docs/calibration_master_report_v1.md,Historical Record,Completed analysis or validation `docs/calibration_master_report_v1.md`.,no
+docs/calibration_outcome_join_validation_v1.md,Historical Record,Completed analysis or validation `docs/calibration_outcome_join_validation_v1.md`.,yes
+docs/calibration_outcome_join_validation_v2.md,Historical Record,Completed analysis or validation `docs/calibration_outcome_join_validation_v2.md`.,yes
+docs/calibration_phase1_data_integrity.md,Policy Specification,Technical documentation `docs/calibration_phase1_data_integrity.md`.,yes
+docs/calibration_phase2_logging_layer.md,Policy Specification,Technical documentation `docs/calibration_phase2_logging_layer.md`.,yes
+docs/calibration_phase3_empirical_threshold_tuning.md,Policy Specification,Technical documentation `docs/calibration_phase3_empirical_threshold_tuning.md`.,yes
+docs/calibration_phase4_decision_engine_validation.md,Historical Record,Completed analysis or validation `docs/calibration_phase4_decision_engine_validation.md`.,yes
+docs/calibration_phase5_adaptive_weighting_foundation.md,Policy Specification,Technical documentation `docs/calibration_phase5_adaptive_weighting_foundation.md`.,yes
+docs/calibration_production_accumulation_validation_v1.md,Historical Record,Completed analysis or validation `docs/calibration_production_accumulation_validation_v1.md`.,yes
+docs/calibration_signal_engineering_v1.md,Policy Specification,Technical documentation `docs/calibration_signal_engineering_v1.md`.,yes
+docs/calibration_statistical_integrity_v1.md,Policy Specification,Technical documentation `docs/calibration_statistical_integrity_v1.md`.,yes
+docs/calibration_statistical_integrity_v2.md,Policy Specification,Technical documentation `docs/calibration_statistical_integrity_v2.md`.,no
+docs/canonical_1m_grid_global_closure.md,Historical Record,Completed analysis or validation `docs/canonical_1m_grid_global_closure.md`.,yes
+docs/CHECKPOINT_PROVENANCE_LOCK_REPORT_V1.md,Historical Record,Completed analysis or validation `docs/CHECKPOINT_PROVENANCE_LOCK_REPORT_V1.md`.,yes
+docs/clean_environment_validation_post_db_authority.md,Historical Record,Completed analysis or validation `docs/clean_environment_validation_post_db_authority.md`.,yes
+docs/clean_environment_validation_v2_closure.md,Historical Record,Completed analysis or validation `docs/clean_environment_validation_v2_closure.md`.,yes
+docs/db_authority_enforcement_final.md,Policy Specification,Technical documentation `docs/db_authority_enforcement_final.md`.,yes
+docs/db_authority_enforcement_v2_global_closure.md,Historical Record,Completed analysis or validation `docs/db_authority_enforcement_v2_global_closure.md`.,yes
+docs/db_fragmentation_consolidation_canonicalization.md,Policy Specification,Technical documentation `docs/db_fragmentation_consolidation_canonicalization.md`.,no
+docs/db_inventory_and_integrity.md,Policy Specification,Technical documentation `docs/db_inventory_and_integrity.md`.,no
+docs/feature_contract_mvp.md,Policy Specification,Technical documentation `docs/feature_contract_mvp.md`.,yes
+docs/feature_contract_source_mapping.md,Policy Specification,Technical documentation `docs/feature_contract_source_mapping.md`.,yes
+docs/feature_leakage_full_validation_v1.md,Historical Record,Completed analysis or validation `docs/feature_leakage_full_validation_v1.md`.,yes
+docs/feature_leakage_full_validation_v2.md,Historical Record,Completed analysis or validation `docs/feature_leakage_full_validation_v2.md`.,yes
+docs/FIELD_SOURCE_AUDIT.md,Historical Record,Point-in-time audit artifact `docs/FIELD_SOURCE_AUDIT.md`.,yes
+docs/FINAL_COVERAGE_COMPLETION_REPORT_V1.md,Historical Record,Completed analysis or validation `docs/FINAL_COVERAGE_COMPLETION_REPORT_V1.md`.,yes
+docs/final_system_validation_pre_accumulation.md,Historical Record,Completed analysis or validation `docs/final_system_validation_pre_accumulation.md`.,yes
+docs/governance/AGENT_SELF_GOVERNANCE.md,Active Rule Source,"Process alternation, sign-off contract, verification matrix.",yes
+docs/host/BACKUP_AND_MIRROR.md,Operator Runbook,"Host-local secrets, backup, and environment guidance.",yes
+docs/host/ENVIRONMENT_VARIABLES.md,Operator Runbook,"Host-local secrets, backup, and environment guidance.",yes
+docs/host/README.md,Operator Runbook,"Host-local secrets, backup, and environment guidance.",yes
+docs/issue19_bar_history_recovery_audit.md,Historical Record,Completed analysis or validation `docs/issue19_bar_history_recovery_audit.md`.,yes
+docs/issue19_bar_rehydration_feasibility.md,Policy Specification,Technical documentation `docs/issue19_bar_rehydration_feasibility.md`.,yes
+docs/issue19_bar_rehydration_implementation_report.md,Historical Record,Completed analysis or validation `docs/issue19_bar_rehydration_implementation_report.md`.,no
+docs/issue19_canonical_ontology_and_mismatch_audit.md,Historical Record,Completed analysis or validation `docs/issue19_canonical_ontology_and_mismatch_audit.md`.,yes
+docs/issue19_canonical_timeframe_horizon_independence_audit.md,Historical Record,Completed analysis or validation `docs/issue19_canonical_timeframe_horizon_independence_audit.md`.,yes
+docs/issue19_forward_canonical_validation.md,Historical Record,Completed analysis or validation `docs/issue19_forward_canonical_validation.md`.,yes
+docs/issue19_ontology_repair_design.md,Policy Specification,Technical documentation `docs/issue19_ontology_repair_design.md`.,yes
+docs/issue19_option_a_post_backfill_validation.md,Historical Record,Completed analysis or validation `docs/issue19_option_a_post_backfill_validation.md`.,yes
+docs/issue19_pin_neutral_1m_5m_divergence_audit.md,Historical Record,Completed analysis or validation `docs/issue19_pin_neutral_1m_5m_divergence_audit.md`.,no
+docs/issue19_pin_neutral_1m_reachability_audit.md,Historical Record,Completed analysis or validation `docs/issue19_pin_neutral_1m_reachability_audit.md`.,no
+docs/issue19_post_rehydration_eligibility_audit.md,Historical Record,Completed analysis or validation `docs/issue19_post_rehydration_eligibility_audit.md`.,no
+docs/issue19_repair_implementation_report.md,Historical Record,Completed analysis or validation `docs/issue19_repair_implementation_report.md`.,yes
+docs/l1_sse_scaling.md,Policy Specification,Technical documentation `docs/l1_sse_scaling.md`.,yes
+docs/l1_tier_b_overlay_contract.md,Policy Specification,Technical documentation `docs/l1_tier_b_overlay_contract.md`.,yes
+docs/operations/backfill_et_clock_runbook.md,Policy Specification,Technical documentation `docs/operations/backfill_et_clock_runbook.md`.,yes
+docs/phase4a_canonical_1m_full_closure.md,Historical Record,Completed analysis or validation `docs/phase4a_canonical_1m_full_closure.md`.,yes
+docs/PIPELINE_COMPLETION_MOVEMENT_V1_REPORT.md,Historical Record,Completed analysis or validation `docs/PIPELINE_COMPLETION_MOVEMENT_V1_REPORT.md`.,yes
+docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md,Policy Specification,Execution plan; binding when ACTIVE_PROGRAM points here.,yes
+docs/plans/TRAINING_PIPELINE_AUTOMATION_PLAN.md,Policy Specification,Execution plan; binding when ACTIVE_PROGRAM points here.,yes
+docs/playwright.md,Policy Specification,Technical documentation `docs/playwright.md`.,yes
+docs/post_integration_revalidation_v1.md,Historical Record,Completed analysis or validation `docs/post_integration_revalidation_v1.md`.,no
+docs/post_integration_revalidation_v2_production_scope.md,Historical Record,Completed analysis or validation `docs/post_integration_revalidation_v2_production_scope.md`.,no
+docs/post_integration_revalidation_v3_outcome_blocker_fix.md,Historical Record,Completed analysis or validation `docs/post_integration_revalidation_v3_outcome_blocker_fix.md`.,yes
+docs/repo_wide_canonical_enforcement_proof_v1.md,Historical Record,Completed analysis or validation `docs/repo_wide_canonical_enforcement_proof_v1.md`.,no
+docs/repo_wide_canonical_enforcement_proof_v2.md,Historical Record,Completed analysis or validation `docs/repo_wide_canonical_enforcement_proof_v2.md`.,yes
+docs/repo_wide_canonical_enforcement_proof_v3.md,Historical Record,Completed analysis or validation `docs/repo_wide_canonical_enforcement_proof_v3.md`.,yes
+docs/repo_wide_canonical_enforcement_v1.md,Policy Specification,Technical documentation `docs/repo_wide_canonical_enforcement_v1.md`.,yes
+docs/repo_wide_canonical_enforcement_v2.md,Policy Specification,Technical documentation `docs/repo_wide_canonical_enforcement_v2.md`.,yes
+docs/SCHWAB_FIELD_NORMALIZATION_AUDIT.md,Historical Record,Point-in-time audit artifact `docs/SCHWAB_FIELD_NORMALIZATION_AUDIT.md`.,yes
+docs/SCHWAB_FIELD_REFERENCE.md,Policy Specification,Technical documentation `docs/SCHWAB_FIELD_REFERENCE.md`.,yes
+docs/signal_layer_integration_v1.md,Policy Specification,Technical documentation `docs/signal_layer_integration_v1.md`.,yes
+docs/signal_layer_rebuild_v1.md,Policy Specification,Technical documentation `docs/signal_layer_rebuild_v1.md`.,yes
+docs/TARGET_REDESIGN_MOVEMENT_V1_FULL_REPORT.md,Historical Record,Completed analysis or validation `docs/TARGET_REDESIGN_MOVEMENT_V1_FULL_REPORT.md`.,yes
+docs/target_redesign_movement_v1_report.md,Historical Record,Completed analysis or validation `docs/target_redesign_movement_v1_report.md`.,yes
+docs/UNIVERSAL_TICKER_READINESS_ENFORCEMENT_V1.md,Policy Specification,Technical documentation `docs/UNIVERSAL_TICKER_READINESS_ENFORCEMENT_V1.md`.,yes
+EdWebConsole_DesignSystem.md,Policy Specification,UI design system reference.,yes
+FUSION_MC_AUDIT.md,Historical Record,Root point-in-time audit `FUSION_MC_AUDIT.md`; not binding unless ACTIVE_PROGRAM cites.,yes
+governance/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md,Policy Specification,Governance policy/contract `A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md`.,no
+governance/A1_CONFORMAL_ARTIFACT_LIFECYCLE_CONTRACT.md,Policy Specification,Governance policy/contract `A1_CONFORMAL_ARTIFACT_LIFECYCLE_CONTRACT.md`.,no
+governance/A1_CONFORMAL_ARTIFACT_PRODUCTION_CONTRACT.md,Policy Specification,Governance policy/contract `A1_CONFORMAL_ARTIFACT_PRODUCTION_CONTRACT.md`.,no
+governance/A1_CONFORMAL_INTERVAL_PROMOTION_CONTRACT.md,Policy Specification,Governance policy/contract `A1_CONFORMAL_INTERVAL_PROMOTION_CONTRACT.md`.,no
+governance/A1_ISOTONIC_ARTIFACT_LIFECYCLE_AND_RUNTIME_CONTRACT.md,Policy Specification,Governance policy/contract `A1_ISOTONIC_ARTIFACT_LIFECYCLE_AND_RUNTIME_CONTRACT.md`.,no
+governance/A2_LIFECYCLE_EOD_FORCE_EXIT_AND_CADENCE_CONTRACT.md,Policy Specification,Governance policy/contract `A2_LIFECYCLE_EOD_FORCE_EXIT_AND_CADENCE_CONTRACT.md`.,no
+governance/A2_LIFECYCLE_PIN_RISK_HANDLER_CONTRACT.md,Policy Specification,Governance policy/contract `A2_LIFECYCLE_PIN_RISK_HANDLER_CONTRACT.md`.,no
+governance/A2_LIFECYCLE_SESSION_CALENDAR_HARDENING_CONTRACT.md,Policy Specification,Governance policy/contract `A2_LIFECYCLE_SESSION_CALENDAR_HARDENING_CONTRACT.md`.,no
+governance/A2_MARKET_STATE_PROOF_ROW_COMPLETENESS_CONTRACT.md,Policy Specification,Governance policy/contract `A2_MARKET_STATE_PROOF_ROW_COMPLETENESS_CONTRACT.md`.,no
+governance/A2_STATIC_LIFECYCLE_DIVERGENCE_AUDIT.md,Historical Record,Point-in-time audit artifact `governance/A2_STATIC_LIFECYCLE_DIVERGENCE_AUDIT.md`.,yes
+governance/ACTIVE_DIRECTORY_WRITER_INVENTORY.md,Operational Ledger,Governance register/inventory `ACTIVE_DIRECTORY_WRITER_INVENTORY.md`.,yes
+governance/archive/2026-Q2/memory_archive/feedback_audit_for_schwab_replaceable_derivations.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_commit_to_specifics.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_completion_claims_scope_explicit.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_cursor_drafts_claude_verifies.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_cursor_pushes_not_claude.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_fiduciary_duty.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_fix_as_we_find_scope_policy.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_full_read_verification_protocol.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_gap_closure_self_audit_cycle.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_gate_b_file_review_ruleset.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_infra_cleanup_not_product.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_no_audit_deferral_across_walks.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_no_classifier_only_progress.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_no_grep_tool.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_no_new_md_deliverables.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_no_patches_solid_fixes.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_no_permission_asks.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_no_spot_check_demand_systematic.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_per_iteration_scoreboard.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_redesigns_must_be_genuinely_different.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_schwab_consistency_first_principles.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_schwab_full_repo_directive.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_schwab_line_by_line_directive.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_scope_by_dataflow_relevance.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_significant_runs_in_operator_powershell.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_strict_gatekeeping_role.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_verification_self_check_against_read_output.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_verify_target_exists_before_trigger.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/feedback_worktree_staleness_check.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/project_architecture_pivot_pending.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/project_complete_redesign_committed.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/project_gate_b_state_2026_05_20.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/project_gate_b_state_2026_05_21.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/project_training_pipeline_pr4_1_state_2026_05_23.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/2026-Q2/memory_archive/README.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/archive/legacy_categorical_inventories_v1/README.md,Historical Record,Archived consolidation or memory artifact.,yes
+governance/audits/find_cal_ts_hour_resolution_v1_20260519.md,Historical Record,Point-in-time audit artifact `governance/audits/find_cal_ts_hour_resolution_v1_20260519.md`.,yes
+governance/CHAIN_OF_TRUST_GAP_INTEL_290.md,Policy Specification,Governance documentation `CHAIN_OF_TRUST_GAP_INTEL_290.md`.,yes
+governance/CURSOR_V4_AGENT_BRIEF.md,Policy Specification,Governance documentation `CURSOR_V4_AGENT_BRIEF.md`.,yes
+governance/DERIVED_ANALYTICS_REGISTRY.md,Policy Specification,Governance documentation `DERIVED_ANALYTICS_REGISTRY.md`.,yes
+governance/ENGINEERING_GATEKEEPING_POLICY.md,Policy Specification,Governance policy/contract `ENGINEERING_GATEKEEPING_POLICY.md`.,no
+governance/EXISTING_ARTIFACT_TRANSITION_POLICY.md,Policy Specification,Governance policy/contract `EXISTING_ARTIFACT_TRANSITION_POLICY.md`.,yes
+governance/Framework-ED-Decision-Engine-v1.1.md,Policy Specification,Governance documentation `Framework-ED-Decision-Engine-v1.1.md`.,yes
+governance/Framework-ED-Decision-Engine-v2.0-DRAFT.md,Policy Specification,Governance documentation `Framework-ED-Decision-Engine-v2.0-DRAFT.md`.,yes
+governance/FRAMEWORK_V2_TARGET_LOCK_RECORD.md,Policy Specification,Governance documentation `FRAMEWORK_V2_TARGET_LOCK_RECORD.md`.,yes
+governance/G1_ADDENDUM_CACHE_CONSISTENCY.md,Policy Specification,Governance documentation `G1_ADDENDUM_CACHE_CONSISTENCY.md`.,yes
+governance/G1_ADDENDUM_TRAINING_DEPENDENCY.md,Policy Specification,Governance documentation `G1_ADDENDUM_TRAINING_DEPENDENCY.md`.,yes
+governance/G1_DIAGNOSIS.md,Policy Specification,Governance documentation `G1_DIAGNOSIS.md`.,yes
+governance/G2_PLAN.md,Policy Specification,Governance documentation `G2_PLAN.md`.,yes
+governance/GOVERNANCE_EVENT_MODEL.md,Policy Specification,Governance documentation `GOVERNANCE_EVENT_MODEL.md`.,yes
+governance/GOVERNANCE_MERGE_GATE.md,Policy Specification,Governance documentation `GOVERNANCE_MERGE_GATE.md`.,yes
+governance/IMPLEMENTATION_BLUEPRINT_V2.md,Policy Specification,Governance documentation `IMPLEMENTATION_BLUEPRINT_V2.md`.,yes
+governance/INFRASTRUCTURE_GOVERNANCE_LOCK_PACKAGE.md,Policy Specification,Governance documentation `INFRASTRUCTURE_GOVERNANCE_LOCK_PACKAGE.md`.,yes
+governance/INSTITUTIONAL_STANDARD_V2.md,Superseded,Superseded index or forwarding stub for `INSTITUTIONAL_STANDARD_V2.md`.,no
+governance/INSTITUTIONAL_STANDARD_V3.md,Policy Specification,Governance policy/contract `INSTITUTIONAL_STANDARD_V3.md`.,yes
+governance/INSTITUTIONAL_STANDARD_WISHLIST.md,Superseded,Superseded index or forwarding stub for `INSTITUTIONAL_STANDARD_WISHLIST.md`.,no
+governance/OPERATOR_DECISION_REGISTER.md,Operational Ledger,Governance register/inventory `OPERATOR_DECISION_REGISTER.md`.,yes
+governance/OPERATOR_PREFLIGHT.md,Policy Specification,Governance documentation `OPERATOR_PREFLIGHT.md`.,yes
+governance/PHASE_PLAN_INFRASTRUCTURE.md,Policy Specification,Governance policy/contract `PHASE_PLAN_INFRASTRUCTURE.md`.,yes
+governance/PHASE_PLAN_TARGET_STATE.md,Policy Specification,Governance policy/contract `PHASE_PLAN_TARGET_STATE.md`.,yes
+governance/PILOT_1_SCHWAB_WALK_AND_AUTHORITY_UX_STAGING.md,Policy Specification,Governance documentation `PILOT_1_SCHWAB_WALK_AND_AUTHORITY_UX_STAGING.md`.,yes
+governance/PILOT_1A_BUILD_PLAN.md,Policy Specification,Governance documentation `PILOT_1A_BUILD_PLAN.md`.,yes
+governance/PILOT_1B_A2_0DTE_CONTRACT.md,Policy Specification,Governance policy/contract `PILOT_1B_A2_0DTE_CONTRACT.md`.,yes
+governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md,Policy Specification,Governance policy/contract `PILOT_1B_A2_LIFECYCLE_CONTRACT.md`.,yes
+governance/PILOT_1B_CALIBRATION_CONTRACT.md,Policy Specification,Governance policy/contract `PILOT_1B_CALIBRATION_CONTRACT.md`.,yes
+governance/PRODUCTION_CLAIMS_REGISTER.md,Operational Ledger,Governance register/inventory `PRODUCTION_CLAIMS_REGISTER.md`.,no
+governance/REBUILD_CONTEXT.md,Policy Specification,Governance documentation `REBUILD_CONTEXT.md`.,yes
+governance/REPO_CLEANUP_QUEUE.md,Policy Specification,Governance documentation `REPO_CLEANUP_QUEUE.md`.,yes
+governance/SCHWAB_CONSISTENCY_AUDIT_REGISTER_V1.md,Operational Ledger,Governance register/inventory `SCHWAB_CONSISTENCY_AUDIT_REGISTER_V1.md`.,no
+governance/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_V1.md,Policy Specification,Governance documentation `SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_V1.md`.,yes
+governance/SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md,Operational Ledger,Governance register/inventory `SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md`.,no
+governance/SCHWAB_DYNAMIC_SITE_RUNTIME_TRACING_PROTOCOL_V3.md,Policy Specification,Governance documentation `SCHWAB_DYNAMIC_SITE_RUNTIME_TRACING_PROTOCOL_V3.md`.,yes
+governance/SCHWAB_FIELD_COVERAGE_REGISTER_V1.md,Operational Ledger,Governance register/inventory `SCHWAB_FIELD_COVERAGE_REGISTER_V1.md`.,no
+governance/SCHWAB_REMEDIATION_GATE_FAIL_CLOSED_WORKING_SYNC_V1.md,Policy Specification,Governance documentation `SCHWAB_REMEDIATION_GATE_FAIL_CLOSED_WORKING_SYNC_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S001_DTE_CONTRACT.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S001_DTE_CONTRACT.md`.,yes
+governance/SCHWAB_REMEDIATION_S002_VOLUME_CONTRACT.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S002_VOLUME_CONTRACT.md`.,yes
+governance/SCHWAB_REMEDIATION_S003_OHLCV_CONTRACT.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S003_OHLCV_CONTRACT.md`.,yes
+governance/SCHWAB_REMEDIATION_S004_OPEN_INTEREST_CONTRACT.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S004_OPEN_INTEREST_CONTRACT.md`.,yes
+governance/SCHWAB_REMEDIATION_S005_SPOT_CONTRACT.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S005_SPOT_CONTRACT.md`.,yes
+governance/SCHWAB_REMEDIATION_S009_BID_ASK_SPREAD_CONTRACT.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S009_BID_ASK_SPREAD_CONTRACT.md`.,yes
+governance/SCHWAB_REMEDIATION_S010_S011_GREEKS_CONTRACT.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S010_S011_GREEKS_CONTRACT.md`.,yes
+governance/SCHWAB_REMEDIATION_S012_IV_CONTRACT.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S012_IV_CONTRACT.md`.,yes
+governance/SCHWAB_REMEDIATION_S013_DATE_DIFF_DTE_SUBTRIAGE_V1.md,Policy Specification,Governance documentation `SCHWAB_REMEDIATION_S013_DATE_DIFF_DTE_SUBTRIAGE_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S014_S015_REST_CUM_DELTA_CONTRACT.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S014_S015_REST_CUM_DELTA_CONTRACT.md`.,yes
+governance/SCHWAB_REMEDIATION_S014_S015_TAPE_SIZE_CONTRACT.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S014_S015_TAPE_SIZE_CONTRACT.md`.,yes
+governance/SCHWAB_REMEDIATION_S014_S015_VWAP_CONTRACT.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S014_S015_VWAP_CONTRACT.md`.,yes
+governance/SCHWAB_REMEDIATION_S016_BLACK_SCHOLES_SUBTRIAGE_V1.md,Policy Specification,Governance documentation `SCHWAB_REMEDIATION_S016_BLACK_SCHOLES_SUBTRIAGE_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S017_INFERENCE_SNAPSHOT_TIME_CONTRACT.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S017_INFERENCE_SNAPSHOT_TIME_CONTRACT.md`.,yes
+governance/SCHWAB_REMEDIATION_S017_LIVE_PLANE_TIME_CONTRACT.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S017_LIVE_PLANE_TIME_CONTRACT.md`.,yes
+governance/SCHWAB_REMEDIATION_S017_REST_QUOTE_TIME_CONTRACT.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S017_REST_QUOTE_TIME_CONTRACT.md`.,yes
+governance/SCHWAB_REMEDIATION_S018_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S018_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S018_S038_MECHANICAL_TAIL_MASTER_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S018_S038_MECHANICAL_TAIL_MASTER_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S019_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S019_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S020_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S020_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S021_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S021_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S022_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S022_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S023_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S023_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S024_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S024_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S025_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S025_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S026_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S026_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S027_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S027_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S028_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S028_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S029_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S029_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S030_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S030_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S031_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S031_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S032_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S032_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S033_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S033_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S034_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S034_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S035_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S035_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S036_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S036_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S037_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S037_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_S038_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md,Policy Specification,Governance policy/contract `SCHWAB_REMEDIATION_S038_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_SLICE_CLOSURE_AUDIT_V1.md,Historical Record,Governance audit/memo `SCHWAB_REMEDIATION_SLICE_CLOSURE_AUDIT_V1.md`.,yes
+governance/SCHWAB_REMEDIATION_SLICE_PLAN_V1.md,Policy Specification,Governance documentation `SCHWAB_REMEDIATION_SLICE_PLAN_V1.md`.,yes
+governance/SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md,Policy Specification,Governance documentation `SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md`.,yes
+governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V1.md,Superseded,Superseded index or forwarding stub for `SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V1.md`.,no
+governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V2.md,Superseded,Superseded index or forwarding stub for `SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V2.md`.,no
+governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md,Superseded,Superseded index or forwarding stub for `SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md`.,no
+governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md,Superseded,Superseded index or forwarding stub for `SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md`.,yes
+governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V2.md,Superseded,Superseded index or forwarding stub for `SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V2.md`.,yes
+governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V3.md,Superseded,Superseded index or forwarding stub for `SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V3.md`.,no
+governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.md,Operational Ledger,Governance register/inventory `SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.md`.,yes
+governance/SCHWAB_V4_FILE_INVENTORY_STATS.md,Operational Ledger,Governance register/inventory `SCHWAB_V4_FILE_INVENTORY_STATS.md`.,yes
+governance/SCHWAB_V4_REVIEW_MEMOS/market_data_adapter.py.md,Policy Specification,Governance documentation `market_data_adapter.py.md`.,yes
+governance/SCHWAB_V4_REVIEW_MEMOS/market_state.py.md,Policy Specification,Governance documentation `market_state.py.md`.,yes
+governance/SCHWAB_V4_REVIEW_MEMOS/server.py.md,Policy Specification,Governance documentation `server.py.md`.,yes
+governance/SCHWAB_V4_REVIEW_MEMOS/signals.py.md,Policy Specification,Governance documentation `signals.py.md`.,yes
+governance/SNAPSHOTS_SCHEMA_REPAIR_APPLY_RUNBOOK_V1.md,Policy Specification,Governance documentation `SNAPSHOTS_SCHEMA_REPAIR_APPLY_RUNBOOK_V1.md`.,no
+governance/SNAPSHOTS_SCHEMA_REPAIR_MIGRATION_CONTRACT.md,Policy Specification,Governance policy/contract `SNAPSHOTS_SCHEMA_REPAIR_MIGRATION_CONTRACT.md`.,no
+governance/STACK_WIRING_INTEGRITY_MAP.md,Operational Ledger,Governance register/inventory `STACK_WIRING_INTEGRITY_MAP.md`.,yes
+governance/STAGE_A2B_SNAPSHOT_OUTCOME_ROWID_FALLBACK_REMOVAL_CONTRACT.md,Policy Specification,Governance policy/contract `STAGE_A2B_SNAPSHOT_OUTCOME_ROWID_FALLBACK_REMOVAL_CONTRACT.md`.,yes
+governance/TRADE_IMPACTING_ROUTE_INVENTORY.md,Operational Ledger,Governance register/inventory `TRADE_IMPACTING_ROUTE_INVENTORY.md`.,yes
+governance/v1.1-rationale-summary.md,Policy Specification,Governance documentation `v1.1-rationale-summary.md`.,yes
+governance/v2.0-rationale-summary.md,Policy Specification,Governance documentation `v2.0-rationale-summary.md`.,yes
+governance/V3_CONFORMANCE_AUDIT.md,Historical Record,Point-in-time audit artifact `governance/V3_CONFORMANCE_AUDIT.md`.,yes
+governance/V3_CONFORMANCE_AUDIT_TEMPLATE.md,Historical Record,Governance audit/memo `V3_CONFORMANCE_AUDIT_TEMPLATE.md`.,yes
+governance/V3_LOCK_RECORD.md,Policy Specification,Governance documentation `V3_LOCK_RECORD.md`.,yes
+LSTM_INACTIVE_FIX_AUDIT.md,Historical Record,Root point-in-time audit `LSTM_INACTIVE_FIX_AUDIT.md`; not binding unless ACTIVE_PROGRAM cites.,yes
+MEMORY.md,Active Rule Source,Thin pointer to AGENTS/ACTIVE_PROGRAM and [OPERATOR-ONLY] archive prefs.,yes
+MIGRATION_1M_CANONICAL.md,Historical Record,Root historical reference `MIGRATION_1M_CANONICAL.md`.,yes
+MODEL_RESTORE_LOG.md,Operational Ledger,Model restore/promotion event log.,yes
+MODEL_STATUS_HARDENING_AUDIT.md,Historical Record,Root point-in-time audit `MODEL_STATUS_HARDENING_AUDIT.md`; not binding unless ACTIVE_PROGRAM cites.,yes
+models/active/MODEL_RESTORE_LOG.md,Operational Ledger,Model restore/promotion event log.,yes
+models/validation_runs/20260416T043454Z_SPY/AUTHORITY_REPORT.md,Policy Specification,Repository documentation `models/validation_runs/20260416T043454Z_SPY/AUTHORITY_REPORT.md`.,yes
+models/validation_runs/20260416T044015Z_SPY/AUTHORITY_REPORT.md,Policy Specification,Repository documentation `models/validation_runs/20260416T044015Z_SPY/AUTHORITY_REPORT.md`.,yes
+models/validation_runs/20260416T045128Z_SPY/AUTHORITY_REPORT.md,Policy Specification,Repository documentation `models/validation_runs/20260416T045128Z_SPY/AUTHORITY_REPORT.md`.,yes
+models/validation_runs/20260416T132548Z_SPY/AUTHORITY_REPORT.md,Policy Specification,Repository documentation `models/validation_runs/20260416T132548Z_SPY/AUTHORITY_REPORT.md`.,yes
+models/validation_runs/20260416T152758Z_SPY/AUTHORITY_REPORT.md,Policy Specification,Repository documentation `models/validation_runs/20260416T152758Z_SPY/AUTHORITY_REPORT.md`.,yes
+models/validation_runs/20260416T160651Z_SPY/AUTHORITY_REPORT.md,Policy Specification,Repository documentation `models/validation_runs/20260416T160651Z_SPY/AUTHORITY_REPORT.md`.,yes
+models/validation_runs/20260416T161223Z_SPY/AUTHORITY_REPORT.md,Policy Specification,Repository documentation `models/validation_runs/20260416T161223Z_SPY/AUTHORITY_REPORT.md`.,yes
+models/validation_runs/20260416T165053Z_SPY/AUTHORITY_REPORT.md,Policy Specification,Repository documentation `models/validation_runs/20260416T165053Z_SPY/AUTHORITY_REPORT.md`.,yes
+models/validation_runs/component_matrix_smoke/AUTHORITY_REPORT.md,Policy Specification,Repository documentation `models/validation_runs/component_matrix_smoke/AUTHORITY_REPORT.md`.,yes
+models/validation_runs/smoke_stack_eval_ablation25/AUTHORITY_REPORT.md,Policy Specification,Repository documentation `models/validation_runs/smoke_stack_eval_ablation25/AUTHORITY_REPORT.md`.,yes
+models/validation_runs/smoke_stack_eval_cursor/AUTHORITY_REPORT.md,Policy Specification,Repository documentation `models/validation_runs/smoke_stack_eval_cursor/AUTHORITY_REPORT.md`.,yes
+models/validation_runs/smoke_stack_eval_fast/AUTHORITY_REPORT.md,Policy Specification,Repository documentation `models/validation_runs/smoke_stack_eval_fast/AUTHORITY_REPORT.md`.,yes
+OPEN_ITEMS.md,Operational Ledger,Canonical open-work registry; closes require SHA.,yes
+PIPELINE_QUALITY.md,Historical Record,Root historical reference `PIPELINE_QUALITY.md`.,yes
+PROMOTION_POLICY.md,Historical Record,Root historical reference `PROMOTION_POLICY.md`.,no
+README.md,Operator Runbook,Project entrypoint and developer onboarding.,yes
+reports/daily_health/history/20260503_071859_daily_health.md,Policy Specification,Repository documentation `reports/daily_health/history/20260503_071859_daily_health.md`.,yes
+reports/daily_health/history/20260503_071950_daily_health.md,Policy Specification,Repository documentation `reports/daily_health/history/20260503_071950_daily_health.md`.,yes
+reports/daily_health/history/20260503_072156_daily_health.md,Policy Specification,Repository documentation `reports/daily_health/history/20260503_072156_daily_health.md`.,yes
+reports/daily_health/history/20260503_072215_daily_health.md,Policy Specification,Repository documentation `reports/daily_health/history/20260503_072215_daily_health.md`.,yes
+reports/daily_health/history/20260503_073104_daily_health.md,Policy Specification,Repository documentation `reports/daily_health/history/20260503_073104_daily_health.md`.,yes
+reports/daily_health/history/20260503_075144_daily_health.md,Policy Specification,Repository documentation `reports/daily_health/history/20260503_075144_daily_health.md`.,yes
+reports/daily_health/history/20260503_130651_daily_health.md,Policy Specification,Repository documentation `reports/daily_health/history/20260503_130651_daily_health.md`.,yes
+reports/daily_health/history/20260503_133443_daily_health.md,Policy Specification,Repository documentation `reports/daily_health/history/20260503_133443_daily_health.md`.,yes
+reports/daily_health/history/20260503_141629_daily_health.md,Policy Specification,Repository documentation `reports/daily_health/history/20260503_141629_daily_health.md`.,yes
+reports/daily_health/history/20260503_142124_daily_health.md,Policy Specification,Repository documentation `reports/daily_health/history/20260503_142124_daily_health.md`.,yes
+reports/daily_health/history/20260503_142407_daily_health.md,Policy Specification,Repository documentation `reports/daily_health/history/20260503_142407_daily_health.md`.,yes
+reports/daily_health/latest_daily_health.md,Policy Specification,Repository documentation `reports/daily_health/latest_daily_health.md`.,yes
+SCHWAB_AUTH_AUDIT.md,Historical Record,Root point-in-time audit `SCHWAB_AUTH_AUDIT.md`; not binding unless ACTIVE_PROGRAM cites.,yes
+schwab_field_inventory/README.md,Policy Specification,Schwab field inventory reference; refresh on CHANGELOG or quarterly.,yes
+SNAPSHOT_DATA_AUDIT.md,Historical Record,Root point-in-time audit `SNAPSHOT_DATA_AUDIT.md`; not binding unless ACTIVE_PROGRAM cites.,yes
+tools/legacy/horizon_7/README.md,Policy Specification,Repository documentation `tools/legacy/horizon_7/README.md`.,yes
+tools/schwab_universal_coverage_scanner_v3/TRACEABILITY_V3.md,Policy Specification,Repository documentation `tools/schwab_universal_coverage_scanner_v3/TRACEABILITY_V3.md`.,yes
+tools/schwab_universal_coverage_scanner_v3/V3_DYNAMIC_PATTERNS.md,Policy Specification,Repository documentation `tools/schwab_universal_coverage_scanner_v3/V3_DYNAMIC_PATTERNS.md`.,yes
+TRAINING_AND_MAINTENANCE.md,Operator Runbook,"Training, maintenance, and data stewardship procedures.",yes

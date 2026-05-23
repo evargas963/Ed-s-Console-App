@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: fix-as-we-find-scope-policy
 description: "When Cursor pairs a code fix/refactor with a chunk disposition commit, the right gatekeeper ask is commit-body rationale (1-2 sentences: what was fixed, why, what tests cover it) — NOT rejection as 'out-of-scope drift'. Operator standing directive: fix anything we find along the way. Reject only on sneakiness (f3eac56 speakCountdown pattern), Schwab field misuse, patch-shape workarounds, or new market-data emission without register coverage."

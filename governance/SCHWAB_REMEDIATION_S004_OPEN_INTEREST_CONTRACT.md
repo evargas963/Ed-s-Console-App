@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `SCHWAB_REMEDIATION_S004_OPEN_INTEREST_CONTRACT.md`.
+
 # Schwab Remediation S004 Open Interest Contract
 
 **Status:** IMPLEMENTED_IN_WORKING_TREE  

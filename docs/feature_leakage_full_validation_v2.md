@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/feature_leakage_full_validation_v2.md`.
+
 # Feature / time leakage — full validation (v2)
 
 **Purpose:** Independent audit package for global feature-leakage elimination. Every row in §B is a **code-level** auditable surface (implementation or call contract), not a narrative summary.

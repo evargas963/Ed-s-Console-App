@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/db_authority_enforcement_final.md`.
+
 # DB authority enforcement — final report
 
 ## 1. Executive result

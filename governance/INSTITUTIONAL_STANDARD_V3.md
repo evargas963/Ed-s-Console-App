@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `INSTITUTIONAL_STANDARD_V3.md`.
+
 # Institutional Standard V3 — Production ML for Trading Decisions (2026)
 
 This standard defines institutional quality for production ML trading decision systems. It is normative and portable: it does not assume any specific implementation stack. It is designed for systems that train multiple architectures across multiple horizons, use stacking/fusion/Monte Carlo layers, and serve outputs in production under governance.

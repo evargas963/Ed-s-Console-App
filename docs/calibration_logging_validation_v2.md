@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_logging_validation_v2.md`.
+
 # Calibration logging validation — v2 (authoritative `decision_ts_utc`)
 
 **Date:** 2026-04-11  

@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `G1_ADDENDUM_TRAINING_DEPENDENCY.md`.
+
 # G1 Addendum — Training Dependency Investigation
 
 ## Purpose

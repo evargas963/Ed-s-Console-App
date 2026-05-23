@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/signal_layer_integration_v1.md`.
+
 # Signal layer v1 — ML/fusion integration (audit)
 
 This document records **production integration** of `signal_layer_v1` into the Bayesian fusion stack and downstream canonical / multi-horizon / call path, plus **before/after** discrimination on the accumulation harness.

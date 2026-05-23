@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `STAGE_A2B_SNAPSHOT_OUTCOME_ROWID_FALLBACK_REMOVAL_CONTRACT.md`.
+
 # Stage A2b — Snapshot Outcome `rowid` Update-Key Removal Contract
 
 **Status:** IMPLEMENTED — 2026-05-08 (preconditions verified by O-39 post-checks; `db.py` rowid fallback removed)  

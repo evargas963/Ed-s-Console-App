@@ -1,3 +1,5 @@
+> **Classification:** Operator Runbook | **Scope:** Project entrypoint and developer onboarding.
+
 # Ed Web Console
 
 Python FastAPI backend + static UI for trading analytics.

@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: Infra cleanup is signal quality, not the product
 description: Test triage and infra hardening exist to restore red/green trust; the product is the call-card / A2 decision surface — keep returning there

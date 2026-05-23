@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Execution plan; binding when ACTIVE_PROGRAM points here.
+
 # Training Pipeline Automation Plan
 
 **Goal:** End-to-end training that runs unattended, promotes winners to production automatically when governance gates pass, and fails loudly when anything is incomplete — for **SPY, QQQ, IWM** first, then the full enrolled universe.

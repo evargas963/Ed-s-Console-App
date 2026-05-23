@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `REPO_CLEANUP_QUEUE.md`.
+
 # Repo Cleanup Queue
 
 **Status:** Open cleanup queue  

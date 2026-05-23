@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Archived consolidation or memory artifact.
+
 ---
 name: worktree-staleness-check
 description: "Worktree branches can be behind the operational tip; both Read AND shell python reads of the local file are then stale. Source of truth is origin/<operational-branch>, not local HEAD."

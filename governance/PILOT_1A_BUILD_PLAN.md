@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `PILOT_1A_BUILD_PLAN.md`.
+
 # Pilot 1A Build Plan
 
 **Status:** DRAFT implementation plan  
