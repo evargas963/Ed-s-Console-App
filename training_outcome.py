@@ -35,9 +35,23 @@ def is_core_ticker(ticker: str) -> bool:
     return ticker.upper() in core_tickers_upper()
 
 
-def outcome_fails_core_run(outcome: TrainingOutcome | str) -> bool:
+def outcome_fails_core_run(
+    outcome: TrainingOutcome | str,
+    *,
+    would_promote: bool = False,
+) -> bool:
     if isinstance(outcome, str):
         outcome = TrainingOutcome(outcome)
+    if (
+        outcome == TrainingOutcome.promote_skipped
+        and would_promote
+    ):
+        from arch_competition.scheduler_auto_promote_policy import (
+            scheduler_auto_promote_strict_core_freshness,
+        )
+
+        if not scheduler_auto_promote_strict_core_freshness():
+            return False
     return outcome not in CORE_SUCCESS_OUTCOMES
 
 
@@ -49,7 +63,8 @@ def compute_run_exit_code(ticker_outcomes: list[dict[str, Any]]) -> int:
         raw = entry.get("outcome")
         if raw is None:
             return 1
-        if outcome_fails_core_run(str(raw)):
+        would_promote = bool(entry.get("would_promote"))
+        if outcome_fails_core_run(str(raw), would_promote=would_promote):
             return 1
     return 0
 

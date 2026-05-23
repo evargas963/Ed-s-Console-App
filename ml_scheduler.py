@@ -88,8 +88,9 @@ def _now_et() -> datetime:
 
 
 def _scheduler_auto_promote_to_active() -> bool:
-    """Never True: production active/ updates use arch_competition.manual_control only (no scheduler/env copy)."""
-    return False
+    from arch_competition.scheduler_integration import scheduler_auto_promote_to_active_enabled
+
+    return scheduler_auto_promote_to_active_enabled()
 
 
 @contextmanager
@@ -162,6 +163,7 @@ def _resolve_ticker_outcome(
     cascade_skip: bool,
     promoted: bool,
     consecutive_cache_skips: int,
+    auto_exec_result: Optional[dict[str, Any]] = None,
 ) -> tuple[str, int]:
     from training_outcome import TrainingOutcome, is_core_ticker
     from training_pipeline_status import (
@@ -177,6 +179,27 @@ def _resolve_ticker_outcome(
 
     if isinstance(governed_slice, dict) and governed_slice.get("failed_closed"):
         return TrainingOutcome.eval_failed.value, consecutive_cache_skips
+
+    if isinstance(auto_exec_result, dict):
+        if auto_exec_result.get("skipped_reason") == "verify_failed":
+            return TrainingOutcome.verify_failed.value, consecutive_cache_skips
+        if auto_exec_result.get("executed"):
+            reset_cache_skip_streak(ticker, horizon)
+            return TrainingOutcome.promote_ok.value, 0
+        would_promote = bool(
+            isinstance(governed_slice, dict)
+            and governed_slice.get("would_promote_challenger")
+            and not governed_slice.get("failed_closed")
+        )
+        if would_promote and not auto_exec_result.get("executed"):
+            if parallel_skip and cascade_skip:
+                streak = bump_cache_skip_streak(ticker, horizon)
+                cap = get_cache_skip_cap()
+                if streak > cap:
+                    return TrainingOutcome.cache_skip_streak_exceeded.value, streak
+                return TrainingOutcome.cache_skipped.value, streak
+            reset_cache_skip_streak(ticker, horizon)
+            return TrainingOutcome.promote_skipped.value, 0
 
     if parallel_skip and cascade_skip:
         streak = bump_cache_skip_streak(ticker, horizon)
@@ -1350,11 +1373,13 @@ def run_once(
     *,
     allow_non_market_day: bool = False,
     promote_from_manifests_only: bool = False,
+    preflip_candidate_root: Path | None = None,
     ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
 ) -> dict[str, Any]:
     from training_outcome import TrainingOutcome, compute_run_exit_code, outcome_entry
 
     run_ticker_outcomes: list[dict[str, Any]] = []
+    live_reload_batch: list[dict[str, str]] = []
     hz_sched = normalize_ml_horizon_slug(ml_horizon_slug)
     target_column = outcome_column(hz_sched)
     arch_target_path = scheduler_arch_state_path(hz_sched)
@@ -1497,10 +1522,18 @@ def run_once(
             )
             parallel_out = PARALLEL_DIR / ticker
             cascade_out = CASCADE_DIR / ticker
+            if preflip_candidate_root is not None:
+                frozen_t = preflip_candidate_root / ticker.upper()
+                parallel_out = frozen_t / "parallel"
+                cascade_out = frozen_t / "cascade"
             run_ts = _now_et().isoformat()
             utc_now = datetime.now(timezone.utc)
+            _gov_manifest: dict[str, Any] | None = None
+            _gov_record: dict[str, Any] | None = None
+            auto_exec_result: dict[str, Any] = {}
+            skip_train = bool(promote_from_manifests_only or preflip_candidate_root is not None)
 
-            if promote_from_manifests_only:
+            if skip_train:
                 parallel_man = load_run_manifest(parallel_out)
                 cascade_man = load_run_manifest(cascade_out)
                 if not parallel_man or not cascade_man:
@@ -1603,7 +1636,11 @@ def run_once(
                 cas_used_ctc = bool(cascade_man.get("used_cascade_tensor_cache", False))
                 cm_trained_at = str(cascade_man.get("trained_at", run_ts))
                 cas_warm_resume = cascade_man.get("warm_resume") or {}
-                log.info("%s: --promote-from-manifests (no training; eval from manifest)", ticker)
+                log.info(
+                    "%s: skip train (%s)",
+                    ticker,
+                    "preflip frozen candidates" if preflip_candidate_root else "--promote-from-manifests",
+                )
             else:
                 parallel_man = load_run_manifest(parallel_out) if not bypass_cache else None
                 cascade_man = load_run_manifest(cascade_out) if not bypass_cache else None
@@ -1669,14 +1706,14 @@ def run_once(
                 )
                 cascade_skip = cas_elig
 
-            if not promote_from_manifests_only:
+            if not skip_train:
                 parallel_ll: Optional[float] = None
                 parallel_realized_metrics: dict[str, Any] = _empty_realized_metrics(0)
                 cascade_ll: Optional[float] = None
                 cascade_realized_metrics: dict[str, Any] = _empty_realized_metrics(0)
                 n_cascade_rows: int = 0
 
-            if not promote_from_manifests_only and parallel_skip:
+            if not skip_train and parallel_skip:
                 log.info("%s: parallel scheduler cache hit — skip train + eval (key=%s…)", ticker, parallel_key[:12])
                 evp = parallel_man.get("evaluation") or {}
                 parallel_acc = float(evp.get("eval_accuracy", 0.0))
@@ -1695,7 +1732,7 @@ def run_once(
                 par_used_ctc = bool(parallel_man.get("used_cascade_tensor_cache", False))
                 pm_trained_at = str(parallel_man.get("trained_at", run_ts))
                 par_warm_resume = parallel_man.get("warm_resume") or {}
-            elif not promote_from_manifests_only:
+            elif not skip_train:
                 log.info("%s: Training parallel...", ticker)
                 archive_candidate_directory_before_train(parallel_out, MODEL_DIR, "parallel", ticker)
                 par_ret = _train_parallel(
@@ -1721,7 +1758,7 @@ def run_once(
                 pm_trained_at = run_ts
                 par_warm_resume = par_ret.get("warm_resume") or {}
 
-            if not promote_from_manifests_only and cascade_skip:
+            if not skip_train and cascade_skip:
                 log.info("%s: cascade scheduler cache hit — skip train + eval (key=%s…)", ticker, cascade_key[:12])
                 evc = cascade_man.get("evaluation") or {}
                 cascade_acc = float(evc.get("eval_accuracy", 0.0))
@@ -1740,7 +1777,7 @@ def run_once(
                 cas_used_ctc = bool(cascade_man.get("used_cascade_tensor_cache", False))
                 cm_trained_at = str(cascade_man.get("trained_at", run_ts))
                 cas_warm_resume = cascade_man.get("warm_resume") or {}
-            elif not promote_from_manifests_only:
+            elif not skip_train:
                 log.info("%s: Training cascade...", ticker)
                 archive_candidate_directory_before_train(cascade_out, MODEL_DIR, "cascade", ticker)
                 cas_ret = _train_cascade(
@@ -1861,6 +1898,8 @@ def run_once(
                     )
                     _man = _gov["evaluation_manifest"]
                     _prec = _gov["promotion_record"]
+                    _gov_manifest = _man
+                    _gov_record = _prec
                     governed_paths = _gov["paths"]
                     parallel_acc = float(_man["metrics"]["parallel"]["accuracy"])
                     parallel_bal = float(_man["metrics"]["parallel"]["balanced_accuracy"])
@@ -1917,90 +1956,10 @@ def run_once(
             parallel_prov = load_provenance(parallel_xgb_meta) if parallel_xgb_meta.exists() else None
             cascade_prov = load_provenance(cascade_xgb_meta) if cascade_xgb_meta.exists() else None
 
-            existing_meta = active_dir / f"xgb_{ticker.upper()}_{hz_sched}_meta.json"
-            existing_prov = load_provenance(existing_meta) if existing_meta.exists() else None
-
-            promoted_at_str = _now_et().strftime("%Y-%m-%d %H:%M:%S ET")
-
-            # Issue 11: --force-retrain must allow promoting fresh contract-complete artifacts when
-            # active models fail loader contract (label_config_version, etc.) even if legacy
-            # TrainingProvenance still looks "compliant" to is_provenance_compliant().
-            _active_contract_broken = False
-            if force_retrain and active_dir.exists() and hz_sched == DEFAULT_ML_HORIZON_SLUG:
-                try:
-                    from verify_active_models import check_artifact_compliance
-
-                    _acr = check_artifact_compliance(ticker)
-                    _active_contract_broken = not _acr.get("compliant", False)
-                except Exception:
-                    _active_contract_broken = False
-
-            _force_replace = bool(
-                force_retrain
-                and (
-                    (
-                        existing_prov is not None
-                        and not is_provenance_compliant(existing_prov, horizon_slug=hz_sched)
-                    )
-                    or _active_contract_broken
-                )
-            )
-            # Loader contract broken: do not block promotion on legacy promotion_score alone.
-            _promotion_existing_prov = (
-                None if (force_retrain and _active_contract_broken) else existing_prov
-            )
-
-            def _promote_candidate(
-                acc: float,
-                bal_acc: Optional[float],
-                prov: Optional[TrainingProvenance],
-                src_dir: Path,
-                arch_name: str,
-            ) -> tuple[bool, str]:
-                if not prov:
-                    return False, "missing provenance"
-                ok, reason = validate_for_promotion(
-                    prov,
-                    acc,
-                    _promotion_existing_prov,
-                    balanced_accuracy=bal_acc,
-                    force_replace_non_compliant=_force_replace,
-                    horizon_slug=hz_sched,
-                )
-                if not ok:
-                    return False, reason
-                try:
-                    from active_bundle_contract import promote_horizon_bundle_from_candidate
-
-                    promote_horizon_bundle_from_candidate(
-                        src_dir,
-                        ticker=ticker,
-                        hz=hz_sched,
-                        models_dir=MODEL_DIR,
-                    )
-                except FileNotFoundError as _pe:
-                    return False, str(_pe)
-                for meta_name in parallel_artifact_basenames(ticker, horizon_suffix=hz_sched):
-                    if not str(meta_name).endswith("_meta.json"):
-                        continue
-                    mp = active_dir / meta_name
-                    if mp.exists():
-                        try:
-                            m = json.loads(mp.read_text())
-                            m["promoted_at"] = promoted_at_str
-                            m["promotion_score"] = acc
-                            m["promotion_metric"] = "eval_accuracy"
-                            if bal_acc is not None:
-                                m["balanced_accuracy"] = bal_acc
-                            mp.write_text(json.dumps(m, indent=2))
-                        except Exception as e:
-                            log.warning(
-                                "promotion metadata write failed path=%s: %s",
-                                mp,
-                                e,
-                                exc_info=True,
-                            )
-                return True, "ok"
+            parallel_xgb_meta = parallel_out / f"xgb_{ticker.upper()}_{hz_sched}_meta.json"
+            cascade_xgb_meta = cascade_out / f"xgb_{ticker.upper()}_{hz_sched}_meta.json"
+            parallel_prov = load_provenance(parallel_xgb_meta) if parallel_xgb_meta.exists() else None
+            cascade_prov = load_provenance(cascade_xgb_meta) if cascade_xgb_meta.exists() else None
 
             pprov = parallel_prov or cascade_prov
             report = {
@@ -2047,7 +2006,7 @@ def run_once(
                     exc_info=True,
                 )
 
-            # Primary comparison: lower log loss wins; tie → accuracy → balanced accuracy → realized contract PnL (avg $ / valid trade).
+            # Diagnostic log-loss winner only — production copy uses governed promotion_record (PR4).
             _par_avg = parallel_realized_metrics.get("eval_pnl_realized_contract")
             _cas_avg = cascade_realized_metrics.get("eval_pnl_realized_contract")
             _pnl_tie_parallel = (
@@ -2072,78 +2031,79 @@ def run_once(
                 parallel_wins = parallel_acc > cascade_acc or (
                     parallel_acc == cascade_acc and parallel_bal >= cascade_bal
                 )
+            report["scheduler_log_loss_winner"] = "parallel" if parallel_wins else "cascade"
 
             promoted = False
             reason = ""
             auto_active = _scheduler_auto_promote_to_active()
-            if parallel_wins:
-                if auto_active:
-                    promoted, reason = _promote_candidate(
-                        parallel_acc, parallel_bal, parallel_prov, parallel_out, "parallel"
-                    )
-                else:
-                    promoted, reason = False, "scheduler does not copy to active/ (use arch_competition.manual_control)"
-                report["promoted"] = promoted
-                report["promotion_reason"] = (
-                    f"parallel (acc={parallel_acc:.2%}, bal={parallel_bal:.2%})" if promoted else ""
+            production_write_held = True
+
+            if (
+                isinstance(governed_slice, dict)
+                and not governed_slice.get("failed_closed")
+                and _gov_manifest is not None
+                and _gov_record is not None
+            ):
+                from arch_competition.promotion_execution import execute_promotion_if_eligible
+
+                auto_exec_result = execute_promotion_if_eligible(
+                    MODEL_DIR,
+                    ticker,
+                    hz_sched,
+                    manifest=_gov_manifest,
+                    promotion_record=_gov_record,
+                    scheduler_run_id=run_ts,
                 )
-                if not auto_active and not promoted:
-                    report["promotion_reason"] = (
-                        f"parallel_wins_log_loss (no active copy; {reason})"
-                    )
-                report["rejection_reason"] = reason if not promoted else ""
-                arch_state[ticker] = {
-                    "active_architecture": "parallel" if promoted else arch_state.get(ticker, {}).get("active_architecture", "none"),
-                    "parallel_acc": round(parallel_acc, 4),
-                    "cascade_acc": round(cascade_acc, 4),
-                    "parallel_balanced_acc": round(parallel_bal, 4),
-                    "cascade_balanced_acc": round(cascade_bal, 4),
-                    "last_trained_at": _now_et().strftime("%Y-%m-%d %H:%M:%S"),
-                    "rows_at_training": n_rows,
-                    "promoted": promoted,
-                    "promotion_reason": reason if not promoted else "ok",
-                    "provenance": parallel_prov.to_dict()
-                    if parallel_prov and promoted
-                    else (arch_state.get(ticker, {}).get("provenance")),
-                }
-                if promoted:
-                    log.info("PARALLEL promoted %s: acc=%.1f%% bal=%.1f%%", ticker, parallel_acc * 100, parallel_bal * 100)
+                promoted = bool(auto_exec_result.get("executed"))
+                production_write_held = not promoted
+                if auto_exec_result.get("skipped_reason") == "verify_failed":
+                    reason = "verify_failed"
+                elif promoted:
+                    reason = "governed_auto_promote_ok"
+                    if auto_exec_result.get("post_promote_verify_passed") is not False:
+                        live_reload_batch.append({"ticker": ticker.upper(), "horizon": hz_sched})
                 else:
-                    log.info("PARALLEL not promoted %s: %s", ticker, reason)
-            else:
-                if auto_active:
-                    promoted, reason = _promote_candidate(
-                        cascade_acc, cascade_bal, cascade_prov, cascade_out, "cascade"
-                    )
-                else:
-                    promoted, reason = False, "scheduler does not copy to active/ (use arch_competition.manual_control)"
-                report["promoted"] = promoted
-                report["promotion_reason"] = (
-                    f"cascade (acc={cascade_acc:.2%}, bal={cascade_bal:.2%})" if promoted else ""
-                )
-                if not auto_active and not promoted:
-                    report["promotion_reason"] = (
-                        f"cascade_wins_log_loss (no active copy; {reason})"
-                    )
-                report["rejection_reason"] = reason if not promoted else ""
-                arch_state[ticker] = {
-                    "active_architecture": "cascade" if promoted else arch_state.get(ticker, {}).get("active_architecture", "none"),
-                    "parallel_acc": round(parallel_acc, 4),
-                    "cascade_acc": round(cascade_acc, 4),
-                    "parallel_balanced_acc": round(parallel_bal, 4),
-                    "cascade_balanced_acc": round(cascade_bal, 4),
-                    "last_trained_at": _now_et().strftime("%Y-%m-%d %H:%M:%S"),
-                    "rows_at_training": n_rows,
-                    "promoted": promoted,
-                    "promotion_reason": reason if not promoted else "ok",
-                    "provenance": cascade_prov.to_dict()
-                    if cascade_prov and promoted
-                    else (arch_state.get(ticker, {}).get("provenance")),
-                }
-                if promoted:
-                    log.info("CASCADE promoted %s: acc=%.1f%% bal=%.1f%%", ticker, cascade_acc * 100, cascade_bal * 100)
-                else:
-                    log.info("CASCADE not promoted %s: %s", ticker, reason)
+                    reason = str(auto_exec_result.get("skipped_reason") or "promote_skipped")
+
+            report["promoted"] = promoted
+            report["promotion_reason"] = "governed_auto_promote" if promoted else reason
+            report["rejection_reason"] = reason if not promoted else ""
+            report["auto_promote_execution"] = auto_exec_result
+            report["production_write_held"] = production_write_held
+            report["post_promote_verify_passed"] = auto_exec_result.get("post_promote_verify_passed")
+            report["verify_failed_rolled_back"] = auto_exec_result.get("verify_failed_rolled_back")
+
+            if isinstance(governed_slice, dict):
+                governed_slice = dict(governed_slice)
+                governed_slice["production_write_held"] = production_write_held
+                governed_slice["auto_promote_executed"] = promoted
+                report["governed_competition"] = governed_slice
+
+            prior_arch = arch_state.get(ticker, {}).get("active_architecture", "none")
+            new_arch = prior_arch
+            if promoted and auto_exec_result.get("target_architecture"):
+                new_arch = auto_exec_result["target_architecture"]
+            prov_dict = arch_state.get(ticker, {}).get("provenance")
+            if promoted:
+                win_prov = cascade_prov if new_arch == "cascade" else parallel_prov
+                if win_prov:
+                    prov_dict = win_prov.to_dict()
+            arch_state[ticker] = {
+                "active_architecture": new_arch,
+                "parallel_acc": round(parallel_acc, 4),
+                "cascade_acc": round(cascade_acc, 4),
+                "parallel_balanced_acc": round(parallel_bal, 4),
+                "cascade_balanced_acc": round(cascade_bal, 4),
+                "last_trained_at": _now_et().strftime("%Y-%m-%d %H:%M:%S"),
+                "rows_at_training": n_rows,
+                "promoted": promoted,
+                "promotion_reason": reason if not promoted else "ok",
+                "provenance": prov_dict,
+            }
+            if promoted:
+                log.info("%s: governed auto-promote to %s", ticker, new_arch)
+            elif auto_active and reason:
+                log.info("%s: auto-promote held: %s", ticker, reason)
 
             if governed_slice is not None:
                 arch_state[ticker]["governed_competition"] = governed_slice
@@ -2346,6 +2306,12 @@ def run_once(
                 cascade_skip=cascade_skip,
                 promoted=promoted,
                 consecutive_cache_skips=consecutive_cache_skips,
+                auto_exec_result=auto_exec_result,
+            )
+            would_promote = bool(
+                isinstance(governed_slice, dict)
+                and governed_slice.get("would_promote_challenger")
+                and not governed_slice.get("failed_closed")
             )
             _apply_pr2_report_fields(
                 report,
@@ -2360,6 +2326,7 @@ def run_once(
                     ticker=ticker,
                     horizon=hz_sched,
                     outcome=TrainingOutcome(outcome_val),
+                    extra={"would_promote": would_promote} if would_promote else None,
                 )
             )
 
@@ -2416,11 +2383,22 @@ def run_once(
     except Exception as e:
         log.warning("Verification skipped: %s", e)
 
+    live_reload_report: dict[str, Any] | None = None
+    if live_reload_batch:
+        try:
+            from arch_competition.live_model_reload import build_live_reload_report
+
+            live_reload_report = build_live_reload_report(reloads=live_reload_batch)
+            log.info("live_reload batch: %s", live_reload_report)
+        except Exception as _lr_e:
+            log.warning("live_reload batch failed: %s", _lr_e, exc_info=True)
+
     return {
         "exit_code": exit_code,
         "ticker_outcomes": run_ticker_outcomes,
         "ml_horizon": hz_sched,
         "skipped": False,
+        "live_reload": live_reload_report,
     }
 
 
@@ -2526,7 +2504,14 @@ if __name__ == "__main__":
             "manual via arch_competition.manual_control. Overrides --horizon when set."
         ),
     )
+    ap.add_argument(
+        "--preflip-candidate-root",
+        type=str,
+        default=None,
+        help="PR4: skip train; use frozen candidate tree at PATH/{TICKER}/parallel|cascade for governed eval + auto-promote replay.",
+    )
     args = ap.parse_args()
+    _preflip_root = Path(args.preflip_candidate_root).resolve() if args.preflip_candidate_root else None
     run_now = bool(args.run_now or args.promote_from_manifests)
     if args.all_horizons:
         from ml_horizon import ALL_GOVERNED_HORIZONS
@@ -2540,6 +2525,7 @@ if __name__ == "__main__":
                 bypass_cache=args.bypass_cache,
                 allow_non_market_day=run_now,
                 promote_from_manifests_only=bool(args.promote_from_manifests),
+                preflip_candidate_root=_preflip_root,
                 ml_horizon_slug=str(_hz),
             )
             agg_exit |= int(summary.get("exit_code", 0))
@@ -2551,6 +2537,7 @@ if __name__ == "__main__":
         bypass_cache=args.bypass_cache,
         allow_non_market_day=run_now,
         promote_from_manifests_only=bool(args.promote_from_manifests),
+        preflip_candidate_root=_preflip_root,
         ml_horizon_slug=str(args.horizon),
     )
     sys.exit(int(summary.get("exit_code", 0)))

@@ -1,0 +1,363 @@
+"""Governed active promotion execution (PR4 P3-3) — shared manual + scheduler path."""
+from __future__ import annotations
+
+import contextvars
+import json
+import logging
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Iterator, Literal
+
+from ml_horizon import normalize_ml_horizon_slug
+
+from arch_competition.audit import append_audit_record, build_audit_record, governance_audit_log_path
+from arch_competition.exceptions import ManualGovernanceError, PromotionGovernanceError
+from arch_competition.lineage import validate_parallel_cascade_manifest_lineage
+from arch_competition.scheduler_auto_promote_policy import (
+    scheduler_auto_promote_require_verify,
+    scheduler_auto_promote_to_active_enabled,
+    ticker_eligible_for_auto_promote,
+)
+from arch_competition.scheduler_integration import (
+    evaluation_manifest_path,
+    promotion_decision_path,
+    validate_persisted_governed_artifacts_or_raise,
+)
+
+log = logging.getLogger(__name__)
+
+SCHEDULER_AUTO_OPERATOR_ID = "ED_SCHEDULER_AUTO_PROMOTE_V1"
+
+_governed_active_write_token: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "governed_active_write_token",
+    default=None,
+)
+
+
+@contextmanager
+def governed_active_write_scope(executor_id: str) -> Iterator[None]:
+    token = _governed_active_write_token.set(executor_id)
+    try:
+        yield
+    finally:
+        _governed_active_write_token.reset(token)
+
+
+def assert_active_writes_use_governed_executor(caller: str) -> None:
+    if _governed_active_write_token.get():
+        return
+    raise ManualGovernanceError(
+        f"{caller}: active/ writes require governed_active_write_scope "
+        "(execute_promotion_if_eligible or manual_promote_to_active_explicit)"
+    )
+
+
+def _skip_result(reason: str, **extra: Any) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "executed": False,
+        "skipped_reason": reason,
+        "checkpoint_id": None,
+        "post_promote_verify_passed": None,
+        "verify_failed_rolled_back": False,
+    }
+    out.update(extra)
+    return out
+
+
+def _mark_promotion_record_executed(pr_path: Path) -> None:
+    from arch_competition.atomic_io import write_json_file_atomically
+
+    data = json.loads(pr_path.read_text(encoding="utf-8"))
+    data["auto_promote_executed"] = True
+    write_json_file_atomically(pr_path, data, indent=2)
+
+
+def execute_promotion_if_eligible(
+    model_dir: Path,
+    ticker: str,
+    ml_horizon_slug: str,
+    *,
+    manifest: dict[str, Any] | None = None,
+    promotion_record: dict[str, Any] | None = None,
+    target_architecture: Literal["cascade", "parallel"] | None = None,
+    operator_id: str | None = None,
+    manual_intent: str | None = None,
+    scheduler_run_id: str | None = None,
+) -> dict[str, Any]:
+    """
+    Copy governed candidate artifacts to production active when eligible.
+
+    Manual path: operator_id + manual_intent + explicit target_architecture.
+    Scheduler path: scheduler_run_id + env-gated auto-promote from promotion_record.
+    """
+    from arch_competition.manual_control import (
+        MANUAL_PROMOTE_CASCADE_INTENT,
+        MANUAL_PROMOTE_PARALLEL_INTENT,
+        MANUAL_ROLLBACK_INTENT,
+        _canonical_candidate_dirs,
+        _clear_promotion_pending,
+        _copy_candidate_to_active,
+        _load_arch_state,
+        _snapshot_active_to_checkpoint,
+        _validate_manifest_paths_match_canonical,
+        _validate_manifest_record_lineage,
+        _write_arch_state,
+        _write_promotion_pending,
+        manual_rollback_to_checkpoint_explicit,
+        scheduler_active_root,
+    )
+
+    is_manual = manual_intent is not None
+    hz = normalize_ml_horizon_slug(ml_horizon_slug)
+    tku = ticker.upper()
+
+    if manifest is None or promotion_record is None:
+        manifest, promotion_record = validate_persisted_governed_artifacts_or_raise(model_dir, hz, tku)
+
+    if is_manual:
+        if not operator_id or not str(operator_id).strip():
+            raise ManualGovernanceError("operator_id is required")
+        if target_architecture is None:
+            raise ManualGovernanceError("target_architecture required for manual promotion")
+        if target_architecture == "cascade":
+            if manual_intent != MANUAL_PROMOTE_CASCADE_INTENT:
+                raise ManualGovernanceError(
+                    f"manual_intent must be exactly {MANUAL_PROMOTE_CASCADE_INTENT!r} for cascade promotion"
+                )
+        elif target_architecture == "parallel":
+            if manual_intent != MANUAL_PROMOTE_PARALLEL_INTENT:
+                raise ManualGovernanceError(
+                    f"manual_intent must be exactly {MANUAL_PROMOTE_PARALLEL_INTENT!r} for parallel promotion"
+                )
+        else:
+            raise ManualGovernanceError("target_architecture must be cascade or parallel")
+    else:
+        if not scheduler_auto_promote_to_active_enabled():
+            return _skip_result("auto_promote_disabled")
+        if not ticker_eligible_for_auto_promote(tku):
+            return _skip_result("core_only_scope")
+        blocked = promotion_record.get("blocked_promotion_flags") or []
+        if blocked:
+            return _skip_result("blocked_promotion_flags", blocked=blocked)
+        if not promotion_record.get("would_promote_challenger"):
+            return _skip_result("would_not_promote")
+        if promotion_record.get("promotion_decision") != "promote_cascade":
+            return _skip_result("promotion_decision_keep_incumbent")
+        target_architecture = "cascade"
+
+    assert target_architecture is not None
+
+    _validate_manifest_record_lineage(manifest, promotion_record)
+    _validate_manifest_paths_match_canonical(manifest, model_dir, tku)
+
+    parallel_dir, cascade_dir = _canonical_candidate_dirs(model_dir, tku)
+    validate_parallel_cascade_manifest_lineage(
+        parallel_dir, cascade_dir, ticker=tku, expected_ml_horizon_suffix=hz
+    )
+
+    if is_manual and target_architecture == "cascade":
+        if promotion_record.get("promotion_decision") != "promote_cascade":
+            raise ManualGovernanceError("promotion_decision must be promote_cascade for cascade active promotion")
+        if not promotion_record.get("would_promote_challenger"):
+            raise ManualGovernanceError("would_promote_challenger must be true for cascade promotion")
+
+    active_root = scheduler_active_root(model_dir, hz)
+    active_ticker_dir = (active_root / tku).resolve()
+    parallel_dir_r = parallel_dir.resolve()
+    cascade_dir_r = cascade_dir.resolve()
+    src = cascade_dir_r if target_architecture == "cascade" else parallel_dir_r
+
+    ev_path = evaluation_manifest_path(model_dir, hz, tku)
+    pr_path = promotion_decision_path(model_dir, hz, tku)
+    ev_s = str(ev_path.resolve())
+    pr_s = str(pr_path.resolve())
+
+    prior = _load_arch_state(model_dir, hz).get(tku) or {}
+    prior_arch = str(prior.get("active_architecture") or "none")
+    audit_operator = operator_id if is_manual else SCHEDULER_AUTO_OPERATOR_ID
+    checkpoint_id = f"{hz}_{tku}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+    from arch_competition.manual_control import rollback_checkpoints_dir
+
+    ck_dir = rollback_checkpoints_dir(model_dir, hz, tku) / checkpoint_id
+
+    attempt_action = "manual_promote_attempt" if is_manual else "scheduler_auto_promote_attempt"
+    append_audit_record(
+        model_dir,
+        build_audit_record(
+            action=attempt_action,
+            outcome="pending",
+            operator_id=audit_operator,
+            ticker=tku,
+            ml_horizon_suffix=hz,
+            prior_active_architecture=prior_arch,
+            target_architecture=target_architecture,
+            new_active_architecture=None,
+            evaluation_manifest_path=ev_s,
+            promotion_decision_path=pr_s,
+            checkpoint_id=checkpoint_id,
+            detail=f"scheduler_run_id={scheduler_run_id}" if scheduler_run_id else "validation passed; checkpointing",
+        ),
+    )
+
+    _write_promotion_pending(
+        model_dir,
+        hz,
+        tku,
+        checkpoint_id=checkpoint_id,
+        target_architecture=target_architecture,
+        prior_active_architecture=prior_arch,
+    )
+
+    executor_id = f"manual:{audit_operator}" if is_manual else f"scheduler:{scheduler_run_id or 'auto'}"
+    try:
+        with governed_active_write_scope(executor_id):
+            _snapshot_active_to_checkpoint(active_ticker_dir, ck_dir, prior_arch)
+            _copy_candidate_to_active(
+                src,
+                active_ticker_dir,
+                ticker=tku,
+                hz=hz,
+                model_dir=model_dir,
+            )
+    except Exception as e:
+        try:
+            _clear_promotion_pending(model_dir, hz, tku)
+        except ManualGovernanceError:
+            pass
+        fail_action = "manual_promote_failure" if is_manual else "scheduler_auto_promote_failure"
+        append_audit_record(
+            model_dir,
+            build_audit_record(
+                action=fail_action,
+                outcome="failure",
+                operator_id=audit_operator,
+                ticker=tku,
+                ml_horizon_suffix=hz,
+                prior_active_architecture=prior_arch,
+                target_architecture=target_architecture,
+                new_active_architecture=None,
+                evaluation_manifest_path=ev_s,
+                promotion_decision_path=pr_s,
+                checkpoint_id=checkpoint_id,
+                detail=str(e),
+            ),
+        )
+        if is_manual:
+            raise ManualGovernanceError(f"promotion copy failed: {e}") from e
+        return _skip_result("promotion_copy_failed", error=str(e), checkpoint_id=checkpoint_id)
+
+    post_promote_verify_passed: bool | None = None
+    verify_failed_rolled_back = False
+    if not is_manual and scheduler_auto_promote_require_verify():
+        from verify_active_models import verify_single_bundle
+
+        vresult = verify_single_bundle(tku, hz, models_dir=model_dir)
+        post_promote_verify_passed = bool(vresult.get("compliant"))
+        if not post_promote_verify_passed:
+            try:
+                manual_rollback_to_checkpoint_explicit(
+                    model_dir,
+                    tku,
+                    hz,
+                    operator_id=SCHEDULER_AUTO_OPERATOR_ID,
+                    manual_intent=MANUAL_ROLLBACK_INTENT,
+                    checkpoint_id=checkpoint_id,
+                )
+                verify_failed_rolled_back = True
+            except ManualGovernanceError as rb_err:
+                log.error("verify-fail rollback failed for %s/%s: %s", tku, hz, rb_err)
+            _clear_promotion_pending(model_dir, hz, tku)
+            append_audit_record(
+                model_dir,
+                build_audit_record(
+                    action="scheduler_auto_promote_verify_failed",
+                    outcome="failure",
+                    operator_id=SCHEDULER_AUTO_OPERATOR_ID,
+                    ticker=tku,
+                    ml_horizon_suffix=hz,
+                    prior_active_architecture=prior_arch,
+                    target_architecture=target_architecture,
+                    new_active_architecture=None,
+                    evaluation_manifest_path=ev_s,
+                    promotion_decision_path=pr_s,
+                    checkpoint_id=checkpoint_id,
+                    detail=json.dumps(vresult.get("issues") or []),
+                ),
+            )
+            return {
+                "executed": False,
+                "skipped_reason": "verify_failed",
+                "checkpoint_id": checkpoint_id,
+                "post_promote_verify_passed": False,
+                "verify_failed_rolled_back": verify_failed_rolled_back,
+                "verify_issues": vresult.get("issues"),
+            }
+
+    state = _load_arch_state(model_dir, hz)
+    tick = state.get(tku) if isinstance(state.get(tku), dict) else {}
+    tick = dict(tick)
+    tick.pop("promotion_pending", None)
+    tick["active_architecture"] = target_architecture
+    if is_manual:
+        tick["manual_promotion"] = {
+            "schema_version": "1",
+            "operator_id": operator_id,
+            "target_architecture": target_architecture,
+            "checkpoint_id": checkpoint_id,
+            "evaluation_manifest_path": ev_s,
+            "promotion_decision_path": pr_s,
+        }
+    else:
+        tick["scheduler_auto_promotion"] = {
+            "schema_version": "1",
+            "scheduler_run_id": scheduler_run_id,
+            "target_architecture": target_architecture,
+            "checkpoint_id": checkpoint_id,
+            "evaluation_manifest_path": ev_s,
+            "promotion_decision_path": pr_s,
+        }
+    gc = tick.get("governed_competition")
+    if isinstance(gc, dict):
+        gc = dict(gc)
+        gc["production_write_held"] = False
+        gc["auto_promote_executed"] = True
+        tick["governed_competition"] = gc
+    state[tku] = tick
+    _write_arch_state(model_dir, hz, state)
+
+    try:
+        _mark_promotion_record_executed(pr_path)
+    except (OSError, json.JSONDecodeError, PromotionGovernanceError) as e:
+        log.warning("could not mark promotion_record auto_promote_executed: %s", e)
+
+    success_action = "manual_promote_success" if is_manual else "scheduler_auto_promote_success"
+    append_audit_record(
+        model_dir,
+        build_audit_record(
+            action=success_action,
+            outcome="success",
+            operator_id=audit_operator,
+            ticker=tku,
+            ml_horizon_suffix=hz,
+            prior_active_architecture=prior_arch,
+            target_architecture=target_architecture,
+            new_active_architecture=target_architecture,
+            evaluation_manifest_path=ev_s,
+            promotion_decision_path=pr_s,
+            checkpoint_id=checkpoint_id,
+            detail="active directory updated",
+        ),
+    )
+
+    return {
+        "executed": True,
+        "skipped_reason": None,
+        "checkpoint_id": checkpoint_id,
+        "active_dir": str(active_ticker_dir),
+        "source_dir": str(src),
+        "target_architecture": target_architecture,
+        "post_promote_verify_passed": post_promote_verify_passed,
+        "verify_failed_rolled_back": verify_failed_rolled_back,
+        "audit_log": str(governance_audit_log_path(model_dir).resolve()),
+    }

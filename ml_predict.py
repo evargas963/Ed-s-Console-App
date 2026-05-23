@@ -1606,6 +1606,24 @@ def reset_caches():
     logger.info("ml_predict: all model caches cleared")
 
 
+def invalidate_model_registry(ticker: str, hz: str | None = None) -> bool:
+    """Evict in-memory caches for one (ticker, horizon) tuple (PR4 P3-10)."""
+    rk = _model_registry_key(ticker, hz)
+    removed = False
+    for reg in (_xgb_registry, _meta_registry, _lstm_registry, _trans_registry):
+        if rk in reg:
+            del reg[rk]
+            removed = True
+    movehead_prefix = f"{rk}:"
+    for key in list(_xgb_movehead_registry.keys()):
+        if key == rk or key.startswith(movehead_prefix):
+            del _xgb_movehead_registry[key]
+            removed = True
+    if removed:
+        logger.info("ml_predict: invalidated registry for %s", rk)
+    return removed
+
+
 def _fmt(p):
     if p is None: return "None"
     return f"up={p['up']:.2f} dn={p['down']:.2f} fl={p['flat']:.2f}"

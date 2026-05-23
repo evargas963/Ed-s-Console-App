@@ -274,6 +274,7 @@ MEGA1_TRACEABLE_INVENTORY: tuple[Mega1TraceableDerivation, ...] = (
     Mega1TraceableDerivation("server.py", 5654, "governance_visibility_page", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega1TraceableDerivation("server.py", 5663, "api_governance_panel", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega1TraceableDerivation("server.py", 5689, "api_governance_manual_promote", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
+    Mega1TraceableDerivation("server.py", 5824, "api_internal_reload_models", "NONE", None, (), None, "POST /api/internal/reload_models — evicts ml_predict registries per (ticker, horizon) after auto-promote (PR4 P3-10). No DB read, no market-field derivation."),
     Mega1TraceableDerivation("server.py", 5749, "api_governance_manual_rollback", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega1TraceableDerivation("server.py", 5809, "api_ops_run_sequence", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega1TraceableDerivation("server.py", 5842, "_tier_c_analytics_json_response", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Reads persisted snapshot SQLite rows, not Schwab wire JSON (_tier_c_analytics_json_response)."),

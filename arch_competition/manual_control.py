@@ -27,6 +27,11 @@ from arch_competition.audit import (
 )
 from arch_competition.exceptions import ManualGovernanceError, PromotionGovernanceError
 from arch_competition.lineage import validate_parallel_cascade_manifest_lineage
+from arch_competition.promotion_execution import (
+    assert_active_writes_use_governed_executor,
+    execute_promotion_if_eligible,
+    governed_active_write_scope,
+)
 from arch_competition.scheduler_integration import (
     evaluation_manifest_path,
     promotion_decision_path,
@@ -153,6 +158,7 @@ def _copy_candidate_to_active(
     hz: str,
     model_dir: Path,
 ) -> None:
+    assert_active_writes_use_governed_executor("_copy_candidate_to_active")
     from active_bundle_contract import promote_horizon_bundle_from_candidate
 
     promote_horizon_bundle_from_candidate(
@@ -257,156 +263,30 @@ def manual_promote_to_active_explicit(
     Raises:
         ManualGovernanceError, PromotionGovernanceError: fail-closed.
     """
-    if not str(operator_id).strip():
-        raise ManualGovernanceError("operator_id is required")
-    hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    tku = ticker.upper()
-    ev_path = evaluation_manifest_path(model_dir, hz, tku)
-    pr_path = promotion_decision_path(model_dir, hz, tku)
-
-    if target_architecture == "cascade":
-        if manual_intent != MANUAL_PROMOTE_CASCADE_INTENT:
-            raise ManualGovernanceError(
-                f"manual_intent must be exactly {MANUAL_PROMOTE_CASCADE_INTENT!r} for cascade promotion"
-            )
-    elif target_architecture == "parallel":
-        if manual_intent != MANUAL_PROMOTE_PARALLEL_INTENT:
-            raise ManualGovernanceError(
-                f"manual_intent must be exactly {MANUAL_PROMOTE_PARALLEL_INTENT!r} for parallel promotion"
-            )
-    else:
-        raise ManualGovernanceError("target_architecture must be cascade or parallel")
-
-    manifest, record = validate_persisted_governed_artifacts_or_raise(model_dir, hz, tku)
-
-    _validate_manifest_record_lineage(manifest, record)
-    _validate_manifest_paths_match_canonical(manifest, model_dir, tku)
-
-    parallel_dir, cascade_dir = _canonical_candidate_dirs(model_dir, tku)
-    validate_parallel_cascade_manifest_lineage(parallel_dir, cascade_dir, ticker=tku, expected_ml_horizon_suffix=hz)
-
-    if target_architecture == "cascade":
-        if record.get("promotion_decision") != "promote_cascade":
-            raise ManualGovernanceError("promotion_decision must be promote_cascade for cascade active promotion")
-        if not record.get("would_promote_challenger"):
-            raise ManualGovernanceError("would_promote_challenger must be true for cascade promotion")
-    # parallel: explicit intent only; governed artifacts must still validate (lineage + paths).
-
-    active_root = scheduler_active_root(model_dir, hz)
-    active_ticker_dir = (active_root / tku).resolve()
-    parallel_dir_r = parallel_dir.resolve()
-    cascade_dir_r = cascade_dir.resolve()
-    src = cascade_dir_r if target_architecture == "cascade" else parallel_dir_r
-
-    prior = _load_arch_state(model_dir, hz).get(tku) or {}
-    prior_arch = str(prior.get("active_architecture") or "none")
-
-    checkpoint_id = f"{hz}_{tku}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
-    ck_dir = rollback_checkpoints_dir(model_dir, hz, tku) / checkpoint_id
-
-    ev_s = str(ev_path.resolve())
-    pr_s = str(pr_path.resolve())
-
-    append_audit_record(
+    manifest, record = validate_persisted_governed_artifacts_or_raise(
         model_dir,
-        build_audit_record(
-            action="manual_promote_attempt",
-            outcome="pending",
-            operator_id=operator_id,
-            ticker=tku,
-            ml_horizon_suffix=hz,
-            prior_active_architecture=prior_arch,
-            target_architecture=target_architecture,
-            new_active_architecture=None,
-            evaluation_manifest_path=ev_s,
-            promotion_decision_path=pr_s,
-            checkpoint_id=checkpoint_id,
-            detail="validation passed; checkpointing",
-        ),
+        normalize_ml_horizon_slug(ml_horizon_slug),
+        ticker.upper(),
     )
-
-    _write_promotion_pending(
+    result = execute_promotion_if_eligible(
         model_dir,
-        hz,
-        tku,
-        checkpoint_id=checkpoint_id,
+        ticker,
+        ml_horizon_slug,
+        manifest=manifest,
+        promotion_record=record,
         target_architecture=target_architecture,
-        prior_active_architecture=prior_arch,
+        operator_id=operator_id,
+        manual_intent=manual_intent,
     )
-
-    try:
-        _snapshot_active_to_checkpoint(active_ticker_dir, ck_dir, prior_arch)
-        _copy_candidate_to_active(
-            src,
-            active_ticker_dir,
-            ticker=tku,
-            hz=hz,
-            model_dir=model_dir,
-        )
-    except Exception as e:
-        try:
-            _clear_promotion_pending(model_dir, hz, tku)
-        except ManualGovernanceError:
-            pass
-        append_audit_record(
-            model_dir,
-            build_audit_record(
-                action="manual_promote_failure",
-                outcome="failure",
-                operator_id=operator_id,
-                ticker=tku,
-                ml_horizon_suffix=hz,
-                prior_active_architecture=prior_arch,
-                target_architecture=target_architecture,
-                new_active_architecture=None,
-                evaluation_manifest_path=ev_s,
-                promotion_decision_path=pr_s,
-                checkpoint_id=checkpoint_id,
-                detail=str(e),
-            ),
-        )
-        raise ManualGovernanceError(f"promotion copy failed: {e}") from e
-
-    state = _load_arch_state(model_dir, hz)
-    tick = state.get(tku) if isinstance(state.get(tku), dict) else {}
-    tick = dict(tick)
-    tick.pop("promotion_pending", None)
-    tick["active_architecture"] = target_architecture
-    tick["manual_promotion"] = {
-        "schema_version": CONTROL_RECORD_SCHEMA_VERSION,
-        "operator_id": operator_id,
-        "target_architecture": target_architecture,
-        "checkpoint_id": checkpoint_id,
-        "evaluation_manifest_path": ev_s,
-        "promotion_decision_path": pr_s,
-    }
-    state[tku] = tick
-    _write_arch_state(model_dir, hz, state)
-
-    append_audit_record(
-        model_dir,
-        build_audit_record(
-            action="manual_promote_success",
-            outcome="success",
-            operator_id=operator_id,
-            ticker=tku,
-            ml_horizon_suffix=hz,
-            prior_active_architecture=prior_arch,
-            target_architecture=target_architecture,
-            new_active_architecture=target_architecture,
-            evaluation_manifest_path=ev_s,
-            promotion_decision_path=pr_s,
-            checkpoint_id=checkpoint_id,
-            detail="active directory updated",
-        ),
-    )
-
+    if not result.get("executed"):
+        reason = result.get("skipped_reason") or "not executed"
+        raise ManualGovernanceError(f"manual promotion not executed: {reason}")
     return {
         "control_record_schema": CONTROL_RECORD_SCHEMA_VERSION,
-        "checkpoint_id": checkpoint_id,
-        "active_dir": str(active_ticker_dir),
-        "source_dir": str(src),
-        "audit_log": str(governance_audit_log_path(model_dir).resolve()),
+        "checkpoint_id": result.get("checkpoint_id"),
+        "active_dir": result.get("active_dir"),
+        "source_dir": result.get("source_dir"),
+        "audit_log": result.get("audit_log"),
     }
 
 
@@ -577,8 +457,5 @@ def load_governance_visibility(
 
 
 def assert_active_mutation_only_via_manual_control(caller: str = "test") -> None:
-    """Guards against accidental active/ writes outside manual_control (e.g. scheduler)."""
-    from arch_competition.scheduler_integration import scheduler_auto_promote_to_active_enabled
-
-    if scheduler_auto_promote_to_active_enabled():
-        raise ManualGovernanceError(f"{caller}: scheduler auto-promote must remain disabled")
+    """Deprecated alias — use assert_active_writes_use_governed_executor (PR4 P3-1b)."""
+    assert_active_writes_use_governed_executor(caller)

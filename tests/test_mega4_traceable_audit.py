@@ -53,8 +53,8 @@ CATEGORICAL_JUST_RE = re.compile(
     r"no single schwab|reads or composes market fields)\b",
     re.I,
 )
-MEGA4_ROW_COUNT = 804  # PR3: +7 active_bundle_contract layout helpers (797 prior)
-MEGA4_FILE_COUNT = 85  # +1 training_outcome.py
+MEGA4_ROW_COUNT = 821  # PR4: +17 auto-promote policy/execution/reload + invalidate_model_registry
+MEGA4_FILE_COUNT = 88  # +3 arch_competition PR4 modules
 _PRIOR_MEGA_FILES = MEGA1_FILES | MEGA2_FILES | MEGA3_FILES
 
 

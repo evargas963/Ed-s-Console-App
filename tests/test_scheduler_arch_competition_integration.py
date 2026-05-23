@@ -382,7 +382,7 @@ def test_ml_scheduler_invokes_governed_architecture_pass():
     src = (root / "ml_scheduler.py").read_text(encoding="utf-8")
     assert "run_governed_architecture_competition_pass" in src
     assert "governed_competition" in src
-    assert "scheduler does not copy to active/" in src
+    assert "execute_promotion_if_eligible" in src
 
 
 def test_resolve_ticker_outcome_eval_failed_on_governed_failed_closed():

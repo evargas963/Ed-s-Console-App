@@ -5821,6 +5821,76 @@ async def api_governance_panel(
     )
 
 
+@app.post("/api/internal/reload_models")
+async def api_internal_reload_models(request: Request, payload: dict = Body(default={})):
+    """Evict in-memory model registries for promoted (ticker, horizon) tuples (PR4 P3-10)."""
+    from arch_competition.live_model_reload import RELOAD_SCHEMA_VERSION
+    from arch_competition.scheduler_auto_promote_policy import console_reload_token
+    from ml_predict import invalidate_model_registry
+
+    host = request.client.host if request.client else None
+    if host not in ("127.0.0.1", "::1", "localhost"):
+        return JSONResponse(
+            status_code=403,
+            content={"schema_version": RELOAD_SCHEMA_VERSION, "error": "non-loopback client forbidden"},
+        )
+    expected_tok = console_reload_token()
+    if expected_tok:
+        got = (request.headers.get("X-Reload-Token") or "").strip()
+        if got != expected_tok:
+            return JSONResponse(
+                status_code=403,
+                content={"schema_version": RELOAD_SCHEMA_VERSION, "error": "invalid or missing X-Reload-Token"},
+            )
+
+    body = payload or {}
+    reloads = body.get("reloads")
+    if not isinstance(reloads, list):
+        return JSONResponse(
+            status_code=400,
+            content={"schema_version": RELOAD_SCHEMA_VERSION, "error": "reloads must be a list"},
+        )
+
+    results: list[dict] = []
+    partial = False
+    for item in reloads:
+        if not isinstance(item, dict):
+            partial = True
+            results.append({"succeeded": False, "error": "invalid reload item"})
+            continue
+        ticker = str(item.get("ticker") or "").strip().upper()
+        hz = str(item.get("horizon") or item.get("ml_horizon_slug") or "").strip().lower()
+        if not ticker or not hz:
+            partial = True
+            results.append(
+                {
+                    "ticker": ticker or None,
+                    "horizon": hz or None,
+                    "succeeded": False,
+                    "error": "ticker and horizon required",
+                }
+            )
+            continue
+        try:
+            ok = invalidate_model_registry(ticker, hz)
+            results.append({"ticker": ticker, "horizon": hz, "succeeded": bool(ok)})
+            if not ok:
+                partial = True
+        except Exception as e:
+            partial = True
+            results.append(
+                {"ticker": ticker, "horizon": hz, "succeeded": False, "error": str(e)}
+            )
+
+    return JSONResponse(
+        {
+            "schema_version": RELOAD_SCHEMA_VERSION,
+            "results": results,
+            "partial_failure": partial,
+        }
+    )
+
+
 @app.post("/api/governance/manual-promote")
 async def api_governance_manual_promote(request: Request, payload: dict = Body(...)):
     from pathlib import Path

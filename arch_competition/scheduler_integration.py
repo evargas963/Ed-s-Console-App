@@ -93,8 +93,11 @@ def arch_competition_summary_path(model_dir: Path, ml_horizon_slug: str) -> Path
 
 
 def scheduler_auto_promote_to_active_enabled() -> bool:
-    """Always False: copying to models/active/ is only allowed via arch_competition.manual_control (explicit operator)."""
-    return False
+    from arch_competition.scheduler_auto_promote_policy import (
+        scheduler_auto_promote_to_active_enabled as _policy_enabled,
+    )
+
+    return _policy_enabled()
 
 
 def run_governed_architecture_competition_pass(
@@ -229,7 +232,7 @@ def build_governed_arch_state_slice(
             "promotion_decision": paths.get("promotion_decision"),
         },
         "auto_promote_to_active_enabled": bool(auto_promote_to_active),
-        "production_write_held": not bool(auto_promote_to_active),
+        "production_write_held": True,
         "per_horizon": {
             str(manifest.get("ml_horizon_slug") or ""): {
                 "target_column": manifest.get("target_column"),

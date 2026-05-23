@@ -141,6 +141,60 @@ def check_artifact_compliance(ticker: str) -> dict:
     return result
 
 
+def verify_single_bundle(ticker: str, hz: str, *, models_dir: Path | None = None) -> dict:
+    """
+    Compliance check for one (ticker, horizon) canonical active bundle (P3-4b).
+    """
+    from training_provenance import load_provenance, is_provenance_compliant
+    from active_bundle_contract import check_active_bundle_complete
+
+    models_dir = models_dir or MODELS_DIR
+    result: dict = {
+        "ticker": ticker.upper(),
+        "horizon": hz,
+        "compliant": True,
+        "artifacts": {},
+        "issues": [],
+    }
+    bundle = check_active_bundle_complete(ticker, hz, models_dir=models_dir)
+    if not bundle["compliant"]:
+        result["compliant"] = False
+        result["issues"].extend(bundle.get("issues") or [])
+        return result
+
+    bundle_dir = Path(bundle["bundle_dir"])
+    triple = [
+        ("xgb", f"xgb_{ticker.upper()}_{hz}.pkl", f"xgb_{ticker.upper()}_{hz}_meta.json"),
+        ("lstm", f"lstm_{ticker.upper()}_{hz}.pt", f"lstm_{ticker.upper()}_{hz}_meta.json"),
+        (
+            "transformer",
+            f"transformer_{ticker.upper()}_{hz}.pt",
+            f"transformer_{ticker.upper()}_{hz}_meta.json",
+        ),
+    ]
+    for name, model_file, meta_file in triple:
+        model_path = bundle_dir / model_file
+        meta_path = bundle_dir / meta_file
+        art = {"exists": model_path.exists(), "has_provenance": False, "issues": []}
+        if not model_path.exists():
+            art["issues"].append(f"{model_file} missing")
+            result["compliant"] = False
+        if not meta_path.exists():
+            art["issues"].append(f"{meta_file} missing")
+            result["compliant"] = False
+        else:
+            prov = load_provenance(meta_path)
+            if prov and is_provenance_compliant(prov, horizon_slug=hz):
+                art["has_provenance"] = True
+            else:
+                art["issues"].append("metadata lacks compliant provenance")
+                result["compliant"] = False
+        result["artifacts"][name] = art
+        result["issues"].extend(art["issues"])
+
+    return result
+
+
 def main() -> int:
     print("=" * 72)
     print("ACTIVE MODEL COMPLIANCE VERIFICATION")
