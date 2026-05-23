@@ -1,0 +1,19 @@
+{
+  "workflow": ".github/workflows/schwab-csv-first.yml",
+  "hardcoded_paths": [
+    "governance/artifacts/schwab_v4_register_build_meta.json",
+    "governance/artifacts/schwab_v4_scoreboard.json",
+    "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv",
+    "governance/OPERATOR_DECISION_REGISTER.md",
+    "tools/check_schwab_csv_first.py",
+    "tools/schwab_oxx_validator",
+    "tools/schwab_coverage_v4_metrics",
+    "tools/schwab_v4_scoreboard",
+    "tools/schwab_universal_coverage_scanner_v3 (module, --output governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv)"
+  ],
+  "notes": [
+    "CSV is generated in CI then validated against schwab_v4_register_build_meta.json pins (operator decision: meta authoritative).",
+    "Diff file is ephemeral (/tmp/schwab_csv_first.diff); not a repo path.",
+    "Renaming governance/artifacts/* or check_schwab_csv_first.py requires updating this workflow and related tools."
+  ]
+}

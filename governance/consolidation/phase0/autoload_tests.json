@@ -1,0 +1,15 @@
+{
+  "generated_at_commit": "dbb57c9",
+  "claude_code_agents_md_autoload": {
+    "status": "pending_pre_phase_1a",
+    "reason": "AGENTS.md does not exist until Phase 1a commit.",
+    "procedure": "Create governance/consolidation/phase0/claude_autoload_marker.txt with unique string; fresh Claude Code session; confirm marker visible without Read tool.",
+    "fallback_if_fail": "Merge AGENTS content into CLAUDE.md; record in ACTIVE_PROGRAM Tool-Specific Notes."
+  },
+  "cursor_mdc_always_apply": {
+    "status": "pending_pre_phase_1a",
+    "reason": ".cursor/rules/00-always.mdc created in Phase 1a.",
+    "procedure": "After Phase 1a: fresh Cursor Agent session; ask for always-apply rule description; must surface 00-always.mdc.",
+    "pre_1a_baseline": "No project .cursor/rules/ tracked yet (Phase 1a adds !.cursor/rules/**)."
+  }
+}

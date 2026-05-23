@@ -9,11 +9,11 @@
 
 **Gate:** Activate when Layer 5 / Pilot 1 Schwab walk + stack sign-off queue is closed (or operator says **go live-ui latency**). Do not defer behind new feature work.
 
-**Active program (2026-05-23):** **Governance consolidation** — [`docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md`](docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md). Phase 0 begins after operator confirms content decisions in that plan. **Concurrent epic:** Training Pipeline PR5–PR7 (not started).
+**Active program (2026-05-23):** **Governance consolidation Phase 1a next** — [`docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md`](docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md). Phase 0 complete @ `dbb57c9`. **Concurrent epic:** Training Pipeline PR5–PR7 (not started).
 
-- [ ] **GOVERNANCE-CONSOLIDATION — Phase 0** @ `230724a` — Prerequisites + Phase 0.5 classification. **Plan:** execution plan above. **Gate:** pytest green (2619), baseline snapshot, auto-load tests documented, user rules exported. **Operator confirms:** V4 register tracked-meta; OPEN_ITEMS 90/30 aging; active program / deferred list.
+- [x] **GOVERNANCE-CONSOLIDATION — Phase 0** @ `dbb57c9` — Baseline snapshot, CI path inventory, do-not-rename list (114 paths), rule-source classification (38 rows / 35 memory files), memory gap read (`feedback_no_new_md_deliverables.md`). Auto-load tests documented pending post-1a. **Operator decisions:** defaults confirmed 2026-05-23.
 
-- [ ] **GOVERNANCE-CONSOLIDATION — Phase 1a** — `AGENTS.md`, `ACTIVE_PROGRAM.md`, `.cursor/rules/00-always.mdc`, `tests/test_governance_consolidation.py`. Blocked on Phase 0 gate.
+- [ ] **GOVERNANCE-CONSOLIDATION — Phase 1a** — `AGENTS.md`, `ACTIVE_PROGRAM.md`, `.cursor/rules/00-always.mdc`, `tests/test_governance_consolidation.py`. **Unblocked.**
 
 - [ ] **TRAINING-HOST-PREFLIP-E2E** — Operator preflip harness verify on real candidate roots (not git-gated). **Host:** before `ED_SCHEDULER_AUTO_PROMOTE=1`.
 

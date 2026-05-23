@@ -15,12 +15,12 @@
 
 | # | Decision | Agent default | Operator |
 |---|----------|---------------|----------|
-| 1 | Branch strategy | **Resolved** — push-first executed 2026-05-23 | — |
-| 2 | V4 register authority | Tracked `governance/artifacts/schwab_v4_register_build_meta.json`; CSV operator-local | Confirm or override |
-| 3 | OPEN_ITEMS aging | `[x]` + SHA + age > 90d → archive; unchecked > 30d no owner → ACTIVE_PROGRAM §Stale Backlog; `[x]` without SHA = invalid at any age | Confirm or override |
-| 4 | V4 Schwab Universal Coverage = active program | Yes | Confirm |
-| 5 | Training Pipeline PR5–PR7 = concurrent epic | Yes (PR1–PR4.1 landed and pushed) | Confirm |
-| 6 | Deferred list | G-series, V3 INF-1-4, Coverage Proof Phase 2, Pilot v1.1 — operator confirms/amends | Confirm |
+| 1 | Branch strategy | **Resolved** — push-first executed 2026-05-23 | ✅ |
+| 2 | V4 register authority | Tracked `governance/artifacts/schwab_v4_register_build_meta.json`; CSV operator-local | ✅ **2026-05-23** |
+| 3 | OPEN_ITEMS aging | `[x]` + SHA + age > 90d → archive; unchecked > 30d no owner → stale backlog; `[x]` without SHA = invalid | ✅ **2026-05-23** |
+| 4 | V4 Schwab Universal Coverage = active program | Yes | ✅ **2026-05-23** |
+| 5 | Training Pipeline PR5–PR7 = concurrent epic | Yes (PR1–PR4.1 landed and pushed) | ✅ **2026-05-23** |
+| 6 | Deferred list | G-series, V3 INF-1-4, Coverage Proof Phase 2, Pilot v1.1 | ✅ **2026-05-23** (unchanged) |
 
 ---
 
@@ -89,7 +89,23 @@ Archive `~/.claude/projects/.../memory/` → `governance/archive/2026-Q2/memory_
 
 **Phase 0.5:** Lightweight classification spreadsheet (AGENT_SELF_GOVERNANCE + CLAUDE + 30 memories + exported user rules).
 
-**Phase 0 gate:** 1–10 + 0.5 complete; auto-load results documented; baseline at HEAD.
+**Phase 0 gate:** Items 1–10 + 0.5 complete @ `dbb57c9` (artifacts in `governance/consolidation/phase0/`). Auto-load tests **pending re-run post-Phase 1a** (AGENTS.md / `.mdc` not created yet).
+
+---
+
+## Phase 0 deliverables (2026-05-23)
+
+| Artifact | Path |
+|----------|------|
+| Baseline snapshot | `governance/consolidation/phase0/baseline_snapshot.json` |
+| CI path notes | `governance/consolidation/phase0/ci_schwab_csv_first_notes.json` |
+| Do-not-rename list | `governance/consolidation/phase0/do_not_rename_paths.json` |
+| Auto-load test status | `governance/consolidation/phase0/autoload_tests.json` |
+| Memory gap read | `governance/consolidation/phase0/memory_gap_read.json` |
+| Rule classification | `governance/consolidation/phase0/rule_source_classification.csv` |
+| Cursor user rules snapshot | `governance/consolidation/phase0/cursor_user_rules_snapshot.txt` |
+
+**Baseline highlights:** governance 113 md / 16675 lines; docs 88 md; root 17 md; root `.py` 132; worktrees ~2.3 GB.
 
 ---
 
