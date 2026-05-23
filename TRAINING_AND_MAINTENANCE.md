@@ -1,3 +1,5 @@
+> **Classification:** Operator Runbook | **Scope:** Training, maintenance, and data stewardship procedures.
+
 # Training & maintenance — EdWebConsole
 
 This doc is the **training + ops** companion to `DATA_STEWARDSHIP.md` (principles and DB-focused runbook).
@@ -139,6 +141,13 @@ These run **in order** and **stop on first failure**:
 ## Schwab / auth (when the app “won’t connect”)
 
 If the API reports token failure, reauth as documented in server messages, e.g. **`python reauth_schwab.py`**.
+
+### Token rotation (Phase 3f — operator)
+
+1. Revoke or rotate credentials in the Schwab developer portal if `schwab_token.json` or API secrets may have leaked.
+2. Regenerate `schwab_token.json` via `python reauth_schwab.py` on the **host** (never commit tokens — see [`docs/host/README.md`](docs/host/README.md)).
+3. If `config.py` still holds inline API key/secret, migrate to environment variables and rotate keys (see `ACTIVE_PROGRAM.md` Known Risks — credential-hygiene slice queued).
+4. Restart the console process after token refresh so market-data adapters pick up the new session.
 
 ---
 

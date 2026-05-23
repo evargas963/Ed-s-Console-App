@@ -1,0 +1,11 @@
+{
+  "generated_at_utc": "2026-05-23T22:00:15.600654+00:00",
+  "phase0_root_py": 132,
+  "current_root_py": 132,
+  "root_py_delta": 0,
+  "phase0_worktrees_bytes": 2429695477,
+  "current_worktrees_bytes": 2429695477,
+  "five_percent_reduction_met": false,
+  "operator_signoff_required": true,
+  "note": "Phase 3 gate allows >=5% root .py reduction OR operator sign-off with rationale. No root .py deletions in this slice \u2014 sign-off path documented."
+}

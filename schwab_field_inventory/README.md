@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Schwab field inventory reference; refresh on CHANGELOG or quarterly.
+
 # Schwab Field Inventory
 
 **Capture date:** 2026-05-05  
@@ -51,4 +53,6 @@ python schwab_field_dictionary_builder.py
 ```
 
 4. Review diffs in the tracked canonical files. Any Schwab field addition, removal, or semantic change should be treated as a data-governance event under the v2.0 data-plane contract.
+
+**Quarterly / CHANGELOG refresh (Phase 2):** Re-run steps 1–4 when Schwab publishes API CHANGELOG updates or at least once per quarter; record the refresh date in this README header.
 
