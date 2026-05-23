@@ -115,5 +115,21 @@ def strict_active_bundle_dir_for_horizon(ticker: str, hz: str, *, models_dir: Pa
     return None
 
 
-def primary_horizons_for_verify() -> tuple[str, ...]:
-    return tuple(PRIMARY_DECISION_HORIZONS)
+def check_candidate_bundle_complete(
+    ticker: str,
+    hz: str,
+    candidate_dir: Path,
+) -> dict[str, Any]:
+    """Same 6-file contract as active bundles, applied to parallel/cascade candidate dirs."""
+    return check_active_bundle_complete(ticker, hz, bundle_dir=candidate_dir)
+
+
+def candidate_bundles_complete(
+    ticker: str,
+    hz: str,
+    parallel_dir: Path,
+    cascade_dir: Path,
+) -> tuple[bool, dict[str, Any], dict[str, Any]]:
+    par = check_candidate_bundle_complete(ticker, hz, parallel_dir)
+    cas = check_candidate_bundle_complete(ticker, hz, cascade_dir)
+    return par["compliant"] and cas["compliant"], par, cas

@@ -2,12 +2,106 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 STATUS_SCHEMA_VERSION = "training_pipeline_status_v1"
 DEFAULT_STATUS_PATH = Path(__file__).resolve().parent / "models" / "training_pipeline_status.json"
+DEFAULT_CACHE_SKIP_CAP = 3
+
+
+def _resolve_status_path(path: Path | None) -> Path:
+    if path is None:
+        return DEFAULT_STATUS_PATH
+    return path
+
+
+def cache_skip_streak_key(ticker: str, horizon: str) -> str:
+    from ml_horizon import normalize_ml_horizon_slug
+
+    return f"{ticker.upper()}:{normalize_ml_horizon_slug(horizon)}"
+
+
+def read_status_payload(path: Path | None = None) -> dict[str, Any]:
+    status_path = _resolve_status_path(path)
+    if not status_path.is_file():
+        return {}
+    try:
+        data = json.loads(status_path.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return data
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return {}
+    return {}
+
+
+def get_cache_skip_cap() -> int:
+    raw_env = os.environ.get("ED_SCHEDULER_CACHE_SKIP_CAP")
+    if raw_env is None:
+        return DEFAULT_CACHE_SKIP_CAP
+    raw = raw_env.strip()
+    if raw == "":
+        return DEFAULT_CACHE_SKIP_CAP
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return DEFAULT_CACHE_SKIP_CAP
+
+
+def get_cache_skip_streak(
+    ticker: str,
+    horizon: str,
+    *,
+    path: Path | None = None,
+) -> int:
+    payload = read_status_payload(path)
+    streaks = payload.get("cache_skip_streaks")
+    if not isinstance(streaks, dict):
+        return 0
+    val = streaks.get(cache_skip_streak_key(ticker, horizon), 0)
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return 0
+
+
+def set_cache_skip_streak(
+    ticker: str,
+    horizon: str,
+    streak: int,
+    *,
+    path: Path | None = None,
+) -> int:
+    payload = read_status_payload(path)
+    streaks = payload.get("cache_skip_streaks")
+    if not isinstance(streaks, dict):
+        streaks = {}
+    key = cache_skip_streak_key(ticker, horizon)
+    streaks[key] = max(0, int(streak))
+    payload["cache_skip_streaks"] = streaks
+    write_status(_resolve_status_path(path), payload)
+    return streaks[key]
+
+
+def bump_cache_skip_streak(
+    ticker: str,
+    horizon: str,
+    *,
+    path: Path | None = None,
+) -> int:
+    current = get_cache_skip_streak(ticker, horizon, path=path)
+    return set_cache_skip_streak(ticker, horizon, current + 1, path=path)
+
+
+def reset_cache_skip_streak(
+    ticker: str,
+    horizon: str,
+    *,
+    path: Path | None = None,
+) -> None:
+    set_cache_skip_streak(ticker, horizon, 0, path=path)
 
 
 def enrollment_category_counts(db_path: str | Path) -> dict[str, int]:
@@ -44,13 +138,14 @@ def write_status(path: Path, payload: dict[str, Any]) -> None:
 
 def record_run_start(
     *,
-    path: Path = DEFAULT_STATUS_PATH,
+    path: Path | None = None,
     ml_horizon: str,
     target_column: str,
     tickers: list[str],
     db_path: str | Path,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    status_path = _resolve_status_path(path)
     payload: dict[str, Any] = {
         "schema_version": STATUS_SCHEMA_VERSION,
         "last_run_started_utc": datetime.now(timezone.utc).isoformat(),
@@ -62,22 +157,23 @@ def record_run_start(
     }
     if extra:
         payload.update(extra)
-    write_status(path, payload)
+    write_status(status_path, payload)
     return payload
 
 
 def record_run_finish(
     *,
-    path: Path = DEFAULT_STATUS_PATH,
+    path: Path | None = None,
     ml_horizon: str,
     ticker_outcomes: list[dict[str, Any]],
     exit_code_hint: int = 0,
 ) -> dict[str, Any]:
+    status_path = _resolve_status_path(path)
     existing: dict[str, Any] = {}
-    if path.is_file():
+    if status_path.is_file():
         try:
-            existing = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
+            existing = json.loads(status_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             existing = {}
     payload = {
         **existing,
@@ -87,5 +183,5 @@ def record_run_finish(
         "last_ticker_outcomes": ticker_outcomes,
         "last_exit_code_hint": exit_code_hint,
     }
-    write_status(path, payload)
+    write_status(status_path, payload)
     return payload

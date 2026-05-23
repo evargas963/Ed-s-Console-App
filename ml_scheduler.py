@@ -116,6 +116,82 @@ def _append_training_report(report: dict):
         f.write(json.dumps(report) + "\n")
 
 
+def _governed_report_fields(governed_slice: Optional[dict[str, Any]]) -> dict[str, Any]:
+    blocked: list[Any] = []
+    promotion_decision = None
+    governed_failed_closed = False
+    if isinstance(governed_slice, dict):
+        governed_failed_closed = bool(governed_slice.get("failed_closed"))
+        promotion_decision = governed_slice.get("latest_promotion_decision")
+        if governed_failed_closed:
+            err = governed_slice.get("error")
+            blocked = [{"code": "governed_failed_closed", "detail": str(err) if err is not None else ""}]
+        else:
+            flags = governed_slice.get("blocked_promotion_flags")
+            if isinstance(flags, list):
+                blocked = list(flags)
+    return {
+        "governed_failed_closed": governed_failed_closed,
+        "promotion_decision": promotion_decision,
+        "blocked_promotion_flags": blocked,
+    }
+
+
+def _apply_pr2_report_fields(
+    report: dict[str, Any],
+    *,
+    outcome: str,
+    horizon: str,
+    artifact_complete: bool,
+    consecutive_cache_skips: int,
+    governed_slice: Optional[dict[str, Any]],
+) -> None:
+    report["outcome"] = outcome
+    report["horizon"] = horizon
+    report["artifact_complete"] = artifact_complete
+    report["consecutive_cache_skips"] = consecutive_cache_skips
+    report.update(_governed_report_fields(governed_slice))
+
+
+def _resolve_ticker_outcome(
+    *,
+    ticker: str,
+    horizon: str,
+    skip_governed_eval: bool,
+    governed_slice: Optional[dict[str, Any]],
+    parallel_skip: bool,
+    cascade_skip: bool,
+    promoted: bool,
+    consecutive_cache_skips: int,
+) -> tuple[str, int]:
+    from training_outcome import TrainingOutcome, is_core_ticker
+    from training_pipeline_status import (
+        bump_cache_skip_streak,
+        get_cache_skip_cap,
+        reset_cache_skip_streak,
+    )
+
+    if skip_governed_eval:
+        if is_core_ticker(ticker):
+            return TrainingOutcome.eval_failed.value, consecutive_cache_skips
+        return TrainingOutcome.promote_skipped.value, consecutive_cache_skips
+
+    if isinstance(governed_slice, dict) and governed_slice.get("failed_closed"):
+        return TrainingOutcome.eval_failed.value, consecutive_cache_skips
+
+    if parallel_skip and cascade_skip:
+        streak = bump_cache_skip_streak(ticker, horizon)
+        cap = get_cache_skip_cap()
+        if streak > cap:
+            return TrainingOutcome.cache_skip_streak_exceeded.value, streak
+        return TrainingOutcome.cache_skipped.value, streak
+
+    reset_cache_skip_streak(ticker, horizon)
+    if promoted:
+        return TrainingOutcome.promote_ok.value, 0
+    return TrainingOutcome.trained.value, 0
+
+
 def _is_market_day(dt: datetime) -> bool:
     if dt.weekday() >= 5:
         return False
@@ -1276,7 +1352,13 @@ def run_once(
     allow_non_market_day: bool = False,
     promote_from_manifests_only: bool = False,
     ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
-):
+) -> dict[str, Any]:
+    from training_outcome import TrainingOutcome, compute_run_exit_code, outcome_entry
+
+    run_ticker_outcomes: list[dict[str, Any]] = []
+    hz_sched = normalize_ml_horizon_slug(ml_horizon_slug)
+    target_column = outcome_column(hz_sched)
+    arch_target_path = scheduler_arch_state_path(hz_sched)
     if wait:
         _wait_until_1615()
     now = _now_et()
@@ -1285,11 +1367,8 @@ def run_once(
             "Skipping - not a market day (scheduled mode). "
             "Use --run-now to train on any calendar day when data exists."
         )
-        return
+        return {"exit_code": 0, "ticker_outcomes": [], "ml_horizon": hz_sched, "skipped": True}
 
-    hz_sched = normalize_ml_horizon_slug(ml_horizon_slug)
-    target_column = outcome_column(hz_sched)
-    arch_target_path = scheduler_arch_state_path(hz_sched)
     log.info(
         "ML scheduler run started at %s ET (ml_horizon=%s, label=%s, arch_state=%s)",
         now.strftime("%H:%M"),
@@ -1300,7 +1379,7 @@ def run_once(
 
     if not Path(DB_PATH).exists():
         log.warning("DB not found at %s", DB_PATH)
-        return
+        return {"exit_code": 1, "ticker_outcomes": [], "ml_horizon": hz_sched, "skipped": True}
 
     try:
         from normalized_training_sync import ensure_normalized_training_table
@@ -1324,7 +1403,7 @@ def run_once(
             "legacy user_scheduler_tickers.json migrates once. "
             "Training also needs labeled RTH rows per ticker in snapshots_1m_normalized."
         )
-        return
+        return {"exit_code": 0, "ticker_outcomes": [], "ml_horizon": hz_sched, "skipped": True}
     try:
         db_only = _diagnostic_db_tickers_not_enrolled(DB_PATH, tickers, label_column=target_column)
         if db_only:
@@ -1689,106 +1768,136 @@ def run_once(
                 cas_warm_resume = cas_ret.get("warm_resume") or {}
 
             from training_cache import sync_candidate_manifest_lineage_before_governed_eval
+            from active_bundle_contract import candidate_bundles_complete
+            from training_pipeline_status import get_cache_skip_streak
 
-            _lineage_par_eval = {
-                "eval_accuracy": round(parallel_acc, 6),
-                "balanced_accuracy": round(parallel_bal, 6),
-                "n_rows": n_rows,
-                **(
-                    {"eval_log_loss": round(parallel_ll, 6)}
-                    if parallel_ll is not None
-                    else {}
-                ),
-                "realized_contract_metrics": parallel_realized_metrics,
-            }
-            _lineage_cas_eval = {
-                "eval_accuracy": round(cascade_acc, 6),
-                "balanced_accuracy": round(cascade_bal, 6),
-                "n_rows": n_cascade_rows,
-                **(
-                    {"eval_log_loss": round(cascade_ll, 6)}
-                    if cascade_ll is not None
-                    else {}
-                ),
-                "realized_contract_metrics": cascade_realized_metrics,
-            }
-            sync_candidate_manifest_lineage_before_governed_eval(
-                parallel_out,
-                ticker=ticker,
-                architecture="parallel",
-                ml_horizon_suffix=hz_sched,
-                scheduler_cache_key=parallel_key,
-                feature_cache_key=fk,
-                data_fp=data_fp,
-                training_code_fingerprint=code_fp,
-                evaluation=_lineage_par_eval,
-                trained_at=pm_trained_at,
+            artifact_complete, _par_bundle_chk, _cas_bundle_chk = candidate_bundles_complete(
+                ticker, hz_sched, parallel_out, cascade_out
             )
-            sync_candidate_manifest_lineage_before_governed_eval(
-                cascade_out,
-                ticker=ticker,
-                architecture="cascade",
-                ml_horizon_suffix=hz_sched,
-                scheduler_cache_key=cascade_key,
-                feature_cache_key=fk,
-                data_fp=data_fp,
-                training_code_fingerprint=code_fp,
-                evaluation=_lineage_cas_eval,
-                trained_at=cm_trained_at,
-            )
+            consecutive_cache_skips = get_cache_skip_streak(ticker, hz_sched)
+            skip_governed_eval = not artifact_complete
 
             governed_slice: Optional[dict[str, Any]] = None
             governed_paths: Optional[dict[str, str]] = None
-            try:
-                from arch_competition.scheduler_integration import (
-                    build_governed_arch_state_slice,
-                    run_governed_architecture_competition_pass,
-                    scheduler_auto_promote_to_active_enabled,
-                )
 
-                _gov = run_governed_architecture_competition_pass(
-                    model_dir=MODEL_DIR,
-                    db_path=DB_PATH,
-                    ticker=ticker,
-                    parallel_model_dir=parallel_out,
-                    cascade_model_dir=cascade_out,
-                    ml_horizon_slug=hz_sched,
-                    allowed_et_dates=None,
+            if skip_governed_eval:
+                log.warning(
+                    "%s: partial candidate bundle — skip governed eval (parallel_ok=%s cascade_ok=%s)",
+                    ticker,
+                    _par_bundle_chk.get("compliant"),
+                    _cas_bundle_chk.get("compliant"),
                 )
-                _man = _gov["evaluation_manifest"]
-                _prec = _gov["promotion_record"]
-                governed_paths = _gov["paths"]
-                parallel_acc = float(_man["metrics"]["parallel"]["accuracy"])
-                parallel_bal = float(_man["metrics"]["parallel"]["balanced_accuracy"])
-                n_rows = int(_man["metrics"]["parallel"]["n_rows_scored"])
-                _pll = _man["metrics"]["parallel"].get("log_loss")
-                parallel_ll = float(_pll) if _pll is not None else None
-                _prm = _man["metrics"]["parallel"].get("realized_contract_metrics")
-                parallel_realized_metrics = (
-                    dict(_prm) if isinstance(_prm, dict) else _empty_realized_metrics(n_rows)
-                )
-                cascade_acc = float(_man["metrics"]["cascade"]["accuracy"])
-                cascade_bal = float(_man["metrics"]["cascade"]["balanced_accuracy"])
-                n_cascade_rows = int(_man["metrics"]["cascade"]["n_rows_scored"])
-                _cll = _man["metrics"]["cascade"].get("log_loss")
-                cascade_ll = float(_cll) if _cll is not None else None
-                _crm = _man["metrics"]["cascade"].get("realized_contract_metrics")
-                cascade_realized_metrics = (
-                    dict(_crm) if isinstance(_crm, dict) else _empty_realized_metrics(n_cascade_rows)
-                )
-                governed_slice = build_governed_arch_state_slice(
-                    manifest=_man,
-                    promotion_record=_prec,
-                    paths=_gov["paths"],
-                    auto_promote_to_active=scheduler_auto_promote_to_active_enabled(),
-                )
-            except Exception as _gov_e:
-                log.exception("%s: governed architecture competition pass failed: %s", ticker, _gov_e)
                 governed_slice = {
                     "schema_version": "1",
-                    "error": str(_gov_e),
+                    "error": "partial_candidate_bundle",
                     "failed_closed": True,
+                    "issues": {
+                        "parallel": _par_bundle_chk.get("issues", []),
+                        "cascade": _cas_bundle_chk.get("issues", []),
+                    },
                 }
+            else:
+                _lineage_par_eval = {
+                    "eval_accuracy": round(parallel_acc, 6),
+                    "balanced_accuracy": round(parallel_bal, 6),
+                    "n_rows": n_rows,
+                    **(
+                        {"eval_log_loss": round(parallel_ll, 6)}
+                        if parallel_ll is not None
+                        else {}
+                    ),
+                    "realized_contract_metrics": parallel_realized_metrics,
+                }
+                _lineage_cas_eval = {
+                    "eval_accuracy": round(cascade_acc, 6),
+                    "balanced_accuracy": round(cascade_bal, 6),
+                    "n_rows": n_cascade_rows,
+                    **(
+                        {"eval_log_loss": round(cascade_ll, 6)}
+                        if cascade_ll is not None
+                        else {}
+                    ),
+                    "realized_contract_metrics": cascade_realized_metrics,
+                }
+                sync_candidate_manifest_lineage_before_governed_eval(
+                    parallel_out,
+                    ticker=ticker,
+                    architecture="parallel",
+                    ml_horizon_suffix=hz_sched,
+                    scheduler_cache_key=parallel_key,
+                    feature_cache_key=fk,
+                    data_fp=data_fp,
+                    training_code_fingerprint=code_fp,
+                    evaluation=_lineage_par_eval,
+                    trained_at=pm_trained_at,
+                )
+                sync_candidate_manifest_lineage_before_governed_eval(
+                    cascade_out,
+                    ticker=ticker,
+                    architecture="cascade",
+                    ml_horizon_suffix=hz_sched,
+                    scheduler_cache_key=cascade_key,
+                    feature_cache_key=fk,
+                    data_fp=data_fp,
+                    training_code_fingerprint=code_fp,
+                    evaluation=_lineage_cas_eval,
+                    trained_at=cm_trained_at,
+                )
+
+                try:
+                    from arch_competition.scheduler_integration import (
+                        build_governed_arch_state_slice,
+                        run_governed_architecture_competition_pass,
+                        scheduler_auto_promote_to_active_enabled,
+                    )
+
+                    _gov = run_governed_architecture_competition_pass(
+                        model_dir=MODEL_DIR,
+                        db_path=DB_PATH,
+                        ticker=ticker,
+                        parallel_model_dir=parallel_out,
+                        cascade_model_dir=cascade_out,
+                        ml_horizon_slug=hz_sched,
+                        allowed_et_dates=None,
+                    )
+                    _man = _gov["evaluation_manifest"]
+                    _prec = _gov["promotion_record"]
+                    governed_paths = _gov["paths"]
+                    parallel_acc = float(_man["metrics"]["parallel"]["accuracy"])
+                    parallel_bal = float(_man["metrics"]["parallel"]["balanced_accuracy"])
+                    n_rows = int(_man["metrics"]["parallel"]["n_rows_scored"])
+                    _pll = _man["metrics"]["parallel"].get("log_loss")
+                    parallel_ll = float(_pll) if _pll is not None else None
+                    _prm = _man["metrics"]["parallel"].get("realized_contract_metrics")
+                    parallel_realized_metrics = (
+                        dict(_prm) if isinstance(_prm, dict) else _empty_realized_metrics(n_rows)
+                    )
+                    cascade_acc = float(_man["metrics"]["cascade"]["accuracy"])
+                    cascade_bal = float(_man["metrics"]["cascade"]["balanced_accuracy"])
+                    n_cascade_rows = int(_man["metrics"]["cascade"]["n_rows_scored"])
+                    _cll = _man["metrics"]["cascade"].get("log_loss")
+                    cascade_ll = float(_cll) if _cll is not None else None
+                    _crm = _man["metrics"]["cascade"].get("realized_contract_metrics")
+                    cascade_realized_metrics = (
+                        dict(_crm) if isinstance(_crm, dict) else _empty_realized_metrics(n_cascade_rows)
+                    )
+                    governed_slice = build_governed_arch_state_slice(
+                        manifest=_man,
+                        promotion_record=_prec,
+                        paths=_gov["paths"],
+                        auto_promote_to_active=scheduler_auto_promote_to_active_enabled(),
+                    )
+                except Exception as _gov_e:
+                    log.exception(
+                        "%s: governed architecture competition pass failed: %s",
+                        ticker,
+                        _gov_e,
+                    )
+                    governed_slice = {
+                        "schema_version": "1",
+                        "error": str(_gov_e),
+                        "failed_closed": True,
+                    }
 
             try:
                 from realized_contract_eval import save_eval_aggregate_merge
@@ -2221,10 +2330,44 @@ def run_once(
                 ),
             )
 
+            outcome_val, consecutive_cache_skips = _resolve_ticker_outcome(
+                ticker=ticker,
+                horizon=hz_sched,
+                skip_governed_eval=skip_governed_eval,
+                governed_slice=governed_slice,
+                parallel_skip=parallel_skip,
+                cascade_skip=cascade_skip,
+                promoted=promoted,
+                consecutive_cache_skips=consecutive_cache_skips,
+            )
+            _apply_pr2_report_fields(
+                report,
+                outcome=outcome_val,
+                horizon=hz_sched,
+                artifact_complete=artifact_complete,
+                consecutive_cache_skips=consecutive_cache_skips,
+                governed_slice=governed_slice,
+            )
+            run_ticker_outcomes.append(
+                outcome_entry(
+                    ticker=ticker,
+                    horizon=hz_sched,
+                    outcome=TrainingOutcome(outcome_val),
+                )
+            )
+
             _append_training_report(report)
 
         except Exception as e:
             log.exception("%s: failed: %s", ticker, e)
+            run_ticker_outcomes.append(
+                outcome_entry(
+                    ticker=ticker,
+                    horizon=hz_sched,
+                    outcome=TrainingOutcome.train_failed,
+                    extra={"error": str(e)},
+                )
+            )
 
     try:
         from training_cache import cleanup_feature_cache_directories, prune_model_archives
@@ -2243,10 +2386,16 @@ def run_once(
     log.info("%s updated", arch_target_path.name)
     log.info("Training report appended to %s", TRAINING_REPORT_PATH)
 
+    exit_code = compute_run_exit_code(run_ticker_outcomes)
     try:
         from training_pipeline_status import record_run_finish
 
-        record_run_finish(ml_horizon=hz_sched, ticker_outcomes=[])
+        # P1-1: ticker_outcomes populated with per-(ticker, horizon) TrainingOutcome values.
+        record_run_finish(
+            ml_horizon=hz_sched,
+            ticker_outcomes=run_ticker_outcomes,
+            exit_code_hint=exit_code,
+        )
     except Exception as _tps_fin:
         log.debug("training_pipeline_status record_run_finish: %s", _tps_fin, exc_info=True)
 
@@ -2259,6 +2408,13 @@ def run_once(
                 log.warning("NON-COMPLIANT active %s: %s — retrain required", tkr, r["issues"])
     except Exception as e:
         log.warning("Verification skipped: %s", e)
+
+    return {
+        "exit_code": exit_code,
+        "ticker_outcomes": run_ticker_outcomes,
+        "ml_horizon": hz_sched,
+        "skipped": False,
+    }
 
 
 _bg_scheduler_lock = threading.Lock()
@@ -2328,6 +2484,8 @@ def start_background_scheduler() -> None:
 
 
 if __name__ == "__main__":
+    import sys
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     ap = argparse.ArgumentParser()
     ap.add_argument("--wait", action="store_true")
@@ -2365,9 +2523,11 @@ if __name__ == "__main__":
     run_now = bool(args.run_now or args.promote_from_manifests)
     if args.all_horizons:
         from ml_horizon import ALL_GOVERNED_HORIZONS
+
+        agg_exit = 0
         for _hz in ALL_GOVERNED_HORIZONS:
             log.info("ml_scheduler --all-horizons: starting horizon %s", _hz)
-            run_once(
+            summary = run_once(
                 wait=False if run_now else args.wait,
                 force_retrain=args.force_retrain,
                 bypass_cache=args.bypass_cache,
@@ -2375,13 +2535,15 @@ if __name__ == "__main__":
                 promote_from_manifests_only=bool(args.promote_from_manifests),
                 ml_horizon_slug=str(_hz),
             )
-            log.info("ml_scheduler --all-horizons: finished horizon %s", _hz)
-    else:
-        run_once(
-            wait=False if run_now else args.wait,
-            force_retrain=args.force_retrain,
-            bypass_cache=args.bypass_cache,
-            allow_non_market_day=run_now,
-            promote_from_manifests_only=bool(args.promote_from_manifests),
-            ml_horizon_slug=str(args.horizon),
-        )
+            agg_exit |= int(summary.get("exit_code", 0))
+            log.info("ml_scheduler --all-horizons: finished horizon %s (exit=%s)", _hz, summary.get("exit_code"))
+        sys.exit(agg_exit)
+    summary = run_once(
+        wait=False if run_now else args.wait,
+        force_retrain=args.force_retrain,
+        bypass_cache=args.bypass_cache,
+        allow_non_market_day=run_now,
+        promote_from_manifests_only=bool(args.promote_from_manifests),
+        ml_horizon_slug=str(args.horizon),
+    )
+    sys.exit(int(summary.get("exit_code", 0)))
