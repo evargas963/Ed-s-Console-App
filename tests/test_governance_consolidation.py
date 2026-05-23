@@ -65,6 +65,19 @@ def test_agent_self_governance_no_grep_references():
         assert banned not in text, f"AGENT_SELF_GOVERNANCE still references {banned!r}"
 
 
-def test_phase_1c_stub_memory_archive_copies():
-    """Enabled in Phase 1c."""
-    pass
+def test_memory_archive_has_all_source_files():
+    archive = ROOT / "governance/archive/2026-Q2/memory_archive"
+    assert archive.is_dir()
+    archived = {p.name for p in archive.glob("*.md") if p.name != "README.md"}
+    # Phase 0 classification counted 34 non-MEMORY.md memory files
+    assert len(archived) == 34
+    for name in (
+        "feedback_no_grep_tool.md",
+        "feedback_no_permission_asks.md",
+        "feedback_fiduciary_duty.md",
+        "project_gate_b_state_2026_05_21.md",
+    ):
+        assert name in archived
+    assert (ROOT / "MEMORY.md").is_file()
+    body = (ROOT / "MEMORY.md").read_text(encoding="utf-8")
+    assert "AGENTS.md" in body and "OPERATOR-ONLY" in body
