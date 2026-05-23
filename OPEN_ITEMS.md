@@ -13,10 +13,12 @@
 
 - [ ] **TRAINING-PIPELINE-PUSH-REVIEW — Commit review + push what is ready**  
   **Gate:** Training pipeline automation project complete (or operator says **review now**).  
-  **Context (2026-05-22):** Local `feature/institutional-key-levels` is **124 commits ahead** of `origin/feature/institutional-key-levels` (remote tip `1c0ec96`, local tip `2924017`). PR1 training-pipeline work may still be uncommitted in working tree.  
+  **Context (2026-05-22):** Local `feature/institutional-key-levels` is **126 commits ahead** of `origin/feature/institutional-key-levels` (remote tip `1c0ec96`, local tip `4375c58`). PR1 (`5886ca0`) + PR2 (`4375c58`) committed locally; not pushed.  
   **Scope:** (1) Commit any finished slices (PR1+ plan doc, inventory, tests) with conventional messages. (2) Walk unpushed history — group by theme (STACK-WIRE, mega4, streaming, training pipeline, docs-only). (3) Confirm pytest green on tip. (4) Push batches that are review-ready to `origin/feature/institutional-key-levels`; do **not** force-push. (5) Leave any WIP branch-local until next slice closes.  
   **Deliverable:** Short push log (commit ranges pushed, anything held back + why). Update **GitHub backup state** table below with new remote tip.  
   **Plan:** [`docs/plans/TRAINING_PIPELINE_AUTOMATION_PLAN.md`](docs/plans/TRAINING_PIPELINE_AUTOMATION_PLAN.md)
+
+- [ ] **TRAINING-PIPELINE-PR2-PUSH-REVIEW** — commit `4375c58` — Phase 1 fail-closed scheduler (**G4-3**). **Tests added:** `tests/test_training_outcome_enum.py`, `tests/test_cache_skip_streak_cap.py`, `tests/test_run_once_exit_code_aggregation.py`; extended `tests/test_scheduler_arch_competition_integration.py`. **Sign-off at tip:** full pytest **2602 passed**; SPY/QQQ/IWM compliant in `verify_active_models.py`; mega4 **797 rows / 85 files**; anti-pattern sweep clean on touched production files. **Do not push** until operator TRAINING-PIPELINE-PUSH-REVIEW gate.
 
 **Cadence (2026-05-20):** **AUDIT-CAND-SERVER-PY-FULL-READ** (in flight) → **STACK-WIRING-INTEGRITY** program (below, immediately after server.py lane closes). Individual LIVE-UI rows remain authoritative; umbrella program ensures nothing from reliability assessment is dropped.
 
@@ -397,7 +399,7 @@ G2 pause state:
 Deferred to G4 within this workstream:
 - G4-1: server-side active sync helper (`server.py:4426-4453`) bypasses governance during request handling. HIGH risk.
 - G4-2: five tool scripts write directly to `models/active/` outside governance.
-- G4-3: scheduler fail-open behavior at `ml_scheduler.py:1701-1707` and `ml_scheduler.py:2133-2135` allows exit 0 with incomplete artifacts.
+- G4-3: scheduler fail-open behavior at `ml_scheduler.py:1701-1707` and `ml_scheduler.py:2133-2135` allows exit 0 with incomplete artifacts. **Addressed PR2** (`4375c58`): `TrainingOutcome` enum, core exit aggregation, partial-bundle gate, governed `failed_closed` → `eval_failed`, cache-skip cap.
 - G4-4: dormant scheduler auto-copy path at `ml_scheduler.py:1780-1783`.
 
 G2 plan refinements (proposed during V3 standard development, not yet applied to `governance/G2_PLAN.md`):
@@ -775,8 +777,8 @@ Categorical inventories (`DerivationRecord` with free-text `schwab_leaf` like `"
 
 | Location | Branch | Tip | Status |
 |---|---|---|---|
-| Local `C:\Users\evarg\Documents\Trading\EdWebConsole` | `feature/institutional-key-levels` | `2924017` (local) | Source of truth |
-| origin/feature/institutional-key-levels | (same branch on GitHub) | `1c0ec96` — **124 commits behind local** | Backup target |
+| Local `C:\Users\evarg\Documents\Trading\EdWebConsole` | `feature/institutional-key-levels` | `4375c58` (local) | Source of truth |
+| origin/feature/institutional-key-levels | (same branch on GitHub) | `1c0ec96` — **126 commits behind local** | Backup target |
 | origin/main | `main` | `4b8ba2d` (frozen) | Stale by 82+ commits |
 
 **Action items:**
