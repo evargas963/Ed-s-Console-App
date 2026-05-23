@@ -4,24 +4,24 @@
 
 **Audience:** Claude / Cursor implementation agent  
 **Branch:** `feature/institutional-key-levels` (or dedicated `feature/training-pipeline-automation`)  
-**Status:** Plan only — not implemented  
-**Last updated:** 2026-05-22 (operator review v4)
+**Status:** **PR1–PR4.1 implemented locally** on `feature/institutional-key-levels` (tip `cd7d615`); PR5–PR7 not started. Not pushed to `origin` (133 commits ahead of `1c0ec96`).  
+**Last updated:** 2026-05-21 (implementation status sync)
 
-**Operator sign-off:** Plan is sound. PR1 may start now. **Do not merge PR4** until P3-4b, P3-9, and pre-flip frozen-candidate default (§3C) are in the plan *and* implemented. **Do not enable `ED_SCHEDULER_AUTO_PROMOTE=1` on the host** until P3-10 (live model reload) lands and pre-flip harness passes.
+**Operator sign-off:** Plan sound. **PR4 merge gates satisfied in code** (P3-4b, P3-9, P3-10, preflip §3C hardened in PR4.1). **Do not enable `ED_SCHEDULER_AUTO_PROMOTE=1` on the host** until operator preflip e2e + `live_reload.succeeded: true` on the real console URL (git push ≠ host enable).
 
 ---
 
 ## 0. Code verification (plan claims)
 
-| Plan claim | Verified |
-|------------|----------|
-| `scheduler_auto_promote_to_active_enabled()` hardcoded False | `arch_competition/scheduler_integration.py:95-97` |
-| `decide_promotion(..., auto_promote=True)` raises | `arch_competition/promotion_engine.py:106-107` |
-| Two promotion writers | `_promote_candidate` `ml_scheduler.py:1783-1804` (dormant, gated) + `manual_control._copy_candidate_to_active` |
-| Phasing order | Measure → fail-closed → layout → automate (correct) |
-| `pre_train_gate` exists | `ops_runner.py:164` — wiring into scheduler start is a real gap |
+| Plan claim | Verified (2026-05-21) |
+|------------|-------------------------|
+| Auto-promote off by default | `arch_competition/scheduler_auto_promote_policy.py` — `ED_SCHEDULER_AUTO_PROMOTE` unset/0 |
+| `decide_promotion(..., auto_promote=True)` raises | `arch_competition/promotion_engine.py:106-107` (unchanged) |
+| Single governed promotion writer | `arch_competition/promotion_execution.execute_promotion_if_eligible`; `_promote_candidate` **removed** from `ml_scheduler.py` |
+| Phasing order | PR1–PR4.1 shipped: measure → fail-closed → layout → automate |
+| `pre_train_gate` exists | `ops_runner.py:164` — scheduler wiring still a **PR5+** gap |
 | `--all-horizons` shipped | commit `2924017` |
-| Definition of done | Each row has a verifiable acceptance test |
+| Definition of done | Each PR row has tests; full suite **2619 passed** at `cd7d615` |
 
 ---
 
@@ -456,20 +456,22 @@ python verify_active_models.py
 
 ## 6. Definition of done (program complete)
 
-- [ ] P0-0 writer inventory complete; no unlisted active writers
-- [ ] SPY, QQQ, IWM: auto-promote `--all-horizons`, verify exit 0
-- [ ] Pre-flip validation harness passed once on automation host
-- [ ] No manual promote for routine nightly (rollback still manual)
-- [ ] Scheduler exit 1 on any core ticker failure (**G4-3** closed)
-- [ ] Governed manifests for four horizons per core ticker after success
-- [ ] Canonical active layout — no split-brain
+**PR1–PR4.1 slice (push-ready on branch):**
+
+- [x] P0-0 writer inventory complete (post-PR4 refresh in `governance/ACTIVE_DIRECTORY_WRITER_INVENTORY.md`)
+- [x] SPY, QQQ, IWM compliant in `verify_active_models.py` (full universe scan may exit 1 on non-core tickers)
+- [ ] Pre-flip validation harness passed once on automation host (operator e2e — not git-gated)
+- [ ] No manual promote for routine nightly until host enables `ED_SCHEDULER_AUTO_PROMOTE=1`
+- [x] Scheduler exit 1 on any core ticker failure (**G4-3** closed, PR2)
+- [ ] Governed manifests for four horizons per core ticker after success (runtime / training cadence)
+- [x] Canonical active layout — no split-brain (PR3)
 - [ ] `qqq_weighted_push` NULL &lt; operator threshold OR documented waiver
-- [ ] Docs: `TRAINING_AND_MAINTENANCE.md`, `PROMOTION_POLICY.md`, OPEN_ITEMS G3/G4 closures
-- [ ] P3-4b post-promote verify + P3-9 verify-fail rollback tested
-- [ ] P3-10 model registry reload after promote (live server serves fresh weights)
-- [ ] P3-11 strict core freshness flipped to 1 after baseline week (documented in runbook)
-- [ ] Pytest green + auto-promote + panic-disable + `_promote_candidate` grep guard tests
-- [ ] Pinned universe batch (optional Phase 4b)
+- [x] Docs: `TRAINING_AND_MAINTENANCE.md`, plan §7.0, OPEN_ITEMS push-review rows
+- [x] P3-4b post-promote verify + P3-9 verify-fail rollback tested (PR4.1)
+- [x] P3-10 model registry reload after promote (code + tests)
+- [ ] P3-11 strict core freshness flipped to 1 after baseline week (host steady-state; default off in code)
+- [x] Pytest green + auto-promote + panic-disable + `_promote_candidate` grep guard tests (**2619** at tip)
+- [ ] Pinned universe batch (optional Phase 4b — PR5+)
 
 ---
 
@@ -484,6 +486,19 @@ python verify_active_models.py
 7. **PR5:** Phase 4  
 8. **PR6:** Phase 5  
 9. **PR7:** Phase 6  
+
+### 7.0 Implementation status (local branch)
+
+| PR | Commit (code) | Phase | Status |
+|----|---------------|-------|--------|
+| PR1 | `5886ca0` | 0 — inventory, lineage, bundle contract, status JSON | Done |
+| PR2 | `4375c58` | 1 — G4-3 fail-closed, outcome enum, cache skip cap | Done |
+| PR3 | `2d8208e` | 2 — canonical active layout | Done |
+| PR4 | `51e27ce` | 3 — auto-promote, governed executor, reload, preflip tool | Done |
+| PR4.1 | `8feab6b` | 3 follow-up — preflip §3C verify, rollback/guard tests | Done |
+| PR5–PR7 | — | Phases 4–6 | Not started |
+
+OPEN_ITEMS push-review rows: signed off 2026-05-21 (2619 pytest at tip). Phase 3a.1 done: `scheduler_log_loss_winner` in `ml_scheduler.py` (no `report["winner"]` for log-loss path).
 
 ### Merge gates (non-negotiable)
 

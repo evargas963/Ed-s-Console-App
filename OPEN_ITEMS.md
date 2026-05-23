@@ -9,22 +9,19 @@
 
 **Gate:** Activate when Layer 5 / Pilot 1 Schwab walk + stack sign-off queue is closed (or operator says **go live-ui latency**). Do not defer behind new feature work.
 
-**Immediate next (training pipeline automation):** When PR1–PR7 / `docs/plans/TRAINING_PIPELINE_AUTOMATION_PLAN.md` work closes (or operator calls review), run commit review **before** any bulk push.
+**Immediate next (training pipeline automation):** PR1–PR4.1 **pushed to origin** (see GitHub backup table). PR5–PR7 not started. **Host:** keep `ED_SCHEDULER_AUTO_PROMOTE=0` until preflip e2e + live reload on console URL.
 
-- [ ] **TRAINING-PIPELINE-PUSH-REVIEW — Commit review + push what is ready**  
-  **Gate:** Training pipeline automation project complete (or operator says **review now**).  
-  **Context (2026-05-22):** Local `feature/institutional-key-levels` is **128 commits ahead** of `origin/feature/institutional-key-levels` (remote tip `1c0ec96`, local tip `2d8208e`). PR1–PR3 committed locally; not pushed.  
-  **Scope:** (1) Commit any finished slices (PR1+ plan doc, inventory, tests) with conventional messages. (2) Walk unpushed history — group by theme (STACK-WIRE, mega4, streaming, training pipeline, docs-only). (3) Confirm pytest green on tip. (4) Push batches that are review-ready to `origin/feature/institutional-key-levels`; do **not** force-push. (5) Leave any WIP branch-local until next slice closes.  
-  **Deliverable:** Short push log (commit ranges pushed, anything held back + why). Update **GitHub backup state** table below with new remote tip.  
-  **Plan:** [`docs/plans/TRAINING_PIPELINE_AUTOMATION_PLAN.md`](docs/plans/TRAINING_PIPELINE_AUTOMATION_PLAN.md)
+- [x] **TRAINING-PIPELINE-PUSH-REVIEW** @ push 2026-05-21 — Full branch `1c0ec96..tip` pushed to `origin/feature/institutional-key-levels` (133 commits). **Verification at push:** pytest **2619 passed**; SPY/QQQ/IWM compliant; mega4 **821 rows / 88 files**; writer inventory post-PR4 refresh. **Held on host (not git):** `ED_SCHEDULER_AUTO_PROMOTE=1`, strict core freshness flip, preflip e2e on automation host.
 
-- [ ] **TRAINING-PIPELINE-PR2-PUSH-REVIEW** — commit `4375c58` — Phase 1 fail-closed scheduler (**G4-3**). **Tests added:** `tests/test_training_outcome_enum.py`, `tests/test_cache_skip_streak_cap.py`, `tests/test_run_once_exit_code_aggregation.py`; extended `tests/test_scheduler_arch_competition_integration.py`. **Sign-off at tip:** full pytest **2602 passed**; SPY/QQQ/IWM compliant in `verify_active_models.py`; mega4 **797 rows / 85 files**; anti-pattern sweep clean on touched production files. **Do not push** until operator TRAINING-PIPELINE-PUSH-REVIEW gate.
+- [x] **TRAINING-PIPELINE-PR1-PUSH-REVIEW** @ `5886ca0` — pushed with umbrella 2026-05-21.
 
-- [ ] **TRAINING-PIPELINE-PR3-PUSH-REVIEW** — commit `2d8208e` — Phase 2 canonical active layout (P2-1..P2-5). **Tests added:** `tests/test_active_horizon_layout_pr3.py`; extended `tests/test_manual_governance.py` (full six-file candidate bundles). **Tool:** `tools/consolidate_active_horizon_layout.py` (SPY/QQQ/IWM default). **Sign-off at tip:** full pytest **2607 passed**; mega4 **804 rows / 85 files**; runbook note in `TRAINING_AND_MAINTENANCE.md`. **Do not push** until operator gate.
+- [x] **TRAINING-PIPELINE-PR2-PUSH-REVIEW** @ `4375c58` — pushed with umbrella 2026-05-21.
 
-- [ ] **TRAINING-PIPELINE-PR4-PUSH-REVIEW** — commit `51e27ce` — Phase 3 auto-promote (P3-1..P3-11). **Modules:** `arch_competition/scheduler_auto_promote_policy.py`, `promotion_execution.py`, `live_model_reload.py`; wired `execute_promotion_if_eligible` in scheduler; removed `_promote_candidate`; `POST /api/internal/reload_models`; `verify_single_bundle`; `--preflip-candidate-root`; `tools/validate_autopromote_preflip.py`. **Tests added:** `test_arch_competition_auto_promote.py`, `test_no_promote_candidate_in_scheduler.py`, `test_panic_disable_auto_promote.py`, `test_strict_core_freshness_env.py`, `test_model_registry_reload_after_promote.py`, `test_console_reload_url_env.py`; updated `test_manual_governance.py`, `test_scheduler_arch_competition_integration.py`. **Sign-off at tip:** full pytest **2616 passed**; mega4 **821 rows / 88 files**; mega1 **312 rows**. **Do not push** until operator gate; **do not enable `ED_SCHEDULER_AUTO_PROMOTE=1` on host** until pre-flip verify + live reload check.
+- [x] **TRAINING-PIPELINE-PR3-PUSH-REVIEW** @ `2d8208e` — pushed with umbrella 2026-05-21.
 
-- [ ] **TRAINING-PIPELINE-PR4.1-PUSH-REVIEW** — commit `8feab6b` — PR4 follow-up: hardened `tools/validate_autopromote_preflip.py` (§3C all horizons, checksums, active-tree verify); `ml_scheduler.py` duplicate-line cleanup; integration tests `test_auto_promote_rollback.py`, `test_post_promote_verify_and_rollback.py`, `test_governed_executor_required_for_active_writes.py` (P3-1b guard migrated from `test_manual_governance.py`). **Sign-off at tip:** full pytest **2619 passed**. **Host-enable:** preflip harness verify is now substantive; operator e2e replay + `live_reload.succeeded: true` against actual console URL remain before `ED_SCHEDULER_AUTO_PROMOTE=1`. **Do not push** until operator gate.
+- [x] **TRAINING-PIPELINE-PR4-PUSH-REVIEW** @ `51e27ce` — pushed with umbrella 2026-05-21.
+
+- [x] **TRAINING-PIPELINE-PR4.1-PUSH-REVIEW** @ `8feab6b` — pushed with umbrella 2026-05-21. **Host-enable still deferred:** preflip e2e + `live_reload.succeeded: true` before `ED_SCHEDULER_AUTO_PROMOTE=1`.
 
 **Cadence (2026-05-20):** **AUDIT-CAND-SERVER-PY-FULL-READ** (in flight) → **STACK-WIRING-INTEGRITY** program (below, immediately after server.py lane closes). Individual LIVE-UI rows remain authoritative; umbrella program ensures nothing from reliability assessment is dropped.
 
@@ -783,13 +780,13 @@ Categorical inventories (`DerivationRecord` with free-text `schwab_leaf` like `"
 
 | Location | Branch | Tip | Status |
 |---|---|---|---|
-| Local `C:\Users\evarg\Documents\Trading\EdWebConsole` | `feature/institutional-key-levels` | `2d8208e` (local) | Source of truth |
-| origin/feature/institutional-key-levels | (same branch on GitHub) | `1c0ec96` — **128 commits behind local** | Backup target |
+| Local `C:\Users\evarg\Documents\Trading\EdWebConsole` | `feature/institutional-key-levels` | *(see post-push tip)* | Source of truth |
+| origin/feature/institutional-key-levels | (same branch on GitHub) | *(updated on push 2026-05-21)* | Backup synced |
 | origin/main | `main` | `4b8ba2d` (frozen) | Stale by 82+ commits |
 
 **Action items:**
-- [ ] **TRAINING-PIPELINE-PUSH-REVIEW** — see **NEXT** section (commit review + push ready batches after training pipeline project).
-- [ ] **Backup sync** — keep `origin/feature/institutional-key-levels` equal to local after review. Operator can `git push origin feature/institutional-key-levels` from launch folder.
+- [x] **TRAINING-PIPELINE-PUSH-REVIEW** @ 2026-05-21 — see **NEXT** section.
+- [x] **Backup sync** @ 2026-05-21 — `git push origin feature/institutional-key-levels` (133 commits).
 - [ ] **Main merge (deferred)** — when audit is complete (Layer 3+ done, all Action 10.x closed), open PR `feature → main` so main becomes canonical. No urgency since no other puller; durability concern only.
 
 **Rule going forward:** every commit on this branch should be pushed to origin same day. Local-only commits = single point of failure.

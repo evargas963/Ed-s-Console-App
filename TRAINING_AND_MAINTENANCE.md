@@ -82,7 +82,31 @@ python tools/consolidate_active_horizon_layout.py --apply      # copy into canon
 python verify_active_models.py                                 # confirm SPY / QQQ / IWM
 ```
 
-Promotion (manual or future auto) copies **only** the six files for the requested horizon into the matching canonical dir — not the full candidate directory glob.
+Promotion (manual or governed auto) copies **only** the six files for the requested horizon into the matching canonical dir — not the full candidate directory glob.
+
+### Auto-promote (PR4 / PR4.1) — code on branch, host still manual
+
+Scheduler can call `execute_promotion_if_eligible` when env flags allow. **Default: off.** Panic and strictness are separate knobs.
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `ED_SCHEDULER_AUTO_PROMOTE` | off | `1` enables nightly auto-promote after arch_competition gates |
+| `ED_SCHEDULER_AUTO_PROMOTE_PANIC` | off | `1` forces auto-promote off regardless of other flags |
+| `ED_SCHEDULER_AUTO_PROMOTE_CORE_ONLY` | on | Restrict auto-promote to core tickers (SPY/QQQ/IWM) |
+| `ED_SCHEDULER_AUTO_PROMOTE_REQUIRE_VERIFY` | on | Post-promote `verify_single_bundle` on scheduler path |
+| `ED_SCHEDULER_AUTO_PROMOTE_STRICT_CORE_FRESHNESS` | off | Steady-state freshness gate (enable after baseline week) |
+| `ED_CONSOLE_RELOAD_URL` | unset | POST target for live model registry reload after promote |
+
+**Preflip (before host enable):** capture/verify manual or dry-run promote without flipping production flags:
+
+```powershell
+python ml_scheduler.py --preflip-candidate-root <path>   # scheduler integration
+python tools/validate_autopromote_preflip.py --help      # §3C harness (all horizons)
+```
+
+**Host-enable checklist (operator, not git):** (1) preflip harness **verify** passes on real candidate roots; (2) promote + `POST /api/internal/reload_models` returns `live_reload.succeeded: true` on the launch console URL; (3) then set `ED_SCHEDULER_AUTO_PROMOTE=1`; (4) after 1–2 weeks stable, consider `ED_SCHEDULER_AUTO_PROMOTE_STRICT_CORE_FRESHNESS=1`.
+
+Internal reload route: loopback + optional token — see `server.py` `POST /api/internal/reload_models`.
 
 ---
 
