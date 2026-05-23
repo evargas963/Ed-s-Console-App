@@ -11,7 +11,7 @@
 
 **Gate:** Activate when Layer 5 / Pilot 1 Schwab walk + stack sign-off queue is closed (or operator says **go live-ui latency**). Do not defer behind new feature work.
 
-**Active program (2026-05-23):** **Governance consolidation complete (Phases 0–4)** @ `6246920` — [`docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md`](docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md). **Push pending** (operator: finish then push all). **Concurrent epic:** Training Pipeline PR5–PR7 (not started).
+**Active program (2026-05-23):** **Governance consolidation** — Phases 0–2 + 4 complete; Phase 3 **decision artifacts** @ `4018f41`; Phase 3 **execution** open (see rows below). Tip `15bbd0c`. **Push pending.** **Concurrent epic:** Training Pipeline PR5–PR7 (not started).
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 0** @ `dbb57c9` — Baseline snapshot, CI path inventory, do-not-rename list (114 paths), rule-source classification (38 rows / 35 memory files), memory gap read (`feedback_no_new_md_deliverables.md`). Auto-load tests documented pending post-1a. **Operator decisions:** defaults confirmed 2026-05-23.
 
@@ -23,7 +23,9 @@
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 2** @ `8e79ea2` — 286 MDs classified; 250 scope headers added; `tools/build_phase2_md_classification.py`; spreadsheet `governance/consolidation/phase2/md_classification.csv`.
 
-- [x] **GOVERNANCE-CONSOLIDATION — Phase 3** @ `4018f41` — `governance/consolidation/phase3/` artifacts (baseline delta, duplicate MD, protected py audit, worktree notes); token rotation in TRAINING_AND_MAINTENANCE; schwab_field_inventory quarterly refresh note. Root `.py` reduction deferred — operator sign-off path in `baseline_delta.json`.
+- [x] **GOVERNANCE-CONSOLIDATION — Phase 3 decision artifacts** @ `4018f41` — `governance/consolidation/phase3/` (baseline delta, duplicate MD report, protected py audit, worktree notes); token rotation note in TRAINING_AND_MAINTENANCE; schwab_field_inventory quarterly refresh note. **Not the Phase 3 execution gate** (see next row).
+
+- [ ] **GOVERNANCE-CONSOLIDATION — Phase 3 execution** — Gate per plan: archive populated, deletions committed, conflicts resolved, worktrees pruned, both agents re-audit. **Blocked on operator sign-off** per `baseline_delta.json` (`root_py_delta: 0`, worktrees ~2.43 GB unchanged). Sub-items: **3b** archive Historical Records (V1–V3 Schwab programs/registers, root `*_AUDIT.md`, PR1–4 captures) → `governance/archive/2026-Q2/`; **3c** delete superseded duplicates (per `duplicate_md_report.json`, operator per item); **3d** `.py` import-graph audit / moves; **3e** worktree prune; **3f** LFS hooks audit (`.git/hooks/{pre-push,post-checkout,post-commit,post-merge}`).
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 4** @ `6246920` — `.pre-commit-config.yaml`, `tools/check_no_grep_subprocess.py`, governance tests **18/18** on slice.
 
