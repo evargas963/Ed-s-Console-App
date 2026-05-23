@@ -1,97 +1,69 @@
 # Agent self-governance (Cursor + Claude)
 
-**Binding for both agents.** Operator sign-off uses the 7-artifact contract. Cursor implements; Claude verifies. Disputes defer to operator.
+**Procedural mechanics only.** Detectable behavior rules → [`AGENTS.md`](../../AGENTS.md). Current program → [`ACTIVE_PROGRAM.md`](../../ACTIVE_PROGRAM.md). Schwab methodology → [`CLAUDE.md`](../../CLAUDE.md).
 
-## Alternation (no drift)
+Operator sign-off: 7-artifact contract. Cursor implements; Claude verifies.
+
+## Alternation
 
 | Rule | Requirement |
 |------|-------------|
-| **#1** | Track `last_slice_kind`: `AUDIT_LANE` \| `OPEN_ITEM_FIX` \| `CONSOLIDATION` \| `REPO_SWEEP`. State next required slice explicitly. |
+| **#1** | Track `last_slice_kind`: `AUDIT_LANE` \| `OPEN_ITEM_FIX` \| `CONSOLIDATION` \| `REPO_SWEEP`. State next slice explicitly. |
 | **#2** | No "go next consolidation" appendix unless operator asks. |
+| **#5–#6** | → moved to AGENTS.md §Posture rules |
 | **#14** | New authority modules = `CONSOLIDATION` (not smuggled into audit commits). |
 
-**Default cycle:** `AUDIT_LANE` → `OPEN_ITEM_FIX` (all lane FINDs) → `REPO_SWEEP` (one category) → `OPEN_ITEM_FIX` (sweep FINDs) → repeat.
+**Default cycle:** `AUDIT_LANE` → `OPEN_ITEM_FIX` → `REPO_SWEEP` → `OPEN_ITEM_FIX` → repeat. **Gate B:** no `CONSOLIDATION` until audit lane brief + paired-fix closed.
 
-**Gate B:** No `CONSOLIDATION` until the current audit lane has brief + paired-fix closed.
-
-## Ledger (no third mention)
+## Ledger
 
 | Rule | Requirement |
 |------|-------------|
-| **#3** | Every noted FIND → fix same commit OR `OPEN_ITEMS` row with owner before next slice. |
-| **#15** | Report **session-relevant** open count + **full** `OPEN_ITEMS` unchecked count each turn. |
+| **#3** | Every FIND → fix same commit OR `OPEN_ITEMS` row with owner before next slice. |
+| **#8–#11** | → moved to AGENTS.md §OPEN_ITEMS / §Posture rules |
+| **#15** | → moved to AGENTS.md §OPEN_ITEMS rules-of-use |
 
-## Sign-off (no rubber stamp)
+## Sign-off
 
 | Rule | Requirement |
 |------|-------------|
-| **#4** | Cross-cutting block mandatory in implementation briefs. Refuse sign-off if missing. |
+| **#4** | Cross-cutting block mandatory in briefs; refuse sign-off if missing. |
+| **#7** | → moved to AGENTS.md §Posture rules (scope disclosure) |
 | **#12** | Brief schema: identity → FIND/OBS → cross-cutting → display/freshness. |
-| **#7** | Scope disclosure: what was NOT verified (by name). |
-| **#16** | Apply the verification matrix (below) to every **touched** file. |
-
-## Verification matrix (rule #16)
-
-For each touched file, check applicable rows:
-
-1. Schwab-first / derivation  
-2. Fail-closed numerics (no silent 0 / 0.33 / `"flat"`)  
-3. Single-authority (COH-SA + rglob guards)  
-4. Time / session / DST (`time_et`)  
-5. Fusion / canonical tradability  
-6. Coherence audit lanes (full Read queue)  
-7. Live vs replay parity  
-8. UI honesty / transport / bundle age  
-9. Calibration timestamp integrity  
-10. Stack integrity / degradation visibility  
-11. Magic thresholds → policy table (when in scope)  
-12. Regression grep (pattern must not reappear)  
-13. Operator scenario tests (when built)  
-14. V4 governance gate (register / scanner)  
-15. Cross-cutting block in brief  
-16. Complete fix vs patch (contract + tests)  
-17. `def _f` / `_float_or_none` → `numeric_contract`  
-18. **Field-name wire contracts** (producer dict keys = reader keys)  
-19. Historical data bias (document; backfill optional)  
-20. Process / alternation compliance  
+| **#13** | → moved to AGENTS.md §Banned patterns |
+| **#16** | Apply verification matrix to every **touched** file (Schwab-first, fail-closed numerics, single-authority, time_et, fusion tradability, coherence lanes, live/replay parity, UI honesty, calibration integrity, stack integrity, policy tables, regression guards, operator scenarios, V4 gate, cross-cutting, complete fix, numeric_contract, wire contracts, historical bias, process compliance). |
 
 ## Adjacent findings (rule #17)
 
-Scope artifact #7 must list adjacent patterns (e.g. grep hits outside slice). Either fold into same `OPEN_ITEM_FIX` (fix-as-we-find) or `OPEN_ITEMS` row before next slice.
+Scope artifact #7 must list adjacent patterns found by **full Read** of the producer/consumer cone (not pattern-matching search). Either fold into same `OPEN_ITEM_FIX` or `OPEN_ITEMS` row before next slice.
 
-## Enforcement (how drift stops)
+## Enforcement
 
 | Layer | Mechanism |
 |-------|-----------|
-| **Git** | Commit prefix: `fix(audit-lane-N):`, `fix(open-item):`, `fix(coh-sa):`, `chore(repo-sweep):`, `docs(audit):` only for ledger |
-| **Tests** | Repo-wide guards: `tests/test_coh_sa*.py`, `tests/test_fusion_contract.py`, `tests/test_*_l1_equiv*.py`, etc. — **CI must run** `pytest tests/test_coh_sa1_float_consolidation.py tests/test_fusion_contract.py tests/test_inference_snapshot_l1_equiv_contract.py` on every PR |
-| **Sweeps** | REPO_SWEEP #1 error-propagation: `governance/audits/repo_sweep_error_propagation_v1_20260520.json` + `tests/test_repo_sweep_error_propagation_v1.py` |
+| **Git** | Prefix: `fix(audit-lane-N):`, `fix(open-item):`, `fix(coh-sa):`, `chore(repo-sweep):`, `docs(audit):` |
+| **Tests** | `tests/test_coh_sa*.py`, `tests/test_fusion_contract.py`, `tests/test_inference_snapshot_l1_equiv_contract.py` (local/CI subset) |
 | **Operator** | 7-artifact verification; refuse docs-only closure for code FINDs |
-| **OPEN_ITEMS** | Single backlog; `[x]` only with commit SHA |
 | **Pairing** | Audit commit does not close code FINDs; following `OPEN_ITEM_FIX` does |
 
-## Additional rules (binding)
+## Additional rules
 
 | Rule | Requirement |
 |------|-------------|
-| **#18** | Commit tag in message body: `Slice: AUDIT_LANE \| OPEN_ITEM_FIX \| …` |
-| **#19** | Docs-only commits cannot close code FINDs (ledger-only ok) |
-| **#20** | Any new `dict` mapping between modules: grep consumer keys same turn |
-| **#21** | Both agents cite this file path when stating protocol |
+| **#18** | Commit body tag: `Slice: AUDIT_LANE \| OPEN_ITEM_FIX \| …` |
+| **#19** | Docs-only commits cannot close code FINDs |
+| **#20** | New cross-module dict mapping: **Read all consumers same turn**; producer keys must match reader keys |
+| **#21** | Cite `AGENTS.md` + this file when stating protocol |
 
-## Independent verification (no trust debt)
+## Independent verification
 
 | Rule | Requirement |
 |------|-------------|
-| **#22** | **Independent verification** — each agent re-Reads / re-greps at tip; never sign off from the other agent’s summary alone. |
-| **#23** | **Retract sign-off** — if full re-verification surfaces gaps, prior grant is void until a completion commit closes them. |
-| **#24** | **Artifact arithmetic** — audit JSON counts (`class_c_fixed_count`, backlog deltas) must equal enumerated entries; add a test when feasible. |
-| **#25** | **Critical enumerations** — `_CRITICAL_*` frozensets list the full money-path domain (signals → call → prediction → fusion → realized eval), not only files touched this slice. |
-| **#26** | **N-site parity** — a commit that fixes the same pattern in N places needs ≥ N regression tests (or one parametrized test with N cases). |
-| **#27** | **Exhaustive verification** — sampling is not sufficient for sign-off when operator requires 100% repo discipline. |
+| **#22** | **Independent verification** — each agent **re-Reads at tip** end-to-end; never sign off from the other agent's summary alone (see AGENTS.md §Posture rules). |
+| **#23** | Retract sign-off if re-verification surfaces gaps. |
+| **#24** | Audit JSON counts must equal enumerated entries; add test when feasible. |
+| **#25** | → moved to AGENTS.md §Money-path module roster |
+| **#26** | N-site parity: N fixes → ≥ N regression tests (or parametrized). |
+| **#27** | Exhaustive verification when operator requires 100% repo discipline. |
 
-**Money-path modules (rule #25 reference):** `signals.py`, `call_engine.py`, `prediction_engine.py`, `realized_contract_eval.py`, `bayesian_fusion.py`, `mc_fusion_adjustment.py`, `market_state.py`, `live_decision_bundle.py`, `features/signal_layer_v1.py`, `features/inference_snapshot.py`, `features/fusion_policy_contract.py`.
-
-## Current authority modules (reference)
-
-- `time_et.py`, `numeric_contract.py`, `fusion_contract.py`, `replay_hold_bars.py`, `position_sizing_policy.py`
+**Authority modules (reference):** `time_et.py`, `numeric_contract.py`, `fusion_contract.py`, `replay_hold_bars.py`, `position_sizing_policy.py`.

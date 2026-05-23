@@ -1,3 +1,5 @@
+> **Scope:** Schwab market-field program law only. Always-on agent behavior → [`AGENTS.md`](AGENTS.md). Current epic → [`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md). Process alternation / sign-off → [`docs/governance/AGENT_SELF_GOVERNANCE.md`](docs/governance/AGENT_SELF_GOVERNANCE.md).
+
 # SCHWAB FULL REPO DIRECTIVE (binding on all agents, no exceptions)
 
 Operator-controlled instruction surface. Governs disposition, closure claims, and all market-field work in this repository.
@@ -42,6 +44,15 @@ actions in the same change set:
     set so PR 2's diff-emission gate passes.
 
 Then move to the next file.
+
+──────────────────────────────────────────────────────────────────────────────
+ENGINEERING GATEKEEPING (absorbed from governance/ENGINEERING_GATEKEEPING_POLICY.md)
+──────────────────────────────────────────────────────────────────────────────
+**Patch rejection:** Reject patch-shaped changes that route around architectural cause. Ask: does this fix the cause or bypass it? Would a future reader ask "why is this here?" Borderline → reject until architectural shape approved.
+
+**Schwab-native first:** Before reading, deriving, or gating on a market field, check `schwab_field_inventory/schwab_field_dictionary.csv` and normalization boundaries. If Schwab provides the primitive, consume it first; derived values are governed fallbacks only. Non-trivial changes declare CSV-first in commit/PR body.
+
+**Schwab same-or-better:** If Schwab would be same or strictly better → use Schwab. If Schwab looks worse → investigate (wrong field, plane, timing, bug); do not silently stay on derived. "Worse" without investigation is not a standing exception.
 
 Scanner reports, the V4 register's unreviewed_count, scoreboards, and
 aggregated metrics are RECORD-KEEPING. They are NOT the unit of work. The
@@ -100,8 +111,12 @@ PROGRAM ANCHOR — V4 IS THE PROGRAM
 ──────────────────────────────────────────────────────────────────────────────
 governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md and
 governance/SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md govern disposition and
-closure. governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv is the source
-of truth for unreviewed_count and bare_governed_exception_count. The V4-B
+closure. **Register authority:** `governance/artifacts/schwab_v4_register_build_meta.json`
+(build meta + generation recipe + `register_content_sha256` pin) is the tracked
+source of truth. `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` is
+generated locally/CI (gitignored) and must match the meta pin; metrics
+(`unreviewed_count`, `bare_governed_exception_count`) are read from the
+generated CSV at audit time. The V4-B
 loop ("Triage → Edit → Rescan → Re-disposition → Perf-proof bundle ↔
 register → Exit") is the only workflow. No parallel program may be proposed.
 

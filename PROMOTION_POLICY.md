@@ -1,3 +1,9 @@
+> **Historical record — not authoritative for promotion decisions.**
+> **Authoritative:** `arch_competition.promotion_engine.PromotionPolicy` and
+> `arch_competition.promotion_engine.decide_promotion` via
+> `arch_competition.promotion_execution.execute_promotion_if_eligible`.
+> This file documents legacy 1m scheduler criteria for operator reference only.
+
 # Promotion Policy — Canonical 1m Training System
 
 ## Overview

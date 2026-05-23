@@ -59,9 +59,10 @@ def test_agents_no_permission_asks_excerpt_hash():
     assert _sha(excerpt) == NO_PERMISSION_ASKS_HASH
 
 
-def test_phase_1b_stub_agent_self_governance_grep_phrases():
-    """Enabled in Phase 1b."""
-    pass
+def test_agent_self_governance_no_grep_references():
+    text = _read("docs/governance/AGENT_SELF_GOVERNANCE.md").lower()
+    for banned in ("grep", "ripgrep", " re-grep", "re-greps"):
+        assert banned not in text, f"AGENT_SELF_GOVERNANCE still references {banned!r}"
 
 
 def test_phase_1c_stub_memory_archive_copies():

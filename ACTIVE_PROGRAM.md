@@ -27,7 +27,7 @@
 
 | Topic | Authority |
 |-------|-----------|
-| Promotion policy | `arch_competition.promotion_engine.decide_promotion` + `promotion_execution.execute_promotion_if_eligible` |
+| Promotion policy | `arch_competition.promotion_engine.PromotionPolicy` + `decide_promotion` + `promotion_execution.execute_promotion_if_eligible`; root `PROMOTION_POLICY.md` is **Historical** |
 | Read-first source | `AGENTS.md` banned tools; `CLAUDE.md` Read-not-scan for Schwab |
 | V4 register | **`governance/artifacts/schwab_v4_register_build_meta.json`** + generation recipe; full CSV generated locally/CI, gitignored |
 | Host vs Git | [`docs/host/README.md`](docs/host/README.md) |

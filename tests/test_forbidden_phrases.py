@@ -1,0 +1,27 @@
+"""CLAUDE.md FORBIDDEN PHRASES enforcement (Phase 1b)."""
+from __future__ import annotations
+
+from governance.forbidden_phrases import find_forbidden_phrases, forbidden_phrases_from_claude
+
+
+def test_forbidden_phrases_list_non_empty():
+    phrases = forbidden_phrases_from_claude()
+    assert len(phrases) >= 8
+    assert "scope of current section" in phrases
+
+
+def test_detects_forbidden_scope_narrowing():
+    hits = find_forbidden_phrases("We can treat this as scope of current section only.")
+    assert "scope of current section" in hits
+
+
+def test_detects_scanner_capability_phrase():
+    hits = find_forbidden_phrases("The scanner doesn't walk that path.")
+    assert any("scanner" in h.lower() for h in hits)
+
+
+def test_clean_technical_prose_passes():
+    hits = find_forbidden_phrases(
+        "Read server.py end-to-end and cite file:line for each market-field site."
+    )
+    assert hits == []

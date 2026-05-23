@@ -15,7 +15,9 @@
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 1a** @ `6357c4b` — `AGENTS.md`, `ACTIVE_PROGRAM.md`, `.cursor/rules/00-always.mdc`, `tests/test_governance_consolidation.py` (8 passed). **Gate:** re-run `.mdc` always-apply test in fresh Cursor session.
 
-- [ ] **GOVERNANCE-CONSOLIDATION — Phase 1b** — slim AGENT_SELF_GOVERNANCE, forbidden phrases test, money-path roster test. Blocked on 1a gate sign-off.
+- [ ] **GOVERNANCE-CONSOLIDATION — Phase 1b** @ tip — slim AGENT_SELF_GOVERNANCE, CLAUDE scope+V4 meta+3 gatekeeping rules, PROMOTION_POLICY historical, forbidden-phrases + money-path tests.
+
+- [ ] **GOVERNANCE-CONSOLIDATION — Phase 1c** — thin MEMORY.md, archive memories. Blocked on 1b gate.
 
 - [ ] **TRAINING-HOST-PREFLIP-E2E** — Operator preflip harness verify on real candidate roots (not git-gated). **Host:** before `ED_SCHEDULER_AUTO_PROMOTE=1`.
 
