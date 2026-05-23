@@ -17,7 +17,7 @@
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 1b** @ `8bc2bdb` — AGENT_SELF_GOVERNANCE 69 lines (grep-free #17/#20/#22); CLAUDE scope+V4 meta+gatekeeping rules; PROMOTION_POLICY historical; tests 14/14 on governance slice.
 
-- [ ] **GOVERNANCE-CONSOLIDATION — Phase 1c** — thin `MEMORY.md`, archive 34 memory files to `governance/archive/2026-Q2/memory_archive/`, rewrite rule-number triggers → topic names, enable `test_memory_archive_has_all_source_files`.
+- [x] **GOVERNANCE-CONSOLIDATION — Phase 1c** @ `b9153f2` — thin `MEMORY.md`, 34 files in `governance/archive/2026-Q2/memory_archive/`, rule-number → topic-name rewrites, `tools/import_memory_archive_phase1c.py`, `test_memory_archive_has_all_source_files` (14/14 governance tests).
 
 - [ ] **TRAINING-HOST-PREFLIP-E2E** — Operator preflip harness verify on real candidate roots (not git-gated). **Host:** before `ED_SCHEDULER_AUTO_PROMOTE=1`.
 
