@@ -70,8 +70,14 @@ models/arch_competition/
 benchmark_logs/
 .runtime/
 
-# Tooling caches
+# Tooling caches / local agent (machine-specific; do not commit)
 .claude/worktrees/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# Host manifest snapshots (regenerate via scripts/export_host_manifest.ps1)
+host_manifest.json
+host_manifest.*.json
 
 # Full-repo Schwab scanner dumps (multi-GB; keep partial register in git or store offline)
 governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.mock_build.csv

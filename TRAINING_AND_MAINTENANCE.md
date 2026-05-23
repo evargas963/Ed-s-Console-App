@@ -2,6 +2,8 @@
 
 This doc is the **training + ops** companion to `DATA_STEWARDSHIP.md` (principles and DB-focused runbook).
 
+**Host vs Git:** environment variables, secrets, and off-repo backups — [`docs/host/README.md`](docs/host/README.md).
+
 ---
 
 ## Why links can’t “just run Python” in the browser

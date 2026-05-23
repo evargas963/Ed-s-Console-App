@@ -776,7 +776,7 @@ Categorical inventories (`DerivationRecord` with free-text `schwab_leaf` like `"
 
 ## GitHub backup state — local-vs-remote-vs-main
 
-**Reality:** operator runs from local launch folder; GitHub is backup only (no other puller).
+**Reality:** operator runs from local launch folder; GitHub is backup only (no other puller). **What belongs in Git vs on disk:** [`docs/host/BACKUP_AND_MIRROR.md`](docs/host/BACKUP_AND_MIRROR.md). **Env template:** [`.env.example`](.env.example) → local `.env` (never commit).
 
 | Location | Branch | Tip | Status |
 |---|---|---|---|
