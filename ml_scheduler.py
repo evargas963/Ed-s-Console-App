@@ -1351,6 +1351,19 @@ def run_once(
 
     _pfx = " (promote-from-manifests-only)" if promote_from_manifests_only else ""
     log.info("Tickers (logging_universe authoritative): %s%s", tickers, _pfx)
+    try:
+        from training_pipeline_status import enrollment_category_counts, record_run_start
+
+        _enroll_counts = enrollment_category_counts(DB_PATH)
+        log.info("Enrolled universe category counts: %s", _enroll_counts)
+        record_run_start(
+            ml_horizon=hz_sched,
+            target_column=target_column,
+            tickers=tickers,
+            db_path=DB_PATH,
+        )
+    except Exception as _tps_e:
+        log.debug("training_pipeline_status record_run_start: %s", _tps_e, exc_info=True)
 
     arch_state = {}
     if arch_target_path.exists():
@@ -1674,6 +1687,55 @@ def run_once(
                 cas_used_ctc = bool(cas_ret.get("used_cascade_tensor_cache", False))
                 cm_trained_at = run_ts
                 cas_warm_resume = cas_ret.get("warm_resume") or {}
+
+            from training_cache import sync_candidate_manifest_lineage_before_governed_eval
+
+            _lineage_par_eval = {
+                "eval_accuracy": round(parallel_acc, 6),
+                "balanced_accuracy": round(parallel_bal, 6),
+                "n_rows": n_rows,
+                **(
+                    {"eval_log_loss": round(parallel_ll, 6)}
+                    if parallel_ll is not None
+                    else {}
+                ),
+                "realized_contract_metrics": parallel_realized_metrics,
+            }
+            _lineage_cas_eval = {
+                "eval_accuracy": round(cascade_acc, 6),
+                "balanced_accuracy": round(cascade_bal, 6),
+                "n_rows": n_cascade_rows,
+                **(
+                    {"eval_log_loss": round(cascade_ll, 6)}
+                    if cascade_ll is not None
+                    else {}
+                ),
+                "realized_contract_metrics": cascade_realized_metrics,
+            }
+            sync_candidate_manifest_lineage_before_governed_eval(
+                parallel_out,
+                ticker=ticker,
+                architecture="parallel",
+                ml_horizon_suffix=hz_sched,
+                scheduler_cache_key=parallel_key,
+                feature_cache_key=fk,
+                data_fp=data_fp,
+                training_code_fingerprint=code_fp,
+                evaluation=_lineage_par_eval,
+                trained_at=pm_trained_at,
+            )
+            sync_candidate_manifest_lineage_before_governed_eval(
+                cascade_out,
+                ticker=ticker,
+                architecture="cascade",
+                ml_horizon_suffix=hz_sched,
+                scheduler_cache_key=cascade_key,
+                feature_cache_key=fk,
+                data_fp=data_fp,
+                training_code_fingerprint=code_fp,
+                evaluation=_lineage_cas_eval,
+                trained_at=cm_trained_at,
+            )
 
             governed_slice: Optional[dict[str, Any]] = None
             governed_paths: Optional[dict[str, str]] = None
@@ -2180,6 +2242,13 @@ def run_once(
     arch_target_path.write_text(json.dumps(arch_state, indent=2))
     log.info("%s updated", arch_target_path.name)
     log.info("Training report appended to %s", TRAINING_REPORT_PATH)
+
+    try:
+        from training_pipeline_status import record_run_finish
+
+        record_run_finish(ml_horizon=hz_sched, ticker_outcomes=[])
+    except Exception as _tps_fin:
+        log.debug("training_pipeline_status record_run_finish: %s", _tps_fin, exc_info=True)
 
     # Active artifact verification — flag non-compliant
     try:

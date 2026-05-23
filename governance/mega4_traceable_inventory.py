@@ -104,6 +104,9 @@ MEGA4_FILES = frozenset(
         "transformer_model.py",
         "transformer_train.py",
         "xgboost_model.py",
+        # PR1 (training pipeline automation Phase 0) — new files
+        "active_bundle_contract.py",
+        "training_pipeline_status.py",
     }
 )
 
@@ -820,6 +823,8 @@ MEGA4_TRACEABLE_INVENTORY: tuple[Mega4TraceableDerivation, ...] = (
     Mega4TraceableDerivation("training_cache.py", 933, "manifest_matches_current", "NONE", None, (), None, "Training cache/provenance metadata; no market derivation."),
     Mega4TraceableDerivation("training_cache.py", 968, "build_manifest", "NONE", None, (), None, "Training cache/provenance metadata; no market derivation."),
     Mega4TraceableDerivation("training_cache.py", 1004, "build_manifest._ts_label", "NONE", None, (), None, "No market-field derivation: Nested helper inside build_manifest; parent row owns derivation semantics."),
+    Mega4TraceableDerivation("training_cache.py", 969, "sync_candidate_manifest_lineage_before_governed_eval", "NONE", None, (), None, "G3-R3 closure: stamps scheduler_run_manifest.json on-disk with current run lineage (ml_horizon_suffix + cache keys + data_fingerprint + canonical contract) before governed eval reads it. Patches the existing manifest in place via load_run_manifest + save_run_manifest. No DB read, no market-field derivation (lineage metadata only)."),
+    Mega4TraceableDerivation("training_cache.py", 999, "sync_candidate_manifest_lineage_before_governed_eval._ts_label", "NONE", None, (), None, "Pure nested helper inside sync_candidate_manifest_lineage_before_governed_eval: stringifies an optional timestamp value (None → empty string). No DB read, no market-field derivation."),
     Mega4TraceableDerivation("training_cache.py", 1047, "cache_exists", "NONE", None, (), None, "Training cache/provenance metadata; no market derivation."),
     Mega4TraceableDerivation("training_cache.py", 1061, "read_cache_meta", "NONE", None, (), None, "Training cache/provenance metadata; no market derivation."),
     Mega4TraceableDerivation("training_cache_policy.py", 34, "training_repo_root", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
@@ -878,5 +883,16 @@ MEGA4_TRACEABLE_INVENTORY: tuple[Mega4TraceableDerivation, ...] = (
     Mega4TraceableDerivation("training_cache.py", 302, "_fingerprint_key_part", "NONE", None, (), None, "Pure helper: returns canonical key-part string for fingerprint composition. No DB read, no market-field derivation."),
     Mega4TraceableDerivation("training_cache.py", 308, "_fingerprint_row_count_part", "NONE", None, (), None, "Pure helper: returns canonical row-count part string for fingerprint composition. No DB read, no market-field derivation."),
     Mega4TraceableDerivation("training_cache.py", 346, "_meta_required_positive_int", "NONE", None, (), None, "Pure validator: requires caller-supplied meta dict to contain a positive int at the given key. No DB read, no market-field derivation."),
+    # PR1 (training pipeline automation Phase 0) — active_bundle_contract.py (G3-R1 single completeness contract)
+    Mega4TraceableDerivation("active_bundle_contract.py", 24, "active_bundle_dir", "NONE", None, (), None, "Pure path resolver: returns production active root for (ticker, horizon) — `models/active/{T}` for 1c or `models/active_{hz}/{T}` otherwise. No DB read, no market-field derivation."),
+    Mega4TraceableDerivation("active_bundle_contract.py", 33, "bundle_artifact_paths", "NONE", None, (), None, "Pure path builder: returns the (kind, model_path, meta_path) triple for each artifact in a bundle directory. No DB read, no market-field derivation."),
+    Mega4TraceableDerivation("active_bundle_contract.py", 49, "check_active_bundle_complete", "NONE", None, (), None, "Pure validator: checks the 6-file completeness contract (xgb + lstm + transformer × model+meta) plus per-artifact model_contract validation for one (ticker, horizon) bundle directory. No DB read, no market-field derivation."),
+    Mega4TraceableDerivation("active_bundle_contract.py", 100, "strict_active_bundle_dir_for_horizon", "NONE", None, (), None, "Pure resolver: returns the best active dir for a horizon that satisfies `check_active_bundle_complete`, or None. G3-R1 shared between `verify_active_models` and `ml_predict._model_dir_for_ticker` strict mode. No DB read, no market-field derivation."),
+    Mega4TraceableDerivation("active_bundle_contract.py", 118, "primary_horizons_for_verify", "NONE", None, (), None, "Pure helper: returns `PRIMARY_DECISION_HORIZONS` as a tuple for verify pipelines. No DB read, no market-field derivation."),
+    # PR1 (training pipeline automation Phase 0) — training_pipeline_status.py (P0-1/P0-3 ops visibility aggregate)
+    Mega4TraceableDerivation("training_pipeline_status.py", 13, "enrollment_category_counts", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Opens `EdDB(db_path).logging_universe_list_rows()` to count enrolled tickers by category for the run-start payload. Mega4 internal SQLite read via Mega1 producer; no Schwab wire derivation."),
+    Mega4TraceableDerivation("training_pipeline_status.py", 40, "write_status", "NONE", None, (), None, "Atomic JSON write of caller-supplied status payload to the status path; mkdir parents if missing. No DB read, no market-field derivation."),
+    Mega4TraceableDerivation("training_pipeline_status.py", 45, "record_run_start", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Run-start aggregator: composes payload from caller-supplied (ml_horizon, target_column, tickers) + `enrollment_category_counts(db_path)` SQLite read, writes via `write_status`. No Schwab wire derivation."),
+    Mega4TraceableDerivation("training_pipeline_status.py", 69, "record_run_finish", "NONE", None, (), None, "Pure dict-merge: reads existing status JSON if present, updates with run-finish fields (timestamp, ml_horizon, ticker_outcomes, exit_code_hint), writes. No DB read, no market-field derivation."),
 )
 

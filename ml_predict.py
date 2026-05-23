@@ -282,45 +282,13 @@ def _model_dir_for_ticker(ticker: str) -> Path:
         "no",
     )
     if strict_active_only:
-        # Fail-closed to active roots only (default). Deterministic selection:
-        # choose the directory that actually contains the per-horizon artifacts for this hz,
-        # not merely "first existing dir with any xgb_* for hz" (which can strand LSTM/TR).
-        cands = [MODEL_DIR / f"active_{hz}" / ticker, MODEL_DIR / "active" / ticker]
+        from active_bundle_contract import strict_active_bundle_dir_for_horizon
 
-        def _score_dir(d: Path) -> tuple[int, int]:
-            if not d.exists():
-                return (-1, -1)
-            xgb = 0
-            if (d / f"xgb_{ticker}_{hz}.pkl").exists():
-                xgb = 3
-            elif (d / f"xgb_{ticker}_{hz}_dir.pkl").exists() or (d / f"xgb_{ticker}_{hz}_move.pkl").exists():
-                xgb = 2
-            lstm = 2 if (
-                (d / f"lstm_{ticker}_{hz}.pt").exists()
-                and (d / f"lstm_{ticker}_{hz}_meta.json").exists()
-            ) else 0
-            tr = 2 if (
-                (d / f"transformer_{ticker}_{hz}.pt").exists()
-                and (d / f"transformer_{ticker}_{hz}_meta.json").exists()
-            ) else 0
-            total = xgb + lstm + tr
-            # Prefer horizon-specific root on ties (cands[0]) by giving it +1 tiebreaker.
-            tie = 1 if d == cands[0] else 0
-            return (total, tie)
-
-        best: Path | None = None
-        best_score = (-1, -1)
-        for d in cands:
-            sc = _score_dir(d)
-            if sc[0] < 0:
-                continue
-            if sc > best_score:
-                best_score = sc
-                best = d
-        if best is None or best_score[0] <= 0:
+        best = strict_active_bundle_dir_for_horizon(ticker, hz, models_dir=MODEL_DIR)
+        if best is None:
             raise FileNotFoundError(
-                f"ED_XGB_STRICT_ACTIVE_ONLY=1: no active model bundle found for {ticker} hz={hz} "
-                f"(checked: {[str(x) for x in cands]})"
+                f"ED_XGB_STRICT_ACTIVE_ONLY=1: no complete active model bundle for {ticker} hz={hz} "
+                f"(requires xgb+lstm+transformer artifacts per active_bundle_contract)"
             )
         return best
     if _INFER_ARCHITECTURE.get() == "cascade":

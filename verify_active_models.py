@@ -62,19 +62,9 @@ def _get_active_tickers() -> list[str]:
 
 
 def _active_bundle_dir(ticker: str, hz: str) -> Path:
-    """
-    Active artifact bundle directory for a (ticker, primary horizon).
+    from active_bundle_contract import active_bundle_dir
 
-    Mirrors production layout:
-      hz == 1c -> models/active/{ticker}
-      else     -> models/active_{hz}/{ticker}
-    """
-    from ml_horizon import normalize_ml_horizon_slug
-
-    su = normalize_ml_horizon_slug(hz)
-    if su == "1c":
-        return ACTIVE_DIR / ticker
-    return MODELS_DIR / f"active_{su}" / ticker
+    return active_bundle_dir(ticker, hz, models_dir=MODELS_DIR)
 
 
 def check_artifact_compliance(ticker: str) -> dict:
@@ -90,6 +80,7 @@ def check_artifact_compliance(ticker: str) -> dict:
     """
     from training_provenance import load_provenance, is_provenance_compliant
     from ml_horizon import PRIMARY_DECISION_HORIZONS
+    from active_bundle_contract import check_active_bundle_complete
 
     result = {
         "ticker": ticker,
@@ -101,11 +92,11 @@ def check_artifact_compliance(ticker: str) -> dict:
 
     primary_prov = None
     for hz in PRIMARY_DECISION_HORIZONS:
-        bundle_dir = _active_bundle_dir(ticker, hz)
-        if not bundle_dir.exists():
+        bundle = check_active_bundle_complete(ticker, hz, models_dir=MODELS_DIR)
+        if not bundle["compliant"]:
             result["compliant"] = False
-            result["issues"].append(f"missing bundle dir for hz={hz}: {bundle_dir}")
-            continue
+            result["issues"].extend(bundle.get("issues") or [])
+        bundle_dir = Path(bundle["bundle_dir"])
 
         triple = [
             ("xgb", f"xgb_{ticker}_{hz}.pkl", f"xgb_{ticker}_{hz}_meta.json"),
@@ -139,19 +130,6 @@ def check_artifact_compliance(ticker: str) -> dict:
                 else:
                     art["issues"].append("could not load provenance (missing or invalid metadata)")
                     result["compliant"] = False
-
-                if model_path.exists() and meta_path.exists():
-                    try:
-                        raw_meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                        from model_contract import validate_artifact_contract
-
-                        ok, reason = validate_artifact_contract(raw_meta, name)
-                        if not ok:
-                            art["issues"].append(f"model contract incompatible: {reason}")
-                            result["compliant"] = False
-                    except Exception as ex:
-                        art["issues"].append(f"model contract check failed: {ex}")
-                        result["compliant"] = False
 
             result["artifacts"][key] = art
 

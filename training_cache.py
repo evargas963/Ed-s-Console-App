@@ -966,6 +966,68 @@ def save_run_manifest(out_dir: Path, manifest: dict) -> None:
     )
 
 
+def sync_candidate_manifest_lineage_before_governed_eval(
+    out_dir: Path,
+    *,
+    ticker: str,
+    architecture: str,
+    ml_horizon_suffix: str,
+    scheduler_cache_key: str,
+    feature_cache_key: str,
+    data_fp: dict,
+    training_code_fingerprint: str,
+    evaluation: dict[str, Any] | None = None,
+    trained_at: str | None = None,
+) -> None:
+    """
+    Stamp scheduler_run_manifest.json with current run lineage before governed eval (G3-R3).
+
+    Governed evaluation reads on-disk manifests; without this, a fresh train for horizon 5c
+    can still see a stale ml_horizon_suffix=1c until the end-of-ticker manifest save.
+    """
+    from training_provenance import (
+        FEATURE_SCHEMA_VERSION,
+        LABEL_CONFIG_VERSION,
+        SCHEDULER_PIPELINE_VERSION,
+    )
+    from training_cache_policy import MANIFEST_SCHEMA_VERSION as MSV
+    from features.training_canonical_input import training_canonical_lineage_header
+
+    existing = load_run_manifest(out_dir) or {}
+    hz = str(ml_horizon_suffix or DEFAULT_ML_HORIZON_SLUG).strip().lower()
+
+    def _ts_label(v: Any) -> str:
+        if v is None:
+            return ""
+        return str(v)
+
+    patched: dict[str, Any] = dict(existing)
+    patched.update(
+        {
+            "schema_version": existing.get("schema_version") or MSV,
+            "ticker": ticker.upper(),
+            "architecture": architecture,
+            "ml_horizon_suffix": hz,
+            "scheduler_cache_key": scheduler_cache_key,
+            "feature_cache_key": feature_cache_key,
+            "training_code_fingerprint": training_code_fingerprint,
+            **training_canonical_lineage_header(),
+            "data_fingerprint": data_fp,
+            "data_start": _ts_label(data_fp.get("min_ts_utc")),
+            "data_end": _ts_label(data_fp.get("max_ts_utc")),
+            "row_count": _normalize_data_fp(data_fp).get("row_count"),
+            "feature_schema_version": FEATURE_SCHEMA_VERSION,
+            "label_config_version": LABEL_CONFIG_VERSION,
+            "scheduler_pipeline_version": SCHEDULER_PIPELINE_VERSION,
+        }
+    )
+    if evaluation is not None:
+        patched["evaluation"] = evaluation
+    if trained_at:
+        patched["trained_at"] = trained_at
+    save_run_manifest(out_dir, patched)
+
+
 def compare_aggregate_manifest_path() -> Path:
     from training_cache_policy import COMPARE_MANIFEST_FILENAME
 

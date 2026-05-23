@@ -9,6 +9,15 @@
 
 **Gate:** Activate when Layer 5 / Pilot 1 Schwab walk + stack sign-off queue is closed (or operator says **go live-ui latency**). Do not defer behind new feature work.
 
+**Immediate next (training pipeline automation):** When PR1–PR7 / `docs/plans/TRAINING_PIPELINE_AUTOMATION_PLAN.md` work closes (or operator calls review), run commit review **before** any bulk push.
+
+- [ ] **TRAINING-PIPELINE-PUSH-REVIEW — Commit review + push what is ready**  
+  **Gate:** Training pipeline automation project complete (or operator says **review now**).  
+  **Context (2026-05-22):** Local `feature/institutional-key-levels` is **124 commits ahead** of `origin/feature/institutional-key-levels` (remote tip `1c0ec96`, local tip `2924017`). PR1 training-pipeline work may still be uncommitted in working tree.  
+  **Scope:** (1) Commit any finished slices (PR1+ plan doc, inventory, tests) with conventional messages. (2) Walk unpushed history — group by theme (STACK-WIRE, mega4, streaming, training pipeline, docs-only). (3) Confirm pytest green on tip. (4) Push batches that are review-ready to `origin/feature/institutional-key-levels`; do **not** force-push. (5) Leave any WIP branch-local until next slice closes.  
+  **Deliverable:** Short push log (commit ranges pushed, anything held back + why). Update **GitHub backup state** table below with new remote tip.  
+  **Plan:** [`docs/plans/TRAINING_PIPELINE_AUTOMATION_PLAN.md`](docs/plans/TRAINING_PIPELINE_AUTOMATION_PLAN.md)
+
 **Cadence (2026-05-20):** **AUDIT-CAND-SERVER-PY-FULL-READ** (in flight) → **STACK-WIRING-INTEGRITY** program (below, immediately after server.py lane closes). Individual LIVE-UI rows remain authoritative; umbrella program ensures nothing from reliability assessment is dropped.
 
 - [ ] **LIVE-UI-1 — Near-real-time decision cards vs operator expectation (WebSocket/SSE)**  
@@ -766,12 +775,13 @@ Categorical inventories (`DerivationRecord` with free-text `schwab_leaf` like `"
 
 | Location | Branch | Tip | Status |
 |---|---|---|---|
-| Local `C:\Users\evarg\Documents\Trading\EdWebConsole` | `feature/institutional-key-levels` | latest local | Source of truth |
-| origin/feature/institutional-key-levels | (same branch on GitHub) | sometimes behind by unpushed commits | Backup target |
+| Local `C:\Users\evarg\Documents\Trading\EdWebConsole` | `feature/institutional-key-levels` | `2924017` (local) | Source of truth |
+| origin/feature/institutional-key-levels | (same branch on GitHub) | `1c0ec96` — **124 commits behind local** | Backup target |
 | origin/main | `main` | `4b8ba2d` (frozen) | Stale by 82+ commits |
 
 **Action items:**
-- [ ] **Backup sync** — keep `origin/feature/institutional-key-levels` exactly equal to local after each commit. Operator can `git push origin feature/institutional-key-levels` from launch folder.
+- [ ] **TRAINING-PIPELINE-PUSH-REVIEW** — see **NEXT** section (commit review + push ready batches after training pipeline project).
+- [ ] **Backup sync** — keep `origin/feature/institutional-key-levels` equal to local after review. Operator can `git push origin feature/institutional-key-levels` from launch folder.
 - [ ] **Main merge (deferred)** — when audit is complete (Layer 3+ done, all Action 10.x closed), open PR `feature → main` so main becomes canonical. No urgency since no other puller; durability concern only.
 
 **Rule going forward:** every commit on this branch should be pushed to origin same day. Local-only commits = single point of failure.
