@@ -70,7 +70,7 @@ Archive `~/.claude/projects/.../memory/` → `governance/archive/2026-Q2/memory_
 | PR4.1 follow-up | Committed `8feab6b` / `cd7d615`, pushed |
 | Push-first | Done 2026-05-23 |
 | TRAINING-PIPELINE-PUSH-REVIEW | Closed |
-| Phase 3a.1 `scheduler_log_loss_winner` | **Verified at `230724a`** — present in `ml_scheduler.py`; no `report["winner"]` on log-loss path |
+| Phase 3a.1 `scheduler_log_loss_winner` | **Closed @ `4cf18c0+`** — `promotion_decision_record` and eval dashboard use `scheduler_log_loss_winner`; not ambiguous `"winner"` |
 
 ---
 
@@ -136,7 +136,7 @@ Include: `schwab_field_inventory/` (refresh on Schwab CHANGELOG or quarterly); 1
 ## Phase 3 — Repo cleanup
 
 - **3a** — Conflicts; promotion authority in ACTIVE_PROGRAM
-- **3a.1** — ✅ Verified at codification tip (see Closed table)
+- **3a.1** — ✅ Closed (promotion_decision_record + eval dashboard; test `test_scheduler_log_loss_winner_field.py`)
 - **3b** — Archive to `governance/archive/2026-Q2/`
 - **3c** — Delete true duplicates (operator per item)
 - **3d** — `.py` audit (import-graph proof for protected modules)

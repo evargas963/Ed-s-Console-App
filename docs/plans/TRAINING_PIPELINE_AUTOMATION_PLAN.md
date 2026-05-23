@@ -498,7 +498,7 @@ python verify_active_models.py
 | PR4.1 | `8feab6b` | 3 follow-up — preflip §3C verify, rollback/guard tests | Done |
 | PR5–PR7 | — | Phases 4–6 | Not started |
 
-OPEN_ITEMS push-review rows: signed off 2026-05-21 (2619 pytest at tip). Phase 3a.1 done: `scheduler_log_loss_winner` in `ml_scheduler.py` (no `report["winner"]` for log-loss path).
+OPEN_ITEMS push-review rows: signed off 2026-05-21 (2619 pytest at tip). Phase 3a.1 done: `scheduler_log_loss_winner` in `report`, `promotion_decision_record`, and eval dashboard metrics (not ambiguous `"winner"`).
 
 ### Merge gates (non-negotiable)
 

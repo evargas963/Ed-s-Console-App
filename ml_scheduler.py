@@ -2104,7 +2104,7 @@ def run_once(
                 arch_state[ticker]["governed_competition"] = governed_slice
 
             promotion_decision_record = {
-                "winner": "parallel" if parallel_wins else "cascade",
+                "scheduler_log_loss_winner": "parallel" if parallel_wins else "cascade",
                 "primary_metric": "eval_log_loss",
                 "promoted_to_active": promoted,
                 "promotion_reason": report["promotion_reason"],
@@ -2157,7 +2157,7 @@ def run_once(
                         "realized_contract_metrics": cascade_realized_metrics,
                         "n_rows": n_cascade_rows,
                     },
-                    "winner": "parallel" if parallel_wins else "cascade",
+                    "scheduler_log_loss_winner": "parallel" if parallel_wins else "cascade",
                 }
                 save_dashboard_eval_metrics(_prev)
                 from realized_contract_eval import (
