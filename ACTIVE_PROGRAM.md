@@ -10,17 +10,17 @@
 
 ## Active program
 
-**Governance consolidation** — Phases **0–2** and **4** complete @ `8e79ea2` / `6246920`. Phase **3 decision artifacts** @ `4018f41` (`governance/consolidation/phase3/`). **Phase 3 execution** (archive moves, deletions, worktree prune, LFS hook audit) **not done** — awaits operator sign-off per [`baseline_delta.json`](governance/consolidation/phase3/baseline_delta.json) (`root_py_delta: 0`, worktrees unchanged @ ~2.43 GB). **Next:** operator push when ready, then Phase 3 execution slice or explicit sign-off; Schwab V4 walk primary thread. Training PR5–PR7 concurrent.
+**Governance consolidation** — Phases **0–2** and **4** complete. Phase **3 execution partial:** **3b/3c/3d/3f** landed via `tools/execute_phase3_cleanup.py` (`phase3_execution_log.json`); **3e worktree prune** still open (~2.43 GB, 9 dirty Claude worktrees — operator manual step). **Next:** 3e prune or push current state; then Schwab V4 walk. Training PR5–PR7 concurrent.
 
 ### Consolidation status (scope-explicit)
 
 | Phase | Status |
 |-------|--------|
 | 0, 1a–1c | Complete |
-| 2 | Complete — 286 MDs classified + scope headers |
-| 3 decision | Complete @ `4018f41` — artifacts only |
-| 3 execution | **Open** — 3b archive Historical MDs, 3c delete superseded, 3d import-graph moves, 3e worktree prune, 3f LFS hooks audit |
-| 4 | Complete @ `6246920` — pre-commit + no-grep subprocess guard |
+| 2 | Complete @ `8e79ea2` |
+| 3 decision | Complete @ `4018f41` |
+| 3 execution | **Partial** — 3b archive ✅, 3c no-delete decisions ✅, 3d import audit ✅, 3f LFS audit ✅; **3e worktree prune open** |
+| 4 | Complete @ `6246920` |
 
 ## Concurrent epic (not blocking consolidation)
 

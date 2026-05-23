@@ -137,8 +137,20 @@ def test_phase3_cleanup_artifacts():
         "duplicate_md_report.json",
         "protected_py_audit.json",
         "worktree_cleanup_notes.md",
+        "phase3_execution_log.json",
     ):
-        assert (phase3 / name).is_file(), f"missing {name}; run tools/build_phase3_repo_cleanup.py"
+        assert (phase3 / name).is_file(), f"missing {name}; run tools/execute_phase3_cleanup.py"
+
+
+def test_phase3b_root_audit_archives():
+    archive = ROOT / "governance/archive/2026-Q2/root_audits"
+    for name in (
+        "FUSION_MC_AUDIT.md",
+        "SNAPSHOT_DATA_AUDIT.md",
+    ):
+        assert (archive / name).is_file()
+    stub = (ROOT / "FUSION_MC_AUDIT.md").read_text(encoding="utf-8")
+    assert "Archived Phase 3b" in stub and "root_audits" in stub
 
 
 def test_phase4_pre_commit_config():
