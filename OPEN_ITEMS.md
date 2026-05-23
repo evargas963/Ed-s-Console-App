@@ -1,3 +1,5 @@
+> **Classification:** Operational Ledger | **Scope:** Canonical open-work registry; closes require SHA.
+
 # Open items — horizon, stack, UI consistency
 
 **Rule:** Items stay **open** until there is a merged/code-verified resolution (not just “planned”).  
@@ -9,7 +11,7 @@
 
 **Gate:** Activate when Layer 5 / Pilot 1 Schwab walk + stack sign-off queue is closed (or operator says **go live-ui latency**). Do not defer behind new feature work.
 
-**Active program (2026-05-23):** **Governance consolidation Phase 1a next** — [`docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md`](docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md). Phase 0 complete @ `dbb57c9`. **Concurrent epic:** Training Pipeline PR5–PR7 (not started).
+**Active program (2026-05-23):** **Governance consolidation complete (Phases 0–4)** @ `6246920` — [`docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md`](docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md). **Push pending** (operator: finish then push all). **Concurrent epic:** Training Pipeline PR5–PR7 (not started).
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 0** @ `dbb57c9` — Baseline snapshot, CI path inventory, do-not-rename list (114 paths), rule-source classification (38 rows / 35 memory files), memory gap read (`feedback_no_new_md_deliverables.md`). Auto-load tests documented pending post-1a. **Operator decisions:** defaults confirmed 2026-05-23.
 
@@ -18,6 +20,16 @@
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 1b** @ `8bc2bdb` — AGENT_SELF_GOVERNANCE 69 lines (grep-free #17/#20/#22); CLAUDE scope+V4 meta+gatekeeping rules; PROMOTION_POLICY historical; tests 14/14 on governance slice.
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 1c** @ `b9153f2` — thin `MEMORY.md`, 34 files in `governance/archive/2026-Q2/memory_archive/`, rule-number → topic-name rewrites, `tools/import_memory_archive_phase1c.py`, `test_memory_archive_has_all_source_files` (14/14 governance tests).
+
+- [x] **GOVERNANCE-CONSOLIDATION — Phase 2** @ `8e79ea2` — 286 MDs classified; 250 scope headers added; `tools/build_phase2_md_classification.py`; spreadsheet `governance/consolidation/phase2/md_classification.csv`.
+
+- [x] **GOVERNANCE-CONSOLIDATION — Phase 3** @ `4018f41` — `governance/consolidation/phase3/` artifacts (baseline delta, duplicate MD, protected py audit, worktree notes); token rotation in TRAINING_AND_MAINTENANCE; schwab_field_inventory quarterly refresh note. Root `.py` reduction deferred — operator sign-off path in `baseline_delta.json`.
+
+- [x] **GOVERNANCE-CONSOLIDATION — Phase 4** @ `6246920` — `.pre-commit-config.yaml`, `tools/check_no_grep_subprocess.py`, governance tests **18/18** on slice.
+
+- [ ] **GOVERNANCE-CONSOLIDATION — DRIFT-INCIDENT-RATE** — non-blocking quarterly metric; track agent rule violations post-consolidation.
+
+- [ ] **GOVERNANCE-CONSOLIDATION — PYTEST-TO-CI** — wire full pytest (~2620) to CI as separate workflow; local gate until closed.
 
 - [ ] **TRAINING-HOST-PREFLIP-E2E** — Operator preflip harness verify on real candidate roots (not git-gated). **Host:** before `ED_SCHEDULER_AUTO_PROMOTE=1`.
 
