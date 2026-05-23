@@ -2,15 +2,15 @@
 
 # ACTIVE_PROGRAM.md — what we are doing now
 
-**Updated:** 2026-05-23 (Phases 2–4 landing)  
-**Branch:** `feature/institutional-key-levels` @ consolidation Phases 0–1c complete; **2–4 landing in canonical workspace**  
+**Updated:** 2026-05-23 (Phases 0–4 complete @ `6246920`)  
+**Branch:** `feature/institutional-key-levels` — consolidation Phases 0–4 complete; push pending  
 **Execution plan:** [`docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md`](docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md)
 
 ---
 
 ## Active program
 
-**Governance consolidation & repo cleanup** — Phases 0–1c complete @ `747bf56`. Phases 2–4 landing (MD classification, cleanup artifacts, pre-commit enforcement). **Next after consolidation push:** Schwab V4 walk (concurrent Training PR5–PR7).
+**Governance consolidation & repo cleanup** — **Phases 0–4 complete** @ `6246920` (`eb268b1` OPEN_ITEMS). **Next:** operator push, then Schwab V4 walk primary thread. Training PR5–PR7 concurrent.
 
 ## Concurrent epic (not blocking consolidation)
 
