@@ -59,8 +59,30 @@ See **`PIPELINE_QUALITY.md`** and **`/guide/pipeline-quality`** for the full TQM
 | Nightly scheduler (wait for 16:15 ET weekdays) | Automation host only, dedicated process | `python ml_scheduler.py --wait` |
 | Ad hoc full parallel train (alternative entry) | When you want `train_all` only | `python train_all.py` |
 | Compare parallel vs cascade (SPY default in script) | Research / parity checks | `python train_compare.py` |
+| Consolidate split-brain active layout (core tickers) | After layout migration / before verify | `python tools/consolidate_active_horizon_layout.py` (dry-run); add `--apply` to copy |
 
 Optional flags (see each script’s `--help` if present): `ml_scheduler.py --force-retrain`, `--bypass-cache`.
+
+### Canonical active layout (PR3)
+
+Production inference and `verify_active_models.py` expect each horizon’s **six-file bundle** under a single canonical directory:
+
+| Horizon | Directory |
+|---------|-----------|
+| 1c | `models/active/{TICKER}/` |
+| 5c | `models/active_5c/{TICKER}/` |
+| 15c | `models/active_15c/{TICKER}/` |
+| 60c | `models/active_60c/{TICKER}/` |
+
+Legacy split-brain (weights under `models/active/SPY/` but meta-only under `models/active_5c/SPY/`) breaks strict inference. **Migrate core tickers** with:
+
+```powershell
+python tools/consolidate_active_horizon_layout.py              # dry-run plan for SPY, QQQ, IWM
+python tools/consolidate_active_horizon_layout.py --apply      # copy into canonical dirs
+python verify_active_models.py                                 # confirm SPY / QQQ / IWM
+```
+
+Promotion (manual or future auto) copies **only** the six files for the requested horizon into the matching canonical dir — not the full candidate directory glob.
 
 ---
 

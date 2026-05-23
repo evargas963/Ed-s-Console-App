@@ -69,10 +69,9 @@ def scheduler_arch_state_path(ml_horizon_slug: str) -> Path:
 
 
 def scheduler_active_root(ml_horizon_slug: str) -> Path:
-    su = normalize_ml_horizon_slug(ml_horizon_slug)
-    if su == DEFAULT_ML_HORIZON_SLUG:
-        return ACTIVE_DIR
-    return MODEL_DIR / f"active_{su}"
+    from active_bundle_contract import scheduler_active_root as _contract_root
+
+    return _contract_root(MODEL_DIR, ml_horizon_slug)
 
 
 def _infer_slug_from_target_column(target_column: str) -> str:
@@ -1970,9 +1969,17 @@ def run_once(
                 )
                 if not ok:
                     return False, reason
-                for f in src_dir.glob("*"):
-                    if f.is_file():
-                        shutil.copy2(f, active_dir / f.name)
+                try:
+                    from active_bundle_contract import promote_horizon_bundle_from_candidate
+
+                    promote_horizon_bundle_from_candidate(
+                        src_dir,
+                        ticker=ticker,
+                        hz=hz_sched,
+                        models_dir=MODEL_DIR,
+                    )
+                except FileNotFoundError as _pe:
+                    return False, str(_pe)
                 for meta_name in parallel_artifact_basenames(ticker, horizon_suffix=hz_sched):
                     if not str(meta_name).endswith("_meta.json"):
                         continue

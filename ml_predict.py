@@ -282,15 +282,17 @@ def _model_dir_for_ticker(ticker: str) -> Path:
         "no",
     )
     if strict_active_only:
-        from active_bundle_contract import strict_active_bundle_dir_for_horizon
+        from active_bundle_contract import active_bundle_dir, check_active_bundle_complete
 
-        best = strict_active_bundle_dir_for_horizon(ticker, hz, models_dir=MODEL_DIR)
-        if best is None:
+        canonical = active_bundle_dir(ticker, hz, models_dir=MODEL_DIR)
+        if not check_active_bundle_complete(ticker, hz, bundle_dir=canonical, models_dir=MODEL_DIR)[
+            "compliant"
+        ]:
             raise FileNotFoundError(
                 f"ED_XGB_STRICT_ACTIVE_ONLY=1: no complete active model bundle for {ticker} hz={hz} "
-                f"(requires xgb+lstm+transformer artifacts per active_bundle_contract)"
+                f"at canonical {canonical} (requires xgb+lstm+transformer per active_bundle_contract)"
             )
-        return best
+        return canonical
     if _INFER_ARCHITECTURE.get() == "cascade":
         cd = MODEL_DIR / "cascade" / ticker
         if not cd.is_dir():

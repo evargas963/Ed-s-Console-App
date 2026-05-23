@@ -43,10 +43,9 @@ CONTROL_RECORD_SCHEMA_VERSION = "1"
 
 
 def scheduler_active_root(model_dir: Path, ml_horizon_slug: str) -> Path:
-    su = normalize_ml_horizon_slug(ml_horizon_slug)
-    if su == DEFAULT_ML_HORIZON_SLUG:
-        return model_dir / "active"
-    return model_dir / f"active_{su}"
+    from active_bundle_contract import scheduler_active_root as _contract_root
+
+    return _contract_root(model_dir, ml_horizon_slug)
 
 
 def arch_state_path_for_horizon(model_dir: Path, ml_horizon_slug: str) -> Path:
@@ -106,6 +105,7 @@ def _replace_active_dir_from_source(
     active_ticker_dir: Path,
     *,
     exclude_names: frozenset[str] = frozenset(),
+    include_names: frozenset[str] | None = None,
 ) -> None:
     """Atomically replace active ticker directory contents from src (staging + os.replace)."""
     parent = active_ticker_dir.parent
@@ -118,8 +118,13 @@ def _replace_active_dir_from_source(
     staging.mkdir(parents=True)
     try:
         for f in src.glob("*"):
-            if f.is_file() and f.name not in exclude_names:
-                shutil.copy2(f, staging / f.name)
+            if not f.is_file():
+                continue
+            if f.name in exclude_names:
+                continue
+            if include_names is not None and f.name not in include_names:
+                continue
+            shutil.copy2(f, staging / f.name)
 
         if backup.exists():
             shutil.rmtree(backup)
@@ -140,8 +145,22 @@ def _replace_active_dir_from_source(
         raise
 
 
-def _copy_candidate_to_active(src: Path, active_ticker_dir: Path) -> None:
-    _replace_active_dir_from_source(src, active_ticker_dir)
+def _copy_candidate_to_active(
+    src: Path,
+    active_ticker_dir: Path,
+    *,
+    ticker: str,
+    hz: str,
+    model_dir: Path,
+) -> None:
+    from active_bundle_contract import promote_horizon_bundle_from_candidate
+
+    promote_horizon_bundle_from_candidate(
+        src,
+        ticker=ticker,
+        hz=hz,
+        models_dir=model_dir,
+    )
 
 
 def _snapshot_active_to_checkpoint(
@@ -317,7 +336,13 @@ def manual_promote_to_active_explicit(
 
     try:
         _snapshot_active_to_checkpoint(active_ticker_dir, ck_dir, prior_arch)
-        _copy_candidate_to_active(src, active_ticker_dir)
+        _copy_candidate_to_active(
+            src,
+            active_ticker_dir,
+            ticker=tku,
+            hz=hz,
+            model_dir=model_dir,
+        )
     except Exception as e:
         try:
             _clear_promotion_pending(model_dir, hz, tku)

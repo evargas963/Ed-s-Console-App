@@ -1,14 +1,16 @@
 """Shared active-bundle completeness contract (G3-R1).
 
 Single definition used by verify_active_models and ml_predict strict resolution.
+PR3 (P2-1): canonical active root = scheduler_active_root(hz) only.
 """
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
-from ml_horizon import PRIMARY_DECISION_HORIZONS, normalize_ml_horizon_slug
+from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug
 
 MODELS_DIR = Path(__file__).resolve().parent / "models"
 ACTIVE_DIR = MODELS_DIR / "active"
@@ -21,13 +23,29 @@ BUNDLE_ARTIFACT_TRIPLE = (
 )
 
 
+def scheduler_active_root(models_dir: Path, ml_horizon_slug: str) -> Path:
+    """Canonical production root for a horizon (P2-1). 1c → models/active; else models/active_{hz}."""
+    su = normalize_ml_horizon_slug(ml_horizon_slug)
+    if su == DEFAULT_ML_HORIZON_SLUG:
+        return models_dir / "active"
+    return models_dir / f"active_{su}"
+
+
 def active_bundle_dir(ticker: str, hz: str, *, models_dir: Path | None = None) -> Path:
-    """Production active root for (ticker, horizon)."""
-    su = normalize_ml_horizon_slug(hz)
+    """Production active directory for (ticker, horizon) under the canonical root."""
     root = models_dir or MODELS_DIR
-    if su == "1c":
-        return root / "active" / ticker
-    return root / f"active_{su}" / ticker
+    return scheduler_active_root(root, hz) / ticker.upper()
+
+
+def horizon_bundle_filenames(ticker: str, hz: str) -> tuple[str, ...]:
+    """Six filenames (model + meta × 3) for one (ticker, horizon) bundle."""
+    t = ticker.upper()
+    su = normalize_ml_horizon_slug(hz)
+    names: list[str] = []
+    for _kind, model_pat, meta_pat in BUNDLE_ARTIFACT_TRIPLE:
+        names.append(model_pat.format(ticker=t, hz=su))
+        names.append(meta_pat.format(ticker=t, hz=su))
+    return tuple(names)
 
 
 def bundle_artifact_paths(ticker: str, hz: str, bundle_dir: Path) -> list[tuple[str, Path, Path]]:
@@ -44,6 +62,39 @@ def bundle_artifact_paths(ticker: str, hz: str, bundle_dir: Path) -> list[tuple[
             )
         )
     return out
+
+
+def legacy_layout_source_dirs(
+    ticker: str,
+    hz: str,
+    *,
+    models_dir: Path | None = None,
+) -> tuple[Path, ...]:
+    """
+    Legacy dirs that may hold misplaced horizon artifacts (split-brain migration).
+
+    Non-1c horizons may have weights under models/active/{T}/ instead of active_{hz}/{T}/.
+    """
+    root = models_dir or MODELS_DIR
+    t = ticker.upper()
+    su = normalize_ml_horizon_slug(hz)
+    canonical = active_bundle_dir(ticker, hz, models_dir=root)
+    legacy: list[Path] = []
+    if su != DEFAULT_ML_HORIZON_SLUG:
+        legacy.append(root / "active" / t)
+    wrong_slug = root / f"active_{su}" / t
+    if wrong_slug != canonical:
+        legacy.append(wrong_slug)
+    if su == DEFAULT_ML_HORIZON_SLUG:
+        legacy.append(root / "active_1c" / t)
+    seen: set[Path] = set()
+    ordered: list[Path] = []
+    for d in legacy:
+        if d in seen or d == canonical:
+            continue
+        seen.add(d)
+        ordered.append(d)
+    return tuple(ordered)
 
 
 def check_active_bundle_complete(
@@ -98,20 +149,10 @@ def check_active_bundle_complete(
 
 
 def strict_active_bundle_dir_for_horizon(ticker: str, hz: str, *, models_dir: Path | None = None) -> Path | None:
-    """Best active dir for hz that satisfies full bundle contract (G3-R1)."""
-    root = models_dir or MODELS_DIR
-    su = normalize_ml_horizon_slug(hz)
-    cands = [root / f"active_{su}" / ticker, root / "active" / ticker] if su != "1c" else [
-        root / "active" / ticker,
-        root / f"active_{su}" / ticker,
-    ]
-    seen: set[Path] = set()
-    for d in cands:
-        if d in seen:
-            continue
-        seen.add(d)
-        if check_active_bundle_complete(ticker, hz, bundle_dir=d, models_dir=root)["compliant"]:
-            return d
+    """Canonical active dir for hz when the full bundle contract passes (P2-4: no tie-break)."""
+    bd = active_bundle_dir(ticker, hz, models_dir=models_dir)
+    if check_active_bundle_complete(ticker, hz, bundle_dir=bd, models_dir=models_dir)["compliant"]:
+        return bd
     return None
 
 
@@ -133,3 +174,91 @@ def candidate_bundles_complete(
     par = check_candidate_bundle_complete(ticker, hz, parallel_dir)
     cas = check_candidate_bundle_complete(ticker, hz, cascade_dir)
     return par["compliant"] and cas["compliant"], par, cas
+
+
+def _validate_horizon_bundle_in_dir(src_dir: Path, ticker: str, hz: str) -> list[str]:
+    missing: list[str] = []
+    for name in horizon_bundle_filenames(ticker, hz):
+        if not (src_dir / name).is_file():
+            missing.append(name)
+    return missing
+
+
+def promote_horizon_bundle_from_candidate(
+    src_dir: Path,
+    *,
+    ticker: str,
+    hz: str,
+    models_dir: Path | None = None,
+) -> Path:
+    """
+    Copy the six-file bundle for (ticker, hz) into the canonical active dir (P2-2).
+
+    Uses atomic directory replace via manual_control._replace_active_dir_from_source.
+    """
+    missing = _validate_horizon_bundle_in_dir(src_dir, ticker, hz)
+    if missing:
+        raise FileNotFoundError(
+            f"partial candidate bundle for {ticker} hz={hz}: missing {missing[:3]}"
+            + ("…" if len(missing) > 3 else "")
+        )
+    active_ticker_dir = active_bundle_dir(ticker, hz, models_dir=models_dir)
+    include = frozenset(horizon_bundle_filenames(ticker, hz))
+    from arch_competition.manual_control import _replace_active_dir_from_source
+
+    _replace_active_dir_from_source(src_dir, active_ticker_dir, include_names=include)
+    return active_ticker_dir
+
+
+def consolidate_horizon_layout_plan(
+    ticker: str,
+    hz: str,
+    *,
+    models_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Plan moves from legacy dirs into canonical active_{hz}/{T}/ (dry-run helper)."""
+    root = models_dir or MODELS_DIR
+    canonical = active_bundle_dir(ticker, hz, models_dir=root)
+    canonical.mkdir(parents=True, exist_ok=True)
+    moves: list[dict[str, str]] = []
+    for fname in horizon_bundle_filenames(ticker, hz):
+        dest = canonical / fname
+        if dest.is_file():
+            continue
+        for legacy in legacy_layout_source_dirs(ticker, hz, models_dir=root):
+            src = legacy / fname
+            if src.is_file():
+                moves.append({"file": fname, "from": str(src), "to": str(dest)})
+                break
+    return {
+        "ticker": ticker.upper(),
+        "horizon": normalize_ml_horizon_slug(hz),
+        "canonical_dir": str(canonical),
+        "moves": moves,
+    }
+
+
+def apply_consolidate_horizon_layout_plan(
+    plan: dict[str, Any],
+    *,
+    remove_from_legacy: bool = False,
+) -> list[str]:
+    """Apply a plan from consolidate_horizon_layout_plan; returns copied filenames."""
+    copied: list[str] = []
+    for move in plan.get("moves") or []:
+        if not isinstance(move, dict):
+            continue
+        src = Path(str(move.get("from") or ""))
+        dest = Path(str(move.get("to") or ""))
+        fname = str(move.get("file") or dest.name)
+        if not src.is_file():
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+        copied.append(fname)
+        if remove_from_legacy and src.is_file():
+            try:
+                src.unlink()
+            except OSError:
+                pass
+    return copied

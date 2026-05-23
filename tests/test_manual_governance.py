@@ -35,6 +35,30 @@ def _dfp():
     }
 
 
+def _write_horizon_bundle(bundle_dir: Path, ticker: str, hz: str, *, xgb_payload: bytes = b"x") -> None:
+    from model_contract import contract_metadata_dict
+
+    t = ticker.upper()
+    contract = contract_metadata_dict()
+    for kind in ("xgb", "lstm", "transformer"):
+        ext = ".pkl" if kind == "xgb" else ".pt"
+        payload = xgb_payload if kind == "xgb" else b"z"
+        bundle_dir.joinpath(f"{kind}_{t}_{hz}{ext}").write_bytes(payload)
+        meta = {
+            **contract,
+            "features": ["f1"],
+            "training_timeframe": "1m",
+            "target_column": f"outcome_{hz}",
+            "target_definition": f"outcome ~{hz}",
+            "rows_used": 500,
+        }
+        if kind == "xgb":
+            meta["category_maps"] = {}
+            meta["vol_medians"] = {}
+            meta["impute_medians"] = {"f1": 0.0}
+        bundle_dir.joinpath(f"{kind}_{t}_{hz}_meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
 def _write_candidate_manifests(parallel_dir: Path, cascade_dir: Path):
     common = {
         "schema_version": "2",
@@ -56,8 +80,8 @@ def _minimal_governed_files(model_dir: Path, *, cascade_ok: bool = True):
     pdir.mkdir(parents=True)
     cdir.mkdir(parents=True)
     _write_candidate_manifests(pdir, cdir)
-    (pdir / "xgb_SPY_1c.pkl").write_bytes(b"x")
-    (cdir / "xgb_SPY_1c.pkl").write_bytes(b"y")
+    _write_horizon_bundle(pdir, tku, hz, xgb_payload=b"x")
+    _write_horizon_bundle(cdir, tku, hz, xgb_payload=b"y")
 
     ev = {
         "schema_version": "1",
