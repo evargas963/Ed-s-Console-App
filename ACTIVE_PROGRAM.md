@@ -2,7 +2,7 @@
 
 # ACTIVE_PROGRAM.md — what we are doing now
 
-**Updated:** 2026-05-23 (tip `15bbd0c`)  
+**Updated:** 2026-05-23 (tip `05cb883`)  
 **Branch:** `feature/institutional-key-levels` — Phases 0–2 + 4 landed; Phase 3 execution gated  
 **Execution plan:** [`docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md`](docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md)
 
