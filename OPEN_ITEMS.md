@@ -780,8 +780,8 @@ Categorical inventories (`DerivationRecord` with free-text `schwab_leaf` like `"
 
 | Location | Branch | Tip | Status |
 |---|---|---|---|
-| Local `C:\Users\evarg\Documents\Trading\EdWebConsole` | `feature/institutional-key-levels` | *(see post-push tip)* | Source of truth |
-| origin/feature/institutional-key-levels | (same branch on GitHub) | *(updated on push 2026-05-21)* | Backup synced |
+| Local `C:\Users\evarg\Documents\Trading\EdWebConsole` | `feature/institutional-key-levels` | `d40e317` | Source of truth |
+| origin/feature/institutional-key-levels | (same branch on GitHub) | `d40e317` — **in sync** (pushed 2026-05-21, was 133 commits behind) | Backup synced |
 | origin/main | `main` | `4b8ba2d` (frozen) | Stale by 82+ commits |
 
 **Action items:**
