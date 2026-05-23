@@ -38,7 +38,7 @@
 
 ## Known risks
 
-- **CI:** `.github/workflows/schwab-csv-first.yml` only; full pytest (~2620 tests) is local gate until pytest-to-CI OPEN_ITEMS row lands.
+- **CI:** `schwab-csv-first.yml` on every push/PR (CSV-first + committed meta/scoreboard pin; diff-emission on **pull_request** only). **D17 closure** (`unreviewed_count == 0`) is `schwab-v4-closure.yml` (manual / main / register-path pushes) — expected fail until V4 walk completes. Full pytest (~2620 tests) remains local gate.
 - **Memory portability:** `AGENTS.md` + repo `MEMORY.md` (Phase 1c) = portable; `[OPERATOR-ONLY]` prefs stay machine-local until archived.
 - **Long branch:** prefer small consolidation commits; no force-push.
 - **`config.py` credentials:** hardcoded Schwab API key/secret in tracked file — queue credential-hygiene slice (env-only, rotate, history scrub if ever public).

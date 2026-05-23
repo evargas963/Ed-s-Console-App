@@ -12,8 +12,8 @@
     "tools/schwab_universal_coverage_scanner_v3 (module, --output governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv)"
   ],
   "notes": [
-    "CSV is generated in CI then validated against schwab_v4_register_build_meta.json pins (operator decision: meta authoritative).",
-    "Diff file is ephemeral (/tmp/schwab_csv_first.diff); not a repo path.",
-    "Renaming governance/artifacts/* or check_schwab_csv_first.py requires updating this workflow and related tools."
+    "2026-05-23: schwab-csv-first.yml = CSV-first + meta/scoreboard pin on push; register regen + diff-emission on pull_request only.",
+    "D17 closure metrics moved to .github/workflows/schwab-v4-closure.yml (manual / main / register paths).",
+    "Renaming governance/artifacts/* or check_schwab_csv_first.py requires updating both workflows."
   ]
 }
