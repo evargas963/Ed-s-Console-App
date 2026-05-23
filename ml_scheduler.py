@@ -1956,11 +1956,6 @@ def run_once(
             parallel_prov = load_provenance(parallel_xgb_meta) if parallel_xgb_meta.exists() else None
             cascade_prov = load_provenance(cascade_xgb_meta) if cascade_xgb_meta.exists() else None
 
-            parallel_xgb_meta = parallel_out / f"xgb_{ticker.upper()}_{hz_sched}_meta.json"
-            cascade_xgb_meta = cascade_out / f"xgb_{ticker.upper()}_{hz_sched}_meta.json"
-            parallel_prov = load_provenance(parallel_xgb_meta) if parallel_xgb_meta.exists() else None
-            cascade_prov = load_provenance(cascade_xgb_meta) if cascade_xgb_meta.exists() else None
-
             pprov = parallel_prov or cascade_prov
             report = {
                 "ticker": ticker,

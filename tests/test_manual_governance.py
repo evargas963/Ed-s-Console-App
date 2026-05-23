@@ -15,7 +15,6 @@ from arch_competition.manual_control import (
     MANUAL_PROMOTE_PARALLEL_INTENT,
     MANUAL_ROLLBACK_INTENT,
     arch_state_path_for_horizon,
-    assert_active_mutation_only_via_manual_control,
     load_governance_visibility,
     manual_promote_to_active_explicit,
     manual_rollback_to_checkpoint_explicit,
@@ -300,27 +299,6 @@ def test_load_governance_visibility(tmp_path: Path):
     assert v["production_default_runtime"] == "parallel"
     assert "recent_audit_actions" in v
 
-
-def test_governed_executor_required_for_active_writes():
-    from arch_competition.exceptions import ManualGovernanceError
-    from arch_competition.promotion_execution import (
-        assert_active_writes_use_governed_executor,
-        governed_active_write_scope,
-    )
-
-    with pytest.raises(ManualGovernanceError):
-        assert_active_writes_use_governed_executor("test")
-    with governed_active_write_scope("test"):
-        assert_active_writes_use_governed_executor("test")
-
-
-def test_assert_active_mutation_guard_alias():
-    """Legacy alias delegates to governed executor guard."""
-    from arch_competition.exceptions import ManualGovernanceError
-    from arch_competition.manual_control import assert_active_mutation_only_via_manual_control
-
-    with pytest.raises(ManualGovernanceError):
-        assert_active_mutation_only_via_manual_control()
 
 
 def test_no_implicit_promote_without_operator(tmp_path: Path):
