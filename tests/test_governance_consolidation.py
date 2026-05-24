@@ -168,3 +168,23 @@ def test_phase3b_root_audit_archives():
 def test_phase4_pre_commit_config():
     assert (ROOT / ".pre-commit-config.yaml").is_file()
     assert (ROOT / "tools/check_no_grep_subprocess.py").is_file()
+
+
+def test_mdc_is_pointers_only_no_duplicate_bans():
+    mdc = _read(".cursor/rules/00-always.mdc")
+    assert "Do not duplicate AGENTS rules here" in mdc
+    assert "Never use grep" not in mdc
+    assert "Want me to" not in mdc
+
+
+def test_agents_closure_and_no_new_files_sections():
+    agents = _read("AGENTS.md")
+    assert "Closure definition + no-deferral" in agents
+    assert "No new files when an existing one will do" in agents
+    assert "REAL-GATE taxonomy" in agents
+    assert "5-artifact" in agents or "ALL of the following land in the same commit" in agents
+    assert "historical only" in agents.lower() or "AGENTS.md wins" in agents
+
+
+def test_no_deferral_artifacts_sprawl_file_absent():
+    assert not (ROOT / "tests/test_no_deferral_artifacts.py").is_file()

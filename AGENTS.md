@@ -2,8 +2,8 @@
 
 # AGENTS.md — always-on agent rules (EdWebConsole)
 
-**Status:** Phase 1a consolidation (2026-05-23)  
-**Sources:** `docs/governance/AGENT_SELF_GOVERNANCE.md`, `CLAUDE.md`, Claude memory files, Cursor user rules (see disposition in `ACTIVE_PROGRAM.md` §Tool-Specific Notes).
+**Status:** Phase 1a consolidation + 2026-05-24 rule promotion (closure / no-deferral / no-new-files).  
+**Sources:** `docs/governance/AGENT_SELF_GOVERNANCE.md`, `CLAUDE.md` (Schwab law only). Archived memory under `governance/archive/` is **historical only** — if it disagrees with this file, **AGENTS.md wins**.
 
 Process mechanics (alternation, 7-artifact sign-off, slice tags) remain in [`docs/governance/AGENT_SELF_GOVERNANCE.md`](docs/governance/AGENT_SELF_GOVERNANCE.md).
 
@@ -38,10 +38,11 @@ Operator has standing full repo access. Do not ask for read-only research.
 
 ---
 
-## Banned phrases `[PROMOTED]` (`CLAUDE.md` FORBIDDEN PHRASES)
+## Banned phrases `[PROMOTED]`
 
-Rejection-grade if used to narrow scope below full-repo discipline:
+Rejection-grade in commit messages, code comments, tests, chat, and OPEN_ITEMS row text (unless the row carries `[REAL-GATE: …]`):
 
+**Scope-narrowing (full repo):**
 - "scope of current section" / "for this section only"
 - "scanner capability" / "the scanner doesn't walk that"
 - "in scope of the file I'm editing" / "collateral only" / "not in the ticket" / "out of scope of this PR"
@@ -50,6 +51,17 @@ Rejection-grade if used to narrow scope below full-repo discipline:
 - "fail-closed in [specific place]" as substitute for canopy→leaf trace
 - "closure per D17" while `partial_scan` is true or PR 2 gate not live
 - Any phrase whose effect narrows scope to less than the full repo
+
+**Deferral / parking (see [§Closure definition + no-deferral](#closure-definition--no-deferral) for REAL-GATE exceptions only):**
+- "deferred" / "deferring" used to schedule work to a later commit (unquoted scheduling sense)
+- "TBD:" / "still pending" / "currently pending" (scheduling sense)
+- "follow-up commit" / "follow-up slice" / "next slice will" / "next commit will"
+- "Phase N paired-fix pending" / "implementation pending" / "consumer pending" / "behavioral spec pending"
+- "will land later" / "can land later" / "Playwright deferred until CI"
+- "broader sweep deferred" / "deferred FINDs" (use **disclosed FINDs** + REAL-GATE tag or close in-turn)
+- End-of-turn menus: "Want me to…?", "Should I…?", "Your call.", "Say the word…", "go X if you want"
+
+Schwab-only phrases remain in `CLAUDE.md` FORBIDDEN PHRASES.
 
 ---
 
