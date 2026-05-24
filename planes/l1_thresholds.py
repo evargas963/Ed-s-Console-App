@@ -117,15 +117,10 @@ def _session_bucket(session_label: Optional[str], now_ts: Optional[float]) -> st
 
 
 def _vol_regime(vix: Optional[float]) -> str:
-    if vix is None or vix <= 0 or math.isnan(vix):
-        return "unknown"
-    if vix < 15.0:
-        return "low"
-    if vix < 20.0:
-        return "normal"
-    if vix < 30.0:
-        return "elevated"
-    return "high"
+    """VIX regime label for adaptive materiality — delegates 15/20/30 cuts to math_volatility.vix_tier_token (single authority)."""
+    from math_volatility import vix_tier_token
+
+    return vix_tier_token(vix) or "unknown"
 
 
 def _piecewise_linear(x: float, anchors: list[tuple[float, float]]) -> float:

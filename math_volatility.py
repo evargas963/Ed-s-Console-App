@@ -104,16 +104,44 @@ def session_bucket(et_hour: int, et_minute: int) -> str:
     return BUCKET_MORNING
 
 
-def vix_bucket(vix_level: float | None) -> str | None:
+# VIX tier cuts — single authority shared between math_volatility.vix_bucket (SignalInput
+# "vix_*" labels) and planes.l1_thresholds._vol_regime (adaptive-materiality regime token).
+# Cuts: <15 low, <20 normal, <30 elevated, otherwise high. None when vix_level is missing /
+# non-positive / NaN — callers compose their own "unknown" fallback semantics.
+VIX_TIER_LOW_MAX: float = 15.0
+VIX_TIER_NORMAL_MAX: float = 20.0
+VIX_TIER_ELEVATED_MAX: float = 30.0
+
+
+def vix_tier_token(vix_level: float | None) -> str | None:
+    """
+    Canonical VIX tier — single source for 15/20/30 cuts used across vix_bucket and
+    the L1 adaptive-materiality engine.
+
+    Returns "low" / "normal" / "elevated" / "high", or None when vix_level is None,
+    non-positive, or NaN. Callers add their own prefix / fallback as needed.
+    """
     if vix_level is None:
         return None
-    if vix_level < 15:
-        return "vix_low"
-    if vix_level < 20:
-        return "vix_normal"
-    if vix_level < 30:
-        return "vix_elevated"
-    return "vix_high"
+    try:
+        v = float(vix_level)
+    except (TypeError, ValueError):
+        return None
+    if v != v or v <= 0:  # NaN or non-positive
+        return None
+    if v < VIX_TIER_LOW_MAX:
+        return "low"
+    if v < VIX_TIER_NORMAL_MAX:
+        return "normal"
+    if v < VIX_TIER_ELEVATED_MAX:
+        return "elevated"
+    return "high"
+
+
+def vix_bucket(vix_level: float | None) -> str | None:
+    """SignalInput.vix_bucket — 'vix_low' / 'vix_normal' / 'vix_elevated' / 'vix_high' or None."""
+    tier = vix_tier_token(vix_level)
+    return f"vix_{tier}" if tier is not None else None
 
 
 # ── Expected move calculations ───────────────────────────────────────────────
