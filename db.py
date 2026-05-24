@@ -123,23 +123,23 @@ def configure_sqlite_connection(
     """
     Production pragmas for any sqlite3 connection touching the console DB.
     Safe to call on every new connection (WAL is idempotent once enabled on the file).
+
+    PRAGMA failures are rare (each pragma is well-formed) but possible if the DB file
+    is locked by a separate WAL-mode-incompatible client or filesystem permissions
+    block fsync. Log at debug so operators can spot pragmas silently degrading
+    (e.g. journal_mode falls back to DELETE under read-only mounts) instead of
+    inheriting whatever default the connection had.
     """
-    try:
-        conn.execute("PRAGMA journal_mode=WAL")
-    except sqlite3.Error:
-        pass
-    try:
-        conn.execute("PRAGMA synchronous=NORMAL")
-    except sqlite3.Error:
-        pass
-    try:
-        conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
-    except sqlite3.Error:
-        pass
-    try:
-        conn.execute("PRAGMA foreign_keys=ON")
-    except sqlite3.Error:
-        pass
+    for pragma in (
+        "PRAGMA journal_mode=WAL",
+        "PRAGMA synchronous=NORMAL",
+        f"PRAGMA busy_timeout={int(busy_timeout_ms)}",
+        "PRAGMA foreign_keys=ON",
+    ):
+        try:
+            conn.execute(pragma)
+        except sqlite3.Error as e:
+            log.debug("configure_sqlite_connection: %s failed: %s", pragma, e)
 
 
 def similarity_labeled_counts(rows: list) -> dict[str, int]:
@@ -292,7 +292,9 @@ class SnapshotRow:
     iv_direction:       Optional[str] = None  # 'expanding', 'contracting', 'flat'
     charm_magnitude:    Optional[float] = None  # abs charm net, normalized
     session_bucket:     Optional[str] = None  # 'open', 'morning', 'midday', 'afternoon', 'close'
-    vix_bucket:         Optional[str] = None  # 'low', 'normal', 'elevated', 'high', 'extreme'
+    # vix_bucket: produced by math_volatility.vix_bucket → 'vix_low' | 'vix_normal' | 'vix_elevated' | 'vix_high' | None.
+    # COH-SA-VIX-TIER (commit 2c5cef5) consolidated the 15/20/30 cuts in math_volatility.vix_tier_token.
+    vix_bucket:         Optional[str] = None
     put_call_oi_ratio:  Optional[float] = None
     oi_center:          Optional[float] = None
     gamma_pin:          Optional[float] = None  # strike with highest gamma
