@@ -34,7 +34,7 @@
 | Train | `ml_scheduler.run_once` trains parallel + cascade per ticker/horizon | Works for core tickers | — |
 | Evaluate | `arch_competition` writes manifest + promotion record | **G3-R3** lineage horizon mismatch can fail governed pass | `OPEN_ITEMS.md` G3 Reconciliation Queue |
 | Promote | `scheduler_auto_promote_to_active_enabled()` always False | Active never updates without manual promote | G4-4 dormant scheduler copy |
-| Horizons | `--all-horizons` loops 1c/5c/15c/60c | Promotion still manual per horizon | TRACK 4 deferred |
+| Horizons | `--all-horizons` loops 1c/5c/15c/60c | Promotion still manual per horizon | TRACK 4 (OPEN_ITEMS G4 queue) |
 | Verify | `verify_active_models.py` | Use as post-run gate | G3-R1 vs `ml_predict` |
 | Layout | Weights in `models/active/{T}/`, meta-only in `models/active_{hz}/{T}/` | Split-brain | G2 plan (paused) |
 | Exit code | Scheduler exit 0 with incomplete artifacts | Operator thinks success | **G4-3** `ml_scheduler.py:1701-1707`, `2133-2135` |
@@ -42,7 +42,7 @@
 | Bypass | Movement-head tools write direct to `active/` | Governance desync | **G4-2** (five tool scripts) |
 | Server sync | Request-path active mutation | Outside governance | **G4-1** `server.py:4426-4453` |
 
-**Tracking ID note:** **G3-R1, G3-R2, G3-R3** are **not** plan-internal — they live in `OPEN_ITEMS.md` § G3 Reconciliation Queue (`~410-414`). **G4-1..G4-4** are in `OPEN_ITEMS.md` § Deferred to G4 (`~388-392`). **STACK-WIRE-\*** is a separate stack-integrity workstream (Action 12.7+ closure); do not conflate with training automation except where verify/inference contracts overlap (G3-R1).
+**Tracking ID note:** **G3-R1, G3-R2, G3-R3** are **not** plan-internal — they live in `OPEN_ITEMS.md` § G3 Reconciliation Queue (`~410-414`). **G4-1..G4-4** are in `OPEN_ITEMS.md` § G4 queue (`~388-392`). **STACK-WIRE-\*** is a separate stack-integrity workstream (Action 12.7+ closure); do not conflate with training automation except where verify/inference contracts overlap (G3-R1).
 
 **Non-goal:** “100% perfect” ML accuracy. **Goal:** **reliable, automated, auditable** train → evaluate → promote → verify → live.
 
@@ -526,7 +526,7 @@ OPEN_ITEMS push-review rows: signed off 2026-05-21 (2619 pytest at tip). Phase 3
 | Writer inventory (deliverable) | `governance/ACTIVE_DIRECTORY_WRITER_INVENTORY.md` |
 | Writer inventory source | `governance/G1_DIAGNOSIS.md` § Direct-Active Writer Inventory |
 | Pre-flip harness | `tools/validate_autopromote_preflip.py`, `models/arch_competition/_preflip_decisions_{run_id}.json` |
-| OPEN_ITEMS | `OPEN_ITEMS.md` G3 Reconciliation Queue, G4 deferred |
+| OPEN_ITEMS | `OPEN_ITEMS.md` G3 Reconciliation Queue, G4 queue |
 | Inference / reload | `ml_predict.py` (~194–199 registries), `server.py` `POST /api/internal/reload_models`, `ml_scheduler.py` reload client |
 | Verify | `verify_active_models.py` |
 | Pre-train | `ops_runner.py` (`pre_train_gate`) |

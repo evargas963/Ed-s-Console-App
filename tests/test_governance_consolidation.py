@@ -170,6 +170,13 @@ def test_phase4_pre_commit_config():
     assert (ROOT / "tools/check_no_grep_subprocess.py").is_file()
 
 
+def test_pytest_ci_workflow_exists():
+    wf = ROOT / ".github/workflows/pytest.yml"
+    assert wf.is_file(), "PYTEST-TO-CI requires .github/workflows/pytest.yml"
+    body = wf.read_text(encoding="utf-8")
+    assert "npm run test:all" in body
+
+
 def test_mdc_is_pointers_only_no_duplicate_bans():
     mdc = _read(".cursor/rules/00-always.mdc")
     assert "Do not duplicate AGENTS rules here" in mdc

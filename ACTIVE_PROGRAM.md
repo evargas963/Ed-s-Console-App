@@ -50,12 +50,12 @@
 
 ## Known risks
 
-- **CI:** `schwab-csv-first.yml` on every push/PR (CSV-first + committed meta/scoreboard pin; diff-emission on **pull_request** only). **D17 closure** (`unreviewed_count == 0`) is `schwab-v4-closure.yml` (manual / main / register-path pushes) — expected fail until V4 walk completes. Full pytest (~2620 tests) remains local gate.
+- **CI:** `schwab-csv-first.yml` on every push/PR (CSV-first + committed meta/scoreboard pin; diff-emission on **pull_request** only). **`pytest.yml`** on every push/PR (`npm run test:all` — Playwright E2E + full pytest). **D17 closure** (`unreviewed_count == 0`) is `schwab-v4-closure.yml` (manual / main / register-path pushes) — expected fail until V4 walk completes.
 - **Memory portability:** `AGENTS.md` + repo `MEMORY.md` (Phase 1c) = portable; `[OPERATOR-ONLY]` prefs stay machine-local until archived.
 - **Long branch:** prefer small consolidation commits; no force-push.
 - **`config.py` credentials:** hardcoded Schwab API key/secret in tracked file — queue credential-hygiene slice (env-only, rotate, history scrub if ever public).
 - **`verify_active_models.py`:** exit 1 on many non-core tickers; SPY/QQQ/IWM compliant — expected, not broken stack.
-- **Pre-commit (Phase 4):** optional local hook — `pre-commit install` runs governance slice + `check_no_grep_subprocess.py` on staged Python.
+- **Pre-commit (Phase 4):** `pre-commit install` + `pre-commit install --hook-type commit-msg` — runs governance slice + deferral guard + `check_no_grep_subprocess.py` on staged files. `pre-commit run --all-files` is the acceptance bar.
 
 ---
 

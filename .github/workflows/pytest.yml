@@ -1,0 +1,48 @@
+name: Pytest Full Suite
+
+# Full Python suite + Playwright E2E (npm run test:all). Closes GOVERNANCE-CONSOLIDATION
+# PYTEST-TO-CI — separate from schwab-csv-first.yml (Schwab diff guards) and
+# schwab-v4-closure.yml (D17 register closure metrics).
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  pytest-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python -m pip install -r requirements.txt
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install Playwright system deps (Linux)
+        run: npx playwright install-deps chromium
+
+      - name: Run Playwright E2E then full pytest
+        env:
+          CI: "true"
+          ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
+        run: npm run test:all

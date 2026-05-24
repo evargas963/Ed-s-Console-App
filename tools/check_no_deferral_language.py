@@ -14,7 +14,8 @@ Scope:
   - Staged source files (when wired as a normal `pre-commit` hook).
 
 Allowlist (legitimate future-work tracking, NOT deferral): OPEN_ITEMS.md,
-ACTIVE_PROGRAM.md, MEMORY.md, governance/**, tests/**, this script itself.
+ACTIVE_PROGRAM.md, MEMORY.md, AGENTS.md, CLAUDE.md, governance/**, tests/**,
+this script itself.
 See ALLOWLIST_PATH_PATTERNS below.
 
 Usage (manual): `python tools/check_no_deferral_language.py <paths...>` —
@@ -103,6 +104,8 @@ ALLOWLIST_PATH_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(^|/)OPEN_ITEMS\.md$"),
     re.compile(r"(^|/)ACTIVE_PROGRAM\.md$"),
     re.compile(r"(^|/)MEMORY\.md$"),
+    re.compile(r"(^|/)AGENTS\.md$"),
+    re.compile(r"(^|/)CLAUDE\.md$"),
     re.compile(r"(^|/)governance/"),
     re.compile(r"(^|/)tools/check_no_deferral_language\.py$"),
     # Test files quote forbidden phrases when locking the guard itself; the

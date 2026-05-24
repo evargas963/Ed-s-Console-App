@@ -1,13 +1,18 @@
-"""CLAUDE.md FORBIDDEN PHRASES enforcement (Phase 1b)."""
+"""CLAUDE.md + AGENTS.md forbidden phrase enforcement (Phase 1b)."""
 from __future__ import annotations
 
-from governance.forbidden_phrases import find_forbidden_phrases, forbidden_phrases_from_claude
+from governance.forbidden_phrases import (
+    find_forbidden_phrases,
+    forbidden_phrases_all,
+    forbidden_phrases_from_claude,
+)
 
 
 def test_forbidden_phrases_list_non_empty():
-    phrases = forbidden_phrases_from_claude()
+    phrases = forbidden_phrases_all()
     assert len(phrases) >= 8
     assert "scope of current section" in phrases
+    assert forbidden_phrases_from_claude(), "CLAUDE Schwab-only list must remain non-empty"
 
 
 def test_detects_forbidden_scope_narrowing():

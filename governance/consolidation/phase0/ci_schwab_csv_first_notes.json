@@ -13,7 +13,8 @@
   ],
   "notes": [
     "2026-05-23: schwab-csv-first.yml = CSV-first + meta/scoreboard pin on push; register regen + diff-emission on pull_request only.",
+    "2026-05-24: pytest.yml = npm run test:all (Playwright E2E + full pytest) on push/PR; closes PYTEST-TO-CI.",
     "D17 closure metrics moved to .github/workflows/schwab-v4-closure.yml (manual / main / register paths).",
-    "Renaming governance/artifacts/* or check_schwab_csv_first.py requires updating both workflows."
+    "Renaming governance/artifacts/* or check_schwab_csv_first.py requires updating both Schwab workflows."
   ]
 }

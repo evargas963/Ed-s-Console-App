@@ -10,11 +10,32 @@
  * "Live-UI direction transports (LIVE-UI-1, Phase 2)". OF strip is NOT
  * covered by these helpers (its own order_flow_stale clock — FIND-WIRE5-2..3).
  *
- * Operator note: Playwright is not yet wired to CI (PYTEST-TO-CI gate in
- * OPEN_ITEMS); this spec runs locally via `npx playwright test
- * tests/e2e/find-liveui-6-direction-withhold.spec.js`.
+ * Operator note: CI runs this via `.github/workflows/pytest.yml` (`npm run test:all`).
  */
 const { test, expect } = require('@playwright/test');
+
+/** Reset live-integrity globals so synthesized payloads are not overridden by SSE ticks. */
+async function resetWithholdGlobals(page) {
+  await page.evaluate(() => {
+    window._priceAheadOfBundle = false;
+    window._liveUiIntegrity = {
+      quoteAhead: false,
+      pending: false,
+      genStale: false,
+      slowStaleVsFast: false,
+    };
+  });
+}
+
+async function gotoWithWithholdHelpers(page) {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () => typeof window.bundleDirectionWithheld === 'function',
+    null,
+    { timeout: 30000 },
+  );
+  await resetWithholdGlobals(page);
+}
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -114,12 +135,7 @@ test('bundleDirectionWithheld precedence — pending_shell wins over every other
 });
 
 test('horizonDirectionWithheld reads horizon_fusion_available map per Schwab-canonical slug', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(
-    () => typeof window.horizonDirectionWithheld === 'function',
-    null,
-    { timeout: 30000 },
-  );
+  await gotoWithWithholdHelpers(page);
 
   // MHMLB-NS1 hook: per-horizon availability map keyed on 1c/5c/15c/60c.
   const payload = {
@@ -128,55 +144,54 @@ test('horizonDirectionWithheld reads horizon_fusion_available map per Schwab-can
   const clean = {};
 
   const one = await page.evaluate(
-    ([integ, d]) => window.horizonDirectionWithheld(integ, d, '1c'),
+    ([integ, d]) => {
+      window._priceAheadOfBundle = false;
+      return window.horizonDirectionWithheld(integ, d, '1c');
+    },
     [clean, payload],
   );
   expect(one).toEqual({ withheld: true, reason: 'horizon_fusion_unavailable' });
 
   const five = await page.evaluate(
-    ([integ, d]) => window.horizonDirectionWithheld(integ, d, '5c'),
+    ([integ, d]) => {
+      window._priceAheadOfBundle = false;
+      return window.horizonDirectionWithheld(integ, d, '5c');
+    },
     [clean, payload],
   );
   expect(five.withheld).toBe(false);
 });
 
 test('horizonDirectionWithheld falls back to bundle-level fusion_available when map absent', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(
-    () => typeof window.horizonDirectionWithheld === 'function',
-    null,
-    { timeout: 30000 },
-  );
+  await gotoWithWithholdHelpers(page);
 
   // No horizon_fusion_available map; fusion_available=false on the payload.
-  const bundleOff = await page.evaluate(() =>
-    window.horizonDirectionWithheld({}, { fusion_available: false }, '15c'),
-  );
+  const bundleOff = await page.evaluate(() => {
+    window._priceAheadOfBundle = false;
+    return window.horizonDirectionWithheld({}, { fusion_available: false }, '15c');
+  });
   expect(bundleOff).toEqual({ withheld: true, reason: 'fusion_unavailable' });
 
   // No map, no fusion_available flag → not withheld (bundle-level handled elsewhere).
-  const noSignal = await page.evaluate(() =>
-    window.horizonDirectionWithheld({}, {}, '15c'),
-  );
+  const noSignal = await page.evaluate(() => {
+    window._priceAheadOfBundle = false;
+    return window.horizonDirectionWithheld({}, {}, '15c');
+  });
   expect(noSignal.withheld).toBe(false);
 });
 
 test('horizonDirectionWithheld inherits bundle-level withhold', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(
-    () => typeof window.horizonDirectionWithheld === 'function',
-    null,
-    { timeout: 30000 },
-  );
+  await gotoWithWithholdHelpers(page);
 
   // Bundle quoteAhead → every horizon also withheld with that reason.
-  const r = await page.evaluate(() =>
-    window.horizonDirectionWithheld(
+  const r = await page.evaluate(() => {
+    window._priceAheadOfBundle = false;
+    return window.horizonDirectionWithheld(
       { quoteAhead: true },
       { horizon_fusion_available: { '1c': true, '5c': true, '15c': true, '60c': true } },
       '60c',
-    ),
-  );
+    );
+  });
   expect(r).toEqual({ withheld: true, reason: 'quote_ahead' });
 });
 
@@ -221,18 +236,20 @@ test('_updateDirectionWithheldMarkers per-horizon: tf-signal-{slug} card marked 
   );
 
   const result = await page.evaluate(() => {
-    // Clean bundle but per-horizon withheld for 1c.
+    // Clean bundle but per-horizon withheld for 1c. Call the marker applier directly
+    // so live SSE ticks cannot republish window._priceAheadOfBundle via integrity refresh.
+    window._priceAheadOfBundle = false;
     window._lastData = {
       decision_generation_id: 1,
-      _server_build_ts: Date.now() / 1000,
       horizon_fusion_available: { '1c': false, '5c': true, '15c': true, '60c': true },
     };
-    window._tierCCardsPaintedAtGen = 1;
-    window._lastFullStateServerTs = Date.now() / 1000;
-    window.lastFastTs = 0;
-    window.lastRenderTimestamp = Date.now() / 1000;
-    window._priceAheadOfBundle = false;
-    if (typeof _updateLiveUiAe === 'function') _updateLiveUiAe();
+    window._liveUiIntegrity = {
+      quoteAhead: false,
+      pending: false,
+      genStale: false,
+      slowStaleVsFast: false,
+    };
+    if (typeof _updateDirectionWithheldMarkers === 'function') _updateDirectionWithheldMarkers();
     const card1 = document.getElementById('tf-signal-1c');
     const card5 = document.getElementById('tf-signal-5c');
     return {

@@ -31,7 +31,7 @@
 
 - [ ] **GOVERNANCE-CONSOLIDATION — DRIFT-INCIDENT-RATE** — non-blocking quarterly metric; track agent rule violations post-consolidation.
 
-- [ ] **GOVERNANCE-CONSOLIDATION — PYTEST-TO-CI** — wire full pytest (~2620) to CI as separate workflow; local gate until closed.
+- [x] **GOVERNANCE-CONSOLIDATION — PYTEST-TO-CI** @ `46a2f37` — `.github/workflows/pytest.yml` runs `npm run test:all` (Playwright E2E + full pytest) on push/PR; `requirements.txt` for CI runtime deps; pre-commit green on `--all-files` (forbidden-phrases drift, AGENTS/CLAUDE allowlist, prereg hash, FIND-LIVEUI-6 e2e SSE isolation).
 
 - [ ] **TRAINING-HOST-PREFLIP-E2E** — Operator preflip harness verify on real candidate roots (not git-gated). **Host:** before `ED_SCHEDULER_AUTO_PROMOTE=1`.
 

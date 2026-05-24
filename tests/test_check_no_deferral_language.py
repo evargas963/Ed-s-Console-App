@@ -115,6 +115,12 @@ def test_allowlisted_governance_md_does_not_trip(tmp_path: Path) -> None:
     assert rc == 0
 
 
+def test_allowlisted_agents_md_does_not_trip() -> None:
+    """AGENTS.md lists banned deferral phrases as documentation — must not self-trip."""
+    rc = mod.main([str(REPO_ROOT / "AGENTS.md")])
+    assert rc == 0
+
+
 def test_allowlisted_memory_file_does_not_trip(tmp_path: Path) -> None:
     """The memory file documenting the rule must list the banned phrases without firing."""
     p = tmp_path / "memory"

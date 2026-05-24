@@ -22,4 +22,4 @@ repos:
         entry: python tools/check_no_deferral_language.py
         language: system
         types: [text]
-        exclude: '^(OPEN_ITEMS\.md|ACTIVE_PROGRAM\.md|MEMORY\.md|governance/.*|tools/check_no_deferral_language\.py|tests/.*)$'
+        exclude: '^(OPEN_ITEMS\.md|ACTIVE_PROGRAM\.md|MEMORY\.md|AGENTS\.md|CLAUDE\.md|governance/.*|tools/check_no_deferral_language\.py|tests/.*)$'
