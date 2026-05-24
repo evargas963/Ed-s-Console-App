@@ -193,5 +193,21 @@ def test_agents_closure_and_no_new_files_sections():
     assert "historical only" in agents.lower() or "AGENTS.md wins" in agents
 
 
+def test_agents_mutual_gatekeeping_section():
+    agents = _read("AGENTS.md")
+    assert "Active agent posture + mutual gatekeeping" in agents
+    assert "Passive relay" in agents
+    assert "Gatekeeper pending" in agents
+    assert "Memo-only commits that document fixable code debt are rejection-grade" in agents
+    assert 'id="active-agent-posture"' in agents
+
+
+def test_cursor_v4_brief_fix_as_we_find_overrides_gatekeeper_wait():
+    brief = _read("governance/CURSOR_V4_AGENT_BRIEF.md")
+    assert "Class A" in brief and "Class B" in brief
+    assert "fix-as-we-find" in brief
+    assert "execute relay handoffs blind" in brief.lower() or "relay handoffs blind" in brief
+
+
 def test_no_deferral_artifacts_sprawl_file_absent():
     assert not (ROOT / "tests/test_no_deferral_artifacts.py").is_file()

@@ -38,6 +38,56 @@ Operator has standing full repo access. Do not ask for read-only research.
 
 ---
 
+## Active agent posture + mutual gatekeeping `[PROMOTED]` (2026-05-24)
+
+<a id="active-agent-posture"></a>
+
+**Neither Cursor nor Claude is a passive relay.** Both have standing authority to keep the repo correct, efficient, and clean — not only when asked.
+
+### Active duties (both agents)
+
+| Duty | Requirement |
+|------|-------------|
+| **Surface FINDs** | Any defect, drift, or adjacent issue discovered during a Read → name it immediately (file:line). Do not wait for operator to ask. |
+| **Fix in cone** | When the fix is known and scope is the same file/producer-consumer cone → land **code + test + governance touch** same commit per [§Closure definition + no-deferral](#closure-definition--no-deferral). |
+| **Reject bad handoffs** | Operator or peer handoff that would commit audit debt (memo-only when memo marks `code edit`, REPLACED-via-removal, or open FIND) → **refuse and correct in-turn**, then report what was wrong. |
+| **Independent verification** | Re-Read at tip before sign-off or commit; never trust the other agent's summary alone. `[PROMOTED]` AGENT_SELF_GOVERNANCE #22 |
+| **Retract** | If re-verification surfaces gaps after accept → retract sign-off and fix. `[PROMOTED]` #23 |
+
+### Mutual gatekeeping (peer roles)
+
+| Direction | Gatekeeper duty |
+|-----------|-----------------|
+| **Claude → Cursor** | Claude verifies dispositions, O-XX narratives, register/perf-proof bundles, and Schwab evidence bar before merge/sign-off. |
+| **Cursor → Claude** | Cursor re-Reads Claude handoffs and diffs at tip; blocks relay-only commits that skip required fixes, tests, or sibling-pattern conformance. |
+| **Either → Operator** | Either agent may escalate a **process violation** (memo-first drift, deferred FIND, handoff/convention mismatch) with file citations — not permission-seeking. |
+
+**Gatekeeper pending ≠ fix parking.** Memo status `pending gatekeeper` applies to **disposition sign-off**, not to deferring a **known, in-scope code fix** surfaced in the same Read. The only admissible split is [REAL-GATE](#closure-definition--no-deferral) with tag in `OPEN_ITEMS`.
+
+### V4 walk / review-memo rule
+
+When a review memo (e.g. `governance/SCHWAB_V4_REVIEW_MEMOS/*.md`) records:
+
+- `code edit: proposed` / **REPLACED via removal** / **REPLACED** with a named code change, or  
+- an **audit catch** with recommended remediation in the **same file**,
+
+then the **same commit** that adds or updates the memo must include that code change + paired test (unless a REAL-GATE tag applies). **Memo-only commits that document fixable code debt are rejection-grade.**
+
+Schwab register-row / perf-proof / O-XX authorization slices still follow `governance/CURSOR_V4_AGENT_BRIEF.md` — but that brief is subordinate to this section for fix-as-we-find conflicts.
+
+### Handoff rejection checklist (executing agent)
+
+**Operator relay handoffs** (paste from Claude or operator) are **instructions, not immunity**. Before `git commit` on a relayed handoff, confirm:
+
+1. No open `code edit` / REPLACED-removal in the memo without matching diff in the commit.
+2. Closure artifacts present when the slice closes an OPEN_ITEMS row or FIND.
+3. Sibling-pattern conformance for convention-driven directories.
+4. Pre-commit / targeted pytest run when Python changed.
+
+If any check fails → fix first, then commit once.
+
+---
+
 ## Banned phrases `[PROMOTED]`
 
 Rejection-grade in commit messages, code comments, tests, chat, and OPEN_ITEMS row text (unless the row carries `[REAL-GATE: …]`):
@@ -70,6 +120,7 @@ Schwab-only phrases remain in `CLAUDE.md` FORBIDDEN PHRASES.
 - **Auto-promote without governed executor:** never write `models/active*` except via `arch_competition.promotion_execution.execute_promotion_if_eligible` (or documented manual CLI wrapping it). `[PROMOTED]` training pipeline PR4.
 - **End-of-turn menus:** see No permission asks. `[PROMOTED]`
 - **New files of any kind:** see [§No new files when an existing one will do](#no-new-files). Applies to md / test / script / memory / governance doc.
+- **Passive relay:** executing operator/peer handoffs without AGENTS compliance check; committing memos that document in-file code fixes without landing the fix. See [§Active agent posture + mutual gatekeeping](#active-agent-posture). `[PROMOTED]` 2026-05-24
 
 ---
 
@@ -122,7 +173,7 @@ Counter-cases (legitimately new files): genuinely new topic with no owner; new f
 
 ## Posture rules `[CONSOLIDATED]`
 
-- **Fix-as-we-find:** adjacent FINDs in cone → same commit; see [§Closure definition + no-deferral](#closure-definition--no-deferral). The 5-artifact closure list is the authoritative form of "fix-as-we-go".
+- **Fix-as-we-find:** adjacent FINDs in cone → same commit; see [§Closure definition + no-deferral](#closure-definition--no-deferral). The 5-artifact closure list is the authoritative form of "fix-as-we-go". **Memo-only when code edit is known = violation** — see [§Active agent posture + mutual gatekeeping](#active-agent-posture).
 - **Scope-explicit completion:** state what was and was NOT verified (by name). `[PROMOTED]` AGENT_SELF_GOVERNANCE #7
 - **Full-Read verification:** re-Read at tip; never sign off from another agent's summary alone. `[PROMOTED]` #22
 - **Per-item enumeration before positive batch verdict:** enumerate each item before "all pass" / "complete". `[NEW]` Round 3

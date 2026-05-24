@@ -4,7 +4,7 @@
 
 **Procedural mechanics only.** Detectable behavior rules → [`AGENTS.md`](../../AGENTS.md). Current program → [`ACTIVE_PROGRAM.md`](../../ACTIVE_PROGRAM.md). Schwab methodology → [`CLAUDE.md`](../../CLAUDE.md).
 
-Operator sign-off: 7-artifact contract. Cursor implements; Claude verifies.
+Operator sign-off: 7-artifact contract. Cursor implements; Claude verifies. **Mutual gatekeeping:** each agent re-Reads at tip and may reject the other's handoff when it violates `AGENTS.md` § Active agent posture (memo-only drift, deferred in-file fixes, passive relay). See [`AGENTS.md`](../../AGENTS.md#active-agent-posture).
 
 ## Alternation
 
@@ -63,6 +63,7 @@ Scope artifact #7 must list adjacent patterns found by **full Read** of the prod
 |------|-------------|
 | **#22** | **Independent verification** — each agent **re-Reads at tip** end-to-end; never sign off from the other agent's summary alone (see AGENTS.md §Posture rules). |
 | **#23** | Retract sign-off if re-verification surfaces gaps. |
+| **#28** | **Mutual gatekeeping** — Claude verifies Cursor dispositions/O-XX; Cursor verifies Claude handoffs before commit. Either agent refuses relay-only work that skips fix-as-we-find. See AGENTS.md § Active agent posture. |
 | **#24** | Audit JSON counts must equal enumerated entries; add test when feasible. |
 | **#25** | → moved to AGENTS.md §Money-path module roster |
 | **#26** | N-site parity: N fixes → ≥ N regression tests (or parametrized). |
