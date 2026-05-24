@@ -16,6 +16,14 @@
 
 ---
 
+---
+
+## Gatekeeper CSV cross-check (retroactive @ 977e706, 2026-05-24)
+
+**Tool:** \python tools/check_schwab_csv_first.py --gatekeeper-crosscheck market_data_adapter.py\n**lexical_csv_collision_count:** 42
+
+Retroactive full-CSV AST cross-check. Prior memo dispositions unchanged; homonym collisions classified in original site sections. Zero new wire FIND from cross-check.
+
 ## Audit methodology (clause 4 — attribute / call / subscript)
 
 Audited **this file** (177 lines at HEAD) for:

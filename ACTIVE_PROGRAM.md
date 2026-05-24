@@ -85,7 +85,7 @@
 
 **Walk order (binding on agents, 2026-05-24):** (1) full Read + fix wire FINDs in-cone + consolidate/delete dead files; (2) gatekeeper `--gatekeeper-crosscheck`; (3) paired tests; (4) disposition memo last (CI receipt, not the work). Local multi-GB generated register CSVs are gitignored — delete on sight; meta pin in `governance/artifacts/schwab_v4_register_build_meta.json` is the tracked source of truth.
 
-**Money-path roster (AGENTS.md):** all 11 modules walked — final slice lands `features/signal_layer_v1`, `features/inference_snapshot`, `features/fusion_policy_contract` memos + gatekeeper tests in this commit series.
+**Money-path roster (AGENTS.md):** all 11 modules walked @ `9e88491`. All 16 V4 review memos pass gatekeeper CSV cross-check @ `9e88491` follow-on (10 legacy memos retroactive appendix).
 
 ---
 
