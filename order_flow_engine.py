@@ -251,7 +251,14 @@ def _compute_book_imbalance(data: dict, depth: int) -> Optional[float]:
 def _latest_quote_snapshot(items: list) -> Optional[dict]:
     """Return the most recent content item with BID_SIZE or ASK_SIZE (or BID_PRICE/ASK_PRICE)."""
     for item in reversed(items):
-        if isinstance(item, dict) and (item.get("BID_SIZE") is not None or item.get("BID_PRICE") is not None or item.get("bidSize") is not None):
+        if not isinstance(item, dict):
+            continue
+        if (
+            item.get("BID_SIZE") is not None
+            or item.get("ASK_SIZE") is not None
+            or item.get("BID_PRICE") is not None
+            or item.get("ASK_PRICE") is not None
+        ):
             return item
     return None
 

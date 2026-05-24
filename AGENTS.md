@@ -13,6 +13,39 @@ Current program: [`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md).
 
 ---
 
+## Fix everything we touch `[PROMOTED]` (2026-05-24 — top rule)
+
+**Every Read is a write obligation.** Open a file, cone, or walk for audit, review, investigation, or disposition → **fix every FIND there before sign-off or commit**. Same turn. Same commit bundle (code + test + governance touch per [§Closure definition + no-deferral](#closure-definition--no-deferral)).
+
+| In scope | Out of scope (only with evidence) |
+|----------|-----------------------------------|
+| Wrong leaf, non-canonical key, silent default, stale comment, adjacent defect in producer-consumer cone | Site already canonical with file:line proof |
+| Memo says `code edit` / audit catch with remediation | `NOT_MARKET_DATA` @ wire layer with upstream trace |
+| Test gap for behavior you changed | `[REAL-GATE: …]` in `OPEN_ITEMS` only |
+
+**Banned modes:** read-only investigation, memo-only when a fix is known, reporting FINDs without landing fix+test, "pending gatekeeper" as fix parking.
+
+**Mechanical enforcement:** `tools/check_fix_everything_we_touch.py` (pre-commit + `tests/test_check_fix_everything_we_touch.py`).
+
+---
+
+## Self-governance quality loop `[PROMOTED]` (2026-05-24)
+
+When operator or peer catches a **missed fix** (FIND surfaced, fix not landed same turn/commit):
+
+1. **Land the fix** immediately — code + test + governance touch.
+2. **Record** `PROC-MISSED-FIX-<topic>` row in `OPEN_ITEMS.md` (file:line, what was skipped, who caught it).
+3. **Promote prevention** in the **same commit bundle**:
+   - Rule gap → amend this file (`AGENTS.md`), OR
+   - Repeatable failure mode → extend `tools/check_*.py` + paired pytest so CI/pre-commit blocks the exact miss.
+4. **Close** the row `[x] @ <SHA>` only after the checker lock lands.
+
+**Incident template (OPEN_ITEMS):** `- [ ] PROC-MISSED-FIX-<topic> — <file:line> <what>; caught <how>; prevention: <checker or AGENTS §>`.
+
+Neither agent waits for permission to run this loop when a miss is recognized.
+
+---
+
 ## Banned tools `[PROMOTED]` (memory `feedback_no_grep_tool.md`, 2026-05-22)
 
 **Absolute ban — no exceptions.** Do not use pattern-matching search that returns matched **lines** instead of full file content:

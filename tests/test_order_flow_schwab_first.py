@@ -111,6 +111,23 @@ def test_top_book_pressure_emits_source_tier():
     assert tier == "schwab_quote"
 
 
+def test_top_book_pressure_streaming_uses_bid_ask_size_leaves_only():
+    pressure, tier = _compute_top_book_pressure(
+        {"content": [{"BID_SIZE": 120, "ASK_SIZE": 80}]}
+    )
+    assert pressure == (120 - 80) / 200
+    assert tier == "schwab_stream"
+
+
+def test_top_book_pressure_ignores_non_canonical_streaming_bid_ask_size_keys():
+    """Streaming CSV leaves are BID_SIZE/ASK_SIZE — not REST quote.bidSize/askSize."""
+    pressure, tier = _compute_top_book_pressure(
+        {"content": [{"bidSize": 100, "askSize": 50}]}
+    )
+    assert pressure is None
+    assert tier == "unavailable"
+
+
 def test_vwap_from_bars_declares_source_bars():
     from micro_structure import Candle
 

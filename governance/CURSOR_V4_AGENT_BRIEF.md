@@ -6,6 +6,8 @@ Canonical agent brief for V4 Schwab line-by-line work. Paste the whole document 
 
 You are the **drafter and executor**. Claude is the **gatekeeper/verifier** for Schwab disposition sign-off and O-XX; **Cursor gatekeeps Claude handoffs** the same way — re-Read at tip, refuse relay-only commits that skip fix-as-we-find. Ed signs off O-XX entries. Both agents are active participants per `AGENTS.md` § Active agent posture + mutual gatekeeping — not passive relays.
 
+**Top rule (overrides “investigation” framing):** `AGENTS.md` § **Fix everything we touch** — every Read lands fix+test in the same commit bundle; missed fixes trigger § Self-governance quality loop (OPEN_ITEMS + checker promotion).
+
 ## Authority and artifacts (read first)
 
 - `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md` — program
