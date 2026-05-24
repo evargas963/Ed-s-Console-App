@@ -16,12 +16,12 @@ def _safe_lower(value: Any) -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Execution timing:  not in structure inputs — readiness uses narrative reads only.
 # Structure confirmation: ~15m structural read (prediction_engine reads["15m"])
-# Higher-timeframe bias:   ~1h trend read      (prediction_engine reads["1h"])
+# Higher-timeframe bias:   ~60m trend read     (prediction_engine reads["60m"])
 #
-# Data flow: pred.timeframe_reads["15m"] → structure_confirmation
-#            pred.timeframe_reads["1h"]  → structure_higher_tf
-# Call site: call_engine.py passes _tf.get("15m") and _tf.get("1h").
-# NOTE: No 5m in readiness structure inputs. 15m and 1h are conceptual horizons.
+# Data flow: pred.timeframe_reads["15m"]  → structure_confirmation
+#            pred.timeframe_reads["60m"]  → structure_higher_tf
+# Call site: call_engine.py passes _tf.get("15m") and _tf.get("60m").
+# NOTE: No 5m in readiness structure inputs. 15m and 60m are conceptual horizons.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -33,7 +33,7 @@ def compute_call_readiness(call_input: dict) -> dict:
         regime
         trend
         structure_confirmation   # ~15m structure read (role: structure confirmation)
-        structure_higher_tf     # ~1h trend read (role: higher-timeframe bias)
+        structure_higher_tf     # ~60m trend read (role: higher-timeframe bias)
         prediction_direction
         prediction_dominant_prob
         confluence_read
@@ -95,7 +95,7 @@ def compute_call_readiness(call_input: dict) -> dict:
     # -----------------------------
     # 2) Structure score (20)
     # -----------------------------
-    # structure_confirmation = ~15m read, structure_higher_tf = ~1h read (role-based, not timeframe names)
+    # structure_confirmation = ~15m read, structure_higher_tf = ~60m read (role-based, not timeframe names)
     structure_score = 0.0
     structure_text = f"{structure_confirmation} {structure_higher_tf}"
 
@@ -269,7 +269,7 @@ def compute_put_readiness(put_input: dict) -> dict:
         trend_score = 4
         missing.append("Trend/regime is not clearly bearish.")
 
-    # 2) Structure (bearish) — structure_confirmation=~15m, structure_higher_tf=~1h
+    # 2) Structure (bearish) — structure_confirmation=~15m, structure_higher_tf=~60m
     structure_score = 0.0
     structure_text = f"{structure_confirmation} {structure_higher_tf}"
 
