@@ -33,6 +33,11 @@ PLANE_L1 = "L1_context"
 L1_SCHEMA_VERSION = 1
 MERGE_RULE_L1 = "L0_plus_acknowledged_L2_snapshot"
 
+# Max age (seconds) for the acknowledged L2 ms_dict before structural_context_stale
+# flips True. Operator-tunable policy threshold (not market data); named so the value
+# is grep-discoverable and consumer-facing diagnostics can reference the same constant.
+STRUCTURAL_CONTEXT_STALE_SEC: float = 120.0
+
 # Structural fields copied only from acknowledged L2 ms_dict (never recomputed here).
 _STRUCTURAL_KEYS = (
     "zone",
@@ -212,7 +217,9 @@ def build_l1_context(
     structural_age: Optional[float] = None
     if src_ts > 0:
         structural_age = max(0.0, ctx.now_ts - src_ts)
-    structural_context_stale = structural_age is None or structural_age > 120.0
+    structural_context_stale = (
+        structural_age is None or structural_age > STRUCTURAL_CONTEXT_STALE_SEC
+    )
     l2_snapshot_present = bool(ent and md)
 
     vwap_val = md.get("vwap")
