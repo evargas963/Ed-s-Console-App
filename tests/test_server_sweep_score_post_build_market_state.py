@@ -33,9 +33,22 @@ def _fetch_state_source() -> str:
     return inspect.getsource(server._fetch_state)
 
 
+def _strip_hash_comments(source: str) -> str:
+    """Drop # comment lines and inline # tails so regression guards match executable code only."""
+    out: list[str] = []
+    for line in source.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        if "#" in line:
+            line = line[: line.index("#")]
+        out.append(line)
+    return "\n".join(out)
+
+
 def test_no_dead_ms_in_dir_defensive_guard_in_fetch_state():
-    """The exact dead pattern must not return to _fetch_state."""
-    src = _fetch_state_source()
+    """The exact dead pattern must not return to _fetch_state executable code."""
+    src = _strip_hash_comments(_fetch_state_source())
     assert "'ms' in dir()" not in src, (
         "_fetch_state must not gate on `'ms' in dir()` — that always evaluates False "
         "when used before `ms = build_market_state(...)` runs"
@@ -82,7 +95,7 @@ def test_post_build_sweep_block_reads_real_ms_attrs():
     # Find the post-build sweep section by header text used in the fix.
     marker = "Section 8 (deferred) — Sweep Score"
     assert marker in src, "post-build sweep section marker must exist"
-    deferred = src.split(marker, 1)[1][:1500]
+    deferred = _strip_hash_comments(src.split(marker, 1)[1][:1500])
     assert "nearest_above_dist" in deferred
     assert "nearest_below_dist" in deferred
     assert "getattr(ms," in deferred or "getattr(ms ," in deferred
