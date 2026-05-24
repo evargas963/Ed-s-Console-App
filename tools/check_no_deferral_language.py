@@ -124,8 +124,9 @@ ALLOWLIST_PATH_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(^|/)MEMORY\.md$"),
     re.compile(r"(^|/)governance/"),
     re.compile(r"(^|/)tools/check_no_deferral_language\.py$"),
-    re.compile(r"(^|/)tests/test_check_no_deferral_language\.py$"),
-    re.compile(r"(^|/)tests/test_no_deferral_artifacts\.py$"),
+    # Test files quote forbidden phrases when locking the guard itself; the
+    # consolidated paired test lives in tests/test_check_no_deferral_language.py
+    # (per operator's "no rules in various places" directive 2026-05-24).
     re.compile(r"(^|/)tests/"),
     re.compile(r"memory/feedback_no_audit_deferral_across_walks\.md$"),
     # `.git/COMMIT_EDITMSG` and other commit-msg paths are intentionally NOT
