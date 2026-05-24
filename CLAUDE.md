@@ -207,15 +207,16 @@ files may change (tools/check_schwab_csv_first.py and
 .github/workflows/schwab-csv-first.yml). No scanner regen, register, or
 partial_scan changes.
 
-FORBIDDEN PHRASES (any of these in a response is rejection-grade):
-  • "scope of current section" / "for this section only"
-  • "scanner capability" / "the scanner doesn't walk that"
-  • "in scope of the file I'm editing" / "the file I was asked about"
-  • "collateral only" / "not in the ticket" / "out of scope of this PR"
-  • "ms_dict is the source" / "the API provides it" (without continuing to leaf)
-  • "based on the files I've reviewed" / "for the change set in this PR"
+FORBIDDEN PHRASES — Schwab-scope only. Agent-behavior banned phrases
+(deferral language, no-permission-asks, end-of-turn menus, etc.) live in
+AGENTS.md §Banned phrases and §Closure definition + no-deferral. Do not
+duplicate them here. The phrases below are rejection-grade specifically for
+Schwab market-field work:
   • "Mega N is done" / "the section is closed" / "we already inventoried that"
-  • "fail-closed in [specific place]" as a substitute for canopy→leaf trace
-  • "this is paper work, not code work"
   • "closure per D17" while partial_scan is true or PR 2 is not live
-  • Any phrase whose effect narrows scope to less than the full repo
+  • "ms_dict is the source" / "the API provides it" (without continuing to leaf)
+  • "fail-closed in [specific place]" as a substitute for canopy→leaf trace
+  • "scanner capability" / "the scanner doesn't walk that"
+  • "based on the files I've reviewed" / "for the change set in this PR"
+  • "this is paper work, not code work"
+  • Any phrase whose effect narrows Schwab market-field scope to less than the full repo

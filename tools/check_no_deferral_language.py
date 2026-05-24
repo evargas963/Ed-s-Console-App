@@ -1,44 +1,25 @@
 """Pre-commit guard: fail if a commit message or non-tracking file contains deferral language.
 
-Authored 2026-05-24 after the operator's third call-out on the deferral pattern
-(FIND-LIVEUI-6 paired-fix turn: Playwright spec was deferred with the rationale
-"PYTEST-TO-CI gate" — a re-skinned version of every prior deferral).
+**Authoritative rule source:** [AGENTS.md §Closure definition + no-deferral](../AGENTS.md).
+This script is the mechanical enforcement layer — the rule prose, the REAL-GATE
+taxonomy, and the closure definition (code + tests + inventory + map row +
+OPEN_ITEMS [x]@SHA in the same commit) all live in AGENTS.md, not here.
 
-Operator's rule (`feedback_no_audit_deferral_across_walks` memory): any small
-fix without a real gate (telemetry / training-skew / unwalked-file /
-accepted-as-designed) must land in the same commit. The deferral pattern shows
-up first in language — "deferred", "TBD", "pending X", "follow-up commit",
-"will land later", "next slice", "Phase N+1 paired-fix pending". This script
-catches those phrases before they reach a remote.
+Paired with the consolidated test `tests/test_check_no_deferral_language.py`
+(regex behavior + ledger-state locks + regression scan in one file per the
+"no rules in various places" operator directive 2026-05-24).
 
 Scope:
   - Commit message file (when wired as a `commit-msg` hook in pre-commit).
   - Staged source files (when wired as a normal `pre-commit` hook).
 
-Allowlist (files where future-work tracking is legitimate, NOT deferral):
-  - OPEN_ITEMS.md, ACTIVE_PROGRAM.md
-  - governance/**/*.md
-  - This script itself (so the rule documentation can list forbidden phrases).
+Allowlist (legitimate future-work tracking, NOT deferral): OPEN_ITEMS.md,
+ACTIVE_PROGRAM.md, MEMORY.md, governance/**, tests/**, this script itself.
+See ALLOWLIST_PATH_PATTERNS below.
 
 Usage (manual): `python tools/check_no_deferral_language.py <paths...>` —
-prints `file:line: matched <phrase>` to stderr-like stdout and exits non-zero
-on any hit; exits zero otherwise. Pre-commit wiring is left to the operator
-(see suggested `.pre-commit-config.yaml` block at the bottom of this docstring).
-
-Suggested .pre-commit-config.yaml additions:
-
-    - id: no-deferral-language-msg
-      name: no deferral language in commit message
-      entry: python tools/check_no_deferral_language.py
-      language: system
-      stages: [commit-msg]
-
-    - id: no-deferral-language-files
-      name: no deferral language in staged source files
-      entry: python tools/check_no_deferral_language.py
-      language: system
-      types: [text]
-      exclude: '^(OPEN_ITEMS\\.md|ACTIVE_PROGRAM\\.md|governance/.*|tools/check_no_deferral_language\\.py|.*memory/feedback_no_audit_deferral_across_walks\\.md)$'
+prints `file:line: matched <phrase>` to stdout and exits non-zero on any hit;
+zero otherwise. Pre-commit wiring is in `.pre-commit-config.yaml`.
 """
 from __future__ import annotations
 

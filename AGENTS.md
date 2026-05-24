@@ -57,13 +57,60 @@ Rejection-grade if used to narrow scope below full-repo discipline:
 
 - **Auto-promote without governed executor:** never write `models/active*` except via `arch_competition.promotion_execution.execute_promotion_if_eligible` (or documented manual CLI wrapping it). `[PROMOTED]` training pipeline PR4.
 - **End-of-turn menus:** see No permission asks. `[PROMOTED]`
-- **New governance MD deliverables:** no standalone `*_PLAN.md` / proposal MDs; amend existing docs or commit message. `[PROMOTED]` memory `feedback_no_new_md_deliverables.md`
+- **New files of any kind:** see [§No new files when an existing one will do](#no-new-files). Applies to md / test / script / memory / governance doc.
+
+---
+
+## Closure definition + no-deferral `[PROMOTED]` (2026-05-24 binding — operator escalation)
+
+**Closure of any slice means ALL of the following land in the same commit:**
+
+1. **Code** — the fix itself.
+2. **Tests** — paired test(s) that lock the behavior, in an existing test file when one owns the topic (extend, don't create — see [§No new files when an existing one will do](#no-new-files)).
+3. **Mega inventory** — when the refactor adds/renames/deletes a registered Python function/class: `governance/megaN_traceable_inventory.py` row + `tests/test_megaN_traceable_audit.py` row-count update in the same commit.
+4. **Map row** — when the slice touches a registered surface: `governance/STACK_WIRING_INTEGRITY_MAP.md` row updated to "producer + consumer landed" (not "inventory only", not "pending").
+5. **OPEN_ITEMS** — `[x] @ <SHA>` for every row the slice closes, with test cite in the row text when applicable.
+
+If any of the 5 cannot land same-commit, the slice is **not closed**. There is no "phase 2 paired-fix pending", "behavioral spec deferred until CI", "broader sweep deferred behind a brief", or "follow-up commit lands the e2e" variant. Those are the violation.
+
+**REAL-GATE taxonomy** — the ONLY acceptable deferrals. Each must be tagged `[REAL-GATE: <reason>]` in the OPEN_ITEMS row:
+
+| Tag | Meaning |
+|-----|---------|
+| `telemetry` | Needs production observation before the fix can be designed (e.g., uniform-triplet tiebreak prevalence). |
+| `training-skew` | Changing breaks trained model inputs without retrain. |
+| `unwalked-file` | The consumer/caller hasn't been Read yet AND won't be in this commit's scope. |
+| `accepted-as-designed` | Documented contract; the disclosure IS the right behavior. |
+| `host-only` | E2E / preflip / migration requires operator host time. Applies ONLY to execution, NOT to writing the spec / harness. |
+
+Any deferral without one of these tags is rejection-grade.
+
+**Mechanical enforcement:** `tools/check_no_deferral_language.py` (pre-commit + pytest via `tests/test_check_no_deferral_language.py`). The phrase list is normative in the tool's `DEFERRAL_PATTERNS` — don't duplicate it here. Allowlisted surfaces (legitimate future-work tracking, NOT deferral): `OPEN_ITEMS.md`, `ACTIVE_PROGRAM.md`, `MEMORY.md`, `governance/**`, `tests/**`, the tool itself, and the `[REAL-GATE: <tag>]` line shape.
+
+---
+
+<a id="no-new-files"></a>
+
+## No new files when an existing one will do `[PROMOTED]` (2026-05-24)
+
+Before creating any new file — md / test / script / memory / governance doc — find the existing file that owns the topic and extend it.
+
+| New thing | Existing owner (default — extend, don't create) |
+|-----------|--------------------------------------------------|
+| Rule about how to do a fix | This file (AGENTS.md). NOT a new `feedback_*.md` memory. |
+| Lock test for a new invariant adjacent to an existing rule's enforcement | The existing paired test (e.g., `tests/test_check_no_deferral_language.py` owns "deferral rule enforcement" including ledger-state locks, not just regex behavior). |
+| Decision rationale | Commit message body. NOT a `*_PROPOSAL.md` / `*_PLAN.md`. |
+| Architecture amendment | Existing `governance/PHASE_PLAN_*.md` or `INSTITUTIONAL_STANDARD_V3.md` §20. |
+| Enforcement script for a new rule | Single `tools/check_*.py`. Don't split. |
+| Mega inventory bump | Same commit as the refactor (no separate "mega-sync" commit or file). |
+
+Counter-cases (legitimately new files): genuinely new topic with no owner; new feature's paired test (one feature = one test file is a real convention); fundamentally different tool. If unsure, default to extend.
 
 ---
 
 ## Posture rules `[CONSOLIDATED]`
 
-- **Fix-as-we-find:** adjacent FINDs in cone → same commit or OPEN_ITEMS row before next slice. `[PROMOTED]` memory `feedback_fix_as_we_find_scope_policy.md`
+- **Fix-as-we-find:** adjacent FINDs in cone → same commit; see [§Closure definition + no-deferral](#closure-definition--no-deferral). The 5-artifact closure list is the authoritative form of "fix-as-we-go".
 - **Scope-explicit completion:** state what was and was NOT verified (by name). `[PROMOTED]` AGENT_SELF_GOVERNANCE #7
 - **Full-Read verification:** re-Read at tip; never sign off from another agent's summary alone. `[PROMOTED]` #22
 - **Per-item enumeration before positive batch verdict:** enumerate each item before "all pass" / "complete". `[NEW]` Round 3
