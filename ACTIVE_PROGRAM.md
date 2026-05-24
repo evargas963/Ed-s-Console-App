@@ -10,7 +10,7 @@
 
 ## Active program
 
-**Governance consolidation** — **Phases 0–4 complete** (3e @ pending SHA: 9 worktrees pruned, ~2.43 GB freed). **Next:** push + dual-agent re-audit; then Schwab V4 walk. Training PR5–PR7 concurrent.
+**Governance consolidation** — **Phases 0–4 complete** @ `ed9f882` (3e: 9 worktrees pruned, ~2.43 GB freed). **Gate closed** (dual-agent re-audit 2026-05-24). **Next:** Schwab V4 walk primary thread. Training PR5–PR7 concurrent.
 
 ### Consolidation status (scope-explicit)
 

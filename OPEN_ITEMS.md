@@ -11,7 +11,7 @@
 
 **Gate:** Activate when Layer 5 / Pilot 1 Schwab walk + stack sign-off queue is closed (or operator says **go live-ui latency**). Do not defer behind new feature work.
 
-**Active program (2026-05-24):** **Governance consolidation** — Phases 0–4 complete @ pending SHA (3e landed). **Pushing.** **Concurrent epic:** Training Pipeline PR5–PR7 (not started).
+**Active program (2026-05-24):** **Governance consolidation Phases 0–4 complete** @ `ed9f882` (Phase 3 gate closed, dual-agent re-audit). **Concurrent epic:** Training Pipeline PR5–PR7 (not started).
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 0** @ `dbb57c9` — Baseline snapshot, CI path inventory, do-not-rename list (114 paths), rule-source classification (38 rows / 35 memory files), memory gap read (`feedback_no_new_md_deliverables.md`). Auto-load tests documented pending post-1a. **Operator decisions:** defaults confirmed 2026-05-23.
 
@@ -25,7 +25,7 @@
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 3 decision artifacts** @ `4018f41` — `governance/consolidation/phase3/` (baseline delta, duplicate MD report, protected py audit, worktree notes); token rotation note in TRAINING_AND_MAINTENANCE; schwab_field_inventory quarterly refresh note. **Not the Phase 3 execution gate** (see next row).
 
-- [x] **GOVERNANCE-CONSOLIDATION — Phase 3 execution** @ `ed9f882` — **3b** 14 archives + stubs @ `10ca07d`; **3c** no-delete decisions; **3d** import-graph audit (no root `.py` moves); **3e** 9 Claude worktrees pruned (~2.43 GB freed); **3f** LFS shim audit. Log: `phase3_execution_log.json`. **Gate:** dual-agent re-audit pending.
+- [x] **GOVERNANCE-CONSOLIDATION — Phase 3 execution** @ `ed9f882` — **3b** 14 archives + stubs @ `10ca07d`; **3c** no-delete decisions; **3d** import-graph audit (no root `.py` moves, operator sign-off in `baseline_delta.json`); **3e** 9 Claude worktrees pruned (~2.43 GB freed); **3f** LFS shim audit. **Gate closed** 2026-05-24 (dual-agent re-audit).
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 4** @ `6246920` — `.pre-commit-config.yaml`, `tools/check_no_grep_subprocess.py`, governance tests **18/18** on slice.
 
