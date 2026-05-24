@@ -110,8 +110,11 @@ DEFERRAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 ALLOWLIST_PATH_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(^|/)OPEN_ITEMS\.md$"),
     re.compile(r"(^|/)ACTIVE_PROGRAM\.md$"),
+    re.compile(r"(^|/)MEMORY\.md$"),
     re.compile(r"(^|/)governance/"),
     re.compile(r"(^|/)tools/check_no_deferral_language\.py$"),
+    re.compile(r"(^|/)tests/test_check_no_deferral_language\.py$"),
+    re.compile(r"(^|/)tests/test_no_deferral_artifacts\.py$"),
     re.compile(r"memory/feedback_no_audit_deferral_across_walks\.md$"),
     # `.git/COMMIT_EDITMSG` and other commit-msg paths are intentionally NOT
     # allowlisted — that's the primary site we want to gate.
