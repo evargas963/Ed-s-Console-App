@@ -86,7 +86,7 @@ def _f(v: Any) -> Optional[float]:
     return float_finite_or_none(v)
 
 
-def _normalize_vol_decimal(
+def normalize_vol_decimal(
     value: Optional[float],
     *,
     field: str,
@@ -167,9 +167,9 @@ def classify_volatility_regime(
             "classify_volatility_regime requires canonical price.spot > 0 in mvp_features"
         )
 
-    rv = _normalize_vol_decimal(_f(inp.realized_vol), field="realized_vol", context=ctx)
+    rv = normalize_vol_decimal(_f(inp.realized_vol), field="realized_vol", context=ctx)
     atr = _f(inp.atr)
-    iv = _normalize_vol_decimal(_f(inp.iv_level), field="iv_level", context=ctx)
+    iv = normalize_vol_decimal(_f(inp.iv_level), field="iv_level", context=ctx)
     vix = _f(inp.vix_level)
     vix_chg = _f(inp.vix_vs_prev)
     iv_dir = inp.iv_direction.strip().lower() if inp.iv_direction else None

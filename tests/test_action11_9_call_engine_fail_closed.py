@@ -5,9 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from call_engine import (
     _cross_instrument_signal,
     _index_basket_vote,
+    _readiness_canonical_fields,
     _validate_trade,
     compute_call,
 )
@@ -33,6 +36,35 @@ _FORBIDDEN_CALL_ENGINE_PATTERNS = (
 )
 
 _DEFERRED_11_9B_PATTERNS: tuple[str, ...] = ()
+
+
+def test_readiness_canonical_fields_nontradable_withholds_direction_and_prob():
+    """OBS-CE-READINESS-PROV: readiness must not score non-tradable max-entropy canonical."""
+    cf = CanonicalForecast(
+        direction="up",
+        probability_up=1.0 / 3.0,
+        probability_down=1.0 / 3.0,
+        probability_flat=1.0 / 3.0,
+        confidence="low",
+        provenance="fusion_unavailable",
+    )
+    direction, dom_p = _readiness_canonical_fields(cf)
+    assert direction == "flat"
+    assert dom_p == 0.0
+
+
+def test_readiness_canonical_fields_tradable_passes_through():
+    cf = CanonicalForecast(
+        direction="up",
+        probability_up=0.6,
+        probability_down=0.25,
+        probability_flat=0.15,
+        confidence="medium",
+        provenance="bayesian_fusion",
+    )
+    direction, dom_p = _readiness_canonical_fields(cf)
+    assert direction == "up"
+    assert dom_p == pytest.approx(0.6)
 
 
 def _minimal_inp(**overrides) -> SignalInput:

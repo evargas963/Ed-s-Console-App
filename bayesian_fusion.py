@@ -708,7 +708,9 @@ def _fuse_impl(
             evidence.append(f"MC: {mc_out.expansion_prob:.0%} expansion probability")
 
     if getattr(xgb_out, "available", False):
-        evidence.append(f"XGB: {xgb_out.dominant_class} ({xgb_out.confidence_label} confidence)")
+        _xgb_dom = _model_dominant_class(xgb_out)
+        if _xgb_dom is not None:
+            evidence.append(f"XGB: {_xgb_dom} ({xgb_out.confidence_label} confidence)")
 
     if regime_label is not None:
         _rc = getattr(regime, "confidence", None) or "—"

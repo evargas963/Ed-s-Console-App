@@ -161,6 +161,14 @@ WAIT_BLOCKER_REASON_GATES = "gates"
 WAIT_BLOCKER_REASON_TIME = "time"
 
 
+def _readiness_canonical_fields(canonical: CanonicalForecast) -> tuple[str, float]:
+    """Withhold tradable direction/probability from readiness when canonical is non-tradable."""
+    prov = str(getattr(canonical, "provenance", "") or "")
+    if not canonical_provenance_is_tradable(prov):
+        return "flat", 0.0
+    return (canonical.direction or "flat", canonical.dominant_probability())
+
+
 def _mh_size_tier_from_modifier(mh_mod: float) -> int:
     if mh_mod <= MH_SIZE_TIER_3_MAX_MOD:
         return 3
@@ -1807,13 +1815,14 @@ def compute_call(
         _level_prox = "near" if _nearest_dist is not None and _nearest_dist <= LEVEL_PROXIMITY_NEAR_PTS else (
             "mid" if _nearest_dist is not None and _nearest_dist <= LEVEL_PROXIMITY_MID_PTS else "far"
         )
+        _rdy_dir, _rdy_dom_p = _readiness_canonical_fields(canonical)
         _call_input = {
             "regime": _regime_label or "unknown",
             "trend": getattr(rules, "zone_label", "") or zone or "",
             "structure_confirmation": _tf.get("15m", ""),   # ~15m structure read
             "structure_higher_tf": _tf.get("60m", ""),      # ~60m trend read
-            "prediction_direction": canonical.direction or "flat",
-            "prediction_dominant_prob": canonical.dominant_probability(),
+            "prediction_direction": _rdy_dir,
+            "prediction_dominant_prob": _rdy_dom_p,
             "confluence_read": confluence_detail if confluence_sources else "no directional alignment",
             "validation_passed": _post_gate_ok,
             "level_proximity": _level_prox,
@@ -1853,13 +1862,14 @@ def compute_call(
         _put_level_prox = "near" if _put_nearest is not None and _put_nearest <= LEVEL_PROXIMITY_NEAR_PTS else (
             "mid" if _put_nearest is not None and _put_nearest <= LEVEL_PROXIMITY_MID_PTS else "far"
         )
+        _rdy_dir, _rdy_dom_p = _readiness_canonical_fields(canonical)
         _put_input = {
             "regime": _regime_label or "unknown",
             "trend": getattr(rules, "zone_label", "") or zone or "",
             "structure_confirmation": _tf.get("15m", ""),   # ~15m structure read
             "structure_higher_tf": _tf.get("60m", ""),      # ~60m trend read
-            "prediction_direction": canonical.direction or "flat",
-            "prediction_dominant_prob": canonical.dominant_probability(),
+            "prediction_direction": _rdy_dir,
+            "prediction_dominant_prob": _rdy_dom_p,
             "confluence_read": confluence_detail if confluence_sources else "no directional alignment",
             "validation_passed": _post_gate_ok,
             "level_proximity": _put_level_prox,

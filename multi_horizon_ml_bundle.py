@@ -35,7 +35,7 @@ def _unavailable_horizon_snapshot(hz: str, *, provenance: str) -> HorizonMLFusio
         dominant_direction="flat",
         top_probability=t,
         fusion_confidence_label="low",
-        fusion_confidence_score=0.0,
+        fusion_confidence_score=None,
         mc_available=False,
         contributing_models=(),
         missing_models=(),
@@ -72,7 +72,7 @@ class HorizonMLFusionSnapshot:
     dominant_direction: str
     top_probability: float
     fusion_confidence_label: str
-    fusion_confidence_score: float
+    fusion_confidence_score: float | None
     mc_available: bool
     contributing_models: tuple[str, ...] = field(default_factory=tuple)
     missing_models: tuple[str, ...] = field(default_factory=tuple)
@@ -113,7 +113,7 @@ def fusion_payload_to_horizon_snapshot(hz: str, fus: Any) -> HorizonMLFusionSnap
     fcl = str(getattr(fus, "fusion_confidence", "low") or "low").strip().lower()
     if fcl not in ("low", "medium", "high"):
         fcl = "low"
-    fcs = float_finite_or_none(getattr(fus, "fusion_confidence_score", None)) or 0.0
+    fcs = float_finite_or_none(getattr(fus, "fusion_confidence_score", None))
     cm = tuple(str(x) for x in (getattr(fus, "contributing_models", None) or []) if x)
     mm = tuple(str(x) for x in (getattr(fus, "missing_models", None) or []) if x)
     return HorizonMLFusionSnapshot(

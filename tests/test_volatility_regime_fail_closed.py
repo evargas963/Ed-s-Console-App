@@ -14,7 +14,7 @@ from volatility_regime import (
     VolRegimePayload,
     VolRegimeThresholds,
     _garch_trend,
-    _normalize_vol_decimal,
+    normalize_vol_decimal,
     classify_volatility_regime,
 )
 
@@ -35,7 +35,7 @@ def _inp(**kwargs):
 
 def test_normalize_vol_decimal_warns_above_heuristic(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.WARNING)
-    out = _normalize_vol_decimal(18.0, field="iv_level")
+    out = normalize_vol_decimal(18.0, field="iv_level")
     assert out == pytest.approx(0.18)
     assert any("percentage" in r.message.lower() for r in caplog.records)
 

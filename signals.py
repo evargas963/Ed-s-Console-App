@@ -46,7 +46,7 @@ from call_engine import compute_call
 from fusion_contract import fusion_is_authoritative, is_canonical_tradable
 from numeric_contract import float_finite_or_none, float_positive_or_none, direction_from_normalized_triplet
 from regime_engine import classify_regime
-from volatility_regime import classify_volatility_regime
+from volatility_regime import classify_volatility_regime, normalize_vol_decimal
 import bayesian_fusion
 from ml_horizon import (
     ALL_GOVERNED_HORIZONS,
@@ -483,9 +483,11 @@ def _run_model_stack(
                 model_version=f"blocked ({mc_context_error})",
             )
         else:
-            iv = inp.iv_level
-            if iv is not None and iv > 5.0:
-                iv = iv / 100.0
+            iv = normalize_vol_decimal(
+                inp.iv_level,
+                field="iv_level",
+                context="signals.monte_carlo",
+            )
             _mc_regime = getattr(regime, 'primary', None) if regime else None
             if _mc_regime == 'unknown':
                 _mc_regime = None

@@ -94,3 +94,27 @@ def test_fuse_payload_dominant_direction_from_triplet():
     payload = fuse(regime, xgb, lstm, tr, mc, rules)
     assert payload.available is True
     assert payload.dominant_direction == "down"
+
+
+def test_fuse_evidence_xgb_uses_triplet_dominant_not_upstream_label():
+    """OBS-BF-1: evidence summary must match triplet-derived direction, not dominant_class."""
+    regime = SimpleNamespace(primary="breakout", confidence="high")
+    rules = SimpleNamespace(signal="long", conviction="high")
+    xgb = SimpleNamespace(
+        available=True,
+        prob_up=0.1,
+        prob_down=0.7,
+        prob_flat=0.2,
+        dominant_class="up",
+        confidence_label="high",
+        continuation_support=0.4,
+        reversal_support=0.2,
+    )
+    lstm = SimpleNamespace(available=False)
+    tr = SimpleNamespace(available=False)
+    mc = SimpleNamespace(available=False)
+    payload = fuse(regime, xgb, lstm, tr, mc, rules)
+    xgb_lines = [e for e in payload.evidence_summary if e.startswith("XGB:")]
+    assert len(xgb_lines) == 1
+    assert "XGB: down" in xgb_lines[0]
+    assert "XGB: up" not in xgb_lines[0]

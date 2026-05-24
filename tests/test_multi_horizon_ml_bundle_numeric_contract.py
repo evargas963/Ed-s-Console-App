@@ -82,3 +82,21 @@ def test_already_normalized_triplet_keeps_bayesian_fusion_provenance():
     snap = fusion_payload_to_horizon_snapshot("60c", fus)
     assert snap.provenance == "bayesian_fusion"
     assert snap.dominant_direction == "up"
+
+
+def test_missing_fusion_confidence_score_stays_none_not_zero():
+    fus = SimpleNamespace(
+        available=True,
+        prob_up=0.5,
+        prob_down=0.3,
+        prob_flat=0.2,
+        dominant_direction="up",
+        fusion_confidence="high",
+        fusion_confidence_score=None,
+        mc_available=False,
+        contributing_models=[],
+        missing_models=[],
+    )
+    snap = fusion_payload_to_horizon_snapshot("1c", fus)
+    assert snap.horizon_fusion_available is True
+    assert snap.fusion_confidence_score is None
