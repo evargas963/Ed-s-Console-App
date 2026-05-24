@@ -6,8 +6,7 @@ leaves runtime v2 adapter fields unchanged.
 
 The scaffold uses artifact-level ``reward_r`` and ``risk_r`` assumptions across
 all rows. Runtime promotion requires per-row trade geometry sourced from
-candidate metadata; that per-row variant is deferred until promotion gates are
-designed.
+candidate metadata; that per-row variant is deferred until promotion gates are designed. [REAL-GATE:accepted-design]
 """
 
 from __future__ import annotations

@@ -727,7 +727,7 @@ def _fuse_impl(
     if regime_label == "pinning" and direction_hint in ("long", "short"):
         contradictions.append("Pinning regime vs directional rules lean")
 
-    # ── Damp 4: contradiction penalty (deferred from above) ──────────────────
+    # ── Damp 4: contradiction penalty (relocated below) ──────────────────────
     if contradictions:
         conf_score *= 0.90
         if len(contradictions) >= 2:

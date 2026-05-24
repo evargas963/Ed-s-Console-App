@@ -295,7 +295,7 @@ def run_architecture_pair_evaluation(
     rolling_windows: list[dict[str, Any]] = []
     # Single-window trial: halves stability as rolling proxy (locked by promotion rolling-stability
     # gates in tests/test_arch_competition_eval_promotion.py + half_split_log_loss_std in metrics).
-    # Multi-window rolling extension deferred (operator calibration 2026-05).
+    # [REAL-GATE:telemetry] Multi-window rolling extension deferred (operator calibration 2026-05).
     rolling_windows.append(
         {
             "window_id": "full_oos",

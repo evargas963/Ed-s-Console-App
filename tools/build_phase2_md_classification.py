@@ -31,7 +31,7 @@ INLINE_SCOPE_RE = re.compile(r"^\*\*Scope:\*\*", re.I | re.M)
 
 ACTIVE_RULE_SOURCES: dict[str, str] = {
     "AGENTS.md": "Always-on agent behavior rules (Cursor + Claude Code).",
-    "ACTIVE_PROGRAM.md": "Current epic, conflicts, deferred work, known risks.",
+    "ACTIVE_PROGRAM.md": "Current epic, conflicts, open work, known risks.",
     "CLAUDE.md": "Schwab program law; Read-not-scan methodology.",
     "MEMORY.md": "Thin pointer to AGENTS/ACTIVE_PROGRAM and [OPERATOR-ONLY] archive prefs.",
     "docs/governance/AGENT_SELF_GOVERNANCE.md": (

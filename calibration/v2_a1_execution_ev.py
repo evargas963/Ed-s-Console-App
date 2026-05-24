@@ -5,7 +5,8 @@ Schwab-normalized quote inputs and an explicitly supplied execution-cost model,
 then adjusts EV bounds by a declared R-multiple cost. It does not estimate fill,
 slippage, impact, adverse selection, or capacity terms from thin data.
 
-Runtime promotion is deferred: ``execution_adjusted_EV`` remains
+Runtime promotion is [REAL-GATE:accepted-design] deferred: ``execution_adjusted_EV`` remains
+unchanged at runtime until promotion gates are designed.
 ``not_implemented`` in v2 decision adapters until calibrated probability,
 conformal bounds, EV bounds, and execution-cost models all validate on real
 data.

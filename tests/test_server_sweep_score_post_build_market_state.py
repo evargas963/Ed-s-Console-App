@@ -84,7 +84,7 @@ def test_void_factor_default_hoisted_outside_section_8_try():
     init_window = src[sec8 : sec8 + 1500]
     assert "_void_factor = 0.0" in init_window, (
         "_void_factor = 0.0 must be initialized in the Section 8 default block "
-        "(before the try) so the deferred sweep_score still has a value when "
+        "(before the try) so the post-build sweep_score still has a value when "
         "Section 8 raises early"
     )
 
@@ -93,7 +93,7 @@ def test_post_build_sweep_block_reads_real_ms_attrs():
     """The new sweep block must read ms.nearest_above_dist / ms.nearest_below_dist directly."""
     src = _fetch_state_source()
     # Find the post-build sweep section by header text used in the fix.
-    marker = "Section 8 (deferred) — Sweep Score"
+    marker = "Section 8 (post-build) — Sweep Score"
     assert marker in src, "post-build sweep section marker must exist"
     deferred = _strip_hash_comments(src.split(marker, 1)[1][:1500])
     assert "nearest_above_dist" in deferred

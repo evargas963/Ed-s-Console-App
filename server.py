@@ -4179,7 +4179,7 @@ def _fetch_state(
     if _diag_on():
         _diag_done("build_market_state", ticker)
 
-    # ── Section 8 (deferred) — Sweep Score reads ms.nearest_above_dist/nearest_below_dist ──
+    # ── Section 8 (post-build) — Sweep Score reads ms.nearest_above_dist/nearest_below_dist ──
     # build_market_state populates these from walls + price_levels. Computing here (not in the
     # Section 8 try block above) is the only point at which the inputs are actually available.
     try:

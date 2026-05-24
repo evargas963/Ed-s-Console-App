@@ -68,13 +68,23 @@ def _count_row_occurrences(text: str, row_id: str) -> int:
     return len(pat.findall(text))
 
 
+def _all_checkbox_rows(text: str, row_id: str) -> list[re.Match[str]]:
+    pat = re.compile(
+        r"-\s*\[(x| )\]\s+\*\*" + re.escape(row_id) + r"(?:\*\*|\s)",
+        re.IGNORECASE,
+    )
+    return list(pat.finditer(text))
+
+
 def test_find_liveui_6_closed_with_sha_cites(open_items_text: str) -> None:
-    state = _find_row_state(open_items_text, "FIND-LIVEUI-6")
-    assert state == "x", "FIND-LIVEUI-6 must be [x] after the paired-fix landed @ 413787a/e3742ac"
-    snippet_idx = open_items_text.find("FIND-LIVEUI-6")
-    body = open_items_text[snippet_idx : snippet_idx + 800]
-    assert "413787a" in body, "FIND-LIVEUI-6 row must cite SHA 413787a (helpers/markers/CSS)"
-    assert "e3742ac" in body, "FIND-LIVEUI-6 row must cite SHA e3742ac (Playwright spec)"
+    rows = _all_checkbox_rows(open_items_text, "FIND-LIVEUI-6")
+    assert rows, "FIND-LIVEUI-6 checkbox row missing"
+    assert all(m.group(1) == "x" for m in rows), "every FIND-LIVEUI-6 row must be [x]"
+    combined = "".join(
+        open_items_text[m.start() : m.start() + 600] for m in rows
+    )
+    assert "413787a" in combined, "FIND-LIVEUI-6 rows must cite SHA 413787a (helpers/markers/CSS)"
+    assert "e3742ac" in combined, "FIND-LIVEUI-6 rows must cite SHA e3742ac (Playwright spec)"
 
 
 def test_live_ui_1_closed_with_sha_cite(open_items_text: str) -> None:
@@ -86,11 +96,15 @@ def test_live_ui_1_closed_with_sha_cite(open_items_text: str) -> None:
 
 
 def test_live_ui_2_closed_with_sha_cite(open_items_text: str) -> None:
-    state = _find_row_state(open_items_text, "LIVE-UI-2")
-    assert state == "x", "LIVE-UI-2 must be [x] after FIND-LIVEUI-6 landed the per-field withhold"
-    snippet_idx = open_items_text.find("LIVE-UI-2")
-    body = open_items_text[snippet_idx : snippet_idx + 500]
-    assert "413787a" in body or "e3742ac" in body, "LIVE-UI-2 row must cite at least one FIND-LIVEUI-6 SHA"
+    rows = _all_checkbox_rows(open_items_text, "LIVE-UI-2")
+    assert rows, "LIVE-UI-2 checkbox row missing"
+    assert all(m.group(1) == "x" for m in rows), "every LIVE-UI-2 row must be [x]"
+    combined = "".join(
+        open_items_text[m.start() : m.start() + 600] for m in rows
+    )
+    assert "413787a" in combined or "e3742ac" in combined, (
+        "LIVE-UI-2 rows must cite at least one FIND-LIVEUI-6 SHA"
+    )
 
 
 def test_live_ui_a_appears_at_most_once(open_items_text: str) -> None:
@@ -171,6 +185,7 @@ def test_no_deferral_language_in_committed_source() -> None:
         ".pytest_cache",
         ".venv",
         "venv",
+        "tests/",  # tests quote forbidden phrases when locking the guard itself
         "tools/_phase",  # historical one-shot scripts
         "governance",  # legitimate future-work tracking
         "OPEN_ITEMS",
