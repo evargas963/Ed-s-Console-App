@@ -2146,6 +2146,37 @@
     body.layout-clean .signal-grid { grid-template-columns: 1fr; }
     body.layout-clean .signal-grid #call-stack { grid-column: auto; }
   }
+
+  /* FIND-LIVEUI-6 — direction-withhold styling. Applied by _updateDirectionWithheldMarkers
+     (static/index.html) on Tier C direction-bearing nodes when bundleDirectionWithheld() or
+     horizonDirectionWithheld() returns withheld=true. Price DOM and the Tier B order-flow
+     strip are intentionally not gated by this attribute — they have their own clocks. */
+  [data-direction-withhold] {
+    opacity: 0.42;
+    filter: grayscale(72%);
+    position: relative;
+  }
+  [data-direction-withhold]::after {
+    content: "STALE";
+    position: absolute;
+    top: -7px;
+    right: 4px;
+    font-family: var(--mono);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--amber);
+    background: var(--bg);
+    border: 1px solid var(--amber);
+    padding: 0 3px;
+    border-radius: 2px;
+    pointer-events: none;
+  }
+  /* Per-horizon tf-signal-card variant: same dim, badge tucked into card corner. */
+  .tf-signal-card[data-direction-withhold]::after {
+    top: 3px;
+    right: 5px;
+  }
 </style>
 </head>
 <body class="layout-classic">
@@ -6525,6 +6556,100 @@ function _refreshLiveUiIntegrityDerivations(opts) {
   return integrity;
 }
 
+// ── FIND-LIVEUI-6 — direction-withhold helpers + applier ──────────────────────────
+// Consumed by _updateDirectionWithheldMarkers below; pure functions are exported on window
+// so tests/e2e/find-liveui-6-direction-withhold.spec.js (Playwright) can call them with
+// synthesized integrity objects without exercising the full SSE pipeline. Authority: rows in
+// governance/STACK_WIRING_INTEGRITY_MAP.md "Live-UI direction transports (LIVE-UI-1, Phase 2)".
+
+/** Bundle-level Tier C direction-withhold. OF strip is NOT covered here — it has its own clock. */
+function bundleDirectionWithheld(integrity, d) {
+  integrity = integrity || window._liveUiIntegrity || {};
+  const ld = (d && typeof d === 'object') ? d : window._lastData;
+  if (ld && ld.analytics_pending_shell === true) return { withheld: true, reason: 'pending_shell' };
+  if (window._priceAheadOfBundle === true) return { withheld: true, reason: 'price_ahead_of_bundle' };
+  if (integrity.slowStaleVsFast) return { withheld: true, reason: 'slow_stale_vs_fast' };
+  if (integrity.quoteAhead) return { withheld: true, reason: 'quote_ahead' };
+  if (integrity.genStale) return { withheld: true, reason: 'gen_stale' };
+  if (integrity.pending) return { withheld: true, reason: 'pending_full_analytics' };
+  return { withheld: false, reason: null };
+}
+
+/** Per-horizon withhold: bundle-level OR horizon_fusion_available(hz) === false (MHMLB-NS1 hook). */
+function horizonDirectionWithheld(integrity, d, hz) {
+  const bundle = bundleDirectionWithheld(integrity, d);
+  if (bundle.withheld) return bundle;
+  const ld = (d && typeof d === 'object') ? d : window._lastData;
+  if (!ld) return { withheld: true, reason: 'no_payload' };
+  const slug = String(hz || '').toLowerCase();
+  if (!slug) return { withheld: false, reason: null };
+  const map = ld.horizon_fusion_available;
+  if (map && typeof map === 'object' && Object.prototype.hasOwnProperty.call(map, slug)) {
+    if (map[slug] !== true) return { withheld: true, reason: 'horizon_fusion_unavailable' };
+  } else if (ld.fusion_available === false) {
+    return { withheld: true, reason: 'fusion_unavailable' };
+  }
+  return { withheld: false, reason: null };
+}
+try { window.bundleDirectionWithheld = bundleDirectionWithheld; } catch (e) {}
+try { window.horizonDirectionWithheld = horizonDirectionWithheld; } catch (e) {}
+
+// Bundle-level direction-bearing IDs (Decision Command rail). Each ID corresponds to a row in the
+// LIVE-UI-1 inventory; adding/removing an ID here without the matching inventory row is the
+// drift pattern feedback_mega_inventory_in_paired_fix.md guards against in mega land.
+const _LIVEUI6_BUNDLE_DIRECTION_IDS = [
+  'dr-trade-pill',
+  'dr-bias-pill',
+  'dr-desk-confidence',
+  'dr-confidence-pill',
+  'dr-action-chip',
+  'dr-align-class-chip',
+  'dr-blocking-reason',
+  'dr-exact-reason',
+  'dr-plan-entry',
+  'dr-plan-stop',
+  'dr-plan-targets',
+  'dr-plan-invalidation',
+  'dr-live-ready-chip',
+];
+
+// Per-horizon direction-bearing IDs. The map key is the Schwab-canonical bar slug (1c/5c/15c/60c)
+// used by horizon_fusion_available / ms_dict; the values are concrete DOM ids in
+// renderDecisionCommandRail. The tf-signal-card row (#tf-signal-{slug}) is handled by
+// querySelector pattern below rather than fixed IDs.
+const _LIVEUI6_HORIZON_DIRECTION_IDS = {
+  '1c': ['dr-align-1m'],
+  '5c': ['dr-align-5m'],
+  '15c': ['dr-align-15m'],
+  '60c': ['dr-align-60m'],
+};
+
+function _updateDirectionWithheldMarkers() {
+  const integrity = window._liveUiIntegrity || _refreshLiveUiIntegrityDerivations();
+  const ld = window._lastData;
+  const bundle = bundleDirectionWithheld(integrity, ld);
+  _LIVEUI6_BUNDLE_DIRECTION_IDS.forEach(id => {
+    const n = document.getElementById(id);
+    if (!n) return;
+    if (bundle.withheld) n.setAttribute('data-direction-withhold', bundle.reason);
+    else n.removeAttribute('data-direction-withhold');
+  });
+  Object.keys(_LIVEUI6_HORIZON_DIRECTION_IDS).forEach(hz => {
+    const state = horizonDirectionWithheld(integrity, ld, hz);
+    _LIVEUI6_HORIZON_DIRECTION_IDS[hz].forEach(id => {
+      const n = document.getElementById(id);
+      if (!n) return;
+      if (state.withheld) n.setAttribute('data-direction-withhold', state.reason);
+      else n.removeAttribute('data-direction-withhold');
+    });
+    const tfCard = document.getElementById('tf-signal-' + hz);
+    if (tfCard) {
+      if (state.withheld) tfCard.setAttribute('data-direction-withhold', state.reason);
+      else tfCard.removeAttribute('data-direction-withhold');
+    }
+  });
+}
+
 function _updateDecisionBundleAgeUI(opts) {
   opts = opts || {};
   const ts = opts.serverTs != null ? opts.serverTs : window._lastFullStateServerTs;
@@ -6628,7 +6753,16 @@ function _updateTierCLaneStaleMarkers() {
   const cards = document.querySelectorAll('.signal-card[data-ed-tier-c="1"]');
   if (!cards.length) return;
   const integrity = window._liveUiIntegrity || _refreshLiveUiIntegrityDerivations();
-  const stale = integrity.quoteAhead || integrity.pending || integrity.genStale;
+  // FIND-LIVEUI-6: align card-level lane-stale dim with the bundleDirectionWithheld() cross-tier
+  // rule. slowStaleVsFast (and the equivalent window._priceAheadOfBundle published by
+  // _refreshLiveUiIntegrityDerivations) was missing from this gate, leaving the price-ahead-of-
+  // bundle case undimmed at the card level even while bundleDirectionWithheld treated direction-
+  // bearing fields as stale. Keep OF strip independent — its clock is order_flow_stale.
+  const stale = integrity.quoteAhead
+    || integrity.pending
+    || integrity.genStale
+    || integrity.slowStaleVsFast
+    || window._priceAheadOfBundle === true;
   cards.forEach(c => {
     if (stale) c.setAttribute('data-lane-stale', 'tier-c');
     else c.removeAttribute('data-lane-stale');
@@ -6640,6 +6774,7 @@ function _updateLiveUiAe(opts) {
   _updateEdTransportBadge();
   _updateDecisionBundleAgeUI(opts);
   _updateTierCLaneStaleMarkers();
+  _updateDirectionWithheldMarkers();
   _updateCoherenceHeadline(integrity);
   _updateStackModeChip(integrity);
   _updateSignalsEngineFailChip(integrity);
