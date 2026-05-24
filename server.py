@@ -3731,6 +3731,8 @@ def _fetch_state(
     _pin_score_val = {}
     _vol_expansion = {}
     _sweep_score = {}
+    # Sweep score post-build_market_state needs _void_factor even if Section 8 raised early.
+    _void_factor = 0.0
     def _bucket_total_oi(_bkt: dict) -> float | None:
         call_oi = _bkt.get("call_oi")
         put_oi = _bkt.get("put_oi")
@@ -3824,18 +3826,11 @@ def _fetch_state(
         _iv_dir_num = 1.0 if _iv_direction == "expanding" else -1.0 if _iv_direction == "contracting" else 0.0
         _vol_expansion = compute_vol_expansion_signal(_sum_gex, _iv_dir_num, _gamma_gradient)
 
-        # 7. Sweep Score
-        _nearest_wall_dist = None
-        for _wname in ['nearest_above_dist', 'nearest_below_dist']:
-            _wd = getattr(ms, _wname, None) if 'ms' in dir() else None
-            if _wd is not None:
-                _wd = abs(float(_wd))
-                if _nearest_wall_dist is None or _wd < _nearest_wall_dist:
-                    _nearest_wall_dist = _wd
-        _momentum = 0.0
-        if _atr and _atr > 0 and _candle_body:
-            _momentum = min(1.0, abs(_candle_body) / _atr)
-        _sweep_score = compute_sweep_score(_nearest_wall_dist, _void_factor, _momentum)
+        # Sweep Score moved below: needs ms.nearest_above_dist / ms.nearest_below_dist
+        # which are only populated by build_market_state. The previous compute here read
+        # `getattr(ms, _wname, None) if 'ms' in dir() else None` — `ms` was undefined at
+        # this point in execution, so the loop always set _nearest_wall_dist=None and
+        # sweep_score was silently degraded every tick.
 
     except Exception as e:
         log.debug(f"Section 8 signals calc: {e}")
@@ -4183,6 +4178,28 @@ def _fetch_state(
         raise
     if _diag_on():
         _diag_done("build_market_state", ticker)
+
+    # ── Section 8 (deferred) — Sweep Score reads ms.nearest_above_dist/nearest_below_dist ──
+    # build_market_state populates these from walls + price_levels. Computing here (not in the
+    # Section 8 try block above) is the only point at which the inputs are actually available.
+    try:
+        _nearest_wall_dist = None
+        for _wname in ("nearest_above_dist", "nearest_below_dist"):
+            _wd = getattr(ms, _wname, None)
+            if _wd is None:
+                continue
+            try:
+                _wd_abs = abs(float(_wd))
+            except (TypeError, ValueError):
+                continue
+            if _nearest_wall_dist is None or _wd_abs < _nearest_wall_dist:
+                _nearest_wall_dist = _wd_abs
+        _momentum = 0.0
+        if _atr and _atr > 0 and _candle_body:
+            _momentum = min(1.0, abs(_candle_body) / _atr)
+        _sweep_score = compute_sweep_score(_nearest_wall_dist, _void_factor, _momentum) or {}
+    except Exception as _ss_e:
+        log.debug("sweep_score post build_market_state: %s", _ss_e)
 
     # REST fallback: when streamer has no tape, inject polling-based cum_delta.
     # Streamer value takes precedence when available.
