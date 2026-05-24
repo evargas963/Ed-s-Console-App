@@ -806,12 +806,9 @@ def fetch_price_levels(
     """
     from datetime import datetime, date, timezone, timedelta
 
-    from time_et import ET, now_et
+    from time_et import ET, RTH_END_MINS, RTH_OPEN_MINS, now_et
 
     pl = PriceLevels(orb_minutes=orb_minutes)
-    RTH_OPEN_HOUR  = 9
-    RTH_OPEN_MIN   = 30
-    RTH_CLOSE_HOUR = 16
 
     # ── Tier 1: extract from quote{} ─────────────────────────────────────────
     if quote_raw:
@@ -886,14 +883,11 @@ def fetch_price_levels(
                 continue
             dt_utc = datetime.fromtimestamp(dt_ms / 1000, tz=timezone.utc)
             dt_et  = dt_utc.astimezone(ET)
-            is_rth = (
-                dt_et.hour > RTH_OPEN_HOUR or
-                (dt_et.hour == RTH_OPEN_HOUR and dt_et.minute >= RTH_OPEN_MIN)
-            ) and dt_et.hour < RTH_CLOSE_HOUR
+            dt_mins = dt_et.hour * 60 + dt_et.minute
+            is_rth = RTH_OPEN_MINS <= dt_mins < RTH_END_MINS
             if not is_rth:
                 if include_extended_hours and dt_et.date() == today_date:
-                    mins = dt_et.hour * 60 + dt_et.minute
-                    if mins < RTH_OPEN_HOUR * 60 + RTH_OPEN_MIN:
+                    if dt_mins < RTH_OPEN_MINS:
                         overnight_bars.append((dt_et, c))
                 continue
             if dt_et.date() == today_date:
@@ -936,10 +930,7 @@ def fetch_price_levels(
                     cum_vol += vol
 
                 # ORB: first orb_minutes of RTH
-                mins_since_open = (
-                    (dt_et.hour - RTH_OPEN_HOUR) * 60 +
-                    (dt_et.minute - RTH_OPEN_MIN)
-                )
+                mins_since_open = (dt_et.hour * 60 + dt_et.minute) - RTH_OPEN_MINS
                 if mins_since_open < orb_minutes and h is not None and l is not None:
                     orb_h = max(orb_h, h)
                     orb_l = min(orb_l, l)
