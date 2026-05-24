@@ -54,11 +54,13 @@ def _pred(**kw):
     return SimpleNamespace(**base)
 
 
-def _canonical(up=0.6, down=0.2, flat=0.2):
+def _canonical(up=0.6, down=0.2, flat=0.2, provenance="bayesian_fusion"):
+    """Default tradable provenance — non-tradable callers pass provenance explicitly."""
     return SimpleNamespace(
         probability_up=up,
         probability_down=down,
         probability_flat=flat,
+        provenance=provenance,
     )
 
 
@@ -112,6 +114,37 @@ def test_canonical_blend_skipped_on_non_finite_canonical(monkeypatch):
     f = _forecast_horizon_live(p, SimpleNamespace(), "5c", canonical=canon, mh_ml_bundle=None)
     assert f.provenance == "predictive_empirical_fallback_5c_canonical_nonfinite"
     assert f.probability_up == pytest.approx(0.6)
+
+
+def test_canonical_blend_skipped_when_canonical_nontradable(monkeypatch):
+    """FIND-MHD-CANONICAL-PROV: gate ED_MH_FALLBACK_CANONICAL_BLEND on
+    fusion_contract.is_canonical_tradable. Non-tradable canonical (max-entropy
+    placeholder with provenance like 'fusion_unavailable') must NOT bleed
+    synthetic 1/3-each conviction into the per-horizon predictive triplet."""
+    monkeypatch.setenv("ED_MH_FALLBACK_CANONICAL_BLEND", "0.5")
+    p = _pred()
+    nontradable = _canonical(
+        up=1.0 / 3.0, down=1.0 / 3.0, flat=1.0 / 3.0, provenance="fusion_unavailable"
+    )
+    f = _forecast_horizon_live(p, SimpleNamespace(), "5c", canonical=nontradable, mh_ml_bundle=None)
+    assert f.provenance == "predictive_empirical_fallback_5c_canonical_nontradable"
+    # Predictive triplet preserved — NOT blended toward 1/3 max-entropy.
+    assert f.probability_up == pytest.approx(0.6)
+    assert f.probability_down == pytest.approx(0.2)
+    assert f.probability_flat == pytest.approx(0.2)
+
+
+def test_canonical_blend_applied_when_canonical_tradable(monkeypatch):
+    """Companion: tradable canonical (bayesian_fusion provenance) blends normally."""
+    monkeypatch.setenv("ED_MH_FALLBACK_CANONICAL_BLEND", "0.5")
+    p = _pred()
+    tradable = _canonical(up=0.2, down=0.6, flat=0.2, provenance="bayesian_fusion")
+    f = _forecast_horizon_live(p, SimpleNamespace(), "5c", canonical=tradable, mh_ml_bundle=None)
+    assert f.provenance == "predictive_empirical_fallback_5c_stabilized"
+    # 50/50 blend: up=(0.6+0.2)/2=0.4; down=(0.2+0.6)/2=0.4; flat=(0.2+0.2)/2=0.2
+    assert f.probability_up == pytest.approx(0.4)
+    assert f.probability_down == pytest.approx(0.4)
+    assert f.probability_flat == pytest.approx(0.2)
 
 
 def test_malformed_fallback_blend_env_logs_and_uses_zero(monkeypatch, caplog):

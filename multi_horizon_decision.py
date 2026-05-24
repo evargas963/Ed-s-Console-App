@@ -12,6 +12,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from fusion_contract import is_canonical_tradable
 from ml_horizon import PRIMARY_DECISION_HORIZONS
 from multi_horizon_ml_bundle import MultiHorizonMLFusionBundle
 from numeric_contract import direction_from_normalized_triplet, float_finite_or_none
@@ -714,21 +715,29 @@ def _forecast_horizon_live(
             wfb = 0.0
         wfb = max(0.0, min(1.0, wfb))
         if canonical is not None and wfb > 0.0:
-            cu = float_finite_or_none(getattr(canonical, "probability_up", None))
-            cd = float_finite_or_none(getattr(canonical, "probability_down", None))
-            cf = float_finite_or_none(getattr(canonical, "probability_flat", None))
-            if cu is not None and cd is not None and cf is not None:
-                up = (1.0 - wfb) * up + wfb * cu
-                dn = (1.0 - wfb) * dn + wfb * cd
-                fl = (1.0 - wfb) * fl + wfb * cf
-                s = up + dn + fl
-                if s > 0 and math.isfinite(s):
-                    up, dn, fl = up / s, dn / s, fl / s
-                    provenance = f"predictive_empirical_fallback_{hz}_stabilized"
+            # FIND-MHD-CANONICAL-PROV: gate blend on canonical provenance tradability.
+            # Non-tradable canonical (fusion_unavailable / fusion_directional_missing /
+            # fusion_directional_invalid / debug_override:*) carries max-entropy 1/3
+            # placeholder probs (signal_types.NON_TRADABLE_CANONICAL_PROVENANCE);
+            # blending them would inject synthetic conviction into the predictive triplet.
+            if not is_canonical_tradable(canonical):
+                provenance = f"predictive_empirical_fallback_{hz}_canonical_nontradable"
+            else:
+                cu = float_finite_or_none(getattr(canonical, "probability_up", None))
+                cd = float_finite_or_none(getattr(canonical, "probability_down", None))
+                cf = float_finite_or_none(getattr(canonical, "probability_flat", None))
+                if cu is not None and cd is not None and cf is not None:
+                    up = (1.0 - wfb) * up + wfb * cu
+                    dn = (1.0 - wfb) * dn + wfb * cd
+                    fl = (1.0 - wfb) * fl + wfb * cf
+                    s = up + dn + fl
+                    if s > 0 and math.isfinite(s):
+                        up, dn, fl = up / s, dn / s, fl / s
+                        provenance = f"predictive_empirical_fallback_{hz}_stabilized"
+                    else:
+                        provenance = f"predictive_empirical_fallback_{hz}_canonical_nonfinite"
                 else:
                     provenance = f"predictive_empirical_fallback_{hz}_canonical_nonfinite"
-            else:
-                provenance = f"predictive_empirical_fallback_{hz}_canonical_nonfinite"
         else:
             provenance = f"predictive_empirical_fallback_{hz}"
 
