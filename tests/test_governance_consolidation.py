@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -140,6 +141,17 @@ def test_phase3_cleanup_artifacts():
         "phase3_execution_log.json",
     ):
         assert (phase3 / name).is_file(), f"missing {name}; run tools/execute_phase3_cleanup.py"
+
+
+def test_phase3e_worktrees_pruned():
+    log = json.loads(
+        (ROOT / "governance/consolidation/phase3/phase3_execution_log.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    wt = log["3e_worktrees"]
+    assert wt["prune_executed"] is True
+    assert wt["bytes_after"] == 0
 
 
 def test_phase3b_root_audit_archives():

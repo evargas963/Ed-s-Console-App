@@ -11,7 +11,7 @@
 
 **Gate:** Activate when Layer 5 / Pilot 1 Schwab walk + stack sign-off queue is closed (or operator says **go live-ui latency**). Do not defer behind new feature work.
 
-**Active program (2026-05-23):** **Governance consolidation** — Phases 0–2 + 4 complete; Phase 3 execution **partial** (3b/3c/3d/3f done; **3e worktree prune open**). **Push pending.** **Concurrent epic:** Training Pipeline PR5–PR7 (not started).
+**Active program (2026-05-24):** **Governance consolidation** — Phases 0–4 complete @ pending SHA (3e landed). **Pushing.** **Concurrent epic:** Training Pipeline PR5–PR7 (not started).
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 0** @ `dbb57c9` — Baseline snapshot, CI path inventory, do-not-rename list (114 paths), rule-source classification (38 rows / 35 memory files), memory gap read (`feedback_no_new_md_deliverables.md`). Auto-load tests documented pending post-1a. **Operator decisions:** defaults confirmed 2026-05-23.
 
@@ -25,7 +25,7 @@
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 3 decision artifacts** @ `4018f41` — `governance/consolidation/phase3/` (baseline delta, duplicate MD report, protected py audit, worktree notes); token rotation note in TRAINING_AND_MAINTENANCE; schwab_field_inventory quarterly refresh note. **Not the Phase 3 execution gate** (see next row).
 
-- [ ] **GOVERNANCE-CONSOLIDATION — Phase 3 execution** — **Partial @ `10ca07d`:** **3b** ✅ 14 files archived to `governance/archive/2026-Q2/` (7 root audits, 2 root historical, 5 superseded Schwab V1–V3 MD) + forwarding stubs; **3c** ✅ no true duplicate deletes (`MODEL_RESTORE_LOG`, per-run `AUTHORITY_REPORT` retained — see `phase3_execution_log.json`); **3d** ✅ import-graph audit in execution log, no root `.py` moves (sign-off path); **3f** ✅ LFS shim audit on 4 hooks. **3e** ⏳ worktree prune **not executed** (~2.43 GB, 9 Claude worktrees with dirty state — operator manual `git worktree remove --force` after confirming no unique commits). Gate closes when 3e done + both agents re-audit.
+- [x] **GOVERNANCE-CONSOLIDATION — Phase 3 execution** @ pending SHA — **3b** 14 archives + stubs; **3c** no-delete decisions; **3d** import-graph audit (no root `.py` moves); **3e** 9 Claude worktrees pruned (~2.43 GB freed, `git worktree list` = main only); **3f** LFS shim audit. Log: `phase3_execution_log.json`; tool: `tools/prune_claude_worktrees.py`. **Gate:** dual-agent re-audit pending.
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 4** @ `6246920` — `.pre-commit-config.yaml`, `tools/check_no_grep_subprocess.py`, governance tests **18/18** on slice.
 

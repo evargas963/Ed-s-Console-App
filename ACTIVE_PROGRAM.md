@@ -3,14 +3,14 @@
 # ACTIVE_PROGRAM.md — what we are doing now
 
 **Updated:** 2026-05-23 (tip `05cb883`)  
-**Branch:** `feature/institutional-key-levels` — Phases 0–2 + 4 landed; Phase 3 execution gated  
+**Branch:** `feature/institutional-key-levels` — consolidation Phases 0–4 complete; pushing  
 **Execution plan:** [`docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md`](docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md)
 
 ---
 
 ## Active program
 
-**Governance consolidation** — Phases **0–2** and **4** complete. Phase **3 execution partial:** **3b/3c/3d/3f** landed via `tools/execute_phase3_cleanup.py` (`phase3_execution_log.json`); **3e worktree prune** still open (~2.43 GB, 9 dirty Claude worktrees — operator manual step). **Next:** 3e prune or push current state; then Schwab V4 walk. Training PR5–PR7 concurrent.
+**Governance consolidation** — **Phases 0–4 complete** (3e @ pending SHA: 9 worktrees pruned, ~2.43 GB freed). **Next:** push + dual-agent re-audit; then Schwab V4 walk. Training PR5–PR7 concurrent.
 
 ### Consolidation status (scope-explicit)
 
@@ -19,7 +19,7 @@
 | 0, 1a–1c | Complete |
 | 2 | Complete @ `8e79ea2` |
 | 3 decision | Complete @ `4018f41` |
-| 3 execution | **Partial** — 3b archive ✅, 3c no-delete decisions ✅, 3d import audit ✅, 3f LFS audit ✅; **3e worktree prune open** |
+| 3 execution | Complete @ pending SHA (3b–3f including 3e worktree prune) |
 | 4 | Complete @ `6246920` |
 
 ## Concurrent epic (not blocking consolidation)

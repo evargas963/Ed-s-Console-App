@@ -1889,61 +1889,26 @@
     "root_py_moves": "none \u2014 operator sign-off path; no safe moves without import-graph proof"
   },
   "3e_worktrees": {
-    "worktrees": [
-      {
-        "worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole",
-        "HEAD": "3c96a6e8a7b1253920a1bad66af928f9166152d0",
-        "branch": "refs/heads/feature/institutional-key-levels"
-      },
-      {
-        "worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole/.claude/worktrees/dazzling-einstein-14bb89",
-        "HEAD": "b86836f35b3adfe390cd4d9562c42abe083bceba",
-        "branch": "refs/heads/claude/dazzling-einstein-14bb89"
-      },
-      {
-        "worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole/.claude/worktrees/festive-sanderson-e4af16",
-        "HEAD": "51eece4e4702d057cf35e3f33a43d07eb24e19d9",
-        "branch": "refs/heads/claude/festive-sanderson-e4af16"
-      },
-      {
-        "worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole/.claude/worktrees/heuristic-perlman-19bc52",
-        "HEAD": "4b3dce4570e15a0111d437d830e66948a6470248",
-        "branch": "refs/heads/claude/heuristic-perlman-19bc52"
-      },
-      {
-        "worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole/.claude/worktrees/jovial-blackwell-2bee88",
-        "HEAD": "4b8ba2dfa21f1ba42287e42899e01cc327595bec",
-        "branch": "refs/heads/claude/jovial-blackwell-2bee88"
-      },
-      {
-        "worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole/.claude/worktrees/lucid-mendel-d5530a",
-        "HEAD": "33959eb6ba2e3718755c00961fc953219d6a830a",
-        "branch": "refs/heads/claude/lucid-mendel-d5530a"
-      },
-      {
-        "worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole/.claude/worktrees/mystifying-rhodes-5c9d80",
-        "HEAD": "4b8ba2dfa21f1ba42287e42899e01cc327595bec",
-        "branch": "refs/heads/claude/mystifying-rhodes-5c9d80"
-      },
-      {
-        "worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole/.claude/worktrees/sleepy-aryabhata-e82d1d",
-        "HEAD": "deb09886a2afe570c109508e13802668edd40f33",
-        "branch": "refs/heads/claude/sleepy-aryabhata-e82d1d"
-      },
-      {
-        "worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole/.claude/worktrees/strange-sinoussi-0c7307",
-        "HEAD": "513e90ca0c5e9a2118b155236c1efb4724421ae2",
-        "branch": "refs/heads/claude/strange-sinoussi-0c7307"
-      },
-      {
-        "worktree": "C:/Users/evarg/Documents/Trading/EdWebConsole/.claude/worktrees/suspicious-dewdney-13521a",
-        "HEAD": "53a1403b0409a10e28db1156bbce53bef160d584",
-        "branch": "refs/heads/claude/suspicious-dewdney-13521a"
-      }
+    "prune_executed": true,
+    "method": "filesystem_rmtree (fast)",
+    "removed": [
+      "dazzling-einstein-14bb89",
+      "festive-sanderson-e4af16",
+      "heuristic-perlman-19bc52",
+      "jovial-blackwell-2bee88",
+      "lucid-mendel-d5530a",
+      "mystifying-rhodes-5c9d80",
+      "sleepy-aryabhata-e82d1d",
+      "strange-sinoussi-0c7307",
+      "suspicious-dewdney-13521a"
     ],
-    "worktrees_bytes": 2429695477,
-    "prune_executed": false,
-    "prune_note": "All Claude worktrees show broad dirty state (likely line-ending drift). Operator must confirm no unique commits before `git worktree remove --force`."
+    "bytes_before": 2429695477,
+    "bytes_after": 0,
+    "bytes_freed": 2429695477,
+    "prune_rc": 0,
+    "prune_output": "",
+    "completed_at_utc": "2026-05-24T00:52:09.493677+00:00",
+    "note": "Operator confirmed 3e; branches were stale Claude lanes with CRLF-only drift."
   },
   "3f_lfs_hooks": {
     "hooks": [
