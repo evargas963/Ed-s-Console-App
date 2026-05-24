@@ -7,8 +7,8 @@ Blocks:
      ``audit catch`` rows without staging the matching ``*.py`` target in the
      same commit.
 
-Authoritative rule source: AGENTS.md (§ Fix everything we touch, § Self-governance
-quality loop). Paired test: tests/test_check_fix_everything_we_touch.py.
+Authoritative rule source: AGENTS.md (§ Do not lie to the operator, § Fix everything we touch,
+§ Self-governance quality loop). Paired test: tests/test_check_fix_everything_we_touch.py.
 
 Usage:
   python tools/check_fix_everything_we_touch.py              # staged files (pre-commit)
@@ -37,6 +37,32 @@ META_COMMIT_LINE = re.compile(
     r"rejection-grade|mechanical lock|check_fix_everything_we_touch"
     r")\b",
     re.IGNORECASE,
+)
+DO_NOT_LIE_META_LINE = re.compile(
+    r"\b(?:"
+    r"do not lie|partial coverage|unverified claim|verified.? without evidence|"
+    r"operator-as-catch|mechanical enforcement|commit-msg guard"
+    r")\b",
+    re.IGNORECASE,
+)
+EVIDENCE_CITE = re.compile(
+    r"(?:"
+    r":\d+"
+    r"|@\s*[0-9a-f]{7,40}\b"
+    r"|\btests/[\w./-]+"
+    r"|\btest_[\w]+"
+    r"|\bpytest\b"
+    r")",
+    re.IGNORECASE,
+)
+UNVERIFIED_CLAIM_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("verified without evidence cite", re.compile(r"\bverified\b", re.IGNORECASE)),
+    ("confirmed without evidence cite", re.compile(r"\bconfirmed\b", re.IGNORECASE)),
+    (
+        "guarantee without cited mechanism",
+        re.compile(r"\bguarantee(?:s|d)?\b", re.IGNORECASE),
+    ),
+    ("all clear without evidence cite", re.compile(r"\ball\s+clear\b", re.IGNORECASE)),
 )
 INVESTIGATION_ONLY_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -167,11 +193,19 @@ def check_commit_message(path: Path) -> list[str]:
         return []
     hits: list[str] = []
     for line_no, line in enumerate(text.splitlines(), start=1):
-        if META_COMMIT_LINE.search(line):
+        if META_COMMIT_LINE.search(line) or DO_NOT_LIE_META_LINE.search(line):
             continue
         for label, pat in INVESTIGATION_ONLY_PATTERNS:
             if pat.search(line):
                 hits.append(f"{path}:{line_no}: investigation-only hit ({label}): {line.strip()[:200]!r}")
+        if EVIDENCE_CITE.search(line):
+            continue
+        for label, pat in UNVERIFIED_CLAIM_PATTERNS:
+            if pat.search(line):
+                hits.append(
+                    f"{path}:{line_no}: unverified-claim hit ({label}): {line.strip()[:200]!r} "
+                    f"(AGENTS § Do not lie — cite tests/, @ SHA, or :line on same line)"
+                )
     return hits
 
 

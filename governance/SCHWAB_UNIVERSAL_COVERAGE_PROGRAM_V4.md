@@ -36,7 +36,9 @@
 
 **Normative landing order:** PR 1 → PR 2 → PR 3 → field work under the gate (see `CLAUDE.md`). A post–PR 3 jump in **`unreviewed_count`** is expected and correct.
 
-**Inherited scanner mechanics:** **V3-B** (universal text-file walk) applies to the **full** repo tree only after item **3** (full-tree scanner regen) has landed; until then, any committed register built with **`partial_scan: true`** or **`max_files`** MUST NOT support closure language (see [`CURSOR_V4_AGENT_BRIEF.md`](CURSOR_V4_AGENT_BRIEF.md)).
+**Inherited scanner mechanics:** **V3-B** (universal text-file walk) applies to the **canonical scoped scan tree** after item **3** (full-tree scanner regen) has landed — `.gitignore`-respecting walk plus **`SCAN_SCOPE_EXCLUDE_PREFIXES`** and other prune reconciliation recorded in `register_build.scanner_flags` / reconciliation **(c)**. Legacy full-disk walks without that reconciliation MUST NOT support closure language (see [`CURSOR_V4_AGENT_BRIEF.md`](CURSOR_V4_AGENT_BRIEF.md)).
+
+**Attention tiers (do not conflate with D17 row count):** Operator **Read + wire fix** = trade-decision producer/consumer cone (~30–80 files: money-path, server, populators, adapters). Scoped register long tail = **mechanical classifier + per-row evidence** — not line-by-line operator Read of every register row. Cone walked + memos green **alone** is not D17 closure.
 
 ---
 
@@ -79,7 +81,7 @@ This step is **mandatory**, not optional.
 - **`no_schwab_equivalent_count`**, **`not_market_data_count`**, **`unreviewed_count`**
 - **`v4_a_violations`** (register_id list), **`closure_admissible`**
 
-**Closure** requires **`bare_governed_exception_count == 0`** and **`unreviewed_count == 0`**. Counts are recorded in the **V4 closure audit** (Deliverable **16**).
+**Closure** requires **`bare_governed_exception_count == 0`** and **`unreviewed_count == 0`** on the **canonical scoped register** (`partial_scan: false`; `.gitignore`-respecting walk; explicit non-product subtree excludes in `SCAN_SCOPE_EXCLUDE_PREFIXES` recorded in `register_build.scanner_flags`). Counts are recorded in the **V4 closure audit** (Deliverable **16**). Raw on-disk file cardinality and legacy full-disk register builds without prune reconciliation are **not** admissible closure surfaces.
 
 ### V4-D — Inherited from V3 (verbatim)
 

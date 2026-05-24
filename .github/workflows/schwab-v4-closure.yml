@@ -1,7 +1,7 @@
 name: Schwab V4 Register Closure
 
 # Heavy register pipeline + D17 closure metrics. Fails until unreviewed_count == 0
-# (multi-million-row V4 walk — separate workstream). Not run on every feature push.
+# on the scoped canonical register (gitignore + SCAN_SCOPE_EXCLUDE_PREFIXES).
 
 on:
   workflow_dispatch:

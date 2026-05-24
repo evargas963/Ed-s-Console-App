@@ -87,7 +87,7 @@
 
 **Money-path roster (AGENTS.md):** all 11 modules walked @ `9e88491`. All 16 V4 review memos pass gatekeeper CSV cross-check @ `fa4c6d7` (10 legacy memos retroactive appendix).
 
-**D17 register scope (do not conflate):** `unreviewed_count` ~4.1M is scanner row cardinality, not uniform-attention file count. **Operator-eyes bottleneck** = trade-decision producer/consumer cone (~30–80 files; money-path + server/populator/adapters — largely walked). **Mechanical long tail** = per-row classifier + per-row evidence per `scope_by_dataflow_relevance` (not line-by-line operator Read of every register row). V4 walk framing must keep these separate — "4.1M" is not "years of the same attention as money-path."
+**D17 register scope (binding):** Closure = `unreviewed_count == 0` on the **scoped register** (gitignore + `SCAN_SCOPE_EXCLUDE_PREFIXES` in meta `scanner_flags`), not 4.1M-style full-disk bloat. Regen @ 2026-05-24: **1045 files / 162501 rows** (was 9453 / 4.1M). **Operator eyes** = trade-decision cone (~30–80 files; money-path largely walked). **Mechanical tail** = classifier on scoped register rows. Cone complete ≠ D17 closed until scoped register metrics hit zero.
 
 ---
 

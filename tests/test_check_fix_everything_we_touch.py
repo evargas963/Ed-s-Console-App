@@ -100,5 +100,45 @@ def test_open_audit_catch_requires_py(tmp_path: Path) -> None:
 
 def test_agents_md_documents_top_rule() -> None:
     text = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "## Do not lie to the operator" in text
     assert "## Fix everything we touch" in text
     assert "## Self-governance quality loop" in text
+
+
+def test_commit_message_do_not_lie_meta_describing_checker_passes(tmp_path: Path) -> None:
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text(
+        "Partial coverage — commit-msg guard for unverified claim patterns (verified without evidence).\n",
+        encoding="utf-8",
+    )
+    assert mod.check_commit_message(msg) == []
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "Verified the bid fix end-to-end.",
+        "Confirmed all sites clean.",
+        "This guarantees no regression.",
+        "All clear on wire reads.",
+    ],
+)
+def test_commit_message_unverified_claim_phrases_fail(phrase: str, tmp_path: Path) -> None:
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text(phrase, encoding="utf-8")
+    hits = mod.check_commit_message(msg)
+    assert hits, f"expected unverified-claim hit for: {phrase!r}"
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "Verified bid fix @ 71dafb2 in live_decision_bundle.py:120",
+        "Confirmed via tests/test_live_market_plane_streaming.py",
+        "pytest green — guarantees cited in tests/test_foo.py:42",
+    ],
+)
+def test_commit_message_unverified_claim_with_evidence_passes(phrase: str, tmp_path: Path) -> None:
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text(phrase, encoding="utf-8")
+    assert mod.check_commit_message(msg) == []

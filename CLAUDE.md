@@ -154,9 +154,14 @@ that field, end-to-end.
 CLOSURE (Deliverable 17 — admissibility conditions)
 ──────────────────────────────────────────────────────────────────────────────
 Closure is unreviewed_count == 0 AND bare_governed_exception_count == 0
-across the FULL repo file tree (V4 Deliverable 17 metrics). Inventories-only,
-fail-closed spot fixes, single-file patches without full canopy→leaf trace
-do NOT count as closure.
+on the canonical scoped register (partial_scan false; .gitignore-respecting
+scanner walk; SCAN_SCOPE_EXCLUDE_PREFIXES in register_build.scanner_flags) —
+not raw on-disk file cardinality. Inventories-only, fail-closed spot fixes,
+single-file patches without full canopy→leaf trace do NOT count as closure.
+
+Operator Read + wire fix targets the trade-decision producer/consumer cone
+(~30–80 files). Scoped register long tail is mechanical classifier work with
+per-row evidence — not uniform operator attention on every register row.
 
 A closure claim is INADMISSIBLE unless ALL of the following hold:
   • register_build.partial_scan == false (full-repo scanner walk committed)

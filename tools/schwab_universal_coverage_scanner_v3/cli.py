@@ -18,6 +18,7 @@ from .js_ts_scanner import scan_js_ts_text
 from .markdown_scan import scan_markdown_file
 from .paths import (
     ROOT,
+    SCAN_SCOPE_EXCLUDE_PREFIXES,
     is_binary_sample,
     try_decode_utf8,
     walk_workspace_files,
@@ -191,6 +192,8 @@ def write_register_build_meta(
     max_files: int | None,
     embedding_mode_cli: str | None,
     include_dot_claude: bool,
+    respect_gitignore: bool,
+    scope_exclude_prefixes: tuple[str, ...],
 ) -> Path:
     """Emit pinned scan metadata (hashes, flags, HEAD) for audit / CI reproduction."""
     root = root.resolve()
@@ -232,6 +235,8 @@ def write_register_build_meta(
             "max_files": max_files,
             "embedding_mode": emb,
             "include_dot_claude": include_dot_claude,
+            "respect_gitignore": respect_gitignore,
+            "scope_exclude_prefixes": list(scope_exclude_prefixes),
         },
         "register_content_sha256": sha256_hex,
         "register_size_bytes": size_b,
@@ -310,6 +315,9 @@ def run_scan(
     include_dot_claude: bool = False,
     max_files: int | None = None,
     embedding_mode: str | None = None,
+    respect_gitignore: bool = True,
+    scope_exclude_prefixes: tuple[str, ...] = SCAN_SCOPE_EXCLUDE_PREFIXES,
+    extra_exclude_prefixes: tuple[str, ...] = (),
 ) -> dict:
     if embedding_mode:
         import os
@@ -319,6 +327,7 @@ def run_scan(
     syn = load_synonyms()
     vendor_pf = load_vendor_prefixes()
     state = ReconciliationState()
+    combined_scope = tuple(scope_exclude_prefixes) + tuple(extra_exclude_prefixes)
 
     def on_prune(batch) -> None:
         state.record_pruned_batch(
@@ -339,7 +348,12 @@ def run_scan(
     except ValueError:
         skip_output_rel = None
 
-    for abs_p in walk_workspace_files(root, on_prune=on_prune):
+    for abs_p in walk_workspace_files(
+        root,
+        on_prune=on_prune,
+        respect_gitignore=respect_gitignore,
+        scope_exclude_prefixes=combined_scope,
+    ):
         if max_files is not None and n_attempts >= max_files:
             break
         rel = abs_p.relative_to(root).as_posix().replace("\\", "/")
@@ -399,6 +413,10 @@ def run_scan(
     recon = state.as_report()
     recon["criterion_1_reconciliation"]["partial_scan_max_files"] = max_files
     recon["criterion_1_reconciliation"]["partial_scan_breaks_reconciliation"] = max_files is not None
+    recon["criterion_1_reconciliation"]["scan_scope"] = {
+        "respect_gitignore": respect_gitignore,
+        "scope_exclude_prefixes": list(combined_scope),
+    }
     return {
         "scanner_version": SCANNER_VERSION,
         "files_attempted": n_attempts,
@@ -427,13 +445,35 @@ def main() -> int:
         default=None,
         help="Override SCHWAB_SCANNER_EMBEDDINGS: mock is fast (deterministic hash embeddings); minilm loads sentence-transformers.",
     )
+    ap.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="PREFIX",
+        help="Additional POSIX path prefix to exclude from the walk (repeatable).",
+    )
+    ap.add_argument(
+        "--no-respect-gitignore",
+        action="store_true",
+        help="Walk gitignored paths (tests / dry-run only; not for canonical register regen).",
+    )
+    ap.add_argument(
+        "--no-scope-excludes",
+        action="store_true",
+        help="Disable default SCAN_SCOPE_EXCLUDE_PREFIXES (legacy full-tree walk).",
+    )
     args = ap.parse_args()
+    scope_excludes = () if args.no_scope_excludes else SCAN_SCOPE_EXCLUDE_PREFIXES
+    extra_excludes = tuple(p.strip().replace("\\", "/").strip("/") for p in args.exclude if p.strip())
     summary = run_scan(
         args.root.resolve(),
         args.output,
         include_dot_claude=args.include_dot_claude,
         max_files=args.max_files,
         embedding_mode=args.embedding_mode,
+        respect_gitignore=not args.no_respect_gitignore,
+        scope_exclude_prefixes=scope_excludes,
+        extra_exclude_prefixes=extra_excludes,
     )
     write_register_build_meta(
         args.root.resolve(),
@@ -442,6 +482,8 @@ def main() -> int:
         max_files=args.max_files,
         embedding_mode_cli=args.embedding_mode,
         include_dot_claude=args.include_dot_claude,
+        respect_gitignore=not args.no_respect_gitignore,
+        scope_exclude_prefixes=scope_excludes + extra_excludes,
     )
     print(json.dumps(summary, indent=2))
     return 0

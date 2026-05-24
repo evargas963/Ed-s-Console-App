@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Iterator
+import subprocess
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +26,19 @@ PRUNE_SUBTREE_PREFIXES: tuple[str, ...] = (
     "schwab_field_inventory/streaming",
     "schwab_field_inventory/market_hours",
     "backups",
+)
+
+# Tracked-but-non-product subtrees — not market-field disposition surfaces (2026-05-24 scope diet).
+# Combined with .gitignore-aware walk to drop generated/untracked bloat from register cardinality.
+SCAN_SCOPE_EXCLUDE_PREFIXES: tuple[str, ...] = (
+    "governance/archive",
+    "models/active",
+    "models/active_5c",
+    "models/active_15c",
+    "models/active_60c",
+    "models/validation_runs",
+    "tools",
+    "calibration",
 )
 
 # Generated / vendor directory basenames — never scanned (closure targets source + governance text).
@@ -74,16 +88,64 @@ class PruneBatch:
     reason: str
 
 
+def rel_matches_prefix(rel_posix: str, prefix: str) -> bool:
+    rl = rel_posix.replace("\\", "/")
+    pre = prefix.replace("\\", "/").strip("/")
+    return rl == pre or rl.startswith(pre + "/")
+
+
+def rel_matches_any_prefix(rel_posix: str, prefixes: Sequence[str]) -> bool:
+    return any(rel_matches_prefix(rel_posix, p) for p in prefixes)
+
+
+def git_work_tree(root: Path) -> bool:
+    proc = subprocess.run(
+        ["git", "-C", str(root.resolve()), "rev-parse", "--is-inside-work-tree"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return proc.returncode == 0 and (proc.stdout or "").strip() == "true"
+
+
+class GitPathScope:
+    """Git check-ignore wrapper — skips gitignored paths when walking the workspace."""
+
+    def __init__(self, root: Path, *, enabled: bool) -> None:
+        self._root = root.resolve()
+        self.enabled = enabled and git_work_tree(self._root)
+        self._cache: dict[str, bool] = {}
+
+    def is_ignored(self, rel_posix: str) -> bool:
+        if not self.enabled:
+            return False
+        rel = rel_posix.replace("\\", "/").lstrip("./")
+        if rel in self._cache:
+            return self._cache[rel]
+        proc = subprocess.run(
+            ["git", "-C", str(self._root), "check-ignore", "-q", "--", rel],
+            capture_output=True,
+            check=False,
+        )
+        ignored = proc.returncode == 0
+        self._cache[rel] = ignored
+        return ignored
+
+
 def walk_workspace_files(
     root: Path,
     *,
     on_prune: Callable[[PruneBatch], None],
+    respect_gitignore: bool = True,
+    scope_exclude_prefixes: Sequence[str] = SCAN_SCOPE_EXCLUDE_PREFIXES,
 ) -> Iterator[Path]:
     """
     Walk repo files for scanning. Pruned directories are not descended into;
     caller must record each prune via on_prune (reconciliation (c)).
     """
     root = root.resolve()
+    git_scope = GitPathScope(root, enabled=respect_gitignore)
+    scope_prefixes = tuple(scope_exclude_prefixes)
 
     for dirpath, dirnames, filenames in os.walk(root, topdown=True):
         dirpath_p = Path(dirpath)
@@ -127,8 +189,9 @@ def walk_workspace_files(
                 dirnames.remove(d)
                 continue
 
+            pruned = False
             for prefix in PRUNE_SUBTREE_PREFIXES:
-                if rel_sub == prefix or rel_sub.startswith(prefix + "/"):
+                if rel_matches_prefix(rel_sub, prefix):
                     sub = dirpath_p / d
                     n = count_files_under(sub)
                     on_prune(
@@ -141,7 +204,46 @@ def walk_workspace_files(
                         )
                     )
                     dirnames.remove(d)
+                    pruned = True
                     break
+            if pruned:
+                continue
+
+            for prefix in scope_prefixes:
+                if rel_matches_prefix(rel_sub, prefix):
+                    sub = dirpath_p / d
+                    n = count_files_under(sub)
+                    on_prune(
+                        PruneBatch(
+                            relative_dir=rel_sub,
+                            dir_kind="scan_scope_exclude",
+                            file_count=n,
+                            clause=f"V4 scan scope — non-product subtree not scanned ({prefix}/*)",
+                            reason="pruned_directory",
+                        )
+                    )
+                    dirnames.remove(d)
+                    pruned = True
+                    break
+            if pruned:
+                continue
+
+            if git_scope.is_ignored(rel_sub):
+                sub = dirpath_p / d
+                n = count_files_under(sub)
+                on_prune(
+                    PruneBatch(
+                        relative_dir=rel_sub,
+                        dir_kind="gitignore",
+                        file_count=n,
+                        clause="V4 scan scope — path ignored per .gitignore",
+                        reason="pruned_directory",
+                    )
+                )
+                dirnames.remove(d)
 
         for fn in sorted(filenames):
+            rel_file = (rel_parent / fn).as_posix().replace("\\", "/")
+            if git_scope.is_ignored(rel_file):
+                continue
             yield dirpath_p / fn

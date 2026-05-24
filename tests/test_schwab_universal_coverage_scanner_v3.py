@@ -20,6 +20,7 @@ from tools.schwab_universal_coverage_scanner_v3.paths import (
     try_decode_utf8,
     walk_workspace_files,
     PruneBatch,
+    rel_matches_prefix,
 )
 from tools.schwab_universal_coverage_scanner_v3.python_scanner import scan_python_complete, scan_python_source
 from tools.schwab_universal_coverage_scanner_v3.reconciliation import (
@@ -423,7 +424,15 @@ def test_prune_node_modules_and_inventory_dumps(tmp_path: Path) -> None:
     def cb(b: PruneBatch) -> None:
         batches.append(b)
 
-    files = {p.relative_to(tmp_path).as_posix() for p in walk_workspace_files(tmp_path, on_prune=cb)}
+    files = {
+        p.relative_to(tmp_path).as_posix()
+        for p in walk_workspace_files(
+            tmp_path,
+            on_prune=cb,
+            respect_gitignore=False,
+            scope_exclude_prefixes=(),
+        )
+    }
     assert "keep.py" in files
     assert "node_modules/pkg/junk.js" not in files
     assert ".venv/lib/site.py" not in files
@@ -431,6 +440,56 @@ def test_prune_node_modules_and_inventory_dumps(tmp_path: Path) -> None:
     assert any(b.dir_kind == "node_modules" for b in batches)
     assert any(b.dir_kind == ".venv" for b in batches)
     assert any(b.dir_kind == "inventory_or_backup_dump" for b in batches)
+
+
+def test_scope_exclude_tools_prefix(tmp_path: Path) -> None:
+    (tmp_path / "root.py").write_text("x = 1\n", encoding="utf-8")
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    (tools / "audit.py").write_text("bid = 1\n", encoding="utf-8")
+    batches: list[PruneBatch] = []
+
+    files = {
+        p.relative_to(tmp_path).as_posix()
+        for p in walk_workspace_files(
+            tmp_path,
+            on_prune=batches.append,
+            respect_gitignore=False,
+            scope_exclude_prefixes=("tools",),
+        )
+    }
+    assert files == {"root.py"}
+    assert any(b.dir_kind == "scan_scope_exclude" for b in batches)
+
+
+def test_gitignore_excludes_ignored_subtree(tmp_path: Path) -> None:
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / ".gitignore").write_text("secret/\n", encoding="utf-8")
+    (tmp_path / "keep.py").write_text("x = 1\n", encoding="utf-8")
+    secret = tmp_path / "secret"
+    secret.mkdir()
+    (secret / "hid.py").write_text("bid = 1\n", encoding="utf-8")
+    batches: list[PruneBatch] = []
+
+    files = {
+        p.relative_to(tmp_path).as_posix()
+        for p in walk_workspace_files(
+            tmp_path,
+            on_prune=batches.append,
+            respect_gitignore=True,
+            scope_exclude_prefixes=(),
+        )
+    }
+    assert files == {"keep.py", ".gitignore"}
+    assert any(b.dir_kind == "gitignore" for b in batches)
+
+
+def test_rel_matches_prefix() -> None:
+    assert rel_matches_prefix("tools/check.py", "tools")
+    assert rel_matches_prefix("tools", "tools")
+    assert not rel_matches_prefix("mytools/x.py", "tools")
 
 
 def test_prune_records_callback(tmp_path: Path) -> None:
@@ -442,7 +501,14 @@ def test_prune_records_callback(tmp_path: Path) -> None:
     def cb(batch) -> None:
         batches.append(batch)
 
-    list(walk_workspace_files(tmp_path, on_prune=cb))
+    list(
+        walk_workspace_files(
+            tmp_path,
+            on_prune=cb,
+            respect_gitignore=False,
+            scope_exclude_prefixes=(),
+        )
+    )
     assert any(b.dir_kind == ".git" for b in batches)
 
 

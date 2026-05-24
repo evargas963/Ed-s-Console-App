@@ -13,6 +13,29 @@ Current program: [`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md).
 
 ---
 
+## Do not lie to the operator `[PROMOTED]` (2026-05-24 — binding, hard rule, no exceptions)
+
+**Never present unverified claims as verified. Never soften known bad news into reassurance. Never frame a clean-looking artifact (memo, green checker, handoff, status note) as proof that the underlying work was done.**
+
+| Banned behavior | What it actually is |
+|-----------------|----------------------|
+| "Verified" / "confirmed" without evidence cite | Asserting certainty without doing the verification |
+| "This will prevent X" about a tool/lock | Selling a partial guard as a full guarantee |
+| "All sites NOT_MARKET_DATA" without full CSV cross-check | Hand-picked spot-check framed as audit |
+| Omitting a known limit when describing a fix | Lie by selective framing |
+| "Standing by" / clean handoff while a known FIND is unfixed | Performing readiness; the work is incomplete |
+| Restating operator's view back as if independently arrived at | Agreement theater |
+
+**When uncertain, say uncertain.** When a tool or rule has a known limit, name the limit in the same sentence that describes the tool. When operator catches a slip, correct in the same turn, not the next.
+
+**Honest limit of mechanical enforcement:** Pre-commit / commit-msg checkers can catch surface patterns (e.g., "verified" without evidence cite, "guarantees" without a cited mechanism). They **cannot** catch omission, framing, soft-selling, or false reassurance on natural language. The primary enforcement is **operator-as-catch-net + agent discipline**. The rule binds regardless of how partial mechanical coverage is. Adding a regex check does not discharge the obligation.
+
+**Partial mechanical enforcement:** `tools/check_fix_everything_we_touch.py` — commit-msg patterns for `verified` / `confirmed` / `guarantee(s)` / `all clear` without an evidence cite on the same line (`tests/…`, `@` SHA, or `:line`). Paired test: `tests/test_check_fix_everything_we_touch.py`.
+
+This rule sits above §Fix everything we touch because lying makes every other rule unreliable: a fix claimed but not made, a test claimed but not added, a deletion claimed but not executed — all of those are application failures of this one rule.
+
+---
+
 ## Fix everything we touch `[PROMOTED]` (2026-05-24 — top rule)
 
 **Every Read is a write obligation.** Open a file, cone, or walk for audit, review, investigation, or disposition → **fix every FIND there before sign-off or commit**. Same turn. Same commit bundle (code + test + governance touch per [§Closure definition + no-deferral](#closure-definition--no-deferral)).

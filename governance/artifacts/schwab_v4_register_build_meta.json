@@ -1,17 +1,30 @@
 {
   "embedding_mode": "mock",
-  "files_attempted": 9453,
-  "generated_at_utc": "2026-05-19T00:18:57Z",
-  "operator_note": "PR 3 full-repo V3-B walk (mock embeddings). partial_scan false — D17 unreviewed_count reflects the full tree (not the retired 400-file cap). Register CSV is gitignored; this meta SHA pins CI regen. Use --embedding-mode minilm only when semantic top-K disposition notes are required.",
+  "files_attempted": 1045,
+  "generated_at_utc": "2026-05-24T19:54:46Z",
+  "max_files": null,
+  "operator_note": "Scoped V4 walk (2026-05-24): respect_gitignore + SCAN_SCOPE_EXCLUDE_PREFIXES (archive, models/active*, tools, calibration). partial_scan false. 1045 files / 162501 register rows (was 9453 / 4.1M full-disk bloat). Register CSV gitignored; meta SHA pins CI regen.",
   "partial_scan": false,
-  "register_content_sha256": "975e06fcd9fd95fec5b5d791f9557f3a392968288026fe975cb8055b05e444f7",
+  "register_content_sha256": "0e0b9ca5841ae2b8812f7e122c633f16614ab2ba419865bbf845c8aa9e0ce327",
   "register_csv_path": "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv",
-  "register_rows_written": 4146369,
-  "register_size_bytes": 3921231647,
-  "scanner_commit_sha": "54390b0fda9b8b37a907f11c29f91c9ef324fd88",
+  "register_rows_written": 162501,
+  "register_size_bytes": 164282764,
+  "scanner_commit_sha": "e4aceb119c25aec780bed02cbae3383aae832d4f",
   "scanner_flags": {
     "embedding_mode": "mock",
-    "include_dot_claude": false
+    "include_dot_claude": false,
+    "max_files": null,
+    "respect_gitignore": true,
+    "scope_exclude_prefixes": [
+      "governance/archive",
+      "models/active",
+      "models/active_5c",
+      "models/active_15c",
+      "models/active_60c",
+      "models/validation_runs",
+      "tools",
+      "calibration"
+    ]
   },
   "scanner_version": "3.0.0"
 }
