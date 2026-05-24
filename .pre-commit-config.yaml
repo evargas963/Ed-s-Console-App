@@ -12,3 +12,14 @@ repos:
         entry: python tools/check_no_grep_subprocess.py
         language: system
         types: [python]
+      - id: no-deferral-language-msg
+        name: no deferral language in commit message
+        entry: python tools/check_no_deferral_language.py
+        language: system
+        stages: [commit-msg]
+      - id: no-deferral-language-files
+        name: no deferral language in staged source/test files
+        entry: python tools/check_no_deferral_language.py
+        language: system
+        types: [text]
+        exclude: '^(OPEN_ITEMS\.md|ACTIVE_PROGRAM\.md|governance/.*|tools/check_no_deferral_language\.py|tests/test_check_no_deferral_language\.py)$'
