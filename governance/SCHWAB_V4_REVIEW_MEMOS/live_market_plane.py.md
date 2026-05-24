@@ -133,4 +133,4 @@ This file's contribution to V4 closure is **completing the streaming-plane produ
 
 - **status:** pending (awaiting gatekeeper)
 - **memo_ref:** governance/SCHWAB_V4_REVIEW_MEMOS/live_market_plane.py.md
-- **flagged for follow-on:** S2a non-canonical `BID` / `ASK` fallback removal (recommended REPLACED-via-removal; alternative GOVERNED_EXCEPTION (O-NN) requires operator narrative).
+- **S2a closed @ `e147097`** (2026-05-24): non-canonical `BID` / `ASK` fallbacks removed; paired test `test_record_from_level_one_ignores_non_canonical_bid_ask_keys` in `tests/test_live_market_plane_streaming.py` locks the behavior.
