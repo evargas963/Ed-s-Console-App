@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug
+
 from arch_competition.atomic_io import write_json_file_atomically
 from arch_competition.eval_runner import (
     EVALUATION_MANIFEST_SCHEMA_VERSION,
@@ -59,10 +61,6 @@ ARCH_COMPETITION_SUMMARY_FILENAME = "arch_competition_summary.json"
 log = logging.getLogger(__name__)
 
 
-def _normalize_ml_horizon_slug(ml_horizon_slug: str) -> str:
-    return str(ml_horizon_slug).strip().lower()
-
-
 def _blocked_promotion_flags_from_sources(
     tick_summary: dict[str, Any] | None,
     governed: dict[str, Any] | None,
@@ -75,7 +73,7 @@ def _blocked_promotion_flags_from_sources(
 
 
 def arch_competition_ticker_dir(model_dir: Path, ml_horizon_slug: str, ticker: str) -> Path:
-    su = _normalize_ml_horizon_slug(ml_horizon_slug)
+    su = normalize_ml_horizon_slug(ml_horizon_slug)
     return model_dir / "arch_competition" / su / ticker.upper()
 
 
@@ -88,7 +86,7 @@ def promotion_decision_path(model_dir: Path, ml_horizon_slug: str, ticker: str) 
 
 
 def arch_competition_summary_path(model_dir: Path, ml_horizon_slug: str) -> Path:
-    su = _normalize_ml_horizon_slug(ml_horizon_slug)
+    su = normalize_ml_horizon_slug(ml_horizon_slug)
     return model_dir / "arch_competition" / su / ARCH_COMPETITION_SUMMARY_FILENAME
 
 
@@ -116,7 +114,7 @@ def run_governed_architecture_competition_pass(
     Raises:
         EvaluationLineageError, PromotionGovernanceError: fail-closed inputs.
     """
-    hz = _normalize_ml_horizon_slug(ml_horizon_slug)
+    hz = normalize_ml_horizon_slug(ml_horizon_slug)
     manifest = run_architecture_pair_evaluation(
         db_path=db_path,
         ticker=ticker,
@@ -291,10 +289,10 @@ def load_architecture_competition_visibility(
 
     Fail-closed: raises FileNotFoundError / PromotionGovernanceError if required files missing (optional strict).
     """
-    hz = _normalize_ml_horizon_slug(ml_horizon_slug)
+    hz = normalize_ml_horizon_slug(ml_horizon_slug)
     arch_path = (
         model_dir / "arch_state.json"
-        if hz == "1c"
+        if hz == DEFAULT_ML_HORIZON_SLUG
         else model_dir / f"arch_state_{hz}.json"
     )
     state: dict[str, Any] = {}
