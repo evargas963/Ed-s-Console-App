@@ -205,3 +205,14 @@ def test_bayesian_fusion_memo_gatekeeper_section_passes():
     memo = ROOT / "governance/SCHWAB_V4_REVIEW_MEMOS/bayesian_fusion.py.md"
     errs = guard.check_v4_memo_gatekeeper_csv(memo, repo_root=ROOT)
     assert errs == []
+
+
+def test_live_decision_bundle_memo_gatekeeper_section_passes():
+    memo = ROOT / "governance/SCHWAB_V4_REVIEW_MEMOS/live_decision_bundle.py.md"
+    errs = guard.check_v4_memo_gatekeeper_csv(memo, repo_root=ROOT)
+    assert errs == []
+
+
+def test_gatekeeper_crosscheck_live_decision_bundle_zero_collisions():
+    collisions = guard.lexical_csv_collisions(ROOT / "live_decision_bundle.py")
+    assert len(collisions) == 0
