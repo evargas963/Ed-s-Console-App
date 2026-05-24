@@ -224,18 +224,18 @@ def _session_bucket_from_utc_ts(ts: float) -> str:
 
 
 def _live_session_label() -> Optional[str]:
+    """Fetch the live session label.
 
-    try:
+    Propagates exceptions to the caller — `tick_triggers_coherent_refresh`'s
+    outer try/except handles failures uniformly with every other check in
+    that function (warning log + refresh). Previously this wrapper swallowed
+    exceptions and returned None, causing the caller to silently skip the
+    session-label check on `market_context` outages (drift opposite to the
+    file's fail-closed-toward-refresh discipline).
+    """
+    from market_context import _derive_session
 
-        from market_context import _derive_session
-
-
-
-        return str(_derive_session())
-
-    except Exception:
-        log.debug("_live_session_label: session derive failed", exc_info=True)
-        return None
+    return str(_derive_session())
 
 
 

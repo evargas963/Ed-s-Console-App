@@ -64,3 +64,17 @@ def test_tick_triggers_fail_closed_when_nearest_wall_check_raises():
         side_effect=RuntimeError("nearest_wall"),
     ):
         assert tick_triggers_coherent_refresh(ms, stream_spot=100.0, stream_of_regime=None) is True
+
+
+def test_tick_triggers_fail_closed_when_derive_session_raises_internally():
+    """Production failure mode regression: _derive_session raising inside
+    _live_session_label must propagate to the caller's outer try/except so
+    refresh is triggered (not silently skipped via the wrapper swallowing).
+
+    Before the fix, _live_session_label caught Exception and returned None;
+    caller then skipped the session-label check on any market_context outage,
+    diverging from the file's fail-closed-toward-refresh discipline.
+    """
+    ms = _base_ms()
+    with patch("market_context._derive_session", side_effect=RuntimeError("derive_session")):
+        assert tick_triggers_coherent_refresh(ms, stream_spot=100.0, stream_of_regime=None) is True
