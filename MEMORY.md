@@ -6,6 +6,9 @@
 **Process mechanics:** [`docs/governance/AGENT_SELF_GOVERNANCE.md`](docs/governance/AGENT_SELF_GOVERNANCE.md).  
 **Schwab program:** [`CLAUDE.md`](CLAUDE.md).
 
+**Notable AGENTS.md anchors:**
+- Mutual gatekeeping + Class A memo bundling → [`AGENTS.md` §Active agent posture](AGENTS.md#active-agent-posture) (promoted 2026-05-24 @ eda08c0)
+
 Incident-context memory files are **archived, not deleted:**  
 [`governance/archive/2026-Q2/memory_archive/`](governance/archive/2026-Q2/memory_archive/) (34 files; triggers rewritten to topic names 2026-05-23).
 
