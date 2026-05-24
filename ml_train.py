@@ -34,6 +34,7 @@ from ml_horizon import (
     normalize_ml_horizon_slug,
     outcome_column,
 )
+from time_et import RTH_OPEN_MINS, RTH_SESSION_MINUTES
 
 TARGET_COL = DEFAULT_TRAINING_LABEL_COLUMN  # Default tabular label; training uses outcome_column(ml_horizon_slug).
 
@@ -228,7 +229,7 @@ def load_data(
             logging.getLogger("ml_train.normsync").warning(
                 "normalized_training_sync failed: %s", _ns.get("errors")
             )
-    except Exception as _e:
+    except (sqlite3.Error, OSError, ValueError, TypeError) as _e:
         logging.getLogger("ml_train.normsync").warning("normalized_training_sync: %s", _e)
 
     conn = sqlite3.connect(db_path)
@@ -342,11 +343,13 @@ def engineer_features(df: pd.DataFrame) -> tuple:
 
     hrs, mns = et_hour_minute_arrays_from_ts_utc(df)
     if np.any(np.isfinite(hrs)) and np.any(np.isfinite(mns)):
-        prog = np.clip((hrs * 60 + mns - 570) / 390.0, 0, 1)
+        prog = np.clip((hrs * 60 + mns - RTH_OPEN_MINS) / float(RTH_SESSION_MINUTES), 0, 1)
         feats["time_sin"]      = np.sin(2 * np.pi * prog)
         feats["time_cos"]      = np.cos(2 * np.pi * prog)
         feats["time_progress"] = prog
-        feats["minutes_since_open"] = np.clip((hrs - 9) * 60 + (mns - 30), 0, 390).astype(float)
+        feats["minutes_since_open"] = np.clip(
+            hrs * 60 + mns - RTH_OPEN_MINS, 0, RTH_SESSION_MINUTES
+        ).astype(float)
 
     if "candle_body_pct" in feats and "candle_range_pct" in feats:
         rng = feats["candle_range_pct"].copy()
@@ -470,11 +473,17 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
     eh = snapshot.get("et_hour")
     em = snapshot.get("et_minute")
     if eh is not None and em is not None:
-        prog = max(0.0, min(1.0, (float(eh)*60 + float(em) - 570) / 390.0))
+        prog = max(
+            0.0,
+            min(1.0, (float(eh) * 60 + float(em) - RTH_OPEN_MINS) / float(RTH_SESSION_MINUTES)),
+        )
         row["time_sin"]      = np.sin(2 * np.pi * prog)
         row["time_cos"]      = np.cos(2 * np.pi * prog)
         row["time_progress"] = prog
-        mins_open = max(0.0, (float(eh) - 9) * 60 + (float(em) - 30))
+        mins_open = max(
+            0.0,
+            min(float(RTH_SESSION_MINUTES), float(eh) * 60 + float(em) - RTH_OPEN_MINS),
+        )
         row["minutes_since_open"] = mins_open
     else:
         row["time_sin"] = row["time_cos"] = row["time_progress"] = np.nan
@@ -727,7 +736,10 @@ def train_ticker(
                     prev_meta = json.load(fm)
                 with open(mp_ex, "rb") as f:
                     prev_clf = pickle.load(f)
-            except Exception:
+            except (OSError, json.JSONDecodeError, pickle.UnpicklingError, EOFError) as _inc_ex:
+                logging.getLogger("ml_train").debug(
+                    "XGB incremental load failed for %s: %s", ticker, _inc_ex
+                )
                 prev_meta, prev_clf = None, None
         from training_provenance import PREPROCESSING_VERSION as _PREPROC_V
 
