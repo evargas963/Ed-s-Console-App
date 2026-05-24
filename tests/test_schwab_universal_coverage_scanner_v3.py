@@ -705,3 +705,47 @@ def test_cross_validator_skips_line_covered_by_catch_all(tmp_path: Path, idx: Sc
     assert py_rows
     miss = cross_validate_python_file("t.py", src, py_rows, idx)
     assert not any(r.line == py_rows[0].line for r in miss)
+
+
+def test_mechanical_pass_non_product_prefix() -> None:
+    from tools.track_a_module_docstring_nmd_pass import _apply_pass
+
+    row = {
+        "path": "governance/OPEN_ITEMS.md",
+        "line": "1",
+        "disposition": "UNREVIEWED",
+        "pattern_kind": "TEXT_LINE_MARKET_TOKEN",
+    }
+    disp, note = _apply_pass(row, {})
+    assert disp == "NOT_MARKET_DATA"
+    assert "non-product" in note
+
+
+def test_mechanical_pass_skips_reviewed() -> None:
+    from tools.track_a_module_docstring_nmd_pass import _apply_pass
+
+    row = {
+        "path": "server.py",
+        "line": "1",
+        "disposition": "REPLACED",
+        "pattern_kind": "TEXT_LINE_MARKET_TOKEN",
+    }
+    assert _apply_pass(row, {}) is None
+
+
+def test_mechanical_pass_streaming_zero_unreviewed(tmp_path: Path) -> None:
+    from tools.track_a_module_docstring_nmd_pass import run
+
+    reg = tmp_path / "reg.csv"
+    reg.write_text(
+        "register_id,language,path,line,col,pattern_kind,surface_form,tokens,"
+        "csv_candidates,csv_lexical_topk_note,v2_trace,disposition,"
+        "canonical_field_citation,governed_ref,notes\n"
+        "abc,md,governance/x.md,1,0,TEXT_LINE_MARKET_TOKEN,bid,,,,,UNREVIEWED,,,\n",
+        encoding="utf-8",
+    )
+    rep = run(register=reg, dry_run=False, skip_tail=False)
+    assert rep["rows_updated"] == 1
+    text = reg.read_text(encoding="utf-8")
+    assert "UNREVIEWED" not in text
+    assert "NOT_MARKET_DATA" in text
