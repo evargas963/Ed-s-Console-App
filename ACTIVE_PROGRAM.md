@@ -53,7 +53,7 @@
 - **CI:** `schwab-csv-first.yml` on every push/PR (CSV-first + committed meta/scoreboard pin; diff-emission on **pull_request** only). **`pytest.yml`** on every push/PR (`npm run test:all` — Playwright E2E + full pytest). **D17 closure** (`unreviewed_count == 0`) is `schwab-v4-closure.yml` (manual / main / register-path pushes) — expected fail until V4 walk completes.
 - **Memory portability:** `AGENTS.md` + repo `MEMORY.md` (Phase 1c) = portable; `[OPERATOR-ONLY]` prefs stay machine-local until archived.
 - **Long branch:** prefer small consolidation commits; no force-push.
-- **`config.py` credentials:** hardcoded Schwab API key/secret in tracked file — queue credential-hygiene slice (env-only, rotate, history scrub if ever public).
+- **`config.py` credentials (next highest-blast-radius slice):** hardcoded Schwab API key/secret in tracked file. **Slice shape when directed:** env-only loader with fail-closed on missing secrets + paired test + operator history-scrub/rotate plan — not a memo-only walk.
 - **`verify_active_models.py`:** exit 1 on many non-core tickers; SPY/QQQ/IWM compliant — expected, not broken stack.
 - **Pre-commit (Phase 4):** `pre-commit install` + `pre-commit install --hook-type commit-msg` — runs governance slice + deferral guard + `check_no_grep_subprocess.py` on staged files. `pre-commit run --all-files` is the acceptance bar.
 
@@ -85,7 +85,9 @@
 
 **Walk order (binding on agents, 2026-05-24):** (1) full Read + fix wire FINDs in-cone + consolidate/delete dead files; (2) gatekeeper `--gatekeeper-crosscheck`; (3) paired tests; (4) disposition memo last (CI receipt, not the work). Local multi-GB generated register CSVs are gitignored — delete on sight; meta pin in `governance/artifacts/schwab_v4_register_build_meta.json` is the tracked source of truth.
 
-**Money-path roster (AGENTS.md):** all 11 modules walked @ `9e88491`. All 16 V4 review memos pass gatekeeper CSV cross-check @ `9e88491` follow-on (10 legacy memos retroactive appendix).
+**Money-path roster (AGENTS.md):** all 11 modules walked @ `9e88491`. All 16 V4 review memos pass gatekeeper CSV cross-check @ `fa4c6d7` (10 legacy memos retroactive appendix).
+
+**D17 register scope (do not conflate):** `unreviewed_count` ~4.1M is scanner row cardinality, not uniform-attention file count. **Operator-eyes bottleneck** = trade-decision producer/consumer cone (~30–80 files; money-path + server/populator/adapters — largely walked). **Mechanical long tail** = per-row classifier + per-row evidence per `scope_by_dataflow_relevance` (not line-by-line operator Read of every register row). V4 walk framing must keep these separate — "4.1M" is not "years of the same attention as money-path."
 
 ---
 
