@@ -176,7 +176,7 @@ MEGA3_TRACEABLE_INVENTORY: tuple[Mega3TraceableDerivation, ...] = (
     Mega3TraceableDerivation("regime_engine.py", 434, "classify_regime", "DERIVED", None, ("market_state.py:build_market_state",), None, "8-family regime from upstream levels/greeks/zone."),
     Mega3TraceableDerivation("regime_engine.py", 534, "_unknown_regime", "DERIVED", None, ("market_state.py:build_market_state",), None, "Composes Mega1 producers for _unknown_regime output fields."),
     Mega3TraceableDerivation("volatility_regime.py", 222, "_f", "NONE", None, (), None, "No market-field derivation: Scoring/helper; no new market-field derivation."),
-    Mega3TraceableDerivation("volatility_regime.py", 93, "_normalize_vol_decimal", "NONE", None, (), None, "No market-field derivation: AST-listed _normalize_vol_decimal; no legacy row."),
+    Mega3TraceableDerivation("volatility_regime.py", 89, "normalize_vol_decimal", "NONE", None, (), None, "No market-field derivation: Schwab decimal contract guard; percentage heuristic scale only."),
     Mega3TraceableDerivation("volatility_regime.py", 112, "_safe_floats", "NONE", None, (), None, "No market-field derivation: AST-listed _safe_floats; no legacy row."),
     Mega3TraceableDerivation("volatility_regime.py", 130, "_garch_trend", "NONE", None, (), None, "No market-field derivation: AST-listed _garch_trend; no legacy row."),
     Mega3TraceableDerivation("volatility_regime.py", 56, "classify_volatility_regime", "DERIVED", None, ("market_state.py:build_market_state",), None, "Vol policy from rv/iv/atr/vix upstream fields."),
