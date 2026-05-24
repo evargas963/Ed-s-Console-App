@@ -173,3 +173,35 @@ def test_main_whole_repo_passes_when_no_risky_lines(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert "whole-repo guard passed" in out
+
+
+def test_gatekeeper_crosscheck_bayesian_fusion_homonym_count():
+    collisions = guard.lexical_csv_collisions(ROOT / "bayesian_fusion.py")
+    assert len(collisions) == 11
+    tokens = {c.token for c in collisions}
+    assert "high" in tokens
+    assert "low" in tokens
+    assert "volatility" in tokens
+    assert "bidPrice" not in tokens
+
+
+def test_gatekeeper_memo_requires_section_and_count(tmp_path: Path):
+    py = tmp_path / "sample.py"
+    py.write_text('x = {"high": 1}\n', encoding="utf-8")
+    memo = tmp_path / "sample.py.md"
+    memo.write_text("# memo\n", encoding="utf-8")
+    errs = guard.check_v4_memo_gatekeeper_csv(memo, repo_root=tmp_path)
+    assert any("Gatekeeper CSV cross-check" in e for e in errs)
+
+    memo.write_text(
+        "## Gatekeeper CSV cross-check\n**lexical_csv_collision_count:** 99\n",
+        encoding="utf-8",
+    )
+    errs = guard.check_v4_memo_gatekeeper_csv(memo, repo_root=tmp_path)
+    assert any("!= tool count" in e for e in errs)
+
+
+def test_bayesian_fusion_memo_gatekeeper_section_passes():
+    memo = ROOT / "governance/SCHWAB_V4_REVIEW_MEMOS/bayesian_fusion.py.md"
+    errs = guard.check_v4_memo_gatekeeper_csv(memo, repo_root=ROOT)
+    assert errs == []

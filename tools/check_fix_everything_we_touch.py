@@ -182,6 +182,12 @@ def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
     memo_paths = [p for p in paths if p.is_file() and "SCHWAB_V4_REVIEW_MEMOS" in p.as_posix()]
     for memo_path in memo_paths:
         errors.extend(check_v4_memo(memo_path, staged))
+        tools_dir = Path(__file__).resolve().parent
+        if str(tools_dir) not in sys.path:
+            sys.path.insert(0, str(tools_dir))
+        import check_schwab_csv_first as schwab_guard
+
+        errors.extend(schwab_guard.check_v4_memo_gatekeeper_csv(memo_path, REPO_ROOT))
 
     for path in paths:
         if path.name == "COMMIT_EDITMSG" or "--commit-msg" in path.as_posix():

@@ -3,7 +3,7 @@ repos:
     hooks:
       - id: governance-consolidation-tests
         name: governance consolidation tests
-        entry: python -m pytest tests/test_governance_consolidation.py tests/test_forbidden_phrases.py tests/test_money_path_roster.py tests/test_check_no_deferral_language.py tests/test_check_fix_everything_we_touch.py -q
+        entry: python -m pytest tests/test_governance_consolidation.py tests/test_forbidden_phrases.py tests/test_money_path_roster.py tests/test_check_no_deferral_language.py tests/test_check_fix_everything_we_touch.py tests/test_check_schwab_csv_first.py -q
         language: system
         pass_filenames: false
         always_run: true

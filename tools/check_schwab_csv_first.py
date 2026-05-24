@@ -12,6 +12,7 @@ Modes:
 from __future__ import annotations
 
 import argparse
+import ast
 import csv
 import re
 import subprocess
@@ -452,7 +453,19 @@ def main() -> int:
         default=DEFAULT_REGISTER,
         help="V4 register CSV for --diff-emission-gate (default: governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv).",
     )
+    parser.add_argument(
+        "--gatekeeper-crosscheck",
+        type=Path,
+        metavar="PATH.py",
+        help="Print lexical CSV collisions for a Python file (full AST vs entire Schwab CSV).",
+    )
     args = parser.parse_args()
+
+    if args.gatekeeper_crosscheck is not None:
+        target = args.gatekeeper_crosscheck
+        if not target.is_absolute():
+            target = (ROOT / target).resolve()
+        raise SystemExit(_print_gatekeeper_crosscheck(target))
 
     canonical = _load_canonical_fields()
     if len(canonical) < 1000:
@@ -535,6 +548,137 @@ def main() -> int:
         if len(changed_market_paths) > 40:
             print(f"... {len(changed_market_paths) - 40} more")
     return 1
+
+
+# ── V4 gatekeeper: full-file AST token cross-check vs entire Schwab CSV ────────
+
+GATEKEEPER_SECTION_RE = re.compile(r"^## Gatekeeper CSV cross-check", re.MULTILINE | re.IGNORECASE)
+COLLISION_COUNT_RE = re.compile(
+    r"\*\*lexical_csv_collision_count:\*\*\s*(\d+)",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class LexicalCsvCollision:
+    line: int
+    kind: str
+    token: str
+    example_canonical: str
+
+
+def _csv_token_lookup() -> dict[str, str]:
+    """Uppercase token -> one example canonical_field (full CSV, not a hand-picked subset)."""
+    lookup: dict[str, str] = {}
+    with CSV_PATH.open(newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            cf = row["canonical_field"]
+            raw = row.get("example_raw_field") or ""
+            for part in re.split(r"[.*\[\]/]+", cf):
+                if part and part not in ("streaming", "quotes", "chains", "pricehistory", "movers"):
+                    lookup.setdefault(part.upper(), cf)
+            for part in raw.replace("content.1.", "").split("."):
+                if part and part not in ("SPY", "content", "1", "0", "underlying"):
+                    lookup.setdefault(part.upper(), cf)
+    return lookup
+
+
+def extract_py_string_tokens(py_path: Path) -> list[tuple[int, str, str]]:
+    """Return (line, kind, token) for string literals and dict.get('key') keys."""
+    src = py_path.read_text(encoding="utf-8")
+    tree = ast.parse(src, filename=str(py_path))
+    hits: list[tuple[int, str, str]] = []
+
+    class Visitor(ast.NodeVisitor):
+        def visit_Constant(self, node: ast.Constant) -> None:
+            if isinstance(node.value, str) and len(node.value) >= 1:
+                hits.append((node.lineno, "literal", node.value))
+
+        def visit_Call(self, node: ast.Call) -> None:
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "get":
+                if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+                    hits.append((node.lineno, "dict.get", node.args[0].value))
+            self.generic_visit(node)
+
+    Visitor().visit(tree)
+    return hits
+
+
+def lexical_csv_collisions(py_path: Path) -> list[LexicalCsvCollision]:
+    """Cross-check every AST string/get token in py_path against the full Schwab CSV."""
+    lookup = _csv_token_lookup()
+    out: list[LexicalCsvCollision] = []
+    seen: set[tuple[int, str, str]] = set()
+    for line, kind, tok in extract_py_string_tokens(py_path):
+        key = (line, kind, tok)
+        if key in seen:
+            continue
+        seen.add(key)
+        cf = lookup.get(tok.upper())
+        if cf:
+            out.append(LexicalCsvCollision(line=line, kind=kind, token=tok, example_canonical=cf))
+    return out
+
+
+def check_v4_memo_gatekeeper_csv(memo_path: Path, repo_root: Path | None = None) -> list[str]:
+    """
+    Require ## Gatekeeper CSV cross-check with lexical_csv_collision_count matching
+    tools/check_schwab_csv_first.py full-CSV AST cross-check of the memo's target .py.
+    """
+    root = repo_root or ROOT
+    errors: list[str] = []
+    if not memo_path.is_file():
+        return errors
+    if memo_path.suffix != ".md" or not memo_path.name.endswith(".py.md"):
+        return errors
+    try:
+        rel = memo_path.relative_to(root).as_posix()
+    except ValueError:
+        rel = memo_path.as_posix()
+    target = Path(memo_path.name[:-3])  # foo.py.md -> foo.py
+    py_path = root / target
+    if not py_path.is_file():
+        return [f"{rel}: target {target.as_posix()} not found for gatekeeper CSV cross-check"]
+    try:
+        text = memo_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return [f"{rel}: cannot read memo ({exc})"]
+    if not GATEKEEPER_SECTION_RE.search(text):
+        errors.append(
+            f"{rel}: missing '## Gatekeeper CSV cross-check' section — "
+            "run full CSV AST cross-check before sign-off (AGENTS § Self-governance quality loop)."
+        )
+        return errors
+    collisions = lexical_csv_collisions(py_path)
+    m = COLLISION_COUNT_RE.search(text)
+    if not m:
+        errors.append(
+            f"{rel}: Gatekeeper section must record **lexical_csv_collision_count:** N "
+            f"(tool count for {target.as_posix()} is {len(collisions)})."
+        )
+        return errors
+    declared = int(m.group(1))
+    if declared != len(collisions):
+        errors.append(
+            f"{rel}: lexical_csv_collision_count {declared} != tool count {len(collisions)} "
+            f"for {target.as_posix()} — re-run: python tools/check_schwab_csv_first.py "
+            f"--gatekeeper-crosscheck {target.as_posix()}"
+        )
+    return errors
+
+
+def _print_gatekeeper_crosscheck(py_path: Path) -> int:
+    if not py_path.is_file():
+        print(f"File not found: {py_path}", file=sys.stderr)
+        return 1
+    collisions = lexical_csv_collisions(py_path)
+    lookup = _csv_token_lookup()
+    print(f"Gatekeeper CSV cross-check: {py_path}")
+    print(f"CSV lookup tokens loaded: {len(lookup)}")
+    print(f"lexical_csv_collision_count: {len(collisions)}")
+    for c in collisions:
+        print(f"  L{c.line} {c.kind} {c.token!r} -> e.g. {c.example_canonical}")
+    return 0
 
 
 if __name__ == "__main__":

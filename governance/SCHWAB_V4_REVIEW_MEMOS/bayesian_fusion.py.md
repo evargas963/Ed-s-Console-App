@@ -126,6 +126,25 @@ This file's contribution to V4 closure is **establishing the Bayesian-fusion lay
 
 ---
 
+## Gatekeeper CSV cross-check
+
+Independent Cursor gatekeeper pass @ 2026-05-24 (operator challenge after `a7d4622` relay). Full AST string / `.get()` token extract cross-checked against **entire** `schwab_field_inventory/schwab_field_dictionary.csv` via `python tools/check_schwab_csv_first.py --gatekeeper-crosscheck bayesian_fusion.py`.
+
+- **lexical_csv_collision_count:** 11
+- **wire_read_collisions:** 0
+
+| Line | Kind | Token | CSV example | Disposition |
+|------|------|-------|-------------|-------------|
+| L316 | literal | `low` | `pricehistory.candles.*.low` | homonym — rules conviction tier default, not OHLC |
+| L318 | literal | `high`, `low` | candles high/low | homonym — `conv_mult` map for conviction tiers |
+| L573, L592, L619, L738 | literal | `high` | candles high | homonym — fusion confidence tier assignment |
+| L579, L742 | literal | `low` | candles low | homonym — fusion confidence tier assignment |
+| L838 | literal | `volatility` | `chains.*.volatility` | homonym — `__main__` mock `mc_feature_dict` key, not chain Greek |
+
+**Verdict:** memo-only Class A stands; prior spot-check gatekeeping was inadequate — this section is the corrective record.
+
+---
+
 ## Aggregate disposition for inventory
 
 - **status:** pending (awaiting gatekeeper)

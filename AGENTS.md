@@ -40,6 +40,8 @@ When operator or peer catches a **missed fix** (FIND surfaced, fix not landed sa
    - Repeatable failure mode → extend `tools/check_*.py` + paired pytest so CI/pre-commit blocks the exact miss.
 4. **Close** the row `[x] @ <SHA>` only after the checker lock lands.
 
+**Gatekeeper CSV cross-check (V4 memos):** Before sign-off on any new/updated `governance/SCHWAB_V4_REVIEW_MEMOS/*.py.md`, Cursor (and Claude on verify) must run `python tools/check_schwab_csv_first.py --gatekeeper-crosscheck <target.py>` — full AST string/`.get()` token pass against the **entire** `schwab_field_dictionary.csv`, not a hand-picked bid/ask list. Record results in memo section `## Gatekeeper CSV cross-check` with `**lexical_csv_collision_count:** N` and per-collision disposition (homonym vs wire read). Pre-commit enforces via `check_fix_everything_we_touch` + `check_schwab_csv_first.check_v4_memo_gatekeeper_csv`.
+
 **Incident template (OPEN_ITEMS):** `- [ ] PROC-MISSED-FIX-<topic> — <file:line> <what>; caught <how>; prevention: <checker or AGENTS §>`.
 
 Neither agent waits for permission to run this loop when a miss is recognized.
@@ -92,7 +94,7 @@ Operator has standing full repo access. Do not ask for read-only research.
 | Direction | Gatekeeper duty |
 |-----------|-----------------|
 | **Claude → Cursor** | Claude verifies dispositions, O-XX narratives, register/perf-proof bundles, and Schwab evidence bar before merge/sign-off. |
-| **Cursor → Claude** | Cursor re-Reads Claude handoffs and diffs at tip; blocks relay-only commits that skip required fixes, tests, or sibling-pattern conformance. |
+| **Cursor → Claude** | Cursor re-Reads Claude handoffs and diffs at tip; blocks relay-only commits that skip required fixes, tests, or sibling-pattern conformance. **Runs full CSV gatekeeper cross-check** (`check_schwab_csv_first --gatekeeper-crosscheck`) before V4 memo sign-off — never a hand-picked field list. |
 | **Either → Operator** | Either agent may escalate a **process violation** (memo-first drift, deferred FIND, handoff/convention mismatch) with file citations — not permission-seeking. |
 
 **Gatekeeper pending ≠ fix parking.** Memo status `pending gatekeeper` applies to **disposition sign-off**, not to deferring a **known, in-scope code fix** surfaced in the same Read. The only admissible split is [REAL-GATE](#closure-definition--no-deferral) with tag in `OPEN_ITEMS`.
@@ -116,6 +118,7 @@ Schwab register-row / perf-proof / O-XX authorization slices still follow `gover
 2. Closure artifacts present when the slice closes an OPEN_ITEMS row or FIND.
 3. Sibling-pattern conformance for convention-driven directories.
 4. Pre-commit / targeted pytest run when Python changed.
+5. **Gatekeeper CSV cross-check** on staged V4 memos: `## Gatekeeper CSV cross-check` section + `lexical_csv_collision_count` matches `python tools/check_schwab_csv_first.py --gatekeeper-crosscheck <target.py>`.
 
 If any check fails → fix first, then commit once.
 

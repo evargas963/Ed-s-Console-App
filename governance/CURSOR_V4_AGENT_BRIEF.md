@@ -42,9 +42,10 @@ You are the **drafter and executor**. Claude is the **gatekeeper/verifier** for 
 1. Pick a coherent slice (one module/concern, ≤ a few dozen rows).
 2. **Full Read** the file end-to-end; Read sibling memos if convention-driven directory.
 3. Draft **memo + code + tests together** when the Read surfaces a fix (REPLACED, removal, fail-closed). Do **not** land memo-only when `code edit` is known — `AGENTS.md` § Active agent posture overrides “wait for gatekeeper” for in-file fixes.
-4. For register **replacements** (not memo walks): draft register edits + perf_proof; run pytest; rerun scanner; rebuild scoreboard.
-5. **Hand off to Claude** with the slice handoff block below when disposition sign-off or O-XX is needed **before merge**.
-6. After Claude accept + Ed's O-XX sign-off (if applicable), commit and push.
+4. **Gatekeeper CSV cross-check** before memo sign-off: `python tools/check_schwab_csv_first.py --gatekeeper-crosscheck <target.py>`; record `## Gatekeeper CSV cross-check` + `lexical_csv_collision_count` in the memo (pre-commit enforced).
+5. For register **replacements** (not memo walks): draft register edits + perf_proof; run pytest; rerun scanner; rebuild scoreboard.
+6. **Hand off to Claude** with the slice handoff block below when disposition sign-off or O-XX is needed **before merge**.
+7. After Claude accept + Ed's O-XX sign-off (if applicable), commit and push.
 
 **Two commit classes (do not conflate):**
 
