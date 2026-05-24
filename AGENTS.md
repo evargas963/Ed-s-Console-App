@@ -129,6 +129,7 @@ Counter-cases (legitimately new files): genuinely new topic with no owner; new f
 - **Commit to specifics:** implementing commit is the deliverable, not a proposal doc. `[PROMOTED]` memory `feedback_commit_to_specifics.md`
 - **Cleanup-as-we-go:** every turn — dead code touched, stale comments, duplicate rules surfaced. `[NEW]` Phase 4
 - **Unprompted surfacing:** if governance MD count grows >10 since last pass or a rule duplicates across ≥3 surfaces, tell operator. `[NEW]` Phase 4
+- **Sibling-pattern conformance:** before drafting a per-file artifact in any convention-driven directory (e.g., `governance/SCHWAB_V4_REVIEW_MEMOS/`), Read every existing sibling end-to-end first and cite the closest-shape precedent in the new artifact's header. Catches disposition / schema drift from convention. `[NEW]` 2026-05-24
 
 ---
 
