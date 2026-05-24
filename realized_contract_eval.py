@@ -605,7 +605,12 @@ def _append_chain_quality_audit(entries: list[dict]) -> None:
     if CHAIN_QUALITY_JSON.is_file():
         try:
             cur = json.loads(CHAIN_QUALITY_JSON.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+            log.debug(
+                "CHAIN_QUALITY_JSON read/parse failed (%s) at %s — starting fresh",
+                e,
+                CHAIN_QUALITY_JSON,
+            )
             cur = []
     if not isinstance(cur, list):
         cur = []
@@ -670,7 +675,12 @@ def _update_chain_debug_file(samples: list[dict]) -> None:
     if CHAIN_DEBUG_JSON.is_file():
         try:
             cur = json.loads(CHAIN_DEBUG_JSON.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+            log.debug(
+                "CHAIN_DEBUG_JSON read/parse failed (%s) at %s — starting fresh",
+                e,
+                CHAIN_DEBUG_JSON,
+            )
             cur = []
     if not isinstance(cur, list):
         cur = []
@@ -1134,7 +1144,12 @@ def save_eval_aggregate_merge(ticker: str, architecture_type: str, agg: dict[str
     if p.is_file():
         try:
             cur = json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+            log.debug(
+                "eval_aggregate JSON read/parse failed (%s) at %s — starting fresh",
+                e,
+                p,
+            )
             cur = {}
     by_t = cur.get("by_ticker")
     if not isinstance(by_t, dict):

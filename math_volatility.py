@@ -316,12 +316,17 @@ def compute_iv_skew(contracts: List[dict], spot: float) -> dict:
             "interpretation": None,
         }
 
-    # Find ATM strike
-    strikes = sorted(set(
-        float(ct.get("strikePrice"))
-        for ct in contracts
-        if ct.get("strikePrice") is not None
-    ))
+    # Find ATM strike — gate float() so a non-numeric strikePrice cannot crash the iter
+    strikes_set: set[float] = set()
+    for ct in contracts:
+        sp = ct.get("strikePrice")
+        if sp is None:
+            continue
+        try:
+            strikes_set.add(float(sp))
+        except (TypeError, ValueError):
+            continue
+    strikes = sorted(strikes_set)
     if not strikes:
         return {
             "skew": None,

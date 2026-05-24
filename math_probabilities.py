@@ -180,7 +180,7 @@ def score_option_expression(contracts, spot, strike, side, *, walls=None):
     try:
         strike_f = float(strike)
         spot_f = float(spot)
-    except Exception:
+    except (TypeError, ValueError):
         return None
     candidates = [
         ct
