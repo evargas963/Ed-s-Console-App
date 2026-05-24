@@ -590,17 +590,31 @@ def fuse_payload_apply_mc_adjustment(fusion: Any, mc_out: Any, spot_price: Optio
 
     u, d, fl = apply_mc_adjustment(pre, mc_n)
 
+    final_winner = _argmax_dir(u, d, fl)
+
+    # Round for storage, then renormalize so stored legs sum to exactly 1.0.
+    # Fail-closed: if rounding would flip argmax, keep the pre-round adjusted triplet.
+    rounded_tri = _triplet((round(u, 6), round(d, 6), round(fl, 6)))
+
+    if rounded_tri is not None and _argmax_dir(*rounded_tri) == final_winner:
+
+        u_out, d_out, fl_out = rounded_tri
+
+    else:
+
+        u_out, d_out, fl_out = u, d, fl
+
     audit = {
 
         "pre_triplet": {"up": round(pre[0], 6), "down": round(pre[1], 6), "flat": round(pre[2], 6)},
 
-        "post_triplet": {"up": round(u, 6), "down": round(d, 6), "flat": round(fl, 6)},
+        "post_triplet": {"up": u_out, "down": d_out, "flat": fl_out},
 
         "normalized_mc": {k: round(float(v), 6) for k, v in mc_n.items()},
 
         "base_argmax": _argmax_dir(*pre),
 
-        "final_argmax": _argmax_dir(u, d, fl),
+        "final_argmax": _argmax_dir(u_out, d_out, fl_out),
 
         "mc_feature_source": mc_bundle_source or "derived_mc_normalized",
 
@@ -612,11 +626,11 @@ def fuse_payload_apply_mc_adjustment(fusion: Any, mc_out: Any, spot_price: Optio
 
             fusion,
 
-            prob_up=round(u, 6),
+            prob_up=u_out,
 
-            prob_down=round(d, 6),
+            prob_down=d_out,
 
-            prob_flat=round(fl, 6),
+            prob_flat=fl_out,
 
             mc_post_fusion_audit=audit,
 
@@ -624,11 +638,11 @@ def fuse_payload_apply_mc_adjustment(fusion: Any, mc_out: Any, spot_price: Optio
 
     except TypeError:
 
-        setattr(fusion, "prob_up", round(u, 6))
+        setattr(fusion, "prob_up", u_out)
 
-        setattr(fusion, "prob_down", round(d, 6))
+        setattr(fusion, "prob_down", d_out)
 
-        setattr(fusion, "prob_flat", round(fl, 6))
+        setattr(fusion, "prob_flat", fl_out)
 
         setattr(fusion, "mc_post_fusion_audit", audit)
 

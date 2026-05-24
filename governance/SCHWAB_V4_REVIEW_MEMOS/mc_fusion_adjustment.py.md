@@ -10,7 +10,7 @@
 
 **Closest-shape precedent** (per `AGENTS.md` Posture rules — sibling-pattern conformance): `bayesian_fusion.py.md` @ `977e706` (immediate sibling — adjacent post-fusion MC layer, same fusion-math-only shape, just-landed gatekeeper CSV cross-check appendix is the model for the section below); `signals.py.md` (original all-NOT_MARKET_DATA precedent); `call_engine.py.md` / `prediction_engine.py.md` (money-path roster shape).
 
-**Active-posture Class A check** (per `AGENTS.md` §Active agent posture + §Fix everything we touch): no Schwab-replaceable derivation, no non-canonical fallback, no in-file FIND requiring a code change. **Class A memo-only — no fix to bundle.**
+**Active-posture Class A check** (per `AGENTS.md` §Active agent posture + §Fix everything we touch): no Schwab-replaceable derivation, no non-canonical fallback, no Schwab wire-token leak. **One in-cone hardening landed this slice:** `fuse_payload_apply_mc_adjustment` stored-triplet simplex fix (round → renormalize → fail-closed argmax-flip guard) so persisted `FusionPayload.prob_*` legs always sum to exactly 1.0 — closes a foot-gun where ~18% of cases stored sums of `0.999998` / `1.000001` etc. that consumers (`fusion_policy_contract`, `canonical_forecast_from_fusion`, MH bundle, display, calibration JSON, audit trails) had to renormalize defensively. Code + paired test land same commit per Class A bundling.
 
 ---
 
@@ -125,7 +125,8 @@ Audited **this file** (637 lines) for:
 - **surface:** Checks `fusion_is_authoritative(fusion)` (L527); checks `getattr(mc_out, "available", False)` (L531); reads `fusion.prob_up/prob_down/prob_flat` (L543–547); calls `mc_out.mc_feature_dict()` (L571, defensive `callable(fd)` guard); pops the bundle source label (L577); calls `normalize_mc(raw, sp)` (S2); applies `apply_mc_adjustment` (S9); assembles audit dict (L593–607) with `pre_triplet` / `post_triplet` / `normalized_mc` / `base_argmax` / `final_argmax` / `mc_feature_source`; returns `dataclasses.replace(fusion, ...)` with updated triplet + `mc_post_fusion_audit` field. Falls back to `setattr` on `TypeError` (L625–635 — supports non-dataclass FusionPayload-like objects).
 - **proposed disposition:** **NOT_MARKET_DATA** — FusionPayload integration glue. The `mc_post_fusion_audit` field on FusionPayload is the operator-side audit channel (per `bayesian_fusion.py.md` S1 FusionPayload field declaration).
 - **observation:** Every boundary check fail-closed (returns the input `fusion` unchanged on missing MC, non-finite triplet, degenerate triplet sum, missing MC features, etc.). The `dataclasses.replace` path preserves immutability when supported; `setattr` fallback handles non-dataclass callers.
-- **code edit:** none.
+- **in-cone hardening this slice (L590–648):** Round each leg to 6 decimals for storage, then renormalize via `_triplet` so persisted `FusionPayload.prob_up/prob_down/prob_flat` always sum to exactly 1.0. Fail-closed guard: if rounded triplet flips argmax, keep the pre-round adjusted triplet. The audit `post_triplet` now reads from the stored values (`u_out/d_out/fl_out`) so audit matches payload exactly — no double-round drift.
+- **code edit:** landed — stored-triplet simplex fix + paired test `tests/test_mc_fusion_adjustment.py::test_fuse_payload_stored_triplet_sums_to_one_after_round` (200-case sweep asserting `sum == 1.0` exactly + argmax preserved + audit-vs-payload parity; 16/16 pass on mc_fusion slice).
 
 ---
 
@@ -147,4 +148,4 @@ This file's contribution to V4 closure is **establishing the post-fusion MC cont
 
 - **status:** pending (awaiting gatekeeper)
 - **memo_ref:** governance/SCHWAB_V4_REVIEW_MEMOS/mc_fusion_adjustment.py.md
-- **Class A determination:** memo-only — no in-file Schwab field reads, no Schwab-replaceable derivation, no non-canonical fallback, no actionable FIND. Single CSV-token collision (`volatility` L50) confirmed homonym via mechanical cross-check (tool: `tools/check_schwab_csv_first.py --gatekeeper-crosscheck`, landed @ `977e706`).
+- **Class A determination:** code + test + memo bundled same commit per AGENTS §Fix everything we touch. No Schwab wire-token leak, no Schwab-replaceable derivation, no non-canonical fallback. One in-cone hardening landed (S10 stored-triplet simplex fix + paired test). Single CSV-token collision (`volatility` L50) confirmed homonym via mechanical cross-check (tool: `tools/check_schwab_csv_first.py --gatekeeper-crosscheck`, landed @ `977e706`).

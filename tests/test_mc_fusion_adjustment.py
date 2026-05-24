@@ -66,3 +66,29 @@ def test_apply_mc_adjustment_preserves_argmax_flat():
     )
     u, d, f = apply_mc_adjustment(base, mc)
     assert _argmax3(u, d, f) == _argmax3(*base)
+
+
+def test_fuse_payload_stored_triplet_sums_to_one_after_round():
+    """Stored FusionPayload legs must form a proper simplex (round then renormalize)."""
+    mc_bundle = {
+        "expected_move": 1.0,
+        "volatility": 2.0,
+        "skew": 0.0,
+        "tail_risk": 0.1,
+        "directional_bias": 0.0,
+        "source": "derived_mc_normalized",
+    }
+    mc = SimpleNamespace(available=True, mc_feature_dict=lambda: dict(mc_bundle))
+    drift_cases = 0
+    for i in range(200):
+        base = (0.4 + (i % 50) / 100.0, 0.3, 0.3 - (i % 50) / 100.0)
+        fus = FusionPayload(available=True, prob_up=base[0], prob_down=base[1], prob_flat=base[2])
+        out = fuse_payload_apply_mc_adjustment(fus, mc, 100.0)
+        s = out.prob_up + out.prob_down + out.prob_flat
+        assert math.isclose(s, 1.0, abs_tol=1e-12)
+        assert _argmax3(out.prob_up, out.prob_down, out.prob_flat) == _argmax3(*base)
+        audit_post = out.mc_post_fusion_audit["post_triplet"]
+        audit_sum = audit_post["up"] + audit_post["down"] + audit_post["flat"]
+        if abs(audit_sum - 1.0) > 1e-12:
+            drift_cases += 1
+    assert drift_cases == 0
