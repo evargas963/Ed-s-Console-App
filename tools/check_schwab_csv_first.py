@@ -620,6 +620,30 @@ def lexical_csv_collisions(py_path: Path) -> list[LexicalCsvCollision]:
     return out
 
 
+def _memo_target_py_path(memo_path: Path, root: Path) -> Path:
+    """
+    Map governance/SCHWAB_V4_REVIEW_MEMOS/[subdir/]foo.py.md -> repo-relative foo.py path.
+    Root-level memos (bayesian_fusion.py.md) map to root/bayesian_fusion.py;
+    nested memos (features/signal_layer_v1.py.md) map to features/signal_layer_v1.py.
+    """
+    name = memo_path.name[:-3]  # strip .md from *.py.md
+    try:
+        rel = memo_path.relative_to(root)
+    except ValueError:
+        return root / name
+    parts = rel.parts
+    if (
+        len(parts) >= 3
+        and parts[0] == "governance"
+        and parts[1] == "SCHWAB_V4_REVIEW_MEMOS"
+    ):
+        subdirs = parts[2:-1]
+        if subdirs:
+            return root.joinpath(*subdirs, name)
+        return root / name
+    return root / name
+
+
 def check_v4_memo_gatekeeper_csv(memo_path: Path, repo_root: Path | None = None) -> list[str]:
     """
     Require ## Gatekeeper CSV cross-check with lexical_csv_collision_count matching
@@ -635,8 +659,8 @@ def check_v4_memo_gatekeeper_csv(memo_path: Path, repo_root: Path | None = None)
         rel = memo_path.relative_to(root).as_posix()
     except ValueError:
         rel = memo_path.as_posix()
-    target = Path(memo_path.name[:-3])  # foo.py.md -> foo.py
-    py_path = root / target
+    py_path = _memo_target_py_path(memo_path, root)
+    target = py_path.relative_to(root)
     if not py_path.is_file():
         return [f"{rel}: target {target.as_posix()} not found for gatekeeper CSV cross-check"]
     try:

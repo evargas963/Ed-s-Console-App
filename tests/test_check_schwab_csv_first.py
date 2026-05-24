@@ -216,3 +216,35 @@ def test_live_decision_bundle_memo_gatekeeper_section_passes():
 def test_gatekeeper_crosscheck_live_decision_bundle_zero_collisions():
     collisions = guard.lexical_csv_collisions(ROOT / "live_decision_bundle.py")
     assert len(collisions) == 0
+
+
+def test_memo_target_py_path_nested_features():
+    memo = ROOT / "governance/SCHWAB_V4_REVIEW_MEMOS/features/signal_layer_v1.py.md"
+    py = guard._memo_target_py_path(memo, ROOT)
+    assert py == ROOT / "features/signal_layer_v1.py"
+    assert py.is_file()
+
+
+def test_gatekeeper_crosscheck_signal_layer_v1_ohlcv_homonyms():
+    collisions = guard.lexical_csv_collisions(ROOT / "features" / "signal_layer_v1.py")
+    assert len(collisions) == 82
+    tokens = {c.token for c in collisions}
+    assert tokens <= {"open", "high", "low", "close", "volume", "_prev_close"}
+
+
+def test_signal_layer_v1_memo_gatekeeper_section_passes():
+    memo = ROOT / "governance/SCHWAB_V4_REVIEW_MEMOS/features/signal_layer_v1.py.md"
+    errs = guard.check_v4_memo_gatekeeper_csv(memo, repo_root=ROOT)
+    assert errs == []
+
+
+def test_inference_snapshot_memo_gatekeeper_section_passes():
+    memo = ROOT / "governance/SCHWAB_V4_REVIEW_MEMOS/features/inference_snapshot.py.md"
+    errs = guard.check_v4_memo_gatekeeper_csv(memo, repo_root=ROOT)
+    assert errs == []
+
+
+def test_fusion_policy_contract_memo_gatekeeper_section_passes():
+    memo = ROOT / "governance/SCHWAB_V4_REVIEW_MEMOS/features/fusion_policy_contract.py.md"
+    errs = guard.check_v4_memo_gatekeeper_csv(memo, repo_root=ROOT)
+    assert errs == []
