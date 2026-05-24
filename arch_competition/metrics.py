@@ -1,4 +1,12 @@
-"""Extended metrics for architecture comparison (calibration, stability, regime slices)."""
+"""Extended metrics for architecture comparison (calibration, stability, regime slices).
+
+VIX evaluation regime cuts (low/mid/high) are an evaluation-domain authority calibrated against
+PromotionPolicy.max_regime_balanced_accuracy_regression on the mid-VIX bucket. They are
+deliberately distinct from the production runtime VIX tier authority in math_volatility
+(vix_tier_token: 15/20/30 with four tiers low/normal/elevated/high) — different domain,
+different bucket count, different consumer. Locked here as named constants so both functions
+that bucket by VIX (regime_bucket_metrics, regime_conditional_calibration) share one source.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +14,32 @@ from typing import Any, Optional
 
 import numpy as np
 from sklearn.metrics import balanced_accuracy_score, log_loss
+
+# Eval-domain VIX regime cuts (NOT the runtime vix_tier_token 15/20/30 authority).
+# Promotion policy mid-VIX balanced_accuracy regression gate is calibrated against these.
+VIX_EVAL_REGIME_LOW_MAX: float = 16.0
+VIX_EVAL_REGIME_MID_MAX: float = 24.0
+
+
+def vix_eval_regime_token(vix: Any) -> str:
+    """Single authority for eval-domain VIX bucketing: 'low' | 'mid' | 'high' | 'missing'.
+
+    Returns 'missing' on None / non-numeric / NaN — consumers that need a numeric guard
+    should branch on the token before computing slice metrics.
+    """
+    if vix is None:
+        return "missing"
+    try:
+        v = float(vix)
+    except (TypeError, ValueError):
+        return "missing"
+    if v != v:  # NaN
+        return "missing"
+    if v < VIX_EVAL_REGIME_LOW_MAX:
+        return "low"
+    if v < VIX_EVAL_REGIME_MID_MAX:
+        return "mid"
+    return "high"
 
 
 def multiclass_brier_score(y_true: list[int], prob_rows: list[list[float]]) -> Optional[float]:
@@ -46,21 +80,9 @@ def regime_bucket_metrics(
     - ``slice_accuracy``: plain argmax hit rate (majority-class dominated when skewed).
     - ``balanced_accuracy``: sklearn macro-recall (promotion_engine REGIME_MID_BUCKET_REGRESSION).
     """
-    buckets = {"low": [], "mid": [], "high": [], "missing": []}
+    buckets: dict[str, list[tuple[int, int]]] = {"low": [], "mid": [], "high": [], "missing": []}
     for yt, pr, row in zip(y_true, prob_rows, rows_used):
-        v = row.get("vix_level")
-        try:
-            vf = float(v) if v is not None else None
-        except (TypeError, ValueError):
-            vf = None
-        if vf is None:
-            key = "missing"
-        elif vf < 16:
-            key = "low"
-        elif vf < 24:
-            key = "mid"
-        else:
-            key = "high"
+        key = vix_eval_regime_token(row.get("vix_level"))
         pred = int(np.argmax(pr))
         buckets[key].append((yt, pred))
 
@@ -392,19 +414,7 @@ def regime_conditional_calibration(
         "missing": ([], []),
     }
     for yt, pr, row in zip(y_true, prob_rows, rows_used):
-        v = row.get("vix_level")
-        try:
-            vf = float(v) if v is not None else None
-        except (TypeError, ValueError):
-            vf = None
-        if vf is None:
-            key = "missing"
-        elif vf < 16:
-            key = "low"
-        elif vf < 24:
-            key = "mid"
-        else:
-            key = "high"
+        key = vix_eval_regime_token(row.get("vix_level"))
         yt_l, pr_l = buckets[key]
         yt_l.append(yt)
         pr_l.append(pr)

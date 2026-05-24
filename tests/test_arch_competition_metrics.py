@@ -6,9 +6,13 @@ import pytest
 from sklearn.metrics import balanced_accuracy_score
 
 from arch_competition.metrics import (
+    VIX_EVAL_REGIME_LOW_MAX,
+    VIX_EVAL_REGIME_MID_MAX,
     confidence_reliability_proxy,
     max_calibration_error_bins,
     regime_bucket_metrics,
+    regime_conditional_calibration,
+    vix_eval_regime_token,
 )
 
 
@@ -65,6 +69,67 @@ def test_confidence_reliability_proxy_none_when_confidence_constant():
     probs = [[0.5, 0.25, 0.25]] * 12
     out = confidence_reliability_proxy(probs, y)
     assert out["confidence_hit_correlation"] is None
+
+
+def test_vix_eval_regime_cuts_are_16_and_24():
+    """Eval-domain authority constants — distinct from runtime vix_tier_token (15/20/30)."""
+    assert VIX_EVAL_REGIME_LOW_MAX == 16.0
+    assert VIX_EVAL_REGIME_MID_MAX == 24.0
+
+
+@pytest.mark.parametrize(
+    "vix,expected",
+    [
+        (None, "missing"),
+        (float("nan"), "missing"),
+        ("not-a-number", "missing"),
+        (5.0, "low"),
+        (15.99, "low"),
+        (16.0, "mid"),
+        (23.99, "mid"),
+        (24.0, "high"),
+        (50.0, "high"),
+    ],
+)
+def test_vix_eval_regime_token_canonical_cuts(vix, expected):
+    assert vix_eval_regime_token(vix) == expected
+
+
+def test_regime_bucket_and_conditional_share_same_cuts():
+    """Both VIX-bucketing functions must agree on the boundary at 16 and 24."""
+    y = [0] * 12
+    probs = [[0.7, 0.2, 0.1]] * 12
+    # 4 rows at exactly the low/mid boundary, 4 at mid/high boundary, 4 'high'
+    rows = (
+        [{"vix_level": 15.99}] * 4
+        + [{"vix_level": 16.0}] * 4
+        + [{"vix_level": 24.0}] * 4
+    )
+    rb = regime_bucket_metrics(y, probs, rows, min_support=3)
+    rc = regime_conditional_calibration(y, probs, rows, min_support=3)
+    assert rb["low"]["n"] == 4
+    assert rb["mid"]["n"] == 4
+    assert rb["high"]["n"] == 4
+    assert rc["low"]["n"] == 4
+    assert rc["mid"]["n"] == 4
+    assert rc["high"]["n"] == 4
+
+
+def test_single_authority_no_duplicate_thresholds_in_metrics():
+    """Lock the refactor: both bucket functions must reference vix_eval_regime_token, not inline 16/24."""
+    import inspect
+
+    from arch_competition.metrics import regime_bucket_metrics as rb_fn
+    from arch_competition.metrics import regime_conditional_calibration as rc_fn
+
+    for fn in (rb_fn, rc_fn):
+        src = inspect.getsource(fn)
+        assert "vix_eval_regime_token" in src, f"{fn.__name__} must delegate to authority"
+        # No re-inlined literal cuts
+        assert "vf < 16" not in src
+        assert "vf < 24" not in src
+        assert "< 16" not in src
+        assert "< 24" not in src
 
 
 def test_promotion_blocks_when_confidence_correlation_withheld():
