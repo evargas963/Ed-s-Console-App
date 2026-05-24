@@ -171,6 +171,22 @@ def test_record_from_level_one_skips_duplicate_sig():
     assert g0 == g1
 
 
+def test_record_from_level_one_ignores_non_canonical_bid_ask_keys():
+    """Schwab streaming dictionary uses BID_PRICE/ASK_PRICE only — bare BID/ASK are not wire leaves."""
+    ok = lmp.record_from_level_one_equity(
+        "NOCANON",
+        {"key": "NOCANON", "LAST_PRICE": 100.0, "BID": 99.5, "ASK": 100.5},
+    )
+    assert ok is True
+    row = lmp.get_quote("NOCANON")
+    assert row is not None
+    assert row["bid"] is None
+    assert row["ask"] is None
+    assert row["quote_source_detail"]["bid"] is None
+    assert row["quote_source_detail"]["ask"] is None
+    assert row["quote_source_detail"]["spread"] == "unavailable_missing_bid_or_ask"
+
+
 def test_next_fast_generation_monotonic():
     a = lmp.next_fast_generation("M")
     b = lmp.next_fast_generation("M")

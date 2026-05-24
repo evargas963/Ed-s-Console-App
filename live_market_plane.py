@@ -94,8 +94,8 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
 
     last = _positive_float(item.get("LAST_PRICE"))
     mark = _positive_float(item.get("MARK"))
-    bid = _positive_float(item.get("BID_PRICE")) or _positive_float(item.get("BID"))
-    ask = _positive_float(item.get("ASK_PRICE")) or _positive_float(item.get("ASK"))
+    bid = _positive_float(item.get("BID_PRICE"))
+    ask = _positive_float(item.get("ASK_PRICE"))
 
     with _lock:
         prev = _by_ticker.get(t)
@@ -105,8 +105,8 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
 
     spot_f = last or mark
     spot_source = "LAST_PRICE" if last is not None else ("MARK" if mark is not None else None)
-    bid_source = "BID_PRICE" if _positive_float(item.get("BID_PRICE")) is not None else ("BID" if bid is not None else None)
-    ask_source = "ASK_PRICE" if _positive_float(item.get("ASK_PRICE")) is not None else ("ASK" if ask is not None else None)
+    bid_source = "BID_PRICE" if bid is not None else None
+    ask_source = "ASK_PRICE" if ask is not None else None
 
     if spot_f is None or spot_f <= 0:
         return False
