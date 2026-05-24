@@ -25,7 +25,7 @@
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 3 decision artifacts** @ `4018f41` — `governance/consolidation/phase3/` (baseline delta, duplicate MD report, protected py audit, worktree notes); token rotation note in TRAINING_AND_MAINTENANCE; schwab_field_inventory quarterly refresh note. **Not the Phase 3 execution gate** (see next row).
 
-- [x] **GOVERNANCE-CONSOLIDATION — Phase 3 execution** @ pending SHA — **3b** 14 archives + stubs; **3c** no-delete decisions; **3d** import-graph audit (no root `.py` moves); **3e** 9 Claude worktrees pruned (~2.43 GB freed, `git worktree list` = main only); **3f** LFS shim audit. Log: `phase3_execution_log.json`; tool: `tools/prune_claude_worktrees.py`. **Gate:** dual-agent re-audit pending.
+- [x] **GOVERNANCE-CONSOLIDATION — Phase 3 execution** @ `ed9f882` — **3b** 14 archives + stubs @ `10ca07d`; **3c** no-delete decisions; **3d** import-graph audit (no root `.py` moves); **3e** 9 Claude worktrees pruned (~2.43 GB freed); **3f** LFS shim audit. Log: `phase3_execution_log.json`. **Gate:** dual-agent re-audit pending.
 
 - [x] **GOVERNANCE-CONSOLIDATION — Phase 4** @ `6246920` — `.pre-commit-config.yaml`, `tools/check_no_grep_subprocess.py`, governance tests **18/18** on slice.
 

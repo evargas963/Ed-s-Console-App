@@ -19,7 +19,7 @@
 | 0, 1a–1c | Complete |
 | 2 | Complete @ `8e79ea2` |
 | 3 decision | Complete @ `4018f41` |
-| 3 execution | Complete @ pending SHA (3b–3f including 3e worktree prune) |
+| 3 execution | Complete @ `ed9f882` (3b–3f including 3e worktree prune) |
 | 4 | Complete @ `6246920` |
 
 ## Concurrent epic (not blocking consolidation)
