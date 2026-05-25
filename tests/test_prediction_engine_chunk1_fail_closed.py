@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from prediction_engine import _literal_empirical_horizon, compute_prediction_core
+from prediction_engine import _literal_empirical_horizon, _pack_horizon_row, compute_prediction_core
 from signal_types import SignalInput
 from tests.mvp_test_fixtures import minimal_mvp_features
 
@@ -16,6 +16,62 @@ def test_literal_empirical_horizon_withholds_when_insufficient_labeled():
     assert probs is None
     assert src == "insufficient_labeled_outcome_5c"
     assert n == 0
+
+
+def test_pack_horizon_row_withhold_reason_no_data_when_labeled_count_zero():
+    """LIVE-UI-D: empirical row with zero labeled samples must stamp withhold_reason='no_data'
+    so the UI can render 'NO DATA' instead of a generic WAIT — distinguishes 'empty histogram'
+    from 'insufficient samples' from 'data-quality anomaly'.
+    """
+    row = _pack_horizon_row(
+        None, "insufficient_labeled_outcome_5c", "5c", method="hist", empirical_forward_bars=5, labeled_count=0
+    )
+    assert row["up"] is None and row["down"] is None and row["flat"] is None
+    assert row["labeled_count"] == 0
+    assert row["withhold_reason"] == "no_data"
+
+
+def test_pack_horizon_row_withhold_reason_min_samples_when_below_threshold():
+    """LIVE-UI-D: empirical row with some labeled samples but below MIN_SAMPLES_STATISTICAL
+    must stamp withhold_reason='min_samples' — distinct from no_data."""
+    from prediction_engine import MIN_SAMPLES_STATISTICAL
+
+    n_below = max(1, MIN_SAMPLES_STATISTICAL - 1)
+    row = _pack_horizon_row(
+        None, "insufficient_labeled_outcome_5c", "5c",
+        method="hist", empirical_forward_bars=5, labeled_count=n_below,
+    )
+    assert row["up"] is None
+    assert row["labeled_count"] == n_below
+    assert row["min_samples_required"] == MIN_SAMPLES_STATISTICAL
+    assert row["withhold_reason"] == "min_samples"
+
+
+def test_pack_horizon_row_withhold_reason_data_quality_when_count_ok_but_probs_none():
+    """LIVE-UI-D: anomalous path — labeled_count >= MIN_SAMPLES_STATISTICAL but probs are None.
+    Should not normally happen; producer stamps 'data_quality' so the operator-visible audit
+    surfaces the anomaly instead of treating it like a min_samples withhold."""
+    from prediction_engine import MIN_SAMPLES_STATISTICAL
+
+    row = _pack_horizon_row(
+        None, "hist_ok", "5c",
+        method="hist", empirical_forward_bars=5, labeled_count=MIN_SAMPLES_STATISTICAL + 10,
+    )
+    assert row["up"] is None
+    assert row["withhold_reason"] == "data_quality"
+
+
+def test_pack_horizon_row_no_withhold_reason_when_probs_present():
+    """LIVE-UI-D regression: when probs is non-None, withhold_reason MUST NOT be stamped —
+    the UI checks for its presence to discriminate withhold vs real WAIT verdict."""
+    row = _pack_horizon_row(
+        {"up": 0.45, "down": 0.3, "flat": 0.25}, "hist", "5c",
+        method="hist", empirical_forward_bars=5, labeled_count=50,
+    )
+    assert row["up"] == 0.45
+    assert "withhold_reason" not in row, (
+        f"withhold_reason leaked into non-withhold row: {row!r}"
+    )
 
 
 def test_compute_prediction_core_requires_canonical_forecast():

@@ -304,6 +304,17 @@ def _pack_horizon_row(
         row["flat"] = None
         row["labeled_count"] = labeled_count
         row["min_samples_required"] = MIN_SAMPLES_STATISTICAL
+        # LIVE-UI-D: discriminate WHY probs are withheld so the UI can render distinct
+        # operator-visible labels (WITHHELD vs NO DATA vs LOADING) instead of a single
+        # WAIT bucket. The reason is derivable from labeled_count alone at this layer.
+        if labeled_count <= 0:
+            row["withhold_reason"] = "no_data"
+        elif labeled_count < MIN_SAMPLES_STATISTICAL:
+            row["withhold_reason"] = "min_samples"
+        else:
+            # labeled_count >= min but probs still None — should not normally happen;
+            # surface as an audit-visible "data_quality" so the operator sees it as anomalous.
+            row["withhold_reason"] = "data_quality"
     else:
         u, d, f = _tri_probs(probs)
         row["up"] = u

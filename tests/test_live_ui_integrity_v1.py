@@ -247,6 +247,73 @@ def test_live_ui_a_no_canonical_probability_reads_in_js():
         )
 
 
+def test_live_ui_d_horizon_bias_discriminates_withhold_reason():
+    """LIVE-UI-D: per-horizon Bias cell must render distinct labels for tri-state withhold
+    sources (min_samples / no_data / data_quality / loading) instead of a single uniform
+    WAIT bucket. Producer (prediction_engine._pack_horizon_row) stamps emp.withhold_reason;
+    UI reads and maps to operator-visible labels with hover-titles explaining the reason.
+    """
+    html = _html()
+    # Helper function must exist and discriminate the documented reason codes.
+    assert "const biasFromEmp = (emp) =>" in html, "biasFromEmp helper missing"
+    helper_idx = html.index("const biasFromEmp = (emp) =>")
+    helper_end = html.index("\n    };", helper_idx) + 6
+    helper_body = html[helper_idx:helper_end]
+    # All four reason buckets must be handled distinctly.
+    assert "'min_samples'" in helper_body, "min_samples branch missing"
+    assert "'no_data'" in helper_body, "no_data branch missing"
+    assert "'data_quality'" in helper_body, "data_quality branch missing"
+    # Distinct operator-visible labels for each withhold bucket.
+    assert "'WITHHELD'" in helper_body, "WITHHELD label missing"
+    assert "'NO DATA'" in helper_body, "NO DATA label missing"
+    assert "'LOADING'" in helper_body, "LOADING fallback label missing"
+    # When probs ARE present, helper must return LONG/SHORT/FLAT (real verdict),
+    # never falling through to the withhold path.
+    assert "'LONG'" in helper_body and "'SHORT'" in helper_body and "'FLAT'" in helper_body
+
+
+def test_live_ui_d_bias_kv_passes_cls_and_title_for_withhold_reason():
+    """LIVE-UI-D: the per-horizon Bias addKV call must thread the metadata object so the
+    DOM cell carries the discriminator class + tooltip — otherwise the operator sees
+    'WITHHELD' but cannot tell which reason fired."""
+    html = _html()
+    # The addKV signature must accept opts (cls + title) and apply them.
+    addkv_idx = html.index("const addKV = (grid, k, v, opts) =>")
+    addkv_body = html[addkv_idx : html.index("\n    };", addkv_idx)]
+    assert "opts.cls" in addkv_body, "addKV must apply opts.cls to the value cell"
+    assert "opts.title" in addkv_body, "addKV must apply opts.title to the value cell"
+    # The Bias call site must pass the bm (biasMeta) object.
+    assert "addKV(grid, 'Bias', biasHz, { cls: bm.cls, title: bm.title })" in html, (
+        "Bias addKV call must pass bm.cls + bm.title — without this the discriminator is dropped"
+    )
+
+
+def test_live_ui_d_horizon_confidence_discriminates_missing_row():
+    """LIVE-UI-D sibling sweep: Horizon Confidence cell must distinguish 'missing assessment'
+    from 'present but null' — without this discriminator the operator sees '—' identically
+    for both states and can't tell whether to wait or whether the horizon is structurally
+    absent. Producer: market_state.build_market_state stamps row.missing + row.row_state
+    for missing assessments (mhap None fix @ beeb16e).
+    """
+    html = _html()
+    # The Horizon Confidence render must thread metadata (confMHMeta) for discrimination.
+    assert "addKV(grid, 'Horizon Confidence', confMH, confMHMeta)" in html, (
+        "Horizon Confidence cell must pass confMHMeta — otherwise missing-row reason is dropped"
+    )
+    # confMHMeta must discriminate the three states: present / missing-row / loading.
+    meta_idx = html.index("const confMHMeta = _confPresent")
+    meta_end = html.index(";", meta_idx)
+    meta_body = html[meta_idx:meta_end]
+    assert "Per-horizon supporting assessment confidence" in meta_body, "present-state tooltip missing"
+    assert "Horizon assessment missing" in meta_body, "missing-row tooltip missing"
+    assert "Horizon confidence not yet stamped" in meta_body or "No horizon row" in meta_body, (
+        "loading-state tooltip missing"
+    )
+    # The discriminator class must use bias-withheld for missing-row (matches Bias-cell
+    # withhold styling for visual consistency across the sibling cells).
+    assert "bias-withheld" in meta_body, "missing-row branch must apply bias-withheld class"
+
+
 def test_live_ui_a_no_dominant_prob_renders_in_js():
     """LIVE-UI-A: market_state.py L1541-1556 was previously stamping placeholder 0.3333
     into ms.dominant_prob for non-tradable canonicals. The producer is now gated. This

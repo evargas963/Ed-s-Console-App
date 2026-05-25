@@ -44,12 +44,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('bundleDirectionWithheld returns withheld=false on clean integrity', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(
-    () => typeof window.bundleDirectionWithheld === 'function',
-    null,
-    { timeout: 30000 },
-  );
+  await gotoWithWithholdHelpers(page);
 
   const clean = await page.evaluate(() =>
     window.bundleDirectionWithheld(

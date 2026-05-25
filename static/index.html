@@ -4480,34 +4480,87 @@ function renderDecisionCommandRail(d) {
 
   if (panels) {
     panels.textContent = '';
-    const addKV = (grid, k, v) => {
+    const addKV = (grid, k, v, opts) => {
       const kk = document.createElement('div');
       kk.className = 'hz-mini-k';
       kk.textContent = k;
       const vv = document.createElement('div');
       vv.className = 'hz-mini-v';
+      if (opts && opts.cls) vv.className += ' ' + opts.cls;
       vv.textContent = v;
+      if (opts && opts.title) vv.title = opts.title;
       grid.appendChild(kk);
       grid.appendChild(vv);
+    };
+
+    // LIVE-UI-D: tri-state withhold label for empirical horizon Bias. Producer
+    // (prediction_engine._pack_horizon_row) stamps withhold_reason in {no_data,
+    // min_samples, data_quality} when up/down/flat are None. UI distinguishes those
+    // from a real WAIT verdict (probs present, no dominant direction).
+    const biasFromEmp = (emp) => {
+      const u = emp && emp.up != null ? Number(emp.up) : null;
+      const dn = emp && emp.down != null ? Number(emp.down) : null;
+      const fl = emp && emp.flat != null ? Number(emp.flat) : null;
+      if (u != null && dn != null && fl != null) {
+        const m = Math.max(u, dn, fl);
+        const dir = (m === u && u >= dn && u >= fl) ? 'LONG'
+          : (m === dn && dn >= u && dn >= fl) ? 'SHORT'
+          : 'FLAT';
+        return { text: dir, cls: 'bias-' + dir.toLowerCase(), title: 'Empirical horizon bias from labeled histogram' };
+      }
+      const reason = String(emp && emp.withhold_reason || '').toLowerCase();
+      const labeled = (emp && emp.labeled_count != null) ? Number(emp.labeled_count) : null;
+      const minReq = (emp && emp.min_samples_required != null) ? Number(emp.min_samples_required) : null;
+      if (reason === 'min_samples') {
+        return {
+          text: 'WITHHELD',
+          cls: 'bias-withheld',
+          title: `Labeled count ${labeled == null ? '?' : labeled} below MIN_SAMPLES_STATISTICAL=${minReq == null ? '?' : minReq} — empirical probs withheld (not a WAIT verdict)`,
+        };
+      }
+      if (reason === 'no_data') {
+        return {
+          text: 'NO DATA',
+          cls: 'bias-no-data',
+          title: 'No labeled samples for this horizon yet — empirical histogram empty',
+        };
+      }
+      if (reason === 'data_quality') {
+        return {
+          text: 'WITHHELD',
+          cls: 'bias-withheld',
+          title: `Labeled count ${labeled == null ? '?' : labeled} >= MIN_SAMPLES_STATISTICAL=${minReq == null ? '?' : minReq} but probs are null — data-quality anomaly, audit-visible`,
+        };
+      }
+      return {
+        text: 'LOADING',
+        cls: 'bias-loading',
+        title: 'Empirical horizon row not yet in payload — initial canonical pending or row absent',
+      };
     };
 
     hzOrder.forEach(({ slug, label }) => {
       const row = rows.find(r => String(r.horizon || '').toLowerCase() === slug) || null;
       const empKey = ({ '1c': '1m', '5c': '5m', '15c': '15m', '60c': '60m' })[slug];
       const emp = hp && typeof hp === 'object' ? hp[empKey] : null;
-      const u = emp && emp.up != null ? Number(emp.up) : null;
-      const dn = emp && emp.down != null ? Number(emp.down) : null;
-      const fl = emp && emp.flat != null ? Number(emp.flat) : null;
-      let biasHz = 'WAIT';
-      if (u != null && dn != null && fl != null) {
-        const m = Math.max(u, dn, fl);
-        biasHz = (m === u && u >= dn && u >= fl) ? 'LONG' : (m === dn && dn >= u && dn >= fl) ? 'SHORT' : 'FLAT';
-      }
+      const bm = biasFromEmp(emp);
+      const biasHz = bm.text;
       const moveProb = fusionPol[`fused_move_prob_${slug}`];
       const fuseConf = fusionPol[`fused_confidence_${slug}`];
       const st = fusionPol[`fused_stack_status_${slug}`];
       const elig = row ? String(row.call || 'WAIT').toUpperCase() : '—';
-      const confMH = row && row.confidence != null && !Number.isNaN(Number(row.confidence)) ? Number(row.confidence).toFixed(2) : '—';
+      // LIVE-UI-D: Horizon Confidence — discriminate missing-assessment from "present but
+      // null" so the '—' cell carries an operator-readable reason. Producer:
+      // market_state.build_market_state stamps row_state='missing' + confidence=None for
+      // _missing assessments (LIVE-UI-D mhap None fix @ beeb16e).
+      const _confPresent = row && row.confidence != null && !Number.isNaN(Number(row.confidence));
+      const confMH = _confPresent ? Number(row.confidence).toFixed(2) : '—';
+      const _rowMissing = row && (row.missing === true || String(row.row_state || '').toLowerCase() === 'missing');
+      const confMHMeta = _confPresent
+        ? { title: 'Per-horizon supporting assessment confidence (mhap_rows[hz].confidence)' }
+        : (_rowMissing
+            ? { cls: 'bias-withheld', title: `Horizon assessment missing (row_state=${String((row && row.row_state) || 'missing')}) — confidence withheld, not zero` }
+            : { cls: 'bias-loading', title: row ? 'Horizon confidence not yet stamped — empirical/canonical pending' : 'No horizon row for this slug yet' });
 
       const agree = (() => {
         if (!row) return { text: 'N/A', cls: 'mix' };
@@ -4543,7 +4596,7 @@ function renderDecisionCommandRail(d) {
 
       const grid = document.createElement('div');
       grid.className = 'hz-mini-kv';
-      addKV(grid, 'Bias', biasHz);
+      addKV(grid, 'Bias', biasHz, { cls: bm.cls, title: bm.title });
       addKV(grid, 'Move P', fusionActive ? num01pct(moveProb) : '—');
       const fusedTxt = !fusionActive
         ? '—'
@@ -4551,7 +4604,7 @@ function renderDecisionCommandRail(d) {
           ? `${Math.round(Number(fuseConf) * 100)}%`
           : '—');
       addKV(grid, 'Fused Confidence', fusedTxt);
-      addKV(grid, 'Horizon Confidence', confMH);
+      addKV(grid, 'Horizon Confidence', confMH, confMHMeta);
       addKV(grid, 'Eligibility', elig);
       {
         const stackParsed = parseFusedStackStatus(st);
@@ -4566,9 +4619,12 @@ function renderDecisionCommandRail(d) {
         grid.appendChild(vv);
       }
       addKV(grid, 'Models', contribTxt);
-      const empTxt = (u == null || dn == null || fl == null)
+      const empU = emp && emp.up != null ? Number(emp.up) : null;
+      const empDn = emp && emp.down != null ? Number(emp.down) : null;
+      const empFl = emp && emp.flat != null ? Number(emp.flat) : null;
+      const empTxt = (empU == null || empDn == null || empFl == null)
         ? 'insufficient'
-        : `${num01pct(u)} / ${num01pct(dn)} / ${num01pct(fl)}`;
+        : `${num01pct(empU)} / ${num01pct(empDn)} / ${num01pct(empFl)}`;
       addKV(grid, 'Empirical', empTxt);
 
       wrap.appendChild(top);
