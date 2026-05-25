@@ -263,3 +263,61 @@ def test_agents_code_first_no_governance_only_section() -> None:
     assert "bookkeeping" in agents
     active = _read("ACTIVE_PROGRAM.md")
     assert "code-first" in active.lower()
+
+
+def test_server_logging_visual_severity_marker_warning_plus_only() -> None:
+    """server.py installs a Formatter that prepends a bracket-tag for WARNING+ so
+    operator-actionable events stand out in the dense INFO/DEBUG console stream.
+    DEBUG/INFO get no marker (steady-state stays quiet)."""
+    import importlib.util
+    import logging
+
+    # Import the Formatter directly without booting server.py (which imports
+    # the world). Use the class definition via inline reconstruction — assert
+    # source-level presence + behavioral semantics on a synthetic instance.
+    src = (ROOT / "server.py").read_text(encoding="utf-8")
+    assert "class _LevelMarkerFormatter(logging.Formatter):" in src, "marker formatter missing"
+    assert "_install_visual_severity_markers" in src, "install helper missing"
+    assert "isatty" in src, "TTY detection missing (ANSI must not be emitted into log-capture files)"
+    # Both ANSI + plain marker tables present (so file capture stays clean)
+    assert "_ANSI_BY_LEVEL" in src
+    assert "_PLAIN_BY_LEVEL" in src
+    # All three operator-actionable levels covered
+    for lvl in ("WARNING", "ERROR", "CRITICAL"):
+        assert f"logging.{lvl}" in src, f"{lvl} level marker missing"
+
+    # Behavioral check: instantiate the formatter (re-import the class via exec
+    # of the source slice) and verify the level marker decision.
+    import re as _re
+    cls_match = _re.search(
+        r"class _LevelMarkerFormatter.*?(?=\n(?:def |class |\n\Z))",
+        src,
+        _re.DOTALL,
+    )
+    assert cls_match is not None, "could not isolate formatter class source"
+    ns: dict = {"logging": logging}
+    exec(cls_match.group(0), ns)
+    Formatter = ns["_LevelMarkerFormatter"]
+
+    # Plain mode (no TTY) — used in file capture / CI logs
+    f_plain = Formatter("%(levelname)s:%(name)s:%(message)s", use_ansi=False)
+    rec_warn = logging.LogRecord("ed_server", logging.WARNING, "x.py", 1, "test", None, None)
+    rec_info = logging.LogRecord("ed_server", logging.INFO, "x.py", 1, "test", None, None)
+    rec_err = logging.LogRecord("ed_server", logging.ERROR, "x.py", 1, "test", None, None)
+    out_warn = f_plain.format(rec_warn)
+    out_info = f_plain.format(rec_info)
+    out_err = f_plain.format(rec_err)
+    assert out_warn.startswith("[WARN] "), f"warning marker missing in plain mode: {out_warn!r}"
+    assert out_err.startswith("[ERR ] "), f"error marker missing in plain mode: {out_err!r}"
+    assert not (out_info.startswith("[WARN]") or out_info.startswith("[ERR")), (
+        f"INFO must NOT carry a level marker (steady-state stays quiet): {out_info!r}"
+    )
+
+    # ANSI mode (TTY) — used when operator watches uvicorn live
+    f_ansi = Formatter("%(levelname)s:%(name)s:%(message)s", use_ansi=True)
+    out_warn_ansi = f_ansi.format(rec_warn)
+    assert "\033[33m[WARN]\033[0m " in out_warn_ansi, (
+        f"ANSI yellow marker missing for WARNING: {out_warn_ansi!r}"
+    )
+    out_info_ansi = f_ansi.format(rec_info)
+    assert "\033[" not in out_info_ansi, f"INFO must not emit ANSI escapes: {out_info_ansi!r}"

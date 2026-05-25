@@ -107,4 +107,4 @@ def test_classify_stack_health_single_producer():
             if "def classify_stack_health" in line:
                 continue
             call_sites.append(f"{rel}:{i}")
-    assert call_sites == ["server.py:2012"], call_sites
+    assert call_sites == ["server.py:2054"], call_sites

@@ -64,7 +64,49 @@ APP_DIR = str(Path(__file__).parent.resolve())
 sys.path.insert(0, APP_DIR)
 
 # ── Logging ──────────────────────────────────────────────────────────────────
-logging.basicConfig(level=logging.INFO)
+# Visual severity marker: WARNING / ERROR / CRITICAL get a bracket-tag prefix
+# (ANSI-colored on a TTY; plain ASCII otherwise) so operator-actionable events
+# stand out in the dense INFO/DEBUG console stream. Steady-state DEBUG/INFO
+# remain unmarked. The operator-flagged regression was post-LIVE-UI-A: charm/
+# IV/seq_len logs were correctly demoted to DEBUG, but the residual WARNINGs
+# then sat in the same visual stream as INFO — easy to miss.
+class _LevelMarkerFormatter(logging.Formatter):
+    _ANSI_BY_LEVEL = {
+        logging.WARNING:  "\033[33m[WARN]\033[0m ",   # yellow
+        logging.ERROR:    "\033[31m[ERR ]\033[0m ",   # red
+        logging.CRITICAL: "\033[1;31m[CRIT]\033[0m ", # bold red
+    }
+    _PLAIN_BY_LEVEL = {
+        logging.WARNING:  "[WARN] ",
+        logging.ERROR:    "[ERR ] ",
+        logging.CRITICAL: "[CRIT] ",
+    }
+
+    def __init__(self, fmt: str | None = None, *, use_ansi: bool = True) -> None:
+        super().__init__(fmt)
+        self.use_ansi = use_ansi
+
+    def format(self, record: logging.LogRecord) -> str:
+        table = self._ANSI_BY_LEVEL if self.use_ansi else self._PLAIN_BY_LEVEL
+        marker = table.get(record.levelno, "")
+        return marker + super().format(record)
+
+
+def _install_visual_severity_markers(level: int = logging.INFO) -> None:
+    """Replace any default root handlers with one that adds the level marker."""
+    use_ansi = bool(getattr(sys.stderr, "isatty", lambda: False)())
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        _LevelMarkerFormatter("%(levelname)s:%(name)s:%(message)s", use_ansi=use_ansi)
+    )
+    root = logging.getLogger()
+    for h in list(root.handlers):
+        root.removeHandler(h)
+    root.addHandler(handler)
+    root.setLevel(level)
+
+
+_install_visual_severity_markers(logging.INFO)
 log = logging.getLogger("ed_server")
 
 # ── Import all existing Ed Console modules (unchanged) ───────────────────────
