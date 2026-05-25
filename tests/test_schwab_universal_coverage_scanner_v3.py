@@ -297,6 +297,42 @@ def test_m1_python_dict_get_market_default(idx: SchwabCsvIndex) -> None:
     assert any(r.pattern_kind == "DICT_GET_MARKET_DEFAULT" for r in rows)
 
 
+def test_m1_python_dict_get_market_nullable_single_arg(idx: SchwabCsvIndex) -> None:
+    """#8 Phase A: single-arg .get('wireKey') emits a distinct nullable-semantic row."""
+    src = "d = {}\nx = d.get(\"theta\")\n"
+    rows = scan_python_source("t.py", src, idx, {})
+    nullable = [r for r in rows if r.pattern_kind == "DICT_GET_MARKET_NULLABLE"]
+    assert nullable, f"expected DICT_GET_MARKET_NULLABLE; got {[(r.pattern_kind, r.surface_form) for r in rows]!r}"
+    assert nullable[0].surface_form == ".get('theta')"
+    # Two-arg kind must NOT fire on single-arg call (pattern_kind separation).
+    assert not any(r.pattern_kind == "DICT_GET_MARKET_DEFAULT" for r in rows)
+
+
+def test_m1_python_dict_get_two_arg_still_emits_default_kind(idx: SchwabCsvIndex) -> None:
+    """Regression: existing DICT_GET_MARKET_DEFAULT branch unchanged by the if/else split."""
+    src = "d = {}\nx = d.get(\"theta\", 0)\n"
+    rows = scan_python_source("t.py", src, idx, {})
+    assert any(r.pattern_kind == "DICT_GET_MARKET_DEFAULT" for r in rows)
+    assert not any(r.pattern_kind == "DICT_GET_MARKET_NULLABLE" for r in rows)
+
+
+def test_m1_python_dict_get_camel_key_hits_vocab_via_csv_split(idx: SchwabCsvIndex) -> None:
+    """server.py L2334-style fixture: _q.get('quoteTime') must emit NULLABLE kind.
+
+    Vocab match comes from _string_key_hits_vocab → tokenize_for_vocabulary
+    (CSV-side camel-split) — independent of words_in_line catch-all asymmetry.
+    Mini-CSV fixture above seeds 'quotes.quote.bidPrice', so token 'quote' is in vocab.
+    """
+    src = 'q = {}\nx = q.get("quoteTime")\n'
+    rows = scan_python_source("t.py", src, idx, {})
+    nullable = [r for r in rows if r.pattern_kind == "DICT_GET_MARKET_NULLABLE"]
+    assert nullable, (
+        f"expected NULLABLE emission for single-arg .get('quoteTime'); "
+        f"got {[(r.pattern_kind, r.surface_form) for r in rows]!r}"
+    )
+    assert nullable[0].surface_form == ".get('quoteTime')"
+
+
 def test_m1_python_getattr_market_literal(idx: SchwabCsvIndex) -> None:
     src = "o = object()\nx = getattr(o, \"theta\", 0)\n"
     rows = scan_python_source("t.py", src, idx, {})

@@ -260,15 +260,25 @@ class UniversalPythonVisitor(ast.NodeVisitor):
         v = self.ctx.vocab
         if isinstance(node.func, ast.Attribute) and node.func.attr == "get" and node.args:
             sk = _str_key(node.args[0])
-            if sk and _string_key_hits_vocab(sk, v) and len(node.args) >= 2:
-                _emit(
-                    self.ctx,
-                    node,
-                    "DICT_GET_MARKET_DEFAULT",
-                    f".get({sk!r}, default)",
-                    _toks(sk, "get"),
-                    "V3 G1 Python",
-                )
+            if sk and _string_key_hits_vocab(sk, v):
+                if len(node.args) >= 2:
+                    _emit(
+                        self.ctx,
+                        node,
+                        "DICT_GET_MARKET_DEFAULT",
+                        f".get({sk!r}, default)",
+                        _toks(sk, "get"),
+                        "V3 G1 Python",
+                    )
+                else:
+                    _emit(
+                        self.ctx,
+                        node,
+                        "DICT_GET_MARKET_NULLABLE",
+                        f".get({sk!r})",
+                        _toks(sk, "get"),
+                        "V3 G1 Python",
+                    )
         if isinstance(node.func, ast.Name) and node.func.id == "getattr" and len(node.args) >= 2:
             an = _str_key(node.args[1])
             if an and _string_key_hits_vocab(an, v):
