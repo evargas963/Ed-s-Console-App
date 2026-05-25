@@ -237,3 +237,82 @@ def test_agents_md_documents_verify_in_turn_rule() -> None:
     assert "Verify-in-turn-or-omit" in text
     assert '"Same gap applies"' in text or "Same gap applies" in text
     assert '"Haven\'t verified"' in text or "Haven't verified" in text
+
+
+def test_agents_md_documents_action_not_documentation_rule() -> None:
+    """Lock the §Action-not-documentation section presence + key contract phrases."""
+    text = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "## Action-not-documentation" in text
+    assert "No documentation without code-fix scope" in text
+    assert "ALL PLANS, ALL PHASES, MEMOS, AUDITS" in text  # operator-intent verbatim block
+    # Honest limit re-affirmed
+    assert "Rule files" in text and "are not in scope" in text
+
+
+def test_action_not_documentation_blocks_audit_only_commit(tmp_path: Path) -> None:
+    """Pre-commit must block a commit that stages only an audit MD containing
+    action language without paired code change."""
+    audit = tmp_path / "governance" / "audits" / "fake_audit_v1.md"
+    audit.parent.mkdir(parents=True)
+    audit.write_text(
+        "# Audit\n\n## FIND-FAKE-1\nFix direction: do the thing.\n",
+        encoding="utf-8",
+    )
+    staged = {"governance/audits/fake_audit_v1.md"}
+    # Patch REPO_ROOT for this test so the helper reads from tmp.
+    orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = tmp_path
+    try:
+        hits = mod.check_action_not_documentation(staged)
+    finally:
+        mod.REPO_ROOT = orig_root
+    assert hits, "expected action-not-documentation hit on doc-only audit commit"
+    assert any("Action-not-documentation" in h for h in hits)
+    assert any("FIND-" in h for h in hits), "must name the action token that fired"
+
+
+def test_action_not_documentation_allows_audit_paired_with_code(tmp_path: Path) -> None:
+    """Paired audit + .py code change in the same commit must pass the gate."""
+    audit = tmp_path / "governance" / "audits" / "fake_audit_v1.md"
+    audit.parent.mkdir(parents=True)
+    audit.write_text("# Audit\n\n## FIND-FAKE-1\nFix direction: do the thing.\n", encoding="utf-8")
+    staged = {"governance/audits/fake_audit_v1.md", "some_module.py"}
+    orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = tmp_path
+    try:
+        hits = mod.check_action_not_documentation(staged)
+    finally:
+        mod.REPO_ROOT = orig_root
+    assert hits == [], f"paired audit + .py code should pass; got {hits!r}"
+
+
+def test_action_not_documentation_allows_pure_signoff_pin_artifact(tmp_path: Path) -> None:
+    """A .json sign-off pin under governance/artifacts/ is NOT in scope of this rule
+    (rule explicitly carves out sign-off pins). Commits with only pin artifacts pass."""
+    pin = tmp_path / "governance" / "artifacts" / "schwab_v4_register_build_meta.json"
+    pin.parent.mkdir(parents=True)
+    pin.write_text('{"register_content_sha256": "abc123"}\n', encoding="utf-8")
+    staged = {"governance/artifacts/schwab_v4_register_build_meta.json"}
+    orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = tmp_path
+    try:
+        hits = mod.check_action_not_documentation(staged)
+    finally:
+        mod.REPO_ROOT = orig_root
+    assert hits == [], f"sign-off pin update should pass (carved out); got {hits!r}"
+
+
+def test_action_not_documentation_allows_rule_file_update(tmp_path: Path) -> None:
+    """AGENTS.md / CLAUDE.md / MEMORY.md are rule files, explicitly carved out
+    of the Action-not-documentation rule. Updates to them should pass even
+    without paired code."""
+    rule_md = tmp_path / "AGENTS.md"
+    rule_md.write_text("## Some rule\nFix direction: future code.\n", encoding="utf-8")
+    staged = {"AGENTS.md"}
+    orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = tmp_path
+    try:
+        hits = mod.check_action_not_documentation(staged)
+    finally:
+        mod.REPO_ROOT = orig_root
+    assert hits == [], f"rule-file update should pass (out of scope); got {hits!r}"

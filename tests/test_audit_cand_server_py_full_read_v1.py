@@ -400,3 +400,32 @@ def test_liquidity_zone_tradeable_score_authority_roundtrip():
     from liquidity_value_engine import liquidity_zone_tradeable_score
 
     assert liquidity_zone_tradeable_score(n_tags=1, n_opt=1, inside=False, dist_pen=0.0, spot=None) == 5.5
+
+
+def test_vwap_failed_log_demoted_to_debug_for_index_symbols():
+    """Operator scan flagged: 'WARNING: VWAP failed for $SPX: price_levels=None bars=390 — writing NULL'.
+
+    Schwab index symbols ($SPX, $VIX, $NDX) don't carry intraday volume data;
+    VWAP can't compute by definition → steady-state DEBUG, not WARNING. Real
+    ticker (SPY etc.) with bars-present + VWAP-failed remains WARNING (data
+    quality issue).
+    """
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[1].joinpath("server.py").read_text(encoding="utf-8")
+    # Locate the VWAP-failed log block by anchor string.
+    anchor = 'VWAP failed for'
+    assert anchor in src, "VWAP-failed log block missing from server.py"
+    # Slice ~30 lines around the anchor to verify the discriminator landed adjacent.
+    idx = src.index(anchor)
+    window_start = src.rfind("\n", 0, idx - 600)
+    window = src[window_start : idx + 200]
+    assert '_is_index_symbol' in window or 'startswith("$")' in window, (
+        f"VWAP log site has no index-symbol discriminator:\n{window!r}"
+    )
+    assert "log.debug" in window, "DEBUG branch missing — index symbols would still WARN"
+    assert "log.warning" in window, "WARNING branch missing — real ticker case would not surface"
+    # Lazy %-formatting (avoids f-string eval cost on suppressed DEBUG).
+    assert '"VWAP failed for %s' in window, (
+        "VWAP log should use lazy %-formatting so DEBUG-suppressed string interpolation is skipped"
+    )

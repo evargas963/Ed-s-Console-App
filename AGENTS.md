@@ -80,6 +80,27 @@ This rule sits above §Fix everything we touch because lying makes every other r
 
 ---
 
+## Action-not-documentation `[PROMOTED]` (2026-05-25 — operator escalation)
+
+**No documentation without code-fix scope.** Every plan, phase, memo, audit, OPEN_ITEMS row, or process artifact must carry CODE-FIX scope — paired commit SHA, paired test ID, OR named code target (`file:line`) for the next action. Artifacts exist to drive code change; they are not the deliverable, the code they cite is. Pure description without action is the violation.
+
+| Required content (per artifact section) | Banned as sole content |
+|-----------------------------------------|------------------------|
+| Per FIND / issue: paired-fix SHA, paired test, OR `[REAL-GATE: <tag>]` per [§Closure definition + no-deferral](#closure-definition--no-deferral) | Audits / memos / phase docs that list FINDs without per-FIND remediation cite |
+| Per phase in a phase plan: code commit SHA when closed; named `file:line` code target when open | Phase plans with goal/scope but zero code-target lines |
+| OPEN_ITEMS new rows: `**Fix direction:**` AND named target file:line | Rows that describe risk without naming the consumer-side or producer-side code that needs editing |
+| Memos: code-fix scope same commit ([§Fix everything we touch](#fix-everything-we-touch)) | Doc-only memo handoffs — re-affirmed |
+
+**This rule is the artifact-content corollary of §Code-first.** §Code-first bans governance-only turns at the commit level. This rule bans governance-only *content* inside artifacts: a phase doc that lists six phases without code-fix scope per phase, an audit that flags ten FINDs without per-FIND remediation cite, a memo that documents state without naming the code change — all violations even if shipped alongside other code.
+
+**Operator intent (2026-05-25):** "ALL PLANS, ALL PHASES, MEMOS, AUDITS, ETC. MUST CONTAIN ACTION TO FIX ISSUES. THEY CAN NEVER BE JUST DOCUMENTATION. WE MUST PRODUCE CODE THAT CONTINUES TO MOVE THE APP FORWARD."
+
+**Honest limit:** Rule files (`AGENTS.md`, `CLAUDE.md`, `MEMORY.md`), sign-off pins (`governance/artifacts/*.json`), and operator-assigned governance-only lanes are not in scope. The §Code-first existing carve-outs apply identically here.
+
+**Mechanical enforcement (partial):** `tools/check_fix_everything_we_touch.py` — staged commits where only governance artifacts (`governance/audits/**`, `governance/SCHWAB_V4_REVIEW_MEMOS/**`, `governance/PHASE_PLAN_*.md`) change and those artifacts contain action language (`FIND-`, `fix direction`, `Risk:`, `Remaining:`, `Open:`, `TODO`) WITHOUT paired code change (`.py` / `.html` / `.js` / `.css`) fail at pre-commit. Paired test: `tests/test_check_fix_everything_we_touch.py`.
+
+---
+
 ## Self-governance quality loop `[PROMOTED]` (2026-05-24)
 
 When operator or peer catches a **missed fix** (FIND surfaced, fix not landed same turn/commit):

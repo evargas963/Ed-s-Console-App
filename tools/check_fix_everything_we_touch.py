@@ -283,6 +283,84 @@ def check_commit_message(path: Path) -> list[str]:
     return hits
 
 
+# Artifact-content rule (AGENTS § Action-not-documentation, 2026-05-25):
+# governance artifacts that describe issues without paired code edits are doc-only
+# and rejection-grade. Action-language tokens that indicate "this artifact identifies
+# work to do" — must be paired with a code change in the same commit.
+ACTION_LANGUAGE_TOKENS = (
+    "FIND-",
+    "fix direction",
+    "Risk:",
+    "Remaining:",
+    "Open:",
+    "TODO:",
+    "TODO ",
+    "tracked as ",
+    "needs follow-on",
+    "remediation",
+)
+
+# Artifact paths whose content is governed by the Action-not-documentation rule.
+# Rule files / sign-off pins / OPEN_ITEMS are excluded — see the rule's honest-limit.
+ACTION_RULE_ARTIFACT_PREFIXES = (
+    "governance/audits/",
+    "governance/SCHWAB_V4_REVIEW_MEMOS/",
+)
+ACTION_RULE_ARTIFACT_PATTERNS = (
+    "governance/PHASE_PLAN_",
+)
+
+# Code-change extensions that satisfy the "paired code edit" requirement.
+CODE_EXTENSIONS = (".py", ".html", ".js", ".jsx", ".ts", ".tsx", ".css", ".sql")
+
+
+def _path_is_action_rule_artifact(rel: str) -> bool:
+    if not rel.endswith(".md"):
+        return False
+    if any(rel.startswith(pref) for pref in ACTION_RULE_ARTIFACT_PREFIXES):
+        return True
+    return any(pat in rel for pat in ACTION_RULE_ARTIFACT_PATTERNS)
+
+
+def _staged_has_code_change(staged: set[str]) -> bool:
+    return any(p.endswith(CODE_EXTENSIONS) for p in staged)
+
+
+def check_action_not_documentation(staged: set[str]) -> list[str]:
+    """Block governance-artifact-only commits that contain action language without paired code.
+
+    Per AGENTS § Action-not-documentation (2026-05-25 operator escalation):
+    plans/phases/memos/audits must carry CODE-FIX scope in the same commit, not
+    just describe state. The existing §Fix everything we touch covers V4 memos
+    via check_v4_memo; this function extends the same rule to audits and phase
+    plans (which previously could land doc-only).
+    """
+    if _staged_has_code_change(staged):
+        return []  # paired code present — rule satisfied
+    errors: list[str] = []
+    for rel in sorted(staged):
+        if not _path_is_action_rule_artifact(rel):
+            continue
+        artifact_path = REPO_ROOT / rel
+        if not artifact_path.is_file():
+            continue
+        try:
+            text = artifact_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        present_tokens = [tok for tok in ACTION_LANGUAGE_TOKENS if tok in text]
+        if present_tokens:
+            errors.append(
+                f"{rel}: contains action language ({', '.join(present_tokens[:4])}) "
+                f"but commit has no paired code change (.py / .html / .js / .css / .sql). "
+                f"AGENTS § Action-not-documentation — plans/phases/memos/audits must carry "
+                f"code-fix scope in the same commit, not just describe state. "
+                f"Either land the code fix this commit, or strip the action-language sections "
+                f"and re-stage as a sign-off-pin-only update."
+            )
+    return errors
+
+
 def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
     staged = staged if staged is not None else _git_staged_paths()
     errors: list[str] = []
@@ -296,6 +374,9 @@ def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
         import check_schwab_csv_first as schwab_guard
 
         errors.extend(schwab_guard.check_v4_memo_gatekeeper_csv(memo_path, REPO_ROOT))
+
+    # Artifact-content rule (§Action-not-documentation): run once per commit on the full staged set.
+    errors.extend(check_action_not_documentation(staged))
 
     for path in paths:
         if path.name == "COMMIT_EDITMSG" or "--commit-msg" in path.as_posix():

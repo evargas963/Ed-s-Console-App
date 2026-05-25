@@ -4362,7 +4362,16 @@ def _fetch_state(
                 if _vwap_f is None:
                     _pl_vwap = getattr(price_levels, "vwap", None)
                     _n_bars = len(_bars_for_vwap) if _bars_for_vwap else 0
-                    log.warning(f"VWAP failed for {ticker}: price_levels={_pl_vwap} bars={_n_bars} — writing NULL")
+                    # Schwab index symbols ($SPX, $VIX, $NDX, etc.) don't carry intraday
+                    # volume data; VWAP (price × volume sum) cannot compute by definition.
+                    # Steady-state DEBUG for those; WARNING for real tickers where bars
+                    # present + VWAP failed indicates a data-quality issue.
+                    _is_index_symbol = isinstance(ticker, str) and ticker.startswith("$")
+                    _vwap_log = log.debug if _is_index_symbol else log.warning
+                    _vwap_log(
+                        "VWAP failed for %s: price_levels=%s bars=%s — writing NULL",
+                        ticker, _pl_vwap, _n_bars,
+                    )
                 _vwap_dist = round(spot_f - _vwap_f, 4) if _vwap_f else None
     
                 # VWAP side must follow the same vwap we persist (API VWAP or bar-derived fallback).
