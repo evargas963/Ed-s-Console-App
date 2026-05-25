@@ -292,3 +292,64 @@ def test_json_excerpt_truncation_sentinel():
     assert out is not None
     assert out.endswith('..."[TRUNCATED]"')
     assert len(out) <= 100
+
+
+@pytest.mark.parametrize("env_value,expected", [
+    ("1", True), ("true", True), ("TRUE", True), ("yes", True), ("YES", True),
+    ("on", True), ("On", True),
+    ("0", False), ("false", False), ("no", False), ("off", False), ("", False),
+])
+def test_calibration_logging_enabled_env_var_semantics(monkeypatch, env_value, expected):
+    """ED_CALIBRATION_LOG env gate semantics — case-insensitive, default-OFF.
+
+    Root cause of the 2026-04-12 → 2026-05-05 calibration gap was the writer
+    being env-gated with no operator visibility. Lock the exact env values that
+    enable / disable so deployment configs don't silently flip the writer off
+    via case-variation or whitespace mistakes.
+    """
+    from calibration.writer import calibration_logging_enabled
+
+    if env_value is None:
+        monkeypatch.delenv("ED_CALIBRATION_LOG", raising=False)
+    else:
+        monkeypatch.setenv("ED_CALIBRATION_LOG", env_value)
+    assert calibration_logging_enabled() is expected
+
+
+def test_calibration_logging_enabled_unset_returns_false(monkeypatch):
+    """Env var absent → False (default-OFF). This is the production failure mode
+    that caused the silent gap; the boot-time WARNING in server.py is what
+    surfaces it to the operator."""
+    from calibration.writer import calibration_logging_enabled
+
+    monkeypatch.delenv("ED_CALIBRATION_LOG", raising=False)
+    assert calibration_logging_enabled() is False
+
+
+def test_calibration_logging_enabled_docstring_names_root_cause():
+    """Lock the docstring so the env-var name + default-OFF semantic + the
+    historical gap stay discoverable. If a future refactor moves the gate, this
+    test fires so the documentation moves with it."""
+    from calibration.writer import calibration_logging_enabled
+
+    doc = calibration_logging_enabled.__doc__ or ""
+    assert "ED_CALIBRATION_LOG" in doc
+    assert "Default is OFF" in doc or "default-OFF" in doc.lower() or "default is off" in doc.lower()
+    assert "calibration_decision_log" in doc
+    assert "silent" in doc.lower()
+
+
+def test_server_logs_calibration_state_at_boot():
+    """server.py must call _log_calibration_logging_state_at_boot at module
+    import so the operator sees ENABLED/DISABLED on every server restart."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "server.py").read_text(encoding="utf-8")
+    assert "def _log_calibration_logging_state_at_boot" in src, "boot diagnostic function missing"
+    assert "_log_calibration_logging_state_at_boot()" in src, "boot diagnostic call site missing"
+    # Function must emit WARNING when disabled (not INFO — WARN gets the visual marker).
+    fn_start = src.index("def _log_calibration_logging_state_at_boot")
+    fn_end = src.index("\n_log_calibration_logging_state_at_boot()", fn_start)
+    body = src[fn_start:fn_end]
+    assert "log.warning" in body, "disabled path must use log.warning (gets [WARN] visual marker)"
+    assert "ED_CALIBRATION_LOG" in body, "WARNING must name the env var so the operator knows the fix"
+    assert "DISABLED" in body, "WARNING must announce DISABLED state explicitly"

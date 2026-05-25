@@ -150,6 +150,7 @@ MEGA1_TRACEABLE_INVENTORY: tuple[Mega1TraceableDerivation, ...] = (
     Mega1TraceableDerivation("server.py", 85, "_LevelMarkerFormatter.__init__", "NONE", None, (), None, "No market-field derivation: console-output formatter init (visual severity marker)."),
     Mega1TraceableDerivation("server.py", 89, "_LevelMarkerFormatter.format", "NONE", None, (), None, "No market-field derivation: console-output formatter prepends bracket-tag for WARNING+."),
     Mega1TraceableDerivation("server.py", 95, "_install_visual_severity_markers", "NONE", None, (), None, "No market-field derivation: installs the console-output formatter as root handler."),
+    Mega1TraceableDerivation("server.py", 113, "_log_calibration_logging_state_at_boot", "NONE", None, (), None, "No market-field derivation: boot-time diagnostic that announces calibration writer enabled/disabled state via env gate."),
     Mega1TraceableDerivation("server.py", 147, "_log_schwab_startup_diagnostics", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Reads persisted snapshot SQLite rows, not Schwab wire JSON (_log_schwab_startup_diagnostics)."),
     Mega1TraceableDerivation("server.py", 187, "reset_schwab_client", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Reads persisted snapshot SQLite rows, not Schwab wire JSON (reset_schwab_client)."),
     Mega1TraceableDerivation("server.py", 194, "get_client", "ALLOWLISTED", None, (), "mega1_sqlite_internal", "Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_client)."),
