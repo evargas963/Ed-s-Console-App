@@ -597,9 +597,8 @@ def _fuse_impl(
     if n_predictive_approved <= 1:
         conf_score = min(conf_score, 0.55)
 
-    # Damp 3: placeholder calibration penalty — all likelihoods are guesses.
-    # Scale confidence score by 0.85 until empirical calibration replaces placeholders.
-    # TODO: remove this multiplier after 60+ days of calibration data.
+    # Damp 3: placeholder calibration penalty — tracked OPEN_ITEMS FUSION-CALIBRATION-PENALTY-PLACEHOLDER
+    # [REAL-GATE: telemetry] until 60+ days empirical calibration replaces placeholder likelihoods.
     CALIBRATION_PENALTY = 0.85
     conf_score *= CALIBRATION_PENALTY
 
