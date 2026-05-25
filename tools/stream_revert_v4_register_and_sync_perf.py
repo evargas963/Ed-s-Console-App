@@ -20,6 +20,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from tools.schwab_oxx_validator import perf_proof_basename
 DEFAULT_REGISTER = ROOT / "governance" / "SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
 DEFAULT_SLICE_DIR = ROOT / "governance" / "register_slices"
 PERF_DIR = ROOT / "governance" / "artifacts" / "perf_proof" / "replacements"
@@ -69,11 +71,6 @@ def path_line_key(row: dict[str, str]) -> tuple[str, int]:
         int(row.get("line") or 0),
     )
 
-CONCRETE_PROOFS = (
-    "pp_v4b_server_expiration_date_only.json",
-    "pp_v4b_server_quote_coalesce_trim.json",
-    "pp_v4b_market_state_oe_chain_snapshot.json",
-)
 COMPOSITE = "pp_v4b_schwab_gate_eleven_test_bundle.json"
 
 
@@ -337,16 +334,8 @@ def merge_register_slices(
     return report
 
 
-def _proof_suffix(governed_ref: str) -> str | None:
-    g = (governed_ref or "").strip().replace("\\", "/")
-    for p in CONCRETE_PROOFS:
-        if g.endswith(p):
-            return p
-    return None
-
-
 def _collect_replaced_by_proof(register_path: Path) -> tuple[int, dict[str, list[str]]]:
-    """Stream register once; group REPLACED register_ids by perf_proof governed_ref suffix."""
+    """Stream register once; group REPLACED register_ids by perf_proof basename."""
     replaced_by_proof: dict[str, list[str]] = defaultdict(list)
     n_rows = 0
     with register_path.open(newline="", encoding="utf-8") as fin:
@@ -358,12 +347,48 @@ def _collect_replaced_by_proof(register_path: Path) -> tuple[int, dict[str, list
             disp = (row.get("disposition") or "").strip()
             if disp != "REPLACED":
                 continue
-            proof = _proof_suffix(row.get("governed_ref") or "")
+            proof = perf_proof_basename(row.get("governed_ref") or "")
             if proof:
                 replaced_by_proof[proof].append((row.get("register_id") or "").strip())
     for k in list(replaced_by_proof.keys()):
         replaced_by_proof[k] = sorted({x for x in replaced_by_proof[k] if x})
     return n_rows, dict(replaced_by_proof)
+
+
+def _write_perf_json(by_proof: dict[str, list[str]]) -> None:
+    touched: set[str] = set()
+    for proof_name, ids in sorted(by_proof.items()):
+        path = PERF_DIR / proof_name
+        if not path.is_file():
+            continue
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        rl = doc.setdefault("register_link", {})
+        rl["status"] = "bound"
+        rl["replaced_register_ids"] = sorted(set(ids))
+        path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+        touched.add(proof_name)
+
+    for path in sorted(PERF_DIR.glob("pp_*.json")):
+        if path.name == COMPOSITE or path.name in touched:
+            continue
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        rl = doc.get("register_link") or {}
+        if not rl.get("replaced_register_ids"):
+            continue
+        rl["replaced_register_ids"] = []
+        rl["status"] = "unbound"
+        doc["register_link"] = rl
+        path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+
+    gate = PERF_DIR / COMPOSITE
+    if gate.is_file():
+        union = sorted({rid for ids in by_proof.values() for rid in ids})
+        doc = json.loads(gate.read_text(encoding="utf-8"))
+        rl = doc.setdefault("register_link", {})
+        rl["status"] = "composite_bundle"
+        rl["wrapped_proof_ids"] = sorted(by_proof.keys())
+        rl["replaced_register_ids"] = union
+        gate.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
 
 def _stream_patch_and_collect(
@@ -394,7 +419,7 @@ def _stream_patch_and_collect(
                 n_reverted += 1
             disp = (row.get("disposition") or "").strip()
             if disp == "REPLACED":
-                proof = _proof_suffix(row.get("governed_ref") or "")
+                proof = perf_proof_basename(row.get("governed_ref") or "")
                 if proof:
                     replaced_by_proof[proof].append(rid)
             writer.writerow(row)
@@ -409,28 +434,6 @@ def _sha256_and_size(path: Path) -> tuple[str, int]:
         for chunk in iter(lambda: f.read(1 << 22), b""):
             h.update(chunk)
     return h.hexdigest(), path.stat().st_size
-
-
-def _write_perf_json(by_proof: dict[str, list[str]]) -> None:
-    for proof in CONCRETE_PROOFS:
-        path = PERF_DIR / proof
-        doc = json.loads(path.read_text(encoding="utf-8"))
-        rl = doc.setdefault("register_link", {})
-        rl["status"] = "bound_retroactive"
-        rl["replaced_register_ids"] = list(by_proof.get(proof, []))
-        path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
-
-    union: set[str] = set()
-    for proof in CONCRETE_PROOFS:
-        union |= set(by_proof.get(proof, ()))
-
-    gate = PERF_DIR / COMPOSITE
-    doc = json.loads(gate.read_text(encoding="utf-8"))
-    rl = doc.setdefault("register_link", {})
-    rl["status"] = "composite_bundle_retroactive"
-    rl["wrapped_proof_ids"] = sorted(CONCRETE_PROOFS)
-    rl["replaced_register_ids"] = sorted(union)
-    gate.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
 
 def _update_register_meta(sha256_hex: str, size_b: int, n_rows: int) -> None:

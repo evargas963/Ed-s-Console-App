@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "perf_proof_id": "pp_v4b_server_tier_a_quote_leaf_provenance",
   "landed_batch": "v4b-2026-05-18",
-  "replacement_scope": "server.py chunk 2: _parse_quote_node_session_fields (canonical REST quote leaves), _update_rest_cum_delta quote leaves, chain expirationDate/callExpDateMap leaves; Tier A + expiries provenance pass.",
+  "replacement_scope": "server.py chunk 2: _parse_quote_node_session_fields call sites, _update_rest_cum_delta quote leaves; Tier A provenance pass.",
   "code_paths": [
     "server.py"
   ],
@@ -26,37 +26,15 @@
       4780
     ],
     "median_ms": 4780,
-    "platform_note": "Windows; Python 3.13; chunk-2 2026-05-18"
+    "platform_note": "Windows; Python 3.13; chunk-2 2026-05-24"
   },
   "register_link": {
     "status": "bound",
     "replaced_register_ids": [
-      "a4150de32892afa30f92",
-      "ce5d0c90715a2d1d1781",
-      "470637eb66940f03db05",
-      "acb26ab574bc6bde237d",
-      "2b4cefb2fe34e4803e0c",
-      "4ed834710a46acd780df",
-      "96176ddb8c86b717d28d",
-      "2b4f2601ed5cc488589e",
-      "952fcc764111dd0df079",
-      "7166143143790c944ce4",
-      "01f924fe881200e61e01",
-      "b3675bcb3c18195256eb",
       "0657e90972864cbd824b",
-      "910643c54f8a36cdda0b",
       "20183e35cde0e1391f0f",
-      "784bf8c07ab976062bf9",
-      "aaf399cea077beb39dc9",
-      "35c8c1c674b2a22088ae",
-      "39c74496aceff73c27d6",
-      "2a59df8a44b1c715fbae",
-      "2a3fe931a32ba6af583b",
-      "22e7bba15362deffd4d4",
-      "a8de4e0729fffcf0c896",
-      "9cfbc6be0d22d01779e9",
-      "c2892f776ab5f34619fa",
-      "68148bf9ef5840db40da"
+      "910643c54f8a36cdda0b",
+      "b3675bcb3c18195256eb"
     ]
   }
 }

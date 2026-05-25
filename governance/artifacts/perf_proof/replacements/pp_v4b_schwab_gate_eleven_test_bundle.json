@@ -41,23 +41,49 @@
     "platform_note": "Windows 10; Python 3.13; wall-clock subprocess; retroactive 2026-05-11"
   },
   "register_link": {
-    "status": "composite_bundle_retroactive",
+    "status": "composite_bundle",
     "replaced_register_ids": [
-      "08cd89d370d7acdd3f51",
-      "0de26661012987e4ea34",
-      "59174121eab85464b266",
-      "7dd4bae6afb1f64c3857",
-      "8a8b08dc2614f232ac31",
-      "8ad3d3ee35c8cdab4ed1",
-      "92548e5fe218f65460e1",
-      "a60be743d367ba4e7b58",
-      "e59fae4fec292a2935b6",
-      "eef2850e2b283c57adc1"
+      "01f924fe881200e61e01",
+      "03e754c0ac60e4cbd237",
+      "0657e90972864cbd824b",
+      "0a49667c2df000d6f420",
+      "15e50ee5b42ba04c83fc",
+      "17e2ac66597ca6c69c8d",
+      "20183e35cde0e1391f0f",
+      "20744c87fd0234c54c0e",
+      "2b4cefb2fe34e4803e0c",
+      "2b4f2601ed5cc488589e",
+      "470637eb66940f03db05",
+      "4ed834710a46acd780df",
+      "57e30bc04de17954adc6",
+      "5b78d4cce464c161d0a3",
+      "5e295e457d2731bfccb2",
+      "612a30d0b25d983a4d22",
+      "7166143143790c944ce4",
+      "74a6b853cf710b413b51",
+      "784bf8c07ab976062bf9",
+      "78c26f1566f792aa4fba",
+      "910643c54f8a36cdda0b",
+      "92b33313a9f9985df50b",
+      "952fcc764111dd0df079",
+      "96176ddb8c86b717d28d",
+      "a4150de32892afa30f92",
+      "a7d801951abffa2ae1ee",
+      "acb26ab574bc6bde237d",
+      "ae8251665035fbda41c9",
+      "b3675bcb3c18195256eb",
+      "c59835a70ece78bccdd3",
+      "ce5d0c90715a2d1d1781",
+      "f1f4f56b6ae7d016c84d",
+      "f2d7a83078f65897f43b",
+      "fb91e60036a348bc33b9"
     ],
     "wrapped_proof_ids": [
-      "pp_v4b_market_state_oe_chain_snapshot.json",
+      "pp_v4b_market_context_quote_pricehistory_leaf_provenance.json",
       "pp_v4b_server_expiration_date_only.json",
-      "pp_v4b_server_quote_coalesce_trim.json"
+      "pp_v4b_server_fast_quote_leaf_provenance.json",
+      "pp_v4b_server_quote_session_fallbacks_dedupe.json",
+      "pp_v4b_server_tier_a_quote_leaf_provenance.json"
     ]
   }
 }

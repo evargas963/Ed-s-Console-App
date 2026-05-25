@@ -9,7 +9,8 @@
   "evidence": {
     "pytest_args": [
       "tests/test_server_quote_source_contract.py"
-    ]
+    ],
+    "note": "Canonical helper dedupe regression tests."
   },
   "benchmark": {
     "command": [
@@ -25,25 +26,20 @@
       4780
     ],
     "median_ms": 4780,
-    "platform_note": "Windows; Python 3.13; dedupe 2026-05-18"
+    "platform_note": "Windows; Python 3.13; chunk-2 2026-05-24"
   },
   "register_link": {
     "status": "bound",
     "replaced_register_ids": [
-      "470637eb66940f03db05",
-      "acb26ab574bc6bde237d",
-      "2b4cefb2fe34e4803e0c",
-      "4ed834710a46acd780df",
-      "96176ddb8c86b717d28d",
-      "2b4f2601ed5cc488589e",
-      "952fcc764111dd0df079",
-      "7166143143790c944ce4",
       "01f924fe881200e61e01",
-      "aaf399cea077beb39dc9",
-      "35c8c1c674b2a22088ae",
-      "39c74496aceff73c27d6",
-      "2a59df8a44b1c715fbae",
-      "2a3fe931a32ba6af583b"
+      "2b4cefb2fe34e4803e0c",
+      "2b4f2601ed5cc488589e",
+      "470637eb66940f03db05",
+      "4ed834710a46acd780df",
+      "7166143143790c944ce4",
+      "952fcc764111dd0df079",
+      "96176ddb8c86b717d28d",
+      "acb26ab574bc6bde237d"
     ]
   }
 }

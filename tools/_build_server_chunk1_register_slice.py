@@ -13,6 +13,9 @@ sys.path.insert(0, str(ROOT))
 from tools.schwab_universal_coverage_scanner_v3.register import REGISTER_COLUMNS, RegisterRow
 BASELINE = ROOT / "governance" / "register_slices" / "server_py_1_1500_scanner_baseline.csv"
 SLICE = ROOT / "governance" / "register_slices" / "server_py_1_1500.csv"
+GOV_REF_PERF = (
+    "governance/artifacts/perf_proof/replacements/pp_v4b_server_fast_quote_leaf_provenance.json"
+)
 PERF_PROOF = ROOT / "governance" / "artifacts" / "perf_proof" / "replacements" / (
     "pp_v4b_server_fast_quote_leaf_provenance.json"
 )
@@ -100,7 +103,7 @@ def disposition_row(row: dict[str, str], claimed_replaced: set[tuple[int, str]])
         row["disposition"] = "REPLACED"
         row["canonical_field_citation"] = cite
         row["csv_candidates"] = cite
-        row["governed_ref"] = ""
+        row["governed_ref"] = GOV_REF_PERF
         row["notes"] = f"{PROV}; {extra}"
         row["v2_trace"] = TRACE
         return row
@@ -217,7 +220,7 @@ def main() -> None:
                 v2_trace=TRACE,
                 disposition="REPLACED",
                 canonical_field_citation=cite,
-                governed_ref="",
+                governed_ref=GOV_REF_PERF,
                 notes=f"{PROV if 'LAST' not in sub else STREAM_PROV}; {extra}",
             ).as_csv_dict()
         )

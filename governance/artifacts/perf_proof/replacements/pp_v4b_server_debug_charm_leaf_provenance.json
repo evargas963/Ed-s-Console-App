@@ -31,18 +31,8 @@
     "platform_note": "Windows; chunk-5 LM-1 + charm 2026-05-19"
   },
   "register_link": {
-    "status": "bound",
-    "replaced_register_ids": [
-      "51cd307a837c161a707b",
-      "c54a3106cf65bb690664",
-      "9fc42c500627f8c38578",
-      "10097232d8770d08c545",
-      "237c9314a57c7f7986eb",
-      "69ed1e572f1491457630",
-      "ea689453456e2d57cfb7",
-      "4149752f02421c038a2a",
-      "716902dafbf35f43649e"
-    ],
+    "status": "unbound",
+    "replaced_register_ids": [],
     "producer_note": "safe_get_chain \u2192 chain JSON; direct ct.get per contract field"
   }
 }

@@ -305,7 +305,7 @@
 **Process (this program)**
 1. One canonical commit per paired-fix slice; docs-only SHA pointer follow-up (LIVE_UI / LRC-NAN pattern).
 2. Brief §5 cone non-empty; §6 tests at implementation SHA; server.py FINDs filed before UI behavior changes where transport is root cause.
-3. **Schwab three-PR gate** (OPEN_ITEMS header) still applies before declaring repo closure — STACK-WIRING is **operator-truth** gate, not governance pin replacement.
+3. **Schwab closure bar** — superseded `25cb2e3`: scoped register (gitignore + `SCAN_SCOPE_EXCLUDE_PREFIXES`) replaces the legacy three-PR gate (governance pin → CI diff-emission gate → full-tree scanner regen) for D17 admissibility. CI diff-emission (`schwab-csv-first.yml`) and per-PR meta pin still binding for new market-fact emission. STACK-WIRING remains **operator-truth** gate, not governance pin replacement.
 
 ### COHERENCE-AUDIT workstream (full Read — not “files already walked”)
 

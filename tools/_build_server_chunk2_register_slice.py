@@ -12,13 +12,27 @@ sys.path.insert(0, str(ROOT))
 
 from tools.schwab_universal_coverage_scanner_v3.register import REGISTER_COLUMNS, RegisterRow
 
+from collections import defaultdict
+
 BASELINE = ROOT / "governance" / "register_slices" / "server_py_1501_3000_scanner_baseline.csv"
 SLICE = ROOT / "governance" / "register_slices" / "server_py_1501_3000.csv"
+GOV_REF_TIER = (
+    "governance/artifacts/perf_proof/replacements/pp_v4b_server_tier_a_quote_leaf_provenance.json"
+)
+GOV_REF_DEDUPE = (
+    "governance/artifacts/perf_proof/replacements/pp_v4b_server_quote_session_fallbacks_dedupe.json"
+)
+GOV_REF_EXPIRY = (
+    "governance/artifacts/perf_proof/replacements/pp_v4b_server_expiration_date_only.json"
+)
 PERF_TIER = ROOT / "governance" / "artifacts" / "perf_proof" / "replacements" / (
     "pp_v4b_server_tier_a_quote_leaf_provenance.json"
 )
 PERF_DEDUPE = ROOT / "governance" / "artifacts" / "perf_proof" / "replacements" / (
     "pp_v4b_server_quote_session_fallbacks_dedupe.json"
+)
+PERF_EXPIRY = ROOT / "governance" / "artifacts" / "perf_proof" / "replacements" / (
+    "pp_v4b_server_expiration_date_only.json"
 )
 PERF_INDEX = ROOT / "governance" / "artifacts" / "perf_proof" / "index.json"
 TRACE = "CLAUDE chunk-2 disposition server.py 1501-3000"
@@ -104,6 +118,23 @@ O49_SUBSTRINGS = (
 )
 
 
+def _replaced_gov_ref(line: int, sub: str) -> str:
+    if 2312 <= line <= 2341:
+        return GOV_REF_DEDUPE
+    if any(
+        x in sub
+        for x in (
+            "ExpDateMap",
+            "expirationDate",
+            "putCall",
+            "strikePrice",
+            "daysToExpiration",
+        )
+    ):
+        return GOV_REF_EXPIRY
+    return GOV_REF_TIER
+
+
 def _clear_governance(row: dict[str, str]) -> None:
     row["governed_ref"] = ""
     row["canonical_field_citation"] = ""
@@ -144,6 +175,7 @@ def disposition_row(row: dict[str, str], claimed: set[tuple[int, str]]) -> dict[
         row["disposition"] = "REPLACED"
         row["canonical_field_citation"] = cite
         row["csv_candidates"] = cite
+        row["governed_ref"] = _replaced_gov_ref(line, sub)
         prov = CHAIN_PROV if "ExpDateMap" in sub or "expirationDate" in sub or "putCall" in sub else PROV
         row["notes"] = f"{prov}; {extra}"
         row["v2_trace"] = TRACE
@@ -259,7 +291,7 @@ def main() -> None:
             v2_trace=TRACE,
             disposition="REPLACED",
             canonical_field_citation=cite,
-            governed_ref="",
+            governed_ref=_replaced_gov_ref(line, sub),
             notes=f"{PROV}; {extra}",
         ).as_csv_dict()
         claimed.add((line, sub))
@@ -279,93 +311,82 @@ def main() -> None:
     nmd = sum(1 for r in out_rows if r["disposition"] == "NOT_MARKET_DATA")
     print(f"slice {len(out_rows)} rows: REPLACED={rep} O-47={o47} O-49={o49} O-50={o50} NMD={nmd}")
 
-    PERF_TIER.parent.mkdir(parents=True, exist_ok=True)
-    PERF_TIER.write_text(
-        json.dumps(
-            {
-                "schema_version": "1.0",
-                "perf_proof_id": "pp_v4b_server_tier_a_quote_leaf_provenance",
-                "landed_batch": "v4b-2026-05-18",
-                "replacement_scope": (
-                    "server.py chunk 2: _parse_quote_node_session_fields (canonical REST quote leaves), "
-                    "_update_rest_cum_delta quote leaves, chain expirationDate/callExpDateMap leaves; "
-                    "Tier A + expiries provenance pass."
-                ),
-                "code_paths": ["server.py"],
-                "evidence": {
-                    "pytest_args": ["tests/test_server_quote_source_contract.py"],
-                    "note": "Leaf provenance + dedupe regression tests.",
-                },
-                "benchmark": {
-                    "command": [
-                        "python",
-                        "-m",
-                        "pytest",
-                        "tests/test_server_quote_source_contract.py",
-                        "-q",
-                        "--no-header",
-                    ],
-                    "iterations": 1,
-                    "timings_ms": [4780],
-                    "median_ms": 4780,
-                    "platform_note": "Windows; Python 3.13; chunk-2 2026-05-18",
-                },
-                "register_link": {"status": "bound", "replaced_register_ids": replaced_ids},
-            },
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
+    by_proof: dict[str, list[str]] = defaultdict(list)
+    for r in out_rows:
+        if r["disposition"] != "REPLACED":
+            continue
+        gref = (r.get("governed_ref") or "").strip()
+        if gref:
+            by_proof[Path(gref).name].append(r["register_id"])
 
-    helper_ids = [
-        r["register_id"]
-        for r in out_rows
-        if r["disposition"] == "REPLACED" and 2312 <= int(r["line"]) <= 2341
-    ]
-    PERF_DEDUPE.write_text(
-        json.dumps(
-            {
-                "schema_version": "1.0",
-                "perf_proof_id": "pp_v4b_server_quote_session_fallbacks_dedupe",
-                "landed_batch": "v4b-2026-05-18",
-                "replacement_scope": (
-                    "Extract _parse_quote_node_session_fields: single canonical quote→extended→regular "
-                    "fallback chain shared by _build_rest_fast_quote_payload and _tier_a_live_state_dict."
-                ),
-                "code_paths": ["server.py"],
-                "evidence": {
-                    "pytest_args": ["tests/test_server_quote_source_contract.py"],
+    def _write_proof(path: Path, proof_id: str, scope: str, note: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "1.0",
+                    "perf_proof_id": proof_id,
+                    "landed_batch": "v4b-2026-05-18",
+                    "replacement_scope": scope,
+                    "code_paths": ["server.py"],
+                    "evidence": {
+                        "pytest_args": ["tests/test_server_quote_source_contract.py"],
+                        "note": note,
+                    },
+                    "benchmark": {
+                        "command": [
+                            "python",
+                            "-m",
+                            "pytest",
+                            "tests/test_server_quote_source_contract.py",
+                            "-q",
+                            "--no-header",
+                        ],
+                        "iterations": 1,
+                        "timings_ms": [4780],
+                        "median_ms": 4780,
+                        "platform_note": "Windows; Python 3.13; chunk-2 2026-05-24",
+                    },
+                    "register_link": {
+                        "status": "bound",
+                        "replaced_register_ids": sorted(by_proof.get(path.name, [])),
+                    },
                 },
-                "benchmark": {
-                    "command": [
-                        "python",
-                        "-m",
-                        "pytest",
-                        "tests/test_server_quote_source_contract.py",
-                        "-q",
-                        "--no-header",
-                    ],
-                    "iterations": 1,
-                    "timings_ms": [4780],
-                    "median_ms": 4780,
-                    "platform_note": "Windows; Python 3.13; dedupe 2026-05-18",
-                },
-                "register_link": {
-                    "status": "bound",
-                    "replaced_register_ids": helper_ids[:16],
-                },
-            },
-            indent=2,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
         )
-        + "\n",
-        encoding="utf-8",
+
+    _write_proof(
+        PERF_TIER,
+        "pp_v4b_server_tier_a_quote_leaf_provenance",
+        (
+            "server.py chunk 2: _parse_quote_node_session_fields call sites, "
+            "_update_rest_cum_delta quote leaves; Tier A provenance pass."
+        ),
+        "Leaf provenance + dedupe regression tests.",
+    )
+    _write_proof(
+        PERF_DEDUPE,
+        "pp_v4b_server_quote_session_fallbacks_dedupe",
+        (
+            "Extract _parse_quote_node_session_fields: single canonical quote→extended→regular "
+            "fallback chain shared by _build_rest_fast_quote_payload and _tier_a_live_state_dict."
+        ),
+        "Canonical helper dedupe regression tests.",
+    )
+    _write_proof(
+        PERF_EXPIRY,
+        "pp_v4b_server_expiration_date_only",
+        "server.py chunk 2: option chain expirationDate / callExpDateMap / putExpDateMap leaves.",
+        "DTE snapshot tests.",
     )
 
     if PERF_INDEX.is_file():
         idx = json.loads(PERF_INDEX.read_text(encoding="utf-8"))
         files = list(idx.get("perf_proof_files") or [])
-        for name in (PERF_TIER.name, PERF_DEDUPE.name):
+        for name in (PERF_TIER.name, PERF_DEDUPE.name, PERF_EXPIRY.name):
             if name not in files:
                 files.append(name)
         idx["perf_proof_files"] = files

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from tools.schwab_coverage_v4_metrics import compute_full_metrics
-from tools.schwab_oxx_validator import validate_register_messages
+from tools.schwab_oxx_validator import validate_register_messages, validate_replaced_perf_bindings
 from tools.stream_revert_v4_register_and_sync_perf import (
     export_register_baseline,
     is_canonical_v4_register,
@@ -223,6 +223,8 @@ def test_oxx_validator_subprocess(tmp_path: Path) -> None:
             str(reg),
             "--operator-register",
             str(op),
+            "--perf-dir",
+            str(tmp_path / "empty_perf"),
         ],
         cwd=Path(__file__).resolve().parents[1],
         capture_output=True,
@@ -379,6 +381,62 @@ def test_export_register_baseline_filters_path_and_lines(tmp_path: Path) -> None
     exported = list(csv.DictReader(out.open(encoding="utf-8")))
     assert len(exported) == 1
     assert exported[0]["register_id"] == "a"
+
+
+def test_replaced_perf_binding_validator_pass_and_fail(tmp_path: Path) -> None:
+    op = tmp_path / "op.md"
+    op.write_text(_op_with_narrative("O-93"), encoding="utf-8")
+    perf_dir = tmp_path / "perf"
+    perf_dir.mkdir()
+    proof_name = "pp_v4b_test_leaf_provenance.json"
+    proof_path = perf_dir / proof_name
+    proof_path.write_text(
+        json.dumps(
+            {
+                "perf_proof_id": "pp_v4b_test_leaf_provenance",
+                "register_link": {"status": "bound", "replaced_register_ids": ["rid_ok"]},
+            }
+        ),
+        encoding="utf-8",
+    )
+    gov_ref = f"governance/artifacts/perf_proof/replacements/{proof_name}"
+
+    def _row(**kw: str) -> dict[str, str]:
+        d = RegisterRow(
+            register_id="rid_ok",
+            language="python",
+            path="p.py",
+            line=1,
+            col=0,
+            pattern_kind="T",
+            surface_form="",
+            tokens="",
+            csv_candidates="",
+            csv_lexical_topk_note="",
+            v2_trace="",
+            disposition="REPLACED",
+            canonical_field_citation="quotes.quote.lastPrice",
+            governed_ref=gov_ref,
+        ).as_csv_dict()
+        d.update(kw)
+        return d
+
+    reg_ok = tmp_path / "ok.csv"
+    with reg_ok.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(_row())
+
+    assert validate_replaced_perf_bindings(reg_ok, perf_dir) == []
+
+    reg_bad = tmp_path / "bad.csv"
+    with reg_bad.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(_row(governed_ref="", register_id="rid_bad"))
+
+    msgs = validate_replaced_perf_bindings(reg_bad, perf_dir)
+    assert any("governed_ref" in m for m in msgs)
 
 
 def test_site_key_normalizes_path() -> None:

@@ -29,17 +29,8 @@
     "platform_note": "Windows; chunk-4 disposition-only 2026-05-19"
   },
   "register_link": {
-    "status": "bound",
-    "replaced_register_ids": [
-      "a72aa4428f92aeee1232",
-      "144f312c875f17e6384b",
-      "2842da990755445bd3ed",
-      "6ef8b302f8e5a31e73f8",
-      "1273c608c3b02a4647ec",
-      "c881a7192b63f02a4f31",
-      "cfde4bf01c6965d2a3af",
-      "3e184d7e7927e0764db9"
-    ],
+    "status": "unbound",
+    "replaced_register_ids": [],
     "producer_note": "market_context.py is producer for all 8 canopy emissions"
   }
 }

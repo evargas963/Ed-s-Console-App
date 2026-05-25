@@ -29,23 +29,8 @@
     "platform_note": "Windows; chunk-6 market_state 2026-05-19"
   },
   "register_link": {
-    "status": "bound",
-    "replaced_register_ids": [
-      "0eecc713c50cb7e81a9c",
-      "c99a2f65536a05c89c5e",
-      "cb7fa0297e29bb3b893c",
-      "6e12c2f434def2b18a3a",
-      "856a0d2a6e6ccb3dc8ed",
-      "96529bea56c3f090641e",
-      "46db226f1531c1f00c71",
-      "8987c0cefd3f76d59ae3",
-      "b839ac3766d010b42643",
-      "5511469853ab3b515265",
-      "3c57c755a5662f876b45",
-      "fe4b5f7b96a6f7adf5c9",
-      "fb9837b8dfe96853e73b",
-      "6030d263241084e31959"
-    ],
+    "status": "unbound",
+    "replaced_register_ids": [],
     "producer_note": "contracts from server safe_get_chain flatten"
   }
 }

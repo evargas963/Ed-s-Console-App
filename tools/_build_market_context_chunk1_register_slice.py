@@ -15,6 +15,9 @@ sys.path.insert(0, str(ROOT))
 from tools.schwab_universal_coverage_scanner_v3.register import REGISTER_COLUMNS, RegisterRow
 
 SLICE = ROOT / "governance/register_slices/market_context_py_1_961.csv"
+GOV_REF_PERF = (
+    "governance/artifacts/perf_proof/replacements/pp_v4b_market_context_quote_pricehistory_leaf_provenance.json"
+)
 PERF_PATH = ROOT / "governance/artifacts/perf_proof/replacements/pp_v4b_market_context_quote_pricehistory_leaf_provenance.json"
 PERF_INDEX = ROOT / "governance/artifacts/perf_proof/index.json"
 DICT_PATH = ROOT / "schwab_field_inventory/schwab_field_dictionary.csv"
@@ -152,9 +155,13 @@ def _synth_row(
     *,
     citation: str = "",
     notes: str = "",
+    governed_ref: str = "",
 ) -> dict[str, str]:
     rid = RegisterRow.make_id(PATH, line, col, kind, "python")
     note_full = f"{notes} | {ANCHOR}".strip(" |")
+    gref = governed_ref
+    if disposition == "REPLACED" and not gref:
+        gref = GOV_REF_PERF
     return RegisterRow(
         register_id=rid,
         language="python",
@@ -169,7 +176,7 @@ def _synth_row(
         v2_trace=TRACE,
         disposition=disposition,
         canonical_field_citation=citation,
-        governed_ref="",
+        governed_ref=gref,
         notes=note_full,
     ).as_csv_dict()
 
