@@ -105,11 +105,12 @@ def normalize_vol_decimal(
     return value / 100.0
 
 
-def schwab_iv_percent_to_decimal(value: Optional[float]) -> Optional[float]:
-    """Schwab chain ``volatility`` and MC IV anchor are percent (18.5 = 18.5%).
+def vol_percent_to_decimal(value: Optional[float]) -> Optional[float]:
+    """Convert annualized vol from percent to decimal (18.5 → 0.185).
 
-    ``SignalInput.iv_level`` contract is decimal (0.185). Convert silently at the
-    market_state stamp boundary so downstream regime/MC paths do not warn every tick.
+    Sources in percent: Schwab chain ``volatility``, ``compute_realized_vol``,
+    MC IV anchor / ``atm_iv``. ``SignalInput.iv_level`` and ``realized_vol`` are
+    decimal at the market_state stamp boundary only.
     """
     v = float_finite_or_none(value)
     if v is None:
@@ -117,6 +118,10 @@ def schwab_iv_percent_to_decimal(value: Optional[float]) -> Optional[float]:
     if v <= VOL_DECIMAL_PERCENT_HEURISTIC:
         return v
     return v / 100.0
+
+
+# Back-compat alias (Schwab IV-specific name used in earlier slices).
+schwab_iv_percent_to_decimal = vol_percent_to_decimal
 
 
 def _safe_floats(lst: list[Any], *, context: str) -> list[float]:
@@ -181,9 +186,10 @@ def classify_volatility_regime(
             "classify_volatility_regime requires canonical price.spot > 0 in mvp_features"
         )
 
-    rv = normalize_vol_decimal(_f(inp.realized_vol), field="realized_vol", context=ctx)
+    # SignalInput iv_level / realized_vol are decimal at market_state stamp — no re-normalize.
+    rv = _f(inp.realized_vol)
     atr = _f(inp.atr)
-    iv = normalize_vol_decimal(_f(inp.iv_level), field="iv_level", context=ctx)
+    iv = _f(inp.iv_level)
     vix = _f(inp.vix_level)
     vix_chg = _f(inp.vix_vs_prev)
     iv_dir = inp.iv_direction.strip().lower() if inp.iv_direction else None

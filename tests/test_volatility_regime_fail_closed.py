@@ -15,6 +15,7 @@ from volatility_regime import (
     VolRegimeThresholds,
     _garch_trend,
     normalize_vol_decimal,
+    vol_percent_to_decimal,
     schwab_iv_percent_to_decimal,
     classify_volatility_regime,
 )
@@ -43,10 +44,33 @@ def test_normalize_vol_decimal_warns_above_heuristic(caplog: pytest.LogCaptureFi
 
 def test_schwab_iv_percent_to_decimal_silent(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.WARNING)
-    assert schwab_iv_percent_to_decimal(18.52987037055019) == pytest.approx(0.1852987037055019)
-    assert schwab_iv_percent_to_decimal(0.20) == pytest.approx(0.20)
-    assert schwab_iv_percent_to_decimal(None) is None
+    assert vol_percent_to_decimal(18.52987037055019) == pytest.approx(0.1852987037055019)
+    assert vol_percent_to_decimal(0.20) == pytest.approx(0.20)
+    assert vol_percent_to_decimal(6.15) == pytest.approx(0.0615)
+    assert vol_percent_to_decimal(None) is None
+    assert schwab_iv_percent_to_decimal(18.0) == pytest.approx(0.18)
     assert not caplog.records
+
+
+def test_classify_volatility_regime_no_warn_on_decimal_iv_rv(caplog: pytest.LogCaptureFixture) -> None:
+    """Production path: market_state stamps decimal; classify must not re-normalize."""
+    caplog.set_level(logging.WARNING)
+    out = classify_volatility_regime(
+        _inp(iv_level=0.186, realized_vol=0.061),
+        mvp_features=minimal_mvp_features(zone="pin_bull"),
+    )
+    assert out.vol_regime in ("compression", "expansion", "unstable", "unknown")
+    assert not any("percentage" in r.message.lower() for r in caplog.records)
+
+
+def test_blend_garch_sigma_realized_vol_must_be_decimal() -> None:
+    """Server passes vol_percent_to_decimal(realized_vol) before blend — percent inflates RV bar."""
+    from math_volatility import blend_garch_sigma
+
+    garch = [0.001]
+    with_decimal_rv = blend_garch_sigma(garch, iv=0.20, realized_vol=0.0615, spot=500.0)[0]
+    with_percent_rv = blend_garch_sigma(garch, iv=0.20, realized_vol=6.15, spot=500.0)[0]
+    assert with_percent_rv > with_decimal_rv * 5
 
 
 def test_garch_trend_warns_on_non_float_entries(caplog: pytest.LogCaptureFixture) -> None:

@@ -3694,9 +3694,12 @@ def _fetch_state(
         if _closes and len(_closes) > 20:
             _garch_raw = compute_garch_forecast(_closes, horizon=GARCH_HORIZON_BARS)
             if _garch_raw:
-                _iv_dec = (_atm_iv / 100.0) if _atm_iv and _atm_iv > 1 else _atm_iv
+                from volatility_regime import vol_percent_to_decimal
+
+                _iv_dec = vol_percent_to_decimal(_atm_iv)
+                _rv_dec = vol_percent_to_decimal(_realized_vol)
                 _garch_sigma_bars = blend_garch_sigma(
-                    _garch_raw, _iv_dec, _realized_vol, spot_f
+                    _garch_raw, _iv_dec, _rv_dec, spot_f
                 )
     except Exception as e:
         log.debug(f"GARCH forecast calc: {e}")
@@ -4462,7 +4465,7 @@ def _fetch_state(
                     net_vanna=getattr(ms, "net_vanna", None),
                     charm_net=_charm_net, charm_direction=_charm_dir, charm_drift_toward=_charm_toward,
                     charm_magnitude=_charm_mag,
-                    iv_level=(float(getattr(totals[0], "atm_iv")) if totals and getattr(totals[0], "atm_iv", None) is not None else None),
+                    iv_level=(float(getattr(totals[0], "atm_iv")) if totals and getattr(totals[0], "atm_iv", None) is not None else None),  # percent for DB / iv_rank history
                     iv_direction=getattr(ms, "iv_direction", None),
                     put_call_oi_ratio=pcr_val,
                     oi_center=getattr(consensus_summary, "oi_center", None) if consensus_summary else None,
@@ -5023,7 +5026,7 @@ def _fetch_state(
     # ── Volatility signals ────────────────────────────────────────────────────
     ms_dict["iv_skew"]           = _iv_skew.get("skew")
     ms_dict["iv_skew_interp"]    = _iv_skew.get("interpretation")
-    ms_dict["realized_vol"]      = _realized_vol
+    ms_dict["realized_vol"]      = _realized_vol  # percent (compute_realized_vol); SignalInput uses decimal via market_state stamp
     ms_dict["atr"]               = _atr
     ms_dict["iv_rank"]           = _iv_rank
     ms_dict["iv_percentile"]     = _iv_percentile

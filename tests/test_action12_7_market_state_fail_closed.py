@@ -93,6 +93,33 @@ def test_build_market_state_stamps_iv_level_as_decimal(_mock_cs):
 
 
 @patch("signals.compute_signals", side_effect=_fake_compute_signals)
+def test_build_market_state_stamps_realized_vol_as_decimal(_mock_cs):
+    """compute_realized_vol returns percent; SignalInput.realized_vol must be decimal at stamp."""
+    _SIG_CALLS.clear()
+    build_market_state(**_base_kwargs(realized_vol=6.15))
+    assert len(_SIG_CALLS) == 1
+    assert _SIG_CALLS[0].realized_vol == pytest.approx(0.0615)
+
+
+def test_market_state_source_stamps_vol_percent_to_decimal_at_signal_input():
+    """AST lock: iv_level + realized_vol conversion lives in build_market_state body."""
+    import ast as _ast
+    from pathlib import Path
+
+    text = Path(inspect.getfile(build_market_state)).read_text(encoding="utf-8")
+    assert "vol_percent_to_decimal" in text
+    tree = _ast.parse(text)
+    bm = next(
+        (n for n in tree.body if isinstance(n, _ast.FunctionDef) and n.name == "build_market_state"),
+        None,
+    )
+    assert bm is not None
+    body_src = _ast.unparse(bm)
+    assert "vol_percent_to_decimal" in body_src
+    assert "_rv_level" in body_src
+
+
+@patch("signals.compute_signals", side_effect=_fake_compute_signals)
 def test_build_market_state_passes_none_time_to_signals(_mock_cs):
     _SIG_CALLS.clear()
     ms = build_market_state(**_base_kwargs())
