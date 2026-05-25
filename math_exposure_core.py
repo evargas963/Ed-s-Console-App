@@ -22,65 +22,27 @@ MISSING_GREEK_SENTINEL: float = -999.0
 # compute_net_charm zero-used error when contracts matched expiry but failed OI/gamma/IV gates.
 CHARM_QUALITY_GATE_ERROR_MARKER = "quality gates"
 
-# Parse helper for charm_compute_unavailable_log_level uniform-skip detection.
-import re as _re
-_CHARM_INPUT_N_RE = _re.compile(r"input=(\d+)")
-_CHARM_SKIP_SECTION_RE = _re.compile(r"skipped:\s*(.+?)\)")
-_CHARM_SKIP_PAIR_RE = _re.compile(r"\b(\w+)=(\d+)")
-
-
-def _charm_skip_is_uniform_steady_state(error: str) -> bool:
-    """True when a single skip category accounts for ALL skipped contracts.
-
-    Steady-state case: Schwab options chain returns the full contract roster but
-    every contract has the same missing primitive (e.g. all 40 have gamma=-999
-    outside RTH). This is not per-tick INFO-worthy — it's a chain-feed condition
-    that persists until session/quality recovers. Mixed skips (multiple categories
-    nonzero) indicate transient partial-quality and remain INFO.
-    """
-    m_in = _CHARM_INPUT_N_RE.search(error)
-    if not m_in:
-        return False
-    try:
-        input_n = int(m_in.group(1))
-    except ValueError:
-        return False
-    if input_n <= 0:
-        return False
-    m_skip = _CHARM_SKIP_SECTION_RE.search(error)
-    if not m_skip:
-        # Simplified form without closing paren (e.g., truncated test fixture).
-        # Fall back to scanning the whole tail after "skipped:".
-        idx = error.find("skipped:")
-        if idx < 0:
-            return False
-        skip_section = error[idx + len("skipped:"):]
-    else:
-        skip_section = m_skip.group(1)
-    nonzero_total = 0
-    nonzero_count = 0
-    for cat_match in _CHARM_SKIP_PAIR_RE.finditer(skip_section):
-        try:
-            n = int(cat_match.group(2))
-        except ValueError:
-            continue
-        if n > 0:
-            nonzero_total += n
-            nonzero_count += 1
-    return nonzero_count == 1 and nonzero_total == input_n
-
 
 def charm_compute_unavailable_log_level(error: str | None) -> int:
-    """Quality-gate withhold log level by skip-distribution:
-      - uniform single-category skips (steady-state chain-feed condition) → DEBUG
-      - mixed skip distribution (transient partial-quality) → INFO
+    """Quality-gate failure log level:
+      - quality-gate (any skip distribution — uniform or mixed) → DEBUG
       - expiry mismatch / empty input (not quality-gate) → WARNING
       - None / unrecognized error → WARNING (fail-loud)
+
+    The failure path only fires when ``used == 0`` (server.py:3474 routes
+    partial-quality outcomes to the success-log). Every emission is the same
+    steady-state class: complete chain unusable for charm. The skip-distribution
+    detail (gamma=40 vs gamma=37+oi=3) is preserved in the error string for
+    operator inspection; it does not change the operator-actionable signal,
+    so it does not need its own log level. Per-tick INFO for this class was
+    log spam outside RTH / when chain greeks are -999.
+
+    Reserve WARNING for the two non-quality-gate errors — those are different
+    classes (chain misrouted to wrong expiry / no contracts received at all)
+    and warrant operator attention.
     """
     if error and CHARM_QUALITY_GATE_ERROR_MARKER in error:
-        if _charm_skip_is_uniform_steady_state(error):
-            return logging.DEBUG
-        return logging.INFO
+        return logging.DEBUG
     return logging.WARNING
 
 # ── Formatting helpers ────────────────────────────────────────────────────────

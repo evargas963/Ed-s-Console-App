@@ -59,53 +59,52 @@ def test_net_charm_error_reports_quality_gate_skips():
     assert "gamma=1" in out["error"]
 
 
-def test_charm_unavailable_log_level_uniform_skip_is_debug():
-    """Uniform single-category skip (all 40 contracts failed gamma gate) is a
-    steady-state chain-feed condition, not per-tick INFO. The operator complaint
-    was log spam from SPY outside RTH when every contract has gamma=-999."""
+def test_charm_unavailable_log_level_quality_gate_is_debug_regardless_of_skip_shape():
+    """All quality-gate failures (used==0 by definition at this path) are the same
+    steady-state class: complete chain unusable for charm. Whether the skip breakdown
+    is uniform (40-gamma) or mixed (37-gamma + 3-oi) does not change the operator-
+    actionable signal — both surface as 'chain quality blocked charm' on this tick.
+    Per-tick INFO for this class was log spam; DEBUG preserves the diagnostic detail
+    in the error string without flooding logs outside RTH or during feed-quality dips.
+    """
     from math_exposure_core import charm_compute_unavailable_log_level
     import logging
 
-    # Full production format (server.py:3486-3492 actual log) — all skips in one category.
-    full_uniform = (
+    # SPY-shape: uniform single-category (40 gamma).
+    spy_uniform = (
         "No contracts passed charm quality gates for expiry=2026-05-26 "
         "(input=40, skipped: expiry=0, oi=0, gamma=40, iv=0, mult=0, T=0, "
         "fields=0, side=0, math=0)"
     )
-    assert charm_compute_unavailable_log_level(full_uniform) == logging.DEBUG
+    assert charm_compute_unavailable_log_level(spy_uniform) == logging.DEBUG
 
-    # Simplified test-fixture format (legacy paired-fix shape) — same uniform property.
-    simplified_uniform = (
+    # IWM-shape: mixed (37 gamma + 3 oi) — the operator regression case that
+    # exposed the over-narrow uniform-only rule. Same condition class, same level.
+    iwm_mixed = (
         "No contracts passed charm quality gates for expiry=2026-05-26 "
-        "(input=40, skipped: gamma=40)"
-    )
-    assert charm_compute_unavailable_log_level(simplified_uniform) == logging.DEBUG
-
-
-def test_charm_unavailable_log_level_mixed_skips_stays_info():
-    """Mixed skip distribution indicates transient partial-quality (some gamma,
-    some OI gaps) — operator may want to see this; keep at INFO."""
-    from math_exposure_core import charm_compute_unavailable_log_level
-    import logging
-
-    mixed = (
-        "No contracts passed charm quality gates for expiry=2026-05-26 "
-        "(input=40, skipped: expiry=0, oi=10, gamma=20, iv=10, mult=0, T=0, "
+        "(input=40, skipped: expiry=0, oi=3, gamma=37, iv=0, mult=0, T=0, "
         "fields=0, side=0, math=0)"
     )
-    assert charm_compute_unavailable_log_level(mixed) == logging.INFO
+    assert charm_compute_unavailable_log_level(iwm_mixed) == logging.DEBUG
 
-    # Edge: two-category mixed at smaller scale.
+    # Mixed at smaller scale.
     mixed_small = (
         "No contracts passed charm quality gates for expiry=2026-05-26 "
         "(input=4, skipped: gamma=2, oi=2)"
     )
-    assert charm_compute_unavailable_log_level(mixed_small) == logging.INFO
+    assert charm_compute_unavailable_log_level(mixed_small) == logging.DEBUG
+
+    # Simplified test-fixture format (legacy single-category shape).
+    simplified = (
+        "No contracts passed charm quality gates for expiry=2026-05-26 "
+        "(input=40, skipped: gamma=40)"
+    )
+    assert charm_compute_unavailable_log_level(simplified) == logging.DEBUG
 
 
 def test_charm_unavailable_log_level_warning_for_expiry_and_empty():
     """Non-quality-gate errors (expiry mismatch / empty input) remain WARNING —
-    these are not steady-state and warrant operator attention."""
+    different class (chain misrouted or no contracts at all); operator should act."""
     from math_exposure_core import charm_compute_unavailable_log_level
     import logging
 
@@ -117,21 +116,3 @@ def test_charm_unavailable_log_level_warning_for_expiry_and_empty():
     ) == logging.WARNING
     assert charm_compute_unavailable_log_level(None) == logging.WARNING
     assert charm_compute_unavailable_log_level("") == logging.WARNING
-
-
-def test_charm_skip_uniform_helper_edge_cases():
-    """_charm_skip_is_uniform_steady_state edge cases: parse robustness."""
-    from math_exposure_core import _charm_skip_is_uniform_steady_state
-
-    # No input= → False (can't determine uniformity)
-    assert _charm_skip_is_uniform_steady_state("No contracts passed charm quality gates") is False
-    # input=0 → False (no contracts to skip uniformly from)
-    assert _charm_skip_is_uniform_steady_state("input=0, skipped: gamma=0") is False
-    # Partial sum (skips < input) → False (shouldn't happen but be safe)
-    assert _charm_skip_is_uniform_steady_state("input=40, skipped: gamma=30)") is False
-    # Single category equals input → True
-    assert _charm_skip_is_uniform_steady_state("input=40, skipped: gamma=40)") is True
-    # All zeros → False (zero non-zero categories)
-    assert _charm_skip_is_uniform_steady_state(
-        "input=40, skipped: expiry=0, oi=0, gamma=0, iv=0)"
-    ) is False
