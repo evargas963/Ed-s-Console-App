@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,12 +36,20 @@ from .vendor_paths import load_vendor_prefixes, path_is_vendored
 
 SCANNER_VERSION = "3.0.0"
 REGISTER_BUILD_META_REL = "governance/artifacts/schwab_v4_register_build_meta.json"
+CANONICAL_REGISTER_REL = "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
 # Never ingest another register artifact as scan input (explodes row count / self-scan).
 SKIP_SCAN_REL_PATHS = frozenset(
     {
         "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.mock_build.csv",
     }
 )
+
+
+def _is_canonical_register(root: Path, out_csv: Path) -> bool:
+    try:
+        return out_csv.resolve() == (root / CANONICAL_REGISTER_REL).resolve()
+    except OSError:
+        return False
 
 
 def _merge_key_from_csv_row(row: dict[str, str]) -> tuple[str, int, int, str, str] | None:
@@ -195,9 +204,21 @@ def write_register_build_meta(
     respect_gitignore: bool,
     scope_exclude_prefixes: tuple[str, ...],
 ) -> Path:
-    """Emit pinned scan metadata (hashes, flags, HEAD) for audit / CI reproduction."""
+    """Emit pinned scan metadata (hashes, flags, HEAD) for audit / CI reproduction.
+
+    Canonical-register guard: only updates the global meta when ``out_csv`` resolves
+    to the canonical register path. Non-canonical writes (e.g. ``--output /tmp/x.csv``
+    for a dry run) are skipped to prevent SHA-pin corruption.
+    """
     root = root.resolve()
     meta_path = root / REGISTER_BUILD_META_REL
+    if not _is_canonical_register(root, out_csv):
+        print(
+            f"register_build_meta: skipped (non-canonical output {out_csv}); "
+            f"pin preserved at {meta_path}",
+            file=sys.stderr,
+        )
+        return meta_path
     body = b""
     if out_csv.is_file():
         body = out_csv.read_bytes()

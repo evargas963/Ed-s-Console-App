@@ -749,3 +749,72 @@ def test_mechanical_pass_streaming_zero_unreviewed(tmp_path: Path) -> None:
     text = reg.read_text(encoding="utf-8")
     assert "UNREVIEWED" not in text
     assert "NOT_MARKET_DATA" in text
+
+
+def test_write_register_build_meta_skips_non_canonical_output(tmp_path: Path) -> None:
+    """Canonical-register guard: non-canonical --output must not corrupt the global meta pin."""
+    from tools.schwab_universal_coverage_scanner_v3.cli import (
+        CANONICAL_REGISTER_REL,
+        REGISTER_BUILD_META_REL,
+        write_register_build_meta,
+    )
+
+    root = tmp_path
+    (root / "governance" / "artifacts").mkdir(parents=True)
+    meta_path = root / REGISTER_BUILD_META_REL
+    pinned = {
+        "register_content_sha256": "deadbeef" * 8,
+        "register_rows_written": 174459,
+        "register_csv_path": CANONICAL_REGISTER_REL,
+    }
+    import json as _json
+
+    meta_path.write_text(_json.dumps(pinned), encoding="utf-8")
+
+    non_canonical = tmp_path / "tmp_dry_run.csv"
+    non_canonical.write_text("register_id,disposition\nabc,UNREVIEWED\n", encoding="utf-8")
+
+    write_register_build_meta(
+        root,
+        non_canonical,
+        {"files_attempted": 1, "register_rows": 1},
+        max_files=None,
+        embedding_mode_cli="mock",
+        include_dot_claude=False,
+        respect_gitignore=True,
+        scope_exclude_prefixes=(),
+    )
+    after = _json.loads(meta_path.read_text(encoding="utf-8"))
+    assert after == pinned  # untouched
+
+
+def test_write_register_build_meta_writes_canonical_output(tmp_path: Path) -> None:
+    """Canonical-register guard: canonical --output continues to update meta."""
+    from tools.schwab_universal_coverage_scanner_v3.cli import (
+        CANONICAL_REGISTER_REL,
+        REGISTER_BUILD_META_REL,
+        write_register_build_meta,
+    )
+
+    root = tmp_path
+    canonical = root / CANONICAL_REGISTER_REL
+    canonical.parent.mkdir(parents=True)
+    canonical.write_text("register_id,disposition\nxyz,UNREVIEWED\n", encoding="utf-8")
+    (root / "governance" / "artifacts").mkdir(parents=True, exist_ok=True)
+
+    write_register_build_meta(
+        root,
+        canonical,
+        {"files_attempted": 1, "register_rows": 1},
+        max_files=None,
+        embedding_mode_cli="mock",
+        include_dot_claude=False,
+        respect_gitignore=True,
+        scope_exclude_prefixes=("governance/archive",),
+    )
+    import json as _json
+
+    meta = _json.loads((root / REGISTER_BUILD_META_REL).read_text(encoding="utf-8"))
+    assert meta["register_rows_written"] == 1
+    assert meta["register_csv_path"] == CANONICAL_REGISTER_REL
+    assert meta["scanner_flags"]["scope_exclude_prefixes"] == ["governance/archive"]
