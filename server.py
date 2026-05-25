@@ -3465,7 +3465,9 @@ def _fetch_state(
     _charm_drivers = []
     try:
         from math_exposure import compute_net_charm
-        log.info(f"Charm: {ticker} calling compute_net_charm with {len(contracts_use)} contracts, exp={selected_exp}")
+        # Per-tick diagnostic — demoted from INFO: fires every refresh regardless of
+        # outcome, no operator-actionable signal (success and failure logs below carry it).
+        log.debug(f"Charm: {ticker} calling compute_net_charm with {len(contracts_use)} contracts, exp={selected_exp}")
         _charm_raw = compute_net_charm(
             contracts_use, spot_f, selected_exp, drift_toward_strike=_institutional_pin
         )
@@ -3482,7 +3484,13 @@ def _fetch_state(
         else:
             from math_exposure_core import charm_compute_unavailable_log_level
 
-            _log_fn = log.info if charm_compute_unavailable_log_level(_charm_err) == logging.INFO else log.warning
+            _lvl = charm_compute_unavailable_log_level(_charm_err)
+            if _lvl == logging.DEBUG:
+                _log_fn = log.debug
+            elif _lvl == logging.INFO:
+                _log_fn = log.info
+            else:
+                _log_fn = log.warning
             _log_fn(
                 "Charm: %s ❌ 0 contracts matched. error='%s' input_contracts=%s exp=%s",
                 ticker,
