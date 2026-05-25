@@ -85,9 +85,9 @@ class SignalInput:
     charm_drift_toward: Optional[float] = None
     charm_magnitude:    Optional[str] = None   # 'large', 'moderate', 'small', 'negligible'
     dex_magnitude:      Optional[str] = None   # 'large', 'moderate', 'small', 'negligible'
-    iv_level:           Optional[float] = None
+    iv_level:           Optional[float] = None  # implied vol decimal (0.18 = 18%; ms_dict/DB iv_level stay percent)
     iv_direction:       Optional[str] = None   # 'expanding', 'contracting', 'flat'
-    realized_vol:       Optional[float] = None  # annualized realized vol (decimal)
+    realized_vol:       Optional[float] = None  # annualized realized vol (decimal at SignalInput; ms_dict/DB stay percent)
     atr:                Optional[float] = None  # ATR in price points
     garch_sigma_bars:   Optional[list]  = None  # per-bar GARCH+blend sigma forecast
     put_call_oi_ratio:  Optional[float] = None
@@ -183,7 +183,20 @@ class CanonicalForecast:
     confidence: str           # "low" | "medium" | "high" — fusion forward confidence (not empirical tier)
     provenance: str           # e.g. "bayesian_fusion", "fusion_unavailable", "debug_override:..."
 
-    def dominant_probability(self) -> float:
+    def dominant_probability(self) -> Optional[float]:
+        """Return the directional dominant probability — ONLY when canonical is tradable.
+
+        LIVE-UI-A producer-side close: for non-tradable canonicals (provenance ∉
+        TRADABLE_CANONICAL_PROVENANCE — fusion_unavailable / fusion_directional_missing /
+        fusion_directional_invalid / debug_override:* / canonical_forecast_missing /
+        empty), the underlying triplet is the 1/3-each placeholder. Returning it as a
+        float lets callers compare it to thresholds (>= CANONICAL_DOM_PROB_*_MIN) as if
+        it were a real probability — silent leak. Returning None forces callers to handle
+        the withhold explicitly (None comparisons against floats raise TypeError, which
+        is the loud-failure mode we want for any consumer that drops the gate).
+        """
+        if self.provenance not in TRADABLE_CANONICAL_PROVENANCE:
+            return None
         d = (self.direction or "flat").lower()
         if d == "up":
             return float(self.probability_up)

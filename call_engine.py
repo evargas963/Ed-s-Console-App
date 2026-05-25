@@ -467,11 +467,22 @@ def _add_greek_color(detail: str, greek_notes: list) -> str:
     return detail
 
 def _canonical_stack_vote(canonical: CanonicalForecast) -> int:
-    """Stack vote from CanonicalForecast only (fusion forward triplet — Issue 13)."""
+    """Stack vote from CanonicalForecast only (fusion forward triplet — Issue 13).
+
+    LIVE-UI-A: dominant_probability() returns None for non-tradable canonicals;
+    treat that as a withholding (no vote) — placeholder 1/3-each must never
+    contribute to a stack vote even when conf is artificially elevated.
+    """
     pred_dir = str(getattr(canonical, "direction", "") or "").strip().lower()
     pred_conf = str(getattr(canonical, "confidence", "") or "").strip().lower()
     try:
-        dom_p = float(canonical.dominant_probability())
+        dom_p_raw = canonical.dominant_probability()
+    except (TypeError, ValueError):
+        dom_p_raw = None
+    if dom_p_raw is None:
+        return 0  # non-tradable canonical (or error) withholds its vote
+    try:
+        dom_p = float(dom_p_raw)
     except (TypeError, ValueError):
         dom_p = 0.0
     if pred_dir == "up":
@@ -761,13 +772,28 @@ def _conviction_from_canonical_forecast(
             getattr(canonical, "confidence", None),
         )
         c = "low"
+    # LIVE-UI-A: dominant_probability() now returns Optional[float] (None for non-tradable);
+    # legacy test fixtures may still raise on the call itself — wrap both shapes.
     try:
-        dom_p = float(canonical.dominant_probability())
+        dom_p_raw = canonical.dominant_probability()
     except (TypeError, ValueError):
         log.debug(
-            "call_engine._conviction_from_canonical_forecast: dominant_probability unavailable — using 1/3"
+            "call_engine._conviction_from_canonical_forecast: dominant_probability raised — using 1/3"
+        )
+        dom_p_raw = None
+    if dom_p_raw is None:
+        log.debug(
+            "call_engine._conviction_from_canonical_forecast: dominant_probability unavailable (non-tradable or error) — using 1/3"
         )
         dom_p = 1.0 / 3.0
+    else:
+        try:
+            dom_p = float(dom_p_raw)
+        except (TypeError, ValueError):
+            log.debug(
+                "call_engine._conviction_from_canonical_forecast: dominant_probability coerce failed — using 1/3"
+            )
+            dom_p = 1.0 / 3.0
     margin = dom_p - (1.0 / 3.0)
     ceil_ord = _CONV_ORDER[c]
 

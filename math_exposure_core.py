@@ -19,6 +19,16 @@ log = logging.getLogger(__name__)
 # Schwab options API missing-greek sentinel (documented wire value).
 MISSING_GREEK_SENTINEL: float = -999.0
 
+# compute_net_charm zero-used error when contracts matched expiry but failed OI/gamma/IV gates.
+CHARM_QUALITY_GATE_ERROR_MARKER = "quality gates"
+
+
+def charm_compute_unavailable_log_level(error: str | None) -> int:
+    """Expected chain quality withhold → INFO; expiry mismatch / empty input → WARNING."""
+    if error and CHARM_QUALITY_GATE_ERROR_MARKER in error:
+        return logging.INFO
+    return logging.WARNING
+
 # ── Formatting helpers ────────────────────────────────────────────────────────
 
 def _f(x) -> float | None:

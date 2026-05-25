@@ -57,3 +57,16 @@ def test_net_charm_error_reports_quality_gate_skips():
     assert out["contracts_used"] == 0
     assert "quality gates" in out["error"]
     assert "gamma=1" in out["error"]
+
+
+def test_charm_unavailable_log_level_info_for_quality_gates():
+    from math_exposure_core import charm_compute_unavailable_log_level
+    import logging
+
+    assert charm_compute_unavailable_log_level(
+        "No contracts passed charm quality gates for expiry=2026-05-26 (input=40, skipped: gamma=40)"
+    ) == logging.INFO
+    assert charm_compute_unavailable_log_level(
+        "No contracts with expirationDate matching expiry=2026-05-26 (input=40)"
+    ) == logging.WARNING
+    assert charm_compute_unavailable_log_level(None) == logging.WARNING

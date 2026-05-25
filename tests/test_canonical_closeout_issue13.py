@@ -214,3 +214,79 @@ def test_conviction_tier_from_canonical_not_stack_confluence():
     assert call.conviction == "low", (
         f"marginal probability ~flat vs 1/3 → base tier low; got conviction={call.conviction!r}"
     )
+
+
+def test_dominant_probability_returns_none_for_non_tradable_provenance():
+    """LIVE-UI-A producer-side close: CanonicalForecast.dominant_probability() returns
+    Optional[float] = None for any provenance ∉ TRADABLE_CANONICAL_PROVENANCE.
+
+    The dataclass holds placeholder 1/3-each triplets for non-tradable cases (intentional
+    fail-closed carrier shape from canonical_forecast_from_fusion). Returning the raw 0.333
+    from the method lets ungated callers treat it as a real probability (>= threshold
+    comparisons fire spuriously). Returning None forces explicit caller handling — any
+    site that drops the gate fails loudly (TypeError on float comparison) instead of
+    silently leaking the placeholder.
+    """
+    from signal_types import CanonicalForecast, NON_TRADABLE_CANONICAL_PROVENANCE, TRADABLE_CANONICAL_PROVENANCE
+
+    # Every known non-tradable provenance must return None.
+    for prov in NON_TRADABLE_CANONICAL_PROVENANCE:
+        cf = CanonicalForecast(
+            direction="up",
+            probability_up=1 / 3,
+            probability_down=1 / 3,
+            probability_flat=1 / 3,
+            confidence="low",
+            provenance=prov,
+        )
+        assert cf.dominant_probability() is None, (
+            f"non-tradable provenance {prov!r} leaked dominant_probability() = {cf.dominant_probability()!r}"
+        )
+
+    # debug_override:* class is also non-tradable per signals._debug_canonical_override.
+    cf_debug = CanonicalForecast(
+        direction="up",
+        probability_up=0.8,  # operator-chosen direction with non-tradable provenance
+        probability_down=0.1,
+        probability_flat=0.1,
+        confidence="high",
+        provenance="debug_override:operator_force_up",
+    )
+    assert cf_debug.dominant_probability() is None, (
+        "debug_override:* provenance leaked dominant_probability — operator-forced direction "
+        "must NOT surface as a real prob"
+    )
+
+    # Empty / missing / unknown provenance also blocked.
+    for prov in ("", "canonical_forecast_missing", "rules_only", "unknown_source"):
+        cf = CanonicalForecast(
+            direction="up",
+            probability_up=0.7,
+            probability_down=0.2,
+            probability_flat=0.1,
+            confidence="medium",
+            provenance=prov,
+        )
+        assert cf.dominant_probability() is None, (
+            f"unknown provenance {prov!r} leaked dominant_probability() — fail-closed allow-list bypassed"
+        )
+
+    # Tradable provenance must still return the real dominant probability.
+    cf_ok = CanonicalForecast(
+        direction="up",
+        probability_up=0.62,
+        probability_down=0.25,
+        probability_flat=0.13,
+        confidence="medium",
+        provenance="bayesian_fusion",
+    )
+    assert cf_ok.dominant_probability() == 0.62, (
+        f"tradable bayesian_fusion canonical did not return real dominant prob: "
+        f"{cf_ok.dominant_probability()!r}"
+    )
+
+    # Lock the predicate identity: tradable allow-list is the SOLE positive set.
+    assert TRADABLE_CANONICAL_PROVENANCE == frozenset({"bayesian_fusion"}), (
+        "TRADABLE_CANONICAL_PROVENANCE expanded — re-audit every dominant_probability() caller "
+        "before adding a new tradable provenance value"
+    )

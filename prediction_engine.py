@@ -841,13 +841,18 @@ def compute_prediction_core(
     prediction_target = None
     fwd = (canonical.direction or "flat").lower()
     if fwd in ("up", "down"):
+        # LIVE-UI-A: dominant_probability() returns None for non-tradable canonicals;
+        # binding the comparison against None would raise — use a single read +
+        # explicit None guard so the prediction_dir cannot be promoted off a
+        # placeholder 1/3-each triplet.
+        _dom_p = canonical.dominant_probability()
         if canonical.confidence != "low" and avg5 is not None:
             prediction_dir = fwd
             prediction_target = round(spot + avg5, 2)
-        elif canonical.dominant_probability() >= CANONICAL_DOM_PROB_PREDICTION_DIR_MIN and avg5 is not None:
+        elif _dom_p is not None and _dom_p >= CANONICAL_DOM_PROB_PREDICTION_DIR_MIN and avg5 is not None:
             prediction_dir = fwd
             prediction_target = round(spot + avg5, 2)
-        elif canonical.dominant_probability() >= CANONICAL_DOM_PROB_PREDICTION_DIR_MIN:
+        elif _dom_p is not None and _dom_p >= CANONICAL_DOM_PROB_PREDICTION_DIR_MIN:
             prediction_dir = fwd
 
     _stack_integrity_v1 = finalize_stack_integrity_v1(_integrity_events)
@@ -1203,7 +1208,10 @@ def compute_prediction_enrichment(
         _action = "→ Forward stack: slight call bias — size per The Call."
     elif canonical.confidence == "medium" and fwd == "down":
         _action = "→ Forward stack: slight put bias — size per The Call."
-    elif fwd == "flat" and canonical.dominant_probability() >= CANONICAL_DOM_PROB_ACTION_MIN:
+    elif fwd == "flat" and (canonical.dominant_probability() or 0.0) >= CANONICAL_DOM_PROB_ACTION_MIN:
+        # LIVE-UI-A: non-tradable canonical → dominant_probability()=None → 0.0 fallback,
+        # which sits below CANONICAL_DOM_PROB_ACTION_MIN so the elif falls through to the
+        # default "low conviction" action text. No placeholder leak into the action line.
         _action = "→ Forward stack balanced — favor patience unless The Call fires."
     else:
         _action = "→ Forward conviction low — default wait unless confluence clears gates."

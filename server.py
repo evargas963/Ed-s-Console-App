@@ -3480,8 +3480,16 @@ def _fetch_state(
             log.info(f"Charm: {ticker} ✅ net={_charm_net:.0f} dir={_charm_dir} mag={_charm_mag} pin={_charm_toward} "
                      f"({_charm_used} contracts)")
         else:
-            log.warning(f"Charm: {ticker} ❌ 0 contracts matched. error='{_charm_err}' "
-                        f"input_contracts={len(contracts_use)} exp={selected_exp}")
+            from math_exposure_core import charm_compute_unavailable_log_level
+
+            _log_fn = log.info if charm_compute_unavailable_log_level(_charm_err) == logging.INFO else log.warning
+            _log_fn(
+                "Charm: %s ❌ 0 contracts matched. error='%s' input_contracts=%s exp=%s",
+                ticker,
+                _charm_err,
+                len(contracts_use),
+                selected_exp,
+            )
     except Exception as _ce:
         import traceback
         log.warning(f"Charm: {ticker} 💥 EXCEPTION: {_ce}\n{traceback.format_exc()}")
