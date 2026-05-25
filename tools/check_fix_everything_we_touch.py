@@ -63,6 +63,20 @@ UNVERIFIED_CLAIM_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         re.compile(r"\bguarantee(?:s|d)?\b", re.IGNORECASE),
     ),
     ("all clear without evidence cite", re.compile(r"\ball\s+clear\b", re.IGNORECASE)),
+    (
+        "inference verdict (looks/appears/seems/should-be clean/orphaned/safe/correct/ready/complete)",
+        re.compile(
+            r"\b(?:looks|appears|seems|should\s+be)\s+(?:clean|orphaned|safe|correct|ready|complete|good|fine)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "echoed upstream summary as fact (per cursor/subagent/peer summary without source read)",
+        re.compile(
+            r"\bper\s+(?:cursor|subagent|claude|peer)['’]?s?\s+(?:summary|report|claim|read)\b",
+            re.IGNORECASE,
+        ),
+    ),
 )
 INVESTIGATION_ONLY_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (

@@ -142,3 +142,34 @@ def test_commit_message_unverified_claim_with_evidence_passes(phrase: str, tmp_p
     msg = tmp_path / "COMMIT_EDITMSG"
     msg.write_text(phrase, encoding="utf-8")
     assert mod.check_commit_message(msg) == []
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "Looks clean on the cone walk.",
+        "Appears orphaned — zero refs.",
+        "Should be safe to delete.",
+        "Seems correct based on the summary.",
+    ],
+)
+def test_commit_message_inference_verdict_phrases_fail(phrase: str, tmp_path: Path) -> None:
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text(phrase, encoding="utf-8")
+    hits = mod.check_commit_message(msg)
+    assert hits, f"expected inference-verdict hit for: {phrase!r}"
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "Per cursor summary the slice is closed.",
+        "Per subagent report the refs are zero.",
+        "Per peer's read all sites are NMD.",
+    ],
+)
+def test_commit_message_echoed_upstream_summary_phrases_fail(phrase: str, tmp_path: Path) -> None:
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text(phrase, encoding="utf-8")
+    hits = mod.check_commit_message(msg)
+    assert hits, f"expected upstream-summary-echo hit for: {phrase!r}"

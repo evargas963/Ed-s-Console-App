@@ -25,8 +25,15 @@ Current program: [`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md).
 | Omitting a known limit when describing a fix | Lie by selective framing |
 | "Standing by" / clean handoff while a known FIND is unfixed | Performing readiness; the work is incomplete |
 | Restating operator's view back as if independently arrived at | Agreement theater |
+| "Section present" / "heading at L<n>" without reading the body | Treating structure as content — the `§File delete gatekeeper` slip (title said gatekeeper, body said catch-net; heading existed, body contradicted intent) |
+| "Per [subagent / Cursor / peer] summary" without source-Read | Echoing upstream as fact — the zero-refs slip (accepted "zero references outside itself" without enumerating; 10 referrers existed) |
+| "Looks clean" / "appears orphaned" / "should be safe" as verdict | Inference framed as verification; verdicts require enumerated tables or recomputed values, not impressions |
+| Tool exit 0 cited as proof of correctness | Tool ran; doesn't prove the right thing was checked. Cite both the tool AND the intent it verified |
+| Count match (rows / files / tests pass) cited as content match | Cardinality alignment ≠ semantic alignment; 174459 rows can sum correctly while individual dispositions are wrong |
 
 **When uncertain, say uncertain.** When a tool or rule has a known limit, name the limit in the same sentence that describes the tool. When operator catches a slip, correct in the same turn, not the next.
+
+**Verdict discipline (universal):** Before any verdict word — `verified`, `confirmed`, `correct`, `matches`, `ready`, `complete`, `safe` — the response must carry either (a) an enumerated table with file:line / SHA / tool-exit-code citations, (b) a recomputed value with the recompute command shown, or (c) explicit attribution to the upstream source the claim came from (and naming that source as unverified-by-me if so). Heading existence, tool exit 0, count match, and summary receipt are necessary inputs to a verdict, never the verdict itself.
 
 **Honest limit of mechanical enforcement:** Pre-commit / commit-msg checkers can catch surface patterns (e.g., "verified" without evidence cite, "guarantees" without a cited mechanism). They **cannot** catch omission, framing, soft-selling, or false reassurance on natural language. The primary enforcement is **operator-as-catch-net + agent discipline**. The rule binds regardless of how partial mechanical coverage is. Adding a regex check does not discharge the obligation.
 
