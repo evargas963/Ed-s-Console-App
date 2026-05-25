@@ -349,7 +349,8 @@ def _build_call_headlines(final_signal, conviction, trade_type,
                            entry, stop, target, target2,
                            confluence_count, confluence_total, confluence_detail,
                            micro_regime, rules, pred, pred_agrees,
-                           fusion=None, wait_blocker: dict = None) -> tuple[str, str]:
+                           fusion=None, wait_blocker: dict = None,
+                           *, mh_promoted_directional: bool = False) -> tuple[str, str]:
     """Build headline and reasoning for The Call card. Driven by full stack result.
     wait_blocker: when final_signal=wait, dict with reason ('stack'|'vol_regime'|'gates'|'time'),
     and optional long_count, short_count, threshold, gate_reasons, vol_detail, detail, full_detail.
@@ -397,6 +398,8 @@ def _build_call_headlines(final_signal, conviction, trade_type,
     t1_s = f"{target:.2f}" if target else "—"
 
     headline = f"{dir_word} — {type_label}"
+    if mh_promoted_directional:
+        headline += " (MH promoted over stack WAIT)"
     if entry:
         headline += f". Entry {e_s}"
     if stop:
@@ -425,6 +428,12 @@ def _build_call_headlines(final_signal, conviction, trade_type,
     mc_snippet = _mc_reasoning_snippet(fusion, final_signal)
     if mc_snippet:
         reasoning = reasoning.rstrip(". ") + mc_snippet
+
+    if mh_promoted_directional:
+        reasoning = (
+            "Multi-horizon policy promoted this directional call over a stack WAIT; "
+            f"conviction floored to {conviction}. {reasoning}"
+        )
 
     return headline, reasoning
 
@@ -1209,8 +1218,16 @@ def _validate_trade(
         ):
             prob_fails.append(f"model agreement below threshold ({agree:.0%} < {_agree_threshold:.0%}) with {n_active} models active")
 
-    # 2b. Canonical forward forecast opposes the call with sufficient marginal probability
-    if canonical and str(canonical.confidence or "").lower() not in ("low", ""):
+    # 2b. Canonical forward forecast opposes the call with sufficient marginal probability.
+    # Provenance gate (LIVE-UI-A): non-tradable canonicals (fusion_unavailable /
+    # fusion_directional_missing / fusion_directional_invalid / debug_override:*) carry
+    # placeholder 1/3-each triplets — must not drive an opposes-call veto. Confidence
+    # alone is brittle (it's a side-effect of provenance, not the invariant).
+    if (
+        canonical
+        and canonical_provenance_is_tradable(getattr(canonical, "provenance", None))
+        and str(canonical.confidence or "").lower() not in ("low", "")
+    ):
         pdn = float(canonical.probability_down)
         pup = float(canonical.probability_up)
         cdir = str(canonical.direction or "flat").lower()
@@ -1788,6 +1805,7 @@ def compute_call(
         pred_agrees=pred_agrees,
         fusion=fusion,
         wait_blocker=wait_blocker,
+        mh_promoted_directional=_mh_promoted_directional,
     )
 
     size_note = _size_note(conviction, inp.mins_to_close, inp.vix_level)
@@ -1899,6 +1917,7 @@ def compute_call(
         confluence_count=confluence_count,
         confluence_total=confluence_total,
         confluence_detail=confluence_detail,
+        mh_promoted_directional=_mh_promoted_directional,
         time_qualifier=time_qualifier,
         size_cue=size_cue,
         rules_pred_agree=pred_agrees,

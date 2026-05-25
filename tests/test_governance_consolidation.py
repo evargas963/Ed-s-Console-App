@@ -254,3 +254,12 @@ def test_config_py_has_no_hardcoded_api_secrets() -> None:
     assert "SCHWAB_API_KEY =" not in text
     assert "SCHWAB_APP_SECRET =" not in text
     assert "A8y3Yf4jkAbJfavtb76VNbYimkSEk082" not in text
+
+
+def test_agents_code_first_no_governance_only_section() -> None:
+    agents = _read("AGENTS.md")
+    assert "Code-first / no governance-only turn" in agents
+    assert "governance-only lane" in agents
+    assert "bookkeeping" in agents
+    active = _read("ACTIVE_PROGRAM.md")
+    assert "code-first" in active.lower()

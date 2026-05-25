@@ -180,3 +180,28 @@ def test_ce9_put_readiness_failure_logs_warning(caplog):
                 mh_policy=None,
             )
     assert any(r.levelname == "WARNING" and "put_readiness:" in r.message for r in caplog.records)
+
+
+def test_build_call_headlines_mh_promotion_visible():
+    headline, reasoning = ce._build_call_headlines(
+        final_signal="long",
+        conviction="low",
+        trade_type="trend_continuation",
+        entry=450.0,
+        stop=448.0,
+        target=452.0,
+        target2=None,
+        confluence_count=1,
+        confluence_total=9,
+        confluence_detail="multi_horizon promoted directional",
+        micro_regime="unknown",
+        rules=_rules_long(),
+        pred=_pred(),
+        pred_agrees=False,
+        fusion=None,
+        wait_blocker=None,
+        mh_promoted_directional=True,
+    )
+    assert "MH promoted over stack WAIT" in headline
+    assert "Multi-horizon policy promoted" in reasoning
+    assert "conviction floored to low" in reasoning

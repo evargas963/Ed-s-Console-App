@@ -251,6 +251,7 @@ class MarketState:
     confluence_count:   int             = 0
     confluence_total:   Optional[int]   = None
     confluence_detail:  str             = ""
+    mh_promoted_directional: bool      = False
     time_qualifier:     str             = ""
     replay_max_hold_bars: int           = 0   # 1m bars for eval time_expiry (Call policy)
     size_cue:           str             = "SKIP"
@@ -1418,6 +1419,7 @@ def build_market_state(
             ms.confluence_count = getattr(_call, 'confluence_count', 0)
             ms.confluence_total = getattr(_call, 'confluence_total', None)
             ms.confluence_detail = getattr(_call, 'confluence_detail', '')
+            ms.mh_promoted_directional = bool(getattr(_call, 'mh_promoted_directional', False))
             ms.time_qualifier   = getattr(_call, 'time_qualifier', '')
             ms.replay_max_hold_bars = int(getattr(_call, 'replay_max_hold_bars', 0) or 0)
             ms.size_cue         = getattr(_call, 'size_cue', 'SKIP')
@@ -1481,12 +1483,16 @@ def build_market_state(
             for _a in list(getattr(_mhd, "supporting_assessments", []) or []):
                 _missing = bool(getattr(_a, "missing", False))
                 _hz = str(getattr(_a, "horizon", ""))
+                if _missing:
+                    _conf: float | None = None
+                else:
+                    _conf = float_finite_or_none(getattr(_a, "confidence", None))
                 _rows.append(
                     {
                         "horizon": _hz,
                         "role": str(getattr(_a, "role", "")),
                         "call": str(getattr(_a, "call", "")),
-                        "confidence": float(getattr(_a, "confidence", 0.0) or 0.0),
+                        "confidence": _conf,
                         "entry_ref": getattr(_a, "entry_ref", None),
                         "effect": str(getattr(_a, "effect", "")),
                         "row_state": "missing" if _missing else str(getattr(_a, "row_state", "weak")),

@@ -212,6 +212,87 @@ def test_fusion_posterior_gate_blocks_short_when_posteriors_missing():
     assert "continuation/breakout posteriors unavailable" in result["probability_reason"]
 
 
+def test_canonical_oppose_gate_blocked_by_non_tradable_provenance_even_when_confidence_elevated():
+    """LIVE-UI-A: canonical-opposes branch must gate on provenance, not just confidence.
+
+    Defensive lock — current producer (canonical_forecast_from_fusion in signals.py) forces
+    confidence='low' for all non-tradable cases, so the implicit confidence gate happens to
+    cover this scenario in production. The explicit provenance gate prevents a future
+    producer change or debug fixture from leaking placeholder 1/3-each triplets into the
+    canonical-opposes veto.
+    """
+    # Fusion present + agreeing → bypasses L2a model-agreement check.
+    fusion = SimpleNamespace(
+        available=True,
+        model_agreement=0.9,
+        n_sources_active=3,
+        # full posteriors so L2c reversal/continuation gates don't fire (we want to isolate L2b)
+        reversal_posterior=0.2,
+        continuation_posterior=0.3,
+        breakout_posterior=0.3,
+    )
+    # Synthetic non-tradable canonical with elevated confidence + above-threshold opposing prob.
+    # Without the provenance gate at call_engine.py L2b, this would trip "canonical forward DOWN".
+    canonical = CanonicalForecast(
+        direction="down",
+        probability_up=0.2,
+        probability_down=0.6,   # >= CANONICAL_OPPOSE_THRESHOLD (0.5) to force the branch logic
+        probability_flat=0.2,
+        confidence="medium",    # defeats the implicit confidence gate
+        provenance="fusion_unavailable",  # NON-tradable → explicit gate must block
+    )
+    result = _validate_trade(
+        final_signal="long",
+        inp=_minimal_inp(),
+        micro_regime="trend_up",
+        micro=SimpleNamespace(is_compressing=False),
+        pred={},
+        fusion=fusion,
+        canonical=canonical,
+        regime=SimpleNamespace(primary="trend_continuation"),
+        regime_label="trend_continuation",
+    )
+    # The "canonical forward DOWN" entry must NOT appear in probability_reason.
+    assert "canonical forward DOWN" not in (result.get("probability_reason") or ""), (
+        f"non-tradable canonical leaked into opposes-call veto: {result.get('probability_reason')!r}"
+    )
+
+
+def test_canonical_oppose_gate_fires_for_tradable_bayesian_fusion_provenance():
+    """Regression: the provenance gate must NOT over-block — tradable canonical still vetoes."""
+    fusion = SimpleNamespace(
+        available=True,
+        model_agreement=0.9,
+        n_sources_active=3,
+        reversal_posterior=0.2,
+        continuation_posterior=0.3,
+        breakout_posterior=0.3,
+    )
+    canonical = CanonicalForecast(
+        direction="down",
+        probability_up=0.2,
+        probability_down=0.6,
+        probability_flat=0.2,
+        confidence="medium",
+        provenance="bayesian_fusion",  # TRADABLE → veto should fire
+    )
+    result = _validate_trade(
+        final_signal="long",
+        inp=_minimal_inp(),
+        micro_regime="trend_up",
+        micro=SimpleNamespace(is_compressing=False),
+        pred={},
+        fusion=fusion,
+        canonical=canonical,
+        regime=SimpleNamespace(primary="trend_continuation"),
+        regime_label="trend_continuation",
+    )
+    assert result["probability_valid"] is False
+    assert "canonical forward DOWN" in (result.get("probability_reason") or ""), (
+        f"tradable canonical opposes-veto did not fire: {result.get('probability_reason')!r}"
+    )
+
+
 def _fusion_for_call(**overrides):
     base = dict(
         available=True,

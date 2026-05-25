@@ -2,7 +2,7 @@
 
 # ACTIVE_PROGRAM.md — what we are doing now
 
-**Updated:** 2026-05-23 (tip `05cb883`)  
+**Updated:** 2026-05-25 (operator pivot — code-first)  
 **Branch:** `feature/institutional-key-levels` — consolidation Phases 0–4 complete; pushing  
 **Execution plan:** [`docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md`](docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md)
 
@@ -10,7 +10,9 @@
 
 ## Active program
 
-**Governance consolidation** — **Phases 0–4 complete** @ `ed9f882` (3e: 9 worktrees pruned, ~2.43 GB freed). **Gate closed** (dual-agent re-audit 2026-05-24). **Next:** Schwab V4 walk primary thread. Training PR5–PR7 concurrent.
+**Institutional trading app — code-first** (operator 2026-05-25). Every slice must land **application code + paired tests** (producer, consumer, or money-path fix). Schwab scanner/register work is **tracking only** — it does not replace wire fixes, UI honesty, or stack behavior. Scanner gaps that miss already-correct Schwab leaf reads are register bookkeeping, not product bugs.
+
+**Governance consolidation** — **Phases 0–4 complete** @ `ed9f882`. **Concurrent:** Training PR5–PR7. **Schwab V4:** disposition/regen when it unblocks CI or closes a proven wire FIND — never scanner-only turns.
 
 ### Consolidation status (scope-explicit)
 

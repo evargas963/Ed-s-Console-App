@@ -63,6 +63,23 @@ This rule sits above §Fix everything we touch because lying makes every other r
 
 ---
 
+## Code-first / no governance-only turn `[PROMOTED]` (2026-05-25 — operator escalation)
+
+**Every turn must land application code + paired tests** unless the operator explicitly assigns a governance-only lane (e.g. `go SCHWAB FULL REPO — governance PR only`, register regen in operator PowerShell lane with no agent code scope).
+
+| Required in the turn | Banned as the sole deliverable |
+|----------------------|--------------------------------|
+| Producer / consumer / money-path fix (`server.py`, `signals.py`, `call_engine.py`, `market_state.py`, `static/index.html`, fusion stack, order flow, etc.) | Register regen, scanner cardinality tuning, CI workflow pin, meta/scoreboard repin, OPEN_ITEMS or ACTIVE_PROGRAM text-only |
+| Paired test in an **existing** test file for the behavior changed | Scanner-only `pattern_kind`, memo-only disposition, inventory/report without wire or UI fix |
+
+**Schwab scanner / register work** is admissible only **paired** with a code fix in the **same commit** or the immediately adjacent commit in the **same session** (same FIND family — producer or consumer cone). A scanner gap on code that already reads the correct Schwab leaf is **bookkeeping**, not a product bug; it must not block or replace app-quality fixes.
+
+**Program anchor:** [`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md) §Active program (code-first posture).
+
+**Partial mechanical enforcement:** `tests/test_governance_consolidation.py::test_agents_code_first_no_governance_only_section` — AGENTS body must carry this section.
+
+---
+
 ## Self-governance quality loop `[PROMOTED]` (2026-05-24)
 
 When operator or peer catches a **missed fix** (FIND surfaced, fix not landed same turn/commit):

@@ -2552,6 +2552,9 @@
             <span class="conviction-pill low" id="dr-freshness-pill" title="Analytical bundle freshness">FRESH —</span>
             <span class="decision-chip dim" id="dr-stack-mode-chip" title="Global stack_runtime.stack_mode (not artifact compliance)" style="display:none">STACK —</span>
             <span class="decision-chip dim" id="dr-signals-engine-fail-chip" title="stack_runtime.signals_engine_failed — signals/market-state pipeline crashed (distinct from fusion/MC-only INVALID)" style="display:none">SIGNALS —</span>
+            <span class="decision-chip dim" id="dr-stack-integrity-degraded-chip" title="stack_integrity_v1.degraded — mid-pipeline fallback/degradation events" style="display:none">STACK DEGRADED —</span>
+            <span class="decision-chip dim" id="dr-mh-promotion-chip" title="Multi-horizon policy promoted WAIT→directional (conviction floored low)" style="display:none">MH —</span>
+            <span class="decision-chip dim" id="dr-session-boundary-chip" title="Session close boundary — time_warning from call_engine" style="display:none">SESSION —</span>
             <span class="decision-chip dim" id="dr-lane-stale-chip" title="Fast lane ahead of analytical paint or cards repainting" style="display:none">LANE —</span>
           </div>
           <div class="signal-card-body">
@@ -3688,7 +3691,7 @@ function renderTimeframeSignalRow(d) {
   }
 
   function parseConf(cv) {
-    if (cv == null || Number.isNaN(Number(cv))) return 0;
+    if (cv == null || Number.isNaN(Number(cv))) return null;
     const n = Number(cv);
     if (n >= 0 && n <= 1) return Math.round(n * 100);
     return Math.round(Math.min(100, Math.max(0, n)));
@@ -3723,7 +3726,7 @@ function renderTimeframeSignalRow(d) {
     if (!card) return;
 
     let dir = 'FLAT';
-    let confPct = 0;
+    let confPct = null;
     let tag = null;
 
     const sc = byTf[ui];
@@ -3738,7 +3741,7 @@ function renderTimeframeSignalRow(d) {
       if (r) {
         if (horizonRowMissing(r)) {
           dir = 'UNAVAILABLE';
-          confPct = 0;
+          confPct = null;
           tag = null;
         } else {
           dir = normDir(r.call);
@@ -3754,9 +3757,9 @@ function renderTimeframeSignalRow(d) {
 
     let glow = '';
     if (state === 'up' || state === 'down') {
-      if (confPct >= 76) glow = 'tf-glow-3';
-      else if (confPct >= 61) glow = 'tf-glow-2';
-      else glow = 'tf-glow-1';
+      if (confPct != null && confPct >= 76) glow = 'tf-glow-3';
+      else if (confPct != null && confPct >= 61) glow = 'tf-glow-2';
+      else if (confPct != null) glow = 'tf-glow-1';
     }
 
     card.className = 'tf-signal-card tf-state-' + (state === 'up' ? 'up' : state === 'down' ? 'down' : 'dim') + (glow ? ' ' + glow : '');
@@ -3787,6 +3790,9 @@ function renderTimeframeSignalRow(d) {
         pctEl.title = r && r.missing_horizon
           ? `missing_horizon=${r.missing_horizon}`
           : rc;
+      } else if (confPct == null) {
+        pctEl.textContent = '—';
+        pctEl.title = 'confidence withheld';
       } else {
         pctEl.textContent = confPct + '%';
         pctEl.removeAttribute('title');
@@ -6541,6 +6547,10 @@ function _refreshLiveUiIntegrityDerivations(opts) {
   // separately from stack_mode=INVALID so operator can distinguish a signals/market-state pipeline
   // crash from a fusion/MC-only INVALID stack. Producer stamps at server.py:5365-5368.
   const signalsEngineFailed = rt.signals_engine_failed === true;
+  const si = (ld && ld.stack_integrity_v1) || {};
+  const stackIntegrityDegraded = si.degraded === true;
+  const mhPromoted = ld && ld.mh_promoted_directional === true;
+  const sessionBoundaryWarning = ld && ld.time_warning ? String(ld.time_warning) : '';
   window._priceAheadOfBundle = slowStaleVsFast;
   const integrity = {
     bundleTs,
@@ -6551,6 +6561,9 @@ function _refreshLiveUiIntegrityDerivations(opts) {
     gen: Number.isFinite(gen) ? gen : null,
     stackMode,
     signalsEngineFailed,
+    stackIntegrityDegraded,
+    mhPromoted,
+    sessionBoundaryWarning,
   };
   window._liveUiIntegrity = integrity;
   return integrity;
@@ -6728,6 +6741,58 @@ function _updateSignalsEngineFailChip(integrity) {
   el.className = 'decision-chip dim';
 }
 
+function _updateStackIntegrityDegradedChip(integrity) {
+  const el = $('dr-stack-integrity-degraded-chip');
+  if (!el) return;
+  integrity = integrity || window._liveUiIntegrity || {};
+  if (integrity.stackIntegrityDegraded === true) {
+    el.style.display = '';
+    el.textContent = 'STACK DEGRADED';
+    el.className = 'decision-chip bad';
+    el.title = 'stack_integrity_v1.degraded=true — mid-pipeline fallback/degradation; see stack_integrity_events';
+    return;
+  }
+  el.style.display = 'none';
+  el.textContent = 'STACK DEGRADED —';
+  el.className = 'decision-chip dim';
+}
+
+function _updateMhPromotionChip(integrity) {
+  const el = $('dr-mh-promotion-chip');
+  if (!el) return;
+  integrity = integrity || window._liveUiIntegrity || {};
+  const ld = window._lastData || {};
+  const promoted = integrity.mhPromoted === true || ld.mh_promoted_directional === true;
+  const sig = String(ld.call_signal || '').toLowerCase();
+  if (promoted && (sig === 'long' || sig === 'short')) {
+    el.style.display = '';
+    el.textContent = 'MH PROMOTED ' + sig.toUpperCase();
+    el.className = 'decision-chip dim';
+    el.title = 'Multi-horizon policy promoted over stack WAIT; conviction floored low';
+    return;
+  }
+  el.style.display = 'none';
+  el.textContent = 'MH —';
+  el.className = 'decision-chip dim';
+}
+
+function _updateSessionBoundaryChip(integrity) {
+  const el = $('dr-session-boundary-chip');
+  if (!el) return;
+  integrity = integrity || window._liveUiIntegrity || {};
+  const warn = integrity.sessionBoundaryWarning || '';
+  if (warn) {
+    el.style.display = '';
+    el.textContent = warn.length > 48 ? warn.slice(0, 45) + '…' : warn;
+    el.className = 'decision-chip bad';
+    el.title = warn;
+    return;
+  }
+  el.style.display = 'none';
+  el.textContent = 'SESSION —';
+  el.className = 'decision-chip dim';
+}
+
 function _updateLaneStaleChip(integrity) {
   const el = $('dr-lane-stale-chip');
   if (!el) return;
@@ -6778,6 +6843,9 @@ function _updateLiveUiAe(opts) {
   _updateCoherenceHeadline(integrity);
   _updateStackModeChip(integrity);
   _updateSignalsEngineFailChip(integrity);
+  _updateStackIntegrityDegradedChip(integrity);
+  _updateMhPromotionChip(integrity);
+  _updateSessionBoundaryChip(integrity);
   _updateLaneStaleChip(integrity);
 }
 

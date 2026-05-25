@@ -178,5 +178,45 @@ def test_coherence_updaters_only_invoked_from_live_ui_ae():
     html = _html()
     assert len(re.findall(r"function _updateLiveUiAe\(", html)) == 1
     ae = html.split("function _updateLiveUiAe(")[1].split("function _fastRolloutBump(")[0]
-    for fn in ("_updateCoherenceHeadline", "_updateStackModeChip", "_updateLaneStaleChip"):
+    for fn in (
+        "_updateCoherenceHeadline",
+        "_updateStackModeChip",
+        "_updateSignalsEngineFailChip",
+        "_updateLaneStaleChip",
+        "_updateStackIntegrityDegradedChip",
+        "_updateMhPromotionChip",
+        "_updateSessionBoundaryChip",
+    ):
         assert ae.count(fn + "(integrity)") == 1
+
+
+def test_live_ui_b_stack_integrity_degraded_chip():
+    html = _html()
+    assert 'id="dr-stack-integrity-degraded-chip"' in html
+    assert "stack_integrity_v1" in html
+    assert "stackIntegrityDegraded" in html
+    assert "function _updateStackIntegrityDegradedChip(" in html
+    assert "STACK DEGRADED" in html
+
+
+def test_live_ui_e_mh_promotion_chip():
+    html = _html()
+    assert 'id="dr-mh-promotion-chip"' in html
+    assert "mh_promoted_directional" in html
+    assert "function _updateMhPromotionChip(" in html
+    assert "MH PROMOTED" in html
+
+
+def test_live_ui_g_session_boundary_chip():
+    html = _html()
+    assert 'id="dr-session-boundary-chip"' in html
+    assert "sessionBoundaryWarning" in html
+    assert "time_warning" in html
+    assert "function _updateSessionBoundaryChip(" in html
+
+
+def test_parse_conf_withholds_null_not_zero():
+    html = _html()
+    assert "return null" in html.split("function parseConf(")[1].split("function horizonRowMissing")[0]
+    assert "confPct == null" in html
+    assert "confidence withheld" in html

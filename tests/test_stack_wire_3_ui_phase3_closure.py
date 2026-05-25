@@ -102,6 +102,19 @@ def test_wire3_ui_signals_engine_failed_badge_present():
     assert "signalsEngineFailed" in HTML
 
 
+def test_wire3_ui_operator_truth_chips_live_ui_b_e_g():
+    """LIVE-UI-B/E/G: stack degradation, MH promotion, session boundary chips on Decision Command."""
+    assert 'id="dr-stack-integrity-degraded-chip"' in HTML
+    assert 'id="dr-mh-promotion-chip"' in HTML
+    assert 'id="dr-session-boundary-chip"' in HTML
+    assert "function _updateStackIntegrityDegradedChip(" in HTML
+    assert "function _updateMhPromotionChip(" in HTML
+    assert "function _updateSessionBoundaryChip(" in HTML
+    assert "_updateStackIntegrityDegradedChip(integrity)" in HTML
+    assert "_updateMhPromotionChip(integrity)" in HTML
+    assert "_updateSessionBoundaryChip(integrity)" in HTML
+
+
 def test_wire3_ui_iv_rank_bound_with_withhold_semantic():
     """iv_rank and iv_percentile land on ms_dict (server.py:4998-4999). UI binds in the
     Volatility regime subsection of the context layer; None renders as em-dash (withheld),

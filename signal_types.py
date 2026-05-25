@@ -355,6 +355,7 @@ class TheCall:
     put_readiness_component_scores: dict = field(default_factory=dict)
     # ── Replay / eval (1m bars cap for time_expiry; from Call policy, not inferred in isolation) ──
     replay_max_hold_bars: int          = 0
+    mh_promoted_directional: bool      = False  # MH policy promoted WAIT→long/short
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STACK DECISION PATH

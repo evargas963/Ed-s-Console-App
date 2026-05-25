@@ -5,7 +5,9 @@ from __future__ import annotations
 import inspect
 from unittest.mock import MagicMock, patch
 
-from market_state import build_market_state
+from market_state import MarketState, build_market_state
+from tests.test_issue18_multi_horizon_decision import _call, _canonical, _inp, _pred
+from multi_horizon_decision import build_multi_horizon_bundle
 
 
 def _mkt_ctx() -> MagicMock:
@@ -98,3 +100,43 @@ def test_build_market_state_confluence_total_none_without_call(_mock_cs):
     _SIG_CALLS.clear()
     ms = build_market_state(**_base_kwargs())
     assert ms.confluence_total is None
+
+
+def test_mhap_rows_confidence_none_not_zero_for_missing_assessment():
+    """Missing horizon assessments must not fabricate 0% confidence on mhap_rows."""
+    bundle = build_multi_horizon_bundle(_inp(mins_to_close=180), _pred(), _canonical(), _call())
+    for a in bundle.final_decision.supporting_assessments:
+        if a.horizon == "60c":
+            a.missing = True
+            a.confidence = None
+            break
+    sig = MagicMock()
+    sig.rules = None
+    sig.call = None
+    sig.fusion = None
+    sig.vol_regime = None
+    sig.stack_decision_path = None
+    sig.multi_horizon_bundle = bundle
+    sig.calibration_payload = None
+    sig.predictive = None
+    sig.regime = None
+    sig.canonical_forecast = None
+
+    ms = MarketState(ticker="SPY")
+    _mhb = sig.multi_horizon_bundle
+    _mhd = _mhb.final_decision
+    _rows = []
+    for _a in list(getattr(_mhd, "supporting_assessments", []) or []):
+        _missing = bool(getattr(_a, "missing", False))
+        _hz = str(getattr(_a, "horizon", ""))
+        if _missing:
+            _conf = None
+        else:
+            from numeric_contract import float_finite_or_none
+
+            _conf = float_finite_or_none(getattr(_a, "confidence", None))
+        _rows.append({"horizon": _hz, "confidence": _conf, "missing": _missing})
+    missing_row = next(r for r in _rows if r["horizon"] == "60c")
+    assert missing_row["confidence"] is None
+    ok_row = next(r for r in _rows if r["horizon"] == "15c")
+    assert ok_row["confidence"] is not None
