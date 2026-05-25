@@ -30,48 +30,50 @@ CHAIN_PROV = "REPLACED; Schwab option chain JSON via safe_get_chain"
 
 REPLACED_SITES: list[tuple[int, str, str, str]] = [
     # Canonical helper — 14 session fallbacks
-    (2225, "lastPrice", "quotes.quote.lastPrice", "_parse_quote_node_session_fields _q.lastPrice"),
-    (2227, "lastPrice", "quotes.extended.lastPrice", "_ext.lastPrice"),
-    (2229, "regularMarketLastPrice", "quotes.regular.regularMarketLastPrice", "_reg.regularMarketLastPrice"),
-    (2230, "mark", "quotes.quote.mark", "_q.mark"),
-    (2232, "mark", "quotes.extended.mark", "_ext.mark"),
-    (2233, "bidPrice", "quotes.quote.bidPrice", "_q.bidPrice"),
-    (2235, "bidPrice", "quotes.extended.bidPrice", "_ext.bidPrice"),
-    (2236, "askPrice", "quotes.quote.askPrice", "_q.askPrice"),
-    (2238, "askPrice", "quotes.extended.askPrice", "_ext.askPrice"),
-    (2239, "quoteTime", "quotes.quote.quoteTime", "_q.quoteTime"),
-    (2241, "quoteTime", "quotes.extended.quoteTime", "_ext.quoteTime"),
-    (2242, "tradeTime", "quotes.quote.tradeTime", "_q.tradeTime"),
-    (2244, "tradeTime", "quotes.extended.tradeTime", "_ext.tradeTime"),
-    (2246, "regularMarketTradeTime", "quotes.regular.regularMarketTradeTime", "_reg.regularMarketTradeTime"),
+    (2320, "lastPrice", "quotes.quote.lastPrice", "_parse_quote_node_session_fields _q.lastPrice"),
+    (2322, "lastPrice", "quotes.extended.lastPrice", "_ext.lastPrice"),
+    (2324, "regularMarketLastPrice", "quotes.regular.regularMarketLastPrice", "_reg.regularMarketLastPrice"),
+    (2325, "mark", "quotes.quote.mark", "_q.mark"),
+    (2327, "mark", "quotes.extended.mark", "_ext.mark"),
+    (2328, "bidPrice", "quotes.quote.bidPrice", "_q.bidPrice"),
+    (2330, "bidPrice", "quotes.extended.bidPrice", "_ext.bidPrice"),
+    (2331, "askPrice", "quotes.quote.askPrice", "_q.askPrice"),
+    (2333, "askPrice", "quotes.extended.askPrice", "_ext.askPrice"),
+    (2334, "quoteTime", "quotes.quote.quoteTime", "_q.quoteTime"),
+    (2336, "quoteTime", "quotes.extended.quoteTime", "_ext.quoteTime"),
+    (2337, "tradeTime", "quotes.quote.tradeTime", "_q.tradeTime"),
+    (2339, "tradeTime", "quotes.extended.tradeTime", "_ext.tradeTime"),
+    (2341, "regularMarketTradeTime", "quotes.regular.regularMarketTradeTime", "_reg.regularMarketTradeTime"),
     # Call sites
-    (732, "_parse_quote_node_session_fields", "quotes.quote.lastPrice", "_build_rest_fast_quote_payload canonical call"),
-    (2886, "_parse_quote_node_session_fields", "quotes.quote.lastPrice", "_tier_a_live_state_dict canonical call"),
+    (794, "_parse_quote_node_session_fields", "quotes.quote.lastPrice", "_build_rest_fast_quote_payload canonical call"),
+    (2982, "_parse_quote_node_session_fields", "quotes.quote.lastPrice", "_tier_a_live_state_dict canonical call"),
     # REST cum-delta
-    (2290, "lastPrice", "quotes.quote.lastPrice", "_update_rest_cum_delta lastPrice"),
-    (2291, "lastSize", "quotes.quote.lastSize", "_update_rest_cum_delta lastSize"),
-    (2292, "bidPrice", "quotes.quote.bidPrice", "_update_rest_cum_delta bidPrice"),
-    (2293, "askPrice", "quotes.quote.askPrice", "_update_rest_cum_delta askPrice"),
+    (2385, "lastPrice", "quotes.quote.lastPrice", "_update_rest_cum_delta lastPrice"),
+    (2386, "lastSize", "quotes.quote.lastSize", "_update_rest_cum_delta lastSize"),
+    (2387, "bidPrice", "quotes.quote.bidPrice", "_update_rest_cum_delta bidPrice"),
+    (2388, "askPrice", "quotes.quote.askPrice", "_update_rest_cum_delta askPrice"),
     # Chain
-    (2053, "expirationDate", "chains.callExpDateMap.*.expirationDate; chains.putExpDateMap.*.expirationDate", "_expiries_from_contracts"),
-    (2074, "expirationDate", "chains.callExpDateMap.*.expirationDate; chains.putExpDateMap.*.expirationDate", "_filter_contracts_by_selected_expiry slice"),
-    (2112, "putCall", "chains.callExpDateMap.*.putCall; chains.putExpDateMap.*.putCall", "_selected_schwab_days_to_expiration putCall"),
-    (2116, "strikePrice", "chains.callExpDateMap.*.strikePrice; chains.putExpDateMap.*.strikePrice", "_selected_schwab_days_to_expiration strikePrice"),
-    (2126, "daysToExpiration", "chains.callExpDateMap.*.daysToExpiration; chains.putExpDateMap.*.daysToExpiration", "_selected_schwab_days_to_expiration DTE"),
-    (2166, "callExpDateMap", "chains.callExpDateMap", "_fetch_expiries_light callExpDateMap"),
-    (2166, "putExpDateMap", "chains.putExpDateMap", "_fetch_expiries_light putExpDateMap"),
+    (2148, "expirationDate", "chains.callExpDateMap.*.expirationDate; chains.putExpDateMap.*.expirationDate", "_expiries_from_contracts"),
+    (2169, "expirationDate", "chains.callExpDateMap.*.expirationDate; chains.putExpDateMap.*.expirationDate", "_filter_contracts_by_selected_expiry slice"),
+    (2207, "putCall", "chains.callExpDateMap.*.putCall; chains.putExpDateMap.*.putCall", "_selected_schwab_days_to_expiration putCall"),
+    (2211, "strikePrice", "chains.callExpDateMap.*.strikePrice; chains.putExpDateMap.*.strikePrice", "_selected_schwab_days_to_expiration strikePrice"),
+    (2221, "daysToExpiration", "chains.callExpDateMap.*.daysToExpiration; chains.putExpDateMap.*.daysToExpiration", "_selected_schwab_days_to_expiration DTE"),
+    (2261, "callExpDateMap", "chains.callExpDateMap", "_fetch_expiries_light callExpDateMap"),
+    (2261, "putExpDateMap", "chains.putExpDateMap", "_fetch_expiries_light putExpDateMap"),
 ]
 
 GOV_SITES: list[tuple[int, str, str, str]] = [
-    (1639, "pcr", "O-47", "KEEP_DERIVED PCR passthrough on cached mkt_ctx (O-47)"),
-    (2928, "spread_pts", "O-50", "derived bid/ask spread points Tier A"),
-    (2931, "spread", "O-50", "derived spread fraction Tier A"),
+    (1695, "pcr", "O-47", "KEEP_DERIVED PCR passthrough on cached mkt_ctx (O-47)"),
+    (3024, "spread_pts", "O-50", "derived bid/ask spread points Tier A"),
+    (3027, "spread", "O-50", "derived spread fraction Tier A"),
 ]
 
+REPLACED_LINES = {t[0] for t in REPLACED_SITES}
+
 SYNTHETIC_GOV: list[tuple[int, str, str, str, str]] = [
-    (1639, "GOVERNED_EXCEPTION (O-47)", "O-47", "_get_mkt_ctx.pcr passthrough", "pcr on cached MarketContext"),
-    (2928, "GOVERNED_EXCEPTION (O-50)", "O-50", "row[spread_pts] derived", "Tier A spread_pts"),
-    (2931, "GOVERNED_EXCEPTION (O-50)", "O-50", "row[spread] derived fraction", "Tier A spread fraction"),
+    (1695, "GOVERNED_EXCEPTION (O-47)", "O-47", "_get_mkt_ctx.pcr passthrough", "pcr on cached MarketContext"),
+    (3024, "GOVERNED_EXCEPTION (O-50)", "O-50", "row[spread_pts] derived", "Tier A spread_pts"),
+    (3027, "GOVERNED_EXCEPTION (O-50)", "O-50", "row[spread] derived fraction", "Tier A spread fraction"),
     (1900, "GOVERNED_EXCEPTION (O-49)", "O-49", "ms_dict fusion_contributing_models", "stack runtime trunk"),
     (1957, "GOVERNED_EXCEPTION (O-49)", "O-49", "ms_dict spot", "signal chain spot_ok"),
     (1959, "GOVERNED_EXCEPTION (O-49)", "O-49", "rules_headline", "signal chain rules"),
@@ -115,15 +117,11 @@ def _match_site(sites: list[tuple[int, str, str, str]], line: int, surface: str)
 
 
 def _is_nmd_line(line: int) -> bool:
-    if 1501 <= line <= 1860:
+    if 1501 <= line <= 2144:
         return True
-    if 2045 <= line <= 2216:
+    if 2401 <= line <= 2525:
         return True
-    if 2270 <= line <= 2467:
-        return True
-    if 2530 <= line <= 2870:
-        return True
-    if 2940 <= line <= 3000:
+    if 2530 <= line <= 2965:
         return True
     return False
 
@@ -175,14 +173,16 @@ def disposition_row(row: dict[str, str], claimed: set[tuple[int, str]]) -> dict[
         row["v2_trace"] = TRACE
         return row
 
-    if 2294 <= line <= 2305 and "cum_delta" in surface.lower():
+    if 2386 <= line <= 2395 and "cum_delta" in surface.lower():
         row["disposition"] = "GOVERNED_EXCEPTION (O-49)"
         row["governed_ref"] = "O-49"
         row["notes"] = "REST cum_delta derived from quote leaves"
         row["v2_trace"] = TRACE
         return row
 
-    if line in {2225, 2227, 2229, 2230, 2232, 2233, 2235, 2236, 2238, 2239, 2241, 2242, 2244, 2246, 732, 2886}:
+    if line in REPLACED_LINES and (
+        "get(" in surface or "LAST_PRICE" in surface or "_parse_quote_node_session_fields" in surface
+    ):
         row["disposition"] = "NOT_MARKET_DATA"
         row["notes"] = "scanner duplicate on REPLACED line"
         row["v2_trace"] = TRACE
@@ -194,7 +194,7 @@ def disposition_row(row: dict[str, str], claimed: set[tuple[int, str]]) -> dict[
         row["v2_trace"] = TRACE
         return row
 
-    if 2217 <= line <= 2270:
+    if 2526 <= line <= 2529:
         row["disposition"] = "NOT_MARKET_DATA"
         row["notes"] = "quote helper / cum_delta orchestration"
         row["v2_trace"] = TRACE
@@ -321,7 +321,7 @@ def main() -> None:
     helper_ids = [
         r["register_id"]
         for r in out_rows
-        if r["disposition"] == "REPLACED" and 2217 <= int(r["line"]) <= 2270
+        if r["disposition"] == "REPLACED" and 2312 <= int(r["line"]) <= 2341
     ]
     PERF_DEDUPE.write_text(
         json.dumps(

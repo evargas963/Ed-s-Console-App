@@ -3,7 +3,7 @@
 # Open items — horizon, stack, UI consistency
 
 **Rule:** Items stay **open** until there is a merged/code-verified resolution (not just “planned”).  
-**Last reviewed:** 2026-05-19 — All work bound by **SCHWAB FULL REPO DIRECTIVE** in [`CLAUDE.md`](CLAUDE.md) (entire codebase; Canopy→Trunk→Branch→Leaf; Read, not scan). No file out of scope. Closure inadmissible until three-PR gate (governance pin → CI diff-emission gate → full-tree scanner regen) per V4 § Scope.
+**Last reviewed:** 2026-05-25 — Schwab work bound by [`CLAUDE.md`](CLAUDE.md) (Schwab law) + [`AGENTS.md`](AGENTS.md) §Fix everything we touch / §Active agent posture (always-on agent rules). **D17 closure scope amended @ `25cb2e3`:** `unreviewed_count == 0` on the **scoped** register (gitignore-aware walk + `SCAN_SCOPE_EXCLUDE_PREFIXES`) — not the legacy full-disk walk. The prior three-PR gate (governance pin → CI diff-emission gate → full-tree scanner regen) is superseded for closure admissibility; CI diff-emission gate (`schwab-csv-first.yml`) remains in force for new market-fact sites per PR. Scoped register at local tip: `closure_admissible: true` (174,459 rows, 34 REPLACED, 0 UNREVIEWED, 0 bare GOVERNED_EXCEPTION) — wire-true REPLACED still concentrated in `market_context.py` (16) + `server.py` (18); other product files with Schwab wire reads await slice-line reconciliation.
 
 ---
 

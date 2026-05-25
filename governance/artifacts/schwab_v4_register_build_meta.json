@@ -1,14 +1,14 @@
 {
   "embedding_mode": "mock",
   "files_attempted": 1069,
-  "generated_at_utc": "2026-05-25T00:31:07Z",
+  "generated_at_utc": "2026-05-25T11:50:23Z",
   "max_files": null,
-  "operator_note": "Scoped walk + slice merge pipeline (stream_revert --merge-slices). 174459 rows; 16 REPLACED from slices; 222 UNREVIEWED residual \u2014 not classifier-tail NMD on product code.",
+  "operator_note": "Scoped walk + slice merge @ 2026-05-25: 174459 rows; unreviewed_count=0; replaced_count=34 (18 server.py wire sites + 16 market_context.py); server chunk1/2 line realignment to _parse_quote_node_session_fields L2312+ and streaming L1003/1014.",
   "partial_scan": false,
-  "register_content_sha256": "6e3a6add98cee931a7b72f9f67a9db39843cd5c1d4026f1b50eb9eda5fbe4702",
+  "register_content_sha256": "6b11a667a5e12a0d2616385e4f92412c3c0054d81284ff02e5d38ac6d2b5a23e",
   "register_csv_path": "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv",
   "register_rows_written": 174459,
-  "register_size_bytes": 199055074,
+  "register_size_bytes": 199046440,
   "scanner_commit_sha": "554bb78af2420c10e42e8e13a093ff6c29ff7142",
   "scanner_flags": {
     "embedding_mode": "mock",

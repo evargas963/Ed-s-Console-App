@@ -1,6 +1,25 @@
 # config.py
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parent
+
+
+def _load_dotenv_if_present() -> None:
+    """Load repo-root ``.env`` when present (host secrets; never committed)."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    env_path = _ROOT / ".env"
+    if env_path.is_file():
+        load_dotenv(env_path, override=False)
+
+
+def _ensure_dotenv_loaded() -> None:
+    _load_dotenv_if_present()
+
 
 # =========================================================
 # TICKER DEFAULT — used by API/CLI when no ticker specified
@@ -41,6 +60,7 @@ class AppConfig:
 
 def build_config(app_dir: str) -> AppConfig:
     """Build config. token_path is always absolute regardless of launch context."""
+    _ensure_dotenv_loaded()
     # Env override for launch-method debugging / explicit path
     env_token = os.getenv("SCHWAB_TOKEN_PATH")
     if env_token:

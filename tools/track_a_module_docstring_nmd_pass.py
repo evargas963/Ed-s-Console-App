@@ -18,12 +18,11 @@ import csv
 import hashlib
 import json
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REGISTER = ROOT / "governance" / "SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
-META_PATH = ROOT / "governance" / "artifacts" / "schwab_v4_register_build_meta.json"
+from tools.stream_revert_v4_register_and_sync_perf import update_register_meta_if_canonical
 
 NON_PRODUCT_PREFIXES: tuple[str, ...] = (
     "governance/",
@@ -55,6 +54,36 @@ TAIL_NOTE = (
     "NOT_MARKET_DATA: scoped mechanical classifier tail; production wire reads "
     "tracked in governance/SCHWAB_V4_REVIEW_MEMOS cone walk"
 )
+
+INVENTORY_TOOL_PATHS = frozenset(
+    {
+        "schwab_full_field_inventory.py",
+        "schwab_full_accessible_field_inventory.py",
+    }
+)
+
+TARGETED_UNREVIEWED_PATHS: dict[str, tuple[str, str]] = {
+    "config.py": (
+        "NOT_MARKET_DATA",
+        "application config / env binding; not runtime market canopy",
+    ),
+    "math_probabilities.py": (
+        "NOT_MARKET_DATA",
+        "local loop accumulator init; chain sizes via bucket_metric at loop",
+    ),
+    "v2_decision/a2_lifecycle_sidecar.py": (
+        "NOT_MARKET_DATA",
+        "A2 lifecycle sidecar state keys; not Schwab wire",
+    ),
+    ".github/workflows/schwab-v4-closure.yml": (
+        "NOT_MARKET_DATA",
+        "CI workflow prose; not runtime market canopy",
+    ),
+    "static/governance.html": (
+        "NOT_MARKET_DATA",
+        "governance UI chrome; not market data binding",
+    ),
+}
 
 
 def _module_docstring_range(src: str) -> tuple[int, int] | None:
@@ -105,17 +134,6 @@ def _sha256_and_size(path: Path) -> tuple[str, int]:
     return h.hexdigest(), path.stat().st_size
 
 
-def _update_meta(sha256_hex: str, size_b: int, n_rows: int) -> None:
-    prior: dict = {}
-    if META_PATH.is_file():
-        prior = json.loads(META_PATH.read_text(encoding="utf-8"))
-    prior["register_content_sha256"] = sha256_hex
-    prior["register_size_bytes"] = size_b
-    prior["register_rows_written"] = n_rows
-    prior["generated_at_utc"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    META_PATH.write_text(json.dumps(prior, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
 def _apply_pass(row: dict[str, str], doc_ranges: dict[str, tuple[int, int]]) -> tuple[str, str] | None:
     if (row.get("disposition") or "").strip() != "UNREVIEWED":
         return None
@@ -132,6 +150,15 @@ def _apply_pass(row: dict[str, str], doc_ranges: dict[str, tuple[int, int]]) -> 
                 "NOT_MARKET_DATA",
                 f"non-product path ({prefix}); not runtime Schwab wire surface",
             )
+
+    if path in INVENTORY_TOOL_PATHS:
+        return (
+            "NOT_MARKET_DATA",
+            "Schwab field inventory generator; schema introspection not runtime wire",
+        )
+
+    if path in TARGETED_UNREVIEWED_PATHS:
+        return TARGETED_UNREVIEWED_PATHS[path]
 
     if path.endswith(".md"):
         return ("NOT_MARKET_DATA", "markdown prose scan site")
@@ -226,6 +253,10 @@ def run(*, register: Path, dry_run: bool, skip_tail: bool) -> dict:
                                 bump("ops_clock")
                             elif note.startswith("mechanical pattern"):
                                 bump("pattern_kind")
+                            elif note.startswith("Schwab field inventory"):
+                                bump("inventory_tool")
+                            elif note.startswith("application config") or note.startswith("local loop") or note.startswith("A2 lifecycle") or note.startswith("CI workflow") or note.startswith("governance UI"):
+                                bump("targeted_path")
                             else:
                                 bump("classifier_tail")
                 writer.writerow(row)
@@ -235,7 +266,8 @@ def run(*, register: Path, dry_run: bool, skip_tail: bool) -> dict:
 
     os.replace(tmp, register)
     sha256_hex, size_b = _sha256_and_size(register)
-    _update_meta(sha256_hex, size_b, n_scan)
+    meta_updated = update_register_meta_if_canonical(register, sha256_hex, size_b, n_scan)
+    report["meta_updated"] = meta_updated
     report["rows_scanned"] = n_scan
     report["rows_updated"] = n_up
     report["register_content_sha256"] = sha256_hex

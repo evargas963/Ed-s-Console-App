@@ -14,9 +14,12 @@ from tools.schwab_coverage_v4_metrics import compute_full_metrics
 from tools.schwab_oxx_validator import validate_register_messages
 from tools.stream_revert_v4_register_and_sync_perf import (
     export_register_baseline,
+    is_canonical_v4_register,
     load_slice_disposition_maps,
     merge_register_slices,
     site_key,
+    update_register_meta_if_canonical,
+    META_PATH,
 )
 from tools.schwab_universal_coverage_scanner_v3.register import REGISTER_COLUMNS, RegisterRow
 
@@ -268,6 +271,71 @@ def test_register_slice_merge_by_site_key(tmp_path: Path) -> None:
     row = next(csv.DictReader(reg.open(encoding="utf-8")))
     assert row["disposition"] == "REPLACED"
     assert row["canonical_field_citation"] == "quotes.quote.bidPrice"
+
+
+def test_merge_slices_does_not_update_global_meta_for_tmp_register(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    meta = tmp_path / "meta.json"
+    meta.write_text(
+        json.dumps(
+            {
+                "register_content_sha256": "deadbeef",
+                "register_rows_written": 999999,
+                "register_size_bytes": 123,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "tools.stream_revert_v4_register_and_sync_perf.META_PATH",
+        meta,
+    )
+    reg = tmp_path / "reg.csv"
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    base = RegisterRow(
+        register_id="rid1",
+        language="python",
+        path="server.py",
+        line=10,
+        col=0,
+        pattern_kind="TEXT_LINE_MARKET_TOKEN",
+        surface_form="bid",
+        tokens="bid",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    with reg.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(base.as_csv_dict())
+    merged = RegisterRow(
+        **{
+            **base.as_csv_dict(),
+            "disposition": "REPLACED",
+            "canonical_field_citation": "quotes.quote.bidPrice",
+        }
+    )
+    with (slice_dir / "server_py.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(merged.as_csv_dict())
+    assert not is_canonical_v4_register(reg)
+    merge_register_slices(reg, slice_dir, dry_run=False)
+    doc = json.loads(meta.read_text(encoding="utf-8"))
+    assert doc["register_rows_written"] == 999999
+    assert doc["register_content_sha256"] == "deadbeef"
+
+
+def test_update_register_meta_if_canonical_skips_tmp_register(tmp_path: Path) -> None:
+    reg = tmp_path / "reg.csv"
+    reg.write_text("register_id\nx\n", encoding="utf-8")
+    assert (
+        update_register_meta_if_canonical(reg, "abc", 3, 1) is False
+    )
 
 
 def test_export_register_baseline_filters_path_and_lines(tmp_path: Path) -> None:

@@ -220,6 +220,7 @@ def test_build_config_fail_closed_without_secrets(monkeypatch, tmp_path: Path) -
 
     monkeypatch.delenv("SCHWAB_API_KEY", raising=False)
     monkeypatch.delenv("SCHWAB_APP_SECRET", raising=False)
+    monkeypatch.setattr("config._load_dotenv_if_present", lambda: None)
     from config import build_config
 
     with pt.raises(RuntimeError, match="SCHWAB_API_KEY"):

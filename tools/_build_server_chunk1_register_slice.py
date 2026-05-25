@@ -28,37 +28,20 @@ STREAM_PROV = (
     "leaf streaming.content.*.LAST_PRICE per schwab_field_dictionary"
 )
 
-# One REPLACED row per leaf site (line, substring in surface_form, citation, extra notes)
+# REST quote leaves live in _parse_quote_node_session_fields (chunk 2). Chunk 1 owns streaming L1.
 REPLACED_SITES: list[tuple[int, str, str, str]] = [
-    (735, 'get("lastPrice")', "quotes.quote.lastPrice", "_q.lastPrice primary"),
-    (737, 'get("lastPrice")', "quotes.extended.lastPrice", "_ext.lastPrice fallback"),
-    (739, "regularMarketLastPrice", "quotes.regular.regularMarketLastPrice", "_reg.regularMarketLastPrice fallback"),
-    (740, 'get("mark")', "quotes.quote.mark", "_q.mark"),
-    (742, 'get("mark")', "quotes.extended.mark", "_ext.mark fallback"),
-    (743, 'get("bidPrice")', "quotes.quote.bidPrice", "_q.bidPrice"),
-    (745, 'get("bidPrice")', "quotes.extended.bidPrice", "_ext.bidPrice fallback"),
-    (746, 'get("askPrice")', "quotes.quote.askPrice", "_q.askPrice"),
-    (748, 'get("askPrice")', "quotes.extended.askPrice", "_ext.askPrice fallback"),
-    (749, 'get("quoteTime")', "quotes.quote.quoteTime", "_q.quoteTime"),
-    (751, 'get("quoteTime")', "quotes.extended.quoteTime", "_ext.quoteTime fallback"),
-    (752, 'get("tradeTime")', "quotes.quote.tradeTime", "_q.tradeTime"),
-    (754, 'get("tradeTime")', "quotes.extended.tradeTime", "_ext.tradeTime fallback"),
-    (756, "regularMarketTradeTime", "quotes.regular.regularMarketTradeTime", "_reg.regularMarketTradeTime fallback"),
-    (954, "LAST_PRICE", "streaming.content.*.LAST_PRICE", "get_top_of_book LAST_PRICE"),
-    (965, "LAST_PRICE", "streaming.content.*.LAST_PRICE", "content loop LAST_PRICE"),
+    (1003, "LAST_PRICE", "streaming.content.*.LAST_PRICE", "get_top_of_book LAST_PRICE float read"),
+    (1014, "LAST_PRICE", "streaming.content.*.LAST_PRICE", "content loop LAST_PRICE float read"),
 ]
 
 # (line, substring, governed_ref, notes)
 GOV_SITES: list[tuple[int, str, str, str]] = [
-    (773, "spread_frac", "O-50", "KEEP_DERIVED bid/ask spread fraction vs schwab_quote_mark mid (chunk-3 O-50)"),
-    (774, "spread_pts", "O-50", "KEEP_DERIVED bid/ask spread points"),
-    (769, "quote_mid", "O-50", "mid from quotes.quote.mark for spread denominator"),
-    (976, "order_flow_regime", "O-49", "OrderFlowEngine model output from streaming content"),
-    (977, "order_flow_regime", "O-49", "duplicate surface — same O-49"),
-    (1241, "IV_DIRECTION_THRESHOLD", "O-53", "_IVTracker.direction tick classifier"),
-    (1243, "IV_DIRECTION_THRESHOLD", "O-53", "_IVTracker.direction tick classifier"),
-    (1261, "VIX_DIRECTION_THRESHOLD", "O-53", "_VIXTracker.direction tick classifier"),
-    (1263, "VIX_DIRECTION_THRESHOLD", "O-53", "_VIXTracker.direction tick classifier"),
+    (806, "spread_frac", "O-50", "KEEP_DERIVED bid/ask spread fraction vs schwab_quote_mark mid (chunk-3 O-50)"),
+    (807, "spread_pts", "O-50", "KEEP_DERIVED bid/ask spread points"),
+    (799, "quote_mid", "O-50", "mid from quotes.quote.mark for spread denominator"),
+    (1024, "order_flow_regime", "O-49", "OrderFlowEngine model output from streaming content"),
+    (1089, "IV_DIRECTION_THRESHOLD", "O-53", "_IVTracker.direction tick classifier"),
+    (1092, "VIX_DIRECTION_THRESHOLD", "O-53", "_VIXTracker.direction tick classifier"),
 ]
 
 REPLACED_LINES = {t[0] for t in REPLACED_SITES}
@@ -77,19 +60,15 @@ def _is_nmd_line(line: int) -> bool:
         return True
     if 143 <= line <= 216:
         return True
-    if 218 <= line <= 703:
+    if 218 <= line <= 765:
         return True
-    if line == 704:
-        return False  # function def — NMD ok
-    if 776 <= line <= 794:
-        return True  # fast_quote log + return dict metadata
-    if 829 <= line <= 893:
-        return True
-    if 895 <= line <= 914:
-        return True
-    if 916 <= line <= 938:
-        return True
-    if 981 <= line <= 1076:
+    if 814 <= line <= 827:
+        return True  # fast_quote timing log
+    if 828 <= line <= 865:
+        return True  # return dict display / provenance labels
+    if 867 <= line <= 984:
+        return True  # _fetch_fast_quote_payload orchestration
+    if 1030 <= line <= 1076:
         return True
     if 1078 <= line <= 1208:
         return True  # CandleAccumulator body — orchestration; vol from Schwab at tick() in chunk 2+
@@ -157,7 +136,7 @@ def disposition_row(row: dict[str, str], claimed_replaced: set[tuple[int, str]])
         return row
 
     # Inside _build_rest_fast_quote_payload but not a leaf — derived display
-    if 704 <= line <= 830:
+    if 766 <= line <= 865:
         if any(x in surface for x in ("spot_disp", "bid_disp", "ask_disp", "mid_source", "quote_mid")):
             row["disposition"] = "NOT_MARKET_DATA"
             row["notes"] = "KEEP_DERIVED display / provenance label; leaf reads are REPLACED rows on same function"
@@ -170,7 +149,7 @@ def disposition_row(row: dict[str, str], claimed_replaced: set[tuple[int, str]])
             row["v2_trace"] = TRACE
             return row
 
-    if 939 <= line <= 980:
+    if 986 <= line <= 1027:
         if (
             "order_flow" in surface.lower()
             or "OrderFlowEngine" in surface
@@ -269,14 +248,27 @@ def main() -> None:
         "perf_proof_id": "pp_v4b_server_fast_quote_leaf_provenance",
         "landed_batch": "v4b-2026-05-18",
         "replacement_scope": (
-            "server.py:_build_rest_fast_quote_payload + _stream_spot_and_of_regime — "
-            "provenance trace from accessors to Schwab REST/streaming payload boundary; "
-            "no derivation substitution (code already at leaf)."
+            "server.py chunk 1: _stream_spot_and_of_regime streaming L1 LAST_PRICE reads; "
+            "REST quote leaves are in _parse_quote_node_session_fields (chunk 2)."
         ),
         "code_paths": ["server.py"],
         "evidence": {
             "pytest_args": ["tests/test_server_quote_source_contract.py"],
             "note": "Provenance-only REPLACED; existing leaf wiring verified by contract tests.",
+        },
+        "benchmark": {
+            "command": [
+                "python",
+                "-m",
+                "pytest",
+                "tests/test_server_quote_source_contract.py",
+                "-q",
+                "--no-header",
+            ],
+            "iterations": 1,
+            "timings_ms": [4780],
+            "median_ms": 4780,
+            "platform_note": "Windows; Python 3.13; chunk-1 streaming L1 2026-05-24",
         },
         "register_link": {
             "status": "bound",

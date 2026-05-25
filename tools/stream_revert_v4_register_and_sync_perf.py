@@ -24,6 +24,21 @@ DEFAULT_REGISTER = ROOT / "governance" / "SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.
 DEFAULT_SLICE_DIR = ROOT / "governance" / "register_slices"
 PERF_DIR = ROOT / "governance" / "artifacts" / "perf_proof" / "replacements"
 META_PATH = ROOT / "governance" / "artifacts" / "schwab_v4_register_build_meta.json"
+
+
+def is_canonical_v4_register(register: Path) -> bool:
+    try:
+        return register.resolve() == DEFAULT_REGISTER.resolve()
+    except OSError:
+        return False
+
+
+def count_register_rows(register: Path) -> int:
+    n = 0
+    with register.open(newline="", encoding="utf-8") as f:
+        for _ in csv.DictReader(f):
+            n += 1
+    return n
 MERGE_FIELDS = ("disposition", "canonical_field_citation", "governed_ref", "notes", "v2_trace")
 _DISPOSITION_RANK = {
     "REPLACED": 5,
@@ -314,7 +329,7 @@ def merge_register_slices(
 
     os.replace(tmp, register)
     sha256_hex, size_b = _sha256_and_size(register)
-    _update_register_meta(sha256_hex, size_b, n_scan)
+    update_register_meta_if_canonical(register, sha256_hex, size_b, n_scan)
     report["rows_scanned"] = n_scan
     report["rows_updated"] = n_up
     report["register_content_sha256"] = sha256_hex
@@ -431,6 +446,55 @@ def _update_register_meta(sha256_hex: str, size_b: int, n_rows: int) -> None:
     META_PATH.write_text(json.dumps(prior, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def update_register_meta_if_canonical(
+    register: Path,
+    sha256_hex: str,
+    size_b: int,
+    n_rows: int,
+) -> bool:
+    """Write global build meta only when ``register`` is the canonical V4 CSV."""
+    if not is_canonical_v4_register(register):
+        return False
+    _update_register_meta(sha256_hex, size_b, n_rows)
+    return True
+
+
+def refresh_meta_pin_if_stale(register: Path, meta_path: Path | None = None) -> bool:
+    """Re-hash canonical register and refresh meta pin when SHA or row count drift."""
+    if not register.is_file() or not is_canonical_v4_register(register):
+        return False
+    sha256_hex, size_b = _sha256_and_size(register)
+    n_rows = count_register_rows(register)
+    mp = meta_path or META_PATH
+    prior: dict = {}
+    if mp.is_file():
+        try:
+            prior = json.loads(mp.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            prior = {}
+    if (
+        prior.get("register_content_sha256") == sha256_hex
+        and int(prior.get("register_rows_written") or -1) == n_rows
+        and int(prior.get("register_size_bytes") or -1) == size_b
+    ):
+        return False
+    _update_register_meta(sha256_hex, size_b, n_rows)
+    return True
+
+
+def repin_register_build_meta(register: Path | None = None) -> dict:
+    """Force meta pin from canonical register CSV (hash, size, row count)."""
+    reg = (register or DEFAULT_REGISTER).resolve()
+    if not reg.is_file():
+        raise FileNotFoundError(reg)
+    if not is_canonical_v4_register(reg):
+        raise ValueError(f"refusing to repin meta from non-canonical register: {reg}")
+    sha256_hex, size_b = _sha256_and_size(reg)
+    n_rows = count_register_rows(reg)
+    _update_register_meta(sha256_hex, size_b, n_rows)
+    return json.loads(META_PATH.read_text(encoding="utf-8"))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--register", type=Path, default=DEFAULT_REGISTER)
@@ -462,6 +526,11 @@ def main() -> int:
         "--sync-only",
         action="store_true",
         help="Resync perf_proof register_link arrays from register CSV only (no row reverts).",
+    )
+    mode.add_argument(
+        "--repin-meta",
+        action="store_true",
+        help="Re-hash canonical register CSV and refresh schwab_v4_register_build_meta.json pin.",
     )
     ap.add_argument("--path", type=str, default="", help="POSIX path filter for --export-baseline.")
     ap.add_argument("--line-lo", type=int, default=0)
@@ -500,6 +569,25 @@ def main() -> int:
         print(json.dumps({"rows_exported": n, "out": str(args.baseline_out)}, indent=2))
         return 0
 
+    if args.repin_meta:
+        if args.dry_run:
+            print(f"would repin meta from {reg}", flush=True)
+            return 0
+        doc = repin_register_build_meta(reg)
+        print(
+            json.dumps(
+                {
+                    "repin_meta": True,
+                    "register_content_sha256": doc.get("register_content_sha256"),
+                    "register_rows_written": doc.get("register_rows_written"),
+                    "register_size_bytes": doc.get("register_size_bytes"),
+                },
+                indent=2,
+            ),
+            flush=True,
+        )
+        return 0
+
     if args.refresh_slice_baselines:
         rep = refresh_slice_baselines(reg, dry_run=args.dry_run)
         print(json.dumps(rep, indent=2))
@@ -525,7 +613,7 @@ def main() -> int:
         n_rows, by_proof = _collect_replaced_by_proof(reg)
         _write_perf_json(by_proof)
         sha256_hex, size_b = _sha256_and_size(reg)
-        _update_register_meta(sha256_hex, size_b, n_rows)
+        update_register_meta_if_canonical(reg, sha256_hex, size_b, n_rows)
         union = sorted({rid for ids in by_proof.values() for rid in ids})
         print(
             json.dumps(
@@ -560,7 +648,7 @@ def main() -> int:
     os.replace(tmp, reg)
     sha256_hex, size_b = _sha256_and_size(reg)
     _write_perf_json(by_proof)
-    _update_register_meta(sha256_hex, size_b, n_rows)
+    update_register_meta_if_canonical(reg, sha256_hex, size_b, n_rows)
 
     print(
         json.dumps(

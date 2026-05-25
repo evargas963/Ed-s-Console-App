@@ -50,7 +50,7 @@
 
 ## Known risks
 
-- **CI:** `schwab-csv-first.yml` on every push/PR (CSV-first + committed meta/scoreboard pin; diff-emission on **pull_request** only). **`pytest.yml`** on every push/PR (`npm run test:all` — Playwright E2E + full pytest). **D17 closure** (`unreviewed_count == 0`) is `schwab-v4-closure.yml` (manual / main / register-path pushes) — expected fail until V4 walk completes.
+- **CI:** `schwab-csv-first.yml` on every push/PR (CSV-first + committed meta/scoreboard pin; diff-emission on **pull_request** only). **`pytest.yml`** on every push/PR (`npm run test:all` — Playwright E2E + full pytest). **D17 closure** (`unreviewed_count == 0`) — local register @ tip passes (`replaced_count=34`, `bare_governed_exception_count=0`); commit meta/scoreboard + slice-builder line fixes before claiming CI green.
 - **Memory portability:** `AGENTS.md` + repo `MEMORY.md` (Phase 1c) = portable; `[OPERATOR-ONLY]` prefs stay machine-local until archived.
 - **Long branch:** prefer small consolidation commits; no force-push.
 - **`config.py` credentials:** hardcoded Schwab API key/secret **removed** @ tip — `build_config` requires `SCHWAB_API_KEY` + `SCHWAB_APP_SECRET` env vars (fail-closed). **Operator action:** rotate keys in Schwab Dev Portal (prior values were in git history), set env before server start. Tests: `tests/test_governance_consolidation.py`.
