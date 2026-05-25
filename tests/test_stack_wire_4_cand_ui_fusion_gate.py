@@ -62,3 +62,48 @@ def test_effective_direction_uses_helper_not_bare_flag():
         "effectiveDirection still uses bare fusion_available — split-brain payload would "
         "steer direction off non-tradable fusion_dominant_direction."
     )
+
+
+def test_is_canonical_tradable_helper_defined():
+    """LIVE-UI-A: UI mirror of fusion_contract.canonical_provenance_is_tradable.
+    Used to gate non-fusion code paths that still read canonical-derived mass
+    (e.g. effectiveDirection fallback, per-horizon fused probs)."""
+    assert "function isCanonicalTradable(d)" in HTML, "LIVE-UI-A: isCanonicalTradable helper missing"
+    helper_idx = HTML.index("function isCanonicalTradable(d)")
+    helper_body = HTML[helper_idx : HTML.index("\n}\n", helper_idx) + 2]
+    assert "canonical_provenance" in helper_body
+    assert "bayesian_fusion" in helper_body
+    assert "toLowerCase" in helper_body, "helper must lowercase before compare (defensive against payload casing)"
+
+
+def test_effective_direction_fallback_gated_on_canonical_tradable():
+    """LIVE-UI-A: when fusion is non-authoritative, effectiveDirection must NOT fall back to
+    dominant_dir / prediction_dir unless canonical is tradable."""
+    fn_start = HTML.index("function effectiveDirection(x)")
+    fn_end = HTML.index("\n}\n", fn_start)
+    body = HTML[fn_start:fn_end]
+    assert "isCanonicalTradable(x)" in body, (
+        "effectiveDirection fallback path must check isCanonicalTradable(x) before reading "
+        "dominant_dir / prediction_dir — non-tradable canonical leaks placeholder direction."
+    )
+    assert body.count("return null") >= 2, (
+        "effectiveDirection should have ≥2 null-return paths after LIVE-UI-A gate "
+        "(early !x guard + non-tradable canonical withhold)"
+    )
+
+
+def test_per_horizon_move_p_gated_on_fusion_authoritative():
+    """LIVE-UI-A: per-horizon Move P and Fused Confidence are fusion-derived mass.
+    Must be withheld ('—') when isFusionAuthoritative(d) is false."""
+    move_p_idx = HTML.index("addKV(grid, 'Move P',")
+    move_p_line_end = HTML.index("\n", move_p_idx)
+    move_p_render = HTML[move_p_idx:move_p_line_end]
+    assert "fusionActive" in move_p_render or "isFusionAuthoritative" in move_p_render, (
+        f"Move P render not gated on fusion authority: {move_p_render!r}"
+    )
+    fc_idx = HTML.index("addKV(grid, 'Fused Confidence'")
+    fc_context_start = HTML.rfind("\n", 0, fc_idx - 400)
+    fc_context = HTML[fc_context_start:fc_idx]
+    assert "fusionActive" in fc_context or "isFusionAuthoritative" in fc_context, (
+        f"Fused Confidence render not gated on fusion authority. Context:\n{fc_context[-400:]!r}"
+    )

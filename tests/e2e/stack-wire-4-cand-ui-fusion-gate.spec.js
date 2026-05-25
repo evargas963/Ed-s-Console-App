@@ -94,7 +94,7 @@ test('effectiveDirection refuses fusion_dominant_direction when not authoritativ
   );
   expect(auth).toBe('up');
 
-  // Split-brain → direction falls back to dominant_dir (NOT fusion_dominant_direction).
+  // Split-brain (non-tradable provenance) → withhold direction (LIVE-UI-A).
   const split = await page.evaluate(() =>
     window.effectiveDirection({
       fusion_available: true,
@@ -103,5 +103,17 @@ test('effectiveDirection refuses fusion_dominant_direction when not authoritativ
       dominant_dir: 'down',
     }),
   );
-  expect(split).toBe('down');
+  expect(split).toBe(null);
+
+  // Tradable canonical, non-authoritative fusion → fall back to dominant_dir.
+  const tradableFallback = await page.evaluate(() =>
+    window.effectiveDirection({
+      fusion_available: true,
+      canonical_provenance: 'bayesian_fusion',
+      stack_runtime: { fusion_active: false },
+      fusion_dominant_direction: 'up',
+      dominant_dir: 'down',
+    }),
+  );
+  expect(tradableFallback).toBe('down');
 });
