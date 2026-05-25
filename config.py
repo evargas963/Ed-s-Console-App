@@ -8,14 +8,18 @@ from dataclasses import dataclass
 # =========================================================
 DEFAULT_TICKER = "SPY"
 
-# =========================================================
-# 🔐 SCHWAB API CREDENTIALS (KEEP IN SCRIPT AS REQUESTED)
-# =========================================================
-SCHWAB_API_KEY = "A8y3Yf4jkAbJfavtb76VNbYimkSEk082"
-SCHWAB_APP_SECRET = "KdGkl1VGTOw9quy5"
-
-# Schwab Dev Portal requires HTTPS callback URL
+# Schwab Dev Portal requires HTTPS callback URL (non-secret default).
 SCHWAB_CALLBACK_URL = "https://127.0.0.1:8182"
+
+
+def _require_env(name: str) -> str:
+    val = os.getenv(name)
+    if val is None or not str(val).strip():
+        raise RuntimeError(
+            f"Missing required environment variable {name!r} — "
+            "set SCHWAB_API_KEY and SCHWAB_APP_SECRET before starting the server."
+        )
+    return str(val).strip()
 
 
 @dataclass(frozen=True)
@@ -52,10 +56,9 @@ def build_config(app_dir: str) -> AppConfig:
     barchart_output_dir = os.path.join(barchart_dir, "output")
     barchart_archive_dir = os.path.join(barchart_dir, "archive")
 
-    # Env vars (optional override), but we still default to hardcoded values above
-    api_key = os.getenv("SCHWAB_API_KEY", SCHWAB_API_KEY)
-    app_secret = os.getenv("SCHWAB_APP_SECRET", SCHWAB_APP_SECRET)
-    callback_url = os.getenv("SCHWAB_CALLBACK_URL", SCHWAB_CALLBACK_URL)
+    api_key = _require_env("SCHWAB_API_KEY")
+    app_secret = _require_env("SCHWAB_APP_SECRET")
+    callback_url = os.getenv("SCHWAB_CALLBACK_URL", SCHWAB_CALLBACK_URL).strip()
 
     return AppConfig(
         app_dir=app_dir,

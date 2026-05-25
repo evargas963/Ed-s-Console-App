@@ -50,10 +50,12 @@ API_KEY = os.getenv("SCHWAB_API_KEY")
 APP_SECRET = os.getenv("SCHWAB_APP_SECRET")
 if not API_KEY or not APP_SECRET:
     try:
-        from config import SCHWAB_API_KEY, SCHWAB_APP_SECRET
-        API_KEY = API_KEY or SCHWAB_API_KEY
-        APP_SECRET = APP_SECRET or SCHWAB_APP_SECRET
-    except ImportError:
+        from config import build_config
+
+        _cfg = build_config(str(Path(__file__).resolve().parent))
+        API_KEY = API_KEY or _cfg.api_key
+        APP_SECRET = APP_SECRET or _cfg.app_secret
+    except (ImportError, RuntimeError):
         pass
 if not API_KEY or not APP_SECRET:
     API_KEY = os.getenv("SCHWAB_API_KEY", "")

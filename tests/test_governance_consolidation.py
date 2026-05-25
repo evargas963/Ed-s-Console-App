@@ -6,6 +6,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 # Pin excerpt hashes only (not full AGENTS.md body).
@@ -211,3 +213,31 @@ def test_cursor_v4_brief_fix_as_we_find_overrides_gatekeeper_wait():
 
 def test_no_deferral_artifacts_sprawl_file_absent():
     assert not (ROOT / "tests/test_no_deferral_artifacts.py").is_file()
+
+
+def test_build_config_fail_closed_without_secrets(monkeypatch, tmp_path: Path) -> None:
+    import pytest as pt
+
+    monkeypatch.delenv("SCHWAB_API_KEY", raising=False)
+    monkeypatch.delenv("SCHWAB_APP_SECRET", raising=False)
+    from config import build_config
+
+    with pt.raises(RuntimeError, match="SCHWAB_API_KEY"):
+        build_config(str(tmp_path))
+
+
+def test_build_config_reads_env_secrets(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("SCHWAB_API_KEY", "test-key")
+    monkeypatch.setenv("SCHWAB_APP_SECRET", "test-secret")
+    from config import build_config
+
+    cfg = build_config(str(tmp_path))
+    assert cfg.api_key == "test-key"
+    assert cfg.app_secret == "test-secret"
+
+
+def test_config_py_has_no_hardcoded_api_secrets() -> None:
+    text = (ROOT / "config.py").read_text(encoding="utf-8")
+    assert "SCHWAB_API_KEY =" not in text
+    assert "SCHWAB_APP_SECRET =" not in text
+    assert "A8y3Yf4jkAbJfavtb76VNbYimkSEk082" not in text

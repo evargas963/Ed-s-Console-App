@@ -53,7 +53,7 @@
 - **CI:** `schwab-csv-first.yml` on every push/PR (CSV-first + committed meta/scoreboard pin; diff-emission on **pull_request** only). **`pytest.yml`** on every push/PR (`npm run test:all` — Playwright E2E + full pytest). **D17 closure** (`unreviewed_count == 0`) is `schwab-v4-closure.yml` (manual / main / register-path pushes) — expected fail until V4 walk completes.
 - **Memory portability:** `AGENTS.md` + repo `MEMORY.md` (Phase 1c) = portable; `[OPERATOR-ONLY]` prefs stay machine-local until archived.
 - **Long branch:** prefer small consolidation commits; no force-push.
-- **`config.py` credentials (next highest-blast-radius slice):** hardcoded Schwab API key/secret in tracked file. **Slice shape when directed:** env-only loader with fail-closed on missing secrets + paired test + operator history-scrub/rotate plan — not a memo-only walk.
+- **`config.py` credentials:** hardcoded Schwab API key/secret **removed** @ tip — `build_config` requires `SCHWAB_API_KEY` + `SCHWAB_APP_SECRET` env vars (fail-closed). **Operator action:** rotate keys in Schwab Dev Portal (prior values were in git history), set env before server start. Tests: `tests/test_governance_consolidation.py`.
 - **`verify_active_models.py`:** exit 1 on many non-core tickers; SPY/QQQ/IWM compliant — expected, not broken stack.
 - **Pre-commit (Phase 4):** `pre-commit install` + `pre-commit install --hook-type commit-msg` — runs governance slice + deferral guard + `check_no_grep_subprocess.py` on staged files. `pre-commit run --all-files` is the acceptance bar.
 
@@ -87,7 +87,9 @@
 
 **Money-path roster (AGENTS.md):** all 11 modules walked @ `9e88491`. All 16 V4 review memos pass gatekeeper CSV cross-check @ `fa4c6d7` (10 legacy memos retroactive appendix).
 
-**D17 register scope (binding):** Closure = `unreviewed_count == 0` on the **scoped register** (gitignore + `SCAN_SCOPE_EXCLUDE_PREFIXES` in meta `scanner_flags`), not 4.1M-style full-disk bloat. Regen @ 2026-05-24: **1045 files / 162501 rows** (was 9453 / 4.1M). **Operator eyes** = trade-decision cone (~30–80 files; money-path largely walked). **Mechanical tail** = classifier on scoped register rows. Cone complete ≠ D17 closed until scoped register metrics hit zero.
+**D17 register scope (binding):** Closure = `unreviewed_count == 0` on the **scoped register** (gitignore + `SCAN_SCOPE_EXCLUDE_PREFIXES` in meta `scanner_flags`). Regen + slice merge pipeline: `stream_revert_v4_register_and_sync_perf.py --refresh-slice-baselines`, `--run-slice-builders`, `--merge-slices`. **Operator eyes** = trade-decision cone wire fixes; **slice merge** = honest REPLACED/GOV on matched sites (not classifier-tail NMD on product code).
+
+**config.py credentials:** env-only `SCHWAB_API_KEY` / `SCHWAB_APP_SECRET` required @ tip — hardcoded secrets removed; operator must rotate exposed keys in Schwab Dev Portal and set env before server start.
 
 ---
 
