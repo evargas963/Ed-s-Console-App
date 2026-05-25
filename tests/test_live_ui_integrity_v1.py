@@ -220,3 +220,50 @@ def test_parse_conf_withholds_null_not_zero():
     assert "return null" in html.split("function parseConf(")[1].split("function horizonRowMissing")[0]
     assert "confPct == null" in html
     assert "confidence withheld" in html
+
+
+def test_live_ui_a_no_canonical_probability_reads_in_js():
+    """LIVE-UI-A: lock the clean JS state — no consumer in static/index.html may read
+    canonical.probability_up / probability_down / probability_flat from the Tier C payload
+    without provenance gating. Today there are zero such reads (verified path-only); this
+    test prevents a future regression that adds a fake-0.333 surface by binding a card to
+    these placeholder fields. Provenance-gated reads (canonical_provenance, fusion_active
+    via isFusionAuthoritative) remain allowed.
+    """
+    html = _html()
+    # Direct JS attribute access patterns that would leak placeholder probs.
+    for pat in (
+        "canonical.probability_up",
+        "canonical.probability_down",
+        "canonical.probability_flat",
+        ".canonical_forecast.probability_up",
+        ".canonical_forecast.probability_down",
+        ".canonical_forecast.probability_flat",
+    ):
+        assert pat not in html, (
+            f"LIVE-UI-A regression: JS now reads {pat!r} — placeholder 1/3-each triplets "
+            "for non-tradable canonicals would leak as a real prob. Gate on "
+            "isFusionAuthoritative(d) / canonical_provenance, or use a provenance-aware helper."
+        )
+
+
+def test_live_ui_a_no_dominant_prob_renders_in_js():
+    """LIVE-UI-A: market_state.py L1541-1556 was previously stamping placeholder 0.3333
+    into ms.dominant_prob for non-tradable canonicals. The producer is now gated. This
+    JS-side lock ensures no operator-visible surface renders dominant_prob as a number —
+    if a future card binds it, the test fires until the consumer adds a withhold check.
+    """
+    html = _html()
+    # dominant_dir (direction string) IS read at effectiveDirection — that's fine,
+    # producer convention sets it to "flat" for non-tradable (fail-closed display).
+    # dominant_prob (the numeric placeholder) must not be rendered as a real value.
+    for pat in (
+        "d.dominant_prob",
+        ".dominant_prob",
+        "dominantProb",
+    ):
+        assert pat not in html, (
+            f"LIVE-UI-A regression: JS now reads {pat!r} — even with the market_state gate, "
+            "this binding would render '0' or empty for withheld (None) values without an "
+            "explicit withhold helper. Add a withhold check or use a provenance-aware accessor."
+        )

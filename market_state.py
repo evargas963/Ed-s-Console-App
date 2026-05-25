@@ -23,7 +23,7 @@ from typing import Optional
 
 from canonical_distances import canonical_nearest_distances
 from math_probabilities import OE_SPREAD_TIGHT_MAX
-from fusion_contract import fusion_is_authoritative
+from fusion_contract import canonical_provenance_is_tradable, fusion_is_authoritative
 from numeric_contract import float_finite_or_none, float_positive_or_none
 from timeframe_config import CANONICAL_TIMEFRAME
 from ml_horizon import PRIMARY_DECISION_HORIZONS
@@ -1541,9 +1541,19 @@ def build_market_state(
             _cf = getattr(_sig_out, "canonical_forecast", None)
             if _cf is not None:
                 ms.dominant_dir = _cf.direction
-                ms.dominant_prob = round(_cf.dominant_probability(), 4)
+                # LIVE-UI-A: gate dominant_prob on provenance — non-tradable canonicals
+                # carry placeholder 1/3-each triplets; stamping `dominant_probability()`
+                # as a real number leaks fake 0.3333 into ms_dict / Tier C payload. UI
+                # consumers that later read this field would surface the placeholder as
+                # a real prob. dominant_dir is left as-is (producer convention sets it
+                # to "flat" for non-tradable, which is the fail-closed display value).
+                _cf_prov = getattr(_cf, "provenance", None)
+                if canonical_provenance_is_tradable(_cf_prov):
+                    ms.dominant_prob = round(_cf.dominant_probability(), 4)
+                else:
+                    ms.dominant_prob = None
                 ms.confidence = _cf.confidence
-                ms.canonical_provenance = str(getattr(_cf, "provenance", "") or "")
+                ms.canonical_provenance = str(_cf_prov or "")
             else:
                 ms.dominant_dir = _pred.forward_direction
                 _fwd_dir = _pred.forward_direction

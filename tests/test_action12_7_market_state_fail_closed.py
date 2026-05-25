@@ -140,3 +140,77 @@ def test_mhap_rows_confidence_none_not_zero_for_missing_assessment():
     assert missing_row["confidence"] is None
     ok_row = next(r for r in _rows if r["horizon"] == "15c")
     assert ok_row["confidence"] is not None
+
+
+def test_dominant_prob_withheld_for_non_tradable_canonical_provenance():
+    """LIVE-UI-A: market_state must NOT stamp placeholder 0.333 into ms.dominant_prob
+    when canonical_forecast carries non-tradable provenance (fusion_unavailable etc.).
+    Producer convention: CanonicalForecast.dominant_probability() returns the placeholder
+    for non-tradable cases; the market_state gate at L1541-1556 (canonical_provenance_is_tradable)
+    must withhold it. dominant_dir is left as the producer's flat (fail-closed visible value).
+    """
+    from signal_types import CanonicalForecast
+
+    # Non-tradable placeholder (matches canonical_forecast_from_fusion fail-closed output)
+    cf_non_tradable = CanonicalForecast(
+        direction="flat",
+        probability_up=1 / 3,
+        probability_down=1 / 3,
+        probability_flat=1 / 3,
+        confidence="low",
+        provenance="fusion_unavailable",
+    )
+    # Mirror the production stamp path (market_state.py L1541-1556):
+    from fusion_contract import canonical_provenance_is_tradable
+
+    _cf = cf_non_tradable
+    ms_dominant_prob = None
+    if _cf is not None:
+        if canonical_provenance_is_tradable(getattr(_cf, "provenance", None)):
+            ms_dominant_prob = round(_cf.dominant_probability(), 4)
+        else:
+            ms_dominant_prob = None
+    assert ms_dominant_prob is None, (
+        f"non-tradable canonical leaked placeholder 0.3333 into ms.dominant_prob: {ms_dominant_prob!r}"
+    )
+
+    # Regression: tradable canonical still stamps the real prob
+    cf_tradable = CanonicalForecast(
+        direction="up",
+        probability_up=0.65,
+        probability_down=0.2,
+        probability_flat=0.15,
+        confidence="medium",
+        provenance="bayesian_fusion",
+    )
+    _cf = cf_tradable
+    ms_dominant_prob = None
+    if _cf is not None:
+        if canonical_provenance_is_tradable(getattr(_cf, "provenance", None)):
+            ms_dominant_prob = round(_cf.dominant_probability(), 4)
+        else:
+            ms_dominant_prob = None
+    assert ms_dominant_prob == 0.65, (
+        f"tradable canonical dominant_prob did not pass through: {ms_dominant_prob!r}"
+    )
+
+
+def test_market_state_source_imports_canonical_provenance_gate():
+    """Lock: market_state.py imports + uses canonical_provenance_is_tradable on the
+    dominant_prob stamp path. Static check — failure means the gate was removed."""
+    import ast as _ast
+    from pathlib import Path
+
+    text = Path(inspect.getfile(MarketState)).read_text(encoding="utf-8")
+    assert "canonical_provenance_is_tradable" in text, "market_state lost the LIVE-UI-A gate import"
+    # AST-level locator: the gate must appear in build_market_state body, not just imports.
+    tree = _ast.parse(text)
+    bm = next(
+        (n for n in tree.body if isinstance(n, _ast.FunctionDef) and n.name == "build_market_state"),
+        None,
+    )
+    assert bm is not None, "build_market_state function missing from market_state.py"
+    body_src = _ast.unparse(bm)
+    assert "canonical_provenance_is_tradable" in body_src, (
+        "canonical_provenance_is_tradable not used inside build_market_state — gate moved or removed"
+    )
