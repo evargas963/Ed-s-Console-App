@@ -58,6 +58,7 @@ MEGA2_TRACEABLE_INVENTORY: tuple[Mega2TraceableDerivation, ...] = (
     Mega2TraceableDerivation("math_exposure.py", 191, "order_flow_field_arrow", "NONE", None, (), None, "No market-field derivation: UI arrow from signed field."),
     Mega2TraceableDerivation("math_exposure.py", 202, "fmt_money", "NONE", None, (), None, "No market-field derivation in fmt_money; Money formatter."),
     Mega2TraceableDerivation("math_exposure.py", 213, "fmt_money_gex", "NONE", None, (), None, "No market-field derivation: GEX money formatter."),
+    Mega2TraceableDerivation("math_exposure_core.py", 26, "charm_compute_unavailable_log_level", "NONE", None, (), None, "No market-field derivation: logging-level helper for charm quality-gate withhold vs expiry mismatch."),
     Mega2TraceableDerivation("math_exposure_core.py", 20, "_f", "NONE", None, (), None, "No market-field derivation in _f; Safe float parse."),
     Mega2TraceableDerivation("math_exposure_core.py", 29, "bucket_metric", "DERIVED", None, ("server.py:_fetch_state",), None, "Fail-closed; no .get(k,0)."),
     Mega2TraceableDerivation("math_exposure_core.py", 36, "bucket_metric_abs", "DERIVED", None, ("math_exposure_core.py:bucket_metric",), None, "Abs of bucket_metric."),

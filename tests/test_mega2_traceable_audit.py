@@ -52,7 +52,7 @@ CLOSING_DISPOSITIONS = frozenset({"SCHWAB_LEAF", "REPLACED", "ALLOWLISTED"})
 #         +1 (a00e78e): _sector_strength_unavailable
 #   206 — +1 big-audit inventory sync: _weighted_mean_present (order_flow_engine.py)
 #   208 — +2 streaming disconnect/cache gate: streaming_l1_cache_usable, _is_stream_disconnect_error
-MEGA2_ROW_COUNT = 209
+MEGA2_ROW_COUNT = 210  # 209 + charm_compute_unavailable_log_level (bee995d)
 
 
 def _mega_bundles() -> tuple[MegaInventoryBundle, ...]:
