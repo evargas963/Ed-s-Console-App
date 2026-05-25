@@ -41,7 +41,10 @@ META_COMMIT_LINE = re.compile(
 DO_NOT_LIE_META_LINE = re.compile(
     r"\b(?:"
     r"do not lie|partial coverage|unverified claim|verified.? without evidence|"
-    r"operator-as-catch|mechanical enforcement|commit-msg guard"
+    r"operator-as-catch|mechanical enforcement|commit-msg guard|"
+    # Hyphenated technical descriptors — only used when describing the checker itself,
+    # not in real violations (which read like prose, not keyword-case identifiers).
+    r"unverified-admission|scope-extension|verify-in-turn-or-omit|verify-in-turn"
     r")\b",
     re.IGNORECASE,
 )
@@ -74,6 +77,56 @@ UNVERIFIED_CLAIM_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         "echoed upstream summary as fact (per cursor/subagent/peer summary without source read)",
         re.compile(
             r"\bper\s+(?:cursor|subagent|claude|peer)['’]?s?\s+(?:summary|report|claim|read)\b",
+            re.IGNORECASE,
+        ),
+    ),
+)
+# Explicit unverified admissions — fire regardless of any nearby evidence cite
+# (an admission like "haven't verified" cannot be redeemed by a cite somewhere else on the line).
+UNVERIFIED_ADMISSION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "explicit unverified admission (haven't verified / haven't checked / haven't enumerated / haven't read)",
+        re.compile(
+            r"\bhaven['’]?t\s+(?:verified|checked|enumerated|read|done|confirmed)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "explicit unverified admission (not verified this turn / not checked here / unverified by me)",
+        re.compile(
+            r"\b(?:not\s+(?:verified|checked|enumerated|confirmed)\s+(?:this\s+turn|in\s+turn|here|by\s+me)"
+            r"|unverified\s+by\s+me)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "deferred verification (separate / further / deeper verification needed / pending)",
+        re.compile(
+            r"\b(?:separate|further|deeper|additional)\s+verification\s+(?:needed|required|pending|to\s+do|is\s+needed)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "deferred verification (would need to verify / would need to check / would have to confirm)",
+        re.compile(
+            r"\bwould\s+(?:need|have)\s+to\s+(?:verify|check|read|enumerate|confirm)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "scope-extension claim without same-turn check (same gap/pattern/issue applies / parallel observation)",
+        re.compile(
+            r"\b(?:same\s+(?:gap|pattern|issue|bug|problem)\s+(?:applies|likely|would|presumably|extends)"
+            r"|parallel\s+(?:concern|observation|gap|pattern)\s+(?:applies|likely)"
+            r"|presumably\s+(?:affects|extends|applies)"
+            r"|likely\s+(?:applies|affects|the\s+case))\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "out-of-turn scope dodge (out of scope of this turn / out of scope of this verification)",
+        re.compile(
+            r"\bout\s+of\s+scope\s+of\s+(?:this\s+(?:turn|verification|check|reply|response))\b",
             re.IGNORECASE,
         ),
     ),
@@ -212,6 +265,13 @@ def check_commit_message(path: Path) -> list[str]:
         for label, pat in INVESTIGATION_ONLY_PATTERNS:
             if pat.search(line):
                 hits.append(f"{path}:{line_no}: investigation-only hit ({label}): {line.strip()[:200]!r}")
+        for label, pat in UNVERIFIED_ADMISSION_PATTERNS:
+            if pat.search(line):
+                hits.append(
+                    f"{path}:{line_no}: unverified-admission hit ({label}): {line.strip()[:200]!r} "
+                    f"(AGENTS § Do not lie / verify-in-turn-or-omit — verify the claim or remove it; "
+                    f"caveats narrate the gap, they don't close it)"
+                )
         if EVIDENCE_CITE.search(line):
             continue
         for label, pat in UNVERIFIED_CLAIM_PATTERNS:

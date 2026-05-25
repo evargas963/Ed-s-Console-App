@@ -173,3 +173,67 @@ def test_commit_message_echoed_upstream_summary_phrases_fail(phrase: str, tmp_pa
     msg.write_text(phrase, encoding="utf-8")
     hits = mod.check_commit_message(msg)
     assert hits, f"expected upstream-summary-echo hit for: {phrase!r}"
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "Haven't verified the parallel bid/ask sites at server.py:2328-2333.",
+        "Haven't checked whether the same gap applies upstream.",
+        "Haven't enumerated the cone yet.",
+        "Not verified this turn; flagging for follow-on.",
+        "Not checked here; deferring to next slice.",
+        "Unverified by me — relying on Cursor's enumeration.",
+        "Separate verification needed for the producer cone.",
+        "Further verification required before sign-off.",
+        "Would need to verify the L1 site list before claiming closure.",
+        "Would have to check the slice CSV first.",
+        "Same gap applies to the bid/ask leaves at L2328-2333.",
+        "Same pattern likely affects the adjacent _ext.get sites.",
+        "Same issue presumably extends to the chain consumers.",
+        "Parallel observation likely applies to the streaming path.",
+        "Presumably affects the L1 SSE diag path as well.",
+        "Likely applies to the prediction_engine consumer.",
+        "Likely the case for market_state.py too.",
+        "Out of scope of this turn — flagging for the next walk.",
+        "Out of scope of this verification, but worth a follow-on.",
+    ],
+)
+def test_commit_message_unverified_admission_phrases_fail(phrase: str, tmp_path: Path) -> None:
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text(phrase, encoding="utf-8")
+    hits = mod.check_commit_message(msg)
+    assert hits, f"expected unverified-admission hit for: {phrase!r}"
+    assert any("unverified-admission" in h for h in hits), (
+        f"expected admission-class label for: {phrase!r}; got {hits!r}"
+    )
+
+
+def test_commit_message_unverified_admission_meta_describing_checker_passes(tmp_path: Path) -> None:
+    """Meta lines that describe the new checker family itself must not fire."""
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text(
+        "Self-governance: extend commit-msg guard with unverified-admission patterns "
+        "(parallel observation / scope-extension / verify-in-turn-or-omit).\n",
+        encoding="utf-8",
+    )
+    assert mod.check_commit_message(msg) == []
+
+
+def test_commit_message_unverified_admission_evidence_cite_does_not_redeem(tmp_path: Path) -> None:
+    """Evidence cite cannot redeem an explicit unverified-admission — the admission IS the violation."""
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text(
+        "Haven't verified server.py:2328 — flagged tests/test_foo.py::test_bar for next slice.\n",
+        encoding="utf-8",
+    )
+    hits = mod.check_commit_message(msg)
+    assert hits, "evidence cite must not bypass unverified-admission family"
+    assert any("unverified-admission" in h for h in hits)
+
+
+def test_agents_md_documents_verify_in_turn_rule() -> None:
+    text = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "Verify-in-turn-or-omit" in text
+    assert '"Same gap applies"' in text or "Same gap applies" in text
+    assert '"Haven\'t verified"' in text or "Haven't verified" in text
