@@ -204,6 +204,18 @@ def test_agents_mutual_gatekeeping_section():
     assert 'id="active-agent-posture"' in agents
 
 
+def test_agents_file_delete_gatekeeper_section():
+    agents = _read("AGENTS.md")
+    excerpt = _section(agents, "File delete gatekeeper")
+    assert "gatekeeper and own catch-net" in excerpt
+    assert "Enumeration first, verdict second" in excerpt
+    assert "Publish an in-chat referrer table" in excerpt
+    assert "Delete = multi-file cone closure" in excerpt
+    assert "Subagent/explore summaries are leads, not verdicts" in excerpt
+    assert 'id="file-delete-gatekeeper"' in agents
+    assert "Banned without referrer table" in excerpt
+
+
 def test_cursor_v4_brief_fix_as_we_find_overrides_gatekeeper_wait():
     brief = _read("governance/CURSOR_V4_AGENT_BRIEF.md")
     assert "Class A" in brief and "Class B" in brief

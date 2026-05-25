@@ -71,6 +71,26 @@ Neither agent waits for permission to run this loop when a miss is recognized.
 
 ---
 
+## File delete gatekeeper `[PROMOTED]` (2026-05-25)
+
+<a id="file-delete-gatekeeper"></a>
+
+**The agent is gatekeeper and own catch-net** — block bad deletes before they reach the operator; do not rely on the operator to catch a missed enumeration. Enumeration first, verdict second.
+
+Before any delete, archive verdict, or **"safe to delete"** / **"zero references"** claim:
+
+1. **Glob** the basename across the repo (paths only).
+2. **Read** every hit — full file when small; at minimum the registry/allowlist block that names the path.
+3. **Publish an in-chat referrer table:** `path | role | classification` where classification is `runtime import/exec`, `tooling allowlist/registry`, or `historical dead pointer`.
+4. **Verdict only after the table is complete** — per-item enumeration before any positive batch delete claim.
+5. **Delete = multi-file cone closure** in one commit: removed file + every tooling allowlist/registry that names it. Historical audit JSON and archived memory are exempt (dead pointers only).
+
+**Banned without referrer table:** "zero references outside itself", "orphan/self-referential only", "safe single-slice delete", "safe-delete count: N" (N > 0).
+
+**Subagent/explore summaries are leads, not verdicts** — re-Read or independently enumerate before sign-off.
+
+---
+
 ## Banned tools `[PROMOTED]` (memory `feedback_no_grep_tool.md`, 2026-05-22)
 
 **Absolute ban — no exceptions.** Do not use pattern-matching search that returns matched **lines** instead of full file content:
