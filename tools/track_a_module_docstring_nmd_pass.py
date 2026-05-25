@@ -58,7 +58,6 @@ TAIL_NOTE = (
 INVENTORY_TOOL_PATHS = frozenset(
     {
         "schwab_full_field_inventory.py",
-        "schwab_full_accessible_field_inventory.py",
     }
 )
 

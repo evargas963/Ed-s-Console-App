@@ -50,7 +50,7 @@ Before this register can be upgraded from draft to closure PASS, these file fami
 
 | Family | Required coverage |
 |---|---|
-| Schwab clients/probes | `schwab_client.py`, `schwab_full_field_inventory.py`, `schwab_full_accessible_field_inventory.py`, `tools/schwab_minute_history_probe_v1.py`, auth/reauth tooling. |
+| Schwab clients/probes | `schwab_client.py`, `schwab_full_field_inventory.py`, `tools/schwab_minute_history_probe_v1.py`, auth/reauth tooling. |
 | Runtime fetch and state | `server.py`, `market_context.py`, `live_market_plane.py`, `polling_adapter.py`, `market_data_adapter.py`. |
 | Option chain normalization and replay | `market_state.py`, `realized_contract_eval.py`, `v2_decision/a2_option_expression.py`, `v2_decision/a2_replay_labels.py` (formerly also `chains.py` — removed in the Schwab-direct redesign; reads are now inline). |
 | Option math and derived analytics | `math_exposure_core.py`, `math_exposure.py`, `math_probabilities.py`, `math_volatility.py`, `order_flow_engine.py`, `order_flow_live_state.py`, `order_flow_streaming.py`. |

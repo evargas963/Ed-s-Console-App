@@ -811,7 +811,6 @@ Regression gate: `tests/test_anti_pattern_family_repo_wide.py` (production `.py`
 | `similarity_feature_survivorship.py` | * | * | similarity survivorship audit |
 | `similarity_feature_universe.py` | * | * | similarity universe audit |
 | `research/` | * | * | research pilot scripts |
-| `schwab_full_accessible_field_inventory.py` | * | * | field inventory scanner |
 | `schwab_full_field_inventory.py` | * | * | field inventory scanner |
 | `v2_decision/` | * | * | v2 decision adapter derived defaults |
 | `audit_` | * | * | audit script counters and diagnostics |
