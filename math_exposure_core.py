@@ -649,18 +649,25 @@ def compute_net_charm(
 
     call_charm = put_charm = 0.0
     used = 0
+    _input_n = len(contracts)
+    _skip_expiry = _skip_side = _skip_fields = _skip_oi = _skip_mult = 0
+    _skip_gamma = _skip_iv = _skip_T = _skip_math = 0
 
     for ct in contracts:
         # Filter to target expiry
         ct_exp = ct.get("expirationDate")
         if ct_exp and _target_exp:
             if str(ct_exp)[:10] != _target_exp:
+                _skip_expiry += 1
                 continue
         elif _target_exp:
+            _skip_expiry += 1
             continue
 
         side    = (ct.get("putCall") or "").upper().strip()
-        if side not in ("CALL", "PUT"): continue
+        if side not in ("CALL", "PUT"):
+            _skip_side += 1
+            continue
 
         strike  = _f(ct.get("strikePrice"))
         gamma   = _f(ct.get("gamma"))
@@ -670,18 +677,25 @@ def compute_net_charm(
         dte_raw = ct.get("daysToExpiration")
 
         if gamma is None or strike is None:
+            _skip_fields += 1
             continue
         if oi is None or oi <= 0:
+            _skip_oi += 1
             continue
         if mult is None or mult <= 0:
+            _skip_mult += 1
             continue
         if gamma == MISSING_GREEK_SENTINEL or not math.isfinite(gamma):
+            _skip_gamma += 1
             continue
         if iv is None or iv <= 0 or iv == MISSING_GREEK_SENTINEL or not math.isfinite(iv):
+            _skip_iv += 1
             continue
 
         T = _resolve_T(dte_raw)
-        if T is None or T <= 0: continue
+        if T is None or T <= 0:
+            _skip_T += 1
+            continue
 
         iv_dec = iv / 100.0
         S      = float(spot)
@@ -707,6 +721,7 @@ def compute_net_charm(
             d2 = d1 - iv_dec * sqrt_T
             phi_d1 = (1.0 / _m.sqrt(2.0 * _m.pi)) * _m.exp(-0.5 * d1**2)
         except Exception:
+            _skip_math += 1
             continue
 
         if T <= 0: continue
@@ -730,6 +745,17 @@ def compute_net_charm(
         used += 1
 
     if used <= 0:
+        if _input_n == 0:
+            _err = f"No contracts provided for expiry={_target_exp}"
+        elif _skip_expiry == _input_n:
+            _err = f"No contracts with expirationDate matching expiry={_target_exp} (input={_input_n})"
+        else:
+            _err = (
+                f"No contracts passed charm quality gates for expiry={_target_exp} "
+                f"(input={_input_n}, skipped: expiry={_skip_expiry}, oi={_skip_oi}, "
+                f"gamma={_skip_gamma}, iv={_skip_iv}, mult={_skip_mult}, T={_skip_T}, "
+                f"fields={_skip_fields}, side={_skip_side}, math={_skip_math})"
+            )
         return {
             "net_charm_daily": None,
             "call_charm_daily": None,
@@ -739,7 +765,7 @@ def compute_net_charm(
             "drift_toward": drift_toward_strike,
             "gamma_pin": drift_toward_strike,
             "contracts_used": 0,
-            "error": f"No contracts matched expiry={_target_exp}",
+            "error": _err,
         }
 
     net = call_charm + put_charm

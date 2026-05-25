@@ -105,6 +105,20 @@ def normalize_vol_decimal(
     return value / 100.0
 
 
+def schwab_iv_percent_to_decimal(value: Optional[float]) -> Optional[float]:
+    """Schwab chain ``volatility`` and MC IV anchor are percent (18.5 = 18.5%).
+
+    ``SignalInput.iv_level`` contract is decimal (0.185). Convert silently at the
+    market_state stamp boundary so downstream regime/MC paths do not warn every tick.
+    """
+    v = float_finite_or_none(value)
+    if v is None:
+        return None
+    if v <= VOL_DECIMAL_PERCENT_HEURISTIC:
+        return v
+    return v / 100.0
+
+
 def _safe_floats(lst: list[Any], *, context: str) -> list[float]:
     out: list[float] = []
     skipped = 0

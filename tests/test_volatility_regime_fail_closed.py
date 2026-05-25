@@ -15,6 +15,7 @@ from volatility_regime import (
     VolRegimeThresholds,
     _garch_trend,
     normalize_vol_decimal,
+    schwab_iv_percent_to_decimal,
     classify_volatility_regime,
 )
 
@@ -38,6 +39,14 @@ def test_normalize_vol_decimal_warns_above_heuristic(caplog: pytest.LogCaptureFi
     out = normalize_vol_decimal(18.0, field="iv_level")
     assert out == pytest.approx(0.18)
     assert any("percentage" in r.message.lower() for r in caplog.records)
+
+
+def test_schwab_iv_percent_to_decimal_silent(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.WARNING)
+    assert schwab_iv_percent_to_decimal(18.52987037055019) == pytest.approx(0.1852987037055019)
+    assert schwab_iv_percent_to_decimal(0.20) == pytest.approx(0.20)
+    assert schwab_iv_percent_to_decimal(None) is None
+    assert not caplog.records
 
 
 def test_garch_trend_warns_on_non_float_entries(caplog: pytest.LogCaptureFixture) -> None:

@@ -34,3 +34,26 @@ def test_net_charm_emits_magnitude_when_contracts_used():
     assert out["contracts_used"] > 0
     assert out["charm_direction"] in ("buying", "selling", "neutral")
     assert out["charm_magnitude"] in ("large", "moderate", "small", "negligible")
+
+
+def test_net_charm_error_distinguishes_expiry_mismatch():
+    out = compute_net_charm(
+        [_charm_contract(expirationDate="2099-06-06")],
+        500.0,
+        "2099-05-05",
+    )
+    assert out["contracts_used"] == 0
+    assert "expirationDate matching" in out["error"]
+
+
+def test_net_charm_error_reports_quality_gate_skips():
+    from math_exposure_core import MISSING_GREEK_SENTINEL
+
+    out = compute_net_charm(
+        [_charm_contract(gamma=MISSING_GREEK_SENTINEL)],
+        500.0,
+        "2099-05-05",
+    )
+    assert out["contracts_used"] == 0
+    assert "quality gates" in out["error"]
+    assert "gamma=1" in out["error"]

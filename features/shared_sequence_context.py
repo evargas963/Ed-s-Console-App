@@ -48,6 +48,22 @@ class SharedSequenceContext:
     meta: Mapping[str, Any]
 
 
+def _seq_len_from_transformer_meta(meta_data: dict[str, Any]) -> Optional[int]:
+    """Read transformer window length from meta; training emits ``sequence_length``."""
+    seq_raw = meta_data.get("seq_len")
+    if seq_raw is None:
+        seq_raw = meta_data.get("sequence_length")
+    if seq_raw is None:
+        return None
+    try:
+        seq_int = int(seq_raw)
+    except (ValueError, TypeError):
+        return None
+    if seq_int < 1:
+        return None
+    return seq_int
+
+
 def _max_transformer_seq_len_for_ticker(ticker: str) -> int:
     """Scan transformer meta on disk per governed horizon; default 20 when missing."""
     tkr = _require_ticker(ticker)
@@ -90,34 +106,22 @@ def _max_transformer_seq_len_for_ticker(ticker: str) -> int:
                         e,
                     )
                     continue
-                seq_raw = meta_data.get("seq_len")
-                if seq_raw is None:
-                    log.warning(
-                        "transformer meta for %s %s at %s missing seq_len key — using default seq_len",
-                        tkr,
-                        hz,
-                        mp,
-                    )
-                    continue
-                try:
-                    seq_int = int(seq_raw)
-                except (ValueError, TypeError):
-                    log.warning(
-                        "transformer meta for %s %s at %s has non-int seq_len %r — using default seq_len",
-                        tkr,
-                        hz,
-                        mp,
-                        seq_raw,
-                    )
-                    continue
-                if seq_int < 1:
-                    log.warning(
-                        "transformer meta for %s %s at %s has invalid seq_len %r — using default seq_len",
-                        tkr,
-                        hz,
-                        mp,
-                        seq_int,
-                    )
+                seq_int = _seq_len_from_transformer_meta(meta_data)
+                if seq_int is None:
+                    if meta_data.get("seq_len") is None and meta_data.get("sequence_length") is None:
+                        log.warning(
+                            "transformer meta for %s %s at %s missing seq_len key — using default seq_len",
+                            tkr,
+                            hz,
+                            mp,
+                        )
+                    else:
+                        log.warning(
+                            "transformer meta for %s %s at %s has invalid seq_len/sequence_length — using default seq_len",
+                            tkr,
+                            hz,
+                            mp,
+                        )
                     continue
                 m = max(m, seq_int)
         finally:

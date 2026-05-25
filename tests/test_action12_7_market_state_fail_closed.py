@@ -5,6 +5,8 @@ from __future__ import annotations
 import inspect
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from market_state import MarketState, build_market_state
 from tests.test_issue18_multi_horizon_decision import _call, _canonical, _inp, _pred
 from multi_horizon_decision import build_multi_horizon_bundle
@@ -78,6 +80,16 @@ def test_charm_direction_default_is_none_not_neutral():
     assert sig.parameters["charm_direction"].default is None
     assert sig.parameters["charm_magnitude"].default is None
     assert sig.parameters["iv_direction"].default is None
+
+
+@patch("signals.compute_signals", side_effect=_fake_compute_signals)
+def test_build_market_state_stamps_iv_level_as_decimal(_mock_cs):
+    """Schwab atm_iv is percent; SignalInput.iv_level must be decimal at stamp."""
+    _SIG_CALLS.clear()
+    totals = [MagicMock(atm_iv=18.52987037055019, pcr_oi=1.0)]
+    build_market_state(**_base_kwargs(totals=totals, mc_iv_level=None))
+    assert len(_SIG_CALLS) == 1
+    assert _SIG_CALLS[0].iv_level == pytest.approx(0.1852987037055019)
 
 
 @patch("signals.compute_signals", side_effect=_fake_compute_signals)

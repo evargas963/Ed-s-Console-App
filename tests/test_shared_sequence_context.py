@@ -10,6 +10,7 @@ import pytest
 from features.shared_sequence_context import (
     SharedSequenceContext,
     _max_transformer_seq_len_for_ticker,
+    _seq_len_from_transformer_meta,
     build_shared_sequence_context,
     transformer_window_chronological,
 )
@@ -204,3 +205,34 @@ def test_max_transformer_seq_len_skips_missing_secondary_active_bundle(monkeypat
     monkeypatch.setattr(ml_predict, "_model_dir_for_ticker", _fake_model_dir)
 
     assert ssc._max_transformer_seq_len_for_ticker("SPY") == 48
+
+
+def test_seq_len_from_transformer_meta_accepts_sequence_length_key() -> None:
+    assert _seq_len_from_transformer_meta({"sequence_length": 20}) == 20
+    assert _seq_len_from_transformer_meta({"seq_len": 48}) == 48
+    assert _seq_len_from_transformer_meta({"sequence_length": 32, "seq_len": 48}) == 48
+
+
+def test_max_transformer_seq_len_reads_sequence_length_without_warning(
+    monkeypatch, tmp_path, caplog,
+):
+    """Production meta files use sequence_length (training export), not seq_len."""
+    from features import shared_sequence_context as ssc
+    import ml_predict
+
+    one_c_dir = tmp_path / "active_1c" / "SPY"
+    one_c_dir.mkdir(parents=True)
+    (one_c_dir / "transformer_SPY_1c_meta.json").write_text(
+        '{"sequence_length": 32}', encoding="utf-8"
+    )
+
+    monkeypatch.setattr(ssc, "ALL_GOVERNED_HORIZONS", ("1c",))
+
+    def _fake_model_dir(ticker: str) -> Path:
+        return one_c_dir
+
+    monkeypatch.setattr(ml_predict, "_model_dir_for_ticker", _fake_model_dir)
+
+    with caplog.at_level("WARNING"):
+        assert _max_transformer_seq_len_for_ticker("SPY") == 32
+    assert not any("missing seq_len key" in r.message for r in caplog.records)

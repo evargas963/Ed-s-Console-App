@@ -27,6 +27,7 @@ from fusion_contract import canonical_provenance_is_tradable, fusion_is_authorit
 from numeric_contract import float_finite_or_none, float_positive_or_none
 from timeframe_config import CANONICAL_TIMEFRAME
 from ml_horizon import PRIMARY_DECISION_HORIZONS
+from volatility_regime import schwab_iv_percent_to_decimal
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1202,10 +1203,10 @@ def build_market_state(
                 _net_gamma     = _f(getattr(consensus_summary, "net_gamma", None))
                 _net_delta_sig = _f(getattr(consensus_summary, "net_delta", None))
             if mc_iv_level is not None and mc_iv_level > 0:
-                _iv_level = _f(mc_iv_level)
+                _iv_level = schwab_iv_percent_to_decimal(_f(mc_iv_level))
             elif totals:
                 t0 = totals[0]
-                _iv_level = _f(getattr(t0, "atm_iv", None))
+                _iv_level = schwab_iv_percent_to_decimal(_f(getattr(t0, "atm_iv", None)))
             if totals:
                 t0 = totals[0]
                 _pcr_ratio = _f(getattr(t0, "pcr_oi", None))
