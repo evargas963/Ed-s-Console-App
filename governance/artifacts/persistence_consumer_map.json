@@ -304,6 +304,7 @@
           "calibration/phase6_edge_discovery_governed_v1.py",
           "calibration/repair_anchor_coverage_pad_v1.py",
           "calibration/repair_canonical_1m_bars_for_outcomes.py",
+          "calibration/v2_advisory_backfill.py",
           "db.py",
           "live_vs_replay_validation.py",
           "replay_bundle_coverage.py",

@@ -99,6 +99,12 @@ _CALIBRATION_OPTIONAL_COLUMNS: dict[str, str] = {
     "advisory_v2_backfilled_ts_utc": "REAL",
     "advisory_v2_backfill_status": "TEXT",
     "advisory_v2_backfill_reason": "TEXT",
+    # Track B (v2.1) provenance — distinguishes Pass 3 forward-rate live writes
+    # from Track B historical INSERTs reconstructed from snapshot rows. Backfilled
+    # rows carry decision_source='reconstructed_from_snapshot'; live writer rows
+    # leave it NULL (default). Used by training-skew analysis to optionally
+    # exclude reconstructed rows from model calibration.
+    "decision_source": "TEXT",
 }
 
 

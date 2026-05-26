@@ -240,6 +240,156 @@ def backfill_v2_advisory_decisions(
     return stats
 
 
+# ───────────────────── Track B (v2.1) — historical INSERT backfill ─────────────────────
+#
+# Track B reconstructs calibration_decision_log rows that should have been
+# written by the live writer but were never persisted (e.g., during the Apr 12
+# – May 5 ED_CALIBRATION_LOG=off gap). It is a NEW INSERT path — distinct from
+# backfill_v2_advisory_decisions above (which only UPDATEs rows that already
+# exist).
+#
+# Provenance: every inserted row carries decision_source='reconstructed_from_snapshot'
+# so training-skew analyses can optionally exclude reconstructed rows from
+# calibration. The OPEN_ITEMS row is tagged [REAL-GATE: training-skew].
+#
+# Acceptance criteria (per v2.1 plan):
+#   - Idempotent: second run inserts 0 (UNIQUE on (ticker, decision_ts_utc)
+#     plus a pre-INSERT NOT EXISTS join).
+#   - Returns {inserted, skipped, skipped_reason_counts: {reason: count, ...}}.
+
+RECONSTRUCTED_DECISION_SOURCE = "reconstructed_from_snapshot"
+
+# Columns copied verbatim from snapshot row -> calibration_decision_log (same name).
+# Kept conservative — these are the analysis-critical fields. Other 38-col live
+# writer fields stay NULL on backfilled rows; that's why decision_source exists.
+_SNAPSHOT_TO_CALIBRATION_COPY_COLUMNS: tuple[str, ...] = (
+    "session_bucket",
+    "expiry",
+    "zone",
+    "vwap_side",
+    "nearest_above_dist",
+    "nearest_below_dist",
+    "regime_primary",
+    "regime_confidence",
+    "vol_regime",
+    "vix_bucket",
+    "outcome_1c",
+    "outcome_5c",
+    "outcome_15c",
+    "outcome_60c",
+    "outcome_1c_pts",
+    "outcome_5c_pts",
+    "outcome_15c_pts",
+    "outcome_60c_pts",
+)
+
+
+def backfill_calibration_decisions_insert_from_snapshots(
+    db_path: Path,
+    *,
+    limit: int | None = None,
+    now_ts: float | None = None,
+) -> dict[str, Any]:
+    """Track B (v2.1) — INSERT a calibration_decision_log row for every snapshot
+    that has fusion + outcome populated but no existing calibration row.
+
+    Distinct from backfill_v2_advisory_decisions (UPDATE path). Idempotent via
+    NOT EXISTS join + UNIQUE (ticker, decision_ts_utc).
+
+    Returns ``{inserted, skipped, skipped_reason_counts: {reason: count}}``.
+    """
+    now = float(now_ts if now_ts is not None else time.time())
+    conn = sqlite3.connect(str(db_path), timeout=60.0)
+    conn.row_factory = sqlite3.Row
+    configure_sqlite_connection(conn)
+    ensure_calibration_schema(conn)
+
+    inserted = 0
+    skipped = 0
+    skipped_reason_counts: dict[str, int] = {}
+
+    sql = """
+        SELECT s.*
+        FROM snapshots s
+        WHERE s.timeframe = ?
+          AND s.fusion_dominant_prob IS NOT NULL
+          AND s.outcome_5c IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM calibration_decision_log c
+              WHERE c.ticker = s.ticker
+                AND c.decision_ts_utc = s.ts_utc
+          )
+        ORDER BY s.ts_utc
+    """
+    params: tuple[Any, ...] = (CANONICAL_TIMEFRAME,)
+    if limit is not None:
+        sql += " LIMIT ?"
+        params = params + (int(limit),)
+
+    try:
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.OperationalError as exc:
+        # snapshots table missing or columns absent — surface as a single
+        # "schema_unavailable" skip so callers see a structured failure.
+        conn.close()
+        return {
+            "inserted": 0,
+            "skipped": 0,
+            "skipped_reason_counts": {f"schema_unavailable:{exc!s}": 1},
+        }
+
+    for row in rows:
+        try:
+            payload_dict = build_v2_advisory_snapshot(row)
+            cols: dict[str, Any] = {
+                "decision_ts_utc": float(row["ts_utc"]),
+                "ticker": str(row["ticker"]),
+                "canonical_timeframe": CANONICAL_TIMEFRAME,
+                "calibration_trust": "legacy",
+                "decision_source": RECONSTRUCTED_DECISION_SOURCE,
+                "matched_snapshot_ts_utc": float(row["ts_utc"]),
+                "outcome_join_method": RECONSTRUCTED_LIVE_MS_SOURCE,
+                "advisory_v2_decision_snapshot_json": json.dumps(
+                    payload_dict, default=str, sort_keys=True
+                ),
+                "advisory_v2_snapshot_schema_version": ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION,
+                "advisory_v2_adapter_version": ADVISORY_V2_ADAPTER_VERSION,
+                "advisory_v2_backfilled_ts_utc": now,
+                "advisory_v2_backfill_status": "ok",
+            }
+            for cn in _SNAPSHOT_TO_CALIBRATION_COPY_COLUMNS:
+                try:
+                    cols[cn] = row[cn]
+                except (IndexError, KeyError):
+                    cols[cn] = None
+            placeholders = ", ".join("?" for _ in cols)
+            column_list = ", ".join(cols.keys())
+            cur = conn.execute(
+                f"INSERT OR IGNORE INTO calibration_decision_log ({column_list}) "
+                f"VALUES ({placeholders})",
+                list(cols.values()),
+            )
+            if int(cur.rowcount) > 0:
+                inserted += 1
+            else:
+                skipped += 1
+                skipped_reason_counts["unique_conflict"] = (
+                    skipped_reason_counts.get("unique_conflict", 0) + 1
+                )
+        except (sqlite3.Error, KeyError, TypeError, ValueError) as exc:
+            skipped += 1
+            reason = f"{type(exc).__name__}:{str(exc)[:80]}"
+            skipped_reason_counts[reason] = skipped_reason_counts.get(reason, 0) + 1
+
+    conn.commit()
+    conn.close()
+    return {
+        "inserted": inserted,
+        "skipped": skipped,
+        "skipped_reason_counts": skipped_reason_counts,
+    }
+
+
 def build_walk_forward_splits(
     *,
     start_ts: float,
