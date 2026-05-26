@@ -139,6 +139,97 @@ def validate_tabular_training_dataframe_canonical(
             raise TrainingCanonicalInputError(f"row {i}: canonical validation failed: {errs}")
 
 
+def preflight_tickers_for_training(
+    db_path: Any,
+    tickers: list[str],
+    *,
+    sample_rows: int = 100,
+    table: str = "snapshots_1m_normalized",
+    timeframe: str = "1m",
+) -> dict[str, Any]:
+    """Per-ticker MVP-coercion preflight gate.
+
+    Catches the row-0 NaN class of training failure in seconds instead of
+    after a multi-hour wall-time run. For each ticker, samples up to
+    ``sample_rows`` rows from the normalized training table and runs them
+    through ``validate_tabular_training_dataframe_canonical``.
+
+    Wired into ``ml_scheduler.run_once`` so the 2026-05-25 incident class
+    (41 selected, 38 train_failed) is caught + reported in <60 seconds.
+
+    Tickers that fail preflight are EXCLUDED from the training run with a
+    structured outcome; the run aborts only if no tickers survive — so a
+    partial good run isn't wasted by one bad ticker.
+
+    Returns::
+
+        {
+          'ok': bool,                  # True iff ALL probed tickers passed
+          'tickers_ok': [str, ...],
+          'tickers_failed': {ticker: error_str, ...},
+          'tickers_no_data': [ticker, ...],   # not blocking, separate bucket
+          'sample_rows_per_ticker': int,
+          'table': str,
+          'elapsed_sec': float,
+        }
+    """
+    import sqlite3
+    import time as _time
+
+    t0 = _time.time()
+    tickers_ok: list[str] = []
+    tickers_failed: dict[str, str] = {}
+    tickers_no_data: list[str] = []
+
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=10.0)
+    except sqlite3.Error as e:
+        return {
+            "ok": False,
+            "tickers_ok": [],
+            "tickers_failed": {t: f"db_open_error: {e!s}" for t in tickers},
+            "tickers_no_data": [],
+            "sample_rows_per_ticker": sample_rows,
+            "table": table,
+            "elapsed_sec": round(_time.time() - t0, 2),
+        }
+    try:
+        for t in tickers:
+            try:
+                df = pd.read_sql_query(
+                    f"SELECT * FROM {table} WHERE ticker = ? AND timeframe = ? "
+                    f"ORDER BY ts_utc ASC LIMIT ?",
+                    conn,
+                    params=(t, timeframe, int(sample_rows)),
+                )
+            except (sqlite3.Error, pd.errors.DatabaseError) as e:
+                tickers_failed[t] = f"sql_error: {type(e).__name__}: {str(e)[:160]}"
+                continue
+            if len(df) == 0:
+                tickers_no_data.append(t)
+                continue
+            try:
+                validate_tabular_training_dataframe_canonical(df, max_rows=int(sample_rows))
+                tickers_ok.append(t)
+            except TrainingCanonicalInputError as e:
+                tickers_failed[t] = str(e)[:200]
+    finally:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+
+    return {
+        "ok": len(tickers_failed) == 0,
+        "tickers_ok": tickers_ok,
+        "tickers_failed": tickers_failed,
+        "tickers_no_data": tickers_no_data,
+        "sample_rows_per_ticker": int(sample_rows),
+        "table": table,
+        "elapsed_sec": round(_time.time() - t0, 2),
+    }
+
+
 def assert_shared_feature_cache_keys_equal(a: str, b: str) -> None:
     """Fail-closed: parallel and cascade training must use the same shared feature cache key."""
     if a != b:

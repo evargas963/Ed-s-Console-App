@@ -1454,6 +1454,81 @@ def run_once(
 
     _pfx = " (promote-from-manifests-only)" if promote_from_manifests_only else ""
     log.info("Tickers (logging_universe authoritative): %s%s", tickers, _pfx)
+
+    # DATA-PIPELINE-INTEGRITY-CHAIN Pass 2 (2026-05-26): MVP coercion preflight
+    # gate. Catches the row-0 NaN class of failure in seconds instead of after
+    # a multi-hour wall-time run. Pass 1 (fd0accd) fixed the NaN-from-pandas
+    # root cause; this gate ensures any FUTURE regression of similar shape is
+    # caught early. Tickers that fail are excluded from the run with a
+    # preflight_failed outcome (distinct from train_failed); the run aborts
+    # only if no tickers survive.
+    try:
+        from features.training_canonical_input import preflight_tickers_for_training
+
+        _pf = preflight_tickers_for_training(DB_PATH, tickers, sample_rows=100)
+        if _pf["tickers_failed"]:
+            log.warning(
+                "preflight: %d of %d tickers failed MVP coercion in %.2fs — excluded from run",
+                len(_pf["tickers_failed"]),
+                len(tickers),
+                _pf["elapsed_sec"],
+            )
+            for _failed_ticker, _err in _pf["tickers_failed"].items():
+                log.warning("  preflight_failed %s: %s", _failed_ticker, _err)
+                run_ticker_outcomes.append(
+                    outcome_entry(
+                        ticker=_failed_ticker,
+                        horizon=hz_sched,
+                        outcome=TrainingOutcome.preflight_failed,
+                        extra={"error": _err, "stage": "preflight"},
+                    )
+                )
+            tickers = [t for t in tickers if t not in _pf["tickers_failed"]]
+            if not tickers:
+                log.error(
+                    "preflight: ALL selected tickers failed MVP coercion; aborting run "
+                    "(elapsed=%.2fs). See OPEN_ITEMS DATA-PIPELINE-INTEGRITY-CHAIN.",
+                    _pf["elapsed_sec"],
+                )
+                try:
+                    from training_pipeline_status import record_run_finish
+
+                    record_run_finish(
+                        ml_horizon=hz_sched,
+                        ticker_outcomes=run_ticker_outcomes,
+                        exit_code_hint=1,
+                    )
+                except Exception as _tps_e2:
+                    log.debug("record_run_finish on preflight abort: %s", _tps_e2, exc_info=True)
+                return {
+                    "exit_code": 1,
+                    "ticker_outcomes": run_ticker_outcomes,
+                    "ml_horizon": hz_sched,
+                    "skipped": False,
+                    "preflight_blocked": True,
+                }
+        else:
+            log.info(
+                "preflight OK: %d of %d tickers passed MVP coercion in %.2fs",
+                len(_pf["tickers_ok"]),
+                len(tickers),
+                _pf["elapsed_sec"],
+            )
+        if _pf["tickers_no_data"]:
+            log.info(
+                "preflight: %d tickers had no normalized rows yet (training will skip them naturally): %s",
+                len(_pf["tickers_no_data"]),
+                _pf["tickers_no_data"][:30],
+            )
+    except Exception as _pf_e:
+        # Preflight gate must NOT itself block a working training run — fail
+        # open with a loud warning. The gate is best-effort prevention; the
+        # worst case if it errors is the same 65-min wall-time as today.
+        log.warning(
+            "preflight gate errored (continuing without it — see DATA-PIPELINE-INTEGRITY-CHAIN): %s",
+            _pf_e,
+            exc_info=True,
+        )
     try:
         from training_pipeline_status import enrollment_category_counts, record_run_start
 

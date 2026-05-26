@@ -14,6 +14,13 @@ class TrainingOutcome(str, Enum):
     train_failed = "train_failed"
     eval_failed = "eval_failed"
     verify_failed = "verify_failed"
+    # DATA-PIPELINE-INTEGRITY-CHAIN Pass 2 (2026-05-26): MVP coercion
+    # preflight rejected this ticker BEFORE training started. Distinct from
+    # train_failed so operators can grep "preflight_failed" in
+    # training_pipeline_status.json to find aborted-early tickers without
+    # confusing them with mid-training failures. Not a CORE_SUCCESS_OUTCOMES
+    # — compute_run_exit_code returns 1 if any core ticker is preflight_failed.
+    preflight_failed = "preflight_failed"
 
 
 CORE_SUCCESS_OUTCOMES: frozenset[TrainingOutcome] = frozenset(
