@@ -65,7 +65,7 @@
     {
       "writer_fn": "EdDB.logging_universe_sync_panel_auto",
       "file": "db.py",
-      "line": 1270,
+      "line": 1255,
       "tables_written": [
         "logging_universe"
       ],
@@ -85,7 +85,7 @@
     {
       "writer_fn": "EdDB.logging_universe_sync_core",
       "file": "db.py",
-      "line": 1335,
+      "line": 1320,
       "tables_written": [
         "logging_universe"
       ],
@@ -105,7 +105,7 @@
     {
       "writer_fn": "EdDB.logging_universe_upsert_user_persisted",
       "file": "db.py",
-      "line": 1359,
+      "line": 1344,
       "tables_written": [
         "logging_universe"
       ],
@@ -126,7 +126,7 @@
     {
       "writer_fn": "EdDB.logging_universe_upsert_pinned",
       "file": "db.py",
-      "line": 1412,
+      "line": 1397,
       "tables_written": [
         "logging_universe"
       ],
@@ -146,7 +146,7 @@
     {
       "writer_fn": "EdDB.logging_universe_record_eviction",
       "file": "db.py",
-      "line": 1555,
+      "line": 1540,
       "tables_written": [
         "logging_universe_eviction_log"
       ],
@@ -163,12 +163,14 @@
     {
       "writer_fn": "EdDB.logging_universe_migration_mark",
       "file": "db.py",
-      "line": 1687,
+      "line": 1672,
       "tables_written": [
         "logging_universe_migration_log"
       ],
       "production_callers": [
-        "db.py"
+        "db.py",
+        "scheduler_user_tickers.py",
+        "server.py"
       ],
       "read_consumers": {
         "logging_universe_migration_log": [
@@ -180,7 +182,7 @@
     {
       "writer_fn": "EdDB.logging_universe_import_legacy_json_tickers",
       "file": "db.py",
-      "line": 1703,
+      "line": 1688,
       "tables_written": [
         "logging_universe"
       ],
@@ -198,7 +200,7 @@
     {
       "writer_fn": "EdDB.logging_universe_migrate_legacy_json_file",
       "file": "db.py",
-      "line": 1754,
+      "line": 1739,
       "tables_written": [
         "logging_universe",
         "logging_universe_migration_log"
@@ -222,7 +224,7 @@
     {
       "writer_fn": "EdDB.logging_universe_migrate_scheduler_companion_json",
       "file": "db.py",
-      "line": 1885,
+      "line": 1870,
       "tables_written": [
         "logging_universe",
         "logging_universe_migration_log"
@@ -246,7 +248,7 @@
     {
       "writer_fn": "EdDB._migrate_horizon_bar_contract_v1",
       "file": "db.py",
-      "line": 2446,
+      "line": 2432,
       "tables_written": [
         "ed_schema_flags"
       ],
@@ -265,7 +267,7 @@
     {
       "writer_fn": "EdDB._migrate_outcome_anchor_bar_canonical",
       "file": "db.py",
-      "line": 2516,
+      "line": 2502,
       "tables_written": [
         "ed_schema_flags"
       ],
@@ -284,7 +286,7 @@
     {
       "writer_fn": "EdDB.insert_snapshot",
       "file": "db.py",
-      "line": 2621,
+      "line": 2625,
       "tables_written": [
         "snapshots"
       ],
@@ -313,30 +315,16 @@
       "status": "live"
     },
     {
-      "writer_fn": "EdDB.insert_news_event",
-      "file": "db.py",
-      "line": 2654,
-      "tables_written": [
-        "news_events"
-      ],
-      "production_callers": [
-        "news_sentiment.py"
-      ],
-      "read_consumers": {
-        "news_events": []
-      },
-      "status": "dormant"
-    },
-    {
       "writer_fn": "EdDB.upsert_1m_bars",
       "file": "db.py",
-      "line": 2694,
+      "line": 2658,
       "tables_written": [
         "price_bars_1m"
       ],
       "production_callers": [
         "bar_rehydration_issue19_v1.py",
         "calibration/repair_anchor_coverage_pad_v1.py",
+        "calibration/repair_canonical_1m_bars_for_outcomes.py",
         "db.py",
         "server.py"
       ],
@@ -363,12 +351,13 @@
     {
       "writer_fn": "EdDB.log_level_cross",
       "file": "db.py",
-      "line": 3648,
+      "line": 3612,
       "tables_written": [
         "level_crosses"
       ],
       "production_callers": [
-        "db.py"
+        "db.py",
+        "server.py"
       ],
       "read_consumers": {
         "level_crosses": [
@@ -380,12 +369,13 @@
     {
       "writer_fn": "EdDB.log_model_accuracy",
       "file": "db.py",
-      "line": 3862,
+      "line": 3826,
       "tables_written": [
         "model_accuracy"
       ],
       "production_callers": [
-        "db.py"
+        "db.py",
+        "server.py"
       ],
       "read_consumers": {
         "model_accuracy": [
@@ -408,7 +398,7 @@
     {
       "candidate_fn": "EdDB.compute_accuracy",
       "file": "db.py",
-      "line": 3807,
+      "line": 3771,
       "production_callers": [
         "server.py"
       ],
@@ -416,9 +406,9 @@
     }
   ],
   "summary": {
-    "writer_count": 18,
+    "writer_count": 17,
     "live_count": 16,
-    "dormant_count": 2,
-    "table_count": 10
+    "dormant_count": 1,
+    "table_count": 9
   }
 }

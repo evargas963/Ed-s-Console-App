@@ -244,6 +244,36 @@ def _status_for(production_callers: list[str], read_consumers_by_table: dict[str
     return "dormant"
 
 
+def _persistence_file_callers_of(short_name: str) -> set[str]:
+    """Return the set of short function names defined in a persistence file
+    that themselves call `short_name`. Used to chase 1-level helper
+    indirection (e.g., detect_and_log_level_crosses -> log_level_cross,
+    maybe_log_model_accuracy -> log_model_accuracy).
+    """
+    persistence_paths = {ROOT / rel for rel in PERSISTENCE_FILES}
+    pat = re.compile(CALL_RE_TMPL.format(fn=re.escape(short_name)))
+    callers: set[str] = set()
+    for path in persistence_paths:
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+            tree = ast.parse(text)
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        for fn_node, qualname, _line in _walk_functions(tree):
+            short_caller = qualname.rsplit(".", 1)[-1]
+            if short_caller == short_name:
+                continue
+            try:
+                seg = ast.get_source_segment(text, fn_node) or ""
+            except Exception:
+                seg = ""
+            if pat.search(seg):
+                callers.add(short_caller)
+    return callers
+
+
 def build_map(stable_time: bool = False) -> dict:
     all_writers: list[dict] = []
     all_candidates: list[dict] = []
@@ -255,7 +285,15 @@ def build_map(stable_time: bool = False) -> dict:
 
     short_writer_names = {w["writer_fn"].rsplit(".", 1)[-1] for w in all_writers}
     short_candidate_names = {c["candidate_fn"].rsplit(".", 1)[-1] for c in all_candidates}
-    all_short_names = short_writer_names | short_candidate_names
+
+    # Expand the caller-scan name set with intermediate persistence helpers
+    # so we can attribute (e.g.) server.py to log_level_cross via
+    # detect_and_log_level_crosses without losing the helper pattern.
+    indirect_helpers_by_writer: dict[str, set[str]] = {
+        n: _persistence_file_callers_of(n) for n in short_writer_names
+    }
+    all_helper_names = {h for helpers in indirect_helpers_by_writer.values() for h in helpers}
+    all_short_names = short_writer_names | short_candidate_names | all_helper_names
 
     callers_by_name = _scan_repo_for_callers(all_short_names)
 
@@ -265,7 +303,13 @@ def build_map(stable_time: bool = False) -> dict:
     writers_out: list[dict] = []
     for w in all_writers:
         short = w["writer_fn"].rsplit(".", 1)[-1]
-        prod_callers = callers_by_name.get(short, [])
+        direct_callers = set(callers_by_name.get(short, []))
+        # Merge in callers of any intermediate persistence helper that
+        # calls this writer (1-level indirection).
+        for helper in indirect_helpers_by_writer.get(short, set()):
+            for c in callers_by_name.get(helper, []):
+                direct_callers.add(c)
+        prod_callers = sorted(direct_callers)
         read_consumers = {t: consumers_by_table.get(t, []) for t in w["tables_written"]}
         writers_out.append(
             {

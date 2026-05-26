@@ -4326,7 +4326,6 @@ def _fetch_state(
             ticker.upper(),
             db=_ed_db,
             throttle_sec=_news_throttle,
-            persist_events=True,
         )
     except Exception as _nc_e:
         log.debug("news_context: %s", _nc_e)

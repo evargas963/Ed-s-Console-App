@@ -1202,21 +1202,6 @@ class EdDB:
                 computed_at         TEXT DEFAULT (datetime('now'))
             );
 
-            -- ── Breaking / notable news events (optional persistence) ────────
-            CREATE TABLE IF NOT EXISTS news_events (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp       TEXT    NOT NULL,
-                source          TEXT    NOT NULL,
-                ticker          TEXT,
-                headline        TEXT    NOT NULL,
-                sentiment_score REAL,
-                impact_level    TEXT,
-                url             TEXT,
-                raw_json        TEXT
-            );
-            CREATE INDEX IF NOT EXISTS idx_news_ticker_ts ON news_events(ticker, timestamp);
-            CREATE INDEX IF NOT EXISTS idx_news_impact_ts ON news_events(impact_level, timestamp);
-
             """)
         log.info("Schema initialized")
 
@@ -2437,6 +2422,7 @@ class EdDB:
         self._migrate_outcome_anchor_bar_canonical()
         self._migrate_drop_session_log_v1()
         self._migrate_drop_confluence_log_v1()
+        self._migrate_drop_news_events_v1()
 
         if _counts_before and is_canonical_db_path(self.db_path) and not skip_automatic_backup():
             with self._connect() as _c1:
@@ -2597,6 +2583,24 @@ class EdDB:
             except sqlite3.OperationalError as exc:
                 log.warning("drop session_log failed: %s", exc)
 
+    def _migrate_drop_news_events_v1(self) -> None:
+        """Pass 8 — drop the news_events table.
+
+        news_events was scaffolded with insert_news_event writer and a single
+        guarded call site in news_sentiment.py:refresh_and_context, but zero
+        production readers. Operator-authorized drop 2026-05-26 after Cursor
+        identified it as the only remaining table-level dormancy with a live
+        writer post-Pass 7. News headlines reach the operator UI via
+        ms.news_context (live aggregator), persistence added no value.
+        """
+        with self._connect() as conn:
+            try:
+                conn.execute("DROP INDEX IF EXISTS idx_news_ticker_ts")
+                conn.execute("DROP INDEX IF EXISTS idx_news_impact_ts")
+                conn.execute("DROP TABLE IF EXISTS news_events")
+            except sqlite3.OperationalError as exc:
+                log.warning("drop news_events failed: %s", exc)
+
     def _migrate_drop_confluence_log_v1(self) -> None:
         """Pass 7 — drop the confluence_log table.
 
@@ -2650,46 +2654,6 @@ class EdDB:
                 return int(cur.lastrowid)
 
         return self._tier1_snapshot_write("insert_snapshot", tkr_w or None, _do)
-
-    def insert_news_event(
-        self,
-        *,
-        ts_iso: str,
-        source: str,
-        ticker: Optional[str],
-        headline: str,
-        sentiment_score: Optional[float] = None,
-        impact_level: str = "LOW",
-        url: str = "",
-        raw_json: str = "",
-    ) -> Optional[int]:
-        """Append one news row (dedupe by headline+timestamp optional at call site)."""
-        if not headline:
-            return None
-        params = (
-            ts_iso,
-            source[:64],
-            (ticker or "")[:32] or None,
-            headline[:2000],
-            sentiment_score,
-            impact_level[:32],
-            (url or "")[:2000],
-            (raw_json or "")[:16000],
-        )
-
-        def _do() -> Optional[int]:
-            with self._connect() as conn:
-                cur = conn.execute(
-                    """
-                    INSERT INTO news_events
-                      (timestamp, source, ticker, headline, sentiment_score, impact_level, url, raw_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    params,
-                )
-                return int(cur.lastrowid) if cur.lastrowid is not None else None
-
-        return _do()
 
     def upsert_1m_bars(
         self,

@@ -165,6 +165,18 @@
 
 ---
 
+## Persistence consumer wiring (PERSISTENCE-CONSUMER-AUDIT 2026-05-25/26)
+
+Pass 3 / 4 / 5a / 5b landed real producer + consumer rows for the four
+formerly-dormant tables. Pass 6 / 7 / 8 dropped what couldn't be wired.
+One row per ops/API surface added so the wiring map matches code.
+
+| surface | field | producer | transport | client_clock | stale_rule | test | open_items_id | phase_2_3 |
+|---------|-------|----------|-----------|--------------|------------|------|---------------|-----------|
+| **Ops dashboard — Calibration health card** | `last_24h_count` / `expected_per_24h` / `ratio` / `warn` | `calibration/writer.py:compute_calibration_rate_health` (Pass 3) -> `server.py:api_ops_calibration_rowcount` (~L5942) | HTTP poll (60s) `/api/ops/calibration_rowcount` | `ts_utc` in response payload | Card shows "RATE BELOW THRESHOLD" red badge when `warn=true`; "ENV OFF" when `env_enabled=false`; "TABLE MISSING" when `table_present=false`. WARN log line on every probe where `warn=true`. | `tests/test_calibration_logging_production_path.py::test_calibration_rate_health_warn_fires_when_below_threshold` + 4 siblings; `tests/test_model_accuracy_wire.py::test_ops_html_has_calibration_health_panel` | GAP-CAL-CONSUMER `4d420c8` | producer-only closed (forward path); Track B = historical INSERT backfill, separate epic |
+| **Decision Command / breach log — level crosses** | `level_crosses.{level_name,direction,spot_at_cross,ts_utc}` | `db.py:EdDB.detect_and_log_level_crosses` (Pass 4) wired from `server.py:_fetch_state` (~L5524) | HTTP `/api/level_crosses?ticker=...&n=` (recent) / `?level_name=&level_value=` (count_level_tests) + `log.info level_cross` server log line | per-row `ts_utc` | Reader returns last-N rows or directional test counts; debounce by `(ticker, level_name, direction)` within `EdDB.LEVEL_CROSS_DEBOUNCE_S` (60s); opposite-direction reversal NOT debounced. | `tests/test_level_crosses_wire.py` (10 tests: debounce, multi-level, count_level_tests round-trip) | LEVEL-CROSSES-WIRE `cfbff0f` | producer + consumer closed; Pass 4b Decision Command "third test" chip = optional UI sub-slice, post-freeze |
+| **Ops dashboard — Model accuracy card** | `model_accuracy.{accuracy_pct, total_predictions, horizon}` per ticker | `db.py:EdDB.log_model_accuracy` / `maybe_log_model_accuracy` (Pass 5a) wired from `server.py:/api/accuracy` (~L7666); reader `get_model_accuracy_history` | HTTP poll (60s) `/api/accuracy?ticker=SPY` -> `current` map + `history` array | `ts_utc` in each persisted row | Throttled by `ACCURACY_INTERVAL` (10min cache) + `MODEL_ACCURACY_DEDUP_EPSILON` (0.05pct delta gate). New row only when value meaningfully changes. | `tests/test_model_accuracy_wire.py::test_*` (9 tests inc. ops_html surface presence) | MODEL-ACC-WIRE `5e34390` / MODEL-ACC-UI `72c17d8` | producer + consumer closed (adjacent commits per AGENTS 5a/5b rule) |
+
 ## Phase 0 housekeeping (STACK-WIRE-0)
 
 | Item | Site | Action |

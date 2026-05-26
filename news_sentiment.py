@@ -335,7 +335,6 @@ def refresh_and_context(
     *,
     db: Any = None,
     throttle_sec: Optional[float] = None,
-    persist_events: bool = True,
 ) -> dict[str, Any]:
     """
     Rate-limited refresh for one ticker. Returns API/snapshot-ready context dict.
@@ -402,22 +401,6 @@ def refresh_and_context(
             breaking = 1
             break_h = headline[:500]
 
-        if persist_events and db and imp == "HIGH":
-            try:
-                if hasattr(db, "insert_news_event"):
-                    db.insert_news_event(
-                        ts_iso=ts_art.isoformat(),
-                        source="finnhub",
-                        ticker=tkr,
-                        headline=headline,
-                        sentiment_score=None,
-                        impact_level=imp,
-                        url=str(art.get("url") or ""),
-                        raw_json=json.dumps(art)[:8000],
-                    )
-            except Exception as e:
-                log.debug("insert_news_event: %s", e)
-
     company_news_ok = len(articles) > 0
     # Free Finnhub tiers: /news-sentiment may 403 while /company-news works.
     feed_activity = min(1.0, len(articles) / 40.0) if company_news_ok else None
@@ -476,7 +459,6 @@ def refresh_and_context_for_ui(
     *,
     db: Any = None,
     throttle_sec: Optional[float] = None,
-    persist_events: bool = True,
 ) -> dict[str, Any]:
     """
     Same as refresh_and_context but bounded wall-clock time so /api/state never
@@ -488,9 +470,7 @@ def refresh_and_context_for_ui(
 
     dline = float(os.environ.get("ED_NEWS_CONTEXT_DEADLINE_SEC", "5"))
     if dline <= 0:
-        return refresh_and_context(
-            ticker, db=db, throttle_sec=throttle_sec, persist_events=persist_events
-        )
+        return refresh_and_context(ticker, db=db, throttle_sec=throttle_sec)
     tkr = ticker.upper().strip()
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
         fut = ex.submit(
@@ -498,7 +478,6 @@ def refresh_and_context_for_ui(
             tkr,
             db=db,
             throttle_sec=throttle_sec,
-            persist_events=persist_events,
         )
         try:
             return fut.result(timeout=dline)
