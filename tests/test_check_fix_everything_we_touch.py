@@ -441,6 +441,177 @@ def test_storage_needs_consumer_ignores_db_edits_with_no_new_inserts(tmp_path: P
     assert hits == [], f"refactor with no new INSERTs should pass; got {hits!r}"
 
 
+def test_persistence_writer_has_reader_no_triggers_passes() -> None:
+    """Pass 1b: no persistence files staged -> no work."""
+    staged = {"server.py", "static/index.html"}
+    hits = mod.check_persistence_writer_has_reader(staged)
+    assert hits == [], f"check should no-op when no persistence files staged; got {hits!r}"
+
+
+def test_persistence_writer_has_reader_passes_for_table_with_real_gate(tmp_path: Path) -> None:
+    """A new INSERT against a dormant table that's tracked in OPEN_ITEMS under
+    [REAL-GATE: <tag>] must pass — the dormancy is intentional and disclosed."""
+    import subprocess
+
+    (tmp_path / "db.py").write_text("# db\n", encoding="utf-8")
+    (tmp_path / "OPEN_ITEMS.md").write_text(
+        "- [ ] DORMANT-TABLES-PRE-WIRE [REAL-GATE: unwalked-file] level_crosses, confluence_log, "
+        "session_log — wire or drop in Passes 4-7.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "governance" / "artifacts").mkdir(parents=True)
+    (tmp_path / "governance" / "artifacts" / "persistence_consumer_map.json").write_text(
+        '{"schema_version":1,"writers":[{"writer_fn":"log_level_cross","file":"db.py",'
+        '"line":1,"tables_written":["level_crosses"],"production_callers":[],'
+        '"read_consumers":{"level_crosses":[]},"status":"dormant"}]}\n',
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "add", "db.py"], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "-c", "user.email=t@t", "-c", "user.name=t",
+         "commit", "-qm", "init"],
+        check=True,
+    )
+    (tmp_path / "db.py").write_text(
+        "def log_level_cross(conn):\n"
+        "    conn.execute('INSERT INTO level_crosses VALUES (?)', (1,))\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(tmp_path), "add", "db.py"], check=True)
+
+    staged = {"db.py"}
+    orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = tmp_path
+    try:
+        hits = mod.check_persistence_writer_has_reader(staged)
+    finally:
+        mod.REPO_ROOT = orig_root
+    assert hits == [], f"REAL-GATE-tagged table should pass; got {hits!r}"
+
+
+def test_persistence_writer_has_reader_fails_for_dormant_table_without_real_gate(tmp_path: Path) -> None:
+    """A new INSERT against a table with no readers AND no REAL-GATE row fails."""
+    import subprocess
+
+    (tmp_path / "db.py").write_text("# db\n", encoding="utf-8")
+    (tmp_path / "OPEN_ITEMS.md").write_text("# nothing relevant here\n", encoding="utf-8")
+    (tmp_path / "governance" / "artifacts").mkdir(parents=True)
+    (tmp_path / "governance" / "artifacts" / "persistence_consumer_map.json").write_text(
+        '{"schema_version":1,"writers":[{"writer_fn":"log_orphan","file":"db.py",'
+        '"line":1,"tables_written":["orphan_table"],"production_callers":[],'
+        '"read_consumers":{"orphan_table":[]},"status":"dormant"}]}\n',
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "add", "db.py"], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "-c", "user.email=t@t", "-c", "user.name=t",
+         "commit", "-qm", "init"],
+        check=True,
+    )
+    (tmp_path / "db.py").write_text(
+        "def log_orphan(conn):\n"
+        "    conn.execute('INSERT INTO orphan_table VALUES (?)', (1,))\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(tmp_path), "add", "db.py"], check=True)
+
+    staged = {"db.py"}
+    orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = tmp_path
+    try:
+        hits = mod.check_persistence_writer_has_reader(staged)
+    finally:
+        mod.REPO_ROOT = orig_root
+    assert hits, "expected Pass 1b hit for INSERT into table with 0 readers and no REAL-GATE row"
+    assert any("orphan_table" in h for h in hits)
+    assert any("Pass 1b" in h for h in hits)
+
+
+def test_persistence_writer_has_reader_passes_for_table_with_existing_reader(tmp_path: Path) -> None:
+    """When the map shows the table HAS a read consumer, new INSERT passes."""
+    import subprocess
+
+    (tmp_path / "db.py").write_text("# db\n", encoding="utf-8")
+    (tmp_path / "OPEN_ITEMS.md").write_text("", encoding="utf-8")
+    (tmp_path / "governance" / "artifacts").mkdir(parents=True)
+    (tmp_path / "governance" / "artifacts" / "persistence_consumer_map.json").write_text(
+        '{"schema_version":1,"writers":[{"writer_fn":"insert_snapshot","file":"db.py",'
+        '"line":1,"tables_written":["snapshots"],"production_callers":["server.py"],'
+        '"read_consumers":{"snapshots":["calibration/analyze_phase3.py"]},"status":"live"}]}\n',
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "add", "db.py"], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "-c", "user.email=t@t", "-c", "user.name=t",
+         "commit", "-qm", "init"],
+        check=True,
+    )
+    (tmp_path / "db.py").write_text(
+        "def insert_snapshot(conn):\n"
+        "    conn.execute('INSERT INTO snapshots VALUES (?)', (1,))\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(tmp_path), "add", "db.py"], check=True)
+
+    staged = {"db.py"}
+    orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = tmp_path
+    try:
+        hits = mod.check_persistence_writer_has_reader(staged)
+    finally:
+        mod.REPO_ROOT = orig_root
+    assert hits == [], f"table with existing reader should pass; got {hits!r}"
+
+
+def test_persistence_writer_has_reader_ignores_pre_existing_inserts(tmp_path: Path) -> None:
+    """Refactor that doesn't change the set of INSERTed tables must not fire,
+    even if all of those tables are dormant."""
+    import subprocess
+
+    (tmp_path / "db.py").write_text(
+        "def log_orphan(conn):\n"
+        "    conn.execute('INSERT INTO orphan_table VALUES (1)')\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "OPEN_ITEMS.md").write_text("", encoding="utf-8")
+    (tmp_path / "governance" / "artifacts").mkdir(parents=True)
+    (tmp_path / "governance" / "artifacts" / "persistence_consumer_map.json").write_text(
+        '{"schema_version":1,"writers":[{"writer_fn":"log_orphan","file":"db.py",'
+        '"line":1,"tables_written":["orphan_table"],"production_callers":[],'
+        '"read_consumers":{"orphan_table":[]},"status":"dormant"}]}\n',
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "add", "db.py"], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "-c", "user.email=t@t", "-c", "user.name=t",
+         "commit", "-qm", "init"],
+        check=True,
+    )
+    # Add docstring; INSERT target table unchanged.
+    (tmp_path / "db.py").write_text(
+        '"""docstring"""\n'
+        "def log_orphan(conn):\n"
+        "    conn.execute('INSERT INTO orphan_table VALUES (1)')\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(tmp_path), "add", "db.py"], check=True)
+
+    staged = {"db.py"}
+    orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = tmp_path
+    try:
+        hits = mod.check_persistence_writer_has_reader(staged)
+    finally:
+        mod.REPO_ROOT = orig_root
+    assert hits == [], (
+        f"refactor that doesn't add new INSERT-target tables should pass; got {hits!r}"
+    )
+
+
 def test_persistence_map_fresh_no_triggers_passes() -> None:
     """When no persistence-source / tool / map paths are staged, Pass 2b stays quiet."""
     staged = {"server.py", "tests/test_unrelated.py"}

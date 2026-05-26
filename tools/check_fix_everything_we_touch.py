@@ -17,6 +17,7 @@ Usage:
 """
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
@@ -419,6 +420,126 @@ def check_storage_writer_has_consumer(staged: set[str]) -> list[str]:
     return errors
 
 
+_INSERT_TABLE_RE = re.compile(
+    r"INSERT\s+(?:OR\s+(?:REPLACE|IGNORE|ABORT|FAIL|ROLLBACK)\s+)?INTO\s+([A-Za-z_][A-Za-z0-9_]*)",
+    re.IGNORECASE,
+)
+
+
+def _extract_inserted_tables(text: str) -> set[str]:
+    return {m.group(1).lower() for m in _INSERT_TABLE_RE.finditer(text or "")}
+
+
+def _load_persistence_map() -> dict[str, list[str]] | None:
+    """Return {table_lower -> [reader_files]} from persistence_consumer_map.json,
+    or None if the map is missing / corrupt (Pass 2b catches those separately)."""
+    map_path = REPO_ROOT / PERSISTENCE_MAP_PATH
+    if not map_path.is_file():
+        return None
+    try:
+        obj = json.loads(map_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    table_readers: dict[str, list[str]] = {}
+    for writer in obj.get("writers", []):
+        for tbl, readers in (writer.get("read_consumers") or {}).items():
+            slot = table_readers.setdefault(tbl.lower(), [])
+            for r in readers or []:
+                if r not in slot:
+                    slot.append(r)
+    return table_readers
+
+
+def _real_gate_tracked_tables() -> set[str]:
+    """Tables mentioned on any OPEN_ITEMS line that also carries [REAL-GATE: <tag>].
+
+    This is the deferral escape hatch for Pass 1b: a known-dormant table can
+    receive new INSERTs (e.g., a refactor that adds a write inside an existing
+    helper) without failing the gate, provided the dormancy is tracked.
+    """
+    open_items = REPO_ROOT / "OPEN_ITEMS.md"
+    if not open_items.is_file():
+        return set()
+    try:
+        text = open_items.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return set()
+    table_readers = _load_persistence_map() or {}
+    known_tables = set(table_readers.keys())
+    real_gate_tables: set[str] = set()
+    for line in text.splitlines():
+        if "[REAL-GATE:" not in line:
+            continue
+        lower_line = line.lower()
+        for tbl in known_tables:
+            if tbl in lower_line:
+                real_gate_tables.add(tbl)
+    return real_gate_tables
+
+
+def check_persistence_writer_has_reader(staged: set[str]) -> list[str]:
+    """Pass 1b — every staged new INSERT must hit a table with a read consumer
+    (per persistence_consumer_map.json) OR a tracked [REAL-GATE: <tag>] row.
+
+    Complement to Pass 1's check_storage_writer_has_consumer (which checks for
+    a paired caller). Pass 1b checks for a paired READER — the consumer side.
+    Together they enforce AGENTS § Storage-needs-consumer at pre-commit time.
+
+    Honest limit: "reader" here means a file containing a SELECT/JOIN/UPDATE
+    against the target table per the audit tool's static scan. Whether the
+    reader's output reaches an operator-visible surface is product judgment
+    the lock cannot verify.
+    """
+    triggers = [f for f in staged if f in PERSISTENCE_LAYER_FILES]
+    if not triggers:
+        return []
+
+    table_readers = _load_persistence_map()
+    if table_readers is None:
+        return []  # Pass 2b already fires on missing / corrupt map
+
+    real_gate_tables = _real_gate_tracked_tables()
+
+    errors: list[str] = []
+    for rel in sorted(triggers):
+        staged_path = REPO_ROOT / rel
+        if not staged_path.is_file():
+            continue
+        try:
+            staged_text = staged_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        try:
+            head_proc = subprocess.run(
+                ["git", "show", f"HEAD:{rel}"],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            head_text = head_proc.stdout if head_proc.returncode == 0 else ""
+        except OSError:
+            head_text = ""
+        staged_tables = _extract_inserted_tables(staged_text)
+        head_tables = _extract_inserted_tables(head_text)
+        new_tables = staged_tables - head_tables
+        for tbl in sorted(new_tables):
+            readers = table_readers.get(tbl, [])
+            if readers:
+                continue
+            if tbl in real_gate_tables:
+                continue
+            errors.append(
+                f"{rel}: new INSERT INTO {tbl} — table has 0 read consumers per "
+                f"{PERSISTENCE_MAP_PATH} and no OPEN_ITEMS row mentions {tbl} "
+                f"under a [REAL-GATE: <tag>] tag. AGENTS § Storage-needs-consumer / "
+                f"Pass 1b — land a reader in the same commit (API endpoint, log line, "
+                f"scheduled audit, or test asserting on row content), OR add an OPEN_ITEMS "
+                f"row tagged [REAL-GATE: <tag>] that names {tbl}."
+            )
+    return errors
+
+
 def check_persistence_map_fresh(staged: set[str]) -> list[str]:
     """Pass 2b — persistence_consumer_map.json must stay in sync with persistence sources.
 
@@ -529,6 +650,8 @@ def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
     errors.extend(check_storage_writer_has_consumer(staged))
     # Pass 2b: persistence_consumer_map.json freshness when persistence sources staged.
     errors.extend(check_persistence_map_fresh(staged))
+    # Pass 1b: new INSERTs must hit tables with readers OR a tracked REAL-GATE row.
+    errors.extend(check_persistence_writer_has_reader(staged))
 
     for path in paths:
         if path.name == "COMMIT_EDITMSG" or "--commit-msg" in path.as_posix():
