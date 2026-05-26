@@ -337,6 +337,16 @@ PERSISTENCE_LAYER_FILES = (
     "calibration/writer.py",
 )
 
+# Pass 2b: paths whose edits require regenerating
+# governance/artifacts/persistence_consumer_map.json in the same commit.
+PERSISTENCE_MAP_TRIGGER_FILES = (
+    "db.py",
+    "calibration/writer.py",
+    "tools/audit_persistence_consumers.py",
+)
+PERSISTENCE_MAP_PATH = "governance/artifacts/persistence_consumer_map.json"
+PERSISTENCE_AUDIT_TOOL = "tools/audit_persistence_consumers.py"
+
 
 def _count_insert_stmts(text: str) -> int:
     """Count distinct INSERT INTO statements in text (rough heuristic; case-insensitive)."""
@@ -409,6 +419,61 @@ def check_storage_writer_has_consumer(staged: set[str]) -> list[str]:
     return errors
 
 
+def check_persistence_map_fresh(staged: set[str]) -> list[str]:
+    """Pass 2b — persistence_consumer_map.json must stay in sync with persistence sources.
+
+    Triggers when commit stages any of db.py / calibration/writer.py /
+    tools/audit_persistence_consumers.py. The map at
+    governance/artifacts/persistence_consumer_map.json must also be staged
+    in the same commit AND must match what the audit tool generates from the
+    on-disk persistence sources.
+
+    Failure modes blocked:
+      1. Persistence source edited, map not re-staged -> "stale map".
+      2. Persistence source edited, map staged but doesn't match -> "stale map content".
+
+    The full content match runs the audit tool's --check mode. This catches
+    drift between map and sources even when the operator remembered to stage
+    the map but forgot to regenerate it.
+    """
+    triggers = [f for f in staged if f in PERSISTENCE_MAP_TRIGGER_FILES]
+    if not triggers:
+        return []
+
+    errors: list[str] = []
+    if PERSISTENCE_MAP_PATH not in staged:
+        errors.append(
+            f"{PERSISTENCE_MAP_PATH}: missing from commit but {', '.join(triggers)} staged. "
+            f"Pass 2b — regenerate with `python tools/audit_persistence_consumers.py --stable-time` "
+            f"and stage the result in the same commit."
+        )
+        return errors  # no point running --check if map isn't staged
+
+    # Run the audit tool's --check against the working tree to confirm the staged
+    # map matches what the tool would emit from current sources.
+    audit_tool_path = REPO_ROOT / PERSISTENCE_AUDIT_TOOL
+    if not audit_tool_path.is_file():
+        return errors  # tool itself absent — can't run check
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(audit_tool_path), "--check"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        return errors + [f"{PERSISTENCE_MAP_PATH}: cannot run audit tool ({exc})"]
+    if proc.returncode != 0:
+        errors.append(
+            f"{PERSISTENCE_MAP_PATH}: stale content vs persistence sources. "
+            f"{proc.stderr.strip() or '(no detail)'}. "
+            f"Pass 2b — regenerate with `python tools/audit_persistence_consumers.py --stable-time` "
+            f"and re-stage."
+        )
+    return errors
+
+
 def check_action_not_documentation(staged: set[str]) -> list[str]:
     """Block governance-artifact-only commits that contain action language without paired code.
 
@@ -462,6 +527,8 @@ def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
     errors.extend(check_action_not_documentation(staged))
     # Storage-needs-consumer rule (§Storage-needs-consumer): block dormant writers at pre-commit.
     errors.extend(check_storage_writer_has_consumer(staged))
+    # Pass 2b: persistence_consumer_map.json freshness when persistence sources staged.
+    errors.extend(check_persistence_map_fresh(staged))
 
     for path in paths:
         if path.name == "COMMIT_EDITMSG" or "--commit-msg" in path.as_posix():

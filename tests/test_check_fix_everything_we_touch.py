@@ -441,6 +441,46 @@ def test_storage_needs_consumer_ignores_db_edits_with_no_new_inserts(tmp_path: P
     assert hits == [], f"refactor with no new INSERTs should pass; got {hits!r}"
 
 
+def test_persistence_map_fresh_no_triggers_passes() -> None:
+    """When no persistence-source / tool / map paths are staged, Pass 2b stays quiet."""
+    staged = {"server.py", "tests/test_unrelated.py"}
+    hits = mod.check_persistence_map_fresh(staged)
+    assert hits == [], f"check should no-op when no triggers staged; got {hits!r}"
+
+
+def test_persistence_map_fresh_missing_map_fails_when_persistence_source_staged() -> None:
+    """Staging db.py without re-staging the persistence_consumer_map.json must fail
+    Pass 2b — operator forgot to regenerate the map after editing the writer."""
+    staged = {"db.py"}  # map NOT staged
+    hits = mod.check_persistence_map_fresh(staged)
+    assert hits, "expected Pass 2b hit when persistence source staged without map"
+    assert any("persistence_consumer_map.json" in h for h in hits)
+    assert any("Pass 2b" in h for h in hits)
+
+
+def test_persistence_map_fresh_missing_map_fails_when_tool_staged() -> None:
+    """Editing the audit tool itself also requires re-staging the map (the tool's
+    output shape may have changed)."""
+    staged = {"tools/audit_persistence_consumers.py"}  # map NOT staged
+    hits = mod.check_persistence_map_fresh(staged)
+    assert hits, "expected Pass 2b hit when audit tool staged without map"
+    assert any("persistence_consumer_map.json" in h for h in hits)
+
+
+def test_persistence_map_fresh_passes_when_map_staged_alongside() -> None:
+    """When both persistence source and map are staged AND the on-disk map matches
+    current sources (Pass 2 just committed a fresh map), Pass 2b passes."""
+    staged = {"db.py", "governance/artifacts/persistence_consumer_map.json"}
+    hits = mod.check_persistence_map_fresh(staged)
+    # The on-disk map at this point in the test suite is the one committed by Pass 2,
+    # matching current db.py / calibration/writer.py. So --check should pass.
+    assert hits == [], (
+        f"map fresh + staged alongside source should pass; got {hits!r}. "
+        "If this fails after a real persistence edit, regenerate with "
+        "`python tools/audit_persistence_consumers.py --stable-time`."
+    )
+
+
 def test_storage_needs_consumer_tests_caller_alone_does_not_satisfy(tmp_path: Path) -> None:
     """A test-only caller does NOT count as a production caller — must still fire."""
     import subprocess
