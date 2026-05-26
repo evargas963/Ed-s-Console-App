@@ -1258,16 +1258,6 @@ class EdDB:
                 computed_at         TEXT DEFAULT (datetime('now'))
             );
 
-            -- ── Session log ───────────────────────────────────────────────────
-            CREATE TABLE IF NOT EXISTS session_log (
-                session_id      INTEGER PRIMARY KEY AUTOINCREMENT,
-                ticker          TEXT,
-                started_at      TEXT DEFAULT (datetime('now')),
-                ended_at        TEXT,
-                snapshots_taken INTEGER DEFAULT 0,
-                crosses_logged  INTEGER DEFAULT 0
-            );
-
             -- ── Breaking / notable news events (optional persistence) ────────
             CREATE TABLE IF NOT EXISTS news_events (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2501,6 +2491,7 @@ class EdDB:
 
         self._migrate_horizon_bar_contract_v1()
         self._migrate_outcome_anchor_bar_canonical()
+        self._migrate_drop_session_log_v1()
 
         if _counts_before and is_canonical_db_path(self.db_path) and not skip_automatic_backup():
             with self._connect() as _c1:
@@ -2645,6 +2636,21 @@ class EdDB:
                 ON snapshots_1m_normalized(ticker, ts_utc)
             """)
             log.info("Created snapshots_1m_normalized table for resampled 1m training data")
+
+    def _migrate_drop_session_log_v1(self) -> None:
+        """Pass 6 — drop the session_log table.
+
+        session_log was scaffolded with start_session / end_session /
+        update_session_counts writers but zero production callers (one of the
+        4 originally-known dormants). verification/daily_health.py already
+        covers richer per-ticker session telemetry, so the table delivers
+        no incremental value. Drop is idempotent (IF EXISTS).
+        """
+        with self._connect() as conn:
+            try:
+                conn.execute("DROP TABLE IF EXISTS session_log")
+            except sqlite3.OperationalError as exc:
+                log.warning("drop session_log failed: %s", exc)
 
     # ════════════════════════════════════════════════════════════════════════
     # SNAPSHOT OPERATIONS
@@ -4031,60 +4037,6 @@ class EdDB:
             correct_direction=correct_direction, accuracy_pct=accuracy_pct,
             avg_confidence=avg_confidence, ts_utc=ts_utc,
         )
-
-    # ════════════════════════════════════════════════════════════════════════
-    # SESSION TRACKING
-    # ════════════════════════════════════════════════════════════════════════
-
-    def start_session(self, ticker: str) -> int:
-        tk = ticker
-
-        def _do() -> int:
-            with self._connect() as conn:
-                cur = conn.execute(
-                    "INSERT INTO session_log (ticker) VALUES (?)", (tk,)
-                )
-                return int(cur.lastrowid)
-
-        return _do()
-
-    def end_session(self, session_id: int, snapshots: int, crosses: int):
-        sid = session_id
-        sn = snapshots
-        cr = crosses
-
-        def _do() -> None:
-            with self._connect() as conn:
-                conn.execute(
-                    """
-                    UPDATE session_log
-                    SET ended_at = datetime('now'),
-                        snapshots_taken = ?,
-                        crosses_logged = ?
-                    WHERE session_id = ?
-                    """,
-                    (sn, cr, sid),
-                )
-
-        _do()
-
-    def update_session_counts(self, session_id: int, snapshots: int, crosses: int):
-        sid = session_id
-        sn = snapshots
-        cr = crosses
-
-        def _do() -> None:
-            with self._connect() as conn:
-                conn.execute(
-                    """
-                    UPDATE session_log
-                    SET snapshots_taken = ?, crosses_logged = ?
-                    WHERE session_id = ?
-                    """,
-                    (sn, cr, sid),
-                )
-
-        _do()
 
     # ════════════════════════════════════════════════════════════════════════
     # UTILITY

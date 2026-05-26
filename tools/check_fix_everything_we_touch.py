@@ -392,18 +392,7 @@ def check_storage_writer_has_consumer(staged: set[str]) -> list[str]:
             staged_text = staged_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        # Read HEAD version for comparison
-        try:
-            head_proc = subprocess.run(
-                ["git", "show", f"HEAD:{rel}"],
-                cwd=REPO_ROOT,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            head_text = head_proc.stdout if head_proc.returncode == 0 else ""
-        except OSError:
-            head_text = ""
+        head_text = _git_show_head_utf8(rel)
         new_inserts = _count_insert_stmts(staged_text) - _count_insert_stmts(head_text)
         if new_inserts <= 0:
             continue
@@ -418,6 +407,32 @@ def check_storage_writer_has_consumer(staged: set[str]) -> list[str]:
                 f"later commit that includes the caller."
             )
     return errors
+
+
+def _git_show_head_utf8(rel: str) -> str:
+    """Read HEAD:<rel> as UTF-8 text (errors=replace).
+
+    Default subprocess text mode uses the platform encoding (cp1252 on
+    Windows) which raises UnicodeDecodeError on non-ASCII bytes in source
+    files (em-dashes, smart quotes, anything from a copy-paste). Force
+    UTF-8 + replace so the diff comparison stays correct even when HEAD
+    has non-ASCII content the platform encoding can't represent.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "show", f"HEAD:{rel}"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return ""
+    if proc.returncode != 0:
+        return ""
+    try:
+        return proc.stdout.decode("utf-8", errors="replace")
+    except (UnicodeDecodeError, AttributeError):
+        return ""
 
 
 _INSERT_TABLE_RE = re.compile(
@@ -509,17 +524,7 @@ def check_persistence_writer_has_reader(staged: set[str]) -> list[str]:
             staged_text = staged_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        try:
-            head_proc = subprocess.run(
-                ["git", "show", f"HEAD:{rel}"],
-                cwd=REPO_ROOT,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            head_text = head_proc.stdout if head_proc.returncode == 0 else ""
-        except OSError:
-            head_text = ""
+        head_text = _git_show_head_utf8(rel)
         staged_tables = _extract_inserted_tables(staged_text)
         head_tables = _extract_inserted_tables(head_text)
         new_tables = staged_tables - head_tables

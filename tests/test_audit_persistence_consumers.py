@@ -138,12 +138,20 @@ def test_persistence_consumer_map_originally_known_dormants_status():
         "update this test in the same commit."
     )
 
-    for fn in ("EdDB.log_confluence", "EdDB.start_session"):
-        assert fn in by_fn, f"writer {fn} disappeared from persistence map"
-        assert by_fn[fn]["status"] == "dormant", (
-            f"{fn} status changed to {by_fn[fn]['status']}; if Pass 6/7 wired or "
-            "dropped it, update this test in the same commit."
-        )
+    # Pass 6 dropped EdDB.start_session + session_log table; the symbol must
+    # be GONE from the map (tests/test_session_log_drop.py covers the drop
+    # surface; here we just ensure the audit reflects it).
+    assert "EdDB.start_session" not in by_fn, (
+        "EdDB.start_session reappeared after Pass 6 drop; revert or open "
+        "a wire-or-drop redecision row in OPEN_ITEMS"
+    )
+
+    # log_confluence stays DORMANT until Pass 7 decides wire vs drop.
+    assert "EdDB.log_confluence" in by_fn, "writer EdDB.log_confluence disappeared from persistence map"
+    assert by_fn["EdDB.log_confluence"]["status"] == "dormant", (
+        f"EdDB.log_confluence status changed to {by_fn['EdDB.log_confluence']['status']}; "
+        "if Pass 7 wired or dropped it, update this test in the same commit."
+    )
 
     candidate_fns = {c["candidate_fn"] for c in obj["writer_candidates"]}
     assert "EdDB.compute_accuracy" in candidate_fns, (
