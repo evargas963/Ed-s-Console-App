@@ -7668,13 +7668,49 @@ async def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
         except Exception as e:
             return {"error": str(e)}
 
-    # Fetch history if the method exists (not yet implemented in db.py)
-    history = []
-    if hasattr(db, "get_accuracy_history"):
-        try:
-            history = db.get_accuracy_history(ticker, limit=ACCURACY_HISTORY_LIMIT)
-        except Exception:
-            history = []
+        # Pass 5a: persist accuracy snapshot per horizon when value
+        # meaningfully changed vs last logged row (db.maybe_log_model_accuracy
+        # handles the dedup epsilon). Throttled by the existing 10-min
+        # ACCURACY_INTERVAL cache above — at most one INSERT per ticker per
+        # horizon per ~10min.
+        for _hz, _hz_res in (results or {}).items():
+            if not isinstance(_hz_res, dict):
+                continue
+            try:
+                _new_id = db.maybe_log_model_accuracy(
+                    ticker=ticker,
+                    timeframe=CANONICAL_TIMEFRAME,
+                    model_version="statistical_v1",
+                    horizon=_hz,
+                    total_predictions=int(_hz_res.get("total", 0) or 0),
+                    correct_direction=_hz_res.get("correct"),
+                    accuracy_pct=_hz_res.get("accuracy"),
+                )
+                if _new_id is not None:
+                    log.info(
+                        "model_accuracy ticker=%s horizon=%s acc=%s%% n=%s",
+                        ticker, _hz,
+                        _hz_res.get("accuracy"),
+                        _hz_res.get("total"),
+                    )
+            except Exception as _mae:
+                log.debug("log_model_accuracy ticker=%s hz=%s failed: %s", ticker, _hz, _mae)
+
+    # Fetch history via Pass 5a reader (get_model_accuracy_history).
+    history: list[dict] = []
+    try:
+        from ml_horizon import PRIMARY_DECISION_HORIZONS
+        for _hz in PRIMARY_DECISION_HORIZONS:
+            rows = db.get_model_accuracy_history(
+                ticker=ticker,
+                timeframe=CANONICAL_TIMEFRAME,
+                model_version="statistical_v1",
+                horizon=_hz,
+                limit=int(ACCURACY_HISTORY_LIMIT),
+            )
+            history.extend(rows)
+    except Exception:
+        history = []
 
     return {
         "ticker": ticker,

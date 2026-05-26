@@ -391,9 +391,26 @@
       "status": "dormant"
     },
     {
+      "writer_fn": "EdDB.log_model_accuracy",
+      "file": "db.py",
+      "line": 3919,
+      "tables_written": [
+        "model_accuracy"
+      ],
+      "production_callers": [
+        "db.py"
+      ],
+      "read_consumers": {
+        "model_accuracy": [
+          "db.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
       "writer_fn": "EdDB.start_session",
       "file": "db.py",
-      "line": 3917,
+      "line": 4039,
       "tables_written": [
         "session_log"
       ],
@@ -428,22 +445,22 @@
     {
       "candidate_fn": "EdDB.end_session",
       "file": "db.py",
-      "line": 3929,
+      "line": 4051,
       "production_callers": [],
       "recommended_hook_file": null
     },
     {
       "candidate_fn": "EdDB.update_session_counts",
       "file": "db.py",
-      "line": 3949,
+      "line": 4071,
       "production_callers": [],
       "recommended_hook_file": null
     }
   ],
   "summary": {
-    "writer_count": 19,
-    "live_count": 15,
+    "writer_count": 20,
+    "live_count": 16,
     "dormant_count": 4,
-    "table_count": 11
+    "table_count": 12
   }
 }

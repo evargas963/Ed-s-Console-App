@@ -3910,6 +3910,128 @@ class EdDB:
 
         return results
 
+    # Pass 5a: minimum delta between two persisted accuracy rows for the same
+    # (ticker, timeframe, model_version, horizon). The accuracy_pct value
+    # itself only changes when new outcomes land, so equality of the value
+    # is the natural dedup signal — but small floating noise should not skip.
+    MODEL_ACCURACY_DEDUP_EPSILON: float = 0.05  # percentage points
+
+    def log_model_accuracy(
+        self,
+        *,
+        ticker: str,
+        timeframe: str,
+        model_version: str,
+        horizon: str,
+        total_predictions: int,
+        correct_direction: Optional[int],
+        accuracy_pct: Optional[float],
+        avg_confidence: Optional[float] = None,
+        ts_utc: Optional[float] = None,
+    ) -> int:
+        """Pass 5a writer for model_accuracy.
+
+        Schema (see db.py:1247): one row per accuracy snapshot per
+        (ticker, timeframe, model_version, horizon, ts_utc). Caller is
+        expected to dedup via get_latest_model_accuracy before INSERT
+        (the accuracy value only changes when new outcomes land — natural
+        throttle).
+        """
+        ts = float(ts_utc) if ts_utc is not None else utc_ts()
+        cd = int(correct_direction) if correct_direction is not None else None
+        ap = float(accuracy_pct) if accuracy_pct is not None else None
+        ac = float(avg_confidence) if avg_confidence is not None else None
+
+        def _do() -> int:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    "INSERT INTO model_accuracy "
+                    "(ts_utc, ticker, timeframe, model_version, horizon, "
+                    " total_predictions, correct_direction, accuracy_pct, avg_confidence) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        ts, ticker, timeframe, model_version, horizon,
+                        int(total_predictions), cd, ap, ac,
+                    ),
+                )
+                return int(cur.lastrowid)
+
+        return _do()
+
+    def get_latest_model_accuracy(
+        self,
+        *,
+        ticker: str,
+        timeframe: str,
+        model_version: str,
+        horizon: str,
+    ) -> Optional[dict]:
+        """Pass 5a reader: latest row for (ticker, timeframe, model_version, horizon)."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM model_accuracy "
+                "WHERE ticker = ? AND timeframe = ? "
+                "  AND model_version = ? AND horizon = ? "
+                "ORDER BY ts_utc DESC LIMIT 1",
+                (ticker, timeframe, model_version, horizon),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def get_model_accuracy_history(
+        self,
+        *,
+        ticker: str,
+        timeframe: str,
+        model_version: str,
+        horizon: str,
+        limit: int = 50,
+    ) -> list[dict]:
+        """Pass 5a/5b reader: history of accuracy snapshots for chart / panel."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM model_accuracy "
+                "WHERE ticker = ? AND timeframe = ? "
+                "  AND model_version = ? AND horizon = ? "
+                "ORDER BY ts_utc DESC LIMIT ?",
+                (ticker, timeframe, model_version, horizon, int(limit)),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def maybe_log_model_accuracy(
+        self,
+        *,
+        ticker: str,
+        timeframe: str,
+        model_version: str,
+        horizon: str,
+        total_predictions: int,
+        correct_direction: Optional[int],
+        accuracy_pct: Optional[float],
+        avg_confidence: Optional[float] = None,
+        ts_utc: Optional[float] = None,
+    ) -> Optional[int]:
+        """Pass 5a throttled writer: log only when accuracy_pct meaningfully changed
+        vs the latest persisted row for this (ticker, timeframe, model_version, horizon).
+
+        Returns the new row id when logged, or None when skipped (dedup or input None).
+        """
+        if accuracy_pct is None:
+            return None
+        latest = self.get_latest_model_accuracy(
+            ticker=ticker, timeframe=timeframe,
+            model_version=model_version, horizon=horizon,
+        )
+        if latest is not None:
+            prev = latest.get("accuracy_pct")
+            if prev is not None and abs(float(prev) - float(accuracy_pct)) < self.MODEL_ACCURACY_DEDUP_EPSILON:
+                return None
+        return self.log_model_accuracy(
+            ticker=ticker, timeframe=timeframe, model_version=model_version,
+            horizon=horizon, total_predictions=total_predictions,
+            correct_direction=correct_direction, accuracy_pct=accuracy_pct,
+            avg_confidence=avg_confidence, ts_utc=ts_utc,
+        )
+
     # ════════════════════════════════════════════════════════════════════════
     # SESSION TRACKING
     # ════════════════════════════════════════════════════════════════════════
