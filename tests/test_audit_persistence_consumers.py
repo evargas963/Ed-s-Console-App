@@ -123,12 +123,15 @@ def test_persistence_consumer_map_summary_consistent():
 
 
 def test_persistence_consumer_map_originally_known_dormants_status():
-    """Lock the dormants-progress story so Passes 5-7 can't accidentally
-    flip a writer's status without updating this test in the same commit.
+    """Lock the dormants-progress story end-to-end.
 
-    Pass 4 @ <wire SHA> wired log_level_cross via EdDB.detect_and_log_level_crosses;
-    it must now be LIVE. The remaining originals (log_confluence, start_session)
-    stay DORMANT until Passes 6-7 wire or drop them.
+    Pass 4 (`cfbff0f`) wired log_level_cross via EdDB.detect_and_log_level_crosses
+    => LIVE.
+    Pass 6 (`1ced163`) dropped EdDB.start_session + session_log table.
+    Pass 7 (`20d8f10`) dropped EdDB.log_confluence + confluence_log table.
+
+    A regression that resurrects the dropped writers OR demotes log_level_cross
+    back to dormant must fail this test in the same commit.
     """
     obj = json.loads(MAP_PATH.read_text(encoding="utf-8"))
     by_fn = {w["writer_fn"]: w for w in obj["writers"]}

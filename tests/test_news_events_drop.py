@@ -96,6 +96,48 @@ def test_persist_events_parameter_removed_from_news_sentiment() -> None:
                 )
 
 
+def test_no_persist_events_kwarg_in_any_refresh_and_context_call() -> None:
+    """AST-scan EVERY call to refresh_and_context / refresh_and_context_for_ui
+    across the repo — including the news_sentiment.py __main__ probe block
+    that the signature-only test missed in the original Pass 8 commit.
+
+    A stale `persist_events=False` at a call site won't fail collection but
+    will TypeError at runtime when invoked (broken `python news_sentiment.py
+    SPY` CLI). Catch it statically.
+    """
+    skip_dirs = {".git", ".venv", "venv", "__pycache__", "node_modules", ".claude",
+                 "build", "dist", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+    targets = {"refresh_and_context", "refresh_and_context_for_ui"}
+    hits: list[str] = []
+    for path in REPO_ROOT.rglob("*.py"):
+        rel = path.relative_to(REPO_ROOT)
+        if any(part in skip_dirs for part in rel.parts):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+            tree = ast.parse(text)
+        except (OSError, SyntaxError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            short = None
+            if isinstance(fn, ast.Name):
+                short = fn.id
+            elif isinstance(fn, ast.Attribute):
+                short = fn.attr
+            if short not in targets:
+                continue
+            for kw in node.keywords:
+                if kw.arg == "persist_events":
+                    hits.append(f"{rel}:{node.lineno} {short}(... persist_events=...)")
+    assert hits == [], (
+        "persist_events kwarg still passed to refresh_and_context* — "
+        "would raise TypeError at runtime:\n  " + "\n  ".join(hits)
+    )
+
+
 def test_no_external_references_to_news_writer() -> None:
     targets = {"insert_news_event"}
     skip_dirs = {".git", ".venv", "venv", "__pycache__", "node_modules", ".claude",

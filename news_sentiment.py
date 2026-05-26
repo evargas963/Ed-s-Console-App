@@ -521,5 +521,5 @@ if __name__ == "__main__":
     if "ED_NEWS_HTTP_TIMEOUT_SEC" not in os.environ:
         os.environ["ED_NEWS_HTTP_TIMEOUT_SEC"] = "12"
     _sym = (sys.argv[1] if len(sys.argv) > 1 else "SPY").upper()
-    _ctx = refresh_and_context(_sym, db=None, throttle_sec=0.0, persist_events=False)
+    _ctx = refresh_and_context(_sym, db=None, throttle_sec=0.0)
     print(json.dumps(_ctx, indent=2, default=str))
