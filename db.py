@@ -650,38 +650,6 @@ class LevelCrossEvent:
     timeframe:      str
 
 
-@dataclass
-class ConfluenceLog:
-    """
-    Cross-instrument confluence state per refresh.
-    Stored separately so we can analyze confluence patterns.
-    """
-    ts_utc:             float
-    ts_et:              str
-    primary_ticker:     str
-
-    # Overall confluence signal
-    confluence_signal:  str         # 'bullish', 'bearish', 'neutral', 'mixed'
-    confluence_score:   float       # -1.0 to +1.0
-    instruments_agree:  int         # count of instruments pointing same way
-    instruments_total:  int
-
-    # Per instrument state (JSON strings)
-    spy_state:          str         # JSON: {zone, vwap_side, net_delta, chg_pct}
-    qqq_state:          str
-    iwm_state:          str
-    vix_state:          str
-
-    # Constituent state (JSON)
-    spy_constituents:   str         # JSON list of {ticker, chg_pct, direction}
-    iwm_sectors:        str         # JSON list of {ticker, chg_pct, direction}
-
-    # Weighted signals
-    spy_push:           Optional[float]
-    iwm_push:           Optional[float]
-    qqq_vs_spy_delta:   Optional[float]
-
-
 # ════════════════════════════════════════════════════════════════════════════════
 # DATABASE MANAGER
 # ════════════════════════════════════════════════════════════════════════════════
@@ -1218,30 +1186,6 @@ class EdDB:
             );
             CREATE INDEX IF NOT EXISTS idx_cross_ticker_ts
                 ON level_crosses(ticker, ts_utc);
-
-            -- ── Confluence log ────────────────────────────────────────────────
-            CREATE TABLE IF NOT EXISTS confluence_log (
-                conf_id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts_utc              REAL    NOT NULL,
-                ts_et               TEXT    NOT NULL,
-                primary_ticker      TEXT    NOT NULL,
-                confluence_signal   TEXT,
-                confluence_score    REAL,
-                instruments_agree   INTEGER,
-                instruments_total   INTEGER,
-                spy_state           TEXT,
-                qqq_state           TEXT,
-                iwm_state           TEXT,
-                vix_state           TEXT,
-                spy_constituents    TEXT,
-                iwm_sectors         TEXT,
-                spy_push            REAL,
-                iwm_push            REAL,
-                qqq_vs_spy_delta    REAL,
-                created_at          TEXT DEFAULT (datetime('now'))
-            );
-            CREATE INDEX IF NOT EXISTS idx_conf_ts
-                ON confluence_log(ts_utc);
 
             -- ── Model accuracy tracking ───────────────────────────────────────
             CREATE TABLE IF NOT EXISTS model_accuracy (
@@ -2492,6 +2436,7 @@ class EdDB:
         self._migrate_horizon_bar_contract_v1()
         self._migrate_outcome_anchor_bar_canonical()
         self._migrate_drop_session_log_v1()
+        self._migrate_drop_confluence_log_v1()
 
         if _counts_before and is_canonical_db_path(self.db_path) and not skip_automatic_backup():
             with self._connect() as _c1:
@@ -2651,6 +2596,23 @@ class EdDB:
                 conn.execute("DROP TABLE IF EXISTS session_log")
             except sqlite3.OperationalError as exc:
                 log.warning("drop session_log failed: %s", exc)
+
+    def _migrate_drop_confluence_log_v1(self) -> None:
+        """Pass 7 — drop the confluence_log table.
+
+        confluence_log was scaffolded with log_confluence writer + ConfluenceLog
+        dataclass but zero production callers / zero readers. Cross-instrument
+        confluence state (spy_state / qqq_state / iwm_state / vix_state) is
+        already computed live per refresh in market_state and surfaced through
+        ms_dict for /api/state consumers; persisting it added no incremental
+        value because no analyzer ever read confluence_log rows back. Drop is
+        idempotent (IF EXISTS).
+        """
+        with self._connect() as conn:
+            try:
+                conn.execute("DROP TABLE IF EXISTS confluence_log")
+            except sqlite3.OperationalError as exc:
+                log.warning("drop confluence_log failed: %s", exc)
 
     # ════════════════════════════════════════════════════════════════════════
     # SNAPSHOT OPERATIONS
@@ -3837,31 +3799,6 @@ class EdDB:
             result[row["direction"]] = row["cnt"]
             result["total"] += row["cnt"]
         return result
-
-    # ════════════════════════════════════════════════════════════════════════
-    # CONFLUENCE LOG OPERATIONS
-    # ════════════════════════════════════════════════════════════════════════
-
-    def log_confluence(self, conf: ConfluenceLog) -> int:
-        """Log confluence state."""
-        d = asdict(conf)
-        # Serialize any dict/list fields to JSON
-        for k in ("spy_state", "qqq_state", "iwm_state", "vix_state",
-                   "spy_constituents", "iwm_sectors"):
-            if isinstance(d.get(k), (dict, list)):
-                d[k] = json.dumps(d[k])
-        cols = ", ".join(d.keys())
-        placeholders = ", ".join("?" for _ in d)
-        sql = f"INSERT INTO confluence_log ({cols}) VALUES ({placeholders})"
-        vals = list(d.values())
-        pt = str(d.get("primary_ticker", "") or "")
-
-        def _do() -> int:
-            with self._connect() as conn:
-                cur = conn.execute(sql, vals)
-                return int(cur.lastrowid)
-
-        return _do()
 
     # ════════════════════════════════════════════════════════════════════════
     # MODEL ACCURACY
