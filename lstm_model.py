@@ -25,6 +25,58 @@ APP_DIR    = Path(__file__).parent.resolve()
 MODELS_DIR = APP_DIR / "models"
 
 
+class InsufficientLstmSamplesError(ValueError):
+    """LSTM dataset build produced too few samples to train.
+
+    Raised by ``_validate_lstm_dataset_shape`` before ``compute_feature_masks``
+    so the scheduler gets a clean structured error instead of the downstream
+    ``IndexError: tuple index out of range`` on ``X_5m.shape[2]``. The dataset
+    emptiness is upstream of training; common cause is a ticker with too few
+    RTH days to fill the LSTM sequence window
+    (``SEQUENCE_LENGTH + STREAM_5M_LOOKBACK``).
+
+    DATA-PIPELINE-INTEGRITY-CHAIN slice A (2026-05-26): the 2026-05-25
+    incident's 9 tuple-index-out-of-range failures all had 12-19 RTH days
+    (~460 rows), well below the sequence-build threshold.
+    """
+
+
+def _validate_lstm_dataset_shape(dataset, ticker: Optional[str] = None) -> None:
+    """Pre-train guard: raise InsufficientLstmSamplesError on degenerate input.
+
+    A valid LSTMDataset has ``X_5m.shape == (N, STREAM_5M_LOOKBACK, n_features_5m)``
+    with ``N >= 1``. An empty ``build_lstm_dataset`` returns ``X_5m`` with
+    shape ``(0,)`` (numpy default for empty list), which crashes
+    ``compute_feature_masks`` at ``X_5m.shape[2]`` with the tuple-index
+    IndexError. This check raises the clean named exception instead so the
+    scheduler records a meaningful ``train_failed`` error string and any
+    catch-site can act on the exception class.
+    """
+    n_samples = int(getattr(dataset, "n_samples", 0) or 0)
+    n_days = int(getattr(dataset, "n_days", 0) or 0)
+    if hasattr(dataset, "y") and dataset.y is not None:
+        try:
+            n_samples = max(n_samples, len(dataset.y))
+        except TypeError:
+            pass
+    if n_samples == 0:
+        raise InsufficientLstmSamplesError(
+            f"build_lstm_dataset produced 0 samples"
+            + (f" for ticker {ticker}" if ticker else "")
+            + f" (n_days={n_days}); ticker needs more RTH session coverage "
+            "to fill the LSTM sequence window, or skip LSTM for this ticker"
+        )
+    x5 = getattr(dataset, "X_5m", None)
+    if x5 is None or getattr(x5, "ndim", 0) < 3:
+        ndim = getattr(x5, "ndim", "?") if x5 is not None else "None"
+        shape = getattr(x5, "shape", "?") if x5 is not None else "None"
+        raise InsufficientLstmSamplesError(
+            f"LSTM dataset X_5m has degenerate shape={shape} ndim={ndim}"
+            + (f" for ticker {ticker}" if ticker else "")
+            + " (expected 3D: N, STREAM_5M_LOOKBACK, n_features_5m)"
+        )
+
+
 def lstm_model_path(
     ticker: str, model_dir: Path = None, *, ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
 ) -> Path:
@@ -348,6 +400,12 @@ def train_lstm(
             db_path=db_path or DB_PATH,
             ml_horizon_slug=ml_horizon_slug,
         )
+
+    # DATA-PIPELINE-INTEGRITY-CHAIN slice A (2026-05-26): catch degenerate /
+    # empty dataset BEFORE compute_feature_masks tries X_5m.shape[2] and
+    # raises the tuple-index IndexError. See the 2026-05-25 incident: 9
+    # low-data tickers (12-19 RTH days) all failed at this exact path.
+    _validate_lstm_dataset_shape(dataset, ticker=ticker)
 
     save_ticker = (ticker or (dataset.tickers[0] if dataset.tickers else "unknown")).strip().upper()
     hz = normalize_ml_horizon_slug(getattr(dataset, "ml_horizon_slug", None) or ml_horizon_slug)
