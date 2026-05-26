@@ -379,6 +379,120 @@ def append_calibration_decision(
     return None
 
 
+# ───────────────────────── Pass 3 — calibration rate health ─────────────────────────
+#
+# Forward-only consumer for calibration_decision_log: counts rows added in the
+# last 24h vs prior 24h vs expected, surfaced via /api/ops/calibration_rowcount
+# (server.py) and the Calibration health card in static/ops.html.
+#
+# Constants below are NAMED (per Cursor Pass 3 review) so tests pass deterministic
+# values and the operator can tune one place without grepping the codebase.
+
+# Conservative default: one calibration row per 2 minutes per enrolled ticker.
+# Calibrate from observed rate after 14 days of clean ED_CALIBRATION_LOG=1 data.
+EXPECTED_DECISIONS_PER_MINUTE_PER_TICKER: float = 0.5
+# US cash RTH (09:30-16:00 ET).
+SESSION_MINUTES_RTH: int = 390
+# WARN when actual rate falls below this fraction of expected.
+CALIBRATION_RATE_WARN_RATIO: float = 0.5
+
+
+def _count_enrolled_tickers(conn: sqlite3.Connection) -> int:
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM logging_universe WHERE COALESCE(active, 1) = 1"
+        ).fetchone()
+    except sqlite3.Error:
+        return 0
+    return int(row[0]) if row and row[0] is not None else 0
+
+
+def _count_calibration_rows_between(conn: sqlite3.Connection, *, lo_ts: float, hi_ts: float) -> int:
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM calibration_decision_log "
+            "WHERE decision_ts_utc >= ? AND decision_ts_utc < ?",
+            (lo_ts, hi_ts),
+        ).fetchone()
+    except sqlite3.Error:
+        return 0
+    return int(row[0]) if row and row[0] is not None else 0
+
+
+def compute_calibration_rate_health(
+    db_path: Optional[Path | str] = None,
+    *,
+    now_ts: Optional[float] = None,
+    enrolled_tickers_override: Optional[int] = None,
+) -> dict[str, Any]:
+    """Forward-only rate-of-writes health for calibration_decision_log.
+
+    Returns a dict with the last-24h and prior-24h row counts, the expected
+    24h count derived from named constants and the enrolled-universe size,
+    the actual/expected ratio, and a `warn` boolean (True when ratio is
+    below `CALIBRATION_RATE_WARN_RATIO` and env is enabled — a low rate
+    while env is on means the writer is silently failing or the gate chain
+    is mis-configured, which the 24-day Apr-May gap proved is invisible
+    without this counter).
+
+    Pure function over the DB; no side effects, no INSERT. Safe to call
+    from /api/ops/calibration_rowcount, daily_health, pytest fixtures,
+    or operator REPL.
+    """
+    now = float(now_ts if now_ts is not None else time.time())
+    lo_24 = now - 86400.0
+    lo_48 = now - 2 * 86400.0
+    path = _db_path_for_write(db_path)
+
+    enrolled: int = 0
+    last_24h: int = 0
+    prior_24h: int = 0
+    table_present: bool = False
+    try:
+        conn = sqlite3.connect(str(path))
+        conn.row_factory = sqlite3.Row
+        try:
+            try:
+                conn.execute("SELECT 1 FROM calibration_decision_log LIMIT 1").fetchone()
+                table_present = True
+            except sqlite3.OperationalError:
+                table_present = False
+            if table_present:
+                last_24h = _count_calibration_rows_between(conn, lo_ts=lo_24, hi_ts=now)
+                prior_24h = _count_calibration_rows_between(conn, lo_ts=lo_48, hi_ts=lo_24)
+            enrolled = (
+                int(enrolled_tickers_override)
+                if enrolled_tickers_override is not None
+                else _count_enrolled_tickers(conn)
+            )
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        # DB unreachable — return zeros + table_present false; warn stays false
+        # because we can't distinguish a true zero-write from a probe failure.
+        pass
+
+    expected = float(enrolled) * SESSION_MINUTES_RTH * EXPECTED_DECISIONS_PER_MINUTE_PER_TICKER
+    ratio: Optional[float] = (last_24h / expected) if expected > 0 else None
+    env_enabled = calibration_logging_enabled()
+    warn = bool(env_enabled and expected > 0 and ratio is not None and ratio < CALIBRATION_RATE_WARN_RATIO)
+
+    return {
+        "ts_utc": now,
+        "table_present": table_present,
+        "env_enabled": env_enabled,
+        "enrolled_tickers": enrolled,
+        "session_minutes": SESSION_MINUTES_RTH,
+        "expected_decisions_per_minute_per_ticker": EXPECTED_DECISIONS_PER_MINUTE_PER_TICKER,
+        "expected_per_24h": expected,
+        "last_24h_count": last_24h,
+        "prior_24h_count": prior_24h,
+        "ratio": ratio,
+        "warn_ratio": CALIBRATION_RATE_WARN_RATIO,
+        "warn": warn,
+    }
+
+
 def default_decision_ts_utc() -> float:
     """Fallback when SignalInput.refresh_ts_utc is unset (tests / offline callers)."""
     try:

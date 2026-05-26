@@ -75,6 +75,21 @@
     </div>
 
     <section>
+      <h3>Calibration health</h3>
+      <p class="lead" style="font-size:13px;margin-bottom:12px">
+        Forward-only rate-of-writes counter for <code>calibration_decision_log</code>.
+        Catches silent-gap regressions like the Apr 12 - May 5 outage
+        (24 days of zero rows while <code>ED_CALIBRATION_LOG</code> was off).
+        Auto-refreshes every 60s.
+      </p>
+      <div id="cal-health-card" class="card">
+        <div class="title" id="cal-health-title">Loading…</div>
+        <div class="cadence" id="cal-health-line"></div>
+        <div class="cmd" id="cal-health-detail"></div>
+      </div>
+    </section>
+
+    <section>
       <h3>Sequences</h3>
       <p class="lead" style="font-size:13px;margin-bottom:12px">Runs steps in order; stops if a step fails.</p>
       <div id="sequences" class="grid cols-2"></div>
@@ -177,6 +192,58 @@
       return el;
     }
 
+    function fmtRatio(r) {
+      if (r === null || r === undefined) return '—';
+      return (r * 100).toFixed(1) + '%';
+    }
+
+    async function refreshCalibrationHealth() {
+      const title = $('cal-health-title');
+      const line = $('cal-health-line');
+      const detail = $('cal-health-detail');
+      try {
+        const r = await fetch('/api/ops/calibration_rowcount');
+        const d = await r.json();
+        if (!d.ok && d.error) {
+          title.textContent = 'Calibration health probe failed';
+          title.style.color = 'var(--red)';
+          line.textContent = d.error;
+          detail.textContent = '';
+          return;
+        }
+        const envOn = !!d.env_enabled;
+        const tablePresent = !!d.table_present;
+        const warn = !!d.warn;
+        let label, color;
+        if (!tablePresent) {
+          label = 'calibration_decision_log MISSING'; color = 'var(--red)';
+        } else if (!envOn) {
+          label = 'ED_CALIBRATION_LOG OFF (boot WARN active)'; color = 'var(--amber)';
+        } else if (warn) {
+          label = 'Rate BELOW threshold'; color = 'var(--red)';
+        } else {
+          label = 'OK'; color = 'var(--green)';
+        }
+        title.textContent = label;
+        title.style.color = color;
+        line.textContent =
+          'last 24h: ' + d.last_24h_count +
+          ' · prior 24h: ' + d.prior_24h_count +
+          ' · expected: ' + Math.round(d.expected_per_24h) +
+          ' · ratio: ' + fmtRatio(d.ratio) +
+          ' · threshold: ' + fmtRatio(d.warn_ratio);
+        detail.textContent =
+          'enrolled tickers: ' + d.enrolled_tickers +
+          ' · session minutes: ' + d.session_minutes +
+          ' · expected/min/ticker: ' + d.expected_decisions_per_minute_per_ticker;
+      } catch (e) {
+        title.textContent = 'Calibration health probe failed';
+        title.style.color = 'var(--red)';
+        line.textContent = String(e);
+        detail.textContent = '';
+      }
+    }
+
     async function init() {
       let data;
       try {
@@ -201,6 +268,9 @@
       (data.jobs || []).forEach((j) => {
         jobRoot.appendChild(card(j, enabled, false, null));
       });
+
+      refreshCalibrationHealth();
+      setInterval(refreshCalibrationHealth, 60000);
     }
 
     init();

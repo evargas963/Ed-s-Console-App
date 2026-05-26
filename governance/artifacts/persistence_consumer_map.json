@@ -367,6 +367,15 @@
   ],
   "writer_candidates": [
     {
+      "candidate_fn": "compute_calibration_rate_health",
+      "file": "calibration/writer.py",
+      "line": 422,
+      "production_callers": [
+        "server.py"
+      ],
+      "recommended_hook_file": "server.py"
+    },
+    {
       "candidate_fn": "EdDB.compute_accuracy",
       "file": "db.py",
       "line": 3783,

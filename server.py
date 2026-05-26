@@ -5872,6 +5872,35 @@ async def api_ops_status():
     )
 
 
+@app.get("/api/ops/calibration_rowcount")
+async def api_ops_calibration_rowcount():
+    """Pass 3 — forward-only calibration_decision_log rate health.
+
+    Surfaces last-24h vs prior-24h vs expected row counts so an
+    ED_CALIBRATION_LOG=1 environment with a silent gap (DB lock, gate-chain
+    bug, schema mismatch, etc.) becomes immediately visible on /ops. Without
+    this counter, the Apr 12 - May 5 calibration gap went 24 days
+    undetected. Reader for calibration_decision_log.
+    """
+    from calibration.writer import compute_calibration_rate_health
+    from db import DB_PATH as _calibration_db_path
+
+    try:
+        health = compute_calibration_rate_health(_calibration_db_path)
+    except Exception as exc:  # pragma: no cover — defensive ops surface
+        log.warning("calibration rowcount health probe failed: %s", exc)
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
+    if health.get("warn"):
+        log.warning(
+            "calibration_decision_log rate WARN: last_24h=%d expected=%.0f ratio=%.2f (threshold=%.2f)",
+            health.get("last_24h_count", 0),
+            health.get("expected_per_24h", 0.0),
+            health.get("ratio") or 0.0,
+            health.get("warn_ratio", 0.0),
+        )
+    return JSONResponse({"ok": True, **health})
+
+
 @app.post("/api/ops/run")
 async def api_ops_run(request: Request, payload: dict = Body(...)):
     from ops_runner import (
