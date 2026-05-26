@@ -36,7 +36,8 @@
           "calibration/v2_advisory_backfill.py",
           "calibration/validate_logging.py",
           "calibration/validate_logging_e2e.py",
-          "calibration/validate_outcome_join.py"
+          "calibration/validate_outcome_join.py",
+          "calibration/writer.py"
         ]
       },
       "status": "live"
@@ -54,6 +55,7 @@
       ],
       "read_consumers": {
         "ed_schema_flags": [
+          "db.py",
           "distance_option_a_backfill_v1.py",
           "normalized_training_sync.py"
         ]
@@ -72,6 +74,8 @@
       ],
       "read_consumers": {
         "logging_universe": [
+          "calibration/writer.py",
+          "db.py",
           "scheduler_user_tickers.py",
           "verification/daily_health.py"
         ]
@@ -90,6 +94,8 @@
       ],
       "read_consumers": {
         "logging_universe": [
+          "calibration/writer.py",
+          "db.py",
           "scheduler_user_tickers.py",
           "verification/daily_health.py"
         ]
@@ -109,6 +115,8 @@
       ],
       "read_consumers": {
         "logging_universe": [
+          "calibration/writer.py",
+          "db.py",
           "scheduler_user_tickers.py",
           "verification/daily_health.py"
         ]
@@ -127,6 +135,8 @@
       ],
       "read_consumers": {
         "logging_universe": [
+          "calibration/writer.py",
+          "db.py",
           "scheduler_user_tickers.py",
           "verification/daily_health.py"
         ]
@@ -144,9 +154,11 @@
         "server.py"
       ],
       "read_consumers": {
-        "logging_universe_eviction_log": []
+        "logging_universe_eviction_log": [
+          "db.py"
+        ]
       },
-      "status": "dormant"
+      "status": "live"
     },
     {
       "writer_fn": "EdDB.logging_universe_migration_mark",
@@ -155,11 +167,15 @@
       "tables_written": [
         "logging_universe_migration_log"
       ],
-      "production_callers": [],
+      "production_callers": [
+        "db.py"
+      ],
       "read_consumers": {
-        "logging_universe_migration_log": []
+        "logging_universe_migration_log": [
+          "db.py"
+        ]
       },
-      "status": "dormant"
+      "status": "live"
     },
     {
       "writer_fn": "EdDB.logging_universe_import_legacy_json_tickers",
@@ -171,6 +187,8 @@
       "production_callers": [],
       "read_consumers": {
         "logging_universe": [
+          "calibration/writer.py",
+          "db.py",
           "scheduler_user_tickers.py",
           "verification/daily_health.py"
         ]
@@ -190,10 +208,14 @@
       ],
       "read_consumers": {
         "logging_universe": [
+          "calibration/writer.py",
+          "db.py",
           "scheduler_user_tickers.py",
           "verification/daily_health.py"
         ],
-        "logging_universe_migration_log": []
+        "logging_universe_migration_log": [
+          "db.py"
+        ]
       },
       "status": "live"
     },
@@ -210,10 +232,14 @@
       ],
       "read_consumers": {
         "logging_universe": [
+          "calibration/writer.py",
+          "db.py",
           "scheduler_user_tickers.py",
           "verification/daily_health.py"
         ],
-        "logging_universe_migration_log": []
+        "logging_universe_migration_log": [
+          "db.py"
+        ]
       },
       "status": "live"
     },
@@ -224,14 +250,17 @@
       "tables_written": [
         "ed_schema_flags"
       ],
-      "production_callers": [],
+      "production_callers": [
+        "db.py"
+      ],
       "read_consumers": {
         "ed_schema_flags": [
+          "db.py",
           "distance_option_a_backfill_v1.py",
           "normalized_training_sync.py"
         ]
       },
-      "status": "dormant"
+      "status": "live"
     },
     {
       "writer_fn": "EdDB._migrate_outcome_anchor_bar_canonical",
@@ -240,14 +269,17 @@
       "tables_written": [
         "ed_schema_flags"
       ],
-      "production_callers": [],
+      "production_callers": [
+        "db.py"
+      ],
       "read_consumers": {
         "ed_schema_flags": [
+          "db.py",
           "distance_option_a_backfill_v1.py",
           "normalized_training_sync.py"
         ]
       },
-      "status": "dormant"
+      "status": "live"
     },
     {
       "writer_fn": "EdDB.insert_snapshot",
@@ -270,6 +302,7 @@
           "calibration/phase6_edge_discovery_governed_v1.py",
           "calibration/repair_anchor_coverage_pad_v1.py",
           "calibration/repair_canonical_1m_bars_for_outcomes.py",
+          "db.py",
           "live_vs_replay_validation.py",
           "replay_bundle_coverage.py",
           "similarity_feature_search.py",
@@ -304,6 +337,7 @@
       "production_callers": [
         "bar_rehydration_issue19_v1.py",
         "calibration/repair_anchor_coverage_pad_v1.py",
+        "db.py",
         "server.py"
       ],
       "read_consumers": {
@@ -317,6 +351,7 @@
           "calibration/repair_canonical_1m_bars_for_outcomes.py",
           "calibration/repair_canonical_1m_edge_carry_v1.py",
           "calibration/repair_canonical_1m_interior_gaps_v1.py",
+          "db.py",
           "features/signal_layer_v1.py",
           "governance/mega4_traceable_inventory.py",
           "horizon_outcomes.py",
@@ -332,16 +367,20 @@
       "tables_written": [
         "level_crosses"
       ],
-      "production_callers": [],
+      "production_callers": [
+        "db.py"
+      ],
       "read_consumers": {
-        "level_crosses": []
+        "level_crosses": [
+          "db.py"
+        ]
       },
-      "status": "dormant"
+      "status": "live"
     },
     {
       "writer_fn": "EdDB.log_confluence",
       "file": "db.py",
-      "line": 3758,
+      "line": 3839,
       "tables_written": [
         "confluence_log"
       ],
@@ -354,13 +393,15 @@
     {
       "writer_fn": "EdDB.start_session",
       "file": "db.py",
-      "line": 3836,
+      "line": 3917,
       "tables_written": [
         "session_log"
       ],
       "production_callers": [],
       "read_consumers": {
-        "session_log": []
+        "session_log": [
+          "db.py"
+        ]
       },
       "status": "dormant"
     }
@@ -378,7 +419,7 @@
     {
       "candidate_fn": "EdDB.compute_accuracy",
       "file": "db.py",
-      "line": 3783,
+      "line": 3864,
       "production_callers": [
         "server.py"
       ],
@@ -387,22 +428,22 @@
     {
       "candidate_fn": "EdDB.end_session",
       "file": "db.py",
-      "line": 3848,
+      "line": 3929,
       "production_callers": [],
       "recommended_hook_file": null
     },
     {
       "candidate_fn": "EdDB.update_session_counts",
       "file": "db.py",
-      "line": 3868,
+      "line": 3949,
       "production_callers": [],
       "recommended_hook_file": null
     }
   ],
   "summary": {
     "writer_count": 19,
-    "live_count": 10,
-    "dormant_count": 9,
+    "live_count": 15,
+    "dormant_count": 4,
     "table_count": 11
   }
 }

@@ -160,7 +160,7 @@ def test_mega1_inventory_covers_every_function():
 def test_mega1_scope_complete():
     inv_files = {r.file for r in MEGA1_TRACEABLE_INVENTORY}
     assert inv_files == set(MEGA1_FILES)
-    assert len(MEGA1_TRACEABLE_INVENTORY) == 317  # +3 visual severity marker (_LevelMarkerFormatter.__init__, .format, _install_visual_severity_markers) + 1 calibration boot diagnostic (_log_calibration_logging_state_at_boot) + 1 Pass 3 calibration rowcount endpoint (api_ops_calibration_rowcount)
+    assert len(MEGA1_TRACEABLE_INVENTORY) == 318  # +3 visual severity marker (_LevelMarkerFormatter.__init__, .format, _install_visual_severity_markers) + 1 calibration boot diagnostic (_log_calibration_logging_state_at_boot) + 1 Pass 3 calibration rowcount endpoint (api_ops_calibration_rowcount) + 1 Pass 4 level_crosses endpoint (api_level_crosses)
 
 
 def test_mega1_row_schema_valid():

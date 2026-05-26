@@ -5520,6 +5520,41 @@ def _fetch_state(
     _prev_ent = _state_cache.get(_cache_key) or {}
     _gen_ts = time.time()
     _next_ver = int(_prev_ent.get("analytics_version", 0)) + 1
+
+    # ── Pass 4: level cross detection ─────────────────────────────────────────
+    # Writer for level_crosses, consumer at /api/level_crosses + Decision
+    # Command "third test of ceiling" pattern (db.count_level_tests). Debounced
+    # by (ticker, level_name, direction) per EdDB.LEVEL_CROSS_DEBOUNCE_S.
+    if _ed_db is not None:
+        try:
+            from live_decision_bundle import _key_levels_from_ms_dict as _kl_for_cross
+            _prev_spot_for_cross = _prev_ent.get("spot_f")
+            _levels_for_cross = _kl_for_cross(ms_dict)
+            if _prev_spot_for_cross is not None and spot_f is not None and _levels_for_cross:
+                _ts_et_str = _eastern_now().strftime("%Y-%m-%d %H:%M:%S ET")
+                _crosses = _ed_db.detect_and_log_level_crosses(
+                    ticker=ticker,
+                    prev_spot=float(_prev_spot_for_cross),
+                    cur_spot=float(spot_f),
+                    levels=_levels_for_cross,
+                    ts_utc=_gen_ts,
+                    ts_et=_ts_et_str,
+                    timeframe="1m",
+                    zone_before=(_prev_ent.get("ms_dict") or {}).get("zone"),
+                    zone_after=ms_dict.get("zone"),
+                )
+                for _xc in _crosses:
+                    log.info(
+                        "level_cross ticker=%s level=%s value=%.2f direction=%s spot=%.2f",
+                        ticker,
+                        _xc["level_name"],
+                        _xc["level_value"],
+                        _xc["direction"],
+                        _xc["spot_at_cross"],
+                    )
+        except Exception as _xce:
+            log.debug("level cross detection failed ticker=%s: %s", ticker, _xce)
+
     _state_cache[_cache_key] = {
         "ts": _gen_ts,
         "generated_at": _gen_ts,
@@ -5870,6 +5905,37 @@ async def api_ops_status():
             "sequences": sequences_public_list(),
         }
     )
+
+
+@app.get("/api/level_crosses")
+async def api_level_crosses(ticker: str = "SPY", n: int = 20, level_name: str | None = None,
+                            level_value: float | None = None, lookback_hours: float = 6.5):
+    """Pass 4 — read consumer for level_crosses table.
+
+    Two modes:
+      * ``ticker`` only -> last ``n`` crosses (recent breach log).
+      * ``ticker`` + ``level_name`` + ``level_value`` -> directional test count
+        within ``lookback_hours`` (Decision Command "third test of ceiling"
+        pattern, served by db.count_level_tests).
+    """
+    edb = get_db()
+    try:
+        if level_name is not None and level_value is not None:
+            counts = edb.count_level_tests(
+                ticker=ticker,
+                level_name=level_name,
+                level_value=float(level_value),
+                lookback_hours=float(lookback_hours),
+            )
+            return JSONResponse({"ok": True, "mode": "test_count", "ticker": ticker,
+                                 "level_name": level_name, "level_value": float(level_value),
+                                 "lookback_hours": float(lookback_hours), **counts})
+        rows = edb.get_recent_crosses(ticker=ticker, n=int(n))
+        return JSONResponse({"ok": True, "mode": "recent", "ticker": ticker,
+                             "n": int(n), "crosses": rows})
+    except Exception as exc:  # pragma: no cover — defensive ops surface
+        log.warning("api_level_crosses failed ticker=%s: %s", ticker, exc)
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
 
 
 @app.get("/api/ops/calibration_rowcount")

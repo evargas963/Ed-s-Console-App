@@ -166,30 +166,53 @@ def _scan_persistence_file(rel: str) -> tuple[list[dict], list[dict]]:
     return writers, candidates
 
 
+def _has_non_def_call(text: str, pat: re.Pattern[str], name: str) -> bool:
+    """True if any match of `pat` in `text` is NOT a function definition line.
+
+    A call site looks like `self.log_level_cross(event)` or `EdDB.log_level_cross(...)`.
+    A def line looks like `def log_level_cross(self, ...)`. Both contain
+    `log_level_cross(`, so a naive regex would count the def as a caller.
+    """
+    def_re = re.compile(rf"\bdef\s+{re.escape(name)}\s*\(")
+    for line in text.splitlines():
+        if not pat.search(line):
+            continue
+        if def_re.search(line):
+            continue
+        return True
+    return False
+
+
 def _scan_repo_for_callers(fn_short_names: set[str]) -> dict[str, list[str]]:
-    """For each short fn name, return sorted list of repo-relative files that call it."""
+    """For each short fn name, return sorted list of repo-relative files that call it.
+
+    Persistence files (db.py, calibration/writer.py) ARE scanned — the helper
+    pattern (`detect_and_log_level_crosses -> log_level_cross`) is a real
+    indirection, not noise. Lines containing `def <fn_name>(` are filtered
+    out so the writer's own definition doesn't count as a self-call.
+    """
     patterns = {name: re.compile(CALL_RE_TMPL.format(fn=re.escape(name))) for name in fn_short_names}
     callers: dict[str, set[str]] = {name: set() for name in fn_short_names}
 
-    persistence_paths = {ROOT / rel for rel in PERSISTENCE_FILES}
-
     for path in _iter_repo_python_files(ROOT):
-        if path in persistence_paths:
-            continue  # don't count self-references inside the writer file
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
         rel = str(path.relative_to(ROOT)).replace("\\", "/")
         for name, pat in patterns.items():
-            if pat.search(text):
+            if _has_non_def_call(text, pat, name):
                 callers[name].add(rel)
 
     return {name: sorted(found) for name, found in callers.items()}
 
 
 def _scan_repo_for_table_consumers(tables: set[str]) -> dict[str, list[str]]:
-    """For each table, return sorted list of repo-relative files that SELECT/JOIN/UPDATE it."""
+    """For each table, return sorted list of repo-relative files that SELECT/JOIN/UPDATE it.
+
+    Persistence files ARE scanned — read helpers inside db.py
+    (`get_recent_crosses`, `count_level_tests`) are legitimate consumers.
+    """
     patterns = {
         tbl: [
             re.compile(FROM_TABLE_RE_TMPL.format(tbl=re.escape(tbl)), re.IGNORECASE),
@@ -200,11 +223,7 @@ def _scan_repo_for_table_consumers(tables: set[str]) -> dict[str, list[str]]:
     }
     consumers: dict[str, set[str]] = {tbl: set() for tbl in tables}
 
-    persistence_paths = {ROOT / rel for rel in PERSISTENCE_FILES}
-
     for path in _iter_repo_python_files(ROOT):
-        if path in persistence_paths:
-            continue
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):

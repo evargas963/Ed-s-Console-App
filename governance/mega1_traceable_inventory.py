@@ -362,6 +362,7 @@ MEGA1_TRACEABLE_INVENTORY: tuple[Mega1TraceableDerivation, ...] = (
     Mega1TraceableDerivation("server.py", 588, "_record_analytics_bg_failure", "NONE", None, (), None, "Internal counter increment. No market-field derivation."),
     Mega1TraceableDerivation("server.py", 1911, "_filter_horizon_prob_bars_primary_only", "NONE", None, (), None, "Filters ms_dict[`horizon_prob_bars`] to UI primary horizons (1m/5m/15m/60m). No Schwab wire derivation."),
     Mega1TraceableDerivation("server.py", 2295, "_parse_quote_node_session_fields", "DERIVED", None, ("schwab_client.py:safe_get_quote",), None, "Canonical Schwab quote-node reader (quote → extended → regular fallbacks). Reads Schwab quote leaves (lastPrice / mark / bid / ask / quoteTime / tradeTime + extended + regular variants) and derives ``spot`` + ``spot_source`` via lastPrice/mark precedence."),
-    Mega1TraceableDerivation("server.py", 5876, "api_ops_calibration_rowcount", "NONE", None, (), None, "Pass 3 /api/ops endpoint reads calibration_decision_log row count (last 24h vs prior 24h vs expected) from calibration.writer.compute_calibration_rate_health; no market-field derivation."),
+    Mega1TraceableDerivation("server.py", 5911, "api_level_crosses", "NONE", None, (), None, "Pass 4 /api/level_crosses endpoint reads level_crosses table via EdDB.get_recent_crosses / EdDB.count_level_tests for the breach log + Decision Command 'third test of ceiling' pattern; no market-field derivation."),
+    Mega1TraceableDerivation("server.py", 5942, "api_ops_calibration_rowcount", "NONE", None, (), None, "Pass 3 /api/ops endpoint reads calibration_decision_log row count (last 24h vs prior 24h vs expected) from calibration.writer.compute_calibration_rate_health; no market-field derivation."),
 )
 

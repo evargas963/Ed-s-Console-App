@@ -122,21 +122,29 @@ def test_persistence_consumer_map_summary_consistent():
     assert summary["table_count"] == len(tables)
 
 
-def test_persistence_consumer_map_locks_four_originally_known_dormants():
-    """Regression lock: the 4 dormants that prompted this audit must stay
-    visible as dormant until Pass 4–7 wire or drop them."""
+def test_persistence_consumer_map_originally_known_dormants_status():
+    """Lock the dormants-progress story so Passes 5-7 can't accidentally
+    flip a writer's status without updating this test in the same commit.
+
+    Pass 4 @ <wire SHA> wired log_level_cross via EdDB.detect_and_log_level_crosses;
+    it must now be LIVE. The remaining originals (log_confluence, start_session)
+    stay DORMANT until Passes 6-7 wire or drop them.
+    """
     obj = json.loads(MAP_PATH.read_text(encoding="utf-8"))
     by_fn = {w["writer_fn"]: w for w in obj["writers"]}
 
-    for fn in ("EdDB.log_level_cross", "EdDB.log_confluence", "EdDB.start_session"):
+    assert by_fn.get("EdDB.log_level_cross", {}).get("status") == "live", (
+        "log_level_cross expected LIVE post-Pass 4; if Pass 4 was reverted, "
+        "update this test in the same commit."
+    )
+
+    for fn in ("EdDB.log_confluence", "EdDB.start_session"):
         assert fn in by_fn, f"writer {fn} disappeared from persistence map"
         assert by_fn[fn]["status"] == "dormant", (
-            f"{fn} status changed to {by_fn[fn]['status']}; if it was wired or "
-            "dropped, update this test in the same commit."
+            f"{fn} status changed to {by_fn[fn]['status']}; if Pass 6/7 wired or "
+            "dropped it, update this test in the same commit."
         )
 
-    # model_accuracy: compute_accuracy is a candidate, log_model_accuracy
-    # writer does not exist yet (Pass 5a will add it).
     candidate_fns = {c["candidate_fn"] for c in obj["writer_candidates"]}
     assert "EdDB.compute_accuracy" in candidate_fns, (
         "compute_accuracy missing from writer_candidates — Pass 5a hook "
