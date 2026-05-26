@@ -200,7 +200,9 @@ def run_meta(
                     df = df.iloc[-_meta_cap:].reset_index(drop=True)
                     print(f"  meta: ED_META_TRAIN_MAX_ROWS={_meta_cap} — using last {_meta_cap} rows")
                 y = encode_target(df, label_col)
-                rows = df.to_dict("records")
+                from features.training_canonical_input import records_for_mvp_from_dataframe
+
+                rows = records_for_mvp_from_dataframe(df)
                 stacked, ys = [], []
                 conn = sqlite3.connect(db_path)
                 from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
@@ -340,25 +342,35 @@ def preload_historical_db_for_eval(
     db_path: str,
     ticker: str,
     max_as_of_ts_utc: float,
+    *,
+    min_ts_utc: float | None = None,
 ) -> PreloadedHistoricalDB:
     """
-    Load all 1m snapshots for ``ticker`` with ts_utc < ``max_as_of_ts_utc`` in one query.
+    Load 1m snapshots for ``ticker`` with ``min_ts_utc <= ts_utc < max_as_of_ts_utc``.
 
-    For any evaluation row with ts_utc <= max_as_of_ts_utc, LSTM/Transformer call
-    ``get_recent_snapshots(..., as_of_ts_utc=row_ts)``; those rows are a subset of this
-    preload, matching _HistoricalDB's per-query result.
+    For each evaluation row at ``T``, LSTM/Transformer call
+    ``get_recent_snapshots(..., as_of_ts_utc=T)`` (strictly causal: only rows with
+    ``ts_utc < T``). ``min_ts_utc`` should be ``min(eval_row_ts) - lookback_buffer`` so
+    the first scored row still has enough pre-history across RTH gaps (governed eval
+  2026-05-26: without ``min_ts_utc``, loading from row 0 of the table was correct but
+    eval aborted on the first thin-history row; callers now pass a wall-clock buffer).
     """
     from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    where = "ticker = ? AND timeframe = ? AND ts_utc < ?"
+    params: list = [ticker, CANONICAL_TIMEFRAME, float(max_as_of_ts_utc)]
+    if min_ts_utc is not None:
+        where += " AND ts_utc >= ?"
+        params.append(float(min_ts_utc))
     raw = conn.execute(
         f"""
         SELECT * FROM {SNAPSHOT_TABLE_1M}
-        WHERE ticker = ? AND timeframe = ? AND ts_utc < ?
+        WHERE {where}
         ORDER BY ts_utc ASC
         """,
-        (ticker, CANONICAL_TIMEFRAME, float(max_as_of_ts_utc)),
+        params,
     ).fetchall()
     conn.close()
     return PreloadedHistoricalDB([dict(r) for r in raw], ticker, float(max_as_of_ts_utc))

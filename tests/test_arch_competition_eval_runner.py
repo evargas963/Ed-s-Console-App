@@ -166,3 +166,113 @@ def test_write_evaluation_manifest_removes_temp_on_replace_failure(
         write_evaluation_manifest(path, {"ok": True})
     assert not path.exists()
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_preload_historical_db_for_eval_respects_min_ts_utc(tmp_path: Path) -> None:
+    """Governed eval preload must include pre-history before the first scored row."""
+    import sqlite3
+
+    from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
+    from train_all import preload_historical_db_for_eval
+
+    db = tmp_path / "eval_hist.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        f"CREATE TABLE {SNAPSHOT_TABLE_1M} (ticker TEXT, timeframe TEXT, ts_utc REAL, spot REAL)"
+    )
+    for ts in (100.0, 200.0, 300.0, 400.0):
+        conn.execute(
+            f"INSERT INTO {SNAPSHOT_TABLE_1M} VALUES ('SPY', ?, ?, 100.0)",
+            (CANONICAL_TIMEFRAME, ts),
+        )
+    conn.commit()
+    conn.close()
+
+    pre = preload_historical_db_for_eval(str(db), "SPY", 400.0, min_ts_utc=250.0)
+    assert [float(r["ts_utc"]) for r in pre._rows] == [300.0]
+
+
+def test_parallel_eval_survives_lstm_sequence_error(monkeypatch) -> None:
+    """First-row thin history must not abort the whole eval (META-style degrade)."""
+    from ml_scheduler import _evaluate_parallel_on_full_rth
+
+    rows = [
+        {
+            "ts_utc": 1000.0 + i * 60.0,
+            "ts_et": "2026-01-02 10:00:00",
+            "outcome_1c": "up" if i % 2 == 0 else "down",
+            "spot": 100.0,
+        }
+        for i in range(12)
+    ]
+    monkeypatch.setattr(
+        "ml_scheduler._load_rth_rows_for_ticker",
+        lambda *a, **k: list(rows),
+    )
+    monkeypatch.setattr("ml_scheduler._eval_hist_db_for_labeled_rows", lambda *a, **k: object())
+
+    lstm_calls = {"n": 0}
+
+    def _fake_lstm(*args, **kwargs):
+        lstm_calls["n"] += 1
+        if lstm_calls["n"] == 1:
+            from features.lstm_sequence_input import LstmSequenceInputError
+
+            raise LstmSequenceInputError("LSTM needs at least 60 snapshots, got 0")
+        return {"up": 0.4, "down": 0.3, "flat": 0.3}
+
+    import ml_predict as mp
+
+    monkeypatch.setattr(mp, "_predict_xgb", lambda *a, **k: {"up": 0.5, "down": 0.25, "flat": 0.25})
+    monkeypatch.setattr(mp, "_predict_lstm", _fake_lstm)
+    monkeypatch.setattr(mp, "_predict_transformer", lambda *a, **k: {"up": 0.4, "down": 0.3, "flat": 0.3})
+    monkeypatch.setattr(mp, "_predict_meta", lambda *a, **k: None)
+    monkeypatch.setattr(
+        mp,
+        "_weighted_average",
+        lambda *a, **k: {"up": 0.34, "down": 0.33, "flat": 0.33},
+    )
+    monkeypatch.setattr(
+        "realized_contract_eval.evaluate_realized_contract_trades_for_rows",
+        lambda *a, **k: {},
+    )
+    monkeypatch.setattr(
+        "features.inference_snapshot.build_inference_snapshot_v1_from_db_row",
+        lambda **k: {"as_of_ts": k.get("as_of_ts"), "features": {}, "ticker": "SPY"},
+    )
+
+    acc, bal, n, ll, realized, detail = _evaluate_parallel_on_full_rth(
+        ":memory:",
+        "SPY",
+        Path("/models/parallel/SPY"),
+        target_column="outcome_1c",
+        return_detail=True,
+    )
+    assert n == 12
+    assert len(detail["prob_rows"]) == 12
+    assert lstm_calls["n"] == 12
+
+
+def test_parallel_eval_total_failure_reports_zero_rows_scored(monkeypatch) -> None:
+    """Outer eval failure must not claim n_rows_scored=len(candidate_rows) with empty prob_rows."""
+    from ml_scheduler import _evaluate_parallel_on_full_rth
+
+    monkeypatch.setattr(
+        "ml_scheduler._load_rth_rows_for_ticker",
+        lambda *a, **k: [{"ts_utc": float(i), "outcome_1c": "up"} for i in range(12)],
+    )
+
+    def _boom(*a, **k):
+        raise RuntimeError("simulated eval abort")
+
+    monkeypatch.setattr("ml_predict.reset_caches", _boom)
+
+    _acc, _bal, n, _ll, _realized, detail = _evaluate_parallel_on_full_rth(
+        ":memory:",
+        "SPY",
+        Path("/models/parallel/SPY"),
+        target_column="outcome_1c",
+        return_detail=True,
+    )
+    assert n == 0
+    assert detail["prob_rows"] == []

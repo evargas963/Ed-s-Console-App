@@ -367,6 +367,29 @@ def _empty_realized_metrics(n_rows: int) -> dict[str, Any]:
     }
 
 
+def _eval_hist_db_for_labeled_rows(
+    db_path: str,
+    ticker: str,
+    rows: list[dict],
+):
+    """Preload causal 1m history for offline RTH eval (parallel/cascade arch competition)."""
+    from train_all import preload_historical_db_for_eval
+    from lstm_data import STREAM_5M_LOOKBACK, STREAM_1M_LOOKBACK
+
+    _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
+    if not _tss:
+        return None
+    max_ts = max(_tss)
+    min_ts = min(_tss)
+    buffer_sec = float(STREAM_5M_LOOKBACK + STREAM_1M_LOOKBACK + 30) * 60.0
+    return preload_historical_db_for_eval(
+        db_path,
+        ticker,
+        max_ts,
+        min_ts_utc=max(0.0, min_ts - buffer_sec),
+    )
+
+
 def _evaluate_parallel_on_full_rth(
     db_path: str,
     ticker: str,
@@ -391,7 +414,6 @@ def _evaluate_parallel_on_full_rth(
         return out
 
     try:
-        from train_all import preload_historical_db_for_eval
         import ml_predict as mp
         import numpy as np
         from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss
@@ -411,32 +433,47 @@ def _evaluate_parallel_on_full_rth(
                 prob_rows: list[list[float]] = []
                 rows_used: list[dict] = []
                 from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
+                from features.training_canonical_input import normalize_pandas_sql_null_row_dict
 
-                _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
-                hist_db = (
-                    preload_historical_db_for_eval(db_path, ticker, max(_tss))
-                    if _tss
-                    else None
-                )
+                hist_db = _eval_hist_db_for_labeled_rows(db_path, ticker, rows)
 
                 for row in rows:
                     yt = {"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2)
+                    row_db = normalize_pandas_sql_null_row_dict(row)
+                    ts_utc = row_db.get("ts_utc")
                     inf_v1 = build_inference_snapshot_v1_from_db_row(
                         ticker=ticker,
                         expiry=None,
-                        as_of_ts=row.get("ts_utc"),
-                        db_row=row,
+                        as_of_ts=float(ts_utc) if ts_utc is not None else None,
+                        db_row=row_db,
                     )
-                    xgb_p = mp._predict_xgb(inf_v1, ticker, fusion_feature_overlay=row)
-                    ts_utc = row.get("ts_utc")
+                    xgb_p = mp._predict_xgb(inf_v1, ticker, fusion_feature_overlay=row_db)
                     lstm_p = tr_p = None
-                    if ts_utc and hist_db is not None:
-                        lstm_p = mp._predict_lstm(
-                            ticker, hist_db, inference_snapshot_v1=inf_v1
-                        )
-                        tr_p = mp._predict_transformer(
-                            ticker, hist_db, inference_snapshot_v1=inf_v1
-                        )
+                    if ts_utc is not None and hist_db is not None:
+                        try:
+                            lstm_p = mp._predict_lstm(
+                                ticker, hist_db, inference_snapshot_v1=inf_v1
+                            )
+                        except Exception as _lstm_e:
+                            log.debug(
+                                "%s parallel eval row: LSTM unavailable at ts=%s (%s)",
+                                ticker,
+                                ts_utc,
+                                _lstm_e,
+                            )
+                            lstm_p = None
+                        try:
+                            tr_p = mp._predict_transformer(
+                                ticker, hist_db, inference_snapshot_v1=inf_v1
+                            )
+                        except Exception as _tr_e:
+                            log.debug(
+                                "%s parallel eval row: Transformer unavailable at ts=%s (%s)",
+                                ticker,
+                                ts_utc,
+                                _tr_e,
+                            )
+                            tr_p = None
                     if xgb_p is None:
                         continue
                     result = mp._predict_meta(ticker, xgb_p, lstm_p, tr_p)
@@ -456,7 +493,7 @@ def _evaluate_parallel_on_full_rth(
                     dom = direction_from_normalized_triplet(pu, pd, pf)
                     preds.append({"up": 0, "down": 1, "flat": 2}[dom])
                     y_true.append(yt)
-                    rows_used.append(row)
+                    rows_used.append(row_db)
 
             n = len(preds)
             if n < 10:
@@ -494,7 +531,7 @@ def _evaluate_parallel_on_full_rth(
             mp.reset_ml_infer_horizon_slug(htok)
     except Exception as e:
         log.warning("Parallel eval failed for %s: %s", ticker, e)
-        out = (0.0, 0.0, len(rows), None, _empty_realized_metrics(len(rows)))
+        out = (0.0, 0.0, 0, None, _empty_realized_metrics(0))
         if return_detail:
             return out + ({"prob_rows": [], "y_true": [], "rows_used": []},)
         return out
@@ -523,7 +560,6 @@ def _evaluate_cascade_on_full_rth(
         return out
 
     try:
-        from train_all import preload_historical_db_for_eval
         import ml_predict as mp
         import numpy as np
         from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss
@@ -543,27 +579,33 @@ def _evaluate_cascade_on_full_rth(
                 prob_rows: list[list[float]] = []
                 rows_used: list[dict] = []
                 from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
+                from features.training_canonical_input import normalize_pandas_sql_null_row_dict
 
-                _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
-                hist_db = (
-                    preload_historical_db_for_eval(db_path, ticker, max(_tss))
-                    if _tss
-                    else None
-                )
+                hist_db = _eval_hist_db_for_labeled_rows(db_path, ticker, rows)
 
                 for row in rows:
-                    ts_utc = row.get("ts_utc")
-                    if not ts_utc or hist_db is None:
+                    row_db = normalize_pandas_sql_null_row_dict(row)
+                    ts_utc = row_db.get("ts_utc")
+                    if ts_utc is None or hist_db is None:
                         continue
                     inf_v1 = build_inference_snapshot_v1_from_db_row(
                         ticker=ticker,
                         expiry=None,
                         as_of_ts=float(ts_utc),
-                        db_row=row,
+                        db_row=row_db,
                     )
-                    tr_p = mp._predict_transformer(
-                        ticker, hist_db, inference_snapshot_v1=inf_v1
-                    )
+                    try:
+                        tr_p = mp._predict_transformer(
+                            ticker, hist_db, inference_snapshot_v1=inf_v1
+                        )
+                    except Exception as _tr_e:
+                        log.debug(
+                            "%s cascade eval row: Transformer unavailable at ts=%s (%s)",
+                            ticker,
+                            ts_utc,
+                            _tr_e,
+                        )
+                        continue
                     if not tr_p:
                         continue
                     pu = float(tr_p.get("up", 0.33))
@@ -577,7 +619,7 @@ def _evaluate_cascade_on_full_rth(
                     y_true.append(yt)
                     dom = direction_from_normalized_triplet(pu, pd, pf)
                     preds.append({"up": 0, "down": 1, "flat": 2}[dom])
-                    rows_used.append(row)
+                    rows_used.append(row_db)
 
             n = len(preds)
             if n < 10:
@@ -611,7 +653,7 @@ def _evaluate_cascade_on_full_rth(
             mp.reset_ml_infer_horizon_slug(htok)
     except Exception as e:
         log.warning("Cascade eval failed for %s: %s", ticker, e)
-        out = (0.0, 0.0, len(rows), None, _empty_realized_metrics(len(rows)))
+        out = (0.0, 0.0, 0, None, _empty_realized_metrics(0))
         if return_detail:
             return out + ({"prob_rows": [], "y_true": [], "rows_used": []},)
         return out
@@ -841,11 +883,10 @@ def train_parallel_candidate(
             mp.MODEL_DIR = out_dir
             mp.reset_caches()
 
-            rows = df.to_dict("records")
-            _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
-            hist_db = (
-                preload_historical_db_for_eval(db_path, ticker, max(_tss)) if _tss else None
-            )
+            from features.training_canonical_input import records_for_mvp_from_dataframe
+
+            rows = records_for_mvp_from_dataframe(df)
+            hist_db = _eval_hist_db_for_labeled_rows(db_path, ticker, rows)
             for row in rows:
                 inf_v1 = build_inference_snapshot_v1_from_db_row(
                     ticker=ticker,

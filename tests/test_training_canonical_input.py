@@ -9,6 +9,8 @@ from features.training_canonical_input import (
     TrainingCanonicalInputError,
     assert_shared_feature_cache_keys_equal,
     assert_training_lineage_matches_canonical,
+    normalize_pandas_sql_null_row_dict,
+    records_for_mvp_from_dataframe,
     training_canonical_lineage_header,
     training_snapshot_for_sequence_encode,
     validate_tabular_training_dataframe_canonical,
@@ -304,3 +306,67 @@ def test_train_parallel_rejects_bad_feature_cache_key_override():
                 code_fp="x" * 64,
                 feature_cache_key="0" * 64,
             )
+
+
+def test_normalize_pandas_sql_null_row_dict_maps_nan_to_none() -> None:
+    out = normalize_pandas_sql_null_row_dict(
+        {"absorption_score": float("nan"), "spot": 100.0, "zone": "pin_bull"}
+    )
+    assert out["absorption_score"] is None
+    assert out["spot"] == 100.0
+
+
+def test_records_for_mvp_from_dataframe_unblocks_meta_inference_snapshot_path() -> None:
+    """META assembly regression (SPY 2026-05-26): raw NaN fails MVP coercion."""
+    from features.db_feature_adapter import build_db_mvp_feature_row
+    from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
+    from features.mvp_source_coercion import MvpFeatureSourceError
+
+    base = {
+        "spot": 100.0,
+        "spread": 0.05,
+        "zone": "pin_bull",
+        "nearest_above_dist": 1.0,
+        "nearest_below_dist": 1.0,
+        "net_gamma": 0.0,
+        "vwap_side": "above",
+        "vwap_dist_pts": 0.2,
+        "absorption_score": float("nan"),
+        "continuation_score": float("nan"),
+    }
+    with pytest.raises(MvpFeatureSourceError, match="absorption_score"):
+        build_db_mvp_feature_row(base)
+    rows = records_for_mvp_from_dataframe(pd.DataFrame([base]))
+    snap = build_inference_snapshot_v1_from_db_row(
+        ticker="SPY",
+        expiry=None,
+        as_of_ts=1.0,
+        db_row=rows[0],
+    )
+    assert snap["features"]["liquidity.absorption_score"] is None
+    assert snap["features"]["liquidity.continuation_score"] is None
+
+
+def test_repo_bans_raw_to_dict_records_on_mvp_feed_paths() -> None:
+    """Mechanical lock: MVP paths must use records_for_mvp_from_dataframe."""
+    import sys
+    from pathlib import Path
+
+    tools = Path(__file__).resolve().parent.parent / "tools"
+    if str(tools) not in sys.path:
+        sys.path.insert(0, str(tools))
+    import check_fix_everything_we_touch as mod
+
+    assert mod.check_mvp_dataframe_ingress() == []
+
+
+def test_meta_assembly_uses_canonical_dataframe_ingress() -> None:
+    """Source lock: scheduler META must not call df.to_dict('records') directly."""
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parent.parent / "ml_scheduler.py").read_text(encoding="utf-8")
+    assert "records_for_mvp_from_dataframe" in text
+    assert '.to_dict("records")' not in text or "records_for_mvp_from_dataframe(df)" in text
+    # Explicit ban: no inline list-comp over raw to_dict in meta block
+    assert "[clean_dataframe_row_dict(r) for r in df.to_dict" not in text
+    assert '[normalize_pandas_sql_null_row_dict(r) for r in df.to_dict' not in text

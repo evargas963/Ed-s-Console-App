@@ -4,12 +4,20 @@ Canonical training-input boundary: DB rows → MVP contract → merged legacy-sh
 Single approved path for training-time MVP alignment with inference (see features.db_feature_adapter,
 features.lstm_sequence_input.merge_db_row_with_canonical_mvp).
 
+**DataFrame → row dict ingress (mandatory):** Any tabular training frame that feeds
+``build_db_mvp_feature_row`` or ``build_inference_snapshot_v1_from_db_row`` MUST use
+``records_for_mvp_from_dataframe(df)`` — never raw ``df.to_dict("records")``. Pandas
+``read_sql`` maps SQL NULL to float NaN; MVP coercion treats NaN as broken upstream
+compute. The ingress restores SQL NULL as Python ``None`` without weakening live
+inference (runtime dicts do not pass through this boundary).
+
 Does not widen the MVP feature set. Does not change live inference defaults.
 """
 
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from typing import Any
 
 import pandas as pd
@@ -70,6 +78,37 @@ def training_snapshot_for_sequence_encode(snapshot_row: dict[str, Any]) -> dict[
     return merge_db_row_with_canonical_mvp(snapshot_row, canon)
 
 
+def normalize_pandas_sql_null_row_dict(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Restore SQL NULL semantics on one pandas ``to_dict('records')`` row.
+
+    SQLite NULL on numeric columns becomes float NaN when loaded through pandas.
+    ``read_optional_float`` treats NaN as broken upstream compute
+    (``MvpFeatureSourceError``), not missing. This helper is the per-row primitive;
+    callers building MVP row lists from DataFrames MUST use
+    ``records_for_mvp_from_dataframe`` instead of raw ``to_dict('records')``.
+
+    Live runtime dicts (not from pandas) must not pass through this boundary — real
+    upstream NaN still fails loudly at coercion.
+    """
+    out: dict[str, Any] = {}
+    for k, v in row.items():
+        if isinstance(v, float) and math.isnan(v):
+            out[k] = None
+        else:
+            out[k] = v
+    return out
+
+
+def records_for_mvp_from_dataframe(df: pd.DataFrame) -> list[dict[str, Any]]:
+    """Canonical ingress: tabular training frame → MVP-safe row dicts.
+
+    The ONLY approved way to obtain row dicts from a pandas DataFrame for
+    ``build_db_mvp_feature_row``, ``build_inference_snapshot_v1_from_db_row``,
+    ``training_snapshot_for_sequence_encode``, and tabular canonical validation.
+    """
+    return [normalize_pandas_sql_null_row_dict(r) for r in df.to_dict("records")]
+
+
 def _row_dict_from_df(df: pd.DataFrame, idx: int) -> dict[str, Any]:
     """Convert DataFrame row to dict, mapping pandas NaN -> Python None.
 
@@ -98,14 +137,7 @@ def _row_dict_from_df(df: pd.DataFrame, idx: int) -> dict[str, Any]:
     receives dicts directly from runtime compute, not via DataFrame, so
     actual upstream NaN still raises as designed).
     """
-    raw = df.iloc[idx].to_dict()
-    out: dict[str, Any] = {}
-    for k, v in raw.items():
-        if isinstance(v, float) and math.isnan(v):
-            out[k] = None
-        else:
-            out[k] = v
-    return out
+    return normalize_pandas_sql_null_row_dict(df.iloc[idx].to_dict())
 
 
 def validate_tabular_training_dataframe_canonical(

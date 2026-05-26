@@ -635,6 +635,45 @@ def check_action_not_documentation(staged: set[str]) -> list[str]:
     return errors
 
 
+TO_DICT_RECORDS_RE = re.compile(r"""\.to_dict\s*\(\s*['"]records['"]\s*\)""")
+_MVP_FEED_MARKERS = (
+    "build_inference_snapshot_v1_from_db_row",
+    "build_db_mvp_feature_row",
+)
+_MVP_INGRESS_OWNER = "features/training_canonical_input.py"
+
+
+def check_mvp_dataframe_ingress() -> list[str]:
+    """Ban raw ``df.to_dict('records')`` on code paths that feed MVP coercion.
+
+    Canonical ingress: ``features.training_canonical_input.records_for_mvp_from_dataframe``.
+    DATA-PIPELINE-INTEGRITY (2026-05-26): Pass 1 patched one boundary; META bypass
+    reproduced the absorption_score NaN failure on SPY after XGB/LSTM/Transformer trained.
+    """
+    errors: list[str] = []
+    for path in REPO_ROOT.rglob("*.py"):
+        rel = path.relative_to(REPO_ROOT).as_posix().replace("\\", "/")
+        if rel.startswith(("tests/", "governance/", "tools/")):
+            continue
+        if rel == _MVP_INGRESS_OWNER:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if not TO_DICT_RECORDS_RE.search(text):
+            continue
+        if not any(marker in text for marker in _MVP_FEED_MARKERS):
+            continue
+        if "records_for_mvp_from_dataframe" in text:
+            continue
+        errors.append(
+            f"{rel}: raw df.to_dict('records') on MVP feed path — use "
+            "features.training_canonical_input.records_for_mvp_from_dataframe"
+        )
+    return errors
+
+
 def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
     staged = staged if staged is not None else _git_staged_paths()
     errors: list[str] = []
@@ -657,6 +696,7 @@ def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
     errors.extend(check_persistence_map_fresh(staged))
     # Pass 1b: new INSERTs must hit tables with readers OR a tracked REAL-GATE row.
     errors.extend(check_persistence_writer_has_reader(staged))
+    errors.extend(check_mvp_dataframe_ingress())
 
     for path in paths:
         if path.name == "COMMIT_EDITMSG" or "--commit-msg" in path.as_posix():

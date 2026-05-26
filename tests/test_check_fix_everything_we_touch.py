@@ -683,3 +683,25 @@ def test_storage_needs_consumer_tests_caller_alone_does_not_satisfy(tmp_path: Pa
     finally:
         mod.REPO_ROOT = orig_root
     assert hits, "test-only caller must not satisfy production-caller requirement"
+
+
+def test_mvp_dataframe_ingress_passes_on_current_repo() -> None:
+    assert mod.check_mvp_dataframe_ingress() == []
+
+
+def test_mvp_dataframe_ingress_flags_raw_to_dict_on_mvp_path(tmp_path: Path) -> None:
+    bad = tmp_path / "bad_meta.py"
+    bad.write_text(
+        "def f(df):\n"
+        "    rows = df.to_dict('records')\n"
+        "    return build_inference_snapshot_v1_from_db_row(db_row=rows[0])\n",
+        encoding="utf-8",
+    )
+    orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = tmp_path
+    try:
+        hits = mod.check_mvp_dataframe_ingress()
+    finally:
+        mod.REPO_ROOT = orig_root
+    assert len(hits) == 1
+    assert "records_for_mvp_from_dataframe" in hits[0]
