@@ -50,6 +50,12 @@ def test_build_db_mvp_feature_row_invalid_column_raises():
         build_db_mvp_feature_row({"spot": "garbage"})
 
 
+def test_build_db_mvp_feature_row_negative_spread_withheld_not_invalid():
+    """Stored crossed-quote spread must not abort sequence encode for the whole window."""
+    row = build_db_mvp_feature_row({"spot": 450.0, "spread": -0.01})
+    assert row["price.spread_pts"] is None
+
+
 def test_build_db_mvp_feature_row_valid_mapping():
     snap = _full_db_row()
     row = build_db_mvp_feature_row(snap)

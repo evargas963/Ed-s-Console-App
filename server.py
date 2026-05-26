@@ -877,6 +877,8 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
             bf, af = float(bid), float(ask)
             spread_frac = (af - bf) / quote_mid
             spread_pts = round(af - bf, 4)
+            if spread_pts is not None and spread_pts < 0.0:
+                spread_pts = None
     except (TypeError, ValueError):
         pass
     t_parse1 = time.perf_counter()
@@ -3093,7 +3095,8 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                 if bid is not None and ask is not None:
                     try:
                         b_px, a_px = float(bid), float(ask)
-                        row["spread_pts"] = round(a_px - b_px, 4)
+                        raw_spread = round(a_px - b_px, 4)
+                        row["spread_pts"] = raw_spread if raw_spread >= 0.0 else None
                         row["spread_pts_source"] = "derived_bid_ask_pts"
                         if mid is not None and mid > 0:
                             row["spread"] = (a_px - b_px) / mid
