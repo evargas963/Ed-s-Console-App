@@ -9,6 +9,7 @@ Does not widen the MVP feature set. Does not change live inference defaults.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import pandas as pd
@@ -70,7 +71,41 @@ def training_snapshot_for_sequence_encode(snapshot_row: dict[str, Any]) -> dict[
 
 
 def _row_dict_from_df(df: pd.DataFrame, idx: int) -> dict[str, Any]:
-    return df.iloc[idx].to_dict()
+    """Convert DataFrame row to dict, mapping pandas NaN -> Python None.
+
+    SQLite stores numeric NULL as actual NULL; pandas read_sql converts NULL
+    in numeric columns to float NaN (numpy/pandas convention). The MVP
+    coercion contract in features.mvp_source_coercion.read_optional_float
+    distinguishes:
+      * missing data (None) -> canonical None (OK, downstream handles)
+      * non-finite numeric (NaN/Inf) -> MvpFeatureSourceError (broken
+        upstream compute)
+
+    Without this conversion, every snapshot row with a NULL numeric column
+    fails the non-finite check at row 0. Incident 2026-05-25: the scheduler
+    run failed 17 of 41 selected tickers (SPY, QQQ, IWM, AAPL, NVDA, META,
+    MSFT, AMZN, GOOG, GOOGL, AVGO, MRVL, PLTR, SMCI, TSL, TSLA, PCG) with
+    "row 0: MVP coercion failed: liquidity.absorption_score: non-finite
+    value nan" because 33% of SPY snapshots have NULL absorption_score
+    (and similar NULL distributions on other tickers / columns). Additional
+    11 tickers blocked across various row positions on structure.nearest_*
+    / anchor.vwap_dist_pts NaN -- same root cause.
+
+    NaN coming from a DataFrame at this boundary is always pandas-loaded
+    NULL: SQLite Python bindings cannot store NaN distinctly from NULL on
+    a numeric column. Converting NaN -> None here restores the source
+    semantics without weakening the contract for live inference (which
+    receives dicts directly from runtime compute, not via DataFrame, so
+    actual upstream NaN still raises as designed).
+    """
+    raw = df.iloc[idx].to_dict()
+    out: dict[str, Any] = {}
+    for k, v in raw.items():
+        if isinstance(v, float) and math.isnan(v):
+            out[k] = None
+        else:
+            out[k] = v
+    return out
 
 
 def validate_tabular_training_dataframe_canonical(

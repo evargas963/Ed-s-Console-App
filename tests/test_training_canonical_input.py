@@ -70,6 +70,53 @@ def test_validate_tabular_ok_on_valid_frame():
     validate_tabular_training_dataframe_canonical(df, max_rows=10)
 
 
+def test_validate_tabular_treats_pandas_nan_as_missing_on_absorption_score():
+    """DATA-PIPELINE-INTEGRITY 2026-05-25 regression: pandas converts SQL
+    NULL on numeric columns to float NaN; MVP coercion rejects NaN as
+    "broken upstream compute" by design. The training boundary
+    _row_dict_from_df must convert NaN -> None so SQL NULL semantics are
+    preserved. Reproduces the SPY/QQQ/IWM/megacap row-0 fail: 17 of 41
+    tickers in the scheduler run blocked by 'row 0: MVP coercion failed:
+    liquidity.absorption_score: non-finite value nan' because 33% of SPY
+    snapshot rows have NULL absorption_score.
+    """
+    row = _minimal_valid_db_row()
+    row["absorption_score"] = float("nan")
+    df = pd.DataFrame([row])
+    # Must NOT raise — NaN-from-DataFrame is treated as missing (None).
+    validate_tabular_training_dataframe_canonical(df, max_rows=10)
+
+
+def test_validate_tabular_treats_pandas_nan_as_missing_on_structure_columns():
+    """Same regression class — confirms fix covers all numeric MVP columns,
+    not just absorption_score. The 2026-05-25 incident had 11 additional
+    tickers blocked on structure.nearest_above_dist / nearest_below_dist /
+    anchor.vwap_dist_pts NaN at various row positions."""
+    row = _minimal_valid_db_row()
+    row["nearest_above_dist"] = float("nan")
+    row["nearest_below_dist"] = float("nan")
+    row["vwap_dist_pts"] = float("nan")
+    df = pd.DataFrame([row])
+    validate_tabular_training_dataframe_canonical(df, max_rows=10)
+
+
+def test_validate_tabular_nan_to_none_does_not_launder_real_breakage():
+    """Honest-limit lock: the NaN -> None conversion happens at the
+    DataFrame -> dict boundary in _row_dict_from_df. Live inference paths
+    that pass a Python dict directly (not via DataFrame) still hit the
+    contract's non-finite check because they bypass this boundary.
+    Verifies by calling training_snapshot_for_sequence_encode (live-path
+    function that takes a dict directly) — it must still reject float NaN
+    as invalid.
+    """
+    row = _minimal_valid_db_row()
+    row["absorption_score"] = float("nan")
+    # Direct dict path (no DataFrame conversion) — actual upstream NaN
+    # still raises as designed.
+    with pytest.raises(TrainingCanonicalInputError):
+        training_snapshot_for_sequence_encode(row)
+
+
 def test_assert_training_lineage_matches_canonical_ok():
     assert_training_lineage_matches_canonical(training_canonical_lineage_header())
 
