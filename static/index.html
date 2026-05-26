@@ -2556,6 +2556,7 @@
             <span class="decision-chip dim" id="dr-mh-promotion-chip" title="Multi-horizon policy promoted WAIT→directional (conviction floored low)" style="display:none">MH —</span>
             <span class="decision-chip dim" id="dr-session-boundary-chip" title="Session close boundary — time_warning from call_engine" style="display:none">SESSION —</span>
             <span class="decision-chip dim" id="dr-lane-stale-chip" title="Fast lane ahead of analytical paint or cards repainting" style="display:none">LANE —</span>
+            <span class="decision-chip dim" id="dr-level-test-chip" title="Recent tests of nearest key level — Pass 4b wires /api/level_crosses count_level_tests" style="display:none">TEST —</span>
           </div>
           <div class="signal-card-body">
             <div class="decision-verdict-row">
@@ -6874,6 +6875,94 @@ function _updateSessionBoundaryChip(integrity) {
   el.className = 'decision-chip dim';
 }
 
+// Pass 4b — Decision Command "Nth test of <level>" chip. Reads the nearest
+// key level from ms_dict (whichever of nearest_above/nearest_below has the
+// smaller absolute distance) and fetches /api/level_crosses?level_name=...
+// &level_value=... to get directional test counts from db.count_level_tests.
+// 30s per-(ticker, level, value) cache prevents endpoint spam on every refresh.
+const _LEVEL_TEST_CHIP_TTL_MS = 30000;
+const _levelTestChipCache = { key: '', ts: 0, data: null };
+
+function _levelTestChipOrdinal(n) {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return n + 'TH';
+  const last = n % 10;
+  return n + (last === 1 ? 'ST' : last === 2 ? 'ND' : last === 3 ? 'RD' : 'TH');
+}
+
+function _pickNearestLevelForChip(ld) {
+  const aboveDist = Number(ld && ld.nearest_above_dist);
+  const belowDist = Number(ld && ld.nearest_below_dist);
+  const aboveOk = Number.isFinite(aboveDist) && ld.nearest_above_name && Number.isFinite(Number(ld.nearest_above_val));
+  const belowOk = Number.isFinite(belowDist) && ld.nearest_below_name && Number.isFinite(Number(ld.nearest_below_val));
+  if (aboveOk && belowOk) {
+    if (Math.abs(aboveDist) <= Math.abs(belowDist)) {
+      return { name: ld.nearest_above_name, value: Number(ld.nearest_above_val) };
+    }
+    return { name: ld.nearest_below_name, value: Number(ld.nearest_below_val) };
+  }
+  if (aboveOk) return { name: ld.nearest_above_name, value: Number(ld.nearest_above_val) };
+  if (belowOk) return { name: ld.nearest_below_name, value: Number(ld.nearest_below_val) };
+  return null;
+}
+
+function _hideLevelTestChip(el) {
+  el.style.display = 'none';
+  el.textContent = 'TEST —';
+  el.className = 'decision-chip dim';
+}
+
+async function _updateLevelTestChip() {
+  const el = $('dr-level-test-chip');
+  if (!el) return;
+  const ld = window._lastData || {};
+  const ticker = String(ld.ticker || window.currentTicker || 'SPY').toUpperCase();
+  const nearest = _pickNearestLevelForChip(ld);
+  if (!nearest) {
+    _hideLevelTestChip(el);
+    return;
+  }
+  const key = ticker + '|' + nearest.name + '|' + nearest.value.toFixed(2);
+  const now = Date.now();
+  let data = null;
+  if (_levelTestChipCache.key === key && (now - _levelTestChipCache.ts) < _LEVEL_TEST_CHIP_TTL_MS) {
+    data = _levelTestChipCache.data;
+  } else {
+    try {
+      const url = '/api/level_crosses?ticker=' + encodeURIComponent(ticker) +
+                  '&level_name=' + encodeURIComponent(nearest.name) +
+                  '&level_value=' + encodeURIComponent(String(nearest.value)) +
+                  '&lookback_hours=6.5';
+      const resp = await fetchJsonWithTimeout(url, {}, 2000);
+      data = await resp.json();
+      _levelTestChipCache.key = key;
+      _levelTestChipCache.ts = now;
+      _levelTestChipCache.data = data;
+    } catch (e) {
+      _hideLevelTestChip(el);
+      return;
+    }
+  }
+  if (!data || data.ok !== true || (data.total | 0) === 0) {
+    _hideLevelTestChip(el);
+    return;
+  }
+  const total = data.total | 0;
+  const up = data.up | 0;
+  const down = data.down | 0;
+  el.style.display = '';
+  el.textContent = _levelTestChipOrdinal(total + 1) + ' TEST OF ' + String(nearest.name).toUpperCase();
+  el.className = total >= 3 ? 'decision-chip bad' : 'decision-chip dim';
+  el.title = total + ' recent test(s) of ' + nearest.name + ' (' + nearest.value.toFixed(2) +
+             ') in last 6.5h — up=' + up + ' down=' + down +
+             '. From /api/level_crosses count_level_tests (Pass 4b).';
+}
+
+// Expose for unit tests + diag inspection.
+try { window._updateLevelTestChip = _updateLevelTestChip; } catch (e) {}
+try { window._pickNearestLevelForChip = _pickNearestLevelForChip; } catch (e) {}
+try { window._levelTestChipOrdinal = _levelTestChipOrdinal; } catch (e) {}
+
 function _updateLaneStaleChip(integrity) {
   const el = $('dr-lane-stale-chip');
   if (!el) return;
@@ -6928,6 +7017,8 @@ function _updateLiveUiAe(opts) {
   _updateMhPromotionChip(integrity);
   _updateSessionBoundaryChip(integrity);
   _updateLaneStaleChip(integrity);
+  // Pass 4b — async; fire-and-forget, errors swallowed inside.
+  _updateLevelTestChip();
 }
 
 /** Fast-lane rollout counters (no console spam). Inspect: window._edFastRollout */
