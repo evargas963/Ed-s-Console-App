@@ -285,3 +285,93 @@ def test_backfill_returns_structured_skip_when_schema_missing(tmp_path: Path) ->
     stats = backfill_calibration_decisions_insert_from_snapshots(db_path)
     assert stats["inserted"] == 0
     assert any("schema_unavailable" in k for k in stats["skipped_reason_counts"].keys())
+
+
+# ───────────────────── FEATURE_STUDY_PREDICATE_SQL row-level lock ─────────────────────
+
+
+def test_feature_study_predicate_includes_live_and_reconstructed_excludes_premilestone(
+    tmp_path: Path,
+) -> None:
+    """Lock which rows each predicate matches.
+
+    Three row shapes exist in production calibration_decision_log:
+      (a) trusted + decision_source NULL    -> live writer (post-quarantine)
+      (b) legacy  + decision_source 'reconstructed_from_snapshot' -> Track B
+      (c) legacy  + decision_source NULL    -> 42 pre-milestone unreviewed rows
+
+    TRUSTED_PREDICATE_SQL must match only (a).
+    FEATURE_STUDY_PREDICATE_SQL must match (a) + (b) but NOT (c).
+    The pre-milestone rows stay excluded from both because they predate the
+    current schema lock; explicit operator review is required to admit them.
+    """
+    from calibration.trust import (
+        FEATURE_STUDY_PREDICATE_SQL,
+        TRUSTED_PREDICATE_SQL,
+    )
+
+    db_path = tmp_path / "predicate_lock.db"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        ensure_calibration_schema(conn)
+        # Live writer shape (trusted, NULL).
+        conn.execute(
+            "INSERT INTO calibration_decision_log "
+            "(ticker, canonical_timeframe, decision_ts_utc, calibration_trust, decision_source) "
+            "VALUES ('SPY', '1m', 1000.0, 'trusted', NULL)"
+        )
+        # Track B shape (legacy, reconstructed_from_snapshot).
+        conn.execute(
+            "INSERT INTO calibration_decision_log "
+            "(ticker, canonical_timeframe, decision_ts_utc, calibration_trust, decision_source) "
+            "VALUES ('SPY', '1m', 2000.0, 'legacy', 'reconstructed_from_snapshot')"
+        )
+        # Pre-milestone shape (legacy, NULL) — the 42-row class.
+        conn.execute(
+            "INSERT INTO calibration_decision_log "
+            "(ticker, canonical_timeframe, decision_ts_utc, calibration_trust, decision_source) "
+            "VALUES ('SPY', '1m', 3000.0, 'legacy', NULL)"
+        )
+        conn.commit()
+
+        trusted_rows = {
+            r[0] for r in conn.execute(
+                f"SELECT decision_ts_utc FROM calibration_decision_log WHERE {TRUSTED_PREDICATE_SQL}"
+            ).fetchall()
+        }
+        feature_rows = {
+            r[0] for r in conn.execute(
+                f"SELECT decision_ts_utc FROM calibration_decision_log WHERE {FEATURE_STUDY_PREDICATE_SQL}"
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert trusted_rows == {1000.0}, (
+        f"TRUSTED_PREDICATE_SQL must match only the live-writer row; got {trusted_rows}"
+    )
+    assert feature_rows == {1000.0, 2000.0}, (
+        f"FEATURE_STUDY_PREDICATE_SQL must match live + Track B but exclude pre-milestone; "
+        f"got {feature_rows}"
+    )
+
+
+def test_feature_study_and_helper_composes_with_caller_predicate() -> None:
+    """`feature_study_and(sql_fragment)` returns a parenthesized AND-composition
+    that callers can drop into existing WHERE clauses. Lock the exact shape so
+    future refactors of the helper don't silently change predicate semantics."""
+    from calibration.trust import FEATURE_STUDY_PREDICATE_SQL, feature_study_and
+
+    composed = feature_study_and("ticker = ? AND decision_ts_utc >= ?")
+    assert composed == (
+        f"(ticker = ? AND decision_ts_utc >= ?) AND {FEATURE_STUDY_PREDICATE_SQL}"
+    )
+
+
+def test_trusted_predicate_unchanged_post_feature_study_addition() -> None:
+    """Defensive lock: TRUSTED_PREDICATE_SQL string must stay exactly as the
+    existing analyze_phase3 / edge_discovery / signal_engineering pipelines
+    expect it. A typo in feature-predicate work cannot ripple."""
+    from calibration.trust import TRUSTED_PREDICATE_SQL
+
+    assert TRUSTED_PREDICATE_SQL == "calibration_trust = 'trusted'"
