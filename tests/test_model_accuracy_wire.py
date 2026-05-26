@@ -147,3 +147,30 @@ def test_history_limit_respected(tmp_path: Path) -> None:
     assert len(history) == 3
     # Latest first
     assert history[0]["accuracy_pct"] > history[1]["accuracy_pct"]
+
+
+# ───────────────────── Pass 5b — ops.html surface presence ─────────────────────
+
+
+def test_ops_html_has_model_accuracy_panel() -> None:
+    """Lock the ops.html Model accuracy section + JS refresh wire so a
+    future ops.html refactor can't silently regress Pass 5b."""
+    repo_root = Path(__file__).resolve().parent.parent
+    html = (repo_root / "static" / "ops.html").read_text(encoding="utf-8")
+    assert "<h3>Model accuracy</h3>" in html, "Model accuracy section missing from ops.html"
+    assert 'id="model-acc-card"' in html
+    assert 'id="model-acc-title"' in html
+    assert "refreshModelAccuracy" in html, "JS refresher missing — panel won't auto-update"
+    assert "/api/accuracy?ticker=SPY" in html, "ops panel must read from /api/accuracy"
+    assert "setInterval(refreshModelAccuracy, 60000)" in html, "60s auto-refresh missing"
+
+
+def test_ops_html_has_calibration_health_panel() -> None:
+    """Pass 3 sibling lock — both consumer surfaces must remain on the
+    ops dashboard. Prevents Pass 5b refactor from breaking Pass 3 visibility."""
+    repo_root = Path(__file__).resolve().parent.parent
+    html = (repo_root / "static" / "ops.html").read_text(encoding="utf-8")
+    assert "<h3>Calibration health</h3>" in html
+    assert 'id="cal-health-card"' in html
+    assert "refreshCalibrationHealth" in html
+    assert "/api/ops/calibration_rowcount" in html

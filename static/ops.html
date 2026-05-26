@@ -75,6 +75,21 @@
     </div>
 
     <section>
+      <h3>Model accuracy</h3>
+      <p class="lead" style="font-size:13px;margin-bottom:12px">
+        Per-horizon prediction accuracy from <code>model_accuracy</code>
+        (writer landed in Pass 5a; values persisted on each
+        <code>/api/accuracy</code> miss when value meaningfully changed).
+        Auto-refreshes every 60s. Default ticker: SPY.
+      </p>
+      <div id="model-acc-card" class="card">
+        <div class="title" id="model-acc-title">Loading…</div>
+        <div class="cadence" id="model-acc-line"></div>
+        <div class="cmd" id="model-acc-detail"></div>
+      </div>
+    </section>
+
+    <section>
       <h3>Calibration health</h3>
       <p class="lead" style="font-size:13px;margin-bottom:12px">
         Forward-only rate-of-writes counter for <code>calibration_decision_log</code>.
@@ -197,6 +212,48 @@
       return (r * 100).toFixed(1) + '%';
     }
 
+    async function refreshModelAccuracy() {
+      const title = $('model-acc-title');
+      const line = $('model-acc-line');
+      const detail = $('model-acc-detail');
+      try {
+        const r = await fetch('/api/accuracy?ticker=SPY');
+        const d = await r.json();
+        if (d.error) {
+          title.textContent = 'Model accuracy probe failed';
+          title.style.color = 'var(--red)';
+          line.textContent = d.error;
+          detail.textContent = '';
+          return;
+        }
+        const current = d.current || {};
+        const horizons = Object.keys(current);
+        if (horizons.length === 0) {
+          title.textContent = 'No accuracy data yet';
+          title.style.color = 'var(--muted)';
+          line.textContent = 'compute_accuracy returned empty for ticker ' + (d.ticker || 'SPY');
+          detail.textContent = 'Run /api/accuracy?ticker=<X> to seed';
+          return;
+        }
+        title.textContent = (d.ticker || 'SPY') + ' · ' + (d.model_version || 'statistical_v1');
+        title.style.color = 'var(--green)';
+        const parts = horizons.map((hz) => {
+          const v = current[hz] || {};
+          const acc = v.accuracy === null || v.accuracy === undefined ? '—' : v.accuracy + '%';
+          const n = v.total || 0;
+          return hz + ': ' + acc + ' (n=' + n + ')';
+        });
+        line.textContent = parts.join('  ·  ');
+        const histN = Array.isArray(d.history) ? d.history.length : 0;
+        detail.textContent = 'history rows: ' + histN + ' · source: db.model_accuracy via /api/accuracy';
+      } catch (e) {
+        title.textContent = 'Model accuracy probe failed';
+        title.style.color = 'var(--red)';
+        line.textContent = String(e);
+        detail.textContent = '';
+      }
+    }
+
     async function refreshCalibrationHealth() {
       const title = $('cal-health-title');
       const line = $('cal-health-line');
@@ -271,6 +328,8 @@
 
       refreshCalibrationHealth();
       setInterval(refreshCalibrationHealth, 60000);
+      refreshModelAccuracy();
+      setInterval(refreshModelAccuracy, 60000);
     }
 
     init();
