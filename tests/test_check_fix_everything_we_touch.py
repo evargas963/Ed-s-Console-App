@@ -316,3 +316,159 @@ def test_action_not_documentation_allows_rule_file_update(tmp_path: Path) -> Non
     finally:
         mod.REPO_ROOT = orig_root
     assert hits == [], f"rule-file update should pass (out of scope); got {hits!r}"
+
+
+def test_agents_md_documents_storage_needs_consumer_rule() -> None:
+    """Lock §Storage-needs-consumer rule presence + key contract phrases."""
+    text = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "## Storage-needs-consumer" in text
+    assert "No writer without a consumer" in text
+    # Operator-intent block verbatim
+    assert "WE BETTER NOT HAVE GOVERNANCE, OR RULES, ETC WITH NO PATH TO CODE CHANGES UPDATE" in text
+    # 4-dormant-table precedent must be named so the rule is grounded in evidence
+    for tbl in ("level_crosses", "confluence_log", "model_accuracy", "session_log"):
+        assert tbl in text, f"§Storage-needs-consumer rule must cite {tbl} as the empirical precedent"
+
+
+def test_storage_needs_consumer_blocks_new_writer_without_caller(tmp_path: Path) -> None:
+    """Pre-commit must block a commit that adds new INSERT statements in db.py
+    without staging a production caller in the same commit."""
+    import subprocess
+
+    # Set up a fake git repo with HEAD db.py + staged db.py adding a new INSERT.
+    (tmp_path / "db.py").write_text(
+        "import sqlite3\n"
+        "def existing_writer(conn):\n"
+        "    conn.execute('INSERT INTO existing_table VALUES (1)')\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "add", "db.py"], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "-c", "user.email=t@t", "-c", "user.name=t",
+         "commit", "-qm", "init"],
+        check=True,
+    )
+    # Now stage a new writer for a new table — no production caller staged.
+    (tmp_path / "db.py").write_text(
+        "import sqlite3\n"
+        "def existing_writer(conn):\n"
+        "    conn.execute('INSERT INTO existing_table VALUES (1)')\n"
+        "def new_dormant_writer(conn):\n"
+        "    conn.execute('INSERT INTO new_dormant_table VALUES (?)', (1,))\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(tmp_path), "add", "db.py"], check=True)
+
+    staged = {"db.py"}
+    orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = tmp_path
+    try:
+        hits = mod.check_storage_writer_has_consumer(staged)
+    finally:
+        mod.REPO_ROOT = orig_root
+    assert hits, "expected Storage-needs-consumer hit for new INSERT without paired caller"
+    assert any("Storage-needs-consumer" in h for h in hits)
+    assert any("new_dormant" not in h or "INSERT" in h for h in hits)
+
+
+def test_storage_needs_consumer_allows_new_writer_with_paired_caller(tmp_path: Path) -> None:
+    """Same shape but with a paired production caller staged — must pass."""
+    import subprocess
+
+    (tmp_path / "db.py").write_text("# db\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "add", "db.py"], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "-c", "user.email=t@t", "-c", "user.name=t",
+         "commit", "-qm", "init"],
+        check=True,
+    )
+    (tmp_path / "db.py").write_text(
+        "def new_writer(conn):\n"
+        "    conn.execute('INSERT INTO new_table VALUES (?)', (1,))\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "server.py").write_text(
+        "from db import new_writer\n"
+        "def fetch_state(conn):\n"
+        "    new_writer(conn)\n",
+        encoding="utf-8",
+    )
+    staged = {"db.py", "server.py"}
+    orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = tmp_path
+    try:
+        hits = mod.check_storage_writer_has_consumer(staged)
+    finally:
+        mod.REPO_ROOT = orig_root
+    assert hits == [], f"new writer + paired caller in same commit should pass; got {hits!r}"
+
+
+def test_storage_needs_consumer_ignores_db_edits_with_no_new_inserts(tmp_path: Path) -> None:
+    """Refactor that doesn't add new INSERTs (e.g., docstring tweak, reader-only change)
+    must NOT fire the rule even without a paired caller."""
+    import subprocess
+
+    (tmp_path / "db.py").write_text(
+        "def existing_writer(conn):\n"
+        "    conn.execute('INSERT INTO existing VALUES (1)')\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "add", "db.py"], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "-c", "user.email=t@t", "-c", "user.name=t",
+         "commit", "-qm", "init"],
+        check=True,
+    )
+    # Pure docstring / formatting change — no new INSERTs.
+    (tmp_path / "db.py").write_text(
+        '"""DB module docstring."""\n'
+        "def existing_writer(conn):\n"
+        "    conn.execute('INSERT INTO existing VALUES (1)')\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(tmp_path), "add", "db.py"], check=True)
+
+    staged = {"db.py"}
+    orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = tmp_path
+    try:
+        hits = mod.check_storage_writer_has_consumer(staged)
+    finally:
+        mod.REPO_ROOT = orig_root
+    assert hits == [], f"refactor with no new INSERTs should pass; got {hits!r}"
+
+
+def test_storage_needs_consumer_tests_caller_alone_does_not_satisfy(tmp_path: Path) -> None:
+    """A test-only caller does NOT count as a production caller — must still fire."""
+    import subprocess
+
+    (tmp_path / "db.py").write_text("# db\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "add", "db.py"], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "-c", "user.email=t@t", "-c", "user.name=t",
+         "commit", "-qm", "init"],
+        check=True,
+    )
+    (tmp_path / "db.py").write_text(
+        "def new_writer(conn):\n"
+        "    conn.execute('INSERT INTO new_table VALUES (?)', (1,))\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_new_writer.py").write_text(
+        "from db import new_writer\n"
+        "def test_writer(): pass\n",
+        encoding="utf-8",
+    )
+    staged = {"db.py", "tests/test_new_writer.py"}
+    orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = tmp_path
+    try:
+        hits = mod.check_storage_writer_has_consumer(staged)
+    finally:
+        mod.REPO_ROOT = orig_root
+    assert hits, "test-only caller must not satisfy production-caller requirement"

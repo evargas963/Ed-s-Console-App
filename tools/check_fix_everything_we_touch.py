@@ -326,6 +326,89 @@ def _staged_has_code_change(staged: set[str]) -> bool:
     return any(p.endswith(CODE_EXTENSIONS) for p in staged)
 
 
+# Storage-needs-consumer rule (AGENTS § Storage-needs-consumer, 2026-05-25):
+# Persistence-layer modules that add new INSERT statements without a paired
+# production caller leave dormant writers in the repo. The 4-dormant-tables
+# pattern (level_crosses / confluence_log / model_accuracy / session_log)
+# proves the failure mode: full schemas + writers shipped, zero callers,
+# zero operator value. Block at pre-commit.
+PERSISTENCE_LAYER_FILES = (
+    "db.py",
+    "calibration/writer.py",
+)
+
+
+def _count_insert_stmts(text: str) -> int:
+    """Count distinct INSERT INTO statements in text (rough heuristic; case-insensitive)."""
+    if not text:
+        return 0
+    return text.upper().count("INSERT INTO ")
+
+
+def _staged_has_non_persistence_caller(staged: set[str]) -> bool:
+    """True if commit stages any production .py / .html / .js outside db.py / persistence /
+    tests / tools — i.e., a plausible production caller for a new writer."""
+    for p in staged:
+        if not p.endswith(CODE_EXTENSIONS):
+            continue
+        if p in PERSISTENCE_LAYER_FILES:
+            continue
+        if p.startswith("tests/") or p.startswith("tools/") or p.startswith("calibration/writer"):
+            continue
+        return True
+    return False
+
+
+def check_storage_writer_has_consumer(staged: set[str]) -> list[str]:
+    """Block commits that add new INSERT statements in a persistence-layer file
+    without a paired production caller in the same commit.
+
+    Per AGENTS § Storage-needs-consumer (2026-05-25 operator escalation): new
+    writers without callers are the dormant-table pattern (level_crosses etc.)
+    — schema + writer ship but produce zero operator value because nothing
+    invokes them. This check fires when the staged version of a persistence
+    file has MORE `INSERT INTO` statements than the HEAD version, AND no
+    production .py file is also staged.
+    """
+    errors: list[str] = []
+    for rel in sorted(staged):
+        if rel not in PERSISTENCE_LAYER_FILES:
+            continue
+        staged_path = REPO_ROOT / rel
+        if not staged_path.is_file():
+            continue
+        try:
+            staged_text = staged_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        # Read HEAD version for comparison
+        try:
+            head_proc = subprocess.run(
+                ["git", "show", f"HEAD:{rel}"],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            head_text = head_proc.stdout if head_proc.returncode == 0 else ""
+        except OSError:
+            head_text = ""
+        new_inserts = _count_insert_stmts(staged_text) - _count_insert_stmts(head_text)
+        if new_inserts <= 0:
+            continue
+        if not _staged_has_non_persistence_caller(staged):
+            errors.append(
+                f"{rel}: adds {new_inserts} new INSERT INTO statement(s) but commit has no "
+                f"paired production caller (no .py / .html / .js outside db.py / persistence / "
+                f"tests / tools). AGENTS § Storage-needs-consumer — new writers must land with "
+                f"a live caller AND a consumer in the same commit (see the 4-dormant-tables "
+                f"precedent: level_crosses / confluence_log / model_accuracy / session_log). "
+                f"Either stage the production caller this commit, or split the writer to a "
+                f"later commit that includes the caller."
+            )
+    return errors
+
+
 def check_action_not_documentation(staged: set[str]) -> list[str]:
     """Block governance-artifact-only commits that contain action language without paired code.
 
@@ -377,6 +460,8 @@ def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
 
     # Artifact-content rule (§Action-not-documentation): run once per commit on the full staged set.
     errors.extend(check_action_not_documentation(staged))
+    # Storage-needs-consumer rule (§Storage-needs-consumer): block dormant writers at pre-commit.
+    errors.extend(check_storage_writer_has_consumer(staged))
 
     for path in paths:
         if path.name == "COMMIT_EDITMSG" or "--commit-msg" in path.as_posix():

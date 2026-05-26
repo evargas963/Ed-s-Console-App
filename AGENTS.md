@@ -101,6 +101,31 @@ This rule sits above §Fix everything we touch because lying makes every other r
 
 ---
 
+## Storage-needs-consumer `[PROMOTED]` (2026-05-25 — operator escalation)
+
+**No writer without a consumer.** Every new persistence path (new DB table + writer, new file writer, new emit-to-API path) must land in the same commit with BOTH:
+
+1. **At least one production caller** that invokes the writer from a live code path (not just tests, not just a helper definition).
+2. **At least one consumer** — reader API used somewhere visible, scheduled-audit script that reads the rows, operator-visible surface (UI element, log summary, alert), or pytest assertion that exercises consumed-row content.
+
+**Why this rule exists (empirical 2026-05-25):** the production DB has 4 tables (`level_crosses`, `confluence_log`, `model_accuracy`, `session_log`) with full schemas and writer methods (`log_level_cross`, `log_confluence`, `start_session`/`end_session`) but ZERO production callers. They were scaffolded — closure-rule artifacts (code + tests) could have been ticked — but never wired to a live path. Result: real engineering time spent on storage that delivered zero operator value. The `calibration_decision_log` env-gate gap also went 24 days undetected because no consumer surfaced it (session_log would have caught it on day 1 if it were wired AND had a reader).
+
+| Required in the same commit as a new writer | Banned as the sole deliverable |
+|---------------------------------------------|--------------------------------|
+| Live producer call from `server.py` / `market_state` / `signals` / scheduler / equivalent | New `INSERT INTO` helper with only test callers |
+| Consumer: reader function used by UI/API/log/alert, OR scheduled audit script, OR test that asserts on row content meaningful to operator | Writer-only ship; "consumer in next slice" |
+| Throttle / debounce / state-management design for tick-rate writers | Per-tick INSERT without rate limit |
+
+**This is the artifact-content corollary of §Action-not-documentation extended to PERSISTENCE.** A new writer that nobody calls is doc-only code: it documents intent (a table can exist) without producing operator value (no rows, no reads, no surface).
+
+**Operator intent (2026-05-25):** "WE BETTER NOT HAVE GOVERNANCE, OR RULES, ETC WITH NO PATH TO CODE CHANGES UPDATE… WHATEVER NEEDS TO BE DONE PERIOD."
+
+**Honest limit:** Refactors that move an existing writer (no new persistence path), schema-only migrations preparing for a future slice tagged `[REAL-GATE: <tag>]`, and writer additions inside an already-consumed table family (where the consumer already exists upstream) are not in scope. The rule narrows to NEW persistence paths.
+
+**Mechanical enforcement:** `tools/check_fix_everything_we_touch.py` — staged `db.py` (or other persistence-layer module) adding new `INSERT INTO <table>` statements without a paired non-`db.py` non-`tests/` `.py` file in the same commit fails at pre-commit. Paired test: `tests/test_check_fix_everything_we_touch.py`.
+
+---
+
 ## Self-governance quality loop `[PROMOTED]` (2026-05-24)
 
 When operator or peer catches a **missed fix** (FIND surfaced, fix not landed same turn/commit):
