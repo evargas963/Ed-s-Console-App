@@ -54,6 +54,13 @@ def test_tf_trade_signal_cards_keep_color_under_direction_withhold():
     assert '[data-tf-signal-dir="short"]' in h
 
 
+def test_render_tier_c_pending_shell_repaints_cards_when_mhap_present():
+    h = _html()
+    assert "renderTierCPendingShell" in h
+    assert "renderTimeframeSignalRow(merged)" in h
+    assert "renderDecisionCommandRail(merged)" in h
+
+
 def test_tf_dim_neutral_cards_have_operator_legibility_styles():
     """WAIT/neutral timeframe cards must separate from row chrome (AGENTS legibility gate)."""
     h = _html()

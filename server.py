@@ -607,6 +607,7 @@ _analytics_executor = ThreadPoolExecutor(
 )
 _analytics_inflight: set[tuple] = set()
 _analytics_bg_fail_counts: dict[tuple, int] = {}
+_analytics_bg_last_error: dict[tuple, str] = {}
 _analytics_bg_lock = threading.Lock()
 _main_event_loop: Optional[asyncio.AbstractEventLoop] = None
 ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES = int(
@@ -625,8 +626,13 @@ def _invalidate_analytics_cache_after_bg_failures(
     *,
     reason: str,
     failure_count: Optional[int] = None,
+    detail: str = "",
 ) -> None:
-    """Drop cached Tier C payload after repeated background recompute failures."""
+    """Mark cached Tier C payload stale after repeated background recompute failures.
+
+    Institutional rule: never drop the last good analytical bundle — serve stale with
+    an explicit operator-visible error instead of an empty pending shell.
+    """
     t = ticker.upper().strip()
     exp = inflight_key[1] if len(inflight_key) > 1 else "__auto__"
     n_fail = (
@@ -634,27 +640,40 @@ def _invalidate_analytics_cache_after_bg_failures(
         if failure_count is not None
         else _analytics_bg_fail_counts.get(inflight_key, 0)
     )
-    removed: list[tuple] = []
+    err_msg = (detail or _analytics_bg_last_error.get(inflight_key) or reason or "unknown").strip()
+    marked: list[tuple] = []
     for key in list(_state_cache.keys()):
         if not isinstance(key, tuple) or len(key) < 2 or key[0] != t:
             continue
         if exp != "__auto__" and key[1] != exp:
             continue
-        _state_cache.pop(key, None)
-        removed.append(key)
-    if removed:
+        ent = _state_cache.get(key)
+        if not ent or not isinstance(ent.get("ms_dict"), dict):
+            continue
+        md = dict(ent["ms_dict"])
+        md["state_error"] = "analytics_refresh_failed"
+        md["state_error_detail"] = (
+            f"Tier C refresh failed after {n_fail} attempt(s): {err_msg[:240]}"
+        )
+        md["analytics_last_error"] = err_msg[:500]
+        md["analytics_stale"] = True
+        md["analytics_refresh_in_progress"] = False
+        ent["ms_dict"] = md
+        marked.append(key)
+    if marked:
         log.warning(
-            "analytics cache invalidated after bg failures ticker=%s exp=%s n=%s reason=%s keys=%s",
+            "analytics cache marked stale after bg failures ticker=%s exp=%s n=%s reason=%s keys=%s",
             t,
             exp,
             n_fail,
             reason,
-            removed,
+            marked,
         )
 
 
 def _reset_analytics_bg_fail_count(inflight_key: tuple) -> None:
     _analytics_bg_fail_counts.pop(inflight_key, None)
+    _analytics_bg_last_error.pop(inflight_key, None)
 
 
 def _record_analytics_bg_failure(
@@ -662,12 +681,19 @@ def _record_analytics_bg_failure(
     ticker: str,
     *,
     reason: str,
+    detail: str = "",
 ) -> None:
+    if detail:
+        _analytics_bg_last_error[inflight_key] = detail[:500]
     n = _analytics_bg_fail_counts.get(inflight_key, 0) + 1
     _analytics_bg_fail_counts[inflight_key] = n
     if n >= ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES:
         _invalidate_analytics_cache_after_bg_failures(
-            inflight_key, ticker, reason=reason, failure_count=n
+            inflight_key,
+            ticker,
+            reason=reason,
+            failure_count=n,
+            detail=detail,
         )
         _analytics_bg_fail_counts.pop(inflight_key, None)
 
@@ -712,6 +738,9 @@ def _attach_analytics_freshness_contract(
         md["analytics_age_sec"] = None
         md["analytics_stale"] = True
         md["analytics_refresh_in_progress"] = bool(in_prog)
+        last_err = _analytics_bg_last_error.get(inflight_key)
+        if last_err:
+            md["analytics_last_error"] = last_err
 
 
 def _schedule_analytics_recompute(
@@ -744,12 +773,16 @@ def _schedule_analytics_recompute(
                     log.debug("notify_l2_snapshot_ready failed ticker=%s: %s", ticker, e, exc_info=True)
             if result and _main_event_loop is not None:
                 asyncio.run_coroutine_threadsafe(_broadcast_snapshot(result), _main_event_loop)
-        except HTTPException:
+        except HTTPException as ex:
             log.warning("analytics bg HTTPException for %s", inflight_key)
-            _record_analytics_bg_failure(inflight_key, ticker, reason="http_exception")
+            _record_analytics_bg_failure(
+                inflight_key, ticker, reason="http_exception", detail=str(ex.detail or ex)
+            )
         except Exception as ex:
             log.error("analytics bg failed %s: %s", inflight_key, ex, exc_info=True)
-            _record_analytics_bg_failure(inflight_key, ticker, reason="generic_exception")
+            _record_analytics_bg_failure(
+                inflight_key, ticker, reason="generic_exception", detail=str(ex)
+            )
         finally:
             with _analytics_bg_lock:
                 _analytics_inflight.discard(inflight_key)
@@ -6349,6 +6382,11 @@ def _tier_c_analytics_json_response(
     except Exception as e:
         log.debug("emit_api_state_cache (miss) failed ticker=%s: %s", ticker, e, exc_info=True)
     md = _minimal_analytics_pending_dict(ticker, expiry)
+    last_err = _analytics_bg_last_error.get(inflight_key)
+    if last_err:
+        md["analytics_last_error"] = last_err
+        md["state_error"] = "analytics_refresh_failed"
+        md["state_error_detail"] = last_err
     _lmp.merge_into_state(md, ticker)
     _attach_analytics_freshness_contract(
         md,

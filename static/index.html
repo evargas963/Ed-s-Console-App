@@ -5399,9 +5399,16 @@ function updateAnalyticsFreshnessUI(d) {
 function _updateErrorBarFromPayload(d) {
   const errBar = $('error-bar');
   if (!errBar || !d) return;
-  if (d.state_error || d.state_error_detail) {
+  const msg =
+    d.state_error_detail ||
+    d.state_error ||
+    d.analytics_last_error ||
+    (d.analytics_pending_shell && d.analytics_stale && !d.analytics_refresh_in_progress
+      ? 'Analytics bundle unavailable — retrying in background'
+      : null);
+  if (msg) {
     errBar.style.display = 'block';
-    errBar.textContent = String(d.state_error_detail || d.state_error || 'Engine error');
+    errBar.textContent = String(msg);
   } else {
     errBar.style.display = 'none';
   }
@@ -5473,7 +5480,7 @@ function _commitTierAFastTimestamp(d) {
   _commitQuoteLaneTimestamps(d);
 }
 
-/** Tier C pending shell — no chain yet; merge flags only so Tier A DOM stays visible. */
+/** Tier C pending shell — keep last analytical paint; merge live quote flags from server. */
 function renderTierCPendingShell(d, fullRenderSource) {
   if (d == null || typeof d !== 'object' || Array.isArray(d)) return false;
   const guard = _renderCoherenceGuards(d, { checkDecisionGen: false, timestampLane: 'analytical' });
@@ -5483,15 +5490,10 @@ function renderTierCPendingShell(d, fullRenderSource) {
     }
     return false;
   }
-  window._lastData = Object.assign({}, window._lastData || {}, {
-    analytics_stale: d.analytics_stale,
-    analytics_version: d.analytics_version,
-    analytics_generated_at: d.analytics_generated_at,
-    analytics_age_sec: d.analytics_age_sec,
-    analytics_refresh_in_progress: d.analytics_refresh_in_progress,
-    analytics_pending_shell: true,
-    _tier: 'C_analytics',
-  });
+  const merged = Object.assign({}, window._lastData || {}, d);
+  merged.analytics_pending_shell = true;
+  merged._tier = 'C_analytics';
+  window._lastData = merged;
   try {
     window._edRtDiag = Object.assign(window._edRtDiag || {}, {
       lastFullRenderSource: fullRenderSource || 'tier_c_pending',
@@ -5499,7 +5501,11 @@ function renderTierCPendingShell(d, fullRenderSource) {
     });
   } catch (e) {}
   updateAnalyticsFreshnessUI(d);
-  _updateErrorBarFromPayload(window._lastData);
+  _updateErrorBarFromPayload(merged);
+  if (Array.isArray(merged.mhap_rows) && merged.mhap_rows.length) {
+    try { renderDecisionCommandRail(merged); } catch (e) {}
+    try { renderTimeframeSignalRow(merged); } catch (e) {}
+  }
   _lastRenderTs = Date.now();
   clearHardStaleUi();
   _updateTierCLaneStaleMarkers();
