@@ -264,3 +264,62 @@ def test_confluence_quote_ticks_upsert_and_inventory(tmp_path):
     inv = db.confluence_quote_tick_inventory()
     assert inv["total_rows"] == 1
     assert inv["distinct_tickers"] == 1
+
+
+def test_weighted_push_from_constituents_matches_build_confluence():
+    from market_context import (
+        QQQ_TOP,
+        QQQ_TOP_WEIGHT_SUM,
+        _build_confluence,
+        ConstituentQuote,
+        weighted_push_from_constituents,
+        weighted_pushes_from_snapshot_row,
+    )
+
+    chg = {"NVDA": 1.2, "AAPL": 0.5, "MSFT": -0.3}
+    push = weighted_push_from_constituents(chg, QQQ_TOP, QQQ_TOP_WEIGHT_SUM)
+    assert push is not None
+    cqs = [
+        ConstituentQuote(sym, name, w, chg_pct=chg.get(sym))
+        for sym, name, w in QQQ_TOP
+        if sym in chg
+    ]
+    live = _build_confluence(cqs, QQQ_TOP_WEIGHT_SUM)
+    assert live.weighted_push == push
+
+    row = {
+        "nvda_chg_pct": 1.2,
+        "aapl_chg_pct": 0.5,
+        "msft_chg_pct": -0.3,
+        "qqq_weighted_push": None,
+    }
+    out = weighted_pushes_from_snapshot_row(row)
+    assert out["qqq_weighted_push"] == push
+
+
+def test_fetch_latest_confluence_quote_chg(tmp_path):
+    from db import EdDB
+
+    dbp = tmp_path / "cq2.db"
+    db = EdDB(dbp, allow_noncanonical=True)
+    db.upsert_confluence_quote_ticks(
+        [
+            {
+                "ticker": "NVDA",
+                "ts_utc": 1_777_000_100.0,
+                "ts_et": "2026-01-02 10:01:00",
+                "last_price": 900.0,
+                "chg_pct": 0.42,
+            },
+            {
+                "ticker": "NVDA",
+                "ts_utc": 1_777_000_200.0,
+                "ts_et": "2026-01-02 10:02:00",
+                "last_price": 901.0,
+                "chg_pct": 0.55,
+            },
+        ]
+    )
+    got = db.fetch_latest_confluence_quote_chg(["NVDA", "WMT"])
+    assert got["NVDA"] == 0.55
+    assert got["WMT"] is None

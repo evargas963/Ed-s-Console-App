@@ -6,6 +6,7 @@ Retroactively fill snapshots (and refresh snapshots_1m_normalized):
   vwap, vwap_dist_pts, vwap_side together.
 - iv_rank / iv_percentile: rolling prior iv_level history (min 20 points).
 - pressure_label / pressure_trend: from DPI + hedging flow (+ trend on dpi_normalized).
+- spy/qqq/iwm weighted_push: recompute from persisted constituent chg_pct when NULL.
 
 Run from project root:
   python backfill_snapshot_derived.py
@@ -179,6 +180,56 @@ def backfill(db_path: Path) -> dict:
     return {"rows_updated": updated, "vwap_rows_imputed": vwap_filled}
 
 
+def backfill_weighted_pushes(db_path: Path) -> dict[str, int]:
+    """Fill NULL spy/qqq/iwm weighted_push from persisted constituent chg_pct columns."""
+    from market_context import weighted_pushes_from_snapshot_row
+
+    conn = sqlite3.connect(str(db_path), timeout=120)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    stats = {"spy_filled": 0, "qqq_filled": 0, "iwm_filled": 0, "rows_scanned": 0}
+    rows = cur.execute(
+        """
+        SELECT snapshot_id,
+               spy_weighted_push, qqq_weighted_push, iwm_weighted_push,
+               nvda_chg_pct, aapl_chg_pct, msft_chg_pct, amzn_chg_pct,
+               googl_chg_pct, avgo_chg_pct, meta_chg_pct, tsla_chg_pct,
+               kre_chg_pct, xbi_chg_pct, psci_chg_pct, xrt_chg_pct
+        FROM snapshots
+        WHERE spy_weighted_push IS NULL
+           OR qqq_weighted_push IS NULL
+           OR iwm_weighted_push IS NULL
+        ORDER BY ts_utc ASC, snapshot_id ASC
+        """
+    ).fetchall()
+    for r in rows:
+        stats["rows_scanned"] += 1
+        row = dict(r)
+        pushes = weighted_pushes_from_snapshot_row(row)
+        updates: dict[str, float] = {}
+        for col, stat_key in (
+            ("spy_weighted_push", "spy_filled"),
+            ("qqq_weighted_push", "qqq_filled"),
+            ("iwm_weighted_push", "iwm_filled"),
+        ):
+            if row.get(col) is not None:
+                continue
+            val = pushes.get(col)
+            if val is not None:
+                updates[col] = val
+                stats[stat_key] += 1
+        if not updates:
+            continue
+        sets = ", ".join(f"{k} = ?" for k in updates)
+        cur.execute(
+            f"UPDATE snapshots SET {sets} WHERE snapshot_id = ?",
+            (*updates.values(), int(r["snapshot_id"])),
+        )
+    conn.commit()
+    conn.close()
+    return stats
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Backfill derived snapshot fields")
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -190,6 +241,8 @@ def main() -> None:
         raise SystemExit(f"DB not found: {args.db}")
     stats = backfill(args.db)
     print("backfill_snapshot_derived:", stats)
+    wp = backfill_weighted_pushes(args.db)
+    print("backfill_weighted_pushes:", wp)
     if not args.skip_normalizer:
         from normalized_training_sync import ensure_normalized_training_table
 

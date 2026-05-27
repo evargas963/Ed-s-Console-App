@@ -97,38 +97,74 @@ Schwab scanner/register work is **tracking only** — it does not replace wire f
 
 ---
 
-## Claude audit handoff — Cursor slice 2026-05-27
+## Claude audit handoff — Cursor slice 2026-05-27 (COMPLETE)
 
-**Operator request:** Claude full Read audit of Cursor work on this branch before next slice.  
-**Push tip (after push):** `f078593` → `c0770f6` on `feature/institutional-key-levels`.
+**Operator request:** Claude full Read audit of all Cursor work on this branch.  
+**Branch:** `feature/institutional-key-levels`  
+**Audit range:** `f078593` … tip (see commit table below after final push).
 
-| Commit | Summary |
-|--------|---------|
-| `f078593` | panel_auto thin logging (`confluence_quote_ticks`), confluence capture gate, audit/verify ML-only scope, `mh_prob_source_by_horizon` on MarketState, horizon source chips, `pre_train_gate` in `ml_scheduler.run_once`, persistence map regen |
-| `c0770f6` | Decision Rail fusion-authority strip + empirical context line; OPEN_ITEMS **UI-CARD-PROVENANCE-CHIPS** closed |
+### Commits in scope (Read in order)
 
-**Files (16 — Read end-to-end per commit cone):** `server.py`, `db.py`, `market_context.py`, `market_state.py`, `scheduler_user_tickers.py`, `audit_model_readiness.py`, `verify_active_models.py`, `ml_scheduler.py`, `feature_contracts.py`, `static/index.html`, `ACTIVE_PROGRAM.md`, `OPEN_ITEMS.md`, `governance/artifacts/persistence_consumer_map.json`, `tests/test_scheduler_user_tickers_return_type.py`, `tests/test_issue18_ui_contract.py`, `tests/test_feature_contract_validation.py`.
+| SHA | Summary |
+|-----|---------|
+| `f078593` | panel_auto thin logging, confluence capture gate, audit/verify ML-only scope, `mh_prob_source_by_horizon`, horizon source chips, `pre_train_gate` in `ml_scheduler.run_once`, persistence map |
+| `c0770f6` | Decision Rail fusion-authority strip + empirical context line |
+| `1af892e` | Initial Claude audit handoff docs |
+| *(tip)* | qqq_weighted_push historical backfill, quote-tick impute, audit bugfixes |
 
-**Verification commands (must pass at tip):**
+### Files — Read end-to-end (producer/consumer cone)
+
+`server.py`, `db.py`, `market_context.py`, `market_state.py`, `scheduler_user_tickers.py`, `audit_model_readiness.py`, `verify_active_models.py`, `ml_scheduler.py`, `feature_contracts.py`, `backfill_snapshot_derived.py`, `static/index.html`, `ACTIVE_PROGRAM.md`, `OPEN_ITEMS.md`, `governance/artifacts/persistence_consumer_map.json`, `tests/test_scheduler_user_tickers_return_type.py`, `tests/test_issue18_ui_contract.py`, `tests/test_feature_contract_validation.py`, `tests/test_training_canonical_input.py`.
+
+### Verification commands (must pass at tip)
+
 ```text
-python -m pytest tests/test_scheduler_user_tickers_return_type.py tests/test_issue18_ui_contract.py tests/test_feature_contract_validation.py -q
+python -m pytest tests/test_scheduler_user_tickers_return_type.py tests/test_issue18_ui_contract.py tests/test_feature_contract_validation.py tests/test_training_canonical_input.py -q
 python audit_model_readiness.py
 python verify_active_models.py
 python tools/validate_feature_contracts.py
 python db_health_audit.py
+python backfill_snapshot_derived.py --skip-normalizer
 ```
 
-**Operator DB (local, not in git):** `backfill_snapshot_derived.py` ran post-commit — 218,909 rows updated; RTH NULL rates after rematerialize: `iv_rank` 6.1%, `spy_weighted_push` 0.0%, `qqq_weighted_push` 30.7% (historical gap remains).
+### Operator DB results @ tip (local, not in git)
 
-**Closed OPEN_ITEMS:** `UI-CARD-PROVENANCE-CHIPS` @ `c0770f6`.
+| Metric | Before slice | After backfill |
+|--------|--------------|----------------|
+| `qqq_weighted_push` NULL (RTH norm) | ~30.7% | **0.0%** (1/75,853) |
+| `spy_weighted_push` NULL | ~0% | **0.0%** |
+| `iv_rank` NULL | ~82% | **6.1%** |
+| `confluence_quote_ticks` rows | 0 | fills on next live session |
+| `audit_model_readiness` PRE-TRAIN GATE | broken / NO-GO | **GO** |
+| `snapshots_1m_normalized` rows | 107,774 | 107,774 (rematerialized) |
 
-**Still open (audit must not treat as done):**
-- `DATA-PIPELINE-INTEGRITY-CHAIN` — `pre_train_gate` wired @ `f078593`; core trio preflight + liquidity NaN training boundary not green
-- `qqq_weighted_push` historical NULLs (~31% RTH)
-- SPY 60c active bundle incomplete (`xgb_SPY_60c.pkl`, `meta_SPY_60c.pkl`)
-- `TRAINING-PIPELINE-NO-SILENT-DEATH` — preflight item (1) partially satisfied by gate wiring only
+### Closed OPEN_ITEMS @ tip
 
-**Excluded from push:** `.claude/settings.local.json`, untracked `static/ui_card_provenance_mockup.html`.
+- `UI-CARD-PROVENANCE-CHIPS` @ `c0770f6`
+- `QQQ-WEIGHTED-PUSH-HISTORICAL-NULLS` @ tip (backfill from constituent `chg_pct`)
+- `AUDIT-MODEL-READINESS-BUGFIX` @ tip (`PRIMARY_DECISION_HORIZONS` shadow, `xgb_exists`, pred-col gate)
+
+### Still open — audit must NOT treat as done
+
+| Item | Status |
+|------|--------|
+| `DATA-PIPELINE-INTEGRITY-CHAIN` | pre_train_gate wired; core trio artifact compliance + liquidity training host run not green |
+| `SPY-60C-XGB-META-BUNDLE` | `[REAL-GATE: host-only]` — `xgb_SPY_60c.pkl` + `meta_SPY_60c.pkl` missing in `models/active/SPY/` (lstm/transformer present) |
+| `verify_active_models.py` | Many non-core tickers NON-COMPLIANT (expected); SPY/QQQ/IWM core check required |
+| `TRAINING-PIPELINE-NO-SILENT-DEATH` | preflight (1) satisfied by gate; ledger/resume not implemented |
+
+### Claude audit checklist
+
+1. **Confluence path:** `fetch_market_context` → `_ensure_mkt_ctx_confluence_complete` → quote-tick impute → `SnapshotRow.*_weighted_push` → normalizer.
+2. **UI honesty:** horizon chips match `mh_prob_source_by_horizon`; fusion strip uses `isFusionAuthoritative(d)` only.
+3. **panel_auto:** no full `_fetch_state` in logger; thin `confluence_quote_ticks` only.
+4. **pre_train_gate:** `ml_scheduler.run_once` fail-closed exit 2; skip via `ED_ML_SCHEDULER_SKIP_PRE_TRAIN_GATE=1`.
+5. **Backfill math:** `weighted_push_from_constituents` matches `_build_confluence` (test locked).
+6. **Training boundary:** `training_canonical_input` NaN→None for `absorption_score` (existing; re-verify).
+
+### Excluded from repo
+
+`.claude/settings.local.json`, `static/ui_card_provenance_mockup.html`.
 
 ---
 

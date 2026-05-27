@@ -7,7 +7,9 @@ All results returned as a MarketContext dataclass — caller manages caching in 
 """
 
 from __future__ import annotations
+import math
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Any
 import logging
@@ -390,6 +392,114 @@ def _build_iwm_confluence(sectors: list) -> ConfluenceRead:
         label=label,
         color=color,
     )
+
+
+# Snapshot column for each symbol used in confluence backfill / row recompute.
+SYMBOL_TO_SNAPSHOT_CHG_COL: dict[str, str] = {
+    "NVDA": "nvda_chg_pct",
+    "AAPL": "aapl_chg_pct",
+    "MSFT": "msft_chg_pct",
+    "AMZN": "amzn_chg_pct",
+    "GOOGL": "googl_chg_pct",
+    "GOOG": "googl_chg_pct",
+    "AVGO": "avgo_chg_pct",
+    "META": "meta_chg_pct",
+    "TSLA": "tsla_chg_pct",
+    "KRE": "kre_chg_pct",
+    "XBI": "xbi_chg_pct",
+    "PSCI": "psci_chg_pct",
+    "XRT": "xrt_chg_pct",
+}
+
+
+def _float_chg(v: Any) -> Optional[float]:
+    if v is None:
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(f):
+        return None
+    return f
+
+
+def weighted_push_from_constituents(
+    chg_by_symbol: Mapping[str, Optional[float]],
+    constituents: list[tuple[str, str, float]],
+    weight_sum_ref: float,
+) -> Optional[float]:
+    """Cap-weighted push from symbol→chg map (same math as ``_build_confluence``)."""
+    push = 0.0
+    weight_used = 0.0
+    for sym, _name, weight in constituents:
+        chg = _float_chg(chg_by_symbol.get(sym))
+        if chg is None:
+            continue
+        push += weight * chg
+        weight_used += weight
+    if weight_used <= 0:
+        return None
+    if weight_used < weight_sum_ref * 0.5:
+        push = push / weight_used * weight_sum_ref
+    return round(push, 3)
+
+
+def snapshot_row_chg_map(row: Mapping[str, Any]) -> dict[str, Optional[float]]:
+    """Build symbol→chg_pct from a snapshot / normalized row dict."""
+    out: dict[str, Optional[float]] = {}
+    for sym, col in SYMBOL_TO_SNAPSHOT_CHG_COL.items():
+        out[sym] = _float_chg(row.get(col))
+    return out
+
+
+def weighted_pushes_from_snapshot_row(row: Mapping[str, Any]) -> dict[str, Optional[float]]:
+    """Recompute spy/qqq/iwm weighted_push columns from persisted constituent chg_pct."""
+    chg = snapshot_row_chg_map(row)
+    spy = weighted_push_from_constituents(chg, SPY_TOP, SPY_TOP_WEIGHT_SUM)
+    qqq = weighted_push_from_constituents(chg, QQQ_TOP, QQQ_TOP_WEIGHT_SUM)
+    iwm_sector = weighted_push_from_constituents(
+        chg,
+        [(s, n, w) for s, n, w in IWM_SECTORS],
+        IWM_SECTOR_WEIGHT_SUM,
+    )
+    return {"spy_weighted_push": spy, "qqq_weighted_push": qqq, "iwm_weighted_push": iwm_sector}
+
+
+def patch_context_confluence_from_quote_ticks(
+    ctx: MarketContext,
+    chg_by_ticker: Mapping[str, Optional[float]],
+) -> None:
+    """Fill missing constituent ``chg_pct`` from ``confluence_quote_ticks`` and rebuild reads."""
+    if not chg_by_ticker:
+        return
+
+    def _patch_list(items: list) -> None:
+        for item in items:
+            sym = str(getattr(item, "symbol", "") or "").upper()
+            if getattr(item, "chg_pct", None) is not None:
+                continue
+            chg = _float_chg(chg_by_ticker.get(sym))
+            if chg is not None:
+                item.chg_pct = chg
+
+    _patch_list(getattr(ctx, "constituents", None) or [])
+    _patch_list(getattr(ctx, "qqq_constituents", None) or [])
+    _patch_list(getattr(ctx, "iwm_holdings", None) or [])
+    for sq in getattr(ctx, "iwm_sectors", None) or []:
+        sym = str(getattr(sq, "symbol", "") or "").upper()
+        if getattr(sq, "chg_pct", None) is not None:
+            continue
+        chg = _float_chg(chg_by_ticker.get(sym))
+        if chg is not None:
+            sq.chg_pct = chg
+
+    ctx.confluence = _build_confluence(ctx.constituents, SPY_TOP_WEIGHT_SUM)
+    ctx.qqq_confluence = _build_confluence(ctx.qqq_constituents, QQQ_TOP_WEIGHT_SUM)
+    ctx.iwm_holdings_confluence = _build_confluence(
+        ctx.iwm_holdings, IWM_HOLDINGS_WEIGHT_SUM
+    )
+    ctx.iwm_confluence = _build_iwm_confluence(ctx.iwm_sectors)
 
 
 def iwm_blended_participation_push(ctx: MarketContext) -> Optional[float]:

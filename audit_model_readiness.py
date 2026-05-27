@@ -74,6 +74,8 @@ XGB_ALL_DB_COLS = (
 )
 # Dedupe (flow_imbalance and bid_ask_imbalance — check flow_imbalance)
 XGB_ALL_DB_COLS = list(dict.fromkeys(c for c in XGB_ALL_DB_COLS if c != "bid_ask_imbalance"))
+# Training-readiness null gate: pred_* horizon columns are inference outputs — sparse NULL is expected.
+XGB_TRAINING_NULL_COLS = [c for c in XGB_ALL_DB_COLS if c not in XGB_PRED_COLS]
 
 # ── LSTM/Transformer: FEATURES_5M and FEATURES_1M (lstm_data.py) ───────────────
 FEATURES_5M = [
@@ -198,7 +200,7 @@ def evaluate_training_readiness(db_path: Path | None = None) -> dict:
         rth_total = _count(conn)
         trainable_where = f"timeframe = '{_CANON_TF}' AND {CANONICAL_TARGET_COL} IS NOT NULL"
         trainable_rows = _count(conn, trainable_where)
-        xgb_flags = _feature_null_flags(conn, XGB_ALL_DB_COLS, rth_total)
+        xgb_flags = _feature_null_flags(conn, XGB_TRAINING_NULL_COLS, rth_total)
         lstm_flags = _feature_null_flags(conn, list(set(FEATURES_5M + FEATURES_1M)), rth_total)
         balance_primary_lbl = _balance_primary_flags(conn)
         days_60, days_20 = _spy_sequence_day_counts(conn)
@@ -331,8 +333,11 @@ def main():
                 f"SELECT COUNT(*) FROM {SNAPSHOT_TABLE_1M} WHERE {RTH_WHERE} AND {col} = 0"
             ).fetchone()[0]
         valid_pct = 100.0 - null_pct
-        flag = " [!] >30% NULL" if null_pct > 30 else ""
-        if null_pct > 30:
+        gate_col = col in XGB_TRAINING_NULL_COLS
+        flag = " [!] >30% NULL" if null_pct > 30 and gate_col else (
+            " (pred col — not in training null gate)" if null_pct > 30 and col in XGB_PRED_COLS else ""
+        )
+        if null_pct > 30 and gate_col:
             xgb_flags.append(col)
         print(f"   {col:35s}  NULL: {null_cnt:>8,}  zero: {zero_cnt:>8,}  valid: {valid_pct:5.1f}%{flag}")
 
@@ -372,8 +377,6 @@ def main():
     print("5. ACTIVE BUNDLE READINESS (SPY — 4 horizons × xgb/lstm/transformer/meta)")
     print("-" * 72)
 
-    from ml_horizon import PRIMARY_DECISION_HORIZONS
-
     active_dir = MODEL_DIR / "active" / "SPY"
     bundle_gaps: list[str] = []
     for hz in PRIMARY_DECISION_HORIZONS:
@@ -396,6 +399,9 @@ def main():
 
     _live_hz = live_inference_horizon_slug()
     meta_live = (active_dir / f"meta_SPY_{_live_hz}.pkl").exists()
+    xgb_exists = (active_dir / f"xgb_SPY_{_live_hz}.pkl").exists()
+    lstm_exists = (active_dir / f"lstm_SPY_{_live_hz}.pt").exists()
+    trans_exists = (active_dir / f"transformer_SPY_{_live_hz}.pt").exists()
     print(f"\n   Live inference horizon ({_live_hz}) meta-learner: {'YES' if meta_live else 'NO'}")
 
     # ── 6. SEQUENCE AVAILABILITY (SPY) ───────────────────────────────────────

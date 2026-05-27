@@ -28,6 +28,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import json
+import math
 import time as _wall_time
 import bisect
 import hashlib
@@ -1320,6 +1321,41 @@ class EdDB:
                     "SELECT COUNT(DISTINCT ticker) FROM confluence_quote_ticks"
                 ).fetchone()[0]
             return {"total_rows": int(total), "distinct_tickers": int(tickers)}
+
+        return _do()
+
+    def fetch_latest_confluence_quote_chg(
+        self, tickers: list[str]
+    ) -> dict[str, Optional[float]]:
+        """Latest ``chg_pct`` per symbol from ``confluence_quote_ticks`` (thin quote store)."""
+        if not tickers:
+            return {}
+        self._ensure_confluence_quote_table()
+        want = [str(t).upper().strip() for t in tickers if str(t).strip()]
+        if not want:
+            return {}
+        out: dict[str, Optional[float]] = {t: None for t in want}
+
+        def _do() -> dict[str, Optional[float]]:
+            with self._connect() as conn:
+                for sym in want:
+                    row = conn.execute(
+                        """
+                        SELECT chg_pct FROM confluence_quote_ticks
+                        WHERE ticker = ? COLLATE NOCASE
+                        ORDER BY ts_utc DESC LIMIT 1
+                        """,
+                        (sym,),
+                    ).fetchone()
+                    if row is None or row[0] is None:
+                        continue
+                    try:
+                        v = float(row[0])
+                        if math.isfinite(v):
+                            out[sym] = v
+                    except (TypeError, ValueError):
+                        pass
+            return out
 
         return _do()
 
