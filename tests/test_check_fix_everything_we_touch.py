@@ -15,6 +15,32 @@ if str(TOOLS_DIR) not in sys.path:
 import check_fix_everything_we_touch as mod  # noqa: E402
 
 
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "This is by design — we only patch server.py.",
+        "Out of scope for this PR; will fix later.",
+        "Mostly complete; good enough for now.",
+        "Policy by design for the asymmetry.",
+    ],
+)
+def test_commit_message_excuse_phrases_fail(phrase: str, tmp_path: Path) -> None:
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text(phrase, encoding="utf-8")
+    hits = mod.check_commit_message(msg)
+    assert hits, f"expected rule-drift hit for: {phrase!r}"
+
+
+def test_staged_py_excuse_phrase_fails(tmp_path: Path, monkeypatch) -> None:
+    py = tmp_path / "signals.py"
+    py.write_text('# patch only — skip tests\nx = 1\n', encoding="utf-8")
+    rel = py.relative_to(tmp_path).as_posix()
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    hits = mod.check_staged_rule_drift({rel})
+    assert hits
+    assert "patch-only" in hits[0].lower() or "patch only" in hits[0].lower()
+
+
 def test_commit_message_meta_describing_checker_passes(tmp_path: Path) -> None:
     msg = tmp_path / "COMMIT_EDITMSG"
     msg.write_text(

@@ -132,6 +132,102 @@ UNVERIFIED_ADMISSION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
 )
+RULE_DRIFT_META_LINE = re.compile(
+    r"\b(?:"
+    r"zero\s+drift|rule\s+compliance|check_fix_everything_we_touch|"
+    r"forbidden\s+phrase|excuse\s+pattern|banned\s+phrase|"
+    r"rejection-grade|mechanical\s+enforcement|partial\s+enforcement|pre-commit\s+guard"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Excuse / partial-completion phrases (AGENTS § Banned phrases — Excuse / partial-completion).
+# Normative list lives in AGENTS.md; patterns here are the mechanical subset.
+EXCUSE_PARTIAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("by design / works as designed", re.compile(r"\b(?:by\s+design|works\s+as\s+(?:designed|intended))\b", re.IGNORECASE)),
+    ("policy by design", re.compile(r"\bpolicy\s+by\s+design\b", re.IGNORECASE)),
+    ("patch-only completion excuse", re.compile(r"\b(?:patch\s+only|minimal\s+patch|small\s+patch)\b", re.IGNORECASE)),
+    ("mostly/substantially complete", re.compile(r"\b(?:mostly|substantially)\s+complete\b", re.IGNORECASE)),
+    ("good enough for now", re.compile(r"\bgood\s+enough\s+for\s+now\b", re.IGNORECASE)),
+    ("not in scope", re.compile(r"\bnot\s+in\s+scope\b", re.IGNORECASE)),
+    ("intentional asymmetry", re.compile(r"\bintentional\s+asymmetry\b", re.IGNORECASE)),
+    ("rules are guidance", re.compile(r"\brules?\s+are\s+(?:just\s+)?guidance\b", re.IGNORECASE)),
+    ("operator will catch", re.compile(r"\boperator\s+will\s+catch\b", re.IGNORECASE)),
+    ("acceptable drift", re.compile(r"\bacceptable\s+drift\b", re.IGNORECASE)),
+    ("partial fix as stop reason", re.compile(r"\bpartial\s+fix\b", re.IGNORECASE)),
+)
+
+STAGED_DRIFT_SCAN_SUFFIXES = (".py", ".html", ".js", ".jsx", ".ts", ".tsx", ".css", ".md")
+STAGED_DRIFT_ALLOWLIST_PREFIXES = (
+    "governance/",
+    "docs/governance/",
+)
+STAGED_DRIFT_ALLOWLIST_EXACT = {
+    "AGENTS.md",
+    "CLAUDE.md",
+    "ACTIVE_PROGRAM.md",
+    "OPEN_ITEMS.md",
+    "MEMORY.md",
+    "tools/check_fix_everything_we_touch.py",
+    "tests/test_check_fix_everything_we_touch.py",
+    "tests/test_forbidden_phrases.py",
+}
+
+
+def _import_forbidden_helpers():
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from governance.forbidden_phrases import find_forbidden_phrases
+
+    return find_forbidden_phrases
+
+
+def _staged_path_allowlisted_for_drift_scan(rel: str) -> bool:
+    if rel in STAGED_DRIFT_ALLOWLIST_EXACT:
+        return True
+    return any(rel.startswith(p) for p in STAGED_DRIFT_ALLOWLIST_PREFIXES)
+
+
+def _line_rule_drift_hits(path: Path, line_no: int, line: str) -> list[str]:
+    if RULE_DRIFT_META_LINE.search(line) or META_COMMIT_LINE.search(line) or DO_NOT_LIE_META_LINE.search(line):
+        return []
+    hits: list[str] = []
+    find_forbidden = _import_forbidden_helpers()
+    for phrase in find_forbidden(line):
+        hits.append(
+            f"{path}:{line_no}: banned phrase ({phrase!r}): {line.strip()[:200]!r} "
+            f"(AGENTS § Rule compliance — zero drift)"
+        )
+    for label, pat in EXCUSE_PARTIAL_PATTERNS:
+        if pat.search(line):
+            hits.append(
+                f"{path}:{line_no}: excuse/partial-completion hit ({label}): {line.strip()[:200]!r} "
+                f"(AGENTS § Banned phrases — land the fix or [REAL-GATE: …], do not excuse)"
+            )
+    return hits
+
+
+def check_staged_rule_drift(staged: set[str]) -> list[str]:
+    """Scan staged source/docs for banned + excuse phrases (AGENTS § Rule compliance — zero drift)."""
+    errors: list[str] = []
+    for rel in sorted(staged):
+        if _staged_path_allowlisted_for_drift_scan(rel):
+            continue
+        if not rel.endswith(STAGED_DRIFT_SCAN_SUFFIXES):
+            continue
+        path = REPO_ROOT / rel
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            errors.append(f"{rel}: cannot read for rule-drift scan ({exc})")
+            continue
+        for line_no, line in enumerate(text.splitlines(), start=1):
+            errors.extend(_line_rule_drift_hits(path, line_no, line))
+    return errors
+
+
 INVESTIGATION_ONLY_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "read-only investigation",
@@ -281,6 +377,7 @@ def check_commit_message(path: Path) -> list[str]:
                     f"{path}:{line_no}: unverified-claim hit ({label}): {line.strip()[:200]!r} "
                     f"(AGENTS § Do not lie — cite tests/, @ SHA, or :line on same line)"
                 )
+        hits.extend(_line_rule_drift_hits(path, line_no, line))
     return hits
 
 
@@ -737,8 +834,9 @@ def main(argv: list[str] | None = None) -> int:
         for err in errors:
             print(err, file=sys.stderr)
         print(
-            "\ncheck_fix_everything_we_touch: land fix+test in the same commit as the memo, "
-            "or mark code edit landed / audit catch Closed. See AGENTS.md § Fix everything we touch.",
+            "\ncheck_fix_everything_we_touch: land fix+test in the same commit; no banned/excuse "
+            "phrases in commit or staged source. See AGENTS.md § Fix everything we touch and "
+            "§ Rule compliance — zero drift.",
             file=sys.stderr,
         )
         return 1

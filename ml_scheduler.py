@@ -447,38 +447,49 @@ def _evaluate_parallel_on_full_rth(
                         as_of_ts=float(ts_utc) if ts_utc is not None else None,
                         db_row=row_db,
                     )
-                    xgb_p = mp._predict_xgb(inf_v1, ticker, fusion_feature_overlay=row_db)
-                    lstm_p = tr_p = None
-                    if ts_utc is not None and hist_db is not None:
-                        try:
-                            lstm_p = mp._predict_lstm(
-                                ticker, hist_db, inference_snapshot_v1=inf_v1
-                            )
-                        except Exception as _lstm_e:
-                            log.debug(
-                                "%s parallel eval row: LSTM unavailable at ts=%s (%s)",
-                                ticker,
-                                ts_utc,
-                                _lstm_e,
-                            )
-                            lstm_p = None
-                        try:
-                            tr_p = mp._predict_transformer(
-                                ticker, hist_db, inference_snapshot_v1=inf_v1
-                            )
-                        except Exception as _tr_e:
-                            log.debug(
-                                "%s parallel eval row: Transformer unavailable at ts=%s (%s)",
-                                ticker,
-                                ts_utc,
-                                _tr_e,
-                            )
-                            tr_p = None
+                    if ts_utc is None or hist_db is None:
+                        continue
+                    try:
+                        xgb_p = mp._predict_xgb(inf_v1, ticker, fusion_feature_overlay=row_db)
+                    except Exception as _xgb_e:
+                        log.debug(
+                            "%s parallel eval row: XGB unavailable at ts=%s (%s)",
+                            ticker,
+                            ts_utc,
+                            _xgb_e,
+                        )
+                        continue
                     if xgb_p is None:
                         continue
-                    result = mp._predict_meta(ticker, xgb_p, lstm_p, tr_p)
-                    if result is None:
-                        result = mp._weighted_average(ticker, xgb_p, lstm_p, tr_p)
+                    try:
+                        lstm_p = mp._predict_lstm(
+                            ticker, hist_db, inference_snapshot_v1=inf_v1
+                        )
+                    except Exception as _lstm_e:
+                        log.debug(
+                            "%s parallel eval row: LSTM unavailable at ts=%s (%s)",
+                            ticker,
+                            ts_utc,
+                            _lstm_e,
+                        )
+                        continue
+                    if not lstm_p:
+                        continue
+                    try:
+                        tr_p = mp._predict_transformer(
+                            ticker, hist_db, inference_snapshot_v1=inf_v1
+                        )
+                    except Exception as _tr_e:
+                        log.debug(
+                            "%s parallel eval row: Transformer unavailable at ts=%s (%s)",
+                            ticker,
+                            ts_utc,
+                            _tr_e,
+                        )
+                        continue
+                    if not tr_p:
+                        continue
+                    result = mp._ensemble_parallel_probs(ticker, xgb_p, lstm_p, tr_p)
                     if not result:
                         continue
                     pu, pd, pf = (

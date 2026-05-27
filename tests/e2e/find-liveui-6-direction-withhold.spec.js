@@ -259,6 +259,42 @@ test('_updateDirectionWithheldMarkers per-horizon: tf-signal-{slug} card marked 
   if (result.five_present) expect(result.five_attr).toBeNull();
 });
 
+test('tf-signal LONG card stays full color when bundle withheld (trade-signal exempt)', async ({ page }) => {
+  await gotoWithWithholdHelpers(page);
+
+  const result = await page.evaluate(() => {
+    const card = document.getElementById('tf-signal-5c');
+    if (!card) return { missing: true };
+    card.setAttribute('data-tf-signal-dir', 'long');
+    card.className = 'tf-signal-card tf-state-up tf-glow-2 tf-signal-card--trade-active';
+    window._priceAheadOfBundle = true;
+    window._liveUiIntegrity = {
+      quoteAhead: false,
+      pending: false,
+      genStale: false,
+      slowStaleVsFast: true,
+    };
+    window._lastData = {
+      decision_generation_id: 1,
+      final_tradeable: true,
+      final_bias: 'LONG',
+      primary_horizon: '5c',
+    };
+    if (typeof _updateDirectionWithheldMarkers === 'function') _updateDirectionWithheldMarkers();
+    const st = getComputedStyle(card);
+    return {
+      attr: card.getAttribute('data-direction-withhold'),
+      opacity: st.opacity,
+      filter: st.filter,
+    };
+  });
+
+  expect(result.missing).not.toBe(true);
+  expect(result.attr).toBeTruthy();
+  expect(Number(result.opacity)).toBeGreaterThan(0.95);
+  expect(result.filter === 'none' || result.filter === '').toBe(true);
+});
+
 test('price DOM (#sb-spot / quote header) is NOT marked direction-withhold', async ({ page }) => {
   // The cross-tier rule applies to direction-bearing surfaces only. Price DOM
   // (Tier A) must stay live even when the bundle is stale.

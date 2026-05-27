@@ -10,7 +10,15 @@
 
 ## Active program
 
-**Institutional trading app — code-first** (operator 2026-05-25). Every slice must land **application code + paired tests** (producer, consumer, or money-path fix). Schwab scanner/register work is **tracking only** — it does not replace wire fixes, UI honesty, or stack behavior. Scanner gaps that miss already-correct Schwab leaf reads are register bookkeeping, not product bugs.
+**Institutional trading app — world-class bar** (operator 2026-05-27). Homegrown, but the finished product must **rival any institutional platform**. Every slice lands **application code + paired tests** (producer, consumer, or money-path fix). Quality gate in `AGENTS.md` §World-class / institutional code gate: MIT-professor + world's-greatest-coder bar — **no substandard deliverables**. **Rule compliance — zero drift:** rules are law; banned/excuse phrases blocked at pre-commit (`check_fix_everything_we_touch.py`).
+
+**Non-negotiables (code-first):**
+- **Train-success-live** — successful scheduler train → `models/active/` in the same run (auto-promote default ON).
+- **Full parallel stack** — live + offline parallel eval score a row only when XGB + LSTM + Transformer all produce valid triplets (no 0.333 meta filler, no XGB-only ensemble rows). Cascade keeps its own architecture contract; governed comparison uses **ts_utc alignment**.
+- **Confluence-only** — `panel_auto` enrolled for logging/features, **excluded from ML training**.
+- **Operator legibility** — WAIT/neutral horizon cards stay high-contrast vs page chrome (same labels; readable slate/blue neutral palette — not “broken UI”).
+
+Schwab scanner/register work is **tracking only** — it does not replace wire fixes, UI honesty, or stack behavior.
 
 **Governance consolidation** — **Phases 0–4 complete** @ `ed9f882`. **Concurrent:** Training PR5–PR7. **Schwab V4:** disposition/regen when it unblocks CI or closes a proven wire FIND — never scanner-only turns.
 

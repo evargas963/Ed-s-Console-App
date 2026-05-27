@@ -15,8 +15,16 @@ Architecture:
                  tr_up,  tr_dn,  tr_fl]  (9 features)
         Output: final {up, down, flat} probabilities
 
-Fallback chain:
-    meta-learner -> weighted average -> XGBoost alone -> rules engine
+Fallback chain (parallel, live inference):
+    Full XGB + LSTM + Transformer triplets required.
+    meta-learner -> weighted average -> None (rules engine takes over).
+    No 0.333 filler and no XGB-only parallel ensemble rows.
+
+Fallback chain (5c documented exception):
+    xgb_plus_transformer per ACTIVE_PROGRAM when horizon slug is 5c.
+
+Fallback chain (cascade challenger):
+    Cascade stage contract only; not mixed with partial parallel legs.
 
 Integration:
     signals.py calls run_base_models_once with inference_snapshot_v1= (InferenceSnapshotV1).
@@ -1083,20 +1091,41 @@ def _load_meta(ticker: str) -> bool:
         return False
 
 
-def _stack_probs(xgb_p, lstm_p, trans_p) -> np.ndarray:
-    """Stack Layer 1 outputs into 9-feature vector. Missing = uniform 0.333."""
-    uniform = [0.333, 0.333, 0.334]
-    def _to_vec(p):
-        return [p.get(c, uniform[i]) for i,c in enumerate(CLASS_NAMES)] if p else uniform
-    return np.array(_to_vec(xgb_p) + _to_vec(lstm_p) + _to_vec(trans_p),
-                    dtype=np.float64).reshape(1, -1)
+def _parallel_base_stack_complete(
+    xgb_p: Optional[dict],
+    lstm_p: Optional[dict],
+    trans_p: Optional[dict],
+) -> bool:
+    """True only when all three parallel base models returned complete probability triplets."""
+    return all(
+        _require_direction_probability_triplet(p) is not None
+        for p in (xgb_p, lstm_p, trans_p)
+    )
+
+
+def _stack_probs(xgb_p, lstm_p, trans_p) -> Optional[np.ndarray]:
+    """Stack Layer 1 outputs into 9-feature vector. Fail-closed when any leg is missing."""
+    if not _parallel_base_stack_complete(xgb_p, lstm_p, trans_p):
+        return None
+
+    def _to_vec(p: dict) -> list[float]:
+        tri = _require_direction_probability_triplet(p)
+        assert tri is not None
+        return [tri[0], tri[1], tri[2]]
+
+    return np.array(
+        _to_vec(xgb_p) + _to_vec(lstm_p) + _to_vec(trans_p),
+        dtype=np.float64,
+    ).reshape(1, -1)
 
 
 def _predict_meta(ticker: str, xgb_p, lstm_p, trans_p) -> Optional[dict]:
     if not _load_meta(ticker):
         return None
     try:
-        X     = _stack_probs(xgb_p, lstm_p, trans_p)
+        X = _stack_probs(xgb_p, lstm_p, trans_p)
+        if X is None:
+            return None
         probs = _meta_registry[_model_registry_key(ticker)].predict_proba(X)[0]
         return {CLASS_NAMES[i]: round(float(probs[i]), 4) for i in range(3)}
     except Exception as e:
@@ -1105,24 +1134,34 @@ def _predict_meta(ticker: str, xgb_p, lstm_p, trans_p) -> Optional[dict]:
 
 
 def _weighted_average(ticker: str, xgb_p, lstm_p, trans_p) -> Optional[dict]:
-    """Weighted average when meta-learner not trained. XGB=0.40, LSTM=0.35, TR=0.25. Renormalize if any missing."""
-    contributions = []
-    if xgb_p:
-        contributions.append((xgb_p, 0.40))
-    if lstm_p:
-        contributions.append((lstm_p, 0.35))
-    if trans_p:
-        contributions.append((trans_p, 0.25))
-
-    if not contributions:
+    """Weighted average when meta-learner not trained. Requires full XGB+LSTM+TR stack."""
+    if not _parallel_base_stack_complete(xgb_p, lstm_p, trans_p):
         return None
-
-    total_w = sum(w for _, w in contributions)
-    result  = {c: 0.0 for c in CLASS_NAMES}
-    for probs, w in contributions:
-        for c in CLASS_NAMES:
-            result[c] += probs.get(c, 0.333) * w / total_w
+    assert xgb_p is not None and lstm_p is not None and trans_p is not None
+    weights = ((xgb_p, 0.40), (lstm_p, 0.35), (trans_p, 0.25))
+    result = {c: 0.0 for c in CLASS_NAMES}
+    for probs, w in weights:
+        tri = _require_direction_probability_triplet(probs)
+        assert tri is not None
+        result["up"] += tri[0] * w
+        result["down"] += tri[1] * w
+        result["flat"] += tri[2] * w
     return {c: round(result[c], 4) for c in CLASS_NAMES}
+
+
+def _ensemble_parallel_probs(
+    ticker: str,
+    xgb_p: Optional[dict],
+    lstm_p: Optional[dict],
+    trans_p: Optional[dict],
+) -> Optional[dict]:
+    """Meta when trained, else weighted average — only when full parallel stack is present."""
+    if not _parallel_base_stack_complete(xgb_p, lstm_p, trans_p):
+        return None
+    stack_probs = _predict_meta(ticker, xgb_p, lstm_p, trans_p)
+    if stack_probs is None:
+        stack_probs = _weighted_average(ticker, xgb_p, lstm_p, trans_p)
+    return stack_probs
 
 
 def _apply_5c_xgb_plus_transformer_isotonic_calibration(
@@ -1297,10 +1336,7 @@ def run_base_models_once(
                 tkr, stack_probs
             )
         else:
-            if _load_meta(tkr):
-                stack_probs = _predict_meta(tkr, xgb_p, lstm_p, tr_p)
-            if stack_probs is None:
-                stack_probs = _weighted_average(tkr, xgb_p, lstm_p, tr_p)
+            stack_probs = _ensemble_parallel_probs(tkr, xgb_p, lstm_p, tr_p)
 
     logger.debug(
         "run_base_models_once %s: xgb=%s lstm=%s tr=%s",

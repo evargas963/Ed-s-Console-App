@@ -224,8 +224,8 @@ def test_preload_historical_db_for_eval_respects_min_ts_utc(tmp_path: Path) -> N
     assert [float(r["ts_utc"]) for r in pre._rows] == [300.0]
 
 
-def test_parallel_eval_survives_lstm_sequence_error(monkeypatch) -> None:
-    """First-row thin history must not abort the whole eval (META-style degrade)."""
+def test_parallel_eval_skips_row_when_lstm_unavailable(monkeypatch) -> None:
+    """Thin-history rows skip (no partial stack); eval continues for rows with full stack."""
     from ml_scheduler import _evaluate_parallel_on_full_rth
 
     rows = [
@@ -258,10 +258,9 @@ def test_parallel_eval_survives_lstm_sequence_error(monkeypatch) -> None:
     monkeypatch.setattr(mp, "_predict_xgb", lambda *a, **k: {"up": 0.5, "down": 0.25, "flat": 0.25})
     monkeypatch.setattr(mp, "_predict_lstm", _fake_lstm)
     monkeypatch.setattr(mp, "_predict_transformer", lambda *a, **k: {"up": 0.4, "down": 0.3, "flat": 0.3})
-    monkeypatch.setattr(mp, "_predict_meta", lambda *a, **k: None)
     monkeypatch.setattr(
         mp,
-        "_weighted_average",
+        "_ensemble_parallel_probs",
         lambda *a, **k: {"up": 0.34, "down": 0.33, "flat": 0.33},
     )
     monkeypatch.setattr(
@@ -280,8 +279,8 @@ def test_parallel_eval_survives_lstm_sequence_error(monkeypatch) -> None:
         target_column="outcome_1c",
         return_detail=True,
     )
-    assert n == 12
-    assert len(detail["prob_rows"]) == 12
+    assert n == 11
+    assert len(detail["prob_rows"]) == 11
     assert lstm_calls["n"] == 12
 
 

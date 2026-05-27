@@ -717,11 +717,12 @@
   #timeframe-signal-row {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
+    gap: 8px;
     justify-content: start;
-    background: #060A10;
+    background: #04070c;
     padding: 10px;
     border-radius: 10px;
+    border: 1px solid #1e293b;
     width: 100%;
     margin: 0;
     box-sizing: border-box;
@@ -745,17 +746,32 @@
     box-sizing: border-box;
     font-family: var(--mono);
   }
+  /* WAIT/neutral: cool slate + visible edge — readable without implying LONG/SHORT */
   .tf-signal-card.tf-state-dim {
-    background: #121a2e;
-    border: 1px solid #334155;
+    background: linear-gradient(180deg, #243552 0%, #1a2840 100%);
+    border: 1px solid #6b9fd4;
+    box-shadow:
+      0 0 0 1px rgba(107, 159, 212, 0.12),
+      0 4px 14px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
   .tf-signal-card.tf-state-up {
     background: #091812;
     border: 1px solid #00E676;
+    box-shadow: 0 0 10px rgba(0, 230, 118, 0.22), 0 0 24px rgba(0, 230, 118, 0.08);
   }
   .tf-signal-card.tf-state-down {
     background: #180A0A;
     border: 1px solid #FF3C3C;
+    box-shadow: 0 0 10px rgba(255, 60, 60, 0.22), 0 0 24px rgba(255, 60, 60, 0.08);
+  }
+  .tf-signal-card.tf-signal-card--trade-active.tf-state-up {
+    border-width: 2px;
+    box-shadow: 0 0 14px rgba(0, 230, 118, 0.38), 0 0 32px rgba(0, 230, 118, 0.14);
+  }
+  .tf-signal-card.tf-signal-card--trade-active.tf-state-down {
+    border-width: 2px;
+    box-shadow: 0 0 14px rgba(255, 60, 60, 0.38), 0 0 32px rgba(255, 60, 60, 0.14);
   }
   @keyframes pulse-green-1 {
     0%, 100% { box-shadow: 0 0 8px rgba(0,230,118,.16), 0 0 18px rgba(0,230,118,.06); }
@@ -804,7 +820,7 @@
     height: 7px;
     border-radius: 50%;
   }
-  .tf-dot.tf-dot--dim { background: #64748b; }
+  .tf-dot.tf-dot--dim { background: #8eb8e8; box-shadow: 0 0 6px rgba(142, 184, 232, 0.55); }
   .tf-dot.tf-dot--up { background: #00E676; }
   .tf-dot.tf-dot--down { background: #FF3C3C; }
   .tf-dot.tf-dot--blink { animation: blink-dot 1.1s ease-in-out infinite; }
@@ -816,8 +832,8 @@
     font-weight: 700;
     letter-spacing: .14em;
   }
-  /* Dim / neutral: higher contrast so all four horizons read at a glance */
-  .tf-state-dim .tf-timeframe { color: #8ba4c9; }
+  /* Dim / neutral: operator-legibility gate — must read at a glance vs row background */
+  .tf-state-dim .tf-timeframe { color: #b8d4f5; }
   .tf-state-up .tf-timeframe { color: #1D7A50; }
   .tf-state-down .tf-timeframe { color: #7A2020; }
   .tf-arrow {
@@ -826,7 +842,7 @@
     line-height: 1;
     user-select: none;
   }
-  .tf-state-dim .tf-arrow { color: #6b8cbe; }
+  .tf-state-dim .tf-arrow { color: #9ec5f0; }
   .tf-state-up .tf-arrow { color: #00E676; }
   .tf-state-down .tf-arrow { color: #FF3C3C; }
   .tf-dir {
@@ -835,7 +851,7 @@
     letter-spacing: .16em;
     margin-top: 0;
   }
-  .tf-state-dim .tf-dir { color: #e2e8f0; }
+  .tf-state-dim .tf-dir { color: #f1f5f9; }
   .tf-state-up .tf-dir { color: #00E676; }
   .tf-state-down .tf-dir { color: #FF3C3C; }
   .tf-pct {
@@ -844,14 +860,14 @@
     margin-top: 6px;
     color: #fff;
   }
-  .tf-state-dim .tf-pct { color: #e2e8f0; }
+  .tf-state-dim .tf-pct { color: #f8fafc; }
   .tf-conf-lbl {
     font-size: 11px;
     font-weight: 700;
     letter-spacing: .1em;
     margin-top: 1px;
   }
-  .tf-state-dim .tf-conf-lbl { color: #94a3b8; }
+  .tf-state-dim .tf-conf-lbl { color: #c5d7ef; }
   .tf-state-up .tf-conf-lbl { color: #1D9E75; }
   .tf-state-down .tf-conf-lbl { color: #9E3030; }
   .tf-tag {
@@ -2155,6 +2171,13 @@
     opacity: 0.42;
     filter: grayscale(72%);
     position: relative;
+  }
+  /* Trade-signal horizon cards: keep LONG/SHORT color when lane is stale; STALE badge only */
+  .tf-signal-card[data-direction-withhold][data-tf-signal-dir="long"],
+  .tf-signal-card[data-direction-withhold][data-tf-signal-dir="short"],
+  .tf-signal-card.tf-signal-card--trade-active[data-direction-withhold] {
+    opacity: 1;
+    filter: none;
   }
   [data-direction-withhold]::after {
     content: "STALE";
@@ -3682,6 +3705,7 @@ function renderTimeframeSignalRow(d) {
     if (u === 'LONG') return 'LONG';
     if (u === 'SHORT') return 'SHORT';
     if (u === 'UNAVAILABLE') return 'UNAVAILABLE';
+    if (u === 'WAIT' || u === 'FLAT' || u === 'NEUTRAL') return 'FLAT';
     return 'FLAT';
   }
 
@@ -3700,6 +3724,8 @@ function renderTimeframeSignalRow(d) {
 
   const mhap = Array.isArray(d.mhap_rows) ? d.mhap_rows : [];
   const prim = String(d.primary_horizon || '').toLowerCase();
+  const finalBias = String(d.final_bias || 'WAIT').toUpperCase();
+  const tradeable = !!d.final_tradeable && (finalBias === 'LONG' || finalBias === 'SHORT');
   const primaryRow = mhap.find((r) => String(r.horizon || '').toLowerCase() === prim);
   const primaryDir = primaryRow ? normDir(primaryRow.call) : 'FLAT';
 
@@ -3760,10 +3786,22 @@ function renderTimeframeSignalRow(d) {
     if (state === 'up' || state === 'down') {
       if (confPct != null && confPct >= 76) glow = 'tf-glow-3';
       else if (confPct != null && confPct >= 61) glow = 'tf-glow-2';
-      else if (confPct != null) glow = 'tf-glow-1';
+      else glow = 'tf-glow-1';
     }
 
-    card.className = 'tf-signal-card tf-state-' + (state === 'up' ? 'up' : state === 'down' ? 'down' : 'dim') + (glow ? ' ' + glow : '');
+    const isPrimaryTrade =
+      tradeable && slug === prim && dir === finalBias && (state === 'up' || state === 'down');
+    if (isPrimaryTrade && glow === 'tf-glow-1') glow = 'tf-glow-2';
+
+    const sigDir =
+      dir === 'LONG' ? 'long' : dir === 'SHORT' ? 'short' : dir === 'UNAVAILABLE' ? 'unavailable' : 'neutral';
+    card.setAttribute('data-tf-signal-dir', sigDir);
+
+    card.className =
+      'tf-signal-card tf-state-' +
+      (state === 'up' ? 'up' : state === 'down' ? 'down' : 'dim') +
+      (glow ? ' ' + glow : '') +
+      (isPrimaryTrade ? ' tf-signal-card--trade-active' : '');
 
     const dot = card.querySelector('.tf-dot');
     if (dot) {
@@ -6739,8 +6777,11 @@ function _updateDirectionWithheldMarkers() {
     });
     const tfCard = document.getElementById('tf-signal-' + hz);
     if (tfCard) {
-      if (state.withheld) tfCard.setAttribute('data-direction-withhold', state.reason);
-      else tfCard.removeAttribute('data-direction-withhold');
+      if (state.withheld) {
+        tfCard.setAttribute('data-direction-withhold', state.reason);
+      } else {
+        tfCard.removeAttribute('data-direction-withhold');
+      }
     }
   });
 }

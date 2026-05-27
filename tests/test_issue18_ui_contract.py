@@ -45,6 +45,27 @@ def test_mhap_fixed_row_order_in_renderer():
     assert "{ '1c': '1m', '5c': '5m', '15c': '15m', '60c': '60m' }" in h
 
 
+def test_tf_trade_signal_cards_keep_color_under_direction_withhold():
+    """LONG/SHORT horizon cards must not be grayscale-washed when lane is stale."""
+    h = _html()
+    assert "card.setAttribute('data-tf-signal-dir', sigDir)" in h
+    assert "tf-signal-card--trade-active" in h
+    assert '[data-tf-signal-dir="long"]' in h
+    assert '[data-tf-signal-dir="short"]' in h
+
+
+def test_tf_dim_neutral_cards_have_operator_legibility_styles():
+    """WAIT/neutral timeframe cards must separate from row chrome (AGENTS legibility gate)."""
+    h = _html()
+    assert ".tf-signal-card.tf-state-dim" in h
+    idx = h.find(".tf-signal-card.tf-state-dim {")
+    assert idx != -1
+    chunk = h[idx : idx + 520]
+    assert "box-shadow" in chunk
+    assert "#6b9fd4" in chunk
+    assert "#334155" not in chunk
+
+
 def test_entry_state_labels_render_contract():
     """Entry state contract — mh-call-entry was renamed to dr-plan-entry (Decision Rail);
     entry_display_text is still the live field; renderMultiHorizon was inlined into the

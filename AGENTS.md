@@ -13,18 +13,52 @@ Current program: [`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md).
 
 ---
 
-## Institutional-grade code gate `[PROMOTED]` (2026-05-27 — operator binding, top rule)
+## World-class / institutional code gate `[PROMOTED]` (2026-05-27 — operator binding, top rule)
 
-**Before writing or landing code:** ask whether the change is institutional-grade — the standard an MIT professor would accept for a production trading system (correctness, uniformity, fail-closed where appropriate, tests, no silent partial behavior). **Research when uncertain** (Read end-to-end, trace producer→consumer, check enrollment and data contracts). If the answer is not **yes**, **stop** and fix the design before coding.
+**Before writing or landing code:** research when uncertain (Read end-to-end, trace producer→consumer, check enrollment and data contracts). Then ask:
+
+1. Would an **MIT professor** accept this in a production trading-systems course (correctness, proofs, tests, no hand-waving)?
+2. Would the **world's greatest coder** ship this without apology (clarity, uniformity, no silent shortcuts)?
+
+If either answer is **no**, **stop** — fix the design or implementation before coding. This is a homegrown app; when done it must **rival any institutional platform**. **Substandard is not acceptable** — not in architecture, not in partial stacks, not in "we'll fix it later."
 
 | Must hold | Failure mode |
 |-----------|----------------|
 | Operator intent wired in code, not comments only | "Policy by design" that contradicts stated product rules |
 | Train-success-live for ML scheduler targets | Train completes but `models/active/` empty without explicit operator opt-out |
-| Parallel and cascade obey the same row/scoring contract where compared | Asymmetric degrade/skip without documented operator approval |
+| **Full parallel stack uniformity** | XGB-only rows, 0.333 meta filler, or parallel eval degrade while cascade skips — partial stack without explicit governed exception |
+| Governed eval compares architectures on **aligned row sets** only | Raw row-count mismatch failures |
 | Confluence-only symbols excluded from training | `panel_auto` tickers trained like tradeables |
+| Live UI shows honest state | Gray cards mistaken for broken pipeline when policy is WAIT |
+| **Operator-surface legibility** | WAIT/neutral cards indistinguishable from page chrome; operator cannot read horizon + confidence at a glance |
+| **Live accuracy** | `/api/state` `mhap_rows` diverges from `tools/live_diag_compare.py` for same ticker without documented reason |
+| **Completion in touched cone** | Turn ends with known FINDs in files/cone Read this session still open (no `[REAL-GATE: …]` row) |
 
-**Partial enforcement:** paired tests for promotion policy, enrollment filter, and scheduler outcomes; operator catch-net for intent drift.
+**Completion discipline (binds every turn):** [§Fix everything we touch](#fix-everything-we-touch) + [§Closure definition + no-deferral](#closure-definition--no-deferral) — not optional polish. Open a file or cone → fix every FIND there before sign-off. ML/UI/money-path change → spot-check live (`tools/live_diag_compare.py <TICKER>`) when `mhap_rows` or cards are in scope. UI-only legibility change → paired assertion in `tests/test_issue18_ui_contract.py` (no new test file).
+
+**Governed exception (only):** `5c` runtime may use documented `xgb_plus_transformer` stack per `ACTIVE_PROGRAM.md` — not a license for other horizons or eval paths.
+
+**Partial enforcement:** paired tests (`tests/test_ml_predict_fail_closed.py`, `tests/test_arch_competition_eval_runner.py`, `tests/test_issue18_ui_contract.py`, scheduler promotion tests); `tools/live_diag_compare.py`; operator catch-net for intent drift.
+
+---
+
+## Rule compliance — zero drift `[PROMOTED]` (2026-05-27 — operator binding; sits with world-class gate)
+
+**Rules in this file are law, not suggestions.** Cursor and Claude Code must follow them on every turn. **Rule drift is rejection-grade** — the same severity as a money-path bug. Prose without a matching `tools/check_*.py` lock is an incomplete promotion; extend the checker in the **same commit** as the new rule ([§Self-governance quality loop](#self-governance-quality-loop)).
+
+| Violation (non-exhaustive) | What happens |
+|----------------------------|--------------|
+| Patch in one file while a known FIND in the same cone stays open | Incomplete work — land fix + test + closure artifacts same commit |
+| "By design" / "out of scope" / "not in the ticket" / "patch only" to excuse incomplete or asymmetric behavior | Banned — use code change or `[REAL-GATE: …]` in `OPEN_ITEMS` |
+| Governance-only turn when operator assigned code work | Rejected — [§Code-first](#code-first--no-governance-only-turn-promoted--2026-05-25--operator-escalation) |
+| Claiming complete / verified without evidence cite | Rejected — [§Do not lie to the operator](#do-not-lie-to-the-operator-promoted-2026-05-24--binding-hard-rule-no-exceptions) |
+| Different agent re-introduces a miss the other agent already caught | **PROC-MISSED-FIX** row + checker extension same commit — no repeat |
+
+**Neither agent may end a turn with:** known FINDs in files Read this session still open; closure checklist incomplete; or chat/commit text that uses banned excuse phrases ([§Banned phrases](#banned-phrases-promoted) + **Excuse / partial-completion** list).
+
+**Mechanical enforcement (pre-commit + CI):** `tools/check_fix_everything_we_touch.py` — commit messages and staged source/docs scanned for banned phrases (`governance/forbidden_phrases.py`) and excuse patterns; investigation-only / unverified-claim guards unchanged. Paired: `tests/test_check_fix_everything_we_touch.py`, `tests/test_forbidden_phrases.py`, `tests/test_governance_consolidation.py`.
+
+**Operator escalation:** If an agent violates this section twice on the same FIND family, the fix is **checker + test**, not another paragraph of rules.
 
 ---
 
@@ -282,6 +316,15 @@ Rejection-grade in commit messages, code comments, tests, chat, and OPEN_ITEMS r
 - "will land later" / "can land later" / "Playwright deferred until CI"
 - "broader sweep deferred" / "deferred FINDs" (use **disclosed FINDs** + REAL-GATE tag or close in-turn)
 - End-of-turn menus: "Want me to…?", "Should I…?", "Your call.", "Say the word…", "go X if you want"
+
+**Excuse / partial-completion (operator 2026-05-27 — zero drift):**
+- "by design" / "works as designed" / "works as intended" / "policy by design"
+- "patch only" / "minimal patch" / "small patch" (as a completion excuse — not describing a diff shape in governance meta)
+- "mostly complete" / "substantially complete" / "good enough for now"
+- "not in scope" / "out of scope" (without `[REAL-GATE: …]` row)
+- "intentional asymmetry" (without governed O-NN / operator narrative)
+- "rules are guidance" / "operator will catch" / "acceptable drift"
+- "partial fix" / "partial enforcement" (as reason to stop — extend the checker instead)
 
 Schwab-only phrases remain in `CLAUDE.md` FORBIDDEN PHRASES.
 

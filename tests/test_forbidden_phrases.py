@@ -30,3 +30,13 @@ def test_clean_technical_prose_passes():
         "Read server.py end-to-end and cite file:line for each market-field site."
     )
     assert hits == []
+
+
+def test_detects_by_design_excuse_phrase():
+    hits = find_forbidden_phrases("The asymmetry is by design for this horizon.")
+    assert "by design" in hits
+
+
+def test_detects_out_of_scope_excuse():
+    hits = find_forbidden_phrases("panel_auto training is not in scope of this slice.")
+    assert any("not in scope" in h.lower() or "out of scope" in h.lower() for h in hits)

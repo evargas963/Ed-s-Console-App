@@ -64,3 +64,25 @@ def test_model_probs_to_ui_output_available_on_complete_dict():
 def test_model_probs_to_ui_output_none_input():
     out = mp._model_probs_to_ui_output(None, approved=True)
     assert out["available"] is False
+
+
+def test_parallel_base_stack_complete_requires_all_legs():
+    tri = {"up": 0.4, "down": 0.3, "flat": 0.3}
+    assert mp._parallel_base_stack_complete(tri, tri, tri) is True
+    assert mp._parallel_base_stack_complete(tri, tri, None) is False
+    assert mp._parallel_base_stack_complete(tri, {"up": 0.5}, tri) is False
+
+
+def test_weighted_average_fail_closed_on_partial_stack():
+    tri = {"up": 0.4, "down": 0.3, "flat": 0.3}
+    assert mp._weighted_average("SPY", tri, tri, None) is None
+
+
+def test_stack_probs_fail_closed_on_partial_stack():
+    tri = {"up": 0.4, "down": 0.3, "flat": 0.3}
+    assert mp._stack_probs(tri, tri, None) is None
+
+
+def test_ensemble_parallel_probs_fail_closed_on_partial_stack():
+    tri = {"up": 0.4, "down": 0.3, "flat": 0.3}
+    assert mp._ensemble_parallel_probs("SPY", tri, None, tri) is None

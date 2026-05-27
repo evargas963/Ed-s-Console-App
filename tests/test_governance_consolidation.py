@@ -195,6 +195,14 @@ def test_agents_closure_and_no_new_files_sections():
     assert "historical only" in agents.lower() or "AGENTS.md wins" in agents
 
 
+def test_agents_rule_compliance_zero_drift_section():
+    agents = _read("AGENTS.md")
+    assert "Rule compliance" in agents
+    assert "zero drift" in agents.lower()
+    assert "check_fix_everything_we_touch" in agents
+    assert "by design" in agents
+
+
 def test_agents_mutual_gatekeeping_section():
     agents = _read("AGENTS.md")
     assert "Active agent posture + mutual gatekeeping" in agents
