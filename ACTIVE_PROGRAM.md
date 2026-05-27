@@ -112,6 +112,8 @@ Schwab scanner/register work is **tracking only** — it does not replace wire f
 | `1af892e` | Initial Claude audit handoff docs |
 | *(tip)* | qqq_weighted_push historical backfill, quote-tick impute, audit bugfixes |
 
+**Tip SHA:** `c32ae4b` (after push: `git log -1 --oneline`)
+
 ### Files — Read end-to-end (producer/consumer cone)
 
 `server.py`, `db.py`, `market_context.py`, `market_state.py`, `scheduler_user_tickers.py`, `audit_model_readiness.py`, `verify_active_models.py`, `ml_scheduler.py`, `feature_contracts.py`, `backfill_snapshot_derived.py`, `static/index.html`, `ACTIVE_PROGRAM.md`, `OPEN_ITEMS.md`, `governance/artifacts/persistence_consumer_map.json`, `tests/test_scheduler_user_tickers_return_type.py`, `tests/test_issue18_ui_contract.py`, `tests/test_feature_contract_validation.py`, `tests/test_training_canonical_input.py`.
@@ -141,8 +143,8 @@ python backfill_snapshot_derived.py --skip-normalizer
 ### Closed OPEN_ITEMS @ tip
 
 - `UI-CARD-PROVENANCE-CHIPS` @ `c0770f6`
-- `QQQ-WEIGHTED-PUSH-HISTORICAL-NULLS` @ tip (backfill from constituent `chg_pct`)
-- `AUDIT-MODEL-READINESS-BUGFIX` @ tip (`PRIMARY_DECISION_HORIZONS` shadow, `xgb_exists`, pred-col gate)
+- `QQQ-WEIGHTED-PUSH-HISTORICAL-NULLS` @ `c32ae4b`
+- `AUDIT-MODEL-READINESS-BUGFIX` @ `c32ae4b`
 
 ### Still open — audit must NOT treat as done
 

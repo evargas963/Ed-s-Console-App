@@ -57,7 +57,11 @@
 
 - [x] **UI-CARD-PROVENANCE-CHIPS** @ `c0770f6` — Horizon pills: EMPIRICAL / ML FUSION / BLEND / UNAVAILABLE / DEGRADED source chips from `mh_prob_source_by_horizon`; Decision Rail fusion-authority strip + empirical context line; spec in `ACTIVE_PROGRAM.md` §UI card provenance; tests `tests/test_issue18_ui_contract.py` (horizon chips + fusion strip assertions).
 
-- [ ] **AUDIT-CURSOR-DATA-UI-SLICE-2026-05-27** — **Claude full Read audit** of Cursor commits on `feature/institutional-key-levels` (`f078593` through tip). Handoff: `ACTIVE_PROGRAM.md` §Claude audit handoff. **Closes when:** Claude sign-off with file:line citations + enumerated FINDs (if any) land as OPEN_ITEMS rows or same-turn fixes.
+- [x] **QQQ-WEIGHTED-PUSH-HISTORICAL-NULLS** @ `c32ae4b` — `backfill_weighted_pushes` in `backfill_snapshot_derived.py` recomputes from constituent `chg_pct`; live impute via `confluence_quote_ticks`; RTH NULL 30.7% → 0.0%; tests `test_weighted_push_from_constituents_matches_build_confluence`, `test_fetch_latest_confluence_quote_chg`.
+
+- [x] **AUDIT-MODEL-READINESS-BUGFIX** @ `c32ae4b` — fixed `PRIMARY_DECISION_HORIZONS` UnboundLocalError, `xgb_exists` NameError, XGB null gate excludes sparse `pred_*` inference columns; PRE-TRAIN GATE GO on operator DB.
+
+- [ ] **AUDIT-CURSOR-DATA-UI-SLICE-2026-05-27** — **Claude full Read audit** of Cursor commits `f078593` … `c32ae4b` on `feature/institutional-key-levels`. Handoff: `ACTIVE_PROGRAM.md` §Claude audit handoff. **Closes when:** Claude sign-off with file:line citations + enumerated FINDs (if any) land as OPEN_ITEMS rows or same-turn fixes.
 
 - [ ] **SPY-60C-XGB-META-BUNDLE** — `[REAL-GATE: host-only]` Active bundle missing `xgb_SPY_60c.pkl` + `meta_SPY_60c.pkl` in `models/active/SPY/` (lstm/transformer 60c present). UI correctly shows UNAVAILABLE for 60M when stack incomplete. **Closes when:** governed train+promote lands both artifacts + verify_active_models SPY 60c row green.
 
