@@ -1079,6 +1079,36 @@
     align-items: center;
     margin-bottom: 6px;
   }
+  .dr-fusion-authority-strip {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+  }
+  .dr-fusion-authority-strip--active {
+    background: rgba(0, 230, 118, 0.12);
+    border: 1px solid rgba(0, 230, 118, 0.35);
+    color: #00E676;
+  }
+  .dr-fusion-authority-strip--muted {
+    background: rgba(100, 116, 139, 0.18);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    color: #cbd5e1;
+  }
+  .dr-empirical-context-line {
+    font-size: 11px;
+    color: var(--text2);
+    margin: -2px 0 8px;
+    padding: 0 2px;
+  }
+  .dr-empirical-context-line.muted {
+    color: var(--text3);
+    font-size: 10px;
+  }
   .decision-verdict-pill {
     font-family: var(--mono);
     font-size: 11px;
@@ -2601,6 +2631,7 @@
             <div class="tf-pct">0%</div>
             <div class="tf-conf-lbl" title="Per-horizon supporting assessment (mhap_rows[i].confidence)">HORIZON CONF</div>
             <span class="tf-source tf-source--hidden" aria-label="Probability source">—</span>
+            <span class="tf-tag tf-tag--hidden">—</span>
           </div>
         </div>
       </div>
@@ -2633,6 +2664,8 @@
               <span class="desk-confidence-pill" id="dr-desk-confidence" title="Multi-horizon desk aggregate (final_confidence)">—</span>
               <span class="conviction-pill low" id="dr-confidence-pill" title="Call-layer conviction band (qualitative)">CONF —</span>
             </div>
+            <div id="dr-fusion-authority-strip" class="dr-fusion-authority-strip dr-fusion-authority-strip--muted" aria-live="polite">Not tradable — empirical context only</div>
+            <div id="dr-empirical-context-line" class="dr-empirical-context-line" style="display:none"></div>
             <div class="signal-chain-bar" id="dr-signal-chain-host" aria-label="Signal chain status"></div>
 
             <details class="hz-breakdown" id="dr-hz-breakdown">
@@ -4399,6 +4432,40 @@ function renderDecisionCommandRail(d) {
       ? 'unavailable'
       : numf(d.final_confidence, 2);
     confPill.title = `Call-layer conviction: ${cc || '—'} · desk aggregate: ${fcTxt}`;
+  }
+
+  const authStrip = $('dr-fusion-authority-strip');
+  if (authStrip) {
+    if (fusionActive) {
+      const domDir = String(d.fusion_dominant_direction || d.dominant_dir || '—').toUpperCase();
+      const agree = d.fusion_model_agreement;
+      const agreePct = (agree != null && !Number.isNaN(Number(agree)))
+        ? Math.round(Number(agree) * 100)
+        : null;
+      authStrip.textContent = agreePct != null
+        ? `Fusion authoritative · ${domDir} · agreement ${agreePct}%`
+        : `Fusion authoritative · ${domDir}`;
+      authStrip.className = 'dr-fusion-authority-strip dr-fusion-authority-strip--active';
+    } else {
+      authStrip.textContent = 'Not tradable — empirical context only';
+      authStrip.className = 'dr-fusion-authority-strip dr-fusion-authority-strip--muted';
+    }
+  }
+  const empLine = $('dr-empirical-context-line');
+  if (empLine) {
+    const nRaw = d.samples_used != null ? d.samples_used : d.pred_samples_used;
+    const n = (nRaw != null && !Number.isNaN(Number(nRaw))) ? Number(nRaw) : null;
+    const tier = txt(d.tier_label, '');
+    if (n != null && n > 0) {
+      empLine.style.display = '';
+      empLine.textContent = tier
+        ? `${tier} · ${n} similar setups`
+        : `${n} similar setups (empirical context)`;
+      empLine.className = 'dr-empirical-context-line' + (fusionActive ? ' muted' : '');
+    } else {
+      empLine.style.display = 'none';
+      empLine.textContent = '';
+    }
   }
 
   const rt = (d.stack_runtime && typeof d.stack_runtime === 'object') ? d.stack_runtime : {};

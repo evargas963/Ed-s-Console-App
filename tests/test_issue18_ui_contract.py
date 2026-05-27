@@ -108,6 +108,16 @@ def test_horizon_cards_render_prob_source_chips():
     assert "ML FUSION" in h
 
 
+def test_decision_rail_fusion_authority_strip():
+    """Call/forward authority line: fusion vs empirical-only (Issue 18 spec)."""
+    h = _html()
+    assert "dr-fusion-authority-strip" in h
+    assert "dr-empirical-context-line" in h
+    assert "Fusion authoritative" in h
+    assert "Not tradable — empirical context only" in h
+    assert "dr-fusion-authority-strip--active" in h
+
+
 def test_entry_state_labels_render_contract():
     """Entry state contract — mh-call-entry was renamed to dr-plan-entry (Decision Rail);
     entry_display_text is still the live field; renderMultiHorizon was inlined into the
