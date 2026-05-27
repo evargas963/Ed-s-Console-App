@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from arch_competition.eval_runner import (
+    _align_eval_detail_pair,
     run_architecture_pair_evaluation,
     write_evaluation_manifest,
 )
@@ -26,12 +27,12 @@ def _base_lineage():
     }
 
 
-def _detail(*, n: int, prob_rows: list | None = None):
+def _detail(*, n: int, prob_rows: list | None = None, ts_base: float = 1_700_000_000.0):
     rows = prob_rows if prob_rows is not None else [[0.34, 0.33, 0.33]] * n
     return {
         "prob_rows": rows,
         "y_true": [1] * n,
-        "rows_used": [{"vix_level": 18.0}] * n,
+        "rows_used": [{"vix_level": 18.0, "ts_utc": ts_base + float(i * 60)} for i in range(n)],
     }
 
 
@@ -79,6 +80,37 @@ def test_eval_missing_prob_rows_raises_at_min_samples_statistical():
     n = MIN_SAMPLES_STATISTICAL
     with pytest.raises(EvaluationLineageError, match="missing prob_rows"):
         _run_mocked_eval(n, _detail(n=n, prob_rows=[]))
+
+
+def test_eval_aligns_mismatched_parallel_cascade_row_counts():
+    """Parallel may score more rows than cascade when LSTM/TR fail on cascade path."""
+    n = MIN_SAMPLES_STATISTICAL + 50
+    parallel_only = 40
+    pdet = _detail(n=n, ts_base=1_700_000_000.0)
+    cdet = _detail(n=n - parallel_only, ts_base=1_700_000_000.0)
+    man = _run_mocked_eval(
+        n,
+        pdet,
+        pr=(0.5, 0.5, n, 0.5, {}, pdet),
+        cr=(0.5, 0.5, n - parallel_only, 0.4, {}, cdet),
+    )
+    summary = man["architecture_comparison_summary"]
+    assert summary["parallel_raw_n_rows_scored"] == n
+    assert summary["cascade_raw_n_rows_scored"] == n - parallel_only
+    assert summary["aligned_n_rows_scored"] == n - parallel_only
+    assert man["metrics"]["parallel"]["n_rows_scored"] == n - parallel_only
+    assert man["metrics"]["cascade"]["n_rows_scored"] == n - parallel_only
+
+
+def test_align_eval_detail_pair_intersection_by_ts_utc():
+    pdet = _detail(n=5, ts_base=100.0)
+    cdet = _detail(n=3, ts_base=100.0 + 120.0)
+    aligned_p, aligned_c, n, pn_raw, cn_raw = _align_eval_detail_pair(pdet, cdet)
+    assert pn_raw == 5
+    assert cn_raw == 3
+    assert n == 3
+    assert len(aligned_p["prob_rows"]) == 3
+    assert len(aligned_c["prob_rows"]) == 3
 
 
 def test_write_evaluation_manifest_round_trip(tmp_path: Path) -> None:
