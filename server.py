@@ -7323,6 +7323,31 @@ async def health():
     return {"status": "ok", "time": datetime.now().isoformat(), "logger_running": running, "logger_tickers": n}
 
 
+def _repo_git_head_sha() -> Optional[str]:
+    """Best-effort repo tip for runtime-vs-disk checks (Meet-or-Exceed cycle)."""
+    import subprocess
+
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=APP_DIR,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=3.0,
+        )
+        sha = (proc.stdout or "").strip()
+        return sha or None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+@app.get("/api/build")
+async def api_build():
+    """Runtime tip fingerprint — compare ``git_sha`` to ``git rev-parse HEAD`` after deploy/restart."""
+    return {"git_sha": _repo_git_head_sha(), "contract": "meet_or_exceed_v1"}
+
+
 @app.get("/api/price-levels")
 async def get_price_levels(ticker: str = Query(default=DEFAULT_TICKER), extended_hours: bool = Query(default=True)):
     """Return PDH/PDL/PDC, POC/VAH/VAL, VWAP bands, ORB, overnight range as JSON."""

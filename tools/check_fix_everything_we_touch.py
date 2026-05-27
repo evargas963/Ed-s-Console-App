@@ -378,6 +378,7 @@ def check_commit_message(path: Path) -> list[str]:
                     f"(AGENTS § Do not lie — cite tests/, @ SHA, or :line on same line)"
                 )
         hits.extend(_line_rule_drift_hits(path, line_no, line))
+    hits.extend(check_meet_or_exceed_signoff(path))
     return hits
 
 
@@ -778,6 +779,8 @@ INSTITUTIONAL_CONTRACT_MARKERS: tuple[tuple[str, str], ...] = (
     ("static/index.html", "function laneStaleOperatorLabel"),
     ("static/index.html", "SYNCING ANALYTICS"),
     ("AGENTS.md", "Mandatory enforcement registry"),
+    ("AGENTS.md", "Meet-or-Exceed Closure Cycle"),
+    ("server.py", '@app.get("/api/build")'),
 )
 INSTITUTIONAL_BANNED_SERVER_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -820,6 +823,83 @@ def check_institutional_contract() -> list[str]:
     return errors
 
 
+VERDICT_LINE = re.compile(r"\bVERDICT:\s*(\S+)", re.IGNORECASE)
+MEET_OR_EXCEED_ALLOWED_VERDICTS = frozenset({"MET", "EXCEEDED"})
+
+MEET_OR_EXCEED_BANNED_VERDICT_PHRASES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("partial completion verdict", re.compile(r"\b(?:mostly|partially)\s+(?:complete|meets?|met)\b", re.I)),
+    ("meets with gaps verdict", re.compile(r"\bmeets?\s+with\s+gaps\b", re.I)),
+    ("letter-grade partial verdict", re.compile(r"\bgrade:\s*[ABC][+-]", re.I)),
+    ("explicit not-exceeded verdict", re.compile(r"\bdoes\s+not\s+exceed\b", re.I)),
+    (
+        "substandard completion verdict",
+        re.compile(r"\b(?:substandard|good\s+enough)\b.*\b(?:complete|done|shipped)\b", re.I),
+    ),
+    (
+        "scoped standard excuse",
+        re.compile(
+            r"\b(?:standard|verdict|cycle)\s+(?:met|applies|applicable)\s+(?:for|to)\s+(?:this|the)\s+"
+            r"(?:slice|section|area|subsystem|epic|pr)\b",
+            re.I,
+        ),
+    ),
+    (
+        "operator coherence slice scope-narrow",
+        re.compile(r"\boperator\s+coherence\s+slice\b", re.I),
+    ),
+)
+
+MEET_OR_EXCEED_UNIVERSAL_SCOPE_MARKERS: tuple[str, ...] = (
+    "Scope — universal, not gated",
+    "full repo",
+    "one cycle, one verdict vocabulary",
+)
+
+
+def check_meet_or_exceed_cycle_documentation() -> list[str]:
+    path = REPO_ROOT / "AGENTS.md"
+    if not path.is_file():
+        return ["AGENTS.md: missing (Meet-or-Exceed Closure Cycle)"]
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if "Meet-or-Exceed Closure Cycle" not in text:
+        return ["AGENTS.md: missing § Meet-or-Exceed Closure Cycle (operator binding)"]
+    if "VERDICT: MET | EXCEEDED" not in text and "VERDICT: MET" not in text:
+        return ["AGENTS.md: Meet-or-Exceed section missing required VERDICT block"]
+    errors: list[str] = []
+    for marker in MEET_OR_EXCEED_UNIVERSAL_SCOPE_MARKERS:
+        if marker not in text:
+            errors.append(
+                f"AGENTS.md: Meet-or-Exceed missing universal-scope marker {marker!r} "
+                f"(standard applies full repo — not gated to a slice)"
+            )
+    return errors
+
+
+def check_meet_or_exceed_signoff(commit_msg_path: Path) -> list[str]:
+    """AGENTS § Meet-or-Exceed — commit claims must not use partial verdict vocabulary."""
+    if not commit_msg_path.is_file():
+        return []
+    text = commit_msg_path.read_text(encoding="utf-8", errors="replace")
+    if not text.strip():
+        return []
+    if META_COMMIT_LINE.search(text) or RULE_DRIFT_META_LINE.search(text):
+        return []
+    errors: list[str] = []
+    for label, pat in MEET_OR_EXCEED_BANNED_VERDICT_PHRASES:
+        if pat.search(text):
+            errors.append(
+                f"commit message: banned partial sign-off phrase ({label!r}) — "
+                f"use Meet-or-Exceed cycle until VERDICT: MET or EXCEEDED only (AGENTS.md)"
+            )
+    for m in VERDICT_LINE.finditer(text):
+        verdict = (m.group(1) or "").strip().upper().rstrip(".")
+        if verdict not in MEET_OR_EXCEED_ALLOWED_VERDICTS:
+            errors.append(
+                f"commit message: VERDICT must be MET or EXCEEDED only (got {verdict!r})"
+            )
+    return errors
+
+
 def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
     staged = staged if staged is not None else _git_staged_paths()
     errors: list[str] = []
@@ -844,6 +924,7 @@ def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
     errors.extend(check_persistence_writer_has_reader(staged))
     errors.extend(check_mvp_dataframe_ingress())
     errors.extend(check_institutional_contract())
+    errors.extend(check_meet_or_exceed_cycle_documentation())
 
     for path in paths:
         if path.name == "COMMIT_EDITMSG" or "--commit-msg" in path.as_posix():

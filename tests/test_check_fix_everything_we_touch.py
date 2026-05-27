@@ -719,14 +719,68 @@ def test_institutional_contract_passes_on_current_repo() -> None:
     assert mod.check_institutional_contract() == []
 
 
+def test_meet_or_exceed_cycle_documentation_passes_on_current_repo() -> None:
+    assert mod.check_meet_or_exceed_cycle_documentation() == []
+
+
+def test_meet_or_exceed_cycle_documentation_requires_universal_scope(tmp_path: Path, monkeypatch) -> None:
+    agents = tmp_path / "AGENTS.md"
+    agents.write_text(
+        "Meet-or-Exceed Closure Cycle\nVERDICT: MET\n",
+        encoding="utf-8",
+    )
+    orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = tmp_path
+    try:
+        hits = mod.check_meet_or_exceed_cycle_documentation()
+    finally:
+        mod.REPO_ROOT = orig_root
+    assert hits
+    assert any("universal-scope marker" in h for h in hits)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Slice mostly meets the standard — ship it.",
+        "VERDICT: PARTIAL\nGATE_TABLE:\n  tests: MET",
+        "Grade: B+ on institutional contract.",
+        "Standard met for this slice only — operator coherence done.",
+        "VERDICT applies to the operator coherence slice.",
+    ],
+)
+def test_meet_or_exceed_signoff_banned_verdicts(body: str, tmp_path: Path) -> None:
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text(body, encoding="utf-8")
+    hits = mod.check_meet_or_exceed_signoff(msg)
+    assert hits
+
+
+def test_meet_or_exceed_signoff_verdict_met_passes(tmp_path: Path) -> None:
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text(
+        "VERDICT: MET\nCYCLE_ITERATIONS: 2\nGATE_TABLE:\n  tests: MET — tests/test_batch2\n",
+        encoding="utf-8",
+    )
+    assert mod.check_meet_or_exceed_signoff(msg) == []
+
+
 def test_institutional_contract_banned_analytics_stale_sse_pattern(tmp_path: Path, monkeypatch) -> None:
     bad = tmp_path / "server.py"
     bad.write_text(
+        'def _resolve_ticker_param():\n'
+        '    pass\n'
+        'analytics_refresh_due\n'
+        '@app.get("/api/build")\n'
         'md["analytics_stale"] = bool(sse_live or (age >= ttl))\n',
         encoding="utf-8",
     )
     good = tmp_path / "AGENTS.md"
-    good.write_text("Mandatory enforcement registry\n", encoding="utf-8")
+    good.write_text(
+        "Mandatory enforcement registry\nMeet-or-Exceed Closure Cycle\n"
+        "Scope — universal, not gated\nfull repo\none cycle, one verdict vocabulary\nVERDICT: MET\n",
+        encoding="utf-8",
+    )
     ui = tmp_path / "static"
     ui.mkdir()
     (ui / "index.html").write_text(

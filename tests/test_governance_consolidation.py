@@ -280,6 +280,17 @@ def test_agents_mandatory_enforcement_registry() -> None:
     assert "Cards lit + no false STALE pill" in agents
 
 
+def test_agents_meet_or_exceed_closure_cycle() -> None:
+    agents = _read("AGENTS.md")
+    assert "Meet-or-Exceed Closure Cycle" in agents
+    assert "VERDICT: MET" in agents
+    assert "check_meet_or_exceed_signoff()" in agents
+    assert "GET /api/build" in agents
+    assert "Scope — universal, not gated" in agents
+    assert "full repo" in agents
+    assert "one cycle, one verdict vocabulary" in agents
+
+
 def test_server_logging_visual_severity_marker_warning_plus_only() -> None:
     """server.py installs a Formatter that prepends a bracket-tag for WARNING+ so
     operator-actionable events stand out in the dense INFO/DEBUG console stream.

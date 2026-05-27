@@ -34,7 +34,7 @@ If either answer is **no**, **stop** — fix the design or implementation before
 | **Live accuracy** | `/api/state` `mhap_rows` diverges from `tools/live_diag_compare.py` for same ticker without documented reason |
 | **Completion in touched cone** | Turn ends with known FINDs in files/cone Read this session still open (no `[REAL-GATE: …]` row) |
 
-**Completion discipline (binds every turn):** [§Fix everything we touch](#fix-everything-we-touch) + [§Closure definition + no-deferral](#closure-definition--no-deferral) — not optional polish. Open a file or cone → fix every FIND there before sign-off. ML/UI/money-path change → spot-check live (`tools/live_diag_compare.py <TICKER>`) when `mhap_rows` or cards are in scope. UI-only legibility change → paired assertion in `tests/test_issue18_ui_contract.py` (no new test file).
+**Completion discipline (binds every turn):** [§Meet-or-Exceed Closure Cycle](#meet-or-exceed-closure-cycle) is the **universal** completion standard for the **full repo** — every turn, every deliverable, every sign-off. It subsumes [§Fix everything we touch](#fix-everything-we-touch) + [§Closure definition + no-deferral](#closure-definition--no-deferral). Open a file or cone → fix every FIND there before sign-off. ML/UI/money-path change → spot-check live (`tools/live_diag_compare.py <TICKER>`) when `mhap_rows` or cards are in scope. UI-only legibility change → paired assertion in `tests/test_issue18_ui_contract.py` (no new test file).
 
 **Governed exception (only):** `5c` runtime may use documented `xgb_plus_transformer` stack per `ACTIVE_PROGRAM.md` — not a license for other horizons or eval paths.
 
@@ -47,15 +47,71 @@ If either answer is **no**, **stop** — fix the design or implementation before
 | Full parallel stack / no 0.333 filler | `tests/test_ml_predict_fail_closed.py` | same |
 | Governed eval row alignment | `tests/test_arch_competition_eval_runner.py` | same |
 | Live UI honest state + legibility | `tests/test_issue18_ui_contract.py` | same |
-| Cards lit + no false STALE pill (operator coherence) | `tools/check_fix_everything_we_touch.py` → `check_institutional_contract()` | `tests/test_check_fix_everything_we_touch.py` |
+| Cards lit + no false STALE pill (live UI lane coherence) | `tools/check_fix_everything_we_touch.py` → `check_institutional_contract()` | `tests/test_check_fix_everything_we_touch.py` |
 | `/api/state` ticker query (`ticker=` + `symbol=` alias) | `check_institutional_contract()` + `tests/test_batch2_analytics_bg_fail_counter.py` | same |
 | Analytics `stale` ≠ SSE-connected alone | `check_institutional_contract()` + `test_analytics_stale_not_sse_connected_only` | `tests/test_batch2_analytics_bg_fail_counter.py` |
 | Rule drift / excuse phrases | `check_fix_everything_we_touch.py` (pre-commit) | `tests/test_check_fix_everything_we_touch.py` |
 | Deferral language | `tools/check_no_deferral_language.py` | `tests/test_check_no_deferral_language.py` |
 | Live diag evidence before pipeline claims | Operator: `python tools/live_diag_compare.py <TICKER>`; agents must paste output or JSON keys when claiming pipeline state | — |
 | Closure (code+test+OPEN_ITEMS) | `tests/test_governance_consolidation.py` | same |
+| **Meet-or-Exceed sign-off** (VERDICT MET/EXCEEDED only) | `check_meet_or_exceed_signoff()` in `check_fix_everything_we_touch.py` | `tests/test_check_fix_everything_we_touch.py` |
+| **Runtime tip = disk tip** | `GET /api/build` `git_sha` vs `git rev-parse HEAD` | `tests/test_batch2_analytics_bg_fail_counter.py` |
 
 **Pre-commit:** `check_institutional_contract()` runs on **every** commit (via `check_fix_everything_we_touch.py`), not only when UI files are staged. A promotion without a registry row + checker is rejection-grade.
+
+---
+
+## Meet-or-Exceed Closure Cycle `[PROMOTED]` (2026-05-27 — operator binding; universal; no partial sign-off)
+
+<a id="meet-or-exceed-closure-cycle"></a>
+
+**Scope — universal, not gated:** This is **the** completion standard for **all work in this repository** — repo root through every directory, extension, and program (Schwab V4, ML, UI, money-path, governance, tooling, tests, static, docs). It applies to **every agent turn** and **every deliverable** (code change, review, disposition, sign-off, chat report). It is **not** scoped to an epic, PR, subsystem, "slice", or feature area. There is no separate "operator coherence standard" vs "ML standard" vs "Schwab standard" for completion — one cycle, one verdict vocabulary, full repo.
+
+**Problem this solves:** Agents habitually report "mostly", "partial", "B+", or "meets with gaps" and stop. That is **rejection-grade** — the standard is binary: **MET** or **EXCEEDED**. Anything else means **keep working** (return to IMPLEMENT).
+
+### The cycle (mandatory — every turn, until MET or EXCEEDED)
+
+```
+IMPLEMENT → VERIFY → SCORE → (if any applicable row not MET/EXCEEDED) → IMPLEMENT → …
+```
+
+| Step | Action | Stop condition |
+|------|--------|----------------|
+| **1. IMPLEMENT** | Code + paired tests in existing owners ([§No new files](#no-new-files)); Schwab work also per [CLAUDE.md](CLAUDE.md) canopy→leaf | — |
+| **2. VERIFY** | Run paired tests + `python tools/check_fix_everything_we_touch.py`; live diag when pipeline/UI/API claims are in scope; re-Read at tip before sign-off | All green |
+| **3. SCORE** | Score **every applicable row** — world-class gate table, mandatory registry, [§Closure definition](#closure-definition--no-deferral) when closing FINDs, Schwab register/perf-proof when in Schwab scope | Each row **MET** or **EXCEEDED** only |
+| **4. LOOP** | Any row scored PARTIAL / NO / mostly / letter-grade → return to step 1 for that row | None remain |
+| **5. SIGN-OFF** | Emit the sign-off block below in chat and/or commit body | `VERDICT: MET` or `VERDICT: EXCEEDED` only |
+
+**Banned sign-off vocabulary (rejection-grade everywhere — chat, commits, OPEN_ITEMS):** "mostly", "partial(ly) meets", "meets with gaps", "B+", "B−", "A−", "not yet", "does not exceed", "honest limit" **as the completion verdict**, "good enough", "substandard but", "for the most part", "standard met for this slice/area/section only".
+
+**Required sign-off block** (when claiming **any** work is complete — turn report, commit, PR body):
+
+```
+VERDICT: MET | EXCEEDED
+SCOPE: full repo | <named paths touched this turn — not a scope-narrowing excuse>
+CYCLE_ITERATIONS: <n>
+GATE_TABLE:
+  <gate_row>: MET | EXCEEDED — <evidence cite: tests/… or file:line or live_diag one-liner>
+```
+
+If you cannot fill every **applicable** `GATE_TABLE` line with MET or EXCEEDED and a cite, **the work is not done** — continue the cycle. Omitting rows because they are "outside this slice" is scope-narrowing and rejection-grade.
+
+**EXCEEDED** means: behavioral proof beyond presence markers (TestClient, Playwright driving exported helpers, negative fixture, live_diag pasted, full-file Read with file:line disposition) — not prose.
+
+**Program closure (Schwab D17):** Register walk to `unreviewed_count == 0` is the same universal standard applied file-by-file across the full tree — not a different bar.
+
+### Mechanical enforcement (every commit)
+
+| Lock | What it blocks |
+|------|----------------|
+| `check_meet_or_exceed_signoff()` in `tools/check_fix_everything_we_touch.py` | Commit messages with `VERDICT:` not equal to MET/EXCEEDED; banned partial-completion verdict phrases |
+| `check_meet_or_exceed_cycle_documentation()` | `AGENTS.md` missing this section or universal-scope binding |
+| Registry rows | Each gate → checker + test (see table above) |
+
+Paired: `tests/test_check_fix_everything_we_touch.py`, `tests/test_governance_consolidation.py`.
+
+**Runtime vs disk:** After pull/commit, restart server; confirm `GET /api/build` `git_sha` matches `git rev-parse HEAD` before live pipeline claims.
 
 ---
 

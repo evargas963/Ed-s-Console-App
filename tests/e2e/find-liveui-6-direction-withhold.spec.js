@@ -349,3 +349,71 @@ test('OF strip ids are NOT marked direction-withhold (independent order_flow_sta
     if (row.present) expect(row.attr).toBeNull();
   }
 });
+
+test('laneStaleOperatorLabel shows SYNCING within institutional trust window', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () => typeof window.laneStaleOperatorLabel === 'function',
+    null,
+    { timeout: 30000 },
+  );
+
+  const syncing = await page.evaluate(() => {
+    const nowMs = Date.now();
+    const bundleTs = nowMs / 1000 - 5;
+    return window.laneStaleOperatorLabel(
+      { bundleTs, quoteAhead: true, slowStaleVsFast: true, genStale: false, pending: false },
+      {
+        mhap_rows: [{ horizon: '1c', call: 'LONG' }],
+        analytics_refresh_in_progress: true,
+      },
+      nowMs,
+    );
+  });
+  expect(syncing.show).toBe(true);
+  expect(syncing.label).toContain('SYNCING');
+  expect(syncing.severity).toBe('dim');
+});
+
+test('laneStaleOperatorLabel shows LANE STALE outside trust window', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () => typeof window.laneStaleOperatorLabel === 'function',
+    null,
+    { timeout: 30000 },
+  );
+
+  const stale = await page.evaluate(() => {
+    const nowMs = Date.now();
+    const bundleTs = nowMs / 1000 - 120;
+    return window.laneStaleOperatorLabel(
+      { bundleTs, quoteAhead: true, slowStaleVsFast: false, genStale: false, pending: false },
+      { mhap_rows: [{ horizon: '1c', call: 'LONG' }] },
+      nowMs,
+    );
+  });
+  expect(stale.show).toBe(true);
+  expect(stale.label).toContain('LANE STALE');
+  expect(stale.severity).toBe('bad');
+});
+
+test('laneStaleOperatorLabel hides chip on clean trusted bundle', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () => typeof window.laneStaleOperatorLabel === 'function',
+    null,
+    { timeout: 30000 },
+  );
+
+  const clean = await page.evaluate(() => {
+    const nowMs = Date.now();
+    const bundleTs = nowMs / 1000 - 2;
+    return window.laneStaleOperatorLabel(
+      { bundleTs, quoteAhead: false, slowStaleVsFast: false, genStale: false, pending: false },
+      { mhap_rows: [{ horizon: '1c', call: 'LONG' }] },
+      nowMs,
+    );
+  });
+  expect(clean.show).toBe(false);
+  expect(clean.severity).toBe('none');
+});

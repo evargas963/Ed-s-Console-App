@@ -166,3 +166,36 @@ def test_resolve_ticker_param_symbol_alias():
     assert srv._resolve_ticker_param("SPY", None) == "SPY"
     assert srv._resolve_ticker_param("SPY", "QQQ") == "QQQ"
     assert srv._resolve_ticker_param("SPY", "  qqq  ") == "QQQ"
+
+
+def test_api_state_symbol_alias_routes_to_symbol(monkeypatch):
+    import server as srv
+    from starlette.testclient import TestClient
+
+    seen: dict[str, str] = {}
+
+    def fake_tier(ticker, expiry, force, update_source):
+        seen["ticker"] = ticker
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse({"ticker": ticker, "update_source": update_source})
+
+    monkeypatch.setattr(srv, "_tier_c_analytics_json_response", fake_tier)
+    with TestClient(srv.app) as client:
+        r = client.get("/api/state", params={"symbol": "QQQ"})
+        assert r.status_code == 200
+        assert r.json()["ticker"] == "QQQ"
+    assert seen["ticker"] == "QQQ"
+
+
+def test_api_build_exposes_git_sha(monkeypatch):
+    import server as srv
+    from starlette.testclient import TestClient
+
+    monkeypatch.setattr(srv, "_repo_git_head_sha", lambda: "abc123deadbeef")
+    with TestClient(srv.app) as client:
+        r = client.get("/api/build")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["git_sha"] == "abc123deadbeef"
+        assert body["contract"] == "meet_or_exceed_v1"
