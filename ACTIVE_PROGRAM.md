@@ -2,8 +2,8 @@
 
 # ACTIVE_PROGRAM.md — what we are doing now
 
-**Updated:** 2026-05-25 (operator pivot — code-first)  
-**Branch:** `feature/institutional-key-levels` — consolidation Phases 0–4 complete; pushing  
+**Updated:** 2026-05-27 (Cursor data+UI slice pushed for Claude audit)  
+**Branch:** `feature/institutional-key-levels` — consolidation Phases 0–4 complete; **2 commits ahead of origin** (see §Claude audit handoff)  
 **Execution plan:** [`docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md`](docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md)
 
 ---
@@ -94,6 +94,41 @@ Schwab scanner/register work is **tracking only** — it does not replace wire f
 **Do not** collapse the three pipelines into one number without a chip. **Do not** hide UNAVAILABLE/DEGRADED behind neutral gray that reads as "WAIT setup."
 
 **Feature registry (operator):** `python tools/validate_feature_contracts.py` — categorized XGB/LSTM/fusion lists; LSTM registry now tags structure / micro / cross-asset / cf_* streams separately.
+
+---
+
+## Claude audit handoff — Cursor slice 2026-05-27
+
+**Operator request:** Claude full Read audit of Cursor work on this branch before next slice.  
+**Push tip (after push):** `f078593` → `c0770f6` on `feature/institutional-key-levels`.
+
+| Commit | Summary |
+|--------|---------|
+| `f078593` | panel_auto thin logging (`confluence_quote_ticks`), confluence capture gate, audit/verify ML-only scope, `mh_prob_source_by_horizon` on MarketState, horizon source chips, `pre_train_gate` in `ml_scheduler.run_once`, persistence map regen |
+| `c0770f6` | Decision Rail fusion-authority strip + empirical context line; OPEN_ITEMS **UI-CARD-PROVENANCE-CHIPS** closed |
+
+**Files (16 — Read end-to-end per commit cone):** `server.py`, `db.py`, `market_context.py`, `market_state.py`, `scheduler_user_tickers.py`, `audit_model_readiness.py`, `verify_active_models.py`, `ml_scheduler.py`, `feature_contracts.py`, `static/index.html`, `ACTIVE_PROGRAM.md`, `OPEN_ITEMS.md`, `governance/artifacts/persistence_consumer_map.json`, `tests/test_scheduler_user_tickers_return_type.py`, `tests/test_issue18_ui_contract.py`, `tests/test_feature_contract_validation.py`.
+
+**Verification commands (must pass at tip):**
+```text
+python -m pytest tests/test_scheduler_user_tickers_return_type.py tests/test_issue18_ui_contract.py tests/test_feature_contract_validation.py -q
+python audit_model_readiness.py
+python verify_active_models.py
+python tools/validate_feature_contracts.py
+python db_health_audit.py
+```
+
+**Operator DB (local, not in git):** `backfill_snapshot_derived.py` ran post-commit — 218,909 rows updated; RTH NULL rates after rematerialize: `iv_rank` 6.1%, `spy_weighted_push` 0.0%, `qqq_weighted_push` 30.7% (historical gap remains).
+
+**Closed OPEN_ITEMS:** `UI-CARD-PROVENANCE-CHIPS` @ `c0770f6`.
+
+**Still open (audit must not treat as done):**
+- `DATA-PIPELINE-INTEGRITY-CHAIN` — `pre_train_gate` wired @ `f078593`; core trio preflight + liquidity NaN training boundary not green
+- `qqq_weighted_push` historical NULLs (~31% RTH)
+- SPY 60c active bundle incomplete (`xgb_SPY_60c.pkl`, `meta_SPY_60c.pkl`)
+- `TRAINING-PIPELINE-NO-SILENT-DEATH` — preflight item (1) partially satisfied by gate wiring only
+
+**Excluded from push:** `.claude/settings.local.json`, untracked `static/ui_card_provenance_mockup.html`.
 
 ---
 
