@@ -351,6 +351,7 @@ class MarketState:
     model_note:         str             = ""
     model_version:      str             = "rules_v1"
     pred_model_source:  Optional[str]   = None   # 'ml', 'rules', 'statistical' — which engine produced probs
+    mh_prob_source_by_horizon: Optional[dict] = None  # 1c/5c/15c/60c → empirical_histogram | fusion_ml_primary | ...
     pred_override_source: Optional[str] = None   # 'user', 'manual' — when user overrode prediction
     timeframe_reads:    dict            = field(default_factory=dict)
     avg_5c_pts:         Optional[float] = None
@@ -1572,6 +1573,8 @@ def build_market_state(
             ms.model_note      = _pred.model_note
             ms.model_version   = getattr(_pred, 'model_version', 'rules_v1')
             ms.pred_model_source = getattr(_pred, 'model_source', None)
+            _mh_src = getattr(_pred, "mh_prob_source_by_horizon", None)
+            ms.mh_prob_source_by_horizon = dict(_mh_src) if isinstance(_mh_src, dict) else None
             ms.pred_override_source = getattr(_sig_out, 'pred_override_source', None)
             ms.avg_5c_pts      = _pred.avg_5c_pts
             ms.avg_15c_pts     = getattr(_pred, "avg_15c_pts", None)

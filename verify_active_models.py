@@ -36,18 +36,25 @@ MODELS_DIR = APP_DIR / "models"
 
 def _get_active_tickers() -> list[str]:
     """
-    Authoritative production universe for verification:
-    EdDB.logging_universe (core + pinned + user_persisted), normalized + validated.
+    ML-training tickers that require active bundles under models/active/.
+
+    Same scope as ml_scheduler training runs: logging_universe minus panel_auto
+    confluence-only symbols (see scheduler_user_tickers.filter_tickers_for_ml_training).
     """
     import sqlite3
 
     from production_universe import filter_valid_tickers, normalize_production_ticker
-    from scheduler_user_tickers import load_user_scheduler_tickers_or_empty
+    from scheduler_user_tickers import (
+        filter_tickers_for_ml_training,
+        load_user_scheduler_tickers_or_empty,
+    )
     from db import get_db
 
+    db = get_db()
     tickers = filter_valid_tickers(load_user_scheduler_tickers_or_empty())
+    tickers = filter_tickers_for_ml_training(tickers, str(db.db_path))
     # Operational gate: must have at least one normalized 1m snapshot row.
-    con = sqlite3.connect(str(get_db().db_path))
+    con = sqlite3.connect(str(db.db_path))
     cur = con.cursor()
     out: list[str] = []
     for t in tickers:

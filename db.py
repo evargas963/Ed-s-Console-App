@@ -681,6 +681,7 @@ class EdDB:
                 self._migrate_schema()
                 self._ensure_logging_universe_table()
                 self._ensure_logging_universe_aux_tables()
+                self._ensure_confluence_quote_table()
                 self._ensure_normalized_table()
             finally:
                 self._bootstrap_sql_guard_suppress = False
@@ -1252,10 +1253,82 @@ class EdDB:
                 """
             )
 
+    def _ensure_confluence_quote_table(self):
+        """Thin quote ticks for panel_auto / cross-instrument symbols (not full snapshots)."""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS confluence_quote_ticks (
+                    ticker      TEXT NOT NULL,
+                    ts_utc      REAL NOT NULL,
+                    ts_et       TEXT NOT NULL,
+                    last_price  REAL,
+                    chg_pct     REAL,
+                    PRIMARY KEY (ticker, ts_utc)
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_confluence_quote_ticks_ticker_ts "
+                "ON confluence_quote_ticks (ticker, ts_utc DESC)"
+            )
+
+    def upsert_confluence_quote_ticks(self, rows: list[dict[str, Any]]) -> int:
+        """Insert thin quote rows (panel / constituent symbols). Returns rows written."""
+        if not rows:
+            return 0
+        self._ensure_confluence_quote_table()
+
+        def _do() -> int:
+            n = 0
+            with self._connect() as conn:
+                for row in rows:
+                    ticker = str(row.get("ticker") or "").upper().strip()
+                    ts_utc = row.get("ts_utc")
+                    ts_et = row.get("ts_et")
+                    if not ticker or ts_utc is None or not ts_et:
+                        continue
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO confluence_quote_ticks
+                            (ticker, ts_utc, ts_et, last_price, chg_pct)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            ticker,
+                            float(ts_utc),
+                            str(ts_et),
+                            row.get("last_price"),
+                            row.get("chg_pct"),
+                        ),
+                    )
+                    n += 1
+            return n
+
+        return _do()
+
+    def confluence_quote_tick_inventory(self) -> dict[str, int]:
+        """Read-side inventory for panel_auto thin quotes (persistence consumer)."""
+        self._ensure_confluence_quote_table()
+
+        def _do() -> dict[str, int]:
+            with self._connect() as conn:
+                total = conn.execute(
+                    "SELECT COUNT(*) FROM confluence_quote_ticks"
+                ).fetchone()[0]
+                tickers = conn.execute(
+                    "SELECT COUNT(DISTINCT ticker) FROM confluence_quote_ticks"
+                ).fetchone()[0]
+            return {"total_rows": int(total), "distinct_tickers": int(tickers)}
+
+        return _do()
+
     def logging_universe_sync_panel_auto(self, panel_candidates: list[str], now_ts: float) -> dict[str, Any]:
         """
-        Upsert ``panel_auto`` rows — symbols the app quotes every market-context refresh and must
-        therefore receive the same persistent snapshot / 1m pipeline as enrolled user tickers.
+        Upsert ``panel_auto`` rows — cross-instrument panel symbols for confluence quotes.
+
+        These symbols use the thin ``confluence_quote_ticks`` path (last + chg_pct) via
+        ``fetch_market_context``; they do NOT run the full option-chain snapshot logger.
 
         Does not alter existing ``core`` / ``user_persisted`` / ``pinned`` rows. Drops ``panel_auto``
         rows no longer in the desired panel list (e.g. holdings table refresh).

@@ -69,6 +69,34 @@ Schwab scanner/register work is **tracking only** — it does not replace wire f
 
 ---
 
+## UI card provenance spec (Claude design brief — Issue 18 card system)
+
+**Keep existing card chrome:** `.tf-signal-card`, Horizon alignment (`dr-align-1m` … `dr-align-60m`), Decision Rail, `.tf-signal-card--trade-active` color semantics.
+
+**Each horizon pill must show a source chip** (one of, from `mh_prob_source_by_horizon` already in API payload):
+
+| Chip | Meaning | Operator text |
+|------|---------|---------------|
+| `EMPIRICAL` | Similar-setup histogram only | "N similar setups" |
+| `ML FUSION` | Full stack fusion authoritative for that horizon | "Stack trained" |
+| `BLEND` | ~85% fusion + ~15% empirical support | "Stack + history" |
+| `UNAVAILABLE` | Missing bundle or stack failed | "No ML — WAIT" |
+| `DEGRADED` | Training audit NO-GO or incomplete 16-file bundle | "Data quality hold" |
+
+**Call / forward direction (single authority line):** only when `canonical.provenance === 'bayesian_fusion'` — label **"Fusion authoritative"**. Otherwise show **"Not tradable — empirical context only"** (no LONG/SHORT styling on forward row).
+
+**Layout (within one card, top → bottom):**
+1. Horizon row — 4 pills, each: direction + confidence + **source chip** + sample count when empirical.
+2. Fusion authoritative strip — dominant direction + agreement % (only when fusion available).
+3. Empirical context line — tier label + N setups (always visible when N>0, muted when ML authoritative).
+4. Degraded banner — red/slate bar when `stack_integrity_v1.degraded` or bundle incomplete.
+
+**Do not** collapse the three pipelines into one number without a chip. **Do not** hide UNAVAILABLE/DEGRADED behind neutral gray that reads as "WAIT setup."
+
+**Feature registry (operator):** `python tools/validate_feature_contracts.py` — categorized XGB/LSTM/fusion lists; LSTM registry now tags structure / micro / cross-asset / cf_* streams separately.
+
+---
+
 ## Tool-specific notes
 
 ### Cursor

@@ -1457,6 +1457,53 @@ def run_once(
         log.warning("DB not found at %s", DB_PATH)
         return {"exit_code": 1, "ticker_outcomes": [], "ml_horizon": hz_sched, "skipped": True}
 
+    _gate_skip = os.environ.get("ED_ML_SCHEDULER_SKIP_PRE_TRAIN_GATE", "").strip().lower()
+    if _gate_skip not in ("1", "true", "yes"):
+        try:
+            from db_health_audit import run_audit
+            from audit_model_readiness import evaluate_training_readiness
+
+            _health = run_audit(
+                Path(DB_PATH),
+                flow_sample=500,
+                deep_flow=False,
+                flow_tol=0.02,
+                strict_flow=False,
+            )
+            _readiness = evaluate_training_readiness(Path(DB_PATH))
+            _gate_reasons: list[str] = []
+            if not _health.get("critical_ok"):
+                _gate_reasons.append(
+                    "db_health_audit critical_ok=false"
+                    + (f": {_health.get('fatal')}" if _health.get("fatal") else "")
+                )
+            if not _readiness.get("training_ok"):
+                _gate_reasons.extend(_readiness.get("reasons") or ["audit_model_readiness NO-GO"])
+            if _gate_reasons:
+                for _gr in _gate_reasons:
+                    log.error("pre_train_gate blocked: %s", _gr)
+                return {
+                    "exit_code": 2,
+                    "ticker_outcomes": [],
+                    "ml_horizon": hz_sched,
+                    "skipped": True,
+                    "pre_train_gate_failed": True,
+                    "pre_train_gate_reasons": _gate_reasons,
+                }
+            log.info("pre_train_gate passed (db_health + model readiness GO)")
+        except Exception as _gate_exc:
+            log.error("pre_train_gate error (fail-closed): %s", _gate_exc, exc_info=True)
+            return {
+                "exit_code": 2,
+                "ticker_outcomes": [],
+                "ml_horizon": hz_sched,
+                "skipped": True,
+                "pre_train_gate_failed": True,
+                "pre_train_gate_reasons": [str(_gate_exc)],
+            }
+    else:
+        log.warning("pre_train_gate skipped (ED_ML_SCHEDULER_SKIP_PRE_TRAIN_GATE)")
+
     try:
         from normalized_training_sync import ensure_normalized_training_table
 

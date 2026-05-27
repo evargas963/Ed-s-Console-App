@@ -9,7 +9,7 @@ All results returned as a MarketContext dataclass — caller manages caching in 
 from __future__ import annotations
 import os
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Callable, Optional, Any
 import logging
 
 log = logging.getLogger(__name__)
@@ -952,3 +952,64 @@ def fetch_price_levels(
         pl.error = (pl.error + f" | history: {err_str}").strip(" |")
 
     return pl
+
+
+def missing_confluence_weighted_pushes(ctx: MarketContext) -> list[str]:
+    """DB column names missing from MarketContext (empty = all three pushes present)."""
+    missing: list[str] = []
+    spy = getattr(getattr(ctx, "confluence", None), "weighted_push", None)
+    qqq = getattr(getattr(ctx, "qqq_confluence", None), "weighted_push", None)
+    iwm = iwm_blended_participation_push(ctx)
+    if spy is None:
+        missing.append("spy_weighted_push")
+    if qqq is None:
+        missing.append("qqq_weighted_push")
+    if iwm is None:
+        missing.append("iwm_weighted_push")
+    return missing
+
+
+def confluence_quote_rows_from_context(
+    ctx: MarketContext,
+    *,
+    ts_utc: float,
+    ts_et: str,
+) -> list[dict[str, Any]]:
+    """Thin quote rows for panel / constituent symbols (not full snapshots)."""
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def add(sym: str, last: Optional[float], chg: Optional[float]) -> None:
+        s = (sym or "").upper().strip()
+        if not s or s in seen:
+            return
+        seen.add(s)
+        rows.append(
+            {
+                "ticker": s,
+                "ts_utc": ts_utc,
+                "ts_et": ts_et,
+                "last_price": last,
+                "chg_pct": chg,
+            }
+        )
+
+    for sym, chg, last in (
+        ("SPY", ctx.spy_chg_pct, ctx.spy_last),
+        ("QQQ", ctx.qqq_chg_pct, ctx.qqq_last),
+        ("IWM", ctx.iwm_chg_pct, ctx.iwm_last),
+        ("$VIX", None, ctx.vix),
+    ):
+        add(sym, last, chg)
+    if ctx.tnx_yield is not None:
+        add("$TNX", ctx.tnx_yield, ctx.tnx_chg)
+    for cq in ctx.constituents or []:
+        add(cq.symbol, cq.last, cq.chg_pct)
+    for cq in ctx.qqq_constituents or []:
+        add(cq.symbol, cq.last, cq.chg_pct)
+    for cq in ctx.iwm_holdings or []:
+        add(cq.symbol, cq.last, cq.chg_pct)
+    for sq in ctx.iwm_sectors or []:
+        add(sq.symbol, sq.last, sq.chg_pct)
+    return rows
+

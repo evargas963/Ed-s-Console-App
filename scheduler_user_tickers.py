@@ -69,6 +69,38 @@ def load_user_scheduler_tickers_or_empty() -> list[str]:
     return load_user_scheduler_tickers() or []
 
 
+def panel_auto_ticker_set(db_path: str) -> frozenset[str]:
+    """Symbols enrolled as confluence-only (panel_auto) — quote context, not ML training."""
+    try:
+        from db import EdDB
+
+        rows = EdDB(str(db_path)).logging_universe_list_rows()
+    except Exception as e:
+        log.warning("panel_auto_ticker_set: cannot read logging_universe (%s)", e)
+        return frozenset()
+    return frozenset(
+        str(row.get("ticker") or "").upper()
+        for row in rows
+        if str(row.get("category") or "") in CONFLUENCE_ONLY_UNIVERSE_CATEGORIES
+    )
+
+
+def filter_tickers_for_background_logging(tickers: list[str], db_path: str) -> list[str]:
+    """Drop panel_auto from background full-chain snapshot rotation (thin quote path only)."""
+    skip = panel_auto_ticker_set(db_path)
+    if not skip:
+        return list(tickers)
+    out = [t for t in tickers if t.upper() not in skip]
+    excluded = sorted(skip & {t.upper() for t in tickers})
+    if excluded:
+        log.info(
+            "Background logging excludes %d confluence-only (panel_auto) from full snapshots: %s",
+            len(excluded),
+            excluded,
+        )
+    return out
+
+
 def filter_tickers_for_ml_training(tickers: list[str], db_path: str) -> list[str]:
     """Drop confluence-only enrolled symbols (panel_auto) from ML training runs."""
     try:

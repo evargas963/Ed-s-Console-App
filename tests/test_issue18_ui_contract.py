@@ -92,6 +92,22 @@ def test_tf_dim_neutral_cards_have_operator_legibility_styles():
     assert "#334155" not in chunk
 
 
+def test_horizon_cards_render_prob_source_chips():
+    """Issue 18 provenance: each horizon pill exposes mh_prob_source_by_horizon chip."""
+    h = _html()
+    assert "mh_prob_source_by_horizon" in h
+    assert "resolveHorizonSourceChip" in h
+    assert "paintSourceChip" in h
+    assert 'class="tf-source tf-source--hidden"' in h
+    assert "tf-source--empirical" in h
+    assert "tf-source--ml" in h
+    assert "tf-source--blend" in h
+    assert "tf-source--unavailable" in h
+    assert "tf-source--degraded" in h
+    assert "EMPIRICAL" in h
+    assert "ML FUSION" in h
+
+
 def test_entry_state_labels_render_contract():
     """Entry state contract — mh-call-entry was renamed to dr-plan-entry (Decision Rail);
     entry_display_text is still the live field; renderMultiHorizon was inlined into the

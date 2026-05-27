@@ -1660,7 +1660,7 @@ def _load_persisted_tickers() -> list[str]:
     """Authoritative enrolled universe: CORE_TICKERS + logging_universe (pinned + user_persisted + panel_auto).
 
     ``panel_auto`` rows mirror ``market_context.py`` cross-panel quote symbols (excluding core duplicates)
-    so every name the app fetches for confluence UI also runs the persistent snapshot / 1m pipeline.
+    for enrollment tracking and thin ``confluence_quote_ticks`` logging — not full snapshot rotation.
 
     Distinct tickers appearing only in snapshots / normalized tables do not auto-enroll (Issue 22).
     ml_scheduler and train_all bulk paths use the same EdDB authority via scheduler_user_tickers.
@@ -1693,10 +1693,16 @@ def _load_persisted_tickers() -> list[str]:
             log.warning("Issue 22: logging_universe prune failed: %s", e)
         _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
         for row in db.logging_universe_list_rows():
-            if row.get("category") in ("user_persisted", "pinned", "panel_auto"):
+            if row.get("category") in ("user_persisted", "pinned"):
                 t = (row.get("ticker") or "").upper().strip()
                 if t and t not in tickers:
                     tickers.append(t)
+        try:
+            from scheduler_user_tickers import filter_tickers_for_background_logging
+
+            tickers = filter_tickers_for_background_logging(tickers, str(db.db_path))
+        except Exception as e:
+            log.warning("filter_tickers_for_background_logging: %s", e)
         log.info("Issue 22: loaded logging universe from DB — %d symbols", len(tickers))
         return tickers
     except Exception as e:
@@ -1717,7 +1723,7 @@ def _load_persisted_tickers() -> list[str]:
 
 
 def _hydrate_logger_tickers_from_db() -> None:
-    """Re-merge CORE + user_persisted + pinned + panel_auto from DB (startup / heal drift). Issue 22."""
+    """Re-merge CORE + user_persisted + pinned from DB (startup / heal drift). Issue 22."""
     global _logger_tickers
     if not _HAS_SIGNALS:
         return
@@ -1735,10 +1741,16 @@ def _hydrate_logger_tickers_from_db() -> None:
         _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
         merged = list(CORE_TICKERS)
         for row in db.logging_universe_list_rows():
-            if row.get("category") in ("user_persisted", "pinned", "panel_auto"):
+            if row.get("category") in ("user_persisted", "pinned"):
                 t = (row.get("ticker") or "").upper().strip()
                 if t and t not in merged:
                     merged.append(t)
+        try:
+            from scheduler_user_tickers import filter_tickers_for_background_logging
+
+            merged = filter_tickers_for_background_logging(merged, str(db.db_path))
+        except Exception as e:
+            log.warning("filter_tickers_for_background_logging: %s", e)
         with _logger_lock:
             _logger_tickers = merged
     except Exception as e:
@@ -1930,7 +1942,43 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None):
     with _cached_mkt_ctx_lock:
         _cached_mkt_ctx = ctx
         _cached_mkt_ctx_ts = mkt_ctx_cache_eval_wall_ts
+    if _HAS_SIGNALS:
+        try:
+            from db import build_ts_et
+            from market_context import confluence_quote_rows_from_context
+            from time_et import now_et
+
+            _qrows = confluence_quote_rows_from_context(
+                ctx,
+                ts_utc=mkt_ctx_cache_eval_wall_ts,
+                ts_et=build_ts_et(now_et()),
+            )
+            if _qrows:
+                get_db().upsert_confluence_quote_ticks(_qrows)
+        except Exception as e:
+            log.debug("confluence_quote_ticks persist: %s", e, exc_info=True)
     return ctx
+
+
+def _ensure_mkt_ctx_confluence_complete(client, mkt_ctx, *, pcr=None, prev_pcr=None):
+    """One forced refresh when weighted_push fields are missing before snapshot persist."""
+    from market_context import missing_confluence_weighted_pushes
+
+    missing = missing_confluence_weighted_pushes(mkt_ctx)
+    if not missing:
+        return mkt_ctx
+    log.warning("Market context missing confluence fields %s — forcing refresh", missing)
+    global _cached_mkt_ctx_ts
+    with _cached_mkt_ctx_lock:
+        _cached_mkt_ctx_ts = 0.0
+    fresh = _get_mkt_ctx(client, pcr=pcr, prev_pcr=prev_pcr)
+    still = missing_confluence_weighted_pushes(fresh)
+    if still:
+        log.error(
+            "Confluence fields still missing after refresh: %s (qqq/spy/iwm weighted_push)",
+            still,
+        )
+    return fresh
 
 
 def _logger_fetch_and_log(ticker: str) -> str:
@@ -1944,12 +1992,15 @@ def _logger_fetch_and_log(ticker: str) -> str:
         if not _is_loggable_session():
             return "skipped:closed"
 
-        # Always run the logging fetch each logger cycle. Previously we skipped when the UI
-        # had recently stored a full ms_dict for this ticker (within LOG_INTERVAL). That
-        # suppressed most background inserts for the on-screen symbol (~1 row/minute) while
-        # other symbols (e.g. SPY first in cycle, rarely the focused ticker) kept ~30s cadence.
-        # Snapshots are append-only INSERTs; duplicate Schwab calls are the trade-off — watch
-        # rate limits if many tickers are viewed live.
+        try:
+            from scheduler_user_tickers import panel_auto_ticker_set
+
+            if ticker.upper() in panel_auto_ticker_set(str(get_db().db_path)):
+                return "skipped:confluence_quote_only"
+        except Exception as e:
+            log.debug("panel_auto logger skip check: %s", e, exc_info=True)
+
+        # Always run the logging fetch each logger cycle (append-only INSERTs).
 
         # Full pipeline fetch
         _fetch_state(ticker, expiry=None, log_only=True)
@@ -2000,7 +2051,7 @@ def _logger_loop():
     API budget: 17 (global) + 12×3 (per-ticker) = 53 calls / 30s ≈ 106/min
     Plus active UI ticker (if not in core): +6/min → ~112/min (limit: 120/min)
     """
-    global _logger_running
+    global _logger_running, _cached_mkt_ctx_ts
     log.info("Background multi-ticker logger started")
 
     # Delay first cycle so server finishes startup; first HTTP request can init DB cleanly
@@ -2011,6 +2062,9 @@ def _logger_loop():
 
         with _logger_lock:
             tickers_this_cycle = list(_logger_tickers)
+
+        with _cached_mkt_ctx_lock:
+            _cached_mkt_ctx_ts = 0.0
 
         log.info(f"Logger cycle: {len(tickers_this_cycle)} tickers — {tickers_this_cycle}")
 
@@ -4605,6 +4659,7 @@ def _fetch_state(
                 _pin_w = round(_cgw - _pgw, 4) if (_cgw and _pgw) else None
     
                 # Constituents from market context — wrap each fetch independently for partial results
+                mkt_ctx = _ensure_mkt_ctx_confluence_complete(client, mkt_ctx)
                 _const_map = {}
                 if hasattr(mkt_ctx, "constituents"):
                     for cq in mkt_ctx.constituents:

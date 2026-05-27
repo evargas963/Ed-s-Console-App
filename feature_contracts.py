@@ -257,16 +257,75 @@ def build_xgb_registry(active_meta_features: set[str] | None = None) -> list[Fea
 def build_lstm_registry() -> list[FeatureContractEntry]:
     from lstm_data import CONFLUENCE_FEATURES, FEATURES_1M, FEATURES_5M
 
+    cross_asset = {
+        "spy_chg_pct",
+        "qqq_chg_pct",
+        "iwm_chg_pct",
+        "spy_weighted_push",
+        "qqq_weighted_push",
+        "iwm_weighted_push",
+        "vix_level",
+        "iv_level",
+    }
+    structure_5m = sorted(set(FEATURES_5M) - cross_asset)
+    micro_1m = sorted(set(FEATURES_1M) - cross_asset)
     out: list[FeatureContractEntry] = []
-    for f in sorted(set(FEATURES_5M) | set(FEATURES_1M) | set(CONFLUENCE_FEATURES)):
-        out.append(
+    seen: set[str] = set()
+
+    def add(entry: FeatureContractEntry) -> None:
+        if entry.feature_name in seen:
+            return
+        seen.add(entry.feature_name)
+        out.append(entry)
+
+    for f in structure_5m:
+        add(
             _build_entry(
                 feature_name=f,
                 layer="lstm",
                 allowed=True,
-                reason="declared sequence encoder feature for LSTM training/inference path.",
-                raw_or_derived=("engineered" if f.startswith("cf_") else "raw"),
+                reason="LSTM structure stream (60×1m lookback) — price/greek/zone fields.",
+                raw_or_derived="raw",
                 forbidden_if_applicable=False,
+                notes="stream=structure_5m; same set all horizons until ablation lands.",
+            )
+        )
+    for f in micro_1m:
+        add(
+            _build_entry(
+                feature_name=f,
+                layer="lstm",
+                allowed=True,
+                reason="LSTM micro stream (20×1m lookback) — fast-moving bar fields.",
+                raw_or_derived="raw",
+                forbidden_if_applicable=False,
+                notes="stream=micro_1m; same set all horizons until ablation lands.",
+            )
+        )
+    for f in cross_asset:
+        if f not in FEATURES_5M and f not in FEATURES_1M:
+            continue
+        add(
+            _build_entry(
+                feature_name=f,
+                layer="lstm",
+                allowed=True,
+                reason="LSTM cross-asset / confluence context (from market_context at tick).",
+                raw_or_derived="raw",
+                forbidden_if_applicable=False,
+                notes="stream=cross_asset; not interchangeable with cf_* derived confluence.",
+            )
+        )
+    for f in sorted(set(CONFLUENCE_FEATURES)):
+        add(
+            _build_entry(
+                feature_name=f,
+                layer="lstm",
+                allowed=True,
+                reason="Derived multi-timeframe confluence (cf_* from snapshot history).",
+                raw_or_derived="engineered",
+                forbidden_if_applicable=False,
+                notes="stream=derived_confluence; separate from raw cross-asset cols.",
             )
         )
     return out

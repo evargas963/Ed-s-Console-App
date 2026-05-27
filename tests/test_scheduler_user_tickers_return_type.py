@@ -97,6 +97,103 @@ def test_no_production_caller_uses_typed_version_directly():
                 )
 
 
+def test_verify_active_tickers_excludes_panel_auto(monkeypatch, tmp_path):
+    """Section 11 / verify_active_models must not flag confluence-only panel_auto tickers."""
+    import sqlite3
+
+    import verify_active_models as vam
+
+    db_file = tmp_path / "verify_scope.db"
+    con = sqlite3.connect(str(db_file))
+    con.execute("CREATE TABLE snapshots_1m_normalized (ticker TEXT, ts_et TEXT)")
+    for t in ("SPY", "PSCI", "ASTS"):
+        con.execute(
+            "INSERT INTO snapshots_1m_normalized (ticker, ts_et) VALUES (?, '2026-01-01 10:00:00')",
+            (t,),
+        )
+    con.commit()
+    con.close()
+
+    class _Row:
+        def __init__(self, ticker: str, category: str):
+            self._d = {"ticker": ticker, "category": category}
+
+        def get(self, key, default=None):
+            return self._d.get(key, default)
+
+    class _GetDB:
+        db_path = db_file
+
+        def logging_universe_list_rows(self):
+            return [
+                _Row("SPY", "core"),
+                _Row("PSCI", "panel_auto"),
+                _Row("ASTS", "panel_auto"),
+            ]
+
+    import db as _db_mod
+
+    class _EdDB:
+        def __init__(self, _path):
+            pass
+
+        def logging_universe_list_rows(self):
+            return _GetDB().logging_universe_list_rows()
+
+    monkeypatch.setattr(_db_mod, "get_db", lambda: _GetDB())
+    monkeypatch.setattr(_db_mod, "EdDB", _EdDB)
+    monkeypatch.setattr(
+        "scheduler_user_tickers.load_user_scheduler_tickers_or_empty",
+        lambda: ["SPY", "PSCI", "ASTS"],
+    )
+
+    tickers = vam._get_active_tickers()
+    assert tickers == ["SPY"]
+
+
+def test_filter_tickers_for_background_logging_excludes_panel_auto():
+    import db as _db_mod
+
+    class _Row:
+        def __init__(self, ticker: str, category: str):
+            self._d = {"ticker": ticker, "category": category}
+
+        def get(self, key, default=None):
+            return self._d.get(key, default)
+
+    class _EdDB:
+        def __init__(self, _path):
+            pass
+
+        def logging_universe_list_rows(self):
+            return [
+                _Row("SPY", "core"),
+                _Row("PSCI", "panel_auto"),
+                _Row("QQQ", "core"),
+            ]
+
+    orig = _db_mod.EdDB
+    _db_mod.EdDB = _EdDB
+    try:
+        from scheduler_user_tickers import filter_tickers_for_background_logging
+
+        out = filter_tickers_for_background_logging(["SPY", "PSCI", "QQQ"], ":memory:")
+    finally:
+        _db_mod.EdDB = orig
+    assert out == ["SPY", "QQQ"]
+
+
+def test_missing_confluence_weighted_pushes_detects_qqq_gap():
+    from market_context import MarketContext, ConfluenceRead, missing_confluence_weighted_pushes
+
+    ctx = MarketContext()
+    ctx.confluence = ConfluenceRead(weighted_push=0.1)
+    ctx.qqq_confluence = ConfluenceRead(weighted_push=None)
+    ctx.iwm_confluence = ConfluenceRead(weighted_push=0.05)
+    ctx.iwm_holdings_confluence = ConfluenceRead(weighted_push=0.04)
+    assert missing_confluence_weighted_pushes(ctx) == ["qqq_weighted_push"]
+
+
 def test_filter_tickers_for_ml_training_excludes_panel_auto():
     from scheduler_user_tickers import filter_tickers_for_ml_training
 
@@ -134,3 +231,36 @@ def test_filter_tickers_for_ml_training_excludes_panel_auto():
     finally:
         _db_mod.EdDB = orig
     assert out == ["SPY", "QQQ"]
+
+
+def test_evaluate_training_readiness_empty_db(tmp_path):
+    """pre_train_gate helper fail-closed when DB missing."""
+    from audit_model_readiness import evaluate_training_readiness
+
+    missing = tmp_path / "nope.db"
+    r = evaluate_training_readiness(missing)
+    assert r["training_ok"] is False
+    assert r["reasons"]
+
+
+def test_confluence_quote_ticks_upsert_and_inventory(tmp_path):
+    """Thin panel quote table: write path + read inventory consumer."""
+    from db import EdDB
+
+    dbp = tmp_path / "cq.db"
+    db = EdDB(dbp, allow_noncanonical=True)
+    n = db.upsert_confluence_quote_ticks(
+        [
+            {
+                "ticker": "PSCI",
+                "ts_utc": 1_777_000_000.0,
+                "ts_et": "2026-01-02 10:00:00",
+                "last_price": 42.5,
+                "chg_pct": 0.12,
+            }
+        ]
+    )
+    assert n == 1
+    inv = db.confluence_quote_tick_inventory()
+    assert inv["total_rows"] == 1
+    assert inv["distinct_tickers"] == 1
