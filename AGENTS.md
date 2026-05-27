@@ -40,6 +40,23 @@ If either answer is **no**, **stop** — fix the design or implementation before
 
 **Partial enforcement:** paired tests (`tests/test_ml_predict_fail_closed.py`, `tests/test_arch_competition_eval_runner.py`, `tests/test_issue18_ui_contract.py`, scheduler promotion tests); `tools/live_diag_compare.py`; operator catch-net for intent drift.
 
+**Mandatory enforcement registry (2026-05-27 — operator binding):** Every row in the world-class gate table MUST have a mechanical lock before the rule is considered promoted. Prose-only rules are **incomplete** until the checker lands in the **same commit** as the rule text.
+
+| Gate row | Mechanical lock | Paired test |
+|----------|-----------------|-------------|
+| Full parallel stack / no 0.333 filler | `tests/test_ml_predict_fail_closed.py` | same |
+| Governed eval row alignment | `tests/test_arch_competition_eval_runner.py` | same |
+| Live UI honest state + legibility | `tests/test_issue18_ui_contract.py` | same |
+| Cards lit + no false STALE pill (operator coherence) | `tools/check_fix_everything_we_touch.py` → `check_institutional_contract()` | `tests/test_check_fix_everything_we_touch.py` |
+| `/api/state` ticker query (`ticker=` + `symbol=` alias) | `check_institutional_contract()` + `tests/test_batch2_analytics_bg_fail_counter.py` | same |
+| Analytics `stale` ≠ SSE-connected alone | `check_institutional_contract()` + `test_analytics_stale_not_sse_connected_only` | `tests/test_batch2_analytics_bg_fail_counter.py` |
+| Rule drift / excuse phrases | `check_fix_everything_we_touch.py` (pre-commit) | `tests/test_check_fix_everything_we_touch.py` |
+| Deferral language | `tools/check_no_deferral_language.py` | `tests/test_check_no_deferral_language.py` |
+| Live diag evidence before pipeline claims | Operator: `python tools/live_diag_compare.py <TICKER>`; agents must paste output or JSON keys when claiming pipeline state | — |
+| Closure (code+test+OPEN_ITEMS) | `tests/test_governance_consolidation.py` | same |
+
+**Pre-commit:** `check_institutional_contract()` runs on **every** commit (via `check_fix_everything_we_touch.py`), not only when UI files are staged. A promotion without a registry row + checker is rejection-grade.
+
 ---
 
 ## Rule compliance — zero drift `[PROMOTED]` (2026-05-27 — operator binding; sits with world-class gate)

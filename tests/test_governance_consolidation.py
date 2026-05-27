@@ -273,6 +273,13 @@ def test_agents_code_first_no_governance_only_section() -> None:
     assert "code-first" in active.lower()
 
 
+def test_agents_mandatory_enforcement_registry() -> None:
+    agents = _read("AGENTS.md")
+    assert "Mandatory enforcement registry" in agents
+    assert "check_institutional_contract()" in agents
+    assert "Cards lit + no false STALE pill" in agents
+
+
 def test_server_logging_visual_severity_marker_warning_plus_only() -> None:
     """server.py installs a Formatter that prepends a bracket-tag for WARNING+ so
     operator-actionable events stand out in the dense INFO/DEBUG console stream.

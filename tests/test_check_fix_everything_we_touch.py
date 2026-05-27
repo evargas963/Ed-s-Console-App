@@ -715,6 +715,34 @@ def test_mvp_dataframe_ingress_passes_on_current_repo() -> None:
     assert mod.check_mvp_dataframe_ingress() == []
 
 
+def test_institutional_contract_passes_on_current_repo() -> None:
+    assert mod.check_institutional_contract() == []
+
+
+def test_institutional_contract_banned_analytics_stale_sse_pattern(tmp_path: Path, monkeypatch) -> None:
+    bad = tmp_path / "server.py"
+    bad.write_text(
+        'md["analytics_stale"] = bool(sse_live or (age >= ttl))\n',
+        encoding="utf-8",
+    )
+    good = tmp_path / "AGENTS.md"
+    good.write_text("Mandatory enforcement registry\n", encoding="utf-8")
+    ui = tmp_path / "static"
+    ui.mkdir()
+    (ui / "index.html").write_text(
+        "INSTITUTIONAL_BUNDLE_TRUST_SEC\nfunction laneStaleOperatorLabel\nSYNCING ANALYTICS\n",
+        encoding="utf-8",
+    )
+    orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = tmp_path
+    try:
+        hits = mod.check_institutional_contract()
+    finally:
+        mod.REPO_ROOT = orig_root
+    assert hits
+    assert any("analytics_stale must not be sse_live alone" in h for h in hits)
+
+
 def test_mvp_dataframe_ingress_flags_raw_to_dict_on_mvp_path(tmp_path: Path) -> None:
     bad = tmp_path / "bad_meta.py"
     bad.write_text(

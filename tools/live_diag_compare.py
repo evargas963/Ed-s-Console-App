@@ -7,6 +7,8 @@ Usage (console running with ED auth OK):
   set ED_LIVE_DIAG=1
   python tools/live_diag_compare.py SPY QQQ
 
+Uses ``ticker=`` on ``/api/state`` (``symbol=`` is also accepted as an alias on the server).
+
 Env:
   ED_DIAG_BASE   — default http://127.0.0.1:8000
   ED_DIAG_EXPIRY — optional YYYY-MM-DD (enables server cache path for that expiry)

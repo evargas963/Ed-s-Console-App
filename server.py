@@ -148,6 +148,7 @@ from schwab_client import (
     safe_get_chain,
     safe_get_quote,
     safe_get_price_history,
+    SchwabAuthError,
 )
 from math_exposure import (
     MISSING_GREEK_SENTINEL,
@@ -682,11 +683,20 @@ def _record_analytics_bg_failure(
     *,
     reason: str,
     detail: str = "",
+    token_invalid: bool = False,
 ) -> None:
     if detail:
         _analytics_bg_last_error[inflight_key] = detail[:500]
     n = _analytics_bg_fail_counts.get(inflight_key, 0) + 1
     _analytics_bg_fail_counts[inflight_key] = n
+    exp = inflight_key[1] if len(inflight_key) > 1 and inflight_key[1] != "__auto__" else None
+    if token_invalid or n == 1:
+        _write_analytics_bg_error_shell(
+            ticker,
+            exp,
+            detail or reason,
+            token_invalid=token_invalid,
+        )
     if n >= ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES:
         _invalidate_analytics_cache_after_bg_failures(
             inflight_key,
@@ -723,7 +733,10 @@ def _attach_analytics_freshness_contract(
         gen_ts = _analytics_generated_ts(entry)
         age = max(0.0, now - gen_ts) if gen_ts > 0 else 0.0
         ver = int(entry.get("analytics_version", 0))
-        stale = bool(sse_live or (age >= ttl))
+        # Operator-facing stale = bundle age exceeded TTL or explicit error — NOT merely
+        # "SSE viewer connected" (that schedules refresh via need_refresh, not untrustworthy).
+        refresh_due = bool(sse_live or (age >= ttl))
+        stale = bool(age >= ttl) or bool(md.get("state_error"))
         iso = None
         if gen_ts > 0:
             iso = datetime.fromtimestamp(gen_ts, tz=timezone.utc).isoformat()
@@ -731,6 +744,7 @@ def _attach_analytics_freshness_contract(
         md["analytics_generated_at"] = iso
         md["analytics_age_sec"] = round(age, 3)
         md["analytics_stale"] = stale
+        md["analytics_refresh_due"] = refresh_due
         md["analytics_refresh_in_progress"] = bool(in_prog)
     else:
         md["analytics_version"] = 0
@@ -775,13 +789,32 @@ def _schedule_analytics_recompute(
                 asyncio.run_coroutine_threadsafe(_broadcast_snapshot(result), _main_event_loop)
         except HTTPException as ex:
             log.warning("analytics bg HTTPException for %s", inflight_key)
+            detail, token_invalid = _analytics_bg_error_detail(ex)
             _record_analytics_bg_failure(
-                inflight_key, ticker, reason="http_exception", detail=str(ex.detail or ex)
+                inflight_key,
+                ticker,
+                reason="http_exception",
+                detail=detail,
+                token_invalid=token_invalid,
+            )
+        except SchwabAuthError as ex:
+            log.warning("analytics bg SchwabAuthError for %s: %s", inflight_key, ex)
+            _record_analytics_bg_failure(
+                inflight_key,
+                ticker,
+                reason="schwab_auth",
+                detail=str(ex),
+                token_invalid=True,
             )
         except Exception as ex:
             log.error("analytics bg failed %s: %s", inflight_key, ex, exc_info=True)
+            detail, token_invalid = _analytics_bg_error_detail(ex)
             _record_analytics_bg_failure(
-                inflight_key, ticker, reason="generic_exception", detail=str(ex)
+                inflight_key,
+                ticker,
+                reason="generic_exception",
+                detail=detail,
+                token_invalid=token_invalid,
             )
         finally:
             with _analytics_bg_lock:
@@ -825,6 +858,77 @@ def _any_sse_viewer_for_ticker(ticker: str) -> bool:
     t = ticker.upper().strip()
     with _sse_lock:
         return any(tk == t and n > 0 for (tk, _), n in _sse_subscribers.items())
+
+
+def _analytics_bg_error_detail(exc: BaseException) -> tuple[str, bool]:
+    """Normalize bg failure text + whether this is a Schwab auth failure."""
+    if isinstance(exc, SchwabAuthError):
+        return (str(exc)[:500], True)
+    if isinstance(exc, HTTPException):
+        detail = exc.detail
+        if isinstance(detail, dict):
+            msg = str(
+                detail.get("remediation")
+                or detail.get("message")
+                or detail.get("error")
+                or detail
+            )
+            token_invalid = detail.get("error") == "token_invalid"
+            return (msg[:500], token_invalid)
+        msg = str(detail or exc)
+        token_invalid = "token" in msg.lower() and (
+            "invalid" in msg.lower() or "revoked" in msg.lower() or "expired" in msg.lower()
+        )
+        return (msg[:500], token_invalid)
+    msg = str(exc)
+    from schwab_client import _is_token_error
+
+    return (msg[:500], _is_token_error(exc))
+
+
+def _write_analytics_bg_error_shell(
+    ticker: str,
+    expiry: Optional[str],
+    detail: str,
+    *,
+    token_invalid: bool = False,
+) -> None:
+    """Cold-cache Tier C: persist operator-visible error instead of endless empty pending shell."""
+    t = ticker.upper().strip()
+    _, existing_key = _latest_cached_ms_and_key_for_ticker(t)
+    if existing_key is not None:
+        return
+    exp = expiry if expiry is not None else "__auth_error__"
+    ck = (t, exp)
+    now = time.time()
+    rem = "Schwab auth failed — run: python reauth_schwab.py --manual"
+    err_text = rem if token_invalid else (detail or "Tier C refresh failed")
+    md = _minimal_analytics_pending_dict(t, expiry)
+    md["analytics_pending_shell"] = False
+    md["state_error"] = "token_invalid" if token_invalid else "analytics_refresh_failed"
+    md["state_error_detail"] = err_text[:500]
+    md["analytics_last_error"] = (detail or err_text)[:500]
+    md["analytics_stale"] = True
+    md["analytics_refresh_in_progress"] = False
+    if token_invalid:
+        md["error"] = "token_invalid"
+        md["remediation"] = rem
+    md["call_signal"] = "wait"
+    md["fusion_available"] = False
+    md["mhap_rows"] = []
+    _lmp.merge_into_state(md, t)
+    _state_cache[ck] = {
+        "ts": now,
+        "generated_at": now,
+        "analytics_version": 0,
+        "ms_dict": md,
+        "pcr_val": None,
+        "spot_f": md.get("spot"),
+        "vix": None,
+        "price_levels": None,
+        "pl_date": "",
+        "pl_mono": None,
+    }
 
 
 def _minimal_analytics_pending_dict(ticker: str, expiry: Optional[str]) -> dict:
@@ -3270,10 +3374,20 @@ def _fetch_state(
     session_label = mkt_ctx.session_label   # "RTH" | "Pre-Market" | "After-Hours" | "Closed"
 
     # ── Chain (no dependency on this ticker's equity quote; Schwab centers strikes server-side) ──
-    c_resp = safe_get_chain(
-        client, ticker,
-        strike_count=CHAIN_STRIKE_COUNT
-    )
+    try:
+        c_resp = safe_get_chain(
+            client, ticker,
+            strike_count=CHAIN_STRIKE_COUNT
+        )
+    except SchwabAuthError as e:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "token_invalid",
+                "remediation": e.remediation,
+                "message": str(e),
+            },
+        ) from e
     if c_resp is None or c_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Chain fetch failed")
     c_json = c_resp.json()
@@ -6400,16 +6514,26 @@ def _tier_c_analytics_json_response(
     return JSONResponse(md)
 
 
+def _resolve_ticker_param(
+    ticker: str,
+    symbol: Optional[str] = None,
+) -> str:
+    """Canonical query param is ``ticker``; ``symbol`` is a documented alias (audit/diag scripts)."""
+    raw = (symbol if symbol is not None and str(symbol).strip() else ticker) or DEFAULT_TICKER
+    return str(raw).upper().strip()
+
+
 @app.get("/api/live/state")
 async def get_live_state(
     ticker: str = Query(default=DEFAULT_TICKER),
+    symbol: Optional[str] = Query(default=None),
     expiry: Optional[str] = Query(default=None),
 ):
     """
     Tier A — instant live quote plane + session + identity. No chain, exposures, DB, news, or heavy compute.
     Primary driver for responsive UI; use GET /api/analytics/state for full analytical bundle.
     """
-    t = ticker.upper().strip()
+    t = _resolve_ticker_param(ticker, symbol)
     _register_tracked_ticker(t)
     return JSONResponse(_tier_a_live_state_dict(t, expiry))
 
@@ -6475,6 +6599,7 @@ async def get_analytics_light_stream(
 @app.get("/api/analytics/state")
 async def get_analytics_state(
     ticker: str = Query(default=DEFAULT_TICKER),
+    symbol: Optional[str] = Query(default=None),
     expiry: Optional[str] = Query(default=None),
     force: bool = Query(default=False),
 ):
@@ -6482,20 +6607,26 @@ async def get_analytics_state(
     Tier C — full analytical pipeline (_fetch_state): chain, exposures, fusion, DB, news, model health.
     Not required for first paint; cache-first when TTL allows.
     """
-    return _tier_c_analytics_json_response(ticker, expiry, force, update_source="rest_analytics")
+    return _tier_c_analytics_json_response(
+        _resolve_ticker_param(ticker, symbol), expiry, force, update_source="rest_analytics"
+    )
 
 
 @app.get("/api/state")
 async def get_state(
     ticker: str = Query(default=DEFAULT_TICKER),
+    symbol: Optional[str] = Query(default=None),
     expiry: Optional[str] = Query(default=None),
     force: bool = Query(default=False),
 ):
     """
     Deprecated alias for GET /api/analytics/state (Tier C full bundle).
     Prefer /api/live/state + /api/analytics/state for real-time UX.
+    Query ``ticker=`` (preferred) or ``symbol=`` (alias).
     """
-    return _tier_c_analytics_json_response(ticker, expiry, force, update_source="rest_poll_legacy")
+    return _tier_c_analytics_json_response(
+        _resolve_ticker_param(ticker, symbol), expiry, force, update_source="rest_poll_legacy"
+    )
 
 
 @app.get("/api/live/plane")

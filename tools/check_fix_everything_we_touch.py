@@ -771,6 +771,55 @@ def check_mvp_dataframe_ingress() -> list[str]:
     return errors
 
 
+INSTITUTIONAL_CONTRACT_MARKERS: tuple[tuple[str, str], ...] = (
+    ("server.py", "def _resolve_ticker_param"),
+    ("server.py", "analytics_refresh_due"),
+    ("static/index.html", "INSTITUTIONAL_BUNDLE_TRUST_SEC"),
+    ("static/index.html", "function laneStaleOperatorLabel"),
+    ("static/index.html", "SYNCING ANALYTICS"),
+    ("AGENTS.md", "Mandatory enforcement registry"),
+)
+INSTITUTIONAL_BANNED_SERVER_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "analytics_stale must not be sse_live alone (institutional operator coherence)",
+        re.compile(
+            r"md\[\"analytics_stale\"\]\s*=\s*bool\s*\(\s*sse_live\s+or\s+\(",
+            re.MULTILINE,
+        ),
+    ),
+)
+
+
+def check_institutional_contract() -> list[str]:
+    """AGENTS § World-class gate — mandatory registry rows must exist at repo tip."""
+    errors: list[str] = []
+    for rel, needle in INSTITUTIONAL_CONTRACT_MARKERS:
+        path = REPO_ROOT / rel
+        if not path.is_file():
+            errors.append(f"{rel}: missing (institutional contract marker file)")
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            errors.append(f"{rel}: cannot read for institutional contract: {exc}")
+            continue
+        if needle not in text:
+            errors.append(
+                f"{rel}: missing institutional marker {needle!r} "
+                f"(AGENTS § Mandatory enforcement registry)"
+            )
+    server = REPO_ROOT / "server.py"
+    if server.is_file():
+        try:
+            stext = server.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            stext = ""
+        for label, pat in INSTITUTIONAL_BANNED_SERVER_PATTERNS:
+            if pat.search(stext):
+                errors.append(f"server.py: {label}")
+    return errors
+
+
 def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
     staged = staged if staged is not None else _git_staged_paths()
     errors: list[str] = []
@@ -794,6 +843,7 @@ def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
     # Pass 1b: new INSERTs must hit tables with readers OR a tracked REAL-GATE row.
     errors.extend(check_persistence_writer_has_reader(staged))
     errors.extend(check_mvp_dataframe_ingress())
+    errors.extend(check_institutional_contract())
 
     for path in paths:
         if path.name == "COMMIT_EDITMSG" or "--commit-msg" in path.as_posix():

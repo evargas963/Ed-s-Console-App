@@ -325,17 +325,43 @@ def run_manual_flow(api_key: str, app_secret: str, callback_url: str, token_path
     except Exception as e:
         return False, f"OAuth flow failed: {e}"
 
+class SchwabAuthError(Exception):
+    """Schwab OAuth / refresh token failure — fail fast; do not retry chain/quote for minutes."""
+
+    def __init__(self, message: str, *, remediation: str = "python reauth_schwab.py --manual"):
+        super().__init__(message)
+        self.remediation = remediation
+
+
+_schwab_auth_failure_until_mono: float = 0.0
+_SCHWAB_AUTH_FAILURE_LATCH_SEC = float(os.environ.get("ED_SCHWAB_AUTH_FAILURE_LATCH_SEC", "300"))
+
+
 def _is_token_error(exc: BaseException) -> bool:
     """True if exception indicates token expired/invalid."""
     name = type(exc).__name__
     msg = str(exc).lower()
     if "InvalidTokenError" in name or name == "InvalidTokenError":
         return True
-    if "token" in msg and ("invalid" in msg or "expired" in msg or "401" in msg):
+    if "invalid_grant" in msg or "unsupported_token_type" in msg:
+        return True
+    if "refresh token" in msg and ("invalid" in msg or "revoked" in msg or "expired" in msg):
+        return True
+    if "token" in msg and ("invalid" in msg or "expired" in msg or "401" in msg or "revoked" in msg):
         return True
     if "401" in msg or "unauthorized" in msg:
         return True
     return False
+
+
+def _raise_schwab_auth_error(exc: BaseException) -> None:
+    global _schwab_auth_failure_until_mono
+    _schwab_auth_failure_until_mono = time.monotonic() + _SCHWAB_AUTH_FAILURE_LATCH_SEC
+    raise SchwabAuthError(str(exc)) from exc
+
+
+def _schwab_auth_latched() -> bool:
+    return time.monotonic() < _schwab_auth_failure_until_mono
 
 
 def safe_get_quote(client, ticker: str, *, refresh_client_fn=None, attempt_hook=None):
@@ -433,12 +459,21 @@ def safe_get_price_history(client, ticker: str, *, frequency_minutes: int = 5, p
 
 def safe_get_chain(client, ticker: str, *, strike_count: int = 20, from_date=None, to_date=None):
     # schwab-py supports optional args; we keep them optional to reduce breakage.
+    if _schwab_auth_latched():
+        raise SchwabAuthError(
+            "Schwab auth latched after prior token failure — option chain withheld"
+        )
     kwargs = {"strike_count": strike_count, "include_underlying_quote": True}
     if from_date is not None:
         kwargs["from_date"] = from_date
     if to_date is not None:
         kwargs["to_date"] = to_date
-    resp = client.get_option_chain(ticker, **kwargs)
+    try:
+        resp = client.get_option_chain(ticker, **kwargs)
+    except Exception as e:
+        if _is_token_error(e):
+            _raise_schwab_auth_error(e)
+        raise
     try:
         from api_pressure import record_schwab_http_response
 

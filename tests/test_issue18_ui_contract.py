@@ -61,6 +61,21 @@ def test_render_tier_c_pending_shell_repaints_cards_when_mhap_present():
     assert "renderDecisionCommandRail(merged)" in h
 
 
+def test_timeframe_cards_show_loading_when_analytics_pending_without_mhap():
+    h = _html()
+    assert "tf-signal-card--analytics-loading" in h
+    assert "analyticsLoading && mhap.length === 0" in h
+
+
+def test_institutional_lane_stale_coherence_hooks():
+    h = _html()
+    assert "INSTITUTIONAL_BUNDLE_TRUST_SEC" in h
+    assert "function laneStaleOperatorLabel" in h
+    assert "window.laneStaleOperatorLabel = laneStaleOperatorLabel" in h
+    assert "SYNCING ANALYTICS" in h
+    assert "bundleWithinTrustWindow(integrity, ld)" in h
+
+
 def test_tf_dim_neutral_cards_have_operator_legibility_styles():
     """WAIT/neutral timeframe cards must separate from row chrome (AGENTS legibility gate)."""
     h = _html()

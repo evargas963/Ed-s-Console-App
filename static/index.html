@@ -3723,6 +3723,40 @@ function renderTimeframeSignalRow(d) {
   }
 
   const mhap = Array.isArray(d.mhap_rows) ? d.mhap_rows : [];
+  const pendingShell = d.analytics_pending_shell === true;
+  const analyticsLoading =
+    pendingShell || d.analytics_refresh_in_progress === true;
+  if (analyticsLoading && mhap.length === 0) {
+    const loadHint = d.analytics_last_error
+      ? String(d.analytics_last_error).slice(0, 28)
+      : (d.error === 'token_invalid' ? 'AUTH REQUIRED' : 'LOADING');
+    slugs.forEach(({ slug, ui }) => {
+      const card = document.getElementById('tf-signal-' + slug);
+      if (!card) return;
+      card.setAttribute('data-tf-signal-dir', 'neutral');
+      card.className = 'tf-signal-card tf-state-dim tf-signal-card--analytics-loading';
+      const dot = card.querySelector('.tf-dot');
+      if (dot) dot.className = 'tf-dot tf-dot--dim';
+      const tfEl = card.querySelector('.tf-timeframe');
+      if (tfEl) tfEl.textContent = ui;
+      const arr = card.querySelector('.tf-arrow');
+      if (arr) arr.textContent = '…';
+      const dirEl = card.querySelector('.tf-dir');
+      if (dirEl) dirEl.textContent = loadHint === 'AUTH REQUIRED' ? 'AUTH' : 'LOADING';
+      const pctEl = card.querySelector('.tf-pct');
+      if (pctEl) {
+        pctEl.textContent = loadHint;
+        pctEl.title = d.analytics_last_error || d.state_error_detail || 'Tier C analytics in flight';
+      }
+      const tagEl = card.querySelector('.tf-tag');
+      if (tagEl) {
+        tagEl.className = 'tf-tag tf-tag--hidden';
+        tagEl.textContent = '—';
+        tagEl.setAttribute('aria-hidden', 'true');
+      }
+    });
+    return;
+  }
   const prim = String(d.primary_horizon || '').toLowerCase();
   const finalBias = String(d.final_bias || 'WAIT').toUpperCase();
   const tradeable = !!d.final_tradeable && (finalBias === 'LONG' || finalBias === 'SHORT');
@@ -5388,9 +5422,11 @@ function updateAnalyticsFreshnessUI(d) {
   const parts = [];
   if (ver != null && ver !== '') parts.push('v' + ver);
   if (age != null && typeof age === 'number' && !Number.isNaN(age)) parts.push(Math.round(age) + 's');
-  if (stale) parts.push('stale');
+  const trustedBody = hasTrustedMhapBundle(d) && !d.analytics_pending_shell;
+  if (stale && !(trustedBody && prog)) parts.push('stale');
   if (prog) parts.push('refreshing…');
   if (!stale && !prog) parts.push('ok');
+  if (trustedBody && prog && !stale) parts.push('syncing');
   el.textContent = parts.length ? ('A: ' + parts.join(' · ')) : '';
   el.style.color = stale || prog ? 'var(--warn, #c9a227)' : 'var(--text3)';
 }
@@ -5400,9 +5436,14 @@ function _updateErrorBarFromPayload(d) {
   const errBar = $('error-bar');
   if (!errBar || !d) return;
   const msg =
+    d.remediation ||
+    (d.error === 'token_invalid' ? 'Schwab auth failed — run: python reauth_schwab.py --manual' : null) ||
     d.state_error_detail ||
     d.state_error ||
     d.analytics_last_error ||
+    (d.analytics_pending_shell && d.analytics_refresh_in_progress
+      ? 'Analytics loading — Schwab chain + models computing in background'
+      : null) ||
     (d.analytics_pending_shell && d.analytics_stale && !d.analytics_refresh_in_progress
       ? 'Analytics bundle unavailable — retrying in background'
       : null);
@@ -5502,9 +5543,9 @@ function renderTierCPendingShell(d, fullRenderSource) {
   } catch (e) {}
   updateAnalyticsFreshnessUI(d);
   _updateErrorBarFromPayload(merged);
+  try { renderTimeframeSignalRow(merged); } catch (e) {}
   if (Array.isArray(merged.mhap_rows) && merged.mhap_rows.length) {
     try { renderDecisionCommandRail(merged); } catch (e) {}
-    try { renderTimeframeSignalRow(merged); } catch (e) {}
   }
   _lastRenderTs = Date.now();
   clearHardStaleUi();
@@ -5589,6 +5630,9 @@ function renderTierALive(d, fullRenderSource) {
   _lastRenderTs = Date.now();
   clearHardStaleUi();
   try { renderTimeframeSignalRow(window._lastData); } catch (e) {}
+  if (Array.isArray(window._lastData.mhap_rows) && window._lastData.mhap_rows.length) {
+    window._tierCCardsPaintedAtGen = window._lastRenderedDecisionGen ?? 0;
+  }
   _updateTierCLaneStaleMarkers();
   _updateLiveUiAe();
   return true;
@@ -6701,6 +6745,51 @@ function _refreshLiveUiIntegrityDerivations(opts) {
 // synthesized integrity objects without exercising the full SSE pipeline. Authority: rows in
 // governance/STACK_WIRING_INTEGRITY_MAP.md "Live-UI direction transports (LIVE-UI-1, Phase 2)".
 
+/** Institutional bundle trust window — quote may lead bundle within this window without LANE STALE. */
+const INSTITUTIONAL_BUNDLE_TRUST_SEC = 45;
+
+function bundleAgeSec(bundleTs, nowMs) {
+  const ts = bundleTs != null ? Number(bundleTs) : NaN;
+  if (!Number.isFinite(ts) || ts <= 0) return null;
+  const now = nowMs != null ? nowMs : Date.now();
+  return Math.max(0, Math.round(now / 1000 - ts));
+}
+
+function hasTrustedMhapBundle(ld) {
+  return !!(ld && Array.isArray(ld.mhap_rows) && ld.mhap_rows.length > 0);
+}
+
+function bundleWithinTrustWindow(integrity, ld, nowMs) {
+  integrity = integrity || {};
+  ld = ld || {};
+  const age = bundleAgeSec(integrity.bundleTs, nowMs);
+  if (age == null) return false;
+  return hasTrustedMhapBundle(ld) && age <= INSTITUTIONAL_BUNDLE_TRUST_SEC;
+}
+
+/** Operator-facing lane chip — testable; keeps lit trade cards from pairing with red STALE pill. */
+function laneStaleOperatorLabel(integrity, ld, nowMs) {
+  integrity = integrity || {};
+  ld = ld || {};
+  if (bundleWithinTrustWindow(integrity, ld, nowMs)) {
+    if (ld.analytics_refresh_in_progress === true || integrity.genStale) {
+      return { show: true, label: 'SYNCING ANALYTICS…', severity: 'dim' };
+    }
+    return { show: false, label: '', severity: 'none' };
+  }
+  if (integrity.genStale) return { show: true, label: 'LANE STALE — CARDS PAINTING…', severity: 'bad' };
+  if (integrity.quoteAhead || integrity.slowStaleVsFast) {
+    return { show: true, label: 'LANE STALE — QUOTE AHEAD', severity: 'bad' };
+  }
+  if (integrity.pending) return { show: true, label: 'LANE STALE — PENDING ANALYTICS', severity: 'bad' };
+  return { show: false, label: '', severity: 'none' };
+}
+try {
+  window.INSTITUTIONAL_BUNDLE_TRUST_SEC = INSTITUTIONAL_BUNDLE_TRUST_SEC;
+  window.bundleWithinTrustWindow = bundleWithinTrustWindow;
+  window.laneStaleOperatorLabel = laneStaleOperatorLabel;
+} catch (e) {}
+
 /** Bundle-level Tier C direction-withhold. OF strip is NOT covered here — it has its own clock. */
 function bundleDirectionWithheld(integrity, d) {
   integrity = integrity || window._liveUiIntegrity || {};
@@ -6798,7 +6887,10 @@ function _updateDecisionBundleAgeUI(opts) {
   const ageText = _formatBuiltAgeSec(ts);
   const bel = $('data-bundle-freshness');
   if (bel) bel.textContent = ageText || 'Built —';
+  const integrity = window._liveUiIntegrity || _refreshLiveUiIntegrityDerivations(opts);
+  const ld = window._lastData || {};
   const priceAhead = window._priceAheadOfBundle === true;
+  const withinTrust = bundleWithinTrustWindow(integrity, ld);
   const fp = $('dr-freshness-pill');
   if (fp) {
     let pillText;
@@ -6810,7 +6902,8 @@ function _updateDecisionBundleAgeUI(opts) {
       pillText = ageSec <= 1 ? 'FRESH <2s' : 'FRESH ' + ageSec + 's';
       fp.className = 'conviction-pill ' + (ageSec <= 6 ? 'high' : ageSec <= 20 ? 'medium' : 'low');
     }
-    if (priceAhead) pillText += ' · PRICE AHEAD';
+    if (priceAhead && withinTrust) pillText += ' · SYNCING';
+    else if (priceAhead) pillText += ' · PRICE AHEAD';
     fp.textContent = pillText;
   }
   domIf('dr-trust-fresh', el => { el.textContent = ageText || '—'; });
@@ -7014,20 +7107,18 @@ function _updateLaneStaleChip(integrity) {
   const el = $('dr-lane-stale-chip');
   if (!el) return;
   integrity = integrity || window._liveUiIntegrity || {};
-  let label = '';
-  if (integrity.genStale) label = 'LANE STALE — CARDS PAINTING…';
-  else if (integrity.quoteAhead || integrity.slowStaleVsFast) label = 'LANE STALE — QUOTE AHEAD';
-  else if (integrity.pending) label = 'LANE STALE — PENDING ANALYTICS';
-  if (!label) {
+  const ld = window._lastData || {};
+  const chip = laneStaleOperatorLabel(integrity, ld);
+  if (!chip.show) {
     el.style.display = 'none';
     el.textContent = 'LANE —';
     el.className = 'decision-chip dim';
     return;
   }
   el.style.display = '';
-  el.textContent = label;
-  el.className = 'decision-chip bad';
-  el.title = 'Tier C lane stale: ' + label;
+  el.textContent = chip.label;
+  el.className = chip.severity === 'bad' ? 'decision-chip bad' : 'decision-chip dim';
+  el.title = 'Tier C lane: ' + chip.label;
 }
 
 /** Dim Tier-C cards when fast lane disagrees with last analytical paint (maintain data-ed-tier-c list when adding cards). */
@@ -7035,16 +7126,15 @@ function _updateTierCLaneStaleMarkers() {
   const cards = document.querySelectorAll('.signal-card[data-ed-tier-c="1"]');
   if (!cards.length) return;
   const integrity = window._liveUiIntegrity || _refreshLiveUiIntegrityDerivations();
-  // FIND-LIVEUI-6: align card-level lane-stale dim with the bundleDirectionWithheld() cross-tier
-  // rule. slowStaleVsFast (and the equivalent window._priceAheadOfBundle published by
-  // _refreshLiveUiIntegrityDerivations) was missing from this gate, leaving the price-ahead-of-
-  // bundle case undimmed at the card level even while bundleDirectionWithheld treated direction-
-  // bearing fields as stale. Keep OF strip independent — its clock is order_flow_stale.
-  const stale = integrity.quoteAhead
+  const ld = window._lastData || {};
+  const withinTrust = bundleWithinTrustWindow(integrity, ld);
+  const stale = !withinTrust && (
+    integrity.quoteAhead
     || integrity.pending
     || integrity.genStale
     || integrity.slowStaleVsFast
-    || window._priceAheadOfBundle === true;
+    || window._priceAheadOfBundle === true
+  );
   cards.forEach(c => {
     if (stale) c.setAttribute('data-lane-stale', 'tier-c');
     else c.removeAttribute('data-lane-stale');
@@ -7234,6 +7324,11 @@ async function fetchState(force = false) {
     const _analyticsT0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
     if (!force && Date.now() < _tierCBackoffUntilMs) {
       if (DIAG) console.log('[fetchState] Tier C backoff active', { wait_ms: _tierCBackoffUntilMs - Date.now() });
+      const ovlBackoff = $('loading-overlay');
+      if (ovlBackoff) ovlBackoff.classList.add('hidden');
+      if (window._lastData) {
+        try { renderTierCPendingShell(window._lastData, 'rest_manual'); } catch (e) {}
+      }
       return;
     }
     const url = `/api/analytics/state?ticker=${encodeURIComponent(ticker)}${expiry ? '&expiry=' + encodeURIComponent(expiry) : ''}${force ? '&force=true' : ''}`;
