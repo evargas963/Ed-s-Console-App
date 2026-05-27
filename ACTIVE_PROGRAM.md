@@ -45,7 +45,7 @@
 | Read-first source | `AGENTS.md` banned tools; `CLAUDE.md` Read-not-scan for Schwab |
 | V4 register | **`governance/artifacts/schwab_v4_register_build_meta.json`** + generation recipe; full CSV generated locally/CI, gitignored |
 | Host vs Git | [`docs/host/README.md`](docs/host/README.md) |
-| Host auto-promote | **Off** until OPEN_ITEMS `TRAINING-HOST-PREFLIP-E2E` + `TRAINING-HOST-LIVE-RELOAD` close |
+| Host auto-promote | **On by default** (`ED_SCHEDULER_AUTO_PROMOTE` defaults to enabled): successful train + governed eval → `models/active/` via `execute_promotion_if_eligible` (parallel on `keep_incumbent`, cascade when gates pass). Panic: `ED_DISABLE_AUTO_PROMOTE=1`. Host reload proof still tracked in OPEN_ITEMS `TRAINING-HOST-LIVE-RELOAD`. |
 | OPEN_ITEMS archive path | `governance/archive/<quarter>/open_items_archive/` (first use creates quarter folder) |
 
 ---

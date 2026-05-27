@@ -133,9 +133,11 @@ def _minimal_governed_files(model_dir: Path, *, cascade_ok: bool = True):
     (ed / "promotion_decision.json").write_text(json.dumps(pr), encoding="utf-8")
 
 
-def test_scheduler_never_auto_promotes():
-    assert scheduler_auto_promote_to_active_enabled() is False
-    assert _scheduler_auto_promote_to_active() is False
+def test_scheduler_auto_promote_enabled_by_default(monkeypatch):
+    monkeypatch.delenv("ED_SCHEDULER_AUTO_PROMOTE", raising=False)
+    monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
+    assert scheduler_auto_promote_to_active_enabled() is True
+    assert _scheduler_auto_promote_to_active() is True
 
 
 def test_manual_promote_wrong_intent_fails(tmp_path: Path):

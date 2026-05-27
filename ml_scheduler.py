@@ -1493,6 +1493,17 @@ def run_once(
             before,
         )
 
+    from scheduler_user_tickers import filter_tickers_for_ml_training
+
+    _before_conf = len(tickers)
+    tickers = filter_tickers_for_ml_training(tickers, DB_PATH)
+    if len(tickers) < _before_conf:
+        log.info(
+            "Confluence-only filter: %d of %d tickers scheduled for ML training",
+            len(tickers),
+            _before_conf,
+        )
+
     _pfx = " (promote-from-manifests-only)" if promote_from_manifests_only else ""
     log.info("Tickers (logging_universe authoritative): %s%s", tickers, _pfx)
 
@@ -2148,6 +2159,7 @@ def run_once(
             reason = ""
             auto_active = _scheduler_auto_promote_to_active()
             production_write_held = True
+            auto_exec_result: dict[str, Any] = {}
 
             if (
                 isinstance(governed_slice, dict)

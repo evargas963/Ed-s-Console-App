@@ -19,6 +19,10 @@ import logging
 
 log = logging.getLogger(__name__)
 
+# Operator: bottom-panel / panel_auto symbols are confluence features only (SPY/QQQ/IWM context).
+# They must log for cross-instrument features but are excluded from ML scheduler training.
+CONFLUENCE_ONLY_UNIVERSE_CATEGORIES: frozenset[str] = frozenset({"panel_auto"})
+
 
 _ROOT = Path(__file__).resolve().parent
 _PATH = _ROOT / "data" / "user_scheduler_tickers.json"
@@ -63,6 +67,35 @@ def load_user_scheduler_tickers_or_empty() -> list[str]:
     in new code so DB failures are visible.
     """
     return load_user_scheduler_tickers() or []
+
+
+def filter_tickers_for_ml_training(tickers: list[str], db_path: str) -> list[str]:
+    """Drop confluence-only enrolled symbols (panel_auto) from ML training runs."""
+    try:
+        from db import EdDB
+
+        rows = EdDB(str(db_path)).logging_universe_list_rows()
+    except Exception as e:
+        log.warning("filter_tickers_for_ml_training: cannot read logging_universe (%s)", e)
+        return tickers
+    skip = {
+        str(row.get("ticker") or "").upper()
+        for row in rows
+        if str(row.get("category") or "") in CONFLUENCE_ONLY_UNIVERSE_CATEGORIES
+    }
+    if not skip:
+        return tickers
+    enrolled = {t.upper() for t in tickers}
+    excluded = sorted(skip & enrolled)
+    if not excluded:
+        return tickers
+    out = [t for t in tickers if t.upper() not in skip]
+    log.info(
+        "ML training excludes %d confluence-only (panel_auto) tickers: %s",
+        len(excluded),
+        excluded,
+    )
+    return out
 
 
 def record_user_ticker(ticker: str) -> None:

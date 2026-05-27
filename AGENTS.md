@@ -13,6 +13,21 @@ Current program: [`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md).
 
 ---
 
+## Institutional-grade code gate `[PROMOTED]` (2026-05-27 — operator binding, top rule)
+
+**Before writing or landing code:** ask whether the change is institutional-grade — the standard an MIT professor would accept for a production trading system (correctness, uniformity, fail-closed where appropriate, tests, no silent partial behavior). **Research when uncertain** (Read end-to-end, trace producer→consumer, check enrollment and data contracts). If the answer is not **yes**, **stop** and fix the design before coding.
+
+| Must hold | Failure mode |
+|-----------|----------------|
+| Operator intent wired in code, not comments only | "Policy by design" that contradicts stated product rules |
+| Train-success-live for ML scheduler targets | Train completes but `models/active/` empty without explicit operator opt-out |
+| Parallel and cascade obey the same row/scoring contract where compared | Asymmetric degrade/skip without documented operator approval |
+| Confluence-only symbols excluded from training | `panel_auto` tickers trained like tradeables |
+
+**Partial enforcement:** paired tests for promotion policy, enrollment filter, and scheduler outcomes; operator catch-net for intent drift.
+
+---
+
 ## Do not lie to the operator `[PROMOTED]` (2026-05-24 — binding, hard rule, no exceptions)
 
 **Never present unverified claims as verified. Never soften known bad news into reassurance. Never frame a clean-looking artifact (memo, green checker, handoff, status note) as proof that the underlying work was done.**
@@ -290,6 +305,8 @@ Schwab-only phrases remain in `CLAUDE.md` FORBIDDEN PHRASES.
 3. **Mega inventory** — when the refactor adds/renames/deletes a registered Python function/class: `governance/megaN_traceable_inventory.py` row + `tests/test_megaN_traceable_audit.py` row-count update in the same commit.
 4. **Map row** — when the slice touches a registered surface: `governance/STACK_WIRING_INTEGRITY_MAP.md` row updated to "producer + consumer landed" (not "inventory only", not "pending").
 5. **OPEN_ITEMS** — `[x] @ <SHA>` for every row the slice closes, with test cite in the row text when applicable.
+
+**ML scheduler train-success-live (operator 2026-05-27):** For tickers that complete train + governed eval without `failed_closed`, closure requires `models/active/{TICKER}/` refreshed in the **same scheduler run** via `execute_promotion_if_eligible` (default ON). Outcome `promote_ok` or `trained` without `promoted: true` in the training report is **not closed** for that ticker. Panic-only opt-out: `ED_DISABLE_AUTO_PROMOTE=1` or `ED_SCHEDULER_AUTO_PROMOTE=0`.
 
 If any of the 5 cannot land same-commit, the slice is **not closed**. There is no "phase 2 paired-fix pending", "behavioral spec deferred until CI", "broader sweep deferred behind a brief", or "follow-up commit lands the e2e" variant. Those are the violation.
 

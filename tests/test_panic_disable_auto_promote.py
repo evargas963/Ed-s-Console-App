@@ -8,7 +8,7 @@ import pytest
 
 @pytest.fixture
 def auto_promote_env(monkeypatch):
-    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE", "1")
+    monkeypatch.delenv("ED_SCHEDULER_AUTO_PROMOTE", raising=False)
     monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
 
 

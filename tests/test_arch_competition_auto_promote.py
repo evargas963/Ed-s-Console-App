@@ -42,7 +42,7 @@ def _write_minimal_governed(model_dir: Path, *, would_promote: bool) -> None:
 
 
 def test_auto_promote_skipped_when_env_off(tmp_path: Path, monkeypatch):
-    monkeypatch.delenv("ED_SCHEDULER_AUTO_PROMOTE", raising=False)
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE", "0")
     _write_minimal_governed(tmp_path, would_promote=True)
     result = execute_promotion_if_eligible(
         tmp_path,
@@ -52,3 +52,26 @@ def test_auto_promote_skipped_when_env_off(tmp_path: Path, monkeypatch):
     )
     assert result["executed"] is False
     assert result["skipped_reason"] == "auto_promote_disabled"
+
+
+def test_auto_promote_parallel_on_keep_incumbent_train_success_live(tmp_path: Path, monkeypatch):
+    """Train-success-live: keep_incumbent still refreshes parallel into active/."""
+    from tests.test_manual_governance import _minimal_governed_files, _write_candidate_manifests, _write_horizon_bundle
+
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE", "1")
+    monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE_REQUIRE_VERIFY", "0")
+    _minimal_governed_files(tmp_path, cascade_ok=False)
+    pdir = tmp_path / "parallel" / "SPY"
+    cdir = tmp_path / "cascade" / "SPY"
+    _write_horizon_bundle(pdir, "SPY", "1c")
+    _write_horizon_bundle(cdir, "SPY", "1c")
+    _write_candidate_manifests(pdir, cdir)
+    result = execute_promotion_if_eligible(
+        tmp_path,
+        "SPY",
+        "1c",
+        scheduler_run_id="train-success-live",
+    )
+    assert result["executed"] is True
+    assert (tmp_path / "active" / "SPY" / "xgb_SPY_1c.pkl").is_file()

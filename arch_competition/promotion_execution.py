@@ -137,14 +137,14 @@ def execute_promotion_if_eligible(
             return _skip_result("auto_promote_disabled")
         if not ticker_eligible_for_auto_promote(tku):
             return _skip_result("core_only_scope")
+        decision = str(promotion_record.get("promotion_decision") or "")
+        would_promote = bool(promotion_record.get("would_promote_challenger"))
         blocked = promotion_record.get("blocked_promotion_flags") or []
-        if blocked:
-            return _skip_result("blocked_promotion_flags", blocked=blocked)
-        if not promotion_record.get("would_promote_challenger"):
-            return _skip_result("would_not_promote")
-        if promotion_record.get("promotion_decision") != "promote_cascade":
-            return _skip_result("promotion_decision_keep_incumbent")
-        target_architecture = "cascade"
+        if decision == "promote_cascade" and would_promote and not blocked:
+            target_architecture = "cascade"
+        else:
+            # Train-success-live: governed train completes → refresh incumbent parallel in active/.
+            target_architecture = "parallel"
 
     assert target_architecture is not None
 

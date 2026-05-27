@@ -20,13 +20,14 @@ def scheduler_auto_promote_panic_disabled() -> bool:
 
 
 def scheduler_auto_promote_to_active_enabled() -> bool:
+    """Train-success-live: default ON — successful scheduler train writes models/active/."""
     if scheduler_auto_promote_panic_disabled():
         return False
-    return _env_truthy("ED_SCHEDULER_AUTO_PROMOTE")
+    return _env_falsy_default_true("ED_SCHEDULER_AUTO_PROMOTE", "1")
 
 
 def scheduler_auto_promote_core_only() -> bool:
-    return _env_falsy_default_true("ED_SCHEDULER_AUTO_PROMOTE_CORE_ONLY", "1")
+    return _env_truthy("ED_SCHEDULER_AUTO_PROMOTE_CORE_ONLY")
 
 
 def scheduler_auto_promote_require_verify() -> bool:

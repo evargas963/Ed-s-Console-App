@@ -95,3 +95,42 @@ def test_no_production_caller_uses_typed_version_directly():
                 pytest.fail(
                     f"{rel}: bare load_user_scheduler_tickers() call without None handling: {line.strip()!r}"
                 )
+
+
+def test_filter_tickers_for_ml_training_excludes_panel_auto():
+    from scheduler_user_tickers import filter_tickers_for_ml_training
+
+    class _Row:
+        def __init__(self, ticker: str, category: str):
+            self._d = {"ticker": ticker, "category": category}
+
+        def get(self, key, default=None):
+            return self._d.get(key, default)
+
+    class _DB:
+        def logging_universe_list_rows(self):
+            return [
+                _Row("SPY", "core"),
+                _Row("PSCI", "panel_auto"),
+                _Row("QQQ", "core"),
+            ]
+
+    import db as _db_mod
+
+    import scheduler_user_tickers as sut
+
+    orig = _db_mod.EdDB
+
+    class _EdDB:
+        def __init__(self, _path):
+            pass
+
+        def logging_universe_list_rows(self):
+            return _DB().logging_universe_list_rows()
+
+    _db_mod.EdDB = _EdDB
+    try:
+        out = sut.filter_tickers_for_ml_training(["SPY", "PSCI", "QQQ"], ":memory:")
+    finally:
+        _db_mod.EdDB = orig
+    assert out == ["SPY", "QQQ"]
