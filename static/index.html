@@ -6791,10 +6791,20 @@ try {
 } catch (e) {}
 
 /** Bundle-level Tier C direction-withhold. OF strip is NOT covered here — it has its own clock. */
-function bundleDirectionWithheld(integrity, d) {
+function bundleDirectionWithheld(integrity, d, nowMs) {
   integrity = integrity || window._liveUiIntegrity || {};
   const ld = (d && typeof d === 'object') ? d : window._lastData;
   if (ld && ld.analytics_pending_shell === true) return { withheld: true, reason: 'pending_shell' };
+  if (!ld) return { withheld: true, reason: 'no_payload' };
+  // Same institutional trust window as laneStaleOperatorLabel: trusted mhap within
+  // INSTITUTIONAL_BUNDLE_TRUST_SEC is not STALE on tf-signal cards merely because
+  // the fast quote lane moved first or Tier C is refreshing.
+  if (bundleWithinTrustWindow(integrity, ld, nowMs)) {
+    if (integrity.pending && !hasTrustedMhapBundle(ld)) {
+      return { withheld: true, reason: 'pending_full_analytics' };
+    }
+    return { withheld: false, reason: null };
+  }
   if (window._priceAheadOfBundle === true) return { withheld: true, reason: 'price_ahead_of_bundle' };
   if (integrity.slowStaleVsFast) return { withheld: true, reason: 'slow_stale_vs_fast' };
   if (integrity.quoteAhead) return { withheld: true, reason: 'quote_ahead' };
@@ -6804,8 +6814,8 @@ function bundleDirectionWithheld(integrity, d) {
 }
 
 /** Per-horizon withhold: bundle-level OR horizon_fusion_available(hz) === false (MHMLB-NS1 hook). */
-function horizonDirectionWithheld(integrity, d, hz) {
-  const bundle = bundleDirectionWithheld(integrity, d);
+function horizonDirectionWithheld(integrity, d, hz, nowMs) {
+  const bundle = bundleDirectionWithheld(integrity, d, nowMs);
   if (bundle.withheld) return bundle;
   const ld = (d && typeof d === 'object') ? d : window._lastData;
   if (!ld) return { withheld: true, reason: 'no_payload' };

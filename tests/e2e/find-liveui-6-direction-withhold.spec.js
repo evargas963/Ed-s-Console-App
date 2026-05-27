@@ -417,3 +417,65 @@ test('laneStaleOperatorLabel hides chip on clean trusted bundle', async ({ page 
   expect(clean.show).toBe(false);
   expect(clean.severity).toBe('none');
 });
+
+test('tf-signal cards do not get STALE withhold when trusted bundle within trust window', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () => typeof window.horizonDirectionWithheld === 'function',
+    null,
+    { timeout: 30000 },
+  );
+
+  const horizons = await page.evaluate(() => {
+    const nowMs = Date.now();
+    const bundleTs = nowMs / 1000 - 10;
+    const integrity = {
+      bundleTs,
+      quoteAhead: true,
+      slowStaleVsFast: true,
+      genStale: false,
+      pending: false,
+    };
+    const ld = {
+      mhap_rows: [
+        { horizon: '1c', call: 'WAIT' },
+        { horizon: '5c', call: 'WAIT' },
+        { horizon: '15c', call: 'WAIT' },
+        { horizon: '60c', call: 'LONG' },
+      ],
+      analytics_refresh_in_progress: true,
+    };
+    window._priceAheadOfBundle = true;
+    return ['1c', '5c', '15c', '60c'].map((hz) => ({
+      hz,
+      state: window.horizonDirectionWithheld(integrity, ld, hz, nowMs),
+    }));
+  });
+
+  for (const row of horizons) {
+    expect(row.state.withheld, row.hz).toBe(false);
+  }
+});
+
+test('tf-signal cards withhold STALE outside institutional trust window', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () => typeof window.horizonDirectionWithheld === 'function',
+    null,
+    { timeout: 30000 },
+  );
+
+  const stale = await page.evaluate(() => {
+    const nowMs = Date.now();
+    const bundleTs = nowMs / 1000 - 120;
+    window._priceAheadOfBundle = true;
+    return window.horizonDirectionWithheld(
+      { bundleTs, quoteAhead: true, slowStaleVsFast: true, genStale: false, pending: false },
+      { mhap_rows: [{ horizon: '60c', call: 'LONG' }] },
+      '60c',
+      nowMs,
+    );
+  });
+  expect(stale.withheld).toBe(true);
+  expect(stale.reason).toBe('price_ahead_of_bundle');
+});

@@ -73,7 +73,11 @@ def test_institutional_lane_stale_coherence_hooks():
     assert "function laneStaleOperatorLabel" in h
     assert "window.laneStaleOperatorLabel = laneStaleOperatorLabel" in h
     assert "SYNCING ANALYTICS" in h
-    assert "bundleWithinTrustWindow(integrity, ld)" in h
+    assert "bundleWithinTrustWindow(integrity, ld" in h
+    assert "function bundleDirectionWithheld(integrity, d, nowMs)" in h
+    idx = h.find("function bundleDirectionWithheld")
+    chunk = h[idx : idx + 900]
+    assert "bundleWithinTrustWindow(integrity, ld, nowMs)" in chunk
 
 
 def test_tf_dim_neutral_cards_have_operator_legibility_styles():
