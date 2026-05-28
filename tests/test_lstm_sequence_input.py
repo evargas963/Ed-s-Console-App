@@ -86,7 +86,14 @@ def test_merge_strips_legacy_mvp_and_uses_canonical():
 
 
 def test_encode_snapshot_dimensions_match_features_lists():
-    from lstm_data import encode_snapshot_5m, encode_snapshot_1m, FEATURES_5M, FEATURES_1M
+    from lstm_data import (
+        encode_snapshot_5m,
+        encode_snapshot_1m,
+        ENCODED_FEATURES_5M,
+        ENCODED_FEATURES_1M,
+        encoded_width_5m,
+        encoded_width_1m,
+    )
     from features.canonical_contract import get_mvp_feature_names
 
     cf = {k: None for k in get_mvp_feature_names()}
@@ -104,8 +111,59 @@ def test_encode_snapshot_dimensions_match_features_lists():
     merged = merge_db_row_with_canonical_mvp(db, cf)
     v5 = encode_snapshot_5m(merged, 450.0)
     v1 = encode_snapshot_1m(merged, 450.0)
-    assert len(v5) == len(FEATURES_5M)
-    assert len(v1) == len(FEATURES_1M)
+    assert len(v5) == len(ENCODED_FEATURES_5M) == encoded_width_5m()
+    assert len(v1) == len(ENCODED_FEATURES_1M) == encoded_width_1m()
+
+
+def test_null_weighted_push_mask_zero_train_and_inference_encoder():
+    """NULL spy_weighted_push must set __present=0, not imply neutral via value 0.0 alone."""
+    from lstm_data import ENCODED_FEATURES_5M, encode_snapshot_5m
+    from features.lstm_sequence_input import encode_lstm_structure_bar_with_masks
+    from features.canonical_contract import get_mvp_feature_names
+
+    row = _base_db_row(1.0)
+    row["spy_weighted_push"] = None
+    cf = {k: None for k in get_mvp_feature_names()}
+    cf["price.spot"] = 450.0
+    vi = ENCODED_FEATURES_5M.index("spy_weighted_push")
+    mi = ENCODED_FEATURES_5M.index("spy_weighted_push__present")
+    bare = encode_snapshot_5m(row, 450.0)
+    assert bare[vi] == 0.0
+    assert bare[mi] == 0.0
+    wrapped = encode_lstm_structure_bar_with_masks(row, cf, 450.0)["features"]
+    assert wrapped[vi] == 0.0
+    assert wrapped[mi] == 0.0
+
+
+def test_present_weighted_push_mask_one():
+    from lstm_data import ENCODED_FEATURES_5M, encode_snapshot_5m
+
+    row = _base_db_row(1.0)
+    row["qqq_weighted_push"] = 0.42
+    vi = ENCODED_FEATURES_5M.index("qqq_weighted_push")
+    mi = ENCODED_FEATURES_5M.index("qqq_weighted_push__present")
+    vec = encode_snapshot_5m(row, 450.0)
+    assert vec[mi] == 1.0
+    assert vec[vi] == 0.42
+
+
+def test_lstm_checkpoint_encoder_schema_guard():
+    from lstm_data import (
+        assert_lstm_encoder_checkpoint_compatible,
+        LSTM_ENCODER_SCHEMA_VERSION,
+        encoded_width_5m,
+        encoded_width_1m,
+    )
+
+    assert_lstm_encoder_checkpoint_compatible(
+        {
+            "encoder_schema_version": LSTM_ENCODER_SCHEMA_VERSION,
+            "encoder_width_5m_pre_mask": encoded_width_5m(),
+            "encoder_width_1m_pre_mask": encoded_width_1m(),
+        }
+    )
+    with pytest.raises(ValueError, match="encoder schema"):
+        assert_lstm_encoder_checkpoint_compatible({"encoder_schema_version": 1})
 
 
 def test_inference_snapshot_wrong_version_fails():

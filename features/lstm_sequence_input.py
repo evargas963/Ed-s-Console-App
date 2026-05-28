@@ -19,8 +19,9 @@ Contract (inference):
   `STREAM_1M_LOOKBACK` for micro stream (see `lstm_data`).
 - **Feature ordering:** unchanged from training — `lstm_data.FEATURES_5M` / `FEATURES_1M` column order
   inside `encode_snapshot_*` (stable; do not reorder without retrain).
-- **Missing canonical values:** `None` in a canonical row is allowed (contract validation); encoders
-  treat missing numerics as 0.0 via `_safe_float`.
+- **Missing canonical values:** nullable cross-asset / vol numerics emit value + ``__present`` mask
+  channels (see ``lstm_data.NULLABLE_NUMERIC_COLS_*``); other columns use ``_safe_float`` only where
+  0.0 is not a semantic signal.
 - **Fail closed:** invalid envelope, invalid canonical row, insufficient history, or MVP source
   ambiguity → `LstmSequenceInputError`.
 
@@ -49,12 +50,17 @@ from features.xgb_model_input import CANONICAL_TO_XGB_TABULAR, MVP_LEGACY_KEYS
 
 # Re-export for callers documenting sequence length (single source in lstm_data).
 from lstm_data import (  # noqa: F401
+    ENCODED_FEATURES_1M,
+    ENCODED_FEATURES_5M,
     FEATURES_1M,
     FEATURES_5M,
+    LSTM_ENCODER_SCHEMA_VERSION,
     STREAM_1M_LOOKBACK,
     STREAM_5M_LOOKBACK,
     VWAP_SIDE_MAP,
     ZONE_MAP,
+    encoded_width_5m,
+    encoded_width_1m,
     encode_snapshot_1m,
     encode_snapshot_5m,
 )
@@ -110,14 +116,17 @@ def encode_lstm_structure_bar_with_masks(
     ref_spot: float,
 ) -> dict[str, Any]:
     """
-    Structure-stream encode with canonical missingness masks and categorical sentinels.
+    Structure-stream encode (same path as training / ``ml_predict``).
 
-    Missing canonical numerics are accompanied by mask=0 (value may be 0.0 from encoder).
+    Nullable DB numerics include inline ``__present`` mask channels from ``encode_snapshot_5m``.
+    Canonical MVP categoricals use sentinels; ``canonical_missing_masks`` reports MVP-only gaps.
     """
     base = list(encode_snapshot_5m(dict(merged_row), ref_spot))
-    _patch_lstm_categoricals(base, FEATURES_5M, canonical_features)
-    masks = _canonical_missing_masks(canonical_features)
-    return {"features": base + masks, "canonical_missing_masks": masks}
+    _patch_lstm_categoricals(base, ENCODED_FEATURES_5M, canonical_features)
+    return {
+        "features": base,
+        "canonical_missing_masks": _canonical_missing_masks(canonical_features),
+    }
 
 
 def encode_lstm_micro_bar_with_masks(
@@ -125,11 +134,13 @@ def encode_lstm_micro_bar_with_masks(
     canonical_features: dict[str, Any],
     ref_spot: float,
 ) -> dict[str, Any]:
-    """Micro-stream encode with the same missingness / sentinel contract as structure."""
+    """Micro-stream encode (same path as training / ``ml_predict``)."""
     base = list(encode_snapshot_1m(dict(merged_row), ref_spot))
-    _patch_lstm_categoricals(base, FEATURES_1M, canonical_features)
-    masks = _canonical_missing_masks(canonical_features)
-    return {"features": base + masks, "canonical_missing_masks": masks}
+    _patch_lstm_categoricals(base, ENCODED_FEATURES_1M, canonical_features)
+    return {
+        "features": base,
+        "canonical_missing_masks": _canonical_missing_masks(canonical_features),
+    }
 
 
 def merge_db_row_with_canonical_mvp(

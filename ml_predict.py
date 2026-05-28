@@ -762,10 +762,33 @@ def _predict_lstm(
         except ValueError as e:
             raise LstmSequenceInputError(str(e)) from e
 
+        from lstm_data import (
+            assert_lstm_encoder_checkpoint_compatible,
+            encoded_width_5m,
+            encoded_width_1m,
+        )
+
+        try:
+            assert_lstm_encoder_checkpoint_compatible(checkpoint)
+        except ValueError as e:
+            logger.error("LSTM %s: %s", ticker, e)
+            return None
+
         seq_5m = [encode_snapshot_5m(s, ref_spot) for s in merged_window]
         micro = merged_window[-STREAM_1M_LOOKBACK:]
         mr = _safe_float(micro[0].get("spot")) or ref_spot
         seq_1m = [encode_snapshot_1m(s, mr) for s in micro]
+
+        if len(seq_5m[0]) != encoded_width_5m() or len(seq_1m[0]) != encoded_width_1m():
+            logger.error(
+                "LSTM %s: encoder width mismatch (5m=%d expected %d, 1m=%d expected %d)",
+                ticker,
+                len(seq_5m[0]),
+                encoded_width_5m(),
+                len(seq_1m[0]),
+                encoded_width_1m(),
+            )
+            return None
 
         conf = compute_confluence_features(merged_days, len(merged_days) - 1)
         conf_vec = [conf[k] for k in CONFLUENCE_FEATURES]
@@ -812,6 +835,22 @@ def _predict_lstm(
 
         mask_5m = np.array(checkpoint.get("mask_5m", [True] * X_5m.shape[2]))
         mask_1m = np.array(checkpoint.get("mask_1m", [True] * X_1m.shape[2]))
+        if mask_5m.shape[0] != X_5m.shape[2]:
+            logger.error(
+                "LSTM %s: checkpoint mask_5m len %d != encoded width %d; retrain required",
+                ticker,
+                mask_5m.shape[0],
+                X_5m.shape[2],
+            )
+            return None
+        if mask_1m.shape[0] != X_1m.shape[2]:
+            logger.error(
+                "LSTM %s: checkpoint mask_1m len %d != encoded width %d; retrain required",
+                ticker,
+                mask_1m.shape[0],
+                X_1m.shape[2],
+            )
+            return None
         if mask_conf.shape[0] != X_conf.shape[1]:
             logger.warning(
                 "LSTM %s: mask_conf len %d vs conf width %d",
@@ -949,7 +988,18 @@ def _predict_transformer(
 
         tf = timeframe or CANONICAL_TIMEFRAME
         seq_len = checkpoint.get("seq_len", 20)
-        n_enc_base = len(FEATURES_5M)
+        from lstm_data import encoded_width_5m, LSTM_ENCODER_SCHEMA_VERSION
+
+        n_enc_base = encoded_width_5m()
+        enc_ver = int(checkpoint.get("encoder_schema_version", 1))
+        if enc_ver < LSTM_ENCODER_SCHEMA_VERSION:
+            logger.error(
+                "Transformer %s: encoder schema v%s < required v%s; retrain",
+                ticker,
+                enc_ver,
+                LSTM_ENCODER_SCHEMA_VERSION,
+            )
+            return None
 
         if shared_sequence_context is not None:
             from features.shared_sequence_context import transformer_window_chronological
@@ -977,6 +1027,14 @@ def _predict_transformer(
 
         snap = snapshot if snapshot is not None else _snap_dict(merged_window[-1])
         seq = [encode_snapshot_5m(s, ref_spot) for s in merged_window]
+        if len(seq[0]) != n_enc_base:
+            logger.error(
+                "Transformer %s: encoder width %d != expected %d",
+                ticker,
+                len(seq[0]),
+                n_enc_base,
+            )
+            return None
         base = np.array([seq], dtype=np.float32)
 
         fm = np.asarray(

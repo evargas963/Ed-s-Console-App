@@ -233,18 +233,22 @@ def build_model(n_features_5m: int, n_features_1m: int, n_confluence: int,
 # ════════════════════════════════════════════════════════════════════════════════
 
 def compute_feature_masks(X_5m, X_1m, X_conf):
-    from lstm_data import FEATURES_5M, FEATURES_1M, CONFLUENCE_FEATURES
+    from lstm_data import ENCODED_FEATURES_5M, ENCODED_FEATURES_1M, CONFLUENCE_FEATURES
     diagnostics = {"masked_5m": [], "masked_1m": [], "masked_conf": []}
     mask_5m = np.ones(X_5m.shape[2], dtype=bool)
     for i in range(X_5m.shape[2]):
         if np.var(X_5m[:, :, i]) < VARIANCE_THRESHOLD:
             mask_5m[i] = False
-            diagnostics["masked_5m"].append(FEATURES_5M[i] if i < len(FEATURES_5M) else f"feature_{i}")
+            diagnostics["masked_5m"].append(
+                ENCODED_FEATURES_5M[i] if i < len(ENCODED_FEATURES_5M) else f"feature_{i}"
+            )
     mask_1m = np.ones(X_1m.shape[2], dtype=bool)
     for i in range(X_1m.shape[2]):
         if np.var(X_1m[:, :, i]) < VARIANCE_THRESHOLD:
             mask_1m[i] = False
-            diagnostics["masked_1m"].append(FEATURES_1M[i] if i < len(FEATURES_1M) else f"feature_{i}")
+            diagnostics["masked_1m"].append(
+                ENCODED_FEATURES_1M[i] if i < len(ENCODED_FEATURES_1M) else f"feature_{i}"
+            )
     mask_conf = np.ones(X_conf.shape[1], dtype=bool)
     for i in range(X_conf.shape[1]):
         if np.var(X_conf[:, i]) < VARIANCE_THRESHOLD:
@@ -615,11 +619,16 @@ def train_lstm(
     meta.update(prov.to_dict())
     meta.update(contract_metadata_dict())
 
+    from lstm_data import LSTM_ENCODER_SCHEMA_VERSION, encoded_width_5m, encoded_width_1m
+
     torch.save({
         "model_state": best_state or model.state_dict(),
         "n_features_5m": n_feat_5m,
         "n_features_1m": n_feat_1m,
         "n_confluence": n_feat_conf,
+        "encoder_schema_version": LSTM_ENCODER_SCHEMA_VERSION,
+        "encoder_width_5m_pre_mask": encoded_width_5m(),
+        "encoder_width_1m_pre_mask": encoded_width_1m(),
         "mask_5m": mask_5m.tolist(),
         "mask_1m": mask_1m.tolist(),
         "mask_conf": mask_conf.tolist(),
@@ -695,7 +704,27 @@ def load_lstm(
 
     try:
         import torch
+        from lstm_data import LSTM_ENCODER_SCHEMA_VERSION, encoded_width_5m, encoded_width_1m
+
         checkpoint = torch.load(str(path), map_location="cpu", weights_only=False)
+        enc_ver = int(checkpoint.get("encoder_schema_version", 1))
+        if enc_ver < LSTM_ENCODER_SCHEMA_VERSION:
+            return (
+                None,
+                f"LSTM encoder schema v{enc_ver} < required v{LSTM_ENCODER_SCHEMA_VERSION}; retrain",
+            )
+        pre5 = int(checkpoint.get("encoder_width_5m_pre_mask", 0))
+        pre1 = int(checkpoint.get("encoder_width_1m_pre_mask", 0))
+        if pre5 and pre5 != encoded_width_5m():
+            return (
+                None,
+                f"LSTM checkpoint encoder_width_5m_pre_mask={pre5} != current {encoded_width_5m()}",
+            )
+        if pre1 and pre1 != encoded_width_1m():
+            return (
+                None,
+                f"LSTM checkpoint encoder_width_1m_pre_mask={pre1} != current {encoded_width_1m()}",
+            )
         model = build_model(
             checkpoint["n_features_5m"],
             checkpoint["n_features_1m"],

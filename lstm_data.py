@@ -27,7 +27,7 @@ import logging
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 log = logging.getLogger("lstm_data")
 
@@ -145,6 +145,68 @@ def _encode_vwap_side_feature(snap: dict) -> float:
 
 # Columns that should be log-transformed (large magnitude, sign matters)
 LOG_TRANSFORM_COLS = {"net_gamma", "net_delta", "charm_net"}
+
+# Nullable numerics: NULL in DB must not be confused with 0.0 (especially centered
+# cross-asset fields). Each emits value + ``__present`` mask (1=present, 0=missing).
+NULLABLE_NUMERIC_COLS_5M = frozenset({
+    "spy_chg_pct",
+    "qqq_chg_pct",
+    "iwm_chg_pct",
+    "spy_weighted_push",
+    "qqq_weighted_push",
+    "iwm_weighted_push",
+    "vix_level",
+    "iv_level",
+})
+NULLABLE_NUMERIC_COLS_1M = frozenset({
+    "spy_chg_pct",
+    "qqq_chg_pct",
+    "vix_level",
+    "iv_level",
+})
+
+# Bump when encoder layout changes (requires full LSTM/Transformer retrain).
+LSTM_ENCODER_SCHEMA_VERSION = 2
+
+
+def _build_encoded_feature_names(base: list[str], nullable: frozenset[str]) -> list[str]:
+    names: list[str] = []
+    for col in base:
+        names.append(col)
+        if col in nullable:
+            names.append(f"{col}__present")
+    return names
+
+
+ENCODED_FEATURES_5M = _build_encoded_feature_names(FEATURES_5M, NULLABLE_NUMERIC_COLS_5M)
+ENCODED_FEATURES_1M = _build_encoded_feature_names(FEATURES_1M, NULLABLE_NUMERIC_COLS_1M)
+
+
+def encoded_width_5m() -> int:
+    return len(ENCODED_FEATURES_5M)
+
+
+def encoded_width_1m() -> int:
+    return len(ENCODED_FEATURES_1M)
+
+
+def assert_lstm_encoder_checkpoint_compatible(checkpoint: Mapping[str, Any]) -> None:
+    """Fail closed when checkpoint predates mask-channel encoder (requires retrain)."""
+    enc_ver = int(checkpoint.get("encoder_schema_version", 1))
+    if enc_ver < LSTM_ENCODER_SCHEMA_VERSION:
+        raise ValueError(
+            f"LSTM encoder schema v{enc_ver} < required v{LSTM_ENCODER_SCHEMA_VERSION}; retrain"
+        )
+    pre5 = checkpoint.get("encoder_width_5m_pre_mask")
+    pre1 = checkpoint.get("encoder_width_1m_pre_mask")
+    if pre5 is not None and int(pre5) != encoded_width_5m():
+        raise ValueError(
+            f"encoder_width_5m_pre_mask={pre5} != current {encoded_width_5m()}"
+        )
+    if pre1 is not None and int(pre1) != encoded_width_1m():
+        raise ValueError(
+            f"encoder_width_1m_pre_mask={pre1} != current {encoded_width_1m()}"
+        )
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -430,13 +492,49 @@ def extract_rth_snapshots(
 # ════════════════════════════════════════════════════════════════════════════════
 
 def _safe_float(v) -> float:
-    """Convert any value to float, returning 0.0 for None/invalid."""
+    """Convert any value to float, returning 0.0 for None/invalid (non-nullable columns only)."""
     if v is None:
         return 0.0
     try:
         return float(v)
     except (ValueError, TypeError):
         return 0.0
+
+
+def _raw_finite_float(v) -> Optional[float]:
+    if v is None:
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(f):
+        return None
+    return f
+
+
+def _encode_nullable_chg_or_push(raw) -> tuple[float, float]:
+    """Value channel + present mask for % / push fields."""
+    f = _raw_finite_float(raw)
+    if f is None:
+        return 0.0, 0.0
+    return max(-5.0, min(5.0, f)), 1.0
+
+
+def _encode_nullable_level(raw) -> tuple[float, float]:
+    """Value channel + present mask for level fields (vix, iv)."""
+    f = _raw_finite_float(raw)
+    if f is None:
+        return 0.0, 0.0
+    return f, 1.0
+
+
+def _append_nullable_numeric(features: list, snap: dict, col: str) -> None:
+    if col.endswith("_chg_pct") or col.endswith("_push"):
+        val, mask = _encode_nullable_chg_or_push(snap.get(col))
+    else:
+        val, mask = _encode_nullable_level(snap.get(col))
+    features.extend([val, mask])
 
 
 def canonical_reference_spot_from_sequence_window_first_bar(window: list) -> float:
@@ -510,10 +608,8 @@ def encode_snapshot_5m(snap: dict, ref_spot: float) -> list:
             # Large magnitude + signed: use signed log
             val = _safe_float(snap.get(col))
             features.append(_signed_log(val))
-        elif col.endswith("_chg_pct") or col.endswith("_push"):
-            # Already in percentage: keep as-is but clip outliers
-            val = _safe_float(snap.get(col))
-            features.append(max(-5.0, min(5.0, val)))
+        elif col in NULLABLE_NUMERIC_COLS_5M:
+            _append_nullable_numeric(features, snap, col)
         else:
             # Everything else: safe float
             features.append(_safe_float(snap.get(col)))
@@ -543,9 +639,8 @@ def encode_snapshot_1m(snap: dict, ref_spot: float) -> list:
         elif col in LOG_TRANSFORM_COLS:
             val = _safe_float(snap.get(col))
             features.append(_signed_log(val))
-        elif col.endswith("_chg_pct"):
-            val = _safe_float(snap.get(col))
-            features.append(max(-5.0, min(5.0, val)))
+        elif col in NULLABLE_NUMERIC_COLS_1M:
+            _append_nullable_numeric(features, snap, col)
         else:
             features.append(_safe_float(snap.get(col)))
 
@@ -776,7 +871,7 @@ def build_lstm_dataset(
 
                 # ── Track NaN counts for diagnostics (vectorized) ─────────
                 arr_5m = np.array(seq_5m)  # shape: (lookback, n_features)
-                for i, col in enumerate(FEATURES_5M):
+                for i, col in enumerate(ENCODED_FEATURES_5M):
                     if col not in nan_counts:
                         nan_counts[col] = 0
                     nan_counts[col] += int(np.isnan(arr_5m[:, i]).sum())

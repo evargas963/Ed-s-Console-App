@@ -518,6 +518,8 @@ def train_transformer(
     mean_masked = np.asarray(mean, dtype=np.float32)[feature_mask]
     std_masked = np.asarray(std, dtype=np.float32)[feature_mask]
 
+    from lstm_data import LSTM_ENCODER_SCHEMA_VERSION, encoded_width_5m
+
     torch.save({
         "model_state": best_state or model.state_dict(),
         "n_features": n_features,
@@ -526,6 +528,8 @@ def train_transformer(
         "n_heads": N_HEADS,
         "n_encoder_layers": N_ENCODER_LAYERS,
         "d_ff": D_FF,
+        "encoder_schema_version": LSTM_ENCODER_SCHEMA_VERSION,
+        "encoder_width_5m_pre_mask": encoded_width_5m(),
         "feature_mask": feature_mask.tolist(),
         "norm_mean": mean_masked.tolist(),
         "norm_std": std_masked.tolist(),
