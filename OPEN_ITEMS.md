@@ -61,7 +61,7 @@
 
 - [x] **AUDIT-MODEL-READINESS-BUGFIX** @ `c32ae4b` — fixed `PRIMARY_DECISION_HORIZONS` UnboundLocalError, `xgb_exists` NameError, XGB null gate excludes sparse `pred_*` inference columns; PRE-TRAIN GATE GO on operator DB.
 
-- [ ] **AUDIT-CURSOR-DATA-UI-SLICE-2026-05-27** — **Claude full Read audit** of Cursor commits `f078593` … `6222cc6` on `feature/institutional-key-levels`. Handoff: `ACTIVE_PROGRAM.md` §Claude audit handoff. **Cursor reaudit fixes @ `cb40b80`:** QQQ full-top + quote-tick backfill parity, IWM 55/45 blend parity, Claude UI cleanup committed, OPEN_ITEMS reconciled. **Closes when:** Claude reaudit sign-off @ `cb40b80` with file:line citations.
+- [x] **AUDIT-CURSOR-DATA-UI-SLICE-2026-05-27** @ `cb40b80` — Claude reaudit **signed off** (FIND-A QQQ full-top + quote-tick as-of, FIND-B IWM `blend_iwm_weighted_push` 55/45, FIND-C UI/doc lock); no new FINDs. Tip `6335015` (doc pin). Tests `tests/test_scheduler_user_tickers_return_type.py` + `tests/test_issue18_ui_contract.py` + feature/training slice **67 passed** @ reaudit. **Host:** `python backfill_snapshot_derived.py --skip-normalizer` to re-touch historical rows with corrected math.
 
 - [ ] **SPY-60C-XGB-META-BUNDLE** — `[REAL-GATE: host-only]` Active bundle missing `xgb_SPY_60c.pkl` + `meta_SPY_60c.pkl` in `models/active/SPY/` (lstm/transformer 60c present). UI correctly shows UNAVAILABLE for 60M when stack incomplete. **Closes when:** governed train+promote lands both artifacts + verify_active_models SPY 60c row green.
 

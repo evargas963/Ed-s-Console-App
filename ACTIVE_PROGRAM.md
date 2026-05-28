@@ -112,19 +112,19 @@ The chip + unified `signal-rail-card` design is the **single source of truth**. 
 
 ---
 
-## Claude audit handoff — Cursor slice 2026-05-27 (reaudit pending)
+## Claude audit handoff — Cursor slice 2026-05-27 (CLOSED @ `cb40b80`)
 
-**Operator request:** Claude full Read audit of all Cursor work on this branch.  
+**Status:** Claude reaudit **signed off** — `AUDIT-CURSOR-DATA-UI-SLICE-2026-05-27` closed @ `cb40b80` (doc pin `6335015`).  
 **Branch:** `feature/institutional-key-levels`  
-**Audit range:** `f078593` … `6222cc6` (initial); **reaudit @ tip** after FIND fixes below.
+**Audit range:** `f078593` … `6222cc6` (initial); fixes `cb40b80` + `6335015`.
 
-### FIND fixes landed (Cursor @ tip — pending Claude reaudit)
+### FIND resolution (all closed — no new FINDs)
 
 | FIND | Fix |
 |------|-----|
 | QQQ backfill math | `weighted_pushes_from_snapshot_row` uses full `QQQ_TOP`; `merged_snapshot_chg_map` + `confluence_quote_ticks` as-of `ts_utc` for WMT/GOOG; tests `test_qqq_weighted_push_full_top_matches_build_confluence`, `test_backfill_weighted_pushes_uses_quote_ticks` |
 | IWM backfill math | `blend_iwm_weighted_push` (55/45) shared with `iwm_blended_participation_push`; backfill no longer sector-only; test `test_iwm_weighted_push_matches_blended_participation` |
-| Doc / UI drift | Claude `signal-rail-card` UI + `test_issue18_ui_contract.py` committed; OPEN_ITEMS supersede Cursor UI closure @ `c0770f6` |
+| Doc / UI drift | Claude `signal-rail-card` UI + `test_issue18_ui_contract.py` (25/25); OPEN_ITEMS supersede Cursor UI closure @ `c0770f6` |
 
 ### Commits in scope (Read in order)
 
@@ -135,7 +135,7 @@ The chip + unified `signal-rail-card` design is the **single source of truth**. 
 | `1af892e` | Initial Claude audit handoff docs |
 | *(tip)* | qqq_weighted_push historical backfill, quote-tick impute, audit bugfixes |
 
-**Tip SHA:** `c32ae4b` (after push: `git log -1 --oneline`)
+**Closure SHA:** `cb40b80` (fix) · tip `6335015` (OPEN_ITEMS pin)
 
 ### Files — Read end-to-end (producer/consumer cone)
 
@@ -163,13 +163,14 @@ python backfill_snapshot_derived.py --skip-normalizer
 | `audit_model_readiness` PRE-TRAIN GATE | broken / NO-GO | **GO** |
 | `snapshots_1m_normalized` rows | 107,774 | 107,774 (rematerialized) |
 
-### Closed OPEN_ITEMS @ tip
+### Closed OPEN_ITEMS @ closure
 
-- `UI-CARD-PROVENANCE-CHIPS` @ `c0770f6`
-- `QQQ-WEIGHTED-PUSH-HISTORICAL-NULLS` @ `c32ae4b`
+- `AUDIT-CURSOR-DATA-UI-SLICE-2026-05-27` @ `cb40b80`
+- `UI-CARD-PROVENANCE-CHIPS` @ `cb40b80` (supersedes `c0770f6`)
+- `QQQ-WEIGHTED-PUSH-HISTORICAL-NULLS` @ `cb40b80`
 - `AUDIT-MODEL-READINESS-BUGFIX` @ `c32ae4b`
 
-### Still open — audit must NOT treat as done
+### Still open (post-audit — not blockers for slice sign-off)
 
 | Item | Status |
 |------|--------|
