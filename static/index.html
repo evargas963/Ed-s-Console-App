@@ -899,48 +899,195 @@
     color: #FF3C3C;
     border: 1px solid rgba(255,60,60,.35);
   }
-  .tf-source {
-    margin-top: 4px;
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: .08em;
-    padding: 2px 6px;
-    border-radius: 3px;
-    max-width: 100%;
-    text-align: center;
-    line-height: 1.2;
+
+  /* ── tf-source-chip — per-pill provenance chip (5 variants) ─────────────
+     EMPIRICAL · ML FUSION · BLEND · UNAVAILABLE · DEGRADED
+     Backed by deriveSourceForHorizon(d, slug); server may override via
+     d.mh_prob_source_by_horizon[slug]. Tooltip carries operator text. */
+  .tf-source-chip {
+    margin-top: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid;
+    white-space: nowrap;
   }
-  .tf-source.tf-source--hidden {
-    visibility: hidden;
-    border: 1px solid transparent;
-    background: transparent;
-    color: transparent;
+  .tf-source-chip::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
   }
-  .tf-source.tf-source--empirical {
-    background: rgba(148, 163, 184, .2);
-    color: #cbd5e1;
-    border: 1px solid #64748b;
+  .tf-source-chip--empirical {
+    color: #7dd3fc;
+    border-color: rgba(56,189,248,0.45);
+    background: rgba(56,189,248,0.10);
   }
-  .tf-source.tf-source--ml {
-    background: rgba(0, 230, 118, .12);
+  .tf-source-chip--empirical::before { background: #38bdf8; }
+  .tf-source-chip--ml-fusion {
     color: #00E676;
-    border: 1px solid rgba(0, 230, 118, .35);
+    border-color: rgba(0,230,118,0.50);
+    background: rgba(0,230,118,0.10);
   }
-  .tf-source.tf-source--blend {
-    background: rgba(96, 165, 250, .15);
-    color: #93c5fd;
-    border: 1px solid rgba(96, 165, 250, .4);
-  }
-  .tf-source.tf-source--unavailable {
-    background: rgba(255, 60, 60, .12);
-    color: #f87171;
-    border: 1px solid rgba(255, 60, 60, .4);
-  }
-  .tf-source.tf-source--degraded {
-    background: rgba(251, 191, 36, .15);
+  .tf-source-chip--ml-fusion::before { background: #00E676; }
+  .tf-source-chip--blend {
     color: #fbbf24;
-    border: 1px solid rgba(251, 191, 36, .45);
+    border-color: rgba(251,191,36,0.45);
+    background: rgba(251,191,36,0.10);
   }
+  .tf-source-chip--blend::before { background: #fbbf24; }
+  .tf-source-chip--unavailable {
+    color: var(--text3);
+    border-color: var(--border2);
+    background: rgba(2,6,23,0.35);
+  }
+  .tf-source-chip--unavailable::before { background: var(--text3); }
+  .tf-source-chip--degraded {
+    color: #ef4444;
+    border-color: rgba(239,68,68,0.55);
+    background: rgba(239,68,68,0.12);
+  }
+  .tf-source-chip--degraded::before { background: #ef4444; }
+  .tf-source-detail {
+    margin-top: 4px;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-align: center;
+    line-height: 1.3;
+    color: var(--text3);
+  }
+  .tf-state-up .tf-source-detail,
+  .tf-state-down .tf-source-detail { color: rgba(255,255,255,0.55); }
+
+  /* ── Unified signal-rail-card — fusion verdict (top) + empirical context
+     (bottom). Sits below #timeframe-signal-row, mirrors its max-width so
+     the row reads as one operator surface. ───────────────────────────── */
+  .signal-rail-card {
+    margin-top: 8px;
+    border-radius: 8px;
+    border: 1px solid;
+    overflow: hidden;
+    max-width: min(620px, 50vw);
+    box-sizing: border-box;
+  }
+  @media (max-width: 720px) {
+    .signal-rail-card { max-width: 100%; }
+  }
+  .signal-rail-card--up {
+    background: linear-gradient(180deg, rgba(0,230,118,0.10), rgba(0,230,118,0.02));
+    border-color: rgba(0,230,118,0.45);
+  }
+  .signal-rail-card--down {
+    background: linear-gradient(180deg, rgba(255,60,60,0.10), rgba(255,60,60,0.02));
+    border-color: rgba(255,60,60,0.45);
+  }
+  .signal-rail-card--withheld {
+    background: rgba(15,23,42,0.55);
+    border-color: var(--border2);
+  }
+  .signal-rail-card--armed {
+    border-width: 2px;
+    box-shadow: 0 0 0 1px rgba(0,230,118,0.22), 0 0 22px rgba(0,230,118,0.22);
+  }
+  .src-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 14px;
+    font-family: var(--mono);
+    flex-wrap: wrap;
+  }
+  .signal-rail-card--up .src-top { color: #00E676; }
+  .signal-rail-card--down .src-top { color: #FF3C3C; }
+  .signal-rail-card--withheld .src-top { color: var(--text); }
+  .src-top .fas-label {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .src-top .fas-dir {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+  .src-top .fas-agreement {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .src-top .fas-track { width: 80px; height: 5px; background: rgba(2,6,23,0.5); border-radius: 3px; overflow: hidden; }
+  .src-top .fas-fill { height: 100%; border-radius: 3px; }
+  .signal-rail-card--up .src-top .fas-fill { background: #00E676; }
+  .signal-rail-card--down .src-top .fas-fill { background: #FF3C3C; }
+  .src-top .fas-msg {
+    color: var(--text3);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: none;
+  }
+  .fas-armed-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    color: #04070c;
+    background: #00E676;
+    padding: 4px 10px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .fas-degraded-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    color: #1a0508;
+    background: #ef4444;
+    padding: 4px 10px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .src-bottom {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 5px 14px 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    flex-wrap: wrap;
+  }
+  .src-bottom .ecl-label {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+  }
+  .src-bottom .ecl-tier { font-weight: 700; color: var(--text); }
+  .src-bottom .ecl-n { color: var(--text); font-weight: 500; }
+  .src-bottom .ecl-probs { margin-left: auto; display: flex; gap: 12px; font-size: 12px; font-weight: 700; }
+  .src-bottom .ecl-probs .up { color: #00E676; font-weight: 700; }
+  .src-bottom .ecl-probs .down { color: #FF3C3C; font-weight: 700; }
+  .src-bottom .ecl-probs .flat { color: #6a7590; font-weight: 700; }
+
   .session-badge {
     margin-left: auto;
     font-family: var(--mono);
@@ -1078,36 +1225,6 @@
     gap: 8px;
     align-items: center;
     margin-bottom: 6px;
-  }
-  .dr-fusion-authority-strip {
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    padding: 6px 10px;
-    border-radius: 6px;
-    margin-bottom: 8px;
-  }
-  .dr-fusion-authority-strip--active {
-    background: rgba(0, 230, 118, 0.12);
-    border: 1px solid rgba(0, 230, 118, 0.35);
-    color: #00E676;
-  }
-  .dr-fusion-authority-strip--muted {
-    background: rgba(100, 116, 139, 0.18);
-    border: 1px solid rgba(148, 163, 184, 0.35);
-    color: #cbd5e1;
-  }
-  .dr-empirical-context-line {
-    font-size: 11px;
-    color: var(--text2);
-    margin: -2px 0 8px;
-    padding: 0 2px;
-  }
-  .dr-empirical-context-line.muted {
-    color: var(--text3);
-    font-size: 10px;
   }
   .decision-verdict-pill {
     font-family: var(--mono);
@@ -2600,7 +2717,8 @@
             <div class="tf-dir">NEUTRAL</div>
             <div class="tf-pct">0%</div>
             <div class="tf-conf-lbl" title="Per-horizon supporting assessment (mhap_rows[i].confidence)">HORIZON CONF</div>
-            <span class="tf-source tf-source--hidden" aria-label="Probability source">—</span>
+            <span class="tf-source-chip tf-source-chip--unavailable" title="UNAVAILABLE · Missing bundle or stack failed · operator text: “No ML — WAIT”" aria-label="Probability source">—</span>
+            <div class="tf-source-detail" aria-label="Source detail">—</div>
             <span class="tf-tag tf-tag--hidden">—</span>
           </div>
           <div class="tf-signal-card tf-state-dim" id="tf-signal-5c" role="group" aria-label="5 minute horizon">
@@ -2610,7 +2728,8 @@
             <div class="tf-dir">NEUTRAL</div>
             <div class="tf-pct">0%</div>
             <div class="tf-conf-lbl" title="Per-horizon supporting assessment (mhap_rows[i].confidence)">HORIZON CONF</div>
-            <span class="tf-source tf-source--hidden" aria-label="Probability source">—</span>
+            <span class="tf-source-chip tf-source-chip--unavailable" title="UNAVAILABLE · Missing bundle or stack failed · operator text: “No ML — WAIT”" aria-label="Probability source">—</span>
+            <div class="tf-source-detail" aria-label="Source detail">—</div>
             <span class="tf-tag tf-tag--hidden">—</span>
           </div>
           <div class="tf-signal-card tf-state-dim" id="tf-signal-15c" role="group" aria-label="15 minute horizon">
@@ -2620,7 +2739,8 @@
             <div class="tf-dir">NEUTRAL</div>
             <div class="tf-pct">0%</div>
             <div class="tf-conf-lbl" title="Per-horizon supporting assessment (mhap_rows[i].confidence)">HORIZON CONF</div>
-            <span class="tf-source tf-source--hidden" aria-label="Probability source">—</span>
+            <span class="tf-source-chip tf-source-chip--unavailable" title="UNAVAILABLE · Missing bundle or stack failed · operator text: “No ML — WAIT”" aria-label="Probability source">—</span>
+            <div class="tf-source-detail" aria-label="Source detail">—</div>
             <span class="tf-tag tf-tag--hidden">—</span>
           </div>
           <div class="tf-signal-card tf-state-dim" id="tf-signal-60c" role="group" aria-label="60 minute horizon">
@@ -2630,24 +2750,41 @@
             <div class="tf-dir">NEUTRAL</div>
             <div class="tf-pct">0%</div>
             <div class="tf-conf-lbl" title="Per-horizon supporting assessment (mhap_rows[i].confidence)">HORIZON CONF</div>
-            <span class="tf-source tf-source--hidden" aria-label="Probability source">—</span>
+            <span class="tf-source-chip tf-source-chip--unavailable" title="UNAVAILABLE · Missing bundle or stack failed · operator text: “No ML — WAIT”" aria-label="Probability source">—</span>
+            <div class="tf-source-detail" aria-label="Source detail">—</div>
             <span class="tf-tag tf-tag--hidden">—</span>
           </div>
+        </div>
+      </div>
+
+      <!-- Signal rail card — fusion verdict (top) + empirical context (bottom).
+           One operator surface below the 4 horizon pills; carries Entry armed /
+           Stack degraded authority tags inline. Hidden until renderSignalRailCard
+           paints. -->
+      <div id="signal-rail-card" class="signal-rail-card" style="display:none" aria-label="Signal provenance and empirical context">
+        <div class="src-top" id="signal-rail-top">
+          <span class="fas-label" id="src-fas-label">—</span>
+          <span class="fas-dir" id="src-fas-dir">—</span>
+          <span class="fas-agreement" id="src-fas-agreement"></span>
+        </div>
+        <div class="src-bottom" id="signal-rail-bottom">
+          <span class="ecl-label">Empirical (5c)</span>
+          <span class="ecl-tier" id="src-ecl-tier">—</span>
+          <span class="ecl-n" id="src-ecl-n">—</span>
+          <span class="ecl-probs" id="src-ecl-probs"></span>
         </div>
       </div>
 
       <!-- Signal cards -->
       <div class="signal-grid">
 
-        <!-- Decision command rail (product horizons only: 1m/5m/15m/60m) -->
+        <!-- Decision command rail — operator UI design lock 2026-05-27.
+             DO NOT re-introduce: title strip ("DECISION COMMAND · Operator surface…"),
+             dr-trade-pill / dr-bias-pill / dr-desk-confidence / dr-confidence-pill
+             verdict row, or dr-fusion-authority-strip / dr-empirical-context-line.
+             Single source of truth = signal-rail-card above + chip ribbon below. -->
         <div class="signal-card" id="decision-rail-card" data-ed-tier-c="1">
           <div class="signal-card-header">
-            <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
-              <span class="signal-card-title">Decision Command</span>
-              <span style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:0.06em;text-transform:uppercase">
-                Operator surface · bar horizons map 1c→1m, 5c→5m, 15c→15m, 60c→60m
-              </span>
-            </div>
             <span class="conviction-pill low" id="dr-freshness-pill" title="Analytical bundle freshness">FRESH —</span>
             <span class="decision-chip dim" id="dr-stack-mode-chip" title="Global stack_runtime.stack_mode (not artifact compliance)" style="display:none">STACK —</span>
             <span class="decision-chip dim" id="dr-signals-engine-fail-chip" title="stack_runtime.signals_engine_failed — signals/market-state pipeline crashed (distinct from fusion/MC-only INVALID)" style="display:none">SIGNALS —</span>
@@ -2658,14 +2795,6 @@
             <span class="decision-chip dim" id="dr-level-test-chip" title="Recent tests of nearest key level — Pass 4b wires /api/level_crosses count_level_tests" style="display:none">TEST —</span>
           </div>
           <div class="signal-card-body">
-            <div class="decision-verdict-row">
-              <span class="decision-verdict-pill trade-no" id="dr-trade-pill">NO TRADE</span>
-              <span class="decision-verdict-pill bias-neutral" id="dr-bias-pill">NEUTRAL</span>
-              <span class="desk-confidence-pill" id="dr-desk-confidence" title="Multi-horizon desk aggregate (final_confidence)">—</span>
-              <span class="conviction-pill low" id="dr-confidence-pill" title="Call-layer conviction band (qualitative)">CONF —</span>
-            </div>
-            <div id="dr-fusion-authority-strip" class="dr-fusion-authority-strip dr-fusion-authority-strip--muted" aria-live="polite">Not tradable — empirical context only</div>
-            <div id="dr-empirical-context-line" class="dr-empirical-context-line" style="display:none"></div>
             <div class="signal-chain-bar" id="dr-signal-chain-host" aria-label="Signal chain status"></div>
 
             <details class="hz-breakdown" id="dr-hz-breakdown">
@@ -3765,6 +3894,228 @@ function renderContextLayer(d) {
   body.innerHTML = parts.join('');
 }
 
+// ── UI card provenance spec — chip + signal-rail-card helpers ─────────────
+// Implements ACTIVE_PROGRAM §UI card provenance spec. Chip vocabulary:
+//   EMPIRICAL | ML FUSION | BLEND | UNAVAILABLE | DEGRADED
+// deriveSourceForHorizon accepts both the brief's vocabulary directly AND the
+// server's internal stamping (fusion_ml_primary / empirical_support_blend /
+// fusion_directional_missing). When d.mh_prob_source_by_horizon[slug] is not
+// stamped, the chip is derived from existing payload fields (fusion authority,
+// per-horizon fusion availability, empirical histogram presence, integrity
+// flag, mhap row state). Tooltip on each chip carries the operator-readable
+// text per the brief.
+function deriveSourceForHorizon(d, slug) {
+  if (!d || typeof d !== 'object') return 'UNAVAILABLE';
+  const srcMap = d.mh_prob_source_by_horizon;
+  if (srcMap && typeof srcMap === 'object' && srcMap[slug] != null) {
+    const raw = String(srcMap[slug]).trim();
+    const up = raw.toUpperCase();
+    // Brief-style values (preferred forward path)
+    if (up === 'ML_FUSION' || up === 'ML FUSION') return 'ML FUSION';
+    if (up === 'EMPIRICAL' || up === 'BLEND' || up === 'UNAVAILABLE' || up === 'DEGRADED') return up;
+    // Server internal stamping (current implementation in resolve_horizon_source / fusion contract)
+    const lc = raw.toLowerCase();
+    if (lc === 'fusion_ml_primary') return 'ML FUSION';
+    if (lc === 'empirical_support_blend') return 'BLEND';
+    if (lc === 'fusion_directional_missing') return 'UNAVAILABLE';
+    // Fall through to derivation below if value is unrecognized.
+  }
+  const si = (d.stack_integrity_v1 && typeof d.stack_integrity_v1 === 'object') ? d.stack_integrity_v1 : {};
+  const degraded = si.degraded === true;
+  const mhap = Array.isArray(d.mhap_rows) ? d.mhap_rows : [];
+  const row = mhap.find(r => r && String(r.horizon || '').toLowerCase() === slug);
+  const rowMissing = !row
+    || String(row.call || '').toUpperCase() === 'UNAVAILABLE'
+    || String(row.row_state || '').toLowerCase() === 'missing';
+  let hzFusionOk = false;
+  if (typeof isFusionAuthoritative === 'function' && isFusionAuthoritative(d)) {
+    const hfa = d.horizon_fusion_available;
+    if (hfa && typeof hfa === 'object' && Object.prototype.hasOwnProperty.call(hfa, slug)) {
+      hzFusionOk = hfa[slug] === true;
+    } else {
+      hzFusionOk = true;
+    }
+  }
+  const hzKey = ({ '1c': '1m', '5c': '5m', '15c': '15m', '60c': '60m' })[slug] || slug;
+  const hp = (d.horizon_prob_bars && typeof d.horizon_prob_bars === 'object') ? d.horizon_prob_bars[hzKey] : null;
+  const empPresent = !!(hp && hp.up != null && hp.down != null && hp.flat != null);
+  if (rowMissing) return degraded ? 'DEGRADED' : 'UNAVAILABLE';
+  if (degraded && !hzFusionOk) return 'DEGRADED';
+  if (hzFusionOk && empPresent) return 'BLEND';
+  if (hzFusionOk) return 'ML FUSION';
+  if (empPresent) return 'EMPIRICAL';
+  return 'UNAVAILABLE';
+}
+function sourceChipCssClass(source) {
+  switch (String(source || '').toUpperCase()) {
+    case 'EMPIRICAL':  return 'tf-source-chip--empirical';
+    case 'ML FUSION':  return 'tf-source-chip--ml-fusion';
+    case 'BLEND':      return 'tf-source-chip--blend';
+    case 'DEGRADED':   return 'tf-source-chip--degraded';
+    default:           return 'tf-source-chip--unavailable';
+  }
+}
+function sourceChipTitle(source) {
+  switch (String(source || '').toUpperCase()) {
+    case 'EMPIRICAL':  return 'EMPIRICAL · Similar-setup histogram only · operator text: “N similar setups”';
+    case 'ML FUSION':  return 'ML FUSION · Full stack fusion authoritative for that horizon · operator text: “Stack trained”';
+    case 'BLEND':      return 'BLEND · ~85% fusion + ~15% empirical support · operator text: “Stack + history”';
+    case 'DEGRADED':   return 'DEGRADED · Training audit NO-GO or incomplete 16-file bundle · operator text: “Data quality hold”';
+    case 'UNAVAILABLE':
+    default:           return 'UNAVAILABLE · Missing bundle or stack failed · operator text: “No ML — WAIT”';
+  }
+}
+function sourceOperatorText(source, d, slug) {
+  const up = String(source || '').toUpperCase();
+  if (up === 'ML FUSION') return 'Stack trained';
+  if (up === 'BLEND') return 'Stack + history';
+  if (up === 'UNAVAILABLE') return 'No ML — WAIT';
+  if (up === 'DEGRADED') return 'Data quality hold';
+  if (up === 'EMPIRICAL') {
+    const hzKey = ({ '1c': '1m', '5c': '5m', '15c': '15m', '60c': '60m' })[slug] || slug;
+    const hp = (d && d.horizon_prob_bars && typeof d.horizon_prob_bars === 'object') ? d.horizon_prob_bars[hzKey] : null;
+    if (hp && hp.labeled_count != null) return String(hp.labeled_count) + ' similar setups';
+    return 'Similar setups';
+  }
+  return '—';
+}
+try {
+  window.deriveSourceForHorizon = deriveSourceForHorizon;
+  window.sourceChipCssClass = sourceChipCssClass;
+  window.sourceChipTitle = sourceChipTitle;
+  window.sourceOperatorText = sourceOperatorText;
+} catch (e) {}
+
+/** Unified signal-rail-card — fusion verdict on top + empirical context on
+ *  bottom; carries inline "Entry armed" (solid green) or "Stack degraded"
+ *  (solid red) authority tags driven by existing payload fields. */
+function renderSignalRailCard(d) {
+  const card = document.getElementById('signal-rail-card');
+  if (!card) return;
+  if (d == null || typeof d !== 'object') { card.style.display = 'none'; return; }
+  const mhap = Array.isArray(d.mhap_rows) ? d.mhap_rows : [];
+  const pending = d.analytics_pending_shell === true;
+  if (pending && mhap.length === 0) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  const fusionOk = (typeof isFusionAuthoritative === 'function') && isFusionAuthoritative(d);
+  const tradable = (typeof isCanonicalTradable === 'function') && isCanonicalTradable(d);
+  const tradeable = !!d.final_tradeable;
+  const bias = String(d.final_bias || 'WAIT').toUpperCase();
+  const dir = bias === 'LONG' ? 'up' : bias === 'SHORT' ? 'down' : 'flat';
+  const si = (d.stack_integrity_v1 && typeof d.stack_integrity_v1 === 'object') ? d.stack_integrity_v1 : {};
+  const degraded = si.degraded === true;
+  const armed = tradeable && fusionOk && tradable && (dir === 'up' || dir === 'down') && !degraded;
+
+  const stateClass = (!fusionOk || !tradable) ? 'signal-rail-card--withheld'
+    : dir === 'up' ? 'signal-rail-card--up'
+    : dir === 'down' ? 'signal-rail-card--down'
+    : 'signal-rail-card--withheld';
+  card.className = 'signal-rail-card ' + stateClass + (armed ? ' signal-rail-card--armed' : '');
+
+  const topEl = document.getElementById('signal-rail-top');
+  if (topEl) {
+    topEl.innerHTML = '';
+    if (degraded) {
+      const t = document.createElement('span');
+      t.className = 'fas-degraded-tag';
+      t.textContent = '⚠ Stack degraded';
+      t.title = 'stack_integrity_v1.degraded=true — mid-pipeline fallback; verify before trading';
+      topEl.appendChild(t);
+    } else if (armed) {
+      const t = document.createElement('span');
+      t.className = 'fas-armed-tag';
+      t.textContent = '⚡ Entry armed';
+      t.title = 'final_tradeable=true and fusion authoritative — primary horizon firing';
+      topEl.appendChild(t);
+    } else if (fusionOk && tradable) {
+      const t = document.createElement('span');
+      t.className = 'fas-label';
+      t.textContent = 'Fusion authoritative';
+      topEl.appendChild(t);
+    } else {
+      const t = document.createElement('span');
+      t.className = 'fas-label';
+      t.textContent = 'Forward';
+      topEl.appendChild(t);
+    }
+    if (fusionOk && tradable) {
+      const arrow = dir === 'up' ? '↑' : dir === 'down' ? '↓' : '→';
+      const lbl = dir === 'up' ? 'LONG' : dir === 'down' ? 'SHORT' : 'FLAT';
+      const dEl = document.createElement('span');
+      dEl.className = 'fas-dir';
+      dEl.textContent = arrow + ' ' + lbl;
+      topEl.appendChild(dEl);
+      const agreeRaw = d.fusion_model_agreement;
+      const agreeNum = (agreeRaw != null && !Number.isNaN(Number(agreeRaw)))
+        ? Math.round(Math.max(0, Math.min(1, Number(agreeRaw))) * 100)
+        : null;
+      const ag = document.createElement('span');
+      ag.className = 'fas-agreement';
+      const txt = document.createElement('span');
+      txt.textContent = agreeNum != null ? (agreeNum + '% agreement') : 'agreement —';
+      ag.appendChild(txt);
+      const track = document.createElement('span');
+      track.className = 'fas-track';
+      const fill = document.createElement('span');
+      fill.className = 'fas-fill';
+      fill.style.width = (agreeNum != null ? agreeNum : 0) + '%';
+      track.appendChild(fill);
+      ag.appendChild(track);
+      const note = document.createElement('span');
+      note.style.color = 'var(--text)';
+      note.style.fontSize = '10px';
+      note.style.fontWeight = '500';
+      const nActiveRaw = d.fusion_n_models_active;
+      const nActive = (nActiveRaw != null && !Number.isNaN(Number(nActiveRaw))) ? String(nActiveRaw) : '?';
+      const primary = String(d.primary_horizon || '').toLowerCase();
+      const pLabel = ({ '1c': '1m', '5c': '5m', '15c': '15m', '60c': '60m' })[primary] || primary;
+      note.textContent = nActive + '/3 base models' + (pLabel ? ' · primary ' + pLabel : '');
+      ag.appendChild(note);
+      topEl.appendChild(ag);
+    } else {
+      const msg = document.createElement('span');
+      msg.className = 'fas-msg';
+      msg.textContent = 'Not tradable — empirical context only';
+      topEl.appendChild(msg);
+    }
+  }
+
+  const tierEl = document.getElementById('src-ecl-tier');
+  const nEl = document.getElementById('src-ecl-n');
+  const probsEl = document.getElementById('src-ecl-probs');
+  const bottomEl = document.getElementById('signal-rail-bottom');
+  const hp5 = (d.horizon_prob_bars && typeof d.horizon_prob_bars === 'object') ? d.horizon_prob_bars['5m'] : null;
+  if (hp5 && hp5.up != null && hp5.down != null && hp5.flat != null) {
+    if (bottomEl) {
+      bottomEl.style.display = 'flex';
+      bottomEl.classList.toggle('muted', fusionOk && tradable && !degraded);
+    }
+    if (tierEl) {
+      const lc = (hp5.labeled_count != null && !Number.isNaN(Number(hp5.labeled_count))) ? Number(hp5.labeled_count) : null;
+      const tier = hp5.confidence_tier
+        || (lc != null && lc >= 30 ? 'High-confidence tier'
+          : lc != null && lc >= 15 ? 'Medium-confidence tier'
+          : 'Low-confidence tier');
+      tierEl.textContent = tier;
+    }
+    if (nEl) {
+      const n = (hp5.labeled_count != null && !Number.isNaN(Number(hp5.labeled_count))) ? hp5.labeled_count : '—';
+      nEl.textContent = n + ' similar setups · last 60 sessions';
+    }
+    if (probsEl) {
+      const fmt = (v) => Math.round(Number(v) * 100) + '%';
+      probsEl.innerHTML =
+        '<span class="up">UP ' + fmt(hp5.up) + '</span>' +
+        '<span class="down">DOWN ' + fmt(hp5.down) + '</span>' +
+        '<span class="flat">FLAT ' + fmt(hp5.flat) + '</span>';
+    }
+  } else if (bottomEl) {
+    bottomEl.style.display = 'none';
+  }
+}
+try { window.renderSignalRailCard = renderSignalRailCard; } catch (e) {}
+
 /** Primary horizon surface: 1M / 5M / 15M / 60M cards (replaces legacy price header strip). */
 function renderTimeframeSignalRow(d) {
   if (d == null || typeof d !== 'object') return;
@@ -3800,40 +4151,27 @@ function renderTimeframeSignalRow(d) {
     return Math.round(Math.min(100, Math.max(0, n)));
   }
 
-  function resolveHorizonSourceChip(payload, slugKey, dirVal) {
-    const si = payload && payload.stack_integrity_v1;
-    if (si && si.degraded === true) {
-      return { cls: 'degraded', label: 'DEGRADED', title: 'Data quality hold' };
-    }
-    if (dirVal === 'UNAVAILABLE') {
-      return { cls: 'unavailable', label: 'UNAVAILABLE', title: 'No ML — WAIT' };
-    }
-    const mhSrc = (payload && payload.mh_prob_source_by_horizon && typeof payload.mh_prob_source_by_horizon === 'object')
-      ? payload.mh_prob_source_by_horizon : {};
-    const raw = String(mhSrc[slugKey] || '').toLowerCase();
-    if (raw === 'fusion_directional_missing') {
-      return { cls: 'unavailable', label: 'UNAVAILABLE', title: 'No ML — WAIT' };
-    }
-    if (raw === 'fusion_ml_primary') {
-      return { cls: 'ml', label: 'ML FUSION', title: 'Stack trained' };
-    }
-    if (raw === 'empirical_support_blend') {
-      return { cls: 'blend', label: 'BLEND', title: 'Stack + history' };
-    }
-    const n = payload && payload.samples_used != null ? payload.samples_used
-      : (payload && payload.pred_samples_used != null ? payload.pred_samples_used : null);
-    const empHint = (n != null && Number(n) > 0) ? (String(n) + ' similar setups') : 'Similar-setup histogram only';
-    return { cls: 'empirical', label: 'EMPIRICAL', title: empHint };
-  }
-
+  // Per-pill chip painter — uses top-level deriveSourceForHorizon helpers so
+  // the chip + detail elements stay in lockstep with the unified rail card.
+  // dirVal === 'UNAVAILABLE' on the mhap row trumps everything except DEGRADED.
   function paintSourceChip(card, payload, slugKey, dirVal) {
-    const srcEl = card.querySelector('.tf-source');
-    if (!srcEl) return;
-    const chip = resolveHorizonSourceChip(payload, slugKey, dirVal);
-    srcEl.className = 'tf-source tf-source--' + chip.cls;
-    srcEl.textContent = chip.label;
-    srcEl.title = chip.title;
-    srcEl.removeAttribute('aria-hidden');
+    if (!card) return;
+    let source = (typeof deriveSourceForHorizon === 'function')
+      ? deriveSourceForHorizon(payload, slugKey)
+      : 'UNAVAILABLE';
+    if (source !== 'DEGRADED' && dirVal === 'UNAVAILABLE') source = 'UNAVAILABLE';
+    const chipEl = card.querySelector('.tf-source-chip');
+    if (chipEl) {
+      chipEl.className = 'tf-source-chip ' + sourceChipCssClass(source);
+      chipEl.textContent = source;
+      chipEl.title = sourceChipTitle(source);
+      chipEl.removeAttribute('aria-hidden');
+    }
+    const detEl = card.querySelector('.tf-source-detail');
+    if (detEl) {
+      detEl.textContent = sourceOperatorText(source, payload, slugKey);
+      detEl.removeAttribute('aria-hidden');
+    }
   }
 
   const mhap = Array.isArray(d.mhap_rows) ? d.mhap_rows : [];
@@ -3868,11 +4206,15 @@ function renderTimeframeSignalRow(d) {
         tagEl.textContent = '—';
         tagEl.setAttribute('aria-hidden', 'true');
       }
-      const srcEl = card.querySelector('.tf-source');
+      const srcEl = card.querySelector('.tf-source-chip');
       if (srcEl) {
-        srcEl.className = 'tf-source tf-source--hidden';
+        srcEl.className = 'tf-source-chip tf-source-chip--unavailable';
         srcEl.textContent = '—';
-        srcEl.setAttribute('aria-hidden', 'true');
+        srcEl.title = sourceChipTitle('UNAVAILABLE');
+      }
+      const detEl = card.querySelector('.tf-source-detail');
+      if (detEl) {
+        detEl.textContent = '—';
       }
     });
     return;
@@ -4393,80 +4735,6 @@ function renderDecisionCommandRail(d) {
 
   const bias = String(d.final_bias || 'WAIT').toUpperCase();
   const tradeable = !!d.final_tradeable && (bias === 'LONG' || bias === 'SHORT');
-
-  const tradePill = $('dr-trade-pill');
-  if (tradePill) {
-    tradePill.textContent = tradeable ? 'TRADE' : 'NO TRADE';
-    tradePill.className = 'decision-verdict-pill ' + (tradeable ? 'trade-yes' : 'trade-no');
-  }
-  const biasPill = $('dr-bias-pill');
-  if (biasPill) {
-    const lbl = bias === 'LONG' ? 'LONG' : bias === 'SHORT' ? 'SHORT' : 'NEUTRAL';
-    biasPill.textContent = lbl;
-    biasPill.className = 'decision-verdict-pill ' + (
-      bias === 'LONG' ? 'bias-long' : bias === 'SHORT' ? 'bias-short' : 'bias-neutral'
-    );
-  }
-  const deskConf = $('dr-desk-confidence');
-  if (deskConf) {
-    const fc = d.final_confidence;
-    if (fc == null || fc === '' || Number.isNaN(Number(fc))) {
-      const why = txt(d.wait_reason, '') || 'Multi-horizon aggregate unavailable';
-      deskConf.textContent = 'UNAVAILABLE';
-      deskConf.className = 'desk-confidence-pill unavailable';
-      deskConf.title = `Desk confidence (final_confidence): ${why}`;
-    } else {
-      deskConf.textContent = `${Math.round(Number(fc) * 100)}%`;
-      deskConf.className = 'desk-confidence-pill';
-      const ph = txt(d.primary_horizon, '—');
-      deskConf.title = `Desk confidence (final_confidence) · primary horizon ${ph} · MHA aggregate`;
-    }
-  }
-  const confPill = $('dr-confidence-pill');
-  if (confPill) {
-    const ccRaw = optStr(d.call_conviction) || optStr(d.confidence);
-    const cc = ccRaw ? ccRaw.toLowerCase() : '';
-    confPill.textContent = cc ? cc.toUpperCase() : '—';
-    confPill.className = 'conviction-pill ' + (cc === 'high' ? 'high' : cc === 'medium' ? 'medium' : cc === 'low' ? 'low' : '');
-    const fcTxt = (d.final_confidence == null || Number.isNaN(Number(d.final_confidence)))
-      ? 'unavailable'
-      : numf(d.final_confidence, 2);
-    confPill.title = `Call-layer conviction: ${cc || '—'} · desk aggregate: ${fcTxt}`;
-  }
-
-  const authStrip = $('dr-fusion-authority-strip');
-  if (authStrip) {
-    if (fusionActive) {
-      const domDir = String(d.fusion_dominant_direction || d.dominant_dir || '—').toUpperCase();
-      const agree = d.fusion_model_agreement;
-      const agreePct = (agree != null && !Number.isNaN(Number(agree)))
-        ? Math.round(Number(agree) * 100)
-        : null;
-      authStrip.textContent = agreePct != null
-        ? `Fusion authoritative · ${domDir} · agreement ${agreePct}%`
-        : `Fusion authoritative · ${domDir}`;
-      authStrip.className = 'dr-fusion-authority-strip dr-fusion-authority-strip--active';
-    } else {
-      authStrip.textContent = 'Not tradable — empirical context only';
-      authStrip.className = 'dr-fusion-authority-strip dr-fusion-authority-strip--muted';
-    }
-  }
-  const empLine = $('dr-empirical-context-line');
-  if (empLine) {
-    const nRaw = d.samples_used != null ? d.samples_used : d.pred_samples_used;
-    const n = (nRaw != null && !Number.isNaN(Number(nRaw))) ? Number(nRaw) : null;
-    const tier = txt(d.tier_label, '');
-    if (n != null && n > 0) {
-      empLine.style.display = '';
-      empLine.textContent = tier
-        ? `${tier} · ${n} similar setups`
-        : `${n} similar setups (empirical context)`;
-      empLine.className = 'dr-empirical-context-line' + (fusionActive ? ' muted' : '');
-    } else {
-      empLine.style.display = 'none';
-      empLine.textContent = '';
-    }
-  }
 
   const rt = (d.stack_runtime && typeof d.stack_runtime === 'object') ? d.stack_runtime : {};
   const gov = (d.stack_governance && typeof d.stack_governance === 'object') ? d.stack_governance : {};
@@ -5555,6 +5823,7 @@ function renderTierBLight(d, fullRenderSource) {
   _lastRenderTs = Date.now();
   clearHardStaleUi();
   try { renderTimeframeSignalRow(window._lastData); } catch (e) {}
+  try { renderSignalRailCard(window._lastData); } catch (e) {}
   return true;
 }
 
@@ -5703,6 +5972,7 @@ function renderTierCPendingShell(d, fullRenderSource) {
   if (Array.isArray(merged.mhap_rows) && merged.mhap_rows.length) {
     try { renderDecisionCommandRail(merged); } catch (e) {}
   }
+  try { renderSignalRailCard(merged); } catch (e) {}
   _lastRenderTs = Date.now();
   clearHardStaleUi();
   _updateTierCLaneStaleMarkers();
@@ -5786,6 +6056,7 @@ function renderTierALive(d, fullRenderSource) {
   _lastRenderTs = Date.now();
   clearHardStaleUi();
   try { renderTimeframeSignalRow(window._lastData); } catch (e) {}
+  try { renderSignalRailCard(window._lastData); } catch (e) {}
   if (Array.isArray(window._lastData.mhap_rows) && window._lastData.mhap_rows.length) {
     window._tierCCardsPaintedAtGen = window._lastRenderedDecisionGen ?? 0;
   }
@@ -5858,6 +6129,7 @@ function render(d, fullRenderSource) {
   renderDecisionCommandRail(d);
   renderV2PilotDecision(d);
   renderTimeframeSignalRow(d);
+  try { renderSignalRailCard(d); } catch (e) {}
   // Save scroll position — prevent page jumping on data refresh
   const _scrollY = window.scrollY;
 
@@ -6992,10 +7264,6 @@ try { window.horizonDirectionWithheld = horizonDirectionWithheld; } catch (e) {}
 // LIVE-UI-1 inventory; adding/removing an ID here without the matching inventory row is the
 // drift pattern feedback_mega_inventory_in_paired_fix.md guards against in mega land.
 const _LIVEUI6_BUNDLE_DIRECTION_IDS = [
-  'dr-trade-pill',
-  'dr-bias-pill',
-  'dr-desk-confidence',
-  'dr-confidence-pill',
   'dr-action-chip',
   'dr-align-class-chip',
   'dr-blocking-reason',

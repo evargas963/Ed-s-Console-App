@@ -453,17 +453,88 @@ def snapshot_row_chg_map(row: Mapping[str, Any]) -> dict[str, Optional[float]]:
     return out
 
 
-def weighted_pushes_from_snapshot_row(row: Mapping[str, Any]) -> dict[str, Optional[float]]:
-    """Recompute spy/qqq/iwm weighted_push columns from persisted constituent chg_pct."""
+IWM_BLEND_HOLDINGS_WEIGHT = 0.55
+IWM_BLEND_SECTOR_WEIGHT = 0.45
+
+
+def confluence_backfill_symbols() -> frozenset[str]:
+    """All symbols needed to recompute spy/qqq/iwm weighted_push (live-path parity)."""
+    out: set[str] = set()
+    for sym, _name, _w in SPY_TOP + QQQ_TOP + IWM_TOP_HOLDINGS + IWM_SECTORS:
+        out.add(sym.upper())
+    return frozenset(out)
+
+
+def symbols_without_snapshot_chg_col() -> frozenset[str]:
+    """Panel / QQQ / IWM names with no dedicated ``snapshots.*_chg_pct`` column."""
+    return confluence_backfill_symbols() - frozenset(SYMBOL_TO_SNAPSHOT_CHG_COL.keys())
+
+
+def merged_snapshot_chg_map(
+    row: Mapping[str, Any],
+    extra_chg: Mapping[str, Optional[float]] | None = None,
+) -> dict[str, Optional[float]]:
+    """Row chg map enriched with ``confluence_quote_ticks`` (or live quote) gaps."""
     chg = snapshot_row_chg_map(row)
+    if not extra_chg:
+        return chg
+    for sym, raw in extra_chg.items():
+        s = (sym or "").upper().strip()
+        if not s:
+            continue
+        fv = _float_chg(raw)
+        if fv is None:
+            continue
+        col = SYMBOL_TO_SNAPSHOT_CHG_COL.get(s)
+        if col is None or chg.get(s) is None:
+            chg[s] = fv
+        elif s == "GOOG":
+            chg[s] = fv
+    return chg
+
+
+def blend_iwm_weighted_push(
+    holdings_push: Optional[float],
+    sector_push: Optional[float],
+) -> Optional[float]:
+    """Same 55/45 blend as ``iwm_blended_participation_push`` on scalar pushes."""
+    try:
+        if holdings_push is not None and sector_push is not None:
+            return round(
+                IWM_BLEND_HOLDINGS_WEIGHT * float(holdings_push)
+                + IWM_BLEND_SECTOR_WEIGHT * float(sector_push),
+                4,
+            )
+        if holdings_push is not None:
+            return round(float(holdings_push), 4)
+        if sector_push is not None:
+            return round(float(sector_push), 4)
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def weighted_pushes_from_snapshot_row(
+    row: Mapping[str, Any],
+    *,
+    extra_chg: Mapping[str, Optional[float]] | None = None,
+) -> dict[str, Optional[float]]:
+    """Recompute spy/qqq/iwm weighted_push columns (live-path parity).
+
+    QQQ needs symbols without snapshot columns (e.g. WMT) via ``extra_chg``.
+    IWM uses holdings + sector blend — not sector-only.
+    """
+    chg = merged_snapshot_chg_map(row, extra_chg)
     spy = weighted_push_from_constituents(chg, SPY_TOP, SPY_TOP_WEIGHT_SUM)
     qqq = weighted_push_from_constituents(chg, QQQ_TOP, QQQ_TOP_WEIGHT_SUM)
-    iwm_sector = weighted_push_from_constituents(
+    iwm_h = weighted_push_from_constituents(chg, IWM_TOP_HOLDINGS, IWM_HOLDINGS_WEIGHT_SUM)
+    iwm_s = weighted_push_from_constituents(
         chg,
         [(s, n, w) for s, n, w in IWM_SECTORS],
         IWM_SECTOR_WEIGHT_SUM,
     )
-    return {"spy_weighted_push": spy, "qqq_weighted_push": qqq, "iwm_weighted_push": iwm_sector}
+    iwm = blend_iwm_weighted_push(iwm_h, iwm_s)
+    return {"spy_weighted_push": spy, "qqq_weighted_push": qqq, "iwm_weighted_push": iwm}
 
 
 def patch_context_confluence_from_quote_ticks(
@@ -512,17 +583,7 @@ def iwm_blended_participation_push(ctx: MarketContext) -> Optional[float]:
     scf = getattr(ctx, "iwm_confluence", None)
     h = getattr(hcf, "weighted_push", None) if hcf is not None else None
     s = getattr(scf, "weighted_push", None) if scf is not None else None
-    wh, ws = 0.55, 0.45
-    try:
-        if h is not None and s is not None:
-            return round(wh * float(h) + ws * float(s), 4)
-        if h is not None:
-            return round(float(h), 4)
-        if s is not None:
-            return round(float(s), 4)
-    except (TypeError, ValueError):
-        pass
-    return None
+    return blend_iwm_weighted_push(h, s)
 
 
 def _derive_session() -> str:

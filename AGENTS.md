@@ -22,9 +22,26 @@ Current program: [`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md).
 
 If either answer is **no**, **stop** — fix the design or implementation before coding. This is a homegrown app; when done it must **rival any institutional platform**. **Substandard is not acceptable** — not in architecture, not in partial stacks, not in "we'll fix it later."
 
+### Always-on institutional binding `[PROMOTED]` (2026-05-27 — no operator activation phrase)
+
+**This section is always in force.** The operator does **not** need to type `INSTITUTIONAL STRICT`, restate the MIT bar, or re-prompt lane ownership each turn. If ACTIVE_PROGRAM + this file are in scope, compliance is mandatory.
+
+| Before any edit | Requirement |
+|-----------------|-------------|
+| Read order | `ACTIVE_PROGRAM.md` (lane + epic owner) → this §World-class gate → cone files **end-to-end** ([§Banned tools](#banned-tools-promoted-memory-feedback_no_grep_toolmd-2026-05-22) — no grep/scan) |
+| Intent | **Design brief ≠ build.** Text in ACTIVE_PROGRAM marked design brief / Claude design / operator design is **not** authorization to implement in Cursor unless the same section or the operator message explicitly says **Cursor UI authorized** or **`CURSOR-UI-AUTHORIZED`**. |
+| UI lane | **No edits** to `static/index.html`, `templates/**`, or UI closure rows unless UI lane is explicitly authorized as above. Default: UI design = Claude (or named owner), Cursor = data/audit/scheduler/money-path unless ACTIVE_PROGRAM assigns otherwise. |
+| Before landing code | State MIT professor + world's greatest coder yes/no in the **same turn** as the edit (not deferred). If **no** → do not land. |
+| Closure | No `[x]` OPEN_ITEMS without commit SHA + test cite. No audit-row self-close by the implementer. |
+| Conflict | Operator message vs ACTIVE_PROGRAM lane vs this gate → **stop**, name the conflict, do not implement around it. |
+| Completion | [§Completion in touched cone](#world-class--institutional-code-gate-promoted-2026-05-27--operator-binding-top-rule) — known FINDs in the Read cone must close in-turn or get `[REAL-GATE: …]` in OPEN_ITEMS. |
+
+**Anti-pattern (rejection-grade):** Treating a spec-shaped paragraph (chips, layout, field names) as a build ticket without checking **who owns implementation** in ACTIVE_PROGRAM.
+
 | Must hold | Failure mode |
 |-----------|----------------|
 | Operator intent wired in code, not comments only | "Policy by design" that contradicts stated product rules |
+| **Design brief ≠ Cursor build** (always-on binding above) | Cursor implements UI/card chrome while ACTIVE_PROGRAM assigns design to Claude |
 | Train-success-live for ML scheduler targets | Train completes but `models/active/` empty without explicit operator opt-out |
 | **Full parallel stack uniformity** | XGB-only rows, 0.333 meta filler, or parallel eval degrade while cascade skips — partial stack without explicit governed exception |
 | Governed eval compares architectures on **aligned row sets** only | Raw row-count mismatch failures |

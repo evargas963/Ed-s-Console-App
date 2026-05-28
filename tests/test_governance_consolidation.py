@@ -291,6 +291,16 @@ def test_agents_meet_or_exceed_closure_cycle() -> None:
     assert "one cycle, one verdict vocabulary" in agents
 
 
+def test_agents_always_on_institutional_binding() -> None:
+    """Institutional gate is always on — operator must not re-prompt each turn."""
+    agents = _read("AGENTS.md")
+    assert "Always-on institutional binding" in agents
+    assert "no operator activation phrase" in agents
+    assert "Design brief" in agents and "build" in agents
+    assert "CURSOR-UI-AUTHORIZED" in agents
+    assert "static/index.html" in agents
+
+
 def test_server_logging_visual_severity_marker_warning_plus_only() -> None:
     """server.py installs a Formatter that prepends a bracket-tag for WARNING+ so
     operator-actionable events stand out in the dense INFO/DEBUG console stream.

@@ -1359,6 +1359,45 @@ class EdDB:
 
         return _do()
 
+    def fetch_confluence_quote_chg_as_of(
+        self,
+        ts_utc: float,
+        tickers: list[str],
+    ) -> dict[str, Optional[float]]:
+        """``chg_pct`` per symbol at or before ``ts_utc`` from ``confluence_quote_ticks``."""
+        if not tickers:
+            return {}
+        self._ensure_confluence_quote_table()
+        want = [str(t).upper().strip() for t in tickers if str(t).strip()]
+        if not want:
+            return {}
+        out: dict[str, Optional[float]] = {t: None for t in want}
+
+        def _do() -> dict[str, Optional[float]]:
+            with self._connect() as conn:
+                for sym in want:
+                    row = conn.execute(
+                        """
+                        SELECT chg_pct FROM confluence_quote_ticks
+                        WHERE ticker = ? COLLATE NOCASE
+                          AND ts_utc <= ?
+                          AND chg_pct IS NOT NULL
+                        ORDER BY ts_utc DESC LIMIT 1
+                        """,
+                        (sym, float(ts_utc)),
+                    ).fetchone()
+                    if row is None or row[0] is None:
+                        continue
+                    try:
+                        v = float(row[0])
+                        if math.isfinite(v):
+                            out[sym] = v
+                    except (TypeError, ValueError):
+                        pass
+            return out
+
+        return _do()
+
     def logging_universe_sync_panel_auto(self, panel_candidates: list[str], now_ts: float) -> dict[str, Any]:
         """
         Upsert ``panel_auto`` rows — cross-instrument panel symbols for confluence quotes.

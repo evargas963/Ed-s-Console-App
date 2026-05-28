@@ -270,8 +270,20 @@ def test_weighted_push_from_constituents_matches_build_confluence():
     from market_context import (
         QQQ_TOP,
         QQQ_TOP_WEIGHT_SUM,
+        SPY_TOP,
+        SPY_TOP_WEIGHT_SUM,
+        IWM_SECTORS,
+        IWM_SECTOR_WEIGHT_SUM,
+        IWM_TOP_HOLDINGS,
+        IWM_HOLDINGS_WEIGHT_SUM,
         _build_confluence,
+        _build_iwm_confluence,
         ConstituentQuote,
+        SectorQuote,
+        MarketContext,
+        ConfluenceRead,
+        blend_iwm_weighted_push,
+        iwm_blended_participation_push,
         weighted_push_from_constituents,
         weighted_pushes_from_snapshot_row,
     )
@@ -295,6 +307,169 @@ def test_weighted_push_from_constituents_matches_build_confluence():
     }
     out = weighted_pushes_from_snapshot_row(row)
     assert out["qqq_weighted_push"] == push
+
+
+def test_qqq_weighted_push_full_top_matches_build_confluence():
+    """QQQ backfill must use the full QQQ_TOP roster (incl. WMT), not a 3-name subset."""
+    from market_context import (
+        QQQ_TOP,
+        QQQ_TOP_WEIGHT_SUM,
+        _build_confluence,
+        ConstituentQuote,
+        weighted_pushes_from_snapshot_row,
+    )
+
+    chg = {
+        "NVDA": 1.0,
+        "AAPL": 0.8,
+        "MSFT": -0.2,
+        "AMZN": 0.4,
+        "TSLA": -0.5,
+        "META": 0.3,
+        "GOOGL": 0.1,
+        "WMT": 0.25,
+        "GOOG": 0.15,
+        "AVGO": 0.6,
+    }
+    cqs = [
+        ConstituentQuote(sym, name, w, chg_pct=chg[sym])
+        for sym, name, w in QQQ_TOP
+    ]
+    live = _build_confluence(cqs, QQQ_TOP_WEIGHT_SUM).weighted_push
+    row = {
+        "nvda_chg_pct": 1.0,
+        "aapl_chg_pct": 0.8,
+        "msft_chg_pct": -0.2,
+        "amzn_chg_pct": 0.4,
+        "tsla_chg_pct": -0.5,
+        "meta_chg_pct": 0.3,
+        "googl_chg_pct": 0.1,
+        "avgo_chg_pct": 0.6,
+        "qqq_weighted_push": None,
+    }
+    backfill = weighted_pushes_from_snapshot_row(
+        row, extra_chg={"WMT": 0.25, "GOOG": 0.15}
+    )
+    assert backfill["qqq_weighted_push"] == live
+
+
+def test_iwm_weighted_push_matches_blended_participation():
+    from market_context import (
+        IWM_HOLDINGS_WEIGHT_SUM,
+        IWM_SECTOR_WEIGHT_SUM,
+        IWM_SECTORS,
+        IWM_TOP_HOLDINGS,
+        MarketContext,
+        ConfluenceRead,
+        blend_iwm_weighted_push,
+        iwm_blended_participation_push,
+        weighted_push_from_constituents,
+        weighted_pushes_from_snapshot_row,
+    )
+
+    chg = {
+        "BE": 0.4,
+        "FN": -0.1,
+        "KRE": 0.2,
+        "XBI": -0.15,
+        "PSCI": 0.05,
+        "XRT": 0.1,
+    }
+    h = weighted_push_from_constituents(chg, IWM_TOP_HOLDINGS, IWM_HOLDINGS_WEIGHT_SUM)
+    s = weighted_push_from_constituents(
+        chg, [(x, y, z) for x, y, z in IWM_SECTORS], IWM_SECTOR_WEIGHT_SUM
+    )
+    blended = blend_iwm_weighted_push(h, s)
+    ctx = MarketContext(
+        iwm_holdings_confluence=ConfluenceRead(weighted_push=h),
+        iwm_confluence=ConfluenceRead(weighted_push=s),
+    )
+    assert iwm_blended_participation_push(ctx) == blended
+
+    row = {
+        "kre_chg_pct": 0.2,
+        "xbi_chg_pct": -0.15,
+        "psci_chg_pct": 0.05,
+        "xrt_chg_pct": 0.1,
+        "iwm_weighted_push": None,
+    }
+    out = weighted_pushes_from_snapshot_row(
+        row, extra_chg={"BE": 0.4, "FN": -0.1}
+    )
+    assert out["iwm_weighted_push"] == blended
+    assert out["iwm_weighted_push"] != s
+
+
+def test_fetch_confluence_quote_chg_as_of(tmp_path):
+    from db import EdDB
+
+    dbp = tmp_path / "cq_asof.db"
+    db = EdDB(dbp, allow_noncanonical=True)
+    db.upsert_confluence_quote_ticks(
+        [
+            {
+                "ticker": "WMT",
+                "ts_utc": 100.0,
+                "ts_et": "2026-01-01 09:00:00",
+                "last_price": 50.0,
+                "chg_pct": 0.11,
+            },
+            {
+                "ticker": "WMT",
+                "ts_utc": 200.0,
+                "ts_et": "2026-01-01 10:00:00",
+                "last_price": 50.5,
+                "chg_pct": 0.22,
+            },
+        ]
+    )
+    got = db.fetch_confluence_quote_chg_as_of(150.0, ["WMT"])
+    assert got["WMT"] == 0.11
+    got2 = db.fetch_confluence_quote_chg_as_of(250.0, ["WMT"])
+    assert got2["WMT"] == 0.22
+
+
+def test_backfill_weighted_pushes_uses_quote_ticks(tmp_path):
+    import sqlite3
+
+    from backfill_snapshot_derived import backfill_weighted_pushes
+    from db import EdDB
+
+    dbp = tmp_path / "bf_wp.db"
+    db = EdDB(dbp, allow_noncanonical=True)
+    db.upsert_confluence_quote_ticks(
+        [
+            {
+                "ticker": "WMT",
+                "ts_utc": 1000.0,
+                "ts_et": "2026-01-02 10:00:00",
+                "last_price": 100.0,
+                "chg_pct": 0.5,
+            }
+        ]
+    )
+    con = sqlite3.connect(str(dbp))
+    con.execute(
+        """
+        INSERT INTO snapshots (
+            ticker, timeframe, ts_utc, ts_et, spot, qqq_weighted_push,
+            nvda_chg_pct, aapl_chg_pct, msft_chg_pct, amzn_chg_pct,
+            googl_chg_pct, avgo_chg_pct, meta_chg_pct, tsla_chg_pct
+        ) VALUES ('SPY', '1m', 1000.0, '2026-01-02 10:00:00', 500.0, NULL,
+                  1.0, 0.5, -0.2, 0.3, 0.1, 0.4, 0.2, -0.1)
+        """
+    )
+    con.commit()
+    con.close()
+
+    stats = backfill_weighted_pushes(dbp)
+    assert stats["qqq_filled"] == 1
+    con = sqlite3.connect(str(dbp))
+    row = con.execute(
+        "SELECT qqq_weighted_push FROM snapshots WHERE ticker='SPY'"
+    ).fetchone()
+    con.close()
+    assert row[0] is not None
 
 
 def test_fetch_latest_confluence_quote_chg(tmp_path):

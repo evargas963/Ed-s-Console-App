@@ -5,7 +5,7 @@ alwaysApply: true
 
 # EdWebConsole — always apply (pointers only)
 
-**Read order:** `ACTIVE_PROGRAM.md` → `AGENTS.md` (start with § **Fix everything we touch**) → `CLAUDE.md` (Schwab market-field work).
+**Read order:** `ACTIVE_PROGRAM.md` → `AGENTS.md` (start with § **World-class / institutional code gate** — always on, no activation phrase) → `CLAUDE.md` (Schwab market-field work).
 
 **Conflicts:** ACTIVE_PROGRAM names the epic; **AGENTS.md is the single source for agent behavior** (banned tools, banned phrases, no permission asks, fix-as-we-find, closure definition + no-deferral, no new files); CLAUDE.md owns Schwab market-field law; project rules beat user rules; MCP tools are tool-scoped; Cursor Skills are task-scoped (follow when invoked, do not override AGENTS).
 

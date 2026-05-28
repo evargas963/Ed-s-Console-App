@@ -92,30 +92,224 @@ def test_tf_dim_neutral_cards_have_operator_legibility_styles():
     assert "#334155" not in chunk
 
 
-def test_horizon_cards_render_prob_source_chips():
-    """Issue 18 provenance: each horizon pill exposes mh_prob_source_by_horizon chip."""
+# ── UI card provenance spec — chip + signal-rail-card surfaces ─────────────
+# Brief: ACTIVE_PROGRAM.md §UI card provenance spec. Chip vocabulary is the
+# five-state set EMPIRICAL | ML FUSION | BLEND | UNAVAILABLE | DEGRADED. The
+# unified signal-rail-card below the 4 horizon pills carries the fusion
+# verdict (top) + empirical context (bottom), with Entry armed / Stack
+# degraded inline authority tags (same shape language, opposite verdicts).
+
+def test_tf_source_chip_css_five_variants_defined():
+    """Per-pill provenance chip CSS class + 5 variants are defined."""
     h = _html()
-    assert "mh_prob_source_by_horizon" in h
-    assert "resolveHorizonSourceChip" in h
-    assert "paintSourceChip" in h
-    assert 'class="tf-source tf-source--hidden"' in h
-    assert "tf-source--empirical" in h
-    assert "tf-source--ml" in h
-    assert "tf-source--blend" in h
-    assert "tf-source--unavailable" in h
-    assert "tf-source--degraded" in h
-    assert "EMPIRICAL" in h
-    assert "ML FUSION" in h
+    assert ".tf-source-chip {" in h
+    assert ".tf-source-chip--empirical" in h
+    assert ".tf-source-chip--ml-fusion" in h
+    assert ".tf-source-chip--blend" in h
+    assert ".tf-source-chip--unavailable" in h
+    assert ".tf-source-chip--degraded" in h
 
 
-def test_decision_rail_fusion_authority_strip():
-    """Call/forward authority line: fusion vs empirical-only (Issue 18 spec)."""
+def test_tf_source_detail_subline_defined():
+    """Operator-text subline class is defined under the chip."""
     h = _html()
-    assert "dr-fusion-authority-strip" in h
-    assert "dr-empirical-context-line" in h
-    assert "Fusion authoritative" in h
+    assert ".tf-source-detail {" in h
+
+
+def test_tf_signal_cards_have_chip_and_detail_elements():
+    """Each of the four tf-signal-cards carries a chip + detail element.
+
+    There are exactly four cards (1c/5c/15c/60c), so each class must appear
+    at least four times in the HTML body.
+    """
+    h = _html()
+    assert h.count('class="tf-source-chip ') >= 4
+    assert h.count('class="tf-source-detail"') >= 4
+
+
+def test_signal_rail_card_css_and_html_present():
+    """Unified signal-rail-card — fusion verdict + empirical context below the
+    four pills. CSS defines all 4 state variants and the inline structure."""
+    h = _html()
+    assert ".signal-rail-card {" in h
+    assert ".signal-rail-card--up" in h
+    assert ".signal-rail-card--down" in h
+    assert ".signal-rail-card--withheld" in h
+    assert ".signal-rail-card--armed" in h
+    # HTML structure
+    assert 'id="signal-rail-card"' in h
+    assert 'id="signal-rail-top"' in h
+    assert 'id="signal-rail-bottom"' in h
+    # Sub-section IDs that renderSignalRailCard populates
+    assert 'id="src-fas-label"' in h
+    assert 'id="src-fas-dir"' in h
+    assert 'id="src-fas-agreement"' in h
+    assert 'id="src-ecl-tier"' in h
+    assert 'id="src-ecl-n"' in h
+    assert 'id="src-ecl-probs"' in h
+
+
+def test_authority_tags_defined_for_armed_and_degraded():
+    """Solid-color authority pills — same shape language, opposite verdicts.
+
+    fas-armed-tag (solid green) when primary horizon fires; fas-degraded-tag
+    (solid red) when stack_integrity_v1.degraded is true.
+    """
+    h = _html()
+    assert ".fas-armed-tag {" in h
+    assert ".fas-degraded-tag {" in h
+    assert "Entry armed" in h
+    assert "Stack degraded" in h
+
+
+def test_derive_source_for_horizon_js_helpers_present():
+    """Top-level JS helpers map payload to chip vocabulary.
+
+    Server may stamp d.mh_prob_source_by_horizon[slug] with either brief-style
+    values (EMPIRICAL | ML FUSION | BLEND | UNAVAILABLE | DEGRADED) or the
+    current internal stamping (fusion_ml_primary / empirical_support_blend /
+    fusion_directional_missing). deriveSourceForHorizon handles both.
+    """
+    h = _html()
+    assert "function deriveSourceForHorizon(d, slug)" in h
+    assert "function sourceChipCssClass(source)" in h
+    assert "function sourceChipTitle(source)" in h
+    assert "function sourceOperatorText(source, d, slug)" in h
+    # Server internal vocabulary is recognized
+    assert "'fusion_ml_primary'" in h
+    assert "'empirical_support_blend'" in h
+    assert "'fusion_directional_missing'" in h
+    # Window exports for diag / test inspection
+    assert "window.deriveSourceForHorizon = deriveSourceForHorizon" in h
+
+
+def test_render_signal_rail_card_function_present():
+    """renderSignalRailCard paints the unified card; hides itself when mhap empty."""
+    h = _html()
+    assert "function renderSignalRailCard(d)" in h
+    assert "window.renderSignalRailCard = renderSignalRailCard" in h
+    # Hidden in pending-shell case
+    assert "if (pending && mhap.length === 0) { card.style.display = 'none'; return; }" in h
+    # Authority tags applied in the top section
+    assert "'fas-degraded-tag'" in h
+    assert "'fas-armed-tag'" in h
+    # "Not tradable" fallback when fusion is withheld
     assert "Not tradable — empirical context only" in h
-    assert "dr-fusion-authority-strip--active" in h
+    # canonical_provenance gate uses isCanonicalTradable + isFusionAuthoritative
+    assert "isFusionAuthoritative(d)" in h
+    assert "isCanonicalTradable(d)" in h
+
+
+def test_paint_source_chip_uses_new_selectors():
+    """paintSourceChip targets .tf-source-chip + .tf-source-detail (new design),
+    not the dormant legacy .tf-source element."""
+    h = _html()
+    assert "function paintSourceChip(card, payload, slugKey, dirVal)" in h
+    assert "card.querySelector('.tf-source-chip')" in h
+    assert "card.querySelector('.tf-source-detail')" in h
+    # Delegates to top-level deriveSourceForHorizon helpers
+    assert "deriveSourceForHorizon(payload, slugKey)" in h
+
+
+def test_render_signal_rail_card_wired_into_all_render_entry_points():
+    """renderSignalRailCard is invoked from every render path that paints the row.
+
+    render() (full analytical), renderTierCPendingShell (pending shell),
+    renderTierALive (instant quote), renderTierBLight (L1 context). All four
+    must call it so the rail card stays in lockstep with the horizon pills.
+    """
+    h = _html()
+    # 4 call sites + 1 definition + 1 window export ≥ 6 occurrences
+    assert h.count("renderSignalRailCard(") >= 5
+    assert "renderSignalRailCard(d)" in h         # render() full path
+    assert "renderSignalRailCard(merged)" in h    # renderTierCPendingShell
+    assert "renderSignalRailCard(window._lastData)" in h  # Tier A + Tier B
+
+
+def test_chip_vocabulary_operator_text_strings_present():
+    """Operator-readable text matches the brief verbatim — used both in tooltip
+    titles and in the .tf-source-detail subline below each chip."""
+    h = _html()
+    assert "Stack trained" in h
+    assert "Stack + history" in h
+    assert "No ML — WAIT" in h
+    assert "Data quality hold" in h
+    # Empirical operator text is computed: "N similar setups" — sample-count form
+    assert "similar setups" in h
+    # mh_prob_source_by_horizon is the payload field the chip reads
+    assert "mh_prob_source_by_horizon" in h
+
+
+def test_loading_shell_clears_new_chip_and_detail_elements():
+    """The analytics-loading shell loop clears .tf-source-chip + .tf-source-detail
+    (the new elements), not the dormant legacy .tf-source element."""
+    h = _html()
+    assert "'tf-source-chip tf-source-chip--unavailable'" in h
+    idx = h.find("analyticsLoading && mhap.length === 0")
+    assert idx != -1, "loading-shell guard must be present"
+    chunk = h[idx : idx + 2200]
+    assert ".tf-source-chip" in chunk
+    assert ".tf-source-detail" in chunk
+
+
+# ── UI design lock — operator verdict 2026-05-27 ──────────────────────────
+# These surfaces were intentionally removed and MUST NOT be re-introduced.
+# Re-adding any of them fails this suite — mechanical enforcement against
+# Cursor (or any agent) reverting the operator-approved chip + signal-rail-card
+# design back to parallel / dormant / redundant surfaces.
+#
+# Removed:
+#   - Cursor's parallel dr-fusion-authority-strip + dr-empirical-context-line
+#     inside the Decision Rail ("no co-existing your design rules")
+#   - Decision Command verdict row (dr-trade-pill / dr-bias-pill /
+#     dr-desk-confidence / dr-confidence-pill) — duplicated signal-rail-card
+#   - Decision Command title strip ("DECISION COMMAND · Operator surface…")
+#   - Dormant legacy .tf-source CSS rules
+# Single source of truth = signal-rail-card + .tf-source-chip system.
+
+def test_no_decision_verdict_row_pills():
+    """Operator removed the redundant TRADE/LONG/56%/LOW pill row 2026-05-27."""
+    h = _html()
+    assert 'class="decision-verdict-row"' not in h
+    assert 'id="dr-trade-pill"' not in h
+    assert 'id="dr-bias-pill"' not in h
+    assert 'id="dr-desk-confidence"' not in h
+    assert 'id="dr-confidence-pill"' not in h
+
+
+def test_no_cursor_parallel_fusion_strip():
+    """Cursor's parallel UI surface removed per "no co-existing" instruction."""
+    h = _html()
+    assert 'id="dr-fusion-authority-strip"' not in h
+    assert 'id="dr-empirical-context-line"' not in h
+    assert 'dr-fusion-authority-strip--active' not in h
+    assert 'dr-fusion-authority-strip--muted' not in h
+
+
+def test_no_legacy_tf_source_classes():
+    """Dormant pre-mockup .tf-source CSS removed; chip system uses .tf-source-chip."""
+    h = _html()
+    assert '.tf-source.tf-source--hidden' not in h
+    assert '.tf-source.tf-source--empirical {' not in h
+    assert '.tf-source.tf-source--ml {' not in h
+    assert '.tf-source.tf-source--blend {' not in h
+    assert 'class="tf-source tf-source--hidden"' not in h
+
+
+def test_no_decision_command_title_strip():
+    """Operator removed the 'DECISION COMMAND · Operator surface…' header strip 2026-05-27."""
+    h = _html()
+    assert '<span class="signal-card-title">Decision Command</span>' not in h
+    assert 'Operator surface · bar horizons map' not in h
+
+
+def test_signal_rail_card_is_present_positive_lock():
+    """Single source of truth — the unified signal-rail-card MUST stay."""
+    h = _html()
+    assert 'id="signal-rail-card"' in h
+    assert 'function renderSignalRailCard(d)' in h
+    assert 'Entry armed' in h
+    assert 'Stack degraded' in h
 
 
 def test_entry_state_labels_render_contract():

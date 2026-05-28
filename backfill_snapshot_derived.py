@@ -182,15 +182,54 @@ def backfill(db_path: Path) -> dict:
 
 def backfill_weighted_pushes(db_path: Path) -> dict[str, int]:
     """Fill NULL spy/qqq/iwm weighted_push from persisted constituent chg_pct columns."""
-    from market_context import weighted_pushes_from_snapshot_row
+    import bisect
+
+    from market_context import (
+        merged_snapshot_chg_map,
+        symbols_without_snapshot_chg_col,
+        weighted_pushes_from_snapshot_row,
+    )
 
     conn = sqlite3.connect(str(db_path), timeout=120)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     stats = {"spy_filled": 0, "qqq_filled": 0, "iwm_filled": 0, "rows_scanned": 0}
+
+    tick_series: dict[str, list[tuple[float, float]]] = {}
+    try:
+        tick_rows = cur.execute(
+            """
+            SELECT ticker, ts_utc, chg_pct
+            FROM confluence_quote_ticks
+            WHERE chg_pct IS NOT NULL
+            ORDER BY ticker COLLATE NOCASE, ts_utc ASC
+            """
+        ).fetchall()
+        for tr in tick_rows:
+            sym = str(tr["ticker"]).upper()
+            try:
+                ts = float(tr["ts_utc"])
+                chg = float(tr["chg_pct"])
+            except (TypeError, ValueError):
+                continue
+            tick_series.setdefault(sym, []).append((ts, chg))
+    except sqlite3.OperationalError:
+        tick_series = {}
+
+    def _chg_as_of(sym: str, ts_utc: float) -> float | None:
+        series = tick_series.get(sym.upper())
+        if not series:
+            return None
+        stamps = [s for s, _ in series]
+        idx = bisect.bisect_right(stamps, ts_utc) - 1
+        if idx < 0:
+            return None
+        return series[idx][1]
+
+    need_tick_syms = symbols_without_snapshot_chg_col()
     rows = cur.execute(
         """
-        SELECT snapshot_id,
+        SELECT snapshot_id, ts_utc,
                spy_weighted_push, qqq_weighted_push, iwm_weighted_push,
                nvda_chg_pct, aapl_chg_pct, msft_chg_pct, amzn_chg_pct,
                googl_chg_pct, avgo_chg_pct, meta_chg_pct, tsla_chg_pct,
@@ -205,7 +244,22 @@ def backfill_weighted_pushes(db_path: Path) -> dict[str, int]:
     for r in rows:
         stats["rows_scanned"] += 1
         row = dict(r)
-        pushes = weighted_pushes_from_snapshot_row(row)
+        ts_utc = row.get("ts_utc")
+        extra: dict[str, float | None] = {}
+        if ts_utc is not None and need_tick_syms:
+            try:
+                ts_f = float(ts_utc)
+            except (TypeError, ValueError):
+                ts_f = None
+            if ts_f is not None:
+                base = merged_snapshot_chg_map(row)
+                for sym in need_tick_syms:
+                    if base.get(sym) is not None:
+                        continue
+                    v = _chg_as_of(sym, ts_f)
+                    if v is not None:
+                        extra[sym] = v
+        pushes = weighted_pushes_from_snapshot_row(row, extra_chg=extra or None)
         updates: dict[str, float] = {}
         for col, stat_key in (
             ("spy_weighted_push", "spy_filled"),

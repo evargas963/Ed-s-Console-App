@@ -2,7 +2,7 @@
 
 # ACTIVE_PROGRAM.md — what we are doing now
 
-**Updated:** 2026-05-27 (Cursor data+UI slice pushed for Claude audit)  
+**Updated:** 2026-05-27 (reaudit fixes @ `5e83315`)  
 **Branch:** `feature/institutional-key-levels` — consolidation Phases 0–4 complete; **2 commits ahead of origin** (see §Claude audit handoff)  
 **Execution plan:** [`docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md`](docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md)
 
@@ -93,15 +93,38 @@ Schwab scanner/register work is **tracking only** — it does not replace wire f
 
 **Do not** collapse the three pipelines into one number without a chip. **Do not** hide UNAVAILABLE/DEGRADED behind neutral gray that reads as "WAIT setup."
 
+### UI design lock — operator verdict 2026-05-27 (binding, all agents)
+
+The chip + unified `signal-rail-card` design is the **single source of truth**. The following surfaces were intentionally removed and **MUST NOT** be re-introduced:
+
+| Removed surface | Reason |
+|---|---|
+| `dr-fusion-authority-strip` + `dr-empirical-context-line` inside the Decision Rail card (commit `c0770f6`) | Operator: "no co-existing your design rules" — parallel surface duplicated `signal-rail-card` |
+| Decision Command verdict row (`dr-trade-pill` / `dr-bias-pill` / `dr-desk-confidence` / `dr-confidence-pill`) | Duplicated `signal-rail-card` (Entry armed + ↑ LONG + agreement + conviction) |
+| Decision Command title strip ("DECISION COMMAND · Operator surface · bar horizons map…") | Redundant header chrome; chip ribbon stays |
+| Dormant legacy `.tf-source` CSS rules (`--hidden` / `--empirical` / `--ml` / `--blend` / `--unavailable` / `--degraded`) | Pre-mockup; chip system uses `.tf-source-chip` |
+
+**Mechanical enforcement:** `tests/test_issue18_ui_contract.py` — `test_no_decision_verdict_row_pills`, `test_no_cursor_parallel_fusion_strip`, `test_no_legacy_tf_source_classes`, `test_no_decision_command_title_strip`, `test_signal_rail_card_is_present_positive_lock`. Re-adding any removed surface fails the suite → blocks commit.
+
+**Cursor + any other agent:** do not refactor the Decision Rail card chrome, do not re-mount the verdict pills, do not re-introduce parallel fusion-authority strips. If you genuinely need to change UI provenance behaviour, propose first; do not edit silently.
+
 **Feature registry (operator):** `python tools/validate_feature_contracts.py` — categorized XGB/LSTM/fusion lists; LSTM registry now tags structure / micro / cross-asset / cf_* streams separately.
 
 ---
 
-## Claude audit handoff — Cursor slice 2026-05-27 (COMPLETE)
+## Claude audit handoff — Cursor slice 2026-05-27 (reaudit pending)
 
 **Operator request:** Claude full Read audit of all Cursor work on this branch.  
 **Branch:** `feature/institutional-key-levels`  
-**Audit range:** `f078593` … tip (see commit table below after final push).
+**Audit range:** `f078593` … `6222cc6` (initial); **reaudit @ tip** after FIND fixes below.
+
+### FIND fixes landed (Cursor @ tip — pending Claude reaudit)
+
+| FIND | Fix |
+|------|-----|
+| QQQ backfill math | `weighted_pushes_from_snapshot_row` uses full `QQQ_TOP`; `merged_snapshot_chg_map` + `confluence_quote_ticks` as-of `ts_utc` for WMT/GOOG; tests `test_qqq_weighted_push_full_top_matches_build_confluence`, `test_backfill_weighted_pushes_uses_quote_ticks` |
+| IWM backfill math | `blend_iwm_weighted_push` (55/45) shared with `iwm_blended_participation_push`; backfill no longer sector-only; test `test_iwm_weighted_push_matches_blended_participation` |
+| Doc / UI drift | Claude `signal-rail-card` UI + `test_issue18_ui_contract.py` committed; OPEN_ITEMS supersede Cursor UI closure @ `c0770f6` |
 
 ### Commits in scope (Read in order)
 
@@ -161,7 +184,7 @@ python backfill_snapshot_derived.py --skip-normalizer
 2. **UI honesty:** horizon chips match `mh_prob_source_by_horizon`; fusion strip uses `isFusionAuthoritative(d)` only.
 3. **panel_auto:** no full `_fetch_state` in logger; thin `confluence_quote_ticks` only.
 4. **pre_train_gate:** `ml_scheduler.run_once` fail-closed exit 2; skip via `ED_ML_SCHEDULER_SKIP_PRE_TRAIN_GATE=1`.
-5. **Backfill math:** `weighted_push_from_constituents` matches `_build_confluence` (test locked).
+5. **Backfill math:** `weighted_pushes_from_snapshot_row` + `blend_iwm_weighted_push` match live `qqq_confluence` / `iwm_blended_participation_push` (tests: full QQQ_TOP, IWM blend, quote-tick as-of).
 6. **Training boundary:** `training_canonical_input` NaN→None for `absorption_score` (existing; re-verify).
 
 ### Excluded from repo
