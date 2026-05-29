@@ -1698,6 +1698,36 @@ def run_once(
                 )
                 continue
             code_fp = compute_training_code_fingerprint()
+
+            # Workstream B1 — single authoritative walk-forward split (shared fn).
+            # Train on earlier sessions; evaluate (incl. the governed promotion eval) only
+            # on the strictly-later held-out tail, so eval rows are provably disjoint from
+            # train rows. Thin tickers (< WALK_FORWARD_MIN_TOTAL_SESSIONS) cannot carve a
+            # holdout → fall back to full-RTH (in-sample, NOT promotion-clean; A1 floor still
+            # gates promotion). NOTE: passing allowed_et_dates overrides the per-stream
+            # ROLLING_WINDOW_RTH_SESSIONS_* windows (both default 0 = full history), matching
+            # the train_compare reference; revisit if per-stream windowing is enabled.
+            from training_cache import walk_forward_session_split, WALK_FORWARD_MIN_TOTAL_SESSIONS
+
+            wf_train_days, wf_val_days = walk_forward_session_split(
+                DB_PATH, ticker, label_column=target_column
+            )
+            if wf_val_days:
+                wf_train_dates: Optional[Set[str]] = set(wf_train_days)
+                wf_eval_dates: Optional[Set[str]] = set(wf_val_days)
+                assert wf_train_dates.isdisjoint(wf_eval_dates), "walk-forward train/eval overlap"
+                log.info(
+                    "%s: walk-forward split — train %d sessions, eval %d held-out sessions (%s..%s)",
+                    ticker, len(wf_train_days), len(wf_val_days), wf_val_days[0], wf_val_days[-1],
+                )
+            else:
+                wf_train_dates = None
+                wf_eval_dates = None
+                log.warning(
+                    "%s: < %d RTH sessions — walk-forward holdout unavailable; training+eval on "
+                    "full RTH (in-sample, not promotion-clean)",
+                    ticker, WALK_FORWARD_MIN_TOTAL_SESSIONS,
+                )
             fk = compute_feature_cache_key(ticker, data_fp, code_fp, target_column=target_column)
             parallel_key = compute_scheduler_cache_key(
                 ticker, "parallel", data_fp, code_fp, target_column=target_column,
@@ -1923,6 +1953,7 @@ def run_once(
                 par_ret = _train_parallel(
                     ticker,
                     DB_PATH,
+                    allowed_et_dates=wf_train_dates,
                     bypass_cache=bypass_cache,
                     data_fp=data_fp,
                     code_fp=code_fp,
@@ -1933,7 +1964,8 @@ def run_once(
                 )
                 parallel_acc, parallel_bal, n_rows, parallel_ll, parallel_realized_metrics = (
                     _evaluate_parallel_on_full_rth(
-                        DB_PATH, ticker, parallel_out, target_column=target_column,
+                        DB_PATH, ticker, parallel_out,
+                        allowed_et_dates=wf_eval_dates, target_column=target_column,
                     )
                 )
                 par_skipped_train = False
@@ -1968,6 +2000,7 @@ def run_once(
                 cas_ret = _train_cascade(
                     ticker,
                     DB_PATH,
+                    allowed_et_dates=wf_train_dates,
                     bypass_cache=bypass_cache,
                     data_fp=data_fp,
                     code_fp=code_fp,
@@ -1978,7 +2011,8 @@ def run_once(
                 )
                 cascade_acc, cascade_bal, n_cascade_rows, cascade_ll, cascade_realized_metrics = (
                     _evaluate_cascade_on_full_rth(
-                        DB_PATH, ticker, cascade_out, target_column=target_column,
+                        DB_PATH, ticker, cascade_out,
+                        allowed_et_dates=wf_eval_dates, target_column=target_column,
                     )
                 )
                 cas_skipped_train = False
@@ -2079,7 +2113,7 @@ def run_once(
                         parallel_model_dir=parallel_out,
                         cascade_model_dir=cascade_out,
                         ml_horizon_slug=hz_sched,
-                        allowed_et_dates=None,
+                        allowed_et_dates=wf_eval_dates,
                     )
                     _man = _gov["evaluation_manifest"]
                     _prec = _gov["promotion_record"]

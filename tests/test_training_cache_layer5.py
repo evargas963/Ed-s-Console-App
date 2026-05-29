@@ -12,9 +12,76 @@ from training_cache import (
     _normalize_data_fp,
     compute_feature_cache_key,
     load_lstm_feature_cache,
+    split_sessions_walk_forward,
+    walk_forward_session_split,
     xgb_meta_content_sha256,
 )
 from features.training_canonical_input import training_canonical_lineage_header
+
+
+# ── Workstream B1 — single authoritative walk-forward split ────────────────────
+
+
+def test_split_sessions_walk_forward_holds_out_later_tail():
+    days = [f"2026-01-{d:02d}" for d in range(1, 21)]  # 20 sorted sessions
+    train, val = split_sessions_walk_forward(days)
+    assert val == days[-3:]                     # last 3 held out (cap)
+    assert train == days[:-3]
+    assert set(train).isdisjoint(val)           # provably disjoint
+    assert max(train) < min(val)                # strictly earlier than eval
+
+
+def test_split_sessions_walk_forward_caps_val_at_three():
+    # 13 sessions -> n_val = min(3, max(1, 13-10)) = 3
+    days = [f"2026-02-{d:02d}" for d in range(1, 14)]
+    train, val = split_sessions_walk_forward(days)
+    assert len(val) == 3 and len(train) == 10
+
+
+def test_split_sessions_walk_forward_eleven_sessions_one_val():
+    # 11 sessions -> n_val = min(3, max(1, 11-10)) = 1
+    days = [f"2026-03-{d:02d}" for d in range(1, 12)]
+    train, val = split_sessions_walk_forward(days)
+    assert len(val) == 1 and len(train) == 10
+
+
+def test_split_sessions_walk_forward_too_few_sessions_no_holdout():
+    days = [f"2026-04-{d:02d}" for d in range(1, 8)]  # 7 < 10
+    train, val = split_sessions_walk_forward(days)
+    assert val == []                # holdout impossible -> caller falls back
+    assert train == days
+
+
+def test_walk_forward_session_split_db_backed(tmp_path, monkeypatch):
+    import sqlite3
+
+    import ml_data_common as mdc
+
+    db = tmp_path / "wf.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute(
+        "CREATE TABLE snapshots_1m_normalized (ticker TEXT, timeframe TEXT, ts_utc REAL, ts_et TEXT, outcome_1c TEXT)"
+    )
+    rid = 0.0
+    days = [f"2026-05-{d:02d}" for d in range(1, 16)]  # 15 sessions
+    for day in days:
+        for i in range(3):
+            conn.execute(
+                "INSERT INTO snapshots_1m_normalized VALUES (?,?,?,?,?)",
+                ("ZZZ", "1m", rid, f"{day} 10:{i:02d}:00", "UP"),
+            )
+            rid += 1.0
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(mdc, "filter_ts_utc_list_to_rth", lambda ts: ts)
+    monkeypatch.setattr(mdc, "training_base_where_clause", lambda col, include_ticker=True: "timeframe = ? AND ticker = ?")
+    monkeypatch.setattr(mdc, "et_date_str_from_ts_utc", lambda ts: days[int(ts) // 3])
+
+    train, val = walk_forward_session_split(str(db), "ZZZ", label_column="outcome_1c")
+    assert val == days[-3:]
+    assert train == days[:-3]
+    assert set(train).isdisjoint(val)
 
 
 def test_normalize_data_fp_distinguishes_missing_row_count_from_zero():

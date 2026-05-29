@@ -22,7 +22,7 @@ import sqlite3
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 import numpy as np
 
@@ -275,6 +275,52 @@ def db_distinct_rth_et_dates_for_ticker(
             seen.add(d)
             dates.append(d)
     return dates
+
+
+WALK_FORWARD_MAX_VAL_SESSIONS: int = 3
+WALK_FORWARD_MIN_TOTAL_SESSIONS: int = 10
+
+
+def split_sessions_walk_forward(
+    days: Sequence[str],
+    *,
+    max_val_sessions: int = WALK_FORWARD_MAX_VAL_SESSIONS,
+    min_total_sessions: int = WALK_FORWARD_MIN_TOTAL_SESSIONS,
+) -> tuple[list[str], list[str]]:
+    """Pure chronological walk-forward split (Workstream B1).
+
+    The single authoritative split: hold out the most-recent ``n_val`` sorted
+    sessions for evaluation, train on all earlier sessions, so eval rows are
+    provably disjoint from — and strictly later than — train rows. ``days`` MUST be
+    sorted ascending (``db_distinct_rth_et_dates_for_ticker`` is). Matches the
+    canonical logic previously inline in train_compare:
+    ``n_val = min(max_val_sessions, max(1, len - min_total_sessions))``.
+
+    When fewer than ``min_total_sessions`` are available a holdout cannot be carved
+    without starving training, so returns ``(list(days), [])`` and the caller falls
+    back to no-holdout (and must not claim a clean walk-forward for that ticker).
+    """
+    ordered = list(days)
+    if len(ordered) < min_total_sessions:
+        return ordered, []
+    n_val = min(max_val_sessions, max(1, len(ordered) - min_total_sessions))
+    n_train = len(ordered) - n_val
+    return ordered[:n_train], ordered[n_train:]
+
+
+def walk_forward_session_split(
+    db_path: str,
+    ticker: str,
+    *,
+    label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
+    max_val_sessions: int = WALK_FORWARD_MAX_VAL_SESSIONS,
+    min_total_sessions: int = WALK_FORWARD_MIN_TOTAL_SESSIONS,
+) -> tuple[list[str], list[str]]:
+    """DB-backed walk-forward split: distinct RTH ET sessions then ``split_sessions_walk_forward``."""
+    days = db_distinct_rth_et_dates_for_ticker(db_path, ticker, label_column=label_column)
+    return split_sessions_walk_forward(
+        days, max_val_sessions=max_val_sessions, min_total_sessions=min_total_sessions
+    )
 
 
 def min_ts_utc_for_last_n_rth_sessions(

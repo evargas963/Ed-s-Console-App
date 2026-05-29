@@ -145,10 +145,10 @@ def main():
         print(f"ERROR: Need at least 10 RTH sessions in DB (have {len(days)})")
         sys.exit(1)
 
-    n_val = min(3, max(1, len(days) - 10))
-    n_train = len(days) - n_val
-    train_days = days[:n_train]
-    val_days = days[-n_val:]
+    # Single authoritative walk-forward split (Workstream B1) — shared with ml_scheduler.run_once.
+    from training_cache import split_sessions_walk_forward
+
+    train_days, val_days = split_sessions_walk_forward(days)
     train_days_set: Set[str] = set(train_days)
     val_days_set: Set[str] = set(val_days)
 
