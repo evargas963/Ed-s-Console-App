@@ -2269,6 +2269,7 @@ def run_once(
                     promotion_record=_gov_record,
                     scheduler_run_id=run_ts,
                     db_path=DB_PATH,
+                    walk_forward_holdout_available=bool(wf_eval_dates),
                 )
                 promoted = bool(auto_exec_result.get("executed"))
                 production_write_held = not promoted

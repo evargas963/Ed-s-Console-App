@@ -189,6 +189,7 @@ def execute_promotion_if_eligible(
     manual_intent: str | None = None,
     scheduler_run_id: str | None = None,
     db_path: str | None = None,
+    walk_forward_holdout_available: bool = True,
 ) -> dict[str, Any]:
     """
     Copy governed candidate artifacts to production active when eligible.
@@ -201,6 +202,13 @@ def execute_promotion_if_eligible(
     copy — the ticker must clear ``training_provenance.meets_per_ticker_data_floor``
     (>=500 labeled rows AND >=5 usable RTH days). Below floor → no copy, recorded skip
     (``data_floor_not_met``). Manual operator promotion is intentionally not gated here.
+
+    Workstream B1 (operator brief 2026-05-29): ``walk_forward_holdout_available`` is the
+    scheduler's flag that a strictly-later eval holdout was carved (>= 10 RTH sessions).
+    When False, the governed eval ran in-sample (no holdout possible) and is NOT
+    promotion-clean → fail closed on the auto path before any copy, recorded skip
+    (``walk_forward_holdout_unavailable`` / outcome ``in_sample_eval_not_promotion_clean``).
+    Manual operator promotion is intentionally not gated here.
     """
     from arch_competition.manual_control import (
         MANUAL_PROMOTE_CASCADE_INTENT,
@@ -258,6 +266,39 @@ def execute_promotion_if_eligible(
             target_architecture = "parallel"
 
     assert target_architecture is not None
+
+    # Workstream B1 — fail-closed when the eval was in-sample (scheduler/auto path only).
+    # No walk-forward holdout could be carved (< 10 RTH sessions), so the governed eval
+    # scored rows the models trained on — not promotion-clean. Eval still ran for
+    # logging/metrics upstream; it just cannot gate a copy to models/active*/.
+    if not is_manual and not walk_forward_holdout_available:
+        append_audit_record(
+            model_dir,
+            build_audit_record(
+                action="scheduler_auto_promote_skipped",
+                outcome="in_sample_eval_not_promotion_clean",
+                operator_id=SCHEDULER_AUTO_OPERATOR_ID,
+                ticker=tku,
+                ml_horizon_suffix=hz,
+                prior_active_architecture=None,
+                target_architecture=target_architecture,
+                new_active_architecture=None,
+                evaluation_manifest_path=None,
+                promotion_decision_path=None,
+                checkpoint_id=None,
+                detail=(
+                    "walk_forward_holdout_unavailable: < 10 RTH sessions — eval is in-sample, "
+                    "not promotion-clean; no copy to active"
+                ),
+            ),
+        )
+        log.warning(
+            "auto-promote skipped %s/%s: walk-forward holdout unavailable (in-sample eval)", tku, hz
+        )
+        return _skip_result(
+            "walk_forward_holdout_unavailable",
+            target_architecture=target_architecture,
+        )
 
     # Workstream A1 — fail-closed per-ticker DATA floor (scheduler/auto path only).
     if not is_manual and db_path:

@@ -188,6 +188,68 @@ def test_auto_promote_proceeds_when_data_floor_met(tmp_path: Path, monkeypatch):
     assert (tmp_path / "active" / "SPY" / "xgb_SPY_1c.pkl").is_file()
 
 
+# ── Workstream B1 — fail-closed when no walk-forward holdout (in-sample eval) ───
+
+
+def test_auto_promote_skipped_when_walk_forward_holdout_unavailable(tmp_path: Path, monkeypatch):
+    """Thin ticker (<10 RTH sessions) → no holdout → in-sample eval → no copy to active/,
+    recorded audit reason (no silent skip)."""
+    from arch_competition.audit import load_recent_audit_records
+    from tests.test_manual_governance import _minimal_governed_files, _write_candidate_manifests, _write_horizon_bundle
+
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE", "1")
+    monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE_REQUIRE_VERIFY", "0")
+    _minimal_governed_files(tmp_path, cascade_ok=False)
+    pdir = tmp_path / "parallel" / "SPY"
+    cdir = tmp_path / "cascade" / "SPY"
+    _write_horizon_bundle(pdir, "SPY", "1c")
+    _write_horizon_bundle(cdir, "SPY", "1c")
+    _write_candidate_manifests(pdir, cdir)
+
+    # db_path provided + healthy floor: proves the BLOCK is the holdout guard, not A1.
+    import training_cache
+    monkeypatch.setattr(
+        training_cache,
+        "db_training_floor_stats",
+        lambda db_path, ticker, label_column="outcome_1c": {
+            "ticker": ticker, "labeled_rows": 5000, "usable_days": 20, "label_column": label_column,
+        },
+    )
+    result = execute_promotion_if_eligible(
+        tmp_path, "SPY", "1c", scheduler_run_id="thin",
+        db_path=str(tmp_path / "x.db"),
+        walk_forward_holdout_available=False,
+    )
+    assert result["executed"] is False
+    assert result["skipped_reason"] == "walk_forward_holdout_unavailable"
+    assert not (tmp_path / "active" / "SPY" / "xgb_SPY_1c.pkl").is_file()
+    audit = load_recent_audit_records(tmp_path)
+    assert any(r.get("outcome") == "in_sample_eval_not_promotion_clean" for r in audit)
+
+
+def test_auto_promote_proceeds_when_walk_forward_holdout_available(tmp_path: Path, monkeypatch):
+    """>= 10-session path unaffected: holdout available (default True) → promotion proceeds."""
+    from tests.test_manual_governance import _minimal_governed_files, _write_candidate_manifests, _write_horizon_bundle
+
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE", "1")
+    monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE_REQUIRE_VERIFY", "0")
+    _minimal_governed_files(tmp_path, cascade_ok=False)
+    pdir = tmp_path / "parallel" / "SPY"
+    cdir = tmp_path / "cascade" / "SPY"
+    _write_horizon_bundle(pdir, "SPY", "1c")
+    _write_horizon_bundle(cdir, "SPY", "1c")
+    _write_candidate_manifests(pdir, cdir)
+
+    result = execute_promotion_if_eligible(
+        tmp_path, "SPY", "1c", scheduler_run_id="healthy-wf",
+        walk_forward_holdout_available=True,
+    )
+    assert result["executed"] is True
+    assert (tmp_path / "active" / "SPY" / "xgb_SPY_1c.pkl").is_file()
+
+
 # ── Workstream A2 — candidate score + rows_used gate on the auto path ───────────
 
 
