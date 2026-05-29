@@ -670,6 +670,173 @@ def _evaluate_cascade_on_full_rth(
         return out
 
 
+def _assemble_meta_base_prob_vectors(
+    model_dir: Path,
+    ticker: str,
+    db_path: str,
+    rows_df: Any,
+    target_column: str,
+    hz: str,
+) -> tuple[list, list]:
+    """Assemble parallel meta-learner [xgb|lstm|transformer] prob vectors + labels by running
+    the base models in ``model_dir`` over the rows in ``rows_df``.
+
+    Used both for the in-sample fallback (``model_dir`` = deployed ``out_dir``, rows = full
+    training df) and for each OOF fold (``model_dir`` = a fold dir trained on strictly-earlier
+    sessions, rows = the held-out fold) — Workstream B2.
+    """
+    import ml_predict as mp
+    from ml_predict import _predict_xgb, _predict_lstm, _predict_transformer, CLASS_NAMES
+    from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
+    from features.training_canonical_input import records_for_mvp_from_dataframe
+
+    X_meta: list = []
+    y_meta: list = []
+    orig_mp_dir = mp.MODEL_DIR
+    htok_meta = mp.set_ml_infer_horizon_slug(hz)
+    try:
+        with _strict_off_for_candidate_inference():
+            mp.MODEL_DIR = model_dir
+            mp.reset_caches()
+            rows = records_for_mvp_from_dataframe(rows_df)
+            hist_db = _eval_hist_db_for_labeled_rows(db_path, ticker, rows)
+            for row in rows:
+                inf_v1 = build_inference_snapshot_v1_from_db_row(
+                    ticker=ticker, expiry=None, as_of_ts=row.get("ts_utc"), db_row=row,
+                )
+                xgb_p = _predict_xgb(inf_v1, ticker, fusion_feature_overlay=row)
+                lstm_p = tr_p = None
+                ts_utc = row.get("ts_utc")
+                if ts_utc and hist_db is not None:
+                    try:
+                        lstm_p = _predict_lstm(ticker, hist_db, inference_snapshot_v1=inf_v1)
+                    except Exception as _lstm_e:
+                        log.debug("%s meta row: LSTM unavailable at ts=%s (%s)", ticker, ts_utc, _lstm_e)
+                        lstm_p = None
+                    try:
+                        tr_p = _predict_transformer(ticker, hist_db, inference_snapshot_v1=inf_v1)
+                    except Exception as _tr_e:
+                        log.debug("%s meta row: Transformer unavailable at ts=%s (%s)", ticker, ts_utc, _tr_e)
+                        tr_p = None
+                if xgb_p is None:
+                    continue
+                vec = (
+                    [xgb_p.get(c, 0.333) for c in CLASS_NAMES] +
+                    ([lstm_p.get(c, 0.333) for c in CLASS_NAMES] if lstm_p else [0.333, 0.333, 0.334]) +
+                    ([tr_p.get(c, 0.333) for c in CLASS_NAMES] if tr_p else [0.333, 0.333, 0.334])
+                )
+                X_meta.append(vec)
+                y_meta.append({"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2))
+    finally:
+        mp.MODEL_DIR = orig_mp_dir
+        mp.reset_caches()
+        mp.reset_ml_infer_horizon_slug(htok_meta)
+    return X_meta, y_meta
+
+
+def _train_parallel_base_models_into(
+    temp_dir: Path,
+    ticker: str,
+    db_path: str,
+    allowed_et_dates: Set[str],
+    *,
+    data_fp: Optional[dict],
+    hz: str,
+) -> bool:
+    """Train XGB + LSTM + Transformer (parallel) on exactly ``allowed_et_dates`` into
+    ``temp_dir`` for OOF base-prob generation (Workstream B2). ``bypass_cache``/
+    ``bypass_torch_resume`` always on — the fold's date subset has a different fingerprint
+    than the full-data feature cache. Returns True when at least the XGB base is present
+    (LSTM/Transformer degrade gracefully in assembly via the 0.333 fallback)."""
+    from ml_train import load_data, train_ticker
+    from lstm_model import train_lstm
+    from lstm_data import build_lstm_dataset
+    from transformer_train import train_transformer, prepare_transformer_data
+
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    df = load_data(db_path, ticker=ticker, allowed_et_dates=allowed_et_dates, ml_horizon_slug=hz)
+    if len(df) == 0:
+        return False
+    train_ticker(
+        ticker, df, model_dir=temp_dir, current_data_fingerprint=data_fp, ml_horizon_slug=hz,
+    )
+    ds = build_lstm_dataset(
+        tickers=[ticker], db_path=Path(db_path), allowed_et_dates=allowed_et_dates, ml_horizon_slug=hz,
+    )
+    if ds is not None and getattr(ds, "n_samples", 0) > 0:
+        train_lstm(
+            dataset=ds, db_path=db_path, ticker=ticker, model_dir=temp_dir, data_fp=data_fp,
+            architecture="parallel", bypass_torch_resume=True, ml_horizon_slug=hz,
+        )
+    Xp, yp, daysp, tickp, nfp = prepare_transformer_data(
+        db_path, ticker, allowed_et_dates=allowed_et_dates, ml_horizon_slug=hz,
+    )
+    if Xp is not None and len(yp) > 0:
+        train_transformer(
+            db_path=db_path, ticker=ticker, model_dir=temp_dir,
+            preloaded_sequences=(Xp, yp, daysp, tickp, nfp), allowed_et_dates=allowed_et_dates,
+            data_fp=data_fp, architecture="parallel", bypass_torch_resume=True, ml_horizon_slug=hz,
+        )
+    return (temp_dir / f"xgb_{ticker.upper()}_{hz}.pkl").exists()
+
+
+def _train_parallel_meta_oof(
+    out_dir: Path,
+    ticker: str,
+    db_path: str,
+    df: Any,
+    oof_universe_days: list,
+    target_column: str,
+    hz: str,
+    *,
+    data_fp: Optional[dict],
+) -> tuple[list, list, str]:
+    """Build the parallel meta-learner's training matrix from EXPANDING-WINDOW OUT-OF-FOLD
+    base predictions (Workstream B2). For each fold the base models are trained on
+    strictly-earlier sessions into a temp dir and scored on the held-out fold, so the meta
+    never sees in-sample base probs. The deployed base artifacts in ``out_dir`` are untouched
+    (they stay full-data trained). Falls back to in-sample assembly when no folds can be
+    formed (too few sessions) or OOF yields < 10 usable rows. Returns (X_meta, y_meta, basis)."""
+    import shutil
+    import tempfile
+
+    from ml_train import load_data
+    from training_cache import expanding_window_oof_folds
+
+    folds = expanding_window_oof_folds(oof_universe_days)
+    if not folds:
+        X_meta, y_meta = _assemble_meta_base_prob_vectors(out_dir, ticker, db_path, df, target_column, hz)
+        return X_meta, y_meta, "in_sample_no_folds"
+
+    X_meta: list = []
+    y_meta: list = []
+    tmp_root = Path(tempfile.mkdtemp(prefix=f"oof_par_{ticker}_{hz}_"))
+    try:
+        for fi, (tr_days, oof_days) in enumerate(folds):
+            fold_dir = tmp_root / f"fold{fi}"
+            if not _train_parallel_base_models_into(
+                fold_dir, ticker, db_path, set(tr_days), data_fp=data_fp, hz=hz,
+            ):
+                log.warning("%s parallel meta OOF: fold %d base train incomplete — skip", ticker, fi)
+                continue
+            df_oof = load_data(db_path, ticker=ticker, allowed_et_dates=set(oof_days), ml_horizon_slug=hz)
+            if len(df_oof) == 0:
+                continue
+            fx, fy = _assemble_meta_base_prob_vectors(fold_dir, ticker, db_path, df_oof, target_column, hz)
+            X_meta.extend(fx)
+            y_meta.extend(fy)
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
+
+    if len(X_meta) < 10:
+        log.warning(
+            "%s parallel meta: OOF produced %d usable rows (<10) — in-sample fallback", ticker, len(X_meta),
+        )
+        X_meta, y_meta = _assemble_meta_base_prob_vectors(out_dir, ticker, db_path, df, target_column, hz)
+        return X_meta, y_meta, "in_sample_fallback"
+    return X_meta, y_meta, "expanding_window_oof"
+
+
 def train_parallel_candidate(
     ticker: str,
     db_path: str,
@@ -710,9 +877,6 @@ def train_parallel_candidate(
     from transformer_train import train_transformer, prepare_transformer_data, transformer_model_path
     import pickle
     from sklearn.linear_model import LogisticRegression
-    from ml_predict import _predict_xgb, _predict_lstm, _predict_transformer, CLASS_NAMES
-    from train_all import preload_historical_db_for_eval
-    from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
     import numpy as np
 
     used_feature_cache = False
@@ -883,63 +1047,31 @@ def train_parallel_candidate(
             "transformer_warm_resume_detail": tr.warm_resume_detail,
         }
 
-    # Meta — keep ticker-leaf root so ml_predict resolves flat artifacts in this
-    # candidate directory (xgb_SPY_<hz>.pkl, lstm_SPY_<hz>.pt, transformer_SPY_<hz>.pt).
-    import ml_predict as mp
-    orig_mp_dir = mp.MODEL_DIR
-    htok_meta = mp.set_ml_infer_horizon_slug(hz)
-    X_meta, y_meta = [], []
-    try:
-        with _strict_off_for_candidate_inference():
-            mp.MODEL_DIR = out_dir
-            mp.reset_caches()
+    # Meta-learner (parallel stacker). Workstream B2: train the meta on EXPANDING-WINDOW
+    # OUT-OF-FOLD base predictions so it never sees in-sample base probs; the deployed
+    # XGB/LSTM/Transformer trained above stay full-data (only the stacker's TRAINING
+    # features become out-of-fold). Falls back to in-sample assembly when too few sessions
+    # exist for folds. The meta is resolved by ml_predict from this candidate dir's flat
+    # artifacts (xgb_SPY_<hz>.pkl, lstm_SPY_<hz>.pt, transformer_SPY_<hz>.pt).
+    if allowed_et_dates is not None:
+        oof_universe_days = sorted(set(allowed_et_dates))
+    else:
+        from training_cache import db_distinct_rth_et_dates_for_ticker
 
-            from features.training_canonical_input import records_for_mvp_from_dataframe
-
-            rows = records_for_mvp_from_dataframe(df)
-            hist_db = _eval_hist_db_for_labeled_rows(db_path, ticker, rows)
-            for row in rows:
-                inf_v1 = build_inference_snapshot_v1_from_db_row(
-                    ticker=ticker,
-                    expiry=None,
-                    as_of_ts=row.get("ts_utc"),
-                    db_row=row,
-                )
-                xgb_p = _predict_xgb(inf_v1, ticker, fusion_feature_overlay=row)
-                lstm_p = tr_p = None
-                ts_utc = row.get("ts_utc")
-                if ts_utc and hist_db is not None:
-                    # Sequence heads may be unavailable for a row (e.g., insufficient pre-history).
-                    # Keep meta assembly robust by degrading to available branches for that row.
-                    try:
-                        lstm_p = _predict_lstm(ticker, hist_db, inference_snapshot_v1=inf_v1)
-                    except Exception as _lstm_e:
-                        log.debug("%s meta row: LSTM unavailable at ts=%s (%s)", ticker, ts_utc, _lstm_e)
-                        lstm_p = None
-                    try:
-                        tr_p = _predict_transformer(ticker, hist_db, inference_snapshot_v1=inf_v1)
-                    except Exception as _tr_e:
-                        log.debug("%s meta row: Transformer unavailable at ts=%s (%s)", ticker, ts_utc, _tr_e)
-                        tr_p = None
-                if xgb_p is None:
-                    continue
-                vec = (
-                    [xgb_p.get(c, 0.333) for c in CLASS_NAMES] +
-                    ([lstm_p.get(c, 0.333) for c in CLASS_NAMES] if lstm_p else [0.333, 0.333, 0.334]) +
-                    ([tr_p.get(c, 0.333) for c in CLASS_NAMES] if tr_p else [0.333, 0.333, 0.334])
-                )
-                X_meta.append(vec)
-                y_meta.append({"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2))
-    finally:
-        mp.MODEL_DIR = orig_mp_dir
-        mp.reset_caches()
-        mp.reset_ml_infer_horizon_slug(htok_meta)
-
+        oof_universe_days = db_distinct_rth_et_dates_for_ticker(
+            db_path, ticker, label_column=target_column
+        )
+    X_meta, y_meta, meta_basis = _train_parallel_meta_oof(
+        out_dir, ticker, db_path, df, oof_universe_days, target_column, hz, data_fp=data_fp,
+    )
     if len(X_meta) >= 10:
         meta_mdl = LogisticRegression(C=1.0, max_iter=1000, random_state=42)
         meta_mdl.fit(np.array(X_meta), np.array(y_meta))
         with open(out_dir / f"meta_{ticker.upper()}_{hz}.pkl", "wb") as f:
             pickle.dump(meta_mdl, f)
+        log.info(
+            "%s parallel meta trained on %d rows (basis=%s)", ticker, len(X_meta), meta_basis,
+        )
 
     warm_resume = {**lstm_rr, **tr_rr}
     return {

@@ -323,6 +323,42 @@ def walk_forward_session_split(
     )
 
 
+WALK_FORWARD_OOF_FOLDS: int = 3
+
+
+def expanding_window_oof_folds(
+    days: Sequence[str], *, n_folds: int = WALK_FORWARD_OOF_FOLDS,
+) -> list[tuple[list[str], list[str]]]:
+    """Expanding-window out-of-fold session folds (Workstream B2).
+
+    Partition the ordered ``days`` into ``n_folds + 1`` contiguous chronological blocks
+    ``B0..Bn``; for ``i`` in ``1..n_folds`` yield ``(train_days, oof_days)`` where
+    ``train_days = B0..B(i-1)`` (strictly earlier) and ``oof_days = Bi``. ``B0`` is the
+    seed block — it never appears as an OOF fold, so OOF predictions cover ``n_folds /
+    (n_folds + 1)`` of the rows. Every OOF row is scored by a model trained ONLY on
+    strictly-earlier sessions → no in-sample base probabilities feed the stacker.
+
+    ``days`` MUST be sorted ascending. Returns ``[]`` when there are fewer sessions than
+    blocks (cannot form ``n_folds + 1`` non-empty blocks) — caller falls back to the
+    in-sample assembly (and must not claim clean OOF for that ticker).
+    """
+    ordered = list(days)
+    n_blocks = int(n_folds) + 1
+    if int(n_folds) < 1 or len(ordered) < n_blocks:
+        return []
+    # Contiguous, near-even chronological blocks (no gaps, no overlap).
+    bounds = [round(j * len(ordered) / n_blocks) for j in range(n_blocks + 1)]
+    blocks = [ordered[bounds[j]:bounds[j + 1]] for j in range(n_blocks)]
+    if any(len(b) == 0 for b in blocks):
+        return []
+    folds: list[tuple[list[str], list[str]]] = []
+    for i in range(1, n_blocks):
+        train_days = [d for b in blocks[:i] for d in b]
+        oof_days = list(blocks[i])
+        folds.append((train_days, oof_days))
+    return folds
+
+
 def min_ts_utc_for_last_n_rth_sessions(
     db_path: str, ticker: str, n_sessions: int, *, label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
 ) -> Optional[float]:

@@ -11,6 +11,7 @@ import pytest
 from training_cache import (
     _normalize_data_fp,
     compute_feature_cache_key,
+    expanding_window_oof_folds,
     load_lstm_feature_cache,
     split_sessions_walk_forward,
     walk_forward_session_split,
@@ -50,6 +51,48 @@ def test_split_sessions_walk_forward_too_few_sessions_no_holdout():
     train, val = split_sessions_walk_forward(days)
     assert val == []                # holdout impossible -> caller falls back
     assert train == days
+
+
+# ── Expanding-window OOF folds (Workstream B2) ──────────────────────────────
+
+
+def test_expanding_window_oof_folds_three_folds_strictly_earlier_train():
+    days = [f"2026-06-{d:02d}" for d in range(1, 13)]  # 12 sessions, n_folds=3 -> 4 blocks of 3
+    folds = expanding_window_oof_folds(days, n_folds=3)
+    assert len(folds) == 3
+    seen_oof: list[str] = []
+    prev_train_len = 0
+    for train_days, oof_days in folds:
+        assert set(train_days).isdisjoint(oof_days)        # OOF row never in its own train set
+        assert max(train_days) < min(oof_days)             # train is STRICTLY earlier (no leakage)
+        assert len(train_days) > prev_train_len            # window expands each fold
+        prev_train_len = len(train_days)
+        seen_oof.extend(oof_days)
+    # Seed block B0 is excluded from OOF; coverage == n_folds/(n_folds+1) == 3/4 of rows.
+    assert seen_oof == days[3:]
+    assert len(seen_oof) == 9
+    assert len(set(seen_oof)) == 9                          # folds partition the OOF region
+
+
+def test_expanding_window_oof_folds_minimum_four_sessions():
+    days = ["d1", "d2", "d3", "d4"]
+    folds = expanding_window_oof_folds(days, n_folds=3)
+    assert [tuple(map(list, f)) for f in folds] == [
+        (["d1"], ["d2"]),
+        (["d1", "d2"], ["d3"]),
+        (["d1", "d2", "d3"], ["d4"]),
+    ]
+
+
+def test_expanding_window_oof_folds_too_few_sessions_empty():
+    # Fewer sessions than blocks (n_folds+1) -> no clean OOF possible -> caller falls back.
+    assert expanding_window_oof_folds(["d1", "d2", "d3"], n_folds=3) == []
+    assert expanding_window_oof_folds([], n_folds=3) == []
+    assert expanding_window_oof_folds(["d1"], n_folds=1) == []  # 1 < 2 blocks
+
+
+def test_expanding_window_oof_folds_invalid_n_folds_empty():
+    assert expanding_window_oof_folds([f"d{i}" for i in range(10)], n_folds=0) == []
 
 
 def test_walk_forward_session_split_db_backed(tmp_path, monkeypatch):
