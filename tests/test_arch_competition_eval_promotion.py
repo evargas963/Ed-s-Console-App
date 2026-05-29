@@ -427,21 +427,26 @@ def test_parallel_and_cascade_evaluators_invoked_with_same_signature():
     assert kw_p["target_column"] == kw_c["target_column"] == "outcome_1c"
 
 
-def test_row_count_mismatch_fails():
-    detail = {"prob_rows": [], "y_true": [], "rows_used": []}
-    with (
-        patch("arch_competition.eval_runner.validate_parallel_cascade_manifest_lineage", return_value=_base_lineage()),
-        patch("ml_scheduler._evaluate_parallel_on_full_rth", return_value=(0.5, 0.5, 5, 0.5, {}, detail)),
-        patch("ml_scheduler._evaluate_cascade_on_full_rth", return_value=(0.5, 0.5, 3, 0.5, {}, detail)),
-    ):
-        with pytest.raises(EvaluationLineageError, match="row-count mismatch"):
-            run_architecture_pair_evaluation(
-                db_path=":memory:",
-                ticker="SPY",
-                parallel_model_dir=Path("/p"),
-                cascade_model_dir=Path("/c"),
-                ml_horizon_slug="1c",
-            )
+def test_row_count_mismatch_aligns_to_common_rows_not_fails():
+    """Aligned-row-set design (AGENTS world-class gate) replaced the old fail-on-raw-
+    count-mismatch: arches scoring different raw row sets are intersected on ts_utc and
+    raw counts recorded, not rejected. Stale fail-expectation removed."""
+    from arch_competition.eval_runner import _align_eval_detail_pair
+
+    def _det(ts_list):
+        return {
+            "rows_used": [{"ts_utc": float(t)} for t in ts_list],
+            "prob_rows": [[0.5, 0.3, 0.2] for _ in ts_list],
+            "y_true": [0 for _ in ts_list],
+        }
+
+    pdet = _det([1, 2, 3, 4, 5])  # parallel scored 5 rows
+    cdet = _det([2, 3, 4])        # cascade scored 3 (subset, e.g. LSTM/TR skipped 1 & 5)
+    pd2, cd2, n_common, pn_raw, cn_raw = _align_eval_detail_pair(pdet, cdet)
+    assert pn_raw == 5 and cn_raw == 3          # raw counts preserved for the manifest
+    assert n_common == 3                         # intersected, not rejected
+    assert [r["ts_utc"] for r in pd2["rows_used"]] == [2.0, 3.0, 4.0]
+    assert len(pd2["prob_rows"]) == len(cd2["prob_rows"]) == 3
 
 
 def test_missing_probability_vectors_fail_closed_when_n_sufficient():
