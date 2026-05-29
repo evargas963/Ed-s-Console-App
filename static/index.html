@@ -3620,6 +3620,17 @@ function setActiveTicker(rawTicker, rawExpiry) {
       window._fastLaneSpotDisp = null;
     } catch (e) {}
     window._prevOfChartSpotFast = null;
+    // B1-UI (ticker-switch staleness): wipe the prior ticker's merged snapshot so the
+    // Object.assign(_lastData, ...) merges in the fast/slow renderers cannot carry stale
+    // fields — key levels especially — into the new ticker's first paints. Use {} (not
+    // null) so any property read stays safe. Then blank the key-levels panel immediately
+    // so the previous ticker's levels vanish on switch instead of lingering until the
+    // slow Tier C rebuild lands.
+    window._lastData = {};
+    try {
+      const _klc = $('kl-container');
+      if (_klc) _klc.innerHTML = '<div style="opacity:.5;padding:8px;font-size:11px">Computing levels…</div>';
+    } catch (e) {}
     // Mirror confirmed ticker back to DOM so display stays consistent
     const el = $('ticker-input');
     if (el && el.value.trim().toUpperCase() !== t) el.value = t;
@@ -7107,7 +7118,9 @@ function renderLiquidityMap(lm) {
   domIf('lm-snapshot-badge', el => { el.textContent = snapshotType; });
   domIf('lm-session-date', el => { el.textContent = sessionDate; });
   domIf('lm-time-badge', el => {
-    el.textContent = new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit' });
+    // Operator-facing "now" badge — browser-local display (auto). The market-session
+    // cutoff label (as_of_cutoff_et, below) stays ET.
+    el.textContent = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
   });
   const lmMeta = $('lm-live-meta');
   if (lmMeta) {
@@ -7968,30 +7981,36 @@ async function fetchState(force = false) {
   const _slowFetchAc = _fetchStateAbortController;
   let _switchDiagFetchAborted = false;
   try {
-    // Tier A — GET /api/live/state (plane + session; no chain/DB). Then Tier C analytics.
-    try {
-      const liveUrl = `/api/live/state?ticker=${encodeURIComponent(ticker)}${expiry ? '&expiry=' + encodeURIComponent(expiry) : ''}`;
-      const lResp = await fetchJsonWithTimeout(liveUrl, { signal: fetchAbortSignal }, 2800);
-      if (lResp.ok) {
-        const ld = await lResp.json();
-        if (ld && typeof ld === 'object' && !Array.isArray(ld)
-            && ld.error !== 'token_invalid'
-            && myGen === requestGeneration
-            && (!ld.ticker || ld.ticker.toUpperCase() === activeTicker)
-            && ld._tier === 'A_live') {
-          render(ld, 'rest_manual');
-          if (dot) dot.className = 'status-dot live';
-          if (label) label.textContent = 'LIVE';
-          const ovl = $('loading-overlay');
-          if (ovl) ovl.classList.add('hidden');
-          // Tier A committed — do not keep the UI in a global loading state for Tier C (non-blocking).
-          isLoading = false;
-          if (btn) { btn.disabled = false; btn.textContent = '↻ REFRESH'; }
+    // Tier A — GET /api/live/state (plane + session; no chain/DB). SWITCH-LATENCY FIX:
+    // fire CONCURRENTLY with Tier C instead of awaiting it first — awaiting Tier A here
+    // serialized the switch (Tier C couldn't start until Tier A's round-trip finished).
+    // Render ownership is enforced by the generation/ticker guards below, so out-of-order
+    // tier responses are safe. Abort still propagates via Tier C's await + the outer catch.
+    (async () => {
+      try {
+        const liveUrl = `/api/live/state?ticker=${encodeURIComponent(ticker)}${expiry ? '&expiry=' + encodeURIComponent(expiry) : ''}`;
+        const lResp = await fetchJsonWithTimeout(liveUrl, { signal: fetchAbortSignal }, 2800);
+        if (lResp.ok) {
+          const ld = await lResp.json();
+          if (ld && typeof ld === 'object' && !Array.isArray(ld)
+              && ld.error !== 'token_invalid'
+              && myGen === requestGeneration
+              && (!ld.ticker || ld.ticker.toUpperCase() === activeTicker)
+              && ld._tier === 'A_live') {
+            render(ld, 'rest_manual');
+            if (dot) dot.className = 'status-dot live';
+            if (label) label.textContent = 'LIVE';
+            const ovl = $('loading-overlay');
+            if (ovl) ovl.classList.add('hidden');
+            // Tier A committed — do not keep the UI in a global loading state for Tier C.
+            isLoading = false;
+            if (btn) { btn.disabled = false; btn.textContent = '↻ REFRESH'; }
+          }
         }
+      } catch (e) {
+        if (DIAG && e && e.name !== 'AbortError') console.warn('[fetchState] tierA concurrent skipped', e.message || e);
       }
-    } catch (e) {
-      if (e && e.name === 'AbortError') throw e;
-    }
+    })();
 
     // Tier B — do not block on this path; it is opportunistic for structure/OF context.
     (async () => {
@@ -9388,8 +9407,11 @@ function updateClock() {
   const ubD = $('ub-clock-date');
   if (ubD) {
     try {
+      // DISPLAY clock follows the browser-local timezone (operator preference: auto).
+      // Market-alignment times (RTH session boundaries, candle/outcome data, the
+      // close-countdown voice clock, server-side ts_et) stay ET via time_et.py /
+      // server.py — this is the operator-facing wall clock only, no timeZone override.
       const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/New_York',
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -9400,10 +9422,10 @@ function updateClock() {
       const da = parts.find(p => p.type === 'day');
       const tz = parts.find(p => p.type === 'timeZoneName');
       const dateStr = y && mo && da ? `${y.value}-${mo.value}-${da.value}` : '—';
-      const tzStr = tz ? tz.value : 'ET';
-      ubD.textContent = dateStr + ' · ' + tzStr;
+      const tzStr = tz ? tz.value : '';
+      ubD.textContent = tzStr ? dateStr + ' · ' + tzStr : dateStr;
     } catch (e) {
-      ubD.textContent = now.toISOString().slice(0, 10) + ' · ET';
+      ubD.textContent = now.toLocaleDateString('en-CA');
     }
   }
   try { paintUtilityFeedPill(); } catch (e) {}

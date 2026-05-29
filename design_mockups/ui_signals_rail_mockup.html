@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signals Rail — design mockup (Ed Console)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0c0f;
+    --bg2:       #111418;
+    --bg3:       #181c22;
+    --border:    #1e242c;
+    --border2:   #252c36;
+    --text:      #ffffff;
+    --text2:     #d1d5db;
+    --text3:     #9ca3af;
+    --accent:    #3b82f6;
+    --bull:      #00E676;
+    --bear:      #FF3C3C;
+    --amber:     #f59e0b;
+    --red:       #ef4444;
+    --gold:      #ffd060;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 13px; line-height: 1.5; }
+  body { padding: 32px 24px 48px; max-width: 1400px; margin: 0 auto; }
+
+  .h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .sub { font-family: var(--mono); font-size: 11px; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 24px; }
+  .note { color: var(--text2); line-height: 1.55; margin-bottom: 20px; max-width: 960px; }
+  .note code { font-family: var(--mono); font-size: 12px; background: var(--bg3); padding: 1px 6px; border-radius: 3px; color: var(--accent); }
+  .section-h { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text2); border-bottom: 1px solid var(--border2); padding-bottom: 6px; margin: 32px 0 14px; }
+  .scene-h { font-family: var(--sans); font-size: 16px; font-weight: 600; margin: 22px 0 6px; }
+  .scene-desc { font-family: var(--mono); font-size: 11px; color: var(--text3); margin-bottom: 12px; line-height: 1.5; }
+
+  /* ── Layout: main content (left) + signals rail (right) ───────────────── */
+  .scene-split {
+    background: #04070c;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 14px;
+    display: grid;
+    grid-template-columns: minmax(0, 620px) minmax(0, 380px);
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 1180px) {
+    .scene-split { grid-template-columns: 1fr; }
+  }
+
+  /* === Left placeholder: horizon row + signal-rail-card stub === */
+  .left-stub {
+    background: #04070c;
+    border: 1px dashed rgba(255,255,255,0.15);
+    border-radius: 10px;
+    padding: 80px 20px;
+    text-align: center;
+    color: var(--text3);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+  }
+  .left-stub strong { color: var(--text2); display: block; font-size: 11px; margin-bottom: 4px; }
+
+  /* ============================================================ */
+  /* SIGNALS RAIL CONTAINER                                       */
+  /* ============================================================ */
+  .signals-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .signals-rail-hd {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text2);
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .signals-rail-hd .signals-count {
+    font-size: 9px;
+    color: var(--text3);
+    letter-spacing: 0.08em;
+  }
+
+  /* ── Signal slot — base ── */
+  .signal-slot {
+    border-radius: 8px;
+    border: 1px solid;
+    overflow: hidden;
+    font-family: var(--mono);
+  }
+  .signal-slot--quiet {
+    border-color: var(--border2);
+    background: rgba(15,23,42,0.55);
+  }
+  .signal-slot--positive {
+    border-color: rgba(0,230,118,0.45);
+    background: linear-gradient(180deg, rgba(0,230,118,0.10), rgba(0,230,118,0.02));
+  }
+  .signal-slot--building {
+    border-color: rgba(245,158,11,0.55);
+    background: linear-gradient(180deg, rgba(245,158,11,0.10), rgba(245,158,11,0.02));
+  }
+  .signal-slot--hot {
+    border-color: rgba(239,68,68,0.65);
+    border-width: 2px;
+    background: linear-gradient(180deg, rgba(239,68,68,0.14), rgba(239,68,68,0.04));
+    box-shadow: 0 0 0 1px rgba(239,68,68,0.18), 0 0 18px rgba(239,68,68,0.14);
+  }
+  .signal-slot--hidden { display: none; }
+
+  .signal-slot-hd {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .signal-slot--quiet .signal-slot-hd { color: var(--text2); }
+  .signal-slot--positive .signal-slot-hd { color: var(--bull); }
+  .signal-slot--building .signal-slot-hd { color: var(--amber); }
+  .signal-slot--hot .signal-slot-hd { color: var(--red); }
+  .signal-slot-hd .ico { font-size: 12px; line-height: 1; }
+  .signal-slot-hd .name { flex: 1; }
+  .signal-slot-hd .meta {
+    font-size: 9px;
+    color: var(--text3);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+  }
+
+  .signal-slot-body {
+    padding: 8px 12px 10px;
+    font-size: 11px;
+    color: var(--text);
+  }
+  .signal-slot-headline {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+  .signal-slot-row {
+    display: flex;
+    gap: 10px;
+    margin: 3px 0;
+    align-items: baseline;
+  }
+  .signal-slot-row .k {
+    font-size: 9px;
+    color: var(--text3);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    min-width: 8.5ch;
+  }
+  .signal-slot-row .v {
+    font-weight: 700;
+    color: var(--text);
+  }
+  .signal-slot-row .v .up { color: var(--bull); }
+  .signal-slot-row .v .dn { color: var(--bear); }
+  .signal-slot-pattern {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--text2);
+    font-style: italic;
+    line-height: 1.45;
+    padding: 6px 10px;
+    background: rgba(2,6,23,0.45);
+    border-left: 2px solid;
+    border-radius: 2px;
+  }
+  .signal-slot--building .signal-slot-pattern { border-color: var(--amber); }
+  .signal-slot--hot .signal-slot-pattern { border-color: var(--red); color: #fca5a5; }
+
+  /* Test-dots (Level Test signal) */
+  .test-dots {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .test-dots .dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid; }
+  .test-dots .dot--up { background: var(--bull); border-color: var(--bull); }
+  .test-dots .dot--dn { background: var(--bear); border-color: var(--bear); }
+  .test-dots .dot--empty { background: transparent; border-color: rgba(255,255,255,0.30); }
+
+  /* Quiet compact mode (collapsed chip for slots that aren't firing) */
+  .signal-slot--compact .signal-slot-body { padding: 4px 12px 6px; }
+  .signal-slot--compact .signal-slot-headline { font-size: 11px; margin-bottom: 0; color: var(--text2); }
+
+  /* Severity pip (top-right of slot header) */
+  .severity-pip {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text3);
+  }
+  .signal-slot--positive .severity-pip { background: var(--bull); }
+  .signal-slot--building .severity-pip { background: var(--amber); }
+  .signal-slot--hot .severity-pip { background: var(--red); box-shadow: 0 0 6px var(--red); }
+</style>
+</head>
+<body>
+
+<div class="h1">Signals Rail — design mockup</div>
+<div class="sub">Vertical analytics column · right of horizon row + signal-rail-card</div>
+
+<p class="note">
+  New <strong style="color:var(--text)">SIGNALS</strong> rail sits to the right of the 4-pill horizon row + signal-rail-card. Each slot is a self-contained alert/context surface for an institutional signal pulled from anywhere in the repo. Same severity grammar as <code>Entry armed</code> / <code>Stack degraded</code> — dim → amber → red (positive signals get green). Slots <em>hide</em> when fully quiet (no real-estate cost when nothing's happening).
+</p>
+<p class="note">
+  Starting with the <strong style="color:var(--text)">Level Test</strong> slot at the top. Other slots in this mockup are stubs showing what the same visual contract looks like for additional signals — they're not wired yet; you pick which ones plug in over time.
+</p>
+
+<!-- ───────────────── SCENE 1: HOT (current 4th-test screenshot state) ─── -->
+<div class="scene-h">Scene 1 — Hot state (current: 4th test of Put Gamma Wall)</div>
+<div class="scene-desc">Level Test fires the expanded alert. Other slots show compact context or hide entirely.</div>
+<div class="scene-split">
+
+  <div class="left-stub">
+    <strong>(unchanged — horizon row + signal-rail-card live here)</strong>
+    4 horizon cards · Entry armed strip · empirical context
+  </div>
+
+  <div class="signals-rail">
+    <div class="signals-rail-hd">
+      <span>Signals</span>
+      <span class="signals-count">1 hot · 1 building · 2 quiet</span>
+    </div>
+
+    <!-- ── LEVEL TEST: hot ── -->
+    <div class="signal-slot signal-slot--hot">
+      <div class="signal-slot-hd">
+        <span class="ico">⚠</span>
+        <span class="name">Level under pressure</span>
+        <span class="severity-pip"></span>
+      </div>
+      <div class="signal-slot-body">
+        <div class="signal-slot-headline">
+          4th test of Put Gamma Wall
+          <span class="test-dots">
+            <span class="dot dot--up" title="prior up-side rejection"></span>
+            <span class="dot dot--dn"></span>
+            <span class="dot dot--dn"></span>
+            <span class="dot dot--empty" title="current touch"></span>
+          </span>
+        </div>
+        <div class="signal-slot-row"><span class="k">Level</span><span class="v">580.00 <span style="color:var(--text3);font-weight:500">(−1.20 below)</span></span></div>
+        <div class="signal-slot-row"><span class="k">Prior</span><span class="v"><span class="up">1 ↑ rejected</span> · <span class="dn">2 ↓ held</span></span></div>
+        <div class="signal-slot-row"><span class="k">Last hit</span><span class="v">14:32 ET · 3m ago</span></div>
+        <div class="signal-slot-pattern">
+          Level resisting repeated probes. 4th touch resolves either as <strong>break-through</strong> (short below 580) or <strong>strong hold</strong> (long off 580, stop &lt;579.50). Don't fade absent confirmation.
+        </div>
+      </div>
+    </div>
+
+    <!-- ── STACK INTEGRITY: building ── -->
+    <div class="signal-slot signal-slot--building">
+      <div class="signal-slot-hd">
+        <span class="ico">▲</span>
+        <span class="name">Stack integrity</span>
+        <span class="severity-pip"></span>
+      </div>
+      <div class="signal-slot-body">
+        <div class="signal-slot-headline" style="color:#fcd34d;font-size:11px">15M bundle preflight WARN</div>
+        <div class="signal-slot-row"><span class="k">Detail</span><span class="v" style="font-weight:500">absorption_score &gt; 5% NULL on 15M lookback</span></div>
+        <div class="signal-slot-row"><span class="k">Source</span><span class="v" style="font-weight:500;color:var(--text2)">stack_integrity_events</span></div>
+      </div>
+    </div>
+
+    <!-- ── ORDER FLOW: positive (compact) ── -->
+    <div class="signal-slot signal-slot--positive signal-slot--compact">
+      <div class="signal-slot-hd">
+        <span class="ico">↑</span>
+        <span class="name">Order flow</span>
+        <span class="severity-pip"></span>
+      </div>
+      <div class="signal-slot-body">
+        <div class="signal-slot-headline">BUYING · 64% · confirm</div>
+      </div>
+    </div>
+
+    <!-- ── PROXIMITY: quiet (compact) ── -->
+    <div class="signal-slot signal-slot--quiet signal-slot--compact">
+      <div class="signal-slot-hd">
+        <span class="ico">·</span>
+        <span class="name">Proximity</span>
+        <span class="severity-pip"></span>
+      </div>
+      <div class="signal-slot-body">
+        <div class="signal-slot-headline">No walls within 0.15%</div>
+      </div>
+    </div>
+
+    <!-- ── VIX REGIME: quiet (compact) ── -->
+    <div class="signal-slot signal-slot--quiet signal-slot--compact">
+      <div class="signal-slot-hd">
+        <span class="ico">·</span>
+        <span class="name">Vol regime</span>
+        <span class="severity-pip"></span>
+      </div>
+      <div class="signal-slot-body">
+        <div class="signal-slot-headline">Normal · VIX 16.2 →</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ───────────────── SCENE 2: BUILDING (3rd test) ──────────── -->
+<div class="scene-h">Scene 2 — Building state (3rd test of Put Gamma Wall)</div>
+<div class="scene-desc">Same slot, amber severity, softer copy. No trade signal yet — monitor.</div>
+<div class="scene-split">
+
+  <div class="left-stub">
+    <strong>(unchanged left content)</strong>
+    horizon row + signal-rail-card
+  </div>
+
+  <div class="signals-rail">
+    <div class="signals-rail-hd">
+      <span>Signals</span>
+      <span class="signals-count">1 building · 3 quiet</span>
+    </div>
+
+    <div class="signal-slot signal-slot--building">
+      <div class="signal-slot-hd">
+        <span class="ico">▲</span>
+        <span class="name">Level being tested</span>
+        <span class="severity-pip"></span>
+      </div>
+      <div class="signal-slot-body">
+        <div class="signal-slot-headline" style="color:#fcd34d">
+          3rd test of Put Gamma Wall
+          <span class="test-dots">
+            <span class="dot dot--up"></span>
+            <span class="dot dot--dn"></span>
+            <span class="dot dot--empty"></span>
+            <span class="dot dot--empty"></span>
+          </span>
+        </div>
+        <div class="signal-slot-row"><span class="k">Level</span><span class="v">580.00 <span style="color:var(--text3);font-weight:500">(−1.20 below)</span></span></div>
+        <div class="signal-slot-row"><span class="k">Prior</span><span class="v"><span class="up">1 ↑</span> · <span class="dn">1 ↓</span></span></div>
+        <div class="signal-slot-pattern">
+          Pressure building. One more touch resolves to break or hold. No trade signal yet — monitor.
+        </div>
+      </div>
+    </div>
+
+    <div class="signal-slot signal-slot--quiet signal-slot--compact">
+      <div class="signal-slot-hd"><span class="ico">·</span><span class="name">Stack integrity</span><span class="severity-pip"></span></div>
+      <div class="signal-slot-body"><div class="signal-slot-headline">OK · all bundles clean</div></div>
+    </div>
+
+    <div class="signal-slot signal-slot--quiet signal-slot--compact">
+      <div class="signal-slot-hd"><span class="ico">·</span><span class="name">Order flow</span><span class="severity-pip"></span></div>
+      <div class="signal-slot-body"><div class="signal-slot-headline">NEUTRAL · 48% · mixed</div></div>
+    </div>
+
+    <div class="signal-slot signal-slot--quiet signal-slot--compact">
+      <div class="signal-slot-hd"><span class="ico">·</span><span class="name">Vol regime</span><span class="severity-pip"></span></div>
+      <div class="signal-slot-body"><div class="signal-slot-headline">Normal · VIX 16.2 →</div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ───────────────── SCENE 3: ALL QUIET ────────────────────── -->
+<div class="scene-h">Scene 3 — All quiet (Level Test absent; compact context only)</div>
+<div class="scene-desc">Nothing under pressure. Level Test hides entirely (≤1 prior). Other slots stay as small context chips. Rail can collapse to one line if you prefer.</div>
+<div class="scene-split">
+
+  <div class="left-stub">
+    <strong>(unchanged left content)</strong>
+    horizon row + signal-rail-card
+  </div>
+
+  <div class="signals-rail">
+    <div class="signals-rail-hd">
+      <span>Signals</span>
+      <span class="signals-count">4 quiet</span>
+    </div>
+
+    <div class="signal-slot signal-slot--quiet signal-slot--compact">
+      <div class="signal-slot-hd"><span class="ico">·</span><span class="name">Level test</span><span class="severity-pip"></span></div>
+      <div class="signal-slot-body"><div class="signal-slot-headline">Quiet · nearest: Put G-Wall 580.00 (−1.20)</div></div>
+    </div>
+
+    <div class="signal-slot signal-slot--quiet signal-slot--compact">
+      <div class="signal-slot-hd"><span class="ico">·</span><span class="name">Stack integrity</span><span class="severity-pip"></span></div>
+      <div class="signal-slot-body"><div class="signal-slot-headline">OK · all bundles clean</div></div>
+    </div>
+
+    <div class="signal-slot signal-slot--quiet signal-slot--compact">
+      <div class="signal-slot-hd"><span class="ico">·</span><span class="name">Order flow</span><span class="severity-pip"></span></div>
+      <div class="signal-slot-body"><div class="signal-slot-headline">NEUTRAL · 48% · mixed</div></div>
+    </div>
+
+    <div class="signal-slot signal-slot--quiet signal-slot--compact">
+      <div class="signal-slot-hd"><span class="ico">·</span><span class="name">Vol regime</span><span class="severity-pip"></span></div>
+      <div class="signal-slot-body"><div class="signal-slot-headline">Normal · VIX 16.2 →</div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ───────────────── DESIGN NOTES + CANDIDATE SLOTS ────────── -->
+<div class="section-h">Design notes</div>
+<ol class="note" style="padding-left: 22px">
+  <li style="margin: 4px 0"><strong style="color:var(--text)">Severity grammar matches signal-rail-card</strong> — quiet (slate) → building (amber) → hot (red) → positive (green). Operator already learned this from Entry armed / Stack degraded; no new vocabulary.</li>
+  <li style="margin: 4px 0"><strong style="color:var(--text)">Slots hide when quiet</strong> for low-priority signals (or stay compact for high-priority context). No always-on noise.</li>
+  <li style="margin: 4px 0"><strong style="color:var(--text)">Severity pip</strong> in slot header gives an at-a-glance summary even if the operator's eyes are scanning vertically.</li>
+  <li style="margin: 4px 0"><strong style="color:var(--text)">Rail header carries summary count</strong> ("1 hot · 1 building · 2 quiet") — operator can tell at a glance whether to look right or stay on the main row.</li>
+  <li style="margin: 4px 0"><strong style="color:var(--text)">Extensible</strong> — adding a new signal = adding a new <code>.signal-slot</code> + a render call. No structural changes.</li>
+</ol>
+
+<div class="section-h">Candidate slot inventory (start with Level Test; pick which others to wire)</div>
+<table class="note" style="border-collapse: collapse; width: 100%; max-width: none;">
+  <thead>
+    <tr style="border-bottom: 1px solid var(--border2)">
+      <th style="text-align:left;padding:6px 10px;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:0.08em">Slot</th>
+      <th style="text-align:left;padding:6px 10px;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:0.08em">Source</th>
+      <th style="text-align:left;padding:6px 10px;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:0.08em">Severity drivers</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+      <td style="padding:6px 10px"><strong style="color:var(--text)">Level Test</strong> (first)</td>
+      <td style="padding:6px 10px;color:var(--text2)"><code>/api/level_crosses</code> + <code>nearest_above/below_*</code></td>
+      <td style="padding:6px 10px;color:var(--text3)">0–1 quiet · 2 building · ≥3 hot</td>
+    </tr>
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+      <td style="padding:6px 10px"><strong style="color:var(--text)">Stack Integrity</strong></td>
+      <td style="padding:6px 10px;color:var(--text2)"><code>stack_integrity_v1</code>, <code>stack_runtime.signals_engine_failed</code>, <code>stack_mode</code></td>
+      <td style="padding:6px 10px;color:var(--text3)">OK quiet · partial fallback amber · degraded red</td>
+    </tr>
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+      <td style="padding:6px 10px"><strong style="color:var(--text)">Order Flow</strong></td>
+      <td style="padding:6px 10px;color:var(--text2)"><code>order_flow_verdict</code> + <code>order_flow_score</code></td>
+      <td style="padding:6px 10px;color:var(--text3)">neutral quiet · directional + confirm positive · divergence amber</td>
+    </tr>
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+      <td style="padding:6px 10px"><strong style="color:var(--text)">Proximity Alerts</strong></td>
+      <td style="padding:6px 10px;color:var(--text2)"><code>proximity_alerts()</code> (walls/pins &lt;threshold)</td>
+      <td style="padding:6px 10px;color:var(--text3)">none quiet · 1 wall building · 2+ walls hot</td>
+    </tr>
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+      <td style="padding:6px 10px"><strong style="color:var(--text)">Vol Regime</strong></td>
+      <td style="padding:6px 10px;color:var(--text2)"><code>vix_regime</code>, <code>vol_regime</code> (compression / expansion)</td>
+      <td style="padding:6px 10px;color:var(--text3)">normal quiet · elevated amber · spike red</td>
+    </tr>
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+      <td style="padding:6px 10px"><strong style="color:var(--text)">Bond signal</strong></td>
+      <td style="padding:6px 10px;color:var(--text2)"><code>tnx_yield</code> + <code>bond_signal</code></td>
+      <td style="padding:6px 10px;color:var(--text3)">neutral quiet · flight_to_safety amber · rate_stress red</td>
+    </tr>
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+      <td style="padding:6px 10px"><strong style="color:var(--text)">Session boundary</strong></td>
+      <td style="padding:6px 10px;color:var(--text2)"><code>time_warning</code> (last 30m of RTH)</td>
+      <td style="padding:6px 10px;color:var(--text3)">RTH quiet · last-hour amber · close warning red</td>
+    </tr>
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+      <td style="padding:6px 10px"><strong style="color:var(--text)">News / breaking</strong></td>
+      <td style="padding:6px 10px;color:var(--text2)"><code>news_context.breaking_news_flag</code></td>
+      <td style="padding:6px 10px;color:var(--text3)">none quiet · headline within 30m amber · breaking red</td>
+    </tr>
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+      <td style="padding:6px 10px"><strong style="color:var(--text)">Charm drift</strong></td>
+      <td style="padding:6px 10px;color:var(--text2)"><code>charm_direction</code>, <code>charm_drift_toward</code></td>
+      <td style="padding:6px 10px;color:var(--text3)">none quiet · drift toward magnet amber · strong drift red</td>
+    </tr>
+  </tbody>
+</table>
+
+</body>
+</html>

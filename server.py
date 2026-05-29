@@ -585,9 +585,13 @@ _db_fill_outcomes_executor: Optional[ThreadPoolExecutor] = None
 def _get_fast_quote_executor() -> ThreadPoolExecutor:
     global _fast_quote_executor
     if _fast_quote_executor is None:
+        # SWITCH-LATENCY FIX: this pool now absorbs the offloaded blocking work for ALL hot
+        # async routes (Tier A/B/C + fast-quote), so a single ticker switch can have ~4
+        # concurrent offloads in flight plus ongoing fast-quote polling. 2 workers serialized
+        # them; 8 keeps them off the event loop without re-queuing (I/O-bound — threads cheap).
         _fast_quote_executor = ThreadPoolExecutor(
-            max_workers=2,
-            thread_name_prefix="ed_fast_quote",
+            max_workers=8,
+            thread_name_prefix="ed_route_offload",
         )
     return _fast_quote_executor
 
@@ -5965,7 +5969,7 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
-async def root():
+def root():
     html_path = static_dir / "index.html"
     if not html_path.exists():
         return HTMLResponse("<h1>static/index.html not found</h1>", status_code=404)
@@ -5980,13 +5984,13 @@ async def root():
 
 
 @app.get("/favicon.ico", include_in_schema=False)
-async def favicon():
+def favicon():
     """Browsers request this automatically; without a route they log 404 (harmless but noisy)."""
     return Response(status_code=204)
 
 
 @app.get("/guide/data-stewardship", response_class=HTMLResponse)
-async def guide_data_stewardship():
+def guide_data_stewardship():
     """Serve DATA_STEWARDSHIP.md in the browser (king / jewels / guards + runbook)."""
     md_path = Path(APP_DIR) / "DATA_STEWARDSHIP.md"
     if not md_path.exists():
@@ -6024,7 +6028,7 @@ async def guide_data_stewardship():
 
 
 @app.get("/guide/training-and-maintenance", response_class=HTMLResponse)
-async def guide_training_and_maintenance():
+def guide_training_and_maintenance():
     md_path = Path(APP_DIR) / "TRAINING_AND_MAINTENANCE.md"
     if not md_path.exists():
         return HTMLResponse(
@@ -6066,7 +6070,7 @@ async def guide_training_and_maintenance():
 
 
 @app.get("/guide/pipeline-quality", response_class=HTMLResponse)
-async def guide_pipeline_quality():
+def guide_pipeline_quality():
     """TQM-style checkpoints: ingest throttles, audits, normalized layer, readiness."""
     md_path = Path(APP_DIR) / "PIPELINE_QUALITY.md"
     if not md_path.exists():
@@ -6109,7 +6113,7 @@ async def guide_pipeline_quality():
 
 
 @app.get("/ops", response_class=HTMLResponse)
-async def ops_panel():
+def ops_panel():
     """Interactive maintenance/training launcher (requires ED_OPS_RUNNER for actions)."""
     p = static_dir / "ops.html"
     if not p.exists():
@@ -6118,7 +6122,7 @@ async def ops_panel():
 
 
 @app.get("/api/ops/status")
-async def api_ops_status():
+def api_ops_status():
     from ops_runner import allow_remote, is_ops_runner_enabled, jobs_public_list, sequences_public_list
 
     return JSONResponse(
@@ -6132,7 +6136,7 @@ async def api_ops_status():
 
 
 @app.get("/api/level_crosses")
-async def api_level_crosses(ticker: str = "SPY", n: int = 20, level_name: str | None = None,
+def api_level_crosses(ticker: str = "SPY", n: int = 20, level_name: str | None = None,
                             level_value: float | None = None, lookback_hours: float = 6.5):
     """Pass 4 — read consumer for level_crosses table.
 
@@ -6163,7 +6167,7 @@ async def api_level_crosses(ticker: str = "SPY", n: int = 20, level_name: str | 
 
 
 @app.get("/api/ops/calibration_rowcount")
-async def api_ops_calibration_rowcount():
+def api_ops_calibration_rowcount():
     """Pass 3 — forward-only calibration_decision_log rate health.
 
     Surfaces last-24h vs prior-24h vs expected row counts so an
@@ -6192,7 +6196,7 @@ async def api_ops_calibration_rowcount():
 
 
 @app.post("/api/ops/run")
-async def api_ops_run(request: Request, payload: dict = Body(...)):
+def api_ops_run(request: Request, payload: dict = Body(...)):
     from ops_runner import (
         client_may_trigger,
         is_ops_runner_enabled,
@@ -6223,7 +6227,7 @@ async def api_ops_run(request: Request, payload: dict = Body(...)):
 
 
 @app.get("/governance", response_class=HTMLResponse)
-async def governance_visibility_page():
+def governance_visibility_page():
     """Architecture governance panel (read-only; manual actions gated on server)."""
     p = static_dir / "governance.html"
     if not p.exists():
@@ -6232,7 +6236,7 @@ async def governance_visibility_page():
 
 
 @app.get("/api/governance/panel")
-async def api_governance_panel(
+def api_governance_panel(
     ticker: str = Query("SPY", description="Ticker symbol"),
     horizon: str = Query("1c", description="ML horizon slug"),
     emit_notifications: bool = Query(
@@ -6258,7 +6262,7 @@ async def api_governance_panel(
 
 
 @app.post("/api/internal/reload_models")
-async def api_internal_reload_models(request: Request, payload: dict = Body(default={})):
+def api_internal_reload_models(request: Request, payload: dict = Body(default={})):
     """Evict in-memory model registries for promoted (ticker, horizon) tuples (PR4 P3-10)."""
     from arch_competition.live_model_reload import RELOAD_SCHEMA_VERSION
     from arch_competition.scheduler_auto_promote_policy import console_reload_token
@@ -6328,7 +6332,7 @@ async def api_internal_reload_models(request: Request, payload: dict = Body(defa
 
 
 @app.post("/api/governance/manual-promote")
-async def api_governance_manual_promote(request: Request, payload: dict = Body(...)):
+def api_governance_manual_promote(request: Request, payload: dict = Body(...)):
     from pathlib import Path
 
     from arch_competition.exceptions import ManualGovernanceError
@@ -6388,7 +6392,7 @@ async def api_governance_manual_promote(request: Request, payload: dict = Body(.
 
 
 @app.post("/api/governance/manual-rollback")
-async def api_governance_manual_rollback(request: Request, payload: dict = Body(...)):
+def api_governance_manual_rollback(request: Request, payload: dict = Body(...)):
     from pathlib import Path
 
     from arch_competition.exceptions import ManualGovernanceError
@@ -6448,7 +6452,7 @@ async def api_governance_manual_rollback(request: Request, payload: dict = Body(
 
 
 @app.post("/api/ops/run-sequence")
-async def api_ops_run_sequence(request: Request, payload: dict = Body(...)):
+def api_ops_run_sequence(request: Request, payload: dict = Body(...)):
     from ops_runner import (
         client_may_trigger,
         is_ops_runner_enabled,
@@ -6609,8 +6613,18 @@ async def get_live_state(
     Primary driver for responsive UI; use GET /api/analytics/state for full analytical bundle.
     """
     t = _resolve_ticker_param(ticker, symbol)
-    _register_tracked_ticker(t)
-    return JSONResponse(_tier_a_live_state_dict(t, expiry))
+    # SWITCH-LATENCY FIX: this route is async, so ANY blocking work here stalls the whole
+    # event loop (all SSE streams, the fast-quote poll, every other request) until it
+    # returns — the root cause of slow ticker switches. Both _register_tracked_ticker
+    # (persists the symbol to the SQLite logging_universe — a DB write that contends with
+    # the live logger/retrain) and _tier_a_live_state_dict (blocking Schwab REST + retry on
+    # a cold ticker) must run OFF the loop. Offload to the thread pool, like /api/fast-quote.
+    def _build():
+        _register_tracked_ticker(t)
+        return _tier_a_live_state_dict(t, expiry)
+    loop = asyncio.get_event_loop()
+    payload = await loop.run_in_executor(_get_fast_quote_executor(), _build)
+    return JSONResponse(payload)
 
 
 @app.get("/api/analytics/light")
@@ -6627,10 +6641,16 @@ async def get_analytics_light(
     serve-age expiry, or force=true. Materiality-gated rebuilds run on quote/L2 hooks only.
     """
     t = ticker.upper().strip()
-    _register_tracked_ticker(t)
     from planes.l1_events import notify_ticker_expiry_changed
 
-    return JSONResponse(notify_ticker_expiry_changed(t, expiry, force=force))
+    # SWITCH-LATENCY FIX: async route — keep the symbol persist (DB write) and the L1
+    # projection build (a full recompute on a cold miss) OFF the event loop.
+    def _build():
+        _register_tracked_ticker(t)
+        return notify_ticker_expiry_changed(t, expiry, force=force)
+    loop = asyncio.get_event_loop()
+    payload = await loop.run_in_executor(_get_fast_quote_executor(), _build)
+    return JSONResponse(payload)
 
 
 @app.get("/api/analytics/light/stream")
@@ -6644,7 +6664,9 @@ async def get_analytics_light_stream(
     Payload matches GET /api/analytics/light (uses _l1_http_get_projection — no duplicate compute path).
     """
     t = ticker.upper().strip()
-    _register_tracked_ticker(t)
+    # SWITCH-LATENCY FIX: _register_tracked_ticker does a SQLite write — offload it so the
+    # SSE-connect path (fires on every ticker switch) doesn't block the event loop.
+    await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _register_tracked_ticker, t)
     exp_key = expiry if expiry is not None else "__auto__"
     key = (t, exp_key)
     q, rs_key = _l1_light_sse_try_reserve(request, key)
@@ -6682,13 +6704,22 @@ async def get_analytics_state(
     Tier C — full analytical pipeline (_fetch_state): chain, exposures, fusion, DB, news, model health.
     Not required for first paint; cache-first when TTL allows.
     """
-    return _tier_c_analytics_json_response(
-        _resolve_ticker_param(ticker, symbol), expiry, force, update_source="rest_analytics"
+    t = _resolve_ticker_param(ticker, symbol)
+    # SWITCH-LATENCY FIX: async route — the handler is stale-while-refresh (light), but it
+    # calls _register_tracked_ticker (SQLite write) on entry, which blocks the event loop
+    # during DB contention. Offload it; the heavy recompute it schedules already runs on
+    # its own thread pool.
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        _get_fast_quote_executor(),
+        lambda: _tier_c_analytics_json_response(t, expiry, force, "rest_analytics"),
     )
 
 
 @app.get("/api/state")
-async def get_state(
+# SWITCH-LATENCY FIX: sync def → Starlette runs it in its worker threadpool, off the
+# event loop (this handler does blocking Tier C work and no await).
+def get_state(
     ticker: str = Query(default=DEFAULT_TICKER),
     symbol: Optional[str] = Query(default=None),
     expiry: Optional[str] = Query(default=None),
@@ -6705,7 +6736,7 @@ async def get_state(
 
 
 @app.get("/api/live/plane")
-async def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
+def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
     """Diagnostics: Layer A row + streaming health — no Schwab REST quote call."""
     t = (ticker or DEFAULT_TICKER).upper().strip()
     row = _lmp.get_quote(t)
@@ -6740,15 +6771,21 @@ async def post_streaming_active_ticker(payload: dict = Body(default={})):
     """Subscribe Schwab L1+book to the active UI ticker (dynamic; replaces prior subscription)."""
     t = (payload.get("ticker") or DEFAULT_TICKER)
     t = str(t).upper().strip()
-    try:
+    # SWITCH-LATENCY FIX (critical): set_streaming_active_ticker blocks on fut.result(timeout=30)
+    # while it does 6 websocket re-subscribe round-trips, and this endpoint fires on EVERY ticker
+    # switch. Running it on the async event loop froze the entire UI (all SSE/requests) for up to
+    # 30s per switch. Offload the whole blocking block to the thread pool; the loop stays free.
+    def _apply():
         from order_flow_streaming import set_streaming_active_ticker, get_streaming_diagnostics, get_plane_authority_for_ticker
 
         ok = set_streaming_active_ticker(t)
         _lmp.reset_sse_push_cursor(t)
         diag = get_streaming_diagnostics()
+        return {"ok": ok, "ticker": t, **diag, "plane_quote_authority": get_plane_authority_for_ticker(t)}
+    try:
+        out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e), "ticker": t}, status_code=500)
-    out = {"ok": ok, "ticker": t, **diag, "plane_quote_authority": get_plane_authority_for_ticker(t)}
     return JSONResponse(out)
 
 
@@ -6802,7 +6839,7 @@ def _l1_sse_light_diag_payload() -> dict[str, Any]:
 
 
 @app.get("/api/diagnostics/l1")
-async def get_l1_diagnostics():
+def get_l1_diagnostics():
     """
     L1 operational metrics: build counts, reason histogram, cache hits/skips, policy constants.
     For live validation and tuning materiality / TTL without log scraping.
@@ -6914,7 +6951,7 @@ async def get_l1_diagnostics():
 
 
 @app.post("/api/diagnostics/ticker-switch")
-async def post_ticker_switch_diagnostics(payload: dict = Body(default={})):
+def post_ticker_switch_diagnostics(payload: dict = Body(default={})):
     """Ingest client ticker-switch timing records into in-memory ring buffer."""
     from ticker_switch_diagnostics import record_switch_event
 
@@ -6923,7 +6960,7 @@ async def post_ticker_switch_diagnostics(payload: dict = Body(default={})):
 
 
 @app.get("/api/diagnostics/ticker-switch")
-async def get_ticker_switch_diagnostics(limit: int = Query(50, ge=1, le=200)):
+def get_ticker_switch_diagnostics(limit: int = Query(50, ge=1, le=200)):
     """Recent ticker-switch timing events (newest first)."""
     from ticker_switch_diagnostics import get_recent_events
 
@@ -6944,13 +6981,15 @@ async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
         ticker,
         asyncio_thread,
     )
-    newly = _register_tracked_ticker(ticker)
-    if newly:
-        log.debug(f"Auto-registered {ticker} with background logger (/api/fast-quote)")
     loop = asyncio.get_event_loop()
     submit_ts = time.perf_counter()
+    # SWITCH-LATENCY FIX: _register_tracked_ticker persists to the SQLite logging_universe
+    # (a DB write); keep it off the event loop alongside the quote fetch.
+    def _reg_and_fetch():
+        _register_tracked_ticker(ticker)
+        return _fetch_fast_quote_payload(ticker)
     try:
-        payload = await loop.run_in_executor(_get_fast_quote_executor(), _fetch_fast_quote_payload, ticker)
+        payload = await loop.run_in_executor(_get_fast_quote_executor(), _reg_and_fetch)
         after_exec = time.perf_counter()
         log.info(
             "fast_quote_route_done ticker=%s asyncio_thread=%s route_total_ms=%.2f await_executor_ms=%.2f",
@@ -6993,7 +7032,9 @@ async def sse_stream(
     ticker = ticker.upper().strip()
     expiry = expiry or None
     key = (ticker, expiry)
-    newly = _register_tracked_ticker(ticker)
+    # SWITCH-LATENCY FIX: _register_tracked_ticker does a SQLite write — offload it so the
+    # SSE-connect path (fires on every ticker switch) doesn't block the event loop.
+    newly = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _register_tracked_ticker, ticker)
     if newly:
         log.info(f"Auto-registered {ticker} with background logger (SSE connect)")
 
@@ -7132,7 +7173,8 @@ async def _sse_background_loop() -> None:
 
 
 @app.get("/api/expiries")
-async def get_expiries(ticker: str = Query(default=DEFAULT_TICKER)):
+# SWITCH-LATENCY FIX: sync def → threadpool (DB write + Schwab expiry fetch, no await).
+def get_expiries(ticker: str = Query(default=DEFAULT_TICKER)):
     ticker = ticker.upper().strip()
     _register_tracked_ticker(ticker)
     # Use any cached (ticker, expiry) entry — expiries list is same for all
@@ -7151,7 +7193,7 @@ async def get_expiries(ticker: str = Query(default=DEFAULT_TICKER)):
 
 
 @app.get("/api/logger/status")
-async def logger_status():
+def logger_status():
     """Return background logger status — which tickers are being logged and their stats."""
     with _logger_lock:
         tickers = list(_logger_tickers)
@@ -7217,7 +7259,7 @@ async def logger_status():
 
 
 @app.get("/api/logger/universe")
-async def logger_universe():
+def logger_universe():
     """Issue 22 hardened — auditable logging_universe with eviction_status per row."""
     if not _HAS_SIGNALS:
         raise HTTPException(status_code=503, detail="database logging not available")
@@ -7252,7 +7294,7 @@ async def logger_universe():
 
 
 @app.get("/api/logger/universe/by-category")
-async def logger_universe_by_category(
+def logger_universe_by_category(
     category: str = Query(..., description="core | pinned | user_persisted"),
 ):
     if not _HAS_SIGNALS:
@@ -7272,7 +7314,7 @@ async def logger_universe_by_category(
 
 
 @app.post("/api/logger/pin")
-async def logger_pin(ticker: str = Query(..., description="Symbol to pin (non-core only)")):
+def logger_pin(ticker: str = Query(..., description="Symbol to pin (non-core only)")):
     if not _HAS_SIGNALS:
         raise HTTPException(status_code=503, detail="database logging not available")
     t = ticker.upper().strip()
@@ -7302,7 +7344,7 @@ async def logger_pin(ticker: str = Query(..., description="Symbol to pin (non-co
 
 
 @app.post("/api/logger/unpin")
-async def logger_unpin(ticker: str = Query(...)):
+def logger_unpin(ticker: str = Query(...)):
     if not _HAS_SIGNALS:
         raise HTTPException(status_code=503, detail="database logging not available")
     t = ticker.upper().strip()
@@ -7317,7 +7359,8 @@ async def logger_unpin(ticker: str = Query(...)):
 
 
 @app.post("/api/logger/add")
-async def logger_add(ticker: str = Query(..., description="Ticker to add to background logger")):
+# SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
+def logger_add(ticker: str = Query(..., description="Ticker to add to background logger")):
     """Manually add a ticker to the background logger."""
     ticker = ticker.upper().strip()
     if not ticker or len(ticker) > 10:
@@ -7329,7 +7372,7 @@ async def logger_add(ticker: str = Query(..., description="Ticker to add to back
 
 
 @app.post("/api/logger/remove")
-async def logger_remove(ticker: str = Query(..., description="Ticker to remove from logger")):
+def logger_remove(ticker: str = Query(..., description="Ticker to remove from logger")):
     """Remove a non-core ticker from the background logger and durable logging_universe."""
     ticker = ticker.upper().strip()
     if ticker in CORE_TICKERS:
@@ -7367,7 +7410,8 @@ async def logger_remove(ticker: str = Query(..., description="Ticker to remove f
 
 
 @app.post("/api/prediction/override")
-async def prediction_override(ticker: str = Query(...), direction: str = Query(...), source: str = Query("user")):
+# SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
+def prediction_override(ticker: str = Query(...), direction: str = Query(...), source: str = Query("user")):
     """Set manual override for prediction direction. direction: up|flat|down. source: user|manual."""
     ticker = ticker.upper().strip()
     _register_tracked_ticker(ticker)
@@ -7380,7 +7424,8 @@ async def prediction_override(ticker: str = Query(...), direction: str = Query(.
 
 
 @app.post("/api/prediction/override/clear")
-async def prediction_override_clear(ticker: str = Query(...)):
+# SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
+def prediction_override_clear(ticker: str = Query(...)):
     """Clear prediction override for ticker."""
     ticker = ticker.upper().strip()
     _register_tracked_ticker(ticker)
@@ -7391,7 +7436,7 @@ async def prediction_override_clear(ticker: str = Query(...)):
 
 
 @app.get("/api/health")
-async def health():
+def health():
     with _logger_lock:
         running = _logger_running
         n       = len(_logger_tickers)
@@ -7418,13 +7463,14 @@ def _repo_git_head_sha() -> Optional[str]:
 
 
 @app.get("/api/build")
-async def api_build():
+def api_build():
     """Runtime tip fingerprint — compare ``git_sha`` to ``git rev-parse HEAD`` after deploy/restart."""
     return {"git_sha": _repo_git_head_sha(), "contract": "meet_or_exceed_v1"}
 
 
 @app.get("/api/price-levels")
-async def get_price_levels(ticker: str = Query(default=DEFAULT_TICKER), extended_hours: bool = Query(default=True)):
+# SWITCH-LATENCY FIX: sync def → threadpool (Schwab quote + price-levels compute, no await).
+def get_price_levels(ticker: str = Query(default=DEFAULT_TICKER), extended_hours: bool = Query(default=True)):
     """Return PDH/PDL/PDC, POC/VAH/VAL, VWAP bands, ORB, overnight range as JSON."""
     try:
         _register_tracked_ticker(ticker)
@@ -7606,7 +7652,10 @@ def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
 
 
 @app.get("/api/liquidity-snapshot")
-async def get_liquidity_snapshot(
+# SWITCH-LATENCY FIX: sync def → threadpool. This fires on every ticker switch (client
+# setTimeout pollLiquiditySnapshot) and every 60s; it does a blocking Schwab bar fetch with
+# no await, so as async it stalled the event loop on each switch.
+def get_liquidity_snapshot(
     ticker: str = Query(default=DEFAULT_TICKER),
     date: Optional[str] = Query(default=None, description="Session date YYYY-MM-DD (default: today ET)"),
     snapshot: str = Query(
@@ -7754,7 +7803,8 @@ async def get_liquidity_snapshot(
 
 
 @app.get("/api/liquidity-playbook-state")
-async def get_liquidity_playbook_state(
+# SWITCH-LATENCY FIX: sync def → threadpool (blocking Schwab bar fetch, no await).
+def get_liquidity_playbook_state(
     ticker: str = Query(default=DEFAULT_TICKER),
     date: Optional[str] = Query(default=None, description="Session date YYYY-MM-DD (default: today ET)"),
 ):
@@ -7793,7 +7843,8 @@ async def get_liquidity_playbook_state(
 
 
 @app.get("/api/debug/charm")
-async def debug_charm(ticker: str = DEFAULT_TICKER):
+# SWITCH-LATENCY FIX: sync def → threadpool (blocking chain fetch, no await).
+def debug_charm(ticker: str = DEFAULT_TICKER):
     """Diagnose why charm is not computing."""
     try:
         ticker = (ticker or DEFAULT_TICKER).upper().strip()
@@ -7915,7 +7966,8 @@ async def debug_charm(ticker: str = DEFAULT_TICKER):
 
 
 @app.get("/api/accuracy")
-async def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
+# SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
+def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
     """Return prediction accuracy for a ticker.
 
     Returns cached results if available (updated every ~10 min),
@@ -7992,7 +8044,8 @@ async def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
 
 
 @app.get("/api/debug/prediction")
-async def debug_prediction(ticker: str = DEFAULT_TICKER):
+# SWITCH-LATENCY FIX: sync def → threadpool (blocking full _fetch_state, no await).
+def debug_prediction(ticker: str = DEFAULT_TICKER):
     """Show exactly what the prediction engine is querying."""
     try:
         state = _fetch_state(ticker, expiry=None, update_source="debug_endpoint")
