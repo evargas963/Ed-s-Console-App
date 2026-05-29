@@ -250,6 +250,56 @@ def test_auto_promote_force_replace_noncompliant_incumbent(tmp_path: Path, monke
     assert result["executed"] is True
 
 
+def test_auto_promote_stamps_active_incumbent_with_ensemble_score(tmp_path: Path, monkeypatch):
+    """Basis-consistency: after promote, active meta promotion_score == manifest ENSEMBLE
+    accuracy (0.45), not the xgb-only value copied verbatim from the candidate."""
+    _governed_auto_setup(tmp_path, monkeypatch)
+    # Candidate xgb meta carries an xgb-only val_accuracy distinct from the ensemble 0.45.
+    cand_meta_path = tmp_path / "parallel" / "SPY" / "xgb_SPY_1c_meta.json"
+    cand_meta = json.loads(cand_meta_path.read_text(encoding="utf-8"))
+    cand_meta["val_accuracy"] = 0.30
+    cand_meta_path.write_text(json.dumps(cand_meta), encoding="utf-8")
+
+    result = execute_promotion_if_eligible(tmp_path, "SPY", "1c", scheduler_run_id="stamp")
+    assert result["executed"] is True
+    active_meta = json.loads(
+        (tmp_path / "active" / "SPY" / "xgb_SPY_1c_meta.json").read_text(encoding="utf-8")
+    )
+    assert active_meta["promotion_score"] == pytest.approx(0.45)  # ensemble, not 0.30 xgb-only
+    assert active_meta["promotion_metric"] == "ensemble_eval_accuracy"
+    assert active_meta["balanced_accuracy"] == pytest.approx(0.40)
+
+
+def test_auto_promote_blocked_when_worse_ensemble_than_ensemble_incumbent(tmp_path: Path, monkeypatch):
+    """Realistic incumbent stored on the ENSEMBLE basis: a worse-ensemble candidate is
+    rejected (the case the same-basis synthetic tests cannot exercise)."""
+    _governed_auto_setup(tmp_path, monkeypatch)
+    active = tmp_path / "active" / "SPY"
+    active.mkdir(parents=True, exist_ok=True)
+    from ml_horizon import target_definition as _td
+
+    meta = {
+        "model_type": "XGBClassifier",
+        "ticker": "SPY",
+        "training_timeframe": "1m",
+        "target_column": "outcome_1c",
+        "target_definition": _td("1c"),
+        "rows_used": 5000,
+        "promotion_score": 0.72,            # ensemble basis (as A2 now stamps)
+        "promotion_metric": "ensemble_eval_accuracy",
+        "balanced_accuracy": 0.68,
+    }
+    (active / "xgb_SPY_1c_meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    # Candidate ensemble accuracy 0.45 (fixture) < incumbent ensemble 0.72 → blocked.
+    result = execute_promotion_if_eligible(tmp_path, "SPY", "1c", scheduler_run_id="worse-ens")
+    assert result["executed"] is False
+    assert result["skipped_reason"] == "promotion_gate_failed"
+    assert "< existing" in result["promotion_gate_reason"]
+    # Incumbent meta untouched (no copy happened).
+    after = json.loads((active / "xgb_SPY_1c_meta.json").read_text(encoding="utf-8"))
+    assert after["promotion_score"] == pytest.approx(0.72)
+
+
 def test_auto_promote_blocked_when_manifest_accuracy_missing(tmp_path: Path, monkeypatch):
     _governed_auto_setup(tmp_path, monkeypatch)
     ed = tmp_path / "arch_competition" / "1c" / "SPY"

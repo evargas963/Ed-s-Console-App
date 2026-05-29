@@ -73,6 +73,59 @@ def _mark_promotion_record_executed(pr_path: Path) -> None:
     write_json_file_atomically(pr_path, data, indent=2)
 
 
+def _candidate_ensemble_metrics(
+    manifest: dict[str, Any], target_architecture: str
+) -> tuple[float | None, float | None]:
+    """Ensemble eval accuracy + balanced_accuracy for the chosen architecture.
+
+    Single source of truth for the metric BASIS the auto-promote gate decides on
+    (xgb+lstm+transformer fused on full RTH), so the gate and the incumbent-score
+    stamp use the same number. Returns (None, None) when accuracy is absent/non-numeric.
+    """
+    metrics = (manifest.get("metrics") or {}).get(target_architecture) or {}
+    raw_acc = metrics.get("accuracy")
+    raw_bal = metrics.get("balanced_accuracy")
+    if raw_acc is None:
+        return None, None
+    try:
+        acc = float(raw_acc)
+        bal = float(raw_bal) if raw_bal is not None else None
+    except (TypeError, ValueError):
+        return None, None
+    return acc, bal
+
+
+def _stamp_active_incumbent_ensemble_score(
+    active_ticker_dir: Path,
+    tku: str,
+    hz: str,
+    ensemble_acc: float,
+    ensemble_bal: float | None,
+) -> None:
+    """A2 basis-consistency: overwrite the freshly-promoted active bundle meta's
+    ``promotion_score`` / ``balanced_accuracy`` with the ENSEMBLE eval metrics the
+    gate decided on.
+
+    Active metas otherwise store the XGB-only ``val_accuracy`` (copied verbatim from
+    the candidate xgb meta), while the gate's candidate side reads the ENSEMBLE
+    accuracy from the manifest. Without this stamp, generation N+1 compares
+    ensemble-vs-xgb-only — systematically biased toward over-promotion. Stamping here
+    makes the next generation compare ensemble-vs-ensemble and self-heals the existing
+    xgb-only incumbents over one cycle. Must run inside the governed active-write scope.
+    """
+    from arch_competition.atomic_io import write_json_file_atomically
+
+    meta_path = Path(active_ticker_dir) / f"xgb_{tku}_{hz}_meta.json"
+    if not meta_path.is_file():
+        return
+    data = json.loads(meta_path.read_text(encoding="utf-8"))
+    data["promotion_score"] = float(ensemble_acc)
+    data["promotion_metric"] = "ensemble_eval_accuracy"
+    if ensemble_bal is not None:
+        data["balanced_accuracy"] = float(ensemble_bal)
+    write_json_file_atomically(meta_path, data, indent=2)
+
+
 def _auto_promote_score_row_gate(
     manifest: dict[str, Any],
     target_architecture: str,
@@ -102,16 +155,9 @@ def _auto_promote_score_row_gate(
         validate_for_promotion,
     )
 
-    metrics = (manifest.get("metrics") or {}).get(target_architecture) or {}
-    cand_acc = metrics.get("accuracy")
+    cand_acc, cand_bal = _candidate_ensemble_metrics(manifest, target_architecture)
     if cand_acc is None:
-        return False, f"missing metrics.{target_architecture}.accuracy in evaluation manifest"
-    cand_bal = metrics.get("balanced_accuracy")
-    try:
-        cand_acc = float(cand_acc)
-        cand_bal = float(cand_bal) if cand_bal is not None else None
-    except (TypeError, ValueError) as e:
-        return False, f"non-numeric candidate metrics: {e}"
+        return False, f"missing/non-numeric metrics.{target_architecture}.accuracy in evaluation manifest"
 
     cand_meta = Path(src) / f"xgb_{tku}_{hz}_meta.json"
     cand_prov = load_provenance(cand_meta)
@@ -355,6 +401,15 @@ def execute_promotion_if_eligible(
                 hz=hz,
                 model_dir=model_dir,
             )
+            # A2 basis-consistency: stamp the new incumbent's promotion_score with the
+            # ENSEMBLE eval metrics the gate decided on (active metas otherwise store
+            # xgb-only val_accuracy), so generation N+1 compares ensemble-vs-ensemble.
+            if not is_manual:
+                ens_acc, ens_bal = _candidate_ensemble_metrics(manifest, target_architecture)
+                if ens_acc is not None:
+                    _stamp_active_incumbent_ensemble_score(
+                        active_ticker_dir, tku, hz, ens_acc, ens_bal
+                    )
     except Exception as e:
         try:
             _clear_promotion_pending(model_dir, hz, tku)
