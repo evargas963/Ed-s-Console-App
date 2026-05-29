@@ -253,3 +253,58 @@ def test_legacy_mvp_values_in_db_row_do_not_affect_merged_when_canonical_differs
     m = merge_db_row_with_canonical_mvp(db, cf)
     assert m["spot"] == 450.0
     assert m["zone"] == "pin_bull"
+
+
+# ── Workstream B3 — LSTM trains/selects on a time-ordered held-out tail ──────────
+
+
+def _synthetic_lstm_dataset(n: int, seed: int = 0):
+    import numpy as np
+
+    from lstm_data import LSTMDataset, STREAM_1M_LOOKBACK, STREAM_5M_LOOKBACK
+
+    rng = np.random.default_rng(seed)
+    f5, f1, fc = 6, 5, 4
+    return LSTMDataset(
+        X_5m=rng.normal(size=(n, STREAM_5M_LOOKBACK, f5)).astype(np.float32),
+        X_1m=rng.normal(size=(n, STREAM_1M_LOOKBACK, f1)).astype(np.float32),
+        X_conf=rng.normal(size=(n, fc)).astype(np.float32),
+        y=rng.integers(0, 3, n).astype(np.int64),
+        tickers=["XXT"] * n,
+        timestamps=[f"2026-03-{1 + i % 20:02d} 10:30:00" for i in range(n)],
+        days=[f"2026-03-{1 + i % 20:02d}" for i in range(n)],
+        ml_horizon_slug="1c",
+        n_samples=n,
+    )
+
+
+def test_train_lstm_b3_reports_out_of_sample_holdout(tmp_path, monkeypatch):
+    """B3: LSTM reports an out-of-sample val metric, selects best_state on the val tail, and
+    fits normalization on the train partition only."""
+    import json
+
+    import lstm_model as lm
+
+    monkeypatch.setattr(lm, "EPOCHS", 2)
+    n = 240
+    ds = _synthetic_lstm_dataset(n)
+    lm.train_lstm(dataset=ds, ticker="XXT", model_dir=tmp_path / "models", ml_horizon_slug="1c")
+    meta = json.loads((tmp_path / "models" / "lstm_XXT_1c_meta.json").read_text(encoding="utf-8"))
+    assert meta["val_basis"] == "time_ordered_tail"
+    assert meta["n_val"] == round(n * 0.15)
+    assert 0.0 <= float(meta["val_accuracy"]) <= 1.0
+    assert 1 <= int(meta["best_epoch"]) <= 2
+
+
+def test_train_lstm_b3_no_holdout_when_too_few_rows(tmp_path, monkeypatch):
+    """Thin ticker: no honest holdout -> in-sample (disclosed)."""
+    import json
+
+    import lstm_model as lm
+
+    monkeypatch.setattr(lm, "EPOCHS", 2)
+    ds = _synthetic_lstm_dataset(80, seed=1)
+    lm.train_lstm(dataset=ds, ticker="XXT", model_dir=tmp_path / "models", ml_horizon_slug="1c")
+    meta = json.loads((tmp_path / "models" / "lstm_XXT_1c_meta.json").read_text(encoding="utf-8"))
+    assert meta["val_basis"] == "in_sample_no_holdout"
+    assert int(meta["n_val"]) == 0

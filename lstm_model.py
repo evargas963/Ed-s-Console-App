@@ -429,29 +429,56 @@ def train_lstm(
     n_feat_5m, n_feat_1m, n_feat_conf = X_5m.shape[2], X_1m.shape[2], X_conf.shape[1]
     result.n_train = len(dataset.y)
 
-    # Normalize (all data)
-    norm_stats = compute_normalization(X_5m, X_1m, X_conf)
+    # Workstream B3 — chronological inner holdout. dataset arrays are built day-by-day from
+    # ORDER BY ts_utc ASC, so the LAST rows are the most recent: hold them out as a strictly
+    # later val tail. Normalization is fit on the TRAIN partition only; best_state/early-stop is
+    # selected on val loss (not training loss); reported val_accuracy is out-of-sample. Thin
+    # tickers (no holdout) keep the legacy full-data / in-sample path (disclosed; A1/B1-gated).
+    from ml_data_common import time_ordered_tail_split
+
+    n_rows = len(dataset.y)
+    train_end, n_val = time_ordered_tail_split(n_rows)
+    has_holdout = n_val > 0
+    val_basis = "time_ordered_tail" if has_holdout else "in_sample_no_holdout"
+
+    norm_fit_5m = X_5m[:train_end] if has_holdout else X_5m
+    norm_fit_1m = X_1m[:train_end] if has_holdout else X_1m
+    norm_fit_conf = X_conf[:train_end] if has_holdout else X_conf
+    norm_stats = compute_normalization(norm_fit_5m, norm_fit_1m, norm_fit_conf)
     X_5m, X_1m, X_conf = apply_normalization(X_5m, X_1m, X_conf, norm_stats)
     X_5m = np.nan_to_num(X_5m, nan=0.0)
     X_1m = np.nan_to_num(X_1m, nan=0.0)
     X_conf = np.nan_to_num(X_conf, nan=0.0)
 
     # O-55: equal/uniform sample weights only (all ones). No recency decay, no toggle.
-    sample_w = np.asarray(equal_sample_weights(len(dataset.y)), dtype=np.float32)
+    sample_w = np.asarray(equal_sample_weights(n_rows), dtype=np.float32)
 
-    train_ds = TensorDataset(
-        torch.tensor(X_5m),
-        torch.tensor(X_1m),
-        torch.tensor(X_conf),
-        torch.tensor(dataset.y),
-        torch.tensor(sample_w),
-    )
+    t5 = torch.tensor(X_5m)
+    t1 = torch.tensor(X_1m)
+    tc = torch.tensor(X_conf)
+    ty = torch.tensor(dataset.y)
+    tw = torch.tensor(sample_w)
+    full_ds = TensorDataset(t5, t1, tc, ty, tw)
+    if has_holdout:
+        train_ds = TensorDataset(
+            t5[:train_end], t1[:train_end], tc[:train_end], ty[:train_end], tw[:train_end]
+        )
+        val_ds = TensorDataset(
+            t5[train_end:], t1[train_end:], tc[train_end:], ty[train_end:], tw[train_end:]
+        )
+        val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
+        y_val_np = dataset.y[train_end:]
+    else:
+        train_ds = full_ds
+        val_loader = None
+        y_val_np = dataset.y
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
 
     model = build_model(n_feat_5m, n_feat_1m, n_feat_conf).to(device)
     result.n_params = sum(p.numel() for p in model.parameters())
 
-    class_counts = np.bincount(dataset.y, minlength=3).astype(float)
+    _cls_y = dataset.y[:train_end] if has_holdout else dataset.y
+    class_counts = np.bincount(_cls_y, minlength=3).astype(float)
     class_counts[class_counts == 0] = 1.0
     class_weights = 1.0 / class_counts
     class_weights = class_weights / class_weights.sum() * 3.0
@@ -542,13 +569,36 @@ def train_lstm(
         train_acc = train_correct / train_total
         result.train_losses.append(train_loss)
 
-        if train_loss < best_loss:
-            best_loss = train_loss
+        # B3: select best_state on the held-out val tail (not training loss). Thin tickers with
+        # no holdout fall back to train-loss selection (in-sample, disclosed).
+        if has_holdout:
+            model.eval()
+            v_loss_sum = 0.0
+            v_total = 0
+            with torch.no_grad():
+                for vb_5m, vb_1m, vb_conf, vb_y, _vw in val_loader:
+                    vb_5m = vb_5m.to(device)
+                    vb_1m = vb_1m.to(device)
+                    vb_conf = vb_conf.to(device)
+                    vb_y = vb_y.to(device)
+                    v_logits = model(vb_1m, vb_5m, vb_conf)
+                    v_loss_sum += float(criterion(v_logits, vb_y).item()) * len(vb_y)
+                    v_total += len(vb_y)
+            model.train()
+            sel_loss = v_loss_sum / max(1, v_total)
+        else:
+            sel_loss = train_loss
+
+        if sel_loss < best_loss:
+            best_loss = sel_loss
             best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
             result.best_epoch = epoch
 
         if epoch % 10 == 0 or epoch == 1:
-            log.info("Epoch %d/%d: loss=%.4f acc=%.3f", epoch, EPOCHS, train_loss, train_acc)
+            log.info(
+                "Epoch %d/%d: train_loss=%.4f acc=%.3f sel_loss=%.4f (%s)",
+                epoch, EPOCHS, train_loss, train_acc, sel_loss, val_basis,
+            )
 
         if (
             scheduler_cache_key
@@ -582,8 +632,12 @@ def train_lstm(
         model.load_state_dict(best_state)
     model.eval()
 
-    # Full-data accuracy (for comparison) — use shuffle=False to match dataset order
-    eval_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=False)
+    # B3: honest out-of-sample accuracy on the held-out tail (full-data in-sample only when no
+    # holdout could be carved — disclosed via val_basis).
+    eval_loader = (
+        val_loader if has_holdout
+        else DataLoader(full_ds, batch_size=BATCH_SIZE, shuffle=False)
+    )
     with torch.no_grad():
         all_preds = []
         for batch_5m, batch_1m, batch_conf, batch_y, _ in eval_loader:
@@ -592,7 +646,7 @@ def train_lstm(
             batch_conf = batch_conf.to(device)
             logits = model(batch_1m, batch_5m, batch_conf)
             all_preds.extend(logits.argmax(dim=1).cpu().numpy())
-    result.val_accuracy = float(np.mean(np.array(all_preds) == dataset.y))
+    result.val_accuracy = float(np.mean(np.array(all_preds) == y_val_np))
 
     from lstm_data import STREAM_5M_LOOKBACK
     from training_provenance import build_lstm_provenance
@@ -605,6 +659,8 @@ def train_lstm(
         "ticker": save_ticker,
         "trained_at": datetime.now().isoformat(),
         "val_accuracy": round(result.val_accuracy, 4),
+        "val_basis": val_basis,
+        "n_val": int(n_val),
         "n_train": result.n_train,
         "n_params": result.n_params,
         "best_epoch": result.best_epoch,
