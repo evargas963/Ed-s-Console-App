@@ -300,6 +300,33 @@ def test_auto_promote_blocked_when_worse_ensemble_than_ensemble_incumbent(tmp_pa
     assert after["promotion_score"] == pytest.approx(0.72)
 
 
+def test_manual_promote_stamps_ensemble_basis(tmp_path: Path):
+    """Symmetric stamp: manual promotion stays ungated but still stamps the incumbent
+    with the ensemble basis, so the next auto challenger compares like-for-like."""
+    from arch_competition.manual_control import (
+        MANUAL_PROMOTE_CASCADE_INTENT,
+        manual_promote_to_active_explicit,
+    )
+    from tests.test_manual_governance import _minimal_governed_files
+
+    _minimal_governed_files(tmp_path, cascade_ok=True)  # manifest cascade accuracy = 0.45
+    out = manual_promote_to_active_explicit(
+        tmp_path,
+        "SPY",
+        "1c",
+        target_architecture="cascade",
+        operator_id="op1",
+        manual_intent=MANUAL_PROMOTE_CASCADE_INTENT,
+    )
+    assert "checkpoint_id" in out
+    active_meta = json.loads(
+        (tmp_path / "active" / "SPY" / "xgb_SPY_1c_meta.json").read_text(encoding="utf-8")
+    )
+    assert active_meta["promotion_score"] == pytest.approx(0.45)
+    assert active_meta["promotion_metric"] == "ensemble_eval_accuracy"
+    assert active_meta["balanced_accuracy"] == pytest.approx(0.40)
+
+
 def test_auto_promote_blocked_when_manifest_accuracy_missing(tmp_path: Path, monkeypatch):
     _governed_auto_setup(tmp_path, monkeypatch)
     ed = tmp_path / "arch_competition" / "1c" / "SPY"

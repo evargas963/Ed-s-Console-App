@@ -402,14 +402,16 @@ def execute_promotion_if_eligible(
                 model_dir=model_dir,
             )
             # A2 basis-consistency: stamp the new incumbent's promotion_score with the
-            # ENSEMBLE eval metrics the gate decided on (active metas otherwise store
-            # xgb-only val_accuracy), so generation N+1 compares ensemble-vs-ensemble.
-            if not is_manual:
-                ens_acc, ens_bal = _candidate_ensemble_metrics(manifest, target_architecture)
-                if ens_acc is not None:
-                    _stamp_active_incumbent_ensemble_score(
-                        active_ticker_dir, tku, hz, ens_acc, ens_bal
-                    )
+            # ENSEMBLE eval metrics (active metas otherwise store xgb-only val_accuracy),
+            # so generation N+1 compares ensemble-vs-ensemble. Symmetric across auto +
+            # manual paths — manual stays ungated (the score/row GATE above is auto-only),
+            # but a manually-promoted incumbent must still carry the ensemble basis so the
+            # next auto challenger is compared like-for-like.
+            ens_acc, ens_bal = _candidate_ensemble_metrics(manifest, target_architecture)
+            if ens_acc is not None:
+                _stamp_active_incumbent_ensemble_score(
+                    active_ticker_dir, tku, hz, ens_acc, ens_bal
+                )
     except Exception as e:
         try:
             _clear_promotion_pending(model_dir, hz, tku)
