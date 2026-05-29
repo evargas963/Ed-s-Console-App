@@ -186,3 +186,66 @@ def test_predict_transformer_insufficient_history_raises():
     ):
         with pytest.raises(TransformerSequenceInputError, match="20"):
             mp._predict_transformer("SPY", db, inference_snapshot_v1=inf)
+
+
+# ── Workstream B3 — transformer trains/selects on a time-ordered held-out tail ───
+
+
+def test_train_transformer_b3_reports_out_of_sample_holdout(tmp_path, monkeypatch):
+    """B3: with enough rows the transformer reports an out-of-sample val metric, selects
+    best_state on the val tail, and fits normalization on the train partition only."""
+    import json
+
+    import numpy as np
+
+    import transformer_train as tt
+
+    monkeypatch.setattr(tt, "EPOCHS", 2)  # keep the CPU train fast; B3 path is identical at 60
+    n = 240
+    nf = 8
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(n, tt.SEQUENCE_LENGTH, nf)).astype(np.float32)
+    y = rng.integers(0, 3, n).astype(np.int64)
+    days = np.array([f"2026-03-{1 + i % 20:02d}" for i in range(n)])
+    tickers_arr = np.array(["XXT"] * n)
+
+    res = tt.train_transformer(
+        ticker="XXT",
+        model_dir=tmp_path / "models",
+        preloaded_sequences=(X, y, days, tickers_arr, nf),
+        ml_horizon_slug="1c",
+    )
+    assert getattr(res, "error", None) in (None, "")
+    meta = json.loads((tmp_path / "models" / "transformer_XXT_1c_meta.json").read_text(encoding="utf-8"))
+    assert meta["val_basis"] == "time_ordered_tail"
+    assert meta["n_val"] == round(n * 0.15)  # last 15% (most recent) held out
+    assert 0.0 <= float(meta["val_accuracy"]) <= 1.0
+    assert 1 <= int(meta["best_epoch"]) <= 2
+
+
+def test_train_transformer_b3_no_holdout_when_too_few_rows(tmp_path, monkeypatch):
+    """Thin ticker: no honest holdout can be carved -> in-sample (disclosed)."""
+    import json
+
+    import numpy as np
+
+    import transformer_train as tt
+
+    monkeypatch.setattr(tt, "EPOCHS", 2)
+    n = 80
+    nf = 8
+    rng = np.random.default_rng(1)
+    X = rng.normal(size=(n, tt.SEQUENCE_LENGTH, nf)).astype(np.float32)
+    y = rng.integers(0, 3, n).astype(np.int64)
+    days = np.array([f"2026-03-{1 + i % 10:02d}" for i in range(n)])
+    tickers_arr = np.array(["XXT"] * n)
+
+    tt.train_transformer(
+        ticker="XXT",
+        model_dir=tmp_path / "models",
+        preloaded_sequences=(X, y, days, tickers_arr, nf),
+        ml_horizon_slug="1c",
+    )
+    meta = json.loads((tmp_path / "models" / "transformer_XXT_1c_meta.json").read_text(encoding="utf-8"))
+    assert meta["val_basis"] == "in_sample_no_holdout"
+    assert int(meta["n_val"]) == 0

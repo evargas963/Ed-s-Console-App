@@ -340,29 +340,51 @@ def train_transformer(
         log.info("Cascade: added 6 XGB+LSTM pred features")
     result.n_features = n_features
 
-    # Normalize (after cascade concat if any)
-    flat = X.reshape(-1, X.shape[2])
-    mean = flat.mean(axis=0)
-    std = flat.std(axis=0)
+    # Workstream B3 — chronological inner holdout. Rows arrive in day order (prepare_transformer_data
+    # / OOF assembly preserve ascending session order), so the LAST rows are the most recent: hold
+    # them out as a strictly later val tail. Normalization mean/std AND the variance feature-mask are
+    # fit on the TRAIN partition only; best_state/early-stop is selected on val loss (not training
+    # loss); reported val_accuracy is out-of-sample. Thin tickers (no holdout) keep the legacy
+    # full-data / in-sample path (disclosed; A1/B1-gated).
+    from ml_data_common import time_ordered_tail_split
+
+    n_rows = len(y)
+    train_end, n_val = time_ordered_tail_split(n_rows)
+    has_holdout = n_val > 0
+    val_basis = "time_ordered_tail" if has_holdout else "in_sample_no_holdout"
+
+    # Normalize (after cascade concat if any) — stats fit on the train partition only.
+    fit_flat = (X[:train_end] if has_holdout else X).reshape(-1, X.shape[2])
+    mean = fit_flat.mean(axis=0)
+    std = fit_flat.std(axis=0)
     std[std < 1e-8] = 1.0
     X = (X - mean) / std
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
 
-    # Feature mask
-    var = X.reshape(-1, n_features).var(axis=0)
+    # Feature mask — variance computed on the train partition only.
+    fit_var_src = (X[:train_end] if has_holdout else X).reshape(-1, n_features)
+    var = fit_var_src.var(axis=0)
     feature_mask = var > 1e-8
     X = X[:, :, feature_mask]
     n_features = X.shape[2]
     result.n_features = n_features
 
     # O-55: equal/uniform sample weights only (all ones). No recency decay, no toggle.
-    sample_w = np.asarray(equal_sample_weights(len(y)), dtype=np.float32)
+    sample_w = np.asarray(equal_sample_weights(n_rows), dtype=np.float32)
 
-    train_ds = TensorDataset(
-        torch.from_numpy(X).float(),
-        torch.from_numpy(y).long(),
-        torch.from_numpy(sample_w).float(),
-    )
+    Xt = torch.from_numpy(X).float()
+    yt = torch.from_numpy(y).long()
+    wt = torch.from_numpy(sample_w).float()
+    full_ds = TensorDataset(Xt, yt, wt)
+    if has_holdout:
+        train_ds = TensorDataset(Xt[:train_end], yt[:train_end], wt[:train_end])
+        val_ds = TensorDataset(Xt[train_end:], yt[train_end:], wt[train_end:])
+        val_dl = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
+        y_val_np = y[train_end:]
+    else:
+        train_ds = full_ds
+        val_dl = None
+        y_val_np = y
     train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
 
     model = build_transformer(n_features).to(device)
@@ -370,8 +392,9 @@ def train_transformer(
     result.n_train = len(y)
 
     from collections import Counter
-    train_counts = Counter(y.tolist())
-    total = len(y)
+    _w_y = y[:train_end] if has_holdout else y
+    train_counts = Counter(_w_y.tolist())
+    total = len(_w_y)
     weights = torch.tensor(
         [total / (N_CLASSES * train_counts.get(i, 1)) for i in range(N_CLASSES)],
         dtype=torch.float32
@@ -452,12 +475,31 @@ def train_transformer(
             train_correct += (logits.argmax(dim=1) == yb).sum().item()
             train_total += len(yb)
         train_acc = train_correct / train_total if train_total else 0
-        if train_loss / train_total < best_loss:
-            best_loss = train_loss / train_total
+        # B3: select best_state on the held-out val tail (not training loss). Thin tickers with
+        # no holdout fall back to train-loss selection (in-sample, disclosed).
+        if has_holdout:
+            model.eval()
+            v_loss_sum = 0.0
+            v_total = 0
+            with torch.no_grad():
+                for vxb, vyb, _vwb in val_dl:
+                    vxb, vyb = vxb.to(device), vyb.to(device)
+                    v_logits = model(vxb)
+                    v_loss_sum += float(criterion(v_logits, vyb).item()) * len(vyb)
+                    v_total += len(vyb)
+            model.train()
+            sel_loss = v_loss_sum / max(1, v_total)
+        else:
+            sel_loss = train_loss / train_total
+        if sel_loss < best_loss:
+            best_loss = sel_loss
             best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
             result.best_epoch = epoch
         if epoch % 10 == 0 or epoch == 1:
-            log.info("Epoch %d: loss=%.4f acc=%.1f%%", epoch, train_loss / train_total, train_acc * 100)
+            log.info(
+                "Epoch %d: train_loss=%.4f acc=%.1f%% sel_loss=%.4f (%s)",
+                epoch, train_loss / train_total, train_acc * 100, sel_loss, val_basis,
+            )
 
         if (
             resume_path
@@ -489,14 +531,16 @@ def train_transformer(
         model.load_state_dict(best_state)
     model.eval()
 
-    eval_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=False)
+    # B3: honest out-of-sample accuracy on the held-out tail (full-data in-sample only when no
+    # holdout could be carved — disclosed via val_basis).
+    eval_dl = val_dl if has_holdout else DataLoader(full_ds, batch_size=BATCH_SIZE, shuffle=False)
     all_preds = []
     with torch.no_grad():
         for xb, yb, _ in eval_dl:
             xb = xb.to(device)
             preds = model(xb).argmax(dim=1)
             all_preds.extend(preds.cpu().numpy())
-    result.val_accuracy = float(np.mean(np.array(all_preds) == y))
+    result.val_accuracy = float(np.mean(np.array(all_preds) == y_val_np))
 
     save_ticker = ticker or (sorted(set(tickers_arr))[0] if len(tickers_arr) else "unknown")
 
@@ -507,6 +551,9 @@ def train_transformer(
         "ticker": save_ticker,
         "trained_at": datetime.now().isoformat(),
         "val_accuracy": round(result.val_accuracy, 4),
+        "val_basis": val_basis,
+        "n_val": int(n_val),
+        "best_epoch": result.best_epoch,
         "n_train": result.n_train,
         "n_params": result.n_params,
         "n_features": n_features,
