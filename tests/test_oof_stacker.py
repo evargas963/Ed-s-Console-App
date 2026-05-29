@@ -105,3 +105,33 @@ def test_parallel_meta_falls_back_when_oof_too_thin(monkeypatch, tmp_path):
 
     assert basis == "in_sample_fallback"
     assert len(X) == 20                             # fell back to the deployed full-data matrix
+
+
+# ── Cascade OOF (Workstream B2, commit 2) ───────────────────────────────────
+
+
+def test_oof_day_to_fold_map_excludes_seed_assigns_strictly_earlier():
+    from training_cache import expanding_window_oof_folds
+
+    days = [f"2026-06-{d:02d}" for d in range(1, 13)]  # 12 sessions -> 3 folds
+    folds = expanding_window_oof_folds(days, n_folds=3)
+    m = ml_scheduler._oof_day_to_fold_map(folds)
+
+    seed_block = folds[0][0]                         # B0: fold-0 train == the seed block
+    for d in seed_block:
+        assert d not in m                            # seed days NEVER feed the stacker
+    assert len(m) == 9                               # 3/4 coverage (B1+B2+B3)
+    for day, fi in m.items():
+        train_days, oof_days = folds[fi]
+        assert day in oof_days                       # mapped to the fold that held it out
+        assert max(train_days) < day                 # scored by STRICTLY-earlier base models
+
+
+def test_train_cascade_xgb_lstm_into_fails_closed_on_empty_data(monkeypatch, tmp_path):
+    import ml_train
+
+    monkeypatch.setattr(ml_train, "load_data", lambda *a, **k: [])
+    ok = ml_scheduler._train_cascade_xgb_lstm_into(
+        tmp_path / "fold0", "SPY", "db", {"2026-06-01"}, data_fp=None, hz="1c",
+    )
+    assert ok is False

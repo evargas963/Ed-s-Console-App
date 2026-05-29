@@ -1112,6 +1112,108 @@ def _train_parallel(
     )
 
 
+def _oof_day_to_fold_map(folds: list) -> dict:
+    """Map each OOF (held-out) session day to its fold index (Workstream B2, commit 2).
+
+    Seed-block days — present only in fold 0's train set and never as an OOF block — are
+    ABSENT from the map; the cascade excludes them from stacker training (no in-sample row).
+    Every mapped day belongs to a fold whose train sessions are strictly earlier than that
+    day (guaranteed by ``expanding_window_oof_folds``)."""
+    m: dict = {}
+    for fi, (_train_days, oof_days) in enumerate(folds):
+        for d in oof_days:
+            m[d] = fi
+    return m
+
+
+def _train_cascade_xgb_lstm_into(
+    temp_dir: Path,
+    ticker: str,
+    db_path: str,
+    allowed_et_dates: Set[str],
+    *,
+    data_fp: Optional[dict],
+    hz: str,
+) -> bool:
+    """Train XGB + cascade-LSTM on exactly ``allowed_et_dates`` into ``temp_dir`` for OOF
+    base-prob generation feeding the cascade transformer (Workstream B2, commit 2).
+
+    Mirrors the deployed cascade's XGB→LSTM steps: the fold LSTM consumes the fold XGB's
+    in-sample probs over the fold's OWN train sessions (the cost-bounded design the operator
+    locked — K=3, no nested per-fold OOF inside the LSTM; the LSTM's own honesty is B3's
+    temporal holdout). ``bypass`` cache/resume always on (the fold's date subset has a
+    different fingerprint than the full-data cache). Returns True when both XGB + LSTM
+    artifacts exist."""
+    import json
+    import pickle
+
+    import numpy as np
+
+    from ml_train import load_data, train_ticker, engineer_single_snapshot
+    from lstm_model import train_lstm
+    from lstm_data import (
+        build_lstm_dataset, extract_rth_snapshots, STREAM_5M_LOOKBACK, TARGET_CLASSES, _safe_float,
+    )
+    from timeframe_config import CANONICAL_TIMEFRAME
+
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    hz = normalize_ml_horizon_slug(hz)
+    label_col = outcome_column(hz)
+    df = load_data(db_path, ticker=ticker, allowed_et_dates=allowed_et_dates, ml_horizon_slug=hz)
+    if len(df) == 0:
+        return False
+    train_ticker(ticker, df, model_dir=temp_dir, current_data_fingerprint=data_fp, ml_horizon_slug=hz)
+    xgb_path = temp_dir / f"xgb_{ticker.upper()}_{hz}.pkl"
+    if not xgb_path.exists():
+        return False
+    with open(xgb_path, "rb") as f:
+        xgb_model = pickle.load(f)
+    with open(temp_dir / f"xgb_{ticker.upper()}_{hz}_meta.json") as f:
+        xgb_meta = json.load(f)
+
+    days_data = extract_rth_snapshots(
+        ticker, timeframe=CANONICAL_TIMEFRAME, db_path=Path(db_path),
+        require_outcome=True, allowed_et_dates=allowed_et_dates, target_column=label_col,
+    )
+    xgb_probs_list: list = []
+    for _day, snapshots in sorted(days_data.items()):
+        if len(snapshots) < STREAM_5M_LOOKBACK:
+            continue
+        for end_idx in range(STREAM_5M_LOOKBACK, len(snapshots)):
+            window = snapshots[end_idx - STREAM_5M_LOOKBACK:end_idx]
+            current = window[-1]
+            if current.get(label_col) not in TARGET_CLASSES:
+                continue
+            ref_spot = _safe_float(window[0].get("spot")) or _safe_float(current.get("spot"))
+            if ref_spot <= 0:
+                continue
+            X_row = engineer_single_snapshot(
+                current, xgb_meta.get("category_maps", {}), xgb_meta.get("features", []),
+                xgb_meta.get("vol_medians", {}), ticker,
+            )
+            if X_row is None:
+                continue
+            xgb_probs_list.append(xgb_model.predict_proba(X_row.values.astype(np.float64))[0])
+
+    ds = build_lstm_dataset(
+        tickers=[ticker], db_path=Path(db_path), allowed_et_dates=allowed_et_dates, ml_horizon_slug=hz,
+    )
+    if ds is None or getattr(ds, "n_samples", 0) < 10:
+        return False
+    if len(xgb_probs_list) == ds.n_samples:
+        train_lstm(
+            dataset=ds, db_path=db_path, ticker=ticker, model_dir=temp_dir,
+            xgb_probs=np.array(xgb_probs_list[: ds.n_samples], dtype=np.float32),
+            data_fp=data_fp, architecture="cascade", bypass_torch_resume=True, ml_horizon_slug=hz,
+        )
+    else:
+        train_lstm(
+            dataset=ds, db_path=db_path, ticker=ticker, model_dir=temp_dir, data_fp=data_fp,
+            architecture="cascade", bypass_torch_resume=True, ml_horizon_slug=hz,
+        )
+    return (temp_dir / f"lstm_{ticker.upper()}_{hz}.pt").exists()
+
+
 def train_cascade_candidate(
     ticker: str,
     db_path: str,
@@ -1359,17 +1461,43 @@ def train_cascade_candidate(
         }
 
     lstm_pt_path = out_dir / f"lstm_{ticker.upper()}_{hz}.pt"
+
+    # Workstream B2 (commit 2) — train the cascade TRANSFORMER (final stacker) on EXPANDING-
+    # WINDOW OUT-OF-FOLD [xgb|lstm] base predictions. Each kept row is scored by base models
+    # trained ONLY on strictly-earlier sessions (fold models); seed-block rows (no earlier
+    # fold) are excluded so the stacker never sees an in-sample base prob. The deployed
+    # XGB/LSTM in out_dir stay full-data trained — only the transformer's TRAINING features
+    # and row set become out-of-fold. The intermediate LSTM-over-XGB feature inside each
+    # base trainer stays in-sample to its own train split (cost-bounded K=3 design; the LSTM's
+    # own honesty is B3's temporal holdout).
+    from training_cache import expanding_window_oof_folds
+
+    if allowed_et_dates is not None:
+        _oof_universe_days = sorted(set(allowed_et_dates))
+    else:
+        from training_cache import db_distinct_rth_et_dates_for_ticker
+
+        _oof_universe_days = db_distinct_rth_et_dates_for_ticker(
+            db_path, ticker, label_column=label_col
+        )
+    _oof_folds = expanding_window_oof_folds(_oof_universe_days)
+    use_oof = bool(_oof_folds)
+
     xgb_lstm = None
-    if not bypass_cache:
+    if not use_oof and not bypass_cache:
         xgb_lstm = load_cascade_transformer_tensor_cache(
             fdir, ticker, data_fp, fk, code_fp, xgb_meta_path, lstm_pt_path
         )
-    if xgb_lstm is not None and xgb_lstm.shape[0] != len(yp):
-        log.info("%s: cascade tensor cache row mismatch %d vs %d — rebuild",
-                 ticker, xgb_lstm.shape[0], len(yp))
-        xgb_lstm = None
+        if xgb_lstm is not None and xgb_lstm.shape[0] != len(yp):
+            log.info("%s: cascade tensor cache row mismatch %d vs %d — rebuild",
+                     ticker, xgb_lstm.shape[0], len(yp))
+            xgb_lstm = None
 
     if xgb_lstm is None:
+        import json as _json
+        import shutil as _shutil
+        import tempfile as _tempfile
+
         lstm_model, lstm_ckpt = load_lstm(
             model_dir=out_dir, ticker=ticker, ml_horizon_slug=hz,
         )
@@ -1379,100 +1507,190 @@ def train_cascade_candidate(
                 "used_cascade_tensor_cache": False,
                 "warm_resume": lstm_rr,
             }
-
         lstm_model.eval()
-        xgb_lstm_list = []
-        for day_key, snapshots in sorted(days_data.items()):
-            if len(snapshots) < _cascade_hist:
-                continue
-            for end_idx in range(_cascade_hist, len(snapshots)):
-                window = snapshots[end_idx - SEQUENCE_LENGTH:end_idx]
-                current = window[-1]
-                if not _ts_ok(current):
-                    continue
-                if current.get(label_col) not in TARGET_CLASSES:
-                    continue
-                try:
-                    ref_spot = canonical_reference_spot_from_sequence_window_first_bar(window)
-                except ValueError:
-                    continue
-                X_row = engineer_single_snapshot(
-                    current, xgb_meta.get("category_maps", {}),
-                    xgb_meta.get("features", []),
-                    xgb_meta.get("vol_medians", {}), ticker,
-                )
-                if X_row is None:
-                    continue
-                xgb_p = xgb_model.predict_proba(X_row.values.astype(np.float64))[0]
 
-                lstm_window = snapshots[end_idx - STREAM_5M_LOOKBACK:end_idx]
-                try:
-                    lstm_ref = canonical_reference_spot_from_sequence_window_first_bar(lstm_window)
-                except ValueError:
+        def _assemble_cascade_rows(select_models):
+            """Single ordered pass over sorted(days_data) — order MUST match
+            prepare_transformer_data so the result aligns positionally to (Xp, yp).
+            ``select_models(day_key) -> (xgb_m, xgb_meta_m, lstm_m, lstm_ckpt_m, keep)``.
+            Returns (vectors, keep_mask): one entry per emitted row; keep=False rows still
+            carry a real vector (computed with deployed models) to preserve positional
+            alignment, then the caller filters them out."""
+            vectors: list = []
+            keeps: list = []
+            for day_key, snapshots in sorted(days_data.items()):
+                if len(snapshots) < _cascade_hist:
                     continue
-                seq_5m = [
-                    encode_snapshot_5m(training_snapshot_for_sequence_encode(s), lstm_ref)
-                    for s in lstm_window
-                ]
-                micro = lstm_window[-STREAM_1M_LOOKBACK:]
-                micro_ref = _safe_float(micro[0].get("spot")) or lstm_ref
-                seq_1m = [
-                    encode_snapshot_1m(training_snapshot_for_sequence_encode(s), micro_ref)
-                    for s in micro
-                ]
-                snapshots_flat = [s for _, snaps in sorted(days_data.items()) for s in snaps]
-                day_idx = min(
-                    next((i for i, s in enumerate(snapshots_flat) if s.get("ts_et") == current.get("ts_et")), len(snapshots_flat) - 1),
-                    len(snapshots_flat) - 1,
-                )
-                conf = compute_confluence_features(snapshots_flat, day_idx)
-                conf_vec = np.array([conf[k] for k in CONFLUENCE_FEATURES], dtype=np.float32)
-                conf_vec = np.hstack([conf_vec, xgb_p]).astype(np.float32)
-
-                mask_5m = np.array(lstm_ckpt.get("mask_5m", [True] * len(seq_5m[0])))
-                mask_1m = np.array(lstm_ckpt.get("mask_1m", [True] * len(seq_1m[0])))
-                mask_conf = np.array(lstm_ckpt.get("mask_conf", [True] * len(conf_vec)))
-                X_5m = np.array([seq_5m], dtype=np.float32)
-                X_1m = np.array([seq_1m], dtype=np.float32)
-                if len(mask_5m) == X_5m.shape[2]:
-                    X_5m = X_5m[:, :, mask_5m]
-                if len(mask_1m) == X_1m.shape[2]:
-                    X_1m = X_1m[:, :, mask_1m]
-                X_conf = np.array([conf_vec], dtype=np.float32)
-                if len(mask_conf) == len(conf_vec):
-                    X_conf = X_conf[:, mask_conf]
-                norm = lstm_ckpt.get("norm_stats", {})
-                if norm:
-                    from lstm_model import align_lstm_norm_stats, apply_normalization
-
-                    aligned = align_lstm_norm_stats(norm, mask_5m, mask_1m, mask_conf)
-                    if aligned is None:
-                        log.warning(
-                            "%s cascade tensor: LSTM norm_stats / mask mismatch; skip row",
-                            ticker,
-                        )
+                xm, xmeta_m, lm, lck, keep = select_models(day_key)
+                for end_idx in range(_cascade_hist, len(snapshots)):
+                    window = snapshots[end_idx - SEQUENCE_LENGTH:end_idx]
+                    current = window[-1]
+                    if not _ts_ok(current):
                         continue
-                    X_5m, X_1m, X_conf = apply_normalization(X_5m, X_1m, X_conf, aligned)
-                X_5m = np.nan_to_num(X_5m, nan=0.0)
-                X_1m = np.nan_to_num(X_1m, nan=0.0)
-                X_conf = np.nan_to_num(X_conf, nan=0.0)
-                with torch.no_grad():
-                    logits = lstm_model(
-                        torch.from_numpy(X_1m).float(),
-                        torch.from_numpy(X_5m).float(),
-                        torch.from_numpy(X_conf).float(),
+                    if current.get(label_col) not in TARGET_CLASSES:
+                        continue
+                    try:
+                        ref_spot = canonical_reference_spot_from_sequence_window_first_bar(window)
+                    except ValueError:
+                        continue
+                    X_row = engineer_single_snapshot(
+                        current, xmeta_m.get("category_maps", {}),
+                        xmeta_m.get("features", []),
+                        xmeta_m.get("vol_medians", {}), ticker,
                     )
-                    lstm_p = torch.softmax(logits, dim=-1).squeeze().numpy()
-                xgb_lstm_list.append(np.concatenate([xgb_p, lstm_p]))
+                    if X_row is None:
+                        continue
+                    xgb_p = xm.predict_proba(X_row.values.astype(np.float64))[0]
 
-        if len(xgb_lstm_list) < 10:
+                    lstm_window = snapshots[end_idx - STREAM_5M_LOOKBACK:end_idx]
+                    try:
+                        lstm_ref = canonical_reference_spot_from_sequence_window_first_bar(lstm_window)
+                    except ValueError:
+                        continue
+                    seq_5m = [
+                        encode_snapshot_5m(training_snapshot_for_sequence_encode(s), lstm_ref)
+                        for s in lstm_window
+                    ]
+                    micro = lstm_window[-STREAM_1M_LOOKBACK:]
+                    micro_ref = _safe_float(micro[0].get("spot")) or lstm_ref
+                    seq_1m = [
+                        encode_snapshot_1m(training_snapshot_for_sequence_encode(s), micro_ref)
+                        for s in micro
+                    ]
+                    snapshots_flat = [s for _, snaps in sorted(days_data.items()) for s in snaps]
+                    day_idx = min(
+                        next((i for i, s in enumerate(snapshots_flat) if s.get("ts_et") == current.get("ts_et")), len(snapshots_flat) - 1),
+                        len(snapshots_flat) - 1,
+                    )
+                    conf = compute_confluence_features(snapshots_flat, day_idx)
+                    conf_vec = np.array([conf[k] for k in CONFLUENCE_FEATURES], dtype=np.float32)
+                    conf_vec = np.hstack([conf_vec, xgb_p]).astype(np.float32)
+
+                    mask_5m = np.array(lck.get("mask_5m", [True] * len(seq_5m[0])))
+                    mask_1m = np.array(lck.get("mask_1m", [True] * len(seq_1m[0])))
+                    mask_conf = np.array(lck.get("mask_conf", [True] * len(conf_vec)))
+                    X_5m = np.array([seq_5m], dtype=np.float32)
+                    X_1m = np.array([seq_1m], dtype=np.float32)
+                    if len(mask_5m) == X_5m.shape[2]:
+                        X_5m = X_5m[:, :, mask_5m]
+                    if len(mask_1m) == X_1m.shape[2]:
+                        X_1m = X_1m[:, :, mask_1m]
+                    X_conf = np.array([conf_vec], dtype=np.float32)
+                    if len(mask_conf) == len(conf_vec):
+                        X_conf = X_conf[:, mask_conf]
+                    norm = lck.get("norm_stats", {})
+                    if norm:
+                        from lstm_model import align_lstm_norm_stats, apply_normalization
+
+                        aligned = align_lstm_norm_stats(norm, mask_5m, mask_1m, mask_conf)
+                        if aligned is None:
+                            log.warning(
+                                "%s cascade tensor: LSTM norm_stats / mask mismatch; skip row",
+                                ticker,
+                            )
+                            continue
+                        X_5m, X_1m, X_conf = apply_normalization(X_5m, X_1m, X_conf, aligned)
+                    X_5m = np.nan_to_num(X_5m, nan=0.0)
+                    X_1m = np.nan_to_num(X_1m, nan=0.0)
+                    X_conf = np.nan_to_num(X_conf, nan=0.0)
+                    with torch.no_grad():
+                        logits = lm(
+                            torch.from_numpy(X_1m).float(),
+                            torch.from_numpy(X_5m).float(),
+                            torch.from_numpy(X_conf).float(),
+                        )
+                        lstm_p = torch.softmax(logits, dim=-1).squeeze().numpy()
+                    vectors.append(np.concatenate([xgb_p, lstm_p]))
+                    keeps.append(bool(keep))
+            return vectors, keeps
+
+        def _deployed_selector(_day_key):
+            return (xgb_model, xgb_meta, lstm_model, lstm_ckpt, True)
+
+        # Build per-fold base models (OOF). Each fold trains XGB+LSTM on strictly-earlier
+        # sessions; its held-out block's rows are scored by that fold (out-of-sample).
+        oof_tmp_root = None
+        fold_models: dict = {}
+        day_to_fold: dict = {}
+        if use_oof:
+            from lstm_model import load_lstm as _load_lstm_fold
+
+            oof_tmp_root = Path(_tempfile.mkdtemp(prefix=f"oof_cas_{ticker}_{hz}_"))
+            day_to_fold = _oof_day_to_fold_map(_oof_folds)
+            for fi, (tr_days, oof_days) in enumerate(_oof_folds):
+                fdir_fold = oof_tmp_root / f"fold{fi}"
+                if not _train_cascade_xgb_lstm_into(
+                    fdir_fold, ticker, db_path, set(tr_days), data_fp=data_fp, hz=hz,
+                ):
+                    log.warning("%s cascade OOF: fold %d base train incomplete — skip", ticker, fi)
+                    continue
+                try:
+                    with open(fdir_fold / f"xgb_{ticker.upper()}_{hz}.pkl", "rb") as f:
+                        _xm = pickle.load(f)
+                    with open(fdir_fold / f"xgb_{ticker.upper()}_{hz}_meta.json") as f:
+                        _xmeta = _json.load(f)
+                    _lm, _lck = _load_lstm_fold(model_dir=fdir_fold, ticker=ticker, ml_horizon_slug=hz)
+                except Exception as _fe:  # noqa: BLE001 — fold load is best-effort; row degrades to seed
+                    log.warning("%s cascade OOF: fold %d artifact load failed (%s)", ticker, fi, _fe)
+                    continue
+                if _lm is None:
+                    continue
+                _lm.eval()
+                fold_models[fi] = (_xm, _xmeta, _lm, _lck)
+            if not fold_models:
+                log.warning("%s cascade OOF: no usable fold models — in-sample fallback", ticker)
+                use_oof = False
+                _shutil.rmtree(oof_tmp_root, ignore_errors=True)
+                oof_tmp_root = None
+
+        if use_oof:
+            def _oof_selector(day_key):
+                fi = day_to_fold.get(day_key)
+                if fi is None or fi not in fold_models:
+                    # Seed-block day (no earlier fold) or a fold that failed to train ->
+                    # excluded from the transformer's training set (keep=False).
+                    return (xgb_model, xgb_meta, lstm_model, lstm_ckpt, False)
+                xm, xmeta_m, lm, lck = fold_models[fi]
+                return (xm, xmeta_m, lm, lck, True)
+
+            vectors, keeps = _assemble_cascade_rows(_oof_selector)
+            if oof_tmp_root is not None:
+                _shutil.rmtree(oof_tmp_root, ignore_errors=True)
+                oof_tmp_root = None
+        else:
+            vectors, keeps = _assemble_cascade_rows(_deployed_selector)
+
+        if len(vectors) < 10:
             return {
                 "used_feature_cache": used_feature_cache,
                 "used_cascade_tensor_cache": False,
                 "warm_resume": lstm_rr,
             }
-        xgb_lstm = np.array(xgb_lstm_list, dtype=np.float32)
-        if not bypass_cache:
+        xgb_lstm = np.array(vectors, dtype=np.float32)
+
+        if use_oof:
+            keep_arr = np.array(keeps, dtype=bool)
+            if len(keep_arr) == len(yp) and int(keep_arr.sum()) >= 10:
+                Xp = Xp[keep_arr]
+                yp = yp[keep_arr]
+                daysp = daysp[keep_arr]
+                tickp = tickp[keep_arr]
+                xgb_lstm = xgb_lstm[keep_arr]
+                log.info(
+                    "%s cascade: transformer trains on %d OUT-OF-FOLD rows (of %d; seed block excluded)",
+                    ticker, int(keep_arr.sum()), len(keep_arr),
+                )
+            else:
+                # Misaligned with prepare_transformer_data, or too few OOF rows: rebuild a clean
+                # in-sample matrix (deployed models, all rows) rather than feed a mixed
+                # in-sample/OOF array. Disclosed degrade to in-sample cascade.
+                log.warning(
+                    "%s cascade OOF: assembled %d rows vs %d sequences (OOF kept %d) — in-sample fallback",
+                    ticker, len(keep_arr), len(yp), int(keep_arr.sum()),
+                )
+                vectors, _keeps2 = _assemble_cascade_rows(_deployed_selector)
+                xgb_lstm = np.array(vectors, dtype=np.float32)
+        elif not bypass_cache:
             save_cascade_transformer_tensor_cache(
                 fdir, ticker, data_fp, fk, code_fp, xgb_meta_path, lstm_pt_path, xgb_lstm
             )
