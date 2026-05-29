@@ -56,6 +56,33 @@ MIN_PROMOTION_ACCURACY: float = 0.34       # above random (1/3)
 MIN_PROMOTION_BALANCED_ACC: float = 0.33   # per-class recall avg; slightly below accuracy when balanced
 MIN_ROWS_FOR_PROMOTION: int = 500         # minimum training rows for promotion
 MIN_PROMOTION_EDGE_PP: float = -5.0       # allow small negative edge for now
+# Per-ticker fail-closed DATA floor on the train→promote path (Workstream A1, operator brief
+# 2026-05-29). Distinct from rows_used (model samples): this is raw labeled-row + usable-day
+# availability in the DB. A "usable RTH day" has >= USABLE_RTH_DAY_MIN_ROWS labeled 1m rows —
+# enough to fill the LSTM structure window (STREAM_5M_LOOKBACK=60). Below floor → ticker stays
+# NON-COMPLIANT, no copy to models/active/, recorded (no silent skip).
+MIN_USABLE_DAYS_FOR_PROMOTION: int = 5
+USABLE_RTH_DAY_MIN_ROWS: int = 60
+
+
+def meets_per_ticker_data_floor(labeled_rows: int, usable_days: int) -> tuple[bool, str]:
+    """Fail-closed per-ticker data floor for promotion (A1).
+
+    Requires >= MIN_ROWS_FOR_PROMOTION labeled rows AND >= MIN_USABLE_DAYS_FOR_PROMOTION
+    usable RTH days (a usable day has >= USABLE_RTH_DAY_MIN_ROWS labeled 1m rows).
+    Returns (ok, reason). Both conditions reported together when both fail.
+    """
+    reasons: list[str] = []
+    if int(labeled_rows) < MIN_ROWS_FOR_PROMOTION:
+        reasons.append(f"labeled_rows={int(labeled_rows)} < {MIN_ROWS_FOR_PROMOTION}")
+    if int(usable_days) < MIN_USABLE_DAYS_FOR_PROMOTION:
+        reasons.append(
+            f"usable_days={int(usable_days)} < {MIN_USABLE_DAYS_FOR_PROMOTION} "
+            f"(usable = >= {USABLE_RTH_DAY_MIN_ROWS} labeled 1m rows/day)"
+        )
+    if reasons:
+        return False, "; ".join(reasons)
+    return True, "ok"
 
 
 @dataclass

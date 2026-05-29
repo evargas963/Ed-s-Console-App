@@ -2234,6 +2234,7 @@ def run_once(
                     manifest=_gov_manifest,
                     promotion_record=_gov_record,
                     scheduler_run_id=run_ts,
+                    db_path=DB_PATH,
                 )
                 promoted = bool(auto_exec_result.get("executed"))
                 production_write_held = not promoted
@@ -2661,7 +2662,8 @@ if __name__ == "__main__":
         help="Do not wait until 16:15 ET; allow training on weekends/holidays (still needs DB rows).",
     )
     ap.add_argument("--force-retrain", action="store_true",
-                    help="Replace non-compliant active artifacts even when new score < existing")
+                    help="Ignore scheduler cache-skip / inhibitor and force a fresh train+eval this run "
+                         "(training_cache skip bypass). Does NOT override the promotion score/row gate.")
     ap.add_argument("--bypass-cache", action="store_true",
                     help="Ignore scheduler + feature tensor cache (full retrain + re-eval)")
     ap.add_argument(

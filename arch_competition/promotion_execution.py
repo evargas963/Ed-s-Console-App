@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, Literal
 
-from ml_horizon import normalize_ml_horizon_slug
+from ml_horizon import normalize_ml_horizon_slug, outcome_column
 
 from arch_competition.audit import append_audit_record, build_audit_record, governance_audit_log_path
 from arch_competition.exceptions import ManualGovernanceError, PromotionGovernanceError
@@ -84,12 +84,19 @@ def execute_promotion_if_eligible(
     operator_id: str | None = None,
     manual_intent: str | None = None,
     scheduler_run_id: str | None = None,
+    db_path: str | None = None,
 ) -> dict[str, Any]:
     """
     Copy governed candidate artifacts to production active when eligible.
 
     Manual path: operator_id + manual_intent + explicit target_architecture.
     Scheduler path: scheduler_run_id + env-gated auto-promote from promotion_record.
+
+    Workstream A1 (operator brief 2026-05-29): when ``db_path`` is provided on the
+    scheduler (auto) path, a fail-closed per-ticker DATA floor is enforced before any
+    copy — the ticker must clear ``training_provenance.meets_per_ticker_data_floor``
+    (>=500 labeled rows AND >=5 usable RTH days). Below floor → no copy, recorded skip
+    (``data_floor_not_met``). Manual operator promotion is intentionally not gated here.
     """
     from arch_competition.manual_control import (
         MANUAL_PROMOTE_CASCADE_INTENT,
@@ -147,6 +154,44 @@ def execute_promotion_if_eligible(
             target_architecture = "parallel"
 
     assert target_architecture is not None
+
+    # Workstream A1 — fail-closed per-ticker DATA floor (scheduler/auto path only).
+    if not is_manual and db_path:
+        from training_cache import db_training_floor_stats
+        from training_provenance import meets_per_ticker_data_floor
+
+        label_col = outcome_column(hz)
+        floor_stats = db_training_floor_stats(db_path, tku, label_column=label_col)
+        floor_ok, floor_reason = meets_per_ticker_data_floor(
+            floor_stats["labeled_rows"], floor_stats["usable_days"]
+        )
+        if not floor_ok:
+            append_audit_record(
+                model_dir,
+                build_audit_record(
+                    action="scheduler_auto_promote_skipped",
+                    outcome="data_floor_not_met",
+                    operator_id=SCHEDULER_AUTO_OPERATOR_ID,
+                    ticker=tku,
+                    ml_horizon_suffix=hz,
+                    prior_active_architecture=None,
+                    target_architecture=target_architecture,
+                    new_active_architecture=None,
+                    evaluation_manifest_path=None,
+                    promotion_decision_path=None,
+                    checkpoint_id=None,
+                    detail=f"data_floor_not_met: {floor_reason}",
+                ),
+            )
+            log.warning(
+                "auto-promote skipped %s/%s: data floor not met (%s)", tku, hz, floor_reason
+            )
+            return _skip_result(
+                "data_floor_not_met",
+                target_architecture=target_architecture,
+                data_floor_reason=floor_reason,
+                data_floor_stats=floor_stats,
+            )
 
     _validate_manifest_record_lineage(manifest, promotion_record)
     _validate_manifest_paths_match_canonical(manifest, model_dir, tku)

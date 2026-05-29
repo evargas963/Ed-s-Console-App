@@ -116,6 +116,50 @@ def db_training_fingerprint(
     }
 
 
+def db_training_floor_stats(
+    db_path: str, ticker: str, *, label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
+) -> dict[str, Any]:
+    """Per-ticker DATA-floor stats for promotion gating (Workstream A1).
+
+    Returns labeled-row count and usable-RTH-day count using the SAME RTH /
+    label / weekday filter as ``db_training_fingerprint`` (so the floor matches
+    what training actually consumes). A usable day has
+    ``>= training_provenance.USABLE_RTH_DAY_MIN_ROWS`` labeled 1m rows.
+    """
+    from ml_data_common import filter_ts_utc_list_to_rth, training_base_where_clause
+    from timeframe_config import CANONICAL_TIMEFRAME
+    from training_provenance import USABLE_RTH_DAY_MIN_ROWS
+
+    conn = sqlite3.connect(db_path)
+    where = training_base_where_clause(label_column, include_ticker=True)
+    rows = conn.execute(
+        f"SELECT ts_utc, ts_et FROM snapshots_1m_normalized WHERE {where}",
+        (CANONICAL_TIMEFRAME, ticker),
+    ).fetchall()
+    conn.close()
+
+    rth_ts = set(
+        filter_ts_utc_list_to_rth([float(r[0]) for r in rows if r[0] is not None])
+    )
+    per_day: dict[str, int] = {}
+    for ts_utc, ts_et in rows:
+        if ts_utc is None or float(ts_utc) not in rth_ts:
+            continue
+        day = str(ts_et)[:10] if ts_et else None
+        if not day:
+            continue
+        per_day[day] = per_day.get(day, 0) + 1
+
+    labeled_rows = sum(per_day.values())
+    usable_days = sum(1 for c in per_day.values() if c >= USABLE_RTH_DAY_MIN_ROWS)
+    return {
+        "ticker": str(ticker),
+        "labeled_rows": int(labeled_rows),
+        "usable_days": int(usable_days),
+        "label_column": label_column,
+    }
+
+
 def compute_scheduler_cache_key(
     ticker: str,
     architecture: str,

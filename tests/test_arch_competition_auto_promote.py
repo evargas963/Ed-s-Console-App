@@ -75,3 +75,114 @@ def test_auto_promote_parallel_on_keep_incumbent_train_success_live(tmp_path: Pa
     )
     assert result["executed"] is True
     assert (tmp_path / "active" / "SPY" / "xgb_SPY_1c.pkl").is_file()
+
+
+# ── Workstream A1 — per-ticker fail-closed data floor ──────────────────────────
+
+
+def test_meets_per_ticker_data_floor_predicate():
+    from training_provenance import (
+        MIN_ROWS_FOR_PROMOTION,
+        MIN_USABLE_DAYS_FOR_PROMOTION,
+        meets_per_ticker_data_floor,
+    )
+
+    ok, reason = meets_per_ticker_data_floor(MIN_ROWS_FOR_PROMOTION, MIN_USABLE_DAYS_FOR_PROMOTION)
+    assert ok and reason == "ok"
+    ok, reason = meets_per_ticker_data_floor(499, 10)
+    assert not ok and "labeled_rows=499" in reason
+    ok, reason = meets_per_ticker_data_floor(5000, 4)
+    assert not ok and "usable_days=4" in reason
+    ok, reason = meets_per_ticker_data_floor(100, 1)
+    assert not ok and "labeled_rows" in reason and "usable_days" in reason
+
+
+def test_db_training_floor_stats_counts_usable_days(tmp_path: Path, monkeypatch):
+    import sqlite3
+
+    import ml_data_common as mdc
+    from training_cache import db_training_floor_stats
+
+    db = tmp_path / "floor.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute(
+        "CREATE TABLE snapshots_1m_normalized (ticker TEXT, timeframe TEXT, ts_utc REAL, ts_et TEXT, outcome_1c TEXT)"
+    )
+    # day1 + day2 each 60 labeled rows (usable); day3 only 10 rows (not usable)
+    rid = 0.0
+    for day, n in (("2026-05-01", 60), ("2026-05-02", 60), ("2026-05-03", 10)):
+        for i in range(n):
+            conn.execute(
+                "INSERT INTO snapshots_1m_normalized VALUES (?,?,?,?,?)",
+                ("ZZZ", "1m", rid, f"{day} 10:{i % 60:02d}:00", "UP"),
+            )
+            rid += 1.0
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(mdc, "filter_ts_utc_list_to_rth", lambda ts: ts)
+    monkeypatch.setattr(mdc, "training_base_where_clause", lambda col, include_ticker=True: "timeframe = ? AND ticker = ?")
+
+    stats = db_training_floor_stats(str(db), "ZZZ", label_column="outcome_1c")
+    assert stats["labeled_rows"] == 130
+    assert stats["usable_days"] == 2  # day3's 10 rows < 60
+
+
+def test_auto_promote_skipped_when_data_floor_not_met(tmp_path: Path, monkeypatch):
+    """Starved ticker: db_path provided → fail-closed, no copy to active/."""
+    import arch_competition.promotion_execution as pe
+    from tests.test_manual_governance import _minimal_governed_files, _write_candidate_manifests, _write_horizon_bundle
+
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE", "1")
+    monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE_REQUIRE_VERIFY", "0")
+    _minimal_governed_files(tmp_path, cascade_ok=False)
+    pdir = tmp_path / "parallel" / "SPY"
+    cdir = tmp_path / "cascade" / "SPY"
+    _write_horizon_bundle(pdir, "SPY", "1c")
+    _write_horizon_bundle(cdir, "SPY", "1c")
+    _write_candidate_manifests(pdir, cdir)
+
+    import training_cache
+    monkeypatch.setattr(
+        training_cache,
+        "db_training_floor_stats",
+        lambda db_path, ticker, label_column="outcome_1c": {
+            "ticker": ticker, "labeled_rows": 120, "usable_days": 1, "label_column": label_column,
+        },
+    )
+    result = execute_promotion_if_eligible(
+        tmp_path, "SPY", "1c", scheduler_run_id="starved", db_path=str(tmp_path / "x.db"),
+    )
+    assert result["executed"] is False
+    assert result["skipped_reason"] == "data_floor_not_met"
+    assert not (tmp_path / "active" / "SPY" / "xgb_SPY_1c.pkl").is_file()
+
+
+def test_auto_promote_proceeds_when_data_floor_met(tmp_path: Path, monkeypatch):
+    """Floor cleared with db_path provided → promotion proceeds (copy lands)."""
+    from tests.test_manual_governance import _minimal_governed_files, _write_candidate_manifests, _write_horizon_bundle
+
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE", "1")
+    monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE_REQUIRE_VERIFY", "0")
+    _minimal_governed_files(tmp_path, cascade_ok=False)
+    pdir = tmp_path / "parallel" / "SPY"
+    cdir = tmp_path / "cascade" / "SPY"
+    _write_horizon_bundle(pdir, "SPY", "1c")
+    _write_horizon_bundle(cdir, "SPY", "1c")
+    _write_candidate_manifests(pdir, cdir)
+
+    import training_cache
+    monkeypatch.setattr(
+        training_cache,
+        "db_training_floor_stats",
+        lambda db_path, ticker, label_column="outcome_1c": {
+            "ticker": ticker, "labeled_rows": 5000, "usable_days": 20, "label_column": label_column,
+        },
+    )
+    result = execute_promotion_if_eligible(
+        tmp_path, "SPY", "1c", scheduler_run_id="healthy", db_path=str(tmp_path / "x.db"),
+    )
+    assert result["executed"] is True
+    assert (tmp_path / "active" / "SPY" / "xgb_SPY_1c.pkl").is_file()
