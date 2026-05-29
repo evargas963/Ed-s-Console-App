@@ -109,8 +109,16 @@ def _minimal_record():
     }
 
 
-def test_scheduler_auto_promote_defaults_off(monkeypatch):
-    monkeypatch.delenv("ED_ML_SCHEDULER_AUTO_PROMOTE_TO_ACTIVE", raising=False)
+def test_scheduler_auto_promote_defaults_on_panic_off(monkeypatch):
+    """Train-success-live: auto-promote defaults ON; panic opt-out turns it OFF."""
+    monkeypatch.delenv("ED_ML_SCHEDULER_AUTO_PROMOTE_TO_ACTIVE", raising=False)  # retired name, ignored
+    monkeypatch.delenv("ED_SCHEDULER_AUTO_PROMOTE", raising=False)
+    monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
+    assert scheduler_auto_promote_to_active_enabled() is True
+    monkeypatch.setenv("ED_DISABLE_AUTO_PROMOTE", "1")
+    assert scheduler_auto_promote_to_active_enabled() is False
+    monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE", "0")
     assert scheduler_auto_promote_to_active_enabled() is False
 
 
@@ -352,15 +360,18 @@ def test_load_visibility_single_ticker(tmp_path: Path):
     assert v["blocked_reasons"][0]["code"] == "X"
 
 
-def test_ml_scheduler_auto_promote_helper_false_by_default(monkeypatch):
-    monkeypatch.delenv("ED_ML_SCHEDULER_AUTO_PROMOTE_TO_ACTIVE", raising=False)
+def test_ml_scheduler_auto_promote_helper_true_by_default(monkeypatch):
+    """Train-success-live: helper mirrors policy default ON."""
+    monkeypatch.delenv("ED_SCHEDULER_AUTO_PROMOTE", raising=False)
+    monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
     from ml_scheduler import _scheduler_auto_promote_to_active
 
-    assert _scheduler_auto_promote_to_active() is False
+    assert _scheduler_auto_promote_to_active() is True
 
 
 def test_assert_no_active_directory_write_ok_when_env_off(monkeypatch):
-    monkeypatch.delenv("ED_ML_SCHEDULER_AUTO_PROMOTE_TO_ACTIVE", raising=False)
+    """With auto-promote panic-disabled, the no-active-write hook must not raise."""
+    monkeypatch.setenv("ED_DISABLE_AUTO_PROMOTE", "1")
     assert_no_active_directory_write()
 
 
