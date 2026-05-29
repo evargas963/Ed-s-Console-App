@@ -73,6 +73,64 @@ def _mark_promotion_record_executed(pr_path: Path) -> None:
     write_json_file_atomically(pr_path, data, indent=2)
 
 
+def _auto_promote_score_row_gate(
+    manifest: dict[str, Any],
+    target_architecture: str,
+    src: Path,
+    active_ticker_dir: Path,
+    tku: str,
+    hz: str,
+) -> tuple[bool, str]:
+    """Workstream A2 — candidate score + rows_used gate on the scheduler auto path.
+
+    Routes the copy-to-active decision through
+    ``training_provenance.validate_for_promotion`` so the score check
+    (candidate eval-accuracy >= existing active ``promotion_score``) and the
+    ``rows_used`` floor actually gate (they were previously never called on the
+    auto path; parallel train-success-live refreshed regardless of score).
+
+    Candidate ensemble eval accuracy/balanced_accuracy come from the evaluation
+    manifest metrics for the chosen architecture; candidate provenance from the
+    candidate bundle; existing provenance from active/. Fail-closed when metrics
+    or candidate provenance are missing. ``force_replace_non_compliant`` is
+    allowed only when the incumbent is itself non-compliant (e.g. schema-v1).
+    Returns (ok, reason).
+    """
+    from training_provenance import (
+        is_provenance_compliant,
+        load_provenance,
+        validate_for_promotion,
+    )
+
+    metrics = (manifest.get("metrics") or {}).get(target_architecture) or {}
+    cand_acc = metrics.get("accuracy")
+    if cand_acc is None:
+        return False, f"missing metrics.{target_architecture}.accuracy in evaluation manifest"
+    cand_bal = metrics.get("balanced_accuracy")
+    try:
+        cand_acc = float(cand_acc)
+        cand_bal = float(cand_bal) if cand_bal is not None else None
+    except (TypeError, ValueError) as e:
+        return False, f"non-numeric candidate metrics: {e}"
+
+    cand_meta = Path(src) / f"xgb_{tku}_{hz}_meta.json"
+    cand_prov = load_provenance(cand_meta)
+    if cand_prov is None:
+        return False, f"missing candidate provenance ({cand_meta.name})"
+
+    existing_prov = load_provenance(Path(active_ticker_dir) / f"xgb_{tku}_{hz}_meta.json")
+    force_replace = bool(existing_prov) and not is_provenance_compliant(existing_prov, horizon_slug=hz)
+
+    return validate_for_promotion(
+        cand_prov,
+        cand_acc,
+        existing_provenance=existing_prov,
+        balanced_accuracy=cand_bal,
+        force_replace_non_compliant=force_replace,
+        horizon_slug=hz,
+    )
+
+
 def execute_promotion_if_eligible(
     model_dir: Path,
     ticker: str,
@@ -212,6 +270,38 @@ def execute_promotion_if_eligible(
     parallel_dir_r = parallel_dir.resolve()
     cascade_dir_r = cascade_dir.resolve()
     src = cascade_dir_r if target_architecture == "cascade" else parallel_dir_r
+
+    # Workstream A2 — candidate score + rows_used gate (scheduler/auto path only).
+    if not is_manual:
+        gate_ok, gate_reason = _auto_promote_score_row_gate(
+            manifest, target_architecture, src, active_ticker_dir, tku, hz
+        )
+        if not gate_ok:
+            append_audit_record(
+                model_dir,
+                build_audit_record(
+                    action="scheduler_auto_promote_skipped",
+                    outcome="promotion_gate_failed",
+                    operator_id=SCHEDULER_AUTO_OPERATOR_ID,
+                    ticker=tku,
+                    ml_horizon_suffix=hz,
+                    prior_active_architecture=None,
+                    target_architecture=target_architecture,
+                    new_active_architecture=None,
+                    evaluation_manifest_path=None,
+                    promotion_decision_path=None,
+                    checkpoint_id=None,
+                    detail=f"promotion_gate_failed: {gate_reason}",
+                ),
+            )
+            log.warning(
+                "auto-promote skipped %s/%s: score/row gate failed (%s)", tku, hz, gate_reason
+            )
+            return _skip_result(
+                "promotion_gate_failed",
+                target_architecture=target_architecture,
+                promotion_gate_reason=gate_reason,
+            )
 
     ev_path = evaluation_manifest_path(model_dir, hz, tku)
     pr_path = promotion_decision_path(model_dir, hz, tku)

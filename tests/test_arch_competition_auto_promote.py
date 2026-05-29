@@ -186,3 +186,79 @@ def test_auto_promote_proceeds_when_data_floor_met(tmp_path: Path, monkeypatch):
     )
     assert result["executed"] is True
     assert (tmp_path / "active" / "SPY" / "xgb_SPY_1c.pkl").is_file()
+
+
+# ── Workstream A2 — candidate score + rows_used gate on the auto path ───────────
+
+
+def _write_active_incumbent(model_dir: Path, *, promotion_score: float, target_column: str = "outcome_1c"):
+    """Place a pre-existing active incumbent xgb meta with a known promotion_score."""
+    from ml_horizon import target_definition as _td
+
+    active = model_dir / "active" / "SPY"
+    active.mkdir(parents=True, exist_ok=True)
+    tdef = _td("1c") if target_column == "outcome_1c" else "outcome_5c ~5 min ahead (5×1m bars)"
+    meta = {
+        "model_type": "XGBClassifier",
+        "ticker": "SPY",
+        "training_timeframe": "1m",
+        "target_column": target_column,
+        "target_definition": tdef,
+        "rows_used": 5000,
+        "promotion_score": promotion_score,
+        "balanced_accuracy": max(promotion_score - 0.02, 0.0),
+    }
+    (active / "xgb_SPY_1c_meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def _governed_auto_setup(tmp_path: Path, monkeypatch):
+    from tests.test_manual_governance import _minimal_governed_files, _write_candidate_manifests, _write_horizon_bundle
+
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE", "1")
+    monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE_REQUIRE_VERIFY", "0")
+    _minimal_governed_files(tmp_path, cascade_ok=False)  # candidate parallel acc = 0.45 (fixture)
+    pdir = tmp_path / "parallel" / "SPY"
+    cdir = tmp_path / "cascade" / "SPY"
+    _write_horizon_bundle(pdir, "SPY", "1c")
+    _write_horizon_bundle(cdir, "SPY", "1c")
+    _write_candidate_manifests(pdir, cdir)
+
+
+def test_auto_promote_blocked_when_candidate_worse_than_existing(tmp_path: Path, monkeypatch):
+    _governed_auto_setup(tmp_path, monkeypatch)
+    _write_active_incumbent(tmp_path, promotion_score=0.60)  # candidate 0.45 < 0.60
+    result = execute_promotion_if_eligible(tmp_path, "SPY", "1c", scheduler_run_id="worse")
+    assert result["executed"] is False
+    assert result["skipped_reason"] == "promotion_gate_failed"
+    assert "< existing" in result["promotion_gate_reason"]
+
+
+def test_auto_promote_proceeds_when_candidate_beats_existing(tmp_path: Path, monkeypatch):
+    _governed_auto_setup(tmp_path, monkeypatch)
+    _write_active_incumbent(tmp_path, promotion_score=0.40)  # candidate 0.45 >= 0.40
+    result = execute_promotion_if_eligible(tmp_path, "SPY", "1c", scheduler_run_id="better")
+    assert result["executed"] is True
+    assert (tmp_path / "active" / "SPY" / "xgb_SPY_1c.pkl").is_file()
+
+
+def test_auto_promote_force_replace_noncompliant_incumbent(tmp_path: Path, monkeypatch):
+    _governed_auto_setup(tmp_path, monkeypatch)
+    # incumbent scores higher but is non-compliant for 1c (wrong target_column) → force replace.
+    _write_active_incumbent(tmp_path, promotion_score=0.99, target_column="outcome_5c")
+    result = execute_promotion_if_eligible(tmp_path, "SPY", "1c", scheduler_run_id="forcerepl")
+    assert result["executed"] is True
+
+
+def test_auto_promote_blocked_when_manifest_accuracy_missing(tmp_path: Path, monkeypatch):
+    _governed_auto_setup(tmp_path, monkeypatch)
+    ed = tmp_path / "arch_competition" / "1c" / "SPY"
+    man = json.loads((ed / "evaluation_manifest.json").read_text(encoding="utf-8"))
+    man["metrics"]["parallel"].pop("accuracy", None)
+    rec = json.loads((ed / "promotion_decision.json").read_text(encoding="utf-8"))
+    result = execute_promotion_if_eligible(
+        tmp_path, "SPY", "1c", manifest=man, promotion_record=rec, scheduler_run_id="noacc",
+    )
+    assert result["executed"] is False
+    assert result["skipped_reason"] == "promotion_gate_failed"
+    assert "accuracy" in result["promotion_gate_reason"]

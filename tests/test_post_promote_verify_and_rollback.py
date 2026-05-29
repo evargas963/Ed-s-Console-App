@@ -23,6 +23,7 @@ def _dfp():
 
 def _write_horizon_bundle(bundle_dir: Path, ticker: str, hz: str, *, xgb_payload: bytes = b"x") -> None:
     from model_contract import contract_metadata_dict
+    from ml_horizon import target_definition as _hz_target_definition
 
     t = ticker.upper()
     contract = contract_metadata_dict()
@@ -35,7 +36,7 @@ def _write_horizon_bundle(bundle_dir: Path, ticker: str, hz: str, *, xgb_payload
             "features": ["f1"],
             "training_timeframe": "1m",
             "target_column": f"outcome_{hz}",
-            "target_definition": f"outcome ~{hz}",
+            "target_definition": _hz_target_definition(hz),
             "rows_used": 500,
         }
         if kind == "xgb":
@@ -81,8 +82,8 @@ def _minimal_governed(model_dir: Path) -> tuple[dict, dict]:
             "canonical_timeframe": "1m",
         },
         "metrics": {
-            "parallel": {"n_rows_scored": 10, "realized_contract_metrics": {}},
-            "cascade": {"n_rows_scored": 10, "realized_contract_metrics": {}},
+            "parallel": {"n_rows_scored": 10, "accuracy": 0.45, "balanced_accuracy": 0.40, "realized_contract_metrics": {}},
+            "cascade": {"n_rows_scored": 10, "accuracy": 0.45, "balanced_accuracy": 0.40, "realized_contract_metrics": {}},
         },
         "rolling_oos_windows": [],
         "architecture_comparison_summary": {},
