@@ -10,14 +10,44 @@ import pandas as pd
 import pytest
 
 from ml_data_common import (
+    INNER_VAL_MIN_ROWS,
     et_hour_minute_arrays_from_ts_utc,
     filter_df_to_rth_ts_utc,
     head_rth_df_from_ts_utc,
     market_session_from_ts_utc,
     rth_where_clause,
     stamp_et_clock_columns,
+    time_ordered_tail_split,
     training_base_where_clause,
 )
+
+
+# ── Workstream B3 — chronological inner holdout split ────────────────────────
+
+
+def test_time_ordered_tail_split_holds_out_recent_tail():
+    n = 1000
+    train_end, n_val = time_ordered_tail_split(n, val_fraction=0.15)
+    assert n_val == 150                      # last 15% (most recent) held out
+    assert train_end == 850                  # earlier rows train
+    assert train_end + n_val == n            # partition is exhaustive + disjoint
+
+
+def test_time_ordered_tail_split_no_holdout_when_val_too_small():
+    # round(80*0.15)=12 < INNER_VAL_MIN_ROWS -> no holdout (caller trains in-sample).
+    train_end, n_val = time_ordered_tail_split(80, val_fraction=0.15)
+    assert (train_end, n_val) == (80, 0)
+    assert 12 < INNER_VAL_MIN_ROWS
+
+
+def test_time_ordered_tail_split_no_holdout_when_train_too_small():
+    # val passes min, but train would be < min_train -> no holdout.
+    train_end, n_val = time_ordered_tail_split(120, val_fraction=0.5, min_val=20, min_train=100)
+    assert (train_end, n_val) == (120, 0)
+
+
+def test_time_ordered_tail_split_zero_rows():
+    assert time_ordered_tail_split(0) == (0, 0)
 
 
 def test_rth_where_clause_emits_deprecation_warning():

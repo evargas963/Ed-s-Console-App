@@ -555,10 +555,14 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
 # MODEL
 # =============================================================================
 
-def get_model(n_classes=3):
+XGB_EARLY_STOPPING_ROUNDS: int = 10
+
+
+def get_model(n_classes=3, early_stopping_rounds=None):
     try:
         import xgboost as xgb
         print("  Using XGBoost")
+        es = {} if early_stopping_rounds is None else {"early_stopping_rounds": int(early_stopping_rounds)}
         if n_classes == 2:
             return xgb.XGBClassifier(
                 n_estimators=50, max_depth=3, learning_rate=0.05,
@@ -567,6 +571,7 @@ def get_model(n_classes=3):
                 tree_method="hist", enable_categorical=False,
                 n_jobs=-1, random_state=42,
                 objective="binary:logistic", eval_metric="logloss",
+                **es,
             )
         return xgb.XGBClassifier(
             n_estimators=50, max_depth=3, learning_rate=0.05,
@@ -575,6 +580,7 @@ def get_model(n_classes=3):
             tree_method="hist", enable_categorical=False,
             n_jobs=-1, random_state=42,
             objective="multi:softprob", num_class=n_classes, eval_metric="mlogloss",
+            **es,
         )
     except ImportError:
         from sklearn.ensemble import HistGradientBoostingClassifier
@@ -681,7 +687,20 @@ def train_ticker(
 
     X = X[good]
     feat_names = good
-    med_series = X.median()
+
+    # Workstream B3 — chronological inner holdout (df is ORDER BY ts_utc ASC). Imputation
+    # medians are fit on the TRAIN partition only; the XGB best boosting round is selected by
+    # early stopping on the strictly-later val tail (not training loss); reported val_accuracy
+    # is out-of-sample. Thin tickers get no holdout (in-sample, disclosed) and are blocked from
+    # promotion by A1/B1. evaluate_only keeps the legacy full-data path.
+    # NOTE (tracked residual, NOT closed here): engineer_features' category maps + aux vol
+    # medians are still fit on the full df; only the fillna imputation is train-partition-only
+    # in this commit.
+    from ml_data_common import time_ordered_tail_split
+
+    train_end, n_val = (len(y), 0) if evaluate_only else time_ordered_tail_split(len(y))
+    _impute_basis = X.iloc[:train_end] if n_val > 0 else X
+    med_series = _impute_basis.median()
     impute_medians = {}
     for f in feat_names:
         v = med_series[f] if f in med_series.index else np.nan
@@ -699,13 +718,47 @@ def train_ticker(
         maj_pct = np.bincount(y, minlength=nc).max() / len(y)
         print(f"\n  Majority: {class_names[np.bincount(y, minlength=nc).argmax()]} ({maj_pct:.1%})")
 
+    from sklearn.metrics import accuracy_score as _acc
+
+    # B3 holdout fit: early-stopped on the strictly-later val tail. When a holdout exists the
+    # incremental warm-continuation is bypassed so the best-round selection is governed purely
+    # by the held-out tail (disclosed: warm-start perf opt is off for healthy tickers).
+    val_accuracy = None
+    val_basis = "in_sample_no_holdout"
+    xgb_best_iteration = None
+    holdout_done = False
+    _tr_acc = None
+    mdl_final = None
+    if n_val > 0 and not evaluate_only:
+        X_tr, y_tr, w_tr = X_np[:train_end], y[:train_end], sample_w[:train_end]
+        X_val, y_val = X_np[train_end:], y[train_end:]
+        _m = get_model(nc, early_stopping_rounds=XGB_EARLY_STOPPING_ROUNDS)
+        try:
+            _m.fit(X_tr, y_tr, sample_weight=w_tr, eval_set=[(X_val, y_val)], verbose=False)
+            mdl_final = _m
+            xgb_best_iteration = getattr(_m, "best_iteration", None)
+            val_accuracy = float(_acc(y_val, _m.predict(X_val)))
+            _tr_acc = float(_acc(y_tr, _m.predict(X_tr)))
+            val_basis = "time_ordered_tail"
+            holdout_done = True
+            print(
+                f"  B3 holdout: val_acc={val_accuracy:.1%} "
+                f"(n_val={n_val}, best_iter={xgb_best_iteration}); train_acc={_tr_acc:.1%}"
+            )
+        except TypeError as _es_ex:
+            # eval_set / early stopping unsupported (sklearn fallback) -> in-sample path below.
+            print(f"  B3 holdout unavailable ({_es_ex}); in-sample fit")
+            mdl_final = None
+
     print(f"\n  Training on {len(y):,} rows (equal sample weights — O-55)...")
     from training_cache_policy import XGBOOST_INCREMENTAL_TRAIN_ALLOWED
 
-    mdl_final = get_model(nc)
+    if mdl_final is None:
+        mdl_final = get_model(nc)
     incremental_done = False
     if (
         XGBOOST_INCREMENTAL_TRAIN_ALLOWED
+        and not holdout_done
         and prior_data_fingerprint
         and current_data_fingerprint
         and not evaluate_only
@@ -750,13 +803,19 @@ def train_ticker(
             except Exception as ex:
                 print(f"  XGBoost incremental failed ({ex}); full refit")
                 mdl_final = get_model(nc)
-    if not incremental_done:
+    if not incremental_done and not holdout_done:
         mdl_final.fit(X_np, y, sample_weight=sample_w, verbose=False)
 
-    from sklearn.metrics import accuracy_score as _acc
-    fa   = _acc(y, mdl_final.predict(X_np))
-    pd_d = {class_names[i]: int((mdl_final.predict(X_np)==i).sum()) for i in range(nc)}
-    print(f"  Full-data accuracy: {fa:.1%}  Pred dist: {pd_d}")
+    if holdout_done:
+        # train_accuracy stays in-sample-by-name (train partition); val_accuracy is the honest
+        # out-of-sample headline metric.
+        fa = float(_tr_acc)
+        pd_d = {class_names[i]: int((mdl_final.predict(X_np[train_end:]) == i).sum()) for i in range(nc)}
+        print(f"  Holdout val pred dist: {pd_d}")
+    else:
+        fa = _acc(y, mdl_final.predict(X_np))
+        pd_d = {class_names[i]: int((mdl_final.predict(X_np) == i).sum()) for i in range(nc)}
+        print(f"  Full-data accuracy: {fa:.1%}  Pred dist: {pd_d}")
 
     _base = 1.0 / float(nc)
     if evaluate_only:
@@ -776,6 +835,9 @@ def train_ticker(
         target=target_col, ml_horizon_slug=hz, target_mode=tm,
         class_map={n: i for i, n in enumerate(class_names)},
         class_names=class_names, train_accuracy=round(fa, 4),
+        val_accuracy=(round(val_accuracy, 4) if val_accuracy is not None else None),
+        val_basis=val_basis,
+        xgb_best_iteration=(int(xgb_best_iteration) if xgb_best_iteration is not None else None),
         weight_mode="equal",
         sample_weight_mode="equal",
         nan_threshold=nan_threshold, features_dropped=dropped,

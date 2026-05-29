@@ -218,6 +218,42 @@ def equal_sample_weights(n: int):
 
 
 # ------------------------------------------------------------------------------
+# Workstream B3 — temporal inner holdout for each base trainer
+# ------------------------------------------------------------------------------
+INNER_VAL_TAIL_FRACTION: float = 0.15
+INNER_VAL_MIN_ROWS: int = 20
+INNER_VAL_MIN_TRAIN_ROWS: int = 100
+
+
+def time_ordered_tail_split(
+    n: int,
+    *,
+    val_fraction: float = INNER_VAL_TAIL_FRACTION,
+    min_val: int = INNER_VAL_MIN_ROWS,
+    min_train: int = INNER_VAL_MIN_TRAIN_ROWS,
+) -> tuple[int, int]:
+    """Index boundary for a chronological inner holdout (Workstream B3).
+
+    The caller's rows MUST already be time-ordered ascending (XGB ``df`` is
+    ``ORDER BY ts_utc``; LSTM/Transformer arrays are built day-by-day). Returns
+    ``(train_end, n_val)`` where train rows are ``[0:train_end)`` (earlier) and the
+    val tail is the LAST ``n_val`` rows (most recent) ``[train_end:n)``.
+
+    Returns ``(n, 0)`` — NO holdout — when there aren't enough rows for a meaningful,
+    honest split (``n_val < min_val`` or ``train rows < min_train``). The caller then
+    trains on all rows and MUST report the metric as in-sample (not an honest val), and
+    such a thin ticker is already blocked from promotion by the A1/B1 gates.
+    """
+    n = int(n)
+    if n <= 0:
+        return 0, 0
+    n_val = int(round(n * float(val_fraction)))
+    if n_val < int(min_val) or (n - n_val) < int(min_train):
+        return n, 0
+    return n - n_val, n_val
+
+
+# ------------------------------------------------------------------------------
 # m5_* additive context (1m normalized base + as-of structure columns)
 # ------------------------------------------------------------------------------
 # Additive m5_* columns are merged from canonical timeframe='1m' snapshot rows only
