@@ -38,6 +38,30 @@ def test_lstm_registry_tags_structure_micro_cross_asset_streams():
     assert "stream=derived_confluence" in lstm["cf_momentum_5m"].notes
 
 
+def test_lstm_registry_covers_encoded_sequence_width():
+    from lstm_data import ENCODED_FEATURES_5M, ENCODED_FEATURES_1M, encoded_width_5m, encoded_width_1m
+
+    regs = build_all_layer_registries(Path(__file__).resolve().parents[1])
+    lstm_names = {e.feature_name for e in regs["lstm"]}
+    for f in ENCODED_FEATURES_5M:
+        assert f in lstm_names
+    for f in ENCODED_FEATURES_1M:
+        assert f in lstm_names
+    assert "spy_weighted_push__present" in lstm_names
+    trans = {e.feature_name for e in regs["transformer"]}
+    for f in ENCODED_FEATURES_5M:
+        assert f in trans
+    mask_union = {
+        f
+        for f in (*ENCODED_FEATURES_5M, *ENCODED_FEATURES_1M)
+        if f.endswith("__present")
+    }
+    assert mask_union <= lstm_names
+    assert len([f for f in lstm_names if f.endswith("__present")]) == len(mask_union)
+    assert encoded_width_5m() == 31
+    assert encoded_width_1m() == 16
+
+
 def test_validator_returns_structured_details():
     report = validate_feature_contracts(Path(__file__).resolve().parents[1])
     payload = report.to_dict()

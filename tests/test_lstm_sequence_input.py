@@ -117,19 +117,31 @@ def test_encode_snapshot_dimensions_match_features_lists():
 
 def test_null_weighted_push_mask_zero_train_and_inference_encoder():
     """NULL spy_weighted_push must set __present=0, not imply neutral via value 0.0 alone."""
-    from lstm_data import ENCODED_FEATURES_5M, encode_snapshot_5m
-    from features.lstm_sequence_input import encode_lstm_structure_bar_with_masks
+    from lstm_data import ENCODED_FEATURES_5M
+    from features.lstm_sequence_input import (
+        encode_lstm_structure_bar_with_masks,
+        encode_lstm_structure_sequence_bar,
+    )
     from features.canonical_contract import get_mvp_feature_names
+    from features.lstm_sequence_input import merge_db_row_with_canonical_mvp
 
     row = _base_db_row(1.0)
     row["spy_weighted_push"] = None
     cf = {k: None for k in get_mvp_feature_names()}
     cf["price.spot"] = 450.0
+    cf["price.spread_pts"] = 0.02
+    cf["structure.zone"] = "pin_bull"
+    cf["structure.nearest_above_dist"] = 1.0
+    cf["structure.nearest_below_dist"] = -1.0
+    cf["structure.net_gamma"] = 0.0
+    cf["anchor.vwap_side"] = "above"
+    cf["anchor.vwap_dist_pts"] = 0.1
+    merged = merge_db_row_with_canonical_mvp(row, cf)
     vi = ENCODED_FEATURES_5M.index("spy_weighted_push")
     mi = ENCODED_FEATURES_5M.index("spy_weighted_push__present")
-    bare = encode_snapshot_5m(row, 450.0)
-    assert bare[vi] == 0.0
-    assert bare[mi] == 0.0
+    prod = encode_lstm_structure_sequence_bar(merged, 450.0, canonical_features=cf)
+    assert prod[vi] == 0.0
+    assert prod[mi] == 0.0
     wrapped = encode_lstm_structure_bar_with_masks(row, cf, 450.0)["features"]
     assert wrapped[vi] == 0.0
     assert wrapped[mi] == 0.0

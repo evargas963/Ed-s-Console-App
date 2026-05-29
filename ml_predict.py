@@ -715,10 +715,12 @@ def _predict_lstm(
     model, checkpoint = _lstm_registry[_model_registry_key(ticker)]
     try:
         import torch
-        from features.lstm_sequence_input import build_lstm_merged_windows
+        from features.lstm_sequence_input import (
+            build_lstm_merged_windows,
+            encode_lstm_micro_sequence_bar,
+            encode_lstm_structure_sequence_bar,
+        )
         from lstm_data import (
-            encode_snapshot_5m,
-            encode_snapshot_1m,
             CANONICAL_TIMEFRAME,
             compute_confluence_features,
             CONFLUENCE_FEATURES,
@@ -774,10 +776,10 @@ def _predict_lstm(
             logger.error("LSTM %s: %s", ticker, e)
             return None
 
-        seq_5m = [encode_snapshot_5m(s, ref_spot) for s in merged_window]
+        seq_5m = [encode_lstm_structure_sequence_bar(s, ref_spot) for s in merged_window]
         micro = merged_window[-STREAM_1M_LOOKBACK:]
         mr = _safe_float(micro[0].get("spot")) or ref_spot
-        seq_1m = [encode_snapshot_1m(s, mr) for s in micro]
+        seq_1m = [encode_lstm_micro_sequence_bar(s, mr) for s in micro]
 
         if len(seq_5m[0]) != encoded_width_5m() or len(seq_1m[0]) != encoded_width_1m():
             logger.error(
@@ -978,11 +980,10 @@ def _predict_transformer(
 
     try:
         import torch
+        from features.lstm_sequence_input import encode_lstm_structure_sequence_bar
         from lstm_data import (
-            encode_snapshot_5m,
             _safe_float,
             CANONICAL_TIMEFRAME,
-            FEATURES_5M,
             canonical_reference_spot_from_merged_window,
         )
 
@@ -1026,7 +1027,7 @@ def _predict_transformer(
             raise TransformerSequenceInputError(str(e)) from e
 
         snap = snapshot if snapshot is not None else _snap_dict(merged_window[-1])
-        seq = [encode_snapshot_5m(s, ref_spot) for s in merged_window]
+        seq = [encode_lstm_structure_sequence_bar(s, ref_spot) for s in merged_window]
         if len(seq[0]) != n_enc_base:
             logger.error(
                 "Transformer %s: encoder width %d != expected %d",
@@ -1117,6 +1118,12 @@ def _predict_transformer(
         raise
     except ParallelRuntimeArtifactError:
         raise
+    except LstmSequenceInputError as e:
+        # Cascade transformer depends on the LSTM head (XGB+LSTM probs as input features),
+        # so it inherits the LSTM's 60-snapshot lookback. During warmup (<60 snapshots) this
+        # is expected fail-closed behavior, not a failure — log quietly, don't flood WARNING.
+        logger.debug("Transformer %s: cascade LSTM dependency not ready (%s)", ticker, e)
+        return None
     except Exception as e:
         logger.warning("Transformer prediction failed for %s: %s", ticker, e)
         return None

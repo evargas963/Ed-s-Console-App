@@ -925,6 +925,13 @@ def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
     errors.extend(check_mvp_dataframe_ingress())
     errors.extend(check_institutional_contract())
     errors.extend(check_meet_or_exceed_cycle_documentation())
+    tools_dir = Path(__file__).resolve().parent
+    if str(tools_dir) not in sys.path:
+        sys.path.insert(0, str(tools_dir))
+    import check_encoder_cone_tests as encoder_cone
+
+    errors.extend(encoder_cone.check_encoder_cone_documentation())
+    errors.extend(encoder_cone.check_encoder_cone_tests(staged))
 
     for path in paths:
         if path.name == "COMMIT_EDITMSG" or "--commit-msg" in path.as_posix():
@@ -951,15 +958,26 @@ def main(argv: list[str] | None = None) -> int:
         paths = [Path(args[0])]
 
     errors: list[str] = []
+    tools_dir = Path(__file__).resolve().parent
+    if str(tools_dir) not in sys.path:
+        sys.path.insert(0, str(tools_dir))
+    import check_encoder_cone_tests as encoder_cone
+
     if paths and all(p.name == "COMMIT_EDITMSG" for p in paths if p.is_file()):
         for p in paths:
             errors.extend(check_commit_message(p))
+            errors.extend(encoder_cone.check_encoder_cone_commit_claim(p.read_text(encoding="utf-8"), staged))
     else:
         errors.extend(check_paths(paths, staged=staged))
         # commit-msg file may also be passed alongside staged paths in some hooks
         for p in paths:
             if p.name == "COMMIT_EDITMSG":
                 errors.extend(check_commit_message(p))
+                errors.extend(
+                    encoder_cone.check_encoder_cone_commit_claim(
+                        p.read_text(encoding="utf-8"), staged
+                    )
+                )
 
     if errors:
         for err in errors:

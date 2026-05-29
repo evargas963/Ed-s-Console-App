@@ -99,7 +99,6 @@ def _train_native_if_feasible(db_path: str, ticker: str, hz: str, head: str) -> 
         ticker=ticker,
         df=df,
         model_dir=out_dir,
-        weight_mode="exp",
         nan_threshold=0.35,
         skip_sanity=True,
         show_importance=False,

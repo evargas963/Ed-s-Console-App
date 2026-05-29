@@ -584,22 +584,6 @@ def get_model(n_classes=3):
             min_samples_leaf=30, l2_regularization=5.0, random_state=42)
 
 
-def compute_sample_weights(y, mode="none", exp_decay_weights=None):
-    """mode=none: uniform. mode=exp: use exp_decay_weights if provided."""
-    n = len(y)
-    if mode == "exp" and exp_decay_weights is not None and len(exp_decay_weights) == n:
-        return np.array(exp_decay_weights, dtype=np.float64)
-    if mode == "none":
-        return np.ones(n, dtype=float)
-    from sklearn.utils.class_weight import compute_class_weight
-    classes = np.unique(y)
-    raw = compute_class_weight("balanced", classes=classes, y=y)
-    if mode == "moderate":
-        raw = np.sqrt(raw)
-    wmap = dict(zip(classes, raw))
-    return np.array([wmap[yi] for yi in y])
-
-
 def encode_target(df, target_column: str):
     return df[target_column].map(CLASS_MAP).values
 
@@ -630,7 +614,6 @@ def train_ticker(
     ticker: str,
     df: pd.DataFrame,
     model_dir: Path = None,
-    weight_mode: str = "exp",
     nan_threshold: float = 0.30,
     skip_sanity: bool = False,
     show_importance: bool = False,
@@ -706,17 +689,17 @@ def train_ticker(
     X = X.fillna(pd.Series(impute_medians))
     X_np = np.nan_to_num(X.values.astype(np.float64), nan=0.0)
 
-    # Exponential decay weights (most recent = highest)
-    from ml_data_common import compute_exponential_weights
-    exp_w = compute_exponential_weights(len(y), decay=2.0)
-    sample_w = compute_sample_weights(y, mode=weight_mode, exp_decay_weights=exp_w)
+    # O-55: equal/uniform sample weights only — every row counts the same. No recency
+    # decay, no class re-weighting, no toggle.
+    from ml_data_common import equal_sample_weights
+    sample_w = equal_sample_weights(len(y))
 
     if not skip_sanity:
         from sklearn.metrics import accuracy_score
         maj_pct = np.bincount(y, minlength=nc).max() / len(y)
         print(f"\n  Majority: {class_names[np.bincount(y, minlength=nc).argmax()]} ({maj_pct:.1%})")
 
-    print(f"\n  Training on {len(y):,} rows with exponential decay weights...")
+    print(f"\n  Training on {len(y):,} rows (equal sample weights — O-55)...")
     from training_cache_policy import XGBOOST_INCREMENTAL_TRAIN_ALLOWED
 
     mdl_final = get_model(nc)
@@ -793,7 +776,8 @@ def train_ticker(
         target=target_col, ml_horizon_slug=hz, target_mode=tm,
         class_map={n: i for i, n in enumerate(class_names)},
         class_names=class_names, train_accuracy=round(fa, 4),
-        weight_mode=weight_mode,
+        weight_mode="equal",
+        sample_weight_mode="equal",
         nan_threshold=nan_threshold, features_dropped=dropped,
         category_maps={k: {str(ck): int(cv_v) for ck, cv_v in v.items()}
                       for k, v in cat_maps.items()},
@@ -832,8 +816,6 @@ def main():
     ap.add_argument("--feature-importance", action="store_true")
     ap.add_argument("--compare", action="store_true")
     ap.add_argument("--nan-threshold", type=float, default=0.30)
-    ap.add_argument("--weight-mode", type=str, default="exp",
-                    choices=["exp", "moderate", "balanced", "none"])
     ap.add_argument("--skip-sanity", action="store_true")
     ap.add_argument("--model-dir", type=str, default=None,
                     help="Output directory (default: models)")
@@ -896,7 +878,6 @@ def main():
             r = train_ticker(
                 ticker=tkr, df=df,
                 model_dir=model_dir,
-                weight_mode=args.weight_mode,
                 nan_threshold=args.nan_threshold,
                 skip_sanity=args.skip_sanity,
                 show_importance=args.feature_importance,

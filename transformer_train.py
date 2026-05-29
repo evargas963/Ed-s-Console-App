@@ -1,7 +1,7 @@
 """
 transformer_train.py — Transformer Model Training Pipeline
 ===========================================================
-RULE 1: RTH data only, exponential decay weighting.
+RULE 1: RTH data only, uniform (unweighted) sample weighting — canonical per O-55.
 RULE 2: No gates — train if data exists, save always.
 Supports parallel (raw) and cascade (raw + 6 pred features from XGB+LSTM).
 """
@@ -143,9 +143,9 @@ def prepare_transformer_data(
     allowed_et_dates: Optional[Set[str]] = None,
     ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
 ):
+    from features.training_canonical_input import training_snapshot_for_sequence_encode
     from lstm_data import (
         extract_rth_snapshots,
-        encode_snapshot_5m,
         TARGET_CLASSES,
         DB_PATH,
         CANONICAL_TIMEFRAME,
@@ -172,6 +172,8 @@ def prepare_transformer_data(
     _min_hist = int(min_snapshots_before_sample) if min_snapshots_before_sample is not None else int(SEQUENCE_LENGTH)
     if _min_hist < SEQUENCE_LENGTH:
         _min_hist = SEQUENCE_LENGTH
+
+    from features.lstm_sequence_input import encode_lstm_structure_sequence_bar
 
     all_X, all_y, all_days, all_tickers = [], [], [], []
     for tkr in tickers:
@@ -200,7 +202,12 @@ def prepare_transformer_data(
                     ref_spot = canonical_reference_spot_from_sequence_window_first_bar(window)
                 except ValueError:
                     continue
-                seq = [encode_snapshot_5m(snap, ref_spot) for snap in window]
+                seq = [
+                    encode_lstm_structure_sequence_bar(
+                        training_snapshot_for_sequence_encode(snap), ref_spot
+                    )
+                    for snap in window
+                ]
                 all_X.append(seq)
                 all_y.append(TARGET_CLASSES[target_str])
                 all_days.append(day_key)
@@ -287,7 +294,8 @@ def train_transformer(
     ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
 ) -> TransformerTrainResult:
     """
-    Train Transformer on full data with exponential decay weights.
+    Train Transformer on full data with equal/uniform sample weighting (O-55) — every row counts
+    the same; no recency decay, no toggle.
     xgb_lstm_probs: optional (N, 6) for cascade — [xgb_up, xgb_dn, xgb_fl, lstm_up, lstm_dn, lstm_fl]
     preloaded_sequences: optional (X, y, days, tickers_arr, n_features) from feature cache — skips DB scan.
     Resume: optional transformer_{TICKER}_train_resume.pt when scheduler_cache_key + data_fp match policy
@@ -296,7 +304,7 @@ def train_transformer(
     import torch
     import torch.nn as nn
     from torch.utils.data import TensorDataset, DataLoader
-    from ml_data_common import compute_exponential_weights
+    from ml_data_common import equal_sample_weights
 
     result = TransformerTrainResult()
     start_time = time.time()
@@ -347,13 +355,13 @@ def train_transformer(
     n_features = X.shape[2]
     result.n_features = n_features
 
-    # Exponential weights
-    exp_w = np.array(compute_exponential_weights(len(y), decay=2.0), dtype=np.float32)
+    # O-55: equal/uniform sample weights only (all ones). No recency decay, no toggle.
+    sample_w = np.asarray(equal_sample_weights(len(y)), dtype=np.float32)
 
     train_ds = TensorDataset(
         torch.from_numpy(X).float(),
         torch.from_numpy(y).long(),
-        torch.from_numpy(exp_w).float(),
+        torch.from_numpy(sample_w).float(),
     )
     train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
 
@@ -530,6 +538,7 @@ def train_transformer(
         "d_ff": D_FF,
         "encoder_schema_version": LSTM_ENCODER_SCHEMA_VERSION,
         "encoder_width_5m_pre_mask": encoded_width_5m(),
+        "sample_weight_mode": "equal",
         "feature_mask": feature_mask.tolist(),
         "norm_mean": mean_masked.tolist(),
         "norm_std": std_masked.tolist(),

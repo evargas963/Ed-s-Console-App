@@ -143,7 +143,7 @@ def test_lstm_missing_numerics_emit_mask_not_zero():
         ZONE_MISSING_ENCODED,
         encode_lstm_structure_bar_with_masks,
     )
-    from lstm_data import FEATURES_5M
+    from lstm_data import ENCODED_FEATURES_5M
 
     cf = {k: None for k in get_mvp_feature_names()}
     cf["price.spot"] = 450.0
@@ -176,7 +176,7 @@ def test_lstm_missing_numerics_emit_mask_not_zero():
     masks = enc["canonical_missing_masks"]
     assert masks[0] == 0.0
     assert masks[1] == 0.0
-    zi = FEATURES_5M.index("zone")
+    zi = ENCODED_FEATURES_5M.index("zone")
     assert enc["features"][zi] == ZONE_MISSING_ENCODED
 
 

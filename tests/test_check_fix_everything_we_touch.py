@@ -797,6 +797,43 @@ def test_institutional_contract_banned_analytics_stale_sse_pattern(tmp_path: Pat
     assert any("analytics_stale must not be sse_live alone" in h for h in hits)
 
 
+def test_encoder_cone_documentation_passes_on_current_repo() -> None:
+    import check_encoder_cone_tests as enc
+
+    assert enc.check_encoder_cone_documentation() == []
+
+
+def test_encoder_cone_collects_lstm_and_transformer_tests() -> None:
+    import check_encoder_cone_tests as enc
+
+    paths = enc.collect_encoder_cone_test_paths()
+    assert "tests/test_lstm_sequence_input.py" in paths
+    assert "tests/test_transformer_sequence_input.py" in paths
+    assert "tests/test_ml_feature_provenance.py" in paths
+    assert len(paths) >= 10
+
+
+def test_encoder_cone_trigger_on_lstm_data_staged() -> None:
+    import check_encoder_cone_tests as enc
+
+    assert enc.staged_touches_encoder_cone({"lstm_data.py"})
+    assert not enc.staged_touches_encoder_cone({"server.py"})
+
+
+def test_encoder_cone_commit_claim_blocks_false_green(tmp_path: Path) -> None:
+    import check_encoder_cone_tests as enc
+
+    hits = enc.check_encoder_cone_commit_claim(
+        "LSTM encoder fix — 27 passed, ready to ship.",
+        {"lstm_data.py"},
+    )
+    assert hits
+    assert enc.check_encoder_cone_commit_claim(
+        "encoder-cone: 134 passed\n",
+        {"lstm_data.py"},
+    ) == []
+
+
 def test_mvp_dataframe_ingress_flags_raw_to_dict_on_mvp_path(tmp_path: Path) -> None:
     bad = tmp_path / "bad_meta.py"
     bad.write_text(

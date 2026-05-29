@@ -761,6 +761,10 @@ def build_lstm_dataset(
         raise ValueError(
             f"build_lstm_dataset: canonical 1m only; got timeframe={timeframe!r}"
         )
+    from features.lstm_sequence_input import (
+        encode_lstm_micro_sequence_bar,
+        encode_lstm_structure_sequence_bar,
+    )
     from features.training_canonical_input import training_snapshot_for_sequence_encode
 
     _db = Path(db_path) if db_path else DB_PATH
@@ -848,8 +852,7 @@ def build_lstm_dataset(
                 seq_5m = []
                 for snap in window:
                     merged = training_snapshot_for_sequence_encode(snap)
-                    features = encode_snapshot_5m(merged, ref_spot)
-                    seq_5m.append(features)
+                    seq_5m.append(encode_lstm_structure_sequence_bar(merged, ref_spot))
 
                 # ── 1m stream: last 20 bars (micro context) ──────────────
                 micro_window = window[-STREAM_1M_LOOKBACK:]
@@ -860,8 +863,7 @@ def build_lstm_dataset(
                 seq_1m = []
                 for snap in micro_window:
                     merged = training_snapshot_for_sequence_encode(snap)
-                    features = encode_snapshot_1m(merged, micro_ref)
-                    seq_1m.append(features)
+                    seq_1m.append(encode_lstm_micro_sequence_bar(merged, micro_ref))
 
                 # ── Confluence features ───────────────────────────────────
                 # Compute from the full day's snapshot list for proper lookback

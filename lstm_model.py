@@ -1,6 +1,6 @@
 # lstm_model.py — Dual-Stream LSTM Model + Training Pipeline
 # ============================================================
-# RULE 1: RTH data only, exponential decay weighting.
+# RULE 1: RTH data only, uniform (unweighted) sample weighting — canonical per O-55.
 # RULE 2: No gates — train if data exists, save always.
 # Supports parallel (raw confluence) and cascade (confluence + XGB preds).
 
@@ -379,14 +379,15 @@ def train_lstm(
     ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
 ):
     """
-    Train LSTM on full data with exponential decay weights.
+    Train LSTM on full data with equal/uniform sample weighting (O-55) — every row counts
+    the same; no recency decay, no toggle.
     xgb_probs: optional (N, 3) for cascade — concatenated to confluence.
     Optional lstm_{TICKER}_train_resume.pt when keys match (weights only; fresh AdamW).
     """
     import torch
     import torch.nn as nn
     from torch.utils.data import TensorDataset, DataLoader
-    from ml_data_common import compute_exponential_weights
+    from ml_data_common import equal_sample_weights
 
     result = TrainResult()
     start_time = time.time()
@@ -435,15 +436,15 @@ def train_lstm(
     X_1m = np.nan_to_num(X_1m, nan=0.0)
     X_conf = np.nan_to_num(X_conf, nan=0.0)
 
-    # Exponential decay sample weights
-    exp_w = np.array(compute_exponential_weights(len(dataset.y), decay=2.0), dtype=np.float32)
+    # O-55: equal/uniform sample weights only (all ones). No recency decay, no toggle.
+    sample_w = np.asarray(equal_sample_weights(len(dataset.y)), dtype=np.float32)
 
     train_ds = TensorDataset(
         torch.tensor(X_5m),
         torch.tensor(X_1m),
         torch.tensor(X_conf),
         torch.tensor(dataset.y),
-        torch.tensor(exp_w),
+        torch.tensor(sample_w),
     )
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
 
@@ -612,6 +613,7 @@ def train_lstm(
         "n_confluence": n_feat_conf,
         "masked_features": mask_diag,
         "training_time_sec": round(result.training_time_sec, 1),
+        "sample_weight_mode": "equal",
     }
     from model_contract import contract_metadata_dict, provenance_dict_with_contract
 
@@ -629,6 +631,7 @@ def train_lstm(
         "encoder_schema_version": LSTM_ENCODER_SCHEMA_VERSION,
         "encoder_width_5m_pre_mask": encoded_width_5m(),
         "encoder_width_1m_pre_mask": encoded_width_1m(),
+        "sample_weight_mode": "equal",
         "mask_5m": mask_5m.tolist(),
         "mask_1m": mask_1m.tolist(),
         "mask_conf": mask_conf.tolist(),

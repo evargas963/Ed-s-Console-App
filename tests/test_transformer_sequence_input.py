@@ -117,7 +117,7 @@ def test_invalid_live_canonical_row_fails():
 
 
 def test_encode_feature_order_stable_and_matches_features_5m_len():
-    from lstm_data import encode_snapshot_5m, FEATURES_5M, _safe_float
+    from lstm_data import ENCODED_FEATURES_5M, encode_snapshot_5m, _safe_float
     from features.lstm_sequence_input import build_transformer_merged_window
 
     win = [_base_db_row(1.0 + i) for i in range(3)]
@@ -126,7 +126,7 @@ def test_encode_feature_order_stable_and_matches_features_5m_len():
     a = encode_snapshot_5m(mw[-1], ref)
     b = encode_snapshot_5m(mw[-1], ref)
     assert list(a) == list(b)
-    assert len(a) == len(FEATURES_5M)
+    assert len(a) == len(ENCODED_FEATURES_5M)
 
 
 def test_legacy_mvp_poison_in_db_row_does_not_affect_encoded_mvp_slots():
@@ -171,7 +171,12 @@ def test_predict_transformer_insufficient_history_raises():
     from features.lstm_sequence_input import TransformerSequenceInputError
 
     fake_model = MagicMock()
-    fake_ckpt = {"seq_len": 20, "feature_mask": np.ones(50, dtype=bool)}
+    fake_ckpt = {
+        "seq_len": 20,
+        "feature_mask": np.ones(50, dtype=bool),
+        "encoder_schema_version": 2,
+        "encoder_width_5m_pre_mask": 31,
+    }
     db = MagicMock()
     db.get_recent_snapshots.return_value = [{"ts_utc": float(i)} for i in range(10)]
 

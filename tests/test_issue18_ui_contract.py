@@ -200,6 +200,20 @@ def test_render_signal_rail_card_function_present():
     assert "isCanonicalTradable(d)" in h
 
 
+def test_signal_rail_empirical_tracks_primary_horizon():
+    """Empirical context binds to the PRIMARY decision horizon (not a fixed 5m), with a
+    dynamic EMPIRICAL label, so the base rate corresponds to the trade armed on top.
+    Anti-revert lock for the 2026-05-28 fix (was hardcoded horizon_prob_bars['5m'])."""
+    h = _html()
+    # dynamic label element present
+    assert 'id="src-ecl-label"' in h
+    # JS reads the primary horizon's bar via the shared pLabel mapping, not a fixed 5m
+    assert "d.horizon_prob_bars[pLabel]" in h
+    assert "labelEl.textContent = 'Empirical (' + primary + ')'" in h
+    # the empirical bottom must not re-pin to the fixed-5m bar
+    assert "d.horizon_prob_bars['5m']" not in h
+
+
 def test_paint_source_chip_uses_new_selectors():
     """paintSourceChip targets .tf-source-chip + .tf-source-detail (new design),
     not the dormant legacy .tf-source element."""
@@ -310,6 +324,128 @@ def test_signal_rail_card_is_present_positive_lock():
     assert 'function renderSignalRailCard(d)' in h
     assert 'Entry armed' in h
     assert 'Stack degraded' in h
+
+
+# ── Signals Rail — operator design 2026-05-27 (binding) ───────────────────
+# Vertical analytics column to the right of horizon row + signal-rail-card.
+# Severity grammar matches signal-rail-card: quiet → building → hot (+ positive
+# green). Each slot is a self-contained signal (Level Test first). Adding /
+# removing slots = changing #signals-rail children.
+
+def test_signals_rail_layout_present():
+    """Top-stack split (post-2026-05-27 restructure for height uniformity):
+    .top-stack-row contains horizon pills + Signals Rail as direct flex
+    siblings (align-items: stretch makes the Level Test slot match the
+    rendered horizon-card height). #signal-rail-card was promoted to a
+    full-width sibling BELOW the row. Header + multi-slot variants stay
+    reverted."""
+    h = _html()
+    assert 'class="top-stack-row"' in h
+    # Old top-stack-col wrapper was removed so signals-rail-col could
+    # flex-stretch directly against tf-signal-row-outer
+    assert 'class="top-stack-col"' not in h
+    assert 'class="signals-rail-col"' in h
+    assert 'id="signals-rail"' in h
+    # Header + count removed per operator 2026-05-27 design revert
+    assert 'class="signals-rail-hd"' not in h
+    assert 'id="signals-count"' not in h
+
+
+def test_signals_rail_three_severity_variants_defined():
+    """Same color contract as signal-rail-card — operator learns one grammar."""
+    h = _html()
+    assert '.signal-slot--quiet' in h
+    assert '.signal-slot--building' in h
+    assert '.signal-slot--hot' in h
+    assert '.signal-slot--positive' in h
+
+
+def test_level_test_slot_present():
+    """First occupant of the rail — Pass 4b Level Test."""
+    h = _html()
+    assert 'id="slt-level-test"' in h
+    assert 'id="slt-level-test-headline"' in h
+    assert 'id="slt-level-test-ico"' in h
+    assert 'id="slt-level-test-name"' in h
+    assert 'id="slt-level-test-body"' in h
+
+
+def test_dr_level_test_chip_removed_dedup_lock():
+    """Old dr-level-test-chip (Decision Rail header) was removed —
+    Signals Rail slt-level-test slot is the single source of truth for
+    Pass 4b level-test info. Lock against re-introducing the duplicate."""
+    h = _html()
+    assert 'id="dr-level-test-chip"' not in h
+
+
+def test_update_level_test_chip_targets_new_slot():
+    """JS function rewritten to populate slt-level-test, severity branches.
+    Quiet state hides slot entirely (operator design: card only shows when
+    level is actually under pressure, ≥2 prior tests). Content trimmed to
+    fit the 148px height that matches horizon card uniformity."""
+    h = _html()
+    assert 'function _updateLevelTestChip' in h
+    assert "$('slt-level-test')" in h
+    assert "if (severity === 'hot')" in h
+    assert "else if (severity === 'building')" in h
+    # Trimmed institutional payoff copy
+    assert 'Repeated probes' in h
+    assert 'strong hold' in h
+    assert 'Pressure building' in h
+
+
+def test_level_test_slot_uniform_height_with_horizon_cards():
+    """Operator design: rail card height matches .tf-signal-card min-height
+    (148px) for uniform sibling-card aesthetic."""
+    h = _html()
+    idx = h.find('#slt-level-test {')
+    assert idx != -1
+    chunk = h[idx : idx + 200]
+    assert 'height: 148px' in chunk
+
+
+def test_signals_rail_no_multi_slot_design():
+    """Operator reverted multi-slot rail 2026-05-27: removed Stack Integrity /
+    Order Flow / Proximity slots + their JS updaters. Only Level Test remains."""
+    h = _html()
+    # Slots that were removed must stay removed
+    assert 'id="slt-stack-integrity"' not in h
+    assert 'id="slt-order-flow"' not in h
+    assert 'id="slt-proximity"' not in h
+    # Updater functions that were removed must stay removed
+    assert 'function _updateStackIntegritySlot' not in h
+    assert 'function _updateOrderFlowSlot' not in h
+    assert 'function _updateProximitySlot' not in h
+    # Aggregate count helper removed (no rail header anymore)
+    assert 'function _updateSignalsRailCount' not in h
+
+
+def test_decision_rail_stack_chips_restored():
+    """Stack Integrity chips moved BACK to Decision Rail header after the
+    multi-slot rail design was reverted. Lock against re-removal."""
+    h = _html()
+    assert 'id="dr-stack-mode-chip"' in h
+    assert 'id="dr-signals-engine-fail-chip"' in h
+    assert 'id="dr-stack-integrity-degraded-chip"' in h
+
+
+def test_signals_rail_paint_cycle_wired():
+    """Only Level Test fires in the paint cycle (multi-slot variant reverted)."""
+    h = _html()
+    idx = h.find('function _updateLiveUiAe(opts)')
+    assert idx != -1
+    chunk = h[idx : idx + 1200]
+    assert '_updateLevelTestChip();' in chunk
+
+
+def test_top_stack_row_gap_for_visual_offset():
+    """Operator iterated on rail position: 12px (initial) → 60px (rail right)
+    → 28px (rail back ~32px / quarter-inch left). Lock to 28px."""
+    h = _html()
+    idx = h.find('.top-stack-row {')
+    assert idx != -1
+    chunk = h[idx : idx + 200]
+    assert 'gap: 28px' in chunk
 
 
 def test_entry_state_labels_render_contract():

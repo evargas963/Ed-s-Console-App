@@ -88,7 +88,6 @@ def test_train_ticker_writes_horizon_metadata(tmp_path: Path, slug: str):
         "XXT",
         df,
         model_dir=model_dir,
-        weight_mode="none",
         skip_sanity=True,
         ml_horizon_slug=hz,
     )

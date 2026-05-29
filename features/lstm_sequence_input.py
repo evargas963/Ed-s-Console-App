@@ -1,7 +1,8 @@
 """
 LSTM sequence encoding contract (1m MVP, downstream enforcement).
 
-Sequence bars are encoded with `lstm_data.encode_snapshot_5m` / `encode_snapshot_1m`, which expect
+Sequence bars are encoded with `encode_lstm_structure_sequence_bar` /
+`encode_lstm_micro_sequence_bar` (which call `lstm_data.encode_snapshot_*` internally), expecting
 legacy DB-shaped column names. **MVP columns** (spot, zone, VWAP, distances, net_gamma, liquidity)
 must come **only** from validated canonical feature rows — never directly from raw L1, SignalInput,
 or unvalidated legacy snapshot fields for those keys.
@@ -17,8 +18,8 @@ Contract (inference):
 - **Version:** `feature_contract_version` must match `CANONICAL_FEATURE_CONTRACT_VERSION`.
 - **Sequence length:** `STREAM_5M_LOOKBACK` consecutive 1m bars for structure stream;
   `STREAM_1M_LOOKBACK` for micro stream (see `lstm_data`).
-- **Feature ordering:** unchanged from training — `lstm_data.FEATURES_5M` / `FEATURES_1M` column order
-  inside `encode_snapshot_*` (stable; do not reorder without retrain).
+- **Feature ordering:** `lstm_data.ENCODED_FEATURES_5M` / `ENCODED_FEATURES_1M` (stable; do not reorder
+  without retrain).
 - **Missing canonical values:** nullable cross-asset / vol numerics emit value + ``__present`` mask
   channels (see ``lstm_data.NULLABLE_NUMERIC_COLS_*``); other columns use ``_safe_float`` only where
   0.0 is not a semantic signal.
@@ -31,10 +32,8 @@ Transformer encoder window (same canonical MVP rules as the LSTM **5m structure 
 - **Sequence:** `seq_len` consecutive 1m DB snapshots (model checkpoint `seq_len`, default 20);
   each bar merged the same way as LSTM `window` — MVP from `build_db_mvp_feature_row` except the
   last bar, which uses `inference_snapshot_v1["features"]` when provided.
-- **Encoding:** `lstm_data.encode_snapshot_5m(merged_row, ref_spot)` per bar; feature order is
-  `lstm_data.FEATURES_5M` (stable; do not reorder without retrain).
-- **Missing canonical values:** as LSTM — `None` allowed where contract permits; encoders use
-  `_safe_float` / defaults.
+- **Encoding:** `encode_lstm_structure_sequence_bar(merged_row, ref_spot)` per bar.
+- **Missing canonical values:** as LSTM structure stream.
 - **Fail closed:** same validation as above → `TransformerSequenceInputError` (wraps merge
   failures from the shared merge path).
 """
@@ -110,21 +109,64 @@ def _patch_lstm_categoricals(
             features[vi] = float(VWAP_SIDE_MAP.get(str(vs).lower(), VWAP_SIDE_UNKNOWN_ENCODED))
 
 
+def _canonical_features_for_merged_row(merged_row: Mapping[str, Any]) -> dict[str, Any]:
+    from features.db_feature_adapter import build_db_mvp_feature_row
+
+    try:
+        cf = build_db_mvp_feature_row(dict(merged_row))
+    except MvpFeatureSourceError as e:
+        raise LstmSequenceInputError(str(e)) from e
+    ok, errs = validate_feature_contract_row(cf)
+    if not ok:
+        raise LstmSequenceInputError(f"invalid canonical feature row: {errs}")
+    return cf
+
+
+def encode_lstm_structure_sequence_bar(
+    merged_row: Mapping[str, Any],
+    ref_spot: float,
+    *,
+    canonical_features: dict[str, Any] | None = None,
+) -> list[float]:
+    """
+    Production structure-stream encoder (training + inference).
+
+    Nullable cross-asset/vol numerics emit value + ``__present`` mask channels via
+    ``encode_snapshot_5m``; categoricals use canonical sentinels.
+    """
+    cf = canonical_features if canonical_features is not None else _canonical_features_for_merged_row(
+        merged_row
+    )
+    base = list(encode_snapshot_5m(dict(merged_row), ref_spot))
+    _patch_lstm_categoricals(base, ENCODED_FEATURES_5M, cf)
+    return base
+
+
+def encode_lstm_micro_sequence_bar(
+    merged_row: Mapping[str, Any],
+    ref_spot: float,
+    *,
+    canonical_features: dict[str, Any] | None = None,
+) -> list[float]:
+    """Production micro-stream encoder (training + inference)."""
+    cf = canonical_features if canonical_features is not None else _canonical_features_for_merged_row(
+        merged_row
+    )
+    base = list(encode_snapshot_1m(dict(merged_row), ref_spot))
+    _patch_lstm_categoricals(base, ENCODED_FEATURES_1M, cf)
+    return base
+
+
 def encode_lstm_structure_bar_with_masks(
     merged_row: Mapping[str, Any],
     canonical_features: dict[str, Any],
     ref_spot: float,
 ) -> dict[str, Any]:
-    """
-    Structure-stream encode (same path as training / ``ml_predict``).
-
-    Nullable DB numerics include inline ``__present`` mask channels from ``encode_snapshot_5m``.
-    Canonical MVP categoricals use sentinels; ``canonical_missing_masks`` reports MVP-only gaps.
-    """
-    base = list(encode_snapshot_5m(dict(merged_row), ref_spot))
-    _patch_lstm_categoricals(base, ENCODED_FEATURES_5M, canonical_features)
+    """Test/diagnostic wrapper around ``encode_lstm_structure_sequence_bar``."""
     return {
-        "features": base,
+        "features": encode_lstm_structure_sequence_bar(
+            merged_row, ref_spot, canonical_features=canonical_features
+        ),
         "canonical_missing_masks": _canonical_missing_masks(canonical_features),
     }
 
@@ -134,11 +176,11 @@ def encode_lstm_micro_bar_with_masks(
     canonical_features: dict[str, Any],
     ref_spot: float,
 ) -> dict[str, Any]:
-    """Micro-stream encode (same path as training / ``ml_predict``)."""
-    base = list(encode_snapshot_1m(dict(merged_row), ref_spot))
-    _patch_lstm_categoricals(base, ENCODED_FEATURES_1M, canonical_features)
+    """Test/diagnostic wrapper around ``encode_lstm_micro_sequence_bar``."""
     return {
-        "features": base,
+        "features": encode_lstm_micro_sequence_bar(
+            merged_row, ref_spot, canonical_features=canonical_features
+        ),
         "canonical_missing_masks": _canonical_missing_masks(canonical_features),
     }
 

@@ -73,8 +73,30 @@ If either answer is **no**, **stop** — fix the design or implementation before
 | Closure (code+test+OPEN_ITEMS) | `tests/test_governance_consolidation.py` | same |
 | **Meet-or-Exceed sign-off** (VERDICT MET/EXCEEDED only) | `check_meet_or_exceed_signoff()` in `check_fix_everything_we_touch.py` | `tests/test_check_fix_everything_we_touch.py` |
 | **Runtime tip = disk tip** | `GET /api/build` `git_sha` vs `git rev-parse HEAD` | `tests/test_batch2_analytics_bg_fail_counter.py` |
+| **Encoder width/schema changes** | `tools/check_encoder_cone_tests.py` → `check_encoder_cone_tests()` (pre-commit when cone paths staged) | `tests/test_check_fix_everything_we_touch.py` |
 
 **Pre-commit:** `check_institutional_contract()` runs on **every** commit (via `check_fix_everything_we_touch.py`), not only when UI files are staged. A promotion without a registry row + checker is rejection-grade.
+
+---
+
+## Encoder cone — mandatory pytest cone `[PROMOTED]` (2026-05-27 — closes afac60b stale-test class)
+
+**Problem:** Hand-picked pytest slices (e.g. two `test_lstm_*` files) miss stale width/index/schema-guard tests in `test_transformer_sequence_input.py`, `test_ml_feature_provenance.py`, etc. Production can be correct while the suite is red.
+
+**Rule:** Any change to sequence encoders, LSTM/Transformer predict/train paths, or `feature_contracts` LSTM/Transformer registries MUST pass the **encoder cone** before sign-off or commit — not a self-selected subset.
+
+| Trigger (staged) | Action |
+|------------------|--------|
+| `lstm_data.py`, `lstm_model.py`, `features/lstm_sequence_input.py`, `ml_predict.py`, `transformer_train.py`, `feature_contracts.py` | Pre-commit runs cone pytest |
+| Any `tests/` file matching `ENCODER_CONE_TEST_GLOBS` in `tools/check_encoder_cone_tests.py` | Same |
+
+**Cone list (authoritative globs — extend checker + this section together):** `test_lstm*.py`, `test_transformer*.py`, `test_ml_feature*.py`, `test_ml_predict*.py`, `test_feature_contract*.py`, `test_fusion_model_input*.py`, `test_db_feature_adapter_layer5*.py`, `test_training_canonical_input.py`, `test_model_contract_enforcement.py`, `test_multi_horizon_ml_bundle*.py`.
+
+**Agent chat / commit claims:** Do not report "N passed" or "green" on encoder work unless the command included the cone (cite `encoder-cone` or list cone test paths). Commit messages claiming pass/green without that cite are blocked when encoder paths are staged.
+
+**Manual run:** `python tools/check_encoder_cone_tests.py` (runs pytest on the cone; exit 0 = green).
+
+**When `LSTM_ENCODER_SCHEMA_VERSION` or `encoded_width_*` changes:** Read every file under the cone globs end-to-end for `FEATURES_5M` length/indexing and v1-shaped fake checkpoints; fix in the same commit.
 
 ---
 

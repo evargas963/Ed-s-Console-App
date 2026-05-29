@@ -203,19 +203,18 @@ def weekday_where_clause() -> str:
     """SQL fragment: weekdays only (Mon=1 through Fri=5 in SQLite %w; 0=Sun, 6=Sat)"""
     return "CAST(strftime('%w', datetime(ts_utc, 'unixepoch')) AS INTEGER) BETWEEN 1 AND 5"
 
-def compute_exponential_weights(n: int, decay: float = 2.0) -> list:
-    """
-    Exponential decay weights: most recent rows get highest weight, oldest get lowest.
-    weight[i] = exp(-decay * (1 - (i+0.5)/n))
-    So i=0 (oldest) gets ~exp(-decay), i=n-1 (newest) gets ~1.0.
-    """
+# ── Training sample weighting: EQUAL / UNIFORM ONLY — canonical, no toggle (O-55) ──
+# Operator decision 2026-05-27: every training row counts equally across the full history.
+# There is intentionally NO recency / time-decay weighting in training and NO runtime switch
+# (env var or mode arg) to enable it. Equal weighting is the entire policy.
+TRAIN_SAMPLE_WEIGHT_MODE = "equal"  # recorded in checkpoint meta for audit; not configurable
+
+
+def equal_sample_weights(n: int):
+    """Uniform per-row training weights (all ones) — the only training weighting (O-55)."""
     import numpy as np
-    if n <= 0:
-        return []
-    indices = np.arange(n, dtype=np.float64)
-    frac = (indices + 0.5) / n
-    w = np.exp(-decay * (1.0 - frac))
-    return w.tolist()
+
+    return np.ones(int(max(0, n)), dtype=np.float64)
 
 
 # ------------------------------------------------------------------------------

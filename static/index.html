@@ -1083,10 +1083,192 @@
   }
   .src-bottom .ecl-tier { font-weight: 700; color: var(--text); }
   .src-bottom .ecl-n { color: var(--text); font-weight: 500; }
-  .src-bottom .ecl-probs { margin-left: auto; display: flex; gap: 12px; font-size: 12px; font-weight: 700; }
+  .src-bottom .ecl-probs { order: -1; margin-left: 0; margin-right: 4px; display: flex; gap: 12px; font-size: 12px; font-weight: 700; }
   .src-bottom .ecl-probs .up { color: #00E676; font-weight: 700; }
   .src-bottom .ecl-probs .down { color: #FF3C3C; font-weight: 700; }
-  .src-bottom .ecl-probs .flat { color: #6a7590; font-weight: 700; }
+  .src-bottom .ecl-probs .flat { color: #cbd5e1; font-weight: 700; }
+
+  /* ── Top stack row — horizon pills + signal-rail-card on left,
+     Signals Rail on right. Right col is intentionally narrow; rail
+     stretches via align-items so the operator can add additional surfaces
+     in the leftover space later. ───────────────────────────────────────── */
+  .top-stack-row {
+    display: flex;
+    gap: 28px;
+    align-items: stretch;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  @media (max-width: 1180px) {
+    .top-stack-row { gap: 12px; }
+  }
+  .signals-rail-col {
+    flex: 0 0 280px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    /* Symmetric 11px padding so the slot's TOP aligns with the horizon card
+       visible top AND the slot's BOTTOM aligns with the horizon card visible
+       bottom (both shifted by the #timeframe-signal-row 1px border + 10px
+       padding chrome). Slot flexes to fill the gap = same visible height. */
+    padding: 11px 0;
+  }
+  @media (max-width: 1180px) {
+    .signals-rail-col { flex: 1 1 100%; padding: 0; }
+  }
+
+  /* ── Signals Rail — analytics/alert slots. Severity grammar mirrors
+     signal-rail-card: quiet (slate) → building (amber) → hot (red);
+     positive (green) for neutral-good signals. Each slot is a self-contained
+     signal pulled from anywhere in the repo (Level Test first). ─────────── */
+  #signals-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+    font-family: var(--mono);
+  }
+  .signals-rail-hd {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text2);
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .signals-rail-hd .signals-count {
+    font-size: 9px;
+    color: var(--text3);
+    letter-spacing: 0.08em;
+    font-weight: 600;
+  }
+  .signal-slot {
+    border-radius: 8px;
+    border: 1px solid;
+    overflow: hidden;
+  }
+  /* Level Test slot flex-stretches to match the rendered horizon-card row
+     height (not just min-height 148px — horizon cards render ~210px with
+     full content). Symmetric padding on .signals-rail-col + flex: 1 here
+     gives true visual sibling-card uniformity. */
+  #slt-level-test {
+    flex: 1;
+    min-height: 148px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+  }
+  #slt-level-test .signal-slot-body {
+    flex: 1;
+    overflow: hidden;
+  }
+  .signal-slot--quiet {
+    border-color: var(--border2);
+    background: rgba(15,23,42,0.55);
+  }
+  .signal-slot--positive {
+    border-color: rgba(0,230,118,0.45);
+    background: linear-gradient(180deg, rgba(0,230,118,0.10), rgba(0,230,118,0.02));
+  }
+  .signal-slot--building {
+    border-color: rgba(245,158,11,0.55);
+    background: linear-gradient(180deg, rgba(245,158,11,0.10), rgba(245,158,11,0.02));
+  }
+  .signal-slot--hot {
+    border-color: #FF3C3C;
+    border-width: 2px;
+    background: linear-gradient(180deg, rgba(255,60,60,0.16), rgba(255,60,60,0.04));
+    box-shadow: 0 0 0 1px rgba(255,60,60,0.22), 0 0 18px rgba(255,60,60,0.18);
+  }
+  .signal-slot-hd {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .signal-slot--quiet .signal-slot-hd { color: var(--text); border-bottom-color: transparent; }
+  .signal-slot--positive .signal-slot-hd { color: var(--bull); }
+  .signal-slot--building .signal-slot-hd { color: var(--amber); }
+  .signal-slot--hot .signal-slot-hd { color: #FF3C3C; }
+  .signal-slot-hd .slt-ico { font-size: 13px; line-height: 1; }
+  .signal-slot-hd .slt-name { flex: 1; }
+  .signal-slot-hd .slt-pip {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text3);
+  }
+  .signal-slot--positive .signal-slot-hd .slt-pip { background: var(--bull); }
+  .signal-slot--building .signal-slot-hd .slt-pip { background: var(--amber); }
+  .signal-slot--hot .signal-slot-hd .slt-pip { background: #FF3C3C; box-shadow: 0 0 6px #FF3C3C; }
+  .signal-slot-body { padding: 10px 12px 12px; font-size: 12px; color: var(--text); }
+  .signal-slot--quiet .signal-slot-body { padding: 8px 12px 10px; }
+  .signal-slot-headline {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+    color: var(--text);
+    line-height: 1.35;
+  }
+  .signal-slot--quiet .signal-slot-headline {
+    font-size: 12px;
+    margin-bottom: 0;
+    color: var(--text);
+    font-weight: 700;
+  }
+  .signal-slot--building .signal-slot-headline { color: var(--text); }
+  .signal-slot--hot .signal-slot-headline { color: var(--text); }
+  .signal-slot-row {
+    display: flex;
+    gap: 8px;
+    margin: 4px 0;
+    align-items: baseline;
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+  .signal-slot-row .k {
+    font-size: 11px;
+    color: var(--text);
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    min-width: 7ch;
+    font-weight: 700;
+  }
+  .signal-slot-row .v { font-weight: 700; color: var(--text); }
+  .signal-slot-row .v .up { color: var(--bull); }
+  .signal-slot-row .v .dn { color: var(--bear); }
+  .signal-slot-pattern {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.55;
+    padding: 9px 11px;
+    background: rgba(2,6,23,0.55);
+    border-radius: 4px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .slt-test-dots {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .slt-test-dots .dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid; }
+  .slt-test-dots .dot--up { background: var(--bull); border-color: var(--bull); }
+  .slt-test-dots .dot--dn { background: var(--bear); border-color: var(--bear); }
+  .slt-test-dots .dot--empty { background: transparent; border-color: rgba(255,255,255,0.30); }
 
   .session-badge {
     margin-left: auto;
@@ -2708,6 +2890,7 @@
 
       <div id="layout-split" class="layout-split">
       <div class="layout-left">
+      <div class="top-stack-row">
       <div class="tf-signal-row-outer">
         <div id="timeframe-signal-row" aria-label="Timeframe signals">
           <div class="tf-signal-card tf-state-dim" id="tf-signal-1c" role="group" aria-label="1 minute horizon">
@@ -2757,8 +2940,26 @@
         </div>
       </div>
 
+      <!-- Signals Rail — single-slot: Level Test. Sits beside the 4-pill horizon
+           row; stretches via flex to match the rendered horizon-card height. -->
+      <aside class="signals-rail-col" aria-label="Signals rail">
+        <div id="signals-rail">
+          <div class="signal-slot signal-slot--quiet" id="slt-level-test" style="display:none" aria-label="Nth test of nearest key level">
+            <div class="signal-slot-hd">
+              <span class="slt-ico" id="slt-level-test-ico">·</span>
+              <span class="slt-name" id="slt-level-test-name">Level test</span>
+              <span class="slt-pip"></span>
+            </div>
+            <div class="signal-slot-body" id="slt-level-test-body">
+              <div class="signal-slot-headline" id="slt-level-test-headline">—</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+      </div><!-- /top-stack-row -->
+
       <!-- Signal rail card — fusion verdict (top) + empirical context (bottom).
-           One operator surface below the 4 horizon pills; carries Entry armed /
+           Full-width sibling BELOW the horizon+rail row. Carries Entry armed /
            Stack degraded authority tags inline. Hidden until renderSignalRailCard
            paints. -->
       <div id="signal-rail-card" class="signal-rail-card" style="display:none" aria-label="Signal provenance and empirical context">
@@ -2768,7 +2969,7 @@
           <span class="fas-agreement" id="src-fas-agreement"></span>
         </div>
         <div class="src-bottom" id="signal-rail-bottom">
-          <span class="ecl-label">Empirical (5c)</span>
+          <span class="ecl-label" id="src-ecl-label">Empirical</span>
           <span class="ecl-tier" id="src-ecl-tier">—</span>
           <span class="ecl-n" id="src-ecl-n">—</span>
           <span class="ecl-probs" id="src-ecl-probs"></span>
@@ -2792,7 +2993,6 @@
             <span class="decision-chip dim" id="dr-mh-promotion-chip" title="Multi-horizon policy promoted WAIT→directional (conviction floored low)" style="display:none">MH —</span>
             <span class="decision-chip dim" id="dr-session-boundary-chip" title="Session close boundary — time_warning from call_engine" style="display:none">SESSION —</span>
             <span class="decision-chip dim" id="dr-lane-stale-chip" title="Fast lane ahead of analytical paint or cards repainting" style="display:none">LANE —</span>
-            <span class="decision-chip dim" id="dr-level-test-chip" title="Recent tests of nearest key level — Pass 4b wires /api/level_crosses count_level_tests" style="display:none">TEST —</span>
           </div>
           <div class="signal-card-body">
             <div class="signal-chain-bar" id="dr-signal-chain-host" aria-label="Signal chain status"></div>
@@ -4006,6 +4206,9 @@ function renderSignalRailCard(d) {
   const si = (d.stack_integrity_v1 && typeof d.stack_integrity_v1 === 'object') ? d.stack_integrity_v1 : {};
   const degraded = si.degraded === true;
   const armed = tradeable && fusionOk && tradable && (dir === 'up' || dir === 'down') && !degraded;
+  // Decision horizon (shared by top verdict + bottom empirical so the base rate matches the trade).
+  const primary = String(d.primary_horizon || '').toLowerCase();
+  const pLabel = ({ '1c': '1m', '5c': '5m', '15c': '15m', '60c': '60m' })[primary] || primary;
 
   const stateClass = (!fusionOk || !tradable) ? 'signal-rail-card--withheld'
     : dir === 'up' ? 'signal-rail-card--up'
@@ -4068,8 +4271,6 @@ function renderSignalRailCard(d) {
       note.style.fontWeight = '500';
       const nActiveRaw = d.fusion_n_models_active;
       const nActive = (nActiveRaw != null && !Number.isNaN(Number(nActiveRaw))) ? String(nActiveRaw) : '?';
-      const primary = String(d.primary_horizon || '').toLowerCase();
-      const pLabel = ({ '1c': '1m', '5c': '5m', '15c': '15m', '60c': '60m' })[primary] || primary;
       note.textContent = nActive + '/3 base models' + (pLabel ? ' · primary ' + pLabel : '');
       ag.appendChild(note);
       topEl.appendChild(ag);
@@ -4085,30 +4286,34 @@ function renderSignalRailCard(d) {
   const nEl = document.getElementById('src-ecl-n');
   const probsEl = document.getElementById('src-ecl-probs');
   const bottomEl = document.getElementById('signal-rail-bottom');
-  const hp5 = (d.horizon_prob_bars && typeof d.horizon_prob_bars === 'object') ? d.horizon_prob_bars['5m'] : null;
-  if (hp5 && hp5.up != null && hp5.down != null && hp5.flat != null) {
+  const labelEl = document.getElementById('src-ecl-label');
+  // Empirical context tracks the PRIMARY decision horizon (not a fixed 5m) so the base
+  // rate corresponds to the trade armed above. Fail-closed: hide if the primary bar is absent.
+  const hp = (primary && d.horizon_prob_bars && typeof d.horizon_prob_bars === 'object') ? d.horizon_prob_bars[pLabel] : null;
+  if (hp && hp.up != null && hp.down != null && hp.flat != null) {
+    if (labelEl) labelEl.textContent = 'Empirical (' + primary + ')';
     if (bottomEl) {
       bottomEl.style.display = 'flex';
       bottomEl.classList.toggle('muted', fusionOk && tradable && !degraded);
     }
     if (tierEl) {
-      const lc = (hp5.labeled_count != null && !Number.isNaN(Number(hp5.labeled_count))) ? Number(hp5.labeled_count) : null;
-      const tier = hp5.confidence_tier
+      const lc = (hp.labeled_count != null && !Number.isNaN(Number(hp.labeled_count))) ? Number(hp.labeled_count) : null;
+      const tier = hp.confidence_tier
         || (lc != null && lc >= 30 ? 'High-confidence tier'
           : lc != null && lc >= 15 ? 'Medium-confidence tier'
           : 'Low-confidence tier');
       tierEl.textContent = tier;
     }
     if (nEl) {
-      const n = (hp5.labeled_count != null && !Number.isNaN(Number(hp5.labeled_count))) ? hp5.labeled_count : '—';
+      const n = (hp.labeled_count != null && !Number.isNaN(Number(hp.labeled_count))) ? hp.labeled_count : '—';
       nEl.textContent = n + ' similar setups · last 60 sessions';
     }
     if (probsEl) {
       const fmt = (v) => Math.round(Number(v) * 100) + '%';
       probsEl.innerHTML =
-        '<span class="up">UP ' + fmt(hp5.up) + '</span>' +
-        '<span class="down">DOWN ' + fmt(hp5.down) + '</span>' +
-        '<span class="flat">FLAT ' + fmt(hp5.flat) + '</span>';
+        '<span class="up">UP ' + fmt(hp.up) + '</span>' +
+        '<span class="down">DOWN ' + fmt(hp.down) + '</span>' +
+        '<span class="flat">FLAT ' + fmt(hp.flat) + '</span>';
     }
   } else if (bottomEl) {
     bottomEl.style.display = 'none';
@@ -7480,22 +7685,22 @@ function _pickNearestLevelForChip(ld) {
   return null;
 }
 
-function _hideLevelTestChip(el) {
-  el.style.display = 'none';
-  el.textContent = 'TEST —';
-  el.className = 'decision-chip dim';
-}
-
+/** Pass 4b — Level Test slot in #signals-rail. Severity bands:
+ *    ≤1 prior (next touch = 1st/2nd) — quiet, compact context line
+ *    2 prior (3rd touch)             — building, amber, "pressure building"
+ *    ≥3 prior (4th+ touch)           — hot, red, expanded with payoff copy + dot row */
 async function _updateLevelTestChip() {
-  const el = $('dr-level-test-chip');
-  if (!el) return;
+  const slot = $('slt-level-test');
+  if (!slot) return;
+  const hide = () => {
+    slot.style.display = 'none';
+  };
+
   const ld = window._lastData || {};
   const ticker = String(ld.ticker || window.currentTicker || 'SPY').toUpperCase();
   const nearest = _pickNearestLevelForChip(ld);
-  if (!nearest) {
-    _hideLevelTestChip(el);
-    return;
-  }
+  if (!nearest) { hide(); return; }
+
   const key = ticker + '|' + nearest.name + '|' + nearest.value.toFixed(2);
   const now = Date.now();
   let data = null;
@@ -7512,24 +7717,81 @@ async function _updateLevelTestChip() {
       _levelTestChipCache.key = key;
       _levelTestChipCache.ts = now;
       _levelTestChipCache.data = data;
-    } catch (e) {
-      _hideLevelTestChip(el);
-      return;
-    }
+    } catch (e) { hide(); return; }
   }
-  if (!data || data.ok !== true || (data.total | 0) === 0) {
-    _hideLevelTestChip(el);
-    return;
-  }
+  if (!data || data.ok !== true) { hide(); return; }
+
   const total = data.total | 0;
   const up = data.up | 0;
   const down = data.down | 0;
-  el.style.display = '';
-  el.textContent = _levelTestChipOrdinal(total + 1) + ' TEST OF ' + String(nearest.name).toUpperCase();
-  el.className = total >= 3 ? 'decision-chip bad' : 'decision-chip dim';
-  el.title = total + ' recent test(s) of ' + nearest.name + ' (' + nearest.value.toFixed(2) +
-             ') in last 6.5h — up=' + up + ' down=' + down +
-             '. From /api/level_crosses count_level_tests (Pass 4b).';
+
+  let severity = 'quiet';
+  if (total >= 3) severity = 'hot';
+  else if (total === 2) severity = 'building';
+
+  slot.style.display = '';
+  slot.className = 'signal-slot signal-slot--' + severity;
+
+  const ico = $('slt-level-test-ico');
+  const nameEl = $('slt-level-test-name');
+  const body = $('slt-level-test-body');
+  if (!body) return;
+
+  const ordinal = _levelTestChipOrdinal(total + 1);
+  const levelName = String(nearest.name);
+  const levelPriceStr = nearest.value.toFixed(2);
+  const spotRaw = parseFloat(ld.spot);
+  const dist = Number.isFinite(spotRaw) ? (nearest.value - spotRaw) : null;
+  const distStr = dist != null
+    ? (Math.abs(dist).toFixed(2) + ' ' + (dist >= 0 ? 'above' : 'below') + ' spot')
+    : '';
+
+  if (severity === 'hot') {
+    if (ico) ico.textContent = '⚠';
+    if (nameEl) nameEl.textContent = 'Level under pressure';
+    const dotsHtml = [];
+    let placed = 0;
+    for (let i = 0; i < up && placed < 3; i++, placed++) {
+      dotsHtml.push('<span class="dot dot--up" title="prior up-side rejection"></span>');
+    }
+    for (let i = 0; i < down && placed < 3; i++, placed++) {
+      dotsHtml.push('<span class="dot dot--dn" title="prior down-side rejection"></span>');
+    }
+    while (placed < 3) { dotsHtml.push('<span class="dot dot--empty"></span>'); placed++; }
+    dotsHtml.push('<span class="dot dot--empty" title="current touch (now)"></span>');
+    body.innerHTML =
+      '<div class="signal-slot-headline" id="slt-level-test-headline">' +
+        ordinal + ' test of ' + levelName +
+        '<span class="slt-test-dots">' + dotsHtml.join('') + '</span>' +
+      '</div>' +
+      '<div class="signal-slot-row"><span class="k">Level</span>' +
+        '<span class="v">' + levelPriceStr +
+        (distStr ? ' <span style="color:var(--text);font-weight:600;opacity:0.85">(' + distStr + ')</span>' : '') +
+        '</span></div>' +
+      '<div class="signal-slot-pattern">' +
+        'Repeated probes — resolves as <strong>break</strong> or <strong>strong hold</strong>. Wait for confirmation.' +
+      '</div>';
+  } else if (severity === 'building') {
+    if (ico) ico.textContent = '▲';
+    if (nameEl) nameEl.textContent = 'Level being tested';
+    body.innerHTML =
+      '<div class="signal-slot-headline" id="slt-level-test-headline">' +
+        ordinal + ' test of ' + levelName + '</div>' +
+      '<div class="signal-slot-row"><span class="k">Level</span>' +
+        '<span class="v">' + levelPriceStr +
+        (distStr ? ' <span style="color:var(--text);font-weight:600;opacity:0.85">(' + distStr + ')</span>' : '') +
+        '</span></div>' +
+      '<div class="signal-slot-pattern">Pressure building — monitor for break or hold.</div>';
+  } else {
+    // Quiet: hide entirely. Card only shows when level is actually under pressure
+    // (≥2 prior tests). Empty rail-col space is reserved for future content.
+    slot.style.display = 'none';
+    return;
+  }
+
+  slot.title = total + ' recent test(s) of ' + nearest.name + ' (' + nearest.value.toFixed(2) +
+               ') in last 6.5h — up=' + up + ' down=' + down +
+               '. From /api/level_crosses count_level_tests (Pass 4b).';
 }
 
 // Expose for unit tests + diag inspection.

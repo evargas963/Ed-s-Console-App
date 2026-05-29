@@ -91,7 +91,6 @@ def main() -> int:
                         ticker=tkr,
                         df=df,
                         model_dir=out_dir,
-                        weight_mode="exp",
                         nan_threshold=0.35,
                         skip_sanity=True,
                         show_importance=False,
