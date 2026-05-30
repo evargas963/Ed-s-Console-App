@@ -183,6 +183,7 @@ def validate_for_promotion(
     balanced_accuracy: Optional[float] = None,
     force_replace_non_compliant: bool = False,
     horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
+    single_class_collapse: bool = False,
 ) -> tuple[bool, str]:
     """
     Validate whether a trained artifact may be promoted.
@@ -191,9 +192,20 @@ def validate_for_promotion(
     Promotion metrics:
       - promotion_metric: eval_accuracy (ensemble accuracy on full RTH)
       - balanced_accuracy: (recall_up + recall_down + recall_flat) / 3 when available
+      - single_class_collapse: True when the candidate predicted exactly ONE class across the
+        eval set (all-flat / majority collapse). Such a model's top-line accuracy is just the
+        majority base rate (balanced_accuracy ~ 1/n_classes = chance) — it is blocked regardless
+        of accuracy, because MIN_PROMOTION_BALANCED_ACC=0.33 does NOT catch a 3-class all-flat
+        model whose balanced_accuracy is exactly 0.333.
     """
     if not provenance:
         return False, "missing provenance"
+
+    if single_class_collapse:
+        return False, (
+            "single_class_collapse: candidate predicts one class on the eval set "
+            "(all-flat majority collapse) — blocked regardless of top-line accuracy"
+        )
 
     if not provenance.training_timeframe:
         return False, "missing training_timeframe in provenance"
@@ -284,6 +296,7 @@ def build_xgb_provenance(
         source_cache_key=cache_key(ticker, CANONICAL_TIMEFRAME, col, FEATURE_SCHEMA_VERSION, PREPROCESSING_VERSION, train_start[:10] if train_start else "", train_end[:10] if train_end else ""),
         promotion_metric="accuracy",
         promotion_score=float(meta.get("train_accuracy", 0)),
+        balanced_accuracy=meta.get("balanced_accuracy"),
     )
 
 
@@ -323,6 +336,7 @@ def build_lstm_provenance(
         source_cache_key=cache_key(ticker, tf, col, FEATURE_SCHEMA_VERSION, PREPROCESSING_VERSION, train_start[:10] if train_start else "", train_end[:10] if train_end else ""),
         promotion_metric="val_accuracy",
         promotion_score=float(meta.get("val_accuracy", 0)),
+        balanced_accuracy=meta.get("balanced_accuracy"),
     )
 
 
@@ -359,4 +373,5 @@ def build_transformer_provenance(
         source_cache_key=cache_key(ticker, CANONICAL_TIMEFRAME, col, FEATURE_SCHEMA_VERSION, PREPROCESSING_VERSION, train_start[:10] if train_start else "", train_end[:10] if train_end else ""),
         promotion_metric="val_accuracy",
         promotion_score=float(meta.get("val_accuracy", 0)),
+        balanced_accuracy=meta.get("balanced_accuracy"),
     )

@@ -806,16 +806,32 @@ def train_ticker(
     if not incremental_done and not holdout_done:
         mdl_final.fit(X_np, y, sample_weight=sample_w, verbose=False)
 
+    from ml_data_common import holdout_class_metrics
     if holdout_done:
         # train_accuracy stays in-sample-by-name (train partition); val_accuracy is the honest
-        # out-of-sample headline metric.
+        # out-of-sample headline metric, and the degeneracy diagnostics below are measured on the
+        # same held-out tail (not in-sample) so a majority-class collapse is visible.
         fa = float(_tr_acc)
-        pd_d = {class_names[i]: int((mdl_final.predict(X_np[train_end:]) == i).sum()) for i in range(nc)}
+        _y_eval = y[train_end:]
+        _yhat_eval = mdl_final.predict(X_np[train_end:])
+        pd_d = {class_names[i]: int((_yhat_eval == i).sum()) for i in range(nc)}
         print(f"  Holdout val pred dist: {pd_d}")
     else:
-        fa = _acc(y, mdl_final.predict(X_np))
-        pd_d = {class_names[i]: int((mdl_final.predict(X_np) == i).sum()) for i in range(nc)}
+        _y_eval = y
+        _yhat_eval = mdl_final.predict(X_np)
+        fa = _acc(y, _yhat_eval)
+        pd_d = {class_names[i]: int((_yhat_eval == i).sum()) for i in range(nc)}
         print(f"  Full-data accuracy: {fa:.1%}  Pred dist: {pd_d}")
+    # Workstream B3+ degeneracy diagnostics: balanced_accuracy + per-class recall on the eval set
+    # (held-out tail when a holdout exists, else in-sample full data). single_class_collapse marks
+    # an all-flat base whose top-line accuracy is just the majority base rate — blocked from
+    # promotion regardless of accuracy by the validate_for_promotion collapse guard.
+    deg = holdout_class_metrics(_y_eval, _yhat_eval, nc, class_names)
+    print(
+        f"  Degeneracy: balanced_acc={deg['balanced_accuracy']}, "
+        f"recall={deg['per_class_recall']}"
+        + ("  [SINGLE-CLASS COLLAPSE]" if deg["single_class_collapse"] else "")
+    )
 
     _base = 1.0 / float(nc)
     if evaluate_only:
@@ -837,6 +853,10 @@ def train_ticker(
         class_names=class_names, train_accuracy=round(fa, 4),
         val_accuracy=(round(val_accuracy, 4) if val_accuracy is not None else None),
         val_basis=val_basis,
+        balanced_accuracy=deg["balanced_accuracy"],
+        val_per_class_recall=deg["per_class_recall"],
+        val_single_class_collapse=bool(deg["single_class_collapse"]),
+        val_predicted_class_names=deg["predicted_class_names"],
         xgb_best_iteration=(int(xgb_best_iteration) if xgb_best_iteration is not None else None),
         weight_mode="equal",
         sample_weight_mode="equal",

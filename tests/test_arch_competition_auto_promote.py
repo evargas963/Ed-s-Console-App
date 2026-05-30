@@ -304,6 +304,25 @@ def test_auto_promote_proceeds_when_candidate_beats_existing(tmp_path: Path, mon
     assert (tmp_path / "active" / "SPY" / "xgb_SPY_1c.pkl").is_file()
 
 
+def test_auto_promote_blocked_when_candidate_base_collapsed_single_class(tmp_path: Path, monkeypatch):
+    """B3+ degeneracy guard: a candidate whose base predicts ONE class on its eval tail
+    (all-flat collapse) is blocked regardless of top-line ensemble accuracy. The candidate
+    ensemble (0.45) beats the incumbent (0.40), so it would clear the score gate — only the
+    collapse flag blocks it."""
+    _governed_auto_setup(tmp_path, monkeypatch)
+    _write_active_incumbent(tmp_path, promotion_score=0.40)  # 0.45 >= 0.40 → score gate would pass
+    cand_meta_path = tmp_path / "parallel" / "SPY" / "xgb_SPY_1c_meta.json"
+    cand_meta = json.loads(cand_meta_path.read_text(encoding="utf-8"))
+    cand_meta["val_single_class_collapse"] = True
+    cand_meta_path.write_text(json.dumps(cand_meta), encoding="utf-8")
+
+    result = execute_promotion_if_eligible(tmp_path, "SPY", "1c", scheduler_run_id="collapse")
+    assert result["executed"] is False
+    assert result["skipped_reason"] == "promotion_gate_failed"
+    assert "single_class_collapse" in result["promotion_gate_reason"]
+    assert not (tmp_path / "active" / "SPY" / "xgb_SPY_1c.pkl").is_file()
+
+
 def test_auto_promote_force_replace_noncompliant_incumbent(tmp_path: Path, monkeypatch):
     _governed_auto_setup(tmp_path, monkeypatch)
     # incumbent scores higher but is non-compliant for 1c (wrong target_column) → force replace.

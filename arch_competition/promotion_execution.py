@@ -167,6 +167,22 @@ def _auto_promote_score_row_gate(
     existing_prov = load_provenance(Path(active_ticker_dir) / f"xgb_{tku}_{hz}_meta.json")
     force_replace = bool(existing_prov) and not is_provenance_compliant(existing_prov, horizon_slug=hz)
 
+    # Workstream B3+ degeneracy guard: block promotion when ANY base in the candidate bundle
+    # collapsed to a single class on its eval tail (all-flat). A 3-class all-flat model has
+    # balanced_accuracy == 0.333, which clears MIN_PROMOTION_BALANCED_ACC=0.33 — so the
+    # balanced-accuracy floor alone does NOT catch it; this explicit flag does.
+    collapse = False
+    for _base in ("xgb", "lstm", "transformer"):
+        _bm = Path(src) / f"{_base}_{tku}_{hz}_meta.json"
+        if _bm.is_file():
+            try:
+                _bd = json.loads(_bm.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if bool(_bd.get("val_single_class_collapse")):
+                collapse = True
+                break
+
     return validate_for_promotion(
         cand_prov,
         cand_acc,
@@ -174,6 +190,7 @@ def _auto_promote_score_row_gate(
         balanced_accuracy=cand_bal,
         force_replace_non_compliant=force_replace,
         horizon_slug=hz,
+        single_class_collapse=collapse,
     )
 
 

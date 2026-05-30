@@ -648,6 +648,18 @@ def train_lstm(
             all_preds.extend(logits.argmax(dim=1).cpu().numpy())
     result.val_accuracy = float(np.mean(np.array(all_preds) == y_val_np))
 
+    # Workstream B3+ degeneracy diagnostics on the same eval set (held-out tail when a holdout
+    # exists, else in-sample). single_class_collapse marks an all-flat base whose top-line
+    # accuracy is just the majority base rate — blocked from promotion by validate_for_promotion.
+    from ml_data_common import holdout_class_metrics
+    _lstm_cls_names = ["up", "down", "flat"]  # TARGET_CLASSES {up:0,down:1,flat:2}
+    lstm_deg = holdout_class_metrics(y_val_np, np.array(all_preds), 3, _lstm_cls_names)
+    log.info(
+        "LSTM degeneracy: balanced_acc=%s recall=%s%s",
+        lstm_deg["balanced_accuracy"], lstm_deg["per_class_recall"],
+        "  [SINGLE-CLASS COLLAPSE]" if lstm_deg["single_class_collapse"] else "",
+    )
+
     from lstm_data import STREAM_5M_LOOKBACK
     from training_provenance import build_lstm_provenance
 
@@ -660,6 +672,10 @@ def train_lstm(
         "trained_at": datetime.now().isoformat(),
         "val_accuracy": round(result.val_accuracy, 4),
         "val_basis": val_basis,
+        "balanced_accuracy": lstm_deg["balanced_accuracy"],
+        "val_per_class_recall": lstm_deg["per_class_recall"],
+        "val_single_class_collapse": bool(lstm_deg["single_class_collapse"]),
+        "val_predicted_class_names": lstm_deg["predicted_class_names"],
         "n_val": int(n_val),
         "n_train": result.n_train,
         "n_params": result.n_params,

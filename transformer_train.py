@@ -542,6 +542,18 @@ def train_transformer(
             all_preds.extend(preds.cpu().numpy())
     result.val_accuracy = float(np.mean(np.array(all_preds) == y_val_np))
 
+    # Workstream B3+ degeneracy diagnostics on the same eval set (held-out tail when a holdout
+    # exists, else in-sample). single_class_collapse marks an all-flat base whose top-line
+    # accuracy is just the majority base rate — blocked from promotion by validate_for_promotion.
+    from ml_data_common import holdout_class_metrics
+    _tr_cls_names = ["up", "down", "flat"]  # TARGET_CLASSES {up:0,down:1,flat:2}
+    tr_deg = holdout_class_metrics(y_val_np, np.array(all_preds), N_CLASSES, _tr_cls_names)
+    log.info(
+        "Transformer degeneracy: balanced_acc=%s recall=%s%s",
+        tr_deg["balanced_accuracy"], tr_deg["per_class_recall"],
+        "  [SINGLE-CLASS COLLAPSE]" if tr_deg["single_class_collapse"] else "",
+    )
+
     save_ticker = ticker or (sorted(set(tickers_arr))[0] if len(tickers_arr) else "unknown")
 
     from training_provenance import build_transformer_provenance
@@ -552,6 +564,10 @@ def train_transformer(
         "trained_at": datetime.now().isoformat(),
         "val_accuracy": round(result.val_accuracy, 4),
         "val_basis": val_basis,
+        "balanced_accuracy": tr_deg["balanced_accuracy"],
+        "val_per_class_recall": tr_deg["per_class_recall"],
+        "val_single_class_collapse": bool(tr_deg["single_class_collapse"]),
+        "val_predicted_class_names": tr_deg["predicted_class_names"],
         "n_val": int(n_val),
         "best_epoch": result.best_epoch,
         "n_train": result.n_train,

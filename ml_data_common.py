@@ -253,6 +253,64 @@ def time_ordered_tail_split(
     return n - n_val, n_val
 
 
+def holdout_class_metrics(
+    y_true,
+    y_pred,
+    n_classes: int,
+    class_names: list[str] | None = None,
+) -> dict[str, Any]:
+    """Degeneracy diagnostics for a classifier's (held-out) predictions (Workstream B3+).
+
+    The honest top-line accuracy can hide a majority-class collapse: a model that always
+    predicts ``flat`` scores the flat base rate (e.g. 0.62 on a 62%-flat tail) while having
+    balanced_accuracy ~ 1/n_classes (chance) and zero recall on the minority directions.
+    This helper makes that visible so the per-class signal can be reported and an all-flat
+    base can be blocked from promotion regardless of top-line accuracy.
+
+    Returns a dict with:
+      - ``balanced_accuracy``: mean per-class recall over classes PRESENT in ``y_true``
+        (the sklearn convention); ``None`` when ``y_true`` is empty.
+      - ``per_class_recall``: ``{class_name: recall}`` for every class index 0..n_classes-1
+        (recall ``None`` for a class with no support in ``y_true``).
+      - ``predicted_class_names``: sorted list of distinct class names the model emitted.
+      - ``n_predicted_classes``: count of distinct predicted classes.
+      - ``single_class_collapse``: True when the model emitted exactly one class across all
+        rows (the all-flat / majority-collapse failure mode).
+    """
+    import numpy as _np
+
+    nc = int(n_classes)
+    names = list(class_names) if class_names is not None else [str(i) for i in range(nc)]
+    yt = _np.asarray(y_true).astype(int).ravel()
+    yp = _np.asarray(y_pred).astype(int).ravel()
+
+    per_class_recall: dict[str, float | None] = {}
+    recalls_present: list[float] = []
+    for c in range(nc):
+        support = int((yt == c).sum())
+        cname = names[c] if c < len(names) else str(c)
+        if support == 0:
+            per_class_recall[cname] = None
+            continue
+        tp = int(((yt == c) & (yp == c)).sum())
+        rec = float(tp) / float(support)
+        per_class_recall[cname] = round(rec, 4)
+        recalls_present.append(rec)
+
+    balanced_accuracy = (
+        round(float(_np.mean(recalls_present)), 4) if recalls_present else None
+    )
+    pred_classes = sorted({int(v) for v in yp.tolist()})
+    pred_class_names = [names[c] if c < len(names) else str(c) for c in pred_classes]
+    return {
+        "balanced_accuracy": balanced_accuracy,
+        "per_class_recall": per_class_recall,
+        "predicted_class_names": pred_class_names,
+        "n_predicted_classes": len(pred_classes),
+        "single_class_collapse": len(pred_classes) <= 1,
+    }
+
+
 # ------------------------------------------------------------------------------
 # m5_* additive context (1m normalized base + as-of structure columns)
 # ------------------------------------------------------------------------------
