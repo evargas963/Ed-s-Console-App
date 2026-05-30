@@ -45,7 +45,13 @@ FEATURE_SCHEMA_VERSION: str = "v4_canonical_1m"
 PREPROCESSING_VERSION: str = "v3_rth_decay_m5_additive_canonical"
 # Bump when label column, horizon definition, or outcome filter semantics change (invalidates training cache).
 # Issue 15: 5c+ artifacts share this feature/label pipeline version; exact label column is in meta.target_column.
-LABEL_CONFIG_VERSION: str = "outcome_1c_filled_rth_v1"
+# Phase 1 (horizon-collapse fix): outcome_Nc now classified with a per-horizon ATR-scaled move
+# threshold (classify_direction_pts + threshold_move_pts_for_slug) instead of a fixed 0.05%-of-spot
+# cut, so each horizon is balanced on its own volatility scale. This is an outcome-filter semantics
+# change → version bumped to force full retrain on the rebalanced labels (the DB column must also be
+# refreshed via the force_refresh outcome backfill). horizon_outcome_schema_version (anchor/forward
+# bar mechanics) is unchanged and stays "bar_forward_close_v1".
+LABEL_CONFIG_VERSION: str = "outcome_perhorizon_volthr_v2"
 # Bump when ml_scheduler / stacked training orchestration or artifact set changes (invalidates skip-retrain).
 SCHEDULER_PIPELINE_VERSION: str = "scheduler_stack_v1"
 

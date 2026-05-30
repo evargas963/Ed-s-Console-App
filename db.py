@@ -70,7 +70,7 @@ from movement_target_threshold import (
 # Direction classification, distance bucketing, and all thresholds live in
 # math_exposure.py. db.py MUST NOT define its own versions.
 from math_exposure import (
-    classify_direction as _classify_direction_central,
+    classify_direction_pts as _classify_direction_per_horizon,
     dist_bucket as _dist_bucket,
     bucket_lo as _bucket_lo,
     bucket_hi as _bucket_hi,
@@ -2930,7 +2930,10 @@ class EdDB:
         For each snapshot at time T (ts_utc):
           anchor_close = close of the last price_bars_1m row with bar_end_ts_utc <= T
           forward_close = close of the bar with bar_start_ts_utc = floor((T+N*60)/60)*60
-          outcome_Nc = classify_direction(forward_close - anchor_close, anchor_close)
+          outcome_Nc = classify_direction_pts(forward_close - anchor_close,
+                                              threshold_move_pts_for_slug(slug, anchor_close, atr))
+          (per-horizon ATR-scaled threshold — same scale as the v2 move gate, so
+           outcome_Nc is balanced on each horizon's own volatility, not a fixed 0.05% cut)
 
         Poll-window fills are not used. Rows must have horizon_outcome_schema_version = BAR_ANCHOR_V1.
 
@@ -4144,7 +4147,7 @@ class EdDB:
 # ════════════════════════════════════════════════════════════════════════════════
 
 # CENTRALIZED FUNCTIONS (imported from math_exposure at top of file):
-#   _classify_direction_central  — percentage-based direction classification
+#   _classify_direction_per_horizon  — points-threshold (per-horizon ATR-scaled) direction classification
 #   _dist_bucket                 — distance bucketing for similar-setup matching
 #   _bucket_lo / _bucket_hi     — bucket boundary helpers
 #
@@ -4326,11 +4329,11 @@ def _apply_bar_based_outcome_updates(
                     updates[legtcol] = None
                     continue
                 pts_move = fwd_close - anchor_close
-                updates[odir] = _classify_direction_central(pts_move, anchor_close)
-                updates[opt] = round(pts_move, 4)
                 thr = threshold_move_pts_for_slug(
                     slug, anchor_close=anchor_close, atr=atr_v, cfg=_mcfg
                 )
+                updates[odir] = _classify_direction_per_horizon(pts_move, thr)
+                updates[opt] = round(pts_move, 4)
                 dir_ok = not invalid_for_dir_target(slug, _mcfg)
                 dlab, mlab, vdi = directional_and_move_labels_v2(
                     pts_move, thr, dir_allowed=dir_ok
@@ -4368,11 +4371,11 @@ def _apply_bar_based_outcome_updates(
             if fwd_close is None:
                 continue
             pts_move = fwd_close - anchor_close
-            updates[odir] = _classify_direction_central(pts_move, anchor_close)
-            updates[opt] = round(pts_move, 4)
             thr = threshold_move_pts_for_slug(
                 slug, anchor_close=anchor_close, atr=atr_v, cfg=_mcfg
             )
+            updates[odir] = _classify_direction_per_horizon(pts_move, thr)
+            updates[opt] = round(pts_move, 4)
             dir_ok = not invalid_for_dir_target(slug, _mcfg)
             dlab, mlab, vdi = directional_and_move_labels_v2(
                 pts_move, thr, dir_allowed=dir_ok

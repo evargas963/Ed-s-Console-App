@@ -145,3 +145,116 @@ def test_migration_issue4_clears_v2_labels(tmp_path: Path):
     assert row["outcome_1c"] is None
     assert int(row["horizon_outcome_schema_version"]) == HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1
     assert flag is not None
+
+
+# ── Phase 1 (horizon-collapse fix): per-horizon vol-scaled outcome threshold ──────
+
+
+def test_classify_direction_pts_threshold_and_fail_closed():
+    """classify_direction_pts uses a points threshold and fails closed without a valid scale."""
+    from math_probabilities import classify_direction, classify_direction_pts
+
+    # up / down / flat by the supplied points threshold (strict inequality; boundary = flat)
+    assert classify_direction_pts(0.6, 0.5) == "up"
+    assert classify_direction_pts(-0.6, 0.5) == "down"
+    assert classify_direction_pts(0.4, 0.5) == "flat"
+    assert classify_direction_pts(-0.4, 0.5) == "flat"
+    assert classify_direction_pts(0.5, 0.5) == "flat"
+
+    # Fail-closed: no directional claim without a valid (>0) volatility scale.
+    assert classify_direction_pts(10.0, 0.0) == "flat"
+    assert classify_direction_pts(10.0, -1.0) == "flat"
+    assert classify_direction_pts(10.0, None) == "flat"
+
+    # Phase 1 substance: a per-horizon vol-scaled threshold disagrees with the legacy
+    # fixed 0.05%-of-spot cut for the same move — the label is no longer a single uniform cut.
+    spot = 100.0
+    pts = 0.1
+    fixed = classify_direction(pts, spot)          # thr = spot*0.0005 = 0.05 -> "up"
+    perhz = classify_direction_pts(pts, 0.55)       # vol-scaled thr 0.55 -> "flat"
+    assert fixed == "up"
+    assert perhz == "flat"
+    assert fixed != perhz
+
+
+def test_outcome_fill_uses_per_horizon_threshold_all_horizons(tmp_db: EdDB):
+    """Stored outcome_Nc matches the per-horizon ATR-scaled formula (not the fixed 0.05% cut),
+    across 1c/5c/15c/60c, computed via the same public helpers the writer uses."""
+    from math_probabilities import classify_direction_pts
+    from movement_target_threshold import (
+        load_movement_thresholds_by_horizon_v1,
+        threshold_move_pts_for_slug,
+    )
+
+    t0 = 1_020_000.0
+    t_snap = t0 + 90.0
+    atr_v = 1.0
+    with tmp_db._connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO snapshots (
+                ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot, atr,
+                horizon_outcome_schema_version, outcome_filled
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            (
+                "SPY",
+                CF,
+                t_snap,
+                "test",
+                10,
+                30,
+                "rth",
+                9999.0,
+                atr_v,
+                HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+            ),
+        )
+    bars = []
+    for i in range(120):
+        bs = t0 + i * 60.0
+        bars.append(
+            {
+                "datetime": bs,
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.0 + 0.1 * i,
+                "volume": 1.0,
+            }
+        )
+    tmp_db.upsert_1m_bars("SPY", bars)
+    tmp_db.fill_outcomes("SPY", CF, t_snap + 8000.0)
+
+    cfg = load_movement_thresholds_by_horizon_v1()
+    anchor_close = 100.0  # last bar with bar_end <= t_snap is bar i=0 (end t0+60)
+    with tmp_db._connect() as conn:
+        row = conn.execute(
+            get_snapshot_sql("tests/test_horizon_bar_outcomes.py:per_horizon"),
+            (CF,),
+        ).fetchone()
+    assert row is not None
+
+    directional_seen = False
+    for slug, n_min in (("1c", 1), ("5c", 5), ("15c", 15), ("60c", 60)):
+        b = forward_bar_start_utc(t_snap, n_min)
+        i_fwd = int(round((b - t0) / 60.0))
+        forward_close = 100.0 + 0.1 * float(i_fwd)
+        pts = forward_close - anchor_close
+        thr = threshold_move_pts_for_slug(slug, anchor_close=anchor_close, atr=atr_v, cfg=cfg)
+        expected = classify_direction_pts(pts, thr)
+        assert row[f"outcome_{slug}"] == expected, (
+            slug,
+            pts,
+            thr,
+            row[f"outcome_{slug}"],
+            expected,
+        )
+        if expected in ("up", "down"):
+            directional_seen = True
+
+    # The longest horizon has a large monotone move; the per-horizon path must still emit a
+    # directional label (guards against an all-flat regression / classifier wired to a bad scale).
+    assert directional_seen
+    assert row["outcome_60c"] == "up"

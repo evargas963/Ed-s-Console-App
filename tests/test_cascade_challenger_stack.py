@@ -96,6 +96,8 @@ def test_run_base_models_once_stays_parallel_and_does_not_set_cascade_arch():
     with patch.object(mp, "_predict_xgb", return_value={"up": 0.3, "down": 0.3, "flat": 0.4}), patch.object(
         mp, "_predict_lstm", return_value={"up": 0.3, "down": 0.3, "flat": 0.4}
     ), patch.object(mp, "_predict_transformer", return_value={"up": 0.3, "down": 0.3, "flat": 0.4}), patch.object(
+        mp, "_predict_xgb_movement_heads", return_value={}
+    ), patch.object(
         mp, "_load_meta", return_value=False
     ):
         o = mp.run_base_models_once({"ticker": "SPY"}, "SPY", None, inference_snapshot_v1=_minimal_inf_v1())

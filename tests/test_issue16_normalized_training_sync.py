@@ -170,3 +170,42 @@ def test_verify_normalized_freshness(tmp_db: EdDB):
         conn.commit()
     v2 = verify_normalized_freshness(tmp_db.db_path)
     assert v2["fresh"] is False
+
+
+def test_fingerprint_moves_when_label_config_version_changes(monkeypatch, tmp_db: EdDB):
+    """A label-semantics bump (LABEL_CONFIG_VERSION) must move the fingerprint even though the
+    row-level aggregates are unchanged — otherwise a force_refresh that only rewrites outcome_Nc
+    directions (same pts / same non-null counts) would leave the normalized table stale and the
+    scheduler's force=False sync would skip re-materialization. This locks the Phase 1 re-baseline
+    flow: bumping the version is sufficient to invalidate the normalized training table."""
+    import normalized_training_sync as nts
+    import training_provenance as tp
+
+    with tmp_db._connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO snapshots (
+                ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
+                horizon_outcome_schema_version, outcome_filled, outcome_5c, outcome_5c_pts
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'flat', 0.10)
+            """,
+            ("SPY", CF, 1_300_000.0, "test", 10, 30, "rth", 100.0, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1),
+        )
+        conn.commit()
+
+    with tmp_db._connect() as conn:
+        fp_v1 = nts.compute_snapshots_training_fingerprint(conn)
+
+        # Simulate a force_refresh that only flips the direction label: pts and non-null counts
+        # unchanged, so the row-aggregate portion of the fingerprint is identical.
+        conn.execute("UPDATE snapshots SET outcome_5c = 'up' WHERE ticker='SPY' AND timeframe = ?", (CF,))
+        conn.commit()
+        fp_same_aggs = nts.compute_snapshots_training_fingerprint(conn)
+        assert fp_same_aggs == fp_v1, "direction-only rewrite is invisible to row aggregates (premise)"
+
+        # Now bump the label config version: the fingerprint MUST move so the table re-materializes.
+        monkeypatch.setattr(tp, "LABEL_CONFIG_VERSION", tp.LABEL_CONFIG_VERSION + "_probe")
+        fp_v2 = nts.compute_snapshots_training_fingerprint(conn)
+    assert fp_v2 != fp_v1
+    assert fp_v2.endswith("_probe")

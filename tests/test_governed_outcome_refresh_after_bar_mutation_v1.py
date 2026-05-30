@@ -185,7 +185,11 @@ def test_refresh_all_governed_bar_anchor_outcomes_v1_aligns_with_bars(tmp_path):
     import bisect
 
     from horizon_outcomes import OUTCOME_BAR_SPECS
-    from math_exposure import classify_direction as cd
+    from math_exposure import classify_direction_pts
+    from movement_target_threshold import (
+        load_movement_thresholds_by_horizon_v1,
+        threshold_move_pts_for_slug,
+    )
 
     with db._connect() as conn:
         r = conn.execute(
@@ -208,5 +212,9 @@ def test_refresh_all_governed_bar_anchor_outcomes_v1_aligns_with_bars(tmp_path):
         ac = bar_end_closes[ai]
         b5 = forward_bar_start_utc(t_snap, 5)
         fc = close_by_start[float(b5)]
-        exp = cd(fc - ac, ac)
+        # Phase 1: outcome_Nc uses the per-horizon ATR-scaled threshold (snapshot atr is NULL
+        # here, so the writer's _snapshot_row_atr is None) — mirror that, not the fixed 0.05% cut.
+        _cfg = load_movement_thresholds_by_horizon_v1()
+        _thr = threshold_move_pts_for_slug("5c", anchor_close=ac, atr=None, cfg=_cfg)
+        exp = classify_direction_pts(fc - ac, _thr)
     assert r["outcome_5c"] == exp

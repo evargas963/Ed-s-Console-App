@@ -56,6 +56,8 @@ def test_run_base_models_once_invokes_sequence_models_with_parallel_runtime():
     with patch("ml_predict._predict_xgb", return_value={"up": 0.35, "down": 0.32, "flat": 0.33}), patch(
         "ml_predict._predict_lstm", side_effect=cap_lstm
     ), patch("ml_predict._predict_transformer", side_effect=cap_tr), patch(
+        "ml_predict._predict_xgb_movement_heads", return_value={}
+    ), patch(
         "ml_predict._load_meta", return_value=False
     ):
         out = run_base_models_once(snap, "SPY", MagicMock(), "wait", inference_snapshot_v1=inf)
@@ -89,6 +91,8 @@ def test_single_xgb_call_no_nested_xgb_from_sequence_models():
     with patch("ml_predict._predict_xgb", side_effect=xgb), patch(
         "ml_predict._predict_lstm", return_value={"up": 0.3, "down": 0.3, "flat": 0.4}
     ), patch("ml_predict._predict_transformer", return_value={"up": 0.3, "down": 0.3, "flat": 0.4}), patch(
+        "ml_predict._predict_xgb_movement_heads", return_value={}
+    ), patch(
         "ml_predict._load_meta", return_value=False
     ):
         run_base_models_once(snap, "SPY", MagicMock(), "wait", inference_snapshot_v1=inf)

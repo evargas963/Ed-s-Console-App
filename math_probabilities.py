@@ -278,6 +278,28 @@ def classify_direction(pts_move: float, spot: float,
     return "flat"
 
 
+def classify_direction_pts(pts_move: float, threshold_pts: float | None) -> str:
+    """3-class direction from a precomputed per-horizon move threshold (in points).
+
+    Sibling of ``classify_direction`` with identical comparison shape, but the
+    move threshold is supplied directly in price points (e.g. the per-horizon,
+    ATR-scaled ``threshold_move_pts_for_slug`` value) instead of being derived
+    from ``spot * threshold_pct``. Used for horizon outcome labels so each
+    horizon is balanced on its own volatility scale rather than a single fixed
+    0.05%-of-spot cut applied uniformly to 1c…60c.
+
+    Fail-closed: a non-positive or missing ``threshold_pts`` yields ``"flat"`` —
+    no directional claim is made without a valid volatility scale.
+    """
+    if threshold_pts is None or threshold_pts <= 0:
+        return "flat"
+    if pts_move > threshold_pts:
+        return "up"
+    if pts_move < -threshold_pts:
+        return "down"
+    return "flat"
+
+
 # ── Distance bucketing ──────────────────────────────────────────────────────
 
 def dist_bucket(dist: float | None) -> str | None:

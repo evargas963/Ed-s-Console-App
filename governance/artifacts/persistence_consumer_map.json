@@ -371,7 +371,7 @@
     {
       "writer_fn": "EdDB.log_level_cross",
       "file": "db.py",
-      "line": 3760,
+      "line": 3763,
       "tables_written": [
         "level_crosses"
       ],
@@ -389,7 +389,7 @@
     {
       "writer_fn": "EdDB.log_model_accuracy",
       "file": "db.py",
-      "line": 3974,
+      "line": 3977,
       "tables_written": [
         "model_accuracy"
       ],
@@ -418,7 +418,7 @@
     {
       "candidate_fn": "EdDB.compute_accuracy",
       "file": "db.py",
-      "line": 3919,
+      "line": 3922,
       "production_callers": [
         "server.py"
       ],

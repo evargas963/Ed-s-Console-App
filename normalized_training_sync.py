@@ -80,6 +80,13 @@ def compute_snapshots_training_fingerprint(conn: sqlite3.Connection) -> str:
     """
     Cheap aggregate over raw snapshots that should change when outcomes or training-relevant
     columns change. Covers canonical 1m and legacy 5m sub-minute rows (same inputs as the normalizer).
+
+    Includes LABEL_CONFIG_VERSION because the row-level aggregates are blind to label-semantics
+    rewrites: a ``force_refresh`` of ``outcome_Nc`` that only changes the up/down/flat *direction*
+    (the per-horizon threshold moved, but ``outcome_Nc_pts`` and the non-null/outcome_filled counts
+    are unchanged) would otherwise leave the fingerprint static and ``ensure_normalized_training_table``
+    would skip re-materialization — silently training on stale labels. Pinning the label config
+    version moves the fingerprint on any label-semantics bump so the normalized table rebuilds.
     """
     if not _table_exists(conn, "snapshots"):
         return "no_snapshots_table"
@@ -100,7 +107,11 @@ def compute_snapshots_training_fingerprint(conn: sqlite3.Connection) -> str:
         else:
             vals = [r[i] for i in range(1, len(r))]
             chunks.append(tf + ":" + "|".join(str(v) for v in vals))
-    return "::".join(chunks)
+    try:
+        from training_provenance import LABEL_CONFIG_VERSION
+    except Exception:
+        LABEL_CONFIG_VERSION = "unknown"
+    return "::".join(chunks) + "::label_cfg=" + str(LABEL_CONFIG_VERSION)
 
 
 def _get_stored_fp(conn: sqlite3.Connection) -> Optional[str]:

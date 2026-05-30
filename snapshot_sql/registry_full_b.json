@@ -17,6 +17,7 @@
   "tests/test_distance_option_a_backfill_v1.py:99": "SELECT nearest_above_dist, nearest_below_dist FROM snapshots WHERE timeframe=? ORDER BY ts_utc LIMIT 1 OFFSET 1",
   "tests/test_distance_option_a_backfill_v1.py:117": "SELECT COUNT(*) FROM snapshots WHERE timeframe=? AND nearest_below_dist < 0",
   "tests/test_horizon_bar_outcomes.py:94": "SELECT outcome_1c, outcome_1c_pts, outcome_filled FROM snapshots WHERE ticker='SPY' AND timeframe=?",
+  "tests/test_horizon_bar_outcomes.py:per_horizon": "SELECT outcome_1c, outcome_5c, outcome_15c, outcome_60c FROM snapshots WHERE ticker='SPY' AND timeframe=?",
   "tests/test_horizon_bar_outcomes.py:145": "SELECT outcome_1c, horizon_outcome_schema_version FROM snapshots WHERE timeframe='1m'",
   "tests/test_instrument_identity_and_repair_v1.py:167": "SELECT outcome_1c, outcome_filled FROM snapshots WHERE snapshot_id = ?",
   "tests/test_instrument_identity_and_repair_v1.py:208": "SELECT outcome_1c, timeframe FROM snapshots WHERE snapshot_id = ?",
