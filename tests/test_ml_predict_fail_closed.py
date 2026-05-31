@@ -86,3 +86,76 @@ def test_stack_probs_fail_closed_on_partial_stack():
 def test_ensemble_parallel_probs_fail_closed_on_partial_stack():
     tri = {"up": 0.4, "down": 0.3, "flat": 0.3}
     assert mp._ensemble_parallel_probs("SPY", tri, None, tri) is None
+
+
+# ── CLOSEOUT #3 — fusion meta<bases: collapsed-base exclusion in the combiner ──────────
+import json
+
+import pytest
+
+
+def test_weighted_average_backcompat_identical_without_collapse():
+    """No collapse flags => the prior fixed 0.40/0.35/0.25 weighting, byte-identical."""
+    xgb = {"up": 0.8, "down": 0.1, "flat": 0.1}
+    lstm = {"up": 0.2, "down": 0.5, "flat": 0.3}
+    tr = {"up": 0.1, "down": 0.2, "flat": 0.7}
+    got = mp._weighted_average("SPY", xgb, lstm, tr)
+    exp = {
+        "up": round(0.8 * 0.40 + 0.2 * 0.35 + 0.1 * 0.25, 4),
+        "down": round(0.1 * 0.40 + 0.5 * 0.35 + 0.2 * 0.25, 4),
+        "flat": round(0.1 * 0.40 + 0.3 * 0.35 + 0.7 * 0.25, 4),
+    }
+    assert got == exp
+
+
+def test_weighted_average_drops_collapsed_base_and_renormalizes():
+    """A collapsed (confident all-flat) XGB is excluded; LSTM/TR weights re-normalize."""
+    xgb = {"up": 0.8, "down": 0.1, "flat": 0.1}  # confident — must NOT pull the result up
+    lstm = {"up": 0.2, "down": 0.5, "flat": 0.3}
+    tr = {"up": 0.1, "down": 0.2, "flat": 0.7}
+    got = mp._weighted_average("SPY", xgb, lstm, tr, collapsed={"xgb"})
+    wl, wt = 0.35 / 0.60, 0.25 / 0.60
+    assert got["up"] == pytest.approx(round(0.2 * wl + 0.1 * wt, 4))
+    assert got["down"] == pytest.approx(round(0.5 * wl + 0.2 * wt, 4))
+    assert got["flat"] == pytest.approx(round(0.3 * wl + 0.7 * wt, 4))
+    assert got["up"] < 0.2  # XGB's 0.8 up did not leak in
+
+
+def test_weighted_average_all_collapsed_returns_uniform():
+    tri = {"up": 0.4, "down": 0.3, "flat": 0.3}
+    got = mp._weighted_average("SPY", tri, tri, tri, collapsed={"xgb", "lstm", "transformer"})
+    assert got == mp._UNIFORM_PROBS
+
+
+def test_read_base_collapse_flags(tmp_path):
+    for base, flag in (("xgb", True), ("lstm", False), ("transformer", True)):
+        (tmp_path / f"{base}_SPY_1c_meta.json").write_text(
+            json.dumps({"val_single_class_collapse": flag}), encoding="utf-8"
+        )
+    assert mp.read_base_collapse_flags(tmp_path, "SPY", "1c") == {"xgb", "transformer"}
+
+
+def test_read_base_collapse_flags_missing_and_bad_json(tmp_path):
+    # only xgb present + flagged; lstm absent; transformer unreadable -> only xgb
+    (tmp_path / "xgb_SPY_1c_meta.json").write_text(
+        json.dumps({"val_single_class_collapse": True}), encoding="utf-8"
+    )
+    (tmp_path / "transformer_SPY_1c_meta.json").write_text("{not json", encoding="utf-8")
+    assert mp.read_base_collapse_flags(tmp_path, "SPY", "1c") == {"xgb"}
+
+
+def test_ensemble_all_collapsed_returns_uniform(monkeypatch):
+    tri = {"up": 0.4, "down": 0.3, "flat": 0.3}
+    monkeypatch.setattr(mp, "_active_base_collapse_flags", lambda t: {"xgb", "lstm", "transformer"})
+    got = mp._ensemble_parallel_probs("SPY", tri, tri, tri)
+    assert got == mp._UNIFORM_PROBS
+
+
+def test_ensemble_backcompat_no_collapse_uses_weighted_average(monkeypatch):
+    """No collapse + no meta => falls to the unchanged weighted average."""
+    xgb = {"up": 0.8, "down": 0.1, "flat": 0.1}
+    lstm = {"up": 0.2, "down": 0.5, "flat": 0.3}
+    tr = {"up": 0.1, "down": 0.2, "flat": 0.7}
+    monkeypatch.setattr(mp, "_active_base_collapse_flags", lambda t: set())
+    monkeypatch.setattr(mp, "_predict_meta", lambda *a, **k: None)
+    assert mp._ensemble_parallel_probs("SPY", xgb, lstm, tr) == mp._weighted_average("SPY", xgb, lstm, tr)

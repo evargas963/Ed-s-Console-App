@@ -205,8 +205,12 @@ _xgb_movehead_registry: dict[str, dict | None] = {}  # movement-target v1 binary
 _meta_registry  = {}   # _model_registry_key -> sklearn LogisticRegression
 _lstm_registry  = {}   # _model_registry_key -> (model, checkpoint)
 _trans_registry = {}   # _model_registry_key -> (model, checkpoint)
+_collapse_flag_registry: dict[str, set] = {}  # _model_registry_key -> {collapsed base names}
 
 CLASS_NAMES = ["up", "down", "flat"]
+# Visible uniform when no base is trustworthy (all single-class-collapsed). Distinct from a
+# confident-flat triplet so downstream balanced_accuracy reads it as chance, not a real call.
+_UNIFORM_PROBS = {"up": 0.3333, "down": 0.3333, "flat": 0.3334}
 
 
 def _require_direction_probability_triplet(
@@ -1198,20 +1202,75 @@ def _predict_meta(ticker: str, xgb_p, lstm_p, trans_p) -> Optional[dict]:
         return None
 
 
-def _weighted_average(ticker: str, xgb_p, lstm_p, trans_p) -> Optional[dict]:
-    """Weighted average when meta-learner not trained. Requires full XGB+LSTM+TR stack."""
+def _weighted_average(
+    ticker: str, xgb_p, lstm_p, trans_p, collapsed: Optional[set] = None
+) -> Optional[dict]:
+    """Weighted average fallback when the meta-learner is not trained. Requires the full
+    XGB+LSTM+TR stack to be *present*; bases flagged ``val_single_class_collapse`` (B3+
+    degeneracy) are dropped and the remaining weights re-normalized so a confident all-flat
+    base cannot drag the ensemble flat. All bases collapsed -> visible uniform.
+
+    Back-compat: ``collapsed`` empty/None weights all three at 0.40/0.35/0.25 (sum 1.0),
+    byte-identical to the prior behavior.
+    """
     if not _parallel_base_stack_complete(xgb_p, lstm_p, trans_p):
         return None
     assert xgb_p is not None and lstm_p is not None and trans_p is not None
-    weights = ((xgb_p, 0.40), (lstm_p, 0.35), (trans_p, 0.25))
+    collapsed = collapsed or set()
+    base_weights = (("xgb", xgb_p, 0.40), ("lstm", lstm_p, 0.35), ("transformer", trans_p, 0.25))
+    healthy = [(name, p, w) for name, p, w in base_weights if name not in collapsed]
+    if not healthy:
+        logger.warning(
+            "Parallel combiner %s: all bases single-class-collapsed — returning uniform", ticker
+        )
+        return dict(_UNIFORM_PROBS)
+    total_w = sum(w for _, _, w in healthy)
     result = {c: 0.0 for c in CLASS_NAMES}
-    for probs, w in weights:
+    for _name, probs, w in healthy:
         tri = _require_direction_probability_triplet(probs)
         assert tri is not None
-        result["up"] += tri[0] * w
-        result["down"] += tri[1] * w
-        result["flat"] += tri[2] * w
+        nw = w / total_w
+        result["up"] += tri[0] * nw
+        result["down"] += tri[1] * nw
+        result["flat"] += tri[2] * nw
     return {c: round(result[c], 4) for c in CLASS_NAMES}
+
+
+def read_base_collapse_flags(model_dir, ticker: str, hz: str) -> set:
+    """Set of base names ('xgb'/'lstm'/'transformer') whose persisted meta in ``model_dir``
+    carries ``val_single_class_collapse=True`` (the B3+ all-flat degeneracy flag written by
+    ml_train / lstm_model / transformer_train). Same read pattern the A2 promotion gate uses.
+    """
+    flags: set = set()
+    for base in ("xgb", "lstm", "transformer"):
+        meta_json = Path(model_dir) / f"{base}_{ticker}_{hz}_meta.json"
+        if not meta_json.is_file():
+            continue
+        try:
+            data = json.loads(meta_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if bool(data.get("val_single_class_collapse")):
+            flags.add(base)
+    return flags
+
+
+def _active_base_collapse_flags(ticker: str) -> set:
+    """Cached per-(ticker,hz) collapse flags for the active bundle (called per eval row)."""
+    hz = get_ml_infer_horizon_slug()
+    rk = _model_registry_key(ticker, hz)
+    cached = _collapse_flag_registry.get(rk)
+    if cached is not None:
+        return cached
+    # Best-effort: if the active bundle dir can't be resolved (e.g. strict-active-only with an
+    # incomplete bundle), fall back to "no collapse flags" — identical to prior combiner behavior.
+    try:
+        flags = read_base_collapse_flags(_model_dir_for_ticker(ticker), ticker, hz)
+    except Exception as e:
+        logger.debug("collapse-flag read skipped for %s: %s", ticker, e)
+        flags = set()
+    _collapse_flag_registry[rk] = flags
+    return flags
 
 
 def _ensemble_parallel_probs(
@@ -1220,12 +1279,25 @@ def _ensemble_parallel_probs(
     lstm_p: Optional[dict],
     trans_p: Optional[dict],
 ) -> Optional[dict]:
-    """Meta when trained, else weighted average — only when full parallel stack is present."""
+    """Meta when trained, else weighted average — only when full parallel stack is present.
+
+    A base flagged ``val_single_class_collapse`` is degenerate (all-flat); the meta is
+    re-fit clean against it on retrain (see ml_scheduler._assemble_meta_base_prob_vectors),
+    so the meta path needs no row-time change EXCEPT the all-collapsed guard below. The
+    weighted-average fallback drops collapsed bases.
+    """
     if not _parallel_base_stack_complete(xgb_p, lstm_p, trans_p):
         return None
+    collapsed = _active_base_collapse_flags(ticker)
+    if collapsed >= {"xgb", "lstm", "transformer"}:
+        logger.warning(
+            "Parallel combiner %s: all three bases single-class-collapsed — uniform (not false-flat)",
+            ticker,
+        )
+        return dict(_UNIFORM_PROBS)
     stack_probs = _predict_meta(ticker, xgb_p, lstm_p, trans_p)
     if stack_probs is None:
-        stack_probs = _weighted_average(ticker, xgb_p, lstm_p, trans_p)
+        stack_probs = _weighted_average(ticker, xgb_p, lstm_p, trans_p, collapsed=collapsed)
     return stack_probs
 
 
@@ -1699,11 +1771,13 @@ def get_component_status(ticker: str) -> dict:
 def reset_caches():
     """Clear all loaded models. Call this after retraining."""
     global _xgb_registry, _xgb_movehead_registry, _meta_registry, _lstm_registry, _trans_registry
+    global _collapse_flag_registry
     _xgb_registry   = {}
     _xgb_movehead_registry = {}
     _meta_registry  = {}
     _lstm_registry  = {}
     _trans_registry = {}
+    _collapse_flag_registry = {}
     logger.info("ml_predict: all model caches cleared")
 
 
@@ -1711,7 +1785,7 @@ def invalidate_model_registry(ticker: str, hz: str | None = None) -> bool:
     """Evict in-memory caches for one (ticker, horizon) tuple (PR4 P3-10)."""
     rk = _model_registry_key(ticker, hz)
     removed = False
-    for reg in (_xgb_registry, _meta_registry, _lstm_registry, _trans_registry):
+    for reg in (_xgb_registry, _meta_registry, _lstm_registry, _trans_registry, _collapse_flag_registry):
         if rk in reg:
             del reg[rk]
             removed = True

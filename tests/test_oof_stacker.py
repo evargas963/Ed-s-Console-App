@@ -135,3 +135,25 @@ def test_train_cascade_xgb_lstm_into_fails_closed_on_empty_data(monkeypatch, tmp
         tmp_path / "fold0", "SPY", "db", {"2026-06-01"}, data_fp=None, hz="1c",
     )
     assert ok is False
+
+
+# ── CLOSEOUT #3 — meta-training assembly excludes collapsed bases ──────────────────────
+def test_meta_base_triplet_collapsed_base_is_neutral():
+    """A single-class-collapsed base feeds the neutral filler, not its degenerate probs."""
+    probs = {"up": 0.8, "down": 0.1, "flat": 0.1}
+    assert ml_scheduler._meta_base_triplet("xgb", probs, {"xgb"}) == [0.333, 0.333, 0.334]
+
+
+def test_meta_base_triplet_absent_base_is_neutral():
+    assert ml_scheduler._meta_base_triplet("lstm", None, set()) == [0.333, 0.333, 0.334]
+
+
+def test_meta_base_triplet_healthy_base_passes_through():
+    probs = {"up": 0.5, "down": 0.3, "flat": 0.2}
+    assert ml_scheduler._meta_base_triplet("xgb", probs, set()) == [0.5, 0.3, 0.2]
+
+
+def test_meta_base_triplet_backcompat_missing_key_uses_0333_filler():
+    """Empty collapsed + present probs reproduces the prior `.get(c, 0.333)` exactly."""
+    probs = {"up": 0.5, "down": 0.3}  # missing 'flat'
+    assert ml_scheduler._meta_base_triplet("xgb", probs, set()) == [0.5, 0.3, 0.333]

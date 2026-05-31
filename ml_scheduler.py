@@ -670,6 +670,19 @@ def _evaluate_cascade_on_full_rth(
         return out
 
 
+def _meta_base_triplet(base_name: str, probs, collapsed) -> list:
+    """One base's ``[up, down, flat]`` contribution to the meta-training vector.
+
+    CLOSEOUT #3: a base flagged ``val_single_class_collapse`` is degenerate (all-flat); treat
+    it as absent and substitute the neutral filler so the meta LogisticRegression never learns
+    to trust it. Empty ``collapsed`` with present ``probs`` reproduces the prior assembly
+    byte-for-byte (``[probs.get(c, 0.333) for c in up/down/flat]``).
+    """
+    if base_name in collapsed or not probs:
+        return [0.333, 0.333, 0.334]
+    return [probs.get(c, 0.333) for c in ("up", "down", "flat")]
+
+
 def _assemble_meta_base_prob_vectors(
     model_dir: Path,
     ticker: str,
@@ -700,6 +713,10 @@ def _assemble_meta_base_prob_vectors(
             mp.reset_caches()
             rows = records_for_mvp_from_dataframe(rows_df)
             hist_db = _eval_hist_db_for_labeled_rows(db_path, ticker, rows)
+            # B3+ collapse guard (CLOSEOUT #3): bases flagged val_single_class_collapse in
+            # model_dir are degenerate (all-flat); substitute the neutral filler so the meta
+            # LR never learns to trust them. Empty set => identical to prior assembly.
+            collapsed = mp.read_base_collapse_flags(model_dir, ticker, hz)
             for row in rows:
                 inf_v1 = build_inference_snapshot_v1_from_db_row(
                     ticker=ticker, expiry=None, as_of_ts=row.get("ts_utc"), db_row=row,
@@ -721,9 +738,9 @@ def _assemble_meta_base_prob_vectors(
                 if xgb_p is None:
                     continue
                 vec = (
-                    [xgb_p.get(c, 0.333) for c in CLASS_NAMES] +
-                    ([lstm_p.get(c, 0.333) for c in CLASS_NAMES] if lstm_p else [0.333, 0.333, 0.334]) +
-                    ([tr_p.get(c, 0.333) for c in CLASS_NAMES] if tr_p else [0.333, 0.333, 0.334])
+                    _meta_base_triplet("xgb", xgb_p, collapsed)
+                    + _meta_base_triplet("lstm", lstm_p, collapsed)
+                    + _meta_base_triplet("transformer", tr_p, collapsed)
                 )
                 X_meta.append(vec)
                 y_meta.append({"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2))
