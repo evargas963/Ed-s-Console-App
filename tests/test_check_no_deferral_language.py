@@ -57,6 +57,12 @@ import check_no_deferral_language as mod  # noqa: E402
         "behavioral spec pending",
         "Can land later without refactoring.",
         "Will wire it later in a follow-up commit.",
+        # §No carried residuals (2026-05-31): a disclosed residual called "done".
+        "Workstream B complete with a tracked residual on engineer_features.",
+        "Shipped with a disclosed residual in the cascade stacker.",
+        "bounded-design residual accepted for K=3.",
+        "RESIDUAL (B-RESIDUAL, NOT closed) — nested xgb_probs feature.",
+        "Engineer_features category maps residual not closed this commit.",
     ],
 )
 def test_each_forbidden_phrase_is_caught(tmp_path: Path, phrase: str) -> None:
@@ -80,6 +86,12 @@ def test_each_forbidden_phrase_is_caught(tmp_path: Path, phrase: str) -> None:
         "Next cache row to evict per LRU policy.",
         # A `future` mention that isn't about deferring this slice.
         "Future-proof the schema by versioning the manifest.",
+        # §No carried residuals: legit ML "residual" usage must NOT trip — bare
+        # noun is allowed; only the completion-qualifier phrasing is banned.
+        "Add a residual connection between encoder blocks.",
+        "The residual block normalizes activations before the skip.",
+        "Compute the residual error and backprop the gradient.",
+        "The file handle is not closed until teardown.",
     ],
 )
 def test_clean_text_passes(tmp_path: Path, clean: str) -> None:

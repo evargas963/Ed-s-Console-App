@@ -693,9 +693,10 @@ def train_ticker(
     # early stopping on the strictly-later val tail (not training loss); reported val_accuracy
     # is out-of-sample. Thin tickers get no holdout (in-sample, disclosed) and are blocked from
     # promotion by A1/B1. evaluate_only keeps the legacy full-data path.
-    # NOTE (tracked residual, NOT closed here): engineer_features' category maps + aux vol
-    # medians are still fit on the full df; only the fillna imputation is train-partition-only
-    # in this commit.
+    # [REAL-GATE: training-skew] engineer_features' category maps + aux vol medians are still
+    # fit on the full df (only fillna imputation is train-partition-only here). Fixing this
+    # alters feature computation → requires the one clean retrain, so it lands with the
+    # CORRECTNESS-CLOSEOUT (item #1) per OPEN_ITEMS "OPERATOR GATE 2026-05-31" — not standalone.
     from ml_data_common import time_ordered_tail_split
 
     train_end, n_val = (len(y), 0) if evaluate_only else time_ordered_tail_split(len(y))

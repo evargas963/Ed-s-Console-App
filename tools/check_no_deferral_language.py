@@ -97,6 +97,18 @@ DEFERRAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         r"\bcan\s+land\s+later\b",
         re.IGNORECASE,
     )),
+    # §No carried residuals (AGENTS.md, 2026-05-31): a disclosed residual called
+    # "done" is the violation. Tight, loophole-specific phrasing only — bare
+    # "residual" (e.g. ML "residual connection/block/error") is intentionally NOT
+    # caught; only the completion-qualifier adjectives + "residual … NOT closed".
+    ("'tracked/disclosed/bounded-design residual' (§No carried residuals)", re.compile(
+        r"\b(?:tracked|disclosed|bounded[- ]design)\s+residuals?\b",
+        re.IGNORECASE,
+    )),
+    ("'residual … NOT closed' completion qualifier (§No carried residuals)", re.compile(
+        r"\bresiduals?\b[^\n]{0,40}?\bnot\s+closed\b",
+        re.IGNORECASE,
+    )),
 )
 
 # Paths (relative to repo root) where future-work tracking is the file's purpose.

@@ -481,6 +481,24 @@ Any deferral without one of these tags is rejection-grade.
 
 ---
 
+## No carried residuals — done means zero residuals `[PROMOTED]` (2026-05-31 — operator binding; sharpens §Closure + §Meet-or-Exceed)
+
+<a id="no-carried-residuals"></a>
+
+**A disclosed residual is NOT a closed residual.** When work on a subsystem is called complete, "complete" means **zero open residuals in that subsystem** — not "complete with a tracked residual," not "complete (NOT closed)," not "complete with a known limitation." Calling something done while a fixable defect in the same cone is knowingly carried forward is **rejection-grade**, and the honest answer to the operator's *"is this clean / fixed?"* is **NO** while any such residual exists — no asterisk, no soft-sell ([§Do not lie to the operator](#do-not-lie-to-the-operator-promoted-2026-05-24--binding-hard-rule-no-exceptions)).
+
+**The only two admissible end-states for any FIND in the touched cone:**
+1. **Closed** — fix + paired test landed in the same work ([§Closure definition](#closure-definition--no-deferral)), OR
+2. **`[REAL-GATE: <tag>]`** — explicitly tagged in `OPEN_ITEMS` with one taxonomy tag (real future work that *cannot* land now). It is tracked work, not "done."
+
+There is no third state. "Disclosed residual / tracked residual / bounded-design residual / known limitation / NOT closed by this commit" used to ship something **as complete without** a `[REAL-GATE: <tag>]` is the violation. The B-series leakage + fusion residuals (shipped as "complete (NOT closed)") are the incident this rule closes.
+
+**Operator intent (2026-05-31):** "when we fix … the answer to whether something is clean should always be an honest yes without omitting anything … everything needs to be fixed and we fix along the way."
+
+**Mechanical lock (landed with this rule):** `tools/check_no_deferral_language.py` flags commit messages / staged non-allowlisted source using a residual-completion-qualifier — `tracked` / `disclosed` / `bounded-design residual`, or `residual … NOT closed` — without an adjacent `[REAL-GATE: <tag>]`. Bare `residual` (ML "residual connection/block/error") is intentionally NOT caught. Allowlisted surfaces (legitimate future-work tracking): `OPEN_ITEMS.md` / `ACTIVE_PROGRAM.md` / `MEMORY.md` / `AGENTS.md` / `CLAUDE.md` / `governance/**` / `tests/**`. Paired test: `tests/test_check_no_deferral_language.py`. **Honest limit:** surface-pattern catch only — omission / soft-framing of a residual in prose is operator-catch-net + agent discipline ([§Do not lie to the operator](#do-not-lie-to-the-operator-promoted-2026-05-24--binding-hard-rule-no-exceptions)).
+
+---
+
 <a id="no-new-files"></a>
 
 ## No new files when an existing one will do `[PROMOTED]` (2026-05-24)
