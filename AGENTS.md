@@ -485,13 +485,15 @@ Any deferral without one of these tags is rejection-grade.
 
 <a id="no-carried-residuals"></a>
 
+**Scope — universal (full repo, every subsystem and extension).** This binds the *entire* codebase — ML, UI, money-path, Schwab/market-field, governance, tooling, tests, static, docs — not only the ML pipeline that surfaced it. Same reach as [§Meet-or-Exceed Closure Cycle](#meet-or-exceed-closure-cycle): one standard, full repo, no per-area carve-out.
+
 **A disclosed residual is NOT a closed residual.** When work on a subsystem is called complete, "complete" means **zero open residuals in that subsystem** — not "complete with a tracked residual," not "complete (NOT closed)," not "complete with a known limitation." Calling something done while a fixable defect in the same cone is knowingly carried forward is **rejection-grade**, and the honest answer to the operator's *"is this clean / fixed?"* is **NO** while any such residual exists — no asterisk, no soft-sell ([§Do not lie to the operator](#do-not-lie-to-the-operator-promoted-2026-05-24--binding-hard-rule-no-exceptions)).
 
 **The only two admissible end-states for any FIND in the touched cone:**
 1. **Closed** — fix + paired test landed in the same work ([§Closure definition](#closure-definition--no-deferral)), OR
 2. **`[REAL-GATE: <tag>]`** — explicitly tagged in `OPEN_ITEMS` with one taxonomy tag (real future work that *cannot* land now). It is tracked work, not "done."
 
-There is no third state. "Disclosed residual / tracked residual / bounded-design residual / known limitation / NOT closed by this commit" used to ship something **as complete without** a `[REAL-GATE: <tag>]` is the violation. The B-series leakage + fusion residuals (shipped as "complete (NOT closed)") are the incident this rule closes.
+There is no third state. "Disclosed residual / tracked residual / bounded-design residual / known limitation / NOT closed by this commit" used to ship something **as complete without** a `[REAL-GATE: <tag>]` is the violation — **in any file, any subsystem.** The B-series leakage + fusion residuals (shipped as "complete (NOT closed)") are the *originating* incident (ML); the rule applies repo-wide.
 
 **Operator intent (2026-05-31):** "when we fix … the answer to whether something is clean should always be an honest yes without omitting anything … everything needs to be fixed and we fix along the way."
 

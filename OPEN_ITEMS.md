@@ -23,7 +23,7 @@
 
 **ROSTER CULL (operator 2026-05-31):** training roster = `logging_universe` enrollment minus `panel_auto` (there is NO per-run `--tickers` flag — culling the universe IS the speed lever). **KEEP:** SPY, QQQ, IWM + mega-caps AAPL, MSFT, NVDA, AMZN, META, GOOGL, AVGO, TSLA + PLTR, NFLX, CRWD. **CULL:** CIFR, PCG, MET, MRVL, SMCI, TSL, ASTS, MU, RKLB + GOOG (dup of GOOGL) + $SPX (dup of SPY). Mechanism options: remove from `logging_universe` (stops train + logging) or recat as `panel_auto` (stops train, keeps logging). SPY/QQQ are driven by the mega-cap basket (keep-list = the drivers); IWM is small-cap breadth (no single driver → its signal is regime/macro, not constituents).
 
-**NEW STANDARD (operator 2026-05-31):** "done means zero residuals" — landed in `AGENTS.md` §No carried residuals (binds both agents — it's the single shared rule source). **Mechanical lock landed WITH the rule (same commit):** `tools/check_no_deferral_language.py` residual-completion-qualifier patterns + paired `tests/test_check_no_deferral_language.py` fixtures — a complete promotion, not prose-only.
+**NEW STANDARD (operator 2026-05-31):** "done means zero residuals" — landed in `AGENTS.md` §No carried residuals (binds both agents — single shared rule source; **REPO-WIDE — every subsystem/extension, not just ML**: UI, money-path, Schwab, governance, tooling, tests, static, docs). **Mechanical lock landed WITH the rule (same commit):** `tools/check_no_deferral_language.py` residual-completion-qualifier patterns + paired `tests/test_check_no_deferral_language.py` fixtures — a complete promotion, not prose-only.
 
 **OWNER SPLIT for resume:**
 - **Operator (host):** stop PID 25196; decide hold-vs-serve; trim `logging_universe` to the keep-list.
