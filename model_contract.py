@@ -8,7 +8,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, Tuple
 
-from training_provenance import FEATURE_SCHEMA_VERSION, LABEL_CONFIG_VERSION
+from training_provenance import (
+    FEATURE_SCHEMA_VERSION,
+    LABEL_CONFIG_VERSION,
+    PREPROCESSING_VERSION,
+)
 
 # ── Current system contract (bump when semantics change; retrain all families) ──
 CURRENT_LABEL_CONFIG_VERSION = LABEL_CONFIG_VERSION
@@ -16,6 +20,13 @@ CURRENT_HORIZON_OUTCOME_SCHEMA_VERSION = "bar_forward_close_v1"
 CURRENT_ANCHOR_CONTRACT_VERSION = "bar_close_anchor_v1"
 CURRENT_FEATURE_SCHEMA_VERSION = FEATURE_SCHEMA_VERSION
 CURRENT_MISSINGNESS_CONTRACT_VERSION = "issue7_v1_empirical_nan_impute"
+# Closeout #1 follow-on (2026-05-31): preprocessing_version is a serving-compatibility axis —
+# engineer_single_snapshot (serving) must stay lockstep with engineer_features (training). A
+# preprocessing-only change (e.g. the B3 train-only fit) alters feature VALUES, so a bundle trained
+# under an older preprocessing version is stale even when feature_schema_version (column set) is
+# unchanged. Including it here makes such a change fail-close serving like LABEL_CONFIG_VERSION, not
+# just invalidate the training cache. All three families already stamp it via TrainingProvenance.
+CURRENT_PREPROCESSING_VERSION = PREPROCESSING_VERSION
 
 CONTRACT_FIELDS = (
     "label_config_version",
@@ -23,6 +34,7 @@ CONTRACT_FIELDS = (
     "anchor_contract_version",
     "feature_schema_version",
     "missingness_contract_version",
+    "preprocessing_version",
 )
 
 
@@ -34,6 +46,7 @@ def contract_metadata_dict() -> Dict[str, str]:
         "anchor_contract_version": CURRENT_ANCHOR_CONTRACT_VERSION,
         "feature_schema_version": CURRENT_FEATURE_SCHEMA_VERSION,
         "missingness_contract_version": CURRENT_MISSINGNESS_CONTRACT_VERSION,
+        "preprocessing_version": CURRENT_PREPROCESSING_VERSION,
     }
 
 
