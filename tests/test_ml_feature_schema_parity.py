@@ -61,6 +61,31 @@ def test_pred_columns_do_not_create_rules_engineered_features():
     assert "rules_1c_spread" not in feats
 
 
+def test_sentiment_news_features_deregistered():
+    """SENTIMENT/NEWS FEATURE RETIRE: the 6 non-Schwab news/sentiment cols are not XGB features,
+    even when present and populated in the source df (train + serve, since both emit from
+    SCALE_INVARIANT_COLS)."""
+    retired = (
+        "sentiment_composite", "sentiment_buzz", "sentiment_finnhub",
+        "sentiment_av", "breaking_news_flag", "pre_market_sentiment",
+    )
+    df = _minimal_df()
+    for c in retired:
+        df[c] = 0.5
+    X, names, _, _ = engineer_features(df)
+    for c in retired:
+        assert c not in names, f"{c} still a training feature"
+        assert c not in X.columns, f"{c} still in engineered matrix"
+    # serving side emits from the same list → also absent
+    snap = {"ticker": "SPY", "spot": 100.0, "candle_body_pts": 1.0, "candle_range_pts": 2.0,
+            "nearest_above_dist": 1.0, "nearest_below_dist": 1.0,
+            **{c: 0.5 for c in retired}}
+    row = engineer_single_snapshot(snap, {}, list(X.columns), {}, "SPY")
+    assert row is not None
+    for c in retired:
+        assert c not in row
+
+
 def test_structural_bulk_matches_snapshot():
     """Bulk engineer_features and engineer_single_snapshot agree on shared structural columns."""
     df = _minimal_df()

@@ -5,6 +5,7 @@ import json
 
 from model_contract import (
     CONTRACT_FIELDS,
+    CURRENT_FEATURE_SCHEMA_VERSION,
     CURRENT_PREPROCESSING_VERSION,
     contract_metadata_dict,
     meta_matches_system_contract,
@@ -33,6 +34,19 @@ def test_preprocessing_version_is_a_contract_field():
     # All three families enforce it (no impute_medians required for lstm/transformer).
     assert validate_artifact_contract(d, "lstm")[0]
     assert not validate_artifact_contract(missing, "transformer")[0]
+
+
+def test_feature_schema_version_fail_closes_serving_on_sentiment_deregister():
+    """SENTIMENT/NEWS FEATURE RETIRE: dropping the 6 cols bumps feature_schema_version, which IS a
+    contract field — so a bundle trained under the old schema fail-closes until the Stage-2 retrain."""
+    assert "feature_schema_version" in CONTRACT_FIELDS
+    d = contract_metadata_dict()
+    assert d["feature_schema_version"] == CURRENT_FEATURE_SCHEMA_VERSION
+    # Stale (pre-de-register) schema -> rejected.
+    assert not meta_matches_system_contract({**d, "feature_schema_version": "v4_canonical_1m"})[0]
+    # Missing -> rejected.
+    missing = {k: v for k, v in d.items() if k != "feature_schema_version"}
+    assert not meta_matches_system_contract(missing)[0]
 
 
 def test_xgb_requires_impute_medians():

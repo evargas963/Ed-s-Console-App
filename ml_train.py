@@ -160,9 +160,13 @@ SCALE_INVARIANT_COLS = [
     "candle_volume", "bid_ask_imbalance",
     "spread", "atr", "iv_rank", "smart_money_score",
     "breakout_score", "pin_score",
-    # Context layer (snapshots after rollout — NaN for legacy rows until backfilled)
-    "sentiment_composite", "sentiment_buzz", "sentiment_finnhub", "sentiment_av",
-    "breaking_news_flag", "pre_market_sentiment",
+    # Context layer (snapshots after rollout — NaN for legacy rows until backfilled).
+    # SENTIMENT/NEWS FEATURE RETIRE (2026-05-31, Schwab-first): 6 non-Schwab news/sentiment
+    # features de-registered — sentiment_composite/_buzz/_finnhub/_av, breaking_news_flag,
+    # pre_market_sentiment — all Finnhub/AlphaVantage-sourced (NO_SCHWAB_EQUIVALENT), XGB-only
+    # (absent from CATEGORICALS + LSTM FEATURES_5M/1M). The news_sentiment producer and the
+    # /api/state news headline display stay as display-only (not model features); the DB column
+    # DROP is post-retrain hygiene. FEATURE_SCHEMA_VERSION bumped so this fail-closes serving.
     "absorption_score", "continuation_score",
 ]
 

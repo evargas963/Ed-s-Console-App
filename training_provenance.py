@@ -40,7 +40,13 @@ from ml_horizon import (
 log = logging.getLogger("training_provenance")
 
 # ── Version constants (bump when features or preprocessing change) ─────────────
-FEATURE_SCHEMA_VERSION: str = "v4_canonical_1m"
+FEATURE_SCHEMA_VERSION: str = "v5_sentiment_deregister"
+# v5 (SENTIMENT/NEWS FEATURE RETIRE, 2026-05-31): 6 non-Schwab news/sentiment features removed from
+# ml_train.SCALE_INVARIANT_COLS (sentiment_composite/_buzz/_finnhub/_av, breaking_news_flag,
+# pre_market_sentiment). The feature COLUMN SET changes, so this bump is correct here; and unlike
+# PREPROCESSING_VERSION, feature_schema_version IS a model_contract field (CONTRACT_FIELDS) checked by
+# meta_matches_system_contract → it fail-closes every shipped bundle until the one combined Stage-2
+# retrain (alongside LABEL_CONFIG_VERSION + PREPROCESSING_VERSION). Folds into that single retrain.
 # v3: tabular load_data uses per-ticker 1m-preferred m5_* additive merge (ml_data_common); invalidates scheduler/cache keys.
 # v4 (CORRECTNESS-CLOSEOUT #1, 2026-05-31): engineer_features now fits its stateful transforms on the
 # TRAIN partition only — per-(ticker,hr,min) volume median, category->code maps, AND the NaN column
