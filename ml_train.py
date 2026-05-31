@@ -284,8 +284,17 @@ def load_data(
 # FEATURE ENGINEERING
 # =============================================================================
 
-def engineer_features(df: pd.DataFrame) -> tuple:
-    """Build normalized feature matrix. Returns (X, feature_names, category_maps, aux_stats)."""
+def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
+    """Build normalized feature matrix. Returns (X, feature_names, category_maps, aux_stats).
+
+    ``fit_end`` (B3 closeout #1): when set, the two stateful transforms — the per-(ticker,hr,min)
+    volume median behind ``volume_ratio`` and the categorical -> integer code maps — are FIT on the
+    train partition ``df.iloc[:fit_end]`` only, then APPLIED to the full frame. Val-only time-of-day
+    keys / categories therefore map to NaN, exactly matching ``engineer_single_snapshot`` serving (no
+    persisted median / mapping for an unseen key). ``fit_end=None`` preserves the exact legacy full-df
+    behavior byte-for-byte (used by tests, the feature_contracts parity audit, eval-only, and the
+    no-holdout / thin-ticker training paths).
+    """
     from ml_data_common import et_hour_minute_arrays_from_ts_utc
 
     spot  = pd.to_numeric(df["spot"], errors="coerce").values
@@ -386,11 +395,19 @@ def engineer_features(df: pd.DataFrame) -> tuple:
             tkr_s = df["ticker"].astype(str) if "ticker" in df.columns else pd.Series(["?"]*len(df))
             tod   = tkr_s + "_" + hrs_i.astype(str) + "_" + mns_i.astype(str)
             vseries    = pd.Series(vol, index=df.index)
-            med_by_tod = vseries.groupby(tod).transform("median")
-            avg_vol    = med_by_tod.values
-            avg_vol[avg_vol <= 0] = np.nan
+            tod_series = pd.Series(np.asarray(tod), index=df.index)
+            # B3 train-only fit: per-(ticker,hr,min) median fit on the TRAIN partition only,
+            # applied to all rows. fit_end=None => full-df (legacy / serving-equiv / eval-only).
+            # tod_series.map(full_median) is numerically identical to the old transform("median")
+            # for the fit_end=None path, so the default is a no-op regression-wise.
+            if fit_end is not None and 0 < fit_end < len(df):
+                fit_med = vseries.iloc[:fit_end].groupby(tod_series.iloc[:fit_end]).median()
+            else:
+                fit_med = vseries.groupby(tod_series).median()
+            avg_vol = tod_series.map(fit_med).to_numpy(dtype=float)  # NaN for val-only tod
+            avg_vol[~(avg_vol > 0)] = np.nan                         # NaN-safe <=0 + nan guard
             feats["volume_ratio"] = np.clip(vol / avg_vol, 0, 10)
-            for key, med in vseries.groupby(tod).median().items():
+            for key, med in fit_med.items():
                 if not np.isnan(med):
                     aux_stats[f"vol_median_{key}"] = float(med)
 
@@ -406,12 +423,15 @@ def engineer_features(df: pd.DataFrame) -> tuple:
     category_maps = {}
     for col in CATEGORICALS:
         if col in df.columns:
-            cat     = df[col].astype("category")
-            mapping = {v: i for i, v in enumerate(cat.cat.categories)}
+            col_full = df[col]
+            # B3 train-only fit: category codes learned from the TRAIN partition only; a val-only
+            # category (absent from the train mapping) -> NaN, matching engineer_single_snapshot
+            # serving. fit_end=None => full-df (same sorted-unique categories + codes as legacy).
+            fit_col = (col_full.iloc[:fit_end]
+                       if (fit_end is not None and 0 < fit_end < len(df)) else col_full)
+            mapping = {v: i for i, v in enumerate(pd.Categorical(fit_col).categories)}
             category_maps[col] = mapping
-            codes   = cat.cat.codes.values.astype(float)
-            codes[codes < 0] = np.nan
-            feats[f"cat_{col}"] = codes
+            feats[f"cat_{col}"] = col_full.map(mapping).to_numpy(dtype=float)
 
     X = pd.DataFrame(feats, index=df.index)
     dupes = X.columns[X.columns.duplicated()].tolist()
@@ -666,7 +686,17 @@ def train_ticker(
     if tm != TARGET_MODE_TRICLASS and target_col not in df.columns:
         raise ValueError(f"{ticker}: column {target_col} missing from training frame")
 
-    X, feat_names, cat_maps, aux_stats = engineer_features(df)
+    # B3 closeout #1 — compute the chronological inner split BEFORE feature engineering so the
+    # stateful transforms (per-(tkr,hr,min) volume median, category->code maps) AND the NaN column
+    # filter below are fit on the TRAIN partition only; the val tail never influences feature
+    # computation or selection. len(df) == len(y) here (the dir-mode row filter above already ran;
+    # no row drops after). fit_end=None on eval-only / no-holdout / thin-ticker paths preserves the
+    # exact legacy full-df behavior.
+    from ml_data_common import time_ordered_tail_split
+
+    train_end, n_val = (len(df), 0) if evaluate_only else time_ordered_tail_split(len(df))
+    _fit_end = train_end if (n_val > 0 and not evaluate_only) else None
+    X, feat_names, cat_maps, aux_stats = engineer_features(df, fit_end=_fit_end)
     y = df[target_col].map(class_map).values
     if np.any(pd.isna(y)):
         bad = int(np.sum(pd.isna(y)))
@@ -676,7 +706,11 @@ def train_ticker(
     print(f"  NaN density: {X.isna().mean().mean():.1%}")
     print(f"  Class balance: {dict(zip(class_names, np.bincount(y, minlength=nc)))}")
 
-    nan_pct = X.isna().mean().sort_values(ascending=False)
+    # B3 closeout #1: decide the surviving feature set on the TRAIN partition only (full-df on the
+    # eval-only / no-holdout paths) so the val tail — including the val-region NaNs that the
+    # train-only category/volume fit now produces — never influences which features the model sees.
+    _nan_basis = X.iloc[:train_end] if (n_val > 0 and not evaluate_only) else X
+    nan_pct = _nan_basis.isna().mean().sort_values(ascending=False)
     good    = nan_pct[nan_pct < nan_threshold].index.tolist()
     dropped = nan_pct[nan_pct >= nan_threshold].index.tolist()
     print(f"\n  NaN filter ({nan_threshold:.0%}): kept {len(good)}, dropped {len(dropped)}")
@@ -688,18 +722,15 @@ def train_ticker(
     X = X[good]
     feat_names = good
 
-    # Workstream B3 — chronological inner holdout (df is ORDER BY ts_utc ASC). Imputation
-    # medians are fit on the TRAIN partition only; the XGB best boosting round is selected by
-    # early stopping on the strictly-later val tail (not training loss); reported val_accuracy
-    # is out-of-sample. Thin tickers get no holdout (in-sample, disclosed) and are blocked from
-    # promotion by A1/B1. evaluate_only keeps the legacy full-data path.
-    # [REAL-GATE: training-skew] engineer_features' category maps + aux vol medians are still
-    # fit on the full df (only fillna imputation is train-partition-only here). Fixing this
-    # alters feature computation → requires the one clean retrain, so it lands with the
-    # CORRECTNESS-CLOSEOUT (item #1) per OPEN_ITEMS "OPERATOR GATE 2026-05-31" — not standalone.
-    from ml_data_common import time_ordered_tail_split
-
-    train_end, n_val = (len(y), 0) if evaluate_only else time_ordered_tail_split(len(y))
+    # Workstream B3 — chronological inner holdout (df is ORDER BY ts_utc ASC). The split (train_end,
+    # n_val) is computed above, BEFORE engineer_features, so the imputation medians, the per-
+    # (tkr,hr,min) volume median, the category code maps, AND the NaN column filter are all fit on
+    # the TRAIN partition only; the XGB best boosting round is early-stopped on the strictly-later
+    # val tail (not training loss) and the reported val_accuracy is out-of-sample. Thin tickers get
+    # no holdout (in-sample, disclosed; blocked from promotion by A1/B1); evaluate_only keeps the
+    # legacy full-data path. CORRECTNESS-CLOSEOUT #1 (2026-05-31): the prior
+    # [REAL-GATE: training-skew] full-df category/volume fit is now closed — feature VALUES change,
+    # so PREPROCESSING_VERSION is bumped to force the one clean refit.
     _impute_basis = X.iloc[:train_end] if n_val > 0 else X
     med_series = _impute_basis.median()
     impute_medians = {}

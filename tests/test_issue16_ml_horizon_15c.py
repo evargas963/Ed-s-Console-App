@@ -142,3 +142,30 @@ def test_train_ticker_b3_no_holdout_when_too_few_rows(tmp_path: Path):
     meta = json.loads((model_dir / "xgb_XXT_1c_meta.json").read_text(encoding="utf-8"))
     assert meta.get("val_basis") == "in_sample_no_holdout"
     assert meta.get("val_accuracy") is None
+
+
+def test_train_ticker_b3_nan_filter_uses_train_partition_only(tmp_path: Path):
+    """B3 closeout #1: the NaN column filter decides the surviving feature set on the TRAIN
+    partition only. A feature that is 35% NaN in train but dense in the val tail (so its FULL-df
+    NaN rate is below the 30% threshold) must still be dropped — proving the val tail no longer
+    influences feature selection."""
+    from ml_train import engineer_features, train_ticker
+
+    n = 400  # val tail = 15% = 60 rows -> train = 340
+    df = _synthetic_training_rows(n, "outcome_1c", seed=11)
+    # net_gamma is a scale-invariant passthrough feature. NaN for the first 119 (train) rows only:
+    #   train NaN rate = 119/340 = 35.0% (>= 30% threshold -> dropped on a train-only basis)
+    #   full-df NaN rate = 119/400 = 29.75% (< 30% -> WOULD be kept on a full-df basis)
+    ng = np.full(n, 0.5, dtype=float)
+    ng[:119] = np.nan
+    df["net_gamma"] = ng
+
+    # Full-df NaN rate of net_gamma is below threshold (legacy full-df filter would keep it).
+    X_full, _, _, _ = engineer_features(df)
+    assert float(X_full["net_gamma"].isna().mean()) < 0.30
+
+    model_dir = tmp_path / "models"
+    train_ticker("XXT", df, model_dir=model_dir, skip_sanity=True, ml_horizon_slug="1c")
+    meta = json.loads((model_dir / "xgb_XXT_1c_meta.json").read_text(encoding="utf-8"))
+    assert meta.get("val_basis") == "time_ordered_tail"      # a real holdout was carved
+    assert "net_gamma" not in (meta.get("features") or [])   # dropped on the train-only NaN basis

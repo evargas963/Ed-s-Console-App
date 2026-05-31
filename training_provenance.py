@@ -42,7 +42,17 @@ log = logging.getLogger("training_provenance")
 # ── Version constants (bump when features or preprocessing change) ─────────────
 FEATURE_SCHEMA_VERSION: str = "v4_canonical_1m"
 # v3: tabular load_data uses per-ticker 1m-preferred m5_* additive merge (ml_data_common); invalidates scheduler/cache keys.
-PREPROCESSING_VERSION: str = "v3_rth_decay_m5_additive_canonical"
+# v4 (CORRECTNESS-CLOSEOUT #1, 2026-05-31): engineer_features now fits its stateful transforms on the
+# TRAIN partition only — per-(ticker,hr,min) volume median, category->code maps, AND the NaN column
+# filter — instead of the full df, so the chronological val tail no longer leaks into feature
+# computation or feature selection. Feature VALUES change, so this bump invalidates the training cache
+# and bypasses the XGB warm-continuation guard (ml_train.py keys incremental append on this string),
+# forcing a full refit on the next scheduler run. NOTE: preprocessing_version is NOT a model_contract
+# field, so this bump does not by itself fail-close serving bundles (unlike LABEL_CONFIG_VERSION). The
+# leaked-feature bundles are already fail-closed by Phase 1's LABEL_CONFIG_VERSION bump (the one clean
+# retrain has not run yet); making a preprocessing-only change fail-close serving is a contract-field
+# decision recorded in OPEN_ITEMS (closeout #1 row).
+PREPROCESSING_VERSION: str = "v4_train_only_feature_fit"
 # Bump when label column, horizon definition, or outcome filter semantics change (invalidates training cache).
 # Issue 15: 5c+ artifacts share this feature/label pipeline version; exact label column is in meta.target_column.
 # Phase 1 (horizon-collapse fix): outcome_Nc now classified with a per-horizon ATR-scaled move
