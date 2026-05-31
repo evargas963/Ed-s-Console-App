@@ -420,3 +420,138 @@ def test_auto_promote_blocked_when_manifest_accuracy_missing(tmp_path: Path, mon
     assert result["executed"] is False
     assert result["skipped_reason"] == "promotion_gate_failed"
     assert "accuracy" in result["promotion_gate_reason"]
+
+
+# ── CORRECTNESS-CLOSEOUT #4 — A2 first-cycle deadlock reconcile ────────────────
+from timeframe_config import CANONICAL_TIMEFRAME
+
+
+def _write_active_xgb_meta(model_dir: Path, tku: str, hz: str, *, score, metric=None,
+                           root_name="active") -> Path:
+    """Write a minimal active xgb meta (load_provenance-readable + score fields)."""
+    d = model_dir / root_name / tku
+    d.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "model_type": "XGBClassifier",
+        "ticker": tku,
+        "training_timeframe": CANONICAL_TIMEFRAME,
+        "target_column": f"outcome_{hz}",
+        "target_definition": "",
+        "rows_used": 1000,
+        "promotion_score": score,
+        "balanced_accuracy": 0.70,
+    }
+    if metric is not None:
+        meta["promotion_metric"] = metric
+    p = d / f"xgb_{tku}_{hz}_meta.json"
+    p.write_text(json.dumps(meta), encoding="utf-8")
+    return p
+
+
+def _honest_candidate_prov():
+    from training_provenance import TrainingProvenance
+
+    return TrainingProvenance.from_dict({
+        "model_type": "XGBClassifier", "ticker": "SPY",
+        "training_timeframe": CANONICAL_TIMEFRAME, "target_column": "outcome_1c",
+        "target_definition": "", "rows_used": 1000, "promotion_score": 0.45,
+        "balanced_accuracy": 0.45,
+    })
+
+
+def test_reconcile_resets_pre_b_incumbent_and_unblocks_gate(tmp_path: Path):
+    from arch_competition.promotion_execution import (
+        PRE_B_RECONCILED_METRIC,
+        reconcile_pre_b_incumbent_scores,
+    )
+    from training_provenance import load_provenance, validate_for_promotion
+
+    meta = _write_active_xgb_meta(tmp_path, "SPY", "1c", score=0.8079)  # pre-B (no ensemble metric)
+
+    # BEFORE: honest ensemble challenger (0.45) is blocked by the inflated incumbent 0.8079.
+    cand = _honest_candidate_prov()
+    ok_before, _ = validate_for_promotion(
+        cand, 0.45, existing_provenance=load_provenance(meta),
+        balanced_accuracy=0.45, horizon_slug="1c",
+    )
+    assert ok_before is False  # the deadlock
+
+    out = reconcile_pre_b_incumbent_scores(tmp_path, ["SPY"], ["1c"], dry_run=False)
+    assert out["reset_count"] == 1
+    data = json.loads(meta.read_text(encoding="utf-8"))
+    assert data["promotion_score"] == 0.0
+    assert data["promotion_metric"] == PRE_B_RECONCILED_METRIC
+    assert data["pre_b_reconciled_from_score"] == pytest.approx(0.8079)
+
+    # AFTER: the same challenger now clears the score comparison (quality floors still gate).
+    ok_after, reason = validate_for_promotion(
+        cand, 0.45, existing_provenance=load_provenance(meta),
+        balanced_accuracy=0.45, horizon_slug="1c",
+    )
+    assert ok_after is True, reason
+
+
+def test_reconcile_dry_run_does_not_write(tmp_path: Path):
+    from arch_competition.promotion_execution import reconcile_pre_b_incumbent_scores
+
+    meta = _write_active_xgb_meta(tmp_path, "SPY", "1c", score=0.8079)
+    out = reconcile_pre_b_incumbent_scores(tmp_path, ["SPY"], ["1c"], dry_run=True)
+    assert out["dry_run"] is True
+    assert out["would_reset"] == 1
+    assert out["reset"][0]["old_score"] == pytest.approx(0.8079)
+    assert out["reset"][0]["written"] is False
+    # file untouched
+    assert json.loads(meta.read_text(encoding="utf-8"))["promotion_score"] == pytest.approx(0.8079)
+
+
+def test_reconcile_idempotent_second_run_zero(tmp_path: Path):
+    from arch_competition.promotion_execution import reconcile_pre_b_incumbent_scores
+
+    _write_active_xgb_meta(tmp_path, "SPY", "1c", score=0.8079)
+    first = reconcile_pre_b_incumbent_scores(tmp_path, ["SPY"], ["1c"], dry_run=False)
+    assert first["reset_count"] == 1
+    second = reconcile_pre_b_incumbent_scores(tmp_path, ["SPY"], ["1c"], dry_run=False)
+    assert second["reset_count"] == 0
+    assert len(second["skipped"]) == 1
+
+
+def test_reconcile_skips_ensemble_basis_incumbent(tmp_path: Path):
+    from arch_competition.promotion_execution import reconcile_pre_b_incumbent_scores
+
+    meta = _write_active_xgb_meta(
+        tmp_path, "SPY", "1c", score=0.62, metric="ensemble_eval_accuracy"
+    )
+    out = reconcile_pre_b_incumbent_scores(tmp_path, ["SPY"], ["1c"], dry_run=False)
+    assert out["reset_count"] == 0
+    assert json.loads(meta.read_text(encoding="utf-8"))["promotion_score"] == pytest.approx(0.62)
+
+
+def test_reconcile_resolves_horizon_specific_root(tmp_path: Path):
+    """5c incumbents live under models/active_5c, not models/active — the horizon
+    root must be derived per-horizon or non-1c incumbents stay deadlocked."""
+    from arch_competition.promotion_execution import reconcile_pre_b_incumbent_scores
+
+    meta_5c = _write_active_xgb_meta(tmp_path, "SPY", "5c", score=0.71, root_name="active_5c")
+    out = reconcile_pre_b_incumbent_scores(tmp_path, ["SPY"], ["5c"], dry_run=False)
+    assert out["reset_count"] == 1
+    assert json.loads(meta_5c.read_text(encoding="utf-8"))["promotion_score"] == 0.0
+    # nothing was created/needed under the 1c root
+    assert not (tmp_path / "active" / "SPY").exists()
+
+
+def test_reconcile_missing_meta_recorded_not_crash(tmp_path: Path):
+    from arch_competition.promotion_execution import reconcile_pre_b_incumbent_scores
+
+    out = reconcile_pre_b_incumbent_scores(tmp_path, ["NOPE"], ["1c"], dry_run=True)
+    assert out["would_reset"] == 0
+    assert len(out["missing"]) == 1
+
+
+def test_reconcile_write_outside_governed_scope_raises(tmp_path: Path):
+    from arch_competition.exceptions import ManualGovernanceError
+    from arch_competition.promotion_execution import _reset_pre_b_incumbent_meta
+
+    meta = _write_active_xgb_meta(tmp_path, "SPY", "1c", score=0.8079)
+    # calling the writer outside governed_active_write_scope must fail closed
+    with pytest.raises(ManualGovernanceError):
+        _reset_pre_b_incumbent_meta(meta, 0.8079)

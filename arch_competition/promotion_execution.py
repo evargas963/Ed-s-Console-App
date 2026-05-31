@@ -126,6 +126,125 @@ def _stamp_active_incumbent_ensemble_score(
     write_json_file_atomically(meta_path, data, indent=2)
 
 
+PRE_B_RECONCILED_METRIC = "pre_b_reconciled"
+RECONCILE_EXECUTOR_ID = "reconcile:pre_b_incumbent_scores_v1"
+
+
+def _reset_pre_b_incumbent_meta(meta_path: Path, old_score: float) -> None:
+    """Write the one-shot ``promotion_score = 0.0`` reset for a single pre-B
+    incumbent meta. Active/ writes require the governed executor, so this asserts
+    the governed write scope is active before touching the file — calling it
+    outside ``governed_active_write_scope`` raises ``ManualGovernanceError``.
+    """
+    from arch_competition.atomic_io import write_json_file_atomically
+
+    assert_active_writes_use_governed_executor("reconcile_pre_b_incumbent_scores")
+    data = json.loads(meta_path.read_text(encoding="utf-8"))
+    data["promotion_score"] = 0.0
+    data["promotion_metric"] = PRE_B_RECONCILED_METRIC
+    data["pre_b_reconciled_from_score"] = float(old_score)
+    write_json_file_atomically(meta_path, data, indent=2)
+
+
+def reconcile_pre_b_incumbent_scores(
+    model_dir: Path,
+    tickers: Any,
+    horizons: Any,
+    *,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    """A2 first-cycle deadlock reconcile (CORRECTNESS-CLOSEOUT #4) — one-shot, idempotent.
+
+    The 21 pre-B incumbents carry an inflated xgb-only ``promotion_score`` (e.g. SPY
+    1c 0.8079) in their active ``xgb_{tku}_{hz}_meta.json``. On the auto path
+    ``_auto_promote_score_row_gate`` -> ``validate_for_promotion`` blocks any honest
+    ensemble challenger because ``training_provenance.py:254`` does
+    ``promotion_metric < existing_provenance.promotion_score`` (~0.4 < 0.8079). The
+    self-heal ``_stamp_active_incumbent_ensemble_score`` only runs AFTER a successful
+    copy, so a blocked promote never reaches it -> permanent deadlock.
+
+    Fix: reset each pre-B incumbent's inflated score to **0.0** (NOT ``None`` — the
+    gate compares ``float < existing`` with no None-guard, so ``None`` would raise
+    ``TypeError`` and crash the gate). With 0.0, the first honest challenger clearing
+    ``MIN_PROMOTION_ACCURACY`` (> 0) wins the score comparison and promotes on the
+    quality floors alone (compliance + accuracy + balanced-accuracy + single-class
+    collapse + A1 data floor + B1 walk-forward holdout all still gate). The first
+    promotion then stamps the honest ensemble basis -> self-sustaining; reconcile is
+    never needed again.
+
+    Pre-B detection: ``promotion_metric != "ensemble_eval_accuracy"`` AND a positive
+    ``promotion_score``. Already-reconciled (0.0) and ensemble-basis rows are skipped,
+    so re-running is a no-op (idempotent).
+
+    ``model_dir`` is the models base; the canonical active root is derived **per
+    horizon** via ``active_bundle_contract.scheduler_active_root`` (1c -> models/active,
+    else models/active_{hz}) — a single concrete root cannot cover multiple horizons.
+
+    ``dry_run=True`` (default) returns the would-reset list (ticker/horizon/old_score)
+    without writing. ``[REAL-GATE: host-only]`` — the live ``dry_run=False`` reset is an
+    operator host run BEFORE ``ED_SCHEDULER_AUTO_PROMOTE=1``.
+    """
+    from active_bundle_contract import scheduler_active_root
+
+    reset: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    missing: list[str] = []
+    scanned = 0
+    targets: list[tuple[str, str, Path, float, Any]] = []
+
+    for ticker in tickers:
+        tku = str(ticker).upper()
+        for horizon in horizons:
+            hz = normalize_ml_horizon_slug(horizon)
+            meta_path = scheduler_active_root(Path(model_dir), hz) / tku / f"xgb_{tku}_{hz}_meta.json"
+            if not meta_path.is_file():
+                missing.append(str(meta_path))
+                continue
+            scanned += 1
+            try:
+                data = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as e:
+                skipped.append({"ticker": tku, "horizon": hz, "reason": f"unreadable: {e}"})
+                continue
+            metric = data.get("promotion_metric")
+            raw_score = data.get("promotion_score")
+            try:
+                score = float(raw_score)
+            except (TypeError, ValueError):
+                score = None
+            if metric == "ensemble_eval_accuracy" or score is None or score <= 0.0:
+                skipped.append({
+                    "ticker": tku, "horizon": hz,
+                    "promotion_metric": metric, "promotion_score": raw_score,
+                    "reason": "ensemble-basis or non-positive score (idempotent skip)",
+                })
+                continue
+            targets.append((tku, hz, meta_path, score, metric))
+
+    if dry_run:
+        for tku, hz, meta_path, score, metric in targets:
+            reset.append({
+                "ticker": tku, "horizon": hz, "meta_path": str(meta_path),
+                "old_score": score, "old_metric": metric, "written": False,
+            })
+        return {
+            "dry_run": True, "scanned": scanned, "would_reset": len(reset),
+            "reset": reset, "skipped": skipped, "missing": missing,
+        }
+
+    with governed_active_write_scope(RECONCILE_EXECUTOR_ID):
+        for tku, hz, meta_path, score, metric in targets:
+            _reset_pre_b_incumbent_meta(meta_path, score)
+            reset.append({
+                "ticker": tku, "horizon": hz, "meta_path": str(meta_path),
+                "old_score": score, "old_metric": metric, "written": True,
+            })
+    return {
+        "dry_run": False, "scanned": scanned, "reset_count": len(reset),
+        "reset": reset, "skipped": skipped, "missing": missing,
+    }
+
+
 def _auto_promote_score_row_gate(
     manifest: dict[str, Any],
     target_architecture: str,
