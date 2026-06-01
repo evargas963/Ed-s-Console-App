@@ -36,16 +36,27 @@ def _schwab_oauth_scope() -> str:
     return s if s else _DEFAULT_SCHWAB_OAUTH_SCOPE
 
 
-def _get_auth_context_with_scope(api_key, callback_url, state=None):
-    """Same as schwab.auth.get_auth_context but OAuth2Client includes explicit scope (scope= in authorize URL)."""
+def _get_auth_context_with_scope(api_key, callback_url, state=None, base_url=None):
+    """Same as schwab.auth.get_auth_context but OAuth2Client includes explicit scope (scope= in authorize URL).
+
+    Mirrors schwab.auth.get_auth_context across schwab-py versions: 1.5.x added the
+    ``base_url`` kwarg (the authorize endpoint is derived from it). We accept and honor
+    it (defaulting to the library's DEFAULT_BASE_URL when not supplied by an older
+    caller) so this override stays signature-compatible — the only behavioral delta vs
+    the upstream function is the explicit ``scope=`` on the OAuth2Client.
+    """
     from authlib.integrations.httpx_client import OAuth2Client
 
+    if base_url is None:
+        base_url = getattr(auth, "DEFAULT_BASE_URL", "https://api.schwabapi.com")
+    endpoint = (
+        auth._auth_endpoint(base_url)
+        if hasattr(auth, "_auth_endpoint")
+        else base_url.rstrip("/") + "/v1/oauth/authorize"
+    )
     scope = _schwab_oauth_scope()
     oauth = OAuth2Client(api_key, redirect_uri=callback_url, scope=scope)
-    authorization_url, new_state = oauth.create_authorization_url(
-        "https://api.schwabapi.com/v1/oauth/authorize",
-        state=state,
-    )
+    authorization_url, new_state = oauth.create_authorization_url(endpoint, state=state)
     print(f"[schwab_client DEBUG] OAuth authorization_url (scope={scope!r}):\n{authorization_url}")
     return auth.AuthContext(callback_url, authorization_url, new_state)
 
