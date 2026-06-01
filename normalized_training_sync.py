@@ -37,6 +37,23 @@ _debounce_timer: Optional[threading.Timer] = None
 _debounce_lock = threading.Lock()
 
 
+def _wal_checkpoint_truncate(conn: sqlite3.Connection) -> bool:
+    """DB-WRITE-PATH-FIXES (b), 2026-05-31: truncate the WAL after a successful materialize.
+
+    No checkpoint call existed anywhere before, so the WAL grew unbounded across refresh cycles
+    (the acute 8.3 GB WAL on the 11 GB DB). ``wal_checkpoint(TRUNCATE)`` flushes committed pages
+    back into the main DB and resets the WAL file to zero. Best-effort: a busy checkpoint must
+    never fail the sync, so failures are swallowed (the next cycle retries). Returns True when
+    the pragma executed without raising.
+    """
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        return True
+    except Exception as e:
+        _log.debug("wal_checkpoint(TRUNCATE) failed: %s", e)
+        return False
+
+
 def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
     r = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
@@ -259,6 +276,10 @@ def ensure_normalized_training_table(
             conn.commit()
             out["fingerprint"] = new_fp
             out["materialized"] = True
+            # DB-WRITE-PATH-FIXES (b): truncate the WAL now that the materialize + fingerprint
+            # writes for this cycle are committed — keeps the on-disk WAL small so the host
+            # VACUUM stays effective and the WAL does not re-grow between training refreshes.
+            out["wal_checkpoint_truncated"] = _wal_checkpoint_truncate(conn)
         finally:
             conn.close()
 

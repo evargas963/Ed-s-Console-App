@@ -1643,6 +1643,12 @@ def _user_persisted_enrollment_policy() -> dict:
 _TICKER_FILE = os.path.join(os.path.dirname(__file__), ".logger_tickers.json")
 _TICKER_ARCHIVE = _TICKER_FILE + ".migrated_issue22"
 
+# DB-WRITE-PATH-FIXES (d), 2026-05-31: import-time-defer guard. Counts how many times the
+# HEAVY DB-backed logging-universe load (migrations / sync_core / prune / panel-sync) has run.
+# The module-import path must NOT trigger it (that work belongs in the FastAPI lifespan); the
+# paired test asserts this counter is 0 immediately after `import server`.
+_LOGGING_UNIVERSE_DB_LOAD_COUNT = 0
+
 
 def _run_legacy_logger_json_migration(db) -> None:
     """Delegate to EdDB hardened migration (provably one-time, transactional)."""
@@ -1685,6 +1691,8 @@ def _load_persisted_tickers() -> list[str]:
             log.warning("fallback load .logger_tickers.json: %s", e)
         return tickers
     try:
+        global _LOGGING_UNIVERSE_DB_LOAD_COUNT
+        _LOGGING_UNIVERSE_DB_LOAD_COUNT += 1
         db = get_db()
         logging_universe_sync_wall_ts = time.time()
         _run_legacy_logger_json_migration(db)
@@ -1728,10 +1736,11 @@ def _load_persisted_tickers() -> list[str]:
 
 def _hydrate_logger_tickers_from_db() -> None:
     """Re-merge CORE + user_persisted + pinned from DB (startup / heal drift). Issue 22."""
-    global _logger_tickers
+    global _logger_tickers, _LOGGING_UNIVERSE_DB_LOAD_COUNT
     if not _HAS_SIGNALS:
         return
     try:
+        _LOGGING_UNIVERSE_DB_LOAD_COUNT += 1
         db = get_db()
         logging_universe_sync_wall_ts = time.time()
         _run_legacy_logger_json_migration(db)
@@ -1760,7 +1769,14 @@ def _hydrate_logger_tickers_from_db() -> None:
     except Exception as e:
         log.warning("hydrate logger tickers from DB: %s", e)
 
-_logger_tickers:  list[str] = _load_persisted_tickers()
+# DB-WRITE-PATH-FIXES (d), 2026-05-31: do NOT run the heavy DB-backed logging-universe load
+# (migrations / sync_core / prune / panel-sync) on the module-import path. That work raced the
+# retrain write-lock and produced the slow init + the "db load failed" warning that dropped
+# pinned tickers. When signals/db are available, import-time init is core-only; the authoritative
+# universe is loaded in the FastAPI lifespan via start_logger() -> _hydrate_logger_tickers_from_db()
+# (server.py:_app_lifespan). The cheap JSON-file fallback (no DB) is retained for the degraded
+# no-signals path so its behavior is unchanged.
+_logger_tickers:  list[str] = list(CORE_TICKERS) if _HAS_SIGNALS else _load_persisted_tickers()
 _logger_stats:    dict      = {}  # ticker -> {last_logged, count, last_error}
 _accuracy_cache:  dict      = {}  # ticker -> {ts, results}
 ACCURACY_INTERVAL: int      = 600  # seconds between accuracy computations (~10 min)
@@ -1900,6 +1916,31 @@ def _register_tracked_ticker(ticker: str, *, enrollment_source: str = "ui_auto")
     except Exception as e:
         log.debug("record_user_ticker failed ticker=%s: %s", t, e, exc_info=True)
     return added
+
+
+def _touch_tracked_ticker_view(ticker: str) -> None:
+    """VIEW-path last-seen touch — TICKER-PREVIEW-NO-ENROLL (operator 2026-05-31).
+
+    Merely looking up / viewing levels, quotes, or analytics for an arbitrary symbol must NOT
+    enroll it (no ``logging_universe`` row, no scheduler user-ticker file write) — enrollment
+    into the training roster is reserved for explicit track/pin actions (``/api/logger/add``,
+    ``/api/logger/pin``). For an ALREADY-enrolled ticker this refreshes ``last_seen`` (the same
+    update the old ``_register_tracked_ticker`` early-return branch did); for an un-enrolled
+    ticker it is a no-op and never writes. Safe to call from the offloaded SSE/async paths.
+    """
+    if not _HAS_SIGNALS:
+        return
+    t = (ticker or "").upper().strip()
+    if not t or len(t) > 10:
+        return
+    with _logger_lock:
+        enrolled = t in _logger_tickers
+    if not enrolled:
+        return
+    try:
+        get_db().logging_universe_touch_seen(t, time.time())
+    except Exception as e:
+        log.debug("view touch_seen failed ticker=%s: %s", t, e, exc_info=True)
 
 
 def _get_mkt_ctx(client, pcr=None, prev_pcr=None):
@@ -5885,6 +5926,8 @@ async def _app_lifespan(app):
         log.error("CANONICAL_TIMEFRAME=%r != '1m' — snapshot inserts will use wrong timeframe!", CANONICAL_TIMEFRAME)
         raise RuntimeError(f"timeframe_config.CANONICAL_TIMEFRAME must be '1m', got {CANONICAL_TIMEFRAME!r}")
     log.info("Canonical timeframe: 1m (snapshot inserts enforced in db.insert_snapshot)")
+    # DB-WRITE-PATH-FIXES (d): start_logger() -> _hydrate_logger_tickers_from_db() performs the
+    # DB-backed logging-universe load here in the lifespan (deferred off the module-import path).
     start_logger()
     log.info(f"Background logger started — core tickers: {CORE_TICKERS}")
 
@@ -6496,9 +6539,9 @@ def _tier_c_analytics_json_response(
     immediately; heavy _fetch_state runs only in background threads.
     """
     ticker = ticker.upper().strip()
-    newly_added = _register_tracked_ticker(ticker)
-    if newly_added:
-        log.info(f"Auto-registered {ticker} with background logger (Tier C analytics)")
+    # TICKER-PREVIEW-NO-ENROLL: the Tier C analytics view must not enroll the symbol — only
+    # refresh last-seen if it is already tracked (enrollment is /api/logger/add|pin only).
+    _touch_tracked_ticker_view(ticker)
 
     inflight_key = _tier_c_inflight_key(ticker, expiry)
     now = time.time()
@@ -6620,7 +6663,8 @@ async def get_live_state(
     # the live logger/retrain) and _tier_a_live_state_dict (blocking Schwab REST + retry on
     # a cold ticker) must run OFF the loop. Offload to the thread pool, like /api/fast-quote.
     def _build():
-        _register_tracked_ticker(t)
+        # TICKER-PREVIEW-NO-ENROLL: live-state view touches last-seen only, never enrolls.
+        _touch_tracked_ticker_view(t)
         return _tier_a_live_state_dict(t, expiry)
     loop = asyncio.get_event_loop()
     payload = await loop.run_in_executor(_get_fast_quote_executor(), _build)
@@ -6646,7 +6690,8 @@ async def get_analytics_light(
     # SWITCH-LATENCY FIX: async route — keep the symbol persist (DB write) and the L1
     # projection build (a full recompute on a cold miss) OFF the event loop.
     def _build():
-        _register_tracked_ticker(t)
+        # TICKER-PREVIEW-NO-ENROLL: L1 light view touches last-seen only, never enrolls.
+        _touch_tracked_ticker_view(t)
         return notify_ticker_expiry_changed(t, expiry, force=force)
     loop = asyncio.get_event_loop()
     payload = await loop.run_in_executor(_get_fast_quote_executor(), _build)
@@ -6664,9 +6709,9 @@ async def get_analytics_light_stream(
     Payload matches GET /api/analytics/light (uses _l1_http_get_projection — no duplicate compute path).
     """
     t = ticker.upper().strip()
-    # SWITCH-LATENCY FIX: _register_tracked_ticker does a SQLite write — offload it so the
-    # SSE-connect path (fires on every ticker switch) doesn't block the event loop.
-    await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _register_tracked_ticker, t)
+    # TICKER-PREVIEW-NO-ENROLL: an L1 SSE subscription is a VIEW (chart open), not a track —
+    # touch last-seen only. Offloaded because it may do a SQLite write for enrolled tickers.
+    await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _touch_tracked_ticker_view, t)
     exp_key = expiry if expiry is not None else "__auto__"
     key = (t, exp_key)
     q, rs_key = _l1_light_sse_try_reserve(request, key)
@@ -6986,7 +7031,8 @@ async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
     # SWITCH-LATENCY FIX: _register_tracked_ticker persists to the SQLite logging_universe
     # (a DB write); keep it off the event loop alongside the quote fetch.
     def _reg_and_fetch():
-        _register_tracked_ticker(ticker)
+        # TICKER-PREVIEW-NO-ENROLL: fast-quote view touches last-seen only, never enrolls.
+        _touch_tracked_ticker_view(ticker)
         return _fetch_fast_quote_payload(ticker)
     try:
         payload = await loop.run_in_executor(_get_fast_quote_executor(), _reg_and_fetch)
@@ -7032,11 +7078,9 @@ async def sse_stream(
     ticker = ticker.upper().strip()
     expiry = expiry or None
     key = (ticker, expiry)
-    # SWITCH-LATENCY FIX: _register_tracked_ticker does a SQLite write — offload it so the
-    # SSE-connect path (fires on every ticker switch) doesn't block the event loop.
-    newly = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _register_tracked_ticker, ticker)
-    if newly:
-        log.info(f"Auto-registered {ticker} with background logger (SSE connect)")
+    # TICKER-PREVIEW-NO-ENROLL: an SSE stream connect is a VIEW subscription, not a track —
+    # touch last-seen only (offloaded; may do a SQLite write for an already-enrolled ticker).
+    await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _touch_tracked_ticker_view, ticker)
 
     stream_route_t0 = time.perf_counter()
 
@@ -7176,7 +7220,8 @@ async def _sse_background_loop() -> None:
 # SWITCH-LATENCY FIX: sync def → threadpool (DB write + Schwab expiry fetch, no await).
 def get_expiries(ticker: str = Query(default=DEFAULT_TICKER)):
     ticker = ticker.upper().strip()
-    _register_tracked_ticker(ticker)
+    # TICKER-PREVIEW-NO-ENROLL: listing expiries is a VIEW — touch last-seen only.
+    _touch_tracked_ticker_view(ticker)
     # Use any cached (ticker, expiry) entry — expiries list is same for all
     cached = next(
         (v for (t, e), v in _state_cache.items() if t == ticker and v.get("ms_dict")),
@@ -7414,7 +7459,9 @@ def logger_remove(ticker: str = Query(..., description="Ticker to remove from lo
 def prediction_override(ticker: str = Query(...), direction: str = Query(...), source: str = Query("user")):
     """Set manual override for prediction direction. direction: up|flat|down. source: user|manual."""
     ticker = ticker.upper().strip()
-    _register_tracked_ticker(ticker)
+    # TICKER-PREVIEW-NO-ENROLL (Decision 3): setting a prediction override acts on an existing
+    # tracked symbol; it must not silently enroll a new one into the training roster.
+    _touch_tracked_ticker_view(ticker)
     d = (direction or "").strip().lower()
     if d not in ("up", "flat", "down"):
         raise HTTPException(status_code=400, detail="direction must be up, flat, or down")
@@ -7428,7 +7475,8 @@ def prediction_override(ticker: str = Query(...), direction: str = Query(...), s
 def prediction_override_clear(ticker: str = Query(...)):
     """Clear prediction override for ticker."""
     ticker = ticker.upper().strip()
-    _register_tracked_ticker(ticker)
+    # TICKER-PREVIEW-NO-ENROLL (Decision 3): clearing an override must not enroll.
+    _touch_tracked_ticker_view(ticker)
     if ticker in _pred_overrides:
         del _pred_overrides[ticker]
         return JSONResponse({"ok": True, "ticker": ticker, "cleared": True})
@@ -7473,7 +7521,8 @@ def api_build():
 def get_price_levels(ticker: str = Query(default=DEFAULT_TICKER), extended_hours: bool = Query(default=True)):
     """Return PDH/PDL/PDC, POC/VAH/VAL, VWAP bands, ORB, overnight range as JSON."""
     try:
-        _register_tracked_ticker(ticker)
+        # TICKER-PREVIEW-NO-ENROLL: price-levels is a VIEW — touch last-seen only.
+        _touch_tracked_ticker_view(ticker)
         client = get_client()
         q_resp = _safe_get_quote_with_retry(client, ticker)
         q_json = q_resp.json() if q_resp and hasattr(q_resp, "json") else {}
@@ -7674,7 +7723,8 @@ def get_liquidity_snapshot(
 
         session_date = date or now_et().strftime("%Y-%m-%d")
         ticker_upper = ticker.upper().strip()
-        _register_tracked_ticker(ticker_upper)
+        # TICKER-PREVIEW-NO-ENROLL: liquidity snapshot is a VIEW — touch last-seen only.
+        _touch_tracked_ticker_view(ticker_upper)
         client = get_client()
         from datetime import date as date_type
 
@@ -7817,7 +7867,8 @@ def get_liquidity_playbook_state(
 
         session_date = date or now_et().strftime("%Y-%m-%d")
         ticker_upper = ticker.upper().strip()
-        _register_tracked_ticker(ticker_upper)
+        # TICKER-PREVIEW-NO-ENROLL: playbook-state is a VIEW — touch last-seen only.
+        _touch_tracked_ticker_view(ticker_upper)
         client = get_client()
         from datetime import date as date_type
         session_date_obj = date_type.fromisoformat(session_date)
@@ -7848,7 +7899,8 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
     """Diagnose why charm is not computing."""
     try:
         ticker = (ticker or DEFAULT_TICKER).upper().strip()
-        _register_tracked_ticker(ticker)
+        # TICKER-PREVIEW-NO-ENROLL: charm diagnostic is a VIEW — touch last-seen only.
+        _touch_tracked_ticker_view(ticker)
         from math_exposure import compute_net_charm
         import datetime as _dt
         import math as _charm_math
@@ -7974,7 +8026,8 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
     otherwise computes fresh. Also returns accuracy history for charting.
     """
     ticker = (ticker or DEFAULT_TICKER).upper().strip()
-    _register_tracked_ticker(ticker)
+    # TICKER-PREVIEW-NO-ENROLL: accuracy is a VIEW — touch last-seen only.
+    _touch_tracked_ticker_view(ticker)
 
     db = get_db() if _HAS_SIGNALS else None
     if not db:

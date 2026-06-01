@@ -145,6 +145,32 @@ def test_after_fill_outcomes_ensure_refreshes_normalized_and_skips_second(tmp_db
     assert r3["skipped"] is True
 
 
+def test_ensure_materialize_truncates_wal(monkeypatch, tmp_db: EdDB):
+    """DB-WRITE-PATH-FIXES (b), 2026-05-31: a successful (forced) materialize truncates the WAL
+    afterward (no checkpoint existed anywhere before → unbounded WAL growth). A skipped run
+    (fingerprint unchanged) must NOT checkpoint."""
+    import normalized_training_sync as nts
+
+    calls: list[int] = []
+    real = nts._wal_checkpoint_truncate
+
+    def _spy(conn):
+        calls.append(1)
+        return real(conn)
+
+    monkeypatch.setattr(nts, "_wal_checkpoint_truncate", _spy)
+
+    r = nts.ensure_normalized_training_table(tmp_db.db_path, force=True)
+    assert r["materialized"] is True
+    assert r.get("wal_checkpoint_truncated") is True
+    assert calls == [1], "forced materialize must checkpoint exactly once"
+
+    calls.clear()
+    r2 = nts.ensure_normalized_training_table(tmp_db.db_path, force=False)
+    assert r2["skipped"] is True
+    assert calls == [], "fingerprint-unchanged skip must not checkpoint"
+
+
 def test_verify_normalized_freshness(tmp_db: EdDB):
     from normalized_training_sync import persist_training_fingerprint_after_materialize, verify_normalized_freshness
 

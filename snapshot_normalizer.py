@@ -309,6 +309,14 @@ def materialize_normalized_table(
 
         if clear_first:
             conn.execute("DELETE FROM snapshots_1m_normalized")
+            # DB-WRITE-PATH-FIXES (c), 2026-05-31: commit the clear immediately so its write
+            # lock is not held across the whole multi-ticker repopulate below. The prior single
+            # DELETE + all-INSERT + one-commit transaction held the write lock for the entire
+            # run — the root cause of the WAL bloat + lock contention against the live logger /
+            # retrain. The normalized table is a derived, idempotent rebuild from snapshots, so
+            # an interrupted run leaving a partially-repopulated table is recovered by re-running
+            # materialize (the caller re-runs when materialize reports errors).
+            conn.commit()
 
         if tickers is None:
             rows = conn.execute(
@@ -346,13 +354,19 @@ def materialize_normalized_table(
                 "source_timeframe": source_tf,
             }
             result["normalized_rows"] += len(normalized)
+            batch = []
             for nr in normalized:
                 nr.pop("snapshot_id", None)
                 next_sid += 1
                 nr["snapshot_id"] = next_sid
-                vals = [nr.get(c) for c in insert_cols]
-                conn.execute(insert_sql, vals)
-        conn.commit()
+                batch.append([nr.get(c) for c in insert_cols])
+            if batch:
+                # DB-WRITE-PATH-FIXES (c): one executemany + one commit per ticker (the natural
+                # batch boundary) so the write lock is acquired and released per ticker instead
+                # of being held for the entire run. Bounds WAL growth and unblocks the live
+                # logger/retrain between tickers.
+                conn.executemany(insert_sql, batch)
+                conn.commit()
     except Exception as e:
         result["errors"].append(str(e))
         conn.rollback()
