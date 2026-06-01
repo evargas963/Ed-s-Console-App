@@ -34,8 +34,15 @@ def test_decision_command_uses_disambiguated_addkv_labels():
 
 
 def test_track2_desk_confidence_headline_and_breakdown():
+    """Desk-confidence surface (UI-refactor reconciled 2026-05-31).
+
+    The original ``dr-desk-confidence`` element + ``deskConf.textContent='UNAVAILABLE'``
+    handler were removed when the desk-confidence readout migrated to the V2 advisory
+    card's ``id="v2-confidence"`` slot (labeled "Desk confidence"). Assert the EQUIVALENT
+    current elements — the live confidence slot + the horizon breakdown — instead of the
+    removed ids (which made this a permanent stale red in the UI suite).
+    """
     html = INDEX.read_text(encoding="utf-8")
-    assert 'id="dr-desk-confidence"' in html
-    assert "deskConf.textContent = 'UNAVAILABLE'" in html
-    assert 'details class="hz-breakdown"' in html
-    assert 'id="v2-confidence"' in html
+    assert 'id="v2-confidence"' in html, "desk-confidence readout slot (v2-confidence) missing"
+    assert "Desk confidence" in html, "'Desk confidence' label copy missing"
+    assert 'details class="hz-breakdown"' in html, "horizon-confidence breakdown block missing"

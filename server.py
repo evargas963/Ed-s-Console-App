@@ -789,7 +789,7 @@ def _schedule_analytics_recompute(
                     notify_l2_snapshot_ready(ticker, result.get("selected_exp"))
                 except Exception as e:
                     log.debug("notify_l2_snapshot_ready failed ticker=%s: %s", ticker, e, exc_info=True)
-            if result and _main_event_loop is not None:
+            if result and _main_event_loop is not None and not _main_event_loop.is_closed():
                 asyncio.run_coroutine_threadsafe(_broadcast_snapshot(result), _main_event_loop)
         except HTTPException as ex:
             log.warning("analytics bg HTTPException for %s", inflight_key)

@@ -2577,6 +2577,36 @@
 <script>
 (function(){try{var m=localStorage.getItem('ed_ui_layout')||'classic';document.body.classList.remove('layout-classic','layout-clean');document.body.classList.add('layout-'+m);}catch(e){}})();
 </script>
+<script>
+/* UI-HARDENING global error boundary (2026-05-31): no window-level error handler existed
+   (verified: 0 window.onerror / addEventListener('error') / unhandledrejection in this file),
+   so an uncaught render/SSE error vanished silently — a structural reason UI regressions slipped
+   through. Additive only: registers two window listeners that record into a bounded ring buffer
+   (window.__edUiErrors, last 50) + console.error. Changes NO existing behavior; swallows/alters
+   no flow. Inspect live via window.__edUiErrors. */
+(function () {
+  try {
+    var RING = (window.__edUiErrors = window.__edUiErrors || []);
+    function _record(kind, msg, extra) {
+      try {
+        RING.push({ kind: kind, msg: String(msg == null ? '' : msg), at: Date.now(), extra: extra || null });
+        if (RING.length > 50) RING.shift();
+      } catch (e) { /* ring push must never itself throw */ }
+    }
+    window.addEventListener('error', function (ev) {
+      _record('error', (ev && ev.message) || 'unknown', {
+        src: ev && ev.filename, line: ev && ev.lineno, col: ev && ev.colno,
+      });
+      try { console.error('[ui-error-boundary]', ev && (ev.error || ev.message)); } catch (e) {}
+    });
+    window.addEventListener('unhandledrejection', function (ev) {
+      var r = ev && ev.reason;
+      _record('unhandledrejection', (r && (r.message || r)) || 'unknown', null);
+      try { console.error('[ui-error-boundary] unhandledrejection', r); } catch (e) {}
+    });
+  } catch (e) { /* never block app load on the boundary install */ }
+})();
+</script>
 
 <div id="loading-overlay">
   <div class="spinner"></div>
@@ -6584,7 +6614,7 @@ function render(d, fullRenderSource) {
 
     // ── ALWAYS CHART section ──────────────────────────────────────────────────
     html += '<div class="kl-section-hdr">ALWAYS CHART<span>Primary institutional structure + acceleration zones</span></div>';
-    KL_PRIMARY.sort((a, b) => (parseFloat(d[b.key]) || 0) - (parseFloat(d[a.key]) || 0))
+    KL_PRIMARY.slice().sort((a, b) => (parseFloat(d[b.key]) || 0) - (parseFloat(d[a.key]) || 0))
       .forEach(level => { html += renderRow(level, d, false); });
 
     // Net GEX — aggregate dealer gamma regime (not a price level)
@@ -6704,13 +6734,13 @@ function render(d, fullRenderSource) {
 
     // ── CHART IF DISTINCT section ─────────────────────────────────────────────
     html += '<div class="kl-section-hdr" style="border-top:2px solid var(--border)">CHART IF DISTINCT<span>Show when &gt;1 strike from nearest wall</span></div>';
-    KL_CONDITIONAL.sort((a, b) => (parseFloat(d[b.key]) || 0) - (parseFloat(d[a.key]) || 0))
+    KL_CONDITIONAL.slice().sort((a, b) => (parseFloat(d[b.key]) || 0) - (parseFloat(d[a.key]) || 0))
       .forEach(level => { html += renderRow(level, d, false); });
 
     // ── TABLE ONLY section ────────────────────────────────────────────────────
     if (showRef) {
       html += '<div class="kl-section-hdr" style="border-top:2px solid var(--border)">TABLE ONLY<span>Reference levels</span></div>';
-      KL_REFERENCE.sort((a, b) => (parseFloat(d[b.key]) || 0) - (parseFloat(d[a.key]) || 0))
+      KL_REFERENCE.slice().sort((a, b) => (parseFloat(d[b.key]) || 0) - (parseFloat(d[a.key]) || 0))
         .forEach(level => { html += renderRow(level, d, true); });
 
       // Synthetic Forward
