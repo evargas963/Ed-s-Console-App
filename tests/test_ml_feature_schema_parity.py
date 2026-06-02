@@ -384,6 +384,33 @@ def test_feature_ablation_manifest_matches_engineer_features():
     assert by_id["microstructure"]["member_counts"]["xgb"] == 4
 
 
+def test_ablation_harness_manifest_only_grid():
+    from tools.feature_curation_gate import (
+        ablation_grid_cell_specs,
+        ablation_groups,
+        build_ablation_report,
+        load_ablation_manifest,
+    )
+
+    manifest = load_ablation_manifest()
+    groups = ablation_groups(manifest)
+    method = manifest["ablation_method"]
+    expected_cells = (
+        len(method["anchors"]) * len(method["models"]) * len(method["horizons"]) * len(groups)
+    )
+    specs = ablation_grid_cell_specs(manifest)
+    assert len(specs) == expected_cells
+    assert set(method["grid"]) == {"anchor_ticker", "model_family", "horizon_slug"}
+    assert all(g["disposition"] == "ABLATE" for g in manifest["groups"] if g["group_id"] in {s["group_id"] for s in specs})
+
+    report = build_ablation_report(dry_run=True)
+    assert report["dry_run"] is True
+    assert report["grid_cell_count"] == expected_cells
+    assert report["cells"][0]["anchor_ticker"] in method["anchors"]
+    assert report["cells"][0]["model_family"] in method["models"]
+    assert report["cells"][0]["horizon_slug"] in method["horizons"]
+
+
 def test_curation_gate_keeps_override_protected_index_family():
     from tools.feature_curation_gate import _protected_db_columns
 
