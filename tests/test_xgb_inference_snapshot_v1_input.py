@@ -122,7 +122,7 @@ def test_build_xgb_pre_engineering_snapshot_matches_manual_pipeline():
         inference_snapshot_v1_to_engineering_snapshot,
         merge_xgb_fusion_overlay,
     )
-    from ml_data_common import snapshot_with_m5_additive
+    from ml_data_common import attach_net_gamma_prev_for_dgex
     from ml_train import DB_PATH as _ML_DB
     from ml_predict import build_xgb_pre_engineering_snapshot_for_tick
 
@@ -131,7 +131,7 @@ def test_build_xgb_pre_engineering_snapshot_matches_manual_pipeline():
     built = build_xgb_pre_engineering_snapshot_for_tick(snap, overlay)
     base = inference_snapshot_v1_to_engineering_snapshot(snap)
     merged = merge_xgb_fusion_overlay(base, overlay)
-    manual = snapshot_with_m5_additive(merged, _ML_DB)
+    manual = attach_net_gamma_prev_for_dgex(merged, _ML_DB)
     assert built == manual
 
 

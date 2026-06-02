@@ -253,3 +253,142 @@ def test_train_impute_roundtrip_matches_inference_style():
     row = engineer_single_snapshot(snap, {}, feats, {}, "SPY")
     got = apply_xgb_imputation_matrix(row.values.astype(np.float64), feats, impute)
     np.testing.assert_array_almost_equal(got, expected)
+
+
+def test_slice_a_cross_asset_cols_registered_in_scale_invariant():
+    from ml_train import SCALE_INVARIANT_COLS
+
+    for col in ("tnx_yield", "tnx_chg", "qqq_vs_spy", "spy_iwm_divergence"):
+        assert col in SCALE_INVARIANT_COLS
+
+
+def test_dgex_first_diff_engineered_train_and_serve():
+    df = pd.DataFrame(
+        {
+            "ticker": ["SPY", "SPY", "SPY"],
+            "ts_utc": [100.0, 160.0, 220.0],
+            "spot": [100.0, 100.0, 100.0],
+            "net_gamma": [1.0, 4.0, 2.0],
+            "outcome_1c": ["up", "down", "flat"],
+        }
+    )
+    from ml_data_common import attach_net_gamma_prev_column
+
+    df = attach_net_gamma_prev_column(df)
+    X, names, _, _ = engineer_features(df)
+    assert "dgex" in names
+    assert "dgex_positive" in names
+    assert np.isnan(float(X.loc[0, "dgex"]))
+    assert abs(float(X.loc[1, "dgex"]) - 3.0) < 1e-9
+    assert float(X.loc[1, "dgex_positive"]) == 1.0
+
+    snap = {"ticker": "SPY", "spot": 100.0, "net_gamma": 2.0, "net_gamma_prev": 4.0}
+    row = engineer_single_snapshot(snap, {}, names, {}, "SPY")
+    assert row is not None
+    assert abs(float(row.iloc[0]["dgex"]) - (-2.0)) < 1e-9
+
+
+def test_dgex_train_serve_parity_via_prior_db_row(tmp_path):
+    """Serve path: attach_net_gamma_prev_for_dgex attaches net_gamma_prev from prior normalized row."""
+    import sqlite3
+
+    from ml_data_common import attach_net_gamma_prev_column, attach_net_gamma_prev_for_dgex
+    from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
+
+    db = tmp_path / "dgex_parity.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute(
+        f"CREATE TABLE {SNAPSHOT_TABLE_1M} ("
+        "ticker TEXT NOT NULL, timeframe TEXT NOT NULL, ts_utc REAL NOT NULL, net_gamma REAL)"
+    )
+    for ts, ng in ((100.0, 1.0), (160.0, 4.0), (220.0, 2.0)):
+        conn.execute(
+            f"INSERT INTO {SNAPSHOT_TABLE_1M} (ticker, timeframe, ts_utc, net_gamma) VALUES (?, ?, ?, ?)",
+            ("SPY", CANONICAL_TIMEFRAME, ts, ng),
+        )
+    conn.commit()
+    conn.close()
+
+    df = pd.DataFrame(
+        {
+            "ticker": ["SPY", "SPY", "SPY"],
+            "ts_utc": [100.0, 160.0, 220.0],
+            "spot": [100.0, 100.0, 100.0],
+            "net_gamma": [1.0, 4.0, 2.0],
+            "outcome_1c": ["up", "down", "flat"],
+        }
+    )
+    df = attach_net_gamma_prev_column(df)
+    X_train, names, _, _ = engineer_features(df)
+
+    snap = {
+        "ticker": "SPY",
+        "ts_utc": 220.0,
+        "spot": 100.0,
+        "net_gamma": 2.0,
+    }
+    enriched = attach_net_gamma_prev_for_dgex(snap, str(db))
+    assert enriched.get("net_gamma_prev") == 4.0
+    row = engineer_single_snapshot(enriched, {}, names, {}, "SPY")
+    assert row is not None
+    train_dgex = float(X_train.loc[2, "dgex"])
+    serve_dgex = float(row.iloc[0]["dgex"])
+    assert abs(train_dgex - serve_dgex) < 1e-9
+    assert abs(serve_dgex - (-2.0)) < 1e-9
+
+
+def test_m5_stripped_symmetric_train_and_serve():
+    """m5_* lag block DROP: engineer_features and engineer_single_snapshot ignore m5_* inputs."""
+    df = _minimal_df()
+    df["m5_net_gamma"] = 99.0
+    df["m5_candle_body_pts"] = 50.0
+    X, names, _, _ = engineer_features(df)
+    assert not any(str(n).startswith("m5_") for n in names)
+
+    snap = {
+        "ticker": "SPY",
+        "spot": 100.0,
+        "candle_body_pts": 1.0,
+        "candle_range_pts": 2.0,
+        "nearest_above_dist": 1.0,
+        "nearest_below_dist": 1.0,
+        "m5_net_gamma": 99.0,
+        "m5_candle_body_pts": 50.0,
+    }
+    row = engineer_single_snapshot(snap, {}, names, {}, "SPY")
+    assert row is not None
+    assert not any(str(c).startswith("m5_") for c in row.columns)
+
+
+def test_feature_schema_version_bumped_for_m5_strip():
+    from training_provenance import FEATURE_SCHEMA_VERSION, PREPROCESSING_VERSION
+
+    assert FEATURE_SCHEMA_VERSION == "v7_m5_strip"
+    assert PREPROCESSING_VERSION == "v5_no_m5_lag"
+
+
+def test_feature_ablation_manifest_matches_engineer_features():
+    from tools.build_feature_assignment_matrix_v2 import resolve_ablation_universe
+
+    payload = resolve_ablation_universe()
+    assert payload["totals"]["xgb_engineered_columns"] == 88
+    assert payload["totals"]["lstm_5m_channels"] == 23
+    assert payload["totals"]["lstm_1m_channels"] == 12
+    assert payload["unassigned_xgb"] == []
+    by_id = {g["group_id"]: g for g in payload["groups"]}
+    assert by_id["m5_block"]["disposition"] == "DROP"
+    assert by_id["m5_block"]["member_counts"]["xgb"] == 0
+    assert by_id["combined_leakage"]["disposition"] == "EXCLUDE"
+    assert by_id["time"]["member_counts"]["xgb"] == 4
+    assert by_id["iv"]["member_counts"]["xgb"] == 4  # iv_level, iv_rank, cat_iv_direction, atr
+    assert by_id["microstructure"]["member_counts"]["xgb"] == 4
+
+
+def test_curation_gate_keeps_override_protected_index_family():
+    from tools.feature_curation_gate import _protected_db_columns
+
+    protected = _protected_db_columns()
+    assert "tnx_yield" in protected
+    assert "qqq_vs_spy" in protected
+    assert "spy_chg_pct" in protected
+    assert "qqq_chg_pct" in protected

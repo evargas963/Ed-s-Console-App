@@ -391,14 +391,72 @@ def fetch_m5_additive_dict(
     return out
 
 
-def snapshot_with_m5_additive(snapshot: dict, db_path: str | None = None) -> dict:
-    """Copy of snapshot plus m5_* keys from latest additive-source row at or before ts_utc."""
+def fetch_prior_net_gamma(
+    ticker: str,
+    ts_utc: float,
+    db_path: str | None = None,
+) -> float | None:
+    """
+    net_gamma from the immediately prior normalized training row (same ticker, ts_utc strictly less).
+    Matches training ``groupby(ticker).diff()`` on chronologically ordered snapshots_1m_normalized rows.
+    """
+    path = db_path or _db_default_path()
+    t = str(ticker or "").upper().strip()
+    if not t:
+        return None
+
+    from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
+
+    conn = sqlite3.connect(path)
+    try:
+        row = conn.execute(
+            f"SELECT net_gamma FROM {SNAPSHOT_TABLE_1M} "
+            "WHERE ticker = ? AND timeframe = ? AND ts_utc < ? "
+            "ORDER BY ts_utc DESC LIMIT 1",
+            (t, CANONICAL_TIMEFRAME, float(ts_utc)),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row or row[0] is None:
+        return None
+    try:
+        return float(row[0])
+    except (TypeError, ValueError):
+        return None
+
+
+def attach_net_gamma_prev_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Add net_gamma_prev per (ticker, ts_utc) for ΔGEX train/serve formula parity."""
+    if df is None or len(df) == 0 or "net_gamma" not in df.columns:
+        return df
+    if "ticker" not in df.columns or "ts_utc" not in df.columns:
+        return df
+    out = df.copy()
+    order = out.sort_values(["ticker", "ts_utc"]).index
+    ng = pd.to_numeric(out["net_gamma"], errors="coerce")
+    prev = ng.loc[order].groupby(out.loc[order, "ticker"]).shift(1)
+    out["net_gamma_prev"] = prev.reindex(out.index).to_numpy(dtype=float)
+    return out
+
+
+def attach_net_gamma_prev_for_dgex(
+    snapshot: dict,
+    db_path: str | None = None,
+) -> dict:
+    """Attach net_gamma_prev for ΔGEX (1-bar diff parity with training load_data path)."""
     out = dict(snapshot)
     ts = out.get("ts_utc")
     tk = out.get("ticker")
     if ts is not None and tk:
-        out.update(fetch_m5_additive_dict(str(tk), float(ts), db_path))
+        prev_ng = fetch_prior_net_gamma(str(tk), float(ts), db_path)
+        if prev_ng is not None:
+            out["net_gamma_prev"] = prev_ng
     return out
+
+
+def snapshot_with_m5_additive(snapshot: dict, db_path: str | None = None) -> dict:
+    """Deprecated alias — m5_* strip (v7). Only attaches net_gamma_prev for ΔGEX parity."""
+    return attach_net_gamma_prev_for_dgex(dict(snapshot), db_path)
 
 
 def attach_5m_additive_context(

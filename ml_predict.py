@@ -369,11 +369,11 @@ def build_xgb_pre_engineering_snapshot_for_tick(
     fusion_feature_overlay: dict | None,
 ) -> dict:
     """
-    Engineering snapshot after MVP map + fusion overlay + m5 additive columns.
+    Engineering snapshot after MVP map + fusion overlay + net_gamma_prev for ΔGEX.
 
     Identical for every governed horizon on a single tick; call once and pass into
     ``run_base_models_once(..., xgb_pre_engineering_snapshot=...)`` so XGB tri-class
-    and movement heads skip repeated ingest/merge/m5 work (per-horizon work remains:
+    and movement heads skip repeated ingest/merge work (per-horizon work remains:
     ``engineer_single_snapshot`` + ``predict_proba`` per artifact).
     """
     from features.xgb_model_input import (
@@ -381,7 +381,7 @@ def build_xgb_pre_engineering_snapshot_for_tick(
         inference_snapshot_v1_to_engineering_snapshot,
         merge_xgb_fusion_overlay,
     )
-    from ml_data_common import snapshot_with_m5_additive
+    from ml_data_common import attach_net_gamma_prev_for_dgex
     from ml_train import DB_PATH as _ML_DB
 
     assert_not_raw_l1_payload(inference_snapshot_v1)
@@ -389,7 +389,7 @@ def build_xgb_pre_engineering_snapshot_for_tick(
         assert_not_raw_l1_payload(fusion_feature_overlay)
     base = inference_snapshot_v1_to_engineering_snapshot(inference_snapshot_v1)
     snap = merge_xgb_fusion_overlay(base, fusion_feature_overlay)
-    return snapshot_with_m5_additive(snap, _ML_DB)
+    return attach_net_gamma_prev_for_dgex(snap, _ML_DB)
 
 
 def _load_xgb(ticker: str) -> bool:
@@ -465,7 +465,7 @@ def _predict_xgb(
             inference_snapshot_v1_to_engineering_snapshot,
             merge_xgb_fusion_overlay,
         )
-        from ml_data_common import snapshot_with_m5_additive
+        from ml_data_common import attach_net_gamma_prev_for_dgex
         from ml_train import (
             apply_xgb_imputation_matrix,
             engineer_single_snapshot,
@@ -482,7 +482,7 @@ def _predict_xgb(
             base = inference_snapshot_v1_to_engineering_snapshot(inference_snapshot_v1)
             snap = merge_xgb_fusion_overlay(base, fusion_feature_overlay)
 
-            snap = snapshot_with_m5_additive(snap, _ML_DB)
+            snap = attach_net_gamma_prev_for_dgex(snap, _ML_DB)
         X = engineer_single_snapshot(
             snapshot=snap,
             category_maps=reg["category_maps"],
@@ -595,7 +595,7 @@ def _predict_xgb_movement_heads(
                 inference_snapshot_v1_to_engineering_snapshot,
                 merge_xgb_fusion_overlay,
             )
-            from ml_data_common import snapshot_with_m5_additive
+            from ml_data_common import attach_net_gamma_prev_for_dgex
             from ml_train import (
                 DB_PATH as _ML_DB,
                 apply_xgb_imputation_matrix,
@@ -608,7 +608,7 @@ def _predict_xgb_movement_heads(
                     assert_not_raw_l1_payload(fusion_feature_overlay)
                 base_snap = inference_snapshot_v1_to_engineering_snapshot(inference_snapshot_v1)
                 snap = merge_xgb_fusion_overlay(base_snap, fusion_feature_overlay)
-                _m5_snap_cached = snapshot_with_m5_additive(snap, _ML_DB)
+                _m5_snap_cached = attach_net_gamma_prev_for_dgex(snap, _ML_DB)
             snap = _m5_snap_cached
             X = engineer_single_snapshot(
                 snapshot=snap,

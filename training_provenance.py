@@ -40,7 +40,11 @@ from ml_horizon import (
 log = logging.getLogger("training_provenance")
 
 # ── Version constants (bump when features or preprocessing change) ─────────────
-FEATURE_SCHEMA_VERSION: str = "v5_sentiment_deregister"
+FEATURE_SCHEMA_VERSION: str = "v7_m5_strip"
+# v7 (FEATURE EPIC m5 strip, 2026-06-01): remove m5_* lagged duplicate block from engineer_features /
+# engineer_single_snapshot and load_data; train/serve symmetric via net_gamma_prev only (ΔGEX).
+# v6 (FEATURE EPIC Slice A, 2026-06-01): register tnx_yield/tnx_chg/qqq_vs_spy/spy_iwm_divergence;
+# engineer dgex/dgex_positive (first diff of net_gamma). Bundled into the next combined retrain.
 # v5 (SENTIMENT/NEWS FEATURE RETIRE, 2026-05-31): 6 non-Schwab news/sentiment features removed from
 # ml_train.SCALE_INVARIANT_COLS (sentiment_composite/_buzz/_finnhub/_av, breaking_news_flag,
 # pre_market_sentiment). The feature COLUMN SET changes, so this bump is correct here; and unlike
@@ -58,7 +62,8 @@ FEATURE_SCHEMA_VERSION: str = "v5_sentiment_deregister"
 # leaked-feature bundles are already fail-closed by Phase 1's LABEL_CONFIG_VERSION bump (the one clean
 # retrain has not run yet); making a preprocessing-only change fail-close serving is a contract-field
 # decision recorded in OPEN_ITEMS (closeout #1 row).
-PREPROCESSING_VERSION: str = "v4_train_only_feature_fit"
+PREPROCESSING_VERSION: str = "v5_no_m5_lag"
+# v5 (FEATURE EPIC m5 strip, 2026-06-01): load_data no longer merges m5_* via attach_5m_additive_context.
 # Bump when label column, horizon definition, or outcome filter semantics change (invalidates training cache).
 # Issue 15: 5c+ artifacts share this feature/label pipeline version; exact label column is in meta.target_column.
 # Phase 1 (horizon-collapse fix): outcome_Nc now classified with a per-horizon ATR-scaled move

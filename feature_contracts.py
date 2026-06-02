@@ -159,8 +159,6 @@ def build_current_xgb_engineered_features() -> tuple[set[str], set[str], set[str
     import pandas as pd
     from ml_train import (
         CATEGORICALS,
-        M5_SCALE_INVARIANT_EXTRA,
-        M5_WALL_DISTANCE_COLS,
         SCALE_INVARIANT_COLS,
         WALL_DISTANCE_COLS,
         engineer_features,
@@ -177,10 +175,6 @@ def build_current_xgb_engineered_features() -> tuple[set[str], set[str], set[str
     for c in WALL_DISTANCE_COLS:
         row[c] = 1.0
     for c in SCALE_INVARIANT_COLS:
-        row[c] = 1.0
-    for c in M5_WALL_DISTANCE_COLS:
-        row[c] = 1.0
-    for c in M5_SCALE_INVARIANT_EXTRA:
         row[c] = 1.0
     row["candle_body_pts"] = 0.5
     row["candle_range_pts"] = 1.0

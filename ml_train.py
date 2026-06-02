@@ -134,20 +134,6 @@ WALL_DISTANCE_COLS = [
     "pin_width_pts",
 ]
 
-# m5_* additive columns merged as-of from canonical 1m snapshot rows only (attach_5m_additive_context)
-M5_WALL_DISTANCE_COLS = tuple(f"m5_{c}" for c in WALL_DISTANCE_COLS)
-M5_SCALE_INVARIANT_EXTRA = (
-    "m5_zone_since_bars_5m",
-    "m5_net_gamma",
-    "m5_net_delta",
-    "m5_charm_net",
-    "m5_iv_level",
-    "m5_put_call_oi_ratio",
-    "m5_spy_chg_pct",
-    "m5_qqq_chg_pct",
-    "m5_iwm_chg_pct",
-)
-
 SCALE_INVARIANT_COLS = [
     "net_gamma", "net_delta", "charm_net", "put_call_oi_ratio",
     "spy_chg_pct", "qqq_chg_pct", "iwm_chg_pct",
@@ -156,6 +142,8 @@ SCALE_INVARIANT_COLS = [
     "nvda_chg_pct", "aapl_chg_pct", "msft_chg_pct", "amzn_chg_pct",
     "googl_chg_pct", "avgo_chg_pct", "meta_chg_pct", "tsla_chg_pct",
     "kre_chg_pct", "xbi_chg_pct", "psci_chg_pct", "xrt_chg_pct",
+    # Feature epic Slice A (2026-06-01): persisted on snapshot ~100%, previously unregistered.
+    "tnx_yield", "tnx_chg", "qqq_vs_spy", "spy_iwm_divergence",
     "zone_since_bars",  # DB column: 1m execution-layer (alias for zone_since_bars_1m)
     "candle_volume", "bid_ask_imbalance",
     "spread", "atr", "iv_rank", "smart_money_score",
@@ -203,13 +191,11 @@ def load_data(
     """
     Load 1m RTH training data from snapshots_1m_normalized.
     Uses normalized 1m sampled rows (resampled from sub-minute snapshots).
-    Merges additive m5_* columns via as-of backward join from canonical timeframe='1m'
-    snapshots only (see ml_data_common.attach_5m_additive_context).
+    Attaches net_gamma_prev for ΔGEX train/serve parity (no m5_* lag block — feature epic DROP).
     min_ts_utc: if set, only rows with ts_utc >= this value (rolling RTH session window).
     allowed_et_dates: if set, only rows whose ts_et date (YYYY-MM-DD) is in this set.
     """
     from ml_data_common import (
-        attach_5m_additive_context,
         et_hour_minute_arrays_from_ts_utc,
         filter_df_to_rth_ts_utc,
         stamp_et_clock_columns,
@@ -270,9 +256,9 @@ def load_data(
     if len(df) == 0:
         print("  Loaded 0 RTH rows after ts_utc-derived RTH filter")
         return df
-    df = attach_5m_additive_context(df, db_path)
-    extra_m5 = sum(1 for c in df.columns if str(c).startswith("m5_"))
-    print(f"  m5 additive context: {extra_m5} m5_* columns (as-of merge; 1m snapshots preferred, else 5m)")
+    from ml_data_common import attach_net_gamma_prev_column
+
+    df = attach_net_gamma_prev_column(df)
     print(f"  Loaded {len(df):,} RTH rows  "
           f"[{df['ts_et'].iloc[0]} -> {df['ts_et'].iloc[-1]}]")
     if not ticker:
@@ -330,25 +316,6 @@ def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
             feats["vwap_dist_pts"] = v
             feats["vwap_dist_pct"] = v / spot * 100.0
 
-        m5_candle_map = {
-            "m5_candle_body_pts": "m5_candle_body_pct",
-            "m5_candle_range_pts": "m5_candle_range_pct",
-        }
-        for raw, pct in m5_candle_map.items():
-            if raw in df.columns:
-                v = pd.to_numeric(df[raw], errors="coerce").values
-                feats[pct] = v / spot * 100.0
-
-        for col in M5_WALL_DISTANCE_COLS:
-            if col in df.columns:
-                v = pd.to_numeric(df[col], errors="coerce").values
-                pct_name = "m5_pin_width_pct" if col == "m5_pin_width_pts" else f"{col}_pct"
-                feats[pct_name] = v / spot * 100.0
-
-        for col in M5_SCALE_INVARIANT_EXTRA:
-            if col in df.columns:
-                feats[col] = pd.to_numeric(df[col], errors="coerce").values
-
     skip = {"candle_volume", "bid_ask_imbalance", "vwap_dist_pts"}
     for col in SCALE_INVARIANT_COLS:
         if col not in skip and col in df.columns:
@@ -368,6 +335,20 @@ def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
         rng = feats["candle_range_pct"].copy()
         rng[rng == 0] = np.nan
         feats["body_range_ratio"] = np.abs(feats["candle_body_pct"]) / rng
+
+    if "net_gamma" in df.columns:
+        ng_s = pd.to_numeric(df["net_gamma"], errors="coerce")
+        if "net_gamma_prev" in df.columns:
+            prev_s = pd.to_numeric(df["net_gamma_prev"], errors="coerce")
+            feats["dgex"] = (ng_s - prev_s).to_numpy(dtype=float)
+        elif "ticker" in df.columns and "ts_utc" in df.columns:
+            order = df.sort_values(["ticker", "ts_utc"]).index
+            dgex = ng_s.loc[order].groupby(df.loc[order, "ticker"]).diff()
+            feats["dgex"] = dgex.reindex(df.index).to_numpy(dtype=float)
+        else:
+            feats["dgex"] = ng_s.diff().to_numpy(dtype=float)
+        dg = feats["dgex"]
+        feats["dgex_positive"] = np.where(np.isfinite(dg), (dg > 0).astype(float), np.nan)
 
     if "net_gamma" in feats:
         feats["gamma_positive"] = (feats["net_gamma"] > 0).astype(float)
@@ -518,6 +499,13 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
     row["body_range_ratio"] = (abs(cb)/cr) if (not np.isnan(cb) and cr and cr>0) else np.nan
 
     ng = row.get("net_gamma", np.nan)
+    ng_prev = _f("net_gamma_prev")
+    if not np.isnan(ng) and not np.isnan(ng_prev):
+        row["dgex"] = ng - ng_prev
+        row["dgex_positive"] = float(row["dgex"] > 0)
+    else:
+        row["dgex"] = np.nan
+        row["dgex_positive"] = np.nan
     nd = row.get("net_delta", np.nan)
     cn = row.get("charm_net", np.nan)
     row["gamma_positive"]    = float(ng>0) if not np.isnan(ng) else np.nan
@@ -550,21 +538,6 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
         row["bid_ask_imbalance"]       = imb_f
         row["imbalance_buy_pressure"]  = float(imb_f > 0.65)
         row["imbalance_sell_pressure"] = float(imb_f < 0.35)
-
-    for raw, pct in [
-        ("m5_candle_body_pts", "m5_candle_body_pct"),
-        ("m5_candle_range_pts", "m5_candle_range_pct"),
-    ]:
-        v = _f(raw)
-        row[pct] = (v / spot * 100.0) if not np.isnan(v) else np.nan
-
-    for col in M5_WALL_DISTANCE_COLS:
-        pct_name = "m5_pin_width_pct" if col == "m5_pin_width_pts" else f"{col}_pct"
-        v = _f(col)
-        row[pct_name] = (v / spot * 100.0) if not np.isnan(v) else np.nan
-
-    for col in M5_SCALE_INVARIANT_EXTRA:
-        row[col] = _f(col)
 
     for col in CATEGORICALS:
         val     = snapshot.get(col)
