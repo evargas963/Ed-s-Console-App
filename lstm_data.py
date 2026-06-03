@@ -25,7 +25,6 @@ import sqlite3
 import numpy as np
 import logging
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional
 
@@ -385,7 +384,12 @@ def extract_rth_snapshots(
     db_path: Path = DB_PATH,
     require_outcome: bool = True,
     allowed_et_dates: Optional[set] = None,
+    min_ts_utc: Optional[float] = None,
     target_column: str = TARGET_HORIZON,
+    *,
+    skip_normalized_sync: bool = False,
+    model_family: Optional[str] = None,
+    horizon_slug: Optional[str] = None,
 ) -> dict:
     """
     Extract RTH snapshots grouped by trading day.
@@ -407,7 +411,7 @@ def extract_rth_snapshots(
         raise ValueError(
             f"extract_rth_snapshots: canonical 1m only; got timeframe={timeframe!r}"
         )
-    if timeframe == CANONICAL_TIMEFRAME:
+    if timeframe == CANONICAL_TIMEFRAME and not skip_normalized_sync:
         try:
             from normalized_training_sync import ensure_normalized_training_table
 
@@ -417,7 +421,12 @@ def extract_rth_snapshots(
         except Exception as e:
             log.warning("extract_rth_snapshots: normalized sync error: %s", e)
 
-    conn = _connect(db_path)
+    log.info(
+        "extract_rth_snapshots: begin ticker=%s allowed_dates=%s min_ts_utc=%s",
+        ticker,
+        len(allowed_et_dates) if allowed_et_dates else None,
+        min_ts_utc,
+    )
     table = _snapshot_table_for_timeframe(timeframe)
 
     from ml_data_common import training_label_where_clause
@@ -429,15 +438,60 @@ def extract_rth_snapshots(
     from ml_data_common import weekday_where_clause
     weekday_sql = " AND (" + weekday_where_clause() + ")"
 
+    params: list = [ticker, timeframe]
+    date_filter_sql = ""
+    if allowed_et_dates:
+        _dates = sorted({str(d)[:10] for d in allowed_et_dates if d})
+        if _dates:
+            date_filter_sql = " AND substr(ts_et, 1, 10) IN (" + ",".join("?" * len(_dates)) + ")"
+            params.extend(_dates)
+    min_ts_sql = ""
+    if min_ts_utc is not None:
+        min_ts_sql = " AND ts_utc >= ?"
+        params.append(float(min_ts_utc))
+
+    conn = _connect(db_path)
     rows = conn.execute(
         f"SELECT * FROM {table} "
         "WHERE ticker = ? AND timeframe = ?"
         + outcome_filter +
         weekday_sql +
+        date_filter_sql +
+        min_ts_sql +
         " ORDER BY ts_utc ASC",
-        (ticker, timeframe)
+        tuple(params),
     ).fetchall()
     conn.close()
+
+    log.info("extract_rth_snapshots: sql_rows=%d ticker=%s", len(rows), ticker)
+
+    from time_et import et_clock_from_ts_utc, et_date_str_from_ts_utc, is_rth_ts_utc
+
+    ablation_enabled = False
+    apply_ablation_fn = None
+    from arch_competition.stack_bundle_eval_v1 import (
+        AblatedTrainingUnavailable,
+        ablation_survivors_training_enabled,
+        apply_ablation_survivor_nulls_to_snapshot_for_model,
+    )
+
+    if ablation_survivors_training_enabled():
+        # O-56: the sequence-model survivor mask is PER (model, horizon). Any caller building
+        # training data MUST pass model_family + horizon_slug; we refuse to silently fall back to a
+        # global/full-feature mask, which would skew sequence training vs XGB. Fail loud — never
+        # silently train half-ablated (AGENTS §Ablation contract).
+        if not model_family or not horizon_slug:
+            raise AblatedTrainingUnavailable(
+                "extract_rth_snapshots: ED_APPLY_ABLATION_SURVIVORS=1 requires model_family + "
+                f"horizon_slug for the per-model survivor mask (got model={model_family!r} "
+                f"hz={horizon_slug!r}); refusing a global/full-feature fallback."
+            )
+        ablation_enabled = True
+
+        def apply_ablation_fn(_d, _mf=model_family, _hz=horizon_slug):
+            return apply_ablation_survivor_nulls_to_snapshot_for_model(
+                _d, model_family=_mf, horizon_slug=_hz
+            )
 
     # Group by date, filter to RTH only
     days = {}
@@ -451,8 +505,6 @@ def extract_rth_snapshots(
         ts_u = d.get("ts_utc")
         if ts_u is not None:
             try:
-                from time_et import et_clock_from_ts_utc, et_date_str_from_ts_utc, is_rth_ts_utc
-
                 if not is_rth_ts_utc(float(ts_u)):
                     skipped_non_rth += 1
                     continue
@@ -471,6 +523,9 @@ def extract_rth_snapshots(
             day_key = ts_et[:10] if len(ts_et) >= 10 else "unknown"
 
         rth_rows += 1
+
+        if ablation_enabled and apply_ablation_fn is not None:
+            d = apply_ablation_fn(d)  # fail loud: never silently skip the survivor mask
 
         if day_key not in days:
             days[day_key] = []
@@ -811,7 +866,11 @@ def build_lstm_dataset(
             db_path=_db,
             require_outcome=require_outcome,
             allowed_et_dates=allowed_et_dates,
+            min_ts_utc=min_ts_utc,
             target_column=label_col,
+            skip_normalized_sync=True,
+            model_family="lstm",
+            horizon_slug=ml_horizon_slug,
         )
 
         for day_key, snapshots in sorted(days_data.items()):
@@ -866,8 +925,9 @@ def build_lstm_dataset(
                     seq_1m.append(encode_lstm_micro_sequence_bar(merged, micro_ref))
 
                 # ── Confluence features ───────────────────────────────────
-                # Compute from the full day's snapshot list for proper lookback
-                day_idx = snapshots.index(current) if current in snapshots else end_idx
+                # window = snapshots[start_idx:end_idx] → current is snapshots[end_idx - 1].
+                # Avoid snapshots.index(current): O(n) dict equality per slide → hours on 40 days.
+                day_idx = end_idx - 1
                 conf = compute_confluence_features(snapshots, day_idx)
                 conf_vec = [conf[k] for k in CONFLUENCE_FEATURES]
 

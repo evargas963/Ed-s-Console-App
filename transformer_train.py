@@ -23,6 +23,13 @@ from typing import Optional, Set, Tuple
 log = logging.getLogger("transformer_train")
 
 from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug, outcome_column
+from training_cache_policy import (
+    EARLY_STOP_ENABLED,
+    EARLY_STOP_MIN_DELTA,
+    TRANSFORMER_EARLY_STOP_PATIENCE,
+    TRANSFORMER_TRAIN_EPOCHS,
+    should_early_stop,
+)
 
 MODELS_DIR = Path("models")
 
@@ -34,7 +41,7 @@ D_FF             = 128
 DROPOUT          = 0.15
 BATCH_SIZE       = 64
 LEARNING_RATE    = 1e-3
-EPOCHS           = 60
+EPOCHS           = TRANSFORMER_TRAIN_EPOCHS   # canonical 60; env ED_TRAIN_EPOCHS_TRANSFORMER overrides
 N_CLASSES        = 3
 
 
@@ -184,6 +191,8 @@ def prepare_transformer_data(
             require_outcome=True,
             allowed_et_dates=allowed_et_dates,
             target_column=label_col,
+            model_family="transformer",
+            horizon_slug=hz,
         )
         for day_key, snapshots in sorted(days_data.items()):
             if len(snapshots) < _min_hist:
@@ -457,6 +466,7 @@ def train_transformer(
                         best_loss = float("inf")
                         best_state = None
 
+    epochs_no_improve = 0  # early-stop counter (only meaningful when has_holdout)
     for epoch in range(start_epoch, EPOCHS + 1):
         model.train()
         train_loss = 0.0
@@ -491,15 +501,33 @@ def train_transformer(
             sel_loss = v_loss_sum / max(1, v_total)
         else:
             sel_loss = train_loss / train_total
+        improved = sel_loss < (best_loss - EARLY_STOP_MIN_DELTA)
         if sel_loss < best_loss:
             best_loss = sel_loss
             best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
             result.best_epoch = epoch
+        epochs_no_improve = 0 if improved else epochs_no_improve + 1
         if epoch % 10 == 0 or epoch == 1:
             log.info(
                 "Epoch %d: train_loss=%.4f acc=%.1f%% sel_loss=%.4f (%s)",
                 epoch, train_loss / train_total, train_acc * 100, sel_loss, val_basis,
             )
+
+        # Early stop: only on a real held-out val signal (never on in-sample train loss). EPOCHS is
+        # the ceiling; best_state (best val epoch) is restored after the loop.
+        if should_early_stop(
+            enabled=EARLY_STOP_ENABLED,
+            has_holdout=has_holdout,
+            patience=TRANSFORMER_EARLY_STOP_PATIENCE,
+            epochs_no_improve=epochs_no_improve,
+        ):
+            log.info(
+                "Transformer early-stop at epoch %d/%d (no val improvement > %.4g for %d epochs; "
+                "best_epoch=%d best_sel_loss=%.4f)",
+                epoch, EPOCHS, EARLY_STOP_MIN_DELTA, epochs_no_improve,
+                result.best_epoch, best_loss,
+            )
+            break
 
         if (
             resume_path

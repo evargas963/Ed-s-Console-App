@@ -18,7 +18,6 @@ Read-only on the DB. No production path imports this. Output is an untracked ope
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 import openpyxl
@@ -27,8 +26,71 @@ from openpyxl.utils import get_column_letter
 from typing import Any
 
 HORIZONS = ["1c", "5c", "15c", "60c"]
-# FULL STACK — all 6 layers (operator: "use the entire stack; not doing so is cheating ourselves").
+# FULL STACK — all 6 layers on every ablation horizon (operator binding).
 STACK = ["XGB", "LSTM", "Transformer", "Meta", "MonteCarlo", "Regime/Rules-Fusion"]
+FULL_STACK_LAYERS = ["xgb", "lstm", "transformer", "meta", "monte_carlo", "fusion"]
+# O-56: base models that consume raw features — the per-model feature-ablation dimension.
+# (Meta/MC/Fusion consume base-model outputs, not raw features, so they are NOT in this list;
+# they are scored in the separate stack-authority pass.)
+FEATURE_ABLATION_MODELS = ["xgb", "lstm", "transformer"]
+# Upper stack layers scored in stack-authority pass (layer lift comparisons).
+STACK_LAYERS = ["meta", "monte_carlo", "fusion"]
+FULL_STACK_ABLATION_MODES = (
+    "xgb_only",
+    "lstm_only",
+    "transformer_only",
+    "xgb_plus_lstm",
+    "xgb_plus_transformer",
+    "xgb_plus_lstm_plus_transformer",
+    "meta_stack",
+    "fusion_without_mc",
+    "full_fusion",
+)
+# Base-model layer comparisons — "does each base model earn its place in the stack?" These are
+# distinct from the upper-layer (meta/MC/fusion) comparisons: a base-model lift asks whether
+# adding LSTM/Transformer to the triplet improves log_loss over a leaner base set, on the live
+# inference path. Kept separate from STACK_LAYER_COMPARISONS so the upper-layer contract stays
+# exactly {meta, monte_carlo, fusion}.
+BASE_MODEL_COMPARISONS = {
+    "lstm_over_xgb": {
+        "baseline": "xgb_only",
+        "treatment": "xgb_plus_lstm",
+        "metric": "multiclass_log_loss",
+        "description": "Does LSTM add signal beyond XGB alone (0.40+0.35 renormalized)?",
+    },
+    "transformer_over_xgb": {
+        "baseline": "xgb_only",
+        "treatment": "xgb_plus_transformer",
+        "metric": "multiclass_log_loss",
+        "description": "Does Transformer add signal beyond XGB alone (0.40+0.25 renormalized)?",
+    },
+    "transformer_over_pair": {
+        "baseline": "xgb_plus_lstm",
+        "treatment": "xgb_plus_lstm_plus_transformer",
+        "metric": "multiclass_log_loss",
+        "description": "Does Transformer earn its place on top of XGB+LSTM (full triplet)?",
+    },
+}
+STACK_LAYER_COMPARISONS = {
+    "meta": {
+        "baseline": "xgb_plus_lstm_plus_transformer",
+        "treatment": "meta_stack",
+        "metric": "multiclass_log_loss",
+        "description": "Trained meta-learner vs fixed 40/35/25 weighted triplet.",
+    },
+    "monte_carlo": {
+        "baseline": "fusion_without_mc",
+        "treatment": "full_fusion",
+        "metric": "multiclass_log_loss",
+        "description": "MC fusion adjustment vs Bayesian fusion without MC.",
+    },
+    "fusion": {
+        "baseline": "meta_stack",
+        "treatment": "fusion_without_mc",
+        "metric": "multiclass_log_loss",
+        "description": "Rules+regime Bayesian fusion vs meta stack alone.",
+    },
+}
 
 HDR = PatternFill("solid", fgColor="1F3864")
 SUB = PatternFill("solid", fgColor="2E5496")
@@ -334,6 +396,20 @@ def _xgb_group_for(name: str) -> str:
     return "UNASSIGNED"
 
 
+def _horizon_ladder_from_groups() -> dict[str, dict[str, str]]:
+    """group_id -> per-horizon assignment from GROUPS (KEEP/TEST/ADD/DROP)."""
+    out: dict[str, dict[str, str]] = {}
+    for key, _label, _members, _src, _pop, _cons, hz, _research, _framing in GROUPS:
+        out[key] = hz
+    return out
+
+
+def _horizon_workbook_assignment(group_id: str, horizon: str) -> str:
+    """Workbook KEEP/TEST/DROP cell — informational only; does NOT cull the ablation grid."""
+    ladder = _horizon_ladder_from_groups()
+    return str((ladder.get(group_id) or {}).get(horizon, "TEST") or "TEST").strip()
+
+
 def _group_meta() -> dict[str, dict[str, str]]:
     out: dict[str, dict[str, str]] = {}
     for key, label, _members, _src, _pop, _cons, _hz, _research, _framing in GROUPS:
@@ -416,11 +492,13 @@ def resolve_ablation_universe() -> dict[str, Any]:
         else:
             disposition = "ABLATE"
         m = meta.get(gid, {"label": gid, "workbook_disposition": "ABLATE"})
+        hz_map = {h: _horizon_workbook_assignment(gid, h) for h in HORIZONS}
         groups_out.append(
             {
                 "group_id": gid,
                 "label": m["label"],
                 "disposition": disposition,
+                "horizon_disposition": hz_map,
                 "members": {
                     "xgb": sorted(xgb_by_group.get(gid, [])),
                     "lstm_5m": sorted(lstm_5m.get(gid, [])),
@@ -434,25 +512,84 @@ def resolve_ablation_universe() -> dict[str, Any]:
             }
         )
     unassigned = sorted(xgb_by_group.get("UNASSIGNED", []))
+    ablate_group_count = sum(1 for g in groups_out if g["disposition"] == "ABLATE")
+    anchors = ["SPY", "QQQ", "IWM"]
+    # O-56: per-model × per-horizon grouped permutation. Full cartesian — every ABLATE group ×
+    # every horizon × every MODEL × every anchor. Each base model (xgb/lstm/transformer) gets its
+    # OWN per-horizon survivor set (feature→model→horizon matrix). Workbook horizon_disposition is
+    # informational — ablation scores survivors, not pre-cull.
+    per_model_feature_cells = (
+        len(anchors) * len(FEATURE_ABLATION_MODELS) * len(HORIZONS) * ablate_group_count
+    )
+    stack_authority_cells = len(anchors) * len(HORIZONS)
     return {
-        "schema_version": "1",
+        "schema_version": "3",
         "source": "tools/build_feature_assignment_matrix_v2.py::resolve_ablation_universe",
         "ablation_method": {
-            "primary_pass": "grouped_permutation_importance",
-            "confirm_pass": "grouped_drop_column_refit_on_survivors_only",
-            "grid": ["anchor_ticker", "model_family", "horizon_slug"],
-            "anchors": ["SPY", "QQQ", "IWM"],
-            "models": ["xgb", "lstm", "transformer"],
+            "primary_pass": "per_model_grouped_permutation_importance",
+            "primary_pass_description": (
+                "O-56: per base model (xgb/lstm/transformer) × horizon, train that model on a "
+                "chronological holdout and grouped-permute each ABLATE group's features; measure "
+                "THAT MODEL's MCC delta on the held-out tail. Each model gets its OWN per-horizon "
+                "survivor set (feature→model→horizon matrix). Full cartesian grid — workbook "
+                "horizon cells do NOT pre-cull; ablation decides what each model keeps."
+            ),
+            "decision_mode": "per_model_holdout",
+            "decision_metric": "mcc_delta",
+            "models": list(FEATURE_ABLATION_MODELS),
+            "full_stack_layers": list(FULL_STACK_LAYERS),
+            "horizons_required": list(HORIZONS),
+            "horizons_binding": "all_four_mandatory__partial_horizon_runs_rejected",
+            "grid_rule": (
+                "full_cartesian_anchor_x_horizon_x_ablate_group__"
+                "workbook_horizon_disposition_informational_only"
+            ),
+            "confirm_pass": "per_model_grouped_drop_column_refit_on_survivors",
+            "confirm_pass_description": (
+                "After the primary permutation pass: per model × horizon, refit on survivors-only "
+                "(DROP_CANDIDATE group columns removed) and confirm the held-out MCC is not worse. "
+                "Pre-combined-retrain validation."
+            ),
+            "confirm_pass_cli": "python tools/feature_curation_gate.py --ablation-confirm",
+            "eval_window": {
+                "default_max_rows": 500,
+                "full_history_env": "ED_ABLATION_FULL_HISTORY=1",
+                "override_max_rows_env": "ED_ABLATION_MAX_ROWS",
+            },
+            "grid": ["anchor_ticker", "model_family", "horizon_slug", "group_id"],
+            "anchors": anchors,
             "horizons": list(HORIZONS),
-            "metrics": ["mcc", "per_class_recall"],
-            "eval_split": "chronological_holdout",
+            "eval_split": "chronological_holdout_per_model",
+            "stack_layers": list(STACK_LAYERS),
+            "stack_authority_pass": {
+                "description": (
+                    "Separate stack-component authority (not feature ablation): mode comparisons "
+                    "for base-model and upper-layer lifts on the same production path."
+                ),
+                "engine": "arch_competition.stack_bundle_eval_v1.run_stack_bundle_evaluation",
+                "grid": ["anchor_ticker", "horizon_slug"],
+                "modes": list(FULL_STACK_ABLATION_MODES),
+                "layer_comparisons": STACK_LAYER_COMPARISONS,
+                "base_model_comparisons": BASE_MODEL_COMPARISONS,
+                "primary_metric": "multiclass_log_loss",
+            },
+            "per_model_feature_ablation": {
+                "engine": "tools.feature_curation_gate.run_per_model_grouped_permutation_cell",
+                "grid": ["anchor_ticker", "model_family", "horizon_slug", "group_id"],
+                "models": list(FEATURE_ABLATION_MODELS),
+            },
         },
         "groups": groups_out,
         "totals": {
             "xgb_engineered_columns": len(feat_names),
             "lstm_5m_channels": len(l.FEATURES_5M),
             "lstm_1m_channels": len(l.FEATURES_1M),
-            "ablation_group_count": sum(1 for g in groups_out if g["disposition"] == "ABLATE"),
+            "ablation_group_count": ablate_group_count,
+            "per_model_feature_cell_count": per_model_feature_cells,
+            "stack_authority_cell_count": stack_authority_cells,
+            "grid_cell_count": per_model_feature_cells + stack_authority_cells,
+            "full_stack_layer_count": len(FULL_STACK_LAYERS),
+            "stack_layer_count": len(STACK_LAYERS),
         },
         "unassigned_xgb": unassigned,
     }

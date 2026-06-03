@@ -15,13 +15,14 @@ persist_training_fingerprint_after_materialize.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from db import sql_snapshots_training_fingerprint_select
 from horizon_outcomes import OUTCOME_BAR_SPECS, OUTCOME_MOVEMENT_V1_SPECS
@@ -35,6 +36,56 @@ FP_FLAG_KEY = "normalized_training_snapshot_fp_v1"
 _materialize_lock = threading.Lock()
 _debounce_timer: Optional[threading.Timer] = None
 _debounce_lock = threading.Lock()
+
+# Cross-process: live server debounced refresh + training normsync can materialize concurrently.
+_MATERIALIZE_LOCK_STALE_SEC = float(
+    os.environ.get("ED_NORMALIZED_MATERIALIZE_LOCK_STALE_SEC", "7200")
+)
+
+
+def _materialize_lock_path(db_path: Path) -> Path:
+    return Path(db_path).resolve().parent / ".ed_snapshots_1m_normalized_materialize.lock"
+
+
+@contextlib.contextmanager
+def cross_process_materialize_lock(
+    db_path: str | Path, *, timeout_sec: float = 600.0
+) -> Iterator[None]:
+    """Exclusive lock across processes (prevents snapshot_id UNIQUE races on materialize)."""
+    lock_path = _materialize_lock_path(Path(db_path))
+    deadline = time.monotonic() + float(timeout_sec)
+    lock_file = None
+    while True:
+        try:
+            lock_file = open(lock_path, "x", encoding="utf-8")
+            lock_file.write(f"{os.getpid()}\n")
+            lock_file.flush()
+            break
+        except FileExistsError:
+            try:
+                age = time.time() - lock_path.stat().st_mtime
+                if age > _MATERIALIZE_LOCK_STALE_SEC:
+                    lock_path.unlink(missing_ok=True)
+                    continue
+            except OSError:
+                pass
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"timed out waiting for normalized materialize lock {lock_path}"
+                )
+            time.sleep(0.25)
+    try:
+        yield
+    finally:
+        if lock_file is not None:
+            try:
+                lock_file.close()
+            except OSError:
+                pass
+        try:
+            lock_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _wal_checkpoint_truncate(conn: sqlite3.Connection) -> bool:
@@ -257,7 +308,8 @@ def ensure_normalized_training_table(
             force,
             stored is not None,
         )
-        mat = materialize_normalized_table(db_path, tickers=None, clear_first=True)
+        with cross_process_materialize_lock(db_path):
+            mat = materialize_normalized_table(db_path, tickers=None, clear_first=True)
         out["materialize"] = mat
         if mat.get("errors"):
             out["ok"] = False

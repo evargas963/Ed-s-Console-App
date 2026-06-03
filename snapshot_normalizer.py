@@ -38,7 +38,7 @@ import sqlite3
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any, Optional
 
 from db import DB_PATH, get_snapshot_sql
 from timeframe_config import CANONICAL_TIMEFRAME
@@ -282,7 +282,7 @@ def materialize_normalized_table(
 ) -> dict[str, Any]:
     """
     Resample sub-minute snapshots into snapshots_1m_normalized table.
-    Idempotent: clears table first by default, then repopulates.
+    Idempotent: per-ticker atomic replace by default (not a global table wipe).
 
     Args:
         db_path: Path to the database.
@@ -307,16 +307,13 @@ def materialize_normalized_table(
             )
             return result
 
-        if clear_first:
-            conn.execute("DELETE FROM snapshots_1m_normalized")
-            # DB-WRITE-PATH-FIXES (c), 2026-05-31: commit the clear immediately so its write
-            # lock is not held across the whole multi-ticker repopulate below. The prior single
-            # DELETE + all-INSERT + one-commit transaction held the write lock for the entire
-            # run — the root cause of the WAL bloat + lock contention against the live logger /
-            # retrain. The normalized table is a derived, idempotent rebuild from snapshots, so
-            # an interrupted run leaving a partially-repopulated table is recovered by re-running
-            # materialize (the caller re-runs when materialize reports errors).
-            conn.commit()
+        # Per-ticker ATOMIC replace (2026-06-03): the prior "DELETE all + commit up front" left
+        # EVERY ticker empty during the multi-ticker repopulate. A concurrent reader (the pre-train
+        # gate) or the live server's ongoing ingestion during that window saw the live ticker (SPY)
+        # as 0 rows -> sequence gate NO-GO -> retrain aborted, even though SPY normalizes fine. We
+        # no longer wipe the whole table; instead each ticker's rows are replaced inside one
+        # transaction per ticker (DELETE ticker + INSERT ticker + single commit, below), so no
+        # ticker is ever globally absent. clear_first now means "replace each processed ticker".
 
         if tickers is None:
             rows = conn.execute(
@@ -332,12 +329,12 @@ def materialize_normalized_table(
         col_str = ", ".join(insert_cols)
         insert_sql = f"INSERT INTO snapshots_1m_normalized ({col_str}) VALUES ({placeholders})"
 
-        next_sid = 0
-        if not clear_first:
-            row_mx = conn.execute(
-                "SELECT COALESCE(MAX(snapshot_id), 0) FROM snapshots_1m_normalized"
-            ).fetchone()
-            next_sid = int(row_mx[0] if row_mx and row_mx[0] is not None else 0)
+        # Table is never globally wiped now, so snapshot_id always continues from the current max
+        # (ids stay unique across per-ticker replaces; contiguity is not required for this derived table).
+        row_mx = conn.execute(
+            "SELECT COALESCE(MAX(snapshot_id), 0) FROM snapshots_1m_normalized"
+        ).fetchone()
+        next_sid = int(row_mx[0] if row_mx and row_mx[0] is not None else 0)
 
         for ticker in tickers:
             raw, source_tf = fetch_rows_for_normalization(conn, ticker)
@@ -361,10 +358,12 @@ def materialize_normalized_table(
                 nr["snapshot_id"] = next_sid
                 batch.append([nr.get(c) for c in insert_cols])
             if batch:
-                # DB-WRITE-PATH-FIXES (c): one executemany + one commit per ticker (the natural
-                # batch boundary) so the write lock is acquired and released per ticker instead
-                # of being held for the entire run. Bounds WAL growth and unblocks the live
-                # logger/retrain between tickers.
+                # Atomic per-ticker replace: DELETE this ticker's old rows + INSERT the new ones in
+                # ONE transaction (single commit), so a concurrent reader sees either the old SPY
+                # rows or the new ones — never an empty SPY. Per-ticker commit still bounds WAL
+                # growth and releases the write lock between tickers (DB-WRITE-PATH-FIXES intent).
+                if clear_first:
+                    conn.execute("DELETE FROM snapshots_1m_normalized WHERE ticker = ?", (ticker,))
                 conn.executemany(insert_sql, batch)
                 conn.commit()
     except Exception as e:

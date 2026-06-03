@@ -137,6 +137,90 @@ def test_train_cascade_xgb_lstm_into_fails_closed_on_empty_data(monkeypatch, tmp
     assert ok is False
 
 
+def test_cascade_meta_trains_on_oof_fold_dirs_not_in_sample(monkeypatch, tmp_path):
+    out_dir = tmp_path / "deployed"
+    out_dir.mkdir()
+    days = [f"2026-06-{d:02d}" for d in range(1, 13)]
+
+    monkeypatch.setattr(
+        ml_scheduler, "_train_cascade_base_models_into",
+        lambda *a, **k: True,
+    )
+    _patch_load_data_nonempty(monkeypatch)
+
+    seen_dirs: list[Path] = []
+
+    def fake_assemble(model_dir, ticker, db_path, rows_df, target_column, hz):
+        seen_dirs.append(Path(model_dir))
+        return ([[0.4, 0.3, 0.3, 0.4, 0.3, 0.3, 0.4, 0.3, 0.3]] * 5, [0] * 5)
+
+    monkeypatch.setattr(ml_scheduler, "_assemble_meta_base_prob_vectors", fake_assemble)
+
+    X, y, basis = ml_scheduler._train_cascade_meta_oof(
+        out_dir, "SPY", "db", ["full_df"], days, "outcome_1c", "1c", data_fp={"row_count": 9},
+    )
+
+    assert basis == "expanding_window_oof"
+    assert len(seen_dirs) == 3
+    assert all("fold" in d.name for d in seen_dirs)
+    assert out_dir not in seen_dirs
+    assert len(X) == 15 and len(y) == 15
+
+
+def test_cascade_meta_falls_back_in_sample_when_no_folds(monkeypatch, tmp_path):
+    out_dir = tmp_path / "deployed"
+    out_dir.mkdir()
+    days = ["d1", "d2", "d3"]
+
+    monkeypatch.setattr(
+        ml_scheduler, "_train_cascade_base_models_into",
+        lambda *a, **k: True,
+    )
+    _patch_load_data_nonempty(monkeypatch)
+
+    seen_dirs: list[Path] = []
+
+    def fake_assemble(model_dir, ticker, db_path, rows_df, target_column, hz):
+        seen_dirs.append(Path(model_dir))
+        return ([[0.4, 0.3, 0.3, 0.4, 0.3, 0.3, 0.4, 0.3, 0.3]] * 12, [0] * 12)
+
+    monkeypatch.setattr(ml_scheduler, "_assemble_meta_base_prob_vectors", fake_assemble)
+
+    X, y, basis = ml_scheduler._train_cascade_meta_oof(
+        out_dir, "SPY", "db", ["full_df"], days, "outcome_1c", "1c", data_fp=None,
+    )
+
+    assert basis == "in_sample_no_folds"
+    assert seen_dirs == [out_dir]
+    assert len(X) == 12
+
+
+def test_cascade_meta_falls_back_when_oof_too_thin(monkeypatch, tmp_path):
+    out_dir = tmp_path / "deployed"
+    out_dir.mkdir()
+    days = [f"2026-06-{d:02d}" for d in range(1, 13)]
+
+    monkeypatch.setattr(
+        ml_scheduler, "_train_cascade_base_models_into",
+        lambda *a, **k: True,
+    )
+    _patch_load_data_nonempty(monkeypatch)
+
+    def fake_assemble(model_dir, ticker, db_path, rows_df, target_column, hz):
+        if Path(model_dir) == out_dir:
+            return ([[0.4, 0.3, 0.3, 0.4, 0.3, 0.3, 0.4, 0.3, 0.3]] * 20, [0] * 20)
+        return ([[0.4, 0.3, 0.3, 0.4, 0.3, 0.3, 0.4, 0.3, 0.3]] * 2, [0] * 2)
+
+    monkeypatch.setattr(ml_scheduler, "_assemble_meta_base_prob_vectors", fake_assemble)
+
+    X, y, basis = ml_scheduler._train_cascade_meta_oof(
+        out_dir, "SPY", "db", ["full_df"], days, "outcome_1c", "1c", data_fp=None,
+    )
+
+    assert basis == "in_sample_fallback"
+    assert len(X) == 20
+
+
 # ── CLOSEOUT #3 — meta-training assembly excludes collapsed bases ──────────────────────
 def test_meta_base_triplet_collapsed_base_is_neutral():
     """A single-class-collapsed base feeds the neutral filler, not its degenerate probs."""

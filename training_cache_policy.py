@@ -28,6 +28,7 @@ CODE_FINGERPRINT_SOURCE_FILES: tuple[str, ...] = (
     "timeframe_config.py",
     "features/canonical_contract.py",
     "features/training_canonical_input.py",
+    "arch_competition/stack_bundle_eval_v1.py",
 )
 
 
@@ -73,6 +74,50 @@ TRANSFORMER_CHECKPOINT_RESUME_ALLOWED: bool = True
 LSTM_RESUME_REQUIRES_SAME_DATA_FINGERPRINT: bool = True
 TRANSFORMER_RESUME_REQUIRES_SAME_DATA_FINGERPRINT: bool = True
 TORCH_CHECKPOINT_EVERY_N_EPOCHS: int = int(os.environ.get("ED_TORCH_CHECKPOINT_EVERY_N_EPOCHS", "5"))
+
+
+# ── Training epochs (runtime lever; full history preserved) ──────────────────
+# Per-anchor production-retrain runtime knob (2026-06-03). Sequence training dominates wall-clock
+# and runs the full epoch count (best-val checkpointing already selects the best epoch, so fewer
+# epochs trades a little convergence for large time savings WITHOUT cutting history, breaching the
+# promotion floor, or touching the survivor-retrain env contract). Unset -> canonical defaults
+# (no behavior change). Invalid/blank -> default. Floors at 1.
+def _env_epochs(var: str, default: int) -> int:
+    raw = os.environ.get(var, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return default
+
+
+LSTM_TRAIN_EPOCHS: int = _env_epochs("ED_TRAIN_EPOCHS_LSTM", 50)
+TRANSFORMER_TRAIN_EPOCHS: int = _env_epochs("ED_TRAIN_EPOCHS_TRANSFORMER", 60)
+
+# ── Early stopping (the principled runtime lever — no guessed epoch count) ────
+# EPOCHS above is the CEILING; training stops early once the held-out val loss stops improving for
+# PATIENCE epochs, then best_state (best val epoch) is restored. Only fires when a real holdout
+# exists (thin tickers select on train loss in-sample and must NOT early-stop on it). Default ON.
+# Disable with ED_TRAIN_EARLY_STOP=0; widen/narrow with the patience vars; MIN_DELTA filters noise.
+EARLY_STOP_ENABLED: bool = os.environ.get("ED_TRAIN_EARLY_STOP", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+)
+LSTM_EARLY_STOP_PATIENCE: int = _env_epochs("ED_TRAIN_EARLY_STOP_PATIENCE_LSTM", 8)
+TRANSFORMER_EARLY_STOP_PATIENCE: int = _env_epochs("ED_TRAIN_EARLY_STOP_PATIENCE_TRANSFORMER", 8)
+EARLY_STOP_MIN_DELTA: float = float(os.environ.get("ED_TRAIN_EARLY_STOP_MIN_DELTA", "0.0001"))
+
+
+def should_early_stop(*, enabled: bool, has_holdout: bool, patience: int, epochs_no_improve: int) -> bool:
+    """Decide whether sequence training should stop early.
+
+    Fires ONLY on a real held-out val signal — never on in-sample train loss (thin tickers with no
+    holdout select on train loss, which monotonically falls and must not trigger a stop). Requires
+    early-stop enabled, a positive patience, and a no-improvement streak that reached patience.
+    """
+    return bool(enabled and has_holdout and patience > 0 and epochs_no_improve >= patience)
 
 # ── Feature cache retention (models/cache/features/) ─────────────────────────
 FEATURE_CACHE_RETAIN_MAX_DIRS: int = int(os.environ.get("ED_FEATURE_CACHE_MAX_DIRS", "96"))

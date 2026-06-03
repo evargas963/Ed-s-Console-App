@@ -278,6 +278,68 @@ def _synthetic_lstm_dataset(n: int, seed: int = 0):
     )
 
 
+def test_extract_rth_snapshots_hoists_imports_outside_row_loop():
+    """Regression: per-row import + ablation manifest re-read hung 40-session extract for 40+ min."""
+    import ast
+    import inspect
+
+    from lstm_data import extract_rth_snapshots
+
+    tree = ast.parse(inspect.getsource(extract_rth_snapshots))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.For):
+            continue
+        if not (
+            isinstance(node.target, ast.Name)
+            and node.target.id == "row"
+        ):
+            continue
+        for child in ast.walk(node):
+            if isinstance(child, (ast.Import, ast.ImportFrom)):
+                raise AssertionError(
+                    "extract_rth_snapshots must not import inside the row loop"
+                )
+
+
+def test_build_lstm_dataset_uses_end_idx_minus_one_for_confluence(monkeypatch):
+    """Regression: snapshots.index(current) inside the slide loop is O(n²) and hung 40-session builds."""
+    from lstm_data import STREAM_5M_LOOKBACK, build_lstm_dataset, compute_confluence_features
+
+    seen: list[int] = []
+    real_conf = compute_confluence_features
+
+    def _spy_conf(snaps, idx):
+        seen.append(idx)
+        return real_conf(snaps, idx)
+
+    n_snaps = STREAM_5M_LOOKBACK + 5
+    day_snaps = [{"ts_utc": float(i), "spot": 100.0 + i * 0.01, "outcome_5c": "up"} for i in range(n_snaps)]
+    for s in day_snaps:
+        s["ts_et"] = "2026-01-02 10:00:00"
+
+    monkeypatch.setattr("lstm_data.compute_confluence_features", _spy_conf)
+    monkeypatch.setattr(
+        "lstm_data.extract_rth_snapshots",
+        lambda *a, **k: {"2026-01-02": day_snaps},
+    )
+    monkeypatch.setattr(
+        "features.training_canonical_input.training_snapshot_for_sequence_encode",
+        lambda snap: snap,
+    )
+    monkeypatch.setattr(
+        "features.lstm_sequence_input.encode_lstm_structure_sequence_bar",
+        lambda merged, ref: [0.0] * 31,
+    )
+    monkeypatch.setattr(
+        "features.lstm_sequence_input.encode_lstm_micro_sequence_bar",
+        lambda merged, ref: [0.0] * 16,
+    )
+
+    ds = build_lstm_dataset(["SPY"], require_outcome=True, ml_horizon_slug="5c")
+    assert ds.n_samples == 5
+    assert seen == list(range(STREAM_5M_LOOKBACK - 1, n_snaps - 1))
+
+
 def test_train_lstm_b3_reports_out_of_sample_holdout(tmp_path, monkeypatch):
     """B3: LSTM reports an out-of-sample val metric, selects best_state on the val tail, and
     fits normalization on the train partition only."""

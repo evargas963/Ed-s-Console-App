@@ -11,7 +11,7 @@ RULE 1: RTH data only (09:30-16:00 ET weekdays), TARGET label IS NOT NULL (per-h
 RULE 2: No gates — train if data exists, save always.
 """
 
-import os, sys, json, time, sqlite3, pickle, warnings, argparse, logging
+import sys, json, time, sqlite3, pickle, warnings, argparse, logging
 from pathlib import Path
 from typing import Optional, Set
 import numpy as np
@@ -196,7 +196,6 @@ def load_data(
     allowed_et_dates: if set, only rows whose ts_et date (YYYY-MM-DD) is in this set.
     """
     from ml_data_common import (
-        et_hour_minute_arrays_from_ts_utc,
         filter_df_to_rth_ts_utc,
         stamp_et_clock_columns,
         training_label_where_clause,
@@ -267,6 +266,24 @@ def load_data(
     print(f"  Zones:    {dict(df['zone'].value_counts())}")
     if label_col in df.columns:
         print(f"  Outcomes ({label_col}): {dict(df[label_col].value_counts())}")
+    from arch_competition.stack_bundle_eval_v1 import (
+        ablated_drop_group_ids_for_model_horizon,
+        ablation_survivors_training_enabled,
+        apply_ablation_survivor_nulls_to_dataframe_for_model,
+    )
+
+    if ablation_survivors_training_enabled():
+        # O-56: XGB trains on ITS OWN survivor set for THIS horizon (the ablated data). Fail LOUD if
+        # the matrix can't be applied — never silently train full-feature on an ablated retrain
+        # (AGENTS §Ablation contract: full-feature is not a valid retrain target).
+        drop_groups = ablated_drop_group_ids_for_model_horizon("xgb", _hz_norm)
+        df = apply_ablation_survivor_nulls_to_dataframe_for_model(
+            df, model_family="xgb", horizon_slug=_hz_norm
+        )
+        print(
+            f"  Ablation survivor mask (xgb/{_hz_norm}) ON — dropped {len(drop_groups)} feature groups "
+            f"({', '.join(drop_groups[:4])}{'…' if len(drop_groups) > 4 else ''})"
+        )
     return df
 
 
@@ -723,7 +740,6 @@ def train_ticker(
     sample_w = equal_sample_weights(len(y))
 
     if not skip_sanity:
-        from sklearn.metrics import accuracy_score
         maj_pct = np.bincount(y, minlength=nc).max() / len(y)
         print(f"\n  Majority: {class_names[np.bincount(y, minlength=nc).argmax()]} ({maj_pct:.1%})")
 

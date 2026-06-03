@@ -4,7 +4,6 @@
 # RULE 2: No gates — train if data exists, save always.
 # Supports parallel (raw confluence) and cascade (confluence + XGB preds).
 
-import os
 import sys
 import json
 import time
@@ -18,6 +17,13 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug
+from training_cache_policy import (
+    EARLY_STOP_ENABLED,
+    EARLY_STOP_MIN_DELTA,
+    LSTM_EARLY_STOP_PATIENCE,
+    LSTM_TRAIN_EPOCHS,
+    should_early_stop,
+)
 
 log = logging.getLogger("lstm_model")
 
@@ -61,7 +67,7 @@ def _validate_lstm_dataset_shape(dataset, ticker: Optional[str] = None) -> None:
             pass
     if n_samples == 0:
         raise InsufficientLstmSamplesError(
-            f"build_lstm_dataset produced 0 samples"
+            "build_lstm_dataset produced 0 samples"
             + (f" for ticker {ticker}" if ticker else "")
             + f" (n_days={n_days}); ticker needs more RTH session coverage "
             "to fill the LSTM sequence window, or skip LSTM for this ticker"
@@ -94,7 +100,7 @@ def lstm_meta_path(
     t = str(ticker).strip().upper()
     return base / f"lstm_{t}_{hz}_meta.json"
 
-EPOCHS          = 50
+EPOCHS          = LSTM_TRAIN_EPOCHS   # canonical 50; env ED_TRAIN_EPOCHS_LSTM overrides (runtime lever)
 BATCH_SIZE      = 64
 LEARNING_RATE   = 0.001
 WEIGHT_DECAY    = 1e-4
@@ -539,6 +545,7 @@ def train_lstm(
                         best_loss = float("inf")
                         best_state = None
 
+    epochs_no_improve = 0  # early-stop counter (only meaningful when has_holdout)
     for epoch in range(start_epoch, EPOCHS + 1):
         model.train()
         train_loss = 0.0
@@ -589,16 +596,34 @@ def train_lstm(
         else:
             sel_loss = train_loss
 
+        improved = sel_loss < (best_loss - EARLY_STOP_MIN_DELTA)
         if sel_loss < best_loss:
             best_loss = sel_loss
             best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
             result.best_epoch = epoch
+        epochs_no_improve = 0 if improved else epochs_no_improve + 1
 
         if epoch % 10 == 0 or epoch == 1:
             log.info(
                 "Epoch %d/%d: train_loss=%.4f acc=%.3f sel_loss=%.4f (%s)",
                 epoch, EPOCHS, train_loss, train_acc, sel_loss, val_basis,
             )
+
+        # Early stop: only on a real held-out val signal (never on in-sample train loss). EPOCHS is
+        # the ceiling; best_state (best val epoch) is restored after the loop.
+        if should_early_stop(
+            enabled=EARLY_STOP_ENABLED,
+            has_holdout=has_holdout,
+            patience=LSTM_EARLY_STOP_PATIENCE,
+            epochs_no_improve=epochs_no_improve,
+        ):
+            log.info(
+                "LSTM early-stop at epoch %d/%d (no val improvement > %.4g for %d epochs; "
+                "best_epoch=%d best_sel_loss=%.4f)",
+                epoch, EPOCHS, EARLY_STOP_MIN_DELTA, epochs_no_improve,
+                result.best_epoch, best_loss,
+            )
+            break
 
         if (
             scheduler_cache_key
@@ -813,6 +838,8 @@ def load_lstm(
 
 
 if __name__ == "__main__":
+    import argparse
+
     if str(APP_DIR) not in sys.path:
         sys.path.insert(0, str(APP_DIR))
     from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target

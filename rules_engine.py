@@ -7,8 +7,7 @@ from __future__ import annotations
 
 import logging
 
-from micro_structure import analyze_micro
-from math_exposure import greek_bias, is_pin_zone, APPROACH_PTS
+from math_exposure import is_pin_zone, APPROACH_PTS
 from signal_types import SignalInput, RulesCard
 from features.regime_mvp_context import mvp_vwap_side, mvp_zone
 from signal_helpers import _ordinal
@@ -31,7 +30,6 @@ def _derive_bias_from_micro(micro, approaching_ceiling, approaching_floor,
         R_TREND_UP, R_TREND_DOWN, R_BOS_UP, R_BOS_DOWN,
         R_CHOCH_BULL, R_CHOCH_BEAR, R_COMPRESSION, R_RANGE,
         R_REVERSAL_UP, R_REVERSAL_DN, R_CHOP,
-        regime_direction,
     )
 
     regime = micro.regime
@@ -107,10 +105,9 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
       - micro:       full MicroRead object for downstream consumers
     """
     from micro_structure import (
-        Candle, analyze_micro,
-        R_TREND_UP, R_TREND_DOWN, R_BOS_UP, R_BOS_DOWN,
-        R_CHOCH_BULL, R_CHOCH_BEAR, R_COMPRESSION, R_RANGE,
-        R_REVERSAL_UP, R_REVERSAL_DN, R_CHOP, R_UNKNOWN,
+        analyze_micro,
+        R_BOS_UP, R_BOS_DOWN,
+        R_REVERSAL_UP, R_REVERSAL_DN,
     )
 
     spot = inp.spot
@@ -170,10 +167,10 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
         dirn = "up through" if cross.get("direction") == "up" else "down through"
         alerts.append(f"⚡ Just crossed {dirn} {lvl}")
 
-    # Time context
-    if inp.mins_to_close <= 30 and inp.mins_to_close > 0:
+    # Time context — mins_to_close may be None on DB replay rows (call_engine fail-closes; rules must not crash)
+    if inp.mins_to_close is not None and inp.mins_to_close <= 30 and inp.mins_to_close > 0:
         alerts.append(f"🛑 {int(inp.mins_to_close)}min to close — no new entries")
-    elif inp.mins_to_close <= 120 and inp.mins_to_close > 0:
+    elif inp.mins_to_close is not None and inp.mins_to_close <= 120 and inp.mins_to_close > 0:
         alerts.append(f"⏰ {int(inp.mins_to_close)}min to close — reduce size")
 
     # Zone transition context — separate execution-layer (1m) from structure-layer (5m)
@@ -220,7 +217,6 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
     from micro_structure import (
         regime_direction as _regime_dir,
         R_BOS_UP, R_BOS_DOWN, R_REVERSAL_UP, R_REVERSAL_DN,
-        R_CHOCH_BULL, R_CHOCH_BEAR,
     )
     _r1m = getattr(micro, "regime_1m", "UNKNOWN")
     _dir_5m = _regime_dir(micro.regime)
@@ -240,7 +236,7 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
             alerts.append(f"⚠ 1-min diverging ({_r1m}) — conviction reduced")
 
     # Override: no new entries in last 30 min
-    if inp.mins_to_close <= 30 and inp.mins_to_close > 0:
+    if inp.mins_to_close is not None and inp.mins_to_close <= 30 and inp.mins_to_close > 0:
         signal = "wait"
         conviction = "low"
 

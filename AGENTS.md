@@ -74,6 +74,7 @@ If either answer is **no**, **stop** — fix the design or implementation before
 | **Meet-or-Exceed sign-off** (VERDICT MET/EXCEEDED only) | `check_meet_or_exceed_signoff()` in `check_fix_everything_we_touch.py` | `tests/test_check_fix_everything_we_touch.py` |
 | **Runtime tip = disk tip** | `GET /api/build` `git_sha` vs `git rev-parse HEAD` | `tests/test_batch2_analytics_bg_fail_counter.py` |
 | **Encoder width/schema changes** | `tools/check_encoder_cone_tests.py` → `check_encoder_cone_tests()` (pre-commit when cone paths staged) | `tests/test_check_fix_everything_we_touch.py` |
+| **O-56 ablation survivor mask** (per-model×horizon; shared-snapshot mask fail-closed + confirm-verified, no fabricated default) | `arch_competition/stack_bundle_eval_v1.py::resolve_ablation_drop_group_ids` (fail-closed to full feature set) + `confirmed_drop_group_ids_by_model_horizon` / `globally_safe_drop_group_ids` (intersection) | `tests/test_ml_feature_schema_parity.py::test_ablation_survivor_training_mask_defaults`, `::test_globally_safe_drop_is_confirm_verified_intersection`, `::test_primary_pass_recommendation_alone_is_not_a_verified_drop` |
 
 **Pre-commit:** `check_institutional_contract()` runs on **every** commit (via `check_fix_everything_we_touch.py`), not only when UI files are staged. A promotion without a registry row + checker is rejection-grade.
 
@@ -498,6 +499,20 @@ There is no third state. "Disclosed residual / tracked residual / bounded-design
 **Operator intent (2026-05-31):** "when we fix … the answer to whether something is clean should always be an honest yes without omitting anything … everything needs to be fixed and we fix along the way."
 
 **Mechanical lock (landed with this rule):** `tools/check_no_deferral_language.py` flags commit messages / staged non-allowlisted source using a residual-completion-qualifier — `tracked` / `disclosed` / `bounded-design residual`, or `residual … NOT closed` — without an adjacent `[REAL-GATE: <tag>]`. Bare `residual` (ML "residual connection/block/error") is intentionally NOT caught. Allowlisted surfaces (legitimate future-work tracking): `OPEN_ITEMS.md` / `ACTIVE_PROGRAM.md` / `MEMORY.md` / `AGENTS.md` / `CLAUDE.md` / `governance/**` / `tests/**`. Paired test: `tests/test_check_no_deferral_language.py`. **Honest limit:** surface-pattern catch only — omission / soft-framing of a residual in prose is operator-catch-net + agent discipline ([§Do not lie to the operator](#do-not-lie-to-the-operator-promoted-2026-05-24--binding-hard-rule-no-exceptions)).
+
+---
+
+<a id="ablation-contract-o56"></a>
+
+## Ablation contract — feature→model→horizon `[PROMOTED]` (2026-06-03 — operator binding, O-56)
+
+The feature ablation is **per-model × per-horizon grouped permutation**. Binding (register **O-56**):
+
+- Grid is **`anchor × model × horizon × ABLATE-group`**. For each `(anchor, model, horizon)` the base model (XGB / LSTM / Transformer) is trained on a chronological holdout, each group is grouped-permuted, and **that model's MCC delta** is recorded.
+- Survivors resolve **per (model, horizon)** — `survivor_summary.by_model_horizon[model][horizon]`. **No** single global survivor list across models/horizons. There is **no fabricated default drop set** (`DEFAULT_ABLATION_DROP_GROUP_IDS` removed 2026-06-03 — it silently dropped volume/vwap/iv). The designed survivor source is the per-cell matrix, applied at each model's feature assembly.
+- **TRAINING CONSUMES THE SURVIVORS — full-feature training is NOT a valid retrain target.** A production retrain trains on the per-model × horizon survivor sets (the ablated data). When a complete ablation matrix exists, full-feature training is **never** an acceptable default, fallback, or *offered option*. Agents must **not** silently fail-closed to full features on a real retrain: if the survivors cannot be applied, **fail loud and stop — do not train.** Presenting "train full-feature instead" as a choice, or treating a full-feature run as "ready to train," is **rejection-grade**. The operator's direction here is standing and does not need re-confirmation. (The shared-snapshot global mask still fails closed for *serving* safety; that is separate from the retrain target.)
+- The `full_fusion` / whole-stack pass is a **separate stack-authority diagnostic** (base-model + meta/MC/fusion lifts). It may **never** replace or collapse the per-model feature ablation. No redesign may remove the `model_family` dimension.
+- **Mechanical lock:** `tests/test_ml_feature_schema_parity.py::test_ablation_grid_is_per_model_horizon` (per-model grid) + `::test_globally_safe_drop_is_confirm_verified_intersection` + `tools/check_fix_everything_we_touch.py::check_ablated_training_only()` (orchestrator must set `ED_APPLY_ABLATION_SURVIVORS=1`; no full-feature retrain default) fail closed on any model-agnostic or full-feature reframing. Binds Cursor **and** Claude.
 
 ---
 

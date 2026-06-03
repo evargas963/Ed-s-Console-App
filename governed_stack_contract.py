@@ -17,6 +17,9 @@ MC_BASE_MODEL_WEIGHT_LSTM: float = 0.35
 MC_BASE_MODEL_WEIGHT_TRANSFORMER: float = 0.25
 MC_DIRECTION_CONFIDENCE_HIGH_THRESHOLD: float = 0.5
 MC_DIRECTION_CONFIDENCE_MEDIUM_THRESHOLD: float = 0.4
+# Display-only Key Levels wall-clock EFE/EAE (not used for sizing / fusion / ML features).
+MC_DISPLAY_N_PATHS: int = 2000
+MC_DISPLAY_WALL_CLOCK_MINUTES: tuple[int, ...] = (5, 15)
 
 # Full inference loop uses all governed slugs (primary + secondary).
 GOVERNED_STACK_HORIZONS: tuple[str, ...] = ALL_GOVERNED_HORIZONS
@@ -24,7 +27,15 @@ assert GOVERNED_STACK_HORIZONS == ML_HORIZON_SLUGS
 
 
 def horizon_slug_to_mc_bars(slug: str) -> int:
-    """Monte Carlo `horizon_bars` aligned to governed horizon slug (e.g. 13c → 13)."""
+    """Monte Carlo `horizon_bars` aligned to governed horizon slug (e.g. 13c → 13).
+
+    NOTE (2026-06-01): this maps slug INTEGER → bar COUNT (5c→5 bars). Because the MC
+    engine steps ``monte_carlo.BAR_MINUTES`` (currently 5) per bar, the resulting WALL-CLOCK
+    forward time is ``bars × BAR_MINUTES`` — i.e. 5c → 25 minutes, NOT 5 minutes. That is a
+    known misalignment vs the 1-minute `outcome_Nc` training labels (tracked in the feature
+    matrix as a BLOCKING precondition before efe/eae feature-wiring). For TRUE wall-clock
+    forward time, use ``wall_clock_minutes_to_mc_bars`` below.
+    """
     su = str(slug or "").strip().lower()
     if not su.endswith("c"):
         raise ValueError(f"horizon_slug_to_mc_bars: invalid slug {slug!r}")
@@ -32,6 +43,32 @@ def horizon_slug_to_mc_bars(slug: str) -> int:
     if n < 1:
         raise ValueError(f"horizon_slug_to_mc_bars: non-positive bars in {slug!r}")
     return n
+
+
+def wall_clock_minutes_to_mc_bars(minutes: int) -> int:
+    """Convert a TRUE wall-clock horizon (in minutes) to MC ``horizon_bars``.
+
+    The MC engine advances ``monte_carlo.BAR_MINUTES`` minutes per simulated bar. To get a
+    genuine N-minute forward forecast, request ``N / BAR_MINUTES`` bars — e.g. with
+    BAR_MINUTES=5: 5 min → 1 bar, 15 min → 3 bars. Used by the Key Levels display-only
+    5m/15m EFE/EAE so the rows are labeled by real wall-clock minutes (NOT by the slug-integer
+    path, which would over-simulate: horizon_bars=5 would be 25 minutes, the bug to avoid).
+
+    Raises ValueError if ``minutes`` is not a positive whole multiple of BAR_MINUTES (e.g. a
+    true 1-minute forecast is NOT representable while BAR_MINUTES=5 — that requires the
+    BAR_MINUTES=1 alignment fix, tracked separately).
+    """
+    from monte_carlo import BAR_MINUTES
+
+    m = int(minutes)
+    if m < 1:
+        raise ValueError(f"wall_clock_minutes_to_mc_bars: non-positive minutes {minutes!r}")
+    if m % int(BAR_MINUTES) != 0:
+        raise ValueError(
+            f"wall_clock_minutes_to_mc_bars: {m} min is not a whole multiple of "
+            f"BAR_MINUTES={BAR_MINUTES}; cannot represent without the BAR_MINUTES alignment fix"
+        )
+    return m // int(BAR_MINUTES)
 
 
 def mc_model_direction_inputs(

@@ -133,14 +133,43 @@ _CASCADE_TRANSFORMER_SEQ_EXTRA = 6
 
 
 def _snap_dict(row: Any) -> Optional[dict]:
+    """Normalize DB row to dict without ablation (O-56: masks are per-model in each predictor)."""
     if row is None:
         return None
     if isinstance(row, dict):
-        return row
+        return dict(row)
     try:
         return dict(row)
     except Exception:
         return None
+
+
+def _apply_serve_ablation_snapshot(snap: dict, model_family: str) -> dict:
+    """Per (model_family, horizon) survivor nulls — must match training/eval assembly (O-56)."""
+    out = dict(snap)
+    try:
+        from arch_competition.stack_bundle_eval_v1 import (
+            ablation_survivors_training_enabled,
+            apply_ablation_survivor_nulls_to_snapshot_for_model,
+        )
+
+        if ablation_survivors_training_enabled():
+            hz = get_ml_infer_horizon_slug()
+            apply_ablation_survivor_nulls_to_snapshot_for_model(
+                out, model_family=model_family, horizon_slug=hz
+            )
+    except Exception:
+        logger.warning(
+            "ablation survivor serve-mask failed for %s/%s; serving UNMASKED snapshot",
+            model_family,
+            get_ml_infer_horizon_slug(),
+            exc_info=True,
+        )
+    return out
+
+
+def _mask_sequence_bars_for_model(bars: list, model_family: str) -> list:
+    return [_apply_serve_ablation_snapshot(dict(b), model_family) for b in bars]
 
 
 def _require_as_of_ts_utc_for_sequence_db(inference_snapshot_v1: dict | None) -> float:
@@ -389,7 +418,8 @@ def build_xgb_pre_engineering_snapshot_for_tick(
         assert_not_raw_l1_payload(fusion_feature_overlay)
     base = inference_snapshot_v1_to_engineering_snapshot(inference_snapshot_v1)
     snap = merge_xgb_fusion_overlay(base, fusion_feature_overlay)
-    return attach_net_gamma_prev_for_dgex(snap, _ML_DB)
+    snap = attach_net_gamma_prev_for_dgex(snap, _ML_DB)
+    return _apply_serve_ablation_snapshot(snap, "xgb")
 
 
 def _load_xgb(ticker: str) -> bool:
@@ -473,7 +503,7 @@ def _predict_xgb(
         )
 
         if xgb_pre_engineering_snapshot is not None:
-            snap = xgb_pre_engineering_snapshot
+            snap = _apply_serve_ablation_snapshot(dict(xgb_pre_engineering_snapshot), "xgb")
         else:
             assert_not_raw_l1_payload(inference_snapshot_v1)
             if fusion_feature_overlay is not None:
@@ -483,6 +513,7 @@ def _predict_xgb(
             snap = merge_xgb_fusion_overlay(base, fusion_feature_overlay)
 
             snap = attach_net_gamma_prev_for_dgex(snap, _ML_DB)
+            snap = _apply_serve_ablation_snapshot(snap, "xgb")
         X = engineer_single_snapshot(
             snapshot=snap,
             category_maps=reg["category_maps"],
@@ -763,6 +794,9 @@ def _predict_lstm(
                 window, day_snaps, inference_snapshot_v1=inference_snapshot_v1
             )
 
+        merged_window = _mask_sequence_bars_for_model(merged_window, "lstm")
+        merged_days = _mask_sequence_bars_for_model(merged_days, "lstm")
+
         try:
             ref_spot = canonical_reference_spot_from_merged_window(merged_window)
         except ValueError as e:
@@ -986,7 +1020,6 @@ def _predict_transformer(
         import torch
         from features.lstm_sequence_input import encode_lstm_structure_sequence_bar
         from lstm_data import (
-            _safe_float,
             CANONICAL_TIMEFRAME,
             canonical_reference_spot_from_merged_window,
         )
@@ -1024,6 +1057,7 @@ def _predict_transformer(
         merged_window = build_transformer_merged_window(
             window, inference_snapshot_v1=inference_snapshot_v1
         )
+        merged_window = _mask_sequence_bars_for_model(merged_window, "transformer")
 
         try:
             ref_spot = canonical_reference_spot_from_merged_window(merged_window)
@@ -1031,7 +1065,9 @@ def _predict_transformer(
             raise TransformerSequenceInputError(str(e)) from e
 
         snap = snapshot if snapshot is not None else _snap_dict(merged_window[-1])
-        seq = [encode_lstm_structure_sequence_bar(s, ref_spot) for s in merged_window]
+        seq = [
+            encode_lstm_structure_sequence_bar(s, ref_spot) for s in merged_window
+        ]
         if len(seq[0]) != n_enc_base:
             logger.error(
                 "Transformer %s: encoder width %d != expected %d",

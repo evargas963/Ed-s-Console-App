@@ -104,3 +104,12 @@ def test_compute_rules_hard_time_override_forces_wait_low():
     assert rules.signal == "wait"
     assert rules.conviction == "low"
     assert any("no new entries" in a for a in rules.alerts)
+
+
+def test_compute_rules_none_mins_to_close_does_not_crash():
+    """DB replay rows may omit mins_to_close — rules must not TypeError (stack ablation path)."""
+    rules = compute_rules(
+        _minimal_inp(mins_to_close=None),
+        mvp_features=minimal_mvp_features(),
+    )
+    assert rules.signal in ("long", "short", "wait")

@@ -24,7 +24,7 @@ from typing import Optional
 from canonical_distances import canonical_nearest_distances
 from math_probabilities import OE_SPREAD_TIGHT_MAX
 from fusion_contract import canonical_provenance_is_tradable, fusion_is_authoritative
-from numeric_contract import float_finite_or_none, float_positive_or_none
+from numeric_contract import float_finite_or_none
 from timeframe_config import CANONICAL_TIMEFRAME
 from ml_horizon import PRIMARY_DECISION_HORIZONS
 from volatility_regime import vol_percent_to_decimal
@@ -441,6 +441,11 @@ class MarketState:
     mc_sigma_value:         Optional[float] = None
     mc_em_anchor:           Optional[str]   = None
     mc_iv_source:           Optional[str]   = None
+    # Display-only wall-clock MC excursions (Key Levels); not used for sizing or fusion.
+    mc_efe_5m:              Optional[float] = None
+    mc_eae_5m:              Optional[float] = None
+    mc_efe_15m:             Optional[float] = None
+    mc_eae_15m:             Optional[float] = None
 
     # ── Individual model outputs (stack visibility from ml_predict) ───────────
     xgb_available:          Optional[bool]  = None
@@ -999,8 +1004,6 @@ def build_market_state(
     """
     from math_exposure import (
         _f, score_option_expression,
-        OE_DELTA_GAMMA_RATIO_MIN, OE_DELTA_GAMMA_RATIO_MAX,
-        OE_VOL_OI_MIN,
         session_bucket as _sb_fn,
         vix_bucket as _vb_fn,
     )
@@ -1673,6 +1676,13 @@ def build_market_state(
             ms.mc_horizon       = getattr(_fusion, 'mc_horizon', None)
             ms.mc_vol_source    = getattr(_fusion, 'mc_vol_source', None)
             ms.mc_sigma_value   = getattr(_fusion, 'mc_sigma_value', None)
+
+        _disp_mc = getattr(_sig_out, "mc_display_excursions", None) or {}
+        if isinstance(_disp_mc, dict):
+            ms.mc_efe_5m = float_finite_or_none(_disp_mc.get("mc_efe_5m"))
+            ms.mc_eae_5m = float_finite_or_none(_disp_mc.get("mc_eae_5m"))
+            ms.mc_efe_15m = float_finite_or_none(_disp_mc.get("mc_efe_15m"))
+            ms.mc_eae_15m = float_finite_or_none(_disp_mc.get("mc_eae_15m"))
 
         # Volatility regime (policy layer — influences The Call)
         _vr = getattr(_sig_out, 'vol_regime', None)

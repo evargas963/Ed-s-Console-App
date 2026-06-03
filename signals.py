@@ -317,6 +317,104 @@ def _spot_for_mc_fusion_adjustment(
     return float_positive_or_none(feats.get("price.spot"))
 
 
+def _compute_display_wall_clock_mc_excursions(
+    inp: SignalInput,
+    *,
+    regime,
+    mc_spot_ctx: Optional[dict[str, Any]],
+    mc_context_error: Optional[BaseException],
+    xgb_out,
+    lstm_out,
+    transformer_out,
+    ml_bundle: Optional[dict[str, Any]],
+) -> dict[str, Optional[float]]:
+    """
+    Display-only wall-clock EFE/EAE for Key Levels (5m / 15m rows).
+
+    Isolated from fusion posterior, sizing, and ML features. Uses
+    ``wall_clock_minutes_to_mc_bars`` so BAR_MINUTES=5 maps 5m→1 bar, 15m→3 bars.
+    Fail-closed: any blocked input => all keys None (UI omits rows).
+    """
+    keys = ("mc_efe_5m", "mc_eae_5m", "mc_efe_15m", "mc_eae_15m")
+    out: dict[str, Optional[float]] = {k: None for k in keys}
+    if mc_context_error is not None or not isinstance(mc_spot_ctx, dict):
+        return out
+    spot = float_positive_or_none(mc_spot_ctx.get("spot"))
+    iv = float_finite_or_none(inp.iv_level)
+    if spot is None or iv is None or iv <= 0:
+        return out
+
+    import monte_carlo
+    from governed_stack_contract import (
+        MC_DISPLAY_N_PATHS,
+        MC_DISPLAY_WALL_CLOCK_MINUTES,
+        mc_model_direction_inputs,
+        wall_clock_minutes_to_mc_bars,
+    )
+    from ml_predict import stack_probs_bundle_key
+
+    _mc_regime = getattr(regime, "primary", None) if regime else None
+    if _mc_regime == "unknown":
+        _mc_regime = None
+    _mc_regime_conf = getattr(regime, "confidence", None) if regime else None
+    _spk = stack_probs_bundle_key()
+    _m_up, _m_dn, _m_conf, _, _ = mc_model_direction_inputs(
+        xgb_out=xgb_out,
+        lstm_out=lstm_out,
+        transformer_out=transformer_out,
+        stack_probs=ml_bundle.get(_spk) if isinstance(ml_bundle, dict) else None,
+    )
+    garch_full = mc_spot_ctx.get("garch_sigma_bars")
+
+    for minutes in MC_DISPLAY_WALL_CLOCK_MINUTES:
+        try:
+            bars = wall_clock_minutes_to_mc_bars(minutes)
+        except ValueError:
+            continue
+        garch_slice = None
+        if garch_full is not None and len(garch_full) >= bars:
+            garch_slice = garch_full[:bars]
+        try:
+            mc_out = monte_carlo.simulate(
+                spot=spot,
+                iv=iv,
+                horizon_bars=bars,
+                n_paths=MC_DISPLAY_N_PATHS,
+                call_gamma_wall=mc_spot_ctx.get("call_gamma_wall"),
+                put_gamma_wall=mc_spot_ctx.get("put_gamma_wall"),
+                em_upper=mc_spot_ctx.get("em_upper"),
+                em_lower=mc_spot_ctx.get("em_lower"),
+                regime=_mc_regime,
+                regime_confidence=_mc_regime_conf,
+                realized_vol=mc_spot_ctx.get("realized_vol"),
+                atr=mc_spot_ctx.get("atr"),
+                model_prob_up=_m_up,
+                model_prob_down=_m_dn,
+                model_confidence=_m_conf,
+                fusion_dominant=None,
+                garch_sigma_bars=garch_slice,
+            )
+        except Exception as e:
+            log.warning(
+                "display wall-clock MC failed minutes=%s ticker=%s: %s",
+                minutes,
+                getattr(inp, "ticker", ""),
+                e,
+                exc_info=True,
+            )
+            continue
+        if not getattr(mc_out, "available", False) or not getattr(mc_out, "simulation_ok", False):
+            continue
+        suffix = f"{minutes}m"
+        out[f"mc_efe_{suffix}"] = float_finite_or_none(
+            getattr(mc_out, "expected_favorable_excursion", None)
+        )
+        out[f"mc_eae_{suffix}"] = float_finite_or_none(
+            getattr(mc_out, "expected_adverse_excursion", None)
+        )
+    return out
+
+
 def _run_model_stack(
     inp: SignalInput,
     rules: RulesCard,
@@ -1218,6 +1316,17 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
             f"signals: live horizon stack unavailable (live_hz={_live_hz!r} ticker={ticker!r})"
         )
 
+    mc_display_excursions = _compute_display_wall_clock_mc_excursions(
+        inp,
+        regime=regime,
+        mc_spot_ctx=shared_mc_ctx,
+        mc_context_error=mc_ctx_err,
+        xgb_out=xgb_out,
+        lstm_out=lstm_out,
+        transformer_out=transformer_out,
+        ml_bundle=ml_bundle,
+    )
+
     if _don():
         _ddone("model_stack", ticker)
 
@@ -1438,4 +1547,5 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         pred_override_source=pred_override_source,
         multi_horizon_bundle=mh_bundle,
         calibration_payload=calibration_payload,
+        mc_display_excursions=mc_display_excursions,
     )

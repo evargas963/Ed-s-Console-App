@@ -850,3 +850,29 @@ def test_mvp_dataframe_ingress_flags_raw_to_dict_on_mvp_path(tmp_path: Path) -> 
         mod.REPO_ROOT = orig_root
     assert len(hits) == 1
     assert "records_for_mvp_from_dataframe" in hits[0]
+
+
+# ── O-56: ablated training is the only valid retrain target (AGENTS §Ablation contract) ──
+
+
+def test_check_ablated_training_only_passes_on_real_orchestrator():
+    # the committed orchestrator must enable ED_APPLY_ABLATION_SURVIVORS=1 -> no errors
+    assert mod.check_ablated_training_only() == []
+
+
+def test_check_ablated_training_only_flags_full_feature_default(tmp_path, monkeypatch):
+    bad = tmp_path / "orch.ps1"
+    bad.write_text('$env:ED_APPLY_ABLATION_SURVIVORS = "0"\n', encoding="utf-8")
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(mod, "ABLATED_TRAINING_ORCHESTRATOR", "orch.ps1")
+    errs = mod.check_ablated_training_only()
+    assert errs and "ED_APPLY_ABLATION_SURVIVORS" in errs[0]
+
+
+def test_check_ablated_training_only_flags_missing_enable(tmp_path, monkeypatch):
+    bad = tmp_path / "orch.ps1"
+    bad.write_text('$env:ED_SCHEDULER_AUTO_PROMOTE = "1"\n', encoding="utf-8")
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(mod, "ABLATED_TRAINING_ORCHESTRATOR", "orch.ps1")
+    errs = mod.check_ablated_training_only()
+    assert errs and "must set ED_APPLY_ABLATION_SURVIVORS=1" in errs[0]

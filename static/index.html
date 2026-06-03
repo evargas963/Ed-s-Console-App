@@ -6765,7 +6765,7 @@ function render(d, fullRenderSource) {
 
     // ── MONTE CARLO section ───────────────────────────────────────────────────
     const mcAvail = d.mc_available;
-    html += '<div class="kl-section-hdr" style="border-top:2px solid var(--border)">MONTE CARLO<span>10,000 paths · horizon from MC/fusion config (1m snapshot clock)</span></div>';
+    html += '<div class="kl-section-hdr" style="border-top:2px solid var(--border)">MONTE CARLO<span>live stack · 5m/15m wall-clock display (5-min MC steps)</span></div>';
     if (mcAvail) {
       const mcEfe = d.mc_efe != null ? parseFloat(d.mc_efe).toFixed(2) : null;
       const mcEae = d.mc_eae != null ? parseFloat(d.mc_eae).toFixed(2) : null;
@@ -6773,10 +6773,17 @@ function render(d, fullRenderSource) {
       const mcExpand = d.mc_expansion != null ? Math.round(d.mc_expansion * 100) + '%' : '—';
       const efePrice = mcEfe && spot ? (spot + parseFloat(mcEfe)).toFixed(2) : '—';
       const eaePrice = mcEae && spot ? (spot - parseFloat(mcEae)).toFixed(2) : '—';
+      // HONEST live-horizon clock: the live MC row is the governed horizon, and the engine
+      // steps 5 min/bar (BAR_MINUTES=5) — so its TRUE forward time is mc_horizon bars x 5 min,
+      // NOT the slug minutes and NOT 1m. Label it so a trader cannot confuse it with the fixed
+      // 5m/15m rows below. Falls back to "live" when the bar count is absent.
+      const mcLiveMin = (d.mc_horizon != null && !Number.isNaN(parseInt(d.mc_horizon, 10)))
+        ? (parseInt(d.mc_horizon, 10) * 5) : null;
+      const mcLiveLbl = mcLiveMin != null ? `live · ~${mcLiveMin}m fwd` : 'live stack';
 
       if (mcEfe) html += `<div class="kl-grid">
         <div class="kl-prox" style="background:#06b6d4"></div>
-        <div class="kl-name mc">EFE Level</div>
+        <div class="kl-name mc">EFE (${mcLiveLbl})</div>
         <div class="kl-price">${efePrice}</div>
         <div style="text-align:center"><span class="kl-sr sup">Target</span></div>
         <div class="kl-dist above">+${mcEfe}</div>
@@ -6784,12 +6791,40 @@ function render(d, fullRenderSource) {
       </div>`;
       if (mcEae) html += `<div class="kl-grid">
         <div class="kl-prox" style="background:#f59e0b"></div>
-        <div class="kl-name mc-risk">EAE Level</div>
+        <div class="kl-name mc-risk">EAE (${mcLiveLbl})</div>
         <div class="kl-price">${eaePrice}</div>
         <div style="text-align:center"><span class="kl-sr res">Risk</span></div>
         <div class="kl-dist below">-${mcEae}</div>
         <div class="kl-str">10K paths</div>
       </div>`;
+      // ── Fixed wall-clock 5m / 15m EFE/EAE (display-only, independent of the governing
+      // horizon). Server (signals.py) computes these via wall_clock_minutes_to_mc_bars
+      // (5m=1 bar, 15m=3 bars at BAR_MINUTES=5) and exposes mc_efe_5m/mc_eae_5m/mc_efe_15m/
+      // mc_eae_15m on /api/state. Fail-closed: rows render ONLY when the key is present and
+      // numeric — missing => no row (never 0 / fabricated). Until the server half lands these
+      // keys are absent and nothing renders (the live-horizon block above is unchanged).
+      [['5m', d.mc_efe_5m, d.mc_eae_5m], ['15m', d.mc_efe_15m, d.mc_eae_15m]].forEach(function (row) {
+        const lbl = row[0];
+        const efeRaw = row[1], eaeRaw = row[2];
+        const efeN = efeRaw != null && !Number.isNaN(parseFloat(efeRaw)) ? parseFloat(efeRaw) : null;
+        const eaeN = eaeRaw != null && !Number.isNaN(parseFloat(eaeRaw)) ? parseFloat(eaeRaw) : null;
+        if (efeN != null && spot) html += `<div class="kl-grid">
+          <div class="kl-prox" style="background:#06b6d4;opacity:0.55"></div>
+          <div class="kl-name mc">EFE ${lbl}</div>
+          <div class="kl-price">${(spot + efeN).toFixed(2)}</div>
+          <div style="text-align:center"><span class="kl-sr sup">Target</span></div>
+          <div class="kl-dist above">+${efeN.toFixed(2)}</div>
+          <div class="kl-str">${lbl} fwd</div>
+        </div>`;
+        if (eaeN != null && spot) html += `<div class="kl-grid">
+          <div class="kl-prox" style="background:#f59e0b;opacity:0.55"></div>
+          <div class="kl-name mc-risk">EAE ${lbl}</div>
+          <div class="kl-price">${(spot - eaeN).toFixed(2)}</div>
+          <div style="text-align:center"><span class="kl-sr res">Risk</span></div>
+          <div class="kl-dist below">-${eaeN.toFixed(2)}</div>
+          <div class="kl-str">${lbl} fwd</div>
+        </div>`;
+      });
       html += `<div class="kl-grid">
         <div class="kl-prox" style="background:transparent"></div>
         <div class="kl-name">Containment</div>

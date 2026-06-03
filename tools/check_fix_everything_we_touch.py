@@ -942,6 +942,38 @@ def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
     return errors
 
 
+ABLATED_TRAINING_ORCHESTRATOR = "tools/train_per_anchor_sequential.ps1"
+
+
+def check_ablated_training_only() -> list[str]:
+    """O-56 / AGENTS §Ablation contract: the production retrain orchestrator MUST train on the
+    ablated data — full-feature is NOT a valid retrain target. Lock: the orchestrator sets
+    ED_APPLY_ABLATION_SURVIVORS=1 and never disables it. Absent orchestrator = nothing to lock."""
+    errors: list[str] = []
+    p = REPO_ROOT / ABLATED_TRAINING_ORCHESTRATOR
+    if not p.is_file():
+        return errors
+    enabled = False
+    for line in p.read_text(encoding="utf-8").splitlines():
+        s = line.strip()
+        if s.startswith("#") or "ED_APPLY_ABLATION_SURVIVORS" not in s or "=" not in s:
+            continue
+        val = s.split("=", 1)[1].split("#", 1)[0].strip().strip('"').strip("'").lower()
+        if val in ("0", "false", "no", ""):
+            errors.append(
+                f"{ABLATED_TRAINING_ORCHESTRATOR}: ED_APPLY_ABLATION_SURVIVORS must be '1' — ablated "
+                f"training is the only valid retrain target (AGENTS §Ablation contract); got {val!r}."
+            )
+        elif val == "1":
+            enabled = True
+    if not enabled and not errors:
+        errors.append(
+            f"{ABLATED_TRAINING_ORCHESTRATOR}: must set ED_APPLY_ABLATION_SURVIVORS=1 — train on the "
+            "ablated data; full-feature is not a valid retrain target (AGENTS §Ablation contract)."
+        )
+    return errors
+
+
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     staged = _git_staged_paths()
@@ -969,6 +1001,7 @@ def main(argv: list[str] | None = None) -> int:
             errors.extend(encoder_cone.check_encoder_cone_commit_claim(p.read_text(encoding="utf-8"), staged))
     else:
         errors.extend(check_paths(paths, staged=staged))
+        errors.extend(check_ablated_training_only())
         # commit-msg file may also be passed alongside staged paths in some hooks
         for p in paths:
             if p.name == "COMMIT_EDITMSG":
