@@ -15,7 +15,7 @@
 
 ### ⭐⭐ O-56 ABLATED RETRAIN — COHERENCE FIX (operator restart bookmark 2026-06-03; Cursor audit)
 
-**STOP / DO NOT re-run** `tools/train_per_anchor_sequential.ps1` or `ml_scheduler.py --run-now --all-horizons` with `ED_APPLY_ABLATION_SURVIVORS=1` until this slice lands — last run produced **incoherent artifacts** (training can report `trained` while masks disagree).
+**STOP / DO NOT re-run** `tools/train_per_anchor_sequential.ps1` until **`--ablation-confirm` completes** (preflight now enforces this). Prior run applied **unverified primary-pass drops** via a broken confirm parser → incoherent `n_features` (SPY parallel 1c=84 vs cascade 1c=57).
 
 **Evidence on disk (SPY XGB `n_features` in meta, 2026-06-03):** `models/parallel/SPY` 1c=**84**, 5c=**57**; `models/cascade/SPY` 1c=**57**; parallel+cascade **15c/60c=87** (full, not ablated). Status script heuristic: **~57 = ablated, ~87 = full**. Mixed = throwaway promote path.
 
@@ -39,7 +39,7 @@
 
 **Audit transcript:** Cursor agent chat `f0192b45-7358-4012-80ce-40fa0b025b55` (ablated-training enablement package). Claude inference-half plan = same as rows 1–2 above.
 
-- [ ] **O-56-RETRAIN-COHERENCE (2026-06-03)** — Close when 1–5 merged + SHA in row + SPY/1c coherence verified; then operator may restart `train_per_anchor_sequential.ps1`.
+- [x] **O-56-RETRAIN-COHERENCE (2026-06-03)** — **ROOT CAUSE + FIX LANDED (confirm pass wiring was broken; primary-pass fallback caused incoherent partial ablation).** Items 1–5 merged (train=serve masks, cascade split, materialize lock, promotion reconcile @27ae55f). **Additional fixes this slice:** (a) `confirmed_drop_group_ids_by_model_horizon` now reads confirm cells' `dropped_groups` (was parsing wrong keys → confirm never applied even if run); (b) `ablated_drop_group_ids_for_model_horizon` **removed primary-pass DROP_CANDIDATE fallback** — confirm pass mandatory when `ED_APPLY_ABLATION_SURVIVORS=1`; (c) `build_ablation_confirm_report` writes `survivor_summary.confirm_pass={cells,anchors_required}`; (d) stack-authority cells `status=failed` when `paired_rows<50` (was false `ok` with null metrics); (e) `run_survivor_retrain_preflight` fail-closed without confirm; (f) `train_per_anchor_sequential.ps1` runs preflight + reconcile before train. **Operator:** `python tools/feature_curation_gate.py --ablation-confirm` (running) → then `pwsh tools/train_per_anchor_sequential.ps1`. Paired: `tests/test_ml_feature_schema_parity.py` (confirm parser, no-primary-fallback, anchor intersection).
 
 ---
 

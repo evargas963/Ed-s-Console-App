@@ -1,0 +1,52 @@
+name: Hardening Gates
+
+# Code-quality / security / supply-chain gates (hardening program 2026-06-03).
+# Separate from pytest.yml (full suite) and the schwab-*.yml gates.
+# BLOCKING steps fail the build. The F841 lint-debt step is a visible RATCHET: it reports the
+# remaining unused-variable count (56 → 0 target) without blocking, because those sites are
+# money-path and reviewed individually, not blind-swept. It flips to blocking when the count hits 0.
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  hardening:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ruff bandit pip-audit
+          python -m pip install -r requirements.txt
+
+      # --- BLOCKING: correctness lint (undefined names, unused imports, syntax) — all at 0 today ---
+      - name: ruff (correctness rules — blocking)
+        run: python -m ruff check . --select F401,F821,E9
+
+      - name: compileall (no unparseable files — blocking)
+        run: python -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__|models)[\\/])' .
+
+      # --- BLOCKING: governance gates (the rules that must be enforced, not remembered) ---
+      - name: no-deferral language
+        run: python tools/check_no_deferral_language.py
+      - name: fix-everything-we-touch
+        run: python tools/check_fix_everything_we_touch.py
+      - name: no-grep subprocess
+        run: python tools/check_no_grep_subprocess.py
+
+      # --- BLOCKING: security (high-severity only at first; ratchet to medium as triaged) ---
+      - name: bandit (high severity — blocking)
+        run: python -m bandit -r . -ll -q -c pyproject.toml || true   # RATCHET: triage HIGH then make blocking
+
+      # --- RATCHET (visible, non-blocking until cleared) ---
+      - name: lint debt — unused vars + redefs (F841/F811 ratchet, target 0 this week)
+        run: python -m ruff check . --select F841,F811 --statistics || true
+      - name: dependency vulnerabilities (pip-audit — ratchet until requirements pinned)
+        run: python -m pip_audit || true

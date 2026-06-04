@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from ml_train import (
     apply_xgb_imputation_matrix,
@@ -711,19 +712,90 @@ def test_globally_safe_drop_is_confirm_verified_intersection():
 
     ss = {
         "confirm_pass": {
+            "anchors_required": 2,
             "cells": [
-                {"model_family": "xgb", "horizon_slug": "1c", "group_id": "breadth_etf", "safe_to_drop": True},
-                {"model_family": "xgb", "horizon_slug": "1c", "group_id": "charm", "safe_to_drop": True},
-                {"model_family": "lstm", "horizon_slug": "1c", "group_id": "breadth_etf", "safe_to_drop": True},
-                {"model_family": "lstm", "horizon_slug": "1c", "group_id": "charm", "safe_to_drop": False},
-            ]
+                {
+                    "model_family": "xgb",
+                    "horizon_slug": "1c",
+                    "status": "ok",
+                    "safe_to_drop": True,
+                    "dropped_groups": ["breadth_etf", "charm"],
+                },
+                {
+                    "model_family": "xgb",
+                    "horizon_slug": "1c",
+                    "status": "ok",
+                    "safe_to_drop": True,
+                    "dropped_groups": ["breadth_etf", "charm"],
+                },
+                {
+                    "model_family": "lstm",
+                    "horizon_slug": "1c",
+                    "status": "ok",
+                    "safe_to_drop": True,
+                    "dropped_groups": ["breadth_etf"],
+                },
+                {
+                    "model_family": "lstm",
+                    "horizon_slug": "1c",
+                    "status": "ok",
+                    "safe_to_drop": True,
+                    "dropped_groups": ["breadth_etf"],
+                },
+            ],
         }
     }
     by_cell = confirmed_drop_group_ids_by_model_horizon(ss)
     assert by_cell[("xgb", "1c")] == {"breadth_etf", "charm"}
     assert by_cell[("lstm", "1c")] == {"breadth_etf"}
-    # breadth_etf confirmed safe in every cell -> globally droppable; charm needed by lstm -> kept.
     assert globally_safe_drop_group_ids(ss) == ["breadth_etf"]
+
+
+def test_confirmed_drops_require_all_anchors_safe():
+    from arch_competition.stack_bundle_eval_v1 import confirmed_drop_group_ids_by_model_horizon
+
+    ss = {
+        "confirm_pass": {
+            "anchors_required": 3,
+            "cells": [
+                {"model_family": "xgb", "horizon_slug": "5c", "status": "ok", "safe_to_drop": True, "dropped_groups": ["vix"]},
+                {"model_family": "xgb", "horizon_slug": "5c", "status": "ok", "safe_to_drop": True, "dropped_groups": ["vix"]},
+                {"model_family": "xgb", "horizon_slug": "5c", "status": "ok", "safe_to_drop": False, "dropped_groups": ["vix"]},
+            ],
+        }
+    }
+    assert confirmed_drop_group_ids_by_model_horizon(ss) == {}
+
+
+def test_ablated_drop_requires_confirm_not_primary(monkeypatch, tmp_path):
+    """Primary-pass DROP_CANDIDATE must never reach training when survivors env is on."""
+    from arch_competition import stack_bundle_eval_v1 as sbe
+    from arch_competition.stack_bundle_eval_v1 import AblatedTrainingUnavailable
+
+    report = {
+        "survivor_summary": {
+            "scored_cell_count": 828,
+            "confirm_pass": "run_with_--ablation-confirm",
+            "by_model_horizon": {
+                "xgb": {
+                    "1c": [{"group_id": "charm", "recommendation": "DROP_CANDIDATE"}],
+                }
+            },
+        }
+    }
+    rp = tmp_path / "feature_ablation_report.json"
+    mp = tmp_path / "feature_ablation_manifest.json"
+    rp.write_text(json.dumps(report), encoding="utf-8")
+    mp.write_text(json.dumps({"groups": []}), encoding="utf-8")
+    monkeypatch.setattr(sbe, "ABLATION_REPORT_PATH", rp)
+    monkeypatch.setattr(sbe, "ABLATION_MANIFEST_PATH", mp)
+    monkeypatch.setenv("ED_APPLY_ABLATION_SURVIVORS", "1")
+    sbe.ablated_drop_group_ids_for_model_horizon.cache_clear()
+    try:
+        with pytest.raises(AblatedTrainingUnavailable, match="--ablation-confirm"):
+            sbe.ablated_drop_group_ids_for_model_horizon("xgb", "1c")
+    finally:
+        sbe.ablated_drop_group_ids_for_model_horizon.cache_clear()
 
 
 def test_primary_pass_recommendation_alone_is_not_a_verified_drop():
@@ -839,6 +911,11 @@ def test_serve_ablation_mask_differs_by_model_family(monkeypatch):
     report_path = Path("governance/artifacts/feature_ablation_report.json")
     if not report_path.is_file():
         return
+    from arch_competition.stack_bundle_eval_v1 import ablation_confirm_pass_complete
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    if not ablation_confirm_pass_complete(report.get("survivor_summary")):
+        pytest.skip("live ablation report lacks completed confirm pass")
     monkeypatch.setenv("ED_APPLY_ABLATION_SURVIVORS", "1")
     from arch_competition.stack_bundle_eval_v1 import (
         ablation_drop_snapshot_columns_for_model_horizon,

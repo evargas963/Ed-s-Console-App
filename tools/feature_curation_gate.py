@@ -596,12 +596,14 @@ def run_stack_layer_ablation_cell(
         lifts["meta"]["treatment_helps"] = None
 
     auth = manifest.get("authority_decision") or {}
+    paired = int(manifest.get("paired_rows_all_modes") or 0)
+    cell_status = "ok" if paired >= 50 else "failed"
     return {
         "anchor_ticker": ticker,
         "horizon_slug": horizon_slug,
-        "status": "ok",
+        "status": cell_status,
         "model_dir": str(model_dir),
-        "paired_rows": manifest.get("paired_rows_all_modes"),
+        "paired_rows": paired,
         "skip_reason_counts": manifest.get("skip_reason_counts"),
         "metrics_by_mode": {
             mode: {
@@ -982,6 +984,16 @@ def build_ablation_confirm_report(
         report.setdefault("run_meta", {})["confirm_pass_at"] = datetime.now(
             timezone.utc
         ).isoformat()
+        confirm_cells = report.get("confirm_drop_cells") or []
+        anchors = list(manifest["ablation_method"]["anchors"])
+        surv = report.get("survivor_summary") or survivor
+        surv["confirm_pass"] = {
+            "cells": confirm_cells,
+            "anchors_required": len(anchors),
+            "completed_at": report["run_meta"]["confirm_pass_at"],
+        }
+        surv["primary_pass_only"] = False
+        report["survivor_summary"] = surv
     finally:
         if _prev_strict is None:
             os.environ.pop("ED_XGB_STRICT_ACTIVE_ONLY", None)
@@ -1943,15 +1955,21 @@ def run_survivor_retrain_preflight(
     out["survivor_drop_group_ids"] = drop_ids
     out["survivor_drop_column_count"] = len(drop_cols)
     out.setdefault("notes", [])
-    # Full-feature training (no survivor drops) is a VALID, ready state — survivor masking is an
-    # opt-in optimization, not a precondition. Only NOTE the case where the operator explicitly
-    # enabled survivors but the resolver fail-closed to empty (confirm pass not run / no globally-
-    # safe intersection); training still proceeds on the full feature set, so it does not block.
-    if survivors_on and not drop_ids:
-        out["notes"].append(
-            "survivor_mask_enabled_but_fail_closed: no confirm-verified globally-safe drops "
-            "(run --ablation-confirm); training will proceed on the FULL feature set"
-        )
+    if survivors_on:
+        from arch_competition.stack_bundle_eval_v1 import ablation_confirm_pass_complete
+
+        if not ablation_confirm_pass_complete():
+            out["ready"] = False
+            out["issues"].append(
+                "ablation_confirm_pass_incomplete: run "
+                "python tools/feature_curation_gate.py --ablation-confirm before "
+                "ED_APPLY_ABLATION_SURVIVORS=1 retrain (primary-pass DROP_CANDIDATE is never applied)"
+            )
+        elif not drop_ids:
+            out["notes"].append(
+                "survivor_mask_confirm_ok_but_no_globally_safe_intersection: per-model drops apply at "
+                "feature assembly; shared snapshot stays full-feature"
+            )
     elif not survivors_on:
         out["notes"].append("survivor_mask_off: training on the full feature set (canonical default)")
 

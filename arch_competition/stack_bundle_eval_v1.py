@@ -852,32 +852,63 @@ def ablation_survivors_training_enabled() -> bool:
     return os.environ.get(ABLATION_SURVIVORS_ENV, "").strip().lower() in ("1", "true", "yes")
 
 
+def ablation_confirm_pass_complete(survivor_summary: dict | None = None) -> bool:
+    """True when survivor_summary.confirm_pass is a populated dict (not the pre-run status string)."""
+    if survivor_summary is None:
+        if not ABLATION_REPORT_PATH.is_file():
+            return False
+        try:
+            report = json.loads(ABLATION_REPORT_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError):
+            return False
+        survivor_summary = report.get("survivor_summary") or {}
+    confirm = survivor_summary.get("confirm_pass")
+    return isinstance(confirm, dict) and bool(confirm.get("cells"))
+
+
 def confirmed_drop_group_ids_by_model_horizon(
     survivor_summary: dict,
 ) -> dict[tuple[str, str], set[str]]:
     """O-56-faithful per-cell drop sets: {(model_family, horizon_slug): {group_id, ...}}.
 
     A group is included for a cell ONLY when the confirm pass (drop-and-refit) verified it
-    ``safe_to_drop`` for that cell. The primary pass's DROP_CANDIDATE recommendation is a screen,
-    not a verified drop, so it is never sufficient on its own — this returns {} until the confirm
-    pass has run.
+    ``safe_to_drop`` for that cell on EVERY anchor. The primary pass's DROP_CANDIDATE
+    recommendation is a screen, not a verified drop — never sufficient on its own.
 
-    This is the correct source for per-model feature-assembly masking (each model trains on its own
-    survivor set). It is deliberately NOT collapsed into one global set: see
-    resolve_ablation_drop_group_ids for why the shared snapshot mask can only use the intersection.
+    Confirm cells carry ``dropped_groups`` (batched DROP set per anchor); legacy ``group_id`` /
+    ``group_ids`` are also accepted.
     """
+    from collections import defaultdict
+
     out: dict[tuple[str, str], set[str]] = {}
     confirm = survivor_summary.get("confirm_pass")
     if not isinstance(confirm, dict):  # live report carries a status string until the pass runs
         return out
-    for cell in confirm.get("cells") or []:
-        if not cell.get("safe_to_drop"):
-            continue
+    cells = [c for c in (confirm.get("cells") or []) if c.get("status") == "ok"]
+    by_mh: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for cell in cells:
         key = (str(cell.get("model_family")), str(cell.get("horizon_slug")))
-        gid = cell.get("group_id")
-        ids = {str(gid)} if gid else {str(g) for g in (cell.get("group_ids") or [])}
-        if ids:
-            out.setdefault(key, set()).update(ids)
+        by_mh[key].append(cell)
+
+    anchors_required = int(confirm.get("anchors_required") or 0)
+    for key, group in by_mh.items():
+        safe = [c for c in group if c.get("safe_to_drop")]
+        need = anchors_required if anchors_required > 0 else len(group)
+        if len(safe) < need:
+            continue
+        batch_sets: list[set[str]] = []
+        for c in safe:
+            dg: list[str] = list(c.get("dropped_groups") or [])
+            if c.get("group_id"):
+                dg.append(str(c["group_id"]))
+            if c.get("group_ids"):
+                dg.extend(str(g) for g in c["group_ids"])
+            batch_sets.append({str(g) for g in dg if g})
+        if not batch_sets:
+            continue
+        intersection = set.intersection(*batch_sets)
+        if intersection:
+            out[key] = intersection
     return out
 
 
@@ -1083,13 +1114,13 @@ def _load_ablation_manifest_or_raise() -> dict:
 
 @lru_cache(maxsize=None)
 def ablated_drop_group_ids_for_model_horizon(model_family: str, horizon_slug: str) -> list[str]:
-    """The ablation's DROP set for one (model, horizon) cell (O-56). Prefers confirm-verified
+    """The ablation's DROP set for one (model, horizon) cell (O-56). Requires confirm-verified
 
     Cached: the report/manifest are static within a training process, and this is called per-row by
     the sequence-model mask — without the cache it re-reads + re-parses the ~900KB report on every
     snapshot (catastrophic O(rows × file-parse)). Cache makes it one parse per (model, horizon).
-    safe_to_drop; falls back to the primary-pass DROP_CANDIDATE recommendation for that cell.
-    Raises AblatedTrainingUnavailable if the matrix is missing or incomplete (< full target)."""
+    drops only; primary-pass DROP_CANDIDATE is never applied on the money path.
+    Raises AblatedTrainingUnavailable if the matrix is missing/incomplete or confirm not run."""
     ss = _load_ablation_report_or_raise().get("survivor_summary") or {}
     scored = int(ss.get("scored_cell_count") or 0)
     if scored < ABLATION_FULL_MATRIX_CELL_TARGET:
@@ -1098,11 +1129,14 @@ def ablated_drop_group_ids_for_model_horizon(model_family: str, horizon_slug: st
             "cannot apply per-model survivors."
         )
     key = (str(model_family), str(horizon_slug))
+    if not ablation_confirm_pass_complete(ss):
+        raise AblatedTrainingUnavailable(
+            "ED_APPLY_ABLATION_SURVIVORS=1 requires a completed --ablation-confirm pass "
+            "(survivor_summary.confirm_pass must be {cells:[...]}). Primary-pass DROP_CANDIDATE "
+            "recommendations are never applied on the money path."
+        )
     confirmed = confirmed_drop_group_ids_by_model_horizon(ss)
-    if confirmed:
-        return sorted(confirmed.get(key, set()))
-    rows = ((ss.get("by_model_horizon") or {}).get(str(model_family)) or {}).get(str(horizon_slug)) or []
-    return sorted(str(r["group_id"]) for r in rows if r.get("recommendation") == "DROP_CANDIDATE")
+    return sorted(confirmed.get(key, set()))
 
 
 @lru_cache(maxsize=None)
