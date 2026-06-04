@@ -39,6 +39,16 @@ _REQUIRED_BRIDGE = (
 )
 
 
+# confirm pass must be single-instance + refuse wiping partial v2 without resume
+_REQUIRED_CONFIRM_DURABILITY = (
+    (REPO_ROOT / "tools" / "feature_curation_gate.py", "guard_ablation_confirm_fresh_start"),
+    (REPO_ROOT / "tools" / "feature_curation_gate.py", "acquire_ablation_run_lock(run_kind=\"confirm\")"),
+    (REPO_ROOT / "tools" / "feature_curation_gate.py", "PER_MODEL_CONFIRM_CELL_TARGET"),
+    (REPO_ROOT / "tools" / "feature_curation_gate.py", "confirm_resume_recommended"),
+    (REPO_ROOT / "tools" / "feature_curation_gate.py", "--ablation-confirm-force-restart"),
+)
+
+
 def check_ablation_pipeline_parity() -> list[str]:
     errors: list[str] = []
     for path, needle in _FORBIDDEN_CONFIRM:
@@ -50,7 +60,9 @@ def check_ablation_pipeline_parity() -> list[str]:
             errors.append(
                 f"{path}: forbidden confirm pattern {needle!r} — use drop_group_ids + manifest"
             )
-    for path, needle in _REQUIRED_SERVE + _REQUIRED_SCHEDULER + _REQUIRED_BRIDGE:
+    for path, needle in (
+        _REQUIRED_SERVE + _REQUIRED_SCHEDULER + _REQUIRED_BRIDGE + _REQUIRED_CONFIRM_DURABILITY
+    ):
         if not path.is_file():
             errors.append(f"missing file: {path}")
             continue

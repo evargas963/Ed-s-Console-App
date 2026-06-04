@@ -67,6 +67,7 @@ ABLATION_REPORT_PATH = Path("governance/artifacts/feature_ablation_report.json")
 ABLATION_LOCK_PATH = Path("governance/artifacts/feature_ablation.run.lock")
 REQUIRED_ABLATION_HORIZONS = ("1c", "5c", "15c", "60c")
 WHOLE_STACK_CELL_TARGET = 828  # O-56: per-model feature cells (3 anchors x 3 models x 4 hz x 23 groups)
+PER_MODEL_CONFIRM_CELL_TARGET = 36  # 3 anchors x 3 models x 4 horizons (drop-and-refit confirm pass)
 FULL_STACK_LAYERS = ("xgb", "lstm", "transformer", "meta", "monte_carlo", "fusion")
 
 
@@ -1176,108 +1177,126 @@ def build_ablation_confirm_report(
     }
     db = db_path or str(DB_PATH)
 
-    _prev_strict = os.environ.get("ED_XGB_STRICT_ACTIVE_ONLY")
-    _prev_ablation_eval = os.environ.get("ED_ABLATION_SCORED_EVAL")
-    os.environ["ED_XGB_STRICT_ACTIVE_ONLY"] = "0"
-    os.environ["ED_ABLATION_SCORED_EVAL"] = "1"
+    acquire_ablation_run_lock(run_kind="confirm")
     try:
+        _prev_strict = os.environ.get("ED_XGB_STRICT_ACTIVE_ONLY")
+        _prev_ablation_eval = os.environ.get("ED_ABLATION_SCORED_EVAL")
+        os.environ["ED_XGB_STRICT_ACTIVE_ONLY"] = "0"
+        os.environ["ED_ABLATION_SCORED_EVAL"] = "1"
+        try:
 
-        def _checkpoint(section_kind: str, cell: dict, n: int, total: int) -> None:
-            report["run_progress"] = {
-                "phase": section_kind, "cells_done": n, "cells_total": total,
-                "last_cell": {
-                    "anchor_ticker": cell.get("anchor_ticker"),
-                    "model_family": cell.get("model_family"),
-                    "horizon_slug": cell.get("horizon_slug"),
-                    "status": cell.get("status"),
-                    "safe_to_drop": cell.get("safe_to_drop"),
-                    "mcc_change": cell.get("mcc_change"),
-                },
-            }
-            if section_kind == "per_model_confirm":
-                from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
-
-                anchors_req = list(manifest["ablation_method"]["anchors"])
-                surv = report.get("survivor_summary") or survivor
-                confirm_cells = list(report.get("confirm_drop_cells") or [])
-                path_version = (
-                    ABLATION_CONFIRM_PATH_VERSION if n >= total and total > 0 else None
-                )
-                surv["confirm_pass"] = {
-                    "cells": confirm_cells,
-                    "anchors_required": len(anchors_req),
-                    "confirm_path_version": path_version,
-                    "completed_at": (
-                        datetime.now(timezone.utc).isoformat()
-                        if path_version == ABLATION_CONFIRM_PATH_VERSION
-                        else surv.get("confirm_pass", {}).get("completed_at")
-                    ),
+            def _checkpoint(section_kind: str, cell: dict, n: int, total: int) -> None:
+                report["run_progress"] = {
+                    "phase": section_kind, "cells_done": n, "cells_total": total,
+                    "last_cell": {
+                        "anchor_ticker": cell.get("anchor_ticker"),
+                        "model_family": cell.get("model_family"),
+                        "horizon_slug": cell.get("horizon_slug"),
+                        "status": cell.get("status"),
+                        "safe_to_drop": cell.get("safe_to_drop"),
+                        "mcc_change": cell.get("mcc_change"),
+                    },
                 }
-                surv["primary_pass_only"] = False
+                if section_kind == "per_model_confirm":
+                    from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
+
+                    anchors_req = list(manifest["ablation_method"]["anchors"])
+                    surv = report.get("survivor_summary") or survivor
+                    confirm_cells = list(report.get("confirm_drop_cells") or [])
+                    path_version = (
+                        ABLATION_CONFIRM_PATH_VERSION if n >= total and total > 0 else None
+                    )
+                    surv["confirm_pass"] = {
+                        "cells": confirm_cells,
+                        "anchors_required": len(anchors_req),
+                        "confirm_path_version": path_version,
+                        "completed_at": (
+                            datetime.now(timezone.utc).isoformat()
+                            if path_version == ABLATION_CONFIRM_PATH_VERSION
+                            else surv.get("confirm_pass", {}).get("completed_at")
+                        ),
+                    }
+                    surv["primary_pass_only"] = False
+                    report["survivor_summary"] = surv
+                _write_ablation_checkpoint(out_path, report)
+                print(
+                    f"confirm [{section_kind}] {n}/{total} "
+                    f"{cell.get('anchor_ticker')}/{cell.get('model_family')}/{cell.get('horizon_slug')} "
+                    f"status={cell.get('status')} safe={cell.get('safe_to_drop')} dmcc={cell.get('mcc_change')}",
+                    flush=True,
+                )
+
+            resume_cells = _confirm_resume_cells_from_report(report) if resume else {}
+            report["confirm_drop_cells"] = []
+            if not resume:
+                surv = report.get("survivor_summary") or survivor
+                surv.pop("confirm_pass", None)
                 report["survivor_summary"] = surv
-            _write_ablation_checkpoint(out_path, report)
-            print(
-                f"confirm [{section_kind}] {n}/{total} "
-                f"{cell.get('anchor_ticker')}/{cell.get('model_family')}/{cell.get('horizon_slug')} "
-                f"status={cell.get('status')} safe={cell.get('safe_to_drop')} dmcc={cell.get('mcc_change')}",
-                flush=True,
+            confirm_section = build_per_model_confirm_pass_section(
+                manifest,
+                db_path=db,
+                drops_by_mh=drops_by_mh,
+                full_baseline=full_baseline,
+                tickers=tickers,
+                on_cell_done=_checkpoint,
+                cells_out=report["confirm_drop_cells"],
+                resume_cells=resume_cells,
             )
-
-        resume_cells = _confirm_resume_cells_from_report(report) if resume else {}
-        report["confirm_drop_cells"] = []
-        if not resume:
+            report.update(confirm_section)
+            report["confirm_drop_summary"] = {
+                "drops_by_model_horizon": {f"{mh[0]}/{mh[1]}": ids for mh, ids in drops_by_mh.items()},
+                "cells_total": len(report.get("confirm_drop_cells") or []),
+                "cells_ok": sum(
+                    1 for c in report.get("confirm_drop_cells") or [] if c.get("status") == "ok"
+                ),
+                "cells_safe_to_drop": sum(
+                    1
+                    for c in report.get("confirm_drop_cells") or []
+                    if c.get("status") == "ok" and c.get("safe_to_drop")
+                ),
+            }
+            report.setdefault("run_meta", {})["confirm_pass_at"] = datetime.now(
+                timezone.utc
+            ).isoformat()
+            confirm_cells = report.get("confirm_drop_cells") or []
+            anchors = list(manifest["ablation_method"]["anchors"])
             surv = report.get("survivor_summary") or survivor
-            surv.pop("confirm_pass", None)
-            report["survivor_summary"] = surv
-        confirm_section = build_per_model_confirm_pass_section(
-            manifest,
-            db_path=db,
-            drops_by_mh=drops_by_mh,
-            full_baseline=full_baseline,
-            tickers=tickers,
-            on_cell_done=_checkpoint,
-            cells_out=report["confirm_drop_cells"],
-            resume_cells=resume_cells,
-        )
-        report.update(confirm_section)
-        report["confirm_drop_summary"] = {
-            "drops_by_model_horizon": {f"{mh[0]}/{mh[1]}": ids for mh, ids in drops_by_mh.items()},
-            "cells_total": len(report.get("confirm_drop_cells") or []),
-            "cells_ok": sum(
-                1 for c in report.get("confirm_drop_cells") or [] if c.get("status") == "ok"
-            ),
-            "cells_safe_to_drop": sum(
-                1
-                for c in report.get("confirm_drop_cells") or []
-                if c.get("status") == "ok" and c.get("safe_to_drop")
-            ),
-        }
-        report.setdefault("run_meta", {})["confirm_pass_at"] = datetime.now(
-            timezone.utc
-        ).isoformat()
-        confirm_cells = report.get("confirm_drop_cells") or []
-        anchors = list(manifest["ablation_method"]["anchors"])
-        surv = report.get("survivor_summary") or survivor
-        from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
+            from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
 
-        surv["confirm_pass"] = {
-            "cells": confirm_cells,
-            "anchors_required": len(anchors),
-            "completed_at": report["run_meta"]["confirm_pass_at"],
-            "confirm_path_version": ABLATION_CONFIRM_PATH_VERSION,
-        }
-        surv["primary_pass_only"] = False
-        report["survivor_summary"] = surv
+            expected = int(confirm_section.get("confirm_drop_cell_count") or 0)
+            all_v2 = all(
+                c.get("confirm_path_version") == ABLATION_CONFIRM_PATH_VERSION
+                for c in confirm_cells
+            )
+            confirm_complete = (
+                expected > 0
+                and len(confirm_cells) >= expected
+                and all_v2
+            )
+            surv["confirm_pass"] = {
+                "cells": confirm_cells,
+                "anchors_required": len(anchors),
+                "completed_at": (
+                    report["run_meta"]["confirm_pass_at"] if confirm_complete else None
+                ),
+                "confirm_path_version": (
+                    ABLATION_CONFIRM_PATH_VERSION if confirm_complete else None
+                ),
+            }
+            surv["primary_pass_only"] = False
+            report["survivor_summary"] = surv
+        finally:
+            if _prev_strict is None:
+                os.environ.pop("ED_XGB_STRICT_ACTIVE_ONLY", None)
+            else:
+                os.environ["ED_XGB_STRICT_ACTIVE_ONLY"] = _prev_strict
+            if _prev_ablation_eval is None:
+                os.environ.pop("ED_ABLATION_SCORED_EVAL", None)
+            else:
+                os.environ["ED_ABLATION_SCORED_EVAL"] = _prev_ablation_eval
+        return report
     finally:
-        if _prev_strict is None:
-            os.environ.pop("ED_XGB_STRICT_ACTIVE_ONLY", None)
-        else:
-            os.environ["ED_XGB_STRICT_ACTIVE_ONLY"] = _prev_strict
-        if _prev_ablation_eval is None:
-            os.environ.pop("ED_ABLATION_SCORED_EVAL", None)
-        else:
-            os.environ["ED_ABLATION_SCORED_EVAL"] = _prev_ablation_eval
-    return report
+        release_ablation_run_lock()
 
 
 def _pre_mask_encoded_indices(
@@ -1929,7 +1948,7 @@ def build_ablation_report(
         f"per_model_feature_cells={manifest['totals']['per_model_feature_cell_count']}",
         flush=True,
     )
-    acquire_ablation_run_lock()
+    acquire_ablation_run_lock(run_kind="primary")
     try:
         try:
             return _build_ablation_report_scored(
@@ -2077,21 +2096,26 @@ def _read_ablation_lock() -> dict | None:
     return data if isinstance(data, dict) else None
 
 
-def acquire_ablation_run_lock() -> None:
-    """Single-instance guard — refuse a second scored ablation on this host."""
+def acquire_ablation_run_lock(*, run_kind: str = "primary") -> None:
+    """Single-instance guard — refuse a second scored ablation/confirm on this host."""
     existing = _read_ablation_lock()
     if existing:
         pid = int(existing.get("pid") or 0)
         if _pid_alive(pid):
+            kind = str(existing.get("run_kind") or "ablation")
             raise SystemExit(
-                f"ablation already running (pid={pid}, lock={ABLATION_LOCK_PATH}); "
+                f"{kind} already running (pid={pid}, lock={ABLATION_LOCK_PATH}); "
                 "stop that process before starting another run"
             )
         ABLATION_LOCK_PATH.unlink(missing_ok=True)
     ABLATION_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
     ABLATION_LOCK_PATH.write_text(
         json.dumps(
-            {"pid": os.getpid(), "started_at": datetime.now(timezone.utc).isoformat()},
+            {
+                "pid": os.getpid(),
+                "run_kind": run_kind,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+            },
             indent=2,
         ),
         encoding="utf-8",
@@ -2120,7 +2144,14 @@ def ablation_report_status(report_path: Path | None = None) -> dict:
         "run_status": "missing",
         "complete": False,
         "resume_recommended": False,
+        "confirm_cells_done": 0,
+        "confirm_cells_total": PER_MODEL_CONFIRM_CELL_TARGET,
+        "confirm_path_version": None,
+        "confirm_complete": False,
+        "confirm_resume_recommended": False,
     }
+    if lock:
+        base["lock_run_kind"] = lock.get("run_kind")
     if not out_path.is_file():
         return base
     try:
@@ -2129,14 +2160,29 @@ def ablation_report_status(report_path: Path | None = None) -> dict:
         base["run_status"] = "unreadable"
         base["error"] = str(exc)
         return base
+    from arch_competition.stack_bundle_eval_v1 import ablation_confirm_pass_complete
+
     whole = report.get("per_model_feature_cells") or []
     stack = report.get("stack_authority_cells") or report.get("stack_layer_cells") or []
     meta = report.get("run_meta") or {}
     prog = report.get("run_progress") or {}
+    ss = report.get("survivor_summary") or {}
+    confirm_summary = report.get("confirm_drop_summary") or {}
     n_whole = len(whole)
     n_stack = len(stack)
     status = str(meta.get("status") or prog.get("phase") or "partial")
     complete = n_whole >= WHOLE_STACK_CELL_TARGET and n_stack >= 12 and status == "complete"
+    confirm_total = int(
+        prog.get("cells_total")
+        or confirm_summary.get("cells_total")
+        or PER_MODEL_CONFIRM_CELL_TARGET
+    )
+    if prog.get("phase") == "per_model_confirm" and prog.get("cells_done") is not None:
+        confirm_done = int(prog["cells_done"])
+    else:
+        confirm_done = len(report.get("confirm_drop_cells") or [])
+    confirm_complete = ablation_confirm_pass_complete(ss)
+    resume_v2 = _confirm_resume_cells_from_report(report)
     base.update(
         {
             "per_model_feature_cells": n_whole,
@@ -2146,9 +2192,35 @@ def ablation_report_status(report_path: Path | None = None) -> dict:
             "last_progress": prog.get("last_cell"),
             "complete": complete,
             "resume_recommended": (not complete) and n_whole > 0,
+            "confirm_cells_done": confirm_done,
+            "confirm_cells_total": confirm_total,
+            "confirm_path_version": (ss.get("confirm_pass") or {}).get("confirm_path_version"),
+            "confirm_complete": confirm_complete,
+            "confirm_resume_recommended": bool(resume_v2) and not confirm_complete,
         }
     )
     return base
+
+
+def guard_ablation_confirm_fresh_start(
+    report_path: Path,
+    *,
+    resume: bool,
+    force_restart: bool = False,
+) -> None:
+    """Refuse to wipe partial v2 confirm cells without --ablation-confirm-resume."""
+    if resume or force_restart or not report_path.is_file():
+        return
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    resume_cells = _confirm_resume_cells_from_report(report)
+    if resume_cells:
+        raise SystemExit(
+            f"refusing fresh confirm: {report_path} has {len(resume_cells)} "
+            f"v2-tagged confirm cell(s). Use --ablation-confirm-resume to continue."
+        )
 
 
 def guard_ablation_fresh_start(
@@ -2880,6 +2952,11 @@ def main():
                     help="Confirm pass: drop-column inference on DROP_CANDIDATE groups (requires primary report)")
     ap.add_argument("--ablation-confirm-resume", action="store_true",
                     help="Resume confirm pass from existing report checkpoint")
+    ap.add_argument(
+        "--ablation-confirm-force-restart",
+        action="store_true",
+        help="Intentionally wipe partial confirm progress and re-run from scratch",
+    )
     ap.add_argument("--manifest-path", default=str(MANIFEST_PATH))
     ap.add_argument("--report-path", default=str(ABLATION_REPORT_PATH))
     ap.add_argument(
@@ -2992,6 +3069,11 @@ def main():
         if not pf["ready"]:
             print(json.dumps(pf, indent=2))
             raise SystemExit("confirm preflight failed")
+        guard_ablation_confirm_fresh_start(
+            report_path,
+            resume=bool(a.ablation_confirm_resume),
+            force_restart=bool(a.ablation_confirm_force_restart),
+        )
         report = build_ablation_confirm_report(
             Path(a.manifest_path),
             report_path=report_path,

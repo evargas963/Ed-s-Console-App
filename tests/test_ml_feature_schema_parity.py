@@ -1189,6 +1189,71 @@ def test_parallel_eval_includes_skip_stats_in_source():
     assert "max_eval_rows" in src
 
 
+def test_confirm_fresh_start_refuses_partial_v2(tmp_path):
+    from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
+    from tools.feature_curation_gate import guard_ablation_confirm_fresh_start
+
+    report_path = tmp_path / "feature_ablation_report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "confirm_drop_cells": [
+                    {
+                        "anchor_ticker": "SPY",
+                        "model_family": "lstm",
+                        "horizon_slug": "15c",
+                        "status": "ok",
+                        "confirm_path_version": ABLATION_CONFIRM_PATH_VERSION,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit, match="refusing fresh confirm"):
+        guard_ablation_confirm_fresh_start(report_path, resume=False)
+    guard_ablation_confirm_fresh_start(report_path, resume=True)
+    guard_ablation_confirm_fresh_start(report_path, resume=False, force_restart=True)
+
+
+def test_ablation_report_status_includes_confirm_progress(tmp_path, monkeypatch):
+    from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
+    from tools.feature_curation_gate import (
+        PER_MODEL_CONFIRM_CELL_TARGET,
+        ablation_report_status,
+    )
+
+    report_path = tmp_path / "feature_ablation_report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "run_progress": {
+                    "phase": "per_model_confirm",
+                    "cells_done": 9,
+                    "cells_total": PER_MODEL_CONFIRM_CELL_TARGET,
+                },
+                "confirm_drop_cells": [{"status": "ok"}] * 9,
+                "survivor_summary": {
+                    "confirm_pass": {
+                        "cells": [{"status": "ok"}],
+                        "confirm_path_version": None,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "tools.feature_curation_gate.ABLATION_LOCK_PATH",
+        tmp_path / "missing.lock",
+    )
+    status = ablation_report_status(report_path)
+    assert status["confirm_cells_done"] == 9
+    assert status["confirm_cells_total"] == PER_MODEL_CONFIRM_CELL_TARGET
+    assert status["confirm_complete"] is False
+    assert status["confirm_resume_recommended"] is False
+
+
 def test_confirm_cells_carry_path_version():
     from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
     from tools.feature_curation_gate import _confirm_resume_cells_from_report
