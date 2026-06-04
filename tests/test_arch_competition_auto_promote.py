@@ -75,6 +75,7 @@ def test_auto_promote_parallel_on_keep_incumbent_train_success_live(tmp_path: Pa
     )
     assert result["executed"] is True
     assert (tmp_path / "active" / "SPY" / "xgb_SPY_1c.pkl").is_file()
+    assert (tmp_path / "active" / "SPY" / "meta_SPY_1c.pkl").is_file()
 
 
 # ── Workstream A1 — per-ticker fail-closed data floor ──────────────────────────
@@ -571,6 +572,45 @@ def test_reconcile_missing_meta_recorded_not_crash(tmp_path: Path):
     out = reconcile_pre_b_incumbent_scores(tmp_path, ["NOPE"], ["1c"], dry_run=True)
     assert out["would_reset"] == 0
     assert len(out["missing"]) == 1
+
+
+def test_reconcile_survivor_retrain_resets_ensemble_basis(tmp_path: Path):
+    """O-56: ablated retrain must not compare against full-feature ensemble incumbents."""
+    from arch_competition.promotion_execution import reconcile_pre_b_incumbent_scores
+
+    meta = _write_active_xgb_meta(
+        tmp_path, "SPY", "15c", score=0.55, root_name="active_15c", metric="ensemble_eval_accuracy"
+    )
+    out = reconcile_pre_b_incumbent_scores(
+        tmp_path, ["SPY"], ["15c"], dry_run=False, survivor_retrain_reset=True
+    )
+    assert out["reset_count"] == 1
+    assert json.loads(meta.read_text(encoding="utf-8"))["promotion_score"] == 0.0
+
+
+def test_ensure_survivor_retrain_run_start_resets_all_horizons_once(monkeypatch, tmp_path: Path):
+    """Scheduler run_once entry must reset ensemble incumbents on every governed horizon once."""
+    import arch_competition.promotion_execution as pe
+
+    monkeypatch.setattr(
+        "arch_competition.stack_bundle_eval_v1.ablation_survivors_training_enabled",
+        lambda: True,
+    )
+    pe._survivor_retrain_run_reset_done = False
+    metas = []
+    for hz, root in [("1c", "active"), ("5c", "active_5c"), ("15c", "active_15c"), ("60c", "active_60c")]:
+        metas.append(
+            _write_active_xgb_meta(
+                tmp_path, "SPY", hz, score=0.44, root_name=root, metric="ensemble_eval_accuracy"
+            )
+        )
+    first = pe.ensure_survivor_retrain_incumbent_reset_at_run_start(tmp_path, ["SPY"])
+    assert first["reset_count"] == 4
+    for meta in metas:
+        assert json.loads(meta.read_text(encoding="utf-8"))["promotion_score"] == 0.0
+    second = pe.ensure_survivor_retrain_incumbent_reset_at_run_start(tmp_path, ["SPY"])
+    assert second["skipped"] is True
+    assert second["reason"] == "already_reset_this_process"
 
 
 def test_reconcile_write_outside_governed_scope_raises(tmp_path: Path):

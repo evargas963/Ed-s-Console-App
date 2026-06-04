@@ -2,6 +2,23 @@
 
 # G1 Addendum — Training Dependency Investigation
 
+## Amendment 2026-05-31 (operator binding — supersedes Q1–Q3 conclusions below)
+
+**Parallel→cascade bridge is now mandatory in the same scheduler cycle:**
+
+| Artifact | Location | Purpose |
+|----------|----------|---------|
+| `parallel_cascade_bridge.npz` | `models/cache/features/{feature_cache_key}/` | XGB `predict_proba` rows aligned 1:1 to `LSTMDataset` sample order |
+| `parallel_cascade_bridge_identity.json` | same | Fingerprint bind (data_fp, feature_cache_key, parallel XGB SHA256) |
+
+**Flow:** `train_parallel_candidate` trains XGB once, builds LSTM dataset, saves bridge via `_xgb_probs_aligned_to_lstm_dataset` + `save_parallel_cascade_bridge`. `train_cascade_candidate` (same `run_once`, `parallel_out` passed) calls `load_parallel_cascade_bridge` + `copy_parallel_xgb_artifacts_to_cascade` and **skips** `train_ticker` + snapshot prob rescan when bridge hits. Manifest field: `used_parallel_cascade_bridge`.
+
+**Pre-retrain gate (survivors on):** confirm v2 → `run_survivor_inference_backtest` (scores `models/active/` baseline vs survivor-masked inference) → edge probe → validation run → train. Full retrain is **not** the wiring-discovery mechanism.
+
+Mechanical enforcement: `tools/check_ml_pipeline_efficiency.py`, `ACTIVE_PROGRAM.md` §ML pipeline efficiency.
+
+---
+
 ## Purpose
 
 G1 (`governance/G1_DIAGNOSIS.md`) established artifact contracts, drift, and governance bypass surfaces. It did **not** fully characterize whether **cascade training consumes anything produced by parallel training** in the same scheduler cycle beyond shared raw inputs. This addendum answers that question with static citations so G2 (cascade meta writer) can assume correct data-flow boundaries.

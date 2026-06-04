@@ -320,10 +320,51 @@ def _active_model_dir_for_ablation(
     return bundle, []
 
 
+def _parallel_model_dir_for_stack_eval(ticker: str) -> Path:
+    return _repo_models_dir() / "parallel" / ticker.strip().upper()
+
+
+def _bundle_has_scorable_base_artifacts(ticker: str, horizon_slug: str, bundle: Path) -> bool:
+    """True when the full parallel stack bundle (bases + meta-stack pkl) exists for this horizon."""
+    from active_bundle_contract import horizon_bundle_filenames
+
+    if not bundle.is_dir():
+        return False
+    return all((bundle / name).is_file() for name in horizon_bundle_filenames(ticker, horizon_slug))
+
+
+def _resolve_model_dir_for_stack_eval(ticker: str, horizon_slug: str) -> Path | None:
+    """Prefer a bundle that can score: active when compliant, else parallel candidates."""
+    from active_bundle_contract import check_active_bundle_complete
+    from ml_horizon import normalize_ml_horizon_slug
+
+    prefer = (os.environ.get("ED_STACK_EVAL_BUNDLE") or "").strip().lower()
+    t = ticker.strip().upper()
+    hz = normalize_ml_horizon_slug(horizon_slug)
+    models_dir = _repo_models_dir()
+    parallel = _parallel_model_dir_for_stack_eval(t)
+    active, _issues = _active_model_dir_for_ablation(t, horizon_slug)
+
+    def _compliant(bundle: Path | None) -> bool:
+        if bundle is None:
+            return False
+        chk = check_active_bundle_complete(t, hz, bundle_dir=bundle, models_dir=models_dir)
+        return bool(chk.get("compliant"))
+
+    if prefer == "parallel" and _bundle_has_scorable_base_artifacts(t, hz, parallel):
+        return parallel
+    if active and _compliant(active):
+        return active
+    if _bundle_has_scorable_base_artifacts(t, hz, parallel):
+        return parallel
+    if active and _bundle_has_scorable_base_artifacts(t, hz, active):
+        return active
+    return active or (parallel if parallel.is_dir() else None)
+
+
 def _active_model_dir_for_stack_eval(ticker: str, horizon_slug: str) -> Path | None:
-    """Resolve production active bundle dir for stack_bundle_eval (ticker leaf with artifacts)."""
-    bundle, _issues = _active_model_dir_for_ablation(ticker, horizon_slug)
-    return bundle
+    """Resolve bundle dir for stack_bundle_eval (active or parallel fallback)."""
+    return _resolve_model_dir_for_stack_eval(ticker, horizon_slug)
 
 
 def _ablation_eval_options():
@@ -541,6 +582,18 @@ def _stack_layer_lifts(
     return lifts
 
 
+def _stack_eval_comparison_pairs(stack_eval: dict) -> list[tuple[str, str, dict]]:
+    """(comparison_id, (baseline_mode, treatment_mode), spec) for stack authority."""
+    out: list[tuple[str, str, dict]] = []
+    for section_key in ("base_model_comparisons", "layer_comparisons"):
+        for cmp_id, spec in (stack_eval.get(section_key) or {}).items():
+            base = spec.get("baseline")
+            treat = spec.get("treatment")
+            if base and treat:
+                out.append((f"{section_key}:{cmp_id}", (str(base), str(treat)), spec))
+    return out
+
+
 def run_stack_layer_ablation_cell(
     *,
     ticker: str,
@@ -548,10 +601,14 @@ def run_stack_layer_ablation_cell(
     db_path: str,
     stack_eval: dict,
 ) -> dict:
-    """One anchor×horizon cell: stack-component authority (base + upper layers)."""
-    from arch_competition.stack_bundle_eval_v1 import run_stack_bundle_evaluation
+    """One anchor×horizon cell: stack-component authority (base + upper layers).
 
-    model_dir = _active_model_dir_for_stack_eval(ticker, horizon_slug)
+    Scores each manifest comparison on its own (baseline, treatment) mode pair so MC/fusion
+    failures do not zero out meta/base lifts (all-9-mode intersection was the noop bug).
+    """
+    from arch_competition.stack_bundle_eval_v1 import _authority_block, run_stack_bundle_evaluation
+
+    model_dir = _resolve_model_dir_for_stack_eval(ticker, horizon_slug)
     if model_dir is None:
         return {
             "anchor_ticker": ticker,
@@ -559,23 +616,60 @@ def run_stack_layer_ablation_cell(
             "status": "skipped",
             "reason": "incomplete_active_bundle",
         }
-    modes = tuple(stack_eval.get("modes") or ())
-    if not modes:
+    comparisons = _stack_eval_comparison_pairs(stack_eval)
+    if not comparisons:
         return {
             "anchor_ticker": ticker,
             "horizon_slug": horizon_slug,
             "status": "skipped",
-            "reason": "stack_eval_modes_empty",
+            "reason": "stack_eval_comparisons_empty",
         }
-    manifest = run_stack_bundle_evaluation(
-        db_path=db_path,
-        ticker=ticker,
-        model_dir=model_dir,
-        ml_horizon_slug=horizon_slug,
-        options=_ablation_eval_options(),
-        modes=modes,
-    )
-    metrics = manifest.get("metrics_by_config") or {}
+
+    merged_metrics: dict = {}
+    merged_skip: dict[str, int] = {}
+    min_paired: int | None = None
+    comparison_runs: list[dict] = []
+    eval_opts = _ablation_eval_options()
+
+    _prev_strict = os.environ.get("ED_XGB_STRICT_ACTIVE_ONLY")
+    _prev_scored = os.environ.get("ED_ABLATION_SCORED_EVAL")
+    os.environ["ED_XGB_STRICT_ACTIVE_ONLY"] = "0"
+    os.environ["ED_ABLATION_SCORED_EVAL"] = "1"
+    try:
+        for cmp_id, mode_pair, _spec in comparisons:
+            manifest = run_stack_bundle_evaluation(
+                db_path=db_path,
+                ticker=ticker,
+                model_dir=model_dir,
+                ml_horizon_slug=horizon_slug,
+                options=eval_opts,
+                modes=mode_pair,
+            )
+            pr = int(manifest.get("paired_rows_all_modes") or 0)
+            min_paired = pr if min_paired is None else min(min_paired, pr)
+            for mode, metric in (manifest.get("metrics_by_config") or {}).items():
+                merged_metrics[mode] = metric
+            for key, count in (manifest.get("skip_reason_counts") or {}).items():
+                merged_skip[key] = merged_skip.get(key, 0) + int(count)
+            comparison_runs.append(
+                {
+                    "comparison_id": cmp_id,
+                    "modes": list(mode_pair),
+                    "paired_rows": pr,
+                    "skip_reason_counts": manifest.get("skip_reason_counts") or {},
+                }
+            )
+    finally:
+        if _prev_strict is None:
+            os.environ.pop("ED_XGB_STRICT_ACTIVE_ONLY", None)
+        else:
+            os.environ["ED_XGB_STRICT_ACTIVE_ONLY"] = _prev_strict
+        if _prev_scored is None:
+            os.environ.pop("ED_ABLATION_SCORED_EVAL", None)
+        else:
+            os.environ["ED_ABLATION_SCORED_EVAL"] = _prev_scored
+
+    metrics = merged_metrics
     lifts = _stack_layer_lifts(metrics, stack_eval.get("layer_comparisons") or {})
     base_model_lifts = _stack_layer_lifts(metrics, stack_eval.get("base_model_comparisons") or {})
 
@@ -595,16 +689,22 @@ def run_stack_layer_ablation_cell(
         )
         lifts["meta"]["treatment_helps"] = None
 
-    auth = manifest.get("authority_decision") or {}
-    paired = int(manifest.get("paired_rows_all_modes") or 0)
-    cell_status = "ok" if paired >= 50 else "failed"
+    auth = _authority_block(
+        metrics,
+        min_rows=eval_opts.min_paired_rows,
+        min_delta_log_loss=eval_opts.min_delta_log_loss,
+    )
+    paired = int(min_paired or 0)
+    lifts_ok = _stack_lift_sections_scored(lifts, base_model_lifts)
+    cell_status = "ok" if lifts_ok else "failed"
     return {
         "anchor_ticker": ticker,
         "horizon_slug": horizon_slug,
         "status": cell_status,
         "model_dir": str(model_dir),
         "paired_rows": paired,
-        "skip_reason_counts": manifest.get("skip_reason_counts"),
+        "comparison_runs": comparison_runs,
+        "skip_reason_counts": merged_skip or None,
         "metrics_by_mode": {
             mode: {
                 "n_rows_scored": m.get("n_rows_scored"),
@@ -626,7 +726,72 @@ def run_stack_layer_ablation_cell(
             ),
             "full_fusion_beats_xgb_only": auth.get("full_fusion_beats_xgb_only_log_loss"),
         },
+        "ablation_kind": "stack_authority",
     }
+
+
+def _stack_lift_sections_scored(lifts: dict, base_lifts: dict) -> bool:
+    """True when every non-degenerate lift has baseline + treatment log_loss."""
+    for section in (lifts, base_lifts):
+        for _lid, lift in (section or {}).items():
+            if lift.get("degenerate"):
+                continue
+            if lift.get("baseline_log_loss") is None or lift.get("treatment_log_loss") is None:
+                return False
+    return bool(lifts or base_lifts)
+
+
+def stack_authority_cells_complete(cells: list[dict]) -> tuple[bool, list[str]]:
+    """True when every stack-authority cell has scored lifts (meta/MC/fusion + base)."""
+    issues: list[str] = []
+    for cell in cells:
+        anchor = cell.get("anchor_ticker")
+        hz = cell.get("horizon_slug")
+        if cell.get("status") != "ok":
+            issues.append(f"{anchor}/{hz}: status={cell.get('status')}")
+            continue
+        if not _stack_lift_sections_scored(
+            cell.get("layer_lifts") or {}, cell.get("base_model_lifts") or {}
+        ):
+            issues.append(f"{anchor}/{hz}: incomplete lifts (null log_loss)")
+    return (not issues, issues)
+
+
+def build_stack_authority_rescore_report(
+    *,
+    manifest_path: Path | None = None,
+    report_path: Path | None = None,
+    db_path: str | None = None,
+    tickers: list[str] | None = None,
+    horizons: list[str] | None = None,
+) -> dict:
+    """Re-score stack authority (meta/MC/fusion) — use after retrain; prefers parallel bundles."""
+    manifest = load_ablation_manifest(manifest_path)
+    out_path = report_path or ABLATION_REPORT_PATH
+    report: dict = {}
+    if out_path.is_file():
+        report = json.loads(out_path.read_text(encoding="utf-8"))
+    db = db_path or str(DB_PATH)
+    os.environ.setdefault("ED_STACK_EVAL_BUNDLE", "parallel")
+    cells: list[dict] = []
+    section = build_stack_authority_ablation_section(
+        manifest,
+        db_path=db,
+        dry_run=False,
+        tickers=tickers,
+        horizons=horizons,
+        resume_cells={},
+        cells_out=cells,
+    )
+    report["stack_authority_cells"] = cells
+    report["stack_layer_cells"] = cells
+    report.update(section)
+    report.setdefault("run_meta", {})["stack_authority_rescore_at"] = datetime.now(
+        timezone.utc
+    ).isoformat()
+    write_ablation_report(report, out_path)
+    ready, issues = stack_authority_cells_complete(cells)
+    return {"ready": ready, "issues": issues, "cells": len(cells), "report_path": str(out_path)}
 
 
 def build_stack_authority_ablation_section(
@@ -845,6 +1010,22 @@ def _drop_members_for_model(manifest: dict, drop_group_ids: list[str]) -> tuple[
     return sorted(set(xgb)), sorted(set(m5)), sorted(set(m1))
 
 
+def _confirm_cell_key(anchor: str, model: str, horizon: str) -> str:
+    return f"{anchor.strip().upper()}|{model}|{horizon}"
+
+
+def _holdout_early_stop_patience(*, model: str) -> int:
+    """Match production early-stop patience for ablation holdout refits."""
+    for env_key in (
+        f"ED_TRAIN_EARLY_STOP_PATIENCE_{model.upper()}",
+        "ED_TRAIN_EARLY_STOP_PATIENCE",
+    ):
+        raw = (os.environ.get(env_key) or "").strip()
+        if raw.isdigit():
+            return max(1, int(raw))
+    return 8
+
+
 def build_per_model_confirm_pass_section(
     manifest: dict,
     *,
@@ -854,6 +1035,7 @@ def build_per_model_confirm_pass_section(
     tickers: list[str] | None = None,
     on_cell_done=None,
     cells_out: list[dict] | None = None,
+    resume_cells: dict[str, dict] | None = None,
 ) -> dict:
     """O-56 confirm pass: per (anchor, model, horizon) with DROP_CANDIDATE groups, REFIT the model
     on survivors-only (XGB: columns removed; sequence: channels nulled) and check the held-out MCC
@@ -861,6 +1043,7 @@ def build_per_model_confirm_pass_section(
     TOL = 0.005
     anchors = [t.strip().upper() for t in (tickers or manifest["ablation_method"]["anchors"])]
     cells = cells_out if cells_out is not None else []
+    resume_cells = resume_cells or {}
     _prep = {
         "xgb": _prepare_xgb_holdout,
         "lstm": _prepare_lstm_holdout,
@@ -874,13 +1057,43 @@ def build_per_model_confirm_pass_section(
     total = len(specs)
     done = 0
     for (anc, model, hz, drop_ids) in specs:
+        ck = _confirm_cell_key(anc, model, hz)
+        if ck in resume_cells:
+            cell = resume_cells[ck]
+            cells.append(cell)
+            done += 1
+            if on_cell_done is not None:
+                on_cell_done("per_model_confirm", cell, done, total)
+            continue
         xcols, m5, m1 = _drop_members_for_model(manifest, drop_ids)
         if model == "xgb":
-            prep = _prep[model](ticker=anc, horizon_slug=hz, db_path=db_path, drop_columns=xcols)
+            prep = _prep[model](
+                ticker=anc,
+                horizon_slug=hz,
+                db_path=db_path,
+                drop_columns=xcols,
+                drop_group_ids=drop_ids,
+                ablation_manifest=manifest,
+            )
         elif model == "lstm":
-            prep = _prep[model](ticker=anc, horizon_slug=hz, db_path=db_path, drop_5m=m5, drop_1m=m1)
+            prep = _prep[model](
+                ticker=anc,
+                horizon_slug=hz,
+                db_path=db_path,
+                drop_5m=m5,
+                drop_1m=m1,
+                drop_group_ids=drop_ids,
+                ablation_manifest=manifest,
+            )
         else:
-            prep = _prep[model](ticker=anc, horizon_slug=hz, db_path=db_path, drop_5m=m5)
+            prep = _prep[model](
+                ticker=anc,
+                horizon_slug=hz,
+                db_path=db_path,
+                drop_5m=m5,
+                drop_group_ids=drop_ids,
+                ablation_manifest=manifest,
+            )
         base = full_baseline.get((anc, model, hz))
         if prep.get("status") != "ok":
             cell = {
@@ -958,7 +1171,20 @@ def build_ablation_confirm_report(
                 flush=True,
             )
 
-        report["confirm_drop_cells"] = []
+        prior_cells = list(report.get("confirm_drop_cells") or [])
+        resume_cells: dict[str, dict] = {}
+        if resume and prior_cells:
+            report["confirm_drop_cells"] = prior_cells
+            for cell in prior_cells:
+                if cell.get("status") != "ok":
+                    continue
+                resume_cells[_confirm_cell_key(
+                    str(cell.get("anchor_ticker") or ""),
+                    str(cell.get("model_family") or ""),
+                    str(cell.get("horizon_slug") or ""),
+                )] = cell
+        else:
+            report["confirm_drop_cells"] = []
         confirm_section = build_per_model_confirm_pass_section(
             manifest,
             db_path=db,
@@ -967,6 +1193,7 @@ def build_ablation_confirm_report(
             tickers=tickers,
             on_cell_done=_checkpoint,
             cells_out=report["confirm_drop_cells"],
+            resume_cells=resume_cells,
         )
         report.update(confirm_section)
         report["confirm_drop_summary"] = {
@@ -987,10 +1214,13 @@ def build_ablation_confirm_report(
         confirm_cells = report.get("confirm_drop_cells") or []
         anchors = list(manifest["ablation_method"]["anchors"])
         surv = report.get("survivor_summary") or survivor
+        from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
+
         surv["confirm_pass"] = {
             "cells": confirm_cells,
             "anchors_required": len(anchors),
             "completed_at": report["run_meta"]["confirm_pass_at"],
+            "confirm_path_version": ABLATION_CONFIRM_PATH_VERSION,
         }
         surv["primary_pass_only"] = False
         report["survivor_summary"] = surv
@@ -1103,12 +1333,20 @@ def ablation_per_model_feature_cell_specs(manifest: dict) -> list[dict]:
     return specs
 
 
-def _prepare_xgb_holdout(*, ticker: str, horizon_slug: str, db_path: str,
-                         min_rows: int = 200, drop_columns: list[str] | None = None) -> dict:
+def _prepare_xgb_holdout(
+    *,
+    ticker: str,
+    horizon_slug: str,
+    db_path: str,
+    min_rows: int = 200,
+    drop_columns: list[str] | None = None,
+    drop_group_ids: list[str] | None = None,
+    ablation_manifest: dict | None = None,
+) -> dict:
     """Train ONE XGB model per (ticker, horizon) on the chronological holdout; reuse across groups.
 
-    ``drop_columns`` (confirm pass only): engineered feature columns to REMOVE before fit — a true
-    drop-column refit on survivors. Default None = full feature set (primary path, unchanged)."""
+    Confirm pass uses the same transform order as production: null raw snapshot columns for
+    ``drop_group_ids``, engineer, then remove engineered ``drop_columns``."""
     from ml_data_common import holdout_class_metrics, time_ordered_tail_split
     from ml_horizon import normalize_ml_horizon_slug, outcome_column
     from ml_train import (
@@ -1118,10 +1356,16 @@ def _prepare_xgb_holdout(*, ticker: str, horizon_slug: str, db_path: str,
         get_model,
         load_data,
     )
+    from arch_competition.stack_bundle_eval_v1 import (
+        drop_ablated_xgb_engineered_columns,
+        null_snapshot_dataframe_for_drop_groups,
+    )
 
     hz = normalize_ml_horizon_slug(horizon_slug)
     label_col = outcome_column(hz)
     df = load_data(db_path=db_path, ticker=ticker, ml_horizon_slug=hz, label_column=label_col)
+    if drop_group_ids and ablation_manifest:
+        df = null_snapshot_dataframe_for_drop_groups(df, ablation_manifest, drop_group_ids)
     if len(df) < min_rows:
         return {"status": "skipped", "hz": hz, "reason": f"insufficient_rows:{len(df)}"}
     train_end, n_val = time_ordered_tail_split(len(df))
@@ -1203,14 +1447,21 @@ def _transformer_predict_numpy(model, X_v, device, batch_size: int = 64) -> np.n
     return np.concatenate(preds) if preds else np.array([], dtype=int)
 
 
-def _prepare_lstm_holdout(*, ticker: str, horizon_slug: str, db_path: str,
-                          min_rows: int = 200,
-                          drop_5m: list[str] | None = None,
-                          drop_1m: list[str] | None = None) -> dict:
+def _prepare_lstm_holdout(
+    *,
+    ticker: str,
+    horizon_slug: str,
+    db_path: str,
+    min_rows: int = 200,
+    drop_5m: list[str] | None = None,
+    drop_1m: list[str] | None = None,
+    drop_group_ids: list[str] | None = None,
+    ablation_manifest: dict | None = None,
+) -> dict:
     """Train ONE dual-stream LSTM per (ticker, horizon) on the chronological holdout.
 
-    ``drop_5m``/``drop_1m`` (confirm pass only): raw member names whose channels are nulled
-    (constant) before refit — channel-drop refit on survivors. Default None = primary path."""
+    Confirm pass: null raw snapshot columns for ``drop_group_ids``, then post-normalize channel
+    zero for ``drop_5m``/``drop_1m`` members — same transform order as production retrain."""
     try:
         import torch
         import torch.nn as nn
@@ -1230,7 +1481,20 @@ def _prepare_lstm_holdout(*, ticker: str, horizon_slug: str, db_path: str,
     )
 
     hz = normalize_ml_horizon_slug(horizon_slug)
-    dataset = build_lstm_dataset(tickers=[ticker], db_path=db_path, ml_horizon_slug=hz)
+    _quick = (os.environ.get("ED_SURVIVOR_VALIDATION_QUICK") or "").strip().lower() in (
+        "1", "true", "yes", "on"
+    )
+    _epochs = 2 if _quick else EPOCHS
+    try:
+        dataset = build_lstm_dataset(
+            tickers=[ticker],
+            db_path=db_path,
+            ml_horizon_slug=hz,
+            confirm_drop_group_ids=drop_group_ids,
+            confirm_ablation_manifest=ablation_manifest,
+        )
+    except Exception as exc:
+        return {"status": "skipped", "hz": hz, "reason": str(exc)}
     try:
         _validate_lstm_dataset_shape(dataset, ticker=ticker)
     except Exception as exc:
@@ -1289,7 +1553,9 @@ def _prepare_lstm_holdout(*, ticker: str, horizon_slug: str, db_path: str,
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 
     best_state, best_loss = None, float("inf")
-    for _epoch in range(1, EPOCHS + 1):
+    patience = _holdout_early_stop_patience(model="lstm")
+    bad_epochs = 0
+    for _epoch in range(1, _epochs + 1):
         model.train()
         for b5, b1, bc, by, bw in train_loader:
             b5, b1, bc, by, bw = (t.to(device) for t in (b5, b1, bc, by, bw))
@@ -1309,6 +1575,11 @@ def _prepare_lstm_holdout(*, ticker: str, horizon_slug: str, db_path: str,
         if vl < best_loss:
             best_loss = vl
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            bad_epochs = 0
+        else:
+            bad_epochs += 1
+            if bad_epochs >= patience:
+                break
     if best_state is not None:
         model.load_state_dict(best_state)
 
@@ -1356,12 +1627,20 @@ def _permute_eval_lstm_group(prepared: dict, *, ticker: str, group_id: str,
     }
 
 
-def _prepare_transformer_holdout(*, ticker: str, horizon_slug: str, db_path: str,
-                                 min_rows: int = 200, drop_5m: list[str] | None = None) -> dict:
+def _prepare_transformer_holdout(
+    *,
+    ticker: str,
+    horizon_slug: str,
+    db_path: str,
+    min_rows: int = 200,
+    drop_5m: list[str] | None = None,
+    drop_group_ids: list[str] | None = None,
+    ablation_manifest: dict | None = None,
+) -> dict:
     """Train ONE transformer per (ticker, horizon) on the chronological holdout.
 
-    ``drop_5m`` (confirm pass only): raw member names whose channels are nulled before refit —
-    channel-drop refit on survivors. Default None = primary path (unchanged)."""
+    Confirm pass: null raw snapshot columns for ``drop_group_ids``, normalize, mask, then
+    post-normalize channel zero for ``drop_5m`` members — matches production retrain order."""
     try:
         import torch
         import torch.nn as nn
@@ -1378,7 +1657,20 @@ def _prepare_transformer_holdout(*, ticker: str, horizon_slug: str, db_path: str
     )
 
     hz = normalize_ml_horizon_slug(horizon_slug)
-    X, y, _days, _tk, n_features = prepare_transformer_data(db_path, ticker, ml_horizon_slug=hz)
+    _quick = (os.environ.get("ED_SURVIVOR_VALIDATION_QUICK") or "").strip().lower() in (
+        "1", "true", "yes", "on"
+    )
+    _epochs = 2 if _quick else EPOCHS
+    try:
+        X, y, _days, _tk, n_features = prepare_transformer_data(
+            db_path,
+            ticker,
+            ml_horizon_slug=hz,
+            confirm_drop_group_ids=drop_group_ids,
+            confirm_ablation_manifest=ablation_manifest,
+        )
+    except Exception as exc:
+        return {"status": "skipped", "hz": hz, "reason": str(exc)}
     if X is None or y is None or len(y) == 0:
         return {"status": "skipped", "hz": hz, "reason": "no_sequence_data"}
     n_rows = len(y)
@@ -1420,7 +1712,9 @@ def _prepare_transformer_holdout(*, ticker: str, horizon_slug: str, db_path: str
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
 
     best_state, best_loss = None, float("inf")
-    for _epoch in range(1, EPOCHS + 1):
+    patience = _holdout_early_stop_patience(model="transformer")
+    bad_epochs = 0
+    for _epoch in range(1, _epochs + 1):
         model.train()
         for bx, by, bw in train_dl:
             bx, by, bw = bx.to(device), by.to(device), bw.to(device)
@@ -1440,6 +1734,11 @@ def _prepare_transformer_holdout(*, ticker: str, horizon_slug: str, db_path: str
         if vl < best_loss:
             best_loss = vl
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            bad_epochs = 0
+        else:
+            bad_epochs += 1
+            if bad_epochs >= patience:
+                break
     if best_state is not None:
         model.load_state_dict(best_state)
 
@@ -1870,16 +2169,380 @@ def pipeline_status() -> dict:
     except (OSError, subprocess.CalledProcessError, ValueError):
         pass
     survivors_env = os.environ.get("ED_APPLY_ABLATION_SURVIVORS", "")
+    from arch_competition.stack_bundle_eval_v1 import ablation_confirm_pass_complete
+
+    if abl.get("complete") and ablation_confirm_pass_complete():
+        mask_src = "confirm_pass"
+    elif abl.get("complete"):
+        mask_src = "confirm_incomplete"
+    else:
+        mask_src = "report_incomplete"
     return {
         "ablation": abl,
         "ml_train_processes": trains,
         "ED_APPLY_ABLATION_SURVIVORS": survivors_env,
-        "survivor_mask_source": (
-            "report"
-            if abl.get("complete")
-            else "default_drop_groups (report incomplete — still valid for train)"
-        ),
+        "survivor_mask_source": mask_src,
     }
+
+
+SURVIVOR_EDGE_PROBE_PATH = Path("governance/artifacts/survivor_edge_probe.json")
+SURVIVOR_VALIDATION_RUN_PATH = Path("governance/artifacts/survivor_validation_run.json")
+SURVIVOR_INFERENCE_BACKTEST_PATH = Path("governance/artifacts/survivor_inference_backtest.json")
+SURVIVOR_EDGE_MCC_MIN = 0.01
+
+
+def run_survivor_inference_backtest(
+    *,
+    tickers: list[str] | None = None,
+    db_path: str | None = None,
+    max_eval_rows: int | None = None,
+) -> dict:
+    """Score models/active with full-feature vs survivor-masked inference — minutes, not full retrain."""
+    import os
+    from active_bundle_contract import candidate_bundles_complete, scheduler_active_root
+    from arch_competition.stack_bundle_eval_v1 import ablation_survivors_training_enabled
+    from ml_horizon import normalize_ml_horizon_slug, outcome_column
+    from ml_scheduler import MODEL_DIR, _evaluate_parallel_on_full_rth
+
+    _db = db_path or str(DB_PATH)
+    anchors = [t.strip().upper() for t in (tickers or SURVIVOR_RETRAIN_DEFAULT_TICKERS)]
+    if max_eval_rows is None:
+        try:
+            max_eval_rows = int(os.environ.get("ED_SURVIVOR_BACKTEST_MAX_ROWS", "800"))
+        except ValueError:
+            max_eval_rows = 800
+    min_scored = int(os.environ.get("ED_SURVIVOR_BACKTEST_MIN_SCORED", "50"))
+
+    out: dict = {
+        "schema_version": "1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "anchors": anchors,
+        "horizons": list(REQUIRED_ABLATION_HORIZONS),
+        "max_eval_rows": max_eval_rows,
+        "min_scored_rows": min_scored,
+        "ready": False,
+        "issues": [],
+        "cells": [],
+    }
+    if not ablation_survivors_training_enabled():
+        out["issues"].append("ED_APPLY_ABLATION_SURVIVORS not enabled")
+        SURVIVOR_INFERENCE_BACKTEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        SURVIVOR_INFERENCE_BACKTEST_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8")
+        return out
+
+    prev_apply = os.environ.get("ED_APPLY_ABLATION_SURVIVORS")
+    try:
+        for anc in anchors:
+            for hz in REQUIRED_ABLATION_HORIZONS:
+                hz_n = normalize_ml_horizon_slug(hz)
+                label = outcome_column(hz_n)
+                active_dir = scheduler_active_root(MODEL_DIR, hz_n) / anc
+                complete, _, _ = candidate_bundles_complete(anc, hz_n, active_dir, active_dir)
+                cell: dict = {
+                    "anchor_ticker": anc,
+                    "horizon_slug": hz_n,
+                    "active_dir": str(active_dir),
+                    "bundle_complete": complete,
+                    "baseline": {},
+                    "survivor": {},
+                    "wiring_ok": False,
+                }
+                if not complete:
+                    out["issues"].append(f"active_bundle_incomplete:{anc}/{hz_n}")
+                    out["cells"].append(cell)
+                    continue
+
+                os.environ.pop("ED_APPLY_ABLATION_SURVIVORS", None)
+                b_acc, b_bal, b_n, b_ll, b_real, b_detail = _evaluate_parallel_on_full_rth(
+                    _db,
+                    anc,
+                    active_dir,
+                    target_column=label,
+                    return_detail=True,
+                    max_eval_rows=max_eval_rows,
+                )
+                os.environ["ED_APPLY_ABLATION_SURVIVORS"] = "1"
+                s_acc, s_bal, s_n, s_ll, s_real, s_detail = _evaluate_parallel_on_full_rth(
+                    _db,
+                    anc,
+                    active_dir,
+                    target_column=label,
+                    return_detail=True,
+                    max_eval_rows=max_eval_rows,
+                )
+                cell["baseline"] = {
+                    "eval_accuracy": round(float(b_acc), 6),
+                    "balanced_accuracy": round(float(b_bal), 6),
+                    "n_rows": int(b_n),
+                    "eval_log_loss": round(float(b_ll), 6) if b_ll is not None else None,
+                    "skip_stats": (b_detail or {}).get("skip_stats") or {},
+                }
+                cell["survivor"] = {
+                    "eval_accuracy": round(float(s_acc), 6),
+                    "balanced_accuracy": round(float(s_bal), 6),
+                    "n_rows": int(s_n),
+                    "eval_log_loss": round(float(s_ll), 6) if s_ll is not None else None,
+                    "skip_stats": (s_detail or {}).get("skip_stats") or {},
+                }
+                b_triplet = int(((b_detail or {}).get("skip_stats") or {}).get("scored_full_triplet") or 0)
+                s_triplet = int(((s_detail or {}).get("skip_stats") or {}).get("scored_full_triplet") or 0)
+                wiring_ok = (
+                    b_n >= min_scored
+                    and s_n >= min_scored
+                    and b_triplet >= min_scored
+                    and s_triplet >= min_scored
+                    and not (float(b_acc) > 0.0 and float(s_acc) == 0.0)
+                )
+                cell["wiring_ok"] = wiring_ok
+                if not wiring_ok:
+                    out["issues"].append(
+                        f"inference_backtest_wiring:{anc}/{hz_n}:baseline_n={b_n} survivor_n={s_n} "
+                        f"baseline_triplet={b_triplet} survivor_triplet={s_triplet}"
+                    )
+                out["cells"].append(cell)
+    finally:
+        if prev_apply is None:
+            os.environ.pop("ED_APPLY_ABLATION_SURVIVORS", None)
+        else:
+            os.environ["ED_APPLY_ABLATION_SURVIVORS"] = prev_apply
+
+    out["ready"] = not out["issues"] and bool(out["cells"]) and all(
+        c.get("wiring_ok") for c in out["cells"] if c.get("bundle_complete")
+    )
+    SURVIVOR_INFERENCE_BACKTEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SURVIVOR_INFERENCE_BACKTEST_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    return out
+
+
+def run_survivor_validation_run(
+    *,
+    tickers: list[str] | None = None,
+    db_path: str | None = None,
+) -> dict:
+    """Production-path validation before full retrain: quick holdout + parity counts per EDGE cell."""
+    from arch_competition.stack_bundle_eval_v1 import (
+        ablated_drop_group_ids_for_model_horizon,
+        ablated_drop_members_for_model_horizon,
+        ablation_survivors_training_enabled,
+        drop_ablated_xgb_engineered_columns,
+    )
+    from ml_horizon import normalize_ml_horizon_slug, outcome_column
+    from ml_train import engineer_features, load_data
+
+    _db = db_path or str(DB_PATH)
+    anchors = [t.strip().upper() for t in (tickers or SURVIVOR_RETRAIN_DEFAULT_TICKERS)]
+    manifest = load_ablation_manifest()
+    edge = run_survivor_edge_probe(tickers=anchors)
+    out: dict = {
+        "schema_version": "1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "anchors": anchors,
+        "edge_probe_summary": edge.get("summary") or {},
+        "ready_for_full_retrain": False,
+        "issues": list(edge.get("issues") or []),
+        "cells": [],
+    }
+    if not ablation_survivors_training_enabled():
+        out["issues"].append("ED_APPLY_ABLATION_SURVIVORS not enabled")
+    if not edge.get("ready_for_full_retrain"):
+        out["issues"].append("edge_probe_not_ready")
+
+    prev_quick = os.environ.get("ED_SURVIVOR_VALIDATION_QUICK")
+    os.environ["ED_SURVIVOR_VALIDATION_QUICK"] = "1"
+    try:
+        for anc in anchors:
+            for model in ("xgb", "lstm", "transformer"):
+                for hz in REQUIRED_ABLATION_HORIZONS:
+                    hz_n = normalize_ml_horizon_slug(hz)
+                    drop_ids = sorted(ablated_drop_group_ids_for_model_horizon(model, hz_n))
+                    if not drop_ids:
+                        continue
+                    xcols, m5, m1 = ablated_drop_members_for_model_horizon(model, hz_n)
+                    cell: dict = {
+                        "anchor_ticker": anc,
+                        "model_family": model,
+                        "horizon_slug": hz_n,
+                        "drop_group_count": len(drop_ids),
+                        "parity_ok": False,
+                    }
+                    if model == "xgb":
+                        label = outcome_column(hz_n)
+                        df = load_data(db_path=_db, ticker=anc, ml_horizon_slug=hz_n, label_column=label)
+                        X_full, fn_full, _, _ = engineer_features(df)
+                        _, _, n_prod_drop = drop_ablated_xgb_engineered_columns(X_full, fn_full, hz_n)
+                        prep = _prepare_xgb_holdout(
+                            ticker=anc,
+                            horizon_slug=hz_n,
+                            db_path=_db,
+                            drop_columns=list(xcols),
+                            drop_group_ids=drop_ids,
+                            ablation_manifest=manifest,
+                        )
+                        cell["production_cols_dropped"] = n_prod_drop
+                        cell["confirm_status"] = prep.get("status")
+                        cell["parity_ok"] = (
+                            prep.get("status") == "ok"
+                            and n_prod_drop == len([c for c in xcols if c in fn_full])
+                        )
+                    elif model == "lstm":
+                        prep = _prepare_lstm_holdout(
+                            ticker=anc,
+                            horizon_slug=hz_n,
+                            db_path=_db,
+                            drop_5m=list(m5),
+                            drop_1m=list(m1),
+                            drop_group_ids=drop_ids,
+                            ablation_manifest=manifest,
+                        )
+                        cell["confirm_status"] = prep.get("status")
+                        cell["parity_ok"] = prep.get("status") == "ok"
+                    else:
+                        prep = _prepare_transformer_holdout(
+                            ticker=anc,
+                            horizon_slug=hz_n,
+                            db_path=_db,
+                            drop_5m=list(m5),
+                            drop_group_ids=drop_ids,
+                            ablation_manifest=manifest,
+                        )
+                        cell["confirm_status"] = prep.get("status")
+                        cell["parity_ok"] = prep.get("status") == "ok"
+                    if not cell["parity_ok"]:
+                        out["issues"].append(
+                            f"validation_failed:{anc}/{model}/{hz_n}:{prep.get('reason', prep.get('status'))}"
+                        )
+                    out["cells"].append(cell)
+    finally:
+        if prev_quick is None:
+            os.environ.pop("ED_SURVIVOR_VALIDATION_QUICK", None)
+        else:
+            os.environ["ED_SURVIVOR_VALIDATION_QUICK"] = prev_quick
+
+    out["ready_for_full_retrain"] = (
+        not out["issues"]
+        and bool(out["cells"])
+        and all(c.get("parity_ok") for c in out["cells"])
+    )
+    SURVIVOR_VALIDATION_RUN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SURVIVOR_VALIDATION_RUN_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    return out
+
+
+def run_survivor_edge_probe(
+    *,
+    tickers: list[str] | None = None,
+    min_mcc_edge: float = SURVIVOR_EDGE_MCC_MIN,
+) -> dict:
+    """Pre-retrain gate: summarize confirm-verified drops + holdout MCC edge per model×horizon."""
+    from arch_competition.stack_bundle_eval_v1 import (
+        ABLATION_FULL_MATRIX_CELL_TARGET,
+        ABLATION_REPORT_PATH,
+        ablation_confirm_pass_complete,
+        ablated_drop_members_for_model_horizon,
+        confirmed_drop_group_ids_by_model_horizon,
+    )
+
+    anchors = [t.strip().upper() for t in (tickers or SURVIVOR_RETRAIN_DEFAULT_TICKERS)]
+    out: dict = {
+        "schema_version": "1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "anchors": anchors,
+        "horizons": list(REQUIRED_ABLATION_HORIZONS),
+        "ready_for_full_retrain": False,
+        "issues": [],
+        "cells": [],
+        "summary": {},
+    }
+    if not ABLATION_REPORT_PATH.is_file():
+        out["issues"].append(f"missing_ablation_report:{ABLATION_REPORT_PATH}")
+        _write_survivor_edge_probe(out)
+        return out
+    report = json.loads(ABLATION_REPORT_PATH.read_text(encoding="utf-8"))
+    ss = report.get("survivor_summary") or {}
+    scored = int(ss.get("scored_cell_count") or 0)
+    if scored < ABLATION_FULL_MATRIX_CELL_TARGET:
+        out["issues"].append(f"ablation_matrix_incomplete:{scored}/{ABLATION_FULL_MATRIX_CELL_TARGET}")
+    if not ablation_confirm_pass_complete(ss):
+        out["issues"].append("confirm_pass_incomplete: run --ablation-confirm first")
+    confirm_cells = ((ss.get("confirm_pass") or {}).get("cells") or []) if isinstance(
+        ss.get("confirm_pass"), dict
+    ) else []
+    by_cell = confirmed_drop_group_ids_by_model_horizon(ss)
+    mcc_by_amh: dict[tuple[str, str, str], list[float]] = defaultdict(list)
+    for c in confirm_cells:
+        if c.get("status") != "ok":
+            continue
+        key = (str(c.get("anchor_ticker")), str(c.get("model_family")), str(c.get("horizon_slug")))
+        ch = c.get("mcc_change")
+        if ch is not None:
+            mcc_by_amh[key].append(float(ch))
+
+    edge_cells = 0
+    full_feature_cells = 0
+    for model in ("xgb", "lstm", "transformer"):
+        for hz in REQUIRED_ABLATION_HORIZONS:
+            drop_groups = sorted(by_cell.get((model, hz), set()))
+            try:
+                xcols, m5, m1 = (
+                    ablated_drop_members_for_model_horizon(model, hz) if drop_groups else ([], [], [])
+                )
+            except Exception as exc:
+                out["issues"].append(f"drop_resolve_failed:{model}/{hz}:{exc}")
+                xcols, m5, m1 = [], [], []
+            mcc_vals: list[float] = []
+            for anc in anchors:
+                mcc_vals.extend(mcc_by_amh.get((anc, model, hz), []))
+            med_mcc = round(statistics.median(mcc_vals), 6) if mcc_vals else None
+            if not drop_groups:
+                verdict = "FULL_FEATURE"
+                full_feature_cells += 1
+            elif med_mcc is None:
+                verdict = "UNSCORED"
+            elif med_mcc >= min_mcc_edge:
+                verdict = "EDGE"
+                edge_cells += 1
+            elif med_mcc <= -min_mcc_edge:
+                verdict = "RE_ABLATE"
+            else:
+                verdict = "NEUTRAL"
+            out["cells"].append(
+                {
+                    "model_family": model,
+                    "horizon_slug": hz,
+                    "drop_group_count": len(drop_groups),
+                    "drop_groups": drop_groups,
+                    "xgb_engineered_cols": len(xcols),
+                    "lstm_5m_members": len(m5),
+                    "lstm_1m_members": len(m1),
+                    "confirm_mcc_change_median": med_mcc,
+                    "verdict": verdict,
+                }
+            )
+
+    out["summary"] = {
+        "edge_cells": edge_cells,
+        "full_feature_cells": full_feature_cells,
+        "total_cells": len(out["cells"]),
+        "min_mcc_edge": min_mcc_edge,
+    }
+    out["ready_for_full_retrain"] = (
+        not out["issues"]
+        and edge_cells > 0
+        and full_feature_cells < len(out["cells"])
+    )
+    if not out["issues"] and edge_cells == 0:
+        out["issues"].append(
+            "no_material_edge: no model×horizon cell with median mcc_change >= "
+            f"{min_mcc_edge}; full retrain matches full-feature — re-ablate or skip"
+        )
+    _write_survivor_edge_probe(out)
+    return out
+
+
+def _write_survivor_edge_probe(payload: dict) -> Path:
+    SURVIVOR_EDGE_PROBE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SURVIVOR_EDGE_PROBE_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return SURVIVOR_EDGE_PROBE_PATH
 
 
 SURVIVOR_RETRAIN_DEFAULT_TICKERS: tuple[str, ...] = ("SPY", "QQQ", "IWM")
@@ -1956,14 +2619,24 @@ def run_survivor_retrain_preflight(
     out["survivor_drop_column_count"] = len(drop_cols)
     out.setdefault("notes", [])
     if survivors_on:
-        from arch_competition.stack_bundle_eval_v1 import ablation_confirm_pass_complete
+        from arch_competition.stack_bundle_eval_v1 import (
+            ABLATION_CONFIRM_PATH_VERSION,
+            ablation_confirm_pass_complete,
+        )
+        from tools.check_ablation_pipeline_parity import check_ablation_pipeline_parity
+
+        parity_errs = check_ablation_pipeline_parity()
+        if parity_errs:
+            out["ready"] = False
+            out["issues"].extend(parity_errs)
 
         if not ablation_confirm_pass_complete():
             out["ready"] = False
             out["issues"].append(
-                "ablation_confirm_pass_incomplete: run "
-                "python tools/feature_curation_gate.py --ablation-confirm before "
-                "ED_APPLY_ABLATION_SURVIVORS=1 retrain (primary-pass DROP_CANDIDATE is never applied)"
+                f"ablation_confirm_pass_stale_or_incomplete: re-run "
+                f"python tools/feature_curation_gate.py --ablation-confirm "
+                f"(confirm_path_version must be {ABLATION_CONFIRM_PATH_VERSION!r}; "
+                "primary ablation matrix is unchanged — confirm pass only)"
             )
         elif not drop_ids:
             out["notes"].append(
@@ -2024,6 +2697,123 @@ def run_survivor_retrain_preflight(
     return out
 
 
+def build_survivor_retrain_monitor_report(
+    *,
+    tickers: list[str] | None = None,
+) -> str:
+    """Human-readable O-56 retrain status for periodic operator/agent monitoring."""
+    import subprocess
+    import sys
+    from datetime import datetime, timezone
+
+    from active_bundle_contract import check_active_bundle_complete, scheduler_active_root
+
+    anchors = [t.strip().upper() for t in (tickers or list(SURVIVOR_RETRAIN_DEFAULT_TICKERS))]
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    lines: list[str] = ["=" * 72, f"SURVIVOR RETRAIN MONITOR  {ts}", "=" * 72]
+
+    try:
+        st = pipeline_status()
+        abl = st.get("ablation") or {}
+        procs = st.get("ml_train_processes") or []
+        lines.append(
+            "Ablation: complete=%s  cells=%s/%s  stack=%s/%s"
+            % (
+                abl.get("complete"),
+                abl.get("per_model_feature_cells"),
+                abl.get("per_model_feature_target"),
+                abl.get("stack_authority_cells"),
+                abl.get("stack_authority_target"),
+            )
+        )
+        lines.append("ED_APPLY_ABLATION_SURVIVORS: %s" % st.get("ED_APPLY_ABLATION_SURVIVORS"))
+        lines.append("ML processes: %d" % len(procs))
+        for p in procs:
+            lines.append("  PID %s  %s" % (p.get("pid"), (p.get("command") or "")[:120]))
+        if not procs:
+            lines.append("  (no ml_scheduler / train processes detected)")
+    except Exception as e:
+        lines.append("Pipeline status ERROR: %s" % e)
+
+    rep_path = Path("models/training_report.jsonl")
+    rows: list[dict] = []
+    if rep_path.is_file():
+        for raw in rep_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not raw.strip():
+                continue
+            try:
+                rows.append(json.loads(raw))
+            except json.JSONDecodeError:
+                pass
+    core = [r for r in rows if r.get("ticker") in anchors]
+    lines.extend(["", "Recent training_report (last 10 core rows):"])
+    lines.append(
+        "%-22s %-5s %-4s %-8s %-12s %s"
+        % ("timestamp", "tkr", "hz", "promoted", "outcome", "gate/skip")
+    )
+    for r in core[-10:]:
+        ae = r.get("auto_promote_execution") or {}
+        gate = ae.get("promotion_gate_reason") or ae.get("skipped_reason") or ""
+        lines.append(
+            "%-22s %-5s %-4s %-8s %-12s %s"
+            % (
+                str(r.get("timestamp", ""))[:22],
+                r.get("ticker"),
+                r.get("horizon"),
+                str(r.get("promoted")),
+                str(r.get("outcome", ""))[:12],
+                str(gate)[:40],
+            )
+        )
+
+    lines.extend(["", "7-file active bundle compliance:"])
+    models = Path("models")
+    for t in anchors:
+        ok: list[str] = []
+        bad: list[str] = []
+        for hz in REQUIRED_ABLATION_HORIZONS:
+            bd = scheduler_active_root(models, hz) / t
+            chk = check_active_bundle_complete(t, hz, bundle_dir=bd)
+            if chk.get("compliant"):
+                ok.append(hz)
+            else:
+                iss = chk.get("issues") or []
+                bad.append("%s(%s)" % (hz, iss[0][:30] if iss else "incomplete"))
+        lines.append(
+            "  %s  OK=[%s]  MISSING=%s" % (t, ",".join(ok) or "-", ",".join(bad) if bad else "none")
+        )
+
+    lines.extend(["", "Incumbent promotion_score:"])
+    for t in anchors:
+        for hz in REQUIRED_ABLATION_HORIZONS:
+            mp = scheduler_active_root(models, hz) / t / f"xgb_{t}_{hz}_meta.json"
+            if not mp.is_file():
+                continue
+            d = json.loads(mp.read_text(encoding="utf-8"))
+            lines.append(
+                "  %s/%s  score=%s  metric=%s"
+                % (t, hz, d.get("promotion_score"), d.get("promotion_metric"))
+            )
+    lines.append("=" * 72)
+    return "\n".join(lines)
+
+
+def run_survivor_retrain_monitor_loop(
+    *,
+    tickers: list[str] | None = None,
+    interval_min: float = 10.0,
+    once: bool = False,
+) -> None:
+    import time
+
+    interval = max(60.0, float(interval_min) * 60.0)
+    while True:
+        print(build_survivor_retrain_monitor_report(tickers=tickers), flush=True)
+        if once:
+            return
+        time.sleep(interval)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tickers", default="SPY,QQQ,IWM")
@@ -2049,14 +2839,51 @@ def main():
     ap.add_argument("--manifest-path", default=str(MANIFEST_PATH))
     ap.add_argument("--report-path", default=str(ABLATION_REPORT_PATH))
     ap.add_argument(
+        "--stack-authority-rescore",
+        action="store_true",
+        help="Re-score stack authority (meta/MC/fusion lifts) after retrain; exit 1 if incomplete",
+    )
+    ap.add_argument(
         "--survivor-retrain-preflight",
         action="store_true",
         help="Fail-closed preflight for scheduled survivor retrain (DB, readiness, drop groups)",
     )
     ap.add_argument(
+        "--survivor-edge-probe",
+        action="store_true",
+        help="Pre-retrain go/no-go: confirm drops + MCC edge matrix (writes survivor_edge_probe.json)",
+    )
+    ap.add_argument(
+        "--survivor-validation-run",
+        action="store_true",
+        help="Production-path quick holdout validation per EDGE cell (writes survivor_validation_run.json)",
+    )
+    ap.add_argument(
+        "--survivor-edge-min-mcc",
+        type=float,
+        default=SURVIVOR_EDGE_MCC_MIN,
+        help="Minimum median confirm mcc_change to count as EDGE (default 0.01)",
+    )
+    ap.add_argument(
         "--survivor-retrain-gate-env-check",
         action="store_true",
         help="Validate process env matches survivor retrain gate contract; exit 1 if not",
+    )
+    ap.add_argument(
+        "--survivor-retrain-monitor",
+        action="store_true",
+        help="Print O-56 retrain monitor report (use --monitor-interval-min for loop)",
+    )
+    ap.add_argument(
+        "--monitor-interval-min",
+        type=float,
+        default=10.0,
+        help="Minutes between monitor reports when --survivor-retrain-monitor (default 10)",
+    )
+    ap.add_argument(
+        "--monitor-once",
+        action="store_true",
+        help="Single monitor report then exit (with --survivor-retrain-monitor)",
     )
     a = ap.parse_args()
 
@@ -2074,6 +2901,37 @@ def main():
         pf = run_survivor_retrain_preflight(db_path=str(DB_PATH), tickers=tickers)
         print(json.dumps(pf, indent=2))
         raise SystemExit(0 if pf["ready"] else 1)
+
+    if a.survivor_edge_probe:
+        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        probe = run_survivor_edge_probe(tickers=tickers, min_mcc_edge=float(a.survivor_edge_min_mcc))
+        print(json.dumps(probe, indent=2))
+        raise SystemExit(0 if probe.get("ready_for_full_retrain") else 1)
+
+    if a.survivor_validation_run:
+        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        val = run_survivor_validation_run(tickers=tickers)
+        print(json.dumps(val, indent=2))
+        raise SystemExit(0 if val.get("ready_for_full_retrain") else 1)
+
+    if a.survivor_retrain_monitor:
+        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        run_survivor_retrain_monitor_loop(
+            tickers=tickers or None,
+            interval_min=float(a.monitor_interval_min),
+            once=bool(a.monitor_once),
+        )
+        raise SystemExit(0)
+
+    if a.stack_authority_rescore:
+        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        result = build_stack_authority_rescore_report(
+            manifest_path=Path(a.manifest_path),
+            report_path=Path(a.report_path),
+            tickers=tickers,
+        )
+        print(json.dumps({k: result[k] for k in ("ready", "issues", "cells", "report_path")}, indent=2))
+        raise SystemExit(0 if result["ready"] else 1)
 
     if a.ablation_preflight:
         manifest = load_ablation_manifest(Path(a.manifest_path))

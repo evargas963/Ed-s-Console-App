@@ -13,6 +13,21 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
+@pytest.fixture(autouse=True)
+def _isolate_ablation_survivors_env(monkeypatch):
+    """Encoder cone tests must not inherit operator shell ED_APPLY_ABLATION_SURVIVORS=1."""
+    monkeypatch.delenv("ED_APPLY_ABLATION_SURVIVORS", raising=False)
+    monkeypatch.delenv("ED_ABLATION_DROP_GROUPS", raising=False)
+    try:
+        from arch_competition import stack_bundle_eval_v1 as sbe
+
+        sbe._ablation_drop_snapshot_columns_cached.cache_clear()
+        sbe.ablated_drop_group_ids_for_model_horizon.cache_clear()
+        sbe.ablated_drop_members_for_model_horizon.cache_clear()
+    except Exception:
+        pass
+
+
 def _minimal_valid_inference_v1():
     from features.inference_snapshot import build_inference_snapshot_v1_from_feature_row
     from features.canonical_contract import get_mvp_feature_names

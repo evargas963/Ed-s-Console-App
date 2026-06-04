@@ -15,6 +15,7 @@
 **Non-negotiables (code-first):**
 - **Train-success-live** — successful scheduler train → `models/active/` in the same run (auto-promote default ON).
 - **Full parallel stack** — live + offline parallel eval score a row only when XGB + LSTM + Transformer all produce valid triplets (no 0.333 meta filler, no XGB-only ensemble rows). Cascade keeps its own architecture contract; governed comparison uses **ts_utc alignment**.
+- **ML pipeline efficiency (operator 2026-05-31, binding)** — ablation confirm → **inference backtest on `models/active/`** (not full retrain) → edge probe → validation run → scheduler train. Parallel train **writes** `parallel_cascade_bridge.npz` (XGB probs aligned 1:1 to LSTM dataset rows); cascade **must reuse** parallel XGB weights + bridge in the same `run_once` (no duplicate XGB retrain / snapshot prob walk when bridge valid). Mechanical locks: `tools/check_ml_pipeline_efficiency.py`, `tools/check_ablation_pipeline_parity.py`.
 - **Confluence-only** — `panel_auto` enrolled for logging/features, **excluded from ML training**.
 - **Operator legibility** — WAIT/neutral horizon cards stay high-contrast vs page chrome (same labels; readable slate/blue neutral palette — not “broken UI”).
 

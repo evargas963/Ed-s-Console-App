@@ -170,11 +170,47 @@ def _weighted_blend_probs(
     tr_d: Optional[dict],
 ) -> Optional[list[float]]:
     """
-    Explicit blend using ml_predict._weighted_average only among provided branches.
+    Explicit blend among provided branches only.
     Missing branches are omitted (weights renormalized over XGB=0.40, LSTM=0.35, TR=0.25).
+    Full triple delegates to ml_predict._weighted_average (collapse-aware).
     """
-    wa = mp._weighted_average(ticker, xgb_d, lstm_d, tr_d)
-    return _dict_to_probs(wa)
+    if xgb_d is not None and lstm_d is not None and tr_d is not None:
+        collapsed = mp._active_base_collapse_flags(ticker)
+        wa = mp._weighted_average(ticker, xgb_d, lstm_d, tr_d, collapsed=collapsed)
+        return _dict_to_probs(wa)
+
+    collapsed: set = set()
+    try:
+        collapsed = mp._active_base_collapse_flags(ticker)
+    except Exception:
+        pass
+
+    base_weights = (
+        ("xgb", xgb_d, 0.40),
+        ("lstm", lstm_d, 0.35),
+        ("transformer", tr_d, 0.25),
+    )
+    healthy = [
+        (name, p, w)
+        for name, p, w in base_weights
+        if p is not None and name not in collapsed and _dict_to_probs(p) is not None
+    ]
+    if not healthy:
+        return None
+
+    total_w = sum(w for _, _, w in healthy)
+    if total_w <= 0:
+        return None
+
+    acc = {"up": 0.0, "down": 0.0, "flat": 0.0}
+    for _name, probs, w in healthy:
+        tri = _dict_to_probs(probs)
+        assert tri is not None
+        nw = w / total_w
+        acc["up"] += tri[0] * nw
+        acc["down"] += tri[1] * nw
+        acc["flat"] += tri[2] * nw
+    return _norm_triplet(acc["up"], acc["down"], acc["flat"])
 
 
 def _pack_full_metrics(
@@ -591,17 +627,25 @@ def run_stack_bundle_evaluation(
                     log.debug("skip row fusion stack: %s", e)
 
                 if fusion_payload_base is not None and "fusion_without_mc" in modes:
-                    row_probs["fusion_without_mc"] = _norm_triplet(
-                        float(fusion_payload_base.prob_up),
-                        float(fusion_payload_base.prob_down),
-                        float(fusion_payload_base.prob_flat),
-                    )
+                    _bpu = getattr(fusion_payload_base, "prob_up", None)
+                    _bpd = getattr(fusion_payload_base, "prob_down", None)
+                    _bpf = getattr(fusion_payload_base, "prob_flat", None)
+                    if _bpu is not None and _bpd is not None and _bpf is not None:
+                        row_probs["fusion_without_mc"] = _norm_triplet(
+                            float(_bpu), float(_bpd), float(_bpf)
+                        )
+                    else:
+                        _bump("fusion_without_mc:null_probs")
                 if fusion_payload_full is not None and "full_fusion" in modes:
-                    row_probs["full_fusion"] = _norm_triplet(
-                        float(fusion_payload_full.prob_up),
-                        float(fusion_payload_full.prob_down),
-                        float(fusion_payload_full.prob_flat),
-                    )
+                    _pu = getattr(fusion_payload_full, "prob_up", None)
+                    _pd = getattr(fusion_payload_full, "prob_down", None)
+                    _pf = getattr(fusion_payload_full, "prob_flat", None)
+                    if _pu is not None and _pd is not None and _pf is not None:
+                        row_probs["full_fusion"] = _norm_triplet(
+                            float(_pu), float(_pd), float(_pf)
+                        )
+                    else:
+                        _bump("full_fusion:null_probs")
 
             outcome_raw = row.get(target_column)
             yt = _outcome_class_index(outcome_raw)
@@ -844,6 +888,8 @@ ABLATION_SURVIVORS_ENV = "ED_APPLY_ABLATION_SURVIVORS"
 ABLATION_DROP_GROUPS_ENV = "ED_ABLATION_DROP_GROUPS"
 ABLATION_MANIFEST_PATH = Path("governance/artifacts/feature_ablation_manifest.json")
 ABLATION_REPORT_PATH = Path("governance/artifacts/feature_ablation_report.json")
+# Bump when confirm holdout transform order changes; preflight blocks until --ablation-confirm re-run.
+ABLATION_CONFIRM_PATH_VERSION = "2"
 
 
 def ablation_survivors_training_enabled() -> bool:
@@ -856,8 +902,12 @@ def ablation_survivors_training_enabled() -> bool:
     return os.environ.get(ABLATION_SURVIVORS_ENV, "").strip().lower() in ("1", "true", "yes")
 
 
-def ablation_confirm_pass_complete(survivor_summary: dict | None = None) -> bool:
-    """True when survivor_summary.confirm_pass is a populated dict (not the pre-run status string)."""
+def ablation_confirm_pass_complete(
+    survivor_summary: dict | None = None,
+    *,
+    require_current_path: bool = True,
+) -> bool:
+    """True when survivor_summary.confirm_pass is populated and matches the current confirm path."""
     if survivor_summary is None:
         if not ABLATION_REPORT_PATH.is_file():
             return False
@@ -867,7 +917,11 @@ def ablation_confirm_pass_complete(survivor_summary: dict | None = None) -> bool
             return False
         survivor_summary = report.get("survivor_summary") or {}
     confirm = survivor_summary.get("confirm_pass")
-    return isinstance(confirm, dict) and bool(confirm.get("cells"))
+    if not isinstance(confirm, dict) or not confirm.get("cells"):
+        return False
+    if require_current_path:
+        return confirm.get("confirm_path_version") == ABLATION_CONFIRM_PATH_VERSION
+    return True
 
 
 def confirmed_drop_group_ids_by_model_horizon(
@@ -1050,11 +1104,21 @@ def drop_snapshot_columns_across_rows(
 
 
 def ablation_survivors_fingerprint_part() -> str:
-    """Cache-key fragment when survivor mask is on."""
+    """Cache-key fragment when survivor mask is on (global + per-model×horizon confirm drops)."""
     if not ablation_survivors_training_enabled():
         return "ablation_survivors=off"
-    drop_groups = resolve_ablation_drop_group_ids()
-    return "ablation_survivors=on|" + ",".join(drop_groups)
+    global_part = ",".join(resolve_ablation_drop_group_ids())
+    per_model_part = "unavailable"
+    try:
+        if ABLATION_REPORT_PATH.is_file():
+            report = json.loads(ABLATION_REPORT_PATH.read_text(encoding="utf-8"))
+            by_cell = confirmed_drop_group_ids_by_model_horizon(report.get("survivor_summary") or {})
+            per_model_part = "|".join(
+                f"{m}/{h}:{','.join(sorted(g))}" for (m, h), g in sorted(by_cell.items())
+            )
+    except (OSError, json.JSONDecodeError, ValueError):
+        pass
+    return f"ablation_survivors=on|global={global_part}|per_model={per_model_part}"
 
 
 def apply_ablation_survivor_nulls_to_snapshot(row: dict) -> dict:
@@ -1189,20 +1253,140 @@ def apply_ablation_survivor_nulls_to_snapshot_for_model(snap, *, model_family: s
     return snap
 
 
+def null_snapshot_dict_for_drop_groups(
+    snap: dict,
+    manifest: dict,
+    drop_group_ids: list[str],
+) -> dict:
+    """Confirm-path snapshot nulling — does not require confirm_pass or survivors env."""
+    if not drop_group_ids or not isinstance(snap, dict):
+        return snap
+    by_id = {g["group_id"]: g for g in (manifest.get("groups") or [])}
+    cols: set[str] = set()
+    for gid in drop_group_ids:
+        grp = by_id.get(gid)
+        if grp:
+            cols.update(group_snapshot_columns(grp))
+    out = dict(snap)
+    for col in cols:
+        if col in out and col not in ABLATION_SURVIVOR_PROTECTED_SNAPSHOT_COLUMNS:
+            out[col] = ablation_null_value_for_snapshot_column(col, for_pandas=False)
+    return out
+
+
+def null_snapshot_dataframe_for_drop_groups(df, manifest: dict, drop_group_ids: list[str]):
+    """Confirm-path tabular nulling — mirrors production raw-null step before engineer_features."""
+    if df is None or len(df) == 0 or not drop_group_ids:
+        return df
+    by_id = {g["group_id"]: g for g in (manifest.get("groups") or [])}
+    cols: set[str] = set()
+    for gid in drop_group_ids:
+        grp = by_id.get(gid)
+        if grp:
+            cols.update(group_snapshot_columns(grp))
+    out = df.copy()
+    for col in cols:
+        if col in out.columns and col not in ABLATION_SURVIVOR_PROTECTED_SNAPSHOT_COLUMNS:
+            out[col] = ablation_null_value_for_snapshot_column(col, for_pandas=True)
+    return out
+
+
+def drop_ablated_xgb_engineered_columns(
+    X,
+    feat_names: list[str],
+    horizon_slug: str,
+) -> tuple[Any, list[str], int]:
+    """Remove confirm-verified XGB engineered columns after ``engineer_features`` (O-56).
+
+    Production must match ``--ablation-confirm`` holdout refit, which drops engineered names
+    post-engineer — not raw snapshot columns pre-engineer (many manifest xgb members are
+    engineered-only and never appear on the raw training frame).
+    """
+    xcols, _, _ = ablated_drop_members_for_model_horizon("xgb", horizon_slug)
+    drop_set = {c for c in xcols if c not in ABLATION_SURVIVOR_PROTECTED_SNAPSHOT_COLUMNS}
+    if not drop_set:
+        return X, feat_names, 0
+    keep = [f for f in feat_names if f not in drop_set]
+    n_dropped = len(feat_names) - len(keep)
+    if n_dropped == 0:
+        return X, feat_names, 0
+    return X[keep], keep, n_dropped
+
+
 def apply_ablation_survivor_nulls_to_dataframe_for_model(df, *, model_family: str, horizon_slug: str):
-    """Null the (model, horizon) non-survivor feature COLUMNS in a tabular training DataFrame
-    (XGB). Schema is preserved; the dropped groups' signal is removed. No-op when survivors off."""
+    """Null raw snapshot columns for one (model, horizon) cell before feature engineering.
+
+    XGB also drops engineered survivors in ``train_ticker`` via ``drop_ablated_xgb_engineered_columns``
+    after ``engineer_features`` — matching the confirm-pass refit path."""
     if not ablation_survivors_training_enabled() or df is None or len(df) == 0:
         return df
-    xcols, _m5, _m1 = ablated_drop_members_for_model_horizon(model_family, horizon_slug)
-    drop = [c for c in xcols if c not in ABLATION_SURVIVOR_PROTECTED_SNAPSHOT_COLUMNS]
+    drop_ids = ablated_drop_group_ids_for_model_horizon(model_family, horizon_slug)
+    if not drop_ids:
+        return df
+    manifest = _load_ablation_manifest_or_raise()
+    by_id = {g["group_id"]: g for g in manifest.get("groups") or []}
+    raw_cols: set[str] = set()
+    for gid in drop_ids:
+        grp = by_id.get(gid)
+        if grp:
+            raw_cols.update(group_snapshot_columns(grp))
+    if model_family == "xgb":
+        xcols, _, _ = ablated_drop_members_for_model_horizon("xgb", horizon_slug)
+        for col in xcols:
+            if col in df.columns:
+                raw_cols.add(col)
+    drop = sorted(
+        c for c in raw_cols
+        if c not in ABLATION_SURVIVOR_PROTECTED_SNAPSHOT_COLUMNS and c in df.columns
+    )
     if not drop:
         return df
     out = df.copy()
     for col in drop:
-        if col in out.columns:
-            out[col] = ablation_null_value_for_snapshot_column(col, for_pandas=True)
+        out[col] = ablation_null_value_for_snapshot_column(col, for_pandas=True)
     return out
+
+
+def zero_ablated_sequence_channels_for_model(
+    X_5m: np.ndarray,
+    X_1m: np.ndarray,
+    mask_5m: np.ndarray,
+    mask_1m: np.ndarray,
+    *,
+    model_family: str,
+    horizon_slug: str,
+    features_5m: list[str],
+    features_1m: list[str],
+    encoded_features_5m: list[str],
+    encoded_features_1m: list[str],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Zero post-normalize LSTM/Transformer channels for confirm-verified drops (O-56).
+
+    Matches ``--ablation-confirm`` holdout refit when groups carry lstm stream members; also
+    zeros channels mapped from raw members present on the encoded streams."""
+    from tools.feature_curation_gate import (
+        _post_mask_channel_indices,
+        _pre_mask_encoded_indices,
+    )
+
+    _, m5_raw, m1_raw = ablated_drop_members_for_model_horizon(model_family, horizon_slug)
+    out5 = np.array(X_5m, copy=True)
+    out1 = np.array(X_1m, copy=True)
+    if m5_raw:
+        ch5 = _post_mask_channel_indices(
+            _pre_mask_encoded_indices(list(m5_raw), features_5m, encoded_features_5m),
+            mask_5m,
+        )
+        for c in ch5:
+            out5[:, :, c] = 0.0
+    if m1_raw:
+        ch1 = _post_mask_channel_indices(
+            _pre_mask_encoded_indices(list(m1_raw), features_1m, encoded_features_1m),
+            mask_1m,
+        )
+        for c in ch1:
+            out1[:, :, c] = 0.0
+    return out5, out1
 
 
 def _full_fusion_prob_for_row(

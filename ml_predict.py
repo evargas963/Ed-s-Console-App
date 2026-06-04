@@ -159,12 +159,13 @@ def _apply_serve_ablation_snapshot(snap: dict, model_family: str) -> dict:
                 out, model_family=model_family, horizon_slug=hz
             )
     except Exception:
-        logger.warning(
-            "ablation survivor serve-mask failed for %s/%s; serving UNMASKED snapshot",
+        logger.error(
+            "ablation survivor serve-mask failed for %s/%s — refusing unmasked serve (train/serve skew)",
             model_family,
             get_ml_infer_horizon_slug(),
             exc_info=True,
         )
+        raise
     return out
 
 
@@ -224,6 +225,45 @@ def _transformer_normalize_and_select(X_raw: np.ndarray, checkpoint: dict) -> np
         col = X_raw[:, :, j].astype(np.float32)
         parts.append((col - mean_m[k]) / std_m[k])
     return np.nan_to_num(np.stack(parts, axis=2), nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def _transformer_apply_ablation_channel_zero(X: np.ndarray, checkpoint: dict) -> np.ndarray:
+    """Post-normalize channel zero — must match transformer_train.train_transformer (O-56)."""
+    try:
+        from arch_competition.stack_bundle_eval_v1 import (
+            ablation_survivors_training_enabled,
+            zero_ablated_sequence_channels_for_model,
+        )
+        from lstm_data import (
+            ENCODED_FEATURES_1M,
+            ENCODED_FEATURES_5M,
+            FEATURES_1M,
+            FEATURES_5M,
+        )
+
+        if not ablation_survivors_training_enabled():
+            return X
+        fm = np.asarray(checkpoint.get("feature_mask", np.ones(X.shape[2], dtype=bool)), dtype=bool)
+        dummy_1m = np.zeros((X.shape[0], X.shape[1], 0), dtype=X.dtype)
+        X, _ = zero_ablated_sequence_channels_for_model(
+            X,
+            dummy_1m,
+            fm,
+            np.array([], dtype=bool),
+            model_family="transformer",
+            horizon_slug=get_ml_infer_horizon_slug(),
+            features_5m=FEATURES_5M,
+            features_1m=FEATURES_1M,
+            encoded_features_5m=ENCODED_FEATURES_5M,
+            encoded_features_1m=ENCODED_FEATURES_1M,
+        )
+        return X
+    except Exception:
+        logger.error(
+            "Transformer post-norm ablation channel zero failed — refusing train/serve skew",
+            exc_info=True,
+        )
+        raise
 
 MODEL_DIR = Path("models")
 ARCH_STATE_PATH = MODEL_DIR / "arch_state.json"
@@ -331,7 +371,7 @@ def _model_dir_for_ticker(ticker: str) -> Path:
         ]:
             raise FileNotFoundError(
                 f"ED_XGB_STRICT_ACTIVE_ONLY=1: no complete active model bundle for {ticker} hz={hz} "
-                f"at canonical {canonical} (requires xgb+lstm+transformer per active_bundle_contract)"
+                f"at canonical {canonical} (requires xgb+lstm+transformer+meta_stack per active_bundle_contract)"
             )
         return canonical
     if _INFER_ARCHITECTURE.get() == "cascade":
@@ -917,6 +957,39 @@ def _predict_lstm(
         X_1m   = np.nan_to_num(X_1m,   nan=0.0, posinf=0.0, neginf=0.0)
         X_conf = np.nan_to_num(X_conf, nan=0.0, posinf=0.0, neginf=0.0)
 
+        try:
+            from arch_competition.stack_bundle_eval_v1 import (
+                ablation_survivors_training_enabled,
+                zero_ablated_sequence_channels_for_model,
+            )
+            from lstm_data import (
+                ENCODED_FEATURES_1M,
+                ENCODED_FEATURES_5M,
+                FEATURES_1M,
+                FEATURES_5M,
+            )
+
+            if ablation_survivors_training_enabled():
+                X_5m, X_1m = zero_ablated_sequence_channels_for_model(
+                    X_5m,
+                    X_1m,
+                    mask_5m,
+                    mask_1m,
+                    model_family="lstm",
+                    horizon_slug=get_ml_infer_horizon_slug(),
+                    features_5m=FEATURES_5M,
+                    features_1m=FEATURES_1M,
+                    encoded_features_5m=ENCODED_FEATURES_5M,
+                    encoded_features_1m=ENCODED_FEATURES_1M,
+                )
+        except Exception:
+            logger.error(
+                "LSTM %s: post-norm ablation channel zero failed — refusing train/serve skew",
+                ticker,
+                exc_info=True,
+            )
+            return None
+
         with torch.no_grad():
             logits = model(torch.from_numpy(X_1m).float(),
                            torch.from_numpy(X_5m).float(),
@@ -1139,6 +1212,7 @@ def _predict_transformer(
             return None
 
         X = _transformer_normalize_and_select(X_raw, checkpoint)
+        X = _transformer_apply_ablation_channel_zero(X, checkpoint)
 
         with torch.no_grad():
             logits = model(torch.from_numpy(X).float())

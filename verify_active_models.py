@@ -139,6 +139,14 @@ def check_artifact_compliance(ticker: str) -> dict:
 
             result["artifacts"][key] = art
 
+        meta_pkl = bundle_dir / f"meta_{ticker.upper()}_{hz}.pkl"
+        meta_key = f"{hz}:meta_stack"
+        meta_art = {"exists": meta_pkl.is_file(), "has_provenance": meta_pkl.is_file(), "issues": []}
+        if not meta_pkl.is_file():
+            meta_art["issues"].append(f"meta_{ticker.upper()}_{hz}.pkl missing")
+            result["compliant"] = False
+        result["artifacts"][meta_key] = meta_art
+
     result["provenance"] = primary_prov.to_dict() if primary_prov else None
     if result["compliant"] and not primary_prov:
         result["compliant"] = False
@@ -197,6 +205,14 @@ def verify_single_bundle(ticker: str, hz: str, *, models_dir: Path | None = None
                 result["compliant"] = False
         result["artifacts"][name] = art
         result["issues"].extend(art["issues"])
+
+    meta_pkl = bundle_dir / f"meta_{ticker.upper()}_{hz}.pkl"
+    meta_art = {"exists": meta_pkl.is_file(), "has_provenance": meta_pkl.is_file(), "issues": []}
+    if not meta_pkl.is_file():
+        meta_art["issues"].append(f"meta_{ticker.upper()}_{hz}.pkl missing")
+        result["compliant"] = False
+    result["artifacts"]["meta_stack"] = meta_art
+    result["issues"].extend(meta_art["issues"])
 
     return result
 

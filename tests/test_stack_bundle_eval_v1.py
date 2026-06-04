@@ -10,8 +10,10 @@ from arch_competition.stack_bundle_eval_v1 import (
     _norm_triplet,
     _outcome_class_index,
     _probs_from_fusion_branch,
+    _weighted_blend_probs,
     pack_metrics_for_probs,
 )
+import ml_predict as mp
 from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
 
 
@@ -44,6 +46,33 @@ def test_probs_from_fusion_branch_none_when_prob_fields_missing():
 def test_fusion_branch_to_prob_dict_none_when_uniform_defaults_would_apply():
     branch = {"available": True}
     assert _fusion_branch_to_prob_dict(branch) is None
+
+
+def test_weighted_blend_probs_partial_xgb_lstm_renormalizes():
+    xgb = {"up": 0.8, "down": 0.1, "flat": 0.1}
+    lstm = {"up": 0.2, "down": 0.5, "flat": 0.3}
+    out = _weighted_blend_probs(mp, "SPY", xgb_d=xgb, lstm_d=lstm, tr_d=None)
+    assert out is not None
+    # 0.40/(0.40+0.35)*xgb + 0.35/(0.40+0.35)*lstm on up leg
+    expected_up = 0.8 * (0.40 / 0.75) + 0.2 * (0.35 / 0.75)
+    assert abs(out[0] - expected_up) < 1e-9
+
+
+def test_weighted_blend_probs_full_triple_delegates_to_weighted_average(monkeypatch):
+    xgb = {"up": 0.4, "down": 0.3, "flat": 0.3}
+    lstm = {"up": 0.4, "down": 0.3, "flat": 0.3}
+    tr = {"up": 0.4, "down": 0.3, "flat": 0.3}
+    calls: list[tuple] = []
+
+    def _fake_wa(ticker, xgb_p, lstm_p, trans_p, collapsed=None):
+        calls.append((ticker, collapsed))
+        return {"up": 0.34, "down": 0.33, "flat": 0.33}
+
+    monkeypatch.setattr(mp, "_active_base_collapse_flags", lambda _t: set())
+    monkeypatch.setattr(mp, "_weighted_average", _fake_wa)
+    out = _weighted_blend_probs(mp, "SPY", xgb_d=xgb, lstm_d=lstm, tr_d=tr)
+    assert out == [0.34, 0.33, 0.33]
+    assert calls == [("SPY", set())]
 
 
 def test_pack_metrics_requires_min_samples_statistical():

@@ -184,6 +184,7 @@ def reconcile_pre_b_incumbent_scores(
     horizons: Any,
     *,
     dry_run: bool = True,
+    survivor_retrain_reset: bool = False,
 ) -> dict[str, Any]:
     """A2 first-cycle deadlock reconcile (CORRECTNESS-CLOSEOUT #4) — one-shot, idempotent.
 
@@ -207,6 +208,11 @@ def reconcile_pre_b_incumbent_scores(
     Pre-B detection: ``promotion_metric != "ensemble_eval_accuracy"`` AND a positive
     ``promotion_score``. Already-reconciled (0.0) and ensemble-basis rows are skipped,
     so re-running is a no-op (idempotent).
+
+    ``survivor_retrain_reset=True`` (O-56): when ``ED_APPLY_ABLATION_SURVIVORS=1``, reset
+    **any** positive ``promotion_score`` including ``ensemble_eval_accuracy`` incumbents.
+    Full-feature ensemble scores are not comparable to ablated-survivor retrains; quality
+    floors (MIN_PROMOTION_ACCURACY / balanced_accuracy / collapse / data floor) still gate.
 
     ``model_dir`` is the models base; the canonical active root is derived **per
     horizon** via ``active_bundle_contract.scheduler_active_root`` (1c -> models/active,
@@ -244,11 +250,18 @@ def reconcile_pre_b_incumbent_scores(
                 score = float(raw_score)
             except (TypeError, ValueError):
                 score = None
-            if metric == "ensemble_eval_accuracy" or score is None or score <= 0.0:
+            if score is None or score <= 0.0:
                 skipped.append({
                     "ticker": tku, "horizon": hz,
                     "promotion_metric": metric, "promotion_score": raw_score,
-                    "reason": "ensemble-basis or non-positive score (idempotent skip)",
+                    "reason": "non-positive score (idempotent skip)",
+                })
+                continue
+            if metric == "ensemble_eval_accuracy" and not survivor_retrain_reset:
+                skipped.append({
+                    "ticker": tku, "horizon": hz,
+                    "promotion_metric": metric, "promotion_score": raw_score,
+                    "reason": "ensemble-basis (idempotent skip; use survivor_retrain_reset for O-56)",
                 })
                 continue
             targets.append((tku, hz, meta_path, score, metric))
@@ -275,6 +288,47 @@ def reconcile_pre_b_incumbent_scores(
         "dry_run": False, "scanned": scanned, "reset_count": len(reset),
         "reset": reset, "skipped": skipped, "missing": missing,
     }
+
+
+_survivor_retrain_run_reset_done: bool = False
+
+
+def ensure_survivor_retrain_incumbent_reset_at_run_start(
+    model_dir: Path,
+    tickers: Any,
+) -> dict[str, Any]:
+    """O-56: once per scheduler process, reset positive incumbent scores before train/promote.
+
+    Full-feature ensemble ``promotion_score`` values are not comparable to ablated-survivor
+    retrains. Reset all governed horizons for the scheduled tickers at ``run_once`` entry so
+    the first post-retrain promote is not blocked by stale incumbents (e.g. SPY 1c 0.417 < 0.431).
+    Idempotent after the first call in a process; per-promote reconcile in
+    ``execute_promotion_if_eligible`` remains as a second line of defense.
+    """
+    global _survivor_retrain_run_reset_done
+    from arch_competition.stack_bundle_eval_v1 import ablation_survivors_training_enabled
+    from ml_horizon import ALL_GOVERNED_HORIZONS
+
+    if not ablation_survivors_training_enabled():
+        return {"skipped": True, "reason": "ablation_survivors_off", "reset_count": 0}
+    if _survivor_retrain_run_reset_done:
+        return {"skipped": True, "reason": "already_reset_this_process", "reset_count": 0}
+    _survivor_retrain_run_reset_done = True
+    tickers_u = [str(t).upper() for t in tickers]
+    result = reconcile_pre_b_incumbent_scores(
+        model_dir,
+        tickers_u,
+        list(ALL_GOVERNED_HORIZONS),
+        dry_run=False,
+        survivor_retrain_reset=True,
+    )
+    log.info(
+        "O-56 survivor_retrain incumbent reset at run start: reset_count=%s tickers=%s horizons=%s",
+        result.get("reset_count"),
+        tickers_u,
+        list(ALL_GOVERNED_HORIZONS),
+    )
+    return {**result, "skipped": False, "reason": "run_start_reset"}
 
 
 def _auto_promote_score_row_gate(
@@ -531,7 +585,17 @@ def execute_promotion_if_eligible(
     if not is_manual:
         # A2 first-cycle deadlock: reset inflated pre-B xgb-only incumbent scores before the
         # ensemble-vs-incumbent compare (idempotent once ensemble basis is stamped).
-        reconcile_pre_b_incumbent_scores(model_dir, [tku], [hz], dry_run=False)
+        # O-56 survivor retrain: also reset ensemble-basis incumbents (full-feature scores
+        # are not comparable to ablated-survivor candidates).
+        from arch_competition.stack_bundle_eval_v1 import ablation_survivors_training_enabled
+
+        reconcile_pre_b_incumbent_scores(
+            model_dir,
+            [tku],
+            [hz],
+            dry_run=False,
+            survivor_retrain_reset=ablation_survivors_training_enabled(),
+        )
         gate_ok, gate_reason = _auto_promote_score_row_gate(
             manifest, target_architecture, src, active_ticker_dir, tku, hz
         )

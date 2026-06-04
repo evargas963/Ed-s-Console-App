@@ -390,6 +390,8 @@ def extract_rth_snapshots(
     skip_normalized_sync: bool = False,
     model_family: Optional[str] = None,
     horizon_slug: Optional[str] = None,
+    confirm_drop_group_ids: Optional[list[str]] = None,
+    confirm_ablation_manifest: Optional[dict] = None,
 ) -> dict:
     """
     Extract RTH snapshots grouped by trading day.
@@ -479,6 +481,7 @@ def extract_rth_snapshots(
         AblatedTrainingUnavailable,
         ablation_survivors_training_enabled,
         apply_ablation_survivor_nulls_to_snapshot_for_model,
+        null_snapshot_dict_for_drop_groups,
     )
 
     if ablation_survivors_training_enabled():
@@ -530,7 +533,11 @@ def extract_rth_snapshots(
 
         rth_rows += 1
 
-        if ablation_enabled and apply_ablation_fn is not None:
+        if confirm_drop_group_ids and confirm_ablation_manifest:
+            d = null_snapshot_dict_for_drop_groups(
+                d, confirm_ablation_manifest, list(confirm_drop_group_ids)
+            )
+        elif ablation_enabled and apply_ablation_fn is not None:
             d = apply_ablation_fn(d)  # fail loud: never silently skip the survivor mask
 
         if day_key not in days:
@@ -795,6 +802,8 @@ def build_lstm_dataset(
     min_ts_utc: Optional[float] = None,
     allowed_et_dates: Optional[set] = None,
     ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
+    confirm_drop_group_ids: Optional[list[str]] = None,
+    confirm_ablation_manifest: Optional[dict] = None,
 ) -> LSTMDataset:
     """
     Build the complete LSTM training dataset from the snapshot database.
@@ -877,6 +886,8 @@ def build_lstm_dataset(
             skip_normalized_sync=True,
             model_family="lstm",
             horizon_slug=ml_horizon_slug,
+            confirm_drop_group_ids=confirm_drop_group_ids,
+            confirm_ablation_manifest=confirm_ablation_manifest,
         )
 
         for day_key, snapshots in sorted(days_data.items()):

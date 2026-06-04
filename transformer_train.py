@@ -149,6 +149,8 @@ def prepare_transformer_data(
     min_snapshots_before_sample: Optional[int] = None,
     allowed_et_dates: Optional[Set[str]] = None,
     ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
+    confirm_drop_group_ids: Optional[list[str]] = None,
+    confirm_ablation_manifest: Optional[dict] = None,
 ):
     from features.training_canonical_input import training_snapshot_for_sequence_encode
     from lstm_data import (
@@ -193,6 +195,8 @@ def prepare_transformer_data(
             target_column=label_col,
             model_family="transformer",
             horizon_slug=hz,
+            confirm_drop_group_ids=confirm_drop_group_ids,
+            confirm_ablation_manifest=confirm_ablation_manifest,
         )
         for day_key, snapshots in sorted(days_data.items()):
             if len(snapshots) < _min_hist:
@@ -377,6 +381,27 @@ def train_transformer(
     X = X[:, :, feature_mask]
     n_features = X.shape[2]
     result.n_features = n_features
+
+    from arch_competition.stack_bundle_eval_v1 import (
+        ablation_survivors_training_enabled,
+        zero_ablated_sequence_channels_for_model,
+    )
+    from lstm_data import ENCODED_FEATURES_1M, ENCODED_FEATURES_5M, FEATURES_1M, FEATURES_5M
+
+    if ablation_survivors_training_enabled():
+        _dummy_1m = np.zeros((X.shape[0], X.shape[1], 0), dtype=X.dtype)
+        X, _ = zero_ablated_sequence_channels_for_model(
+            X,
+            _dummy_1m,
+            feature_mask,
+            np.array([], dtype=bool),
+            model_family="transformer",
+            horizon_slug=normalize_ml_horizon_slug(ml_horizon_slug),
+            features_5m=FEATURES_5M,
+            features_1m=FEATURES_1M,
+            encoded_features_5m=ENCODED_FEATURES_5M,
+            encoded_features_1m=ENCODED_FEATURES_1M,
+        )
 
     # O-55: equal/uniform sample weights only (all ones). No recency decay, no toggle.
     sample_w = np.asarray(equal_sample_weights(n_rows), dtype=np.float32)

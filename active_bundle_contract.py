@@ -15,12 +15,14 @@ from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug
 MODELS_DIR = Path(__file__).resolve().parent / "models"
 ACTIVE_DIR = MODELS_DIR / "active"
 
-# (model_kind, model_file, meta_file) per horizon bundle — six files total.
+# (model_kind, model_file, meta_file) per horizon bundle — six base files + meta-stack pkl.
 BUNDLE_ARTIFACT_TRIPLE = (
     ("xgb", "xgb_{ticker}_{hz}.pkl", "xgb_{ticker}_{hz}_meta.json"),
     ("lstm", "lstm_{ticker}_{hz}.pt", "lstm_{ticker}_{hz}_meta.json"),
     ("transformer", "transformer_{ticker}_{hz}.pt", "transformer_{ticker}_{hz}_meta.json"),
 )
+META_STACK_KIND = "meta_stack"
+META_STACK_MODEL_PATTERN = "meta_{ticker}_{hz}.pkl"
 
 
 def scheduler_active_root(models_dir: Path, ml_horizon_slug: str) -> Path:
@@ -37,15 +39,18 @@ def active_bundle_dir(ticker: str, hz: str, *, models_dir: Path | None = None) -
     return scheduler_active_root(root, hz) / ticker.upper()
 
 
-def horizon_bundle_filenames(ticker: str, hz: str) -> tuple[str, ...]:
-    """Six filenames (model + meta × 3) for one (ticker, horizon) bundle."""
+def meta_stack_artifact_filename(ticker: str, hz: str) -> str:
+    """Trained meta-learner on stacked base probabilities (Layer 2)."""
     t = ticker.upper()
     su = normalize_ml_horizon_slug(hz)
-    names: list[str] = []
-    for _kind, model_pat, meta_pat in BUNDLE_ARTIFACT_TRIPLE:
-        names.append(model_pat.format(ticker=t, hz=su))
-        names.append(meta_pat.format(ticker=t, hz=su))
-    return tuple(names)
+    return META_STACK_MODEL_PATTERN.format(ticker=t, hz=su)
+
+
+def horizon_bundle_filenames(ticker: str, hz: str) -> tuple[str, ...]:
+    """Seven filenames: model + meta × 3 bases + meta-stack pkl for one (ticker, horizon) bundle."""
+    from training_cache import parallel_artifact_basenames
+
+    return tuple(parallel_artifact_basenames(ticker, hz))
 
 
 def bundle_artifact_paths(ticker: str, hz: str, bundle_dir: Path) -> list[tuple[str, Path, Path]]:
@@ -145,6 +150,13 @@ def check_active_bundle_complete(
                 result["compliant"] = False
         result["artifacts"][kind] = art
 
+    meta_pkl = bd / meta_stack_artifact_filename(ticker, hz)
+    meta_art = {"exists": meta_pkl.is_file(), "meta_exists": False, "issues": []}
+    if not meta_pkl.is_file():
+        meta_art["issues"].append(f"{meta_pkl.name} missing")
+        result["compliant"] = False
+    result["artifacts"][META_STACK_KIND] = meta_art
+
     return result
 
 
@@ -161,7 +173,7 @@ def check_candidate_bundle_complete(
     hz: str,
     candidate_dir: Path,
 ) -> dict[str, Any]:
-    """Same 6-file contract as active bundles, applied to parallel/cascade candidate dirs."""
+    """Same 7-file contract as active bundles, applied to parallel/cascade candidate dirs."""
     return check_active_bundle_complete(ticker, hz, bundle_dir=candidate_dir)
 
 
@@ -192,7 +204,7 @@ def promote_horizon_bundle_from_candidate(
     models_dir: Path | None = None,
 ) -> Path:
     """
-    Copy the six-file bundle for (ticker, hz) into the canonical active dir (P2-2).
+    Copy the seven-file bundle for (ticker, hz) into the canonical active dir (P2-2).
 
     Uses atomic directory replace via manual_control._replace_active_dir_from_source.
     """

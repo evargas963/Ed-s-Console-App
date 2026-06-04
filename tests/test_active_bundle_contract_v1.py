@@ -29,6 +29,7 @@ def _write_minimal_bundle(bundle_dir: Path, ticker: str, hz: str) -> None:
             meta["vol_medians"] = {}
             meta["impute_medians"] = {"f1": 0.0}
         bundle_dir.joinpath(meta_name).write_text(__import__("json").dumps(meta), encoding="utf-8")
+    bundle_dir.joinpath(f"meta_{t}_{hz}.pkl").write_bytes(b"meta-stack-test-stub")
 
 
 def test_check_active_bundle_complete_all_present(tmp_path: Path):
@@ -38,6 +39,17 @@ def test_check_active_bundle_complete_all_present(tmp_path: Path):
     _write_minimal_bundle(bd, "SPY", "1c")
     r = check_active_bundle_complete("SPY", "1c", bundle_dir=bd, models_dir=tmp_path)
     assert r["compliant"] is True
+
+
+def test_check_active_bundle_incomplete_without_meta_stack(tmp_path: Path):
+    from active_bundle_contract import check_active_bundle_complete
+
+    bd = tmp_path / "active" / "SPY"
+    _write_minimal_bundle(bd, "SPY", "1c")
+    (bd / "meta_SPY_1c.pkl").unlink()
+    r = check_active_bundle_complete("SPY", "1c", bundle_dir=bd, models_dir=tmp_path)
+    assert r["compliant"] is False
+    assert "meta_SPY_1c.pkl missing" in str(r["artifacts"]["meta_stack"]["issues"])
 
 
 def test_strict_active_bundle_dir_requires_full_triple(tmp_path: Path):

@@ -5,6 +5,7 @@ Directory layout:
   models/cache/features/{feature_cache_key}/
     lstm_tensors.npz, lstm_dataset_meta.json
     transformer_parallel_tensors.npz
+    parallel_cascade_bridge.npz, parallel_cascade_bridge_identity.json
     cascade_transformer_xgb_lstm.npz, cascade_transformer_identity.json
     feature_cache_identity.json
 
@@ -37,6 +38,8 @@ LSTM_META_NAME = "lstm_dataset_meta.json"
 TRANSFORMER_NPZ_NAME = "transformer_parallel_tensors.npz"
 CASCADE_TF_NPZ_NAME = "cascade_transformer_xgb_lstm.npz"
 CASCADE_TF_IDENTITY_NAME = "cascade_transformer_identity.json"
+PARALLEL_CASCADE_BRIDGE_NPZ_NAME = "parallel_cascade_bridge.npz"
+PARALLEL_CASCADE_BRIDGE_IDENTITY_NAME = "parallel_cascade_bridge_identity.json"
 FEATURE_IDENTITY_NAME = "feature_cache_identity.json"
 
 
@@ -659,6 +662,112 @@ def save_transformer_parallel_cache(
     log.info("Transformer parallel feature cache written: %s", cache_dir)
 
 
+def copy_parallel_xgb_artifacts_to_cascade(
+    parallel_dir: Path,
+    cascade_dir: Path,
+    ticker: str,
+    *,
+    horizon_suffix: str,
+) -> bool:
+    """Copy parallel XGB weights into cascade candidate dir (same-run bridge reuse)."""
+    import shutil
+
+    t = ticker.upper()
+    hz = horizon_suffix
+    cascade_dir.mkdir(parents=True, exist_ok=True)
+    ok = True
+    for suffix in (".pkl", "_meta.json"):
+        name = f"xgb_{t}_{hz}{suffix}"
+        src = parallel_dir / name
+        dst = cascade_dir / name
+        if not src.is_file():
+            ok = False
+            break
+        shutil.copy2(src, dst)
+    return ok
+
+
+def save_parallel_cascade_bridge(
+    cache_dir: Path,
+    ticker: str,
+    data_fp: dict,
+    feature_key: str,
+    xgb_probs: np.ndarray,
+    parallel_xgb_pkl: Path,
+    parallel_xgb_meta: Path,
+) -> None:
+    """Persist XGB class-probs aligned 1:1 to LSTM dataset rows for cascade reuse."""
+    from features.training_canonical_input import training_canonical_lineage_header
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    probs = np.ascontiguousarray(xgb_probs, dtype=np.float32)
+    np.savez_compressed(cache_dir / PARALLEL_CASCADE_BRIDGE_NPZ_NAME, xgb_probs=probs)
+    payload = {
+        "ticker": ticker.upper(),
+        "feature_cache_key": feature_key,
+        "data_fingerprint": data_fp,
+        "n_samples": int(probs.shape[0]),
+        "n_classes": int(probs.shape[1]) if probs.ndim == 2 else 0,
+        "parallel_xgb_pkl_sha256": file_sha256_hex(parallel_xgb_pkl),
+        "parallel_xgb_meta_sha256": xgb_meta_content_sha256(parallel_xgb_meta),
+        **training_canonical_lineage_header(),
+    }
+    (cache_dir / PARALLEL_CASCADE_BRIDGE_IDENTITY_NAME).write_text(
+        json.dumps(payload, indent=2),
+        encoding="utf-8",
+    )
+    _write_feature_identity(cache_dir, ticker, data_fp, feature_key)
+    log.info(
+        "parallel→cascade bridge written: %s (%d rows)",
+        cache_dir,
+        int(probs.shape[0]),
+    )
+
+
+def load_parallel_cascade_bridge(
+    cache_dir: Path,
+    ticker: str,
+    data_fp: dict,
+    feature_key: str,
+    *,
+    expected_n_samples: int | None = None,
+) -> Optional[np.ndarray]:
+    """Return aligned xgb_probs or None if bridge missing/invalid."""
+    npz_p = cache_dir / PARALLEL_CASCADE_BRIDGE_NPZ_NAME
+    id_p = cache_dir / PARALLEL_CASCADE_BRIDGE_IDENTITY_NAME
+    if not npz_p.is_file() or not id_p.is_file():
+        return None
+    if not _feature_identity_matches(cache_dir, ticker, data_fp, feature_key):
+        log.info("parallel→cascade bridge identity mismatch: %s", cache_dir)
+        return None
+    try:
+        meta = json.loads(id_p.read_text(encoding="utf-8"))
+        z = np.load(npz_p)
+        probs = np.asarray(z["xgb_probs"], dtype=np.float32)
+    except Exception as exc:
+        log.warning("parallel→cascade bridge load failed: %s", exc)
+        return None
+    if not _canonical_lineage_identity_ok(meta):
+        log.info("parallel→cascade bridge canonical lineage mismatch: %s", cache_dir)
+        return None
+    if meta.get("feature_cache_key") != feature_key or meta.get("ticker") != ticker.upper():
+        return None
+    if _normalize_data_fp(meta.get("data_fingerprint")) != _normalize_data_fp(data_fp):
+        return None
+    n_stored = int(meta.get("n_samples") or 0)
+    if n_stored <= 0 or probs.shape[0] != n_stored:
+        log.info("parallel→cascade bridge row count corrupt: %s", cache_dir)
+        return None
+    if expected_n_samples is not None and int(expected_n_samples) != n_stored:
+        log.info(
+            "parallel→cascade bridge n_samples mismatch want=%s got=%s",
+            expected_n_samples,
+            n_stored,
+        )
+        return None
+    return probs
+
+
 def load_transformer_parallel_cache(
     cache_dir: Path,
     ticker: str,
@@ -1252,6 +1361,7 @@ def build_manifest(
     skipped_eval: bool = False,
     used_feature_cache: bool = False,
     used_cascade_tensor_cache: bool = False,
+    used_parallel_cascade_bridge: bool = False,
     rolling_window_days_tabular: int = 0,
     rolling_window_days_sequence: int = 0,
     rolling_rth_sessions_tabular: int = 0,
@@ -1301,6 +1411,7 @@ def build_manifest(
         "skipped_eval": skipped_eval,
         "used_feature_cache": used_feature_cache,
         "used_cascade_tensor_cache": used_cascade_tensor_cache,
+        "used_parallel_cascade_bridge": used_parallel_cascade_bridge,
         "rolling_window_days_tabular": rolling_window_days_tabular,
         "rolling_window_days_sequence": rolling_window_days_sequence,
         "rolling_rth_sessions_tabular": rolling_rth_sessions_tabular,

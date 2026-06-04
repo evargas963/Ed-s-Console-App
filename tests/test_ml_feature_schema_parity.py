@@ -679,6 +679,8 @@ def test_ablation_survivor_training_mask_defaults(monkeypatch):
     #    The primary-pass MCC-delta screen alone never deletes features from the money path, and
     #    there is no fabricated default drop set.
     monkeypatch.setenv("ED_APPLY_ABLATION_SURVIVORS", "1")
+    monkeypatch.setattr(sbe, "globally_safe_drop_group_ids", lambda _ss: [])
+    sbe._ablation_drop_snapshot_columns_cached.cache_clear()
     assert resolve_ablation_drop_group_ids() == []
 
     # 3) explicit operator override drives the mask machinery deterministically.
@@ -767,6 +769,73 @@ def test_confirmed_drops_require_all_anchors_safe():
     assert confirmed_drop_group_ids_by_model_horizon(ss) == {}
 
 
+def test_ablation_confirm_resume_skips_completed_cells():
+    from tools.feature_curation_gate import (
+        _confirm_cell_key,
+        build_per_model_confirm_pass_section,
+        load_ablation_manifest,
+    )
+
+    manifest = load_ablation_manifest()
+    done_cell = {
+        "anchor_ticker": "SPY",
+        "model_family": "lstm",
+        "horizon_slug": "15c",
+        "status": "ok",
+        "ablation_kind": "per_model_confirm_drop",
+        "dropped_groups": ["charm"],
+        "safe_to_drop": True,
+    }
+    resume = {_confirm_cell_key("SPY", "lstm", "15c"): done_cell}
+    calls: list[tuple] = []
+
+    def _prep(**kwargs):
+        calls.append(kwargs)
+        return {"status": "skipped", "reason": "must_not_run"}
+
+    out: list[dict] = []
+    section = build_per_model_confirm_pass_section(
+        manifest,
+        db_path=":memory:",
+        drops_by_mh={("lstm", "15c"): ["charm"]},
+        full_baseline={("SPY", "lstm", "15c"): 0.1},
+        tickers=["SPY"],
+        cells_out=out,
+        resume_cells=resume,
+    )
+    assert section["confirm_drop_cell_count"] == 1
+    assert out == [done_cell]
+    assert calls == []
+
+
+def test_stack_authority_cells_complete_gate():
+    from tools.feature_curation_gate import stack_authority_cells_complete
+
+    ok_cell = {
+        "anchor_ticker": "SPY",
+        "horizon_slug": "1c",
+        "status": "ok",
+        "paired_rows": 0,
+        "layer_lifts": {
+            "meta": {"baseline_log_loss": 1.0, "treatment_log_loss": 0.9},
+            "monte_carlo": {"baseline_log_loss": 1.0, "treatment_log_loss": 0.95},
+            "fusion": {"baseline_log_loss": 0.95, "treatment_log_loss": 0.9},
+        },
+        "base_model_lifts": {
+            "lstm_over_xgb": {"baseline_log_loss": 1.1, "treatment_log_loss": 1.0},
+            "transformer_over_xgb": {"baseline_log_loss": 1.1, "treatment_log_loss": 1.05},
+            "transformer_over_pair": {"baseline_log_loss": 1.0, "treatment_log_loss": 0.98},
+        },
+    }
+    ready, issues = stack_authority_cells_complete([ok_cell])
+    assert ready and not issues
+    bad = dict(ok_cell)
+    bad["status"] = "failed"
+    bad["base_model_lifts"]["lstm_over_xgb"] = {"baseline_log_loss": None, "treatment_log_loss": 1.0}
+    ready2, issues2 = stack_authority_cells_complete([bad])
+    assert not ready2 and issues2
+
+
 def test_ablation_scored_eval_disables_survivor_mask(monkeypatch):
     from arch_competition.stack_bundle_eval_v1 import ablation_survivors_training_enabled
 
@@ -774,6 +843,69 @@ def test_ablation_scored_eval_disables_survivor_mask(monkeypatch):
     assert ablation_survivors_training_enabled() is True
     monkeypatch.setenv("ED_ABLATION_SCORED_EVAL", "1")
     assert ablation_survivors_training_enabled() is False
+
+
+def test_xgb_post_engineer_drop_matches_confirm_path(monkeypatch, tmp_path):
+    """Production XGB must drop engineered manifest members after engineer_features."""
+    import arch_competition.stack_bundle_eval_v1 as sbe
+    from arch_competition.stack_bundle_eval_v1 import drop_ablated_xgb_engineered_columns
+
+    report = {
+        "survivor_summary": {
+            "scored_cell_count": 828,
+            "confirm_pass": {
+                "cells": [
+                    {
+                        "anchor_ticker": "SPY",
+                        "model_family": "xgb",
+                        "horizon_slug": "5c",
+                        "status": "ok",
+                        "safe_to_drop": True,
+                        "dropped_groups": ["iv_level"],
+                    }
+                ],
+                "anchors_required": 1,
+                "confirm_path_version": "2",
+            },
+        }
+    }
+    manifest = {
+        "groups": [
+            {
+                "group_id": "iv_level",
+                "members": {
+                    "xgb": ["iv_level", "body_range_ratio"],
+                    "lstm_5m": [],
+                    "lstm_1m": [],
+                },
+            }
+        ]
+    }
+    rp = tmp_path / "feature_ablation_report.json"
+    mp = tmp_path / "feature_ablation_manifest.json"
+    rp.write_text(json.dumps(report), encoding="utf-8")
+    mp.write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(sbe, "ABLATION_REPORT_PATH", rp)
+    monkeypatch.setattr(sbe, "ABLATION_MANIFEST_PATH", mp)
+    monkeypatch.setenv("ED_APPLY_ABLATION_SURVIVORS", "1")
+    for fn in (
+        sbe.ablated_drop_group_ids_for_model_horizon,
+        sbe.ablated_drop_members_for_model_horizon,
+    ):
+        fn.cache_clear()
+    df = _minimal_df()
+    df["iv_level"] = 0.2
+    X, names, _, _ = engineer_features(df)
+    assert "body_range_ratio" in names
+    X2, names2, n = drop_ablated_xgb_engineered_columns(X, names, "5c")
+    assert n == 2
+    assert "iv_level" not in names2
+    assert "body_range_ratio" not in names2
+    for fn in (
+        sbe.ablated_drop_group_ids_for_model_horizon,
+        sbe.ablated_drop_members_for_model_horizon,
+    ):
+        fn.cache_clear()
 
 
 def test_ablated_drop_requires_confirm_not_primary(monkeypatch, tmp_path):
@@ -987,3 +1119,114 @@ def test_write_ablation_report_backs_up_completed_report(tmp_path):
     preserved = json.loads(bak.read_text(encoding="utf-8"))
     assert preserved["run_meta"]["status"] == "complete"
     assert preserved["per_model_feature_cells"][0]["group_id"] == "iv"
+
+
+def test_check_ablation_pipeline_parity_green():
+    from tools.check_ablation_pipeline_parity import check_ablation_pipeline_parity
+
+    assert check_ablation_pipeline_parity() == []
+
+
+def test_null_snapshot_dict_for_drop_groups():
+    from arch_competition.stack_bundle_eval_v1 import null_snapshot_dict_for_drop_groups
+
+    manifest = {
+        "groups": [
+            {
+                "group_id": "g1",
+                "members": {"lstm_5m": ["dist_call_gamma_wall_pct"], "lstm_1m": [], "xgb": []},
+            }
+        ]
+    }
+    snap = {"spot": 100.0, "dist_call_gamma_wall_pct": 0.5, "ticker": "SPY"}
+    out = null_snapshot_dict_for_drop_groups(snap, manifest, ["g1"])
+    assert out["spot"] == 100.0
+    assert out["dist_call_gamma_wall_pct"] is None
+
+
+def test_confirm_holdout_uses_drop_group_ids_not_production_mask():
+    import tools.feature_curation_gate as gate
+
+    src = inspect.getsource(gate.build_per_model_confirm_pass_section)
+    assert "drop_group_ids" in src
+    assert "use_production_survivor_mask" not in src
+
+
+def test_lstm_serve_applies_post_norm_channel_zero():
+    from ml_predict import _predict_lstm
+
+    src = inspect.getsource(_predict_lstm)
+    assert "zero_ablated_sequence_channels_for_model" in src
+    idx_zero = src.index("zero_ablated_sequence_channels_for_model")
+    idx_norm = src.index("apply_normalization")
+    assert idx_zero > idx_norm
+
+
+def test_ablation_confirm_path_version_required():
+    from arch_competition.stack_bundle_eval_v1 import (
+        ABLATION_CONFIRM_PATH_VERSION,
+        ablation_confirm_pass_complete,
+    )
+
+    stale = {"confirm_pass": {"cells": [{"status": "ok"}], "confirm_path_version": "1"}}
+    assert not ablation_confirm_pass_complete(stale)
+    current = {
+        "confirm_pass": {
+            "cells": [{"status": "ok"}],
+            "confirm_path_version": ABLATION_CONFIRM_PATH_VERSION,
+        }
+    }
+    assert ablation_confirm_pass_complete(current)
+
+
+def test_parallel_eval_includes_skip_stats_in_source():
+    from ml_scheduler import _evaluate_parallel_on_full_rth
+
+    src = inspect.getsource(_evaluate_parallel_on_full_rth)
+    assert "skip_stats" in src
+    assert "parallel_runtime=True" in src
+    assert "triplet starvation" in src
+    assert "max_eval_rows" in src
+
+
+def test_parallel_cascade_bridge_cache_roundtrip(tmp_path):
+    from training_cache import (
+        load_parallel_cascade_bridge,
+        save_parallel_cascade_bridge,
+    )
+
+    ticker = "SPY"
+    data_fp = {
+        "table": "snapshots_1m_normalized",
+        "timeframe": "1m",
+        "ticker": ticker,
+        "min_ts_utc": 1.0,
+        "max_ts_utc": 2.0,
+        "row_count": 100,
+    }
+    fk = "test_bridge_key"
+    cache_dir = tmp_path / fk
+    probs = np.array([[0.2, 0.3, 0.5], [0.4, 0.3, 0.3]], dtype=np.float32)
+    xgb_pkl = tmp_path / "xgb_SPY_1c.pkl"
+    xgb_meta = tmp_path / "xgb_SPY_1c_meta.json"
+    xgb_pkl.write_bytes(b"xgb")
+    xgb_meta.write_text('{"features": []}', encoding="utf-8")
+    save_parallel_cascade_bridge(cache_dir, ticker, data_fp, fk, probs, xgb_pkl, xgb_meta)
+    loaded = load_parallel_cascade_bridge(
+        cache_dir, ticker, data_fp, fk, expected_n_samples=2,
+    )
+    assert loaded is not None
+    assert loaded.shape == (2, 3)
+
+
+def test_ml_pipeline_efficiency_checker_green():
+    from tools.check_ml_pipeline_efficiency import check_ml_pipeline_efficiency
+
+    assert check_ml_pipeline_efficiency() == []
+
+
+def test_ablation_parity_includes_bridge_and_backtest_hooks():
+    from tools.check_ablation_pipeline_parity import check_ablation_pipeline_parity
+
+    assert check_ablation_pipeline_parity() == []
+

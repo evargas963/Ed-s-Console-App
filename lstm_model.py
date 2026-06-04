@@ -456,6 +456,26 @@ def train_lstm(
     X_1m = np.nan_to_num(X_1m, nan=0.0)
     X_conf = np.nan_to_num(X_conf, nan=0.0)
 
+    from arch_competition.stack_bundle_eval_v1 import (
+        ablation_survivors_training_enabled,
+        zero_ablated_sequence_channels_for_model,
+    )
+    from lstm_data import ENCODED_FEATURES_1M, ENCODED_FEATURES_5M, FEATURES_1M, FEATURES_5M
+
+    if ablation_survivors_training_enabled():
+        X_5m, X_1m = zero_ablated_sequence_channels_for_model(
+            X_5m,
+            X_1m,
+            mask_5m,
+            mask_1m,
+            model_family="lstm",
+            horizon_slug=hz,
+            features_5m=FEATURES_5M,
+            features_1m=FEATURES_1M,
+            encoded_features_5m=ENCODED_FEATURES_5M,
+            encoded_features_1m=ENCODED_FEATURES_1M,
+        )
+
     # O-55: equal/uniform sample weights only (all ones). No recency decay, no toggle.
     sample_w = np.asarray(equal_sample_weights(n_rows), dtype=np.float32)
 

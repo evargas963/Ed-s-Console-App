@@ -406,15 +406,19 @@ def _evaluate_parallel_on_full_rth(
     allowed_et_dates: Optional[Set[str]] = None,
     target_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
     return_detail: bool = False,
+    max_eval_rows: Optional[int] = None,
 ) -> tuple[float, float, int, Optional[float], dict[str, Any]] | tuple:
     """Run parallel ensemble on full RTH data (or only ET dates in allowed_et_dates if set).
 
     Returns accuracy, balanced_accuracy, n_rows_scored, log_loss, realized_contract_metrics (see realized_contract_eval).
     If ``return_detail`` is True, appends a dict with prob_rows, y_true, rows_used for arch_competition eval.
+    When ``max_eval_rows`` is set, only the most recent N labeled rows are scored (fast gates).
     """
     rows = _load_rth_rows_for_ticker(db_path, ticker, label_column=target_column)
     if allowed_et_dates is not None:
         rows = [r for r in rows if r.get("ts_et") and str(r["ts_et"])[:10] in allowed_et_dates]
+    if max_eval_rows is not None and int(max_eval_rows) > 0 and len(rows) > int(max_eval_rows):
+        rows = rows[-int(max_eval_rows) :]
     if len(rows) < 10:
         out = (0.0, 0.0, len(rows), None, _empty_realized_metrics(len(rows)))
         if return_detail:
@@ -445,6 +449,16 @@ def _evaluate_parallel_on_full_rth(
 
                 hist_db = _eval_hist_db_for_labeled_rows(db_path, ticker, rows)
 
+                skip_stats = {
+                    "rows_total": len(rows),
+                    "missing_hist_db": 0,
+                    "xgb_unavailable": 0,
+                    "lstm_unavailable": 0,
+                    "transformer_unavailable": 0,
+                    "ensemble_failed": 0,
+                    "scored_full_triplet": 0,
+                }
+
                 for row in rows:
                     yt = {"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2)
                     row_db = normalize_pandas_sql_null_row_dict(row)
@@ -456,10 +470,13 @@ def _evaluate_parallel_on_full_rth(
                         db_row=row_db,
                     )
                     if ts_utc is None or hist_db is None:
+                        if hist_db is None:
+                            skip_stats["missing_hist_db"] += 1
                         continue
                     try:
                         xgb_p = mp._predict_xgb(inf_v1, ticker, fusion_feature_overlay=row_db)
                     except Exception as _xgb_e:
+                        skip_stats["xgb_unavailable"] += 1
                         log.debug(
                             "%s parallel eval row: XGB unavailable at ts=%s (%s)",
                             ticker,
@@ -468,12 +485,17 @@ def _evaluate_parallel_on_full_rth(
                         )
                         continue
                     if xgb_p is None:
+                        skip_stats["xgb_unavailable"] += 1
                         continue
                     try:
                         lstm_p = mp._predict_lstm(
-                            ticker, hist_db, inference_snapshot_v1=inf_v1
+                            ticker,
+                            hist_db,
+                            inference_snapshot_v1=inf_v1,
+                            parallel_runtime=True,
                         )
                     except Exception as _lstm_e:
+                        skip_stats["lstm_unavailable"] += 1
                         log.debug(
                             "%s parallel eval row: LSTM unavailable at ts=%s (%s)",
                             ticker,
@@ -482,12 +504,17 @@ def _evaluate_parallel_on_full_rth(
                         )
                         continue
                     if not lstm_p:
+                        skip_stats["lstm_unavailable"] += 1
                         continue
                     try:
                         tr_p = mp._predict_transformer(
-                            ticker, hist_db, inference_snapshot_v1=inf_v1
+                            ticker,
+                            hist_db,
+                            inference_snapshot_v1=inf_v1,
+                            parallel_runtime=True,
                         )
                     except Exception as _tr_e:
+                        skip_stats["transformer_unavailable"] += 1
                         log.debug(
                             "%s parallel eval row: Transformer unavailable at ts=%s (%s)",
                             ticker,
@@ -496,10 +523,13 @@ def _evaluate_parallel_on_full_rth(
                         )
                         continue
                     if not tr_p:
+                        skip_stats["transformer_unavailable"] += 1
                         continue
                     result = mp._ensemble_parallel_probs(ticker, xgb_p, lstm_p, tr_p)
                     if not result:
+                        skip_stats["ensemble_failed"] += 1
                         continue
+                    skip_stats["scored_full_triplet"] += 1
                     pu, pd, pf = (
                         float(result.get("up", 0.33)),
                         float(result.get("down", 0.33)),
@@ -516,9 +546,22 @@ def _evaluate_parallel_on_full_rth(
 
             n = len(preds)
             if n < 10:
+                log.warning(
+                    "%s parallel eval triplet starvation: scored=%d need>=10 skip_stats=%s",
+                    ticker,
+                    n,
+                    skip_stats,
+                )
                 out = (0.0, 0.0, n, None, _empty_realized_metrics(len(rows_used)))
                 if return_detail:
-                    return out + ({"prob_rows": prob_rows, "y_true": y_true, "rows_used": rows_used},)
+                    return out + (
+                        {
+                            "prob_rows": prob_rows,
+                            "y_true": y_true,
+                            "rows_used": rows_used,
+                            "skip_stats": skip_stats,
+                        },
+                    )
                 return out
             acc = float(accuracy_score(y_true, preds))
             bal = float(balanced_accuracy_score(y_true, preds))
@@ -540,6 +583,7 @@ def _evaluate_parallel_on_full_rth(
                 "prob_rows": prob_rows,
                 "y_true": y_true,
                 "rows_used": rows_used,
+                "skip_stats": skip_stats,
             }
             if return_detail:
                 return acc, bal, n, ll, realized, detail
@@ -905,6 +949,7 @@ def train_parallel_candidate(
     import numpy as np
 
     used_feature_cache = False
+    used_parallel_cascade_bridge = False
     if data_fp is None:
         data_fp = db_training_fingerprint(db_path, ticker, label_column=target_column)
     if not code_fp:
@@ -987,6 +1032,50 @@ def train_parallel_candidate(
     else:
         used_feature_cache = True
         log.info("%s parallel: LSTM feature cache hit (%s)", ticker, fk[:12])
+
+    try:
+        from training_cache import save_parallel_cascade_bridge
+
+        xgb_pkl = out_dir / f"xgb_{ticker.upper()}_{hz}.pkl"
+        xgb_meta_p = out_dir / f"xgb_{ticker.upper()}_{hz}_meta.json"
+        if (
+            ds is not None
+            and getattr(ds, "n_samples", 0) >= 10
+            and xgb_pkl.is_file()
+            and xgb_meta_p.is_file()
+            and not bypass_cache
+        ):
+            with open(xgb_pkl, "rb") as f:
+                _bridge_xgb = pickle.load(f)
+            with open(xgb_meta_p, encoding="utf-8") as f:
+                _bridge_meta = json.load(f)
+            _aligned_probs = _xgb_probs_aligned_to_lstm_dataset(
+                ds,
+                ticker,
+                db_path,
+                _bridge_xgb,
+                _bridge_meta,
+                hz,
+                min_ts_utc=min_ts_seq,
+                allowed_et_dates=sequence_allowed_dates,
+            )
+            if _aligned_probs is not None and _aligned_probs.shape[0] == ds.n_samples:
+                save_parallel_cascade_bridge(
+                    fdir,
+                    ticker,
+                    data_fp,
+                    fk,
+                    _aligned_probs,
+                    xgb_pkl,
+                    xgb_meta_p,
+                )
+            else:
+                log.warning(
+                    "%s parallel: parallel→cascade bridge not saved (alignment failed)",
+                    ticker,
+                )
+    except Exception as _bridge_exc:
+        log.warning("%s parallel: parallel→cascade bridge save error: %s", ticker, _bridge_exc)
 
     lstm_rr = {}
     if ds is not None and getattr(ds, "n_samples", 0) > 0:
@@ -1411,6 +1500,34 @@ def _build_in_sample_cascade_xgb_lstm_tensor(
             X_5m = np.nan_to_num(X_5m, nan=0.0)
             X_1m = np.nan_to_num(X_1m, nan=0.0)
             X_conf = np.nan_to_num(X_conf, nan=0.0)
+            try:
+                from arch_competition.stack_bundle_eval_v1 import (
+                    ablation_survivors_training_enabled,
+                    zero_ablated_sequence_channels_for_model,
+                )
+                from lstm_data import (
+                    ENCODED_FEATURES_1M,
+                    ENCODED_FEATURES_5M,
+                    FEATURES_1M,
+                    FEATURES_5M,
+                )
+
+                if ablation_survivors_training_enabled():
+                    X_5m, X_1m = zero_ablated_sequence_channels_for_model(
+                        X_5m,
+                        X_1m,
+                        mask_5m,
+                        mask_1m,
+                        model_family="lstm",
+                        horizon_slug=hz,
+                        features_5m=FEATURES_5M,
+                        features_1m=FEATURES_1M,
+                        encoded_features_5m=ENCODED_FEATURES_5M,
+                        encoded_features_1m=ENCODED_FEATURES_1M,
+                    )
+            except Exception as exc:
+                log.warning("%s cascade tensor: LSTM ablation channel zero failed: %s", ticker, exc)
+                continue
             with torch.no_grad():
                 logits = lstm_model(
                     torch.from_numpy(X_1m).float(),
@@ -1535,6 +1652,104 @@ def _train_cascade_meta_oof(
     return X_meta, y_meta, "expanding_window_oof"
 
 
+def _xgb_probs_aligned_to_lstm_dataset(
+    ds,
+    ticker: str,
+    db_path: str,
+    xgb_model,
+    xgb_meta: dict,
+    ml_horizon_slug: str,
+    *,
+    min_ts_utc: Optional[float] = None,
+    allowed_et_dates: Optional[set] = None,
+) -> Optional[Any]:
+    """Build XGB predict_proba rows in exact LSTMDataset sample order (mirror build_lstm_dataset)."""
+    import numpy as np
+    from ml_train import engineer_single_snapshot
+    from lstm_data import (
+        extract_rth_snapshots,
+        STREAM_5M_LOOKBACK,
+        TARGET_CLASSES,
+        canonical_reference_spot_from_sequence_window_first_bar,
+    )
+    from ml_horizon import outcome_column
+    from timeframe_config import CANONICAL_TIMEFRAME
+
+    if ds is None or getattr(ds, "n_samples", 0) <= 0:
+        return None
+    hz = normalize_ml_horizon_slug(ml_horizon_slug)
+    label_col = outcome_column(hz)
+    _db = Path(db_path)
+    days_data = extract_rth_snapshots(
+        ticker,
+        timeframe=CANONICAL_TIMEFRAME,
+        db_path=_db,
+        require_outcome=True,
+        allowed_et_dates=allowed_et_dates,
+        min_ts_utc=min_ts_utc,
+        target_column=label_col,
+        skip_normalized_sync=True,
+        model_family="lstm",
+        horizon_slug=hz,
+    )
+    snap_index: dict[tuple[str, str], dict] = {}
+    for day_key, snapshots in sorted(days_data.items()):
+        n_snaps = len(snapshots)
+        if n_snaps < STREAM_5M_LOOKBACK:
+            continue
+        for end_idx in range(STREAM_5M_LOOKBACK, n_snaps):
+            window = snapshots[end_idx - STREAM_5M_LOOKBACK : end_idx]
+            current = window[-1]
+            if min_ts_utc is not None:
+                cts = current.get("ts_utc")
+                if cts is None or float(cts) < float(min_ts_utc):
+                    continue
+            target_str = current.get(label_col)
+            if target_str is None or target_str not in TARGET_CLASSES:
+                continue
+            try:
+                canonical_reference_spot_from_sequence_window_first_bar(window)
+            except ValueError:
+                continue
+            ts_et = str(current.get("ts_et", ""))
+            snap_index[(str(day_key), ts_et)] = current
+
+    probs: list[np.ndarray] = []
+    days = getattr(ds, "days", []) or []
+    timestamps = getattr(ds, "timestamps", []) or []
+    if len(days) != ds.n_samples or len(timestamps) != ds.n_samples:
+        log.warning(
+            "%s bridge alignment: ds metadata length mismatch days=%d ts=%d n=%d",
+            ticker,
+            len(days),
+            len(timestamps),
+            ds.n_samples,
+        )
+        return None
+    for day_key, ts_et in zip(days, timestamps):
+        current = snap_index.get((str(day_key), str(ts_et)))
+        if current is None:
+            log.warning(
+                "%s bridge alignment: missing snapshot for day=%s ts_et=%s",
+                ticker,
+                day_key,
+                ts_et,
+            )
+            return None
+        X_row = engineer_single_snapshot(
+            current,
+            xgb_meta.get("category_maps", {}),
+            xgb_meta.get("features", []),
+            xgb_meta.get("vol_medians", {}),
+            ticker,
+        )
+        if X_row is None:
+            log.warning("%s bridge alignment: engineer_single_snapshot failed", ticker)
+            return None
+        probs.append(xgb_model.predict_proba(X_row.values.astype(np.float64))[0])
+    return np.array(probs, dtype=np.float32)
+
+
 def train_cascade_candidate(
     ticker: str,
     db_path: str,
@@ -1548,6 +1763,7 @@ def train_cascade_candidate(
     allowed_et_dates: Optional[set] = None,
     prior_manifest: Optional[dict] = None,
     ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
+    parallel_out: Optional[Path] = None,
 ) -> dict[str, Any]:
     """Train XGB→LSTM(_XGB)→Transformer(_XGB+LSTM) into out_dir."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1564,6 +1780,8 @@ def train_cascade_candidate(
         load_cascade_transformer_tensor_cache,
         save_cascade_transformer_tensor_cache,
         min_ts_utc_for_last_n_rth_sessions,
+        load_parallel_cascade_bridge,
+        copy_parallel_xgb_artifacts_to_cascade,
     )
     from training_cache_policy import (
         ROLLING_WINDOW_RTH_SESSIONS_TABULAR,
@@ -1594,6 +1812,7 @@ def train_cascade_candidate(
 
     used_feature_cache = False
     used_cascade_tensor_cache = False
+    used_parallel_cascade_bridge = False
     if data_fp is None:
         data_fp = db_training_fingerprint(db_path, ticker, label_column=label_col)
     if not code_fp:
@@ -1631,80 +1850,122 @@ def train_cascade_candidate(
 
     prior_fp = (prior_manifest or {}).get("data_fingerprint") if prior_manifest else None
 
-    # Step 1: XGB
-    df = load_data(
-        db_path,
-        ticker=ticker,
-        min_ts_utc=min_ts_tab,
-        allowed_et_dates=allowed_et_dates,
-        ml_horizon_slug=hz,
-    )
-    if len(df) == 0:
-        return {
-            "used_feature_cache": False,
-            "used_cascade_tensor_cache": False,
-            "warm_resume": {},
-        }
-    train_ticker(
-        ticker,
-        df,
-        model_dir=out_dir,
-        prior_data_fingerprint=prior_fp,
-        current_data_fingerprint=data_fp,
-        ml_horizon_slug=hz,
-    )
+    # Step 1: XGB — reuse parallel weights + aligned probs when same-run bridge is available.
+    bridge_probs: Optional[np.ndarray] = None
+    if not bypass_cache:
+        bridge_probs = load_parallel_cascade_bridge(fdir, ticker, data_fp, fk)
+    xgb_probs_list: list = []
+    xgb_model = None
+    xgb_meta: dict = {}
+    df = None
 
-    xgb_path = out_dir / f"xgb_{ticker.upper()}_{hz}.pkl"
-    xgb_meta_path = out_dir / f"xgb_{ticker.upper()}_{hz}_meta.json"
-    if not xgb_path.exists():
-        return {
-            "used_feature_cache": False,
-            "used_cascade_tensor_cache": False,
-            "warm_resume": {},
-        }
-    with open(xgb_path, "rb") as f:
-        xgb_model = pickle.load(f)
-    with open(xgb_meta_path) as f:
-        xgb_meta = json.load(f)
+    if (
+        bridge_probs is not None
+        and parallel_out is not None
+        and copy_parallel_xgb_artifacts_to_cascade(parallel_out, out_dir, ticker, horizon_suffix=hz)
+    ):
+        xgb_path = out_dir / f"xgb_{ticker.upper()}_{hz}.pkl"
+        xgb_meta_path = out_dir / f"xgb_{ticker.upper()}_{hz}_meta.json"
+        with open(xgb_path, "rb") as f:
+            xgb_model = pickle.load(f)
+        with open(xgb_meta_path) as f:
+            xgb_meta = json.load(f)
+        xgb_probs_list = bridge_probs.tolist()
+        used_parallel_cascade_bridge = True
+        log.info(
+            "%s cascade: parallel→cascade bridge hit — skip XGB retrain + prob rescan (%d rows)",
+            ticker,
+            bridge_probs.shape[0],
+        )
+        df = load_data(
+            db_path,
+            ticker=ticker,
+            min_ts_utc=min_ts_tab,
+            allowed_et_dates=allowed_et_dates,
+            ml_horizon_slug=hz,
+        )
+        if len(df) == 0:
+            return {
+                "used_feature_cache": False,
+                "used_cascade_tensor_cache": False,
+                "used_parallel_cascade_bridge": used_parallel_cascade_bridge,
+                "warm_resume": {},
+            }
+    else:
+        df = load_data(
+            db_path,
+            ticker=ticker,
+            min_ts_utc=min_ts_tab,
+            allowed_et_dates=allowed_et_dates,
+            ml_horizon_slug=hz,
+        )
+        if len(df) == 0:
+            return {
+                "used_feature_cache": False,
+                "used_cascade_tensor_cache": False,
+                "used_parallel_cascade_bridge": False,
+                "warm_resume": {},
+            }
+        train_ticker(
+            ticker,
+            df,
+            model_dir=out_dir,
+            prior_data_fingerprint=prior_fp,
+            current_data_fingerprint=data_fp,
+            ml_horizon_slug=hz,
+        )
 
-    from timeframe_config import CANONICAL_TIMEFRAME
-    days_data = extract_rth_snapshots(
-        ticker,
-        timeframe=CANONICAL_TIMEFRAME,
-        db_path=_db,
-        require_outcome=True,
-        allowed_et_dates=allowed_et_dates,
-        target_column=label_col,
-        model_family="xgb", horizon_slug=hz,  # cascade: snapshot feeds XGB-prob generation
-    )
-    xgb_probs_list = []
+        xgb_path = out_dir / f"xgb_{ticker.upper()}_{hz}.pkl"
+        xgb_meta_path = out_dir / f"xgb_{ticker.upper()}_{hz}_meta.json"
+        if not xgb_path.exists():
+            return {
+                "used_feature_cache": False,
+                "used_cascade_tensor_cache": False,
+                "used_parallel_cascade_bridge": False,
+                "warm_resume": {},
+            }
+        with open(xgb_path, "rb") as f:
+            xgb_model = pickle.load(f)
+        with open(xgb_meta_path) as f:
+            xgb_meta = json.load(f)
 
-    for day_key, snapshots in sorted(days_data.items()):
-        n_snaps = len(snapshots)
-        if n_snaps < STREAM_5M_LOOKBACK:
-            continue
-        for end_idx in range(STREAM_5M_LOOKBACK, n_snaps):
-            window = snapshots[end_idx - STREAM_5M_LOOKBACK:end_idx]
-            current = window[-1]
-            if not _ts_ok(current):
+        from timeframe_config import CANONICAL_TIMEFRAME
+        days_data = extract_rth_snapshots(
+            ticker,
+            timeframe=CANONICAL_TIMEFRAME,
+            db_path=_db,
+            require_outcome=True,
+            allowed_et_dates=allowed_et_dates,
+            target_column=label_col,
+            model_family="xgb", horizon_slug=hz,  # cascade: snapshot feeds XGB-prob generation
+        )
+
+        for day_key, snapshots in sorted(days_data.items()):
+            n_snaps = len(snapshots)
+            if n_snaps < STREAM_5M_LOOKBACK:
                 continue
-            target_str = current.get(label_col)
-            if target_str is None or target_str not in TARGET_CLASSES:
-                continue
-            ref_spot = _safe_float(window[0].get("spot"))
-            if ref_spot <= 0:
-                ref_spot = _safe_float(current.get("spot"))
-            if ref_spot <= 0:
-                continue
-            X_row = engineer_single_snapshot(
-                current, xgb_meta.get("category_maps", {}),
-                xgb_meta.get("features", []),
-                xgb_meta.get("vol_medians", {}), ticker,
-            )
-            if X_row is None:
-                continue
-            probs = xgb_model.predict_proba(X_row.values.astype(np.float64))[0]
-            xgb_probs_list.append(probs)
+            for end_idx in range(STREAM_5M_LOOKBACK, n_snaps):
+                window = snapshots[end_idx - STREAM_5M_LOOKBACK:end_idx]
+                current = window[-1]
+                if not _ts_ok(current):
+                    continue
+                target_str = current.get(label_col)
+                if target_str is None or target_str not in TARGET_CLASSES:
+                    continue
+                ref_spot = _safe_float(window[0].get("spot"))
+                if ref_spot <= 0:
+                    ref_spot = _safe_float(current.get("spot"))
+                if ref_spot <= 0:
+                    continue
+                X_row = engineer_single_snapshot(
+                    current, xgb_meta.get("category_maps", {}),
+                    xgb_meta.get("features", []),
+                    xgb_meta.get("vol_medians", {}), ticker,
+                )
+                if X_row is None:
+                    continue
+                probs = xgb_model.predict_proba(X_row.values.astype(np.float64))[0]
+                xgb_probs_list.append(probs)
 
     ds = None
     if not bypass_cache:
@@ -2067,6 +2328,7 @@ def train_cascade_candidate(
     return {
         "used_feature_cache": used_feature_cache,
         "used_cascade_tensor_cache": used_cascade_tensor_cache,
+        "used_parallel_cascade_bridge": used_parallel_cascade_bridge,
         "warm_resume": warm_resume,
     }
 
@@ -2084,6 +2346,7 @@ def _train_cascade(
     feature_cache_key: Optional[str] = None,
     prior_manifest: Optional[dict] = None,
     ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
+    parallel_out: Optional[Path] = None,
 ) -> dict[str, Any]:
     """Production entry: same as nightly scheduler; optional out_dir / allowed_et_dates for compare tooling."""
     dest = out_dir if out_dir is not None else CASCADE_DIR / ticker
@@ -2099,6 +2362,7 @@ def _train_cascade(
         allowed_et_dates=allowed_et_dates,
         prior_manifest=prior_manifest,
         ml_horizon_slug=ml_horizon_slug,
+        parallel_out=parallel_out,
     )
 
 
@@ -2189,6 +2453,30 @@ def run_once(
                     "pre_train_gate_reasons": _gate_reasons,
                 }
             log.info("pre_train_gate passed (db_health + model readiness GO)")
+            from arch_competition.stack_bundle_eval_v1 import ablation_survivors_training_enabled
+
+            if ablation_survivors_training_enabled():
+                from tools.feature_curation_gate import run_survivor_retrain_preflight
+
+                _core = [
+                    t.strip().upper()
+                    for t in (os.environ.get("ED_ML_SCHEDULER_TICKERS") or "SPY,QQQ,IWM").split(",")
+                    if t.strip()
+                ]
+                _spf = run_survivor_retrain_preflight(db_path=str(DB_PATH), tickers=_core)
+                if not _spf.get("ready"):
+                    _gate_reasons = list(_spf.get("issues") or ["survivor_retrain_preflight_failed"])
+                    for _gr in _gate_reasons:
+                        log.error("survivor_retrain_preflight blocked: %s", _gr)
+                    return {
+                        "exit_code": 2,
+                        "ticker_outcomes": [],
+                        "ml_horizon": hz_sched,
+                        "skipped": True,
+                        "pre_train_gate_failed": True,
+                        "pre_train_gate_reasons": _gate_reasons,
+                    }
+                log.info("survivor_retrain_preflight passed (confirm pass + floors)")
         except Exception as _gate_exc:
             log.error("pre_train_gate error (fail-closed): %s", _gate_exc, exc_info=True)
             return {
@@ -2266,6 +2554,84 @@ def run_once(
 
     _pfx = " (promote-from-manifests-only)" if promote_from_manifests_only else ""
     log.info("Tickers (logging_universe authoritative): %s%s", tickers, _pfx)
+
+    from arch_competition.stack_bundle_eval_v1 import ablation_survivors_training_enabled
+
+    if ablation_survivors_training_enabled():
+        from arch_competition.promotion_execution import (
+            ensure_survivor_retrain_incumbent_reset_at_run_start,
+        )
+        from tools.feature_curation_gate import (
+            run_survivor_edge_probe,
+            run_survivor_inference_backtest,
+            run_survivor_validation_run,
+        )
+
+        _inc_reset = ensure_survivor_retrain_incumbent_reset_at_run_start(MODEL_DIR, tickers)
+        log.info(
+            "survivor_retrain incumbent reset for scheduled tickers: reset_count=%s reason=%s",
+            _inc_reset.get("reset_count"),
+            _inc_reset.get("reason"),
+        )
+        _edge = run_survivor_edge_probe(tickers=tickers[:3] or None)
+        if not _edge.get("ready_for_full_retrain"):
+            log.error(
+                "survivor_edge_probe blocked retrain: issues=%s",
+                _edge.get("issues"),
+            )
+            return {
+                "exit_code": 2,
+                "ticker_outcomes": [],
+                "ml_horizon": hz_sched,
+                "skipped": True,
+                "pre_train_gate_failed": True,
+                "pre_train_gate_reasons": list(_edge.get("issues") or ["survivor_edge_probe_failed"]),
+            }
+        log.info(
+            "survivor_edge_probe passed: edge_cells=%s",
+            (_edge.get("summary") or {}).get("edge_cells"),
+        )
+        _backtest = run_survivor_inference_backtest(
+            tickers=tickers[:3] or None,
+            db_path=str(DB_PATH),
+        )
+        if not _backtest.get("ready"):
+            log.error(
+                "survivor_inference_backtest blocked retrain: issues=%s",
+                _backtest.get("issues"),
+            )
+            return {
+                "exit_code": 2,
+                "ticker_outcomes": [],
+                "ml_horizon": hz_sched,
+                "skipped": True,
+                "pre_train_gate_failed": True,
+                "pre_train_gate_reasons": list(
+                    _backtest.get("issues") or ["survivor_inference_backtest_failed"]
+                ),
+            }
+        log.info(
+            "survivor_inference_backtest passed: cells=%s",
+            len(_backtest.get("cells") or []),
+        )
+        _val = run_survivor_validation_run(tickers=tickers[:3] or None, db_path=str(DB_PATH))
+        if not _val.get("ready_for_full_retrain"):
+            log.error(
+                "survivor_validation_run blocked retrain: issues=%s",
+                _val.get("issues"),
+            )
+            return {
+                "exit_code": 2,
+                "ticker_outcomes": [],
+                "ml_horizon": hz_sched,
+                "skipped": True,
+                "pre_train_gate_failed": True,
+                "pre_train_gate_reasons": list(_val.get("issues") or ["survivor_validation_run_failed"]),
+            }
+        log.info(
+            "survivor_validation_run passed: cells=%s",
+            len(_val.get("cells") or []),
+        )
 
     # DATA-PIPELINE-INTEGRITY-CHAIN Pass 2 (2026-05-26): MVP coercion preflight
     # gate. Catches the row-0 NaN class of failure in seconds instead of after
@@ -2548,6 +2914,7 @@ def run_once(
                 par_warm_resume = parallel_man.get("warm_resume") or {}
                 cas_used_fc = bool(cascade_man.get("used_feature_cache", False))
                 cas_used_ctc = bool(cascade_man.get("used_cascade_tensor_cache", False))
+                cas_used_bridge = bool(cascade_man.get("used_parallel_cascade_bridge", False))
                 cm_trained_at = str(cascade_man.get("trained_at", run_ts))
                 cas_warm_resume = cascade_man.get("warm_resume") or {}
                 log.info(
@@ -2626,6 +2993,7 @@ def run_once(
                 cascade_ll: Optional[float] = None
                 cascade_realized_metrics: dict[str, Any] = _empty_realized_metrics(0)
                 n_cascade_rows: int = 0
+                cas_used_bridge: bool = False
 
             if not skip_train and parallel_skip:
                 log.info("%s: parallel scheduler cache hit — skip train + eval (key=%s…)", ticker, parallel_key[:12])
@@ -2711,6 +3079,7 @@ def run_once(
                 cas_skipped_eval = True
                 cas_used_fc = bool(cascade_man.get("used_feature_cache", False))
                 cas_used_ctc = bool(cascade_man.get("used_cascade_tensor_cache", False))
+                cas_used_bridge = bool(cascade_man.get("used_parallel_cascade_bridge", False))
                 cm_trained_at = str(cascade_man.get("trained_at", run_ts))
                 cas_warm_resume = cascade_man.get("warm_resume") or {}
             elif not skip_train:
@@ -2727,6 +3096,7 @@ def run_once(
                     feature_cache_key=fk,
                     prior_manifest=cascade_man,
                     ml_horizon_slug=hz_sched,
+                    parallel_out=parallel_out,
                 )
                 cascade_acc, cascade_bal, n_cascade_rows, cascade_ll, cascade_realized_metrics = (
                     _evaluate_cascade_on_full_rth(
@@ -2738,6 +3108,7 @@ def run_once(
                 cas_skipped_eval = False
                 cas_used_fc = bool(cas_ret.get("used_feature_cache", False))
                 cas_used_ctc = bool(cas_ret.get("used_cascade_tensor_cache", False))
+                cas_used_bridge = bool(cas_ret.get("used_parallel_cascade_bridge", False))
                 cm_trained_at = run_ts
                 cas_warm_resume = cas_ret.get("warm_resume") or {}
 
@@ -3220,6 +3591,7 @@ def run_once(
                     skipped_eval=cas_skipped_eval,
                     used_feature_cache=cas_used_fc,
                     used_cascade_tensor_cache=cas_used_ctc,
+                    used_parallel_cascade_bridge=cas_used_bridge,
                     rolling_window_days_tabular=ROLLING_WINDOW_RTH_SESSIONS_TABULAR,
                     rolling_window_days_sequence=ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE,
                     rolling_rth_sessions_tabular=ROLLING_WINDOW_RTH_SESSIONS_TABULAR,

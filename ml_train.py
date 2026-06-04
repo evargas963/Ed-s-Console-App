@@ -722,6 +722,16 @@ def train_ticker(
     X = X[good]
     feat_names = good
 
+    from arch_competition.stack_bundle_eval_v1 import (
+        ablation_survivors_training_enabled,
+        drop_ablated_xgb_engineered_columns,
+    )
+
+    if ablation_survivors_training_enabled():
+        X, feat_names, _n_abl = drop_ablated_xgb_engineered_columns(X, feat_names, hz)
+        if _n_abl:
+            print(f"  Ablation XGB post-engineer drop: {_n_abl} engineered columns removed")
+
     # Workstream B3 — chronological inner holdout (df is ORDER BY ts_utc ASC). The split (train_end,
     # n_val) is computed above, BEFORE engineer_features, so the imputation medians, the per-
     # (tkr,hr,min) volume median, the category code maps, AND the NaN column filter are all fit on
