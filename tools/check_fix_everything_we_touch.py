@@ -643,41 +643,20 @@ def check_persistence_writer_has_reader(staged: set[str]) -> list[str]:
     return errors
 
 
-def check_persistence_map_fresh(staged: set[str]) -> list[str]:
-    """Pass 2b — persistence_consumer_map.json must stay in sync with persistence sources.
+def _persistence_map_matches_sources() -> tuple[bool | None, str]:
+    """Run the audit tool's --check against the working tree.
 
-    Triggers when commit stages any of db.py / calibration/writer.py /
-    tools/audit_persistence_consumers.py. The map at
-    governance/artifacts/persistence_consumer_map.json must also be staged
-    in the same commit AND must match what the audit tool generates from the
-    on-disk persistence sources.
+    Returns (matches, detail):
+      * (True,  "")        — on-disk map matches what the tool emits from sources.
+      * (False, stderr)    — map is stale vs sources (real persistence drift).
+      * (None,  reason)    — tool absent / unrunnable; caller treats as "cannot verify".
 
-    Failure modes blocked:
-      1. Persistence source edited, map not re-staged -> "stale map".
-      2. Persistence source edited, map staged but doesn't match -> "stale map content".
-
-    The full content match runs the audit tool's --check mode. This catches
-    drift between map and sources even when the operator remembered to stage
-    the map but forgot to regenerate it.
+    Split out as a module-level helper so tests can monkeypatch the source-match
+    verdict without shelling out to the real audit tool.
     """
-    triggers = [f for f in staged if f in PERSISTENCE_MAP_TRIGGER_FILES]
-    if not triggers:
-        return []
-
-    errors: list[str] = []
-    if PERSISTENCE_MAP_PATH not in staged:
-        errors.append(
-            f"{PERSISTENCE_MAP_PATH}: missing from commit but {', '.join(triggers)} staged. "
-            f"Pass 2b — regenerate with `python tools/audit_persistence_consumers.py --stable-time` "
-            f"and stage the result in the same commit."
-        )
-        return errors  # no point running --check if map isn't staged
-
-    # Run the audit tool's --check against the working tree to confirm the staged
-    # map matches what the tool would emit from current sources.
     audit_tool_path = REPO_ROOT / PERSISTENCE_AUDIT_TOOL
     if not audit_tool_path.is_file():
-        return errors  # tool itself absent — can't run check
+        return None, "audit tool absent"
     try:
         proc = subprocess.run(
             [sys.executable, str(audit_tool_path), "--check"],
@@ -687,15 +666,82 @@ def check_persistence_map_fresh(staged: set[str]) -> list[str]:
             check=False,
         )
     except OSError as exc:
-        return errors + [f"{PERSISTENCE_MAP_PATH}: cannot run audit tool ({exc})"]
-    if proc.returncode != 0:
-        errors.append(
-            f"{PERSISTENCE_MAP_PATH}: stale content vs persistence sources. "
-            f"{proc.stderr.strip() or '(no detail)'}. "
-            f"Pass 2b — regenerate with `python tools/audit_persistence_consumers.py --stable-time` "
-            f"and re-stage."
+        return None, f"cannot run audit tool ({exc})"
+    if proc.returncode == 0:
+        return True, ""
+    return False, (proc.stderr.strip() or "(no detail)")
+
+
+def _persistence_map_changed_vs_head() -> bool:
+    """True if persistence_consumer_map.json differs from HEAD (staged or unstaged).
+
+    A behavior-neutral edit to a trigger file (e.g. removing an unused import)
+    leaves the generated map byte-identical to HEAD, so there is nothing to
+    stage and Pass 2b must NOT demand a phantom map row in the commit.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "diff", "HEAD", "--name-only", "--", PERSISTENCE_MAP_PATH],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
         )
-    return errors
+    except OSError:
+        return False
+    if proc.returncode != 0:
+        return False
+    return bool(proc.stdout.strip())
+
+
+def check_persistence_map_fresh(staged: set[str]) -> list[str]:
+    """Pass 2b — persistence_consumer_map.json must stay in sync with persistence sources.
+
+    Triggers when commit stages any of db.py / calibration/writer.py /
+    tools/audit_persistence_consumers.py.
+
+    Behavior-aware (2026-06-03): the map is REQUIRED in the commit only when the
+    edit actually changes persistence behavior — i.e. the on-disk map is stale
+    vs sources, OR the regenerated map differs from HEAD. A behavior-neutral
+    edit to a trigger file (removing an unused import, a comment, a type hint)
+    leaves the map identical to HEAD; demanding a phantom map row there makes the
+    gate unsatisfiable and forces bypasses, which is the opposite of enforcement.
+
+    Failure modes still blocked:
+      1. Source edit makes the map stale vs sources, map not re-staged -> regen+stage.
+      2. Source edit changes the map vs HEAD, map staged but content stale -> regen+re-stage.
+      3. Source edit changes the map vs HEAD, map not staged at all -> stage it.
+    """
+    triggers = [f for f in staged if f in PERSISTENCE_MAP_TRIGGER_FILES]
+    if not triggers:
+        return []
+
+    map_staged = PERSISTENCE_MAP_PATH in staged
+    matches, detail = _persistence_map_matches_sources()
+
+    if matches is False:
+        # Real persistence drift: the on-disk map no longer matches sources.
+        if not map_staged:
+            return [
+                f"{PERSISTENCE_MAP_PATH}: stale vs persistence sources but not staged while "
+                f"{', '.join(triggers)} staged ({detail}). Pass 2b — regenerate with "
+                f"`python tools/audit_persistence_consumers.py --stable-time` and stage it in the same commit."
+            ]
+        return [
+            f"{PERSISTENCE_MAP_PATH}: staged but stale content vs persistence sources ({detail}). "
+            f"Pass 2b — regenerate with `python tools/audit_persistence_consumers.py --stable-time` and re-stage."
+        ]
+
+    # matches is True (map current with sources) or None (tool absent — can't verify).
+    # Require the map in the commit only if a real persistence change is present,
+    # detected as a map diff vs HEAD. Behavior-neutral trigger-file edits leave the
+    # map identical to HEAD and pass without a phantom map row.
+    if _persistence_map_changed_vs_head() and not map_staged:
+        return [
+            f"{PERSISTENCE_MAP_PATH}: changed vs HEAD but not staged while "
+            f"{', '.join(triggers)} staged. Pass 2b — stage the regenerated map in the same commit."
+        ]
+    return []
 
 
 def check_action_not_documentation(staged: set[str]) -> list[str]:

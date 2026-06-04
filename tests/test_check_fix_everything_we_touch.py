@@ -645,23 +645,48 @@ def test_persistence_map_fresh_no_triggers_passes() -> None:
     assert hits == [], f"check should no-op when no triggers staged; got {hits!r}"
 
 
-def test_persistence_map_fresh_missing_map_fails_when_persistence_source_staged() -> None:
-    """Staging db.py without re-staging the persistence_consumer_map.json must fail
-    Pass 2b — operator forgot to regenerate the map after editing the writer."""
+def test_persistence_map_fresh_stale_map_fails_when_persistence_source_staged(monkeypatch) -> None:
+    """When the on-disk map is STALE vs sources (real persistence drift) and the
+    map is not re-staged, Pass 2b must fail. Behavior-aware (2026-06-03): the
+    trigger is staleness, not the mere fact that db.py is staged."""
+    monkeypatch.setattr(mod, "_persistence_map_matches_sources", lambda: (False, "drift"))
     staged = {"db.py"}  # map NOT staged
     hits = mod.check_persistence_map_fresh(staged)
-    assert hits, "expected Pass 2b hit when persistence source staged without map"
+    assert hits, "expected Pass 2b hit when persistence map stale vs sources without re-stage"
     assert any("persistence_consumer_map.json" in h for h in hits)
     assert any("Pass 2b" in h for h in hits)
 
 
-def test_persistence_map_fresh_missing_map_fails_when_tool_staged() -> None:
-    """Editing the audit tool itself also requires re-staging the map (the tool's
-    output shape may have changed)."""
+def test_persistence_map_fresh_stale_map_fails_when_tool_staged(monkeypatch) -> None:
+    """Editing the audit tool with a stale map (output shape changed) must fail."""
+    monkeypatch.setattr(mod, "_persistence_map_matches_sources", lambda: (False, "drift"))
     staged = {"tools/audit_persistence_consumers.py"}  # map NOT staged
     hits = mod.check_persistence_map_fresh(staged)
-    assert hits, "expected Pass 2b hit when audit tool staged without map"
+    assert hits, "expected Pass 2b hit when audit tool staged with stale map"
     assert any("persistence_consumer_map.json" in h for h in hits)
+
+
+def test_persistence_map_fresh_behavior_neutral_edit_passes(monkeypatch) -> None:
+    """The fix: a behavior-neutral edit to db.py (e.g. removing an unused import)
+    leaves the map matching sources AND identical to HEAD. Pass 2b must NOT demand
+    a phantom map row — an unsatisfiable gate forces bypasses. Regression lock for
+    the 2026-06-03 unsatisfiable-gate incident."""
+    monkeypatch.setattr(mod, "_persistence_map_matches_sources", lambda: (True, ""))
+    monkeypatch.setattr(mod, "_persistence_map_changed_vs_head", lambda: False)
+    staged = {"db.py"}  # map NOT staged, but nothing to stage
+    hits = mod.check_persistence_map_fresh(staged)
+    assert hits == [], f"behavior-neutral db.py edit must pass Pass 2b; got {hits!r}"
+
+
+def test_persistence_map_fresh_real_change_unstaged_map_fails(monkeypatch) -> None:
+    """When the regenerated map differs from HEAD (a real persistence change) but
+    the map is not staged, Pass 2b must fail and tell the committer to stage it."""
+    monkeypatch.setattr(mod, "_persistence_map_matches_sources", lambda: (True, ""))
+    monkeypatch.setattr(mod, "_persistence_map_changed_vs_head", lambda: True)
+    staged = {"db.py"}  # map changed vs HEAD but NOT staged
+    hits = mod.check_persistence_map_fresh(staged)
+    assert hits, "expected Pass 2b hit when map changed vs HEAD but not staged"
+    assert any("changed vs HEAD" in h for h in hits)
 
 
 def test_persistence_map_fresh_passes_when_map_staged_alongside() -> None:
