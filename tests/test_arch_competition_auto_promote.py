@@ -130,7 +130,6 @@ def test_db_training_floor_stats_counts_usable_days(tmp_path: Path, monkeypatch)
 
 def test_auto_promote_skipped_when_data_floor_not_met(tmp_path: Path, monkeypatch):
     """Starved ticker: db_path provided → fail-closed, no copy to active/."""
-    import arch_competition.promotion_execution as pe
     from tests.test_manual_governance import _minimal_governed_files, _write_candidate_manifests, _write_horizon_bundle
 
     monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE", "1")
@@ -268,6 +267,7 @@ def _write_active_incumbent(model_dir: Path, *, promotion_score: float, target_c
         "target_definition": tdef,
         "rows_used": 5000,
         "promotion_score": promotion_score,
+        "promotion_metric": "ensemble_eval_accuracy",
         "balanced_accuracy": max(promotion_score - 0.02, 0.0),
     }
     (active / "xgb_SPY_1c_meta.json").write_text(json.dumps(meta), encoding="utf-8")
@@ -302,6 +302,32 @@ def test_auto_promote_proceeds_when_candidate_beats_existing(tmp_path: Path, mon
     result = execute_promotion_if_eligible(tmp_path, "SPY", "1c", scheduler_run_id="better")
     assert result["executed"] is True
     assert (tmp_path / "active" / "SPY" / "xgb_SPY_1c.pkl").is_file()
+
+
+def test_auto_promote_reconciles_pre_b_inflated_incumbent_before_gate(tmp_path: Path, monkeypatch):
+    """Pre-B xgb-only incumbent scores (e.g. 0.8079) deadlock auto-promote until reconciled."""
+    _governed_auto_setup(tmp_path, monkeypatch)
+    active = tmp_path / "active" / "SPY"
+    active.mkdir(parents=True, exist_ok=True)
+    from ml_horizon import target_definition as _td
+
+    meta = {
+        "model_type": "XGBClassifier",
+        "ticker": "SPY",
+        "training_timeframe": "1m",
+        "target_column": "outcome_1c",
+        "target_definition": _td("1c"),
+        "rows_used": 5000,
+        "promotion_score": 0.8079,
+        "promotion_metric": "accuracy",
+        "balanced_accuracy": 0.75,
+    }
+    (active / "xgb_SPY_1c_meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    result = execute_promotion_if_eligible(tmp_path, "SPY", "1c", scheduler_run_id="reconcile-auto")
+    assert result["executed"] is True
+    after = json.loads((active / "xgb_SPY_1c_meta.json").read_text(encoding="utf-8"))
+    assert after["promotion_metric"] == "ensemble_eval_accuracy"
+    assert after["promotion_score"] == pytest.approx(0.45)
 
 
 def test_auto_promote_blocked_when_candidate_base_collapsed_single_class(tmp_path: Path, monkeypatch):

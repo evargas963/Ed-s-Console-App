@@ -619,3 +619,42 @@ def test_run_base_models_once_default_unchanged_parallel_runtime():
     src = inspect.getsource(run_base_models_once)
     assert "parallel_runtime=True" in src
     assert "def run_base_models_once" in src
+
+
+def test_stamp_candidate_manifests_syncs_horizon_before_lineage_validate(tmp_path):
+    """Multi-horizon candidate dirs: last-trained manifest hz must not block earlier hz promote."""
+    from arch_competition.promotion_execution import _stamp_candidate_manifests_from_evaluation_manifest
+    from training_cache import load_run_manifest, save_run_manifest
+
+    par = tmp_path / "parallel" / "SPY"
+    cas = tmp_path / "cascade" / "SPY"
+    par.mkdir(parents=True)
+    cas.mkdir(parents=True)
+    stale = {
+        "schema_version": 2,
+        "ticker": "SPY",
+        "ml_horizon_suffix": "60c",
+        "feature_cache_key": "old-fk",
+        "training_code_fingerprint": "old-train",
+        "data_fingerprint": {"ticker": "SPY", "table": "snap", "timeframe": "1m", "row_count": 1,
+                             "min_ts_utc": 1, "max_ts_utc": 2},
+    }
+    save_run_manifest(par, {**stale, "architecture": "parallel"})
+    save_run_manifest(cas, {**stale, "architecture": "cascade"})
+    eval_manifest = {
+        "ml_horizon_slug": "1c",
+        "lineage": {
+            "feature_cache_key": "new-fk-1c",
+            "training_code_fingerprint": "train-fp",
+            "ml_horizon_suffix": "1c",
+            "data_fingerprint": {"ticker": "SPY", "table": "snap", "timeframe": "1m", "row_count": 99,
+                                 "min_ts_utc": 3, "max_ts_utc": 4},
+        },
+    }
+    _stamp_candidate_manifests_from_evaluation_manifest(eval_manifest, par, cas, "1c")
+    mp = load_run_manifest(par)
+    mc = load_run_manifest(cas)
+    assert mp["ml_horizon_suffix"] == "1c"
+    assert mc["ml_horizon_suffix"] == "1c"
+    assert mp["feature_cache_key"] == "new-fk-1c"
+    validate_parallel_cascade_manifest_lineage(par, cas, ticker="SPY", expected_ml_horizon_suffix="1c")

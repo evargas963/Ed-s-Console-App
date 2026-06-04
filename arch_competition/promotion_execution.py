@@ -130,6 +130,38 @@ PRE_B_RECONCILED_METRIC = "pre_b_reconciled"
 RECONCILE_EXECUTOR_ID = "reconcile:pre_b_incumbent_scores_v1"
 
 
+def _stamp_candidate_manifests_from_evaluation_manifest(
+    manifest: dict[str, Any],
+    parallel_dir: Path,
+    cascade_dir: Path,
+    ml_horizon_slug: str,
+) -> None:
+    """Re-stamp shared candidate scheduler_run_manifest.json for the horizon being promoted.
+
+    parallel/{ticker}/ and cascade/{ticker}/ are multi-horizon directories; the on-disk
+    manifest retains the **last** horizon trained until re-stamped. Promotion validates
+    candidate manifest ml_horizon_suffix against the governed evaluation manifest horizon;
+    without this sync, a successful 60c train blocks 1c/5c/15c promote with
+    ``manifest horizon '60c' != expected '1c'``.
+    """
+    from training_cache import load_run_manifest, save_run_manifest
+
+    lineage = manifest.get("lineage") or {}
+    hz = normalize_ml_horizon_slug(ml_horizon_slug)
+    patch: dict[str, Any] = {"ml_horizon_suffix": hz}
+    for key in ("feature_cache_key", "data_fingerprint", "training_code_fingerprint"):
+        val = lineage.get(key)
+        if val is not None:
+            patch[key] = val
+    for cand_dir in (parallel_dir, cascade_dir):
+        existing = load_run_manifest(cand_dir) or {}
+        if not existing:
+            continue
+        merged = dict(existing)
+        merged.update(patch)
+        save_run_manifest(cand_dir, merged)
+
+
 def _reset_pre_b_incumbent_meta(meta_path: Path, old_score: float) -> None:
     """Write the one-shot ``promotion_score = 0.0`` reset for a single pre-B
     incumbent meta. Active/ writes require the governed executor, so this asserts
@@ -478,6 +510,7 @@ def execute_promotion_if_eligible(
     _validate_manifest_paths_match_canonical(manifest, model_dir, tku)
 
     parallel_dir, cascade_dir = _canonical_candidate_dirs(model_dir, tku)
+    _stamp_candidate_manifests_from_evaluation_manifest(manifest, parallel_dir, cascade_dir, hz)
     validate_parallel_cascade_manifest_lineage(
         parallel_dir, cascade_dir, ticker=tku, expected_ml_horizon_suffix=hz
     )
@@ -496,6 +529,9 @@ def execute_promotion_if_eligible(
 
     # Workstream A2 — candidate score + rows_used gate (scheduler/auto path only).
     if not is_manual:
+        # A2 first-cycle deadlock: reset inflated pre-B xgb-only incumbent scores before the
+        # ensemble-vs-incumbent compare (idempotent once ensemble basis is stamped).
+        reconcile_pre_b_incumbent_scores(model_dir, [tku], [hz], dry_run=False)
         gate_ok, gate_reason = _auto_promote_score_row_gate(
             manifest, target_architecture, src, active_ticker_dir, tku, hz
         )
