@@ -1181,8 +1181,13 @@ def build_ablation_confirm_report(
     try:
         _prev_strict = os.environ.get("ED_XGB_STRICT_ACTIVE_ONLY")
         _prev_ablation_eval = os.environ.get("ED_ABLATION_SCORED_EVAL")
+        _prev_inline_skip = os.environ.get("ED_TRAINING_SKIP_INLINE_NORMSYNC")
         os.environ["ED_XGB_STRICT_ACTIVE_ONLY"] = "0"
         os.environ["ED_ABLATION_SCORED_EVAL"] = "1"
+        from normalized_training_sync import ensure_normalized_training_table
+
+        ensure_normalized_training_table(db, force=False)
+        os.environ["ED_TRAINING_SKIP_INLINE_NORMSYNC"] = "1"
         try:
 
             def _checkpoint(section_kind: str, cell: dict, n: int, total: int) -> None:
@@ -1294,6 +1299,10 @@ def build_ablation_confirm_report(
                 os.environ.pop("ED_ABLATION_SCORED_EVAL", None)
             else:
                 os.environ["ED_ABLATION_SCORED_EVAL"] = _prev_ablation_eval
+            if _prev_inline_skip is None:
+                os.environ.pop("ED_TRAINING_SKIP_INLINE_NORMSYNC", None)
+            else:
+                os.environ["ED_TRAINING_SKIP_INLINE_NORMSYNC"] = _prev_inline_skip
         return report
     finally:
         release_ablation_run_lock()
@@ -2410,6 +2419,16 @@ def run_survivor_inference_backtest(
                     and not (float(b_acc) > 0.0 and float(s_acc) == 0.0)
                 )
                 cell["wiring_ok"] = wiring_ok
+                if (
+                    cell["baseline"].get("eval_log_loss") is not None
+                    and cell["survivor"].get("eval_log_loss") is not None
+                ):
+                    cell["log_loss_delta"] = round(
+                        float(cell["survivor"]["eval_log_loss"])
+                        - float(cell["baseline"]["eval_log_loss"]),
+                        6,
+                    )
+                    cell["survivor_better"] = cell["log_loss_delta"] < 0
                 if not wiring_ok:
                     out["issues"].append(
                         f"inference_backtest_wiring:{anc}/{hz_n}:baseline_n={b_n} survivor_n={s_n} "
@@ -2975,6 +2994,11 @@ def main():
         help="Pre-retrain go/no-go: confirm drops + MCC edge matrix (writes survivor_edge_probe.json)",
     )
     ap.add_argument(
+        "--survivor-inference-backtest",
+        action="store_true",
+        help="Score models/active baseline vs survivor-masked inference (writes survivor_inference_backtest.json; no retrain)",
+    )
+    ap.add_argument(
         "--survivor-validation-run",
         action="store_true",
         help="Production-path quick holdout validation per EDGE cell (writes survivor_validation_run.json)",
@@ -3022,6 +3046,12 @@ def main():
         pf = run_survivor_retrain_preflight(db_path=str(DB_PATH), tickers=tickers)
         print(json.dumps(pf, indent=2))
         raise SystemExit(0 if pf["ready"] else 1)
+
+    if a.survivor_inference_backtest:
+        tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
+        bt = run_survivor_inference_backtest(tickers=tickers, db_path=str(DB_PATH))
+        print(json.dumps(bt, indent=2))
+        raise SystemExit(0 if bt.get("ready") else 1)
 
     if a.survivor_edge_probe:
         tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]

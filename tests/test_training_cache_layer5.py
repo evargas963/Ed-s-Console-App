@@ -45,6 +45,21 @@ def test_cross_process_materialize_lock_exclusive(tmp_path):
     assert not lock_path.is_file()
 
 
+def test_cross_process_materialize_lock_reclaims_dead_holder(tmp_path):
+    from normalized_training_sync import (
+        _materialize_lock_path,
+        cross_process_materialize_lock,
+    )
+
+    db = tmp_path / "training.db"
+    db.write_bytes(b"")
+    lock_path = _materialize_lock_path(db)
+    lock_path.write_text("99999999\n", encoding="utf-8")
+    with cross_process_materialize_lock(db, timeout_sec=2.0):
+        assert lock_path.read_text(encoding="utf-8").strip() != "99999999"
+    assert not lock_path.is_file()
+
+
 def test_split_sessions_walk_forward_holds_out_later_tail():
     days = [f"2026-01-{d:02d}" for d in range(1, 21)]  # 20 sorted sessions
     train, val = split_sessions_walk_forward(days)

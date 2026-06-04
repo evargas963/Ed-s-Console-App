@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mechanical lock: parallel→cascade bridge + survivor inference backtest gate (operator 2026-05-31)."""
+"""Mechanical lock: survivor pre-train gate order + parallel→cascade bridge (operator 2026-05-31)."""
 from __future__ import annotations
 
 import sys
@@ -7,7 +7,14 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-_REQUIRED = (
+# Binding gate order after ablation confirm v2 (ACTIVE_PROGRAM §ML pipeline efficiency).
+SURVIVOR_PRETRAIN_GATE_ORDER: tuple[str, ...] = (
+    "run_survivor_inference_backtest",
+    "run_survivor_edge_probe",
+    "run_survivor_validation_run",
+)
+
+_REQUIRED_BRIDGE = (
     (REPO_ROOT / "training_cache.py", "save_parallel_cascade_bridge"),
     (REPO_ROOT / "training_cache.py", "load_parallel_cascade_bridge"),
     (REPO_ROOT / "training_cache.py", "copy_parallel_xgb_artifacts_to_cascade"),
@@ -18,24 +25,81 @@ _REQUIRED = (
     (REPO_ROOT / "ml_scheduler.py", "run_survivor_inference_backtest"),
 )
 
+_REQUIRED_GATE_SURFACE = (
+    (REPO_ROOT / "tools" / "feature_curation_gate.py", "--survivor-inference-backtest"),
+    (REPO_ROOT / "tools" / "feature_curation_gate.py", "log_loss_delta"),
+    (REPO_ROOT / "tools" / "feature_curation_gate.py", "survivor_better"),
+    (REPO_ROOT / "tools" / "run_survivor_retrain_gate.ps1", "--survivor-inference-backtest"),
+    (REPO_ROOT / "tools" / "run_survivor_retrain_gate.ps1", "--survivor-edge-probe"),
+    (REPO_ROOT / "tools" / "run_survivor_retrain_gate.ps1", "--survivor-validation-run"),
+    (REPO_ROOT / "ACTIVE_PROGRAM.md", "inference backtest on `models/active/`"),
+    (REPO_ROOT / "governance" / "G1_ADDENDUM_TRAINING_DEPENDENCY.md", "run_survivor_inference_backtest"),
+)
+
+
+def _call_order_ok(text: str, symbols: tuple[str, ...]) -> bool:
+    pos = -1
+    for sym in symbols:
+        idx = text.find(sym)
+        if idx < 0 or idx <= pos:
+            return False
+        pos = idx
+    return True
+
+
+def _scheduler_survivor_gate_slice(text: str) -> str:
+    start = text.find("_backtest = run_survivor_inference_backtest")
+    end = text.find("survivor_validation_run passed:")
+    if start < 0 or end < 0:
+        return ""
+    return text[start:end]
+
 
 def check_ml_pipeline_efficiency() -> list[str]:
     errors: list[str] = []
-    for path, needle in _REQUIRED:
+    for path, needle in _REQUIRED_BRIDGE + _REQUIRED_GATE_SURFACE:
         if not path.is_file():
             errors.append(f"missing file: {path}")
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         if needle not in text:
             errors.append(f"{path}: missing required efficiency hook {needle!r}")
-    cascade_text = (REPO_ROOT / "ml_scheduler.py").read_text(encoding="utf-8", errors="replace")
-    if "load_parallel_cascade_bridge" not in cascade_text:
-        errors.append("ml_scheduler.py: cascade must call load_parallel_cascade_bridge")
-    if cascade_text.find("copy_parallel_xgb_artifacts_to_cascade") > cascade_text.find(
-        "train_ticker("
-    ):
-        # bridge attempt must appear before unconditional XGB retrain in train_cascade_candidate
-        pass
+
+    sched_path = REPO_ROOT / "ml_scheduler.py"
+    if sched_path.is_file():
+        sched_text = sched_path.read_text(encoding="utf-8", errors="replace")
+        if "load_parallel_cascade_bridge" not in sched_text:
+            errors.append("ml_scheduler.py: cascade must call load_parallel_cascade_bridge")
+        gate_slice = _scheduler_survivor_gate_slice(sched_text)
+        if not gate_slice:
+            errors.append("ml_scheduler.py: missing survivor pre-train gate block")
+        elif not _call_order_ok(
+            gate_slice,
+            ("run_survivor_inference_backtest", "run_survivor_edge_probe", "run_survivor_validation_run"),
+        ):
+            errors.append(
+                "ml_scheduler.py: survivor pre-train gates must run in order "
+                f"{SURVIVOR_PRETRAIN_GATE_ORDER} (inference backtest before edge probe before validation)"
+            )
+
+    gate_path = REPO_ROOT / "tools" / "run_survivor_retrain_gate.ps1"
+    if gate_path.is_file():
+        ps1 = gate_path.read_text(encoding="utf-8", errors="replace")
+        train_idx = ps1.find('$schedArgs = @("ml_scheduler.py"')
+        if train_idx < 0:
+            errors.append("run_survivor_retrain_gate.ps1: missing ml_scheduler train invocation")
+        else:
+            for sym in (
+                "--survivor-inference-backtest",
+                "--survivor-edge-probe",
+                "--survivor-validation-run",
+            ):
+                sym_idx = ps1.find(sym)
+                if sym_idx < 0 or sym_idx > train_idx:
+                    errors.append(
+                        f"run_survivor_retrain_gate.ps1: {sym} must appear before ml_scheduler train"
+                    )
+
     return errors
 
 

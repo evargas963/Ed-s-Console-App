@@ -63,6 +63,30 @@ def _materialize_lock_path(db_path: Path) -> Path:
     return Path(db_path).resolve().parent / ".ed_snapshots_1m_normalized_materialize.lock"
 
 
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _materialize_lock_reclaimable(lock_path: Path) -> bool:
+    """True when lock file can be removed (dead holder or exceeded stale age)."""
+    try:
+        age = time.time() - lock_path.stat().st_mtime
+        if age > _MATERIALIZE_LOCK_STALE_SEC:
+            return True
+        raw = lock_path.read_text(encoding="utf-8").strip().splitlines()
+        if not raw:
+            return True
+        return not _pid_alive(int(raw[0].strip()))
+    except (OSError, ValueError):
+        return True
+
+
 @contextlib.contextmanager
 def cross_process_materialize_lock(
     db_path: str | Path, *, timeout_sec: float = 600.0
@@ -78,13 +102,9 @@ def cross_process_materialize_lock(
             lock_file.flush()
             break
         except FileExistsError:
-            try:
-                age = time.time() - lock_path.stat().st_mtime
-                if age > _MATERIALIZE_LOCK_STALE_SEC:
-                    lock_path.unlink(missing_ok=True)
-                    continue
-            except OSError:
-                pass
+            if _materialize_lock_reclaimable(lock_path):
+                lock_path.unlink(missing_ok=True)
+                continue
             if time.monotonic() >= deadline:
                 raise TimeoutError(
                     f"timed out waiting for normalized materialize lock {lock_path}"

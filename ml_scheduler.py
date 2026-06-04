@@ -2573,24 +2573,6 @@ def run_once(
             _inc_reset.get("reset_count"),
             _inc_reset.get("reason"),
         )
-        _edge = run_survivor_edge_probe(tickers=tickers[:3] or None)
-        if not _edge.get("ready_for_full_retrain"):
-            log.error(
-                "survivor_edge_probe blocked retrain: issues=%s",
-                _edge.get("issues"),
-            )
-            return {
-                "exit_code": 2,
-                "ticker_outcomes": [],
-                "ml_horizon": hz_sched,
-                "skipped": True,
-                "pre_train_gate_failed": True,
-                "pre_train_gate_reasons": list(_edge.get("issues") or ["survivor_edge_probe_failed"]),
-            }
-        log.info(
-            "survivor_edge_probe passed: edge_cells=%s",
-            (_edge.get("summary") or {}).get("edge_cells"),
-        )
         _backtest = run_survivor_inference_backtest(
             tickers=tickers[:3] or None,
             db_path=str(DB_PATH),
@@ -2613,6 +2595,24 @@ def run_once(
         log.info(
             "survivor_inference_backtest passed: cells=%s",
             len(_backtest.get("cells") or []),
+        )
+        _edge = run_survivor_edge_probe(tickers=tickers[:3] or None)
+        if not _edge.get("ready_for_full_retrain"):
+            log.error(
+                "survivor_edge_probe blocked retrain: issues=%s",
+                _edge.get("issues"),
+            )
+            return {
+                "exit_code": 2,
+                "ticker_outcomes": [],
+                "ml_horizon": hz_sched,
+                "skipped": True,
+                "pre_train_gate_failed": True,
+                "pre_train_gate_reasons": list(_edge.get("issues") or ["survivor_edge_probe_failed"]),
+            }
+        log.info(
+            "survivor_edge_probe passed: edge_cells=%s",
+            (_edge.get("summary") or {}).get("edge_cells"),
         )
         _val = run_survivor_validation_run(tickers=tickers[:3] or None, db_path=str(DB_PATH))
         if not _val.get("ready_for_full_retrain"):

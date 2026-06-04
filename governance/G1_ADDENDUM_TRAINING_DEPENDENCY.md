@@ -13,7 +13,7 @@
 
 **Flow:** `train_parallel_candidate` trains XGB once, builds LSTM dataset, saves bridge via `_xgb_probs_aligned_to_lstm_dataset` + `save_parallel_cascade_bridge`. `train_cascade_candidate` (same `run_once`, `parallel_out` passed) calls `load_parallel_cascade_bridge` + `copy_parallel_xgb_artifacts_to_cascade` and **skips** `train_ticker` + snapshot prob rescan when bridge hits. Manifest field: `used_parallel_cascade_bridge`.
 
-**Pre-retrain gate (survivors on):** confirm v2 → `run_survivor_inference_backtest` (scores `models/active/` baseline vs survivor-masked inference) → edge probe → validation run → train. Full retrain is **not** the wiring-discovery mechanism.
+**Pre-retrain gate (survivors on):** confirm v2 → `run_survivor_inference_backtest` (CLI `--survivor-inference-backtest`; scores `models/active/` baseline vs survivor-masked inference) → edge probe → validation run → train. Full retrain is **not** the wiring-discovery mechanism. Gate order enforced in `ml_scheduler.py` and `tools/run_survivor_retrain_gate.ps1` by `tools/check_ml_pipeline_efficiency.py`.
 
 Mechanical enforcement: `tools/check_ml_pipeline_efficiency.py`, `ACTIVE_PROGRAM.md` §ML pipeline efficiency.
 
