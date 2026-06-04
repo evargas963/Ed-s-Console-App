@@ -767,6 +767,15 @@ def test_confirmed_drops_require_all_anchors_safe():
     assert confirmed_drop_group_ids_by_model_horizon(ss) == {}
 
 
+def test_ablation_scored_eval_disables_survivor_mask(monkeypatch):
+    from arch_competition.stack_bundle_eval_v1 import ablation_survivors_training_enabled
+
+    monkeypatch.setenv("ED_APPLY_ABLATION_SURVIVORS", "1")
+    assert ablation_survivors_training_enabled() is True
+    monkeypatch.setenv("ED_ABLATION_SCORED_EVAL", "1")
+    assert ablation_survivors_training_enabled() is False
+
+
 def test_ablated_drop_requires_confirm_not_primary(monkeypatch, tmp_path):
     """Primary-pass DROP_CANDIDATE must never reach training when survivors env is on."""
     from arch_competition import stack_bundle_eval_v1 as sbe

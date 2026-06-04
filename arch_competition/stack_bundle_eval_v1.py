@@ -849,6 +849,10 @@ ABLATION_REPORT_PATH = Path("governance/artifacts/feature_ablation_report.json")
 def ablation_survivors_training_enabled() -> bool:
     import os
 
+    # Ablation primary/confirm passes score on the FULL feature set — never apply survivor
+    # drops while measuring MCC delta or drop-and-refit (chicken-and-egg with confirm pass).
+    if os.environ.get("ED_ABLATION_SCORED_EVAL", "").strip().lower() in ("1", "true", "yes"):
+        return False
     return os.environ.get(ABLATION_SURVIVORS_ENV, "").strip().lower() in ("1", "true", "yes")
 
 
