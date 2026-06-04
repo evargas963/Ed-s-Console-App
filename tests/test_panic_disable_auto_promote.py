@@ -1,7 +1,6 @@
 """Panic env ED_DISABLE_AUTO_PROMOTE overrides enable (PR4 P3-1)."""
 from __future__ import annotations
 
-import os
 
 import pytest
 

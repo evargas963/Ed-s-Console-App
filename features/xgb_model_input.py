@@ -10,7 +10,6 @@ from the overlay are not copied into engineered XGB columns (no same-tick model-
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from features.canonical_contract import (
@@ -20,7 +19,6 @@ from features.canonical_contract import (
     validate_feature_contract_row,
 )
 
-from time_et import ET as _ET
 
 # Exact canonical → legacy tabular keys (single source for XGB engineering row).
 CANONICAL_TO_XGB_TABULAR: dict[str, str] = {

@@ -9,7 +9,7 @@ The Call — implements STACK ORDER 8, 9, 10 (enforced in compute_call):
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 from lifecycle_rule_core import derive_stop_distance_pct, derive_target_levels
 from multi_horizon_decision import MultiHorizonSynthesis
@@ -219,7 +219,7 @@ def _classify_trade_type(micro_regime: str, zone: str, signal: str) -> str:
     from micro_structure import (
         R_TREND_UP, R_TREND_DOWN, R_BOS_UP, R_BOS_DOWN,
         R_CHOCH_BULL, R_CHOCH_BEAR, R_COMPRESSION, R_RANGE,
-        R_REVERSAL_UP, R_REVERSAL_DN, R_CHOP,
+        R_REVERSAL_UP, R_REVERSAL_DN,
     )
 
     if signal == "wait":
@@ -254,9 +254,7 @@ def _classify_trade_type(micro_regime: str, zone: str, signal: str) -> str:
 def _build_invalidation(micro, micro_regime, final_signal, trade_type, stop, inp) -> str:
     """Build plain English invalidation reason."""
     from micro_structure import (
-        R_TREND_UP, R_TREND_DOWN, R_BOS_UP, R_BOS_DOWN,
-        R_CHOCH_BULL, R_CHOCH_BEAR, R_COMPRESSION, R_RANGE,
-        R_REVERSAL_UP, R_REVERSAL_DN,
+        R_BOS_UP, R_BOS_DOWN,
     )
 
     if final_signal == "wait" or stop is None:
@@ -289,7 +287,7 @@ def _build_invalidation(micro, micro_regime, final_signal, trade_type, stop, inp
 
 def _time_qualifier(micro_regime: str, trade_type: str) -> str:
     """How long is this setup valid?"""
-    from micro_structure import R_COMPRESSION, R_RANGE, R_CHOP
+    from micro_structure import R_COMPRESSION, R_RANGE
 
     if trade_type == "none":
         return ""
@@ -1162,8 +1160,7 @@ def _validate_trade(
     plus reason strings for each failed layer.
     """
     from micro_structure import (
-        R_BOS_UP, R_BOS_DOWN, R_CHOCH_BULL, R_CHOCH_BEAR,
-        R_CHOP, R_COMPRESSION, R_RANGE,
+        R_BOS_UP, R_BOS_DOWN, R_CHOP,
     )
 
     result = {
@@ -1395,8 +1392,7 @@ def compute_call(
     from features.regime_mvp_context import mvp_nearest_distances_for_regime, mvp_zone
     from micro_structure import (
         R_TREND_UP, R_TREND_DOWN, R_BOS_UP, R_BOS_DOWN,
-        R_CHOCH_BULL, R_CHOCH_BEAR, R_COMPRESSION, R_RANGE,
-        R_REVERSAL_UP, R_REVERSAL_DN, R_CHOP, R_UNKNOWN,
+        R_UNKNOWN,
     )
 
     if canonical is None:

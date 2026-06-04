@@ -1,9 +1,7 @@
 """Empty ED_CONSOLE_RELOAD_URL disables live reload call."""
 from __future__ import annotations
 
-import os
 
-import pytest
 
 from arch_competition.live_model_reload import build_live_reload_report
 

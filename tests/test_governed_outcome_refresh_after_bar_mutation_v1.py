@@ -3,7 +3,6 @@ Governed BAR_ANCHOR_V1 outcomes must stay consistent when price_bars_1m rows mut
 """
 from __future__ import annotations
 
-import pytest
 
 from db import EdDB
 from horizon_outcomes import forward_bar_start_utc, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1
@@ -184,7 +183,6 @@ def test_refresh_all_governed_bar_anchor_outcomes_v1_aligns_with_bars(tmp_path):
 
     import bisect
 
-    from horizon_outcomes import OUTCOME_BAR_SPECS
     from math_exposure import classify_direction_pts
     from movement_target_threshold import (
         load_movement_thresholds_by_horizon_v1,

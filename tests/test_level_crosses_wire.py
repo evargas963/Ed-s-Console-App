@@ -9,10 +9,8 @@ none owns level_crosses behavior).
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
-import pytest
 
 from db import EdDB, LevelCrossEvent
 

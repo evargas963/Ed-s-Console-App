@@ -211,14 +211,20 @@ def load_data(
     )
     _hz_norm = normalize_ml_horizon_slug(ml_horizon_slug)
     try:
-        from normalized_training_sync import ensure_normalized_training_table
+        from normalized_training_sync import (
+            ensure_normalized_training_table,
+            inline_normsync_enabled,
+        )
 
-        _ns = ensure_normalized_training_table(db_path, force=False, logger=logging.getLogger("ml_train.normsync"))
-        if not _ns.get("ok"):
-            logging.getLogger("ml_train.normsync").warning(
-                "normalized_training_sync failed: %s", _ns.get("errors")
+        if inline_normsync_enabled():
+            _ns = ensure_normalized_training_table(
+                db_path, force=False, logger=logging.getLogger("ml_train.normsync")
             )
-    except (sqlite3.Error, OSError, ValueError, TypeError) as _e:
+            if not _ns.get("ok"):
+                logging.getLogger("ml_train.normsync").warning(
+                    "normalized_training_sync failed: %s", _ns.get("errors")
+                )
+    except Exception as _e:
         logging.getLogger("ml_train.normsync").warning("normalized_training_sync: %s", _e)
 
     conn = sqlite3.connect(db_path)

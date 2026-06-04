@@ -10,7 +10,7 @@ Used as fallback when WebSocket/SSE are unavailable.
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, time
-from typing import Callable, Optional
+from typing import Callable
 from time_et import ET
 
 from market_data_adapter import schwab_candles_to_bars

@@ -2216,6 +2216,10 @@ def run_once(
     except Exception as _e:
         log.warning("normalized_training_sync error (continuing): %s", _e)
 
+    # One sync at scheduler entry; block per-row load_data/extract re-entry for this process
+    # (avoids snapshot_id UNIQUE races with the live server's debounced materialize mid-train).
+    os.environ["ED_TRAINING_SKIP_INLINE_NORMSYNC"] = "1"
+
     tickers = _training_ticker_union(DB_PATH, label_column=target_column)
     if not tickers:
         log.warning(

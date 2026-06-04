@@ -14,8 +14,7 @@ from typing import Any, Dict, List, Optional
 from math_exposure import (
     compute_probs, dominant_direction, determine_confidence,
     compute_percentile_range, classify_reversal_risk, is_pin_zone,
-    MIN_SAMPLES_STATISTICAL, MIN_SAMPLES_CONFIDENT, APPROACH_PTS,
-    REVERSAL_RISK_LOW_MAX, REVERSAL_RISK_MOD_MAX,
+    MIN_SAMPLES_STATISTICAL,
 )
 from fusion_contract import fusion_is_authoritative, is_canonical_tradable
 from signal_types import SignalInput, PredictiveCard, CanonicalForecast

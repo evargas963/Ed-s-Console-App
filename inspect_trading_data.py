@@ -6,7 +6,6 @@ Run: python inspect_trading_data.py
 """
 from __future__ import annotations
 
-import json
 
 # ── MarketState fields (from market_state.py) ─────────────────────────────────
 MS_FIELDS = [

@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import threading
 from collections import deque
-from datetime import datetime
 from typing import Any, Optional
 from time_et import now_et, RTH_END_MINS, RTH_OPEN_MINS
 

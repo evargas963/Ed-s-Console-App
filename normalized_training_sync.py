@@ -37,6 +37,22 @@ _materialize_lock = threading.Lock()
 _debounce_timer: Optional[threading.Timer] = None
 _debounce_lock = threading.Lock()
 
+_INLINE_NORMSYNC_SKIP_ENV = "ED_TRAINING_SKIP_INLINE_NORMSYNC"
+
+
+def inline_normsync_enabled() -> bool:
+    """False when training should not re-enter ensure_normalized from load_data / extract loops.
+
+    ``run_once`` syncs once at entry then sets ``ED_TRAINING_SKIP_INLINE_NORMSYNC=1`` so a long
+    train does not re-materialize on every ``load_data`` / ``extract_rth_snapshots`` call while
+    the live server may also be refreshing (snapshot_id UNIQUE races).
+    """
+    return os.environ.get(_INLINE_NORMSYNC_SKIP_ENV, "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    )
+
 # Cross-process: live server debounced refresh + training normsync can materialize concurrently.
 _MATERIALIZE_LOCK_STALE_SEC = float(
     os.environ.get("ED_NORMALIZED_MATERIALIZE_LOCK_STALE_SEC", "7200")

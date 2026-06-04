@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from arch_competition.promotion_execution import execute_promotion_if_eligible
 

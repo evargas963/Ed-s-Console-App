@@ -22,7 +22,7 @@ from tools.schwab_universal_coverage_scanner_v3.paths import (
     PruneBatch,
     rel_matches_prefix,
 )
-from tools.schwab_universal_coverage_scanner_v3.python_scanner import scan_python_complete, scan_python_source
+from tools.schwab_universal_coverage_scanner_v3.python_scanner import scan_python_source
 from tools.schwab_universal_coverage_scanner_v3.reconciliation import (
     ReconciliationState,
     inventory_mark_present,

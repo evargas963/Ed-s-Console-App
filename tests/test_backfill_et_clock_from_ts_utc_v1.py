@@ -6,7 +6,6 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
 
 from calibration.backfill_et_clock_from_ts_utc_v1 import (
     backfill_table,

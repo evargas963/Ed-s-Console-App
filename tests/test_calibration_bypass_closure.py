@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 _NEEDLE = "calibration_decision_log"
 _ROOT = Path(__file__).resolve().parents[1]

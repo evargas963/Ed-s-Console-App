@@ -35,7 +35,7 @@ import hashlib
 import logging
 import threading
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from db_authority import (
     assert_ed_console_db_env_resolves_safely,
@@ -44,7 +44,7 @@ from db_authority import (
     eddb_allow_noncanonical_path,
     is_canonical_db_path,
 )
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from typing import Any, Callable, Optional, TypeVar
 
 # ── Canonical timeframe (central config) ───────────────────────────────────
@@ -186,7 +186,7 @@ def _resolve_console_db_path() -> Path:
 DB_PATH = _resolve_console_db_path()
 
 # ── ET timezone (DST-aware; see time_et.py) ───────────────────────────────────
-from time_et import ET, now_et  # noqa: E402  — re-export for legacy `from db import now_et`
+from time_et import now_et  # noqa: E402  — re-export for legacy `from db import now_et`
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)

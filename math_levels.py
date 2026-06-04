@@ -8,7 +8,7 @@ Phase 2 extraction from math_exposure.py per Extraction Blueprint v1.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 from math_exposure_core import (
     ExposureRow,
@@ -16,13 +16,10 @@ from math_exposure_core import (
     _f,
     bucket_metric,
     bucket_metric_abs,
-    _nearest_strike,
     _window_strikes,
     aggregate_net_dex,
     aggregate_net_gex,
     exposures_have_dollar_gex,
-    gex_magnitude_label,
-    gex_regime_label,
     key_level_strikes_with_gamma,
     key_level_strikes_with_oi,
     net_gex_dollars_at_strike,

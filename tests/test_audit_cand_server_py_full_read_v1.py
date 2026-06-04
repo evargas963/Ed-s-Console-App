@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast
 import builtins
 import inspect
-import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 

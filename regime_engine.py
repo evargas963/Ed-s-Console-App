@@ -29,7 +29,7 @@ Consumed by:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from features.regime_mvp_context import (
     mvp_net_gamma,

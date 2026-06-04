@@ -10,7 +10,6 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
 from instrument_identity import ticker_storage_key
 from time_et import ET as _ET
 

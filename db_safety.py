@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from db_authority import canonical_console_db_path, is_canonical_db_path, project_root
+from db_authority import is_canonical_db_path, project_root
 
 DANGEROUS_SQL_UNRESTRICTED_ENV = "ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED"
 SKIP_AUTOMATIC_BACKUP_ENV = "ED_CONSOLE_SKIP_AUTOMATIC_BACKUP"

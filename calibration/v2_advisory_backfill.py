@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import sqlite3
 import time
 from dataclasses import dataclass

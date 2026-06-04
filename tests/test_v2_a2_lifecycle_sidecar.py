@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from lifecycle_rule_core import LIFECYCLE_RULE_CORE_VERSION
 from v2_decision.a2_lifecycle_sidecar import LIFECYCLE_GAP_NAMES, PREVIEW_BLOCKING_GAPS

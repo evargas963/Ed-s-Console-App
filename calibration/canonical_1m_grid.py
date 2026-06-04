@@ -5,8 +5,6 @@ Used by scan/repair tools and DB write guards. Grid: bar_start_ts_utc ≡ 0 (mod
 """
 from __future__ import annotations
 
-import math
-from typing import Iterable
 
 # Must match horizon_outcomes.OUTCOME_BAR_SPECS forward minutes.
 FORWARD_MINUTES: tuple[int, ...] = (1, 3, 5, 8, 13, 15, 60)

@@ -7,7 +7,7 @@ only from empirical triplets (None when withheld), matching live missingness sem
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any, Optional
+from typing import Any
 
 from features.fusion_model_input import FusionModelInputError, similar_setup_filters_from_db_snapshot_row
 from multi_horizon_decision import build_multi_horizon_bundle

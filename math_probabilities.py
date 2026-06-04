@@ -8,7 +8,6 @@ Phase 2 extraction from math_exposure.py per Extraction Blueprint v1.
 from __future__ import annotations
 
 from dataclasses import dataclass as _oe_dc
-from typing import Optional
 import math
 
 from math_exposure_core import MISSING_GREEK_SENTINEL, _f, bucket_metric

@@ -141,8 +141,8 @@ def main() -> int:
     tf = CANONICAL_TIMEFRAME
     prior_n = STREAM_5M_LOOKBACK
     lstm_sub = (
-        f"(SELECT COUNT(*) FROM snapshots pr WHERE pr.ticker = snapshots.ticker "
-        f"AND pr.timeframe = ? AND pr.ts_utc < snapshots.ts_utc) >= ?"
+        "(SELECT COUNT(*) FROM snapshots pr WHERE pr.ticker = snapshots.ticker "
+        "AND pr.timeframe = ? AND pr.ts_utc < snapshots.ts_utc) >= ?"
     )
 
     conn = sqlite3.connect(str(args.db.resolve()))
@@ -158,7 +158,7 @@ def main() -> int:
         conn.close()
         return 0
 
-    where_parts = [f"timeframe = ?", lstm_sub]
+    where_parts = ["timeframe = ?", lstm_sub]
     params_tail: list[Any] = [tf, tf, prior_n]
     if args.ticker:
         where_parts.append("ticker = ?")

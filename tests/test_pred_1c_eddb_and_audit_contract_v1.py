@@ -1,10 +1,7 @@
 """Contracts: EdDB persists pred_1c_*; phase5 audit exposes governed pred_1c count."""
 from __future__ import annotations
 
-import json
 import sqlite3
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest

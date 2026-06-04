@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from training_outcome import TrainingOutcome
 from training_pipeline_status import (

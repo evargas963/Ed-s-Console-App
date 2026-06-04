@@ -21,7 +21,6 @@ from arch_competition.eval_runner import (
     run_architecture_pair_evaluation,
 )
 from arch_competition.exceptions import (
-    EvaluationLineageError,
     PromotionGovernanceError,
     PromotionGovernanceInvalidError,
     PromotionGovernanceMissingError,

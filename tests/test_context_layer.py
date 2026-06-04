@@ -34,7 +34,6 @@ def test_liquidity_behavior_scores():
 
 def test_article_datetime_parse():
     from datetime import datetime
-    from zoneinfo import ZoneInfo
 
     from news_sentiment import _parse_article_datetime
 

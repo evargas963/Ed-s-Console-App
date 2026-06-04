@@ -164,7 +164,6 @@ def test_day_snaps_ts_mismatch_keeps_db_mvp():
 
 def test_transformer_reraises_lstm_error_as_transformer_type():
     from features.lstm_sequence_input import (
-        LstmSequenceInputError,
         TransformerSequenceInputError,
         build_transformer_merged_window,
     )

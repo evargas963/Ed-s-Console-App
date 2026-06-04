@@ -38,7 +38,7 @@ def main() -> int:
 
     try:
         from sentence_transformers import SentenceTransformer
-    except ImportError as e:
+    except ImportError:
         sys.stderr.write(
             "schwab_canonical_field_embedding_topk: sentence_transformers not installed.\n"
             "Install dev deps: pip install -r requirements-dev.txt\n"

@@ -1,9 +1,7 @@
 """P3-11 strict core freshness toggle for promote_skipped + would_promote."""
 from __future__ import annotations
 
-import os
 
-import pytest
 
 from training_outcome import TrainingOutcome, compute_run_exit_code, outcome_entry
 

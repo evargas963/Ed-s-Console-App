@@ -30,7 +30,6 @@ import importlib
 import json
 import time
 from pathlib import Path
-from dataclasses import fields as dc_fields
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent
@@ -453,12 +452,12 @@ def test_monte_carlo_v2():
         if r_pin.path_dispersion < r_brk.path_dispersion:
             _pass(f"Pinning dispersion ({r_pin.path_dispersion:.2f}) < Breakout ({r_brk.path_dispersion:.2f})")
         else:
-            _fail(f"Pinning dispersion should be < Breakout")
+            _fail("Pinning dispersion should be < Breakout")
 
         if r_pin.containment_prob > r_brk.containment_prob:
             _pass(f"Pinning containment ({r_pin.containment_prob:.0%}) > Breakout ({r_brk.containment_prob:.0%})")
         else:
-            _fail(f"Pinning containment should be > Breakout")
+            _fail("Pinning containment should be > Breakout")
 
         # Test 2: shock enabled only in breakout/expansion
         if r_brk.assumptions.get("shock_enabled") and not r_pin.assumptions.get("shock_enabled"):
@@ -510,7 +509,6 @@ def test_monte_carlo_v2():
         # Test 7: GARCH integration — MC accepts per-bar sigma
         try:
             from math_volatility import compute_garch_forecast, blend_garch_sigma
-            import math as _m2
             # Build fake closes with known vol
             _fake_closes = [570.0]
             _rng = __import__('random')
@@ -523,7 +521,7 @@ def test_monte_carlo_v2():
                 _pass(f"GARCH forecast: 13 bars, bar1={_g_raw[0]:.6f} bar13={_g_raw[-1]:.6f}")
                 _g_blend = blend_garch_sigma(_g_raw, iv=0.18, realized_vol=0.15, spot=570.0)
                 if _g_blend and len(_g_blend) == 13 and all(s > 0 for s in _g_blend):
-                    _pass(f"GARCH blend: 13 bars, floor enforced")
+                    _pass("GARCH blend: 13 bars, floor enforced")
                 else:
                     _fail("GARCH blend failed")
 

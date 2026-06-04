@@ -2,22 +2,18 @@
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.anti_pattern_sweep import (  # noqa: E402
-    CAPS_LINE_ALLOWLIST,
     CAPS_PREFIX_ALLOWLIST,
     VARIANTS,
     caps_hit_allowed,
-    caps_register_markdown,
     find_unallowlisted_hits,
     scan_all,
 )

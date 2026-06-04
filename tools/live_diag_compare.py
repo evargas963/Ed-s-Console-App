@@ -88,7 +88,7 @@ def main() -> int:
     ta = (sys.argv[1] if len(sys.argv) > 1 else "SPY").upper().strip()
     tb = (sys.argv[2] if len(sys.argv) > 2 else "QQQ").upper().strip()
 
-    q = f"ticker={{}}&force=1"
+    q = "ticker={}&force=1"
     if exp:
         q += f"&expiry={exp}"
     try:

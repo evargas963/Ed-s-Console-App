@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
-import pytest
 
 from v2_decision import a2_lifecycle_sidecar
 from v2_decision.a2_lifecycle_sidecar import LIFECYCLE_GAP_NAMES, build_a2_lifecycle_sidecar

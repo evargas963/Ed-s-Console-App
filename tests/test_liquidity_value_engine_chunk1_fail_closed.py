@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date, datetime
 
 import pytest
-from zoneinfo import ZoneInfo
 
 from time_et import ET
 from liquidity_value_engine import (

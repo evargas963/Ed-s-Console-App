@@ -15,7 +15,6 @@ from pathlib import Path
 
 import pytest
 
-from ml_horizon import DEFAULT_ML_HORIZON_SLUG
 from arch_competition import scheduler_integration as si
 
 

@@ -11,7 +11,6 @@ import logging
 import os
 import shutil
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
@@ -25,12 +24,10 @@ from arch_competition.audit import (
     load_recent_audit_records,
     governance_audit_log_path,
 )
-from arch_competition.exceptions import ManualGovernanceError, PromotionGovernanceError
-from arch_competition.lineage import validate_parallel_cascade_manifest_lineage
+from arch_competition.exceptions import ManualGovernanceError
 from arch_competition.promotion_execution import (
     assert_active_writes_use_governed_executor,
     execute_promotion_if_eligible,
-    governed_active_write_scope,
 )
 from arch_competition.scheduler_integration import (
     evaluation_manifest_path,

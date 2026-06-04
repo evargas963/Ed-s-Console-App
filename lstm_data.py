@@ -413,11 +413,17 @@ def extract_rth_snapshots(
         )
     if timeframe == CANONICAL_TIMEFRAME and not skip_normalized_sync:
         try:
-            from normalized_training_sync import ensure_normalized_training_table
+            from normalized_training_sync import (
+                ensure_normalized_training_table,
+                inline_normsync_enabled,
+            )
 
-            _ns = ensure_normalized_training_table(str(db_path), force=False, logger=log)
-            if not _ns.get("ok"):
-                log.warning("extract_rth_snapshots: normalized sync failed: %s", _ns.get("errors"))
+            if inline_normsync_enabled():
+                _ns = ensure_normalized_training_table(str(db_path), force=False, logger=log)
+                if not _ns.get("ok"):
+                    log.warning(
+                        "extract_rth_snapshots: normalized sync failed: %s", _ns.get("errors")
+                    )
         except Exception as e:
             log.warning("extract_rth_snapshots: normalized sync error: %s", e)
 

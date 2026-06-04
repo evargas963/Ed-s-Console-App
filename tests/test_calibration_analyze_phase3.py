@@ -6,7 +6,6 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -132,7 +131,7 @@ def test_analyze_model_by_regime_buckets_separates_missing_from_unknown(tmp_path
     assert f"{axis_reliability_bucket_value(None)}|{axis_reliability_bucket_value(None)}" in keys
     assert f"unknown|{axis_reliability_bucket_value(None)}" in keys
     assert f"compression|{axis_reliability_bucket_value(None)}" in keys
-    missing_key = f"__missing__|__missing__"
+    missing_key = "__missing__|__missing__"
     assert missing_key in keys
     assert out["model_by_regime_buckets"][missing_key]["n"] == 2
 

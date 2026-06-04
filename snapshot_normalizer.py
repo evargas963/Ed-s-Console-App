@@ -331,12 +331,12 @@ def materialize_normalized_table(
 
         # Table is never globally wiped now, so snapshot_id always continues from the current max
         # (ids stay unique across per-ticker replaces; contiguity is not required for this derived table).
-        row_mx = conn.execute(
-            "SELECT COALESCE(MAX(snapshot_id), 0) FROM snapshots_1m_normalized"
-        ).fetchone()
-        next_sid = int(row_mx[0] if row_mx and row_mx[0] is not None else 0)
-
         for ticker in tickers:
+            row_mx = conn.execute(
+                "SELECT COALESCE(MAX(snapshot_id), 0) FROM snapshots_1m_normalized"
+            ).fetchone()
+            next_sid = int(row_mx[0] if row_mx and row_mx[0] is not None else 0)
+
             raw, source_tf = fetch_rows_for_normalization(conn, ticker)
             result["raw_rows"] += len(raw)
             if not raw:

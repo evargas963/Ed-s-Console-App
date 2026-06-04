@@ -6,7 +6,6 @@ import json
 import re
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -305,7 +304,6 @@ def test_server_logging_visual_severity_marker_warning_plus_only() -> None:
     """server.py installs a Formatter that prepends a bracket-tag for WARNING+ so
     operator-actionable events stand out in the dense INFO/DEBUG console stream.
     DEBUG/INFO get no marker (steady-state stays quiet)."""
-    import importlib.util
     import logging
 
     # Import the Formatter directly without booting server.py (which imports

@@ -195,7 +195,6 @@ def test_missing_confluence_weighted_pushes_detects_qqq_gap():
 
 
 def test_filter_tickers_for_ml_training_excludes_panel_auto():
-    from scheduler_user_tickers import filter_tickers_for_ml_training
 
     class _Row:
         def __init__(self, ticker: str, category: str):
@@ -270,20 +269,8 @@ def test_weighted_push_from_constituents_matches_build_confluence():
     from market_context import (
         QQQ_TOP,
         QQQ_TOP_WEIGHT_SUM,
-        SPY_TOP,
-        SPY_TOP_WEIGHT_SUM,
-        IWM_SECTORS,
-        IWM_SECTOR_WEIGHT_SUM,
-        IWM_TOP_HOLDINGS,
-        IWM_HOLDINGS_WEIGHT_SUM,
         _build_confluence,
-        _build_iwm_confluence,
         ConstituentQuote,
-        SectorQuote,
-        MarketContext,
-        ConfluenceRead,
-        blend_iwm_weighted_push,
-        iwm_blended_participation_push,
         weighted_push_from_constituents,
         weighted_pushes_from_snapshot_row,
     )

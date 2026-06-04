@@ -1,7 +1,6 @@
 """Issue 16 — snapshots_1m_normalized must carry outcome_15c/outcome_60c after materialize."""
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 import pytest

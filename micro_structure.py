@@ -1199,7 +1199,7 @@ def _generate_text(regime, structure, bos, choch, candle_pats, multi_pats,
         flag_note = ""
         for mp in multi_pats:
             if mp.name == "bull_flag":
-                flag_note = f", bull flag forming"
+                flag_note = ", bull flag forming"
                 break
         headline_5m = (
             f"5min: {hl_count} higher low{'s' if hl_count != 1 else ''} — "
@@ -1216,7 +1216,7 @@ def _generate_text(regime, structure, bos, choch, candle_pats, multi_pats,
         flag_note = ""
         for mp in multi_pats:
             if mp.name == "bear_flag":
-                flag_note = f", bear flag forming"
+                flag_note = ", bear flag forming"
                 break
         headline_5m = (
             f"5min: {lh_count} lower high{'s' if lh_count != 1 else ''} — "

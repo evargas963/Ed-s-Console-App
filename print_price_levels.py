@@ -19,7 +19,7 @@ sys.path.insert(0, APP_DIR)
 
 from config import build_config, DEFAULT_TICKER
 from schwab_client import build_client_from_token, safe_get_quote
-from market_context import fetch_price_levels, PriceLevels
+from market_context import fetch_price_levels
 
 
 def _fmt(v, decimals=2):
@@ -61,8 +61,6 @@ def main():
     if pl.error:
         print(f"⚠️  Partial error: {pl.error}\n")
 
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
     from time_et import now_et
 
     today = now_et().strftime("%Y-%m-%d")

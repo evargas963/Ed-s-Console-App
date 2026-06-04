@@ -13,20 +13,21 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from liquidity_models import (
     PlaybookConfig,
     PlaybookState,
-    PriceLevel,
     SnapshotOutput,
     SnapshotSummary,
     SnapshotType,
     Zone,
     ZoneType,
 )
+
+if TYPE_CHECKING:  # forward-ref only — the "pd.DataFrame" annotations; no runtime pandas import
+    import pandas as pd
 
 log = logging.getLogger(__name__)
 

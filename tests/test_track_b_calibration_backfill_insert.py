@@ -22,7 +22,6 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-import pytest
 
 from calibration.schema import ensure_calibration_schema
 from calibration.v2_advisory_backfill import (

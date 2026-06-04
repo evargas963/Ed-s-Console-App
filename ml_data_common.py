@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 # RTH: 09:30–16:00 ET weekdays (re-exported from time_et for single authority)
-from time_et import (
+from time_et import (  # noqa: F401  (block re-exports COH_*/calibration_*/et_date_str for single authority)
     COH_I_A_ET_AUTHORITY_TS_UTC,
     RTH_END_MINS,
     RTH_START_MINS,

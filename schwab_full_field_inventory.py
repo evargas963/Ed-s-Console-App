@@ -610,7 +610,7 @@ def main() -> int:
     print(f"  Successful:        {ok_count}")
     print(f"  Failed:            {fail_count}")
     print(f"  Raw/field files:   {files_written}")
-    print(f"  Unique fields per endpoint:")
+    print("  Unique fields per endpoint:")
     for ep, fields in sorted(by_endpoint.items()):
         print(f"    {ep}: {len(fields)}")
     print(f"  Total unique fields: {len(all_paths)}")

@@ -15,11 +15,9 @@ from tools.schwab_oxx_validator import validate_register_messages, validate_repl
 from tools.stream_revert_v4_register_and_sync_perf import (
     export_register_baseline,
     is_canonical_v4_register,
-    load_slice_disposition_maps,
     merge_register_slices,
     site_key,
     update_register_meta_if_canonical,
-    META_PATH,
 )
 from tools.schwab_universal_coverage_scanner_v3.register import REGISTER_COLUMNS, RegisterRow
 

@@ -7,7 +7,6 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from zoneinfo import ZoneInfo
 
 from time_et import ET as _ET
 from verification.daily_health import (

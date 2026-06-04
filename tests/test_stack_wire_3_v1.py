@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 import call_engine
 import prediction_engine as pe
-from signal_types import CanonicalForecast, PredictiveCard, RulesCard, TheCall
 from time_et import RTH_OPEN_MINS, RTH_START_MINS
 
 from tests.test_call_time_warning import (

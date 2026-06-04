@@ -87,8 +87,8 @@ def main() -> int:
 
     prior = STREAM_5M_LOOKBACK
     lstm_sub = (
-        f"(SELECT COUNT(*) FROM snapshots pr WHERE pr.ticker = snapshots.ticker "
-        f"AND pr.timeframe = ? AND pr.ts_utc < snapshots.ts_utc) >= ?"
+        "(SELECT COUNT(*) FROM snapshots pr WHERE pr.ticker = snapshots.ticker "
+        "AND pr.timeframe = ? AND pr.ts_utc < snapshots.ts_utc) >= ?"
     )
     comp_any = "(" + " OR ".join(
         f"(pred_move_prob_{hz} IS NOT NULL AND outcome_move_{hz} IS NOT NULL)" for hz in ML_HORIZON_SLUGS

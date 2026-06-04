@@ -30,7 +30,7 @@ if str(ROOT) not in sys.path:
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
-from db import EdDB
+from db import EdDB, get_snapshot_sql
 from distance_option_a_backfill_v1 import copy_db_file_backup
 from horizon_outcomes import HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1, OUTCOME_BAR_SPECS
 from market_data_adapter import schwab_candles_to_bars

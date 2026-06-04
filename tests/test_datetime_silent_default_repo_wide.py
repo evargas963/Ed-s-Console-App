@@ -6,9 +6,7 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
-from zoneinfo import ZoneInfo
 
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 

@@ -975,7 +975,7 @@ def fetch_price_levels(
                Used for Tier 1 fallback (today open/high/low/PDC).
     include_extended_hours: if True, fetches pre-market for overnight high/low.
     """
-    from datetime import datetime, date, timezone, timedelta
+    from datetime import datetime, timezone
 
     from time_et import ET, RTH_END_MINS, RTH_OPEN_MINS, now_et
 

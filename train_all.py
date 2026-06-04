@@ -6,9 +6,6 @@ RULE 2: No gates — train if data exists. No minimum row counts.
 """
 
 import os
-import sys
-import json
-import time
 import argparse
 import bisect
 import sqlite3

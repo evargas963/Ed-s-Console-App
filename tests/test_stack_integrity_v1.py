@@ -5,7 +5,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from features.stack_integrity_v1 import finalize_stack_integrity_v1, record_stack_degradation
 from prediction_engine import _overlay_multi_horizon_ml_on_product_triplets

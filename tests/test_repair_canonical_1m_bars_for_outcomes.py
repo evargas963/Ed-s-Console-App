@@ -7,7 +7,6 @@ import logging
 import sqlite3
 from pathlib import Path
 
-import pytest
 
 from horizon_outcomes import forward_bar_start_utc
 

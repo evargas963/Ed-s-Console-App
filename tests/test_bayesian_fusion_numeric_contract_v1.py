@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
 
-import bayesian_fusion as bf
 from bayesian_fusion import (
     DEFAULT_PRIORS,
     _bayesian_update,

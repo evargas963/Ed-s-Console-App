@@ -4,7 +4,6 @@ from __future__ import annotations
 import math
 
 import numpy as np
-import pytest
 
 from movement_target_threshold import (
     directional_and_move_labels_v2,

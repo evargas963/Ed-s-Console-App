@@ -15,7 +15,6 @@ import json
 import math
 import random
 import sqlite3
-import statistics
 import sys
 import time
 from collections import defaultdict
@@ -30,7 +29,6 @@ from calibration.analyze_phase4 import _directional_pnl
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB, ensure_artifacts_dir
 from db import configure_sqlite_connection
-from horizon_outcomes import OUTCOME_BAR_SPECS
 from instrument_identity import ticker_storage_key
 
 try:

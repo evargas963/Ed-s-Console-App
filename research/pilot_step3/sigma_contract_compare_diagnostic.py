@@ -13,11 +13,9 @@ import argparse
 import json
 import sys
 from collections import Counter
-from datetime import datetime, timezone
 from pathlib import Path
 import numpy as np
 
-from time_et import ET as _ET
 
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:

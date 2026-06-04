@@ -6,7 +6,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -234,7 +233,6 @@ def test_spread_instability_raises_spread_materiality_threshold():
 
 def test_rth_open_vs_midday_differ_via_intraday_ramp():
     from datetime import datetime
-    from zoneinfo import ZoneInfo
 
     from planes.l1_thresholds import AdaptiveMaterialityContext, resolve_l1_materiality_engine
 

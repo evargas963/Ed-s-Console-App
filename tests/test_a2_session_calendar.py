@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime
-from zoneinfo import ZoneInfo
 
 from v2_decision.a2_session_calendar import (
     SessionInfo,

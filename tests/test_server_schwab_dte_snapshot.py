@@ -3,7 +3,6 @@ from __future__ import annotations
 import sys
 from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:

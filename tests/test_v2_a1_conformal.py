@@ -166,9 +166,9 @@ def test_regime_coverage_separates_missing_from_unknown_vol_regime():
         {**base, "volatility_regime": None},
     ]
     coverage = _regime_coverage(None, rows, 0.85)
-    assert f"volatility_regime:unknown" in coverage
+    assert "volatility_regime:unknown" in coverage
     assert f"volatility_regime:{A1_REGIME_AXIS_MISSING}" in coverage
-    assert coverage[f"volatility_regime:unknown"]["n"] == 1
+    assert coverage["volatility_regime:unknown"]["n"] == 1
     assert coverage[f"volatility_regime:{A1_REGIME_AXIS_MISSING}"]["n"] == 1
 
 

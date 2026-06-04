@@ -6,7 +6,6 @@ import logging
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import pytest
 
 import call_engine as ce
 from signal_types import CanonicalForecast, PredictiveCard, RulesCard

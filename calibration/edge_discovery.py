@@ -30,14 +30,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from calibration.anchor_audit import snapshot_has_bar_anchor
-from calibration.analyze_phase3 import _brier_triplet, _canonical_prob_triplet, _load_json_col
+from calibration.analyze_phase3 import _brier_triplet, _canonical_prob_triplet
 from calibration.analyze_phase4 import _directional_pnl
 from calibration.edge_validation import _effective_directional_signal
 from arch_competition.atomic_io import write_json_file_atomically, write_text_atomically
 from calibration.canonical_enforcement import CANONICAL_TIMEFRAME, enforce_calibration_decision_log_only_1m
 from calibration.db_guard import enforce_resolved_path, register_allow_noncanonical_flag
 from calibration.json_utils import parse_json_mapping
-from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
 from calibration.statistical_integrity import (
     MIN_SAMPLES_STATISTICAL,

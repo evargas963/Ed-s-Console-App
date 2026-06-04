@@ -90,7 +90,7 @@ def main() -> None:
 
         dup_groups = int(
             conn.execute(
-                f"""
+                """
                 SELECT COUNT(*) FROM (
                   SELECT ticker, timeframe, ts_utc, COUNT(*) AS c FROM snapshots
                   WHERE timeframe = ?
@@ -125,7 +125,7 @@ def main() -> None:
         ocols = "outcome_1c, outcome_5c, outcome_15c"
         try:
             oc = conn.execute(
-                f"SELECT COUNT(*) AS n FROM snapshots WHERE timeframe = ? AND outcome_5c IS NOT NULL",
+                "SELECT COUNT(*) AS n FROM snapshots WHERE timeframe = ? AND outcome_5c IS NOT NULL",
                 (tf,),
             ).fetchone()["n"]
         except sqlite3.OperationalError:

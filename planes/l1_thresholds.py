@@ -350,7 +350,7 @@ def resolve_l1_materiality_engine(
     mreg = _materiality_regime_label(vr, sb, stress_score)
 
     rules = (
-        f"engine=v1",
+        "engine=v1",
         f"instrument={kind}",
         f"price_tier={pt}",
         f"session_bucket={sb}",

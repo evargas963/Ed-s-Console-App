@@ -297,7 +297,6 @@ def test_tick_trigger_nearest_wall_identity_change():
 def test_tick_trigger_session_bucket_boundary(monkeypatch):
     from datetime import datetime
 
-    from zoneinfo import ZoneInfo
 
     from live_decision_bundle import tick_triggers_coherent_refresh
 

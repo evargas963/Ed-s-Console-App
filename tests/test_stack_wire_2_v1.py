@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast
 import inspect
 import re
-from types import SimpleNamespace
 
 import multi_horizon_decision as mhd
 from ml_horizon import PRIMARY_DECISION_HORIZONS

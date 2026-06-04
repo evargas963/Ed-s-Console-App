@@ -7,9 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Optional
-from datetime import datetime
 
-from micro_structure import Candle, MicroRead
 
 @dataclass
 class SignalInput:
@@ -412,3 +410,5 @@ class SignalOutput:
     pred_override_source: Optional[str] = None  # set only when ED_CONSOLE_ALLOW_PRED_OVERRIDE=1
     multi_horizon_bundle: Optional[object] = None  # MultiHorizonForecastBundle (multi_horizon_decision.py)
     calibration_payload: Optional[dict[str, Any]] = None  # writer inputs; server owns persistence timing
+    # Display-only wall-clock MC excursions (Key Levels 5m/15m rows); never consumed by The Call.
+    mc_display_excursions: Optional[dict[str, Optional[float]]] = None

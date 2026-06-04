@@ -8,7 +8,6 @@ its own copy of the cuts; this test guards against re-drift.
 
 from __future__ import annotations
 
-import math
 
 import pytest
 

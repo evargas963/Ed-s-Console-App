@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 
 from time_et import ET as _ET
 def _minimal_prereg(**overrides):

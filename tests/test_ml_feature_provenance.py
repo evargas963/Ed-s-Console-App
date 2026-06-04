@@ -239,7 +239,6 @@ def test_fusion_model_input_no_vwap_else_above_in_source():
 
 
 def test_inference_snapshot_parent_missing_lineage_fails():
-    from features.canonical_contract import get_mvp_feature_names
     from features.inference_snapshot import _assert_inference_snapshot_v1, _feature_quality_from_row
 
     feats = _minimal_features()

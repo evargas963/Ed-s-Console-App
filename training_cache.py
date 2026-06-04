@@ -179,6 +179,7 @@ def compute_scheduler_cache_key(
         ROLLING_WINDOW_RTH_SESSIONS_TABULAR,
         ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE,
     )
+    from arch_competition.stack_bundle_eval_v1 import ablation_survivors_fingerprint_part
     from features.canonical_contract import (
         CANONICAL_FEATURE_CONTRACT_VERSION,
         CANONICAL_FEATURE_TIMEFRAME,
@@ -202,6 +203,7 @@ def compute_scheduler_cache_key(
             target_column,
             str(ROLLING_WINDOW_RTH_SESSIONS_TABULAR),
             str(ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE),
+            ablation_survivors_fingerprint_part(),
             code_fp,
         ]
     )
@@ -218,6 +220,7 @@ def compute_feature_cache_key(
         LABEL_CONFIG_VERSION,
     )
     from training_cache_policy import ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE
+    from arch_competition.stack_bundle_eval_v1 import ablation_survivors_fingerprint_part
     from features.canonical_contract import (
         CANONICAL_FEATURE_CONTRACT_VERSION,
         CANONICAL_FEATURE_TIMEFRAME,
@@ -237,6 +240,7 @@ def compute_feature_cache_key(
             FEATURE_SCHEMA_VERSION,
             PREPROCESSING_VERSION,
             LABEL_CONFIG_VERSION,
+            ablation_survivors_fingerprint_part(),
             target_column,
             str(ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE),
             code_fp,

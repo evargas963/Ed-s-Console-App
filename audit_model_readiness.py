@@ -10,7 +10,6 @@ meta-learner readiness, sequence availability, class balance, temporal coverage,
 fusion feature completeness, and GO/NO-GO verdict per model.
 """
 
-import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -606,7 +605,7 @@ def main():
                 for iss in r.get("issues", [])[:3]:
                     print(f"      ! {iss}")
         if non_compliant:
-            print(f"\n   Run: python ml_scheduler.py --run-now --force-retrain")
+            print("\n   Run: python ml_scheduler.py --run-now --force-retrain")
         else:
             print("   All active artifacts compliant with governed pipeline.")
     except Exception as e:

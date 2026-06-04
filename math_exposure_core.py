@@ -8,7 +8,7 @@ Phase 2 extraction from math_exposure.py per Extraction Blueprint v1.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 import math
 import logging
 
@@ -878,7 +878,6 @@ def compute_beta(ticker_returns: list, spy_returns: list) -> dict:
         {"beta": float, "r_squared": float, "n": int}
         or {"beta": None, ...} if insufficient data.
     """
-    import math
 
     n = min(len(ticker_returns), len(spy_returns))
     if n < 5:

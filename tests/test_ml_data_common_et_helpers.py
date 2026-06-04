@@ -11,7 +11,6 @@ import pytest
 
 from ml_data_common import (
     INNER_VAL_MIN_ROWS,
-    et_hour_minute_arrays_from_ts_utc,
     filter_df_to_rth_ts_utc,
     head_rth_df_from_ts_utc,
     holdout_class_metrics,

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 import pytest  # noqa: F401 — used by approx in several tests
 

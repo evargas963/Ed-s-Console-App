@@ -3,7 +3,6 @@ Tier 3 design artifacts — shadow / documentation only; production similarity u
 """
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 

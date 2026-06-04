@@ -22,6 +22,15 @@ from features.training_canonical_input import training_canonical_lineage_header
 # ── Workstream B1 — single authoritative walk-forward split ────────────────────
 
 
+def test_inline_normsync_skip_env(monkeypatch):
+    from normalized_training_sync import inline_normsync_enabled
+
+    monkeypatch.delenv("ED_TRAINING_SKIP_INLINE_NORMSYNC", raising=False)
+    assert inline_normsync_enabled() is True
+    monkeypatch.setenv("ED_TRAINING_SKIP_INLINE_NORMSYNC", "1")
+    assert inline_normsync_enabled() is False
+
+
 def test_cross_process_materialize_lock_exclusive(tmp_path):
     from normalized_training_sync import (
         _materialize_lock_path,

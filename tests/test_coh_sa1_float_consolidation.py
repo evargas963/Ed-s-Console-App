@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import math
 import re
 from pathlib import Path
 

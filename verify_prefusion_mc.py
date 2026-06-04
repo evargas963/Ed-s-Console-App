@@ -36,7 +36,7 @@ def _minimal_inf_v1():
 
 def main():
     from types import SimpleNamespace
-    from unittest.mock import patch, MagicMock
+    from unittest.mock import patch
 
     captured_mc_kwargs = {}
     import monte_carlo

@@ -10,17 +10,15 @@ Per-horizon analysis uses rows with non-null pred_{H}_* triple and valid probabi
 from __future__ import annotations
 
 import argparse
-import bisect
 import json
 import math
 import random
 import sqlite3
-import statistics
 import sys
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -28,8 +26,6 @@ if str(ROOT) not in sys.path:
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB, ensure_artifacts_dir
-from db import configure_sqlite_connection
-from instrument_identity import ticker_storage_key
 
 # Import governed loader from phase6 (same population contract)
 from calibration.phase6_edge_discovery_governed_v1 import HORIZONS, load_rows, _session_bucket

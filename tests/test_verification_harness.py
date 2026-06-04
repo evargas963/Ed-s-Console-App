@@ -4,7 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
 
 from db import EdDB
 from math_exposure import MIN_SAMPLES_STATISTICAL

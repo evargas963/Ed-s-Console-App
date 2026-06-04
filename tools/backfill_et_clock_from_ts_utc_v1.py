@@ -28,7 +28,6 @@ if str(ROOT) not in sys.path:
 
 from calibration.backfill_et_clock_from_ts_utc_v1 import (  # noqa: E402
     SCHEMA,
-    backfill_table,
     count_candidates,
     count_mismatched,
     run_backfill,

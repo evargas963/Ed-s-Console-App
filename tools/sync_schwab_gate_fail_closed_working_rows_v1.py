@@ -10,7 +10,6 @@ Then re-run: python tools/classify_schwab_csv_crosswalk.py
 from __future__ import annotations
 
 import csv
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent

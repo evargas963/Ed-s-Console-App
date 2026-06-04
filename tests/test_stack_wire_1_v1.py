@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import inspect
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
-import pytest
 
 from features.stack_integrity_v1 import finalize_stack_integrity_v1, record_stack_degradation
 from live_decision_bundle import stamp_decision_bundle
@@ -215,7 +213,6 @@ def test_r_units_none_propagates_end_to_end():
     assert call.r_units is None
     ms.r_units = getattr(call, "r_units", None)
     assert ms.r_units is None
-    import server
 
     assert getattr(ms, "r_units", None) is None
 

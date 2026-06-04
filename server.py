@@ -38,11 +38,11 @@ import asyncio
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from collections import OrderedDict, defaultdict
 from copy import deepcopy
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 from dataclasses import asdict
 
 from time_et import now_et, RTH_OPEN_MINS
@@ -160,10 +160,8 @@ from math_exposure import (
     session_bucket as _session_bucket,
     vix_bucket as _vix_bucket,
     classify_direction as _classify_direction,
-    compute_beta, compute_beta_residual, returns_from_candles,
     compute_expected_move_straddle, compute_expected_move_iv,
-    compute_em_progress, EM_STRADDLE_MULT,
-    compute_iv_skew, compute_realized_vol, compute_atr,
+    compute_em_progress, compute_iv_skew, compute_realized_vol, compute_atr,
     compute_iv_rank, compute_iv_percentile, compute_volatility_envelope,
     compute_garch_forecast, blend_garch_sigma,
     compute_iv_model_spread,
@@ -171,8 +169,7 @@ from math_exposure import (
     compute_hvl, compute_max_pain, hvl_gamma_strength, max_pain_oi_strength,
     pick_gamma_pin_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
     aggregate_net_gex, total_gex_dollars_at_strike, total_gamma_raw_at_strike,
-    bucket_metric, bucket_metric_abs,
-    compute_dealer_pressure_index, compute_hedging_flow_score,
+    bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
     compute_gamma_gradient, compute_breakout_score,
     compute_pin_score, compute_vol_expansion_signal, compute_sweep_score,
     compute_sector_strength,
@@ -181,7 +178,6 @@ from math_exposure import (
     compute_smart_money_signal,
 )
 from math_snapshot_derive import derive_pressure_trend, derive_vwap_side
-from levels import to_display_rows, walls_to_df_rows, totals_to_df_rows
 from market_context import (
     fetch_market_context,
     fetch_price_levels,
@@ -199,7 +195,6 @@ from v2_decision.a1_isotonic_calibration_attachment import attach_a1_isotonic_ca
 
 try:
     from db import get_db
-    from signals import SignalInput, compute_signals
     _HAS_SIGNALS = True
 except Exception as e:
     _HAS_SIGNALS = False
@@ -1342,7 +1337,7 @@ PRICE_LEVELS_CACHE_SEC: int = 15  # intraday VWAP refresh (process-local)
 # ─────────────────────────────────────────────────────────────────────────────
 from math_exposure import CANDLE_5M_MAX_BARS, CANDLE_1M_MAX_BARS
 from micro_structure import Candle
-from timeframe_config import CANONICAL_TIMEFRAME, DERIVED_TIMEFRAME
+from timeframe_config import CANONICAL_TIMEFRAME
 
 class _CandleAccumulator:
     """Accumulate spot ticks into OHLCV candle bars."""
@@ -4605,7 +4600,7 @@ def _fetch_state(
         if _diag_on():
             _diag_step("pre_db_snapshot", ticker)
         try:
-            from db import SnapshotRow, build_ts_et, market_session as _ms_fn
+            from db import SnapshotRow, build_ts_et
             from math_exposure import _f as _mf
             _snap_ts = _refresh_ts_utc
             _do_insert = _snapshot_row_insert_allowed(ticker, _snap_ts)
@@ -7902,7 +7897,6 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         # TICKER-PREVIEW-NO-ENROLL: charm diagnostic is a VIEW — touch last-seen only.
         _touch_tracked_ticker_view(ticker)
         from math_exposure import compute_net_charm
-        import datetime as _dt
         import math as _charm_math
 
         cl       = get_client()

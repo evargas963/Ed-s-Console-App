@@ -7,7 +7,6 @@ import logging
 import re
 from pathlib import Path
 
-import pytest
 
 _SKIP_PY_TREE_DIRS = frozenset(
     {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__", "tests"}

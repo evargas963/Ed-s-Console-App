@@ -17,7 +17,6 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from calibration.v2_a1_ev_bounds import A1_EV_BOUNDS_METHOD
 
 A1_EXECUTION_EV_ARTIFACT_SCHEMA_VERSION = "1"
 A1_EXECUTION_EV_METHOD = "a1_execution_adjusted_ev_scaffold"

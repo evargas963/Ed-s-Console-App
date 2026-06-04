@@ -11,7 +11,7 @@ this module defines the contract for WebSocket providers.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Callable, Optional
+from typing import Callable
 
 # Bar callback: receives list of normalized bar dicts
 BarCallback = Callable[[list[dict]], None]

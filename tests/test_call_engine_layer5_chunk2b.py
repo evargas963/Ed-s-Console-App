@@ -5,10 +5,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import pytest
 
 from call_engine import _validate_trade, compute_call, compute_position_size
-from signal_types import CanonicalForecast, PredictiveCard, RulesCard, SignalInput
+from signal_types import CanonicalForecast, PredictiveCard, RulesCard
 from tests.mvp_test_fixtures import minimal_mvp_features
 from tests.test_call_engine_chunk1_fail_closed import _strong_long_stack_input
 

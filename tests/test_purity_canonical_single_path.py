@@ -84,7 +84,7 @@ def test_classify_volatility_regime_requires_positive_canonical_spot():
 
 
 def test_monte_carlo_resolve_uses_canonical_spot_only():
-    from features.monte_carlo_stack_input import MonteCarloStackInputError, resolve_monte_carlo_stack_inputs
+    from features.monte_carlo_stack_input import resolve_monte_carlo_stack_inputs
     from features.canonical_contract import get_mvp_feature_names
 
     feats = {k: None for k in get_mvp_feature_names()}
