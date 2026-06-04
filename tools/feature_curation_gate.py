@@ -1041,6 +1041,8 @@ def build_per_model_confirm_pass_section(
     on survivors-only (XGB: columns removed; sequence: channels nulled) and check the held-out MCC
     is not worse than the full-feature baseline (from the primary report). safe_to_drop if so."""
     TOL = 0.005
+    from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
+
     anchors = [t.strip().upper() for t in (tickers or manifest["ablation_method"]["anchors"])]
     cells = cells_out if cells_out is not None else []
     resume_cells = resume_cells or {}
@@ -1100,6 +1102,7 @@ def build_per_model_confirm_pass_section(
                 "anchor_ticker": anc, "model_family": model, "horizon_slug": hz,
                 "status": "skipped", "reason": prep.get("reason", "prep_failed"),
                 "ablation_kind": "per_model_confirm_drop", "dropped_groups": drop_ids,
+                "confirm_path_version": ABLATION_CONFIRM_PATH_VERSION,
             }
         else:
             surv = prep.get("baseline_mcc")
@@ -1111,12 +1114,40 @@ def build_per_model_confirm_pass_section(
                 "baseline_mcc_full": base, "survivors_mcc": surv,
                 "mcc_change": (None if base is None or surv is None else round(surv - base, 6)),
                 "safe_to_drop": bool(safe), "tolerance": TOL,
+                "confirm_path_version": ABLATION_CONFIRM_PATH_VERSION,
             }
         cells.append(cell)
         done += 1
         if on_cell_done is not None:
             on_cell_done("per_model_confirm", cell, done, total)
     return {"confirm_drop_cell_count": len(specs), "confirm_drop_cells": cells}
+
+
+def _confirm_resume_cells_from_report(report: dict) -> dict[str, dict]:
+    """Resume only confirm cells stamped with the current confirm path version."""
+    from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
+
+    resume_cells: dict[str, dict] = {}
+    seen: set[str] = set()
+    for source in (
+        report.get("confirm_drop_cells") or [],
+        ((report.get("survivor_summary") or {}).get("confirm_pass") or {}).get("cells") or [],
+    ):
+        for cell in source:
+            if cell.get("status") != "ok":
+                continue
+            if cell.get("confirm_path_version") != ABLATION_CONFIRM_PATH_VERSION:
+                continue
+            ck = _confirm_cell_key(
+                str(cell.get("anchor_ticker") or ""),
+                str(cell.get("model_family") or ""),
+                str(cell.get("horizon_slug") or ""),
+            )
+            if ck in seen:
+                continue
+            seen.add(ck)
+            resume_cells[ck] = cell
+    return resume_cells
 
 
 def build_ablation_confirm_report(
@@ -1163,6 +1194,27 @@ def build_ablation_confirm_report(
                     "mcc_change": cell.get("mcc_change"),
                 },
             }
+            if section_kind == "per_model_confirm":
+                from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
+
+                anchors_req = list(manifest["ablation_method"]["anchors"])
+                surv = report.get("survivor_summary") or survivor
+                confirm_cells = list(report.get("confirm_drop_cells") or [])
+                path_version = (
+                    ABLATION_CONFIRM_PATH_VERSION if n >= total and total > 0 else None
+                )
+                surv["confirm_pass"] = {
+                    "cells": confirm_cells,
+                    "anchors_required": len(anchors_req),
+                    "confirm_path_version": path_version,
+                    "completed_at": (
+                        datetime.now(timezone.utc).isoformat()
+                        if path_version == ABLATION_CONFIRM_PATH_VERSION
+                        else surv.get("confirm_pass", {}).get("completed_at")
+                    ),
+                }
+                surv["primary_pass_only"] = False
+                report["survivor_summary"] = surv
             _write_ablation_checkpoint(out_path, report)
             print(
                 f"confirm [{section_kind}] {n}/{total} "
@@ -1171,20 +1223,12 @@ def build_ablation_confirm_report(
                 flush=True,
             )
 
-        prior_cells = list(report.get("confirm_drop_cells") or [])
-        resume_cells: dict[str, dict] = {}
-        if resume and prior_cells:
-            report["confirm_drop_cells"] = prior_cells
-            for cell in prior_cells:
-                if cell.get("status") != "ok":
-                    continue
-                resume_cells[_confirm_cell_key(
-                    str(cell.get("anchor_ticker") or ""),
-                    str(cell.get("model_family") or ""),
-                    str(cell.get("horizon_slug") or ""),
-                )] = cell
-        else:
-            report["confirm_drop_cells"] = []
+        resume_cells = _confirm_resume_cells_from_report(report) if resume else {}
+        report["confirm_drop_cells"] = []
+        if not resume:
+            surv = report.get("survivor_summary") or survivor
+            surv.pop("confirm_pass", None)
+            report["survivor_summary"] = surv
         confirm_section = build_per_model_confirm_pass_section(
             manifest,
             db_path=db,

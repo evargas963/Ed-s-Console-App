@@ -1189,6 +1189,38 @@ def test_parallel_eval_includes_skip_stats_in_source():
     assert "max_eval_rows" in src
 
 
+def test_confirm_cells_carry_path_version():
+    from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
+    from tools.feature_curation_gate import _confirm_resume_cells_from_report
+
+    report = {
+        "confirm_drop_cells": [
+            {
+                "anchor_ticker": "SPY",
+                "model_family": "xgb",
+                "horizon_slug": "1c",
+                "status": "ok",
+                "confirm_path_version": ABLATION_CONFIRM_PATH_VERSION,
+            }
+        ],
+        "survivor_summary": {
+            "confirm_pass": {
+                "cells": [
+                    {
+                        "anchor_ticker": "SPY",
+                        "model_family": "lstm",
+                        "horizon_slug": "5c",
+                        "status": "ok",
+                    }
+                ]
+            }
+        },
+    }
+    resumed = _confirm_resume_cells_from_report(report)
+    assert len(resumed) == 1
+    assert "SPY|xgb|1c" in resumed
+
+
 def test_parallel_cascade_bridge_cache_roundtrip(tmp_path):
     from training_cache import (
         load_parallel_cascade_bridge,
