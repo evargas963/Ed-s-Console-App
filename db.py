@@ -230,6 +230,17 @@ class SnapshotRow:
     candle_range_pts:   Optional[float] = None  # high - low
     spread:             Optional[float] = None   # bid-ask spread (pts)
 
+    # ── Raw Schwab quote primitives (CSV-first leaves; not derived) ────────────
+    # quotes.{SYM}.bidPrice / askPrice / bidSize / askSize / lastSize / totalVolume.
+    # Logged so ablation can judge the primitives that spread / vol_oi_ratio were
+    # derived from (order-flow pressure: size imbalance, print size, volume rate).
+    bid_price:          Optional[float] = None
+    ask_price:          Optional[float] = None
+    bid_size:           Optional[float] = None
+    ask_size:           Optional[float] = None
+    last_size:          Optional[float] = None
+    total_volume:       Optional[float] = None
+
     # ── VWAP ─────────────────────────────────────────────────────────────────
     vwap:               Optional[float] = None
     vwap_side:          Optional[str] = None  # 'above', 'below'
@@ -2364,6 +2375,22 @@ class EdDB:
             ("breaking_news_headline",   "TEXT"),
             ("pre_market_sentiment",     "REAL"),
             ("qqq_weighted_push",        "REAL"),
+            # ── Raw Schwab quote primitives (2026-06-10, operator: log leaves, not
+            # only derivations — order-flow ablation candidates) ────────────────
+            ("bid_price",                "REAL"),
+            ("ask_price",                "REAL"),
+            ("bid_size",                 "REAL"),
+            ("ask_size",                 "REAL"),
+            ("last_size",                "REAL"),
+            ("total_volume",             "REAL"),
+            # ── SnapshotRow fields absent from fresh-DB schema (FIND 2026-06-10):
+            # insert_snapshot writes every dataclass field, so a fresh DB failed
+            # with "no column named pred_model_source". Canonical DB only worked
+            # because these columns were added historically outside this list. ──
+            ("pred_model_source",        "TEXT"),
+            ("pred_override_source",     "TEXT"),
+            ("reward_risk",              "REAL"),
+            ("reward_risk2",             "REAL"),
         ]
 
         _snapshot_migration_pending = False
@@ -2456,6 +2483,14 @@ class EdDB:
             for col_name, col_type in (
                 ("option_chain_json", "TEXT"),
                 ("replay_context_json", "TEXT"),
+                # Raw Schwab quote primitives — must exist here too or the
+                # normalizer's column-intersection INSERT silently drops them.
+                ("bid_price", "REAL"),
+                ("ask_price", "REAL"),
+                ("bid_size", "REAL"),
+                ("ask_size", "REAL"),
+                ("last_size", "REAL"),
+                ("total_volume", "REAL"),
             ):
                 try:
                     with self._connect() as conn:

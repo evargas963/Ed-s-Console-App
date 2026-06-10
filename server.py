@@ -2962,11 +2962,30 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     if mark is not None and mark > 0:
         quote_mid = float(mark)
         mid_source = "schwab_quote_mark"
+    # Raw Schwab order-flow primitives (CSV-first: quotes.{SYM}.bidSize/askSize/lastSize/
+    # totalVolume). Persisted on the snapshot row so ablation can judge the primitives,
+    # not only derivations like spread / vol_oi_ratio. No engineered substitutes here.
+    bid_size = _safe_float_quote(_q.get("bidSize"))
+    if bid_size is None:
+        bid_size = _safe_float_quote(_ext.get("bidSize"))
+    ask_size = _safe_float_quote(_q.get("askSize"))
+    if ask_size is None:
+        ask_size = _safe_float_quote(_ext.get("askSize"))
+    last_size = _safe_float_quote(_q.get("lastSize"))
+    if last_size is None:
+        last_size = _safe_float_quote(_ext.get("lastSize"))
+    total_volume = _safe_float_quote(_q.get("totalVolume"))
+    if total_volume is None:
+        total_volume = _safe_float_quote(_ext.get("totalVolume"))
     return {
         "last": last,
         "mark": mark,
         "bid": bid,
         "ask": ask,
+        "bid_size": bid_size,
+        "ask_size": ask_size,
+        "last_size": last_size,
+        "total_volume": total_volume,
         "quote_time": quote_time,
         "trade_time": trade_time,
         "quote_ts": quote_time or trade_time,
@@ -5134,6 +5153,14 @@ def _fetch_state(
                     session_bucket=_session_bucket(et_h, et_m),
                     spot=spot_f,
                     spread=_quote_spread,
+                    # Raw Schwab quote primitives (same parsed node as bid/ask/spread):
+                    # quotes.{SYM}.bidPrice/askPrice/bidSize/askSize/lastSize/totalVolume.
+                    bid_price=parsed_bid,
+                    ask_price=parsed_ask,
+                    bid_size=_session_q.get("bid_size"),
+                    ask_size=_session_q.get("ask_size"),
+                    last_size=_session_q.get("last_size"),
+                    total_volume=(_total_vol if _total_vol is not None else _session_q.get("total_volume")),
                     candle_open=_c_open, candle_high=_c_high, candle_low=_c_low,
                     candle_close=_c_close, candle_volume=_c_vol, candle_direction=_candle_dir,
                     candle_body_pts=_candle_body, candle_range_pts=_c_range,
