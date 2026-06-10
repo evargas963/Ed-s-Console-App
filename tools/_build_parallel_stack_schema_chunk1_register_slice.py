@@ -28,7 +28,7 @@ FORMAL_REPLACED: list[tuple[int, str, str, str]] = []
 FORMAL_KEEP_DERIVED: list[tuple[int, str, str]] = [
     (31, "_normalize_triplet (fail-closed incomplete/non-numeric/sum<=0)", "CSV grep zero hits for _normalize_triplet"),
     (45, "empty_parallel_output labeled-unavailable factory", "CSV grep zero hits for empty_parallel_output"),
-    (61, "build_parallel_base_output main builder", "CSV grep zero hits for build_parallel_base_output"),
+    (61, "build_unified_stack_layer_output main builder", "CSV grep zero hits for build_unified_stack_layer_output"),
 ]
 
 FORMAL_PASS_THROUGH: list[tuple[int, str, str]] = []

@@ -375,15 +375,15 @@ def test_assert_no_active_directory_write_ok_when_env_off(monkeypatch):
     assert_no_active_directory_write()
 
 
-def test_run_base_models_once_unchanged_parallel(monkeypatch):
-    """Production default remains parallel; integration does not alter run_base_models_once."""
+def test_run_unified_stack_ml_once_unchanged_parallel(monkeypatch):
+    """Production default remains parallel; integration does not alter run_unified_stack_ml_once."""
     monkeypatch.delenv("ED_ML_SCHEDULER_AUTO_PROMOTE_TO_ACTIVE", raising=False)
     import inspect
-    from ml_predict import run_base_models_once
+    from ml_predict import run_unified_stack_ml_once
 
-    src = inspect.getsource(run_base_models_once)
+    src = inspect.getsource(run_unified_stack_ml_once)
     assert "parallel_runtime=True" in src
-    assert "def run_base_models_once" in src
+    assert "def run_unified_stack_ml_once" in src
 
 
 def test_ml_scheduler_invokes_governed_architecture_pass():

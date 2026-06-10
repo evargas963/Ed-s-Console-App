@@ -8,10 +8,20 @@ from signal_types import TRADABLE_CANONICAL_PROVENANCE
 
 
 def fusion_is_authoritative(fusion: Any) -> bool:
-    """True when fusion exists and reports ``available=True`` (authoritative posterior)."""
+    """True when fusion exists and reports ``available=True`` (setup-family posterior ran)."""
     if fusion is None:
         return False
     return bool(getattr(fusion, "available", False))
+
+
+def fusion_has_tradable_direction(fusion: Any) -> bool:
+    """True when fusion carries a complete ML directional triplet safe for horizon cards / canonical."""
+    if not fusion_is_authoritative(fusion):
+        return False
+    for key in ("prob_up", "prob_down", "prob_flat"):
+        if getattr(fusion, key, None) is None:
+            return False
+    return True
 
 
 def canonical_provenance_is_tradable(provenance: str | None) -> bool:

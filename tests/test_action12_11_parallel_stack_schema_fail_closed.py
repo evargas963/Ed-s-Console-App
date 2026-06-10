@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from features.parallel_stack_schema import build_parallel_base_output, empty_parallel_output
+from features.parallel_stack_schema import build_unified_stack_layer_output, empty_parallel_output
 
 
 def test_empty_parallel_output_no_fabricated_triplet():
@@ -18,20 +18,20 @@ def test_empty_parallel_output_no_fabricated_triplet():
     assert o["error"] == "unavailable"
 
 
-def test_build_parallel_base_output_none_probs():
-    o = build_parallel_base_output(probs=None, approved=False)
+def test_build_unified_stack_layer_output_none_probs():
+    o = build_unified_stack_layer_output(probs=None, approved=False)
     assert o["available"] is False
     assert o["prob_up"] is None
 
 
-def test_build_parallel_base_output_incomplete_triplet():
-    o = build_parallel_base_output(probs={"up": 0.5, "down": 0.3}, approved=True)
+def test_build_unified_stack_layer_output_incomplete_triplet():
+    o = build_unified_stack_layer_output(probs={"up": 0.5, "down": 0.3}, approved=True)
     assert o["available"] is False
     assert o.get("error") == "incomplete_triplet"
 
 
-def test_build_parallel_base_output_complete_triplet():
-    o = build_parallel_base_output(probs={"up": 0.5, "down": 0.3, "flat": 0.2}, approved=True)
+def test_build_unified_stack_layer_output_complete_triplet():
+    o = build_unified_stack_layer_output(probs={"up": 0.5, "down": 0.3, "flat": 0.2}, approved=True)
     assert o["available"] is True
     assert o["prob_up"] == 0.5
     assert o["dominant"] == "up"

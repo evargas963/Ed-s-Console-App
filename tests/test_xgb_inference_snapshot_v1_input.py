@@ -110,11 +110,11 @@ def test_raw_l1_payload_rejected_at_guard():
         assert_not_raw_l1_payload({"liquidity_summary": {"absorption_score": 1.0}})
 
 
-def test_run_base_models_once_requires_inference_snapshot_v1():
-    from ml_predict import run_base_models_once
+def test_run_unified_stack_ml_once_requires_inference_snapshot_v1():
+    from ml_predict import run_unified_stack_ml_once
 
     with pytest.raises(ValueError, match="inference_snapshot_v1"):
-        run_base_models_once({"ticker": "SPY"}, "SPY", None, "wait")
+        run_unified_stack_ml_once({"ticker": "SPY"}, "SPY", None, "wait")
 
 
 def test_build_xgb_pre_engineering_snapshot_matches_manual_pipeline():

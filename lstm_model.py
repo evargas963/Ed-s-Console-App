@@ -475,6 +475,9 @@ def train_lstm(
             encoded_features_5m=ENCODED_FEATURES_5M,
             encoded_features_1m=ENCODED_FEATURES_1M,
         )
+        from arch_competition.stack_bundle_eval_v1 import zero_ablated_lstm_conf_channels
+
+        X_conf = zero_ablated_lstm_conf_channels(X_conf, model_family="lstm", horizon_slug=hz)
 
     # O-55: equal/uniform sample weights only (all ones). No recency decay, no toggle.
     sample_w = np.asarray(equal_sample_weights(n_rows), dtype=np.float32)
@@ -748,6 +751,8 @@ def train_lstm(
         "encoder_schema_version": LSTM_ENCODER_SCHEMA_VERSION,
         "encoder_width_5m_pre_mask": encoded_width_5m(),
         "encoder_width_1m_pre_mask": encoded_width_1m(),
+        "encoder_feature_names_5m": list(ENCODED_FEATURES_5M),
+        "encoder_feature_names_1m": list(ENCODED_FEATURES_1M),
         "sample_weight_mode": "equal",
         "mask_5m": mask_5m.tolist(),
         "mask_1m": mask_1m.tolist(),
@@ -824,27 +829,13 @@ def load_lstm(
 
     try:
         import torch
-        from lstm_data import LSTM_ENCODER_SCHEMA_VERSION, encoded_width_5m, encoded_width_1m
+        from lstm_data import assert_lstm_encoder_checkpoint_compatible
 
         checkpoint = torch.load(str(path), map_location="cpu", weights_only=False)
-        enc_ver = int(checkpoint.get("encoder_schema_version", 1))
-        if enc_ver < LSTM_ENCODER_SCHEMA_VERSION:
-            return (
-                None,
-                f"LSTM encoder schema v{enc_ver} < required v{LSTM_ENCODER_SCHEMA_VERSION}; retrain",
-            )
-        pre5 = int(checkpoint.get("encoder_width_5m_pre_mask", 0))
-        pre1 = int(checkpoint.get("encoder_width_1m_pre_mask", 0))
-        if pre5 and pre5 != encoded_width_5m():
-            return (
-                None,
-                f"LSTM checkpoint encoder_width_5m_pre_mask={pre5} != current {encoded_width_5m()}",
-            )
-        if pre1 and pre1 != encoded_width_1m():
-            return (
-                None,
-                f"LSTM checkpoint encoder_width_1m_pre_mask={pre1} != current {encoded_width_1m()}",
-            )
+        try:
+            assert_lstm_encoder_checkpoint_compatible(checkpoint)
+        except ValueError as exc:
+            return None, str(exc)
         model = build_model(
             checkpoint["n_features_5m"],
             checkpoint["n_features_1m"],

@@ -204,6 +204,8 @@ def run_meta(
                 conn = sqlite3.connect(db_path)
                 from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
 
+                from features.fusion_model_input import meta_tabular_vector_from_overlay
+
                 for i, row in enumerate(rows):
                     inf_v1 = build_inference_snapshot_v1_from_db_row(
                         ticker=tkr,
@@ -228,7 +230,8 @@ def run_meta(
                     vec = (
                         [xgb_p.get(c, 0.333) for c in CLASS_NAMES] +
                         ([lstm_p.get(c, 0.333) for c in CLASS_NAMES] if lstm_p else [0.333, 0.333, 0.334]) +
-                        ([tr_p.get(c, 0.333) for c in CLASS_NAMES] if tr_p else [0.333, 0.333, 0.334])
+                        ([tr_p.get(c, 0.333) for c in CLASS_NAMES] if tr_p else [0.333, 0.333, 0.334]) +
+                        meta_tabular_vector_from_overlay(row)
                     )
                     stacked.append(vec)
                     ys.append(y[i])

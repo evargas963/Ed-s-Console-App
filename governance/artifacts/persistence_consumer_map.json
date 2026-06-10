@@ -25,6 +25,7 @@
           "calibration/backfill_signal_layer_v1_bundle.py",
           "calibration/canonical_1m_grid_scan.py",
           "calibration/canonical_enforcement.py",
+          "calibration/daily_scoreboard.py",
           "calibration/edge_discovery.py",
           "calibration/edge_validation.py",
           "calibration/legacy_report.py",
@@ -371,7 +372,7 @@
     {
       "writer_fn": "EdDB.log_level_cross",
       "file": "db.py",
-      "line": 3763,
+      "line": 3768,
       "tables_written": [
         "level_crosses"
       ],
@@ -389,7 +390,7 @@
     {
       "writer_fn": "EdDB.log_model_accuracy",
       "file": "db.py",
-      "line": 3977,
+      "line": 3982,
       "tables_written": [
         "model_accuracy"
       ],
@@ -418,7 +419,7 @@
     {
       "candidate_fn": "EdDB.compute_accuracy",
       "file": "db.py",
-      "line": 3922,
+      "line": 3927,
       "production_callers": [
         "server.py"
       ],

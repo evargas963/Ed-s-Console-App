@@ -54,6 +54,54 @@ def test_tf_trade_signal_cards_keep_color_under_direction_withhold():
     assert '[data-tf-signal-dir="short"]' in h
 
 
+def test_render_timeframe_signal_row_includes_consolidated_slug():
+    h = _html()
+    assert "{ slug: 'consolidated', ui: 'ALL' }" in h
+    assert "slug === 'consolidated'" in h
+    assert "d.final_bias" in h
+    assert "4H synth" in h
+
+
+def test_individual_horizon_cards_no_primary_tag():
+    """Stack honesty: 1M–60M show fusion direction + AGREE/CONFLICT only; ALL owns synthesis."""
+    h = _html()
+    assert "no PRIMARY on individual pills" in h
+    idx = h.find("function deriveTag(slug, dir)")
+    assert idx != -1
+    chunk = h[idx : idx + 900]
+    assert "return 'PRIMARY'" not in chunk
+    assert "slug === prim" not in chunk
+    assert "synthesis lives on ALL" in chunk
+
+
+def test_trade_active_glow_only_on_all_card():
+    """Entry-armed / trade-active chrome applies to ALL synthesis card only."""
+    h = _html()
+    idx = h.find("const isPrimaryTrade =")
+    assert idx != -1
+    chunk = h[idx : idx + 280]
+    assert "slug === 'consolidated'" in chunk
+    assert "slug === prim" not in chunk
+
+
+def test_unavailable_reason_code_mapped_to_operator_short_text():
+    """Raw PRIMARY_HORIZON_DATA_MISSING must not paint on cards (5-col overflow)."""
+    h = _html()
+    assert "function formatUnavailableReasonCode" in h
+    assert "PRIMARY_HORIZON_DATA_MISSING" in h
+    assert "formatUnavailableReasonCode(rc)" in h
+    assert "dir === 'UNAVAILABLE'" in h
+    assert "max-width: min(820px" in h
+
+
+def test_derive_source_for_horizon_no_implicit_blend_when_fusion_ok():
+    """Horizon chip must not read BLEND merely because empirical histogram exists."""
+    h = _html()
+    idx = h.find("function deriveSourceForHorizon(d, slug)")
+    body = h[idx : idx + 2200]
+    assert "if (hzFusionOk && empPresent) return 'BLEND';" not in body
+
+
 def test_render_tier_c_pending_shell_repaints_cards_when_mhap_present():
     h = _html()
     assert "renderTierCPendingShell" in h
@@ -117,14 +165,12 @@ def test_tf_source_detail_subline_defined():
 
 
 def test_tf_signal_cards_have_chip_and_detail_elements():
-    """Each of the four tf-signal-cards carries a chip + detail element.
-
-    There are exactly four cards (1c/5c/15c/60c), so each class must appear
-    at least four times in the HTML body.
-    """
+    """Each tf-signal-card carries a chip + detail element (four horizons + consolidated ALL)."""
     h = _html()
-    assert h.count('class="tf-source-chip ') >= 4
-    assert h.count('class="tf-source-detail"') >= 4
+    assert h.count('class="tf-source-chip ') >= 5
+    assert h.count('class="tf-source-detail"') >= 5
+    assert 'id="tf-signal-consolidated"' in h
+    assert 'grid-template-columns: repeat(5, minmax(0, 1fr))' in h
 
 
 def test_signal_rail_card_css_and_html_present():

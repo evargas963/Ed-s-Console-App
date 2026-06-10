@@ -2846,10 +2846,9 @@ class EdDB:
             elif isinstance(b, dict):
                 raw_ts = b.get("datetime", b.get("ts", b.get("timestamp", b.get("_ts", 0))))
                 try:
-                    raw_ts = float(raw_ts)
+                    ts = float(raw_ts)
                 except (TypeError, ValueError):
                     continue
-                ts = raw_ts / 1000.0 if raw_ts > 1e10 else raw_ts
                 try:
                     o = float(b["open"])
                     h = float(b["high"])
@@ -2862,9 +2861,15 @@ class EdDB:
                     src = str(b["source"])
             else:
                 continue
+            # Unit normalization for BOTH input shapes (Candle objects and dicts): Schwab wire
+            # times are epoch ms; the canonical bar grid is epoch seconds. 2026-06-09 regression:
+            # Candle.ts arrived in ms via the object path (which previously skipped this), writing
+            # ms-grid rows that the outcome filler could never match.
             # Canonical 60s UTC grid: snap bar open to whole-minute epoch seconds (Schwab / adapters
             # may emit sub-second noise). Large drift (>30s from nearest minute) is rejected.
             raw_ts = float(ts)
+            if raw_ts > 1e10:
+                raw_ts = raw_ts / 1000.0
             grid_ts = round(raw_ts / 60.0) * 60.0
             if abs(raw_ts - grid_ts) > 30.0:
                 log.warning(

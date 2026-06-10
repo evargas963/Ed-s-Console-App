@@ -93,20 +93,26 @@ def _patch_lstm_categoricals(
     feature_names: list[str],
     canonical_features: dict[str, Any],
 ) -> None:
-    if "zone" in feature_names:
-        zi = feature_names.index("zone")
-        z = canonical_features.get("structure.zone")
-        if z is None:
-            features[zi] = ZONE_MISSING_ENCODED
-        else:
-            features[zi] = float(ZONE_MAP.get(str(z).lower(), 2))
-    if "vwap_side" in feature_names:
-        vi = feature_names.index("vwap_side")
-        vs = canonical_features.get("anchor.vwap_side")
-        if vs is None:
-            features[vi] = VWAP_SIDE_UNKNOWN_ENCODED
-        else:
-            features[vi] = float(VWAP_SIDE_MAP.get(str(vs).lower(), VWAP_SIDE_UNKNOWN_ENCODED))
+    zone_keys = ("zone", "cat_zone")
+    vwap_keys = ("vwap_side", "cat_vwap_side")
+    for zkey in zone_keys:
+        if zkey in feature_names:
+            zi = feature_names.index(zkey)
+            z = canonical_features.get("structure.zone")
+            if z is None:
+                features[zi] = ZONE_MISSING_ENCODED
+            else:
+                features[zi] = float(ZONE_MAP.get(str(z).lower(), 2))
+            break
+    for vkey in vwap_keys:
+        if vkey in feature_names:
+            vi = feature_names.index(vkey)
+            vs = canonical_features.get("anchor.vwap_side")
+            if vs is None:
+                features[vi] = VWAP_SIDE_UNKNOWN_ENCODED
+            else:
+                features[vi] = float(VWAP_SIDE_MAP.get(str(vs).lower(), VWAP_SIDE_UNKNOWN_ENCODED))
+            break
 
 
 def _canonical_features_for_merged_row(merged_row: Mapping[str, Any]) -> dict[str, Any]:
@@ -154,6 +160,62 @@ def encode_lstm_micro_sequence_bar(
     )
     base = list(encode_snapshot_1m(dict(merged_row), ref_spot))
     _patch_lstm_categoricals(base, ENCODED_FEATURES_1M, cf)
+    return base
+
+
+def encode_lstm_structure_sequence_bar_for_checkpoint(
+    merged_row: Mapping[str, Any],
+    ref_spot: float,
+    checkpoint: Mapping[str, Any],
+    *,
+    canonical_features: dict[str, Any] | None = None,
+) -> list[float]:
+    """Structure-stream encode using checkpoint schema (v2 legacy or current v3)."""
+    from lstm_data import (
+        LEGACY_ENCODER_SCHEMA_VERSION,
+        LEGACY_V2_ENCODED_FEATURES_5M,
+        checkpoint_encoder_schema_version,
+        encode_snapshot_5m_for_checkpoint,
+    )
+
+    cf = canonical_features if canonical_features is not None else _canonical_features_for_merged_row(
+        merged_row
+    )
+    base = list(encode_snapshot_5m_for_checkpoint(dict(merged_row), ref_spot, checkpoint))
+    names = (
+        LEGACY_V2_ENCODED_FEATURES_5M
+        if checkpoint_encoder_schema_version(checkpoint) == LEGACY_ENCODER_SCHEMA_VERSION
+        else ENCODED_FEATURES_5M
+    )
+    _patch_lstm_categoricals(base, names, cf)
+    return base
+
+
+def encode_lstm_micro_sequence_bar_for_checkpoint(
+    merged_row: Mapping[str, Any],
+    ref_spot: float,
+    checkpoint: Mapping[str, Any],
+    *,
+    canonical_features: dict[str, Any] | None = None,
+) -> list[float]:
+    """Micro-stream encode using checkpoint schema (v2 legacy or current v3)."""
+    from lstm_data import (
+        LEGACY_ENCODER_SCHEMA_VERSION,
+        LEGACY_V2_ENCODED_FEATURES_1M,
+        checkpoint_encoder_schema_version,
+        encode_snapshot_1m_for_checkpoint,
+    )
+
+    cf = canonical_features if canonical_features is not None else _canonical_features_for_merged_row(
+        merged_row
+    )
+    base = list(encode_snapshot_1m_for_checkpoint(dict(merged_row), ref_spot, checkpoint))
+    names = (
+        LEGACY_V2_ENCODED_FEATURES_1M
+        if checkpoint_encoder_schema_version(checkpoint) == LEGACY_ENCODER_SCHEMA_VERSION
+        else ENCODED_FEATURES_1M
+    )
+    _patch_lstm_categoricals(base, names, cf)
     return base
 
 

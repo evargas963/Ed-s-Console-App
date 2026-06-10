@@ -10,8 +10,8 @@
 
 ### 1.1 Why Parallel is the default runtime architecture initially
 
-- **Independence:** In the Parallel architecture, base models (XGBoost, LSTM, Transformer) consume the **same** canonical feature and sequence inputs but do **not** depend on one another’s outputs at inference time. Failure or bias in one model does not mechanically propagate into another’s tensor construction.
-- **Operational simplicity:** Parallel execution maps cleanly to **single-pass** inference (`run_base_models_once`), simpler debugging, and straightforward latency reasoning (one fan-out, one fusion step).
+- **Independence:** In the Parallel architecture, ML stack layers (XGBoost, LSTM, Transformer) consume the **same** canonical feature and sequence inputs but do **not** depend on one another’s outputs at inference time. Failure or bias in one layer does not mechanically propagate into another’s tensor construction.
+- **Operational simplicity:** Parallel execution maps cleanly to **single-pass** inference (`run_unified_stack_ml_once`), simpler debugging, and straightforward latency reasoning (one fan-out, one fusion step).
 - **Training stability:** Parallel training does not require staged tensor pipelines where downstream models ingest upstream probability vectors; optimization surfaces are more separable and less entangled.
 - **Deployment risk:** Parallel is the **conservative** default for capital-adjacent systems: the stack’s behavior is easier to reason about under stress, model hot-swap, or partial availability.
 
@@ -46,7 +46,7 @@
 - Shared **canonical cached tensors** (features, sequences, labels, masks).
 - Shared **horizon definition** (`outcome_*` column, slug, and label semantics).
 - Shared **train/validation/test/OOS** manifests.
-- Independent forward passes; fusion of probabilities occurs **after** base models (Bayesian fusion / rules engine), not inside base model tensors except via the meta-learner as specified.
+- Independent forward passes; fusion of probabilities occurs **after** the xgb/lstm/transformer ML layers (Bayesian fusion / rules engine), not inside layer tensors except via the meta-learner as specified.
 
 **Forbidden:**
 
@@ -56,7 +56,7 @@
 
 ### 2.2 Cascade architecture
 
-**Definition:** A runtime and training configuration where **downstream** base models may consume **compact outputs** from **upstream** base models as **additional input channels**, subject to explicit checkpoint contracts:
+**Definition:** A runtime and training configuration where **downstream** ML stack layers may consume **compact outputs** from **upstream** ML stack layers as **additional input channels**, subject to explicit checkpoint contracts:
 
 - **LSTM** may append or mask **channels derived from XGB class probabilities** (and only those channels defined in the cascade checkpoint metadata).
 - **Transformer** may append **channels derived from XGB and/or LSTM class probabilities** (and only those channels defined in the cascade checkpoint metadata).
@@ -202,7 +202,7 @@ For a single promotion trial ID `T`:
 
 ### 5.5 Calibration review
 
-- **Reliability diagrams** or equivalent for predicted probabilities vs empirical outcomes **per base model** and **per fused output** if fusion is in scope for the trial.
+- **Reliability diagrams** or equivalent for predicted probabilities vs empirical outcomes **per ML stack layer** and **per fused output** if fusion is in scope for the trial.
 - **ECE / Brier**-style summaries where applicable; thresholds defined in §6.
 
 ### 5.6 Confidence reliability review
@@ -255,7 +255,7 @@ For each horizon and architecture pair on **OOS**:
 
 ### 6.6 Cascade wins on one metric but loses on calibration or stability
 
-- **No promotion.** Calibration and stability are **co-equal gates**, not post-hoc annotations. Retrain or reject Cascade; do not blend architectures without a separate **ensemble** policy (out of scope for this spec’s promotion act).
+- **No promotion.** Calibration and stability are **co-equal gates**, not post-hoc annotations. Retrain or reject Cascade; do not blend architectures without a separate **ensemble** policy (which this spec’s promotion act does not define).
 
 ### 6.7 Global vs per-horizon promotion
 
@@ -297,7 +297,7 @@ For each horizon and architecture pair on **OOS**:
 ## 8. Implementation roadmap (build order)
 
 1. **Parallel runtime execution layer**  
-   - Harden `models/parallel/{ticker}/` as default load path; ensure `run_base_models_once` and fusion integration use **only** canonical inference for live.
+   - Harden `models/parallel/{ticker}/` as default load path; ensure `run_unified_stack_ml_once` and fusion integration use **only** canonical inference for live.
 
 2. **Challenger cascade path**  
    - Isolated inference path loading `models/cascade/{ticker}/` with cascade tensor assembly; **no** fallback to parallel checkpoints when cascade is selected.

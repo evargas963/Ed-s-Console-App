@@ -598,27 +598,27 @@ def test_promotion_policy_has_no_dead_primary_metric_field():
     assert "primary_metric" not in {f.name for f in fields(PromotionPolicy)}
 
 
-def test_arch_competition_modules_do_not_call_run_base_models_once():
+def test_arch_competition_modules_do_not_call_run_unified_stack_ml_once():
     root = Path(__file__).resolve().parents[1] / "arch_competition"
     for name in ("eval_runner.py", "promotion_engine.py", "__init__.py", "lineage.py", "metrics.py", "exceptions.py"):
         src = (root / name).read_text(encoding="utf-8")
         tree = ast.parse(src)
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
-                if isinstance(node.func, ast.Name) and node.func.id == "run_base_models_once":
-                    pytest.fail(f"{name} must not call run_base_models_once")
-                if isinstance(node.func, ast.Attribute) and node.func.attr == "run_base_models_once":
-                    pytest.fail(f"{name} must not call run_base_models_once")
+                if isinstance(node.func, ast.Name) and node.func.id == "run_unified_stack_ml_once":
+                    pytest.fail(f"{name} must not call run_unified_stack_ml_once")
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "run_unified_stack_ml_once":
+                    pytest.fail(f"{name} must not call run_unified_stack_ml_once")
 
 
-def test_run_base_models_once_default_unchanged_parallel_runtime():
+def test_run_unified_stack_ml_once_default_unchanged_parallel_runtime():
     """Guard: production entry remains parallel stack (this pass does not alter defaults)."""
-    from ml_predict import run_base_models_once
+    from ml_predict import run_unified_stack_ml_once
     import inspect
 
-    src = inspect.getsource(run_base_models_once)
+    src = inspect.getsource(run_unified_stack_ml_once)
     assert "parallel_runtime=True" in src
-    assert "def run_base_models_once" in src
+    assert "def run_unified_stack_ml_once" in src
 
 
 def test_stamp_candidate_manifests_syncs_horizon_before_lineage_validate(tmp_path):

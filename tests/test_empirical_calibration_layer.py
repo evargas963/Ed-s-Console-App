@@ -66,9 +66,9 @@ def test_empirical_section_schema_constants():
     assert EMPIRICAL_SECTION_SCHEMA_VERSION == "1"
 
 
-def test_ml_predict_run_base_models_once_default_unchanged():
-    from ml_predict import run_base_models_once
+def test_ml_predict_run_unified_stack_ml_once_default_unchanged():
+    from ml_predict import run_unified_stack_ml_once
     import inspect
 
-    src = inspect.getsource(run_base_models_once)
+    src = inspect.getsource(run_unified_stack_ml_once)
     assert "parallel_runtime=True" in src

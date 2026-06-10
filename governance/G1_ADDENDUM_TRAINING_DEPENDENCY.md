@@ -13,7 +13,7 @@
 
 **Flow:** `train_parallel_candidate` trains XGB once, builds LSTM dataset, saves bridge via `_xgb_probs_aligned_to_lstm_dataset` + `save_parallel_cascade_bridge`. `train_cascade_candidate` (same `run_once`, `parallel_out` passed) calls `load_parallel_cascade_bridge` + `copy_parallel_xgb_artifacts_to_cascade` and **skips** `train_ticker` + snapshot prob rescan when bridge hits. Manifest field: `used_parallel_cascade_bridge`.
 
-**Pre-retrain gate (survivors on):** confirm v2 → `run_survivor_inference_backtest` (CLI `--survivor-inference-backtest`; scores `models/active/` baseline vs survivor-masked inference) → edge probe → validation run → train. Full retrain is **not** the wiring-discovery mechanism. Gate order enforced in `ml_scheduler.py` and `tools/run_survivor_retrain_gate.ps1` by `tools/check_ml_pipeline_efficiency.py`.
+**Pre-retrain gate (survivors on):** leaf ablation confirm → `run_survivor_stack_refit_backtest` (CLI `--survivor-stack-refit-backtest`; holdout refit full vs survivor stacks) → edge probe → validation run → train. Compound workbook survivors are **VOID** — only `feature_ablation_manifest_leaf.json` may drive drops. Full retrain is **not** the wiring-discovery mechanism. Gate order enforced in `ml_scheduler.py` and `tools/run_survivor_retrain_gate.ps1` by `tools/check_ml_pipeline_efficiency.py`.
 
 Mechanical enforcement: `tools/check_ml_pipeline_efficiency.py`, `ACTIVE_PROGRAM.md` §ML pipeline efficiency.
 
@@ -169,7 +169,7 @@ Explicitly: training uses `_train_parallel` / `_train_cascade` "identical to nig
 
 ### `docs/architecture_parallel_vs_cascade_competition_spec.md`
 
-- **Parallel independence** at inference: base models do not depend on one another's outputs (`docs/architecture_parallel_vs_cascade_competition_spec.md:11-16`).
+- **Parallel independence** at inference: ML stack layers do not depend on one another's outputs (`docs/architecture_parallel_vs_cascade_competition_spec.md:11-16`).
 - **Cascade coupling:** downstream may consume upstream compact outputs (`docs/architecture_parallel_vs_cascade_competition_spec.md:18-22`, `57-63`).
 - **Shared canonical cached tensors** are **allowed** for fair comparison (`docs/architecture_parallel_vs_cascade_competition_spec.md:24-29`, `44-48`, `65-68`).
 

@@ -75,7 +75,7 @@ def test_validate_tabular_ok_on_valid_frame():
 def test_validate_tabular_treats_pandas_nan_as_missing_on_absorption_score():
     """DATA-PIPELINE-INTEGRITY 2026-05-25 regression: pandas converts SQL
     NULL on numeric columns to float NaN; MVP coercion rejects NaN as
-    "broken upstream compute" by design. The training boundary
+    "broken upstream compute" per the MVP contract. The training boundary
     _row_dict_from_df must convert NaN -> None so SQL NULL semantics are
     preserved. Reproduces the SPY/QQQ/IWM/megacap row-0 fail: 17 of 41
     tickers in the scheduler run blocked by 'row 0: MVP coercion failed:
@@ -275,11 +275,15 @@ def test_feature_cache_key_includes_contract_version():
 
 
 def test_lstm_feature_ordering_stable():
-    from lstm_data import FEATURES_5M, FEATURES_1M
+    from lstm_data import CONFLUENCE_FEATURES, FEATURES_5M, FEATURES_1M
+    from ml_train import tabular_training_feature_names
 
-    assert FEATURES_5M[0] == "spot"
-    assert "zone" in FEATURES_5M
-    assert FEATURES_1M[-1] == "vwap_side"
+    tabular = tabular_training_feature_names()
+    expected_stream = [n for n in tabular if n not in frozenset(CONFLUENCE_FEATURES)]
+    assert FEATURES_5M == expected_stream
+    assert FEATURES_1M == expected_stream
+    assert set(CONFLUENCE_FEATURES).issubset(set(tabular))
+    assert "cat_zone" in FEATURES_5M
 
 
 def test_train_parallel_rejects_bad_feature_cache_key_override():

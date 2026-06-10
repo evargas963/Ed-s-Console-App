@@ -161,7 +161,7 @@ def training_label_where_clause(label_column: str | None = None) -> str:
 
     Each horizon is independent: use the matching outcome_{slug} IS NOT NULL for that
     horizon's training rows. Do not require outcome_filled or other horizons — those rows
-    are excluded incorrectly when longer labels are still pending.
+    are excluded incorrectly when longer-horizon labels have not yet been filled.
     """
     from horizon_outcomes import (
         OUTCOME_DIR_HORIZON_MINUTES,
@@ -425,6 +425,64 @@ def fetch_prior_net_gamma(
         return None
 
 
+def attach_confluence_feature_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Add cf_* columns per (ticker, ts_utc) — same formula as LSTM ``X_conf`` (``compute_confluence_features``)."""
+    from lstm_data import CONFLUENCE_FEATURES, compute_confluence_features
+
+    if df is None or len(df) == 0:
+        return df
+    out = df.copy()
+    for cf in CONFLUENCE_FEATURES:
+        out[cf] = 0.0
+    if "ticker" not in out.columns or "ts_utc" not in out.columns:
+        return out
+    for _, grp in out.sort_values(["ticker", "ts_utc"]).groupby("ticker", sort=False):
+        snaps = [dict(r) for r in grp.to_dict("records")]
+        for local_i, idx in enumerate(grp.index):
+            cf_vals = compute_confluence_features(snaps, local_i)
+            for k, v in cf_vals.items():
+                out.at[idx, k] = v
+    return out
+
+
+def attach_confluence_features_for_serve(
+    snapshot: dict,
+    db_path: str | None = None,
+) -> dict:
+    """Attach cf_* for XGB serve path (history-aware; fail-closed 0.0 when history thin)."""
+    from lstm_data import CONFLUENCE_FEATURES, compute_confluence_features
+
+    out = dict(snapshot)
+    ts = out.get("ts_utc")
+    tk = out.get("ticker")
+    if ts is None or not tk:
+        for cf in CONFLUENCE_FEATURES:
+            out.setdefault(cf, 0.0)
+        return out
+
+    from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
+
+    path = db_path or _db_default_path()
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            f"SELECT * FROM {SNAPSHOT_TABLE_1M} "
+            "WHERE ticker = ? AND timeframe = ? AND ts_utc <= ? "
+            "ORDER BY ts_utc DESC LIMIT 60",
+            (str(tk).upper(), CANONICAL_TIMEFRAME, float(ts)),
+        ).fetchall()
+    finally:
+        conn.close()
+    if not rows:
+        for cf in CONFLUENCE_FEATURES:
+            out.setdefault(cf, 0.0)
+        return out
+    snaps = [dict(r) for r in reversed(rows)]
+    out.update(compute_confluence_features(snaps, len(snaps) - 1))
+    return out
+
+
 def attach_net_gamma_prev_column(df: pd.DataFrame) -> pd.DataFrame:
     """Add net_gamma_prev per (ticker, ts_utc) for ΔGEX train/serve formula parity."""
     if df is None or len(df) == 0 or "net_gamma" not in df.columns:
@@ -464,9 +522,16 @@ def attach_5m_additive_context(
     db_path: str | None = None,
 ) -> pd.DataFrame:
     """
-    For each training row (1m normalized), merge as-of backward from canonical 1m
-    `snapshots` rows only. If a ticker has no 1m history, m5_* stay NaN — no 5m fallback.
+    DEPRECATED — removed from training/inference (2026-06-04). m5_* columns were lagged 1m dupes,
+    not native 5m bars. Use explicit rolling-window features instead. Kept for regression tests only.
     """
+    import warnings
+
+    warnings.warn(
+        "attach_5m_additive_context is deprecated and must not be called from production paths",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if df is None or len(df) == 0:
         return df
     if "ticker" not in df.columns or "ts_utc" not in df.columns:

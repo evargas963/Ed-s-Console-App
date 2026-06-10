@@ -130,48 +130,25 @@ def test_encode_snapshot_dimensions_match_features_lists():
     assert len(v1) == len(ENCODED_FEATURES_1M) == encoded_width_1m()
 
 
-def test_null_weighted_push_mask_zero_train_and_inference_encoder():
-    """NULL spy_weighted_push must set __present=0, not imply neutral via value 0.0 alone."""
-    from lstm_data import ENCODED_FEATURES_5M
-    from features.lstm_sequence_input import (
-        encode_lstm_structure_bar_with_masks,
-        encode_lstm_structure_sequence_bar,
-    )
-    from features.canonical_contract import get_mvp_feature_names
-    from features.lstm_sequence_input import merge_db_row_with_canonical_mvp
+def test_null_weighted_push_null_becomes_zero_in_tabular_encoder():
+    """NULL spy_weighted_push → 0.0 in Stage 2 tabular encoder (no __present channel)."""
+    from lstm_data import ENCODED_FEATURES_5M, encode_snapshot_5m
 
     row = _base_db_row(1.0)
     row["spy_weighted_push"] = None
-    cf = {k: None for k in get_mvp_feature_names()}
-    cf["price.spot"] = 450.0
-    cf["price.spread_pts"] = 0.02
-    cf["structure.zone"] = "pin_bull"
-    cf["structure.nearest_above_dist"] = 1.0
-    cf["structure.nearest_below_dist"] = -1.0
-    cf["structure.net_gamma"] = 0.0
-    cf["anchor.vwap_side"] = "above"
-    cf["anchor.vwap_dist_pts"] = 0.1
-    merged = merge_db_row_with_canonical_mvp(row, cf)
-    vi = ENCODED_FEATURES_5M.index("spy_weighted_push")
-    mi = ENCODED_FEATURES_5M.index("spy_weighted_push__present")
-    prod = encode_lstm_structure_sequence_bar(merged, 450.0, canonical_features=cf)
-    assert prod[vi] == 0.0
-    assert prod[mi] == 0.0
-    wrapped = encode_lstm_structure_bar_with_masks(row, cf, 450.0)["features"]
-    assert wrapped[vi] == 0.0
-    assert wrapped[mi] == 0.0
+    vec = encode_snapshot_5m(row, 450.0)
+    idx = ENCODED_FEATURES_5M.index("spy_weighted_push")
+    assert vec[idx] == 0.0
 
 
-def test_present_weighted_push_mask_one():
+def test_weighted_push_present_in_tabular_encoder():
     from lstm_data import ENCODED_FEATURES_5M, encode_snapshot_5m
 
     row = _base_db_row(1.0)
     row["qqq_weighted_push"] = 0.42
-    vi = ENCODED_FEATURES_5M.index("qqq_weighted_push")
-    mi = ENCODED_FEATURES_5M.index("qqq_weighted_push__present")
     vec = encode_snapshot_5m(row, 450.0)
-    assert vec[mi] == 1.0
-    assert vec[vi] == 0.42
+    idx = ENCODED_FEATURES_5M.index("qqq_weighted_push")
+    assert vec[idx] == 0.42
 
 
 def test_lstm_checkpoint_encoder_schema_guard():
@@ -191,6 +168,13 @@ def test_lstm_checkpoint_encoder_schema_guard():
     )
     with pytest.raises(ValueError, match="encoder schema"):
         assert_lstm_encoder_checkpoint_compatible({"encoder_schema_version": 1})
+    assert_lstm_encoder_checkpoint_compatible(
+        {
+            "encoder_schema_version": 2,
+            "encoder_width_5m_pre_mask": 31,
+            "encoder_width_1m_pre_mask": 16,
+        }
+    )
 
 
 def test_inference_snapshot_wrong_version_fails():
@@ -341,13 +325,15 @@ def test_build_lstm_dataset_uses_end_idx_minus_one_for_confluence(monkeypatch):
         "features.training_canonical_input.training_snapshot_for_sequence_encode",
         lambda snap: snap,
     )
+    from lstm_data import encoded_width_5m, encoded_width_1m
+
     monkeypatch.setattr(
         "features.lstm_sequence_input.encode_lstm_structure_sequence_bar",
-        lambda merged, ref: [0.0] * 31,
+        lambda merged, ref: [0.0] * encoded_width_5m(),
     )
     monkeypatch.setattr(
         "features.lstm_sequence_input.encode_lstm_micro_sequence_bar",
-        lambda merged, ref: [0.0] * 16,
+        lambda merged, ref: [0.0] * encoded_width_1m(),
     )
 
     ds = build_lstm_dataset(["SPY"], require_outcome=True, ml_horizon_slug="5c")

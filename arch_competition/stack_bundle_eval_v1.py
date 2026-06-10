@@ -3,8 +3,8 @@ Offline stack bundle evaluation (Issue: authority / XGB vs full stack / MC / Fus
 
 Reuses:
 - ml_scheduler._load_rth_rows_for_ticker — chronological RTH rows, causal inference_snapshot.
-- ml_predict.run_base_models_once — production-parallel XGB+LSTM+Transformer + meta/weighted stack.
-- signals._run_model_stack — adds Monte Carlo on top of base models.
+- ml_predict.run_unified_stack_ml_once — production-parallel unified stack ML layers + meta combiner.
+- signals._run_model_stack — adds Monte Carlo as one team (no solo-green when team blocked).
 - bayesian_fusion.fuse — posterior directional triplet.
 
 Primary promotion metric (aligned with arch_competition.promotion_engine): multiclass log_loss (lower better).
@@ -79,7 +79,7 @@ VALID_MODES: frozenset[str] = frozenset(
 
 # Embedded in JSON manifests for auditors.
 MODE_DEFINITIONS: dict[str, str] = {
-    "xgb_only": "fusion.xgb from run_base_models_once only (tabular XGB, parallel_runtime stack).",
+    "xgb_only": "fusion.xgb from run_unified_stack_ml_once only (tabular XGB, parallel_runtime stack).",
     "lstm_only": "fusion.lstm only — no XGB or Transformer probabilities in the triplet.",
     "transformer_only": "fusion.transformer only — no XGB or LSTM probabilities in the triplet.",
     "xgb_plus_lstm": "ml_predict._weighted_average with XGB + LSTM only (base weights 0.40+0.35 renormalized).",
@@ -134,7 +134,7 @@ def _dict_to_probs(d: Optional[dict]) -> Optional[list[float]]:
 
 
 def _probs_from_fusion_branch(b: Optional[dict]) -> Optional[list[float]]:
-    """run_base_models_once fusion.* uses prob_up / prob_down / prob_flat."""
+    """run_unified_stack_ml_once fusion.* uses prob_up / prob_down / prob_flat."""
     if not b or not b.get("available"):
         return None
     if not all(k in b for k in ("prob_up", "prob_down", "prob_flat")):
@@ -424,7 +424,7 @@ def run_stack_bundle_evaluation(
 
     Returns a JSON-serializable manifest including per-config metrics and authority block.
 
-    Isolation: single-model modes use only that model's fusion branch from run_base_models_once.
+    Isolation: single-model modes use only that model's fusion branch from run_unified_stack_ml_once.
     xgb_plus_* modes use ml_predict._weighted_average with only the listed branches (renormalized).
     xgb_plus_lstm_plus_transformer is never the trained meta-learner; use meta_stack for that.
     """
@@ -518,7 +518,7 @@ def run_stack_bundle_evaluation(
                 continue
 
             try:
-                once = mp.run_base_models_once(
+                once = mp.run_unified_stack_ml_once(
                     snap,
                     ticker,
                     hist_db,
@@ -526,8 +526,8 @@ def run_stack_bundle_evaluation(
                     inference_snapshot_v1=inf_v1,
                 )
             except Exception as e:
-                _bump(f"run_base_models_once:{type(e).__name__}")
-                log.debug("skip row base models: %s", e)
+                _bump(f"run_unified_stack_ml_once:{type(e).__name__}")
+                log.debug("skip row unified stack ML layers: %s", e)
                 continue
 
             fused_pack = once.get("fusion") or {}
@@ -826,16 +826,14 @@ def xgb_engineered_members_to_raw_snapshot(engineered: list[str]) -> list[str]:
     return sorted(out)
 
 
-def group_snapshot_columns(group: dict) -> list[str]:
-    """Union of raw DB snapshot columns for one manifest ABLATE group (all model streams)."""
-    members = group.get("members") or {}
-    out: set[str] = set()
-    for key in ("lstm_5m", "lstm_1m"):
-        out.update(members.get(key) or [])
-    xgb_eng = members.get("xgb") or []
-    if xgb_eng:
-        out.update(xgb_engineered_members_to_raw_snapshot(xgb_eng))
-    return sorted(out)
+def group_snapshot_columns(group: dict, enriched_rows: list[dict] | None = None) -> list[str]:
+    """Union of knockout columns for one atomic feature — fidelity-first, not registry-partitioned."""
+    from tools.feature_curation_gate import (
+        _atomic_column_for_group,
+        _whole_stack_knockout_columns,
+    )
+
+    return _whole_stack_knockout_columns(group, enriched_rows)
 
 
 def permute_snapshot_columns_across_rows(
@@ -858,13 +856,54 @@ def permute_snapshot_columns_across_rows(
     return out
 
 
+ABLATION_ROW_TICKER_FIELD = "_ablation_ticker"
+
+
+def permute_snapshot_columns_pooled_by_ticker(
+    rows: list[dict],
+    columns: list[str],
+    rng: np.random.Generator,
+    *,
+    ticker_field: str = ABLATION_ROW_TICKER_FIELD,
+) -> list[dict]:
+    """Grouped permutation within each ticker — no cross-ticker column shuffle."""
+    from collections import defaultdict
+
+    if len(rows) < 2:
+        return [dict(r) for r in rows]
+    present = [c for c in columns if any(c in r for r in rows)]
+    if not present:
+        return [dict(r) for r in rows]
+    out = [dict(r) for r in rows]
+    by_ticker: dict[str, list[int]] = defaultdict(list)
+    for i, row in enumerate(rows):
+        t = str(row.get(ticker_field) or row.get("ticker") or "").strip().upper()
+        by_ticker[t].append(i)
+    for indices in by_ticker.values():
+        if len(indices) < 2:
+            continue
+        sub = [rows[i] for i in indices]
+        perm_sub = permute_snapshot_columns_across_rows(sub, present, rng)
+        for j, idx in enumerate(indices):
+            out[idx] = perm_sub[j]
+    return out
+
+
 # Full per-model × horizon primary matrix size (O-56): 3 models × 4 horizons × ablation groups =
 # 828 scored cells. resolve_ablation_drop_group_ids requires a COMPLETE primary matrix before it
 # will consider any report-derived drop; the legacy 276-cell partial threshold is retired.
 # (The old DEFAULT_ABLATION_DROP_GROUP_IDS 12-tuple was a fabricated fallback — it silently dropped
 # volume/vwap/iv/price_candle, which are not verified non-survivors — and has been removed. The
 # money path now fails closed to the full feature set unless drops are confirm-verified.)
-ABLATION_FULL_MATRIX_CELL_TARGET: int = 828
+# Legacy compound-era constant (828) retired — target is read from expanded manifest on disk.
+ABLATION_FULL_MATRIX_CELL_TARGET: int = 0
+
+
+def ablation_full_matrix_cell_target() -> int:
+    from tools.feature_curation_gate import load_ablation_manifest, whole_stack_fusion_cell_target
+
+    manifest = load_ablation_manifest(ABLATION_LEAF_MANIFEST_PATH)
+    return whole_stack_fusion_cell_target(manifest)
 
 # Never null these raw snapshot keys — required for labels, joins, pct math, sequence encode.
 ABLATION_SURVIVOR_PROTECTED_SNAPSHOT_COLUMNS: frozenset[str] = frozenset(
@@ -886,10 +925,336 @@ ABLATION_SURVIVOR_PROTECTED_SNAPSHOT_COLUMNS: frozenset[str] = frozenset(
 
 ABLATION_SURVIVORS_ENV = "ED_APPLY_ABLATION_SURVIVORS"
 ABLATION_DROP_GROUPS_ENV = "ED_ABLATION_DROP_GROUPS"
-ABLATION_MANIFEST_PATH = Path("governance/artifacts/feature_ablation_manifest.json")
-ABLATION_REPORT_PATH = Path("governance/artifacts/feature_ablation_report.json")
+LEGACY_COMPOUND_MANIFEST_PATH = Path("governance/artifacts/feature_ablation_manifest.json")
+ABLATION_LEAF_MANIFEST_PATH = Path("governance/artifacts/feature_ablation_manifest_leaf.json")
+ABLATION_MANIFEST_PATH = ABLATION_LEAF_MANIFEST_PATH
+LEGACY_COMPOUND_REPORT_PATH = Path("governance/artifacts/feature_ablation_report.json")
+ABLATION_LEAF_REPORT_PATH = Path("governance/artifacts/feature_ablation_report_leaf.json")
+ABLATION_REPORT_PATH = ABLATION_LEAF_REPORT_PATH
+ABLATION_SURVIVOR_STATUS_PATH = Path("governance/artifacts/ablation_survivor_status.json")
+ABLATION_LEAF_FEATURE_GRAIN = "schwab_expanded_atomic"
+ABLATION_AUTHORITATIVE_GRAINS = frozenset(
+    {"atomic_leaf_or_derived_column", "schwab_expanded_atomic"}
+)
+COMPOUND_ABLATION_VOID_REASON = "compound_workbook_groups_retired_use_leaf_manifest"
 # Bump when confirm holdout transform order changes; preflight blocks until --ablation-confirm re-run.
 ABLATION_CONFIRM_PATH_VERSION = "2"
+# Operator may bind production to completed primary-pass DROP_CANDIDATE when confirm was not run.
+ABLATION_PRIMARY_AUTHORITY_ENV = "ED_ABLATION_PRIMARY_AUTHORITY"
+# Primary-pass cells with known scoring-path anomalies — excluded from production placement masks.
+PRIMARY_SCORING_UNTRUSTED_CELLS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("transformer", "15c"),
+        ("monte_carlo", "15c"),
+        ("transformer", "1c"),
+        ("transformer", "5c"),
+    }
+)
+
+# Offline ablation lineage — fail-closed; never relaxes production loaders.
+ABLATION_SCORING_PASS_ENV = "ED_ABLATION_SCORING_PASS"
+# Pre-train observe experiment: live cards score from candidate bundles + survivor masks (not strict active).
+LIVE_ABLATION_EXPERIMENT_ENV = "ED_LIVE_ABLATION_EXPERIMENT"
+SEQUENCE_ABLATION_MODELS: frozenset[str] = frozenset({"lstm", "transformer"})
+
+
+def ablation_scoring_pass_active() -> bool:
+    """True during offline ablation scoring passes (disables survivor-mask application only)."""
+    import os
+
+    return os.environ.get(ABLATION_SCORING_PASS_ENV, "").strip().lower() in ("1", "true", "yes")
+
+
+def live_ablation_experiment_active() -> bool:
+    """True when operator runs pre-train card observe from ablation survivors (ACTIVE_PROGRAM experiment lane)."""
+    import os
+
+    return os.environ.get(LIVE_ABLATION_EXPERIMENT_ENV, "").strip().lower() in ("1", "true", "yes")
+
+
+def unified_stack_bundle_relaxation_active() -> bool:
+    """Offline ablation scoring OR live pre-train experiment — not strict models/active promotion gate."""
+    return ablation_scoring_pass_active() or live_ablation_experiment_active()
+
+
+def ablation_experiment_serve_masks_active() -> bool:
+    """Apply per-(model, horizon) survivor nulls on live serve (observe experiment or post-confirm train)."""
+    if ablation_scoring_pass_active():
+        return False
+    return live_ablation_experiment_active() or ablation_survivors_training_enabled()
+
+
+def bundle_dir_has_unified_stack_artifacts(bundle_dir: Path, ticker: str, hz: str) -> bool:
+    """Minimum xgb+lstm+transformer artifacts for unified seven-layer stack scoring."""
+    t = ticker.upper()
+    su = normalize_ml_horizon_slug(hz)
+    names = (
+        f"xgb_{t}_{su}.pkl",
+        f"lstm_{t}_{su}.pt",
+        f"transformer_{t}_{su}.pt",
+    )
+    return all((bundle_dir / n).is_file() for n in names)
+
+
+def resolve_experiment_bundle_dir(ticker: str, hz: str, *, models_dir: Path) -> Path:
+    """Pre-train observe path: models/parallel/{ticker} before scheduler promotion to models/active/."""
+    t = ticker.upper()
+    su = normalize_ml_horizon_slug(hz)
+    parallel = models_dir / "parallel" / t
+    if bundle_dir_has_unified_stack_artifacts(parallel, t, su):
+        return parallel
+    from active_bundle_contract import active_bundle_dir
+
+    active = active_bundle_dir(t, su, models_dir=models_dir)
+    if bundle_dir_has_unified_stack_artifacts(active, t, su):
+        return active
+    raise FileNotFoundError(
+        f"{LIVE_ABLATION_EXPERIMENT_ENV}=1: no unified-stack candidate bundle for {t} hz={su} "
+        f"(need xgb+lstm+transformer under models/parallel/{t} or canonical active root)"
+    )
+
+
+def sequence_encoder_lineage_admissible(
+    meta: dict | None,
+    checkpoint: dict | None,
+) -> tuple[bool, str]:
+    """Offline ablation sequence encode requires v3 names or pinned v2 registry."""
+    from arch_competition.encoder_lineage_v2 import resolve_encoder_lineage
+
+    if not isinstance(meta, dict):
+        return False, "missing_meta"
+    _ver, _n5, _n1, err = resolve_encoder_lineage(
+        checkpoint if isinstance(checkpoint, dict) else {},
+        meta,
+    )
+    if err:
+        return False, err
+    return True, ""
+
+
+def _load_sequence_checkpoint_meta(
+    bundle_dir: Path,
+    ticker: str,
+    hz: str,
+    kind: str,
+) -> tuple[dict | None, dict | None, list[str]]:
+    """Return (meta_json, checkpoint_dict, issues) for lstm or transformer."""
+    import torch
+
+    t = ticker.upper()
+    su = normalize_ml_horizon_slug(hz)
+    model_path = bundle_dir / f"{kind}_{t}_{su}.pt"
+    meta_path = bundle_dir / f"{kind}_{t}_{su}_meta.json"
+    issues: list[str] = []
+    if not model_path.is_file():
+        issues.append(f"{model_path.name} missing")
+        return None, None, issues
+    if not meta_path.is_file():
+        issues.append(f"{meta_path.name} missing")
+        return None, None, issues
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as ex:
+        issues.append(f"{meta_path.name} unreadable: {ex}")
+        return None, None, issues
+    try:
+        checkpoint = torch.load(str(model_path), map_location="cpu", weights_only=False)
+    except Exception as ex:
+        issues.append(f"{model_path.name} unreadable: {type(ex).__name__}: {ex}")
+        return meta, None, issues
+    return meta, checkpoint if isinstance(checkpoint, dict) else {}, issues
+
+
+def assess_bundle_ablation_lineage(
+    ticker: str,
+    hz: str,
+    bundle_dir: Path,
+    *,
+    models_dir: Path | None = None,
+) -> dict[str, Any]:
+    """
+    Offline ablation eligibility for one (ticker, horizon) bundle.
+
+    Fail-closed on missing artifacts or unrecoverable encoder lineage. Production
+    bundle compliance is informational — offline v2 lineage encode unlocks whole-stack
+    scoring without relaxing production loaders.
+    """
+    from active_bundle_contract import active_bundle_dir, check_active_bundle_complete
+
+    bd = bundle_dir if bundle_dir.is_dir() else active_bundle_dir(ticker, hz, models_dir=models_dir)
+    prod = check_active_bundle_complete(ticker, hz, bundle_dir=bd, models_dir=models_dir)
+    compliant = bool(prod.get("compliant"))
+    result: dict[str, Any] = {
+        "ticker": ticker.upper(),
+        "horizon": normalize_ml_horizon_slug(hz),
+        "bundle_dir": str(bd),
+        "production_compliant": compliant,
+        "production_issues": list(prod.get("issues") or []),
+        "xgb_per_model_ablation_eligible": bd.is_dir(),
+        "sequence_ablation_eligible": False,
+        "whole_stack_ablation_eligible": False,
+        "sequence_gates": {},
+        "issues": [],
+    }
+    if not bd.is_dir():
+        result["xgb_per_model_ablation_eligible"] = False
+        result["issues"].append(f"missing bundle dir: {bd}")
+        return result
+
+    xgb_meta_path = bd / f"xgb_{ticker.upper()}_{normalize_ml_horizon_slug(hz)}_meta.json"
+    if xgb_meta_path.is_file():
+        try:
+            xgb_meta = json.loads(xgb_meta_path.read_text(encoding="utf-8"))
+            feats = xgb_meta.get("features")
+            if not isinstance(feats, list) or not feats:
+                result["issues"].append("xgb meta missing features[]")
+        except (OSError, json.JSONDecodeError) as ex:
+            result["issues"].append(f"xgb meta unreadable: {ex}")
+    else:
+        result["issues"].append(f"{xgb_meta_path.name} missing")
+
+    seq_ok = True
+    for kind in ("lstm", "transformer"):
+        meta, ckpt, load_issues = _load_sequence_checkpoint_meta(bd, ticker, hz, kind)
+        gate: dict[str, Any] = {"load_issues": load_issues}
+        if load_issues:
+            ok, reason = False, load_issues[0]
+        else:
+            ok, reason = sequence_encoder_lineage_admissible(meta, ckpt)
+        gate["eligible"] = ok
+        gate["reason"] = reason or None
+        result["sequence_gates"][kind] = gate
+        if not ok:
+            seq_ok = False
+    result["sequence_ablation_eligible"] = seq_ok
+    result["whole_stack_ablation_eligible"] = seq_ok and not result["issues"]
+    if not seq_ok:
+        result["issues"].append(
+            "sequence encoder lineage incomplete — LSTM/Transformer offline encode blocked"
+        )
+    return result
+
+
+def ablation_manifest_feature_grain(manifest: dict) -> str:
+    return str((manifest.get("ablation_method") or {}).get("feature_grain") or "compound_workbook_group")
+
+
+def _read_json_path(path: Path) -> dict | None:
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def report_survivor_authority_voided(report: dict) -> bool:
+    """True when this specific report must not drive survivor drops."""
+    auth = report.get("survivor_authority") or {}
+    if str(auth.get("status") or "").upper() == "VOID":
+        return True
+    grain = str((report.get("ablation_method") or {}).get("feature_grain") or "")
+    if grain == ABLATION_LEAF_FEATURE_GRAIN or grain in ABLATION_AUTHORITATIVE_GRAINS:
+        return False
+    return True
+
+
+def compound_survivors_voided() -> bool:
+    """True when compound-workbook survivor drops are retired (leaf manifest required)."""
+    status = _read_json_path(ABLATION_SURVIVOR_STATUS_PATH)
+    if status and str(status.get("compound_survivors") or "").upper() == "VOID":
+        return True
+    legacy = _read_json_path(LEGACY_COMPOUND_REPORT_PATH)
+    if legacy is None:
+        return False
+    return report_survivor_authority_voided(legacy)
+
+
+def survivor_authority_voided(report: dict | None = None) -> bool:
+    """Backward-compatible alias: per-report void check, or compound authority when report is None."""
+    if report is not None:
+        return report_survivor_authority_voided(report)
+    return compound_survivors_voided()
+
+
+def void_compound_ablation_survivors(*, write_artifacts: bool = True) -> dict:
+    """Retire compound-group survivor authority; leaf manifest is the only valid source going forward."""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
+    out: dict = {
+        "compound_survivors": "VOID",
+        "voided_at": now,
+        "reason": COMPOUND_ABLATION_VOID_REASON,
+        "replacement_manifest": str(ABLATION_LEAF_MANIFEST_PATH),
+        "replacement_report": str(ABLATION_LEAF_REPORT_PATH),
+        "artifacts_stamped": [],
+    }
+    for fn in (
+        ablated_drop_group_ids_for_model_horizon,
+        ablated_drop_members_for_model_horizon,
+        ablation_drop_snapshot_columns_for_model_horizon,
+    ):
+        fn.cache_clear()
+    _ablation_drop_snapshot_columns_cached.cache_clear()
+
+    if not write_artifacts:
+        return out
+
+    ABLATION_SURVIVOR_STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ABLATION_SURVIVOR_STATUS_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    out["artifacts_stamped"].append(str(ABLATION_SURVIVOR_STATUS_PATH))
+
+    legacy_report = _read_json_path(LEGACY_COMPOUND_REPORT_PATH)
+    if legacy_report is not None:
+        legacy_report["survivor_authority"] = {
+            "status": "VOID",
+            "reason": COMPOUND_ABLATION_VOID_REASON,
+            "voided_at": now,
+            "replacement_manifest": str(ABLATION_LEAF_MANIFEST_PATH),
+        }
+        ss = legacy_report.get("survivor_summary")
+        if isinstance(ss, dict):
+            ss["confirm_pass_authority"] = "VOID"
+        LEGACY_COMPOUND_REPORT_PATH.write_text(json.dumps(legacy_report, indent=2), encoding="utf-8")
+        out["artifacts_stamped"].append(str(LEGACY_COMPOUND_REPORT_PATH))
+
+    for rel in (
+        "governance/artifacts/survivor_edge_probe.json",
+        "governance/artifacts/survivor_validation_run.json",
+        "governance/artifacts/survivor_inference_backtest.json",
+    ):
+        p = Path(rel)
+        data = _read_json_path(p)
+        if data is None:
+            continue
+        data["voided"] = True
+        data["void_reason"] = COMPOUND_ABLATION_VOID_REASON
+        data["ready_for_full_retrain"] = False
+        data["ready"] = False
+        data["ready_for_production"] = False
+        p.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        out["artifacts_stamped"].append(str(p))
+
+    return out
+
+
+def _authoritative_ablation_report_path() -> Path | None:
+    """Leaf-grain report only; compound workbook report is never authoritative for drops."""
+    leaf = _read_json_path(ABLATION_LEAF_REPORT_PATH)
+    if leaf is not None and not report_survivor_authority_voided(leaf):
+        return ABLATION_LEAF_REPORT_PATH
+    return None
+
+
+def _authoritative_ablation_manifest_path() -> Path:
+    if not ABLATION_LEAF_MANIFEST_PATH.is_file():
+        raise FileNotFoundError(
+            f"missing authoritative ablation manifest: {ABLATION_LEAF_MANIFEST_PATH} "
+            f"(legacy compound manifest is not admissible)"
+        )
+    return ABLATION_LEAF_MANIFEST_PATH
 
 
 def ablation_survivors_training_enabled() -> bool:
@@ -897,7 +1262,7 @@ def ablation_survivors_training_enabled() -> bool:
 
     # Ablation primary/confirm passes score on the FULL feature set — never apply survivor
     # drops while measuring MCC delta or drop-and-refit (chicken-and-egg with confirm pass).
-    if os.environ.get("ED_ABLATION_SCORED_EVAL", "").strip().lower() in ("1", "true", "yes"):
+    if ablation_scoring_pass_active():
         return False
     return os.environ.get(ABLATION_SURVIVORS_ENV, "").strip().lower() in ("1", "true", "yes")
 
@@ -909,10 +1274,11 @@ def ablation_confirm_pass_complete(
 ) -> bool:
     """True when survivor_summary.confirm_pass is populated and matches the current confirm path."""
     if survivor_summary is None:
-        if not ABLATION_REPORT_PATH.is_file():
+        report_path = _authoritative_ablation_report_path()
+        if report_path is None:
             return False
         try:
-            report = json.loads(ABLATION_REPORT_PATH.read_text(encoding="utf-8"))
+            report = json.loads(report_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, ValueError):
             return False
         survivor_summary = report.get("survivor_summary") or {}
@@ -922,6 +1288,98 @@ def ablation_confirm_pass_complete(
     if require_current_path:
         return confirm.get("confirm_path_version") == ABLATION_CONFIRM_PATH_VERSION
     return True
+
+
+def primary_scoring_cell_untrusted(model_family: str, horizon_slug: str) -> bool:
+    return (
+        str(model_family).strip().lower(),
+        str(horizon_slug).strip().lower(),
+    ) in PRIMARY_SCORING_UNTRUSTED_CELLS
+
+
+def _primary_matrix_complete(survivor_summary: dict) -> bool:
+    scored = int(survivor_summary.get("scored_cell_count") or 0)
+    matrix_target = ablation_full_matrix_cell_target()
+    return matrix_target > 0 and scored >= matrix_target
+
+
+def _report_primary_authority_stamped(report: dict) -> bool:
+    summary = report.get("confirm_drop_summary") or {}
+    ss = report.get("survivor_summary") or {}
+    return bool(
+        summary.get("primary_authority")
+        or ss.get("primary_pass_authority")
+        or summary.get("authority") == "primary_pass"
+    )
+
+
+def ablation_primary_pass_authority_active(
+    survivor_summary: dict | None = None,
+    *,
+    report: dict | None = None,
+) -> bool:
+    """Use completed primary-pass DROP_CANDIDATE as production authority when confirm was not run."""
+    import os
+
+    if ablation_confirm_pass_complete(survivor_summary):
+        return False
+    if report is None:
+        report_path = _authoritative_ablation_report_path()
+        if report_path is not None:
+            try:
+                report = json.loads(report_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, ValueError):
+                report = None
+    if survivor_summary is None:
+        survivor_summary = (report or {}).get("survivor_summary") or {}
+    if not _primary_matrix_complete(survivor_summary):
+        return False
+    if report and _report_primary_authority_stamped(report):
+        return True
+    if survivor_summary.get("primary_pass_authority"):
+        return True
+    if os.environ.get(ABLATION_PRIMARY_AUTHORITY_ENV, "").strip().lower() in ("1", "true", "yes"):
+        return True
+    if live_ablation_experiment_active():
+        return True
+    return False
+
+
+def primary_drop_group_ids_by_model_horizon(
+    survivor_summary: dict,
+) -> dict[tuple[str, str], set[str]]:
+    """DROP_CANDIDATE groups per (model, horizon) from the primary rollup (trusted cells only)."""
+    out: dict[tuple[str, str], set[str]] = {}
+    for model, by_hz in (survivor_summary.get("by_model_horizon") or {}).items():
+        mf = str(model)
+        for hz, rows in (by_hz or {}).items():
+            if primary_scoring_cell_untrusted(mf, str(hz)):
+                continue
+            drops = {
+                str(r["group_id"])
+                for r in rows
+                if r.get("recommendation") == "DROP_CANDIDATE" and r.get("group_id")
+            }
+            if drops:
+                out[(mf, str(hz))] = drops
+    return out
+
+
+def globally_safe_drop_group_ids_from_primary(survivor_summary: dict) -> list[str]:
+    by_cell = primary_drop_group_ids_by_model_horizon(survivor_summary)
+    if not by_cell:
+        return []
+    return sorted(set.intersection(*by_cell.values()))
+
+
+def effective_drop_group_ids_by_model_horizon(
+    survivor_summary: dict,
+) -> dict[tuple[str, str], set[str]]:
+    if ablation_confirm_pass_complete(survivor_summary):
+        return confirmed_drop_group_ids_by_model_horizon(survivor_summary)
+    if ablation_primary_pass_authority_active(survivor_summary):
+        return primary_drop_group_ids_by_model_horizon(survivor_summary)
+    return {}
 
 
 def confirmed_drop_group_ids_by_model_horizon(
@@ -1001,12 +1459,18 @@ def resolve_ablation_drop_group_ids() -> list[str]:
     override = (os.environ.get(ABLATION_DROP_GROUPS_ENV) or "").strip()
     if override:
         return sorted({g.strip() for g in override.split(",") if g.strip()})
-    report_path = ABLATION_REPORT_PATH
-    if not report_path.is_file():
-        log.warning(
-            "ablation survivor mask ON but no report at %s; fail-closed (full feature set).",
-            report_path,
-        )
+    report_path = _authoritative_ablation_report_path()
+    if report_path is None:
+        if compound_survivors_voided():
+            log.warning(
+                "ablation survivor mask: compound-group survivors VOID; fail-closed (full feature set). "
+                "Re-ablate on %s.",
+                ABLATION_LEAF_MANIFEST_PATH,
+            )
+        else:
+            log.warning(
+                "ablation survivor mask ON but no authoritative leaf report; fail-closed (full feature set)."
+            )
         return []
     try:
         report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -1015,20 +1479,36 @@ def resolve_ablation_drop_group_ids() -> list[str]:
         return []
     ss = report.get("survivor_summary") or {}
     scored = int(ss.get("scored_cell_count") or 0)
-    if scored < ABLATION_FULL_MATRIX_CELL_TARGET:
+    matrix_target = ablation_full_matrix_cell_target()
+    if matrix_target <= 0 or scored < matrix_target:
         log.warning(
             "ablation survivor mask: primary matrix incomplete (%d/%d scored); fail-closed.",
-            scored, ABLATION_FULL_MATRIX_CELL_TARGET,
+            scored, matrix_target,
         )
         return []
-    drop_ids = globally_safe_drop_group_ids(ss)
-    if not drop_ids:
-        log.warning(
-            "ablation survivor mask: no confirm-verified globally-safe drops (run --ablation-confirm; "
-            "per-model survivors apply at feature assembly, not the shared snapshot); "
-            "fail-closed (full feature set)."
-        )
-    return drop_ids
+    if ablation_confirm_pass_complete(ss):
+        drop_ids = globally_safe_drop_group_ids(ss)
+        if not drop_ids:
+            log.warning(
+                "ablation survivor mask: no confirm-verified globally-safe drops (run --ablation-confirm; "
+                "per-model survivors apply at feature assembly, not the shared snapshot); "
+                "fail-closed (full feature set)."
+            )
+        return drop_ids
+    if ablation_primary_pass_authority_active(ss, report=report):
+        drop_ids = globally_safe_drop_group_ids_from_primary(ss)
+        if not drop_ids:
+            log.warning(
+                "ablation survivor mask: primary-pass authority active but no globally-safe "
+                "intersection across trusted cells; per-model drops still apply at feature assembly."
+            )
+        return drop_ids
+    log.warning(
+        "ablation survivor mask: confirm incomplete and primary authority not active "
+        "(stamp with --ablation-stamp-primary-authority or set ED_LIVE_ABLATION_EXPERIMENT=1); "
+        "fail-closed (full feature set)."
+    )
+    return []
 
 
 @lru_cache(maxsize=1)
@@ -1037,13 +1517,20 @@ def _ablation_drop_snapshot_columns_cached() -> tuple[str, ...]:
     drop_groups = resolve_ablation_drop_group_ids()
     if not drop_groups:
         return ()
-    if not ABLATION_MANIFEST_PATH.is_file():
-        log.warning("ablation survivor mask: manifest missing at %s", ABLATION_MANIFEST_PATH)
+    manifest_path = _authoritative_ablation_manifest_path()
+    if not manifest_path.is_file():
+        log.warning("ablation survivor mask: manifest missing at %s", manifest_path)
         return ()
     try:
-        manifest = json.loads(ABLATION_MANIFEST_PATH.read_text(encoding="utf-8"))
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as e:
         log.warning("ablation survivor mask: manifest read failed: %s", e)
+        return ()
+    if ablation_manifest_feature_grain(manifest) not in ABLATION_AUTHORITATIVE_GRAINS:
+        log.warning(
+            "ablation survivor mask: manifest %s grain not authoritative; fail-closed.",
+            manifest_path,
+        )
         return ()
     groups_by_id = {g["group_id"]: g for g in manifest.get("groups") or []}
     cols: set[str] = set()
@@ -1110,9 +1597,11 @@ def ablation_survivors_fingerprint_part() -> str:
     global_part = ",".join(resolve_ablation_drop_group_ids())
     per_model_part = "unavailable"
     try:
-        if ABLATION_REPORT_PATH.is_file():
-            report = json.loads(ABLATION_REPORT_PATH.read_text(encoding="utf-8"))
-            by_cell = confirmed_drop_group_ids_by_model_horizon(report.get("survivor_summary") or {})
+        report_path = _authoritative_ablation_report_path()
+        if report_path is not None:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            ss_fp = report.get("survivor_summary") or {}
+            by_cell = effective_drop_group_ids_by_model_horizon(ss_fp)
             per_model_part = "|".join(
                 f"{m}/{h}:{','.join(sorted(g))}" for (m, h), g in sorted(by_cell.items())
             )
@@ -1149,7 +1638,7 @@ def apply_ablation_survivor_nulls_to_dataframe(df):
 
 # ─────────────────────────────────────────────────────────────────────────────
 # O-56 PER-MODEL × HORIZON survivor application (the ablated-training path).
-# Each base model trains on ITS OWN survivor set for the horizon being trained — this is what
+# Each xgb/lstm/transformer layer trains on ITS OWN survivor set for the horizon being trained — this is what
 # "train on the ablated data" means. Full-feature training is NOT a valid retrain target when an
 # ablation matrix exists (AGENTS §Ablation contract). These resolvers FAIL LOUD (raise) when
 # survivors are enabled but the matrix is missing/incomplete — they never silently fall through to
@@ -1160,24 +1649,37 @@ class AblatedTrainingUnavailable(RuntimeError):
 
 
 def _load_ablation_report_or_raise() -> dict:
-    if not ABLATION_REPORT_PATH.is_file():
+    if compound_survivors_voided() and _authoritative_ablation_report_path() is None:
         raise AblatedTrainingUnavailable(
-            f"ED_APPLY_ABLATION_SURVIVORS=1 but no ablation report at {ABLATION_REPORT_PATH}; "
-            "run the ablation before an ablated retrain (full-feature training is not a valid target)."
+            f"Compound-group ablation survivors are VOID ({COMPOUND_ABLATION_VOID_REASON}). "
+            f"Re-ablate on {ABLATION_LEAF_MANIFEST_PATH} before enabling {ABLATION_SURVIVORS_ENV}."
+        )
+    report_path = _authoritative_ablation_report_path()
+    if report_path is None:
+        raise AblatedTrainingUnavailable(
+            f"{ABLATION_SURVIVORS_ENV}=1 but no authoritative leaf ablation report; "
+            f"run ablation on {ABLATION_LEAF_MANIFEST_PATH} first."
         )
     try:
-        return json.loads(ABLATION_REPORT_PATH.read_text(encoding="utf-8"))
+        return json.loads(report_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, ValueError) as e:
         raise AblatedTrainingUnavailable(f"ablation report unreadable: {e}") from e
 
 
 def _load_ablation_manifest_or_raise() -> dict:
-    if not ABLATION_MANIFEST_PATH.is_file():
-        raise AblatedTrainingUnavailable(f"ablation manifest missing at {ABLATION_MANIFEST_PATH}")
+    manifest_path = _authoritative_ablation_manifest_path()
+    if not manifest_path.is_file():
+        raise AblatedTrainingUnavailable(f"ablation manifest missing at {manifest_path}")
     try:
-        return json.loads(ABLATION_MANIFEST_PATH.read_text(encoding="utf-8"))
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, ValueError) as e:
         raise AblatedTrainingUnavailable(f"ablation manifest unreadable: {e}") from e
+    if ablation_manifest_feature_grain(manifest) not in ABLATION_AUTHORITATIVE_GRAINS:
+        raise AblatedTrainingUnavailable(
+            f"Manifest {manifest_path} grain {ablation_manifest_feature_grain(manifest)!r} is not "
+            f"authoritative; require one of {sorted(ABLATION_AUTHORITATIVE_GRAINS)}."
+        )
+    return manifest
 
 
 @lru_cache(maxsize=None)
@@ -1191,35 +1693,42 @@ def ablated_drop_group_ids_for_model_horizon(model_family: str, horizon_slug: st
     Raises AblatedTrainingUnavailable if the matrix is missing/incomplete or confirm not run."""
     ss = _load_ablation_report_or_raise().get("survivor_summary") or {}
     scored = int(ss.get("scored_cell_count") or 0)
-    if scored < ABLATION_FULL_MATRIX_CELL_TARGET:
+    matrix_target = ablation_full_matrix_cell_target()
+    if matrix_target <= 0 or scored < matrix_target:
         raise AblatedTrainingUnavailable(
-            f"ablation matrix incomplete ({scored}/{ABLATION_FULL_MATRIX_CELL_TARGET} scored); "
+            f"ablation matrix incomplete ({scored}/{matrix_target} scored); "
             "cannot apply per-model survivors."
         )
     key = (str(model_family), str(horizon_slug))
-    if not ablation_confirm_pass_complete(ss):
-        raise AblatedTrainingUnavailable(
-            "ED_APPLY_ABLATION_SURVIVORS=1 requires a completed --ablation-confirm pass "
-            "(survivor_summary.confirm_pass must be {cells:[...]}). Primary-pass DROP_CANDIDATE "
-            "recommendations are never applied on the money path."
-        )
-    confirmed = confirmed_drop_group_ids_by_model_horizon(ss)
-    return sorted(confirmed.get(key, set()))
+    if primary_scoring_cell_untrusted(key[0], key[1]):
+        return []
+    if ablation_confirm_pass_complete(ss):
+        confirmed = confirmed_drop_group_ids_by_model_horizon(ss)
+        return sorted(confirmed.get(key, set()))
+    if ablation_primary_pass_authority_active(ss):
+        primary = primary_drop_group_ids_by_model_horizon(ss)
+        return sorted(primary.get(key, set()))
+    if live_ablation_experiment_active():
+        return []
+    raise AblatedTrainingUnavailable(
+        "ED_APPLY_ABLATION_SURVIVORS=1 requires a completed --ablation-confirm pass "
+        "or primary-pass authority (--ablation-stamp-primary-authority / "
+        f"{ABLATION_PRIMARY_AUTHORITY_ENV}=1). Primary-pass DROP_CANDIDATE alone is not applied."
+    )
 
 
 @lru_cache(maxsize=None)
 def ablated_drop_members_for_model_horizon(
     model_family: str, horizon_slug: str
-) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
-    """Resolve a cell's DROP groups to concrete members: (xgb_cols, lstm_5m, lstm_1m). Cached
-    (static within a process); returns tuples so the cached value can't be mutated by callers."""
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    """Resolve a cell's DROP groups to concrete members: (xgb_cols, lstm_5m, lstm_1m, lstm_conf)."""
     drop_ids = ablated_drop_group_ids_for_model_horizon(model_family, horizon_slug)
     if not drop_ids:
-        return (), (), ()
+        return (), (), (), ()
     from tools.feature_curation_gate import _drop_members_for_model
 
-    xgb, m5, m1 = _drop_members_for_model(_load_ablation_manifest_or_raise(), list(drop_ids))
-    return tuple(xgb), tuple(m5), tuple(m1)
+    xgb, m5, m1, conf = _drop_members_for_model(_load_ablation_manifest_or_raise(), list(drop_ids))
+    return tuple(xgb), tuple(m5), tuple(m1), tuple(conf)
 
 
 @lru_cache(maxsize=None)
@@ -1242,7 +1751,10 @@ def ablation_drop_snapshot_columns_for_model_horizon(model_family: str, horizon_
 def apply_ablation_survivor_nulls_to_snapshot_for_model(snap, *, model_family: str, horizon_slug: str):
     """Per-row sequence-model survivor mask: null this (model, horizon) cell's dropped snapshot
     columns. No-op when survivors off. Fail-loud (raises) if the matrix can't be applied."""
-    if not ablation_survivors_training_enabled() or not isinstance(snap, dict):
+    if (
+        not ablation_experiment_serve_masks_active()
+        and not ablation_survivors_training_enabled()
+    ) or not isinstance(snap, dict):
         return snap
     cols = ablation_drop_snapshot_columns_for_model_horizon(model_family, horizon_slug)
     if not cols:
@@ -1302,7 +1814,7 @@ def drop_ablated_xgb_engineered_columns(
     post-engineer — not raw snapshot columns pre-engineer (many manifest xgb members are
     engineered-only and never appear on the raw training frame).
     """
-    xcols, _, _ = ablated_drop_members_for_model_horizon("xgb", horizon_slug)
+    xcols, _, _, _ = ablated_drop_members_for_model_horizon("xgb", horizon_slug)
     drop_set = {c for c in xcols if c not in ABLATION_SURVIVOR_PROTECTED_SNAPSHOT_COLUMNS}
     if not drop_set:
         return X, feat_names, 0
@@ -1331,7 +1843,7 @@ def apply_ablation_survivor_nulls_to_dataframe_for_model(df, *, model_family: st
         if grp:
             raw_cols.update(group_snapshot_columns(grp))
     if model_family == "xgb":
-        xcols, _, _ = ablated_drop_members_for_model_horizon("xgb", horizon_slug)
+        xcols, _, _, _ = ablated_drop_members_for_model_horizon("xgb", horizon_slug)
         for col in xcols:
             if col in df.columns:
                 raw_cols.add(col)
@@ -1369,7 +1881,7 @@ def zero_ablated_sequence_channels_for_model(
         _pre_mask_encoded_indices,
     )
 
-    _, m5_raw, m1_raw = ablated_drop_members_for_model_horizon(model_family, horizon_slug)
+    _, m5_raw, m1_raw, conf_raw = ablated_drop_members_for_model_horizon(model_family, horizon_slug)
     out5 = np.array(X_5m, copy=True)
     out1 = np.array(X_1m, copy=True)
     if m5_raw:
@@ -1389,54 +1901,90 @@ def zero_ablated_sequence_channels_for_model(
     return out5, out1
 
 
-def _full_fusion_prob_for_row(
+def zero_ablated_lstm_conf_channels(
+    X_conf: np.ndarray,
+    *,
+    model_family: str,
+    horizon_slug: str,
+) -> np.ndarray:
+    """Zero post-normalize X_conf columns for confirm-verified cf_* drops (O-56)."""
+    from tools.feature_curation_gate import _zero_conf_channels
+
+    _, _, _, conf_raw = ablated_drop_members_for_model_horizon(model_family, horizon_slug)
+    if not conf_raw:
+        return X_conf
+    out = np.array(X_conf, copy=True)
+    _zero_conf_channels(out, list(conf_raw))
+    return out
+
+
+def _production_fusion_prob_for_row(
     row: dict,
     *,
     ticker: str,
     target_column: str,
     hist_db,
-) -> tuple[Optional[list[float]], Optional[int], Optional[str]]:
-    """Score one row through the production stack to full_fusion (all six layers)."""
-    import bayesian_fusion
+    ablation_model_family: str | None = None,
+    ablation_permuted_row: dict | None = None,
+    ablation_knockout_columns: list[str] | None = None,
+) -> tuple[Optional[list[float]], Optional[int], Optional[str], dict[str, Any]]:
+    """Score one row through the unified ablation stack (one wire row, seven equal layers).
+
+    ``ablation_model_family`` tags attribution only — not a separate ingest/knockout path.
+    """
+    _ = ablation_model_family
+    _ = ablation_knockout_columns
+    _ = hist_db
+
+    score_row = ablation_permuted_row if ablation_permuted_row is not None else row
+
+    if ablation_scoring_pass_active():
+        from arch_competition.ablation_bundle_inference import score_unified_ablation_fusion_from_wire_row
+
+        return score_unified_ablation_fusion_from_wire_row(
+            score_row,
+            ticker=ticker,
+            target_column=target_column,
+        )
+
     from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
     from features.replay_signal_input_v1 import signal_input_from_snapshot_row_dict
+    from prediction_engine import build_fusion_model_overlay_for_stack
     from regime_engine import classify_regime
     from rules_engine import compute_rules
+    from signals import production_fusion_payload_for_stack, production_fusion_triplet_from_payload
 
-    from prediction_engine import build_fusion_model_overlay_for_stack
-    from signals import _run_model_stack, _spot_for_mc_fusion_adjustment
-
-    ts_utc = row.get("ts_utc")
+    ts_utc = score_row.get("ts_utc")
     if not ts_utc:
-        return None, None, "missing_ts_utc"
-    yt = _outcome_class_index(row.get(target_column))
+        return None, None, "missing_ts_utc", {}
+    yt = _outcome_class_index(score_row.get(target_column))
     if yt is None:
-        return None, None, f"missing_or_invalid_outcome:{row.get(target_column)!r}"
+        return None, None, f"missing_or_invalid_outcome:{score_row.get(target_column)!r}", {}
     try:
-        inp = signal_input_from_snapshot_row_dict(row)
+        inp = signal_input_from_snapshot_row_dict(score_row)
     except Exception as e:
-        return None, yt, f"signal_input:{type(e).__name__}"
+        return None, yt, f"signal_input:{type(e).__name__}", {}
     try:
         inf_v1 = build_inference_snapshot_v1_from_db_row(
             ticker=ticker,
             expiry=None,
             as_of_ts=float(ts_utc),
-            db_row=row,
+            db_row=score_row,
         )
     except Exception as e:
-        return None, yt, f"inference_snapshot:{type(e).__name__}"
+        return None, yt, f"inference_snapshot:{type(e).__name__}", {}
     mvp = inf_v1.get("features") or {}
     try:
         rules = compute_rules(inp, mvp_features=mvp)
         regime = classify_regime(inp, rules, mvp_features=mvp)
     except Exception as e:
-        return None, yt, f"rules_regime:{type(e).__name__}"
+        return None, yt, f"rules_regime:{type(e).__name__}", {}
     try:
         snap = build_fusion_model_overlay_for_stack(
             inp, hist_db, rules, inference_snapshot_v1=inf_v1
         )
     except Exception as e:
-        return None, yt, f"fusion_overlay:{type(e).__name__}"
+        return None, yt, f"fusion_overlay:{type(e).__name__}", {}
     try:
         from features.monte_carlo_stack_input import (
             MonteCarloStackInputError,
@@ -1455,7 +2003,7 @@ def _full_fusion_prob_for_row(
             _xgb_pre = build_xgb_pre_engineering_snapshot_for_tick(inf_v1, snap)
         except Exception:
             _xgb_pre = None
-        xgb_out, lstm_out, transformer_out, mc_out, _mlb = _run_model_stack(
+        fusion_payload, audit = production_fusion_payload_for_stack(
             inp,
             rules,
             regime,
@@ -1465,44 +2013,177 @@ def _full_fusion_prob_for_row(
             mc_spot_ctx=_smc,
             mc_context_error=_mc_e,
             xgb_pre_engineering_snapshot=_xgb_pre,
-        )
-        _fusion_tc = bayesian_fusion.build_fusion_tick_cache(regime, rules)
-        fusion_payload_base = bayesian_fusion.fuse(
-            regime,
-            xgb_out,
-            lstm_out,
-            transformer_out,
-            mc_out,
-            rules,
             signal_layer_v1=inf_v1.get("signal_layer_v1"),
-            fusion_tick_cache=_fusion_tc,
+            meta_tabular_overlay=snap,
         )
-        fusion_payload_full = fusion_payload_base
-        try:
-            from mc_fusion_adjustment import fuse_payload_apply_mc_adjustment
-
-            _adj_spot = _spot_for_mc_fusion_adjustment(_smc, inf_v1)
-            fusion_payload_full = fuse_payload_apply_mc_adjustment(
-                fusion_payload_base,
-                mc_out,
-                _adj_spot,
-            )
-        except Exception:
-            fusion_payload_full = fusion_payload_base
     except Exception as e:
-        return None, yt, f"fusion_stack:{type(e).__name__}"
+        return None, yt, f"fusion_stack:{type(e).__name__}", {}
 
     try:
-        triplet = _norm_triplet(
-            float(fusion_payload_full.prob_up),
-            float(fusion_payload_full.prob_down),
-            float(fusion_payload_full.prob_flat),
-        )
+        triplet = _norm_triplet(*production_fusion_triplet_from_payload(fusion_payload))
     except (TypeError, ValueError):
-        return None, yt, "full_fusion_triplet_invalid"
+        return None, yt, "full_fusion_triplet_invalid", audit
     if triplet is None:
-        return None, yt, "full_fusion_triplet_invalid"
-    return triplet, yt, None
+        return None, yt, "full_fusion_triplet_invalid", audit
+    return triplet, yt, None, audit
+
+
+def _full_fusion_prob_for_row(
+    row: dict,
+    *,
+    ticker: str,
+    target_column: str,
+    hist_db,
+) -> tuple[Optional[list[float]], Optional[int], Optional[str]]:
+    """Backward-compatible wrapper — prefer ``_production_fusion_prob_for_row`` for audit."""
+    triplet, yt, skip, _audit = _production_fusion_prob_for_row(
+        row,
+        ticker=ticker,
+        target_column=target_column,
+        hist_db=hist_db,
+    )
+    return triplet, yt, skip
+
+
+def probe_whole_stack_seven_layers(
+    *,
+    db_path: str,
+    ticker: str,
+    ml_horizon_slug: str,
+    bundle_dir: Path,
+    bundle_artifact_report: dict | None = None,
+) -> dict[str, Any]:
+    """Preflight: all seven stack layers must score via unified ablation wire-row path."""
+    import os
+
+    import ml_predict as mp
+    from governed_stack_contract import FULL_STACK_MODEL_LAYERS
+    from ml_horizon import normalize_ml_horizon_slug, outcome_column
+    from train_all import preload_historical_db_for_eval
+
+    required = list(FULL_STACK_MODEL_LAYERS)
+    layers: dict[str, dict[str, Any]] = {}
+    art = (bundle_artifact_report or {}).get("artifacts") or {}
+
+    def _mark(layer: str, status: str, reason: str = "") -> None:
+        layers[layer] = {"status": status, "reason": reason or None}
+
+    file_map = (
+        ("xgb", "xgb"),
+        ("lstm", "lstm"),
+        ("transformer", "transformer"),
+        ("meta", "meta_stack"),
+    )
+    for layer, kind in file_map:
+        blockers = list((art.get(kind) or {}).get("issues") or [])
+        if blockers:
+            _mark(layer, "blocked", "; ".join(blockers[:3]))
+        elif kind == "meta_stack" and not (art.get(kind) or {}).get("exists"):
+            _mark(layer, "blocked", "meta_stack missing")
+
+    for layer in required:
+        layers.setdefault(layer, {"status": "pending_probe", "reason": None})
+
+    t = ticker.strip().upper()
+    hz = normalize_ml_horizon_slug(ml_horizon_slug)
+    target_column = outcome_column(hz)
+
+    prev_strict = os.environ.get("ED_XGB_STRICT_ACTIVE_ONLY")
+    os.environ["ED_XGB_STRICT_ACTIVE_ONLY"] = "0"
+    orig_model_dir = mp.MODEL_DIR
+    htok = mp.set_ml_infer_horizon_slug(hz)
+    try:
+        mp.MODEL_DIR = _models_root_from_bundle_dir(Path(bundle_dir))
+        mp.reset_caches()
+        rows = _load_chronological_rth_rows(
+            db_path,
+            t,
+            target_column=target_column,
+            options=StackBundleEvalOptions(max_rows=200),
+        )
+        if not rows:
+            for layer in required:
+                if layers[layer]["status"] == "pending_probe":
+                    _mark(layer, "blocked", "no_rth_rows_for_probe")
+            return {
+                "ok": False,
+                "stack_layers_required": required,
+                "stack_layers": layers,
+                "stack_layers_scored": [],
+                "missing_layers": list(required),
+                "probe_reason": "no_rth_rows",
+            }
+
+        tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
+        hist_db = None
+        if not ablation_scoring_pass_active():
+            hist_db = (
+                preload_historical_db_for_eval(db_path, t, max(tss))
+                if tss
+                else None
+            )
+        if hist_db is None and not ablation_scoring_pass_active():
+            for layer in required:
+                if layers[layer]["status"] == "pending_probe":
+                    _mark(layer, "blocked", "hist_db_preload_failed")
+            return {
+                "ok": False,
+                "stack_layers_required": required,
+                "stack_layers": layers,
+                "stack_layers_scored": [],
+                "missing_layers": list(required),
+                "probe_reason": "hist_db_preload_failed",
+            }
+
+        last_skip = "no_scorable_probe_row"
+        for row in reversed(rows):
+            prob, yt, skip, audit = _production_fusion_prob_for_row(
+                row,
+                ticker=t,
+                target_column=target_column,
+                hist_db=hist_db,
+            )
+            if prob is not None and yt is not None:
+                scored = list(audit.get("stack_layers_scored") or [])
+                for layer in required:
+                    if layer in scored:
+                        _mark(layer, "ok", "unified_ablation_probe")
+                    elif layers[layer]["status"] == "pending_probe":
+                        _mark(layer, "not_scored", "absent_from_probe_audit")
+                missing = [name for name in required if name not in scored]
+                return {
+                    "ok": not missing,
+                    "stack_layers_required": required,
+                    "stack_layers": layers,
+                    "stack_layers_scored": scored,
+                    "missing_layers": missing,
+                    "mc_stack_probability_source": (
+                        audit.get("mc_stack_probability_source")
+                        or audit.get("mc_base_probability_source")
+                    ),
+                    "probe_reason": None,
+                }
+            last_skip = str(skip or last_skip)
+
+        for layer in required:
+            if layers[layer]["status"] == "pending_probe":
+                _mark(layer, "blocked", last_skip)
+        return {
+            "ok": False,
+            "stack_layers_required": required,
+            "stack_layers": layers,
+            "stack_layers_scored": [],
+            "missing_layers": list(required),
+            "probe_reason": last_skip,
+        }
+    finally:
+        mp.reset_caches()
+        mp.MODEL_DIR = orig_model_dir
+        mp.reset_ml_infer_horizon_slug(htok)
+        if prev_strict is None:
+            os.environ.pop("ED_XGB_STRICT_ACTIVE_ONLY", None)
+        else:
+            os.environ["ED_XGB_STRICT_ACTIVE_ONLY"] = prev_strict
 
 
 def _load_chronological_rth_rows(
@@ -1524,6 +2205,160 @@ def _load_chronological_rth_rows(
     if options.max_rows is not None and options.max_rows > 0:
         rows = rows[-int(options.max_rows) :]
     return rows
+
+
+def prepare_whole_stack_pooled_baseline_cache(
+    *,
+    db_path: str,
+    tickers: list[str],
+    ml_horizon_slug: str,
+    model_dir_by_ticker: dict[str, Path],
+    options: Optional[StackBundleEvalOptions] = None,
+    progress_every: int = 100,
+    on_progress=None,
+) -> dict[str, Any]:
+    """Ticker-agnostic baseline: pool RTH rows; each row scored with its ticker's production stack."""
+    from train_all import preload_historical_db_for_eval
+
+    import ml_predict as mp
+
+    opts = options or StackBundleEvalOptions()
+    hz = normalize_ml_horizon_slug(ml_horizon_slug)
+    target_column = outcome_column(hz)
+    pooled_rows: list[dict] = []
+    for ticker in tickers:
+        t = ticker.strip().upper()
+        chunk = _load_chronological_rth_rows(
+            db_path, t, target_column=target_column, options=opts
+        )
+        for row in chunk:
+            tagged = dict(row)
+            tagged[ABLATION_ROW_TICKER_FIELD] = t
+            pooled_rows.append(tagged)
+    if not pooled_rows:
+        return {
+            "status": "skipped",
+            "hz": hz,
+            "reason": "no_pooled_rth_rows",
+            "rows": [],
+            "baseline_probs": [],
+            "y_outcome": [],
+            "pooled": True,
+            "pool_tickers": list(tickers),
+        }
+
+    orig_model_dir = mp.MODEL_DIR
+    htok = mp.set_ml_infer_horizon_slug(hz)
+    skip_reasons: dict[str, int] = {}
+    model_root_by_ticker = {
+        t.strip().upper(): _models_root_from_bundle_dir(Path(model_dir_by_ticker[t.strip().upper()]))
+        for t in tickers
+        if t.strip().upper() in model_dir_by_ticker
+    }
+    hist_db_by_ticker: dict[str, Any] = {}
+    baseline_probs: list[Optional[list[float]]] = [None] * len(pooled_rows)
+    y_outcome: list[Optional[int]] = [None] * len(pooled_rows)
+    stack_layers_scored: list[str] = []
+    mc_stack_probability_source: str | None = None
+    active_ticker: str | None = None
+
+    def _bump(key: str) -> None:
+        skip_reasons[key] = skip_reasons.get(key, 0) + 1
+
+    try:
+        for i, row in enumerate(pooled_rows):
+            ticker = str(row.get(ABLATION_ROW_TICKER_FIELD) or row.get("ticker") or "").strip().upper()
+            if ticker != active_ticker:
+                mp.MODEL_DIR = model_root_by_ticker.get(ticker, mp.MODEL_DIR)
+                mp.reset_caches()
+                active_ticker = ticker
+            if ticker not in hist_db_by_ticker:
+                if ablation_scoring_pass_active():
+                    hist_db_by_ticker[ticker] = None
+                else:
+                    _tss = [
+                        float(r["ts_utc"])
+                        for r in pooled_rows
+                        if r.get(ABLATION_ROW_TICKER_FIELD) == ticker and r.get("ts_utc") is not None
+                    ]
+                    hist_db_by_ticker[ticker] = (
+                        preload_historical_db_for_eval(db_path, ticker, max(_tss)) if _tss else None
+                    )
+            prob, yt, skip, audit = _production_fusion_prob_for_row(
+                row,
+                ticker=ticker,
+                target_column=target_column,
+                hist_db=hist_db_by_ticker.get(ticker),
+            )
+            if skip:
+                _bump(skip)
+            y_outcome[i] = yt
+            baseline_probs[i] = prob
+            if prob is not None and yt is not None and not stack_layers_scored:
+                stack_layers_scored = list(audit.get("stack_layers_scored") or [])
+                mc_stack_probability_source = (
+                    audit.get("mc_stack_probability_source")
+                    or audit.get("mc_base_probability_source")
+                )
+            if on_progress and (
+                i == 0 or (i + 1) % max(1, progress_every) == 0 or i + 1 == len(pooled_rows)
+            ):
+                paired_so_far = sum(
+                    1
+                    for p, y in zip(baseline_probs[: i + 1], y_outcome[: i + 1])
+                    if p is not None and y is not None
+                )
+                on_progress(
+                    {
+                        "phase": "baseline_pooled",
+                        "horizon_slug": hz,
+                        "rows_done": i + 1,
+                        "rows_total": len(pooled_rows),
+                        "paired_so_far": paired_so_far,
+                        "pool_tickers": tickers,
+                    }
+                )
+    finally:
+        mp.MODEL_DIR = orig_model_dir
+        mp.reset_caches()
+        mp.reset_ml_infer_horizon_slug(htok)
+
+    paired = sum(
+        1 for p, y in zip(baseline_probs, y_outcome) if p is not None and y is not None
+    )
+    if paired < opts.min_paired_rows:
+        return {
+            "status": "skipped",
+            "hz": hz,
+            "reason": f"insufficient_baseline_paired_rows:{paired}",
+            "rows": pooled_rows,
+            "baseline_probs": baseline_probs,
+            "y_outcome": y_outcome,
+            "skip_reason_counts": skip_reasons,
+            "pooled": True,
+            "pool_tickers": list(tickers),
+        }
+
+    y_p = [y for p, y in zip(baseline_probs, y_outcome) if p is not None and y is not None]
+    p_p = [p for p, y in zip(baseline_probs, y_outcome) if p is not None and y is not None]
+    ll_b = float(log_loss(y_p, np.asarray(p_p, dtype=np.float64), labels=[0, 1, 2]))
+
+    return {
+        "status": "ok",
+        "hz": hz,
+        "rows": pooled_rows,
+        "rows_scored": len(pooled_rows),
+        "baseline_probs": baseline_probs,
+        "y_outcome": y_outcome,
+        "baseline_multiclass_log_loss": ll_b,
+        "paired_rows": paired,
+        "skip_reason_counts": skip_reasons,
+        "stack_layers_scored": stack_layers_scored,
+        "mc_stack_probability_source": mc_stack_probability_source,
+        "pooled": True,
+        "pool_tickers": list(tickers),
+        "model_dir_by_ticker": {k: str(v) for k, v in model_dir_by_ticker.items()},
+    }
 
 
 def prepare_whole_stack_baseline_cache(
@@ -1566,6 +2401,8 @@ def prepare_whole_stack_baseline_cache(
 
     baseline_probs: list[Optional[list[float]]] = [None] * len(rows)
     y_outcome: list[Optional[int]] = [None] * len(rows)
+    stack_layers_scored: list[str] = []
+    mc_stack_probability_source: str | None = None
     try:
         mp.MODEL_DIR = _models_root_from_bundle_dir(Path(model_dir))
         mp.reset_caches()
@@ -1576,7 +2413,7 @@ def prepare_whole_stack_baseline_cache(
             else None
         )
         for i, row in enumerate(rows):
-            prob, yt, skip = _full_fusion_prob_for_row(
+            prob, yt, skip, audit = _production_fusion_prob_for_row(
                 row,
                 ticker=ticker,
                 target_column=target_column,
@@ -1586,6 +2423,12 @@ def prepare_whole_stack_baseline_cache(
                 _bump(skip)
             y_outcome[i] = yt
             baseline_probs[i] = prob
+            if prob is not None and yt is not None and not stack_layers_scored:
+                stack_layers_scored = list(audit.get("stack_layers_scored") or [])
+                mc_stack_probability_source = (
+                    audit.get("mc_stack_probability_source")
+                    or audit.get("mc_base_probability_source")
+                )
             if on_progress and (
                 i == 0 or (i + 1) % max(1, progress_every) == 0 or i + 1 == len(rows)
             ):
@@ -1639,6 +2482,8 @@ def prepare_whole_stack_baseline_cache(
         "baseline_multiclass_log_loss": ll_b,
         "paired_rows": paired,
         "skip_reason_counts": skip_reasons,
+        "stack_layers_scored": stack_layers_scored,
+        "mc_stack_probability_source": mc_stack_probability_source,
     }
 
 
@@ -1653,6 +2498,7 @@ def run_whole_stack_feature_group_ablation(
     baseline_cache: dict,
     options: Optional[StackBundleEvalOptions] = None,
     random_state: int = 42,
+    model_family: str | None = None,
 ) -> dict[str, Any]:
     """Permute one feature group on the production path; measure full_fusion log_loss delta."""
     from train_all import preload_historical_db_for_eval
@@ -1660,16 +2506,22 @@ def run_whole_stack_feature_group_ablation(
     import ml_predict as mp
 
     opts = options or StackBundleEvalOptions()
+    pooled = bool(baseline_cache.get("pooled"))
     if baseline_cache.get("status") != "ok":
-        return {
-            "anchor_ticker": ticker,
+        skipped: dict[str, Any] = {
             "horizon_slug": baseline_cache.get("hz", ml_horizon_slug),
             "group_id": group_id,
             "status": "skipped",
             "reason": baseline_cache.get("reason", "baseline_not_ready"),
             "ablation_kind": "whole_stack_feature_group",
             "decision_mode": WHOLE_STACK_DECISION_MODE,
+            "model_family": model_family,
         }
+        if pooled:
+            skipped["pool_tickers"] = list(baseline_cache.get("pool_tickers") or [])
+        else:
+            skipped["anchor_ticker"] = ticker
+        return skipped
 
     rows = baseline_cache["rows"]
     baseline_probs = baseline_cache["baseline_probs"]
@@ -1678,8 +2530,35 @@ def run_whole_stack_feature_group_ablation(
     target_column = outcome_column(hz)
 
     present = [c for c in group_columns if any(c in r for r in rows)]
+    if group_columns and not present:
+        noop: dict[str, Any] = {
+            "horizon_slug": hz,
+            "group_id": group_id,
+            "status": "skipped",
+            "reason": "noop_knockout:columns_absent_from_rows",
+            "ablation_kind": "whole_stack_feature_group",
+            "decision_mode": WHOLE_STACK_DECISION_MODE,
+            "model_family": model_family,
+            "columns_requested": list(group_columns),
+            "columns_permuted": [],
+            "columns_permuted_count": 0,
+            "skip_reason_counts": dict(baseline_cache.get("skip_reason_counts") or {}),
+            "stack_layers_scored": list(baseline_cache.get("stack_layers_scored") or []),
+            "mc_stack_probability_source": (
+                baseline_cache.get("mc_stack_probability_source")
+                or baseline_cache.get("mc_base_probability_source")
+            ),
+        }
+        if pooled:
+            noop["pool_tickers"] = list(baseline_cache.get("pool_tickers") or [])
+        else:
+            noop["anchor_ticker"] = ticker
+        return noop
     rng = np.random.default_rng(random_state)
-    permuted_rows = permute_snapshot_columns_across_rows(rows, group_columns, rng)
+    if pooled:
+        permuted_rows = permute_snapshot_columns_pooled_by_ticker(rows, group_columns, rng)
+    else:
+        permuted_rows = permute_snapshot_columns_across_rows(rows, group_columns, rng)
 
     orig_model_dir = mp.MODEL_DIR
     htok = mp.set_ml_infer_horizon_slug(hz)
@@ -1690,26 +2569,77 @@ def run_whole_stack_feature_group_ablation(
 
     permuted_probs: list[Optional[list[float]]] = [None] * len(rows)
     try:
-        mp.MODEL_DIR = _models_root_from_bundle_dir(Path(model_dir))
-        mp.reset_caches()
-        _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
-        hist_db = (
-            preload_historical_db_for_eval(db_path, ticker, max(_tss))
-            if _tss
-            else None
-        )
-        for i, row in enumerate(permuted_rows):
-            if baseline_probs[i] is None or y_outcome[i] is None:
-                continue
-            prob, _yt, skip = _full_fusion_prob_for_row(
-                row,
-                ticker=ticker,
-                target_column=target_column,
-                hist_db=hist_db,
-            )
-            if skip:
-                _bump(skip)
-            permuted_probs[i] = prob
+        if pooled:
+            model_root_by_ticker = {
+                t: _models_root_from_bundle_dir(Path(p))
+                for t, p in (baseline_cache.get("model_dir_by_ticker") or {}).items()
+            }
+            hist_db_by_ticker: dict[str, Any] = {}
+            active_ticker: str | None = None
+            for i, perm_row in enumerate(permuted_rows):
+                if baseline_probs[i] is None or y_outcome[i] is None:
+                    continue
+                clean_row = rows[i]
+                row_ticker = str(
+                    clean_row.get(ABLATION_ROW_TICKER_FIELD) or clean_row.get("ticker") or ""
+                ).strip().upper()
+                if row_ticker != active_ticker:
+                    mp.MODEL_DIR = model_root_by_ticker.get(row_ticker, mp.MODEL_DIR)
+                    mp.reset_caches()
+                    active_ticker = row_ticker
+                if row_ticker not in hist_db_by_ticker and not ablation_scoring_pass_active():
+                    _tss = [
+                        float(r["ts_utc"])
+                        for r in rows
+                        if str(r.get(ABLATION_ROW_TICKER_FIELD) or r.get("ticker") or "")
+                        .strip()
+                        .upper()
+                        == row_ticker
+                        and r.get("ts_utc") is not None
+                    ]
+                    hist_db_by_ticker[row_ticker] = (
+                        preload_historical_db_for_eval(db_path, row_ticker, max(_tss))
+                        if _tss
+                        else None
+                    )
+                prob, _yt, skip, _audit = _production_fusion_prob_for_row(
+                    clean_row,
+                    ticker=row_ticker,
+                    target_column=target_column,
+                    hist_db=hist_db_by_ticker.get(row_ticker) if not ablation_scoring_pass_active() else None,
+                    ablation_model_family=model_family,
+                    ablation_permuted_row=perm_row,
+                    ablation_knockout_columns=group_columns,
+                )
+                if skip:
+                    _bump(skip)
+                permuted_probs[i] = prob
+        else:
+            mp.MODEL_DIR = _models_root_from_bundle_dir(Path(model_dir))
+            mp.reset_caches()
+            hist_db = None
+            if not ablation_scoring_pass_active():
+                _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
+                hist_db = (
+                    preload_historical_db_for_eval(db_path, ticker, max(_tss))
+                    if _tss
+                    else None
+                )
+            for i, perm_row in enumerate(permuted_rows):
+                if baseline_probs[i] is None or y_outcome[i] is None:
+                    continue
+                prob, _yt, skip, _audit = _production_fusion_prob_for_row(
+                    rows[i],
+                    ticker=ticker,
+                    target_column=target_column,
+                    hist_db=hist_db,
+                    ablation_model_family=model_family,
+                    ablation_permuted_row=perm_row,
+                    ablation_knockout_columns=group_columns,
+                )
+                if skip:
+                    _bump(skip)
+                permuted_probs[i] = prob
     finally:
         mp.MODEL_DIR = orig_model_dir
         mp.reset_caches()
@@ -1729,31 +2659,36 @@ def run_whole_stack_feature_group_ablation(
         p_paired.append(p)
 
     if len(y_paired) < opts.min_paired_rows:
-        return {
-            "anchor_ticker": ticker,
+        fail: dict[str, Any] = {
             "horizon_slug": hz,
             "group_id": group_id,
             "status": "skipped",
             "reason": f"insufficient_paired_rows:{len(y_paired)}",
             "ablation_kind": "whole_stack_feature_group",
             "decision_mode": WHOLE_STACK_DECISION_MODE,
+            "model_family": model_family,
             "columns_requested": list(group_columns),
             "columns_permuted": present,
             "columns_permuted_count": len(present),
             "skip_reason_counts": skip_reasons,
         }
+        if pooled:
+            fail["pool_tickers"] = list(baseline_cache.get("pool_tickers") or [])
+        else:
+            fail["anchor_ticker"] = ticker
+        return fail
 
     ll_b = float(log_loss(y_paired, np.asarray(b_paired, dtype=np.float64), labels=[0, 1, 2]))
     ll_p = float(log_loss(y_paired, np.asarray(p_paired, dtype=np.float64), labels=[0, 1, 2]))
     delta = round(ll_p - ll_b, 6)
 
-    return {
-        "anchor_ticker": ticker,
+    ok_cell: dict[str, Any] = {
         "horizon_slug": hz,
         "group_id": group_id,
         "status": "ok",
         "ablation_kind": "whole_stack_feature_group",
         "decision_mode": WHOLE_STACK_DECISION_MODE,
+        "model_family": model_family,
         "metric": "multiclass_log_loss",
         "columns_requested": list(group_columns),
         "columns_permuted": present,
@@ -1764,7 +2699,17 @@ def run_whole_stack_feature_group_ablation(
         "log_loss_delta": delta,
         "group_matters": bool(delta > 1e-6),
         "skip_reason_counts": skip_reasons,
+        "stack_layers_scored": list(baseline_cache.get("stack_layers_scored") or []),
+        "mc_stack_probability_source": (
+            baseline_cache.get("mc_stack_probability_source")
+            or baseline_cache.get("mc_base_probability_source")
+        ),
     }
+    if pooled:
+        ok_cell["pool_tickers"] = list(baseline_cache.get("pool_tickers") or [])
+    else:
+        ok_cell["anchor_ticker"] = ticker
+    return ok_cell
 
 
 WHOLE_STACK_CONFIRM_DECISION_MODE = "full_fusion_confirm_drop"

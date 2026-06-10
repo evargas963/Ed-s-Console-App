@@ -950,6 +950,164 @@ def _minimal_analytics_pending_dict(ticker: str, expiry: Optional[str]) -> dict:
     }
 
 
+def _exposure_dataclass_rows_to_dict(rows) -> list[dict]:
+    out: list[dict] = []
+    for row in rows or []:
+        try:
+            out.append(asdict(row))
+        except TypeError:
+            if isinstance(row, dict):
+                out.append(dict(row))
+    return out
+
+
+def _float_key_level(v) -> Optional[float]:
+    try:
+        return round(float(v), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def _publish_progressive_tier_c_cache(
+    *,
+    ticker: str,
+    cache_key: tuple,
+    inflight_key: tuple,
+    selected_exp: str,
+    expiries: list[str],
+    today_str: str,
+    spot_f: float,
+    bid,
+    ask,
+    session_label: str,
+    rows,
+    walls,
+    totals,
+    consensus_summary,
+    exposures,
+    gamma_flip,
+    gamma_voids,
+    hvl,
+    max_pain,
+    charm_net,
+    charm_dir,
+    charm_toward,
+    pcr_val,
+    kl_expiry_source: str,
+    quote_spread_pts,
+    quote_spread_source: str,
+    update_source: Optional[str],
+) -> None:
+    """
+    After chain + exposures: publish a non-pending Tier C cache entry so REST/SSE
+    can render expiries, key levels, and exposure tables while ML/fusion completes.
+    """
+    prev_ent = _state_cache.get(cache_key) or {}
+    prev_md = prev_ent.get("ms_dict") if isinstance(prev_ent.get("ms_dict"), dict) else {}
+    if prev_md and not prev_md.get("analytics_pending_shell"):
+        if prev_md.get("mhap_rows") and prev_md.get("fusion_available"):
+            return
+
+    t = ticker.upper().strip()
+    w0 = walls[0] if walls else None
+    cs = consensus_summary
+    now = time.time()
+
+    md: dict[str, Any] = {
+        "_tier": "C_analytics",
+        "analytics_pending_shell": False,
+        "analytics_partial_tier_c": True,
+        "analytics_refresh_in_progress": True,
+        "ticker": t,
+        "selected_exp": selected_exp,
+        "expiries": [e for e in expiries if e >= today_str],
+        "spot": spot_f,
+        "spot_disp": f"{spot_f:.2f}",
+        "bid": bid,
+        "ask": ask,
+        "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
+        "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
+        "session_label": session_label,
+        "summary_rows": _exposure_dataclass_rows_to_dict(rows),
+        "walls": _exposure_dataclass_rows_to_dict(walls),
+        "totals_rows": _exposure_dataclass_rows_to_dict(totals),
+        "pcr_val": pcr_val,
+        "charm_net": charm_net,
+        "charm_direction": charm_dir,
+        "charm_drift_toward": charm_toward,
+        "kl_expiry_source": kl_expiry_source,
+        "kl_gamma_flip": _float_key_level(gamma_flip),
+        "kl_gamma_voids": gamma_voids or [],
+        "kl_hvl": _float_key_level(hvl),
+        "kl_max_pain": _float_key_level(max_pain),
+        "kl_call_gamma_wall": _float_key_level(getattr(w0, "call_gamma_wall", None)),
+        "kl_put_gamma_wall": _float_key_level(getattr(w0, "put_gamma_wall", None)),
+        "kl_gamma_inflection": _float_key_level(getattr(cs, "gamma_inflection", None)),
+        "kl_call_delta_wall": _float_key_level(getattr(w0, "call_delta_wall", None)),
+        "kl_put_delta_wall": _float_key_level(getattr(w0, "put_delta_wall", None)),
+        "kl_delta_inflection": _float_key_level(getattr(cs, "delta_inflection", None)),
+        "kl_call_oi_wall": _float_key_level(getattr(w0, "call_oi_wall", None)),
+        "kl_put_oi_wall": _float_key_level(getattr(w0, "put_oi_wall", None)),
+        "kl_gamma_pin": _float_key_level(getattr(cs, "gamma_pin", None)),
+        "kl_oi_center": _float_key_level(getattr(cs, "oi_center", None)),
+        "kl_metrics_dollarized": bool(exposures and exposures_have_dollar_gex(exposures)),
+        "spread": quote_spread_pts,
+        "spread_source": quote_spread_source,
+        "fusion_available": False,
+        "call_signal": "wait",
+        "call_conviction": "low",
+        "dominant_dir": "flat",
+        "mhap_rows": list(prev_md.get("mhap_rows") or []),
+        "state_error": None,
+        "_server_build_ts": now,
+        "_pipeline_ms": 0,
+        "_endpoint": "/api/analytics/state",
+    }
+    if update_source is not None:
+        md["_update_source"] = update_source
+    _lmp.merge_into_state(md, t)
+
+    _state_cache[cache_key] = {
+        "ts": now,
+        "generated_at": now,
+        "analytics_version": int(prev_ent.get("analytics_version", 0)),
+        "ms_dict": md,
+        "pcr_val": pcr_val,
+        "spot_f": spot_f,
+        "vix": prev_ent.get("vix"),
+        "price_levels": prev_ent.get("price_levels"),
+        "pl_date": prev_ent.get("pl_date", ""),
+        "pl_mono": prev_ent.get("pl_mono"),
+    }
+
+    if _main_event_loop is not None and not _main_event_loop.is_closed():
+        payload = dict(md)
+        sse_live = _sse_subscribers.get(cache_key, 0) > 0
+        _attach_analytics_freshness_contract(
+            payload,
+            data_cache_key=cache_key,
+            entry=_state_cache.get(cache_key),
+            now=now,
+            sse_live=sse_live,
+            inflight_key=inflight_key,
+        )
+        try:
+            asyncio.run_coroutine_threadsafe(_broadcast_snapshot(payload), _main_event_loop)
+        except Exception as e:
+            log.debug("progressive tier C broadcast failed ticker=%s: %s", t, e, exc_info=True)
+
+
+def _schedule_startup_analytics_warm() -> None:
+    """Cold start: warm default ticker Tier C before the logger cycle hammers Schwab."""
+    try:
+        t = DEFAULT_TICKER
+        inflight_key = _tier_c_inflight_key(t, None)
+        _schedule_analytics_recompute(inflight_key, t, None, "startup_warm")
+        log.info("Scheduled startup Tier C warm for %s", t)
+    except Exception as e:
+        log.warning("startup Tier C warm scheduling failed: %s", e)
+
+
 def _sse_viewer_cache_ttl(ticker: str, expiry: Optional[str]) -> float:
     """REST /api/state cache TTL: short while a client is SSE-subscribed to this (ticker, expiry)."""
     if expiry is None:
@@ -969,6 +1127,93 @@ def _evict_old_expiry_entries(ticker: str, keep_expiry: Optional[str]) -> None:
     ]
     for k in keys_to_remove:
         del _state_cache[k]
+
+
+def _plane_fast_quote_has_spot(row: dict | None) -> bool:
+    if not row or not isinstance(row, dict):
+        return False
+    spot = row.get("spot")
+    if spot is None:
+        return False
+    try:
+        return float(spot) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _stale_fast_quote_carried_forward(prev: dict, tkr: str) -> dict:
+    out = dict(prev)
+    qsd = dict(out.get("quote_source_detail") or {})
+    qsd["carried_forward"] = True
+    qsd["schwab_auth_degraded"] = True
+    out["quote_source_detail"] = qsd
+    out["fast_generation_id"] = _lmp.next_fast_generation(tkr)
+    return out
+
+
+def _schwab_auth_http_unavailable(he: HTTPException) -> bool:
+    if he.status_code not in (401, 503):
+        return False
+    detail = str(he.detail or "").lower()
+    return "schwab auth" in detail or "token" in detail
+
+
+def _fast_quote_token_invalid_payload(detail: str) -> dict:
+    return {
+        "error": "token_invalid",
+        "detail": detail or "Schwab auth unavailable.",
+        "message": "Schwab authentication failed. Token missing, expired, or invalid.",
+        "remediation": "Run: python reauth_schwab.py --manual",
+    }
+
+
+def _record_rest_fast_quote_with_auth_fallback(
+    tkr: str, prev: dict | None, quote_ingestion: str
+) -> dict:
+    """REST fast quote; on Schwab auth failure serve last plane row when spot is present."""
+    from schwab_client import SchwabAuthError, _is_token_error, _schwab_auth_latched, _raise_schwab_auth_error
+
+    if _schwab_auth_latched():
+        if _plane_fast_quote_has_spot(prev):
+            log.warning(
+                "fast_quote auth latched ticker=%s — serving carried-forward plane quote",
+                tkr,
+            )
+            return _stale_fast_quote_carried_forward(prev, tkr)
+        raise SchwabAuthError("Schwab auth latched — fast quote withheld (no plane cache)")
+
+    try:
+        out = _build_rest_fast_quote_payload(tkr, quote_ingestion)
+        _lmp.record_quote(tkr, out)
+        return out
+    except HTTPException as he:
+        if not _schwab_auth_http_unavailable(he):
+            raise
+        try:
+            _raise_schwab_auth_error(Exception(str(he.detail)))
+        except SchwabAuthError:
+            pass
+        if _plane_fast_quote_has_spot(prev):
+            log.warning(
+                "fast_quote Schwab client unavailable ticker=%s — serving carried-forward plane quote",
+                tkr,
+            )
+            return _stale_fast_quote_carried_forward(prev, tkr)
+        raise SchwabAuthError(str(he.detail)) from he
+    except Exception as e:
+        if not (_is_token_error(e) or isinstance(e, SchwabAuthError)):
+            raise
+        try:
+            _raise_schwab_auth_error(e)
+        except SchwabAuthError:
+            pass
+        if _plane_fast_quote_has_spot(prev):
+            log.warning(
+                "fast_quote REST auth failed ticker=%s — serving carried-forward plane quote",
+                tkr,
+            )
+            return _stale_fast_quote_carried_forward(prev, tkr)
+        raise
 
 
 def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
@@ -1101,26 +1346,24 @@ def _fetch_fast_quote_payload(ticker: str) -> dict:
         if prev and prev.get("quote_ingestion") == "rest_bootstrap_pending_stream":
             return dict(prev)
         if prev and prev.get("quote_ingestion") == "schwab_streaming_level_one":
-            out = _build_rest_fast_quote_payload(tkr, "rest_fallback_explicit")
-            _lmp.record_quote(tkr, out)
-            return out
-        out = _build_rest_fast_quote_payload(tkr, "rest_bootstrap_pending_stream")
-        _lmp.record_quote(tkr, out)
-        return out
+            return _record_rest_fast_quote_with_auth_fallback(
+                tkr, prev, "rest_fallback_explicit"
+            )
+        return _record_rest_fast_quote_with_auth_fallback(
+            tkr, prev, "rest_bootstrap_pending_stream"
+        )
 
     if auth == "rest_fallback_explicit":
-        out = _build_rest_fast_quote_payload(tkr, "rest_fallback_explicit")
-        _lmp.record_quote(tkr, out)
-        return out
+        return _record_rest_fast_quote_with_auth_fallback(
+            tkr, prev, "rest_fallback_explicit"
+        )
 
     if auth == "rest_mismatch":
-        out = _build_rest_fast_quote_payload(tkr, "rest_ticker_not_streamed")
-        _lmp.record_quote(tkr, out)
-        return out
+        return _record_rest_fast_quote_with_auth_fallback(
+            tkr, prev, "rest_ticker_not_streamed"
+        )
 
-    out = _build_rest_fast_quote_payload(tkr, "rest_fast_quote")
-    _lmp.record_quote(tkr, out)
-    return out
+    return _record_rest_fast_quote_with_auth_fallback(tkr, prev, "rest_fast_quote")
 
 
 async def _broadcast_snapshot(data: dict) -> None:
@@ -1572,6 +1815,7 @@ CORE_TICKERS:   list[str] = [
 ]
 LOG_INTERVAL:   int       = 30    # seconds — 12 tickers × 3 calls + 17 global ≈ 106/min
 STAGGER_SECS:   float     = 2.0  # seconds between each ticker fetch in a cycle
+LOGGER_STARTUP_DELAY_SEC: float = float(os.environ.get("ED_LOGGER_STARTUP_DELAY_SEC", "60"))
 RTH_ONLY:       bool      = True  # only log during RTH + 30min pre/post buffer
 
 # Issue 22 — persistent universe for non-core symbols (see logging_universe in EdDB).
@@ -2114,8 +2358,9 @@ def _logger_loop():
     global _logger_running, _cached_mkt_ctx_ts
     log.info("Background multi-ticker logger started")
 
-    # Delay first cycle so server finishes startup; first HTTP request can init DB cleanly
-    time.sleep(10)
+    # Delay first cycle so startup warm + first UI request can finish Tier C without
+    # competing with 27-ticker logger _fetch_state storms (ED_LOGGER_STARTUP_DELAY_SEC).
+    time.sleep(LOGGER_STARTUP_DELAY_SEC)
 
     while _logger_running:
         cycle_start = time.monotonic()
@@ -2278,20 +2523,21 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
     """
     Small, UI-oriented bundle for decision surfaces (not a second truth).
 
-    - stack_runtime: fusion active, MC participation, coarse stack mode (FULL/PARTIAL/DEGRADED/INVALID)
+    - stack_runtime: fusion active, MC participation, coarse stack mode (FULL/INVALID)
     - stack_governance: architecture competition state from models/arch_state.json (when present)
     """
     try:
         from governed_stack_contract import classify_stack_health
     except Exception:
-        def classify_stack_health(*, fusion_available, mc_available, n_base_available):  # type: ignore
-            if not fusion_available or not mc_available:
+        def classify_stack_health(*, fusion_available, mc_available, n_ml_layers_available, unified_stack_team_ok=None):  # type: ignore
+            team_ok = unified_stack_team_ok
+            if team_ok is None:
+                team_ok = n_ml_layers_available >= 3 and fusion_available
+            if not team_ok or not fusion_available or not mc_available:
                 return "INVALID"
-            if n_base_available >= 3:
+            if n_ml_layers_available >= 3:
                 return "FULL"
-            if n_base_available >= 1:
-                return "PARTIAL"
-            return "DEGRADED"
+            return "INVALID"
 
     # STACK-WIRE-4-CAND-MS-DICT-ADOPTION: tradability gate, not bare .available flag.
     # fusion_available=True + canonical_provenance="canonical_forecast_missing" is a
@@ -2302,10 +2548,40 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
     xgb_ok = bool(ms_dict.get("xgb_available"))
     lstm_ok = bool(ms_dict.get("lstm_available"))
     trans_ok = bool(ms_dict.get("transformer_available"))
-    n_base = 0
+    n_ml_layers = 0
     for k in ("xgb_available", "lstm_available", "transformer_available"):
         if ms_dict.get(k):
-            n_base += 1
+            n_ml_layers += 1
+
+    from types import SimpleNamespace
+
+    from governed_stack_contract import unified_stack_team_can_authorize
+
+    def _layer_ns(layer: str):
+        probs = (ms_dict.get("ml_layer_probs") or {}).get(layer)
+        if isinstance(probs, dict) and probs.get("up") is not None:
+            return SimpleNamespace(
+                available=True,
+                prob_up=probs.get("up"),
+                prob_down=probs.get("down"),
+                prob_flat=probs.get("flat"),
+            )
+        avail = bool(ms_dict.get(f"{layer}_available"))
+        return SimpleNamespace(
+            available=avail,
+            prob_up=None,
+            prob_down=None,
+            prob_flat=None,
+        )
+
+    team_ok, team_reason = unified_stack_team_can_authorize(
+        xgb_out=_layer_ns("xgb"),
+        lstm_out=_layer_ns("lstm"),
+        transformer_out=_layer_ns("transformer"),
+        stack_probs=None,
+    )
+    ms_dict["unified_stack_team_ok"] = bool(team_ok)
+    ms_dict["unified_stack_team_reason"] = team_reason
 
     cm = ms_dict.get("fusion_contributing_models")
     if not isinstance(cm, list) or not cm:
@@ -2333,11 +2609,13 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
     ms_dict["stack_runtime"] = {
         "fusion_active": fusion_ok,
         "mc_participated": mc_ok,
-        "n_base_models_live": int(n_base),
+        "n_ml_layers_live": int(n_ml_layers),
+        "unified_stack_team_ok": bool(team_ok),
         "stack_mode": classify_stack_health(
             fusion_available=fusion_ok,
             mc_available=mc_ok,
-            n_base_available=n_base,
+            n_ml_layers_available=n_ml_layers,
+            unified_stack_team_ok=bool(team_ok),
         ),
         "contributing_models": cm,
     }
@@ -2656,14 +2934,23 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     ask = _safe_float_quote(_q.get("askPrice"))
     if ask is None:
         ask = _safe_float_quote(_ext.get("askPrice"))
+    def _epoch_seconds(v: float | None) -> float | None:
+        # Schwab wire quoteTime/tradeTime are epoch MILLISECONDS; every downstream consumer
+        # (candle accumulators, fill_outcomes bar grid, as_of_ts_utc filters) expects seconds.
+        # 2026-06-09 regression: raw ms ticks built ms-grid bars in price_bars_1m, so the
+        # seconds-unit outcome filler matched zero bars and no snapshot got labeled all day.
+        return v / 1000.0 if v is not None and v > 1e10 else v
+
     quote_time = _safe_float_quote(_q.get("quoteTime"))
     if quote_time is None:
         quote_time = _safe_float_quote(_ext.get("quoteTime"))
+    quote_time = _epoch_seconds(quote_time)
     trade_time = _safe_float_quote(_q.get("tradeTime"))
     if trade_time is None:
         trade_time = _safe_float_quote(_ext.get("tradeTime"))
     if trade_time is None:
         trade_time = _safe_float_quote(_reg.get("regularMarketTradeTime"))
+    trade_time = _epoch_seconds(trade_time)
     spot_source = "lastPrice" if last and last > 0 else ("mark" if mark and mark > 0 else None)
     spot = last if spot_source == "lastPrice" else (mark if spot_source == "mark" else None)
     try:
@@ -3298,7 +3585,26 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     tkr = ticker.upper().strip()
     sess = _derive_session()
     row = _lmp.get_quote(tkr)
-    client = get_client()
+    client = None
+    try:
+        client = get_client()
+    except HTTPException as he:
+        if not _plane_fast_quote_has_spot(row):
+            if _schwab_auth_http_unavailable(he):
+                return {
+                    "_tier": "A_live",
+                    "ticker": tkr,
+                    "selected_exp": expiry,
+                    "session_label": sess,
+                    "state_error": "token_invalid",
+                    "error": "token_invalid",
+                    "state_error_detail": str(he.detail or ""),
+                    "remediation": "Run: python reauth_schwab.py --manual",
+                    "_server_build_ts": time.time(),
+                    "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
+                    "_endpoint": "/api/live/state",
+                }
+            raise
     if (not row or row.get("spot") is None) and client:
         q_resp = _safe_get_quote_with_retry(client, tkr)
         if q_resp and q_resp.status_code == 200:
@@ -3845,8 +4151,40 @@ def _fetch_state(
         if v is not None:
             pcr_val = float(v)
 
-    # ── Market context ────────────────────────────────────────────────────────
     _cache_key = (ticker, selected_exp)
+    _progressive_inflight_key = _tier_c_inflight_key(ticker, expiry)
+    if not log_only:
+        _publish_progressive_tier_c_cache(
+            ticker=ticker,
+            cache_key=_cache_key,
+            inflight_key=_progressive_inflight_key,
+            selected_exp=selected_exp,
+            expiries=expiries,
+            today_str=_today_str,
+            spot_f=spot_f,
+            bid=bid,
+            ask=ask,
+            session_label=session_label,
+            rows=rows,
+            walls=walls,
+            totals=totals,
+            consensus_summary=consensus_summary,
+            exposures=exposures,
+            gamma_flip=_gamma_flip,
+            gamma_voids=_gamma_voids,
+            hvl=_hvl,
+            max_pain=_max_pain,
+            charm_net=_charm_net,
+            charm_dir=_charm_dir,
+            charm_toward=_charm_toward,
+            pcr_val=pcr_val,
+            kl_expiry_source=_kl_expiry_source,
+            quote_spread_pts=_quote_spread,
+            quote_spread_source=_quote_spread_source,
+            update_source=update_source,
+        )
+
+    # ── Market context ────────────────────────────────────────────────────────
     prev_pcr  = _state_cache.get(_cache_key, {}).get("pcr_val")
     prev_spot = _state_cache.get(_cache_key, {}).get("spot_f")
 
@@ -4403,8 +4741,17 @@ def _fetch_state(
     # Candle volume priority: 1) Price history candles.*.volume (primary), 2) accumulator (secondary)
     # Use 1m price history to match canonical (1m) bar timestamps.
     _c_vol = None
-    # 1. Price history primary — direct per-bar RTH volume from Schwab
-    if ticker:
+    if _completed_for_vol:
+        _raw_vol = getattr(_completed_for_vol[-1], "volume", None)
+        if _raw_vol is not None:
+            try:
+                v = float(_raw_vol)
+                if v > 0:
+                    _c_vol = v
+            except (TypeError, ValueError):
+                pass
+    # Price history fetch only when accumulator has no usable volume (avoid duplicate Schwab RTT).
+    if _c_vol is None and ticker:
         try:
             resp_ph = safe_get_price_history(client, ticker, frequency_minutes=1, period_days=1)
             if (not resp_ph or resp_ph.status_code != 200 or not resp_ph.json().get("candles")) and ticker.startswith("$"):
@@ -5150,6 +5497,7 @@ def _fetch_state(
 
     # ── Build full API response dict ──────────────────────────────────────────
     ms_dict             = _ms_to_dict(ms)
+    ms_dict["analytics_partial_tier_c"] = False
     ms_dict["expiries"] = [e for e in expiries if e >= _today_str]
     ms_dict["selected_exp"] = selected_exp
     ms_dict["quote_source_detail"] = {
@@ -5922,7 +6270,7 @@ async def _app_lifespan(app):
         raise RuntimeError(f"timeframe_config.CANONICAL_TIMEFRAME must be '1m', got {CANONICAL_TIMEFRAME!r}")
     log.info("Canonical timeframe: 1m (snapshot inserts enforced in db.insert_snapshot)")
     # DB-WRITE-PATH-FIXES (d): start_logger() -> _hydrate_logger_tickers_from_db() performs the
-    # DB-backed logging-universe load here in the lifespan (deferred off the module-import path).
+    # DB-backed logging-universe load here in the lifespan (kept off the module-import path).
     start_logger()
     log.info(f"Background logger started — core tickers: {CORE_TICKERS}")
 
@@ -5972,6 +6320,8 @@ async def _app_lifespan(app):
     asyncio.create_task(_sse_live_quote_loop())
     asyncio.create_task(_l1_light_sse_dispatch_loop())
     log.info("SSE background loop + live quote SSE loop + L1 light SSE dispatch started")
+
+    _schedule_startup_analytics_warm()
 
     yield
 
@@ -7041,21 +7391,27 @@ async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
         )
         return JSONResponse(payload)
     except HTTPException as he:
-        # Rollout visibility: quote failures (e.g. 502) do not hit the generic branch below.
+        if _schwab_auth_http_unavailable(he):
+            stale = _lmp.get_quote(ticker)
+            if _plane_fast_quote_has_spot(stale):
+                return JSONResponse(_stale_fast_quote_carried_forward(stale, ticker))
+            return JSONResponse(
+                status_code=401,
+                content=_fast_quote_token_invalid_payload(str(he.detail or "")),
+            )
         if he.status_code >= 400:
             log.warning("Fast quote HTTP %s for %s: %s", he.status_code, ticker, he.detail)
         raise
     except Exception as e:
-        from schwab_client import _is_token_error
-        if _is_token_error(e):
+        from schwab_client import SchwabAuthError, _is_token_error
+
+        if _is_token_error(e) or isinstance(e, SchwabAuthError):
+            stale = _lmp.get_quote(ticker)
+            if _plane_fast_quote_has_spot(stale):
+                return JSONResponse(_stale_fast_quote_carried_forward(stale, ticker))
             return JSONResponse(
                 status_code=401,
-                content={
-                    "error": "token_invalid",
-                    "detail": "Schwab auth failed. Token may be expired. Run: python reauth_schwab.py",
-                    "message": "Schwab authentication failed. Token may be expired or invalid.",
-                    "remediation": "Run: python reauth_schwab.py",
-                },
+                content=_fast_quote_token_invalid_payload(str(e)),
             )
         log.error(f"Fast quote failed for {ticker}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

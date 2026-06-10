@@ -460,8 +460,8 @@ class MarketState:
     transformer_dominant:   Optional[str]   = None
     transformer_confidence: Optional[float] = None
     transformer_approved:   Optional[bool]  = None
-    # Raw P(up)/P(down)/P(flat) per base model for WDS mini-bars (JSON to UI)
-    layer1_probs: Optional[dict] = None  # {"xgb": {up,down,flat}|None, "lstm": ..., "transformer": ...}
+    # Raw P(up)/P(down)/P(flat) per xgb/lstm/transformer layer for WDS mini-bars (JSON to UI)
+    ml_layer_probs: Optional[dict] = None  # {"xgb": {up,down,flat}|None, "lstm": ..., "transformer": ...}
 
     # ── Stack decision path (ordered: XGB → LSTM → Transformer → MC → Fusion → Call) ───
     stack_decision_path:    Optional[list]  = None   # list of {stage_id, status, direction, confidence, probability, note}
@@ -1607,7 +1607,7 @@ def build_market_state(
                         return None
                     return {"up": u_f, "down": dn_f, "flat": fl_f}
 
-                ms.layer1_probs = {
+                ms.ml_layer_probs = {
                     "xgb": _pack_probs(_x),
                     "lstm": _pack_probs(_l),
                     "transformer": _pack_probs(_t),

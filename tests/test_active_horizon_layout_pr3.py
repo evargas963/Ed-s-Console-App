@@ -29,6 +29,7 @@ def _write_minimal_bundle(bundle_dir: Path, ticker: str, hz: str) -> None:
             __import__("json").dumps(meta),
             encoding="utf-8",
         )
+    bundle_dir.joinpath(f"meta_{t}_{hz}.pkl").write_bytes(b"meta-stack-test-stub")
 
 
 def test_strict_active_bundle_dir_single_canonical_root(tmp_path: Path):
@@ -54,7 +55,7 @@ def test_scheduler_active_root_matches_contract(tmp_path: Path):
     assert mc_root(tmp_path, "15c") == tmp_path / "active_15c"
 
 
-def test_promote_horizon_bundle_copies_six_files_only(tmp_path: Path):
+def test_promote_horizon_bundle_copies_seven_files_only(tmp_path: Path):
     from active_bundle_contract import (
         active_bundle_dir,
         horizon_bundle_filenames,
@@ -89,11 +90,11 @@ def test_consolidate_plan_moves_from_legacy_active(tmp_path: Path):
     legacy = tmp_path / "active" / "SPY"
     _write_minimal_bundle(legacy, "SPY", "5c")
     plan = consolidate_horizon_layout_plan("SPY", "5c", models_dir=tmp_path)
-    assert len(plan["moves"]) == 6
+    assert len(plan["moves"]) == 7
     canonical = active_bundle_dir("SPY", "5c", models_dir=tmp_path)
     assert plan["canonical_dir"] == str(canonical)
     copied = apply_consolidate_horizon_layout_plan(plan)
-    assert len(copied) == 6
+    assert len(copied) == 7
     assert (canonical / "xgb_SPY_5c.pkl").is_file()
 
 

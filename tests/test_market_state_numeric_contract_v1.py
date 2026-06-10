@@ -131,7 +131,7 @@ def test_fusion_prob_nan_surfaces_none(mock_cs):
 
 
 @patch("signals.compute_signals")
-def test_layer1_probs_nan_returns_none(mock_cs):
+def test_ml_layer_probs_nan_returns_none(mock_cs):
     model_outputs = {
         "xgb": {
             "available": True,
@@ -147,7 +147,7 @@ def test_layer1_probs_nan_returns_none(mock_cs):
     }
     mock_cs.return_value = _sig_out_with_pred(model_outputs=model_outputs)
     ms = build_market_state(**_base_kwargs())
-    assert ms.layer1_probs["xgb"] is None
+    assert ms.ml_layer_probs["xgb"] is None
 
 
 @patch("signals.compute_signals")

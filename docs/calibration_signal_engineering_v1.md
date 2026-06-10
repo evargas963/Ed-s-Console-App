@@ -261,7 +261,7 @@
     "Canonical/fusion still encode direction probabilities but execution layer does not emit short without policy change."
   ],
   "model_output_separation": [
-    "Fake run_base_models_once returns identical 0.34/0.33/0.33 per model \u2192 no cross-model disagreement for stack vote."
+    "Fake run_unified_stack_ml_once returns identical 0.34/0.33/0.33 per model \u2192 no cross-model disagreement for stack vote."
   ],
   "sample_fusion_keys": [
     "available",

@@ -77,7 +77,7 @@ FORMAL_KEEP_DERIVED: list[tuple[int, str, str]] = [
     (1553, "ms.lstm_confidence", zero("lstm_confidence")),
     (1557, "ms.transformer_confidence", zero("transformer_confidence")),
     (1641, "stack_decision_path stage confidence", zero("stack_decision_path")),
-    (1542, "ms.layer1_probs", zero("layer1_probs")),
+    (1542, "ms.ml_layer_probs", zero("ml_layer_probs")),
     (1649, "ms.charm_direction_display", zero("charm_direction_display")),
     (1578, "bayesian fusion outputs block", zero("fusion_breakout")),
     (1563, "regime classification block", zero("regime_primary")),

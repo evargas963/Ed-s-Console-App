@@ -93,7 +93,7 @@ This document states what **institutional quality** means for a production syste
 
 **Meta-learners are models with the same obligations.** They require: training data lineage, anti-leakage discipline, calibration expectations, serving contracts, and promotion rules. Treating meta as “just a sklearn pickle” is sub-institutional.
 
-**Fusion is policy, not trivia.** Bayesian fusion, rule engines, and learned combiners encode **risk preferences**. They must be versioned, reviewed, and tested with the same seriousness as base models. Changing fusion without a governance event is a material risk change.
+**Fusion is policy, not trivia.** Bayesian fusion, rule engines, and learned combiners encode **risk preferences**. They must be versioned, reviewed, and tested with the same seriousness as ML stack layers. Changing fusion without a governance event is a material risk change.
 
 **Monotonicity and guardrails where appropriate.** Where domain theory demands constraints (e.g., monotonicity in a credit-style signal), the standard is to **enforce** them in model or post-processing—not hope the network learned them.
 

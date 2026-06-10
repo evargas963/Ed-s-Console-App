@@ -37,7 +37,9 @@
       "Bash(git push *)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Workflow(deep-research)"
+      "Workflow(deep-research)",
+      "Bash(git grep *)",
+      "Bash(PYTHONIOENCODING=utf-8 python -c ' *)"
     ],
     "deny": [
       "Grep(*)"

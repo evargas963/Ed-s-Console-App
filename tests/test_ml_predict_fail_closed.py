@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ml_predict as mp
+from pathlib import Path
 
 
 def test_require_direction_probability_triplet_none_input():
@@ -66,6 +67,54 @@ def test_model_probs_to_ui_output_none_input():
     assert out["available"] is False
 
 
+def test_get_model_version_fail_closed_when_strict_bundle_blocked(monkeypatch):
+    def _raise(_ticker: str) -> Path:
+        raise FileNotFoundError("strict bundle blocked")
+
+    monkeypatch.setattr(mp, "_model_dir_for_ticker", _raise)
+    assert mp.get_model_version("SPY") == "rules_v1"
+
+
+def test_load_xgb_fail_closed_when_strict_bundle_blocked(monkeypatch):
+    def _raise(_ticker: str) -> Path:
+        raise FileNotFoundError("strict bundle blocked")
+
+    monkeypatch.setattr(mp, "_model_dir_for_ticker", _raise)
+    mp._xgb_registry.clear()
+    mp._active_bundle_dir_cache.clear()
+    mp._strict_bundle_warned.clear()
+    assert mp._load_xgb("SPY") is False
+
+
+def test_predict_xgb_movement_heads_fail_closed_when_strict_bundle_blocked(monkeypatch):
+    def _raise(_ticker: str) -> Path:
+        raise FileNotFoundError("strict bundle blocked")
+
+    monkeypatch.setattr(mp, "_model_dir_for_ticker", _raise)
+    mp._xgb_movehead_registry.clear()
+    mp._active_bundle_dir_cache.clear()
+    mp._strict_bundle_warned.clear()
+    out = mp._predict_xgb_movement_heads({"ticker": "SPY", "spot": 500.0}, "SPY")
+    assert out == {}
+
+
+def test_active_bundle_dir_for_load_warns_once_per_ticker_horizon(monkeypatch, caplog):
+    import logging
+
+    def _raise(_ticker: str) -> Path:
+        raise FileNotFoundError("strict bundle blocked")
+
+    monkeypatch.setattr(mp, "_model_dir_for_ticker", _raise)
+    monkeypatch.setattr(mp, "_strict_bundle_block_detail", lambda _t, _h: "encoder v3 required")
+    mp._active_bundle_dir_cache.clear()
+    mp._strict_bundle_warned.clear()
+    caplog.set_level(logging.WARNING, logger="ed_console.ml")
+    assert mp._active_bundle_dir_for_load("SPY") is None
+    assert mp._active_bundle_dir_for_load("SPY") is None
+    warns = [r for r in caplog.records if r.levelno == logging.WARNING and "Active bundle blocked" in r.message]
+    assert len(warns) == 1
+
+
 def test_parallel_base_stack_complete_requires_all_legs():
     tri = {"up": 0.4, "down": 0.3, "flat": 0.3}
     assert mp._parallel_base_stack_complete(tri, tri, tri) is True
@@ -76,6 +125,28 @@ def test_parallel_base_stack_complete_requires_all_legs():
 def test_weighted_average_fail_closed_on_partial_stack():
     tri = {"up": 0.4, "down": 0.3, "flat": 0.3}
     assert mp._weighted_average("SPY", tri, tri, None) is None
+
+
+def test_weighted_average_partial_renormalizes_available_legs():
+    """5c xgb_plus_transformer: blend xgb+tr without requiring lstm."""
+    xgb = {"up": 0.8, "down": 0.1, "flat": 0.1}
+    tr = {"up": 0.1, "down": 0.2, "flat": 0.7}
+    got = mp._weighted_average_partial(
+        "SPY",
+        [("xgb", xgb, 0.40), ("transformer", tr, 0.25)],
+    )
+    wl, wt = 0.40 / 0.65, 0.25 / 0.65
+    assert got == {
+        "up": round(0.8 * wl + 0.1 * wt, 4),
+        "down": round(0.1 * wl + 0.2 * wt, 4),
+        "flat": round(0.1 * wl + 0.7 * wt, 4),
+    }
+
+
+def test_weighted_average_partial_fail_closed_when_no_healthy_legs():
+    assert mp._weighted_average_partial("SPY", [("xgb", None, 0.40), ("transformer", None, 0.25)]) is None
+    tri = {"up": 0.4, "down": 0.3}  # incomplete triplet
+    assert mp._weighted_average_partial("SPY", [("xgb", tri, 0.40), ("transformer", None, 0.25)]) is None
 
 
 def test_stack_probs_fail_closed_on_partial_stack():
@@ -127,21 +198,21 @@ def test_weighted_average_all_collapsed_returns_uniform():
     assert got == mp._UNIFORM_PROBS
 
 
-def test_read_base_collapse_flags(tmp_path):
+def test_read_stack_layer_collapse_flags(tmp_path):
     for base, flag in (("xgb", True), ("lstm", False), ("transformer", True)):
         (tmp_path / f"{base}_SPY_1c_meta.json").write_text(
             json.dumps({"val_single_class_collapse": flag}), encoding="utf-8"
         )
-    assert mp.read_base_collapse_flags(tmp_path, "SPY", "1c") == {"xgb", "transformer"}
+    assert mp.read_stack_layer_collapse_flags(tmp_path, "SPY", "1c") == {"xgb", "transformer"}
 
 
-def test_read_base_collapse_flags_missing_and_bad_json(tmp_path):
+def test_read_stack_layer_collapse_flags_missing_and_bad_json(tmp_path):
     # only xgb present + flagged; lstm absent; transformer unreadable -> only xgb
     (tmp_path / "xgb_SPY_1c_meta.json").write_text(
         json.dumps({"val_single_class_collapse": True}), encoding="utf-8"
     )
     (tmp_path / "transformer_SPY_1c_meta.json").write_text("{not json", encoding="utf-8")
-    assert mp.read_base_collapse_flags(tmp_path, "SPY", "1c") == {"xgb"}
+    assert mp.read_stack_layer_collapse_flags(tmp_path, "SPY", "1c") == {"xgb"}
 
 
 def test_ensemble_all_collapsed_returns_uniform(monkeypatch):
@@ -159,3 +230,17 @@ def test_ensemble_backcompat_no_collapse_uses_weighted_average(monkeypatch):
     monkeypatch.setattr(mp, "_active_base_collapse_flags", lambda t: set())
     monkeypatch.setattr(mp, "_predict_meta", lambda *a, **k: None)
     assert mp._ensemble_parallel_probs("SPY", xgb, lstm, tr) == mp._weighted_average("SPY", xgb, lstm, tr)
+
+
+def test_model_dir_live_ablation_experiment_uses_parallel(tmp_path, monkeypatch):
+    from arch_competition.stack_bundle_eval_v1 import LIVE_ABLATION_EXPERIMENT_ENV
+
+    monkeypatch.setenv(LIVE_ABLATION_EXPERIMENT_ENV, "1")
+    monkeypatch.setattr(mp, "MODEL_DIR", tmp_path / "models")
+    monkeypatch.setattr(mp, "get_ml_infer_horizon_slug", lambda: "1c")
+    root = tmp_path / "models" / "parallel" / "SPY"
+    root.mkdir(parents=True)
+    for name in ("xgb_SPY_1c.pkl", "lstm_SPY_1c.pt", "transformer_SPY_1c.pt"):
+        (root / name).write_bytes(b"x")
+    got = mp._model_dir_for_ticker("SPY")
+    assert got == root

@@ -113,6 +113,37 @@ def test_structural_bulk_matches_snapshot():
     assert abs(cr - float(row["candle_range_pct"].iloc[0])) < 1e-9
 
 
+def test_non_numeric_scale_invariant_value_coerces_nan_train_and_serve():
+    """qqq_vs_spy live regression (2026-06-09): market_state emits 'leading'/'lagging'/'inline'
+    strings for a column registered in SCALE_INVARIANT_COLS. Training coerces via
+    pd.to_numeric(errors='coerce') -> NaN; serve must mirror that (NaN), never raise and kill
+    the whole XGB prediction ('could not convert string to float: lagging')."""
+    df = _minimal_df()
+    df["qqq_vs_spy"] = ["lagging"]
+    X, names, _, _ = engineer_features(df)
+    assert "qqq_vs_spy" in names
+    assert np.isnan(float(X["qqq_vs_spy"].iloc[0]))
+
+    snap = {
+        "ticker": "SPY",
+        "spot": 100.0,
+        "candle_body_pts": 1.0,
+        "candle_range_pts": 2.0,
+        "nearest_above_dist": 1.0,
+        "nearest_below_dist": 1.0,
+        "qqq_vs_spy": "lagging",
+    }
+    row = engineer_single_snapshot(snap, {}, list(X.columns), {}, "SPY")
+    assert row is not None, "serve must not fail-closed the entire XGB row on a string value"
+    assert np.isnan(float(row["qqq_vs_spy"].iloc[0]))
+
+    # Numeric twin present (live serve path): use the qqq_vs_spy_delta spread — the same
+    # quantity the DB/training column stores — instead of NaN.
+    snap_with_delta = dict(snap, qqq_vs_spy_delta=-0.9368)
+    row2 = engineer_single_snapshot(snap_with_delta, {}, list(X.columns), {}, "SPY")
+    assert abs(float(row2["qqq_vs_spy"].iloc[0]) - (-0.9368)) < 1e-9
+
+
 def test_apply_xgb_imputation_matrix():
     names = ["a", "b"]
     X = np.array([[np.nan, 2.0]], dtype=float)
@@ -371,20 +402,38 @@ def test_feature_schema_version_bumped_for_m5_strip():
 
 
 def test_feature_ablation_manifest_matches_engineer_features():
-    from tools.build_feature_assignment_matrix_v2 import resolve_ablation_universe
+    """Expanded Schwab atomic universe includes registered ML cone + cf_* on lstm_5m."""
+    from tools.build_feature_assignment_matrix_v2 import (
+        MIN_ABLATION_EXPANSION_FACTOR,
+        resolve_ablation_universe,
+    )
 
     payload = resolve_ablation_universe()
-    assert payload["totals"]["xgb_engineered_columns"] == 88
-    assert payload["totals"]["lstm_5m_channels"] == 23
-    assert payload["totals"]["lstm_1m_channels"] == 12
-    assert payload["unassigned_xgb"] == []
-    by_id = {g["group_id"]: g for g in payload["groups"]}
-    assert by_id["m5_block"]["disposition"] == "DROP"
-    assert by_id["m5_block"]["member_counts"]["xgb"] == 0
-    assert by_id["combined_leakage"]["disposition"] == "EXCLUDE"
-    assert by_id["time"]["member_counts"]["xgb"] == 4
-    assert by_id["iv"]["member_counts"]["xgb"] == 4  # iv_level, iv_rank, cat_iv_direction, atr
-    assert by_id["microstructure"]["member_counts"]["xgb"] == 4
+    reg_n = int(payload["totals"]["registered_ml_cone_columns"])
+    ablate_n = int(payload["totals"]["ablation_group_count"])
+    assert ablate_n >= reg_n * MIN_ABLATION_EXPANSION_FACTOR
+    banned = ("members", "member_counts", "members_note", "horizon_disposition")
+    for g in payload.get("groups") or []:
+        assert not any(k in g for k in banned), g.get("group_id")
+        assert g.get("atomic_column"), g.get("group_id")
+    gids = {g["group_id"] for g in payload["groups"] if g.get("disposition") == "ABLATE"}
+    for cf in (
+        "cf_alignment_score",
+        "cf_greek_support",
+        "cf_momentum_5m",
+        "cf_structure_15m",
+        "cf_trend_1h",
+        "cf_vwap_distance_pct",
+    ):
+        assert f"reg__atomic__{cf}" in gids
+
+
+
+def test_ablation_manifest_generator_has_no_model_stamp_builder():
+    """Generator source must not retain legacy compound model-stamp builders."""
+    from tools.check_fix_everything_we_touch import check_ablation_manifest_generator_no_model_preassignment
+
+    assert check_ablation_manifest_generator_no_model_preassignment() == []
 
 
 def test_ablation_harness_manifest_only_grid():
@@ -409,17 +458,12 @@ def test_ablation_harness_manifest_only_grid():
     assert len(feat_specs) == expected
     assert manifest["totals"]["per_model_feature_cell_count"] == expected
 
-    stack_specs = ablation_stack_authority_cell_specs(manifest)
-    assert len(stack_specs) == manifest["totals"]["stack_authority_cell_count"]
-    assert manifest["totals"]["grid_cell_count"] == expected + len(stack_specs)
-
-    assert method["primary_pass"] == "per_model_grouped_permutation_importance"
+    assert method["primary_pass"] == "per_model_per_horizon_atomic_permutation_importance"
     assert method["decision_mode"] == "per_model_holdout"
     assert method["decision_metric"] == "mcc_delta"
     assert set(method["models"]) == {"xgb", "lstm", "transformer"}
     assert set(method["horizons"]) == set(REQUIRED_ABLATION_HORIZONS)
     assert set(method["full_stack_layers"]) == set(FULL_STACK_LAYERS)
-    assert set(method["grid"]) == {"anchor_ticker", "model_family", "horizon_slug", "group_id"}
 
     assert {c["model_family"] for c in feat_specs} == {"xgb", "lstm", "transformer"}
     assert {c["horizon_slug"] for c in feat_specs} == set(REQUIRED_ABLATION_HORIZONS)
@@ -427,17 +471,31 @@ def test_ablation_harness_manifest_only_grid():
     report = build_ablation_report(dry_run=True)
     assert report["dry_run"] is True
     assert report["per_model_feature_cell_count"] == expected
-    assert report["stack_authority_cell_count"] == len(stack_specs)
-    assert report["grid_cell_count"] == expected + len(stack_specs)
-    assert report["per_model_feature_cells"][0]["model_family"] in {"xgb", "lstm", "transformer"}
-    assert report["stack_authority_cells"][0]["ablation_kind"] == "stack_authority"
-    stack_auth = method.get("stack_authority_pass") or method.get("stack_eval") or {}
-    assert "meta_stack" in stack_auth["modes"]
-    assert "full_fusion" in stack_auth["modes"]
+    if manifest.get("schema_version") == "4_schwab_expanded":
+        from tools.feature_curation_gate import ablation_whole_stack_feature_cell_specs
+
+        whole = ablation_whole_stack_feature_cell_specs(manifest)
+        assert len(whole) == report.get("whole_stack_feature_cell_count", len(whole))
+        assert whole[0]["model_family"] in set(FULL_STACK_LAYERS)
+    else:
+        stack_specs = ablation_stack_authority_cell_specs(manifest)
+        assert len(stack_specs) == manifest["totals"]["stack_authority_cell_count"]
+        assert manifest["totals"]["grid_cell_count"] == expected + len(stack_specs)
+        assert report["stack_authority_cell_count"] == len(stack_specs)
+        assert report["grid_cell_count"] == expected + len(stack_specs)
+        assert report["stack_authority_cells"][0]["ablation_kind"] == "stack_authority"
+        stack_auth = method.get("stack_authority_pass") or method.get("stack_eval") or {}
+        assert "meta_stack" in stack_auth["modes"]
+        assert "full_fusion" in stack_auth["modes"]
+        assert report["per_model_feature_cells"][0]["model_family"] in {"xgb", "lstm", "transformer"}
 
 
 def test_ablation_harness_wires_per_model_and_stack_authority():
-    """O-56 primary = per-model grouped permutation; secondary = stack authority — no stubs."""
+    """O-56 primary + stack authority wiring — production manifest + module constants."""
+    from tools.build_feature_assignment_matrix_v2 import (
+        BASE_MODEL_COMPARISONS,
+        FULL_STACK_ABLATION_MODES,
+    )
     from tools.feature_curation_gate import (
         _permute_eval_lstm_group,
         _permute_eval_transformer_group,
@@ -446,7 +504,6 @@ def test_ablation_harness_wires_per_model_and_stack_authority():
         _prepare_transformer_holdout,
         _prepare_xgb_holdout,
         ablation_per_model_feature_cell_specs,
-        ablation_stack_authority_cell_specs,
         build_per_model_feature_ablation_section,
         load_ablation_manifest,
         run_stack_layer_ablation_cell,
@@ -454,23 +511,17 @@ def test_ablation_harness_wires_per_model_and_stack_authority():
 
     manifest = load_ablation_manifest()
     method = manifest["ablation_method"]
-    assert method["primary_pass"] == "per_model_grouped_permutation_importance"
+    assert method["primary_pass"] == "per_model_per_horizon_atomic_permutation_importance"
     assert set(method["full_stack_layers"]) == {
-        "xgb", "lstm", "transformer", "meta", "monte_carlo", "fusion",
+        "xgb", "lstm", "transformer", "meta", "monte_carlo", "regime", "fusion",
     }
-    pmf = method["per_model_feature_ablation"]
-    assert set(pmf["models"]) == {"xgb", "lstm", "transformer"}
-    assert set(pmf["grid"]) == {"anchor_ticker", "model_family", "horizon_slug", "group_id"}
-    stack_auth = method.get("stack_authority_pass") or {}
-    assert stack_auth["engine"].endswith("run_stack_bundle_evaluation")
-    assert set(stack_auth["base_model_comparisons"]) == {
+    assert set(BASE_MODEL_COMPARISONS) == {
         "lstm_over_xgb", "transformer_over_xgb", "transformer_over_pair",
     }
+    assert "meta_stack" in FULL_STACK_ABLATION_MODES
+    assert "full_fusion" in FULL_STACK_ABLATION_MODES
     assert len(ablation_per_model_feature_cell_specs(manifest)) == manifest["totals"][
         "per_model_feature_cell_count"
-    ]
-    assert len(ablation_stack_authority_cell_specs(manifest)) == manifest["totals"][
-        "stack_authority_cell_count"
     ]
     for fn in (
         _prepare_xgb_holdout, _prepare_lstm_holdout, _prepare_transformer_holdout,
@@ -511,10 +562,10 @@ def test_group_snapshot_columns_maps_xgb_engineered_to_raw_db_keys():
     from tools.feature_curation_gate import load_ablation_manifest
 
     manifest = load_ablation_manifest()
-    vwap = next(g for g in manifest["groups"] if g["group_id"] == "vwap")
+    vwap = next(g for g in manifest["groups"] if g["group_id"] == "reg__atomic__vwap_dist_pts")
     cols = group_snapshot_columns(vwap)
     assert "vwap_dist_pts" in cols
-    assert "vwap_side" in cols
+    assert "vwap_side" not in cols
     assert "cat_vwap_side" not in cols
     assert "vwap_dist_pct" not in cols
 
@@ -549,15 +600,14 @@ def test_ablation_channel_mapping_pre_and_post_mask():
         _pre_mask_encoded_indices,
     )
 
-    # nullable member expands to value + __present channel
+    # Stage 2: flat tabular channels (no __present mask expansion)
     pre_iv = _pre_mask_encoded_indices(["iv_level"], FEATURES_5M, ENCODED_FEATURES_5M)
-    names = [ENCODED_FEATURES_5M[i] for i in pre_iv]
-    assert "iv_level" in names and "iv_level__present" in names
-    # non-nullable member -> single channel
+    assert [ENCODED_FEATURES_5M[i] for i in pre_iv] == ["iv_level"]
     pre_ng = _pre_mask_encoded_indices(["net_gamma"], FEATURES_5M, ENCODED_FEATURES_5M)
     assert [ENCODED_FEATURES_5M[i] for i in pre_ng] == ["net_gamma"]
-    # member not in the 5m feature set -> no false hit
-    assert _pre_mask_encoded_indices(["kre_chg_pct"], FEATURES_5M, ENCODED_FEATURES_5M) == []
+    assert _pre_mask_encoded_indices(["kre_chg_pct"], FEATURES_5M, ENCODED_FEATURES_5M) == [
+        FEATURES_5M.index("kre_chg_pct")
+    ]
     # post-mask reindex: drop channel 0 -> surviving indices shift down by 1, stay in range
     mask = np.ones(len(ENCODED_FEATURES_5M), dtype=bool)
     mask[0] = False
@@ -587,25 +637,304 @@ def test_ablation_permute_sequence_isolates_target_channels():
     )
 
 
+def test_cf_drop_routes_to_conf_and_zeroes_x_conf_prediction():
+    """cf_* ablation drops must zero X_conf (not X_5m) and change LSTM holdout predictions."""
+    import torch
+    import numpy as np
+    from lstm_data import CONFLUENCE_FEATURES
+    from lstm_model import build_model
+    from tools.feature_curation_gate import (
+        _drop_members_for_model,
+        _lstm_predict_numpy,
+        _zero_conf_channels,
+    )
+
+    manifest = {
+        "groups": [
+            {
+                "group_id": "reg__atomic__cf_momentum_5m",
+                "atomic_column": "cf_momentum_5m",
+            }
+        ]
+    }
+    xgb, m5, m1, conf = _drop_members_for_model(manifest, ["reg__atomic__cf_momentum_5m"])
+    assert conf == ["cf_momentum_5m"]
+    assert m5 == []
+    assert m1 == []
+
+    n_val = 24
+    t5, t1 = 4, 3
+    n_conf = len(CONFLUENCE_FEATURES)
+    rng = np.random.default_rng(0)
+    val_5m = rng.standard_normal((n_val, 5, t5)).astype(np.float32)
+    val_1m = rng.standard_normal((n_val, 3, t1)).astype(np.float32)
+    val_conf = rng.standard_normal((n_val, n_conf)).astype(np.float32)
+    val_conf[:, 0] = 0.85
+
+    device = torch.device("cpu")
+    model = build_model(t5, t1, n_conf).to(device)
+    y_val = np.clip((val_conf[:, 0] * 2 + val_conf[:, 2] * 3).astype(int), 0, 2)
+    train_end = 16
+    criterion = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.05)
+    train_loader = torch.utils.data.DataLoader(
+        torch.utils.data.TensorDataset(
+            torch.tensor(val_5m[:train_end]),
+            torch.tensor(val_1m[:train_end]),
+            torch.tensor(val_conf[:train_end]),
+            torch.tensor(y_val[:train_end]),
+        ),
+        batch_size=8,
+        shuffle=True,
+    )
+    for _ in range(20):
+        model.train()
+        for b5, b1, bc, by in train_loader:
+            optimizer.zero_grad()
+            loss = criterion(model(b1, b5, bc), by)
+            loss.backward()
+            optimizer.step()
+    model.eval()
+
+    base_pred = _lstm_predict_numpy(model, val_5m[train_end:], val_1m[train_end:], val_conf[train_end:], device)
+    dropped_conf = np.array(val_conf[train_end:], copy=True)
+    _zero_conf_channels(dropped_conf, ["cf_momentum_5m"])
+    cf_idx = CONFLUENCE_FEATURES.index("cf_momentum_5m")
+    assert dropped_conf[:, cf_idx].max() == 0.0
+    assert dropped_conf[:, cf_idx].min() == 0.0
+
+    with torch.no_grad():
+        b5 = torch.tensor(val_5m[train_end:], dtype=torch.float32)
+        b1 = torch.tensor(val_1m[train_end:], dtype=torch.float32)
+        bc_base = torch.tensor(val_conf[train_end:], dtype=torch.float32)
+        bc_drop = torch.tensor(dropped_conf, dtype=torch.float32)
+        logits_base = model(b1, b5, bc_base).numpy()
+        logits_drop = model(b1, b5, bc_drop).numpy()
+    assert not np.allclose(logits_base, logits_drop, atol=1e-6)
+    drop_pred = _lstm_predict_numpy(model, val_5m[train_end:], val_1m[train_end:], dropped_conf, device)
+    assert drop_pred.shape == base_pred.shape
+
+
+def test_survivor_edge_probe_cf_drop_members_not_silently_discarded(monkeypatch, tmp_path):
+    """Edge probe must 4-unpack cf_* into conf — stale 3-unpack silently discarded drops."""
+    import arch_competition.stack_bundle_eval_v1 as sbe
+    from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
+    from tools.feature_curation_gate import run_survivor_edge_probe
+
+    cf_gid = "reg__atomic__cf_momentum_5m"
+    report = {
+        "survivor_summary": {
+            "scored_cell_count": 100,
+            "confirm_pass": {
+                "cells": [
+                    {
+                        "anchor_ticker": "SPY",
+                        "model_family": "lstm",
+                        "horizon_slug": "1c",
+                        "status": "ok",
+                        "safe_to_drop": True,
+                        "dropped_groups": [cf_gid],
+                        "mcc_change": 0.012,
+                    }
+                ],
+                "anchors_required": 1,
+                "confirm_path_version": ABLATION_CONFIRM_PATH_VERSION,
+            },
+        },
+    }
+    manifest = {
+        "ablation_method": {"feature_grain": "schwab_expanded_atomic"},
+        "groups": [
+            {
+                "group_id": cf_gid,
+                "atomic_column": "cf_momentum_5m",
+            }
+        ],
+    }
+    rp = tmp_path / "feature_ablation_report_leaf.json"
+    mp = tmp_path / "feature_ablation_manifest_leaf.json"
+    rp.write_text(json.dumps(report), encoding="utf-8")
+    mp.write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(sbe, "_authoritative_ablation_report_path", lambda: rp)
+    monkeypatch.setattr(sbe, "_authoritative_ablation_manifest_path", lambda: mp)
+    monkeypatch.setattr(sbe, "compound_survivors_voided", lambda: False)
+    monkeypatch.setattr(sbe, "ablation_full_matrix_cell_target", lambda: 100)
+    monkeypatch.setenv("ED_APPLY_ABLATION_SURVIVORS", "1")
+    monkeypatch.setattr(
+        "tools.feature_curation_gate.SURVIVOR_EDGE_PROBE_PATH",
+        tmp_path / "edge_probe.json",
+    )
+    for fn in (
+        sbe.ablated_drop_group_ids_for_model_horizon,
+        sbe.ablated_drop_members_for_model_horizon,
+    ):
+        fn.cache_clear()
+    try:
+        out = run_survivor_edge_probe(tickers=["SPY"], min_mcc_edge=0.001)
+        issues = " ".join(out.get("issues") or [])
+        assert "drop_resolve_failed" not in issues
+        lstm_1c = next(
+            c for c in out["cells"]
+            if c["model_family"] == "lstm" and c["horizon_slug"] == "1c"
+        )
+        assert lstm_1c["drop_group_count"] == 1
+        assert lstm_1c["lstm_conf_members"] == 1
+        assert lstm_1c["lstm_5m_members"] == 0
+        assert lstm_1c["verdict"] == "EDGE"
+    finally:
+        for fn in (
+            sbe.ablated_drop_group_ids_for_model_horizon,
+            sbe.ablated_drop_members_for_model_horizon,
+        ):
+            fn.cache_clear()
+
+
+def test_survivor_validation_run_passes_drop_conf_to_lstm_holdout(monkeypatch, tmp_path):
+    """Validation-run report path must wire cf_* members into LSTM holdout drop_conf."""
+    import arch_competition.stack_bundle_eval_v1 as sbe
+    from tools import feature_curation_gate as fcg
+
+    cf_gid = "reg__lstm_5m__cf_momentum_5m"
+    manifest = {
+        "ablation_method": {"feature_grain": "schwab_expanded_atomic"},
+        "groups": [
+            {
+                "group_id": cf_gid,
+                "atomic_column": "cf_momentum_5m",
+            }
+        ],
+    }
+    report = {
+        "survivor_summary": {
+            "scored_cell_count": 100,
+            "confirm_pass": {
+                "cells": [
+                    {
+                        "anchor_ticker": "SPY",
+                        "model_family": "lstm",
+                        "horizon_slug": "1c",
+                        "status": "ok",
+                        "safe_to_drop": True,
+                        "dropped_groups": [cf_gid],
+                    }
+                ],
+                "anchors_required": 1,
+                "confirm_path_version": "2",
+            },
+        },
+    }
+    rp = tmp_path / "feature_ablation_report_leaf.json"
+    mp = tmp_path / "feature_ablation_manifest_leaf.json"
+    rp.write_text(json.dumps(report), encoding="utf-8")
+    mp.write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(sbe, "_authoritative_ablation_report_path", lambda: rp)
+    monkeypatch.setattr(sbe, "_authoritative_ablation_manifest_path", lambda: mp)
+    monkeypatch.setattr(sbe, "compound_survivors_voided", lambda: False)
+    monkeypatch.setattr(sbe, "ablation_full_matrix_cell_target", lambda: 100)
+    monkeypatch.setenv("ED_APPLY_ABLATION_SURVIVORS", "1")
+    monkeypatch.setattr(fcg, "SURVIVOR_VALIDATION_RUN_PATH", tmp_path / "validation.json")
+    monkeypatch.setattr(
+        fcg,
+        "run_survivor_edge_probe",
+        lambda **kwargs: {"ready_for_full_retrain": True, "issues": [], "summary": {}},
+    )
+    monkeypatch.setattr(fcg, "load_ablation_manifest", lambda: manifest)
+
+    lstm_calls: list[dict] = []
+
+    def _fake_lstm_holdout(**kwargs):
+        lstm_calls.append(kwargs)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(fcg, "_prepare_lstm_holdout", _fake_lstm_holdout)
+    monkeypatch.setattr(fcg, "_prepare_xgb_holdout", lambda **kwargs: {"status": "skipped"})
+    monkeypatch.setattr(fcg, "_prepare_transformer_holdout", lambda **kwargs: {"status": "skipped"})
+
+    for fn in (
+        sbe.ablated_drop_group_ids_for_model_horizon,
+        sbe.ablated_drop_members_for_model_horizon,
+    ):
+        fn.cache_clear()
+    try:
+        out = fcg.run_survivor_validation_run(tickers=["SPY"], db_path=":memory:")
+        assert lstm_calls, "LSTM holdout must run for lstm/1c with confirm-verified drops"
+        assert lstm_calls[0]["drop_conf"] == ["cf_momentum_5m"]
+        assert lstm_calls[0]["drop_5m"] == []
+        assert lstm_calls[0]["drop_1m"] == []
+        lstm_cell = next(
+            c for c in out["cells"]
+            if c["model_family"] == "lstm" and c["horizon_slug"] == "1c"
+        )
+        assert lstm_cell["parity_ok"] is True
+    finally:
+        for fn in (
+            sbe.ablated_drop_group_ids_for_model_horizon,
+            sbe.ablated_drop_members_for_model_horizon,
+        ):
+            fn.cache_clear()
+
+
+def test_stage2_sequence_encoder_width_matches_xgb_tabular_universe():
+    """Stage 2: LSTM streams = tabular minus cf_*; cf_* on X_conf only (no double representation)."""
+    from lstm_data import CONFLUENCE_FEATURES, LSTM_ENCODER_SCHEMA_VERSION, encoded_width_5m, encoded_width_1m
+    from ml_train import tabular_training_feature_names
+
+    tabular = tabular_training_feature_names()
+    assert len(tabular) == 94
+    assert set(CONFLUENCE_FEATURES).issubset(set(tabular))
+    assert LSTM_ENCODER_SCHEMA_VERSION == 3
+    assert encoded_width_5m() == len(tabular) - len(CONFLUENCE_FEATURES)
+    assert encoded_width_1m() == len(tabular) - len(CONFLUENCE_FEATURES)
+    assert encoded_width_5m() == 88
+
+
+def test_xgb_cf_member_in_tabular_universe_and_permute_perturbs():
+    """cf_* are engineered XGB columns — grouped permute must change holdout matrix values."""
+    import numpy as np
+    import pandas as pd
+
+    from ml_train import engineer_features, probe_training_feature_row
+    from tools.feature_curation_gate import permute_group_columns_together
+
+    rows = []
+    base = probe_training_feature_row()
+    for i in range(20):
+        r = dict(base)
+        r["ts_utc"] = float(1000 + i * 300)
+        r["spot"] = 100.0 + i * 0.15
+        r["vwap"] = 99.5 + i * 0.1
+        rows.append(r)
+    df = pd.DataFrame(rows)
+    X, names, _, _ = engineer_features(df)
+    assert "cf_momentum_5m" in names
+    tail = X.iloc[-5:].copy()
+    assert tail["cf_momentum_5m"].nunique(dropna=False) > 1
+    rng = np.random.default_rng(42)
+    permuted = permute_group_columns_together(tail, ["cf_momentum_5m"], rng)
+    assert not np.allclose(
+        permuted["cf_momentum_5m"].to_numpy(),
+        tail["cf_momentum_5m"].to_numpy(),
+    )
+
+
 def test_ablation_manifest_signs_base_models_and_confirm_pass():
-    """Stack authority comparisons are first-class; confirm pass engine is declared."""
+    """Production manifest + module constants declare confirm pass and base-model comparisons."""
+    from tools.build_feature_assignment_matrix_v2 import BASE_MODEL_COMPARISONS, FULL_STACK_ABLATION_MODES
     from tools.feature_curation_gate import load_ablation_manifest
 
     method = load_ablation_manifest()["ablation_method"]
-    stack_auth = method.get("stack_authority_pass") or method.get("stack_eval") or {}
-    se = stack_auth
-    assert set(se["base_model_comparisons"]) == {
+    assert method["primary_pass"] == "per_model_per_horizon_atomic_permutation_importance"
+    assert method["confirm_pass"] == "per_model_per_horizon_atomic_drop_column_refit_on_survivors"
+    assert set(BASE_MODEL_COMPARISONS) == {
         "lstm_over_xgb",
         "transformer_over_xgb",
         "transformer_over_pair",
     }
-    for cmp in se["base_model_comparisons"].values():
-        assert cmp["baseline"] in se["modes"]
-        assert cmp["treatment"] in se["modes"]
-    assert "xgb_plus_lstm" in se["modes"]
-    assert "xgb_plus_transformer" in se["modes"]
-    assert method["primary_pass"] == "per_model_grouped_permutation_importance"
-    assert method["confirm_pass"] == "per_model_grouped_drop_column_refit_on_survivors"
+    for cmp in BASE_MODEL_COMPARISONS.values():
+        assert cmp["baseline"] in FULL_STACK_ABLATION_MODES
+        assert cmp["treatment"] in FULL_STACK_ABLATION_MODES
+    assert "xgb_plus_lstm" in FULL_STACK_ABLATION_MODES
+    assert "xgb_plus_transformer" in FULL_STACK_ABLATION_MODES
 
 
 def test_drop_snapshot_columns_nulls_numeric_and_neutralizes_categorical():
@@ -638,25 +967,24 @@ def test_ablation_survivor_summary_rollup():
     from tools.feature_curation_gate import build_ablation_survivor_summary
 
     cells = [
-        {"ablation_kind": "per_model_feature_group", "model_family": "xgb",
-         "horizon_slug": "5c", "group_id": "vix", "status": "ok",
-         "mcc_delta": 0.05, "group_matters": True},
-        {"ablation_kind": "per_model_feature_group", "model_family": "xgb",
-         "horizon_slug": "5c", "group_id": "vix", "status": "ok",
-         "mcc_delta": 0.01, "group_matters": False},
-        {"ablation_kind": "per_model_feature_group", "model_family": "lstm",
-         "horizon_slug": "5c", "group_id": "charm", "status": "skipped",
-         "reason": "baseline_not_ready"},
+        {"ablation_kind": "whole_stack_feature_group", "model_family": "xgb",
+         "horizon_slug": "5c", "group_id": "vix", "status": "ok", "runnable": True,
+         "log_loss_delta": 0.05, "group_matters": True},
+        {"ablation_kind": "whole_stack_feature_group", "model_family": "xgb",
+         "horizon_slug": "5c", "group_id": "vix", "status": "ok", "runnable": True,
+         "log_loss_delta": 0.01, "group_matters": False},
+        {"ablation_kind": "whole_stack_feature_group", "model_family": "lstm",
+         "horizon_slug": "5c", "group_id": "charm", "status": "skipped", "runnable": True,
+         "reason": "no_model_interface", "grid_skip_reason": "no_model_interface"},
     ]
     summary = build_ablation_survivor_summary(cells)
     assert summary["ok_cell_count"] == 2
-    assert summary["metric"] == "mcc_delta"
-    # per (model, horizon) survivor sets — the feature→model→horizon matrix
+    assert summary["metric"] == "multiclass_log_loss_delta"
     assert summary["by_model_horizon"]["xgb"]["5c"][0]["group_id"] == "vix"
     assert summary["by_model_horizon"]["xgb"]["5c"][0]["recommendation"] == "KEEP_CANDIDATE"
     flat = {(g["model_family"], g["group_id"]): g for g in summary["groups"]}
     assert flat[("xgb", "vix")]["recommendation"] == "KEEP_CANDIDATE"
-    assert flat[("lstm", "charm")]["recommendation"] == "UNSCORED"
+    assert flat[("lstm", "charm")]["recommendation"] == "SKIPPED"
 
 
 def test_ablation_survivor_training_mask_defaults(monkeypatch):
@@ -673,34 +1001,40 @@ def test_ablation_survivor_training_mask_defaults(monkeypatch):
     # 1) survivors OFF -> empty (full feature set).
     monkeypatch.delenv("ED_ABLATION_DROP_GROUPS", raising=False)
     monkeypatch.delenv("ED_APPLY_ABLATION_SURVIVORS", raising=False)
+    monkeypatch.delenv("ED_ABLATION_SCORING_PASS", raising=False)
+    monkeypatch.delenv("ED_LIVE_ABLATION_EXPERIMENT", raising=False)
+    monkeypatch.delenv("ED_ABLATION_PRIMARY_AUTHORITY", raising=False)
+    monkeypatch.setattr(sbe, "live_ablation_experiment_active", lambda: False)
     assert resolve_ablation_drop_group_ids() == []
 
     # 2) survivors ON, no override, no confirm pass on the live report -> FAIL-CLOSED to empty.
-    #    The primary-pass MCC-delta screen alone never deletes features from the money path, and
-    #    there is no fabricated default drop set.
     monkeypatch.setenv("ED_APPLY_ABLATION_SURVIVORS", "1")
+    monkeypatch.delenv("ED_ABLATION_SCORING_PASS", raising=False)
     monkeypatch.setattr(sbe, "globally_safe_drop_group_ids", lambda _ss: [])
+    monkeypatch.setattr(sbe, "ablation_primary_pass_authority_active", lambda *a, **k: False)
     sbe._ablation_drop_snapshot_columns_cached.cache_clear()
     assert resolve_ablation_drop_group_ids() == []
 
     # 3) explicit operator override drives the mask machinery deterministically.
-    monkeypatch.setenv("ED_ABLATION_DROP_GROUPS", "zone,vwap,price_candle")
+    # Fidelity-first knockouts only null in_cone manifest groups (not_wired → no columns).
+    monkeypatch.setenv(
+        "ED_ABLATION_DROP_GROUPS",
+        "reg__atomic__vwap_dist_pts,reg__atomic__atr",
+    )
     sbe._ablation_drop_snapshot_columns_cached.cache_clear()
-    assert resolve_ablation_drop_group_ids() == ["price_candle", "vwap", "zone"]
+    assert resolve_ablation_drop_group_ids() == [
+        "reg__atomic__atr",
+        "reg__atomic__vwap_dist_pts",
+    ]
     cols = ablation_drop_snapshot_columns()
-    assert "zone" in cols
-    assert "vwap_dist_pts" in cols or "candle_body_pts" in cols
+    assert "vwap_dist_pts" in cols
+    assert "atr" in cols
 
-    snap = {"zone": "pin_neutral", "vwap_dist_pts": 1.25, "spot": 100.0, "ticker": "SPY"}
+    snap = {"vwap_dist_pts": 1.25, "atr": 2.0, "spot": 100.0, "ticker": "SPY"}
     masked = apply_ablation_survivor_nulls_to_snapshot(snap)
-    assert masked["zone"] is None
     assert masked["vwap_dist_pts"] is None
+    assert masked["atr"] is None
     assert masked["spot"] == 100.0
-
-    from features.db_feature_adapter import build_db_mvp_feature_row
-
-    canon = build_db_mvp_feature_row(masked)
-    assert canon.get("structure.zone") is None
     sbe._ablation_drop_snapshot_columns_cached.cache_clear()
 
 
@@ -836,13 +1170,58 @@ def test_stack_authority_cells_complete_gate():
     assert not ready2 and issues2
 
 
-def test_ablation_scored_eval_disables_survivor_mask(monkeypatch):
-    from arch_competition.stack_bundle_eval_v1 import ablation_survivors_training_enabled
+def test_ablation_scoring_pass_disables_survivor_mask(monkeypatch):
+    from arch_competition.stack_bundle_eval_v1 import (
+        ABLATION_SCORING_PASS_ENV,
+        ablation_survivors_training_enabled,
+    )
 
+    monkeypatch.delenv(ABLATION_SCORING_PASS_ENV, raising=False)
     monkeypatch.setenv("ED_APPLY_ABLATION_SURVIVORS", "1")
     assert ablation_survivors_training_enabled() is True
-    monkeypatch.setenv("ED_ABLATION_SCORED_EVAL", "1")
+    monkeypatch.setenv(ABLATION_SCORING_PASS_ENV, "1")
     assert ablation_survivors_training_enabled() is False
+
+
+def test_sequence_encoder_lineage_fail_closed_without_feature_names():
+    from arch_competition.stack_bundle_eval_v1 import sequence_encoder_lineage_admissible
+    from lstm_data import LSTM_ENCODER_SCHEMA_VERSION
+
+    meta = {"n_features_5m": 27, "feature_schema_version": "v7_m5_strip"}
+    ckpt = {"encoder_schema_version": LSTM_ENCODER_SCHEMA_VERSION, "encoder_width_5m_pre_mask": 88}
+    ok, reason = sequence_encoder_lineage_admissible(meta, ckpt)
+    assert not ok
+    assert "encoder_feature_names_5m" in reason
+
+
+def test_sequence_encoder_lineage_v2_pinned_registry_admissible():
+    from arch_competition.stack_bundle_eval_v1 import sequence_encoder_lineage_admissible
+
+    meta = {"n_features_5m": 27}
+    ckpt = {
+        "encoder_schema_version": 2,
+        "encoder_width_5m_pre_mask": 31,
+        "mask_5m": [True] * 31,
+        "mask_1m": [True] * 16,
+    }
+    ok, reason = sequence_encoder_lineage_admissible(meta, ckpt)
+    assert ok, reason
+
+
+def test_ablation_preflight_ready_requires_whole_stack_only():
+    from tools.feature_curation_gate import run_ablation_preflight
+
+    manifest = {
+        "ablation_method": {
+            "horizons": ["1c", "5c", "15c", "60c"],
+            "pool_tickers": ["SPY", "QQQ", "IWM"],
+            "feature_grain": "schwab_expanded_atomic",
+        }
+    }
+    pf = run_ablation_preflight(manifest, db_path="nonexistent.db", tickers=["SPY"])
+    assert pf["ready"] is False
+    assert pf["ready_for_whole_stack"] is False
+    assert pf["ready"] == pf["ready_for_whole_stack"]
 
 
 def test_xgb_post_engineer_drop_matches_confirm_path(monkeypatch, tmp_path):
@@ -851,8 +1230,9 @@ def test_xgb_post_engineer_drop_matches_confirm_path(monkeypatch, tmp_path):
     from arch_competition.stack_bundle_eval_v1 import drop_ablated_xgb_engineered_columns
 
     report = {
+        "ablation_method": {"feature_grain": "schwab_expanded_atomic"},
         "survivor_summary": {
-            "scored_cell_count": 828,
+            "scored_cell_count": 100,
             "confirm_pass": {
                 "cells": [
                     {
@@ -861,32 +1241,31 @@ def test_xgb_post_engineer_drop_matches_confirm_path(monkeypatch, tmp_path):
                         "horizon_slug": "5c",
                         "status": "ok",
                         "safe_to_drop": True,
-                        "dropped_groups": ["iv_level"],
+                        "dropped_groups": ["reg__atomic__iv_level"],
                     }
                 ],
                 "anchors_required": 1,
                 "confirm_path_version": "2",
             },
-        }
+        },
     }
     manifest = {
+        "ablation_method": {"feature_grain": "schwab_expanded_atomic"},
         "groups": [
             {
-                "group_id": "iv_level",
-                "members": {
-                    "xgb": ["iv_level", "body_range_ratio"],
-                    "lstm_5m": [],
-                    "lstm_1m": [],
-                },
+                "group_id": "reg__atomic__iv_level",
+                "atomic_column": "iv_level",
             }
-        ]
+        ],
     }
-    rp = tmp_path / "feature_ablation_report.json"
-    mp = tmp_path / "feature_ablation_manifest.json"
+    rp = tmp_path / "feature_ablation_report_leaf.json"
+    mp = tmp_path / "feature_ablation_manifest_leaf.json"
     rp.write_text(json.dumps(report), encoding="utf-8")
     mp.write_text(json.dumps(manifest), encoding="utf-8")
-    monkeypatch.setattr(sbe, "ABLATION_REPORT_PATH", rp)
-    monkeypatch.setattr(sbe, "ABLATION_MANIFEST_PATH", mp)
+    monkeypatch.setattr(sbe, "_authoritative_ablation_report_path", lambda: rp)
+    monkeypatch.setattr(sbe, "_authoritative_ablation_manifest_path", lambda: mp)
+    monkeypatch.setattr(sbe, "compound_survivors_voided", lambda: False)
+    monkeypatch.setattr(sbe, "ablation_full_matrix_cell_target", lambda: 100)
     monkeypatch.setenv("ED_APPLY_ABLATION_SURVIVORS", "1")
     for fn in (
         sbe.ablated_drop_group_ids_for_model_horizon,
@@ -898,9 +1277,8 @@ def test_xgb_post_engineer_drop_matches_confirm_path(monkeypatch, tmp_path):
     X, names, _, _ = engineer_features(df)
     assert "body_range_ratio" in names
     X2, names2, n = drop_ablated_xgb_engineered_columns(X, names, "5c")
-    assert n == 2
+    assert n == 1
     assert "iv_level" not in names2
-    assert "body_range_ratio" not in names2
     for fn in (
         sbe.ablated_drop_group_ids_for_model_horizon,
         sbe.ablated_drop_members_for_model_horizon,
@@ -914,6 +1292,7 @@ def test_ablated_drop_requires_confirm_not_primary(monkeypatch, tmp_path):
     from arch_competition.stack_bundle_eval_v1 import AblatedTrainingUnavailable
 
     report = {
+        "ablation_method": {"feature_grain": "schwab_expanded_atomic"},
         "survivor_summary": {
             "scored_cell_count": 828,
             "confirm_pass": "run_with_--ablation-confirm",
@@ -922,18 +1301,23 @@ def test_ablated_drop_requires_confirm_not_primary(monkeypatch, tmp_path):
                     "1c": [{"group_id": "charm", "recommendation": "DROP_CANDIDATE"}],
                 }
             },
-        }
+        },
     }
-    rp = tmp_path / "feature_ablation_report.json"
-    mp = tmp_path / "feature_ablation_manifest.json"
+    rp = tmp_path / "feature_ablation_report_leaf.json"
+    mp = tmp_path / "feature_ablation_manifest_leaf.json"
     rp.write_text(json.dumps(report), encoding="utf-8")
-    mp.write_text(json.dumps({"groups": []}), encoding="utf-8")
-    monkeypatch.setattr(sbe, "ABLATION_REPORT_PATH", rp)
-    monkeypatch.setattr(sbe, "ABLATION_MANIFEST_PATH", mp)
+    mp.write_text(json.dumps({"ablation_method": {"feature_grain": "atomic_leaf_or_derived_column"}, "groups": []}), encoding="utf-8")
+    monkeypatch.setattr(sbe, "_authoritative_ablation_report_path", lambda: rp)
+    monkeypatch.setattr(sbe, "_authoritative_ablation_manifest_path", lambda: mp)
+    monkeypatch.setattr(sbe, "compound_survivors_voided", lambda: False)
+    monkeypatch.setattr(sbe, "ablation_full_matrix_cell_target", lambda: 828)
     monkeypatch.setenv("ED_APPLY_ABLATION_SURVIVORS", "1")
+    monkeypatch.delenv("ED_LIVE_ABLATION_EXPERIMENT", raising=False)
+    monkeypatch.delenv("ED_ABLATION_PRIMARY_AUTHORITY", raising=False)
+    monkeypatch.setattr(sbe, "live_ablation_experiment_active", lambda: False)
     sbe.ablated_drop_group_ids_for_model_horizon.cache_clear()
     try:
-        with pytest.raises(AblatedTrainingUnavailable, match="--ablation-confirm"):
+        with pytest.raises(AblatedTrainingUnavailable, match="ablation-confirm"):
             sbe.ablated_drop_group_ids_for_model_horizon("xgb", "1c")
     finally:
         sbe.ablated_drop_group_ids_for_model_horizon.cache_clear()
@@ -949,6 +1333,76 @@ def test_primary_pass_recommendation_alone_is_not_a_verified_drop():
     ss = {"by_model_horizon": {"xgb": {"1c": [{"group_id": "charm", "recommendation": "DROP_CANDIDATE"}]}}}
     assert confirmed_drop_group_ids_by_model_horizon(ss) == {}
     assert globally_safe_drop_group_ids(ss) == []
+
+
+def test_primary_authority_applies_primary_drops_when_stamped(monkeypatch, tmp_path):
+    from arch_competition import stack_bundle_eval_v1 as sbe
+
+    report = {
+        "run_meta": {"status": "complete"},
+        "ablation_method": {"feature_grain": "schwab_expanded_atomic"},
+        "survivor_summary": {
+            "scored_cell_count": 828,
+            "primary_pass_authority": True,
+            "by_model_horizon": {
+                "xgb": {
+                    "1c": [{"group_id": "charm", "recommendation": "DROP_CANDIDATE"}],
+                }
+            },
+        },
+        "confirm_drop_summary": {"primary_authority": True, "authority": "primary_pass"},
+    }
+    rp = tmp_path / "feature_ablation_report_leaf.json"
+    mp = tmp_path / "feature_ablation_manifest_leaf.json"
+    rp.write_text(json.dumps(report), encoding="utf-8")
+    mp.write_text(
+        json.dumps(
+            {
+                "ablation_method": {"feature_grain": "atomic_leaf_or_derived_column"},
+                "groups": [{"group_id": "charm", "atomic_column": "charm", "disposition": "ABLATE"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sbe, "_authoritative_ablation_report_path", lambda: rp)
+    monkeypatch.setattr(sbe, "_authoritative_ablation_manifest_path", lambda: mp)
+    monkeypatch.setattr(sbe, "compound_survivors_voided", lambda: False)
+    monkeypatch.setattr(sbe, "ablation_full_matrix_cell_target", lambda: 828)
+    monkeypatch.setenv("ED_APPLY_ABLATION_SURVIVORS", "1")
+    sbe.ablated_drop_group_ids_for_model_horizon.cache_clear()
+    try:
+        assert sbe.ablated_drop_group_ids_for_model_horizon("xgb", "1c") == ["charm"]
+    finally:
+        sbe.ablated_drop_group_ids_for_model_horizon.cache_clear()
+
+
+def test_stamp_primary_ablation_authority_writes_confirm_drop_summary(tmp_path, monkeypatch):
+    from tools.feature_curation_gate import stamp_primary_ablation_authority
+
+    report = {
+        "run_meta": {"status": "complete"},
+        "whole_stack_feature_cells": [{"status": "ok"}] * 828,
+        "survivor_summary": {
+            "scored_cell_count": 828,
+            "primary_pass_only": True,
+            "by_model_horizon": {
+                "xgb": {
+                    "1c": [{"group_id": "charm", "recommendation": "DROP_CANDIDATE"}],
+                }
+            },
+        },
+    }
+    rp = tmp_path / "feature_ablation_report_leaf.json"
+    rp.write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setattr(
+        "arch_competition.stack_bundle_eval_v1.ablation_full_matrix_cell_target",
+        lambda: 828,
+    )
+    stamped = stamp_primary_ablation_authority(rp)
+    summary = stamped.get("confirm_drop_summary") or {}
+    assert summary.get("primary_authority") is True
+    assert summary.get("authority") == "primary_pass"
+    assert summary.get("drops_by_model_horizon", {}).get("xgb/1c") == ["charm"]
 
 
 def test_survivor_retrain_gate_env_contract():
@@ -973,15 +1427,20 @@ def test_survivor_retrain_gate_env_contract():
     assert not bad2["ok"]
 
 
-def test_guard_ablation_fresh_start_blocks_complete_report(tmp_path):
-    from tools.feature_curation_gate import guard_ablation_fresh_start, WHOLE_STACK_CELL_TARGET
+def test_guard_ablation_fresh_start_blocks_complete_report(tmp_path, monkeypatch):
+    from tools.feature_curation_gate import guard_ablation_fresh_start
 
+    monkeypatch.setattr(
+        "tools.feature_curation_gate.whole_stack_cell_target",
+        lambda manifest=None: 100,
+    )
     report_path = tmp_path / "feature_ablation_report.json"
+    runnable_cells = [{"runnable": True, "status": "ok"}] * 100
     report_path.write_text(
         json.dumps(
             {
-                "per_model_feature_cells": [{}] * WHOLE_STACK_CELL_TARGET,
-                "stack_authority_cells": [{}] * 12,
+                "whole_stack_feature_cells": runnable_cells,
+                "whole_stack_runnable_cell_target": 100,
                 "run_meta": {"status": "complete"},
             }
         ),
@@ -1008,12 +1467,12 @@ def test_ablation_grid_is_per_model_horizon():
     )
 
     method = load_ablation_manifest()["ablation_method"]
-    # the grid carries a model dimension
-    assert "model_family" in method["grid"]
     assert set(method["models"]) == {"xgb", "lstm", "transformer"}
     assert method["decision_metric"] == "mcc_delta"
-    # every cell is tagged with its model — each base model gets its own per-horizon survivors
-    specs = ablation_per_model_feature_cell_specs(load_ablation_manifest())
+    manifest = load_ablation_manifest()
+    specs = ablation_per_model_feature_cell_specs(manifest)
+    if "grid" in method:
+        assert "model_family" in method["grid"]
     assert {s["model_family"] for s in specs} == {"xgb", "lstm", "transformer"}
     # a single (anchor, horizon, group) appears once PER MODEL (no collapse to one global list)
     by_amg: dict = {}
@@ -1049,15 +1508,27 @@ def test_snap_dict_does_not_apply_global_ablation(monkeypatch):
 
 def test_serve_ablation_mask_differs_by_model_family(monkeypatch):
     """Per-model serve masks must not collapse to one global intersection (O-56)."""
-    report_path = Path("governance/artifacts/feature_ablation_report.json")
+    from arch_competition.stack_bundle_eval_v1 import (
+        ABLATION_LEAF_REPORT_PATH,
+        ablation_confirm_pass_complete,
+        ablation_primary_pass_authority_active,
+        compound_survivors_voided,
+    )
+
+    if compound_survivors_voided():
+        pytest.skip("compound ablation survivors void — re-ablate on leaf manifest")
+    report_path = ABLATION_LEAF_REPORT_PATH
     if not report_path.is_file():
-        return
-    from arch_competition.stack_bundle_eval_v1 import ablation_confirm_pass_complete
+        pytest.skip("leaf ablation report missing")
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    if not ablation_confirm_pass_complete(report.get("survivor_summary")):
-        pytest.skip("live ablation report lacks completed confirm pass")
-    monkeypatch.setenv("ED_APPLY_ABLATION_SURVIVORS", "1")
+    ss = report.get("survivor_summary") or {}
+    if not ablation_confirm_pass_complete(ss) and not ablation_primary_pass_authority_active(
+        ss, report=report
+    ):
+        pytest.skip("live ablation report lacks confirm or primary-pass authority")
+    monkeypatch.setenv("ED_LIVE_ABLATION_EXPERIMENT", "1")
+    monkeypatch.delenv("ED_APPLY_ABLATION_SURVIVORS", raising=False)
     from arch_competition.stack_bundle_eval_v1 import (
         ablation_drop_snapshot_columns_for_model_horizon,
     )
@@ -1121,6 +1592,73 @@ def test_write_ablation_report_backs_up_completed_report(tmp_path):
     assert preserved["per_model_feature_cells"][0]["group_id"] == "iv"
 
 
+def test_compound_ablation_survivors_voided(monkeypatch, tmp_path):
+    """Compound workbook survivors are retired — no drops until leaf ablation completes."""
+    import arch_competition.stack_bundle_eval_v1 as sbe
+    from arch_competition.stack_bundle_eval_v1 import (
+        AblatedTrainingUnavailable,
+        ablation_confirm_pass_complete,
+        compound_survivors_voided,
+        resolve_ablation_drop_group_ids,
+        void_compound_ablation_survivors,
+    )
+
+    compound_report = {
+        "survivor_summary": {
+            "scored_cell_count": 828,
+            "confirm_pass": {
+                "cells": [{"model_family": "xgb", "horizon_slug": "1c", "status": "ok", "safe_to_drop": True, "dropped_groups": ["vix"]}],
+                "anchors_required": 1,
+                "confirm_path_version": "2",
+            },
+        }
+    }
+    legacy = tmp_path / "feature_ablation_report.json"
+    legacy.write_text(json.dumps(compound_report), encoding="utf-8")
+    status = tmp_path / "ablation_survivor_status.json"
+    monkeypatch.setattr(sbe, "LEGACY_COMPOUND_REPORT_PATH", legacy)
+    monkeypatch.setattr(sbe, "ABLATION_SURVIVOR_STATUS_PATH", status)
+    monkeypatch.setattr(sbe, "_authoritative_ablation_report_path", lambda: None)
+
+    void_compound_ablation_survivors(write_artifacts=True)
+    assert compound_survivors_voided()
+    assert not ablation_confirm_pass_complete()
+    monkeypatch.setenv("ED_APPLY_ABLATION_SURVIVORS", "1")
+    sbe.ablated_drop_group_ids_for_model_horizon.cache_clear()
+    assert resolve_ablation_drop_group_ids() == []
+    with pytest.raises(AblatedTrainingUnavailable, match="VOID"):
+        sbe.ablated_drop_group_ids_for_model_horizon("xgb", "1c")
+
+
+def test_schwab_ablation_universe_contract():
+    from tools.check_fix_everything_we_touch import check_ablation_schwab_universe_contract
+    from tools.build_feature_assignment_matrix_v2 import (
+        MIN_ABLATION_EXPANSION_FACTOR,
+        resolve_expanded_schwab_ablation_universe,
+    )
+
+    payload = resolve_expanded_schwab_ablation_universe()
+    reg_n = int(payload["totals"]["registered_ml_cone_columns"])
+    ablate_n = int(payload["totals"]["ablation_group_count"])
+    assert ablate_n >= reg_n * MIN_ABLATION_EXPANSION_FACTOR
+    assert payload["ablation_method"]["feature_grain"] == "schwab_expanded_atomic"
+    assert payload["ablation_method"]["primary_pass"] == "per_model_per_horizon_atomic_permutation_importance"
+    assert "grouped" not in payload["ablation_method"]["primary_pass"]
+    gids = {g["group_id"] for g in payload["groups"] if g.get("disposition") == "ABLATE"}
+    for cf in (
+        "cf_alignment_score",
+        "cf_greek_support",
+        "cf_momentum_5m",
+        "cf_structure_15m",
+        "cf_trend_1h",
+        "cf_vwap_distance_pct",
+    ):
+        assert f"reg__atomic__{cf}" in gids, f"missing confluence feature group {cf}"
+    assert int(payload["totals"]["schwab_dictionary_rows"]) >= 2300
+    errs = check_ablation_schwab_universe_contract()
+    assert errs == [], errs
+
+
 def test_check_ablation_pipeline_parity_green():
     from tools.check_ablation_pipeline_parity import check_ablation_pipeline_parity
 
@@ -1134,7 +1672,8 @@ def test_null_snapshot_dict_for_drop_groups():
         "groups": [
             {
                 "group_id": "g1",
-                "members": {"lstm_5m": ["dist_call_gamma_wall_pct"], "lstm_1m": [], "xgb": []},
+                "atomic_column": "dist_call_gamma_wall_pct",
+                "ingest_status": "in_cone",
             }
         ]
     }
@@ -1314,6 +1853,13 @@ def test_parallel_cascade_bridge_cache_roundtrip(tmp_path):
     )
     assert loaded is not None
     assert loaded.shape == (2, 3)
+
+
+def test_full_stack_models_contract():
+    from tools.check_fix_everything_we_touch import check_full_stack_models_contract
+
+    errs = check_full_stack_models_contract()
+    assert errs == [], errs
 
 
 def test_ml_pipeline_efficiency_checker_green():

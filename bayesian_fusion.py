@@ -667,14 +667,14 @@ def _fuse_impl(
         if nb >= 25 and prob_up is not None and prob_down is not None and prob_flat is not None:
             triplet = signal_layer_v1_to_direction_probs(signal_layer_v1)
             if triplet is not None:
-                _env_blend = os.environ.get("ED_SIGNAL_LAYER_FUSION_BLEND", "0.38")
+                _env_blend = os.environ.get("ED_SIGNAL_LAYER_FUSION_BLEND", "0.0")
                 w_sl = float_finite_or_none(_env_blend)
                 if w_sl is None:
                     log.debug(
                         "ED_SIGNAL_LAYER_FUSION_BLEND ignored (malformed) value=%r",
                         _env_blend,
                     )
-                    w_sl = 0.38
+                    w_sl = 0.0
                 w_sl = max(0.0, min(1.0, w_sl))
                 su, sd, sf = triplet
                 prob_up = (1.0 - w_sl) * prob_up + w_sl * su

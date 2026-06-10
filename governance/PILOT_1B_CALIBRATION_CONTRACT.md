@@ -126,7 +126,7 @@ Default method:
 - no same-window training/evaluation;
 - no unlabeled rows included in fit or reported as neutral outcomes.
 
-Calibration acts on the post-fusion meta probability that flows into `v2_decision.decision.P_entry_success`. Base models are not separately calibrated under this scaffold; the fused probability is the calibration target.
+Calibration acts on the post-fusion meta probability that flows into `v2_decision.decision.P_entry_success`. Individual xgb/lstm/transformer layers are not separately calibrated under this scaffold; the fused probability is the calibration target.
 
 Rationale:
 

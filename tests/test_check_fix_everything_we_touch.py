@@ -744,6 +744,22 @@ def test_institutional_contract_passes_on_current_repo() -> None:
     assert mod.check_institutional_contract() == []
 
 
+def test_fusion_only_card_contract_passes_on_current_repo() -> None:
+    assert mod.check_fusion_only_card_contract() == []
+
+
+def test_mandatory_enforcement_registry_passes_on_current_repo() -> None:
+    assert mod.check_mandatory_enforcement_registry() == []
+
+
+def test_promoted_agents_rules_mechanically_locked() -> None:
+    assert mod.check_promoted_agents_rules_mechanically_locked() == []
+
+
+def test_external_rule_tools_wired() -> None:
+    assert mod.check_external_rule_tools_wired() == []
+
+
 def test_meet_or_exceed_cycle_documentation_passes_on_current_repo() -> None:
     assert mod.check_meet_or_exceed_cycle_documentation() == []
 
@@ -784,10 +800,84 @@ def test_meet_or_exceed_signoff_banned_verdicts(body: str, tmp_path: Path) -> No
 def test_meet_or_exceed_signoff_verdict_met_passes(tmp_path: Path) -> None:
     msg = tmp_path / "COMMIT_EDITMSG"
     msg.write_text(
+        "OBJECTIVE: land Objective→Code→Audit mechanical lock\n"
+        "AUDIT: CLEAN — python tools/enforce_all_rules.py --objective-audit\n"
         "VERDICT: MET\nCYCLE_ITERATIONS: 2\nGATE_TABLE:\n  tests: MET — tests/test_batch2\n",
         encoding="utf-8",
     )
     assert mod.check_meet_or_exceed_signoff(msg) == []
+
+
+def test_objective_code_audit_contract() -> None:
+    assert mod.check_objective_code_audit_contract() == []
+
+
+def test_objective_code_audit_signoff_requires_objective_and_audit_clean(tmp_path: Path) -> None:
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text("VERDICT: MET\n", encoding="utf-8")
+    hits = mod.check_objective_code_audit_signoff(msg)
+    assert any("OBJECTIVE" in h for h in hits)
+    assert any("AUDIT: CLEAN" in h for h in hits)
+
+
+def test_map_knockout_columns_to_encoder_indices_v2_spy_bundle() -> None:
+    import torch
+    from active_bundle_contract import active_bundle_dir
+    from arch_competition.ablation_bundle_inference import map_knockout_columns_to_encoder_indices
+
+    bundle = active_bundle_dir("SPY", "1c", models_dir=mod.REPO_ROOT / "models")
+    ckpt = torch.load(str(bundle / "lstm_SPY_1c.pt"), map_location="cpu", weights_only=False)
+    mapped = map_knockout_columns_to_encoder_indices(ckpt, ["net_gamma"], stream="lstm_5m")
+    if mapped.get("error") == "encoder_schema_version=0_unsupported":
+        pytest.skip("SPY active LSTM bundle is pre-v2 encoder — host retrain required for v2 map proof")
+    assert mapped["reachable"] is True, mapped
+    assert mapped["post_mask_indices"]
+    assert mapped["effective_snapshot_columns"] == ["net_gamma"]
+
+
+def test_offline_v2_knockout_columns_excludes_v3_only_atoms() -> None:
+    from arch_competition.ablation_bundle_inference import offline_v2_knockout_snapshot_columns
+
+    assert offline_v2_knockout_snapshot_columns("absorption_score", "lstm") == []
+    assert offline_v2_knockout_snapshot_columns("net_gamma", "lstm") == ["net_gamma"]
+
+
+def test_ablation_placement_validity_passes_after_fix2() -> None:
+    """Offline v2 bundles + FIX 2 map — placement audit must pass (no retrain required)."""
+    result = mod.audit_ablation_placement_validity(tickers=["SPY"], horizons=["1c"])
+    if not result["ok"]:
+        joined = " ".join(str(x) for x in (result.get("errors") or []))
+        if "offline ablation loads failed" in joined:
+            pytest.skip("SPY active bundles need v2 encoder offline load — host retrain required")
+    assert result["ok"] is True, result
+    stats = result.get("stats") or {}
+    assert stats.get("lstm_noop_knockout_atoms", 99) == 0
+    assert stats.get("transformer_noop_knockout_atoms", 99) == 0
+
+
+def test_run_objective_code_audit_static_passes() -> None:
+    result = mod.run_objective_code_audit(staged=set(), runtime=False)
+    assert result["static_ok"] is True, result.get("static_errors")
+    assert result["audit"] == "objective_code_audit"
+    assert "full repo" in result.get("scope", "")
+
+
+def test_objective_code_audit_universal_scope() -> None:
+    assert mod.check_objective_code_audit_documentation() == []
+
+
+def test_objective_code_audit_situational_runtime_dispatch() -> None:
+    """Unrelated staged path skips ablation runtime; ablation cone path triggers it."""
+    ui_only = mod.run_objective_code_audit(staged={"static/index.html"}, runtime=True)
+    assert "ablation_placement_validity" in (ui_only.get("skipped_runtime_audits") or [])
+    assert ui_only["static_ok"] is True, ui_only.get("static_errors")
+
+    ml_staged = mod.run_objective_code_audit(staged={"ml_predict.py"}, runtime=True)
+    assert "ablation_placement_validity" in (ml_staged.get("applied_runtime_audits") or [])
+    assert "runtime_ok" in ml_staged
+
+    forced = mod.run_objective_code_audit(staged={"static/index.html"}, runtime=True, full_runtime=True)
+    assert "ablation_placement_validity" in (forced.get("applied_runtime_audits") or [])
 
 
 def test_institutional_contract_banned_analytics_stale_sse_pattern(tmp_path: Path, monkeypatch) -> None:
@@ -901,3 +991,698 @@ def test_check_ablated_training_only_flags_missing_enable(tmp_path, monkeypatch)
     monkeypatch.setattr(mod, "ABLATED_TRAINING_ORCHESTRATOR", "orch.ps1")
     errs = mod.check_ablated_training_only()
     assert errs and "must set ED_APPLY_ABLATION_SURVIVORS=1" in errs[0]
+
+
+def test_zero_bias_ablation_contract_agents_markers():
+    agents = mod.REPO_ROOT / "AGENTS.md"
+    text = agents.read_text(encoding="utf-8")
+    for marker in mod._ZERO_BIAS_AGENTS_MARKERS:
+        assert marker in text, f"missing ZERO-BIAS marker {marker!r}"
+
+
+def test_zero_bias_ablation_contract_stage2_clears_pinning():
+    """Stage 2: atomic manifest + full sequence ingest — no members-as-assignment pinning."""
+    errs = mod.check_zero_bias_ablation_contract()
+    joined = "\n".join(errs)
+    assert "grouped" not in joined.lower()
+    assert "live LSTM inputs pre-excluded" not in joined
+    assert "pinned" not in joined.lower()
+    assert "members-as-assignment" not in joined.lower()
+    assert errs == [], joined
+
+
+def test_zero_bias_ablation_contract_stage1_clears_grouped_and_cf_exclusion():
+    """Stage 1 regression: atomic pass strings + cf_* in manifest (superseded by stage2 pinning clear)."""
+    test_zero_bias_ablation_contract_stage2_clears_pinning()
+
+
+def test_zero_bias_transformer_ingest_mapping_is_5m_stream_only():
+    """Transformer holdout permutes ENCODED_FEATURES_5M channels only — not lstm_1m / X_conf."""
+    assert mod.ZERO_BIAS_FEATURE_MODEL_INGEST_FAMILIES["transformer"] == ("lstm_5m",)
+    assert "lstm_1m" not in mod.ZERO_BIAS_FEATURE_MODEL_INGEST_FAMILIES["transformer"]
+
+
+def test_ablation_manifest_generator_has_no_model_stamp_builder():
+    """Generator source must not retain legacy compound model-stamp builders."""
+    assert mod.check_ablation_manifest_generator_no_model_preassignment() == []
+
+
+def test_zero_bias_ablation_contract_rejects_manifest_model_stamps(monkeypatch):
+    """Feature list must not carry model pre-assignment fields — vestigial members fail gate."""
+    import json
+    from copy import deepcopy
+    from pathlib import Path
+
+    real_path = mod.REPO_ROOT / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json"
+    payload = json.loads(real_path.read_text(encoding="utf-8"))
+    patched = deepcopy(payload)
+    for g in patched.get("groups") or []:
+        if g.get("disposition") == "ABLATE":
+            g["members"] = {"xgb": ["__stale_hand_stamp__"]}
+            break
+    else:
+        raise AssertionError("no ABLATE group in leaf manifest")
+
+    _orig_read = Path.read_text
+
+    def _read_text(self, *args, **kwargs):
+        if self.resolve() == real_path.resolve():
+            return json.dumps(patched)
+        return _orig_read(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", _read_text)
+    errs = mod.check_feature_list_no_model_preassignment()
+    assert any("pre-ordain models" in e for e in errs), errs
+    errs2 = mod.check_zero_bias_ablation_contract()
+    assert any("pre-ordain models" in e for e in errs2), errs2
+
+
+def test_zero_bias_ablation_contract_rejects_unmapped_feature_model(monkeypatch):
+    """Injected ablation model with no ingest mapping must fail the build (no silent 3-of-N)."""
+    import json
+    from copy import deepcopy
+    from pathlib import Path
+
+    real_path = mod.REPO_ROOT / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json"
+    payload = json.loads(real_path.read_text(encoding="utf-8"))
+    patched = deepcopy(payload)
+    patched["ablation_method"] = dict(patched.get("ablation_method") or {})
+    patched["ablation_method"]["models"] = list(
+        patched["ablation_method"].get("models") or ["xgb", "lstm", "transformer"]
+    ) + ["newmodel"]
+
+    _orig_read = Path.read_text
+
+    def _read_text(self, *args, **kwargs):
+        if self.resolve() == real_path.resolve():
+            return json.dumps(patched)
+        return _orig_read(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", _read_text)
+    errs = mod.check_zero_bias_ablation_contract()
+    assert any("newmodel" in e and "NO ingest mapping" in e for e in errs), errs
+
+
+def _write_ablation_report_fixture(tmp_path, payload: dict, *, leaf: bool = True) -> None:
+    import json
+
+    art = tmp_path / "governance" / "artifacts"
+    art.mkdir(parents=True)
+    name = "feature_ablation_report_leaf.json" if leaf else "feature_ablation_report.json"
+    (art / name).write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _fusion_cell(
+    hz: str,
+    *,
+    group_id: str = "feat_test",
+    model_family: str = "xgb",
+    delta: float = 0.001,
+) -> dict:
+    from governed_stack_contract import FULL_STACK_MODEL_LAYERS
+
+    layers = list(FULL_STACK_MODEL_LAYERS)
+    entry = [model_family] if model_family in ("xgb", "lstm", "transformer") else ["xgb", "lstm", "transformer"]
+    return {
+        "model_family": model_family,
+        "horizon_slug": hz,
+        "group_id": group_id,
+        "status": "ok",
+        "baseline_multiclass_log_loss": 1.0,
+        "permuted_multiclass_log_loss": 1.0 + delta,
+        "log_loss_delta": delta,
+        "ablation_kind": "whole_stack_feature_group",
+        "decision_mode": "full_fusion",
+        "stack_entry_layers": entry,
+        "stack_layers_scored": layers,
+        "mc_stack_probability_source": "stack_probs_meta_or_weighted",
+        "pool_tickers": ["SPY", "QQQ", "IWM"],
+        "paired_rows": 42,
+    }
+
+
+def _full_stack_report_payload(**extra) -> dict:
+    from governed_stack_contract import FULL_STACK_MODEL_LAYERS
+
+    base = {
+        "source_manifest": "governance/artifacts/feature_ablation_manifest_leaf.json",
+        "full_stack_layers": list(FULL_STACK_MODEL_LAYERS),
+        "stage3_pool_tickers": ["SPY", "QQQ", "IWM"],
+    }
+    base.update(extra)
+    return base
+
+
+def test_full_stack_ablation_coverage_rejects_legacy_when_leaf_missing(tmp_path, monkeypatch):
+    """Legacy compound report must not satisfy Part B when leaf report was never produced."""
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    _write_ablation_report_fixture(
+        tmp_path,
+        _full_stack_report_payload(
+            source_manifest="governance/artifacts/feature_ablation_manifest.json",
+            whole_stack_feature_cells=[_fusion_cell("1c")],
+        ),
+        leaf=False,
+    )
+    errs = mod.check_full_stack_ablation_coverage()
+    assert len(errs) == 1, errs
+    assert "leaf ablation report missing" in errs[0]
+    assert "not admissible" in errs[0]
+    assert "--ablation" in errs[0]
+
+
+def test_full_stack_ablation_coverage_stale_provenance(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    _write_ablation_report_fixture(
+        tmp_path,
+        _full_stack_report_payload(
+            source_manifest="governance/artifacts/feature_ablation_manifest.json",
+            whole_stack_feature_cells=[_fusion_cell("1c")],
+        ),
+        leaf=True,
+    )
+    errs = mod.check_full_stack_ablation_coverage()
+    assert any("STALE" in e and "leaf" in e for e in errs), errs
+
+
+def test_full_stack_ablation_coverage_zero_fusion(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    _write_ablation_report_fixture(
+        tmp_path,
+        _full_stack_report_payload(whole_stack_feature_cells=[]),
+    )
+    errs = mod.check_full_stack_ablation_coverage()
+    assert any("CONTIGUOUS 7-layer stack" in e for e in errs), errs
+
+
+def test_full_stack_ablation_coverage_missing_horizons(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    _write_ablation_report_fixture(
+        tmp_path,
+        _full_stack_report_payload(whole_stack_feature_cells=[_fusion_cell("1c")]),
+    )
+    errs = mod.check_full_stack_ablation_coverage()
+    assert any(
+        "missing horizons" in e
+        or "missing scored (feature×model×horizon)" in e
+        or "2632" in e
+        for e in errs
+    ), errs
+
+
+def test_full_stack_ablation_coverage_rejects_missing_model_family(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    bad = _fusion_cell("1c")
+    bad.pop("model_family")
+    _write_ablation_report_fixture(
+        tmp_path,
+        _full_stack_report_payload(whole_stack_feature_cells=[bad]),
+    )
+    errs = mod.check_full_stack_ablation_coverage()
+    assert any("model_family" in e for e in errs), errs
+
+
+def test_full_stack_ablation_coverage_pass(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    from governed_stack_contract import FULL_STACK_MODEL_LAYERS
+    from tools.feature_curation_gate import ablation_grid_groups, load_ablation_manifest
+
+    groups = ablation_grid_groups(load_ablation_manifest())
+    cells = [
+        _fusion_cell(hz, group_id=g["group_id"], model_family=m)
+        for g in groups
+        for hz in ("1c", "5c", "15c", "60c")
+        for m in FULL_STACK_MODEL_LAYERS
+    ]
+    assert len(cells) == 280 * 7 * 4, len(cells)
+    _write_ablation_report_fixture(
+        tmp_path,
+        _full_stack_report_payload(whole_stack_feature_cells=cells),
+    )
+    assert mod.check_full_stack_ablation_coverage() == []
+
+
+def test_production_fusion_score_path_contract_passes():
+    """Ablation must use unified wire-row scorer — not production_fusion_payload_for_stack fork."""
+    assert mod.check_production_fusion_score_path_contract() == []
+
+
+def test_unified_ablation_scorer_used_under_scoring_pass(monkeypatch):
+    """ED_ABLATION_SCORING_PASS must route _production_fusion_prob_for_row to unified scorer."""
+    from unittest.mock import patch
+
+    from arch_competition.stack_bundle_eval_v1 import (
+        ABLATION_SCORING_PASS_ENV,
+        _production_fusion_prob_for_row,
+    )
+
+    row = {"ts_utc": 1_700_000_000.0, "outcome_1c": "up", "spot": 500.0}
+    monkeypatch.setenv(ABLATION_SCORING_PASS_ENV, "1")
+    with patch(
+        "arch_competition.ablation_bundle_inference.score_unified_ablation_fusion_from_wire_row",
+        return_value=([0.4, 0.35, 0.25], 0, None, {"stack_layers_scored": ["xgb", "fusion"], "scoring_path": "unified_wire_row_only"}),
+    ) as unified:
+        triplet, yt, skip, audit = _production_fusion_prob_for_row(
+            row,
+            ticker="SPY",
+            target_column="outcome_1c",
+            hist_db=None,
+        )
+    unified.assert_called_once()
+    assert skip is None
+    assert triplet == [0.4, 0.35, 0.25]
+    assert yt == 0
+    assert audit.get("scoring_path") == "unified_wire_row_only"
+
+
+def test_full_stack_ablation_coverage_rejects_partial_stack_layers(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    cells = [_fusion_cell("1c")]
+    _write_ablation_report_fixture(
+        tmp_path,
+        {
+            "source_manifest": "governance/artifacts/feature_ablation_manifest_leaf.json",
+            "full_stack_layers": ["xgb", "lstm", "transformer"],
+            "whole_stack_feature_cells": cells,
+        },
+    )
+    errs = mod.check_full_stack_ablation_coverage()
+    assert any("contiguous 7-layer stack" in e for e in errs), errs
+
+
+def test_full_stack_ablation_coverage_rejects_anchor_ticker_axis(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    bad = _fusion_cell("1c")
+    bad["anchor_ticker"] = "SPY"
+    _write_ablation_report_fixture(
+        tmp_path,
+        _full_stack_report_payload(whole_stack_feature_cells=[bad]),
+    )
+    errs = mod.check_full_stack_ablation_coverage()
+    assert any("anchor_ticker" in e for e in errs), errs
+
+
+def test_full_stack_ablation_coverage_rejects_missing_pool_tickers(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    bad = _fusion_cell("1c")
+    bad.pop("pool_tickers")
+    _write_ablation_report_fixture(
+        tmp_path,
+        _full_stack_report_payload(whole_stack_feature_cells=[bad]),
+    )
+    errs = mod.check_full_stack_ablation_coverage()
+    assert any("pool_tickers" in e for e in errs), errs
+
+
+def test_universal_code_quality_contract() -> None:
+    assert mod.check_universal_code_quality_contract() == []
+
+
+def test_universal_code_quality_audit_passes_on_current_repo() -> None:
+    result = mod.run_universal_code_quality_audit(staged=set())
+    assert result["ok"] is True, result.get("errors")
+
+
+def test_staged_simplicity_long_function_warns_not_blocks(tmp_path: Path, monkeypatch) -> None:
+    """Pre-existing orchestrator-scale functions must not fail pre-commit on touch alone."""
+    repo = tmp_path
+    gate = repo / "tools" / "feature_curation_gate.py"
+    gate.parent.mkdir(parents=True)
+    body = "def build_ablation_confirm_report():\n" + "    x = 1\n" * 160 + "\n"
+    gate.write_text(body, encoding="utf-8")
+    monkeypatch.setattr(mod, "REPO_ROOT", repo)
+    errors, warnings = mod.audit_staged_python_simplicity({"tools/feature_curation_gate.py"})
+    assert errors == []
+    assert any("build_ablation_confirm_report" in w for w in warnings)
+
+
+def test_staged_simplicity_duplicate_def_blocks(tmp_path: Path, monkeypatch) -> None:
+    repo = tmp_path
+    mod_py = repo / "foo.py"
+    mod_py.write_text(
+        "def helper():\n    return 1\n\ndef helper():\n    return 2\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "REPO_ROOT", repo)
+    errors, warnings = mod.audit_staged_python_simplicity({"foo.py"})
+    assert any("duplicate function" in e for e in errors)
+    assert warnings == []
+
+
+def test_ablation_preflight_ready_equals_unbiased_only(monkeypatch):
+    """Preflight ready must never mean whole-stack-only or production-path-only without disclosure."""
+    from tools.feature_curation_gate import load_ablation_manifest, run_ablation_preflight
+
+    manifest = load_ablation_manifest()
+    pf = run_ablation_preflight(
+        manifest,
+        db_path="nonexistent.db",
+        tickers=["SPY"],
+    )
+    assert pf["ready"] is False
+    assert pf["ready"] == pf["ready_for_unbiased_ablation"]
+    assert pf["ready_for_whole_stack"] is False
+
+
+def test_ablation_agnostic_ingest_contract():
+    assert mod.check_ablation_agnostic_ingest_contract() == []
+
+
+def test_ablation_score_path_bias_audit_passes():
+    from tools.feature_curation_gate import audit_ablation_score_path_bias
+
+    result = audit_ablation_score_path_bias()
+    assert result.get("ok") is True, result.get("errors") or result.get("checks")
+
+
+def test_ablation_full_stack_non_negotiable_contract():
+    assert mod.check_ablation_full_stack_non_negotiable() == []
+
+
+def test_ablation_integrity_audit_static_passes():
+    from tools.check_fix_everything_we_touch import run_ablation_integrity_audit
+
+    result = run_ablation_integrity_audit(runtime=False)
+    assert result["static_ok"] is True, result.get("static_errors")
+    assert result["audit"] == "ablation_full_stack_non_negotiable"
+
+
+def test_ablation_grid_requires_all_seven_models_and_four_horizons():
+    """Catalog grid 7840 slots; Stage 3 specs score DB-wire groups only; runnable from row fidelity."""
+    from governed_stack_contract import FULL_STACK_MODEL_LAYERS, STAGE3_ABLATION_HORIZONS
+    from tools.feature_curation_gate import (
+        ablation_cell_accounting,
+        ablation_grid_groups,
+        ablation_scoring_groups,
+        ablation_whole_stack_feature_cell_specs,
+        build_ablation_enriched_row_sample,
+        load_ablation_manifest,
+        whole_stack_catalog_cell_target,
+        whole_stack_runnable_cell_target,
+    )
+
+    assert mod.check_ablation_seven_model_four_horizon_grid() == []
+
+    manifest = load_ablation_manifest()
+    dbp = REPO_ROOT / "data" / "ed_console.db"
+    dbp_str = str(dbp) if dbp.is_file() else None
+    scoring = ablation_scoring_groups(manifest, db_path=dbp_str)
+    specs = ablation_whole_stack_feature_cell_specs(manifest)
+    enriched = None
+    if dbp.is_file():
+        enriched = build_ablation_enriched_row_sample(db_path=str(dbp), manifest=manifest)
+    specs_fidelity = ablation_whole_stack_feature_cell_specs(manifest, enriched_rows=enriched or None)
+    accounting = ablation_cell_accounting(manifest, specs_fidelity, enriched_rows=enriched or None)
+    grid_groups = ablation_grid_groups(manifest)
+    manifest_in_cone = len(
+        [g for g in grid_groups if g.get("ingest_status") == "in_cone"]
+    )
+    assert len(grid_groups) == 280
+    assert len(scoring) <= manifest_in_cone
+    if dbp.is_file():
+        assert len(scoring) == manifest_in_cone
+    assert len(specs) == len(scoring) * len(FULL_STACK_MODEL_LAYERS) * len(STAGE3_ABLATION_HORIZONS)
+    assert whole_stack_catalog_cell_target(manifest) == 280 * 7 * 4 == 7840
+    assert whole_stack_runnable_cell_target(manifest) == accounting["runnable_target"]
+    assert accounting["catalog_target"] - accounting["runnable_target"] == accounting["catalog_only_target"]
+    assert accounting["manifest_schwab_catalog"] == 186
+    in_cone = accounting["manifest_in_cone"]
+    if enriched:
+        runnable_per_model = accounting["runnable_target"] // len(FULL_STACK_MODEL_LAYERS)
+        for model in FULL_STACK_MODEL_LAYERS:
+            assert accounting["runnable_by_model"].get(model) == runnable_per_model, model
+        assert accounting["meta_runnable"] == runnable_per_model
+        assert accounting["runnable_target"] <= in_cone * len(FULL_STACK_MODEL_LAYERS) * len(STAGE3_ABLATION_HORIZONS)
+        assert accounting["runnable_target"] == in_cone * len(FULL_STACK_MODEL_LAYERS) * len(STAGE3_ABLATION_HORIZONS)
+    ng = [s for s in specs_fidelity if s["group_id"] == "reg__atomic__net_gamma" and s["horizon_slug"] == "1c"]
+    assert len(ng) == len(FULL_STACK_MODEL_LAYERS)
+    if enriched:
+        assert all(s.get("runnable") for s in ng)
+    assert "anchor_ticker" not in specs[0]
+    assert specs[0]["model_family"] in FULL_STACK_MODEL_LAYERS
+    assert specs[0]["pool_tickers"] == ["SPY", "QQQ", "IWM"]
+    assert set(s["horizon_slug"] for s in specs) == set(STAGE3_ABLATION_HORIZONS)
+    assert set(s["model_family"] for s in specs) == set(FULL_STACK_MODEL_LAYERS)
+    for model in FULL_STACK_MODEL_LAYERS:
+        for hz in STAGE3_ABLATION_HORIZONS:
+            model_hz_specs = [s for s in specs if s["model_family"] == model and s["horizon_slug"] == hz]
+            assert len(model_hz_specs) == len(scoring), (model, hz, len(model_hz_specs))
+
+
+def test_ablation_report_status_uses_runnable_denominator(tmp_path, monkeypatch):
+    """Status/progress must not treat 7840 catalog slots as the scored denominator."""
+    import json
+
+    report = {
+        "ablation_accounting": {
+            "catalog_target": 7840,
+            "runnable_target": 624,
+        },
+        "whole_stack_runnable_cell_target": 624,
+        "whole_stack_catalog_cell_target": 7840,
+        "whole_stack_feature_cells": [
+            {"runnable": True, "status": "ok", "model_family": "xgb", "horizon_slug": "1c"},
+            {"runnable": False, "status": "skipped", "grid_skip_reason": "not_wired"},
+        ],
+        "run_meta": {"status": "partial"},
+        "survivor_summary": {"confirm_pass_cli": "whole_stack_drop_column_refit__run_with_--ablation-confirm"},
+    }
+    p = tmp_path / "feature_ablation_report_leaf.json"
+    p.write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setattr(
+        "tools.feature_curation_gate.ABLATION_REPORT_PATH",
+        p,
+    )
+    from tools.feature_curation_gate import ablation_report_status
+
+    st = ablation_report_status(p)
+    assert st["whole_stack_runnable_cell_target"] == 624
+    assert st["whole_stack_runnable_done"] == 1
+    assert st["catalog_only_cells"] == 1
+    assert st["complete"] is False
+
+
+def test_ablation_equal_layer_consumers_fix1():
+    """Fidelity-first: unified knockouts per feature across all seven layers (one cohesive stack)."""
+    from governed_stack_contract import FULL_STACK_MODEL_LAYERS, STACK_AUTHORITY_LAYERS
+    from tools.feature_curation_gate import (
+        ablation_scoring_groups,
+        ablation_whole_stack_feature_cell_specs,
+        build_ablation_enriched_row_sample,
+        load_ablation_manifest,
+    )
+
+    assert mod.check_ablation_equal_layer_consumers() == []
+
+    manifest = load_ablation_manifest()
+    dbp = mod.REPO_ROOT / "data" / "ed_console.db"
+    enriched = (
+        build_ablation_enriched_row_sample(db_path=str(dbp), manifest=manifest)
+        if dbp.is_file()
+        else None
+    )
+    specs = ablation_whole_stack_feature_cell_specs(manifest, enriched_rows=enriched)
+    upper = [s for s in specs if s["model_family"] in STACK_AUTHORITY_LAYERS]
+    assert upper, "expected upper-layer placement cells"
+    for s in upper:
+        layers = s.get("stack_entry_layers") or []
+        assert len(layers) <= 1
+        if s.get("group_columns"):
+            assert layers == [s["model_family"]]
+    regime_cols = [
+        s for s in specs
+        if s["model_family"] == "regime"
+        and s.get("group_columns")
+    ]
+    fusion_cols = [
+        s for s in specs
+        if s["model_family"] == "fusion"
+        and s.get("group_columns")
+    ]
+    meta_cols = [
+        s for s in specs
+        if s["model_family"] == "meta"
+        and s.get("group_columns")
+    ]
+    assert regime_cols, "regime layer must resolve knockout columns for row-present features"
+    assert fusion_cols, "fusion layer must resolve knockout columns for row-present features"
+    assert meta_cols, "meta layer must resolve knockout columns for row-present features"
+    assert len(meta_cols) == len(fusion_cols) == len(regime_cols)
+    runnable_by_model = {
+        m: sum(1 for s in specs if s.get("model_family") == m and s.get("runnable"))
+        for m in FULL_STACK_MODEL_LAYERS
+    }
+    assert len(set(runnable_by_model.values())) == 1, runnable_by_model
+    assert runnable_by_model["xgb"] <= len(ablation_scoring_groups(manifest)) * 4
+
+
+def test_graphrag_fidelity_ablation_contract():
+    """GraphRAG fidelity-first — no registry fallback knockouts on placement grid."""
+    assert mod.check_graphrag_fidelity_ablation_contract() == []
+
+def test_ablation_experiment_integrity_flags_noop_knockout():
+    from tools.feature_curation_gate import build_ablation_experiment_integrity
+
+    report = {
+        "source_manifest": "governance/artifacts/feature_ablation_manifest_leaf.json",
+        "ablation_accounting": {"runnable_target": 2, "runnable_by_model": {"xgb": 2}},
+        "whole_stack_runnable_cell_target": 2,
+        "run_meta": {"status": "partial"},
+        "whole_stack_feature_cells": [
+            {
+                "runnable": True,
+                "model_family": "xgb",
+                "horizon_slug": "1c",
+                "group_id": "snap__net_gamma",
+                "status": "ok",
+                "group_columns": ["net_gamma"],
+                "stack_entry_layers": ["xgb"],
+                "columns_permuted_count": 0,
+                "columns_requested": ["net_gamma"],
+                "log_loss_delta": 0.0,
+            },
+            {
+                "runnable": True,
+                "model_family": "xgb",
+                "horizon_slug": "5c",
+                "group_id": "snap__vix_level",
+                "status": "skipped",
+                "reason": "insufficient_paired_rows:3",
+                "stack_entry_layers": ["xgb"],
+            },
+        ],
+    }
+    integrity = build_ablation_experiment_integrity(report)
+    codes = {f["code"] for f in integrity.get("skew_flags") or []}
+    assert integrity["verdict"] in ("FAIL", "INVESTIGATE")
+    assert "NOOP_KNOCKOUT_SCORED_OK" in codes
+    assert integrity.get("trace_cells")
+
+
+def test_ablation_finalize_whole_stack_cell_fail_closed_on_noop():
+    from tools.feature_curation_gate import _finalize_whole_stack_scored_cell
+
+    cell = {
+        "status": "ok",
+        "columns_permuted_count": 0,
+        "columns_requested": ["bid_ask_imbalance"],
+        "log_loss_delta": 1.3e-05,
+        "group_matters": True,
+    }
+    out = _finalize_whole_stack_scored_cell(cell)
+    assert out["status"] == "skipped"
+    assert out["reason"] == "noop_knockout:zero_columns_permuted"
+    assert out["group_matters"] is False
+
+
+def test_ablation_legacy_report_runnable_inference_and_target(tmp_path, monkeypatch):
+    """Legacy checkpoints without runnable stamps still count for status/integrity."""
+    import json
+
+    from tools.feature_curation_gate import (
+        ablation_report_status,
+        build_ablation_experiment_integrity,
+        load_ablation_manifest,
+        whole_stack_fusion_cell_target,
+    )
+
+    wire_runnable_target = whole_stack_fusion_cell_target(load_ablation_manifest())
+
+    report = {
+        "source_manifest": "governance/artifacts/feature_ablation_manifest_leaf.json",
+        "whole_stack_feature_cells": [
+            {
+                "ablation_kind": "whole_stack_feature_group",
+                "model_family": "xgb",
+                "horizon_slug": "1c",
+                "group_id": "reg__atomic__atr",
+                "status": "ok",
+                "columns_permuted_count": 1,
+                "log_loss_delta": 0.0005,
+            },
+            {
+                "ablation_kind": "whole_stack_feature_group",
+                "model_family": "xgb",
+                "horizon_slug": "1c",
+                "group_id": "schwab__bid",
+                "status": "skipped",
+                "reason": "not_wired",
+            },
+        ],
+        "run_meta": {"status": "partial"},
+    }
+    p = tmp_path / "feature_ablation_report_leaf.json"
+    p.write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setattr("tools.feature_curation_gate.ABLATION_REPORT_PATH", p)
+
+    st = ablation_report_status(p)
+    assert st["whole_stack_runnable_done"] == 1
+    assert st["whole_stack_runnable_ok"] == 1
+    assert st["whole_stack_runnable_cell_target"] == wire_runnable_target
+
+    integrity = build_ablation_experiment_integrity(report)
+    assert integrity["run_completion"]["runnable_target"] == wire_runnable_target
+    assert integrity["run_completion"]["runnable_terminal"] == 1
+
+
+def test_stop_hook_blocks_assumption_vocabulary():
+    """AGENTS §No assumptions — verify, never assume. The Stop hook must FAIL the turn on asserted
+    assume/assuming/assumption/presume/my-guess, and must NOT trip on the same words inside code
+    fences / inline code / >-quotes (so the rule can still be written about)."""
+    import importlib.util
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parent.parent
+    spec = importlib.util.spec_from_file_location("ear_assume", repo / "tools" / "enforce_all_rules.py")
+    ear = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ear)
+
+    CODE = "```\ngate exit: 1\n```"
+
+    def word_blocked(text):
+        return any("no-assume-verify" in h and "ACTION" not in h for h in ear._scan_output(text))
+
+    def action_blocked(text):
+        return any("no-assume-verify" in h and "ACTION" in h for h in ear._scan_output(text))
+
+    # LAYER 1 — the WORD: asserted assumption vocabulary MUST block (no [REAL-GATE] escape)
+    assert word_blocked("I assume the gate passes.")
+    assert word_blocked("Assuming the run is clean, we proceed.")
+    assert word_blocked("The assumption is it ablates all seven.")
+    assert word_blocked("Presumably the baseline is fine.")
+    assert word_blocked("My guess is it works.")
+    # the word may be discussed inside code fence / inline code / >-quote
+    assert not word_blocked("```\nthe banned word is assume\n```")
+    assert not word_blocked("the token is `assume`")
+    assert not word_blocked("> we ban the word assume here")
+
+    # LAYER 2 — the ACTION: a verdict asserted with NO shown evidence MUST block
+    assert action_blocked("The fix is verified and the run passes.")
+    assert action_blocked("The audit checks out and it is clean.")
+    assert action_blocked("Verified: baseline 1.1982 on 11 scored cells.")  # bare claim, no evidence
+    # a verdict WITH a shown command/Read block does NOT block (evidence present)
+    assert not action_blocked("Verified below:\n" + CODE)
+    # a verdict only inside a >-quote does NOT block (stripped before scan)
+    assert not action_blocked("> you said it is verified")
+    # non-claim prose with no verdict word does NOT block
+    assert not action_blocked("You are right; I will trace the source next time.")
+
+
+def test_unified_stack_team_contract_checker():
+    assert mod.check_unified_stack_team_contract() == []
+
+
+def test_live_ablation_experiment_wiring_checker():
+    assert mod.check_live_ablation_experiment_wiring() == []
+
+
+def test_unified_stack_docs_governance_vocabulary_checker():
+    assert mod.check_unified_stack_docs_governance_vocabulary() == []
+
+
+def test_unified_stack_canonical_vocabulary_checker():
+    assert mod.check_unified_stack_canonical_vocabulary() == []
+
+
+def test_unified_stack_producer_language_checker():
+    assert mod.check_unified_stack_producer_language() == []

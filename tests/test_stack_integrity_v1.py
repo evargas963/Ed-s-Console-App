@@ -40,7 +40,7 @@ def test_finalize_strips_dedupe_keys():
     ev: list = []
     record_stack_degradation(
         ev,
-        component="run_base_models_once",
+        component="run_unified_stack_ml_once",
         severity="warning",
         reason="x",
         dedupe_key="k1",

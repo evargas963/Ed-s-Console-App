@@ -102,6 +102,36 @@ def test_fill_outcomes_bar_based_anchor_matches_last_completed_bar(tmp_db: EdDB)
     assert abs(float(row["outcome_1c_pts"]) - pts) < 1e-6
 
 
+def test_upsert_1m_bars_normalizes_epoch_ms_for_candle_objects_and_dicts(tmp_db: EdDB):
+    """2026-06-09 regression: Candle objects with epoch-ms .ts (Schwab quoteTime passthrough)
+    were stored raw on an ms grid, so fill_outcomes (seconds grid) matched zero bars all day.
+    Both input shapes must land on the canonical whole-minute epoch-seconds grid."""
+    from types import SimpleNamespace
+
+    sec_start = 1_781_000_040.0  # already whole-minute, seconds
+    obj_bar = SimpleNamespace(
+        ts=sec_start * 1000.0, open=10.0, high=11.0, low=9.0, close=10.5, volume=5.0
+    )
+    dict_bar = {
+        "datetime": (sec_start + 60.0) * 1000.0,
+        "open": 10.5,
+        "high": 12.0,
+        "low": 10.0,
+        "close": 11.5,
+        "volume": 7.0,
+    }
+    n = tmp_db.upsert_1m_bars("SPY", [obj_bar, dict_bar])
+    assert n == 2
+    with tmp_db._connect() as conn:
+        rows = conn.execute(
+            "SELECT bar_start_ts_utc, bar_end_ts_utc, close FROM price_bars_1m"
+            " WHERE ticker='SPY' ORDER BY bar_start_ts_utc"
+        ).fetchall()
+    assert [float(r["bar_start_ts_utc"]) for r in rows] == [sec_start, sec_start + 60.0]
+    assert all(float(r["bar_end_ts_utc"]) - float(r["bar_start_ts_utc"]) == 60.0 for r in rows)
+    assert [float(r["close"]) for r in rows] == [10.5, 11.5]
+
+
 def test_migration_issue4_clears_v2_labels(tmp_path: Path):
     """Opening DB runs Issue 4 migration once: v2 rows lose derived outcomes, version -> 3."""
     db_path = tmp_path / "preissue4.db"

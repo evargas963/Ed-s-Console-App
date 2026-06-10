@@ -13,14 +13,14 @@ def test_record_stack_degradation_dedupe_skips_second_event():
     ev: list = []
     record_stack_degradation(
         ev,
-        component="run_base_models_once",
+        component="run_unified_stack_ml_once",
         severity="warning",
         reason="first",
         dedupe_key="tick-1",
     )
     record_stack_degradation(
         ev,
-        component="run_base_models_once",
+        component="run_unified_stack_ml_once",
         severity="error",
         reason="second",
         dedupe_key="tick-1",
@@ -79,7 +79,7 @@ def test_finalize_base_models_bundle_false_when_flagged():
     fin = finalize_stack_integrity_v1(
         [
             {
-                "component": "run_base_models_once",
+                "component": "run_unified_stack_ml_once",
                 "severity": "error",
                 "reason": "bundle failed",
                 "authority_intact": False,

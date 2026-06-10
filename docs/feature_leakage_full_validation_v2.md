@@ -15,17 +15,17 @@ The following categories were audited by **static enumeration** (`rg`/grep of ca
 | # | Path category | What was audited | Evidence method |
 |---|----------------|------------------|-----------------|
 | A1 | **`get_recent_snapshots`** | Every Python call site of `get_recent_snapshots(` plus `EdDB.get_recent_snapshots` and `train_all._HistoricalDB.get_recent_snapshots` | Grep `get_recent_snapshots\(` on `*.py`; read `db.py`, `train_all.py`, each caller |
-| A2 | **`ml_predict`** | `_require_as_of_ts_utc_for_sequence_db`, `_predict_lstm`, `_predict_transformer`, `run_base_models_once`, `run_cascade_models_once`, internal cascade branch, `reset_caches` | Read `ml_predict.py` |
+| A2 | **`ml_predict`** | `_require_as_of_ts_utc_for_sequence_db`, `_predict_lstm`, `_predict_transformer`, `run_unified_stack_ml_once`, `run_cascade_models_once`, internal cascade branch, `reset_caches` | Read `ml_predict.py` |
 | A3 | **LSTM sequence inputs** | `build_lstm_merged_windows`, `encode_snapshot_*` inputs after merge | Read `features/lstm_sequence_input.py`, `ml_predict._predict_lstm` |
 | A4 | **Transformer sequence inputs** | `build_transformer_merged_window`, merge contract for last bar | Read `features/lstm_sequence_input.py`, `ml_predict._predict_transformer` |
 | A5 | **Inference snapshot construction** | `build_inference_snapshot_v1`, `build_inference_snapshot_v1_from_signal_input`, `build_inference_snapshot_v1_from_db_row`, `build_inference_snapshot_v1_from_feature_row` | Read `features/inference_snapshot.py`; `signals.py` production path |
 | A6 | **`prediction_engine` similarity / avg_move** | `_as_of_ts_utc_for_similarity`, `compute_prediction`, `build_fusion_model_overlay_for_stack`, `_get_all_recent` | Read `prediction_engine.py`; grep `get_similar_setups\(|get_avg_move\(` |
-| A7 | **Fusion inputs** | `run_base_models_once` / `run_cascade_models_once` requiring `inference_snapshot_v1`; `compute_prediction` gate | Read `ml_predict.py`, `prediction_engine.compute_prediction` |
+| A7 | **Fusion inputs** | `run_unified_stack_ml_once` / `run_cascade_models_once` requiring `inference_snapshot_v1`; `compute_prediction` gate | Read `ml_predict.py`, `prediction_engine.compute_prediction` |
 | A8 | **Decision inputs** | `signals` pipeline feeding `compute_prediction` + MH bundle; fusion consumes model outputs only | Read `signals.py` (inference snapshot build + `compute_prediction` call) |
 | A9 | **Replay / historical evaluation** | `verification/replay_diagnostic.py`, `train_all.run_meta` + `_HistoricalDB`, `smoke_predict_active.py`, `similarity_feature_search.latest_snapshot_as_anchor_overlay` | Read each file |
 | A10 | **Caches / rolling windows** | `ml_predict.reset_caches` (clears **model** registries only); LSTM/Transformer **DB** history each call; `ml_scheduler` training loops over in-memory day windows | Read `ml_predict.py` `reset_caches`; `ml_scheduler.py` train cascade; confirm no snapshot-row cache |
 
-**Out of scope for this inventory (same DB primitives apply):** developer tools under `tools/` that call `get_similar_setups` / diagnostics — they use **`EdDB` methods in §B rows INV-002–INV-003**; no separate causal contract. Calibration doc `docs/calibration_feature_leakage_validation_v1.md` is **superseded** for `get_recent_snapshots` by code in `db.py` + `ml_predict.py`.
+**Covered by §B rows rather than separate A-rows (same DB primitives apply):** developer tools under `tools/` that call `get_similar_setups` / diagnostics — they use **`EdDB` methods in §B rows INV-002–INV-003**; no separate causal contract. Calibration doc `docs/calibration_feature_leakage_validation_v1.md` is **superseded** for `get_recent_snapshots` by code in `db.py` + `ml_predict.py`.
 
 ---
 
@@ -45,7 +45,7 @@ The following categories were audited by **static enumeration** (`rg`/grep of ca
 | INV-004 | `ml_predict.py` | `_require_as_of_ts_utc_for_sequence_db` | ml_predict | `inference_snapshot_v1["as_of_ts"]` | caller | **yes** | raises `LstmSequenceInputError` if missing | yes (if uncalled) | SAFE |
 | INV-005 | `ml_predict.py` | `_predict_lstm` (both `get_recent_snapshots` calls) | LSTM sequence / ml_predict | DB rows + merge | `_asof = _require_…` | **yes** | `get_recent_snapshots(..., as_of_ts_utc=_asof)`; last-bar MVP from `inference_snapshot_v1` | yes | SAFE |
 | INV-006 | `ml_predict.py` | `_predict_transformer` | Transformer sequence / ml_predict | DB rows + merge | `_asof = _require_…` | **yes** | `get_recent_snapshots(..., as_of_ts_utc=_asof)`; merged window per `lstm_sequence_input` | yes | SAFE |
-| INV-007 | `ml_predict.py` | `run_base_models_once` | ml_predict / fusion | delegates to `_predict_*` | `inference_snapshot_v1` | **yes** | requires `inference_snapshot_v1`; sequence paths use INV-004–006 | yes | SAFE |
+| INV-007 | `ml_predict.py` | `run_unified_stack_ml_once` | ml_predict / fusion | delegates to `_predict_*` | `inference_snapshot_v1` | **yes** | requires `inference_snapshot_v1`; sequence paths use INV-004–006 | yes | SAFE |
 | INV-008 | `ml_predict.py` | `run_cascade_models_once` | ml_predict / fusion | delegates to `_predict_*` | `inference_snapshot_v1` | **yes** | same as INV-007 | yes | SAFE |
 | INV-009 | `ml_predict.py` | `_predict_transformer` cascade branch calling `_predict_lstm` | ml_predict | same as INV-005–006 | `inference_snapshot_v1` | **yes** | same `_asof` on nested LSTM call | yes | SAFE |
 | INV-010 | `ml_predict.py` | `reset_caches` | cache / rolling | model pickles in `_xgb_registry`, `_meta_registry`, `_lstm_registry`, `_trans_registry` | n/a | no (not snapshot data) | clears **models only**; no snapshot row cache | no | SAFE |

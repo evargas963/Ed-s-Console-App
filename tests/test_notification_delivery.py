@@ -149,7 +149,7 @@ def test_production_default_runtime_unchanged_by_delivery_module():
 
     src = Path(nd.__file__).read_text(encoding="utf-8")
     assert "production_default_runtime" not in src
-    assert "run_base_models_once" not in src
+    assert "run_unified_stack_ml_once" not in src
 
 
 def test_validate_governed_alert_raises():

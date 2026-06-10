@@ -279,6 +279,7 @@ def run_login_flow(api_key: str, app_secret: str, callback_url: str, token_path:
                 token_path=token_path,
                 enforce_enums=False,
                 interactive=False,
+                callback_timeout=float(os.environ.get("SCHWAB_OAUTH_CALLBACK_TIMEOUT_SEC", "900")),
             )
         except BaseException as e:
             exc_holder.append(e)
@@ -335,6 +336,49 @@ def run_manual_flow(api_key: str, app_secret: str, callback_url: str, token_path
         raise
     except Exception as e:
         return False, f"OAuth flow failed: {e}"
+
+
+def complete_oauth_from_redirect_url(
+    redirect_url: str,
+    *,
+    api_key: str,
+    app_secret: str,
+    callback_url: str,
+    token_path: str,
+) -> tuple[bool, str]:
+    """
+    Finish OAuth when the browser already redirected but the local callback server
+    did not persist the token (common: self-signed cert warning on 127.0.0.1:8182).
+    """
+    from urllib.parse import parse_qs, urlparse
+
+    url = (redirect_url or "").strip()
+    if not url:
+        return False, "Redirect URL is empty."
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query)
+    state = (qs.get("state") or [None])[0]
+    if not (qs.get("code") or [None])[0]:
+        return False, "Redirect URL missing OAuth code query parameter."
+
+    resolved = _resolve_token_path(token_path)
+    auth_context = _get_auth_context_with_scope(api_key, callback_url, state=state)
+    token_write_func = auth.__make_update_token_func(resolved)
+    try:
+        auth.client_from_received_url(
+            api_key,
+            app_secret,
+            auth_context,
+            url,
+            token_write_func,
+            asyncio=False,
+            enforce_enums=False,
+        )
+    except Exception as e:
+        return False, f"OAuth token exchange failed: {e}"
+    if not os.path.isfile(resolved):
+        return False, f"Token exchange succeeded but file missing: {resolved}"
+    return True, f"Token created: {resolved}"
 
 class SchwabAuthError(Exception):
     """Schwab OAuth / refresh token failure — fail fast; do not retry chain/quote for minutes."""

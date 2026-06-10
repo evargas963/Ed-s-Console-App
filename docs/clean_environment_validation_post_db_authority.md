@@ -49,12 +49,12 @@ Command pattern: run `python -c` that `pop`s `ED_CONSOLE_DB` / `ED_CONSOLE_ALLOW
 |------|----------------|-------|
 | `test_calibration_bypass_closure::test_no_unauthorized_python_references_to_calibration_decision_log` | **Legacy governance** | Offender: `tools/_phase4_prod_probe.py` references `calibration_decision_log` (not introduced by DB path resolver). |
 | `test_calibration_bypass_closure::test_update_calibration_decision_log_only_backfill_and_tests` | **Legacy governance** | `UPDATE calibration_decision_log` in `calibration/backfill_signal_layer_v1_bundle.py` (signal-layer work; not DB resolver). |
-| `test_ml_predict_run_base_models_once_default_unchanged` | **ML stack / governance** | Expects `parallel_runtime=True` in `run_base_models_once` source; current implementation differs. |
+| `test_ml_predict_run_unified_stack_ml_once_default_unchanged` | **ML stack / governance** | Expects `parallel_runtime=True` in `run_unified_stack_ml_once` source; current implementation differs. |
 | `test_ml_predict_default_parallel_runtime_unchanged` | **Same** | Same. |
-| `test_manual_governance::test_run_base_models_once_still_parallel_default` | **Same** | Same. |
+| `test_manual_governance::test_run_unified_stack_ml_once_still_parallel_default` | **Same** | Same. |
 | `test_parallel_stack_runtime` (4 tests) | **Same** | Parallel stack / inference snapshot contract. |
-| `test_scheduler_arch_competition_integration::test_run_base_models_once_unchanged_parallel` | **Same** | Same. |
-| `test_xgb_inference_snapshot_v1_input::test_run_base_models_once_requires_inference_snapshot_v1` | **Same** | Same. |
+| `test_scheduler_arch_competition_integration::test_run_unified_stack_ml_once_unchanged_parallel` | **Same** | Same. |
+| `test_xgb_inference_snapshot_v1_input::test_run_unified_stack_ml_once_requires_inference_snapshot_v1` | **Same** | Same. |
 | `test_playwright_must_run::test_playwright_marker_newer_than_e2e_sources` | **E2E staleness** | `last_run_utc` older than source mtime; **not** DB authority. |
 | `test_signal_engineering::test_signal_engineering_runs` | **Data-dependent drift** | Asserts fixed `pct_canonical_effective["long"] == 120`; DB contents differ. |
 | `test_verification_harness::test_no_valid_primary_sets_wait_reason` | **Harness / assertion drift** | Expected `WAIT` vs `LONG`. |

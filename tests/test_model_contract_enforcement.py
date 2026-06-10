@@ -58,18 +58,6 @@ def test_xgb_requires_impute_medians():
     assert "impute" in msg2.lower()
 
 
-def test_ablation_scored_eval_relaxes_contract_not_impute(monkeypatch):
-    monkeypatch.setenv("ED_ABLATION_SCORED_EVAL", "1")
-    stale = {
-        "label_config_version": "outcome_1c_filled_rth_v1",
-        "feature_schema_version": "v4_canonical_1m",
-        "features": ["a"],
-        "impute_medians": {"a": 0.0},
-    }
-    assert validate_artifact_contract(stale, "xgb")[0]
-    assert not validate_artifact_contract({**stale, "impute_medians": {}}, "xgb")[0]
-
-
 def test_lstm_transformer_no_impute_required():
     base = contract_metadata_dict()
     assert validate_artifact_contract(base, "lstm")[0]

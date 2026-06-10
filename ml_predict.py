@@ -1,24 +1,20 @@
 """
-Ed Console - ML Prediction Module (Phase 4 - Stacked Ensemble)
-===============================================================
-Loads and runs all three base models + meta-learner for each ticker.
+Ed Console - ML Prediction Module (unified seven-layer stack)
+=============================================================
+Loads and runs the unified stack ML layers (xgb, lstm, transformer) + meta combiner per ticker.
 
-Architecture:
-    Layer 1 (base models, run in parallel):
-        XGBoost     - tabular snapshot features (per-ticker model)
-        LSTM        - dual-stream candle sequences (shared model)
-        Transformer - attention-based candle sequences (shared model)
-
-    Layer 2 (meta-learner):
-        Logistic regression trained on stacked Layer 1 probability outputs.
-        Input:  [xgb_up, xgb_dn, xgb_fl, lstm_up, lstm_dn, lstm_fl,
-                 tr_up,  tr_dn,  tr_fl]  (9 features)
-        Output: final {up, down, flat} probabilities
+Architecture (one team — seven layers per governed_stack_contract.FULL_STACK_MODEL_LAYERS):
+    Tabular + sequence ML layers (xgb, lstm, transformer) run in parallel for one tick.
+    meta combines their triplets; monte_carlo, regime, and fusion follow in signals._run_model_stack.
 
 Fallback chain (parallel, live inference):
-    Full XGB + LSTM + Transformer triplets required.
+    Full xgb + lstm + transformer triplets required as one team.
     meta-learner -> weighted average -> None (rules engine takes over).
-    No 0.333 filler and no XGB-only parallel ensemble rows.
+    No 0.333 filler and no xgb-only parallel ensemble rows.
+
+Pre-train observe experiment:
+    ED_LIVE_ABLATION_EXPERIMENT=1 routes to models/parallel/{ticker}/ with relaxed bundle checks
+    and survivor serve masks — cards can signal before scheduler promotion (ACTIVE_PROGRAM).
 
 Fallback chain (5c documented exception):
     xgb_plus_transformer per ACTIVE_PROGRAM when horizon slug is 5c.
@@ -27,7 +23,7 @@ Fallback chain (cascade challenger):
     Cascade stage contract only; not mixed with partial parallel legs.
 
 Integration:
-    signals.py calls run_base_models_once with inference_snapshot_v1= (InferenceSnapshotV1).
+    signals.py calls run_unified_stack_ml_once with inference_snapshot_v1= (InferenceSnapshotV1).
     Returns {up, down, flat} or None (rules engine takes over).
 """
 
@@ -56,7 +52,7 @@ from features.lstm_sequence_input import (
 from features.xgb_model_input import XgbInferenceInputError
 from features.parallel_stack_schema import (
     PARALLEL_STACK_SCHEMA_VERSION,
-    build_parallel_base_output,
+    build_unified_stack_layer_output,
 )
 from features.cascade_stack_contract import (
     CASCADE_UPSTREAM_BUNDLE_VERSION,
@@ -123,7 +119,7 @@ def reset_ml_infer_horizon_slug(token: Token) -> None:
 
 
 def stack_probs_bundle_key() -> str:
-    """Dict key for stacked ML probabilities in run_base_models_once / signals.ml_bundle (Issue 15)."""
+    """Dict key for stacked ML probabilities in run_unified_stack_ml_once / signals.ml_bundle (Issue 15)."""
     return f"stack_probs_{get_ml_infer_horizon_slug()}"
 
 
@@ -149,11 +145,11 @@ def _apply_serve_ablation_snapshot(snap: dict, model_family: str) -> dict:
     out = dict(snap)
     try:
         from arch_competition.stack_bundle_eval_v1 import (
-            ablation_survivors_training_enabled,
+            ablation_experiment_serve_masks_active,
             apply_ablation_survivor_nulls_to_snapshot_for_model,
         )
 
-        if ablation_survivors_training_enabled():
+        if ablation_experiment_serve_masks_active():
             hz = get_ml_infer_horizon_slug()
             apply_ablation_survivor_nulls_to_snapshot_for_model(
                 out, model_family=model_family, horizon_slug=hz
@@ -275,6 +271,9 @@ _meta_registry  = {}   # _model_registry_key -> sklearn LogisticRegression
 _lstm_registry  = {}   # _model_registry_key -> (model, checkpoint)
 _trans_registry = {}   # _model_registry_key -> (model, checkpoint)
 _collapse_flag_registry: dict[str, set] = {}  # _model_registry_key -> {collapsed base names}
+# Strict-active bundle resolution — cache blocked/ok per (ticker, hz); warn once per key.
+_active_bundle_dir_cache: dict[str, Path | None] = {}
+_strict_bundle_warned: set[str] = set()
 
 CLASS_NAMES = ["up", "down", "flat"]
 # Visible uniform when no base is trustworthy (all single-class-collapsed). Distinct from a
@@ -352,11 +351,20 @@ def _model_probs_to_ui_output(p: Optional[dict], approved: bool) -> dict:
 
 
 def _model_dir_for_ticker(ticker: str) -> Path:
-    """RULE 4: Read arch_state.json, load from models/active/{ticker}/. Default parallel if missing.
-
-    Cascade challenger inference (`_cascade_challenger_inference_scope`) uses `models/cascade/{ticker}/` only.
-    """
+    """Resolve bundle dir: strict active, live ablation experiment (parallel), or offline scoring pass."""
     hz = get_ml_infer_horizon_slug()
+    from arch_competition.stack_bundle_eval_v1 import (
+        ablation_scoring_pass_active,
+        live_ablation_experiment_active,
+        resolve_experiment_bundle_dir,
+    )
+
+    if live_ablation_experiment_active():
+        return resolve_experiment_bundle_dir(ticker, hz, models_dir=MODEL_DIR)
+    if ablation_scoring_pass_active():
+        from active_bundle_contract import active_bundle_dir
+
+        return active_bundle_dir(ticker, hz, models_dir=MODEL_DIR)
     strict_active_only = os.environ.get("ED_XGB_STRICT_ACTIVE_ONLY", "1").strip().lower() not in (
         "0",
         "false",
@@ -374,6 +382,11 @@ def _model_dir_for_ticker(ticker: str) -> Path:
                 f"at canonical {canonical} (requires xgb+lstm+transformer+meta_stack per active_bundle_contract)"
             )
         return canonical
+    return _model_dir_for_ticker_relaxed(ticker, hz)
+
+
+def _model_dir_for_ticker_relaxed(ticker: str, hz: str) -> Path:
+    """Non-strict resolution: cascade challenger, arch_state, or parallel default."""
     if _INFER_ARCHITECTURE.get() == "cascade":
         cd = MODEL_DIR / "cascade" / ticker
         if not cd.is_dir():
@@ -428,6 +441,49 @@ def _model_dir_for_ticker(ticker: str) -> Path:
     return MODEL_DIR
 
 
+def _strict_bundle_block_detail(ticker: str, hz: str) -> str:
+    """One-line compliance issues for operator-first strict-bundle warning."""
+    from active_bundle_contract import check_active_bundle_complete
+
+    chk = check_active_bundle_complete(ticker, hz, models_dir=MODEL_DIR)
+    issues: list[str] = []
+    for kind, art in (chk.get("artifacts") or {}).items():
+        for msg in art.get("issues") or []:
+            issues.append(f"{kind}: {msg}")
+    if issues:
+        return "; ".join(issues)
+    for msg in chk.get("issues") or []:
+        issues.append(str(msg))
+    return "; ".join(issues) if issues else "bundle incomplete"
+
+
+def _active_bundle_dir_for_load(ticker: str) -> Path | None:
+    """Resolve bundle dir for serve-path model load; None when strict contract blocks."""
+    rk = _model_registry_key(ticker)
+    if rk in _active_bundle_dir_cache:
+        return _active_bundle_dir_cache[rk]
+
+    hz = get_ml_infer_horizon_slug()
+    try:
+        base = _model_dir_for_ticker(ticker)
+    except FileNotFoundError as exc:
+        _active_bundle_dir_cache[rk] = None
+        if rk not in _strict_bundle_warned:
+            _strict_bundle_warned.add(rk)
+            logger.warning(
+                "Active bundle blocked for %s hz=%s (%s)",
+                ticker,
+                hz,
+                _strict_bundle_block_detail(ticker, hz),
+            )
+        else:
+            logger.debug("Active bundle still blocked for %s hz=%s: %s", ticker, hz, exc)
+        return None
+
+    _active_bundle_dir_cache[rk] = base
+    return base
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # XGBoost - per-ticker
 # ══════════════════════════════════════════════════════════════════════════════
@@ -441,7 +497,7 @@ def build_xgb_pre_engineering_snapshot_for_tick(
     Engineering snapshot after MVP map + fusion overlay + net_gamma_prev for ΔGEX.
 
     Identical for every governed horizon on a single tick; call once and pass into
-    ``run_base_models_once(..., xgb_pre_engineering_snapshot=...)`` so XGB tri-class
+    ``run_unified_stack_ml_once(..., xgb_pre_engineering_snapshot=...)`` so XGB tri-class
     and movement heads skip repeated ingest/merge work (per-horizon work remains:
     ``engineer_single_snapshot`` + ``predict_proba`` per artifact).
     """
@@ -450,7 +506,7 @@ def build_xgb_pre_engineering_snapshot_for_tick(
         inference_snapshot_v1_to_engineering_snapshot,
         merge_xgb_fusion_overlay,
     )
-    from ml_data_common import attach_net_gamma_prev_for_dgex
+    from ml_data_common import attach_confluence_features_for_serve, attach_net_gamma_prev_for_dgex
     from ml_train import DB_PATH as _ML_DB
 
     assert_not_raw_l1_payload(inference_snapshot_v1)
@@ -459,6 +515,7 @@ def build_xgb_pre_engineering_snapshot_for_tick(
     base = inference_snapshot_v1_to_engineering_snapshot(inference_snapshot_v1)
     snap = merge_xgb_fusion_overlay(base, fusion_feature_overlay)
     snap = attach_net_gamma_prev_for_dgex(snap, _ML_DB)
+    snap = attach_confluence_features_for_serve(snap, _ML_DB)
     return _apply_serve_ablation_snapshot(snap, "xgb")
 
 
@@ -468,7 +525,10 @@ def _load_xgb(ticker: str) -> bool:
     if rk in _xgb_registry:
         return _xgb_registry[rk] is not None
 
-    base = _model_dir_for_ticker(ticker)
+    base = _active_bundle_dir_for_load(ticker)
+    if base is None:
+        _xgb_registry[rk] = None
+        return False
     mp  = base / f"xgb_{ticker}_{hz}.pkl"
     mtp = base / f"xgb_{ticker}_{hz}_meta.json"
 
@@ -483,9 +543,16 @@ def _load_xgb(ticker: str) -> bool:
         with open(mtp, "r") as f:
             meta = json.load(f)
 
-        from model_contract import validate_artifact_contract
+        from arch_competition.stack_bundle_eval_v1 import unified_stack_bundle_relaxation_active
 
-        ok, reason = validate_artifact_contract(meta, "xgb")
+        if unified_stack_bundle_relaxation_active():
+            from arch_competition.ablation_bundle_inference import validate_ablation_scoring_bundle_meta
+
+            ok, reason = validate_ablation_scoring_bundle_meta(meta, "xgb")
+        else:
+            from model_contract import validate_artifact_contract
+
+            ok, reason = validate_artifact_contract(meta, "xgb")
         if not ok:
             logger.error(
                 "XGBoost %s: incompatible model contract (%s). Retrain; refusing load.",
@@ -627,7 +694,10 @@ def _predict_xgb_movement_heads(
     for suffix, names_default in (("dir", ["up", "down"]), ("move", ["move", "no_move"])):
         reg_key = f"{_model_registry_key(ticker, hz)}:{suffix}"
         if reg_key not in _xgb_movehead_registry:
-            base = _model_dir_for_ticker(ticker)
+            base = _active_bundle_dir_for_load(ticker)
+            if base is None:
+                _xgb_movehead_registry[reg_key] = None
+                continue
             mp = base / f"xgb_{tkr}_{hz}_{suffix}.pkl"
             mtp = base / f"xgb_{tkr}_{hz}_{suffix}_meta.json"
             if not mp.is_file() or not mtp.is_file():
@@ -740,7 +810,10 @@ def _load_lstm(ticker: str) -> bool:
     if rk in _lstm_registry:
         return _lstm_registry[rk] is not None
 
-    base = _model_dir_for_ticker(ticker)
+    base = _active_bundle_dir_for_load(ticker)
+    if base is None:
+        _lstm_registry[rk] = None
+        return False
     mp = base / f"lstm_{ticker}_{hz}.pt"
     if not mp.exists():
         logger.debug("LSTM model not found for %s at %s", ticker, mp)
@@ -792,8 +865,8 @@ def _predict_lstm(
         import torch
         from features.lstm_sequence_input import (
             build_lstm_merged_windows,
-            encode_lstm_micro_sequence_bar,
-            encode_lstm_structure_sequence_bar,
+            encode_lstm_micro_sequence_bar_for_checkpoint,
+            encode_lstm_structure_sequence_bar_for_checkpoint,
         )
         from lstm_data import (
             CANONICAL_TIMEFRAME,
@@ -803,6 +876,9 @@ def _predict_lstm(
             STREAM_1M_LOOKBACK,
             _safe_float,
             canonical_reference_spot_from_merged_window,
+            assert_lstm_encoder_checkpoint_compatible,
+            encoded_width_5m_for_checkpoint,
+            encoded_width_1m_for_checkpoint,
         )
 
         tf = timeframe or CANONICAL_TIMEFRAME
@@ -842,31 +918,34 @@ def _predict_lstm(
         except ValueError as e:
             raise LstmSequenceInputError(str(e)) from e
 
-        from lstm_data import (
-            assert_lstm_encoder_checkpoint_compatible,
-            encoded_width_5m,
-            encoded_width_1m,
-        )
-
         try:
             assert_lstm_encoder_checkpoint_compatible(checkpoint)
         except ValueError as e:
             logger.error("LSTM %s: %s", ticker, e)
             return None
 
-        seq_5m = [encode_lstm_structure_sequence_bar(s, ref_spot) for s in merged_window]
+        seq_5m = [
+            encode_lstm_structure_sequence_bar_for_checkpoint(s, ref_spot, checkpoint)
+            for s in merged_window
+        ]
         micro = merged_window[-STREAM_1M_LOOKBACK:]
         mr = _safe_float(micro[0].get("spot")) or ref_spot
-        seq_1m = [encode_lstm_micro_sequence_bar(s, mr) for s in micro]
+        seq_1m = [
+            encode_lstm_micro_sequence_bar_for_checkpoint(s, mr, checkpoint) for s in micro
+        ]
 
-        if len(seq_5m[0]) != encoded_width_5m() or len(seq_1m[0]) != encoded_width_1m():
+        X_5m   = np.array([seq_5m],   dtype=np.float32)
+        X_1m   = np.array([seq_1m],   dtype=np.float32)
+        exp5 = encoded_width_5m_for_checkpoint(checkpoint)
+        exp1 = encoded_width_1m_for_checkpoint(checkpoint)
+        if len(seq_5m[0]) != exp5 or len(seq_1m[0]) != exp1:
             logger.error(
                 "LSTM %s: encoder width mismatch (5m=%d expected %d, 1m=%d expected %d)",
                 ticker,
                 len(seq_5m[0]),
-                encoded_width_5m(),
+                exp5,
                 len(seq_1m[0]),
-                encoded_width_1m(),
+                exp1,
             )
             return None
 
@@ -909,8 +988,6 @@ def _predict_lstm(
                 )
                 return None
 
-        X_5m   = np.array([seq_5m],   dtype=np.float32)
-        X_1m   = np.array([seq_1m],   dtype=np.float32)
         X_conf = np.array([conf_vec], dtype=np.float32)
 
         mask_5m = np.array(checkpoint.get("mask_5m", [True] * X_5m.shape[2]))
@@ -982,6 +1059,13 @@ def _predict_lstm(
                     encoded_features_5m=ENCODED_FEATURES_5M,
                     encoded_features_1m=ENCODED_FEATURES_1M,
                 )
+                from arch_competition.stack_bundle_eval_v1 import zero_ablated_lstm_conf_channels
+
+                X_conf = zero_ablated_lstm_conf_channels(
+                    X_conf,
+                    model_family="lstm",
+                    horizon_slug=get_ml_infer_horizon_slug(),
+                )
         except Exception:
             logger.error(
                 "LSTM %s: post-norm ablation channel zero failed — refusing train/serve skew",
@@ -1017,7 +1101,10 @@ def _load_transformer(ticker: str) -> bool:
     if rk in _trans_registry:
         return _trans_registry[rk] is not None
 
-    base = _model_dir_for_ticker(ticker)
+    base = _active_bundle_dir_for_load(ticker)
+    if base is None:
+        _trans_registry[rk] = None
+        return False
     mp = base / f"transformer_{ticker}_{hz}.pt"
     mtp = base / f"transformer_{ticker}_{hz}_meta.json"
     if not mp.exists():
@@ -1045,7 +1132,42 @@ def _load_transformer(ticker: str) -> bool:
             return False
 
         import torch
+        import numpy as np
         checkpoint = torch.load(str(mp), map_location="cpu", weights_only=False)
+        from lstm_data import assert_lstm_encoder_checkpoint_compatible
+
+        try:
+            assert_lstm_encoder_checkpoint_compatible(checkpoint)
+        except ValueError as exc:
+            logger.error("Transformer %s: %s", ticker, exc)
+            _trans_registry[rk] = None
+            return False
+        n_enc = int(checkpoint.get("n_features", 0))
+        fm = checkpoint.get("feature_mask")
+        if fm is not None:
+            n_masked = int(np.asarray(fm, dtype=bool).sum())
+            if n_enc and n_enc != n_masked:
+                logger.error(
+                    "Transformer %s: n_features=%s != feature_mask active count %s; retrain",
+                    ticker,
+                    n_enc,
+                    n_masked,
+                )
+                _trans_registry[rk] = None
+                return False
+        else:
+            from lstm_data import encoded_width_5m_for_checkpoint
+
+            enc_base = encoded_width_5m_for_checkpoint(checkpoint)
+            if n_enc and n_enc != enc_base:
+                logger.error(
+                    "Transformer %s: n_features=%s != encoder width %s; retrain",
+                    ticker,
+                    n_enc,
+                    enc_base,
+                )
+                _trans_registry[rk] = None
+                return False
         from transformer_train import build_transformer
         model = build_transformer(
             checkpoint["n_features"],
@@ -1091,25 +1213,23 @@ def _predict_transformer(
 
     try:
         import torch
-        from features.lstm_sequence_input import encode_lstm_structure_sequence_bar
+        from features.lstm_sequence_input import (
+            encode_lstm_structure_sequence_bar_for_checkpoint,
+        )
         from lstm_data import (
             CANONICAL_TIMEFRAME,
             canonical_reference_spot_from_merged_window,
+            assert_lstm_encoder_checkpoint_compatible,
+            encoded_width_5m_for_checkpoint,
         )
 
         tf = timeframe or CANONICAL_TIMEFRAME
         seq_len = checkpoint.get("seq_len", 20)
-        from lstm_data import encoded_width_5m, LSTM_ENCODER_SCHEMA_VERSION
-
-        n_enc_base = encoded_width_5m()
-        enc_ver = int(checkpoint.get("encoder_schema_version", 1))
-        if enc_ver < LSTM_ENCODER_SCHEMA_VERSION:
-            logger.error(
-                "Transformer %s: encoder schema v%s < required v%s; retrain",
-                ticker,
-                enc_ver,
-                LSTM_ENCODER_SCHEMA_VERSION,
-            )
+        n_enc_base = encoded_width_5m_for_checkpoint(checkpoint)
+        try:
+            assert_lstm_encoder_checkpoint_compatible(checkpoint)
+        except ValueError as exc:
+            logger.error("Transformer %s: %s", ticker, exc)
             return None
 
         if shared_sequence_context is not None:
@@ -1139,8 +1259,10 @@ def _predict_transformer(
 
         snap = snapshot if snapshot is not None else _snap_dict(merged_window[-1])
         seq = [
-            encode_lstm_structure_sequence_bar(s, ref_spot) for s in merged_window
+            encode_lstm_structure_sequence_bar_for_checkpoint(s, ref_spot, checkpoint)
+            for s in merged_window
         ]
+        base = np.array([seq], dtype=np.float32)
         if len(seq[0]) != n_enc_base:
             logger.error(
                 "Transformer %s: encoder width %d != expected %d",
@@ -1149,7 +1271,6 @@ def _predict_transformer(
                 n_enc_base,
             )
             return None
-        base = np.array([seq], dtype=np.float32)
 
         fm = np.asarray(
             checkpoint.get("feature_mask", np.ones(base.shape[2], dtype=bool)),
@@ -1253,7 +1374,10 @@ def _load_meta(ticker: str) -> bool:
     if rk in _meta_registry:
         return _meta_registry[rk] is not None
 
-    base = _model_dir_for_ticker(ticker)
+    base = _active_bundle_dir_for_load(ticker)
+    if base is None:
+        _meta_registry[rk] = None
+        return False
     mp = base / f"meta_{ticker}_{hz}.pkl"
     if not mp.exists():
         _meta_registry[rk] = None
@@ -1275,7 +1399,7 @@ def _parallel_base_stack_complete(
     lstm_p: Optional[dict],
     trans_p: Optional[dict],
 ) -> bool:
-    """True only when all three parallel base models returned complete probability triplets."""
+    """True only when all three parallel ML stack layers returned complete probability triplets."""
     return all(
         _require_direction_probability_triplet(p) is not None
         for p in (xgb_p, lstm_p, trans_p)
@@ -1298,11 +1422,77 @@ def _stack_probs(xgb_p, lstm_p, trans_p) -> Optional[np.ndarray]:
     ).reshape(1, -1)
 
 
-def _predict_meta(ticker: str, xgb_p, lstm_p, trans_p) -> Optional[dict]:
+def _meta_model_input_width(ticker: str) -> int | None:
+    """Feature width the loaded meta pickle expects (9 legacy or 9+tabular v2)."""
+    if not _load_meta(ticker):
+        return None
+    mdl = _meta_registry[_model_registry_key(ticker)]
+    n = getattr(mdl, "n_features_in_", None)
+    try:
+        return int(n) if n is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _meta_stack_feature_matrix(
+    ticker: str,
+    xgb_p,
+    lstm_p,
+    trans_p,
+    *,
+    meta_tabular_overlay: dict | None = None,
+) -> Optional[np.ndarray]:
+    """Build meta input row: stacked base probs + optional tabular overlay (v2)."""
+    stack = _stack_probs(xgb_p, lstm_p, trans_p)
+    if stack is None:
+        return None
+    expected = _meta_model_input_width(ticker)
+    if expected is None:
+        return stack
+    from features.fusion_model_input import meta_tabular_input_dim, meta_tabular_vector_from_overlay
+    from governed_stack_contract import META_STACK_PROB_DIM
+
+    tab_dim = meta_tabular_input_dim()
+    if expected == META_STACK_PROB_DIM:
+        return stack
+    if expected == META_STACK_PROB_DIM + tab_dim:
+        if meta_tabular_overlay is None:
+            return None
+        tab = np.array(
+            meta_tabular_vector_from_overlay(meta_tabular_overlay),
+            dtype=np.float64,
+        ).reshape(1, -1)
+        if tab.shape[1] != tab_dim:
+            return None
+        return np.concatenate([stack, tab], axis=1)
+    logger.warning(
+        "Meta %s: unexpected n_features_in_=%s (expected %s or %s)",
+        ticker,
+        expected,
+        META_STACK_PROB_DIM,
+        META_STACK_PROB_DIM + tab_dim,
+    )
+    return None
+
+
+def _predict_meta(
+    ticker: str,
+    xgb_p,
+    lstm_p,
+    trans_p,
+    *,
+    meta_tabular_overlay: dict | None = None,
+) -> Optional[dict]:
     if not _load_meta(ticker):
         return None
     try:
-        X = _stack_probs(xgb_p, lstm_p, trans_p)
+        X = _meta_stack_feature_matrix(
+            ticker,
+            xgb_p,
+            lstm_p,
+            trans_p,
+            meta_tabular_overlay=meta_tabular_overlay,
+        )
         if X is None:
             return None
         probs = _meta_registry[_model_registry_key(ticker)].predict_proba(X)[0]
@@ -1346,7 +1536,37 @@ def _weighted_average(
     return {c: round(result[c], 4) for c in CLASS_NAMES}
 
 
-def read_base_collapse_flags(model_dir, ticker: str, hz: str) -> set:
+def _weighted_average_partial(
+    ticker: str,
+    weighted_parts: list[tuple[str, Optional[dict], float]],
+    *,
+    collapsed: Optional[set] = None,
+) -> Optional[dict]:
+    """Renormalized blend over available base legs (e.g. 5c xgb_plus_transformer without LSTM)."""
+    collapsed = collapsed or set()
+    healthy: list[tuple[str, dict, float]] = []
+    for name, probs, weight in weighted_parts:
+        if name in collapsed:
+            continue
+        tri = _require_direction_probability_triplet(probs)
+        if tri is None:
+            continue
+        healthy.append((name, probs, float(weight)))
+    if not healthy:
+        return None
+    total_w = sum(w for _, _, w in healthy)
+    result = {c: 0.0 for c in CLASS_NAMES}
+    for _name, probs, w in healthy:
+        tri = _require_direction_probability_triplet(probs)
+        assert tri is not None
+        nw = w / total_w
+        result["up"] += tri[0] * nw
+        result["down"] += tri[1] * nw
+        result["flat"] += tri[2] * nw
+    return {c: round(result[c], 4) for c in CLASS_NAMES}
+
+
+def read_stack_layer_collapse_flags(model_dir, ticker: str, hz: str) -> set:
     """Set of base names ('xgb'/'lstm'/'transformer') whose persisted meta in ``model_dir``
     carries ``val_single_class_collapse=True`` (the B3+ all-flat degeneracy flag written by
     ml_train / lstm_model / transformer_train). Same read pattern the A2 promotion gate uses.
@@ -1375,7 +1595,7 @@ def _active_base_collapse_flags(ticker: str) -> set:
     # Best-effort: if the active bundle dir can't be resolved (e.g. strict-active-only with an
     # incomplete bundle), fall back to "no collapse flags" — identical to prior combiner behavior.
     try:
-        flags = read_base_collapse_flags(_model_dir_for_ticker(ticker), ticker, hz)
+        flags = read_stack_layer_collapse_flags(_model_dir_for_ticker(ticker), ticker, hz)
     except Exception as e:
         logger.debug("collapse-flag read skipped for %s: %s", ticker, e)
         flags = set()
@@ -1388,6 +1608,8 @@ def _ensemble_parallel_probs(
     xgb_p: Optional[dict],
     lstm_p: Optional[dict],
     trans_p: Optional[dict],
+    *,
+    meta_tabular_overlay: dict | None = None,
 ) -> Optional[dict]:
     """Meta when trained, else weighted average — only when full parallel stack is present.
 
@@ -1405,7 +1627,13 @@ def _ensemble_parallel_probs(
             ticker,
         )
         return dict(_UNIFORM_PROBS)
-    stack_probs = _predict_meta(ticker, xgb_p, lstm_p, trans_p)
+    stack_probs = _predict_meta(
+        ticker,
+        xgb_p,
+        lstm_p,
+        trans_p,
+        meta_tabular_overlay=meta_tabular_overlay,
+    )
     if stack_probs is None:
         stack_probs = _weighted_average(ticker, xgb_p, lstm_p, trans_p, collapsed=collapsed)
     return stack_probs
@@ -1486,7 +1714,7 @@ def _resolve_ml_inference_ticker(
     )
 
 
-def run_base_models_once(
+def run_unified_stack_ml_once(
     snapshot: dict,
     ticker: str,
     db,
@@ -1495,12 +1723,15 @@ def run_base_models_once(
     inference_snapshot_v1: dict | None = None,
     xgb_pre_engineering_snapshot: dict | None = None,
     shared_sequence_context: Any = None,
+    meta_tabular_overlay: dict | None = None,
 ) -> dict:
     """
-    Production **parallel** runtime: XGB, LSTM, and Transformer run **independently** (no cross-model
-    tensors). Sequence models use `parallel_runtime=True` and refuse cascade-only checkpoints.
+    Unified stack ML layers (xgb, lstm, transformer) — one team pass per tick/horizon.
 
-    Feeds fusion helpers, UI model_outputs, and optional meta / weighted stack probs — single pass.
+    Each layer runs independently (no cross-model tensors). Sequence models use
+    ``parallel_runtime=True`` and refuse cascade-only checkpoints.
+
+    Feeds fusion helpers, UI model_outputs, and meta / weighted stack_probs — single pass.
 
     XGBoost requires InferenceSnapshotV1. Pass `snapshot` as fusion overlay only (pred_*, et_hour, …);
     MVP comes only from `inference_snapshot_v1`.
@@ -1513,7 +1744,7 @@ def run_base_models_once(
     """
     if inference_snapshot_v1 is None:
         raise ValueError(
-            "run_base_models_once requires inference_snapshot_v1= (InferenceSnapshotV1 dict). "
+            "run_unified_stack_ml_once requires inference_snapshot_v1= (InferenceSnapshotV1 dict). "
             "Raw fusion snapshots are not accepted for XGB."
         )
 
@@ -1553,7 +1784,7 @@ def run_base_models_once(
         "transformer": _model_probs_to_fusion_out(tr_p, direction_hint),
     }
     def _parallel_model_output_record(p: Optional[dict], approved: bool) -> dict:
-        r = build_parallel_base_output(probs=p, approved=approved and p is not None)
+        r = build_unified_stack_layer_output(probs=p, approved=approved and p is not None)
         if r.get("available"):
             r["up"] = r["prob_up"]
             r["down"] = r["prob_down"]
@@ -1578,15 +1809,26 @@ def run_base_models_once(
         # 5c default runtime path: winning stack is xgb_plus_transformer with
         # calibrated probabilities before downstream decision consumption.
         if get_ml_infer_horizon_slug() == "5c":
-            stack_probs = _weighted_average(tkr, xgb_p, None, tr_p)
+            stack_probs = _weighted_average_partial(
+                tkr,
+                [("xgb", xgb_p, 0.40), ("transformer", tr_p, 0.25)],
+                collapsed=_active_base_collapse_flags(tkr),
+            )
             stack_probs = _apply_5c_xgb_plus_transformer_isotonic_calibration(
                 tkr, stack_probs
             )
         else:
-            stack_probs = _ensemble_parallel_probs(tkr, xgb_p, lstm_p, tr_p)
+            _meta_overlay = meta_tabular_overlay if meta_tabular_overlay is not None else snapshot
+            stack_probs = _ensemble_parallel_probs(
+                tkr,
+                xgb_p,
+                lstm_p,
+                tr_p,
+                meta_tabular_overlay=_meta_overlay,
+            )
 
     logger.debug(
-        "run_base_models_once %s: xgb=%s lstm=%s tr=%s",
+        "run_unified_stack_ml_once %s: xgb=%s lstm=%s tr=%s",
         tkr,
         _fmt(xgb_p),
         _fmt(lstm_p),
@@ -1625,7 +1867,7 @@ def run_cascade_models_once(
     Challenger-only **cascade** inference: XGB → LSTM (with XGB prob tensor) → Transformer
     (with XGB + LSTM prob tensors). Loads artifacts from ``models/cascade/{ticker}/`` only.
 
-    Does **not** change production routing; use ``run_base_models_once`` for live parallel stack.
+    Does **not** change production routing; use ``run_unified_stack_ml_once`` for live parallel stack.
 
     Lineage kwargs enforce parity with shared training cache when set (evaluation harness).
     """
@@ -1643,7 +1885,7 @@ def run_cascade_models_once(
     assert_no_legacy_mvp_in_fusion_overlay(snapshot)
 
     def _parallel_model_output_record(p: Optional[dict], approved: bool) -> dict:
-        r = build_parallel_base_output(probs=p, approved=approved and p is not None)
+        r = build_unified_stack_layer_output(probs=p, approved=approved and p is not None)
         if r.get("available"):
             r["up"] = r["prob_up"]
             r["down"] = r["prob_down"]
@@ -1700,7 +1942,13 @@ def run_cascade_models_once(
 
         stack_probs = None
         if _load_meta(tkr):
-            stack_probs = _predict_meta(tkr, xgb_p, lstm_p, tr_p)
+            stack_probs = _predict_meta(
+                tkr,
+                xgb_p,
+                lstm_p,
+                tr_p,
+                meta_tabular_overlay=snapshot,
+            )
         if stack_probs is None:
             stack_probs = _weighted_average(tkr, xgb_p, lstm_p, tr_p)
 
@@ -1749,12 +1997,12 @@ def get_model_outputs_for_fusion(
     inference_snapshot_v1: dict | None = None,
 ) -> dict:
     """
-    Return structured outputs for fusion. Delegates to run_base_models_once — single inference truth per tick.
+    Return structured outputs for fusion. Delegates to run_unified_stack_ml_once — single inference truth per tick.
     """
     tkr = ticker or snapshot.get("ticker", "") or ""
     if not tkr:
         return {"xgb": None, "lstm": None, "transformer": None}
-    return run_base_models_once(
+    return run_unified_stack_ml_once(
         snapshot, tkr, db, direction_hint, inference_snapshot_v1=inference_snapshot_v1
     )["fusion"]
 
@@ -1789,7 +2037,7 @@ def get_model_outputs(
             "lstm": {"available": False, "dominant": None, "confidence": None, "approved": False},
             "transformer": {"available": False, "dominant": None, "confidence": None, "approved": False},
         }
-    return run_base_models_once(
+    return run_unified_stack_ml_once(
         snapshot, tkr, db, "wait", inference_snapshot_v1=inference_snapshot_v1
     )["model_outputs"]
 
@@ -1818,7 +2066,7 @@ def predict_direction(
     tkr = ticker or snapshot.get("ticker", "")
     if not tkr:
         return None
-    return run_base_models_once(
+    return run_unified_stack_ml_once(
         snapshot, tkr, db, "wait", inference_snapshot_v1=inference_snapshot_v1
     )[stack_probs_bundle_key()]
 
@@ -1845,7 +2093,9 @@ def predict_all_horizons(
 def is_available(ticker: str) -> bool:
     """True if ANY of xgb, LSTM, or Transformer model exists for this ticker."""
     hz = get_ml_infer_horizon_slug()
-    base = _model_dir_for_ticker(ticker)
+    base = _active_bundle_dir_for_load(ticker)
+    if base is None:
+        return False
     return (
         (base / f"xgb_{ticker}_{hz}.pkl").exists()
         or (base / f"lstm_{ticker}_{hz}.pt").exists()
@@ -1856,7 +2106,9 @@ def is_available(ticker: str) -> bool:
 def get_model_version(ticker: str) -> str:
     """Version string for dashboard display."""
     hz = get_ml_infer_horizon_slug()
-    base = _model_dir_for_ticker(ticker)
+    base = _active_bundle_dir_for_load(ticker)
+    if base is None:
+        return "rules_v1"
     parts = []
     if (base / f"xgb_{ticker}_{hz}.pkl").exists():        parts.append("xgb")
     if (base / f"lstm_{ticker}_{hz}.pt").exists():        parts.append("lstm")
@@ -1881,13 +2133,15 @@ def get_component_status(ticker: str) -> dict:
 def reset_caches():
     """Clear all loaded models. Call this after retraining."""
     global _xgb_registry, _xgb_movehead_registry, _meta_registry, _lstm_registry, _trans_registry
-    global _collapse_flag_registry
+    global _collapse_flag_registry, _active_bundle_dir_cache, _strict_bundle_warned
     _xgb_registry   = {}
     _xgb_movehead_registry = {}
     _meta_registry  = {}
     _lstm_registry  = {}
     _trans_registry = {}
     _collapse_flag_registry = {}
+    _active_bundle_dir_cache = {}
+    _strict_bundle_warned = set()
     logger.info("ml_predict: all model caches cleared")
 
 
@@ -1906,9 +2160,17 @@ def invalidate_model_registry(ticker: str, hz: str | None = None) -> bool:
             removed = True
     if removed:
         logger.info("ml_predict: invalidated registry for %s", rk)
+    if rk in _active_bundle_dir_cache:
+        del _active_bundle_dir_cache[rk]
+        _strict_bundle_warned.discard(rk)
     return removed
 
 
 def _fmt(p):
     if p is None: return "None"
     return f"up={p['up']:.2f} dn={p['down']:.2f} fl={p['flat']:.2f}"
+
+
+# Deprecated aliases — mechanical lock: new code must use canonical names above.
+run_base_models_once = run_unified_stack_ml_once
+read_base_collapse_flags = read_stack_layer_collapse_flags

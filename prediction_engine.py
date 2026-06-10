@@ -189,18 +189,29 @@ def _overlay_multi_horizon_ml_on_product_triplets(
     List[dict[str, Any]],
 ]:
     """
-    Per-horizon fusion is primary; empirical DB histograms are optional support (blend) or sole
-    source when fusion is unavailable for that horizon.
+    Per-horizon fusion is the sole product triplet source on horizon cards.
+
+    Empirical DB histograms remain in ``empirical`` for signal-rail context only — never
+    copied into product triplets unless ``ED_MH_EMPIRICAL_SUPPORT`` > 0 (opt-in blend).
 
     Third return value: structured degradation events when MH bundle cannot be applied
     (never silent — see stack_integrity_v1).
     """
     integrity_events: List[dict[str, Any]] = []
+    _withheld: tuple[None, None, None] = (None, None, None)
     out: dict[str, tuple[Optional[float], Optional[float], Optional[float]]] = {
-        hz: empirical[hz] for hz in PRIMARY_DECISION_HORIZONS
+        hz: _withheld for hz in PRIMARY_DECISION_HORIZONS
     }
-    src: dict[str, str] = {hz: "empirical_histogram" for hz in PRIMARY_DECISION_HORIZONS}
+    src: dict[str, str] = {hz: "fusion_unavailable" for hz in PRIMARY_DECISION_HORIZONS}
     if multi_horizon_ml_bundle is None:
+        record_stack_degradation(
+            integrity_events,
+            component="mh_ml_product_overlay",
+            severity="warning",
+            reason="multi_horizon_ml_bundle_missing",
+            authority_intact=False,
+            fallback_used=True,
+        )
         return out, src, integrity_events
     by_h: Any = {}
     try:
@@ -216,7 +227,7 @@ def _overlay_multi_horizon_ml_on_product_triplets(
                 detail="expected mapping horizon -> snapshot",
             )
             log.warning(
-                "MH ML overlay: multi_horizon_ml_bundle.by_horizon is not a dict — using empirical-only triplets."
+                "MH ML overlay: multi_horizon_ml_bundle.by_horizon is not a dict — withholding product triplets."
             )
     except Exception as e:
         # Broad catch: custom descriptors/__getattribute__ on bundle types may raise outside AttributeError.
@@ -231,23 +242,23 @@ def _overlay_multi_horizon_ml_on_product_triplets(
             detail=str(e),
         )
         log.warning(
-            "MH ML overlay: failed to read by_horizon from multi_horizon_ml_bundle — empirical-only primary horizons.",
+            "MH ML overlay: failed to read by_horizon from multi_horizon_ml_bundle — withholding product triplets.",
             exc_info=True,
         )
         by_h = {}
     try:
-        w_sup = float(os.environ.get("ED_MH_EMPIRICAL_SUPPORT", "0.15"))
+        w_sup = float(os.environ.get("ED_MH_EMPIRICAL_SUPPORT", "0.0"))
     except ValueError:
-        w_sup = 0.15
+        w_sup = 0.0
     w_sup = max(0.0, min(1.0, w_sup))
     for hz in PRIMARY_DECISION_HORIZONS:
         snap = by_h.get(hz)
         eu, ed, ef = empirical[hz]
         fusion_triplet = _fusion_snap_triplet(snap)
         if fusion_triplet is None:
-            out[hz] = (eu, ed, ef)
+            out[hz] = _withheld
             src[hz] = (
-                "empirical_histogram"
+                "fusion_unavailable"
                 if snap is None or not getattr(snap, "horizon_fusion_available", False)
                 else "fusion_directional_missing"
             )
@@ -583,6 +594,9 @@ def build_fusion_model_overlay_for_stack(
         "charm_magnitude": inp.charm_magnitude,
         "iv_direction": inp.iv_direction,
         "qqq_vs_spy": inp.qqq_vs_spy,
+        # Numeric twin for XGB parity: DB/training store the numeric spread under qqq_vs_spy
+        # (server snapshot writer), while the live label lives in qqq_vs_spy (meta ordinal input).
+        "qqq_vs_spy_delta": getattr(inp, "qqq_vs_spy_delta", None),
         "iwm_risk_signal": inp.iwm_risk_signal,
         "candle_volume": _cvol,
         "bid_ask_imbalance": _imb,
@@ -811,9 +825,11 @@ def compute_prediction_core(
     except ImportError:
         pass
 
-    _model_source = "empirical_histogram_plus_fusion_forward"
+    _model_source = "multi_horizon_fusion_withheld"
     if multi_horizon_ml_bundle is not None:
-        _model_source = "multi_horizon_fusion_primary_with_empirical_support_or_fallback"
+        _model_source = "multi_horizon_fusion_primary"
+        if any(v == "empirical_support_blend" for v in mh_prob_source_by_horizon.values()):
+            _model_source = "multi_horizon_fusion_primary_with_empirical_support_blend"
 
     n_used = len(similar)
 

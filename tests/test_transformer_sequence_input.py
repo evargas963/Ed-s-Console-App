@@ -176,6 +176,30 @@ def test_fusion_overlay_snapshot_cannot_override_merged_mvp_for_encode():
     assert list(enc_ok) != list(enc_if_overlay_mistakenly_used)
 
 
+def test_predict_transformer_stale_encoder_schema_returns_none():
+    from unittest.mock import MagicMock, patch
+
+    import numpy as np
+
+    import ml_predict as mp
+
+    fake_model = MagicMock()
+    fake_ckpt = {
+        "seq_len": 20,
+        "feature_mask": np.ones(31, dtype=bool),
+        "encoder_schema_version": 1,
+        "encoder_width_5m_pre_mask": 31,
+    }
+    db = MagicMock()
+    db.get_recent_snapshots.return_value = [{"ts_utc": float(i)} for i in range(25)]
+
+    inf = _minimal_valid_inference_v1()
+    with patch.object(mp, "_trans_registry", {mp._model_registry_key("SPY", "1c"): (fake_model, fake_ckpt)}), patch.object(
+        mp, "_load_transformer", return_value=True
+    ):
+        assert mp._predict_transformer("SPY", db, inference_snapshot_v1=inf) is None
+
+
 def test_predict_transformer_insufficient_history_raises():
     from unittest.mock import MagicMock, patch
 
@@ -183,13 +207,14 @@ def test_predict_transformer_insufficient_history_raises():
 
     import ml_predict as mp
     from features.lstm_sequence_input import TransformerSequenceInputError
+    from lstm_data import encoded_width_5m, LSTM_ENCODER_SCHEMA_VERSION
 
     fake_model = MagicMock()
     fake_ckpt = {
         "seq_len": 20,
-        "feature_mask": np.ones(50, dtype=bool),
-        "encoder_schema_version": 2,
-        "encoder_width_5m_pre_mask": 31,
+        "feature_mask": np.ones(encoded_width_5m(), dtype=bool),
+        "encoder_schema_version": LSTM_ENCODER_SCHEMA_VERSION,
+        "encoder_width_5m_pre_mask": encoded_width_5m(),
     }
     db = MagicMock()
     db.get_recent_snapshots.return_value = [{"ts_utc": float(i)} for i in range(10)]

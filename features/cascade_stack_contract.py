@@ -1,7 +1,7 @@
 """
 Cascade challenger stack — versioned upstream features and lineage rules.
 
-Production default remains **parallel** (`run_base_models_once`). This module defines the
+Production default remains **parallel** (`run_unified_stack_ml_once`). This module defines the
 **challenger-only** cascade contract: what may be passed between stages, and how evaluation
 lineage must match shared canonical artifacts (same cache keys / contracts as parallel).
 

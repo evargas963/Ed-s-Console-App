@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from features.parallel_stack_schema import (
     _normalize_triplet,
-    build_parallel_base_output,
+    build_unified_stack_layer_output,
 )
 
 
@@ -16,8 +16,8 @@ def test_normalize_triplet_none_when_sum_non_positive():
     assert _normalize_triplet({"up": -0.1, "down": -0.1, "flat": -0.1}) is None
 
 
-def test_build_parallel_base_output_no_prediction_labeled_unavailable():
-    o = build_parallel_base_output(probs=None, approved=True)
+def test_build_unified_stack_layer_output_no_prediction_labeled_unavailable():
+    o = build_unified_stack_layer_output(probs=None, approved=True)
     assert o["available"] is False
     assert o["error"] == "no_prediction"
     assert o["prob_up"] is None
@@ -25,8 +25,8 @@ def test_build_parallel_base_output_no_prediction_labeled_unavailable():
     assert o["prob_flat"] is None
 
 
-def test_build_parallel_base_output_complete_triplet_available():
-    o = build_parallel_base_output(
+def test_build_unified_stack_layer_output_complete_triplet_available():
+    o = build_unified_stack_layer_output(
         probs={"up": 0.5, "down": 0.3, "flat": 0.2},
         approved=True,
     )

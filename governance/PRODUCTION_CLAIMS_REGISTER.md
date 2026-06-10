@@ -29,7 +29,7 @@
 | **C-UI-03** | L2863 | “**FRESH**” pill — “Analytical bundle freshness” | live | **PARTIAL** | I-19 | Tie to server `analytics_*` fields only |
 | **C-UI-04** | L2869 | “**CONF**” — “Desk conviction / **confidence**” | confidence | **PARTIAL** | I-17 | Not “model confidence certificate” |
 | **C-UI-05** | L2879 `dr-live-ready-chip` → JS L4575 | “**LIVE_READY**” / “**NOT_LIVE_READY**” | live / readiness | **PARTIAL** | I-15 | Document formula inputs; not halt |
-| **C-UI-06** | L2920–2934 | “**Live readiness**”, “**Base models live**” | live | **PARTIAL** | I-20 | “Live” = server readiness flags, not env fingerprint |
+| **C-UI-06** | L2920–2934 | “**Live readiness**”, “**ML stack layers live**” | live | **PARTIAL** | I-20 | “Live” = server readiness flags, not env fingerprint |
 | **C-UI-07** | L3268–3269 JS comment | “**authoritative** ticker / expiry” | governed | **NO** (client-side) | — | Rename to “selected ticker” or “UI selection” |
 | **C-UI-08** | L3337–3387 telemetry schema | Multiple fields suffixed **`_authoritative`** | trace / governed | **PARTIAL** | I-17 | Rename to `server_confirmed_*` or document as client telemetry vocabulary |
 | **C-UI-09** | L4346+ `authFromProvenance` / `signal_chain.authoritative` | “**authoritative**” stage for signal chain bar | governed | **PARTIAL** | I-02 | Server must define authoritative; client only displays |

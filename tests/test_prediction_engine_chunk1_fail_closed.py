@@ -6,7 +6,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from prediction_engine import _literal_empirical_horizon, _pack_horizon_row, compute_prediction_core
+from prediction_engine import (
+    _literal_empirical_horizon,
+    _overlay_multi_horizon_ml_on_product_triplets,
+    _pack_horizon_row,
+    compute_prediction_core,
+)
 from signal_types import SignalInput
 from tests.mvp_test_fixtures import minimal_mvp_features
 
@@ -72,6 +77,21 @@ def test_pack_horizon_row_no_withhold_reason_when_probs_present():
     assert "withhold_reason" not in row, (
         f"withhold_reason leaked into non-withhold row: {row!r}"
     )
+
+
+def test_overlay_withholds_product_triplets_when_fusion_missing(monkeypatch):
+    """Horizon cards: fusion-only product path — no empirical fallback by default."""
+    monkeypatch.delenv("ED_MH_EMPIRICAL_SUPPORT", raising=False)
+    empirical = {
+        "1c": (0.6, 0.2, 0.2),
+        "5c": (0.6, 0.2, 0.2),
+        "15c": (0.6, 0.2, 0.2),
+        "60c": (0.6, 0.2, 0.2),
+    }
+    tri, src, _events = _overlay_multi_horizon_ml_on_product_triplets(empirical, None)
+    assert tri["1c"] == (None, None, None)
+    assert src["1c"] == "fusion_unavailable"
+    assert src["5c"] == "fusion_unavailable"
 
 
 def test_compute_prediction_core_requires_canonical_forecast():

@@ -1,0 +1,3102 @@
+{
+  "schema_version": "4_schwab_expanded",
+  "source": "tools/build_feature_assignment_matrix_v2.py::resolve_expanded_schwab_ablation_universe",
+  "ablation_method": {
+    "primary_pass": "per_model_per_horizon_atomic_permutation_importance",
+    "primary_pass_description": "Per base model (xgb/lstm/transformer) \u00d7 horizon (1c/5c/15c/60c): train on chronological holdout and permute/drop ONE atomic feature at a time; measure that model's MCC delta. Survivors resolve per (model, horizon) cell only.",
+    "feature_grain": "schwab_expanded_atomic",
+    "universe_policy": "Schwab dictionary categorization (all 2393 rows) + registered ML cone + snapshot expansion; pool size \u2265 2.0\u00d7 registered cone; ablation decides winners \u2014 agents MUST NOT pre-pick stack-consumed-only subsets.",
+    "schwab_registry_path": "governance\\artifacts\\schwab_ablation_field_registry.json",
+    "decision_mode": "per_model_holdout",
+    "decision_metric": "mcc_delta",
+    "models": [
+      "xgb",
+      "lstm",
+      "transformer"
+    ],
+    "full_stack_layers": [
+      "xgb",
+      "lstm",
+      "transformer",
+      "meta",
+      "monte_carlo",
+      "regime",
+      "fusion"
+    ],
+    "horizons_required": [
+      "1c",
+      "5c",
+      "15c",
+      "60c"
+    ],
+    "horizons_binding": "all_four_mandatory__partial_horizon_runs_rejected",
+    "confirm_pass": "per_model_per_horizon_atomic_drop_column_refit_on_survivors",
+    "confirm_pass_description": "After primary atomic permutation: per model \u00d7 horizon, refit on survivors-only (dropped atomic features removed) and confirm held-out MCC is not worse.",
+    "confirm_pass_cli": "python tools/feature_curation_gate.py --ablation-confirm",
+    "anchors": [
+      "SPY",
+      "QQQ",
+      "IWM"
+    ],
+    "pool_tickers": [
+      "SPY",
+      "QQQ",
+      "IWM"
+    ],
+    "stage3_scoring_mode": "pooled_ticker_rows_one_log_loss",
+    "stage3_grid": "captured_cone_feature_x_horizon",
+    "horizons": [
+      "1c",
+      "5c",
+      "15c",
+      "60c"
+    ]
+  },
+  "groups": [
+    {
+      "group_id": "reg__atomic__aapl_chg_pct",
+      "label": "atomic / aapl_chg_pct",
+      "atomic_column": "aapl_chg_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__absorption_score",
+      "label": "atomic / absorption_score",
+      "atomic_column": "absorption_score",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__amzn_chg_pct",
+      "label": "atomic / amzn_chg_pct",
+      "atomic_column": "amzn_chg_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__atr",
+      "label": "atomic / atr",
+      "atomic_column": "atr",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__avgo_chg_pct",
+      "label": "atomic / avgo_chg_pct",
+      "atomic_column": "avgo_chg_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__bid_ask_imbalance",
+      "label": "atomic / bid_ask_imbalance",
+      "atomic_column": "bid_ask_imbalance",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__body_range_ratio",
+      "label": "atomic / body_range_ratio",
+      "atomic_column": "body_range_ratio",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__breakout_score",
+      "label": "atomic / breakout_score",
+      "atomic_column": "breakout_score",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__candle_body_pct",
+      "label": "atomic / candle_body_pct",
+      "atomic_column": "candle_body_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__candle_range_pct",
+      "label": "atomic / candle_range_pct",
+      "atomic_column": "candle_range_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__candle_volume_log",
+      "label": "atomic / candle_volume_log",
+      "atomic_column": "candle_volume_log",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cat_candle_direction",
+      "label": "atomic / cat_candle_direction",
+      "atomic_column": "cat_candle_direction",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cat_charm_direction",
+      "label": "atomic / cat_charm_direction",
+      "atomic_column": "cat_charm_direction",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cat_charm_magnitude",
+      "label": "atomic / cat_charm_magnitude",
+      "atomic_column": "cat_charm_magnitude",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cat_combined_conviction",
+      "label": "atomic / cat_combined_conviction",
+      "atomic_column": "cat_combined_conviction",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cat_combined_signal",
+      "label": "atomic / cat_combined_signal",
+      "atomic_column": "cat_combined_signal",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cat_iv_direction",
+      "label": "atomic / cat_iv_direction",
+      "atomic_column": "cat_iv_direction",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cat_liquidity_behavior_label",
+      "label": "atomic / cat_liquidity_behavior_label",
+      "atomic_column": "cat_liquidity_behavior_label",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cat_pressure_label",
+      "label": "atomic / cat_pressure_label",
+      "atomic_column": "cat_pressure_label",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cat_pressure_trend",
+      "label": "atomic / cat_pressure_trend",
+      "atomic_column": "cat_pressure_trend",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cat_prev_zone",
+      "label": "atomic / cat_prev_zone",
+      "atomic_column": "cat_prev_zone",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cat_session_bucket",
+      "label": "atomic / cat_session_bucket",
+      "atomic_column": "cat_session_bucket",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cat_vix_bucket",
+      "label": "atomic / cat_vix_bucket",
+      "atomic_column": "cat_vix_bucket",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cat_vwap_side",
+      "label": "atomic / cat_vwap_side",
+      "atomic_column": "cat_vwap_side",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cat_zone",
+      "label": "atomic / cat_zone",
+      "atomic_column": "cat_zone",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cf_alignment_score",
+      "label": "atomic / cf_alignment_score",
+      "atomic_column": "cf_alignment_score",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_CONFLUENCE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cf_greek_support",
+      "label": "atomic / cf_greek_support",
+      "atomic_column": "cf_greek_support",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_CONFLUENCE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cf_momentum_5m",
+      "label": "atomic / cf_momentum_5m",
+      "atomic_column": "cf_momentum_5m",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_CONFLUENCE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cf_structure_15m",
+      "label": "atomic / cf_structure_15m",
+      "atomic_column": "cf_structure_15m",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_CONFLUENCE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cf_trend_1h",
+      "label": "atomic / cf_trend_1h",
+      "atomic_column": "cf_trend_1h",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_CONFLUENCE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cf_vwap_distance_pct",
+      "label": "atomic / cf_vwap_distance_pct",
+      "atomic_column": "cf_vwap_distance_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_CONFLUENCE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__charm_delta_agree",
+      "label": "atomic / charm_delta_agree",
+      "atomic_column": "charm_delta_agree",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__charm_net",
+      "label": "atomic / charm_net",
+      "atomic_column": "charm_net",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__continuation_score",
+      "label": "atomic / continuation_score",
+      "atomic_column": "continuation_score",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cross_avg_chg",
+      "label": "atomic / cross_avg_chg",
+      "atomic_column": "cross_avg_chg",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__cross_std_chg",
+      "label": "atomic / cross_std_chg",
+      "atomic_column": "cross_std_chg",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__delta_positive",
+      "label": "atomic / delta_positive",
+      "atomic_column": "delta_positive",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__dgex",
+      "label": "atomic / dgex",
+      "atomic_column": "dgex",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__dgex_positive",
+      "label": "atomic / dgex_positive",
+      "atomic_column": "dgex_positive",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__dist_call_delta_wall_pct",
+      "label": "atomic / dist_call_delta_wall_pct",
+      "atomic_column": "dist_call_delta_wall_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__dist_call_gamma_wall_pct",
+      "label": "atomic / dist_call_gamma_wall_pct",
+      "atomic_column": "dist_call_gamma_wall_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__dist_call_oi_wall_pct",
+      "label": "atomic / dist_call_oi_wall_pct",
+      "atomic_column": "dist_call_oi_wall_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__dist_call_vanna_wall_pct",
+      "label": "atomic / dist_call_vanna_wall_pct",
+      "atomic_column": "dist_call_vanna_wall_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__dist_delta_inflection_pct",
+      "label": "atomic / dist_delta_inflection_pct",
+      "atomic_column": "dist_delta_inflection_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__dist_gamma_inflection_pct",
+      "label": "atomic / dist_gamma_inflection_pct",
+      "atomic_column": "dist_gamma_inflection_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__dist_put_delta_wall_pct",
+      "label": "atomic / dist_put_delta_wall_pct",
+      "atomic_column": "dist_put_delta_wall_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__dist_put_gamma_wall_pct",
+      "label": "atomic / dist_put_gamma_wall_pct",
+      "atomic_column": "dist_put_gamma_wall_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__dist_put_oi_wall_pct",
+      "label": "atomic / dist_put_oi_wall_pct",
+      "atomic_column": "dist_put_oi_wall_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__dist_put_vanna_wall_pct",
+      "label": "atomic / dist_put_vanna_wall_pct",
+      "atomic_column": "dist_put_vanna_wall_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__gamma_positive",
+      "label": "atomic / gamma_positive",
+      "atomic_column": "gamma_positive",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__googl_chg_pct",
+      "label": "atomic / googl_chg_pct",
+      "atomic_column": "googl_chg_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__imbalance_buy_pressure",
+      "label": "atomic / imbalance_buy_pressure",
+      "atomic_column": "imbalance_buy_pressure",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__imbalance_sell_pressure",
+      "label": "atomic / imbalance_sell_pressure",
+      "atomic_column": "imbalance_sell_pressure",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__iv_level",
+      "label": "atomic / iv_level",
+      "atomic_column": "iv_level",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.volatility",
+        "chains.putExpDateMap.*.volatility",
+        "chains.volatility"
+      ]
+    },
+    {
+      "group_id": "reg__atomic__iv_rank",
+      "label": "atomic / iv_rank",
+      "atomic_column": "iv_rank",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__iwm_chg_pct",
+      "label": "atomic / iwm_chg_pct",
+      "atomic_column": "iwm_chg_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__iwm_weighted_push",
+      "label": "atomic / iwm_weighted_push",
+      "atomic_column": "iwm_weighted_push",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__kre_chg_pct",
+      "label": "atomic / kre_chg_pct",
+      "atomic_column": "kre_chg_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__meta_chg_pct",
+      "label": "atomic / meta_chg_pct",
+      "atomic_column": "meta_chg_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__minutes_since_open",
+      "label": "atomic / minutes_since_open",
+      "atomic_column": "minutes_since_open",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__msft_chg_pct",
+      "label": "atomic / msft_chg_pct",
+      "atomic_column": "msft_chg_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__nearest_above_pct",
+      "label": "atomic / nearest_above_pct",
+      "atomic_column": "nearest_above_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__nearest_below_pct",
+      "label": "atomic / nearest_below_pct",
+      "atomic_column": "nearest_below_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__net_delta",
+      "label": "atomic / net_delta",
+      "atomic_column": "net_delta",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__net_gamma",
+      "label": "atomic / net_gamma",
+      "atomic_column": "net_gamma",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__nvda_chg_pct",
+      "label": "atomic / nvda_chg_pct",
+      "atomic_column": "nvda_chg_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__pin_score",
+      "label": "atomic / pin_score",
+      "atomic_column": "pin_score",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__pin_width_pct",
+      "label": "atomic / pin_width_pct",
+      "atomic_column": "pin_width_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__psci_chg_pct",
+      "label": "atomic / psci_chg_pct",
+      "atomic_column": "psci_chg_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__put_call_oi_ratio",
+      "label": "atomic / put_call_oi_ratio",
+      "atomic_column": "put_call_oi_ratio",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__qqq_chg_pct",
+      "label": "atomic / qqq_chg_pct",
+      "atomic_column": "qqq_chg_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__qqq_vs_spy",
+      "label": "atomic / qqq_vs_spy",
+      "atomic_column": "qqq_vs_spy",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__qqq_weighted_push",
+      "label": "atomic / qqq_weighted_push",
+      "atomic_column": "qqq_weighted_push",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__smart_money_score",
+      "label": "atomic / smart_money_score",
+      "atomic_column": "smart_money_score",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__spread",
+      "label": "atomic / spread",
+      "atomic_column": "spread",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__spy_chg_pct",
+      "label": "atomic / spy_chg_pct",
+      "atomic_column": "spy_chg_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__spy_iwm_align",
+      "label": "atomic / spy_iwm_align",
+      "atomic_column": "spy_iwm_align",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__spy_iwm_divergence",
+      "label": "atomic / spy_iwm_divergence",
+      "atomic_column": "spy_iwm_divergence",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__spy_qqq_align",
+      "label": "atomic / spy_qqq_align",
+      "atomic_column": "spy_qqq_align",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__spy_weighted_push",
+      "label": "atomic / spy_weighted_push",
+      "atomic_column": "spy_weighted_push",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__time_cos",
+      "label": "atomic / time_cos",
+      "atomic_column": "time_cos",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__time_progress",
+      "label": "atomic / time_progress",
+      "atomic_column": "time_progress",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__time_sin",
+      "label": "atomic / time_sin",
+      "atomic_column": "time_sin",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__tnx_chg",
+      "label": "atomic / tnx_chg",
+      "atomic_column": "tnx_chg",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__tnx_yield",
+      "label": "atomic / tnx_yield",
+      "atomic_column": "tnx_yield",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__tsla_chg_pct",
+      "label": "atomic / tsla_chg_pct",
+      "atomic_column": "tsla_chg_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__vix_level",
+      "label": "atomic / vix_level",
+      "atomic_column": "vix_level",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__vix_vs_prev",
+      "label": "atomic / vix_vs_prev",
+      "atomic_column": "vix_vs_prev",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__volume_ratio",
+      "label": "atomic / volume_ratio",
+      "atomic_column": "volume_ratio",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__vwap_dist_pct",
+      "label": "atomic / vwap_dist_pct",
+      "atomic_column": "vwap_dist_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__vwap_dist_pts",
+      "label": "atomic / vwap_dist_pts",
+      "atomic_column": "vwap_dist_pts",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__xbi_chg_pct",
+      "label": "atomic / xbi_chg_pct",
+      "atomic_column": "xbi_chg_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__xrt_chg_pct",
+      "label": "atomic / xrt_chg_pct",
+      "atomic_column": "xrt_chg_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "reg__atomic__zone_since_bars",
+      "label": "atomic / zone_since_bars",
+      "atomic_column": "zone_since_bars",
+      "disposition": "ABLATE",
+      "catalog_tier": "REGISTERED_UNIVERSE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "schwab__0",
+      "label": "schwab catalog / 0",
+      "atomic_column": "0",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*",
+        "chains.callExpDateMap.*.optionDeliverablesList.*",
+        "chains.putExpDateMap.*",
+        "chains.putExpDateMap.*.optionDeliverablesList.*",
+        "streaming.content.*.ASKS.*",
+        "streaming.content.*.ASKS.*.ASKS.*",
+        "streaming.content.*.BIDS.*",
+        "streaming.content.*.BIDS.*.BIDS.*"
+      ]
+    },
+    {
+      "group_id": "schwab__1",
+      "label": "schwab catalog / 1",
+      "atomic_column": "1",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*"
+      ]
+    },
+    {
+      "group_id": "schwab__52_week_high",
+      "label": "schwab catalog / 52_week_high",
+      "atomic_column": "52_week_high",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "quotes.quote.52WeekHigh"
+      ]
+    },
+    {
+      "group_id": "schwab__52_week_low",
+      "label": "schwab catalog / 52_week_low",
+      "atomic_column": "52_week_low",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "quotes.quote.52WeekLow"
+      ]
+    },
+    {
+      "group_id": "schwab__9999",
+      "label": "schwab catalog / 9999",
+      "atomic_column": "9999",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_INGEST_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "pricehistory.candles.*"
+      ]
+    },
+    {
+      "group_id": "schwab__ask",
+      "label": "schwab catalog / ask",
+      "atomic_column": "ask",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.ask",
+        "chains.putExpDateMap.*.ask",
+        "chains.underlying.ask"
+      ]
+    },
+    {
+      "group_id": "schwab__ask_id",
+      "label": "schwab catalog / ask_id",
+      "atomic_column": "ask_id",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.ASK_ID"
+      ]
+    },
+    {
+      "group_id": "schwab__ask_mic_id",
+      "label": "schwab catalog / ask_mic_id",
+      "atomic_column": "ask_mic_id",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.ASK_MIC_ID"
+      ]
+    },
+    {
+      "group_id": "schwab__ask_price",
+      "label": "schwab catalog / ask_price",
+      "atomic_column": "ask_price",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "quotes.extended.askPrice",
+        "quotes.quote.askPrice",
+        "streaming.content.*.ASKS.*.ASK_PRICE",
+        "streaming.content.*.ASK_PRICE"
+      ]
+    },
+    {
+      "group_id": "schwab__ask_size",
+      "label": "schwab catalog / ask_size",
+      "atomic_column": "ask_size",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.askSize",
+        "chains.putExpDateMap.*.askSize",
+        "chains.underlying.askSize",
+        "quotes.extended.askSize",
+        "quotes.quote.askSize",
+        "streaming.content.*.ASK_SIZE"
+      ]
+    },
+    {
+      "group_id": "schwab__ask_time_millis",
+      "label": "schwab catalog / ask_time_millis",
+      "atomic_column": "ask_time_millis",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.ASK_TIME_MILLIS"
+      ]
+    },
+    {
+      "group_id": "schwab__ask_volume",
+      "label": "schwab catalog / ask_volume",
+      "atomic_column": "ask_volume",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.ASKS.*.ASKS.*.ASK_VOLUME"
+      ]
+    },
+    {
+      "group_id": "schwab__asks",
+      "label": "schwab catalog / asks",
+      "atomic_column": "asks",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.ASKS",
+        "streaming.content.*.ASKS.*.ASKS"
+      ]
+    },
+    {
+      "group_id": "schwab__asset_sub_type",
+      "label": "schwab catalog / asset_sub_type",
+      "atomic_column": "asset_sub_type",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.assetSubType"
+      ]
+    },
+    {
+      "group_id": "schwab__asset_type",
+      "label": "schwab catalog / asset_type",
+      "atomic_column": "asset_type",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.optionDeliverablesList.*.assetType",
+        "chains.putExpDateMap.*.optionDeliverablesList.*.assetType"
+      ]
+    },
+    {
+      "group_id": "schwab__avg10_days_volume",
+      "label": "schwab catalog / avg10_days_volume",
+      "atomic_column": "avg10_days_volume",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.avg10DaysVolume",
+        "quotes.fundamental.avg10DaysVolume"
+      ]
+    },
+    {
+      "group_id": "schwab__avg1_day_volume",
+      "label": "schwab catalog / avg1_day_volume",
+      "atomic_column": "avg1_day_volume",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.avg1DayVolume"
+      ]
+    },
+    {
+      "group_id": "schwab__avg1_year_volume",
+      "label": "schwab catalog / avg1_year_volume",
+      "atomic_column": "avg1_year_volume",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "quotes.fundamental.avg1YearVolume"
+      ]
+    },
+    {
+      "group_id": "schwab__avg3_month_volume",
+      "label": "schwab catalog / avg3_month_volume",
+      "atomic_column": "avg3_month_volume",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.avg3MonthVolume"
+      ]
+    },
+    {
+      "group_id": "schwab__beta",
+      "label": "schwab catalog / beta",
+      "atomic_column": "beta",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.beta"
+      ]
+    },
+    {
+      "group_id": "schwab__bid",
+      "label": "schwab catalog / bid",
+      "atomic_column": "bid",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.bid",
+        "chains.putExpDateMap.*.bid",
+        "chains.underlying.bid"
+      ]
+    },
+    {
+      "group_id": "schwab__bid_ask_size",
+      "label": "schwab catalog / bid_ask_size",
+      "atomic_column": "bid_ask_size",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.bidAskSize",
+        "chains.putExpDateMap.*.bidAskSize"
+      ]
+    },
+    {
+      "group_id": "schwab__bid_id",
+      "label": "schwab catalog / bid_id",
+      "atomic_column": "bid_id",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.BID_ID"
+      ]
+    },
+    {
+      "group_id": "schwab__bid_mic_id",
+      "label": "schwab catalog / bid_mic_id",
+      "atomic_column": "bid_mic_id",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.BID_MIC_ID"
+      ]
+    },
+    {
+      "group_id": "schwab__bid_price",
+      "label": "schwab catalog / bid_price",
+      "atomic_column": "bid_price",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "quotes.extended.bidPrice",
+        "quotes.quote.bidPrice",
+        "streaming.content.*.BIDS.*.BID_PRICE",
+        "streaming.content.*.BID_PRICE"
+      ]
+    },
+    {
+      "group_id": "schwab__bid_size",
+      "label": "schwab catalog / bid_size",
+      "atomic_column": "bid_size",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.bidSize",
+        "chains.putExpDateMap.*.bidSize",
+        "chains.underlying.bidSize",
+        "quotes.extended.bidSize",
+        "quotes.quote.bidSize",
+        "streaming.content.*.BID_SIZE"
+      ]
+    },
+    {
+      "group_id": "schwab__bid_time_millis",
+      "label": "schwab catalog / bid_time_millis",
+      "atomic_column": "bid_time_millis",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.BID_TIME_MILLIS"
+      ]
+    },
+    {
+      "group_id": "schwab__bid_volume",
+      "label": "schwab catalog / bid_volume",
+      "atomic_column": "bid_volume",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.BIDS.*.BIDS.*.BID_VOLUME"
+      ]
+    },
+    {
+      "group_id": "schwab__bids",
+      "label": "schwab catalog / bids",
+      "atomic_column": "bids",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.BIDS",
+        "streaming.content.*.BIDS.*.BIDS"
+      ]
+    },
+    {
+      "group_id": "schwab__book_time",
+      "label": "schwab catalog / book_time",
+      "atomic_column": "book_time",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.BOOK_TIME"
+      ]
+    },
+    {
+      "group_id": "schwab__book_value_per_share",
+      "label": "schwab catalog / book_value_per_share",
+      "atomic_column": "book_value_per_share",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.bookValuePerShare"
+      ]
+    },
+    {
+      "group_id": "schwab__call_exp_date_map",
+      "label": "schwab catalog / call_exp_date_map",
+      "atomic_column": "call_exp_date_map",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap"
+      ]
+    },
+    {
+      "group_id": "schwab__candles",
+      "label": "schwab catalog / candles",
+      "atomic_column": "candles",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_INGEST_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "pricehistory.candles"
+      ]
+    },
+    {
+      "group_id": "schwab__chart_day",
+      "label": "schwab catalog / chart_day",
+      "atomic_column": "chart_day",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.CHART_DAY"
+      ]
+    },
+    {
+      "group_id": "schwab__chart_time_millis",
+      "label": "schwab catalog / chart_time_millis",
+      "atomic_column": "chart_time_millis",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.CHART_TIME_MILLIS"
+      ]
+    },
+    {
+      "group_id": "schwab__close",
+      "label": "schwab catalog / close",
+      "atomic_column": "close",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_INGEST_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.underlying.close",
+        "pricehistory.candles.*.close"
+      ]
+    },
+    {
+      "group_id": "schwab__close_price",
+      "label": "schwab catalog / close_price",
+      "atomic_column": "close_price",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.closePrice",
+        "chains.putExpDateMap.*.closePrice",
+        "quotes.quote.closePrice",
+        "streaming.content.*.CLOSE_PRICE"
+      ]
+    },
+    {
+      "group_id": "schwab__command",
+      "label": "schwab catalog / command",
+      "atomic_column": "command",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.command"
+      ]
+    },
+    {
+      "group_id": "schwab__currency_type",
+      "label": "schwab catalog / currency_type",
+      "atomic_column": "currency_type",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.optionDeliverablesList.*.currencyType",
+        "chains.putExpDateMap.*.optionDeliverablesList.*.currencyType"
+      ]
+    },
+    {
+      "group_id": "schwab__current_ratio",
+      "label": "schwab catalog / current_ratio",
+      "atomic_column": "current_ratio",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.currentRatio"
+      ]
+    },
+    {
+      "group_id": "schwab__datetime",
+      "label": "schwab catalog / datetime",
+      "atomic_column": "datetime",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "pricehistory.candles.*.datetime"
+      ]
+    },
+    {
+      "group_id": "schwab__days_to_expiration",
+      "label": "schwab catalog / days_to_expiration",
+      "atomic_column": "days_to_expiration",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.daysToExpiration",
+        "chains.putExpDateMap.*.daysToExpiration"
+      ]
+    },
+    {
+      "group_id": "schwab__declaration_date",
+      "label": "schwab catalog / declaration_date",
+      "atomic_column": "declaration_date",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.declarationDate",
+        "quotes.fundamental.declarationDate"
+      ]
+    },
+    {
+      "group_id": "schwab__delayed",
+      "label": "schwab catalog / delayed",
+      "atomic_column": "delayed",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.delayed"
+      ]
+    },
+    {
+      "group_id": "schwab__deliverable_note",
+      "label": "schwab catalog / deliverable_note",
+      "atomic_column": "deliverable_note",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.deliverableNote",
+        "chains.putExpDateMap.*.deliverableNote"
+      ]
+    },
+    {
+      "group_id": "schwab__deliverable_units",
+      "label": "schwab catalog / deliverable_units",
+      "atomic_column": "deliverable_units",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.optionDeliverablesList.*.deliverableUnits",
+        "chains.putExpDateMap.*.optionDeliverablesList.*.deliverableUnits"
+      ]
+    },
+    {
+      "group_id": "schwab__delta",
+      "label": "schwab catalog / delta",
+      "atomic_column": "delta",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.delta",
+        "chains.putExpDateMap.*.delta"
+      ]
+    },
+    {
+      "group_id": "schwab__div_amount",
+      "label": "schwab catalog / div_amount",
+      "atomic_column": "div_amount",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "quotes.fundamental.divAmount"
+      ]
+    },
+    {
+      "group_id": "schwab__div_ex_date",
+      "label": "schwab catalog / div_ex_date",
+      "atomic_column": "div_ex_date",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "quotes.fundamental.divExDate"
+      ]
+    },
+    {
+      "group_id": "schwab__div_freq",
+      "label": "schwab catalog / div_freq",
+      "atomic_column": "div_freq",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "quotes.fundamental.divFreq"
+      ]
+    },
+    {
+      "group_id": "schwab__div_growth_rate3_year",
+      "label": "schwab catalog / div_growth_rate3_year",
+      "atomic_column": "div_growth_rate3_year",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.divGrowthRate3Year"
+      ]
+    },
+    {
+      "group_id": "schwab__div_pay_amount",
+      "label": "schwab catalog / div_pay_amount",
+      "atomic_column": "div_pay_amount",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "quotes.fundamental.divPayAmount"
+      ]
+    },
+    {
+      "group_id": "schwab__div_pay_date",
+      "label": "schwab catalog / div_pay_date",
+      "atomic_column": "div_pay_date",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "quotes.fundamental.divPayDate"
+      ]
+    },
+    {
+      "group_id": "schwab__div_yield",
+      "label": "schwab catalog / div_yield",
+      "atomic_column": "div_yield",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "quotes.fundamental.divYield"
+      ]
+    },
+    {
+      "group_id": "schwab__dividend_amount",
+      "label": "schwab catalog / dividend_amount",
+      "atomic_column": "dividend_amount",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.dividendAmount",
+        "streaming.content.*.DIVIDEND_AMOUNT"
+      ]
+    },
+    {
+      "group_id": "schwab__dividend_date",
+      "label": "schwab catalog / dividend_date",
+      "atomic_column": "dividend_date",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.dividendDate",
+        "streaming.content.*.DIVIDEND_DATE"
+      ]
+    },
+    {
+      "group_id": "schwab__dividend_freq",
+      "label": "schwab catalog / dividend_freq",
+      "atomic_column": "dividend_freq",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.dividendFreq"
+      ]
+    },
+    {
+      "group_id": "schwab__dividend_pay_amount",
+      "label": "schwab catalog / dividend_pay_amount",
+      "atomic_column": "dividend_pay_amount",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.dividendPayAmount"
+      ]
+    },
+    {
+      "group_id": "schwab__dividend_pay_date",
+      "label": "schwab catalog / dividend_pay_date",
+      "atomic_column": "dividend_pay_date",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.dividendPayDate"
+      ]
+    },
+    {
+      "group_id": "schwab__dividend_yield",
+      "label": "schwab catalog / dividend_yield",
+      "atomic_column": "dividend_yield",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.dividendYield",
+        "streaming.content.*.DIVIDEND_YIELD"
+      ]
+    },
+    {
+      "group_id": "schwab__dtn_volume",
+      "label": "schwab catalog / dtn_volume",
+      "atomic_column": "dtn_volume",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.dtnVolume"
+      ]
+    },
+    {
+      "group_id": "schwab__eps",
+      "label": "schwab catalog / eps",
+      "atomic_column": "eps",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.eps",
+        "quotes.fundamental.eps"
+      ]
+    },
+    {
+      "group_id": "schwab__eps_change",
+      "label": "schwab catalog / eps_change",
+      "atomic_column": "eps_change",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.epsChange"
+      ]
+    },
+    {
+      "group_id": "schwab__eps_change_percent_ttm",
+      "label": "schwab catalog / eps_change_percent_ttm",
+      "atomic_column": "eps_change_percent_ttm",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.epsChangePercentTTM"
+      ]
+    },
+    {
+      "group_id": "schwab__eps_change_year",
+      "label": "schwab catalog / eps_change_year",
+      "atomic_column": "eps_change_year",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.epsChangeYear"
+      ]
+    },
+    {
+      "group_id": "schwab__eps_ttm",
+      "label": "schwab catalog / eps_ttm",
+      "atomic_column": "eps_ttm",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.epsTTM"
+      ]
+    },
+    {
+      "group_id": "schwab__exchange",
+      "label": "schwab catalog / exchange",
+      "atomic_column": "exchange",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.ASKS.*.ASKS.*.EXCHANGE",
+        "streaming.content.*.BIDS.*.BIDS.*.EXCHANGE"
+      ]
+    },
+    {
+      "group_id": "schwab__exchange_id",
+      "label": "schwab catalog / exchange_id",
+      "atomic_column": "exchange_id",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.EXCHANGE_ID"
+      ]
+    },
+    {
+      "group_id": "schwab__exchange_name",
+      "label": "schwab catalog / exchange_name",
+      "atomic_column": "exchange_name",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.EXCHANGE_NAME"
+      ]
+    },
+    {
+      "group_id": "schwab__exercise_type",
+      "label": "schwab catalog / exercise_type",
+      "atomic_column": "exercise_type",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.exerciseType",
+        "chains.putExpDateMap.*.exerciseType"
+      ]
+    },
+    {
+      "group_id": "schwab__expiration_date",
+      "label": "schwab catalog / expiration_date",
+      "atomic_column": "expiration_date",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.expirationDate",
+        "chains.putExpDateMap.*.expirationDate"
+      ]
+    },
+    {
+      "group_id": "schwab__expiration_type",
+      "label": "schwab catalog / expiration_type",
+      "atomic_column": "expiration_type",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.expirationType",
+        "chains.putExpDateMap.*.expirationType"
+      ]
+    },
+    {
+      "group_id": "schwab__extrinsic_value",
+      "label": "schwab catalog / extrinsic_value",
+      "atomic_column": "extrinsic_value",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.extrinsicValue",
+        "chains.putExpDateMap.*.extrinsicValue"
+      ]
+    },
+    {
+      "group_id": "schwab__fund_leverage_factor",
+      "label": "schwab catalog / fund_leverage_factor",
+      "atomic_column": "fund_leverage_factor",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.fundLeverageFactor",
+        "quotes.fundamental.fundLeverageFactor"
+      ]
+    },
+    {
+      "group_id": "schwab__gamma",
+      "label": "schwab catalog / gamma",
+      "atomic_column": "gamma",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.gamma",
+        "chains.putExpDateMap.*.gamma"
+      ]
+    },
+    {
+      "group_id": "schwab__gross_margin_mrq",
+      "label": "schwab catalog / gross_margin_mrq",
+      "atomic_column": "gross_margin_mrq",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.grossMarginMRQ"
+      ]
+    },
+    {
+      "group_id": "schwab__gross_margin_ttm",
+      "label": "schwab catalog / gross_margin_ttm",
+      "atomic_column": "gross_margin_ttm",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.grossMarginTTM"
+      ]
+    },
+    {
+      "group_id": "schwab__hard_to_borrow",
+      "label": "schwab catalog / hard_to_borrow",
+      "atomic_column": "hard_to_borrow",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.HARD_TO_BORROW"
+      ]
+    },
+    {
+      "group_id": "schwab__high",
+      "label": "schwab catalog / high",
+      "atomic_column": "high",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_INGEST_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "pricehistory.candles.*.high"
+      ]
+    },
+    {
+      "group_id": "schwab__high52",
+      "label": "schwab catalog / high52",
+      "atomic_column": "high52",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.high52"
+      ]
+    },
+    {
+      "group_id": "schwab__high52_week",
+      "label": "schwab catalog / high52_week",
+      "atomic_column": "high52_week",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.high52Week",
+        "chains.putExpDateMap.*.high52Week"
+      ]
+    },
+    {
+      "group_id": "schwab__high_price",
+      "label": "schwab catalog / high_price",
+      "atomic_column": "high_price",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.highPrice",
+        "chains.putExpDateMap.*.highPrice",
+        "chains.underlying.highPrice",
+        "quotes.quote.highPrice",
+        "streaming.content.*.HIGH_PRICE"
+      ]
+    },
+    {
+      "group_id": "schwab__high_price_52_week",
+      "label": "schwab catalog / high_price_52_week",
+      "atomic_column": "high_price_52_week",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.HIGH_PRICE_52_WEEK"
+      ]
+    },
+    {
+      "group_id": "schwab__htb_quantity",
+      "label": "schwab catalog / htb_quantity",
+      "atomic_column": "htb_quantity",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.HTB_QUANTITY"
+      ]
+    },
+    {
+      "group_id": "schwab__htb_rate",
+      "label": "schwab catalog / htb_rate",
+      "atomic_column": "htb_rate",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.HTB_RATE"
+      ]
+    },
+    {
+      "group_id": "schwab__in_the_money",
+      "label": "schwab catalog / in_the_money",
+      "atomic_column": "in_the_money",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.inTheMoney",
+        "chains.putExpDateMap.*.inTheMoney"
+      ]
+    },
+    {
+      "group_id": "schwab__interest_coverage",
+      "label": "schwab catalog / interest_coverage",
+      "atomic_column": "interest_coverage",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.interestCoverage"
+      ]
+    },
+    {
+      "group_id": "schwab__intrinsic_value",
+      "label": "schwab catalog / intrinsic_value",
+      "atomic_column": "intrinsic_value",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.intrinsicValue",
+        "chains.putExpDateMap.*.intrinsicValue"
+      ]
+    },
+    {
+      "group_id": "schwab__is_shortable",
+      "label": "schwab catalog / is_shortable",
+      "atomic_column": "is_shortable",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.IS_SHORTABLE"
+      ]
+    },
+    {
+      "group_id": "schwab__key",
+      "label": "schwab catalog / key",
+      "atomic_column": "key",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.key"
+      ]
+    },
+    {
+      "group_id": "schwab__last",
+      "label": "schwab catalog / last",
+      "atomic_column": "last",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.last",
+        "chains.putExpDateMap.*.last"
+      ]
+    },
+    {
+      "group_id": "schwab__last_earnings_date",
+      "label": "schwab catalog / last_earnings_date",
+      "atomic_column": "last_earnings_date",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "quotes.fundamental.lastEarningsDate"
+      ]
+    },
+    {
+      "group_id": "schwab__last_id",
+      "label": "schwab catalog / last_id",
+      "atomic_column": "last_id",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.LAST_ID"
+      ]
+    },
+    {
+      "group_id": "schwab__last_mic_id",
+      "label": "schwab catalog / last_mic_id",
+      "atomic_column": "last_mic_id",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.LAST_MIC_ID"
+      ]
+    },
+    {
+      "group_id": "schwab__last_size",
+      "label": "schwab catalog / last_size",
+      "atomic_column": "last_size",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.lastSize",
+        "chains.putExpDateMap.*.lastSize",
+        "quotes.extended.lastSize",
+        "quotes.quote.lastSize",
+        "streaming.content.*.LAST_SIZE"
+      ]
+    },
+    {
+      "group_id": "schwab__last_trading_day",
+      "label": "schwab catalog / last_trading_day",
+      "atomic_column": "last_trading_day",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.lastTradingDay",
+        "chains.putExpDateMap.*.lastTradingDay"
+      ]
+    },
+    {
+      "group_id": "schwab__low",
+      "label": "schwab catalog / low",
+      "atomic_column": "low",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_INGEST_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "pricehistory.candles.*.low"
+      ]
+    },
+    {
+      "group_id": "schwab__low52",
+      "label": "schwab catalog / low52",
+      "atomic_column": "low52",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.low52"
+      ]
+    },
+    {
+      "group_id": "schwab__low52_week",
+      "label": "schwab catalog / low52_week",
+      "atomic_column": "low52_week",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.low52Week",
+        "chains.putExpDateMap.*.low52Week"
+      ]
+    },
+    {
+      "group_id": "schwab__low_price",
+      "label": "schwab catalog / low_price",
+      "atomic_column": "low_price",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.lowPrice",
+        "chains.putExpDateMap.*.lowPrice",
+        "chains.underlying.lowPrice",
+        "quotes.quote.lowPrice",
+        "streaming.content.*.LOW_PRICE"
+      ]
+    },
+    {
+      "group_id": "schwab__low_price_52_week",
+      "label": "schwab catalog / low_price_52_week",
+      "atomic_column": "low_price_52_week",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.LOW_PRICE_52_WEEK"
+      ]
+    },
+    {
+      "group_id": "schwab__lt_debt_to_equity",
+      "label": "schwab catalog / lt_debt_to_equity",
+      "atomic_column": "lt_debt_to_equity",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.ltDebtToEquity"
+      ]
+    },
+    {
+      "group_id": "schwab__marginable",
+      "label": "schwab catalog / marginable",
+      "atomic_column": "marginable",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.MARGINABLE"
+      ]
+    },
+    {
+      "group_id": "schwab__mark",
+      "label": "schwab catalog / mark",
+      "atomic_column": "mark",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.mark",
+        "chains.putExpDateMap.*.mark",
+        "chains.underlying.mark",
+        "quotes.extended.mark",
+        "quotes.quote.mark",
+        "streaming.content.*.MARK"
+      ]
+    },
+    {
+      "group_id": "schwab__mark_change",
+      "label": "schwab catalog / mark_change",
+      "atomic_column": "mark_change",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.markChange",
+        "chains.putExpDateMap.*.markChange",
+        "streaming.content.*.MARK_CHANGE"
+      ]
+    },
+    {
+      "group_id": "schwab__mark_change_percent",
+      "label": "schwab catalog / mark_change_percent",
+      "atomic_column": "mark_change_percent",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.MARK_CHANGE_PERCENT"
+      ]
+    },
+    {
+      "group_id": "schwab__mark_percent_change",
+      "label": "schwab catalog / mark_percent_change",
+      "atomic_column": "mark_percent_change",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.markPercentChange",
+        "chains.putExpDateMap.*.markPercentChange"
+      ]
+    },
+    {
+      "group_id": "schwab__market_cap",
+      "label": "schwab catalog / market_cap",
+      "atomic_column": "market_cap",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.marketCap"
+      ]
+    },
+    {
+      "group_id": "schwab__market_cap_float",
+      "label": "schwab catalog / market_cap_float",
+      "atomic_column": "market_cap_float",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.marketCapFloat"
+      ]
+    },
+    {
+      "group_id": "schwab__mini",
+      "label": "schwab catalog / mini",
+      "atomic_column": "mini",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.mini",
+        "chains.putExpDateMap.*.mini"
+      ]
+    },
+    {
+      "group_id": "schwab__multiplier",
+      "label": "schwab catalog / multiplier",
+      "atomic_column": "multiplier",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.multiplier",
+        "chains.putExpDateMap.*.multiplier"
+      ]
+    },
+    {
+      "group_id": "schwab__nav",
+      "label": "schwab catalog / nav",
+      "atomic_column": "nav",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.NAV"
+      ]
+    },
+    {
+      "group_id": "schwab__net_change",
+      "label": "schwab catalog / net_change",
+      "atomic_column": "net_change",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.netChange",
+        "chains.putExpDateMap.*.netChange",
+        "movers.screeners.*.netChange",
+        "quotes.quote.netChange",
+        "streaming.content.*.NET_CHANGE"
+      ]
+    },
+    {
+      "group_id": "schwab__net_change_percent",
+      "label": "schwab catalog / net_change_percent",
+      "atomic_column": "net_change_percent",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.NET_CHANGE_PERCENT"
+      ]
+    },
+    {
+      "group_id": "schwab__net_profit_margin_mrq",
+      "label": "schwab catalog / net_profit_margin_mrq",
+      "atomic_column": "net_profit_margin_mrq",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.netProfitMarginMRQ"
+      ]
+    },
+    {
+      "group_id": "schwab__net_profit_margin_ttm",
+      "label": "schwab catalog / net_profit_margin_ttm",
+      "atomic_column": "net_profit_margin_ttm",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.netProfitMarginTTM"
+      ]
+    },
+    {
+      "group_id": "schwab__next_div_ex_date",
+      "label": "schwab catalog / next_div_ex_date",
+      "atomic_column": "next_div_ex_date",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "quotes.fundamental.nextDivExDate"
+      ]
+    },
+    {
+      "group_id": "schwab__next_div_pay_date",
+      "label": "schwab catalog / next_div_pay_date",
+      "atomic_column": "next_div_pay_date",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "quotes.fundamental.nextDivPayDate"
+      ]
+    },
+    {
+      "group_id": "schwab__next_dividend_date",
+      "label": "schwab catalog / next_dividend_date",
+      "atomic_column": "next_dividend_date",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.nextDividendDate"
+      ]
+    },
+    {
+      "group_id": "schwab__next_dividend_pay_date",
+      "label": "schwab catalog / next_dividend_pay_date",
+      "atomic_column": "next_dividend_pay_date",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.nextDividendPayDate"
+      ]
+    },
+    {
+      "group_id": "schwab__non_standard",
+      "label": "schwab catalog / non_standard",
+      "atomic_column": "non_standard",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.nonStandard",
+        "chains.putExpDateMap.*.nonStandard"
+      ]
+    },
+    {
+      "group_id": "schwab__num_asks",
+      "label": "schwab catalog / num_asks",
+      "atomic_column": "num_asks",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.ASKS.*.NUM_ASKS"
+      ]
+    },
+    {
+      "group_id": "schwab__num_bids",
+      "label": "schwab catalog / num_bids",
+      "atomic_column": "num_bids",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.BIDS.*.NUM_BIDS"
+      ]
+    },
+    {
+      "group_id": "schwab__open",
+      "label": "schwab catalog / open",
+      "atomic_column": "open",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_INGEST_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "pricehistory.candles.*.open"
+      ]
+    },
+    {
+      "group_id": "schwab__open_interest",
+      "label": "schwab catalog / open_interest",
+      "atomic_column": "open_interest",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.openInterest",
+        "chains.putExpDateMap.*.openInterest"
+      ]
+    },
+    {
+      "group_id": "schwab__open_price",
+      "label": "schwab catalog / open_price",
+      "atomic_column": "open_price",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.openPrice",
+        "chains.putExpDateMap.*.openPrice",
+        "chains.underlying.openPrice",
+        "quotes.quote.openPrice",
+        "streaming.content.*.OPEN_PRICE"
+      ]
+    },
+    {
+      "group_id": "schwab__operating_margin_mrq",
+      "label": "schwab catalog / operating_margin_mrq",
+      "atomic_column": "operating_margin_mrq",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.operatingMarginMRQ"
+      ]
+    },
+    {
+      "group_id": "schwab__operating_margin_ttm",
+      "label": "schwab catalog / operating_margin_ttm",
+      "atomic_column": "operating_margin_ttm",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.operatingMarginTTM"
+      ]
+    },
+    {
+      "group_id": "schwab__option_deliverables_list",
+      "label": "schwab catalog / option_deliverables_list",
+      "atomic_column": "option_deliverables_list",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.optionDeliverablesList",
+        "chains.putExpDateMap.*.optionDeliverablesList"
+      ]
+    },
+    {
+      "group_id": "schwab__option_root",
+      "label": "schwab catalog / option_root",
+      "atomic_column": "option_root",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.optionRoot",
+        "chains.putExpDateMap.*.optionRoot"
+      ]
+    },
+    {
+      "group_id": "schwab__pb_ratio",
+      "label": "schwab catalog / pb_ratio",
+      "atomic_column": "pb_ratio",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.pbRatio"
+      ]
+    },
+    {
+      "group_id": "schwab__pcf_ratio",
+      "label": "schwab catalog / pcf_ratio",
+      "atomic_column": "pcf_ratio",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.pcfRatio"
+      ]
+    },
+    {
+      "group_id": "schwab__pe_ratio",
+      "label": "schwab catalog / pe_ratio",
+      "atomic_column": "pe_ratio",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.peRatio",
+        "quotes.fundamental.peRatio",
+        "streaming.content.*.PE_RATIO"
+      ]
+    },
+    {
+      "group_id": "schwab__peg_ratio",
+      "label": "schwab catalog / peg_ratio",
+      "atomic_column": "peg_ratio",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.pegRatio"
+      ]
+    },
+    {
+      "group_id": "schwab__penny_pilot",
+      "label": "schwab catalog / penny_pilot",
+      "atomic_column": "penny_pilot",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.pennyPilot",
+        "chains.putExpDateMap.*.pennyPilot"
+      ]
+    },
+    {
+      "group_id": "schwab__percent_change",
+      "label": "schwab catalog / percent_change",
+      "atomic_column": "percent_change",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.percentChange",
+        "chains.putExpDateMap.*.percentChange",
+        "chains.underlying.percentChange"
+      ]
+    },
+    {
+      "group_id": "schwab__post_market_net_change",
+      "label": "schwab catalog / post_market_net_change",
+      "atomic_column": "post_market_net_change",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.POST_MARKET_NET_CHANGE"
+      ]
+    },
+    {
+      "group_id": "schwab__post_market_net_change_percent",
+      "label": "schwab catalog / post_market_net_change_percent",
+      "atomic_column": "post_market_net_change_percent",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.POST_MARKET_NET_CHANGE_PERCENT"
+      ]
+    },
+    {
+      "group_id": "schwab__pr_ratio",
+      "label": "schwab catalog / pr_ratio",
+      "atomic_column": "pr_ratio",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.prRatio"
+      ]
+    },
+    {
+      "group_id": "schwab__put_call",
+      "label": "schwab catalog / put_call",
+      "atomic_column": "put_call",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.putCall",
+        "chains.putExpDateMap.*.putCall"
+      ]
+    },
+    {
+      "group_id": "schwab__put_exp_date_map",
+      "label": "schwab catalog / put_exp_date_map",
+      "atomic_column": "put_exp_date_map",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.putExpDateMap"
+      ]
+    },
+    {
+      "group_id": "schwab__quick_ratio",
+      "label": "schwab catalog / quick_ratio",
+      "atomic_column": "quick_ratio",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.quickRatio"
+      ]
+    },
+    {
+      "group_id": "schwab__quote_time",
+      "label": "schwab catalog / quote_time",
+      "atomic_column": "quote_time",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.underlying.quoteTime",
+        "quotes.extended.quoteTime",
+        "quotes.quote.quoteTime"
+      ]
+    },
+    {
+      "group_id": "schwab__quote_time_in_long",
+      "label": "schwab catalog / quote_time_in_long",
+      "atomic_column": "quote_time_in_long",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.quoteTimeInLong",
+        "chains.putExpDateMap.*.quoteTimeInLong"
+      ]
+    },
+    {
+      "group_id": "schwab__quote_time_millis",
+      "label": "schwab catalog / quote_time_millis",
+      "atomic_column": "quote_time_millis",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.QUOTE_TIME_MILLIS"
+      ]
+    },
+    {
+      "group_id": "schwab__regular_market_change_percent",
+      "label": "schwab catalog / regular_market_change_percent",
+      "atomic_column": "regular_market_change_percent",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.REGULAR_MARKET_CHANGE_PERCENT"
+      ]
+    },
+    {
+      "group_id": "schwab__regular_market_last_price",
+      "label": "schwab catalog / regular_market_last_price",
+      "atomic_column": "regular_market_last_price",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.REGULAR_MARKET_LAST_PRICE"
+      ]
+    },
+    {
+      "group_id": "schwab__regular_market_last_size",
+      "label": "schwab catalog / regular_market_last_size",
+      "atomic_column": "regular_market_last_size",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "quotes.regular.regularMarketLastSize",
+        "streaming.content.*.REGULAR_MARKET_LAST_SIZE"
+      ]
+    },
+    {
+      "group_id": "schwab__regular_market_net_change",
+      "label": "schwab catalog / regular_market_net_change",
+      "atomic_column": "regular_market_net_change",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.REGULAR_MARKET_NET_CHANGE"
+      ]
+    },
+    {
+      "group_id": "schwab__regular_market_quote",
+      "label": "schwab catalog / regular_market_quote",
+      "atomic_column": "regular_market_quote",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.REGULAR_MARKET_QUOTE"
+      ]
+    },
+    {
+      "group_id": "schwab__regular_market_trade",
+      "label": "schwab catalog / regular_market_trade",
+      "atomic_column": "regular_market_trade",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.REGULAR_MARKET_TRADE"
+      ]
+    },
+    {
+      "group_id": "schwab__regular_market_trade_millis",
+      "label": "schwab catalog / regular_market_trade_millis",
+      "atomic_column": "regular_market_trade_millis",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.REGULAR_MARKET_TRADE_MILLIS"
+      ]
+    },
+    {
+      "group_id": "schwab__return_on_assets",
+      "label": "schwab catalog / return_on_assets",
+      "atomic_column": "return_on_assets",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.returnOnAssets"
+      ]
+    },
+    {
+      "group_id": "schwab__return_on_equity",
+      "label": "schwab catalog / return_on_equity",
+      "atomic_column": "return_on_equity",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.returnOnEquity"
+      ]
+    },
+    {
+      "group_id": "schwab__return_on_investment",
+      "label": "schwab catalog / return_on_investment",
+      "atomic_column": "return_on_investment",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.returnOnInvestment"
+      ]
+    },
+    {
+      "group_id": "schwab__rev_change_in",
+      "label": "schwab catalog / rev_change_in",
+      "atomic_column": "rev_change_in",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.revChangeIn"
+      ]
+    },
+    {
+      "group_id": "schwab__rev_change_ttm",
+      "label": "schwab catalog / rev_change_ttm",
+      "atomic_column": "rev_change_ttm",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.revChangeTTM"
+      ]
+    },
+    {
+      "group_id": "schwab__rev_change_year",
+      "label": "schwab catalog / rev_change_year",
+      "atomic_column": "rev_change_year",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.revChangeYear"
+      ]
+    },
+    {
+      "group_id": "schwab__rho",
+      "label": "schwab catalog / rho",
+      "atomic_column": "rho",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.rho",
+        "chains.putExpDateMap.*.rho"
+      ]
+    },
+    {
+      "group_id": "schwab__security_status",
+      "label": "schwab catalog / security_status",
+      "atomic_column": "security_status",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.SECURITY_STATUS"
+      ]
+    },
+    {
+      "group_id": "schwab__seq",
+      "label": "schwab catalog / seq",
+      "atomic_column": "seq",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.seq"
+      ]
+    },
+    {
+      "group_id": "schwab__sequence",
+      "label": "schwab catalog / sequence",
+      "atomic_column": "sequence",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.ASKS.*.ASKS.*.SEQUENCE",
+        "streaming.content.*.BIDS.*.BIDS.*.SEQUENCE",
+        "streaming.content.*.SEQUENCE"
+      ]
+    },
+    {
+      "group_id": "schwab__service",
+      "label": "schwab catalog / service",
+      "atomic_column": "service",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.service"
+      ]
+    },
+    {
+      "group_id": "schwab__settlement_type",
+      "label": "schwab catalog / settlement_type",
+      "atomic_column": "settlement_type",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.settlementType",
+        "chains.putExpDateMap.*.settlementType"
+      ]
+    },
+    {
+      "group_id": "schwab__shares_outstanding",
+      "label": "schwab catalog / shares_outstanding",
+      "atomic_column": "shares_outstanding",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.sharesOutstanding",
+        "quotes.fundamental.sharesOutstanding"
+      ]
+    },
+    {
+      "group_id": "schwab__short_int_day_to_cover",
+      "label": "schwab catalog / short_int_day_to_cover",
+      "atomic_column": "short_int_day_to_cover",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.shortIntDayToCover"
+      ]
+    },
+    {
+      "group_id": "schwab__short_int_to_float",
+      "label": "schwab catalog / short_int_to_float",
+      "atomic_column": "short_int_to_float",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.shortIntToFloat"
+      ]
+    },
+    {
+      "group_id": "schwab__spot",
+      "label": "schwab catalog / spot",
+      "atomic_column": "spot",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "in_cone",
+      "schwab_lineage": [
+        "movers.screeners.*.lastPrice",
+        "quotes.extended.lastPrice",
+        "quotes.quote.lastPrice",
+        "streaming.content.*.LAST_PRICE"
+      ]
+    },
+    {
+      "group_id": "schwab__strike_price",
+      "label": "schwab catalog / strike_price",
+      "atomic_column": "strike_price",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.strikePrice",
+        "chains.putExpDateMap.*.strikePrice"
+      ]
+    },
+    {
+      "group_id": "schwab__symbol",
+      "label": "schwab catalog / symbol",
+      "atomic_column": "symbol",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.optionDeliverablesList.*.symbol",
+        "chains.callExpDateMap.*.symbol",
+        "chains.putExpDateMap.*.optionDeliverablesList.*.symbol",
+        "chains.putExpDateMap.*.symbol",
+        "instruments.*.fundamental.symbol"
+      ]
+    },
+    {
+      "group_id": "schwab__theoretical_option_value",
+      "label": "schwab catalog / theoretical_option_value",
+      "atomic_column": "theoretical_option_value",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.theoreticalOptionValue",
+        "chains.putExpDateMap.*.theoreticalOptionValue"
+      ]
+    },
+    {
+      "group_id": "schwab__theoretical_volatility",
+      "label": "schwab catalog / theoretical_volatility",
+      "atomic_column": "theoretical_volatility",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.theoreticalVolatility",
+        "chains.putExpDateMap.*.theoreticalVolatility"
+      ]
+    },
+    {
+      "group_id": "schwab__theta",
+      "label": "schwab catalog / theta",
+      "atomic_column": "theta",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.theta",
+        "chains.putExpDateMap.*.theta"
+      ]
+    },
+    {
+      "group_id": "schwab__time_value",
+      "label": "schwab catalog / time_value",
+      "atomic_column": "time_value",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.timeValue",
+        "chains.putExpDateMap.*.timeValue"
+      ]
+    },
+    {
+      "group_id": "schwab__timestamp",
+      "label": "schwab catalog / timestamp",
+      "atomic_column": "timestamp",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.timestamp"
+      ]
+    },
+    {
+      "group_id": "schwab__total_debt_to_capital",
+      "label": "schwab catalog / total_debt_to_capital",
+      "atomic_column": "total_debt_to_capital",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.totalDebtToCapital"
+      ]
+    },
+    {
+      "group_id": "schwab__total_debt_to_equity",
+      "label": "schwab catalog / total_debt_to_equity",
+      "atomic_column": "total_debt_to_equity",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.totalDebtToEquity"
+      ]
+    },
+    {
+      "group_id": "schwab__total_volume",
+      "label": "schwab catalog / total_volume",
+      "atomic_column": "total_volume",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.totalVolume",
+        "chains.putExpDateMap.*.totalVolume",
+        "chains.underlying.totalVolume",
+        "movers.screeners.*.totalVolume",
+        "quotes.extended.totalVolume",
+        "quotes.quote.totalVolume",
+        "streaming.content.*.ASKS.*.TOTAL_VOLUME",
+        "streaming.content.*.BIDS.*.TOTAL_VOLUME",
+        "streaming.content.*.TOTAL_VOLUME"
+      ]
+    },
+    {
+      "group_id": "schwab__trade_time",
+      "label": "schwab catalog / trade_time",
+      "atomic_column": "trade_time",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.underlying.tradeTime",
+        "quotes.extended.tradeTime",
+        "quotes.quote.tradeTime"
+      ]
+    },
+    {
+      "group_id": "schwab__trade_time_in_long",
+      "label": "schwab catalog / trade_time_in_long",
+      "atomic_column": "trade_time_in_long",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.tradeTimeInLong",
+        "chains.putExpDateMap.*.tradeTimeInLong"
+      ]
+    },
+    {
+      "group_id": "schwab__trade_time_millis",
+      "label": "schwab catalog / trade_time_millis",
+      "atomic_column": "trade_time_millis",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "streaming.content.*.TRADE_TIME_MILLIS"
+      ]
+    },
+    {
+      "group_id": "schwab__vega",
+      "label": "schwab catalog / vega",
+      "atomic_column": "vega",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "chains.callExpDateMap.*.vega",
+        "chains.putExpDateMap.*.vega"
+      ]
+    },
+    {
+      "group_id": "schwab__vol10_day_avg",
+      "label": "schwab catalog / vol10_day_avg",
+      "atomic_column": "vol10_day_avg",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.vol10DayAvg"
+      ]
+    },
+    {
+      "group_id": "schwab__vol1_day_avg",
+      "label": "schwab catalog / vol1_day_avg",
+      "atomic_column": "vol1_day_avg",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.vol1DayAvg"
+      ]
+    },
+    {
+      "group_id": "schwab__vol3_month_avg",
+      "label": "schwab catalog / vol3_month_avg",
+      "atomic_column": "vol3_month_avg",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "instruments.*.fundamental.vol3MonthAvg"
+      ]
+    },
+    {
+      "group_id": "schwab__volume",
+      "label": "schwab catalog / volume",
+      "atomic_column": "volume",
+      "disposition": "ABLATE",
+      "catalog_tier": "ML_ABLATION_CANDIDATE",
+      "ingest_status": "not_wired",
+      "schwab_lineage": [
+        "movers.screeners.*.volume",
+        "pricehistory.candles.*.volume",
+        "streaming.content.*.VOLUME"
+      ]
+    }
+  ],
+  "totals": {
+    "schwab_dictionary_rows": 2393,
+    "schwab_tier_counts": {
+      "EXCLUDE_UI": 17,
+      "CATALOG_ONLY": 179,
+      "ML_ABLATION_CANDIDATE": 314,
+      "ML_INGEST_CANDIDATE": 10,
+      "EXCLUDE_SESSION": 1873
+    },
+    "registered_ml_cone_columns": 94,
+    "min_ablation_expansion_factor": 2.0,
+    "ablation_group_count": 280,
+    "per_model_feature_cell_count": 10080,
+    "expansion_ratio_vs_cone": 2.98
+  }
+}

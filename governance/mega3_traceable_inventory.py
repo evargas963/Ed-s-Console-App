@@ -99,7 +99,7 @@ MEGA3_TRACEABLE_INVENTORY: tuple[Mega3TraceableDerivation, ...] = (
     Mega3TraceableDerivation("features/mvp_source_coercion.py", 110, "read_liquidity_summary_subdict", "DERIVED", None, ("market_state.py:build_market_state",), None, "Composes Mega1 producers for read_liquidity_summary_subdict output fields."),
     Mega3TraceableDerivation("features/parallel_stack_schema.py", 31, "_normalize_triplet", "NONE", None, (), None, "No market-field derivation: AST-listed _normalize_triplet; no legacy row."),
     Mega3TraceableDerivation("features/parallel_stack_schema.py", 31, "empty_parallel_output", "NONE", None, (), None, "Schema/contract validation; no market-field derivation."),
-    Mega3TraceableDerivation("features/parallel_stack_schema.py", 47, "build_parallel_base_output", "NONE", None, (), None, "Schema/contract validation; no market-field derivation."),
+    Mega3TraceableDerivation("features/parallel_stack_schema.py", 47, "build_unified_stack_layer_output", "NONE", None, (), None, "Schema/contract validation; no market-field derivation."),
     Mega3TraceableDerivation("features/regime_mvp_context.py", 19, "require_mvp_features", "DERIVED", None, ("market_state.py:build_market_state",), None, "Composes Mega1 producers for require_mvp_features output fields."),
     Mega3TraceableDerivation("features/regime_mvp_context.py", 26, "mvp_zone", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega3TraceableDerivation("features/regime_mvp_context.py", 33, "mvp_spot", "DERIVED", None, ("market_state.py:build_market_state",), None, "Composes Mega1 producers for mvp_spot output fields."),

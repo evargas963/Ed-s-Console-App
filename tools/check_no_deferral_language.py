@@ -120,6 +120,9 @@ ALLOWLIST_PATH_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(^|/)CLAUDE\.md$"),
     re.compile(r"(^|/)governance/"),
     re.compile(r"(^|/)tools/check_no_deferral_language\.py$"),
+    # enforce_all_rules.py is the shared rule orchestrator: it MUST contain the banned/deferral
+    # phrases as detection patterns (same reason this file is allowlisted). Not deferral text.
+    re.compile(r"(^|/)tools/enforce_all_rules\.py$"),
     # Test files quote forbidden phrases when locking the guard itself; the
     # consolidated paired test lives in tests/test_check_no_deferral_language.py
     # (per operator's "no rules in various places" directive 2026-05-24).

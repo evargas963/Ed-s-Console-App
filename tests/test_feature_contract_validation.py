@@ -33,7 +33,7 @@ def test_validator_flags_rules_in_active_meta(tmp_path: Path):
 def test_lstm_registry_tags_structure_micro_cross_asset_streams():
     regs = build_all_layer_registries(Path(__file__).resolve().parents[1])
     lstm = {e.feature_name: e for e in regs["lstm"]}
-    assert "stream=structure_5m" in lstm["spot"].notes
+    assert "stream=structure_5m" in lstm["candle_body_pct"].notes
     assert "stream=cross_asset" in lstm["qqq_weighted_push"].notes
     assert "stream=derived_confluence" in lstm["cf_momentum_5m"].notes
 
@@ -47,19 +47,11 @@ def test_lstm_registry_covers_encoded_sequence_width():
         assert f in lstm_names
     for f in ENCODED_FEATURES_1M:
         assert f in lstm_names
-    assert "spy_weighted_push__present" in lstm_names
     trans = {e.feature_name for e in regs["transformer"]}
     for f in ENCODED_FEATURES_5M:
         assert f in trans
-    mask_union = {
-        f
-        for f in (*ENCODED_FEATURES_5M, *ENCODED_FEATURES_1M)
-        if f.endswith("__present")
-    }
-    assert mask_union <= lstm_names
-    assert len([f for f in lstm_names if f.endswith("__present")]) == len(mask_union)
-    assert encoded_width_5m() == 31
-    assert encoded_width_1m() == 16
+    assert encoded_width_5m() == len(ENCODED_FEATURES_5M)
+    assert encoded_width_1m() == len(ENCODED_FEATURES_1M)
 
 
 def test_validator_returns_structured_details():

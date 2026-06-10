@@ -722,20 +722,20 @@ def _evaluate_cascade_on_full_rth(
         return out
 
 
-def _meta_base_triplet(base_name: str, probs, collapsed) -> list:
-    """One base's ``[up, down, flat]`` contribution to the meta-training vector.
+def _meta_ml_layer_triplet(layer_name: str, probs, collapsed) -> list:
+    """One unified-stack ML layer's ``[up, down, flat]`` contribution to the meta-training vector.
 
-    CLOSEOUT #3: a base flagged ``val_single_class_collapse`` is degenerate (all-flat); treat
+    CLOSEOUT #3: a layer flagged ``val_single_class_collapse`` is degenerate (all-flat); treat
     it as absent and substitute the neutral filler so the meta LogisticRegression never learns
     to trust it. Empty ``collapsed`` with present ``probs`` reproduces the prior assembly
     byte-for-byte (``[probs.get(c, 0.333) for c in up/down/flat]``).
     """
-    if base_name in collapsed or not probs:
+    if layer_name in collapsed or not probs:
         return [0.333, 0.333, 0.334]
     return [probs.get(c, 0.333) for c in ("up", "down", "flat")]
 
 
-def _assemble_meta_base_prob_vectors(
+def _assemble_meta_ml_layer_prob_vectors(
     model_dir: Path,
     ticker: str,
     db_path: str,
@@ -744,7 +744,7 @@ def _assemble_meta_base_prob_vectors(
     hz: str,
 ) -> tuple[list, list]:
     """Assemble parallel meta-learner [xgb|lstm|transformer] prob vectors + labels by running
-    the base models in ``model_dir`` over the rows in ``rows_df``.
+    the xgb/lstm/transformer layers in ``model_dir`` over the rows in ``rows_df``.
 
     Used both for the in-sample fallback (``model_dir`` = deployed ``out_dir``, rows = full
     training df) and for each OOF fold (``model_dir`` = a fold dir trained on strictly-earlier
@@ -752,6 +752,7 @@ def _assemble_meta_base_prob_vectors(
     """
     import ml_predict as mp
     from ml_predict import _predict_xgb, _predict_lstm, _predict_transformer
+    from features.fusion_model_input import meta_tabular_vector_from_overlay
     from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
     from features.training_canonical_input import records_for_mvp_from_dataframe
 
@@ -768,7 +769,7 @@ def _assemble_meta_base_prob_vectors(
             # B3+ collapse guard (CLOSEOUT #3): bases flagged val_single_class_collapse in
             # model_dir are degenerate (all-flat); substitute the neutral filler so the meta
             # LR never learns to trust them. Empty set => identical to prior assembly.
-            collapsed = mp.read_base_collapse_flags(model_dir, ticker, hz)
+            collapsed = mp.read_stack_layer_collapse_flags(model_dir, ticker, hz)
             for row in rows:
                 inf_v1 = build_inference_snapshot_v1_from_db_row(
                     ticker=ticker, expiry=None, as_of_ts=row.get("ts_utc"), db_row=row,
@@ -790,9 +791,10 @@ def _assemble_meta_base_prob_vectors(
                 if xgb_p is None:
                     continue
                 vec = (
-                    _meta_base_triplet("xgb", xgb_p, collapsed)
-                    + _meta_base_triplet("lstm", lstm_p, collapsed)
-                    + _meta_base_triplet("transformer", tr_p, collapsed)
+                    _meta_ml_layer_triplet("xgb", xgb_p, collapsed)
+                    + _meta_ml_layer_triplet("lstm", lstm_p, collapsed)
+                    + _meta_ml_layer_triplet("transformer", tr_p, collapsed)
+                    + meta_tabular_vector_from_overlay(row)
                 )
                 X_meta.append(vec)
                 y_meta.append({"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2))
@@ -803,7 +805,7 @@ def _assemble_meta_base_prob_vectors(
     return X_meta, y_meta
 
 
-def _train_parallel_base_models_into(
+def _train_parallel_ml_stack_layers_into(
     temp_dir: Path,
     ticker: str,
     db_path: str,
@@ -812,10 +814,10 @@ def _train_parallel_base_models_into(
     data_fp: Optional[dict],
     hz: str,
 ) -> bool:
-    """Train XGB + LSTM + Transformer (parallel) on exactly ``allowed_et_dates`` into
-    ``temp_dir`` for OOF base-prob generation (Workstream B2). ``bypass_cache``/
+    """Train XGB + LSTM + Transformer (parallel ML stack layers) on ``allowed_et_dates`` into
+    ``temp_dir`` for OOF meta-learner prob generation (Workstream B2). ``bypass_cache``/
     ``bypass_torch_resume`` always on — the fold's date subset has a different fingerprint
-    than the full-data feature cache. Returns True when at least the XGB base is present
+    than the full-data feature cache. Returns True when at least XGB is present
     (LSTM/Transformer degrade gracefully in assembly via the 0.333 fallback)."""
     from ml_train import load_data, train_ticker
     from lstm_model import train_lstm
@@ -861,7 +863,7 @@ def _train_parallel_meta_oof(
     data_fp: Optional[dict],
 ) -> tuple[list, list, str]:
     """Build the parallel meta-learner's training matrix from EXPANDING-WINDOW OUT-OF-FOLD
-    base predictions (Workstream B2). For each fold the base models are trained on
+    base predictions (Workstream B2). For each fold the ML stack layers are trained on
     strictly-earlier sessions into a temp dir and scored on the held-out fold, so the meta
     never sees in-sample base probs. The deployed base artifacts in ``out_dir`` are untouched
     (they stay full-data trained). Falls back to in-sample assembly when no folds can be
@@ -874,7 +876,7 @@ def _train_parallel_meta_oof(
 
     folds = expanding_window_oof_folds(oof_universe_days)
     if not folds:
-        X_meta, y_meta = _assemble_meta_base_prob_vectors(out_dir, ticker, db_path, df, target_column, hz)
+        X_meta, y_meta = _assemble_meta_ml_layer_prob_vectors(out_dir, ticker, db_path, df, target_column, hz)
         return X_meta, y_meta, "in_sample_no_folds"
 
     X_meta: list = []
@@ -883,15 +885,15 @@ def _train_parallel_meta_oof(
     try:
         for fi, (tr_days, oof_days) in enumerate(folds):
             fold_dir = tmp_root / f"fold{fi}"
-            if not _train_parallel_base_models_into(
+            if not _train_parallel_ml_stack_layers_into(
                 fold_dir, ticker, db_path, set(tr_days), data_fp=data_fp, hz=hz,
             ):
-                log.warning("%s parallel meta OOF: fold %d base train incomplete — skip", ticker, fi)
+                log.warning("%s parallel meta OOF: fold %d ML stack train incomplete — skip", ticker, fi)
                 continue
             df_oof = load_data(db_path, ticker=ticker, allowed_et_dates=set(oof_days), ml_horizon_slug=hz)
             if len(df_oof) == 0:
                 continue
-            fx, fy = _assemble_meta_base_prob_vectors(fold_dir, ticker, db_path, df_oof, target_column, hz)
+            fx, fy = _assemble_meta_ml_layer_prob_vectors(fold_dir, ticker, db_path, df_oof, target_column, hz)
             X_meta.extend(fx)
             y_meta.extend(fy)
     finally:
@@ -901,7 +903,7 @@ def _train_parallel_meta_oof(
         log.warning(
             "%s parallel meta: OOF produced %d usable rows (<10) — in-sample fallback", ticker, len(X_meta),
         )
-        X_meta, y_meta = _assemble_meta_base_prob_vectors(out_dir, ticker, db_path, df, target_column, hz)
+        X_meta, y_meta = _assemble_meta_ml_layer_prob_vectors(out_dir, ticker, db_path, df, target_column, hz)
         return X_meta, y_meta, "in_sample_fallback"
     return X_meta, y_meta, "expanding_window_oof"
 
@@ -1541,7 +1543,7 @@ def _build_in_sample_cascade_xgb_lstm_tensor(
     return np.array(vectors, dtype=np.float32)
 
 
-def _train_cascade_base_models_into(
+def _train_cascade_ml_stack_layers_into(
     temp_dir: Path,
     ticker: str,
     db_path: str,
@@ -1553,7 +1555,7 @@ def _train_cascade_base_models_into(
     """Train full cascade stack (XGB, cascade-LSTM, cascade-Transformer) on ``allowed_et_dates``.
 
     Used for OOF meta-learner folds: each fold trains on strictly-earlier sessions; the meta
-    stacker scores held-out rows via ``_assemble_meta_base_prob_vectors`` against the fold dir.
+    stacker scores held-out rows via ``_assemble_meta_ml_layer_prob_vectors`` against the fold dir.
     """
     from lstm_data import STREAM_5M_LOOKBACK
     from transformer_train import SEQUENCE_LENGTH, prepare_transformer_data, train_transformer
@@ -1611,7 +1613,7 @@ def _train_cascade_meta_oof(
     *,
     data_fp: Optional[dict],
 ) -> tuple[list, list, str]:
-    """Build cascade meta-learner training matrix from expanding-window OOF base predictions."""
+    """Build cascade meta-learner training matrix from expanding-window OOF ML stack layer predictions."""
     import shutil
     import tempfile
 
@@ -1620,7 +1622,7 @@ def _train_cascade_meta_oof(
 
     folds = expanding_window_oof_folds(oof_universe_days)
     if not folds:
-        X_meta, y_meta = _assemble_meta_base_prob_vectors(out_dir, ticker, db_path, df, target_column, hz)
+        X_meta, y_meta = _assemble_meta_ml_layer_prob_vectors(out_dir, ticker, db_path, df, target_column, hz)
         return X_meta, y_meta, "in_sample_no_folds"
 
     X_meta: list = []
@@ -1629,15 +1631,15 @@ def _train_cascade_meta_oof(
     try:
         for fi, (tr_days, oof_days) in enumerate(folds):
             fold_dir = tmp_root / f"fold{fi}"
-            if not _train_cascade_base_models_into(
+            if not _train_cascade_ml_stack_layers_into(
                 fold_dir, ticker, db_path, set(tr_days), data_fp=data_fp, hz=hz,
             ):
-                log.warning("%s cascade meta OOF: fold %d base train incomplete — skip", ticker, fi)
+                log.warning("%s cascade meta OOF: fold %d ML stack train incomplete — skip", ticker, fi)
                 continue
             df_oof = load_data(db_path, ticker=ticker, allowed_et_dates=set(oof_days), ml_horizon_slug=hz)
             if len(df_oof) == 0:
                 continue
-            fx, fy = _assemble_meta_base_prob_vectors(fold_dir, ticker, db_path, df_oof, target_column, hz)
+            fx, fy = _assemble_meta_ml_layer_prob_vectors(fold_dir, ticker, db_path, df_oof, target_column, hz)
             X_meta.extend(fx)
             y_meta.extend(fy)
     finally:
@@ -1647,7 +1649,7 @@ def _train_cascade_meta_oof(
         log.warning(
             "%s cascade meta: OOF produced %d usable rows (<10) — in-sample fallback", ticker, len(X_meta),
         )
-        X_meta, y_meta = _assemble_meta_base_prob_vectors(out_dir, ticker, db_path, df, target_column, hz)
+        X_meta, y_meta = _assemble_meta_ml_layer_prob_vectors(out_dir, ticker, db_path, df, target_column, hz)
         return X_meta, y_meta, "in_sample_fallback"
     return X_meta, y_meta, "expanding_window_oof"
 
@@ -2046,7 +2048,7 @@ def train_cascade_candidate(
     lstm_pt_path = out_dir / f"lstm_{ticker.upper()}_{hz}.pt"
 
     # Workstream B2 (commit 2) — train the cascade TRANSFORMER (final stacker) on EXPANDING-
-    # WINDOW OUT-OF-FOLD [xgb|lstm] base predictions. Each kept row is scored by base models
+    # WINDOW OUT-OF-FOLD [xgb|lstm] ML layer predictions. Each kept row is scored by xgb/lstm layers
     # trained ONLY on strictly-earlier sessions (fold models); seed-block rows (no earlier
     # fold) are excluded so the stacker never sees an in-sample base prob. The deployed
     # XGB/LSTM in out_dir stay full-data trained — only the transformer's TRAINING features
@@ -2190,7 +2192,7 @@ def train_cascade_candidate(
         def _deployed_selector(_day_key):
             return (xgb_model, xgb_meta, lstm_model, lstm_ckpt, True)
 
-        # Build per-fold base models (OOF). Each fold trains XGB+LSTM on strictly-earlier
+        # Build per-fold ML stack layers (OOF). Each fold trains XGB+LSTM on strictly-earlier
         # sessions; its held-out block's rows are scored by that fold (out-of-sample).
         oof_tmp_root = None
         fold_models: dict = {}
@@ -2563,7 +2565,7 @@ def run_once(
         )
         from tools.feature_curation_gate import (
             run_survivor_edge_probe,
-            run_survivor_inference_backtest,
+            run_survivor_stack_refit_backtest,
             run_survivor_validation_run,
         )
 
@@ -2573,14 +2575,15 @@ def run_once(
             _inc_reset.get("reset_count"),
             _inc_reset.get("reason"),
         )
-        _backtest = run_survivor_inference_backtest(
+        _backtest = run_survivor_stack_refit_backtest(
             tickers=tickers[:3] or None,
             db_path=str(DB_PATH),
         )
-        if not _backtest.get("ready"):
+        if not _backtest.get("ready_for_production"):
             log.error(
-                "survivor_inference_backtest blocked retrain: issues=%s",
+                "survivor_stack_refit_backtest blocked retrain: issues=%s summary=%s",
                 _backtest.get("issues"),
+                _backtest.get("summary"),
             )
             return {
                 "exit_code": 2,
@@ -2589,12 +2592,12 @@ def run_once(
                 "skipped": True,
                 "pre_train_gate_failed": True,
                 "pre_train_gate_reasons": list(
-                    _backtest.get("issues") or ["survivor_inference_backtest_failed"]
+                    _backtest.get("issues") or ["survivor_stack_refit_backtest_failed"]
                 ),
             }
         log.info(
-            "survivor_inference_backtest passed: cells=%s",
-            len(_backtest.get("cells") or []),
+            "survivor_stack_refit_backtest passed: summary=%s",
+            _backtest.get("summary"),
         )
         _edge = run_survivor_edge_probe(tickers=tickers[:3] or None)
         if not _edge.get("ready_for_full_retrain"):
@@ -3774,6 +3777,13 @@ def start_background_scheduler() -> None:
     )
     _bg_scheduler_thread.start()
     log.info("ML background scheduler thread started (nightly market-day %02d:%02d ET)", RUN_AT_HOUR, RUN_AT_MINUTE)
+
+
+# deprecated aliases — unified-stack vocabulary migration
+_meta_base_triplet = _meta_ml_layer_triplet
+_assemble_meta_base_prob_vectors = _assemble_meta_ml_layer_prob_vectors
+_train_parallel_base_models_into = _train_parallel_ml_stack_layers_into
+_train_cascade_base_models_into = _train_cascade_ml_stack_layers_into
 
 
 if __name__ == "__main__":

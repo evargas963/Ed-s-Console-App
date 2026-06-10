@@ -9,7 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Binding gate order after ablation confirm v2 (ACTIVE_PROGRAM §ML pipeline efficiency).
 SURVIVOR_PRETRAIN_GATE_ORDER: tuple[str, ...] = (
-    "run_survivor_inference_backtest",
+    "run_survivor_stack_refit_backtest",
     "run_survivor_edge_probe",
     "run_survivor_validation_run",
 )
@@ -21,19 +21,23 @@ _REQUIRED_BRIDGE = (
     (REPO_ROOT / "ml_scheduler.py", "_xgb_probs_aligned_to_lstm_dataset"),
     (REPO_ROOT / "ml_scheduler.py", "used_parallel_cascade_bridge"),
     (REPO_ROOT / "ml_scheduler.py", "parallel_out=parallel_out"),
-    (REPO_ROOT / "tools" / "feature_curation_gate.py", "run_survivor_inference_backtest"),
-    (REPO_ROOT / "ml_scheduler.py", "run_survivor_inference_backtest"),
+    (REPO_ROOT / "tools" / "feature_curation_gate.py", "run_survivor_stack_refit_backtest"),
+    (REPO_ROOT / "ml_scheduler.py", "run_survivor_stack_refit_backtest"),
 )
 
 _REQUIRED_GATE_SURFACE = (
-    (REPO_ROOT / "tools" / "feature_curation_gate.py", "--survivor-inference-backtest"),
+    (REPO_ROOT / "tools" / "feature_curation_gate.py", "--survivor-stack-refit-backtest"),
     (REPO_ROOT / "tools" / "feature_curation_gate.py", "log_loss_delta"),
     (REPO_ROOT / "tools" / "feature_curation_gate.py", "survivor_better"),
-    (REPO_ROOT / "tools" / "run_survivor_retrain_gate.ps1", "--survivor-inference-backtest"),
+    (REPO_ROOT / "tools" / "run_survivor_retrain_gate.ps1", "--survivor-stack-refit-backtest"),
     (REPO_ROOT / "tools" / "run_survivor_retrain_gate.ps1", "--survivor-edge-probe"),
     (REPO_ROOT / "tools" / "run_survivor_retrain_gate.ps1", "--survivor-validation-run"),
-    (REPO_ROOT / "ACTIVE_PROGRAM.md", "inference backtest on `models/active/`"),
-    (REPO_ROOT / "governance" / "G1_ADDENDUM_TRAINING_DEPENDENCY.md", "run_survivor_inference_backtest"),
+    (REPO_ROOT / "ACTIVE_PROGRAM.md", "stack refit backtest"),
+    (REPO_ROOT / "tools" / "build_feature_assignment_matrix_v2.py", "resolve_expanded_schwab_ablation_universe"),
+    (REPO_ROOT / "tools" / "build_feature_assignment_matrix_v2.py", "MIN_ABLATION_EXPANSION_FACTOR"),
+    (REPO_ROOT / "governance" / "G1_ADDENDUM_TRAINING_DEPENDENCY.md", "run_survivor_stack_refit_backtest"),
+    (REPO_ROOT / "arch_competition" / "stack_bundle_eval_v1.py", "void_compound_ablation_survivors"),
+    (REPO_ROOT / "arch_competition" / "stack_bundle_eval_v1.py", "compound_survivors_voided"),
 )
 
 
@@ -48,7 +52,7 @@ def _call_order_ok(text: str, symbols: tuple[str, ...]) -> bool:
 
 
 def _scheduler_survivor_gate_slice(text: str) -> str:
-    start = text.find("_backtest = run_survivor_inference_backtest")
+    start = text.find("_backtest = run_survivor_stack_refit_backtest")
     end = text.find("survivor_validation_run passed:")
     if start < 0 or end < 0:
         return ""
@@ -75,11 +79,11 @@ def check_ml_pipeline_efficiency() -> list[str]:
             errors.append("ml_scheduler.py: missing survivor pre-train gate block")
         elif not _call_order_ok(
             gate_slice,
-            ("run_survivor_inference_backtest", "run_survivor_edge_probe", "run_survivor_validation_run"),
+            ("run_survivor_stack_refit_backtest", "run_survivor_edge_probe", "run_survivor_validation_run"),
         ):
             errors.append(
                 "ml_scheduler.py: survivor pre-train gates must run in order "
-                f"{SURVIVOR_PRETRAIN_GATE_ORDER} (inference backtest before edge probe before validation)"
+                f"{SURVIVOR_PRETRAIN_GATE_ORDER} (stack refit backtest before edge probe before validation)"
             )
 
     gate_path = REPO_ROOT / "tools" / "run_survivor_retrain_gate.ps1"
@@ -90,7 +94,7 @@ def check_ml_pipeline_efficiency() -> list[str]:
             errors.append("run_survivor_retrain_gate.ps1: missing ml_scheduler train invocation")
         else:
             for sym in (
-                "--survivor-inference-backtest",
+                "--survivor-stack-refit-backtest",
                 "--survivor-edge-probe",
                 "--survivor-validation-run",
             ):

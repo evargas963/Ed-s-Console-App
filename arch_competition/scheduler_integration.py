@@ -1,7 +1,7 @@
 """
 Scheduler integration: persist evaluation manifests + promotion records; visibility helpers.
 
-Does not copy artifacts to models/active/ or call run_base_models_once.
+Does not copy artifacts to models/active/ or call run_unified_stack_ml_once.
 """
 
 from __future__ import annotations

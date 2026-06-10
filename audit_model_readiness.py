@@ -577,7 +577,7 @@ def main():
     meta_reasons = []
     if not all_base:
         meta_reasons.append(
-            f"need all three base model files (xgb_SPY_{_live_hz}.pkl, lstm_SPY_{_live_hz}.pt, "
+            f"need all three ML stack layer files (xgb_SPY_{_live_hz}.pkl, lstm_SPY_{_live_hz}.pt, "
             f"transformer_SPY_{_live_hz}.pt) in models/active/SPY/"
         )
     if trainable_rows < MIN_META_ROWS:

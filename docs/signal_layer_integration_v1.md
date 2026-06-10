@@ -55,7 +55,7 @@ This document records **production integration** of `signal_layer_v1` into the B
 ## E. Retrain / rerun method
 
 1. **No full model retrain** in this change: XGB/LSTM/TR checkpoints unchanged.
-2. **Harness**: `python -m calibration.run_production_accumulation_validation` (stubs `run_base_models_once` as before).
+2. **Harness**: `python -m calibration.run_production_accumulation_validation` (stubs `run_unified_stack_ml_once` as before).
 3. **Discrimination**: `python -m calibration.signal_layer_discrimination data/calibration_accumulation_validation.db`  
    Output snapshot: `data/signal_layer_discrimination_post_integration.json`.
 
@@ -86,4 +86,4 @@ This document records **production integration** of `signal_layer_v1` into the B
 - **`final_signal` is non-trivial** (mixed long/wait; not 100% wait or forced always-long).
 
 **Remaining issues:** **NONE** (per strict checklist for this milestone).  
-Optional future work: retrain XGB/LSTM/TR with explicit `sl_*` columns if you want base models to consume bar-engineered features directly.
+Optional future work: retrain XGB/LSTM/TR with explicit `sl_*` columns if you want ML stack layers to consume bar-engineered features directly.

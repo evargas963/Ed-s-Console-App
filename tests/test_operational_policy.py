@@ -344,7 +344,7 @@ def test_operational_policy_module_does_not_touch_production_runtime():
 
     src = Path(op.__file__).read_text(encoding="utf-8")
     assert "production_default_runtime" not in src
-    assert "run_base_models_once" not in src
+    assert "run_unified_stack_ml_once" not in src
 
 
 def test_governance_visibility_consumes_operational_policy(tmp_path: Path):

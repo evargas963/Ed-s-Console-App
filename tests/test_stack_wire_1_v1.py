@@ -55,8 +55,8 @@ def test_stack_runtime_fields_propagate():
     rt = ms_dict["stack_runtime"]
     assert rt["fusion_active"] is True
     assert rt["mc_participated"] is True
-    assert rt["n_base_models_live"] == 2
-    assert rt["stack_mode"] in {"FULL", "PARTIAL", "DEGRADED", "INVALID"}
+    assert rt["n_ml_layers_live"] == 2
+    assert rt["stack_mode"] in {"FULL", "INVALID"}
     assert rt["contributing_models"] == ["xgb", "transformer"]
 
 
@@ -94,7 +94,7 @@ def test_stack_runtime_fusion_active_uses_tradability_gate_not_bare_flag():
     assert ms_empty["stack_runtime"]["fusion_active"] is False
     assert ms_empty["stack_runtime"]["stack_mode"] == "INVALID"
 
-    # Authoritative case: bayesian_fusion stays active.
+    # Authoritative case: bayesian_fusion stays active when unified stack team scored together.
     ms_ok = {
         "fusion_available": True,
         "canonical_provenance": "bayesian_fusion",
@@ -102,6 +102,11 @@ def test_stack_runtime_fusion_active_uses_tradability_gate_not_bare_flag():
         "xgb_available": True,
         "lstm_available": True,
         "transformer_available": True,
+        "ml_layer_probs": {
+            "xgb": {"up": 0.4, "down": 0.3, "flat": 0.3},
+            "lstm": {"up": 0.4, "down": 0.3, "flat": 0.3},
+            "transformer": {"up": 0.4, "down": 0.3, "flat": 0.3},
+        },
     }
     server._attach_stack_runtime_and_governance(ms_ok, ticker="SPY")
     assert ms_ok["stack_runtime"]["fusion_active"] is True

@@ -1,7 +1,7 @@
 """Feature -> FULL-STACK -> horizon ASSIGNMENT MATRIX v2 (feature epic deliverable).
 
 Operator brief (2026-06-01):
-  - COMPREHENSIVE: full 6-layer stack (XGB, LSTM, Transformer, Meta, Monte Carlo, Regime/Rules-Fusion)
+  - COMPREHENSIVE: full 7-model stack (XGB, LSTM, Transformer, Meta, Monte Carlo, Regime, Bayesian Fusion)
     across all 4 horizons (1c/5c/15c/60c), full feature universe.
   - MUST NOT LEAD CURSOR. Cursor uses independent judgement. Therefore the workbook STRICTLY
     SEPARATES three tiers:
@@ -18,6 +18,8 @@ Read-only on the DB. No production path imports this. Output is an untracked ope
 from __future__ import annotations
 
 import argparse
+import json
+import math
 from pathlib import Path
 
 import openpyxl
@@ -25,16 +27,23 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from typing import Any
 
+from governed_stack_contract import (
+    ABLATION_ANCHOR_TICKERS,
+    FEATURE_ABLATION_ML_STACK_LAYERS,
+    FULL_STACK_MODEL_DISPLAY,
+    FULL_STACK_MODEL_LAYERS,
+    STACK_AUTHORITY_LAYERS,
+)
+
 HORIZONS = ["1c", "5c", "15c", "60c"]
-# FULL STACK — all 6 layers on every ablation horizon (operator binding).
-STACK = ["XGB", "LSTM", "Transformer", "Meta", "MonteCarlo", "Regime/Rules-Fusion"]
-FULL_STACK_LAYERS = ["xgb", "lstm", "transformer", "meta", "monte_carlo", "fusion"]
-# O-56: base models that consume raw features — the per-model feature-ablation dimension.
-# (Meta/MC/Fusion consume base-model outputs, not raw features, so they are NOT in this list;
-# they are scored in the separate stack-authority pass.)
-FEATURE_ABLATION_MODELS = ["xgb", "lstm", "transformer"]
+# FULL STACK — all seven models on every ablation horizon (operator binding).
+STACK = list(FULL_STACK_MODEL_DISPLAY)
+FULL_STACK_LAYERS = list(FULL_STACK_MODEL_LAYERS)
+# O-56: xgb/lstm/transformer layers that consume raw features — the per-model feature-ablation dimension.
+# (Meta / MC / Regime / Fusion consume base-model or upstream outputs — scored in stack-authority pass.)
+FEATURE_ABLATION_MODELS = list(FEATURE_ABLATION_ML_STACK_LAYERS)
 # Upper stack layers scored in stack-authority pass (layer lift comparisons).
-STACK_LAYERS = ["meta", "monte_carlo", "fusion"]
+STACK_LAYERS = list(STACK_AUTHORITY_LAYERS)
 FULL_STACK_ABLATION_MODES = (
     "xgb_only",
     "lstm_only",
@@ -46,7 +55,7 @@ FULL_STACK_ABLATION_MODES = (
     "fusion_without_mc",
     "full_fusion",
 )
-# Base-model layer comparisons — "does each base model earn its place in the stack?" These are
+# ML stack layer comparisons — "does each xgb/lstm/transformer layer earn its place in the stack?" These are
 # distinct from the upper-layer (meta/MC/fusion) comparisons: a base-model lift asks whether
 # adding LSTM/Transformer to the triplet improves log_loss over a leaner base set, on the live
 # inference path. Kept separate from STACK_LAYER_COMPARISONS so the upper-layer contract stays
@@ -84,11 +93,20 @@ STACK_LAYER_COMPARISONS = {
         "metric": "multiclass_log_loss",
         "description": "MC fusion adjustment vs Bayesian fusion without MC.",
     },
+    "regime": {
+        "baseline": "meta_stack",
+        "treatment": "fusion_without_mc",
+        "metric": "multiclass_log_loss",
+        "description": (
+            "Volatility + market regime + rules context (signals.py vol/regime stages) on the "
+            "production fusion path — fusion_without_mc vs meta_stack; MC excluded."
+        ),
+    },
     "fusion": {
         "baseline": "meta_stack",
         "treatment": "fusion_without_mc",
         "metric": "multiclass_log_loss",
-        "description": "Rules+regime Bayesian fusion vs meta stack alone.",
+        "description": "Bayesian fusion posterior (bayesian_fusion.fuse) vs meta stack alone.",
     },
 }
 
@@ -247,11 +265,6 @@ GROUPS = [
      A({"*": "KEEP"}),
      "[RESEARCH] intraday seasonality (open/close), strongest 60c/open.",
      "[FRAMING] keep on XGB; test necessity on nets (seq position may make it redundant)."),
-    ("m5_block", "m5_* lagged block", "m5_* (wall dists, greeks, iv, PCR, index chg, zone dwell)",
-     "Derived (as-of merge of recent 1m under m5_ names)", "varies", "XGB",
-     A({"1c": "DROP", "5c": "DROP", "15c": "DROP", "60c": "DROP"}),
-     "[RESEARCH] lagged duplicate features add redundancy; nets degrade on junk.",
-     "[FACT] attach_5m_additive_context is an as-of backward merge that copies recent 1m values under m5_ names — it is LAGGED 1m DATA, not a 5m bar, not a different timeframe (verified ml_data_common). [FRAMING] FINAL DISPOSITION = DROP entirely. If trailing context is wanted, engineer explicit rolling-window stats over 1m — NOT this lag."),
 ]
 
 # Cursor independent scrutiny @ 2026-06-01 (re-verified code/DB; fills Feature Master cols 12-13).
@@ -277,7 +290,6 @@ CURSOR_VERDICTS: dict[str, tuple[str, str]] = {
     "microstructure": ("Agree", "spread KEEP short horizons; absorption/continuation thinner on IWM — population gate catches."),
     "regime_composites": ("Agree w/ split", "combined_* EXCLUDE (leakage closed); pressure/trend + liquidity_behavior + session_bucket KEEP (pre-decision)."),
     "time": ("Mostly agree", "XGB KEEP all horizons; nets: TEST — seq position may subsume et_hour/et_minute."),
-    "m5_block": ("Strongly agree", "[FACT] ml_data_common attach_5m_additive_context = as-of 1m lag dup; DROP all horizons; use rolling windows or N-HiTS pooling instead."),
 }
 
 CURSOR_MC_STACK = (
@@ -307,301 +319,479 @@ CURSOR_LADDER = (
 )
 
 
-ABlation_MANIFEST_PATH = Path("governance/artifacts/feature_ablation_manifest.json")
+LEGACY_COMPOUND_MANIFEST_PATH = Path("governance/artifacts/feature_ablation_manifest.json")
+EXPANDED_ABLATION_MANIFEST_PATH = Path("governance/artifacts/feature_ablation_manifest_leaf.json")
+FEATURE_ABLATION_UNIVERSE_XLSX = Path("feature_ablation_universe.xlsx")
+SCHWAB_DICTIONARY_PATH = Path("schwab_field_inventory/schwab_field_dictionary.csv")
+SCHWAB_ABLATION_REGISTRY_PATH = Path("governance/artifacts/schwab_ablation_field_registry.json")
+SNAPSHOT_CULL_LEDGER_PATH = Path("governance/artifacts/snapshot_column_cull_ledger.json")
+# Operator binding: ablation pool must be ≥ this factor × registered ML cone — ablation picks winners.
+MIN_ABLATION_EXPANSION_FACTOR = 2.0
+ABLATION_FEATURE_GRAIN = "schwab_expanded_atomic"
+ABLATION_PRIMARY_PASS = "per_model_per_horizon_atomic_permutation_importance"
+ABLATION_CONFIRM_PASS = "per_model_per_horizon_atomic_drop_column_refit_on_survivors"
 
-# Maps engineer_features / LSTM raw columns -> ablation group_id (verified @ tip via engineer_features).
-_LSTM_RAW_TO_GROUP: dict[str, str] = {
-    "spot": "price_candle",
-    "candle_body_pts": "price_candle",
-    "candle_range_pts": "price_candle",
-    "vwap_dist_pts": "vwap",
-    "vwap_side": "vwap",
-    "zone": "zone",
-    "net_gamma": "net_gamma",
-    "net_delta": "net_delta",
-    "charm_net": "charm",
-    "dist_call_gamma_wall": "gamma_walls",
-    "dist_put_gamma_wall": "gamma_walls",
-    "dist_gamma_inflection": "gamma_walls",
-    "dist_delta_inflection": "delta_walls",
-    "dist_call_oi_wall": "oi_walls",
-    "dist_put_oi_wall": "oi_walls",
-    "spy_chg_pct": "index_xasset",
-    "qqq_chg_pct": "index_xasset",
-    "iwm_chg_pct": "index_xasset",
-    "spy_weighted_push": "index_xasset",
-    "qqq_weighted_push": "index_xasset",
-    "iwm_weighted_push": "index_xasset",
-    "vix_level": "vix",
-    "iv_level": "iv",
-}
-
-
-def _xgb_group_for(name: str) -> str:
-    n = str(name)
-    if n.startswith("m5_"):
-        return "m5_block"
-    if n in ("candle_body_pct", "candle_range_pct", "body_range_ratio", "cat_candle_direction", "nearest_above_pct", "nearest_below_pct"):
-        return "price_candle"
-    if n in ("vwap_dist_pts", "vwap_dist_pct", "cat_vwap_side"):
-        return "vwap"
-    if n in ("net_gamma", "gamma_positive", "dgex", "dgex_positive"):
-        return "net_gamma"
-    if n in ("net_delta", "delta_positive"):
-        return "net_delta"
-    if "charm" in n or n == "charm_delta_agree":
-        return "charm"
-    if ("gamma_wall" in n or "gamma_inflection" in n) and not n.startswith("m5_"):
-        return "gamma_walls"
-    if ("delta_wall" in n or "delta_inflection" in n) and not n.startswith("m5_"):
-        return "delta_walls"
-    if (("oi_wall" in n) and "gamma" not in n and "delta" not in n and "vanna" not in n) or n == "put_call_oi_ratio":
-        return "oi_walls"
-    if "vanna_wall" in n and not n.startswith("m5_"):
-        return "vanna_walls"
-    if n in ("pin_width_pct", "pin_score"):
-        return "pin"
-    if n in ("cat_zone", "cat_prev_zone", "zone_since_bars", "breakout_score"):
-        return "zone"
-    if n in ("iv_level", "iv_rank", "cat_iv_direction", "atr"):
-        return "iv"
-    if n in ("vix_level", "vix_vs_prev", "cat_vix_bucket"):
-        return "vix"
-    if n in ("tnx_yield", "tnx_chg"):
-        return "rates"
-    if n in ("qqq_vs_spy", "spy_iwm_divergence"):
-        return "index_spreads"
-    if n in (
-        "spy_chg_pct", "qqq_chg_pct", "iwm_chg_pct",
-        "spy_weighted_push", "qqq_weighted_push", "iwm_weighted_push",
-        "spy_qqq_align", "spy_iwm_align", "cross_avg_chg", "cross_std_chg",
-    ):
-        return "index_xasset"
-    if any(n == f"{t}_chg_pct" for t in ("nvda", "aapl", "msft", "amzn", "googl", "avgo", "meta", "tsla")):
-        return "megacap"
-    if any(n == f"{t}_chg_pct" for t in ("kre", "xbi", "psci", "xrt")):
-        return "breadth_etf"
-    if n in ("bid_ask_imbalance", "flow_imbalance", "imbalance_buy_pressure", "imbalance_sell_pressure"):
-        return "order_flow"
-    if n in ("candle_volume_log", "volume_ratio"):
-        return "volume"
-    if n in ("spread", "smart_money_score", "absorption_score", "continuation_score"):
-        return "microstructure"
-    if n in ("cat_pressure_label", "cat_pressure_trend", "cat_liquidity_behavior_label", "cat_session_bucket"):
-        return "regime_composites"
-    if n in ("cat_combined_signal", "cat_combined_conviction"):
-        return "combined_leakage"
-    if n in ("time_sin", "time_cos", "time_progress", "minutes_since_open", "et_hour", "et_minute"):
-        return "time"
-    return "UNASSIGNED"
-
-
-def _horizon_ladder_from_groups() -> dict[str, dict[str, str]]:
-    """group_id -> per-horizon assignment from GROUPS (KEEP/TEST/ADD/DROP)."""
-    out: dict[str, dict[str, str]] = {}
-    for key, _label, _members, _src, _pop, _cons, hz, _research, _framing in GROUPS:
-        out[key] = hz
-    return out
-
-
-def _horizon_workbook_assignment(group_id: str, horizon: str) -> str:
-    """Workbook KEEP/TEST/DROP cell — informational only; does NOT cull the ablation grid."""
-    ladder = _horizon_ladder_from_groups()
-    return str((ladder.get(group_id) or {}).get(horizon, "TEST") or "TEST").strip()
-
-
-def _group_meta() -> dict[str, dict[str, str]]:
-    out: dict[str, dict[str, str]] = {}
-    for key, label, _members, _src, _pop, _cons, _hz, _research, _framing in GROUPS:
-        if key == "m5_block":
-            disp = "DROP"
-        elif key == "regime_composites":
-            disp = "ABLATE"
-        else:
-            disp = "ABLATE"
-        out[key] = {"label": label, "workbook_disposition": "DROP" if key == "m5_block" else "TEST/KEEP per horizon"}
-    out["index_spreads"] = {"label": "Cross-index spreads (Slice A)", "workbook_disposition": "ABLATE"}
-    out["rates"] = {"label": "Rates (TNX yield/chg)", "workbook_disposition": "ABLATE"}
-    out["combined_leakage"] = {
-        "label": "Post-call combined signal/conviction (circular leakage)",
-        "workbook_disposition": "EXCLUDE",
+# Schwab dictionary categorization (research tiers — NOT winner-picking; ablation decides value).
+_SCHWAB_INCLUDE_CATEGORIES = frozenset(
+    {
+        "greeks",
+        "volatility",
+        "bid_ask",
+        "volume",
+        "key_levels",
+        "streaming_quote",
+        "streaming_book",
+        "options_chain",
+        "time",
+        "price_ohlc",
     }
-    return out
-
-
-def resolve_ablation_universe() -> dict[str, Any]:
-    """Enumerate XGB engineered + LSTM channel members per ablation group from live code."""
-    import pandas as pd
-    import lstm_data as l
-    from ml_train import (
-        CATEGORICALS,
-        SCALE_INVARIANT_COLS,
-        WALL_DISTANCE_COLS,
-        engineer_features,
-    )
-
-    row: dict[str, Any] = {
-        "ticker": "SPY",
-        "ts_utc": 1.0,
-        "spot": 100.0,
-        "outcome_1c": "up",
-        "et_hour": 10,
-        "et_minute": 0,
-        "candle_body_pts": 0.5,
-        "candle_range_pts": 1.0,
-        "nearest_above_dist": 1.0,
-        "nearest_below_dist": 1.0,
-        "net_gamma": 1.0,
-        "zone": "pin_neutral",
-        "vwap_side": "above",
-        "flow_imbalance": 0.5,
+)
+_SCHWAB_INCLUDE_LIKELY_USE = frozenset(
+    {
+        "prediction_model",
+        "direct_order_flow",
+        "order_flow_proxy",
+        "risk_model",
+        "regime_detection",
+        "key_levels",
     }
-    for c in list(WALL_DISTANCE_COLS) + list(SCALE_INVARIANT_COLS):
-        row.setdefault(c, 1.0)
-    for c in CATEGORICALS:
-        row.setdefault(c, "neutral")
-    df = pd.DataFrame([row, {**row, "ts_utc": 2.0, "net_gamma": 2.0}])
-    _X, feat_names, _, _ = engineer_features(df)
-    xgb_by_group: dict[str, list[str]] = {}
-    for n in feat_names:
-        g = _xgb_group_for(n)
-        xgb_by_group.setdefault(g, []).append(n)
+)
+_SCHWAB_TRADE_ENDPOINTS = frozenset({"quotes", "chains", "pricehistory", "streaming", "movers", "instruments"})
 
-    lstm_5m: dict[str, list[str]] = {}
-    for raw in l.FEATURES_5M:
-        g = _LSTM_RAW_TO_GROUP.get(raw, "UNASSIGNED")
-        lstm_5m.setdefault(g, []).append(raw)
-    lstm_1m: dict[str, list[str]] = {}
-    for raw in l.FEATURES_1M:
-        g = _LSTM_RAW_TO_GROUP.get(raw, "UNASSIGNED")
-        lstm_1m.setdefault(g, []).append(raw)
+def _camel_to_snake(name: str) -> str:
+    import re
 
-    meta = _group_meta()
-    group_ids = sorted(
-        set(xgb_by_group) | set(lstm_5m) | set(lstm_1m) | set(meta),
-        key=lambda x: (x == "UNASSIGNED", x),
-    )
-    groups_out = []
-    for gid in group_ids:
-        if gid == "UNASSIGNED":
-            continue
-        if gid == "combined_leakage":
-            disposition = "EXCLUDE"
-        elif gid == "m5_block":
-            disposition = "DROP"
-        else:
-            disposition = "ABLATE"
-        m = meta.get(gid, {"label": gid, "workbook_disposition": "ABLATE"})
-        hz_map = {h: _horizon_workbook_assignment(gid, h) for h in HORIZONS}
-        groups_out.append(
+    s1 = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+
+
+def _schwab_primary_endpoint(source_endpoints: str) -> str:
+    return (source_endpoints or "").split(";")[0].strip()
+
+
+def categorize_schwab_field(row: dict) -> str:
+    """Catalog tier for one Schwab dictionary row — categorization only, not ablation verdict."""
+    category = str(row.get("category") or "unknown").strip()
+    likely_use = str(row.get("likely_use") or "unknown").strip()
+    priority = str(row.get("priority") or "medium").strip()
+    endpoint = _schwab_primary_endpoint(str(row.get("source_endpoints") or ""))
+
+    if likely_use == "ui_only":
+        return "EXCLUDE_UI"
+    if endpoint == "market_hours" and category == "unknown" and likely_use == "unknown":
+        return "EXCLUDE_SESSION"
+    if likely_use in _SCHWAB_INCLUDE_LIKELY_USE or category in _SCHWAB_INCLUDE_CATEGORIES:
+        return "ML_ABLATION_CANDIDATE"
+    if endpoint in _SCHWAB_TRADE_ENDPOINTS and priority in ("high", "medium") and category != "unknown":
+        return "ML_INGEST_CANDIDATE"
+    if endpoint in _SCHWAB_TRADE_ENDPOINTS and priority == "high":
+        return "ML_INGEST_CANDIDATE"
+    return "CATALOG_ONLY"
+
+
+def _canonical_to_column_hint(canonical_field: str, example_raw: str = "") -> str:
+    leaf = str(canonical_field or "").split(".")[-1]
+    if leaf in ("*", "callExpDateMap", "putExpDateMap"):
+        leaf = example_raw.split(".")[-1] if example_raw else leaf
+    hint = _camel_to_snake(leaf)
+    if hint in ("last_price", "lastprice"):
+        return "spot"
+    if hint == "volatility":
+        return "iv_level"
+    return hint
+
+
+def build_schwab_ablation_field_registry(*, write: bool = True) -> dict:
+    """Categorize all Schwab dictionary rows; write governance/artifacts/schwab_ablation_field_registry.json."""
+    import csv
+    from datetime import datetime, timezone
+
+    if not SCHWAB_DICTIONARY_PATH.is_file():
+        raise FileNotFoundError(SCHWAB_DICTIONARY_PATH)
+    rows_in = list(csv.DictReader(SCHWAB_DICTIONARY_PATH.open(encoding="utf-8")))
+    fields: list[dict] = []
+    tier_counts: dict[str, int] = {}
+    for row in rows_in:
+        tier = categorize_schwab_field(row)
+        tier_counts[tier] = tier_counts.get(tier, 0) + 1
+        fields.append(
             {
-                "group_id": gid,
-                "label": m["label"],
-                "disposition": disposition,
-                "horizon_disposition": hz_map,
-                "members": {
-                    "xgb": sorted(xgb_by_group.get(gid, [])),
-                    "lstm_5m": sorted(lstm_5m.get(gid, [])),
-                    "lstm_1m": sorted(lstm_1m.get(gid, [])),
-                },
-                "member_counts": {
-                    "xgb": len(xgb_by_group.get(gid, [])),
-                    "lstm_5m": len(lstm_5m.get(gid, [])),
-                    "lstm_1m": len(lstm_1m.get(gid, [])),
-                },
+                "canonical_field": row.get("canonical_field"),
+                "catalog_tier": tier,
+                "category": row.get("category"),
+                "likely_use": row.get("likely_use"),
+                "priority": row.get("priority"),
+                "source_endpoints": row.get("source_endpoints"),
+                "column_hint": _canonical_to_column_hint(
+                    str(row.get("canonical_field") or ""),
+                    str(row.get("example_raw_field") or ""),
+                ),
             }
         )
-    unassigned = sorted(xgb_by_group.get("UNASSIGNED", []))
-    ablate_group_count = sum(1 for g in groups_out if g["disposition"] == "ABLATE")
-    anchors = ["SPY", "QQQ", "IWM"]
-    # O-56: per-model × per-horizon grouped permutation. Full cartesian — every ABLATE group ×
-    # every horizon × every MODEL × every anchor. Each base model (xgb/lstm/transformer) gets its
-    # OWN per-horizon survivor set (feature→model→horizon matrix). Workbook horizon_disposition is
-    # informational — ablation scores survivors, not pre-cull.
-    per_model_feature_cells = (
-        len(anchors) * len(FEATURE_ABLATION_MODELS) * len(HORIZONS) * ablate_group_count
-    )
-    stack_authority_cells = len(anchors) * len(HORIZONS)
+    out = {
+        "schema_version": "1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "schwab_dictionary_path": str(SCHWAB_DICTIONARY_PATH),
+        "schwab_field_count": len(fields),
+        "tier_counts": tier_counts,
+        "min_ablation_expansion_factor": MIN_ABLATION_EXPANSION_FACTOR,
+        "fields": fields,
+    }
+    if write:
+        SCHWAB_ABLATION_REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        SCHWAB_ABLATION_REGISTRY_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    return out
+
+
+def _registered_ml_columns() -> dict[str, set[str]]:
+    """Live ingest cones: xgb tabular (incl. cf_*); LSTM streams + X_conf (cf_* not duplicated on streams)."""
+    import lstm_data as l
+    from ml_train import tabular_training_feature_names
+
+    tabular = set(tabular_training_feature_names())
+    conf = set(l.CONFLUENCE_FEATURES)
+    sequence = tabular - conf
+    lstm_ingest = sequence | conf
     return {
-        "schema_version": "3",
-        "source": "tools/build_feature_assignment_matrix_v2.py::resolve_ablation_universe",
+        "xgb": tabular,
+        "lstm_5m": lstm_ingest,
+        "lstm_1m": lstm_ingest,
+    }
+
+
+def _snapshot_expansion_columns(registered: dict[str, set[str]]) -> list[dict]:
+    """Snapshot columns with trade consumers not yet in the registered cone."""
+    if not SNAPSHOT_CULL_LEDGER_PATH.is_file():
+        return []
+    try:
+        ledger = json.loads(SNAPSHOT_CULL_LEDGER_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return []
+    known = set().union(*registered.values())
+    out: list[dict] = []
+    for col in ledger.get("columns") or []:
+        if not isinstance(col, dict):
+            continue
+        name = str(col.get("column") or "").strip()
+        verdict = str(col.get("verdict") or "")
+        if not name or name in known:
+            continue
+        if verdict not in ("KEEP", "KEEP_LIVE", "WIRED_PENDING_DATA"):
+            continue
+        null_pct = float(col.get("null_pct") or 100.0)
+        if null_pct >= 99.0:
+            continue
+        out.append(
+            {
+                "column": name,
+                "verdict": verdict,
+                "null_pct": null_pct,
+                "catalog_tier": "SNAPSHOT_EXPANSION",
+                "ingest_status": "in_snapshot",
+            }
+        )
+    return sorted(out, key=lambda r: (r["null_pct"], r["column"]))
+
+
+def _atomic_ablation_group(
+    *,
+    group_id: str,
+    label: str,
+    column: str,
+    catalog_tier: str,
+    ingest_status: str,
+    schwab_lineage: list[str],
+    disposition: str = "ABLATE",
+) -> dict:
+    """Pure feature entry — no model placement (ZERO-BIAS: ablation survivors decide model×horizon)."""
+    return {
+        "group_id": group_id,
+        "label": label,
+        "atomic_column": column,
+        "disposition": disposition,
+        "catalog_tier": catalog_tier,
+        "ingest_status": ingest_status,
+        "schwab_lineage": schwab_lineage,
+    }
+
+
+def per_model_ablation_cell_target(manifest: dict) -> int:
+    method = manifest.get("ablation_method") or {}
+    anchors = len(method.get("anchors") or list(ABLATION_ANCHOR_TICKERS))
+    models = len(method.get("models") or FEATURE_ABLATION_MODELS)
+    hz = len(method.get("horizons") or HORIZONS)
+    ablate = len([g for g in manifest.get("groups") or [] if g.get("disposition") == "ABLATE"])
+    return anchors * models * hz * ablate
+
+
+def _atomic_members_from_ingest_cone(
+    column: str, registered: dict[str, set[str]]
+) -> tuple[list[str], list[str], list[str]]:
+    """Ingest-capability metadata only — NOT placement. O-56 survivors assign model×horizon winners."""
+    xgb = [column] if column in registered.get("xgb", set()) else []
+    l5 = [column] if column in registered.get("lstm_5m", set()) else []
+    l1 = [column] if column in registered.get("lstm_1m", set()) else []
+    return xgb, l5, l1
+
+
+def atomic_column_for_manifest_group(group: dict) -> str | None:
+    """Single atomic column identity from a manifest group (no model stamps)."""
+    col = group.get("atomic_column")
+    if col:
+        return str(col).strip() or None
+    gid = str(group.get("group_id") or "")
+    for prefix in ("reg__atomic__", "schwab__", "snap__"):
+        if gid.startswith(prefix):
+            return gid[len(prefix) :]
+    return None
+
+
+def expected_ingest_members_for_atomic_group(
+    group: dict, registered: dict[str, set[str]] | None = None
+) -> dict[str, list[str]]:
+    """Re-derive ingest-capability from live code cone — audit-time only, not manifest fields."""
+    if registered is None:
+        registered = _registered_ml_columns()
+    col = atomic_column_for_manifest_group(group)
+    if not col:
+        return {"xgb": [], "lstm_5m": [], "lstm_1m": []}
+    xgb, l5, l1 = _atomic_members_from_ingest_cone(col, registered)
+    return {"xgb": xgb, "lstm_5m": l5, "lstm_1m": l1}
+
+
+def resolve_expanded_schwab_ablation_universe() -> dict[str, Any]:
+    """Schwab-catalog-first ablation universe: categorize all 2393 leaves, expand pool ≥2× registered cone."""
+    registry = build_schwab_ablation_field_registry(write=True)
+    registered = _registered_ml_columns()
+    reg_union = set().union(*registered.values())
+    reg_count = len(reg_union)
+
+    groups: list[dict] = []
+    seen_group_ids: set[str] = set()
+    lineage_by_column: dict[str, list[str]] = {}
+
+    for col in sorted(reg_union):
+        gid = f"reg__atomic__{col}"
+        if gid in seen_group_ids:
+            continue
+        seen_group_ids.add(gid)
+        if col in set(getattr(__import__("lstm_data", fromlist=["CONFLUENCE_FEATURES"]), "CONFLUENCE_FEATURES", [])):
+            tier = "REGISTERED_CONFLUENCE"
+        else:
+            tier = "REGISTERED_UNIVERSE"
+        groups.append(
+            _atomic_ablation_group(
+                group_id=gid,
+                label=f"atomic / {col}",
+                column=col,
+                catalog_tier=tier,
+                ingest_status="in_cone",
+                schwab_lineage=[],
+            )
+        )
+
+    for snap in _snapshot_expansion_columns(registered):
+        col = snap["column"]
+        gid = f"snap__{col}"
+        if gid in seen_group_ids:
+            continue
+        seen_group_ids.add(gid)
+        groups.append(
+            _atomic_ablation_group(
+                group_id=gid,
+                label=f"snapshot expansion / {col}",
+                column=col,
+                catalog_tier=snap["catalog_tier"],
+                ingest_status=snap["ingest_status"],
+                schwab_lineage=[],
+            )
+        )
+
+    pool_fields = [
+        f
+        for f in registry["fields"]
+        if f.get("catalog_tier") in ("ML_ABLATION_CANDIDATE", "ML_INGEST_CANDIDATE")
+    ]
+    for field in pool_fields:
+        hint = str(field.get("column_hint") or "").strip()
+        canonical = str(field.get("canonical_field") or "")
+        if not hint:
+            continue
+        lineage_by_column.setdefault(hint, []).append(canonical)
+
+    min_ablate_groups = int(math.ceil(reg_count * MIN_ABLATION_EXPANSION_FACTOR))
+    for hint, lineages in sorted(lineage_by_column.items()):
+        if hint in reg_union:
+            for g in groups:
+                if g.get("atomic_column") == hint:
+                    existing = g.setdefault("schwab_lineage", [])
+                    for leaf in lineages:
+                        if leaf not in existing:
+                            existing.append(leaf)
+            continue
+        gid = f"schwab__{hint}"
+        if gid in seen_group_ids:
+            continue
+        seen_group_ids.add(gid)
+        tier = "ML_INGEST_CANDIDATE"
+        for f in pool_fields:
+            if f.get("column_hint") == hint:
+                tier = str(f.get("catalog_tier") or tier)
+                break
+        groups.append(
+            _atomic_ablation_group(
+                group_id=gid,
+                label=f"schwab catalog / {hint}",
+                column=hint,
+                catalog_tier=tier,
+                ingest_status="not_wired",
+                schwab_lineage=sorted(set(lineages)),
+            )
+        )
+
+    ablate_groups = [g for g in groups if g.get("disposition") == "ABLATE"]
+    if len(ablate_groups) < min_ablate_groups:
+        raise RuntimeError(
+            f"Expanded ablation universe too small: {len(ablate_groups)} groups "
+            f"< {min_ablate_groups} (= {MIN_ABLATION_EXPANSION_FACTOR}× registered cone {reg_count})"
+        )
+
+    anchors = list(ABLATION_ANCHOR_TICKERS)
+    per_model_cells = len(anchors) * len(FEATURE_ABLATION_MODELS) * len(HORIZONS) * len(ablate_groups)
+    payload = {
+        "schema_version": "4_schwab_expanded",
+        "source": "tools/build_feature_assignment_matrix_v2.py::resolve_expanded_schwab_ablation_universe",
         "ablation_method": {
-            "primary_pass": "per_model_grouped_permutation_importance",
+            "primary_pass": ABLATION_PRIMARY_PASS,
             "primary_pass_description": (
-                "O-56: per base model (xgb/lstm/transformer) × horizon, train that model on a "
-                "chronological holdout and grouped-permute each ABLATE group's features; measure "
-                "THAT MODEL's MCC delta on the held-out tail. Each model gets its OWN per-horizon "
-                "survivor set (feature→model→horizon matrix). Full cartesian grid — workbook "
-                "horizon cells do NOT pre-cull; ablation decides what each model keeps."
+                "Per ML stack layer (xgb/lstm/transformer) × horizon (1c/5c/15c/60c): train on chronological "
+                "holdout and permute/drop ONE atomic feature at a time; measure that model's MCC delta. "
+                "Survivors resolve per (model, horizon) cell only."
             ),
+            "feature_grain": ABLATION_FEATURE_GRAIN,
+            "universe_policy": (
+                "Schwab dictionary categorization (all 2393 rows) + registered ML cone + snapshot "
+                f"expansion; pool size ≥ {MIN_ABLATION_EXPANSION_FACTOR}× registered cone; ablation "
+                "decides winners — agents MUST NOT pre-pick stack-consumed-only subsets."
+            ),
+            "schwab_registry_path": str(SCHWAB_ABLATION_REGISTRY_PATH),
             "decision_mode": "per_model_holdout",
             "decision_metric": "mcc_delta",
             "models": list(FEATURE_ABLATION_MODELS),
             "full_stack_layers": list(FULL_STACK_LAYERS),
             "horizons_required": list(HORIZONS),
             "horizons_binding": "all_four_mandatory__partial_horizon_runs_rejected",
-            "grid_rule": (
-                "full_cartesian_anchor_x_horizon_x_ablate_group__"
-                "workbook_horizon_disposition_informational_only"
-            ),
-            "confirm_pass": "per_model_grouped_drop_column_refit_on_survivors",
+            "confirm_pass": ABLATION_CONFIRM_PASS,
             "confirm_pass_description": (
-                "After the primary permutation pass: per model × horizon, refit on survivors-only "
-                "(DROP_CANDIDATE group columns removed) and confirm the held-out MCC is not worse. "
-                "Pre-combined-retrain validation."
+                "After primary atomic permutation: per model × horizon, refit on survivors-only "
+                "(dropped atomic features removed) and confirm held-out MCC is not worse."
             ),
             "confirm_pass_cli": "python tools/feature_curation_gate.py --ablation-confirm",
-            "eval_window": {
-                "default_max_rows": 500,
-                "full_history_env": "ED_ABLATION_FULL_HISTORY=1",
-                "override_max_rows_env": "ED_ABLATION_MAX_ROWS",
-            },
-            "grid": ["anchor_ticker", "model_family", "horizon_slug", "group_id"],
             "anchors": anchors,
+            "pool_tickers": anchors,
+            "stage3_scoring_mode": "pooled_ticker_rows_one_log_loss",
+            "stage3_grid": "captured_cone_feature_x_horizon",
             "horizons": list(HORIZONS),
-            "eval_split": "chronological_holdout_per_model",
-            "stack_layers": list(STACK_LAYERS),
-            "stack_authority_pass": {
-                "description": (
-                    "Separate stack-component authority (not feature ablation): mode comparisons "
-                    "for base-model and upper-layer lifts on the same production path."
-                ),
-                "engine": "arch_competition.stack_bundle_eval_v1.run_stack_bundle_evaluation",
-                "grid": ["anchor_ticker", "horizon_slug"],
-                "modes": list(FULL_STACK_ABLATION_MODES),
-                "layer_comparisons": STACK_LAYER_COMPARISONS,
-                "base_model_comparisons": BASE_MODEL_COMPARISONS,
-                "primary_metric": "multiclass_log_loss",
-            },
-            "per_model_feature_ablation": {
-                "engine": "tools.feature_curation_gate.run_per_model_grouped_permutation_cell",
-                "grid": ["anchor_ticker", "model_family", "horizon_slug", "group_id"],
-                "models": list(FEATURE_ABLATION_MODELS),
-            },
         },
-        "groups": groups_out,
+        "groups": groups,
         "totals": {
-            "xgb_engineered_columns": len(feat_names),
-            "lstm_5m_channels": len(l.FEATURES_5M),
-            "lstm_1m_channels": len(l.FEATURES_1M),
-            "ablation_group_count": ablate_group_count,
-            "per_model_feature_cell_count": per_model_feature_cells,
-            "stack_authority_cell_count": stack_authority_cells,
-            "grid_cell_count": per_model_feature_cells + stack_authority_cells,
-            "full_stack_layer_count": len(FULL_STACK_LAYERS),
-            "stack_layer_count": len(STACK_LAYERS),
+            "schwab_dictionary_rows": registry["schwab_field_count"],
+            "schwab_tier_counts": registry["tier_counts"],
+            "registered_ml_cone_columns": reg_count,
+            "min_ablation_expansion_factor": MIN_ABLATION_EXPANSION_FACTOR,
+            "ablation_group_count": len(ablate_groups),
+            "per_model_feature_cell_count": per_model_cells,
+            "expansion_ratio_vs_cone": round(len(ablate_groups) / max(reg_count, 1), 2),
         },
-        "unassigned_xgb": unassigned,
     }
+    return payload
+
+
+def load_ablation_cell_target(manifest_path: Path | None = None) -> int:
+    """Primary matrix cell target from on-disk expanded manifest (0 if missing)."""
+    mp = manifest_path or EXPANDED_ABLATION_MANIFEST_PATH
+    if not mp.is_file():
+        return 0
+    try:
+        data = json.loads(mp.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return 0
+    return per_model_ablation_cell_target(data)
+
+
+def resolve_ablation_universe() -> dict[str, Any]:
+    """Canonical ablation manifest — Schwab-catalog expanded universe (NOT stack-consumed-only)."""
+    return resolve_expanded_schwab_ablation_universe()
 
 
 def write_feature_ablation_manifest(path: Path | None = None) -> Path:
-    import json
-
-    out_path = path or ABlation_MANIFEST_PATH
+    out_path = path or EXPANDED_ABLATION_MANIFEST_PATH
     payload = resolve_ablation_universe()
+    try:
+        from db import DB_PATH
+        from tools.feature_curation_gate import reconcile_manifest_ingest_status_to_db_wire
+
+        if Path(DB_PATH).is_file():
+            payload = reconcile_manifest_ingest_status_to_db_wire(payload, str(DB_PATH))
+    except Exception:
+        pass
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_feature_ablation_universe_xlsx(payload=payload)
+    return out_path
+
+
+def _join_member_list(items) -> str:
+    if isinstance(items, list):
+        return ", ".join(str(x) for x in items)
+    return str(items) if items else ""
+
+
+def write_feature_ablation_universe_xlsx(
+    *,
+    payload: dict[str, Any] | None = None,
+    path: Path | None = None,
+) -> Path:
+    """Single operator workbook — one sheet, ablation groups only (machine JSON stays separate)."""
+    data = payload if payload is not None else resolve_ablation_universe()
+    groups = [g for g in (data.get("groups") or []) if g.get("disposition") == "ABLATE"]
+    totals = data.get("totals") or {}
+    out_path = path or FEATURE_ABLATION_UNIVERSE_XLSX
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Feature Ablation List"
+    headers = [
+        "group_id",
+        "label",
+        "atomic_column",
+        "catalog_tier",
+        "ingest_status",
+        "schwab_lineage",
+    ]
+    for c, name in enumerate(headers, 1):
+        _wrapcell(ws, 1, c, name, fill=HDR, font=WHITE)
+    widths = [28, 36, 24, 20, 14, 40]
+    for j, w in enumerate(widths, 1):
+        ws.column_dimensions[get_column_letter(j)].width = w
+
+    for r, g in enumerate(groups, 2):
+        ws.cell(r, 1, g.get("group_id", ""))
+        ws.cell(r, 2, g.get("label", ""))
+        ws.cell(r, 3, g.get("atomic_column", ""))
+        ws.cell(r, 4, g.get("catalog_tier", ""))
+        ws.cell(r, 5, g.get("ingest_status", ""))
+        ws.cell(r, 6, _join_member_list(g.get("schwab_lineage", [])))
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{max(1, len(groups) + 1)}"
+    wb.properties.title = "Feature Ablation Universe"
+    wb.properties.subject = (
+        f"{len(groups)} ablation groups; "
+        f"expansion {totals.get('expansion_ratio_vs_cone')}× cone; "
+        f"grain {ABLATION_FEATURE_GRAIN}"
+    )
+    wb.save(out_path)
     return out_path
 
 
@@ -661,7 +851,7 @@ def build():
         ("p", "Hard rules in force: Schwab-first (leaf or governed NO_SCHWAB exception, no fabricated values); no leakage; held-out / purged-CV evaluation; MCC + per-class recall over accuracy; no carried residuals."),
         ("blank", ""),
         ("h", "WHAT CHANGED FROM v1 (corrections you should check)"),
-        ("p", "  - FULL 6-LAYER STACK now shown (XGB, LSTM, Transformer, Meta, Monte Carlo, Regime/Rules-Fusion), all 4 horizons — operator: 'use the entire stack; not doing so is cheating ourselves.' v1 wrongly showed only 3 base models."),
+        ("p", "  - FULL 6-LAYER STACK now shown (XGB, LSTM, Transformer, Meta, Monte Carlo, Regime/Rules-Fusion), all 4 horizons — operator: 'use the entire stack; not doing so is cheating ourselves.' v1 wrongly showed only xgb/lstm/transformer-only framing."),
         ("p", "  - CROSS-HORIZON SHARED-FEATURE LADDER added (operator insight: coherence emerges from shared inputs up the ladder). See 'Cross-horizon ladder' sheet — quantified."),
         ("p", "  - OFI corrected: v1 said 'bid_ask_imbalance mostly NULL' — WRONG. [FACT] the column does not exist at all; code uses flow_imbalance. Claude's error, corrected."),
         ("p", "  - m5_ block: [FACT] it is lagged 1m data, not a 5m timeframe. FINAL DISPOSITION proposed = DROP. (Earlier 'build 5/15/60m bar tables' idea RETRACTED — research says multi-rate pooling inside one model, not separate bar tables.)"),
@@ -787,7 +977,7 @@ def build():
         ("title", "ARCHITECTURE — independent 12-model stack vs joint shared-encoder. CURSOR: independent verdict required."),
         ("blank", ""),
         ("h", "[FACT] current design (verified)"),
-        ("p", "12 base models = 3 architectures (XGB, LSTM, Transformer) x 4 horizons (1c/5c/15c/60c), each trained independently. Horizons are FORWARD-LABEL windows over 1m bars (OUTCOME_HORIZON_MINUTES = {1c:1,5c:5,15c:15,60c:60}), NOT separate timeframes. One real bar table: price_bars_1m. Fused via Meta (LogReg over base probs) + bayesian_fusion (regime+MC+rules)."),
+        ("p", "12 ML stack layer slots = 3 architectures (XGB, LSTM, Transformer) x 4 horizons (1c/5c/15c/60c), each trained independently. Horizons are FORWARD-LABEL windows over 1m bars (OUTCOME_HORIZON_MINUTES = {1c:1,5c:5,15c:15,60c:60}), NOT separate timeframes. One real bar table: price_bars_1m. Fused via Meta (LogReg over layer probs) + bayesian_fusion (regime+MC+rules)."),
         ("blank", ""),
         ("h", "[RESEARCH] what the literature says (lean deep-research; cite + challenge)"),
         ("research", "  - Joint shared-encoder + per-horizon DIRECT heads (TFT Lim 2021 arXiv:1912.09363; N-HiTS AAAI 2023 arXiv:2201.12886) beats independent on daily/hourly (~7-40%). Intraday-direct evidence (Zhang&Zohren 2021 arXiv:2105.10430): shared encoder comparable short-horizon, SUPERIOR long-horizon (short feeds long)."),
@@ -930,7 +1120,7 @@ def _stack_grid(ws):
         ("Transformer", ["active", "active", "active", "active"],
          "[FACT] consumes LSTM seq encoding + [xgb|lstm] OOF base-prob vectors (cascade). [FRAMING] primary candidate for the joint multi-horizon model (TFT-style)."),
         ("Meta (LogReg)", ["active", "active", "active", "active"],
-         "[FACT] consumes ONLY the [xgb|lstm|transformer] base-prob vector — NO raw features. Its 'features' ARE the base models."),
+         "[FACT] consumes ONLY the [xgb|lstm|transformer] layer-prob vector — NO raw features. Its 'features' ARE the ML stack layers."),
         ("Monte Carlo", ["underutilized", "underutilized", "underutilized", "underutilized"],
          "[FACT] simulator, NOT a directional learner. monte_carlo.simulate(horizon_bars=N) projects N bars forward -> expected_move, efe (favorable excursion), eae (adverse excursion), containment (monte_carlo.py:289-293). Runs every tick per governed horizon (signals.py:1134-1149 loop; _mc_bars=horizon_slug_to_mc_bars(_hz) :497; 1c->1,5c->5,15c->15,60c->60 bars). [FACT-CORRECTED by Cursor scrutiny 2026-06-01] status is UNDERUTILIZED, not 'unused': mc_efe/mc_eae DO drive money-path DECISIONS -> position sizing (call_engine.py:997-1048 EAE/stop ratio + EFE-stop floor + EAE gate; :1751 compute_position_size), narrative (prediction_engine.py:1188-1212), display (Key Levels static/index.html:6770-6780), and a post-fusion directional nudge via mc_feature_dict (mc_fusion_adjustment.py @ signals.py:1161-1164). NOT used: (i) fusion posterior weight = 0 (bayesian_fusion.py:776); (ii) NOT in the engineer_features ML training cone; (iii) NOT a simultaneous 4-horizon card envelope (sizing/narrative use LIVE-horizon MC only, default 1c, signals.py:1196-1198). [FACT-BLOCKING — Cursor catch] WALL-CLOCK MISALIGNMENT: BAR_MINUTES=5 (monte_carlo.py:32) so each MC step = 5 MINUTES, but ML outcome horizons are 1-MINUTE clock (horizon_outcomes.py:42-46). Effective MC forward time = bars x 5m: 1c->5min (label 1min), 5c->25min (label 5min), 15c->75min (label 15min), 60c->300min (label 60min) — MC simulates 5x TOO FAR vs the training label. The Key Levels header 'horizon ... 1m snapshot clock' (static/index.html:6768) is WRONG — the engine steps 5m. [FRAMING] MC = magnitude/risk axis, orthogonal to direction. P1 disposition (a) efe/eae/containment as per-horizon ML features + (b) per-card risk envelope tied to LFE — PRECONDITION: fix the 5m-vs-1m misalignment FIRST (BAR_MINUTES=1 or explicit minutes->bars map) or efe/eae features are mislabeled vs outcome_Nc; and decide if sizing stays live-horizon-only or goes per-card-horizon. Extend the existing sizing/narrative/display consumers, NOT greenfield."),
         ("Regime/Rules-Fusion", ["active", "active", "active", "active"],
@@ -949,7 +1139,7 @@ def _stack_grid(ws):
         r += 1
     # note row
     _wrapcell(ws, r + 1, 1, "[FRAMING] operator principle", font=BOLD, border=False)
-    _wrapcell(ws, r + 1, 2, "Each card = the FULL stack fused for that horizon (all 6 layers), not 3 base models. 'Not using the full stack at each horizon is cheating ourselves.' Ablation per-horizon confirms each layer is ADDITIVE (independent signal) vs dead weight — full-stack is the starting hypothesis, ablation earns each layer's place.",
+    _wrapcell(ws, r + 1, 2, "Each card = the FULL stack fused for that horizon (all 6 layers), not xgb/lstm/transformer-only. 'Not using the full stack at each horizon is cheating ourselves.' Ablation per-horizon confirms each layer is ADDITIVE (independent signal) vs dead weight — full-stack is the starting hypothesis, ablation earns each layer's place.",
               align=WRAP)
     ws.merge_cells(start_row=r + 1, start_column=2, end_row=r + 1, end_column=7)
     ws.row_dimensions[r + 1].height = 60
@@ -962,13 +1152,30 @@ if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     ap = argparse.ArgumentParser()
     ap.add_argument("--manifest-only", action="store_true", help="Write feature_ablation_manifest.json only")
-    ap.add_argument("--manifest-path", default=str(ABlation_MANIFEST_PATH))
+    ap.add_argument("--manifest-path", default=str(EXPANDED_ABLATION_MANIFEST_PATH))
+    ap.add_argument(
+        "--build-schwab-ablation-universe",
+        action="store_true",
+        help="Categorize all Schwab fields + write expanded ablation manifest (≥2× ML cone)",
+    )
+    ap.add_argument(
+        "--design-matrix",
+        action="store_true",
+        help="Legacy 7-sheet design workbook only (not the operator ablation list)",
+    )
     args = ap.parse_args()
-    if args.manifest_only:
+    if args.design_matrix:
+        print("wrote:", build())
+    elif args.build_schwab_ablation_universe or args.manifest_only:
+        reg = build_schwab_ablation_field_registry(write=True)
         p = write_feature_ablation_manifest(Path(args.manifest_path))
         totals = resolve_ablation_universe()["totals"]
-        print(f"wrote {p}  xgb={totals['xgb_engineered_columns']}  ablation_groups={totals['ablation_group_count']}")
+        print(
+            f"wrote registry ({reg['schwab_field_count']} fields) + manifest {p} + "
+            f"{FEATURE_ABLATION_UNIVERSE_XLSX}  "
+            f"ablation_groups={totals['ablation_group_count']}  "
+            f"expansion_ratio={totals.get('expansion_ratio_vs_cone')}"
+        )
     else:
-        print("wrote:", build())
         mp = write_feature_ablation_manifest()
-        print("wrote:", mp)
+        print(f"wrote: {mp} + {FEATURE_ABLATION_UNIVERSE_XLSX}")

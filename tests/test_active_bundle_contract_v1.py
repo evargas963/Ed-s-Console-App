@@ -4,18 +4,31 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def _write_minimal_bundle(bundle_dir: Path, ticker: str, hz: str) -> None:
+def _write_minimal_bundle(bundle_dir: Path, ticker: str, hz: str, *, encoder_schema_version: int | None = None) -> None:
     from model_contract import contract_metadata_dict
 
     bundle_dir.mkdir(parents=True, exist_ok=True)
     t = ticker.upper()
     contract = contract_metadata_dict()
     feats = ["f1"]
+    import torch
+    from lstm_data import LSTM_ENCODER_SCHEMA_VERSION, encoded_width_5m, encoded_width_1m
+
+    enc_ver = LSTM_ENCODER_SCHEMA_VERSION if encoder_schema_version is None else encoder_schema_version
+    seq_stub = {
+        "encoder_schema_version": enc_ver,
+        "encoder_width_5m_pre_mask": encoded_width_5m(),
+        "encoder_width_1m_pre_mask": encoded_width_1m(),
+        "n_features": encoded_width_5m(),
+    }
     for kind in ("xgb", "lstm", "transformer"):
         ext = ".pkl" if kind == "xgb" else ".pt"
         model_name = f"{kind}_{t}_{hz}{ext}"
         meta_name = f"{kind}_{t}_{hz}_meta.json"
-        bundle_dir.joinpath(model_name).write_bytes(b"x")
+        if kind == "xgb":
+            bundle_dir.joinpath(model_name).write_bytes(b"x")
+        else:
+            torch.save(seq_stub, str(bundle_dir / model_name))
         meta = {
             **contract,
             "features": feats,
@@ -29,7 +42,11 @@ def _write_minimal_bundle(bundle_dir: Path, ticker: str, hz: str) -> None:
             meta["vol_medians"] = {}
             meta["impute_medians"] = {"f1": 0.0}
         bundle_dir.joinpath(meta_name).write_text(__import__("json").dumps(meta), encoding="utf-8")
-    bundle_dir.joinpath(f"meta_{t}_{hz}.pkl").write_bytes(b"meta-stack-test-stub")
+    import pickle
+
+    bundle_dir.joinpath(f"meta_{t}_{hz}.pkl").write_bytes(
+        pickle.dumps({"meta_stack_test_stub": True}, protocol=pickle.HIGHEST_PROTOCOL)
+    )
 
 
 def test_check_active_bundle_complete_all_present(tmp_path: Path):
@@ -79,3 +96,16 @@ def test_ml_predict_strict_uses_bundle_contract(tmp_path: Path, monkeypatch):
 
     resolved = ml_predict._model_dir_for_ticker("SPY")
     assert resolved == bd
+
+
+def test_check_active_bundle_rejects_stale_encoder_schema(tmp_path: Path):
+    from active_bundle_contract import check_active_bundle_complete
+
+    bd = tmp_path / "active" / "SPY"
+    _write_minimal_bundle(bd, "SPY", "1c", encoder_schema_version=2)
+    r = check_active_bundle_complete("SPY", "1c", bundle_dir=bd, models_dir=tmp_path)
+    assert r["compliant"] is False
+    lstm_issues = " ".join(r["artifacts"]["lstm"]["issues"])
+    tr_issues = " ".join(r["artifacts"]["transformer"]["issues"])
+    assert "encoder schema v2" in lstm_issues
+    assert "encoder schema v2" in tr_issues

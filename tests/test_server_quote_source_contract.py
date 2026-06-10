@@ -111,6 +111,21 @@ def test_parse_quote_node_session_fields_extended_regular_fallbacks():
     assert pq["quote_ts"] == 10.0
 
 
+def test_parse_quote_node_session_fields_normalizes_epoch_ms_to_seconds():
+    """2026-06-09 regression: Schwab wire quoteTime/tradeTime are epoch MILLISECONDS. Raw ms
+    ticks reached the candle accumulators, price_bars_1m got ms-grid rows, and fill_outcomes
+    (seconds grid) matched zero bars — no snapshot outcome was labeled all session."""
+    ms_quote = 1_781_047_719_060.0  # 2026-06-09 19:28:39.060 ET in ms
+    node = {"quote": {"lastPrice": 600.0, "quoteTime": ms_quote, "tradeTime": ms_quote - 1000.0}}
+    pq = server._parse_quote_node_session_fields(node)
+    assert pq["quote_time"] == ms_quote / 1000.0
+    assert pq["trade_time"] == (ms_quote - 1000.0) / 1000.0
+    assert pq["quote_ts"] == ms_quote / 1000.0
+    # Seconds-unit inputs (tests, replay fixtures) pass through unchanged.
+    node_s = {"quote": {"lastPrice": 600.0, "quoteTime": 1_778_018_399.0, "tradeTime": None}}
+    assert server._parse_quote_node_session_fields(node_s)["quote_time"] == 1_778_018_399.0
+
+
 def test_tier_a_live_state_rest_bootstrap_row_uses_schwab_time_not_wall_clock(monkeypatch):
     """S017: Tier A GET /api/live/state REST bootstrap must not set fast_server_ts from time.time()."""
     monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: None)

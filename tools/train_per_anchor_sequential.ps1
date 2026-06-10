@@ -80,12 +80,21 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "!!! Preflight FAILED — run: python tools/feature_curation_gate.py --ablation-confirm" -ForegroundColor Red
     exit $LASTEXITCODE
 }
+Write-Host "=== O-56 survivor edge probe (pre-retrain go/no-go) ==="
+& python tools/feature_curation_gate.py --survivor-edge-probe --tickers ($Tickers -join ',')
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "!!! Edge probe BLOCKED full retrain — see governance/artifacts/survivor_edge_probe.json" -ForegroundColor Red
+    exit $LASTEXITCODE
+}
 Write-Host "=== Pre-B incumbent score reconcile (all horizons) ==="
 $tickerPy = ($Tickers | ForEach-Object { "'$($_.ToUpper())'" }) -join ', '
 $reconcilePy = @"
 from pathlib import Path
 from arch_competition.promotion_execution import reconcile_pre_b_incumbent_scores
-r = reconcile_pre_b_incumbent_scores(Path('models'), [$tickerPy], ['1c','5c','15c','60c'], dry_run=False)
+r = reconcile_pre_b_incumbent_scores(
+    Path('models'), [$tickerPy], ['1c','5c','15c','60c'],
+    dry_run=False, survivor_retrain_reset=True,
+)
 print('reconcile reset_count', r.get('reset_count', 0))
 "@
 & python -c $reconcilePy
@@ -96,7 +105,7 @@ foreach ($t in $Tickers) {
     Write-Host ">>> [$t] training all models, all horizons ($($Horizons -join ',')) on full history ..."
     $env:ED_ML_SCHEDULER_TICKERS = $t
 
-    & python ml_scheduler.py --run-now --all-horizons
+    & python ml_scheduler.py --run-now --all-horizons --force-retrain --bypass-cache
     $code = $LASTEXITCODE
     $elapsed = [int]((Get-Date) - $start).TotalSeconds
     if ($code -ne 0) {
@@ -125,3 +134,12 @@ foreach ($t in $Tickers) {
 }
 
 Write-Host "=== Done. Trained + promoted + activated in order: $($Tickers -join ' -> ') ==="
+
+Write-Host "=== Post-retrain stack authority (meta / MC / fusion — mandatory full-stack gate) ==="
+$env:ED_STACK_EVAL_BUNDLE = "parallel"
+& python tools/feature_curation_gate.py --stack-authority-rescore --tickers ($Tickers -join ',')
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "!!! Stack authority rescore FAILED — meta/MC/fusion lifts not scored." -ForegroundColor Red
+    exit $LASTEXITCODE
+}
+Write-Host "=== Stack authority rescore passed ==="

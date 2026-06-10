@@ -348,11 +348,11 @@ Callers of strict-sensitive functions (`_predict_*`, `_load_*`, `_model_dir_for_
    - Class: DUAL_USE (serving support utility)
    - In strict-off scope: NO
 
-7. `arch_competition/stack_bundle_eval_v1.py` call to `run_base_models_once` (`446`)
+7. `arch_competition/stack_bundle_eval_v1.py` call to `run_unified_stack_ml_once` (`446`)
    - Class: TRAINING_OR_EVAL
    - In strict-off scope: NO
 
-8. `signals.py` call to `run_base_models_once` (`368`)
+8. `signals.py` call to `run_unified_stack_ml_once` (`368`)
    - Class: LIVE_SERVING
    - In strict-off scope: NO (expected)
 
@@ -364,7 +364,7 @@ Callers of strict-sensitive functions (`_predict_*`, `_load_*`, `_model_dir_for_
    - `_predict_lstm` `653` -> `_load_lstm` `664`
    - `_load_transformer` `814` -> `_model_dir_for_ticker` `820`
    - `_predict_transformer` `870` -> `_load_transformer` `882`
-   - `run_base_models_once` `1142` calls predictors at `1188`, `1194`, `1203` (LIVE_SERVING)
+   - `run_unified_stack_ml_once` `1142` calls predictors at `1188`, `1194`, `1203` (LIVE_SERVING)
    - `run_cascade_models_once` `1319` calls predictors at `1395`, `1400`, `1412` (DUAL_USE)
    - `is_available` `1579` uses `_model_dir_for_ticker` `1582` (LIVE_SERVING)
    - `get_model_version` `1590` uses `_model_dir_for_ticker` `1593` (LIVE_SERVING)

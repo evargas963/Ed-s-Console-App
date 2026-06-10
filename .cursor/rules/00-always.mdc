@@ -5,7 +5,7 @@ alwaysApply: true
 
 # EdWebConsole — always apply (pointers only)
 
-**Read order:** `ACTIVE_PROGRAM.md` → `AGENTS.md` (start with § **World-class / institutional code gate** — always on, no activation phrase) → `CLAUDE.md` (Schwab market-field work).
+**Read order:** `ACTIVE_PROGRAM.md` → `AGENTS.md` (start with § **World-class / institutional code gate** — always on, no activation phrase; ML/ablation work also § **ZERO-BIAS** + § **Ablation contract**) → `CLAUDE.md` (Schwab market-field work).
 
 **Conflicts:** ACTIVE_PROGRAM names the epic; **AGENTS.md is the single source for agent behavior** (banned tools, banned phrases, no permission asks, fix-as-we-find, closure definition + no-deferral, no new files); CLAUDE.md owns Schwab market-field law; project rules beat user rules; MCP tools are tool-scoped; Cursor Skills are task-scoped (follow when invoked, do not override AGENTS).
 
@@ -14,3 +14,5 @@ alwaysApply: true
 **Workspace:** if not in EdWebConsole, call `move_agent_to_root` before project edits.
 
 **Do not duplicate AGENTS rules here.** This file is a pointer surface only. Add behavior rules to AGENTS.md; mechanical enforcement to `tools/check_*.py` + the matching test file + `.pre-commit-config.yaml`.
+
+**Enforcement (binding — rules are not memos):** Every commit runs `tools/check_fix_everything_we_touch.py` via pre-commit (all `_REPO_WIDE_STATIC_CHECK_FUNCS` locks). Before sign-off: `python tools/enforce_all_rules.py --enforce-all` (exit 0). Claude Code Stop hook runs the same static audit. **Honest limit:** Cursor chat has no Stop hook; violations block at commit time.

@@ -15,7 +15,7 @@ from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug
 MODELS_DIR = Path(__file__).resolve().parent / "models"
 ACTIVE_DIR = MODELS_DIR / "active"
 
-# (model_kind, model_file, meta_file) per horizon bundle — six base files + meta-stack pkl.
+# (model_kind, model_file, meta_file) per horizon bundle — six ML layer artifact pairs + meta-stack pkl.
 BUNDLE_ARTIFACT_TRIPLE = (
     ("xgb", "xgb_{ticker}_{hz}.pkl", "xgb_{ticker}_{hz}_meta.json"),
     ("lstm", "lstm_{ticker}_{hz}.pt", "lstm_{ticker}_{hz}_meta.json"),
@@ -148,6 +148,12 @@ def check_active_bundle_complete(
             except Exception as ex:
                 art["issues"].append(f"contract check failed: {ex}")
                 result["compliant"] = False
+            if kind in ("lstm", "transformer"):
+                from lstm_data import sequence_encoder_checkpoint_issues
+
+                for msg in sequence_encoder_checkpoint_issues(model_path):
+                    art["issues"].append(msg)
+                    result["compliant"] = False
         result["artifacts"][kind] = art
 
     meta_pkl = bd / meta_stack_artifact_filename(ticker, hz)
@@ -155,6 +161,15 @@ def check_active_bundle_complete(
     if not meta_pkl.is_file():
         meta_art["issues"].append(f"{meta_pkl.name} missing")
         result["compliant"] = False
+    else:
+        try:
+            import pickle
+
+            with meta_pkl.open("rb") as fh:
+                pickle.load(fh)
+        except Exception as ex:
+            meta_art["issues"].append(f"meta_stack unloadable: {type(ex).__name__}: {ex}")
+            result["compliant"] = False
     result["artifacts"][META_STACK_KIND] = meta_art
 
     return result

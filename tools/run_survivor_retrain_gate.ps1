@@ -95,8 +95,8 @@ Write-Log "survivor retrain preflight..."
 python tools/feature_curation_gate.py --survivor-retrain-preflight --tickers SPY,QQQ,IWM 2>&1 | Tee-Object -FilePath $LogFile -Append
 if ($LASTEXITCODE -ne 0) { exit 2 }
 
-Write-Log "survivor inference backtest (models/active — no retrain)..."
-python tools/feature_curation_gate.py --survivor-inference-backtest --tickers SPY,QQQ,IWM 2>&1 | Tee-Object -FilePath $LogFile -Append
+Write-Log "survivor stack refit backtest (holdout refit — no models/active mask)..."
+python tools/feature_curation_gate.py --survivor-stack-refit-backtest --tickers SPY,QQQ,IWM 2>&1 | Tee-Object -FilePath $LogFile -Append
 if ($LASTEXITCODE -ne 0) { exit 3 }
 
 Write-Log "survivor edge probe..."

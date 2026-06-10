@@ -6,7 +6,6 @@ and each value matches the current system constants. Absence or mismatch = incom
 """
 from __future__ import annotations
 
-import os
 from typing import Any, Dict, Tuple
 
 from training_provenance import (
@@ -51,16 +50,9 @@ def contract_metadata_dict() -> Dict[str, str]:
     }
 
 
-def _ablation_scored_eval_relax_contract() -> bool:
-    """Whole-stack ablation scores pre-retrain on-disk bundles; not admissible for live serving."""
-    return os.environ.get("ED_ABLATION_SCORED_EVAL", "").strip().lower() in ("1", "true", "yes")
-
-
 def meta_matches_system_contract(meta: dict) -> Tuple[bool, str]:
     if not isinstance(meta, dict):
         return False, "meta is not a dict"
-    if _ablation_scored_eval_relax_contract():
-        return True, ""
     expected = contract_metadata_dict()
     for key, need in expected.items():
         got = meta.get(key)

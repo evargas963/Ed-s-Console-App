@@ -84,7 +84,7 @@ FORMAL_KEEP_DERIVED: list[tuple[int, str, str]] = [
     (940, "_predict_transformer", zero("_predict_transformer")),
     (1125, "_predict_meta / _weighted_average stack", zero("stack_probs")),
     (1158, "_apply_5c_xgb_plus_transformer_isotonic_calibration", zero("isotonic")),
-    (1212, "run_base_models_once (production parallel stack API)", zero("run_base_models_once")),
+    (1212, "run_unified_stack_ml_once (production parallel stack API)", zero("run_unified_stack_ml_once")),
     (1348, "run_cascade_models_once (challenger cascade API)", zero("run_cascade_models_once")),
     (1480, "get_model_outputs_for_fusion", zero("get_model_outputs_for_fusion")),
     (1534, "predict_direction (stack_probs consumer)", zero("predict_direction")),
@@ -97,7 +97,7 @@ FORMAL_PASS_THROUGH: list[tuple[int, str, str]] = [
     (1267, "db + snapshot fusion overlay for LSTM/TR", "PASS_THROUGH db.py + prediction_engine overlay"),
     (1269, "inference_snapshot_v1 required gate L1252", "PASS_THROUGH features.inference_snapshot"),
     (1373, "validate_cascade_inference_lineage", "PASS_THROUGH features.cascade_stack_contract"),
-    (1290, "build_parallel_base_output schema", "PASS_THROUGH features.parallel_stack_schema"),
+    (1290, "build_unified_stack_layer_output schema", "PASS_THROUGH features.parallel_stack_schema"),
 ]
 
 FORMAL_LINES = {line for line, _, _ in FORMAL_KEEP_DERIVED} | {line for line, _, _ in FORMAL_PASS_THROUGH}

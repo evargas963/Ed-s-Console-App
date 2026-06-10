@@ -17,7 +17,7 @@ Checklist: **A** files · **B** path · **C** safe · **D** suspect · **E** fix
 | **MVP features** | `build_live_mvp_feature_row` from L1-equivalent dict | Only fields derived from **current** `SignalInput` / L1 payload for this tick — no DB outcome reads. |
 | **Vol / regime / rules** | `classify_volatility_regime`, `classify_regime`, `compute_rules` | **`mvp_features`** from InferenceSnapshotV1 only for canonical fields (`features/regime_mvp_context.py` contract). |
 | **Fusion overlay (empirical preds)** | `build_fusion_model_overlay_for_stack` | `get_similar_setups(..., as_of_ts_utc=…)` — **only historical snapshots strictly before decision instant**. |
-| **ML stack** | `run_base_models_once` / `ml_predict` | Uses overlay + `inference_snapshot_v1`; sequence loaders use **`get_recent_snapshots`** (see **F**). |
+| **ML stack** | `run_unified_stack_ml_once` / `ml_predict` | Uses overlay + `inference_snapshot_v1`; sequence loaders use **`get_recent_snapshots`** (see **F**). |
 | **Monte Carlo** | `resolve_monte_carlo_stack_inputs(inp, inference_snapshot_v1)` | Canonical spot/levels from MVP row. |
 | **Bayesian fusion** | `bayesian_fuse` | Model outputs + rules — no DB similarity. |
 | **`compute_prediction`** | `get_similar_setups` + `get_avg_move` | **`as_of_ts_utc`** from `_as_of_ts_utc_for_similarity` (`prediction_engine.py`). |

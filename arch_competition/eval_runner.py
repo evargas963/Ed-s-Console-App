@@ -1,7 +1,7 @@
 """
 Offline evaluation runner: parallel vs cascade on identical rows and shared lineage.
 
-Does not promote, copy artifacts, or change ``run_base_models_once`` / production default.
+Does not promote, copy artifacts, or change ``run_unified_stack_ml_once`` / production default.
 """
 
 from __future__ import annotations
@@ -419,7 +419,7 @@ def run_architecture_pair_evaluation(
     rolling_windows: list[dict[str, Any]] = []
     # Single-window trial: halves stability as rolling proxy (locked by promotion rolling-stability
     # gates in tests/test_arch_competition_eval_promotion.py + half_split_log_loss_std in metrics).
-    # [REAL-GATE:telemetry] Multi-window rolling extension deferred (operator calibration 2026-05).
+    # [REAL-GATE:telemetry] Multi-window rolling extension awaits operator calibration telemetry (2026-05).
     rolling_windows.append(
         {
             "window_id": "full_oos",

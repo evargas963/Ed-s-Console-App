@@ -51,18 +51,38 @@ def _print_block(title: str, a: dict, b: dict, tick_a: str, tick_b: str) -> None
             print(f"{k:<40} {sa:<18} {sb:<18}{mark}")
 
 
+def _summarize_full_stack_layers(d: dict[str, Any]) -> dict[str, str]:
+    """All seven stack models — operator binding (governed_stack_contract.FULL_STACK_MODEL_LAYERS)."""
+    mo = d.get("model_outputs") if isinstance(d.get("model_outputs"), dict) else {}
+    xgb_ok = bool(mo.get("xgb", {}).get("available")) if isinstance(mo.get("xgb"), dict) else bool(d.get("xgb_available"))
+    lstm_ok = bool(mo.get("lstm", {}).get("available")) if isinstance(mo.get("lstm"), dict) else bool(d.get("lstm_available"))
+    tr_ok = bool(mo.get("transformer", {}).get("available")) if isinstance(mo.get("transformer"), dict) else bool(d.get("transformer_available"))
+    meta_ok = bool(d.get("stack_probs_available") or d.get("meta_available"))
+    mc_ok = bool(d.get("mc_available"))
+    regime_ok = bool(d.get("regime_available") or d.get("vol_regime") or d.get("market_regime"))
+    fusion_ok = bool(d.get("fusion_available"))
+    return {
+        "xgb": "ok" if xgb_ok else "—",
+        "lstm": "ok" if lstm_ok else "—",
+        "transformer": "ok" if tr_ok else "—",
+        "meta": "ok" if meta_ok else "—",
+        "monte_carlo": "ok" if mc_ok else "—",
+        "regime": "ok" if regime_ok else "—",
+        "fusion": "ok" if fusion_ok else "—",
+    }
+
+
 def summarize(ticker: str, d: dict[str, Any]) -> None:
     mo = d.get("model_outputs")
     fus = d.get("fusion_available")
     can_d = d.get("dominant_dir")
     can_c = d.get("confidence")
     can_p = d.get("canonical_provenance")
+    stack = _summarize_full_stack_layers(d)
     print(f"\n--- {ticker} ---")
     print(
-        "model_outputs:",
-        "xgb" if isinstance(mo, dict) and mo.get("xgb", {}).get("available") else "—",
-        "lstm" if isinstance(mo, dict) and mo.get("lstm", {}).get("available") else "—",
-        "tr" if isinstance(mo, dict) and mo.get("transformer", {}).get("available") else "—",
+        "full_stack (7):",
+        " ".join(f"{k}={v}" for k, v in stack.items()),
     )
     print(f"xgb_available={d.get('xgb_available')} lstm={d.get('lstm_available')} tr={d.get('transformer_available')}")
     print(f"fusion_available={fus} canonical/dominant_dir={can_d} confidence={can_c} prov={can_p}")

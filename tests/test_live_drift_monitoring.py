@@ -399,22 +399,22 @@ def test_insufficient_sessions_recent_slice_unavailable(tmp_path: Path):
     assert pl["calibration_drift_summary"].get("reason_code") == REASON_RECENT_SLICE_INSUFFICIENT
 
 
-def test_live_drift_module_does_not_call_run_base_models_once():
+def test_live_drift_module_does_not_call_run_unified_stack_ml_once():
     root = Path(__file__).resolve().parents[1] / "arch_competition" / "live_drift_monitoring.py"
     tree = ast.parse(root.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
-            if isinstance(node.func, ast.Name) and node.func.id == "run_base_models_once":
-                pytest.fail("live_drift_monitoring must not call run_base_models_once")
-            if isinstance(node.func, ast.Attribute) and node.func.attr == "run_base_models_once":
-                pytest.fail("live_drift_monitoring must not call run_base_models_once")
+            if isinstance(node.func, ast.Name) and node.func.id == "run_unified_stack_ml_once":
+                pytest.fail("live_drift_monitoring must not call run_unified_stack_ml_once")
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "run_unified_stack_ml_once":
+                pytest.fail("live_drift_monitoring must not call run_unified_stack_ml_once")
 
 
 def test_ml_predict_default_parallel_runtime_unchanged():
-    from ml_predict import run_base_models_once
+    from ml_predict import run_unified_stack_ml_once
     import inspect
 
-    assert "parallel_runtime=True" in inspect.getsource(run_base_models_once)
+    assert "parallel_runtime=True" in inspect.getsource(run_unified_stack_ml_once)
 
 
 def test_calibration_drift_material_emits_signal_when_recent_slice_degrades(tmp_path: Path):

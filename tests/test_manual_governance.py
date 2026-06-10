@@ -57,6 +57,7 @@ def _write_horizon_bundle(bundle_dir: Path, ticker: str, hz: str, *, xgb_payload
             meta["vol_medians"] = {}
             meta["impute_medians"] = {"f1": 0.0}
         bundle_dir.joinpath(f"{kind}_{t}_{hz}_meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    bundle_dir.joinpath(f"meta_{t}_{hz}.pkl").write_bytes(b"meta-stack-test-stub")
 
 
 def _write_candidate_manifests(parallel_dir: Path, cascade_dir: Path):
@@ -317,11 +318,11 @@ def test_no_implicit_promote_without_operator(tmp_path: Path):
         )
 
 
-def test_run_base_models_once_still_parallel_default():
+def test_run_unified_stack_ml_once_still_parallel_default():
     import inspect
-    from ml_predict import run_base_models_once
+    from ml_predict import run_unified_stack_ml_once
 
-    assert "parallel_runtime=True" in inspect.getsource(run_base_models_once)
+    assert "parallel_runtime=True" in inspect.getsource(run_unified_stack_ml_once)
 
 
 def test_manual_rollback_restores_after_promote(tmp_path: Path):

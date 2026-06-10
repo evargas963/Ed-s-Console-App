@@ -13,7 +13,7 @@ RULE 2: No gates — train if data exists, save always.
 
 import sys, json, time, sqlite3, pickle, warnings, argparse, logging
 from pathlib import Path
-from typing import Optional, Set
+from typing import Any, Optional, Set
 import numpy as np
 import pandas as pd
 
@@ -297,6 +297,89 @@ def load_data(
 # FEATURE ENGINEERING
 # =============================================================================
 
+def probe_training_feature_row() -> dict[str, Any]:
+    """Minimal single-row probe for tabular feature-name enumeration (XGB + sequence parity)."""
+    row: dict[str, Any] = {
+        "ticker": "SPY",
+        "ts_utc": 1.0,
+        "spot": 100.0,
+        "outcome_1c": "up",
+        "et_hour": 10,
+        "et_minute": 0,
+        "candle_body_pts": 0.5,
+        "candle_range_pts": 1.0,
+        "nearest_above_dist": 1.0,
+        "nearest_below_dist": 1.0,
+        "net_gamma": 1.0,
+        "zone": "pin_neutral",
+        "vwap_side": "above",
+        "flow_imbalance": 0.5,
+    }
+    for c in list(WALL_DISTANCE_COLS) + list(SCALE_INVARIANT_COLS):
+        row.setdefault(c, 1.0)
+    for c in CATEGORICALS:
+        row.setdefault(c, "neutral")
+    return row
+
+
+_TABULAR_TRAINING_FEATURE_NAMES: list[str] | None = None
+
+
+def refresh_tabular_training_feature_names_cache() -> list[str]:
+    """Bust cached tabular column order (after engineer_features layout change)."""
+    global _TABULAR_TRAINING_FEATURE_NAMES
+    _TABULAR_TRAINING_FEATURE_NAMES = None
+    return tabular_training_feature_names()
+
+
+def tabular_training_feature_names() -> list[str]:
+    """Stable XGB ``engineer_features`` column order (cached). Sequence encoders + ablation cone."""
+    global _TABULAR_TRAINING_FEATURE_NAMES
+    if _TABULAR_TRAINING_FEATURE_NAMES is None:
+        df = pd.DataFrame(
+            [
+                probe_training_feature_row(),
+                {**probe_training_feature_row(), "ts_utc": 2.0, "net_gamma": 2.0},
+            ]
+        )
+        _, names, _, _ = engineer_features(df)
+        _TABULAR_TRAINING_FEATURE_NAMES = list(names)
+    return list(_TABULAR_TRAINING_FEATURE_NAMES)
+
+
+def encode_tabular_feature_vector(
+    snapshot: dict,
+    feature_names: list[str] | None = None,
+    *,
+    category_maps: dict | None = None,
+    vol_medians: dict | None = None,
+    ticker: str | None = None,
+) -> list[float]:
+    """One snapshot → XGB-tabular vector (LSTM/Transformer structure + micro streams, Stage 2)."""
+    import math
+
+    names = feature_names or tabular_training_feature_names()
+    row_df = engineer_single_snapshot(
+        snapshot,
+        category_maps or {},
+        names,
+        vol_medians or {},
+        ticker=ticker or snapshot.get("ticker"),
+    )
+    if row_df is None:
+        return [0.0] * len(names)
+    out: list[float] = []
+    for fn in names:
+        v = row_df[fn].iloc[0]
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            out.append(0.0)
+            continue
+        out.append(0.0 if (not math.isfinite(fv)) else fv)
+    return out
+
+
 def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
     """Build normalized feature matrix. Returns (X, feature_names, category_maps, aux_stats).
 
@@ -308,7 +391,10 @@ def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
     behavior byte-for-byte (used by tests, the feature_contracts parity audit, eval-only, and the
     no-holdout / thin-ticker training paths).
     """
-    from ml_data_common import et_hour_minute_arrays_from_ts_utc
+    from ml_data_common import attach_confluence_feature_columns, et_hour_minute_arrays_from_ts_utc
+    from lstm_data import CONFLUENCE_FEATURES
+
+    df_cf = attach_confluence_feature_columns(df)
 
     spot  = pd.to_numeric(df["spot"], errors="coerce").values
     feats = {}
@@ -441,6 +527,10 @@ def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
             category_maps[col] = mapping
             feats[f"cat_{col}"] = col_full.map(mapping).to_numpy(dtype=float)
 
+    for cf in CONFLUENCE_FEATURES:
+        if cf in df_cf.columns:
+            feats[cf] = pd.to_numeric(df_cf[cf], errors="coerce").values
+
     X = pd.DataFrame(feats, index=df.index)
     dupes = X.columns[X.columns.duplicated()].tolist()
     if dupes:
@@ -467,7 +557,15 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
 
     def _f(key):
         v = snapshot.get(key)
-        return float(v) if v is not None else np.nan
+        if v is None:
+            return np.nan
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            # Parity with engineer_features(): training uses pd.to_numeric(errors="coerce"),
+            # so a non-numeric snapshot value (e.g. qqq_vs_spy='lagging' from market_state)
+            # must become NaN at serve too — not crash the whole XGB prediction.
+            return np.nan
 
     def _pct(key):
         v = _f(key)
@@ -497,6 +595,12 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
     for col in SCALE_INVARIANT_COLS:
         if col not in skip:
             row[col] = _f(col)
+
+    if np.isnan(row.get("qqq_vs_spy", np.nan)):
+        # Producer split: live SignalInput carries the 'leading'/'lagging'/'inline' label under
+        # qqq_vs_spy and the numeric spread under qqq_vs_spy_delta; the DB/training column holds
+        # the numeric spread (server snapshot writer). Use the numeric twin for serve parity.
+        row["qqq_vs_spy"] = _f("qqq_vs_spy_delta")
 
     eh = snapshot.get("et_hour")
     em = snapshot.get("et_minute")
@@ -567,6 +671,15 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
         mapping = category_maps.get(col, {})
         row[f"cat_{col}"] = float(mapping[str(val)]) if (
             val is not None and str(val) in mapping) else np.nan
+
+    from lstm_data import CONFLUENCE_FEATURES
+
+    for cf in CONFLUENCE_FEATURES:
+        v = snapshot.get(cf)
+        try:
+            row[cf] = float(v) if v is not None else 0.0
+        except (TypeError, ValueError):
+            row[cf] = 0.0
 
     return pd.DataFrame([{fn: row.get(fn, np.nan) for fn in feature_names}])
 

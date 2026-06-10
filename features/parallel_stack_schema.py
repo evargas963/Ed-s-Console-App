@@ -1,7 +1,7 @@
 """
-Parallel stack runtime — structured model outputs (production architecture).
+Unified stack layer outputs — structured xgb/lstm/transformer records for fusion and UI.
 
-All base models run independently; outputs share this schema for fusion and UI.
+Each ML stack layer runs independently; outputs share this schema for the seven-layer team.
 """
 
 from __future__ import annotations
@@ -12,8 +12,8 @@ from typing import Any, Optional, TypedDict
 PARALLEL_STACK_SCHEMA_VERSION = "1"
 
 
-class ParallelBaseModelOutput(TypedDict, total=False):
-    """Single base model (XGB / LSTM / Transformer) output for parallel runtime."""
+class UnifiedStackLayerOutput(TypedDict, total=False):
+    """Single unified-stack ML layer (xgb / lstm / transformer) output."""
 
     schema_version: str
     architecture: str  # always "parallel" for this path
@@ -42,7 +42,7 @@ def _normalize_triplet(probs: dict[str, Any]) -> Optional[tuple[float, float, fl
     return pu / t, pd / t, pf / t
 
 
-def empty_parallel_output(*, reason: str = "unavailable") -> ParallelBaseModelOutput:
+def empty_parallel_output(*, reason: str = "unavailable") -> UnifiedStackLayerOutput:
     return {
         "schema_version": PARALLEL_STACK_SCHEMA_VERSION,
         "architecture": "parallel",
@@ -58,12 +58,12 @@ def empty_parallel_output(*, reason: str = "unavailable") -> ParallelBaseModelOu
     }
 
 
-def build_parallel_base_output(
+def build_unified_stack_layer_output(
     *,
     probs: dict[str, float] | None,
     approved: bool,
     metadata: dict[str, Any] | None = None,
-) -> ParallelBaseModelOutput:
+) -> UnifiedStackLayerOutput:
     if probs is None:
         o = empty_parallel_output(reason="no_prediction")
         if metadata:
@@ -90,3 +90,8 @@ def build_parallel_base_output(
         "approved": approved,
         "metadata": dict(metadata or {}),
     }
+
+
+# Deprecated aliases — mechanical lock: new code must use canonical names above.
+ParallelBaseModelOutput = UnifiedStackLayerOutput
+build_parallel_base_output = build_unified_stack_layer_output

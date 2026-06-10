@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 
@@ -199,3 +201,111 @@ def test_api_build_exposes_git_sha(monkeypatch):
         body = r.json()
         assert body["git_sha"] == "abc123deadbeef"
         assert body["contract"] == "meet_or_exceed_v1"
+
+
+def test_publish_progressive_tier_c_cache_non_pending_shell():
+    import server as srv
+    from math_levels import ExposureRow, WallsRow, TotalsRow
+
+    ticker = "ZZZ_PROG"
+    exp = "2099-06-01"
+    cache_key = (ticker, exp)
+    inflight_key = srv._tier_c_inflight_key(ticker, None)
+    srv._state_cache.pop(cache_key, None)
+
+    row = ExposureRow("CONSENSUS", None, 1.0, -1.0, 500.0, None, None, None, "Low", "Neutral")
+    wall = WallsRow(
+        "CONSENSUS",
+        None,
+        510.0,
+        100.0,
+        490.0,
+        90.0,
+        "CALL",
+        510.0,
+        100.0,
+        505.0,
+        80.0,
+        495.0,
+        70.0,
+        "PUT",
+        495.0,
+        70.0,
+        500.0,
+        60.0,
+        490.0,
+        50.0,
+        "CALL",
+        500.0,
+        60.0,
+        490.0,
+        50.0,
+    )
+    total = TotalsRow(
+        "CONSENSUS",
+        None,
+        1.0,
+        -1.0,
+        0.0,
+        1.0,
+        -1.0,
+        0.0,
+        1000.0,
+        900.0,
+        100.0,
+        0.9,
+        0.2,
+        0.1,
+    )
+
+    srv._publish_progressive_tier_c_cache(
+        ticker=ticker,
+        cache_key=cache_key,
+        inflight_key=inflight_key,
+        selected_exp=exp,
+        expiries=[exp, "2099-06-08"],
+        today_str="2099-01-01",
+        spot_f=500.0,
+        bid=499.9,
+        ask=500.1,
+        session_label="RTH",
+        rows=[row],
+        walls=[wall],
+        totals=[total],
+        consensus_summary=row,
+        exposures={500.0: {"net_gex_1pct": 1.0}},
+        gamma_flip=501.0,
+        gamma_voids=[],
+        hvl=500.5,
+        max_pain=499.0,
+        charm_net=100.0,
+        charm_dir="buying",
+        charm_toward=500.0,
+        pcr_val=0.9,
+        kl_expiry_source="default_expiry",
+        quote_spread_pts=0.2,
+        quote_spread_source="schwab_bid_ask_live",
+        update_source="test_progressive",
+    )
+
+    ent = srv._state_cache.get(cache_key)
+    assert ent is not None
+    md = ent["ms_dict"]
+    assert md.get("analytics_pending_shell") is False
+    assert md.get("analytics_partial_tier_c") is True
+    assert md.get("analytics_refresh_in_progress") is True
+    assert md.get("expiries") == [exp, "2099-06-08"]
+    assert md.get("selected_exp") == exp
+    assert md.get("kl_call_gamma_wall") == 510.0
+    assert len(md.get("summary_rows") or []) == 1
+    srv._state_cache.pop(cache_key, None)
+
+
+def test_start_ed_console_bat_opens_edge_not_chrome():
+    bat = (Path(__file__).resolve().parent.parent / "start_ed_console.bat").read_text(encoding="utf-8")
+    assert "msedge.exe" in bat.lower()
+    assert "chrome.exe" not in bat.lower()
+    assert ">>>" not in bat
+    assert 'set "PF86=%ProgramFiles(x86)%"' in bat
+    assert 'start "" cmd /c "timeout /t 2 /nobreak >nul' in bat
+    assert "ED_LIVE_ABLATION_EXPERIMENT" not in bat

@@ -7,7 +7,7 @@ import pytest
 from ml_predict import (
     _model_probs_to_fusion_out,
     _require_direction_probability_triplet,
-    run_base_models_once,
+    run_unified_stack_ml_once,
 )
 
 
@@ -22,6 +22,6 @@ def test_model_probs_to_fusion_out_none_when_triplet_incomplete():
     assert _model_probs_to_fusion_out({"up": 0.6}, "long") is None
 
 
-def test_run_base_models_once_requires_inference_snapshot_v1():
+def test_run_unified_stack_ml_once_requires_inference_snapshot_v1():
     with pytest.raises(ValueError, match="inference_snapshot_v1"):
-        run_base_models_once({"ticker": "SPY"}, "SPY", None, "wait")
+        run_unified_stack_ml_once({"ticker": "SPY"}, "SPY", None, "wait")

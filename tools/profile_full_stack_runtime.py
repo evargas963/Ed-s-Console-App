@@ -10,7 +10,7 @@ Reports:
   - Aggregate (main stack): inference, overlay, xgb pre, RBM, MC, fuse, prediction core/enrich, call
   - Unaccounted breakdown: regime/rules, signal layer, MC context, fusion cache, shared sequence,
     fusion policy columns, MH bundle, MH synthesis, canonical forecast, snapshot, calibration, etc.
-  - Nested: inference_snapshot_v1_to_engineering_snapshot as %% of run_base_models_once (not additive)
+  - Nested: inference_snapshot_v1_to_engineering_snapshot as %% of run_unified_stack_ml_once (not additive)
 
 Usage:
   python tools/profile_full_stack_runtime.py
@@ -115,17 +115,17 @@ def _apply_patches(stats: StackProfile) -> dict[str, Any]:
     _patch(inf_snap, "build_inference_snapshot_v1_from_signal_input", "build_inference_snapshot_v1")
     _patch(prediction_engine, "build_fusion_model_overlay_for_stack", "build_fusion_model_overlay_for_stack")
     _patch(ml_predict, "build_xgb_pre_engineering_snapshot_for_tick", "build_xgb_pre_engineering_snapshot_for_tick")
-    _patch(ml_predict, "run_base_models_once", "run_base_models_once", horizon=True)
-    _patch(ml_predict, "_predict_xgb", "run_base_models_once.xgb", horizon=True)
-    _patch(ml_predict, "_predict_lstm", "run_base_models_once.lstm", horizon=True)
-    _patch(ml_predict, "_predict_transformer", "run_base_models_once.transformer", horizon=True)
+    _patch(ml_predict, "run_unified_stack_ml_once", "run_unified_stack_ml_once", horizon=True)
+    _patch(ml_predict, "_predict_xgb", "run_unified_stack_ml_once.xgb", horizon=True)
+    _patch(ml_predict, "_predict_lstm", "run_unified_stack_ml_once.lstm", horizon=True)
+    _patch(ml_predict, "_predict_transformer", "run_unified_stack_ml_once.transformer", horizon=True)
     _patch(monte_carlo, "simulate", "monte_carlo.simulate", horizon=True)
     _patch(bayesian_fusion, "fuse", "bayesian_fusion.fuse", horizon=True)
     _patch(prediction_engine, "compute_prediction_core", "compute_prediction_core")
     _patch(prediction_engine, "compute_prediction_enrichment", "compute_prediction_enrichment")
     _patch(call_engine, "compute_call", "compute_call")
 
-    # Feature transform (nested under run_base_models_once — reported separately, not additive to iteration %)
+    # Feature transform (nested under run_unified_stack_ml_once — reported separately, not additive to iteration %)
     _patch(
         xgb_model_input,
         "inference_snapshot_v1_to_engineering_snapshot",
@@ -185,7 +185,7 @@ def _restore(originals: dict[str, Any]) -> None:
         (inf_snap, "build_inference_snapshot_v1_from_signal_input"),
         (prediction_engine, "build_fusion_model_overlay_for_stack"),
         (ml_predict, "build_xgb_pre_engineering_snapshot_for_tick"),
-        (ml_predict, "run_base_models_once"),
+        (ml_predict, "run_unified_stack_ml_once"),
         (ml_predict, "_predict_xgb"),
         (ml_predict, "_predict_lstm"),
         (ml_predict, "_predict_transformer"),
@@ -325,7 +325,7 @@ def _write_csv(path: Path, rows: list[tuple[str, float, float, int]]) -> None:
                 "",
                 "",
                 "top rows: pct of total iteration wall; "
-                "breakdown rows: pct of run_base_models_once only",
+                "breakdown rows: pct of run_unified_stack_ml_once only",
             ]
         )
         for name, avg_ms, pct, n in rows:
@@ -385,7 +385,7 @@ def main() -> int:
             "build_inference_snapshot_v1",
             "build_fusion_model_overlay_for_stack",
             "build_xgb_pre_engineering_snapshot_for_tick",
-            "run_base_models_once",
+            "run_unified_stack_ml_once",
             "monte_carlo.simulate",
             "bayesian_fusion.fuse",
             "compute_prediction_core",
@@ -418,18 +418,18 @@ def main() -> int:
             pct = (total_t / sum_iter * 100.0) if sum_iter > 0 else 0.0
             summary_rows.append((key, avg_ms, pct, cnt))
 
-        rbm_t = agg.totals.get("run_base_models_once", 0.0)
+        rbm_t = agg.totals.get("run_unified_stack_ml_once", 0.0)
         sub_keys = [
-            ("run_base_models_once.xgb", "  (breakdown) xgb"),
-            ("run_base_models_once.lstm", "  (breakdown) lstm"),
-            ("run_base_models_once.transformer", "  (breakdown) transformer"),
+            ("run_unified_stack_ml_once.xgb", "  (breakdown) xgb"),
+            ("run_unified_stack_ml_once.lstm", "  (breakdown) lstm"),
+            ("run_unified_stack_ml_once.transformer", "  (breakdown) transformer"),
         ]
         for sk, label in sub_keys:
             total_t = agg.totals.get(sk, 0.0)
             cnt = agg.counts.get(sk, 0)
             avg_ms = (total_t / n_iter) * 1000.0
             pct_of_parent = (total_t / rbm_t * 100.0) if rbm_t > 0 else 0.0
-            summary_rows.append((f"{label} [% of run_base_models_once time]", avg_ms, pct_of_parent, cnt))
+            summary_rows.append((f"{label} [% of run_unified_stack_ml_once time]", avg_ms, pct_of_parent, cnt))
 
         accounted_main = sum(agg.totals.get(k, 0.0) for k in main_stack_keys)
         accounted_orch = sum(agg.totals.get(k, 0.0) for k in orchestration_keys)
@@ -446,7 +446,7 @@ def main() -> int:
 
         print(
             "Aggregate (main stack) - avg ms per iteration; top rows: % of total wall time; "
-            "xgb/lstm/tr rows: % of run_base_models_once only (not additive to iteration %)."
+            "xgb/lstm/tr rows: % of run_unified_stack_ml_once only (not additive to iteration %)."
         )
         _print_table("", summary_rows)
 
@@ -479,30 +479,30 @@ def main() -> int:
         _print_table("", orch_rows)
 
         print()
-        print("Nested under run_base_models_once (NOT additive to iteration % - subset of RBM time)")
+        print("Nested under run_unified_stack_ml_once (NOT additive to iteration % - subset of RBM time)")
         eng_t = agg.totals.get("inference_snapshot_v1_to_engineering_snapshot", 0.0)
         eng_cnt = agg.counts.get("inference_snapshot_v1_to_engineering_snapshot", 0)
         eng_avg_ms = (eng_t / n_iter) * 1000.0
         eng_pct_rbm = (eng_t / rbm_t * 100.0) if rbm_t > 0 else 0.0
         print(
             f"{'inference_snapshot_v1_to_engineering_snapshot':<48} {eng_avg_ms:>12.3f} "
-            f"{eng_pct_rbm:>9.1f}% {eng_cnt:>8d}  (% of run_base_models_once only)"
+            f"{eng_pct_rbm:>9.1f}% {eng_cnt:>8d}  (% of run_unified_stack_ml_once only)"
         )
 
         print()
-        print("Call count verification (expect run_base_models_once / MC / fuse == "
+        print("Call count verification (expect run_unified_stack_ml_once / MC / fuse == "
               f"{len(ALL_GOVERNED_HORIZONS)} * iterations = {len(ALL_GOVERNED_HORIZONS) * n_iter} if every horizon completes):")
-        for key in ("run_base_models_once", "monte_carlo.simulate", "bayesian_fusion.fuse"):
+        for key in ("run_unified_stack_ml_once", "monte_carlo.simulate", "bayesian_fusion.fuse"):
             print(f"  {key}: {agg.counts.get(key, 0)}")
         print()
 
         # Per-horizon table
         hz_order = list(ALL_GOVERNED_HORIZONS)
         hz_keys = [
-            "run_base_models_once",
-            "run_base_models_once.xgb",
-            "run_base_models_once.lstm",
-            "run_base_models_once.transformer",
+            "run_unified_stack_ml_once",
+            "run_unified_stack_ml_once.xgb",
+            "run_unified_stack_ml_once.lstm",
+            "run_unified_stack_ml_once.transformer",
             "monte_carlo.simulate",
             "bayesian_fusion.fuse",
         ]
@@ -522,7 +522,7 @@ def main() -> int:
             print()
 
         print()
-        hz_slice_keys = ["run_base_models_once", "monte_carlo.simulate", "bayesian_fusion.fuse"]
+        hz_slice_keys = ["run_unified_stack_ml_once", "monte_carlo.simulate", "bayesian_fusion.fuse"]
         print("Per-horizon % of total iteration wall (rbm + mc.sim + fuse only; no double-count):")
         for hz in hz_order:
             slice_t = sum(agg.by_horizon.get(hz, {}).get(hk, 0.0) for hk in hz_slice_keys)
@@ -547,7 +547,7 @@ def main() -> int:
                         f"{(eng_t / n_iter) * 1000.0:.6f}",
                         f"{eng_pct_rbm:.4f}",
                         eng_cnt,
-                        "pct of run_base_models_once only (nested)",
+                        "pct of run_unified_stack_ml_once only (nested)",
                     ]
                 )
             print()

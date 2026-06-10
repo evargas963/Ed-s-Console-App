@@ -176,7 +176,7 @@ def test_lstm_missing_numerics_emit_mask_not_zero():
     masks = enc["canonical_missing_masks"]
     assert masks[0] == 0.0
     assert masks[1] == 0.0
-    zi = ENCODED_FEATURES_5M.index("zone")
+    zi = ENCODED_FEATURES_5M.index("cat_zone")
     assert enc["features"][zi] == ZONE_MISSING_ENCODED
 
 

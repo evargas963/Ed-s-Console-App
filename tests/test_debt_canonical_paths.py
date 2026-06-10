@@ -105,7 +105,7 @@ def test_production_default_parallel_unchanged_in_signals_doc():
     import signals
 
     src = open(signals.__file__, encoding="utf-8").read()
-    assert "parallel" in src.lower() or "run_base_models_once" in src
+    assert "parallel" in src.lower() or "run_unified_stack_ml_once" in src
 
 
 def test_transformer_prepare_sequence_accepts_reference_spot():

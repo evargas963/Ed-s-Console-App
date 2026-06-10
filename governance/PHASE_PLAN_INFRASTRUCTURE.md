@@ -147,7 +147,7 @@
 | C-SRV-03 full MarketState | PARTIAL | Clarify stale / pending shell; INF-2 clock health on Tier C |
 | C-UI-01 LIVE / provenance | PARTIAL | Tooltip + **`claims_tier: pre_inf`** until proof |
 | C-UI-05 LIVE_READY | PARTIAL | Disambiguate from halt; INF-4 UI copy |
-| C-UI-06 Base models live | PARTIAL | INF-3 env + INF-1 replay scope |
+| C-UI-06 ML stack layers live | PARTIAL | INF-3 env + INF-1 replay scope |
 | C-UI-07 authoritative ticker | NO | Rename client string or server doc — **UI/claim work** with INF |
 | C-UI-08 _authoritative telemetry | PARTIAL | Document as client telemetry vocabulary or rename |
 | C-UI-10 actionableNow | PARTIAL | “UI heuristic — not order router” + **`execution_boundary`** text |

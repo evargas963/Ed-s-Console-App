@@ -59,63 +59,19 @@ RTH_START_MIN       = 30
 RTH_END_HOUR        = 16
 RTH_END_MIN         = 0
 
-# ── Feature definitions ───────────────────────────────────────────────────────
-# FEATURES_5M: full feature set for structure stream (60 snapshots, 1m each)
-# FEATURES_1M: subset for micro stream (20 snapshots); both from same 1m snapshot DB
+# ── Feature definitions (Stage 2: full XGB tabular universe on both streams) ──
 
-FEATURES_5M = [
-    # Price dynamics (will be normalized as % of first bar's spot)
-    "spot",
-    "candle_body_pts",
-    "candle_range_pts",
-    "vwap_dist_pts",
-    # Greek structure
-    "dist_call_gamma_wall",
-    "dist_put_gamma_wall",
-    "dist_gamma_inflection",
-    "dist_delta_inflection",
-    "dist_call_oi_wall",
-    "dist_put_oi_wall",
-    "net_gamma",
-    "net_delta",
-    "charm_net",
-    # Cross-instrument
-    "spy_chg_pct",
-    "qqq_chg_pct",
-    "iwm_chg_pct",
-    "spy_weighted_push",
-    "qqq_weighted_push",
-    "iwm_weighted_push",
-    # Volatility
-    "vix_level",
-    "iv_level",
-    # Zone encoding (will be one-hot later)
-    "zone",
-    # VWAP side (binary)
-    "vwap_side",
+FEATURES_5M: list[str] = []
+FEATURES_1M: list[str] = []
+ENCODED_FEATURES_5M: list[str] = []
+ENCODED_FEATURES_1M: list[str] = []
+
+CONFLUENCE_FEATURES = [
+    "cf_momentum_5m", "cf_structure_15m", "cf_trend_1h",
+    "cf_vwap_distance_pct", "cf_greek_support", "cf_alignment_score",
 ]
 
-# Extended features for next retrain (add to FEATURES_5M when retraining LSTM/Transformer):
-# "atr", "iv_rank", "flow_imbalance", "smart_money_score", "breakout_score", "pin_score", "candle_volume"
-
-# Subset for 1m stream (fields that change bar-to-bar)
-# Most Greek/cross-instrument data doesn't change on 1m granularity
-FEATURES_1M = [
-    "spot",
-    "candle_body_pts",
-    "candle_range_pts",
-    "vwap_dist_pts",
-    "net_gamma",
-    "net_delta",
-    "spy_chg_pct",
-    "qqq_chg_pct",
-    "vix_level",
-    "iv_level",
-    "zone",
-    "vwap_side",
-]
-
-# Categorical columns that need encoding
+# Categorical columns that need encoding (legacy helpers + confluence path)
 CATEGORICAL_COLS = {"zone", "vwap_side"}
 
 # Zone encoding map
@@ -142,12 +98,57 @@ def _encode_vwap_side_feature(snap: dict) -> float:
         return VWAP_SIDE_UNKNOWN_ENCODED
     return float(VWAP_SIDE_MAP.get(str(vs).lower(), VWAP_SIDE_UNKNOWN_ENCODED))
 
-# Columns that should be log-transformed (large magnitude, sign matters)
-LOG_TRANSFORM_COLS = {"net_gamma", "net_delta", "charm_net"}
+# Schema v3: flat tabular vectors (no __present mask channels).
+LOG_TRANSFORM_COLS: frozenset[str] = frozenset({"net_gamma", "net_delta", "charm_net"})
+NULLABLE_NUMERIC_COLS_5M: frozenset[str] = frozenset()
+NULLABLE_NUMERIC_COLS_1M: frozenset[str] = frozenset()
 
-# Nullable numerics: NULL in DB must not be confused with 0.0 (especially centered
-# cross-asset fields). Each emits value + ``__present`` mask (1=present, 0=missing).
-NULLABLE_NUMERIC_COLS_5M = frozenset({
+# Bump when encoder layout changes (requires full LSTM/Transformer retrain).
+LSTM_ENCODER_SCHEMA_VERSION = 3
+
+# Schema v2 (2026-06): compact structure/micro feature lists + __present mask channels.
+# Active bundles trained before v3 tabular parity use these widths (31 / 16 pre-mask).
+LEGACY_ENCODER_SCHEMA_VERSION = 2
+LEGACY_V2_FEATURES_5M: list[str] = [
+    "spot",
+    "candle_body_pts",
+    "candle_range_pts",
+    "vwap_dist_pts",
+    "dist_call_gamma_wall",
+    "dist_put_gamma_wall",
+    "dist_gamma_inflection",
+    "dist_delta_inflection",
+    "dist_call_oi_wall",
+    "dist_put_oi_wall",
+    "net_gamma",
+    "net_delta",
+    "charm_net",
+    "spy_chg_pct",
+    "qqq_chg_pct",
+    "iwm_chg_pct",
+    "spy_weighted_push",
+    "qqq_weighted_push",
+    "iwm_weighted_push",
+    "vix_level",
+    "iv_level",
+    "zone",
+    "vwap_side",
+]
+LEGACY_V2_FEATURES_1M: list[str] = [
+    "spot",
+    "candle_body_pts",
+    "candle_range_pts",
+    "vwap_dist_pts",
+    "net_gamma",
+    "net_delta",
+    "spy_chg_pct",
+    "qqq_chg_pct",
+    "vix_level",
+    "iv_level",
+    "zone",
+    "vwap_side",
+]
+LEGACY_V2_NULLABLE_NUMERIC_COLS_5M: frozenset[str] = frozenset({
     "spy_chg_pct",
     "qqq_chg_pct",
     "iwm_chg_pct",
@@ -157,15 +158,12 @@ NULLABLE_NUMERIC_COLS_5M = frozenset({
     "vix_level",
     "iv_level",
 })
-NULLABLE_NUMERIC_COLS_1M = frozenset({
+LEGACY_V2_NULLABLE_NUMERIC_COLS_1M: frozenset[str] = frozenset({
     "spy_chg_pct",
     "qqq_chg_pct",
     "vix_level",
     "iv_level",
 })
-
-# Bump when encoder layout changes (requires full LSTM/Transformer retrain).
-LSTM_ENCODER_SCHEMA_VERSION = 2
 
 
 def _build_encoded_feature_names(base: list[str], nullable: frozenset[str]) -> list[str]:
@@ -177,8 +175,29 @@ def _build_encoded_feature_names(base: list[str], nullable: frozenset[str]) -> l
     return names
 
 
-ENCODED_FEATURES_5M = _build_encoded_feature_names(FEATURES_5M, NULLABLE_NUMERIC_COLS_5M)
-ENCODED_FEATURES_1M = _build_encoded_feature_names(FEATURES_1M, NULLABLE_NUMERIC_COLS_1M)
+LEGACY_V2_ENCODED_FEATURES_5M: list[str] = _build_encoded_feature_names(
+    LEGACY_V2_FEATURES_5M, LEGACY_V2_NULLABLE_NUMERIC_COLS_5M
+)
+LEGACY_V2_ENCODED_FEATURES_1M: list[str] = _build_encoded_feature_names(
+    LEGACY_V2_FEATURES_1M, LEGACY_V2_NULLABLE_NUMERIC_COLS_1M
+)
+
+
+def refresh_sequence_feature_lists() -> None:
+    """Reload FEATURES_* from XGB tabular minus cf_* (cf_* stay on X_conf only — no double feed)."""
+    global FEATURES_5M, FEATURES_1M, ENCODED_FEATURES_5M, ENCODED_FEATURES_1M
+    from ml_train import refresh_tabular_training_feature_names_cache
+
+    names = refresh_tabular_training_feature_names_cache()
+    cf_set = frozenset(CONFLUENCE_FEATURES)
+    sequence_names = [n for n in names if n not in cf_set]
+    FEATURES_5M = list(sequence_names)
+    FEATURES_1M = list(sequence_names)
+    ENCODED_FEATURES_5M = list(sequence_names)
+    ENCODED_FEATURES_1M = list(sequence_names)
+
+
+# CONFLUENCE_FEATURES + ml_train tabular cache: import-order placeholder (not wired yet).
 
 
 def encoded_width_5m() -> int:
@@ -189,13 +208,59 @@ def encoded_width_1m() -> int:
     return len(ENCODED_FEATURES_1M)
 
 
+def checkpoint_encoder_schema_version(checkpoint: Mapping[str, Any]) -> int:
+    return int(checkpoint.get("encoder_schema_version", 1))
+
+
+def encoded_width_5m_for_checkpoint(checkpoint: Mapping[str, Any]) -> int:
+    enc_ver = checkpoint_encoder_schema_version(checkpoint)
+    if enc_ver >= LSTM_ENCODER_SCHEMA_VERSION:
+        return encoded_width_5m()
+    if enc_ver == LEGACY_ENCODER_SCHEMA_VERSION:
+        pre = checkpoint.get("encoder_width_5m_pre_mask")
+        if pre is not None:
+            return int(pre)
+        return len(LEGACY_V2_ENCODED_FEATURES_5M)
+    raise ValueError(
+        f"LSTM encoder schema v{enc_ver} unsupported; minimum v{LEGACY_ENCODER_SCHEMA_VERSION}"
+    )
+
+
+def encoded_width_1m_for_checkpoint(checkpoint: Mapping[str, Any]) -> int:
+    enc_ver = checkpoint_encoder_schema_version(checkpoint)
+    if enc_ver >= LSTM_ENCODER_SCHEMA_VERSION:
+        return encoded_width_1m()
+    if enc_ver == LEGACY_ENCODER_SCHEMA_VERSION:
+        pre = checkpoint.get("encoder_width_1m_pre_mask")
+        if pre is not None:
+            return int(pre)
+        return len(LEGACY_V2_ENCODED_FEATURES_1M)
+    raise ValueError(
+        f"LSTM encoder schema v{enc_ver} unsupported; minimum v{LEGACY_ENCODER_SCHEMA_VERSION}"
+    )
+
+
 def assert_lstm_encoder_checkpoint_compatible(checkpoint: Mapping[str, Any]) -> None:
-    """Fail closed when checkpoint predates mask-channel encoder (requires retrain)."""
-    enc_ver = int(checkpoint.get("encoder_schema_version", 1))
-    if enc_ver < LSTM_ENCODER_SCHEMA_VERSION:
+    """Fail closed when checkpoint predates serveable encoder or width mismatches."""
+    enc_ver = checkpoint_encoder_schema_version(checkpoint)
+    if enc_ver < LEGACY_ENCODER_SCHEMA_VERSION:
         raise ValueError(
-            f"LSTM encoder schema v{enc_ver} < required v{LSTM_ENCODER_SCHEMA_VERSION}; retrain"
+            f"LSTM encoder schema v{enc_ver} < minimum v{LEGACY_ENCODER_SCHEMA_VERSION}; retrain"
         )
+    if enc_ver == LEGACY_ENCODER_SCHEMA_VERSION:
+        pre5 = checkpoint.get("encoder_width_5m_pre_mask")
+        pre1 = checkpoint.get("encoder_width_1m_pre_mask")
+        legacy5 = len(LEGACY_V2_ENCODED_FEATURES_5M)
+        legacy1 = len(LEGACY_V2_ENCODED_FEATURES_1M)
+        if pre5 is not None and int(pre5) != legacy5:
+            raise ValueError(
+                f"encoder_width_5m_pre_mask={pre5} != legacy v2 width {legacy5}"
+            )
+        if pre1 is not None and int(pre1) != legacy1:
+            raise ValueError(
+                f"encoder_width_1m_pre_mask={pre1} != legacy v2 width {legacy1}"
+            )
+        return
     pre5 = checkpoint.get("encoder_width_5m_pre_mask")
     pre1 = checkpoint.get("encoder_width_1m_pre_mask")
     if pre5 is not None and int(pre5) != encoded_width_5m():
@@ -206,6 +271,22 @@ def assert_lstm_encoder_checkpoint_compatible(checkpoint: Mapping[str, Any]) -> 
         raise ValueError(
             f"encoder_width_1m_pre_mask={pre1} != current {encoded_width_1m()}"
         )
+
+
+def sequence_encoder_checkpoint_issues(model_path: Path) -> list[str]:
+    """Return load-blocking encoder issues for LSTM/Transformer .pt checkpoints (Stage 3 / live stack)."""
+    if not model_path.is_file():
+        return [f"{model_path.name} missing"]
+    try:
+        import torch
+
+        checkpoint = torch.load(str(model_path), map_location="cpu", weights_only=False)
+        assert_lstm_encoder_checkpoint_compatible(checkpoint)
+    except ValueError as exc:
+        return [str(exc)]
+    except Exception as exc:
+        return [f"checkpoint unreadable: {type(exc).__name__}: {exc}"]
+    return []
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -337,12 +418,6 @@ def compute_confluence_features(snapshots_5m: list[dict], current_idx: int) -> d
     result["cf_alignment_score"] = float(alignment)
 
     return result
-
-
-CONFLUENCE_FEATURES = [
-    "cf_momentum_5m", "cf_structure_15m", "cf_trend_1h",
-    "cf_vwap_distance_pct", "cf_greek_support", "cf_alignment_score",
-]
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -634,85 +709,137 @@ def _signed_log(v: float) -> float:
     return np.sign(v) * np.log1p(abs(v))
 
 
-def encode_snapshot_5m(snap: dict, ref_spot: float) -> list:
-    """
-    Encode a snapshot (1m canonical) into structure-stream feature vector.
-
-    Name is legacy; input is a 1m snapshot from DB. Uses FEATURES_5M (full set).
-    Called for each bar in the 60-bar structure stream.
-
-    Args:
-        snap: snapshot dict from the database (timeframe=1m)
-        ref_spot: reference spot price for normalization (first bar in window)
-
-    Returns:
-        list of float values, one per feature
-    """
-    features = []
+def _encode_snapshot_v2(
+    snap: dict,
+    ref_spot: float,
+    *,
+    feature_cols: list[str],
+    nullable_cols: frozenset[str],
+) -> list:
+    """Legacy schema v2 encoder (value + __present masks for nullable numerics)."""
+    features: list[float] = []
     spot = _safe_float(snap.get("spot"))
 
-    for col in FEATURES_5M:
+    for col in feature_cols:
         if col in CATEGORICAL_COLS:
-            # Encode categoricals
             if col == "zone":
                 features.append(_encode_zone_feature(snap))
             elif col == "vwap_side":
                 features.append(_encode_vwap_side_feature(snap))
         elif col == "spot":
-            # Normalize spot as % change from reference
             if ref_spot > 0:
                 features.append((spot - ref_spot) / ref_spot)
             else:
                 features.append(0.0)
         elif col in ("candle_body_pts", "candle_range_pts", "vwap_dist_pts"):
-            # Normalize point values by spot
             val = _safe_float(snap.get(col))
             features.append(val / ref_spot if ref_spot > 0 else 0.0)
         elif col.startswith("dist_"):
-            # Distance features: normalize by spot
-            val = _safe_float(snap.get(col))
-            features.append(val / ref_spot if ref_spot > 0 else 0.0)
-        elif col in LOG_TRANSFORM_COLS:
-            # Large magnitude + signed: use signed log
-            val = _safe_float(snap.get(col))
-            features.append(_signed_log(val))
-        elif col in NULLABLE_NUMERIC_COLS_5M:
-            _append_nullable_numeric(features, snap, col)
-        else:
-            # Everything else: safe float
-            features.append(_safe_float(snap.get(col)))
-
-    return features
-
-
-def encode_snapshot_1m(snap: dict, ref_spot: float) -> list:
-    """Encode a single snapshot using the 1m feature subset."""
-    features = []
-    spot = _safe_float(snap.get("spot"))
-
-    for col in FEATURES_1M:
-        if col in CATEGORICAL_COLS:
-            if col == "zone":
-                features.append(_encode_zone_feature(snap))
-            elif col == "vwap_side":
-                features.append(_encode_vwap_side_feature(snap))
-        elif col == "spot":
-            if ref_spot > 0:
-                features.append((spot - ref_spot) / ref_spot)
-            else:
-                features.append(0.0)
-        elif col in ("candle_body_pts", "candle_range_pts", "vwap_dist_pts"):
             val = _safe_float(snap.get(col))
             features.append(val / ref_spot if ref_spot > 0 else 0.0)
         elif col in LOG_TRANSFORM_COLS:
             val = _safe_float(snap.get(col))
             features.append(_signed_log(val))
-        elif col in NULLABLE_NUMERIC_COLS_1M:
+        elif col in nullable_cols:
             _append_nullable_numeric(features, snap, col)
         else:
             features.append(_safe_float(snap.get(col)))
 
     return features
+
+
+def encode_snapshot_5m_v2(snap: dict, ref_spot: float) -> list:
+    return _encode_snapshot_v2(
+        snap,
+        ref_spot,
+        feature_cols=LEGACY_V2_FEATURES_5M,
+        nullable_cols=LEGACY_V2_NULLABLE_NUMERIC_COLS_5M,
+    )
+
+
+def encode_snapshot_1m_v2(snap: dict, ref_spot: float) -> list:
+    return _encode_snapshot_v2(
+        snap,
+        ref_spot,
+        feature_cols=LEGACY_V2_FEATURES_1M,
+        nullable_cols=LEGACY_V2_NULLABLE_NUMERIC_COLS_1M,
+    )
+
+
+def encode_snapshot_5m_for_checkpoint(
+    snap: dict,
+    ref_spot: float,
+    checkpoint: Mapping[str, Any],
+    *,
+    category_maps: dict | None = None,
+    vol_medians: dict | None = None,
+) -> list:
+    if checkpoint_encoder_schema_version(checkpoint) == LEGACY_ENCODER_SCHEMA_VERSION:
+        return encode_snapshot_5m_v2(snap, ref_spot)
+    return encode_snapshot_5m(
+        snap,
+        ref_spot,
+        category_maps=category_maps,
+        vol_medians=vol_medians,
+    )
+
+
+def encode_snapshot_1m_for_checkpoint(
+    snap: dict,
+    ref_spot: float,
+    checkpoint: Mapping[str, Any],
+    *,
+    category_maps: dict | None = None,
+    vol_medians: dict | None = None,
+) -> list:
+    if checkpoint_encoder_schema_version(checkpoint) == LEGACY_ENCODER_SCHEMA_VERSION:
+        return encode_snapshot_1m_v2(snap, ref_spot)
+    return encode_snapshot_1m(
+        snap,
+        ref_spot,
+        category_maps=category_maps,
+        vol_medians=vol_medians,
+    )
+
+
+def encode_snapshot_5m(
+    snap: dict,
+    ref_spot: float,
+    *,
+    category_maps: dict | None = None,
+    vol_medians: dict | None = None,
+) -> list:
+    """Encode a 1m snapshot into the structure-stream tabular vector (XGB parity, Stage 2)."""
+    del ref_spot  # tabular engineer uses snapshot spot directly
+    from ml_train import encode_tabular_feature_vector
+
+    return encode_tabular_feature_vector(
+        snap,
+        FEATURES_5M,
+        category_maps=category_maps,
+        vol_medians=vol_medians,
+        ticker=snap.get("ticker"),
+    )
+
+
+def encode_snapshot_1m(
+    snap: dict,
+    ref_spot: float,
+    *,
+    category_maps: dict | None = None,
+    vol_medians: dict | None = None,
+) -> list:
+    """Encode a 1m snapshot into the micro-stream tabular vector (full universe, Stage 2)."""
+    del ref_spot
+    from ml_train import encode_tabular_feature_vector
+
+    return encode_tabular_feature_vector(
+        snap,
+        FEATURES_1M,
+        category_maps=category_maps,
+        vol_medians=vol_medians,
+        ticker=snap.get("ticker"),
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -1146,5 +1273,8 @@ if __name__ == "__main__":
             print()
 
     print("NEXT STEP: If all checks pass, proceed to lstm_model.py")
-    print("           Run: python lstm_data.py  (this script)")
+    print("           Run: python lstm_model.py  (this script)")
     print("           Then share the output with Claude")
+
+
+refresh_sequence_feature_lists()

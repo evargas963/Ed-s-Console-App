@@ -48,7 +48,7 @@ function payloadAlignedLong() {
     stack_runtime: {
       fusion_active: true,
       mc_participated: true,
-      n_base_models_live: 3,
+      n_ml_layers_live: 3,
       stack_mode: 'FULL',
       contributing_models: ['xgb', 'lstm', 'transformer'],
     },
@@ -149,7 +149,7 @@ test('liveReady chip flips to NOT_LIVE_READY when stack_mode=INVALID (WIRE-4-CAN
   splitBrain.stack_runtime = {
     fusion_active: false,           // server would have set this via is_ms_dict_fusion_authoritative
     mc_participated: true,
-    n_base_models_live: 3,
+    n_ml_layers_live: 3,
     stack_mode: 'INVALID',
     contributing_models: [],
   };

@@ -10,16 +10,51 @@
 
 ## Active program
 
-**Institutional trading app — world-class bar** (operator 2026-05-27). Homegrown, but the finished product must **rival any institutional platform**. Every slice lands **application code + paired tests** (producer, consumer, or money-path fix). Quality gate in `AGENTS.md` §World-class / institutional code gate: MIT-professor + world's-greatest-coder bar — **no substandard deliverables**. **Rule compliance — zero drift:** rules are law; banned/excuse phrases blocked at pre-commit (`check_fix_everything_we_touch.py`).
+**Institutional trading app — world-class bar** (operator 2026-05-27). Homegrown, but the finished product must **rival any institutional platform**. Every slice lands **application code + paired tests** (producer, consumer, or money-path fix). Quality gates in `AGENTS.md`: §World-class / institutional code gate (MIT professor + world's greatest coder) and §Universal code quality — simplicity and institutional pride (`check_universal_code_quality_contract()`; simple when simple wins). **Rule compliance — zero drift:** rules are law; banned/excuse phrases blocked at pre-commit (`check_fix_everything_we_touch.py`). Audit before sign-off: `python tools/enforce_all_rules.py --code-quality`.
 
 **Non-negotiables (code-first):**
 - **Train-success-live** — successful scheduler train → `models/active/` in the same run (auto-promote default ON).
 - **Full parallel stack** — live + offline parallel eval score a row only when XGB + LSTM + Transformer all produce valid triplets (no 0.333 meta filler, no XGB-only ensemble rows). Cascade keeps its own architecture contract; governed comparison uses **ts_utc alignment**.
-- **ML pipeline efficiency (operator 2026-05-31, binding)** — ablation confirm v2 → **inference backtest on `models/active/`** (CLI `--survivor-inference-backtest`; no retrain) → edge probe → validation run → scheduler train. **Do not train** to discover wiring or drop quality. Parallel train **writes** `parallel_cascade_bridge.npz`; cascade **must reuse** parallel XGB + bridge in the same `run_once`. Mechanical locks: `tools/check_ml_pipeline_efficiency.py` (gate order + CLI + ps1), `tools/check_ablation_pipeline_parity.py`; pre-commit runs both via `tests/test_ml_feature_schema_parity.py`.
+- **ML pipeline efficiency (operator 2026-05-31, binding)** — leaf ablation confirm → **stack refit backtest** (CLI `--survivor-stack-refit-backtest`; holdout refit full vs survivor — not mask on `models/active/`) → edge probe → validation run → scheduler train. **Compound-group survivors VOID** — re-ablate on atomic Schwab/manifest universe only. **ZERO-BIAS (2026-06-05, binding, cannot be violated):** data decides placement at **`(feature × model × horizon)`** cells only — see `AGENTS.md` §Ablation contract / ZERO-BIAS; agents build toward the target, not toward preserving biased artifacts. **Do not train** to discover wiring or drop quality. **seven stack models:** `xgb`, `lstm`, `transformer`, `meta`, `monte_carlo`, `regime`, `fusion` (canonical: `governed_stack_contract.FULL_STACK_MODEL_LAYERS`). Parallel train **writes** `parallel_cascade_bridge.npz`; cascade **must reuse** parallel XGB + bridge in the same `run_once`. Mechanical locks: `tools/check_ml_pipeline_efficiency.py` (gate order + CLI + ps1), `tools/check_ablation_pipeline_parity.py`, `check_full_stack_models_contract()`, `check_zero_bias_ablation_contract()`; pre-commit runs via `tests/test_ml_feature_schema_parity.py` + `tests/test_check_fix_everything_we_touch.py`.
 - **Confluence-only** — `panel_auto` enrolled for logging/features, **excluded from ML training**.
 - **Operator legibility** — WAIT/neutral horizon cards stay high-contrast vs page chrome (same labels; readable slate/blue neutral palette — not “broken UI”).
 
+### Feature placement matrix — `(feature × model × horizon)` `[binding]`
+
+**North star:** for **each of the seven stack models**, data decides **which atomic features fit that model at each horizon** (`1c` / `5c` / `15c` / `60c`). Nothing pre-routes placement — not manifest `members`, not hand-curated `FEATURES_5M` lists, not compound bundles.
+
+| Axis | Binding values |
+|------|----------------|
+| **feature** | One atomic column per ablation unit — **all 280** ABLATE manifest rows on the grid (no builder pre-cull; `not_wired` / `no_model_interface` are per-cell skip reasons, not exclusions) |
+| **model** | **All seven** stack layers — `xgb`, `lstm`, `transformer`, `meta`, `monte_carlo`, `regime`, `fusion` (`governed_stack_contract.FULL_STACK_MODEL_LAYERS`). **Not** xgb/lstm/transformer-only + four upper layers on a separate axis (`AGENTS.md` ZERO-BIAS). |
+| **horizon** | `1c`, `5c`, `15c`, `60c` — all mandatory; partial-horizon runs rejected |
+
+**Scoring:** one feature knocked out at a time; effect measured **through one unified seven-layer wire-row path** (`score_unified_ablation_fusion_from_wire_row` via `_production_fusion_prob_for_row` when `ED_ABLATION_SCORING_PASS=1`) so **every layer** consumes the same permuted DB row at every horizon. “That layer doesn’t consume raw features” is **not** a reason to drop it from the model axis — ablation decides.
+
+**Authority output:** survivors resolve **per `(model, horizon)`** → `survivor_summary.by_model_horizon[model][horizon]`. That matrix is the **only** admissible training placement router.
+
+**Target cell count:** 280 × **7 models** × **4 horizons** = **7,840** placement cells. Row pool = SPY + QQQ + IWM (pooled; not a grid axis). Mechanical lock: `check_ablation_seven_model_four_horizon_grid()` + `check_ablation_single_authority()` + `check_ablation_full_stack_non_negotiable()` on every pre-commit; runtime: `python tools/feature_curation_gate.py --ablation-audit`.
+
 Schwab scanner/register work is **tracking only** — it does not replace wire fixes, UI honesty, or stack behavior.
+
+### Stack honesty phased plan `[binding]` (2026-06-06 — Fusion-only horizon cards; code + locks, not memo-only)
+
+Operator north star: **one door in** (wire row → seven-layer stack), **one door out** (fusion-only on horizon cards). Phases below are tracked here and in `OPEN_ITEMS.md`; each phase closes only with code + paired test + checker row in `AGENTS.md` §Mandatory enforcement registry.
+
+| Phase | Status | Code targets | Mechanical lock |
+|-------|--------|--------------|-----------------|
+| **1 — Card honesty** | **LANDED** (working tree) | `prediction_engine.py::_overlay_multi_horizon_ml_on_product_triplets`, `bayesian_fusion.py` blend default | `check_fusion_only_card_contract()` |
+| **1b — 5th ALL card** | **LANDED** (working tree) | `static/index.html` `#tf-signal-consolidated`, `deriveSourceForHorizon('consolidated')` | `test_issue18_ui_contract.py` + `check_fusion_only_card_contract()` |
+| **2 — Four-stack promotion** | OPEN | `ml_scheduler.py`, `active_bundle_contract.py`, `models/active_{hz}/` per panel ticker | promotion + `verify_active_models.py` tests |
+| **3 — Call → ALL only** | OPEN | `call_engine.py`, `multi_horizon_decision.py` | paired test in existing call contract file |
+| **4 — Sequence-faithful ablation** | `[REAL-GATE: after-grid]` | `arch_competition/ablation_bundle_inference.py` | after current 1,120-cell grid completes |
+| **5 — Schwab fix-as-we-touch** | **ONGOING** (cone-by-cone) | every file Read in producer/consumer cone per `CLAUDE.md` | `check_schwab_csv_first.py` on new market-fact sites; not repo-wide closure yet |
+| **6 — Rules at turn-time** | **PARTIAL** | `tools/enforce_all_rules.py`, `.claude/settings.json` Stop hook | pre-commit mirrors ~⅓ deterministic rules; Claude Stop hook scans output; Cursor chat output has no mechanical gate |
+| **7 — Pre-train observe (no retrain for cards)** | **LANDED** (working tree) | `ED_LIVE_ABLATION_EXPERIMENT=1` → `models/parallel/{ticker}/` + survivor serve masks; team gate blocks solo MC | `check_live_ablation_experiment_wiring()` + `check_unified_stack_team_contract()` |
+
+**Pre-train card observe (operator binding):** set `ED_LIVE_ABLATION_EXPERIMENT=1` on the server process to score horizon + ALL cards from ablation survivor masks and candidate bundles under `models/parallel/` **before** scheduler promotion — not via retrain. Strict `models/active/` remains the post-train promotion path only.
+
+**Verify after commit + server restart:** `python -m pytest tests/test_prediction_engine_chunk1_fail_closed.py tests/test_issue18_ui_contract.py tests/test_check_fix_everything_we_touch.py::test_fusion_only_card_contract -q` then `python tools/live_diag_compare.py SPY`.
 
 **Governance consolidation** — **Phases 0–4 complete** @ `ed9f882`. **Concurrent:** Training PR5–PR7. **Schwab V4:** disposition/regen when it unblocks CI or closes a proven wire FIND — never scanner-only turns.
 
@@ -80,7 +115,7 @@ Schwab scanner/register work is **tracking only** — it does not replace wire f
 |------|---------|---------------|
 | `EMPIRICAL` | Similar-setup histogram only | "N similar setups" |
 | `ML FUSION` | Full stack fusion authoritative for that horizon | "Stack trained" |
-| `BLEND` | ~85% fusion + ~15% empirical support | "Stack + history" |
+| `BLEND` | **Opt-in only** — `ED_MH_EMPIRICAL_SUPPORT > 0` | "Stack + history" |
 | `UNAVAILABLE` | Missing bundle or stack failed | "No ML — WAIT" |
 | `DEGRADED` | Training audit NO-GO or incomplete 16-file bundle | "Data quality hold" |
 

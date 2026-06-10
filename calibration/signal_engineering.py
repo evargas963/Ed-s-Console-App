@@ -235,7 +235,7 @@ def failure_identification(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "Canonical/fusion still encode direction probabilities but execution layer does not emit short without policy change.",
         ],
         "model_output_separation": [
-            "Fake run_base_models_once returns identical 0.34/0.33/0.33 per model → no cross-model disagreement for stack vote.",
+            "Fake run_unified_stack_ml_once returns identical 0.34/0.33/0.33 per model → no cross-model disagreement for stack vote.",
         ],
         "sample_fusion_keys": list(fj0.keys())[:25],
         "sample_canonical_keys": list(cj0.keys())[:25],

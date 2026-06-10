@@ -1,0 +1,38 @@
+# Tooling config for the hardening program (2026-06-03). Tool sections only — no [build-system]
+# so pip/packaging behavior is unchanged. Each tool is wired into .github/workflows/hardening.yml.
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = [
+    ".venv", "venv", "node_modules", "__pycache__",
+    "models/_artifact_archive", "models/_xgb_dirty_quarantine",
+]
+
+[tool.ruff.lint]
+# Start enforcing the high-signal correctness rules (the ones that caught the real bugs this
+# session); style/complexity rules are added as the baseline is cleaned (ratchet, not big-bang).
+select = ["F", "E9"]   # pyflakes (unused/undefined/redefine) + syntax errors
+# F-rules that are intentional in this repo (documented re-exports already carry # noqa: F401).
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+# Lenient first pass — money-path modules get tightened incrementally; ignore third-party stubs
+# so CI isn't drowned in import-stub noise on day one.
+python_version = "3.13"
+ignore_missing_imports = true
+warn_unused_ignores = false
+warn_redundant_casts = true
+# Hard errors only at first (undefined names, bad calls); widen `disallow_untyped_defs` per-module later.
+exclude = "(^|/)(node_modules|\\.venv|venv|models/)"
+
+[tool.bandit]
+# Security scan. The known surface (pickle.load on model files, sqlite f-string SQL on internal
+# tooling) is triaged in the hardening tracker; exclude tests + vendored/archive trees.
+exclude_dirs = ["tests", "node_modules", ".venv", "venv", "models"]
+
+[tool.coverage.run]
+branch = true
+omit = ["tests/*", "*/node_modules/*", "models/*"]

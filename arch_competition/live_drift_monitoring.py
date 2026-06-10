@@ -1,7 +1,7 @@
 """
 Governed live drift surveillance: baselines from evaluation manifests + optional recent-window re-eval.
 
-Does not promote, rollback, or change ``run_base_models_once`` / production defaults.
+Does not promote, rollback, or change ``run_unified_stack_ml_once`` / production defaults.
 """
 
 from __future__ import annotations

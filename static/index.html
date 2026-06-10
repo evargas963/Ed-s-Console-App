@@ -708,7 +708,7 @@
   /* ── Timeframe signal row (primary horizon surface: 1M / 5M / 15M / 60M) ── */
   .tf-signal-row-outer {
     width: 100%;
-    max-width: min(620px, 50vw);
+    max-width: min(820px, 62vw);
     display: flex;
     justify-content: flex-start;
     align-self: flex-start;
@@ -716,7 +716,7 @@
   }
   #timeframe-signal-row {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
     justify-content: start;
     background: #04070c;
@@ -729,7 +729,7 @@
   }
   @media (max-width: 720px) {
     .tf-signal-row-outer { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    #timeframe-signal-row { min-width: 520px; }
+    #timeframe-signal-row { min-width: 820px; }
   }
   .tf-signal-card {
     position: relative;
@@ -850,6 +850,11 @@
     font-weight: 700;
     letter-spacing: .16em;
     margin-top: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
   }
   .tf-state-dim .tf-dir { color: #f1f5f9; }
   .tf-state-up .tf-dir { color: #00E676; }
@@ -859,6 +864,11 @@
     font-weight: 700;
     margin-top: 6px;
     color: #fff;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
   }
   .tf-state-dim .tf-pct { color: #f8fafc; }
   .tf-conf-lbl {
@@ -964,6 +974,10 @@
     text-align: center;
     line-height: 1.3;
     color: var(--text3);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .tf-state-up .tf-source-detail,
   .tf-state-down .tf-source-detail { color: rgba(255,255,255,0.55); }
@@ -2967,6 +2981,17 @@
             <div class="tf-source-detail" aria-label="Source detail">—</div>
             <span class="tf-tag tf-tag--hidden">—</span>
           </div>
+          <div class="tf-signal-card tf-state-dim" id="tf-signal-consolidated" role="group" aria-label="Consolidated multi-horizon decision">
+            <span class="tf-dot tf-dot--dim"></span>
+            <span class="tf-timeframe">ALL</span>
+            <div class="tf-arrow">→</div>
+            <div class="tf-dir">NEUTRAL</div>
+            <div class="tf-pct">0%</div>
+            <div class="tf-conf-lbl" title="Data-driven synthesis across 1M/5M/15M/60M fusion cards (multi_horizon_decision)">SYNTH CONF</div>
+            <span class="tf-source-chip tf-source-chip--unavailable" title="UNAVAILABLE · Missing bundle or stack failed · operator text: “No ML — WAIT”" aria-label="Probability source">—</span>
+            <div class="tf-source-detail" aria-label="Source detail">—</div>
+            <span class="tf-tag tf-tag--hidden">—</span>
+          </div>
         </div>
       </div>
 
@@ -3091,7 +3116,7 @@
                   <div class="decision-k">Contributing</div><div class="decision-v" id="dr-stack-contrib">—</div>
                   <div class="decision-k">Fusion</div><div class="decision-v" id="dr-stack-fusion">—</div>
                   <div class="decision-k">Monte Carlo</div><div class="decision-v" id="dr-stack-mc">—</div>
-                  <div class="decision-k">Base models live</div><div class="decision-v" id="dr-stack-bases">—</div>
+                  <div class="decision-k">ML stack layers live</div><div class="decision-v" id="dr-stack-bases">—</div>
                   <div class="decision-k">Governance</div><div class="decision-v" id="dr-stack-gov">—</div>
                 </div>
               </div>
@@ -4147,6 +4172,16 @@ function renderContextLayer(d) {
 // text per the brief.
 function deriveSourceForHorizon(d, slug) {
   if (!d || typeof d !== 'object') return 'UNAVAILABLE';
+  if (slug === 'consolidated') {
+    if (typeof isFusionAuthoritative === 'function' && isFusionAuthoritative(d) && d.final_tradeable) {
+      return 'ML FUSION';
+    }
+    const prov = String(d.decision_provenance || '');
+    if (prov.includes('multi_horizon') && (d.final_bias === 'LONG' || d.final_bias === 'SHORT')) {
+      return 'ML FUSION';
+    }
+    return 'UNAVAILABLE';
+  }
   const srcMap = d.mh_prob_source_by_horizon;
   if (srcMap && typeof srcMap === 'object' && srcMap[slug] != null) {
     const raw = String(srcMap[slug]).trim();
@@ -4182,7 +4217,6 @@ function deriveSourceForHorizon(d, slug) {
   const empPresent = !!(hp && hp.up != null && hp.down != null && hp.flat != null);
   if (rowMissing) return degraded ? 'DEGRADED' : 'UNAVAILABLE';
   if (degraded && !hzFusionOk) return 'DEGRADED';
-  if (hzFusionOk && empPresent) return 'BLEND';
   if (hzFusionOk) return 'ML FUSION';
   if (empPresent) return 'EMPIRICAL';
   return 'UNAVAILABLE';
@@ -4200,7 +4234,7 @@ function sourceChipTitle(source) {
   switch (String(source || '').toUpperCase()) {
     case 'EMPIRICAL':  return 'EMPIRICAL · Similar-setup histogram only · operator text: “N similar setups”';
     case 'ML FUSION':  return 'ML FUSION · Full stack fusion authoritative for that horizon · operator text: “Stack trained”';
-    case 'BLEND':      return 'BLEND · ~85% fusion + ~15% empirical support · operator text: “Stack + history”';
+    case 'BLEND':      return 'BLEND · ED_MH_EMPIRICAL_SUPPORT > 0 only · operator text: “Stack + history”';
     case 'DEGRADED':   return 'DEGRADED · Training audit NO-GO or incomplete 16-file bundle · operator text: “Data quality hold”';
     case 'UNAVAILABLE':
     default:           return 'UNAVAILABLE · Missing bundle or stack failed · operator text: “No ML — WAIT”';
@@ -4208,6 +4242,13 @@ function sourceChipTitle(source) {
 }
 function sourceOperatorText(source, d, slug) {
   const up = String(source || '').toUpperCase();
+  if (slug === 'consolidated') {
+    const align = String(d.alignment_state_display || d.alignment_state || '—');
+    const prim = String(d.primary_horizon || '').toLowerCase();
+    const primUi = ({ '1c': '1M', '5c': '5M', '15c': '15M', '60c': '60M' })[prim] || prim || '—';
+    if (up === 'ML FUSION') return '4H synth · lead ' + primUi + ' · ' + align;
+    return '4H synth withheld';
+  }
   if (up === 'ML FUSION') return 'Stack trained';
   if (up === 'BLEND') return 'Stack + history';
   if (up === 'UNAVAILABLE') return 'No ML — WAIT';
@@ -4220,11 +4261,21 @@ function sourceOperatorText(source, d, slug) {
   }
   return '—';
 }
+/** Operator-short unavailable subline — never paint raw reason_code tokens on cards. */
+function formatUnavailableReasonCode(rc) {
+  const u = String(rc || '').trim().toUpperCase();
+  if (!u) return 'NO DATA';
+  if (u === 'PRIMARY_HORIZON_DATA_MISSING') return 'NO DATA';
+  if (u.includes('BUNDLE') || u.includes('STRICT_ACTIVE')) return 'BUNDLE HOLD';
+  if (u.length > 14) return u.slice(0, 12) + '…';
+  return u;
+}
 try {
   window.deriveSourceForHorizon = deriveSourceForHorizon;
   window.sourceChipCssClass = sourceChipCssClass;
   window.sourceChipTitle = sourceChipTitle;
   window.sourceOperatorText = sourceOperatorText;
+  window.formatUnavailableReasonCode = formatUnavailableReasonCode;
 } catch (e) {}
 
 /** Unified signal-rail-card — fusion verdict on top + empirical context on
@@ -4312,7 +4363,7 @@ function renderSignalRailCard(d) {
       note.style.fontWeight = '500';
       const nActiveRaw = d.fusion_n_models_active;
       const nActive = (nActiveRaw != null && !Number.isNaN(Number(nActiveRaw))) ? String(nActiveRaw) : '?';
-      note.textContent = nActive + '/3 base models' + (pLabel ? ' · primary ' + pLabel : '');
+      note.textContent = nActive + '/3 ML stack layers' + (pLabel ? ' · primary ' + pLabel : '');
       ag.appendChild(note);
       topEl.appendChild(ag);
     } else {
@@ -4362,7 +4413,7 @@ function renderSignalRailCard(d) {
 }
 try { window.renderSignalRailCard = renderSignalRailCard; } catch (e) {}
 
-/** Primary horizon surface: 1M / 5M / 15M / 60M cards (replaces legacy price header strip). */
+/** Stack honesty: 1M–60M = per-horizon fusion readouts; ALL = consolidated synthesis (no PRIMARY on individual pills). */
 function renderTimeframeSignalRow(d) {
   if (d == null || typeof d !== 'object') return;
   const row = document.getElementById('timeframe-signal-row');
@@ -4373,6 +4424,7 @@ function renderTimeframeSignalRow(d) {
     { slug: '5c', ui: '5M' },
     { slug: '15c', ui: '15M' },
     { slug: '60c', ui: '60M' },
+    { slug: 'consolidated', ui: 'ALL' },
   ];
 
   function normDir(v) {
@@ -4483,7 +4535,14 @@ function renderTimeframeSignalRow(d) {
   });
 
   function deriveTag(slug, dir) {
-    if (slug === prim) return 'PRIMARY';
+    if (slug === 'consolidated') {
+      const cst = String(d.contradiction_state || '').toLowerCase();
+      if (cst === 'structural' || cst === 'tactical') return 'SPLIT';
+      const ast = String(d.alignment_state_display || d.alignment_state || '').toLowerCase();
+      if (ast.includes('align')) return 'ALIGNED';
+      return null;
+    }
+    // Per-horizon pills: AGREE/CONFLICT vs mode-selected clock only — synthesis lives on ALL.
     if (primaryDir !== 'LONG' && primaryDir !== 'SHORT') return null;
     if (dir === primaryDir) return 'AGREE';
     if (dir === 'LONG' || dir === 'SHORT') return 'CONFLICT';
@@ -4498,12 +4557,17 @@ function renderTimeframeSignalRow(d) {
     let confPct = null;
     let tag = null;
 
+    if (slug === 'consolidated') {
+      dir = normDir(d.final_bias || 'WAIT');
+      confPct = parseConf(d.final_confidence);
+      tag = deriveTag(slug, dir);
+    } else {
     const sc = byTf[ui];
     if (useServer && sc) {
       dir = normDir(sc.direction);
       confPct = parseConf(sc.confidence);
       const rawT = sc.tag != null ? String(sc.tag).toUpperCase().trim() : '';
-      if (rawT === 'PRIMARY' || rawT === 'AGREE' || rawT === 'CONFLICT') tag = rawT;
+      if (rawT === 'AGREE' || rawT === 'CONFLICT') tag = rawT;
       if (!tag) tag = deriveTag(slug, dir);
     } else {
       const r = mhap.find((x) => String(x.horizon || '').toLowerCase() === slug);
@@ -4519,6 +4583,7 @@ function renderTimeframeSignalRow(d) {
         }
       }
     }
+    }
 
     let state = 'dim';
     if (dir === 'LONG') state = 'up';
@@ -4532,7 +4597,10 @@ function renderTimeframeSignalRow(d) {
     }
 
     const isPrimaryTrade =
-      tradeable && slug === prim && dir === finalBias && (state === 'up' || state === 'down');
+      slug === 'consolidated' &&
+      tradeable &&
+      dir === finalBias &&
+      (state === 'up' || state === 'down');
     if (isPrimaryTrade && glow === 'tf-glow-1') glow = 'tf-glow-2';
 
     const sigDir =
@@ -4567,7 +4635,7 @@ function renderTimeframeSignalRow(d) {
       if (dir === 'UNAVAILABLE') {
         const r = mhap.find((x) => String(x.horizon || '').toLowerCase() === slug);
         const rc = r && r.reason_code ? String(r.reason_code) : 'NO DATA';
-        pctEl.textContent = rc;
+        pctEl.textContent = formatUnavailableReasonCode(rc);
         pctEl.title = r && r.missing_horizon
           ? `missing_horizon=${r.missing_horizon}`
           : rc;
@@ -4582,13 +4650,15 @@ function renderTimeframeSignalRow(d) {
 
     const tagEl = card.querySelector('.tf-tag');
     if (tagEl) {
-      if (!tag) {
+      if (!tag || dir === 'UNAVAILABLE') {
         tagEl.className = 'tf-tag tf-tag--hidden';
         tagEl.textContent = '—';
         tagEl.setAttribute('aria-hidden', 'true');
       } else {
         tagEl.removeAttribute('aria-hidden');
-        const tc = tag === 'PRIMARY' ? 'primary' : tag === 'AGREE' ? 'agree' : 'conflict';
+        const tc = tag === 'AGREE' || tag === 'ALIGNED' ? 'agree'
+          : tag === 'CONFLICT' || tag === 'SPLIT' ? 'conflict'
+          : 'agree';
         tagEl.className = 'tf-tag tf-tag--' + tc;
         tagEl.textContent = tag;
       }
@@ -5109,7 +5179,7 @@ function renderDecisionCommandRail(d) {
   // provenance (e.g. canonical_forecast_missing) shows 'inactive' even when bare flag is True.
   domIf('dr-stack-fusion', el => { const fOk = isFusionAuthoritative(d); el.textContent = fOk ? 'active' : 'inactive'; el.style.color = fOk ? 'var(--green)' : 'var(--red)'; });
   domIf('dr-stack-mc', el => { el.textContent = d.mc_available ? 'participated' : 'not participating'; el.style.color = d.mc_available ? 'var(--green)' : 'var(--red)'; });
-  domIf('dr-stack-bases', el => { el.textContent = `${Number(rt.n_base_models_live ?? 0)}/3 sequence+tabular bases live`; });
+  domIf('dr-stack-bases', el => { el.textContent = `${Number(rt.n_ml_layers_live ?? 0)}/3 xgb+lstm+transformer layers live`; });
   domIf('dr-stack-gov', el => {
     if (!gov.available) { el.textContent = '—'; return; }
     el.textContent = `${String(gov.active_architecture || '?').toUpperCase()} · promoted=${gov.promoted ? 'yes' : 'no'}`;

@@ -161,3 +161,31 @@ def test_pack_metrics_includes_regime_slices_when_rows_provided():
     assert "regime_conditional_ece" in m
     assert "low" in m["regime_slices"]
 
+
+def test_whole_stack_ablation_skips_when_knockout_columns_absent_from_rows():
+    from arch_competition.stack_bundle_eval_v1 import run_whole_stack_feature_group_ablation
+
+    baseline = {
+        "status": "ok",
+        "hz": "1c",
+        "pooled": True,
+        "pool_tickers": ["SPY"],
+        "rows": [{"ts_utc": 1.0, "ticker": "SPY", "spot": 100.0}],
+        "baseline_probs": [[0.34, 0.33, 0.33]],
+        "y_outcome": [0],
+        "stack_layers_scored": ["xgb", "fusion"],
+    }
+    cell = run_whole_stack_feature_group_ablation(
+        db_path=":memory:",
+        ticker="SPY",
+        model_dir=__import__("pathlib").Path("."),
+        ml_horizon_slug="1c",
+        group_id="reg__atomic__bid_ask_imbalance",
+        group_columns=["bid_ask_imbalance"],
+        baseline_cache=baseline,
+        model_family="xgb",
+    )
+    assert cell["status"] == "skipped"
+    assert cell["reason"] == "noop_knockout:columns_absent_from_rows"
+    assert cell["columns_permuted_count"] == 0
+

@@ -95,7 +95,7 @@ def main():
 
     from ml_predict import stack_probs_bundle_key
 
-    with patch("ml_predict.run_base_models_once") as mock_rbm:
+    with patch("ml_predict.run_unified_stack_ml_once") as mock_rbm:
         mock_rbm.return_value = {
             "fusion": mock_fusion_output,
             "model_outputs": {},

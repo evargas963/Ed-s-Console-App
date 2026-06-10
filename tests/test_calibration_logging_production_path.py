@@ -54,7 +54,7 @@ def _compute_then_log(inp, *, db_path: Path, edb: EdDB):
     return out
 
 
-def _fake_run_base_models_once(
+def _fake_run_unified_stack_ml_once(
     snap,
     ticker,
     db,
@@ -65,7 +65,7 @@ def _fake_run_base_models_once(
 ):
     """Deterministic parallel-stack output without on-disk models or snapshot history (CI-safe)."""
     from ml_predict import PARALLEL_STACK_SCHEMA_VERSION, stack_probs_bundle_key
-    from features.parallel_stack_schema import build_parallel_base_output
+    from features.parallel_stack_schema import build_unified_stack_layer_output
 
     probs = {"up": 0.34, "down": 0.33, "flat": 0.33}
 
@@ -84,7 +84,7 @@ def _fake_run_base_models_once(
     fusion_pack = {"xgb": _fusion_block(), "lstm": _fusion_block(), "transformer": _fusion_block()}
 
     def _mo():
-        r = build_parallel_base_output(probs=probs, approved=True)
+        r = build_unified_stack_layer_output(probs=probs, approved=True)
         r["up"] = r["prob_up"]
         r["down"] = r["prob_down"]
         r["flat"] = r["prob_flat"]
@@ -103,9 +103,9 @@ def _fake_run_base_models_once(
 
 @pytest.fixture
 def stub_parallel_stack_for_calibration_proofs(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Real `compute_signals` path; stub only `run_base_models_once` so empty DB + no artifacts still complete."""
+    """Real `compute_signals` path; stub only `run_unified_stack_ml_once` so empty DB + no artifacts still complete."""
     monkeypatch.setenv("ED_XGB_STRICT_ACTIVE_ONLY", "0")
-    monkeypatch.setattr("ml_predict.run_base_models_once", _fake_run_base_models_once)
+    monkeypatch.setattr("ml_predict.run_unified_stack_ml_once", _fake_run_unified_stack_ml_once)
 
 
 @pytest.fixture

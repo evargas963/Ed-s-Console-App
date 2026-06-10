@@ -51,7 +51,7 @@ Pilot 1A does not:
 | `server.py` | Attach `v2_decision` inside Tier C `_fetch_state` flow. |
 | `market_state.py` | Source `MarketState` / `ms_dict` fields for adapter input. |
 | `signals.py` | Existing signal, fusion, and stack context. |
-| `ml_predict.py` | Existing base model / stack outputs. |
+| `ml_predict.py` | Existing unified-stack ML layer / stack outputs. |
 | `ml_horizon.py` | Existing primary horizon contract: `1c`, `5c`, `15c`, `60c`. |
 | `static/index.html` | Initial v2 decision card surface. |
 

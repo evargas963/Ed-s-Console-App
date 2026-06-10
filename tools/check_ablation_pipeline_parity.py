@@ -20,6 +20,10 @@ _REQUIRED_SERVE = (
     (REPO_ROOT / "lstm_model.py", "zero_ablated_sequence_channels_for_model"),
     (REPO_ROOT / "arch_competition" / "stack_bundle_eval_v1.py", "null_snapshot_dict_for_drop_groups"),
     (REPO_ROOT / "arch_competition" / "stack_bundle_eval_v1.py", "drop_ablated_xgb_engineered_columns"),
+    (REPO_ROOT / "arch_competition" / "stack_bundle_eval_v1.py", "void_compound_ablation_survivors"),
+    (REPO_ROOT / "arch_competition" / "stack_bundle_eval_v1.py", "compound_survivors_voided"),
+    (REPO_ROOT / "tools" / "build_feature_assignment_matrix_v2.py", "build_schwab_ablation_field_registry"),
+    (REPO_ROOT / "governed_stack_contract.py", "FULL_STACK_MODEL_LAYERS"),
     (REPO_ROOT / "lstm_data.py", "confirm_drop_group_ids"),
 )
 
@@ -27,7 +31,7 @@ _REQUIRED_SERVE = (
 _REQUIRED_SCHEDULER = (
     (REPO_ROOT / "ml_scheduler.py", "run_survivor_edge_probe"),
     (REPO_ROOT / "ml_scheduler.py", "ensure_survivor_retrain_incumbent_reset_at_run_start"),
-    (REPO_ROOT / "ml_scheduler.py", "run_survivor_inference_backtest"),
+    (REPO_ROOT / "ml_scheduler.py", "run_survivor_stack_refit_backtest"),
     (REPO_ROOT / "ml_scheduler.py", "load_parallel_cascade_bridge"),
 )
 

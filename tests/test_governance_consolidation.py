@@ -10,8 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 # Pin excerpt hashes only (not full AGENTS.md body).
-BANNED_TOOLS_HASH = "0de266bec3a17c77af3180fa8fbdb10d03fa075cd6a34be01e306dc5761c1194"
-NO_PERMISSION_ASKS_HASH = "1a1f2968debddd443f24595e4c4d4384585bde65c26a8e7a89e124a254a28d3f"
+BANNED_TOOLS_HASH = "37f3366b8388286a3287ca5fac07cf944f7274c0bcabd8b564a5d08690538fea"
+NO_PERMISSION_ASKS_HASH = "714265531ba2ffd5ca14d3823bd79ee0874972b1c0efd2c89103b92a10b49715"
 
 
 def _read(rel: str) -> str:
@@ -288,6 +288,20 @@ def test_agents_meet_or_exceed_closure_cycle() -> None:
     assert "Scope — universal, not gated" in agents
     assert "full repo" in agents
     assert "one cycle, one verdict vocabulary" in agents
+
+
+def test_agents_objective_code_audit_closure() -> None:
+    agents = _read("AGENTS.md")
+    assert "Objective → Code → Audit closure" in agents
+    assert "run_objective_code_audit" in agents
+    assert "run_repo_wide_static_audit" in agents
+    assert "run_situational_runtime_audits" in agents
+    assert "--objective-audit" in agents
+    assert "--full-runtime" in agents
+    assert "AUDIT: CLEAN" in agents
+    assert "Scope — universal, full repo" in agents
+    assert "where the situation fits" in agents
+    assert "audit_ablation_placement_validity" in agents
 
 
 def test_agents_always_on_institutional_binding() -> None:
