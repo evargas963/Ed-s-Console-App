@@ -35,6 +35,45 @@ W_RV = 30
 W_MTF5 = 30   # 30×1m ≈ 30m for 5m-like aggregation
 W_MTF15 = 45  # 15×1m bars aggregated as 15m proxy
 
+# Multi-horizon momentum lookbacks (1m bars). Intraday time-series momentum:
+# Moskowitz/Ooi/Pedersen (2012, JFE); Gao/Han/Li/Zhou (2018, JFE) intraday momentum.
+MOMENTUM_RETURN_LOOKBACKS_1M: tuple[int, ...] = (1, 3, 5, 15, 30, 60)
+
+# ── Snapshot persistence contract (operator 2026-06-11) ──────────────────────
+# Price-action primitives persisted to snapshots/snapshots_1m_normalized so the
+# ML cone can finally see price movement (not just options-structure distances).
+# One row per (snapshot column, signal-layer key). Producer: server.py snapshot
+# kwargs via compute_price_action_snapshot_columns; backfill: snapshot_normalizer.
+SNAPSHOT_PRICE_ACTION_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("pa_ret_1m_pct", "mom.ret_1m_pct"),
+    ("pa_ret_3m_pct", "mom.ret_3m_pct"),
+    ("pa_ret_5m_pct", "mom.ret_5m_pct"),
+    ("pa_ret_15m_pct", "mom.ret_15m_pct"),
+    ("pa_ret_30m_pct", "mom.ret_30m_pct"),
+    ("pa_ret_60m_pct", "mom.ret_60m_pct"),
+    ("pa_trend_slope_log20", "ps.rolling_trend_slope_log20"),
+    ("pa_trend_slope_log40", "ps.rolling_trend_slope_log40"),
+    ("pa_structure_state", "ps.hh_hl_lh_ll_state"),
+    ("pa_bos_up", "ps.break_of_structure_up"),
+    ("pa_bos_down", "ps.break_of_structure_down"),
+    ("pa_dist_swing_high_atr", "ps.dist_to_swing_high_atr"),
+    ("pa_dist_swing_low_atr", "ps.dist_to_swing_low_atr"),
+    ("pa_range_position_n20", "ps.range_position_n20"),
+    ("pa_vwap_zscore", "vl.vwap_zscore"),
+    ("pa_atr_pctile_60", "vol.atr_percentile_60"),
+    ("pa_atr_expansion_5_20", "vol.atr_expansion_ratio_5_20"),
+    ("pa_realized_vol_ann", "vol.realized_vol_annualized_proxy"),
+    ("pa_wick_asymmetry", "cnd.wick_asymmetry"),
+    ("pa_close_location", "cnd.close_location_in_bar"),
+    ("pa_impulse_run_signed", "cnd.consecutive_impulse_signed"),
+    ("pa_mtf_trend_1m", "mtf.trend_1m_sign"),
+    ("pa_mtf_trend_5m", "mtf.trend_5m_from_1m_sign"),
+    ("pa_mtf_bias_15m", "mtf.bias_15m_from_1m_sign"),
+    ("pa_mtf_alignment", "mtf.alignment_state"),
+    ("pa_relative_volume", "part.relative_volume"),
+    ("pa_move_efficiency", "part.move_efficiency_last_vs_tr5"),
+)
+
 
 def _f(x: Any) -> Optional[float]:
     return float_finite_or_none(x)
@@ -532,6 +571,8 @@ def compute_signal_layer_v1(
         else:
             break
     out["cnd.consecutive_impulse_count"] = float(min(impulse, 20))
+    # Signed run length: +n consecutive up closes, -n consecutive down closes.
+    out["cnd.consecutive_impulse_signed"] = float(min(impulse, 20)) * (dir_sign or 0.0)
 
     if len(bars) >= 2:
         prev_c = _f(bars[-2].get("close"))
@@ -550,6 +591,16 @@ def compute_signal_layer_v1(
     ic = float(out.get("cnd.consecutive_impulse_count") or 0.0)
     out["cnd.drive_flag"] = 1.0 if (isinstance(br, float) and br > 0.65) else 0.0
     out["cnd.stall_flag"] = 1.0 if (isinstance(br, float) and br < 0.25 and ic >= 3.0) else 0.0
+
+    # ── D2. Multi-horizon momentum returns ─────────────────────────────────
+    # Log return over each lookback, in percent. Intraday time-series momentum
+    # (Moskowitz/Ooi/Pedersen 2012; Gao/Han/Li/Zhou 2018). None when history short.
+    for k in MOMENTUM_RETURN_LOOKBACKS_1M:
+        key = f"mom.ret_{k}m_pct"
+        if len(closes) > k and closes[-1 - k] is not None and closes[-1 - k] > EPS and c_now > EPS:
+            out[key] = 100.0 * math.log(c_now / closes[-1 - k])
+        else:
+            out[key] = None
 
     # ── E. Multi-timeframe (from 1m only) ─────────────────────────────────
     out["mtf.trend_1m_sign"] = _sign_trend(sl)
@@ -608,6 +659,22 @@ def compute_signal_layer_v1(
         out["part.move_efficiency_last_vs_tr5"] = None
 
     return out
+
+
+def compute_price_action_snapshot_columns(
+    bars: Sequence[Mapping[str, Any]],
+    *,
+    decision_ts_utc: float,
+    inp: Any | None = None,
+) -> dict[str, Optional[float]]:
+    """
+    Flat snapshot-column dict for the persisted price-action cone
+    (SNAPSHOT_PRICE_ACTION_COLUMNS). Missing history → None per column
+    (honest nulls — never fabricated fills).
+    """
+    closed = [b for b in bars if (_f(b.get("bar_end_ts_utc")) or 0.0) <= float(decision_ts_utc)]
+    layer = compute_signal_layer_v1(closed, decision_ts_utc=decision_ts_utc, inp=inp)
+    return {col: _f(layer.get(key)) for col, key in SNAPSHOT_PRICE_ACTION_COLUMNS}
 
 
 def compute_signal_layer_v1_from_db(

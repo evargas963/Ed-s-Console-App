@@ -4,11 +4,12 @@ Locks the implementation shape that the LIVE-UI-1 inventory specified
 (governance/STACK_WIRING_INTEGRITY_MAP.md, "Live-UI direction transports
 (LIVE-UI-1, Phase 2)"):
 
-  * bundleDirectionWithheld(integrity, d) helper — pure function, returns
-    {withheld, reason}. Keyed on the FIVE conditions in the inventory:
+  * bundleDirectionWithheld(integrity, d, nowMs) helper — pure function, returns
+    {withheld, reason}. Keyed on the conditions in the inventory:
     analytics_pending_shell, _priceAheadOfBundle, slowStaleVsFast,
-    quoteAhead, genStale, pending_full_analytics.
-  * horizonDirectionWithheld(integrity, d, hz) — extends bundle-level with
+    quoteAhead, genStale, pending_full_analytics — plus the institutional
+    bundle-trust window (bundleWithinTrustWindow) that suppresses false STALE.
+  * horizonDirectionWithheld(integrity, d, hz, nowMs) — extends bundle-level with
     horizon_fusion_available(hz) (MHMLB-NS1 hook), else fusion_available.
   * _updateDirectionWithheldMarkers — sets data-direction-withhold on a
     closed list of bundle-level IDs + per-horizon IDs + tf-signal-{slug}.
@@ -36,14 +37,15 @@ def _src() -> str:
 
 
 def test_bundle_direction_withheld_helper_exists():
+    """Signature gained nowMs when the institutional bundle-trust window landed."""
     src = _src()
-    assert "function bundleDirectionWithheld(integrity, d)" in src
+    assert "function bundleDirectionWithheld(integrity, d, nowMs)" in src
     assert "window.bundleDirectionWithheld = bundleDirectionWithheld" in src
 
 
 def test_horizon_direction_withheld_helper_exists():
     src = _src()
-    assert "function horizonDirectionWithheld(integrity, d, hz)" in src
+    assert "function horizonDirectionWithheld(integrity, d, hz, nowMs)" in src
     assert "window.horizonDirectionWithheld = horizonDirectionWithheld" in src
 
 
@@ -51,7 +53,7 @@ def test_bundle_direction_withheld_covers_all_inventory_conditions():
     """Every reason the LIVE-UI-1 inventory names must be reachable in the helper body."""
     src = _src()
     fn_match = re.search(
-        r"function bundleDirectionWithheld\(integrity, d\)\s*\{(.+?)\n\}",
+        r"function bundleDirectionWithheld\(integrity, d, nowMs\)\s*\{(.+?)\n\}",
         src,
         re.DOTALL,
     )
@@ -74,7 +76,7 @@ def test_horizon_direction_withheld_reads_horizon_fusion_available_map():
     """MHMLB-NS1 hook: per-horizon availability map preferred, else bundle-level fusion_available."""
     src = _src()
     fn_match = re.search(
-        r"function horizonDirectionWithheld\(integrity, d, hz\)\s*\{(.+?)\n\}",
+        r"function horizonDirectionWithheld\(integrity, d, hz, nowMs\)\s*\{(.+?)\n\}",
         src,
         re.DOTALL,
     )
@@ -83,7 +85,7 @@ def test_horizon_direction_withheld_reads_horizon_fusion_available_map():
     assert "horizon_fusion_available" in body
     assert "horizon_fusion_unavailable" in body
     assert "fusion_unavailable" in body
-    assert "bundleDirectionWithheld(integrity, d)" in body
+    assert "bundleDirectionWithheld(integrity, d, nowMs)" in body
 
 
 def test_update_direction_withheld_markers_function_exists():
@@ -102,27 +104,34 @@ def test_bundle_direction_id_registry_present():
     )
     assert list_match, "bundle ID registry must exist"
     body = list_match.group(1)
+    # dr-trade-pill / dr-bias-pill / dr-desk-confidence / dr-confidence-pill,
+    # the rail Trade-plan block (dr-plan-*) and the rail Why/gates ids
+    # (dr-action-chip / dr-blocking-reason / dr-exact-reason /
+    # dr-live-ready-chip) were retired; the ALL pill (verdict + WAIT reason)
+    # and PLAN pill (entry/stop/targets/invalidation/size) are the
+    # bundle-level direction surfaces.
     for expected in (
-        "dr-trade-pill",
-        "dr-bias-pill",
-        "dr-desk-confidence",
-        "dr-confidence-pill",
-        "dr-action-chip",
-        "dr-align-class-chip",
-        "dr-blocking-reason",
-        "dr-plan-entry",
-        "dr-plan-stop",
-        "dr-plan-targets",
-        "dr-plan-invalidation",
-        "dr-live-ready-chip",
+        "tf-signal-consolidated",
+        "tf-signal-plan",
     ):
         assert f"'{expected}'" in body, (
             f"_LIVEUI6_BUNDLE_DIRECTION_IDS must register {expected!r}"
         )
+    for retired in (
+        "dr-action-chip",
+        "dr-blocking-reason",
+        "dr-exact-reason",
+        "dr-live-ready-chip",
+    ):
+        assert f"'{retired}'" not in body, (
+            f"{retired!r} was retired 2026-06-10 — must stay out of the registry"
+        )
 
 
 def test_per_horizon_id_registry_uses_canonical_slugs():
-    """Per-horizon map keyed on 1c/5c/15c/60c (NOT product labels 1m/5m/15m/60m)."""
+    """Per-horizon map keyed on 1c/5c/15c/60c (NOT product labels 1m/5m/15m/60m).
+    Values are empty since the rail Horizon-alignment block (dr-align-*) was
+    retired 2026-06-10 — the marker loop still covers each #tf-signal-{slug} card."""
     src = _src()
     map_match = re.search(
         r"_LIVEUI6_HORIZON_DIRECTION_IDS\s*=\s*\{(.+?)\};",
@@ -131,14 +140,11 @@ def test_per_horizon_id_registry_uses_canonical_slugs():
     )
     assert map_match, "per-horizon ID map must exist"
     body = map_match.group(1)
-    for hz, dom_id in (
-        ("1c", "dr-align-1m"),
-        ("5c", "dr-align-5m"),
-        ("15c", "dr-align-15m"),
-        ("60c", "dr-align-60m"),
-    ):
+    for hz in ("1c", "5c", "15c", "60c"):
         assert f"'{hz}'" in body
-        assert f"'{dom_id}'" in body
+    assert "dr-align" not in body, "rail dr-align-* ids must stay removed (duplicative)"
+    # The loop itself still marks the pill cards per horizon.
+    assert "document.getElementById('tf-signal-' + hz)" in src
 
 
 def test_tier_c_lane_stale_markers_includes_slow_stale_vs_fast():

@@ -401,6 +401,38 @@ class SnapshotRow:
     regime_confidence:      Optional[str]   = None  # 'low', 'medium', 'high'
     regime_score:           Optional[float] = None  # 0.0–1.0
 
+    # ── Price-action cone (operator 2026-06-11) — bar-derived primitives so the
+    # ML stack can see price movement, not just options-structure distances.
+    # Producer: features/signal_layer_v1.compute_price_action_snapshot_columns
+    # (leakage-guarded: completed 1m bars with bar_end <= ts_utc only). ─────────
+    pa_ret_1m_pct:          Optional[float] = None  # 1m log return ×100
+    pa_ret_3m_pct:          Optional[float] = None
+    pa_ret_5m_pct:          Optional[float] = None
+    pa_ret_15m_pct:         Optional[float] = None
+    pa_ret_30m_pct:         Optional[float] = None
+    pa_ret_60m_pct:         Optional[float] = None
+    pa_trend_slope_log20:   Optional[float] = None  # OLS slope of log close, 20 bars
+    pa_trend_slope_log40:   Optional[float] = None
+    pa_structure_state:     Optional[float] = None  # +1 HH/HL … -1 LH/LL
+    pa_bos_up:              Optional[float] = None  # break of structure above swing high
+    pa_bos_down:            Optional[float] = None
+    pa_dist_swing_high_atr: Optional[float] = None  # ATR-scaled distance to swing high
+    pa_dist_swing_low_atr:  Optional[float] = None
+    pa_range_position_n20:  Optional[float] = None  # close position in 20-bar range 0..1
+    pa_vwap_zscore:         Optional[float] = None
+    pa_atr_pctile_60:       Optional[float] = None
+    pa_atr_expansion_5_20:  Optional[float] = None
+    pa_realized_vol_ann:    Optional[float] = None  # annualized 1m realized vol proxy
+    pa_wick_asymmetry:      Optional[float] = None
+    pa_close_location:      Optional[float] = None  # close position within last bar 0..1
+    pa_impulse_run_signed:  Optional[float] = None  # ±consecutive close run length
+    pa_mtf_trend_1m:        Optional[float] = None  # sign of 1m trend slope
+    pa_mtf_trend_5m:        Optional[float] = None
+    pa_mtf_bias_15m:        Optional[float] = None
+    pa_mtf_alignment:       Optional[float] = None  # +1 aligned / -1 conflicted / 0 mixed
+    pa_relative_volume:     Optional[float] = None
+    pa_move_efficiency:     Optional[float] = None  # |body| vs 5-bar true-range sum
+
     # ── Bayesian fusion (from bayesian_fusion.py) ─────────────────────────────
     fusion_dominant:        Optional[str]   = None  # dominant outcome family
     fusion_dominant_prob:   Optional[float] = None  # probability of dominant
@@ -2391,7 +2423,39 @@ class EdDB:
             ("pred_override_source",     "TEXT"),
             ("reward_risk",              "REAL"),
             ("reward_risk2",             "REAL"),
+            # ── Price-action cone (operator 2026-06-11) — see SnapshotRow pa_* block.
+            # Names must match features/signal_layer_v1.SNAPSHOT_PRICE_ACTION_COLUMNS.
+            ("pa_ret_1m_pct",            "REAL"),
+            ("pa_ret_3m_pct",            "REAL"),
+            ("pa_ret_5m_pct",            "REAL"),
+            ("pa_ret_15m_pct",           "REAL"),
+            ("pa_ret_30m_pct",           "REAL"),
+            ("pa_ret_60m_pct",           "REAL"),
+            ("pa_trend_slope_log20",     "REAL"),
+            ("pa_trend_slope_log40",     "REAL"),
+            ("pa_structure_state",       "REAL"),
+            ("pa_bos_up",                "REAL"),
+            ("pa_bos_down",              "REAL"),
+            ("pa_dist_swing_high_atr",   "REAL"),
+            ("pa_dist_swing_low_atr",    "REAL"),
+            ("pa_range_position_n20",    "REAL"),
+            ("pa_vwap_zscore",           "REAL"),
+            ("pa_atr_pctile_60",         "REAL"),
+            ("pa_atr_expansion_5_20",    "REAL"),
+            ("pa_realized_vol_ann",      "REAL"),
+            ("pa_wick_asymmetry",        "REAL"),
+            ("pa_close_location",        "REAL"),
+            ("pa_impulse_run_signed",    "REAL"),
+            ("pa_mtf_trend_1m",          "REAL"),
+            ("pa_mtf_trend_5m",          "REAL"),
+            ("pa_mtf_bias_15m",          "REAL"),
+            ("pa_mtf_alignment",         "REAL"),
+            ("pa_relative_volume",       "REAL"),
+            ("pa_move_efficiency",       "REAL"),
         ]
+        # Normalized training table must carry the same price-action columns or the
+        # normalizer's column-intersection INSERT silently drops them (Issue 16 class).
+        _PA_NEW_COLUMNS = [(c, t) for c, t in NEW_COLUMNS if c.startswith("pa_")]
 
         _snapshot_migration_pending = False
         if is_canonical_db_path(self.db_path) and not skip_automatic_backup():
@@ -2498,6 +2562,16 @@ class EdDB:
                     log.info("DB migration: added %s to %s", col_name, tbl)
                 except sqlite3.OperationalError:
                     pass
+
+        for col_name, col_type in _PA_NEW_COLUMNS:
+            try:
+                with self._connect() as conn:
+                    conn.execute(
+                        f"ALTER TABLE snapshots_1m_normalized ADD COLUMN {col_name} {col_type}"
+                    )
+                log.info("DB migration: added %s to snapshots_1m_normalized", col_name)
+            except sqlite3.OperationalError:
+                pass
 
         for col_name, col_type in (
             ("pressure_label", "TEXT"),

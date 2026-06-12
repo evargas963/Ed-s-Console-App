@@ -164,6 +164,43 @@ def test_model_outputs_json_single_encodes_null_models(calib_db):
     assert not isinstance(mo["xgb"], str)
 
 
+def test_resolve_build_generation_env_wins(monkeypatch):
+    import calibration.writer as w
+
+    monkeypatch.setenv("ED_BUILD_GENERATION", "custom-gen-7")
+    assert w.resolve_build_generation() == "custom-gen-7"
+
+
+def test_resolve_build_generation_defaults_to_repo_git_sha(monkeypatch):
+    """115k rows had build_generation NULL (env never set). Default = repo tip sha,
+    so every logged decision carries a serve-stack fingerprint the temperature
+    fitter / era filters can key on."""
+    import calibration.writer as w
+
+    monkeypatch.delenv("ED_BUILD_GENERATION", raising=False)
+    w._build_generation_cache.clear()
+    sha = w.resolve_build_generation()
+    assert sha is not None and len(sha) == 40
+    assert all(c in "0123456789abcdef" for c in sha)
+    # Cached: second call returns identity without re-invoking git.
+    assert w.resolve_build_generation() is sha
+
+
+def test_inserted_row_carries_build_generation(calib_db, monkeypatch):
+    monkeypatch.setenv("ED_BUILD_GENERATION", "gen-test-row")
+    row_id = append_calibration_decision(**_call_args(calib_db, ticker="SPY"))
+    assert row_id is not None and row_id > 0
+    conn = sqlite3.connect(str(calib_db))
+    configure_sqlite_connection(conn)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT build_generation FROM calibration_decision_log WHERE id = ?",
+        (row_id,),
+    ).fetchone()
+    conn.close()
+    assert row["build_generation"] == "gen-test-row"
+
+
 def test_sqlite_busy_retry_backoff_exponential_not_linear():
     sleeps = [sqlite_busy_retry_sleep_seconds(a) for a in range(11)]
     assert sleeps[0] == pytest.approx(0.01)

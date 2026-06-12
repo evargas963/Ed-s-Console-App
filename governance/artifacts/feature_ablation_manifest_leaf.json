@@ -3,7 +3,7 @@
   "source": "tools/build_feature_assignment_matrix_v2.py::resolve_expanded_schwab_ablation_universe",
   "ablation_method": {
     "primary_pass": "per_model_per_horizon_atomic_permutation_importance",
-    "primary_pass_description": "Per base model (xgb/lstm/transformer) \u00d7 horizon (1c/5c/15c/60c): train on chronological holdout and permute/drop ONE atomic feature at a time; measure that model's MCC delta. Survivors resolve per (model, horizon) cell only.",
+    "primary_pass_description": "Per ML stack layer (xgb/lstm/transformer) \u00d7 horizon (1c/5c/15c/60c): train on chronological holdout and permute/drop ONE atomic feature at a time; measure that model's MCC delta. Survivors resolve per (model, horizon) cell only.",
     "feature_grain": "schwab_expanded_atomic",
     "universe_policy": "Schwab dictionary categorization (all 2393 rows) + registered ML cone + snapshot expansion; pool size \u2265 2.0\u00d7 registered cone; ablation decides winners \u2014 agents MUST NOT pre-pick stack-consumed-only subsets.",
     "schwab_registry_path": "governance\\artifacts\\schwab_ablation_field_registry.json",
@@ -904,6 +904,249 @@
       "schwab_lineage": []
     },
     {
+      "group_id": "snap__pa_ret_1m_pct",
+      "label": "price-action snapshot / pa_ret_1m_pct",
+      "atomic_column": "pa_ret_1m_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_ret_3m_pct",
+      "label": "price-action snapshot / pa_ret_3m_pct",
+      "atomic_column": "pa_ret_3m_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_ret_5m_pct",
+      "label": "price-action snapshot / pa_ret_5m_pct",
+      "atomic_column": "pa_ret_5m_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_ret_15m_pct",
+      "label": "price-action snapshot / pa_ret_15m_pct",
+      "atomic_column": "pa_ret_15m_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_ret_30m_pct",
+      "label": "price-action snapshot / pa_ret_30m_pct",
+      "atomic_column": "pa_ret_30m_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_ret_60m_pct",
+      "label": "price-action snapshot / pa_ret_60m_pct",
+      "atomic_column": "pa_ret_60m_pct",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_trend_slope_log20",
+      "label": "price-action snapshot / pa_trend_slope_log20",
+      "atomic_column": "pa_trend_slope_log20",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_trend_slope_log40",
+      "label": "price-action snapshot / pa_trend_slope_log40",
+      "atomic_column": "pa_trend_slope_log40",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_structure_state",
+      "label": "price-action snapshot / pa_structure_state",
+      "atomic_column": "pa_structure_state",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_bos_up",
+      "label": "price-action snapshot / pa_bos_up",
+      "atomic_column": "pa_bos_up",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_bos_down",
+      "label": "price-action snapshot / pa_bos_down",
+      "atomic_column": "pa_bos_down",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_dist_swing_high_atr",
+      "label": "price-action snapshot / pa_dist_swing_high_atr",
+      "atomic_column": "pa_dist_swing_high_atr",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_dist_swing_low_atr",
+      "label": "price-action snapshot / pa_dist_swing_low_atr",
+      "atomic_column": "pa_dist_swing_low_atr",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_range_position_n20",
+      "label": "price-action snapshot / pa_range_position_n20",
+      "atomic_column": "pa_range_position_n20",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_vwap_zscore",
+      "label": "price-action snapshot / pa_vwap_zscore",
+      "atomic_column": "pa_vwap_zscore",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_atr_pctile_60",
+      "label": "price-action snapshot / pa_atr_pctile_60",
+      "atomic_column": "pa_atr_pctile_60",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_atr_expansion_5_20",
+      "label": "price-action snapshot / pa_atr_expansion_5_20",
+      "atomic_column": "pa_atr_expansion_5_20",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_realized_vol_ann",
+      "label": "price-action snapshot / pa_realized_vol_ann",
+      "atomic_column": "pa_realized_vol_ann",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_wick_asymmetry",
+      "label": "price-action snapshot / pa_wick_asymmetry",
+      "atomic_column": "pa_wick_asymmetry",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_close_location",
+      "label": "price-action snapshot / pa_close_location",
+      "atomic_column": "pa_close_location",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_impulse_run_signed",
+      "label": "price-action snapshot / pa_impulse_run_signed",
+      "atomic_column": "pa_impulse_run_signed",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_mtf_trend_1m",
+      "label": "price-action snapshot / pa_mtf_trend_1m",
+      "atomic_column": "pa_mtf_trend_1m",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_mtf_trend_5m",
+      "label": "price-action snapshot / pa_mtf_trend_5m",
+      "atomic_column": "pa_mtf_trend_5m",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_mtf_bias_15m",
+      "label": "price-action snapshot / pa_mtf_bias_15m",
+      "atomic_column": "pa_mtf_bias_15m",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_mtf_alignment",
+      "label": "price-action snapshot / pa_mtf_alignment",
+      "atomic_column": "pa_mtf_alignment",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_relative_volume",
+      "label": "price-action snapshot / pa_relative_volume",
+      "atomic_column": "pa_relative_volume",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
+      "group_id": "snap__pa_move_efficiency",
+      "label": "price-action snapshot / pa_move_efficiency",
+      "atomic_column": "pa_move_efficiency",
+      "disposition": "ABLATE",
+      "catalog_tier": "SNAPSHOT_EXPANSION",
+      "ingest_status": "in_cone",
+      "schwab_lineage": []
+    },
+    {
       "group_id": "schwab__0",
       "label": "schwab catalog / 0",
       "atomic_column": "0",
@@ -1006,7 +1249,7 @@
       "atomic_column": "ask_price",
       "disposition": "ABLATE",
       "catalog_tier": "ML_ABLATION_CANDIDATE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": [
         "quotes.extended.askPrice",
         "quotes.quote.askPrice",
@@ -1020,7 +1263,7 @@
       "atomic_column": "ask_size",
       "disposition": "ABLATE",
       "catalog_tier": "ML_ABLATION_CANDIDATE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": [
         "chains.callExpDateMap.*.askSize",
         "chains.putExpDateMap.*.askSize",
@@ -1196,7 +1439,7 @@
       "atomic_column": "bid_price",
       "disposition": "ABLATE",
       "catalog_tier": "ML_ABLATION_CANDIDATE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": [
         "quotes.extended.bidPrice",
         "quotes.quote.bidPrice",
@@ -1210,7 +1453,7 @@
       "atomic_column": "bid_size",
       "disposition": "ABLATE",
       "catalog_tier": "ML_ABLATION_CANDIDATE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": [
         "chains.callExpDateMap.*.bidSize",
         "chains.putExpDateMap.*.bidSize",
@@ -2004,7 +2247,7 @@
       "atomic_column": "last_size",
       "disposition": "ABLATE",
       "catalog_tier": "ML_ABLATION_CANDIDATE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": [
         "chains.callExpDateMap.*.lastSize",
         "chains.putExpDateMap.*.lastSize",
@@ -2976,7 +3219,7 @@
       "atomic_column": "total_volume",
       "disposition": "ABLATE",
       "catalog_tier": "ML_ABLATION_CANDIDATE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": [
         "chains.callExpDateMap.*.totalVolume",
         "chains.putExpDateMap.*.totalVolume",
@@ -3095,8 +3338,8 @@
     },
     "registered_ml_cone_columns": 94,
     "min_ablation_expansion_factor": 2.0,
-    "ablation_group_count": 280,
-    "per_model_feature_cell_count": 10080,
-    "expansion_ratio_vs_cone": 2.98
+    "ablation_group_count": 307,
+    "per_model_feature_cell_count": 11052,
+    "expansion_ratio_vs_cone": 3.27
   }
 }

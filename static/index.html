@@ -708,7 +708,10 @@
   /* ── Timeframe signal row (primary horizon surface: 1M / 5M / 15M / 60M) ── */
   .tf-signal-row-outer {
     width: 100%;
-    max-width: min(820px, 62vw);
+    /* 6 pills (1M/5M/15M/60M + ALL + PLAN). Signal pills keep the 5-pill-era
+       width (≈154px each); PLAN gets a wider track (+40px, operator 2026-06-11:
+       plan values were ellipsizing) — so 984px + 40px = 1024px. */
+    max-width: min(1024px, 77vw);
     display: flex;
     justify-content: flex-start;
     align-self: flex-start;
@@ -716,7 +719,9 @@
   }
   #timeframe-signal-row {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    /* Last track = PLAN card: 1.26fr ≈ +40px at full width so entry/stop/target
+       text fits without ellipsis; the five signal pills stay at 1fr (≈154px). */
+    grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(0, 1.26fr);
     gap: 8px;
     justify-content: start;
     background: #04070c;
@@ -729,7 +734,7 @@
   }
   @media (max-width: 720px) {
     .tf-signal-row-outer { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    #timeframe-signal-row { min-width: 820px; }
+    #timeframe-signal-row { min-width: 1024px; }
   }
   .tf-signal-card {
     position: relative;
@@ -834,6 +839,26 @@
   }
   /* Dim / neutral: operator-legibility gate — must read at a glance vs row background */
   .tf-state-dim .tf-timeframe { color: #b8d4f5; }
+  /* PLAN card rows — trade plan (entry/stop/targets/size) in the same pill chrome (operator 2026-06-10) */
+  .tf-plan-kv {
+    width: 100%;
+    margin-top: 5px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 10px;
+    line-height: 1.35;
+  }
+  .tf-plan-kv .tf-plan-k { flex: 0 0 auto; font-weight: 700; letter-spacing: .1em; }
+  /* Single line, never wraps — long plan text ellipsizes; full text in title tooltip. */
+  .tf-plan-kv .tf-plan-v { min-width: 0; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tf-state-dim .tf-plan-kv .tf-plan-k { color: #8fb3da; }
+  .tf-state-dim .tf-plan-kv .tf-plan-v { color: #dbe9fb; }
+  .tf-state-up .tf-plan-kv .tf-plan-k { color: #58c98f; }
+  .tf-state-up .tf-plan-kv .tf-plan-v { color: #d6f5e4; }
+  .tf-state-down .tf-plan-kv .tf-plan-k { color: #e07a7a; }
+  .tf-state-down .tf-plan-kv .tf-plan-v { color: #f8dcdc; }
   .tf-state-up .tf-timeframe { color: #1D7A50; }
   .tf-state-down .tf-timeframe { color: #7A2020; }
   .tf-arrow {
@@ -982,127 +1007,10 @@
   .tf-state-up .tf-source-detail,
   .tf-state-down .tf-source-detail { color: rgba(255,255,255,0.55); }
 
-  /* ── Unified signal-rail-card — fusion verdict (top) + empirical context
-     (bottom). Sits below #timeframe-signal-row, mirrors its max-width so
-     the row reads as one operator surface. ───────────────────────────── */
-  .signal-rail-card {
-    margin-top: 8px;
-    border-radius: 8px;
-    border: 1px solid;
-    overflow: hidden;
-    max-width: min(620px, 50vw);
-    box-sizing: border-box;
-  }
-  @media (max-width: 720px) {
-    .signal-rail-card { max-width: 100%; }
-  }
-  .signal-rail-card--up {
-    background: linear-gradient(180deg, rgba(0,230,118,0.10), rgba(0,230,118,0.02));
-    border-color: rgba(0,230,118,0.45);
-  }
-  .signal-rail-card--down {
-    background: linear-gradient(180deg, rgba(255,60,60,0.10), rgba(255,60,60,0.02));
-    border-color: rgba(255,60,60,0.45);
-  }
-  .signal-rail-card--withheld {
-    background: rgba(15,23,42,0.55);
-    border-color: var(--border2);
-  }
-  .signal-rail-card--armed {
-    border-width: 2px;
-    box-shadow: 0 0 0 1px rgba(0,230,118,0.22), 0 0 22px rgba(0,230,118,0.22);
-  }
-  .src-top {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 6px 14px;
-    font-family: var(--mono);
-    flex-wrap: wrap;
-  }
-  .signal-rail-card--up .src-top { color: #00E676; }
-  .signal-rail-card--down .src-top { color: #FF3C3C; }
-  .signal-rail-card--withheld .src-top { color: var(--text); }
-  .src-top .fas-label {
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-  }
-  .src-top .fas-dir {
-    font-size: 16px;
-    font-weight: 800;
-    letter-spacing: 0.04em;
-  }
-  .src-top .fas-agreement {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--text);
-  }
-  .src-top .fas-track { width: 80px; height: 5px; background: rgba(2,6,23,0.5); border-radius: 3px; overflow: hidden; }
-  .src-top .fas-fill { height: 100%; border-radius: 3px; }
-  .signal-rail-card--up .src-top .fas-fill { background: #00E676; }
-  .signal-rail-card--down .src-top .fas-fill { background: #FF3C3C; }
-  .src-top .fas-msg {
-    color: var(--text3);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    text-transform: none;
-  }
-  .fas-armed-tag {
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.14em;
-    color: #04070c;
-    background: #00E676;
-    padding: 4px 10px;
-    border-radius: 4px;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-  .fas-degraded-tag {
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.14em;
-    color: #1a0508;
-    background: #ef4444;
-    padding: 4px 10px;
-    border-radius: 4px;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-  .src-bottom {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 5px 14px 6px;
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--text);
-    flex-wrap: wrap;
-  }
-  .src-bottom .ecl-label {
-    font-size: 9px;
-    font-weight: 800;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: #7dd3fc;
-  }
-  .src-bottom .ecl-tier { font-weight: 700; color: var(--text); }
-  .src-bottom .ecl-n { color: var(--text); font-weight: 500; }
-  .src-bottom .ecl-probs { order: -1; margin-left: 0; margin-right: 4px; display: flex; gap: 12px; font-size: 12px; font-weight: 700; }
-  .src-bottom .ecl-probs .up { color: #00E676; font-weight: 700; }
-  .src-bottom .ecl-probs .down { color: #FF3C3C; font-weight: 700; }
-  .src-bottom .ecl-probs .flat { color: #cbd5e1; font-weight: 700; }
+  /* signal-rail-card removed 2026-06-10 (operator): verdict + plan now live on
+     the ALL + PLAN pills inside #timeframe-signal-row. */
 
-  /* ── Top stack row — horizon pills + signal-rail-card on left,
+  /* ── Top stack row — horizon pills on left,
      Signals Rail on right. Right col is intentionally narrow; rail
      stretches via align-items so the operator can add additional surfaces
      in the leftover space later. ───────────────────────────────────────── */
@@ -1131,8 +1039,8 @@
     .signals-rail-col { flex: 1 1 100%; padding: 0; }
   }
 
-  /* ── Signals Rail — analytics/alert slots. Severity grammar mirrors
-     signal-rail-card: quiet (slate) → building (amber) → hot (red);
+  /* ── Signals Rail — analytics/alert slots. Severity grammar:
+     quiet (slate) → building (amber) → hot (red);
      positive (green) for neutral-good signals. Each slot is a self-contained
      signal pulled from anywhere in the repo (Level Test first). ─────────── */
   #signals-rail {
@@ -1315,38 +1223,10 @@
   @media (max-width: 1100px) {
     .exec-grid { grid-template-columns: 1fr; }
   }
-  #v2-pilot-card {
-    grid-column: 1 / -1;
-    border-color: rgba(59,130,246,0.45);
-    background: linear-gradient(180deg, rgba(59,130,246,0.08), rgba(15,23,42,0.32));
-  }
-  .v2-source-chip {
-    font-family: var(--mono);
-    font-size: 9px;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    color: var(--blue);
-    border: 1px solid rgba(59,130,246,0.35);
-    border-radius: 999px;
-    padding: 2px 7px;
-    background: rgba(59,130,246,0.08);
-  }
-  .v2-banner {
-    color: var(--text2);
-    font-size: 11px;
-    line-height: 1.35;
-    padding: 8px 9px;
-    border: 1px solid rgba(59,130,246,0.25);
-    border-radius: 7px;
-    background: rgba(2,6,23,0.35);
-  }
-  .v2-gap-list {
-    margin: 0;
-    padding-left: 16px;
-    color: var(--text2);
-    font-size: 11px;
-    line-height: 1.4;
-  }
+  /* V2 Pilot 1A advisory card removed 2026-06-10 (operator: no operator value,
+     unreadable v1_approximation/not_implemented scaffold). The v2 engine stays
+     server-side: build_module_a_a1_decision → ms_dict.v2_decision payload +
+     append_live_v2_calibration_decision DB logging. */
 
   /* Decision command rail — full width above the three legacy signal cards */
   #decision-rail-card {
@@ -1364,9 +1244,10 @@
     padding: 10px 12px 12px;
     gap: 10px;
   }
+  /* Two blocks per row since 2026-06-10 (Trade plan block retired to PLAN pill). */
   .decision-rail-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.1fr) minmax(0, 0.95fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 10px;
   }
   @media (max-width: 1400px) {
@@ -2992,6 +2873,17 @@
             <div class="tf-source-detail" aria-label="Source detail">—</div>
             <span class="tf-tag tf-tag--hidden">—</span>
           </div>
+          <div class="tf-signal-card tf-state-dim" id="tf-signal-plan" role="group" aria-label="Trade plan — entry, stop, targets and size for the consolidated decision">
+            <span class="tf-dot tf-dot--dim"></span>
+            <span class="tf-timeframe">PLAN</span>
+            <div class="tf-arrow">→</div>
+            <div class="tf-dir" id="tf-plan-state">NO SETUP</div>
+            <div class="tf-plan-kv"><span class="tf-plan-k">ENTRY</span><span class="tf-plan-v" id="tf-plan-entry">—</span></div>
+            <div class="tf-plan-kv"><span class="tf-plan-k">STOP</span><span class="tf-plan-v" id="tf-plan-stop">—</span></div>
+            <div class="tf-plan-kv"><span class="tf-plan-k">TGT</span><span class="tf-plan-v" id="tf-plan-targets">—</span></div>
+            <div class="tf-plan-kv"><span class="tf-plan-k">INVAL</span><span class="tf-plan-v" id="tf-plan-invalidation">—</span></div>
+            <div class="tf-plan-kv"><span class="tf-plan-k">SIZE</span><span class="tf-plan-v" id="tf-plan-size">—</span></div>
+          </div>
         </div>
       </div>
 
@@ -3013,23 +2905,9 @@
       </aside>
       </div><!-- /top-stack-row -->
 
-      <!-- Signal rail card — fusion verdict (top) + empirical context (bottom).
-           Full-width sibling BELOW the horizon+rail row. Carries Entry armed /
-           Stack degraded authority tags inline. Hidden until renderSignalRailCard
-           paints. -->
-      <div id="signal-rail-card" class="signal-rail-card" style="display:none" aria-label="Signal provenance and empirical context">
-        <div class="src-top" id="signal-rail-top">
-          <span class="fas-label" id="src-fas-label">—</span>
-          <span class="fas-dir" id="src-fas-dir">—</span>
-          <span class="fas-agreement" id="src-fas-agreement"></span>
-        </div>
-        <div class="src-bottom" id="signal-rail-bottom">
-          <span class="ecl-label" id="src-ecl-label">Empirical</span>
-          <span class="ecl-tier" id="src-ecl-tier">—</span>
-          <span class="ecl-n" id="src-ecl-n">—</span>
-          <span class="ecl-probs" id="src-ecl-probs"></span>
-        </div>
-      </div>
+      <!-- signal-rail-card removed 2026-06-10 (operator): its verdict moved to
+           the ALL pill, its plan to the PLAN pill; per-horizon provenance stays
+           on the .tf-source-chip ribbon. -->
 
       <!-- Signal cards -->
       <div class="signal-grid">
@@ -3038,7 +2916,7 @@
              DO NOT re-introduce: title strip ("DECISION COMMAND · Operator surface…"),
              dr-trade-pill / dr-bias-pill / dr-desk-confidence / dr-confidence-pill
              verdict row, or dr-fusion-authority-strip / dr-empirical-context-line.
-             Single source of truth = signal-rail-card above + chip ribbon below. -->
+             Single source of truth = ALL/PLAN pills above + chip ribbon below. -->
         <div class="signal-card" id="decision-rail-card" data-ed-tier-c="1">
           <div class="signal-card-header">
             <span class="conviction-pill low" id="dr-freshness-pill" title="Analytical bundle freshness">FRESH —</span>
@@ -3057,70 +2935,15 @@
               <div class="hz-panels" id="dr-hz-panels" aria-label="Per-horizon decision panels"></div>
             </details>
 
-            <div class="decision-rail-grid">
-              <div class="decision-block">
-                <div class="decision-block-hd">
-                  <div class="decision-block-title">Why / gates</div>
-                  <span class="decision-chip dim" id="dr-live-ready-chip">LIVE —</span>
-                </div>
-                <div class="decision-kv">
-                  <div class="decision-k">Reason</div><div class="decision-v" id="dr-exact-reason">—</div>
-                  <div class="decision-k">Threshold</div><div class="decision-v" id="dr-threshold-gate">—</div>
-                  <div class="decision-k">Ranking</div><div class="decision-v" id="dr-ranking-gate">—</div>
-                  <div class="decision-k">Blocker</div><div class="decision-v" id="dr-blocking-reason">—</div>
-                </div>
-              </div>
+            <!-- Trade plan, Horizon-alignment, Why/gates, Readiness/trust and
+                 Stack-behind-the-call blocks removed 2026-06-10 (operator:
+                 duplicative) — the PLAN pill carries entry/stop/targets/
+                 invalidation/size + entry state; the pills carry per-horizon
+                 direction + confidence; the ALL pill carries the verdict, the
+                 ALIGNED/SPLIT tag and the WAIT/blocker reason; the header
+                 chips (FRESH / STACK / SIGNALS) + signal-chain bar carry
+                 freshness, stack mode and per-layer liveness. -->
 
-              <div class="decision-block">
-                <div class="decision-block-hd">
-                  <div class="decision-block-title">Horizon alignment</div>
-                  <span class="decision-chip dim" id="dr-align-class-chip">ALIGN —</span>
-                </div>
-                <div class="decision-kv">
-                  <div class="decision-k">1m</div><div class="decision-v" id="dr-align-1m">—</div>
-                  <div class="decision-k">5m</div><div class="decision-v" id="dr-align-5m">—</div>
-                  <div class="decision-k">15m</div><div class="decision-v" id="dr-align-15m">—</div>
-                  <div class="decision-k">60m</div><div class="decision-v" id="dr-align-60m">—</div>
-                </div>
-              </div>
-
-              <div class="decision-block">
-                <div class="decision-block-hd">
-                  <div class="decision-block-title">Trade plan</div>
-                  <span class="decision-chip dim" id="dr-action-chip">ACTION —</span>
-                </div>
-                <div class="decision-kv">
-                  <div class="decision-k">Entry</div><div class="decision-v" id="dr-plan-entry">—</div>
-                  <div class="decision-k">Stop</div><div class="decision-v" id="dr-plan-stop">—</div>
-                  <div class="decision-k">Targets</div><div class="decision-v" id="dr-plan-targets">—</div>
-                  <div class="decision-k">Invalidation</div><div class="decision-v" id="dr-plan-invalidation">—</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="decision-rail-grid" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)">
-              <div class="decision-block">
-                <div class="decision-block-hd"><div class="decision-block-title">Readiness / trust</div></div>
-                <div class="decision-kv">
-                  <div class="decision-k">Live readiness</div><div class="decision-v" id="dr-trust-live">—</div>
-                  <div class="decision-k">Freshness</div><div class="decision-v" id="dr-trust-fresh">—</div>
-                  <div class="decision-k">Stack integrity</div><div class="decision-v" id="dr-trust-stack">—</div>
-                  <div class="decision-k">Policy integrity</div><div class="decision-v" id="dr-trust-policy">—</div>
-                  <div class="decision-k">Edge health</div><div class="decision-v" id="dr-trust-edge">—</div>
-                  <div class="decision-k">Block reason</div><div class="decision-v" id="dr-trust-block">—</div>
-                </div>
-              </div>
-              <div class="decision-block">
-                <div class="decision-block-hd"><div class="decision-block-title">Stack behind the call</div></div>
-                <div class="decision-kv">
-                  <div class="decision-k">Contributing</div><div class="decision-v" id="dr-stack-contrib">—</div>
-                  <div class="decision-k">Fusion</div><div class="decision-v" id="dr-stack-fusion">—</div>
-                  <div class="decision-k">Monte Carlo</div><div class="decision-v" id="dr-stack-mc">—</div>
-                  <div class="decision-k">ML stack layers live</div><div class="decision-v" id="dr-stack-bases">—</div>
-                  <div class="decision-k">Governance</div><div class="decision-v" id="dr-stack-gov">—</div>
-                </div>
-              </div>
-            </div>
             <div class="decision-rail-grid" style="grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr)">
               <div class="decision-block">
                 <div class="decision-block-hd"><div class="decision-block-title">Execution levels (chartable)</div></div>
@@ -3155,75 +2978,11 @@
           </div>
         </div>
 
-        <div class="signal-card exec-card" id="v2-pilot-card" data-ed-tier-c="1">
-          <div class="signal-card-header">
-            <span class="signal-card-title">V2 Pilot 1A Advisory</span>
-            <span class="v2-source-chip" id="v2-status-chip">DRAFT</span>
-          </div>
-          <div class="signal-card-body">
-            <div class="v2-banner" id="v2-banner">
-              Draft v2 view only. Does not replace the locked v1.1 decision policy.
-            </div>
-            <div class="decision-rail-grid" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)">
-              <div class="decision-block">
-                <div class="decision-block-hd"><div class="decision-block-title">Module / expression</div></div>
-                <div class="decision-kv">
-                  <div class="decision-k">Strategy</div><div class="decision-v" id="v2-module">—</div>
-                  <div class="decision-k">Expression</div><div class="decision-v" id="v2-expression">—</div>
-                  <div class="decision-k">Authority</div><div class="decision-v" id="v2-authority">—</div>
-                </div>
-              </div>
-              <div class="decision-block">
-                <div class="decision-block-hd"><div class="decision-block-title">Advisory decision</div></div>
-                <div class="decision-kv">
-                  <div class="decision-k">Action</div><div class="decision-v" id="v2-action">—</div>
-                  <div class="decision-k">Direction</div><div class="decision-v" id="v2-direction">—</div>
-                  <div class="decision-k">Probability</div><div class="decision-v" id="v2-probability">—</div>
-                  <div class="decision-k">Desk confidence</div><div class="decision-v" id="v2-confidence">—</div>
-                  <div class="decision-k">Net EV</div><div class="decision-v" id="v2-net-ev">—</div>
-                </div>
-              </div>
-              <div class="decision-block">
-                <div class="decision-block-hd"><div class="decision-block-title">Honesty checks</div></div>
-                <div class="decision-kv">
-                  <div class="decision-k">Signal</div><div class="decision-v" id="v2-signal-status">—</div>
-                  <div class="decision-k">Execution</div><div class="decision-v" id="v2-implementation-status">—</div>
-                  <div class="decision-k">Portfolio</div><div class="decision-v" id="v2-portfolio-status">—</div>
-                  <div class="decision-k">Lifecycle</div><div class="decision-v" id="v2-lifecycle-status">—</div>
-                </div>
-              </div>
-            </div>
-            <div class="decision-block">
-              <div class="decision-block-hd"><div class="decision-block-title">Known conformance gaps</div></div>
-              <ul class="v2-gap-list" id="v2-gap-list">
-                <li>Waiting for Tier C analytics payload.</li>
-              </ul>
-            </div>
-            <div class="decision-block" id="v2-a2-card">
-              <div class="decision-block-hd">
-                <div class="decision-block-title">A2 0DTE Advisory</div>
-                <span class="v2-source-chip" id="v2-a2-authority">READ ONLY</span>
-              </div>
-              <div class="decision-rail-grid" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)">
-                <div class="decision-kv">
-                  <div class="decision-k">Action</div><div class="decision-v" id="v2-a2-action">—</div>
-                  <div class="decision-k">Contract</div><div class="decision-v" id="v2-a2-contract">—</div>
-                  <div class="decision-k">Theta</div><div class="decision-v" id="v2-a2-theta">—</div>
-                </div>
-                <div class="decision-kv">
-                  <div class="decision-k">Spread</div><div class="decision-v" id="v2-a2-spread">—</div>
-                  <div class="decision-k">Liquidity</div><div class="decision-v" id="v2-a2-liquidity">—</div>
-                  <div class="decision-k">P(underlying)</div><div class="decision-v" id="v2-a2-prob">—</div>
-                </div>
-                <div class="decision-kv">
-                  <div class="decision-k">Hard gates</div><div class="decision-v" id="v2-a2-hard-gates">—</div>
-                  <div class="decision-k">Soft gates</div><div class="decision-v" id="v2-a2-soft-gates">—</div>
-                  <div class="decision-k">Gaps</div><div class="decision-v" id="v2-a2-gaps">—</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <!-- V2 Pilot 1A advisory card (v2-pilot-card + nested A2 0DTE block)
+             removed 2026-06-10 (operator: no operator value — every cell was a
+             v1_approximation / not_implemented scaffold). The v2 engine stays
+             server-side: build_module_a_a1_decision → ms_dict.v2_decision +
+             append_live_v2_calibration_decision calibration logging. -->
 
         <div class="exec-grid">
           <div class="signal-card exec-card" id="execution-levels-card" data-ed-tier-c="1">
@@ -4160,7 +3919,7 @@ function renderContextLayer(d) {
   body.innerHTML = parts.join('');
 }
 
-// ── UI card provenance spec — chip + signal-rail-card helpers ─────────────
+// ── UI card provenance spec — per-horizon chip helpers ────────────────────
 // Implements ACTIVE_PROGRAM §UI card provenance spec. Chip vocabulary:
 //   EMPIRICAL | ML FUSION | BLEND | UNAVAILABLE | DEGRADED
 // deriveSourceForHorizon accepts both the brief's vocabulary directly AND the
@@ -4173,11 +3932,13 @@ function renderContextLayer(d) {
 function deriveSourceForHorizon(d, slug) {
   if (!d || typeof d !== 'object') return 'UNAVAILABLE';
   if (slug === 'consolidated') {
-    if (typeof isFusionAuthoritative === 'function' && isFusionAuthoritative(d) && d.final_tradeable) {
-      return 'ML FUSION';
-    }
-    const prov = String(d.decision_provenance || '');
-    if (prov.includes('multi_horizon') && (d.final_bias === 'LONG' || d.final_bias === 'SHORT')) {
+    // Provenance chip = source authority, not tradeability. Fusion authoritative
+    // (stack_runtime.fusion_active / canonical bayesian_fusion) → ML FUSION even
+    // when the decision is WAIT — the stack is live and deliberately holding; the
+    // direction element + detail line carry the WAIT reason. A multi_horizon
+    // consensus formed from empirical-fallback horizons must NOT borrow the
+    // fusion chip — it paints UNAVAILABLE (fusion genuinely not authoritative).
+    if (typeof isFusionAuthoritative === 'function' && isFusionAuthoritative(d)) {
       return 'ML FUSION';
     }
     return 'UNAVAILABLE';
@@ -4246,8 +4007,15 @@ function sourceOperatorText(source, d, slug) {
     const align = String(d.alignment_state_display || d.alignment_state || '—');
     const prim = String(d.primary_horizon || '').toLowerCase();
     const primUi = ({ '1c': '1M', '5c': '5M', '15c': '15M', '60c': '60M' })[prim] || prim || '—';
-    if (up === 'ML FUSION') return '4H synth · lead ' + primUi + ' · ' + align;
-    return '4H synth withheld';
+    const bias = String(d.final_bias || 'WAIT').toUpperCase();
+    if (up === 'ML FUSION' && (bias === 'LONG' || bias === 'SHORT')) {
+      return '4H synth · lead ' + primUi + ' · ' + align;
+    }
+    // WAIT (fusion live but holding) or withheld (fusion not authoritative):
+    // carry the operator-readable blocker (the rail Why/gates block that used
+    // to show wait_reason was retired 2026-06-10).
+    const why = String(d.wait_reason || d.validation_summary || '').replace(/\s+/g, ' ').trim();
+    return why ? 'WAIT — ' + why : '4H synth withheld';
   }
   if (up === 'ML FUSION') return 'Stack trained';
   if (up === 'BLEND') return 'Stack + history';
@@ -4278,140 +4046,8 @@ try {
   window.formatUnavailableReasonCode = formatUnavailableReasonCode;
 } catch (e) {}
 
-/** Unified signal-rail-card — fusion verdict on top + empirical context on
- *  bottom; carries inline "Entry armed" (solid green) or "Stack degraded"
- *  (solid red) authority tags driven by existing payload fields. */
-function renderSignalRailCard(d) {
-  const card = document.getElementById('signal-rail-card');
-  if (!card) return;
-  if (d == null || typeof d !== 'object') { card.style.display = 'none'; return; }
-  const mhap = Array.isArray(d.mhap_rows) ? d.mhap_rows : [];
-  const pending = d.analytics_pending_shell === true;
-  if (pending && mhap.length === 0) { card.style.display = 'none'; return; }
-  card.style.display = '';
-
-  const fusionOk = (typeof isFusionAuthoritative === 'function') && isFusionAuthoritative(d);
-  const tradable = (typeof isCanonicalTradable === 'function') && isCanonicalTradable(d);
-  const tradeable = !!d.final_tradeable;
-  const bias = String(d.final_bias || 'WAIT').toUpperCase();
-  const dir = bias === 'LONG' ? 'up' : bias === 'SHORT' ? 'down' : 'flat';
-  const si = (d.stack_integrity_v1 && typeof d.stack_integrity_v1 === 'object') ? d.stack_integrity_v1 : {};
-  const degraded = si.degraded === true;
-  const armed = tradeable && fusionOk && tradable && (dir === 'up' || dir === 'down') && !degraded;
-  // Decision horizon (shared by top verdict + bottom empirical so the base rate matches the trade).
-  const primary = String(d.primary_horizon || '').toLowerCase();
-  const pLabel = ({ '1c': '1m', '5c': '5m', '15c': '15m', '60c': '60m' })[primary] || primary;
-
-  const stateClass = (!fusionOk || !tradable) ? 'signal-rail-card--withheld'
-    : dir === 'up' ? 'signal-rail-card--up'
-    : dir === 'down' ? 'signal-rail-card--down'
-    : 'signal-rail-card--withheld';
-  card.className = 'signal-rail-card ' + stateClass + (armed ? ' signal-rail-card--armed' : '');
-
-  const topEl = document.getElementById('signal-rail-top');
-  if (topEl) {
-    topEl.innerHTML = '';
-    if (degraded) {
-      const t = document.createElement('span');
-      t.className = 'fas-degraded-tag';
-      t.textContent = '⚠ Stack degraded';
-      t.title = 'stack_integrity_v1.degraded=true — mid-pipeline fallback; verify before trading';
-      topEl.appendChild(t);
-    } else if (armed) {
-      const t = document.createElement('span');
-      t.className = 'fas-armed-tag';
-      t.textContent = '⚡ Entry armed';
-      t.title = 'final_tradeable=true and fusion authoritative — primary horizon firing';
-      topEl.appendChild(t);
-    } else if (fusionOk && tradable) {
-      const t = document.createElement('span');
-      t.className = 'fas-label';
-      t.textContent = 'Fusion authoritative';
-      topEl.appendChild(t);
-    } else {
-      const t = document.createElement('span');
-      t.className = 'fas-label';
-      t.textContent = 'Forward';
-      topEl.appendChild(t);
-    }
-    if (fusionOk && tradable) {
-      const arrow = dir === 'up' ? '↑' : dir === 'down' ? '↓' : '→';
-      const lbl = dir === 'up' ? 'LONG' : dir === 'down' ? 'SHORT' : 'FLAT';
-      const dEl = document.createElement('span');
-      dEl.className = 'fas-dir';
-      dEl.textContent = arrow + ' ' + lbl;
-      topEl.appendChild(dEl);
-      const agreeRaw = d.fusion_model_agreement;
-      const agreeNum = (agreeRaw != null && !Number.isNaN(Number(agreeRaw)))
-        ? Math.round(Math.max(0, Math.min(1, Number(agreeRaw))) * 100)
-        : null;
-      const ag = document.createElement('span');
-      ag.className = 'fas-agreement';
-      const txt = document.createElement('span');
-      txt.textContent = agreeNum != null ? (agreeNum + '% agreement') : 'agreement —';
-      ag.appendChild(txt);
-      const track = document.createElement('span');
-      track.className = 'fas-track';
-      const fill = document.createElement('span');
-      fill.className = 'fas-fill';
-      fill.style.width = (agreeNum != null ? agreeNum : 0) + '%';
-      track.appendChild(fill);
-      ag.appendChild(track);
-      const note = document.createElement('span');
-      note.style.color = 'var(--text)';
-      note.style.fontSize = '10px';
-      note.style.fontWeight = '500';
-      const nActiveRaw = d.fusion_n_models_active;
-      const nActive = (nActiveRaw != null && !Number.isNaN(Number(nActiveRaw))) ? String(nActiveRaw) : '?';
-      note.textContent = nActive + '/3 ML stack layers' + (pLabel ? ' · primary ' + pLabel : '');
-      ag.appendChild(note);
-      topEl.appendChild(ag);
-    } else {
-      const msg = document.createElement('span');
-      msg.className = 'fas-msg';
-      msg.textContent = 'Not tradable — empirical context only';
-      topEl.appendChild(msg);
-    }
-  }
-
-  const tierEl = document.getElementById('src-ecl-tier');
-  const nEl = document.getElementById('src-ecl-n');
-  const probsEl = document.getElementById('src-ecl-probs');
-  const bottomEl = document.getElementById('signal-rail-bottom');
-  const labelEl = document.getElementById('src-ecl-label');
-  // Empirical context tracks the PRIMARY decision horizon (not a fixed 5m) so the base
-  // rate corresponds to the trade armed above. Fail-closed: hide if the primary bar is absent.
-  const hp = (primary && d.horizon_prob_bars && typeof d.horizon_prob_bars === 'object') ? d.horizon_prob_bars[pLabel] : null;
-  if (hp && hp.up != null && hp.down != null && hp.flat != null) {
-    if (labelEl) labelEl.textContent = 'Empirical (' + primary + ')';
-    if (bottomEl) {
-      bottomEl.style.display = 'flex';
-      bottomEl.classList.toggle('muted', fusionOk && tradable && !degraded);
-    }
-    if (tierEl) {
-      const lc = (hp.labeled_count != null && !Number.isNaN(Number(hp.labeled_count))) ? Number(hp.labeled_count) : null;
-      const tier = hp.confidence_tier
-        || (lc != null && lc >= 30 ? 'High-confidence tier'
-          : lc != null && lc >= 15 ? 'Medium-confidence tier'
-          : 'Low-confidence tier');
-      tierEl.textContent = tier;
-    }
-    if (nEl) {
-      const n = (hp.labeled_count != null && !Number.isNaN(Number(hp.labeled_count))) ? hp.labeled_count : '—';
-      nEl.textContent = n + ' similar setups · last 60 sessions';
-    }
-    if (probsEl) {
-      const fmt = (v) => Math.round(Number(v) * 100) + '%';
-      probsEl.innerHTML =
-        '<span class="up">UP ' + fmt(hp.up) + '</span>' +
-        '<span class="down">DOWN ' + fmt(hp.down) + '</span>' +
-        '<span class="flat">FLAT ' + fmt(hp.flat) + '</span>';
-    }
-  } else if (bottomEl) {
-    bottomEl.style.display = 'none';
-  }
-}
-try { window.renderSignalRailCard = renderSignalRailCard; } catch (e) {}
+/* renderSignalRailCard removed 2026-06-10 (operator): the ALL pill carries the
+   consolidated verdict and the PLAN pill carries entry/stop/targets/size. */
 
 /** Stack honesty: 1M–60M = per-horizon fusion readouts; ALL = consolidated synthesis (no PRIMARY on individual pills). */
 function renderTimeframeSignalRow(d) {
@@ -4449,6 +4085,60 @@ function renderTimeframeSignalRow(d) {
     return Math.round(Math.min(100, Math.max(0, n)));
   }
 
+  // PLAN card — trade plan (entry/stop/targets/size) promoted out of the Decision
+  // Command rail into the pill row beside ALL (operator 2026-06-10). Same chrome,
+  // same state vocabulary: LONG=green / SHORT=red / WAIT=dim slate.
+  function paintTradePlanCard(loadingHint) {
+    const card = document.getElementById('tf-signal-plan');
+    if (!card) return;
+    const stEl = document.getElementById('tf-plan-state');
+    const eEl = document.getElementById('tf-plan-entry');
+    const sEl = document.getElementById('tf-plan-stop');
+    const tEl = document.getElementById('tf-plan-targets');
+    const iEl = document.getElementById('tf-plan-invalidation');
+    const zEl = document.getElementById('tf-plan-size');
+    const dot = card.querySelector('.tf-dot');
+    const arr = card.querySelector('.tf-arrow');
+    if (loadingHint != null) {
+      card.setAttribute('data-tf-signal-dir', 'neutral');
+      card.className = 'tf-signal-card tf-state-dim tf-signal-card--analytics-loading';
+      if (dot) dot.className = 'tf-dot tf-dot--dim';
+      if (arr) arr.textContent = '…';
+      if (stEl) stEl.textContent = loadingHint === 'AUTH REQUIRED' ? 'AUTH' : 'LOADING';
+      [eEl, sEl, tEl, iEl, zEl].forEach((n) => { if (n) n.textContent = '—'; });
+      return;
+    }
+    const dir = normDir(d.final_bias || 'WAIT');
+    const entryState = String(d.entry_state || 'no_setup').toLowerCase();
+    const state = dir === 'LONG' ? 'up' : dir === 'SHORT' ? 'down' : 'dim';
+    let glow = '';
+    if (state !== 'dim') {
+      glow = (entryState === 'confirmed' || entryState === 'filled') ? ' tf-glow-3' : ' tf-glow-1';
+    }
+    card.setAttribute('data-tf-signal-dir', state === 'up' ? 'long' : state === 'down' ? 'short' : 'neutral');
+    card.className = 'tf-signal-card tf-state-' + state + glow;
+    if (dot) dot.className = 'tf-dot ' + (state === 'dim' ? 'tf-dot--dim' : (state === 'up' ? 'tf-dot--up tf-dot--blink' : 'tf-dot--down tf-dot--blink'));
+    if (arr) arr.textContent = state === 'dim' ? '→' : (state === 'up' ? '↑' : '↓');
+    if (stEl) stEl.textContent = entryState === 'no_setup' ? 'NO SETUP' : entryState.replace(/_/g, ' ').toUpperCase();
+    // Single-line values (CSS nowrap + ellipsis): fold any multi-line plan text
+    // onto one line and keep the full text reachable via the title tooltip.
+    const planTxt = (v) => {
+      const s = v == null ? '' : String(v).trim().replace(/\s*\n+\s*/g, ' · ');
+      return s !== '' ? s : '—';
+    };
+    const setPlanVal = (n, v) => {
+      if (!n) return;
+      const s = planTxt(v);
+      n.textContent = s;
+      if (s !== '—') n.title = s; else n.removeAttribute('title');
+    };
+    setPlanVal(eEl, d.entry_display_text);
+    setPlanVal(sEl, d.stop_display_text);
+    setPlanVal(tEl, d.targets_display);
+    setPlanVal(iEl, d.invalidation);
+    setPlanVal(zEl, d.size_modifier_display);
+  }
+
   // Per-pill chip painter — uses top-level deriveSourceForHorizon helpers so
   // the chip + detail elements stay in lockstep with the unified rail card.
   // dirVal === 'UNAVAILABLE' on the mhap row trumps everything except DEGRADED.
@@ -4467,7 +4157,11 @@ function renderTimeframeSignalRow(d) {
     }
     const detEl = card.querySelector('.tf-source-detail');
     if (detEl) {
-      detEl.textContent = sourceOperatorText(source, payload, slugKey);
+      const opTxt = sourceOperatorText(source, payload, slugKey);
+      detEl.textContent = opTxt;
+      // Full text on hover — withheld reasons can exceed the card width.
+      if (opTxt && opTxt !== '—') detEl.title = opTxt;
+      else detEl.removeAttribute('title');
       detEl.removeAttribute('aria-hidden');
     }
   }
@@ -4515,6 +4209,7 @@ function renderTimeframeSignalRow(d) {
         detEl.textContent = '—';
       }
     });
+    paintTradePlanCard(loadHint);
     return;
   }
   const prim = String(d.primary_horizon || '').toLowerCase();
@@ -4522,17 +4217,6 @@ function renderTimeframeSignalRow(d) {
   const tradeable = !!d.final_tradeable && (finalBias === 'LONG' || finalBias === 'SHORT');
   const primaryRow = mhap.find((r) => String(r.horizon || '').toLowerCase() === prim);
   const primaryDir = primaryRow ? normDir(primaryRow.call) : 'FLAT';
-
-  const serverList = Array.isArray(d.timeframe_cards) ? d.timeframe_cards : [];
-  const byTf = {};
-  serverList.forEach((c) => {
-    const k = String(c.timeframe || '').toUpperCase();
-    if (k) byTf[k] = c;
-  });
-  const useServer = slugs.every(({ ui }) => {
-    const c = byTf[ui];
-    return c != null && c.direction != null && String(c.direction).trim() !== '';
-  });
 
   function deriveTag(slug, dir) {
     if (slug === 'consolidated') {
@@ -4562,14 +4246,6 @@ function renderTimeframeSignalRow(d) {
       confPct = parseConf(d.final_confidence);
       tag = deriveTag(slug, dir);
     } else {
-    const sc = byTf[ui];
-    if (useServer && sc) {
-      dir = normDir(sc.direction);
-      confPct = parseConf(sc.confidence);
-      const rawT = sc.tag != null ? String(sc.tag).toUpperCase().trim() : '';
-      if (rawT === 'AGREE' || rawT === 'CONFLICT') tag = rawT;
-      if (!tag) tag = deriveTag(slug, dir);
-    } else {
       const r = mhap.find((x) => String(x.horizon || '').toLowerCase() === slug);
       if (r) {
         if (horizonRowMissing(r)) {
@@ -4582,7 +4258,6 @@ function renderTimeframeSignalRow(d) {
           tag = deriveTag(slug, dir);
         }
       }
-    }
     }
 
     let state = 'dim';
@@ -4666,6 +4341,7 @@ function renderTimeframeSignalRow(d) {
 
     paintSourceChip(card, d, slug, dir);
   });
+  paintTradePlanCard(null);
 }
 
 // STACK-WIRE-3-UI-SPREAD-SEMANTIC: testable dispatcher mirror used by render() at the
@@ -5050,140 +4726,24 @@ function renderDecisionCommandRail(d) {
   };
 
   const bias = String(d.final_bias || 'WAIT').toUpperCase();
-  const tradeable = !!d.final_tradeable && (bias === 'LONG' || bias === 'SHORT');
-
-  const rt = (d.stack_runtime && typeof d.stack_runtime === 'object') ? d.stack_runtime : {};
-  const gov = (d.stack_governance && typeof d.stack_governance === 'object') ? d.stack_governance : {};
-  const stackMode = String(rt.stack_mode || '').toUpperCase() || '—';
 
   renderSignalChain($('dr-signal-chain-host'), resolveSignalChain(d));
 
-  // Exact reason: prefer multi-horizon wait reason, then validation, then call reasoning.
-  const reason = txt(d.wait_reason, '') || txt(d.validation_summary, '') || txt(d.call_reasoning, '') || txt(d.pred_headline, '—');
-  domIf('dr-exact-reason', el => { el.textContent = reason; });
-
-  const valOk = d.validation_passed === true;
-  const thr = $('dr-threshold-gate');
-  if (thr) {
-    thr.textContent = valOk ? 'PASS (validation gate)' : 'FAIL (validation gate)';
-    thr.style.color = valOk ? 'var(--green)' : 'var(--red)';
-  }
-
-  // Ranking gate: primary horizon row must be primary + not contradictory (proxy for "ranking").
   const rows = Array.isArray(d.mhap_rows) ? d.mhap_rows : [];
   const primSlug = String(d.primary_horizon || '').toLowerCase();
   const primRow = rows.find(r => String(r.horizon || '').toLowerCase() === primSlug) || null;
-  const rankOk = !!(primRow && String(primRow.row_state || '').toLowerCase() === 'primary');
-  const rk = $('dr-ranking-gate');
-  if (rk) {
-    rk.textContent = rankOk ? 'PASS (primary horizon ranked)' : 'FAIL (primary horizon not ranked)';
-    rk.style.color = rankOk ? 'var(--green)' : 'var(--amber)';
-  }
 
-  const wb = (d.call_readiness && typeof d.call_readiness === 'object') ? d.call_readiness : {};
-  const blocked = !tradeable || !valOk || String(wb.call_state || '').toUpperCase() === 'WAIT';
-  const liveReady = !!tradeable && valOk && rankOk && String(stackMode) !== 'INVALID' && String(wb.call_state || '').toUpperCase() !== 'WAIT';
-  const lrChip = $('dr-live-ready-chip');
-  if (lrChip) {
-    lrChip.textContent = liveReady ? 'LIVE_READY' : 'NOT_LIVE_READY';
-    lrChip.className = 'decision-chip ' + (liveReady ? 'ok' : 'bad');
-  }
-
-  let block = '';
-  if (!liveReady) {
-    if (!valOk) block = txt(d.validation_summary, 'validation failed');
-    else if (String(stackMode) === 'INVALID') block = 'stack INVALID (fusion/MC prerequisites)';
-    else if (!rankOk) block = 'primary horizon not in primary rank state';
-    else if (txt(d.wait_reason, '')) block = txt(d.wait_reason, '');
-    else if (wb.reasons && wb.reasons.length) block = String(wb.reasons[0]);
-    else block = 'blocked';
-  }
-  domIf('dr-blocking-reason', el => { el.textContent = liveReady ? '—' : block; });
-
-  // Alignment classification (UI vocabulary): fully aligned / mixed / conflicted
+  // Why/gates, Readiness/trust and Stack-behind-the-call rail blocks removed
+  // 2026-06-10 (operator: duplicative) — verdict + WAIT/blocker reason live on
+  // the ALL pill, entry state on the PLAN pill, freshness/stack mode on the
+  // header chips, per-layer liveness on the signal-chain bar. The alignment
+  // classification stays: hs-summary below consumes it.
   const alignRaw = String(d.alignment_state_display || '').toLowerCase();
   let alignClsUi = 'MIXED';
   if (alignRaw.includes('fully') || alignRaw.includes('mostly')) alignClsUi = 'FULLY_ALIGNED';
   else if (alignRaw.includes('contrad') || alignRaw.includes('unusable') || String(d.conflict_level_display || '').toLowerCase().includes('high')) {
     alignClsUi = 'CONFLICTED';
   }
-  const ac = $('dr-align-class-chip');
-  if (ac) {
-    ac.textContent = `ALIGN ${alignClsUi.replace(/_/g, ' ')}`;
-    ac.className = 'decision-chip ' + (alignClsUi === 'FULLY_ALIGNED' ? 'ok' : alignClsUi === 'CONFLICTED' ? 'bad' : 'dim');
-  }
-
-  const stanceFromRow = (slug) => {
-    const r = rows.find(x => String(x.horizon || '').toLowerCase() === slug);
-    if (!r) return '—';
-    const c = String(r.call || 'WAIT').toUpperCase();
-    const conf = (r.confidence != null && !Number.isNaN(Number(r.confidence))) ? Number(r.confidence).toFixed(2) : '—';
-    return `${c} · ${conf}`;
-  };
-  domIf('dr-align-1m', el => { el.textContent = stanceFromRow('1c'); });
-  domIf('dr-align-5m', el => { el.textContent = stanceFromRow('5c'); });
-  domIf('dr-align-15m', el => { el.textContent = stanceFromRow('15c'); });
-  domIf('dr-align-60m', el => { el.textContent = stanceFromRow('60c'); });
-
-  // Trade plan
-  domIf('dr-plan-entry', el => { el.textContent = txt(d.entry_display_text, txt(d.entry_disp, '—')); });
-  domIf('dr-plan-stop', el => { el.textContent = txt(d.stop_display_text, txt(d.stop_disp, '—')); });
-  domIf('dr-plan-targets', el => { el.textContent = txt(d.targets_display, '—'); });
-  domIf('dr-plan-invalidation', el => { el.textContent = txt(d.invalidation, '—'); });
-
-  const es = String(d.entry_state || 'no_setup').toLowerCase();
-  const actionableNow = tradeable && valOk && liveReady && (es === 'armed' || es === 'confirmed' || es === 'filled');
-  const act = $('dr-action-chip');
-  if (act) {
-    act.textContent = actionableNow ? 'ACTIONABLE NOW' : 'CONFIRMATION NEEDED';
-    act.className = 'decision-chip ' + (actionableNow ? 'ok' : 'dim');
-    act.title = `entry_state=${txt(d.entry_state,'—')} · call_state=${txt(wb.call_state,'—')}`;
-  }
-
-  // Readiness / trust
-  domIf('dr-trust-live', el => { el.textContent = liveReady ? 'LIVE_READY' : 'NOT_LIVE_READY'; el.style.color = liveReady ? 'var(--green)' : 'var(--red)'; });
-  if (d._server_build_ts) {
-    const ageSec = Math.max(0, Math.round((Date.now() / 1000) - Number(d._server_build_ts)));
-    domIf('dr-trust-fresh', el => { el.textContent = `${ageSec}s since server bundle`; });
-  } else domIf('dr-trust-fresh', el => { el.textContent = '—'; });
-
-  const compliant = d.active_compliant;
-  const issues = Array.isArray(d.active_compliance_issues) ? d.active_compliance_issues : [];
-  domIf('dr-trust-stack', el => {
-    if (compliant === true) { el.textContent = 'OK (active artifacts compliant)'; el.style.color = 'var(--green)'; }
-    else if (compliant === false) { el.textContent = `DEGRADED (${issues.length ? issues[0] : 'compliance issues'})`; el.style.color = 'var(--amber)'; }
-    else { el.textContent = 'UNKNOWN'; el.style.color = 'var(--text3)'; }
-  });
-  domIf('dr-trust-policy', el => {
-    const pv = d.probability_valid, sv = d.structure_valid, rv = d.risk_valid;
-    if (pv == null && sv == null && rv == null) {
-      el.textContent = '— (validation unavailable)';
-      el.style.color = 'var(--text3)';
-    } else {
-      const ok = pv === true && sv === true && rv === true;
-      el.textContent = ok ? 'OK (probability/structure/risk)' : 'FAIL (policy fields)';
-      el.style.color = ok ? 'var(--green)' : 'var(--red)';
-    }
-  });
-  domIf('dr-trust-edge', el => {
-    const e = d.eval_accuracy_oos;
-    el.textContent = (e == null || Number.isNaN(Number(e))) ? '— (no OOS edge snapshot on bundle)' : `${Number(e).toFixed(1)}% (OOS accuracy)`;
-    el.style.color = 'var(--text2)';
-  });
-  domIf('dr-trust-block', el => { el.textContent = liveReady ? '—' : block; });
-
-  const contrib = Array.isArray(rt.contributing_models) ? rt.contributing_models.map(modelDisplayName) : [];
-  const uniq = Array.from(new Set(contrib));
-  domIf('dr-stack-contrib', el => { el.textContent = uniq.length ? uniq.join(', ') : '—'; });
-  // STACK-WIRE-3-UI-FUSION-TRADABILITY-GATE: detail chip mirrors rail truth — non-tradable
-  // provenance (e.g. canonical_forecast_missing) shows 'inactive' even when bare flag is True.
-  domIf('dr-stack-fusion', el => { const fOk = isFusionAuthoritative(d); el.textContent = fOk ? 'active' : 'inactive'; el.style.color = fOk ? 'var(--green)' : 'var(--red)'; });
-  domIf('dr-stack-mc', el => { el.textContent = d.mc_available ? 'participated' : 'not participating'; el.style.color = d.mc_available ? 'var(--green)' : 'var(--red)'; });
-  domIf('dr-stack-bases', el => { el.textContent = `${Number(rt.n_ml_layers_live ?? 0)}/3 xgb+lstm+transformer layers live`; });
-  domIf('dr-stack-gov', el => {
-    if (!gov.available) { el.textContent = '—'; return; }
-    el.textContent = `${String(gov.active_architecture || '?').toUpperCase()} · promoted=${gov.promoted ? 'yes' : 'no'}`;
-  });
 
   // Execution levels (exact prices / explicit ranges).
   const sup = px(d.nearest_below_val);
@@ -5447,134 +5007,11 @@ function renderDecisionCommandRail(d) {
   }
 }
 
-function renderV2PilotDecision(d) {
-  const root = document.getElementById('v2-pilot-card');
-  if (!root) return;
-  const v2 = d && d.v2_decision && typeof d.v2_decision === 'object' ? d.v2_decision : null;
-  const leafVal = (obj, fallback = '—') => {
-    if (!obj || typeof obj !== 'object' || !('value' in obj)) return fallback;
-    const v = obj.value;
-    if (v == null || v === '') return fallback;
-    return String(v);
-  };
-  const sourceSuffix = (obj) => {
-    if (!obj || typeof obj !== 'object' || !obj.source) return '';
-    return ` · ${String(obj.source)}`;
-  };
-  const pctLeaf = (obj) => {
-    const v = obj && typeof obj === 'object' ? obj.value : null;
-    const n = Number(v);
-    return Number.isFinite(n) ? Math.round(n * 100) + '%' + sourceSuffix(obj) : '—' + sourceSuffix(obj);
-  };
-  const set = (id, value) => domIf(id, el => { el.textContent = value; });
-
-  if (!v2) {
-    set('v2-status-chip', 'DRAFT');
-    set('v2-module', '—');
-    set('v2-expression', '—');
-    set('v2-authority', 'Tier C advisory only');
-    set('v2-action', '—');
-    set('v2-direction', '—');
-    set('v2-probability', '—');
-    set('v2-confidence', '—');
-    set('v2-net-ev', '—');
-    set('v2-signal-status', '—');
-    set('v2-implementation-status', '—');
-    set('v2-portfolio-status', '—');
-    set('v2-lifecycle-status', '—');
-    domIf('v2-gap-list', el => { el.innerHTML = '<li>Waiting for Tier C analytics payload.</li>'; });
-    return;
-  }
-
-  const auth = v2.authority || {};
-  set('v2-status-chip', String(v2.v2_status || 'DRAFT').replace(/_/g, ' ').toUpperCase());
-  set('v2-banner', auth.banner || 'Draft v2 view only. Does not replace the locked v1.1 decision policy.');
-  set('v2-module', `${leafVal(v2.strategy_module && v2.strategy_module.id)} · ${leafVal(v2.strategy_module && v2.strategy_module.name)}${sourceSuffix(v2.strategy_module && v2.strategy_module.id)}`);
-  set('v2-expression', `${leafVal(v2.expression_profile && v2.expression_profile.id)} · ${leafVal(v2.expression_profile && v2.expression_profile.instrument_family)}${sourceSuffix(v2.expression_profile && v2.expression_profile.id)}`);
-  set('v2-authority', `${auth.mode || 'advisory_non_authoritative'} · ${auth.tier || 'C_analytics_only'}`);
-
-  const dec = v2.decision || {};
-  set('v2-action', leafVal(dec.action) + sourceSuffix(dec.action));
-  set('v2-direction', leafVal(dec.direction) + sourceSuffix(dec.direction));
-  set('v2-probability', pctLeaf(dec.probability));
-  const deskConfLeaf = dec.confidence;
-  const deskConfVal = deskConfLeaf && typeof deskConfLeaf === 'object' ? deskConfLeaf.value : null;
-  const deskConfNum = Number(deskConfVal);
-  set(
-    'v2-confidence',
-    Number.isFinite(deskConfNum)
-      ? `${Math.round(deskConfNum * 100)}%${sourceSuffix(deskConfLeaf)}`
-      : `UNAVAILABLE${sourceSuffix(deskConfLeaf)}`,
-  );
-  set('v2-net-ev', leafVal(dec.net_expected_value_r) + sourceSuffix(dec.net_expected_value_r));
-
-  const edge = v2.edge_domains || {};
-  set('v2-signal-status', leafVal(edge.signal && edge.signal.status) + sourceSuffix(edge.signal && edge.signal.status));
-  set('v2-implementation-status', leafVal(edge.implementation && edge.implementation.status) + sourceSuffix(edge.implementation && edge.implementation.status));
-  set('v2-portfolio-status', leafVal(edge.portfolio && edge.portfolio.status) + sourceSuffix(edge.portfolio && edge.portfolio.status));
-  set('v2-lifecycle-status', leafVal(edge.lifecycle && edge.lifecycle.status) + sourceSuffix(edge.lifecycle && edge.lifecycle.status));
-
-  const gaps = Array.isArray(v2.conformance_gaps) ? v2.conformance_gaps : [];
-  domIf('v2-gap-list', el => {
-    if (!gaps.length) {
-      el.innerHTML = '<li>No declared gaps.</li>';
-      return;
-    }
-    el.innerHTML = gaps.map(g => {
-      const component = String((g && g.component) || 'gap').replace(/</g, '&lt;');
-      const source = String((g && g.source) || 'unknown').replace(/</g, '&lt;');
-      const detail = String((g && g.detail) || '').replace(/</g, '&lt;');
-      return `<li><strong>${component}</strong> · ${source}${detail ? ' - ' + detail : ''}</li>`;
-    }).join('');
-  });
-
-  const a2 = v2.expression_profiles && v2.expression_profiles.A2 && typeof v2.expression_profiles.A2 === 'object'
-    ? v2.expression_profiles.A2
-    : null;
-  const listLeaf = (obj) => {
-    const v = obj && typeof obj === 'object' ? obj.value : null;
-    return Array.isArray(v) && v.length ? v.join(', ') + sourceSuffix(obj) : 'none' + sourceSuffix(obj);
-  };
-  if (!a2) {
-    set('v2-a2-authority', 'READ ONLY');
-    set('v2-a2-action', '—');
-    set('v2-a2-contract', '—');
-    set('v2-a2-theta', '—');
-    set('v2-a2-spread', '—');
-    set('v2-a2-liquidity', '—');
-    set('v2-a2-prob', '—');
-    set('v2-a2-hard-gates', 'A2 unavailable');
-    set('v2-a2-soft-gates', '—');
-    set('v2-a2-gaps', '—');
-    return;
-  }
-
-  const ident = a2.identity || {};
-  const opt = a2.option_expression || {};
-  const greeks = a2.greeks || {};
-  const exec = a2.execution || {};
-  const prob = a2.probability_and_ev || {};
-  const health = a2.health || {};
-  const right = leafVal(opt.option_right);
-  const strike = leafVal(opt.strike);
-  const profile = leafVal(ident.expression_profile_id, 'A2');
-  const family = leafVal(ident.instrument_family, 'options_0dte');
-  set('v2-a2-authority', `${leafVal(ident.authority_mode, 'advisory_non_authoritative')} · read only`);
-  set('v2-a2-action', leafVal(opt.option_action) + sourceSuffix(opt.option_action));
-  set('v2-a2-contract', `${profile} ${family} · ${right} ${strike}${sourceSuffix(opt.option_right)}`);
-  // Inline Schwab -999.0 sentinel guard: producer already filters at v2_decision/a2_option_expression._theta,
-  // but if the sentinel ever leaks through to the leaf, render "missing" rather than "-999.000000".
-  const _thetaLeafVal = greeks.theta && typeof greeks.theta === 'object' && 'value' in greeks.theta ? greeks.theta.value : null;
-  const _thetaIsSentinel = _thetaLeafVal != null && Number.isFinite(Number(_thetaLeafVal)) && Number(_thetaLeafVal) === -999;
-  set('v2-a2-theta', (_thetaIsSentinel ? 'missing' : leafVal(greeks.theta)) + sourceSuffix(greeks.theta));
-  set('v2-a2-spread', leafVal(opt.spread) + sourceSuffix(opt.spread));
-  set('v2-a2-liquidity', leafVal(exec.liquidity_gate_pass) + ' · ' + leafVal(exec.spread_quality) + sourceSuffix(exec.spread_quality));
-  set('v2-a2-prob', pctLeaf(prob.P_underlying_entry_success));
-  set('v2-a2-hard-gates', listLeaf(health.hard_gates_failed));
-  set('v2-a2-soft-gates', listLeaf(health.soft_gates));
-  const a2Gaps = Array.isArray(a2.conformance_gaps) ? a2.conformance_gaps : [];
-  set('v2-a2-gaps', a2Gaps.length ? `${a2Gaps.length} declared` : 'none');
-}
+/* renderV2PilotDecision removed 2026-06-10 (operator): the V2 Pilot 1A
+   advisory card was a v1_approximation/not_implemented scaffold with no
+   operator value. The v2 engine stays server-side (ms_dict.v2_decision +
+   calibration logging); the -999 theta sentinel guard lives at the producer
+   (v2_decision/a2_option_expression._theta). */
 
 // ── Real-time spot authority: fast quote drives display spot between full-state refreshes ──
 /** Active ticker: prefer live plane mirror; otherwise last full-state spot (e.g. other symbols in confluence). */
@@ -6138,8 +5575,13 @@ function renderTierBLight(d, fullRenderSource) {
   }
   _lastRenderTs = Date.now();
   clearHardStaleUi();
-  try { renderTimeframeSignalRow(window._lastData); } catch (e) {}
-  try { renderSignalRailCard(window._lastData); } catch (e) {}
+  // E2E determinism: behavioral specs inject card payloads via
+  // renderTimeframeSignalRow(d) directly; a live L1 event repainting from the
+  // sparse merged _lastData would race those injections mid-assertion. Tier B
+  // quote/zone chrome above still paints in E2E.
+  if (!window.__ED_E2E__) {
+    try { renderTimeframeSignalRow(window._lastData); } catch (e) {}
+  }
   return true;
 }
 
@@ -6288,7 +5730,6 @@ function renderTierCPendingShell(d, fullRenderSource) {
   if (Array.isArray(merged.mhap_rows) && merged.mhap_rows.length) {
     try { renderDecisionCommandRail(merged); } catch (e) {}
   }
-  try { renderSignalRailCard(merged); } catch (e) {}
   _lastRenderTs = Date.now();
   clearHardStaleUi();
   _updateTierCLaneStaleMarkers();
@@ -6372,7 +5813,6 @@ function renderTierALive(d, fullRenderSource) {
   _lastRenderTs = Date.now();
   clearHardStaleUi();
   try { renderTimeframeSignalRow(window._lastData); } catch (e) {}
-  try { renderSignalRailCard(window._lastData); } catch (e) {}
   if (Array.isArray(window._lastData.mhap_rows) && window._lastData.mhap_rows.length) {
     window._tierCCardsPaintedAtGen = window._lastRenderedDecisionGen ?? 0;
   }
@@ -6443,9 +5883,7 @@ function render(d, fullRenderSource) {
   renderContextLayer(d);
   // Legacy MHAP/The Call surface removed from DOM in the new execution-first layout.
   renderDecisionCommandRail(d);
-  renderV2PilotDecision(d);
   renderTimeframeSignalRow(d);
-  try { renderSignalRailCard(d); } catch (e) {}
   // Save scroll position — prevent page jumping on data refresh
   const _scrollY = window.scrollY;
 
@@ -7617,26 +7055,21 @@ try { window.horizonDirectionWithheld = horizonDirectionWithheld; } catch (e) {}
 // LIVE-UI-1 inventory; adding/removing an ID here without the matching inventory row is the
 // drift pattern feedback_mega_inventory_in_paired_fix.md guards against in mega land.
 const _LIVEUI6_BUNDLE_DIRECTION_IDS = [
-  'dr-action-chip',
-  'dr-align-class-chip',
-  'dr-blocking-reason',
-  'dr-exact-reason',
-  'dr-plan-entry',
-  'dr-plan-stop',
-  'dr-plan-targets',
-  'dr-plan-invalidation',
-  'dr-live-ready-chip',
+  // Rail Why/gates ids retired 2026-06-10 — the ALL + PLAN pills are the
+  // bundle-level direction surfaces now.
+  'tf-signal-consolidated',
+  'tf-signal-plan',
 ];
 
 // Per-horizon direction-bearing IDs. The map key is the Schwab-canonical bar slug (1c/5c/15c/60c)
-// used by horizon_fusion_available / ms_dict; the values are concrete DOM ids in
-// renderDecisionCommandRail. The tf-signal-card row (#tf-signal-{slug}) is handled by
-// querySelector pattern below rather than fixed IDs.
+// used by horizon_fusion_available / ms_dict; values are extra per-horizon DOM ids beyond the
+// #tf-signal-{slug} card itself (which the marker loop below always covers). Empty since the
+// rail Horizon-alignment block (dr-align-*) was retired 2026-06-10 — duplicative with the pills.
 const _LIVEUI6_HORIZON_DIRECTION_IDS = {
-  '1c': ['dr-align-1m'],
-  '5c': ['dr-align-5m'],
-  '15c': ['dr-align-15m'],
-  '60c': ['dr-align-60m'],
+  '1c': [],
+  '5c': [],
+  '15c': [],
+  '60c': [],
 };
 
 function _updateDirectionWithheldMarkers() {
@@ -7693,7 +7126,6 @@ function _updateDecisionBundleAgeUI(opts) {
     else if (priceAhead) pillText += ' · PRICE AHEAD';
     fp.textContent = pillText;
   }
-  domIf('dr-trust-fresh', el => { el.textContent = ageText || '—'; });
 }
 
 function _updateCoherenceHeadline(integrity) {
@@ -9688,8 +9120,20 @@ window.__edFeedVerificationRun = function __edFeedVerificationRun() {
 };
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-fetchState();
-startStatePollFallback();  // Poll fallback when SSE idle; suppressed while SSE delivers fresh payloads
+// E2E determinism (window.__ED_E2E__ set by Playwright addInitScript before page
+// scripts): suppress the full-state autostart — initial fetchState + poll
+// fallback (and the SSE stream fetchState connects) all call render() with live
+// server payloads and would overwrite payloads injected by behavioral specs
+// mid-assertion. The L1-light quote stream still boots (l1-sse.spec.js asserts
+// it connects); its renderTierBLight card repaint is separately gated on
+// !__ED_E2E__ so L1 events cannot race injected card payloads. Specs needing
+// the full state pipeline start it via window.__edTestHooks.fetchState.
+if (!window.__ED_E2E__) {
+  fetchState();
+  startStatePollFallback();  // Poll fallback when SSE idle; suppressed while SSE delivers fresh payloads
+} else {
+  try { connectL1LightSSE(); } catch (e) { /* boot-only quote stream */ }
+}
 // Start fast-lane poll immediately; fetchState also starts it after streaming POST.
 startFastLanePoll();
 // Failsafe if the interval was cleared elsewhere.

@@ -9,6 +9,7 @@ The Call — implements STACK ORDER 8, 9, 10 (enforced in compute_call):
 from __future__ import annotations
 
 import logging
+import math
 from typing import Optional
 
 from lifecycle_rule_core import derive_stop_distance_pct, derive_target_levels
@@ -269,12 +270,11 @@ def _build_invalidation(micro, micro_regime, final_signal, trade_type, stop, inp
         elif final_signal == "short" and micro.structure_resist:
             parts.append(f"Invalid if 5min closes above {micro.structure_resist:.2f} swing high")
 
-    # Trade-type specific invalidation
+    # Trade-type specific invalidation (price-action only — operator 2026-06-11:
+    # gamma-wall hold clauses removed; plan invalidation never references key levels)
     if trade_type == "fade":
-        if final_signal == "short" and inp.call_gamma_wall:
-            parts.append(f"Invalid if price holds above {inp.call_gamma_wall:.2f} for 3+ bars")
-        elif final_signal == "long" and inp.put_gamma_wall:
-            parts.append(f"Invalid if price holds below {inp.put_gamma_wall:.2f} for 3+ bars")
+        side = "above" if final_signal == "short" else "below"
+        parts.append(f"Invalid if 1m closes hold {side} stop {stop:.2f} for 3+ bars")
     elif trade_type == "breakout" and micro_regime in (R_BOS_UP, R_BOS_DOWN):
         if micro and micro.bos:
             parts.append(f"Invalid if price falls back below {micro.bos.level:.2f} breakout level")
@@ -607,14 +607,29 @@ def _cross_instrument_notes(inp: SignalInput) -> list:
 
     return notes
 
+# ATR-scaled stop multiple (operator 2026-06-11 price-action plan). Volatility-
+# scaled stops per Wilder (1978) ATR; standard institutional practice is a fixed
+# ATR multiple widened by regime risk_multiplier. VIX/time-decay percentage stop
+# remains the fail-closed fallback when no finite ATR is available.
+ATR_STOP_MULT: float = 1.5
+
+
 def _stop_distance(inp: SignalInput, risk_multiplier: float = 1.0) -> float:
     """
-    Time-aware, VIX-aware stop distance for 0DTE trading.
-    PERCENTAGE-BASED so it scales correctly across underlyings.
+    Volatility-scaled stop distance. Primary: ATR_STOP_MULT × ATR(1m) × regime
+    multiplier. Fallback (no ATR): time-aware, VIX-aware percentage of spot.
 
     risk_multiplier: from volatility regime — scales stop in expansion/unstable
     (e.g. 1.35 in unstable = wider stops). Default 1.0.
     """
+    atr = getattr(inp, "atr", None)
+    try:
+        atr_f = float(atr) if atr is not None else None
+    except (TypeError, ValueError):
+        atr_f = None
+    if atr_f is not None and math.isfinite(atr_f) and atr_f > 0.0:
+        return round(ATR_STOP_MULT * atr_f * float(risk_multiplier), 2)
+
     spot = inp.spot
     if inp.et_hour is None or inp.et_minute is None:
         log.debug(
@@ -643,45 +658,27 @@ def _compute_levels(
     governed_zone: str,
 ):
     """
-    Compute entry, stop, target based on signal, zone, and key levels.
-    risk_multiplier: from volatility regime — scales stop distance.
-
-    TARGET PHILOSOPHY:
-    The primary target comes from the PREDICTION ENGINE (avg expected move
-    from similar historical setups). Structural levels (gamma walls, OI walls,
-    VWAP) act as CONFIRMATION — if a structural level is near the predicted
-    move, snap to it. If no structural level is nearby, use the predicted move.
-
-    This prevents the old bug where the call gamma wall at 595 becomes the
-    target when spot is 580, giving a fantasy 14:1 R:R on a 25-minute trade.
+    Price-action plan geometry (operator 2026-06-11 — key-level anchoring removed).
 
     RULES:
-    1. Entry is ALWAYS at or near spot (adjusted by zone anchor).
-    2. Stop = entry ± stop_dist (percentage-based, VIX-aware).
-    3. T1 = predicted avg move (5-bar horizon), snapped to nearby structural
-       level if one exists within ±30% of the predicted distance.
-    4. T2 = predicted move at **primary** horizons (15c / 60c empirical) only — not 3c/8c/13c secondary.
-    5. Maximum R:R cap = 5:1 for T1, 8:1 for T2. Anything beyond is unrealistic
-       for intraday scalps.
+    1. Entry = current price (market). No zone/gamma-wall anchor moves the entry.
+    2. Stop = entry ± volatility-scaled distance (ATR primary, VIX-pct fallback).
+    3. T1/T2 = prediction-engine expected moves (empirical move-size stats from
+       price history) with R-multiple caps — NO structural-level snapping.
+       Key levels / gamma walls are context display only, never plan anchors.
+    4. T2 = predicted move at **primary** horizons (15c / 60c empirical) only.
+    5. Maximum R:R cap = 5:1 for T1, 8:1 for T2 (unchanged).
+
+    governed_zone is retained for call-site/audit compatibility; it no longer
+    moves plan geometry.
     """
     spot      = inp.spot
-    cgw       = inp.call_gamma_wall
-    pgw       = inp.put_gamma_wall
-    coi       = inp.call_oi_wall
-    poi       = inp.put_oi_wall
-    vwap      = inp.vwap
-    zone      = (governed_zone or "").lower()
     stop_dist = _stop_distance(inp, risk_multiplier=risk_multiplier)
 
     # ── Prediction-based move distances (primary horizons for tradable targets only) ──
     avg5  = pred.avg_5c_pts  if pred and pred.avg_5c_pts is not None else None
     avg15 = pred.avg_15c_pts if pred and pred.avg_15c_pts is not None else None
     avg60 = pred.avg_60c_pts if pred and pred.avg_60c_pts is not None else None
-
-    def _structural_levels(direction):
-        if direction == "long":
-            return [level for level in (vwap, cgw, coi) if level and level > spot]
-        return [level for level in (vwap, pgw, poi) if level and level < spot]
 
     def _targets(entry, direction, risk):
         return derive_target_levels(
@@ -691,50 +688,26 @@ def _compute_levels(
             avg5=avg5,
             avg15=avg15,
             avg60=avg60,
-            structural_levels=_structural_levels(direction),
+            structural_levels=[],
         )
 
-    def _long_levels(anchor):
-        entry = round(max(anchor + 0.25, spot), 2)
+    if signal == "long":
+        entry = round(spot, 2)
         stop  = round(entry - stop_dist, 2)
         risk  = round(entry - stop, 2)
         if risk <= 0:
             risk = stop_dist
-
         targets = _targets(entry, "long", risk)
         return entry, stop, targets.target, targets.target2
 
-    def _short_levels(anchor):
-        entry = round(min(anchor - 0.25, spot), 2)
+    if signal == "short":
+        entry = round(spot, 2)
         stop  = round(entry + stop_dist, 2)
         risk  = round(stop - entry, 2)
         if risk <= 0:
             risk = stop_dist
-
         targets = _targets(entry, "short", risk)
         return entry, stop, targets.target, targets.target2
-
-    # ── PIN ZONE: fade the walls ──────────────────────────────────────────────
-    if signal == "short" and is_pin_zone(zone) and cgw:
-        return _short_levels(anchor=cgw)
-
-    if signal == "long" and is_pin_zone(zone) and pgw:
-        return _long_levels(anchor=pgw)
-
-    # ── BREAKOUT: momentum long above CGW ────────────────────────────────────
-    if signal == "long" and zone == "breakout" and cgw:
-        return _long_levels(anchor=cgw)
-
-    # ── BREAKDOWN: momentum short below PGW ──────────────────────────────────
-    if signal == "short" and zone == "breakdown" and pgw:
-        return _short_levels(anchor=pgw)
-
-    # ── Fallback: anchor to spot ──────────────────────────────────────────────
-    if signal == "short":
-        return _short_levels(anchor=spot + 0.25)
-
-    if signal == "long":
-        return _long_levels(anchor=spot - 0.25)
 
     return None, None, None, None
 

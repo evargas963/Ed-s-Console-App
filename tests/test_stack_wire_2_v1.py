@@ -93,7 +93,66 @@ def test_multi_horizon_decision_threshold_constants_exist_and_used():
 
 
 def test_wait_reason_constants_exist_and_used():
-    assert mhd.WAIT_REASON_NO_PRIMARY == "no valid primary horizon"
+    # ALL-card pooled consensus (operator 2026-06-11): wait reasons name the pooled
+    # failure modes; the synthesis must route through _pooled_consensus.
+    assert "insufficient evidence" in mhd.WAIT_REASON_INSUFFICIENT_VALID_HORIZONS
+    assert "flat" in mhd.WAIT_REASON_POOLED_FLAT
+    assert "entry gate" in mhd._wait_reason_pooled_below_gate(0.36, 0.02)
     src = inspect.getsource(mhd.compute_multi_horizon_synthesis)
-    assert 'wait_reason = "no valid primary horizon"' not in src
-    assert "WAIT_REASON_NO_PRIMARY" in src
+    assert "_pooled_consensus" in src
+    helper = inspect.getsource(mhd._pooled_consensus)
+    assert "WAIT_REASON_INSUFFICIENT_VALID_HORIZONS" in helper
+    assert "WAIT_REASON_POOLED_FLAT" in helper
+    assert "_wait_reason_pooled_below_gate" in helper
+
+
+def _hf(hz, up, dn, fl, **kw):
+    d = dict(
+        horizon=hz,
+        direction="long" if up > max(dn, fl) else "short" if dn > max(up, fl) else "wait",
+        probability_up=up, probability_down=dn, probability_flat=fl,
+        confidence=max(up, dn, fl), provenance="fusion", tradeable=True,
+        unavailable=False, missing=False, valid_contract=True,
+        dominant_probability=max(up, dn, fl),
+        probability_margin=max(up, dn, fl) - sorted([up, dn, fl])[-2],
+    )
+    d.update(kw)
+    return mhd.HorizonForecast(**d)
+
+
+def test_all_card_pooled_consensus_is_evidence_weighted_not_head_count():
+    """ALL card pools the four triplets (log opinion pool) — never a relay or vote count."""
+    eq = {h: 0.25 for h in mhd.PRODUCT_HORIZONS}
+    # Aligned long evidence pools long with the pooled dominant as confidence.
+    aligned = {
+        "1c": _hf("1c", 0.45, 0.30, 0.25), "5c": _hf("5c", 0.48, 0.27, 0.25),
+        "15c": _hf("15c", 0.44, 0.31, 0.25), "60c": _hf("60c", 0.42, 0.33, 0.25),
+    }
+    p = mhd._pooled_consensus(aligned, eq, True)
+    assert p.final_bias == "long" and p.wait_reason == ""
+    assert p.dominant_probability >= mhd.TRADEABLE_DOM_MIN
+
+    # A strong dissenter drags the pooled evidence below gate — continuous veto.
+    dissent = dict(aligned)
+    dissent["60c"] = _hf("60c", 0.20, 0.60, 0.20)
+    pd = mhd._pooled_consensus(dissent, eq, True)
+    assert pd.final_bias == "wait"
+    assert pd.wait_reason.startswith("pooled stack evidence below entry gate")
+
+    # Skill weights matter: weighting the dissenter flips pooled evidence short-ward.
+    w = {"1c": 0.05, "5c": 0.05, "15c": 0.05, "60c": 0.85}
+    pw = mhd._pooled_consensus(dissent, w, False)
+    assert pw.prob_down > pd.prob_down
+
+    # Fewer than CONSENSUS_MIN_VALID_HORIZONS valid triplets → fail-closed WAIT.
+    sparse = {hz: _hf(hz, 0.4, 0.3, 0.3, missing=True, unavailable=True) for hz in mhd.PRODUCT_HORIZONS}
+    sparse["1c"] = _hf("1c", 0.45, 0.30, 0.25)
+    ps = mhd._pooled_consensus(sparse, eq, True)
+    assert ps.final_bias == "wait"
+    assert ps.wait_reason == mhd.WAIT_REASON_INSUFFICIENT_VALID_HORIZONS
+
+    # Flat-dominant pool stays WAIT (no directional fabrication).
+    flat = {hz: _hf(hz, 0.25, 0.25, 0.50) for hz in mhd.PRODUCT_HORIZONS}
+    pf = mhd._pooled_consensus(flat, eq, True)
+    assert pf.final_bias == "wait"
+    assert pf.wait_reason == mhd.WAIT_REASON_POOLED_FLAT

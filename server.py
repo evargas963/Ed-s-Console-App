@@ -1536,6 +1536,12 @@ MARKET_CLOSE_HOUR:   float = 16.0   # 4:00 PM ET (used for hours-remaining calc)
 # Canonical timeframe: 1m. See timeframe_config.py for CANONICAL_TIMEFRAME.
 CANDLE_5M_SECONDS:   int   = 300    # 5-minute bar period (derived context)
 CANDLE_1M_SECONDS:   int   = 60     # 1-minute bar period (canonical)
+# Re-seed the in-memory 1m grid from Schwab pricehistory (canonical OHLCV leaf
+# pricehistory.candles[]) whenever the last completed bar is older than this gap.
+# Root cause (2026-06-11): seeding ran once per server lifetime, so background-logged
+# tickers (visited ~1×/15min) built ~6%-density tick grids — fill_outcomes could not
+# find forward bars at +1/+5/+15/+60m and the daily scoreboard never scored them.
+CANDLE_RESEED_GAP_SECONDS: float = 180.0  # 3 missed canonical bars → grid is stale
 
 # IV tracker
 IV_TRACKER_MAX_READINGS: int   = 6      # readings before direction is meaningful
@@ -1701,6 +1707,18 @@ class _CandleAccumulator:
                 "ts": self._bar_start(last.ts),
                 "o": last.open, "h": last.high, "l": last.low, "c": last.close,
             }
+
+    def grid_stale(self, ticker: str, ts: float, gap_seconds: float) -> bool:
+        """True when the completed-bar grid is missing or has a gap vs ``ts``.
+
+        A stale grid means tick-built bars cannot represent the session (sparse
+        polling) and the canonical Schwab pricehistory leaf must re-seed it.
+        """
+        bars = self._bars.get(ticker)
+        if not bars:
+            return True
+        last_bar_end = float(bars[-1].ts) + float(self.bar_seconds)
+        return (float(ts) - last_bar_end) > float(gap_seconds)
 
     def has_bars(self, ticker: str) -> bool:
         """Return True if ticker has any completed bars."""
@@ -4050,9 +4068,12 @@ def _fetch_state(
     # Feed tick into candle accumulators
     _tick_ts = parsed_quote_time or parsed_trade_time
 
-    # Seed candles from Schwab price history if this ticker has no bars yet.
+    # Seed candles from Schwab price history when the canonical 1m grid is stale —
+    # first visit OR a gap since the last completed bar (background-logged tickers
+    # are polled ~1×/15min; tick-built bars alone leave the outcome grid ~94% empty).
     # Canonical (1m) drives snapshot/state; 5m remains derived context.
-    if not _candles_1m.has_bars(ticker):
+    _seed_ref_ts = float(_tick_ts) if _tick_ts is not None else time.time()
+    if _candles_1m.grid_stale(ticker, _seed_ref_ts, CANDLE_RESEED_GAP_SECONDS):
         try:
             client = get_client()
             # 5-minute bars
@@ -5139,7 +5160,32 @@ def _fetch_state(
                     if float(chg) < -ETF_ZONE_THRESHOLD_PCT: return "bearish_trend"
                     return "neutral"
 
+                # Price-action cone (operator 2026-06-11): persist bar-derived
+                # momentum/structure primitives from the in-memory 1m accumulator
+                # (completed bars only; bar_end <= ts_utc — leak-free). Honest
+                # nulls when history is short; never fabricated fills.
+                _pa_cols: dict[str, Any] = {}
+                try:
+                    from types import SimpleNamespace as _PA_NS
+                    from features.signal_layer_v1 import compute_price_action_snapshot_columns
+                    _pa_bars = [
+                        {
+                            "bar_start_ts_utc": float(_cb.ts),
+                            "bar_end_ts_utc": float(_cb.ts) + float(CANDLE_1M_SECONDS),
+                            "open": _cb.open, "high": _cb.high, "low": _cb.low,
+                            "close": _cb.close, "volume": _cb.volume,
+                        }
+                        for _cb in (_candles_1m.get_bars(ticker) or [])
+                    ]
+                    _pa_cols = compute_price_action_snapshot_columns(
+                        _pa_bars, decision_ts_utc=float(_snap_ts), inp=_PA_NS(vwap=_vwap_f),
+                    )
+                except Exception as e:
+                    log.warning("price-action snapshot columns failed (%s): %s", ticker, e)
+                    _pa_cols = {}
+
                 _snapshot_kwargs = dict(
+                    **_pa_cols,
                     ticker=ticker,
                     timeframe=CANONICAL_TIMEFRAME,
                     expiry=selected_exp,

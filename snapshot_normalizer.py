@@ -528,6 +528,90 @@ def run_full_materialization(db_path: Path = DB_PATH) -> dict[str, Any]:
     }
 
 
+def backfill_price_action_columns(
+    db_path: Path = DB_PATH,
+    tickers: Optional[list[str]] = None,
+    *,
+    max_bars: int = 80,
+    only_null: bool = True,
+) -> dict[str, Any]:
+    """
+    Backfill the persisted price-action cone (pa_* columns) on historical
+    snapshots from price_bars_1m, leak-free (bars with bar_end <= ts_utc only).
+
+    Updates BOTH snapshots and snapshots_1m_normalized in place so retraining
+    can use the new columns without waiting for live accumulation. max_bars=80
+    covers the longest window (60m return lookback + ATR seeding).
+    """
+    import bisect
+    from types import SimpleNamespace
+
+    from features.signal_layer_v1 import (
+        SNAPSHOT_PRICE_ACTION_COLUMNS,
+        compute_price_action_snapshot_columns,
+    )
+
+    pa_cols = [c for c, _ in SNAPSHOT_PRICE_ACTION_COLUMNS]
+    set_sql = ", ".join(f"{c} = ?" for c in pa_cols)
+    out: dict[str, Any] = {"by_ticker": {}, "rows_updated": 0, "rows_skipped_no_bars": 0}
+    conn = _connect(db_path)
+    try:
+        if tickers is None:
+            tickers = [
+                str(r[0])
+                for r in conn.execute("SELECT DISTINCT ticker FROM snapshots ORDER BY ticker")
+            ]
+        for tkr in tickers:
+            bars = [
+                {
+                    "bar_start_ts_utc": float(r[0]),
+                    "bar_end_ts_utc": float(r[1]),
+                    "open": r[2], "high": r[3], "low": r[4], "close": r[5], "volume": r[6],
+                }
+                for r in conn.execute(
+                    "SELECT bar_start_ts_utc, bar_end_ts_utc, open, high, low, close, volume"
+                    " FROM price_bars_1m WHERE ticker = ? ORDER BY bar_end_ts_utc ASC",
+                    (tkr,),
+                )
+            ]
+            bar_ends = [b["bar_end_ts_utc"] for b in bars]
+            null_filter = f" AND {pa_cols[0]} IS NULL" if only_null else ""
+            snaps = conn.execute(
+                f"SELECT snapshot_id, ts_utc, vwap FROM snapshots WHERE ticker = ?{null_filter}"
+                " ORDER BY ts_utc ASC",
+                (tkr,),
+            ).fetchall()
+            updated = skipped = 0
+            for snap_id, ts_utc, vwap in snaps:
+                hi = bisect.bisect_right(bar_ends, float(ts_utc))
+                window = bars[max(0, hi - max_bars) : hi]
+                if not window:
+                    skipped += 1
+                    continue
+                vals = compute_price_action_snapshot_columns(
+                    window,
+                    decision_ts_utc=float(ts_utc),
+                    inp=SimpleNamespace(vwap=vwap),
+                )
+                params = [vals[c] for c in pa_cols]
+                conn.execute(
+                    f"UPDATE snapshots SET {set_sql} WHERE snapshot_id = ?", [*params, snap_id]
+                )
+                conn.execute(
+                    f"UPDATE snapshots_1m_normalized SET {set_sql}"
+                    " WHERE ticker = ? AND ts_utc = ?",
+                    [*params, tkr, float(ts_utc)],
+                )
+                updated += 1
+            conn.commit()
+            out["by_ticker"][tkr] = {"updated": updated, "skipped_no_bars": skipped}
+            out["rows_updated"] += updated
+            out["rows_skipped_no_bars"] += skipped
+    finally:
+        conn.close()
+    return out
+
+
 def _print_ingestion_context(db_path: Path, raw_rows: int, normalized_rows: int) -> None:
     """Clarify why raw_rows is far below snapshot row counts (1m-vs-5m selection)."""
     conn = _connect(db_path)
@@ -560,6 +644,15 @@ if __name__ == "__main__":
         sys.exit(1)
 
     validate_only = "--validate" in sys.argv
+
+    if "--backfill-price-action" in sys.argv:
+        res = backfill_price_action_columns(db)
+        print("Price-action backfill:")
+        print("  rows_updated:", res["rows_updated"])
+        print("  rows_skipped_no_bars:", res["rows_skipped_no_bars"])
+        for t, st in res["by_ticker"].items():
+            print(f"  {t}: {st}")
+        sys.exit(0)
 
     if validate_only:
         v = validate_normalization(db)

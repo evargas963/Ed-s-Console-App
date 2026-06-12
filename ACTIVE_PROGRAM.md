@@ -107,7 +107,7 @@ Operator north star: **one door in** (wire row → seven-layer stack), **one doo
 
 ## UI card provenance spec (Claude design brief — Issue 18 card system)
 
-**Keep existing card chrome:** `.tf-signal-card`, Horizon alignment (`dr-align-1m` … `dr-align-60m`), Decision Rail, `.tf-signal-card--trade-active` color semantics.
+**Keep existing card chrome:** `.tf-signal-card`, Decision Rail, `.tf-signal-card--trade-active` color semantics. (The rail Horizon-alignment block `dr-align-1m` … `dr-align-60m` was retired 2026-06-10 — duplicative with the horizon pills; see §UI design lock.)
 
 **Each horizon pill must show a source chip** (one of, from `mh_prob_source_by_horizon` already in API payload):
 
@@ -129,18 +129,25 @@ Operator north star: **one door in** (wire row → seven-layer stack), **one doo
 
 **Do not** collapse the three pipelines into one number without a chip. **Do not** hide UNAVAILABLE/DEGRADED behind neutral gray that reads as "WAIT setup."
 
-### UI design lock — operator verdict 2026-05-27 (binding, all agents)
+### UI design lock — operator verdicts 2026-05-27 + 2026-06-10 (binding, all agents)
 
-The chip + unified `signal-rail-card` design is the **single source of truth**. The following surfaces were intentionally removed and **MUST NOT** be re-introduced:
+The six-pill row (`1M/5M/15M/60M` + `ALL` consensus + `PLAN` trade plan) with per-pill `.tf-source-chip` provenance is the **single source of truth**. The following surfaces were intentionally removed and **MUST NOT** be re-introduced:
 
 | Removed surface | Reason |
 |---|---|
-| `dr-fusion-authority-strip` + `dr-empirical-context-line` inside the Decision Rail card (commit `c0770f6`) | Operator: "no co-existing your design rules" — parallel surface duplicated `signal-rail-card` |
-| Decision Command verdict row (`dr-trade-pill` / `dr-bias-pill` / `dr-desk-confidence` / `dr-confidence-pill`) | Duplicated `signal-rail-card` (Entry armed + ↑ LONG + agreement + conviction) |
+| `dr-fusion-authority-strip` + `dr-empirical-context-line` inside the Decision Rail card (commit `c0770f6`) | Operator: "no co-existing your design rules" — parallel surface duplicated the unified verdict surface |
+| Decision Command verdict row (`dr-trade-pill` / `dr-bias-pill` / `dr-desk-confidence` / `dr-confidence-pill`) | Duplicated the unified verdict surface (Entry armed + ↑ LONG + agreement + conviction) |
 | Decision Command title strip ("DECISION COMMAND · Operator surface · bar horizons map…") | Redundant header chrome; chip ribbon stays |
 | Dormant legacy `.tf-source` CSS rules (`--hidden` / `--empirical` / `--ml` / `--blend` / `--unavailable` / `--degraded`) | Pre-mockup; chip system uses `.tf-source-chip` |
+| Unified `signal-rail-card` (`renderSignalRailCard` + `src-top`/`src-bottom`/`fas-*`/`ecl-*`) — operator 2026-06-10 | Superseded: verdict lives on the `ALL` pill, plan on the `PLAN` pill; per-horizon provenance on the chip ribbon |
+| Rail "Trade plan" block (`dr-plan-entry/stop/targets/invalidation`) — operator 2026-06-10 | Duplicative with the `PLAN` pill (which also carries INVAL + SIZE); ACTION chip moved to Why / gates |
+| Rail "Horizon alignment" block (`dr-align-1m/5m/15m/60m` + `dr-align-class-chip`) — operator 2026-06-10 | Duplicative with the horizon pills (direction + confidence) and the ALL pill's ALIGNED/SPLIT tag |
+| Rail "Why / gates" block (`dr-exact-reason/threshold-gate/ranking-gate/blocking-reason` + ACTION/LIVE chips) — operator 2026-06-10 | WAIT/blocker reason moved to the ALL pill detail (`sourceOperatorText`); gates on signal-chain POLICY node; entry state on PLAN pill |
+| Rail "Readiness / trust" block (`dr-trust-*`) — operator 2026-06-10 | Freshness on header FRESH pill; stack mode on `dr-stack-mode-chip` (+SIGNALS/DEGRADED chips); OOS edge on daily scoreboard |
+| Rail "Stack behind the call" block (`dr-stack-contrib/fusion/mc/bases/gov`) — operator 2026-06-10 | Per-layer liveness on the signal-chain bar; per-horizon Models row stays in `dr-hz-panels`; governance in training reports/scoreboard |
+| V2 Pilot 1A advisory card (`v2-pilot-card` + nested A2 0DTE block + `renderV2PilotDecision`) — operator 2026-06-10 | Scaffold display (every cell `v1_approximation`/`not_implemented`), no operator value; v2 engine stays server-side (`ms_dict.v2_decision` + `append_live_v2_calibration_decision`); negative lock `tests/test_v2_tier_c_payload.py::test_v2_ui_card_removed_negative_lock` |
 
-**Mechanical enforcement:** `tests/test_issue18_ui_contract.py` — `test_no_decision_verdict_row_pills`, `test_no_cursor_parallel_fusion_strip`, `test_no_legacy_tf_source_classes`, `test_no_decision_command_title_strip`, `test_signal_rail_card_is_present_positive_lock`. Re-adding any removed surface fails the suite → blocks commit.
+**Mechanical enforcement:** `tests/test_issue18_ui_contract.py` — `test_no_decision_verdict_row_pills`, `test_no_cursor_parallel_fusion_strip`, `test_no_legacy_tf_source_classes`, `test_no_decision_command_title_strip`, `test_signal_rail_card_removed_negative_lock`. Re-adding any removed surface fails the suite → blocks commit.
 
 **Cursor + any other agent:** do not refactor the Decision Rail card chrome, do not re-mount the verdict pills, do not re-introduce parallel fusion-authority strips. If you genuinely need to change UI provenance behaviour, propose first; do not edit silently.
 

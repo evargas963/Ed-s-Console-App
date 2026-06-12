@@ -239,3 +239,81 @@ def test_materialize_commits_per_ticker_batch(monkeypatch, tmp_path):
         ).fetchall()
     assert sorted(r[0] for r in n) == ["QQQ", "SPY"]
 
+
+# ── Price-action cone persistence (operator 2026-06-11) ──────────────────────
+
+
+def test_price_action_columns_exist_on_both_tables(tmp_db: EdDB):
+    """Every pa_* column from the persistence contract must exist on snapshots AND
+    snapshots_1m_normalized — the normalizer's column-intersection INSERT silently
+    drops anything missing from either side (Issue 16 failure class)."""
+    from features.signal_layer_v1 import SNAPSHOT_PRICE_ACTION_COLUMNS
+
+    pa_cols = {c for c, _ in SNAPSHOT_PRICE_ACTION_COLUMNS}
+    with tmp_db._connect() as conn:
+        snap_have = {r[1] for r in conn.execute("PRAGMA table_info(snapshots)")}
+        norm_have = {r[1] for r in conn.execute("PRAGMA table_info(snapshots_1m_normalized)")}
+    assert pa_cols - snap_have == set(), f"missing from snapshots: {sorted(pa_cols - snap_have)}"
+    assert pa_cols - norm_have == set(), f"missing from normalized: {sorted(pa_cols - norm_have)}"
+
+
+def test_backfill_price_action_columns_fills_both_tables(tmp_path):
+    """Backfill computes leak-free pa_* values from price_bars_1m and writes them
+    to snapshots AND snapshots_1m_normalized; values match the canonical function."""
+    from features.signal_layer_v1 import compute_price_action_snapshot_columns
+    from snapshot_normalizer import backfill_price_action_columns, materialize_normalized_table
+
+    dbp = tmp_path / "pa.db"
+    db = EdDB(dbp)
+    t0 = 1_020_000.0
+    n_bars = 80
+    bars = [
+        {"datetime": t0 + i * 60.0, "open": 100.0 + 0.05 * i, "high": 100.2 + 0.05 * i,
+         "low": 99.8 + 0.05 * i, "close": 100.0 + 0.05 * i, "volume": 1000.0 + i}
+        for i in range(n_bars)
+    ]
+    db.upsert_1m_bars("SPY", bars)
+    t_snap = t0 + 70 * 60.0  # 70 closed bars of history at decision time
+    with db._connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO snapshots (
+                ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
+                candle_open, candle_high, candle_low, candle_close, candle_volume,
+                horizon_outcome_schema_version, outcome_filled
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            ("SPY", CF, t_snap, "test", 10, 30, "rth", 103.5,
+             103.4, 103.7, 103.3, 103.5, 1.0, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1),
+        )
+        conn.commit()
+    mat = materialize_normalized_table(dbp, clear_first=True)
+    assert not mat.get("errors"), mat["errors"]
+
+    res = backfill_price_action_columns(dbp)
+    assert res["rows_updated"] == 1
+
+    expect_bars = [
+        {"bar_start_ts_utc": b["datetime"], "bar_end_ts_utc": b["datetime"] + 60.0,
+         "open": b["open"], "high": b["high"], "low": b["low"],
+         "close": b["close"], "volume": b["volume"]}
+        for b in bars
+    ]
+    expected = compute_price_action_snapshot_columns(expect_bars[:70], decision_ts_utc=t_snap)
+    assert expected["pa_ret_5m_pct"] is not None and expected["pa_ret_5m_pct"] > 0.0
+
+    with db._connect() as conn:
+        s = conn.execute(
+            "SELECT pa_ret_5m_pct, pa_ret_60m_pct, pa_trend_slope_log20, pa_mtf_trend_1m "
+            "FROM snapshots WHERE ticker='SPY'"
+        ).fetchone()
+        n = conn.execute(
+            "SELECT pa_ret_5m_pct, pa_ret_60m_pct FROM snapshots_1m_normalized WHERE ticker='SPY'"
+        ).fetchone()
+    assert s["pa_ret_5m_pct"] == pytest.approx(expected["pa_ret_5m_pct"])
+    assert s["pa_ret_60m_pct"] == pytest.approx(expected["pa_ret_60m_pct"])
+    assert s["pa_trend_slope_log20"] == pytest.approx(expected["pa_trend_slope_log20"])
+    assert n["pa_ret_5m_pct"] == pytest.approx(expected["pa_ret_5m_pct"])
+    assert n["pa_ret_60m_pct"] == pytest.approx(expected["pa_ret_60m_pct"])
+

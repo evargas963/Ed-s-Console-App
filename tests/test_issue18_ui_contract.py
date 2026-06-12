@@ -27,11 +27,16 @@ def test_the_call_card_title_present():
 
 
 def test_mhap_card_present_with_required_columns():
-    """Horizon-alignment block exists with the 4 dr-align-* slots (current Decision Rail)."""
+    """Operator 2026-06-10: the rail Horizon-alignment block (dr-align-*) was
+    retired — duplicative with the horizon pills, which carry per-horizon
+    direction + confidence (and the ALL pill the ALIGNED/SPLIT tag)."""
     h = _html()
-    assert "Horizon alignment" in h
-    for el_id in ("dr-align-1m", "dr-align-5m", "dr-align-15m", "dr-align-60m"):
-        assert el_id in h
+    assert "Horizon alignment" not in h
+    for el_id in ("dr-align-1m", "dr-align-5m", "dr-align-15m", "dr-align-60m", "dr-align-class-chip"):
+        assert el_id not in h, f"{el_id} must stay removed (duplicative rail block)"
+    # The pills remain the per-horizon surface.
+    for el_id in ("tf-signal-1c", "tf-signal-5c", "tf-signal-15c", "tf-signal-60c"):
+        assert f'id="{el_id}"' in h
 
 
 def test_mhap_fixed_row_order_in_renderer():
@@ -91,7 +96,7 @@ def test_unavailable_reason_code_mapped_to_operator_short_text():
     assert "PRIMARY_HORIZON_DATA_MISSING" in h
     assert "formatUnavailableReasonCode(rc)" in h
     assert "dir === 'UNAVAILABLE'" in h
-    assert "max-width: min(820px" in h
+    assert "max-width: min(1024px" in h
 
 
 def test_derive_source_for_horizon_no_implicit_blend_when_fusion_ok():
@@ -113,6 +118,14 @@ def test_timeframe_cards_show_loading_when_analytics_pending_without_mhap():
     h = _html()
     assert "tf-signal-card--analytics-loading" in h
     assert "analyticsLoading && mhap.length === 0" in h
+
+
+def test_timeframe_pills_render_from_mhap_rows_only():
+    """Dead branch removed (2026-06-10): no producer ever emitted d.timeframe_cards,
+    so the pills must read mhap_rows directly with no phantom server-list fork."""
+    h = _html()
+    assert "timeframe_cards" not in h
+    assert "useServer" not in h
 
 
 def test_institutional_lane_stale_coherence_hooks():
@@ -140,12 +153,12 @@ def test_tf_dim_neutral_cards_have_operator_legibility_styles():
     assert "#334155" not in chunk
 
 
-# ── UI card provenance spec — chip + signal-rail-card surfaces ─────────────
+# ── UI card provenance spec — per-pill chip surfaces ───────────────────────
 # Brief: ACTIVE_PROGRAM.md §UI card provenance spec. Chip vocabulary is the
-# five-state set EMPIRICAL | ML FUSION | BLEND | UNAVAILABLE | DEGRADED. The
-# unified signal-rail-card below the 4 horizon pills carries the fusion
-# verdict (top) + empirical context (bottom), with Entry armed / Stack
-# degraded inline authority tags (same shape language, opposite verdicts).
+# five-state set EMPIRICAL | ML FUSION | BLEND | UNAVAILABLE | DEGRADED,
+# carried per pill via .tf-source-chip + .tf-source-detail. (The unified
+# signal-rail-card that used to sit below the pills was retired 2026-06-10;
+# see test_signal_rail_card_removed_negative_lock.)
 
 def test_tf_source_chip_css_five_variants_defined():
     """Per-pill provenance chip CSS class + 5 variants are defined."""
@@ -170,42 +183,40 @@ def test_tf_signal_cards_have_chip_and_detail_elements():
     assert h.count('class="tf-source-chip ') >= 5
     assert h.count('class="tf-source-detail"') >= 5
     assert 'id="tf-signal-consolidated"' in h
-    assert 'grid-template-columns: repeat(5, minmax(0, 1fr))' in h
+    # Six pills: 1M/5M/15M/60M + ALL + PLAN (operator 2026-06-10). PLAN track is
+    # wider (operator 2026-06-11: values were ellipsizing); signal pills stay 1fr.
+    assert 'grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(0, 1.26fr)' in h
 
 
-def test_signal_rail_card_css_and_html_present():
-    """Unified signal-rail-card — fusion verdict + empirical context below the
-    four pills. CSS defines all 4 state variants and the inline structure."""
+def test_trade_plan_card_sits_beside_all_card_with_same_chrome():
+    """Operator 2026-06-10: trade plan promoted out of the Decision Command rail into
+    its own pill card next to ALL — same tf-signal-card chrome, painted every refresh."""
     h = _html()
-    assert ".signal-rail-card {" in h
-    assert ".signal-rail-card--up" in h
-    assert ".signal-rail-card--down" in h
-    assert ".signal-rail-card--withheld" in h
-    assert ".signal-rail-card--armed" in h
-    # HTML structure
-    assert 'id="signal-rail-card"' in h
-    assert 'id="signal-rail-top"' in h
-    assert 'id="signal-rail-bottom"' in h
-    # Sub-section IDs that renderSignalRailCard populates
-    assert 'id="src-fas-label"' in h
-    assert 'id="src-fas-dir"' in h
-    assert 'id="src-fas-agreement"' in h
-    assert 'id="src-ecl-tier"' in h
-    assert 'id="src-ecl-n"' in h
-    assert 'id="src-ecl-probs"' in h
-
-
-def test_authority_tags_defined_for_armed_and_degraded():
-    """Solid-color authority pills — same shape language, opposite verdicts.
-
-    fas-armed-tag (solid green) when primary horizon fires; fas-degraded-tag
-    (solid red) when stack_integrity_v1.degraded is true.
-    """
-    h = _html()
-    assert ".fas-armed-tag {" in h
-    assert ".fas-degraded-tag {" in h
-    assert "Entry armed" in h
-    assert "Stack degraded" in h
+    # Card + value surfaces exist in the pill row.
+    assert 'id="tf-signal-plan"' in h
+    for el_id in ("tf-plan-state", "tf-plan-entry", "tf-plan-stop", "tf-plan-targets", "tf-plan-invalidation", "tf-plan-size"):
+        assert f'id="{el_id}"' in h, f"PLAN card element {el_id} missing"
+    # PLAN renders after ALL in the same row (right next to it).
+    row_start = h.find('id="timeframe-signal-row"')
+    all_idx = h.find('id="tf-signal-consolidated"', row_start)
+    plan_idx = h.find('id="tf-signal-plan"', row_start)
+    assert row_start != -1 and all_idx != -1 and plan_idx != -1
+    assert all_idx < plan_idx, "PLAN card must sit immediately after the ALL card"
+    # Painter wired into renderTimeframeSignalRow for both loading + live paths.
+    assert "function paintTradePlanCard(loadingHint)" in h
+    assert "paintTradePlanCard(loadHint);" in h
+    assert "paintTradePlanCard(null);" in h
+    # Reads the bundle's plan fields — no parallel derivation.
+    for field in ("entry_display_text", "stop_display_text", "targets_display", "invalidation", "size_modifier_display", "entry_state"):
+        idx = h.find("function paintTradePlanCard(loadingHint)")
+        assert f"d.{field}" in h[idx : idx + 3600], f"PLAN card must read d.{field}"
+    # No-wrap contract: plan values stay on one line (ellipsis + title tooltip).
+    plan_css = h.find(".tf-plan-kv .tf-plan-v")
+    assert plan_css != -1
+    assert "white-space: nowrap" in h[plan_css : plan_css + 200]
+    assert "text-overflow: ellipsis" in h[plan_css : plan_css + 200]
+    # Direction-withhold coverage: plan values are direction-bearing once armed.
+    assert "'tf-signal-plan'," in h
 
 
 def test_derive_source_for_horizon_js_helpers_present():
@@ -229,37 +240,6 @@ def test_derive_source_for_horizon_js_helpers_present():
     assert "window.deriveSourceForHorizon = deriveSourceForHorizon" in h
 
 
-def test_render_signal_rail_card_function_present():
-    """renderSignalRailCard paints the unified card; hides itself when mhap empty."""
-    h = _html()
-    assert "function renderSignalRailCard(d)" in h
-    assert "window.renderSignalRailCard = renderSignalRailCard" in h
-    # Hidden in pending-shell case
-    assert "if (pending && mhap.length === 0) { card.style.display = 'none'; return; }" in h
-    # Authority tags applied in the top section
-    assert "'fas-degraded-tag'" in h
-    assert "'fas-armed-tag'" in h
-    # "Not tradable" fallback when fusion is withheld
-    assert "Not tradable — empirical context only" in h
-    # canonical_provenance gate uses isCanonicalTradable + isFusionAuthoritative
-    assert "isFusionAuthoritative(d)" in h
-    assert "isCanonicalTradable(d)" in h
-
-
-def test_signal_rail_empirical_tracks_primary_horizon():
-    """Empirical context binds to the PRIMARY decision horizon (not a fixed 5m), with a
-    dynamic EMPIRICAL label, so the base rate corresponds to the trade armed on top.
-    Anti-revert lock for the 2026-05-28 fix (was hardcoded horizon_prob_bars['5m'])."""
-    h = _html()
-    # dynamic label element present
-    assert 'id="src-ecl-label"' in h
-    # JS reads the primary horizon's bar via the shared pLabel mapping, not a fixed 5m
-    assert "d.horizon_prob_bars[pLabel]" in h
-    assert "labelEl.textContent = 'Empirical (' + primary + ')'" in h
-    # the empirical bottom must not re-pin to the fixed-5m bar
-    assert "d.horizon_prob_bars['5m']" not in h
-
-
 def test_paint_source_chip_uses_new_selectors():
     """paintSourceChip targets .tf-source-chip + .tf-source-detail (new design),
     not the dormant legacy .tf-source element."""
@@ -269,21 +249,6 @@ def test_paint_source_chip_uses_new_selectors():
     assert "card.querySelector('.tf-source-detail')" in h
     # Delegates to top-level deriveSourceForHorizon helpers
     assert "deriveSourceForHorizon(payload, slugKey)" in h
-
-
-def test_render_signal_rail_card_wired_into_all_render_entry_points():
-    """renderSignalRailCard is invoked from every render path that paints the row.
-
-    render() (full analytical), renderTierCPendingShell (pending shell),
-    renderTierALive (instant quote), renderTierBLight (L1 context). All four
-    must call it so the rail card stays in lockstep with the horizon pills.
-    """
-    h = _html()
-    # 4 call sites + 1 definition + 1 window export ≥ 6 occurrences
-    assert h.count("renderSignalRailCard(") >= 5
-    assert "renderSignalRailCard(d)" in h         # render() full path
-    assert "renderSignalRailCard(merged)" in h    # renderTierCPendingShell
-    assert "renderSignalRailCard(window._lastData)" in h  # Tier A + Tier B
 
 
 def test_chip_vocabulary_operator_text_strings_present():
@@ -312,20 +277,22 @@ def test_loading_shell_clears_new_chip_and_detail_elements():
     assert ".tf-source-detail" in chunk
 
 
-# ── UI design lock — operator verdict 2026-05-27 ──────────────────────────
+# ── UI design lock — operator verdicts 2026-05-27 + 2026-06-10 ────────────
 # These surfaces were intentionally removed and MUST NOT be re-introduced.
 # Re-adding any of them fails this suite — mechanical enforcement against
-# Cursor (or any agent) reverting the operator-approved chip + signal-rail-card
-# design back to parallel / dormant / redundant surfaces.
+# any agent reverting the operator-approved pill-row design back to
+# parallel / dormant / redundant surfaces.
 #
 # Removed:
 #   - Cursor's parallel dr-fusion-authority-strip + dr-empirical-context-line
 #     inside the Decision Rail ("no co-existing your design rules")
 #   - Decision Command verdict row (dr-trade-pill / dr-bias-pill /
-#     dr-desk-confidence / dr-confidence-pill) — duplicated signal-rail-card
+#     dr-desk-confidence / dr-confidence-pill)
 #   - Decision Command title strip ("DECISION COMMAND · Operator surface…")
 #   - Dormant legacy .tf-source CSS rules
-# Single source of truth = signal-rail-card + .tf-source-chip system.
+#   - The unified signal-rail-card itself (operator 2026-06-10): its verdict
+#     moved to the ALL pill, its plan to the PLAN pill
+# Single source of truth = ALL/PLAN pills + .tf-source-chip system.
 
 def test_no_decision_verdict_row_pills():
     """Operator removed the redundant TRADE/LONG/56%/LOW pill row 2026-05-27."""
@@ -363,27 +330,41 @@ def test_no_decision_command_title_strip():
     assert 'Operator surface · bar horizons map' not in h
 
 
-def test_signal_rail_card_is_present_positive_lock():
-    """Single source of truth — the unified signal-rail-card MUST stay."""
+def test_signal_rail_card_removed_negative_lock():
+    """Operator 2026-06-10: the signal-rail-card was retired — the ALL pill is
+    the consolidated verdict and the PLAN pill is the trade plan. No agent may
+    re-introduce the card or its renderer."""
     h = _html()
-    assert 'id="signal-rail-card"' in h
-    assert 'function renderSignalRailCard(d)' in h
-    assert 'Entry armed' in h
-    assert 'Stack degraded' in h
+    assert 'id="signal-rail-card"' not in h
+    assert "function renderSignalRailCard" not in h
+    assert "renderSignalRailCard(" not in h
+    assert ".fas-armed-tag {" not in h
+    assert ".fas-degraded-tag {" not in h
+    assert 'id="src-ecl-probs"' not in h
+    # 2026-06-10 second wave: rail Why/gates + Readiness/trust +
+    # Stack-behind-the-call blocks retired (duplicative with pills, header
+    # chips and the signal-chain bar). WAIT reason moved to the ALL pill.
+    for el_id in (
+        "dr-action-chip", "dr-live-ready-chip", "dr-exact-reason",
+        "dr-threshold-gate", "dr-ranking-gate", "dr-blocking-reason",
+        "dr-stack-contrib", "dr-stack-fusion", "dr-stack-mc",
+        "dr-stack-bases", "dr-stack-gov",
+    ):
+        assert el_id not in h, f"{el_id} must stay removed (retired rail block)"
+    assert "'WAIT — ' + why" in h, "ALL pill must carry the WAIT/blocker reason when synth withheld"
 
 
 # ── Signals Rail — operator design 2026-05-27 (binding) ───────────────────
-# Vertical analytics column to the right of horizon row + signal-rail-card.
-# Severity grammar matches signal-rail-card: quiet → building → hot (+ positive
-# green). Each slot is a self-contained signal (Level Test first). Adding /
-# removing slots = changing #signals-rail children.
+# Vertical analytics column to the right of the horizon pill row.
+# Severity grammar: quiet → building → hot (+ positive green). Each slot is a
+# self-contained signal (Level Test first). Adding / removing slots =
+# changing #signals-rail children.
 
 def test_signals_rail_layout_present():
     """Top-stack split (post-2026-05-27 restructure for height uniformity):
     .top-stack-row contains horizon pills + Signals Rail as direct flex
     siblings (align-items: stretch makes the Level Test slot match the
-    rendered horizon-card height). #signal-rail-card was promoted to a
-    full-width sibling BELOW the row. Header + multi-slot variants stay
+    rendered horizon-card height). Header + multi-slot variants stay
     reverted."""
     h = _html()
     assert 'class="top-stack-row"' in h
@@ -398,7 +379,7 @@ def test_signals_rail_layout_present():
 
 
 def test_signals_rail_three_severity_variants_defined():
-    """Same color contract as signal-rail-card — operator learns one grammar."""
+    """One severity color grammar across rail slots — operator learns one grammar."""
     h = _html()
     assert '.signal-slot--quiet' in h
     assert '.signal-slot--building' in h
@@ -495,12 +476,14 @@ def test_top_stack_row_gap_for_visual_offset():
 
 
 def test_entry_state_labels_render_contract():
-    """Entry state contract — mh-call-entry was renamed to dr-plan-entry (Decision Rail);
+    """Entry state contract — the entry surface is the PLAN pill card
+    (tf-plan-entry; the rail dr-plan-* block was retired 2026-06-10);
     entry_display_text is still the live field; renderMultiHorizon was inlined into the
     mhap renderer that reads d.mhap_rows directly.
     """
     h = _html()
-    assert "dr-plan-entry" in h  # replaced mh-call-entry element id
+    assert "tf-plan-entry" in h
+    assert "dr-plan-entry" not in h  # rail Trade-plan block retired (duplicative)
     assert "entry_display_text" in h  # unchanged live field name
     # Inline mhap renderer pattern (renderMultiHorizon was inlined into this block).
     assert "d.mhap_rows" in h

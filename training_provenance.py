@@ -40,6 +40,9 @@ from ml_horizon import (
 log = logging.getLogger("training_provenance")
 
 # ── Version constants (bump when features or preprocessing change) ─────────────
+# v8 ("v8_price_action", +27 pa_* columns) flips ONLY in the same commit as the
+# retrained artifacts — bumping early fail-closed the whole live stack against
+# v7 bundles (2026-06-11 outage). [REAL-GATE: training-skew] PA-CONE-V8-RETRAIN.
 FEATURE_SCHEMA_VERSION: str = "v7_m5_strip"
 # v7 (FEATURE EPIC m5 strip, 2026-06-01): remove m5_* lagged duplicate block from engineer_features /
 # engineer_single_snapshot and load_data; train/serve symmetric via net_gamma_prev only (ΔGEX).

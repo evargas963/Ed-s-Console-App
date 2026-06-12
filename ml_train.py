@@ -158,6 +158,15 @@ SCALE_INVARIANT_COLS = [
     "absorption_score", "continuation_score",
 ]
 
+# Price-action cone (operator 2026-06-11): the 27 pa_* columns persisted by
+# features/signal_layer_v1.compute_price_action_snapshot_columns are DELIBERATELY
+# NOT registered here yet. Registering them widens the tabular/sequence encodes
+# (94→121 / 88→115) and bumps FEATURE_SCHEMA_VERSION, which fail-closes every
+# v7-trained bundle — the 2026-06-11 live-stack outage. The serving-cone flip
+# (registration + v8 version bump + width-lock test updates) lands in the SAME
+# commit as the retrained artifacts. [REAL-GATE: training-skew] — OPEN_ITEMS
+# row PA-CONE-V8-RETRAIN. Until then pa_* are ablation/discovery candidates only.
+
 TIME_COLS   = ["et_hour", "et_minute"]
 ALL_DB_COLS = TIME_COLS + DOLLAR_COLS + WALL_DISTANCE_COLS + SCALE_INVARIANT_COLS
 

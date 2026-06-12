@@ -107,4 +107,8 @@ def test_classify_stack_health_single_producer():
             if "def classify_stack_health" in line:
                 continue
             call_sites.append(f"{rel}:{i}")
-    assert call_sites == ["server.py:2084"], call_sites
+    # Single-producer contract: exactly ONE production call site, and it lives in
+    # server.py. The exact line is not pinned — line-number pins rot every time
+    # server.py grows above the call site (2026-06-10: pin said 2084, site at 2614).
+    assert len(call_sites) == 1, call_sites
+    assert call_sites[0].startswith("server.py:"), call_sites

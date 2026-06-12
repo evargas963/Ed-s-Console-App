@@ -296,6 +296,36 @@ def test_slice_a_cross_asset_cols_registered_in_scale_invariant():
         assert col in SCALE_INVARIANT_COLS
 
 
+def test_price_action_cone_gated_behind_retrain():
+    """PA-CONE-V8-RETRAIN [REAL-GATE: training-skew] (2026-06-11): the 27 pa_*
+    columns are persisted + ablation candidates, but NOT in the serving cone.
+    Registering them early (94→121 / 88→115 + v8 bump) fail-closed every
+    v7-trained bundle and killed the live stack. The flip lands in the SAME
+    commit as retrained artifacts. This test locks the gated state — when the
+    retrain lands, rewrite it to assert registration + v8 + new widths."""
+    from features.signal_layer_v1 import SNAPSHOT_PRICE_ACTION_COLUMNS
+    from ml_train import SCALE_INVARIANT_COLS, tabular_training_feature_names
+    from training_provenance import FEATURE_SCHEMA_VERSION
+
+    pa_cols = [c for c, _ in SNAPSHOT_PRICE_ACTION_COLUMNS]
+    assert len(pa_cols) == 27
+    # Serving cone unchanged — v7 bundles must keep loading.
+    assert FEATURE_SCHEMA_VERSION == "v7_m5_strip"
+    assert not set(pa_cols) & set(SCALE_INVARIANT_COLS)
+    assert not [n for n in tabular_training_feature_names() if n.startswith("pa_")]
+
+    # Ablation universe carries every pa_* atom (ZERO-BIAS: data decides placement).
+    from tools.build_feature_assignment_matrix_v2 import resolve_ablation_universe
+
+    payload = resolve_ablation_universe()
+    manifest_pa = {
+        g.get("atomic_column")
+        for g in payload.get("groups") or []
+        if str(g.get("atomic_column") or "").startswith("pa_")
+    }
+    assert manifest_pa == set(pa_cols)
+
+
 def test_dgex_first_diff_engineered_train_and_serve():
     df = pd.DataFrame(
         {
@@ -394,7 +424,9 @@ def test_m5_stripped_symmetric_train_and_serve():
     assert not any(str(c).startswith("m5_") for c in row.columns)
 
 
-def test_feature_schema_version_bumped_for_m5_strip():
+def test_feature_schema_version_matches_trained_artifacts():
+    """v7 until PA-CONE-V8-RETRAIN lands: the version flips only WITH retrained
+    artifacts, never ahead of them (2026-06-11 live-stack outage class)."""
     from training_provenance import FEATURE_SCHEMA_VERSION, PREPROCESSING_VERSION
 
     assert FEATURE_SCHEMA_VERSION == "v7_m5_strip"
@@ -880,6 +912,8 @@ def test_stage2_sequence_encoder_width_matches_xgb_tabular_universe():
     from ml_train import tabular_training_feature_names
 
     tabular = tabular_training_feature_names()
+    # 94 at v7. Becomes 121 (+27 pa_*) only when PA-CONE-V8-RETRAIN lands
+    # (registration + retrained artifacts in the same commit).
     assert len(tabular) == 94
     assert set(CONFLUENCE_FEATURES).issubset(set(tabular))
     assert LSTM_ENCODER_SCHEMA_VERSION == 3

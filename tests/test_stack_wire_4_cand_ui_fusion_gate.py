@@ -32,15 +32,15 @@ def test_is_fusion_authoritative_helper_defined():
 
 
 def test_dr_stack_fusion_chip_uses_helper_not_bare_flag():
-    """The detail chip on the Decision Command trust row must not read the bare flag."""
-    pattern = re.compile(r"domIf\('dr-stack-fusion'[^)]*\)[^;]*;", re.DOTALL)
-    match = pattern.search(HTML)
-    assert match is not None, "dr-stack-fusion render call not found"
-    chip_src = match.group(0)
-    assert "isFusionAuthoritative(d)" in chip_src
-    # The pre-fix pattern (bare ternary on d.fusion_available) must be gone from the chip.
-    assert "d.fusion_available ? 'active'" not in chip_src
-    assert "d.fusion_available ? 'inactive'" not in chip_src
+    """Operator 2026-06-10: the Stack-behind-the-call rail block (dr-stack-*)
+    was retired — duplicative with the signal-chain bar (whose FUSION step is
+    pinned to isFusionAuthoritative below). Negative lock: the chip must stay
+    removed AND the pre-fix bare-flag steering pattern must not reappear
+    anywhere."""
+    assert "dr-stack-fusion" not in HTML, "dr-stack-fusion was retired — must stay removed"
+    # The pre-fix pattern (bare ternary on d.fusion_available) must stay gone repo-surface-wide.
+    assert "d.fusion_available ? 'active'" not in HTML
+    assert "d.fusion_available ? 'inactive'" not in HTML
 
 
 def test_resolve_signal_chain_fusion_step_uses_helper():

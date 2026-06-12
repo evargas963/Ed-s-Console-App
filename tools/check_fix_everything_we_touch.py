@@ -2569,7 +2569,10 @@ _FUSION_ONLY_CARD_MARKERS: tuple[tuple[str, str], ...] = (
     ("bayesian_fusion.py", 'ED_SIGNAL_LAYER_FUSION_BLEND", "0.0"'),
     ("static/index.html", 'id="tf-signal-consolidated"'),
     ("static/index.html", "slug: 'consolidated'"),
-    ("static/index.html", "repeat(5, minmax(0, 1fr))"),
+    # Six pills since 2026-06-10: 1M/5M/15M/60M + ALL + PLAN (trade-plan card).
+    # PLAN track widened 2026-06-11 (operator: values were ellipsizing).
+    ("static/index.html", "repeat(5, minmax(0, 1fr)) minmax(0, 1.26fr)"),
+    ("static/index.html", 'id="tf-signal-plan"'),
     ("static/index.html", "no PRIMARY on individual pills"),
     ("ACTIVE_PROGRAM.md", "Fusion-only horizon cards"),
     ("AGENTS.md", "Fusion-only horizon cards"),

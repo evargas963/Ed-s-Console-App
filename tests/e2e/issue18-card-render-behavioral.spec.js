@@ -11,10 +11,13 @@
  * Coverage:
  *  - tf-signal-<slug> card class reflects horizon call direction (LONG→tf-state-up,
  *    SHORT→tf-state-down, UNAVAILABLE→tf-state-dim) AND confidence band (tf-glow-1/2/3).
- *  - dr-align-<bar> slot textContent is "<CALL> · <conf>" from mhap_rows.
- *  - dr-plan-entry textContent comes from d.entry_display_text.
- *  - liveReady chip is NOT_LIVE_READY when stack_runtime.stack_mode === "INVALID"
- *    (closes the WIRE-4-CAND → cards path on the operator surface).
+ *  - PLAN pill card (tf-plan-*) textContent comes from the payload plan fields
+ *    (rail dr-plan-* + dr-align-* blocks retired 2026-06-10 — duplicative with
+ *    the PLAN pill and the per-horizon pills).
+ *  - ALL pill withholds (UNAVAILABLE chip + WAIT reason detail) on split-brain
+ *    payloads (closes the WIRE-4-CAND → cards path on the operator surface;
+ *    the rail Why/gates + Readiness/trust + Stack-behind-the-call blocks were
+ *    retired 2026-06-10 — duplicative with pills/header chips/signal chain).
  */
 const { test, expect } = require('@playwright/test');
 
@@ -33,7 +36,6 @@ function payloadAlignedLong() {
       { horizon: '15c', call: 'LONG', confidence: 0.55, row_state: 'secondary' },
       { horizon: '60c', call: 'LONG', confidence: 0.45, row_state: 'secondary' },
     ],
-    timeframe_cards: [],
     entry_display_text: '441.25 zone',
     stop_display_text: '440.50',
     targets_display: '442.10 / 442.85',
@@ -100,52 +102,56 @@ test('tf-signal cards reflect mhap_rows call direction + confidence band', async
   expect(c60Unav || '').not.toMatch(/tf-glow-[123]/);
 });
 
-test('Decision Rail dr-align-* + dr-plan-* render from payload', async ({ page }) => {
+test('PLAN pill card renders from payload', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(
-    () => typeof window.renderDecisionCommandRail === 'function',
+    () => typeof window.renderDecisionCommandRail === 'function'
+      && typeof window.renderTimeframeSignalRow === 'function',
     null,
     { timeout: 30000 },
   );
 
-  await page.evaluate((d) => window.renderDecisionCommandRail(d), payloadAlignedLong());
+  await page.evaluate((d) => {
+    window.renderDecisionCommandRail(d);
+    window.renderTimeframeSignalRow(d);
+  }, payloadAlignedLong());
 
-  // Each dr-align-<bar> slot reads stanceFromRow → "<CALL> · <conf>" string.
-  expect(await page.textContent('#dr-align-1m')).toBe('LONG · 0.62');
-  expect(await page.textContent('#dr-align-5m')).toBe('LONG · 0.81');
-  expect(await page.textContent('#dr-align-15m')).toBe('LONG · 0.55');
-  expect(await page.textContent('#dr-align-60m')).toBe('LONG · 0.45');
+  // Rail dr-align-* block retired 2026-06-10 — per-horizon direction lives on
+  // the pills (covered by the tf-signal test above).
+  expect(await page.$('#dr-align-1m')).toBeNull();
 
-  // Trade plan slots come straight from payload.
-  expect(await page.textContent('#dr-plan-entry')).toBe('441.25 zone');
-  expect(await page.textContent('#dr-plan-stop')).toBe('440.50');
-  expect(await page.textContent('#dr-plan-targets')).toBe('442.10 / 442.85');
-  expect(await page.textContent('#dr-plan-invalidation')).toBe('below 440.30');
+  // PLAN pill card values come straight from payload (single-line folded).
+  expect(await page.textContent('#tf-plan-entry')).toBe('441.25 zone');
+  expect(await page.textContent('#tf-plan-stop')).toBe('440.50');
+  expect(await page.textContent('#tf-plan-targets')).toBe('442.10 / 442.85');
+  expect(await page.textContent('#tf-plan-invalidation')).toBe('below 440.30');
+  // entry_state 'armed' + final_bias LONG → state line + green chrome.
+  expect(await page.textContent('#tf-plan-state')).toBe('ARMED');
+  expect(await page.getAttribute('#tf-signal-plan', 'class')).toContain('tf-state-up');
 });
 
-test('liveReady chip flips to NOT_LIVE_READY when stack_mode=INVALID (WIRE-4-CAND → cards)', async ({ page }) => {
+test('ALL pill withholds with WAIT reason on split-brain payload (WIRE-4-CAND → cards)', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(
-    () => typeof window.renderDecisionCommandRail === 'function',
+    () => typeof window.renderTimeframeSignalRow === 'function',
     null,
     { timeout: 30000 },
   );
 
-  // Happy path: liveReady=true, ACTIONABLE NOW.
-  const happy = payloadAlignedLong();
-  // primary_horizon='5c' + 5c row_state='primary' → rankOk=true; final_tradeable=true +
-  // final_bias='LONG' → tradeable=true; validation_passed=true → valOk=true; stack_mode=FULL.
-  await page.evaluate((d) => window.renderDecisionCommandRail(d), happy);
+  // Happy path: fusion authoritative + tradeable → ALL pill carries ML FUSION.
+  await page.evaluate((d) => window.renderTimeframeSignalRow(d), payloadAlignedLong());
+  const chipHappy = await page.textContent('#tf-signal-consolidated .tf-source-chip');
+  expect(chipHappy).toBe('ML FUSION');
 
-  const lrHappy = await page.textContent('#dr-live-ready-chip');
-  expect(lrHappy).toBe('LIVE_READY');
-  const blockHappy = await page.textContent('#dr-blocking-reason');
-  expect(blockHappy).toBe('—');
-
-  // Split-brain: server-side WIRE-4-CAND would have stamped stack_mode=INVALID.
-  // Cards path must surface NOT_LIVE_READY + "stack INVALID" blocking reason.
+  // Split-brain: server-side WIRE-4-CAND would have stamped stack_mode=INVALID
+  // + fusion_active=false. The ALL pill must withhold (UNAVAILABLE chip) and
+  // carry the operator-readable WAIT reason on its detail line — the rail
+  // Why/gates block that used to show it was retired 2026-06-10.
   const splitBrain = payloadAlignedLong();
   splitBrain.canonical_provenance = 'canonical_forecast_missing';
+  splitBrain.final_tradeable = false;
+  splitBrain.final_bias = 'WAIT';
+  splitBrain.wait_reason = 'fewer than 2 tradeable horizons agree — insufficient confluence';
   splitBrain.stack_runtime = {
     fusion_active: false,           // server would have set this via is_ms_dict_fusion_authoritative
     mc_participated: true,
@@ -153,12 +159,55 @@ test('liveReady chip flips to NOT_LIVE_READY when stack_mode=INVALID (WIRE-4-CAN
     stack_mode: 'INVALID',
     contributing_models: [],
   };
-  await page.evaluate((d) => window.renderDecisionCommandRail(d), splitBrain);
+  await page.evaluate((d) => window.renderTimeframeSignalRow(d), splitBrain);
 
-  const lrInvalid = await page.textContent('#dr-live-ready-chip');
-  expect(lrInvalid).toBe('NOT_LIVE_READY');
-  const blockInvalid = await page.textContent('#dr-blocking-reason');
-  expect(blockInvalid).toBe('stack INVALID (fusion/MC prerequisites)');
-  const action = await page.textContent('#dr-action-chip');
-  expect(action).toBe('CONFIRMATION NEEDED');
+  const chipInvalid = await page.textContent('#tf-signal-consolidated .tf-source-chip');
+  expect(chipInvalid).toBe('UNAVAILABLE');
+  const detail = await page.textContent('#tf-signal-consolidated .tf-source-detail');
+  expect(detail).toBe('WAIT — fewer than 2 tradeable horizons agree — insufficient confluence');
+  // Full reason also on hover (detail line truncates on the narrow pill).
+  const detailTitle = await page.getAttribute('#tf-signal-consolidated .tf-source-detail', 'title');
+  expect(detailTitle).toBe(detail);
+
+  // Bugbot 2026-06-11: empirical consensus WITHOUT fusion authority must not
+  // borrow the ML FUSION chip. multi_horizon LONG can form from
+  // predictive_empirical_fallback horizons (tradeable without fusion in
+  // multi_horizon_decision._forecast_horizon_live) while fusion_active=false —
+  // the ALL chip must stay UNAVAILABLE on that payload.
+  const empiricalConsensus = payloadAlignedLong();
+  empiricalConsensus.decision_provenance = 'multi_horizon_consensus';
+  empiricalConsensus.final_bias = 'LONG';
+  empiricalConsensus.final_tradeable = false;
+  empiricalConsensus.fusion_available = false;
+  empiricalConsensus.canonical_provenance = 'fusion_unavailable';
+  empiricalConsensus.stack_runtime = {
+    ...empiricalConsensus.stack_runtime,
+    fusion_active: false,
+  };
+  await page.evaluate((d) => window.renderTimeframeSignalRow(d), empiricalConsensus);
+  const chipEmpirical = await page.textContent('#tf-signal-consolidated .tf-source-chip');
+  expect(chipEmpirical).toBe('UNAVAILABLE');
+
+  // Counter-case: fusion authoritative + multi_horizon directional consensus but
+  // entry-gated (final_tradeable=false) keeps the honest ML FUSION provenance chip.
+  const fusionGated = payloadAlignedLong();
+  fusionGated.decision_provenance = 'multi_horizon_consensus';
+  fusionGated.final_tradeable = false;
+  await page.evaluate((d) => window.renderTimeframeSignalRow(d), fusionGated);
+  const chipFusionGated = await page.textContent('#tf-signal-consolidated .tf-source-chip');
+  expect(chipFusionGated).toBe('ML FUSION');
+
+  // Operator 2026-06-11: fusion authoritative + policy WAIT (live market state —
+  // all horizons weak, insufficient confluence). The stack is up and deliberately
+  // holding, so the provenance chip must stay ML FUSION (not UNAVAILABLE, which
+  // reads as broken pipeline) while the detail line carries the WAIT reason.
+  const fusionWait = payloadAlignedLong();
+  fusionWait.final_bias = 'WAIT';
+  fusionWait.final_tradeable = false;
+  fusionWait.wait_reason = 'fewer than 2 tradeable horizons agree — insufficient confluence';
+  await page.evaluate((d) => window.renderTimeframeSignalRow(d), fusionWait);
+  const chipFusionWait = await page.textContent('#tf-signal-consolidated .tf-source-chip');
+  expect(chipFusionWait).toBe('ML FUSION');
+  const detailFusionWait = await page.textContent('#tf-signal-consolidated .tf-source-detail');
+  expect(detailFusionWait).toBe('WAIT — fewer than 2 tradeable horizons agree — insufficient confluence');
 });

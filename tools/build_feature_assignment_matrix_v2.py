@@ -401,8 +401,8 @@ def _canonical_to_column_hint(canonical_field: str, example_raw: str = "") -> st
     return hint
 
 
-def build_schwab_ablation_field_registry(*, write: bool = True) -> dict:
-    """Categorize all Schwab dictionary rows; write governance/artifacts/schwab_ablation_field_registry.json."""
+def _build_schwab_ablation_field_registry_payload(*, stable_time: bool = False) -> dict:
+    """Build Schwab ablation registry dict from dictionary CSV (no disk I/O)."""
     import csv
     from datetime import datetime, timezone
 
@@ -428,19 +428,36 @@ def build_schwab_ablation_field_registry(*, write: bool = True) -> dict:
                 ),
             }
         )
-    out = {
+    return {
         "schema_version": "1",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": "stable" if stable_time else datetime.now(timezone.utc).isoformat(),
         "schwab_dictionary_path": str(SCHWAB_DICTIONARY_PATH),
         "schwab_field_count": len(fields),
         "tier_counts": tier_counts,
         "min_ablation_expansion_factor": MIN_ABLATION_EXPANSION_FACTOR,
         "fields": fields,
     }
+
+
+def load_schwab_ablation_field_registry(*, write: bool = False, stable_time: bool = False) -> dict:
+    """Load on-disk Schwab ablation registry, or build in memory when missing or write=True."""
+    if not write and SCHWAB_ABLATION_REGISTRY_PATH.is_file():
+        try:
+            on_disk = json.loads(SCHWAB_ABLATION_REGISTRY_PATH.read_text(encoding="utf-8"))
+            if int(on_disk.get("schwab_field_count") or 0) >= 2300 and on_disk.get("fields"):
+                return on_disk
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            pass
+    out = _build_schwab_ablation_field_registry_payload(stable_time=stable_time)
     if write:
         SCHWAB_ABLATION_REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
         SCHWAB_ABLATION_REGISTRY_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8")
     return out
+
+
+def build_schwab_ablation_field_registry(*, write: bool = True, stable_time: bool = False) -> dict:
+    """Categorize all Schwab dictionary rows; write governance/artifacts/schwab_ablation_field_registry.json."""
+    return load_schwab_ablation_field_registry(write=write, stable_time=stable_time)
 
 
 def _registered_ml_columns() -> dict[str, set[str]]:
@@ -559,9 +576,9 @@ def expected_ingest_members_for_atomic_group(
     return {"xgb": xgb, "lstm_5m": l5, "lstm_1m": l1}
 
 
-def resolve_expanded_schwab_ablation_universe() -> dict[str, Any]:
+def resolve_expanded_schwab_ablation_universe(*, write_registry: bool = False) -> dict[str, Any]:
     """Schwab-catalog-first ablation universe: categorize all 2393 leaves, expand pool ≥2× registered cone."""
-    registry = build_schwab_ablation_field_registry(write=True)
+    registry = load_schwab_ablation_field_registry(write=write_registry)
     registered = _registered_ml_columns()
     reg_union = set().union(*registered.values())
     reg_count = len(reg_union)
@@ -603,6 +620,28 @@ def resolve_expanded_schwab_ablation_universe() -> dict[str, Any]:
                 column=col,
                 catalog_tier=snap["catalog_tier"],
                 ingest_status=snap["ingest_status"],
+                schwab_lineage=[],
+            )
+        )
+
+    # Price-action snapshot columns (operator 2026-06-11): persisted bar-derived
+    # primitives. Serving-cone registration is gated behind retrain ([REAL-GATE:
+    # training-skew] PA-CONE-V8-RETRAIN), but ZERO-BIAS requires them in the
+    # ablation universe NOW — DB-wire reconcile flips them in_cone for scoring.
+    from features.signal_layer_v1 import SNAPSHOT_PRICE_ACTION_COLUMNS
+
+    for col, _layer_key in SNAPSHOT_PRICE_ACTION_COLUMNS:
+        gid = f"snap__{col}"
+        if gid in seen_group_ids or col in reg_union:
+            continue
+        seen_group_ids.add(gid)
+        groups.append(
+            _atomic_ablation_group(
+                group_id=gid,
+                label=f"price-action snapshot / {col}",
+                column=col,
+                catalog_tier="SNAPSHOT_EXPANSION",
+                ingest_status="in_snapshot",
                 schwab_lineage=[],
             )
         )
@@ -719,14 +758,14 @@ def load_ablation_cell_target(manifest_path: Path | None = None) -> int:
     return per_model_ablation_cell_target(data)
 
 
-def resolve_ablation_universe() -> dict[str, Any]:
+def resolve_ablation_universe(*, write_registry: bool = False) -> dict[str, Any]:
     """Canonical ablation manifest — Schwab-catalog expanded universe (NOT stack-consumed-only)."""
-    return resolve_expanded_schwab_ablation_universe()
+    return resolve_expanded_schwab_ablation_universe(write_registry=write_registry)
 
 
 def write_feature_ablation_manifest(path: Path | None = None) -> Path:
     out_path = path or EXPANDED_ABLATION_MANIFEST_PATH
-    payload = resolve_ablation_universe()
+    payload = resolve_ablation_universe(write_registry=True)
     try:
         from db import DB_PATH
         from tools.feature_curation_gate import reconcile_manifest_ingest_status_to_db_wire

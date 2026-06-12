@@ -92,10 +92,6 @@ def test_stack_mode_invalid_renders_dedicated_chip():
     assert label == "STACK INVALID (fusion/MC prerequisites)"
     assert "STACK INVALID (fusion/MC prerequisites)" in html
     assert 'id="dr-stack-mode-chip"' in html
-    trust = html.split("domIf('dr-trust-stack'")[1].split("domIf('dr-trust-policy'")[0]
-    assert "stack_mode" not in trust
-    assert "d.active_compliant" in html
-    assert "OK (active artifacts compliant)" in trust
 
 
 def test_coherence_headline_shows_quote_and_bundle_ages():
@@ -167,11 +163,16 @@ def test_invalid_chip_persists_when_liveready_false_for_other_reasons():
 
 
 def test_dr_trust_stack_compliance_semantic_preserved():
+    """Operator 2026-06-10: the Readiness/trust rail block (dr-trust-*) was
+    retired — duplicative with the header chips (FRESH / STACK / SIGNALS /
+    STACK DEGRADED) and the signal-chain bar. Negative lock: the block and its
+    painters must stay removed; the dedicated stack-mode chip remains the
+    stack-health surface and stays independent of artifact compliance."""
     html = _html()
-    trust = html.split("domIf('dr-trust-stack'")[1].split("domIf('dr-trust-policy'")[0]
-    assert "d.active_compliant" in html
-    assert "OK (active artifacts compliant)" in trust
-    assert "stack_runtime" not in trust
+    for retired in ("dr-trust-live", "dr-trust-fresh", "dr-trust-stack",
+                    "dr-trust-policy", "dr-trust-edge", "dr-trust-block"):
+        assert retired not in html, f"{retired} must stay removed (retired rail block)"
+    assert 'id="dr-stack-mode-chip"' in html
 
 
 def test_coherence_updaters_only_invoked_from_live_ui_ae():

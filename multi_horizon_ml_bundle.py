@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -22,6 +23,34 @@ log = logging.getLogger(__name__)
 MH_PRODUCT_HORIZONS: tuple[str, ...] = PRIMARY_DECISION_HORIZONS
 
 _RENORM_SUM_EPS = 0.01
+
+# ── Fusion temperature calibration (operator 2026-06-10) ────────────────────────
+# One door: calibration applies HERE, on the per-horizon fusion triplet, and nowhere
+# else in the stack. The artifact only exists after the operator runs
+# `python -m calibration.fusion_temperature`; absent/invalid artifact = identity
+# (fail-closed, no env flag). prob_*_raw is preserved on every snapshot so refits
+# always fit on raw probabilities (no calibrate-the-calibrated feedback loop).
+_calibration_cache: dict[str, Any] = {"mtime": None, "temps": {}}
+
+
+def _applied_fusion_temperatures() -> dict[str, float]:
+    """mtime-cached per-horizon temperatures from the calibration artifact."""
+    from calibration.fusion_temperature import DEFAULT_ARTIFACT_PATH, load_applied_temperatures
+
+    try:
+        mtime = os.path.getmtime(DEFAULT_ARTIFACT_PATH)
+    except OSError:
+        _calibration_cache["mtime"] = None
+        _calibration_cache["temps"] = {}
+        return {}
+    if _calibration_cache["mtime"] != mtime:
+        _calibration_cache["temps"] = load_applied_temperatures(DEFAULT_ARTIFACT_PATH)
+        _calibration_cache["mtime"] = mtime
+        if _calibration_cache["temps"]:
+            log.info(
+                "fusion temperature calibration active: %s", _calibration_cache["temps"]
+            )
+    return _calibration_cache["temps"]
 
 
 def _unavailable_horizon_snapshot(hz: str, *, provenance: str) -> HorizonMLFusionSnapshot:
@@ -79,6 +108,13 @@ class HorizonMLFusionSnapshot:
     provenance: str = "bayesian_fusion"
     # Always "primary_decision" for rows in MultiHorizonMLFusionBundle (secondary never admitted).
     horizon_tier: str = "primary_decision"
+    # Raw (pre-calibration) triplet — logged alongside the served triplet so the
+    # temperature fitter always trains on raw probabilities. None = no calibration ran.
+    prob_up_raw: float | None = None
+    prob_down_raw: float | None = None
+    prob_flat_raw: float | None = None
+    # "none" or "temperature:<T>" — operator-legible provenance of the served triplet.
+    calibration: str = "none"
 
 
 @dataclass
@@ -107,6 +143,15 @@ def fusion_payload_to_horizon_snapshot(hz: str, fus: Any) -> HorizonMLFusionSnap
         )
 
     pu, pd, pf, prov = _safe_norm_triplet(pu, pd, pf)
+    pu_raw, pd_raw, pf_raw = pu, pd, pf
+    calibration = "none"
+    temp = _applied_fusion_temperatures().get(hz)
+    if temp is not None:
+        from calibration.fusion_temperature import apply_temperature
+
+        pu, pd, pf = apply_temperature(pu, pd, pf, temp)
+        calibration = f"temperature:{temp}"
+        prov = f"{prov}+temperature_calibrated"
     dom = direction_from_normalized_triplet(pu, pd, pf)
     vals = sorted([pu, pd, pf], reverse=True)
     top = float(vals[0])
@@ -131,6 +176,10 @@ def fusion_payload_to_horizon_snapshot(hz: str, fus: Any) -> HorizonMLFusionSnap
         missing_models=mm,
         provenance=prov,
         horizon_tier="primary_decision",
+        prob_up_raw=pu_raw,
+        prob_down_raw=pd_raw,
+        prob_flat_raw=pf_raw,
+        calibration=calibration,
     )
 
 

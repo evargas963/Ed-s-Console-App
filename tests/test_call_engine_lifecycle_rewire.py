@@ -125,7 +125,9 @@ def test_compute_levels_delegates_target_geometry_to_lifecycle_rule_core(monkeyp
     assert calls[0]["avg5"] == pytest.approx(4.0)
     assert calls[0]["avg15"] == pytest.approx(5.0)
     assert calls[0]["avg60"] == pytest.approx(6.0)
-    assert set(calls[0]["structural_levels"]) == {104.0, 105.0}
+    # Price-action plan (operator 2026-06-11): key levels never enter target
+    # geometry — vwap/gamma walls are context display only, not snap anchors.
+    assert calls[0]["structural_levels"] == []
     assert result == (100.0, pytest.approx(99.82), 105.0, 106.0)
 
 
@@ -172,7 +174,9 @@ def test_stop_distance_preserves_risk_multiplier_clamp(risk_multiplier, effectiv
     assert ce._stop_distance(_inp(), risk_multiplier=risk_multiplier) == pytest.approx(expected)
 
 
-def test_compute_levels_preserves_structural_snap_toward_near_level():
+def test_compute_levels_never_snaps_to_structural_levels():
+    """Price-action plan (operator 2026-06-11): a nearby VWAP/wall must NOT pull
+    targets — geometry is entry/stop/R-multiples + predicted moves only."""
     result = ce._compute_levels(
         _inp(spot=1000.0, vwap=1003.5),
         "long",
@@ -182,7 +186,24 @@ def test_compute_levels_preserves_structural_snap_toward_near_level():
         governed_zone="",
     )
 
-    assert result == (1000.0, 998.2, 1003.5, 1005.3)
+    # R-multiple ladder off the 1.8-pt stop: T1 = entry + 2R, T2 = entry + 3R.
+    assert result == (1000.0, 998.2, 1003.6, 1005.4)
+
+
+def test_stop_distance_uses_atr_when_available():
+    """ATR-scaled stop (Wilder 1978): ATR_STOP_MULT × ATR × regime multiplier;
+    VIX-pct path remains the fail-closed fallback when ATR is absent."""
+    inp = _inp(spot=1000.0)
+    inp.atr = 2.0
+    assert ce._stop_distance(inp) == pytest.approx(ce.ATR_STOP_MULT * 2.0)
+    assert ce._stop_distance(inp, risk_multiplier=1.2) == pytest.approx(
+        round(ce.ATR_STOP_MULT * 2.0 * 1.2, 2)
+    )
+    # Non-finite / zero ATR falls back to the VIX percentage stop.
+    inp.atr = 0.0
+    assert ce._stop_distance(inp) == pytest.approx(_expected_stop_distance())
+    inp.atr = float("nan")
+    assert ce._stop_distance(inp) == pytest.approx(_expected_stop_distance())
 
 
 def test_compute_levels_preserves_long_targets_and_rr_caps():

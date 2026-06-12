@@ -39,7 +39,11 @@ log = logging.getLogger(__name__)
 
 ET = ZoneInfo("America/New_York")
 HORIZON_SLUGS = ("1c", "5c", "15c", "60c")
-SCHEMA_VERSION = "1"
+# ALL-card pseudo-horizon: the consolidated entry signal (multi_horizon final_bias),
+# scored against the outcome label of the logged primary (trade-plan) horizon.
+ALL_CARD_SLUG = "all"
+_FINAL_BIAS_TO_LABEL = {"LONG": "up", "SHORT": "down", "WAIT": "flat"}
+SCHEMA_VERSION = "2"
 DEFAULT_REPORT_DIR = Path(__file__).resolve().parents[1] / "reports" / "daily_scoreboard"
 
 # Live writer stamps decision_ts_utc at wall-clock (sub-second) while snapshots_1m_normalized
@@ -61,7 +65,7 @@ def _per_horizon_prediction_rows(
     """One dict per (decision row x horizon) with prediction + attached outcome label."""
     lo, hi = et_day_utc_bounds(et_date)
     sql = (
-        "SELECT ticker, decision_ts_utc, model_outputs_json,"
+        "SELECT ticker, decision_ts_utc, model_outputs_json, multi_horizon_json,"
         " outcome_1c, outcome_5c, outcome_15c, outcome_60c"
         " FROM calibration_decision_log"
         " WHERE calibration_trust='trusted' AND decision_ts_utc >= ? AND decision_ts_utc < ?"
@@ -97,6 +101,151 @@ def _per_horizon_prediction_rows(
                 "top_probability": hz_blk.get("top_probability"),
                 "truth": row[f"outcome_{hz}"],
             }
+        all_row = _all_card_row(row)
+        if all_row is not None:
+            yield all_row
+
+
+def _all_card_row(row: sqlite3.Row) -> Optional[dict[str, Any]]:
+    """
+    ALL-card scoring row from one decision-log entry (operator 2026-06-10).
+
+    The consolidated final_bias (LONG/SHORT/WAIT) is the trade-entry signal; it is
+    scored against the outcome label of the logged primary horizon — the horizon
+    the trade plan (entry/stop/targets/hold) is built on.
+    """
+    try:
+        mh = json.loads(row["multi_horizon_json"] or "null")
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(mh, dict):
+        return None
+    pred = _FINAL_BIAS_TO_LABEL.get(str(mh.get("final_bias") or "").upper())
+    primary_hz = str(mh.get("primary_horizon") or "")
+    if pred is None or primary_hz not in HORIZON_SLUGS:
+        return None
+    return {
+        "ticker": str(row["ticker"]),
+        "decision_ts_utc": float(row["decision_ts_utc"]),
+        "horizon": ALL_CARD_SLUG,
+        "pred": pred,
+        "top_probability": mh.get("final_confidence"),
+        "truth": row[f"outcome_{primary_hz}"],
+    }
+
+
+# ── Rolling per-horizon skill weights for ALL-card pooling ───────────────────
+# Forecast-combination weights (Bates & Granger 1969; pooling per Genest & Zidek
+# 1986): each horizon's weight in the ALL-card logarithmic opinion pool is its
+# rolling out-of-sample skill vs the uniform baseline, skill = ln(3) - log_loss.
+# Fail-closed: equal weights unless ALL four horizons have enough scored rows in
+# the clean-data window (post serve-stack repair floor — never the poisoned era).
+SKILL_LOOKBACK_DAYS_DEFAULT = 10
+SKILL_MIN_SCORED_ROWS_PER_HORIZON = 150
+_PROB_CLIP_MIN = 1e-6
+
+
+def rolling_horizon_log_loss(
+    db_path: Path | str = DEFAULT_DB,
+    tickers: Optional[list[str]] = None,
+    *,
+    lookback_days: float = SKILL_LOOKBACK_DAYS_DEFAULT,
+    now_ts_utc: Optional[float] = None,
+) -> dict[str, dict[str, Any]]:
+    """
+    Mean multiclass NLL of each horizon's logged fusion triplet vs its attached
+    outcome label over the trailing window. Returns {hz: {"n": int, "log_loss": float|None}}.
+    """
+    import math
+    import time
+
+    from calibration.fusion_temperature import FIT_WINDOW_FLOOR_UTC
+    from time_et import is_rth_ts_utc
+
+    now = float(now_ts_utc) if now_ts_utc is not None else time.time()
+    lo = max(now - float(lookback_days) * 86400.0, FIT_WINDOW_FLOOR_UTC)
+    sql = (
+        "SELECT ticker, decision_ts_utc, model_outputs_json,"
+        " outcome_1c, outcome_5c, outcome_15c, outcome_60c"
+        " FROM calibration_decision_log"
+        " WHERE calibration_trust='trusted' AND outcomes_attached_ts_utc IS NOT NULL"
+        " AND decision_ts_utc >= ? AND decision_ts_utc < ?"
+    )
+    params: list[Any] = [lo, now]
+    if tickers:
+        sql += f" AND ticker IN ({','.join('?' * len(tickers))})"
+        params.extend(tickers)
+    acc: dict[str, dict[str, float]] = {hz: {"n": 0.0, "nll_sum": 0.0} for hz in HORIZON_SLUGS}
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        for row in conn.execute(sql, params):
+            if not is_rth_ts_utc(float(row["decision_ts_utc"])):
+                continue  # same RTH gate as _per_horizon_prediction_rows — skill must score RTH rows only
+            try:
+                bundle = json.loads(row["model_outputs_json"] or "{}")
+            except (TypeError, ValueError):
+                continue
+            by_hz = (
+                (bundle.get("stack_probs_bundle") or {}).get("multi_horizon_ml_fusion_bundle")
+                or {}
+            ).get("by_horizon") or {}
+            for hz in HORIZON_SLUGS:
+                blk = by_hz.get(hz)
+                truth = row[f"outcome_{hz}"]
+                if not isinstance(blk, dict) or truth not in ("up", "down", "flat"):
+                    continue
+                if not blk.get("horizon_fusion_available"):
+                    continue
+                p = blk.get(f"prob_{truth}")
+                try:
+                    p_f = float(p)
+                except (TypeError, ValueError):
+                    continue
+                if not math.isfinite(p_f):
+                    continue
+                acc[hz]["n"] += 1.0
+                acc[hz]["nll_sum"] += -math.log(max(min(p_f, 1.0), _PROB_CLIP_MIN))
+    finally:
+        conn.close()
+    out: dict[str, dict[str, Any]] = {}
+    for hz in HORIZON_SLUGS:
+        n = int(acc[hz]["n"])
+        out[hz] = {"n": n, "log_loss": (acc[hz]["nll_sum"] / n) if n else None}
+    return out
+
+
+def horizon_skill_weights(
+    db_path: Path | str = DEFAULT_DB,
+    tickers: Optional[list[str]] = None,
+    *,
+    lookback_days: float = SKILL_LOOKBACK_DAYS_DEFAULT,
+    min_rows: int = SKILL_MIN_SCORED_ROWS_PER_HORIZON,
+    now_ts_utc: Optional[float] = None,
+) -> dict[str, Any]:
+    """
+    Normalized ALL-card pooling weights per horizon. skill = max(0, ln(3) - log_loss)
+    (improvement over the uniform forecast). Equal weights (fallback_equal=True)
+    unless every horizon has >= min_rows scored rows AND at least one shows skill.
+    """
+    import math
+
+    ll = rolling_horizon_log_loss(
+        db_path, tickers, lookback_days=lookback_days, now_ts_utc=now_ts_utc
+    )
+    uniform_ll = math.log(3.0)
+    equal = {hz: 1.0 / len(HORIZON_SLUGS) for hz in HORIZON_SLUGS}
+    if any(ll[hz]["n"] < int(min_rows) or ll[hz]["log_loss"] is None for hz in HORIZON_SLUGS):
+        return {"weights": equal, "fallback_equal": True, "per_horizon": ll}
+    skills = {hz: max(0.0, uniform_ll - float(ll[hz]["log_loss"])) for hz in HORIZON_SLUGS}
+    total = sum(skills.values())
+    if total <= 0.0:
+        return {"weights": equal, "fallback_equal": True, "per_horizon": ll}
+    return {
+        "weights": {hz: skills[hz] / total for hz in HORIZON_SLUGS},
+        "fallback_equal": False,
+        "per_horizon": ll,
+    }
 
 
 def _new_cell() -> dict[str, Any]:
@@ -144,7 +293,9 @@ def build_daily_scoreboard(
     ensure_calibration_schema(conn)
 
     cells: dict[tuple[str, str], dict[str, Any]] = {}
-    rollup: dict[str, dict[str, Any]] = {hz: _new_cell() for hz in HORIZON_SLUGS}
+    rollup: dict[str, dict[str, Any]] = {
+        hz: _new_cell() for hz in (*HORIZON_SLUGS, ALL_CARD_SLUG)
+    }
     try:
         for r in _per_horizon_prediction_rows(conn, et_date, tickers):
             for cell in (
@@ -180,7 +331,9 @@ def build_daily_scoreboard(
         "db_path": str(Path(db_path).resolve()),
         "tickers_filter": tickers,
         "backfill_stats": backfill_stats,
-        "by_horizon": {hz: _finalize_cell(rollup[hz]) for hz in HORIZON_SLUGS},
+        "by_horizon": {
+            hz: _finalize_cell(rollup[hz]) for hz in (*HORIZON_SLUGS, ALL_CARD_SLUG)
+        },
         "by_ticker": by_ticker,
     }
 
@@ -223,7 +376,9 @@ def render_html(scoreboard: dict[str, Any]) -> str:
 </style></head>
 <body><h1>Daily signal scoreboard — {date}</h1>
 <p>Accuracy = dominant fusion direction vs realized outcome label (same labels training uses).
-Directional = rows where the model called up/down (not flat).</p>
+Directional = rows where the model called up/down (not flat).
+The <b>all</b> row is the consolidated ALL card (trade-entry signal): final_bias scored
+against the logged primary-horizon outcome; LONG/SHORT map to up/down, WAIT to flat.</p>
 {body}
 </body></html>
 """

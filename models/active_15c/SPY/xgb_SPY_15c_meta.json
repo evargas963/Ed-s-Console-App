@@ -696,10 +696,11 @@
   "rows_used": 10714,
   "promoted_at": "",
   "source_cache_key": "fc54582e2379f9d74ec4086f",
-  "promotion_metric": "ensemble_eval_accuracy",
-  "promotion_score": 0.4423380726698262,
+  "promotion_metric": "pre_b_reconciled",
+  "promotion_score": 0.0,
   "label_config_version": "outcome_perhorizon_volthr_v2",
   "horizon_outcome_schema_version": "bar_forward_close_v1",
   "anchor_contract_version": "bar_close_anchor_v1",
-  "missingness_contract_version": "issue7_v1_empirical_nan_impute"
+  "missingness_contract_version": "issue7_v1_empirical_nan_impute",
+  "pre_b_reconciled_from_score": 0.4423380726698262
 }

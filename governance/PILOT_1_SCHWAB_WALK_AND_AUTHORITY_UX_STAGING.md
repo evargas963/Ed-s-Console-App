@@ -102,7 +102,7 @@ Land in **multi_horizon chunk-1** (or earliest MHA-spine commit) with rationale 
 | `_confidence(ms)` prefers `final_confidence` when present | `v2_decision/module_a_adapter.py` |
 | Decision Command primary numeric = `final_confidence` | `static/index.html` |
 | Per-horizon → collapsible breakdown | `static/index.html` |
-| V2 Pilot card: confidence row (same desk number) | `renderV2PilotDecision` |
+| ~~V2 Pilot card: confidence row (same desk number)~~ | OBSOLETE — `renderV2PilotDecision` + `#v2-pilot-card` removed 2026-06-10 (operator: scaffold card, no operator value); v2 confidence stays in `ms_dict.v2_decision` payload |
 | UNAVAILABLE + reason when MHA absent | UI + Tier C (I-01) |
 | Tests | adapter + static HTML |
 
@@ -166,7 +166,7 @@ OPEN_ITEMS L145/L147. Not the same as base-model `parallel_vs_cascade` paralleli
 - **`market_context.py` chunk 1 (L1–961)** — 32 REPLACED quote/pricehistory leaves; `mkt_ctx.*` + `price_levels` producer  
 - b23a1e6 — horizon vs fused labels  
 - CONFIDENCE-1a — `MarketState.confidence` docstring  
-- `v2_decision` adapter, schema, Tier C attach, `#v2-pilot-card` (advisory; authority UX gap remains)
+- `v2_decision` adapter, schema, Tier C attach (`#v2-pilot-card` UI retired 2026-06-10 — operator; engine + calibration logging remain)
 
 ---
 

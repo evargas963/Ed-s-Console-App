@@ -49,11 +49,79 @@ def test_all_horizons_bullish_fully_aligned_long():
     assert d.contradiction_state not in ("structural",)
 
 
+# ── ALL-card pooled consensus (operator 2026-06-11) ─────────────────────────
+# The consolidated bias is a skill-weighted logarithmic opinion pool over all
+# four horizon triplets — never a relay of the mode-selected primary horizon
+# and never a head-count vote.
+
+
+def test_all_card_weak_single_horizon_pools_below_gate():
+    """One modest horizon diluted by three near-uniform ones stays below the
+    pooled entry gate — no single-horizon relay."""
+    p = _pred(
+        u1=0.34, d1=0.33, f1=0.33,
+        u5=0.50, d5=0.30, f5=0.20,
+        u15=0.34, d15=0.33, f15=0.33,
+        u60=0.34, d60=0.33, f60=0.33,
+    )
+    b = build_multi_horizon_bundle(_inp(mins_to_close=40), p, _canonical(), _call())
+    d = b.final_decision
+    assert d.final_bias == "WAIT"
+    assert d.final_tradeable is False
+    assert d.wait_reason.startswith("pooled stack evidence below entry gate")
+
+
+def test_all_card_two_agreeing_horizons_pool_long():
+    """Pooled entry: 5c+15c strong long, 1c/60c near-uniform -> pooled evidence
+    clears the gate; confidence = pooled dominant probability."""
+    p = _pred(
+        u1=0.34, d1=0.33, f1=0.33,
+        u5=0.62, d5=0.20, f5=0.18,
+        u15=0.66, d15=0.20, f15=0.14,
+        u60=0.34, d60=0.33, f60=0.33,
+    )
+    b = build_multi_horizon_bundle(_inp(mins_to_close=180), p, _canonical(), _call())
+    d = b.final_decision
+    assert d.final_bias == "LONG"
+    assert d.final_tradeable is True
+    assert d.wait_reason == ""
+    # Equal-weight log pool of the four triplets: pooled P(up) ≈ 0.49.
+    assert abs(d.final_confidence - 0.49) < 0.02
+
+
+def test_all_card_directional_split_pools_to_wait():
+    """Opposing tradeable horizons cancel in the pool -> WAIT, never a coin flip."""
+    p = _pred(
+        u1=0.60, d1=0.20, f1=0.20,
+        u5=0.60, d5=0.20, f5=0.20,
+        u15=0.20, d15=0.65, f15=0.15,
+        u60=0.20, d60=0.62, f60=0.18,
+    )
+    b = build_multi_horizon_bundle(_inp(mins_to_close=180), p, _canonical(), _call())
+    d = b.final_decision
+    assert d.final_bias == "WAIT"
+    assert d.wait_reason.startswith("pooled stack evidence below entry gate")
+
+
+def test_all_card_four_of_four_confidence_exceeds_two_of_four():
+    """Breadth: 4-of-4 agreement must pool higher than 2-of-4 at equal strength."""
+    p4 = _pred(u1=0.60, d1=0.20, f1=0.20, u5=0.60, d5=0.20, f5=0.20,
+               u15=0.60, d15=0.20, f15=0.20, u60=0.60, d60=0.20, f60=0.20)
+    p2 = _pred(u1=0.34, d1=0.33, f1=0.33, u5=0.60, d5=0.20, f5=0.20,
+               u15=0.60, d15=0.20, f15=0.20, u60=0.34, d60=0.33, f60=0.33)
+    b4 = build_multi_horizon_bundle(_inp(mins_to_close=180), p4, _canonical(), _call())
+    b2 = build_multi_horizon_bundle(_inp(mins_to_close=180), p2, _canonical(), _call())
+    assert b4.final_decision.final_bias == "LONG"
+    assert b2.final_decision.final_bias == "LONG"
+    assert b4.final_decision.final_confidence > b2.final_decision.final_confidence
+
+
 def test_intraday_15c_primary_with_1c_timing_contradiction_downgrades_not_forced_reversal():
     p = _pred(u1=0.25, d1=0.6, f1=0.15, u15=0.67, d15=0.2, f15=0.13, u60=0.6, d60=0.2, f60=0.2)
     b = build_multi_horizon_bundle(_inp(mins_to_close=180), p, _canonical(), _call())
     d = b.final_decision
     assert d.primary_horizon == "15c"
+    # Pooled evidence: three long horizons outweigh the 1c dissenter (equal weights).
     assert d.final_bias in ("LONG", "WAIT")
     assert any(r["horizon"] == "1c" and r["role"] in ("Timing", "Contradiction") for r in [vars(x) for x in d.supporting_assessments])
 
@@ -78,11 +146,14 @@ def test_primary_fallback_when_preferred_unavailable():
     assert d.primary_horizon != d.primary_selection.requested_primary
 
 
-def test_severe_contradiction_can_force_wait():
+def test_severe_contradiction_resolves_by_pooled_evidence_never_primary_relay():
+    # 2 long (0.60, 0.65) vs 2 stronger short (0.65, 0.72): the pool resolves by
+    # evidence strength (SHORT) or stays WAIT — it must never relay the 15c
+    # primary's LONG over stronger opposing evidence.
     p = _pred(u15=0.65, d15=0.2, f15=0.15, u60=0.15, d60=0.72, f60=0.13, u5=0.2, d5=0.65, f5=0.15)
     b = build_multi_horizon_bundle(_inp(mins_to_close=190), p, _canonical(), _call())
     d = b.final_decision
-    assert d.final_bias in ("WAIT", "LONG")
+    assert d.final_bias in ("WAIT", "SHORT")
     if d.final_bias == "WAIT":
         assert d.wait_reason != ""
 
@@ -97,15 +168,20 @@ def test_missingness_can_result_in_wait():
 
 
 def test_entry_state_forming_armed_confirmed_filled():
+    """Price-action entry states (operator 2026-06-11): timing from the 1c model
+    — never key-level zones (the old nearest_below/above band is gone)."""
     p = _pred()
-    # forming: out of zone
-    b_forming = build_multi_horizon_bundle(_inp(spot=443.0, mins_to_close=180), p, _canonical(), _call(state="WATCH", entry=None))
+    # forming: 1c tradeably OPPOSES the pooled bias (counter-move in progress)
+    p_opp = _pred(u1=0.20, d1=0.62, f1=0.18)
+    b_forming = build_multi_horizon_bundle(_inp(spot=443.0, mins_to_close=180), p_opp, _canonical(), _call(state="WATCH", entry=None))
     assert b_forming.final_decision.entry_state == "forming"
-    # armed: in zone but no 1c confirmation
+    assert "Counter-move" in b_forming.final_decision.final_trade_plan.entry_display_text
+    # armed: bias live but 1c not yet confirming (near-uniform 1c)
     p2 = _pred(u1=0.35, d1=0.35, f1=0.30)
     b_armed = build_multi_horizon_bundle(_inp(spot=441.45, mins_to_close=180), p2, _canonical(), _call(state="WATCH", entry=None))
-    assert b_armed.final_decision.entry_state in ("armed", "forming")
-    # confirmed: in zone with 1c confirmation
+    assert b_armed.final_decision.entry_state == "armed"
+    assert "1c confirmation" in b_armed.final_decision.final_trade_plan.entry_display_text
+    # confirmed: 1c agrees at confirmation confidence
     b_conf = build_multi_horizon_bundle(_inp(spot=441.45, mins_to_close=180), p, _canonical(), _call(state="WATCH", entry=441.5))
     assert b_conf.final_decision.entry_state in ("confirmed", "filled")
     # filled: active + entry

@@ -36,8 +36,18 @@ PRIMARY_ORDER_BY_MODE: dict[str, tuple[str, ...]] = {
 TRADEABLE_DOM_MIN: float = 0.38
 TRADEABLE_MARGIN_MIN: float = 0.03
 ENTRY_CONFIRMATION_CONFIDENCE_MIN: float = 0.54
-WEAK_SUPPORT_PRIMARY_CONF_MAX: float = 0.34
 WAIT_CONFIDENCE_CAP: float = 0.45
+
+# ── ALL-card pooled consensus (operator 2026-06-11) ──
+# Skill-weighted logarithmic opinion pool over the four horizon fusion triplets.
+# Forecast combination per Bates & Granger (1969); log pooling per Genest & Zidek
+# (1986). Replaces head-count voting ("2 of 4 agree"): every valid horizon
+# contributes its FULL probability triplet, weighted by rolling out-of-sample
+# skill (calibration.daily_scoreboard.horizon_skill_weights); a dissenting
+# horizon drags the pooled evidence down continuously instead of a binary veto.
+CONSENSUS_MIN_VALID_HORIZONS: int = 2
+POOL_PROB_FLOOR: float = 1e-6
+SKILL_WEIGHTS_TTL_SEC: float = 900.0
 
 # ── Quality ladder ──
 QUALITY_BOOST_FULLY_ALIGNED: float = 0.10
@@ -71,15 +81,19 @@ SIZING_TACTICAL_CONTRADICTION_FACTOR: float = 0.75
 SIZING_WEAK_ALIGNMENT_FACTOR: float = 0.75
 SIZING_MIN_FLOOR: float = 0.25
 
-# ── Confidence adjustment factors ──
-CONFIDENCE_SUPPORT_BOOST_FACTOR: float = 0.04
-CONFIDENCE_CONTRADICTION_PENALTY_FACTOR: float = 0.08
+# ── Wait reasons (operator-visible; FIND-WIRE2-4; pooled consensus 2026-06-11) ──
+WAIT_REASON_INSUFFICIENT_VALID_HORIZONS = (
+    f"fewer than {CONSENSUS_MIN_VALID_HORIZONS} horizons with valid probability triplets"
+    " — insufficient evidence"
+)
+WAIT_REASON_POOLED_FLAT = "pooled stack evidence favors flat — no directional edge"
 
-# ── Wait reasons (operator-visible; FIND-WIRE2-4) ──
-WAIT_REASON_NO_PRIMARY = "no valid primary horizon"
-WAIT_REASON_STRUCTURAL_CONTRADICTION = "severe structural contradiction"
-WAIT_REASON_WEAK_SUPPORT = "weak multi-horizon support"
-WAIT_REASON_CONSENSUS_DISAGREES = "multi_horizon ML consensus disagrees with mode-selected primary"
+
+def _wait_reason_pooled_below_gate(dom: float, margin: float) -> str:
+    return (
+        f"pooled stack evidence below entry gate (top {dom:.2f}, margin {margin:.2f};"
+        f" need {TRADEABLE_DOM_MIN:.2f} / {TRADEABLE_MARGIN_MIN:.2f})"
+    )
 
 # Stable reason codes for operator surfaces (mirrors arch_competition REASON_* pattern).
 REASON_PRIMARY_HORIZON_DATA_MISSING = "PRIMARY_HORIZON_DATA_MISSING"
@@ -260,6 +274,7 @@ def compute_multi_horizon_synthesis(
     pred,
     canonical,
     mh_ml_bundle: Optional[MultiHorizonMLFusionBundle] = None,
+    pool_weights: Optional[dict[str, float]] = None,
 ) -> MultiHorizonSynthesis:
     raw_mode = _infer_trade_mode(inp)
     mode = raw_mode if raw_mode is not None else "unknown"
@@ -335,37 +350,31 @@ def compute_multi_horizon_synthesis(
         )
 
     align = _alignment_state(primary, [a for a in assessments if a.horizon != selected])
-    final_bias = primary.direction
-    tradeable = primary.tradeable and final_bias in ("long", "short")
-    wait_reason = ""
-    if align.unusable or not tradeable:
-        final_bias = "wait"
-        tradeable = False
-        wait_reason = WAIT_REASON_NO_PRIMARY
-    elif align.contradiction_state == "structural":
-        final_bias = "wait"
-        tradeable = False
-        wait_reason = WAIT_REASON_STRUCTURAL_CONTRADICTION
-    elif align.alignment_state in ("weak", "mixed") and primary.confidence < WEAK_SUPPORT_PRIMARY_CONF_MAX:
-        final_bias = "wait"
-        tradeable = False
-        wait_reason = WAIT_REASON_WEAK_SUPPORT
-    elif (
-        consensus_dir is not None
-        and primary.direction in ("long", "short")
-        and primary.direction != consensus_dir
-        and (cv_long >= CONSENSUS_MAJORITY_VOTE_MIN or cv_short >= CONSENSUS_MAJORITY_VOTE_MIN)
-    ):
-        final_bias = "wait"
-        tradeable = False
-        wait_reason = WAIT_REASON_CONSENSUS_DISAGREES
 
-    conf = primary.confidence
-    conf += CONFIDENCE_SUPPORT_BOOST_FACTOR * align.support_score
-    conf -= CONFIDENCE_CONTRADICTION_PENALTY_FACTOR * align.contradiction_score
-    conf = max(0.0, min(1.0, conf))
-    if final_bias == "wait":
-        conf = min(conf, WAIT_CONFIDENCE_CAP)
+    # ALL-card pooled consensus (operator 2026-06-11): the consolidated bias is a
+    # skill-weighted logarithmic opinion pool over the four horizon triplets —
+    # never a relay of the mode-selected primary and never a head-count vote.
+    # The primary keeps the trade plan (entry/stop/targets/hold style) but does
+    # not own the headline direction.
+    if pool_weights is not None:
+        pw, pw_fallback = dict(pool_weights), False
+    else:
+        pw, pw_fallback = _horizon_skill_weights_cached()
+    pooled = _pooled_consensus(hmap, pw, pw_fallback)
+    final_bias, wait_reason = pooled.final_bias, pooled.wait_reason
+    tradeable = final_bias in ("long", "short")
+
+    if tradeable:
+        # Confidence = pooled dominant probability (evidence strength of the
+        # combined forecast — breadth and dissent are already inside the pool).
+        conf = max(0.0, min(1.0, pooled.dominant_probability))
+    else:
+        base = (
+            pooled.dominant_probability
+            if pooled.prob_up is not None
+            else max(0.0, primary.confidence)
+        )
+        conf = min(max(0.0, base), WAIT_CONFIDENCE_CAP)
 
     qual = _quality_from_alignment(conf, align.alignment_state, align.contradiction_state)
     hold_style = (
@@ -412,8 +421,22 @@ def compute_multi_horizon_synthesis(
             "tradeable": hmap[hz].tradeable,
         }
     ml_live_audit: dict[str, Any] = {
-        "contract": "mh_ml_primary_per_horizon_fusion; empirical_ED_MH_EMPIRICAL_SUPPORT; fallback_ED_MH_FALLBACK_CANONICAL_BLEND",
+        "contract": (
+            "mh_ml_primary_per_horizon_fusion; empirical_ED_MH_EMPIRICAL_SUPPORT;"
+            " fallback_ED_MH_FALLBACK_CANONICAL_BLEND;"
+            " all_card_skill_weighted_log_opinion_pool"
+        ),
         "per_horizon": per_hz_audit,
+        "all_card_pool": {
+            "prob_up": pooled.prob_up,
+            "prob_down": pooled.prob_down,
+            "prob_flat": pooled.prob_flat,
+            "dominant_probability": round(pooled.dominant_probability, 4),
+            "probability_margin": round(pooled.probability_margin, 4),
+            "eligible_horizons": list(pooled.eligible_horizons),
+            "weights": {h: round(w, 4) for h, w in pooled.weights.items()},
+            "weights_fallback_equal": pooled.weights_fallback_equal,
+        },
         "consensus_direction": consensus_dir,
         "consensus_long_votes_tradeable": cv_long,
         "consensus_short_votes_tradeable": cv_short,
@@ -750,9 +773,12 @@ def _forecast_horizon_live(
         and margin >= TRADEABLE_MARGIN_MIN
         and empirical_ok
     )
-    up_ref = getattr(inp, "nearest_below_val", None)
-    dn_ref = getattr(inp, "nearest_above_val", None)
-    entry_ref = up_ref if call == "long" else dn_ref if call == "short" else None
+    # Price-action contract (operator 2026-06-11): per-horizon entry reference is
+    # current price — never a key level (the old nearest_below/above reference
+    # tied horizon rows to options-structure levels).
+    entry_ref = (
+        float_finite_or_none(getattr(inp, "spot", None)) if call in ("long", "short") else None
+    )
     return HorizonForecast(
         horizon=hz,
         direction=call,
@@ -892,28 +918,162 @@ def _entry_state_machine(
     call_entry: Optional[float],
     call_state: str,
 ) -> tuple[str, Optional[float], str]:
+    """
+    Price-action entry states (operator 2026-06-11): timing comes from the 1c
+    model plus a volatility-scaled band around current price — never key-level
+    zones (the old nearest_below/nearest_above band was a key-level dependency).
+
+    filled    → call engine reports ACTIVE with an entry price.
+    forming   → 1c is tradeably AGAINST the pooled bias (counter-move running).
+    armed     → bias live, waiting on 1c confirmation.
+    confirmed → 1c agrees with bias at confirmation confidence.
+    """
     if final_bias == "wait" or not tradeable:
         return ("no_setup", None, "No valid setup")
-    zl = _finite_price_optional(getattr(inp, "nearest_below_val", None))
-    zh = _finite_price_optional(getattr(inp, "nearest_above_val", None))
     spot = _finite_price_optional(getattr(inp, "spot", None))
-    if zl is None or zh is None or spot is None:
-        return ("no_setup", None, "missing or invalid zone/spot")
-    lo = min(zl, zh)
-    hi = max(zl, zh)
-    in_zone = lo <= spot <= hi
-    confirm_1c = one_c.direction == final_bias and one_c.confidence >= ENTRY_CONFIRMATION_CONFIDENCE_MIN
+    if spot is None:
+        return ("no_setup", None, "missing or invalid spot")
     cs = str(call_state or "WAIT").upper()
     entry_px = _finite_price_optional(call_entry)
     if cs == "ACTIVE" and entry_px is not None:
         return ("filled", entry_px, f"{entry_px:.2f} (FILLED)")
-    if not in_zone:
-        return ("forming", None, f"Wait for pullback into {lo:.2f}\u2013{hi:.2f}\n(1c confirmation required)")
-    if in_zone and not confirm_1c:
-        return ("armed", None, f"In zone ({lo:.2f}\u2013{hi:.2f})\nWaiting for 1c confirmation")
+    atr = _finite_price_optional(getattr(inp, "atr", None))
+    band = f" (\u00b1{0.5 * atr:.2f})" if atr is not None and atr > 0.0 else ""
+    opposing_1c = (
+        one_c.tradeable
+        and one_c.direction in ("long", "short")
+        and one_c.direction != final_bias
+    )
+    if opposing_1c:
+        return ("forming", None, f"Counter-move on 1c \u2014 wait for 1c to turn {final_bias}")
+    confirm_1c = (
+        one_c.direction == final_bias
+        and one_c.confidence >= ENTRY_CONFIRMATION_CONFIDENCE_MIN
+    )
+    if not confirm_1c:
+        return ("armed", None, f"Near {spot:.2f}{band}\nAwaiting 1c confirmation")
     if entry_px is not None:
         return ("confirmed", entry_px, f"{entry_px:.2f} (CONFIRMED)")
     return ("confirmed", spot, f"{spot:.2f} (CONFIRMED)")
+
+
+@dataclass
+class PooledConsensus:
+    """ALL-card pooled evidence (operator 2026-06-11) — see pooling constants."""
+
+    prob_up: Optional[float]
+    prob_down: Optional[float]
+    prob_flat: Optional[float]
+    dominant_probability: float
+    probability_margin: float
+    eligible_horizons: list[str]
+    weights: dict[str, float]
+    weights_fallback_equal: bool
+    final_bias: str  # long | short | wait
+    wait_reason: str
+
+
+def _pooled_consensus(
+    hmap: dict[str, HorizonForecast],
+    weights: dict[str, float],
+    weights_fallback_equal: bool,
+) -> PooledConsensus:
+    """
+    Logarithmic opinion pool over the valid horizon triplets: q_k ∝ Π p_hz,k^w_hz
+    (weights normalized over eligible horizons). Entry requires the pooled triplet
+    to pass the same dominance/margin gates as an individual horizon — evidence
+    strength, not head-count. Fail-closed WAIT when fewer than
+    CONSENSUS_MIN_VALID_HORIZONS horizons carry a valid triplet.
+    """
+    eligible: list[str] = []
+    triplets: dict[str, tuple[float, float, float]] = {}
+    for hz in PRODUCT_HORIZONS:
+        f = hmap[hz]
+        if f.missing or f.unavailable or not f.valid_contract:
+            continue
+        probs = [
+            float_finite_or_none(f.probability_up),
+            float_finite_or_none(f.probability_down),
+            float_finite_or_none(f.probability_flat),
+        ]
+        if any(p is None or p < 0.0 for p in probs) or sum(p for p in probs) <= 0.0:  # type: ignore[operator]
+            continue
+        eligible.append(hz)
+        triplets[hz] = (probs[0], probs[1], probs[2])  # type: ignore[assignment]
+
+    if len(eligible) < CONSENSUS_MIN_VALID_HORIZONS:
+        return PooledConsensus(
+            prob_up=None, prob_down=None, prob_flat=None,
+            dominant_probability=0.0, probability_margin=0.0,
+            eligible_horizons=eligible, weights={}, weights_fallback_equal=weights_fallback_equal,
+            final_bias="wait", wait_reason=WAIT_REASON_INSUFFICIENT_VALID_HORIZONS,
+        )
+
+    w_raw = {hz: max(0.0, float(weights.get(hz, 0.0))) for hz in eligible}
+    w_sum = sum(w_raw.values())
+    if w_sum <= 0.0:
+        w_norm = {hz: 1.0 / len(eligible) for hz in eligible}
+        weights_fallback_equal = True
+    else:
+        w_norm = {hz: w / w_sum for hz, w in w_raw.items()}
+
+    log_q = [0.0, 0.0, 0.0]
+    for hz in eligible:
+        for k in range(3):
+            log_q[k] += w_norm[hz] * math.log(max(triplets[hz][k], POOL_PROB_FLOOR))
+    m = max(log_q)
+    q_un = [math.exp(v - m) for v in log_q]
+    z = sum(q_un)
+    q = [v / z for v in q_un]
+    q_sorted = sorted(q, reverse=True)
+    dom = q_sorted[0]
+    margin = dom - q_sorted[1]
+    label = direction_from_normalized_triplet(q[0], q[1], q[2])
+
+    if label == "flat":
+        bias, reason = "wait", WAIT_REASON_POOLED_FLAT
+    elif dom < TRADEABLE_DOM_MIN or margin < TRADEABLE_MARGIN_MIN:
+        bias, reason = "wait", _wait_reason_pooled_below_gate(dom, margin)
+    else:
+        bias, reason = ("long" if label == "up" else "short"), ""
+    return PooledConsensus(
+        prob_up=q[0], prob_down=q[1], prob_flat=q[2],
+        dominant_probability=dom, probability_margin=margin,
+        eligible_horizons=eligible, weights=w_norm,
+        weights_fallback_equal=weights_fallback_equal,
+        final_bias=bias, wait_reason=reason,
+    )
+
+
+_skill_weights_cache: dict[str, Any] = {"ts": 0.0, "weights": None, "fallback": True}
+
+
+def _horizon_skill_weights_cached() -> tuple[dict[str, float], bool]:
+    """
+    Rolling skill weights from the calibration log (TTL-cached). Fail-closed to
+    equal weights when the calibration DB is unavailable or under-sampled.
+    """
+    import time
+
+    now = time.time()
+    if (
+        _skill_weights_cache["weights"] is not None
+        and (now - float(_skill_weights_cache["ts"])) < SKILL_WEIGHTS_TTL_SEC
+    ):
+        return _skill_weights_cache["weights"], bool(_skill_weights_cache["fallback"])
+    weights = {hz: 1.0 / len(PRODUCT_HORIZONS) for hz in PRODUCT_HORIZONS}
+    fallback = True
+    try:
+        from calibration.daily_scoreboard import horizon_skill_weights
+        from calibration.paths import DEFAULT_DB
+
+        res = horizon_skill_weights(DEFAULT_DB)
+        weights = dict(res["weights"])
+        fallback = bool(res["fallback_equal"])
+    except Exception as e:  # noqa: BLE001 — serve path must not die on calibration IO
+        log.debug("horizon skill weights unavailable — equal-weight pool: %s", e)
+    _skill_weights_cache.update({"ts": now, "weights": weights, "fallback": fallback})
+    return weights, fallback
 
 
 def _ml_consensus_vote(hmap: dict[str, HorizonForecast]) -> tuple[Optional[str], int, int]:

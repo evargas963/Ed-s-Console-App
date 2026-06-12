@@ -214,12 +214,16 @@ def test_no_valid_primary_sets_wait_reason():
         nearest_below_val=439.0,
         nearest_above_val=441.0,
     )
-    # No canonical blend: all empirical probs missing → non-tradeable horizons; bundle must WAIT.
+    # No canonical blend: all empirical probs missing → zero valid horizon triplets;
+    # the ALL-card pooled consensus (2026-06-11) must WAIT with the
+    # insufficient-evidence reason (fail-closed pool floor).
+    from multi_horizon_decision import WAIT_REASON_INSUFFICIENT_VALID_HORIZONS
+
     canonical = None
     call = SimpleNamespace(signal="long", entry=440.5, stop=438.0, target=443.0, target2=None, call_state="WATCH")
     b = build_multi_horizon_bundle(inp, p, canonical, call)
     assert b.final_decision.final_bias == "WAIT"
-    assert (b.final_decision.wait_reason or "") == "no valid primary horizon"
+    assert (b.final_decision.wait_reason or "") == WAIT_REASON_INSUFFICIENT_VALID_HORIZONS
 
 
 def test_explainability_reason_chain():

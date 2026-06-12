@@ -10,7 +10,11 @@ from types import SimpleNamespace
 from typing import Any
 
 from features.fusion_model_input import FusionModelInputError, similar_setup_filters_from_db_snapshot_row
-from multi_horizon_decision import build_multi_horizon_bundle
+from multi_horizon_decision import (
+    WAIT_REASON_INSUFFICIENT_VALID_HORIZONS,
+    WAIT_REASON_POOLED_FLAT,
+    build_multi_horizon_bundle,
+)
 from prediction_engine import _literal_empirical_horizon, _tri_probs
 
 from timeframe_config import CANONICAL_TIMEFRAME
@@ -112,7 +116,7 @@ def replay_summary(
             "withheld_5c": 0,
             "withheld_15c": 0,
             "withheld_60c": 0,
-            "no_valid_primary_horizon": 0,
+            "wait_no_confluence": 0,
             "final_wait": 0,
             "similar_sizes": [],
             "similarity_filter_skipped_invalid_mvp": 0,
@@ -165,8 +169,14 @@ def replay_summary(
             fd = mh.final_decision
             if str(fd.final_bias) == "WAIT" or not fd.final_tradeable:
                 stats["final_wait"] += 1
-            if (fd.wait_reason or "") == "no valid primary horizon":
-                stats["no_valid_primary_horizon"] += 1
+            # Pooled-consensus WAIT classes (2026-06-11): insufficient evidence,
+            # flat-dominant pool, or pooled evidence below the entry gate.
+            _wr = str(fd.wait_reason or "")
+            if _wr in (
+                WAIT_REASON_INSUFFICIENT_VALID_HORIZONS,
+                WAIT_REASON_POOLED_FLAT,
+            ) or _wr.startswith("pooled stack evidence below entry gate"):
+                stats["wait_no_confluence"] += 1
 
             stats["n_slices"] += 1
             if len(slices) < 5:
@@ -198,8 +208,8 @@ def replay_summary(
                 "withheld_15c": round(100.0 * stats["withheld_15c"] / n, 2),
                 "withheld_60c": round(100.0 * stats["withheld_60c"] / n, 2),
                 "final_wait": round(100.0 * stats["final_wait"] / n, 2),
-                "no_valid_primary_horizon": round(
-                    100.0 * stats["no_valid_primary_horizon"] / n, 2
+                "wait_no_confluence": round(
+                    100.0 * stats["wait_no_confluence"] / n, 2
                 ),
             },
             "sample_slices": slices,

@@ -39,6 +39,36 @@ def sqlite_busy_retry_sleep_seconds(attempt: int) -> float:
     return min(_SQLITE_BUSY_RETRY_MAX_SLEEP_S, _SQLITE_BUSY_RETRY_BASE_SLEEP_S * (2**attempt))
 
 
+# Serve-stack fingerprint for every logged decision row. ED_BUILD_GENERATION env
+# wins when set; otherwise the repo git tip, resolved once per process. This is
+# the principled fit-window filter the fusion temperature fitter needs: rows
+# from a since-repaired serve stack are identifiable by generation, not just by
+# timestamp floor (the column was NULL on all 115k rows before this default).
+_build_generation_cache: dict[str, Optional[str]] = {}
+
+
+def resolve_build_generation() -> Optional[str]:
+    env = os.environ.get("ED_BUILD_GENERATION", "").strip()
+    if env:
+        return env
+    if "git_sha" not in _build_generation_cache:
+        import subprocess
+
+        try:
+            proc = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=Path(__file__).resolve().parents[1],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=3.0,
+            )
+            _build_generation_cache["git_sha"] = (proc.stdout or "").strip() or None
+        except (OSError, subprocess.SubprocessError):
+            _build_generation_cache["git_sha"] = None
+    return _build_generation_cache["git_sha"]
+
+
 def _sqlite_busy_or_locked(exc: sqlite3.OperationalError) -> bool:
     code = getattr(exc, "sqlite_errorcode", None)
     return code in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
@@ -184,6 +214,7 @@ def append_calibration_decision(
                 "alignment_state": getattr(mh_dec, "alignment_state", None),
                 "conflict_level": getattr(ar, "conflict_level", None) if ar is not None else None,
                 "final_bias": getattr(mh_dec, "final_bias", None),
+                "final_confidence": getattr(mh_dec, "final_confidence", None),
                 "final_tradeable": getattr(mh_dec, "final_tradeable", None),
                 "wait_reason": getattr(mh_dec, "wait_reason", None),
                 "sizing_modifier": getattr(mh_dec, "sizing_modifier", None),
@@ -219,7 +250,7 @@ def append_calibration_decision(
     advisory_v2_backfill_status = "ok" if advisory_v2_decision_snapshot is not None else None
 
     expiry = getattr(inp, "expiry", None)
-    build_generation = os.environ.get("ED_BUILD_GENERATION", "").strip() or None
+    build_generation = resolve_build_generation()
 
     ct_raw = (canonical_timeframe or "").strip()
     if not ct_raw:

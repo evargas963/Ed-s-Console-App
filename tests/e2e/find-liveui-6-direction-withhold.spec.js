@@ -209,7 +209,9 @@ test('_updateDirectionWithheldMarkers applies data-direction-withhold to Decisio
     window.lastFastTs = 0;
     window.lastRenderTimestamp = 0;
     if (typeof _updateLiveUiAe === 'function') _updateLiveUiAe();
-    const ids = ['dr-trade-pill', 'dr-bias-pill', 'dr-confidence-pill', 'dr-action-chip'];
+    // Bundle-level direction surfaces (rail dr-* verdict/why ids retired
+    // 2026-06-10): ALL pill + PLAN pill per _LIVEUI6_BUNDLE_DIRECTION_IDS.
+    const ids = ['tf-signal-consolidated', 'tf-signal-plan'];
     return ids.map((id) => {
       const n = document.getElementById(id);
       return { id, present: !!n, attr: n ? n.getAttribute('data-direction-withhold') : null };
