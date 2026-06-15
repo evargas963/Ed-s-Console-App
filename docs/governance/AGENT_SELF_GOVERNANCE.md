@@ -33,7 +33,7 @@ Operator sign-off: 7-artifact contract. Cursor implements; Claude verifies. **Mu
 | **#7** | → moved to AGENTS.md §Posture rules (scope disclosure) |
 | **#12** | Brief schema: identity → FIND/OBS → cross-cutting → display/freshness. |
 | **#13** | → moved to AGENTS.md §Banned patterns |
-| **#16** | Apply verification matrix to every **touched** file (Schwab-first, fail-closed numerics, single-authority, time_et, fusion tradability, coherence lanes, live/replay parity, UI honesty, calibration integrity, stack integrity, policy tables, regression guards, operator scenarios, V4 gate, cross-cutting, complete fix, numeric_contract, wire contracts, historical bias, process compliance). |
+| **#16** | Apply **AGENTS.md** world-class gate table + mandatory registry rows applicable to the **touched cone** (Schwab-first, fail-closed numerics, fusion tradability, UI honesty, stack integrity, process compliance). Verification matrix detail lives in paired tests — not a parallel standard. |
 
 ## Adjacent findings (rule #17)
 

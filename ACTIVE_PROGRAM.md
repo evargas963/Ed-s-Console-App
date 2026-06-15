@@ -2,20 +2,21 @@
 
 # ACTIVE_PROGRAM.md — what we are doing now
 
-**Updated:** 2026-05-27 (reaudit fixes @ `cb40b80`)  
-**Branch:** `feature/institutional-key-levels` — consolidation Phases 0–4 complete; **2 commits ahead of origin** (see §Claude audit handoff)  
-**Execution plan:** [`docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md`](docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md)
+**Updated:** 2026-06-11 (multi-month institutional program + governance reconciliation)  
+**Branch:** `feature/institutional-key-levels` — consolidation Phases 0–4 complete  
+**Program horizon:** Multi-month (2026-06 →) — see § **Multi-month institutional program** below  
+**Historical execution plan:** [`docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md`](docs/plans/GOVERNANCE_CONSOLIDATION_EXECUTION_PLAN.md) (Phases 0–4 closed — not the live epic selector; live epic is §Active program below)
 
 ---
 
 ## Active program
 
-**Institutional trading app — world-class bar** (operator 2026-05-27). Homegrown, but the finished product must **rival any institutional platform**. Every slice lands **application code + paired tests** (producer, consumer, or money-path fix). Quality gates in `AGENTS.md`: §World-class / institutional code gate (MIT professor + world's greatest coder) and §Universal code quality — simplicity and institutional pride (`check_universal_code_quality_contract()`; simple when simple wins). **Rule compliance — zero drift:** rules are law; banned/excuse phrases blocked at pre-commit (`check_fix_everything_we_touch.py`). Audit before sign-off: `python tools/enforce_all_rules.py --code-quality`.
+**Institutional trading app — world-class bar** (operator 2026-05-27). Homegrown, but the finished product must **rival any institutional platform**. Every slice lands **application code + paired tests** (producer, consumer, or money-path fix). Quality gates in `AGENTS.md`: §World-class / institutional code gate, §Institutional sign-off contract (uniform Cursor + Claude), §Universal code quality (`check_universal_code_quality_contract()`; `python tools/enforce_all_rules.py --code-quality`). **Sign-off:** Tier A `python tools/enforce_all_rules.py --objective-audit` exit 0 before any `VERDICT:`; Tier B `--enforce-all` for merge hard gate.
 
 **Non-negotiables (code-first):**
 - **Train-success-live** — successful scheduler train → `models/active/` in the same run (auto-promote default ON).
 - **Full parallel stack** — live + offline parallel eval score a row only when XGB + LSTM + Transformer all produce valid triplets (no 0.333 meta filler, no XGB-only ensemble rows). Cascade keeps its own architecture contract; governed comparison uses **ts_utc alignment**.
-- **ML pipeline efficiency (operator 2026-05-31, binding)** — leaf ablation confirm → **stack refit backtest** (CLI `--survivor-stack-refit-backtest`; holdout refit full vs survivor — not mask on `models/active/`) → edge probe → validation run → scheduler train. **Compound-group survivors VOID** — re-ablate on atomic Schwab/manifest universe only. **ZERO-BIAS (2026-06-05, binding, cannot be violated):** data decides placement at **`(feature × model × horizon)`** cells only — see `AGENTS.md` §Ablation contract / ZERO-BIAS; agents build toward the target, not toward preserving biased artifacts. **Do not train** to discover wiring or drop quality. **seven stack models:** `xgb`, `lstm`, `transformer`, `meta`, `monte_carlo`, `regime`, `fusion` (canonical: `governed_stack_contract.FULL_STACK_MODEL_LAYERS`). Parallel train **writes** `parallel_cascade_bridge.npz`; cascade **must reuse** parallel XGB + bridge in the same `run_once`. Mechanical locks: `tools/check_ml_pipeline_efficiency.py` (gate order + CLI + ps1), `tools/check_ablation_pipeline_parity.py`, `check_full_stack_models_contract()`, `check_zero_bias_ablation_contract()`; pre-commit runs via `tests/test_ml_feature_schema_parity.py` + `tests/test_check_fix_everything_we_touch.py`.
+- **ML pipeline efficiency (operator 2026-05-31, binding)** — leaf ablation confirm → **`run_survivor_stack_refit_backtest`** (stack refit backtest; CLI `--survivor-stack-refit-backtest`; holdout refit full vs survivor — not mask on `models/active/`) → edge probe → validation run → scheduler train. **Compound-group survivors VOID** — re-ablate on atomic Schwab/manifest universe only. **ZERO-BIAS (2026-06-05, binding, cannot be violated):** data decides placement at **`(feature × model × horizon)`** cells only — see `AGENTS.md` §Ablation contract / ZERO-BIAS; agents build toward the target, not toward preserving biased artifacts. **Do not train** to discover wiring or drop quality. **seven stack models:** `xgb`, `lstm`, `transformer`, `meta`, `monte_carlo`, `regime`, `fusion` (canonical: `governed_stack_contract.FULL_STACK_MODEL_LAYERS`). Parallel train **writes** `parallel_cascade_bridge.npz`; cascade **must reuse** parallel XGB + bridge in the same `run_once`. Mechanical locks: `tools/check_ml_pipeline_efficiency.py` (gate order + CLI + ps1), `tools/check_ablation_pipeline_parity.py`, `check_full_stack_models_contract()`, `check_zero_bias_ablation_contract()`; pre-commit runs via `tests/test_ml_feature_schema_parity.py` + `tests/test_check_fix_everything_we_touch.py`.
 - **Confluence-only** — `panel_auto` enrolled for logging/features, **excluded from ML training**.
 - **Operator legibility** — WAIT/neutral horizon cards stay high-contrast vs page chrome (same labels; readable slate/blue neutral palette — not “broken UI”).
 
@@ -25,7 +26,7 @@
 
 | Axis | Binding values |
 |------|----------------|
-| **feature** | One atomic column per ablation unit — **all 280** ABLATE manifest rows on the grid (no builder pre-cull; `not_wired` / `no_model_interface` are per-cell skip reasons, not exclusions) |
+| **feature** | One atomic column per ablation unit — full ABLATE manifest on the grid (`catalog_slots` accounting). **Completion claims use `runnable_scored` only** — see `AGENTS.md` § Ablation grid denominator glossary |
 | **model** | **All seven** stack layers — `xgb`, `lstm`, `transformer`, `meta`, `monte_carlo`, `regime`, `fusion` (`governed_stack_contract.FULL_STACK_MODEL_LAYERS`). **Not** xgb/lstm/transformer-only + four upper layers on a separate axis (`AGENTS.md` ZERO-BIAS). |
 | **horizon** | `1c`, `5c`, `15c`, `60c` — all mandatory; partial-horizon runs rejected |
 
@@ -33,11 +34,31 @@
 
 **Authority output:** survivors resolve **per `(model, horizon)`** → `survivor_summary.by_model_horizon[model][horizon]`. That matrix is the **only** admissible training placement router.
 
-**Target cell count:** 280 × **7 models** × **4 horizons** = **7,840** placement cells. Row pool = SPY + QQQ + IWM (pooled; not a grid axis). Mechanical lock: `check_ablation_seven_model_four_horizon_grid()` + `check_ablation_single_authority()` + `check_ablation_full_stack_non_negotiable()` on every pre-commit; runtime: `python tools/feature_curation_gate.py --ablation-audit`.
+**Target cell count:** **`catalog_slots`** = 280 × **7 models** × **4 horizons** = **7,840** (accounting). **`runnable_scored`** = `ablation_cell_accounting.runnable_target` (~1,092–1,288) — **only** admissible `--ablation` completion denominator. Row pool = SPY + QQQ + IWM (pooled; not a grid axis). Mechanical lock: `check_ablation_seven_model_four_horizon_grid()` + `check_ablation_single_authority()` + `check_ablation_full_stack_non_negotiable()` on every pre-commit; runtime: Tier A + `--ablation-bias` + `python tools/feature_curation_gate.py --ablation-audit`.
 
-Schwab scanner/register work is **tracking only** — it does not replace wire fixes, UI honesty, or stack behavior.
+Schwab register/scanner work is **progress accounting only** — wire fixes land **fix-as-we-touch** when any cone file is Read (§Multi-month institutional program, track 1). Scanner-only turns without code are **rejected**.
 
-### Stack honesty phased plan `[binding]` (2026-06-06 — Fusion-only horizon cards; code + locks, not memo-only)
+### Multi-month institutional program (2026-06-11 — operator binding)
+
+**North star:** a **neat, tidy, pretty** repo and codebase — institutional quality — built **gradually**, not in one closure sprint.
+
+**Horizon:** months. **Method:** every agent turn that opens a file or cone **fixes what it finds there** (`AGENTS.md` §Fix everything we touch + §Institutional sign-off contract). Large tails (Schwab register, ablation grid, stack phases) **do not get separate “cleanup sprints”** — they shrink as normal product/ML/money-path work touches those files.
+
+**Progress rule:** when a track slice lands, update the **Progress signal** column below **and** the matching `OPEN_ITEMS.md` row (close with commit SHA + test cite, or `[REAL-GATE: …]` if blocked).
+
+| Track | Method (how it gets done) | Done when (honest) | Progress signal (update on touch) |
+|-------|---------------------------|--------------------|-----------------------------------|
+| **1 — Schwab wire + register** | **Fix-as-we-touch** — any Read in producer/consumer cone → canopy→leaf disposition or O-NN + register slice **same commit** (`CLAUDE.md`, `CURSOR_V4_AGENT_BRIEF` Class A) | Wire-true in touched cones; register rows match diffs; no scanner-only PRs | `STACK_WIRING_INTEGRITY_MAP.md` rows → “landed”; register slice per PR; `replaced_count` rises in touched files only |
+| **2 — Ablation `runnable_scored`** | Host scoring when preflight green; Cursor lands score-path + survivor consumer fixes on touch | `ready_for_unbiased_ablation` + full **runnable_scored** grid scored; survivors applied at train | `feature_curation_gate.py --ablation-audit`; `survivor_summary.by_model_horizon` populated |
+| **3 — Stack honesty (phases 2–5)** | Code-first per phase table below | Each phase: code + test + registry row @ SHA | Phase table status → **LANDED @ SHA** |
+| **4 — Governance vault hygiene** | Promote-or-archive per `reconciliation_worksheet.json`; no duplicate binding prose | A-law stays binding; B-law stays vault; C-law archived with stubs | Worksheet bucket counts; `check_governance_archive_batch2_contract()` green |
+| **5 — Code quality on touch** | Simplest correct design in every touched file; `--code-quality` on sign-off | No new smell in touched production Python; orchestrators excepted per AGENTS honest limit | `enforce_all_rules.py --code-quality` exit 0 on touched cones |
+| **6 — Mechanical rule coverage** | Promote rule → checker + test **same commit** | No prose-only `[PROMOTED]` rows | `check_promoted_agents_rules_mechanically_locked()` |
+| **7 — Cursor chat discipline** | Tier A block + evidence on every implementation turn | Habit + commit-msg locks; Claude Stop hook | Commits with `VERDICT:` carry `AUDIT: CLEAN` + Tier A cite |
+
+**Explicitly NOT the plan:** batch “register walk” sprints that skip wire fixes; claiming D17 closure while doing inventory-only work; deferring known FINDs in a Read cone to “later cleanup.”
+
+**Tracked in:** this section + `OPEN_ITEMS.md` §Multi-month program tracks (rows `INST-PROGRAM-*`). `[binding]` (2026-06-06 — Fusion-only horizon cards; code + locks, not memo-only)
 
 Operator north star: **one door in** (wire row → seven-layer stack), **one door out** (fusion-only on horizon cards). Phases below are tracked here and in `OPEN_ITEMS.md`; each phase closes only with code + paired test + checker row in `AGENTS.md` §Mandatory enforcement registry.
 
@@ -47,8 +68,8 @@ Operator north star: **one door in** (wire row → seven-layer stack), **one doo
 | **1b — 5th ALL card** | **LANDED** (working tree) | `static/index.html` `#tf-signal-consolidated`, `deriveSourceForHorizon('consolidated')` | `test_issue18_ui_contract.py` + `check_fusion_only_card_contract()` |
 | **2 — Four-stack promotion** | OPEN | `ml_scheduler.py`, `active_bundle_contract.py`, `models/active_{hz}/` per panel ticker | promotion + `verify_active_models.py` tests |
 | **3 — Call → ALL only** | OPEN | `call_engine.py`, `multi_horizon_decision.py` | paired test in existing call contract file |
-| **4 — Sequence-faithful ablation** | `[REAL-GATE: after-grid]` | `arch_competition/ablation_bundle_inference.py` | after current 1,120-cell grid completes |
-| **5 — Schwab fix-as-we-touch** | **ONGOING** (cone-by-cone) | every file Read in producer/consumer cone per `CLAUDE.md` | `check_schwab_csv_first.py` on new market-fact sites; not repo-wide closure yet |
+| **4 — Sequence-faithful ablation** | `[REAL-GATE: after-grid]` | `arch_competition/ablation_bundle_inference.py` | after current **runnable_scored** grid completes |
+| **5 — Schwab fix-as-we-touch** | **ONGOING** (multi-month track 1) | every file Read in producer/consumer cone per `CLAUDE.md` | register slice + wire fix same commit; `check_schwab_csv_first.py` on new market-fact sites |
 | **6 — Rules at turn-time** | **PARTIAL** | `tools/enforce_all_rules.py`, `.claude/settings.json` Stop hook | pre-commit mirrors ~⅓ deterministic rules; Claude Stop hook scans output; Cursor chat output has no mechanical gate |
 | **7 — Pre-train observe (no retrain for cards)** | **LANDED** (working tree) | `ED_LIVE_ABLATION_EXPERIMENT=1` → `models/parallel/{ticker}/` + survivor serve masks; team gate blocks solo MC | `check_live_ablation_experiment_wiring()` + `check_unified_stack_team_contract()` |
 
@@ -67,6 +88,18 @@ Operator north star: **one door in** (wire row → seven-layer stack), **one doo
 | 3 decision | Complete @ `4018f41` |
 | 3 execution | Complete @ `ed9f882` (3b–3f including 3e worktree prune) |
 | 4 | Complete @ `6246920` |
+
+## Governance reconciliation (2026-06-11 — binding stack)
+
+**Authoritative hierarchy:** `AGENTS.md` § **Governance document hierarchy** + § **Institutional sign-off contract** (uniform Cursor + Claude — Tier A/B/C ladder + canonical sign-off block).
+
+**Schwab V4 workflow (when epic touches market fields):** `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md`, `governance/SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md`, **`governance/CURSOR_V4_AGENT_BRIEF.md`** (Class A fix-as-we-find vs Class B register/O-NN), `governance/OPERATOR_DECISION_REGISTER.md`, `governance/STACK_WIRING_INTEGRITY_MAP.md`, `governance/SCHWAB_V4_REVIEW_MEMOS/*`.
+
+**Inventory (audit artifact):** `governance/consolidation/reconciliation_worksheet.json`.
+
+**Explicitly NOT binding until code locks land:** V3 INF package (INF-1–4), `PRODUCTION_CLAIMS_REGISTER` merge gates, slice-vault memos unless ACTIVE_PROGRAM cites them for the current epic.
+
+**Archive batch 1:** `SCHWAB_FIELD_COVERAGE_REGISTER_V1.md` → `governance/archive/2026-Q2/governance_md_reconciliation/`. **Batch 2 complete** — `check_governance_archive_batch2_contract()`; details in `governance/REPO_CLEANUP_QUEUE.md` §Governance reconciliation.
 
 ## Concurrent epic (not blocking consolidation)
 
@@ -105,7 +138,7 @@ Operator north star: **one door in** (wire row → seven-layer stack), **one doo
 
 ---
 
-## UI card provenance spec (Claude design brief — Issue 18 card system)
+## UI card provenance spec (Claude design brief — Issue 18 — **not Cursor build unless `CURSOR-UI-AUTHORIZED`**)
 
 **Keep existing card chrome:** `.tf-signal-card`, Decision Rail, `.tf-signal-card--trade-active` color semantics. (The rail Horizon-alignment block `dr-align-1m` … `dr-align-60m` was retired 2026-06-10 — duplicative with the horizon pills; see §UI design lock.)
 
@@ -121,15 +154,15 @@ Operator north star: **one door in** (wire row → seven-layer stack), **one doo
 
 **Call / forward direction (single authority line):** only when `canonical.provenance === 'bayesian_fusion'` — label **"Fusion authoritative"**. Otherwise show **"Not tradable — empirical context only"** (no LONG/SHORT styling on forward row).
 
-**Layout (within one card, top → bottom):**
-1. Horizon row — 4 pills, each: direction + confidence + **source chip** + sample count when empirical.
-2. Fusion authoritative strip — dominant direction + agreement % (only when fusion available).
-3. Empirical context line — tier label + N setups (always visible when N>0, muted when ML authoritative).
-4. Degraded banner — red/slate bar when `stack_integrity_v1.degraded` or bundle incomplete.
+**Layout (six-pill row — single verdict surface; no parallel rail strips):**
+1. **Horizon pills** (`1M`/`5M`/`15M`/`60M`) — direction + confidence + **`.tf-source-chip`** + sample count when empirical.
+2. **`ALL` pill** — consolidated fusion verdict + alignment tag; WAIT/blocker detail via `sourceOperatorText` (replaces retired rail fusion strip).
+3. **`PLAN` pill** — entry/stop/targets/invalidation + sizing context.
+4. **Degraded / UNAVAILABLE** — chip vocabulary only (`DEGRADED`, `UNAVAILABLE`); no duplicate empirical context line or `dr-fusion-authority-strip` (retired §UI design lock).
 
 **Do not** collapse the three pipelines into one number without a chip. **Do not** hide UNAVAILABLE/DEGRADED behind neutral gray that reads as "WAIT setup."
 
-### UI design lock — operator verdicts 2026-05-27 + 2026-06-10 (binding, all agents)
+### UI design lock — operator verdicts 2026-05-27 + 2026-06-10 (**binding behavior — tests enforce**)
 
 The six-pill row (`1M/5M/15M/60M` + `ALL` consensus + `PLAN` trade plan) with per-pill `.tf-source-chip` provenance is the **single source of truth**. The following surfaces were intentionally removed and **MUST NOT** be re-introduced:
 

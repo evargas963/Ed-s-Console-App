@@ -5,7 +5,9 @@ ONE source of truth for deterministic rule checks. Invoked by every gate so neit
 gets a weaker check:
   * Claude Code `Stop` hook  -> `python tools/enforce_all_rules.py --stop-hook`
   * git pre-commit / CI      -> `python tools/check_fix_everything_we_touch.py` + hooks
-  * Before sign-off          -> `python tools/enforce_all_rules.py --enforce-all` (exit 0 required)
+  * Before sign-off          -> Tier A: `python tools/enforce_all_rules.py --objective-audit` (exit 0)
+                              Tier B: `python tools/enforce_all_rules.py --enforce-all` (merge hard gate)
+                              Canonical block: AGENTS.md § Institutional sign-off contract (Cursor + Claude)
 
 Every AGENTS.md `[PROMOTED]` rule maps to mechanical lock(s) in
 `tools/check_fix_everything_we_touch.py::_PROMOTED_AGENTS_RULE_LOCKS` — verified by
@@ -249,9 +251,10 @@ def _check_files(paths: list[str]) -> int:
 
 
 _CHECKLIST = (
-    "All AGENTS [PROMOTED] rules are mechanically locked — run before sign-off:\n"
-    "  python tools/enforce_all_rules.py --enforce-all\n"
-    "  python tools/enforce_all_rules.py --objective-audit\n"
+    "Uniform sign-off (Cursor + Claude) — AGENTS.md § Institutional sign-off contract:\n"
+    "  Tier A (implementation): python tools/enforce_all_rules.py --objective-audit\n"
+    "  Tier B (repo hard gate): python tools/enforce_all_rules.py --enforce-all\n"
+    "  Tier C (--enforce-static / --code-quality) NEVER admits AUDIT: CLEAN\n"
     "Prose-only compliance is rejection-grade. Rule text: AGENTS.md / CLAUDE.md."
 )
 

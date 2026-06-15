@@ -33,9 +33,9 @@ _REQUIRED_GATE_SURFACE = (
     (REPO_ROOT / "tools" / "run_survivor_retrain_gate.ps1", "--survivor-edge-probe"),
     (REPO_ROOT / "tools" / "run_survivor_retrain_gate.ps1", "--survivor-validation-run"),
     (REPO_ROOT / "ACTIVE_PROGRAM.md", "stack refit backtest"),
+    (REPO_ROOT / "ACTIVE_PROGRAM.md", "run_survivor_stack_refit_backtest"),
     (REPO_ROOT / "tools" / "build_feature_assignment_matrix_v2.py", "resolve_expanded_schwab_ablation_universe"),
     (REPO_ROOT / "tools" / "build_feature_assignment_matrix_v2.py", "MIN_ABLATION_EXPANSION_FACTOR"),
-    (REPO_ROOT / "governance" / "G1_ADDENDUM_TRAINING_DEPENDENCY.md", "run_survivor_stack_refit_backtest"),
     (REPO_ROOT / "arch_competition" / "stack_bundle_eval_v1.py", "void_compound_ablation_survivors"),
     (REPO_ROOT / "arch_competition" / "stack_bundle_eval_v1.py", "compound_survivors_voided"),
 )

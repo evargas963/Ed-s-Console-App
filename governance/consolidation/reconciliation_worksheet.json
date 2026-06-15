@@ -1,0 +1,710 @@
+{
+  "generated": "2026-06-11",
+  "top_level_count": 107,
+  "buckets": {
+    "B-other": 30,
+    "A-v4-brief": 1,
+    "GAP-promote-candidate": 1,
+    "C-stale-epic": 11,
+    "B-inf-deferred": 10,
+    "C-archive": 4,
+    "A-operator-register": 1,
+    "D-no-refs": 1,
+    "B-slice-vault": 40,
+    "A-law-v4": 2,
+    "C-superseded-schwab": 5,
+    "A-closure-map": 1
+  },
+  "rows": [
+    {
+      "path": "governance/A1_CALIBRATED_PROBABILITY_PROVENANCE_CONTRACT.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 7
+    },
+    {
+      "path": "governance/A1_CONFORMAL_ARTIFACT_LIFECYCLE_CONTRACT.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 5
+    },
+    {
+      "path": "governance/A1_CONFORMAL_ARTIFACT_PRODUCTION_CONTRACT.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/A1_CONFORMAL_INTERVAL_PROMOTION_CONTRACT.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 7
+    },
+    {
+      "path": "governance/A1_ISOTONIC_ARTIFACT_LIFECYCLE_AND_RUNTIME_CONTRACT.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/A2_LIFECYCLE_EOD_FORCE_EXIT_AND_CADENCE_CONTRACT.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 3
+    },
+    {
+      "path": "governance/A2_LIFECYCLE_PIN_RISK_HANDLER_CONTRACT.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/A2_LIFECYCLE_SESSION_CALENDAR_HARDENING_CONTRACT.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 4
+    },
+    {
+      "path": "governance/A2_MARKET_STATE_PROOF_ROW_COMPLETENESS_CONTRACT.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 6
+    },
+    {
+      "path": "governance/A2_STATIC_LIFECYCLE_DIVERGENCE_AUDIT.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 4
+    },
+    {
+      "path": "governance/ACTIVE_DIRECTORY_WRITER_INVENTORY.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/CHAIN_OF_TRUST_GAP_INTEL_290.md",
+      "bucket": "B-other",
+      "active_cites": [
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/CURSOR_V4_AGENT_BRIEF.md",
+      "bucket": "A-v4-brief",
+      "active_cites": [
+        "AGENTS.md"
+      ],
+      "ref_count": 4
+    },
+    {
+      "path": "governance/DERIVED_ANALYTICS_REGISTRY.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 5
+    },
+    {
+      "path": "governance/ENGINEERING_GATEKEEPING_POLICY.md",
+      "bucket": "GAP-promote-candidate",
+      "active_cites": [
+        "CLAUDE.md"
+      ],
+      "ref_count": 13
+    },
+    {
+      "path": "governance/EXISTING_ARTIFACT_TRANSITION_POLICY.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/FRAMEWORK_V2_TARGET_LOCK_RECORD.md",
+      "bucket": "C-stale-epic",
+      "active_cites": [],
+      "ref_count": 6
+    },
+    {
+      "path": "governance/Framework-ED-Decision-Engine-v1.1.md",
+      "bucket": "B-other",
+      "active_cites": [
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 6
+    },
+    {
+      "path": "governance/Framework-ED-Decision-Engine-v2.0-DRAFT.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 6
+    },
+    {
+      "path": "governance/G1_ADDENDUM_CACHE_CONSISTENCY.md",
+      "bucket": "C-stale-epic",
+      "active_cites": [
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/G1_ADDENDUM_TRAINING_DEPENDENCY.md",
+      "bucket": "C-stale-epic",
+      "active_cites": [
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 3
+    },
+    {
+      "path": "governance/G1_DIAGNOSIS.md",
+      "bucket": "C-stale-epic",
+      "active_cites": [
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 8
+    },
+    {
+      "path": "governance/G2_PLAN.md",
+      "bucket": "C-stale-epic",
+      "active_cites": [
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 5
+    },
+    {
+      "path": "governance/GOVERNANCE_EVENT_MODEL.md",
+      "bucket": "B-inf-deferred",
+      "active_cites": [],
+      "ref_count": 4
+    },
+    {
+      "path": "governance/GOVERNANCE_MERGE_GATE.md",
+      "bucket": "B-inf-deferred",
+      "active_cites": [],
+      "ref_count": 4
+    },
+    {
+      "path": "governance/IMPLEMENTATION_BLUEPRINT_V2.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 6
+    },
+    {
+      "path": "governance/INFRASTRUCTURE_GOVERNANCE_LOCK_PACKAGE.md",
+      "bucket": "B-inf-deferred",
+      "active_cites": [
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 5
+    },
+    {
+      "path": "governance/INSTITUTIONAL_STANDARD_V2.md",
+      "bucket": "C-archive",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/INSTITUTIONAL_STANDARD_V3.md",
+      "bucket": "B-inf-deferred",
+      "active_cites": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 15
+    },
+    {
+      "path": "governance/INSTITUTIONAL_STANDARD_WISHLIST.md",
+      "bucket": "C-archive",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/OPERATOR_DECISION_REGISTER.md",
+      "bucket": "A-operator-register",
+      "active_cites": [
+        "CLAUDE.md"
+      ],
+      "ref_count": 33
+    },
+    {
+      "path": "governance/OPERATOR_PREFLIGHT.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/PHASE_PLAN_INFRASTRUCTURE.md",
+      "bucket": "B-inf-deferred",
+      "active_cites": [
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 9
+    },
+    {
+      "path": "governance/PHASE_PLAN_TARGET_STATE.md",
+      "bucket": "B-other",
+      "active_cites": [
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 6
+    },
+    {
+      "path": "governance/PILOT_1A_BUILD_PLAN.md",
+      "bucket": "C-stale-epic",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/PILOT_1B_A2_0DTE_CONTRACT.md",
+      "bucket": "C-stale-epic",
+      "active_cites": [],
+      "ref_count": 8
+    },
+    {
+      "path": "governance/PILOT_1B_A2_LIFECYCLE_CONTRACT.md",
+      "bucket": "C-stale-epic",
+      "active_cites": [],
+      "ref_count": 8
+    },
+    {
+      "path": "governance/PILOT_1B_CALIBRATION_CONTRACT.md",
+      "bucket": "C-stale-epic",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/PILOT_1_SCHWAB_WALK_AND_AUTHORITY_UX_STAGING.md",
+      "bucket": "C-stale-epic",
+      "active_cites": [
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/PRODUCTION_CLAIMS_REGISTER.md",
+      "bucket": "B-inf-deferred",
+      "active_cites": [],
+      "ref_count": 4
+    },
+    {
+      "path": "governance/REBUILD_CONTEXT.md",
+      "bucket": "C-stale-epic",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/REPO_CLEANUP_QUEUE.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 3
+    },
+    {
+      "path": "governance/SCHWAB_CONSISTENCY_AUDIT_REGISTER_V1.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_V1.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md",
+      "bucket": "B-other",
+      "active_cites": [
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 28
+    },
+    {
+      "path": "governance/SCHWAB_DYNAMIC_SITE_RUNTIME_TRACING_PROTOCOL_V3.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_FIELD_COVERAGE_REGISTER_V1.md",
+      "bucket": "D-no-refs",
+      "active_cites": [],
+      "ref_count": 0
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_GATE_FAIL_CLOSED_WORKING_SYNC_V1.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S001_DTE_CONTRACT.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S002_VOLUME_CONTRACT.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S003_OHLCV_CONTRACT.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S004_OPEN_INTEREST_CONTRACT.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S005_SPOT_CONTRACT.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S009_BID_ASK_SPREAD_CONTRACT.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S010_S011_GREEKS_CONTRACT.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S012_IV_CONTRACT.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S013_DATE_DIFF_DTE_SUBTRIAGE_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S014_S015_REST_CUM_DELTA_CONTRACT.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S014_S015_TAPE_SIZE_CONTRACT.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S014_S015_VWAP_CONTRACT.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S016_BLACK_SCHOLES_SUBTRIAGE_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S017_INFERENCE_SNAPSHOT_TIME_CONTRACT.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S017_LIVE_PLANE_TIME_CONTRACT.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S017_REST_QUOTE_TIME_CONTRACT.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S018_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S018_S038_MECHANICAL_TAIL_MASTER_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 23
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S019_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S020_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S021_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S022_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S023_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S024_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S025_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S026_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S027_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S028_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S029_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S030_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S031_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S032_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S033_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S034_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S035_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S036_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S037_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_S038_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_SLICE_CLOSURE_AUDIT_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 3
+    },
+    {
+      "path": "governance/SCHWAB_REMEDIATION_SLICE_PLAN_V1.md",
+      "bucket": "B-slice-vault",
+      "active_cites": [],
+      "ref_count": 4
+    },
+    {
+      "path": "governance/SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md",
+      "bucket": "A-law-v4",
+      "active_cites": [
+        "CLAUDE.md"
+      ],
+      "ref_count": 18
+    },
+    {
+      "path": "governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V1.md",
+      "bucket": "C-superseded-schwab",
+      "active_cites": [],
+      "ref_count": 6
+    },
+    {
+      "path": "governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V2.md",
+      "bucket": "C-superseded-schwab",
+      "active_cites": [],
+      "ref_count": 6
+    },
+    {
+      "path": "governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V3.md",
+      "bucket": "C-superseded-schwab",
+      "active_cites": [],
+      "ref_count": 9
+    },
+    {
+      "path": "governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md",
+      "bucket": "A-law-v4",
+      "active_cites": [
+        "ACTIVE_PROGRAM.md",
+        "CLAUDE.md"
+      ],
+      "ref_count": 25
+    },
+    {
+      "path": "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V2.md",
+      "bucket": "C-superseded-schwab",
+      "active_cites": [],
+      "ref_count": 4
+    },
+    {
+      "path": "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V3.md",
+      "bucket": "C-superseded-schwab",
+      "active_cites": [],
+      "ref_count": 3
+    },
+    {
+      "path": "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.md",
+      "bucket": "B-other",
+      "active_cites": [
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 8
+    },
+    {
+      "path": "governance/SCHWAB_V4_FILE_INVENTORY_STATS.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/SNAPSHOTS_SCHEMA_REPAIR_APPLY_RUNBOOK_V1.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 3
+    },
+    {
+      "path": "governance/SNAPSHOTS_SCHEMA_REPAIR_MIGRATION_CONTRACT.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 4
+    },
+    {
+      "path": "governance/STACK_WIRING_INTEGRITY_MAP.md",
+      "bucket": "A-closure-map",
+      "active_cites": [
+        "AGENTS.md",
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 7
+    },
+    {
+      "path": "governance/STAGE_A2B_SNAPSHOT_OUTCOME_ROWID_FALLBACK_REMOVAL_CONTRACT.md",
+      "bucket": "B-other",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/TRADE_IMPACTING_ROUTE_INVENTORY.md",
+      "bucket": "B-inf-deferred",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/V3_CONFORMANCE_AUDIT.md",
+      "bucket": "B-inf-deferred",
+      "active_cites": [
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 6
+    },
+    {
+      "path": "governance/V3_CONFORMANCE_AUDIT_TEMPLATE.md",
+      "bucket": "B-inf-deferred",
+      "active_cites": [],
+      "ref_count": 2
+    },
+    {
+      "path": "governance/V3_LOCK_RECORD.md",
+      "bucket": "B-inf-deferred",
+      "active_cites": [
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 9
+    },
+    {
+      "path": "governance/v1.1-rationale-summary.md",
+      "bucket": "C-archive",
+      "active_cites": [
+        "OPEN_ITEMS.md"
+      ],
+      "ref_count": 1
+    },
+    {
+      "path": "governance/v2.0-rationale-summary.md",
+      "bucket": "C-archive",
+      "active_cites": [],
+      "ref_count": 0
+    }
+  ]
+}

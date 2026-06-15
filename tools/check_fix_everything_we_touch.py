@@ -830,6 +830,26 @@ INSTITUTIONAL_CONTRACT_MARKERS: tuple[tuple[str, str], ...] = (
     ("static/index.html", "INSTITUTIONAL_BUNDLE_TRUST_SEC"),
     ("static/index.html", "function laneStaleOperatorLabel"),
     ("static/index.html", "SYNCING ANALYTICS"),
+    ("static/index.html", "UI_LATENCY_CONTRACT"),
+    ("static/index.html", "_lastSseAnalyticsPayloadMs"),
+    ("static/index.html", "function _analyticsUiPending"),
+    ("static/index.html", "TIER-C-NONBLOCK-SWITCH"),
+    ("static/index.html", "ANALYTICS_PENDING_POLL_MS"),
+    ("static/index.html", "_tierCRestAbortController"),
+    ("static/index.html", "_edTierCCacheByTicker"),
+    ("static/index.html", "function manualFullRefresh"),
+    ("static/index.html", "UI_MAXIMIZE_CONTRACT"),
+    ("static/index.html", "ED_UI_MAXIMIZE_SLA_MS"),
+    ("static/index.html", "function _scheduleServerAnalyticsWarm"),
+    ("static/index.html", "function renderTierCPartialAnalytics"),
+    ("static/index.html", "analytics_partial_tier_c"),
+    ("server.py", "UI_MAXIMIZE_SLA_MS"),
+    ("server.py", 'POST /api/analytics/warm'),
+    ("server.py", "def post_analytics_warm"),
+    ("server.py", "_schedule_analytics_warm"),
+    ("ml_predict.py", "def prewarm_inference_models_for_ticker"),
+    ("server.py", "_get_quote_hot_executor"),
+    ("features/shared_sequence_context.py", "build_guest_wire_sequence_context"),
     ("AGENTS.md", "Mandatory enforcement registry"),
     ("AGENTS.md", "Meet-or-Exceed Closure Cycle"),
     ("server.py", '@app.get("/api/build")'),
@@ -2953,6 +2973,10 @@ _REPO_WIDE_STATIC_CHECK_FUNCS: tuple[str, ...] = (
     "check_objective_code_audit_contract",
     "check_ablated_training_only",
     "check_encoder_cone_mechanical_lock",
+    "check_governance_binding_contract",
+    "check_institutional_signoff_contract",
+    "check_ablation_denominator_vocabulary",
+    "check_governance_archive_batch2_contract",
 )
 
 # Pre-commit staged / commit-msg locks (cannot run repo-wide without staged paths).
@@ -2973,25 +2997,27 @@ _PROMOTED_AGENTS_RULE_LOCKS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Ablation universe", ("check_ablation_schwab_universe_contract",)),
     ("Full stack", ("check_full_stack_models_contract",)),
     ("Fusion-only horizon cards", ("check_fusion_only_card_contract",)),
-    ("Ablation grid", ("check_ablation_seven_model_four_horizon_grid", "check_ablation_full_stack_non_negotiable")),
+    ("Ablation grid", ("check_ablation_seven_model_four_horizon_grid", "check_ablation_full_stack_non_negotiable", "check_ablation_denominator_vocabulary")),
     (
         "GraphRAG fidelity-first",
         ("check_graphrag_fidelity_ablation_contract", "check_ablation_agnostic_ingest_contract"),
     ),
     ("Encoder cone", ("check_encoder_cone_mechanical_lock", "external:tools/check_encoder_cone_tests.py")),
+    ("Meet-or-Exceed Closure Cycle",
+        ("check_institutional_signoff_contract", "check_meet_or_exceed_cycle_documentation", "check_meet_or_exceed_signoff"),
+    ),
     (
-        "Meet-or-Exceed Closure Cycle",
-        ("check_meet_or_exceed_cycle_documentation", "check_meet_or_exceed_signoff"),
+        "Institutional sign-off contract",
+        ("check_institutional_signoff_contract", "check_ablation_denominator_vocabulary", "check_governance_archive_batch2_contract", "check_objective_code_audit_signoff", "check_meet_or_exceed_signoff"),
     ),
     (
         "Objective",
-        ("check_objective_code_audit_contract", "run_repo_wide_static_audit", "run_objective_code_audit"),
+        ("check_institutional_signoff_contract", "check_objective_code_audit_contract", "run_objective_code_audit"),
     ),
     ("Rule compliance", ("check_staged_rule_drift",)),
     ("Do not lie to the operator", ("check_commit_message", "external:tools/enforce_all_rules.py")),
     ("Fix everything we touch", ("check_paths", "external:tools/check_fix_everything_we_touch.py")),
     ("Code-first / no governance-only turn", ("check_action_not_documentation", "external:tests/test_governance_consolidation.py")),
-    ("Action-not-documentation", ("check_action_not_documentation",)),
     (
         "Storage-needs-consumer",
         ("check_storage_writer_has_consumer", "check_persistence_map_fresh", "check_persistence_writer_has_reader"),
@@ -3014,6 +3040,7 @@ _PROMOTED_AGENTS_RULE_LOCKS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
     ("No new files when an existing one will do", ("check_promoted_agents_rules_mechanically_locked",)),
     ("Money-path module roster", ("external:tests/test_money_path_roster.py",)),
+    ("Governance document hierarchy", ("check_governance_binding_contract",)),
 )
 
 _EXTERNAL_TOOL_LOCKS: tuple[str, ...] = (
@@ -3051,7 +3078,15 @@ def _lock_id_wired(lock_id: str) -> bool:
         return True
     if lock_id in _STAGED_COMMIT_CHECK_FUNCS:
         return True
-    if lock_id in ("check_paths", "run_repo_wide_static_audit", "run_objective_code_audit", "check_v4_memo"):
+    if lock_id in (
+        "check_paths",
+        "run_repo_wide_static_audit",
+        "run_objective_code_audit",
+        "run_situational_runtime_audits",
+        "check_v4_memo",
+        "check_objective_code_audit_signoff",
+        "check_meet_or_exceed_signoff",
+    ):
         checker = REPO_ROOT / "tools" / "check_fix_everything_we_touch.py"
         if not checker.is_file():
             return False
@@ -3176,6 +3211,10 @@ _MANDATORY_REGISTRY_CHECK_FUNCS: tuple[str, ...] = (
     "check_promoted_agents_rules_mechanically_locked",
     "check_external_rule_tools_wired",
     "check_encoder_cone_mechanical_lock",
+    "check_governance_binding_contract",
+    "check_institutional_signoff_contract",
+    "check_ablation_denominator_vocabulary",
+    "check_governance_archive_batch2_contract",
     "run_repo_wide_static_audit",
     "run_objective_code_audit",
 )
@@ -3186,6 +3225,228 @@ _MANDATORY_REGISTRY_EXTERNAL_TOOLS: tuple[str, ...] = (
     "tools/check_schwab_csv_first.py",
     "tools/enforce_all_rules.py",
 )
+
+
+def check_institutional_signoff_contract() -> list[str]:
+    """AGENTS § Institutional sign-off contract — uniform Cursor+Claude Tier A/B/C ladder + canonical block."""
+    errors: list[str] = []
+    agents = REPO_ROOT / "AGENTS.md"
+    active = REPO_ROOT / "ACTIVE_PROGRAM.md"
+    cursor_rule = REPO_ROOT / ".cursor" / "rules" / "00-always.mdc"
+    enforce = REPO_ROOT / "tools" / "enforce_all_rules.py"
+
+    if not agents.is_file():
+        return ["AGENTS.md: missing (institutional sign-off contract)"]
+    text = agents.read_text(encoding="utf-8", errors="replace")
+    for needle in (
+        "Institutional sign-off contract — uniform Cursor + Claude",
+        "Canonical audit command ladder",
+        "Tier A",
+        "Tier B",
+        "Tier C",
+        "Canonical sign-off block",
+        "AUDIT_LADDER:",
+        "MIT_BAR:",
+        "PEER_AUDIT:",
+        "catalog_slots",
+        "runnable_scored",
+        "check_institutional_signoff_contract",
+        "fix-as-we-find",
+        "register / O-NN",
+    ):
+        if needle not in text:
+            errors.append(f"AGENTS.md: missing institutional sign-off marker {needle!r}")
+
+    if not active.is_file():
+        errors.append("ACTIVE_PROGRAM.md: missing (institutional sign-off contract)")
+    else:
+        atext = active.read_text(encoding="utf-8", errors="replace")
+        if "runnable_scored" not in atext and "catalog_slots" not in atext:
+            if "Governance document hierarchy" not in atext:
+                errors.append(
+                    "ACTIVE_PROGRAM.md: missing governance hierarchy pointer or ablation denominator"
+                )
+
+    if cursor_rule.is_file():
+        cr = cursor_rule.read_text(encoding="utf-8", errors="replace")
+        for needle in ("Tier A", "objective-audit", "Institutional sign-off contract"):
+            if needle not in cr:
+                errors.append(f".cursor/rules/00-always.mdc: missing sign-off marker {needle!r}")
+    else:
+        errors.append(".cursor/rules/00-always.mdc: missing")
+
+    if enforce.is_file():
+        et = enforce.read_text(encoding="utf-8", errors="replace")
+        if "Tier A (implementation)" not in et and "Tier A:" not in et:
+            errors.append("enforce_all_rules.py: missing Tier A checklist marker")
+    else:
+        errors.append("tools/enforce_all_rules.py: missing")
+
+    checker = REPO_ROOT / "tools" / "check_fix_everything_we_touch.py"
+    if checker.is_file() and "def check_institutional_signoff_contract" not in checker.read_text(
+        encoding="utf-8", errors="replace"
+    ):
+        errors.append("check_fix_everything_we_touch.py: check_institutional_signoff_contract not defined")
+
+    # ACTIVE_PROGRAM must point at AGENTS for sign-off law — not duplicate the full Tier ladder table.
+    if active.is_file():
+        atext = active.read_text(encoding="utf-8", errors="replace")
+        tier_rows = atext.count("| **A — Implementation sign-off** |")
+        if tier_rows > 0:
+            errors.append(
+                "ACTIVE_PROGRAM.md: duplicates Tier A/B/C ladder table — point to AGENTS § Institutional sign-off contract"
+            )
+        if "Institutional sign-off contract" not in atext and "institutional-signoff-contract" not in atext:
+            errors.append(
+                "ACTIVE_PROGRAM.md: missing pointer to AGENTS § Institutional sign-off contract"
+            )
+
+    hardening = REPO_ROOT / ".github" / "workflows" / "hardening.yml"
+    if hardening.is_file():
+        ht = hardening.read_text(encoding="utf-8", errors="replace")
+        if "enforce_all_rules.py --enforce-static" not in ht:
+            errors.append("hardening.yml: missing CI step python tools/enforce_all_rules.py --enforce-static")
+    else:
+        errors.append(".github/workflows/hardening.yml: missing (institutional CI gate)")
+    return errors
+
+
+_ABLATION_SLOT_NAMES: frozenset[str] = frozenset(
+    {"catalog_slots", "manifest_in_cone", "runnable_scored"}
+)
+_ABLATION_BARE_COUNT_RE = re.compile(
+    r"\b(?:7[,.]?840|2[,.]?632|1[,.]?092|1[,.]?288|\d{1,2},\d{3})\b.*\b(?:cells?|slots?|denominator)\b",
+    re.IGNORECASE,
+)
+
+
+def check_ablation_denominator_vocabulary() -> list[str]:
+    """Binding docs must cite catalog_slots | manifest_in_cone | runnable_scored — not bare cell counts."""
+    errors: list[str] = []
+    active = REPO_ROOT / "ACTIVE_PROGRAM.md"
+    if not active.is_file():
+        return ["ACTIVE_PROGRAM.md: missing (ablation denominator vocabulary)"]
+    lines = active.read_text(encoding="utf-8", errors="replace").splitlines()
+    in_glossary = False
+    for i, line in enumerate(lines, start=1):
+        if "### Ablation denominator glossary" in line or "Ablation denominator glossary" in line:
+            in_glossary = True
+        if in_glossary and line.startswith("## ") and "Ablation denominator" not in line:
+            in_glossary = False
+        if in_glossary:
+            continue
+        if not _ABLATION_BARE_COUNT_RE.search(line):
+            continue
+        window = "\n".join(lines[max(0, i - 3) : min(len(lines), i + 2)])
+        if not any(slot in window for slot in _ABLATION_SLOT_NAMES):
+            errors.append(
+                f"ACTIVE_PROGRAM.md:{i}: bare ablation cell count without slot name "
+                f"(catalog_slots | manifest_in_cone | runnable_scored)"
+            )
+    checker = REPO_ROOT / "tools" / "check_fix_everything_we_touch.py"
+    if checker.is_file() and "def check_ablation_denominator_vocabulary" not in checker.read_text(
+        encoding="utf-8", errors="replace"
+    ):
+        errors.append("check_fix_everything_we_touch.py: check_ablation_denominator_vocabulary not defined")
+    return errors
+
+
+def check_governance_archive_batch2_contract() -> list[str]:
+    """REPO_CLEANUP_QUEUE batch 2 — C-bucket MDs are stubs at governance/ with archive bodies."""
+    errors: list[str] = []
+    worksheet = REPO_ROOT / "governance" / "consolidation" / "reconciliation_worksheet.json"
+    if not worksheet.is_file():
+        return ["governance/consolidation/reconciliation_worksheet.json: missing (archive batch 2)"]
+    rows = [
+        r
+        for r in json.loads(worksheet.read_text(encoding="utf-8"))["rows"]
+        if str(r.get("bucket", "")).startswith("C-")
+    ]
+    for row in rows:
+        rel = row["path"].replace("\\", "/")
+        stub_path = REPO_ROOT / rel
+        if not stub_path.is_file():
+            errors.append(f"{rel}: missing (C-bucket archive batch 2)")
+            continue
+        text = stub_path.read_text(encoding="utf-8", errors="replace")
+        if not text.lstrip().startswith("> **Archived"):
+            errors.append(f"{rel}: not an archive stub (batch 2 incomplete)")
+            continue
+        name = Path(rel).name
+        if row["bucket"] == "C-superseded-schwab":
+            archive = REPO_ROOT / "governance/archive/2026-Q2/superseded_schwab_coverage" / name
+        else:
+            archive = REPO_ROOT / "governance/archive/2026-Q2/governance_md" / name
+        if not archive.is_file():
+            errors.append(f"{rel}: archive body missing at {archive.relative_to(REPO_ROOT).as_posix()}")
+        elif len(archive.read_text(encoding="utf-8", errors="replace")) < 80:
+            errors.append(f"{rel}: archive body too short — likely stub not full text")
+    queue = REPO_ROOT / "governance" / "REPO_CLEANUP_QUEUE.md"
+    if queue.is_file() and "batch 2" in queue.read_text(encoding="utf-8", errors="replace"):
+        if "batch 2 complete" not in queue.read_text(encoding="utf-8", errors="replace").lower():
+            errors.append("governance/REPO_CLEANUP_QUEUE.md: batch 2 not marked complete")
+    return errors
+
+
+def check_governance_binding_contract() -> list[str]:
+    """AGENTS § Governance document hierarchy — binding stack markers + reconciliation inventory."""
+    errors: list[str] = []
+    agents = REPO_ROOT / "AGENTS.md"
+    active = REPO_ROOT / "ACTIVE_PROGRAM.md"
+    claude = REPO_ROOT / "CLAUDE.md"
+    eng = REPO_ROOT / "governance" / "ENGINEERING_GATEKEEPING_POLICY.md"
+    worksheet = REPO_ROOT / "governance" / "consolidation" / "reconciliation_worksheet.json"
+
+    if not agents.is_file():
+        return ["AGENTS.md: missing (governance binding contract)"]
+    agents_text = agents.read_text(encoding="utf-8", errors="replace")
+    for needle in (
+        "Governance document hierarchy",
+        "binding stack",
+        "Promote-or-archive rule",
+        "check_governance_binding_contract",
+        "reconciliation_worksheet.json",
+        "INSTITUTIONAL_STANDARD_V3.md",
+    ):
+        if needle not in agents_text:
+            errors.append(f"AGENTS.md: missing governance hierarchy marker {needle!r}")
+
+    if not active.is_file():
+        errors.append("ACTIVE_PROGRAM.md: missing (governance binding contract)")
+    else:
+        active_text = active.read_text(encoding="utf-8", errors="replace")
+        for needle in (
+            "Governance reconciliation",
+            "CURSOR_V4_AGENT_BRIEF.md",
+            "Governance document hierarchy",
+        ):
+            if needle not in active_text:
+                errors.append(f"ACTIVE_PROGRAM.md: missing governance reconciliation marker {needle!r}")
+
+    if not claude.is_file():
+        errors.append("CLAUDE.md: missing (governance binding contract)")
+    else:
+        claude_text = claude.read_text(encoding="utf-8", errors="replace")
+        for needle in (
+            "ENGINEERING GATEKEEPING",
+            "Patch rejection",
+            "Schwab-native first",
+        ):
+            if needle not in claude_text:
+                errors.append(f"CLAUDE.md: missing engineering gatekeeping marker {needle!r}")
+
+    if not eng.is_file():
+        errors.append("governance/ENGINEERING_GATEKEEPING_POLICY.md: missing")
+    else:
+        eng_text = eng.read_text(encoding="utf-8", errors="replace")
+        if "Binding authority:" not in eng_text or "CLAUDE.md" not in eng_text:
+            errors.append(
+                "governance/ENGINEERING_GATEKEEPING_POLICY.md: missing Binding authority redirect to CLAUDE.md"
+            )
+
+    if not worksheet.is_file():
+        errors.append("governance/consolidation/reconciliation_worksheet.json: missing (reconciliation inventory)")
+    return errors
 
 
 def check_mandatory_enforcement_registry() -> list[str]:
@@ -3275,6 +3536,51 @@ def check_institutional_contract() -> list[str]:
         for label, pat in INSTITUTIONAL_BANNED_SERVER_PATTERNS:
             if pat.search(stext):
                 errors.append(f"server.py: {label}")
+    index_html = REPO_ROOT / "static/index.html"
+    if index_html.is_file():
+        try:
+            itext = index_html.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            itext = ""
+        if "_lastSsePayloadAcceptedMs < SSE_POLL_SUPPRESS_MS" in itext:
+            errors.append(
+                "static/index.html: Tier C REST poll suppress must use _lastSseAnalyticsPayloadMs "
+                "(quote SSE must not block analytics poll — UI_LATENCY_CONTRACT)"
+            )
+        if "await fetchJsonWithTimeout(url, { signal: fetchAbortSignal }, 120000)" in itext:
+            errors.append(
+                "static/index.html: fetchState must not await Tier C with 120s on ticker switch "
+                "(use TIER-C-NONBLOCK-SWITCH + _fetchTierCRestAndApply force-gated timeout)"
+            )
+        if "_slowFetchAc && _slowFetchAc.abort()" in itext:
+            errors.append(
+                "static/index.html: Tier C timeout must not abort Tier A/B shared controller (UI_LATENCY_CONTRACT)"
+            )
+        if "ANALYTICS_PENDING_POLL_MS = 1500" in itext:
+            errors.append(
+                "static/index.html: UI_MAXIMIZE requires ANALYTICS_PENDING_POLL_MS <= 1000 (use 800)"
+            )
+        if "function renderTierCPartialAnalytics" not in itext:
+            errors.append(
+                "static/index.html: missing renderTierCPartialAnalytics (UI_MAXIMIZE partial chain paint)"
+            )
+        if "function _scheduleServerAnalyticsWarm" not in itext:
+            errors.append(
+                "static/index.html: missing _scheduleServerAnalyticsWarm (UI_MAXIMIZE server warm POST)"
+            )
+        if "triggerRefresh() { fetchState(true)" in itext:
+            errors.append(
+                "static/index.html: ticker switch must use fetchState(false); manualFullRefresh uses force"
+            )
+        if "live_quote" in itext and "_lastSseAnalyticsPayloadMs = Date.now()" in itext:
+            live_idx = itext.find("live_quote")
+            analytics_set = itext.find("_lastSseAnalyticsPayloadMs = Date.now()")
+            if live_idx != -1 and analytics_set != -1:
+                live_chunk = itext[live_idx : live_idx + 1200]
+                if "_lastSseAnalyticsPayloadMs = Date.now()" in live_chunk:
+                    errors.append(
+                        "static/index.html: live_quote handler must not advance analytics poll suppress clock"
+                    )
     return errors
 
 
@@ -3506,12 +3812,15 @@ def check_objective_code_audit_signoff(commit_msg_path: Path) -> list[str]:
 
 OBJECTIVE_CODE_AUDIT_MARKERS: tuple[str, ...] = (
     "Objective → Code → Audit closure",
+    "Institutional sign-off contract — uniform Cursor + Claude",
     "OBJECTIVE → CODE → AUDIT",
     "run_objective_code_audit",
     "run_repo_wide_static_audit",
     "run_situational_runtime_audits",
     "audit_ablation_placement_validity",
     "check_objective_code_audit_signoff",
+    "check_institutional_signoff_contract",
+    "Canonical audit command ladder",
     "--objective-audit",
     "AUDIT: CLEAN",
 )

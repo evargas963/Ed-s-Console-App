@@ -56,7 +56,65 @@ If either answer is **no**, **stop** — fix the design or implementation before
 
 **Governed exception (only):** `5c` runtime may use documented `xgb_plus_transformer` stack per `ACTIVE_PROGRAM.md` — not a license for other horizons or eval paths.
 
-**Mechanical enforcement (binding — no prose-only rules):** pre-commit → `check_fix_everything_we_touch.py` runs every repo-wide static lock in `_REPO_WIDE_STATIC_CHECK_FUNCS` plus staged locks. Before sign-off: `python tools/enforce_all_rules.py --enforce-all` (exit 0). Coverage of all 27 AGENTS `[PROMOTED]` sections: `check_promoted_agents_rules_mechanically_locked()`.
+---
+
+## Institutional sign-off contract — uniform Cursor + Claude `[PROMOTED]` (2026-06-11 — operator binding; no activation phrase)
+
+<a id="institutional-signoff-contract"></a>
+
+**Binding on both agents.** Cursor and Claude Code obey **identical** sign-off, audit, and completion law. Neither agent may use a weaker checklist, an alternate template, or a harness-specific escape. Claude Stop hook, pre-commit, and commit-msg locks enforce the **same** bar.
+
+### End-to-end fix discipline (rejection-grade if violated)
+
+Every Read of a producer/consumer cone is a **write obligation**. Audit, disposition, or investigation without closing **every** FIND in that cone in the **same turn** — fix + paired test + [§Closure bundle](#closure-bundle) artifacts, or `[REAL-GATE: …]` in `OPEN_ITEMS.md` — is **rejection-grade**. Partial stacks, memo-only handoffs, scanner-only turns, read-only investigation, and sign-off from another agent's summary without tip re-Read and Tier A recompute are **inadmissible**.
+
+**EXCEEDED** is the target when touching money-path, live UI, ML placement, or Schwab wire. **MET** is the floor, not the aspiration — "good enough" completion is **rejection-grade**.
+
+### Canonical audit command ladder (only these tiers — no substitutes)
+
+| Tier | Command | When required | Admits `AUDIT: CLEAN` or `VERDICT:`? |
+|------|---------|---------------|--------------------------------------|
+| **A — Implementation sign-off** | `python tools/enforce_all_rules.py --objective-audit` (+ situational extensions below) | **Every turn** that lands code, fixes FINDs, claims pipeline/UI/ablation/Schwab state, or emits `VERDICT:` | **Yes** — exit 0 + canonical block below |
+| **B — Repository hard gate** | `python tools/enforce_all_rules.py --enforce-all` | Merge-quality sign-off; after rule/governance promotion commits | **No** — static + code-quality only; **never** replaces Tier A |
+| **C — Fast subset** | `--enforce-static` and/or `--code-quality` | Mid-turn iteration sanity | **No** — **never** cite for completion |
+
+**Tier A extensions (mandatory when cone fits — name in `AUDIT_LADDER`):**
+
+| Cone | Extension |
+|------|-----------|
+| Ablation / placement / survivor | `python tools/enforce_all_rules.py --ablation-bias` + `python tools/feature_curation_gate.py --ablation-audit` |
+| UI / pipeline / `mhap_rows` | `python tools/live_diag_compare.py <TICKER>` — paste output or JSON keys in block |
+| Encoder / LSTM / Transformer staged | `python tools/check_encoder_cone_tests.py` |
+| Schwab market-field | Canopy→leaf trace + register row per `CLAUDE.md` |
+| Operator preflight / full runtime | `--objective-audit --full-runtime` |
+
+**Banned (rejection-grade):** Tier B or C cited as `AUDIT: CLEAN`. Tier B instead of Tier A on an implementation turn. `VERDICT:` without Tier A exit 0. Sub-function PASS quoted as gate PASS.
+
+### Canonical sign-off block (single template — chat, commit, PR; Cursor **and** Claude)
+
+**No other template is admissible** for completion claims. [§Meet-or-Exceed](#meet-or-exceed-closure-cycle), [§Objective→Code→Audit](#objective-code-audit-closure), and [§Active agent posture](#active-agent-posture) peer audit **extend** this block — they do not replace it.
+
+```
+OBJECTIVE: <one sentence — operator intent this turn>
+AUDIT: CLEAN — python tools/enforce_all_rules.py --objective-audit (exit 0)
+AUDIT_LADDER: A | [+ablation-bias] [+ablation-audit] [+live_diag TICKER] [+encoder-cone] [+full-runtime]
+VERDICT: MET | EXCEEDED
+SCOPE: <paths touched — not a scope-narrowing excuse>
+CYCLE_ITERATIONS: <n>
+MIT_BAR: professor=yes|no coder=yes|no
+GATE_TABLE:
+  <registry row or gate>: MET | EXCEEDED — <tests/… @SHA | file:line | live_diag key>
+PEER_AUDIT: N/A | <Cursor|Claude> recomputed Tier A exit <code> — BINDING
+FINDS: none | <file:line table>
+```
+
+Commit messages with `VERDICT:` **must** include `OBJECTIVE:` and `AUDIT: CLEAN` (`check_objective_code_audit_signoff()`). **`VERDICT:` values:** `MET` or `EXCEEDED` only.
+
+**Peer verification:** sibling agent or operator **recomputes** Tier A — never echoes implementer output (`PEER_AUDIT` line required when arbiter is in play).
+
+**Mechanical lock:** `check_institutional_signoff_contract()` + `check_objective_code_audit_signoff()` + `check_meet_or_exceed_signoff()`. Paired: `tests/test_governance_consolidation.py::test_institutional_signoff_contract`.
+
+**Mechanical enforcement (binding — no prose-only rules):** pre-commit → `check_fix_everything_we_touch.py` runs every repo-wide static lock in `_REPO_WIDE_STATIC_CHECK_FUNCS` plus staged locks. **Implementation sign-off:** Tier A exit 0 (above). **Repository hard gate:** `python tools/enforce_all_rules.py --enforce-all` exit 0 before merge-quality claims. Coverage of all AGENTS `[PROMOTED]` sections: `check_promoted_agents_rules_mechanically_locked()`.
 
 **Mandatory enforcement registry (2026-05-27 — operator binding):** Every row in the world-class gate table MUST have a mechanical lock before the rule is considered promoted. Prose-only rules are **incomplete** until the checker lands in the **same commit** as the rule text.
 
@@ -72,7 +130,7 @@ If either answer is **no**, **stop** — fix the design or implementation before
 | Deferral language | `tools/check_no_deferral_language.py` | `tests/test_check_no_deferral_language.py` |
 | Live diag evidence before pipeline claims | Operator: `python tools/live_diag_compare.py <TICKER>`; agents must paste output or JSON keys when claiming pipeline state | — |
 | Closure (code+test+OPEN_ITEMS) | `tests/test_governance_consolidation.py` | same |
-| **Meet-or-Exceed sign-off** (VERDICT MET/EXCEEDED only) | `check_meet_or_exceed_signoff()` in `check_fix_everything_we_touch.py` | `tests/test_check_fix_everything_we_touch.py` |
+| **Meet-or-Exceed sign-off** (VERDICT MET/EXCEEDED only) | `check_institutional_signoff_contract()` + `check_meet_or_exceed_signoff()` | `tests/test_governance_consolidation.py::test_institutional_signoff_contract` |
 | **Runtime tip = disk tip** | `GET /api/build` `git_sha` vs `git rev-parse HEAD` | `tests/test_batch2_analytics_bg_fail_counter.py` |
 | **Encoder width/schema changes** | `tools/check_encoder_cone_tests.py` → `check_encoder_cone_tests()` (pre-commit when cone paths staged) | `tests/test_check_fix_everything_we_touch.py` |
 | **Universal simplicity + institutional pride** (full repo; simple when simple wins) | `check_universal_code_quality_contract()` + `audit_staged_python_simplicity()` + `python tools/enforce_all_rules.py --code-quality` | `tests/test_check_fix_everything_we_touch.py::test_universal_code_quality_contract` |
@@ -80,23 +138,28 @@ If either answer is **no**, **stop** — fix the design or implementation before
 | **Schwab-catalog ablation universe** (≥2× ML cone; no stack-only pre-pick) | `check_ablation_schwab_universe_contract()` in `check_fix_everything_we_touch.py` | `tests/test_ml_feature_schema_parity.py::test_schwab_ablation_universe_contract` |
 | **Full stack — all seven models named** (no partial stack lists) | `check_full_stack_models_contract()` in `check_fix_everything_we_touch.py` | `tests/test_ml_feature_schema_parity.py::test_full_stack_models_contract` |
 | **ZERO-BIAS — data-driven placement** (repo-wide; survivor output is the only router) | `check_zero_bias_ablation_contract()` + `check_ablation_agnostic_ingest_contract()` + `check_ablation_seven_model_four_horizon_grid()` + `check_ablation_full_stack_non_negotiable()` + `check_graphrag_fidelity_ablation_contract()` in `check_fix_everything_we_touch.py` + `python tools/feature_curation_gate.py --ablation-audit` | `tests/test_check_fix_everything_we_touch.py::test_zero_bias_ablation_contract`, `::test_ablation_agnostic_ingest_contract`, `::test_ablation_grid_requires_all_seven_models_and_four_horizons`, `::test_ablation_full_stack_non_negotiable_contract`, `::test_graphrag_fidelity_ablation_contract` |
-| **Objective → Code → Audit closure** (mandatory turn protocol; **full repo**; situational runtime where cone fits) | `run_repo_wide_static_audit()` + `run_objective_code_audit()` + `run_situational_runtime_audits()` + `check_objective_code_audit_signoff()` + `python tools/enforce_all_rules.py --objective-audit` | `tests/test_check_fix_everything_we_touch.py::test_objective_code_audit_contract`, `::test_objective_code_audit_universal_scope`, `::test_objective_code_audit_situational_runtime_dispatch` |
+| **Objective → Code → Audit closure** (mandatory turn protocol; **full repo**; situational runtime where cone fits) | `check_institutional_signoff_contract()` + `run_objective_code_audit()` + `check_objective_code_audit_signoff()` + Tier A `--objective-audit` | `tests/test_governance_consolidation.py::test_institutional_signoff_contract`, `tests/test_check_fix_everything_we_touch.py::test_objective_code_audit_contract` |
 | **Fusion-only horizon cards** (zero default blend; withhold product triplets when fusion missing; 5th ALL consolidated card) | `check_fusion_only_card_contract()` in `check_fix_everything_we_touch.py` | `tests/test_check_fix_everything_we_touch.py::test_fusion_only_card_contract`, `tests/test_prediction_engine_chunk1_fail_closed.py::test_overlay_withholds_product_triplets_when_fusion_missing`, `tests/test_issue18_ui_contract.py` (consolidated + no-implicit-blend) |
 | **Schwab fix-as-we-touch** (every Read in producer/consumer cone → leaf disposition or O-NN) | `tools/check_schwab_csv_first.py` (pre-commit + CI diff-emission on new market-fact sites) + `CLAUDE.md` line-by-line method | `tests/test_check_schwab_csv_first.py` — **honest limit:** repo-wide leaf walk is cone-by-cone work, not one regex gate |
 | **Mandatory registry completeness** (no prose-only promoted rules) | `check_mandatory_enforcement_registry()` + `check_promoted_agents_rules_mechanically_locked()` + `python tools/enforce_all_rules.py --enforce-all` | `tests/test_check_fix_everything_we_touch.py::test_mandatory_enforcement_registry_passes_on_current_repo`, `::test_promoted_agents_rules_mechanically_locked` |
 | **Unified stack canonical vocabulary** (seven-layer team; legacy names alias-only) | `check_unified_stack_canonical_vocabulary()` + `check_unified_stack_team_contract()` | `tests/test_check_fix_everything_we_touch.py::test_unified_stack_canonical_vocabulary_checker`, `::test_unified_stack_team_contract_checker` |
 | **All external rule tools wired** | `check_external_rule_tools_wired()` | `tests/test_check_fix_everything_we_touch.py::test_external_rule_tools_wired` |
+| **Governance hierarchy + engineering gatekeeping absorption** | `check_governance_binding_contract()` + `check_governance_archive_batch2_contract()` + `CLAUDE.md` § ENGINEERING GATEKEEPING | `tests/test_governance_consolidation.py::test_governance_binding_contract`, `::test_governance_archive_batch2_contract` |
+| **Ablation denominator vocabulary** (no bare cell counts in binding docs) | `check_ablation_denominator_vocabulary()` | `tests/test_governance_consolidation.py::test_ablation_denominator_vocabulary` |
+| **CI Tier C static gate** (every PR) | `.github/workflows/hardening.yml` → `python tools/enforce_all_rules.py --enforce-static` | `check_institutional_signoff_contract()` |
 
 **Pre-commit:** `check_institutional_contract()` runs on **every** commit (via `check_fix_everything_we_touch.py`), not only when UI files are staged. A promotion without a registry row + checker is rejection-grade.
 
-### Rule enforcement — agent binding (2026-06-06 — operator)
+### Rule enforcement — uniform Cursor + Claude (2026-06-11 — operator binding)
 
 | Agent | What is mechanically enforced | Honest limit |
 |-------|------------------------------|--------------|
+| **Either agent — implementation sign-off** | Tier A: `python tools/enforce_all_rules.py --objective-audit` exit 0 + [§Institutional sign-off contract](#institutional-signoff-contract) block | Chat output not scanned unless commit carries `VERDICT:` |
 | **Either agent at commit** | pre-commit → `check_fix_everything_we_touch.py` (static locks, banned phrases in staged source + commit msg) | Only runs when committing |
-| **Either agent before sign-off** | `python tools/enforce_all_rules.py --enforce-static` + `--code-quality` | Does not scan chat output |
-| **Claude Code at turn-end** | `.claude/settings.json` Stop hook → `enforce_all_rules.py --stop-hook` (output phrases + session-touched files) | Claude harness only |
-| **Cursor during chat** | `.cursor/rules/00-always.mdc` → read AGENTS; no output hook exists | **Cannot** mechanically block Cursor chat violations today |
+| **Either agent — repository hard gate** | Tier B: `python tools/enforce_all_rules.py --enforce-all` exit 0 | Does not replace Tier A |
+| **Either agent — mid-turn sanity** | Tier C: `--enforce-static` / `--code-quality` | **Never** admits `AUDIT: CLEAN` |
+| **Claude Code at turn-end** | `.claude/settings.json` Stop hook → `enforce_all_rules.py --stop-hook` | Claude harness only |
+| **Cursor during chat** | `.cursor/rules/00-always.mdc` → read AGENTS; identical law, no output hook | Violations block at commit / operator catch-net |
 
 Prose-only rules without a registry row + `check_*` lock are **incomplete promotions** — rejection-grade per the table above.
 
@@ -137,6 +200,8 @@ Pre-commit runs static locks on every commit; `--code-quality` is the explicit f
 
 ## Ablation universe — Schwab-catalog first `[PROMOTED]` (2026-06-04 — operator binding)
 
+**Placement authority:** [§Ablation contract — feature→model→horizon](#ablation-contract-o56) + [§Ablation grid](#ablation-grid--all-seven-models--all-four-horizons-promoted-2026-06-05--operator-escalation-non-negotiable) denominator glossary. This section owns **Schwab-catalog expansion only**.
+
 **Agents MUST NOT pre-pick ablation winners** by restricting the candidate set to what the current ML stack already consumes. That is rejection-grade scope-narrowing.
 
 | Requirement | Violation |
@@ -154,7 +219,9 @@ Pre-commit runs static locks on every commit; `--code-quality` is the explicit f
 
 ## Full stack — all seven models `[PROMOTED]` (2026-06-04 — operator binding)
 
-**Every agent turn that names the ML stack MUST list all seven models** — partial lists are rejection-grade (omitting Regime or Meta is the recurring failure mode).
+**Placement authority:** [§Ablation contract](#ablation-contract-o56). This section owns the **seven-model roster** only — partial lists in chat or commits are rejection-grade.
+
+**Every agent turn that names the ML stack MUST list all seven models** — omitting Regime or Meta is the recurring failure mode.
 
 | # | Slug | Role |
 |---|------|------|
@@ -167,8 +234,6 @@ Pre-commit runs static locks on every commit; `--code-quality` is the explicit f
 | 7 | `fusion` | Bayesian fusion posterior |
 
 **Canonical source:** `governed_stack_contract.FULL_STACK_MODEL_LAYERS` — import this tuple; do not maintain divergent local lists.
-
-**Ablation / stack eval:** the **placement grid** is **`feature × model × horizon`** where **model** is all seven layers and **horizon** is all four (`1c`, `5c`, `15c`, `60c`). Partial grids (feature×horizon-only, xgb/lstm/transformer-only, omitting meta/monte_carlo/regime/fusion) are **rejection-grade**. All seven appear in manifest `full_stack_layers`.
 
 **No production wiring until additive:** Schwab leaves win discovery ablation (materialized on labeled rows) before any live cone wiring.
 
@@ -194,7 +259,17 @@ Pre-commit runs static locks on every commit; `--code-quality` is the explicit f
 
 ## Ablation grid — all seven models × all four horizons `[PROMOTED]` (2026-06-05 — operator escalation; non-negotiable)
 
-**Operator binding:** ablation MUST score **every atomic feature** at **every stack model** at **every governed horizon**. There is no admissible partial grid.
+**Operator binding:** ablation MUST score **every atomic feature** at **every stack model** at **every governed horizon**. Partial grids are **rejection-grade**. Full placement law: [§Ablation contract](#ablation-contract-o56).
+
+### Ablation denominator glossary (mandatory — ban raw cell counts without slot name)
+
+| Slot | Formula / source | Admissible use |
+|------|------------------|----------------|
+| **`catalog_slots`** | 280 groups × 7 models × 4 horizons = **7,840** | Manifest catalog accounting — **not** a runnable-completion claim |
+| **`manifest_in_cone`** | ~94 captured features × 7 × 4 = **2,632** | Code-registry cone accounting — **not** wire-runnable alone |
+| **`runnable_scored`** | `ablation_cell_accounting.runnable_target` (typically **~1,092–1,288**) | **Only** admissible `--ablation` / survivor-completion denominator |
+
+Citing `catalog_slots` or `manifest_in_cone` as proof that `--ablation` finished is **rejection-grade**. Preflight `ready` is **only** `ready_for_unbiased_ablation`.
 
 | Grid axis | Required values | Partial grid = rejection-grade |
 |-----------|-----------------|--------------------------------|
@@ -202,26 +277,26 @@ Pre-commit runs static locks on every commit; `--code-quality` is the explicit f
 | **horizon** | All 4 — `1c`, `5c`, `15c`, `60c` | Single-horizon runs, "primary horizon only" |
 | **feature** | Full captured-cone atomic universe | Pre-cull, manifest `members` routing, compound bundles |
 
-**Cell count:** Catalog grid = `280 groups × 7 × 4 = 7,840` accounting slots. **Runnable scored grid** = `wire_scoring_groups × 7 × 4` from `ablation_cell_accounting.runnable_target` (typically ~1,092–1,288 — not 2,632 or code-registry 94). Each runnable cell pools **SPY, QQQ, IWM**.
-
 **Readiness requires the FULL cube — all 7 models × all 4 horizons × all 3 pool tickers (SPY, QQQ, IWM).** Preflight `ready` is **only** `ready_for_unbiased_ablation` — DB-wire agnostic ingest (`audit_ablation_ingest_purity`), row fidelity, zero score-path derailers (`audit_ablation_score_path_bias`), seven-layer probe under `ED_ABLATION_SCORING_PASS`, and `placement_validity.ok`. **`ready_for_production_path_ablation`** is the explicit alternate when score-path bias is accepted (production fusion re-engineering). XGB-loadable-alone is NOT ready; cell gating / skipped horizons / skipped models is NOT ready; DB-has-data alone is NOT ready; preflight green under ablation env while LSTM/TR knockouts are no-ops is NOT ready; **`ready_for_whole_stack` alone is NOT unbiased green**.
 
-**Agent/operator audit (every ablation turn — exit 0 required before claiming complete):**
+**Agent/operator audit (every ablation turn — Tier A exit 0 + extensions before claiming complete):**
 ```bash
+python tools/enforce_all_rules.py --objective-audit --ablation-bias
 python tools/feature_curation_gate.py --ablation-audit
-python tools/enforce_all_rules.py --objective-audit
 ```
 Static locks run on every pre-commit; runtime preflight runs when `data/ed_console.db` exists.
 
-**Banned agent vocabulary:** "feature×horizon only", "Stage 3 without model axis", "base models only for placement", "meta/MC/regime/fusion don't consume features so skip them", "ready" while any pool ticker or horizon is blocked, describing `--ablation` as complete without all **runnable** cells scored (denominator from `ablation_cell_accounting.runnable_target`, not catalog slots).
+**Banned agent vocabulary:** "feature×horizon only", "Stage 3 without model axis", "base models only for placement", "meta/MC/regime/fusion don't consume features so skip them", "ready" while any pool ticker or horizon is blocked, describing `--ablation` as complete without all **`runnable_scored`** cells scored.
 
-**Mechanical lock:** `check_ablation_seven_model_four_horizon_grid()` + `check_ablation_full_stack_non_negotiable()` + `check_graphrag_fidelity_ablation_contract()` + `check_ablation_agnostic_ingest_contract()` in `check_fix_everything_we_touch.py` — **every pre-commit**. Runtime: `run_ablation_integrity_audit()` via `--ablation-audit` or `python tools/enforce_all_rules.py --ablation-bias`. Preflight requires `audit_ablation_ingest_purity()` + `audit_ablation_row_fidelity()` + `audit_ablation_score_path_bias()`. Paired: `tests/test_check_fix_everything_we_touch.py::test_ablation_grid_requires_all_seven_models_and_four_horizons`, `::test_ablation_full_stack_non_negotiable_contract`, `::test_graphrag_fidelity_ablation_contract`, `::test_ablation_agnostic_ingest_contract`.
+**Mechanical lock:** `check_ablation_seven_model_four_horizon_grid()` + `check_ablation_full_stack_non_negotiable()` + `check_graphrag_fidelity_ablation_contract()` + `check_ablation_agnostic_ingest_contract()` in `check_fix_everything_we_touch.py` — **every pre-commit**. Runtime: `run_ablation_integrity_audit()` via `--ablation-bias`. Preflight requires `audit_ablation_ingest_purity()` + `audit_ablation_row_fidelity()` + `audit_ablation_score_path_bias()`. Paired: `tests/test_check_fix_everything_we_touch.py::test_ablation_grid_requires_all_seven_models_and_four_horizons`, `::test_ablation_full_stack_non_negotiable_contract`, `::test_graphrag_fidelity_ablation_contract`, `::test_ablation_agnostic_ingest_contract`.
 
-**Scored run scope (2026-06-07):** Manifest retains full Schwab catalog (280 groups). Stage 3 scores **DB wire atoms only** (`ablation_scoring_groups` ∩ `ablation_db_wire_ablatable_columns`). **Runnable denominator** = wire features with knockout column on identity-enriched rows × 7 models × 4 horizons (typically **~39–46 × 28 = 1,092–1,288** on SPY/QQQ/IWM — not catalog-inflated 2,632 or code-registry 94). XGB-engineered-only manifest atoms (`time_cos`, `dgex_positive`, `cf_*`, …) without a DB column are **honestly not runnable** until persisted to `snapshots_1m_normalized` or reclassified. Catalog-only `not_wired` Schwab slots are **not** walked during `--ablation`.
+**Scored run scope:** Manifest retains full Schwab catalog (`catalog_slots`). Stage 3 scores **DB wire atoms only** (`ablation_scoring_groups` ∩ `ablation_db_wire_ablatable_columns`). **`runnable_scored`** = wire features with knockout column on identity-enriched rows × 7 × 4 (typically ~39–46 × 28). XGB-engineered-only manifest atoms without a DB column are **not runnable** until persisted. Catalog-only `not_wired` Schwab slots are **not** walked during `--ablation`.
 
 ---
 
 ## GraphRAG fidelity-first — ablation and experimentation `[PROMOTED]` (2026-06-07 — operator binding)
+
+**Placement authority:** [§Ablation contract](#ablation-contract-o56). This section owns **producer→consumer inventory + ingest/score bias gates** only.
 
 **Problem:** Grep/scan/isolated Read misses producer→consumer bias (registry pre-placement, confluence on enrich path, fallback knockouts, noop cells scored as ok, preflight green while score path re-engineers). That is rejection-grade experimentation malpractice. Prior agents certified MET/institutional while omitting these layers — **green = unbiased only when every row below is bias-free or explicitly gated**.
 
@@ -293,22 +368,14 @@ IMPLEMENT → VERIFY → SCORE → (if any applicable row not MET/EXCEEDED) → 
 | Step | Action | Stop condition |
 |------|--------|----------------|
 | **1. IMPLEMENT** | Code + paired tests in existing owners ([§No new files](#no-new-files)); Schwab work also per [CLAUDE.md](CLAUDE.md) canopy→leaf | — |
-| **2. VERIFY** | Run paired tests + `python tools/check_fix_everything_we_touch.py`; live diag when pipeline/UI/API claims are in scope; re-Read at tip before sign-off | All green |
-| **3. SCORE** | Score **every applicable row** — world-class gate table, mandatory registry, [§Closure definition](#closure-definition--no-deferral) when closing FINDs, Schwab register/perf-proof when in Schwab scope | Each row **MET** or **EXCEEDED** only |
+| **2. VERIFY** | Tier A + cone extensions per [§Institutional sign-off contract](#institutional-signoff-contract); paired tests; re-Read at tip | All green |
+| **3. SCORE** | Score **every applicable row** — world-class gate table, mandatory registry, [§Closure bundle](#closure-bundle) when closing FINDs, Schwab register/perf-proof when in Schwab scope | Each row **MET** or **EXCEEDED** only |
 | **4. LOOP** | Any row scored PARTIAL / NO / mostly / letter-grade → return to step 1 for that row | None remain |
-| **5. SIGN-OFF** | Emit the sign-off block below in chat and/or commit body | `VERDICT: MET` or `VERDICT: EXCEEDED` only |
+| **5. SIGN-OFF** | Emit [§Institutional sign-off contract](#institutional-signoff-contract) canonical block | `VERDICT: MET` or `EXCEEDED` only |
 
 **Banned sign-off vocabulary (rejection-grade everywhere — chat, commits, OPEN_ITEMS):** "mostly", "partial(ly) meets", "meets with gaps", "B+", "B−", "A−", "not yet", "does not exceed", "honest limit" **as the completion verdict**, "good enough", "substandard but", "for the most part", "standard met for this slice/area/section only".
 
-**Required sign-off block** (when claiming **any** work is complete — turn report, commit, PR body):
-
-```
-VERDICT: MET | EXCEEDED
-SCOPE: full repo | <named paths touched this turn — not a scope-narrowing excuse>
-CYCLE_ITERATIONS: <n>
-GATE_TABLE:
-  <gate_row>: MET | EXCEEDED — <evidence cite: tests/… or file:line or live_diag one-liner>
-```
+**Sign-off block:** use [§Institutional sign-off contract](#institutional-signoff-contract) canonical block only — no alternate templates.
 
 If you cannot fill every **applicable** `GATE_TABLE` line with MET or EXCEEDED and a cite, **the work is not done** — continue the cycle. Omitting rows because they are "outside this slice" is scope-narrowing and rejection-grade.
 
@@ -346,7 +413,7 @@ OBJECTIVE → CODE → AUDIT → (defects?) RECODE → REAUDIT → … → AUDIT
 |------|------------|----------------|
 | **1. OBJECTIVE** | **State the operator objective first** in chat — one sentence naming what success looks like for *this* turn (not a generic process description) | Operator can confirm you are on the right track |
 | **2. CODE** | Implement the fix / feature in existing owners ([§No new files](#no-new-files)); MIT bar + simplicity per [§Universal code quality](#universal-code-quality--simplicity-and-institutional-pride-promoted-2026-06-06--operator-binding-full-repo) | Code lands |
-| **3. AUDIT** | Run `python tools/enforce_all_rules.py --objective-audit` — **repo-wide static locks always**; **situational runtime probes only where the touched cone / subsystem fits** (see table below) | `AUDIT: CLEAN` |
+| **3. AUDIT** | Tier A: `python tools/enforce_all_rules.py --objective-audit` — repo-wide static **always**; situational runtime where cone fits (table below) | `AUDIT: CLEAN` |
 | **4. LOOP** | Any audit defect → **recode in the same turn** → **reaudit**; repeat until clean | Zero open defects in audit output |
 | **5. SUMMARIZE** | Report findings with evidence cites only after step 4 passes | Operator sees objective + what changed + audit proof |
 
@@ -368,30 +435,21 @@ OBJECTIVE → CODE → AUDIT → (defects?) RECODE → REAUDIT → … → AUDIT
 - Skipping step 1 (objective) or step 3 (audit) because tests passed or static locks green
 - Leaving known audit defects for a "follow-up" without `[REAL-GATE: …]` in `OPEN_ITEMS`
 
-**Required chat sign-off block** (when claiming work complete — turn report, commit, PR body):
+**Sign-off block:** [§Institutional sign-off contract](#institutional-signoff-contract) canonical block — **mandatory**; this section defines workflow steps only.
 
-```
-OBJECTIVE: <one sentence — operator intent this turn>
-AUDIT: CLEAN — python tools/enforce_all_rules.py --objective-audit (exit 0)
-VERDICT: MET | EXCEEDED
-SCOPE: <paths touched — full repo static; situational runtime named if run>
-CYCLE_ITERATIONS: <n>
-GATE_TABLE:
-  <gate_row>: MET | EXCEEDED — <evidence cite>
-```
-
-**Agent/operator audit (every implementation turn — exit 0 required before sign-off):**
+**Agent/operator audit (every implementation turn — Tier A exit 0 before `VERDICT:`):**
 ```bash
 python tools/enforce_all_rules.py --objective-audit
 # Ablation / placement claims also require:
 python tools/enforce_all_rules.py --ablation-bias
+python tools/feature_curation_gate.py --ablation-audit
 # Force every situational runtime probe (operator / pre-ablation gate):
 python tools/enforce_all_rules.py --objective-audit --full-runtime
 ```
 
-**Mechanical lock:** `run_repo_wide_static_audit()` + `run_objective_code_audit()` + `run_situational_runtime_audits()` + `check_objective_code_audit_signoff()` in `check_fix_everything_we_touch.py` — pre-commit static wiring on **every** commit; `--objective-audit` orchestrates repo-wide static + situational runtime. Paired: `tests/test_check_fix_everything_we_touch.py::test_objective_code_audit_contract`, `::test_objective_code_audit_universal_scope`, `::test_objective_code_audit_situational_runtime_dispatch`.
+**Mechanical lock:** `check_institutional_signoff_contract()` + `run_objective_code_audit()` + `run_situational_runtime_audits()` + `check_objective_code_audit_signoff()`. Paired: `tests/test_governance_consolidation.py::test_institutional_signoff_contract`, `tests/test_check_fix_everything_we_touch.py::test_objective_code_audit_contract`.
 
-**Relationship to [§Meet-or-Exceed Closure Cycle](#meet-or-exceed-closure-cycle):** Meet-or-Exceed is the **verdict vocabulary**; Objective→Code→Audit is the **mandatory turn workflow** that must complete before any `VERDICT:` is admissible — **full repo**, one cycle.
+**Relationship to [§Meet-or-Exceed Closure Cycle](#meet-or-exceed-closure-cycle):** Meet-or-Exceed is **verdict vocabulary + loop**; Objective→Code→Audit is **turn workflow**; [§Institutional sign-off contract](#institutional-signoff-contract) is the **single admissible block + Tier A ladder** — full repo, both agents.
 
 ---
 
@@ -464,7 +522,7 @@ This rule sits above §Fix everything we touch because lying makes every other r
 
 ## Fix everything we touch `[PROMOTED]` (2026-05-24 — top rule)
 
-**Every Read is a write obligation.** Open a file, cone, or walk for audit, review, investigation, or disposition → **fix every FIND there before sign-off or commit**. Same turn. Same commit bundle (code + test + governance touch per [§Closure definition + no-deferral](#closure-definition--no-deferral)).
+**Every Read is a write obligation.** Open a file, cone, or walk for audit, review, investigation, or disposition → **fix every FIND there before sign-off or commit**. Same turn. Same commit bundle per [§Closure bundle](#closure-bundle).
 
 | In scope | Out of scope (only with evidence) |
 |----------|-----------------------------------|
@@ -495,9 +553,9 @@ This rule sits above §Fix everything we touch because lying makes every other r
 
 ---
 
-## Action-not-documentation `[PROMOTED]` (2026-05-25 — operator escalation)
+## Action-not-documentation `[CONSOLIDATED]` (2026-05-25 — artifact corollary of §Code-first)
 
-**No documentation without code-fix scope.** Every plan, phase, memo, audit, OPEN_ITEMS row, or process artifact must carry CODE-FIX scope — paired commit SHA, paired test ID, OR named code target (`file:line`) for the next action. Artifacts exist to drive code change; they are not the deliverable, the code they cite is. Pure description without action is the violation.
+**Corollary of [§Code-first](#code-first--no-governance-only-turn-promoted--2026-05-25--operator-escalation)** — not a separate standard. No documentation without code-fix scope.
 
 | Required content (per artifact section) | Banned as sole content |
 |-----------------------------------------|------------------------|
@@ -643,22 +701,22 @@ Operator has standing full repo access. Do not ask for read-only research.
 
 ### Two-way audit — MANDATORY before any stage / gate / MET claim (2026-06-05 — operator binding)
 
-Neither agent signs off from the other's summary. Each deliverable gets **two independent passes** — implementer audit (the coding agent re-Reads the touched cone at tip and runs the **full acceptance command, not a sub-function**) and verifier audit (the other agent / operator **re-runs the same command independently** and challenges gate-conflation, scope-narrowing, and "green sub-function = green gate"). The **mechanical gate's exit code is the arbiter.**
+Neither agent signs off from the other's summary. Each deliverable gets **two independent passes** — implementer runs Tier A + fills canonical block; verifier **recomputes** Tier A and challenges gate-conflation. **Mechanical gate exit code is the arbiter.**
 
-**Required evidence block — both agents, identical shape; the verifier RECOMPUTES, never echoes:**
+**Peer extension fields** (add to canonical block when arbiter is in play — do not use a separate template):
+
 ```
-AUDIT: <Cursor|Claude>
-SLICE: <name>
-ACCEPTANCE GATE: <full command> → exit <code>     ← BINDING
+PEER_AUDIT: <Cursor|Claude> recomputed Tier A exit <code> — BINDING
+ACCEPTANCE_GATE: python tools/enforce_all_rules.py --objective-audit → exit <code>
 AXIS placement: <fn> → PASS|FAIL + cite
 AXIS coverage:  <fn> → PASS|FAIL + cite
-TESTS: <command> → <N passed, N skipped>           (re-run, not quoted)
-FINDS: <none | table file:line>
-VERDICT: MET|NOT MET|EXCEEDED   ← only if gate exit 0 AND all axes PASS
+TESTS: <command> → <N passed> (re-run, not quoted)
+VERDICT: MET|NOT MET|EXCEEDED ← only if Tier A exit 0 AND applicable axes PASS
 ```
-**Hard rules (rejection-grade):** a sub-function PASS is **never** the gate PASS — cite the command that failed, not a parent name; **placement MET ≠ stage MET while the coverage axis is RED**; the verifier rejects any sign-off whose evidence is missing, echoed, or uses a sub-function as the gate; either side **retracts a prior MET** if re-audit fails. No MET until **both** audits agree **and** the acceptance gate is exit 0. (Verifier-side discipline = the `drift-audit` skill.)
 
-**Gatekeeper pending ≠ fix parking.** Memo status `pending gatekeeper` applies to **disposition sign-off**, not to deferring a **known, in-scope code fix** surfaced in the same Read. The only admissible split is [REAL-GATE](#closure-definition--no-deferral) with tag in `OPEN_ITEMS`.
+**Hard rules (rejection-grade):** Tier B/C is **never** the acceptance gate; **placement MET ≠ stage MET** while coverage axis is RED; either side **retracts** prior MET if re-audit fails. Drift-audit skill (`.claude/skills/drift-audit/SKILL.md`) binds verifier discipline.
+
+**Gatekeeper pending ≠ fix parking.** Memo status `pending gatekeeper` applies to **disposition sign-off**, not deferring a **known, in-scope code fix** surfaced in the same Read. The only admissible split is [REAL-GATE](#closure-definition--no-deferral) with tag in `OPEN_ITEMS`.
 
 ### V4 walk / review-memo rule
 
@@ -670,6 +728,15 @@ When a review memo (e.g. `governance/SCHWAB_V4_REVIEW_MEMOS/*.md`) records:
 then the **same commit** that adds or updates the memo must include that code change + paired test (unless a REAL-GATE tag applies). **Memo-only commits that document fixable code debt are rejection-grade.**
 
 Schwab register-row / perf-proof / O-XX authorization slices still follow `governance/CURSOR_V4_AGENT_BRIEF.md` — but that brief is subordinate to this section for fix-as-we-find conflicts.
+
+**Schwab V4 commit classes (`governance/CURSOR_V4_AGENT_BRIEF.md`, binding when market-field work is in scope):**
+
+| Class | When | Requirement |
+|-------|------|-------------|
+| **A — fix-as-we-find** | Known wire/UI FIND in producer/consumer cone | Code + paired test + memo/register touch **same commit** — no memo-only |
+| **B — register / O-NN** | New GOVERNED_EXCEPTION or register row without immediate wire fix | Gatekeeper CSV cross-check + register slice; code fix follows in Class A when FIND proven |
+
+**Peer audit:** extend [§Institutional sign-off contract](#institutional-signoff-contract) block with `PEER_AUDIT` — **recomputed** Tier A exit code; sub-function PASS is never gate PASS.
 
 ### Handoff rejection checklist (executing agent)
 
@@ -732,6 +799,10 @@ Schwab-only phrases remain in `CLAUDE.md` FORBIDDEN PHRASES.
 
 ## Closure definition + no-deferral `[PROMOTED]` (2026-05-24 binding — operator escalation)
 
+<a id="closure-bundle"></a>
+
+### Closure bundle (mandatory same-commit — no partial closure)
+
 **Closure of any slice means ALL of the following land in the same commit:**
 
 1. **Code** — the fix itself.
@@ -790,7 +861,7 @@ There is no third state. "Disclosed residual / tracked residual / bounded-design
 
 The feature ablation is **per-feature × per-model × per-horizon** — every atomic feature evaluated in **all seven stack models** at **all four horizons** (compound / bundled groups are **VOID**). Binding (register **O-56**):
 
-- Grid is **`feature × model × horizon`** (one atomic feature per unit). **Model** = all seven stack layers (`xgb`, `lstm`, `transformer`, `meta`, `monte_carlo`, `regime`, `fusion`); **horizon** = all four (`1c`, `5c`, `15c`, `60c`). **Tickers are pooled** (SPY+QQQ+IWM) — **not** a grid axis. For each cell the feature is permuted/knocked out and its effect at that `(model, horizon)` is recorded (`log_loss_delta` + derived layer audit). Expected size: **94 captured features × 7 models × 4 horizons = 2,632 cells.**
+- Grid is **`feature × model × horizon`** (one atomic feature per unit). **Model** = all seven stack layers; **horizon** = all four (`1c`, `5c`, `15c`, `60c`). **Tickers pooled** (SPY+QQQ+IWM) — not a grid axis. Denominator vocabulary: [§Ablation grid](#ablation-grid--all-seven-models--all-four-horizons-promoted-2026-06-05--operator-escalation-non-negotiable) glossary — cite **`runnable_scored`** for completion claims only.
 - Survivors resolve **per (model, horizon)** only — which features survive for each model at each horizon. **No** single global survivor list across models or horizons; **no** per-ticker list (pooled). There is **no fabricated default drop set** (`DEFAULT_ABLATION_DROP_GROUP_IDS` removed 2026-06-03). The **only** admissible placement router is the per-`(model, horizon)` survivor matrix applied at each model's feature assembly.
 - **TRAINING CONSUMES THE SURVIVORS — full-feature training is NOT a valid retrain target.** When a complete ablation matrix exists, full-feature training is **never** an acceptable default, fallback, or *offered option*. If survivors cannot be applied → **fail loud and stop — do not train.**
 - Legacy holdout MCC for xgb/lstm/transformer only (`--ablation-include-o56`) and stack-authority mode-lifts are **diagnostic partial axes** — they may **never** replace or collapse the full **`feature × 7 models × 4 horizons`** placement grid.
@@ -892,6 +963,32 @@ Same AGENTS.md + ACTIVE_PROGRAM apply; no reduced governance on async runs.
 
 ---
 
+## Governance document hierarchy `[PROMOTED]` (2026-06-11 — operator binding)
+
+**Problem:** ~107 `governance/*.md` files exist; treating slice memos or stale epics as law causes drift. Only the **binding stack** below is always-on; everything else is spec vault unless promoted per the promote-or-archive rule.
+
+| Tier | Paths | Binding? |
+|------|-------|----------|
+| **1 — Agent behavior** | `AGENTS.md`, `CLAUDE.md` (Schwab field law), `docs/governance/AGENT_SELF_GOVERNANCE.md` (process mechanics) | **Yes** |
+| **2 — Current epic** | `ACTIVE_PROGRAM.md`, `OPEN_ITEMS.md` | **Yes** |
+| **3 — Schwab V4 program** (when epic cites) | `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md`, `governance/SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md`, `governance/CURSOR_V4_AGENT_BRIEF.md`, `governance/OPERATOR_DECISION_REGISTER.md`, `governance/STACK_WIRING_INTEGRITY_MAP.md`, `governance/SCHWAB_V4_REVIEW_MEMOS/*` | **Yes when in scope** |
+| **4 — Mechanical enforcement** | `tools/check_*.py`, `governance/forbidden_phrases.py`, pinned `governance/artifacts/*.json` | **Yes** |
+| **5 — Spec vault / history** | Most other `governance/*.md`, `docs/plans/*.md`, `governance/INSTITUTIONAL_STANDARD_V3.md` (§20 amendment path only) | **No** — unless promoted |
+
+**Conflicts:** `ACTIVE_PROGRAM.md` names the epic; **this file is agent-behavior law**; `CLAUDE.md` owns Schwab market-field methodology. Cursor loads pointers from [`.cursor/rules/00-always.mdc`](.cursor/rules/00-always.mdc) — **not** a second law surface. Do not treat random `governance/*.md` or `docs/plans/*.md` as binding unless Tier 2–3 explicitly cites them for the current epic.
+
+**Promote-or-archive rule:** If operators or agents enforce a rule from a Tier-5 doc → **promote** text to Tier 1–2 + add `check_*` lock in the **same commit**, **or** mark the doc superseded and move body to `governance/archive/` with a forwarding stub at the old path.
+
+**Engineering gatekeeping:** Absorbed into `CLAUDE.md` § ENGINEERING GATEKEEPING — `governance/ENGINEERING_GATEKEEPING_POLICY.md` is reference only (not independent law).
+
+**Explicitly deferred (NOT binding until code locks):** V3 INF package (INF-1–4), `PRODUCTION_CLAIMS_REGISTER` merge gates — see `ACTIVE_PROGRAM.md` §Deferred.
+
+**Reconciliation inventory:** `governance/consolidation/reconciliation_worksheet.json` — bucket labels `A-*`=active law, `B-*`=spec vault, `C-*`=archive candidate, `D-no-refs`, `GAP-promote-candidate`.
+
+**Mechanical lock:** `check_governance_binding_contract()` in `check_fix_everything_we_touch.py` — pre-commit via `_REPO_WIDE_STATIC_CHECK_FUNCS`. Paired: `tests/test_governance_consolidation.py::test_governance_binding_contract`.
+
+---
+
 ## Audit excludes `[NEW]`
 
 Do not count toward repo hygiene sweeps: `**/.claude/worktrees/**`, `governance/archive/**`, `models/active*/**`.
@@ -909,4 +1006,4 @@ Do not count toward repo hygiene sweeps: `**/.claude/worktrees/**`, `governance/
 | Code principles (minimal scope, conventions) | `[PROMOTED]` → posture |
 | Communication / citations | `[PROMOTED]` → posture |
 
-Superseded by `.cursor/rules/00-always.mdc` for always-on read order and conflict resolution.
+Cursor always-on **pointers** (read order, workspace) live in `.cursor/rules/00-always.mdc`. **Behavior law lives here (`AGENTS.md`) only.**

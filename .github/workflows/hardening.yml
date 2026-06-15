@@ -38,6 +38,8 @@ jobs:
         run: python tools/check_no_deferral_language.py
       - name: fix-everything-we-touch
         run: python tools/check_fix_everything_we_touch.py
+      - name: enforce-static (repo-wide static locks — Tier C CI gate)
+        run: python tools/enforce_all_rules.py --enforce-static
       - name: no-grep subprocess
         run: python tools/check_no_grep_subprocess.py
 

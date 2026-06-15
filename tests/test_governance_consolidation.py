@@ -277,6 +277,59 @@ def test_agents_mandatory_enforcement_registry() -> None:
     assert "Mandatory enforcement registry" in agents
     assert "check_institutional_contract()" in agents
     assert "Cards lit + no false STALE pill" in agents
+    assert "check_governance_binding_contract()" in agents
+    assert "check_institutional_signoff_contract()" in agents
+
+
+def test_governance_binding_contract() -> None:
+    from tools.check_fix_everything_we_touch import check_governance_binding_contract
+
+    errors = check_governance_binding_contract()
+    assert errors == [], f"governance binding contract: {errors}"
+    agents = _read("AGENTS.md")
+    assert "Governance document hierarchy" in agents
+    assert "INSTITUTIONAL_STANDARD_V3.md" in agents
+    active = _read("ACTIVE_PROGRAM.md")
+    assert "Governance document hierarchy" in active
+    eng = _read("governance/ENGINEERING_GATEKEEPING_POLICY.md")
+    assert "Binding authority:" in eng
+
+
+def test_institutional_signoff_contract() -> None:
+    from tools.check_fix_everything_we_touch import check_institutional_signoff_contract
+
+    errors = check_institutional_signoff_contract()
+    assert errors == [], f"institutional sign-off contract: {errors}"
+    agents = _read("AGENTS.md")
+    assert "Institutional sign-off contract — uniform Cursor + Claude" in agents
+    assert "Tier A" in agents
+    assert "Canonical sign-off block" in agents
+    assert "AUDIT_LADDER:" in agents
+    assert "catalog_slots" in agents
+    assert "runnable_scored" in agents
+    cursor = _read(".cursor/rules/00-always.mdc")
+    assert "Tier A" in cursor
+    assert "Institutional sign-off contract" in cursor
+    enforce = _read("tools/enforce_all_rules.py")
+    assert "Tier A" in enforce
+    hardening = _read(".github/workflows/hardening.yml")
+    assert "enforce_all_rules.py --enforce-static" in hardening
+
+
+def test_governance_archive_batch2_contract() -> None:
+    from tools.check_fix_everything_we_touch import check_governance_archive_batch2_contract
+
+    errors = check_governance_archive_batch2_contract()
+    assert errors == [], f"governance archive batch 2: {errors}"
+    queue = _read("governance/REPO_CLEANUP_QUEUE.md")
+    assert "batch 2 complete" in queue.lower()
+
+
+def test_ablation_denominator_vocabulary() -> None:
+    from tools.check_fix_everything_we_touch import check_ablation_denominator_vocabulary
+
+    errors = check_ablation_denominator_vocabulary()
+    assert errors == [], f"ablation denominator vocabulary: {errors}"
 
 
 def test_agents_meet_or_exceed_closure_cycle() -> None:

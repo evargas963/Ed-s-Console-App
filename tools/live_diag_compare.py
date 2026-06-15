@@ -6,6 +6,7 @@ for model stack proxies, predictive horizons, multi-horizon / THE CALL fields.
 Usage (console running with ED auth OK):
   set ED_LIVE_DIAG=1
   python tools/live_diag_compare.py SPY QQQ
+  python tools/live_diag_compare.py --ui-maximize-probe SPY
 
 Uses ``ticker=`` on ``/api/state`` (``symbol=`` is also accepted as an alias on the server).
 
@@ -19,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 from typing import Any, Optional
@@ -30,6 +32,75 @@ def _get(url: str, token: Optional[str]) -> dict[str, Any]:
         req.add_header("Authorization", f"Bearer {token}")
     with urllib.request.urlopen(req, timeout=15) as resp:
         return json.loads(resp.read().decode())
+
+
+def _post(url: str, token: Optional[str], body: dict | None = None) -> dict[str, Any]:
+    data = json.dumps(body or {}).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        method="POST",
+    )
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode())
+
+
+def _ui_maximize_probe(base: str, ticker: str, exp: str, token: Optional[str]) -> int:
+    """UI-MAXIMIZE timing probe — pending shell, partial Tier C, full fusion (_pipeline_ms)."""
+    t0 = time.perf_counter()
+    q_base = f"ticker={ticker}"
+    if exp:
+        q_base += f"&expiry={exp}"
+
+    try:
+        build = _get(f"{base}/api/build", token)
+        warm = _post(f"{base}/api/analytics/warm?{q_base}", token, {"source": "ui_maximize_probe"})
+        pending = _get(f"{base}/api/analytics/state?{q_base}", token)
+        t_pending_ms = int((time.perf_counter() - t0) * 1000)
+
+        t1 = time.perf_counter()
+        partial = _get(f"{base}/api/analytics/state?{q_base}&force=1", token)
+        t_partial_ms = int((time.perf_counter() - t1) * 1000)
+
+        t2 = time.perf_counter()
+        full = _get(f"{base}/api/analytics/state?{q_base}&force=1", token)
+        t_full_ms = int((time.perf_counter() - t2) * 1000)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")[:500]
+        print(f"HTTP {e.code}: {body}", file=sys.stderr)
+        return 1
+    except urllib.error.URLError as e:
+        print(f"URL error: {e}", file=sys.stderr)
+        print("Start the console server or set ED_DIAG_BASE.", file=sys.stderr)
+        return 1
+
+    sla = build.get("ui_maximize_sla_ms") or {}
+    print(f"\n=== UI-MAXIMIZE probe {ticker} ===")
+    print(f"sla_ms: {json.dumps(sla)}")
+    print(f"warm_post: {json.dumps(warm)}")
+    print(f"pending_shell_ms={t_pending_ms} analytics_pending_shell={pending.get('analytics_pending_shell')}")
+    print(
+        f"partial_tier_c_ms={t_partial_ms} analytics_partial_tier_c={partial.get('analytics_partial_tier_c')} "
+        f"_pipeline_ms={partial.get('_pipeline_ms')} mhap_rows={len(partial.get('mhap_rows') or [])}"
+    )
+    print(
+        f"full_fusion_ms={t_full_ms} fusion_available={full.get('fusion_available')} "
+        f"_pipeline_ms={full.get('_pipeline_ms')} mhap_rows={len(full.get('mhap_rows') or [])}"
+    )
+    fq_sla = int(sla.get("first_quote") or 500)
+    panel_sla = int(sla.get("fusion_cards_panel_warm") or 2000)
+    if ticker in ("SPY", "QQQ", "IWM"):
+        fusion_sla = panel_sla
+    else:
+        fusion_sla = int(sla.get("fusion_cards_guest_cold") or 15000)
+    print(
+        f"verdict: pending<={fq_sla} {'PASS' if t_pending_ms <= fq_sla else 'FAIL'} | "
+        f"fusion_target<={fusion_sla} {'PASS' if t_full_ms <= fusion_sla else 'SLOW'}"
+    )
+    return 0
 
 
 def _hz_probs(d: dict, hz: str) -> dict[str, Any]:
@@ -105,8 +176,15 @@ def main() -> int:
     base = (os.environ.get("ED_DIAG_BASE") or "http://127.0.0.1:8000").rstrip("/")
     exp = os.environ.get("ED_DIAG_EXPIRY") or ""
     token = os.environ.get("ED_DIAG_TOKEN") or None
-    ta = (sys.argv[1] if len(sys.argv) > 1 else "SPY").upper().strip()
-    tb = (sys.argv[2] if len(sys.argv) > 2 else "QQQ").upper().strip()
+    argv = [a for a in sys.argv[1:] if a]
+    ui_maximize_probe = "--ui-maximize-probe" in argv
+    if ui_maximize_probe:
+        argv = [a for a in argv if a != "--ui-maximize-probe"]
+    ta = (argv[0] if len(argv) > 0 else "SPY").upper().strip()
+    tb = (argv[1] if len(argv) > 1 else "QQQ").upper().strip()
+
+    if ui_maximize_probe:
+        return _ui_maximize_probe(base, ta, exp, token)
 
     q = "ticker={}&force=1"
     if exp:

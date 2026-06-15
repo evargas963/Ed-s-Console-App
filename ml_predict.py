@@ -87,8 +87,9 @@ def _model_registry_key(ticker: str, hz: str | None = None) -> str:
     Must include horizon slug so each governed horizon loads its own artifact
     (xgb_{TICKER}_{hz}.pkl, etc.) — not reused across horizons.
     """
+    bt = _bundle_ticker_for_artifacts(ticker)
     su = normalize_ml_horizon_slug(hz) if hz is not None else get_ml_infer_horizon_slug()
-    return f"{_reg_key(ticker)}:{su}"
+    return f"{_reg_key(bt)}:{su}"
 
 
 @contextmanager
@@ -104,6 +105,29 @@ def _cascade_challenger_inference_scope():
 _ml_infer_horizon_cv: ContextVar[str] = ContextVar(
     "ml_infer_horizon_slug", default=DEFAULT_ML_HORIZON_SLUG
 )
+
+# Guest anchor: load promoted weights from anchor ticker while features stay on guest ticker.
+_ml_bundle_ticker_cv: ContextVar[str | None] = ContextVar("ml_bundle_ticker_override", default=None)
+
+
+@contextmanager
+def ml_bundle_ticker_scope(bundle_ticker: str | None):
+    """When set, artifact paths/registry keys resolve to ``bundle_ticker`` (anchor weights)."""
+    if not bundle_ticker:
+        yield
+        return
+    tok = _ml_bundle_ticker_cv.set(str(bundle_ticker).upper().strip())
+    try:
+        yield
+    finally:
+        _ml_bundle_ticker_cv.reset(tok)
+
+
+def _bundle_ticker_for_artifacts(feature_ticker: str) -> str:
+    override = _ml_bundle_ticker_cv.get()
+    if override:
+        return override
+    return (feature_ticker or "").upper().strip()
 
 
 def get_ml_infer_horizon_slug() -> str:
@@ -352,6 +376,7 @@ def _model_probs_to_ui_output(p: Optional[dict], approved: bool) -> dict:
 
 def _model_dir_for_ticker(ticker: str) -> Path:
     """Resolve bundle dir: strict active, live ablation experiment (parallel), or offline scoring pass."""
+    bt = _bundle_ticker_for_artifacts(ticker)
     hz = get_ml_infer_horizon_slug()
     from arch_competition.stack_bundle_eval_v1 import (
         ablation_scoring_pass_active,
@@ -360,11 +385,11 @@ def _model_dir_for_ticker(ticker: str) -> Path:
     )
 
     if live_ablation_experiment_active():
-        return resolve_experiment_bundle_dir(ticker, hz, models_dir=MODEL_DIR)
+        return resolve_experiment_bundle_dir(bt, hz, models_dir=MODEL_DIR)
     if ablation_scoring_pass_active():
         from active_bundle_contract import active_bundle_dir
 
-        return active_bundle_dir(ticker, hz, models_dir=MODEL_DIR)
+        return active_bundle_dir(bt, hz, models_dir=MODEL_DIR)
     strict_active_only = os.environ.get("ED_XGB_STRICT_ACTIVE_ONLY", "1").strip().lower() not in (
         "0",
         "false",
@@ -373,16 +398,16 @@ def _model_dir_for_ticker(ticker: str) -> Path:
     if strict_active_only:
         from active_bundle_contract import active_bundle_dir, check_active_bundle_complete
 
-        canonical = active_bundle_dir(ticker, hz, models_dir=MODEL_DIR)
-        if not check_active_bundle_complete(ticker, hz, bundle_dir=canonical, models_dir=MODEL_DIR)[
+        canonical = active_bundle_dir(bt, hz, models_dir=MODEL_DIR)
+        if not check_active_bundle_complete(bt, hz, bundle_dir=canonical, models_dir=MODEL_DIR)[
             "compliant"
         ]:
             raise FileNotFoundError(
-                f"ED_XGB_STRICT_ACTIVE_ONLY=1: no complete active model bundle for {ticker} hz={hz} "
+                f"ED_XGB_STRICT_ACTIVE_ONLY=1: no complete active model bundle for {bt} hz={hz} "
                 f"at canonical {canonical} (requires xgb+lstm+transformer+meta_stack per active_bundle_contract)"
             )
         return canonical
-    return _model_dir_for_ticker_relaxed(ticker, hz)
+    return _model_dir_for_ticker_relaxed(bt, hz)
 
 
 def _model_dir_for_ticker_relaxed(ticker: str, hz: str) -> Path:
@@ -445,7 +470,8 @@ def _strict_bundle_block_detail(ticker: str, hz: str) -> str:
     """One-line compliance issues for operator-first strict-bundle warning."""
     from active_bundle_contract import check_active_bundle_complete
 
-    chk = check_active_bundle_complete(ticker, hz, models_dir=MODEL_DIR)
+    bt = _bundle_ticker_for_artifacts(ticker)
+    chk = check_active_bundle_complete(bt, hz, models_dir=MODEL_DIR)
     issues: list[str] = []
     for kind, art in (chk.get("artifacts") or {}).items():
         for msg in art.get("issues") or []:
@@ -520,20 +546,21 @@ def build_xgb_pre_engineering_snapshot_for_tick(
 
 
 def _load_xgb(ticker: str) -> bool:
+    bt = _bundle_ticker_for_artifacts(ticker)
     hz = get_ml_infer_horizon_slug()
-    rk = _model_registry_key(ticker, hz)
+    rk = _model_registry_key(bt, hz)
     if rk in _xgb_registry:
         return _xgb_registry[rk] is not None
 
-    base = _active_bundle_dir_for_load(ticker)
+    base = _active_bundle_dir_for_load(bt)
     if base is None:
         _xgb_registry[rk] = None
         return False
-    mp  = base / f"xgb_{ticker}_{hz}.pkl"
-    mtp = base / f"xgb_{ticker}_{hz}_meta.json"
+    mp  = base / f"xgb_{bt}_{hz}.pkl"
+    mtp = base / f"xgb_{bt}_{hz}_meta.json"
 
     if not mp.exists():
-        logger.debug("XGBoost model not found for %s", ticker)
+        logger.debug("XGBoost model not found for %s (bundle=%s)", ticker, bt)
         _xgb_registry[rk] = None
         return False
 
@@ -568,7 +595,7 @@ def _load_xgb(ticker: str) -> bool:
             category_maps=meta.get("category_maps", {}),
             vol_medians=meta.get("vol_medians", {}),
         )
-        logger.info("XGBoost loaded for %s hz=%s: %d features", ticker, hz, len(meta["features"]))
+        logger.info("XGBoost loaded for %s hz=%s: %d features", bt, hz, len(meta["features"]))
         return True
 
     except Exception as e:
@@ -626,7 +653,7 @@ def _predict_xgb(
             category_maps=reg["category_maps"],
             feature_names=reg["feature_names"],
             vol_medians=reg["vol_medians"],
-            ticker=ticker,
+            ticker=_bundle_ticker_for_artifacts(ticker),
         )
         if X is None:
             return None
@@ -689,17 +716,18 @@ def _predict_xgb_movement_heads(
     """
     hz = get_ml_infer_horizon_slug()
     tkr = ticker.strip().upper()
+    bt = _bundle_ticker_for_artifacts(ticker)
     out: dict[str, float] = {}
     _m5_snap_cached: dict | None = xgb_pre_engineering_snapshot
     for suffix, names_default in (("dir", ["up", "down"]), ("move", ["move", "no_move"])):
-        reg_key = f"{_model_registry_key(ticker, hz)}:{suffix}"
+        reg_key = f"{_model_registry_key(bt, hz)}:{suffix}"
         if reg_key not in _xgb_movehead_registry:
-            base = _active_bundle_dir_for_load(ticker)
+            base = _active_bundle_dir_for_load(bt)
             if base is None:
                 _xgb_movehead_registry[reg_key] = None
                 continue
-            mp = base / f"xgb_{tkr}_{hz}_{suffix}.pkl"
-            mtp = base / f"xgb_{tkr}_{hz}_{suffix}_meta.json"
+            mp = base / f"xgb_{bt}_{hz}_{suffix}.pkl"
+            mtp = base / f"xgb_{bt}_{hz}_{suffix}_meta.json"
             if not mp.is_file() or not mtp.is_file():
                 _xgb_movehead_registry[reg_key] = None
             else:
@@ -756,7 +784,7 @@ def _predict_xgb_movement_heads(
                 category_maps=reg["category_maps"],
                 feature_names=reg["feature_names"],
                 vol_medians=reg["vol_medians"],
-                ticker=ticker,
+                ticker=_bundle_ticker_for_artifacts(ticker),
             )
             if X is None:
                 continue
@@ -805,18 +833,19 @@ def _predict_xgb_movement_heads(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _load_lstm(ticker: str) -> bool:
+    bt = _bundle_ticker_for_artifacts(ticker)
     hz = get_ml_infer_horizon_slug()
-    rk = _model_registry_key(ticker, hz)
+    rk = _model_registry_key(bt, hz)
     if rk in _lstm_registry:
         return _lstm_registry[rk] is not None
 
-    base = _active_bundle_dir_for_load(ticker)
+    base = _active_bundle_dir_for_load(bt)
     if base is None:
         _lstm_registry[rk] = None
         return False
-    mp = base / f"lstm_{ticker}_{hz}.pt"
+    mp = base / f"lstm_{bt}_{hz}.pt"
     if not mp.exists():
-        logger.debug("LSTM model not found for %s at %s", ticker, mp)
+        logger.debug("LSTM model not found for %s (bundle=%s) at %s", ticker, bt, mp)
         _lstm_registry[rk] = None
         return False
 
@@ -824,16 +853,16 @@ def _load_lstm(ticker: str) -> bool:
         from lstm_model import load_lstm
 
         model, checkpoint = load_lstm(
-            model_path=mp, ticker=ticker, model_dir=base, ml_horizon_slug=hz,
+            model_path=mp, ticker=bt, model_dir=base, ml_horizon_slug=hz,
         )
         if model is None:
-            logger.error("LSTM load failed for %s: %s", ticker, checkpoint)
+            logger.error("LSTM load failed for %s (bundle=%s): %s", ticker, bt, checkpoint)
             _lstm_registry[rk] = None
             return False
 
         model.eval()
         _lstm_registry[rk] = (model, checkpoint)
-        logger.info("LSTM model loaded for %s hz=%s", ticker, hz)
+        logger.info("LSTM model loaded for %s hz=%s (bundle=%s)", ticker, hz, bt)
         return True
 
     except ImportError as e:
@@ -1096,19 +1125,20 @@ def _predict_lstm(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _load_transformer(ticker: str) -> bool:
+    bt = _bundle_ticker_for_artifacts(ticker)
     hz = get_ml_infer_horizon_slug()
-    rk = _model_registry_key(ticker, hz)
+    rk = _model_registry_key(bt, hz)
     if rk in _trans_registry:
         return _trans_registry[rk] is not None
 
-    base = _active_bundle_dir_for_load(ticker)
+    base = _active_bundle_dir_for_load(bt)
     if base is None:
         _trans_registry[rk] = None
         return False
-    mp = base / f"transformer_{ticker}_{hz}.pt"
-    mtp = base / f"transformer_{ticker}_{hz}_meta.json"
+    mp = base / f"transformer_{bt}_{hz}.pt"
+    mtp = base / f"transformer_{bt}_{hz}_meta.json"
     if not mp.exists():
-        logger.debug("Transformer model not found for %s at %s", ticker, mp)
+        logger.debug("Transformer model not found for %s (bundle=%s) at %s", ticker, bt, mp)
         _trans_registry[rk] = None
         return False
     if not mtp.exists():
@@ -1369,16 +1399,17 @@ def _predict_transformer(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _load_meta(ticker: str) -> bool:
+    bt = _bundle_ticker_for_artifacts(ticker)
     hz = get_ml_infer_horizon_slug()
-    rk = _model_registry_key(ticker, hz)
+    rk = _model_registry_key(bt, hz)
     if rk in _meta_registry:
         return _meta_registry[rk] is not None
 
-    base = _active_bundle_dir_for_load(ticker)
+    base = _active_bundle_dir_for_load(bt)
     if base is None:
         _meta_registry[rk] = None
         return False
-    mp = base / f"meta_{ticker}_{hz}.pkl"
+    mp = base / f"meta_{bt}_{hz}.pkl"
     if not mp.exists():
         _meta_registry[rk] = None
         return False
@@ -1571,9 +1602,10 @@ def read_stack_layer_collapse_flags(model_dir, ticker: str, hz: str) -> set:
     carries ``val_single_class_collapse=True`` (the B3+ all-flat degeneracy flag written by
     ml_train / lstm_model / transformer_train). Same read pattern the A2 promotion gate uses.
     """
+    bt = _bundle_ticker_for_artifacts(ticker)
     flags: set = set()
     for base in ("xgb", "lstm", "transformer"):
-        meta_json = Path(model_dir) / f"{base}_{ticker}_{hz}_meta.json"
+        meta_json = Path(model_dir) / f"{base}_{bt}_{hz}_meta.json"
         if not meta_json.is_file():
             continue
         try:
@@ -1651,7 +1683,9 @@ def _apply_5c_xgb_plus_transformer_isotonic_calibration(
     """
     if not probs:
         return probs
-    if str(ticker or "").upper() != "SPY":
+    feature_ticker = (ticker or "").upper().strip()
+    bt = _bundle_ticker_for_artifacts(ticker)
+    if feature_ticker != "SPY" or bt != "SPY":
         return probs
     if get_ml_infer_horizon_slug() != "5c":
         return probs
@@ -2164,6 +2198,37 @@ def invalidate_model_registry(ticker: str, hz: str | None = None) -> bool:
         del _active_bundle_dir_cache[rk]
         _strict_bundle_warned.discard(rk)
     return removed
+
+
+def prewarm_inference_models_for_ticker(ticker: str) -> dict[str, bool]:
+    """
+    UI-MAXIMIZE — load XGB/LSTM/TR artifacts for all primary horizons into registries.
+    Disk I/O only; no forward pass. Honors guest-anchor bundle routing when enabled.
+    """
+    from ml_horizon import PRIMARY_DECISION_HORIZONS
+    from governed_stack_contract import (
+        guest_anchor_context_scope,
+        resolve_guest_anchor_for_ticker,
+    )
+
+    t = (ticker or "").upper().strip()
+    if not t:
+        return {}
+    guest_ctx = resolve_guest_anchor_for_ticker(t)
+    out: dict[str, bool] = {}
+    with guest_anchor_context_scope(guest_ctx), ml_bundle_ticker_scope(
+        guest_ctx.anchor_ticker if guest_ctx else None
+    ):
+        for hz in PRIMARY_DECISION_HORIZONS:
+            tok = set_ml_infer_horizon_slug(hz)
+            try:
+                out[f"xgb_{hz}"] = _load_xgb(t)
+                out[f"lstm_{hz}"] = _load_lstm(t)
+                out[f"transformer_{hz}"] = _load_transformer(t)
+            finally:
+                reset_ml_infer_horizon_slug(tok)
+    logger.info("prewarm_inference_models_for_ticker %s: %s", t, out)
+    return out
 
 
 def _fmt(p):

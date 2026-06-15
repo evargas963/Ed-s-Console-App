@@ -1771,6 +1771,7 @@ def train_cascade_candidate(
     out_dir.mkdir(parents=True, exist_ok=True)
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
     label_col = outcome_column(hz)
+    days_data: dict | None = None
 
     from training_cache import (
         db_training_fingerprint,
@@ -2093,6 +2094,20 @@ def train_cascade_candidate(
                 "warm_resume": lstm_rr,
             }
         lstm_model.eval()
+
+        if days_data is None:
+            from timeframe_config import CANONICAL_TIMEFRAME
+
+            days_data = extract_rth_snapshots(
+                ticker,
+                timeframe=CANONICAL_TIMEFRAME,
+                db_path=_db,
+                require_outcome=True,
+                allowed_et_dates=allowed_et_dates,
+                target_column=label_col,
+                model_family="transformer",
+                horizon_slug=hz,
+            )
 
         def _assemble_cascade_rows(select_models):
             """Single ordered pass over sorted(days_data) — order MUST match

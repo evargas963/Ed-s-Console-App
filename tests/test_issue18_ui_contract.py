@@ -39,6 +39,26 @@ def test_mhap_card_present_with_required_columns():
         assert f'id="{el_id}"' in h
 
 
+def test_horizon_stack_exec_card_removed_negative_lock():
+    """Operator 2026-06-11: Horizon Stack exec-card retired — duplicated mhap_rows
+    on the pills and mislabeled all-WAIT as 'Mixed stack'. Same delete+lock pattern
+    as dr-align-* (2026-06-10); alignment still surfaces on ALL via deriveTag."""
+    h = _html()
+    assert 'id="horizon-stack-card"' not in h
+    for el_id in ("hs-1m", "hs-5m", "hs-15m", "hs-60m", "hs-summary"):
+        assert el_id not in h, f"{el_id} must stay removed (duplicative exec card)"
+    assert "function hsLine" not in h
+    assert "alignClsUi" not in h
+    assert "Mixed stack, confirmation needed" not in h
+    assert "Mixed stack, no clean continuation" not in h
+    # ALL pill still owns cross-horizon alignment vocabulary.
+    idx = h.find("function deriveTag(slug, dir)")
+    assert idx != -1
+    chunk = h[idx : idx + 600]
+    assert "alignment_state_display" in chunk
+    assert "return 'ALIGNED'" in chunk or "return 'SPLIT'" in chunk
+
+
 def test_mhap_fixed_row_order_in_renderer():
     """Fixed 4-horizon order asserted via the horizon→bar mapping in the renderer.
 
@@ -234,6 +254,7 @@ def test_derive_source_for_horizon_js_helpers_present():
     assert "function sourceOperatorText(source, d, slug)" in h
     # Server internal vocabulary is recognized
     assert "'fusion_ml_primary'" in h
+    assert "'guest_anchor_fusion'" in h
     assert "'empirical_support_blend'" in h
     assert "'fusion_directional_missing'" in h
     # Window exports for diag / test inspection
@@ -263,6 +284,39 @@ def test_chip_vocabulary_operator_text_strings_present():
     assert "similar setups" in h
     # mh_prob_source_by_horizon is the payload field the chip reads
     assert "mh_prob_source_by_horizon" in h
+
+
+def test_guest_anchor_provisional_chip_vocabulary():
+    """Guest anchor v2: compact ANCHOR chip + affiliation rationale on payload."""
+    h = _html()
+    assert "function guestAnchorChipLabel(d)" in h
+    assert "function sourceChipDisplayText(source, d)" in h
+    assert "guest_anchor_active" in h
+    assert "guest_anchor_weights_ticker" in h
+    assert "guest_anchor_rationale" in h
+    assert "tf-source-chip--provisional" in h
+    assert "not ticker-trained" in h
+    # Chip paints compact label — long PROVISIONAL · ANCHOR (TICKER) must not be card text.
+    assert "sourceChipDisplayText(source, payload)" in h
+    idx = h.find("function sourceChipDisplayText(source, d)")
+    assert idx != -1
+    chunk = h[idx : idx + 420]
+    assert "ANCHOR ·" in chunk or "'ANCHOR · '" in chunk
+    assert "PROVISIONAL · ANCHOR (" not in chunk
+
+
+def test_tf_source_chip_cannot_bleed_across_pill_row():
+    """nowrap provenance chips must clip inside each pill — no cross-card purple bar."""
+    h = _html()
+    card_idx = h.find(".tf-signal-card {")
+    assert card_idx != -1
+    card_chunk = h[card_idx : card_idx + 520]
+    assert "overflow: hidden" in card_chunk
+    chip_idx = h.find(".tf-source-chip {")
+    assert chip_idx != -1
+    chip_chunk = h[chip_idx : chip_idx + 520]
+    assert "max-width: 100%" in chip_chunk
+    assert "text-overflow: ellipsis" in chip_chunk
 
 
 def test_loading_shell_clears_new_chip_and_detail_elements():
@@ -487,3 +541,61 @@ def test_entry_state_labels_render_contract():
     assert "entry_display_text" in h  # unchanged live field name
     # Inline mhap renderer pattern (renderMultiHorizon was inlined into this block).
     assert "d.mhap_rows" in h
+
+
+def test_ui_latency_contract_nonblocking_tier_c_and_analytics_poll():
+    """UI_LATENCY_CONTRACT — quote lane must not suppress Tier C poll; switch must not block on 120s Tier C."""
+    h = _html()
+    assert "UI_LATENCY_CONTRACT" in h
+    assert "_lastSseAnalyticsPayloadMs" in h
+    assert "_tierCRestAbortController" in h
+    assert "_edTierCCacheByTicker" in h
+    assert "function _snapshotCacheRestore" in h
+    assert "function manualFullRefresh" in h
+    assert "function _analyticsUiPending" in h
+    assert "ANALYTICS_PENDING_POLL_MS" in h
+    assert "TIER-C-NONBLOCK-SWITCH" in h
+    assert "_fetchTierCRestAndApply" in h
+    assert "triggerRefresh() { fetchState(false)" in h
+    assert "manualFullRefresh() { fetchState(true)" in h
+    assert "_lastSsePayloadAcceptedMs < SSE_POLL_SUPPRESS_MS" not in h
+    poll_idx = h.find("function pollStateFallback")
+    assert poll_idx != -1
+    poll_chunk = h[poll_idx : poll_idx + 1200]
+    assert "_lastSseAnalyticsPayloadMs" in poll_chunk
+    assert "_analyticsUiPending()" in poll_chunk
+    assert "await fetchJsonWithTimeout(url, { signal: fetchAbortSignal }, 120000)" not in h
+    assert "_slowFetchAc && _slowFetchAc.abort()" not in h
+    tier_idx = h.find("async function _fetchTierCRestAndApply")
+    assert tier_idx != -1
+    tier_chunk = h[tier_idx : tier_idx + 900]
+    assert "tierCSignal" in tier_chunk
+
+
+def test_ui_maximize_contract_sla_warm_and_partial_render():
+    """UI_MAXIMIZE_CONTRACT — binding SLA budgets, server warm POST, real partial Tier C paint (no fake fusion)."""
+    h = _html()
+    assert "UI_MAXIMIZE_CONTRACT" in h
+    assert "ED_UI_MAXIMIZE_SLA_MS" in h
+    assert "first_quote: 500" in h
+    assert "fusion_cards_panel_warm: 2000" in h
+    assert "function _scheduleServerAnalyticsWarm" in h
+    assert "/api/analytics/warm" in h
+    assert "function renderTierCPartialAnalytics" in h
+    assert "analytics_partial_tier_c" in h
+    assert "ANALYTICS_PENDING_POLL_MS = 800" in h
+    assert "_streamingPostLastTicker" in h
+    partial_idx = h.find("function renderTierCPartialAnalytics")
+    assert partial_idx != -1
+    partial_chunk = h[partial_idx : partial_idx + 2800]
+    assert "__renderKeyLevelsLive" in partial_chunk
+    assert "renderTimeframeSignalRow" in partial_chunk
+    assert "renderKind: 'tier_c_partial_analytics'" in partial_chunk
+    render_idx = h.find("function render(d, fullRenderSource)")
+    assert render_idx != -1
+    render_chunk = h[render_idx : render_idx + 600]
+    assert "renderTierCPartialAnalytics" in render_chunk
+    pending_idx = h.find("function _analyticsUiPending")
+    assert pending_idx != -1
+    pending_chunk = h[pending_idx : pending_idx + 400]
+    assert "analytics_partial_tier_c" in pending_chunk

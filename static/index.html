@@ -742,14 +742,16 @@
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
-    min-height: 148px;
+    min-height: 152px;
     padding-top: 26px;
-    padding-bottom: 10px;
+    padding-bottom: 12px;
     padding-left: 8px;
     padding-right: 8px;
     border-radius: 8px;
     box-sizing: border-box;
     font-family: var(--mono);
+    /* Clip chip/detail bleed — nowrap chips must not paint into sibling pills. */
+    overflow: hidden;
   }
   /* WAIT/neutral: cool slate + visible edge — readable without implying LONG/SHORT */
   .tf-signal-card.tf-state-dim {
@@ -935,8 +937,8 @@
     border: 1px solid rgba(255,60,60,.35);
   }
 
-  /* ── tf-source-chip — per-pill provenance chip (5 variants) ─────────────
-     EMPIRICAL · ML FUSION · BLEND · UNAVAILABLE · DEGRADED
+  /* ── tf-source-chip — per-pill provenance chip (6 variants) ─────────────
+     EMPIRICAL · ML FUSION · PROVISIONAL · ANCHOR · BLEND · UNAVAILABLE · DEGRADED
      Backed by deriveSourceForHorizon(d, slug); server may override via
      d.mh_prob_source_by_horizon[slug]. Tooltip carries operator text. */
   .tf-source-chip {
@@ -953,6 +955,10 @@
     border-radius: 999px;
     border: 1px solid;
     white-space: nowrap;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .tf-source-chip::before {
     content: '';
@@ -972,6 +978,12 @@
     background: rgba(0,230,118,0.10);
   }
   .tf-source-chip--ml-fusion::before { background: #00E676; }
+  .tf-source-chip--provisional {
+    color: #c4b5fd;
+    border-color: rgba(167,139,250,0.55);
+    background: rgba(167,139,250,0.12);
+  }
+  .tf-source-chip--provisional::before { background: #a78bfa; }
   .tf-source-chip--blend {
     color: #fbbf24;
     border-color: rgba(251,191,36,0.45);
@@ -999,10 +1011,14 @@
     text-align: center;
     line-height: 1.3;
     color: var(--text3);
+    width: 100%;
     max-width: 100%;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    padding: 0 2px;
+    box-sizing: border-box;
   }
   .tf-state-up .tf-source-detail,
   .tf-state-down .tf-source-detail { color: rgba(255,255,255,0.55); }
@@ -2563,7 +2579,7 @@
     </div>
     <span class="ub-vdiv" aria-hidden="true"></span>
 
-    <button type="button" id="refresh-btn" onclick="triggerRefresh()">↻ REFRESH</button>
+    <button type="button" id="refresh-btn" onclick="manualFullRefresh()">↻ REFRESH</button>
     <span class="ub-vdiv" aria-hidden="true"></span>
 
     <div class="ub-pills">
@@ -2935,14 +2951,14 @@
               <div class="hz-panels" id="dr-hz-panels" aria-label="Per-horizon decision panels"></div>
             </details>
 
-            <!-- Trade plan, Horizon-alignment, Why/gates, Readiness/trust and
-                 Stack-behind-the-call blocks removed 2026-06-10 (operator:
-                 duplicative) — the PLAN pill carries entry/stop/targets/
-                 invalidation/size + entry state; the pills carry per-horizon
-                 direction + confidence; the ALL pill carries the verdict, the
-                 ALIGNED/SPLIT tag and the WAIT/blocker reason; the header
-                 chips (FRESH / STACK / SIGNALS) + signal-chain bar carry
-                 freshness, stack mode and per-layer liveness. -->
+            <!-- Trade plan, Horizon-alignment, Why/gates, Readiness/trust,
+                 Stack-behind-the-call and Horizon Stack exec-card removed
+                 2026-06-10 / 2026-06-11 (operator: duplicative) — the PLAN
+                 pill carries entry/stop/targets/invalidation/size + entry state;
+                 the pills carry per-horizon direction + confidence; the ALL pill
+                 carries the verdict, the ALIGNED/SPLIT tag and the WAIT/blocker
+                 reason; the header chips (FRESH / STACK / SIGNALS) + signal-chain
+                 bar carry freshness, stack mode and per-layer liveness. -->
 
             <div class="decision-rail-grid" style="grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr)">
               <div class="decision-block">
@@ -2997,18 +3013,6 @@
                 <div class="decision-k">LIQ BELOW</div><div class="decision-v" id="exec-liq-below">—</div>
                 <div class="decision-k">EM HIGH</div><div class="decision-v" id="exec-em-high">—</div>
                 <div class="decision-k">EM LOW</div><div class="decision-v" id="exec-em-low">—</div>
-              </div>
-            </div>
-          </div>
-          <div class="signal-card exec-card" id="horizon-stack-card" data-ed-tier-c="1">
-            <div class="signal-card-header"><span class="signal-card-title">Horizon Stack</span></div>
-            <div class="signal-card-body">
-              <div class="decision-kv">
-                <div class="decision-k">1m</div><div class="decision-v" id="hs-1m">—</div>
-                <div class="decision-k">5m</div><div class="decision-v" id="hs-5m">—</div>
-                <div class="decision-k">15m</div><div class="decision-v" id="hs-15m">—</div>
-                <div class="decision-k">60m</div><div class="decision-v" id="hs-60m">—</div>
-                <div class="decision-k">Summary</div><div class="decision-v" id="hs-summary">—</div>
               </div>
             </div>
           </div>
@@ -3290,8 +3294,20 @@ window._lastUiVersion = '';
 let _priorPutState = null;
 let _priorPutReadinessScore = null;
 let isLoading      = false;
-/** Abort slow /api/analytics/state when user switches ticker again. */
+/** Abort slow Tier A/B fetches when user switches ticker again. */
 let _fetchStateAbortController = null;
+/** Tier C REST has its own abort scope — must never abort Tier A/B (UI_LATENCY_CONTRACT). */
+let _tierCRestAbortController = null;
+/** UI_MAXIMIZE_CONTRACT — binding real-speed SLA budgets (ms); server mirror: UI_MAXIMIZE_SLA_MS on /api/build. */
+window.ED_UI_MAXIMIZE_SLA_MS = {
+  first_quote: 500,
+  fusion_cards_panel_warm: 2000,
+  fusion_cards_guest_cold: 15000,
+};
+/** Per-ticker last good analytical snapshot — instant paint on revisit (stale-while-revalidate). */
+window._edTierCCacheByTicker = window._edTierCCacheByTicker || {};
+let _streamingPostLastMs = 0;
+let _streamingPostLastTicker = '';
 /** Throttle Tier C retries while backend is still in pending-shell state. */
 let _tierCBackoffUntilMs = 0;
 /** performance.now() at ticker switch for diagnostics. */
@@ -3399,6 +3415,28 @@ window.getEdL1SseDiagnostics = function getEdL1SseDiagnostics() {
   );
 };
 
+// ── Per-ticker snapshot cache (stale-while-revalidate on switch) ─────────────
+function _snapshotCacheStore(d) {
+  if (!d || typeof d !== 'object' || Array.isArray(d) || !d.ticker) return;
+  if (d.analytics_pending_shell === true && !(Array.isArray(d.mhap_rows) && d.mhap_rows.length)) return;
+  const tk = String(d.ticker).toUpperCase();
+  try {
+    window._edTierCCacheByTicker[tk] = JSON.parse(JSON.stringify(d));
+  } catch (e) { /* ignore */ }
+}
+
+function _snapshotCacheRestore(tk) {
+  const raw = window._edTierCCacheByTicker[(tk || '').toUpperCase()];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  return Object.assign({}, raw, {
+    analytics_stale: true,
+    analytics_refresh_in_progress: true,
+    analytics_pending_shell: false,
+    _tier: 'C_analytics',
+    _update_source: 'client_ticker_cache',
+  });
+}
+
 // ── setActiveTicker — THE ONLY FUNCTION THAT WRITES activeTicker ──────────────
 //
 // Call this whenever the user commits a ticker change (Enter / blur / change /
@@ -3434,23 +3472,48 @@ function setActiveTicker(rawTicker, rawExpiry) {
       window._fastLaneSpotDisp = null;
     } catch (e) {}
     window._prevOfChartSpotFast = null;
-    // B1-UI (ticker-switch staleness): wipe the prior ticker's merged snapshot so the
-    // Object.assign(_lastData, ...) merges in the fast/slow renderers cannot carry stale
-    // fields — key levels especially — into the new ticker's first paints. Use {} (not
-    // null) so any property read stays safe. Then blank the key-levels panel immediately
-    // so the previous ticker's levels vanish on switch instead of lingering until the
-    // slow Tier C rebuild lands.
-    window._lastData = {};
-    try {
-      const _klc = $('kl-container');
-      if (_klc) _klc.innerHTML = '<div style="opacity:.5;padding:8px;font-size:11px">Computing levels…</div>';
-    } catch (e) {}
+    const restored = _snapshotCacheRestore(t);
+    if (restored) {
+      window._lastData = restored;
+      lastRenderTimestamp = 0;
+      _commitQuoteLaneFromPayload(restored);
+      try { render(restored, 'ticker_cache_restore'); _syncAnalyticsPollCadence(); } catch (e) {}
+    } else {
+      window._lastData = {
+        ticker: t,
+        selected_exp: e,
+        analytics_pending_shell: true,
+        _tier: 'C_analytics',
+        expiries: [],
+        walls: [],
+        summary_rows: [],
+      };
+      try {
+        const _klc = $('kl-container');
+        if (_klc) _klc.innerHTML = '<div style="opacity:.5;padding:8px;font-size:11px">Computing levels…</div>';
+      } catch (e) {}
+    }
     // Mirror confirmed ticker back to DOM so display stays consistent
     const el = $('ticker-input');
     if (el && el.value.trim().toUpperCase() !== t) el.value = t;
     if (DIAG) console.log('[setActiveTicker] committed', { ticker: t, expiry: e, generation: requestGeneration });
+    if (changed) {
+      _scheduleServerAnalyticsWarm(t, 'ticker_switch');
+    }
   }
   return changed;
+}
+
+/** UI-MAXIMIZE — fire-and-forget server Tier C warm + ML prewarm (non-blocking). */
+function _scheduleServerAnalyticsWarm(ticker, sourceTag) {
+  const tk = (ticker || '').trim().toUpperCase();
+  if (!tk) return;
+  const url = '/api/analytics/warm?ticker=' + encodeURIComponent(tk);
+  void fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source: sourceTag || 'client' }),
+  }).catch(function () { /* non-fatal */ });
 }
 
 function _logTickerSwitch(evt, detail) {
@@ -3521,8 +3584,11 @@ async function _postSwitchDiagToServer(rec) {
   } catch (e) { /* non-fatal */ }
 }
 
-/** Budgets for “visibly tradeable quickly enough” (price strip + full analytical UI). Tunable. */
-window.ED_SWITCH_TRADEABILITY_SLA_MS = { first_quote: 2000, full_state: 12000 };
+/** Budgets for “visibly tradeable quickly enough” (price strip + full analytical UI). UI_MAXIMIZE_CONTRACT. */
+window.ED_SWITCH_TRADEABILITY_SLA_MS = {
+  first_quote: window.ED_UI_MAXIMIZE_SLA_MS.first_quote,
+  full_state: window.ED_UI_MAXIMIZE_SLA_MS.fusion_cards_panel_warm,
+};
 
 /**
  * Derive explicit answers to:
@@ -3715,12 +3781,9 @@ function runTickerLiveAcquisition(reason, opts) {
     } catch (e) {}
   }
   void pollFastQuote();
-  void commitStreamingActiveTicker().then(() => {
-    _logTickerSwitch('STREAM_HTTP_POST_DONE');
-    return configureFastPollFromServer();
-  }).then(() => pollFastQuote()).finally(() => {
-    startFastLanePoll();
-  });
+  void commitStreamingActiveTicker();
+  void configureFastPollFromServer().then(() => pollFastQuote());
+  startFastLanePoll();
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -3929,9 +3992,26 @@ function renderContextLayer(d) {
 // per-horizon fusion availability, empirical histogram presence, integrity
 // flag, mhap row state). Tooltip on each chip carries the operator-readable
 // text per the brief.
+function guestAnchorChipLabel(d) {
+  // Internal source key — compact display via sourceChipDisplayText().
+  return 'PROVISIONAL';
+}
+function sourceChipDisplayText(source, d) {
+  const up = String(source || '').toUpperCase();
+  if (up.indexOf('PROVISIONAL') === 0) {
+    const a = d && d.guest_anchor_weights_ticker
+      ? String(d.guest_anchor_weights_ticker).toUpperCase()
+      : '';
+    return a ? ('ANCHOR · ' + a) : 'ANCHOR';
+  }
+  return source;
+}
 function deriveSourceForHorizon(d, slug) {
   if (!d || typeof d !== 'object') return 'UNAVAILABLE';
   if (slug === 'consolidated') {
+    if (d.guest_anchor_active) {
+      return guestAnchorChipLabel(d);
+    }
     // Provenance chip = source authority, not tradeability. Fusion authoritative
     // (stack_runtime.fusion_active / canonical bayesian_fusion) → ML FUSION even
     // when the decision is WAIT — the stack is live and deliberately holding; the
@@ -3949,9 +4029,11 @@ function deriveSourceForHorizon(d, slug) {
     const up = raw.toUpperCase();
     // Brief-style values (preferred forward path)
     if (up === 'ML_FUSION' || up === 'ML FUSION') return 'ML FUSION';
+    if (up === 'PROVISIONAL' || up.indexOf('PROVISIONAL') === 0) return guestAnchorChipLabel(d);
     if (up === 'EMPIRICAL' || up === 'BLEND' || up === 'UNAVAILABLE' || up === 'DEGRADED') return up;
     // Server internal stamping (current implementation in resolve_horizon_source / fusion contract)
     const lc = raw.toLowerCase();
+    if (lc === 'guest_anchor_fusion') return guestAnchorChipLabel(d);
     if (lc === 'fusion_ml_primary') return 'ML FUSION';
     if (lc === 'empirical_support_blend') return 'BLEND';
     if (lc === 'fusion_directional_missing') return 'UNAVAILABLE';
@@ -3978,12 +4060,15 @@ function deriveSourceForHorizon(d, slug) {
   const empPresent = !!(hp && hp.up != null && hp.down != null && hp.flat != null);
   if (rowMissing) return degraded ? 'DEGRADED' : 'UNAVAILABLE';
   if (degraded && !hzFusionOk) return 'DEGRADED';
+  if (d.guest_anchor_active && hzFusionOk) return guestAnchorChipLabel(d);
   if (hzFusionOk) return 'ML FUSION';
   if (empPresent) return 'EMPIRICAL';
   return 'UNAVAILABLE';
 }
 function sourceChipCssClass(source) {
-  switch (String(source || '').toUpperCase()) {
+  const up = String(source || '').toUpperCase();
+  if (up.indexOf('PROVISIONAL') === 0) return 'tf-source-chip--provisional';
+  switch (up) {
     case 'EMPIRICAL':  return 'tf-source-chip--empirical';
     case 'ML FUSION':  return 'tf-source-chip--ml-fusion';
     case 'BLEND':      return 'tf-source-chip--blend';
@@ -3992,7 +4077,11 @@ function sourceChipCssClass(source) {
   }
 }
 function sourceChipTitle(source) {
-  switch (String(source || '').toUpperCase()) {
+  const up = String(source || '').toUpperCase();
+  if (up.indexOf('PROVISIONAL') === 0) {
+    return 'PROVISIONAL · ANCHOR · Stack weights from SPY/QQQ/IWM on this symbol’s live features · not ticker-trained';
+  }
+  switch (up) {
     case 'EMPIRICAL':  return 'EMPIRICAL · Similar-setup histogram only · operator text: “N similar setups”';
     case 'ML FUSION':  return 'ML FUSION · Full stack fusion authoritative for that horizon · operator text: “Stack trained”';
     case 'BLEND':      return 'BLEND · ED_MH_EMPIRICAL_SUPPORT > 0 only · operator text: “Stack + history”';
@@ -4003,6 +4092,14 @@ function sourceChipTitle(source) {
 }
 function sourceOperatorText(source, d, slug) {
   const up = String(source || '').toUpperCase();
+  if (up.indexOf('PROVISIONAL') === 0) {
+    const rationale = d && d.guest_anchor_rationale
+      ? String(d.guest_anchor_rationale).replace(/\s+/g, ' ').trim()
+      : '';
+    if (rationale) return rationale;
+    const a = d && d.guest_anchor_weights_ticker ? String(d.guest_anchor_weights_ticker).toUpperCase() : 'SPY';
+    return 'Weights from ' + a + ' · not ticker-trained';
+  }
   if (slug === 'consolidated') {
     const align = String(d.alignment_state_display || d.alignment_state || '—');
     const prim = String(d.primary_horizon || '').toLowerCase();
@@ -4042,6 +4139,7 @@ try {
   window.deriveSourceForHorizon = deriveSourceForHorizon;
   window.sourceChipCssClass = sourceChipCssClass;
   window.sourceChipTitle = sourceChipTitle;
+  window.sourceChipDisplayText = sourceChipDisplayText;
   window.sourceOperatorText = sourceOperatorText;
   window.formatUnavailableReasonCode = formatUnavailableReasonCode;
 } catch (e) {}
@@ -4151,8 +4249,12 @@ function renderTimeframeSignalRow(d) {
     const chipEl = card.querySelector('.tf-source-chip');
     if (chipEl) {
       chipEl.className = 'tf-source-chip ' + sourceChipCssClass(source);
-      chipEl.textContent = source;
-      chipEl.title = sourceChipTitle(source);
+      chipEl.textContent = sourceChipDisplayText(source, payload);
+      const opTxt = sourceOperatorText(source, payload, slugKey);
+      const chipTitle = sourceChipTitle(source);
+      chipEl.title = opTxt && opTxt !== '—'
+        ? chipTitle + ' · ' + opTxt
+        : chipTitle;
       chipEl.removeAttribute('aria-hidden');
     }
     const detEl = card.querySelector('.tf-source-detail');
@@ -4168,8 +4270,9 @@ function renderTimeframeSignalRow(d) {
 
   const mhap = Array.isArray(d.mhap_rows) ? d.mhap_rows : [];
   const pendingShell = d.analytics_pending_shell === true;
+  const partialTierC = d.analytics_partial_tier_c === true && !hasTrustedMhapBundle(d);
   const analyticsLoading =
-    pendingShell || d.analytics_refresh_in_progress === true;
+    pendingShell || partialTierC || d.analytics_refresh_in_progress === true;
   if (analyticsLoading && mhap.length === 0) {
     const loadHint = d.analytics_last_error
       ? String(d.analytics_last_error).slice(0, 28)
@@ -4733,17 +4836,10 @@ function renderDecisionCommandRail(d) {
   const primSlug = String(d.primary_horizon || '').toLowerCase();
   const primRow = rows.find(r => String(r.horizon || '').toLowerCase() === primSlug) || null;
 
-  // Why/gates, Readiness/trust and Stack-behind-the-call rail blocks removed
-  // 2026-06-10 (operator: duplicative) — verdict + WAIT/blocker reason live on
-  // the ALL pill, entry state on the PLAN pill, freshness/stack mode on the
-  // header chips, per-layer liveness on the signal-chain bar. The alignment
-  // classification stays: hs-summary below consumes it.
-  const alignRaw = String(d.alignment_state_display || '').toLowerCase();
-  let alignClsUi = 'MIXED';
-  if (alignRaw.includes('fully') || alignRaw.includes('mostly')) alignClsUi = 'FULLY_ALIGNED';
-  else if (alignRaw.includes('contrad') || alignRaw.includes('unusable') || String(d.conflict_level_display || '').toLowerCase().includes('high')) {
-    alignClsUi = 'CONFLICTED';
-  }
+  // Why/gates, Readiness/trust, Stack-behind-the-call rail and Horizon Stack
+  // exec-card removed 2026-06-10 / 2026-06-11 (operator: duplicative) — verdict
+  // + WAIT/blocker reason live on the ALL pill (ALIGNED/SPLIT via deriveTag),
+  // entry state on the PLAN pill, per-horizon direction on the pills.
 
   // Execution levels (exact prices / explicit ranges).
   const sup = px(d.nearest_below_val);
@@ -4831,25 +4927,6 @@ function renderDecisionCommandRail(d) {
   })();
 
   const panels = $('dr-hz-panels');
-  const hsLine = (slug) => {
-    const r = rows.find(x => String(x.horizon || '').toLowerCase() === slug);
-    if (!r) return '—';
-    const c = String(r.call || 'WAIT').toUpperCase();
-    const cf = (r.confidence != null && !Number.isNaN(Number(r.confidence))) ? Math.round(Number(r.confidence) * 100) : null;
-    const arrow = c === 'LONG' ? '↑' : c === 'SHORT' ? '↓' : '→';
-    const trend = c === 'LONG' ? 'trend up' : c === 'SHORT' ? 'trend down' : 'mixed';
-    return `${arrow} ${cf == null ? '—' : cf} ${trend}`;
-  };
-  domIf('hs-1m', el => { el.textContent = hsLine('1c'); });
-  domIf('hs-5m', el => { el.textContent = hsLine('5c'); });
-  domIf('hs-15m', el => { el.textContent = hsLine('15c'); });
-  domIf('hs-60m', el => { el.textContent = hsLine('60c'); });
-  domIf('hs-summary', el => {
-    const a = String(alignClsUi || 'MIXED').toUpperCase();
-    el.textContent = a === 'FULLY_ALIGNED' ? 'Short-term aligned, continuation-friendly'
-      : a === 'CONFLICTED' ? 'Mixed stack, no clean continuation'
-      : 'Mixed stack, confirmation needed';
-  });
 
   if (panels) {
     panels.textContent = '';
@@ -5167,6 +5244,12 @@ function _quoteLaneShouldApply(f) {
 
 let _quoteLaneRejectLogCount = 0;
 function _quoteLaneRejectLog(tag, reason, detail) {
+  if (reason === 'no_material_change') {
+    if (typeof DIAG !== 'undefined' && DIAG) {
+      console.warn('[' + tag + '] REJECTED ' + reason, detail || {});
+    }
+    return;
+  }
   if (typeof DIAG !== 'undefined' && DIAG) {
     console.warn('[' + tag + '] REJECTED ' + reason, detail || {});
     return;
@@ -5598,6 +5681,11 @@ function updateAnalyticsFreshnessUI(d) {
     el.style.color = 'var(--warn, #c9a227)';
     return;
   }
+  if (d.analytics_partial_tier_c && !hasTrustedMhapBundle(d)) {
+    el.textContent = 'Analytics: chain ready — models computing…';
+    el.style.color = 'var(--warn, #c9a227)';
+    return;
+  }
   const stale = d.analytics_stale === true;
   const prog = d.analytics_refresh_in_progress === true;
   const age = d.analytics_age_sec;
@@ -5702,6 +5790,68 @@ function _commitQuoteLaneTimestamps(d) {
 /** @deprecated alias — Tier A must not advance lastFastTs from _server_build_ts */
 function _commitTierAFastTimestamp(d) {
   _commitQuoteLaneTimestamps(d);
+}
+
+/** UI_MAXIMIZE — paint real chain/key-level data while fusion cards stay LOADING (no fake triplets). */
+function renderTierCPartialAnalytics(d, fullRenderSource) {
+  if (d == null || typeof d !== 'object' || Array.isArray(d)) return false;
+  const guard = _renderCoherenceGuards(d, { checkDecisionGen: false, timestampLane: 'analytical' });
+  if (!guard.ok) {
+    if (typeof DIAG !== 'undefined' && DIAG) {
+      console.warn('[renderTierCPartialAnalytics] REJECTED', guard.reason, { incoming: d._server_build_ts, last: lastRenderTimestamp });
+    }
+    return false;
+  }
+  const merged = Object.assign({}, window._lastData || {}, d);
+  merged.analytics_partial_tier_c = true;
+  merged.analytics_pending_shell = false;
+  merged._tier = 'C_analytics';
+  window._lastData = merged;
+  try {
+    window._edRtDiag = Object.assign(window._edRtDiag || {}, {
+      lastFullRenderSource: fullRenderSource || 'tier_c_partial',
+      renderKind: 'tier_c_partial_analytics',
+    });
+  } catch (e) {}
+  updateAnalyticsFreshnessUI(merged);
+  _updateErrorBarFromPayload(merged);
+  try { renderContextLayer(merged); } catch (e) {}
+  domIf('sb-expiry', el => { el.textContent = merged.selected_exp || '—'; });
+  domIf('sb-dte', el => {
+    el.textContent = merged.dte_warn || '—';
+    el.style.color = merged.dte_color || 'var(--text2)';
+  });
+  const zbadge = $('sb-zone-badge');
+  if (zbadge && (merged.zone_label || merged.zone)) {
+    zbadge.textContent = merged.zone_label || merged.zone || '—';
+    zbadge.style.background = (merged.zone_badge_css || '#374151') + '22';
+    zbadge.style.color = merged.zone_badge_css || '#374151';
+    zbadge.style.border = `1px solid ${merged.zone_badge_css || '#374151'}44`;
+  }
+  const expSel = $('expiry-select');
+  const expiries = Array.isArray(merged.expiries) ? merged.expiries : [];
+  if (expSel && expiries.length && expSel.options.length === 0) {
+    expiries.forEach(e => {
+      const opt = document.createElement('option');
+      const ev = e != null ? String(e) : '';
+      opt.value = ev;
+      opt.textContent = ev;
+      if (ev && ev === String(merged.selected_exp != null ? merged.selected_exp : '')) opt.selected = true;
+      expSel.appendChild(opt);
+    });
+  }
+  if (typeof window.__renderKeyLevelsLive === 'function' && (
+    merged.kl_gamma_pin != null || merged.kl_call_gamma_wall != null || (Array.isArray(merged.summary_rows) && merged.summary_rows.length)
+  )) {
+    try { window.__renderKeyLevelsLive(merged); } catch (e) {}
+  }
+  try { renderTimeframeSignalRow(merged); } catch (e) {}
+  try { renderDecisionCommandRail(merged); } catch (e) {}
+  _lastRenderTs = Date.now();
+  clearHardStaleUi();
+  _updateTierCLaneStaleMarkers();
+  _updateLiveUiAe();
+  return true;
 }
 
 /** Tier C pending shell — keep last analytical paint; merge live quote flags from server. */
@@ -5831,6 +5981,9 @@ function render(d, fullRenderSource) {
   }
   if (d._tier === 'B_light' || d.plane === 'L1_context') {
     return renderTierBLight(d, fullRenderSource);
+  }
+  if (d._tier === 'C_analytics' && d.analytics_partial_tier_c && !hasTrustedMhapBundle(d)) {
+    return renderTierCPartialAnalytics(d, fullRenderSource);
   }
   if (d._tier === 'C_analytics' && d.analytics_pending_shell) {
     return renderTierCPendingShell(d, fullRenderSource);
@@ -6621,6 +6774,7 @@ function render(d, fullRenderSource) {
     return false;
   }
   window._tierCCardsPaintedAtGen = window._lastRenderedDecisionGen ?? 0;
+  _snapshotCacheStore(d);
   _updateTierCLaneStaleMarkers();
   _updateLiveUiAe({ serverTs: d._server_build_ts });
   if (fullRenderSource) {
@@ -6843,20 +6997,47 @@ let _lastRenderTs = 0;
 let _consecutiveFailures = 0;
 // When SSE drops or is stale, poll /api/analytics/state this often. While SSE delivers fresh payloads, poll is skipped so the UI follows push cadence (~ED_VIEWER_SSE_REFRESH_SEC) instead of this interval.
 const POLL_FALLBACK_MS = 2000;
-/** Skip REST poll while an SSE payload was accepted within this window (ms). */
+/** Faster REST poll while Tier C analytics (mhap/fusion) is still in flight — UI_LATENCY_CONTRACT / UI_MAXIMIZE. */
+const ANALYTICS_PENDING_POLL_MS = 800;
+/** Skip REST poll while a full Tier C SSE snapshot was accepted within this window (ms). */
 const SSE_POLL_SUPPRESS_MS = 12000;
 let _statePollTid = null;
+let _statePollIntervalMs = POLL_FALLBACK_MS;
 const DIAG = typeof window._edDiag !== 'undefined' && window._edDiag;
 
-/** Last time an SSE message passed ticker/expiry/generation guards (application data flowing). */
+/** Last time any SSE lane delivered (quote or analytics) — diagnostics only. */
 let _lastSsePayloadAcceptedMs = 0;
+/** Last time a full Tier C analytics SSE snapshot painted — poll suppress uses this, NOT live_quote. */
+let _lastSseAnalyticsPayloadMs = 0;
 let _lastFullRenderSource = 'init';
 let _transportPollSkips = 0;
 let _transportPollRuns = 0;
 
+/** True when horizon cards / fusion rail still need Tier C completion. UI_LATENCY_CONTRACT */
+function _analyticsUiPending() {
+  const d = window._lastData;
+  if (!d || typeof d !== 'object') return true;
+  if (d.analytics_pending_shell === true) return true;
+  if (d.analytics_partial_tier_c === true && !hasTrustedMhapBundle(d)) return true;
+  const mhap = Array.isArray(d.mhap_rows) ? d.mhap_rows : [];
+  if (d.analytics_refresh_in_progress === true && mhap.length === 0) return true;
+  return false;
+}
+
+function _syncAnalyticsPollCadence() {
+  const want = _analyticsUiPending() ? ANALYTICS_PENDING_POLL_MS : POLL_FALLBACK_MS;
+  if (want === _statePollIntervalMs && _statePollTid) return;
+  _statePollIntervalMs = want;
+  if (_statePollTid) clearInterval(_statePollTid);
+  _statePollTid = setInterval(pollStateFallback, want);
+  if (typeof DIAG !== 'undefined' && DIAG) {
+    console.log('[pollFallback] cadence', want, 'ms', { pending: _analyticsUiPending() });
+  }
+}
+
 function _edTransportSync(extra) {
   const sseOpen = _eventSource && _eventSource.readyState === 1;
-  const age = _lastSsePayloadAcceptedMs ? (Date.now() - _lastSsePayloadAcceptedMs) : null;
+  const age = _lastSseAnalyticsPayloadMs ? (Date.now() - _lastSseAnalyticsPayloadMs) : null;
   const sseFresh = age != null && age < SSE_POLL_SUPPRESS_MS;
   const sseStale = sseOpen && age != null && age >= SSE_POLL_SUPPRESS_MS;
   let mode = 'poll_only';
@@ -6870,7 +7051,9 @@ function _edTransportSync(extra) {
     sseBadge: (function () { const el = $('sse-label'); return el ? el.textContent : ''; })(),
     mainStatus: (function () { const el = $('status-label'); return el ? el.textContent : ''; })(),
     lastSsePayloadAcceptedMs: _lastSsePayloadAcceptedMs,
+    lastSseAnalyticsPayloadMs: _lastSseAnalyticsPayloadMs,
     ssePayloadAgeMs: age,
+    analyticsUiPending: _analyticsUiPending(),
     lastFullRenderSource: _lastFullRenderSource,
     lastPayloadUpdateSource: window._lastPayloadUpdateSource || null,
     pollSkips: _transportPollSkips,
@@ -7471,17 +7654,131 @@ async function fetchJsonWithTimeout(url, opts = {}, timeoutMs = 3000) {
   }
 }
 
-async function fetchState(force = false) {
-  const hadPriorFetch = !!_fetchStateAbortController;
-  // Abort any in-flight Tier C /api/analytics/state — ticker switch or rapid refresh must not queue behind minutes of work.
+async function _fetchTierCRestAndApply(ctx) {
+  const {
+    myGen, ticker, expiry, force, willChange,
+    tierCSignal, dot, label,
+  } = ctx;
+  const _analyticsT0 = ctx._analyticsT0 != null ? ctx._analyticsT0
+    : ((typeof performance !== 'undefined' ? performance.now() : Date.now()));
+  const url = `/api/analytics/state?ticker=${encodeURIComponent(ticker)}${expiry ? '&expiry=' + encodeURIComponent(expiry) : ''}${force ? '&force=true' : ''}`;
+  const tierCTimeoutMs = force ? 120000 : 15000;
+  try {
+    const resp = await fetchJsonWithTimeout(url, { signal: tierCSignal }, tierCTimeoutMs);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      const msg = err.detail || err.message || (err.error === 'token_invalid' ? err.remediation : null) || resp.statusText;
+      throw new Error(msg);
+    }
+    const data = await resp.json();
+    if (data == null || typeof data !== 'object' || Array.isArray(data)) {
+      throw new Error('Invalid state payload');
+    }
+    if (data.error === 'token_invalid') {
+      if (DIAG) console.warn('[fetchState] auth error', data);
+      throw new Error(data.detail || data.remediation || 'Schwab auth failed');
+    }
+    if (data && (data._tier === 'C_pending_shell' || data.analytics_pending_shell === true)) {
+      _tierCBackoffUntilMs = Date.now() + 800;
+    } else {
+      _tierCBackoffUntilMs = 0;
+    }
+
+    if (myGen !== requestGeneration) {
+      if (DIAG) console.warn('[fetchState] DISCARDED — generation superseded', { myGen, current: requestGeneration, ticker });
+      if (willChange) _finalizeSwitchDiag({ generation_superseded: true });
+      return;
+    }
+    if (data.ticker && data.ticker.toUpperCase() !== activeTicker) {
+      if (DIAG) console.warn('[fetchState] DISCARDED — ticker mismatch', { requested: ticker, received: data.ticker, active: activeTicker });
+      if (willChange) _finalizeSwitchDiag({ ticker_mismatch_discarded: true });
+      return;
+    }
+
+    _consecutiveFailures = 0;
+    if (DIAG) console.log('[fetchState] ACCEPTED', { ticker: data.ticker, gen: myGen, pipeline_ms: data._pipeline_ms, from_cache: data._from_cache, quote_ms: data._quote_ms, chain_ms: data._chain_ms, compute_ms: data._compute_ms });
+    const _didRender = render(data, 'rest_manual');
+    if (_didRender) {
+      _lastRenderTs = Date.now();
+      _snapshotCacheStore(data);
+      _syncAnalyticsPollCadence();
+    } else if (DIAG) {
+      console.warn('[fetchState] render skipped (gating) — status unchanged', { ticker: data.ticker, gen: myGen });
+    }
+    if (_didRender || window._lastData) {
+      if (dot) dot.className = 'status-dot live';
+      if (label) label.textContent = 'LIVE';
+    }
+
+    const overlay = $('loading-overlay');
+    if (overlay) overlay.classList.add('hidden');
+
+    const _anMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _analyticsT0;
+    if (_didRender) {
+      _logTickerSwitch('FIRST_FULL_STATE_APPLIED', {
+        pipeline_ms: data._pipeline_ms,
+        fetch_ms: Math.round(_anMs),
+        tier: data._tier || '',
+        spot_disp: data.spot_disp || null,
+        fast_rollout: window._edFastRollout || null,
+        fast_lane_spot: window._fastLaneSpotDisp || null,
+      });
+      if (willChange && _switchDiagSession && _switchDiagSession.first_full_state_ms == null && data._tier !== 'A_live' && !data.analytics_pending_shell && !(data.analytics_partial_tier_c && !hasTrustedMhapBundle(data))) {
+        const t0 = _switchDiagSession.t0;
+        _switchDiagSession.first_full_state_ms = t0 != null
+          ? ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0)
+          : null;
+        if (window.ED_SWITCH_TIMING === true && _switchDiagSession.first_full_state_ms != null) {
+          console.log('[SWITCH_TIMING] first_full_state_ms=', Math.round(_switchDiagSession.first_full_state_ms), 'ticker=', activeTicker, 'gen=', myGen);
+        }
+      }
+    }
+    setTimeout(() => { try { pollLiquiditySnapshot(); } catch (e) {} }, 0);
+  } catch (e) {
+    const aborted = e.name === 'AbortError' || (e.message && String(e.message).includes('aborted'));
+    if (aborted) {
+      if (typeof ctx.onFetchAborted === 'function') ctx.onFetchAborted();
+      _logTickerSwitch('FETCH_ABORTED', { gen: myGen });
+    } else {
+      _consecutiveFailures++;
+    }
+    if (DIAG) console.warn('[fetchState] tier C failed', { err: e.message, consecutive: _consecutiveFailures, aborted });
+    const overlay = $('loading-overlay');
+    if (overlay) overlay.classList.add('hidden');
+    if (!aborted) {
+      if (dot) dot.className = 'status-dot error';
+      if (label) label.textContent = 'ERROR';
+      const errBar = $('error-bar');
+      if (errBar) {
+        errBar.style.display = 'block';
+        errBar.textContent = `Error: ${e.message}`;
+      }
+      console.error(e);
+    }
+    _syncAnalyticsPollCadence();
+  }
+}
+
+async function fetchState(forceOrOpts) {
+  const forceTierC = typeof forceOrOpts === 'object' && forceOrOpts != null
+    ? !!forceOrOpts.forceTierC
+    : !!forceOrOpts;
+  const hadPriorFetch = !!(_fetchStateAbortController || _tierCRestAbortController);
   if (_fetchStateAbortController) {
     try {
       _fetchStateAbortController.abort();
-      _logTickerSwitch('ABORT_PRIOR_FETCH', {});
+    } catch (e) { /* ignore */ }
+  }
+  if (_tierCRestAbortController) {
+    try {
+      _tierCRestAbortController.abort();
+      if (hadPriorFetch) _logTickerSwitch('ABORT_PRIOR_FETCH', {});
     } catch (e) { /* ignore */ }
   }
   _fetchStateAbortController = new AbortController();
+  _tierCRestAbortController = new AbortController();
   const fetchAbortSignal = _fetchStateAbortController.signal;
+  const tierCSignal = _tierCRestAbortController.signal;
 
   isLoading = true;
 
@@ -7543,16 +7840,15 @@ async function fetchState(force = false) {
   const errBar = $('error-bar');
   if (errBar) errBar.style.display = 'none';
 
-  if (DIAG) console.log('[fetchState] start', { ticker, expiry: expiry || 'null', gen: myGen, force, willChange });
+  if (DIAG) console.log('[fetchState] start', { ticker, expiry: expiry || 'null', gen: myGen, forceTierC, willChange });
 
-  const _slowFetchAc = _fetchStateAbortController;
   let _switchDiagFetchAborted = false;
   try {
     // Tier A — GET /api/live/state (plane + session; no chain/DB). SWITCH-LATENCY FIX:
     // fire CONCURRENTLY with Tier C instead of awaiting it first — awaiting Tier A here
     // serialized the switch (Tier C couldn't start until Tier A's round-trip finished).
     // Render ownership is enforced by the generation/ticker guards below, so out-of-order
-    // tier responses are safe. Abort still propagates via Tier C's await + the outer catch.
+    // tier responses are safe.
     (async () => {
       try {
         const liveUrl = `/api/live/state?ticker=${encodeURIComponent(ticker)}${expiry ? '&expiry=' + encodeURIComponent(expiry) : ''}`;
@@ -7611,107 +7907,42 @@ async function fetchState(force = false) {
       if (window._lastData) {
         try { renderTierCPendingShell(window._lastData, 'rest_manual'); } catch (e) {}
       }
+      _syncAnalyticsPollCadence();
       return;
     }
-    const url = `/api/analytics/state?ticker=${encodeURIComponent(ticker)}${expiry ? '&expiry=' + encodeURIComponent(expiry) : ''}${force ? '&force=true' : ''}`;
-    const timeoutId  = setTimeout(() => {
-      try {
-        _slowFetchAc.abort();
-      } catch (e) { /* ignore */ }
-    }, 120000);
-    const resp = await fetchJsonWithTimeout(url, { signal: fetchAbortSignal }, 120000);
-    clearTimeout(timeoutId);
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-      const msg = err.detail || err.message || (err.error === 'token_invalid' ? err.remediation : null) || resp.statusText;
-      throw new Error(msg);
-    }
-    const data = await resp.json();
-    if (data == null || typeof data !== 'object' || Array.isArray(data)) {
-      throw new Error('Invalid state payload');
-    }
-    if (data.error === 'token_invalid') {
-      if (DIAG) console.warn('[fetchState] auth error', data);
-      throw new Error(data.detail || data.remediation || 'Schwab auth failed');
-    }
-    if (data && (data._tier === 'C_pending_shell' || data.analytics_pending_shell === true)) {
-      _tierCBackoffUntilMs = Date.now() + 3500;
+    const tierCtx = {
+      myGen,
+      ticker,
+      expiry,
+      force: forceTierC,
+      willChange,
+      tierCSignal,
+      dot,
+      label,
+      btn,
+      _analyticsT0,
+      onFetchAborted: () => { _switchDiagFetchAborted = true; },
+    };
+    // TIER-C-NONBLOCK-SWITCH: ticker switch never awaits heavy Tier C; manual REFRESH may force.
+    if (forceTierC) {
+      await _fetchTierCRestAndApply(tierCtx);
     } else {
-      _tierCBackoffUntilMs = 0;
-    }
-
-    // ── Response ownership validation (MUST pass ALL before any UI mutation) ──
-    // Check 1: generation. User may have changed ticker while fetch was in-flight.
-    if (myGen !== requestGeneration) {
-      if (DIAG) console.warn('[fetchState] DISCARDED — generation superseded', { myGen, current: requestGeneration, ticker });
-      if (willChange) _finalizeSwitchDiag({ generation_superseded: true });
+      void _fetchTierCRestAndApply(tierCtx);
+      _syncAnalyticsPollCadence();
       return;
     }
-    // Check 2: ticker. Backend ticker must match the active ticker.
-    if (data.ticker && data.ticker.toUpperCase() !== activeTicker) {
-      if (DIAG) console.warn('[fetchState] DISCARDED — ticker mismatch', { requested: ticker, received: data.ticker, active: activeTicker });
-      if (willChange) _finalizeSwitchDiag({ ticker_mismatch_discarded: true });
-      return;
-    }
-
-    _consecutiveFailures = 0;
-    if (DIAG) console.log('[fetchState] ACCEPTED', { ticker: data.ticker, gen: myGen, pipeline_ms: data._pipeline_ms, from_cache: data._from_cache, quote_ms: data._quote_ms, chain_ms: data._chain_ms, compute_ms: data._compute_ms });
-    const _didRender = render(data, 'rest_manual');
-    if (_didRender) {
-      _lastRenderTs = Date.now();
-    } else if (DIAG) {
-      console.warn('[fetchState] render skipped (gating) — status unchanged', { ticker: data.ticker, gen: myGen });
-    }
-    // LIVE only when this frame painted or we already have a prior good snapshot (avoid FETCHING stuck + avoid false freshness on _lastRenderTs)
-    if (_didRender || window._lastData) {
-      if (dot) dot.className = 'status-dot live';
-      if (label) label.textContent = 'LIVE';
-    }
-
-    const overlay = $('loading-overlay');
-    if (overlay) overlay.classList.add('hidden');
-
-    const _anMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _analyticsT0;
-    if (_didRender) {
-      _logTickerSwitch('FIRST_FULL_STATE_APPLIED', {
-        pipeline_ms: data._pipeline_ms,
-        fetch_ms: Math.round(_anMs),
-        tier: data._tier || '',
-        spot_disp: data.spot_disp || null,
-        fast_rollout: window._edFastRollout || null,
-        fast_lane_spot: window._fastLaneSpotDisp || null,
-      });
-      if (willChange && _switchDiagSession && _switchDiagSession.first_full_state_ms == null && data._tier !== 'A_live' && !data.analytics_pending_shell) {
-        const t0 = _switchDiagSession.t0;
-        _switchDiagSession.first_full_state_ms = t0 != null
-          ? ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0)
-          : null;
-        if (window.ED_SWITCH_TIMING === true && _switchDiagSession.first_full_state_ms != null) {
-          console.log('[SWITCH_TIMING] first_full_state_ms=', Math.round(_switchDiagSession.first_full_state_ms), 'ticker=', activeTicker, 'gen=', myGen);
-        }
-      }
-    }
-    setTimeout(() => { try { pollLiquiditySnapshot(); } catch (e) {} }, 0);
   } catch (e) {
-    const aborted = e.name === 'AbortError' || (e.message && String(e.message).includes('aborted'));
-    if (aborted) {
-      _switchDiagFetchAborted = true;
-      _logTickerSwitch('FETCH_ABORTED', { gen: myGen });
-    } else {
-      _consecutiveFailures++;
-    }
-    if (DIAG) console.warn('[fetchState] failed', { err: e.message, consecutive: _consecutiveFailures, aborted });
+    _consecutiveFailures++;
+    if (DIAG) console.warn('[fetchState] failed', { err: e.message, consecutive: _consecutiveFailures });
     const overlay = $('loading-overlay');
     if (overlay) overlay.classList.add('hidden');
-    if (!aborted) {
-      if (dot) dot.className = 'status-dot error';
-      if (label) label.textContent = 'ERROR';
-      if (errBar) {
-        errBar.style.display = 'block';
-        errBar.textContent = `Error: ${e.message}`;
-      }
-      console.error(e);
+    if (dot) dot.className = 'status-dot error';
+    if (label) label.textContent = 'ERROR';
+    if (errBar) {
+      errBar.style.display = 'block';
+      errBar.textContent = `Error: ${e.message}`;
     }
+    console.error(e);
   } finally {
     isLoading = false;
     if (btn) { btn.disabled = false; btn.textContent = '↻ REFRESH'; }
@@ -7738,8 +7969,9 @@ async function pollStateFallback() {
   const sseOpen = _eventSource && _eventSource.readyState === 1;
   const ssePollSuppress =
     sseOpen &&
-    _lastSsePayloadAcceptedMs > 0 &&
-    Date.now() - _lastSsePayloadAcceptedMs < SSE_POLL_SUPPRESS_MS;
+    !_analyticsUiPending() &&
+    _lastSseAnalyticsPayloadMs > 0 &&
+    Date.now() - _lastSseAnalyticsPayloadMs < SSE_POLL_SUPPRESS_MS;
   if (ssePollSuppress) {
     _transportPollSkips++;
     _edTransportSync({ pollSkippedThisTick: true });
@@ -7747,7 +7979,7 @@ async function pollStateFallback() {
       console.log('[pollFallback] skipped — SSE primary (fresh payload)', {
         ticker,
         gen: myGen,
-        ageMs: Date.now() - _lastSsePayloadAcceptedMs,
+        ageMs: Date.now() - _lastSseAnalyticsPayloadMs,
       });
     }
     return;
@@ -7792,6 +8024,8 @@ async function pollStateFallback() {
     const _didRenderPoll = render(data, 'rest_poll');
     if (_didRenderPoll) {
       _lastRenderTs = Date.now();
+      _snapshotCacheStore(data);
+      _syncAnalyticsPollCadence();
       const dot = $('status-dot'); const label = $('status-label');
       if (dot) dot.className = 'status-dot live';
       if (label) label.textContent = 'LIVE';
@@ -7826,8 +8060,7 @@ async function pollStateFallback() {
 
 function startStatePollFallback() {
   if (_statePollTid) clearInterval(_statePollTid);
-  _statePollTid = setInterval(pollStateFallback, POLL_FALLBACK_MS);
-  if (DIAG) console.log('[pollFallback] started', POLL_FALLBACK_MS, 'ms');
+  _syncAnalyticsPollCadence();
 }
 
 // Fast lane: REST `/api/fast-quote` is secondary. Primary quote path is Schwab Level One → live_market_plane → SSE `live_quote`.
@@ -8213,8 +8446,12 @@ async function configureFastPollFromServer() {
 }
 
 async function commitStreamingActiveTicker() {
-  const myGen = requestGeneration;
+  const now = Date.now();
   const t = activeTicker || 'SPY';
+  if (_streamingPostLastTicker === t && now - _streamingPostLastMs < 400) return;
+  _streamingPostLastMs = now;
+  _streamingPostLastTicker = t;
+  const myGen = requestGeneration;
   try {
     const r = await fetch('/api/streaming/active-ticker', {
       method: 'POST',
@@ -8223,6 +8460,7 @@ async function commitStreamingActiveTicker() {
     });
     const j = await r.json().catch(() => ({}));
     if (!_commitPlaneDiagnosticsIfCurrent(j, myGen, t)) return;
+    _logTickerSwitch('STREAM_HTTP_POST_DONE');
     updateStreamingSourceBadge(j);
     _applyPlaneQuoteAuthorityToPollMs(j);
     try {
@@ -8283,7 +8521,8 @@ function startFastLanePoll() {
   _fastPollTid = setInterval(pollFastQuote, _fastPollMs);
 }
 
-function triggerRefresh() { fetchState(true); }
+function triggerRefresh() { fetchState(false); }
+function manualFullRefresh() { fetchState(true); }
 
 // ── SSE (Server-Sent Events) — lifecycle + single UI surface ───────────────────
 // We explicitly es.close() on error, so the browser does NOT auto-reconnect; all
@@ -8732,6 +8971,7 @@ function connectSSE(opts) {
 
       _consecutiveFailures = 0;
       _lastSsePayloadAcceptedMs = Date.now();
+      _lastSseAnalyticsPayloadMs = Date.now();
       _setSseUi('live', {
         reason: 'sse_payload',
         update_source: data._update_source || 'sse',
@@ -8744,6 +8984,8 @@ function connectSSE(opts) {
       const _didRenderSse = render(data, 'sse');
       if (_didRenderSse) {
         _lastRenderTs = Date.now();
+        _snapshotCacheStore(data);
+        _syncAnalyticsPollCadence();
         const dot = $('status-dot');
         if (dot) dot.className = 'status-dot live';
       } else if (typeof DIAG !== 'undefined' && DIAG) {
@@ -8806,7 +9048,7 @@ function connectSSE(opts) {
 const _expirySelect = $('expiry-select');
 if (_expirySelect) {
   _expirySelect.addEventListener('change', () => {
-    fetchState(true);
+    fetchState(false);
   });
 }
 

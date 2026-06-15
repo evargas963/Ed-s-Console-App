@@ -219,7 +219,87 @@ def write_execution_log(moves: list[dict[str, str]]) -> None:
         )
 
 
+def _governance_archive_stub(
+    rel_archive: str,
+    *,
+    active: str | None = None,
+    date: str = "2026-06-11",
+) -> str:
+    lines = [
+        f"> **Archived {date}** — full text at [`{rel_archive}`]({rel_archive}).",
+        "> **Classification:** Historical Record | **Scope:** Not binding unless ACTIVE_PROGRAM cites.",
+    ]
+    if active:
+        lines.append(f"> **Active authority:** `{active}`")
+    lines.append("")
+    lines.append(f"See [`{rel_archive}`]({rel_archive}).")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _is_governance_stub(text: str) -> bool:
+    return text.lstrip().startswith("> **Archived")
+
+
+def archive_governance_md_batch2(*, dry_run: bool = False) -> list[dict[str, str]]:
+    """Reconciliation worksheet C-bucket (20 files): full text → archive, stub at governance/."""
+    worksheet = ROOT / "governance/consolidation/reconciliation_worksheet.json"
+    rows = [
+        r
+        for r in json.loads(worksheet.read_text(encoding="utf-8"))["rows"]
+        if str(r.get("bucket", "")).startswith("C-")
+    ]
+    moves: list[dict[str, str]] = []
+    for row in rows:
+        rel = row["path"].replace("\\", "/")
+        src = ROOT / rel
+        if not src.is_file():
+            continue
+        text = src.read_text(encoding="utf-8", errors="replace")
+        if _is_governance_stub(text):
+            continue
+
+        name = Path(rel).name
+        if row["bucket"] == "C-superseded-schwab":
+            dest = ARCHIVE / "superseded_schwab_coverage" / name
+            active = (
+                "governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md"
+                if "PROGRAM" in rel
+                else "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
+            )
+        else:
+            dest = ARCHIVE / "governance_md" / name
+            if name.startswith("INSTITUTIONAL_STANDARD"):
+                active = "governance/INSTITUTIONAL_STANDARD_V3.md"
+            else:
+                active = "ACTIVE_PROGRAM.md"
+
+        rel_archive = dest.relative_to(ROOT).as_posix()
+        if dry_run:
+            moves.append({"from": rel, "to": rel_archive, "stub": rel, "dry_run": "true"})
+            continue
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.is_file():
+            if len(text) >= len(dest.read_text(encoding="utf-8", errors="replace")):
+                dest.write_text(text, encoding="utf-8")
+        else:
+            dest.write_text(text, encoding="utf-8")
+        src.write_text(_governance_archive_stub(rel_archive, active=active), encoding="utf-8")
+        moves.append({"from": rel, "to": rel_archive, "stub": rel})
+    return moves
+
+
 def main() -> None:
+    import sys
+
+    if "--batch2-governance" in sys.argv:
+        dry = "--dry-run" in sys.argv
+        moves = archive_governance_md_batch2(dry_run=dry)
+        print(
+            f"Governance MD batch 2: {'would archive' if dry else 'archived'} {len(moves)} files"
+        )
+        return
     moves = archive_moves()
     write_execution_log(moves)
     print(f"Phase 3b: archived {len(moves)} files; log at {OUT / 'phase3_execution_log.json'}")

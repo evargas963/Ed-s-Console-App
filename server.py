@@ -10,6 +10,7 @@ Endpoints:
   GET  /api/analytics/light       → L1 authoritative cache read (+ L0 overlay); full compute on cold miss / force; GET /api/diagnostics/l1
   GET  /api/analytics/light/stream → SSE: L1 payloads after authoritative builds (same as HTTP GET; no extra compute)
   GET  /api/analytics/state       → Tier C: full analytical MarketState (chain, exposures, fusion, DB, news)
+  POST /api/analytics/warm        → schedule Tier C refresh + optional ML artifact prewarm (UI-MAXIMIZE)
   GET  /api/state                 → legacy alias of Tier C (same payload as /api/analytics/state)
   GET  /api/expiries?ticker=SPY   → list of available expiry dates
   GET  /api/logger/status         → background logger status
@@ -298,6 +299,18 @@ CACHE_TTL = 5                     # seconds — default REST cache & idle SSE lo
 # Shorter intervals = fresher Right Now / WDS / Call at the cost of more Schwab API work.
 VIEWER_SSE_REFRESH_SEC: float = float(os.environ.get("ED_VIEWER_SSE_REFRESH_SEC", "1.0"))
 VIEWER_STATE_CACHE_TTL_SEC: float = float(os.environ.get("ED_VIEWER_STATE_CACHE_TTL_SEC", "1.0"))
+# UI-MAXIMIZE — panel warm list + binding SLA budgets (mirrored on /api/build + static ED_UI_MAXIMIZE_SLA_MS).
+UI_MAXIMIZE_PANEL_WARM_TICKERS: tuple[str, ...] = tuple(
+    t.strip().upper()
+    for t in os.environ.get("ED_UI_PANEL_WARM_TICKERS", "SPY,QQQ,IWM").split(",")
+    if t.strip()
+) or ("SPY", "QQQ", "IWM")
+UI_MAXIMIZE_WARM_STAGGER_SEC: float = float(os.environ.get("ED_UI_MAXIMIZE_WARM_STAGGER_SEC", "2.0"))
+UI_MAXIMIZE_SLA_MS: dict[str, int] = {
+    "first_quote": int(os.environ.get("ED_UI_SLA_FIRST_QUOTE_MS", "500")),
+    "fusion_cards_panel_warm": int(os.environ.get("ED_UI_SLA_FUSION_PANEL_MS", "2000")),
+    "fusion_cards_guest_cold": int(os.environ.get("ED_UI_SLA_FUSION_GUEST_MS", "15000")),
+}
 # Layer A: push in-memory live quote plane over SSE (no Schwab/DB) — sub-second feel vs analytical loop.
 LIVE_QUOTE_SSE_INTERVAL_SEC: float = float(os.environ.get("ED_LIVE_QUOTE_SSE_INTERVAL_SEC", "0.12"))
 
@@ -568,27 +581,42 @@ def _l1_put_thread_queue_notify(sk: tuple[str, str | None], env: dict) -> None:
                 return
 
 
-# /api/fast-quote uses its own pool: default executor is also used by SSE (N concurrent
-# _fetch_state) and tick coherent refresh — saturated pools would queue the lightweight quote.
-# Lazily created so repeated TestClient lifespans in the same process get a fresh pool after shutdown.
+# /api/fast-quote and /api/live/state use a dedicated quote-hot pool so Tier C / L1
+# route offloads cannot starve the price strip during ticker switches.
+_quote_hot_executor: Optional[ThreadPoolExecutor] = None
+_route_offload_executor: Optional[ThreadPoolExecutor] = None
+
+# Legacy name retained for call sites that still import the route pool.
 _fast_quote_executor: Optional[ThreadPoolExecutor] = None
 
 # Single worker: outcome backfill scans snapshots + bars — must not run on the hot _fetch_state path.
 _db_fill_outcomes_executor: Optional[ThreadPoolExecutor] = None
 
 
-def _get_fast_quote_executor() -> ThreadPoolExecutor:
-    global _fast_quote_executor
-    if _fast_quote_executor is None:
-        # SWITCH-LATENCY FIX: this pool now absorbs the offloaded blocking work for ALL hot
-        # async routes (Tier A/B/C + fast-quote), so a single ticker switch can have ~4
-        # concurrent offloads in flight plus ongoing fast-quote polling. 2 workers serialized
-        # them; 8 keeps them off the event loop without re-queuing (I/O-bound — threads cheap).
-        _fast_quote_executor = ThreadPoolExecutor(
+def _get_quote_hot_executor() -> ThreadPoolExecutor:
+    """Tier A + fast-quote only — never queue behind Tier C JSON or L1 rebuilds."""
+    global _quote_hot_executor
+    if _quote_hot_executor is None:
+        _quote_hot_executor = ThreadPoolExecutor(
+            max_workers=4,
+            thread_name_prefix="ed_quote_hot",
+        )
+    return _quote_hot_executor
+
+
+def _get_route_offload_executor() -> ThreadPoolExecutor:
+    global _route_offload_executor
+    if _route_offload_executor is None:
+        _route_offload_executor = ThreadPoolExecutor(
             max_workers=8,
             thread_name_prefix="ed_route_offload",
         )
-    return _fast_quote_executor
+    return _route_offload_executor
+
+
+def _get_fast_quote_executor() -> ThreadPoolExecutor:
+    """Route-touch pool (Tier B/C JSON, streaming POST touch, L1 SSE subscribe)."""
+    return _get_route_offload_executor()
 
 
 def _get_db_fill_outcomes_executor() -> ThreadPoolExecutor:
@@ -1097,15 +1125,56 @@ def _publish_progressive_tier_c_cache(
             log.debug("progressive tier C broadcast failed ticker=%s: %s", t, e, exc_info=True)
 
 
-def _schedule_startup_analytics_warm() -> None:
-    """Cold start: warm default ticker Tier C before the logger cycle hammers Schwab."""
+def _prewarm_inference_models_worker(ticker: str) -> None:
+    """Disk → in-memory ML registry load (all primary horizons); no inference."""
     try:
-        t = DEFAULT_TICKER
-        inflight_key = _tier_c_inflight_key(t, None)
-        _schedule_analytics_recompute(inflight_key, t, None, "startup_warm")
-        log.info("Scheduled startup Tier C warm for %s", t)
-    except Exception as e:
-        log.warning("startup Tier C warm scheduling failed: %s", e)
+        from ml_predict import prewarm_inference_models_for_ticker
+
+        prewarm_inference_models_for_ticker(ticker)
+    except Exception as ex:
+        log.debug("inference prewarm failed ticker=%s: %s", ticker, ex, exc_info=True)
+
+
+def _schedule_analytics_warm(
+    ticker: str,
+    expiry: Optional[str] = None,
+    update_source: str = "client_warm",
+    *,
+    prewarm_models: bool = True,
+) -> dict[str, Any]:
+    """UI-MAXIMIZE: queue Tier C recompute + optional model registry prewarm."""
+    t = ticker.upper().strip()
+    inflight_key = _tier_c_inflight_key(t, expiry)
+    if prewarm_models:
+        _analytics_executor.submit(_prewarm_inference_models_worker, t)
+    _schedule_analytics_recompute(inflight_key, t, expiry, update_source)
+    return {
+        "ok": True,
+        "ticker": t,
+        "expiry": expiry,
+        "scheduled_refresh": True,
+        "prewarm_models": bool(prewarm_models),
+        "update_source": update_source,
+    }
+
+
+def _schedule_startup_analytics_warm() -> None:
+    """Cold start: warm SPY/QQQ/IWM Tier C (+ model prewarm) before logger hammers Schwab."""
+    tickers = UI_MAXIMIZE_PANEL_WARM_TICKERS
+    stagger = max(0.0, UI_MAXIMIZE_WARM_STAGGER_SEC)
+
+    def _warm_after_delay(ticker: str, delay_sec: float) -> None:
+        if delay_sec > 0:
+            time.sleep(delay_sec)
+        try:
+            _schedule_analytics_warm(ticker, None, "startup_warm", prewarm_models=True)
+            log.info("UI-MAXIMIZE startup warm scheduled for %s", ticker)
+        except Exception as e:
+            log.warning("startup Tier C warm scheduling failed %s: %s", ticker, e)
+
+    for i, t in enumerate(tickers):
+        _analytics_executor.submit(_warm_after_delay, t, i * stagger)
+    log.info("UI-MAXIMIZE startup warm queue: %s stagger=%ss", tickers, stagger)
 
 
 def _sse_viewer_cache_ttl(ticker: str, expiry: Optional[str]) -> float:
@@ -3830,12 +3899,14 @@ def _fetch_state(
         mkt_ctx = _get_mkt_ctx(client)
     session_label = mkt_ctx.session_label   # "RTH" | "Pre-Market" | "After-Hours" | "Closed"
 
-    # ── Chain (no dependency on this ticker's equity quote; Schwab centers strikes server-side) ──
+    # ── Chain + quote in parallel (independent Schwab calls — saves one RTT on cold Tier C) ──
+    _chain_fut = _analytics_executor.submit(
+        safe_get_chain, client, ticker, strike_count=CHAIN_STRIKE_COUNT
+    )
+    _quote_fut = _analytics_executor.submit(_safe_get_quote_with_retry, client, ticker)
     try:
-        c_resp = safe_get_chain(
-            client, ticker,
-            strike_count=CHAIN_STRIKE_COUNT
-        )
+        c_resp = _chain_fut.result()
+        q_resp = _quote_fut.result()
     except SchwabAuthError as e:
         raise HTTPException(
             status_code=401,
@@ -3879,8 +3950,7 @@ def _fetch_state(
         if isinstance(_chain_underlying, dict):
             _total_vol = _safe_float_quote(_chain_underlying.get("totalVolume"))
 
-    # ── Quote AFTER chain so spot/bid/ask are not aged by chain RTT + earlier work (live vs charts) ──
-    q_resp = _safe_get_quote_with_retry(client, ticker)
+    # Quote fetched in parallel with chain above — parse here after chain JSON work.
     if q_resp is None or q_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Quote fetch failed")
     q_json = q_resp.json()
@@ -4074,32 +4144,33 @@ def _fetch_state(
     # Canonical (1m) drives snapshot/state; 5m remains derived context.
     _seed_ref_ts = float(_tick_ts) if _tick_ts is not None else time.time()
     if _candles_1m.grid_stale(ticker, _seed_ref_ts, CANDLE_RESEED_GAP_SECONDS):
+        def _seed_candles(freq_min: int) -> None:
+            resp = safe_get_price_history(client, ticker, frequency_minutes=freq_min, period_days=1)
+            if resp and resp.status_code == 200:
+                payload = resp.json()
+                if "candles" not in payload:
+                    raise ValueError(
+                        f"Schwab pricehistory response missing 'candles' key (status={resp.status_code})"
+                    )
+                raw_bars = payload["candles"]
+                if freq_min == 5:
+                    _candles_5m.seed(ticker, raw_bars)
+                    log.info("Seeded %s 5m candles: %d bars from price history", ticker, len(raw_bars))
+                else:
+                    _candles_1m.seed(ticker, raw_bars)
+                    log.info("Seeded %s 1m candles: %d bars from price history", ticker, len(raw_bars))
+
         try:
             client = get_client()
-            # 5-minute bars
-            resp_5m = safe_get_price_history(client, ticker, frequency_minutes=5, period_days=1)
-            if resp_5m and resp_5m.status_code == 200:
-                payload_5m = resp_5m.json()
-                if "candles" not in payload_5m:
-                    raise ValueError(
-                        f"Schwab pricehistory response missing 'candles' key (status={resp_5m.status_code})"
-                    )
-                raw_bars = payload_5m["candles"]
-                _candles_5m.seed(ticker, raw_bars)
-                log.info(f"Seeded {ticker} 5m candles: {len(raw_bars)} bars from price history")
-            # 1-minute bars
-            resp_1m = safe_get_price_history(client, ticker, frequency_minutes=1, period_days=1)
-            if resp_1m and resp_1m.status_code == 200:
-                payload_1m = resp_1m.json()
-                if "candles" not in payload_1m:
-                    raise ValueError(
-                        f"Schwab pricehistory response missing 'candles' key (status={resp_1m.status_code})"
-                    )
-                raw_bars_1m = payload_1m["candles"]
-                _candles_1m.seed(ticker, raw_bars_1m)
-                log.info(f"Seeded {ticker} 1m candles: {len(raw_bars_1m)} bars from price history")
+            # UI-MAXIMIZE: parallel seed — must NOT use _analytics_executor (same pool as
+            # _fetch_state worker); nested submit+.result() deadlocks all Tier C jobs.
+            _seed_pool = _get_route_offload_executor()
+            _f5 = _seed_pool.submit(_seed_candles, 5)
+            _f1 = _seed_pool.submit(_seed_candles, 1)
+            _f5.result(timeout=45)
+            _f1.result(timeout=45)
         except Exception as e:
-            log.debug(f"Candle seeding failed for {ticker}: {e}")
+            log.debug("Candle seeding failed for %s: %s", ticker, e)
 
     if _tick_ts is not None:
         _candles_5m.tick(ticker, spot_f, _tick_ts, total_volume=_total_vol)
@@ -6409,10 +6480,14 @@ async def _app_lifespan(app):
         log.warning("Order flow streaming shutdown: %s", e)
 
     stop_logger()
-    global _fast_quote_executor, _db_fill_outcomes_executor
-    if _fast_quote_executor is not None:
-        _fast_quote_executor.shutdown(wait=True)
-        _fast_quote_executor = None
+    global _quote_hot_executor, _route_offload_executor, _fast_quote_executor, _db_fill_outcomes_executor
+    if _quote_hot_executor is not None:
+        _quote_hot_executor.shutdown(wait=True)
+        _quote_hot_executor = None
+    if _route_offload_executor is not None:
+        _route_offload_executor.shutdown(wait=True)
+        _route_offload_executor = None
+    _fast_quote_executor = None
     if _db_fill_outcomes_executor is not None:
         _db_fill_outcomes_executor.shutdown(wait=True)
         _db_fill_outcomes_executor = None
@@ -7085,7 +7160,7 @@ async def get_live_state(
         _touch_tracked_ticker_view(t)
         return _tier_a_live_state_dict(t, expiry)
     loop = asyncio.get_event_loop()
-    payload = await loop.run_in_executor(_get_fast_quote_executor(), _build)
+    payload = await loop.run_in_executor(_get_quote_hot_executor(), _build)
     return JSONResponse(payload)
 
 
@@ -7177,6 +7252,27 @@ async def get_analytics_state(
         _get_fast_quote_executor(),
         lambda: _tier_c_analytics_json_response(t, expiry, force, "rest_analytics"),
     )
+
+
+@app.post("/api/analytics/warm")
+async def post_analytics_warm(
+    ticker: str = Query(default=DEFAULT_TICKER),
+    symbol: Optional[str] = Query(default=None),
+    expiry: Optional[str] = Query(default=None),
+):
+    """
+    UI-MAXIMIZE — schedule Tier C background recompute + ML artifact prewarm (non-blocking).
+    Client fires on ticker switch / typeahead; does not await _fetch_state completion.
+    """
+    t = _resolve_ticker_param(ticker, symbol)
+
+    def _warm():
+        _touch_tracked_ticker_view(t)
+        return _schedule_analytics_warm(t, expiry, "client_warm_post", prewarm_models=True)
+
+    loop = asyncio.get_event_loop()
+    payload = await loop.run_in_executor(_get_route_offload_executor(), _warm)
+    return JSONResponse(payload)
 
 
 @app.get("/api/state")
@@ -7453,7 +7549,7 @@ async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
         _touch_tracked_ticker_view(ticker)
         return _fetch_fast_quote_payload(ticker)
     try:
-        payload = await loop.run_in_executor(_get_fast_quote_executor(), _reg_and_fetch)
+        payload = await loop.run_in_executor(_get_quote_hot_executor(), _reg_and_fetch)
         after_exec = time.perf_counter()
         log.info(
             "fast_quote_route_done ticker=%s asyncio_thread=%s route_total_ms=%.2f await_executor_ms=%.2f",
@@ -7937,7 +8033,12 @@ def _repo_git_head_sha() -> Optional[str]:
 @app.get("/api/build")
 def api_build():
     """Runtime tip fingerprint — compare ``git_sha`` to ``git rev-parse HEAD`` after deploy/restart."""
-    return {"git_sha": _repo_git_head_sha(), "contract": "meet_or_exceed_v1"}
+    return {
+        "git_sha": _repo_git_head_sha(),
+        "contract": "meet_or_exceed_v1",
+        "ui_maximize_sla_ms": dict(UI_MAXIMIZE_SLA_MS),
+        "ui_maximize_panel_warm_tickers": list(UI_MAXIMIZE_PANEL_WARM_TICKERS),
+    }
 
 
 @app.get("/api/price-levels")

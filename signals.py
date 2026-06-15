@@ -1273,10 +1273,18 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
     from ml_predict import (
         build_xgb_pre_engineering_snapshot_for_tick,
         get_ml_infer_horizon_slug,
+        ml_bundle_ticker_scope,
         reset_ml_infer_horizon_slug,
         set_ml_infer_horizon_slug,
     )
+    from governed_stack_contract import (
+        guest_anchor_context_scope,
+        remap_prob_sources_for_guest_anchor,
+        resolve_guest_anchor_for_ticker,
+    )
     from prediction_engine import build_fusion_model_overlay_for_stack
+
+    _guest_anchor = resolve_guest_anchor_for_ticker(ticker)
 
     shared_fusion_overlay: dict[str, Any]
     try:
@@ -1334,28 +1342,6 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
             dedupe_key="xgb_pre_engineering_tick",
         )
 
-    shared_sequence_context = None
-    if db is not None:
-        from features.shared_sequence_context import build_shared_sequence_context
-
-        _ctx, _ctx_err = build_shared_sequence_context(db, ticker, inference_snapshot_v1)
-        if _ctx is not None:
-            shared_sequence_context = _ctx
-        else:
-            log.warning(
-                "shared_sequence_context unavailable — per-horizon LSTM/Transformer DB reads (%s)",
-                _ctx_err,
-            )
-            record_stack_degradation(
-                stack_integrity_events,
-                component="shared_sequence_context",
-                severity="warning",
-                reason="shared_sequence_context_build_failed",
-                detail=_ctx_err or "",
-                fallback_used=True,
-                authority_intact=True,
-            )
-
     _live_hz = get_ml_infer_horizon_slug()
     fusion_policy_flat: dict[str, Any] = {}
     fusion_by_hz: dict[str, Any] = {}
@@ -1364,69 +1350,127 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
     mc_out = None
     ml_bundle: dict[str, Any] = {}
     fusion = None
-    live_stack_horizons, skipped_secondary_support = _live_model_stack_horizons(ticker)
-    secondary_support_fusion_audit.update(skipped_secondary_support)
 
-    for _hz in live_stack_horizons:
-        _tok = set_ml_infer_horizon_slug(_hz)
-        try:
-            _fus, _fusion_audit = production_fusion_payload_for_stack(
-                inp,
-                rules,
-                regime,
-                db,
-                inference_snapshot_v1=inference_snapshot_v1,
-                fusion_overlay=shared_fusion_overlay,
-                mc_spot_ctx=shared_mc_ctx,
-                mc_context_error=mc_ctx_err,
-                xgb_pre_engineering_snapshot=xgb_pre_eng,
-                signal_layer_v1=signal_layer_v1,
-                fusion_tick_cache=fusion_tick_cache,
-                stack_integrity_events=stack_integrity_events,
-                shared_sequence_context=shared_sequence_context,
+    with guest_anchor_context_scope(_guest_anchor), ml_bundle_ticker_scope(
+        _guest_anchor.anchor_ticker if _guest_anchor else None
+    ):
+        shared_sequence_context = None
+        _seq_ctx_err: Optional[str] = None
+        if db is not None:
+            from features.shared_sequence_context import (
+                build_guest_wire_sequence_context,
+                build_shared_sequence_context,
             )
-            fusion_policy_flat.update(fusion_payload_to_policy_columns(_hz, _fus))
-            if _hz in SECONDARY_SUPPORT_HORIZONS:
-                secondary_support_fusion_audit[_hz] = {
-                    "horizon_tier": "secondary_support",
-                    "non_authoritative": True,
-                    "provenance": "governed_stack_diagnostics_only",
-                    "fusion_available": fusion_is_authoritative(_fus),
-                    "dominant_direction": getattr(_fus, "dominant_direction", None),
-                    "prob_up": getattr(_fus, "prob_up", None),
-                    "prob_down": getattr(_fus, "prob_down", None),
-                    "prob_flat": getattr(_fus, "prob_flat", None),
-                }
-            if _hz in PRIMARY_DECISION_HORIZONS:
-                fusion_by_hz[_hz] = _fus
-            if _hz == _live_hz:
-                xgb_out = _fusion_audit["xgb_out"]
-                lstm_out = _fusion_audit["lstm_out"]
-                transformer_out = _fusion_audit["transformer_out"]
-                mc_out = _fusion_audit["mc_out"]
-                ml_bundle = _fusion_audit.get("ml_bundle") or {}
-                fusion = _fus
-        except Exception as e:
-            log.warning("signals: per-horizon stack+fusion failed hz=%s ticker=%s: %s", _hz, ticker, e)
-            from features.fusion_policy_contract import fusion_policy_columns_horizon_failed
 
-            fusion_policy_flat.update(
-                fusion_policy_columns_horizon_failed(_hz, reason=type(e).__name__)
+            _ctx, _seq_ctx_err = build_shared_sequence_context(db, ticker, inference_snapshot_v1)
+            if _ctx is not None:
+                shared_sequence_context = _ctx
+        if (
+            shared_sequence_context is None
+            and _guest_anchor is not None
+            and inference_snapshot_v1
+        ):
+            from features.shared_sequence_context import build_guest_wire_sequence_context
+
+            _wire_ctx, _wire_err = build_guest_wire_sequence_context(
+                inference_snapshot_v1,
+                inp=inp,
             )
-        finally:
-            reset_ml_infer_horizon_slug(_tok)
+            if _wire_ctx is not None:
+                shared_sequence_context = _wire_ctx
+                _seq_ctx_err = None
+                log.info(
+                    "guest_wire_sequence_context guest=%s anchor=%s (provisional LSTM/TR surface)",
+                    ticker,
+                    _guest_anchor.anchor_ticker,
+                )
+            elif _wire_err:
+                _seq_ctx_err = _wire_err
+        if shared_sequence_context is None and _seq_ctx_err:
+            log.warning(
+                "shared_sequence_context unavailable — per-horizon LSTM/Transformer DB reads (%s)",
+                _seq_ctx_err,
+            )
+            record_stack_degradation(
+                stack_integrity_events,
+                component="shared_sequence_context",
+                severity="warning",
+                reason="shared_sequence_context_build_failed",
+                detail=_seq_ctx_err or "",
+                fallback_used=True,
+                authority_intact=True,
+            )
 
-    _missing_primary = [hz for hz in PRIMARY_DECISION_HORIZONS if hz not in fusion_by_hz]
-    if _missing_primary:
-        raise RuntimeError(
-            f"signals: incomplete primary fusion_by_hz missing={_missing_primary!r} "
-            f"ticker={ticker!r} live_hz={_live_hz!r}"
-        )
+        live_stack_horizons, skipped_secondary_support = _live_model_stack_horizons(ticker)
+        secondary_support_fusion_audit.update(skipped_secondary_support)
 
-    if fusion is None or xgb_out is None:
-        raise RuntimeError(
-            f"signals: live horizon stack unavailable (live_hz={_live_hz!r} ticker={ticker!r})"
-        )
+        for _hz in live_stack_horizons:
+            _tok = set_ml_infer_horizon_slug(_hz)
+            try:
+                _fus, _fusion_audit = production_fusion_payload_for_stack(
+                    inp,
+                    rules,
+                    regime,
+                    db,
+                    inference_snapshot_v1=inference_snapshot_v1,
+                    fusion_overlay=shared_fusion_overlay,
+                    mc_spot_ctx=shared_mc_ctx,
+                    mc_context_error=mc_ctx_err,
+                    xgb_pre_engineering_snapshot=xgb_pre_eng,
+                    signal_layer_v1=signal_layer_v1,
+                    fusion_tick_cache=fusion_tick_cache,
+                    stack_integrity_events=stack_integrity_events,
+                    shared_sequence_context=shared_sequence_context,
+                )
+                fusion_policy_flat.update(fusion_payload_to_policy_columns(_hz, _fus))
+                if _hz in SECONDARY_SUPPORT_HORIZONS:
+                    secondary_support_fusion_audit[_hz] = {
+                        "horizon_tier": "secondary_support",
+                        "non_authoritative": True,
+                        "provenance": "governed_stack_diagnostics_only",
+                        "fusion_available": fusion_is_authoritative(_fus),
+                        "dominant_direction": getattr(_fus, "dominant_direction", None),
+                        "prob_up": getattr(_fus, "prob_up", None),
+                        "prob_down": getattr(_fus, "prob_down", None),
+                        "prob_flat": getattr(_fus, "prob_flat", None),
+                    }
+                if _hz in PRIMARY_DECISION_HORIZONS:
+                    fusion_by_hz[_hz] = _fus
+                if _hz == _live_hz:
+                    xgb_out = _fusion_audit["xgb_out"]
+                    lstm_out = _fusion_audit["lstm_out"]
+                    transformer_out = _fusion_audit["transformer_out"]
+                    mc_out = _fusion_audit["mc_out"]
+                    ml_bundle = _fusion_audit.get("ml_bundle") or {}
+                    fusion = _fus
+            except Exception as e:
+                log.warning("signals: per-horizon stack+fusion failed hz=%s ticker=%s: %s", _hz, ticker, e)
+                from features.fusion_policy_contract import fusion_policy_columns_horizon_failed
+
+                fusion_policy_flat.update(
+                    fusion_policy_columns_horizon_failed(_hz, reason=type(e).__name__)
+                )
+            finally:
+                reset_ml_infer_horizon_slug(_tok)
+
+        _missing_primary = [hz for hz in PRIMARY_DECISION_HORIZONS if hz not in fusion_by_hz]
+        if _missing_primary:
+            raise RuntimeError(
+                f"signals: incomplete primary fusion_by_hz missing={_missing_primary!r} "
+                f"ticker={ticker!r} live_hz={_live_hz!r}"
+            )
+
+        if fusion is None or xgb_out is None:
+            raise RuntimeError(
+                f"signals: live horizon stack unavailable (live_hz={_live_hz!r} ticker={ticker!r})"
+            )
+
+        if _guest_anchor is not None:
+            log.info(
+                "guest_anchor_inference guest=%s anchor=%s",
+                _guest_anchor.guest_ticker,
+                _guest_anchor.anchor_ticker,
+            )
 
     mc_display_excursions = _compute_display_wall_clock_mc_excursions(
         inp,
@@ -1527,6 +1571,10 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
     if _don():
         _dstep("signals_compute_call", ticker)
     mh_syn = compute_multi_horizon_synthesis(inp, pred_for_stack, canonical, mh_ml_fusion_bundle)
+    if _guest_anchor is not None:
+        mh_syn.tradeable = False
+        mh_syn.size_modifier = 0.0
+        mh_syn.wait_reason = _guest_anchor.wait_reason
     call = compute_call(
         inp,
         rules,
@@ -1557,6 +1605,14 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         )
     else:
         pred = pred_core
+
+    if _guest_anchor is not None:
+        for _pred_obj in (pred_core, pred):
+            if _pred_obj is None:
+                continue
+            _src = getattr(_pred_obj, "mh_prob_source_by_horizon", None)
+            if isinstance(_src, dict):
+                _pred_obj.mh_prob_source_by_horizon = remap_prob_sources_for_guest_anchor(_src)
 
     _call_pre_mh = {
         "signal": call.signal,
@@ -1662,4 +1718,14 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         multi_horizon_bundle=mh_bundle,
         calibration_payload=calibration_payload,
         mc_display_excursions=mc_display_excursions,
+        guest_anchor_active=_guest_anchor is not None,
+        guest_anchor_weights_ticker=(
+            _guest_anchor.anchor_ticker if _guest_anchor is not None else None
+        ),
+        guest_anchor_affiliation=(
+            _guest_anchor.affiliation if _guest_anchor is not None else None
+        ),
+        guest_anchor_rationale=(
+            _guest_anchor.rationale if _guest_anchor is not None else None
+        ),
     )

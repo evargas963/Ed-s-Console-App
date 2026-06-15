@@ -301,6 +301,56 @@ def test_publish_progressive_tier_c_cache_non_pending_shell():
     srv._state_cache.pop(cache_key, None)
 
 
+def test_post_analytics_warm_schedules_recompute_and_prewarm(monkeypatch):
+    import server as srv
+    from fastapi.testclient import TestClient
+
+    scheduled: list[tuple] = []
+
+    monkeypatch.setattr(
+        srv,
+        "_schedule_analytics_warm",
+        lambda ticker, expiry, source, **kw: scheduled.append((ticker, expiry, source, kw))
+        or {"ok": True, "ticker": ticker, "scheduled_refresh": True},
+    )
+    monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda _t: None)
+
+    client = TestClient(srv.app)
+    resp = client.post("/api/analytics/warm?ticker=SPY")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body.get("ok") is True
+    assert body.get("ticker") == "SPY"
+    assert scheduled
+    assert scheduled[0][0] == "SPY"
+    assert scheduled[0][2] == "client_warm_post"
+
+
+def test_api_build_exposes_ui_maximize_sla():
+    import server as srv
+    from fastapi.testclient import TestClient
+
+    client = TestClient(srv.app)
+    resp = client.get("/api/build")
+    assert resp.status_code == 200
+    body = resp.json()
+    sla = body.get("ui_maximize_sla_ms") or {}
+    assert sla.get("first_quote") == srv.UI_MAXIMIZE_SLA_MS["first_quote"]
+    assert sla.get("fusion_cards_panel_warm") == srv.UI_MAXIMIZE_SLA_MS["fusion_cards_panel_warm"]
+    warm = body.get("ui_maximize_panel_warm_tickers") or []
+    assert "SPY" in warm
+
+
+def test_candle_seed_does_not_nest_analytics_executor():
+    """Regression: parallel candle seed on _analytics_executor deadlocked Tier C (UI-MAXIMIZE)."""
+    text = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    idx = text.find("UI-MAXIMIZE: parallel seed")
+    assert idx != -1
+    block = text[idx : idx + 400]
+    assert "_get_route_offload_executor()" in block
+    assert "_analytics_executor.submit(_seed_candles" not in text
+
+
 def test_start_ed_console_bat_opens_edge_not_chrome():
     bat = (Path(__file__).resolve().parent.parent / "start_ed_console.bat").read_text(encoding="utf-8")
     assert "msedge.exe" in bat.lower()

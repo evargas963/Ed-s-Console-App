@@ -221,3 +221,94 @@ def transformer_window_chronological(
             f"Transformer needs at least {seq_len} snapshots, got {len(ch)}"
         )
     return list(ch[-seq_len:])
+
+
+def _guest_wire_row_from_live(inference_snapshot_v1: dict, inp: Any | None = None) -> dict[str, Any]:
+    """Minimal DB-shaped bar for guest wire-surface sequence (live features, no history)."""
+    row: dict[str, Any] = {}
+    if inp is not None:
+        for attr, col in (
+            ("spot", "spot"),
+            ("zone", "zone"),
+            ("net_gamma", "net_gamma"),
+            ("vwap_side", "vwap_side"),
+            ("spread", "spread"),
+            ("nearest_above_dist", "nearest_above_dist"),
+            ("nearest_below_dist", "nearest_below_dist"),
+            ("refresh_ts_utc", "ts_utc"),
+        ):
+            val = getattr(inp, attr, None)
+            if val is not None:
+                row[col] = val
+    feats = inference_snapshot_v1.get("features") or {}
+    ts = inference_snapshot_v1.get("as_of_ts")
+    if ts is not None:
+        row["ts_utc"] = ts
+    if row.get("spot") is None:
+        spot = feats.get("price.spot") if isinstance(feats, dict) else None
+        if spot is None and isinstance(feats, dict):
+            spot = feats.get("spot")
+        if spot is not None:
+            row["spot"] = spot
+    if row.get("zone") is None and isinstance(feats, dict) and feats.get("structure.zone") is not None:
+        row["zone"] = feats.get("structure.zone")
+    return row
+
+
+def build_guest_wire_sequence_context(
+    inference_snapshot_v1: dict,
+    *,
+    inp: Any | None = None,
+) -> tuple[Optional[SharedSequenceContext], Optional[str]]:
+    """
+    Guest peek path when DB history is too short: build LSTM/TR windows from the live
+    wire row (same surface-bar contract as ablation wire-row scoring).
+    """
+    from arch_competition.ablation_bundle_inference import wire_row_surface_bars
+    from features.lstm_sequence_input import LstmSequenceInputError, build_lstm_merged_windows
+    from ml_predict import _require_as_of_ts_utc_for_sequence_db
+
+    if not inference_snapshot_v1 or not isinstance(inference_snapshot_v1, dict):
+        return None, "missing_inference_snapshot_v1"
+    try:
+        _asof = _require_as_of_ts_utc_for_sequence_db(inference_snapshot_v1)
+    except LstmSequenceInputError as e:
+        return None, str(e)
+
+    wire_row = _guest_wire_row_from_live(inference_snapshot_v1, inp)
+    if wire_row.get("ts_utc") is None:
+        wire_row["ts_utc"] = _asof
+    if wire_row.get("spot") is None:
+        return None, "guest_wire_row_missing_spot"
+
+    raw_window = wire_row_surface_bars(wire_row, STREAM_5M_LOOKBACK)
+    day_snaps = wire_row_surface_bars(wire_row, max(1, min(100, len(raw_window))))
+    try:
+        merged_window, merged_days = build_lstm_merged_windows(
+            raw_window,
+            day_snaps,
+            inference_snapshot_v1=inference_snapshot_v1,
+        )
+    except LstmSequenceInputError as e:
+        return None, str(e)
+
+    meta = MappingProxyType(
+        {
+            "lookback_5m": STREAM_5M_LOOKBACK,
+            "n_fetch": 0,
+            "guest_wire_surface": True,
+            "provisional_anchor_sequence": True,
+        }
+    )
+    return (
+        SharedSequenceContext(
+            as_of_ts=float(_asof),
+            chron_snapshots=tuple(raw_window),
+            lstm_merged_window=tuple(merged_window),
+            lstm_merged_days=tuple(merged_days),
+            n_fetch=0,
+            meta=meta,
+        ),
+        None,
+    )
+

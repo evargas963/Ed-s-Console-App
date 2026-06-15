@@ -1,4 +1,6 @@
 > **Classification:** Policy Specification | **Scope:** Governance policy/contract `INSTITUTIONAL_STANDARD_V3.md`.
+>
+> **Binding tier:** Tier 5 spec vault — **§20 amendment-path reference only**. Day-to-day agent law is `AGENTS.md` + mechanical locks. **Do not** cite V3 clauses to override `check_*` gates or Tier A sign-off.
 
 # Institutional Standard V3 — Production ML for Trading Decisions (2026)
 
