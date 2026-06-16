@@ -184,7 +184,11 @@ LEGACY_V2_ENCODED_FEATURES_1M: list[str] = _build_encoded_feature_names(
 
 
 def refresh_sequence_feature_lists() -> None:
-    """Reload FEATURES_* from XGB tabular minus cf_* (cf_* stay on X_conf only — no double feed)."""
+    """Reload FEATURES_* from XGB tabular minus cf_* (cf_* stay on X_conf only — no double feed).
+
+    Called at module import so FEATURES_5M/1M match live tabular engineer_features column order.
+    Safe for governance static audit: engineer_features uses writable copies for in-place masks.
+    """
     global FEATURES_5M, FEATURES_1M, ENCODED_FEATURES_5M, ENCODED_FEATURES_1M
     from ml_train import refresh_tabular_training_feature_names_cache
 
@@ -1288,4 +1292,5 @@ if __name__ == "__main__":
     print("           Then share the output with Claude")
 
 
+# Import-time refresh: sequence encoders read FEATURES_* at load; must stay deterministic.
 refresh_sequence_feature_lists()

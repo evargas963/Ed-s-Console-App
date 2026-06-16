@@ -389,6 +389,12 @@ def encode_tabular_feature_vector(
     return out
 
 
+def _mutable_float_ndarray(values) -> np.ndarray:
+    """Return a writable float ndarray (pandas/NumPy map outputs may be read-only)."""
+    out = np.asarray(values, dtype=float)
+    return out.copy() if not out.flags.writeable else out
+
+
 def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
     """Build normalized feature matrix. Returns (X, feature_names, category_maps, aux_stats).
 
@@ -507,7 +513,7 @@ def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
                 fit_med = vseries.iloc[:fit_end].groupby(tod_series.iloc[:fit_end]).median()
             else:
                 fit_med = vseries.groupby(tod_series).median()
-            avg_vol = tod_series.map(fit_med).to_numpy(dtype=float)  # NaN for val-only tod
+            avg_vol = _mutable_float_ndarray(tod_series.map(fit_med))
             avg_vol[~(avg_vol > 0)] = np.nan                         # NaN-safe <=0 + nan guard
             feats["volume_ratio"] = np.clip(vol / avg_vol, 0, 10)
             for key, med in fit_med.items():
@@ -521,7 +527,9 @@ def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
         feats["bid_ask_imbalance"] = imb
         for k, fn in [("imbalance_buy_pressure",  lambda x: x > 0.65),
                       ("imbalance_sell_pressure", lambda x: x < 0.35)]:
-            arr = fn(imb).astype(float); arr[nm] = np.nan; feats[k] = arr
+            arr = _mutable_float_ndarray(fn(imb))
+            arr[nm] = np.nan
+            feats[k] = arr
 
     category_maps = {}
     for col in CATEGORICALS:
