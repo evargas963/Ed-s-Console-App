@@ -77,6 +77,8 @@ def check_check_stack_rightsizing() -> list[str]:
     # Required check families present
     check_ids = {c.get("check_id") for c in inv.get("checks") or []}
     for required in (
+        "prepush-fast-gate",
+        "generated-artifacts-clean-check",
         "fix-everything-we-touch",
         "fix-everything-we-touch-full-static",
         "governance-consolidation-tests",

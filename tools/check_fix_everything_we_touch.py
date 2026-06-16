@@ -3137,6 +3137,8 @@ _REPO_WIDE_STATIC_CHECK_FUNCS: tuple[str, ...] = (
     "check_precommit_performance_contract",
     "check_repo_hygiene_policy",
     "check_source_control_hygiene",
+    "check_prepush_fast_gate",
+    "check_governance_generated_artifacts_clean",
     "check_check_stack_rightsizing",
 )
 
@@ -3266,6 +3268,8 @@ _EXTERNAL_TOOL_LOCKS: tuple[str, ...] = (
     "tools/remote_enforcement_evidence.py",
     "tools/enforce_all_rules.py",
     "tools/check_source_control_hygiene.py",
+    "tools/check_prepush_fast_gate.py",
+    "tools/check_governance_generated_artifacts_clean.py",
 )
 
 
@@ -3367,6 +3371,22 @@ def check_source_control_hygiene() -> list[str]:
     return _check()
 
 
+def check_prepush_fast_gate() -> list[str]:
+    """Pre-push fast-fail policy — hook order + docs (not dirty-tree probe)."""
+    from tools.check_prepush_fast_gate import check_prepush_fast_gate_policy as _check
+
+    return _check()
+
+
+def check_governance_generated_artifacts_clean() -> list[str]:
+    """Generated governance JSON must match sources — check-only, no writes."""
+    from tools.check_governance_generated_artifacts_clean import (
+        check_governance_generated_artifacts_clean as _check,
+    )
+
+    return _check()
+
+
 def check_check_stack_rightsizing() -> list[str]:
     """Phase 3I — check stack inventory, tier policy, runtime budgets."""
     from tools.check_check_stack_rightsizing import check_check_stack_rightsizing as _check
@@ -3417,6 +3437,21 @@ def check_precommit_performance_contract() -> list[str]:
         if re.search(r"stages:\s*\[\s*pre-commit\s*\]", block):
             errors.append(
                 ".pre-commit-config.yaml: governance-consolidation-tests must not run on pre-commit"
+            )
+    idx_fast = pc.find("id: prepush-fast-gate")
+    idx_art = pc.find("id: generated-artifacts-clean-check")
+    idx_static = pc.find("id: fix-everything-we-touch-full-static")
+    idx_gct = pc.find("id: governance-consolidation-tests")
+    if idx_fast < 0:
+        errors.append(".pre-commit-config.yaml: missing prepush-fast-gate hook")
+    if idx_art < 0:
+        errors.append(".pre-commit-config.yaml: missing generated-artifacts-clean-check hook")
+    if idx_fast >= 0 and idx_art >= 0 and idx_static >= 0 and idx_gct >= 0:
+        if not (idx_fast < idx_art < idx_static < idx_gct):
+            errors.append(
+                ".pre-commit-config.yaml: pre-push hook order must be "
+                "prepush-fast-gate → generated-artifacts-clean-check → "
+                "fix-everything-we-touch-full-static → governance-consolidation-tests"
             )
     if audit_json.is_file():
         try:

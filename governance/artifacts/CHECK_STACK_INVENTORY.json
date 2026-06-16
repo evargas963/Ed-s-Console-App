@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "phase": "3I-CheckStack",
-  "generated_at_utc": "2026-06-16T13:03:32+00:00",
+  "generated_at_utc": "2026-06-16T19:47:59+00:00",
   "policy": "governance/docs/CHECK_STACK_RIGHTSIZING.md",
   "runtime_budgets_seconds": {
     "precommit_normal": 60,
@@ -25,11 +25,41 @@
       "recommendation": "candidate_for_retier and make_incremental \u2014 do not remove checks without risk proof"
     }
   ],
-  "check_count": 56,
+  "check_count": -1,
   "duplication_analysis": [
     {
-      "check_a": "governance-consolidation-tests",
+      "check_a": "prepush-fast-gate",
+      "check_b": "generated-artifacts-clean-check",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "prepush-fast-gate",
       "check_b": "fix-everything-we-touch-full-static",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "prepush-fast-gate",
+      "check_b": "governance-consolidation-tests",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "generated-artifacts-clean-check",
+      "check_b": "fix-everything-we-touch-full-static",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "generated-artifacts-clean-check",
+      "check_b": "governance-consolidation-tests",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "fix-everything-we-touch-full-static",
+      "check_b": "governance-consolidation-tests",
       "classification": "candidate_for_merge",
       "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
     },
@@ -103,8 +133,10 @@
       "fix-everything-we-touch"
     ],
     "move_to_prepush": [
-      "governance-consolidation-tests",
-      "fix-everything-we-touch-full-static"
+      "prepush-fast-gate",
+      "generated-artifacts-clean-check",
+      "fix-everything-we-touch-full-static",
+      "governance-consolidation-tests"
     ],
     "move_to_ci_only": [
       "enforce_all_rules_objective_audit"
@@ -128,8 +160,8 @@
   },
   "checks": [
     {
-      "check_id": "governance-consolidation-tests",
-      "command": "python -m pytest tests/test_governance_consolidation.py tests/test_forbidden_phrases.py tests/test_money_path_roster.py tests/test_check_no_deferral_language.py tests/test_check_fix_everything_we_touch.py tests/test_check_schwab_csv_first.py tests/test_ml_feature_schema_parity.py::test_ml_pipeline_efficiency_checker_green tests/test_ml_feature_schema_parity.py::test_ablation_parity_includes_bridge_and_backtest_hooks -q",
+      "check_id": "prepush-fast-gate",
+      "command": "python tools/check_prepush_fast_gate.py",
       "tier": 2,
       "runtime_seconds": null,
       "scope": "pre-commit hook",
@@ -146,7 +178,32 @@
       "removal_risk": "high",
       "recommendation": "move_to_prepush",
       "overlap_with_other_checks": [
-        "fix-everything-we-touch-full-static"
+        "generated-artifacts-clean-check",
+        "fix-everything-we-touch-full-static",
+        "governance-consolidation-tests"
+      ]
+    },
+    {
+      "check_id": "generated-artifacts-clean-check",
+      "command": "python tools/check_governance_generated_artifacts_clean.py",
+      "tier": 2,
+      "runtime_seconds": null,
+      "scope": "pre-commit hook",
+      "files_or_modules_covered": "staged or repo per hook",
+      "risk_addressed": "governance enforcement",
+      "evidence_artifact": "governance/artifacts/PRECOMMIT_PERFORMANCE_AUDIT.json",
+      "must_run_precommit": false,
+      "must_run_prepush": true,
+      "must_run_ci": false,
+      "can_be_cached": false,
+      "can_be_incremental": false,
+      "can_be_parallelized": false,
+      "can_be_removed": false,
+      "removal_risk": "high",
+      "recommendation": "move_to_prepush",
+      "overlap_with_other_checks": [
+        "fix-everything-we-touch-full-static",
+        "governance-consolidation-tests"
       ]
     },
     {
@@ -154,6 +211,28 @@
       "command": "python tools/check_fix_everything_we_touch.py --full-static",
       "tier": 2,
       "runtime_seconds": 149.9294,
+      "scope": "pre-commit hook",
+      "files_or_modules_covered": "staged or repo per hook",
+      "risk_addressed": "governance enforcement",
+      "evidence_artifact": "governance/artifacts/PRECOMMIT_PERFORMANCE_AUDIT.json",
+      "must_run_precommit": false,
+      "must_run_prepush": true,
+      "must_run_ci": false,
+      "can_be_cached": false,
+      "can_be_incremental": false,
+      "can_be_parallelized": false,
+      "can_be_removed": false,
+      "removal_risk": "high",
+      "recommendation": "move_to_prepush",
+      "overlap_with_other_checks": [
+        "governance-consolidation-tests"
+      ]
+    },
+    {
+      "check_id": "governance-consolidation-tests",
+      "command": "python -m pytest tests/test_governance_consolidation.py tests/test_forbidden_phrases.py tests/test_money_path_roster.py tests/test_check_no_deferral_language.py tests/test_check_fix_everything_we_touch.py tests/test_check_schwab_csv_first.py tests/test_ml_feature_schema_parity.py::test_ml_pipeline_efficiency_checker_green tests/test_ml_feature_schema_parity.py::test_ablation_parity_includes_bridge_and_backtest_hooks -q",
+      "tier": 2,
+      "runtime_seconds": null,
       "scope": "pre-commit hook",
       "files_or_modules_covered": "staged or repo per hook",
       "risk_addressed": "governance enforcement",
@@ -1211,6 +1290,66 @@
       "scope": "repo-wide static",
       "files_or_modules_covered": "full repo",
       "risk_addressed": "repo hygiene policy",
+      "evidence_artifact": "governance/artifacts/FIX_EVERYTHING_WE_TOUCH_PROFILE.json",
+      "must_run_precommit": false,
+      "must_run_prepush": true,
+      "must_run_ci": true,
+      "can_be_cached": false,
+      "can_be_incremental": false,
+      "can_be_parallelized": false,
+      "can_be_removed": false,
+      "removal_risk": "high",
+      "recommendation": "keep_in_prepush",
+      "overlap_with_other_checks": []
+    },
+    {
+      "check_id": "check_source_control_hygiene",
+      "command": "check_fix_everything_we_touch.py::check_source_control_hygiene",
+      "tier": 2,
+      "runtime_seconds": null,
+      "scope": "repo-wide static",
+      "files_or_modules_covered": "full repo",
+      "risk_addressed": "source control hygiene",
+      "evidence_artifact": "governance/artifacts/FIX_EVERYTHING_WE_TOUCH_PROFILE.json",
+      "must_run_precommit": false,
+      "must_run_prepush": true,
+      "must_run_ci": true,
+      "can_be_cached": false,
+      "can_be_incremental": false,
+      "can_be_parallelized": false,
+      "can_be_removed": false,
+      "removal_risk": "high",
+      "recommendation": "keep_in_prepush",
+      "overlap_with_other_checks": []
+    },
+    {
+      "check_id": "check_prepush_fast_gate",
+      "command": "check_fix_everything_we_touch.py::check_prepush_fast_gate",
+      "tier": 2,
+      "runtime_seconds": null,
+      "scope": "repo-wide static",
+      "files_or_modules_covered": "full repo",
+      "risk_addressed": "prepush fast gate",
+      "evidence_artifact": "governance/artifacts/FIX_EVERYTHING_WE_TOUCH_PROFILE.json",
+      "must_run_precommit": false,
+      "must_run_prepush": true,
+      "must_run_ci": true,
+      "can_be_cached": false,
+      "can_be_incremental": false,
+      "can_be_parallelized": false,
+      "can_be_removed": false,
+      "removal_risk": "high",
+      "recommendation": "keep_in_prepush",
+      "overlap_with_other_checks": []
+    },
+    {
+      "check_id": "check_governance_generated_artifacts_clean",
+      "command": "check_fix_everything_we_touch.py::check_governance_generated_artifacts_clean",
+      "tier": 2,
+      "runtime_seconds": null,
+      "scope": "repo-wide static",
+      "files_or_modules_covered": "full repo",
+      "risk_addressed": "governance generated artifacts clean",
       "evidence_artifact": "governance/artifacts/FIX_EVERYTHING_WE_TOUCH_PROFILE.json",
       "must_run_precommit": false,
       "must_run_prepush": true,

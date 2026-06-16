@@ -66,6 +66,20 @@ HOOK_TIER_POLICY: dict[str, dict] = {
         "proposed_location": "prepush",
         "recommendation": "Pre-push runs all repo-wide locks; populates local cache for fast commits.",
     },
+    "prepush-fast-gate": {
+        "tier": 2,
+        "scope": "clean working tree before expensive pre-push hooks",
+        "keep_in_precommit": False,
+        "proposed_location": "prepush",
+        "recommendation": "Fail in under 5s when tree is dirty — must run before consolidation pytest.",
+    },
+    "generated-artifacts-clean-check": {
+        "tier": 2,
+        "scope": "check-only staleness for generated governance JSON",
+        "keep_in_precommit": False,
+        "proposed_location": "prepush",
+        "recommendation": "Non-mutating compare vs sources — fail before long pytest when artifacts stale.",
+    },
 }
 
 TIER_LABELS = {

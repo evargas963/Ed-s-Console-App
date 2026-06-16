@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "policy_doc": "governance/docs/PREPUSH_FAST_FAIL_POLICY.md",
+  "checker_modules": [
+    "tools/check_prepush_fast_gate.py",
+    "tools/check_governance_generated_artifacts_clean.py"
+  ],
+  "expected_prepush_hook_order": [
+    "prepush-fast-gate",
+    "generated-artifacts-clean-check",
+    "fix-everything-we-touch-full-static",
+    "governance-consolidation-tests"
+  ],
+  "dirty_tree_budget_seconds": 5.0,
+  "consolidation_mode": "check_only_pytest",
+  "consolidation_forbidden_tokens": [
+    "--write",
+    "build_repo_hygiene_inventory.py",
+    "build_check_stack_inventory.py",
+    "audit_persistence_consumers.py",
+    "audit_precommit_performance.py --write"
+  ],
+  "generated_artifact_regeneration_commands": [
+    "python tools/audit_persistence_consumers.py",
+    "python tools/build_repo_hygiene_inventory.py",
+    "python tools/build_check_stack_inventory.py",
+    "python tools/audit_precommit_performance.py --write"
+  ],
+  "runtime_observation": {
+    "prepush_before_seconds": 1440,
+    "prepush_before_note": "Consolidation-first order; 24 min measured in CHECK_STACK_INVENTORY",
+    "fast_gate_target_seconds": 5,
+    "stale_artifact_gate_target_seconds": 60
+  }
+}

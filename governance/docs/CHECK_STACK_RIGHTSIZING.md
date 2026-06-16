@@ -2,7 +2,7 @@
 
 **Scope:** Phase 3I — inventory, tier policy, duplication analysis, runtime budgets. No check removal in this phase.
 
-Generated: `2026-06-16T13:03:32+00:00`
+Generated: `2026-06-16T19:47:59+00:00`
 
 ## Runtime budget targets (seconds)
 
@@ -26,7 +26,12 @@ Generated: `2026-06-16T13:03:32+00:00`
 
 ## Duplication analysis
 
-- `governance-consolidation-tests` ↔ `fix-everything-we-touch-full-static`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
+- `prepush-fast-gate` ↔ `generated-artifacts-clean-check`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
+- `prepush-fast-gate` ↔ `fix-everything-we-touch-full-static`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
+- `prepush-fast-gate` ↔ `governance-consolidation-tests`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
+- `generated-artifacts-clean-check` ↔ `fix-everything-we-touch-full-static`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
+- `generated-artifacts-clean-check` ↔ `governance-consolidation-tests`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
+- `fix-everything-we-touch-full-static` ↔ `governance-consolidation-tests`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-grep-subprocess` ↔ `no-deferral-language-msg`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-grep-subprocess` ↔ `no-deferral-language-files`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-grep-subprocess` ↔ `fix-everything-we-touch-msg`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-06-16T05:49:43+00:00",
+  "generated_at_utc": "2026-06-16T19:47:59+00:00",
   "measurement_mode": "declared_policy_only",
   "total_measured_seconds": null,
   "slowest_hook": null,
@@ -12,16 +12,30 @@
   },
   "hooks": [
     {
-      "name": "governance consolidation tests",
-      "id": "governance-consolidation-tests",
-      "command": "python -m pytest tests/test_governance_consolidation.py tests/test_forbidden_phrases.py tests/test_money_path_roster.py tests/test_check_no_deferral_language.py tests/test_check_fix_everything_we_touch.py tests/test_check_schwab_csv_first.py tests/test_ml_feature_schema_parity.py::test_ml_pipeline_efficiency_checker_green tests/test_ml_feature_schema_parity.py::test_ablation_parity_includes_bridge_and_backtest_hooks -q",
+      "name": "prepush fast gate (clean working tree)",
+      "id": "prepush-fast-gate",
+      "command": "python tools/check_prepush_fast_gate.py",
       "stages": [
         "pre-push"
       ],
       "runtime_seconds": null,
-      "scope": "repo-wide pytest consolidation suite",
+      "scope": "clean working tree before expensive pre-push hooks",
       "tier": 2,
-      "recommendation": "Move to pre-push; full suite belongs in Tier 2, not every commit.",
+      "recommendation": "Fail in under 5s when tree is dirty \u2014 must run before consolidation pytest.",
+      "keep_in_precommit": false,
+      "proposed_location": "prepush"
+    },
+    {
+      "name": "generated governance artifacts clean (check-only)",
+      "id": "generated-artifacts-clean-check",
+      "command": "python tools/check_governance_generated_artifacts_clean.py",
+      "stages": [
+        "pre-push"
+      ],
+      "runtime_seconds": null,
+      "scope": "check-only staleness for generated governance JSON",
+      "tier": 2,
+      "recommendation": "Non-mutating compare vs sources \u2014 fail before long pytest when artifacts stale.",
       "keep_in_precommit": false,
       "proposed_location": "prepush"
     },
@@ -36,6 +50,20 @@
       "scope": "full repo-wide static locks",
       "tier": 2,
       "recommendation": "Pre-push runs all repo-wide locks; populates local cache for fast commits.",
+      "keep_in_precommit": false,
+      "proposed_location": "prepush"
+    },
+    {
+      "name": "governance consolidation tests (check-only pytest)",
+      "id": "governance-consolidation-tests",
+      "command": "python -m pytest tests/test_governance_consolidation.py tests/test_forbidden_phrases.py tests/test_money_path_roster.py tests/test_check_no_deferral_language.py tests/test_check_fix_everything_we_touch.py tests/test_check_schwab_csv_first.py tests/test_ml_feature_schema_parity.py::test_ml_pipeline_efficiency_checker_green tests/test_ml_feature_schema_parity.py::test_ablation_parity_includes_bridge_and_backtest_hooks -q",
+      "stages": [
+        "pre-push"
+      ],
+      "runtime_seconds": null,
+      "scope": "repo-wide pytest consolidation suite",
+      "tier": 2,
+      "recommendation": "Move to pre-push; full suite belongs in Tier 2, not every commit.",
       "keep_in_precommit": false,
       "proposed_location": "prepush"
     },
