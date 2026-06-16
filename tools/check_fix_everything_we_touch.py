@@ -11,7 +11,9 @@ Authoritative rule source: AGENTS.md (§ Do not lie to the operator, § Fix ever
 § Self-governance quality loop). Paired test: tests/test_check_fix_everything_we_touch.py.
 
 Usage:
-  python tools/check_fix_everything_we_touch.py              # staged files (pre-commit)
+  python tools/check_fix_everything_we_touch.py              # pre-commit scoped (fast path)
+  python tools/check_fix_everything_we_touch.py --full-static  # pre-push / full repo-wide locks
+  python tools/check_fix_everything_we_touch.py --profile      # per-subcheck timings artifact
   python tools/check_fix_everything_we_touch.py path [path]  # explicit paths
   python tools/check_fix_everything_we_touch.py --commit-msg .git/COMMIT_EDITMSG
 """
@@ -22,8 +24,10 @@ import json
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Callable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MEMO_DIR = REPO_ROOT / "governance" / "SCHWAB_V4_REVIEW_MEMOS"
@@ -3327,8 +3331,9 @@ def check_precommit_performance_contract() -> list[str]:
     errors: list[str] = []
     audit_py = REPO_ROOT / "tools" / "audit_precommit_performance.py"
     audit_json = REPO_ROOT / "governance" / "artifacts" / "PRECOMMIT_PERFORMANCE_AUDIT.json"
+    profile_json = REPO_ROOT / "governance" / "artifacts" / "FIX_EVERYTHING_WE_TOUCH_PROFILE.json"
     audit_md = REPO_ROOT / "governance" / "docs" / "PRECOMMIT_PERFORMANCE_AUDIT.md"
-    for path in (audit_py, audit_json, audit_md):
+    for path in (audit_py, audit_json, profile_json, audit_md):
         if not path.is_file():
             errors.append(f"{path.relative_to(REPO_ROOT).as_posix()}: missing (pre-commit performance audit)")
     precommit = REPO_ROOT / ".pre-commit-config.yaml"
@@ -3336,6 +3341,18 @@ def check_precommit_performance_contract() -> list[str]:
         errors.append(".pre-commit-config.yaml: missing")
         return errors
     pc = precommit.read_text(encoding="utf-8", errors="replace")
+    idx = pc.find("id: fix-everything-we-touch-full-static")
+    if idx < 0:
+        errors.append(".pre-commit-config.yaml: missing fix-everything-we-touch-full-static pre-push hook")
+    else:
+        rest = pc[idx:]
+        next_hook = rest.find("\n      - id:", len("id: fix-everything-we-touch-full-static"))
+        block = rest if next_hook < 0 else rest[:next_hook]
+        if "pre-push" not in block:
+            errors.append(
+                ".pre-commit-config.yaml: fix-everything-we-touch-full-static must use stages: [pre-push]"
+            )
+
     idx = pc.find("id: governance-consolidation-tests")
     if idx < 0:
         errors.append(".pre-commit-config.yaml: missing governance-consolidation-tests hook")
@@ -3408,21 +3425,120 @@ def check_promoted_agents_rules_mechanically_locked() -> list[str]:
     return errors
 
 
-def _run_repo_wide_static_check_funcs(*, staged: set[str] | None = None) -> list[str]:
-    """Invoke every repo-wide static lock in canonical order."""
+def _scope_module():
+    tools_dir = Path(__file__).resolve().parent
+    if str(tools_dir) not in sys.path:
+        sys.path.insert(0, str(tools_dir))
+    import fix_everything_we_touch_scope as scope
+
+    return scope
+
+
+def _run_repo_wide_static_check_funcs(
+    *,
+    staged: set[str] | None = None,
+    full_static: bool = False,
+    profile: Any | None = None,
+    use_cache: bool = True,
+) -> list[str]:
+    """Invoke repo-wide static locks — scoped/cached on pre-commit; full on --full-static / objective-audit."""
+    scope = _scope_module()
+    ProfileCollector = scope.ProfileCollector
+    apply_cached_errors = scope.apply_cached_errors
+    cache_covers_all_checks = scope.cache_covers_all_checks
+    compute_cache_invalidation_sha256 = scope.compute_cache_invalidation_sha256
+    load_disk_cache = scope.load_disk_cache
+    resolve_precommit_check_funcs = scope.resolve_precommit_check_funcs
+    run_check_funcs = scope.run_check_funcs
+    save_disk_cache = scope.save_disk_cache
+
     st = staged if staged is not None else set()
+    inv = compute_cache_invalidation_sha256(_REPO_WIDE_STATIC_CHECK_FUNCS)
+    func_names = resolve_precommit_check_funcs(
+        _REPO_WIDE_STATIC_CHECK_FUNCS,
+        staged=st,
+        full_static=full_static,
+    )
     errors: list[str] = []
-    g = globals()
-    for fn_name in _REPO_WIDE_STATIC_CHECK_FUNCS:
-        fn = g.get(fn_name)
-        if fn is None or not callable(fn):
-            errors.append(f"repo-wide static audit: missing callable {fn_name}()")
-            continue
-        errors.extend(fn())
+    prof = profile if isinstance(profile, ProfileCollector) else None
+
+    if use_cache and not full_static:
+        disk = load_disk_cache()
+        if cache_covers_all_checks(disk, invalidation_sha256=inv, func_names=_REPO_WIDE_STATIC_CHECK_FUNCS):
+            cached_errs = apply_cached_errors(disk, _REPO_WIDE_STATIC_CHECK_FUNCS)
+            if prof is not None:
+                prof.record(
+                    "repo_wide_static_cache_hit",
+                    0.0,
+                    scope="cached",
+                    files_scanned=len(st),
+                    recommendation="Skip re-run when invalidation hash unchanged and last full pass green",
+                    cached=True,
+                )
+            errors.extend(cached_errs)
+            if st:
+                t0 = time.perf_counter()
+                sim_errors, _sim_warnings = audit_staged_python_simplicity(st)
+                errors.extend(sim_errors)
+                if prof is not None:
+                    prof.record(
+                        "audit_staged_python_simplicity",
+                        time.perf_counter() - t0,
+                        scope="staged",
+                        files_scanned=len(st),
+                    )
+            return errors
+
+    if prof is not None and not func_names and not full_static:
+        prof.record(
+            "repo_wide_static_skipped",
+            0.0,
+            scope="staged",
+            files_scanned=len(st),
+            recommendation="Fast path — no repo-wide checks required for staged scope",
+        )
+
+    if func_names:
+        label = "repo" if full_static else "critical"
+        fn_errors, results = run_check_funcs(
+            func_names,
+            globals(),
+            profile=prof,
+            scope_label=label,
+            staged=st,
+        )
+        errors.extend(fn_errors)
+        if full_static or is_governance_critical_commit(st):
+            disk = load_disk_cache() or {}
+            checkers = dict(disk.get("checkers") or {})
+            checkers.update(results)
+            save_disk_cache(
+                {
+                    "schema_version": 1,
+                    "invalidation_sha256": inv,
+                    "last_updated_utc": datetime.now(timezone.utc)
+                    .replace(microsecond=0)
+                    .isoformat(),
+                    "checkers": checkers,
+                }
+            )
+
     if st:
+        t0 = time.perf_counter()
         sim_errors, _sim_warnings = audit_staged_python_simplicity(st)
         errors.extend(sim_errors)
+        if prof is not None:
+            prof.record(
+                "audit_staged_python_simplicity",
+                time.perf_counter() - t0,
+                scope="staged",
+                files_scanned=len(st),
+            )
     return errors
+
+
+def is_governance_critical_commit(staged: set[str]) -> bool:
+    return _scope_module().is_governance_critical_commit(staged)
 
 
 # ── Tier 0 — Upfront mechanical gate (AGENTS § Institutional sign-off contract) ──
@@ -4756,9 +4872,13 @@ def situational_audit_applies(
     return False
 
 
-def run_repo_wide_static_audit(*, staged: set[str] | None = None) -> list[str]:
-    """Repo-wide static locks — run on every --enforce-static / --enforce-all / --objective-audit."""
-    return _run_repo_wide_static_check_funcs(staged=staged)
+def run_repo_wide_static_audit(*, staged: set[str] | None = None, full_static: bool = True) -> list[str]:
+    """Repo-wide static locks — full strength for objective-audit / --enforce-static."""
+    return _run_repo_wide_static_check_funcs(
+        staged=staged,
+        full_static=True,
+        use_cache=False,
+    )
 
 
 def run_situational_runtime_audits(
@@ -4896,9 +5016,19 @@ def run_objective_code_audit(
     return out
 
 
-def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
+def check_paths(
+    paths: list[Path],
+    staged: set[str] | None = None,
+    *,
+    full_static: bool = False,
+    profile: Any | None = None,
+) -> list[str]:
+    scope = _scope_module()
+    ProfileCollector = scope.ProfileCollector
+
     staged = staged if staged is not None else _git_staged_paths()
     errors: list[str] = []
+    prof = profile if isinstance(profile, ProfileCollector) else None
 
     memo_paths = [p for p in paths if p.is_file() and "SCHWAB_V4_REVIEW_MEMOS" in p.as_posix()]
     for memo_path in memo_paths:
@@ -4910,25 +5040,42 @@ def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
 
         errors.extend(schwab_guard.check_v4_memo_gatekeeper_csv(memo_path, REPO_ROOT))
 
-    # Tier 0 upfront stamp — fast-fail before repo-wide static (AGENTS § Upfront mechanical gate).
-    errors.extend(check_upfront_mechanical_gate_stamp(staged))
+    def _timed(name: str, fn: Callable[[], list[str]], scope: str = "staged") -> None:
+        t0 = time.perf_counter()
+        errors.extend(fn())
+        if prof is not None:
+            prof.record(name, time.perf_counter() - t0, scope=scope, files_scanned=len(staged))
 
-    # Staged / commit-msg locks (AGENTS promoted rules — mechanical, not prose).
-    errors.extend(check_staged_rule_drift(staged))
-    errors.extend(check_action_not_documentation(staged))
-    errors.extend(check_storage_writer_has_consumer(staged))
-    errors.extend(check_persistence_map_fresh(staged))
-    errors.extend(check_persistence_writer_has_reader(staged))
+    _timed("upfront_gate_stamp", lambda: check_upfront_mechanical_gate_stamp(staged))
+    _timed("staged_rule_drift", lambda: check_staged_rule_drift(staged))
+    _timed("action_not_documentation", lambda: check_action_not_documentation(staged))
+    _timed("storage_writer_has_consumer", lambda: check_storage_writer_has_consumer(staged))
+    _timed("persistence_map_fresh", lambda: check_persistence_map_fresh(staged))
+    _timed("persistence_writer_has_reader", lambda: check_persistence_writer_has_reader(staged))
 
-    # Repo-wide static locks — single canonical list (must match --enforce-static).
-    errors.extend(_run_repo_wide_static_check_funcs(staged=staged))
+    t0 = time.perf_counter()
+    errors.extend(
+        _run_repo_wide_static_check_funcs(
+            staged=staged,
+            full_static=full_static,
+            profile=prof,
+            use_cache=not full_static,
+        )
+    )
+    if prof is not None:
+        prof.record(
+            "repo_wide_static_aggregate",
+            time.perf_counter() - t0,
+            scope="repo" if full_static else "critical|cached",
+            files_scanned=len(staged),
+        )
 
     tools_dir = Path(__file__).resolve().parent
     if str(tools_dir) not in sys.path:
         sys.path.insert(0, str(tools_dir))
     import check_encoder_cone_tests as encoder_cone
 
-    errors.extend(encoder_cone.check_encoder_cone_tests(staged))
+    _timed("encoder_cone_tests", lambda: encoder_cone.check_encoder_cone_tests(staged))
 
     for path in paths:
         if path.name == "COMMIT_EDITMSG" or "--commit-msg" in path.as_posix():
@@ -4972,8 +5119,26 @@ def check_ablated_training_only() -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = argv if argv is not None else sys.argv[1:]
+    args = list(argv if argv is not None else sys.argv[1:])
     staged = _git_staged_paths()
+
+    if args and args[0] == "--profile":
+        scope = _scope_module()
+        prof = scope.ProfileCollector()
+        check_paths([], staged=staged, full_static=True, profile=prof)
+        artifact = prof.to_artifact()
+        scope.PROFILE_ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
+        scope.PROFILE_ARTIFACT.write_text(json.dumps(artifact, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps(artifact, indent=2))
+        slow = sorted(artifact.get("subchecks") or [], key=lambda r: r.get("seconds") or 0, reverse=True)[:8]
+        print("\nSlowest subchecks:", file=sys.stderr)
+        for row in slow:
+            print(f"  {row.get('seconds')}s  {row.get('name')}  ({row.get('scope')})", file=sys.stderr)
+        return 0
+
+    full_static = bool(args and args[0] == "--full-static")
+    if full_static:
+        args = args[1:]
 
     if args and args[0] == "--commit-msg":
         paths = [Path(a) for a in args[1:]]
@@ -4982,7 +5147,6 @@ def main(argv: list[str] | None = None) -> int:
     else:
         paths = [REPO_ROOT / p for p in staged]
 
-    # commit-msg hook passes a single file path as the only arg (no flag)
     if len(args) == 1 and Path(args[0]).is_file() and Path(args[0]).name == "COMMIT_EDITMSG":
         paths = [Path(args[0])]
 
@@ -4997,7 +5161,7 @@ def main(argv: list[str] | None = None) -> int:
             errors.extend(check_commit_message(p))
             errors.extend(encoder_cone.check_encoder_cone_commit_claim(p.read_text(encoding="utf-8"), staged))
     else:
-        errors.extend(check_paths(paths, staged=staged))
+        errors.extend(check_paths(paths, staged=staged, full_static=full_static))
         for p in paths:
             if p.name == "COMMIT_EDITMSG":
                 errors.extend(check_commit_message(p))

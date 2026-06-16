@@ -54,10 +54,17 @@ HOOK_TIER_POLICY: dict[str, dict] = {
     },
     "fix-everything-we-touch": {
         "tier": 1,
-        "scope": "staged paths + repo-wide static locks (no full pytest)",
+        "scope": "staged + conditional/cached repo-wide locks",
         "keep_in_precommit": True,
         "proposed_location": "precommit",
-        "recommendation": "Keep — institutional locks; pytest suites must not duplicate here.",
+        "recommendation": "Fast path: staged checks + cache hit skips repo-wide; governance path expands.",
+    },
+    "fix-everything-we-touch-full-static": {
+        "tier": 2,
+        "scope": "full repo-wide static locks",
+        "keep_in_precommit": False,
+        "proposed_location": "prepush",
+        "recommendation": "Pre-push runs all repo-wide locks; populates local cache for fast commits.",
     },
 }
 
@@ -185,6 +192,8 @@ def _findings(hook_rows: list[dict]) -> list[str]:
 def write_markdown(audit: dict) -> str:
     lines = [
         "# Pre-commit performance audit",
+        "",
+        "**Scope:** Institutional governance — pre-commit tiering, profiling, and cache policy (Phase 3F-Perf1). Does not weaken objective-audit or repo-wide locks on pre-push/CI.",
         "",
         f"Generated: `{audit.get('generated_at_utc', '')}`",
         f"Mode: `{audit.get('measurement_mode', '')}`",

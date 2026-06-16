@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-06-16T04:28:55+00:00",
+  "generated_at_utc": "2026-06-16T05:49:43+00:00",
   "measurement_mode": "declared_policy_only",
   "total_measured_seconds": null,
   "slowest_hook": null,
@@ -22,6 +22,20 @@
       "scope": "repo-wide pytest consolidation suite",
       "tier": 2,
       "recommendation": "Move to pre-push; full suite belongs in Tier 2, not every commit.",
+      "keep_in_precommit": false,
+      "proposed_location": "prepush"
+    },
+    {
+      "name": "fix everything we touch full static (Tier 2)",
+      "id": "fix-everything-we-touch-full-static",
+      "command": "python tools/check_fix_everything_we_touch.py --full-static",
+      "stages": [
+        "pre-push"
+      ],
+      "runtime_seconds": null,
+      "scope": "full repo-wide static locks",
+      "tier": 2,
+      "recommendation": "Pre-push runs all repo-wide locks; populates local cache for fast commits.",
       "keep_in_precommit": false,
       "proposed_location": "prepush"
     },
@@ -89,9 +103,9 @@
         "pre-commit"
       ],
       "runtime_seconds": null,
-      "scope": "staged paths + repo-wide static locks (no full pytest)",
+      "scope": "staged + conditional/cached repo-wide locks",
       "tier": 1,
-      "recommendation": "Keep \u2014 institutional locks; pytest suites must not duplicate here.",
+      "recommendation": "Fast path: staged checks + cache hit skips repo-wide; governance path expands.",
       "keep_in_precommit": true,
       "proposed_location": "precommit"
     }

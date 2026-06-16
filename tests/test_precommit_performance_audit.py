@@ -63,6 +63,10 @@ def test_precommit_performance_artifact_exists():
     assert gct.get("keep_in_precommit") is False
     assert gct.get("proposed_location") == "prepush"
     assert "pre-commit" not in (gct.get("stages") or [])
+    assert "fix-everything-we-touch-full-static" in hooks
+    fst = hooks["fix-everything-we-touch-full-static"]
+    assert fst.get("keep_in_precommit") is False
+    assert "pre-push" in (fst.get("stages") or [])
 
 
 def test_governance_consolidation_not_on_precommit_stage():
