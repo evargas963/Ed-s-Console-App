@@ -67,6 +67,52 @@ ALIGNMENT_CONTRADICTORY_MIN_COUNT: int = 2
 ALIGNMENT_WEAK_MIN_COUNT: int = 2
 STRUCTURAL_HORIZONS_FOR_CONTRADICTION: tuple[str, ...] = ("15c", "60c")
 
+# ── Multi-horizon vocabulary (wire/API snake_case; do not reuse across layers) ──
+# Trade decision: final_bias / call_signal → LONG | SHORT | WAIT
+# Per-horizon call (mhap_rows.call): LONG | SHORT | WAIT | UNAVAILABLE (missing data)
+# Per-horizon support (mhap_rows.row_state): primary | aligned | weak | contradictory | missing
+# Cross-horizon alignment (alignment_state_display): values below — NOT a trade direction
+ALIGNMENT_STATE_FULLY_ALIGNED: str = "fully_aligned"
+ALIGNMENT_STATE_MOSTLY_ALIGNED: str = "mostly_aligned"
+ALIGNMENT_STATE_MIXED: str = "mixed"
+ALIGNMENT_STATE_CONTRADICTORY: str = "contradictory"
+ALIGNMENT_STATE_WEAK: str = "weak"
+ALIGNMENT_STATE_NO_PRIMARY: str = "no_primary"  # primary horizon not tradeable; not UNAVAILABLE
+ALIGNMENT_STATES: tuple[str, ...] = (
+    ALIGNMENT_STATE_FULLY_ALIGNED,
+    ALIGNMENT_STATE_MOSTLY_ALIGNED,
+    ALIGNMENT_STATE_MIXED,
+    ALIGNMENT_STATE_CONTRADICTORY,
+    ALIGNMENT_STATE_WEAK,
+    ALIGNMENT_STATE_NO_PRIMARY,
+)
+# Legacy wire value (pre-2026-06): kept for calibration rows + filters only
+ALIGNMENT_STATE_UNUSABLE_LEGACY: str = "unusable"
+
+
+def alignment_state_operator_label(state: str | None) -> str:
+    """Operator-readable alignment label; internal wire stays snake_case."""
+    key = str(state or "").strip().lower()
+    if key in (ALIGNMENT_STATE_NO_PRIMARY, ALIGNMENT_STATE_UNUSABLE_LEGACY):
+        return "no primary edge"
+    if key in (ALIGNMENT_STATE_FULLY_ALIGNED, ALIGNMENT_STATE_MOSTLY_ALIGNED):
+        return "aligned"
+    if key == ALIGNMENT_STATE_CONTRADICTORY:
+        return "split"
+    if key == ALIGNMENT_STATE_WEAK:
+        return "weak support"
+    if key == ALIGNMENT_STATE_MIXED:
+        return "mixed"
+    return key or "unknown"
+
+
+def normalize_alignment_state(state: str | None) -> str:
+    """Map legacy ``unusable`` rows to ``no_primary``."""
+    key = str(state or "").strip().lower()
+    if key == ALIGNMENT_STATE_UNUSABLE_LEGACY:
+        return ALIGNMENT_STATE_NO_PRIMARY
+    return key
+
 # ── Trade mode boundaries (mins-to-close) ──
 TRADE_MODE_SCALP_MAX_MINS: int = 75
 TRADE_MODE_INTRADAY_MAX_MINS: int = 240
@@ -87,6 +133,11 @@ WAIT_REASON_INSUFFICIENT_VALID_HORIZONS = (
     " — insufficient evidence"
 )
 WAIT_REASON_POOLED_FLAT = "pooled stack evidence favors flat — no directional edge"
+WAIT_REASON_POOLED_INSUFFICIENT_TRADEABLE_ALIGNMENT = (
+    f"fewer than {CONSENSUS_MIN_VALID_HORIZONS} tradeable horizons align with pooled direction"
+    " — ALL synthesis withheld"
+)
+WAIT_REASON_CALL_ENGINE_VETO_PREFIX = "call engine veto"
 
 
 def _wait_reason_pooled_below_gate(dom: float, margin: float) -> str:
@@ -94,6 +145,24 @@ def _wait_reason_pooled_below_gate(dom: float, margin: float) -> str:
         f"pooled stack evidence below entry gate (top {dom:.2f}, margin {margin:.2f};"
         f" need {TRADEABLE_DOM_MIN:.2f} / {TRADEABLE_MARGIN_MIN:.2f})"
     )
+
+
+def _wait_reason_from_call_blocker(blocker: Any) -> str:
+    """Operator-visible wait_reason when execution stack vetoes a pooled directional setup."""
+    if not isinstance(blocker, dict) or not blocker:
+        return f"{WAIT_REASON_CALL_ENGINE_VETO_PREFIX} — execution stack WAIT"
+    reason = str(blocker.get("reason") or "unknown")
+    if reason == "gates":
+        gate_reasons = blocker.get("gate_reasons") or []
+        if gate_reasons:
+            return (
+                f"{WAIT_REASON_CALL_ENGINE_VETO_PREFIX} — gated: "
+                + "; ".join(str(g) for g in gate_reasons)
+            )
+    detail = blocker.get("detail") or blocker.get("full_detail")
+    if detail:
+        return f"{WAIT_REASON_CALL_ENGINE_VETO_PREFIX} — {detail}"
+    return f"{WAIT_REASON_CALL_ENGINE_VETO_PREFIX} — {reason}"
 
 # Stable reason codes for operator surfaces (mirrors arch_competition REASON_* pattern).
 REASON_PRIMARY_HORIZON_DATA_MISSING = "PRIMARY_HORIZON_DATA_MISSING"
@@ -161,7 +230,7 @@ class HorizonAlignmentReport:
     mixed: bool
     contradictory: bool
     weak: bool
-    unusable: bool
+    no_primary: bool
     reasons: list[str] = field(default_factory=list)
 
 
@@ -362,6 +431,16 @@ def compute_multi_horizon_synthesis(
         pw, pw_fallback = _horizon_skill_weights_cached()
     pooled = _pooled_consensus(hmap, pw, pw_fallback)
     final_bias, wait_reason = pooled.final_bias, pooled.wait_reason
+    pooled_aligned_tradeable = 0
+    if final_bias in ("long", "short"):
+        pooled_aligned_tradeable = sum(
+            1
+            for hz in PRODUCT_HORIZONS
+            if hmap[hz].tradeable and hmap[hz].direction == final_bias
+        )
+        if pooled_aligned_tradeable < CONSENSUS_MIN_VALID_HORIZONS:
+            final_bias = "wait"
+            wait_reason = WAIT_REASON_POOLED_INSUFFICIENT_TRADEABLE_ALIGNMENT
     tradeable = final_bias in ("long", "short")
 
     if tradeable:
@@ -436,6 +515,7 @@ def compute_multi_horizon_synthesis(
             "eligible_horizons": list(pooled.eligible_horizons),
             "weights": {h: round(w, 4) for h, w in pooled.weights.items()},
             "weights_fallback_equal": pooled.weights_fallback_equal,
+            "tradeable_horizons_aligned_with_pooled_bias": pooled_aligned_tradeable,
         },
         "consensus_direction": consensus_dir,
         "consensus_long_votes_tradeable": cv_long,
@@ -493,7 +573,18 @@ def finalize_multi_horizon_bundle(
     hold_style = synth.hold_style
     psel = synth.psel
     mode = synth.mode
-    ml_live_audit = synth.ml_live_audit
+    ml_live_audit = dict(synth.ml_live_audit)
+    call_signal = str(getattr(call, "signal", "wait") or "wait").lower()
+    call_engine_veto = tradeable and call_signal == "wait"
+    if call_engine_veto:
+        tradeable = False
+        wait_reason = _wait_reason_from_call_blocker(getattr(call, "wait_blocker", None))
+        size = 0.0
+    ml_live_audit["call_engine_veto"] = {
+        "applied": call_engine_veto,
+        "call_signal": call_signal,
+        "wait_blocker": getattr(call, "wait_blocker", None),
+    }
 
     e_state, e_px, e_txt = _entry_state_machine(
         final_bias,
@@ -835,7 +926,7 @@ def _alignment_state(primary: HorizonForecast, supports: list[SupportingHorizonA
     support_score = sup / n
 
     if not primary.tradeable:
-        state = "unusable"
+        state = ALIGNMENT_STATE_NO_PRIMARY
     elif con == 0 and sup >= ALIGNMENT_FULLY_ALIGNED_MIN_SUPPORT:
         state = "fully_aligned"
     elif con <= 1 and sup >= 1:
@@ -873,7 +964,7 @@ def _alignment_state(primary: HorizonForecast, supports: list[SupportingHorizonA
         mixed=(state == "mixed"),
         contradictory=(state == "contradictory"),
         weak=(state == "weak"),
-        unusable=(state == "unusable"),
+        no_primary=(state == ALIGNMENT_STATE_NO_PRIMARY),
         reasons=[],
     )
 

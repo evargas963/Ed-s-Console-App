@@ -1,0 +1,103 @@
+"""Runtime proof — live_path_simulation via server._finalize_production_decision."""
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+
+import pytest
+
+REPO = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture
+def release_ready(monkeypatch):
+    monkeypatch.setenv("ED_BUILD_GENERATION", "deadbeef" * 5)
+    from release_object import initialize_release_at_startup
+
+    initialize_release_at_startup(force=True)
+
+
+def test_live_path_simulation_emits_reconstructable_record(release_ready, tmp_path, monkeypatch):
+    from decision_record import live_path_simulation_emission, reconstruction_complete
+
+    import server as srv
+
+    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
+    result = live_path_simulation_emission(tmp_path / "live_path.db", ticker="IWM")
+    assert result["source"] == "live_path_simulation"
+    assert result["source"] != "production_like_integration_harness"
+    assert result["source"] != "audit_seed"
+    assert result["reconstruction_complete"] is True
+    assert result["decision_id"]
+    assert result["release_id"]
+    payload = result["payload"]
+    ok, missing = reconstruction_complete(payload)
+    assert ok, missing
+    assert payload["route"] == "server._fetch_state"
+
+
+def test_live_path_record_api_retrieval(release_ready, tmp_path, monkeypatch):
+    monkeypatch.setenv("ED_DISABLE_STARTUP_ANALYTICS_WARM", "1")
+    from starlette.testclient import TestClient
+
+    import db as db_mod
+    import server as srv
+    from decision_record import live_path_simulation_emission
+
+    db_path = tmp_path / "live_api.db"
+    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
+    emitted = live_path_simulation_emission(db_path, ticker="QQQ")
+    decision_id = emitted["decision_id"]
+    assert decision_id
+
+    monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
+
+    with TestClient(srv.app) as client:
+        r = client.get(f"/api/decision/{decision_id}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["reconstruction_complete"] is True
+
+
+def test_live_path_blind_reconstruction(release_ready, tmp_path, monkeypatch):
+    from decision_record import (
+        ensure_production_decision_schema,
+        live_path_simulation_emission,
+        reconstruction_complete,
+    )
+
+    import server as srv
+
+    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
+    emitted = live_path_simulation_emission(tmp_path / "blind_live.db")
+    decision_id = emitted["decision_id"]
+
+    conn = sqlite3.connect(str(tmp_path / "blind_live.db"))
+    try:
+        ensure_production_decision_schema(conn)
+        row = conn.execute(
+            "SELECT reconstruction_json FROM production_decision_records WHERE decision_id = ?",
+            (decision_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is not None
+    payload = json.loads(row[0])
+    ok, missing = reconstruction_complete(payload)
+    assert ok, missing
+
+
+def test_source_labels_are_distinct(release_ready, tmp_path, monkeypatch):
+    from decision_record import live_path_simulation_emission, production_like_decision_emission
+
+    import server as srv
+
+    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
+    live = live_path_simulation_emission(tmp_path / "a.db")
+    prod_like = production_like_decision_emission(tmp_path / "b.db")
+    assert live["source"] == "live_path_simulation"
+    assert prod_like["source"] == "production_like_integration_harness"
+    assert live["source"] != prod_like["source"]

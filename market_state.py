@@ -27,6 +27,7 @@ from fusion_contract import canonical_provenance_is_tradable, fusion_is_authorit
 from numeric_contract import float_finite_or_none
 from timeframe_config import CANONICAL_TIMEFRAME
 from ml_horizon import PRIMARY_DECISION_HORIZONS
+from multi_horizon_decision import normalize_alignment_state
 from volatility_regime import vol_percent_to_decimal
 
 
@@ -286,7 +287,7 @@ class MarketState:
     final_tradeable:     bool            = False
     primary_horizon:     str             = "1c"
     trade_mode:          str             = "intraday"
-    alignment_state_display: str         = "unusable"
+    alignment_state_display: str         = "no_primary"
     conflict_level_display: str          = "high"
     contradiction_state: str             = "none"
     supporting_horizon_summary: str      = ""
@@ -308,8 +309,9 @@ class MarketState:
     mhap_legend:         dict            = field(default_factory=lambda: {
         "primary": "Blue = Primary horizon",
         "aligned": "Green = Aligned/supportive",
-        "weak": "Yellow = Weak/mixed",
+        "weak": "Yellow = Weak/mixed (per-row support)",
         "contradictory": "Red = Contradictory",
+        "no_primary": "Gray = No tradeable primary (alignment N/A — not missing data)",
     })
 
     # What the Data Says — horizon bars (strict contract: only this card renders them)
@@ -1477,7 +1479,9 @@ def build_market_state(
             ms.primary_horizon = str(getattr(_mhd, "primary_horizon", "1c") or "1c")
             ms.trade_mode = str(getattr(_mhd, "trade_mode", "intraday") or "intraday")
             ms.supporting_horizon_summary = str(getattr(_mhd, "supporting_horizon_summary", "") or "")
-            ms.alignment_state_display = str(getattr(_mhd, "alignment_state", "unusable") or "unusable")
+            ms.alignment_state_display = normalize_alignment_state(
+                getattr(_mhd, "alignment_state", None) or "no_primary"
+            )
             ms.contradiction_state = str(getattr(_mhd, "contradiction_state", "none") or "none")
             ms.conflict_level_display = str(getattr(_mr, "conflict_level", "high") or "high")
             ms.entry_state = str(getattr(_mhd, "entry_state", "no_setup") or "no_setup")

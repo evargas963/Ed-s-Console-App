@@ -189,7 +189,7 @@ from market_context import (
 from market_state import build_market_state, derive_zone
 from ml_horizon import PRIMARY_DECISION_HORIZONS, SECONDARY_SUPPORT_HORIZONS
 from realized_contract_eval import serialize_option_chain_for_eval, build_replay_context_payload
-from live_decision_bundle import stamp_decision_bundle, tick_triggers_coherent_refresh
+from live_decision_bundle import stamp_decision_bundle, tick_triggers_coherent_refresh, persist_stamped_decision
 from v2_decision import build_module_a_a1_decision
 from v2_decision.a1_conformal_artifact_attachment import attach_a1_conformal_artifact_to_ms_dict
 from v2_decision.a1_isotonic_calibration_attachment import attach_a1_isotonic_calibration_to_ms_dict
@@ -629,10 +629,8 @@ def _get_db_fill_outcomes_executor() -> ThreadPoolExecutor:
     return _db_fill_outcomes_executor
 
 # Tier C — background _fetch_state only; HTTP handlers never await heavy work.
-_analytics_executor = ThreadPoolExecutor(
-    max_workers=4,
-    thread_name_prefix="ed_analytics_bg",
-)
+_analytics_executor: Optional[ThreadPoolExecutor] = None
+_analytics_bg_shutdown: bool = False
 _analytics_inflight: set[tuple] = set()
 _analytics_bg_fail_counts: dict[tuple, int] = {}
 _analytics_bg_last_error: dict[tuple, str] = {}
@@ -641,6 +639,46 @@ _main_event_loop: Optional[asyncio.AbstractEventLoop] = None
 ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES = int(
     os.environ.get("ED_ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES", "3")
 )
+
+
+def _get_analytics_executor() -> ThreadPoolExecutor:
+    global _analytics_executor
+    if _analytics_executor is None:
+        _analytics_executor = ThreadPoolExecutor(
+            max_workers=4,
+            thread_name_prefix="ed_analytics_bg",
+        )
+    return _analytics_executor
+
+
+def _startup_analytics_executor() -> None:
+    global _analytics_bg_shutdown
+    _analytics_bg_shutdown = False
+    _get_analytics_executor()
+
+
+def _shutdown_analytics_executor(*, wait: bool = True) -> None:
+    global _analytics_executor, _analytics_bg_shutdown
+    _analytics_bg_shutdown = True
+    with _analytics_bg_lock:
+        _analytics_inflight.clear()
+    ex = _analytics_executor
+    _analytics_executor = None
+    if ex is not None:
+        try:
+            ex.shutdown(wait=wait, cancel_futures=True)
+        except Exception as exc:
+            log.debug("analytics executor shutdown: %s", exc)
+
+
+def _analytics_executor_shutting_down() -> bool:
+    return _analytics_bg_shutdown
+
+
+def _submit_analytics_task(fn, *args, **kwargs):
+    if _analytics_bg_shutdown:
+        raise RuntimeError("analytics executor shutting down")
+    return _get_analytics_executor().submit(fn, *args, **kwargs)
 
 
 def _tier_c_inflight_key(ticker: str, expiry: Optional[str]) -> tuple:
@@ -794,7 +832,11 @@ def _schedule_analytics_recompute(
     Run _fetch_state in a thread pool; broadcast full snapshot on success.
     Dedupes identical (ticker, expiry|__auto__) jobs.
     """
+    if _analytics_bg_shutdown:
+        return
     with _analytics_bg_lock:
+        if _analytics_bg_shutdown:
+            return
         if inflight_key in _analytics_inflight:
             log.debug("analytics refresh already in flight %s", inflight_key)
             return
@@ -834,20 +876,27 @@ def _schedule_analytics_recompute(
                 token_invalid=True,
             )
         except Exception as ex:
-            log.error("analytics bg failed %s: %s", inflight_key, ex, exc_info=True)
-            detail, token_invalid = _analytics_bg_error_detail(ex)
-            _record_analytics_bg_failure(
-                inflight_key,
-                ticker,
-                reason="generic_exception",
-                detail=detail,
-                token_invalid=token_invalid,
-            )
+            if isinstance(ex, RuntimeError) and "shutdown" in str(ex).lower():
+                log.debug("analytics bg skipped during shutdown %s", inflight_key)
+            else:
+                log.error("analytics bg failed %s: %s", inflight_key, ex, exc_info=True)
+                detail, token_invalid = _analytics_bg_error_detail(ex)
+                _record_analytics_bg_failure(
+                    inflight_key,
+                    ticker,
+                    reason="generic_exception",
+                    detail=detail,
+                    token_invalid=token_invalid,
+                )
         finally:
             with _analytics_bg_lock:
                 _analytics_inflight.discard(inflight_key)
 
-    _analytics_executor.submit(_work)
+    try:
+        _submit_analytics_task(_work)
+    except RuntimeError:
+        with _analytics_bg_lock:
+            _analytics_inflight.discard(inflight_key)
 
 
 def _stamp_analytics_freshness_on_completed_fetch(
@@ -1145,8 +1194,11 @@ def _schedule_analytics_warm(
     """UI-MAXIMIZE: queue Tier C recompute + optional model registry prewarm."""
     t = ticker.upper().strip()
     inflight_key = _tier_c_inflight_key(t, expiry)
-    if prewarm_models:
-        _analytics_executor.submit(_prewarm_inference_models_worker, t)
+    if prewarm_models and not _analytics_bg_shutdown:
+        try:
+            _submit_analytics_task(_prewarm_inference_models_worker, t)
+        except RuntimeError:
+            pass
     _schedule_analytics_recompute(inflight_key, t, expiry, update_source)
     return {
         "ok": True,
@@ -1172,8 +1224,19 @@ def _schedule_startup_analytics_warm() -> None:
         except Exception as e:
             log.warning("startup Tier C warm scheduling failed %s: %s", ticker, e)
 
+    if _analytics_bg_shutdown or os.environ.get("ED_DISABLE_STARTUP_ANALYTICS_WARM", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return
+
     for i, t in enumerate(tickers):
-        _analytics_executor.submit(_warm_after_delay, t, i * stagger)
+        try:
+            _submit_analytics_task(_warm_after_delay, t, i * stagger)
+        except RuntimeError:
+            break
     log.info("UI-MAXIMIZE startup warm queue: %s stagger=%ss", tickers, stagger)
 
 
@@ -3871,6 +3934,19 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
 # When log_only=True: runs the full pipeline for DB logging but returns
 # a minimal dict (saves serialization overhead for background tickers).
 # ─────────────────────────────────────────────────────────────────────────────
+def _finalize_production_decision(ms_dict: dict, route: str) -> dict:
+    """Stamp immutable decision_id + release_id and persist for I-31 reconstruction."""
+    stamp_decision_bundle(ms_dict, route=route)
+    if _HAS_SIGNALS and ms_dict.get("decision_id"):
+        try:
+            from db import DB_PATH
+
+            persist_stamped_decision(ms_dict, route=route, db_path=DB_PATH)
+        except Exception as exc:
+            log.warning("production decision persist failed route=%s: %s", route, exc)
+    return ms_dict
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -3900,13 +3976,17 @@ def _fetch_state(
     session_label = mkt_ctx.session_label   # "RTH" | "Pre-Market" | "After-Hours" | "Closed"
 
     # ── Chain + quote in parallel (independent Schwab calls — saves one RTT on cold Tier C) ──
-    _chain_fut = _analytics_executor.submit(
-        safe_get_chain, client, ticker, strike_count=CHAIN_STRIKE_COUNT
-    )
-    _quote_fut = _analytics_executor.submit(_safe_get_quote_with_retry, client, ticker)
     try:
-        c_resp = _chain_fut.result()
-        q_resp = _quote_fut.result()
+        if _analytics_bg_shutdown:
+            c_resp = safe_get_chain(client, ticker, strike_count=CHAIN_STRIKE_COUNT)
+            q_resp = _safe_get_quote_with_retry(client, ticker)
+        else:
+            _chain_fut = _submit_analytics_task(
+                safe_get_chain, client, ticker, strike_count=CHAIN_STRIKE_COUNT
+            )
+            _quote_fut = _submit_analytics_task(_safe_get_quote_with_retry, client, ticker)
+            c_resp = _chain_fut.result()
+            q_resp = _quote_fut.result()
     except SchwabAuthError as e:
         raise HTTPException(
             status_code=401,
@@ -4065,8 +4145,11 @@ def _fetch_state(
         _minimal["_compute_ms"] = round((_minimal_end_mono - _t_after_quote_mono) * 1000)
         if update_source is not None:
             _minimal["_update_source"] = update_source
+        from trade_impacting_gate import apply_trade_impacting_gate
+
+        apply_trade_impacting_gate(_minimal, route="server._fetch_state.no_valid_expiry")
         _lmp.merge_into_state(_minimal, ticker)
-        return stamp_decision_bundle(_minimal)
+        return _finalize_production_decision(_minimal, "server._fetch_state.no_valid_expiry")
     contracts_use, _exp_slice_source = _filter_contracts_by_selected_expiry(contracts, selected_exp)
     _kl_expiry_source = _kl_expiry_source_label(
         expiry_param=expiry,
@@ -6254,7 +6337,10 @@ def _fetch_state(
         if isinstance(sr, dict):
             sr["signals_engine_failed"] = True
     _apply_trader_horizon_contract(ms_dict)
-    stamp_decision_bundle(ms_dict)
+    from trade_impacting_gate import resolve_fetch_state_decision_route
+
+    _decision_route = resolve_fetch_state_decision_route(update_source)
+    _finalize_production_decision(ms_dict, _decision_route)
     _t_pipeline_end_mono = time.monotonic()
     ms_dict["_server_build_ts"] = time.time()
     ms_dict["_pipeline_ms"] = round((_t_pipeline_end_mono - _fetch_start_mono) * 1000)
@@ -6335,6 +6421,7 @@ from contextlib import asynccontextmanager
 async def _app_lifespan(app):
     """Startup and shutdown: logger, order flow, SSE, ML scheduler."""
     # ── Startup ─────────────────────────────────────────────────────────────
+    _startup_analytics_executor()
     # Schwab auth diagnostics (helps debug link vs manual launch)
     _log_schwab_startup_diagnostics()
 
@@ -6408,6 +6495,13 @@ async def _app_lifespan(app):
     except Exception as e:
         log.warning("Schwab auth check: %s", e)
 
+    try:
+        from release_object import initialize_release_at_startup
+
+        initialize_release_at_startup()
+    except Exception as rel_e:
+        log.error("release_object startup failed: %s — production decisions will not stamp release_id", rel_e)
+
     # Canonical 1m: snapshot inserts MUST use timeframe='1m'. Fail loudly if misconfigured.
     if CANONICAL_TIMEFRAME != "1m":
         log.error("CANONICAL_TIMEFRAME=%r != '1m' — snapshot inserts will use wrong timeframe!", CANONICAL_TIMEFRAME)
@@ -6470,6 +6564,7 @@ async def _app_lifespan(app):
     yield
 
     # ── Shutdown ───────────────────────────────────────────────────────────
+    _shutdown_analytics_executor(wait=True)
     # Schwab stream thread + websocket: must close before loop/thread teardown
     # (avoids pending websockets tasks destroyed with the event loop).
     try:
@@ -7097,6 +7192,13 @@ def _tier_c_analytics_json_response(
         )
         if need_refresh:
             _schedule_analytics_recompute(inflight_key, ticker, expiry, update_source)
+        from trade_impacting_gate import revalidate_cached_decision
+
+        md = revalidate_cached_decision(
+            md,
+            route="server._tier_c_analytics_json_response",
+            stale=bool(stale),
+        )
         return JSONResponse(md)
 
     log.info(
@@ -8030,12 +8132,49 @@ def _repo_git_head_sha() -> Optional[str]:
         return None
 
 
+@app.get("/api/release/current")
+def api_release_current():
+    """Current process release object (I-25)."""
+    from release_object import get_current_release, validate_release_for_emission
+
+    release = get_current_release(required=False)
+    ok, reason = validate_release_for_emission(release)
+    if not ok:
+        return JSONResponse({"ok": False, "reason": reason, "release": release}, status_code=503)
+    return {"ok": True, "release": release}
+
+
+@app.get("/api/decision/{decision_id}")
+def api_decision_by_id(decision_id: str):
+    """Retrieve immutable production decision by decision_id (I-31)."""
+    if not _HAS_SIGNALS:
+        return JSONResponse({"ok": False, "error": "db_unavailable"}, status_code=503)
+    from decision_record import get_production_decision_by_id, reconstruction_complete
+    from db import DB_PATH
+
+    payload = get_production_decision_by_id(decision_id, DB_PATH)
+    if payload is None:
+        return JSONResponse({"ok": False, "error": "not_found", "decision_id": decision_id}, status_code=404)
+    complete, missing = reconstruction_complete(payload)
+    return {
+        "ok": True,
+        "decision_id": decision_id,
+        "reconstruction_complete": complete,
+        "missing_fields": missing,
+        "decision": payload,
+    }
+
+
 @app.get("/api/build")
 def api_build():
     """Runtime tip fingerprint — compare ``git_sha`` to ``git rev-parse HEAD`` after deploy/restart."""
+    from release_object import get_current_release
+
+    release = get_current_release(required=False)
     return {
         "git_sha": _repo_git_head_sha(),
         "contract": "meet_or_exceed_v1",
+        "release_id": release.get("release_id") if release else None,
         "ui_maximize_sla_ms": dict(UI_MAXIMIZE_SLA_MS),
         "ui_maximize_panel_warm_tickers": list(UI_MAXIMIZE_PANEL_WARM_TICKERS),
     }
@@ -8623,7 +8762,9 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
 @app.get("/api/debug/prediction")
 # SWITCH-LATENCY FIX: sync def → threadpool (blocking full _fetch_state, no await).
 def debug_prediction(ticker: str = DEFAULT_TICKER):
-    """Show exactly what the prediction engine is querying."""
+    """Show exactly what the prediction engine is querying — non-production debug surface (R-011)."""
+    if os.environ.get("ED_ALLOW_DEBUG_ENDPOINTS", "").strip().lower() not in ("1", "true", "yes"):
+        raise HTTPException(status_code=404, detail="debug endpoints disabled")
     try:
         state = _fetch_state(ticker, expiry=None, update_source="debug_endpoint")
         zone = state.get("zone", "?")

@@ -5,7 +5,9 @@ from types import SimpleNamespace
 import pytest
 
 from multi_horizon_decision import (
+    ALIGNMENT_STATE_NO_PRIMARY,
     REASON_PRIMARY_HORIZON_DATA_MISSING,
+    alignment_state_operator_label,
     build_multi_horizon_bundle,
 )
 
@@ -34,12 +36,73 @@ def _pred(
     )
 
 
-def _call(signal: str = "long", entry: float | None = 441.55, state: str = "WATCH"):
-    return SimpleNamespace(signal=signal, entry=entry, stop=440.9, target=442.8, target2=444.1, call_state=state)
+def _call(signal: str = "long", entry: float | None = 441.55, state: str = "WATCH", wait_blocker=None):
+    return SimpleNamespace(
+        signal=signal,
+        entry=entry,
+        stop=440.9,
+        target=442.8,
+        target2=444.1,
+        call_state=state,
+        wait_blocker=wait_blocker,
+    )
 
 
 def _canonical():
     return SimpleNamespace(direction="up", probability_up=0.6, probability_down=0.2, probability_flat=0.2, confidence="medium", provenance="test")
+
+
+def test_flat_primary_emits_no_primary_alignment_not_wait():
+    """Flat / non-tradeable primary → alignment no_primary (not confused with WAIT or UNAVAILABLE)."""
+    p = _pred(
+        u1=0.32, d1=0.17, f1=0.51,
+        u5=0.37, d5=0.28, f5=0.35,
+        u15=0.28, d15=0.22, f15=0.50,
+        u60=0.30, d60=0.19, f60=0.51,
+    )
+    b = build_multi_horizon_bundle(_inp(mins_to_close=320), p, _canonical(), _call(signal="wait"))
+    d = b.final_decision
+    assert d.final_bias == "WAIT"
+    assert d.alignment_state == ALIGNMENT_STATE_NO_PRIMARY
+    assert alignment_state_operator_label(d.alignment_state) == "no primary edge"
+
+
+def test_call_engine_wait_veto_suppresses_final_tradeable_when_pool_long():
+    """Pooled LONG must not show tradeable when execution stack returned WAIT."""
+    b = build_multi_horizon_bundle(
+        _inp(),
+        _pred(),
+        _canonical(),
+        _call(
+            signal="wait",
+            wait_blocker={"reason": "time", "detail": "≤25 min to close"},
+        ),
+    )
+    d = b.final_decision
+    assert d.final_bias == "LONG"
+    assert d.final_tradeable is False
+    assert d.entry_state == "no_setup"
+    assert "call engine veto" in d.wait_reason
+    audit = b.ml_live_audit.get("call_engine_veto") or {}
+    assert audit.get("applied") is True
+
+
+def test_pooled_long_with_one_tradeable_horizon_withholds_all_and_plan():
+    """Regression: log-pool can lean LONG while only one horizon is tradeable — PLAN must not arm."""
+    p = _pred(
+        u1=0.55, d1=0.20, f1=0.25,
+        u5=0.37, d5=0.33, f5=0.30,
+        u15=0.37, d15=0.33, f15=0.30,
+        u60=0.37, d60=0.33, f60=0.30,
+    )
+    b = build_multi_horizon_bundle(_inp(mins_to_close=320), p, _canonical(), _call())
+    d = b.final_decision
+    assert d.final_bias == "WAIT"
+    assert d.final_tradeable is False
+    assert d.entry_state == "no_setup"
+    assert "tradeable horizons align" in d.wait_reason
+    audit = b.ml_live_audit.get("all_card_pool") or {}
+    assert audit.get("tradeable_horizons_aligned_with_pooled_bias") == 1
 
 
 def test_all_horizons_bullish_fully_aligned_long():

@@ -258,7 +258,7 @@ def filter_high_confidence_or_fusion(r: dict[str, Any]) -> bool:
 
 def filter_alignment_not_unusable(r: dict[str, Any]) -> bool:
     st = (_features(r).get("alignment_state") or "").upper()
-    if "UNUSABLE" in st:
+    if "NO_PRIMARY" in st or "UNUSABLE" in st:
         return False
     if st in ("", "UNKNOWN", "__MISSING__"):
         return False

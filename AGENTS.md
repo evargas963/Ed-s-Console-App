@@ -11,6 +11,8 @@ Schwab market-field methodology remains in [`CLAUDE.md`](CLAUDE.md).
 
 Current program: [`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md).
 
+**Agent preload (mandatory — every session, Cursor + Claude):** Before any edit, read [`governance/docs/AGENT_OPERATING_CONTRACT.md`](governance/docs/AGENT_OPERATING_CONTRACT.md). If preload cannot be verified, stop and report failure. Mechanical check: `python tools/check_agent_preload_contract.py` (also in `--objective-audit`).
+
 ---
 
 ## World-class / institutional code gate `[PROMOTED]` (2026-05-27 — operator binding, top rule)
@@ -20,7 +22,7 @@ Current program: [`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md).
 1. Would an **MIT professor** accept this in a production trading-systems course (correctness, proofs, tests, no hand-waving)?
 2. Would the **world's greatest coder** ship this without apology (clarity, uniformity, no silent shortcuts)?
 
-If either answer is **no**, **stop** — fix the design or implementation before coding. This is a homegrown app; when done it must **rival any institutional platform**. **Substandard is not acceptable** — not in architecture, not in partial stacks, not in "we'll fix it later."
+If either answer is **no**, **stop** — fix the design or implementation before coding. This gate **implements** [§Tier-1 Quantitative Engineering Standard](#tier1-engineering-standard) judgment; Tier-1 + mechanical locks are the enforceable form.
 
 ### Always-on institutional binding `[PROMOTED]` (2026-05-27 — no operator activation phrase)
 
@@ -45,7 +47,7 @@ If either answer is **no**, **stop** — fix the design or implementation before
 | Train-success-live for ML scheduler targets | Train completes but `models/active/` empty without explicit operator opt-out |
 | **Full parallel stack uniformity** | XGB-only rows, 0.333 meta filler, or parallel eval degrade while cascade skips — partial stack without explicit governed exception |
 | Governed eval compares architectures on **aligned row sets** only | Raw row-count mismatch failures |
-| Confluence-only symbols excluded from training | `panel_auto` tickers trained like tradeables |
+| Confluence-only + training anchor roster | `panel_auto` or pinned/user_persisted/non-anchor core trained by scheduler without `ED_ML_SCHEDULER_TRAINING_EXPAND=1` |
 | Live UI shows honest state | Gray cards mistaken for broken pipeline when policy is WAIT |
 | **Operator-surface legibility** | WAIT/neutral cards indistinguishable from page chrome; operator cannot read horizon + confidence at a glance |
 | **Live accuracy** | `/api/state` `mhap_rows` diverges from `tools/live_diag_compare.py` for same ticker without documented reason |
@@ -55,6 +57,106 @@ If either answer is **no**, **stop** — fix the design or implementation before
 **Completion discipline (binds every turn):** [§Meet-or-Exceed Closure Cycle](#meet-or-exceed-closure-cycle) is the **universal** completion standard for the **full repo** — every turn, every deliverable, every sign-off. It subsumes [§Fix everything we touch](#fix-everything-we-touch) + [§Closure definition + no-deferral](#closure-definition--no-deferral). Open a file or cone → fix every FIND there before sign-off. ML/UI/money-path change → spot-check live (`tools/live_diag_compare.py <TICKER>`) when `mhap_rows` or cards are in scope. UI-only legibility change → paired assertion in `tests/test_issue18_ui_contract.py` (no new test file).
 
 **Governed exception (only):** `5c` runtime may use documented `xgb_plus_transformer` stack per `ACTIVE_PROGRAM.md` — not a license for other horizons or eval paths.
+
+---
+
+## Tier-1 Quantitative Engineering Standard `[PROMOTED]` (2026-06-15 — operator binding; sits above product law)
+
+<a id="tier1-engineering-standard"></a>
+
+**Purpose:** This repository is developed to standards expected of elite quantitative trading firms, institutional financial software organizations, top-tier research institutions, and mission-critical engineering teams. The objective is software that is **correct, verifiable, auditable, maintainable, reproducible, extensible, secure, and production-ready** — not merely functional.
+
+**Binding hierarchy (non-negotiable):**
+
+```
+Tier-1 Quality Standard (this section + § Universal code quality + § V3 invariant registry)
+        ↓ overrides style/priority when in conflict
+Product law (domain rules — what the trading ML system must do)
+        ↓
+Epic / feature work (ACTIVE_PROGRAM.md — what we build this month)
+```
+
+Agents **must not** violate Tier-1 to satisfy product convenience. Product law **must not** contradict Tier-1; if it appears to, **stop** and reconcile in the same turn.
+
+### Quality Standard vs Product law
+
+| Layer | Question it answers | Examples in this repo | Binding surface |
+|-------|---------------------|----------------------|-----------------|
+| **Quality Standard (Tier-1)** | *How* must anything be built? | Correctness over convenience, explicitness, testability, no silent failure, reproducibility, no tribal knowledge | This section, § Universal code quality, § World-class gate, V3 registry locks |
+| **Product law** | *What* must this trading ML system do? | 7-layer stack, fusion-only cards, ZERO-BIAS ablation grid, Schwab leaf wire, training anchor roster, money-path modules | Promoted `[PROMOTED]` sections below + `CLAUDE.md` Schwab law |
+| **Epic / feature** | *What* are we building now? | Current ACTIVE_PROGRAM slice, OPEN_ITEMS rows | `ACTIVE_PROGRAM.md` |
+
+**Product law (canonical list — domain rules, not generic craft):** Full stack (xgb, lstm, transformer, meta, monte_carlo, regime, fusion) × four horizons; fusion-only horizon product triplets; ZERO-BIAS feature×model×horizon ablation; Schwab canopy→leaf disposition; training anchor roster (SPY/QQQ/IWM); money-path module roster; train-success-live promotion; live UI honest state + `/api/state` parity with `live_diag_compare`; storage-needs-consumer; encoder cone; institutional sign-off Tier 0/A/B/C ladder.
+
+### Final directive (binding on every agent turn)
+
+Build as if this repository will manage institutional capital and will be reviewed by principal engineers, quantitative researchers, security auditors, and infrastructure architects. Favor **correctness** over speed, **clarity** over cleverness, **maintainability** over shortcuts, **evidence** over assumptions, **explicitness** over magic, **reproducibility** over convenience. Challenge weak designs; document tradeoffs; reduce complexity; eliminate ambiguity. Do not optimize for producing code quickly — optimize for code that remains correct, understandable, and maintainable years later.
+
+### Principles (T1-01 … T1-24 — each mechanically locked)
+
+| ID | Principle |
+|----|-----------|
+| **T1-01** | **Correctness over convenience** — tradeoff order: correctness → reliability → maintainability → performance → convenience |
+| **T1-02** | **Explicitness over implicitness** — no hidden side effects, magic values, or undocumented assumptions |
+| **T1-03** | **Architecture must be intentional** — separation of concerns, low coupling, clear ownership; no “it works” components |
+| **T1-04** | **Maintainability is first-class** — optimize for readability, simplicity, discoverability |
+| **T1-05** | **Reproducibility is mandatory** — clone, install, test, reproduce without hidden steps |
+| **T1-06** | **Deterministic behavior preferred** — nondeterminism identified, documented, controlled |
+| **T1-07** | **Testability is required** — untestable code is incomplete; architecture must allow unit/integration/e2e |
+| **T1-08** | **Observability designed in** — failures diagnosable without production guesswork |
+| **T1-09** | **Security by design** — trust boundaries explicit; misuse and malformed input assumed |
+| **T1-10** | **Documentation is part of the product** — undocumented behavior is incomplete behavior |
+| **T1-11** | **Simplicity over cleverness** — boring and predictable beats novel and impressive |
+| **T1-12** | **Minimize cognitive load** — new engineers grasp structure, data flow, failure modes without tribal knowledge |
+| **T1-13** | **Strong contracts preferred** — explicit schemas, type safety, interface enforcement where the stack allows |
+| **T1-14** | **Single source of truth** — no duplicate logic, schemas, constants, or configuration |
+| **T1-15** | **Dependency discipline** — every dependency justified and maintained |
+| **T1-16** | **Failures must be intentional** — expected, handled, logged; **never silent failure** |
+| **T1-17** | **Production is the standard** — real users, real money, real failures, real scale |
+| **T1-18** | **Auditability must exist** — reconstruct what/why/which code from evidence |
+| **T1-19** | **Version everything traceable** — code, config, APIs, schemas |
+| **T1-20** | **Engineering decisions require justification** — problem, alternatives, decision, tradeoffs for significant changes |
+| **T1-21** | **No tribal knowledge** — the repo must contain knowledge to operate it |
+| **T1-22** | **Continuous improvement** — bugs and incidents produce corrective and preventive action |
+| **T1-23** | **Professional skepticism** — verify requirements, data, APIs, documentation; belief is not evidence |
+| **T1-24** | **Engineering excellence standard** — uncertain survival of principal-engineer review means work is **not complete** |
+
+**Mechanical lock:** `check_tier1_engineering_standard()` — pre-commit via `_REPO_WIDE_STATIC_CHECK_FUNCS`. Paired: `tests/test_governance_consolidation.py::test_tier1_engineering_standard`.
+
+---
+
+## V3 invariant mechanical registry `[PROMOTED]` (2026-06-15 — operator binding; every I-XX locked)
+
+<a id="v3-invariant-mechanical-registry"></a>
+
+**Scope:** `governance/INSTITUTIONAL_STANDARD_V3.md` §2 invariants **I-01 … I-20** are promoted to **mandatory mechanical locks** below. Prose-only V3 compliance is **rejection-grade**. Severity-1 invariants (I-01, I-02, I-05, I-07, I-15, I-17, I-19, I-20) **must** pass substance checks every pre-commit.
+
+**Canonical source of lock wiring:** `tools/check_fix_everything_we_touch.py::V3_INVARIANT_MECHANICAL_LOCKS` — AGENTS table must match.
+
+| ID | Invariant (summary) | Mechanical lock(s) |
+|----|---------------------|-------------------|
+| **I-01** | No silent substitution / undeclared degradation | `check_fusion_only_card_contract()` · `tests/test_ml_predict_fail_closed.py` · `tests/test_prediction_engine_chunk1_fail_closed.py` |
+| **I-02** | Single promotion authority | `check_v3_i02_single_promotion_authority()` · `arch_competition/promotion_execution.py` |
+| **I-03** | Causal information ordering | `check_v3_i03_causal_clock_contract()` · `time_et.py` |
+| **I-04** | Single clock policy | `check_v3_i03_causal_clock_contract()` · `time_et.py` |
+| **I-05** | Train-serve feature identity | `check_encoder_cone_mechanical_lock()` · `tests/test_ml_feature_schema_parity.py` |
+| **I-06** | Artifact hash immutability | `check_v3_i06_artifact_lineage()` · `arch_competition/promotion_execution.py` |
+| **I-07** | No orphan paths | `check_v3_i07_no_orphan_active_paths()` · `verify_active_models.py` |
+| **I-08** | Output schema validity | `check_v3_i08_output_schema_contract()` · `numeric_contract.py` · `fusion_contract.py` |
+| **I-09** | Secrets exclusion | `check_v3_i09_secrets_exclusion()` |
+| **I-10** | Reproducible training identity | `check_v3_i10_training_identity()` · `arch_competition/audit.py` |
+| **I-11** | Evaluation integrity | `tests/test_arch_competition_eval_runner.py` |
+| **I-12** | Pre-declared OOS discipline | `check_v3_i12_oos_discipline()` · `arch_competition/stack_bundle_eval_v1.py` |
+| **I-13** | Risk limits supersede model output | `check_v3_i13_risk_supersedes_model()` · `position_sizing_policy.py` · `call_engine.py` |
+| **I-14** | Attributable change | `check_v3_i14_attributable_change()` · `server.py` `/api/build` |
+| **I-15** | Tuple health before trade impact | `check_institutional_contract()` · `verify_active_models.py` · `tools/live_diag_compare.py` |
+| **I-16** | Decision-level explainability | `check_v3_i16_decision_explainability()` · `tools/live_diag_compare.py` |
+| **I-17** | Deterministic inference | `tests/test_ml_predict_fail_closed.py` · `check_v3_i17_deterministic_inference()` |
+| **I-18** | Capacity bounded | `check_v3_i18_capacity_bounded()` · `server.py` |
+| **I-19** | Clock synchronization health | `check_v3_i03_causal_clock_contract()` · `time_et.py` |
+| **I-20** | Dependency pinning in serving path | `check_v3_i20_dependency_discipline()` · `requirements.txt` |
+
+**Mechanical lock:** `check_v3_invariant_mechanical_registry()` + per-invariant `check_v3_i*` substance functions — pre-commit via `_REPO_WIDE_STATIC_CHECK_FUNCS`. Paired: `tests/test_governance_consolidation.py::test_v3_invariant_mechanical_registry`.
 
 ---
 
@@ -74,9 +176,14 @@ Every Read of a producer/consumer cone is a **write obligation**. Audit, disposi
 
 | Tier | Command | When required | Admits `AUDIT: CLEAN` or `VERDICT:`? |
 |------|---------|---------------|--------------------------------------|
+| **0 — Upfront mechanical gate** | `python tools/enforce_all_rules.py --upfront-gate` | **Before first edit** on an implementation session (after pull / before staging production paths). Pre-commit **blocks** production-path commits without a fresh pass stamp on current `HEAD`. | **No** — baseline static locks only; **never** replaces Tier A |
 | **A — Implementation sign-off** | `python tools/enforce_all_rules.py --objective-audit` (+ situational extensions below) | **Every turn** that lands code, fixes FINDs, claims pipeline/UI/ablation/Schwab state, or emits `VERDICT:` | **Yes** — exit 0 + canonical block below |
 | **B — Repository hard gate** | `python tools/enforce_all_rules.py --enforce-all` | Merge-quality sign-off; after rule/governance promotion commits | **No** — static + code-quality only; **never** replaces Tier A |
 | **C — Fast subset** | `--enforce-static` and/or `--code-quality` | Mid-turn iteration sanity | **No** — **never** cite for completion |
+
+**Tier 0 workflow (binding — Cursor + Claude):** Run `--upfront-gate` **before** opening production files for edit. On pass, `.cursor/upfront_mechanical_gate.json` records `git_sha`, `lock_set_sha256`, and UTC timestamp (8h max age). Any staged production `.py` / `static/` / `templates/` path without a matching stamp → pre-commit fast-fail with re-run instruction. Tier 0 runs the same repo-wide static lock set as pre-commit — discover violations **before** writing code, not after a 12-minute commit hook.
+
+**Banned (rejection-grade):** Starting implementation without Tier 0 pass on current `HEAD`. Staging production paths hoping pre-commit is the first static run. Tier B or C cited as `AUDIT: CLEAN`. Tier B instead of Tier A on an implementation turn. `VERDICT:` without Tier A exit 0. Sub-function PASS quoted as gate PASS.
 
 **Tier A extensions (mandatory when cone fits — name in `AUDIT_LADDER`):**
 
@@ -87,8 +194,6 @@ Every Read of a producer/consumer cone is a **write obligation**. Audit, disposi
 | Encoder / LSTM / Transformer staged | `python tools/check_encoder_cone_tests.py` |
 | Schwab market-field | Canopy→leaf trace + register row per `CLAUDE.md` |
 | Operator preflight / full runtime | `--objective-audit --full-runtime` |
-
-**Banned (rejection-grade):** Tier B or C cited as `AUDIT: CLEAN`. Tier B instead of Tier A on an implementation turn. `VERDICT:` without Tier A exit 0. Sub-function PASS quoted as gate PASS.
 
 ### Canonical sign-off block (single template — chat, commit, PR; Cursor **and** Claude)
 
@@ -112,7 +217,7 @@ Commit messages with `VERDICT:` **must** include `OBJECTIVE:` and `AUDIT: CLEAN`
 
 **Peer verification:** sibling agent or operator **recomputes** Tier A — never echoes implementer output (`PEER_AUDIT` line required when arbiter is in play).
 
-**Mechanical lock:** `check_institutional_signoff_contract()` + `check_objective_code_audit_signoff()` + `check_meet_or_exceed_signoff()`. Paired: `tests/test_governance_consolidation.py::test_institutional_signoff_contract`.
+**Mechanical lock:** `check_upfront_mechanical_gate_stamp()` + `run_upfront_mechanical_gate()` + `check_institutional_signoff_contract()` + `check_objective_code_audit_signoff()` + `check_meet_or_exceed_signoff()`. Paired: `tests/test_governance_consolidation.py::test_institutional_signoff_contract`, `::test_upfront_mechanical_gate_stamp`.
 
 **Mechanical enforcement (binding — no prose-only rules):** pre-commit → `check_fix_everything_we_touch.py` runs every repo-wide static lock in `_REPO_WIDE_STATIC_CHECK_FUNCS` plus staged locks. **Implementation sign-off:** Tier A exit 0 (above). **Repository hard gate:** `python tools/enforce_all_rules.py --enforce-all` exit 0 before merge-quality claims. Coverage of all AGENTS `[PROMOTED]` sections: `check_promoted_agents_rules_mechanically_locked()`.
 
@@ -140,6 +245,7 @@ Commit messages with `VERDICT:` **must** include `OBJECTIVE:` and `AUDIT: CLEAN`
 | **ZERO-BIAS — data-driven placement** (repo-wide; survivor output is the only router) | `check_zero_bias_ablation_contract()` + `check_ablation_agnostic_ingest_contract()` + `check_ablation_seven_model_four_horizon_grid()` + `check_ablation_full_stack_non_negotiable()` + `check_graphrag_fidelity_ablation_contract()` in `check_fix_everything_we_touch.py` + `python tools/feature_curation_gate.py --ablation-audit` | `tests/test_check_fix_everything_we_touch.py::test_zero_bias_ablation_contract`, `::test_ablation_agnostic_ingest_contract`, `::test_ablation_grid_requires_all_seven_models_and_four_horizons`, `::test_ablation_full_stack_non_negotiable_contract`, `::test_graphrag_fidelity_ablation_contract` |
 | **Objective → Code → Audit closure** (mandatory turn protocol; **full repo**; situational runtime where cone fits) | `check_institutional_signoff_contract()` + `run_objective_code_audit()` + `check_objective_code_audit_signoff()` + Tier A `--objective-audit` | `tests/test_governance_consolidation.py::test_institutional_signoff_contract`, `tests/test_check_fix_everything_we_touch.py::test_objective_code_audit_contract` |
 | **Fusion-only horizon cards** (zero default blend; withhold product triplets when fusion missing; 5th ALL consolidated card) | `check_fusion_only_card_contract()` in `check_fix_everything_we_touch.py` | `tests/test_check_fix_everything_we_touch.py::test_fusion_only_card_contract`, `tests/test_prediction_engine_chunk1_fail_closed.py::test_overlay_withholds_product_triplets_when_fusion_missing`, `tests/test_issue18_ui_contract.py` (consolidated + no-implicit-blend) |
+| **Training anchor roster (SPY/QQQ/IWM only)** | `check_training_anchor_roster_contract()` in `check_fix_everything_we_touch.py` | `tests/test_scheduler_user_tickers_return_type.py::test_resolve_ml_training_roster_defaults_to_three_anchors`, `::test_resolve_ml_training_roster_expansion_includes_pinned_guests`, `tests/test_check_fix_everything_we_touch.py::test_training_anchor_roster_contract_passes_on_current_repo` |
 | **Schwab fix-as-we-touch** (every Read in producer/consumer cone → leaf disposition or O-NN) | `tools/check_schwab_csv_first.py` (pre-commit + CI diff-emission on new market-fact sites) + `CLAUDE.md` line-by-line method | `tests/test_check_schwab_csv_first.py` — **honest limit:** repo-wide leaf walk is cone-by-cone work, not one regex gate |
 | **Mandatory registry completeness** (no prose-only promoted rules) | `check_mandatory_enforcement_registry()` + `check_promoted_agents_rules_mechanically_locked()` + `python tools/enforce_all_rules.py --enforce-all` | `tests/test_check_fix_everything_we_touch.py::test_mandatory_enforcement_registry_passes_on_current_repo`, `::test_promoted_agents_rules_mechanically_locked` |
 | **Unified stack canonical vocabulary** (seven-layer team; legacy names alias-only) | `check_unified_stack_canonical_vocabulary()` + `check_unified_stack_team_contract()` | `tests/test_check_fix_everything_we_touch.py::test_unified_stack_canonical_vocabulary_checker`, `::test_unified_stack_team_contract_checker` |
@@ -147,6 +253,8 @@ Commit messages with `VERDICT:` **must** include `OBJECTIVE:` and `AUDIT: CLEAN`
 | **Governance hierarchy + engineering gatekeeping absorption** | `check_governance_binding_contract()` + `check_governance_archive_batch2_contract()` + `CLAUDE.md` § ENGINEERING GATEKEEPING | `tests/test_governance_consolidation.py::test_governance_binding_contract`, `::test_governance_archive_batch2_contract` |
 | **Ablation denominator vocabulary** (no bare cell counts in binding docs) | `check_ablation_denominator_vocabulary()` | `tests/test_governance_consolidation.py::test_ablation_denominator_vocabulary` |
 | **CI Tier C static gate** (every PR) | `.github/workflows/hardening.yml` → `python tools/enforce_all_rules.py --enforce-static` | `check_institutional_signoff_contract()` |
+| **Tier-1 Quantitative Engineering Standard** | `check_tier1_engineering_standard()` | `tests/test_governance_consolidation.py::test_tier1_engineering_standard` |
+| **V3 invariant mechanical registry (I-01…I-20)** | `check_v3_invariant_mechanical_registry()` + `check_v3_i*` substance locks | `tests/test_governance_consolidation.py::test_v3_invariant_mechanical_registry` |
 
 **Pre-commit:** `check_institutional_contract()` runs on **every** commit (via `check_fix_everything_we_touch.py`), not only when UI files are staged. A promotion without a registry row + checker is rejection-grade.
 
@@ -238,6 +346,23 @@ Pre-commit runs static locks on every commit; `--code-quality` is the explicit f
 **No production wiring until additive:** Schwab leaves win discovery ablation (materialized on labeled rows) before any live cone wiring.
 
 **Mechanical lock:** `check_full_stack_models_contract()` in `check_fix_everything_we_touch.py` — paired `tests/test_ml_feature_schema_parity.py::test_full_stack_models_contract`.
+
+---
+
+## Training anchor roster — SPY/QQQ/IWM only `[PROMOTED]` (2026-06-11 — operator binding)
+
+**Default ML train/promote/verify roster = three index anchors only:** `SPY`, `QQQ`, `IWM` (`scheduler_user_tickers.TRAINING_ANCHOR_TICKERS` → `resolve_ml_training_roster`).
+
+| Category | Logging | ML train | Notes |
+|----------|---------|----------|-------|
+| **Training anchors** | yes | **yes** | Only SPY, QQQ, IWM |
+| **`panel_auto`** | yes (thin quote) | **no** | Confluence guests |
+| **`pinned` / `user_persisted` / non-anchor `core`** | yes | **no** | Data accumulation + UI/cold-call guests |
+| **Explicit expansion** | — | opt-in | `ED_ML_SCHEDULER_TRAINING_EXPAND=1` restores enrolled-minus-panel_auto (legacy) |
+
+**Single authority:** `scheduler_user_tickers.resolve_ml_training_roster` — consumed by `ml_scheduler`, `train_all`, `lstm_data`, `transformer_train`, `verify_active_models`. Scheduler run exit codes (`training_outcome.compute_run_exit_code`) fail only on anchor outcomes.
+
+**Mechanical lock:** `check_training_anchor_roster_contract()` — pre-commit repo-wide static audit. Paired: `tests/test_scheduler_user_tickers_return_type.py::test_resolve_ml_training_roster_defaults_to_three_anchors`, `::test_resolve_ml_training_roster_expansion_includes_pinned_guests`, `tests/test_check_fix_everything_we_touch.py::test_training_anchor_roster_contract_passes_on_current_repo`.
 
 ---
 
@@ -450,6 +575,70 @@ python tools/enforce_all_rules.py --objective-audit --full-runtime
 **Mechanical lock:** `check_institutional_signoff_contract()` + `run_objective_code_audit()` + `run_situational_runtime_audits()` + `check_objective_code_audit_signoff()`. Paired: `tests/test_governance_consolidation.py::test_institutional_signoff_contract`, `tests/test_check_fix_everything_we_touch.py::test_objective_code_audit_contract`.
 
 **Relationship to [§Meet-or-Exceed Closure Cycle](#meet-or-exceed-closure-cycle):** Meet-or-Exceed is **verdict vocabulary + loop**; Objective→Code→Audit is **turn workflow**; [§Institutional sign-off contract](#institutional-signoff-contract) is the **single admissible block + Tier A ladder** — full repo, both agents.
+
+---
+
+## Definition of Done for Fixes `[PROMOTED]` (2026-06-11 — operator binding; closed-loop completion)
+
+<a id="definition-of-done-for-fixes"></a>
+
+**A code edit is not a fix.** A fix is complete only when the failing path is rerun and proven — not when the patch is described.
+
+**Mandatory closed loop (every fix — no early stop):**
+
+```
+IDENTIFY → ROOT-CAUSE → PATCH → RERUN EXACT → (fail?) PATCH → RERUN GROUP → RERUN BROADER → REGEN ARTIFACTS → REPORT
+```
+
+| Step | Requirement |
+|------|-------------|
+| **1. Identify** | Name the exact failing test, command, or runtime path |
+| **2. Root cause** | Explain why it failed (not symptom-only) |
+| **3. Patch** | Smallest correct change — no cosmetic bypass |
+| **4. Rerun exact** | Rerun the **exact** failing test/command by name; show exit code + summary |
+| **5. Rerun group** | Rerun the related test group (same directory or cone owner) |
+| **6. Rerun broader** | Rerun the broader governance/institutional suite when the cone touches governance |
+| **7. Regenerate** | Regenerate affected governance artifacts when wiring or evidence counts change |
+| **8. Report** | Emit the report block below with command output — not prose substitutes |
+
+**Banned stop condition (rejection-grade):** Ending with "the fix is incomplete because X" without either (a) continuing the loop until X passes, or (b) recording X in **Remaining Known Gaps** with file path, test name, and explicit out-of-scope reason. A new failure discovered during the loop is **not** a reason to stop — it is the next loop iteration.
+
+**Claim → required proof (binding):**
+
+| Agent claim | Required proof |
+|-------------|----------------|
+| "Fixed" | Exact failed test passes (command + exit 0 shown) |
+| "Restored wiring" | API path + persistence path + test prove it |
+| "Harmless stderr" | Lifecycle guard or test-safe suppression; no scary RuntimeError in reviewer-facing output |
+| "Governance passed" | Combined governance pytest command passes |
+| "Artifact updated" | Regeneration command + builder output shown |
+| "Maturity improved" | Validation register + adversarial test evidence |
+| "Complete" | Report block below with zero undisclosed gaps |
+
+**Required fix report block** (when claiming any fix complete):
+
+```
+Files changed:
+Tests run: <exact commands + exit codes + pass counts>
+Exact previous failure status:
+Artifacts regenerated:
+Remaining Known Gaps: <none | table: path | test | reason>
+Known bypasses still open:
+Maturity changes proposed:
+Maturity changes rejected:
+```
+
+**Relationship:** Implements the VERIFY step of [§Meet-or-Exceed Closure Cycle](#meet-or-exceed-closure-cycle) and step 3–4 of [§Objective → Code → Audit closure](#objective-code-audit-closure). Do not substitute explanation for closure. Canonical summary: [`governance/docs/AGENT_OPERATING_CONTRACT.md`](governance/docs/AGENT_OPERATING_CONTRACT.md).
+
+---
+
+## Agent preload enforcement `[PROMOTED]` (2026-06-11 — operator binding; Phase 3A)
+
+**Every session (Cursor + Claude):** load [`governance/docs/AGENT_OPERATING_CONTRACT.md`](governance/docs/AGENT_OPERATING_CONTRACT.md) before any edit. Cursor: `.cursor/rules/000-agent-operating-contract.mdc` through `040-testing-and-artifacts.mdc` (`alwaysApply: true`). If preload cannot be verified → **stop** and report preload failure.
+
+**Preload is compliance scaffolding, not maturity enforcement.** Hooks/CI/branch protection remain required for true prevention.
+
+**Mechanical lock:** `check_agent_preload_contract()` + `python tools/check_agent_preload_contract.py` — wired into `--objective-audit`. Paired: `tests/test_agent_preload_contract.py`.
 
 ---
 
@@ -969,7 +1158,8 @@ Same AGENTS.md + ACTIVE_PROGRAM apply; no reduced governance on async runs.
 
 | Tier | Paths | Binding? |
 |------|-------|----------|
-| **1 — Agent behavior** | `AGENTS.md`, `CLAUDE.md` (Schwab field law), `docs/governance/AGENT_SELF_GOVERNANCE.md` (process mechanics) | **Yes** |
+| **0 — Quality standard** | `AGENTS.md` § Tier-1 Quantitative Engineering Standard, § Universal code quality, § V3 invariant mechanical registry, § World-class gate | **Yes** — **above product law** |
+| **1 — Agent behavior + product law** | `AGENTS.md` (promoted product sections), `CLAUDE.md` (Schwab field law), `docs/governance/AGENT_SELF_GOVERNANCE.md` (process mechanics) | **Yes** |
 | **2 — Current epic** | `ACTIVE_PROGRAM.md`, `OPEN_ITEMS.md` | **Yes** |
 | **3 — Schwab V4 program** (when epic cites) | `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md`, `governance/SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md`, `governance/CURSOR_V4_AGENT_BRIEF.md`, `governance/OPERATOR_DECISION_REGISTER.md`, `governance/STACK_WIRING_INTEGRITY_MAP.md`, `governance/SCHWAB_V4_REVIEW_MEMOS/*` | **Yes when in scope** |
 | **4 — Mechanical enforcement** | `tools/check_*.py`, `governance/forbidden_phrases.py`, pinned `governance/artifacts/*.json` | **Yes** |

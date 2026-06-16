@@ -12,6 +12,7 @@ snapshots_1m_normalized but are absent from logging_universe — that does not e
 """
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 from typing import Optional
@@ -22,6 +23,41 @@ log = logging.getLogger(__name__)
 # Operator: bottom-panel / panel_auto symbols are confluence features only (SPY/QQQ/IWM context).
 # They must log for cross-instrument features but are excluded from ML scheduler training.
 CONFLUENCE_ONLY_UNIVERSE_CATEGORIES: frozenset[str] = frozenset({"panel_auto"})
+
+# Operator binding (2026-06-11): ONLY these three index anchors receive ML train/promote/verify.
+# All other enrolled symbols (core mega-caps, pinned, user_persisted, panel_auto) are guests:
+# log + UI/cold-call inference from accumulated data — not scheduler training targets.
+TRAINING_ANCHOR_TICKERS: tuple[str, ...] = ("SPY", "QQQ", "IWM")
+
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def training_anchor_tickers_upper() -> frozenset[str]:
+    return frozenset(t.upper() for t in TRAINING_ANCHOR_TICKERS)
+
+
+def is_training_anchor_ticker(ticker: str) -> bool:
+    return (ticker or "").upper() in training_anchor_tickers_upper()
+
+
+def require_ml_training_ticker_allowed(ticker: str) -> str:
+    """Fail-closed guard for explicit single-ticker train entry points."""
+    t = (ticker or "").upper().strip()
+    if not t:
+        raise ValueError("require_ml_training_ticker_allowed: empty ticker")
+    if ml_scheduler_training_expansion_enabled():
+        return t
+    if t not in training_anchor_tickers_upper():
+        raise ValueError(
+            f"{t} is not a training anchor ({', '.join(TRAINING_ANCHOR_TICKERS)}). "
+            "Guests are log/UI-only unless ED_ML_SCHEDULER_TRAINING_EXPAND=1."
+        )
+    return t
+
+
+def ml_scheduler_training_expansion_enabled() -> bool:
+    """Opt-in: train full enrolled roster minus panel_auto (legacy expansion path)."""
+    return os.environ.get("ED_ML_SCHEDULER_TRAINING_EXPAND", "").strip().lower() in _TRUTHY
 
 
 _ROOT = Path(__file__).resolve().parent
@@ -128,6 +164,56 @@ def filter_tickers_for_ml_training(tickers: list[str], db_path: str) -> list[str
         excluded,
     )
     return out
+
+
+def resolve_ml_training_roster(enrolled: list[str], db_path: str) -> list[str]:
+    """
+    Authoritative ML training roster for scheduler, train_all, and verify_active_models.
+
+    Default (expansion off): TRAINING_ANCHOR_TICKERS only (SPY, QQQ, IWM).
+    Guests: panel_auto (confluence), pinned, user_persisted, and non-anchor core symbols
+    remain enrolled for logging/UI but are excluded here.
+
+    ED_ML_SCHEDULER_TRAINING_EXPAND=1 restores pre-anchor behavior (enrolled minus panel_auto).
+    ED_ML_SCHEDULER_TICKERS further subsets the resolved pool (intersected with anchors when
+    expansion is off — non-anchor explicit picks are dropped with a warning).
+    """
+    pool = filter_tickers_for_ml_training(list(enrolled), db_path)
+    if not ml_scheduler_training_expansion_enabled():
+        enrolled_upper = {t.upper() for t in enrolled}
+        pool = [t for t in TRAINING_ANCHOR_TICKERS if t in enrolled_upper]
+        if len(pool) < len(TRAINING_ANCHOR_TICKERS):
+            missing = [t for t in TRAINING_ANCHOR_TICKERS if t not in enrolled_upper]
+            if missing:
+                log.warning(
+                    "Training anchor roster: missing enrolled anchors (will not train): %s",
+                    missing,
+                )
+    explicit = (os.environ.get("ED_ML_SCHEDULER_TICKERS") or "").strip()
+    if explicit:
+        want = {t.strip().upper() for t in explicit.split(",") if t.strip()}
+        if not ml_scheduler_training_expansion_enabled():
+            dropped = sorted(want - training_anchor_tickers_upper())
+            if dropped:
+                log.warning(
+                    "ED_ML_SCHEDULER_TICKERS ignored non-anchor symbols (expansion off): %s",
+                    dropped,
+                )
+            want &= training_anchor_tickers_upper()
+        before = len(pool)
+        pool = [t for t in pool if t.upper() in want]
+        log.info(
+            "ED_ML_SCHEDULER_TICKERS filter: %d of %d roster tickers selected",
+            len(pool),
+            before,
+        )
+    if not ml_scheduler_training_expansion_enabled() and pool:
+        log.info(
+            "ML training roster locked to anchors %s (%d tickers; guests excluded)",
+            list(pool),
+            len(pool),
+        )
+    return pool
 
 
 def record_user_ticker(ticker: str) -> None:

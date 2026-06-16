@@ -37,6 +37,11 @@ def test_detects_by_design_excuse_phrase():
     assert "by design" in hits
 
 
+def test_security_by_design_control_title_not_forbidden():
+    hits = find_forbidden_phrases('("T1-09", "Security by design"),')
+    assert hits == []
+
+
 def test_detects_out_of_scope_excuse():
     hits = find_forbidden_phrases("panel_auto training is not in scope of this slice.")
     assert any("not in scope" in h.lower() or "out of scope" in h.lower() for h in hits)

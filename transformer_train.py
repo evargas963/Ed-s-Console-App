@@ -171,9 +171,13 @@ def prepare_transformer_data(
     tickers = [ticker] if ticker else []
     if not tickers:
         try:
-            from scheduler_user_tickers import load_user_scheduler_tickers_or_empty
+            from scheduler_user_tickers import (
+                load_user_scheduler_tickers_or_empty,
+                resolve_ml_training_roster,
+            )
 
-            tickers = load_user_scheduler_tickers_or_empty()
+            enrolled = load_user_scheduler_tickers_or_empty()
+            tickers = resolve_ml_training_roster(enrolled, str(_db))
         except Exception:
             tickers = []
         tickers = [t for t in tickers if t and not str(t).startswith("$")]

@@ -38,6 +38,11 @@ def scheduler_auto_promote_strict_core_freshness() -> bool:
     return _env_truthy("ED_SCHEDULER_AUTO_PROMOTE_STRICT_CORE_FRESHNESS")
 
 
+def scheduler_nightly_all_horizons_enabled() -> bool:
+    """Phase 2 stack honesty: nightly background + default train path covers all four primaries."""
+    return _env_falsy_default_true("ED_ML_SCHEDULER_ALL_HORIZONS", "1")
+
+
 def resolve_console_reload_url() -> str:
     explicit = os.environ.get("ED_CONSOLE_RELOAD_URL")
     if explicit is not None:
@@ -52,8 +57,8 @@ def console_reload_token() -> str | None:
 
 
 def ticker_eligible_for_auto_promote(ticker: str) -> bool:
-    from training_outcome import is_core_ticker
+    from scheduler_user_tickers import is_training_anchor_ticker
 
     if scheduler_auto_promote_core_only():
-        return is_core_ticker(ticker)
+        return is_training_anchor_ticker(ticker)
     return True

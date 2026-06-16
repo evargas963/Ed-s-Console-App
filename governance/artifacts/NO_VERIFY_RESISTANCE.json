@@ -1,0 +1,33 @@
+{
+  "schema_version": 2,
+  "artifact": "governance/artifacts/NO_VERIFY_RESISTANCE.json",
+  "local_pre_commit_bypassable": true,
+  "bypass_command": "git commit --no-verify",
+  "mitigation_layers": [
+    "CI required checks (objective-audit workflow)",
+    "GitHub branch protection requiring CI checks",
+    "CODEOWNERS + required PR review"
+  ],
+  "ci_workflow_exists": true,
+  "branch_protection_verified": false,
+  "no_verify_status": "open",
+  "remote_evidence": {
+    "evidence_source": null,
+    "evidence_timestamp": null,
+    "repository": null,
+    "protected_branch": "main",
+    "required_status_checks": [],
+    "required_reviews": null,
+    "allows_force_pushes": null,
+    "allows_deletions": null,
+    "bypass_actors": [],
+    "verification_method": "pending",
+    "verified_by": null
+  },
+  "closed_requires": [
+    "ci_required_checks_proven_on_github",
+    "branch_protection_verified"
+  ],
+  "acceptable_claim": "No-verify mitigated only when CI + branch protection are both proven on GitHub",
+  "generated": "2026-06-15"
+}

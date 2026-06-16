@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "artifact": "governance/artifacts/MATURITY_PROMOTION_RULES.json",
+  "generated": "2026-06-15",
+  "binding_rule": "No control may move upward in maturity based on implementation work alone. Promotion evidence must exist. Burden of proof is on enforcement, not documentation.",
+  "maturity_vocabulary": {
+    "L0": "Not built",
+    "L1": "Documented / named gap",
+    "L2": "Checker or test exists; partial coverage; bypass trivial",
+    "L3": "Commit/CI blocked on happy path",
+    "L4": "Bypass requires privileged action + audit event",
+    "L5": "Workflow approval + immutable audit + reconstructable"
+  },
+  "promotion_requirements": {
+    "L1_to_L2": [
+      "named enforcement location in code or CI"
+    ],
+    "L2_to_L3": [
+      "pre-commit or CI block on happy path",
+      "paired test (may be meta-test)"
+    ],
+    "L3_to_L4": [
+      "universal_bypass_register entry complete",
+      "runtime enforcement or immutable audit event on bypass attempt",
+      "adversarial test spec entry with failing or passing harness",
+      "bypass_detection_test reference"
+    ],
+    "L4_to_L5": [
+      "independent approval workflow (four-eyes)",
+      "immutable audit trail",
+      "blind reconstruction test PASS",
+      "operational exercise record"
+    ]
+  },
+  "forbidden": [
+    "Promote because checker exists",
+    "Promote because test asserts checker==[] on current repo",
+    "Promote matrix status to ENFORCED without bypass inventory",
+    "Promote I-26 DR while release object undefined"
+  ],
+  "authoritative_maturity_source": "SEVERITY_1_CONTROL_VALIDATION_REGISTER.json \u2014 supersedes governance_coverage_matrix.json"
+}

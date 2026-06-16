@@ -302,18 +302,101 @@ def test_institutional_signoff_contract() -> None:
     assert errors == [], f"institutional sign-off contract: {errors}"
     agents = _read("AGENTS.md")
     assert "Institutional sign-off contract — uniform Cursor + Claude" in agents
+    assert "Tier 0" in agents
+    assert "--upfront-gate" in agents
     assert "Tier A" in agents
     assert "Canonical sign-off block" in agents
     assert "AUDIT_LADDER:" in agents
     assert "catalog_slots" in agents
     assert "runnable_scored" in agents
     cursor = _read(".cursor/rules/00-always.mdc")
+    assert "Tier 0" in cursor
     assert "Tier A" in cursor
     assert "Institutional sign-off contract" in cursor
     enforce = _read("tools/enforce_all_rules.py")
     assert "Tier A" in enforce
+    assert "--upfront-gate" in enforce
     hardening = _read(".github/workflows/hardening.yml")
     assert "enforce_all_rules.py --enforce-static" in hardening
+
+
+def test_upfront_mechanical_gate_stamp(monkeypatch, tmp_path) -> None:
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    from tools.check_fix_everything_we_touch import (
+        UPFRONT_GATE_MAX_AGE_SEC,
+        check_upfront_mechanical_gate_stamp,
+        _upfront_gate_lock_set_sha256,
+    )
+    import tools.check_fix_everything_we_touch as gate_mod
+
+    stamp_path = tmp_path / "upfront_mechanical_gate.json"
+    monkeypatch.setattr(gate_mod, "UPFRONT_GATE_STAMP_PATH", stamp_path)
+    monkeypatch.setattr(gate_mod, "_git_head_sha", lambda: "deadbeef" * 5)
+
+    assert check_upfront_mechanical_gate_stamp(staged={"tests/test_foo.py"}) == []
+
+    missing = check_upfront_mechanical_gate_stamp(staged={"signals.py"})
+    assert missing and "missing stamp" in missing[0]
+
+    fresh = {
+        "schema_version": 1,
+        "git_sha": "deadbeef" * 5,
+        "utc_ts": datetime.now(timezone.utc).isoformat(),
+        "exit_code": 0,
+        "command": "--upfront-gate",
+        "lock_set_sha256": _upfront_gate_lock_set_sha256(),
+        "static_error_count": 0,
+    }
+    stamp_path.write_text(json.dumps(fresh), encoding="utf-8")
+    assert check_upfront_mechanical_gate_stamp(staged={"signals.py"}) == []
+
+    stale = dict(fresh)
+    stale["utc_ts"] = (
+        datetime.now(timezone.utc) - timedelta(seconds=UPFRONT_GATE_MAX_AGE_SEC + 60)
+    ).isoformat()
+    stamp_path.write_text(json.dumps(stale), encoding="utf-8")
+    stale_errs = check_upfront_mechanical_gate_stamp(staged={"signals.py"})
+    assert stale_errs and "stamp age" in stale_errs[0]
+
+    wrong_head = dict(fresh)
+    wrong_head["git_sha"] = "cafebabe" * 5
+    stamp_path.write_text(json.dumps(wrong_head), encoding="utf-8")
+    head_errs = check_upfront_mechanical_gate_stamp(staged={"signals.py"})
+    assert head_errs and "git_sha" in head_errs[0]
+
+    assert check_upfront_mechanical_gate_stamp(staged={"tools/check_fix_everything_we_touch.py"}) == []
+
+
+def test_tier1_engineering_standard() -> None:
+    from tools.check_fix_everything_we_touch import (
+        TIER1_PRINCIPLE_IDS,
+        check_tier1_engineering_standard,
+    )
+
+    errors = check_tier1_engineering_standard()
+    assert errors == [], f"Tier-1 engineering standard: {errors}"
+    agents = _read("AGENTS.md")
+    assert "Quality Standard vs Product law" in agents
+    assert len(TIER1_PRINCIPLE_IDS) == 24
+    for pid in TIER1_PRINCIPLE_IDS:
+        assert f"**{pid}**" in agents
+
+
+def test_v3_invariant_mechanical_registry() -> None:
+    from tools.check_fix_everything_we_touch import (
+        V3_INVARIANT_MECHANICAL_LOCKS,
+        check_v3_invariant_mechanical_registry,
+    )
+
+    assert len(V3_INVARIANT_MECHANICAL_LOCKS) == 20
+    errors = check_v3_invariant_mechanical_registry()
+    assert errors == [], f"V3 invariant mechanical registry: {errors}"
+    agents = _read("AGENTS.md")
+    assert "V3 invariant mechanical registry" in agents
+    for inv_id in V3_INVARIANT_MECHANICAL_LOCKS:
+        assert f"**{inv_id}**" in agents
 
 
 def test_governance_archive_batch2_contract() -> None:

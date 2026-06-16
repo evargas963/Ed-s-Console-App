@@ -1100,15 +1100,22 @@ def main():
         _lc = move_label_column(hz_arg)
     else:
         _lc = outcome_column(hz_arg)
+    from scheduler_user_tickers import require_ml_training_ticker_allowed, resolve_ml_training_roster
+
     if args.ticker:
-        df_all  = load_data(
-            args.db, ticker=args.ticker.upper(), ml_horizon_slug=hz_arg, label_column=_lc
+        tkr = require_ml_training_ticker_allowed(args.ticker)
+        df_all = load_data(
+            args.db, ticker=tkr, ml_horizon_slug=hz_arg, label_column=_lc
         )
-        tickers = [args.ticker.upper()]
+        tickers = [tkr]
     else:
-        df_all  = load_data(args.db, ml_horizon_slug=hz_arg, label_column=_lc)
-        tickers = df_all["ticker"].unique().tolist() if len(df_all) > 0 else []
-        print(f"\n  Tickers: {tickers}")
+        df_all = load_data(args.db, ml_horizon_slug=hz_arg, label_column=_lc)
+        raw = df_all["ticker"].unique().tolist() if len(df_all) > 0 else []
+        tickers = resolve_ml_training_roster(raw, args.db)
+        if not tickers:
+            print("\nERROR: no training-roster tickers in data (anchors: SPY/QQQ/IWM)")
+            sys.exit(1)
+        print(f"\n  Tickers (training roster): {tickers}")
 
     results = {}
     for tkr in tickers:

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "artifact": "governance/artifacts/GOVERNANCE_CRITICAL_FILES.json",
+  "generated": "2026-06-15",
+  "paths": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".cursor/rules",
+    ".github/workflows",
+    ".github/CODEOWNERS",
+    "tools/enforce_all_rules.py",
+    "governance",
+    "tests/adversarial",
+    "tests/decision_reconstruction",
+    "tests/release_object",
+    "tests/test_governance_consolidation.py",
+    "tests/test_agent_preload_contract.py",
+    "trade_impacting_gate.py",
+    "live_decision_bundle.py",
+    "decision_record.py",
+    "override_registry.py",
+    "server.py",
+    "signals.py"
+  ],
+  "globs": [
+    "tools/check_*.py",
+    "tools/_build_institutional_audit_*.py"
+  ],
+  "expanded_glob_paths": [
+    "tools/_build_institutional_audit_phase1.py",
+    "tools/_build_institutional_audit_phase2.py",
+    "tools/_build_institutional_audit_phase3.py",
+    "tools/_build_institutional_audit_phase3b.py",
+    "tools/_build_institutional_audit_phase3c.py",
+    "tools/_build_institutional_audit_phase3d.py",
+    "tools/check_ablation_pipeline_parity.py",
+    "tools/check_agent_preload_contract.py",
+    "tools/check_branch_protection_proof.py",
+    "tools/check_encoder_cone_tests.py",
+    "tools/check_fix_everything_we_touch.py",
+    "tools/check_governance_critical_files.py",
+    "tools/check_governance_self_protection.py",
+    "tools/check_ml_pipeline_efficiency.py",
+    "tools/check_no_deferral_language.py",
+    "tools/check_no_grep_subprocess.py",
+    "tools/check_no_verify_resistance.py",
+    "tools/check_required_status_checks.py",
+    "tools/check_schwab_csv_first.py"
+  ],
+  "count": 37
+}

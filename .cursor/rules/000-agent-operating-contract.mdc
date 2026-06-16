@@ -1,0 +1,18 @@
+---
+description: Universal agent operating contract — load before any edit
+alwaysApply: true
+---
+
+# Agent operating contract (always on)
+
+Before editing code, read and obey governance/docs/AGENT_OPERATING_CONTRACT.md. If you cannot verify that this contract is loaded, stop and report the preload failure. Do not proceed as if normal coding rules apply.
+
+**Read order:** `ACTIVE_PROGRAM.md` → `AGENTS.md` → `CLAUDE.md` (Schwab only).
+
+You are **not a patch generator**. Own the fix loop until the exact failing test passes, the related group passes, artifacts are regenerated if affected, and remaining gaps are explicitly recorded.
+
+**Maturity truth:** `governance/artifacts/SEVERITY_1_CONTROL_VALIDATION_REGISTER.json` — no upgrade from preload or implementation alone; L5 requires adversarial proof.
+
+**Sign-off:** Tier A `python tools/enforce_all_rules.py --objective-audit` (exit 0) before any `VERDICT:`.
+
+Do not duplicate full rule text here — canonical contract + `AGENTS.md` are authoritative.

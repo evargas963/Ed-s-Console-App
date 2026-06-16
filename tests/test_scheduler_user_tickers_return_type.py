@@ -485,3 +485,125 @@ def test_fetch_latest_confluence_quote_chg(tmp_path):
     got = db.fetch_latest_confluence_quote_chg(["NVDA", "WMT"])
     assert got["NVDA"] == 0.55
     assert got["WMT"] is None
+
+
+def _logging_universe_rows(rows: list[tuple[str, str]]):
+    class _Row:
+        def __init__(self, ticker: str, category: str):
+            self._d = {"ticker": ticker, "category": category}
+
+        def get(self, key, default=None):
+            return self._d.get(key, default)
+
+    return [_Row(t, c) for t, c in rows]
+
+
+def test_resolve_ml_training_roster_defaults_to_three_anchors(monkeypatch):
+    import scheduler_user_tickers as sut
+
+    class _EdDB:
+        def __init__(self, _path):
+            pass
+
+        def logging_universe_list_rows(self):
+            return _logging_universe_rows(
+                [
+                    ("SPY", "core"),
+                    ("QQQ", "core"),
+                    ("IWM", "core"),
+                    ("NVDA", "core"),
+                    ("PLTR", "pinned"),
+                    ("PSCI", "panel_auto"),
+                ]
+            )
+
+    import db as _db_mod
+
+    monkeypatch.setattr(_db_mod, "EdDB", _EdDB)
+    monkeypatch.delenv("ED_ML_SCHEDULER_TRAINING_EXPAND", raising=False)
+    monkeypatch.delenv("ED_ML_SCHEDULER_TICKERS", raising=False)
+
+    enrolled = ["SPY", "QQQ", "IWM", "NVDA", "PLTR", "PSCI"]
+    out = sut.resolve_ml_training_roster(enrolled, ":memory:")
+    assert out == ["SPY", "QQQ", "IWM"]
+
+
+def test_resolve_ml_training_roster_expansion_includes_pinned_guests(monkeypatch):
+    import scheduler_user_tickers as sut
+
+    class _EdDB:
+        def __init__(self, _path):
+            pass
+
+        def logging_universe_list_rows(self):
+            return _logging_universe_rows(
+                [
+                    ("SPY", "core"),
+                    ("QQQ", "core"),
+                    ("IWM", "core"),
+                    ("NVDA", "core"),
+                    ("PLTR", "pinned"),
+                    ("PSCI", "panel_auto"),
+                ]
+            )
+
+    import db as _db_mod
+
+    monkeypatch.setattr(_db_mod, "EdDB", _EdDB)
+    monkeypatch.setenv("ED_ML_SCHEDULER_TRAINING_EXPAND", "1")
+    monkeypatch.delenv("ED_ML_SCHEDULER_TICKERS", raising=False)
+
+    enrolled = ["SPY", "QQQ", "IWM", "NVDA", "PLTR", "PSCI"]
+    out = sut.resolve_ml_training_roster(enrolled, ":memory:")
+    assert set(out) == {"SPY", "QQQ", "IWM", "NVDA", "PLTR"}
+    assert "PSCI" not in out
+
+
+def test_require_ml_training_ticker_allowed_rejects_guest_mega_cap(monkeypatch):
+    import scheduler_user_tickers as sut
+
+    monkeypatch.delenv("ED_ML_SCHEDULER_TRAINING_EXPAND", raising=False)
+    with pytest.raises(ValueError, match="NVDA is not a training anchor"):
+        sut.require_ml_training_ticker_allowed("NVDA")
+    assert sut.require_ml_training_ticker_allowed("SPY") == "SPY"
+
+
+def test_live_diag_default_tickers_are_all_three_anchors():
+    from tools.live_diag_compare import DEFAULT_DIAG_TICKERS
+    from scheduler_user_tickers import TRAINING_ANCHOR_TICKERS
+
+    assert DEFAULT_DIAG_TICKERS == TRAINING_ANCHOR_TICKERS
+    assert DEFAULT_DIAG_TICKERS == ("SPY", "QQQ", "IWM")
+
+
+def test_live_diag_stack_meta_ok_when_bases_and_fusion_up():
+    from tools.live_diag_compare import _summarize_full_stack_layers, stack_layer_failures
+
+    d = {
+        "xgb_available": True,
+        "lstm_available": True,
+        "transformer_available": True,
+        "fusion_available": True,
+        "mc_available": True,
+        "regime_label": "trend",
+    }
+    stack = _summarize_full_stack_layers(d)
+    assert stack["meta"] == "ok"
+    assert stack["fusion"] == "ok"
+    assert stack_layer_failures("SPY", d) == []
+
+
+def test_live_diag_anchor_stack_fail_when_fusion_missing():
+    from tools.live_diag_compare import stack_layer_failures
+
+    d = {
+        "xgb_available": True,
+        "lstm_available": True,
+        "transformer_available": True,
+        "fusion_available": False,
+        "mc_available": True,
+        "regime_label": "trend",
+    }
+    missing = stack_layer_failures("IWM", d)
+    assert "fusion" in missing
+    assert "meta" in missing

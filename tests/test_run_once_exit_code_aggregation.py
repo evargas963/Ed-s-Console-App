@@ -42,6 +42,14 @@ def test_compute_run_exit_code_non_core_partial_bundle_does_not_fail():
     assert compute_run_exit_code(outcomes) == 0
 
 
+def test_compute_run_exit_code_non_anchor_core_mega_cap_does_not_fail():
+    """Guest mega-caps (core logging category, not training anchor) do not fail scheduler runs."""
+    outcomes = [
+        outcome_entry(ticker="NVDA", horizon="1c", outcome=TrainingOutcome.train_failed),
+    ]
+    assert compute_run_exit_code(outcomes) == 0
+
+
 def test_compute_run_exit_code_mixed_matrix():
     outcomes = [
         outcome_entry(ticker="SPY", horizon="1c", outcome=TrainingOutcome.trained),

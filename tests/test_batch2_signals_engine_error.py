@@ -15,12 +15,24 @@ def test_stamp_decision_bundle_skips_generation_on_signals_engine_failed():
     assert out.get("decision_timestamp_utc") is None
 
 
-def test_stamp_decision_bundle_increments_on_success():
-    md = {"signals_engine_failed": False}
-    out = stamp_decision_bundle(dict(md))
+def test_stamp_decision_bundle_increments_on_success(monkeypatch):
+    monkeypatch.setenv("ED_BUILD_GENERATION", "deadbeef" * 5)
+    from release_object import initialize_release_at_startup
+
+    initialize_release_at_startup(force=True)
+    md = {
+        "signals_engine_failed": False,
+        "ticker": "SPY",
+        "spot": 500.0,
+        "call_signal": "wait",
+        "validation_summary": "batch2_stamp_ok",
+    }
+    out = stamp_decision_bundle(dict(md), route="server._fetch_state")
     assert out.get("decision_generation_skipped") is False
+    assert out.get("decision_gate_blocked") is not True
     assert out.get("decision_tick_kind") == "live"
     assert isinstance(out.get("decision_generation_id"), int)
+    assert out.get("decision_id")
 
 
 def test_index_html_shared_render_guards():
@@ -55,4 +67,9 @@ def test_error_bar_fires_on_either_state_error_field():
     html = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text(
         encoding="utf-8", errors="replace"
     )
-    assert "d.state_error || d.state_error_detail" in html
+    idx = html.find("function _updateErrorBarFromPayload")
+    assert idx != -1, "_updateErrorBarFromPayload missing from index.html"
+    chunk = html[idx : idx + 900]
+    assert "d.state_error_detail" in chunk
+    assert "d.state_error" in chunk
+    assert "||" in chunk

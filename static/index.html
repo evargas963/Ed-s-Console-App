@@ -4147,7 +4147,10 @@ try {
 /* renderSignalRailCard removed 2026-06-10 (operator): the ALL pill carries the
    consolidated verdict and the PLAN pill carries entry/stop/targets/size. */
 
-/** Stack honesty: 1M–60M = per-horizon fusion readouts; ALL = consolidated synthesis (no PRIMARY on individual pills). */
+/** Stack honesty: 1M–60M = per-horizon fusion readouts; ALL = consolidated synthesis.
+ *  Primary horizon pill tagged PRIMARY; others AGREE/CONFLICT vs primary (not vs ALL).
+ *  ALL + PLAN only light when ≥2 horizon pills share the same directional call — a lone
+ *  1M LONG must not arm ALL/PLAN while 5M/15M/60M stay NEUTRAL (matches backend gate). */
 function renderTimeframeSignalRow(d) {
   if (d == null || typeof d !== 'object') return;
   const row = document.getElementById('timeframe-signal-row');
@@ -4183,6 +4186,13 @@ function renderTimeframeSignalRow(d) {
     return Math.round(Math.min(100, Math.max(0, n)));
   }
 
+  // Engine owns ALL/PLAN eligibility (multi_horizon_decision.final_tradeable) — UI must not
+  // re-count mhap rows with a different predicate (drift caused ALL/PLAN vs 1M desync).
+  function engineTradeableSetup(d) {
+    const bias = String((d && d.final_bias) || 'WAIT').toUpperCase();
+    return !!(d && d.final_tradeable) && (bias === 'LONG' || bias === 'SHORT');
+  }
+
   // PLAN card — trade plan (entry/stop/targets/size) promoted out of the Decision
   // Command rail into the pill row beside ALL (operator 2026-06-10). Same chrome,
   // same state vocabulary: LONG=green / SHORT=red / WAIT=dim slate.
@@ -4206,9 +4216,13 @@ function renderTimeframeSignalRow(d) {
       [eEl, sEl, tEl, iEl, zEl].forEach((n) => { if (n) n.textContent = '—'; });
       return;
     }
+    const planRows = Array.isArray(d.mhap_rows) ? d.mhap_rows : [];
     const dir = normDir(d.final_bias || 'WAIT');
-    const entryState = String(d.entry_state || 'no_setup').toLowerCase();
-    const state = dir === 'LONG' ? 'up' : dir === 'SHORT' ? 'down' : 'dim';
+    const planTradeable = engineTradeableSetup(d);
+    const planDir = planTradeable ? dir : 'FLAT';
+    const entryStateRaw = String(d.entry_state || 'no_setup').toLowerCase();
+    const entryState = planTradeable ? entryStateRaw : 'no_setup';
+    const state = planDir === 'LONG' ? 'up' : planDir === 'SHORT' ? 'down' : 'dim';
     let glow = '';
     if (state !== 'dim') {
       glow = (entryState === 'confirmed' || entryState === 'filled') ? ' tf-glow-3' : ' tf-glow-1';
@@ -4317,7 +4331,7 @@ function renderTimeframeSignalRow(d) {
   }
   const prim = String(d.primary_horizon || '').toLowerCase();
   const finalBias = String(d.final_bias || 'WAIT').toUpperCase();
-  const tradeable = !!d.final_tradeable && (finalBias === 'LONG' || finalBias === 'SHORT');
+  const tradeable = engineTradeableSetup(d);
   const primaryRow = mhap.find((r) => String(r.horizon || '').toLowerCase() === prim);
   const primaryDir = primaryRow ? normDir(primaryRow.call) : 'FLAT';
 
@@ -4329,8 +4343,10 @@ function renderTimeframeSignalRow(d) {
       if (ast.includes('align')) return 'ALIGNED';
       return null;
     }
-    // Per-horizon pills: AGREE/CONFLICT vs mode-selected clock only — synthesis lives on ALL.
+    // Per-horizon pills: PRIMARY on mode-selected clock; AGREE/CONFLICT on others vs primary.
+    // ALL owns pooled synthesis (final_bias) — pill tags are not vs ALL.
     if (primaryDir !== 'LONG' && primaryDir !== 'SHORT') return null;
+    if (String(slug).toLowerCase() === prim) return 'PRIMARY';
     if (dir === primaryDir) return 'AGREE';
     if (dir === 'LONG' || dir === 'SHORT') return 'CONFLICT';
     return null;
@@ -4345,9 +4361,14 @@ function renderTimeframeSignalRow(d) {
     let tag = null;
 
     if (slug === 'consolidated') {
-      dir = normDir(d.final_bias || 'WAIT');
+      if (tradeable) {
+        dir = normDir(d.final_bias || 'WAIT');
+        tag = deriveTag(slug, dir);
+      } else {
+        dir = 'FLAT';
+        tag = null;
+      }
       confPct = parseConf(d.final_confidence);
-      tag = deriveTag(slug, dir);
     } else {
       const r = mhap.find((x) => String(x.horizon || '').toLowerCase() === slug);
       if (r) {
@@ -4364,8 +4385,8 @@ function renderTimeframeSignalRow(d) {
     }
 
     let state = 'dim';
-    if (dir === 'LONG') state = 'up';
-    else if (dir === 'SHORT') state = 'down';
+    if (tradeable && dir === 'LONG') state = 'up';
+    else if (tradeable && dir === 'SHORT') state = 'down';
 
     let glow = '';
     if (state === 'up' || state === 'down') {
@@ -4434,11 +4455,22 @@ function renderTimeframeSignalRow(d) {
         tagEl.setAttribute('aria-hidden', 'true');
       } else {
         tagEl.removeAttribute('aria-hidden');
-        const tc = tag === 'AGREE' || tag === 'ALIGNED' ? 'agree'
+        const tc = tag === 'PRIMARY' ? 'primary'
+          : tag === 'AGREE' || tag === 'ALIGNED' ? 'agree'
           : tag === 'CONFLICT' || tag === 'SPLIT' ? 'conflict'
           : 'agree';
         tagEl.className = 'tf-tag tf-tag--' + tc;
         tagEl.textContent = tag;
+        const primUi = ({ '1c': '1M', '5c': '5M', '15c': '15M', '60c': '60M' })[prim] || prim;
+        if (tag === 'PRIMARY') {
+          tagEl.title = 'Primary horizon (' + primUi + ' ' + primaryDir + ') — trade-plan clock';
+        } else if (tag === 'AGREE') {
+          tagEl.title = 'Same direction as primary ' + primUi + ' (' + primaryDir + ')';
+        } else if (tag === 'CONFLICT') {
+          tagEl.title = 'Opposite primary ' + primUi + ' (' + primaryDir + ') — ALL pooled bias may differ';
+        } else {
+          tagEl.removeAttribute('title');
+        }
       }
     }
 

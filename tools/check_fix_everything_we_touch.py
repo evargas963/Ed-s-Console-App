@@ -17,10 +17,12 @@ Usage:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -142,10 +144,9 @@ RULE_DRIFT_META_LINE = re.compile(
 )
 
 # Excuse / partial-completion phrases (AGENTS § Banned phrases — Excuse / partial-completion).
-# Normative list lives in AGENTS.md; patterns here are the mechanical subset.
+# Normative list lives in AGENTS.md; by-design family uses context-aware detection in
+# governance.forbidden_phrases (canonical control titles vs excuse prose).
 EXCUSE_PARTIAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("by design / works as designed", re.compile(r"\b(?:by\s+design|works\s+as\s+(?:designed|intended))\b", re.IGNORECASE)),
-    ("policy by design", re.compile(r"\bpolicy\s+by\s+design\b", re.IGNORECASE)),
     ("patch-only completion excuse", re.compile(r"\b(?:patch\s+only|minimal\s+patch|small\s+patch)\b", re.IGNORECASE)),
     ("mostly/substantially complete", re.compile(r"\b(?:mostly|substantially)\s+complete\b", re.IGNORECASE)),
     ("good enough for now", re.compile(r"\bgood\s+enough\s+for\s+now\b", re.IGNORECASE)),
@@ -171,6 +172,7 @@ STAGED_DRIFT_ALLOWLIST_EXACT = {
     "tools/check_fix_everything_we_touch.py",
     "tests/test_check_fix_everything_we_touch.py",
     "tests/test_forbidden_phrases.py",
+    "tests/test_precommit_performance_audit.py",
     # Self-referential enforcement surfaces: these files DEFINE or LOCK the banned-phrase
     # patterns, so scanning their literal regex/assert text is noise, not drift.
     "tools/check_no_deferral_language.py",
@@ -2593,7 +2595,10 @@ _FUSION_ONLY_CARD_MARKERS: tuple[tuple[str, str], ...] = (
     # PLAN track widened 2026-06-11 (operator: values were ellipsizing).
     ("static/index.html", "repeat(5, minmax(0, 1fr)) minmax(0, 1.26fr)"),
     ("static/index.html", 'id="tf-signal-plan"'),
-    ("static/index.html", "no PRIMARY on individual pills"),
+    ("static/index.html", "Primary horizon pill tagged PRIMARY"),
+    ("static/index.html", "others AGREE/CONFLICT vs primary (not vs ALL)"),
+    ("static/index.html", "function engineTradeableSetup"),
+    ("static/index.html", "d.final_tradeable"),
     ("ACTIVE_PROGRAM.md", "Fusion-only horizon cards"),
     ("AGENTS.md", "Fusion-only horizon cards"),
 )
@@ -2614,9 +2619,9 @@ _FUSION_ONLY_CARD_BANNED: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
     (
-        "static/index.html: PRIMARY badge on individual horizon pills is banned",
+        "static/index.html: PRIMARY badge on ALL/consolidated pill is banned",
         re.compile(
-            r"slug\s*===\s*prim\s*\)\s*return\s*['\"]PRIMARY['\"]",
+            r"slug\s*===\s*['\"]consolidated['\"]\s*\)\s*return\s*['\"]PRIMARY['\"]",
             re.MULTILINE,
         ),
     ),
@@ -2670,11 +2675,134 @@ def check_fusion_only_card_contract() -> list[str]:
         for fn in (
             "test_render_timeframe_signal_row_includes_consolidated_slug",
             "test_derive_source_for_horizon_no_implicit_blend_when_fusion_ok",
-            "test_individual_horizon_cards_no_primary_tag",
+            "test_individual_horizon_cards_primary_agree_conflict_vocabulary",
             "test_trade_active_glow_only_on_all_card",
         ):
             if f"def {fn}" not in utext:
                 errors.append(f"tests/test_issue18_ui_contract.py: missing {fn}")
+    return errors
+
+
+_FOUR_HORIZON_PROMOTION_MARKERS: tuple[tuple[str, str], ...] = (
+    ("ml_scheduler.py", "scheduler_nightly_all_horizons_enabled"),
+    ("ml_scheduler.py", "for _hz in ALL_GOVERNED_HORIZONS"),
+    ("ml_scheduler.py", "--all-horizons"),
+    ("ml_scheduler.py", "execute_promotion_if_eligible"),
+    ("arch_competition/scheduler_auto_promote_policy.py", "scheduler_nightly_all_horizons_enabled"),
+    ("arch_competition/promotion_execution.py", "scheduler_active_root"),
+    ("active_bundle_contract.py", "def scheduler_active_root"),
+    ("verify_active_models.py", "PRIMARY_DECISION_HORIZONS"),
+)
+
+
+def check_four_horizon_promotion_contract() -> list[str]:
+    """ACTIVE_PROGRAM Phase 2 — nightly + CLI train/promote all four primary horizons into canonical active roots."""
+    errors: list[str] = []
+    for rel, needle in _FOUR_HORIZON_PROMOTION_MARKERS:
+        path = REPO_ROOT / rel
+        if not path.is_file():
+            errors.append(f"{rel}: missing (four-horizon promotion contract)")
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            errors.append(f"{rel}: cannot read for four-horizon promotion contract: {exc}")
+            continue
+        if needle not in text:
+            errors.append(f"{rel}: missing four-horizon promotion marker {needle!r}")
+    policy = REPO_ROOT / "arch_competition" / "scheduler_auto_promote_policy.py"
+    if policy.is_file():
+        ptext = policy.read_text(encoding="utf-8", errors="replace")
+        if "ED_ML_SCHEDULER_ALL_HORIZONS" not in ptext:
+            errors.append(
+                "arch_competition/scheduler_auto_promote_policy.py: missing ED_ML_SCHEDULER_ALL_HORIZONS env gate"
+            )
+    sched = REPO_ROOT / "ml_scheduler.py"
+    if sched.is_file():
+        stext = sched.read_text(encoding="utf-8", errors="replace")
+        if "manual via arch_competition.manual_control" in stext:
+            errors.append(
+                "ml_scheduler.py: --all-horizons help must not claim manual-only promotion (use execute_promotion_if_eligible)"
+            )
+    promote_tests = REPO_ROOT / "tests" / "test_arch_competition_auto_promote.py"
+    if promote_tests.is_file():
+        ttext = promote_tests.read_text(encoding="utf-8", errors="replace")
+        for fn in (
+            "test_auto_promote_5c_writes_active_5c_root",
+            "test_scheduler_nightly_all_horizons_default_on",
+        ):
+            if f"def {fn}" not in ttext:
+                errors.append(f"tests/test_arch_competition_auto_promote.py: missing {fn}")
+    return errors
+
+
+_TRAINING_ANCHOR_ROSTER_MARKERS: tuple[tuple[str, str], ...] = (
+    ("scheduler_user_tickers.py", "TRAINING_ANCHOR_TICKERS"),
+    ("scheduler_user_tickers.py", "def resolve_ml_training_roster"),
+    ("scheduler_user_tickers.py", "ED_ML_SCHEDULER_TRAINING_EXPAND"),
+    ("ml_scheduler.py", "resolve_ml_training_roster"),
+    ("scheduler_user_tickers.py", "require_ml_training_ticker_allowed"),
+    ("train_all.py", "require_ml_training_ticker_allowed"),
+    ("verify_active_models.py", "resolve_ml_training_roster"),
+    ("training_outcome.py", "is_training_anchor_ticker"),
+    ("arch_competition/scheduler_auto_promote_policy.py", "is_training_anchor_ticker"),
+)
+
+_TRAINING_ROSTER_BULK_LOAD_FILES: tuple[str, ...] = (
+    "ml_scheduler.py",
+    "train_all.py",
+    "lstm_data.py",
+    "transformer_train.py",
+    "verify_active_models.py",
+)
+
+
+def check_training_anchor_roster_contract() -> list[str]:
+    """AGENTS — ML train/promote/verify roster locked to SPY/QQQ/IWM unless expansion env set."""
+    errors: list[str] = []
+    for rel, needle in _TRAINING_ANCHOR_ROSTER_MARKERS:
+        path = REPO_ROOT / rel
+        if not path.is_file():
+            errors.append(f"{rel}: missing (training anchor roster contract)")
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            errors.append(f"{rel}: cannot read for training anchor roster contract: {exc}")
+            continue
+        if needle not in text:
+            errors.append(f"{rel}: missing training anchor roster marker {needle!r}")
+    sched = REPO_ROOT / "scheduler_user_tickers.py"
+    if sched.is_file():
+        stext = sched.read_text(encoding="utf-8", errors="replace")
+        if 'TRAINING_ANCHOR_TICKERS: tuple[str, ...] = ("SPY", "QQQ", "IWM")' not in stext:
+            errors.append(
+                "scheduler_user_tickers.py: TRAINING_ANCHOR_TICKERS must be exactly SPY, QQQ, IWM"
+            )
+    for rel in _TRAINING_ROSTER_BULK_LOAD_FILES:
+        path = REPO_ROOT / rel
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if "load_user_scheduler_tickers_or_empty" in text and "resolve_ml_training_roster" not in text:
+            errors.append(
+                f"{rel}: bulk ticker load must use resolve_ml_training_roster (anchor roster authority)"
+            )
+    roster_tests = REPO_ROOT / "tests" / "test_scheduler_user_tickers_return_type.py"
+    if roster_tests.is_file():
+        rtext = roster_tests.read_text(encoding="utf-8", errors="replace")
+        for fn in (
+            "test_resolve_ml_training_roster_defaults_to_three_anchors",
+            "test_resolve_ml_training_roster_expansion_includes_pinned_guests",
+            "test_require_ml_training_ticker_allowed_rejects_guest_mega_cap",
+        ):
+            if f"def {fn}" not in rtext:
+                errors.append(f"tests/test_scheduler_user_tickers_return_type.py: missing {fn}")
+    agents = REPO_ROOT / "AGENTS.md"
+    if agents.is_file():
+        atext = agents.read_text(encoding="utf-8", errors="replace")
+        if "check_training_anchor_roster_contract" not in atext:
+            errors.append("AGENTS.md: missing check_training_anchor_roster_contract registry row")
     return errors
 
 
@@ -2949,6 +3077,8 @@ _REPO_WIDE_STATIC_CHECK_FUNCS: tuple[str, ...] = (
     "check_mvp_dataframe_ingress",
     "check_institutional_contract",
     "check_fusion_only_card_contract",
+    "check_four_horizon_promotion_contract",
+    "check_training_anchor_roster_contract",
     "check_mandatory_enforcement_registry",
     "check_promoted_agents_rules_mechanically_locked",
     "check_external_rule_tools_wired",
@@ -2969,18 +3099,32 @@ _REPO_WIDE_STATIC_CHECK_FUNCS: tuple[str, ...] = (
     "check_full_stack_models_contract",
     "check_universal_code_quality_contract",
     "check_meet_or_exceed_cycle_documentation",
+    "check_definition_of_done_for_fixes_contract",
+    "check_agent_preload_contract",
+    "check_branch_protection_proof",
+    "check_required_status_checks",
+    "check_governance_critical_files",
+    "check_no_verify_resistance",
+    "check_governance_self_protection",
+    "check_governance_mutation_detection",
+    "check_env_override_hardening",
+    "check_reviewer_evidence_index",
     "check_objective_code_audit_documentation",
     "check_objective_code_audit_contract",
     "check_ablated_training_only",
     "check_encoder_cone_mechanical_lock",
     "check_governance_binding_contract",
+    "check_tier1_engineering_standard",
+    "check_v3_invariant_mechanical_registry",
     "check_institutional_signoff_contract",
     "check_ablation_denominator_vocabulary",
     "check_governance_archive_batch2_contract",
+    "check_precommit_performance_contract",
 )
 
 # Pre-commit staged / commit-msg locks (cannot run repo-wide without staged paths).
 _STAGED_COMMIT_CHECK_FUNCS: tuple[str, ...] = (
+    "check_upfront_mechanical_gate_stamp",
     "check_staged_rule_drift",
     "check_action_not_documentation",
     "check_storage_writer_has_consumer",
@@ -2992,27 +3136,60 @@ _STAGED_COMMIT_CHECK_FUNCS: tuple[str, ...] = (
 
 # Every AGENTS.md `[PROMOTED]` section → mechanical lock(s). Prose-only promotion is rejection-grade.
 _PROMOTED_AGENTS_RULE_LOCKS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("World-class / institutional code gate", ("check_institutional_contract", "check_mandatory_enforcement_registry")),
+    (
+        "World-class / institutional code gate",
+        (
+            "check_institutional_contract",
+            "check_tier1_engineering_standard",
+            "check_v3_invariant_mechanical_registry",
+            "check_mandatory_enforcement_registry",
+        ),
+    ),
     ("Universal code quality", ("check_universal_code_quality_contract",)),
     ("Ablation universe", ("check_ablation_schwab_universe_contract",)),
     ("Full stack", ("check_full_stack_models_contract",)),
     ("Fusion-only horizon cards", ("check_fusion_only_card_contract",)),
+    ("Training anchor roster", ("check_training_anchor_roster_contract",)),
     ("Ablation grid", ("check_ablation_seven_model_four_horizon_grid", "check_ablation_full_stack_non_negotiable", "check_ablation_denominator_vocabulary")),
     (
         "GraphRAG fidelity-first",
         ("check_graphrag_fidelity_ablation_contract", "check_ablation_agnostic_ingest_contract"),
     ),
     ("Encoder cone", ("check_encoder_cone_mechanical_lock", "external:tools/check_encoder_cone_tests.py")),
-    ("Meet-or-Exceed Closure Cycle",
+    (
+        "Tier-1 Quantitative Engineering Standard",
+        ("check_tier1_engineering_standard",),
+    ),
+    (
+        "V3 invariant mechanical registry",
+        ("check_v3_invariant_mechanical_registry",),
+    ),
+    (
+        "Meet-or-Exceed Closure Cycle",
         ("check_institutional_signoff_contract", "check_meet_or_exceed_cycle_documentation", "check_meet_or_exceed_signoff"),
     ),
     (
         "Institutional sign-off contract",
-        ("check_institutional_signoff_contract", "check_ablation_denominator_vocabulary", "check_governance_archive_batch2_contract", "check_objective_code_audit_signoff", "check_meet_or_exceed_signoff"),
+        (
+            "check_institutional_signoff_contract",
+            "check_upfront_mechanical_gate_stamp",
+            "check_ablation_denominator_vocabulary",
+            "check_governance_archive_batch2_contract",
+            "check_objective_code_audit_signoff",
+            "check_meet_or_exceed_signoff",
+        ),
     ),
     (
         "Objective",
         ("check_institutional_signoff_contract", "check_objective_code_audit_contract", "run_objective_code_audit"),
+    ),
+    (
+        "Definition of Done for Fixes",
+        ("check_definition_of_done_for_fixes_contract",),
+    ),
+    (
+        "Agent preload enforcement",
+        ("check_agent_preload_contract", "external:tools/check_agent_preload_contract.py"),
     ),
     ("Rule compliance", ("check_staged_rule_drift",)),
     ("Do not lie to the operator", ("check_commit_message", "external:tools/enforce_all_rules.py")),
@@ -3049,6 +3226,14 @@ _EXTERNAL_TOOL_LOCKS: tuple[str, ...] = (
     "tools/check_encoder_cone_tests.py",
     "tools/check_schwab_csv_first.py",
     "tools/check_fix_everything_we_touch.py",
+    "tools/check_agent_preload_contract.py",
+    "tools/check_branch_protection_proof.py",
+    "tools/check_required_status_checks.py",
+    "tools/check_governance_critical_files.py",
+    "tools/check_no_verify_resistance.py",
+    "tools/check_governance_self_protection.py",
+    "tools/verify_remote_enforcement.py",
+    "tools/remote_enforcement_evidence.py",
     "tools/enforce_all_rules.py",
 )
 
@@ -3137,6 +3322,53 @@ def check_external_rule_tools_wired() -> list[str]:
     return errors
 
 
+def check_precommit_performance_contract() -> list[str]:
+    """Pre-commit tier policy — consolidation pytest on pre-push, artifact pinned."""
+    errors: list[str] = []
+    audit_py = REPO_ROOT / "tools" / "audit_precommit_performance.py"
+    audit_json = REPO_ROOT / "governance" / "artifacts" / "PRECOMMIT_PERFORMANCE_AUDIT.json"
+    audit_md = REPO_ROOT / "governance" / "docs" / "PRECOMMIT_PERFORMANCE_AUDIT.md"
+    for path in (audit_py, audit_json, audit_md):
+        if not path.is_file():
+            errors.append(f"{path.relative_to(REPO_ROOT).as_posix()}: missing (pre-commit performance audit)")
+    precommit = REPO_ROOT / ".pre-commit-config.yaml"
+    if not precommit.is_file():
+        errors.append(".pre-commit-config.yaml: missing")
+        return errors
+    pc = precommit.read_text(encoding="utf-8", errors="replace")
+    idx = pc.find("id: governance-consolidation-tests")
+    if idx < 0:
+        errors.append(".pre-commit-config.yaml: missing governance-consolidation-tests hook")
+    else:
+        # Entry line can exceed 500 chars — scan until next hook id or EOF.
+        rest = pc[idx:]
+        next_hook = rest.find("\n      - id:", len("id: governance-consolidation-tests"))
+        block = rest if next_hook < 0 else rest[:next_hook]
+        if "pre-push" not in block:
+            errors.append(
+                ".pre-commit-config.yaml: governance-consolidation-tests must use stages: [pre-push] "
+                "(Tier 2 — not every commit)"
+            )
+        if re.search(r"stages:\s*\[\s*pre-commit\s*\]", block):
+            errors.append(
+                ".pre-commit-config.yaml: governance-consolidation-tests must not run on pre-commit"
+            )
+    if audit_json.is_file():
+        try:
+            audit = json.loads(audit_json.read_text(encoding="utf-8"))
+            hooks = {h.get("id"): h for h in audit.get("hooks") or []}
+            gct = hooks.get("governance-consolidation-tests")
+            if not gct:
+                errors.append("PRECOMMIT_PERFORMANCE_AUDIT.json: missing governance-consolidation-tests row")
+            elif gct.get("keep_in_precommit"):
+                errors.append(
+                    "PRECOMMIT_PERFORMANCE_AUDIT.json: governance-consolidation-tests keep_in_precommit must be false"
+                )
+        except (OSError, json.JSONDecodeError) as exc:
+            errors.append(f"PRECOMMIT_PERFORMANCE_AUDIT.json: unreadable — {exc}")
+    return errors
+
+
 def check_promoted_agents_rules_mechanically_locked() -> list[str]:
     """AGENTS — every `[PROMOTED]` section must map to live mechanical lock(s); no prose-only rules."""
     errors: list[str] = []
@@ -3193,9 +3425,140 @@ def _run_repo_wide_static_check_funcs(*, staged: set[str] | None = None) -> list
     return errors
 
 
+# ── Tier 0 — Upfront mechanical gate (AGENTS § Institutional sign-off contract) ──
+UPFRONT_GATE_STAMP_PATH = REPO_ROOT / ".cursor" / "upfront_mechanical_gate.json"
+UPFRONT_GATE_MAX_AGE_SEC = 8 * 3600
+_UPFRONT_GATE_BOOTSTRAP_PATHS: frozenset[str] = frozenset(
+    {
+        "tools/check_fix_everything_we_touch.py",
+        "tools/enforce_all_rules.py",
+        "tools/check_agent_preload_contract.py",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "governance/docs/AGENT_OPERATING_CONTRACT.md",
+        ".cursor/rules/00-always.mdc",
+        ".cursor/rules/000-agent-operating-contract.mdc",
+        "tests/test_governance_consolidation.py",
+        "tests/test_check_fix_everything_we_touch.py",
+        "tests/test_agent_preload_contract.py",
+    }
+)
+
+
+def _git_head_sha() -> str:
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return ""
+    if proc.returncode != 0:
+        return ""
+    return proc.stdout.strip()
+
+
+def _upfront_gate_lock_set_sha256() -> str:
+    payload = "|".join(_REPO_WIDE_STATIC_CHECK_FUNCS)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _staged_requires_upfront_gate(staged: set[str]) -> bool:
+    if not staged:
+        return False
+    norms = {_normalize_staged_path(p) for p in staged}
+    if norms <= _UPFRONT_GATE_BOOTSTRAP_PATHS:
+        return False
+    for norm in norms:
+        if norm.startswith("tests/"):
+            continue
+        if norm.endswith(".py"):
+            return True
+        if norm.startswith("static/") or norm.startswith("templates/"):
+            return True
+    return False
+
+
+def run_upfront_mechanical_gate(*, write_stamp: bool = True) -> dict:
+    """Tier 0 — full repo static locks before first edit; stamp pins HEAD + lock-set hash."""
+    head = _git_head_sha()
+    lock_set = _upfront_gate_lock_set_sha256()
+    errs = run_repo_wide_static_audit(staged=set())
+    ok = not errs
+    stamp = {
+        "schema_version": 1,
+        "git_sha": head,
+        "utc_ts": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "exit_code": 0 if ok else 1,
+        "command": "--upfront-gate",
+        "lock_set_sha256": lock_set,
+        "static_error_count": len(errs),
+    }
+    if write_stamp and ok:
+        UPFRONT_GATE_STAMP_PATH.parent.mkdir(parents=True, exist_ok=True)
+        UPFRONT_GATE_STAMP_PATH.write_text(json.dumps(stamp, indent=2) + "\n", encoding="utf-8")
+    return {"ok": ok, "errors": errs, "stamp": stamp}
+
+
+def check_upfront_mechanical_gate_stamp(staged: set[str] | None = None) -> list[str]:
+    """Pre-commit fast-fail: production-path commits require fresh Tier 0 stamp on current HEAD."""
+    st = staged if staged is not None else _git_staged_paths()
+    if not _staged_requires_upfront_gate(st):
+        return []
+
+    if not UPFRONT_GATE_STAMP_PATH.is_file():
+        return [
+            "upfront gate: missing stamp — run "
+            "python tools/enforce_all_rules.py --upfront-gate (exit 0) "
+            "before staging production paths (AGENTS § Tier 0 — Upfront mechanical gate)"
+        ]
+
+    try:
+        stamp = json.loads(UPFRONT_GATE_STAMP_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"upfront gate: stamp unreadable — {exc}"]
+
+    errors: list[str] = []
+    head = _git_head_sha()
+    if stamp.get("exit_code") != 0:
+        errors.append(
+            "upfront gate: last --upfront-gate run failed — re-run after fixing static locks"
+        )
+    if stamp.get("git_sha") != head:
+        errors.append(
+            f"upfront gate: stamp git_sha {stamp.get('git_sha')!r} != HEAD {head!r} — "
+            "re-run python tools/enforce_all_rules.py --upfront-gate on current tip"
+        )
+    if stamp.get("lock_set_sha256") != _upfront_gate_lock_set_sha256():
+        errors.append(
+            "upfront gate: static lock set changed since stamp — re-run --upfront-gate"
+        )
+
+    ts_raw = stamp.get("utc_ts") or ""
+    try:
+        ts = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - ts).total_seconds()
+        if age > UPFRONT_GATE_MAX_AGE_SEC:
+            errors.append(
+                f"upfront gate: stamp age {int(age)}s exceeds {UPFRONT_GATE_MAX_AGE_SEC}s — "
+                "re-run python tools/enforce_all_rules.py --upfront-gate"
+            )
+    except ValueError:
+        errors.append(f"upfront gate: invalid utc_ts {ts_raw!r}")
+
+    return errors
+
+
 _MANDATORY_REGISTRY_CHECK_FUNCS: tuple[str, ...] = (
     "check_institutional_contract",
     "check_fusion_only_card_contract",
+    "check_four_horizon_promotion_contract",
+    "check_training_anchor_roster_contract",
     "check_meet_or_exceed_signoff",
     "check_universal_code_quality_contract",
     "check_ablation_schwab_universe_contract",
@@ -3212,6 +3575,8 @@ _MANDATORY_REGISTRY_CHECK_FUNCS: tuple[str, ...] = (
     "check_external_rule_tools_wired",
     "check_encoder_cone_mechanical_lock",
     "check_governance_binding_contract",
+    "check_tier1_engineering_standard",
+    "check_v3_invariant_mechanical_registry",
     "check_institutional_signoff_contract",
     "check_ablation_denominator_vocabulary",
     "check_governance_archive_batch2_contract",
@@ -3241,6 +3606,9 @@ def check_institutional_signoff_contract() -> list[str]:
     for needle in (
         "Institutional sign-off contract — uniform Cursor + Claude",
         "Canonical audit command ladder",
+        "Tier 0",
+        "Upfront mechanical gate",
+        "--upfront-gate",
         "Tier A",
         "Tier B",
         "Tier C",
@@ -3277,16 +3645,23 @@ def check_institutional_signoff_contract() -> list[str]:
 
     if enforce.is_file():
         et = enforce.read_text(encoding="utf-8", errors="replace")
+        if "--upfront-gate" not in et:
+            errors.append("enforce_all_rules.py: missing --upfront-gate handler")
         if "Tier A (implementation)" not in et and "Tier A:" not in et:
             errors.append("enforce_all_rules.py: missing Tier A checklist marker")
     else:
         errors.append("tools/enforce_all_rules.py: missing")
 
     checker = REPO_ROOT / "tools" / "check_fix_everything_we_touch.py"
-    if checker.is_file() and "def check_institutional_signoff_contract" not in checker.read_text(
-        encoding="utf-8", errors="replace"
-    ):
+    checker_text = (
+        checker.read_text(encoding="utf-8", errors="replace") if checker.is_file() else ""
+    )
+    if checker.is_file() and "def check_institutional_signoff_contract" not in checker_text:
         errors.append("check_fix_everything_we_touch.py: check_institutional_signoff_contract not defined")
+    if checker.is_file() and "def check_upfront_mechanical_gate_stamp" not in checker_text:
+        errors.append("check_fix_everything_we_touch.py: check_upfront_mechanical_gate_stamp not defined")
+    if checker.is_file() and "def run_upfront_mechanical_gate" not in checker_text:
+        errors.append("check_fix_everything_we_touch.py: run_upfront_mechanical_gate not defined")
 
     # ACTIVE_PROGRAM must point at AGENTS for sign-off law — not duplicate the full Tier ladder table.
     if active.is_file():
@@ -3388,6 +3763,382 @@ def check_governance_archive_batch2_contract() -> list[str]:
     return errors
 
 
+# ── Tier-1 Quality Standard + V3 invariant mechanical registry (AGENTS § promoted 2026-06-15) ──
+TIER1_PRINCIPLE_IDS: tuple[str, ...] = tuple(f"T1-{i:02d}" for i in range(1, 25))
+
+V3_INVARIANT_MECHANICAL_LOCKS: dict[str, tuple[str, ...]] = {
+    "I-01": (
+        "check_fusion_only_card_contract",
+        "tests/test_ml_predict_fail_closed.py",
+        "tests/test_prediction_engine_chunk1_fail_closed.py",
+    ),
+    "I-02": ("check_v3_i02_single_promotion_authority", "arch_competition/promotion_execution.py"),
+    "I-03": ("check_v3_i03_causal_clock_contract", "time_et.py"),
+    "I-04": ("check_v3_i03_causal_clock_contract", "time_et.py"),
+    "I-05": ("check_encoder_cone_mechanical_lock", "tests/test_ml_feature_schema_parity.py"),
+    "I-06": ("check_v3_i06_artifact_lineage", "arch_competition/promotion_execution.py"),
+    "I-07": ("check_v3_i07_no_orphan_active_paths", "verify_active_models.py"),
+    "I-08": (
+        "check_v3_i08_output_schema_contract",
+        "numeric_contract.py",
+        "fusion_contract.py",
+    ),
+    "I-09": ("check_v3_i09_secrets_exclusion",),
+    "I-10": ("check_v3_i10_training_identity", "arch_competition/audit.py"),
+    "I-11": ("tests/test_arch_competition_eval_runner.py",),
+    "I-12": ("check_v3_i12_oos_discipline", "arch_competition/stack_bundle_eval_v1.py"),
+    "I-13": (
+        "check_v3_i13_risk_supersedes_model",
+        "position_sizing_policy.py",
+        "call_engine.py",
+    ),
+    "I-14": ("check_v3_i14_attributable_change", "server.py"),
+    "I-15": (
+        "check_institutional_contract",
+        "verify_active_models.py",
+        "tools/live_diag_compare.py",
+    ),
+    "I-16": ("check_v3_i16_decision_explainability", "tools/live_diag_compare.py"),
+    "I-17": ("tests/test_ml_predict_fail_closed.py", "check_v3_i17_deterministic_inference"),
+    "I-18": ("check_v3_i18_capacity_bounded", "server.py"),
+    "I-19": ("check_v3_i03_causal_clock_contract", "time_et.py"),
+    "I-20": ("check_v3_i20_dependency_discipline", "requirements.txt"),
+}
+
+_V3_SEVERITY1: frozenset[str] = frozenset(
+    {"I-01", "I-02", "I-05", "I-07", "I-15", "I-17", "I-19", "I-20"}
+)
+
+_SECRET_Literal_RE = re.compile(
+    r"(?i)(api[_-]?key\s*=\s*['\"][^'\"]{8,}|secret\s*=\s*['\"][^'\"]{8,}|"
+    r"password\s*=\s*['\"][^'\"]{4,}|aws[_-]?secret|sk-[a-zA-Z0-9]{20,})"
+)
+
+
+def _read_repo_text(rel: str) -> str:
+    path = REPO_ROOT / rel.replace("\\", "/")
+    if not path.is_file():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _lock_target_exists(lock_id: str) -> bool:
+    if lock_id.endswith(".py") or lock_id.startswith("tests/") or "/" in lock_id:
+        return (REPO_ROOT / lock_id.replace("\\", "/")).is_file()
+    if lock_id.startswith("check_") or lock_id.startswith("run_"):
+        fn = globals().get(lock_id)
+        return callable(fn)
+    return (REPO_ROOT / lock_id).is_file()
+
+
+def check_tier1_engineering_standard() -> list[str]:
+    """AGENTS § Tier-1 Quantitative Engineering Standard — quality law above product law."""
+    errors: list[str] = []
+    agents = REPO_ROOT / "AGENTS.md"
+    if not agents.is_file():
+        return ["AGENTS.md: missing (Tier-1 engineering standard)"]
+    text = agents.read_text(encoding="utf-8", errors="replace")
+    for needle in (
+        "Tier-1 Quantitative Engineering Standard",
+        "Quality Standard vs Product law",
+        "Product law (canonical list",
+        "sits above product law",
+        "check_tier1_engineering_standard",
+        "Final directive (binding on every agent turn)",
+        "Build as if this repository will manage institutional capital",
+    ):
+        if needle not in text:
+            errors.append(f"AGENTS.md: missing Tier-1 marker {needle!r}")
+    for pid in TIER1_PRINCIPLE_IDS:
+        if f"**{pid}**" not in text:
+            errors.append(f"AGENTS.md: missing Tier-1 principle {pid}")
+    checker = REPO_ROOT / "tools" / "check_fix_everything_we_touch.py"
+    if checker.is_file() and "def check_tier1_engineering_standard" not in checker.read_text(
+        encoding="utf-8", errors="replace"
+    ):
+        errors.append("check_fix_everything_we_touch.py: check_tier1_engineering_standard not defined")
+    return errors
+
+
+def check_v3_i02_single_promotion_authority() -> list[str]:
+    errors: list[str] = []
+    rel = "arch_competition/promotion_execution.py"
+    body = _read_repo_text(rel)
+    if not body:
+        return [f"{rel}: missing (V3 I-02 single promotion authority)"]
+    for needle in (
+        "execute_promotion_if_eligible",
+        "governed_active_write_scope",
+        "_governed_active_write_token",
+    ):
+        if needle not in body:
+            errors.append(f"{rel}: missing I-02 marker {needle!r}")
+    agents = _read_repo_text("AGENTS.md")
+    if "execute_promotion_if_eligible" not in agents:
+        errors.append("AGENTS.md: missing execute_promotion_if_eligible cite (I-02)")
+    if "Auto-promote without governed executor" not in agents:
+        errors.append("AGENTS.md: missing banned auto-promote pattern (I-02)")
+    return errors
+
+
+def check_v3_i03_causal_clock_contract() -> list[str]:
+    errors: list[str] = []
+    rel = "time_et.py"
+    body = _read_repo_text(rel)
+    if not body:
+        return [f"{rel}: missing (V3 I-03/I-04/I-19 clock authority)"]
+    for needle in (
+        "Single source for production ET",
+        "America/New_York",
+        "RTH_START_MINS",
+        "def now_et",
+    ):
+        if needle not in body:
+            errors.append(f"{rel}: missing clock marker {needle!r}")
+    return errors
+
+
+def check_v3_i06_artifact_lineage() -> list[str]:
+    errors: list[str] = []
+    body = _read_repo_text("arch_competition/promotion_execution.py")
+    if "validate_persisted_governed_artifacts_or_raise" not in body:
+        errors.append(
+            "promotion_execution.py: missing validate_persisted_governed_artifacts_or_raise (I-06 lineage)"
+        )
+    if "build_audit_record" not in body and "append_audit_record" not in body:
+        errors.append("promotion_execution.py: missing promotion audit record wiring (I-06)")
+    return errors
+
+
+def check_v3_i07_no_orphan_active_paths() -> list[str]:
+    errors: list[str] = []
+    rel = "verify_active_models.py"
+    if not (REPO_ROOT / rel).is_file():
+        return [f"{rel}: missing (V3 I-07 orphan path guard)"]
+    body = _read_repo_text(rel)
+    if "models/active" not in body and "active_" not in body:
+        errors.append(f"{rel}: must reference active model paths (I-07)")
+    return errors
+
+
+def check_v3_i08_output_schema_contract() -> list[str]:
+    errors: list[str] = []
+    for rel, needle in (
+        ("numeric_contract.py", "float_finite_or_none"),
+        ("fusion_contract.py", "fusion_is_authoritative"),
+    ):
+        body = _read_repo_text(rel)
+        if not body:
+            errors.append(f"{rel}: missing (V3 I-08 output schema)")
+        elif needle not in body:
+            errors.append(f"{rel}: missing I-08 marker {needle!r}")
+    return errors
+
+
+def check_v3_i09_secrets_exclusion() -> list[str]:
+    errors: list[str] = []
+    for rel in (
+        "server.py",
+        "signals.py",
+        "call_engine.py",
+        "ml_predict.py",
+        "arch_competition/promotion_execution.py",
+    ):
+        body = _read_repo_text(rel)
+        if not body:
+            continue
+        for i, line in enumerate(body.splitlines(), start=1):
+            if line.strip().startswith("#"):
+                continue
+            if _SECRET_Literal_RE.search(line):
+                errors.append(f"{rel}:{i}: suspected hardcoded secret (V3 I-09)")
+    for env_name in (".env", "credentials.json", "secrets.json"):
+        p = REPO_ROOT / env_name
+        if not p.is_file():
+            continue
+        try:
+            proc = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", env_name],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except OSError:
+            continue
+        if proc.returncode == 0:
+            errors.append(f"{env_name}: must not be git-tracked (V3 I-09)")
+    return errors
+
+
+def check_v3_i10_training_identity() -> list[str]:
+    errors: list[str] = []
+    audit = _read_repo_text("arch_competition/audit.py")
+    if not audit:
+        return ["arch_competition/audit.py: missing (V3 I-10 training identity)"]
+    for needle in ("build_audit_record", "governance_audit_log_path"):
+        if needle not in audit:
+            errors.append(f"arch_competition/audit.py: missing I-10 marker {needle!r}")
+    return errors
+
+
+def check_v3_i12_oos_discipline() -> list[str]:
+    errors: list[str] = []
+    body = _read_repo_text("arch_competition/stack_bundle_eval_v1.py")
+    if not body:
+        return ["arch_competition/stack_bundle_eval_v1.py: missing (V3 I-12 OOS discipline)"]
+    if not any(n in body.lower() for n in ("holdout", "embargo", "chronological")):
+        errors.append(
+            "stack_bundle_eval_v1.py: missing OOS/chronological marker (I-12) — "
+            "expected holdout, embargo, or chronological"
+        )
+    return errors
+
+
+def check_v3_i13_risk_supersedes_model() -> list[str]:
+    errors: list[str] = []
+    for rel, needles in (
+        ("position_sizing_policy.py", ("size", "risk")),
+        ("call_engine.py", ("wait", "block")),
+    ):
+        body = _read_repo_text(rel)
+        if not body:
+            errors.append(f"{rel}: missing (V3 I-13 risk supersedes model)")
+            continue
+        if not any(n.lower() in body.lower() for n in needles):
+            errors.append(f"{rel}: missing I-13 risk gate markers {needles!r}")
+    return errors
+
+
+def check_v3_i14_attributable_change() -> list[str]:
+    errors: list[str] = []
+    body = _read_repo_text("server.py")
+    if '"/api/build"' not in body and "'/api/build'" not in body:
+        errors.append("server.py: missing /api/build (V3 I-14 attributable change)")
+    if "git_sha" not in body:
+        errors.append("server.py: missing git_sha on /api/build (V3 I-14)")
+    return errors
+
+
+def check_v3_i16_decision_explainability() -> list[str]:
+    errors: list[str] = []
+    body = _read_repo_text("tools/live_diag_compare.py")
+    if "_summarize_full_stack_layers" not in body:
+        errors.append(
+            "live_diag_compare.py: missing _summarize_full_stack_layers (V3 I-16 explainability)"
+        )
+    return errors
+
+
+def check_v3_i17_deterministic_inference() -> list[str]:
+    errors: list[str] = []
+    test = REPO_ROOT / "tests/test_ml_predict_fail_closed.py"
+    if not test.is_file():
+        return ["tests/test_ml_predict_fail_closed.py: missing (V3 I-17 deterministic inference)"]
+    body = test.read_text(encoding="utf-8", errors="replace")
+    if "fail" not in body.lower() and "closed" not in body.lower():
+        errors.append("test_ml_predict_fail_closed.py: must exercise fail-closed inference (I-17)")
+    return errors
+
+
+def check_v3_i18_capacity_bounded() -> list[str]:
+    errors: list[str] = []
+    body = _read_repo_text("server.py")
+    if "ThreadPoolExecutor" not in body:
+        errors.append("server.py: missing ThreadPoolExecutor (V3 I-18 capacity bounded)")
+    if "max_workers" not in body:
+        errors.append("server.py: missing max_workers bounds (V3 I-18)")
+    return errors
+
+
+def check_v3_i20_dependency_discipline() -> list[str]:
+    errors: list[str] = []
+    req = REPO_ROOT / "requirements.txt"
+    if not req.is_file():
+        return ["requirements.txt: missing (V3 I-20 dependency discipline)"]
+    lines = [ln.strip() for ln in req.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.startswith("#")]
+    if not lines:
+        errors.append("requirements.txt: empty (V3 I-20)")
+    for ln in lines:
+        if "*" in ln and "==" not in ln:
+            errors.append(f"requirements.txt: wildcard dependency {ln!r} (V3 I-20)")
+    agents = _read_repo_text("AGENTS.md")
+    if "T1-15" not in agents or "Dependency discipline" not in agents:
+        errors.append("AGENTS.md: missing Tier-1 dependency discipline (pairs with I-20)")
+    return errors
+
+
+def check_v3_invariant_mechanical_registry() -> list[str]:
+    """AGENTS § V3 invariant mechanical registry — every I-01…I-20 wired + substance checks."""
+    errors: list[str] = []
+    agents = REPO_ROOT / "AGENTS.md"
+    if not agents.is_file():
+        return ["AGENTS.md: missing (V3 invariant mechanical registry)"]
+    text = agents.read_text(encoding="utf-8", errors="replace")
+    for needle in (
+        "V3 invariant mechanical registry",
+        "V3_INVARIANT_MECHANICAL_LOCKS",
+        "check_v3_invariant_mechanical_registry",
+        "Severity-1 invariants",
+    ):
+        if needle not in text:
+            errors.append(f"AGENTS.md: missing V3 registry marker {needle!r}")
+
+    expected_ids = [f"I-{i:02d}" for i in range(1, 21)]
+    if set(V3_INVARIANT_MECHANICAL_LOCKS.keys()) != set(expected_ids):
+        missing = set(expected_ids) - set(V3_INVARIANT_MECHANICAL_LOCKS.keys())
+        extra = set(V3_INVARIANT_MECHANICAL_LOCKS.keys()) - set(expected_ids)
+        if missing:
+            errors.append(f"V3_INVARIANT_MECHANICAL_LOCKS: missing keys {sorted(missing)}")
+        if extra:
+            errors.append(f"V3_INVARIANT_MECHANICAL_LOCKS: unexpected keys {sorted(extra)}")
+
+    for inv_id, locks in V3_INVARIANT_MECHANICAL_LOCKS.items():
+        if f"**{inv_id}**" not in text:
+            errors.append(f"AGENTS.md: V3 registry table missing row {inv_id}")
+        for lock in locks:
+            if lock not in text:
+                errors.append(f"AGENTS.md: V3 row {inv_id} missing lock cite {lock!r} in registry table")
+            if not _lock_target_exists(lock):
+                errors.append(f"V3 {inv_id}: mechanical lock target missing or unwired: {lock!r}")
+
+    substance_fns = (
+        check_v3_i02_single_promotion_authority,
+        check_v3_i03_causal_clock_contract,
+        check_v3_i06_artifact_lineage,
+        check_v3_i07_no_orphan_active_paths,
+        check_v3_i08_output_schema_contract,
+        check_v3_i09_secrets_exclusion,
+        check_v3_i10_training_identity,
+        check_v3_i12_oos_discipline,
+        check_v3_i13_risk_supersedes_model,
+        check_v3_i14_attributable_change,
+        check_v3_i16_decision_explainability,
+        check_v3_i17_deterministic_inference,
+        check_v3_i18_capacity_bounded,
+        check_v3_i20_dependency_discipline,
+    )
+    for fn in substance_fns:
+        errors.extend(fn())
+
+    for inv_id in _V3_SEVERITY1:
+        if inv_id not in V3_INVARIANT_MECHANICAL_LOCKS:
+            errors.append(f"V3 Severity-1 {inv_id} not in mechanical registry")
+
+    wired_checks = (
+        check_fusion_only_card_contract,
+        check_encoder_cone_mechanical_lock,
+        check_institutional_contract,
+    )
+    for fn in wired_checks:
+        errors.extend(fn())
+
+    return errors
+
+
 def check_governance_binding_contract() -> list[str]:
     """AGENTS § Governance document hierarchy — binding stack markers + reconciliation inventory."""
     errors: list[str] = []
@@ -3403,6 +4154,8 @@ def check_governance_binding_contract() -> list[str]:
     for needle in (
         "Governance document hierarchy",
         "binding stack",
+        "Tier-1 Quantitative Engineering Standard",
+        "V3 invariant mechanical registry",
         "Promote-or-archive rule",
         "check_governance_binding_contract",
         "reconciliation_worksheet.json",
@@ -3740,6 +4493,125 @@ def run_universal_code_quality_audit(*, staged: set[str] | None = None) -> dict:
     }
 
 
+def check_agent_preload_contract() -> list[str]:
+    """AGENTS § Agent preload — cross-agent operating contract surfaces."""
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from tools.check_agent_preload_contract import run_agent_preload_contract_check
+
+    return run_agent_preload_contract_check()
+
+
+def check_branch_protection_proof() -> list[str]:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from tools.check_branch_protection_proof import run_branch_protection_proof_check
+
+    return run_branch_protection_proof_check()
+
+
+def check_required_status_checks() -> list[str]:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from tools.check_required_status_checks import run_required_status_checks_check
+
+    return run_required_status_checks_check()
+
+
+def check_governance_critical_files() -> list[str]:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from tools.check_governance_critical_files import run_governance_critical_files_check
+
+    return run_governance_critical_files_check()
+
+
+def check_no_verify_resistance() -> list[str]:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from tools.check_no_verify_resistance import run_no_verify_resistance_check
+
+    return run_no_verify_resistance_check()
+
+
+def check_governance_self_protection() -> list[str]:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from tools.check_governance_self_protection import run_governance_self_protection_check
+
+    return run_governance_self_protection_check()
+
+
+def check_governance_mutation_detection() -> list[str]:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    errors: list[str] = []
+    manifest = REPO_ROOT / "governance" / "artifacts" / "GOVERNANCE_ARTIFACT_MANIFEST.json"
+    if not manifest.is_file():
+        errors.append(
+            "governance/artifacts/GOVERNANCE_ARTIFACT_MANIFEST.json: missing — run tools/_build_institutional_audit_phase3e.py"
+        )
+        return errors
+    from tools.governance_mutation_detection import verify_governance_manifest
+
+    result = verify_governance_manifest()
+    if not result.get("ok"):
+        if result.get("tampered"):
+            errors.append(f"governance manifest tampered: {result['tampered']}")
+        if result.get("missing"):
+            errors.append(f"governance manifest missing files: {result['missing']}")
+    return errors
+
+
+def check_env_override_hardening() -> list[str]:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from tools.check_env_override_hardening import run_env_override_hardening_check
+
+    return run_env_override_hardening_check()
+
+
+def check_reviewer_evidence_index() -> list[str]:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from tools.check_reviewer_evidence_index import run_reviewer_evidence_index_check
+
+    return run_reviewer_evidence_index_check()
+
+
+def check_definition_of_done_for_fixes_contract() -> list[str]:
+    """AGENTS § Definition of Done for Fixes — closed-loop fix workflow markers."""
+    path = REPO_ROOT / "AGENTS.md"
+    if not path.is_file():
+        return ["AGENTS.md: missing (Definition of Done for Fixes)"]
+    text = path.read_text(encoding="utf-8", errors="replace")
+    errors: list[str] = []
+    for marker in (
+        "Definition of Done for Fixes",
+        'id="definition-of-done-for-fixes"',
+        "IDENTIFY → ROOT-CAUSE → PATCH → RERUN EXACT",
+        "Remaining Known Gaps",
+        "Do not substitute explanation for closure",
+        "Exact failed test passes",
+    ):
+        if marker not in text:
+            errors.append(f"AGENTS.md: Definition of Done missing marker {marker!r}")
+    srv = REPO_ROOT / "server.py"
+    if srv.is_file():
+        st = srv.read_text(encoding="utf-8", errors="replace")
+        for tok in (
+            "_startup_analytics_executor",
+            "_shutdown_analytics_executor",
+            "_analytics_bg_shutdown",
+            "ED_DISABLE_STARTUP_ANALYTICS_WARM",
+        ):
+            if tok not in st:
+                errors.append(f"server.py: missing test-safe analytics lifecycle marker {tok!r}")
+    else:
+        errors.append("server.py: missing (analytics lifecycle guard for reviewer-clean tests)")
+    return errors
+
+
 def check_meet_or_exceed_cycle_documentation() -> list[str]:
     path = REPO_ROOT / "AGENTS.md"
     if not path.is_file():
@@ -3813,6 +4685,9 @@ def check_objective_code_audit_signoff(commit_msg_path: Path) -> list[str]:
 OBJECTIVE_CODE_AUDIT_MARKERS: tuple[str, ...] = (
     "Objective → Code → Audit closure",
     "Institutional sign-off contract — uniform Cursor + Claude",
+    "Upfront mechanical gate",
+    "run_upfront_mechanical_gate",
+    "check_upfront_mechanical_gate_stamp",
     "OBJECTIVE → CODE → AUDIT",
     "run_objective_code_audit",
     "run_repo_wide_static_audit",
@@ -3821,6 +4696,7 @@ OBJECTIVE_CODE_AUDIT_MARKERS: tuple[str, ...] = (
     "check_objective_code_audit_signoff",
     "check_institutional_signoff_contract",
     "Canonical audit command ladder",
+    "--upfront-gate",
     "--objective-audit",
     "AUDIT: CLEAN",
 )
@@ -4033,6 +4909,9 @@ def check_paths(paths: list[Path], staged: set[str] | None = None) -> list[str]:
         import check_schwab_csv_first as schwab_guard
 
         errors.extend(schwab_guard.check_v4_memo_gatekeeper_csv(memo_path, REPO_ROOT))
+
+    # Tier 0 upfront stamp — fast-fail before repo-wide static (AGENTS § Upfront mechanical gate).
+    errors.extend(check_upfront_mechanical_gate_stamp(staged))
 
     # Staged / commit-msg locks (AGENTS promoted rules — mechanical, not prose).
     errors.extend(check_staged_rule_drift(staged))

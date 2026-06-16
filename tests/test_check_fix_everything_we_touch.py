@@ -748,6 +748,14 @@ def test_fusion_only_card_contract_passes_on_current_repo() -> None:
     assert mod.check_fusion_only_card_contract() == []
 
 
+def test_four_horizon_promotion_contract_passes_on_current_repo() -> None:
+    assert mod.check_four_horizon_promotion_contract() == []
+
+
+def test_training_anchor_roster_contract_passes_on_current_repo() -> None:
+    assert mod.check_training_anchor_roster_contract() == []
+
+
 def test_mandatory_enforcement_registry_passes_on_current_repo() -> None:
     assert mod.check_mandatory_enforcement_registry() == []
 
@@ -762,6 +770,10 @@ def test_external_rule_tools_wired() -> None:
 
 def test_meet_or_exceed_cycle_documentation_passes_on_current_repo() -> None:
     assert mod.check_meet_or_exceed_cycle_documentation() == []
+
+
+def test_definition_of_done_for_fixes_contract_passes_on_current_repo() -> None:
+    assert mod.check_definition_of_done_for_fixes_contract() == []
 
 
 def test_meet_or_exceed_cycle_documentation_requires_universal_scope(tmp_path: Path, monkeypatch) -> None:

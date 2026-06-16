@@ -96,7 +96,8 @@ Scheduler can call `execute_promotion_if_eligible` when env flags allow. **Defau
 |----------|---------|---------|
 | `ED_SCHEDULER_AUTO_PROMOTE` | off | `1` enables nightly auto-promote after arch_competition gates |
 | `ED_SCHEDULER_AUTO_PROMOTE_PANIC` | off | `1` forces auto-promote off regardless of other flags |
-| `ED_SCHEDULER_AUTO_PROMOTE_CORE_ONLY` | on | Restrict auto-promote to core tickers (SPY/QQQ/IWM) |
+| `ED_SCHEDULER_AUTO_PROMOTE_CORE_ONLY` | on | Restrict auto-promote to training anchors (SPY/QQQ/IWM) |
+| `ED_ML_SCHEDULER_TRAINING_EXPAND` | off | `1` = train full enrolled roster minus `panel_auto` (legacy; default is anchors only) |
 | `ED_SCHEDULER_AUTO_PROMOTE_REQUIRE_VERIFY` | on | Post-promote `verify_single_bundle` on scheduler path |
 | `ED_SCHEDULER_AUTO_PROMOTE_STRICT_CORE_FRESHNESS` | off | Steady-state freshness gate (enable after baseline week) |
 | `ED_CONSOLE_RELOAD_URL` | unset | POST target for live model registry reload after promote |

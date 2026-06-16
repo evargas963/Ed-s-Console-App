@@ -1,0 +1,21 @@
+{
+  "schema_version": 2,
+  "artifact": "governance/artifacts/REMOTE_ENFORCEMENT_EVIDENCE.json",
+  "verification_method": "pending",
+  "evidence_source": null,
+  "evidence_timestamp": null,
+  "repository": null,
+  "protected_branch": "main",
+  "required_status_checks": [],
+  "objective_audit_required": false,
+  "required_reviews": null,
+  "pr_review_required": false,
+  "allows_force_pushes": null,
+  "allows_deletions": null,
+  "bypass_actors": [],
+  "verified_by": null,
+  "operator_attestation": false,
+  "github_api_evidence": null,
+  "branch_protection_verified": false,
+  "required_checks_enforced": false
+}

@@ -56,6 +56,7 @@ def _seed_mhap_alignment_db(db_path: Path) -> None:
         "contradictory",
         "weak",
         "mixed",
+        "no_primary",
         "unusable",
         "",
     ]
@@ -86,6 +87,7 @@ def _seed_mhap_alignment_db(db_path: Path) -> None:
         ("contradictory", "misaligned"),
         ("weak", "misaligned"),
         ("mixed", "misaligned"),
+        ("no_primary", "skip"),
         ("unusable", "skip"),
         ("unknown", "skip"),
         ("", "skip"),

@@ -87,16 +87,42 @@ def test_render_timeframe_signal_row_includes_consolidated_slug():
     assert "4H synth" in h
 
 
-def test_individual_horizon_cards_no_primary_tag():
-    """Stack honesty: 1M–60M show fusion direction + AGREE/CONFLICT only; ALL owns synthesis."""
+def test_individual_horizon_cards_primary_agree_conflict_vocabulary():
+    """Per-horizon pills: PRIMARY on clock horizon; AGREE/CONFLICT vs primary; ALL owns synthesis."""
     h = _html()
-    assert "no PRIMARY on individual pills" in h
+    assert "Primary horizon pill tagged PRIMARY" in h
     idx = h.find("function deriveTag(slug, dir)")
     assert idx != -1
-    chunk = h[idx : idx + 900]
-    assert "return 'PRIMARY'" not in chunk
-    assert "slug === prim" not in chunk
-    assert "synthesis lives on ALL" in chunk
+    chunk = h[idx : idx + 950]
+    assert "return 'PRIMARY'" in chunk
+    assert "return 'AGREE'" in chunk
+    assert "return 'CONFLICT'" in chunk
+    assert "return 'LEAD'" not in chunk
+    assert "return 'WITH LEAD'" not in chunk
+    assert "String(slug).toLowerCase() === prim" in chunk
+
+
+def test_all_and_plan_trust_engine_final_tradeable_only():
+    """ALL/PLAN lighting must follow d.final_tradeable — no UI re-count of mhap rows."""
+    h = _html()
+    assert "function engineTradeableSetup" in h
+    idx = h.find("function engineTradeableSetup")
+    assert idx != -1
+    chunk = h[idx : idx + 380]
+    assert "d.final_tradeable" in chunk
+    assert "MIN_TRADEABLE_HORIZONS_FOR_ALL_PLAN" not in h
+    assert "function alignedDirectionalHorizonCount" not in h
+    idx_plan = h.find("function paintTradePlanCard")
+    assert idx_plan != -1
+    plan_chunk = h[idx_plan : idx_plan + 1600]
+    assert "engineTradeableSetup" in plan_chunk
+    idx_row = h.find("const tradeable = engineTradeableSetup(d)")
+    assert idx_row != -1
+    assert "if (tradeable && dir === 'LONG')" in h[idx_row : idx_row + 2500]
+    idx_cons = h.find("if (slug === 'consolidated') {\n      if (tradeable)")
+    assert idx_cons != -1
+    cons_chunk = h[idx_cons : idx_cons + 280]
+    assert "dir = 'FLAT'" in cons_chunk
 
 
 def test_trade_active_glow_only_on_all_card():

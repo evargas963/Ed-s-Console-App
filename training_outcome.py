@@ -32,6 +32,18 @@ CORE_SUCCESS_OUTCOMES: frozenset[TrainingOutcome] = frozenset(
 )
 
 
+def training_anchor_tickers_upper() -> frozenset[str]:
+    from scheduler_user_tickers import training_anchor_tickers_upper as _anchors
+
+    return _anchors()
+
+
+def is_training_anchor_ticker(ticker: str) -> bool:
+    from scheduler_user_tickers import is_training_anchor_ticker as _is_anchor
+
+    return _is_anchor(ticker)
+
+
 def core_tickers_upper() -> frozenset[str]:
     from server import CORE_TICKERS
 
@@ -63,9 +75,10 @@ def outcome_fails_core_run(
 
 
 def compute_run_exit_code(ticker_outcomes: list[dict[str, Any]]) -> int:
+    anchors = training_anchor_tickers_upper()
     for entry in ticker_outcomes:
         ticker = str(entry.get("ticker") or "").upper()
-        if ticker not in core_tickers_upper():
+        if ticker not in anchors:
             continue
         raw = entry.get("outcome")
         if raw is None:

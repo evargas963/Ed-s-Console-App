@@ -6,7 +6,7 @@ For every ticker in EdDB.logging_universe (authoritative enrollment — core + p
   A. Train parallel (XGB, LSTM, Transformer, Meta) → models/parallel/{ticker}/
   B. Train cascade (XGB→LSTM→Transformer) → models/cascade/{ticker}/
   C. Compare both on full RTH
-  D. Promote winner to models/active/{ticker}/ (gated: provenance + threshold)
+  D. Promote winner to models/active/ or models/active_{hz}/ (governed; all four primaries via --all-horizons)
   E. Write models/arch_state.json + training report
 
 RULE: Do not promote unless provenance validates (timeframe, target, metric).
@@ -173,7 +173,7 @@ def _resolve_ticker_outcome(
     consecutive_cache_skips: int,
     auto_exec_result: Optional[dict[str, Any]] = None,
 ) -> tuple[str, int]:
-    from training_outcome import TrainingOutcome, is_core_ticker
+    from training_outcome import TrainingOutcome, is_training_anchor_ticker
     from training_pipeline_status import (
         bump_cache_skip_streak,
         get_cache_skip_cap,
@@ -181,7 +181,9 @@ def _resolve_ticker_outcome(
     )
 
     if skip_governed_eval:
-        if is_core_ticker(ticker):
+        from training_outcome import is_training_anchor_ticker
+
+        if is_training_anchor_ticker(ticker):
             return TrainingOutcome.eval_failed.value, consecutive_cache_skips
         return TrainingOutcome.promote_skipped.value, consecutive_cache_skips
 
@@ -2475,11 +2477,9 @@ def run_once(
             if ablation_survivors_training_enabled():
                 from tools.feature_curation_gate import run_survivor_retrain_preflight
 
-                _core = [
-                    t.strip().upper()
-                    for t in (os.environ.get("ED_ML_SCHEDULER_TICKERS") or "SPY,QQQ,IWM").split(",")
-                    if t.strip()
-                ]
+                from scheduler_user_tickers import TRAINING_ANCHOR_TICKERS
+
+                _core = list(TRAINING_ANCHOR_TICKERS)
                 _spf = run_survivor_retrain_preflight(db_path=str(DB_PATH), tickers=_core)
                 if not _spf.get("ready"):
                     _gate_reasons = list(_spf.get("issues") or ["survivor_retrain_preflight_failed"])
@@ -2547,26 +2547,15 @@ def run_once(
     except Exception as e:
         log.debug("db_only ticker diagnostic block failed: %s", e, exc_info=True)
 
-    _subset = (os.environ.get("ED_ML_SCHEDULER_TICKERS") or "").strip()
-    if _subset:
-        want = {t.strip().upper() for t in _subset.split(",") if t.strip()}
-        before = len(tickers)
-        tickers = [t for t in tickers if t in want]
-        log.info(
-            "ED_ML_SCHEDULER_TICKERS filter: %d of %d enrolled tickers selected",
-            len(tickers),
-            before,
-        )
+    from scheduler_user_tickers import resolve_ml_training_roster
 
-    from scheduler_user_tickers import filter_tickers_for_ml_training
-
-    _before_conf = len(tickers)
-    tickers = filter_tickers_for_ml_training(tickers, DB_PATH)
-    if len(tickers) < _before_conf:
+    _before_roster = len(tickers)
+    tickers = resolve_ml_training_roster(tickers, DB_PATH)
+    if len(tickers) < _before_roster:
         log.info(
-            "Confluence-only filter: %d of %d tickers scheduled for ML training",
+            "ML training roster: %d of %d enrolled tickers scheduled (anchors + guest policy)",
             len(tickers),
-            _before_conf,
+            _before_roster,
         )
 
     _pfx = " (promote-from-manifests-only)" if promote_from_manifests_only else ""
@@ -3751,6 +3740,9 @@ def start_background_scheduler() -> None:
     """
     Start a daemon thread that sleeps until the next market-day 16:15 ET, then calls ``run_once``
     (scheduled mode: no --run-now). Safe to call once per process; duplicates are ignored.
+
+    Default (ED_ML_SCHEDULER_ALL_HORIZONS=1): trains/promotes all four primary horizons per night.
+    Set ED_ML_SCHEDULER_ALL_HORIZONS=0 to run only ED_ML_SCHEDULER_HORIZON (legacy single-horizon).
     """
     global _bg_scheduler_thread, _bg_scheduler_started
     with _bg_scheduler_lock:
@@ -3759,7 +3751,46 @@ def start_background_scheduler() -> None:
             return
         _bg_scheduler_started = True
 
-    hz = os.environ.get("ED_ML_SCHEDULER_HORIZON", DEFAULT_ML_HORIZON_SLUG)
+    from arch_competition.scheduler_auto_promote_policy import scheduler_nightly_all_horizons_enabled
+
+    single_hz = os.environ.get("ED_ML_SCHEDULER_HORIZON", DEFAULT_ML_HORIZON_SLUG)
+
+    def _run_scheduled_nightly() -> None:
+        if scheduler_nightly_all_horizons_enabled():
+            from ml_horizon import ALL_GOVERNED_HORIZONS
+
+            agg_exit = 0
+            for _hz in ALL_GOVERNED_HORIZONS:
+                log.info("ML scheduler background: starting horizon %s", _hz)
+                summary = run_once(
+                    wait=False,
+                    force_retrain=False,
+                    bypass_cache=False,
+                    allow_non_market_day=False,
+                    promote_from_manifests_only=False,
+                    ml_horizon_slug=str(_hz),
+                )
+                code = int(summary.get("exit_code", 0))
+                agg_exit |= code
+                log.info(
+                    "ML scheduler background: finished horizon %s (exit=%s)",
+                    _hz,
+                    code,
+                )
+            if agg_exit:
+                log.warning(
+                    "ML scheduler background: one or more horizons failed (agg_exit=%s)",
+                    agg_exit,
+                )
+        else:
+            run_once(
+                wait=False,
+                force_retrain=False,
+                bypass_cache=False,
+                allow_non_market_day=False,
+                promote_from_manifests_only=False,
+                ml_horizon_slug=str(single_hz),
+            )
 
     def _loop() -> None:
         while True:
@@ -3773,14 +3804,7 @@ def start_background_scheduler() -> None:
                     delay,
                 )
                 time.sleep(delay)
-                run_once(
-                    wait=False,
-                    force_retrain=False,
-                    bypass_cache=False,
-                    allow_non_market_day=False,
-                    promote_from_manifests_only=False,
-                    ml_horizon_slug=str(hz),
-                )
+                _run_scheduled_nightly()
             except Exception as e:
                 log.exception("ML scheduler background loop error: %s", e)
                 time.sleep(300.0)
@@ -3791,7 +3815,19 @@ def start_background_scheduler() -> None:
         daemon=True,
     )
     _bg_scheduler_thread.start()
-    log.info("ML background scheduler thread started (nightly market-day %02d:%02d ET)", RUN_AT_HOUR, RUN_AT_MINUTE)
+    if scheduler_nightly_all_horizons_enabled():
+        log.info(
+            "ML background scheduler thread started (nightly market-day %02d:%02d ET; all horizons)",
+            RUN_AT_HOUR,
+            RUN_AT_MINUTE,
+        )
+    else:
+        log.info(
+            "ML background scheduler thread started (nightly market-day %02d:%02d ET; horizon=%s)",
+            RUN_AT_HOUR,
+            RUN_AT_MINUTE,
+            single_hz,
+        )
 
 
 # deprecated aliases — unified-stack vocabulary migration
@@ -3832,10 +3868,10 @@ if __name__ == "__main__":
         "--all-horizons",
         action="store_true",
         help=(
-            "Sequentially invoke run_once for every governed horizon (1c, 5c, 15c, 60c) "
-            "in one CLI call. Each horizon still runs the full per-horizon gate (training "
-            "cache, governed competition, training_report.jsonl entry); promotion remains "
-            "manual via arch_competition.manual_control. Overrides --horizon when set."
+            "Sequentially invoke run_once for every primary decision horizon (1c, 5c, 15c, 60c) "
+            "in one CLI call. Each horizon runs train/eval/governed competition; when "
+            "ED_SCHEDULER_AUTO_PROMOTE=1 (default), execute_promotion_if_eligible copies the "
+            "seven-file bundle into models/active/ or models/active_{hz}/. Overrides --horizon."
         ),
     )
     ap.add_argument(

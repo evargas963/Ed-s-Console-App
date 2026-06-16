@@ -7,6 +7,7 @@ gets a weaker check:
   * git pre-commit / CI      -> `python tools/check_fix_everything_we_touch.py` + hooks
   * Before sign-off          -> Tier A: `python tools/enforce_all_rules.py --objective-audit` (exit 0)
                               Tier B: `python tools/enforce_all_rules.py --enforce-all` (merge hard gate)
+                              Tier 0 (before first edit): `python tools/enforce_all_rules.py --upfront-gate`
                               Canonical block: AGENTS.md § Institutional sign-off contract (Cursor + Claude)
 
 Every AGENTS.md `[PROMOTED]` rule maps to mechanical lock(s) in
@@ -252,6 +253,7 @@ def _check_files(paths: list[str]) -> int:
 
 _CHECKLIST = (
     "Uniform sign-off (Cursor + Claude) — AGENTS.md § Institutional sign-off contract:\n"
+    "  Tier 0 (before first edit): python tools/enforce_all_rules.py --upfront-gate\n"
     "  Tier A (implementation): python tools/enforce_all_rules.py --objective-audit\n"
     "  Tier B (repo hard gate): python tools/enforce_all_rules.py --enforce-all\n"
     "  Tier C (--enforce-static / --code-quality) NEVER admits AUDIT: CLEAN\n"
@@ -336,6 +338,11 @@ def main(argv: list[str] | None = None) -> int:
         help="with --objective-audit: run every situational runtime probe (not only staged-cone fits)",
     )
     ap.add_argument(
+        "--upfront-gate",
+        action="store_true",
+        help="Tier 0: run repo-wide static locks before first edit; write .cursor/upfront_mechanical_gate.json stamp",
+    )
+    ap.add_argument(
         "--enforce-static",
         action="store_true",
         help="run full repo static rule locks (mirrors pre-commit contract checks; AGENTS § Mandatory enforcement registry)",
@@ -350,6 +357,33 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.ast_callsites:
         return _ast_callsites(args.ast_callsites)
+    if args.upfront_gate:
+        if str(REPO) not in sys.path:
+            sys.path.insert(0, str(REPO))
+        from tools.check_fix_everything_we_touch import run_upfront_mechanical_gate
+
+        result = run_upfront_mechanical_gate(write_stamp=True)
+        if not result.get("ok"):
+            errs = result.get("errors") or []
+            print(
+                "enforce_all_rules --upfront-gate: FAIL\n- " + "\n- ".join(errs),
+                file=sys.stderr,
+            )
+            print(
+                "UPFRONT_GATE: FAIL — fix static locks, then re-run "
+                "python tools/enforce_all_rules.py --upfront-gate",
+                file=sys.stderr,
+            )
+            return 1
+        stamp = result.get("stamp") or {}
+        print(
+            "enforce_all_rules --upfront-gate: PASS "
+            f"(git_sha={stamp.get('git_sha', '')[:12]} lock_set={str(stamp.get('lock_set_sha256', ''))[:12]})"
+        )
+        print(
+            f"UPFRONT_GATE: PASS — stamp written {REPO / '.cursor' / 'upfront_mechanical_gate.json'}"
+        )
+        return 0
     if args.enforce_all:
         if str(REPO) not in sys.path:
             sys.path.insert(0, str(REPO))

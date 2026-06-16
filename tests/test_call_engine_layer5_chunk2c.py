@@ -191,8 +191,8 @@ def test_build_call_headlines_mh_promotion_visible():
         target=452.0,
         target2=None,
         confluence_count=1,
-        confluence_total=9,
-        confluence_detail="multi_horizon promoted directional",
+        confluence_total=8,
+        confluence_detail="all_consolidated promoted directional",
         micro_regime="unknown",
         rules=_rules_long(),
         pred=_pred(),
@@ -201,6 +201,6 @@ def test_build_call_headlines_mh_promotion_visible():
         wait_blocker=None,
         mh_promoted_directional=True,
     )
-    assert "MH promoted over stack WAIT" in headline
-    assert "Multi-horizon policy promoted" in reasoning
+    assert "ALL consolidated promoted over tape WAIT" in headline
+    assert "ALL consolidated pooled consensus promoted" in reasoning
     assert "conviction floored to low" in reasoning

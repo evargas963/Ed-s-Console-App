@@ -106,7 +106,7 @@ def test_call_engine_threshold_constants_exist_and_used():
     assert call_engine.MINS_TO_CLOSE_REDUCE_SIZE == 120
     assert call_engine.MINS_TO_CLOSE_NO_NEW_ENTRIES == 30
     assert call_engine.CONF_MULT_VERY_LOW == 0.25
-    assert call_engine.CONFLUENCE_TOTAL_SOURCES == 9
+    assert call_engine.CONFLUENCE_TOTAL_SOURCES == 8
     assert call_engine.MC_EAE_GATE_EXPANSION == 2.5
     assert call_engine.MC_EAE_GATE_CONTAINED == 1.5
     assert call_engine.AGREE_THRESHOLD_UNSTABLE == 0.50

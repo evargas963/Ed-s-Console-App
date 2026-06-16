@@ -1527,6 +1527,24 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
                 canonical = _debug_canonical_override(canonical, direction, src)
                 pred_override_applied = True
                 pred_override_source = src
+                if db is not None:
+                    try:
+                        from db import DB_PATH
+                        from override_registry import append_override_record
+                        from release_object import get_current_release
+
+                        rel = get_current_release(required=False)
+                        append_override_record(
+                            ticker=ticker,
+                            route="signals._compute_signals_impl",
+                            override_source=src,
+                            override_direction=direction,
+                            override_payload=dict(pred_override),
+                            db_path=DB_PATH,
+                            release_id=(rel or {}).get("release_id") if rel else None,
+                        )
+                    except Exception as oreg_exc:
+                        log.warning("override_registry append failed: %s", oreg_exc)
                 log.warning(
                     "ED_CONSOLE_ALLOW_PRED_OVERRIDE: canonical direction=%s source=%s (empirical histograms unchanged)",
                     direction,

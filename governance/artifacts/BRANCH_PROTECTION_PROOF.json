@@ -1,0 +1,30 @@
+{
+  "schema_version": 2,
+  "artifact": "governance/artifacts/BRANCH_PROTECTION_PROOF.json",
+  "branch_protection": {
+    "required": true,
+    "configured": "documented",
+    "verified": false,
+    "verification_state": "unverified",
+    "reason": "Local repo cannot prove remote branch protection without GitHub API evidence."
+  },
+  "remote_evidence": {
+    "evidence_source": null,
+    "evidence_timestamp": null,
+    "repository": null,
+    "protected_branch": "main",
+    "required_status_checks": [],
+    "required_reviews": null,
+    "allows_force_pushes": null,
+    "allows_deletions": null,
+    "bypass_actors": [],
+    "verification_method": "pending",
+    "verified_by": null
+  },
+  "codeowners_present": true,
+  "ci_workflow_present": true,
+  "external_enforcement_proven": false,
+  "acceptable_claim": "Branch protection required but not yet verified",
+  "github_api_evidence": null,
+  "generated": "2026-06-15"
+}

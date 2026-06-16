@@ -231,4 +231,4 @@ def test_entry_state_machine_nan_spot_fail_closed_no_setup():
     )
     assert state == "no_setup"
     assert px is None
-    assert "missing or invalid zone/spot" in txt
+    assert "missing or invalid spot" in txt

@@ -1,0 +1,46 @@
+{
+  "artifact": "governance/artifacts/REQUIRED_STATUS_CHECKS.json",
+  "workflow_file": ".github/workflows/objective-audit.yml",
+  "workflow_exists": true,
+  "required_commands": [
+    "python tools/enforce_all_rules.py --objective-audit",
+    "python -m pytest tests/adversarial/",
+    "python -m pytest tests/decision_reconstruction/",
+    "python -m pytest tests/release_object/",
+    "python -m pytest tests/test_governance_consolidation.py",
+    "python -m pytest tests/test_agent_preload_contract.py",
+    "python tools/check_agent_preload_contract.py"
+  ],
+  "commands_in_workflow": {
+    "python tools/enforce_all_rules.py --objective-audit": true,
+    "python -m pytest tests/adversarial/": true,
+    "python -m pytest tests/decision_reconstruction/": true,
+    "python -m pytest tests/release_object/": true,
+    "python -m pytest tests/test_governance_consolidation.py": true,
+    "python -m pytest tests/test_agent_preload_contract.py": true,
+    "python tools/check_agent_preload_contract.py": true
+  },
+  "reason": "Workflow file proves CI specification; GitHub required-check enforcement is not proven locally.",
+  "schema_version": 2,
+  "remote_evidence": {
+    "evidence_source": null,
+    "evidence_timestamp": null,
+    "repository": null,
+    "protected_branch": "main",
+    "required_status_checks": [],
+    "required_reviews": null,
+    "allows_force_pushes": null,
+    "allows_deletions": null,
+    "bypass_actors": [],
+    "verification_method": "pending",
+    "verified_by": null
+  },
+  "required_checks": {
+    "enforced": false,
+    "objective_audit_required_on_github": false,
+    "required_status_checks_on_github": []
+  },
+  "remote_enforcement_verified": false,
+  "verification_state": "unverified",
+  "generated": "2026-06-15"
+}

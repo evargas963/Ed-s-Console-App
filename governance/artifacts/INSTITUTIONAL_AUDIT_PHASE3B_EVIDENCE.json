@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "artifact": "governance/artifacts/INSTITUTIONAL_AUDIT_PHASE3B_EVIDENCE.json",
+  "generated": "2026-06-15",
+  "phase": "3B",
+  "runtime_enforcement": {
+    "validation_gate_module": "trade_impacting_gate.py",
+    "override_registry_module": "override_registry.py",
+    "wired_paths": [
+      "live_decision_bundle.stamp_decision_bundle",
+      "live_decision_bundle.persist_stamped_decision",
+      "server._finalize_production_decision",
+      "server._tier_c_analytics_json_response",
+      "server._fetch_state.no_valid_expiry",
+      "signals._compute_signals_impl pred_override"
+    ]
+  },
+  "adversarial_pytest": {
+    "exit_code": 0,
+    "summary": "32 passed, 1 warning in 25.64s",
+    "command": "C:\\Users\\evarg\\AppData\\Local\\Programs\\Python\\Python313\\python.exe -m pytest tests/adversarial/ -q"
+  },
+  "audit_seed": {
+    "seeded": false,
+    "reason": "production_decision_records already populated"
+  },
+  "blind_reconstruction_verdict": "PASS",
+  "routes_addressed": {
+    "R-005": "synthetic_non_production quarantine + no decision_id + no persist",
+    "R-010": "revalidate_cached_decision on Tier C cache serve",
+    "R-017": "append_override_record before override affects canonical"
+  },
+  "routes_still_unproven": [
+    "R-011 debug prediction surface",
+    "R-027/R-033/R-034 per DECISION_PATH_REGISTRY.json"
+  ],
+  "maturity_changes_proposed": [],
+  "maturity_changes_rejected": [
+    "I-28 L3+ \u2014 wrong-price quarantine wired but no live DB adversarial PASS bundle",
+    "I-29 L3+ \u2014 gate wired on listed paths; route universality not fully proven",
+    "I-31 L3+ until blind PASS on production traffic (audit seed alone insufficient)",
+    "Any L5 claim"
+  ],
+  "remaining_gaps": [
+    "branch protection not proven in-repo",
+    "CI required checks not proven",
+    "--no-verify bypasses local pre-commit",
+    "full route inventory walk not complete"
+  ]
+}

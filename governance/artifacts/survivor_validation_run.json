@@ -1,0 +1,146 @@
+{
+  "schema_version": "1",
+  "generated_at": "2026-06-04T20:49:24.230377+00:00",
+  "anchors": [
+    "SPY",
+    "QQQ",
+    "IWM"
+  ],
+  "edge_probe_summary": {
+    "edge_cells": 5,
+    "full_feature_cells": 7,
+    "total_cells": 12,
+    "min_mcc_edge": 0.01
+  },
+  "ready_for_full_retrain": false,
+  "issues": [],
+  "cells": [
+    {
+      "anchor_ticker": "SPY",
+      "model_family": "xgb",
+      "horizon_slug": "5c",
+      "drop_group_count": 5,
+      "parity_ok": true,
+      "production_cols_dropped": 20,
+      "confirm_status": "ok"
+    },
+    {
+      "anchor_ticker": "SPY",
+      "model_family": "lstm",
+      "horizon_slug": "1c",
+      "drop_group_count": 13,
+      "parity_ok": true,
+      "confirm_status": "ok"
+    },
+    {
+      "anchor_ticker": "SPY",
+      "model_family": "lstm",
+      "horizon_slug": "5c",
+      "drop_group_count": 16,
+      "parity_ok": true,
+      "confirm_status": "ok"
+    },
+    {
+      "anchor_ticker": "SPY",
+      "model_family": "lstm",
+      "horizon_slug": "15c",
+      "drop_group_count": 11,
+      "parity_ok": true,
+      "confirm_status": "ok"
+    },
+    {
+      "anchor_ticker": "SPY",
+      "model_family": "transformer",
+      "horizon_slug": "15c",
+      "drop_group_count": 11,
+      "parity_ok": true,
+      "confirm_status": "ok"
+    },
+    {
+      "anchor_ticker": "QQQ",
+      "model_family": "xgb",
+      "horizon_slug": "5c",
+      "drop_group_count": 5,
+      "parity_ok": true,
+      "production_cols_dropped": 20,
+      "confirm_status": "ok"
+    },
+    {
+      "anchor_ticker": "QQQ",
+      "model_family": "lstm",
+      "horizon_slug": "1c",
+      "drop_group_count": 13,
+      "parity_ok": true,
+      "confirm_status": "ok"
+    },
+    {
+      "anchor_ticker": "QQQ",
+      "model_family": "lstm",
+      "horizon_slug": "5c",
+      "drop_group_count": 16,
+      "parity_ok": true,
+      "confirm_status": "ok"
+    },
+    {
+      "anchor_ticker": "QQQ",
+      "model_family": "lstm",
+      "horizon_slug": "15c",
+      "drop_group_count": 11,
+      "parity_ok": true,
+      "confirm_status": "ok"
+    },
+    {
+      "anchor_ticker": "QQQ",
+      "model_family": "transformer",
+      "horizon_slug": "15c",
+      "drop_group_count": 11,
+      "parity_ok": true,
+      "confirm_status": "ok"
+    },
+    {
+      "anchor_ticker": "IWM",
+      "model_family": "xgb",
+      "horizon_slug": "5c",
+      "drop_group_count": 5,
+      "parity_ok": true,
+      "production_cols_dropped": 20,
+      "confirm_status": "ok"
+    },
+    {
+      "anchor_ticker": "IWM",
+      "model_family": "lstm",
+      "horizon_slug": "1c",
+      "drop_group_count": 13,
+      "parity_ok": true,
+      "confirm_status": "ok"
+    },
+    {
+      "anchor_ticker": "IWM",
+      "model_family": "lstm",
+      "horizon_slug": "5c",
+      "drop_group_count": 16,
+      "parity_ok": true,
+      "confirm_status": "ok"
+    },
+    {
+      "anchor_ticker": "IWM",
+      "model_family": "lstm",
+      "horizon_slug": "15c",
+      "drop_group_count": 11,
+      "parity_ok": true,
+      "confirm_status": "ok"
+    },
+    {
+      "anchor_ticker": "IWM",
+      "model_family": "transformer",
+      "horizon_slug": "15c",
+      "drop_group_count": 11,
+      "parity_ok": true,
+      "confirm_status": "ok"
+    }
+  ],
+  "voided": true,
+  "void_reason": "compound_workbook_groups_retired_use_leaf_manifest",
+  "ready": false,
+  "ready_for_production": false
+}

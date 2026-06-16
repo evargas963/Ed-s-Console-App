@@ -38,7 +38,7 @@ log = logging.getLogger(__name__)
 # Stack threshold (event-risk vs default)
 STACK_THRESHOLD_DEFAULT: int = 2
 STACK_THRESHOLD_EVENT_RISK: int = 3
-CONFLUENCE_TOTAL_SOURCES: int = 9
+CONFLUENCE_TOTAL_SOURCES: int = 8
 
 # Conviction margin thresholds
 CONVICTION_HIGH_MARGIN_HIGH: float = 0.12
@@ -368,9 +368,9 @@ def _build_call_headlines(final_signal, conviction, trade_type,
             reasoning = (
                 f"Stack: {lc} long ({', '.join(ln) or '—'}), {sc} short ({', '.join(sn) or '—'}). "
                 f"Need at least {th} sources agreeing. "
-                "Note: stack uses 9 layers (micro, Greeks, spy_basket, qqq_basket, iwm_basket, regime, fusion, order_flow, multi_horizon); "
-                "each index basket vote is independent — no cross-ETF veto. "
-                "'5 of 5 agree' in fusion is model agreement inside fusion — separate from these votes."
+                "Note: stack uses 8 layers (micro, Greeks, spy_basket, qqq_basket, iwm_basket, "
+                "regime, order_flow, all_consolidated); each index basket vote is independent — "
+                "no cross-ETF veto. all_consolidated is the skill-weighted ALL pooled ML consensus."
             )
         elif reason == "vol_regime":
             detail = blocker.get("detail", "unstable — require stronger confirmation")
@@ -397,7 +397,7 @@ def _build_call_headlines(final_signal, conviction, trade_type,
 
     headline = f"{dir_word} — {type_label}"
     if mh_promoted_directional:
-        headline += " (MH promoted over stack WAIT)"
+        headline += " (ALL consolidated promoted over tape WAIT)"
     if entry:
         headline += f". Entry {e_s}"
     if stop:
@@ -429,7 +429,7 @@ def _build_call_headlines(final_signal, conviction, trade_type,
 
     if mh_promoted_directional:
         reasoning = (
-            "Multi-horizon policy promoted this directional call over a stack WAIT; "
+            "ALL consolidated pooled consensus promoted this directional call over a tape-stack WAIT; "
             f"conviction floored to {conviction}. {reasoning}"
         )
 
@@ -496,12 +496,97 @@ def _fusion_authoritative_directional_vote(
     fusion_available: bool, fusion_dom_vote: int, canonical: CanonicalForecast
 ) -> int:
     """
-    Single model-direction slot: live fusion dominant when non-flat; else canonical weak-lean
-    (same lane as former duplicate 'prediction' + redundant fusion when both matched).
+    Legacy ML stack vote when mh_policy is absent (unit tests only).
+    Production always passes mh_policy from compute_multi_horizon_synthesis.
     """
     if fusion_available and fusion_dom_vote != 0:
         return fusion_dom_vote
     return _canonical_stack_vote(canonical)
+
+
+def _all_consolidated_stack_vote(
+    mh_policy: Optional[MultiHorizonSynthesis],
+    *,
+    fusion_available: bool,
+    fusion_dom_vote: int,
+    canonical: CanonicalForecast,
+) -> int:
+    """Single ML door: ALL pooled consensus when mh_policy present; legacy fusion/canonical otherwise."""
+    if mh_policy is not None:
+        return int(mh_policy.mh_directional_vote())
+    return _fusion_authoritative_directional_vote(fusion_available, fusion_dom_vote, canonical)
+
+
+def _stack_event_threshold(event_risk_level: str) -> int:
+    _evt = (event_risk_level or "none").strip().lower()
+    if _evt in ("elevated", "high"):
+        return STACK_THRESHOLD_EVENT_RISK
+    return STACK_THRESHOLD_DEFAULT
+
+
+def _stack_threshold_from_votes(
+    stack_votes: dict[str, int],
+    *,
+    event_risk_level: str,
+) -> tuple[str, int, int, list[str], list[str], int]:
+    """Return (signal, long_count, short_count, long_names, short_names, threshold)."""
+    long_names = [k for k, v in stack_votes.items() if v == 1]
+    short_names = [k for k, v in stack_votes.items() if v == -1]
+    long_count = len(long_names)
+    short_count = len(short_names)
+    threshold = _stack_event_threshold(event_risk_level)
+    if long_count >= threshold and long_count > short_count:
+        return "long", long_count, short_count, long_names, short_names, threshold
+    if short_count >= threshold and short_count > long_count:
+        return "short", long_count, short_count, long_names, short_names, threshold
+    return "wait", long_count, short_count, long_names, short_names, threshold
+
+
+def _resolve_call_direction_from_all_pool(
+    *,
+    mh_policy: MultiHorizonSynthesis,
+    tape_stack_signal: str,
+    canonical_provenance: str,
+) -> tuple[str, bool, Optional[dict]]:
+    """
+    Phase 3 — Call → ALL only: pooled multi-horizon consensus is the sole ML authority.
+    Tape/structure stack (non-ML votes) may promote or be vetoed; it cannot override ALL.
+    """
+    if mh_policy.final_tradeable_decision:
+        if not canonical_provenance_is_tradable(canonical_provenance):
+            return "wait", False, {
+                "reason": WAIT_BLOCKER_REASON_CANONICAL_PROVENANCE,
+                "provenance": canonical_provenance,
+                "detail": "fusion or canonical posterior unavailable — forced WAIT",
+            }
+        ml_sig = mh_policy.final_bias
+        if tape_stack_signal == "wait":
+            return ml_sig, True, None
+        if tape_stack_signal != ml_sig:
+            return "wait", False, {
+                "reason": WAIT_BLOCKER_REASON_MULTI_HORIZON_POLICY,
+                "detail": (
+                    f"ALL consolidated {ml_sig} disagrees with tape stack {tape_stack_signal}"
+                ),
+            }
+        return ml_sig, False, None
+    if tape_stack_signal in ("long", "short"):
+        return "wait", False, {
+            "reason": WAIT_BLOCKER_REASON_MULTI_HORIZON_POLICY,
+            "detail": (mh_policy.wait_reason or "ALL pooled evidence not tradeable"),
+        }
+    return "wait", False, None
+
+
+def _confluence_for_signal(stack_votes: dict[str, int], final_signal: str) -> tuple[int, str]:
+    if final_signal == "long":
+        names = [k for k, v in stack_votes.items() if v == 1]
+    elif final_signal == "short":
+        names = [k for k, v in stack_votes.items() if v == -1]
+    else:
+        names = []
+    detail = " + ".join(names) if names else "no stack alignment"
+    return len(names), detail
 
 
 def _index_basket_vote(
@@ -1397,8 +1482,9 @@ def compute_call(
     _vol_reversal_bias  = getattr(vol_regime, 'reversal_bias', 0.5) or 0.5
 
     # ══════════════════════════════════════════════════════════════════════════
-    # 1. STACK-DERIVED SIGNAL — full stack synthesis, no rules-first lock
-    # Every layer (1–7) contributes; final signal from stack consensus.
+    # 1. STACK-DERIVED SIGNAL — tape/structure votes + single ALL consolidated ML slot
+    # When mh_policy is present (production): pooled ALL consensus is the sole ML authority.
+    # Live-horizon fusion remains for MC/risk/sizing only — not a duplicate stack vote.
     # ══════════════════════════════════════════════════════════════════════════
     _fusion_available = fusion_is_authoritative(fusion)
     _regime_label = getattr(regime, 'primary', 'unknown') if regime else 'unknown'
@@ -1416,14 +1502,10 @@ def compute_call(
     _of_dir = (inp.order_flow_direction or "").strip().lower()
     of_vote = 1 if _of_dir in ("bullish", "call", "long") else (-1 if _of_dir in ("bearish", "put", "short") else 0)
 
-    # Live-horizon Bayesian fusion dominant direction (authoritative model-stack direction; canonical triplet matches this path)
+    # Live-horizon fusion retained for MC/risk/sizing — not a separate stack vote (Phase 3).
     _fus_dir = getattr(fusion, 'fusion_dominant_direction', None) or getattr(fusion, 'dominant_direction', 'flat') if _fusion_available else "flat"
     _fus_dir = str(_fus_dir or "flat").strip().lower()
     _fus_dom_raw = 1 if _fus_dir == "up" else (-1 if _fus_dir == "down" else 0)
-    fus_vote = _fusion_authoritative_directional_vote(_fusion_available, _fus_dom_raw, canonical)
-
-    mh_vote = int(mh_policy.mh_directional_vote()) if mh_policy is not None else 0
-    _mh_promoted_directional = False
 
     # Regime + zone directional bias (breakout/breakdown from derive_zone)
     nd = inp.net_delta
@@ -1436,49 +1518,52 @@ def compute_call(
         if nd is not None:
             regime_vote = 1 if nd >= 0 else (-1 if nd < 0 else 0)
 
-    # Stack votes: 1=long, -1=short, 0=abstain (CONFLUENCE_TOTAL_SOURCES; fusion slot = authoritative model dir)
-    stack_votes = {
+    _mh_promoted_directional = False
+    _evt = (getattr(inp, "event_risk_level", None) or "none").strip().lower()
+
+    # Tape/structure votes (non-ML) — used for promote/veto alignment when mh_policy present.
+    tape_stack_votes = {
         "micro":   1 if rules_signal == "long" else (-1 if rules_signal == "short" else 0),
         "Greeks":  1 if greek_b == "bullish" else (-1 if greek_b == "bearish" else 0),
         "spy_basket": spy_basket_vote,
         "qqq_basket": qqq_basket_vote,
         "iwm_basket": iwm_basket_vote,
         "regime": regime_vote,
-        "fusion": fus_vote,
         "order_flow": of_vote,
-        "multi_horizon": mh_vote,
     }
-    long_count = sum(1 for v in stack_votes.values() if v == 1)
-    short_count = sum(1 for v in stack_votes.values() if v == -1)
-    long_names = [k for k, v in stack_votes.items() if v == 1]
-    short_names = [k for k, v in stack_votes.items() if v == -1]
+    all_vote = _all_consolidated_stack_vote(
+        mh_policy,
+        fusion_available=_fusion_available,
+        fusion_dom_vote=_fus_dom_raw,
+        canonical=canonical,
+    )
+    stack_votes = {**tape_stack_votes, "all_consolidated": all_vote}
 
-    # Stack-derived signal: stricter agreement on macro / issuer event sessions
-    _evt = (getattr(inp, "event_risk_level", None) or "none").strip().lower()
-    if _evt in ("elevated", "high"):
-        STACK_THRESHOLD = STACK_THRESHOLD_EVENT_RISK
-    else:
-        STACK_THRESHOLD = STACK_THRESHOLD_DEFAULT
-    if long_count >= STACK_THRESHOLD and long_count > short_count:
-        final_signal = "long"
-    elif short_count >= STACK_THRESHOLD and short_count > long_count:
-        final_signal = "short"
-    else:
-        final_signal = "wait"
+    tape_stack_signal, long_count, short_count, long_names, short_names, STACK_THRESHOLD = (
+        _stack_threshold_from_votes(tape_stack_votes, event_risk_level=_evt)
+        if mh_policy is not None
+        else _stack_threshold_from_votes(stack_votes, event_risk_level=_evt)
+    )
 
-    # Confluence: sources agreeing with the stack-derived final signal
-    confluence_sources = []
-    if final_signal == "long":
-        confluence_sources = [f"{n}" for n in long_names]
-    elif final_signal == "short":
-        confluence_sources = [f"{n}" for n in short_names]
+    if mh_policy is not None:
+        final_signal, _mh_promoted_directional, _all_wait_blocker = _resolve_call_direction_from_all_pool(
+            mh_policy=mh_policy,
+            tape_stack_signal=tape_stack_signal,
+            canonical_provenance=str(getattr(canonical, "provenance", "") or ""),
+        )
+        wait_blocker = _all_wait_blocker
+    else:
+        final_signal = tape_stack_signal
+        wait_blocker = None
+
+    confluence_count, confluence_detail = _confluence_for_signal(stack_votes, final_signal)
+    if _mh_promoted_directional:
+        confluence_count = max(1, sum(1 for k in ("all_consolidated",) if stack_votes.get(k) != 0))
+        confluence_detail = "all_consolidated promoted directional"
     confluence_total = CONFLUENCE_TOTAL_SOURCES
-    confluence_count = len(confluence_sources)
-    confluence_detail = " + ".join(confluence_sources) if confluence_sources else "no stack alignment"
 
     # ── Fusion / canonical posterior policy (Issue 13): provenance drives behavior ──
     # Uniform max-entropy posterior is not a tradable forecast — force WAIT, not a parallel stack call.
-    wait_blocker = None
     _prov = str(getattr(canonical, "provenance", "") or "")
     if (
         not canonical_provenance_is_tradable(_prov)
@@ -1495,31 +1580,6 @@ def compute_call(
         }
 
     # Re-align flags after a provenance-forced WAIT
-    pred_agrees = (final_signal == "long" and canonical.direction == "up") or (
-        final_signal == "short" and canonical.direction == "down"
-    )
-
-    # ── Multi-horizon policy (pre-risk): veto or promote inside The Call (not post-hoc in signals) ─
-    if mh_policy is not None:
-        if mh_policy.mh_veto_stack_directional(final_signal):
-            final_signal = "wait"
-            wait_blocker = {
-                "reason": WAIT_BLOCKER_REASON_MULTI_HORIZON_POLICY,
-                "detail": (mh_policy.wait_reason or "mh_veto_stack_directional"),
-            }
-            confluence_detail = (confluence_detail or "no stack alignment") + " | MH policy veto"
-        elif (
-            final_signal == "wait"
-            and mh_policy.final_tradeable_decision
-            and canonical_provenance_is_tradable(str(getattr(canonical, "provenance", "") or ""))
-        ):
-            _mh_promoted_directional = True
-            final_signal = "long" if mh_policy.final_bias == "long" else "short"
-            wait_blocker = None
-            confluence_sources = ["multi_horizon"]
-            confluence_count = 1
-            confluence_detail = "multi_horizon promoted directional"
-
     pred_agrees = (final_signal == "long" and canonical.direction == "up") or (
         final_signal == "short" and canonical.direction == "down"
     )
@@ -1836,7 +1896,7 @@ def compute_call(
             "structure_higher_tf": _tf.get("60m", ""),      # ~60m trend read
             "prediction_direction": _rdy_dir,
             "prediction_dominant_prob": _rdy_dom_p,
-            "confluence_read": confluence_detail if confluence_sources else "no directional alignment",
+            "confluence_read": confluence_detail if confluence_count > 0 else "no directional alignment",
             "validation_passed": _post_gate_ok,
             "level_proximity": _level_prox,
             "near_support": _nearest_dist is not None and _nearest_dist <= LEVEL_PROXIMITY_NEAR_PTS,
@@ -1883,7 +1943,7 @@ def compute_call(
             "structure_higher_tf": _tf.get("60m", ""),      # ~60m trend read
             "prediction_direction": _rdy_dir,
             "prediction_dominant_prob": _rdy_dom_p,
-            "confluence_read": confluence_detail if confluence_sources else "no directional alignment",
+            "confluence_read": confluence_detail if confluence_count > 0 else "no directional alignment",
             "validation_passed": _post_gate_ok,
             "level_proximity": _put_level_prox,
             "near_resistance": _put_nearest is not None and _put_nearest <= LEVEL_PROXIMITY_NEAR_PTS,

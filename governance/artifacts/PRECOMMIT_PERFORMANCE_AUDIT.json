@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-06-16T04:28:55+00:00",
+  "measurement_mode": "declared_policy_only",
+  "total_measured_seconds": null,
+  "slowest_hook": null,
+  "tier_labels": {
+    "0": "Tier 0 \u2014 Upfront gate (enforce_all_rules --upfront-gate before staging production paths)",
+    "1": "Tier 1 \u2014 Pre-commit (staged + fast locks)",
+    "2": "Tier 2 \u2014 Pre-push / explicit local audit",
+    "3": "Tier 3 \u2014 CI objective-audit + reviewer audit"
+  },
+  "hooks": [
+    {
+      "name": "governance consolidation tests",
+      "id": "governance-consolidation-tests",
+      "command": "python -m pytest tests/test_governance_consolidation.py tests/test_forbidden_phrases.py tests/test_money_path_roster.py tests/test_check_no_deferral_language.py tests/test_check_fix_everything_we_touch.py tests/test_check_schwab_csv_first.py tests/test_ml_feature_schema_parity.py::test_ml_pipeline_efficiency_checker_green tests/test_ml_feature_schema_parity.py::test_ablation_parity_includes_bridge_and_backtest_hooks -q",
+      "stages": [
+        "pre-push"
+      ],
+      "runtime_seconds": null,
+      "scope": "repo-wide pytest consolidation suite",
+      "tier": 2,
+      "recommendation": "Move to pre-push; full suite belongs in Tier 2, not every commit.",
+      "keep_in_precommit": false,
+      "proposed_location": "prepush"
+    },
+    {
+      "name": "no grep/rg subprocess in staged Python",
+      "id": "no-grep-subprocess",
+      "command": "python tools/check_no_grep_subprocess.py",
+      "stages": [
+        "pre-commit"
+      ],
+      "runtime_seconds": null,
+      "scope": "staged Python only",
+      "tier": 1,
+      "recommendation": "Keep \u2014 fast staged-file AST scan.",
+      "keep_in_precommit": true,
+      "proposed_location": "precommit"
+    },
+    {
+      "name": "no deferral language in commit message",
+      "id": "no-deferral-language-msg",
+      "command": "python tools/check_no_deferral_language.py",
+      "stages": [
+        "commit-msg"
+      ],
+      "runtime_seconds": null,
+      "scope": "commit message",
+      "tier": 1,
+      "recommendation": "Keep \u2014 commit-msg stage, negligible cost.",
+      "keep_in_precommit": true,
+      "proposed_location": "precommit"
+    },
+    {
+      "name": "no deferral language in staged source/test files",
+      "id": "no-deferral-language-files",
+      "command": "python tools/check_no_deferral_language.py",
+      "stages": [
+        "pre-commit"
+      ],
+      "runtime_seconds": null,
+      "scope": "staged text (allowlisted governance/tests excluded)",
+      "tier": 1,
+      "recommendation": "Keep \u2014 staged-file regex scan.",
+      "keep_in_precommit": true,
+      "proposed_location": "precommit"
+    },
+    {
+      "name": "fix everything we touch (commit message)",
+      "id": "fix-everything-we-touch-msg",
+      "command": "python tools/check_fix_everything_we_touch.py",
+      "stages": [
+        "commit-msg"
+      ],
+      "runtime_seconds": null,
+      "scope": "commit message",
+      "tier": 1,
+      "recommendation": "Keep \u2014 commit-msg stage.",
+      "keep_in_precommit": true,
+      "proposed_location": "precommit"
+    },
+    {
+      "name": "fix everything we touch (V4 memo + staged py)",
+      "id": "fix-everything-we-touch",
+      "command": "python tools/check_fix_everything_we_touch.py",
+      "stages": [
+        "pre-commit"
+      ],
+      "runtime_seconds": null,
+      "scope": "staged paths + repo-wide static locks (no full pytest)",
+      "tier": 1,
+      "recommendation": "Keep \u2014 institutional locks; pytest suites must not duplicate here.",
+      "keep_in_precommit": true,
+      "proposed_location": "precommit"
+    }
+  ],
+  "findings": []
+}

@@ -1,0 +1,484 @@
+{
+  "tickers": [
+    "SPY",
+    "QQQ",
+    "IWM"
+  ],
+  "rows_analyzed": 33389,
+  "thresholds": {
+    "null_thresh": 0.98,
+    "cluster_distance_thresh": 0.2
+  },
+  "override_protected_columns": [
+    "iwm_chg_pct",
+    "iwm_weighted_push",
+    "qqq_chg_pct",
+    "qqq_vs_spy",
+    "qqq_weighted_push",
+    "spy_chg_pct",
+    "spy_iwm_divergence",
+    "spy_weighted_push",
+    "tnx_chg",
+    "tnx_yield"
+  ],
+  "counts": {
+    "registered_candidates": 73,
+    "missing_columns_DEAD": 1,
+    "near_null_DEAD": 0,
+    "live_numeric": 58,
+    "live_categorical_or_const": 14,
+    "clusters": 50,
+    "clean_candidate_set": 65,
+    "redundant_dropped": 8
+  },
+  "DEAD_missing_column": [
+    "bid_ask_imbalance"
+  ],
+  "DEAD_near_null": [],
+  "leakage_class_EXCLUDED": [
+    "combined_conviction",
+    "combined_signal"
+  ],
+  "clusters": {
+    "cluster_1": {
+      "members": [
+        "absorption_score"
+      ],
+      "representative": "absorption_score",
+      "redundant_dropped": []
+    },
+    "cluster_2": {
+      "members": [
+        "smart_money_score"
+      ],
+      "representative": "smart_money_score",
+      "redundant_dropped": []
+    },
+    "cluster_3": {
+      "members": [
+        "et_hour"
+      ],
+      "representative": "et_hour",
+      "redundant_dropped": []
+    },
+    "cluster_4": {
+      "members": [
+        "pin_score"
+      ],
+      "representative": "pin_score",
+      "redundant_dropped": []
+    },
+    "cluster_5": {
+      "members": [
+        "nearest_above_dist"
+      ],
+      "representative": "nearest_above_dist",
+      "redundant_dropped": []
+    },
+    "cluster_6": {
+      "members": [
+        "nearest_below_dist"
+      ],
+      "representative": "nearest_below_dist",
+      "redundant_dropped": []
+    },
+    "cluster_7": {
+      "members": [
+        "iv_level",
+        "iv_rank"
+      ],
+      "representative": "iv_level",
+      "redundant_dropped": [
+        "iv_rank"
+      ]
+    },
+    "cluster_8": {
+      "members": [
+        "spot"
+      ],
+      "representative": "spot",
+      "redundant_dropped": []
+    },
+    "cluster_9": {
+      "members": [
+        "vix_level"
+      ],
+      "representative": "vix_level",
+      "redundant_dropped": []
+    },
+    "cluster_10": {
+      "members": [
+        "atr"
+      ],
+      "representative": "atr",
+      "redundant_dropped": []
+    },
+    "cluster_11": {
+      "members": [
+        "zone_since_bars"
+      ],
+      "representative": "zone_since_bars",
+      "redundant_dropped": []
+    },
+    "cluster_12": {
+      "members": [
+        "spread"
+      ],
+      "representative": "spread",
+      "redundant_dropped": []
+    },
+    "cluster_13": {
+      "members": [
+        "candle_body_pts",
+        "candle_range_pts"
+      ],
+      "representative": "candle_body_pts",
+      "redundant_dropped": [
+        "candle_range_pts"
+      ]
+    },
+    "cluster_14": {
+      "members": [
+        "candle_volume"
+      ],
+      "representative": "candle_volume",
+      "redundant_dropped": []
+    },
+    "cluster_15": {
+      "members": [
+        "continuation_score"
+      ],
+      "representative": "continuation_score",
+      "redundant_dropped": []
+    },
+    "cluster_16": {
+      "members": [
+        "dist_put_gamma_wall",
+        "dist_put_vanna_wall"
+      ],
+      "representative": "dist_put_vanna_wall",
+      "redundant_dropped": [
+        "dist_put_gamma_wall"
+      ]
+    },
+    "cluster_17": {
+      "members": [
+        "pin_width_pts"
+      ],
+      "representative": "pin_width_pts",
+      "redundant_dropped": []
+    },
+    "cluster_18": {
+      "members": [
+        "dist_put_delta_wall"
+      ],
+      "representative": "dist_put_delta_wall",
+      "redundant_dropped": []
+    },
+    "cluster_19": {
+      "members": [
+        "dist_call_gamma_wall",
+        "dist_call_vanna_wall"
+      ],
+      "representative": "dist_call_vanna_wall",
+      "redundant_dropped": [
+        "dist_call_gamma_wall"
+      ]
+    },
+    "cluster_20": {
+      "members": [
+        "dist_call_delta_wall"
+      ],
+      "representative": "dist_call_delta_wall",
+      "redundant_dropped": []
+    },
+    "cluster_21": {
+      "members": [
+        "dist_put_oi_wall"
+      ],
+      "representative": "dist_put_oi_wall",
+      "redundant_dropped": []
+    },
+    "cluster_22": {
+      "members": [
+        "breakout_score"
+      ],
+      "representative": "breakout_score",
+      "redundant_dropped": []
+    },
+    "cluster_23": {
+      "members": [
+        "tnx_yield"
+      ],
+      "representative": "tnx_yield",
+      "redundant_dropped": []
+    },
+    "cluster_24": {
+      "members": [
+        "iwm_weighted_push",
+        "psci_chg_pct"
+      ],
+      "representative": "iwm_weighted_push",
+      "redundant_dropped": [
+        "psci_chg_pct"
+      ]
+    },
+    "cluster_25": {
+      "members": [
+        "iwm_chg_pct"
+      ],
+      "representative": "iwm_chg_pct",
+      "redundant_dropped": []
+    },
+    "cluster_26": {
+      "members": [
+        "kre_chg_pct"
+      ],
+      "representative": "kre_chg_pct",
+      "redundant_dropped": []
+    },
+    "cluster_27": {
+      "members": [
+        "xrt_chg_pct"
+      ],
+      "representative": "xrt_chg_pct",
+      "redundant_dropped": []
+    },
+    "cluster_28": {
+      "members": [
+        "spy_iwm_divergence"
+      ],
+      "representative": "spy_iwm_divergence",
+      "redundant_dropped": []
+    },
+    "cluster_29": {
+      "members": [
+        "xbi_chg_pct"
+      ],
+      "representative": "xbi_chg_pct",
+      "redundant_dropped": []
+    },
+    "cluster_30": {
+      "members": [
+        "tnx_chg"
+      ],
+      "representative": "tnx_chg",
+      "redundant_dropped": []
+    },
+    "cluster_31": {
+      "members": [
+        "avgo_chg_pct"
+      ],
+      "representative": "avgo_chg_pct",
+      "redundant_dropped": []
+    },
+    "cluster_32": {
+      "members": [
+        "qqq_vs_spy"
+      ],
+      "representative": "qqq_vs_spy",
+      "redundant_dropped": []
+    },
+    "cluster_33": {
+      "members": [
+        "qqq_chg_pct",
+        "qqq_weighted_push",
+        "spy_chg_pct",
+        "spy_weighted_push"
+      ],
+      "representative": "qqq_weighted_push",
+      "redundant_dropped": [
+        "qqq_chg_pct",
+        "spy_chg_pct",
+        "spy_weighted_push"
+      ]
+    },
+    "cluster_34": {
+      "members": [
+        "googl_chg_pct"
+      ],
+      "representative": "googl_chg_pct",
+      "redundant_dropped": []
+    },
+    "cluster_35": {
+      "members": [
+        "meta_chg_pct"
+      ],
+      "representative": "meta_chg_pct",
+      "redundant_dropped": []
+    },
+    "cluster_36": {
+      "members": [
+        "amzn_chg_pct"
+      ],
+      "representative": "amzn_chg_pct",
+      "redundant_dropped": []
+    },
+    "cluster_37": {
+      "members": [
+        "nvda_chg_pct"
+      ],
+      "representative": "nvda_chg_pct",
+      "redundant_dropped": []
+    },
+    "cluster_38": {
+      "members": [
+        "tsla_chg_pct"
+      ],
+      "representative": "tsla_chg_pct",
+      "redundant_dropped": []
+    },
+    "cluster_39": {
+      "members": [
+        "net_delta"
+      ],
+      "representative": "net_delta",
+      "redundant_dropped": []
+    },
+    "cluster_40": {
+      "members": [
+        "put_call_oi_ratio"
+      ],
+      "representative": "put_call_oi_ratio",
+      "redundant_dropped": []
+    },
+    "cluster_41": {
+      "members": [
+        "net_gamma"
+      ],
+      "representative": "net_gamma",
+      "redundant_dropped": []
+    },
+    "cluster_42": {
+      "members": [
+        "dist_call_oi_wall"
+      ],
+      "representative": "dist_call_oi_wall",
+      "redundant_dropped": []
+    },
+    "cluster_43": {
+      "members": [
+        "vwap_dist_pts"
+      ],
+      "representative": "vwap_dist_pts",
+      "redundant_dropped": []
+    },
+    "cluster_44": {
+      "members": [
+        "charm_net"
+      ],
+      "representative": "charm_net",
+      "redundant_dropped": []
+    },
+    "cluster_45": {
+      "members": [
+        "dist_delta_inflection"
+      ],
+      "representative": "dist_delta_inflection",
+      "redundant_dropped": []
+    },
+    "cluster_46": {
+      "members": [
+        "msft_chg_pct"
+      ],
+      "representative": "msft_chg_pct",
+      "redundant_dropped": []
+    },
+    "cluster_47": {
+      "members": [
+        "aapl_chg_pct"
+      ],
+      "representative": "aapl_chg_pct",
+      "redundant_dropped": []
+    },
+    "cluster_48": {
+      "members": [
+        "dist_gamma_inflection"
+      ],
+      "representative": "dist_gamma_inflection",
+      "redundant_dropped": []
+    },
+    "cluster_49": {
+      "members": [
+        "vix_vs_prev"
+      ],
+      "representative": "vix_vs_prev",
+      "redundant_dropped": []
+    },
+    "cluster_50": {
+      "members": [
+        "et_minute"
+      ],
+      "representative": "et_minute",
+      "redundant_dropped": []
+    }
+  },
+  "clean_candidate_set": [
+    "aapl_chg_pct",
+    "absorption_score",
+    "amzn_chg_pct",
+    "atr",
+    "avgo_chg_pct",
+    "breakout_score",
+    "candle_body_pts",
+    "candle_direction",
+    "candle_volume",
+    "charm_direction",
+    "charm_magnitude",
+    "charm_net",
+    "continuation_score",
+    "dist_call_delta_wall",
+    "dist_call_oi_wall",
+    "dist_call_vanna_wall",
+    "dist_delta_inflection",
+    "dist_gamma_inflection",
+    "dist_put_delta_wall",
+    "dist_put_oi_wall",
+    "dist_put_vanna_wall",
+    "et_hour",
+    "et_minute",
+    "googl_chg_pct",
+    "iv_direction",
+    "iv_level",
+    "iwm_chg_pct",
+    "iwm_weighted_push",
+    "kre_chg_pct",
+    "liquidity_behavior_label",
+    "meta_chg_pct",
+    "msft_chg_pct",
+    "nearest_above_dist",
+    "nearest_below_dist",
+    "net_delta",
+    "net_gamma",
+    "nvda_chg_pct",
+    "pin_score",
+    "pin_width_pts",
+    "pressure_label",
+    "pressure_trend",
+    "prev_zone",
+    "put_call_oi_ratio",
+    "qqq_chg_pct",
+    "qqq_vs_spy",
+    "qqq_weighted_push",
+    "session_bucket",
+    "smart_money_score",
+    "spot",
+    "spread",
+    "spy_chg_pct",
+    "spy_iwm_divergence",
+    "spy_weighted_push",
+    "tnx_chg",
+    "tnx_yield",
+    "tsla_chg_pct",
+    "vix_bucket",
+    "vix_level",
+    "vix_vs_prev",
+    "vwap_dist_pts",
+    "vwap_side",
+    "xbi_chg_pct",
+    "xrt_chg_pct",
+    "zone",
+    "zone_since_bars"
+  ],
+  "note": "Curation gate (model-free). Steps 3-6 of the funnel (held-out permutation, grouped MDA, SHAP-interaction) run AFTER the Stage-2 retrain on the trained models. This file is the clean candidate set + cluster map for that one pass."
+}

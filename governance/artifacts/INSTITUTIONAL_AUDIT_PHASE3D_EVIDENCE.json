@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "artifact": "governance/artifacts/INSTITUTIONAL_AUDIT_PHASE3D_EVIDENCE.json",
+  "phase": "3D-Verification",
+  "label": "external enforcement required but not yet proven",
+  "ci_workflow_exists": true,
+  "objective_audit_in_ci": true,
+  "adversarial_tests_in_ci": true,
+  "required_checks_spec_exists": true,
+  "branch_protection_required": true,
+  "branch_protection_verified": false,
+  "required_status_checks_enforced": false,
+  "objective_audit_required_on_github": false,
+  "pull_request_review_required_on_github": false,
+  "pr_review_required_on_github": false,
+  "codeowners_exists": true,
+  "governance_critical_files_count": 37,
+  "no_verify_status": "open",
+  "same_actor_mutation_status": "open",
+  "external_enforcement_status": "required_not_proven",
+  "remote_evidence": {
+    "evidence_source": null,
+    "evidence_timestamp": null,
+    "repository": null,
+    "protected_branch": "main",
+    "required_status_checks": [],
+    "required_reviews": null,
+    "allows_force_pushes": null,
+    "allows_deletions": null,
+    "bypass_actors": [],
+    "verification_method": "pending",
+    "verified_by": null
+  },
+  "phase3d_checker_tests": {
+    "exit_code": 0,
+    "summary": "16 passed in 0.83s",
+    "command": "C:\\Users\\evarg\\AppData\\Local\\Programs\\Python\\Python313\\python.exe -m pytest tests/test_branch_protection_proof.py tests/test_required_status_checks.py tests/test_governance_critical_files.py tests/test_no_verify_resistance.py tests/test_governance_self_protection.py tests/test_remote_enforcement_evidence.py -q"
+  },
+  "maturity_changes_proposed": [],
+  "maturity_changes_rejected": [
+    "L5 institutional enforcement \u2014 no adversarial bypass survival + external proof",
+    "Branch protection satisfied from docs/CODEOWNERS alone",
+    "No-verify mitigated from CI workflow file alone",
+    "Manual attestation treated as API verification"
+  ],
+  "remaining_gaps": [
+    "GitHub branch protection not API/CLI verified",
+    "objective-audit not proven as required GitHub status check",
+    "--no-verify remains open until CI + branch protection API verified",
+    "Same-actor governance mutation without proven PR review enforcement",
+    "Manual DB/filesystem bypasses remain open (UNIVERSAL_BYPASS_REGISTER)"
+  ],
+  "generated": "2026-06-15"
+}

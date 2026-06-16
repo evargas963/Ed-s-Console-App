@@ -47,13 +47,20 @@ def run_xgb(
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
     label_col = outcome_column(hz)
     if ticker:
+        from scheduler_user_tickers import require_ml_training_ticker_allowed
+
+        ticker = require_ml_training_ticker_allowed(ticker)
         df = load_data(db_path, ticker=ticker.upper(), ml_horizon_slug=hz)
         tickers = [ticker.upper()] if len(df) > 0 else []
     else:
         try:
-            from scheduler_user_tickers import load_user_scheduler_tickers_or_empty
+            from scheduler_user_tickers import (
+                load_user_scheduler_tickers_or_empty,
+                resolve_ml_training_roster,
+            )
 
-            tickers = load_user_scheduler_tickers_or_empty()
+            enrolled = load_user_scheduler_tickers_or_empty()
+            tickers = resolve_ml_training_roster(enrolled, db_path)
         except Exception:
             tickers = []
         tickers = [t for t in tickers if t and not str(t).startswith("$")]
@@ -90,6 +97,10 @@ def run_lstm(
 
     out = model_dir or MODEL_DIR
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
+    if ticker:
+        from scheduler_user_tickers import require_ml_training_ticker_allowed
+
+        ticker = require_ml_training_ticker_allowed(ticker)
     tickers = [ticker.upper()] if ticker else None
     if not tickers:
         ds = build_lstm_dataset(db_path=db_path, ml_horizon_slug=hz)
@@ -125,6 +136,10 @@ def run_transformer(
 
     out = model_dir or MODEL_DIR
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
+    if ticker:
+        from scheduler_user_tickers import require_ml_training_ticker_allowed
+
+        ticker = require_ml_training_ticker_allowed(ticker)
     tickers = [ticker.upper()] if ticker else None
     if not tickers:
         ds = build_lstm_dataset(db_path=db_path, ml_horizon_slug=hz)
@@ -172,8 +187,17 @@ def run_meta(
     label_col = outcome_column(hz)
 
     if not tickers:
-        df = load_data(db_path, ml_horizon_slug=hz)
-        tickers = df["ticker"].unique().tolist() if len(df) > 0 else []
+        from scheduler_user_tickers import (
+            load_user_scheduler_tickers_or_empty,
+            resolve_ml_training_roster,
+        )
+
+        enrolled = load_user_scheduler_tickers_or_empty()
+        tickers = resolve_ml_training_roster(enrolled, db_path)
+    else:
+        from scheduler_user_tickers import require_ml_training_ticker_allowed
+
+        tickers = [require_ml_training_ticker_allowed(t) for t in tickers]
 
     import ml_predict as mp
     orig_dir = mp.MODEL_DIR

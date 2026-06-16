@@ -37,21 +37,21 @@ def _get_active_tickers() -> list[str]:
     """
     ML-training tickers that require active bundles under models/active/.
 
-    Same scope as ml_scheduler training runs: logging_universe minus panel_auto
-    confluence-only symbols (see scheduler_user_tickers.filter_tickers_for_ml_training).
+    Same scope as ml_scheduler training runs: resolve_ml_training_roster (anchors only
+    by default; panel_auto and other guests excluded).
     """
     import sqlite3
 
     from production_universe import filter_valid_tickers, normalize_production_ticker
     from scheduler_user_tickers import (
-        filter_tickers_for_ml_training,
+        resolve_ml_training_roster,
         load_user_scheduler_tickers_or_empty,
     )
     from db import get_db
 
     db = get_db()
     tickers = filter_valid_tickers(load_user_scheduler_tickers_or_empty())
-    tickers = filter_tickers_for_ml_training(tickers, str(db.db_path))
+    tickers = resolve_ml_training_roster(tickers, str(db.db_path))
     # Operational gate: must have at least one normalized 1m snapshot row.
     con = sqlite3.connect(str(db.db_path))
     cur = con.cursor()

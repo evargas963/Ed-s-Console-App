@@ -51,7 +51,8 @@ Truthy for most flags: `1`, `true`, `yes`, `on` (case-insensitive). Falsy: `0`, 
 | `ED_SCHEDULER_AUTO_PROMOTE_REQUIRE_VERIFY` | `1` | Post-promote `verify_single_bundle` on scheduler path |
 | `ED_SCHEDULER_AUTO_PROMOTE_STRICT_CORE_FRESHNESS` | off | Strict freshness gate (enable after baseline week) |
 | `ED_SCHEDULER_CACHE_SKIP_CAP` | (code) | Max consecutive manifest cache skips |
-| `ED_ML_SCHEDULER_TICKERS` | empty | Comma subset filter for scheduler |
+| `ED_ML_SCHEDULER_TICKERS` | empty | Subset of resolved training roster (intersected with anchors unless expansion on) |
+| `ED_ML_SCHEDULER_TRAINING_EXPAND` | off | `1` = train full enrolled roster minus `panel_auto` (legacy expansion; default is SPY/QQQ/IWM only) |
 | `ED_ML_SCHEDULER_HORIZON` | default slug | Single-horizon scheduler mode |
 
 ## Training cache and archives

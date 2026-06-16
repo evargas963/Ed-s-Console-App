@@ -78,6 +78,90 @@ def test_auto_promote_parallel_on_keep_incumbent_train_success_live(tmp_path: Pa
     assert (tmp_path / "active" / "SPY" / "meta_SPY_1c.pkl").is_file()
 
 
+def test_scheduler_nightly_all_horizons_default_on(monkeypatch):
+    from arch_competition.scheduler_auto_promote_policy import scheduler_nightly_all_horizons_enabled
+
+    monkeypatch.delenv("ED_ML_SCHEDULER_ALL_HORIZONS", raising=False)
+    assert scheduler_nightly_all_horizons_enabled() is True
+    monkeypatch.setenv("ED_ML_SCHEDULER_ALL_HORIZONS", "0")
+    assert scheduler_nightly_all_horizons_enabled() is False
+
+
+def test_auto_promote_5c_writes_active_5c_root(tmp_path: Path, monkeypatch):
+    """Phase 2: non-1c promotion lands under models/active_{hz}/ via scheduler_active_root."""
+    from tests.test_manual_governance import _write_horizon_bundle
+
+    hz = "5c"
+    tku = "SPY"
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE", "1")
+    monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE_REQUIRE_VERIFY", "0")
+
+    pdir = tmp_path / "parallel" / tku
+    cdir = tmp_path / "cascade" / tku
+    pdir.mkdir(parents=True)
+    cdir.mkdir(parents=True)
+    _write_horizon_bundle(pdir, tku, hz)
+    _write_horizon_bundle(cdir, tku, hz, xgb_payload=b"y")
+
+    common = {
+        "schema_version": "2",
+        "ticker": tku,
+        "ml_horizon_suffix": hz,
+        "data_fingerprint": "df_shared",
+        "training_code_fingerprint": "trainfp_shared",
+        "feature_cache_key": "fk_shared",
+    }
+    (pdir / "scheduler_run_manifest.json").write_text(json.dumps({**common}), encoding="utf-8")
+    (cdir / "scheduler_run_manifest.json").write_text(json.dumps({**common}), encoding="utf-8")
+
+    ev = {
+        "schema_version": "1",
+        "created_at_utc": "2026-01-01T00:00:00+00:00",
+        "ticker": tku,
+        "ml_horizon_slug": hz,
+        "target_column": f"outcome_{hz}",
+        "db_path": str(tmp_path / "db.sqlite"),
+        "parallel_model_dir": str(pdir.resolve()),
+        "cascade_model_dir": str(cdir.resolve()),
+        "lineage": {
+            "feature_cache_key": "fk_shared",
+            "data_fingerprint": "df_shared",
+            "ml_horizon_suffix": hz,
+            "training_code_fingerprint": "trainfp_shared",
+        },
+        "metrics": {
+            "parallel": {"n_rows_scored": 10, "accuracy": 0.45, "balanced_accuracy": 0.40},
+            "cascade": {"n_rows_scored": 10, "accuracy": 0.45, "balanced_accuracy": 0.40},
+        },
+    }
+    pr = {
+        "schema_version": "1",
+        "promotion_decision": "keep_incumbent",
+        "would_promote_challenger": False,
+        "blocked_promotion_flags": [],
+        "evaluation_manifest_reference": {
+            "lineage_feature_cache_key": "fk_shared",
+            "ml_horizon_slug": hz,
+        },
+    }
+    ed = tmp_path / "arch_competition" / hz / tku
+    ed.mkdir(parents=True)
+    (ed / "evaluation_manifest.json").write_text(json.dumps(ev), encoding="utf-8")
+    (ed / "promotion_decision.json").write_text(json.dumps(pr), encoding="utf-8")
+
+    result = execute_promotion_if_eligible(
+        tmp_path,
+        tku,
+        hz,
+        scheduler_run_id="phase2-5c",
+    )
+    assert result["executed"] is True
+    assert (tmp_path / "active_5c" / tku / f"xgb_{tku}_{hz}.pkl").is_file()
+    assert (tmp_path / "active_5c" / tku / f"meta_{tku}_{hz}.pkl").is_file()
+    assert not (tmp_path / "active" / tku / f"xgb_{tku}_{hz}.pkl").exists()
+
+
 # ── Workstream A1 — per-ticker fail-closed data floor ──────────────────────────
 
 

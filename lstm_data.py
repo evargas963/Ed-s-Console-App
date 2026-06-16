@@ -970,9 +970,13 @@ def build_lstm_dataset(
     tdef = horizon_target_definition(hz)
     if tickers is None:
         try:
-            from scheduler_user_tickers import load_user_scheduler_tickers_or_empty
+            from scheduler_user_tickers import (
+                load_user_scheduler_tickers_or_empty,
+                resolve_ml_training_roster,
+            )
 
-            tickers = load_user_scheduler_tickers_or_empty()
+            enrolled = load_user_scheduler_tickers_or_empty()
+            tickers = resolve_ml_training_roster(enrolled, str(_db))
         except Exception:
             tickers = []
         tickers = [t for t in (tickers or []) if t and not str(t).startswith("$")]
@@ -1188,9 +1192,16 @@ if __name__ == "__main__":
     conn.close()
 
     try:
-        from scheduler_user_tickers import load_user_scheduler_tickers_or_empty
+        from scheduler_user_tickers import (
+            load_user_scheduler_tickers_or_empty,
+            resolve_ml_training_roster,
+        )
 
-        tickers = [t for t in load_user_scheduler_tickers_or_empty() if t and not t.startswith("$")]
+        enrolled = load_user_scheduler_tickers_or_empty()
+        tickers = resolve_ml_training_roster(
+            [t for t in enrolled if t and not t.startswith("$")],
+            str(DB_PATH),
+        )
     except Exception:
         tickers = []
     if not tickers:
