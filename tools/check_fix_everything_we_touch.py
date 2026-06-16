@@ -1415,13 +1415,11 @@ def check_ablation_seven_model_four_horizon_grid() -> list[str]:
                 )
 
     try:
+        from tools.ablation_static_lock_index import get_ablation_static_lock_index
         from tools.feature_curation_gate import (
             ablation_cell_accounting,
             ablation_grid_groups,
             ablation_scoring_groups,
-            ablation_whole_stack_feature_cell_specs,
-            build_ablation_enriched_row_sample,
-            load_ablation_manifest,
             whole_stack_catalog_cell_target,
             whole_stack_fusion_cell_target,
         )
@@ -1429,27 +1427,34 @@ def check_ablation_seven_model_four_horizon_grid() -> list[str]:
         errors.append(f"ablation grid: cannot import feature_curation_gate ({exc})")
         return errors
 
-    manifest_path = REPO_ROOT / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json"
+    idx = get_ablation_static_lock_index()
+    if idx.gate_import_error:
+        errors.append(
+            f"ablation grid: cannot import feature_curation_gate ({idx.gate_import_error})"
+        )
+        return errors
+
+    manifest_path = idx.manifest_path
     if not manifest_path.is_file():
         errors.append(f"ablation grid: missing {manifest_path}")
         return errors
 
-    try:
-        manifest = load_ablation_manifest(manifest_path)
-    except (OSError, json.JSONDecodeError, FileNotFoundError) as exc:
-        errors.append(f"ablation grid: manifest unreadable: {exc}")
+    if idx.manifest_load_error:
+        errors.append(f"ablation grid: manifest unreadable: {idx.manifest_load_error}")
         return errors
 
+    if idx.spec_build_error:
+        errors.append(f"ablation grid: spec build failed: {idx.spec_build_error}")
+        return errors
+
+    manifest = idx.manifest
+    enriched = idx.enriched
+    specs = idx.specs
     required_models = list(FULL_STACK_MODEL_LAYERS)
     required_horizons = list(STAGE3_ABLATION_HORIZONS)
     captured = ablation_grid_groups(manifest)
-    dbp = REPO_ROOT / "data" / "ed_console.db"
-    dbp_str = str(dbp) if dbp.is_file() else None
+    dbp_str = str(idx.db_path) if idx.db_path is not None else None
     scoring = ablation_scoring_groups(manifest, db_path=dbp_str)
-    enriched = None
-    if dbp.is_file():
-        enriched = build_ablation_enriched_row_sample(db_path=str(dbp), manifest=manifest)
-    specs = ablation_whole_stack_feature_cell_specs(manifest, enriched_rows=enriched or None)
     accounting = ablation_cell_accounting(manifest, specs, enriched_rows=enriched or None)
     catalog_target = whole_stack_catalog_cell_target(manifest)
     runnable_target = int(accounting.get("runnable_target") or 0)
@@ -1595,30 +1600,27 @@ def check_ablation_equal_layer_consumers() -> list[str]:
         sys.path.insert(0, str(REPO_ROOT))
     try:
         from governed_stack_contract import FULL_STACK_MODEL_LAYERS, STACK_AUTHORITY_LAYERS
-        from tools.feature_curation_gate import (
-            ablation_whole_stack_feature_cell_specs,
-            build_ablation_enriched_row_sample,
-            load_ablation_manifest,
-        )
+        from tools.ablation_static_lock_index import get_ablation_static_lock_index
     except Exception as exc:  # pragma: no cover
         errors.append(f"ablation equal-layer: import failed ({exc})")
         return errors
 
-    manifest_path = REPO_ROOT / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json"
-    if not manifest_path.is_file():
+    idx = get_ablation_static_lock_index()
+    if idx.gate_import_error:
+        errors.append(f"ablation equal-layer: import failed ({idx.gate_import_error})")
         return errors
-    try:
-        manifest = load_ablation_manifest(manifest_path)
-        enriched = None
-        dbp = REPO_ROOT / "data" / "ed_console.db"
-        if dbp.is_file():
-            enriched = build_ablation_enriched_row_sample(db_path=str(dbp), manifest=manifest)
-        specs = ablation_whole_stack_feature_cell_specs(
-            manifest, enriched_rows=enriched or None
+
+    if not idx.manifest_path.is_file():
+        return errors
+
+    if idx.manifest_load_error or idx.spec_build_error:
+        errors.append(
+            f"ablation equal-layer: manifest/spec build failed: "
+            f"{idx.manifest_load_error or idx.spec_build_error}"
         )
-    except (OSError, json.JSONDecodeError, FileNotFoundError) as exc:
-        errors.append(f"ablation equal-layer: manifest/spec build failed: {exc}")
         return errors
+
+    specs = idx.specs
 
     multi_base_upper = [
         s

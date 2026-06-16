@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-06-16T05:53:41+00:00",
-  "total_seconds": 214.726,
+  "generated_at_utc": "2026-06-16T12:24:27+00:00",
+  "total_seconds": 149.9301,
   "subchecks": [
     {
       "name": "upfront_gate_stamp",
@@ -53,7 +53,7 @@
     },
     {
       "name": "check_mvp_dataframe_ingress",
-      "seconds": 0.7083,
+      "seconds": 0.4291,
       "scope": "repo",
       "files_scanned": 0,
       "recommendation": "",
@@ -61,7 +61,7 @@
     },
     {
       "name": "check_institutional_contract",
-      "seconds": 0.0784,
+      "seconds": 0.0495,
       "scope": "repo",
       "files_scanned": 0,
       "recommendation": "",
@@ -69,7 +69,7 @@
     },
     {
       "name": "check_fusion_only_card_contract",
-      "seconds": 0.0289,
+      "seconds": 0.0216,
       "scope": "repo",
       "files_scanned": 0,
       "recommendation": "",
@@ -77,22 +77,6 @@
     },
     {
       "name": "check_four_horizon_promotion_contract",
-      "seconds": 0.007,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_training_anchor_roster_contract",
-      "seconds": 0.0077,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_mandatory_enforcement_registry",
       "seconds": 0.0059,
       "scope": "repo",
       "files_scanned": 0,
@@ -100,8 +84,24 @@
       "cached": false
     },
     {
+      "name": "check_training_anchor_roster_contract",
+      "seconds": 0.0037,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_mandatory_enforcement_registry",
+      "seconds": 0.003,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
       "name": "check_promoted_agents_rules_mechanically_locked",
-      "seconds": 0.0175,
+      "seconds": 0.008,
       "scope": "repo",
       "files_scanned": 0,
       "recommendation": "",
@@ -109,7 +109,7 @@
     },
     {
       "name": "check_external_rule_tools_wired",
-      "seconds": 0.0023,
+      "seconds": 0.0012,
       "scope": "repo",
       "files_scanned": 0,
       "recommendation": "",
@@ -117,7 +117,7 @@
     },
     {
       "name": "check_ablation_schwab_universe_contract",
-      "seconds": 0.0193,
+      "seconds": 0.009,
       "scope": "repo",
       "files_scanned": 0,
       "recommendation": "",
@@ -125,7 +125,7 @@
     },
     {
       "name": "check_ablation_seven_model_four_horizon_grid",
-      "seconds": 142.7048,
+      "seconds": 146.5085,
       "scope": "repo",
       "files_scanned": 0,
       "recommendation": "",
@@ -133,7 +133,7 @@
     },
     {
       "name": "check_ablation_equal_layer_consumers",
-      "seconds": 68.2922,
+      "seconds": 0.0073,
       "scope": "repo",
       "files_scanned": 0,
       "recommendation": "",
@@ -141,262 +141,6 @@
     },
     {
       "name": "check_ablation_single_authority",
-      "seconds": 0.0032,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_ablation_full_stack_non_negotiable",
-      "seconds": 0.0065,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_no_ablation_gate_bypass_in_money_path",
-      "seconds": 0.0297,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_zero_bias_ablation_contract",
-      "seconds": 0.3643,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_graphrag_fidelity_ablation_contract",
-      "seconds": 0.2131,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_ablation_agnostic_ingest_contract",
-      "seconds": 0.2097,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_unified_stack_team_contract",
-      "seconds": 0.0087,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_live_ablation_experiment_wiring",
-      "seconds": 0.0032,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_unified_stack_canonical_vocabulary",
-      "seconds": 1.6563,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_feature_list_no_model_preassignment",
-      "seconds": 0.0016,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_ablation_manifest_generator_no_model_preassignment",
-      "seconds": 0.0006,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_full_stack_models_contract",
-      "seconds": 0.0053,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_universal_code_quality_contract",
-      "seconds": 0.002,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_meet_or_exceed_cycle_documentation",
-      "seconds": 0.0005,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_definition_of_done_for_fixes_contract",
-      "seconds": 0.0041,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_agent_preload_contract",
-      "seconds": 0.0236,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_branch_protection_proof",
-      "seconds": 0.0023,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_required_status_checks",
-      "seconds": 0.0017,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_governance_critical_files",
-      "seconds": 0.0087,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_no_verify_resistance",
-      "seconds": 0.0015,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_governance_self_protection",
-      "seconds": 0.0068,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_governance_mutation_detection",
-      "seconds": 0.004,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_env_override_hardening",
-      "seconds": 0.001,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_reviewer_evidence_index",
-      "seconds": 0.0028,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_objective_code_audit_documentation",
-      "seconds": 0.0012,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_objective_code_audit_contract",
-      "seconds": 0.0047,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_ablated_training_only",
-      "seconds": 0.0005,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_encoder_cone_mechanical_lock",
-      "seconds": 0.0032,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_governance_binding_contract",
-      "seconds": 0.0021,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_tier1_engineering_standard",
-      "seconds": 0.002,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_v3_invariant_mechanical_registry",
-      "seconds": 0.2136,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_institutional_signoff_contract",
-      "seconds": 0.0039,
-      "scope": "repo",
-      "files_scanned": 0,
-      "recommendation": "",
-      "cached": false
-    },
-    {
-      "name": "check_ablation_denominator_vocabulary",
       "seconds": 0.0036,
       "scope": "repo",
       "files_scanned": 0,
@@ -404,15 +148,223 @@
       "cached": false
     },
     {
-      "name": "check_governance_archive_batch2_contract",
-      "seconds": 0.0112,
+      "name": "check_ablation_full_stack_non_negotiable",
+      "seconds": 0.0061,
       "scope": "repo",
       "files_scanned": 0,
       "recommendation": "",
       "cached": false
     },
     {
-      "name": "check_precommit_performance_contract",
+      "name": "check_no_ablation_gate_bypass_in_money_path",
+      "seconds": 0.0392,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_zero_bias_ablation_contract",
+      "seconds": 0.4205,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_graphrag_fidelity_ablation_contract",
+      "seconds": 0.2429,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_ablation_agnostic_ingest_contract",
+      "seconds": 0.2071,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_unified_stack_team_contract",
+      "seconds": 0.0064,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_live_ablation_experiment_wiring",
+      "seconds": 0.0023,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_unified_stack_canonical_vocabulary",
+      "seconds": 1.5734,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_feature_list_no_model_preassignment",
+      "seconds": 0.0025,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_ablation_manifest_generator_no_model_preassignment",
+      "seconds": 0.0009,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_full_stack_models_contract",
+      "seconds": 0.0068,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_universal_code_quality_contract",
+      "seconds": 0.0028,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_meet_or_exceed_cycle_documentation",
+      "seconds": 0.0008,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_definition_of_done_for_fixes_contract",
+      "seconds": 0.0056,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_agent_preload_contract",
+      "seconds": 0.03,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_branch_protection_proof",
+      "seconds": 0.0024,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_required_status_checks",
+      "seconds": 0.0021,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_governance_critical_files",
+      "seconds": 0.0118,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_no_verify_resistance",
+      "seconds": 0.0016,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_governance_self_protection",
+      "seconds": 0.0077,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_governance_mutation_detection",
+      "seconds": 0.0032,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_env_override_hardening",
+      "seconds": 0.0009,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_reviewer_evidence_index",
+      "seconds": 0.0023,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_objective_code_audit_documentation",
+      "seconds": 0.0009,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_objective_code_audit_contract",
+      "seconds": 0.0033,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_ablated_training_only",
+      "seconds": 0.0003,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_encoder_cone_mechanical_lock",
+      "seconds": 0.0023,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_governance_binding_contract",
       "seconds": 0.0012,
       "scope": "repo",
       "files_scanned": 0,
@@ -420,8 +372,56 @@
       "cached": false
     },
     {
+      "name": "check_tier1_engineering_standard",
+      "seconds": 0.0017,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_v3_invariant_mechanical_registry",
+      "seconds": 0.2398,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_institutional_signoff_contract",
+      "seconds": 0.0055,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_ablation_denominator_vocabulary",
+      "seconds": 0.0047,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_governance_archive_batch2_contract",
+      "seconds": 0.0119,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
+      "name": "check_precommit_performance_contract",
+      "seconds": 0.001,
+      "scope": "repo",
+      "files_scanned": 0,
+      "recommendation": "",
+      "cached": false
+    },
+    {
       "name": "repo_wide_static_aggregate",
-      "seconds": 214.725,
+      "seconds": 149.9294,
       "scope": "repo",
       "files_scanned": 0,
       "recommendation": "",
