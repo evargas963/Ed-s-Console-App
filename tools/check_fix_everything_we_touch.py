@@ -3139,6 +3139,7 @@ _REPO_WIDE_STATIC_CHECK_FUNCS: tuple[str, ...] = (
     "check_source_control_hygiene",
     "check_prepush_fast_gate",
     "check_governance_generated_artifacts_clean",
+    "check_ci_tooling_dependencies",
     "check_check_stack_rightsizing",
 )
 
@@ -3270,6 +3271,7 @@ _EXTERNAL_TOOL_LOCKS: tuple[str, ...] = (
     "tools/check_source_control_hygiene.py",
     "tools/check_prepush_fast_gate.py",
     "tools/check_governance_generated_artifacts_clean.py",
+    "tools/check_ci_tooling_dependencies.py",
 )
 
 
@@ -3383,6 +3385,13 @@ def check_governance_generated_artifacts_clean() -> list[str]:
     from tools.check_governance_generated_artifacts_clean import (
         check_governance_generated_artifacts_clean as _check,
     )
+
+    return _check()
+
+
+def check_ci_tooling_dependencies() -> list[str]:
+    """CI / objective-audit governance tooling must be pinned and importable."""
+    from tools.check_ci_tooling_dependencies import check_ci_tooling_dependencies as _check
 
     return _check()
 
