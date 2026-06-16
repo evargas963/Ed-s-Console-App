@@ -2,13 +2,14 @@
   "schema_version": 1,
   "artifact": "governance/artifacts/CURRENT_LIMITATIONS.json",
   "generated": "2026-06-15",
-  "limitation_count": 8,
+  "limitation_count": 10,
   "required_limitation_ids": [
     "github_branch_protection",
     "l5_not_claimed",
     "live_schwab_proof",
     "manual_mutation_detection_only",
     "no_verify_external",
+    "prepush_over_budget",
     "r012_route_gap",
     "required_status_checks"
   ],
@@ -75,6 +76,24 @@
       "detail": "No control demonstrates L5 (four-eyes + immutable audit + adversarial bypass survival + external proof).",
       "evidence_artifact": "governance/artifacts/SEVERITY_1_CONTROL_VALIDATION_REGISTER.json",
       "next_action": "Do not promote maturity without MATURITY_PROMOTION_RULES.json criteria met."
+    },
+    {
+      "limitation_id": "prepush_over_budget",
+      "title": "Pre-push hook exceeds documented runtime budget",
+      "status": "recorded_not_resolved",
+      "honest_label": "prepush_over_budget",
+      "detail": "Measured pre-push ~1440s vs budget 1200s (20 min). Dominated by governance-consolidation-tests; ablation grid ~146s after PERF2-1.",
+      "evidence_artifact": "governance/artifacts/CHECK_STACK_INVENTORY.json",
+      "next_action": "Phase 3I retier/incremental recommendations — do not remove checks without risk proof."
+    },
+    {
+      "limitation_id": "repo_hygiene_backlog_open",
+      "title": "Repo hygiene backlog has open cleanup candidates",
+      "status": "expected_progressive",
+      "honest_label": "hygiene_backlog",
+      "detail": "REPO_HYGIENE_BACKLOG.json lists conservative orphan/dead/duplicate candidates — manual review required before removal.",
+      "evidence_artifact": "governance/artifacts/REPO_HYGIENE_BACKLOG.json",
+      "next_action": "Clean-as-we-touch: resolve items when touching cone; HYGIENE disposition on commits."
     },
     {
       "limitation_id": "universal_enforcement",

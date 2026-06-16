@@ -44,6 +44,17 @@ REVIEWER_STEPS: tuple[tuple[str, list[str]], ...] = (
         ],
     ),
     ("reviewer_evidence", [sys.executable, "-m", "pytest", "tests/test_reviewer_evidence_index.py", "-q"]),
+    (
+        "repo_hygiene_check_stack",
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/test_repo_hygiene_policy.py",
+            "tests/test_check_stack_rightsizing.py",
+            "-q",
+        ],
+    ),
 )
 
 

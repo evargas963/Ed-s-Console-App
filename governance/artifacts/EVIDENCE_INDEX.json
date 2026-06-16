@@ -4,7 +4,7 @@
   "generated": "2026-06-15",
   "maturity_truth_source": "governance/artifacts/SEVERITY_1_CONTROL_VALIDATION_REGISTER.json",
   "reviewer_entry_point": "governance/REVIEWER_README.md",
-  "claim_count": 16,
+  "claim_count": 18,
   "claims": [
     {
       "claim_id": "agent_preload",
@@ -169,6 +169,26 @@
       "regenerate_command": "python tools/live_diag_compare.py SPY (operator host with Schwab auth)",
       "phase": "3E",
       "limitation": "Requires live Schwab credentials and serving host"
+    },
+    {
+      "claim_id": "repo_hygiene_phase3i",
+      "claim": "Repo hygiene inventory + clean-as-we-touch policy mechanically enforced",
+      "verdict": "proven",
+      "evidence_artifact": "governance/artifacts/REPO_HYGIENE_INVENTORY.json",
+      "code_path": "tools/check_repo_hygiene_policy.py",
+      "test_path": "tests/test_repo_hygiene_policy.py",
+      "regenerate_command": "python tools/build_repo_hygiene_inventory.py",
+      "phase": "3I"
+    },
+    {
+      "claim_id": "check_stack_rightsizing_phase3i",
+      "claim": "Check stack inventory + tier/budget policy mechanically enforced",
+      "verdict": "proven",
+      "evidence_artifact": "governance/artifacts/CHECK_STACK_INVENTORY.json",
+      "code_path": "tools/check_check_stack_rightsizing.py",
+      "test_path": "tests/test_check_stack_rightsizing.py",
+      "regenerate_command": "python tools/build_check_stack_inventory.py",
+      "phase": "3I"
     }
   ]
 }

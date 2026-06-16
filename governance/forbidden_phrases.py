@@ -40,6 +40,20 @@ POLICY_BY_DESIGN_RE = re.compile(r"\bpolicy\s+by\s+design\b", re.IGNORECASE)
 
 _BY_DESIGN_FAMILY = frozenset({"by design", "works as designed", "policy by design"})
 
+# Phase 3I commit-msg disposition tokens — not deferral scheduling language.
+HYGIENE_DISPOSITION_ALLOWLIST = (
+    "HYGIENE: cleaned",
+    "HYGIENE: deferred_with_reason",
+    "HYGIENE: manual_review_required",
+)
+
+
+def _scrub_hygiene_disposition_tokens(text: str) -> str:
+    out = text
+    for token in HYGIENE_DISPOSITION_ALLOWLIST:
+        out = out.replace(token, "")
+    return out
+
 
 def _dedupe_phrases(phrases: list[str]) -> list[str]:
     deduped: list[str] = []
@@ -118,7 +132,7 @@ def forbidden_phrases_all() -> list[str]:
 
 def find_forbidden_phrases(text: str, phrases: list[str] | None = None) -> list[str]:
     pool = phrases if phrases is not None else forbidden_phrases_all()
-    lower = text.lower()
+    lower = _scrub_hygiene_disposition_tokens(text).lower()
     hits: list[str] = []
     for p in pool:
         if p.lower() in _BY_DESIGN_FAMILY:

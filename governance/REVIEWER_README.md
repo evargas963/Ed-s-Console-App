@@ -77,6 +77,8 @@ python -m pytest tests/test_remote_enforcement_evidence.py tests/test_branch_pro
 | Limitations index | `python tools/_build_current_limitations.py` |
 | Phase 3E evidence | `python tools/_build_institutional_audit_phase3e.py` |
 | Phase 3D evidence | `python tools/_build_institutional_audit_phase3d.py` (after `--fetch-github`) |
+| Repo hygiene inventory | `python tools/build_repo_hygiene_inventory.py` |
+| Check stack inventory | `python tools/build_check_stack_inventory.py` |
 | Governance manifest | Included in phase3e builder |
 | Remote enforcement | `python tools/verify_remote_enforcement.py --fetch-github` (requires authenticated `gh`) |
 

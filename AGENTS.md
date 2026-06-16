@@ -255,6 +255,8 @@ Commit messages with `VERDICT:` **must** include `OBJECTIVE:` and `AUDIT: CLEAN`
 | **CI Tier C static gate** (every PR) | `.github/workflows/hardening.yml` → `python tools/enforce_all_rules.py --enforce-static` | `check_institutional_signoff_contract()` |
 | **Tier-1 Quantitative Engineering Standard** | `check_tier1_engineering_standard()` | `tests/test_governance_consolidation.py::test_tier1_engineering_standard` |
 | **V3 invariant mechanical registry (I-01…I-20)** | `check_v3_invariant_mechanical_registry()` + `check_v3_i*` substance locks | `tests/test_governance_consolidation.py::test_v3_invariant_mechanical_registry` |
+| **Clean as we touch — repo hygiene** (Phase 3I) | `check_repo_hygiene_policy()` + `check_hygiene_touch_disposition()` on commit | `tests/test_repo_hygiene_policy.py` |
+| **Check stack right-sizing** (Phase 3I) | `check_check_stack_rightsizing()` | `tests/test_check_stack_rightsizing.py` |
 
 **Pre-commit:** `check_institutional_contract()` runs on **every** commit (via `check_fix_everything_we_touch.py`), not only when UI files are staged. A promotion without a registry row + checker is rejection-grade.
 
@@ -722,6 +724,24 @@ This rule sits above §Fix everything we touch because lying makes every other r
 **Banned modes:** read-only investigation, memo-only when a fix is known, reporting FINDs without landing fix+test, "pending gatekeeper" as fix parking.
 
 **Mechanical enforcement:** `tools/check_fix_everything_we_touch.py` (pre-commit + `tests/test_check_fix_everything_we_touch.py`).
+
+---
+
+## Clean as we touch — repo hygiene and check stack right-sizing `[PROMOTED]` (2026-06-16 — operator binding; Phase 3I)
+
+**Progressive cleanup, not deletion sprints.** When modifying a file or module, inspect adjacent stale/dead/duplicate code in the **same cone**. If cleanup is safe and testable → clean in the **same commit** and cite `HYGIENE: cleaned` in the commit message. If unsafe or uncertain → `HYGIENE: deferred_with_reason` or `HYGIENE: manual_review_required` and update `governance/artifacts/REPO_HYGIENE_BACKLOG.json`.
+
+| Requirement | Violation |
+|-------------|-----------|
+| Inventory before mass removal | Deleting files from static analysis alone |
+| Backlog for uncertain candidates | Silent carry-forward of orphan/dead candidates |
+| HYGIENE disposition when cone has open backlog | Commit touching cone with open backlog item and no disposition |
+| Check stack tier policy documented | Slow check removed without risk classification |
+| Pre-push over budget recorded | ~24 min pre-push accepted without documented reason in `CHECK_STACK_INVENTORY.json` |
+
+**Artifacts:** `governance/artifacts/REPO_HYGIENE_INVENTORY.json`, `REPO_HYGIENE_BACKLOG.json`, `CHECK_STACK_INVENTORY.json` — regenerate via `python tools/build_repo_hygiene_inventory.py` and `python tools/build_check_stack_inventory.py`.
+
+**Mechanical lock:** `check_repo_hygiene_policy()` + `check_check_stack_rightsizing()` in `check_fix_everything_we_touch.py` — paired `tests/test_repo_hygiene_policy.py`, `tests/test_check_stack_rightsizing.py`.
 
 ---
 

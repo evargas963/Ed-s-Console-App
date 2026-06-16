@@ -391,6 +391,15 @@ def check_commit_message(path: Path) -> list[str]:
                 )
         hits.extend(_line_rule_drift_hits(path, line_no, line))
     hits.extend(check_meet_or_exceed_signoff(path))
+    if path.name == "COMMIT_EDITMSG":
+        try:
+            from tools.check_repo_hygiene_policy import check_hygiene_touch_disposition
+
+            hits.extend(
+                check_hygiene_touch_disposition(staged=_git_staged_paths(), commit_text=text)
+            )
+        except Exception as exc:  # pragma: no cover
+            hits.append(f"{path}: repo hygiene touch disposition check failed ({exc})")
     return hits
 
 
@@ -3126,6 +3135,8 @@ _REPO_WIDE_STATIC_CHECK_FUNCS: tuple[str, ...] = (
     "check_ablation_denominator_vocabulary",
     "check_governance_archive_batch2_contract",
     "check_precommit_performance_contract",
+    "check_repo_hygiene_policy",
+    "check_check_stack_rightsizing",
 )
 
 # Pre-commit staged / commit-msg locks (cannot run repo-wide without staged paths).
@@ -3224,6 +3235,14 @@ _PROMOTED_AGENTS_RULE_LOCKS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("No new files when an existing one will do", ("check_promoted_agents_rules_mechanically_locked",)),
     ("Money-path module roster", ("external:tests/test_money_path_roster.py",)),
     ("Governance document hierarchy", ("check_governance_binding_contract",)),
+    (
+        "Clean as we touch",
+        ("check_repo_hygiene_policy", "external:tools/build_repo_hygiene_inventory.py"),
+    ),
+    (
+        "check stack right-sizing",
+        ("check_check_stack_rightsizing", "external:tools/build_check_stack_inventory.py"),
+    ),
 )
 
 _EXTERNAL_TOOL_LOCKS: tuple[str, ...] = (
@@ -3326,6 +3345,20 @@ def check_external_rule_tools_wired() -> list[str]:
     else:
         errors.append("tools/enforce_all_rules.py: missing")
     return errors
+
+
+def check_repo_hygiene_policy() -> list[str]:
+    """Phase 3I — repo hygiene inventory, backlog, and clean-as-we-touch policy."""
+    from tools.check_repo_hygiene_policy import check_repo_hygiene_policy as _check
+
+    return _check()
+
+
+def check_check_stack_rightsizing() -> list[str]:
+    """Phase 3I — check stack inventory, tier policy, runtime budgets."""
+    from tools.check_check_stack_rightsizing import check_check_stack_rightsizing as _check
+
+    return _check()
 
 
 def check_precommit_performance_contract() -> list[str]:
