@@ -3136,6 +3136,7 @@ _REPO_WIDE_STATIC_CHECK_FUNCS: tuple[str, ...] = (
     "check_governance_archive_batch2_contract",
     "check_precommit_performance_contract",
     "check_repo_hygiene_policy",
+    "check_source_control_hygiene",
     "check_check_stack_rightsizing",
 )
 
@@ -3237,7 +3238,11 @@ _PROMOTED_AGENTS_RULE_LOCKS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Governance document hierarchy", ("check_governance_binding_contract",)),
     (
         "Clean as we touch",
-        ("check_repo_hygiene_policy", "external:tools/build_repo_hygiene_inventory.py"),
+        (
+            "check_repo_hygiene_policy",
+            "check_source_control_hygiene",
+            "external:tools/build_repo_hygiene_inventory.py",
+        ),
     ),
     (
         "check stack right-sizing",
@@ -3260,6 +3265,7 @@ _EXTERNAL_TOOL_LOCKS: tuple[str, ...] = (
     "tools/verify_remote_enforcement.py",
     "tools/remote_enforcement_evidence.py",
     "tools/enforce_all_rules.py",
+    "tools/check_source_control_hygiene.py",
 )
 
 
@@ -3350,6 +3356,13 @@ def check_external_rule_tools_wired() -> list[str]:
 def check_repo_hygiene_policy() -> list[str]:
     """Phase 3I — repo hygiene inventory, backlog, and clean-as-we-touch policy."""
     from tools.check_repo_hygiene_policy import check_repo_hygiene_policy as _check
+
+    return _check()
+
+
+def check_source_control_hygiene() -> list[str]:
+    """Local runtime artifacts must not appear as untracked clutter — .gitignore + audit."""
+    from tools.check_source_control_hygiene import check_source_control_hygiene as _check
 
     return _check()
 

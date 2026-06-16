@@ -52,9 +52,9 @@ reports/daily_health/latest_daily_health.*
 .DS_Store
 Thumbs.db
 
-# Model artifacts — only models/active/ is tracked
-# Production models in models/active/ are versioned in git.
-# All other model paths (training candidates, archives, caches, per-run state) are untracked.
+# Model artifacts — local runtime outputs (not source control)
+# Legacy baseline tickers may remain tracked in git history; new scheduler/training
+# outputs under models/active* are local runtime only — see governance/docs/SOURCE_CONTROL_HYGIENE.md
 models/parallel/
 models/cascade/
 models/_artifact_archive/
@@ -65,6 +65,10 @@ models/arch_eval_proof.json
 models/eval_dashboard_metrics.json
 models/realized_contract_eval_aggregate.json
 models/arch_competition/
+models/active/
+models/active_5c/
+models/active_15c/
+models/active_60c/
 
 # Benchmark and runtime logs
 benchmark_logs/
@@ -92,20 +96,30 @@ governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv
 # Operator/tool dry-run audits (local only)
 governance/audits/backfill_et_clock_from_ts_utc_v1_*.json
 
-# Model artifacts — only models/active*/ are tracked
-# Tracked production paths:
-#   models/active/        (default fallback active)
-#   models/active_5c/     (horizon-specific active)
-#   models/active_15c/
-#   models/active_60c/
-# All other paths under models/ (candidate dirs, archives, caches, legacy flat files, run outputs, quarantine snapshots) are untracked.
+# Local auth / secrets (Schwab OAuth redirect capture — never commit)
+_schwab_auth_url.txt
 
+# Local databases and backups (operator snapshots — not source)
+backups/db/*
+!backups/db/.gitkeep
+calibration/trading_data.db
+
+# Logs and local scoreboard reports
+logs/
+reports/daily_scoreboard/
+
+# Local analysis / audit scratch outputs (repo root)
+feature_ablation_universe.xlsx
+feature_analysis.xlsx
+feature_consolidated_full.xlsx
+enforce_all_out.txt
+
+# Local timing probes (repo-root scratch — not production tooling)
+timing_probe.py
+timing_probe2.py
+
+# Static design mockups (not wired to production; local review only)
+static/redesign_mockup.html
+
+# Remaining model paths (candidates, archives, caches, run outputs) — not source
 models/**
-!models/active/
-!models/active/**
-!models/active_5c/
-!models/active_5c/**
-!models/active_15c/
-!models/active_15c/**
-!models/active_60c/
-!models/active_60c/**

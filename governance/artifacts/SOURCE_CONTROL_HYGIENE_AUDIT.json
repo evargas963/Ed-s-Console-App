@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "policy_doc": "governance/docs/SOURCE_CONTROL_HYGIENE.md",
+  "checker_module": "tools/check_source_control_hygiene.py",
+  "audit_date": "2026-06-11",
+  "required_gitignore_markers": [
+    "_schwab_auth_url.txt",
+    "backups/db/*",
+    "calibration/trading_data.db",
+    "logs/",
+    "reports/daily_scoreboard/",
+    "models/active/",
+    "models/active_5c/",
+    "models/active_15c/",
+    "models/active_60c/",
+    "feature_ablation_universe.xlsx",
+    "feature_analysis.xlsx",
+    "feature_consolidated_full.xlsx",
+    "enforce_all_out.txt",
+    "timing_probe.py",
+    "timing_probe2.py",
+    "static/redesign_mockup.html"
+  ],
+  "classifications": [
+    {
+      "path": "_schwab_auth_url.txt",
+      "category": "local_secret_or_auth",
+      "disposition": "gitignore"
+    },
+    {
+      "path": "backups/db/*.db",
+      "category": "database_backup",
+      "disposition": "gitignore"
+    },
+    {
+      "path": "backups/db/*_manifest.json",
+      "category": "database_backup",
+      "disposition": "gitignore"
+    },
+    {
+      "path": "backups/db/.gitkeep",
+      "category": "source_should_track",
+      "disposition": "track"
+    },
+    {
+      "path": "calibration/trading_data.db",
+      "category": "generated_runtime_artifact",
+      "disposition": "gitignore"
+    },
+    {
+      "path": "enforce_all_out.txt",
+      "category": "analysis_output",
+      "disposition": "gitignore"
+    },
+    {
+      "path": "feature_ablation_universe.xlsx",
+      "category": "analysis_output",
+      "disposition": "gitignore"
+    },
+    {
+      "path": "feature_analysis.xlsx",
+      "category": "analysis_output",
+      "disposition": "gitignore"
+    },
+    {
+      "path": "feature_consolidated_full.xlsx",
+      "category": "analysis_output",
+      "disposition": "gitignore"
+    },
+    {
+      "path": "logs/",
+      "category": "generated_runtime_artifact",
+      "disposition": "gitignore"
+    },
+    {
+      "path": "models/active/{local_ticker}/",
+      "category": "model_binary_output",
+      "disposition": "gitignore",
+      "note": "New scheduler outputs (GOOG, MET, MRVL, NFLX, PCG, PLTR, SMCI, TSL, etc.)"
+    },
+    {
+      "path": "models/active_5c/{local_ticker}/",
+      "category": "model_binary_output",
+      "disposition": "gitignore"
+    },
+    {
+      "path": "models/active_15c/{local_ticker}/",
+      "category": "model_binary_output",
+      "disposition": "gitignore"
+    },
+    {
+      "path": "models/active_60c/{local_ticker}/",
+      "category": "model_binary_output",
+      "disposition": "gitignore"
+    },
+    {
+      "path": "models/active/{baseline_ticker}/",
+      "category": "source_should_track",
+      "disposition": "track_historical_only",
+      "note": "Legacy baseline tickers already in git (SPY, QQQ, IWM, AAPL, ...); new outputs gitignored"
+    },
+    {
+      "path": "reports/daily_scoreboard/",
+      "category": "local_report",
+      "disposition": "gitignore"
+    },
+    {
+      "path": "static/redesign_mockup.html",
+      "category": "scratch_probe",
+      "disposition": "gitignore",
+      "note": "Static design mockup v2 — not wired to production; delete freely per file header"
+    },
+    {
+      "path": "timing_probe.py",
+      "category": "scratch_probe",
+      "disposition": "gitignore"
+    },
+    {
+      "path": "timing_probe2.py",
+      "category": "scratch_probe",
+      "disposition": "gitignore"
+    }
+  ],
+  "intentionally_tracked": [
+    "backups/db/.gitkeep",
+    "data/trading_calendar/us_equities.json",
+    "schwab_field_inventory/schwab_field_dictionary.csv",
+    "governance/artifacts/*.json (governed evidence artifacts)"
+  ],
+  "manual_review_required": [],
+  "forbidden_untracked_count": 0,
+  "forbidden_untracked_sample": [],
+  "git_status_clean": true
+}
