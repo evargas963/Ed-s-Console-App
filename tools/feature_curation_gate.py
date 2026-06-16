@@ -1010,8 +1010,11 @@ def audit_ablation_score_path_bias() -> dict:
     }
 
 
+_REGISTERED_MANIFEST_INGEST_TIERS = frozenset({"REGISTERED_UNIVERSE", "REGISTERED_CONFLUENCE"})
+
+
 def reconcile_manifest_ingest_status_to_db_wire(manifest: dict, db_path: str) -> dict:
-    """Re-stamp manifest ingest_status from DB wire authority (catalog rows retained; status is wire truth)."""
+    """Re-stamp manifest ingest_status: registered ML cone vs DB-wire Schwab/snapshot candidates."""
     wire = ablation_db_wire_ablatable_columns(db_path)
     for g in manifest.get("groups") or []:
         if g.get("disposition") != "ABLATE":
@@ -1019,7 +1022,16 @@ def reconcile_manifest_ingest_status_to_db_wire(manifest: dict, db_path: str) ->
         col = _atomic_column_for_group(g)
         if not col:
             continue
-        g["ingest_status"] = "in_cone" if col in wire else "not_wired"
+        tier = str(g.get("catalog_tier") or "")
+        if tier in _REGISTERED_MANIFEST_INGEST_TIERS:
+            # engineer_features / sequence encoders consume these even when not snapshot columns
+            g["ingest_status"] = "in_cone"
+        elif col in wire:
+            g["ingest_status"] = "in_cone"
+        elif tier == "SNAPSHOT_EXPANSION" and g.get("ingest_status") == "in_snapshot":
+            continue
+        else:
+            g["ingest_status"] = "not_wired"
     return manifest
 
 

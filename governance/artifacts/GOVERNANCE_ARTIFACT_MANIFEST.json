@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "artifact": "governance/artifacts/GOVERNANCE_ARTIFACT_MANIFEST.json",
-  "generated_at_utc": "2026-06-16T03:10:08+00:00",
+  "generated_at_utc": "2026-06-16T23:28:01+00:00",
   "generated_by": "tools/governance_mutation_detection.py",
   "entries": [
     {

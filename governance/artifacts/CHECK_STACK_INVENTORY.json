@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "phase": "3I-CheckStack",
-  "generated_at_utc": "2026-06-16T19:47:59+00:00",
+  "generated_at_utc": "2026-06-16T23:28:00+00:00",
   "policy": "governance/docs/CHECK_STACK_RIGHTSIZING.md",
   "runtime_budgets_seconds": {
     "precommit_normal": 60,
@@ -25,7 +25,7 @@
       "recommendation": "candidate_for_retier and make_incremental \u2014 do not remove checks without risk proof"
     }
   ],
-  "check_count": -1,
+  "check_count": 62,
   "duplication_analysis": [
     {
       "check_a": "prepush-fast-gate",
@@ -1350,6 +1350,26 @@
       "scope": "repo-wide static",
       "files_or_modules_covered": "full repo",
       "risk_addressed": "governance generated artifacts clean",
+      "evidence_artifact": "governance/artifacts/FIX_EVERYTHING_WE_TOUCH_PROFILE.json",
+      "must_run_precommit": false,
+      "must_run_prepush": true,
+      "must_run_ci": true,
+      "can_be_cached": false,
+      "can_be_incremental": false,
+      "can_be_parallelized": false,
+      "can_be_removed": false,
+      "removal_risk": "high",
+      "recommendation": "keep_in_prepush",
+      "overlap_with_other_checks": []
+    },
+    {
+      "check_id": "check_ci_tooling_dependencies",
+      "command": "check_fix_everything_we_touch.py::check_ci_tooling_dependencies",
+      "tier": 2,
+      "runtime_seconds": null,
+      "scope": "repo-wide static",
+      "files_or_modules_covered": "full repo",
+      "risk_addressed": "ci tooling dependencies",
       "evidence_artifact": "governance/artifacts/FIX_EVERYTHING_WE_TOUCH_PROFILE.json",
       "must_run_precommit": false,
       "must_run_prepush": true,

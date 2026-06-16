@@ -2,7 +2,7 @@
 
 **Scope:** Phase 3I — inventory, tier policy, duplication analysis, runtime budgets. No check removal in this phase.
 
-Generated: `2026-06-16T19:47:59+00:00`
+Generated: `2026-06-16T23:28:00+00:00`
 
 ## Runtime budget targets (seconds)
 

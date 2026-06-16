@@ -1039,12 +1039,18 @@ def check_zero_bias_ablation_contract() -> list[str]:
         tier = str(g.get("catalog_tier") or "")
         if tier.startswith("REGISTERED"):
             reg_atomic_cols.add(col)
+        registered_ml_cone = tier in ("REGISTERED_UNIVERSE", "REGISTERED_CONFLUENCE") and col in live_union
+        must_be_in_cone = registered_ml_cone or (bool(db_wire) and col in db_wire)
         if db_wire:
-            if g.get("ingest_status") == "in_cone" and col not in db_wire:
+            if (
+                g.get("ingest_status") == "in_cone"
+                and col not in db_wire
+                and not registered_ml_cone
+            ):
                 mislabeled_in_cone += 1
-            if g.get("ingest_status") == "not_wired" and col in db_wire:
+            if g.get("ingest_status") == "not_wired" and must_be_in_cone:
                 mislabeled_not_wired += 1
-        elif g.get("ingest_status") == "not_wired" and col in live_union:
+        elif g.get("ingest_status") == "not_wired" and registered_ml_cone:
             mislabeled_not_wired += 1
     if missing_atomic:
         errors.append(
@@ -1057,7 +1063,8 @@ def check_zero_bias_ablation_contract() -> list[str]:
         )
     if mislabeled_not_wired:
         errors.append(
-            f"BIAS: {mislabeled_not_wired} not_wired groups are on DB wire — ingest_status must be in_cone"
+            f"BIAS: {mislabeled_not_wired} not_wired groups belong in the ML/DB wire cone — "
+            f"ingest_status must be in_cone"
         )
     try:
         import lstm_data

@@ -1,6 +1,6 @@
 {
   "schema_version": "1",
-  "generated_at": "2026-06-12T11:25:06.159535+00:00",
+  "generated_at": "2026-06-16T23:27:58.005131+00:00",
   "schwab_dictionary_path": "schwab_field_inventory\\schwab_field_dictionary.csv",
   "schwab_field_count": 2393,
   "tier_counts": {

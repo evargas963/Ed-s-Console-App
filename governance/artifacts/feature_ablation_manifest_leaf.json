@@ -104,7 +104,7 @@
       "atomic_column": "bid_ask_imbalance",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -113,7 +113,7 @@
       "atomic_column": "body_range_ratio",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -131,7 +131,7 @@
       "atomic_column": "candle_body_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -140,7 +140,7 @@
       "atomic_column": "candle_range_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -149,7 +149,7 @@
       "atomic_column": "candle_volume_log",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -158,7 +158,7 @@
       "atomic_column": "cat_candle_direction",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -167,7 +167,7 @@
       "atomic_column": "cat_charm_direction",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -176,7 +176,7 @@
       "atomic_column": "cat_charm_magnitude",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -185,7 +185,7 @@
       "atomic_column": "cat_combined_conviction",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -194,7 +194,7 @@
       "atomic_column": "cat_combined_signal",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -203,7 +203,7 @@
       "atomic_column": "cat_iv_direction",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -212,7 +212,7 @@
       "atomic_column": "cat_liquidity_behavior_label",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -221,7 +221,7 @@
       "atomic_column": "cat_pressure_label",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -230,7 +230,7 @@
       "atomic_column": "cat_pressure_trend",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -239,7 +239,7 @@
       "atomic_column": "cat_prev_zone",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -248,7 +248,7 @@
       "atomic_column": "cat_session_bucket",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -257,7 +257,7 @@
       "atomic_column": "cat_vix_bucket",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -266,7 +266,7 @@
       "atomic_column": "cat_vwap_side",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -275,7 +275,7 @@
       "atomic_column": "cat_zone",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -284,7 +284,7 @@
       "atomic_column": "cf_alignment_score",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_CONFLUENCE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -293,7 +293,7 @@
       "atomic_column": "cf_greek_support",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_CONFLUENCE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -302,7 +302,7 @@
       "atomic_column": "cf_momentum_5m",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_CONFLUENCE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -311,7 +311,7 @@
       "atomic_column": "cf_structure_15m",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_CONFLUENCE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -320,7 +320,7 @@
       "atomic_column": "cf_trend_1h",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_CONFLUENCE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -329,7 +329,7 @@
       "atomic_column": "cf_vwap_distance_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_CONFLUENCE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -338,7 +338,7 @@
       "atomic_column": "charm_delta_agree",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -365,7 +365,7 @@
       "atomic_column": "cross_avg_chg",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -374,7 +374,7 @@
       "atomic_column": "cross_std_chg",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -383,7 +383,7 @@
       "atomic_column": "delta_positive",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -392,7 +392,7 @@
       "atomic_column": "dgex",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -401,7 +401,7 @@
       "atomic_column": "dgex_positive",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -410,7 +410,7 @@
       "atomic_column": "dist_call_delta_wall_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -419,7 +419,7 @@
       "atomic_column": "dist_call_gamma_wall_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -428,7 +428,7 @@
       "atomic_column": "dist_call_oi_wall_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -437,7 +437,7 @@
       "atomic_column": "dist_call_vanna_wall_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -446,7 +446,7 @@
       "atomic_column": "dist_delta_inflection_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -455,7 +455,7 @@
       "atomic_column": "dist_gamma_inflection_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -464,7 +464,7 @@
       "atomic_column": "dist_put_delta_wall_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -473,7 +473,7 @@
       "atomic_column": "dist_put_gamma_wall_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -482,7 +482,7 @@
       "atomic_column": "dist_put_oi_wall_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -491,7 +491,7 @@
       "atomic_column": "dist_put_vanna_wall_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -500,7 +500,7 @@
       "atomic_column": "gamma_positive",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -518,7 +518,7 @@
       "atomic_column": "imbalance_buy_pressure",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -527,7 +527,7 @@
       "atomic_column": "imbalance_sell_pressure",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -594,7 +594,7 @@
       "atomic_column": "minutes_since_open",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -612,7 +612,7 @@
       "atomic_column": "nearest_above_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -621,7 +621,7 @@
       "atomic_column": "nearest_below_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -666,7 +666,7 @@
       "atomic_column": "pin_width_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -747,7 +747,7 @@
       "atomic_column": "spy_iwm_align",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -765,7 +765,7 @@
       "atomic_column": "spy_qqq_align",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -783,7 +783,7 @@
       "atomic_column": "time_cos",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -792,7 +792,7 @@
       "atomic_column": "time_progress",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -801,7 +801,7 @@
       "atomic_column": "time_sin",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -855,7 +855,7 @@
       "atomic_column": "volume_ratio",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {
@@ -864,7 +864,7 @@
       "atomic_column": "vwap_dist_pct",
       "disposition": "ABLATE",
       "catalog_tier": "REGISTERED_UNIVERSE",
-      "ingest_status": "not_wired",
+      "ingest_status": "in_cone",
       "schwab_lineage": []
     },
     {

@@ -1034,6 +1034,62 @@ def test_zero_bias_transformer_ingest_mapping_is_5m_stream_only():
     assert "lstm_1m" not in mod.ZERO_BIAS_FEATURE_MODEL_INGEST_FAMILIES["transformer"]
 
 
+def test_reconcile_manifest_preserves_registered_engineered_in_cone():
+    """Registered engineer_features columns stay in_cone even when absent from DB wire."""
+    from tools.feature_curation_gate import reconcile_manifest_ingest_status_to_db_wire
+
+    manifest = {
+        "groups": [
+            {
+                "group_id": "reg__atomic__candle_body_pct",
+                "disposition": "ABLATE",
+                "atomic_column": "candle_body_pct",
+                "catalog_tier": "REGISTERED_UNIVERSE",
+                "ingest_status": "not_wired",
+            },
+            {
+                "group_id": "schwab__example_leaf",
+                "disposition": "ABLATE",
+                "atomic_column": "example_leaf",
+                "catalog_tier": "ML_ABLATION_CANDIDATE",
+                "ingest_status": "not_wired",
+            },
+        ]
+    }
+    out = reconcile_manifest_ingest_status_to_db_wire(manifest, db_path="__missing__.db")
+    by_id = {g["group_id"]: g for g in out["groups"]}
+    assert by_id["reg__atomic__candle_body_pct"]["ingest_status"] == "in_cone"
+    assert by_id["schwab__example_leaf"]["ingest_status"] == "not_wired"
+
+
+def test_zero_bias_ablation_contract_no_db_registered_not_wired(monkeypatch):
+    """CI path without DB: registered engineered features cannot stay not_wired."""
+    import json
+    from copy import deepcopy
+
+    real_path = mod.REPO_ROOT / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json"
+    payload = json.loads(real_path.read_text(encoding="utf-8"))
+    patched = deepcopy(payload)
+    for g in patched.get("groups") or []:
+        if g.get("group_id") == "reg__atomic__candle_body_pct":
+            g["ingest_status"] = "not_wired"
+            break
+    else:
+        raise AssertionError("expected reg__atomic__candle_body_pct in manifest")
+
+    monkeypatch.setattr("db.DB_PATH", mod.REPO_ROOT / "__missing_for_test__.db")
+    orig_read_text = Path.read_text
+
+    def _read_text(self, *args, **kwargs):
+        if self.resolve() == real_path.resolve():
+            return json.dumps(patched)
+        return orig_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", _read_text)
+    errs = mod.check_zero_bias_ablation_contract()
+    assert any("not_wired groups belong in the ML/DB wire cone" in e for e in errs)
+
+
 def test_ablation_manifest_generator_has_no_model_stamp_builder():
     """Generator source must not retain legacy compound model-stamp builders."""
     assert mod.check_ablation_manifest_generator_no_model_preassignment() == []
@@ -1414,7 +1470,20 @@ def test_ablation_grid_requires_all_seven_models_and_four_horizons():
     assert catalog_groups >= 280
     assert len(scoring) <= manifest_in_cone
     if dbp.is_file():
-        assert len(scoring) == manifest_in_cone
+        from tools.build_feature_assignment_matrix_v2 import atomic_column_for_manifest_group
+        from tools.feature_curation_gate import ablation_db_wire_ablatable_columns
+
+        wire = ablation_db_wire_ablatable_columns(str(dbp))
+        db_wire_in_cone = len(
+            [
+                g
+                for g in grid_groups
+                if g.get("ingest_status") == "in_cone"
+                and atomic_column_for_manifest_group(g) in wire
+            ]
+        )
+        assert len(scoring) == db_wire_in_cone
+        assert manifest_in_cone >= len(scoring)
     assert len(specs) == len(scoring) * len(FULL_STACK_MODEL_LAYERS) * len(STAGE3_ABLATION_HORIZONS)
     assert whole_stack_catalog_cell_target(manifest) == catalog_groups * 7 * 4
     assert whole_stack_runnable_cell_target(manifest) == accounting["runnable_target"]
