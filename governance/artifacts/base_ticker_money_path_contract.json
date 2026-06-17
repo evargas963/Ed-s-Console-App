@@ -63,6 +63,6 @@
       "snapshots vs normalized mismatch",
       "calibration logger filtering QQQ/IWM"
     ],
-    "next_fix_direction": "Ensure background logger + base-ticker Tier C warm sustain full _fetch_state snapshot INSERT at SPY-parity cadence for all BASE_MONEY_PATH_TICKERS — file: server.py _logger_loop / _fetch_state / UI_MAXIMIZE panel warm."
+    "next_fix_direction": "Dedicated _base_money_path_logger_loop in server.py (2026-06-17): SPY/QQQ/IWM full _fetch_state at ~60s interval independent of UI-active ticker; should_skip_background_full_snapshot never skips base anchors."
   }
 }

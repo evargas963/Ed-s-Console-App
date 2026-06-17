@@ -10,6 +10,7 @@ Policy artifact: governance/artifacts/base_ticker_money_path_contract.json
 from __future__ import annotations
 
 import json
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,9 @@ _REPO_ROOT = Path(__file__).resolve().parent
 _CONTRACT_PATH = _REPO_ROOT / "governance" / "artifacts" / "base_ticker_money_path_contract.json"
 
 BASE_MONEY_PATH_TICKERS: tuple[str, ...] = TRAINING_ANCHOR_TICKERS
+
+# RTH full-pipeline capture cadence for base tickers (independent of UI-active symbol).
+DEFAULT_BASE_CAPTURE_INTERVAL_SEC = 60.0
 
 TRUST_GUEST_UNPROVEN = "guest_unproven"
 TRUST_PROMOTED_GUEST = "promoted_guest"
@@ -55,3 +59,27 @@ def ticker_trust_class(ticker: str, *, promoted: bool = False) -> str:
 
 def observability_thresholds() -> dict[str, Any]:
     return dict(load_base_ticker_contract()["rth_observability_thresholds"])
+
+
+def base_money_path_capture_interval_sec() -> float:
+    """Seconds between dedicated base-ticker capture cycles (~1 RTH snapshot/min per symbol)."""
+    raw = os.environ.get("ED_BASE_MONEY_PATH_CAPTURE_INTERVAL_SEC", "").strip()
+    if raw:
+        try:
+            v = float(raw)
+            if v > 0:
+                return v
+        except ValueError:
+            pass
+    return DEFAULT_BASE_CAPTURE_INTERVAL_SEC
+
+
+def should_skip_background_full_snapshot(
+    ticker: str,
+    panel_auto_symbols: frozenset[str],
+) -> bool:
+    """Base money-path tickers always receive full _fetch_state snapshot logging."""
+    t = (ticker or "").upper()
+    if is_base_money_path_ticker(t):
+        return False
+    return t in panel_auto_symbols
