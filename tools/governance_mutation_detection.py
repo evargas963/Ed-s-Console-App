@@ -25,13 +25,21 @@ GOVERNANCE_ARTIFACT_PATHS: tuple[str, ...] = (
     "governance/artifacts/RUNTIME_MUTATION_REGISTER.json",
 )
 
+# Manifest pins use LF-normalized bytes for governance/artifacts/*.json so Windows
+# working-tree CRLF and Linux CI checkout (git eol=lf) produce identical SHA256.
+_GOVERNANCE_JSON_PREFIX = "governance/artifacts/"
+
+
+def _governance_artifact_bytes(path: Path) -> bytes:
+    data = path.read_bytes()
+    rel = str(path.relative_to(REPO_ROOT)).replace("\\", "/")
+    if rel.startswith(_GOVERNANCE_JSON_PREFIX) and path.suffix == ".json":
+        data = data.replace(b"\r\n", b"\n")
+    return data
+
 
 def _sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    return hashlib.sha256(_governance_artifact_bytes(path)).hexdigest()
 
 
 def build_governance_manifest(*, generated_by: str = "tools/governance_mutation_detection.py") -> dict[str, Any]:
@@ -41,12 +49,13 @@ def build_governance_manifest(*, generated_by: str = "tools/governance_mutation_
         if not p.is_file():
             entries.append({"path": rel, "present": False, "sha256": None})
             continue
+        norm = _governance_artifact_bytes(p)
         entries.append(
             {
                 "path": rel,
                 "present": True,
-                "sha256": _sha256_file(p),
-                "size_bytes": p.stat().st_size,
+                "sha256": hashlib.sha256(norm).hexdigest(),
+                "size_bytes": len(norm),
             }
         )
     return {
@@ -123,5 +132,33 @@ def verify_decision_record_integrity(db_path: Path | str) -> dict[str, Any]:
 def write_governance_manifest() -> dict[str, Any]:
     ART.mkdir(parents=True, exist_ok=True)
     manifest = build_governance_manifest()
-    MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    MANIFEST_PATH.write_bytes(
+        (json.dumps(manifest, indent=2) + "\n").encode("utf-8")
+    )
     return manifest
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    p = argparse.ArgumentParser(description="Governance artifact manifest verify/write.")
+    p.add_argument(
+        "--write",
+        action="store_true",
+        help="Regenerate GOVERNANCE_ARTIFACT_MANIFEST.json from on-disk artifacts.",
+    )
+    args = p.parse_args(argv)
+    if args.write:
+        write_governance_manifest()
+        return 0
+    result = verify_governance_manifest()
+    if not result.get("ok"):
+        import sys
+
+        sys.stderr.write(json.dumps(result, indent=2) + "\n")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

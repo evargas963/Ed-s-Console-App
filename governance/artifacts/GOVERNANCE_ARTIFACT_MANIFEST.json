@@ -1,50 +1,50 @@
 {
   "schema_version": 1,
   "artifact": "governance/artifacts/GOVERNANCE_ARTIFACT_MANIFEST.json",
-  "generated_at_utc": "2026-06-16T23:28:01+00:00",
+  "generated_at_utc": "2026-06-17T00:29:56+00:00",
   "generated_by": "tools/governance_mutation_detection.py",
   "entries": [
     {
       "path": "governance/artifacts/UNIVERSAL_BYPASS_REGISTER.json",
       "present": true,
-      "sha256": "11cc88c33e7e873ea15162a58591743028f6ebecb9f8ef71c19a56e64e145e50",
-      "size_bytes": 51675
+      "sha256": "661954eb58de61be0b3c14441f9353d7c589936326730f01bd19ff4cae519549",
+      "size_bytes": 50207
     },
     {
       "path": "governance/artifacts/DECISION_PATH_REGISTRY.json",
       "present": true,
-      "sha256": "cad172b0ebd2bc93a0470c6219d70f22a1255e80b8065c67294987991d345260",
-      "size_bytes": 10029
+      "sha256": "afd0b47384a697d7c738114638a86a43b3e49546a25da8ac0bf6cad84af33765",
+      "size_bytes": 9761
     },
     {
       "path": "governance/artifacts/REMOTE_ENFORCEMENT_EVIDENCE.json",
       "present": true,
-      "sha256": "178536407049a19d8b00f9b2e1f7604693fe2dc5c681d58dfd6b3917b3161d93",
-      "size_bytes": 636
+      "sha256": "31b5dc32001bbe4850c7c8e22a6c31aed6a70c12366d10381617fb2980161032",
+      "size_bytes": 615
     },
     {
       "path": "governance/artifacts/INSTITUTIONAL_AUDIT_PHASE3D_EVIDENCE.json",
       "present": true,
-      "sha256": "46701ccbc599cd619b1d9d85a60e9ffc9e940bd8ef38b15e5d515e8744b3711a",
-      "size_bytes": 2367
+      "sha256": "aec0c2b0200ad407a6e4ee89b3ae60d0c3c546dbfcf509c7d04e23f8f7f6fe79",
+      "size_bytes": 2313
     },
     {
       "path": "governance/artifacts/INSTITUTIONAL_AUDIT_PHASE3C_EVIDENCE.json",
       "present": true,
-      "sha256": "689f93fd94ddcaa8a9269266ec732440739332112f21869dfbb693868c8dde61",
-      "size_bytes": 1636
+      "sha256": "4c290589415992735f30eee430b1347608f6e10fa9c22b4e4606ecc5128b0fec",
+      "size_bytes": 1594
     },
     {
       "path": "governance/artifacts/GOVERNANCE_MUTATION_AUDIT.json",
       "present": true,
-      "sha256": "b6629efa923b583d109fac59a17ffe1516ef00b8ffbc9aebd15bb6de13516eaa",
-      "size_bytes": 3064
+      "sha256": "e9a090b96e90758c30ea130f2122a3e689413f820e0915d953a745d2100207e1",
+      "size_bytes": 2986
     },
     {
       "path": "governance/artifacts/RUNTIME_MUTATION_REGISTER.json",
       "present": true,
-      "sha256": "1d1ec5dcd715e3dd4a4279f669a87f5db2d4eb0b6d25396d5f7be7e3b4e0ee22",
-      "size_bytes": 27317
+      "sha256": "6fb651ebcac550d7cf296c0f5f728d47d421dd76b12d0efcfc10ab7bb481d3ad",
+      "size_bytes": 26555
     }
   ]
 }
