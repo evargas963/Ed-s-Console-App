@@ -34,18 +34,18 @@
   "external_enforcement_proven": false,
   "same_actor_mutation_status": "open",
   "remote_evidence": {
-    "evidence_source": null,
-    "evidence_timestamp": null,
-    "repository": null,
+    "evidence_source": "gh api + gh run list",
+    "evidence_timestamp": "2026-06-17T03:35:41+00:00",
+    "repository": "evargas963/Ed-s-Console-App",
     "protected_branch": "main",
     "required_status_checks": [],
     "required_reviews": null,
     "allows_force_pushes": null,
     "allows_deletions": null,
     "bypass_actors": [],
-    "verification_method": "pending",
-    "verified_by": null
+    "verification_method": "github_cli",
+    "verified_by": "tools/verify_remote_enforcement.py"
   },
   "verify_remote_enforcement_script": true,
-  "generated": "2026-06-15"
+  "generated": "2026-06-16"
 }

@@ -14,26 +14,29 @@
   "pull_request_review_required_on_github": false,
   "pr_review_required_on_github": false,
   "codeowners_exists": true,
-  "governance_critical_files_count": 37,
+  "governance_critical_files_count": 46,
   "no_verify_status": "open",
   "same_actor_mutation_status": "open",
   "external_enforcement_status": "required_not_proven",
+  "operator_action_required": true,
+  "objective_audit_check_name": "objective-audit",
+  "objective_audit_check_name_verified": true,
   "remote_evidence": {
-    "evidence_source": null,
-    "evidence_timestamp": null,
-    "repository": null,
+    "evidence_source": "gh api + gh run list",
+    "evidence_timestamp": "2026-06-17T03:35:41+00:00",
+    "repository": "evargas963/Ed-s-Console-App",
     "protected_branch": "main",
     "required_status_checks": [],
     "required_reviews": null,
     "allows_force_pushes": null,
     "allows_deletions": null,
     "bypass_actors": [],
-    "verification_method": "pending",
-    "verified_by": null
+    "verification_method": "github_cli",
+    "verified_by": "tools/verify_remote_enforcement.py"
   },
   "phase3d_checker_tests": {
     "exit_code": 0,
-    "summary": "16 passed in 0.83s",
+    "summary": "17 passed in 3.34s",
     "command": "C:\\Users\\evarg\\AppData\\Local\\Programs\\Python\\Python313\\python.exe -m pytest tests/test_branch_protection_proof.py tests/test_required_status_checks.py tests/test_governance_critical_files.py tests/test_no_verify_resistance.py tests/test_governance_self_protection.py tests/test_remote_enforcement_evidence.py -q"
   },
   "maturity_changes_proposed": [],
@@ -45,10 +48,10 @@
   ],
   "remaining_gaps": [
     "GitHub branch protection not API/CLI verified",
-    "objective-audit not proven as required GitHub status check",
+    "Objective Audit GitHub check name verified as 'objective-audit' \u2014 main branch protection must require this check (operator_action_required until API proof)",
     "--no-verify remains open until CI + branch protection API verified",
     "Same-actor governance mutation without proven PR review enforcement",
     "Manual DB/filesystem bypasses remain open (UNIVERSAL_BYPASS_REGISTER)"
   ],
-  "generated": "2026-06-15"
+  "generated": "2026-06-16"
 }

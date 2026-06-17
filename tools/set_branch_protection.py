@@ -20,8 +20,8 @@ import urllib.error
 import urllib.request
 
 DEFAULT_REPO = "evargas963/Ed-s-Console-App"
-# Required CI checks (job names from the workflows). A merge is blocked unless all pass.
-REQUIRED_CHECKS = ["pytest-full", "hardening", "schwab-csv-first", "schwab-v4-closure"]
+# Branch protection required check — must match jobs.objective-audit.name in objective-audit.yml
+REQUIRED_CHECKS = ["objective-audit"]
 
 
 def _api(method: str, url: str, token: str, body: dict | None = None) -> tuple[int, str]:
@@ -62,7 +62,7 @@ def main() -> int:
     payload = {
         "required_status_checks": {"strict": True, "contexts": checks},
         "enforce_admins": True,
-        "required_pull_request_reviews": {"required_approving_review_count": 0},
+        "required_pull_request_reviews": {"required_approving_review_count": 1},
         "restrictions": None,
         "allow_force_pushes": False,
         "allow_deletions": False,

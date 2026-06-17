@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
   "artifact": "governance/artifacts/REMOTE_ENFORCEMENT_EVIDENCE.json",
-  "verification_method": "pending",
-  "evidence_source": null,
-  "evidence_timestamp": null,
-  "repository": null,
+  "verification_method": "github_cli",
+  "evidence_source": "gh api + gh run list",
+  "evidence_timestamp": "2026-06-17T03:35:41+00:00",
+  "repository": "evargas963/Ed-s-Console-App",
   "protected_branch": "main",
   "required_status_checks": [],
   "objective_audit_required": false,
@@ -13,9 +13,96 @@
   "allows_force_pushes": null,
   "allows_deletions": null,
   "bypass_actors": [],
-  "verified_by": null,
+  "verified_by": "tools/verify_remote_enforcement.py",
   "operator_attestation": false,
-  "github_api_evidence": null,
+  "github_api_evidence": {
+    "repo_view": {
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "nameWithOwner": "evargas963/Ed-s-Console-App"
+    },
+    "branch_protection": {
+      "_error": "gh: Branch not protected (HTTP 404)",
+      "_exit_code": 1
+    },
+    "rulesets": [],
+    "objective_audit_runs": [
+      {
+        "conclusion": "success",
+        "databaseId": 27662986304,
+        "headBranch": "feature/institutional-key-levels",
+        "status": "completed"
+      },
+      {
+        "conclusion": "failure",
+        "databaseId": 27659675277,
+        "headBranch": "feature/institutional-key-levels",
+        "status": "completed"
+      },
+      {
+        "conclusion": "failure",
+        "databaseId": 27658325957,
+        "headBranch": "feature/institutional-key-levels",
+        "status": "completed"
+      },
+      {
+        "conclusion": "failure",
+        "databaseId": 27656868849,
+        "headBranch": "feature/institutional-key-levels",
+        "status": "completed"
+      },
+      {
+        "conclusion": "failure",
+        "databaseId": 27654343976,
+        "headBranch": "feature/institutional-key-levels",
+        "status": "completed"
+      }
+    ],
+    "objective_audit_run_inspection": {
+      "run_id": 27662986304,
+      "repository": "evargas963/Ed-s-Console-App",
+      "workflow_name": "Objective Audit",
+      "workflow_path": ".github/workflows/objective-audit.yml",
+      "status": "completed",
+      "conclusion": "success",
+      "head_branch": "feature/institutional-key-levels",
+      "head_sha": "b084e71f20a1d4e55bc4ef4c7ff3b99e0db1cdcf",
+      "jobs": [
+        {
+          "name": "objective-audit",
+          "conclusion": "success",
+          "status": "completed"
+        }
+      ],
+      "check_runs": [
+        {
+          "name": "pytest-full",
+          "status": "completed",
+          "conclusion": "failure"
+        },
+        {
+          "name": "objective-audit",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "schwab-csv-first",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "hardening",
+          "status": "completed",
+          "conclusion": "failure"
+        }
+      ],
+      "status_check_name_for_branch_protection": "objective-audit"
+    }
+  },
   "branch_protection_verified": false,
-  "required_checks_enforced": false
+  "required_checks_enforced": false,
+  "operator_action_required": true,
+  "objective_audit_check_name": "objective-audit",
+  "objective_audit_check_name_verified": true
 }

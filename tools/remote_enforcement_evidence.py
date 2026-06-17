@@ -9,6 +9,8 @@ import json
 import os
 import shutil
 import subprocess
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -37,6 +39,9 @@ REMOTE_EVIDENCE_FIELDS: tuple[str, ...] = (
 )
 
 OBJECTIVE_AUDIT_CHECK = "objective-audit"
+DEFAULT_REPO = "evargas963/Ed-s-Console-App"
+# Successful Objective Audit on feature/institutional-key-levels @ b084e71 (operator milestone).
+DEFAULT_OBJECTIVE_AUDIT_RUN_ID = 27662986304
 
 
 def _parse_rulesets_enforcement(rulesets: Any) -> dict[str, Any]:
@@ -114,6 +119,9 @@ def empty_remote_evidence() -> dict[str, Any]:
         "github_api_evidence": None,
         "branch_protection_verified": False,
         "required_checks_enforced": False,
+        "operator_action_required": False,
+        "objective_audit_check_name": None,
+        "objective_audit_check_name_verified": False,
     }
 
 
@@ -161,6 +169,260 @@ def _resolve_gh_executable() -> Optional[str]:
 
 def _gh_available() -> bool:
     return _resolve_gh_executable() is not None
+
+
+def _github_token() -> Optional[str]:
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    return str(token).strip() if token and str(token).strip() else None
+
+
+def _github_rest_request(
+    method: str,
+    url: str,
+    *,
+    token: Optional[str] = None,
+    body: dict[str, Any] | None = None,
+) -> tuple[int, Any]:
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("User-Agent", "EdWebConsole-remote-enforcement")
+    req.add_header("X-GitHub-Api-Version", "2022-11-28")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            raw = resp.read().decode()
+            return resp.status, json.loads(raw) if raw.strip() else {}
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode(errors="replace")
+        try:
+            payload: Any = json.loads(raw) if raw.strip() else {"message": exc.reason}
+        except json.JSONDecodeError:
+            payload = {"message": raw or exc.reason}
+        payload["_http_status"] = exc.code
+        return exc.code, payload
+    except (OSError, json.JSONDecodeError, urllib.error.URLError) as exc:
+        return 0, {"_error": str(exc)}
+
+
+def fetch_public_actions_run_inspection(
+    run_id: int | str,
+    *,
+    repo: str = DEFAULT_REPO,
+) -> dict[str, Any]:
+    """Public GitHub Actions API — discover exact status check name (no auth required for public repos)."""
+    status, run = _github_rest_request(
+        "GET", f"https://api.github.com/repos/{repo}/actions/runs/{run_id}"
+    )
+    if status != 200 or not isinstance(run, dict):
+        return {
+            "run_id": int(run_id),
+            "repository": repo,
+            "fetch_error": run if isinstance(run, dict) else {"_http_status": status},
+        }
+
+    _, jobs_payload = _github_rest_request(
+        "GET", f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/jobs"
+    )
+    jobs = (jobs_payload.get("jobs") or []) if isinstance(jobs_payload, dict) else []
+    head_sha = str(run.get("head_sha") or "")
+    check_runs: list[dict[str, Any]] = []
+    if head_sha:
+        _, cr_payload = _github_rest_request(
+            "GET", f"https://api.github.com/repos/{repo}/commits/{head_sha}/check-runs"
+        )
+        if isinstance(cr_payload, dict):
+            check_runs = [cr for cr in (cr_payload.get("check_runs") or []) if isinstance(cr, dict)]
+
+    status_check_name: str | None = None
+    for cr in check_runs:
+        if str(cr.get("name") or "") == OBJECTIVE_AUDIT_CHECK:
+            status_check_name = OBJECTIVE_AUDIT_CHECK
+            break
+    if status_check_name is None:
+        for job in jobs:
+            if str(job.get("name") or "") == OBJECTIVE_AUDIT_CHECK:
+                status_check_name = OBJECTIVE_AUDIT_CHECK
+                break
+
+    return {
+        "run_id": int(run_id),
+        "repository": repo,
+        "workflow_name": run.get("name"),
+        "workflow_path": run.get("path"),
+        "status": run.get("status"),
+        "conclusion": run.get("conclusion"),
+        "head_branch": run.get("head_branch"),
+        "head_sha": head_sha,
+        "jobs": [
+            {"name": j.get("name"), "conclusion": j.get("conclusion"), "status": j.get("status")}
+            for j in jobs
+        ],
+        "check_runs": [
+            {
+                "name": cr.get("name"),
+                "status": cr.get("status"),
+                "conclusion": cr.get("conclusion"),
+            }
+            for cr in check_runs
+        ],
+        "status_check_name_for_branch_protection": status_check_name,
+    }
+
+
+def _apply_branch_protection_payload(
+    evidence: dict[str, Any],
+    protection: Any,
+    rulesets: Any,
+) -> None:
+    if isinstance(protection, dict) and not protection.get("_error") and protection.get("_http_status") is None:
+        required_checks = [
+            str(c.get("context") or c)
+            for c in (protection.get("required_status_checks") or {}).get("checks") or []
+        ]
+        if not required_checks and protection.get("required_status_checks"):
+            contexts = (protection.get("required_status_checks") or {}).get("contexts") or []
+            required_checks = [str(c) for c in contexts]
+        evidence["required_status_checks"] = required_checks
+        evidence["objective_audit_required"] = OBJECTIVE_AUDIT_CHECK in required_checks
+        reviews = protection.get("required_pull_request_reviews") or {}
+        evidence["required_reviews"] = reviews.get("required_approving_review_count")
+        evidence["pr_review_required"] = bool(reviews)
+        evidence["allows_force_pushes"] = (protection.get("allow_force_pushes") or {}).get("enabled")
+        evidence["allows_deletions"] = (protection.get("allow_deletions") or {}).get("enabled")
+        bypass = protection.get("bypass_pull_request_allowances") or {}
+        actors: list[str] = []
+        for key in ("users", "teams", "apps"):
+            for item in bypass.get(key) or []:
+                label = item.get("login") or item.get("name") or item.get("slug") or str(item)
+                actors.append(f"{key}:{label}")
+        evidence["bypass_actors"] = actors
+        return
+
+    ruleset_info = _parse_rulesets_enforcement(rulesets)
+    if ruleset_info["required_status_checks"]:
+        evidence["required_status_checks"] = ruleset_info["required_status_checks"]
+        evidence["objective_audit_required"] = OBJECTIVE_AUDIT_CHECK in ruleset_info["required_status_checks"]
+    if ruleset_info["pr_review_required"]:
+        evidence["pr_review_required"] = True
+        evidence["required_reviews"] = ruleset_info["required_reviews"]
+    if ruleset_info["allows_force_pushes"] is False:
+        evidence["allows_force_pushes"] = False
+    if ruleset_info["allows_deletions"] is False:
+        evidence["allows_deletions"] = False
+
+
+def fetch_github_api_evidence(
+    protected_branch: str = "main",
+    *,
+    repo: str = DEFAULT_REPO,
+) -> dict[str, Any]:
+    """Fetch branch protection via GitHub REST API (GITHUB_TOKEN / GH_TOKEN)."""
+    token = _github_token()
+    evidence = empty_remote_evidence()
+    if not token:
+        evidence.update(
+            {
+                "verification_method": PENDING_METHOD,
+                "evidence_source": "github_api_no_token",
+                "operator_action_required": True,
+                "github_api_evidence": {
+                    "auth_error": "GITHUB_TOKEN or GH_TOKEN not set — cannot read branch protection",
+                },
+            }
+        )
+        return evidence
+
+    status, repo_body = _github_rest_request(
+        "GET", f"https://api.github.com/repos/{repo}", token=token
+    )
+    if status != 200 or not isinstance(repo_body, dict):
+        evidence.update(
+            {
+                "verification_method": PENDING_METHOD,
+                "evidence_source": "github_api_repo_error",
+                "operator_action_required": True,
+                "github_api_evidence": {"repo": repo_body},
+            }
+        )
+        return evidence
+
+    branch = protected_branch or str(repo_body.get("default_branch") or "main")
+    owner, name = repo.split("/", 1) if "/" in repo else ("", repo)
+    st_prot, protection = _github_rest_request(
+        "GET",
+        f"https://api.github.com/repos/{owner}/{name}/branches/{branch}/protection",
+        token=token,
+    )
+    _, rulesets = _github_rest_request(
+        "GET", f"https://api.github.com/repos/{owner}/{name}/rulesets", token=token
+    )
+
+    evidence.update(
+        {
+            "verification_method": "github_api",
+            "evidence_source": "github_rest_api",
+            "evidence_timestamp": _utc_now(),
+            "repository": repo,
+            "protected_branch": branch,
+            "verified_by": "tools/verify_remote_enforcement.py",
+            "github_api_evidence": {
+                "repo": repo_body,
+                "branch_protection": protection,
+                "rulesets": rulesets,
+                "branch_protection_http_status": st_prot,
+            },
+        }
+    )
+
+    if st_prot in (404, 401, 403):
+        evidence["operator_action_required"] = True
+    elif st_prot == 200:
+        _apply_branch_protection_payload(evidence, protection, rulesets)
+    else:
+        evidence["operator_action_required"] = True
+
+    evidence["branch_protection_verified"] = _protection_meets_minimum(evidence)
+    evidence["required_checks_enforced"] = (
+        evidence["branch_protection_verified"] and evidence.get("objective_audit_required") is True
+    )
+    if not evidence["branch_protection_verified"]:
+        evidence["operator_action_required"] = True
+    return evidence
+
+
+def fetch_github_evidence(
+    *,
+    protected_branch: str = "main",
+    repo: str = DEFAULT_REPO,
+    run_id: int | str | None = DEFAULT_OBJECTIVE_AUDIT_RUN_ID,
+) -> dict[str, Any]:
+    """GitHub CLI when available, else REST API with token; always attach public run inspection when run_id set."""
+    if _gh_available():
+        evidence = fetch_github_cli_evidence(protected_branch)
+        if evidence.get("repository"):
+            repo = str(evidence["repository"])
+    else:
+        evidence = fetch_github_api_evidence(protected_branch, repo=repo)
+
+    if run_id is not None:
+        inspection = fetch_public_actions_run_inspection(run_id, repo=repo)
+        gh_ev = dict(evidence.get("github_api_evidence") or {})
+        gh_ev["objective_audit_run_inspection"] = inspection
+        evidence["github_api_evidence"] = gh_ev
+        check_name = inspection.get("status_check_name_for_branch_protection")
+        if check_name:
+            evidence["objective_audit_check_name"] = check_name
+            evidence["objective_audit_check_name_verified"] = True
+        if not evidence.get("repository"):
+            evidence["repository"] = repo
+        if not evidence.get("evidence_timestamp"):
+            evidence["evidence_timestamp"] = _utc_now()
+
+    if not evidence.get("branch_protection_verified"):
+        evidence["operator_action_required"] = True
+    return evidence
 
 
 def _run_gh(args: list[str]) -> Optional[dict | list]:
@@ -226,45 +488,14 @@ def fetch_github_cli_evidence(protected_branch: str = "main") -> dict[str, Any]:
         }
     )
 
-    if isinstance(protection, dict) and not protection.get("_error"):
-        required_checks = [
-            str(c.get("context") or c)
-            for c in (protection.get("required_status_checks") or {}).get("checks") or []
-        ]
-        if not required_checks and protection.get("required_status_checks"):
-            contexts = (protection.get("required_status_checks") or {}).get("contexts") or []
-            required_checks = [str(c) for c in contexts]
-        evidence["required_status_checks"] = required_checks
-        evidence["objective_audit_required"] = OBJECTIVE_AUDIT_CHECK in required_checks
-        reviews = protection.get("required_pull_request_reviews") or {}
-        evidence["required_reviews"] = reviews.get("required_approving_review_count")
-        evidence["pr_review_required"] = bool(reviews)
-        evidence["allows_force_pushes"] = (protection.get("allow_force_pushes") or {}).get("enabled")
-        evidence["allows_deletions"] = (protection.get("allow_deletions") or {}).get("enabled")
-        bypass = protection.get("bypass_pull_request_allowances") or {}
-        actors: list[str] = []
-        for key in ("users", "teams", "apps"):
-            for item in bypass.get(key) or []:
-                label = item.get("login") or item.get("name") or item.get("slug") or str(item)
-                actors.append(f"{key}:{label}")
-        evidence["bypass_actors"] = actors
-    else:
-        ruleset_info = _parse_rulesets_enforcement(rulesets)
-        if ruleset_info["required_status_checks"]:
-            evidence["required_status_checks"] = ruleset_info["required_status_checks"]
-            evidence["objective_audit_required"] = OBJECTIVE_AUDIT_CHECK in ruleset_info["required_status_checks"]
-        if ruleset_info["pr_review_required"]:
-            evidence["pr_review_required"] = True
-            evidence["required_reviews"] = ruleset_info["required_reviews"]
-        if ruleset_info["allows_force_pushes"] is False:
-            evidence["allows_force_pushes"] = False
-        if ruleset_info["allows_deletions"] is False:
-            evidence["allows_deletions"] = False
+    _apply_branch_protection_payload(evidence, protection, rulesets)
 
     evidence["branch_protection_verified"] = _protection_meets_minimum(evidence)
     evidence["required_checks_enforced"] = (
         evidence["branch_protection_verified"] and evidence.get("objective_audit_required") is True
     )
+    if not evidence["branch_protection_verified"]:
+        evidence["operator_action_required"] = True
 
     return evidence
 
@@ -461,6 +692,9 @@ def build_phase3d_evidence_artifact(evidence: dict[str, Any], *, checker_tests: 
         "no_verify_status": statuses["no_verify_status"],
         "same_actor_mutation_status": statuses["same_actor_mutation_status"],
         "external_enforcement_status": statuses["external_enforcement_status"],
+        "operator_action_required": evidence.get("operator_action_required") is True,
+        "objective_audit_check_name": evidence.get("objective_audit_check_name"),
+        "objective_audit_check_name_verified": evidence.get("objective_audit_check_name_verified") is True,
         "remote_evidence": {k: evidence.get(k) for k in REMOTE_EVIDENCE_FIELDS},
         "phase3d_checker_tests": checker_tests or {},
         "maturity_changes_proposed": [],
@@ -478,7 +712,13 @@ def _remaining_gaps(statuses: dict[str, Any], evidence: dict[str, Any]) -> list[
     gaps: list[str] = []
     if not statuses["branch_protection_verified"]:
         gaps.append("GitHub branch protection not API/CLI verified")
-    if not statuses["required_checks_enforced"]:
+    if evidence.get("objective_audit_check_name_verified"):
+        gaps.append(
+            "Objective Audit GitHub check name verified as "
+            f"{evidence.get('objective_audit_check_name')!r} — "
+            "main branch protection must require this check (operator_action_required until API proof)"
+        )
+    elif not statuses["required_checks_enforced"]:
         gaps.append("objective-audit not proven as required GitHub status check")
     if statuses["no_verify_status"] != "mitigated":
         gaps.append("--no-verify remains open until CI + branch protection API verified")

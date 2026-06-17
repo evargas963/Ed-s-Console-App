@@ -113,10 +113,27 @@ def test_rulesets_payload_parses_required_checks() -> None:
     assert parsed["allows_deletions"] is False
 
 
+def test_fetch_public_run_inspection_discovers_objective_audit_check_name() -> None:
+    from tools.remote_enforcement_evidence import (
+        DEFAULT_OBJECTIVE_AUDIT_RUN_ID,
+        OBJECTIVE_AUDIT_CHECK,
+        fetch_public_actions_run_inspection,
+    )
+
+    inspection = fetch_public_actions_run_inspection(DEFAULT_OBJECTIVE_AUDIT_RUN_ID)
+    assert inspection.get("conclusion") == "success"
+    assert inspection.get("status_check_name_for_branch_protection") == OBJECTIVE_AUDIT_CHECK
+    names = [cr.get("name") for cr in inspection.get("check_runs") or []]
+    assert OBJECTIVE_AUDIT_CHECK in names
+
+
 def test_fetch_github_without_cli_stays_pending() -> None:
-    ev = fetch_github_cli_evidence()
+    from tools.remote_enforcement_evidence import fetch_github_evidence
+
+    ev = fetch_github_evidence(run_id=None)
     if ev.get("verification_method") == "pending":
         assert ev["branch_protection_verified"] is False
+    assert ev.get("operator_action_required") is True or ev.get("branch_protection_verified") is False
 
 
 def test_artifacts_cannot_claim_verified_without_api_method(tmp_path: Path) -> None:

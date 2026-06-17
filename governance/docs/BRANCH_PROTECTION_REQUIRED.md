@@ -1,10 +1,10 @@
 # Branch protection — required external controls (Phase 3D)
 
-**Classification:** Institutional Audit Phase 3D | **Scope:** External branch protection requirement and honest verification states | **Status:** REQUIRED, NOT VERIFIED in-repo
+**Classification:** Institutional Audit Phase 3D | **Scope:** External branch protection requirement and honest verification states | **Status:** REQUIRED — **operator_action_required** until GitHub API confirms protection on `main`
 
 ## Honest limit
 
-This repository can document and CI-specify external controls. It **cannot** prove GitHub branch protection is enabled without authenticated GitHub API evidence or operator attestation recorded outside fabricated in-repo claims.
+This repository can document and CI-specify external controls. It **cannot** prove GitHub branch protection is enabled without authenticated GitHub API evidence (`GITHUB_TOKEN` / `gh auth login`).
 
 Machine-readable state: `governance/artifacts/BRANCH_PROTECTION_PROOF.json`
 
@@ -14,32 +14,83 @@ Machine-readable state: `governance/artifacts/BRANCH_PROTECTION_PROOF.json`
 | `branch_protection.verified` | `false` |
 | `branch_protection.verification_state` | `unverified` |
 | `external_enforcement_proven` | `false` |
+| `operator_action_required` | `true` (until API fetch proves protection) |
 
-## Expected GitHub settings (operator must verify on host)
+## Verified Objective Audit check name (GitHub Actions API — public)
+
+From run **27662986304** @ commit **b084e71** on `feature/institutional-key-levels`:
+
+| Source | Value |
+|--------|--------|
+| Workflow display name | `Objective Audit` |
+| Workflow file | `.github/workflows/objective-audit.yml` |
+| **Required status check name (branch protection)** | **`objective-audit`** |
+| Job id | `objective-audit` |
+| Check run conclusion | `success` |
+
+Use **`objective-audit`** exactly when configuring branch protection — not the workflow display name.
+
+Regenerate inspection:
+
+```bash
+python tools/verify_remote_enforcement.py --fetch-github --run-id 27662986304
+```
+
+## Expected GitHub settings (operator must configure on host)
 
 | Setting | Required | In-repo proof |
 |---------|----------|---------------|
-| Branch protection on `main` | Yes | Doc + artifact only |
-| Required pull request reviews | ≥1 independent | **Not proven locally** |
-| Required status check: `objective-audit` | Yes | `.github/workflows/objective-audit.yml` |
+| Branch protection / ruleset on `main` | Yes | API fetch only |
+| Required pull request reviews | ≥1 independent | API fetch only |
+| Required status check: **`objective-audit`** | Yes | Workflow + Actions run inspection |
+| Require branches up to date | Yes (recommended) | API fetch only |
+| Block force-push to `main` | Yes | API fetch only |
+| Block branch deletion | Yes | API fetch only |
 | CODEOWNERS on governance paths | Yes | `.github/CODEOWNERS` |
-| Block force-push to `main` | Yes | **Not verified from repo** |
+
+## Operator UI — GitHub.com (when CLI/token unavailable)
+
+1. **Repository** → **Settings** → **Branches** (classic protection) **or** **Rules** → **Rulesets**
+2. Target branch: **`main`**
+3. Enable **Require a pull request before merging** (≥1 approval if using CODEOWNERS)
+4. Enable **Require status checks to pass before merging**
+5. Search and select check: **`objective-audit`** (exact spelling)
+6. Enable **Require branches to be up to date before merging**
+7. Disable **Allow force pushes** and **Allow deletions**
+8. Save rule
+
+Then verify from a machine with credentials:
+
+```bash
+export GITHUB_TOKEN=<PAT with repo admin>
+python tools/verify_remote_enforcement.py --fetch-github
+python tools/check_branch_protection_proof.py
+```
+
+Or configure via API:
+
+```bash
+export GITHUB_TOKEN=<PAT>
+python tools/verify_remote_enforcement.py --configure-main-protection
+```
 
 ## Acceptable claim until verified
 
-**Branch protection required but not yet verified.**
+- **GitHub Objective Audit passed** on feature branch (CI run evidence).
+- **Objective Audit check name verified:** `objective-audit`.
+- **Protected `main` merge path:** `operator_action_required` until GitHub API shows `objective-audit` required on `main`.
+- **Local `--no-verify`** remains possible; protected merge is the external gate.
 
-Do not claim external enforcement proven until `BRANCH_PROTECTION_PROOF.json` carries `github_api_evidence` from a real API response or operator attestation with date and repository URL.
+Do **not** claim universal enforcement, L5 institutional enforcement, or “all bypasses closed.”
 
 ## Phase 3D-Verification (after operator configures GitHub)
 
 ```bash
-# Preferred — GitHub CLI with auth:
+# Preferred — GitHub CLI or REST token:
 python tools/verify_remote_enforcement.py --fetch-github
 
 # Or manual attestation (verified stays false):
 python tools/verify_remote_enforcement.py --write-template
-# edit governance/artifacts/REMOTE_ENFORCEMENT_OPERATOR_ATTESTATION.template.json → save as REMOTE_ENFORCEMENT_OPERATOR_ATTESTATION.json
 python tools/verify_remote_enforcement.py --attestation governance/artifacts/REMOTE_ENFORCEMENT_OPERATOR_ATTESTATION.json
 
 python tools/_build_institutional_audit_phase3d.py
@@ -47,12 +98,4 @@ python tools/_build_institutional_audit_phase3d.py
 
 Canonical evidence store: `governance/artifacts/REMOTE_ENFORCEMENT_EVIDENCE.json`
 
-**Do not set `verified: true` in artifacts by hand.** Only `verify_remote_enforcement.py --fetch-github` (or exported ruleset ingest) may set API-class verification.
-
-## Operator verification checklist
-
-1. GitHub → Settings → Branches → protection rule for `main`
-2. Enable required status check **`objective-audit`** (job name from workflow)
-3. Enable required pull request reviews (≥1)
-4. Confirm `--no-verify` local commits still fail merge without passing CI
-5. Record verification in ops log — not as fabricated `verified: true` without evidence
+**Do not set `verified: true` in artifacts by hand.** Only `--fetch-github` / `--configure-main-protection` with API-class evidence may set `branch_protection.verified=true`.
