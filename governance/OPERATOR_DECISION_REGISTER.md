@@ -1,3 +1,5 @@
+> **Classification:** Operational Ledger | **Scope:** Governance register/inventory `OPERATOR_DECISION_REGISTER.md`.
+
 # Operator Decision Register
 
 **Status:** **APPROVED** — operator sign-off recorded below.  
@@ -66,6 +68,8 @@
 | **O-38** | `sqlite_schema_repair_explicit_ddl_no_ctas_policy_v1` | **Schema repair migrations MUST use explicit target-table DDL and MUST NOT use `CREATE TABLE ... AS SELECT ...` for tables where constraints, primary keys, defaults, or indexes are authoritative.** CTAS strips constraints in SQLite and is prohibited for production schema repair. Migration scripts may use `INSERT INTO explicit_table (...) SELECT ...` after the explicit table exists. Policy object identity: `sqlite_schema_repair_explicit_ddl_no_ctas_policy_v1`. | Program operator | 2026-05-07 | `governance/SNAPSHOTS_SCHEMA_REPAIR_MIGRATION_CONTRACT.md` |
 | **O-39** | Snapshots `snapshot_id` schema repair — production `--apply` | **CLOSED 2026-05-09.** `python tools/migrate_snapshots_schema_repair_v1.py --db-path data/ed_console.db --apply` executed in maintenance window with writers quiesced. Pre-migration backup: `backups/db/20260509_023716_pre_schema_repair_v1_ed_console.db` (`PRAGMA integrity_check` = `ok`). Apply audit: `governance/audits/snapshots_schema_repair_v1_20260509_011607.json` (git blob SHA `847ba97ac49141bcab4999aa1c42477b759c8270` in closure commit). Repo `HEAD` recorded at apply: `8ea325603ad53d3252653c03d76d23aa98eb01f2`. Operator gates: `collision_count=664` accepted per migration contract; `target_extra_live_columns` accepted (`pred_model_source`, `pred_override_source`, `reward_risk`, `reward_risk2`). Independent post-checks: `snapshot_id` INTEGER PK, null IDs 0, `COUNT(*)=COUNT(DISTINCT snapshot_id)=187511`, `MAX(snapshot_id)=188195`, normalized rows 77048, required indexes 3/3, backup integrity `ok`. Retires named gap `db_schema_repair_post_migration_audit_pending`. *(Operator sequencing: first production DB identity repair window — not the Schwab remediation slice S001 DTE contract.)* | Program operator | 2026-05-09 | Apply audit + `SNAPSHOTS_SCHEMA_REPAIR_APPLY_RUNBOOK_V1.md` §Independent Post-Condition Verification |
 | **O-40** | Schwab V4 proof mechanism — file inventory as closure artifact | **Pivot (2026-05-10):** Universal coverage **outcomes unchanged**; operational mechanism shifts from register-primary disposition to **file-by-file review** with **`governance/SCHWAB_V4_FILE_INVENTORY.csv`** as **proof-of-coverage**. Scanner + V4 register remain a **parallel completeness check**, not the merge gate. Full narrative under **Schwab Universal Coverage Proof — O-XX narrative addendum (V4)** → **`### O-40`**. | Program operator | 2026-05-10 | `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md` completion **14** + Forbidden; directive 2026-05-10 |
+| **O-55** | Training sample weighting | **Equal / uniform — canonical, no toggle.** All ML training (XGB, LSTM, Transformer) uses uniform per-row sample weights (all ones); every training row counts equally across the full history. Exponential time-decay is **removed entirely** — there is **no** runtime switch (env var or mode arg) and **no** decay code path reachable from training. Rationale: equal weighting preserves the full history for pattern matching; recency decay reduces effective sample size (`decay=2.0` → ESS ≈ 0.76·N, oldest rows ≈ 0.14×) and tilts learning toward recent data. `sample_weight_mode="equal"` recorded in each checkpoint for audit. **Scope note:** only XGB's sample weighting was ever effective — the LSTM/Transformer per-sample weights were already inert under `CrossEntropyLoss(reduction='mean')`. **Class weighting** (class-imbalance handling in the LSTM/Transformer criterion) is a *separate* mechanism, still present, and NOT governed by this row — flag for operator if equal-weight is intended to remove it too. Single source of truth: `ml_data_common.equal_sample_weights`. | Program operator | 2026-05-27 | Operator directive 2026-05-27 |
+| **O-56** | Ablation design — feature→model→horizon | **Per-model × per-horizon grouped permutation, canonical.** The feature-ablation grid is `anchor × model × horizon × ABLATE-group`: for each (anchor, model, horizon) the ML stack layer (XGB / LSTM / Transformer) is trained on a chronological holdout, each ABLATE group is grouped-permuted, and **that layer's MCC delta** is recorded. Each xgb/lstm/transformer layer gets its **own per-horizon survivor set** (`survivor_summary.by_model_horizon[model][horizon]`) — there is **no** single global survivor list applied across models/horizons. The `full_fusion` / whole-stack pass is a **separate stack-authority diagnostic** (ML-layer + meta/MC/fusion log-loss lifts) and may **never** replace or collapse the per-model feature ablation. **Rationale:** trees vs nets have different inductive biases (threshold/sparse vs smooth) and feature relevance is horizon-specific, so survivors must be resolved per model per horizon; `DEFAULT_ABLATION_DROP_GROUP_IDS` is an **interim default only**, not the designed survivor source. **Enforcement:** `tests/test_ml_feature_schema_parity.py::test_ablation_grid_is_per_model_horizon` fails closed if the grid is ever reframed model-agnostic. | Program operator | 2026-06-03 | Operator directive 2026-06-03 (feature→model→horizon design; supersedes the interim whole-stack/full_fusion feature-ablation framing) |
 
 ---
 
@@ -96,7 +100,7 @@ By signing below, the operator attests that the **Decision** column for **O-01 t
 
 **Signature:** *(electronic approval — Cursor session / directive)*  
 
-**Date:** 2026-05-02 (initial); **O-39** recorded 2026-05-09 per snapshots schema repair production closure commit; **O-40** recorded 2026-05-10 per Schwab V4 file-inventory pivot.  
+**Date:** 2026-05-02 (initial); **O-39** recorded 2026-05-09 per snapshots schema repair production closure commit; **O-40** recorded 2026-05-10 per Schwab V4 file-inventory pivot; **O-55** recorded 2026-05-27 per operator training-sample-weighting directive (unweighted/uniform canonical); **O-56** recorded 2026-06-03 per operator feature→model→horizon ablation directive (per-model × per-horizon grouped permutation canonical).  
 
 ---
 
@@ -121,6 +125,118 @@ Why: 5+ hours of scanner+register work produced no code replacement; the registe
 Constraint: V4 outcome bar unchanged — every file dispositioned (review OR clause-excluded); every site dispositioned per V4-A; replacement enforced where Schwab fits; evidence bar from prior amendment applies. The scanner + register pipeline becomes a parallel completeness check, not the gate.
 
 Permanent or interim: Permanent. The scanner remains a tool; the inventory checklist is the closure artifact.
+
+### O-41
+
+Why: Direction arrows (↑/↓/→) are visual encodings of the sign of net change; Schwab provides `quotes.quote.netChange` but no leaf for a discrete arrow glyph.
+
+Constraint: UI must remain fail-closed when net change is missing; arrow must not invent direction from stale cache.
+
+Permanent or interim: Permanent.
+
+### O-42
+
+Why: Session badge (PRE/RTH/AH) is derived from America/New_York clock vs exchange session window; Schwab does not expose a single session-label leaf for this UI chip.
+
+Constraint: Must align with `session_calendar` / RTH helpers used for trading gates; label is display-only.
+
+Permanent or interim: Permanent.
+
+### O-43
+
+Why: Regime zone badge is model output from gamma/positioning aggregation; no Schwab regime-zone primitive in the field dictionary.
+
+Constraint: Canonical producer is exposure/regime stack; UI must not show a zone when upstream marks data unavailable.
+
+Permanent or interim: Permanent.
+
+### O-44
+
+Why: Regime bias text is model output; no Schwab bias leaf.
+
+Constraint: Must trace to the same producer as regime zone; fail-closed when model bundle incomplete.
+
+Permanent or interim: Permanent.
+
+### O-45
+
+Why: Pin strength is KEEP_DERIVED from chain gamma and open-interest aggregation (`math_exposure` / pin pipeline); no single Schwab leaf substitutes the composite score.
+
+Constraint: One canonical producer; UI reads trunk from analytical bundle only.
+
+Permanent or interim: Permanent.
+
+### O-46
+
+Why: Net delta display aggregates `chains.*.delta * openInterest * multiplier`; Schwab supplies per-strike deltas, not this portfolio net in one leaf.
+
+Constraint: Must use the same aggregation path as exposure core; no silent zero when chain incomplete.
+
+Permanent or interim: Permanent.
+
+### O-47
+
+Why: Put/call ratio is derived from call/put volume or OI maps; Schwab does not publish a single PCR leaf for the sidebar chip.
+
+Constraint: Single canonical PCR producer; fail-closed when either side missing.
+
+Permanent or interim: Permanent.
+
+### O-48
+
+Why: DTE warning text is a threshold narrative on days-to-expiration; the numeric DTE may use `chains.callExpDateMap.*.daysToExpiration` but the warning copy is UI policy.
+
+Constraint: Warning must not fire on fabricated DTE; binds to selected expiry from chain map.
+
+Permanent or interim: Permanent.
+
+### O-49
+
+Why: Horizon cards, Decision Rail pills, gates, trade plan, trust/stack debug, order-flow read, and liquidity-path chips are model or fusion outputs (`mhap_rows`, `final_*`, Key Levels / LM mirrors). No Schwab horizon-move probability or desk-conviction leaf exists in the dictionary.
+
+Constraint: Each canopy must fail-closed when the analytical bundle is stale or incomplete; duplicate surfaces flagged in register `notes` for UI dedup (top cards canonical over `dr-hz-panels` / `dr-align-*` / `dr-lvl-*` / `dr-liq-*`).
+
+Permanent or interim: Permanent until a preregistered research leaf is operator-signed.
+
+### O-50
+
+Why: Bid/ask spread and liquidity rating chips are derived from `quotes.quote.bidPrice`, `askPrice`, `bidSize`, and `askSize`; Schwab does not publish a single spread or liquidity-score leaf for the A2 advisory panel.
+
+Constraint: One canonical producer computes spread and liquidity display from L1 quotes; fail-closed when quotes incomplete.
+
+Permanent or interim: Permanent.
+
+### O-51
+
+Why: Basket confluence aggregates (SPY/QQQ/IWM top-N weight×change, holdings/sector blends, read badges) are portfolio-weighted composites; no Schwab basket-score or participation leaf exists.
+
+Constraint: Canonical aggregation in confluence render path only; must not silently default when component quotes missing.
+
+Permanent or interim: Permanent.
+
+### O-52
+
+Why: The Liquidity & flow context card displays `context_layer.liquidity_behavior` fields derived from order-flow and bar structure; external `news` / sentiment fields are informational (Finnhub-class provider), not Schwab wire primitives.
+
+Constraint: Liquidity behavior subfields remain O-49 model-derived trunks; news subfields are NOT_MARKET_DATA and must respect `available` / `timed_out` / error gates without fabricating sentiment scores.
+
+Permanent or interim: Permanent.
+
+### O-53
+
+Why: IV, VIX, and ETF zone trackers convert a tick or quote stream into categorical direction labels (`expanding` / `contracting` / `flat`, `rising` / `falling`) using small relative thresholds. Schwab does not publish a direction leaf for these series.
+
+Constraint: One canonical producer per tracker class in `server.py`; thresholds (`IV_DIRECTION_THRESHOLD`, `VIX_DIRECTION_THRESHOLD`, `ETF_ZONE_THRESHOLD_PCT`) live in the server constants block; changes require an operator-signed amendment.
+
+Permanent or interim: Permanent.
+
+### O-54
+
+Why: Schwab `chains.callExpDateMap.*.multiplier` / `putExpDateMap.*.multiplier` leaf is emitted in current API responses, but archived snapshot `option_chain_json` rows captured before the snapshot pipeline's multiplier-preservation upgrade lack the field. Sampling shows ~50% of archived rows are missing `multiplier` (snapshot 111555 @ 2026-03-25 = 0/40 rows with leaf; snapshot 207658 @ 2026-05-21 = 40/40). Strict fail-closed in `realized_contract_eval._contract_multiplier` would discard half the historical evaluation dataset and spike `skip_rate` above the 0.55 fail threshold.
+
+Constraint: `realized_contract_eval._contract_multiplier` returns `LEGACY_CHAIN_MULTIPLIER_DEFAULT = 100` ONLY when the `multiplier` key is ABSENT from the chain row (legacy capture). When the key is present but INVALID (non-numeric, zero, negative), the function still fail-closes (returns None → row skip via "missing_multiplier"). Modern (post-multiplier-emission) captures use the Schwab leaf directly. Going-forward snapshot captures already preserve the leaf via `realized_contract_eval.serialize_option_chain_for_eval` (which calls `dict(ct)`). The fallback value 100 reflects the standard equity-option multiplier (SPY / QQQ / IWM). Mini contracts (10) and index-future options (varies) on archived data MAY be misattributed if mixed in the legacy window — sample inspection of the legacy date range shows only SPY / QQQ / IWM tickers.
+
+Permanent or interim: Interim. Sunset when (a) legacy snapshots prior to the multiplier-emission date are backfilled via Schwab's archive endpoint, OR (b) the legacy time window ages out of the operational evaluation horizon. Until sunset, every trade row written by `_evaluate_realized_contract_trades_for_rows` carries the resolved multiplier in the CSV column; downstream consumers (`v2_decision/post_trade_attribution.py:180`) treat it as metadata pass-through.
 
 ---
 

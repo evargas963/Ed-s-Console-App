@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/_consolidation/restore/POST_RESTORE_SIGNAL_TEST.md`.
+
 # Post-Restore Signal Test
 
 Total combinations attempted: 18

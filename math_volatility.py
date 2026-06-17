@@ -11,7 +11,7 @@ from typing import List
 import math
 import logging
 
-from math_exposure_core import _f, _nearest_strike
+from math_exposure_core import MISSING_GREEK_SENTINEL, _f, _nearest_strike
 
 log = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def _extract_iv_for_strike(contracts: List[dict], strike: float) -> tuple[float 
         if s is None or float(s) != float(strike):
             continue
         iv = _f(ct.get("volatility"))
-        if iv is None or iv <= 0 or iv == -999.0 or not math.isfinite(iv):
+        if iv is None or iv <= 0 or iv == MISSING_GREEK_SENTINEL or not math.isfinite(iv):
             continue
         side = (ct.get("putCall") or "").upper()
         if side == "CALL":
@@ -104,16 +104,44 @@ def session_bucket(et_hour: int, et_minute: int) -> str:
     return BUCKET_MORNING
 
 
-def vix_bucket(vix_level: float | None) -> str | None:
+# VIX tier cuts — single authority shared between math_volatility.vix_bucket (SignalInput
+# "vix_*" labels) and planes.l1_thresholds._vol_regime (adaptive-materiality regime token).
+# Cuts: <15 low, <20 normal, <30 elevated, otherwise high. None when vix_level is missing /
+# non-positive / NaN — callers compose their own "unknown" fallback semantics.
+VIX_TIER_LOW_MAX: float = 15.0
+VIX_TIER_NORMAL_MAX: float = 20.0
+VIX_TIER_ELEVATED_MAX: float = 30.0
+
+
+def vix_tier_token(vix_level: float | None) -> str | None:
+    """
+    Canonical VIX tier — single source for 15/20/30 cuts used across vix_bucket and
+    the L1 adaptive-materiality engine.
+
+    Returns "low" / "normal" / "elevated" / "high", or None when vix_level is None,
+    non-positive, or NaN. Callers add their own prefix / fallback as needed.
+    """
     if vix_level is None:
         return None
-    if vix_level < 15:
-        return "vix_low"
-    if vix_level < 20:
-        return "vix_normal"
-    if vix_level < 30:
-        return "vix_elevated"
-    return "vix_high"
+    try:
+        v = float(vix_level)
+    except (TypeError, ValueError):
+        return None
+    if v != v or v <= 0:  # NaN or non-positive
+        return None
+    if v < VIX_TIER_LOW_MAX:
+        return "low"
+    if v < VIX_TIER_NORMAL_MAX:
+        return "normal"
+    if v < VIX_TIER_ELEVATED_MAX:
+        return "elevated"
+    return "high"
+
+
+def vix_bucket(vix_level: float | None) -> str | None:
+    """SignalInput.vix_bucket — 'vix_low' / 'vix_normal' / 'vix_elevated' / 'vix_high' or None."""
+    tier = vix_tier_token(vix_level)
+    return f"vix_{tier}" if tier is not None else None
 
 
 # ── Expected move calculations ───────────────────────────────────────────────
@@ -175,7 +203,8 @@ def compute_expected_move_iv(spot: float, atm_iv: float,
                 "error": "Missing spot or IV"}
 
     if hours_remaining <= 0:
-        return {"em_pts": 0.0, "upper": spot, "lower": spot, "error": ""}
+        return {"em_pts": None, "upper": None, "lower": None,
+                "error": "session_hours_unavailable"}
 
     annualized_hours = TRADING_DAYS_PER_YEAR * TRADING_HOURS_PER_DAY
     em_pts = round(spot * (atm_iv / 100.0) * math.sqrt(hours_remaining / annualized_hours), 2)
@@ -190,6 +219,51 @@ def compute_expected_move_iv(spot: float, atm_iv: float,
         "error": "",
     }
 
+
+def resolve_kl_em_anchor(em_straddle: dict, em_iv: dict) -> str:
+    """Which EM path KEY LEVELS and Monte Carlo must share."""
+    if em_straddle.get("upper") is not None:
+        return "straddle_open"
+    if em_iv.get("upper") is not None:
+        return "iv_spot"
+    return "unavailable"
+
+
+def iv_percent_from_em_pts(spot: float, em_pts: float, hours_remaining: float) -> float | None:
+    """Invert IV-EM formula: em_pts = spot × (iv/100) × sqrt(h / annualized_hours)."""
+    if not (spot and spot > 0 and em_pts and em_pts > 0 and hours_remaining and hours_remaining > 0):
+        return None
+    annualized_hours = TRADING_DAYS_PER_YEAR * TRADING_HOURS_PER_DAY
+    denom = spot * math.sqrt(hours_remaining / annualized_hours)
+    if denom <= 0:
+        return None
+    iv = 100.0 * em_pts / denom
+    return iv if iv > 0 and math.isfinite(iv) else None
+
+
+def resolve_mc_iv_for_kl_em_anchor(
+    *,
+    kl_em_anchor: str,
+    atm_iv: float | None,
+    spot: float | None,
+    em_straddle: dict,
+    hours_remaining: float | None,
+) -> tuple[float | None, str]:
+    """Monte Carlo IV (percent) aligned with ``kl_em_anchor`` — not raw chain ATM when straddle wins."""
+    if kl_em_anchor == "iv_spot":
+        if atm_iv is not None and atm_iv > 0:
+            return float(atm_iv), "mc_iv_kl_anchor_iv_spot"
+        return None, "unavailable"
+    if kl_em_anchor == "straddle_open":
+        em_pts = _f(em_straddle.get("em_pts"))
+        if spot is not None and em_pts is not None and hours_remaining is not None:
+            iv = iv_percent_from_em_pts(float(spot), float(em_pts), float(hours_remaining))
+            if iv is not None:
+                return iv, "mc_iv_kl_anchor_straddle_em_pts"
+        return None, "unavailable"
+    return None, "unavailable"
+
+
 def compute_em_progress(spot: float, today_open: float,
                          em_upper: float, em_lower: float) -> dict:
     """How far through the expected move has price traveled.
@@ -203,13 +277,23 @@ def compute_em_progress(spot: float, today_open: float,
         severity: 'normal', 'warning', 'danger', 'breached'
     """
     if not all(v is not None for v in [spot, today_open, em_upper, em_lower]):
-        return {"progress_pct": None, "breached": False, "direction": None,
-                "severity": "unknown", "error": "Missing data"}
+        return {
+            "progress_pct": None,
+            "breached": None,
+            "direction": None,
+            "severity": None,
+            "error": "Missing data",
+        }
 
     em_half = (em_upper - em_lower) / 2.0
     if em_half <= 0:
-        return {"progress_pct": None, "breached": False, "direction": None,
-                "severity": "unknown", "error": "EM range is zero"}
+        return {
+            "progress_pct": None,
+            "breached": None,
+            "direction": None,
+            "severity": None,
+            "error": "EM range is zero",
+        }
 
     move = spot - today_open
     direction = "up" if move >= 0 else "down"
@@ -253,25 +337,42 @@ def compute_iv_skew(contracts: List[dict], spot: float) -> dict:
     Returns dict with skew, atm_call_iv, atm_put_iv, interpretation.
     """
     if not contracts or not spot or spot <= 0:
-        return {"skew": None, "atm_call_iv": None, "atm_put_iv": None,
-                "interpretation": "unavailable"}
+        return {
+            "skew": None,
+            "atm_call_iv": None,
+            "atm_put_iv": None,
+            "interpretation": None,
+        }
 
-    # Find ATM strike
-    strikes = sorted(set(
-        float(ct.get("strikePrice"))
-        for ct in contracts
-        if ct.get("strikePrice") is not None
-    ))
+    # Find ATM strike — gate float() so a non-numeric strikePrice cannot crash the iter
+    strikes_set: set[float] = set()
+    for ct in contracts:
+        sp = ct.get("strikePrice")
+        if sp is None:
+            continue
+        try:
+            strikes_set.add(float(sp))
+        except (TypeError, ValueError):
+            continue
+    strikes = sorted(strikes_set)
     if not strikes:
-        return {"skew": None, "atm_call_iv": None, "atm_put_iv": None,
-                "interpretation": "no strikes"}
+        return {
+            "skew": None,
+            "atm_call_iv": None,
+            "atm_put_iv": None,
+            "interpretation": None,
+        }
 
     atm_k = _nearest_strike(strikes, spot)
     call_iv, put_iv = _extract_iv_for_strike(contracts, atm_k)
 
     if call_iv is None or put_iv is None:
-        return {"skew": None, "atm_call_iv": call_iv, "atm_put_iv": put_iv,
-                "interpretation": "missing IV"}
+        return {
+            "skew": None,
+            "atm_call_iv": call_iv,
+            "atm_put_iv": put_iv,
+            "interpretation": None,
+        }
 
     skew = round(put_iv - call_iv, 2)
 
@@ -736,7 +837,7 @@ def compute_iv_model_spread(
     Returns dict with spread, interpretation.
     """
     if not contracts or not spot:
-        return {"spread": None, "label": "unknown", "market_iv": None, "model_iv": None}
+        return {"spread": None, "label": None, "market_iv": None, "model_iv": None}
 
     market_ivs = []
     model_ivs = []
@@ -762,7 +863,7 @@ def compute_iv_model_spread(
                 continue
 
     if not market_ivs or not model_ivs:
-        return {"spread": None, "label": "unknown", "market_iv": None, "model_iv": None}
+        return {"spread": None, "label": None, "market_iv": None, "model_iv": None}
 
     avg_market = sum(market_ivs) / len(market_ivs)
     avg_model = sum(model_ivs) / len(model_ivs)

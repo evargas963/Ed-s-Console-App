@@ -14,17 +14,18 @@ Exit codes:
 """
 from __future__ import annotations
 
-import json
+import logging
 import sys
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 # Windows cp1252: avoid UnicodeEncodeError for console
 if sys.stdout.encoding and "cp1252" in sys.stdout.encoding.lower():
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
-
+    except Exception as e:
+        log.debug("stdout reconfigure: %s", e, exc_info=True)
 APP_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(APP_DIR))
 
@@ -34,18 +35,25 @@ MODELS_DIR = APP_DIR / "models"
 
 def _get_active_tickers() -> list[str]:
     """
-    Authoritative production universe for verification:
-    EdDB.logging_universe (core + pinned + user_persisted), normalized + validated.
+    ML-training tickers that require active bundles under models/active/.
+
+    Same scope as ml_scheduler training runs: resolve_ml_training_roster (anchors only
+    by default; panel_auto and other guests excluded).
     """
     import sqlite3
 
     from production_universe import filter_valid_tickers, normalize_production_ticker
-    from scheduler_user_tickers import load_user_scheduler_tickers
+    from scheduler_user_tickers import (
+        resolve_ml_training_roster,
+        load_user_scheduler_tickers_or_empty,
+    )
     from db import get_db
 
-    tickers = filter_valid_tickers(load_user_scheduler_tickers())
+    db = get_db()
+    tickers = filter_valid_tickers(load_user_scheduler_tickers_or_empty())
+    tickers = resolve_ml_training_roster(tickers, str(db.db_path))
     # Operational gate: must have at least one normalized 1m snapshot row.
-    con = sqlite3.connect(str(get_db().db_path))
+    con = sqlite3.connect(str(db.db_path))
     cur = con.cursor()
     out: list[str] = []
     for t in tickers:
@@ -60,19 +68,9 @@ def _get_active_tickers() -> list[str]:
 
 
 def _active_bundle_dir(ticker: str, hz: str) -> Path:
-    """
-    Active artifact bundle directory for a (ticker, primary horizon).
+    from active_bundle_contract import active_bundle_dir
 
-    Mirrors production layout:
-      hz == 1c -> models/active/{ticker}
-      else     -> models/active_{hz}/{ticker}
-    """
-    from ml_horizon import normalize_ml_horizon_slug
-
-    su = normalize_ml_horizon_slug(hz)
-    if su == "1c":
-        return ACTIVE_DIR / ticker
-    return MODELS_DIR / f"active_{su}" / ticker
+    return active_bundle_dir(ticker, hz, models_dir=MODELS_DIR)
 
 
 def check_artifact_compliance(ticker: str) -> dict:
@@ -88,6 +86,7 @@ def check_artifact_compliance(ticker: str) -> dict:
     """
     from training_provenance import load_provenance, is_provenance_compliant
     from ml_horizon import PRIMARY_DECISION_HORIZONS
+    from active_bundle_contract import check_active_bundle_complete
 
     result = {
         "ticker": ticker,
@@ -99,11 +98,11 @@ def check_artifact_compliance(ticker: str) -> dict:
 
     primary_prov = None
     for hz in PRIMARY_DECISION_HORIZONS:
-        bundle_dir = _active_bundle_dir(ticker, hz)
-        if not bundle_dir.exists():
+        bundle = check_active_bundle_complete(ticker, hz, models_dir=MODELS_DIR)
+        if not bundle["compliant"]:
             result["compliant"] = False
-            result["issues"].append(f"missing bundle dir for hz={hz}: {bundle_dir}")
-            continue
+            result["issues"].extend(bundle.get("issues") or [])
+        bundle_dir = Path(bundle["bundle_dir"])
 
         triple = [
             ("xgb", f"xgb_{ticker}_{hz}.pkl", f"xgb_{ticker}_{hz}_meta.json"),
@@ -138,25 +137,82 @@ def check_artifact_compliance(ticker: str) -> dict:
                     art["issues"].append("could not load provenance (missing or invalid metadata)")
                     result["compliant"] = False
 
-                if model_path.exists() and meta_path.exists():
-                    try:
-                        raw_meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                        from model_contract import validate_artifact_contract
-
-                        ok, reason = validate_artifact_contract(raw_meta, name)
-                        if not ok:
-                            art["issues"].append(f"model contract incompatible: {reason}")
-                            result["compliant"] = False
-                    except Exception as ex:
-                        art["issues"].append(f"model contract check failed: {ex}")
-                        result["compliant"] = False
-
             result["artifacts"][key] = art
+
+        meta_pkl = bundle_dir / f"meta_{ticker.upper()}_{hz}.pkl"
+        meta_key = f"{hz}:meta_stack"
+        meta_art = {"exists": meta_pkl.is_file(), "has_provenance": meta_pkl.is_file(), "issues": []}
+        if not meta_pkl.is_file():
+            meta_art["issues"].append(f"meta_{ticker.upper()}_{hz}.pkl missing")
+            result["compliant"] = False
+        result["artifacts"][meta_key] = meta_art
 
     result["provenance"] = primary_prov.to_dict() if primary_prov else None
     if result["compliant"] and not primary_prov:
         result["compliant"] = False
         result["issues"].append("no provenance found in any artifact")
+
+    return result
+
+
+def verify_single_bundle(ticker: str, hz: str, *, models_dir: Path | None = None) -> dict:
+    """
+    Compliance check for one (ticker, horizon) canonical active bundle (P3-4b).
+    """
+    from training_provenance import load_provenance, is_provenance_compliant
+    from active_bundle_contract import check_active_bundle_complete
+
+    models_dir = models_dir or MODELS_DIR
+    result: dict = {
+        "ticker": ticker.upper(),
+        "horizon": hz,
+        "compliant": True,
+        "artifacts": {},
+        "issues": [],
+    }
+    bundle = check_active_bundle_complete(ticker, hz, models_dir=models_dir)
+    if not bundle["compliant"]:
+        result["compliant"] = False
+        result["issues"].extend(bundle.get("issues") or [])
+        return result
+
+    bundle_dir = Path(bundle["bundle_dir"])
+    triple = [
+        ("xgb", f"xgb_{ticker.upper()}_{hz}.pkl", f"xgb_{ticker.upper()}_{hz}_meta.json"),
+        ("lstm", f"lstm_{ticker.upper()}_{hz}.pt", f"lstm_{ticker.upper()}_{hz}_meta.json"),
+        (
+            "transformer",
+            f"transformer_{ticker.upper()}_{hz}.pt",
+            f"transformer_{ticker.upper()}_{hz}_meta.json",
+        ),
+    ]
+    for name, model_file, meta_file in triple:
+        model_path = bundle_dir / model_file
+        meta_path = bundle_dir / meta_file
+        art = {"exists": model_path.exists(), "has_provenance": False, "issues": []}
+        if not model_path.exists():
+            art["issues"].append(f"{model_file} missing")
+            result["compliant"] = False
+        if not meta_path.exists():
+            art["issues"].append(f"{meta_file} missing")
+            result["compliant"] = False
+        else:
+            prov = load_provenance(meta_path)
+            if prov and is_provenance_compliant(prov, horizon_slug=hz):
+                art["has_provenance"] = True
+            else:
+                art["issues"].append("metadata lacks compliant provenance")
+                result["compliant"] = False
+        result["artifacts"][name] = art
+        result["issues"].extend(art["issues"])
+
+    meta_pkl = bundle_dir / f"meta_{ticker.upper()}_{hz}.pkl"
+    meta_art = {"exists": meta_pkl.is_file(), "has_provenance": meta_pkl.is_file(), "issues": []}
+    if not meta_pkl.is_file():
+        meta_art["issues"].append(f"meta_{ticker.upper()}_{hz}.pkl missing")
+        result["compliant"] = False
+    result["artifacts"]["meta_stack"] = meta_art
+    result["issues"].extend(meta_art["issues"])
 
     return result
 

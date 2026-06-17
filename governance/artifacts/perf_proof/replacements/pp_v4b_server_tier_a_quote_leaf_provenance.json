@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "perf_proof_id": "pp_v4b_server_tier_a_quote_leaf_provenance",
+  "landed_batch": "v4b-2026-05-18",
+  "replacement_scope": "server.py chunk 2: _parse_quote_node_session_fields call sites, _update_rest_cum_delta quote leaves; Tier A provenance pass.",
+  "code_paths": [
+    "server.py"
+  ],
+  "evidence": {
+    "pytest_args": [
+      "tests/test_server_quote_source_contract.py"
+    ],
+    "note": "Leaf provenance + dedupe regression tests."
+  },
+  "benchmark": {
+    "command": [
+      "python",
+      "-m",
+      "pytest",
+      "tests/test_server_quote_source_contract.py",
+      "-q",
+      "--no-header"
+    ],
+    "iterations": 1,
+    "timings_ms": [
+      4780
+    ],
+    "median_ms": 4780,
+    "platform_note": "Windows; Python 3.13; chunk-2 2026-05-24"
+  },
+  "register_link": {
+    "status": "bound",
+    "replaced_register_ids": [
+      "0657e90972864cbd824b",
+      "20183e35cde0e1391f0f",
+      "910643c54f8a36cdda0b",
+      "b3675bcb3c18195256eb"
+    ]
+  }
+}

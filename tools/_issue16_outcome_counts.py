@@ -7,7 +7,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from db import DB_PATH, get_snapshot_sql
 
-p = DB_PATHif not p.exists():
+p = DB_PATH
+if not p.exists():
     print("NO_DB", p)
     raise SystemExit(1)
 

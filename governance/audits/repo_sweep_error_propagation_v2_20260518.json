@@ -1,0 +1,148 @@
+{
+  "sweep_id": "error_propagation_v2",
+  "date_utc": "2026-05-18",
+  "slice": "REPO_SWEEP",
+  "parent_sweep": "error_propagation_v1",
+  "parent_baseline_silent_pass": 42,
+  "scope_in": "server.py (11 silent passes), ml_scheduler.py (4 silent passes)",
+  "scope_out": "schwab_full_accessible_field_inventory.py, levels.py, live_market_plane.py",
+  "summary": {
+    "silent_exception_pass_before": 42,
+    "silent_exception_pass_after": 27,
+    "class_c_fixed_count": 15,
+    "class_b_accepted_documented": 0,
+    "critical_silent_pass_files_after": 13
+  },
+  "class_c_fixed": [
+    {
+      "id": "SWEEP-EP-6",
+      "file": "server.py",
+      "lines": "666-671",
+      "was": "silent pass on notify_l2_snapshot_ready after analytics fetch",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-7",
+      "file": "server.py",
+      "lines": "1569-1572",
+      "was": "silent pass on logging_universe_touch_seen",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-8",
+      "file": "server.py",
+      "lines": "1645-1650",
+      "was": "silent pass on record_user_ticker",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-9",
+      "file": "server.py",
+      "lines": "1731-1734",
+      "was": "silent pass on logging_universe_touch_background_log",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-10",
+      "file": "server.py",
+      "lines": "3110-3115",
+      "was": "silent pass on emit_fetch_state_start",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-11",
+      "file": "server.py",
+      "lines": "3638-3642",
+      "was": "silent pass on IV rank/percentile history load",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-12",
+      "file": "server.py",
+      "lines": "5114-5118",
+      "was": "silent pass on dashboard arch_state.json parse",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-13",
+      "file": "server.py",
+      "lines": "5332-5337",
+      "was": "silent pass on finalize_stack_integrity_v1 after signals_engine_failed",
+      "fix": "log.warning with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-14",
+      "file": "server.py",
+      "lines": "5990-5999",
+      "was": "silent pass on emit_api_state_cache (Tier C hit)",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-15",
+      "file": "server.py",
+      "lines": "6021-6026",
+      "was": "silent pass on emit_api_state_cache (Tier C miss)",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-16",
+      "file": "server.py",
+      "lines": "6153-6161",
+      "was": "silent pass on order_flow_live_state merge in /api/state response",
+      "fix": "log.warning with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-17",
+      "file": "ml_scheduler.py",
+      "lines": "1330-1339",
+      "was": "silent pass on db_only ticker diagnostic block",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-18",
+      "file": "ml_scheduler.py",
+      "lines": "1810-1819",
+      "was": "silent pass on promotion metadata write",
+      "fix": "log.warning with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-19",
+      "file": "ml_scheduler.py",
+      "lines": "1856-1861",
+      "was": "silent pass on compare_parallel_cascade_trade_logs",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-20",
+      "file": "ml_scheduler.py",
+      "lines": "1985-1990",
+      "was": "silent pass on load_dashboard_eval_metrics prev merge",
+      "fix": "log.debug with exc_info"
+    }
+  ],
+  "class_b_accepted": [],
+  "top_silent_pass_files_after": {
+    "schwab_full_accessible_field_inventory.py": 4,
+    "levels.py": 2,
+    "live_market_plane.py": 2,
+    "schwab_client.py": 2,
+    "schwab_full_field_inventory.py": 2
+  },
+  "critical_silent_pass_files": [
+    "signals.py",
+    "call_engine.py",
+    "prediction_engine.py",
+    "realized_contract_eval.py",
+    "bayesian_fusion.py",
+    "mc_fusion_adjustment.py",
+    "market_state.py",
+    "live_decision_bundle.py",
+    "features/signal_layer_v1.py",
+    "features/inference_snapshot.py",
+    "features/fusion_policy_contract.py",
+    "server.py",
+    "ml_scheduler.py"
+  ],
+  "regression": "tests/test_repo_sweep_error_propagation_v1.py",
+  "next_sweep": "error_propagation_v3 — schwab_full_accessible_field_inventory.py, levels.py, live_market_plane.py"
+}

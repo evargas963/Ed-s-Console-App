@@ -25,21 +25,16 @@ import sqlite3
 import numpy as np
 import logging
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 log = logging.getLogger("lstm_data")
 
 
 def _positive_float_or_none(value) -> Optional[float]:
-    try:
-        if value is None:
-            return None
-        out = float(value)
-    except (TypeError, ValueError):
-        return None
-    return out if out > 0 else None
+    from numeric_contract import float_positive_or_none
+
+    return float_positive_or_none(value)
 
 # ── Database location (same resolver as db.DB_PATH / ED_CONSOLE_DB) ─────────
 from db import DB_PATH
@@ -64,17 +59,61 @@ RTH_START_MIN       = 30
 RTH_END_HOUR        = 16
 RTH_END_MIN         = 0
 
-# ── Feature definitions ───────────────────────────────────────────────────────
-# FEATURES_5M: full feature set for structure stream (60 snapshots, 1m each)
-# FEATURES_1M: subset for micro stream (20 snapshots); both from same 1m snapshot DB
+# ── Feature definitions (Stage 2: full XGB tabular universe on both streams) ──
 
-FEATURES_5M = [
-    # Price dynamics (will be normalized as % of first bar's spot)
+FEATURES_5M: list[str] = []
+FEATURES_1M: list[str] = []
+ENCODED_FEATURES_5M: list[str] = []
+ENCODED_FEATURES_1M: list[str] = []
+
+CONFLUENCE_FEATURES = [
+    "cf_momentum_5m", "cf_structure_15m", "cf_trend_1h",
+    "cf_vwap_distance_pct", "cf_greek_support", "cf_alignment_score",
+]
+
+# Categorical columns that need encoding (legacy helpers + confluence path)
+CATEGORICAL_COLS = {"zone", "vwap_side"}
+
+# Zone encoding map
+ZONE_MAP = {
+    "pin_bull": 0, "pin_bear": 1, "pin_neutral": 2, "pin_chaos": 3,
+    "breakout": 4, "breakdown": 5,
+}
+VWAP_SIDE_MAP = {"above": 1.0, "below": -1.0}
+# Missing categorical sentinels (aligned with features/lstm_sequence_input.py).
+ZONE_MISSING_ENCODED = -1.0
+VWAP_SIDE_UNKNOWN_ENCODED = 2.0
+
+
+def _encode_zone_feature(snap: dict) -> float:
+    zr = snap.get("zone")
+    if zr is None:
+        return ZONE_MISSING_ENCODED
+    return float(ZONE_MAP.get(str(zr).lower(), 2))
+
+
+def _encode_vwap_side_feature(snap: dict) -> float:
+    vs = snap.get("vwap_side")
+    if vs is None:
+        return VWAP_SIDE_UNKNOWN_ENCODED
+    return float(VWAP_SIDE_MAP.get(str(vs).lower(), VWAP_SIDE_UNKNOWN_ENCODED))
+
+# Schema v3: flat tabular vectors (no __present mask channels).
+LOG_TRANSFORM_COLS: frozenset[str] = frozenset({"net_gamma", "net_delta", "charm_net"})
+NULLABLE_NUMERIC_COLS_5M: frozenset[str] = frozenset()
+NULLABLE_NUMERIC_COLS_1M: frozenset[str] = frozenset()
+
+# Bump when encoder layout changes (requires full LSTM/Transformer retrain).
+LSTM_ENCODER_SCHEMA_VERSION = 3
+
+# Schema v2 (2026-06): compact structure/micro feature lists + __present mask channels.
+# Active bundles trained before v3 tabular parity use these widths (31 / 16 pre-mask).
+LEGACY_ENCODER_SCHEMA_VERSION = 2
+LEGACY_V2_FEATURES_5M: list[str] = [
     "spot",
     "candle_body_pts",
     "candle_range_pts",
     "vwap_dist_pts",
-    # Greek structure
     "dist_call_gamma_wall",
     "dist_put_gamma_wall",
     "dist_gamma_inflection",
@@ -84,28 +123,18 @@ FEATURES_5M = [
     "net_gamma",
     "net_delta",
     "charm_net",
-    # Cross-instrument
     "spy_chg_pct",
     "qqq_chg_pct",
     "iwm_chg_pct",
     "spy_weighted_push",
     "qqq_weighted_push",
     "iwm_weighted_push",
-    # Volatility
     "vix_level",
     "iv_level",
-    # Zone encoding (will be one-hot later)
     "zone",
-    # VWAP side (binary)
     "vwap_side",
 ]
-
-# Extended features for next retrain (add to FEATURES_5M when retraining LSTM/Transformer):
-# "atr", "iv_rank", "flow_imbalance", "smart_money_score", "breakout_score", "pin_score", "candle_volume"
-
-# Subset for 1m stream (fields that change bar-to-bar)
-# Most Greek/cross-instrument data doesn't change on 1m granularity
-FEATURES_1M = [
+LEGACY_V2_FEATURES_1M: list[str] = [
     "spot",
     "candle_body_pts",
     "candle_range_pts",
@@ -119,19 +148,149 @@ FEATURES_1M = [
     "zone",
     "vwap_side",
 ]
+LEGACY_V2_NULLABLE_NUMERIC_COLS_5M: frozenset[str] = frozenset({
+    "spy_chg_pct",
+    "qqq_chg_pct",
+    "iwm_chg_pct",
+    "spy_weighted_push",
+    "qqq_weighted_push",
+    "iwm_weighted_push",
+    "vix_level",
+    "iv_level",
+})
+LEGACY_V2_NULLABLE_NUMERIC_COLS_1M: frozenset[str] = frozenset({
+    "spy_chg_pct",
+    "qqq_chg_pct",
+    "vix_level",
+    "iv_level",
+})
 
-# Categorical columns that need encoding
-CATEGORICAL_COLS = {"zone", "vwap_side"}
 
-# Zone encoding map
-ZONE_MAP = {
-    "pin_bull": 0, "pin_bear": 1, "pin_neutral": 2, "pin_chaos": 3,
-    "breakout": 4, "breakdown": 5,
-}
-VWAP_SIDE_MAP = {"above": 1.0, "below": -1.0}
+def _build_encoded_feature_names(base: list[str], nullable: frozenset[str]) -> list[str]:
+    names: list[str] = []
+    for col in base:
+        names.append(col)
+        if col in nullable:
+            names.append(f"{col}__present")
+    return names
 
-# Columns that should be log-transformed (large magnitude, sign matters)
-LOG_TRANSFORM_COLS = {"net_gamma", "net_delta", "charm_net"}
+
+LEGACY_V2_ENCODED_FEATURES_5M: list[str] = _build_encoded_feature_names(
+    LEGACY_V2_FEATURES_5M, LEGACY_V2_NULLABLE_NUMERIC_COLS_5M
+)
+LEGACY_V2_ENCODED_FEATURES_1M: list[str] = _build_encoded_feature_names(
+    LEGACY_V2_FEATURES_1M, LEGACY_V2_NULLABLE_NUMERIC_COLS_1M
+)
+
+
+def refresh_sequence_feature_lists() -> None:
+    """Reload FEATURES_* from XGB tabular minus cf_* (cf_* stay on X_conf only — no double feed).
+
+    Called at module import so FEATURES_5M/1M match live tabular engineer_features column order.
+    Safe for governance static audit: engineer_features uses writable copies for in-place masks.
+    """
+    global FEATURES_5M, FEATURES_1M, ENCODED_FEATURES_5M, ENCODED_FEATURES_1M
+    from ml_train import refresh_tabular_training_feature_names_cache
+
+    names = refresh_tabular_training_feature_names_cache()
+    cf_set = frozenset(CONFLUENCE_FEATURES)
+    sequence_names = [n for n in names if n not in cf_set]
+    FEATURES_5M = list(sequence_names)
+    FEATURES_1M = list(sequence_names)
+    ENCODED_FEATURES_5M = list(sequence_names)
+    ENCODED_FEATURES_1M = list(sequence_names)
+
+
+# CONFLUENCE_FEATURES + ml_train tabular cache: import-order placeholder (not wired yet).
+
+
+def encoded_width_5m() -> int:
+    return len(ENCODED_FEATURES_5M)
+
+
+def encoded_width_1m() -> int:
+    return len(ENCODED_FEATURES_1M)
+
+
+def checkpoint_encoder_schema_version(checkpoint: Mapping[str, Any]) -> int:
+    return int(checkpoint.get("encoder_schema_version", 1))
+
+
+def encoded_width_5m_for_checkpoint(checkpoint: Mapping[str, Any]) -> int:
+    enc_ver = checkpoint_encoder_schema_version(checkpoint)
+    if enc_ver >= LSTM_ENCODER_SCHEMA_VERSION:
+        return encoded_width_5m()
+    if enc_ver == LEGACY_ENCODER_SCHEMA_VERSION:
+        pre = checkpoint.get("encoder_width_5m_pre_mask")
+        if pre is not None:
+            return int(pre)
+        return len(LEGACY_V2_ENCODED_FEATURES_5M)
+    raise ValueError(
+        f"LSTM encoder schema v{enc_ver} unsupported; minimum v{LEGACY_ENCODER_SCHEMA_VERSION}"
+    )
+
+
+def encoded_width_1m_for_checkpoint(checkpoint: Mapping[str, Any]) -> int:
+    enc_ver = checkpoint_encoder_schema_version(checkpoint)
+    if enc_ver >= LSTM_ENCODER_SCHEMA_VERSION:
+        return encoded_width_1m()
+    if enc_ver == LEGACY_ENCODER_SCHEMA_VERSION:
+        pre = checkpoint.get("encoder_width_1m_pre_mask")
+        if pre is not None:
+            return int(pre)
+        return len(LEGACY_V2_ENCODED_FEATURES_1M)
+    raise ValueError(
+        f"LSTM encoder schema v{enc_ver} unsupported; minimum v{LEGACY_ENCODER_SCHEMA_VERSION}"
+    )
+
+
+def assert_lstm_encoder_checkpoint_compatible(checkpoint: Mapping[str, Any]) -> None:
+    """Fail closed when checkpoint predates serveable encoder or width mismatches."""
+    enc_ver = checkpoint_encoder_schema_version(checkpoint)
+    if enc_ver < LEGACY_ENCODER_SCHEMA_VERSION:
+        raise ValueError(
+            f"LSTM encoder schema v{enc_ver} < minimum v{LEGACY_ENCODER_SCHEMA_VERSION}; retrain"
+        )
+    if enc_ver == LEGACY_ENCODER_SCHEMA_VERSION:
+        pre5 = checkpoint.get("encoder_width_5m_pre_mask")
+        pre1 = checkpoint.get("encoder_width_1m_pre_mask")
+        legacy5 = len(LEGACY_V2_ENCODED_FEATURES_5M)
+        legacy1 = len(LEGACY_V2_ENCODED_FEATURES_1M)
+        if pre5 is not None and int(pre5) != legacy5:
+            raise ValueError(
+                f"encoder_width_5m_pre_mask={pre5} != legacy v2 width {legacy5}"
+            )
+        if pre1 is not None and int(pre1) != legacy1:
+            raise ValueError(
+                f"encoder_width_1m_pre_mask={pre1} != legacy v2 width {legacy1}"
+            )
+        return
+    pre5 = checkpoint.get("encoder_width_5m_pre_mask")
+    pre1 = checkpoint.get("encoder_width_1m_pre_mask")
+    if pre5 is not None and int(pre5) != encoded_width_5m():
+        raise ValueError(
+            f"encoder_width_5m_pre_mask={pre5} != current {encoded_width_5m()}"
+        )
+    if pre1 is not None and int(pre1) != encoded_width_1m():
+        raise ValueError(
+            f"encoder_width_1m_pre_mask={pre1} != current {encoded_width_1m()}"
+        )
+
+
+def sequence_encoder_checkpoint_issues(model_path: Path) -> list[str]:
+    """Return load-blocking encoder issues for LSTM/Transformer .pt checkpoints (Stage 3 / live stack)."""
+    if not model_path.is_file():
+        return [f"{model_path.name} missing"]
+    try:
+        import torch
+
+        checkpoint = torch.load(str(model_path), map_location="cpu", weights_only=False)
+        assert_lstm_encoder_checkpoint_compatible(checkpoint)
+    except ValueError as exc:
+        return [str(exc)]
+    except Exception as exc:
+        return [f"checkpoint unreadable: {type(exc).__name__}: {exc}"]
+    return []
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -265,12 +424,6 @@ def compute_confluence_features(snapshots_5m: list[dict], current_idx: int) -> d
     return result
 
 
-CONFLUENCE_FEATURES = [
-    "cf_momentum_5m", "cf_structure_15m", "cf_trend_1h",
-    "cf_vwap_distance_pct", "cf_greek_support", "cf_alignment_score",
-]
-
-
 # ════════════════════════════════════════════════════════════════════════════════
 # DATA EXTRACTION — read sequences from the database
 # ════════════════════════════════════════════════════════════════════════════════
@@ -310,7 +463,14 @@ def extract_rth_snapshots(
     db_path: Path = DB_PATH,
     require_outcome: bool = True,
     allowed_et_dates: Optional[set] = None,
+    min_ts_utc: Optional[float] = None,
     target_column: str = TARGET_HORIZON,
+    *,
+    skip_normalized_sync: bool = False,
+    model_family: Optional[str] = None,
+    horizon_slug: Optional[str] = None,
+    confirm_drop_group_ids: Optional[list[str]] = None,
+    confirm_ablation_manifest: Optional[dict] = None,
 ) -> dict:
     """
     Extract RTH snapshots grouped by trading day.
@@ -332,17 +492,28 @@ def extract_rth_snapshots(
         raise ValueError(
             f"extract_rth_snapshots: canonical 1m only; got timeframe={timeframe!r}"
         )
-    if timeframe == CANONICAL_TIMEFRAME:
+    if timeframe == CANONICAL_TIMEFRAME and not skip_normalized_sync:
         try:
-            from normalized_training_sync import ensure_normalized_training_table
+            from normalized_training_sync import (
+                ensure_normalized_training_table,
+                inline_normsync_enabled,
+            )
 
-            _ns = ensure_normalized_training_table(str(db_path), force=False, logger=log)
-            if not _ns.get("ok"):
-                log.warning("extract_rth_snapshots: normalized sync failed: %s", _ns.get("errors"))
+            if inline_normsync_enabled():
+                _ns = ensure_normalized_training_table(str(db_path), force=False, logger=log)
+                if not _ns.get("ok"):
+                    log.warning(
+                        "extract_rth_snapshots: normalized sync failed: %s", _ns.get("errors")
+                    )
         except Exception as e:
             log.warning("extract_rth_snapshots: normalized sync error: %s", e)
 
-    conn = _connect(db_path)
+    log.info(
+        "extract_rth_snapshots: begin ticker=%s allowed_dates=%s min_ts_utc=%s",
+        ticker,
+        len(allowed_et_dates) if allowed_et_dates else None,
+        min_ts_utc,
+    )
     table = _snapshot_table_for_timeframe(timeframe)
 
     from ml_data_common import training_label_where_clause
@@ -354,15 +525,61 @@ def extract_rth_snapshots(
     from ml_data_common import weekday_where_clause
     weekday_sql = " AND (" + weekday_where_clause() + ")"
 
+    params: list = [ticker, timeframe]
+    date_filter_sql = ""
+    if allowed_et_dates:
+        _dates = sorted({str(d)[:10] for d in allowed_et_dates if d})
+        if _dates:
+            date_filter_sql = " AND substr(ts_et, 1, 10) IN (" + ",".join("?" * len(_dates)) + ")"
+            params.extend(_dates)
+    min_ts_sql = ""
+    if min_ts_utc is not None:
+        min_ts_sql = " AND ts_utc >= ?"
+        params.append(float(min_ts_utc))
+
+    conn = _connect(db_path)
     rows = conn.execute(
         f"SELECT * FROM {table} "
         "WHERE ticker = ? AND timeframe = ?"
         + outcome_filter +
         weekday_sql +
+        date_filter_sql +
+        min_ts_sql +
         " ORDER BY ts_utc ASC",
-        (ticker, timeframe)
+        tuple(params),
     ).fetchall()
     conn.close()
+
+    log.info("extract_rth_snapshots: sql_rows=%d ticker=%s", len(rows), ticker)
+
+    from time_et import et_clock_from_ts_utc, et_date_str_from_ts_utc, is_rth_ts_utc
+
+    ablation_enabled = False
+    apply_ablation_fn = None
+    from arch_competition.stack_bundle_eval_v1 import (
+        AblatedTrainingUnavailable,
+        ablation_survivors_training_enabled,
+        apply_ablation_survivor_nulls_to_snapshot_for_model,
+        null_snapshot_dict_for_drop_groups,
+    )
+
+    if ablation_survivors_training_enabled():
+        # O-56: the sequence-model survivor mask is PER (model, horizon). Any caller building
+        # training data MUST pass model_family + horizon_slug; we refuse to silently fall back to a
+        # global/full-feature mask, which would skew sequence training vs XGB. Fail loud — never
+        # silently train half-ablated (AGENTS §Ablation contract).
+        if not model_family or not horizon_slug:
+            raise AblatedTrainingUnavailable(
+                "extract_rth_snapshots: ED_APPLY_ABLATION_SURVIVORS=1 requires model_family + "
+                f"horizon_slug for the per-model survivor mask (got model={model_family!r} "
+                f"hz={horizon_slug!r}); refusing a global/full-feature fallback."
+            )
+        ablation_enabled = True
+
+        def apply_ablation_fn(_d, _mf=model_family, _hz=horizon_slug):
+            return apply_ablation_survivor_nulls_to_snapshot_for_model(
+                _d, model_family=_mf, horizon_slug=_hz
+            )
 
     # Group by date, filter to RTH only
     days = {}
@@ -373,17 +590,34 @@ def extract_rth_snapshots(
     for row in rows:
         total_rows += 1
         d = dict(row)
-        h = d.get("et_hour", 0)
-        m = d.get("et_minute", 0)
-
-        if not _is_rth(h, m):
-            skipped_non_rth += 1
-            continue
+        ts_u = d.get("ts_utc")
+        if ts_u is not None:
+            try:
+                if not is_rth_ts_utc(float(ts_u)):
+                    skipped_non_rth += 1
+                    continue
+                h, m, _ = et_clock_from_ts_utc(float(ts_u))
+                day_key = et_date_str_from_ts_utc(float(ts_u))
+            except (TypeError, ValueError):
+                skipped_non_rth += 1
+                continue
+        else:
+            h = d.get("et_hour", 0)
+            m = d.get("et_minute", 0)
+            if not _is_rth(h, m):
+                skipped_non_rth += 1
+                continue
+            ts_et = d.get("ts_et", "")
+            day_key = ts_et[:10] if len(ts_et) >= 10 else "unknown"
 
         rth_rows += 1
-        # Extract date from ts_et string: "2026-03-04 10:30:00 ET" -> "2026-03-04"
-        ts_et = d.get("ts_et", "")
-        day_key = ts_et[:10] if len(ts_et) >= 10 else "unknown"
+
+        if confirm_drop_group_ids and confirm_ablation_manifest:
+            d = null_snapshot_dict_for_drop_groups(
+                d, confirm_ablation_manifest, list(confirm_drop_group_ids)
+            )
+        elif ablation_enabled and apply_ablation_fn is not None:
+            d = apply_ablation_fn(d)  # fail loud: never silently skip the survivor mask
 
         if day_key not in days:
             days[day_key] = []
@@ -405,13 +639,49 @@ def extract_rth_snapshots(
 # ════════════════════════════════════════════════════════════════════════════════
 
 def _safe_float(v) -> float:
-    """Convert any value to float, returning 0.0 for None/invalid."""
+    """Convert any value to float, returning 0.0 for None/invalid (non-nullable columns only)."""
     if v is None:
         return 0.0
     try:
         return float(v)
     except (ValueError, TypeError):
         return 0.0
+
+
+def _raw_finite_float(v) -> Optional[float]:
+    if v is None:
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(f):
+        return None
+    return f
+
+
+def _encode_nullable_chg_or_push(raw) -> tuple[float, float]:
+    """Value channel + present mask for % / push fields."""
+    f = _raw_finite_float(raw)
+    if f is None:
+        return 0.0, 0.0
+    return max(-5.0, min(5.0, f)), 1.0
+
+
+def _encode_nullable_level(raw) -> tuple[float, float]:
+    """Value channel + present mask for level fields (vix, iv)."""
+    f = _raw_finite_float(raw)
+    if f is None:
+        return 0.0, 0.0
+    return f, 1.0
+
+
+def _append_nullable_numeric(features: list, snap: dict, col: str) -> None:
+    if col.endswith("_chg_pct") or col.endswith("_push"):
+        val, mask = _encode_nullable_chg_or_push(snap.get(col))
+    else:
+        val, mask = _encode_nullable_level(snap.get(col))
+    features.extend([val, mask])
 
 
 def canonical_reference_spot_from_sequence_window_first_bar(window: list) -> float:
@@ -443,92 +713,137 @@ def _signed_log(v: float) -> float:
     return np.sign(v) * np.log1p(abs(v))
 
 
-def encode_snapshot_5m(snap: dict, ref_spot: float) -> list:
-    """
-    Encode a snapshot (1m canonical) into structure-stream feature vector.
-
-    Name is legacy; input is a 1m snapshot from DB. Uses FEATURES_5M (full set).
-    Called for each bar in the 60-bar structure stream.
-
-    Args:
-        snap: snapshot dict from the database (timeframe=1m)
-        ref_spot: reference spot price for normalization (first bar in window)
-
-    Returns:
-        list of float values, one per feature
-    """
-    features = []
+def _encode_snapshot_v2(
+    snap: dict,
+    ref_spot: float,
+    *,
+    feature_cols: list[str],
+    nullable_cols: frozenset[str],
+) -> list:
+    """Legacy schema v2 encoder (value + __present masks for nullable numerics)."""
+    features: list[float] = []
     spot = _safe_float(snap.get("spot"))
 
-    for col in FEATURES_5M:
+    for col in feature_cols:
         if col in CATEGORICAL_COLS:
-            # Encode categoricals
             if col == "zone":
-                zone_val = (snap.get("zone") or "pin_neutral").lower()
-                features.append(float(ZONE_MAP.get(zone_val, 2)))
+                features.append(_encode_zone_feature(snap))
             elif col == "vwap_side":
-                side = (snap.get("vwap_side") or "").lower()
-                features.append(VWAP_SIDE_MAP.get(side, 0.0))
+                features.append(_encode_vwap_side_feature(snap))
         elif col == "spot":
-            # Normalize spot as % change from reference
             if ref_spot > 0:
                 features.append((spot - ref_spot) / ref_spot)
             else:
                 features.append(0.0)
         elif col in ("candle_body_pts", "candle_range_pts", "vwap_dist_pts"):
-            # Normalize point values by spot
             val = _safe_float(snap.get(col))
             features.append(val / ref_spot if ref_spot > 0 else 0.0)
         elif col.startswith("dist_"):
-            # Distance features: normalize by spot
-            val = _safe_float(snap.get(col))
-            features.append(val / ref_spot if ref_spot > 0 else 0.0)
-        elif col in LOG_TRANSFORM_COLS:
-            # Large magnitude + signed: use signed log
-            val = _safe_float(snap.get(col))
-            features.append(_signed_log(val))
-        elif col.endswith("_chg_pct") or col.endswith("_push"):
-            # Already in percentage: keep as-is but clip outliers
-            val = _safe_float(snap.get(col))
-            features.append(max(-5.0, min(5.0, val)))
-        else:
-            # Everything else: safe float
-            features.append(_safe_float(snap.get(col)))
-
-    return features
-
-
-def encode_snapshot_1m(snap: dict, ref_spot: float) -> list:
-    """Encode a single snapshot using the 1m feature subset."""
-    features = []
-    spot = _safe_float(snap.get("spot"))
-
-    for col in FEATURES_1M:
-        if col in CATEGORICAL_COLS:
-            if col == "zone":
-                zone_val = (snap.get("zone") or "pin_neutral").lower()
-                features.append(float(ZONE_MAP.get(zone_val, 2)))
-            elif col == "vwap_side":
-                side = (snap.get("vwap_side") or "").lower()
-                features.append(VWAP_SIDE_MAP.get(side, 0.0))
-        elif col == "spot":
-            if ref_spot > 0:
-                features.append((spot - ref_spot) / ref_spot)
-            else:
-                features.append(0.0)
-        elif col in ("candle_body_pts", "candle_range_pts", "vwap_dist_pts"):
             val = _safe_float(snap.get(col))
             features.append(val / ref_spot if ref_spot > 0 else 0.0)
         elif col in LOG_TRANSFORM_COLS:
             val = _safe_float(snap.get(col))
             features.append(_signed_log(val))
-        elif col.endswith("_chg_pct"):
-            val = _safe_float(snap.get(col))
-            features.append(max(-5.0, min(5.0, val)))
+        elif col in nullable_cols:
+            _append_nullable_numeric(features, snap, col)
         else:
             features.append(_safe_float(snap.get(col)))
 
     return features
+
+
+def encode_snapshot_5m_v2(snap: dict, ref_spot: float) -> list:
+    return _encode_snapshot_v2(
+        snap,
+        ref_spot,
+        feature_cols=LEGACY_V2_FEATURES_5M,
+        nullable_cols=LEGACY_V2_NULLABLE_NUMERIC_COLS_5M,
+    )
+
+
+def encode_snapshot_1m_v2(snap: dict, ref_spot: float) -> list:
+    return _encode_snapshot_v2(
+        snap,
+        ref_spot,
+        feature_cols=LEGACY_V2_FEATURES_1M,
+        nullable_cols=LEGACY_V2_NULLABLE_NUMERIC_COLS_1M,
+    )
+
+
+def encode_snapshot_5m_for_checkpoint(
+    snap: dict,
+    ref_spot: float,
+    checkpoint: Mapping[str, Any],
+    *,
+    category_maps: dict | None = None,
+    vol_medians: dict | None = None,
+) -> list:
+    if checkpoint_encoder_schema_version(checkpoint) == LEGACY_ENCODER_SCHEMA_VERSION:
+        return encode_snapshot_5m_v2(snap, ref_spot)
+    return encode_snapshot_5m(
+        snap,
+        ref_spot,
+        category_maps=category_maps,
+        vol_medians=vol_medians,
+    )
+
+
+def encode_snapshot_1m_for_checkpoint(
+    snap: dict,
+    ref_spot: float,
+    checkpoint: Mapping[str, Any],
+    *,
+    category_maps: dict | None = None,
+    vol_medians: dict | None = None,
+) -> list:
+    if checkpoint_encoder_schema_version(checkpoint) == LEGACY_ENCODER_SCHEMA_VERSION:
+        return encode_snapshot_1m_v2(snap, ref_spot)
+    return encode_snapshot_1m(
+        snap,
+        ref_spot,
+        category_maps=category_maps,
+        vol_medians=vol_medians,
+    )
+
+
+def encode_snapshot_5m(
+    snap: dict,
+    ref_spot: float,
+    *,
+    category_maps: dict | None = None,
+    vol_medians: dict | None = None,
+) -> list:
+    """Encode a 1m snapshot into the structure-stream tabular vector (XGB parity, Stage 2)."""
+    del ref_spot  # tabular engineer uses snapshot spot directly
+    from ml_train import encode_tabular_feature_vector
+
+    return encode_tabular_feature_vector(
+        snap,
+        FEATURES_5M,
+        category_maps=category_maps,
+        vol_medians=vol_medians,
+        ticker=snap.get("ticker"),
+    )
+
+
+def encode_snapshot_1m(
+    snap: dict,
+    ref_spot: float,
+    *,
+    category_maps: dict | None = None,
+    vol_medians: dict | None = None,
+) -> list:
+    """Encode a 1m snapshot into the micro-stream tabular vector (full universe, Stage 2)."""
+    del ref_spot
+    from ml_train import encode_tabular_feature_vector
+
+    return encode_tabular_feature_vector(
+        snap,
+        FEATURES_1M,
+        category_maps=category_maps,
+        vol_medians=vol_medians,
+        ticker=snap.get("ticker"),
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -618,6 +933,8 @@ def build_lstm_dataset(
     min_ts_utc: Optional[float] = None,
     allowed_et_dates: Optional[set] = None,
     ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
+    confirm_drop_group_ids: Optional[list[str]] = None,
+    confirm_ablation_manifest: Optional[dict] = None,
 ) -> LSTMDataset:
     """
     Build the complete LSTM training dataset from the snapshot database.
@@ -645,6 +962,10 @@ def build_lstm_dataset(
         raise ValueError(
             f"build_lstm_dataset: canonical 1m only; got timeframe={timeframe!r}"
         )
+    from features.lstm_sequence_input import (
+        encode_lstm_micro_sequence_bar,
+        encode_lstm_structure_sequence_bar,
+    )
     from features.training_canonical_input import training_snapshot_for_sequence_encode
 
     _db = Path(db_path) if db_path else DB_PATH
@@ -653,9 +974,13 @@ def build_lstm_dataset(
     tdef = horizon_target_definition(hz)
     if tickers is None:
         try:
-            from scheduler_user_tickers import load_user_scheduler_tickers
+            from scheduler_user_tickers import (
+                load_user_scheduler_tickers_or_empty,
+                resolve_ml_training_roster,
+            )
 
-            tickers = load_user_scheduler_tickers()
+            enrolled = load_user_scheduler_tickers_or_empty()
+            tickers = resolve_ml_training_roster(enrolled, str(_db))
         except Exception:
             tickers = []
         tickers = [t for t in (tickers or []) if t and not str(t).startswith("$")]
@@ -691,7 +1016,13 @@ def build_lstm_dataset(
             db_path=_db,
             require_outcome=require_outcome,
             allowed_et_dates=allowed_et_dates,
+            min_ts_utc=min_ts_utc,
             target_column=label_col,
+            skip_normalized_sync=True,
+            model_family="lstm",
+            horizon_slug=ml_horizon_slug,
+            confirm_drop_group_ids=confirm_drop_group_ids,
+            confirm_ablation_manifest=confirm_ablation_manifest,
         )
 
         for day_key, snapshots in sorted(days_data.items()):
@@ -732,8 +1063,7 @@ def build_lstm_dataset(
                 seq_5m = []
                 for snap in window:
                     merged = training_snapshot_for_sequence_encode(snap)
-                    features = encode_snapshot_5m(merged, ref_spot)
-                    seq_5m.append(features)
+                    seq_5m.append(encode_lstm_structure_sequence_bar(merged, ref_spot))
 
                 # ── 1m stream: last 20 bars (micro context) ──────────────
                 micro_window = window[-STREAM_1M_LOOKBACK:]
@@ -744,18 +1074,18 @@ def build_lstm_dataset(
                 seq_1m = []
                 for snap in micro_window:
                     merged = training_snapshot_for_sequence_encode(snap)
-                    features = encode_snapshot_1m(merged, micro_ref)
-                    seq_1m.append(features)
+                    seq_1m.append(encode_lstm_micro_sequence_bar(merged, micro_ref))
 
                 # ── Confluence features ───────────────────────────────────
-                # Compute from the full day's snapshot list for proper lookback
-                day_idx = snapshots.index(current) if current in snapshots else end_idx
+                # window = snapshots[start_idx:end_idx] → current is snapshots[end_idx - 1].
+                # Avoid snapshots.index(current): O(n) dict equality per slide → hours on 40 days.
+                day_idx = end_idx - 1
                 conf = compute_confluence_features(snapshots, day_idx)
                 conf_vec = [conf[k] for k in CONFLUENCE_FEATURES]
 
                 # ── Track NaN counts for diagnostics (vectorized) ─────────
                 arr_5m = np.array(seq_5m)  # shape: (lookback, n_features)
-                for i, col in enumerate(FEATURES_5M):
+                for i, col in enumerate(ENCODED_FEATURES_5M):
                     if col not in nan_counts:
                         nan_counts[col] = 0
                     nan_counts[col] += int(np.isnan(arr_5m[:, i]).sum())
@@ -866,9 +1196,16 @@ if __name__ == "__main__":
     conn.close()
 
     try:
-        from scheduler_user_tickers import load_user_scheduler_tickers
+        from scheduler_user_tickers import (
+            load_user_scheduler_tickers_or_empty,
+            resolve_ml_training_roster,
+        )
 
-        tickers = [t for t in load_user_scheduler_tickers() if t and not t.startswith("$")]
+        enrolled = load_user_scheduler_tickers_or_empty()
+        tickers = resolve_ml_training_roster(
+            [t for t in enrolled if t and not t.startswith("$")],
+            str(DB_PATH),
+        )
     except Exception:
         tickers = []
     if not tickers:
@@ -951,5 +1288,9 @@ if __name__ == "__main__":
             print()
 
     print("NEXT STEP: If all checks pass, proceed to lstm_model.py")
-    print("           Run: python lstm_data.py  (this script)")
+    print("           Run: python lstm_model.py  (this script)")
     print("           Then share the output with Claude")
+
+
+# Import-time refresh: sequence encoders read FEATURES_* at load; must stay deterministic.
+refresh_sequence_feature_lists()

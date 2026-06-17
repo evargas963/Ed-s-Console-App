@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "perf_proof_id": "pp_v4b_server_fetch_state_response_leaf_provenance",
+  "landed_batch": "v4b-2026-05-19",
+  "replacement_scope": "server.py chunk 4: ms_dict response assembly \u2014 $TNX + ES/NQ/RTY futures via mkt_ctx (quotes.quote.lastPrice/netChange/netPercentChange); leaf reads land in market_context.py walk.",
+  "code_paths": [
+    "server.py"
+  ],
+  "evidence": {
+    "pytest_args": [
+      "tests/test_server_quote_source_contract.py"
+    ],
+    "note": "Disposition-only chunk; quote helper regression guard."
+  },
+  "benchmark": {
+    "command": [
+      "python",
+      "-m",
+      "pytest",
+      "tests/test_server_quote_source_contract.py",
+      "-q",
+      "--no-header"
+    ],
+    "iterations": 1,
+    "timings_ms": [
+      5000
+    ],
+    "median_ms": 5000,
+    "platform_note": "Windows; chunk-4 disposition-only 2026-05-19"
+  },
+  "register_link": {
+    "status": "unbound",
+    "replaced_register_ids": [],
+    "producer_note": "market_context.py is producer for all 8 canopy emissions"
+  }
+}

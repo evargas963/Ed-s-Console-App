@@ -6,16 +6,22 @@ leaves runtime v2 adapter fields unchanged.
 
 The scaffold uses artifact-level ``reward_r`` and ``risk_r`` assumptions across
 all rows. Runtime promotion requires per-row trade geometry sourced from
-candidate metadata; that per-row variant is deferred until promotion gates are
-designed.
+candidate metadata; that per-row variant is deferred until promotion gates are designed. [REAL-GATE:accepted-design]
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Iterable
 
+log = logging.getLogger(__name__)
+
+from calibration.statistical_integrity import bucket_gate
+from calibration.v2_a1_calibration import (
+    A1_CALIBRATION_PER_REGIME_MIN_SAMPLES,
+    axis_reliability_bucket_value,
+)
 from calibration.v2_a1_conformal import A1_CONFORMAL_REGIME_AXES
-from calibration.v2_a1_calibration import A1_CALIBRATION_PER_REGIME_MIN_SAMPLES
 
 A1_EV_BOUNDS_ARTIFACT_SCHEMA_VERSION = "1"
 A1_EV_BOUNDS_METHOD = "a1_ev_bounds_from_conformal_probability_band"
@@ -29,19 +35,21 @@ def build_a1_ev_bounds_artifact(
 ) -> dict[str, Any]:
     """Build a JSON-serializable EV-bounds artifact from A1 conformal output."""
     geometry = _validate_geometry(reward_r=reward_r, risk_r=risk_r)
-    conformal_status = str(conformal_artifact.get("status") or "unknown")
+    conformal_status_raw = conformal_artifact.get("status")
     conformal_reason = conformal_artifact.get("reason")
+    conformal_run_id = conformal_artifact.get("conformal_run_id")
+    ev_bounds_run_id = f"{conformal_run_id}-ev-bounds" if conformal_run_id else None
     base = {
         "schema_version": A1_EV_BOUNDS_ARTIFACT_SCHEMA_VERSION,
         "calibration_run_id": conformal_artifact.get("calibration_run_id"),
         "calibration_window_id": conformal_artifact.get("calibration_window_id"),
-        "conformal_run_id": conformal_artifact.get("conformal_run_id"),
-        "ev_bounds_run_id": f"{conformal_artifact.get('conformal_run_id') or 'a1'}-ev-bounds",
-        "module_id": conformal_artifact.get("module_id") or "A",
-        "expression_profile_id": conformal_artifact.get("expression_profile_id") or "A1",
-        "horizon": str(conformal_artifact.get("horizon") or "unknown"),
+        "conformal_run_id": conformal_run_id,
+        "ev_bounds_run_id": ev_bounds_run_id,
+        "module_id": conformal_artifact.get("module_id"),
+        "expression_profile_id": conformal_artifact.get("expression_profile_id"),
+        "horizon": conformal_artifact.get("horizon"),
         "method": A1_EV_BOUNDS_METHOD,
-        "input_conformal_status": conformal_status,
+        "input_conformal_status": conformal_status_raw,
         "runtime_adapter_unchanged": True,
         "trade_geometry": geometry,
         "geometry_scope": {
@@ -54,6 +62,14 @@ def build_a1_ev_bounds_artifact(
         },
         "approximate_guarantee_disclosure": approximate_guarantee_disclosure(conformal_artifact),
     }
+    if conformal_status_raw is None or not str(conformal_status_raw).strip():
+        return _skip_artifact(
+            base,
+            status="ev_bounds_skipped_missing_upstream_conformal_status",
+            reason="conformal_artifact_status_field_missing",
+        )
+    conformal_status = str(conformal_status_raw).strip()
+    base["input_conformal_status"] = conformal_status
     if conformal_status.startswith("conformal_skipped_"):
         return _skip_artifact(
             base,
@@ -173,9 +189,11 @@ def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def _regime_ev_bounds(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for axis in A1_CONFORMAL_REGIME_AXES:
-        values = sorted({str(row.get(axis) or "unknown") for row in rows})
+        values = sorted({axis_reliability_bucket_value(row.get(axis)) for row in rows})
         for value in values:
-            bucket = [row for row in rows if str(row.get(axis) or "unknown") == value]
+            bucket = [
+                row for row in rows if axis_reliability_bucket_value(row.get(axis)) == value
+            ]
             gate = _sample_gate(len(bucket), A1_CALIBRATION_PER_REGIME_MIN_SAMPLES, "O-25")
             key = f"{axis}:{value}"
             entry = {
@@ -220,17 +238,17 @@ def _validate_geometry(*, reward_r: float, risk_r: float) -> dict[str, float]:
 
 
 def _bounded_probability(value: float) -> float:
-    return min(1.0, max(0.0, float(value)))
+    raw = float(value)
+    if raw < 0.0 or raw > 1.0:
+        log.warning(
+            "v2_a1_ev_bounds: probability %s outside [0, 1]; clamping before EV computation",
+            raw,
+        )
+    return min(1.0, max(0.0, raw))
 
 
 def _sample_gate(n: int, min_required: int, operator_decision: str) -> dict[str, Any]:
-    return {
-        "n": int(n),
-        "min_required": int(min_required),
-        "sufficient_sample": int(n) >= int(min_required),
-        "status": "ok" if int(n) >= int(min_required) else "insufficient_sample",
-        "operator_decision": operator_decision,
-    }
+    return {**bucket_gate(n, min_required), "operator_decision": operator_decision}
 
 
 def _mean(values: Iterable[float]) -> float:
@@ -241,9 +259,6 @@ def _mean(values: Iterable[float]) -> float:
 
 
 def _float_or_none(value: Any) -> float | None:
-    try:
-        if value is not None:
-            return float(value)
-    except (TypeError, ValueError):
-        return None
-    return None
+    from numeric_contract import float_finite_or_none
+
+    return float_finite_or_none(value)

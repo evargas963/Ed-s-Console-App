@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "artifact": "governance/artifacts/NO_VERIFY_RESISTANCE.json",
+  "local_pre_commit_bypassable": true,
+  "bypass_command": "git commit --no-verify",
+  "mitigation_layers": [
+    "CI required checks (objective-audit workflow)",
+    "GitHub branch protection requiring CI checks",
+    "CODEOWNERS + required PR review"
+  ],
+  "ci_workflow_exists": true,
+  "branch_protection_verified": true,
+  "no_verify_status": "mitigated",
+  "remote_evidence": {
+    "evidence_source": "gh api + gh run list",
+    "evidence_timestamp": "2026-06-17T10:18:55+00:00",
+    "repository": "evargas963/Ed-s-Console-App",
+    "protected_branch": "main",
+    "required_status_checks": [
+      "objective-audit"
+    ],
+    "required_reviews": 1,
+    "allows_force_pushes": false,
+    "allows_deletions": false,
+    "bypass_actors": [],
+    "verification_method": "github_cli",
+    "verified_by": "tools/verify_remote_enforcement.py"
+  },
+  "closed_requires": [
+    "ci_required_checks_proven_on_github",
+    "branch_protection_verified"
+  ],
+  "acceptable_claim": "No-verify mitigated only when CI + branch protection are both proven on GitHub",
+  "generated": "2026-06-17"
+}

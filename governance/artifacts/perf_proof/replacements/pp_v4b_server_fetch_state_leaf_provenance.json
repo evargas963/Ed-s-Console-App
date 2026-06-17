@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "perf_proof_id": "pp_v4b_server_fetch_state_leaf_provenance",
+  "landed_batch": "v4b-2026-05-19",
+  "replacement_scope": "server.py chunk 3: _fetch_state FIX-1 dedupe (_parse_quote_node_session_fields); 25 net-new Schwab leaf emission sites; chain/quote/streaming/pricehistory handoffs.",
+  "code_paths": [
+    "server.py"
+  ],
+  "evidence": {
+    "pytest_args": [
+      "tests/test_server_quote_source_contract.py"
+    ],
+    "note": "FIX-1 third call site; quote helper contract tests."
+  },
+  "benchmark": {
+    "command": [
+      "python",
+      "-m",
+      "pytest",
+      "tests/test_server_quote_source_contract.py",
+      "-q",
+      "--no-header"
+    ],
+    "iterations": 1,
+    "timings_ms": [
+      6000
+    ],
+    "median_ms": 6000,
+    "platform_note": "Windows; chunk-3 FIX-1 2026-05-19"
+  },
+  "register_link": {
+    "status": "unbound",
+    "replaced_register_ids": [],
+    "fix1_dedupe_note": "18 quote session leaves collapse to L3113 helper call (canonical L2217)"
+  }
+}

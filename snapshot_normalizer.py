@@ -22,7 +22,7 @@ Transformation rules:
 - volume: last snapshot's candle_volume (accumulated bar volume)
 - timestamp: last snapshot's ts_utc, ts_et (bar close)
 - All state-derived fields (zone, net_gamma, vwap_side, etc.): from last snapshot
-- Outcomes (outcome_1c, outcome_3c, …, outcome_15c, outcome_60c): from last snapshot
+- Outcomes (outcome_1c, outcome_5c, outcome_15c, outcome_60c): from last snapshot
   in the minute bucket (Issue 16: snapshots_1m_normalized columns must stay aligned with
   `snapshots` so INSERT succeeds; after `fill_outcomes` backfill, run materialize to refresh).
 
@@ -38,11 +38,15 @@ import sqlite3
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any, Optional
 
 from db import DB_PATH, get_snapshot_sql
 from timeframe_config import CANONICAL_TIMEFRAME
 from math_snapshot_derive import derive_vwap_side
+import logging
+
+log = logging.getLogger(__name__)
+
 
 # Legacy label for raw sub-minute rows (historical DBs only; live now writes CANONICAL_TIMEFRAME)
 SUBMINUTE_SOURCE_TIMEFRAME = "5m"
@@ -107,7 +111,13 @@ def resample_to_1m(
 
     # Sort each bucket by ts_utc (input should already be ordered)
     for bucket_rows in buckets.values():
-        bucket_rows.sort(key=lambda x: (_safe_float(x.get("ts_utc")) or 0,))
+        bucket_rows.sort(
+            key=lambda x: (
+                _safe_float(x.get("ts_utc"))
+                if _safe_float(x.get("ts_utc")) is not None
+                else float("inf")
+            )
+        )
 
     out: list[dict] = []
     for bucket in sorted(buckets.keys()):
@@ -115,31 +125,42 @@ def resample_to_1m(
         first = group[0]
         last = group[-1]
 
-        # OHLC rules
+        # OHLC rules — fail closed when no usable open (no silent o=0.0 spot fallback).
+        missing_fields: list[str] = []
         o = _safe_float(first.get("candle_open"))
         if o is None:
+            missing_fields.append("candle_open")
             o = _safe_float(first.get("spot"))
-        if o is None:
-            o = 0.0
+            if o is not None:
+                missing_fields.append("candle_open_spot_proxy")
+        if o is None or o == 0:
+            continue
 
-        highs = [
-            _safe_float(r.get("candle_high")) or _safe_float(r.get("spot"))
-            for r in group
-        ]
-        lows = [
-            _safe_float(r.get("candle_low")) or _safe_float(r.get("spot"))
-            for r in group
-        ]
-        h = max((x for x in highs if x is not None), default=o)
-        l = min((x for x in lows if x is not None), default=o)
+        highs = [_safe_float(r.get("candle_high")) for r in group]
+        lows = [_safe_float(r.get("candle_low")) for r in group]
+        highs_clean = [x for x in highs if x is not None]
+        lows_clean = [x for x in lows if x is not None]
+        if not highs_clean or not lows_clean:
+            continue
+        h = max(highs_clean)
+        l = min(lows_clean)
+        if h == 0 or l == 0:
+            continue
 
         c = _safe_float(last.get("candle_close"))
         if c is None:
+            missing_fields.append("candle_close")
             c = _safe_float(last.get("spot"))
+            if c is not None:
+                missing_fields.append("candle_close_spot_proxy")
         if c is None:
-            c = o
+            continue
+        if c == 0:
+            continue
 
         vol = _safe_float(last.get("candle_volume"))
+        if vol is None:
+            missing_fields.append("candle_volume")
 
         # Build normalized row: base on last snapshot, overwrite OHLC and timeframe
         norm = dict(last)
@@ -150,8 +171,14 @@ def resample_to_1m(
         norm["candle_volume"] = vol
         norm["timeframe"] = NORMALIZED_TIMEFRAME
         norm["normalized_from_subminute"] = normalized_from_subminute
-        # Ensure spot is last snapshot's spot
-        norm["spot"] = _safe_float(last.get("spot")) or c
+        norm["source"] = "snapshot_synthetic"
+        norm["synthetic"] = True
+        norm["missing_fields"] = missing_fields
+        spot_val = _safe_float(last.get("spot"))
+        if spot_val is None:
+            spot_val = c
+            missing_fields.append("spot_close_proxy")
+        norm["spot"] = spot_val
         # Recompute OHLC-derived fields from normalized OHLC
         norm["candle_body_pts"] = abs(c - o) if (c is not None and o is not None) else None
         norm["candle_range_pts"] = (h - l) if (h is not None and l is not None) else None
@@ -255,7 +282,7 @@ def materialize_normalized_table(
 ) -> dict[str, Any]:
     """
     Resample sub-minute snapshots into snapshots_1m_normalized table.
-    Idempotent: clears table first by default, then repopulates.
+    Idempotent: per-ticker atomic replace by default (not a global table wipe).
 
     Args:
         db_path: Path to the database.
@@ -280,8 +307,13 @@ def materialize_normalized_table(
             )
             return result
 
-        if clear_first:
-            conn.execute("DELETE FROM snapshots_1m_normalized")
+        # Per-ticker ATOMIC replace (2026-06-03): the prior "DELETE all + commit up front" left
+        # EVERY ticker empty during the multi-ticker repopulate. A concurrent reader (the pre-train
+        # gate) or the live server's ongoing ingestion during that window saw the live ticker (SPY)
+        # as 0 rows -> sequence gate NO-GO -> retrain aborted, even though SPY normalizes fine. We
+        # no longer wipe the whole table; instead each ticker's rows are replaced inside one
+        # transaction per ticker (DELETE ticker + INSERT ticker + single commit, below), so no
+        # ticker is ever globally absent. clear_first now means "replace each processed ticker".
 
         if tickers is None:
             rows = conn.execute(
@@ -297,14 +329,14 @@ def materialize_normalized_table(
         col_str = ", ".join(insert_cols)
         insert_sql = f"INSERT INTO snapshots_1m_normalized ({col_str}) VALUES ({placeholders})"
 
-        next_sid = 0
-        if not clear_first:
+        # Table is never globally wiped now, so snapshot_id always continues from the current max
+        # (ids stay unique across per-ticker replaces; contiguity is not required for this derived table).
+        for ticker in tickers:
             row_mx = conn.execute(
                 "SELECT COALESCE(MAX(snapshot_id), 0) FROM snapshots_1m_normalized"
             ).fetchone()
             next_sid = int(row_mx[0] if row_mx and row_mx[0] is not None else 0)
 
-        for ticker in tickers:
             raw, source_tf = fetch_rows_for_normalization(conn, ticker)
             result["raw_rows"] += len(raw)
             if not raw:
@@ -319,13 +351,21 @@ def materialize_normalized_table(
                 "source_timeframe": source_tf,
             }
             result["normalized_rows"] += len(normalized)
+            batch = []
             for nr in normalized:
                 nr.pop("snapshot_id", None)
                 next_sid += 1
                 nr["snapshot_id"] = next_sid
-                vals = [nr.get(c) for c in insert_cols]
-                conn.execute(insert_sql, vals)
-        conn.commit()
+                batch.append([nr.get(c) for c in insert_cols])
+            if batch:
+                # Atomic per-ticker replace: DELETE this ticker's old rows + INSERT the new ones in
+                # ONE transaction (single commit), so a concurrent reader sees either the old SPY
+                # rows or the new ones — never an empty SPY. Per-ticker commit still bounds WAL
+                # growth and releases the write lock between tickers (DB-WRITE-PATH-FIXES intent).
+                if clear_first:
+                    conn.execute("DELETE FROM snapshots_1m_normalized WHERE ticker = ?", (ticker,))
+                conn.executemany(insert_sql, batch)
+                conn.commit()
     except Exception as e:
         result["errors"].append(str(e))
         conn.rollback()
@@ -488,6 +528,90 @@ def run_full_materialization(db_path: Path = DB_PATH) -> dict[str, Any]:
     }
 
 
+def backfill_price_action_columns(
+    db_path: Path = DB_PATH,
+    tickers: Optional[list[str]] = None,
+    *,
+    max_bars: int = 80,
+    only_null: bool = True,
+) -> dict[str, Any]:
+    """
+    Backfill the persisted price-action cone (pa_* columns) on historical
+    snapshots from price_bars_1m, leak-free (bars with bar_end <= ts_utc only).
+
+    Updates BOTH snapshots and snapshots_1m_normalized in place so retraining
+    can use the new columns without waiting for live accumulation. max_bars=80
+    covers the longest window (60m return lookback + ATR seeding).
+    """
+    import bisect
+    from types import SimpleNamespace
+
+    from features.signal_layer_v1 import (
+        SNAPSHOT_PRICE_ACTION_COLUMNS,
+        compute_price_action_snapshot_columns,
+    )
+
+    pa_cols = [c for c, _ in SNAPSHOT_PRICE_ACTION_COLUMNS]
+    set_sql = ", ".join(f"{c} = ?" for c in pa_cols)
+    out: dict[str, Any] = {"by_ticker": {}, "rows_updated": 0, "rows_skipped_no_bars": 0}
+    conn = _connect(db_path)
+    try:
+        if tickers is None:
+            tickers = [
+                str(r[0])
+                for r in conn.execute("SELECT DISTINCT ticker FROM snapshots ORDER BY ticker")
+            ]
+        for tkr in tickers:
+            bars = [
+                {
+                    "bar_start_ts_utc": float(r[0]),
+                    "bar_end_ts_utc": float(r[1]),
+                    "open": r[2], "high": r[3], "low": r[4], "close": r[5], "volume": r[6],
+                }
+                for r in conn.execute(
+                    "SELECT bar_start_ts_utc, bar_end_ts_utc, open, high, low, close, volume"
+                    " FROM price_bars_1m WHERE ticker = ? ORDER BY bar_end_ts_utc ASC",
+                    (tkr,),
+                )
+            ]
+            bar_ends = [b["bar_end_ts_utc"] for b in bars]
+            null_filter = f" AND {pa_cols[0]} IS NULL" if only_null else ""
+            snaps = conn.execute(
+                f"SELECT snapshot_id, ts_utc, vwap FROM snapshots WHERE ticker = ?{null_filter}"
+                " ORDER BY ts_utc ASC",
+                (tkr,),
+            ).fetchall()
+            updated = skipped = 0
+            for snap_id, ts_utc, vwap in snaps:
+                hi = bisect.bisect_right(bar_ends, float(ts_utc))
+                window = bars[max(0, hi - max_bars) : hi]
+                if not window:
+                    skipped += 1
+                    continue
+                vals = compute_price_action_snapshot_columns(
+                    window,
+                    decision_ts_utc=float(ts_utc),
+                    inp=SimpleNamespace(vwap=vwap),
+                )
+                params = [vals[c] for c in pa_cols]
+                conn.execute(
+                    f"UPDATE snapshots SET {set_sql} WHERE snapshot_id = ?", [*params, snap_id]
+                )
+                conn.execute(
+                    f"UPDATE snapshots_1m_normalized SET {set_sql}"
+                    " WHERE ticker = ? AND ts_utc = ?",
+                    [*params, tkr, float(ts_utc)],
+                )
+                updated += 1
+            conn.commit()
+            out["by_ticker"][tkr] = {"updated": updated, "skipped_no_bars": skipped}
+            out["rows_updated"] += updated
+            out["rows_skipped_no_bars"] += skipped
+    finally:
+        conn.close()
+    return out
+
+
 def _print_ingestion_context(db_path: Path, raw_rows: int, normalized_rows: int) -> None:
     """Clarify why raw_rows is far below snapshot row counts (1m-vs-5m selection)."""
     conn = _connect(db_path)
@@ -512,15 +636,23 @@ if __name__ == "__main__":
     if sys.stdout.encoding and "cp1252" in (sys.stdout.encoding or "").lower():
         try:
             sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
-
+        except Exception as e:
+            log.debug("stdout reconfigure: %s", e, exc_info=True)
     db = Path(DB_PATH)
     if not db.exists():
         print(f"ERROR: Database not found: {db}")
         sys.exit(1)
 
     validate_only = "--validate" in sys.argv
+
+    if "--backfill-price-action" in sys.argv:
+        res = backfill_price_action_columns(db)
+        print("Price-action backfill:")
+        print("  rows_updated:", res["rows_updated"])
+        print("  rows_skipped_no_bars:", res["rows_skipped_no_bars"])
+        for t, st in res["by_ticker"].items():
+            print(f"  {t}: {st}")
+        sys.exit(0)
 
     if validate_only:
         v = validate_normalization(db)

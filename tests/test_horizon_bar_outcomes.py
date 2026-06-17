@@ -33,10 +33,7 @@ def test_outcome_specs_cover_all_nc():
     names = [s[0] for s in OUTCOME_BAR_SPECS]
     assert names == [
         "outcome_1c",
-        "outcome_3c",
         "outcome_5c",
-        "outcome_8c",
-        "outcome_13c",
         "outcome_15c",
         "outcome_60c",
     ]
@@ -105,6 +102,36 @@ def test_fill_outcomes_bar_based_anchor_matches_last_completed_bar(tmp_db: EdDB)
     assert abs(float(row["outcome_1c_pts"]) - pts) < 1e-6
 
 
+def test_upsert_1m_bars_normalizes_epoch_ms_for_candle_objects_and_dicts(tmp_db: EdDB):
+    """2026-06-09 regression: Candle objects with epoch-ms .ts (Schwab quoteTime passthrough)
+    were stored raw on an ms grid, so fill_outcomes (seconds grid) matched zero bars all day.
+    Both input shapes must land on the canonical whole-minute epoch-seconds grid."""
+    from types import SimpleNamespace
+
+    sec_start = 1_781_000_040.0  # already whole-minute, seconds
+    obj_bar = SimpleNamespace(
+        ts=sec_start * 1000.0, open=10.0, high=11.0, low=9.0, close=10.5, volume=5.0
+    )
+    dict_bar = {
+        "datetime": (sec_start + 60.0) * 1000.0,
+        "open": 10.5,
+        "high": 12.0,
+        "low": 10.0,
+        "close": 11.5,
+        "volume": 7.0,
+    }
+    n = tmp_db.upsert_1m_bars("SPY", [obj_bar, dict_bar])
+    assert n == 2
+    with tmp_db._connect() as conn:
+        rows = conn.execute(
+            "SELECT bar_start_ts_utc, bar_end_ts_utc, close FROM price_bars_1m"
+            " WHERE ticker='SPY' ORDER BY bar_start_ts_utc"
+        ).fetchall()
+    assert [float(r["bar_start_ts_utc"]) for r in rows] == [sec_start, sec_start + 60.0]
+    assert all(float(r["bar_end_ts_utc"]) - float(r["bar_start_ts_utc"]) == 60.0 for r in rows)
+    assert [float(r["close"]) for r in rows] == [10.5, 11.5]
+
+
 def test_migration_issue4_clears_v2_labels(tmp_path: Path):
     """Opening DB runs Issue 4 migration once: v2 rows lose derived outcomes, version -> 3."""
     db_path = tmp_path / "preissue4.db"
@@ -116,10 +143,7 @@ def test_migration_issue4_clears_v2_labels(tmp_path: Path):
                 ticker TEXT, timeframe TEXT, ts_utc REAL, ts_et TEXT,
                 et_hour INTEGER, et_minute INTEGER, market_session TEXT, spot REAL,
                 outcome_1c TEXT, outcome_1c_pts REAL,
-                outcome_3c TEXT, outcome_3c_pts REAL,
                 outcome_5c TEXT, outcome_5c_pts REAL,
-                outcome_8c TEXT, outcome_8c_pts REAL,
-                outcome_13c TEXT, outcome_13c_pts REAL,
                 outcome_15c TEXT, outcome_15c_pts REAL,
                 outcome_60c TEXT, outcome_60c_pts REAL,
                 horizon_outcome_schema_version INTEGER DEFAULT 2,
@@ -151,3 +175,116 @@ def test_migration_issue4_clears_v2_labels(tmp_path: Path):
     assert row["outcome_1c"] is None
     assert int(row["horizon_outcome_schema_version"]) == HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1
     assert flag is not None
+
+
+# ── Phase 1 (horizon-collapse fix): per-horizon vol-scaled outcome threshold ──────
+
+
+def test_classify_direction_pts_threshold_and_fail_closed():
+    """classify_direction_pts uses a points threshold and fails closed without a valid scale."""
+    from math_probabilities import classify_direction, classify_direction_pts
+
+    # up / down / flat by the supplied points threshold (strict inequality; boundary = flat)
+    assert classify_direction_pts(0.6, 0.5) == "up"
+    assert classify_direction_pts(-0.6, 0.5) == "down"
+    assert classify_direction_pts(0.4, 0.5) == "flat"
+    assert classify_direction_pts(-0.4, 0.5) == "flat"
+    assert classify_direction_pts(0.5, 0.5) == "flat"
+
+    # Fail-closed: no directional claim without a valid (>0) volatility scale.
+    assert classify_direction_pts(10.0, 0.0) == "flat"
+    assert classify_direction_pts(10.0, -1.0) == "flat"
+    assert classify_direction_pts(10.0, None) == "flat"
+
+    # Phase 1 substance: a per-horizon vol-scaled threshold disagrees with the legacy
+    # fixed 0.05%-of-spot cut for the same move — the label is no longer a single uniform cut.
+    spot = 100.0
+    pts = 0.1
+    fixed = classify_direction(pts, spot)          # thr = spot*0.0005 = 0.05 -> "up"
+    perhz = classify_direction_pts(pts, 0.55)       # vol-scaled thr 0.55 -> "flat"
+    assert fixed == "up"
+    assert perhz == "flat"
+    assert fixed != perhz
+
+
+def test_outcome_fill_uses_per_horizon_threshold_all_horizons(tmp_db: EdDB):
+    """Stored outcome_Nc matches the per-horizon ATR-scaled formula (not the fixed 0.05% cut),
+    across 1c/5c/15c/60c, computed via the same public helpers the writer uses."""
+    from math_probabilities import classify_direction_pts
+    from movement_target_threshold import (
+        load_movement_thresholds_by_horizon_v1,
+        threshold_move_pts_for_slug,
+    )
+
+    t0 = 1_020_000.0
+    t_snap = t0 + 90.0
+    atr_v = 1.0
+    with tmp_db._connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO snapshots (
+                ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot, atr,
+                horizon_outcome_schema_version, outcome_filled
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            (
+                "SPY",
+                CF,
+                t_snap,
+                "test",
+                10,
+                30,
+                "rth",
+                9999.0,
+                atr_v,
+                HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+            ),
+        )
+    bars = []
+    for i in range(120):
+        bs = t0 + i * 60.0
+        bars.append(
+            {
+                "datetime": bs,
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.0 + 0.1 * i,
+                "volume": 1.0,
+            }
+        )
+    tmp_db.upsert_1m_bars("SPY", bars)
+    tmp_db.fill_outcomes("SPY", CF, t_snap + 8000.0)
+
+    cfg = load_movement_thresholds_by_horizon_v1()
+    anchor_close = 100.0  # last bar with bar_end <= t_snap is bar i=0 (end t0+60)
+    with tmp_db._connect() as conn:
+        row = conn.execute(
+            get_snapshot_sql("tests/test_horizon_bar_outcomes.py:per_horizon"),
+            (CF,),
+        ).fetchone()
+    assert row is not None
+
+    directional_seen = False
+    for slug, n_min in (("1c", 1), ("5c", 5), ("15c", 15), ("60c", 60)):
+        b = forward_bar_start_utc(t_snap, n_min)
+        i_fwd = int(round((b - t0) / 60.0))
+        forward_close = 100.0 + 0.1 * float(i_fwd)
+        pts = forward_close - anchor_close
+        thr = threshold_move_pts_for_slug(slug, anchor_close=anchor_close, atr=atr_v, cfg=cfg)
+        expected = classify_direction_pts(pts, thr)
+        assert row[f"outcome_{slug}"] == expected, (
+            slug,
+            pts,
+            thr,
+            row[f"outcome_{slug}"],
+            expected,
+        )
+        if expected in ("up", "down"):
+            directional_seen = True
+
+    # The longest horizon has a large monotone move; the per-horizon path must still emit a
+    # directional label (guards against an all-flat regression / classifier wired to a bad scale).
+    assert directional_seen
+    assert row["outcome_60c"] == "up"

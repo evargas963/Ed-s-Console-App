@@ -64,7 +64,6 @@ def _fetch_bars_from_schwab(ticker: str, session_date_str: str) -> list[dict]:
 
 def _snapshot_to_dict(out) -> dict:
     """Convert SnapshotOutput to JSON-serializable dict."""
-    from dataclasses import asdict
 
     d = {
         "ticker": out.ticker,
@@ -141,9 +140,9 @@ def main():
     ticker = args.ticker.upper().strip()
     session_date = args.date
     if not session_date:
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
-        session_date = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+        from time_et import now_et
+
+        session_date = now_et().strftime("%Y-%m-%d")
 
     # Load bars
     if args.bars_file:

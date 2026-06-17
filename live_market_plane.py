@@ -19,9 +19,13 @@ Layers (see server lifespan / architecture docs):
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from typing import Any, Optional
+
+log = logging.getLogger(__name__)
+
 
 
 _lock = threading.RLock()
@@ -90,8 +94,8 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
 
     last = _positive_float(item.get("LAST_PRICE"))
     mark = _positive_float(item.get("MARK"))
-    bid = _positive_float(item.get("BID_PRICE")) or _positive_float(item.get("BID"))
-    ask = _positive_float(item.get("ASK_PRICE")) or _positive_float(item.get("ASK"))
+    bid = _positive_float(item.get("BID_PRICE"))
+    ask = _positive_float(item.get("ASK_PRICE"))
 
     with _lock:
         prev = _by_ticker.get(t)
@@ -101,8 +105,8 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
 
     spot_f = last or mark
     spot_source = "LAST_PRICE" if last is not None else ("MARK" if mark is not None else None)
-    bid_source = "BID_PRICE" if _positive_float(item.get("BID_PRICE")) is not None else ("BID" if bid is not None else None)
-    ask_source = "ASK_PRICE" if _positive_float(item.get("ASK_PRICE")) is not None else ("ASK" if ask is not None else None)
+    bid_source = "BID_PRICE" if bid is not None else None
+    ask_source = "ASK_PRICE" if ask is not None else None
 
     if spot_f is None or spot_f <= 0:
         return False
@@ -184,8 +188,8 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
         from planes.l1_events import notify_quote_updated
 
         notify_quote_updated(t)
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("notify_quote_updated: %s", e, exc_info=True)
     return True
 
 
@@ -200,8 +204,8 @@ def record_quote(ticker: str, payload: dict[str, Any]) -> None:
         from planes.l1_events import notify_quote_updated
 
         notify_quote_updated(t)
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("notify_quote_updated: %s", e, exc_info=True)
 
 
 def get_quote(ticker: str) -> Optional[dict[str, Any]]:
@@ -243,6 +247,10 @@ def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
     fts = q.get("fast_server_ts")
     if fts is not None:
         ms_dict["_live_plane_fast_ts"] = fts
+        ms_dict["fast_server_ts"] = fts
+    fg = q.get("fast_generation_id")
+    if fg is not None:
+        ms_dict["fast_generation_id"] = fg
     ms_dict["_quote_authority"] = "live_market_plane"
 
 

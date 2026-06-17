@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/feature_contract_mvp.md`.
+
 # MVP canonical feature contract (`v1_1m_mvp`) — strict boundary
 
 ## Canonical timeframe

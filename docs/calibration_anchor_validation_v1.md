@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_anchor_validation_v1.md`.
+
 # Calibration anchor validation (v1)
 
 This document records **BAR_ANCHOR_V1** anchor-feasibility versus `price_bars_1m`, explains the previously observed **~22.6%** “anchor miss” rate in Phase 1 sampling, and proves **calibration workflows** are safe.

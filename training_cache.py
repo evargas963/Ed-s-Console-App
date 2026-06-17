@@ -5,6 +5,7 @@ Directory layout:
   models/cache/features/{feature_cache_key}/
     lstm_tensors.npz, lstm_dataset_meta.json
     transformer_parallel_tensors.npz
+    parallel_cascade_bridge.npz, parallel_cascade_bridge_identity.json
     cascade_transformer_xgb_lstm.npz, cascade_transformer_identity.json
     feature_cache_identity.json
 
@@ -22,7 +23,7 @@ import sqlite3
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 import numpy as np
 
@@ -37,6 +38,8 @@ LSTM_META_NAME = "lstm_dataset_meta.json"
 TRANSFORMER_NPZ_NAME = "transformer_parallel_tensors.npz"
 CASCADE_TF_NPZ_NAME = "cascade_transformer_xgb_lstm.npz"
 CASCADE_TF_IDENTITY_NAME = "cascade_transformer_identity.json"
+PARALLEL_CASCADE_BRIDGE_NPZ_NAME = "parallel_cascade_bridge.npz"
+PARALLEL_CASCADE_BRIDGE_IDENTITY_NAME = "parallel_cascade_bridge_identity.json"
 FEATURE_IDENTITY_NAME = "feature_cache_identity.json"
 
 
@@ -71,8 +74,8 @@ def compute_training_code_fingerprint() -> str:
 
 
 def xgb_meta_content_sha256(meta_path: Path) -> str:
-    if not meta_path.exists():
-        return ""
+    if not meta_path.is_file():
+        return f"MISSING:{meta_path.resolve()}"
     return file_sha256_hex(meta_path)
 
 
@@ -83,21 +86,21 @@ def db_training_fingerprint(
     Raw-data identity for one ticker: table, min/max ts_utc, row count.
     Must match ml_train.load_data filter (RTH, label column, weekday).
     """
-    from ml_data_common import rth_where_clause, training_label_where_clause, weekday_where_clause
+    from ml_data_common import filter_ts_utc_list_to_rth, training_base_where_clause
     from timeframe_config import CANONICAL_TIMEFRAME
 
     t = ticker
     conn = sqlite3.connect(db_path)
-    where = (
-        f"timeframe = ? AND ticker = ? AND "
-        f"{training_label_where_clause(label_column)} AND {rth_where_clause()} AND ({weekday_where_clause()})"
-    )
-    row = conn.execute(
-        f"SELECT MIN(ts_utc), MAX(ts_utc), COUNT(*) FROM snapshots_1m_normalized WHERE {where}",
+    where = training_base_where_clause(label_column, include_ticker=True)
+    rows = conn.execute(
+        f"SELECT ts_utc FROM snapshots_1m_normalized WHERE {where}",
         (CANONICAL_TIMEFRAME, t),
-    ).fetchone()
+    ).fetchall()
     conn.close()
-    if not row or row[2] is None:
+    ts_list = filter_ts_utc_list_to_rth(
+        [float(r[0]) for r in rows if r[0] is not None]
+    )
+    if not ts_list:
         return {
             "table": "snapshots_1m_normalized",
             "timeframe": CANONICAL_TIMEFRAME,
@@ -110,9 +113,53 @@ def db_training_fingerprint(
         "table": "snapshots_1m_normalized",
         "timeframe": CANONICAL_TIMEFRAME,
         "ticker": str(t),
-        "min_ts_utc": float(row[0]) if row[0] is not None else None,
-        "max_ts_utc": float(row[1]) if row[1] is not None else None,
-        "row_count": int(row[2]),
+        "min_ts_utc": float(min(ts_list)),
+        "max_ts_utc": float(max(ts_list)),
+        "row_count": len(ts_list),
+    }
+
+
+def db_training_floor_stats(
+    db_path: str, ticker: str, *, label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
+) -> dict[str, Any]:
+    """Per-ticker DATA-floor stats for promotion gating (Workstream A1).
+
+    Returns labeled-row count and usable-RTH-day count using the SAME RTH /
+    label / weekday filter as ``db_training_fingerprint`` (so the floor matches
+    what training actually consumes). A usable day has
+    ``>= training_provenance.USABLE_RTH_DAY_MIN_ROWS`` labeled 1m rows.
+    """
+    from ml_data_common import filter_ts_utc_list_to_rth, training_base_where_clause
+    from timeframe_config import CANONICAL_TIMEFRAME
+    from training_provenance import USABLE_RTH_DAY_MIN_ROWS
+
+    conn = sqlite3.connect(db_path)
+    where = training_base_where_clause(label_column, include_ticker=True)
+    rows = conn.execute(
+        f"SELECT ts_utc, ts_et FROM snapshots_1m_normalized WHERE {where}",
+        (CANONICAL_TIMEFRAME, ticker),
+    ).fetchall()
+    conn.close()
+
+    rth_ts = set(
+        filter_ts_utc_list_to_rth([float(r[0]) for r in rows if r[0] is not None])
+    )
+    per_day: dict[str, int] = {}
+    for ts_utc, ts_et in rows:
+        if ts_utc is None or float(ts_utc) not in rth_ts:
+            continue
+        day = str(ts_et)[:10] if ts_et else None
+        if not day:
+            continue
+        per_day[day] = per_day.get(day, 0) + 1
+
+    labeled_rows = sum(per_day.values())
+    usable_days = sum(1 for c in per_day.values() if c >= USABLE_RTH_DAY_MIN_ROWS)
+    return {
+        "ticker": str(ticker),
+        "labeled_rows": int(labeled_rows),
+        "usable_days": int(usable_days),
+        "label_column": label_column,
     }
 
 
@@ -135,6 +182,7 @@ def compute_scheduler_cache_key(
         ROLLING_WINDOW_RTH_SESSIONS_TABULAR,
         ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE,
     )
+    from arch_competition.stack_bundle_eval_v1 import ablation_survivors_fingerprint_part
     from features.canonical_contract import (
         CANONICAL_FEATURE_CONTRACT_VERSION,
         CANONICAL_FEATURE_TIMEFRAME,
@@ -146,11 +194,11 @@ def compute_scheduler_cache_key(
             architecture,
             CANONICAL_FEATURE_CONTRACT_VERSION,
             CANONICAL_FEATURE_TIMEFRAME,
-            str(data_fp.get("min_ts_utc", "")),
-            str(data_fp.get("max_ts_utc", "")),
-            str(data_fp.get("row_count", 0)),
-            str(data_fp.get("table", "")),
-            str(data_fp.get("timeframe", "")),
+            _fingerprint_key_part(data_fp, "min_ts_utc"),
+            _fingerprint_key_part(data_fp, "max_ts_utc"),
+            _fingerprint_row_count_part(data_fp),
+            _fingerprint_key_part(data_fp, "table"),
+            _fingerprint_key_part(data_fp, "timeframe"),
             FEATURE_SCHEMA_VERSION,
             PREPROCESSING_VERSION,
             LABEL_CONFIG_VERSION,
@@ -158,6 +206,7 @@ def compute_scheduler_cache_key(
             target_column,
             str(ROLLING_WINDOW_RTH_SESSIONS_TABULAR),
             str(ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE),
+            ablation_survivors_fingerprint_part(),
             code_fp,
         ]
     )
@@ -174,6 +223,7 @@ def compute_feature_cache_key(
         LABEL_CONFIG_VERSION,
     )
     from training_cache_policy import ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE
+    from arch_competition.stack_bundle_eval_v1 import ablation_survivors_fingerprint_part
     from features.canonical_contract import (
         CANONICAL_FEATURE_CONTRACT_VERSION,
         CANONICAL_FEATURE_TIMEFRAME,
@@ -185,14 +235,15 @@ def compute_feature_cache_key(
             "shared_features",
             CANONICAL_FEATURE_CONTRACT_VERSION,
             CANONICAL_FEATURE_TIMEFRAME,
-            str(data_fp.get("min_ts_utc", "")),
-            str(data_fp.get("max_ts_utc", "")),
-            str(data_fp.get("row_count", 0)),
-            str(data_fp.get("table", "")),
-            str(data_fp.get("timeframe", "")),
+            _fingerprint_key_part(data_fp, "min_ts_utc"),
+            _fingerprint_key_part(data_fp, "max_ts_utc"),
+            _fingerprint_row_count_part(data_fp),
+            _fingerprint_key_part(data_fp, "table"),
+            _fingerprint_key_part(data_fp, "timeframe"),
             FEATURE_SCHEMA_VERSION,
             PREPROCESSING_VERSION,
             LABEL_CONFIG_VERSION,
+            ablation_survivors_fingerprint_part(),
             target_column,
             str(ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE),
             code_fp,
@@ -211,22 +262,108 @@ def db_distinct_rth_et_dates_for_ticker(
     db_path: str, ticker: str, *, label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
 ) -> list[str]:
     """Ordered YYYY-MM-DD session labels from DB (same filter as db_training_fingerprint)."""
-    from ml_data_common import rth_where_clause, training_label_where_clause, weekday_where_clause
+    from ml_data_common import et_date_str_from_ts_utc, filter_ts_utc_list_to_rth, training_base_where_clause
     from timeframe_config import CANONICAL_TIMEFRAME
 
     t = ticker.upper()
     conn = sqlite3.connect(db_path)
-    where = (
-        f"timeframe = ? AND ticker = ? AND "
-        f"{training_label_where_clause(label_column)} AND {rth_where_clause()} AND ({weekday_where_clause()})"
-    )
+    where = training_base_where_clause(label_column, include_ticker=True)
     rows = conn.execute(
-        f"SELECT DISTINCT substr(ts_et, 1, 10) AS d FROM snapshots_1m_normalized "
-        f"WHERE {where} ORDER BY d",
+        f"SELECT ts_utc FROM snapshots_1m_normalized WHERE {where} ORDER BY ts_utc",
         (CANONICAL_TIMEFRAME, t),
     ).fetchall()
     conn.close()
-    return [r[0] for r in rows if r[0] and len(str(r[0])) >= 10]
+    ts_list = filter_ts_utc_list_to_rth([float(r[0]) for r in rows if r[0] is not None])
+    dates: list[str] = []
+    seen: set[str] = set()
+    for ts in ts_list:
+        d = et_date_str_from_ts_utc(ts)
+        if d not in seen:
+            seen.add(d)
+            dates.append(d)
+    return dates
+
+
+WALK_FORWARD_MAX_VAL_SESSIONS: int = 3
+WALK_FORWARD_MIN_TOTAL_SESSIONS: int = 10
+
+
+def split_sessions_walk_forward(
+    days: Sequence[str],
+    *,
+    max_val_sessions: int = WALK_FORWARD_MAX_VAL_SESSIONS,
+    min_total_sessions: int = WALK_FORWARD_MIN_TOTAL_SESSIONS,
+) -> tuple[list[str], list[str]]:
+    """Pure chronological walk-forward split (Workstream B1).
+
+    The single authoritative split: hold out the most-recent ``n_val`` sorted
+    sessions for evaluation, train on all earlier sessions, so eval rows are
+    provably disjoint from — and strictly later than — train rows. ``days`` MUST be
+    sorted ascending (``db_distinct_rth_et_dates_for_ticker`` is). Matches the
+    canonical logic previously inline in train_compare:
+    ``n_val = min(max_val_sessions, max(1, len - min_total_sessions))``.
+
+    When fewer than ``min_total_sessions`` are available a holdout cannot be carved
+    without starving training, so returns ``(list(days), [])`` and the caller falls
+    back to no-holdout (and must not claim a clean walk-forward for that ticker).
+    """
+    ordered = list(days)
+    if len(ordered) < min_total_sessions:
+        return ordered, []
+    n_val = min(max_val_sessions, max(1, len(ordered) - min_total_sessions))
+    n_train = len(ordered) - n_val
+    return ordered[:n_train], ordered[n_train:]
+
+
+def walk_forward_session_split(
+    db_path: str,
+    ticker: str,
+    *,
+    label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
+    max_val_sessions: int = WALK_FORWARD_MAX_VAL_SESSIONS,
+    min_total_sessions: int = WALK_FORWARD_MIN_TOTAL_SESSIONS,
+) -> tuple[list[str], list[str]]:
+    """DB-backed walk-forward split: distinct RTH ET sessions then ``split_sessions_walk_forward``."""
+    days = db_distinct_rth_et_dates_for_ticker(db_path, ticker, label_column=label_column)
+    return split_sessions_walk_forward(
+        days, max_val_sessions=max_val_sessions, min_total_sessions=min_total_sessions
+    )
+
+
+WALK_FORWARD_OOF_FOLDS: int = 3
+
+
+def expanding_window_oof_folds(
+    days: Sequence[str], *, n_folds: int = WALK_FORWARD_OOF_FOLDS,
+) -> list[tuple[list[str], list[str]]]:
+    """Expanding-window out-of-fold session folds (Workstream B2).
+
+    Partition the ordered ``days`` into ``n_folds + 1`` contiguous chronological blocks
+    ``B0..Bn``; for ``i`` in ``1..n_folds`` yield ``(train_days, oof_days)`` where
+    ``train_days = B0..B(i-1)`` (strictly earlier) and ``oof_days = Bi``. ``B0`` is the
+    seed block — it never appears as an OOF fold, so OOF predictions cover ``n_folds /
+    (n_folds + 1)`` of the rows. Every OOF row is scored by a model trained ONLY on
+    strictly-earlier sessions → no in-sample base probabilities feed the stacker.
+
+    ``days`` MUST be sorted ascending. Returns ``[]`` when there are fewer sessions than
+    blocks (cannot form ``n_folds + 1`` non-empty blocks) — caller falls back to the
+    in-sample assembly (and must not claim clean OOF for that ticker).
+    """
+    ordered = list(days)
+    n_blocks = int(n_folds) + 1
+    if int(n_folds) < 1 or len(ordered) < n_blocks:
+        return []
+    # Contiguous, near-even chronological blocks (no gaps, no overlap).
+    bounds = [round(j * len(ordered) / n_blocks) for j in range(n_blocks + 1)]
+    blocks = [ordered[bounds[j]:bounds[j + 1]] for j in range(n_blocks)]
+    if any(len(b) == 0 for b in blocks):
+        return []
+    folds: list[tuple[list[str], list[str]]] = []
+    for i in range(1, n_blocks):
+        train_days = [d for b in blocks[:i] for d in b]
+        oof_days = list(blocks[i])
+        folds.append((train_days, oof_days))
+    return folds
 
 
 def min_ts_utc_for_last_n_rth_sessions(
@@ -243,24 +380,27 @@ def min_ts_utc_for_last_n_rth_sessions(
     if len(dates) <= ns:
         return None
     keep = dates[-ns:]
-    from ml_data_common import rth_where_clause, training_label_where_clause, weekday_where_clause
+    from ml_data_common import et_date_str_from_ts_utc, filter_ts_utc_list_to_rth, training_base_where_clause
     from timeframe_config import CANONICAL_TIMEFRAME
 
-    ph = ",".join(["?"] * len(keep))
     conn = sqlite3.connect(db_path)
-    where = (
-        f"timeframe = ? AND ticker = ? AND "
-        f"{training_label_where_clause(label_column)} AND {rth_where_clause()} AND ({weekday_where_clause()}) "
-        f"AND substr(ts_et, 1, 10) IN ({ph})"
-    )
-    row = conn.execute(
-        f"SELECT MIN(ts_utc) FROM snapshots_1m_normalized WHERE {where}",
-        (CANONICAL_TIMEFRAME, ticker.upper(), *keep),
-    ).fetchone()
+    where = training_base_where_clause(label_column, include_ticker=True)
+    rows = conn.execute(
+        f"SELECT ts_utc FROM snapshots_1m_normalized WHERE {where}",
+        (CANONICAL_TIMEFRAME, ticker.upper()),
+    ).fetchall()
     conn.close()
-    if not row or row[0] is None:
+    keep_set = set(keep)
+    ts_list = [
+        float(r[0])
+        for r in rows
+        if r[0] is not None
+        and et_date_str_from_ts_utc(float(r[0])) in keep_set
+    ]
+    ts_list = filter_ts_utc_list_to_rth(ts_list)
+    if not ts_list:
         return None
-    return float(row[0])
+    return float(min(ts_list))
 
 
 def compare_tabular_data_fingerprint_from_df(df, ticker: str) -> dict:
@@ -292,15 +432,39 @@ def compare_tabular_data_fingerprint_from_df(df, ticker: str) -> dict:
     }
 
 
+def _fingerprint_key_part(data_fp: dict, field: str) -> str:
+    if field not in data_fp or data_fp.get(field) is None:
+        return ""
+    return str(data_fp[field])
+
+
+def _fingerprint_row_count_part(data_fp: dict) -> str:
+    if "row_count" not in data_fp or data_fp.get("row_count") is None:
+        return ""
+    try:
+        return str(int(data_fp["row_count"]))
+    except (TypeError, ValueError):
+        return ""
+
+
 def _normalize_data_fp(d: Optional[dict]) -> dict:
     """Stable compare across JSON round-trip (int/float for ts_utc, row_count)."""
     if not d:
         return {}
 
     def _num(x):
-        if x is None:
-            return None
-        return float(x)
+        from numeric_contract import float_finite_or_none
+
+        return float_finite_or_none(x)
+
+    rc_raw = d.get("row_count")
+    if rc_raw is None:
+        row_count = None
+    else:
+        try:
+            row_count = int(rc_raw)
+        except (TypeError, ValueError):
+            row_count = None
 
     return {
         "table": str(d.get("table", "")),
@@ -308,8 +472,20 @@ def _normalize_data_fp(d: Optional[dict]) -> dict:
         "ticker": str(d.get("ticker", "")),
         "min_ts_utc": _num(d.get("min_ts_utc")),
         "max_ts_utc": _num(d.get("max_ts_utc")),
-        "row_count": int(d.get("row_count", 0) or 0),
+        "row_count": row_count,
     }
+
+
+def _meta_required_positive_int(meta: dict, key: str) -> int | None:
+    if key not in meta or meta.get(key) is None:
+        return None
+    try:
+        value = int(meta[key])
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return value
 
 
 def _canonical_lineage_identity_ok(stored: dict) -> bool:
@@ -428,6 +604,18 @@ def load_lstm_feature_cache(
     if not _canonical_lineage_identity_ok(meta):
         log.info("LSTM feature cache meta canonical lineage mismatch: %s", cache_dir)
         return None
+    n_features_5m = _meta_required_positive_int(meta, "n_features_5m")
+    n_features_1m = _meta_required_positive_int(meta, "n_features_1m")
+    n_confluence = _meta_required_positive_int(meta, "n_confluence")
+    if n_features_5m is None or n_features_1m is None or n_confluence is None:
+        log.info("LSTM feature cache meta missing feature dimensions: %s", cache_dir)
+        return None
+    n_samples = _meta_required_positive_int(meta, "n_samples")
+    if n_samples is None:
+        n_samples = int(len(z["y"]))
+    if n_samples <= 0:
+        log.info("LSTM feature cache meta invalid n_samples: %s", cache_dir)
+        return None
     return LSTMDataset(
         X_5m=z["X_5m"],
         X_1m=z["X_1m"],
@@ -440,10 +628,10 @@ def load_lstm_feature_cache(
         target_column=str(meta.get("target_column") or ""),
         ml_horizon_slug=str(meta.get("ml_horizon_slug") or ""),
         target_definition=meta.get("target_definition", ""),
-        n_features_5m=int(meta.get("n_features_5m", 0)),
-        n_features_1m=int(meta.get("n_features_1m", 0)),
-        n_confluence=int(meta.get("n_confluence", 0)),
-        n_samples=int(meta.get("n_samples", len(z["y"]))),
+        n_features_5m=n_features_5m,
+        n_features_1m=n_features_1m,
+        n_confluence=n_confluence,
+        n_samples=n_samples,
         n_days=int(meta.get("n_days", 0)),
         n_tickers=int(meta.get("n_tickers", 0)),
         class_distribution=meta.get("class_distribution", {}),
@@ -472,6 +660,112 @@ def save_transformer_parallel_cache(
     )
     _write_feature_identity(cache_dir, ticker, data_fp, feature_key)
     log.info("Transformer parallel feature cache written: %s", cache_dir)
+
+
+def copy_parallel_xgb_artifacts_to_cascade(
+    parallel_dir: Path,
+    cascade_dir: Path,
+    ticker: str,
+    *,
+    horizon_suffix: str,
+) -> bool:
+    """Copy parallel XGB weights into cascade candidate dir (same-run bridge reuse)."""
+    import shutil
+
+    t = ticker.upper()
+    hz = horizon_suffix
+    cascade_dir.mkdir(parents=True, exist_ok=True)
+    ok = True
+    for suffix in (".pkl", "_meta.json"):
+        name = f"xgb_{t}_{hz}{suffix}"
+        src = parallel_dir / name
+        dst = cascade_dir / name
+        if not src.is_file():
+            ok = False
+            break
+        shutil.copy2(src, dst)
+    return ok
+
+
+def save_parallel_cascade_bridge(
+    cache_dir: Path,
+    ticker: str,
+    data_fp: dict,
+    feature_key: str,
+    xgb_probs: np.ndarray,
+    parallel_xgb_pkl: Path,
+    parallel_xgb_meta: Path,
+) -> None:
+    """Persist XGB class-probs aligned 1:1 to LSTM dataset rows for cascade reuse."""
+    from features.training_canonical_input import training_canonical_lineage_header
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    probs = np.ascontiguousarray(xgb_probs, dtype=np.float32)
+    np.savez_compressed(cache_dir / PARALLEL_CASCADE_BRIDGE_NPZ_NAME, xgb_probs=probs)
+    payload = {
+        "ticker": ticker.upper(),
+        "feature_cache_key": feature_key,
+        "data_fingerprint": data_fp,
+        "n_samples": int(probs.shape[0]),
+        "n_classes": int(probs.shape[1]) if probs.ndim == 2 else 0,
+        "parallel_xgb_pkl_sha256": file_sha256_hex(parallel_xgb_pkl),
+        "parallel_xgb_meta_sha256": xgb_meta_content_sha256(parallel_xgb_meta),
+        **training_canonical_lineage_header(),
+    }
+    (cache_dir / PARALLEL_CASCADE_BRIDGE_IDENTITY_NAME).write_text(
+        json.dumps(payload, indent=2),
+        encoding="utf-8",
+    )
+    _write_feature_identity(cache_dir, ticker, data_fp, feature_key)
+    log.info(
+        "parallel→cascade bridge written: %s (%d rows)",
+        cache_dir,
+        int(probs.shape[0]),
+    )
+
+
+def load_parallel_cascade_bridge(
+    cache_dir: Path,
+    ticker: str,
+    data_fp: dict,
+    feature_key: str,
+    *,
+    expected_n_samples: int | None = None,
+) -> Optional[np.ndarray]:
+    """Return aligned xgb_probs or None if bridge missing/invalid."""
+    npz_p = cache_dir / PARALLEL_CASCADE_BRIDGE_NPZ_NAME
+    id_p = cache_dir / PARALLEL_CASCADE_BRIDGE_IDENTITY_NAME
+    if not npz_p.is_file() or not id_p.is_file():
+        return None
+    if not _feature_identity_matches(cache_dir, ticker, data_fp, feature_key):
+        log.info("parallel→cascade bridge identity mismatch: %s", cache_dir)
+        return None
+    try:
+        meta = json.loads(id_p.read_text(encoding="utf-8"))
+        z = np.load(npz_p)
+        probs = np.asarray(z["xgb_probs"], dtype=np.float32)
+    except Exception as exc:
+        log.warning("parallel→cascade bridge load failed: %s", exc)
+        return None
+    if not _canonical_lineage_identity_ok(meta):
+        log.info("parallel→cascade bridge canonical lineage mismatch: %s", cache_dir)
+        return None
+    if meta.get("feature_cache_key") != feature_key or meta.get("ticker") != ticker.upper():
+        return None
+    if _normalize_data_fp(meta.get("data_fingerprint")) != _normalize_data_fp(data_fp):
+        return None
+    n_stored = int(meta.get("n_samples") or 0)
+    if n_stored <= 0 or probs.shape[0] != n_stored:
+        log.info("parallel→cascade bridge row count corrupt: %s", cache_dir)
+        return None
+    if expected_n_samples is not None and int(expected_n_samples) != n_stored:
+        log.info(
+            "parallel→cascade bridge n_samples mismatch want=%s got=%s",
+            expected_n_samples,
+            n_stored,
+        )
+        return None
+    return probs
 
 
 def load_transformer_parallel_cache(
@@ -650,6 +944,8 @@ def compute_artifact_sha256_map(out_dir: Path, basenames: list[str]) -> dict[str
         p = out_dir / n
         if p.is_file():
             out[n] = file_sha256_hex(p)
+        else:
+            out[n] = f"MISSING:{p.resolve()}"
     return out
 
 
@@ -681,9 +977,24 @@ def validate_manifest_artifact_hashes(
     return True, "ok"
 
 
+_TRAINED_AT_UNAVAILABLE_AGE_DAYS: float = 1e9
+"""COH-I-B sentinel: marker age returned when the trained_at field is missing OR
+unparseable. Callers compare ``age > MANIFEST_SKIP_MAX_AGE_DAYS`` and treat this
+as "force retrain"; the bare 1e9 magic is named so callers can also detect the
+sentinel case explicitly when they need to distinguish "trained_at unavailable"
+from "trained_at is real but old"."""
+
+
 def trained_at_age_days(trained_at_iso: str, now: Optional[datetime] = None) -> float:
+    """Age in days since trained_at; ``_TRAINED_AT_UNAVAILABLE_AGE_DAYS`` when missing/unparseable.
+
+    COH-I-B closure: the two unavailable branches (missing field vs parse fail) are kept
+    separate at the log layer so the operator can tell them apart, while the numeric
+    return value still trips the same retrain gate.
+    """
     if not trained_at_iso:
-        return 1e9
+        log.debug("training_cache.trained_at_age_days: manifest missing trained_at field; sentinel age applied")
+        return _TRAINED_AT_UNAVAILABLE_AGE_DAYS
     now = now or datetime.now(timezone.utc)
     try:
         ts = trained_at_iso.replace("Z", "+00:00")
@@ -691,8 +1002,9 @@ def trained_at_age_days(trained_at_iso: str, now: Optional[datetime] = None) -> 
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return max(0.0, (now - dt).total_seconds() / 86400.0)
-    except Exception:
-        return 1e9
+    except (ValueError, TypeError, AttributeError) as e:
+        log.debug("training_cache.trained_at_age_days: manifest trained_at unparseable (%r): %s — sentinel age applied", trained_at_iso, e)
+        return _TRAINED_AT_UNAVAILABLE_AGE_DAYS
 
 
 def full_skip_eligible(
@@ -751,6 +1063,11 @@ def full_skip_eligible(
 
     if MANIFEST_SKIP_MAX_AGE_DAYS > 0:
         age = trained_at_age_days(str(manifest.get("trained_at", "")), now)
+        if age >= _TRAINED_AT_UNAVAILABLE_AGE_DAYS:
+            # COH-I-B: distinguish "trained_at unavailable" from "trained_at is real but old"
+            # in the caller-visible reason string. The numeric age still trips the same
+            # retrain gate either way.
+            return False, None, "manifest_trained_at_unavailable", "max_age_exceeded"
         if age > MANIFEST_SKIP_MAX_AGE_DAYS:
             return False, None, f"manifest_stale_age_{age:.1f}d", "max_age_exceeded"
 
@@ -888,6 +1205,68 @@ def save_run_manifest(out_dir: Path, manifest: dict) -> None:
     )
 
 
+def sync_candidate_manifest_lineage_before_governed_eval(
+    out_dir: Path,
+    *,
+    ticker: str,
+    architecture: str,
+    ml_horizon_suffix: str,
+    scheduler_cache_key: str,
+    feature_cache_key: str,
+    data_fp: dict,
+    training_code_fingerprint: str,
+    evaluation: dict[str, Any] | None = None,
+    trained_at: str | None = None,
+) -> None:
+    """
+    Stamp scheduler_run_manifest.json with current run lineage before governed eval (G3-R3).
+
+    Governed evaluation reads on-disk manifests; without this, a fresh train for horizon 5c
+    can still see a stale ml_horizon_suffix=1c until the end-of-ticker manifest save.
+    """
+    from training_provenance import (
+        FEATURE_SCHEMA_VERSION,
+        LABEL_CONFIG_VERSION,
+        SCHEDULER_PIPELINE_VERSION,
+    )
+    from training_cache_policy import MANIFEST_SCHEMA_VERSION as MSV
+    from features.training_canonical_input import training_canonical_lineage_header
+
+    existing = load_run_manifest(out_dir) or {}
+    hz = str(ml_horizon_suffix or DEFAULT_ML_HORIZON_SLUG).strip().lower()
+
+    def _ts_label(v: Any) -> str:
+        if v is None:
+            return ""
+        return str(v)
+
+    patched: dict[str, Any] = dict(existing)
+    patched.update(
+        {
+            "schema_version": existing.get("schema_version") or MSV,
+            "ticker": ticker.upper(),
+            "architecture": architecture,
+            "ml_horizon_suffix": hz,
+            "scheduler_cache_key": scheduler_cache_key,
+            "feature_cache_key": feature_cache_key,
+            "training_code_fingerprint": training_code_fingerprint,
+            **training_canonical_lineage_header(),
+            "data_fingerprint": data_fp,
+            "data_start": _ts_label(data_fp.get("min_ts_utc")),
+            "data_end": _ts_label(data_fp.get("max_ts_utc")),
+            "row_count": _normalize_data_fp(data_fp).get("row_count"),
+            "feature_schema_version": FEATURE_SCHEMA_VERSION,
+            "label_config_version": LABEL_CONFIG_VERSION,
+            "scheduler_pipeline_version": SCHEDULER_PIPELINE_VERSION,
+        }
+    )
+    if evaluation is not None:
+        patched["evaluation"] = evaluation
+    if trained_at:
+        patched["trained_at"] = trained_at
+    save_run_manifest(out_dir, patched)
+
+
 def compare_aggregate_manifest_path() -> Path:
     from training_cache_policy import COMPARE_MANIFEST_FILENAME
 
@@ -982,6 +1361,7 @@ def build_manifest(
     skipped_eval: bool = False,
     used_feature_cache: bool = False,
     used_cascade_tensor_cache: bool = False,
+    used_parallel_cascade_bridge: bool = False,
     rolling_window_days_tabular: int = 0,
     rolling_window_days_sequence: int = 0,
     rolling_rth_sessions_tabular: int = 0,
@@ -1018,7 +1398,7 @@ def build_manifest(
         "data_fingerprint": data_fp,
         "data_start": _ts_label(data_fp.get("min_ts_utc")),
         "data_end": _ts_label(data_fp.get("max_ts_utc")),
-        "row_count": int(data_fp.get("row_count", 0)),
+        "row_count": _normalize_data_fp(data_fp).get("row_count"),
         "feature_version": FEATURE_SCHEMA_VERSION,
         "label_version": LABEL_CONFIG_VERSION,
         "pipeline_version": SCHEDULER_PIPELINE_VERSION,
@@ -1031,6 +1411,7 @@ def build_manifest(
         "skipped_eval": skipped_eval,
         "used_feature_cache": used_feature_cache,
         "used_cascade_tensor_cache": used_cascade_tensor_cache,
+        "used_parallel_cascade_bridge": used_parallel_cascade_bridge,
         "rolling_window_days_tabular": rolling_window_days_tabular,
         "rolling_window_days_sequence": rolling_window_days_sequence,
         "rolling_rth_sessions_tabular": rolling_rth_sessions_tabular,

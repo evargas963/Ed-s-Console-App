@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "perf_proof_id": "pp_v4b_server_fast_quote_leaf_provenance",
+  "landed_batch": "v4b-2026-05-18",
+  "replacement_scope": "server.py chunk 1: _stream_spot_and_of_regime streaming L1 LAST_PRICE reads; REST quote leaves are in _parse_quote_node_session_fields (chunk 2).",
+  "code_paths": [
+    "server.py"
+  ],
+  "evidence": {
+    "pytest_args": [
+      "tests/test_server_quote_source_contract.py"
+    ],
+    "note": "Provenance-only REPLACED; existing leaf wiring verified by contract tests."
+  },
+  "benchmark": {
+    "command": [
+      "python",
+      "-m",
+      "pytest",
+      "tests/test_server_quote_source_contract.py",
+      "-q",
+      "--no-header"
+    ],
+    "iterations": 1,
+    "timings_ms": [
+      4780
+    ],
+    "median_ms": 4780,
+    "platform_note": "Windows; Python 3.13; chunk-1 streaming L1 2026-05-24"
+  },
+  "register_link": {
+    "status": "bound",
+    "replaced_register_ids": [
+      "17e2ac66597ca6c69c8d",
+      "c59835a70ece78bccdd3"
+    ]
+  }
+}

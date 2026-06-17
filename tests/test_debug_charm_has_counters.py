@@ -2,7 +2,7 @@
 
 The counter pattern in `server.debug_charm` must classify a contract as having
 ``has_gamma`` only when the gamma value is a usable wire read (not None,
-not Schwab's ``-999.0`` "missing" sentinel, not NaN/Inf). The same applies
+not Schwab's ``-999.0`` missing-greek sentinel (`MISSING_GREEK_SENTINEL`), not NaN/Inf). The same applies
 to ``has_delta``, ``has_theta``, ``has_vega``, and ``has_iv``.
 
 These tests pin the inline counter expression that the route uses on raw
@@ -14,6 +14,8 @@ sentinel rules are visible at every read site.
 from __future__ import annotations
 
 import math
+
+from math_exposure import MISSING_GREEK_SENTINEL
 
 
 def _row(**overrides):
@@ -42,7 +44,7 @@ def _gamma_count(contracts):
             f = float(v)
         except (TypeError, ValueError):
             continue
-        if f != -999.0 and math.isfinite(f):
+        if f != MISSING_GREEK_SENTINEL and math.isfinite(f):
             n += 1
     return n
 
@@ -57,7 +59,7 @@ def _delta_count(contracts):
             f = float(v)
         except (TypeError, ValueError):
             continue
-        if f != -999.0 and math.isfinite(f):
+        if f != MISSING_GREEK_SENTINEL and math.isfinite(f):
             n += 1
     return n
 
@@ -72,7 +74,7 @@ def _theta_count(contracts):
             f = float(v)
         except (TypeError, ValueError):
             continue
-        if f != -999.0 and math.isfinite(f):
+        if f != MISSING_GREEK_SENTINEL and math.isfinite(f):
             n += 1
     return n
 
@@ -87,7 +89,7 @@ def _vega_count(contracts):
             f = float(v)
         except (TypeError, ValueError):
             continue
-        if f != -999.0 and math.isfinite(f):
+        if f != MISSING_GREEK_SENTINEL and math.isfinite(f):
             n += 1
     return n
 
@@ -102,19 +104,19 @@ def _iv_count(contracts):
             f = float(v)
         except (TypeError, ValueError):
             continue
-        if f > 0 and f != -999.0 and math.isfinite(f):
+        if f > 0 and f != MISSING_GREEK_SENTINEL and math.isfinite(f):
             n += 1
     return n
 
 
 def _gamma_sentinel_count(contracts):
-    return sum(1 for ct in contracts if ct.get("gamma") == -999.0)
+    return sum(1 for ct in contracts if ct.get("gamma") == MISSING_GREEK_SENTINEL)
 
 
 def test_gamma_excludes_minus_999_sentinel():
     contracts = [
         _row(gamma=0.05),
-        _row(gamma=-999.0),
+        _row(gamma=MISSING_GREEK_SENTINEL),
         _row(gamma=None),
         _row(gamma=0.0),
     ]
@@ -128,8 +130,8 @@ def test_iv_reads_volatility_only_no_theoretical_fallback():
     """
     contracts = [
         _row(volatility=0.22),
-        _row(volatility=-999.0, theoreticalVolatility=18.5),
-        _row(volatility=-999.0, theoreticalVolatility=-999.0),
+        _row(volatility=MISSING_GREEK_SENTINEL, theoreticalVolatility=18.5),
+        _row(volatility=MISSING_GREEK_SENTINEL, theoreticalVolatility=MISSING_GREEK_SENTINEL),
         _row(volatility=None, theoreticalVolatility=None),
     ]
     assert _iv_count(contracts) == 1
@@ -163,11 +165,11 @@ def test_counters_match_total_when_all_clean():
 def test_counters_zero_when_all_sentinels_or_missing():
     contracts = [
         _row(
-            delta=-999.0,
-            gamma=-999.0,
-            theta=-999.0,
-            vega=-999.0,
-            volatility=-999.0,
+            delta=MISSING_GREEK_SENTINEL,
+            gamma=MISSING_GREEK_SENTINEL,
+            theta=MISSING_GREEK_SENTINEL,
+            vega=MISSING_GREEK_SENTINEL,
+            volatility=MISSING_GREEK_SENTINEL,
             theoreticalVolatility=None,
         ),
         {"putCall": "CALL", "strikePrice": 500.0},  # bare row, no greek keys

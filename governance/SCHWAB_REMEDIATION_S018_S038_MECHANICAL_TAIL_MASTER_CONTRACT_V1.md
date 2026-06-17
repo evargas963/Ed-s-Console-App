@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `SCHWAB_REMEDIATION_S018_S038_MECHANICAL_TAIL_MASTER_CONTRACT_V1.md`.
+
 # Schwab Remediation S018–S038 Mechanical Tail Master Contract V1
 
 **Status:** FORMALLY_CLOSED_RECORDED  

@@ -3,11 +3,9 @@ Issue 50: canonical types for fingerprint material — int/float equivalence, st
 """
 from __future__ import annotations
 
-import copy
 import sys
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:

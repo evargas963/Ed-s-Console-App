@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_anchor_stability_validation_v2.md`.
+
 # Calibration anchor stability validation v2
 
 Proves BAR_ANCHOR_V1 behavior for **trusted** `calibration_decision_log` rows as volume grows: full per-row audit (not sampled), breakdowns by ticker / session / UTC date / RTH, root-cause taxonomy for misses, and proof that **empirical phase 3/4 never consume unanchored trusted rows**.

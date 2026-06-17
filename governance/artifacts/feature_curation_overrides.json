@@ -1,0 +1,27 @@
+{
+  "keep_all_members": [
+    {
+      "id": "rates",
+      "members": ["tnx_yield", "tnx_chg"]
+    },
+    {
+      "id": "index_spreads",
+      "members": ["qqq_vs_spy", "spy_iwm_divergence"]
+    },
+    {
+      "id": "index_chg",
+      "members": ["spy_chg_pct", "qqq_chg_pct", "iwm_chg_pct"]
+    },
+    {
+      "id": "index_weighted_push",
+      "members": ["spy_weighted_push", "qqq_weighted_push", "iwm_weighted_push"]
+    }
+  ],
+  "ablation_groups": {
+    "rates": ["tnx_yield", "tnx_chg"],
+    "index_spreads": ["qqq_vs_spy", "spy_iwm_divergence"],
+    "index_align_engineered": ["spy_qqq_align", "spy_iwm_align", "cross_avg_chg", "cross_std_chg"],
+    "dgex_engineered": ["dgex", "dgex_positive", "net_gamma", "gamma_positive"]
+  },
+  "note": "keep_all_members: Spearman cluster must not collapse these DB columns to one rep. ablation_groups: grouped MDA families (includes engineered cols not in curation gate DB scan)."
+}

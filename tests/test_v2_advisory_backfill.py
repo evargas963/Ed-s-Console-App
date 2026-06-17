@@ -5,10 +5,13 @@ import sqlite3
 
 import pytest
 
+from calibration.json_utils import parse_json_mapping
 from calibration.schema import ensure_calibration_schema
 from calibration.v2_advisory_backfill import (
     ADVISORY_V2_ADAPTER_VERSION,
     ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION,
+    RECONSTRUCTED_LIVE_MS_SOURCE,
+    _direction_from_triplet,
     backfill_v2_advisory_decisions,
     build_v2_advisory_snapshot,
     build_walk_forward_splits,
@@ -31,6 +34,7 @@ def _proof() -> dict:
             "chain_row": {
                 "symbol": "SPY260505C00500000",
                 "putCall": "CALL",
+                "daysToExpiration": 0,
                 "strikePrice": 500.0,
                 "bid": 1.2,
                 "ask": 1.28,
@@ -140,6 +144,7 @@ def test_reconstructed_ms_dict_validates_through_v2_adapter(tmp_path):
     conn.commit()
 
     ms = ms_dict_from_snapshot_row(_snapshot_row(conn))
+    ms["canonical_provenance"] = "bayesian_fusion"
     decision = build_module_a_a1_decision(ms)
     conn.close()
 
@@ -158,6 +163,7 @@ def test_snapshot_alias_mapping_matches_equivalent_ms_dict(tmp_path):
     equivalent = {
         "ticker": "SPY",
         "fusion_available": True,
+        "canonical_provenance": "bayesian_fusion",
         "fusion_dominant_direction": "up",
         "fusion_dominant_prob": 0.64,
         "fusion_confidence": "high",
@@ -172,6 +178,7 @@ def test_snapshot_alias_mapping_matches_equivalent_ms_dict(tmp_path):
     }
     conn.close()
 
+    ms["canonical_provenance"] = "bayesian_fusion"
     reconstructed = build_module_a_a1_decision(ms)
     expected = build_module_a_a1_decision(equivalent)
     assert reconstructed["decision"]["action"] == expected["decision"]["action"]
@@ -184,7 +191,9 @@ def test_replay_context_proof_extraction_populates_a2_selection(tmp_path):
     _insert_snapshot(conn)
     conn.commit()
 
-    payload = build_v2_advisory_snapshot(_snapshot_row(conn))
+    row = dict(_snapshot_row(conn))
+    row["canonical_provenance"] = "bayesian_fusion"
+    payload = build_v2_advisory_snapshot(row)
     conn.close()
 
     a2 = payload["v2_decision"]["expression_profiles"]["A2"]
@@ -268,3 +277,136 @@ def test_walk_forward_validation_rejects_embargo_violation():
 
     with pytest.raises(ValueError, match="embargo"):
         validate_purged_embargo_splits(splits, embargo_span=5.0)
+
+
+def test_infer_fusion_fields_partial_triplet_does_not_mark_available() -> None:
+    ms: dict = {"fusion_prob_up": 0.9}
+    from calibration.v2_advisory_backfill import _infer_fusion_fields
+
+    _infer_fusion_fields(ms)
+    assert ms["fusion_available"] is False
+    assert ms.get("fusion_dominant_direction") is None
+    assert ms.get("fusion_dominant_prob") is None
+
+
+def test_calibration_backfill_v2_advisory_rejects_legacy_empty_provenance_row() -> None:
+    """FIND-FP1-4: inferred fusion_available must not bypass empty provenance gate."""
+    row = {
+        "ticker": "SPY",
+        "ts_utc": BASE_TS,
+        "fusion_prob_up": 0.1,
+        "fusion_prob_down": 0.1,
+        "fusion_prob_flat": 0.8,
+        "canonical_provenance": "",
+        "dominant_dir": "down",
+        "execution_mode": "STANDARD",
+    }
+    ms = ms_dict_from_snapshot_row(row)
+    assert ms.get("fusion_available") is True
+    from fusion_contract import is_ms_dict_fusion_authoritative
+
+    assert is_ms_dict_fusion_authoritative(ms) is False
+    payload = build_v2_advisory_snapshot(row)
+    assert payload["v2_decision"]["decision"]["direction"]["value"] == "short"
+
+
+def test_infer_fusion_fields_complete_triplet_infers_direction_and_prob() -> None:
+    ms: dict = {
+        "fusion_prob_up": 0.2,
+        "fusion_prob_down": 0.25,
+        "fusion_prob_flat": 0.55,
+    }
+    from calibration.v2_advisory_backfill import _infer_fusion_fields
+
+    _infer_fusion_fields(ms)
+    assert ms["fusion_available"] is True
+    assert ms["fusion_dominant_direction"] == "flat"
+    assert ms["fusion_dominant_prob"] == pytest.approx(0.55)
+
+
+def test_build_snapshot_decision_ts_from_decision_ts_utc_alias() -> None:
+    row = {
+        "ticker": "SPY",
+        "decision_ts_utc": BASE_TS,
+        "fusion_available": True,
+        "fusion_dominant_direction": "up",
+        "fusion_dominant_prob": 0.6,
+        "execution_mode": "STANDARD",
+    }
+    payload = build_v2_advisory_snapshot(row)
+    assert payload["decision_ts_utc"] == BASE_TS
+
+
+def test_direction_from_triplet_flat_matches_bayesian_fusion_canonical() -> None:
+    """Backfill must emit 'flat' (not 'neutral') when flat prob wins argmax."""
+    assert _direction_from_triplet(0.2, 0.25, 0.55) == "flat"
+    assert _direction_from_triplet(0.5, 0.3, 0.2) == "up"
+    assert _direction_from_triplet(None, None, None) is None
+
+
+def test_json_obj_logs_on_corrupt_replay_context(caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        out = parse_json_mapping(
+            "{not valid json",
+            context="v2_advisory_backfill: replay_context_json",
+        )
+    assert out == {}
+    assert any("replay_context_json unparseable" in r.message for r in caplog.records)
+
+
+def test_ms_dict_does_not_stamp_live_stack_blocks():
+    row = {
+        "ticker": "SPY",
+        "ts_utc": BASE_TS,
+        "stack_runtime": {"fusion_active": True, "source": "live_parallel_stack"},
+        "stack_governance": {"policy": "ok", "source": "live_parallel_stack"},
+        "signal_chain": {"chain_id": "abc", "source": "live_parallel_stack"},
+    }
+    ms = ms_dict_from_snapshot_row(row)
+    assert "stack_runtime" not in ms["live_ms_field_sources"]
+    assert "stack_governance" not in ms["live_ms_field_sources"]
+    assert "signal_chain" not in ms["live_ms_field_sources"]
+    assert ms["stack_runtime"]["source"] == "live_parallel_stack"
+
+
+def test_ms_dict_stamps_missing_stack_blocks():
+    ms = ms_dict_from_snapshot_row({"ticker": "SPY", "ts_utc": BASE_TS})
+    for block in ("stack_runtime", "stack_governance", "signal_chain"):
+        assert ms[block]["source"] == RECONSTRUCTED_LIVE_MS_SOURCE
+        assert ms["live_ms_field_sources"][block] == RECONSTRUCTED_LIVE_MS_SOURCE
+
+
+def test_backfill_marks_row_error_and_continues(tmp_path, monkeypatch):
+    db_path, conn = _seed_db(tmp_path)
+    _insert_calibration_row(conn, ts=BASE_TS, ticker="SPY")
+    _insert_calibration_row(conn, ts=BASE_TS + 60.0, ticker="QQQ")
+    _insert_snapshot(conn, ts=BASE_TS, ticker="SPY")
+    _insert_snapshot(conn, ts=BASE_TS + 60.0, ticker="QQQ")
+    conn.commit()
+    conn.close()
+
+    def _fake_build(snap):
+        if float(snap["ts_utc"]) == BASE_TS:
+            raise ValueError("malformed snapshot row")
+        return build_v2_advisory_snapshot(snap)
+
+    monkeypatch.setattr(
+        "calibration.v2_advisory_backfill.build_v2_advisory_snapshot",
+        _fake_build,
+    )
+
+    stats = backfill_v2_advisory_decisions(db_path)
+
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    rows = {r["ticker"]: r for r in conn.execute("SELECT * FROM calibration_decision_log").fetchall()}
+    conn.close()
+
+    assert stats["updated"] == 1
+    assert stats["errored"] == 1
+    assert rows["SPY"]["advisory_v2_backfill_status"] == "error"
+    assert rows["SPY"]["advisory_v2_backfill_reason"].startswith("build_failed:ValueError:")
+    assert rows["QQQ"]["advisory_v2_backfill_status"] == "ok"
+    assert rows["QQQ"]["advisory_v2_decision_snapshot_json"] is not None

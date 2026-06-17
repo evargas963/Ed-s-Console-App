@@ -6,7 +6,6 @@ purge_embargo_status: NOT_IMPLEMENTED_IN_PILOT_V1 — do not fabricate purge met
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 

@@ -10,13 +10,16 @@ Used as fallback when WebSocket/SSE are unavailable.
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, time
-from typing import Callable, Optional
-from zoneinfo import ZoneInfo
+from typing import Callable
+from time_et import ET
 
 from market_data_adapter import schwab_candles_to_bars
+import logging
+
+log = logging.getLogger(__name__)
+
 
 BarCallback = Callable[[list[dict]], None]
-ET = ZoneInfo("America/New_York")
 
 
 def _prev_trading_day(d: date) -> date:
@@ -62,7 +65,12 @@ def fetch_bars_via_schwab_for_session(
     if resp is None or resp.status_code != 200:
         raise ValueError(f"Schwab price history failed: status={getattr(resp, 'status_code', '?')}")
 
-    candles = resp.json().get("candles", [])
+    payload = resp.json()
+    if "candles" not in payload:
+        raise ValueError(
+            f"Schwab pricehistory response missing 'candles' key (status={resp.status_code})"
+        )
+    candles = payload["candles"]
     return schwab_candles_to_bars(candles)
 
 
@@ -114,7 +122,12 @@ def fetch_bars_via_schwab(
     if resp is None or resp.status_code != 200:
         raise ValueError(f"Schwab price history failed: status={getattr(resp, 'status_code', '?')}")
 
-    candles = resp.json().get("candles", [])
+    payload = resp.json()
+    if "candles" not in payload:
+        raise ValueError(
+            f"Schwab pricehistory response missing 'candles' key (status={resp.status_code})"
+        )
+    candles = payload["candles"]
     return schwab_candles_to_bars(candles)
 
 
@@ -134,6 +147,6 @@ def poll_and_callback(
             bars = fetch_bars_via_schwab(client, symbol)
             if bars:
                 on_bars(bars)
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("on_bars callback: %s", e, exc_info=True)
         time.sleep(interval_seconds)

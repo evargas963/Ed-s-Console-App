@@ -1,3 +1,5 @@
+> **Classification:** Superseded | **Scope:** Superseded index or forwarding stub for `SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md`.
+
 # Schwab Universal Coverage Proof Program V4
 
 **Status:** **LOCKED** — gatekeeper Step 2 final review **APPROVED**; binding for sequencing steps **3–12** and all V4 closure claims under this contract  
@@ -15,6 +17,28 @@
 > Global, universal, complete, 100% through the entire, whole, entirety, no stone left unturned repo, any and all living files, every line, every sentence needs to be consistent.
 
 **Operationalized (V4):** The committed Schwab canonical dictionary (`schwab_field_inventory/schwab_field_dictionary.csv`) is the **universe of field identity**. The repository is the **search space**. V4 requires a **CSV-canonical** register and proof artifacts where **actual checked-in code** uses Schwab canonical fields **wherever a dictionary equivalent fits**, unless an **operator-signed `O-XX`** with mandatory narrative (see **V4-A**) documents retention of a derived or alternate form. **Bare `GOVERNED_EXCEPTION`** is **not admissible** at closure. **Empty `UNREVIEWED`**, **zero `bare_governed_exception_count`**, and **all completion criteria** below must hold simultaneously for any closure claim.
+
+---
+
+## Scope (binding)
+
+**Authoritative operator directive:** [`CLAUDE.md`](../CLAUDE.md) at the repository root — **SCHWAB FULL REPO DIRECTIVE**. All agents and executors are bound by that text for scope, Read discipline, **Canopy → Trunk → Branch → Leaf** tracing, CSV disposition, collateral, and forbidden narrowing phrases.
+
+**Repo root (file tree):** Every path under this repository is in the V4 **search space** unless excluded by **V3-B** / **G1.1** contract clauses recorded in reconciliation — not by phase, section, mega, scanner capability, ticket scope, or “collateral.” **`static/**/*`**, **`templates/**/*`**, **`tests/**/*`**, and fixture files are normative surfaces (canopy / branch) per `CLAUDE.md`.
+
+**Program anchor:** This file, [`SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md`](SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md), and [`SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv`](SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv) are the **only** Schwab universal-coverage program. No parallel “Mandatory Leaf Program,” SMLP charter, closure certificate MD, or `governance/traces/` per-PR trace tables.
+
+**Closure admissibility (three-PR gate):** A **Deliverable 17** closure claim is **inadmissible** until all of the following have landed in order:
+
+1. **(PR 1) Governance pin** — `CLAUDE.md` + this Scope section + `OPEN_ITEMS.md` banner (text only; **no** closure claim after this step alone).
+2. **(PR 2) CI diff-emission gate** — PR diffs that emit new market-fact sites without matching register rows **fail** CI (`tools/check_schwab_csv_first.py` extension + `.github/workflows/schwab-csv-first.yml`).
+3. **(PR 3) Full-tree scanner build** — `register_build.partial_scan == false`; no `--max-files` cap in the canonical scanner build or CI regen step; register and `governance/artifacts/schwab_v4_register_build_meta.json` regenerated and repinned.
+
+**Normative landing order:** PR 1 → PR 2 → PR 3 → field work under the gate (see `CLAUDE.md`). A post–PR 3 jump in **`unreviewed_count`** is expected and correct.
+
+**Inherited scanner mechanics:** **V3-B** (universal text-file walk) applies to the **canonical scoped scan tree** after item **3** (full-tree scanner regen) has landed — `.gitignore`-respecting walk plus **`SCAN_SCOPE_EXCLUDE_PREFIXES`** and other prune reconciliation recorded in `register_build.scanner_flags` / reconciliation **(c)**. Legacy full-disk walks without that reconciliation MUST NOT support closure language (see [`CURSOR_V4_AGENT_BRIEF.md`](CURSOR_V4_AGENT_BRIEF.md)).
+
+**Attention tiers (do not conflate with D17 row count):** Operator **Read + wire fix** = trade-decision producer/consumer cone (~30–80 files: money-path, server, populators, adapters). Scoped register long tail = **mechanical classifier + per-row evidence** — not line-by-line operator Read of every register row. Cone walked + memos green **alone** is not D17 closure.
 
 ---
 
@@ -57,7 +81,7 @@ This step is **mandatory**, not optional.
 - **`no_schwab_equivalent_count`**, **`not_market_data_count`**, **`unreviewed_count`**
 - **`v4_a_violations`** (register_id list), **`closure_admissible`**
 
-**Closure** requires **`bare_governed_exception_count == 0`** and **`unreviewed_count == 0`**. Counts are recorded in the **V4 closure audit** (Deliverable **16**).
+**Closure** requires **`bare_governed_exception_count == 0`** and **`unreviewed_count == 0`** on the **canonical scoped register** (`partial_scan: false`; `.gitignore`-respecting walk; explicit non-product subtree excludes in `SCAN_SCOPE_EXCLUDE_PREFIXES` recorded in `register_build.scanner_flags`). Counts are recorded in the **V4 closure audit** (Deliverable **16**). Raw on-disk file cardinality and legacy full-disk register builds without prune reconciliation are **not** admissible closure surfaces.
 
 ### V4-D — Inherited from V3 (verbatim)
 

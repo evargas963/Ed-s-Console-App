@@ -13,7 +13,7 @@ def _insert_row(
     *,
     ts_utc: float,
     outcome_1c_pts: float = 0.1,
-    outcome_3c_pts: float = 0.2,
+    outcome_5c_pts: float = 0.2,
 ) -> None:
     conn.execute(
         """
@@ -21,7 +21,7 @@ def _insert_row(
             ticker, timeframe, ts_utc, ts_et, spot,
             zone, vwap_side, outcome_1c,
             nearest_above_dist, nearest_below_dist,
-            outcome_1c_pts, outcome_3c_pts,
+            outcome_1c_pts, outcome_5c_pts,
             horizon_outcome_schema_version, outcome_filled
         )
         VALUES (?, ?, ?, 'et', 100.0, 'pin_bull', 'above', 'up', 1.0, 1.0, ?, ?, ?, 0)
@@ -31,7 +31,7 @@ def _insert_row(
             CANONICAL_TIMEFRAME,
             ts_utc,
             outcome_1c_pts,
-            outcome_3c_pts,
+            outcome_5c_pts,
             HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
         ),
     )

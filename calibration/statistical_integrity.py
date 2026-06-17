@@ -7,6 +7,7 @@ empirical similarity / prediction_engine withholding.
 
 from __future__ import annotations
 
+import math
 import statistics
 from typing import Any
 
@@ -42,30 +43,53 @@ def thresholds_dict() -> dict[str, int]:
     }
 
 
+def _coerce_nonneg_int(n: Any) -> int:
+    try:
+        return max(0, int(n))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _finite_floats(vals: list[float]) -> list[float]:
+    clean: list[float] = []
+    for v in vals:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(f):
+            clean.append(f)
+    return clean
+
+
 def bucket_gate(n: int, min_n: int) -> dict[str, Any]:
-    ok = n >= min_n
+    n_i = _coerce_nonneg_int(n)
+    min_i = _coerce_nonneg_int(min_n)
+    ok = n_i >= min_i and min_i > 0
     return {
-        "n": n,
-        "min_required": min_n,
+        "n": n_i,
+        "min_required": min_i,
         "sufficient_sample": ok,
         "status": "ok" if ok else "insufficient_sample",
     }
 
 
 def gated_mean(vals: list[float], min_n: int) -> tuple[float | None, dict[str, Any]]:
-    n = len(vals)
-    gate = bucket_gate(n, min_n)
-    if not gate["sufficient_sample"] or not vals:
+    clean = _finite_floats(vals)
+    gate = bucket_gate(len(clean), min_n)
+    if not gate["sufficient_sample"] or not clean:
         return None, gate
-    return round(statistics.mean(vals), 6), gate
+    return round(statistics.mean(clean), 6), gate
 
 
 def gated_ratio(numer: int, denom: int) -> tuple[float | None, dict[str, Any]]:
     """Integer ratio (e.g. miss rate, null rate) withheld unless denom meets MIN_SAMPLES_STATISTICAL."""
-    g = bucket_gate(denom, MIN_SAMPLES_STATISTICAL)
+    d = _coerce_nonneg_int(denom)
+    g = bucket_gate(d, MIN_SAMPLES_STATISTICAL)
     if not g["sufficient_sample"]:
         return None, g
-    return round(numer / max(denom, 1), 6), g
+    numer_i = _coerce_nonneg_int(numer)
+    return round(numer_i / d, 6), g
 
 
 def _gate_ok_for_value(val: Any, gate: dict[str, Any] | None) -> bool:
@@ -73,7 +97,43 @@ def _gate_ok_for_value(val: Any, gate: dict[str, Any] | None) -> bool:
         return True
     if gate is None:
         return False
-    return bool(gate.get("sufficient_sample"))
+    if not gate.get("sufficient_sample"):
+        return False
+    try:
+        return math.isfinite(float(val))
+    except (TypeError, ValueError):
+        return False
+
+
+def _edge_discovery_slice_gate(slice_row: dict[str, Any]) -> dict[str, Any]:
+    g = bucket_gate(int(slice_row.get("n") or 0), MIN_SAMPLES_STATISTICAL)
+    if slice_row.get("gate_sufficient") is False:
+        return {
+            **g,
+            "sufficient_sample": False,
+            "status": "insufficient_sample",
+        }
+    return g
+
+
+def _edge_discovery_bootstrap_gate(boot: dict[str, Any]) -> dict[str, Any]:
+    g = bucket_gate(int(boot.get("n") or 0), MIN_SAMPLES_STATISTICAL)
+    if boot.get("gate_sufficient") is False:
+        return {
+            **g,
+            "sufficient_sample": False,
+            "status": "insufficient_sample",
+        }
+    return g
+
+
+def _phase4_hcl_sample_pnl_finite(pnl: Any) -> bool:
+    if pnl is None:
+        return True
+    try:
+        return math.isfinite(float(pnl))
+    except (TypeError, ValueError):
+        return False
 
 
 def verify_phase3_no_numeric_leak(out: dict[str, Any]) -> bool:
@@ -90,6 +150,8 @@ def verify_phase3_no_numeric_leak(out: dict[str, Any]) -> bool:
     for _k, row in out.get("regime_buckets", {}).items():
         g = row.get("sample_gate")
         if not _gate_ok_for_value(row.get("mean_5c_pts"), g):
+            return False
+        if not _gate_ok_for_value(row.get("win_rate_up_or_down_aligned"), g):
             return False
     for _k, row in out.get("model_by_regime_buckets", {}).items():
         g = row.get("sample_gate")
@@ -116,6 +178,30 @@ def verify_phase3_no_numeric_leak(out: dict[str, Any]) -> bool:
     return True
 
 
+def verify_a1_calibration_health_no_numeric_leak(health: dict[str, Any]) -> bool:
+    """
+    Defensive check for A1 isotonic health: gated means/rates only when sample_gate passes.
+    """
+    for row in health.get("reliability_table") or []:
+        g = row.get("sample_gate")
+        if not _gate_ok_for_value(row.get("predicted_mean"), g):
+            return False
+        if not _gate_ok_for_value(row.get("observed_hit_rate"), g):
+            return False
+    for _key, row in (health.get("regime_reliability") or {}).items():
+        g = row.get("sample_gate")
+        if not _gate_ok_for_value(row.get("predicted_mean"), g):
+            return False
+        if not _gate_ok_for_value(row.get("observed_hit_rate"), g):
+            return False
+    agg = (health.get("sample_gates") or {}).get("aggregate_holdout")
+    if not _gate_ok_for_value(health.get("ece"), agg):
+        return False
+    if not _gate_ok_for_value(health.get("brier_score"), agg):
+        return False
+    return True
+
+
 def verify_phase4_no_numeric_leak(out: dict[str, Any]) -> bool:
     for _sig, row in out.get("decision_performance_from_log", {}).items():
         g = row.get("sample_gate")
@@ -139,6 +225,25 @@ def verify_phase4_no_numeric_leak(out: dict[str, Any]) -> bool:
     delta = comp.get("delta_log_mean_minus_always_up_mean")
     if delta is not None and comp.get("status") != "ok":
         return False
+    if comp.get("status") == "ok":
+        if delta is None:
+            return False
+        if not _gate_ok_for_value(
+            comp.get("decision_log_mean_pnl_proxy"), comp.get("decision_log_sample_gate")
+        ):
+            return False
+        if not _gate_ok_for_value(
+            comp.get("baseline_always_up_mean_5c_pts"), comp.get("baseline_always_up_gate")
+        ):
+            return False
+    hcl = out.get("high_confidence_losses") or {}
+    if hcl.get("descriptive_only") is False:
+        hcl_gate = hcl.get("sample_gate")
+        if not _gate_ok_for_value(hcl.get("count"), hcl_gate):
+            return False
+        for sample in hcl.get("sample") or []:
+            if not _phase4_hcl_sample_pnl_finite(sample.get("pnl_proxy")):
+                return False
     return True
 
 
@@ -228,4 +333,43 @@ def verify_audit_phase1_no_numeric_leak(out: dict[str, Any]) -> bool:
     if not _gate_ok_for_value(sc.get("vwap_side_null_rate"), sg):
         return False
 
+    return True
+
+
+_EDGE_DISCOVERY_SLICE_NUMERIC_KEYS = (
+    "mean_outcome_5c_pts",
+    "mean_ev_actual_final_signal",
+    "mean_ev_always_long",
+    "mean_ev_always_short",
+    "mean_ev_random_long_short",
+    "delta_ev_actual_minus_long",
+    "delta_ev_actual_minus_random",
+    "win_rate_strict_positive",
+    "mean_brier",
+)
+
+_EDGE_DISCOVERY_BOOTSTRAP_NUMERIC_KEYS = ("mean_delta", "ci95_low", "ci95_high")
+
+
+def verify_edge_discovery_no_numeric_leak(out: dict[str, Any]) -> bool:
+    """Slice aggregates and naive Pearson must not report rates/means below MIN_SAMPLES_STATISTICAL."""
+    for s in out.get("slices_all") or []:
+        g = _edge_discovery_slice_gate(s)
+        for k in _EDGE_DISCOVERY_SLICE_NUMERIC_KEYS:
+            if not _gate_ok_for_value(s.get(k), g):
+                return False
+        for boot_key in ("bootstrap_actual_minus_long", "bootstrap_actual_minus_random"):
+            boot = s.get(boot_key) or {}
+            bg = _edge_discovery_bootstrap_gate(boot)
+            for k in _EDGE_DISCOVERY_BOOTSTRAP_NUMERIC_KEYS:
+                if not _gate_ok_for_value(boot.get(k), bg):
+                    return False
+    fi = out.get("feature_importance_naive") or {}
+    pearson_gate = fi.get("pearson_sample_gate")
+    if pearson_gate is None:
+        pearson_gate = bucket_gate(int(fi.get("pearson_n") or 0), MIN_SAMPLES_STATISTICAL)
+    if not _gate_ok_for_value(
+        fi.get("pearson_fusion_prob_up_vs_outcome_5c_pts"), pearson_gate
+    ):
+        return False
     return True

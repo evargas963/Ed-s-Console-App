@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python tools/enforce_all_rules.py --stop-hook"
+          }
+        ]
+      }
+    ]
+  },
+  "_comment_enforcement": "2026-06-05: Stop hook runs the shared rule orchestrator (tools/enforce_all_rules.py) on every turn-end. v1 scans the agent's final message for banned closers/phrases and BLOCKS the turn from ending on a violation (mirrors AGENTS.md banned-phrase rules). Deterministic FILE checks run at commit/CI via --check-files (same orchestrator = mirrored across both agents). Next section: scope file-checks to session-touched files so the Stop hook also enforces fix-what-you-touch in-turn. To disable temporarily, remove the Stop block."
+}

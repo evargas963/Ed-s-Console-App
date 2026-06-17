@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime
-from zoneinfo import ZoneInfo
 
 from v2_decision.a2_session_calendar import (
     SessionInfo,
@@ -11,9 +10,7 @@ from v2_decision.a2_session_calendar import (
 )
 
 
-ET = ZoneInfo("America/New_York")
-
-
+from time_et import ET
 def _epoch_ms_et(year: int, month: int, day: int, hour: int, minute: int) -> int:
     return int(datetime(year, month, day, hour, minute, tzinfo=ET).timestamp() * 1000)
 

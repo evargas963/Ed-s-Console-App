@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import json
+from dataclasses import fields
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -40,6 +41,7 @@ def _base_lineage():
         "feature_cache_key": "shared_cache_key",
         "data_fingerprint": _dfp(),
         "ml_horizon_suffix": "1c",
+        "training_code_fingerprint": "train-fp-test",
         "canonical_feature_contract_version": "v-test",
         "canonical_timeframe": "1m",
     }
@@ -112,6 +114,47 @@ def _manifest(mp, mc, lineage=None):
         "metrics": {"parallel": mp, "cascade": mc},
         **_empirical_shell(),
     }
+
+
+def test_promotion_policy_record_includes_all_governance_flags():
+    m = _promotable_manifest()
+    rec = decide_promotion(m)
+    pol = rec["policy"]
+    assert "require_calibration_pass" in pol
+    assert "require_stability_pass" in pol
+    assert pol["require_regime_comparability"] is True
+    assert pol["max_regime_balanced_accuracy_regression"] == 0.05
+
+
+def test_missing_training_code_fingerprint_raises():
+    lg = _base_lineage()
+    lg.pop("training_code_fingerprint", None)
+    m = _promotable_manifest()
+    m["lineage"] = lg
+    with pytest.raises(PromotionGovernanceError, match="training_code_fingerprint"):
+        decide_promotion(m)
+
+
+def test_rolling_calibration_both_degraded_records_informational_reason():
+    m = _promotable_manifest()
+    m["rolling_stability_summary"]["by_architecture"]["parallel"]["calibration_degradation_flag"] = True
+    m["rolling_stability_summary"]["by_architecture"]["cascade"]["calibration_degradation_flag"] = True
+    rec = decide_promotion(m)
+    codes = [x["code"] for x in rec["reason_codes"]]
+    assert "ROLLING_CALIBRATION_BOTH_DEGRADED" in codes
+    assert not any(x["code"] == "ROLLING_CALIBRATION_DEGRADATION" for x in rec["blocked_promotion_flags"])
+
+
+def test_regime_regression_uses_policy_threshold():
+    m = _manifest(
+        _metrics("parallel", n=100, ll=0.8, bal=0.5, brier=0.2, stab=0.01, mid_bucket_bal=0.60),
+        _metrics("cascade", n=100, ll=0.7, bal=0.55, brier=0.21, stab=0.02, mid_bucket_bal=0.56),
+    )
+    rec = decide_promotion(m, PromotionPolicy(min_delta_log_loss=0.02, max_regime_balanced_accuracy_regression=0.10))
+    assert not any(x["code"] == "REGIME_MID_BUCKET_REGRESSION" for x in rec["blocked_promotion_flags"])
+
+    rec_strict = decide_promotion(m, PromotionPolicy(min_delta_log_loss=0.02, max_regime_balanced_accuracy_regression=0.02))
+    assert any(x["code"] == "REGIME_MID_BUCKET_REGRESSION" for x in rec_strict["blocked_promotion_flags"])
 
 
 def test_promotion_record_schema_stable_keys():
@@ -193,6 +236,13 @@ def test_missing_calibration_metric_blocks():
     assert any(x["code"] == "MISSING_CALIBRATION_METRIC" for x in rec["blocked_promotion_flags"])
 
 
+def _promotable_manifest():
+    return _manifest(
+        _metrics("parallel", n=100, ll=0.8, bal=0.5, brier=0.2, stab=0.01),
+        _metrics("cascade", n=100, ll=0.7, bal=0.55, brier=0.21, stab=0.02),
+    )
+
+
 def test_horizon_mismatch_fails_closed():
     lg = _base_lineage()
     lg["ml_horizon_suffix"] = "5c"
@@ -206,6 +256,34 @@ def test_horizon_mismatch_fails_closed():
         decide_promotion(m)
 
 
+def test_missing_ml_horizon_slug_raises():
+    m = _promotable_manifest()
+    m.pop("ml_horizon_slug", None)
+    with pytest.raises(PromotionGovernanceError, match="ml_horizon_slug"):
+        decide_promotion(m)
+
+
+@pytest.mark.parametrize(
+    "mutator,expected_code",
+    [
+        (lambda m: m["metrics"]["parallel"].pop("regime_slices", None), "MISSING_REGIME_METRIC"),
+        (lambda m: m["metrics"]["parallel"].pop("calibration_ece", None), "MISSING_CALIBRATION_ECE_METRIC"),
+        (lambda m: m.pop("confidence_reliability_summary", None), "MISSING_CONFIDENCE_RELIABILITY_SUMMARY"),
+        (
+            lambda m: m["rolling_stability_summary"].pop("schema_version", None),
+            "MISSING_ROLLING_STABILITY_SUMMARY",
+        ),
+    ],
+)
+def test_promotion_policy_gates_block_when_required_data_missing(mutator, expected_code):
+    m = _promotable_manifest()
+    mutator(m)
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    codes = [x["code"] for x in rec["blocked_promotion_flags"]]
+    assert expected_code in codes
+
+
 def test_auto_promote_forbidden():
     m = _manifest(
         _metrics("parallel", n=100, ll=0.9, bal=0.5, brier=0.2, stab=0.01),
@@ -215,7 +293,12 @@ def test_auto_promote_forbidden():
         decide_promotion(m, auto_promote=True)
 
 
-def test_lineage_mismatch_raises(tmp_path: Path):
+def _write_lineage_manifest_pair(
+    tmp_path: Path,
+    *,
+    parallel: dict | None = None,
+    cascade: dict | None = None,
+) -> tuple[Path, Path]:
     fp = _dfp()
     common = {
         "schema_version": "2",
@@ -223,20 +306,91 @@ def test_lineage_mismatch_raises(tmp_path: Path):
         "ml_horizon_suffix": "1c",
         "data_fingerprint": fp,
         "training_code_fingerprint": "trainfp",
+        "feature_cache_key": "shared",
     }
     pdir = tmp_path / "p"
     cdir = tmp_path / "c"
     pdir.mkdir()
     cdir.mkdir()
-    (pdir / "scheduler_run_manifest.json").write_text(
-        json.dumps({**common, "feature_cache_key": "A"}),
-        encoding="utf-8",
-    )
-    (cdir / "scheduler_run_manifest.json").write_text(
-        json.dumps({**common, "feature_cache_key": "B"}),
-        encoding="utf-8",
+    p_body = {**common, **(parallel or {})}
+    c_body = {**common, **(cascade or {})}
+    (pdir / "scheduler_run_manifest.json").write_text(json.dumps(p_body), encoding="utf-8")
+    (cdir / "scheduler_run_manifest.json").write_text(json.dumps(c_body), encoding="utf-8")
+    return pdir, cdir
+
+
+def test_lineage_mismatch_raises(tmp_path: Path):
+    pdir, cdir = _write_lineage_manifest_pair(
+        tmp_path,
+        parallel={"feature_cache_key": "A"},
+        cascade={"feature_cache_key": "B"},
     )
     with pytest.raises(EvaluationLineageError, match="feature_cache_key"):
+        validate_parallel_cascade_manifest_lineage(pdir, cdir, ticker="SPY", expected_ml_horizon_suffix="1c")
+
+
+def test_lineage_empty_ticker_argument_raises(tmp_path: Path):
+    pdir, cdir = _write_lineage_manifest_pair(tmp_path)
+    with pytest.raises(EvaluationLineageError, match="ticker argument required"):
+        validate_parallel_cascade_manifest_lineage(pdir, cdir, ticker="")
+
+
+def test_lineage_both_missing_manifest_ticker_raises(tmp_path: Path):
+    pdir, cdir = _write_lineage_manifest_pair(
+        tmp_path,
+        parallel={"ticker": None},
+        cascade={"ticker": None},
+    )
+    with pytest.raises(EvaluationLineageError, match="missing ticker"):
+        validate_parallel_cascade_manifest_lineage(pdir, cdir, ticker="SPY", expected_ml_horizon_suffix="1c")
+
+
+def test_lineage_both_missing_feature_cache_key_raises(tmp_path: Path):
+    pdir, cdir = _write_lineage_manifest_pair(
+        tmp_path,
+        parallel={"feature_cache_key": None},
+        cascade={"feature_cache_key": None},
+    )
+    with pytest.raises(EvaluationLineageError, match="missing feature_cache_key"):
+        validate_parallel_cascade_manifest_lineage(pdir, cdir, ticker="SPY", expected_ml_horizon_suffix="1c")
+
+
+def test_lineage_both_missing_ml_horizon_suffix_raises(tmp_path: Path):
+    pdir, cdir = _write_lineage_manifest_pair(
+        tmp_path,
+        parallel={"ml_horizon_suffix": None},
+        cascade={"ml_horizon_suffix": None},
+    )
+    with pytest.raises(EvaluationLineageError, match="missing ml_horizon_suffix"):
+        validate_parallel_cascade_manifest_lineage(pdir, cdir, ticker="SPY")
+
+
+def test_lineage_both_missing_training_code_fingerprint_raises(tmp_path: Path):
+    pdir, cdir = _write_lineage_manifest_pair(
+        tmp_path,
+        parallel={"training_code_fingerprint": None},
+        cascade={"training_code_fingerprint": None},
+    )
+    with pytest.raises(EvaluationLineageError, match="missing training_code_fingerprint"):
+        validate_parallel_cascade_manifest_lineage(pdir, cdir, ticker="SPY", expected_ml_horizon_suffix="1c")
+
+
+def test_lineage_empty_expected_horizon_raises(tmp_path: Path):
+    pdir, cdir = _write_lineage_manifest_pair(tmp_path)
+    with pytest.raises(EvaluationLineageError, match="expected_ml_horizon_suffix"):
+        validate_parallel_cascade_manifest_lineage(
+            pdir, cdir, ticker="SPY", expected_ml_horizon_suffix=""
+        )
+
+
+def test_lineage_both_missing_fingerprint_ticker_raises(tmp_path: Path):
+    fp = {k: v for k, v in _dfp().items() if k != "ticker"}
+    pdir, cdir = _write_lineage_manifest_pair(
+        tmp_path,
+        parallel={"data_fingerprint": fp},
+        cascade={"data_fingerprint": dict(fp)},
+    )
+    with pytest.raises(EvaluationLineageError, match="data_fingerprint mismatch"):
         validate_parallel_cascade_manifest_lineage(pdir, cdir, ticker="SPY", expected_ml_horizon_suffix="1c")
 
 
@@ -273,29 +427,37 @@ def test_parallel_and_cascade_evaluators_invoked_with_same_signature():
     assert kw_p["target_column"] == kw_c["target_column"] == "outcome_1c"
 
 
-def test_row_count_mismatch_fails():
-    detail = {"prob_rows": [], "y_true": [], "rows_used": []}
-    with (
-        patch("arch_competition.eval_runner.validate_parallel_cascade_manifest_lineage", return_value=_base_lineage()),
-        patch("ml_scheduler._evaluate_parallel_on_full_rth", return_value=(0.5, 0.5, 5, 0.5, {}, detail)),
-        patch("ml_scheduler._evaluate_cascade_on_full_rth", return_value=(0.5, 0.5, 3, 0.5, {}, detail)),
-    ):
-        with pytest.raises(EvaluationLineageError, match="row-count mismatch"):
-            run_architecture_pair_evaluation(
-                db_path=":memory:",
-                ticker="SPY",
-                parallel_model_dir=Path("/p"),
-                cascade_model_dir=Path("/c"),
-                ml_horizon_slug="1c",
-            )
+def test_row_count_mismatch_aligns_to_common_rows_not_fails():
+    """Aligned-row-set design (AGENTS world-class gate) replaced the old fail-on-raw-
+    count-mismatch: arches scoring different raw row sets are intersected on ts_utc and
+    raw counts recorded, not rejected. Stale fail-expectation removed."""
+    from arch_competition.eval_runner import _align_eval_detail_pair
+
+    def _det(ts_list):
+        return {
+            "rows_used": [{"ts_utc": float(t)} for t in ts_list],
+            "prob_rows": [[0.5, 0.3, 0.2] for _ in ts_list],
+            "y_true": [0 for _ in ts_list],
+        }
+
+    pdet = _det([1, 2, 3, 4, 5])  # parallel scored 5 rows
+    cdet = _det([2, 3, 4])        # cascade scored 3 (subset, e.g. LSTM/TR skipped 1 & 5)
+    pd2, cd2, n_common, pn_raw, cn_raw = _align_eval_detail_pair(pdet, cdet)
+    assert pn_raw == 5 and cn_raw == 3          # raw counts preserved for the manifest
+    assert n_common == 3                         # intersected, not rejected
+    assert [r["ts_utc"] for r in pd2["rows_used"]] == [2.0, 3.0, 4.0]
+    assert len(pd2["prob_rows"]) == len(cd2["prob_rows"]) == 3
 
 
 def test_missing_probability_vectors_fail_closed_when_n_sufficient():
+    from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
+
     detail = {"prob_rows": [], "y_true": [], "rows_used": []}
+    n = MIN_SAMPLES_STATISTICAL
     with (
         patch("arch_competition.eval_runner.validate_parallel_cascade_manifest_lineage", return_value=_base_lineage()),
-        patch("ml_scheduler._evaluate_parallel_on_full_rth", return_value=(0.5, 0.5, 20, 0.5, {}, detail)),
-        patch("ml_scheduler._evaluate_cascade_on_full_rth", return_value=(0.5, 0.5, 20, 0.5, {}, detail)),
+        patch("ml_scheduler._evaluate_parallel_on_full_rth", return_value=(0.5, 0.5, n, 0.5, {}, detail)),
+        patch("ml_scheduler._evaluate_cascade_on_full_rth", return_value=(0.5, 0.5, n, 0.5, {}, detail)),
     ):
         with pytest.raises(EvaluationLineageError, match="missing prob_rows"):
             run_architecture_pair_evaluation(
@@ -307,24 +469,192 @@ def test_missing_probability_vectors_fail_closed_when_n_sufficient():
             )
 
 
-def test_arch_competition_modules_do_not_call_run_base_models_once():
+def test_promotion_blocks_when_below_min_samples_statistical_flag():
+    m = _promotable_manifest()
+    m["evaluation_n_below_min_samples_statistical"] = True
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    codes = [x["code"] for x in rec["blocked_promotion_flags"]]
+    assert "MISSING_MIN_SAMPLES_STATISTICAL" in codes
+
+
+def test_promotion_blocks_when_n_below_floor_without_flag():
+    m = _promotable_manifest()
+    m["metrics"]["parallel"]["n_rows_scored"] = 15
+    m["metrics"]["cascade"]["n_rows_scored"] = 15
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    codes = [x["code"] for x in rec["blocked_promotion_flags"]]
+    assert "MISSING_MIN_SAMPLES_STATISTICAL" in codes
+
+
+def test_non_numeric_n_rows_scored_raises():
+    m = _promotable_manifest()
+    m["metrics"]["parallel"]["n_rows_scored"] = "bad"
+    m["metrics"]["cascade"]["n_rows_scored"] = "bad"
+    with pytest.raises(PromotionGovernanceError, match="non-numeric n_rows_scored"):
+        decide_promotion(m)
+
+
+def test_schema_version_mismatch_includes_expected_and_got():
+    m = _promotable_manifest()
+    m["schema_version"] = "2"
+    with pytest.raises(
+        PromotionGovernanceError,
+        match=f"expected={EVALUATION_MANIFEST_SCHEMA_VERSION!r}.*got='2'",
+    ):
+        decide_promotion(m)
+
+
+def test_missing_n_rows_scored_raises_distinct_message():
+    m = _promotable_manifest()
+    m["metrics"]["parallel"].pop("n_rows_scored", None)
+    with pytest.raises(PromotionGovernanceError, match="missing n_rows_scored"):
+        decide_promotion(m)
+
+
+def test_mismatched_n_rows_scored_raises_distinct_message():
+    m = _promotable_manifest()
+    m["metrics"]["parallel"]["n_rows_scored"] = 100
+    m["metrics"]["cascade"]["n_rows_scored"] = 50
+    with pytest.raises(PromotionGovernanceError, match="mismatched n_rows_scored"):
+        decide_promotion(m)
+
+
+def test_both_zero_n_rows_scored_blocks_via_min_samples_gate():
+    m = _promotable_manifest()
+    m["metrics"]["parallel"]["n_rows_scored"] = 0
+    m["metrics"]["cascade"]["n_rows_scored"] = 0
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    codes = [x["code"] for x in rec["blocked_promotion_flags"]]
+    assert "MISSING_MIN_SAMPLES_STATISTICAL" in codes
+
+
+def test_regime_mid_skipped_blocks_incomparable():
+    m = _promotable_manifest()
+    m["metrics"]["parallel"]["regime_slices"]["mid"]["skipped_low_support"] = True
+    m["metrics"]["cascade"]["regime_slices"]["mid"]["skipped_low_support"] = True
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    codes = [x["code"] for x in rec["blocked_promotion_flags"]]
+    assert "REGIME_MID_INCOMPARABLE" in codes
+
+
+def test_regime_mid_skipped_one_architecture_blocks_incomparable():
+    m = _promotable_manifest()
+    m["metrics"]["cascade"]["regime_slices"]["mid"]["skipped_low_support"] = True
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    assert "REGIME_MID_INCOMPARABLE" in [x["code"] for x in rec["blocked_promotion_flags"]]
+
+
+def test_regime_mid_skipped_waived_when_comparability_not_required():
+    m = _promotable_manifest()
+    m["metrics"]["parallel"]["regime_slices"]["mid"]["skipped_low_support"] = True
+    m["metrics"]["cascade"]["regime_slices"]["mid"]["skipped_low_support"] = True
+    rec = decide_promotion(m, PromotionPolicy(require_regime_comparability=False))
+    assert rec["would_promote_challenger"] is True
+    reason_codes = [x["code"] for x in rec["reason_codes"]]
+    assert "REGIME_MID_SKIPPED_LOW_SUPPORT" in reason_codes
+    assert "REGIME_MID_INCOMPARABLE" not in [x["code"] for x in rec["blocked_promotion_flags"]]
+
+
+def test_calibration_ece_non_numeric_blocks_without_value_error():
+    m = _promotable_manifest()
+    m["metrics"]["cascade"]["calibration_ece"] = "NaN"
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    assert "MISSING_CALIBRATION_ECE_METRIC" in [x["code"] for x in rec["blocked_promotion_flags"]]
+
+
+def test_confidence_correlation_non_numeric_blocks_without_value_error():
+    m = _promotable_manifest()
+    m["confidence_reliability_summary"]["by_architecture"]["cascade"]["confidence_hit_correlation"] = "abc"
+    rec = decide_promotion(m)
+    assert rec["would_promote_challenger"] is False
+    assert "MISSING_CONFIDENCE_RELIABILITY_METRIC" in [x["code"] for x in rec["blocked_promotion_flags"]]
+
+
+def test_no_empty_blocked_with_unpromoted_outcome():
+    cases = [
+        _promotable_manifest(),
+        _manifest(
+            _metrics("parallel", n=100, ll=0.81, bal=0.5, brier=0.2, stab=0.01),
+            _metrics("cascade", n=100, ll=0.80, bal=0.99, brier=0.19, stab=0.01),
+        ),
+    ]
+    m_low_n = _promotable_manifest()
+    m_low_n["metrics"]["parallel"]["n_rows_scored"] = 15
+    m_low_n["metrics"]["cascade"]["n_rows_scored"] = 15
+    cases.append(m_low_n)
+    for m in cases:
+        rec = decide_promotion(m)
+        if not rec["would_promote_challenger"]:
+            assert rec["blocked_promotion_flags"]
+
+
+def test_promotion_policy_has_no_dead_primary_metric_field():
+    assert "primary_metric" not in {f.name for f in fields(PromotionPolicy)}
+
+
+def test_arch_competition_modules_do_not_call_run_unified_stack_ml_once():
     root = Path(__file__).resolve().parents[1] / "arch_competition"
     for name in ("eval_runner.py", "promotion_engine.py", "__init__.py", "lineage.py", "metrics.py", "exceptions.py"):
         src = (root / name).read_text(encoding="utf-8")
         tree = ast.parse(src)
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
-                if isinstance(node.func, ast.Name) and node.func.id == "run_base_models_once":
-                    pytest.fail(f"{name} must not call run_base_models_once")
-                if isinstance(node.func, ast.Attribute) and node.func.attr == "run_base_models_once":
-                    pytest.fail(f"{name} must not call run_base_models_once")
+                if isinstance(node.func, ast.Name) and node.func.id == "run_unified_stack_ml_once":
+                    pytest.fail(f"{name} must not call run_unified_stack_ml_once")
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "run_unified_stack_ml_once":
+                    pytest.fail(f"{name} must not call run_unified_stack_ml_once")
 
 
-def test_run_base_models_once_default_unchanged_parallel_runtime():
+def test_run_unified_stack_ml_once_default_unchanged_parallel_runtime():
     """Guard: production entry remains parallel stack (this pass does not alter defaults)."""
-    from ml_predict import run_base_models_once
+    from ml_predict import run_unified_stack_ml_once
     import inspect
 
-    src = inspect.getsource(run_base_models_once)
+    src = inspect.getsource(run_unified_stack_ml_once)
     assert "parallel_runtime=True" in src
-    assert "def run_base_models_once" in src
+    assert "def run_unified_stack_ml_once" in src
+
+
+def test_stamp_candidate_manifests_syncs_horizon_before_lineage_validate(tmp_path):
+    """Multi-horizon candidate dirs: last-trained manifest hz must not block earlier hz promote."""
+    from arch_competition.promotion_execution import _stamp_candidate_manifests_from_evaluation_manifest
+    from training_cache import load_run_manifest, save_run_manifest
+
+    par = tmp_path / "parallel" / "SPY"
+    cas = tmp_path / "cascade" / "SPY"
+    par.mkdir(parents=True)
+    cas.mkdir(parents=True)
+    stale = {
+        "schema_version": 2,
+        "ticker": "SPY",
+        "ml_horizon_suffix": "60c",
+        "feature_cache_key": "old-fk",
+        "training_code_fingerprint": "old-train",
+        "data_fingerprint": {"ticker": "SPY", "table": "snap", "timeframe": "1m", "row_count": 1,
+                             "min_ts_utc": 1, "max_ts_utc": 2},
+    }
+    save_run_manifest(par, {**stale, "architecture": "parallel"})
+    save_run_manifest(cas, {**stale, "architecture": "cascade"})
+    eval_manifest = {
+        "ml_horizon_slug": "1c",
+        "lineage": {
+            "feature_cache_key": "new-fk-1c",
+            "training_code_fingerprint": "train-fp",
+            "ml_horizon_suffix": "1c",
+            "data_fingerprint": {"ticker": "SPY", "table": "snap", "timeframe": "1m", "row_count": 99,
+                                 "min_ts_utc": 3, "max_ts_utc": 4},
+        },
+    }
+    _stamp_candidate_manifests_from_evaluation_manifest(eval_manifest, par, cas, "1c")
+    mp = load_run_manifest(par)
+    mc = load_run_manifest(cas)
+    assert mp["ml_horizon_suffix"] == "1c"
+    assert mc["ml_horizon_suffix"] == "1c"
+    assert mp["feature_cache_key"] == "new-fk-1c"
+    validate_parallel_cascade_manifest_lineage(par, cas, ticker="SPY", expected_ml_horizon_suffix="1c")

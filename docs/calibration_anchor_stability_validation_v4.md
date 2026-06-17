@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_anchor_stability_validation_v4.md`.
+
 # Calibration anchor stability validation v4 (non-empty trusted population)
 
 This closure uses a **materially non-empty** `calibration_decision_log` with `calibration_trust='trusted'`, produced by the **production** path (`compute_signals` → `append_calibration_decision`), with seeded `price_bars_1m` and `snapshots` so backfill can attach outcomes. The anchor audit and phase 3/4 analyzes were run on **`data/calibration_anchor_proof.db`** immediately after generation.

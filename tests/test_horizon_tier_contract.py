@@ -21,8 +21,9 @@ def test_partition_and_constants():
     )
 
     assert ALL_GOVERNED_HORIZONS == ML_HORIZON_SLUGS
+    assert ALL_GOVERNED_HORIZONS == PRIMARY_DECISION_HORIZONS
     assert PRIMARY_DECISION_HORIZONS == ("1c", "5c", "15c", "60c")
-    assert SECONDARY_SUPPORT_HORIZONS == ("3c", "8c", "13c")
+    assert SECONDARY_SUPPORT_HORIZONS == ()
     assert set(ALL_GOVERNED_HORIZONS) == set(PRIMARY_DECISION_HORIZONS) | set(
         SECONDARY_SUPPORT_HORIZONS
     )
@@ -68,8 +69,6 @@ def test_secondary_not_in_multi_horizon_decision_loop():
         up_prob_5c = down_prob_5c = flat_prob_5c = 0.34
         up_prob_15c = down_prob_15c = flat_prob_15c = 0.34
         up_prob_60c = down_prob_60c = flat_prob_60c = 0.34
-        avg_3c_pts = None
-
     class _Inp:
         mins_to_close = 200.0
 
@@ -83,12 +82,20 @@ def test_secondary_not_in_multi_horizon_decision_loop():
 
 
 def test_live_stack_skips_missing_secondary_active_bundles(monkeypatch):
+    import ml_horizon
     import signals
     import ml_predict
 
-    monkeypatch.setattr(signals, "ALL_GOVERNED_HORIZONS", ("1c", "3c", "5c", "8c"))
-    monkeypatch.setattr(signals, "PRIMARY_DECISION_HORIZONS", ("1c", "5c"))
-    monkeypatch.setattr(signals, "SECONDARY_SUPPORT_HORIZONS", ("3c", "8c"))
+    governed = ("1c", "3c", "5c", "8c")
+    primary = ("1c", "5c")
+    secondary = ("3c", "8c")
+    monkeypatch.setattr(ml_horizon, "ALL_GOVERNED_HORIZONS", governed)
+    monkeypatch.setattr(ml_horizon, "ML_HORIZON_SLUGS", governed)
+    monkeypatch.setattr(ml_horizon, "PRIMARY_DECISION_HORIZONS", primary)
+    monkeypatch.setattr(ml_horizon, "SECONDARY_SUPPORT_HORIZONS", secondary)
+    monkeypatch.setattr(signals, "ALL_GOVERNED_HORIZONS", governed)
+    monkeypatch.setattr(signals, "PRIMARY_DECISION_HORIZONS", primary)
+    monkeypatch.setattr(signals, "SECONDARY_SUPPORT_HORIZONS", secondary)
 
     def _fake_model_dir_for_ticker(_ticker: str):
         hz = ml_predict.get_ml_infer_horizon_slug()
@@ -104,3 +111,56 @@ def test_live_stack_skips_missing_secondary_active_bundles(monkeypatch):
     assert set(skipped) == {"3c", "8c"}
     assert skipped["3c"]["provenance"] == "skipped_missing_active_bundle"
     assert skipped["3c"]["non_authoritative"] is True
+
+
+@pytest.mark.parametrize("slug", ("3c", "8c", "13c"))
+def test_normalize_ml_horizon_slug_rejects_retired_secondary(slug: str):
+    from ml_horizon import normalize_ml_horizon_slug
+
+    with pytest.raises(ValueError, match="invalid slug"):
+        normalize_ml_horizon_slug(slug)
+
+
+def test_predict_all_horizons_keys_match_primary_only(monkeypatch):
+    from ml_horizon import PRIMARY_DECISION_HORIZONS
+    import ml_predict
+
+    monkeypatch.setattr(ml_predict, "live_inference_horizon_slug", lambda: "1c")
+    monkeypatch.setattr(
+        ml_predict,
+        "predict_direction",
+        lambda *args, **kwargs: {"direction": "up"},
+    )
+
+    out = ml_predict.predict_all_horizons({})
+
+    assert set(out.keys()) == set(PRIMARY_DECISION_HORIZONS)
+
+
+def test_outcome_bar_specs_four_primary_slugs():
+    from horizon_outcomes import OUTCOME_BAR_SPECS
+
+    assert len(OUTCOME_BAR_SPECS) == 4
+    slugs = tuple(odir[len("outcome_") :] for odir, _opt, _n in OUTCOME_BAR_SPECS)
+    assert slugs == ("1c", "5c", "15c", "60c")
+
+
+def test_movement_target_slugs_derived_from_bar_specs():
+    from horizon_outcomes import MOVEMENT_TARGET_SLUGS
+
+    assert MOVEMENT_TARGET_SLUGS == ("1c", "5c", "15c", "60c")
+
+
+def test_trader_payload_strips_legacy_horizon_prob_bar_keys():
+    from server import _apply_trader_horizon_contract
+
+    ms = {
+        "horizon_prob_bars": {
+            "1m": {"up": 0.4, "down": 0.3, "flat": 0.3},
+            "5m": {"up": 0.35, "down": 0.35, "flat": 0.3},
+            "8c": {"up": 0.5, "down": 0.25, "flat": 0.25},
+            "13c": {"up": 0.5, "down": 0.25, "flat": 0.25},
+        },
+    }
+    _apply_trader_horizon_contract(ms)
+    assert set(ms["horizon_prob_bars"].keys()) == {"1m", "5m"}

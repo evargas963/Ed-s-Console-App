@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/FINAL_COVERAGE_COMPLETION_REPORT_V1.md`.
+
 # Final coverage completion report (v1)
 
 ## 1. Artifact audit matrix

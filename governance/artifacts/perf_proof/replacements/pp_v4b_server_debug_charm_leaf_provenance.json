@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "perf_proof_id": "pp_v4b_server_debug_charm_leaf_provenance",
+  "landed_batch": "v4b-2026-05-19",
+  "replacement_scope": "server.py chunk 5: GET /api/debug/charm \u2014 9 direct chain leaf emission sites (callExpDateMap/putExpDateMap flatten + contract greeks/OI + underlyingPrice); LM-1 spot-normalized tradeable_score at L6921 (KEEP_DERIVED, no Schwab leaf change).",
+  "code_paths": [
+    "server.py"
+  ],
+  "evidence": {
+    "pytest_args": [
+      "tests/test_server_quote_source_contract.py",
+      "tests/test_liquidity_tradeable_score.py"
+    ],
+    "note": "LM-1 cross-ticker tradeable_score + charm debug leaf provenance."
+  },
+  "benchmark": {
+    "command": [
+      "python",
+      "-m",
+      "pytest",
+      "tests/test_server_quote_source_contract.py",
+      "tests/test_liquidity_tradeable_score.py",
+      "-q",
+      "--no-header"
+    ],
+    "iterations": 1,
+    "timings_ms": [
+      8000
+    ],
+    "median_ms": 8000,
+    "platform_note": "Windows; chunk-5 LM-1 + charm 2026-05-19"
+  },
+  "register_link": {
+    "status": "unbound",
+    "replaced_register_ids": [],
+    "producer_note": "safe_get_chain \u2192 chain JSON; direct ct.get per contract field"
+  }
+}

@@ -3,7 +3,6 @@ MVP canonical feature contract, live/DB adapters, inference snapshot, gap report
 """
 from __future__ import annotations
 
-import math
 import sys
 from pathlib import Path
 

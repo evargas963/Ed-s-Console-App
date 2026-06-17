@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/_consolidation/restore/RESTORE_STEP_A_VERIFICATION.md`.
+
 # RESTORE STEP A VERIFICATION
 
 ## 1) File copy count

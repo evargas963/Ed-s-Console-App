@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md`.
+
 # Schwab replacement loop protocol (V4-B) — Deliverable 19
 
 **Authority:** `governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md` § V4-B — **mandatory** between human disposition (sequencing step 4) and stability sweeps (step 6).

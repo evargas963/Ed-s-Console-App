@@ -9,9 +9,8 @@ from __future__ import annotations
 import logging
 import threading
 from collections import deque
-from datetime import datetime
 from typing import Any, Optional
-from zoneinfo import ZoneInfo
+from time_et import now_et, RTH_END_MINS, RTH_OPEN_MINS
 
 # Limits to prevent unbounded growth
 MAX_BOOK_SNAPSHOTS = 20
@@ -33,12 +32,12 @@ _last_rth_date: str = ""
 def is_rth_open() -> bool:
     """Return True if current ET time is between 09:30:00 and 16:00:00 Monday-Friday."""
     try:
-        now = datetime.now(ZoneInfo("America/New_York"))
+        now = now_et()
         if now.weekday() >= 5:  # Saturday=5, Sunday=6
             return False
         hour, minute = now.hour, now.minute
         mins = hour * 60 + minute
-        return 9 * 60 + 30 <= mins < 16 * 60  # 09:30 to 16:00
+        return RTH_OPEN_MINS <= mins < RTH_END_MINS
     except Exception:
         return False
 
@@ -118,8 +117,8 @@ def push_level_one(symbol: str, content_item: dict) -> None:
     # FIX 2: RTH session reset at 9:30 ET
     try:
         global _last_rth_date
-        now_et = datetime.now(ZoneInfo("America/New_York"))
-        current_date = now_et.strftime("%Y-%m-%d")
+        now_et_dt = now_et()
+        current_date = now_et_dt.strftime("%Y-%m-%d")
         if is_rth_open() and current_date != _last_rth_date:
             with _lock:
                 # Use loop-local names to avoid shadowing the outer `sym`

@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/issue19_option_a_post_backfill_validation.md`.
+
 # Issue 19 / Option A — Post-backfill validation report
 
 This document records a **read-only, evidence-backed** validation pass after the `distance_magnitude_option_a_v1` backfill. It separates **storage contract correctness** from **calibration / coverage readiness**.

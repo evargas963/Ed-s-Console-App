@@ -94,7 +94,7 @@ def main():
                 get_snapshot_sql("audit_expiry_data.py:116"),
                 _TF2,
             ).fetchall()
-            print(f"\n5. Distinct expiries with dte<0:")
+            print("\n5. Distinct expiries with dte<0:")
             for r in expiries:
                 print(f"      {r[0]}: {r[1]} rows")
 

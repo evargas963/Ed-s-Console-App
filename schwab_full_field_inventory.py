@@ -21,6 +21,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, date, timezone
 from pathlib import Path
 from typing import Any
+import logging
+
+log = logging.getLogger(__name__)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -46,10 +50,12 @@ API_KEY = os.getenv("SCHWAB_API_KEY")
 APP_SECRET = os.getenv("SCHWAB_APP_SECRET")
 if not API_KEY or not APP_SECRET:
     try:
-        from config import SCHWAB_API_KEY, SCHWAB_APP_SECRET
-        API_KEY = API_KEY or SCHWAB_API_KEY
-        APP_SECRET = APP_SECRET or SCHWAB_APP_SECRET
-    except ImportError:
+        from config import build_config
+
+        _cfg = build_config(str(Path(__file__).resolve().parent))
+        API_KEY = API_KEY or _cfg.api_key
+        APP_SECRET = APP_SECRET or _cfg.app_secret
+    except (ImportError, RuntimeError):
         pass
 if not API_KEY or not APP_SECRET:
     API_KEY = os.getenv("SCHWAB_API_KEY", "")
@@ -429,16 +435,15 @@ def run_streaming_probes(client, output_root: Path, symbols: list[str], account_
             try:
                 stream_client.add_nasdaq_book_handler(make_handler("NASDAQ_BOOK", book_samples))
                 await stream_client.nasdaq_book_subs(symbols[:2])
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug("schwab field inventory: %s", e, exc_info=True)
             # Chart equity
             chart_samples = []
             try:
                 stream_client.add_chart_equity_handler(make_handler("CHART_EQUITY", chart_samples))
                 await stream_client.chart_equity_subs(symbols[:2])
-            except Exception:
-                pass
-
+            except Exception as e:
+                log.debug("schwab field inventory: %s", e, exc_info=True)
             # Wait for a few messages
             for _ in range(30):
                 try:
@@ -605,7 +610,7 @@ def main() -> int:
     print(f"  Successful:        {ok_count}")
     print(f"  Failed:            {fail_count}")
     print(f"  Raw/field files:   {files_written}")
-    print(f"  Unique fields per endpoint:")
+    print("  Unique fields per endpoint:")
     for ep, fields in sorted(by_endpoint.items()):
         print(f"    {ep}: {len(fields)}")
     print(f"  Total unique fields: {len(all_paths)}")

@@ -6,16 +6,14 @@ Phase 1 extracted Card 1 logic from signals.py.
 from __future__ import annotations
 
 import logging
-from datetime import timezone, timedelta
 
-from micro_structure import analyze_micro
-from math_exposure import greek_bias, is_pin_zone, APPROACH_PTS
+from math_exposure import is_pin_zone, APPROACH_PTS
 from signal_types import SignalInput, RulesCard
 from features.regime_mvp_context import mvp_vwap_side, mvp_zone
 from signal_helpers import _ordinal
 
 log = logging.getLogger(__name__)
-ET = timezone(timedelta(hours=-5))
+
 
 def _derive_bias_from_micro(micro, approaching_ceiling, approaching_floor,
                              near_inflection, vwap_side, zone) -> tuple[str, str]:
@@ -32,7 +30,6 @@ def _derive_bias_from_micro(micro, approaching_ceiling, approaching_floor,
         R_TREND_UP, R_TREND_DOWN, R_BOS_UP, R_BOS_DOWN,
         R_CHOCH_BULL, R_CHOCH_BEAR, R_COMPRESSION, R_RANGE,
         R_REVERSAL_UP, R_REVERSAL_DN, R_CHOP,
-        regime_direction,
     )
 
     regime = micro.regime
@@ -78,10 +75,10 @@ def _derive_bias_from_micro(micro, approaching_ceiling, approaching_floor,
             return "short", "medium"
         if approaching_floor:
             return "long", "medium"
-        # Middle of range: VWAP side gives a slight lean
+        # Middle of range: slight lean only when canonical VWAP side is known
         if vwap_side == "above":
             return "long", "low"
-        elif vwap_side == "below":
+        if vwap_side == "below":
             return "short", "low"
         return "wait", "low"
 
@@ -108,10 +105,9 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
       - micro:       full MicroRead object for downstream consumers
     """
     from micro_structure import (
-        Candle, analyze_micro,
-        R_TREND_UP, R_TREND_DOWN, R_BOS_UP, R_BOS_DOWN,
-        R_CHOCH_BULL, R_CHOCH_BEAR, R_COMPRESSION, R_RANGE,
-        R_REVERSAL_UP, R_REVERSAL_DN, R_CHOP, R_UNKNOWN,
+        analyze_micro,
+        R_BOS_UP, R_BOS_DOWN,
+        R_REVERSAL_UP, R_REVERSAL_DN,
     )
 
     spot = inp.spot
@@ -171,19 +167,27 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
         dirn = "up through" if cross.get("direction") == "up" else "down through"
         alerts.append(f"⚡ Just crossed {dirn} {lvl}")
 
-    # Time context
-    if inp.mins_to_close <= 30 and inp.mins_to_close > 0:
+    # Time context — mins_to_close may be None on DB replay rows (call_engine fail-closes; rules must not crash)
+    if inp.mins_to_close is not None and inp.mins_to_close <= 30 and inp.mins_to_close > 0:
         alerts.append(f"🛑 {int(inp.mins_to_close)}min to close — no new entries")
-    elif inp.mins_to_close <= 120 and inp.mins_to_close > 0:
+    elif inp.mins_to_close is not None and inp.mins_to_close <= 120 and inp.mins_to_close > 0:
         alerts.append(f"⏰ {int(inp.mins_to_close)}min to close — reduce size")
 
     # Zone transition context — separate execution-layer (1m) from structure-layer (5m)
-    zone_fresh_bars_1m  = (inp.zone_since_bars_1m or inp.zone_since_bars) or 0   # execution timing
-    zone_stable_bars_5m = (inp.zone_since_bars_5m or 0)                          # structure persistence
+    zone_fresh_bars_1m = inp.zone_since_bars_1m
+    if zone_fresh_bars_1m is None:
+        zone_fresh_bars_1m = inp.zone_since_bars
+    zone_stable_bars_5m = inp.zone_since_bars_5m
     prev_z = (inp.prev_zone or "").lower()
     cur_z = mvp_zone(mvp_features)
 
-    if zone_fresh_bars_1m <= 2 and prev_z and prev_z != cur_z:
+    if (
+        zone_fresh_bars_1m is not None
+        and zone_fresh_bars_1m <= 2
+        and prev_z
+        and cur_z is not None
+        and prev_z != cur_z
+    ):
         # Fresh transition — 1m recency = execution timing (high-information event)
         alerts.append(f"🔄 Zone just changed: {prev_z} → {cur_z} ({zone_fresh_bars_1m} 1m bars ago)")
         if cur_z == "breakout" and is_pin_zone(prev_z):
@@ -192,7 +196,7 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
             alerts.append("⚡ Breakdown from pin zone — sellers taking control")
         elif is_pin_zone(cur_z) and prev_z in ("breakout", "breakdown"):
             alerts.append("🛑 Failed breakout — reverting to pin. Fade the move.")
-    elif zone_stable_bars_5m >= 20 and is_pin_zone(cur_z):
+    elif zone_stable_bars_5m is not None and zone_stable_bars_5m >= 20 and is_pin_zone(cur_z):
         # Stable structure — 5m recency = structure persistence (~100+ min in pin)
         alerts.append(f"📌 Stable pin zone for {zone_stable_bars_5m} five-min bars — fade edges, expect chop")
 
@@ -213,7 +217,6 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
     from micro_structure import (
         regime_direction as _regime_dir,
         R_BOS_UP, R_BOS_DOWN, R_REVERSAL_UP, R_REVERSAL_DN,
-        R_CHOCH_BULL, R_CHOCH_BEAR,
     )
     _r1m = getattr(micro, "regime_1m", "UNKNOWN")
     _dir_5m = _regime_dir(micro.regime)
@@ -233,7 +236,7 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
             alerts.append(f"⚠ 1-min diverging ({_r1m}) — conviction reduced")
 
     # Override: no new entries in last 30 min
-    if inp.mins_to_close <= 30 and inp.mins_to_close > 0:
+    if inp.mins_to_close is not None and inp.mins_to_close <= 30 and inp.mins_to_close > 0:
         signal = "wait"
         conviction = "low"
 

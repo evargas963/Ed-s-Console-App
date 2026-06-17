@@ -6,7 +6,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -234,11 +233,10 @@ def test_spread_instability_raises_spread_materiality_threshold():
 
 def test_rth_open_vs_midday_differ_via_intraday_ramp():
     from datetime import datetime
-    from zoneinfo import ZoneInfo
 
     from planes.l1_thresholds import AdaptiveMaterialityContext, resolve_l1_materiality_engine
 
-    et = ZoneInfo("America/New_York")
+    from time_et import ET as et  # noqa: F401
     ts_open = datetime(2024, 6, 14, 9, 35, tzinfo=et).timestamp()
     ts_mid = datetime(2024, 6, 14, 12, 15, tzinfo=et).timestamp()
     ctx = dict(session_label="RTH", vix_level=18.0, spot=500.0, spread_frac=0.0002)

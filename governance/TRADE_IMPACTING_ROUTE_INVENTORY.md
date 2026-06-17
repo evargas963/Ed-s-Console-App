@@ -1,3 +1,5 @@
+> **Classification:** Operational Ledger | **Scope:** Governance register/inventory `TRADE_IMPACTING_ROUTE_INVENTORY.md`.
+
 # Trade-Impacting Route Inventory
 
 **Status:** COMPLETE (pre-INF lock audit)  

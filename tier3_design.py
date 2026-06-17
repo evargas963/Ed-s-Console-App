@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from similarity_audit import normalize_anchor_distances_for_issue19_sql
 from similarity_feature_search import SHADOW_SOFT_CATEGORICAL_ALLOWLIST, resolve_overlay_for_anchor

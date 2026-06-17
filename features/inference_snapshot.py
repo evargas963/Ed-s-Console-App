@@ -11,6 +11,7 @@ from features.canonical_contract import (
     CANONICAL_FEATURE_TIMEFRAME,
     INFERENCE_SNAPSHOT_SOURCE_LIVE_L1,
     INFERENCE_SNAPSHOT_TYPE,
+    get_mvp_feature_names,
     validate_feature_contract_row,
 )
 
@@ -20,6 +21,26 @@ _INFERENCE_SNAPSHOT_ALLOWED_SOURCES: frozenset[str] = frozenset(
 )
 from features.db_feature_adapter import build_db_mvp_feature_row
 from features.live_feature_adapter import build_live_mvp_feature_row
+
+
+def build_feature_lineage_map(
+    features: dict[str, Any],
+    *,
+    envelope_source: str,
+    transform: str = "canonical_mvp_adapter",
+) -> dict[str, dict[str, Any]]:
+    """
+    Per-field lineage for every MVP canonical feature: source, transform, fallback_flag.
+    """
+    lineage: dict[str, dict[str, Any]] = {}
+    for key in get_mvp_feature_names():
+        val = features.get(key)
+        lineage[key] = {
+            "source": envelope_source,
+            "transform": transform,
+            "fallback_flag": val is None,
+        }
+    return lineage
 
 
 def _feature_quality_from_row(features: dict[str, Any]) -> dict[str, Any]:
@@ -63,6 +84,7 @@ def build_inference_snapshot_v1_from_feature_row(
         "expiry": expiry,
         "as_of_ts": ts_f,
         "features": features,
+        "feature_lineage": build_feature_lineage_map(features, envelope_source=source),
         "feature_quality": _feature_quality_from_row(features),
         "source": source,
     }
@@ -94,6 +116,13 @@ def build_inference_snapshot_v1_from_signal_input(inp: Any, *, as_of_ts: float |
     (flat dict only — no `liquidity_summary` / `spot_anchors` on the wire).
     """
     def _dist_to_vwap_pts() -> float | None:
+        """
+        Map SignalInput.vwap_dist_pts to anchor.vwap_dist_pts (signed distance).
+
+        Magnitude-only contract: only ``vwap_side == "below"`` negates; all other sides
+        (including ``above`` and empty) return positive magnitude. Replay must use the
+        same side convention as live L1 when comparing distances.
+        """
         d = getattr(inp, "vwap_dist_pts", None)
         if d is None:
             return None
@@ -106,9 +135,10 @@ def build_inference_snapshot_v1_from_signal_input(inp: Any, *, as_of_ts: float |
             return -mag
         return mag
 
+    # Keys must match live_feature_adapter.build_live_mvp_feature_row (spread_pts not spread).
     l1_equiv: dict[str, Any] = {
         "spot": getattr(inp, "spot", None),
-        "spread": getattr(inp, "spread", None),
+        "spread_pts": getattr(inp, "spread", None),
         "zone": getattr(inp, "zone", None),
         "nearest_above_dist": getattr(inp, "nearest_above_dist", None),
         "nearest_below_dist": getattr(inp, "nearest_below_dist", None),
@@ -171,6 +201,9 @@ def build_inference_snapshot_v1(
         "expiry": expiry,
         "as_of_ts": ts_f,
         "features": features,
+        "feature_lineage": build_feature_lineage_map(
+            features, envelope_source=INFERENCE_SNAPSHOT_SOURCE_LIVE_L1
+        ),
         "feature_quality": _feature_quality_from_row(features),
         "source": INFERENCE_SNAPSHOT_SOURCE_LIVE_L1,
     }
@@ -205,3 +238,20 @@ def _assert_inference_snapshot_v1(snap: dict[str, Any]) -> None:
         raise ValueError("InferenceSnapshotV1: present_count + missing_count must equal 10")
     if len(mf) != mc:
         raise ValueError("InferenceSnapshotV1: missing_fields length must equal missing_count")
+    feats = snap.get("features")
+    if not isinstance(feats, dict):
+        raise ValueError("InferenceSnapshotV1: features missing or not a dict")
+    lineage = snap.get("feature_lineage")
+    if not isinstance(lineage, dict):
+        raise ValueError("InferenceSnapshotV1: feature_lineage missing or not a dict")
+    for key in get_mvp_feature_names():
+        entry = lineage.get(key)
+        if not isinstance(entry, dict):
+            raise ValueError(f"InferenceSnapshotV1: feature_lineage missing entry for {key!r}")
+        for field in ("source", "transform", "fallback_flag"):
+            if field not in entry:
+                raise ValueError(f"InferenceSnapshotV1: feature_lineage[{key!r}] missing {field!r}")
+        if entry["fallback_flag"] is not (feats.get(key) is None):
+            raise ValueError(
+                f"InferenceSnapshotV1: feature_lineage[{key!r}].fallback_flag inconsistent with features"
+            )

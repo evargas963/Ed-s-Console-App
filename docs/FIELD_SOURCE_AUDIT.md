@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Point-in-time audit artifact `docs/FIELD_SOURCE_AUDIT.md`.
+
 # Field Source Audit
 
 **Status:** Initial audit from live Schwab inventory  

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import math
 import random
 import sqlite3
@@ -29,34 +30,91 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from calibration.anchor_audit import snapshot_has_bar_anchor
-from calibration.analyze_phase3 import _brier_triplet, _canonical_prob_triplet, _load_json_col
+from calibration.analyze_phase3 import _brier_triplet, _canonical_prob_triplet
 from calibration.analyze_phase4 import _directional_pnl
 from calibration.edge_validation import _effective_directional_signal
+from arch_competition.atomic_io import write_json_file_atomically, write_text_atomically
 from calibration.canonical_enforcement import CANONICAL_TIMEFRAME, enforce_calibration_decision_log_only_1m
 from calibration.db_guard import enforce_resolved_path, register_allow_noncanonical_flag
-from calibration.paths import DEFAULT_DB
-from db_authority import canonical_console_db_path
+from calibration.json_utils import parse_json_mapping
 from calibration.schema import ensure_calibration_schema
-from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
+from calibration.statistical_integrity import (
+    MIN_SAMPLES_STATISTICAL,
+    bucket_gate,
+    verify_edge_discovery_no_numeric_leak,
+)
 from calibration.trust import TRUSTED_PREDICATE_SQL
+from calibration.v2_a1_calibration import axis_reliability_bucket_value
+from db_authority import canonical_console_db_path
+
+log = logging.getLogger(__name__)
 
 try:
     from db import configure_sqlite_connection
-except Exception:
+except ImportError as e:
+    log.warning(
+        "db.configure_sqlite_connection not available — using no-op stub: %s",
+        e,
+    )
 
     def configure_sqlite_connection(conn, **kwargs):
         pass
 
 MIN_N = MIN_SAMPLES_STATISTICAL
+AXIS_INVALID = "__invalid__"
 
 
-def _lj(s: str | None) -> dict[str, Any]:
-    if not s:
-        return {}
-    try:
-        return json.loads(s)
-    except Exception:
-        return {}
+def _parse_json_field(value: Any, *, context: str) -> dict[str, Any]:
+    return parse_json_mapping(value, context=context)
+
+
+def _canonical_confidence_bucket(raw: Any) -> str:
+    if raw is None:
+        return axis_reliability_bucket_value(None)
+    text = str(raw).strip().lower()
+    if not text:
+        return axis_reliability_bucket_value(None)
+    if text not in ("high", "medium", "low"):
+        return AXIS_INVALID
+    return text
+
+
+def _alignment_state_bucket(raw: Any) -> str:
+    if raw is None:
+        return axis_reliability_bucket_value(None)
+    text = str(raw).strip().upper()
+    return text if text else axis_reliability_bucket_value(None)
+
+
+def _axis_field(row: dict[str, Any], field: str) -> str:
+    return axis_reliability_bucket_value(row.get(field))
+
+
+def _axis_field_lower(row: dict[str, Any], field: str) -> str:
+    raw = row.get(field)
+    if raw is None:
+        return axis_reliability_bucket_value(None)
+    text = str(raw).strip().lower()
+    return text if text else axis_reliability_bucket_value(None)
+
+
+def _gated_round(val: float | None, gate_ok: bool) -> float | None:
+    return round(val, 6) if (val is not None and gate_ok) else None
+
+
+def _bootstrap_gated(
+    actual: list[float], baseline: list[float], *, gate_ok: bool
+) -> dict[str, Any]:
+    boot = _bootstrap_delta(actual, baseline) if len(actual) >= 2 else {"n": len(actual)}
+    if gate_ok:
+        return {**boot, "gate_sufficient": True}
+    return {
+        "n": boot.get("n", len(actual)),
+        "gate_sufficient": False,
+        "mean_delta": None,
+        "ci95_low": None,
+        "ci95_high": None,
+    }
 
 
 def _fusion_top_probs(fj: dict[str, Any]) -> dict[str, float | None]:
@@ -71,12 +129,12 @@ def _fusion_top_probs(fj: dict[str, Any]) -> dict[str, float | None]:
     return out
 
 
-def _model_stack_summary(mo: dict[str, Any]) -> dict[str, Any]:
+def _model_stack_summary(mo: dict[str, Any], *, context: str) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for name in ("xgb", "lstm", "transformer"):
         blk = mo.get(name) or {}
         if isinstance(blk, str):
-            blk = _lj(blk)
+            blk = _parse_json_field(blk, context=f"{context}:model_outputs.{name}")
         out[f"mo_{name}_prob_up"] = None
         try:
             if blk.get("prob_up") is not None:
@@ -155,22 +213,31 @@ def load_labeled_rows(db_path: Path) -> tuple[list[dict[str, Any]], dict[str, An
     for r in rows_raw:
         if snapshot_has_bar_anchor(conn, r["ticker"], float(r["decision_ts_utc"])):
             d = dict(r)
-            fj = _lj(d.get("fusion_json"))
-            mo = _lj(d.get("model_outputs_json"))
-            mh = _lj(d.get("multi_horizon_json"))
-            cj = _lj(d.get("canonical_json"))
-            align = (mh.get("alignment_state") or "UNKNOWN").strip().upper()
+            row_id = d.get("id")
+            fj = _parse_json_field(
+                d.get("fusion_json"), context=f"edge_discovery:row_{row_id}:fusion_json"
+            )
+            mo = _parse_json_field(
+                d.get("model_outputs_json"),
+                context=f"edge_discovery:row_{row_id}:model_outputs_json",
+            )
+            mh = _parse_json_field(
+                d.get("multi_horizon_json"),
+                context=f"edge_discovery:row_{row_id}:multi_horizon_json",
+            )
+            cj = _parse_json_field(
+                d.get("canonical_json"), context=f"edge_discovery:row_{row_id}:canonical_json"
+            )
+            align = _alignment_state_bucket(mh.get("alignment_state"))
             fusion_probs = _fusion_top_probs(fj)
-            mos = _model_stack_summary(mo)
+            mos = _model_stack_summary(mo, context=f"edge_discovery:row_{row_id}")
             uh = _utc_hour(float(d["decision_ts_utc"]))
             trip = _canonical_prob_triplet(d.get("canonical_json"))
             brier = None
             if trip is not None:
                 y5 = (d.get("outcome_5c") or "").strip().lower()
                 brier = _brier_triplet(trip[0], trip[1], trip[2], y5)
-            ccb = (cj.get("confidence") or "low").strip().lower()
-            if ccb not in ("high", "medium", "low"):
-                ccb = "low"
+            ccb = _canonical_confidence_bucket(cj.get("confidence"))
 
             d["_features"] = {
                 **fusion_probs,
@@ -257,10 +324,9 @@ def aggregate_slice(
             paired_l.append(float(m["pnl_long"]))
             paired_r.append(float(m["pnl_random"]))
 
-    boot_vs_long = _bootstrap_delta(paired_a, paired_l) if len(paired_a) >= 2 else {}
-    boot_vs_rnd = _bootstrap_delta(paired_a, paired_r) if len(paired_a) >= 2 else {}
-
     gate_ok = n >= MIN_N
+    boot_vs_long = _bootstrap_gated(paired_a, paired_l, gate_ok=gate_ok)
+    boot_vs_rnd = _bootstrap_gated(paired_a, paired_r, gate_ok=gate_ok)
     edge_vs_long = (
         gate_ok
         and ma is not None
@@ -283,15 +349,19 @@ def aggregate_slice(
         "n": n,
         "min_n_gate": MIN_N,
         "gate_sufficient": gate_ok,
-        "mean_outcome_5c_pts": round(mean(pts), 6) if pts else None,
-        "mean_ev_actual_final_signal": round(ma, 6) if ma is not None else None,
-        "mean_ev_always_long": round(ml, 6) if ml is not None else None,
-        "mean_ev_always_short": round(mean(pnls_s), 6) if pnls_s else None,
-        "mean_ev_random_long_short": round(mr, 6) if mr is not None else None,
-        "delta_ev_actual_minus_long": round(ma - ml, 6) if ma is not None and ml is not None else None,
-        "delta_ev_actual_minus_random": round(ma - mr, 6) if ma is not None and mr is not None else None,
-        "win_rate_strict_positive": wr,
-        "mean_brier": round(mb, 6) if mb is not None else None,
+        "mean_outcome_5c_pts": _gated_round(mean(pts), gate_ok),
+        "mean_ev_actual_final_signal": _gated_round(ma, gate_ok),
+        "mean_ev_always_long": _gated_round(ml, gate_ok),
+        "mean_ev_always_short": _gated_round(mean(pnls_s), gate_ok),
+        "mean_ev_random_long_short": _gated_round(mr, gate_ok),
+        "delta_ev_actual_minus_long": _gated_round(
+            (ma - ml) if ma is not None and ml is not None else None, gate_ok
+        ),
+        "delta_ev_actual_minus_random": _gated_round(
+            (ma - mr) if ma is not None and mr is not None else None, gate_ok
+        ),
+        "win_rate_strict_positive": _gated_round(wr, gate_ok) if wr is not None else None,
+        "mean_brier": _gated_round(mb, gate_ok),
         "bootstrap_actual_minus_long": boot_vs_long,
         "bootstrap_actual_minus_random": boot_vs_rnd,
         "edge_vs_always_long": edge_vs_long,
@@ -303,16 +373,16 @@ def aggregate_slice(
 def build_marginal_slices(rows: list[dict[str, Any]], signal_fn: SignalFn | None = None) -> list[dict[str, Any]]:
     dims: list[tuple[str, Callable[[dict[str, Any]], str]]] = [
         ("ticker", lambda r: str(r["ticker"])),
-        ("regime_primary", lambda r: str(r.get("regime_primary") or "unknown")),
-        ("vol_regime", lambda r: str(r.get("vol_regime") or "unknown")),
-        ("vix_bucket", lambda r: str(r.get("vix_bucket") or "unknown")),
-        ("session_bucket", lambda r: str(r.get("session_bucket") or "unknown")),
+        ("regime_primary", lambda r: _axis_field(r, "regime_primary")),
+        ("vol_regime", lambda r: _axis_field(r, "vol_regime")),
+        ("vix_bucket", lambda r: _axis_field(r, "vix_bucket")),
+        ("session_bucket", lambda r: _axis_field(r, "session_bucket")),
         ("session_rth_derived", lambda r: str(r["_features"]["session_rth_derived"])),
         ("utc_hour_bucket_6h", lambda r: str(r["_features"]["utc_hour_bucket_6h"])),
-        ("zone", lambda r: str(r.get("zone") or "unknown")),
-        ("vwap_side", lambda r: str(r.get("vwap_side") or "unknown")),
-        ("final_signal", lambda r: str((r.get("final_signal") or "wait")).lower()),
-        ("call_conviction", lambda r: str((r.get("call_conviction") or "unknown")).lower()),
+        ("zone", lambda r: _axis_field(r, "zone")),
+        ("vwap_side", lambda r: _axis_field(r, "vwap_side")),
+        ("final_signal", lambda r: _axis_field_lower(r, "final_signal")),
+        ("call_conviction", lambda r: _axis_field_lower(r, "call_conviction")),
         ("canonical_confidence_bucket", lambda r: str(r["_features"]["canonical_confidence_bucket"])),
         ("alignment_state", lambda r: str(r["_features"]["alignment_state"])),
     ]
@@ -330,11 +400,16 @@ def build_marginal_slices(rows: list[dict[str, Any]], signal_fn: SignalFn | None
 
 def build_2d_slices(rows: list[dict[str, Any]], signal_fn: SignalFn | None = None) -> list[dict[str, Any]]:
     pairs = [
-        ("ticker", "regime_primary", lambda r: str(r["ticker"]), lambda r: str(r.get("regime_primary") or "unknown")),
-        ("ticker", "final_signal", lambda r: str(r["ticker"]), lambda r: str((r.get("final_signal") or "wait")).lower()),
+        ("ticker", "regime_primary", lambda r: str(r["ticker"]), lambda r: _axis_field(r, "regime_primary")),
+        ("ticker", "final_signal", lambda r: str(r["ticker"]), lambda r: _axis_field_lower(r, "final_signal")),
         ("ticker", "alignment_state", lambda r: str(r["ticker"]), lambda r: str(r["_features"]["alignment_state"])),
-        ("call_conviction", "alignment_state", lambda r: str((r.get("call_conviction") or "unknown")).lower(), lambda r: str(r["_features"]["alignment_state"])),
-        ("vol_regime", "vwap_side", lambda r: str(r.get("vol_regime") or "unknown"), lambda r: str(r.get("vwap_side") or "unknown")),
+        (
+            "call_conviction",
+            "alignment_state",
+            lambda r: _axis_field_lower(r, "call_conviction"),
+            lambda r: str(r["_features"]["alignment_state"]),
+        ),
+        ("vol_regime", "vwap_side", lambda r: _axis_field(r, "vol_regime"), lambda r: _axis_field(r, "vwap_side")),
         ("session_rth_derived", "utc_hour_bucket_6h", lambda r: str(r["_features"]["session_rth_derived"]), lambda r: str(r["_features"]["utc_hour_bucket_6h"])),
     ]
     out: list[dict[str, Any]] = []
@@ -356,7 +431,9 @@ def feature_importance_naive(rows: list[dict[str, Any]]) -> dict[str, Any]:
         p = r.get("outcome_5c_pts")
         if p is None:
             continue
-        fj = _lj(r.get("fusion_json"))
+        fj = _parse_json_field(
+            r.get("fusion_json"), context=f"edge_discovery:row_{r.get('id')}:fusion_json"
+        )
         pu = fj.get("prob_up")
         if pu is not None:
             try:
@@ -364,8 +441,10 @@ def feature_importance_naive(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 pts_list.append(float(p))
             except (TypeError, ValueError):
                 pass
+    pearson_n = len(fp_list)
+    pearson_gate = bucket_gate(pearson_n, MIN_N)
     corr = None
-    if len(fp_list) >= 3:
+    if pearson_n >= MIN_N:
         mx = statistics.mean(fp_list)
         my = statistics.mean(pts_list)
         num = sum((a - mx) * (b - my) for a, b in zip(fp_list, pts_list))
@@ -379,9 +458,11 @@ def feature_importance_naive(rows: list[dict[str, Any]]) -> dict[str, Any]:
         p = r.get("outcome_5c_pts")
         if p is None:
             continue
-        by_sig[str((r.get("final_signal") or "wait")).lower()].append(float(p))
+        by_sig[_axis_field_lower(r, "final_signal")].append(float(p))
 
     return {
+        "pearson_n": pearson_n,
+        "pearson_sample_gate": pearson_gate,
         "pearson_fusion_prob_up_vs_outcome_5c_pts": corr,
         "mean_outcome_pts_by_final_signal": {k: round(statistics.mean(v), 6) for k, v in sorted(by_sig.items())},
         "note": "Descriptive only; not causal. MHAP/fusion from logged JSON.",
@@ -415,17 +496,23 @@ def _row_export(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for r in rows:
         m = row_metrics(r)
         f = r["_features"]
-        fj = _lj(r.get("fusion_json"))
-        mo = _lj(r.get("model_outputs_json"))
+        row_id = r.get("id")
+        fj = _parse_json_field(
+            r.get("fusion_json"), context=f"edge_discovery:row_{row_id}:fusion_json"
+        )
+        mo = _parse_json_field(
+            r.get("model_outputs_json"),
+            context=f"edge_discovery:row_{row_id}:model_outputs_json",
+        )
         xgb = mo.get("xgb")
         lstm = mo.get("lstm")
         trn = mo.get("transformer")
         if isinstance(xgb, str):
-            xgb = _lj(xgb)
+            xgb = _parse_json_field(xgb, context=f"edge_discovery:row_{row_id}:model_outputs.xgb")
         if isinstance(lstm, str):
-            lstm = _lj(lstm)
+            lstm = _parse_json_field(lstm, context=f"edge_discovery:row_{row_id}:model_outputs.lstm")
         if isinstance(trn, str):
-            trn = _lj(trn)
+            trn = _parse_json_field(trn, context=f"edge_discovery:row_{row_id}:model_outputs.transformer")
         out.append(
             {
                 "id": r.get("id"),
@@ -433,7 +520,7 @@ def _row_export(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "decision_ts_utc": r.get("decision_ts_utc"),
                 "outcome_5c": r.get("outcome_5c"),
                 "outcome_5c_pts": m.get("outcome_5c_pts"),
-                "final_signal_logged": (r.get("final_signal") or "wait").strip().lower(),
+                "final_signal_logged": _axis_field_lower(r, "final_signal"),
                 "effective_signal_for_ev": m.get("effective_signal_for_ev"),
                 "fusion_prob_up": fj.get("prob_up"),
                 "fusion_prob_down": fj.get("prob_down"),
@@ -489,7 +576,7 @@ def run_discovery_rows(
     marginal_ids = {s["slice_id"] for s in marginal}
     marginal_edge = [s for s in edge_slices if s["slice_id"] in marginal_ids]
 
-    return {
+    report = {
         "meta": meta,
         "per_row_feature_extract": _row_export(rows),
         "population_notes": {
@@ -513,6 +600,14 @@ def run_discovery_rows(
         },
         "marginal_edge_slices": marginal_edge,
     }
+    leak_ok = verify_edge_discovery_no_numeric_leak(report)
+    report["statistical_integrity"] = {
+        "binary_pass": leak_ok,
+        "thresholds_reference": (
+            "math_probabilities.MIN_SAMPLES_STATISTICAL (30) via calibration.statistical_integrity"
+        ),
+    }
+    return report
 
 
 def _markdown_table(slices: list[dict[str, Any]], max_rows: int | None = None) -> str:
@@ -560,7 +655,7 @@ def main() -> int:
     # Strip slices_all from stdout copy if huge — write full to json
     to_write = {k: v for k, v in rep.items() if k != "slices_all"}
     to_write["slices_all"] = rep["slices_all"]
-    outp.write_text(json.dumps(to_write, indent=2), encoding="utf-8")
+    write_json_file_atomically(outp, to_write, indent=2)
 
     md_path = ROOT / "docs" / "calibration_edge_discovery_v1.md"
     nrows = len(rep.get("per_row_feature_extract") or [])
@@ -620,10 +715,24 @@ def main() -> int:
         f"- **marginal EDGE slices found:** {rep['system_level']['any_marginal_EDGE']}",
         "",
     ]
-    md_path.write_text("\n".join(md_lines), encoding="utf-8")
+    write_text_atomically(md_path, "\n".join(md_lines))
 
-    print(json.dumps({"wrote_json": str(outp), "wrote_md": str(md_path), "FINAL": rep["system_level"]["FINAL_SYSTEM_EDGE"]}, indent=2))
-    return 0
+    final = rep["system_level"]["FINAL_SYSTEM_EDGE"]
+    leak_ok = bool((rep.get("statistical_integrity") or {}).get("binary_pass"))
+    print(
+        json.dumps(
+            {
+                "wrote_json": str(outp),
+                "wrote_md": str(md_path),
+                "FINAL": final,
+                "statistical_integrity_pass": leak_ok,
+            },
+            indent=2,
+        )
+    )
+    if not leak_ok:
+        return 3
+    return 0 if final == "EDGE" else 1
 
 
 if __name__ == "__main__":

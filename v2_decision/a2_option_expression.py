@@ -13,6 +13,13 @@ from .a2_lifecycle_health import (
     select_a2_pin_risk_audit_row,
 )
 from .a2_lifecycle_sidecar import LIFECYCLE_GAP_NAMES, build_a2_lifecycle_sidecar
+from .a2_price_precedence import (
+    resolve_a2_contract_mid,
+    resolve_a2_contract_spread,
+    resolve_a2_underlying_spread_pts,
+)
+from math_exposure import MISSING_GREEK_SENTINEL
+
 from .schema import leaf
 
 
@@ -31,6 +38,9 @@ REQUIRED_A2_GAPS = (
 )
 
 A2_ADAPTER_GAP_REGISTRY = tuple(dict.fromkeys(REQUIRED_A2_GAPS + LIFECYCLE_GAP_NAMES))
+
+# OP-008: Black-Scholes theta residual disabled unless explicitly governed on.
+_A2_THETA_BS_FALLBACK_GOVERNED = False
 
 # Per OPERATOR_DECISION_REGISTER.md O-20 (2026-05-05).
 A2_QUOTE_STALENESS_THRESHOLD_MS = 2000
@@ -161,54 +171,26 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
     bid = _num(chain_row.get("bid"))
     ask = _num(chain_row.get("ask"))
 
-    # Inline mid ladder for the trade recommendation: prefer Schwab mark,
-    # fall back to last, then to (bid+ask)/2. Each branch is a direct read
-    # of the named Schwab field on the chain row.
-    mid: float | None = None
-    mid_source: str | None = None
-    mark_raw = _num(chain_row.get("mark"))
-    if mark_raw is not None and mark_raw > 0:
-        mid = float(mark_raw)
-        mid_source = "schwab_chain_mark"
-    if mid is None:
-        last_raw = _num(chain_row.get("last"))
-        if last_raw is not None and last_raw > 0:
-            mid = float(last_raw)
-            mid_source = "schwab_chain_last"
-    if mid is None and bid is not None and ask is not None:
-        try:
-            bf, af = float(bid), float(ask)
-            if af > 0 and bf >= 0:
-                _calc = (af + bf) / 2.0
-                if _calc > 0:
-                    mid = round(_calc, 4)
-                    mid_source = "derived_bid_ask_mid"
-        except (TypeError, ValueError):
-            pass
-
-    spread_computed = _spread_from_bid_ask(bid, ask)
-    spread = _first_number(ms_dict.get("spread"), spread_computed)
-    spread_source = None
-    if spread is not None:
-        if _num(ms_dict.get("spread")) is not None:
-            spread_source = "schwab_ms_dict_spread"
-        elif spread_computed is not None:
-            spread_source = "derived_bid_ask_pts"
+    mid, mid_source = resolve_a2_contract_mid(chain_row=chain_row)
+    spread, spread_source = resolve_a2_contract_spread(bid=bid, ask=ask)
+    underlying_spread_pts, underlying_spread_source = resolve_a2_underlying_spread_pts(
+        ms_dict=ms_dict
+    )
 
     iv_val: float | None = None
     iv_detail = None
     iv_raw = _num(chain_row.get("volatility"))
-    if iv_raw is not None and iv_raw > 0 and iv_raw != -999.0 and math.isfinite(iv_raw):
+    if iv_raw is not None and iv_raw > 0 and iv_raw != MISSING_GREEK_SENTINEL and math.isfinite(iv_raw):
         iv_val = float(iv_raw)
         iv_detail = "schwab_chain_volatility"
     if iv_val is None:
         tv_raw = _num(chain_row.get("theoreticalVolatility"))
-        if tv_raw is not None and tv_raw > 0 and tv_raw != -999.0 and math.isfinite(tv_raw):
+        if tv_raw is not None and tv_raw > 0 and tv_raw != MISSING_GREEK_SENTINEL and math.isfinite(tv_raw):
             iv_val = float(tv_raw)
             iv_detail = "schwab_chain_theoreticalVolatility"
 
     delta_raw = _num(chain_row.get("delta"))
-    if delta_raw is not None and delta_raw != -999.0 and math.isfinite(delta_raw):
+    if delta_raw is not None and delta_raw != MISSING_GREEK_SENTINEL and math.isfinite(delta_raw):
         delta_val: float | None = float(delta_raw)
         delta_detail = "schwab_chain_delta"
     else:
@@ -216,7 +198,7 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
         delta_detail = None
 
     gamma_raw = _num(chain_row.get("gamma"))
-    if gamma_raw is not None and gamma_raw != -999.0 and math.isfinite(gamma_raw):
+    if gamma_raw is not None and gamma_raw != MISSING_GREEK_SENTINEL and math.isfinite(gamma_raw):
         gamma_val: float | None = float(gamma_raw)
         gamma_detail = "schwab_chain_gamma"
     else:
@@ -224,7 +206,7 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
         gamma_detail = None
 
     vega_raw = _num(chain_row.get("vega"))
-    if vega_raw is not None and vega_raw != -999.0 and math.isfinite(vega_raw):
+    if vega_raw is not None and vega_raw != MISSING_GREEK_SENTINEL and math.isfinite(vega_raw):
         vega_val: float | None = float(vega_raw)
         vega_detail = "schwab_chain_vega"
     else:
@@ -279,19 +261,14 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
     # Slice 2 policy: hard readiness gates always suppress option recommendations
     # with WAIT. AVOID is reserved for a later advisory-only soft-gate policy.
     action = "TRADE" if not hard_gates else HARD_GATE_ACTION_POLICY["hard_gate_action"]
+    liq_ok_val = _liq_ok_value(ms_dict)
 
     # Schwab-first selected_expiry: chain_row.expirationDate is the
     # authoritative source (the selected contract's Schwab-native expiry).
     # ms_dict aliases are legacy fallbacks only when the chain row is absent.
-    chain_row_exp = _clean_str(chain_row.get("expirationDate"))
-    if chain_row_exp:
-        selected_expiry_value = chain_row_exp
-        selected_expiry_source = "v2_compliant"
-        selected_expiry_detail = "schwab_chain_expirationDate"
-    else:
-        selected_expiry_value = _clean_str(ms_dict.get("call_option_expiry") or ms_dict.get("selected_exp"))
-        selected_expiry_source = "v1_approximation"
-        selected_expiry_detail = None
+    selected_expiry_value, selected_expiry_source, selected_expiry_detail = _resolve_selected_expiry(
+        ms_dict, chain_row
+    )
 
     underlying_ticker_value = _clean_str(ms_dict.get("ticker"))
     return {
@@ -365,6 +342,14 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
             "spread_source": leaf(
                 spread_source, "v2_compliant" if spread_source else "not_implemented"
             ),
+            "underlying_spread_pts": leaf(
+                underlying_spread_pts,
+                "v2_compliant" if underlying_spread_source else "not_implemented",
+            ),
+            "underlying_spread_source": leaf(
+                underlying_spread_source,
+                "v2_compliant" if underlying_spread_source else "not_implemented",
+            ),
             "max_loss": leaf(None, "policy_object_pending"),
             "breakeven": leaf(_breakeven(strike, option_right, mid), "v1_approximation" if mid is not None else "not_implemented"),
             # selected_contract_snapshot is the literal Schwab chain row
@@ -388,8 +373,11 @@ def build_a2_option_expression(ms_dict: dict[str, Any], a1_decision: dict[str, A
             "execution_adjusted_EV": leaf(None, "not_implemented"),
         },
         "execution": {
-            "liquidity_gate_pass": leaf(bool(ms_dict.get("liq_ok")), "v1_approximation"),
-            "spread_quality": leaf(_spread_quality(spread, bool(ms_dict.get("liq_ok"))), "v1_approximation"),
+            "liquidity_gate_pass": leaf(
+                liq_ok_val,
+                "v1_approximation" if liq_ok_val is not None else "not_implemented",
+            ),
+            "spread_quality": leaf(_spread_quality(spread, liq_ok_val), "v1_approximation"),
             "fill_probability": leaf(None, "not_implemented"),
             "slippage_estimate": leaf(None, "not_implemented"),
             "adverse_selection_risk": leaf(None, "not_implemented"),
@@ -475,7 +463,7 @@ def _hard_gates(
     gates: list[str] = []
     if str(a1_action or "").upper() != "TRADE":
         gates.append("module_a_signal_wait_or_unavailable")
-    selected_expiry = _clean_str(ms_dict.get("call_option_expiry") or ms_dict.get("selected_exp"))
+    selected_expiry, _, _ = _resolve_selected_expiry(ms_dict, chain_row)
     if not selected_expiry:
         gates.append("missing_selected_expiry")
     elif _dte_value(ms_dict, chain_row) != 0:
@@ -491,6 +479,9 @@ def _hard_gates(
     if strike is None:
         gates.append("missing_selected_strike")
     if bid is None or ask is None:
+        gates.append("missing_bid_or_ask")
+    elif spread is None or mid is None:
+        # Fail-closed: cannot evaluate O-21 spread policy without contract mid + spread.
         gates.append("missing_bid_or_ask")
     elif _spread_exceeds_hard_threshold(spread=spread, mid=mid):
         gates.append("spread_exceeds_hard_threshold")
@@ -510,6 +501,18 @@ def _spread_exceeds_hard_threshold(*, spread: float | None, mid: float | None) -
     return spread > threshold
 
 
+def _parse_schwab_time_ms(raw: Any) -> int | None:
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        ts_f = float(raw)
+        if math.isfinite(ts_f):
+            return int(ts_f)
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
 def _quote_staleness_ms(
     *,
     ms_dict: dict[str, Any],
@@ -525,17 +528,19 @@ def _quote_staleness_ms(
         raw = chain_row.get("raw")
         if isinstance(raw, dict):
             qt_raw = raw.get("quoteTimeInLong")
-    quote_time: int | None = None
-    if qt_raw is not None and not isinstance(qt_raw, bool):
-        try:
-            qt_f = float(qt_raw)
-            if math.isfinite(qt_f):
-                quote_time = int(qt_f)
-        except (TypeError, ValueError):
-            quote_time = None
+    quote_time = _parse_schwab_time_ms(qt_raw)
+    source = "v2_compliant"
+    if quote_time is None:
+        tt_raw = chain_row.get("tradeTimeInLong")
+        if tt_raw is None and isinstance(chain_row.get("raw"), dict):
+            tt_raw = chain_row["raw"].get("tradeTimeInLong")
+        trade_time = _parse_schwab_time_ms(tt_raw)
+        if trade_time is not None:
+            quote_time = trade_time
+            source = "v2_compliant_tradeTimeInLong_governed_fallback"
     if decision_time is None or quote_time is None:
         return None, "not_implemented"
-    return max(0, int(round(decision_time - quote_time))), "v2_compliant"
+    return max(0, int(round(decision_time - quote_time))), source
 
 
 def _soft_gates(
@@ -568,7 +573,7 @@ def _late_day_gamma_health(
 ) -> dict[str, Any]:
     mins_to_close = _mins_to_close(ms_dict)
     chain_gamma_raw = _num(chain_row.get("gamma"))
-    if (chain_gamma_raw is not None and chain_gamma_raw != -999.0
+    if (chain_gamma_raw is not None and chain_gamma_raw != MISSING_GREEK_SENTINEL
             and math.isfinite(chain_gamma_raw)):
         chain_gamma: float | None = float(chain_gamma_raw)
     else:
@@ -633,15 +638,17 @@ def _theta(
     iv_for_bs: float | None = None,
 ) -> tuple[float | None, str, str | None]:
     theta_raw = _num(chain_row.get("theta"))
-    if theta_raw is not None and theta_raw != -999.0 and math.isfinite(theta_raw):
+    if theta_raw is not None and theta_raw != MISSING_GREEK_SENTINEL and math.isfinite(theta_raw):
         return float(theta_raw), "v2_compliant", "schwab_chain_theta"
 
     raw = chain_row.get("raw")
     if isinstance(raw, dict):
         raw_theta = _num(raw.get("theta"))
-        if raw_theta is not None and raw_theta != -999.0 and math.isfinite(raw_theta):
+        if raw_theta is not None and raw_theta != MISSING_GREEK_SENTINEL and math.isfinite(raw_theta):
             return float(raw_theta), "v2_compliant", "schwab_raw_theta"
 
+    if not _A2_THETA_BS_FALLBACK_GOVERNED:
+        return None, "not_implemented", "schwab_theta_missing"
     bs_theta = _black_scholes_theta(
         spot=_num(ms_dict.get("spot")),
         strike=strike,
@@ -651,7 +658,7 @@ def _theta(
     )
     if bs_theta is None:
         return None, "not_implemented", None
-    return bs_theta, "v1_approximation", "black_scholes_approximation"
+    return bs_theta, "v1_approximation", "black_scholes_approximation_governed"
 
 
 def _black_scholes_theta(
@@ -730,15 +737,38 @@ def _breakeven(strike: float | None, option_right: str, mid: float | None) -> fl
     return None
 
 
-def _spread_quality(spread: float | None, liq_ok: bool) -> str:
-    if spread is None:
+def _resolve_selected_expiry(
+    ms_dict: dict[str, Any],
+    chain_row: dict[str, Any],
+) -> tuple[str | None, str, str | None]:
+    """Schwab-first expiry: chain_row.expirationDate, then ms_dict legacy aliases."""
+    chain_row_exp = _clean_str(chain_row.get("expirationDate")) if isinstance(chain_row, dict) else None
+    if chain_row_exp:
+        return chain_row_exp, "v2_compliant", "schwab_chain_expirationDate"
+    legacy = _clean_str(ms_dict.get("call_option_expiry") or ms_dict.get("selected_exp"))
+    if legacy:
+        return legacy, "v1_approximation", None
+    return None, "not_implemented", None
+
+
+def _liq_ok_value(ms_dict: dict[str, Any]) -> bool | None:
+    if "liq_ok" not in ms_dict:
+        return None
+    raw = ms_dict.get("liq_ok")
+    if raw is None:
+        return None
+    return bool(raw)
+
+
+def _spread_quality(spread: float | None, liq_ok: bool | None) -> str:
+    if spread is None or liq_ok is None:
         return "unknown"
     return "tight" if liq_ok else "wide_policy_pending"
 
 
 def _gamma_x_oi(chain_row: dict[str, Any]) -> float | None:
     gamma_raw = _num(chain_row.get("gamma"))
-    if gamma_raw is None or gamma_raw == -999.0 or not math.isfinite(gamma_raw):
+    if gamma_raw is None or gamma_raw == MISSING_GREEK_SENTINEL or not math.isfinite(gamma_raw):
         return None
     gamma = float(gamma_raw)
     oi = _num(chain_row.get("openInterest"))
@@ -774,12 +804,9 @@ def _first_number(*values: Any) -> float | None:
 
 
 def _num(value: Any) -> float | None:
-    try:
-        if value is None or value == "":
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    from numeric_contract import float_finite_or_none
+
+    return float_finite_or_none(value)
 
 
 def _clean_str(value: Any) -> str | None:

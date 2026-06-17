@@ -69,7 +69,7 @@ def finalize_stack_integrity_v1(events: list[dict[str, Any]]) -> dict[str, Any]:
         for pe in public_events
     )
     base_models_ok = not any(
-        pe.get("component") == "run_base_models_once" and pe.get("authority_intact") is False
+        pe.get("component") == "run_unified_stack_ml_once" and pe.get("authority_intact") is False
         for pe in public_events
     )
 

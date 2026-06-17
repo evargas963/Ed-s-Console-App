@@ -10,9 +10,7 @@ from the overlay are not copied into engineered XGB columns (no same-tick model-
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from features.canonical_contract import (
     CANONICAL_FEATURE_CONTRACT_VERSION,
@@ -21,7 +19,6 @@ from features.canonical_contract import (
     validate_feature_contract_row,
 )
 
-_ET = ZoneInfo("America/New_York")
 
 # Exact canonical → legacy tabular keys (single source for XGB engineering row).
 CANONICAL_TO_XGB_TABULAR: dict[str, str] = {
@@ -62,6 +59,16 @@ def validate_inference_snapshot_v1_envelope(snap: Any) -> None:
             f"canonical_timeframe must be {CANONICAL_FEATURE_TIMEFRAME!r}, "
             f"got {snap.get('canonical_timeframe')!r}"
         )
+    tkr = snap.get("ticker")
+    if tkr is None or not str(tkr).strip():
+        raise XgbInferenceInputError("InferenceSnapshotV1 missing non-empty ticker")
+    ts = snap.get("as_of_ts")
+    if ts is None:
+        raise XgbInferenceInputError("InferenceSnapshotV1 missing as_of_ts")
+    try:
+        float(ts)
+    except (TypeError, ValueError) as e:
+        raise XgbInferenceInputError(f"as_of_ts not numeric: {ts!r}") from e
     feats = snap.get("features")
     if not isinstance(feats, dict):
         raise XgbInferenceInputError("InferenceSnapshotV1 missing features dict")
@@ -88,8 +95,10 @@ def validate_inference_snapshot_v1_for_xgb(snap: Any) -> None:
 
 
 def _et_from_ts_utc(ts_utc: float) -> tuple[int, int]:
-    dt = datetime.fromtimestamp(float(ts_utc), tz=_ET)
-    return int(dt.hour), int(dt.minute)
+    from time_et import et_clock_from_ts_utc
+
+    h, m, _ = et_clock_from_ts_utc(ts_utc)
+    return h, m
 
 
 def inference_snapshot_v1_to_engineering_snapshot(
@@ -105,14 +114,13 @@ def inference_snapshot_v1_to_engineering_snapshot(
     for canon, leg in CANONICAL_TO_XGB_TABULAR.items():
         out[leg] = feats.get(canon)
 
-    tkr = inference_snapshot_v1.get("ticker") or ""
+    tkr = inference_snapshot_v1["ticker"]
     out["ticker"] = str(tkr).upper().strip()
-    ts = inference_snapshot_v1.get("as_of_ts")
-    if ts is not None:
-        out["ts_utc"] = float(ts)
-        eh, em = _et_from_ts_utc(float(ts))
-        out["et_hour"] = eh
-        out["et_minute"] = em
+    ts = float(inference_snapshot_v1["as_of_ts"])
+    out["ts_utc"] = ts
+    eh, em = _et_from_ts_utc(ts)
+    out["et_hour"] = eh
+    out["et_minute"] = em
     return out
 
 

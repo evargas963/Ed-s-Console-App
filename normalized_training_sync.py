@@ -15,13 +15,14 @@ persist_training_fingerprint_after_materialize.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from db import sql_snapshots_training_fingerprint_select
 from horizon_outcomes import OUTCOME_BAR_SPECS, OUTCOME_MOVEMENT_V1_SPECS
@@ -35,6 +36,109 @@ FP_FLAG_KEY = "normalized_training_snapshot_fp_v1"
 _materialize_lock = threading.Lock()
 _debounce_timer: Optional[threading.Timer] = None
 _debounce_lock = threading.Lock()
+
+_INLINE_NORMSYNC_SKIP_ENV = "ED_TRAINING_SKIP_INLINE_NORMSYNC"
+
+
+def inline_normsync_enabled() -> bool:
+    """False when training should not re-enter ensure_normalized from load_data / extract loops.
+
+    ``run_once`` syncs once at entry then sets ``ED_TRAINING_SKIP_INLINE_NORMSYNC=1`` so a long
+    train does not re-materialize on every ``load_data`` / ``extract_rth_snapshots`` call while
+    the live server may also be refreshing (snapshot_id UNIQUE races).
+    """
+    return os.environ.get(_INLINE_NORMSYNC_SKIP_ENV, "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    )
+
+# Cross-process: live server debounced refresh + training normsync can materialize concurrently.
+_MATERIALIZE_LOCK_STALE_SEC = float(
+    os.environ.get("ED_NORMALIZED_MATERIALIZE_LOCK_STALE_SEC", "7200")
+)
+
+
+def _materialize_lock_path(db_path: Path) -> Path:
+    return Path(db_path).resolve().parent / ".ed_snapshots_1m_normalized_materialize.lock"
+
+
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _materialize_lock_reclaimable(lock_path: Path) -> bool:
+    """True when lock file can be removed (dead holder or exceeded stale age)."""
+    try:
+        age = time.time() - lock_path.stat().st_mtime
+        if age > _MATERIALIZE_LOCK_STALE_SEC:
+            return True
+        raw = lock_path.read_text(encoding="utf-8").strip().splitlines()
+        if not raw:
+            return True
+        return not _pid_alive(int(raw[0].strip()))
+    except (OSError, ValueError):
+        return True
+
+
+@contextlib.contextmanager
+def cross_process_materialize_lock(
+    db_path: str | Path, *, timeout_sec: float = 600.0
+) -> Iterator[None]:
+    """Exclusive lock across processes (prevents snapshot_id UNIQUE races on materialize)."""
+    lock_path = _materialize_lock_path(Path(db_path))
+    deadline = time.monotonic() + float(timeout_sec)
+    lock_file = None
+    while True:
+        try:
+            lock_file = open(lock_path, "x", encoding="utf-8")
+            lock_file.write(f"{os.getpid()}\n")
+            lock_file.flush()
+            break
+        except FileExistsError:
+            if _materialize_lock_reclaimable(lock_path):
+                lock_path.unlink(missing_ok=True)
+                continue
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"timed out waiting for normalized materialize lock {lock_path}"
+                )
+            time.sleep(0.25)
+    try:
+        yield
+    finally:
+        if lock_file is not None:
+            try:
+                lock_file.close()
+            except OSError:
+                pass
+        try:
+            lock_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _wal_checkpoint_truncate(conn: sqlite3.Connection) -> bool:
+    """DB-WRITE-PATH-FIXES (b), 2026-05-31: truncate the WAL after a successful materialize.
+
+    No checkpoint call existed anywhere before, so the WAL grew unbounded across refresh cycles
+    (the acute 8.3 GB WAL on the 11 GB DB). ``wal_checkpoint(TRUNCATE)`` flushes committed pages
+    back into the main DB and resets the WAL file to zero. Best-effort: a busy checkpoint must
+    never fail the sync, so failures are swallowed (the next cycle retries). Returns True when
+    the pragma executed without raising.
+    """
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        return True
+    except Exception as e:
+        _log.debug("wal_checkpoint(TRUNCATE) failed: %s", e)
+        return False
 
 
 def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
@@ -80,6 +184,13 @@ def compute_snapshots_training_fingerprint(conn: sqlite3.Connection) -> str:
     """
     Cheap aggregate over raw snapshots that should change when outcomes or training-relevant
     columns change. Covers canonical 1m and legacy 5m sub-minute rows (same inputs as the normalizer).
+
+    Includes LABEL_CONFIG_VERSION because the row-level aggregates are blind to label-semantics
+    rewrites: a ``force_refresh`` of ``outcome_Nc`` that only changes the up/down/flat *direction*
+    (the per-horizon threshold moved, but ``outcome_Nc_pts`` and the non-null/outcome_filled counts
+    are unchanged) would otherwise leave the fingerprint static and ``ensure_normalized_training_table``
+    would skip re-materialization — silently training on stale labels. Pinning the label config
+    version moves the fingerprint on any label-semantics bump so the normalized table rebuilds.
     """
     if not _table_exists(conn, "snapshots"):
         return "no_snapshots_table"
@@ -100,7 +211,11 @@ def compute_snapshots_training_fingerprint(conn: sqlite3.Connection) -> str:
         else:
             vals = [r[i] for i in range(1, len(r))]
             chunks.append(tf + ":" + "|".join(str(v) for v in vals))
-    return "::".join(chunks)
+    try:
+        from training_provenance import LABEL_CONFIG_VERSION
+    except Exception:
+        LABEL_CONFIG_VERSION = "unknown"
+    return "::".join(chunks) + "::label_cfg=" + str(LABEL_CONFIG_VERSION)
 
 
 def _get_stored_fp(conn: sqlite3.Connection) -> Optional[str]:
@@ -229,7 +344,8 @@ def ensure_normalized_training_table(
             force,
             stored is not None,
         )
-        mat = materialize_normalized_table(db_path, tickers=None, clear_first=True)
+        with cross_process_materialize_lock(db_path):
+            mat = materialize_normalized_table(db_path, tickers=None, clear_first=True)
         out["materialize"] = mat
         if mat.get("errors"):
             out["ok"] = False
@@ -248,6 +364,10 @@ def ensure_normalized_training_table(
             conn.commit()
             out["fingerprint"] = new_fp
             out["materialized"] = True
+            # DB-WRITE-PATH-FIXES (b): truncate the WAL now that the materialize + fingerprint
+            # writes for this cycle are committed — keeps the on-disk WAL small so the host
+            # VACUUM stays effective and the WAL does not re-grow between training refreshes.
+            out["wal_checkpoint_truncated"] = _wal_checkpoint_truncate(conn)
         finally:
             conn.close()
 
@@ -291,7 +411,7 @@ def schedule_debounced_normalized_refresh(
         if _debounce_timer is not None:
             try:
                 _debounce_timer.cancel()
-            except Exception:
-                pass
+            except Exception as e:
+                _log.debug("debounce timer cancel: %s", e, exc_info=True)
         _debounce_timer = t
     t.start()

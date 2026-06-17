@@ -6,9 +6,6 @@ RULE 2: No gates — train if data exists. No minimum row counts.
 """
 
 import os
-import sys
-import json
-import time
 import argparse
 import bisect
 import sqlite3
@@ -22,6 +19,10 @@ DB_PATH = str(_DB_PATH_OBJ)
 MODEL_DIR = Path("models")
 
 from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug, outcome_column
+import logging
+
+log = logging.getLogger(__name__)
+
 
 
 def run_xgb(
@@ -46,13 +47,20 @@ def run_xgb(
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
     label_col = outcome_column(hz)
     if ticker:
+        from scheduler_user_tickers import require_ml_training_ticker_allowed
+
+        ticker = require_ml_training_ticker_allowed(ticker)
         df = load_data(db_path, ticker=ticker.upper(), ml_horizon_slug=hz)
         tickers = [ticker.upper()] if len(df) > 0 else []
     else:
         try:
-            from scheduler_user_tickers import load_user_scheduler_tickers
+            from scheduler_user_tickers import (
+                load_user_scheduler_tickers_or_empty,
+                resolve_ml_training_roster,
+            )
 
-            tickers = load_user_scheduler_tickers()
+            enrolled = load_user_scheduler_tickers_or_empty()
+            tickers = resolve_ml_training_roster(enrolled, db_path)
         except Exception:
             tickers = []
         tickers = [t for t in tickers if t and not str(t).startswith("$")]
@@ -89,6 +97,10 @@ def run_lstm(
 
     out = model_dir or MODEL_DIR
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
+    if ticker:
+        from scheduler_user_tickers import require_ml_training_ticker_allowed
+
+        ticker = require_ml_training_ticker_allowed(ticker)
     tickers = [ticker.upper()] if ticker else None
     if not tickers:
         ds = build_lstm_dataset(db_path=db_path, ml_horizon_slug=hz)
@@ -124,6 +136,10 @@ def run_transformer(
 
     out = model_dir or MODEL_DIR
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
+    if ticker:
+        from scheduler_user_tickers import require_ml_training_ticker_allowed
+
+        ticker = require_ml_training_ticker_allowed(ticker)
     tickers = [ticker.upper()] if ticker else None
     if not tickers:
         ds = build_lstm_dataset(db_path=db_path, ml_horizon_slug=hz)
@@ -171,8 +187,17 @@ def run_meta(
     label_col = outcome_column(hz)
 
     if not tickers:
-        df = load_data(db_path, ml_horizon_slug=hz)
-        tickers = df["ticker"].unique().tolist() if len(df) > 0 else []
+        from scheduler_user_tickers import (
+            load_user_scheduler_tickers_or_empty,
+            resolve_ml_training_roster,
+        )
+
+        enrolled = load_user_scheduler_tickers_or_empty()
+        tickers = resolve_ml_training_roster(enrolled, db_path)
+    else:
+        from scheduler_user_tickers import require_ml_training_ticker_allowed
+
+        tickers = [require_ml_training_ticker_allowed(t) for t in tickers]
 
     import ml_predict as mp
     orig_dir = mp.MODEL_DIR
@@ -196,10 +221,14 @@ def run_meta(
                     df = df.iloc[-_meta_cap:].reset_index(drop=True)
                     print(f"  meta: ED_META_TRAIN_MAX_ROWS={_meta_cap} — using last {_meta_cap} rows")
                 y = encode_target(df, label_col)
-                rows = df.to_dict("records")
+                from features.training_canonical_input import records_for_mvp_from_dataframe
+
+                rows = records_for_mvp_from_dataframe(df)
                 stacked, ys = [], []
                 conn = sqlite3.connect(db_path)
                 from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
+
+                from features.fusion_model_input import meta_tabular_vector_from_overlay
 
                 for i, row in enumerate(rows):
                     inf_v1 = build_inference_snapshot_v1_from_db_row(
@@ -225,7 +254,8 @@ def run_meta(
                     vec = (
                         [xgb_p.get(c, 0.333) for c in CLASS_NAMES] +
                         ([lstm_p.get(c, 0.333) for c in CLASS_NAMES] if lstm_p else [0.333, 0.333, 0.334]) +
-                        ([tr_p.get(c, 0.333) for c in CLASS_NAMES] if tr_p else [0.333, 0.333, 0.334])
+                        ([tr_p.get(c, 0.333) for c in CLASS_NAMES] if tr_p else [0.333, 0.333, 0.334]) +
+                        meta_tabular_vector_from_overlay(row)
                     )
                     stacked.append(vec)
                     ys.append(y[i])
@@ -336,25 +366,35 @@ def preload_historical_db_for_eval(
     db_path: str,
     ticker: str,
     max_as_of_ts_utc: float,
+    *,
+    min_ts_utc: float | None = None,
 ) -> PreloadedHistoricalDB:
     """
-    Load all 1m snapshots for ``ticker`` with ts_utc < ``max_as_of_ts_utc`` in one query.
+    Load 1m snapshots for ``ticker`` with ``min_ts_utc <= ts_utc < max_as_of_ts_utc``.
 
-    For any evaluation row with ts_utc <= max_as_of_ts_utc, LSTM/Transformer call
-    ``get_recent_snapshots(..., as_of_ts_utc=row_ts)``; those rows are a subset of this
-    preload, matching _HistoricalDB's per-query result.
+    For each evaluation row at ``T``, LSTM/Transformer call
+    ``get_recent_snapshots(..., as_of_ts_utc=T)`` (strictly causal: only rows with
+    ``ts_utc < T``). ``min_ts_utc`` should be ``min(eval_row_ts) - lookback_buffer`` so
+    the first scored row still has enough pre-history across RTH gaps (governed eval
+  2026-05-26: without ``min_ts_utc``, loading from row 0 of the table was correct but
+    eval aborted on the first thin-history row; callers now pass a wall-clock buffer).
     """
     from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    where = "ticker = ? AND timeframe = ? AND ts_utc < ?"
+    params: list = [ticker, CANONICAL_TIMEFRAME, float(max_as_of_ts_utc)]
+    if min_ts_utc is not None:
+        where += " AND ts_utc >= ?"
+        params.append(float(min_ts_utc))
     raw = conn.execute(
         f"""
         SELECT * FROM {SNAPSHOT_TABLE_1M}
-        WHERE ticker = ? AND timeframe = ? AND ts_utc < ?
+        WHERE {where}
         ORDER BY ts_utc ASC
         """,
-        (ticker, CANONICAL_TIMEFRAME, float(max_as_of_ts_utc)),
+        params,
     ).fetchall()
     conn.close()
     return PreloadedHistoricalDB([dict(r) for r in raw], ticker, float(max_as_of_ts_utc))
@@ -404,8 +444,8 @@ def main():
     try:
         import ml_predict
         ml_predict.reset_caches()
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("train_all: %s", e, exc_info=True)
 
 
 if __name__ == "__main__":

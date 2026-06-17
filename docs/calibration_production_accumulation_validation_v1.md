@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_production_accumulation_validation_v1.md`.
+
 # Calibration production accumulation validation (v1)
 
 **Purpose:** Prove the full calibration pipeline remains correct across a **non-trivial accumulation window** of **trusted** `calibration_decision_log` rows using the **real** production stack (`compute_signals` → `calibration.writer` → `backfill_outcomes` → validators).
@@ -31,7 +33,7 @@
 | **Tickers** | SPY / QQQ rotated |
 | **Time grid** | `base_ts_utc = 1712200000.0`, step `100` seconds |
 | **Prerequisites** | For each event: one `price_bars_1m` bar ending before `ts`, one `snapshots` row at exact `ts_utc` with filled outcomes |
-| **ML stack** | `run_base_models_once` stubbed as in `tests.test_calibration_logging_production_path` (CI-safe; **same** `compute_signals` / writer path) |
+| **ML stack** | `run_unified_stack_ml_once` stubbed as in `tests.test_calibration_logging_production_path` (CI-safe; **same** `compute_signals` / writer path) |
 | **Backfill** | `backfill_outcomes.backfill(tol_sec=0.0)` — exact timestamp join only |
 | **Resync** | Second backfill pass exercises **re-sync** of rows that already have outcomes (no pending left; verification re-run) |
 
@@ -118,7 +120,7 @@ Values taken from `data/calibration_accumulation_validation_report.json` after a
 | **Logging** one row per successful decision | `trusted_rows == 48` and `decision_events == 48`; unique `(ticker, decision_ts_utc)` |
 | **Duplicate prevention** | `duplicate_key_groups == 0` |
 | **Join correctness** | `verification_fail == 0`; `ambiguous_exact_ts_duplicate_snapshots == 0`; all joins `exact` for tol=0 |
-| **Anchor gating** | `trusted_rows_without_anchor == 0`; phase analyzers exclude unanchored rows by design |
+| **Anchor gating** | `trusted_rows_without_anchor == 0`; phase analyzers exclude unanchored rows per the anchor contract |
 | **Trusted/legacy quarantine** | `legacy_rows == 0`; all rows trusted writer path |
 | **Resync stability** | After 2nd backfill, `verification_fail == 0` (no drift vs `snapshots`) |
 | **No bypass / leakage regression** | Not re-proven line-by-line here; **authoritative** closures remain `tests/test_calibration_bypass_closure.py`, `tests/test_calibration_legacy_quarantine.py`, and related docs. This harness uses the same production modules. |

@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `SCHWAB_REMEDIATION_S014_S015_REST_CUM_DELTA_CONTRACT.md`.
+
 # Schwab Remediation S014/S015 REST Cum Delta Contract
 
 **Status:** IMPLEMENTED_IN_WORKING_TREE  

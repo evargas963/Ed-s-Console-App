@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `SCHWAB_REMEDIATION_S017_LIVE_PLANE_TIME_CONTRACT.md`.
+
 # Schwab Remediation S017 Live Plane Time Contract
 
 **Status:** IMPLEMENTED  

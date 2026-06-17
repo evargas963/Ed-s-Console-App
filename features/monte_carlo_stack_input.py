@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from numeric_contract import float_finite_or_none, float_positive_or_none
+
 REL_SPOT_TOL = 1e-5
 
 # Monte Carlo inputs taken from L1 / SignalInput only — not part of MVP contract v1_1m_mvp.
@@ -46,35 +48,30 @@ def resolve_monte_carlo_stack_inputs(
         raise MonteCarloStackInputError(
             "Monte Carlo blocked: canonical MVP price.spot is missing (no ad hoc inp.spot fallback)."
         )
-    try:
-        spot_f = float(spot)
-    except (TypeError, ValueError) as e:
-        raise MonteCarloStackInputError(f"Monte Carlo blocked: invalid canonical price.spot: {spot!r}") from e
-    if not (spot_f > 0.0):
-        raise MonteCarloStackInputError(f"Monte Carlo blocked: canonical price.spot must be > 0, got {spot_f!r}")
+    spot_f = float_positive_or_none(spot)
+    if spot_f is None:
+        raise MonteCarloStackInputError(
+            f"Monte Carlo blocked: canonical price.spot must be finite and > 0, got {spot!r}"
+        )
 
     raw = getattr(inp, "spot", None)
     if raw is not None:
-        try:
-            rf = float(raw)
-            if rf > 0 and abs(rf - spot_f) / spot_f > REL_SPOT_TOL:
-                raise MonteCarloStackInputError(
-                    "Monte Carlo blocked: SignalInput.spot disagrees with canonical MVP price.spot "
-                    f"(inp={rf!r}, canonical={spot_f!r})."
-                )
-        except MonteCarloStackInputError:
-            raise
-        except (TypeError, ValueError):
-            raise MonteCarloStackInputError(f"Monte Carlo blocked: invalid SignalInput.spot: {raw!r}") from None
+        rf = float_positive_or_none(raw)
+        if rf is not None and abs(rf - spot_f) / spot_f > REL_SPOT_TOL:
+            raise MonteCarloStackInputError(
+                "Monte Carlo blocked: SignalInput.spot disagrees with canonical MVP price.spot "
+                f"(inp={rf!r}, canonical={spot_f!r})."
+            )
 
+    # garch_sigma_bars: list pass-through; bar validation remains in monte_carlo.simulate.
     out = {
         "spot": spot_f,
-        "call_gamma_wall": getattr(inp, "call_gamma_wall", None),
-        "put_gamma_wall": getattr(inp, "put_gamma_wall", None),
-        "em_upper": getattr(inp, "em_upper", None),
-        "em_lower": getattr(inp, "em_lower", None),
-        "realized_vol": getattr(inp, "realized_vol", None),
-        "atr": getattr(inp, "atr", None),
+        "call_gamma_wall": float_finite_or_none(getattr(inp, "call_gamma_wall", None)),
+        "put_gamma_wall": float_finite_or_none(getattr(inp, "put_gamma_wall", None)),
+        "em_upper": float_finite_or_none(getattr(inp, "em_upper", None)),
+        "em_lower": float_finite_or_none(getattr(inp, "em_lower", None)),
+        "realized_vol": float_finite_or_none(getattr(inp, "realized_vol", None)),
+        "atr": float_finite_or_none(getattr(inp, "atr", None)),
         "garch_sigma_bars": getattr(inp, "garch_sigma_bars", None),
     }
     out["_mc_context_lineage"] = {

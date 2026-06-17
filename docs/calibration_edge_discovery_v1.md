@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/calibration_edge_discovery_v1.md`.
+
 # Calibration edge discovery (v1)
 
 ## A. Dataset description

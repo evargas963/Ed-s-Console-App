@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UI card provenance — design mockup (Ed Console)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Palette mirrors static/index.html :root */
+  :root {
+    --bg:        #0a0c0f;
+    --bg2:       #111418;
+    --bg3:       #181c22;
+    --border:    #1e242c;
+    --border2:   #252c36;
+    --text:      #ffffff;
+    --text2:     #d1d5db;
+    --text3:     #9ca3af;
+    --accent:    #3b82f6;
+    --green:     #22c55e;
+    --green-bg:  #052e16;
+    --red:       #ef4444;
+    --red-bg:    #2d0a0a;
+    --amber:     #f59e0b;
+    --amber-bg:  #2d1a00;
+    --bull:      #00E676;
+    --bear:      #FF3C3C;
+    --neutral:   #6a7590;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 13px; line-height: 1.5; }
+  body { padding: 32px 24px 48px; max-width: 1400px; margin: 0 auto; }
+
+  /* Page header */
+  .mp-h1 {
+    font-family: var(--sans);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+  .mp-sub {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+  }
+  .mp-note {
+    color: var(--text2);
+    line-height: 1.55;
+    margin-bottom: 24px;
+    font-size: 13px;
+    max-width: 920px;
+  }
+  .mp-note code {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--bg3);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--accent);
+  }
+  .mp-section-h {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text2);
+    border-bottom: 1px solid var(--border2);
+    padding-bottom: 6px;
+    margin: 36px 0 14px;
+  }
+  .mp-scene-h {
+    font-family: var(--sans);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 26px 0 4px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .mp-scene-h .mp-scene-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.10em;
+    color: var(--accent);
+    background: rgba(59,130,246,0.10);
+    border: 1px solid rgba(59,130,246,0.32);
+    border-radius: 999px;
+    padding: 2px 8px;
+  }
+  .mp-scene-desc {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+  .mp-scene {
+    background: #04070c;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 18px;
+  }
+
+  /* ── Existing tf-signal-card chrome (mirrors static/index.html:734-915) ── */
+  .tf-signal-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    background: transparent;
+  }
+  .tf-signal-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 184px;
+    padding: 26px 8px 12px;
+    border-radius: 8px;
+    box-sizing: border-box;
+    font-family: var(--mono);
+  }
+  .tf-signal-card.tf-state-dim {
+    background: linear-gradient(180deg, #243552 0%, #1a2840 100%);
+    border: 1px solid #6b9fd4;
+    box-shadow: 0 0 0 1px rgba(107,159,212,0.12), 0 4px 14px rgba(0,0,0,0.45);
+  }
+  .tf-signal-card.tf-state-up {
+    background: #091812;
+    border: 1px solid var(--bull);
+    box-shadow: 0 0 10px rgba(0,230,118,0.22), 0 0 24px rgba(0,230,118,0.08);
+  }
+  .tf-signal-card.tf-state-down {
+    background: #180A0A;
+    border: 1px solid var(--bear);
+    box-shadow: 0 0 10px rgba(255,60,60,0.22), 0 0 24px rgba(255,60,60,0.08);
+  }
+  .tf-signal-card.tf-state-degraded {
+    background: linear-gradient(180deg, #2d1414 0%, #1a0e0e 100%);
+    border: 1px solid var(--red);
+    box-shadow: 0 0 10px rgba(239,68,68,0.18), inset 0 0 0 1px rgba(239,68,68,0.10);
+  }
+  .tf-signal-card.tf-signal-card--trade-active.tf-state-up,
+  .tf-signal-card.tf-signal-card--trade-active.tf-state-down {
+    border-width: 2px;
+  }
+  .tf-dot { position: absolute; right: 10px; top: 10px; width: 7px; height: 7px; border-radius: 50%; }
+  .tf-dot.tf-dot--dim { background: #8eb8e8; box-shadow: 0 0 6px rgba(142,184,232,0.55); }
+  .tf-dot.tf-dot--up { background: var(--bull); }
+  .tf-dot.tf-dot--down { background: var(--bear); }
+  .tf-dot.tf-dot--red { background: var(--red); }
+  .tf-timeframe {
+    position: absolute;
+    left: 10px;
+    top: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+  }
+  .tf-state-dim .tf-timeframe { color: #b8d4f5; }
+  .tf-state-up .tf-timeframe { color: #1D7A50; }
+  .tf-state-down .tf-timeframe { color: #7A2020; }
+  .tf-state-degraded .tf-timeframe { color: #d97777; }
+  .tf-arrow { font-size: 40px; font-weight: 700; line-height: 1; }
+  .tf-state-dim .tf-arrow { color: #9ec5f0; }
+  .tf-state-up .tf-arrow { color: var(--bull); }
+  .tf-state-down .tf-arrow { color: var(--bear); }
+  .tf-state-degraded .tf-arrow { color: #e87878; opacity: 0.65; }
+  .tf-dir { font-size: 12px; font-weight: 700; letter-spacing: 0.16em; margin-top: 0; }
+  .tf-state-dim .tf-dir { color: #f1f5f9; }
+  .tf-state-up .tf-dir { color: var(--bull); }
+  .tf-state-down .tf-dir { color: var(--bear); }
+  .tf-state-degraded .tf-dir { color: #e87878; }
+  .tf-pct { font-size: 22px; font-weight: 700; margin-top: 6px; color: #fff; }
+  .tf-state-dim .tf-pct { color: #f8fafc; }
+  .tf-conf-lbl { font-size: 10px; font-weight: 700; letter-spacing: 0.10em; margin-top: 1px; }
+  .tf-state-dim .tf-conf-lbl { color: #c5d7ef; }
+  .tf-state-up .tf-conf-lbl { color: #1D9E75; }
+  .tf-state-down .tf-conf-lbl { color: #9E3030; }
+  .tf-state-degraded .tf-conf-lbl { color: #b97070; }
+
+  /* ── NEW: per-pill source chip (5 variants) ── */
+  .tf-source-chip {
+    margin-top: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .tf-source-chip::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+  }
+  .tf-source-chip--empirical {
+    color: #7dd3fc;
+    border-color: rgba(56,189,248,0.45);
+    background: rgba(56,189,248,0.10);
+  }
+  .tf-source-chip--empirical::before { background: #38bdf8; }
+  .tf-source-chip--ml-fusion {
+    color: var(--bull);
+    border-color: rgba(0,230,118,0.50);
+    background: rgba(0,230,118,0.10);
+  }
+  .tf-source-chip--ml-fusion::before { background: var(--bull); }
+  .tf-source-chip--blend {
+    color: #fbbf24;
+    border-color: rgba(251,191,36,0.45);
+    background: rgba(251,191,36,0.10);
+  }
+  .tf-source-chip--blend::before { background: #fbbf24; }
+  .tf-source-chip--unavailable {
+    color: var(--text3);
+    border-color: var(--border2);
+    background: rgba(2,6,23,0.35);
+  }
+  .tf-source-chip--unavailable::before { background: var(--text3); }
+  .tf-source-chip--degraded {
+    color: var(--red);
+    border-color: rgba(239,68,68,0.55);
+    background: rgba(239,68,68,0.12);
+  }
+  .tf-source-chip--degraded::before { background: var(--red); }
+
+  .tf-source-detail {
+    margin-top: 4px;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    color: var(--text3);
+    text-align: center;
+    line-height: 1.3;
+  }
+  .tf-state-up .tf-source-detail { color: rgba(255,255,255,0.55); }
+  .tf-state-down .tf-source-detail { color: rgba(255,255,255,0.55); }
+
+  /* Existing PRIMARY/AGREE/CONFLICT tag */
+  .tf-tag {
+    margin-top: 8px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    padding: 3px 8px;
+    border-radius: 3px;
+  }
+  .tf-tag--primary { background: rgba(0,230,118,0.15); color: var(--bull); border: 1px solid rgba(0,230,118,0.45); }
+  .tf-tag--agree   { background: rgba(0,230,118,0.08); color: #1D9E75; border: 1px solid rgba(0,230,118,0.25); }
+  .tf-tag--conflict{ background: rgba(255,60,60,0.12); color: var(--bear); border: 1px solid rgba(255,60,60,0.35); }
+  .tf-tag--hidden  { visibility: hidden; border: 1px solid transparent; }
+
+  /* ── NEW: fusion-authoritative strip ── */
+  .fusion-authority-strip {
+    margin-top: 12px;
+    border: 1px solid;
+    border-radius: 8px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-family: var(--mono);
+    flex-wrap: wrap;
+  }
+  .fusion-authority-strip--up {
+    background: linear-gradient(90deg, rgba(0,230,118,0.10), rgba(0,230,118,0.02));
+    border-color: rgba(0,230,118,0.45);
+    color: var(--bull);
+  }
+  .fusion-authority-strip--down {
+    background: linear-gradient(90deg, rgba(255,60,60,0.10), rgba(255,60,60,0.02));
+    border-color: rgba(255,60,60,0.45);
+    color: var(--bear);
+  }
+  .fusion-authority-strip--flat {
+    background: rgba(15,23,42,0.5);
+    border-color: var(--border2);
+    color: var(--neutral);
+  }
+  .fusion-authority-strip--withheld {
+    background: rgba(15,23,42,0.55);
+    border-color: var(--border2);
+    color: var(--text3);
+  }
+  .fas-label {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    opacity: 0.85;
+  }
+  .fas-dir {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+  .fas-agreement {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    margin-left: auto;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .fas-agreement .fas-track {
+    width: 80px;
+    height: 5px;
+    background: rgba(2,6,23,0.5);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .fas-agreement .fas-fill {
+    height: 100%;
+    border-radius: 3px;
+  }
+  .fusion-authority-strip--up .fas-fill { background: var(--bull); }
+  .fusion-authority-strip--down .fas-fill { background: var(--bear); }
+  .fusion-authority-strip--withheld .fas-msg {
+    color: var(--text3);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: none;
+  }
+
+  /* ── NEW: empirical context line (always-visible row-level) ── */
+  .empirical-context-line {
+    margin-top: 8px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    background: rgba(15,23,42,0.4);
+    border: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .empirical-context-line.muted {
+    opacity: 0.62;
+    background: rgba(15,23,42,0.25);
+  }
+  .ecl-label {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+  }
+  .ecl-tier {
+    font-weight: 700;
+    color: var(--text);
+  }
+  .ecl-n {
+    color: var(--text3);
+  }
+  .ecl-probs {
+    margin-left: auto;
+    display: flex;
+    gap: 12px;
+    font-size: 10px;
+  }
+  .ecl-probs .up { color: var(--bull); font-weight: 700; }
+  .ecl-probs .down { color: var(--bear); font-weight: 700; }
+  .ecl-probs .flat { color: var(--neutral); font-weight: 700; }
+
+  /* ── NEW: degraded banner (row-level, distinct from chip) ── */
+  .degraded-banner {
+    margin-top: 10px;
+    padding: 11px 16px;
+    border-radius: 8px;
+    background: linear-gradient(90deg, rgba(239,68,68,0.18), rgba(239,68,68,0.04));
+    border: 1px solid rgba(239,68,68,0.65);
+    color: var(--red);
+    font-family: var(--mono);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .degraded-banner .db-icon {
+    font-size: 14px;
+    line-height: 1;
+  }
+  .degraded-banner .db-title {
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 11px;
+  }
+  .degraded-banner .db-detail {
+    color: #fca5a5;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+
+  /* Chip reference panel */
+  .chip-vocab {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  @media (max-width: 920px) {
+    .chip-vocab { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  .cv-cell {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 12px;
+    text-align: center;
+  }
+  .cv-cell .cv-chip-wrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 10px;
+  }
+  .cv-cell .cv-meaning {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    line-height: 1.45;
+    margin-bottom: 6px;
+  }
+  .cv-cell .cv-operator-text {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  /* Legend strip explaining the layout order */
+  .legend {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    line-height: 1.65;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 20px;
+  }
+  .legend ol { padding-left: 22px; margin-top: 4px; }
+  .legend li { margin: 3px 0; }
+  .legend strong { color: var(--text); letter-spacing: 0.04em; }
+
+  /* Trade-firing / entry-armed emphasis */
+  @keyframes tf-pulse-armed {
+    0%, 100% { box-shadow: 0 0 14px rgba(0,230,118,0.40), 0 0 36px rgba(0,230,118,0.16); }
+    50%      { box-shadow: 0 0 26px rgba(0,230,118,0.66), 0 0 56px rgba(0,230,118,0.30); }
+  }
+  .tf-signal-card.tf-state-up.tf-signal-card--trade-active.tf-glow-pulse {
+    animation: tf-pulse-armed 2.1s ease-in-out infinite;
+  }
+  @keyframes tf-dot-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.28; } }
+  .tf-dot.tf-dot--blink { animation: tf-dot-blink 1.05s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .tf-glow-pulse, .tf-dot--blink { animation: none !important; }
+  }
+  .fusion-authority-strip--armed {
+    border-width: 2px;
+    background: linear-gradient(90deg, rgba(0,230,118,0.22), rgba(0,230,118,0.05));
+    box-shadow: 0 0 0 1px rgba(0,230,118,0.22), 0 0 22px rgba(0,230,118,0.22);
+  }
+  .fas-armed-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    color: #04070c;
+    background: var(--bull);
+    padding: 4px 10px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  /* Stack-degraded authority tag — mirrors fas-armed-tag (solid bright accent + dark text). */
+  .fas-degraded-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    color: #1a0508;
+    background: var(--red);
+    padding: 4px 10px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  /* Unified signal-rail card — fusion verdict (top) + empirical context (bottom) in one bordered block. */
+  .signal-rail-card {
+    margin-top: 12px;
+    border-radius: 8px;
+    border: 1px solid;
+    overflow: hidden;
+  }
+  .signal-rail-card--up {
+    background: linear-gradient(180deg, rgba(0,230,118,0.10), rgba(0,230,118,0.02));
+    border-color: rgba(0,230,118,0.45);
+  }
+  .signal-rail-card--down {
+    background: linear-gradient(180deg, rgba(255,60,60,0.10), rgba(255,60,60,0.02));
+    border-color: rgba(255,60,60,0.45);
+  }
+  .signal-rail-card--withheld {
+    background: rgba(15,23,42,0.55);
+    border-color: var(--border2);
+  }
+  .signal-rail-card--armed {
+    border-width: 2px;
+    box-shadow: 0 0 0 1px rgba(0,230,118,0.22), 0 0 22px rgba(0,230,118,0.22);
+  }
+  .src-top {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 11px 16px;
+    font-family: var(--mono);
+    flex-wrap: wrap;
+  }
+  .signal-rail-card--up .src-top { color: var(--bull); }
+  .signal-rail-card--down .src-top { color: var(--bear); }
+  .signal-rail-card--withheld .src-top { color: var(--text3); }
+  .src-top .fas-label {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    opacity: 0.85;
+  }
+  .src-top .fas-dir {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+  .src-top .fas-agreement {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text2);
+  }
+  .src-top .fas-track { width: 80px; height: 5px; background: rgba(2,6,23,0.5); border-radius: 3px; overflow: hidden; }
+  .src-top .fas-fill { height: 100%; border-radius: 3px; }
+  .signal-rail-card--up .src-top .fas-fill { background: var(--bull); }
+  .signal-rail-card--down .src-top .fas-fill { background: var(--bear); }
+  .src-top .fas-msg {
+    color: var(--text3);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: none;
+  }
+  .src-bottom {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 9px 16px 10px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    background: rgba(2,6,23,0.30);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    flex-wrap: wrap;
+  }
+  .src-bottom.muted { opacity: 0.62; }
+  .src-bottom .ecl-label {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+  }
+  .src-bottom .ecl-tier { font-weight: 700; color: var(--text); }
+  .src-bottom .ecl-n { color: var(--text3); }
+  .src-bottom .ecl-probs { margin-left: auto; display: flex; gap: 12px; font-size: 10px; }
+  .src-bottom .ecl-probs .up { color: var(--bull); font-weight: 700; }
+  .src-bottom .ecl-probs .down { color: var(--bear); font-weight: 700; }
+  .src-bottom .ecl-probs .flat { color: var(--neutral); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div class="mp-h1">UI card provenance — design mockup</div>
+<div class="mp-sub">Per <code style="font-family:var(--mono);font-size:11px;color:var(--accent)">ACTIVE_PROGRAM.md §UI card provenance spec</code> · Issue 18 card system</div>
+
+<p class="mp-note">
+  This is a static render of the proposed design — no live data, no JS wiring. Every chip, strip, line and banner here will be driven by existing API payload fields (<code>mhap_rows[]</code>, <code>canonical_provenance</code>, <code>stack_integrity_v1.degraded</code>, <code>horizon_fusion_available</code>, <code>horizon_prob_bars</code>) once approved.
+  Existing <code>.tf-signal-card</code> chrome, Horizon alignment slots, Decision Rail and <code>tf-signal-card--trade-active</code> color semantics are preserved.
+</p>
+
+<div class="legend">
+  <strong>Layout order (top → bottom, within one card row):</strong>
+  <ol>
+    <li><strong>Horizon row</strong> — 4 pills (1M / 5M / 15M / 60M). Each pill: direction + confidence + <em>source chip</em> + sample count when EMPIRICAL.</li>
+    <li><strong>Signal rail card</strong> — unified below the row. Top half = fusion verdict (direction + agreement) when fusion is tradable, or "Not tradable — empirical context only" otherwise. Bottom half = empirical context (tier label, N similar setups, up/down/flat probs); muted when ML is authoritative, foreground when empirical is the only signal.</li>
+    <li><strong>Integrity status tags</strong> — inline in the signal rail card top: ⚡ <code>ENTRY ARMED</code> (solid green) when primary horizon fires; ⚠ <code>STACK DEGRADED</code> (solid red) when <code>stack_integrity_v1.degraded</code>. Same shape language, opposite verdicts.</li>
+  </ol>
+</div>
+
+<!-- ───────────────────────── CHIP VOCABULARY ─────────────────────── -->
+<div class="mp-section-h">Chip vocabulary</div>
+<div class="chip-vocab">
+  <div class="cv-cell">
+    <div class="cv-chip-wrap"><span class="tf-source-chip tf-source-chip--empirical" title="EMPIRICAL · Similar-setup histogram only · operator text: ‘N similar setups’">EMPIRICAL</span></div>
+    <div class="cv-meaning">Similar-setup histogram only</div>
+    <div class="cv-operator-text">"N similar setups"</div>
+  </div>
+  <div class="cv-cell">
+    <div class="cv-chip-wrap"><span class="tf-source-chip tf-source-chip--ml-fusion" title="ML FUSION · Full stack fusion authoritative for that horizon · operator text: ‘Stack trained’">ML FUSION</span></div>
+    <div class="cv-meaning">Full stack fusion authoritative</div>
+    <div class="cv-operator-text">"Stack trained"</div>
+  </div>
+  <div class="cv-cell">
+    <div class="cv-chip-wrap"><span class="tf-source-chip tf-source-chip--blend" title="BLEND · ~85% fusion + ~15% empirical support · operator text: ‘Stack + history’">BLEND</span></div>
+    <div class="cv-meaning">~85% fusion + ~15% empirical</div>
+    <div class="cv-operator-text">"Stack + history"</div>
+  </div>
+  <div class="cv-cell">
+    <div class="cv-chip-wrap"><span class="tf-source-chip tf-source-chip--unavailable" title="UNAVAILABLE · Missing bundle or stack failed · operator text: ‘No ML — WAIT’">UNAVAILABLE</span></div>
+    <div class="cv-meaning">Missing bundle or stack failed</div>
+    <div class="cv-operator-text">"No ML — WAIT"</div>
+  </div>
+  <div class="cv-cell">
+    <div class="cv-chip-wrap"><span class="tf-source-chip tf-source-chip--degraded" title="DEGRADED · Training audit NO-GO or incomplete 16-file bundle · operator text: ‘Data quality hold’">DEGRADED</span></div>
+    <div class="cv-meaning">Training NO-GO / 16-file bundle incomplete</div>
+    <div class="cv-operator-text">"Data quality hold"</div>
+  </div>
+</div>
+
+<!-- ───────────────── SCENE: Trade firing (entry armed) ───────────── -->
+<div class="mp-scene-h">
+  Scene · Trade firing (entry armed)
+  <span class="mp-scene-tag">final_tradeable = true · primary 1m aligns with desk LONG</span>
+</div>
+<div class="mp-scene-desc">Primary horizon (1M) gets the heavier 2px border + pulsing green glow (existing <code style="font-family:var(--mono);font-size:11px;color:var(--accent)">.tf-signal-card--trade-active</code> chrome). Status dot blinks. Supporting horizons all AGREE with ML FUSION or BLEND backing. Fusion strip carries an "Entry armed" tag inline. Empirical line confirms, muted (ML is authoritative). No degraded banner.</div>
+<div class="mp-scene">
+  <div class="tf-signal-row">
+    <div class="tf-signal-card tf-state-up tf-signal-card--trade-active tf-glow-pulse">
+      <span class="tf-dot tf-dot--up tf-dot--blink"></span>
+      <span class="tf-timeframe">1M</span>
+      <div class="tf-arrow">↑</div>
+      <div class="tf-dir">LONG</div>
+      <div class="tf-pct">78%</div>
+      <div class="tf-conf-lbl">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--ml-fusion" title="ML FUSION · Full stack fusion authoritative for that horizon · operator text: ‘Stack trained’">ML FUSION</span>
+      <div class="tf-source-detail">Stack trained</div>
+      <span class="tf-tag tf-tag--primary">PRIMARY</span>
+    </div>
+    <div class="tf-signal-card tf-state-up">
+      <span class="tf-dot tf-dot--up"></span>
+      <span class="tf-timeframe">5M</span>
+      <div class="tf-arrow">↑</div>
+      <div class="tf-dir">LONG</div>
+      <div class="tf-pct">71%</div>
+      <div class="tf-conf-lbl">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--ml-fusion" title="ML FUSION · Full stack fusion authoritative for that horizon · operator text: ‘Stack trained’">ML FUSION</span>
+      <div class="tf-source-detail">Stack trained</div>
+      <span class="tf-tag tf-tag--agree">AGREE</span>
+    </div>
+    <div class="tf-signal-card tf-state-up">
+      <span class="tf-dot tf-dot--up"></span>
+      <span class="tf-timeframe">15M</span>
+      <div class="tf-arrow">↑</div>
+      <div class="tf-dir">LONG</div>
+      <div class="tf-pct">64%</div>
+      <div class="tf-conf-lbl">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--blend" title="BLEND · ~85% fusion + ~15% empirical support · operator text: ‘Stack + history’">BLEND</span>
+      <div class="tf-source-detail">Stack + history</div>
+      <span class="tf-tag tf-tag--agree">AGREE</span>
+    </div>
+    <div class="tf-signal-card tf-state-up">
+      <span class="tf-dot tf-dot--up"></span>
+      <span class="tf-timeframe">60M</span>
+      <div class="tf-arrow">↑</div>
+      <div class="tf-dir">LONG</div>
+      <div class="tf-pct">58%</div>
+      <div class="tf-conf-lbl">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--ml-fusion" title="ML FUSION · Full stack fusion authoritative for that horizon · operator text: ‘Stack trained’">ML FUSION</span>
+      <div class="tf-source-detail">Stack trained</div>
+      <span class="tf-tag tf-tag--agree">AGREE</span>
+    </div>
+  </div>
+
+  <div class="signal-rail-card signal-rail-card--up signal-rail-card--armed">
+    <div class="src-top">
+      <span class="fas-armed-tag">⚡ Entry armed</span>
+      <span class="fas-dir">↑ LONG</span>
+      <span class="fas-agreement">
+        <span>82% agreement</span>
+        <span class="fas-track"><span class="fas-fill" style="width:82%"></span></span>
+        <span style="color:var(--text3);font-size:10px">3/3 ML stack layers · primary 1m</span>
+      </span>
+    </div>
+    <div class="src-bottom muted">
+      <span class="ecl-label">Empirical (5c)</span>
+      <span class="ecl-tier">High-confidence tier</span>
+      <span class="ecl-n">28 similar setups · last 60 sessions</span>
+      <span class="ecl-probs">
+        <span class="up">UP 67%</span>
+        <span class="down">DOWN 19%</span>
+        <span class="flat">FLAT 14%</span>
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────── SCENE A: Fusion authoritative ───────────────── -->
+<div class="mp-scene-h">
+  Scene A — Fusion authoritative (healthy stack)
+  <span class="mp-scene-tag">canonical.provenance = bayesian_fusion</span>
+</div>
+<div class="mp-scene-desc">All 4 horizons score with the full XGB + LSTM + Transformer triplet through Bayesian fusion. Empirical line is shown muted (context only). No degraded banner.</div>
+<div class="mp-scene">
+  <div class="tf-signal-row">
+    <div class="tf-signal-card tf-state-up tf-signal-card--trade-active">
+      <span class="tf-dot tf-dot--up"></span>
+      <span class="tf-timeframe">1M</span>
+      <div class="tf-arrow">↑</div>
+      <div class="tf-dir">LONG</div>
+      <div class="tf-pct">72%</div>
+      <div class="tf-conf-lbl">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--ml-fusion" title="ML FUSION · Full stack fusion authoritative for that horizon · operator text: ‘Stack trained’">ML FUSION</span>
+      <div class="tf-source-detail">Stack trained</div>
+      <span class="tf-tag tf-tag--primary">PRIMARY</span>
+    </div>
+    <div class="tf-signal-card tf-state-up">
+      <span class="tf-dot tf-dot--up"></span>
+      <span class="tf-timeframe">5M</span>
+      <div class="tf-arrow">↑</div>
+      <div class="tf-dir">LONG</div>
+      <div class="tf-pct">68%</div>
+      <div class="tf-conf-lbl">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--ml-fusion" title="ML FUSION · Full stack fusion authoritative for that horizon · operator text: ‘Stack trained’">ML FUSION</span>
+      <div class="tf-source-detail">Stack trained</div>
+      <span class="tf-tag tf-tag--agree">AGREE</span>
+    </div>
+    <div class="tf-signal-card tf-state-up">
+      <span class="tf-dot tf-dot--up"></span>
+      <span class="tf-timeframe">15M</span>
+      <div class="tf-arrow">↑</div>
+      <div class="tf-dir">LONG</div>
+      <div class="tf-pct">61%</div>
+      <div class="tf-conf-lbl">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--ml-fusion" title="ML FUSION · Full stack fusion authoritative for that horizon · operator text: ‘Stack trained’">ML FUSION</span>
+      <div class="tf-source-detail">Stack trained</div>
+      <span class="tf-tag tf-tag--agree">AGREE</span>
+    </div>
+    <div class="tf-signal-card tf-state-dim">
+      <span class="tf-dot tf-dot--dim"></span>
+      <span class="tf-timeframe">60M</span>
+      <div class="tf-arrow">→</div>
+      <div class="tf-dir">NEUTRAL</div>
+      <div class="tf-pct">54%</div>
+      <div class="tf-conf-lbl">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--ml-fusion" title="ML FUSION · Full stack fusion authoritative for that horizon · operator text: ‘Stack trained’">ML FUSION</span>
+      <div class="tf-source-detail">Stack trained</div>
+      <span class="tf-tag tf-tag--hidden">—</span>
+    </div>
+  </div>
+
+  <div class="signal-rail-card signal-rail-card--up">
+    <div class="src-top">
+      <span class="fas-label">Fusion authoritative</span>
+      <span class="fas-dir">↑ LONG</span>
+      <span class="fas-agreement">
+        <span>78% agreement</span>
+        <span class="fas-track"><span class="fas-fill" style="width:78%"></span></span>
+        <span style="color:var(--text3);font-size:10px">3/3 ML stack layers</span>
+      </span>
+    </div>
+    <div class="src-bottom muted">
+      <span class="ecl-label">Empirical (5c)</span>
+      <span class="ecl-tier">High-confidence tier</span>
+      <span class="ecl-n">14 similar setups · last 60 sessions</span>
+      <span class="ecl-probs">
+        <span class="up">UP 64%</span>
+        <span class="down">DOWN 21%</span>
+        <span class="flat">FLAT 14%</span>
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────── SCENE B: Mixed sources ─────────────────────── -->
+<div class="mp-scene-h">
+  Scene B — Mixed sources (per-horizon variation)
+  <span class="mp-scene-tag">horizon_fusion_available varies</span>
+</div>
+<div class="mp-scene-desc">Realistic mid-day state: short horizons have fresh fusion, mid horizons blend, longer horizons fall back to empirical only. Each chip reflects what actually backs its number.</div>
+<div class="mp-scene">
+  <div class="tf-signal-row">
+    <div class="tf-signal-card tf-state-up tf-signal-card--trade-active">
+      <span class="tf-dot tf-dot--up"></span>
+      <span class="tf-timeframe">1M</span>
+      <div class="tf-arrow">↑</div>
+      <div class="tf-dir">LONG</div>
+      <div class="tf-pct">74%</div>
+      <div class="tf-conf-lbl">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--ml-fusion" title="ML FUSION · Full stack fusion authoritative for that horizon · operator text: ‘Stack trained’">ML FUSION</span>
+      <div class="tf-source-detail">Stack trained</div>
+      <span class="tf-tag tf-tag--primary">PRIMARY</span>
+    </div>
+    <div class="tf-signal-card tf-state-up">
+      <span class="tf-dot tf-dot--up"></span>
+      <span class="tf-timeframe">5M</span>
+      <div class="tf-arrow">↑</div>
+      <div class="tf-dir">LONG</div>
+      <div class="tf-pct">62%</div>
+      <div class="tf-conf-lbl">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--blend" title="BLEND · ~85% fusion + ~15% empirical support · operator text: ‘Stack + history’">BLEND</span>
+      <div class="tf-source-detail">Stack + history</div>
+      <span class="tf-tag tf-tag--agree">AGREE</span>
+    </div>
+    <div class="tf-signal-card tf-state-dim">
+      <span class="tf-dot tf-dot--dim"></span>
+      <span class="tf-timeframe">15M</span>
+      <div class="tf-arrow">↑</div>
+      <div class="tf-dir">LONG</div>
+      <div class="tf-pct">57%</div>
+      <div class="tf-conf-lbl">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--empirical" title="EMPIRICAL · Similar-setup histogram only · operator text: ‘N similar setups’">EMPIRICAL</span>
+      <div class="tf-source-detail">23 similar setups</div>
+      <span class="tf-tag tf-tag--agree">AGREE</span>
+    </div>
+    <div class="tf-signal-card tf-state-dim">
+      <span class="tf-dot tf-dot--dim"></span>
+      <span class="tf-timeframe">60M</span>
+      <div class="tf-arrow">→</div>
+      <div class="tf-dir">UNAVAILABLE</div>
+      <div class="tf-pct" style="font-size:14px;line-height:1.4;margin-top:10px">NO DATA</div>
+      <div class="tf-conf-lbl" style="visibility:hidden">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--unavailable" title="UNAVAILABLE · Missing bundle or stack failed · operator text: ‘No ML — WAIT’">UNAVAILABLE</span>
+      <div class="tf-source-detail">No ML — WAIT</div>
+      <span class="tf-tag tf-tag--hidden">—</span>
+    </div>
+  </div>
+
+  <div class="signal-rail-card signal-rail-card--up">
+    <div class="src-top">
+      <span class="fas-label">Fusion authoritative</span>
+      <span class="fas-dir">↑ LONG</span>
+      <span class="fas-agreement">
+        <span>71% agreement</span>
+        <span class="fas-track"><span class="fas-fill" style="width:71%"></span></span>
+        <span style="color:var(--text3);font-size:10px">primary horizon = 1m</span>
+      </span>
+    </div>
+    <div class="src-bottom">
+      <span class="ecl-label">Empirical (5c)</span>
+      <span class="ecl-tier">Medium-confidence tier</span>
+      <span class="ecl-n">23 similar setups · last 60 sessions</span>
+      <span class="ecl-probs">
+        <span class="up">UP 58%</span>
+        <span class="down">DOWN 26%</span>
+        <span class="flat">FLAT 16%</span>
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────── SCENE C: Stack degraded — per-horizon truth ─── -->
+<div class="mp-scene-h">
+  Scene C — Stack integrity degraded (per-horizon truth)
+  <span class="mp-scene-tag">stack_integrity_v1.degraded = true (60m bundle)</span>
+</div>
+<div class="mp-scene-desc">Mid-pipeline fallback fired on the 60M bundle. The system does <em>not</em> shut everything down — each pill still shows what actually backs it: 1M / 5M clean ML FUSION, 15M fell back to BLEND, only the 60M horizon (whose bundle failed audit) carries the DEGRADED chip. The integrity signal lives in the fusion strip as a solid-red authority tag (same shape language as "Entry armed") — no heavy banner.</div>
+<div class="mp-scene">
+
+  <div class="tf-signal-row">
+    <div class="tf-signal-card tf-state-up tf-signal-card--trade-active">
+      <span class="tf-dot tf-dot--up"></span>
+      <span class="tf-timeframe">1M</span>
+      <div class="tf-arrow">↑</div>
+      <div class="tf-dir">LONG</div>
+      <div class="tf-pct">72%</div>
+      <div class="tf-conf-lbl">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--ml-fusion" title="ML FUSION · Full stack fusion authoritative for that horizon · operator text: ‘Stack trained’">ML FUSION</span>
+      <div class="tf-source-detail">Stack trained</div>
+      <span class="tf-tag tf-tag--primary">PRIMARY</span>
+    </div>
+    <div class="tf-signal-card tf-state-up">
+      <span class="tf-dot tf-dot--up"></span>
+      <span class="tf-timeframe">5M</span>
+      <div class="tf-arrow">↑</div>
+      <div class="tf-dir">LONG</div>
+      <div class="tf-pct">65%</div>
+      <div class="tf-conf-lbl">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--ml-fusion" title="ML FUSION · Full stack fusion authoritative for that horizon · operator text: ‘Stack trained’">ML FUSION</span>
+      <div class="tf-source-detail">Stack trained</div>
+      <span class="tf-tag tf-tag--agree">AGREE</span>
+    </div>
+    <div class="tf-signal-card tf-state-up">
+      <span class="tf-dot tf-dot--up"></span>
+      <span class="tf-timeframe">15M</span>
+      <div class="tf-arrow">↑</div>
+      <div class="tf-dir">LONG</div>
+      <div class="tf-pct">58%</div>
+      <div class="tf-conf-lbl">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--blend" title="BLEND · ~85% fusion + ~15% empirical support · operator text: ‘Stack + history’">BLEND</span>
+      <div class="tf-source-detail">Stack + history</div>
+      <span class="tf-tag tf-tag--agree">AGREE</span>
+    </div>
+    <div class="tf-signal-card tf-state-dim">
+      <span class="tf-dot tf-dot--red"></span>
+      <span class="tf-timeframe">60M</span>
+      <div class="tf-arrow">⊘</div>
+      <div class="tf-dir" style="color:#e87878">HOLD</div>
+      <div class="tf-pct" style="font-size:14px;line-height:1.4;margin-top:10px;color:#fca5a5">AUDIT NO-GO</div>
+      <div class="tf-conf-lbl" style="visibility:hidden">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--degraded" title="DEGRADED · Training audit NO-GO or incomplete 16-file bundle · operator text: ‘Data quality hold’">DEGRADED</span>
+      <div class="tf-source-detail">Data quality hold</div>
+      <span class="tf-tag tf-tag--hidden">—</span>
+    </div>
+  </div>
+
+  <div class="signal-rail-card signal-rail-card--up">
+    <div class="src-top">
+      <span class="fas-degraded-tag">⚠ Stack degraded</span>
+      <span class="fas-dir">↑ LONG</span>
+      <span class="fas-agreement">
+        <span>68% agreement</span>
+        <span class="fas-track"><span class="fas-fill" style="width:68%"></span></span>
+        <span style="color:var(--text3);font-size:10px">primary 1m clean · 60m withheld</span>
+      </span>
+    </div>
+    <div class="src-bottom">
+      <span class="ecl-label">Empirical (5c)</span>
+      <span class="ecl-tier">Medium-confidence tier</span>
+      <span class="ecl-n">19 similar setups · last 60 sessions</span>
+      <span class="ecl-probs">
+        <span class="up">UP 58%</span>
+        <span class="down">DOWN 24%</span>
+        <span class="flat">FLAT 18%</span>
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────── SCENE D: Bundle unavailable ────────────────── -->
+<div class="mp-scene-h">
+  Scene D — Bundle unavailable (cold start / Tier C pending)
+  <span class="mp-scene-tag">mhap_rows empty · canonical_provenance = fusion_unavailable</span>
+</div>
+<div class="mp-scene-desc">Stack didn't run or hasn't produced its first bundle yet. No fusion authoritative line. Empirical-only line shown without dimming. UNAVAILABLE chips on every pill — operator legibility: no false directional color.</div>
+<div class="mp-scene">
+  <div class="tf-signal-row">
+    <div class="tf-signal-card tf-state-dim">
+      <span class="tf-dot tf-dot--dim"></span>
+      <span class="tf-timeframe">1M</span>
+      <div class="tf-arrow">→</div>
+      <div class="tf-dir">UNAVAILABLE</div>
+      <div class="tf-pct" style="font-size:14px;line-height:1.4;margin-top:10px">NO DATA</div>
+      <div class="tf-conf-lbl" style="visibility:hidden">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--unavailable" title="UNAVAILABLE · Missing bundle or stack failed · operator text: ‘No ML — WAIT’">UNAVAILABLE</span>
+      <div class="tf-source-detail">No ML — WAIT</div>
+      <span class="tf-tag tf-tag--hidden">—</span>
+    </div>
+    <div class="tf-signal-card tf-state-dim">
+      <span class="tf-dot tf-dot--dim"></span>
+      <span class="tf-timeframe">5M</span>
+      <div class="tf-arrow">→</div>
+      <div class="tf-dir">UNAVAILABLE</div>
+      <div class="tf-pct" style="font-size:14px;line-height:1.4;margin-top:10px">NO DATA</div>
+      <div class="tf-conf-lbl" style="visibility:hidden">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--unavailable" title="UNAVAILABLE · Missing bundle or stack failed · operator text: ‘No ML — WAIT’">UNAVAILABLE</span>
+      <div class="tf-source-detail">No ML — WAIT</div>
+      <span class="tf-tag tf-tag--hidden">—</span>
+    </div>
+    <div class="tf-signal-card tf-state-dim">
+      <span class="tf-dot tf-dot--dim"></span>
+      <span class="tf-timeframe">15M</span>
+      <div class="tf-arrow">→</div>
+      <div class="tf-dir">UNAVAILABLE</div>
+      <div class="tf-pct" style="font-size:14px;line-height:1.4;margin-top:10px">NO DATA</div>
+      <div class="tf-conf-lbl" style="visibility:hidden">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--unavailable" title="UNAVAILABLE · Missing bundle or stack failed · operator text: ‘No ML — WAIT’">UNAVAILABLE</span>
+      <div class="tf-source-detail">No ML — WAIT</div>
+      <span class="tf-tag tf-tag--hidden">—</span>
+    </div>
+    <div class="tf-signal-card tf-state-dim">
+      <span class="tf-dot tf-dot--dim"></span>
+      <span class="tf-timeframe">60M</span>
+      <div class="tf-arrow">→</div>
+      <div class="tf-dir">UNAVAILABLE</div>
+      <div class="tf-pct" style="font-size:14px;line-height:1.4;margin-top:10px">NO DATA</div>
+      <div class="tf-conf-lbl" style="visibility:hidden">HORIZON CONF</div>
+      <span class="tf-source-chip tf-source-chip--unavailable" title="UNAVAILABLE · Missing bundle or stack failed · operator text: ‘No ML — WAIT’">UNAVAILABLE</span>
+      <div class="tf-source-detail">No ML — WAIT</div>
+      <span class="tf-tag tf-tag--hidden">—</span>
+    </div>
+  </div>
+
+  <div class="signal-rail-card signal-rail-card--withheld">
+    <div class="src-top">
+      <span class="fas-label">Forward</span>
+      <span class="fas-msg">Not tradable — empirical context only</span>
+    </div>
+    <div class="src-bottom">
+      <span class="ecl-label">Empirical (5c)</span>
+      <span class="ecl-tier">High-confidence tier</span>
+      <span class="ecl-n">31 similar setups · last 60 sessions</span>
+      <span class="ecl-probs">
+        <span class="up">UP 51%</span>
+        <span class="down">DOWN 29%</span>
+        <span class="flat">FLAT 20%</span>
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────── DESIGN NOTES ────────────────────────────────── -->
+<div class="mp-section-h">Design notes</div>
+<ol class="mp-note" style="padding-left: 22px">
+  <li style="margin: 4px 0"><strong style="color:var(--text)">Chip is the single source-of-provenance signal</strong> per pill — three pipelines do not collapse into one number without it. Existing PRIMARY/AGREE/CONFLICT tag remains below (Decision Rail alignment), but chip is now the dominant interpret signal.</li>
+  <li style="margin: 4px 0"><strong style="color:var(--text)">Color contract</strong>: blue/cyan = history, green = stack, gold = blend, gray = absent, red = degraded. Degraded is red — never gray — so it cannot read as "WAIT setup."</li>
+  <li style="margin: 4px 0"><strong style="color:var(--text)">UNAVAILABLE in WAIT/neutral pills</strong>: card chrome stays slate-blue (operator legibility — same as existing <code>tf-state-dim</code>), <em>not</em> grayscale-washed.</li>
+  <li style="margin: 4px 0"><strong style="color:var(--text)">Fusion strip only when fusion is tradable</strong>: gated on <code>canonical_provenance === 'bayesian_fusion'</code> (existing <code>isCanonicalTradable</code>). Otherwise the "Not tradable — empirical context only" line takes its slot so the row never empties.</li>
+  <li style="margin: 4px 0"><strong style="color:var(--text)">Empirical line always renders when N&gt;0</strong> — muted opacity 0.62 when ML is authoritative (Scene A), foreground when empirical is the only signal (Scenes C/D).</li>
+  <li style="margin: 4px 0"><strong style="color:var(--text)">Degraded banner is row-level</strong> (full-width red bar above the cards), distinct from the existing small <code>#dr-stack-integrity-degraded-chip</code> in the Decision Rail header — same backing field, two surfaces for different audiences.</li>
+</ol>
+
+</body>
+</html>

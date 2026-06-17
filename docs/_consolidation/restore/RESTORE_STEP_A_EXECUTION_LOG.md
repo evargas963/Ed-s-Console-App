@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/_consolidation/restore/RESTORE_STEP_A_EXECUTION_LOG.md`.
+
 # RESTORE STEP A EXECUTION LOG
 
 Run timestamp: 2026-04-30T01:18:27.957900-05:00

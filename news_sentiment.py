@@ -26,11 +26,9 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Optional
-from zoneinfo import ZoneInfo
-
 log = logging.getLogger(__name__)
 
-_ET = ZoneInfo("America/New_York")
+from time_et import ET as _ET
 
 _throttle_sec = float(__import__("os").environ.get("ED_NEWS_THROTTLE_SEC", "90"))
 _lock = threading.Lock()
@@ -274,9 +272,13 @@ def fetch_alpha_vantage_sentiment(symbols: list[str]) -> dict[str, float]:
             sym = (ts.get("ticker") or "").upper()
             if not sym:
                 continue
+            rel_raw = ts.get("relevance_score")
+            sc_raw = ts.get("ticker_sentiment_score")
+            if rel_raw is None or sc_raw is None:
+                continue
             try:
-                rel = float(ts.get("relevance_score", 0) or 0)
-                sc = float(ts.get("ticker_sentiment_score", 0) or 0)
+                rel = float(rel_raw)
+                sc = float(sc_raw)
             except (TypeError, ValueError):
                 continue
             if rel < 0.25:
@@ -307,8 +309,8 @@ def get_sentiment_features_for_snapshot(ctx: dict[str, Any]) -> dict[str, Any]:
         "sentiment_buzz": ctx.get("sentiment_buzz"),
         "sentiment_finnhub": ctx.get("sentiment_finnhub"),
         "sentiment_av": ctx.get("sentiment_av"),
-        "breaking_news_flag": 1 if ctx.get("breaking_news_flag") else 0,
-        "breaking_news_headline": ctx.get("breaking_news_headline") or "",
+        "breaking_news_flag": ctx.get("breaking_news_flag"),
+        "breaking_news_headline": ctx.get("breaking_news_headline"),
         "pre_market_sentiment": ctx.get("pre_market_sentiment"),
     }
 
@@ -333,7 +335,6 @@ def refresh_and_context(
     *,
     db: Any = None,
     throttle_sec: Optional[float] = None,
-    persist_events: bool = True,
 ) -> dict[str, Any]:
     """
     Rate-limited refresh for one ticker. Returns API/snapshot-ready context dict.
@@ -400,22 +401,6 @@ def refresh_and_context(
             breaking = 1
             break_h = headline[:500]
 
-        if persist_events and db and imp == "HIGH":
-            try:
-                if hasattr(db, "insert_news_event"):
-                    db.insert_news_event(
-                        ts_iso=ts_art.isoformat(),
-                        source="finnhub",
-                        ticker=tkr,
-                        headline=headline,
-                        sentiment_score=None,
-                        impact_level=imp,
-                        url=str(art.get("url") or ""),
-                        raw_json=json.dumps(art)[:8000],
-                    )
-            except Exception as e:
-                log.debug("insert_news_event: %s", e)
-
     company_news_ok = len(articles) > 0
     # Free Finnhub tiers: /news-sentiment may 403 while /company-news works.
     feed_activity = min(1.0, len(articles) / 40.0) if company_news_ok else None
@@ -428,9 +413,10 @@ def refresh_and_context(
     if av_used is not None:
         src.append("alphavantage")
 
+    _news_available = bool(fh.get("ok") or av_used is not None or company_news_ok)
     ctx: dict[str, Any] = {
         "ticker": tkr,
-        "available": bool(fh.get("ok") or av_used is not None or company_news_ok),
+        "available": _news_available,
         "finnhub_company_news_ok": company_news_ok,
         "company_news_count": len(articles),
         "throttled": False,
@@ -440,10 +426,10 @@ def refresh_and_context(
         "sentiment_buzz": buzz_n if buzz_n is not None else feed_activity,
         "sentiment_finnhub": fh.get("composite"),
         "sentiment_av": av_used,
-        "breaking_news_flag": breaking,
-        "breaking_news_headline": break_h,
+        "breaking_news_flag": breaking if _news_available else None,
+        "breaking_news_headline": break_h if breaking else ("" if _news_available else None),
         "pre_market_sentiment": pre_mkt,
-        "impact_level": max_imp if breaking else "LOW",
+        "impact_level": max_imp if breaking else ("LOW" if _news_available else None),
         "sources": src,
     }
     fe = fh.get("finnhub_error")
@@ -473,7 +459,6 @@ def refresh_and_context_for_ui(
     *,
     db: Any = None,
     throttle_sec: Optional[float] = None,
-    persist_events: bool = True,
 ) -> dict[str, Any]:
     """
     Same as refresh_and_context but bounded wall-clock time so /api/state never
@@ -485,9 +470,7 @@ def refresh_and_context_for_ui(
 
     dline = float(os.environ.get("ED_NEWS_CONTEXT_DEADLINE_SEC", "5"))
     if dline <= 0:
-        return refresh_and_context(
-            ticker, db=db, throttle_sec=throttle_sec, persist_events=persist_events
-        )
+        return refresh_and_context(ticker, db=db, throttle_sec=throttle_sec)
     tkr = ticker.upper().strip()
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
         fut = ex.submit(
@@ -495,7 +478,6 @@ def refresh_and_context_for_ui(
             tkr,
             db=db,
             throttle_sec=throttle_sec,
-            persist_events=persist_events,
         )
         try:
             return fut.result(timeout=dline)
@@ -523,9 +505,9 @@ def refresh_and_context_for_ui(
                     "(raise ED_NEWS_CONTEXT_DEADLINE_SEC or ED_NEWS_HTTP_TIMEOUT_SEC)"
                 ),
                 "sources": [],
-                "breaking_news_flag": 0,
-                "breaking_news_headline": "",
-                "impact_level": "LOW",
+                "breaking_news_flag": None,
+                "breaking_news_headline": None,
+                "impact_level": None,
                 "finnhub_company_news_ok": False,
                 "company_news_count": 0,
             }
@@ -539,5 +521,5 @@ if __name__ == "__main__":
     if "ED_NEWS_HTTP_TIMEOUT_SEC" not in os.environ:
         os.environ["ED_NEWS_HTTP_TIMEOUT_SEC"] = "12"
     _sym = (sys.argv[1] if len(sys.argv) > 1 else "SPY").upper()
-    _ctx = refresh_and_context(_sym, db=None, throttle_sec=0.0, persist_events=False)
+    _ctx = refresh_and_context(_sym, db=None, throttle_sec=0.0)
     print(json.dumps(_ctx, indent=2, default=str))

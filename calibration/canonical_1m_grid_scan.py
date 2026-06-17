@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from calibration.canonical_1m_grid import is_canonical_bar_start_ts_utc
 from horizon_outcomes import (
     HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
     OUTCOME_BAR_SPECS,

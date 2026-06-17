@@ -59,7 +59,7 @@ def main():
         print(f"\n1. long + fusion_reversal > 0.50 (reversal gate should block): {cond1:,}")
         print(f"\n2. short + fusion_continuation > 0.45 AND fusion_breakout > 0.45: {cond2:,}")
         print(f"\n3. validation_passed=1 but above conditions true (confirmed bad): {cond3:,}")
-        print(f"\n4. % of total RTH rows:")
+        print("\n4. % of total RTH rows:")
         print(f"   Potentially bad (cond1+cond2): {pct:.2f}%")
         print(f"   Confirmed bad (cond3):         {pct3:.2f}%")
 

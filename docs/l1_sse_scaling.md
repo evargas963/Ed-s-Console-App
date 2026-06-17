@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/l1_sse_scaling.md`.
+
 # L1 light SSE scaling (Issue 31)
 
 This document records **measurement**, **server limits**, and **defined behavior** for multiple simultaneous connections to `GET /api/analytics/light/stream` (multi-tab, multi-scope, reconnect storms). It is not an SSE redesign.

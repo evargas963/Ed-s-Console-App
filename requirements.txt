@@ -1,0 +1,24 @@
+# Runtime dependencies for server, ML stack, and full pytest in CI.
+# Dev/test extras: requirements-dev.txt
+fastapi>=0.133
+uvicorn[standard]>=0.41
+pandas>=2.3
+numpy>=2.3
+scikit-learn>=1.8
+xgboost>=3.2
+pyarrow>=22.0
+httpx>=0.28
+aiohttp>=3.13
+pydantic>=2.12
+joblib>=1.5
+scipy>=1.17
+psutil>=7.1
+cryptography>=46.0
+websockets>=15.0
+requests>=2.32
+python-dateutil>=2.9
+pytz>=2025.2
+PyYAML>=6.0
+python-dotenv>=1.0
+schwab-py>=1.5
+torch>=2.10

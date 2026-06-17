@@ -1,6 +1,10 @@
+> **Classification:** Operator Runbook | **Scope:** Training, maintenance, and data stewardship procedures.
+
 # Training & maintenance — EdWebConsole
 
 This doc is the **training + ops** companion to `DATA_STEWARDSHIP.md` (principles and DB-focused runbook).
+
+**Host vs Git:** environment variables, secrets, and off-repo backups — [`docs/host/README.md`](docs/host/README.md).
 
 ---
 
@@ -59,8 +63,55 @@ See **`PIPELINE_QUALITY.md`** and **`/guide/pipeline-quality`** for the full TQM
 | Nightly scheduler (wait for 16:15 ET weekdays) | Automation host only, dedicated process | `python ml_scheduler.py --wait` |
 | Ad hoc full parallel train (alternative entry) | When you want `train_all` only | `python train_all.py` |
 | Compare parallel vs cascade (SPY default in script) | Research / parity checks | `python train_compare.py` |
+| Consolidate split-brain active layout (core tickers) | After layout migration / before verify | `python tools/consolidate_active_horizon_layout.py` (dry-run); add `--apply` to copy |
 
 Optional flags (see each script’s `--help` if present): `ml_scheduler.py --force-retrain`, `--bypass-cache`.
+
+### Canonical active layout (PR3)
+
+Production inference and `verify_active_models.py` expect each horizon’s **six-file bundle** under a single canonical directory:
+
+| Horizon | Directory |
+|---------|-----------|
+| 1c | `models/active/{TICKER}/` |
+| 5c | `models/active_5c/{TICKER}/` |
+| 15c | `models/active_15c/{TICKER}/` |
+| 60c | `models/active_60c/{TICKER}/` |
+
+Legacy split-brain (weights under `models/active/SPY/` but meta-only under `models/active_5c/SPY/`) breaks strict inference. **Migrate core tickers** with:
+
+```powershell
+python tools/consolidate_active_horizon_layout.py              # dry-run plan for SPY, QQQ, IWM
+python tools/consolidate_active_horizon_layout.py --apply      # copy into canonical dirs
+python verify_active_models.py                                 # confirm SPY / QQQ / IWM
+```
+
+Promotion (manual or governed auto) copies **only** the six files for the requested horizon into the matching canonical dir — not the full candidate directory glob.
+
+### Auto-promote (PR4 / PR4.1) — code on branch, host still manual
+
+Scheduler can call `execute_promotion_if_eligible` when env flags allow. **Default: off.** Panic and strictness are separate knobs.
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `ED_SCHEDULER_AUTO_PROMOTE` | off | `1` enables nightly auto-promote after arch_competition gates |
+| `ED_SCHEDULER_AUTO_PROMOTE_PANIC` | off | `1` forces auto-promote off regardless of other flags |
+| `ED_SCHEDULER_AUTO_PROMOTE_CORE_ONLY` | on | Restrict auto-promote to training anchors (SPY/QQQ/IWM) |
+| `ED_ML_SCHEDULER_TRAINING_EXPAND` | off | `1` = train full enrolled roster minus `panel_auto` (legacy; default is anchors only) |
+| `ED_SCHEDULER_AUTO_PROMOTE_REQUIRE_VERIFY` | on | Post-promote `verify_single_bundle` on scheduler path |
+| `ED_SCHEDULER_AUTO_PROMOTE_STRICT_CORE_FRESHNESS` | off | Steady-state freshness gate (enable after baseline week) |
+| `ED_CONSOLE_RELOAD_URL` | unset | POST target for live model registry reload after promote |
+
+**Preflip (before host enable):** capture/verify manual or dry-run promote without flipping production flags:
+
+```powershell
+python ml_scheduler.py --preflip-candidate-root <path>   # scheduler integration
+python tools/validate_autopromote_preflip.py --help      # §3C harness (all horizons)
+```
+
+**Host-enable checklist (operator, not git):** (1) preflip harness **verify** passes on real candidate roots; (2) promote + `POST /api/internal/reload_models` returns `live_reload.succeeded: true` on the launch console URL; (3) then set `ED_SCHEDULER_AUTO_PROMOTE=1`; (4) after 1–2 weeks stable, consider `ED_SCHEDULER_AUTO_PROMOTE_STRICT_CORE_FRESHNESS=1`.
+
+Internal reload route: loopback + optional token — see `server.py` `POST /api/internal/reload_models`.
 
 ---
 
@@ -91,6 +142,13 @@ These run **in order** and **stop on first failure**:
 ## Schwab / auth (when the app “won’t connect”)
 
 If the API reports token failure, reauth as documented in server messages, e.g. **`python reauth_schwab.py`**.
+
+### Token rotation (Phase 3f — operator)
+
+1. Revoke or rotate credentials in the Schwab developer portal if `schwab_token.json` or API secrets may have leaked.
+2. Regenerate `schwab_token.json` via `python reauth_schwab.py` on the **host** (never commit tokens — see [`docs/host/README.md`](docs/host/README.md)).
+3. If `config.py` still holds inline API key/secret, migrate to environment variables and rotate keys (see `ACTIVE_PROGRAM.md` Known Risks — credential-hygiene slice queued).
+4. Restart the console process after token refresh so market-data adapters pick up the new session.
 
 ---
 

@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/SCHWAB_FIELD_REFERENCE.md`.
+
 # Schwab Field Reference
 
 **Status:** OBSERVED FROM LIVE SCHWAB MARKET-DATA API  

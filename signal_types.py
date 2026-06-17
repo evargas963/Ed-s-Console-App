@@ -7,15 +7,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Optional
-from datetime import datetime
 
-from micro_structure import Candle, MicroRead
 
 @dataclass
 class SignalInput:
     """
     Current market state passed into the signals engine each refresh.
-    Built by ed_console_app.py from existing data structures.
+    Built by market_state.build_market_state from existing data structures.
     """
     # ── Identity ──────────────────────────────────────────────────────────────
     ticker:             str
@@ -85,9 +83,9 @@ class SignalInput:
     charm_drift_toward: Optional[float] = None
     charm_magnitude:    Optional[str] = None   # 'large', 'moderate', 'small', 'negligible'
     dex_magnitude:      Optional[str] = None   # 'large', 'moderate', 'small', 'negligible'
-    iv_level:           Optional[float] = None
+    iv_level:           Optional[float] = None  # implied vol decimal (0.18 = 18%; ms_dict/DB iv_level stay percent)
     iv_direction:       Optional[str] = None   # 'expanding', 'contracting', 'flat'
-    realized_vol:       Optional[float] = None  # annualized realized vol (decimal)
+    realized_vol:       Optional[float] = None  # annualized realized vol (decimal at SignalInput; ms_dict/DB stay percent)
     atr:                Optional[float] = None  # ATR in price points
     garch_sigma_bars:   Optional[list]  = None  # per-bar GARCH+blend sigma forecast
     put_call_oi_ratio:  Optional[float] = None
@@ -135,9 +133,9 @@ class SignalInput:
     em_lower:           Optional[float] = None   # expected move lower boundary (price)
 
     # ── Time context ──────────────────────────────────────────────────────────
-    et_hour:            int = 10
-    et_minute:          int = 30
-    mins_to_close:      float = 390.0
+    et_hour:            Optional[int] = None
+    et_minute:          Optional[int] = None
+    mins_to_close:      Optional[float] = None
     session_bucket:     Optional[str] = None  # 'open','morning','midday','afternoon','close'
     vix_bucket:         Optional[str] = None  # 'vix_low','vix_normal','vix_elevated','vix_high'
 
@@ -183,13 +181,41 @@ class CanonicalForecast:
     confidence: str           # "low" | "medium" | "high" — fusion forward confidence (not empirical tier)
     provenance: str           # e.g. "bayesian_fusion", "fusion_unavailable", "debug_override:..."
 
-    def dominant_probability(self) -> float:
+    def dominant_probability(self) -> Optional[float]:
+        """Return the directional dominant probability — ONLY when canonical is tradable.
+
+        LIVE-UI-A producer-side close: for non-tradable canonicals (provenance ∉
+        TRADABLE_CANONICAL_PROVENANCE — fusion_unavailable / fusion_directional_missing /
+        fusion_directional_invalid / debug_override:* / canonical_forecast_missing /
+        empty), the underlying triplet is the 1/3-each placeholder. Returning it as a
+        float lets callers compare it to thresholds (>= CANONICAL_DOM_PROB_*_MIN) as if
+        it were a real probability — silent leak. Returning None forces callers to handle
+        the withhold explicitly (None comparisons against floats raise TypeError, which
+        is the loud-failure mode we want for any consumer that drops the gate).
+        """
+        if self.provenance not in TRADABLE_CANONICAL_PROVENANCE:
+            return None
         d = (self.direction or "flat").lower()
         if d == "up":
             return float(self.probability_up)
         if d == "down":
             return float(self.probability_down)
         return float(self.probability_flat)
+
+
+# Sole tradable canonical provenance values (producer cone audit FIND-FP1-3 @ 4edeefc).
+TRADABLE_CANONICAL_PROVENANCE: frozenset[str] = frozenset({"bayesian_fusion"})
+
+# Diagnostic / known-emitted subset only. Authority is the inverted allow-list
+# ``fusion_contract.canonical_provenance_is_tradable``. Do NOT use this set as a gate.
+NON_TRADABLE_CANONICAL_PROVENANCE: frozenset[str] = frozenset(
+    {
+        "fusion_unavailable",
+        "fusion_directional_missing",
+        "fusion_directional_invalid",
+        "missing_canonical_fallback",
+    }
+)
 
 
 @dataclass
@@ -221,9 +247,9 @@ class PredictiveCard:
     prediction_dir:     str             # aligned with forward direction / target semantics ('up','down','flat','none')
     prediction_target:  Optional[float]  # level from historical avg move when forward lean exists
     # Historical match quality (outcome_5c similar-set — NOT the trade decision driver)
-    historical_5c_dominant_dir: str      # 'up', 'down', 'flat'
-    historical_5c_dominant_prob: float
-    empirical_confidence:     str       # 'low', 'medium', 'high' from tier/samples on 5c empirical only
+    historical_5c_dominant_dir: Optional[str]  # 'up', 'down', 'flat' when labeled 5c sufficient; None when withheld
+    historical_5c_dominant_prob: Optional[float]
+    empirical_confidence: Optional[str]  # 'low', 'medium', 'high' from tier/samples on 5c empirical only
     # Forward forecast (copy of canonical for card rendering)
     forward_direction:          str     # 'up', 'down', 'flat'
     forward_prob_up:            float
@@ -238,23 +264,10 @@ class PredictiveCard:
     up_prob_1c:         Optional[float] = None
     down_prob_1c:       Optional[float] = None
     flat_prob_1c:       Optional[float] = None
-    up_prob_3c:         Optional[float] = None
-    down_prob_3c:       Optional[float] = None
-    flat_prob_3c:       Optional[float] = None
     up_prob_5c:         Optional[float] = None
     down_prob_5c:       Optional[float] = None
     flat_prob_5c:       Optional[float] = None
-    up_prob_8c:         Optional[float] = None
-    down_prob_8c:       Optional[float] = None
-    flat_prob_8c:       Optional[float] = None
-    up_prob_13c:        Optional[float] = None
-    down_prob_13c:      Optional[float] = None
-    flat_prob_13c:      Optional[float] = None
-    avg_3c_pts:         Optional[float] = None
     avg_5c_pts:         Optional[float] = None
-    avg_8c_pts:         Optional[float] = None
-    avg_13c_pts:        Optional[float] = None
-    median_3c_pts:      Optional[float] = None
     move_range_lo:      Optional[float] = None   # expected move range low (pts)
     move_range_hi:      Optional[float] = None   # expected move range high (pts)
     reversal_risk:      Optional[float] = None   # 0.0-1.0, probability of opposite direction
@@ -294,6 +307,7 @@ class PredictiveCard:
     mh_prob_source_by_horizon: Optional[dict[str, str]] = None
     # Machine-visible degradation / fallback audit (see features/stack_integrity_v1.py)
     stack_integrity_v1: Optional[dict[str, Any]] = None
+    stack_integrity_events: Optional[list] = None
 
 @dataclass
 class TheCall:
@@ -323,14 +337,14 @@ class TheCall:
     rules_pred_agree:   bool
     time_warning:       Optional[str]       # None or warning if <2hrs to close
     size_note:          str
-    # ── Trade Validation Gate ─────────────────────────────────────────────────
-    validation_passed:  bool            = True
-    structure_valid:    bool            = True
-    probability_valid:  bool            = True
-    risk_valid:         bool            = True
+    # ── Trade Validation Gate — None until call_engine populates (no fabricated pass)
+    validation_passed:  Optional[bool]  = None
+    structure_valid:    Optional[bool]  = None
+    probability_valid:  Optional[bool]  = None
+    risk_valid:         Optional[bool]  = None
     validation_summary: str             = ""
     # ── Formal Position Sizing ────────────────────────────────────────────────
-    r_units:            float           = 0.0     # 0.00 to 1.25
+    r_units:            Optional[float] = None    # 0.00 to 1.25 when sized; None until call_engine sets
     execution_mode:     str             = "NO_TRADE"  # NO_TRADE, PROBE, REDUCED, STANDARD, MAX
     sizing_multipliers: dict            = field(default_factory=dict)
     sizing_reasons:     list            = field(default_factory=list)
@@ -352,6 +366,7 @@ class TheCall:
     put_readiness_component_scores: dict = field(default_factory=dict)
     # ── Replay / eval (1m bars cap for time_expiry; from Call policy, not inferred in isolation) ──
     replay_max_hold_bars: int          = 0
+    mh_promoted_directional: bool      = False  # MH policy promoted WAIT→long/short
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STACK DECISION PATH
@@ -395,3 +410,10 @@ class SignalOutput:
     pred_override_source: Optional[str] = None  # set only when ED_CONSOLE_ALLOW_PRED_OVERRIDE=1
     multi_horizon_bundle: Optional[object] = None  # MultiHorizonForecastBundle (multi_horizon_decision.py)
     calibration_payload: Optional[dict[str, Any]] = None  # writer inputs; server owns persistence timing
+    # Display-only wall-clock MC excursions (Key Levels 5m/15m rows); never consumed by The Call.
+    mc_display_excursions: Optional[dict[str, Optional[float]]] = None
+    # Guest anchor — provisional ML on non-authoritative tickers (weights from anchor trio).
+    guest_anchor_active: bool = False
+    guest_anchor_weights_ticker: Optional[str] = None
+    guest_anchor_affiliation: Optional[str] = None
+    guest_anchor_rationale: Optional[str] = None

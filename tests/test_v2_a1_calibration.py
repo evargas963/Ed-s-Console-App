@@ -1,15 +1,24 @@
 from __future__ import annotations
 
+import builtins
 import json
 import sqlite3
+from pathlib import Path
 
 import pytest
 
 from calibration.schema import ensure_calibration_schema
+from calibration.statistical_integrity import bucket_gate
 from calibration.v2_a1_calibration import (
     A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES,
     A1_CALIBRATION_HORIZON,
     A1_CALIBRATION_HORIZONS,
+    A1_REGIME_AXIS_MISSING,
+    _fit_isotonic_model,
+    _regime_reliability,
+    _row_to_calibration_example,
+    _sample_gate,
+    _success_label,
     build_a1_calibration_health,
     build_a1_5c_calibration_health,
     apply_isotonic_model,
@@ -198,6 +207,57 @@ def test_write_a1_calibration_artifact_is_json_not_pickle(tmp_path):
     assert "health" in loaded
 
 
+def test_write_a1_calibration_artifact_uses_atomic_json_write(monkeypatch, tmp_path):
+    captured: list[tuple] = []
+
+    def _capture(path, payload, **kw):
+        captured.append((path, payload, kw))
+
+    monkeypatch.setattr(
+        "calibration.v2_a1_calibration.write_json_file_atomically",
+        _capture,
+    )
+    artifact = {"calibration_run_id": "run-atomic", "model": {"type": "isotonic_regression"}}
+    out = write_a1_calibration_artifact(tmp_path / "artifacts", artifact)
+    assert out.name == "run-atomic.json"
+    assert len(captured) == 1
+    assert captured[0][1] == artifact
+    assert captured[0][2].get("sort_keys") is True
+
+
+def test_v2_a1_calibration_module_has_no_write_text():
+    source = Path(__file__).resolve().parents[1] / "calibration" / "v2_a1_calibration.py"
+    assert ".write_text(" not in source.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("n,min_required,expected_ok", [(29, 30, False), (30, 30, True)])
+def test_sample_gate_delegates_to_bucket_gate(n, min_required, expected_ok):
+    gate = _sample_gate(n, min_required, "O-26")
+    base = bucket_gate(n, min_required)
+    assert gate["n"] == base["n"]
+    assert gate["min_required"] == base["min_required"]
+    assert gate["sufficient_sample"] is expected_ok
+    assert gate["status"] == base["status"]
+    assert gate["operator_decision"] == "O-26"
+
+
+def test_fit_isotonic_model_raises_runtime_error_on_sklearn_import_error(monkeypatch):
+    real_import = builtins.__import__
+
+    def _mock_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "sklearn.isotonic" or (
+            name == "sklearn" and fromlist and "isotonic" in fromlist
+        ):
+            raise ImportError("mocked sklearn missing")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _mock_import)
+    with pytest.raises(RuntimeError, match="sklearn IsotonicRegression is required") as exc_info:
+        _fit_isotonic_model([0.2, 0.8], [0, 1])
+    assert isinstance(exc_info.value.__cause__, ImportError)
+    assert "mocked sklearn missing" in str(exc_info.value.__cause__)
+
+
 def test_reliability_bins_withhold_rates_below_o26_floor():
     predictions = [
         {
@@ -256,6 +316,169 @@ def test_regime_cells_emit_rates_only_above_o25_floor(tmp_path):
     )
     assert small["horizon"] == "15c"
     assert small["regime_reliability"]["volatility_regime:thin"]["observed_hit_rate"] is None
+
+
+def test_success_label_none_when_outcome_missing() -> None:
+    assert _success_label("long", None) is None
+    assert _success_label("long", "") is None
+
+
+def _wait_payload() -> str:
+    return json.dumps(
+        {
+            "adapter_version": "test-adapter",
+            "v2_decision": {
+                "decision": {
+                    "action": {"value": "WAIT", "source": "v1_approximation"},
+                    "direction": {"value": "long", "source": "v1_approximation"},
+                    "P_entry_success": {"value": 0.6, "source": "v1_approximation"},
+                }
+            },
+        }
+    )
+
+
+def test_load_a1_calibration_rows_skips_non_trade_without_aborting(tmp_path, caplog):
+    import logging
+
+    db_path, _split = _seed_rows(tmp_path, n_train=4, n_holdout=4)
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        """
+        INSERT INTO calibration_decision_log (
+            decision_ts_utc, ticker, canonical_timeframe, calibration_trust,
+            advisory_v2_decision_snapshot_json, advisory_v2_adapter_version,
+            outcome_5c, outcome_5c_pts, vol_regime, session_bucket
+        )
+        VALUES (?, 'SPY', '1m', 'trusted', ?, 'test-adapter', 'up', 0.1, 'normal', 'midday')
+        """,
+        (BASE_TS + 9999 * 60.0, _wait_payload()),
+    )
+    conn.commit()
+    conn.close()
+
+    with caplog.at_level(logging.INFO):
+        rows = load_a1_5c_calibration_rows(db_path)
+
+    assert rows
+    assert any("skipped" in r.message and "unusable rows" in r.message for r in caplog.records)
+
+
+def test_parse_json_mapping_logs_corrupt_advisory_snapshot(caplog):
+    import logging
+
+    from calibration.json_utils import parse_json_mapping
+
+    with caplog.at_level(logging.WARNING):
+        out = parse_json_mapping(
+            "{bad json",
+            context="v2_a1_calibration: advisory_v2_decision_snapshot_json",
+        )
+    assert out == {}
+    assert any("advisory_v2_decision_snapshot_json unparseable" in r.message for r in caplog.records)
+
+
+def test_row_to_calibration_example_rejects_missing_outcome() -> None:
+    row = {
+        "id": 1,
+        "ticker": "SPY",
+        "decision_ts_utc": BASE_TS,
+        "advisory_v2_decision_snapshot_json": _v2_payload(probability=0.6),
+        "advisory_v2_adapter_version": "test-adapter",
+        "outcome": None,
+        "outcome_pts": 0.1,
+        "vol_regime": "normal",
+        "session_bucket": "midday",
+    }
+    with pytest.raises(ValueError, match="unusable_label:"):
+        _row_to_calibration_example(row, horizon="5c")
+
+
+def test_row_to_calibration_example_rejects_non_trade_with_distinct_reason() -> None:
+    row = {
+        "id": 1,
+        "ticker": "SPY",
+        "decision_ts_utc": BASE_TS,
+        "advisory_v2_decision_snapshot_json": json.dumps(
+            {
+                "v2_decision": {
+                    "decision": {
+                        "action": {"value": "WAIT"},
+                        "direction": {"value": "long"},
+                        "P_entry_success": {"value": 0.6},
+                    }
+                }
+            }
+        ),
+        "advisory_v2_adapter_version": "test-adapter",
+        "outcome": "up",
+        "outcome_pts": 0.1,
+        "vol_regime": "normal",
+        "session_bucket": "midday",
+    }
+    with pytest.raises(ValueError, match="non_trade_action:'WAIT'"):
+        _row_to_calibration_example(row, horizon="5c")
+
+
+def test_build_a1_calibration_health_runs_numeric_leak_verifier():
+    artifact = {
+        "horizon": "5c",
+        "holdout_predictions": [
+            {
+                "calibrated_probability": 0.9,
+                "label": 1,
+                "volatility_regime": "normal",
+                "time_of_day_bucket": "midday",
+                "expiry_dte_bucket": "not_options_applicable",
+                "ticker": "SPY",
+                "direction": "long",
+                "primary_horizon": "5c",
+            }
+            for _ in range(A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES)
+        ],
+    }
+    health = build_a1_calibration_health(artifact)
+    assert health["numeric_leak_check"] == "pass"
+
+
+def test_apply_isotonic_model_warns_on_out_of_range_input(caplog):
+    import logging
+
+    model = {
+        "x_thresholds": [0.2, 0.8],
+        "y_thresholds": [0.1, 0.9],
+        "x_train_min": 0.2,
+        "x_train_max": 0.8,
+    }
+    with caplog.at_level(logging.WARNING):
+        apply_isotonic_model(model, 1.5)
+    assert any("outside [0, 1]" in r.message for r in caplog.records)
+
+
+def test_build_a1_calibration_health_requires_horizon() -> None:
+    with pytest.raises(ValueError, match="horizon is required"):
+        build_a1_calibration_health({"holdout_predictions": []})
+
+
+def test_regime_reliability_separates_missing_from_unknown_vol_regime() -> None:
+    base = {
+        "calibrated_probability": 0.6,
+        "label": 1,
+        "ticker": "SPY",
+        "time_of_day_bucket": "midday",
+        "expiry_dte_bucket": "not_options_applicable",
+        "direction": "long",
+        "primary_horizon": "5c",
+    }
+    predictions = [
+        {**base, "volatility_regime": "unknown"},
+        {**base, "volatility_regime": None},
+    ]
+    regime = _regime_reliability(predictions)
+    assert "volatility_regime:unknown" in regime
+    assert f"volatility_regime:{A1_REGIME_AXIS_MISSING}" in regime
+    assert regime["volatility_regime:unknown"]["n"] == 1
+    assert regime[f"volatility_regime:{A1_REGIME_AXIS_MISSING}"]["n"] == 1
 
 
 def test_window_overlap_detection_still_rejects_bad_embargo():

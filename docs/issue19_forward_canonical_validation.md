@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/issue19_forward_canonical_validation.md`.
+
 # Issue 19 — Forward canonical validation + policy enforcement
 
 **Date:** 2026-04-03  

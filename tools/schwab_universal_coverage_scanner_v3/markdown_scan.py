@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 
 from .python_scanner import scan_python_source
 from .schwab_csv import SchwabCsvIndex
+
+if TYPE_CHECKING:  # annotation-only reference (file uses `from __future__ import annotations`)
+    from .register import RegisterRow
 
 _FENCE = re.compile(r"^```(\w*)\n(.*?)^```", re.MULTILINE | re.DOTALL)
 

@@ -11,7 +11,6 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, Literal, Optional, Tuple
 
-import pytest
 
 AuthorityState = Literal["INIT", "HTTP_INIT", "SSE_LIVE"]
 Outcome = Literal["rejected", "deduped", "painted"]

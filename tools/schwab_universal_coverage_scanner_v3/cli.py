@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,7 @@ from .js_ts_scanner import scan_js_ts_text
 from .markdown_scan import scan_markdown_file
 from .paths import (
     ROOT,
+    SCAN_SCOPE_EXCLUDE_PREFIXES,
     is_binary_sample,
     try_decode_utf8,
     walk_workspace_files,
@@ -34,12 +36,20 @@ from .vendor_paths import load_vendor_prefixes, path_is_vendored
 
 SCANNER_VERSION = "3.0.0"
 REGISTER_BUILD_META_REL = "governance/artifacts/schwab_v4_register_build_meta.json"
+CANONICAL_REGISTER_REL = "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
 # Never ingest another register artifact as scan input (explodes row count / self-scan).
 SKIP_SCAN_REL_PATHS = frozenset(
     {
         "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.mock_build.csv",
     }
 )
+
+
+def _is_canonical_register(root: Path, out_csv: Path) -> bool:
+    try:
+        return out_csv.resolve() == (root / CANONICAL_REGISTER_REL).resolve()
+    except OSError:
+        return False
 
 
 def _merge_key_from_csv_row(row: dict[str, str]) -> tuple[str, int, int, str, str] | None:
@@ -86,6 +96,7 @@ def _load_disposition_merge_maps(
     by_id: dict[str, dict[str, str]] = {}
     by_surface: dict[tuple[str, str, str, str], dict[str, str]] = {}
     surface_lines: dict[tuple[str, str, str, str], set[int]] = defaultdict(set)
+    cross_surface_lines: dict[tuple[str, str], set[int]] = defaultdict(set)
     if not register_csv.is_file():
         return by_site, by_id, by_surface
     if os.environ.get("SCHWAB_SKIP_DISPOSITION_MERGE", "").strip().lower() in ("1", "true", "yes"):
@@ -101,6 +112,7 @@ def _load_disposition_merge_maps(
                     "canonical_field_citation": (row.get("canonical_field_citation") or "").strip(),
                     "governed_ref": (row.get("governed_ref") or "").strip(),
                     "notes": (row.get("notes") or "").strip(),
+                    "surface_form": (row.get("surface_form") or "").strip(),
                 }
                 sk = _merge_key_from_csv_row(row)
                 if sk is not None:
@@ -116,12 +128,27 @@ def _load_disposition_merge_maps(
                         ln = 0
                     surface_lines[ssk].add(ln)
                     by_surface[ssk] = payload
+                    cross_surface_lines[(ssk[0], ssk[1])].add(ln)
     except (OSError, UnicodeError, csv.Error):
         return {}, {}, {}
     for ssk, lines in surface_lines.items():
         if len(lines) > 1:
             by_surface.pop(ssk, None)
+    for cross_key, lines in cross_surface_lines.items():
+        if len(lines) > 1:
+            path, surf = cross_key
+            for key in list(by_surface):
+                if key[0] == path and key[1] == surf:
+                    by_surface.pop(key, None)
     return by_site, by_id, by_surface
+
+
+def _merge_payload_applies_to_row(row: RegisterRow, payload: dict[str, str]) -> bool:
+    """Do not inherit disposition when prior surface text differs (stable line, changed code)."""
+    prior_surface = (payload.get("surface_form") or "").strip()
+    if not prior_surface:
+        return True
+    return (row.surface_form or "").strip() == prior_surface
 
 
 def _apply_disposition_merge(
@@ -134,11 +161,17 @@ def _apply_disposition_merge(
         return
     for row in all_rows:
         key = (row.path, int(row.line), int(row.col), row.pattern_kind, row.language)
-        m = (
-            by_site.get(key)
-            or by_id.get(row.register_id)
-            or by_surface.get(_merge_surface_key_from_register_row(row))
-        )
+        candidates: list[dict[str, str]] = []
+        site_m = by_site.get(key)
+        if site_m is not None:
+            candidates.append(site_m)
+        id_m = by_id.get(row.register_id)
+        if id_m is not None:
+            candidates.append(id_m)
+        surf_m = by_surface.get(_merge_surface_key_from_register_row(row))
+        if surf_m is not None:
+            candidates.append(surf_m)
+        m = next((c for c in candidates if _merge_payload_applies_to_row(row, c)), None)
         if not m:
             continue
         row.disposition = m["disposition"]
@@ -168,10 +201,24 @@ def write_register_build_meta(
     max_files: int | None,
     embedding_mode_cli: str | None,
     include_dot_claude: bool,
+    respect_gitignore: bool,
+    scope_exclude_prefixes: tuple[str, ...],
 ) -> Path:
-    """Emit pinned scan metadata (hashes, flags, HEAD) for audit / CI reproduction."""
+    """Emit pinned scan metadata (hashes, flags, HEAD) for audit / CI reproduction.
+
+    Canonical-register guard: only updates the global meta when ``out_csv`` resolves
+    to the canonical register path. Non-canonical writes (e.g. ``--output /tmp/x.csv``
+    for a dry run) are skipped to prevent SHA-pin corruption.
+    """
     root = root.resolve()
     meta_path = root / REGISTER_BUILD_META_REL
+    if not _is_canonical_register(root, out_csv):
+        print(
+            f"register_build_meta: skipped (non-canonical output {out_csv}); "
+            f"pin preserved at {meta_path}",
+            file=sys.stderr,
+        )
+        return meta_path
     body = b""
     if out_csv.is_file():
         body = out_csv.read_bytes()
@@ -209,6 +256,8 @@ def write_register_build_meta(
             "max_files": max_files,
             "embedding_mode": emb,
             "include_dot_claude": include_dot_claude,
+            "respect_gitignore": respect_gitignore,
+            "scope_exclude_prefixes": list(scope_exclude_prefixes),
         },
         "register_content_sha256": sha256_hex,
         "register_size_bytes": size_b,
@@ -287,6 +336,9 @@ def run_scan(
     include_dot_claude: bool = False,
     max_files: int | None = None,
     embedding_mode: str | None = None,
+    respect_gitignore: bool = True,
+    scope_exclude_prefixes: tuple[str, ...] = SCAN_SCOPE_EXCLUDE_PREFIXES,
+    extra_exclude_prefixes: tuple[str, ...] = (),
 ) -> dict:
     if embedding_mode:
         import os
@@ -296,6 +348,7 @@ def run_scan(
     syn = load_synonyms()
     vendor_pf = load_vendor_prefixes()
     state = ReconciliationState()
+    combined_scope = tuple(scope_exclude_prefixes) + tuple(extra_exclude_prefixes)
 
     def on_prune(batch) -> None:
         state.record_pruned_batch(
@@ -316,7 +369,12 @@ def run_scan(
     except ValueError:
         skip_output_rel = None
 
-    for abs_p in walk_workspace_files(root, on_prune=on_prune):
+    for abs_p in walk_workspace_files(
+        root,
+        on_prune=on_prune,
+        respect_gitignore=respect_gitignore,
+        scope_exclude_prefixes=combined_scope,
+    ):
         if max_files is not None and n_attempts >= max_files:
             break
         rel = abs_p.relative_to(root).as_posix().replace("\\", "/")
@@ -376,6 +434,10 @@ def run_scan(
     recon = state.as_report()
     recon["criterion_1_reconciliation"]["partial_scan_max_files"] = max_files
     recon["criterion_1_reconciliation"]["partial_scan_breaks_reconciliation"] = max_files is not None
+    recon["criterion_1_reconciliation"]["scan_scope"] = {
+        "respect_gitignore": respect_gitignore,
+        "scope_exclude_prefixes": list(combined_scope),
+    }
     return {
         "scanner_version": SCANNER_VERSION,
         "files_attempted": n_attempts,
@@ -404,13 +466,35 @@ def main() -> int:
         default=None,
         help="Override SCHWAB_SCANNER_EMBEDDINGS: mock is fast (deterministic hash embeddings); minilm loads sentence-transformers.",
     )
+    ap.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="PREFIX",
+        help="Additional POSIX path prefix to exclude from the walk (repeatable).",
+    )
+    ap.add_argument(
+        "--no-respect-gitignore",
+        action="store_true",
+        help="Walk gitignored paths (tests / dry-run only; not for canonical register regen).",
+    )
+    ap.add_argument(
+        "--no-scope-excludes",
+        action="store_true",
+        help="Disable default SCAN_SCOPE_EXCLUDE_PREFIXES (legacy full-tree walk).",
+    )
     args = ap.parse_args()
+    scope_excludes = () if args.no_scope_excludes else SCAN_SCOPE_EXCLUDE_PREFIXES
+    extra_excludes = tuple(p.strip().replace("\\", "/").strip("/") for p in args.exclude if p.strip())
     summary = run_scan(
         args.root.resolve(),
         args.output,
         include_dot_claude=args.include_dot_claude,
         max_files=args.max_files,
         embedding_mode=args.embedding_mode,
+        respect_gitignore=not args.no_respect_gitignore,
+        scope_exclude_prefixes=scope_excludes,
+        extra_exclude_prefixes=extra_excludes,
     )
     write_register_build_meta(
         args.root.resolve(),
@@ -419,6 +503,8 @@ def main() -> int:
         max_files=args.max_files,
         embedding_mode_cli=args.embedding_mode,
         include_dot_claude=args.include_dot_claude,
+        respect_gitignore=not args.no_respect_gitignore,
+        scope_exclude_prefixes=scope_excludes + extra_excludes,
     )
     print(json.dumps(summary, indent=2))
     return 0

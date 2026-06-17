@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
+
+import pytest
+
 from arch_competition.governance_visibility import (
     GOVERNANCE_PANEL_SCHEMA_VERSION,
+    _rollback_checkpoint_available,
     build_governance_panel_payload,
     is_governance_ui_actions_enabled,
 )
@@ -165,6 +170,109 @@ def test_production_default_parallel_in_panel(tmp_path: Path):
     _minimal_governed_files(tmp_path, cascade_ok=True)
     p = build_governance_panel_payload(tmp_path, "1c", "SPY")
     assert p["production_default_runtime"] == "parallel"
+
+
+def test_panel_recent_audit_actions_empty_when_no_ticker_match(tmp_path: Path):
+    _minimal_governed_files(tmp_path, cascade_ok=True)
+    log_path = tmp_path / "arch_competition" / "governance_audit.jsonl"
+    log_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "action": "manual_promote_attempt",
+                "outcome": "pending",
+                "timestamp_utc": "2026-01-01T00:00:00+00:00",
+                "operator_id": "t",
+                "ticker": "QQQ",
+                "ml_horizon_suffix": "1c",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    p = build_governance_panel_payload(
+        tmp_path,
+        "1c",
+        "SPY",
+        include_live_drift=False,
+        emit_notification_delivery=False,
+    )
+    assert p["ok"] is True
+    assert p["recent_audit_actions"] == []
+
+
+def test_corrupt_arch_state_surfaces_warning_ok_true(tmp_path: Path, caplog: pytest.LogCaptureFixture):
+    _minimal_governed_files(tmp_path, cascade_ok=True)
+    (tmp_path / "arch_state.json").write_text("{not-json", encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="arch_competition.governance_visibility"):
+        p = build_governance_panel_payload(
+            tmp_path,
+            "1c",
+            "SPY",
+            include_live_drift=False,
+            emit_notification_delivery=False,
+        )
+    assert p["ok"] is True
+    assert p["governed_competition"] is None
+    assert p["warnings"][0]["code"] == "ARCH_STATE_UNREADABLE"
+    assert any("arch_state" in r.message.lower() and "unreadable" in r.message.lower() for r in caplog.records)
+
+
+def test_panel_surfaces_persistence_failures(tmp_path: Path, monkeypatch):
+    _minimal_governed_files(tmp_path, cascade_ok=True)
+
+    def _boom(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(
+        "arch_competition.governance_visibility.persist_operational_policy_payload",
+        _boom,
+    )
+    p = build_governance_panel_payload(
+        tmp_path,
+        "1c",
+        "SPY",
+        include_live_drift=False,
+        emit_notification_delivery=False,
+    )
+    assert p["ok"] is True
+    assert p["persistence_failures"]
+    assert p["persistence_failures"][0]["operation"] == "persist_operational_policy_payload"
+    assert "disk full" in p["persistence_failures"][0]["error"]
+
+
+def test_panel_recent_audit_actions_are_ticker_scoped_only(tmp_path: Path):
+    _minimal_governed_files(tmp_path, cascade_ok=True)
+    p = build_governance_panel_payload(
+        tmp_path,
+        "1c",
+        "SPY",
+        include_live_drift=False,
+        emit_notification_delivery=False,
+    )
+    assert all(str(a.get("ticker", "")).upper() == "SPY" for a in p["recent_audit_actions"])
+
+
+def test_rollback_checkpoint_skips_corrupt_manifest_uses_valid_remaining(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+):
+    from arch_competition.manual_control import rollback_checkpoints_dir
+
+    base = rollback_checkpoints_dir(tmp_path, "1c", "SPY")
+    base.mkdir(parents=True)
+    bad = base / "ck_bad"
+    bad.mkdir()
+    (bad / "checkpoint_manifest.json").write_text("{not-json", encoding="utf-8")
+    good = base / "ck_good"
+    good.mkdir()
+    (good / "checkpoint_manifest.json").write_text(
+        json.dumps({"snapshot_empty": False}),
+        encoding="utf-8",
+    )
+    with caplog.at_level(logging.WARNING, logger="arch_competition.governance_visibility"):
+        assert _rollback_checkpoint_available(tmp_path, "1c", "SPY") is True
+    assert any("corrupt checkpoint manifest" in r.message for r in caplog.records)
 
 
 def test_manual_promote_endpoint_invokes_only_manual_control(monkeypatch, tmp_path: Path):

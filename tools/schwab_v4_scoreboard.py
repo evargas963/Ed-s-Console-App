@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from tools.schwab_coverage_v4_metrics import compute_full_metrics, DEFAULT_OPERATOR, DEFAULT_REGISTER
+from tools.stream_revert_v4_register_and_sync_perf import refresh_meta_pin_if_stale
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PERF_DIR = ROOT / "governance" / "artifacts" / "perf_proof" / "replacements"
@@ -135,6 +136,10 @@ def build_scoreboard(
             prior_git_ref = None
 
     prior_unreviewed, prior_replaced = _prior_counts_from_doc(prior_doc)
+
+    if use_register_meta:
+        mp = register_meta or DEFAULT_REGISTER_META
+        refresh_meta_pin_if_stale(register.resolve(), mp)
 
     d17 = compute_full_metrics(register, operator_register)
     unreviewed_now = int(d17["unreviewed_count"])

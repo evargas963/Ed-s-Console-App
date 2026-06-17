@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/issue19_canonical_ontology_and_mismatch_audit.md`.
+
 # Issue 19 — Canonical ontology specification and mismatch audit
 
 **Mode:** architecture and validation only — **no core logic changes** in this pass.  

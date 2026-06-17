@@ -1,0 +1,13 @@
+# Cursor user rules snapshot — Phase 0 (2026-05-23)
+# Source: operator Cursor user rules at consolidation start (paraphrase for classification).
+# Phase 1a requires explicit disposition per rule: promote→AGENTS | OPERATOR-ONLY | superseded by .mdc
+
+- Git: only commit when requested; safety protocol for amend/push
+- GitHub PRs: use gh CLI with documented workflow
+- Follow all user/tool/system/skill instructions completely
+- Real environment: run commands, do not give up after one failure
+- Communication: code citations, markdown links, prose quality
+- Code: minimize scope, avoid over-engineering, match conventions, useful tests only
+- Reason about conversation history for user intent
+
+# Disposition TBD in Phase 1a row GOVERNANCE-CONSOLIDATION Phase 1a cursor user rules table.

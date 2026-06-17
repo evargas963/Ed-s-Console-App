@@ -1,0 +1,106 @@
+name: Schwab V4 Register Closure
+
+# Heavy register pipeline + D17 closure metrics. Fails until unreviewed_count == 0
+# on the scoped canonical register (gitignore + SCAN_SCOPE_EXCLUDE_PREFIXES).
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - governance/artifacts/**
+      - governance/SCHWAB_*
+      - governance/OPERATOR_DECISION_REGISTER.md
+      - tools/schwab_*
+      - tools/check_schwab_csv_first.py
+      - .github/workflows/schwab-v4-closure.yml
+
+jobs:
+  schwab-v4-closure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Generate V4 register (gitignored; pin in schwab_v4_register_build_meta.json)
+        shell: bash
+        run: |
+          python -m tools.schwab_universal_coverage_scanner_v3 \
+            --output governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv \
+            --embedding-mode mock
+          python <<'PY'
+          import csv, hashlib, json, pathlib, sys
+          meta = json.loads(pathlib.Path("governance/artifacts/schwab_v4_register_build_meta.json").read_text(encoding="utf-8"))
+          p = pathlib.Path("governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv")
+          h = hashlib.sha256(p.read_bytes()).hexdigest()
+          exp = meta.get("register_content_sha256")
+          if not exp or h != exp:
+              print("register_content_sha256 mismatch", h, exp, file=sys.stderr)
+              sys.exit(1)
+          want_rows = meta.get("register_rows_written")
+          if want_rows:
+              with p.open(newline="", encoding="utf-8") as f:
+                  n = sum(1 for _ in csv.DictReader(f))
+              if n != want_rows:
+                  print("register_rows_written mismatch", n, want_rows, file=sys.stderr)
+                  sys.exit(1)
+          print("V4 register pin OK", h[:16])
+          PY
+
+      - name: Rebuild V4 scoreboard (D17 + register_build from current register/meta)
+        shell: bash
+        run: |
+          python -m tools.schwab_v4_scoreboard
+
+      - name: Verify register file, meta, and scoreboard register_build SHA256 alignment
+        shell: bash
+        run: |
+          python <<'PY'
+          import csv, hashlib, json, pathlib, sys
+
+          reg = pathlib.Path("governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv")
+          meta = json.loads(
+              pathlib.Path("governance/artifacts/schwab_v4_register_build_meta.json").read_text(encoding="utf-8")
+          )
+          sb = json.loads(
+              pathlib.Path("governance/artifacts/schwab_v4_scoreboard.json").read_text(encoding="utf-8")
+          )
+          h = hashlib.sha256(reg.read_bytes()).hexdigest()
+          m_sha = meta.get("register_content_sha256")
+          s_sha = (sb.get("register_build") or {}).get("register_content_sha256")
+          if not (h == m_sha == s_sha):
+              print("SHA256 misalignment register/meta/scoreboard", h, m_sha, s_sha, file=sys.stderr)
+              sys.exit(1)
+          rep = sum(
+              1
+              for r in csv.DictReader(reg.open(newline="", encoding="utf-8"))
+              if (r.get("disposition") or "").strip() == "REPLACED"
+          )
+          rc = int((sb.get("d17") or {}).get("replaced_count", -1))
+          if rc != rep:
+              print("d17.replaced_count != CSV REPLACED row count", rc, rep, file=sys.stderr)
+              sys.exit(1)
+          print("triple SHA + replaced_count OK", h[:16], "replaced", rep)
+          PY
+
+      - name: Schwab V4 register O-XX validation
+        shell: bash
+        run: |
+          python -m tools.schwab_oxx_validator \
+            --register governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv \
+            --operator-register governance/OPERATOR_DECISION_REGISTER.md
+
+      - name: Schwab V4 closure metrics (non-zero exit if UNREVIEWED or bare GOVERNED_EXCEPTION)
+        shell: bash
+        run: |
+          python -m tools.schwab_coverage_v4_metrics \
+            --register governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv \
+            --operator-register governance/OPERATOR_DECISION_REGISTER.md

@@ -35,7 +35,6 @@ NON_RUNTIME_FILES = (
     "clean_db.py",
     "api_pressure.py",
     "schwab_full_field_inventory.py",
-    "schwab_full_accessible_field_inventory.py",
     "schwab_field_dictionary_builder.py",
 )
 MARKET_RUNTIME_PREFIXES = (

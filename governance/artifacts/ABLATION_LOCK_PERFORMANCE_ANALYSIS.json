@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "phase": "3F-Perf2-Analysis",
+  "generated_at_utc": "2026-06-16T06:45:00+00:00",
+  "status": "analysis_only_no_code_changes",
+  "measured_seconds": {
+    "check_ablation_seven_model_four_horizon_grid": 102.65,
+    "check_ablation_equal_layer_consumers": 51.96,
+    "combined_sequential": 154.61,
+    "profile_aggregate_repo_wide_static": 214.7
+  },
+  "checks": [
+    {
+      "name": "check_ablation_seven_model_four_horizon_grid",
+      "file": "tools/check_fix_everything_we_touch.py",
+      "line": 1381,
+      "measured_seconds": 102.65,
+      "what_it_scans": [
+        "AGENTS.md text markers",
+        "tools/feature_curation_gate.py banned partial-grid fragments",
+        "governance/artifacts/feature_ablation_manifest_leaf.json (full JSON parse)",
+        "data/ed_console.db via build_ablation_enriched_row_sample when present",
+        "Generated ablation_whole_stack_feature_cell_specs grid (feature×7 models×4 horizons)"
+      ],
+      "files_read": [
+        "AGENTS.md",
+        "tools/feature_curation_gate.py",
+        "governance/artifacts/feature_ablation_manifest_leaf.json",
+        "data/ed_console.db (conditional)"
+      ],
+      "expensive_operations": [
+        "import tools.feature_curation_gate (heavy module)",
+        "json.loads manifest (~75k lines / multi-MB)",
+        "build_ablation_enriched_row_sample (SQLite row sample)",
+        "ablation_whole_stack_feature_cell_specs (O(features×28) cell dict build)",
+        "expected_triples set vs spec_triples set diff (~1000+ cells)"
+      ],
+      "dominant_cost": "ablation_whole_stack_feature_cell_specs + manifest load + DB enrich (duplicate with equal-layer check)",
+      "repeats_work_with": "check_ablation_equal_layer_consumers",
+      "cacheable_by_file_hash": true,
+      "shareable_index": "ablation_spec_cache keyed by (manifest_sha256, db_mtime_or_absent, feature_curation_gate_sha256)",
+      "parallelizable_safely": false,
+      "incremental_possible": true,
+      "objective_audit_must_remain_full": true
+    },
+    {
+      "name": "check_ablation_equal_layer_consumers",
+      "file": "tools/check_fix_everything_we_touch.py",
+      "line": 1549,
+      "measured_seconds": 51.96,
+      "what_it_scans": [
+        "tools/feature_curation_gate.py banned fallback fragments + required markers",
+        "governed_stack_contract.py layer column markers",
+        "Same manifest + DB enrich + ablation_whole_stack_feature_cell_specs as seven-model check"
+      ],
+      "files_read": [
+        "tools/feature_curation_gate.py",
+        "governed_stack_contract.py",
+        "governance/artifacts/feature_ablation_manifest_leaf.json",
+        "data/ed_console.db (conditional)"
+      ],
+      "expensive_operations": [
+        "Full re-read feature_curation_gate.py text",
+        "Duplicate load_ablation_manifest + build_ablation_enriched_row_sample + ablation_whole_stack_feature_cell_specs",
+        "Linear scans over full specs list for upper-layer / runnable counts"
+      ],
+      "dominant_cost": "Duplicate spec generation (~50% of seven-model check runtime)",
+      "repeats_work_with": "check_ablation_seven_model_four_horizon_grid",
+      "cacheable_by_file_hash": true,
+      "shareable_index": "Same ablation_spec_cache as seven-model check",
+      "parallelizable_safely": false,
+      "incremental_possible": true,
+      "objective_audit_must_remain_full": true
+    }
+  ],
+  "root_cause_summary": "Both checks independently call load_ablation_manifest, build_ablation_enriched_row_sample, and ablation_whole_stack_feature_cell_specs. Manifest JSON parse and DB-enriched spec materialization dominate (~150s combined). Text scans of feature_curation_gate.py are cheap relative to spec build.",
+  "safe_optimizations_proposed": [
+    {
+      "id": "PERF2-1",
+      "title": "Shared in-process ablation spec index",
+      "description": "Compute manifest+DB specs once per run_repo_wide_static_check_funcs invocation; pass cached specs to both checks.",
+      "expected_speedup": "~40-50% of combined ablation time (~60-75s)",
+      "enforcement_impact": "none — same inputs, same assertions",
+      "tier": "pre-push cache / objective-audit"
+    },
+    {
+      "id": "PERF2-2",
+      "title": "Disk cache keyed by manifest_sha256 + db_sha256 + gate_sha256",
+      "description": "Extend fix_everything_we_touch_cache.json with ablation_specs entry; invalidate on manifest/DB/gate change.",
+      "expected_speedup": "near-zero on unchanged ablation cone commits",
+      "enforcement_impact": "none if cache stores only pass/fail + error list",
+      "tier": "pre-push"
+    },
+    {
+      "id": "PERF2-3",
+      "title": "Lazy DB enrich only when scoring groups non-empty",
+      "description": "Skip build_ablation_enriched_row_sample when manifest has zero in_cone scoring groups (already partially gated).",
+      "expected_speedup": "small unless DB absent",
+      "enforcement_impact": "none when scoring empty; verify fidelity path unchanged when DB present",
+      "tier": "conditional"
+    },
+    {
+      "id": "PERF2-4",
+      "title": "Single read of feature_curation_gate.py per audit run",
+      "description": "Share gate_text string across ablation-related checks in same process.",
+      "expected_speedup": "<1s",
+      "enforcement_impact": "none",
+      "tier": "micro"
+    }
+  ],
+  "unsafe_optimizations_rejected": [
+    {
+      "id": "REJECT-1",
+      "title": "Skip DB enrich on pre-push",
+      "reason": "Weakens runnable_target / fusion_cell_target fidelity checks"
+    },
+    {
+      "id": "REJECT-2",
+      "title": "Sample subset of grid triples",
+      "reason": "Violates AGENTS seven-model×four-horizon full grid contract"
+    },
+    {
+      "id": "REJECT-3",
+      "title": "Cache pass without invalidation on ed_console.db rows",
+      "reason": "Maturity bypass — stale pass if DB identity rows change"
+    },
+    {
+      "id": "REJECT-4",
+      "title": "Move ablation checks off objective-audit",
+      "reason": "Would weaken full-strength objective audit path"
+    }
+  ],
+  "maturity_changes_proposed": [],
+  "maturity_changes_rejected": [
+    "Any claim that ablation checks are optional on objective-audit",
+    "Any cache that stores verified=true without hash invalidation"
+  ]
+}

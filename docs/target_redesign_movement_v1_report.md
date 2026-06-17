@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/target_redesign_movement_v1_report.md`.
+
 # Target redesign — movement v1
 
 ## 1. Target definitions
@@ -41,7 +43,7 @@ SELECT outcome_dir_5c, COUNT(*) FROM snapshots WHERE outcome_dir_5c IS NOT NULL 
 
 ## 6. Inference output
 
-`ml_predict.run_base_models_once` adds `movement_head_probs` when artifacts exist for the active ML horizon:
+`ml_predict.run_unified_stack_ml_once` adds `movement_head_probs` when artifacts exist for the active ML horizon:
 
 - `pred_{H}_dir_up_prob`, `pred_{H}_dir_down_prob`
 - `pred_{H}_move_prob`, `pred_{H}_no_move_prob`

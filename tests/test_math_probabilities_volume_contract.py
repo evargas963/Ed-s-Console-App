@@ -47,4 +47,4 @@ def test_flow_imbalance_volume_fallback_fails_closed_when_volume_missing():
         }
     }
 
-    assert flow_imbalance_normalized_with_fallback(exposures, 500.0) == (0.0, "none")
+    assert flow_imbalance_normalized_with_fallback(exposures, 500.0) == (None, "none")

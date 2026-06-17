@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import pytest
 
+from calibration.statistical_integrity import bucket_gate
 from calibration.v2_a1_conformal import build_a1_conformal_artifact
 from calibration.v2_a1_ev_bounds import (
     A1_EV_BOUNDS_METHOD,
+    _sample_gate,
     build_a1_ev_bounds_artifact,
     compute_ev_bound,
 )
@@ -58,6 +60,24 @@ def _ok_conformal(rows: list[dict] | None = None) -> dict:
     return build_a1_conformal_artifact(_calibration_artifact(rows or _clean_rows()))
 
 
+def test_ev_bounds_run_id_null_when_conformal_run_id_missing():
+    conformal = build_a1_conformal_artifact(
+        {
+            "holdout_predictions": _clean_rows(500),
+        }
+    )
+    artifact = build_a1_ev_bounds_artifact(conformal, reward_r=2.0)
+    assert artifact["conformal_run_id"] is None
+    assert artifact["ev_bounds_run_id"] is None
+
+
+def test_ev_bounds_skips_when_conformal_status_missing():
+    conformal = {**_ok_conformal(), "status": None}
+    artifact = build_a1_ev_bounds_artifact(conformal, reward_r=2.0)
+    assert artifact["status"] == "ev_bounds_skipped_missing_upstream_conformal_status"
+    assert artifact["reason"] == "conformal_artifact_status_field_missing"
+
+
 def test_ev_bounds_cascade_skipped_conformal_without_synthetic_values():
     conformal = build_a1_conformal_artifact(_calibration_artifact(_clean_rows(40)))
 
@@ -94,6 +114,16 @@ def test_ev_bounds_warning_conformal_emits_rows_with_warning_status():
     assert artifact["reason"].startswith("conformal_warning_below_nominal:")
     assert artifact["ev_model"]["type"] == A1_EV_BOUNDS_METHOD
     assert artifact["ev_bounds"]
+
+
+def test_bounded_probability_warns_when_outside_unit_interval(caplog):
+    import logging
+
+    from calibration.v2_a1_ev_bounds import _bounded_probability
+
+    with caplog.at_level(logging.WARNING):
+        assert _bounded_probability(1.5) == 1.0
+    assert any("outside [0, 1]" in r.message for r in caplog.records)
 
 
 def test_ev_bounds_compute_expected_r_math_from_probability_band():
@@ -197,3 +227,21 @@ def test_ev_bounds_scaffold_does_not_change_runtime_ev_fields():
     assert dec["p_high"]["source"] == "not_implemented"
     assert dec["EV_lower"]["source"] == "not_implemented"
     assert dec["EV_upper"]["source"] == "not_implemented"
+
+
+@pytest.mark.parametrize("n,min_required,expected_ok", [(29, 30, False), (30, 30, True)])
+def test_sample_gate_delegates_to_bucket_gate(n, min_required, expected_ok):
+    gate = _sample_gate(n, min_required, "O-25")
+    base = bucket_gate(n, min_required)
+    assert gate["n"] == base["n"]
+    assert gate["min_required"] == base["min_required"]
+    assert gate["sufficient_sample"] is expected_ok
+    assert gate["status"] == base["status"]
+    assert gate["operator_decision"] == "O-25"
+
+
+def test_sample_gate_coerces_negative_n_via_bucket_gate():
+    gate = _sample_gate(-5, 30, "O-25")
+    assert gate["n"] == 0
+    assert gate["sufficient_sample"] is False
+    assert gate["status"] == "insufficient_sample"

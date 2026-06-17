@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "perf_proof_id": "pp_v4b_server_quote_session_fallbacks_dedupe",
+  "landed_batch": "v4b-2026-05-18",
+  "replacement_scope": "Extract _parse_quote_node_session_fields: single canonical quote\u2192extended\u2192regular fallback chain shared by _build_rest_fast_quote_payload and _tier_a_live_state_dict.",
+  "code_paths": [
+    "server.py"
+  ],
+  "evidence": {
+    "pytest_args": [
+      "tests/test_server_quote_source_contract.py"
+    ],
+    "note": "Canonical helper dedupe regression tests."
+  },
+  "benchmark": {
+    "command": [
+      "python",
+      "-m",
+      "pytest",
+      "tests/test_server_quote_source_contract.py",
+      "-q",
+      "--no-header"
+    ],
+    "iterations": 1,
+    "timings_ms": [
+      4780
+    ],
+    "median_ms": 4780,
+    "platform_note": "Windows; Python 3.13; chunk-2 2026-05-24"
+  },
+  "register_link": {
+    "status": "bound",
+    "replaced_register_ids": [
+      "01f924fe881200e61e01",
+      "2b4cefb2fe34e4803e0c",
+      "2b4f2601ed5cc488589e",
+      "470637eb66940f03db05",
+      "4ed834710a46acd780df",
+      "7166143143790c944ce4",
+      "952fcc764111dd0df079",
+      "96176ddb8c86b717d28d",
+      "acb26ab574bc6bde237d"
+    ]
+  }
+}

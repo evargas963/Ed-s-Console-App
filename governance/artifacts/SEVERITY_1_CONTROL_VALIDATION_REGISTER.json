@@ -1,0 +1,1415 @@
+{
+  "schema_version": 1,
+  "artifact": "governance/artifacts/SEVERITY_1_CONTROL_VALIDATION_REGISTER.json",
+  "supersedes_matrix_maturity_claims": true,
+  "methodology": "Institutional Audit Phase 1 \u2014 matrix is inventory input; validated_maturity and coverage_percent come from code-path review, checker source analysis, and test inventory. Meta-tests that only assert checker==[] on current repo do NOT raise maturity above L3.",
+  "maturity_vocabulary": {
+    "L0": "Not built",
+    "L1": "Documented / named gap",
+    "L2": "Checker or test exists; partial coverage; bypass trivial",
+    "L3": "Commit/CI blocked on happy path",
+    "L4": "Bypass requires privileged action + audit event",
+    "L5": "Workflow approval + immutable audit + reconstructable"
+  },
+  "validation_summary": {
+    "severity_1_controls": 29,
+    "matrix_status_inaccurate_count": 14,
+    "matrix_enforced_overstated_count": 12,
+    "controls_at_L3_or_below": 29,
+    "controls_with_adversarial_tests": 5,
+    "controls_with_bypass_detection_test": 0,
+    "median_coverage_percent": 35
+  },
+  "rows": [
+    {
+      "control_id": "I-31",
+      "title": "Decision reconstructability",
+      "matrix_claimed_status": "NOT_IMPLEMENTED",
+      "validated_maturity": "L0",
+      "matrix_status_accurate": true,
+      "coverage_percent": 0,
+      "checker_name": null,
+      "checker_location": null,
+      "test_name": null,
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [],
+      "bypass_code_paths": [
+        "live_decision_bundle.py:stamp_decision_bundle \u2014 in-process counter only",
+        "calibration/writer.py:append_calibration_decision \u2014 env-gated ED_CALIBRATION_LOG"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "ED_* environment variable change + server restart",
+          "difficulty": "easy",
+          "audit_event_generated": false,
+          "classification": "intentional_dev_unacceptable_without_config_manifest"
+        },
+        {
+          "vector": "server restart clears decision_generation_id",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "unacceptable"
+        },
+        {
+          "vector": "no single-query retrieval API",
+          "difficulty": "n/a",
+          "audit_event_generated": false,
+          "classification": "unacceptable"
+        }
+      ],
+      "audit_artifact": null,
+      "enforcement_surface": {
+        "build_time": false,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "immutable Decision ID",
+        "one-query third-party reconstruction <60s",
+        "artifact hash linkage",
+        "override state in bundle"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "live_decision_bundle.py:54-87 \u2014 monotonic int, not persisted",
+        "calibration/schema.py:21-84 \u2014 richest store; keyed (ticker, decision_ts_utc)",
+        "No GET /api/decision/{id} retrieval path"
+      ],
+      "severity_rationale": "Foundational auditability prerequisite \u2014 all other Sev-1 controls depend on reconstructable decisions."
+    },
+    {
+      "control_id": "I-28",
+      "title": "Market data integrity",
+      "matrix_claimed_status": "PARTIALLY_ENFORCED",
+      "validated_maturity": "L2",
+      "matrix_status_accurate": false,
+      "coverage_percent": 18,
+      "checker_name": null,
+      "checker_location": null,
+      "test_name": "tests/test_batch2_analytics_bg_fail_counter.py (staleness contract only)",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "features/canonical_contract.py \u2014 price.spot > 0 at MVP boundary",
+        "features/monte_carlo_stack_input.py:47-55 \u2014 MC blocked if spot missing/<=0",
+        "verification/daily_health.py \u2014 STALE_BAR_DATA_SEC structural report"
+      ],
+      "bypass_code_paths": [
+        "Wrong-but-valid prices (SPY 0.01, 50000) pass float>0 validation",
+        "No trade-path circuit breaker in signals.py/compute_signals"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "ED_* environment variable change + server restart",
+          "difficulty": "easy",
+          "audit_event_generated": false,
+          "classification": "intentional_dev_unacceptable_without_config_manifest"
+        },
+        {
+          "vector": "skip daily_health run",
+          "difficulty": "easy",
+          "audit_event_generated": false,
+          "classification": "tolerated"
+        },
+        {
+          "vector": "inject plausible wrong spot via Schwab wire",
+          "difficulty": "medium",
+          "audit_event_generated": false,
+          "classification": "unacceptable"
+        }
+      ],
+      "audit_artifact": "verification/daily_health.py JSON report (manual)",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": true,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "wrong data / outlier quarantine",
+        "cross-source disagreement",
+        "corporate actions",
+        "feed degradation circuit breaker",
+        "duplicate tick detection at ingest",
+        "future timestamp rejection on trade path"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "features/canonical_contract.py:198-201 \u2014 invalid is spot<=0 only",
+        "verification/daily_health.py:9-11 \u2014 staleness not wrongness",
+        "No adversarial price injection tests in tests/"
+      ],
+      "severity_rationale": "Bad market data can corrupt live decisions \u2014 direct trade-impact path."
+    },
+    {
+      "control_id": "I-29",
+      "title": "Risk governance",
+      "matrix_claimed_status": "NOT_IMPLEMENTED",
+      "validated_maturity": "L1",
+      "matrix_status_accurate": true,
+      "coverage_percent": 5,
+      "checker_name": null,
+      "checker_location": null,
+      "test_name": null,
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "call_engine.py:1363-1400 \u2014 _validate_trade Layer 3 risk gates (code branch)"
+      ],
+      "bypass_code_paths": [
+        "call_engine.py:1269+ \u2014 models/fusion run before risk validation",
+        "signals.py \u2014 no immutable risk policy object"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "skip _validate_trade path on alternate routes",
+          "difficulty": "unknown",
+          "audit_event_generated": false,
+          "classification": "unacceptable"
+        },
+        {
+          "vector": "ED_* environment variable change + server restart",
+          "difficulty": "easy",
+          "audit_event_generated": false,
+          "classification": "intentional_dev_unacceptable_without_config_manifest"
+        }
+      ],
+      "audit_artifact": null,
+      "enforcement_surface": {
+        "build_time": false,
+        "deploy_time": false,
+        "runtime": true,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "signed risk policy objects",
+        "proof model cannot override risk on all trade-impacting routes",
+        "risk policy versioning"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "governance/V3_CONFORMANCE_AUDIT.md \u2014 I-13 DOES_NOT_CONFORM_NEW_GAP",
+        "call_engine.py:1405-1409 \u2014 trade_valid requires risk_valid but not proven universal"
+      ],
+      "severity_rationale": "Risk must supersede model \u2014 institutional ordering requirement."
+    },
+    {
+      "control_id": "I-24",
+      "title": "Four-eyes review",
+      "matrix_claimed_status": "NOT_IMPLEMENTED",
+      "validated_maturity": "L0",
+      "matrix_status_accurate": true,
+      "coverage_percent": 0,
+      "checker_name": null,
+      "checker_location": null,
+      "test_name": null,
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [],
+      "bypass_code_paths": [
+        ".github/CODEOWNERS \u2014 review request only if branch protection enabled"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "single actor commit + merge",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "unacceptable"
+        },
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": null,
+      "enforcement_surface": {
+        "build_time": false,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "required independent approver on promotion/risk/schema/override changes"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        ".github/CODEOWNERS:36-41 \u2014 AGENTS/governance owned but protection not in-repo"
+      ],
+      "severity_rationale": "Material control changes require independent review."
+    },
+    {
+      "control_id": "I-25",
+      "title": "Release governance",
+      "matrix_claimed_status": "NOT_IMPLEMENTED",
+      "validated_maturity": "L0",
+      "matrix_status_accurate": true,
+      "coverage_percent": 0,
+      "checker_name": null,
+      "checker_location": null,
+      "test_name": null,
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "GET /api/build git_sha \u2014 runtime tip indicator only"
+      ],
+      "bypass_code_paths": [
+        "undefined release artifact \u2014 commit != release"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "deploy unlabeled git tip",
+          "difficulty": "easy",
+          "audit_event_generated": false,
+          "classification": "unacceptable"
+        }
+      ],
+      "audit_artifact": null,
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": true,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "versioned release manifest",
+        "artifact hash bundle",
+        "approval record",
+        "rollback pointer"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "PROMOTION_POLICY.md:1-4 marked historical not authoritative"
+      ],
+      "severity_rationale": "Controlled change identity \u2014 precedes DR."
+    },
+    {
+      "control_id": "I-22",
+      "title": "Configuration governance",
+      "matrix_claimed_status": "NOT_IMPLEMENTED",
+      "validated_maturity": "L1",
+      "matrix_status_accurate": true,
+      "coverage_percent": 8,
+      "checker_name": null,
+      "checker_location": null,
+      "test_name": "tests/test_governance_consolidation.py::test_config_py_has_no_hardcoded_api_secrets",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "docs/host/ENVIRONMENT_VARIABLES.md \u2014 documentation only"
+      ],
+      "bypass_code_paths": [
+        "any ED_* change at runtime without commit"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "ED_* environment variable change + server restart",
+          "difficulty": "easy",
+          "audit_event_generated": false,
+          "classification": "intentional_dev_unacceptable_without_config_manifest"
+        }
+      ],
+      "audit_artifact": null,
+      "enforcement_surface": {
+        "build_time": false,
+        "deploy_time": false,
+        "runtime": true,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "config manifest pinned to release",
+        "drift detection",
+        "immutable config audit"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "docs/host/ENVIRONMENT_VARIABLES.md \u2014 39+ ED_* vars, no manifest lock"
+      ],
+      "severity_rationale": "Shadow release channel via environment."
+    },
+    {
+      "control_id": "I-30",
+      "title": "Override accountability",
+      "matrix_claimed_status": "NOT_IMPLEMENTED",
+      "validated_maturity": "L1",
+      "matrix_status_accurate": true,
+      "coverage_percent": 10,
+      "checker_name": null,
+      "checker_location": null,
+      "test_name": null,
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "signals.py:184-185 \u2014 _pred_override_allowed env gate"
+      ],
+      "bypass_code_paths": [
+        "server.py POST /api/prediction/override when ED_CONSOLE_ALLOW_PRED_OVERRIDE=1",
+        "governance/TRADE_IMPACTING_ROUTE_INVENTORY.md:R-017"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "ED_* environment variable change + server restart",
+          "difficulty": "easy",
+          "audit_event_generated": false,
+          "classification": "intentional_dev_unacceptable_without_config_manifest"
+        },
+        {
+          "vector": "override in memory without append-only audit",
+          "difficulty": "easy",
+          "audit_event_generated": false,
+          "classification": "unacceptable"
+        }
+      ],
+      "audit_artifact": null,
+      "enforcement_surface": {
+        "build_time": false,
+        "deploy_time": false,
+        "runtime": true,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "append-only override event linked to Decision ID"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "signals.py:184-185",
+        "docs/host/ENVIRONMENT_VARIABLES.md:31"
+      ],
+      "severity_rationale": "Human override must be reconstructable."
+    },
+    {
+      "control_id": "I-21",
+      "title": "Data lineage integrity",
+      "matrix_claimed_status": "NOT_IMPLEMENTED",
+      "validated_maturity": "L1",
+      "matrix_status_accurate": true,
+      "coverage_percent": 12,
+      "checker_name": null,
+      "checker_location": null,
+      "test_name": "tests/test_arch_competition_eval_runner.py (eval row alignment partial)",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "arch_competition/lineage.py \u2014 partial eval alignment"
+      ],
+      "bypass_code_paths": [
+        "no end-to-end lineage ID on production decision"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": null,
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "immutable lineage graph",
+        "feature contract version on every decision"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "Depends on I-31 \u2014 no decision key to attach lineage"
+      ],
+      "severity_rationale": "Cannot audit without lineage chain."
+    },
+    {
+      "control_id": "I-26",
+      "title": "Disaster recovery objectives",
+      "matrix_claimed_status": "NOT_IMPLEMENTED",
+      "validated_maturity": "L0",
+      "matrix_status_accurate": true,
+      "coverage_percent": 0,
+      "checker_name": null,
+      "checker_location": null,
+      "test_name": null,
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [],
+      "bypass_code_paths": [],
+      "bypass_vectors": [
+        {
+          "vector": "no RTO/RPO defined",
+          "difficulty": "n/a",
+          "audit_event_generated": false,
+          "classification": "unacceptable"
+        }
+      ],
+      "audit_artifact": null,
+      "enforcement_surface": {
+        "build_time": false,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "RTO/RPO on release artifact",
+        "game-day proof"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "No DR objective doc with measurable targets in enforcement path"
+      ],
+      "severity_rationale": "Requires I-25 release definition first."
+    },
+    {
+      "control_id": "I-01",
+      "title": "No silent substitution / undeclared degradation",
+      "matrix_claimed_status": "PARTIALLY_ENFORCED",
+      "validated_maturity": "L3",
+      "matrix_status_accurate": false,
+      "coverage_percent": 35,
+      "checker_name": "check_fusion_only_card_contract",
+      "checker_location": "tools/check_fix_everything_we_touch.py:2638",
+      "test_name": "tests/test_check_fix_everything_we_touch.py::test_fusion_only_card_contract_passes_on_current_repo",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "tools/check_fix_everything_we_touch.py:2638 \u2014 marker/banned-pattern scan",
+        "prediction_engine.py \u2014 runtime withhold paths",
+        "bayesian_fusion.py \u2014 default blend 0.0"
+      ],
+      "bypass_code_paths": [
+        "git commit --no-verify",
+        "runtime ED_* blend env if reintroduced"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": "pre-commit stdout",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": true,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [
+        "tests/test_prediction_engine_chunk1_fail_closed.py::test_overlay_withholds_product_triplets_when_fusion_missing"
+      ],
+      "uncovered_invariant_portions": [
+        "all silent-default patterns repo-wide",
+        "all degradation paths outside fusion cards",
+        "runtime env override of blend weights"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "Checker verifies string markers exist \u2014 not behavioral proof on live server",
+        "Meta-test only asserts checker==[] on current repo"
+      ],
+      "severity_rationale": "Silent degradation on live cards corrupts operator decisions."
+    },
+    {
+      "control_id": "I-02",
+      "title": "Single promotion authority",
+      "matrix_claimed_status": "PARTIALLY_ENFORCED",
+      "validated_maturity": "L3",
+      "matrix_status_accurate": true,
+      "coverage_percent": 55,
+      "checker_name": null,
+      "checker_location": "arch_competition/promotion_execution.py",
+      "test_name": "tests/test_arch_competition_auto_promote.py",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "arch_competition/promotion_execution.py::execute_promotion_if_eligible",
+        "arch_competition/promotion_execution.py::assert_active_writes_use_governed_executor"
+      ],
+      "bypass_code_paths": [
+        "manual copy into models/active/",
+        "ED_DISABLE_AUTO_PROMOTE=1"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        },
+        {
+          "vector": "manual filesystem copy to models/active/",
+          "difficulty": "easy",
+          "audit_event_generated": false,
+          "classification": "unacceptable"
+        },
+        {
+          "vector": "ED_DISABLE_AUTO_PROMOTE=1",
+          "difficulty": "easy",
+          "audit_event_generated": false,
+          "classification": "intentional"
+        }
+      ],
+      "audit_artifact": "models/training_report.jsonl",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": true,
+        "runtime": true,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [
+        "tests/test_arch_competition_auto_promote.py::test_reconcile_write_outside_governed_scope_raises"
+      ],
+      "uncovered_invariant_portions": [
+        "manual promotion without executor",
+        "four-eyes on promotion"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "tests/test_arch_competition_auto_promote.py \u2014 strong unit tests; no bypass detection test"
+      ],
+      "severity_rationale": "Wrong model in production is high blast-radius."
+    },
+    {
+      "control_id": "I-05",
+      "title": "Train-serve feature identity",
+      "matrix_claimed_status": "PARTIALLY_ENFORCED",
+      "validated_maturity": "L2",
+      "matrix_status_accurate": true,
+      "coverage_percent": 40,
+      "checker_name": "check_encoder_cone_mechanical_lock",
+      "checker_location": "tools/check_fix_everything_we_touch.py:3237",
+      "test_name": "tests/test_ml_feature_schema_parity.py",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "tools/check_encoder_cone_tests.py \u2014 encoder cone pytest on staged paths",
+        "feature_contracts.py registries"
+      ],
+      "bypass_code_paths": [
+        "train with different feature set than serve if artifacts manually swapped"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": "encoder cone pytest output",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": true,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [
+        "tests/test_ml_feature_schema_parity.py \u2014 schema parity"
+      ],
+      "uncovered_invariant_portions": [
+        "live artifact swap without re-train",
+        "wire row drift at runtime"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "check_encoder_cone_mechanical_lock checks tool exists + AGENTS markers"
+      ],
+      "severity_rationale": "Feature skew breaks model validity silently."
+    },
+    {
+      "control_id": "I-07",
+      "title": "No orphan paths",
+      "matrix_claimed_status": "PARTIALLY_ENFORCED",
+      "validated_maturity": "L3",
+      "matrix_status_accurate": true,
+      "coverage_percent": 45,
+      "checker_name": "check_storage_writer_has_consumer",
+      "checker_location": "tools/check_fix_everything_we_touch.py",
+      "test_name": "tests/test_check_fix_everything_we_touch.py",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "tools/check_fix_everything_we_touch.py \u2014 INSERT without consumer blocks commit",
+        "tools/audit_persistence_consumers.py \u2014 persistence map"
+      ],
+      "bypass_code_paths": [
+        "writer added outside db.py pattern",
+        "REAL-GATE tracked dormancy"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": "governance/artifacts/persistence_consumer_map.json",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "orphan API endpoints",
+        "orphan model paths",
+        "orphan env flags"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "Lock is pre-commit on db.py INSERT pattern only"
+      ],
+      "severity_rationale": "Dormant persistence misleads operators."
+    },
+    {
+      "control_id": "I-15",
+      "title": "Tuple health before trade impact",
+      "matrix_claimed_status": "PARTIALLY_ENFORCED",
+      "validated_maturity": "L2",
+      "matrix_status_accurate": true,
+      "coverage_percent": 30,
+      "checker_name": "check_institutional_contract",
+      "checker_location": "tools/check_fix_everything_we_touch.py",
+      "test_name": "tests/test_issue18_ui_contract.py; tools/live_diag_compare.py",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "tools/check_institutional_contract \u2014 UI/API contract markers",
+        "tools/live_diag_compare.py \u2014 manual runtime compare"
+      ],
+      "bypass_code_paths": [
+        "deploy without running live_diag",
+        "stale server process"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        },
+        {
+          "vector": "skip live_diag before claims",
+          "difficulty": "easy",
+          "audit_event_generated": false,
+          "classification": "tolerated"
+        }
+      ],
+      "audit_artifact": "live_diag_compare output (manual)",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": true,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [
+        "tests/test_issue18_ui_contract.py"
+      ],
+      "uncovered_invariant_portions": [
+        "continuous runtime tuple health monitor",
+        "automatic block on divergence"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "Checker is static marker scan; live_diag is manual operator tool"
+      ],
+      "severity_rationale": "UI/API divergence misleads trading decisions."
+    },
+    {
+      "control_id": "I-17",
+      "title": "Deterministic inference",
+      "matrix_claimed_status": "PARTIALLY_ENFORCED",
+      "validated_maturity": "L2",
+      "matrix_status_accurate": true,
+      "coverage_percent": 25,
+      "checker_name": null,
+      "checker_location": null,
+      "test_name": "tests/test_ml_predict_fail_closed.py",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "ml_predict.py fail-closed triplet helpers"
+      ],
+      "bypass_code_paths": [
+        "nondeterministic GPU/threading at runtime not gated"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": null,
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": true,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [
+        "tests/test_ml_predict_fail_closed.py"
+      ],
+      "uncovered_invariant_portions": [
+        "full-stack deterministic replay proof",
+        "MC stochastic seed governance"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [],
+      "severity_rationale": "Nondeterministic live output breaks audit replay."
+    },
+    {
+      "control_id": "I-19",
+      "title": "Clock synchronization health",
+      "matrix_claimed_status": "PARTIALLY_ENFORCED",
+      "validated_maturity": "L2",
+      "matrix_status_accurate": true,
+      "coverage_percent": 20,
+      "checker_name": "check_institutional_contract",
+      "checker_location": "tools/check_fix_everything_we_touch.py",
+      "test_name": "tests/test_batch2_analytics_bg_fail_counter.py",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "time_et.py \u2014 ET clock policy",
+        "tests for analytics stale semantics"
+      ],
+      "bypass_code_paths": [
+        "host clock drift at runtime"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": null,
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": true,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "NTP health gate",
+        "future timestamp rejection on trade path"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [],
+      "severity_rationale": "Clock skew breaks causal ordering."
+    },
+    {
+      "control_id": "I-20",
+      "title": "Dependency pinning in serving path",
+      "matrix_claimed_status": "PARTIALLY_ENFORCED",
+      "validated_maturity": "L1",
+      "matrix_status_accurate": true,
+      "coverage_percent": 15,
+      "checker_name": null,
+      "checker_location": null,
+      "test_name": null,
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "requirements.txt"
+      ],
+      "bypass_code_paths": [
+        "pip install unpinned package on host"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "host venv drift",
+          "difficulty": "easy",
+          "audit_event_generated": false,
+          "classification": "unacceptable"
+        }
+      ],
+      "audit_artifact": null,
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": true,
+        "runtime": true,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "lockfile hash in release manifest",
+        "serving path import audit"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [],
+      "severity_rationale": "Dependency drift changes inference behavior."
+    },
+    {
+      "control_id": "PL-FUSION-CARDS",
+      "title": "Fusion-only horizon cards",
+      "matrix_claimed_status": "ENFORCED",
+      "validated_maturity": "L3",
+      "matrix_status_accurate": false,
+      "coverage_percent": 28,
+      "checker_name": "check_fusion_only_card_contract",
+      "checker_location": "tools/check_fix_everything_we_touch.py:2638",
+      "test_name": "tests/test_check_fix_everything_we_touch.py::test_fusion_only_card_contract_passes_on_current_repo",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "tools/check_fix_everything_we_touch.py:2638 \u2014 pre-commit static lock"
+      ],
+      "bypass_code_paths": [
+        "git commit --no-verify",
+        "runtime bypass outside checker scope"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": "pre-commit stdout + CI hardening.yml",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "runtime enforcement",
+        "bypass detection tests",
+        "tamper-resistant governance"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "Marker scan only \u2014 see I-01"
+      ],
+      "severity_rationale": "Product law \u2014 high impact if violated in production."
+    },
+    {
+      "control_id": "PL-FULL-STACK",
+      "title": "Seven-model full stack",
+      "matrix_claimed_status": "ENFORCED",
+      "validated_maturity": "L3",
+      "matrix_status_accurate": false,
+      "coverage_percent": 35,
+      "checker_name": "check_full_stack_models_contract",
+      "checker_location": "tools/check_fix_everything_we_touch.py",
+      "test_name": "tests/test_ml_feature_schema_parity.py::test_full_stack_models_contract",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "tools/check_fix_everything_we_touch.py \u2014 pre-commit static lock"
+      ],
+      "bypass_code_paths": [
+        "git commit --no-verify",
+        "runtime bypass outside checker scope"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": "pre-commit stdout + CI hardening.yml",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "runtime enforcement",
+        "bypass detection tests",
+        "tamper-resistant governance"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "Checks vocabulary/markers \u2014 not runtime 7-layer availability"
+      ],
+      "severity_rationale": "Product law \u2014 high impact if violated in production."
+    },
+    {
+      "control_id": "PL-ZERO-BIAS",
+      "title": "ZERO-BIAS ablation placement",
+      "matrix_claimed_status": "ENFORCED",
+      "validated_maturity": "L3",
+      "matrix_status_accurate": false,
+      "coverage_percent": 50,
+      "checker_name": "check_zero_bias_ablation_contract",
+      "checker_location": "tools/check_fix_everything_we_touch.py",
+      "test_name": "tests/test_check_fix_everything_we_touch.py::test_zero_bias_ablation_contract",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "tools/check_fix_everything_we_touch.py \u2014 pre-commit static lock"
+      ],
+      "bypass_code_paths": [
+        "git commit --no-verify",
+        "runtime bypass outside checker scope"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": "pre-commit stdout + CI hardening.yml",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "runtime enforcement",
+        "bypass detection tests",
+        "tamper-resistant governance"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "Strong static bias detector; runtime ablation env can bypass spirit"
+      ],
+      "severity_rationale": "Product law \u2014 high impact if violated in production."
+    },
+    {
+      "control_id": "PL-ABLATION-GRID",
+      "title": "7x4 ablation grid",
+      "matrix_claimed_status": "ENFORCED",
+      "validated_maturity": "L3",
+      "matrix_status_accurate": false,
+      "coverage_percent": 45,
+      "checker_name": "check_ablation_seven_model_four_horizon_grid",
+      "checker_location": "tools/check_fix_everything_we_touch.py",
+      "test_name": "tests/test_check_fix_everything_we_touch.py::test_ablation_grid_requires_all_seven_models_and_four_horizons",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "tools/check_fix_everything_we_touch.py \u2014 pre-commit static lock"
+      ],
+      "bypass_code_paths": [
+        "git commit --no-verify",
+        "runtime bypass outside checker scope"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": "pre-commit stdout + CI hardening.yml",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "runtime enforcement",
+        "bypass detection tests",
+        "tamper-resistant governance"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "Grid contract in code/docs; scored run coverage separate"
+      ],
+      "severity_rationale": "Product law \u2014 high impact if violated in production."
+    },
+    {
+      "control_id": "PL-PROMOTION",
+      "title": "Single promotion authority",
+      "matrix_claimed_status": "ENFORCED",
+      "validated_maturity": "L3",
+      "matrix_status_accurate": false,
+      "coverage_percent": 55,
+      "checker_name": null,
+      "checker_location": "arch_competition/promotion_execution.py",
+      "test_name": "tests/test_arch_competition_auto_promote.py",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "arch_competition/promotion_execution.py \u2014 pre-commit static lock"
+      ],
+      "bypass_code_paths": [
+        "git commit --no-verify",
+        "runtime bypass outside checker scope"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": "pre-commit stdout + CI hardening.yml",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "runtime enforcement",
+        "bypass detection tests",
+        "tamper-resistant governance"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "Same as I-02"
+      ],
+      "severity_rationale": "Product law \u2014 high impact if violated in production."
+    },
+    {
+      "control_id": "PL-TRAINING-ROSTER",
+      "title": "Training anchor roster",
+      "matrix_claimed_status": "ENFORCED",
+      "validated_maturity": "L3",
+      "matrix_status_accurate": false,
+      "coverage_percent": 60,
+      "checker_name": "check_training_anchor_roster_contract",
+      "checker_location": "tools/check_fix_everything_we_touch.py",
+      "test_name": "tests/test_scheduler_user_tickers_return_type.py",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "tools/check_fix_everything_we_touch.py \u2014 pre-commit static lock"
+      ],
+      "bypass_code_paths": [
+        "git commit --no-verify",
+        "runtime bypass outside checker scope"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": "pre-commit stdout + CI hardening.yml",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "runtime enforcement",
+        "bypass detection tests",
+        "tamper-resistant governance"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "ED_ML_SCHEDULER_TRAINING_EXPAND=1 bypasses anchor-only default"
+      ],
+      "severity_rationale": "Product law \u2014 high impact if violated in production."
+    },
+    {
+      "control_id": "PL-SCHWAB-CSV",
+      "title": "Schwab CSV-first new sites",
+      "matrix_claimed_status": "ENFORCED",
+      "validated_maturity": "L3",
+      "matrix_status_accurate": false,
+      "coverage_percent": 40,
+      "checker_name": "external:tools/check_schwab_csv_first.py",
+      "checker_location": "tools/check_schwab_csv_first.py",
+      "test_name": "tests/test_check_schwab_csv_first.py",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "tools/check_schwab_csv_first.py \u2014 pre-commit static lock"
+      ],
+      "bypass_code_paths": [
+        "git commit --no-verify",
+        "runtime bypass outside checker scope"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": "pre-commit stdout + CI hardening.yml",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "runtime enforcement",
+        "bypass detection tests",
+        "tamper-resistant governance"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "CI diff-emission on PR; local --no-verify bypass"
+      ],
+      "severity_rationale": "Product law \u2014 high impact if violated in production."
+    },
+    {
+      "control_id": "PL-UPFRONT-GATE",
+      "title": "Tier 0 upfront mechanical gate",
+      "matrix_claimed_status": "ENFORCED",
+      "validated_maturity": "L3",
+      "matrix_status_accurate": false,
+      "coverage_percent": 55,
+      "checker_name": "check_upfront_mechanical_gate_stamp",
+      "checker_location": "tools/check_fix_everything_we_touch.py:3408",
+      "test_name": "tests/test_governance_consolidation.py::test_upfront_mechanical_gate_stamp",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "tools/check_fix_everything_we_touch.py:3408 \u2014 pre-commit static lock"
+      ],
+      "bypass_code_paths": [
+        "git commit --no-verify",
+        "runtime bypass outside checker scope"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": "pre-commit stdout + CI hardening.yml",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "runtime enforcement",
+        "bypass detection tests",
+        "tamper-resistant governance"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "Stamp skipped via --no-verify; tests stamp mechanics not full static run"
+      ],
+      "severity_rationale": "Product law \u2014 high impact if violated in production."
+    },
+    {
+      "control_id": "PL-SIGNOFF",
+      "title": "Institutional sign-off ladder",
+      "matrix_claimed_status": "ENFORCED",
+      "validated_maturity": "L3",
+      "matrix_status_accurate": false,
+      "coverage_percent": 40,
+      "checker_name": "check_institutional_signoff_contract",
+      "checker_location": "tools/check_fix_everything_we_touch.py:3497",
+      "test_name": "tests/test_governance_consolidation.py::test_institutional_signoff_contract",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "tools/check_fix_everything_we_touch.py:3497 \u2014 pre-commit static lock"
+      ],
+      "bypass_code_paths": [
+        "git commit --no-verify",
+        "runtime bypass outside checker scope"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": "pre-commit stdout + CI hardening.yml",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "runtime enforcement",
+        "bypass detection tests",
+        "tamper-resistant governance"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "Prose/docs wiring check; chat not scanned"
+      ],
+      "severity_rationale": "Product law \u2014 high impact if violated in production."
+    },
+    {
+      "control_id": "PL-NO-DEFERRAL",
+      "title": "No deferral without REAL-GATE",
+      "matrix_claimed_status": "ENFORCED",
+      "validated_maturity": "L3",
+      "matrix_status_accurate": false,
+      "coverage_percent": 50,
+      "checker_name": "external:tools/check_no_deferral_language.py",
+      "checker_location": "tools/check_no_deferral_language.py",
+      "test_name": "tests/test_check_no_deferral_language.py",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "tools/check_no_deferral_language.py \u2014 pre-commit static lock"
+      ],
+      "bypass_code_paths": [
+        "git commit --no-verify",
+        "runtime bypass outside checker scope"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": "pre-commit stdout + CI hardening.yml",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "runtime enforcement",
+        "bypass detection tests",
+        "tamper-resistant governance"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "Regex surface scan; omission not caught"
+      ],
+      "severity_rationale": "Product law \u2014 high impact if violated in production."
+    },
+    {
+      "control_id": "PL-STORAGE-CONSUMER",
+      "title": "Storage needs consumer",
+      "matrix_claimed_status": "ENFORCED",
+      "validated_maturity": "L3",
+      "matrix_status_accurate": false,
+      "coverage_percent": 55,
+      "checker_name": "check_storage_writer_has_consumer",
+      "checker_location": "tools/check_fix_everything_we_touch.py",
+      "test_name": "tests/test_check_fix_everything_we_touch.py",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "tools/check_fix_everything_we_touch.py \u2014 pre-commit static lock"
+      ],
+      "bypass_code_paths": [
+        "git commit --no-verify",
+        "runtime bypass outside checker scope"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": "pre-commit stdout + CI hardening.yml",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "runtime enforcement",
+        "bypass detection tests",
+        "tamper-resistant governance"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "Same as I-07"
+      ],
+      "severity_rationale": "Product law \u2014 high impact if violated in production."
+    },
+    {
+      "control_id": "PL-REGISTRY",
+      "title": "Mandatory enforcement registry",
+      "matrix_claimed_status": "ENFORCED",
+      "validated_maturity": "L3",
+      "matrix_status_accurate": false,
+      "coverage_percent": 35,
+      "checker_name": "check_mandatory_enforcement_registry",
+      "checker_location": "tools/check_fix_everything_we_touch.py",
+      "test_name": "tests/test_check_fix_everything_we_touch.py::test_mandatory_enforcement_registry_passes_on_current_repo",
+      "bypass_detection_test": null,
+      "enforcement_code_paths": [
+        "tools/check_fix_everything_we_touch.py \u2014 pre-commit static lock"
+      ],
+      "bypass_code_paths": [
+        "git commit --no-verify",
+        "runtime bypass outside checker scope"
+      ],
+      "bypass_vectors": [
+        {
+          "vector": "git commit --no-verify",
+          "difficulty": "trivial",
+          "audit_event_generated": false,
+          "classification": "tolerated_dev_unacceptable_institutional"
+        }
+      ],
+      "audit_artifact": "pre-commit stdout + CI hardening.yml",
+      "enforcement_surface": {
+        "build_time": true,
+        "deploy_time": false,
+        "runtime": false,
+        "postmortem": false
+      },
+      "adversarial_test_suite": [],
+      "uncovered_invariant_portions": [
+        "runtime enforcement",
+        "bypass detection tests",
+        "tamper-resistant governance"
+      ],
+      "last_validation_date": "2026-06-15",
+      "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
+      "evidence": [
+        "Registry checks lock existence \u2014 not lock correctness vs invariant"
+      ],
+      "severity_rationale": "Product law \u2014 high impact if violated in production."
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+name: Objective Audit
+
+# Phase 3D — external enforcement specification. Required checks for governance,
+# adversarial, decision reconstruction, and agent preload contract.
+# GitHub branch protection must require this workflow — not proven from repo alone.
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  objective-audit:
+    name: objective-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python -m pip install -r requirements.txt
+
+      - name: Objective audit (repo-wide static + situational runtime)
+        env:
+          CI: "true"
+          ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
+        run: python tools/enforce_all_rules.py --objective-audit
+
+      - name: Adversarial tests
+        run: python -m pytest tests/adversarial/ -q
+
+      - name: Decision reconstruction and governance tests
+        run: python -m pytest tests/decision_reconstruction/ tests/release_object/ tests/test_governance_consolidation.py -q
+
+      - name: Agent preload contract tests
+        run: python -m pytest tests/test_agent_preload_contract.py -q
+
+      - name: Agent preload contract checker
+        run: python tools/check_agent_preload_contract.py
+
+      - name: Phase 3D external enforcement checkers
+        run: |
+          python -m pytest tests/test_branch_protection_proof.py tests/test_required_status_checks.py tests/test_governance_critical_files.py tests/test_no_verify_resistance.py tests/test_governance_self_protection.py tests/test_remote_enforcement_evidence.py -q

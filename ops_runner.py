@@ -13,7 +13,7 @@ import os
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent

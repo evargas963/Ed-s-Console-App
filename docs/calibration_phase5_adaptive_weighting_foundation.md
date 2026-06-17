@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/calibration_phase5_adaptive_weighting_foundation.md`.
+
 # Phase 5 — Adaptive weighting foundation (evidence + future framework)
 
 ## Purpose

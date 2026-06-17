@@ -27,19 +27,38 @@ from typing import Any, Optional
 from lifecycle_rule_core import SameBarResolution, fire_exit, resolve_same_bar_conflict
 from market_state import recommend_option_expression
 from math_levels import WallsRow, TotalsRow
+from numeric_contract import float_finite_or_none
+from replay_bundle_coverage import REPLAY_BUNDLE_MIN_JSON_LENGTH
+from replay_hold_bars import (
+    replay_max_hold_bars_from_context,
+    resolve_replay_max_hold_bars_for_payload,
+)
 from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
 
 log = logging.getLogger(__name__)
 
-OPTION_MULTIPLIER = 100
+# STACK-WIRE-6b FIND-WIRE6-3: per-contract multiplier is derived from the
+# Schwab leaf ``chains.callExpDateMap.*.multiplier`` / ``putExpDateMap.*.multiplier``
+# via ``_contract_multiplier``. Modern captures include the leaf; legacy archived
+# snapshot rows (pre-multiplier-emission date) fall back to LEGACY_CHAIN_MULTIPLIER_DEFAULT
+# per GOVERNED_EXCEPTION O-54 (interim — sunset when legacy snapshots backfilled or aged out).
 DEFAULT_CONTRACTS = 1
+LEGACY_CHAIN_MULTIPLIER_DEFAULT: int = 100  # GOVERNED_EXCEPTION O-54 — see OPERATOR_DECISION_REGISTER.md
+
+# STACK-WIRE-6b FIND-WIRE6-4: strike-match tolerances.
+STRIKE_MATCH_TOL_PENNY: float = 0.011  # strike-to-strike row match (sub-penny float drift)
+STRIKE_MATCH_TOL_NICKEL: float = 0.02  # expression / alternate-strike comparisons (wider band)
+
+# STACK-WIRE-6b FIND-WIRE6-6: artifact ring-buffer retention limits.
+CHAIN_QUALITY_AUDIT_MAX_RECORDS: int = 5000
+CHAIN_DEBUG_MAX_RECORDS: int = 200
 
 PRICING_ENTRY_RULE = "entry_price = ask (debit to open long option)"
 PRICING_EXIT_RULE = "exit_price = bid (credit to close long option)"
 EXIT_RULE_DOC = (
     "Underlying path vs snapshot rules_stop/rules_target on forward 1m OHLC; "
     "if neither hits within replay_max_hold_bars → time_expiry (bars from Call card via "
-    "call_engine.replay_max_hold_bars_for_setup, stored in replay_context_json). "
+    "replay_hold_bars.replay_max_hold_bars_for_setup, stored in replay_context_json). "
     "Same-bar stop+target: candle_open/close body-direction ordering when available; "
     "else conservative stop-first. Option priced bid/ask at exit/entry bar."
 )
@@ -93,25 +112,11 @@ _COARSE_BUCKETS = (
     "no_option_chain_archive",
     "no_exit_snapshot",
     "missing_bid_ask",
+    "missing_multiplier",
     "no_contract_selected",
     "missing_replay_context",
     "other",
 )
-
-
-def replay_max_hold_bars_for_trade_type(trade_type: str | None) -> int:
-    t = (trade_type or "").strip().lower()
-    if t == "trend_continuation":
-        return 60
-    if t == "breakout":
-        return 15
-    if t == "reversal":
-        return 20
-    if t in ("fade", "mean_reversion"):
-        return 30
-    if t == "none":
-        return 20
-    return 30
 
 
 def trade_log_path_for_architecture(architecture_type: str) -> Path:
@@ -182,17 +187,10 @@ def build_replay_context_payload(
             total_dicts.append(asdict(t))
         elif isinstance(t, dict):
             total_dicts.append(t)
-    hold_fb = replay_max_hold_bars_for_trade_type(trade_type)
-    try:
-        live = int(replay_max_hold_bars_live) if replay_max_hold_bars_live is not None else None
-    except (TypeError, ValueError):
-        live = None
-    if live is not None and live > 0:
-        hold_resolved = live
-        hold_src = "call_card"
-    else:
-        hold_resolved = hold_fb
-        hold_src = "trade_type_fallback"
+    hold_resolved, hold_src, hold_fb = resolve_replay_max_hold_bars_for_payload(
+        trade_type=trade_type,
+        replay_max_hold_bars_live=replay_max_hold_bars_live,
+    )
     payload = {
         "version": 1,
         "walls": wall_dicts,
@@ -228,12 +226,35 @@ def build_replay_context_payload(
 
 
 def _f(v) -> Optional[float]:
-    if v is None:
+    return float_finite_or_none(v)
+
+
+def _contract_multiplier(ct: dict) -> Optional[int]:
+    """Read Schwab ``chains.*.multiplier`` leaf from a chain row (FIND-WIRE6-3).
+
+    Three outcomes per GOVERNED_EXCEPTION O-54:
+    - Leaf present + valid: return the int (Schwab authority — equity 100, mini 10, etc.).
+    - Leaf ABSENT (key not in row or None): return ``LEGACY_CHAIN_MULTIPLIER_DEFAULT`` (= 100).
+      Archived snapshot capture predates the multiplier-emission upgrade; ~50% of historical
+      ``option_chain_json`` rows lack the field. Standard equity options use 100.
+    - Leaf present but INVALID (non-numeric, zero, negative): return None — fail-closed on
+      data corruption, NOT on legacy absence. Caller skips the row.
+
+    Modern (post-leaf-emission) captures use the Schwab leaf directly. Going-forward snapshot
+    captures MUST preserve the leaf via ``serialize_option_chain_for_eval``.
+    """
+    if not isinstance(ct, dict):
         return None
+    if "multiplier" not in ct or ct["multiplier"] is None:
+        return LEGACY_CHAIN_MULTIPLIER_DEFAULT  # O-54 legacy fallback
+    raw = ct["multiplier"]
     try:
-        return float(v)
+        n = int(float(raw))
     except (TypeError, ValueError):
-        return None
+        return None  # invalid (corrupt data) — fail-closed
+    if n <= 0:
+        return None  # invalid (non-positive) — fail-closed
+    return n
 
 
 def _walls_from_replay(obj: dict) -> list[WallsRow] | None:
@@ -282,7 +303,7 @@ def _find_contract_row(chain: list[dict], *, strike: float, put_call: str, symbo
         if str(ct.get("putCall") or "").upper().strip() != pc:
             continue
         sp = _f(ct.get("strikePrice"))
-        if sp is not None and abs(sp - float(strike)) < 0.011:
+        if sp is not None and abs(sp - float(strike)) < STRIKE_MATCH_TOL_PENNY:
             return dict(ct)
     return None
 
@@ -307,7 +328,7 @@ def _expressions_match_live(replay_expr: str, proof: dict | None) -> bool:
     a = _parse_expression(replay_expr)
     b = _parse_expression(str(live_e))
     if a and b:
-        return abs(a[0] - b[0]) < 0.02 and a[1] == b[1]
+        return abs(a[0] - b[0]) < STRIKE_MATCH_TOL_NICKEL and a[1] == b[1]
     return (replay_expr or "").strip().upper() == str(live_e).strip().upper()
 
 
@@ -387,7 +408,10 @@ def _contract_pnl_at_horizon(
     b = _f(ex.get("bid"))
     if a is None or a <= 0 or b is None:
         return None
-    return (b - a) * OPTION_MULTIPLIER * DEFAULT_CONTRACTS
+    mult = _contract_multiplier(en)
+    if mult is None:
+        return None  # fail-closed when Schwab multiplier leaf missing
+    return (b - a) * mult * DEFAULT_CONTRACTS
 
 
 def _chain_selection_quality_row(
@@ -408,15 +432,17 @@ def _chain_selection_quality_row(
     by_strike_score: dict[float, Any] = {}
     seen_strikes: set[float] = set()
     for row in (ranked_top5 or [])[:5]:
+        if row.get("strike") is None:
+            continue
         try:
-            sk = float(row.get("strike", 0))
+            sk = float(row["strike"])
         except (TypeError, ValueError):
             continue
         if sk in seen_strikes:
             continue
         seen_strikes.add(sk)
         by_strike_score[sk] = row.get("composite_score")
-        if abs(sk - float(selected_strike)) < 0.02:
+        if abs(sk - float(selected_strike)) < STRIKE_MATCH_TOL_NICKEL:
             by_strike_pnl[sk] = float(selected_pnl)
         else:
             by_strike_pnl[sk] = _contract_pnl_at_horizon(
@@ -433,7 +459,7 @@ def _chain_selection_quality_row(
     valid_pnl = {k: v for k, v in by_strike_pnl.items() if v is not None}
     alts_out: list[dict[str, Any]] = []
     for sk, sc in sorted(by_strike_score.items(), key=lambda x: float(x[0])):
-        if abs(sk - float(selected_strike)) < 0.02:
+        if abs(sk - float(selected_strike)) < STRIKE_MATCH_TOL_NICKEL:
             continue
         alts_out.append(
             {
@@ -456,22 +482,26 @@ def _chain_selection_quality_row(
         reverse=True,
     )
     rank_idx = next(
-        (i for i, x in enumerate(ordered_by_pnl) if abs(float(x[0]) - float(selected_strike)) < 0.02),
+        (i for i, x in enumerate(ordered_by_pnl) if abs(float(x[0]) - float(selected_strike)) < STRIKE_MATCH_TOL_NICKEL),
         99,
     )
 
-    score_sorted = sorted(by_strike_score.items(), key=lambda x: float(x[1] or 0), reverse=True)
-    best_score = float(score_sorted[0][1]) if score_sorted and score_sorted[0][1] is not None else None
+    score_sorted = sorted(
+        [(sk, float(sc)) for sk, sc in by_strike_score.items() if sc is not None],
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    best_score = score_sorted[0][1] if score_sorted else None
     sel_score = None
     for sk, sc in by_strike_score.items():
-        if abs(sk - float(selected_strike)) < 0.02:
+        if abs(sk - float(selected_strike)) < STRIKE_MATCH_TOL_NICKEL:
             try:
                 sel_score = float(sc) if sc is not None else None
             except (TypeError, ValueError):
                 sel_score = None
             break
 
-    n_alt_known = sum(1 for k in by_strike_pnl if abs(k - float(selected_strike)) >= 0.02 and by_strike_pnl[k] is not None)
+    n_alt_known = sum(1 for k in by_strike_pnl if abs(k - float(selected_strike)) >= STRIKE_MATCH_TOL_NICKEL and by_strike_pnl[k] is not None)
     selected_was_best = (
         bool(valid_pnl and global_best is not None and float(selected_pnl) + 1e-6 >= global_best)
         if n_alt_known > 0
@@ -515,12 +545,12 @@ def compute_replay_coverage_stats(
         f"""
         SELECT
           COUNT(*) AS n_all,
-          SUM(CASE WHEN replay_context_json IS NOT NULL AND length(replay_context_json) > 10
+          SUM(CASE WHEN replay_context_json IS NOT NULL AND length(replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
               THEN 1 ELSE 0 END) AS n_replay_ctx,
-          SUM(CASE WHEN option_chain_json IS NOT NULL AND length(option_chain_json) > 10
+          SUM(CASE WHEN option_chain_json IS NOT NULL AND length(option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
               THEN 1 ELSE 0 END) AS n_chain,
-          SUM(CASE WHEN replay_context_json IS NOT NULL AND length(replay_context_json) > 10
-               AND option_chain_json IS NOT NULL AND length(option_chain_json) > 10
+          SUM(CASE WHEN replay_context_json IS NOT NULL AND length(replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
+               AND option_chain_json IS NOT NULL AND length(option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
               THEN 1 ELSE 0 END) AS n_full
         FROM {table}
         WHERE {wh}
@@ -575,12 +605,17 @@ def _append_chain_quality_audit(entries: list[dict]) -> None:
     if CHAIN_QUALITY_JSON.is_file():
         try:
             cur = json.loads(CHAIN_QUALITY_JSON.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+            log.debug(
+                "CHAIN_QUALITY_JSON read/parse failed (%s) at %s — starting fresh",
+                e,
+                CHAIN_QUALITY_JSON,
+            )
             cur = []
     if not isinstance(cur, list):
         cur = []
     cur.extend(entries)
-    cur = cur[-5000:]
+    cur = cur[-CHAIN_QUALITY_AUDIT_MAX_RECORDS:]
     CHAIN_QUALITY_JSON.write_text(json.dumps(cur, indent=2, default=str), encoding="utf-8")
 
 
@@ -599,6 +634,8 @@ def _coarse_skip(reason: str) -> str:
         return "no_exit_snapshot"
     if reason in ("missing_entry_ask", "missing_exit_bid"):
         return "missing_bid_ask"
+    if reason == "missing_multiplier":
+        return "missing_multiplier"
     if reason in (
         "call_no_trade_or_wait",
         "parse_expression_failed",
@@ -609,6 +646,7 @@ def _coarse_skip(reason: str) -> str:
         return "no_contract_selected"
     if reason.startswith("missing_replay") or reason in (
         "missing_chain_selection_proof",
+        "missing_replay_max_hold_bars",
         "replay_context_invalid",
         "walls_deserialize_failed",
     ):
@@ -637,12 +675,17 @@ def _update_chain_debug_file(samples: list[dict]) -> None:
     if CHAIN_DEBUG_JSON.is_file():
         try:
             cur = json.loads(CHAIN_DEBUG_JSON.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+            log.debug(
+                "CHAIN_DEBUG_JSON read/parse failed (%s) at %s — starting fresh",
+                e,
+                CHAIN_DEBUG_JSON,
+            )
             cur = []
     if not isinstance(cur, list):
         cur = []
     cur.extend(samples)
-    cur = cur[-200:]
+    cur = cur[-CHAIN_DEBUG_MAX_RECORDS:]
     CHAIN_DEBUG_JSON.write_text(json.dumps(cur, indent=2, default=str), encoding="utf-8")
 
 
@@ -759,7 +802,7 @@ def evaluate_realized_contract_trades_for_rows(
             "entry_price": "",
             "exit_price": "",
             "contracts": DEFAULT_CONTRACTS,
-            "multiplier": OPTION_MULTIPLIER,
+            "multiplier": "",  # filled from Schwab chain leaf when entry_ct resolves; "" if skipped
             "pnl_dollars": "",
             "pnl_percent": "",
             "exit_reason": "",
@@ -810,13 +853,10 @@ def evaluate_realized_contract_trades_for_rows(
             skip("missing_chain_selection_proof")
             continue
 
-        try:
-            max_hold = int(replay_obj["replay_max_hold_bars"])
-        except (KeyError, TypeError, ValueError):
-            max_hold = 30
-        if max_hold < 1:
-            max_hold = 30
-        max_hold = min(max_hold, 390)
+        max_hold = replay_max_hold_bars_from_context(replay_obj)
+        if max_hold is None:
+            skip("missing_replay_max_hold_bars")
+            continue
 
         if not chain_raw:
             skip("no_option_chain_archive")
@@ -863,8 +903,15 @@ def evaluate_realized_contract_trades_for_rows(
         if entry_ask is None or entry_ask <= 0:
             skip("missing_entry_ask")
             continue
+        multiplier = _contract_multiplier(entry_ct)
+        if multiplier is None:
+            skip("missing_multiplier")
+            continue
 
-        bars = _forward_path_rows(conn, table, ticker, float(ts_utc), max_hold)
+        # Convert sqlite3.Row to dict at the boundary so downstream consumers (_simulate_exit
+        # → lifecycle_rule_core.fire_exit → _bar_value) get the dict-shape they declare.
+        # sqlite3.Row supports __getitem__ but not .get(), and _bar_value uses .get().
+        bars = [dict(r) for r in _forward_path_rows(conn, table, ticker, float(ts_utc), max_hold)]
         if not bars:
             skip("no_exit_snapshot")
             continue
@@ -916,11 +963,11 @@ def evaluate_realized_contract_trades_for_rows(
             skip("exit_contract_not_found")
             continue
         exit_bid = _f(exit_ct.get("bid"))
-        if exit_bid is None:
+        if exit_bid is None or exit_bid <= 0:
             skip("missing_exit_bid")
             continue
 
-        pnl_per_contract = (exit_bid - entry_ask) * OPTION_MULTIPLIER * DEFAULT_CONTRACTS
+        pnl_per_contract = (exit_bid - entry_ask) * multiplier * DEFAULT_CONTRACTS
         pnl_pct = ((exit_bid - entry_ask) / entry_ask) * 100.0 if entry_ask > 0 else None
 
         valid += 1
@@ -970,6 +1017,7 @@ def evaluate_realized_contract_trades_for_rows(
                 "contract_symbol": sym or "",
                 "entry_price": entry_ask,
                 "exit_price": exit_bid,
+                "multiplier": multiplier,
                 "pnl_dollars": round(pnl_per_contract, 4),
                 "pnl_percent": round(pnl_pct, 4) if pnl_pct is not None else "",
                 "exit_reason": exit_reason,
@@ -1096,7 +1144,12 @@ def save_eval_aggregate_merge(ticker: str, architecture_type: str, agg: dict[str
     if p.is_file():
         try:
             cur = json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+            log.debug(
+                "eval_aggregate JSON read/parse failed (%s) at %s — starting fresh",
+                e,
+                p,
+            )
             cur = {}
     by_t = cur.get("by_ticker")
     if not isinstance(by_t, dict):

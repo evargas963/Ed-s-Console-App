@@ -11,9 +11,9 @@ RULE 1: RTH data only (09:30-16:00 ET weekdays), TARGET label IS NOT NULL (per-h
 RULE 2: No gates — train if data exists, save always.
 """
 
-import os, sys, json, time, sqlite3, pickle, warnings, argparse, logging
+import sys, json, time, sqlite3, pickle, warnings, argparse, logging
 from pathlib import Path
-from typing import Optional, Set
+from typing import Any, Optional, Set
 import numpy as np
 import pandas as pd
 
@@ -34,6 +34,7 @@ from ml_horizon import (
     normalize_ml_horizon_slug,
     outcome_column,
 )
+from time_et import RTH_OPEN_MINS, RTH_SESSION_MINUTES
 
 TARGET_COL = DEFAULT_TRAINING_LABEL_COLUMN  # Default tabular label; training uses outcome_column(ml_horizon_slug).
 
@@ -133,20 +134,6 @@ WALL_DISTANCE_COLS = [
     "pin_width_pts",
 ]
 
-# m5_* additive columns merged as-of from canonical 1m snapshot rows only (attach_5m_additive_context)
-M5_WALL_DISTANCE_COLS = tuple(f"m5_{c}" for c in WALL_DISTANCE_COLS)
-M5_SCALE_INVARIANT_EXTRA = (
-    "m5_zone_since_bars_5m",
-    "m5_net_gamma",
-    "m5_net_delta",
-    "m5_charm_net",
-    "m5_iv_level",
-    "m5_put_call_oi_ratio",
-    "m5_spy_chg_pct",
-    "m5_qqq_chg_pct",
-    "m5_iwm_chg_pct",
-)
-
 SCALE_INVARIANT_COLS = [
     "net_gamma", "net_delta", "charm_net", "put_call_oi_ratio",
     "spy_chg_pct", "qqq_chg_pct", "iwm_chg_pct",
@@ -155,15 +142,30 @@ SCALE_INVARIANT_COLS = [
     "nvda_chg_pct", "aapl_chg_pct", "msft_chg_pct", "amzn_chg_pct",
     "googl_chg_pct", "avgo_chg_pct", "meta_chg_pct", "tsla_chg_pct",
     "kre_chg_pct", "xbi_chg_pct", "psci_chg_pct", "xrt_chg_pct",
+    # Feature epic Slice A (2026-06-01): persisted on snapshot ~100%, previously unregistered.
+    "tnx_yield", "tnx_chg", "qqq_vs_spy", "spy_iwm_divergence",
     "zone_since_bars",  # DB column: 1m execution-layer (alias for zone_since_bars_1m)
     "candle_volume", "bid_ask_imbalance",
     "spread", "atr", "iv_rank", "smart_money_score",
     "breakout_score", "pin_score",
-    # Context layer (snapshots after rollout — NaN for legacy rows until backfilled)
-    "sentiment_composite", "sentiment_buzz", "sentiment_finnhub", "sentiment_av",
-    "breaking_news_flag", "pre_market_sentiment",
+    # Context layer (snapshots after rollout — NaN for legacy rows until backfilled).
+    # SENTIMENT/NEWS FEATURE RETIRE (2026-05-31, Schwab-first): 6 non-Schwab news/sentiment
+    # features de-registered — sentiment_composite/_buzz/_finnhub/_av, breaking_news_flag,
+    # pre_market_sentiment — all Finnhub/AlphaVantage-sourced (NO_SCHWAB_EQUIVALENT), XGB-only
+    # (absent from CATEGORICALS + LSTM FEATURES_5M/1M). The news_sentiment producer and the
+    # /api/state news headline display stay as display-only (not model features); the DB column
+    # DROP is post-retrain hygiene. FEATURE_SCHEMA_VERSION bumped so this fail-closes serving.
     "absorption_score", "continuation_score",
 ]
+
+# Price-action cone (operator 2026-06-11): the 27 pa_* columns persisted by
+# features/signal_layer_v1.compute_price_action_snapshot_columns are DELIBERATELY
+# NOT registered here yet. Registering them widens the tabular/sequence encodes
+# (94→121 / 88→115) and bumps FEATURE_SCHEMA_VERSION, which fail-closes every
+# v7-trained bundle — the 2026-06-11 live-stack outage. The serving-cone flip
+# (registration + v8 version bump + width-lock test updates) lands in the SAME
+# commit as the retrained artifacts. [REAL-GATE: training-skew] — OPEN_ITEMS
+# row PA-CONE-V8-RETRAIN. Until then pa_* are ablation/discovery candidates only.
 
 TIME_COLS   = ["et_hour", "et_minute"]
 ALL_DB_COLS = TIME_COLS + DOLLAR_COLS + WALL_DISTANCE_COLS + SCALE_INVARIANT_COLS
@@ -198,14 +200,13 @@ def load_data(
     """
     Load 1m RTH training data from snapshots_1m_normalized.
     Uses normalized 1m sampled rows (resampled from sub-minute snapshots).
-    Merges additive m5_* columns via as-of backward join from canonical timeframe='1m'
-    snapshots only (see ml_data_common.attach_5m_additive_context).
+    Attaches net_gamma_prev for ΔGEX train/serve parity (no m5_* lag block — feature epic DROP).
     min_ts_utc: if set, only rows with ts_utc >= this value (rolling RTH session window).
     allowed_et_dates: if set, only rows whose ts_et date (YYYY-MM-DD) is in this set.
     """
     from ml_data_common import (
-        attach_5m_additive_context,
-        rth_where_clause,
+        filter_df_to_rth_ts_utc,
+        stamp_et_clock_columns,
         training_label_where_clause,
         weekday_where_clause,
     )
@@ -219,13 +220,19 @@ def load_data(
     )
     _hz_norm = normalize_ml_horizon_slug(ml_horizon_slug)
     try:
-        from normalized_training_sync import ensure_normalized_training_table
+        from normalized_training_sync import (
+            ensure_normalized_training_table,
+            inline_normsync_enabled,
+        )
 
-        _ns = ensure_normalized_training_table(db_path, force=False, logger=logging.getLogger("ml_train.normsync"))
-        if not _ns.get("ok"):
-            logging.getLogger("ml_train.normsync").warning(
-                "normalized_training_sync failed: %s", _ns.get("errors")
+        if inline_normsync_enabled():
+            _ns = ensure_normalized_training_table(
+                db_path, force=False, logger=logging.getLogger("ml_train.normsync")
             )
+            if not _ns.get("ok"):
+                logging.getLogger("ml_train.normsync").warning(
+                    "normalized_training_sync failed: %s", _ns.get("errors")
+                )
     except Exception as _e:
         logging.getLogger("ml_train.normsync").warning("normalized_training_sync: %s", _e)
 
@@ -234,7 +241,7 @@ def load_data(
     if label_col == directional_label_column(_hz_norm):
         _extra_dir = f" AND CAST(valid_dir_{_hz_norm} AS INTEGER) = 1"
     where = (
-        f"timeframe = ? AND {training_label_where_clause(label_col)}{_extra_dir} AND {rth_where_clause()} "
+        f"timeframe = ? AND {training_label_where_clause(label_col)}{_extra_dir} "
         f"AND ({weekday_where_clause()})"
     )
     params: list = [_tf]
@@ -258,9 +265,14 @@ def load_data(
     if len(df) == 0:
         print("  Loaded 0 RTH rows (run: python snapshot_normalizer.py to materialize)")
         return df
-    df = attach_5m_additive_context(df, db_path)
-    extra_m5 = sum(1 for c in df.columns if str(c).startswith("m5_"))
-    print(f"  m5 additive context: {extra_m5} m5_* columns (as-of merge; 1m snapshots preferred, else 5m)")
+    df = filter_df_to_rth_ts_utc(df)
+    df = stamp_et_clock_columns(df)
+    if len(df) == 0:
+        print("  Loaded 0 RTH rows after ts_utc-derived RTH filter")
+        return df
+    from ml_data_common import attach_net_gamma_prev_column
+
+    df = attach_net_gamma_prev_column(df)
     print(f"  Loaded {len(df):,} RTH rows  "
           f"[{df['ts_et'].iloc[0]} -> {df['ts_et'].iloc[-1]}]")
     if not ticker:
@@ -269,6 +281,24 @@ def load_data(
     print(f"  Zones:    {dict(df['zone'].value_counts())}")
     if label_col in df.columns:
         print(f"  Outcomes ({label_col}): {dict(df[label_col].value_counts())}")
+    from arch_competition.stack_bundle_eval_v1 import (
+        ablated_drop_group_ids_for_model_horizon,
+        ablation_survivors_training_enabled,
+        apply_ablation_survivor_nulls_to_dataframe_for_model,
+    )
+
+    if ablation_survivors_training_enabled():
+        # O-56: XGB trains on ITS OWN survivor set for THIS horizon (the ablated data). Fail LOUD if
+        # the matrix can't be applied — never silently train full-feature on an ablated retrain
+        # (AGENTS §Ablation contract: full-feature is not a valid retrain target).
+        drop_groups = ablated_drop_group_ids_for_model_horizon("xgb", _hz_norm)
+        df = apply_ablation_survivor_nulls_to_dataframe_for_model(
+            df, model_family="xgb", horizon_slug=_hz_norm
+        )
+        print(
+            f"  Ablation survivor mask (xgb/{_hz_norm}) ON — dropped {len(drop_groups)} feature groups "
+            f"({', '.join(drop_groups[:4])}{'…' if len(drop_groups) > 4 else ''})"
+        )
     return df
 
 
@@ -276,8 +306,111 @@ def load_data(
 # FEATURE ENGINEERING
 # =============================================================================
 
-def engineer_features(df: pd.DataFrame) -> tuple:
-    """Build normalized feature matrix. Returns (X, feature_names, category_maps, aux_stats)."""
+def probe_training_feature_row() -> dict[str, Any]:
+    """Minimal single-row probe for tabular feature-name enumeration (XGB + sequence parity)."""
+    row: dict[str, Any] = {
+        "ticker": "SPY",
+        "ts_utc": 1.0,
+        "spot": 100.0,
+        "outcome_1c": "up",
+        "et_hour": 10,
+        "et_minute": 0,
+        "candle_body_pts": 0.5,
+        "candle_range_pts": 1.0,
+        "nearest_above_dist": 1.0,
+        "nearest_below_dist": 1.0,
+        "net_gamma": 1.0,
+        "zone": "pin_neutral",
+        "vwap_side": "above",
+        "flow_imbalance": 0.5,
+    }
+    for c in list(WALL_DISTANCE_COLS) + list(SCALE_INVARIANT_COLS):
+        row.setdefault(c, 1.0)
+    for c in CATEGORICALS:
+        row.setdefault(c, "neutral")
+    return row
+
+
+_TABULAR_TRAINING_FEATURE_NAMES: list[str] | None = None
+
+
+def refresh_tabular_training_feature_names_cache() -> list[str]:
+    """Bust cached tabular column order (after engineer_features layout change)."""
+    global _TABULAR_TRAINING_FEATURE_NAMES
+    _TABULAR_TRAINING_FEATURE_NAMES = None
+    return tabular_training_feature_names()
+
+
+def tabular_training_feature_names() -> list[str]:
+    """Stable XGB ``engineer_features`` column order (cached). Sequence encoders + ablation cone."""
+    global _TABULAR_TRAINING_FEATURE_NAMES
+    if _TABULAR_TRAINING_FEATURE_NAMES is None:
+        df = pd.DataFrame(
+            [
+                probe_training_feature_row(),
+                {**probe_training_feature_row(), "ts_utc": 2.0, "net_gamma": 2.0},
+            ]
+        )
+        _, names, _, _ = engineer_features(df)
+        _TABULAR_TRAINING_FEATURE_NAMES = list(names)
+    return list(_TABULAR_TRAINING_FEATURE_NAMES)
+
+
+def encode_tabular_feature_vector(
+    snapshot: dict,
+    feature_names: list[str] | None = None,
+    *,
+    category_maps: dict | None = None,
+    vol_medians: dict | None = None,
+    ticker: str | None = None,
+) -> list[float]:
+    """One snapshot → XGB-tabular vector (LSTM/Transformer structure + micro streams, Stage 2)."""
+    import math
+
+    names = feature_names or tabular_training_feature_names()
+    row_df = engineer_single_snapshot(
+        snapshot,
+        category_maps or {},
+        names,
+        vol_medians or {},
+        ticker=ticker or snapshot.get("ticker"),
+    )
+    if row_df is None:
+        return [0.0] * len(names)
+    out: list[float] = []
+    for fn in names:
+        v = row_df[fn].iloc[0]
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            out.append(0.0)
+            continue
+        out.append(0.0 if (not math.isfinite(fv)) else fv)
+    return out
+
+
+def _mutable_float_ndarray(values) -> np.ndarray:
+    """Return a writable float ndarray (pandas/NumPy map outputs may be read-only)."""
+    out = np.asarray(values, dtype=float)
+    return out.copy() if not out.flags.writeable else out
+
+
+def engineer_features(df: pd.DataFrame, fit_end: Optional[int] = None) -> tuple:
+    """Build normalized feature matrix. Returns (X, feature_names, category_maps, aux_stats).
+
+    ``fit_end`` (B3 closeout #1): when set, the two stateful transforms — the per-(ticker,hr,min)
+    volume median behind ``volume_ratio`` and the categorical -> integer code maps — are FIT on the
+    train partition ``df.iloc[:fit_end]`` only, then APPLIED to the full frame. Val-only time-of-day
+    keys / categories therefore map to NaN, exactly matching ``engineer_single_snapshot`` serving (no
+    persisted median / mapping for an unseen key). ``fit_end=None`` preserves the exact legacy full-df
+    behavior byte-for-byte (used by tests, the feature_contracts parity audit, eval-only, and the
+    no-holdout / thin-ticker training paths).
+    """
+    from ml_data_common import attach_confluence_feature_columns, et_hour_minute_arrays_from_ts_utc
+    from lstm_data import CONFLUENCE_FEATURES
+
+    df_cf = attach_confluence_feature_columns(df)
+
     spot  = pd.to_numeric(df["spot"], errors="coerce").values
     feats = {}
     aux_stats = {}
@@ -307,43 +440,39 @@ def engineer_features(df: pd.DataFrame) -> tuple:
             feats["vwap_dist_pts"] = v
             feats["vwap_dist_pct"] = v / spot * 100.0
 
-        m5_candle_map = {
-            "m5_candle_body_pts": "m5_candle_body_pct",
-            "m5_candle_range_pts": "m5_candle_range_pct",
-        }
-        for raw, pct in m5_candle_map.items():
-            if raw in df.columns:
-                v = pd.to_numeric(df[raw], errors="coerce").values
-                feats[pct] = v / spot * 100.0
-
-        for col in M5_WALL_DISTANCE_COLS:
-            if col in df.columns:
-                v = pd.to_numeric(df[col], errors="coerce").values
-                pct_name = "m5_pin_width_pct" if col == "m5_pin_width_pts" else f"{col}_pct"
-                feats[pct_name] = v / spot * 100.0
-
-        for col in M5_SCALE_INVARIANT_EXTRA:
-            if col in df.columns:
-                feats[col] = pd.to_numeric(df[col], errors="coerce").values
-
     skip = {"candle_volume", "bid_ask_imbalance", "vwap_dist_pts"}
     for col in SCALE_INVARIANT_COLS:
         if col not in skip and col in df.columns:
             feats[col] = pd.to_numeric(df[col], errors="coerce").values
 
-    if "et_hour" in df.columns and "et_minute" in df.columns:
-        hrs  = pd.to_numeric(df["et_hour"],   errors="coerce").values
-        mns  = pd.to_numeric(df["et_minute"], errors="coerce").values
-        prog = np.clip((hrs * 60 + mns - 570) / 390.0, 0, 1)
+    hrs, mns = et_hour_minute_arrays_from_ts_utc(df)
+    if np.any(np.isfinite(hrs)) and np.any(np.isfinite(mns)):
+        prog = np.clip((hrs * 60 + mns - RTH_OPEN_MINS) / float(RTH_SESSION_MINUTES), 0, 1)
         feats["time_sin"]      = np.sin(2 * np.pi * prog)
         feats["time_cos"]      = np.cos(2 * np.pi * prog)
         feats["time_progress"] = prog
-        feats["minutes_since_open"] = np.clip((hrs - 9) * 60 + (mns - 30), 0, 390).astype(float)
+        feats["minutes_since_open"] = np.clip(
+            hrs * 60 + mns - RTH_OPEN_MINS, 0, RTH_SESSION_MINUTES
+        ).astype(float)
 
     if "candle_body_pct" in feats and "candle_range_pct" in feats:
         rng = feats["candle_range_pct"].copy()
         rng[rng == 0] = np.nan
         feats["body_range_ratio"] = np.abs(feats["candle_body_pct"]) / rng
+
+    if "net_gamma" in df.columns:
+        ng_s = pd.to_numeric(df["net_gamma"], errors="coerce")
+        if "net_gamma_prev" in df.columns:
+            prev_s = pd.to_numeric(df["net_gamma_prev"], errors="coerce")
+            feats["dgex"] = (ng_s - prev_s).to_numpy(dtype=float)
+        elif "ticker" in df.columns and "ts_utc" in df.columns:
+            order = df.sort_values(["ticker", "ts_utc"]).index
+            dgex = ng_s.loc[order].groupby(df.loc[order, "ticker"]).diff()
+            feats["dgex"] = dgex.reindex(df.index).to_numpy(dtype=float)
+        else:
+            feats["dgex"] = ng_s.diff().to_numpy(dtype=float)
+        dg = feats["dgex"]
+        feats["dgex_positive"] = np.where(np.isfinite(dg), (dg > 0).astype(float), np.nan)
 
     if "net_gamma" in feats:
         feats["gamma_positive"] = (feats["net_gamma"] > 0).astype(float)
@@ -368,17 +497,26 @@ def engineer_features(df: pd.DataFrame) -> tuple:
         vol = pd.to_numeric(df["candle_volume"], errors="coerce").values.copy()
         vol[vol <= 0] = np.nan
         feats["candle_volume_log"] = np.log1p(np.nan_to_num(vol, nan=0.0))
-        if "et_hour" in df.columns and "et_minute" in df.columns:
-            hrs_s = pd.to_numeric(df["et_hour"],   errors="coerce").fillna(0).astype(int)
-            mns_s = pd.to_numeric(df["et_minute"], errors="coerce").fillna(0).astype(int)
+        hrs_s, mns_s = et_hour_minute_arrays_from_ts_utc(df)
+        if np.any(np.isfinite(hrs_s)) and np.any(np.isfinite(mns_s)):
+            hrs_i = np.nan_to_num(hrs_s, nan=0).astype(int)
+            mns_i = np.nan_to_num(mns_s, nan=0).astype(int)
             tkr_s = df["ticker"].astype(str) if "ticker" in df.columns else pd.Series(["?"]*len(df))
-            tod   = tkr_s + "_" + hrs_s.astype(str) + "_" + mns_s.astype(str)
+            tod   = tkr_s + "_" + hrs_i.astype(str) + "_" + mns_i.astype(str)
             vseries    = pd.Series(vol, index=df.index)
-            med_by_tod = vseries.groupby(tod).transform("median")
-            avg_vol    = med_by_tod.values
-            avg_vol[avg_vol <= 0] = np.nan
+            tod_series = pd.Series(np.asarray(tod), index=df.index)
+            # B3 train-only fit: per-(ticker,hr,min) median fit on the TRAIN partition only,
+            # applied to all rows. fit_end=None => full-df (legacy / serving-equiv / eval-only).
+            # tod_series.map(full_median) is numerically identical to the old transform("median")
+            # for the fit_end=None path, so the default is a no-op regression-wise.
+            if fit_end is not None and 0 < fit_end < len(df):
+                fit_med = vseries.iloc[:fit_end].groupby(tod_series.iloc[:fit_end]).median()
+            else:
+                fit_med = vseries.groupby(tod_series).median()
+            avg_vol = _mutable_float_ndarray(tod_series.map(fit_med))
+            avg_vol[~(avg_vol > 0)] = np.nan                         # NaN-safe <=0 + nan guard
             feats["volume_ratio"] = np.clip(vol / avg_vol, 0, 10)
-            for key, med in vseries.groupby(tod).median().items():
+            for key, med in fit_med.items():
                 if not np.isnan(med):
                     aux_stats[f"vol_median_{key}"] = float(med)
 
@@ -389,17 +527,26 @@ def engineer_features(df: pd.DataFrame) -> tuple:
         feats["bid_ask_imbalance"] = imb
         for k, fn in [("imbalance_buy_pressure",  lambda x: x > 0.65),
                       ("imbalance_sell_pressure", lambda x: x < 0.35)]:
-            arr = fn(imb).astype(float); arr[nm] = np.nan; feats[k] = arr
+            arr = _mutable_float_ndarray(fn(imb))
+            arr[nm] = np.nan
+            feats[k] = arr
 
     category_maps = {}
     for col in CATEGORICALS:
         if col in df.columns:
-            cat     = df[col].astype("category")
-            mapping = {v: i for i, v in enumerate(cat.cat.categories)}
+            col_full = df[col]
+            # B3 train-only fit: category codes learned from the TRAIN partition only; a val-only
+            # category (absent from the train mapping) -> NaN, matching engineer_single_snapshot
+            # serving. fit_end=None => full-df (same sorted-unique categories + codes as legacy).
+            fit_col = (col_full.iloc[:fit_end]
+                       if (fit_end is not None and 0 < fit_end < len(df)) else col_full)
+            mapping = {v: i for i, v in enumerate(pd.Categorical(fit_col).categories)}
             category_maps[col] = mapping
-            codes   = cat.cat.codes.values.astype(float)
-            codes[codes < 0] = np.nan
-            feats[f"cat_{col}"] = codes
+            feats[f"cat_{col}"] = col_full.map(mapping).to_numpy(dtype=float)
+
+    for cf in CONFLUENCE_FEATURES:
+        if cf in df_cf.columns:
+            feats[cf] = pd.to_numeric(df_cf[cf], errors="coerce").values
 
     X = pd.DataFrame(feats, index=df.index)
     dupes = X.columns[X.columns.duplicated()].tolist()
@@ -427,7 +574,15 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
 
     def _f(key):
         v = snapshot.get(key)
-        return float(v) if v is not None else np.nan
+        if v is None:
+            return np.nan
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            # Parity with engineer_features(): training uses pd.to_numeric(errors="coerce"),
+            # so a non-numeric snapshot value (e.g. qqq_vs_spy='lagging' from market_state)
+            # must become NaN at serve too — not crash the whole XGB prediction.
+            return np.nan
 
     def _pct(key):
         v = _f(key)
@@ -458,14 +613,26 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
         if col not in skip:
             row[col] = _f(col)
 
+    if np.isnan(row.get("qqq_vs_spy", np.nan)):
+        # Producer split: live SignalInput carries the 'leading'/'lagging'/'inline' label under
+        # qqq_vs_spy and the numeric spread under qqq_vs_spy_delta; the DB/training column holds
+        # the numeric spread (server snapshot writer). Use the numeric twin for serve parity.
+        row["qqq_vs_spy"] = _f("qqq_vs_spy_delta")
+
     eh = snapshot.get("et_hour")
     em = snapshot.get("et_minute")
     if eh is not None and em is not None:
-        prog = max(0.0, min(1.0, (float(eh)*60 + float(em) - 570) / 390.0))
+        prog = max(
+            0.0,
+            min(1.0, (float(eh) * 60 + float(em) - RTH_OPEN_MINS) / float(RTH_SESSION_MINUTES)),
+        )
         row["time_sin"]      = np.sin(2 * np.pi * prog)
         row["time_cos"]      = np.cos(2 * np.pi * prog)
         row["time_progress"] = prog
-        mins_open = max(0.0, (float(eh) - 9) * 60 + (float(em) - 30))
+        mins_open = max(
+            0.0,
+            min(float(RTH_SESSION_MINUTES), float(eh) * 60 + float(em) - RTH_OPEN_MINS),
+        )
         row["minutes_since_open"] = mins_open
     else:
         row["time_sin"] = row["time_cos"] = row["time_progress"] = np.nan
@@ -476,6 +643,13 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
     row["body_range_ratio"] = (abs(cb)/cr) if (not np.isnan(cb) and cr and cr>0) else np.nan
 
     ng = row.get("net_gamma", np.nan)
+    ng_prev = _f("net_gamma_prev")
+    if not np.isnan(ng) and not np.isnan(ng_prev):
+        row["dgex"] = ng - ng_prev
+        row["dgex_positive"] = float(row["dgex"] > 0)
+    else:
+        row["dgex"] = np.nan
+        row["dgex_positive"] = np.nan
     nd = row.get("net_delta", np.nan)
     cn = row.get("charm_net", np.nan)
     row["gamma_positive"]    = float(ng>0) if not np.isnan(ng) else np.nan
@@ -509,26 +683,20 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
         row["imbalance_buy_pressure"]  = float(imb_f > 0.65)
         row["imbalance_sell_pressure"] = float(imb_f < 0.35)
 
-    for raw, pct in [
-        ("m5_candle_body_pts", "m5_candle_body_pct"),
-        ("m5_candle_range_pts", "m5_candle_range_pct"),
-    ]:
-        v = _f(raw)
-        row[pct] = (v / spot * 100.0) if not np.isnan(v) else np.nan
-
-    for col in M5_WALL_DISTANCE_COLS:
-        pct_name = "m5_pin_width_pct" if col == "m5_pin_width_pts" else f"{col}_pct"
-        v = _f(col)
-        row[pct_name] = (v / spot * 100.0) if not np.isnan(v) else np.nan
-
-    for col in M5_SCALE_INVARIANT_EXTRA:
-        row[col] = _f(col)
-
     for col in CATEGORICALS:
         val     = snapshot.get(col)
         mapping = category_maps.get(col, {})
         row[f"cat_{col}"] = float(mapping[str(val)]) if (
             val is not None and str(val) in mapping) else np.nan
+
+    from lstm_data import CONFLUENCE_FEATURES
+
+    for cf in CONFLUENCE_FEATURES:
+        v = snapshot.get(cf)
+        try:
+            row[cf] = float(v) if v is not None else 0.0
+        except (TypeError, ValueError):
+            row[cf] = 0.0
 
     return pd.DataFrame([{fn: row.get(fn, np.nan) for fn in feature_names}])
 
@@ -537,10 +705,14 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
 # MODEL
 # =============================================================================
 
-def get_model(n_classes=3):
+XGB_EARLY_STOPPING_ROUNDS: int = 10
+
+
+def get_model(n_classes=3, early_stopping_rounds=None):
     try:
         import xgboost as xgb
         print("  Using XGBoost")
+        es = {} if early_stopping_rounds is None else {"early_stopping_rounds": int(early_stopping_rounds)}
         if n_classes == 2:
             return xgb.XGBClassifier(
                 n_estimators=50, max_depth=3, learning_rate=0.05,
@@ -549,6 +721,7 @@ def get_model(n_classes=3):
                 tree_method="hist", enable_categorical=False,
                 n_jobs=-1, random_state=42,
                 objective="binary:logistic", eval_metric="logloss",
+                **es,
             )
         return xgb.XGBClassifier(
             n_estimators=50, max_depth=3, learning_rate=0.05,
@@ -557,6 +730,7 @@ def get_model(n_classes=3):
             tree_method="hist", enable_categorical=False,
             n_jobs=-1, random_state=42,
             objective="multi:softprob", num_class=n_classes, eval_metric="mlogloss",
+            **es,
         )
     except ImportError:
         from sklearn.ensemble import HistGradientBoostingClassifier
@@ -564,22 +738,6 @@ def get_model(n_classes=3):
         return HistGradientBoostingClassifier(
             max_iter=50, max_depth=3, learning_rate=0.05,
             min_samples_leaf=30, l2_regularization=5.0, random_state=42)
-
-
-def compute_sample_weights(y, mode="none", exp_decay_weights=None):
-    """mode=none: uniform. mode=exp: use exp_decay_weights if provided."""
-    n = len(y)
-    if mode == "exp" and exp_decay_weights is not None and len(exp_decay_weights) == n:
-        return np.array(exp_decay_weights, dtype=np.float64)
-    if mode == "none":
-        return np.ones(n, dtype=float)
-    from sklearn.utils.class_weight import compute_class_weight
-    classes = np.unique(y)
-    raw = compute_class_weight("balanced", classes=classes, y=y)
-    if mode == "moderate":
-        raw = np.sqrt(raw)
-    wmap = dict(zip(classes, raw))
-    return np.array([wmap[yi] for yi in y])
 
 
 def encode_target(df, target_column: str):
@@ -612,7 +770,6 @@ def train_ticker(
     ticker: str,
     df: pd.DataFrame,
     model_dir: Path = None,
-    weight_mode: str = "exp",
     nan_threshold: float = 0.30,
     skip_sanity: bool = False,
     show_importance: bool = False,
@@ -659,7 +816,17 @@ def train_ticker(
     if tm != TARGET_MODE_TRICLASS and target_col not in df.columns:
         raise ValueError(f"{ticker}: column {target_col} missing from training frame")
 
-    X, feat_names, cat_maps, aux_stats = engineer_features(df)
+    # B3 closeout #1 — compute the chronological inner split BEFORE feature engineering so the
+    # stateful transforms (per-(tkr,hr,min) volume median, category->code maps) AND the NaN column
+    # filter below are fit on the TRAIN partition only; the val tail never influences feature
+    # computation or selection. len(df) == len(y) here (the dir-mode row filter above already ran;
+    # no row drops after). fit_end=None on eval-only / no-holdout / thin-ticker paths preserves the
+    # exact legacy full-df behavior.
+    from ml_data_common import time_ordered_tail_split
+
+    train_end, n_val = (len(df), 0) if evaluate_only else time_ordered_tail_split(len(df))
+    _fit_end = train_end if (n_val > 0 and not evaluate_only) else None
+    X, feat_names, cat_maps, aux_stats = engineer_features(df, fit_end=_fit_end)
     y = df[target_col].map(class_map).values
     if np.any(pd.isna(y)):
         bad = int(np.sum(pd.isna(y)))
@@ -669,7 +836,11 @@ def train_ticker(
     print(f"  NaN density: {X.isna().mean().mean():.1%}")
     print(f"  Class balance: {dict(zip(class_names, np.bincount(y, minlength=nc)))}")
 
-    nan_pct = X.isna().mean().sort_values(ascending=False)
+    # B3 closeout #1: decide the surviving feature set on the TRAIN partition only (full-df on the
+    # eval-only / no-holdout paths) so the val tail — including the val-region NaNs that the
+    # train-only category/volume fit now produces — never influences which features the model sees.
+    _nan_basis = X.iloc[:train_end] if (n_val > 0 and not evaluate_only) else X
+    nan_pct = _nan_basis.isna().mean().sort_values(ascending=False)
     good    = nan_pct[nan_pct < nan_threshold].index.tolist()
     dropped = nan_pct[nan_pct >= nan_threshold].index.tolist()
     print(f"\n  NaN filter ({nan_threshold:.0%}): kept {len(good)}, dropped {len(dropped)}")
@@ -680,7 +851,28 @@ def train_ticker(
 
     X = X[good]
     feat_names = good
-    med_series = X.median()
+
+    from arch_competition.stack_bundle_eval_v1 import (
+        ablation_survivors_training_enabled,
+        drop_ablated_xgb_engineered_columns,
+    )
+
+    if ablation_survivors_training_enabled():
+        X, feat_names, _n_abl = drop_ablated_xgb_engineered_columns(X, feat_names, hz)
+        if _n_abl:
+            print(f"  Ablation XGB post-engineer drop: {_n_abl} engineered columns removed")
+
+    # Workstream B3 — chronological inner holdout (df is ORDER BY ts_utc ASC). The split (train_end,
+    # n_val) is computed above, BEFORE engineer_features, so the imputation medians, the per-
+    # (tkr,hr,min) volume median, the category code maps, AND the NaN column filter are all fit on
+    # the TRAIN partition only; the XGB best boosting round is early-stopped on the strictly-later
+    # val tail (not training loss) and the reported val_accuracy is out-of-sample. Thin tickers get
+    # no holdout (in-sample, disclosed; blocked from promotion by A1/B1); evaluate_only keeps the
+    # legacy full-data path. CORRECTNESS-CLOSEOUT #1 (2026-05-31): the prior
+    # [REAL-GATE: training-skew] full-df category/volume fit is now closed — feature VALUES change,
+    # so PREPROCESSING_VERSION is bumped to force the one clean refit.
+    _impute_basis = X.iloc[:train_end] if n_val > 0 else X
+    med_series = _impute_basis.median()
     impute_medians = {}
     for f in feat_names:
         v = med_series[f] if f in med_series.index else np.nan
@@ -688,23 +880,56 @@ def train_ticker(
     X = X.fillna(pd.Series(impute_medians))
     X_np = np.nan_to_num(X.values.astype(np.float64), nan=0.0)
 
-    # Exponential decay weights (most recent = highest)
-    from ml_data_common import compute_exponential_weights
-    exp_w = compute_exponential_weights(len(y), decay=2.0)
-    sample_w = compute_sample_weights(y, mode=weight_mode, exp_decay_weights=exp_w)
+    # O-55: equal/uniform sample weights only — every row counts the same. No recency
+    # decay, no class re-weighting, no toggle.
+    from ml_data_common import equal_sample_weights
+    sample_w = equal_sample_weights(len(y))
 
     if not skip_sanity:
-        from sklearn.metrics import accuracy_score
         maj_pct = np.bincount(y, minlength=nc).max() / len(y)
         print(f"\n  Majority: {class_names[np.bincount(y, minlength=nc).argmax()]} ({maj_pct:.1%})")
 
-    print(f"\n  Training on {len(y):,} rows with exponential decay weights...")
+    from sklearn.metrics import accuracy_score as _acc
+
+    # B3 holdout fit: early-stopped on the strictly-later val tail. When a holdout exists the
+    # incremental warm-continuation is bypassed so the best-round selection is governed purely
+    # by the held-out tail (disclosed: warm-start perf opt is off for healthy tickers).
+    val_accuracy = None
+    val_basis = "in_sample_no_holdout"
+    xgb_best_iteration = None
+    holdout_done = False
+    _tr_acc = None
+    mdl_final = None
+    if n_val > 0 and not evaluate_only:
+        X_tr, y_tr, w_tr = X_np[:train_end], y[:train_end], sample_w[:train_end]
+        X_val, y_val = X_np[train_end:], y[train_end:]
+        _m = get_model(nc, early_stopping_rounds=XGB_EARLY_STOPPING_ROUNDS)
+        try:
+            _m.fit(X_tr, y_tr, sample_weight=w_tr, eval_set=[(X_val, y_val)], verbose=False)
+            mdl_final = _m
+            xgb_best_iteration = getattr(_m, "best_iteration", None)
+            val_accuracy = float(_acc(y_val, _m.predict(X_val)))
+            _tr_acc = float(_acc(y_tr, _m.predict(X_tr)))
+            val_basis = "time_ordered_tail"
+            holdout_done = True
+            print(
+                f"  B3 holdout: val_acc={val_accuracy:.1%} "
+                f"(n_val={n_val}, best_iter={xgb_best_iteration}); train_acc={_tr_acc:.1%}"
+            )
+        except TypeError as _es_ex:
+            # eval_set / early stopping unsupported (sklearn fallback) -> in-sample path below.
+            print(f"  B3 holdout unavailable ({_es_ex}); in-sample fit")
+            mdl_final = None
+
+    print(f"\n  Training on {len(y):,} rows (equal sample weights — O-55)...")
     from training_cache_policy import XGBOOST_INCREMENTAL_TRAIN_ALLOWED
 
-    mdl_final = get_model(nc)
+    if mdl_final is None:
+        mdl_final = get_model(nc)
     incremental_done = False
     if (
         XGBOOST_INCREMENTAL_TRAIN_ALLOWED
+        and not holdout_done
         and prior_data_fingerprint
         and current_data_fingerprint
         and not evaluate_only
@@ -718,7 +943,10 @@ def train_ticker(
                     prev_meta = json.load(fm)
                 with open(mp_ex, "rb") as f:
                     prev_clf = pickle.load(f)
-            except Exception:
+            except (OSError, json.JSONDecodeError, pickle.UnpicklingError, EOFError) as _inc_ex:
+                logging.getLogger("ml_train").debug(
+                    "XGB incremental load failed for %s: %s", ticker, _inc_ex
+                )
                 prev_meta, prev_clf = None, None
         from training_provenance import PREPROCESSING_VERSION as _PREPROC_V
 
@@ -746,13 +974,35 @@ def train_ticker(
             except Exception as ex:
                 print(f"  XGBoost incremental failed ({ex}); full refit")
                 mdl_final = get_model(nc)
-    if not incremental_done:
+    if not incremental_done and not holdout_done:
         mdl_final.fit(X_np, y, sample_weight=sample_w, verbose=False)
 
-    from sklearn.metrics import accuracy_score as _acc
-    fa   = _acc(y, mdl_final.predict(X_np))
-    pd_d = {class_names[i]: int((mdl_final.predict(X_np)==i).sum()) for i in range(nc)}
-    print(f"  Full-data accuracy: {fa:.1%}  Pred dist: {pd_d}")
+    from ml_data_common import holdout_class_metrics
+    if holdout_done:
+        # train_accuracy stays in-sample-by-name (train partition); val_accuracy is the honest
+        # out-of-sample headline metric, and the degeneracy diagnostics below are measured on the
+        # same held-out tail (not in-sample) so a majority-class collapse is visible.
+        fa = float(_tr_acc)
+        _y_eval = y[train_end:]
+        _yhat_eval = mdl_final.predict(X_np[train_end:])
+        pd_d = {class_names[i]: int((_yhat_eval == i).sum()) for i in range(nc)}
+        print(f"  Holdout val pred dist: {pd_d}")
+    else:
+        _y_eval = y
+        _yhat_eval = mdl_final.predict(X_np)
+        fa = _acc(y, _yhat_eval)
+        pd_d = {class_names[i]: int((_yhat_eval == i).sum()) for i in range(nc)}
+        print(f"  Full-data accuracy: {fa:.1%}  Pred dist: {pd_d}")
+    # Workstream B3+ degeneracy diagnostics: balanced_accuracy + per-class recall on the eval set
+    # (held-out tail when a holdout exists, else in-sample full data). single_class_collapse marks
+    # an all-flat base whose top-line accuracy is just the majority base rate — blocked from
+    # promotion regardless of accuracy by the validate_for_promotion collapse guard.
+    deg = holdout_class_metrics(_y_eval, _yhat_eval, nc, class_names)
+    print(
+        f"  Degeneracy: balanced_acc={deg['balanced_accuracy']}, "
+        f"recall={deg['per_class_recall']}"
+        + ("  [SINGLE-CLASS COLLAPSE]" if deg["single_class_collapse"] else "")
+    )
 
     _base = 1.0 / float(nc)
     if evaluate_only:
@@ -772,7 +1022,15 @@ def train_ticker(
         target=target_col, ml_horizon_slug=hz, target_mode=tm,
         class_map={n: i for i, n in enumerate(class_names)},
         class_names=class_names, train_accuracy=round(fa, 4),
-        weight_mode=weight_mode,
+        val_accuracy=(round(val_accuracy, 4) if val_accuracy is not None else None),
+        val_basis=val_basis,
+        balanced_accuracy=deg["balanced_accuracy"],
+        val_per_class_recall=deg["per_class_recall"],
+        val_single_class_collapse=bool(deg["single_class_collapse"]),
+        val_predicted_class_names=deg["predicted_class_names"],
+        xgb_best_iteration=(int(xgb_best_iteration) if xgb_best_iteration is not None else None),
+        weight_mode="equal",
+        sample_weight_mode="equal",
         nan_threshold=nan_threshold, features_dropped=dropped,
         category_maps={k: {str(ck): int(cv_v) for ck, cv_v in v.items()}
                       for k, v in cat_maps.items()},
@@ -811,8 +1069,6 @@ def main():
     ap.add_argument("--feature-importance", action="store_true")
     ap.add_argument("--compare", action="store_true")
     ap.add_argument("--nan-threshold", type=float, default=0.30)
-    ap.add_argument("--weight-mode", type=str, default="exp",
-                    choices=["exp", "moderate", "balanced", "none"])
     ap.add_argument("--skip-sanity", action="store_true")
     ap.add_argument("--model-dir", type=str, default=None,
                     help="Output directory (default: models)")
@@ -852,15 +1108,22 @@ def main():
         _lc = move_label_column(hz_arg)
     else:
         _lc = outcome_column(hz_arg)
+    from scheduler_user_tickers import require_ml_training_ticker_allowed, resolve_ml_training_roster
+
     if args.ticker:
-        df_all  = load_data(
-            args.db, ticker=args.ticker.upper(), ml_horizon_slug=hz_arg, label_column=_lc
+        tkr = require_ml_training_ticker_allowed(args.ticker)
+        df_all = load_data(
+            args.db, ticker=tkr, ml_horizon_slug=hz_arg, label_column=_lc
         )
-        tickers = [args.ticker.upper()]
+        tickers = [tkr]
     else:
-        df_all  = load_data(args.db, ml_horizon_slug=hz_arg, label_column=_lc)
-        tickers = df_all["ticker"].unique().tolist() if len(df_all) > 0 else []
-        print(f"\n  Tickers: {tickers}")
+        df_all = load_data(args.db, ml_horizon_slug=hz_arg, label_column=_lc)
+        raw = df_all["ticker"].unique().tolist() if len(df_all) > 0 else []
+        tickers = resolve_ml_training_roster(raw, args.db)
+        if not tickers:
+            print("\nERROR: no training-roster tickers in data (anchors: SPY/QQQ/IWM)")
+            sys.exit(1)
+        print(f"\n  Tickers (training roster): {tickers}")
 
     results = {}
     for tkr in tickers:
@@ -875,7 +1138,6 @@ def main():
             r = train_ticker(
                 ticker=tkr, df=df,
                 model_dir=model_dir,
-                weight_mode=args.weight_mode,
                 nan_threshold=args.nan_threshold,
                 skip_sanity=args.skip_sanity,
                 show_importance=args.feature_importance,

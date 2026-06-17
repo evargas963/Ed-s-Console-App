@@ -13,11 +13,9 @@ import argparse
 import json
 import sys
 from collections import Counter
-from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
-
 import numpy as np
+
 
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
@@ -33,8 +31,6 @@ from research.pilot_step3.event_generation import (
     generate_events,
     sma,
 )
-
-_ET = ZoneInfo("America/New_York")
 
 
 def _instrument(

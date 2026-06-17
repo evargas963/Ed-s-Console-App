@@ -1,3 +1,7 @@
+import logging
+
+log = logging.getLogger(__name__)
+
 #!/usr/bin/env python3
 """
 audit_snapshot_data.py - Factual audit of snapshots table
@@ -16,11 +20,9 @@ import sys
 if sys.stdout.encoding and "cp1252" in sys.stdout.encoding.lower():
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
-
+    except Exception as e:
+        log.debug("stdout reconfigure: %s", e, exc_info=True)
 import sqlite3
-from pathlib import Path
 from collections import defaultdict
 
 from db import DB_PATH
@@ -59,7 +61,7 @@ def run_audit():
             gap = rows[i]["ts_utc"] - rows[i - 1]["ts_utc"]
             gaps.append(gap)
 
-        print(f"\n  A. Timestamp spacing (consecutive rows):")
+        print("\n  A. Timestamp spacing (consecutive rows):")
         print(f"     Rows: {len(rows)}")
         print(f"     Avg gap: {sum(gaps)/len(gaps):.1f} sec")
         print(f"     Min gap: {min(gaps):.1f} sec")
@@ -73,7 +75,7 @@ def run_audit():
             minute_counts[bucket] += 1
 
         counts = list(minute_counts.values())
-        print(f"\n  B. Rows per minute bucket:")
+        print("\n  B. Rows per minute bucket:")
         print(f"     Minutes with data: {len(minute_counts)}")
         if counts:
             print(f"     Avg rows/min: {sum(counts)/len(counts):.1f}")
@@ -81,7 +83,7 @@ def run_audit():
             print(f"     Max rows/min: {max(counts)}")
 
         # C. Intrabar behavior — sample consecutive rows
-        print(f"\n  C. Sample consecutive rows (first 15):")
+        print("\n  C. Sample consecutive rows (first 15):")
         print(f"     {'ts_et':<22} {'gap':>6} {'open':>8} {'high':>8} {'low':>8} {'close':>8} {'vol':>10}")
         for i in range(min(15, len(rows))):
             r = rows[i]
@@ -103,7 +105,7 @@ def run_audit():
 
         # Intra-session only (gap < 10 min) to avoid overnight skew
         in_session = [c[2] for c in open_changes if 0 < c[2] < 600]
-        print(f"\n  D. Reset cadence (open changes = new bar):")
+        print("\n  D. Reset cadence (open changes = new bar):")
         print(f"     Open changed {len(open_changes)} times total")
         if in_session:
             print(f"     In-session (gap < 10min): {len(in_session)} bar boundaries")

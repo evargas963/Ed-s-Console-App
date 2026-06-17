@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import bisect
 
-import pytest
 
 from horizon_outcomes import OUTCOME_BAR_SPECS, bar_complete_by_utc, forward_bar_start_utc
 from math_exposure import classify_direction

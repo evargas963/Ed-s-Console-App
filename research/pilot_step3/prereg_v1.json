@@ -4,7 +4,7 @@
   "framework_doc_version": "1.1",
   "pilot_scope": {
     "purpose": "Labeling and event-generation validation only for the replacement-core pilot. This pilot does NOT train final models, meta-layer, calibration, walk-forward/OOS execution, or decision policy.",
-    "cusum_k_and_sma_fixed": "Pilot locks CUSUM k=0.7 and SMA(8,21) only. Full Step 2.5 candidate sets (multiple k, SMA pairs) remain deferred to the main grid sweep after pilot PASS.",
+    "cusum_k_and_sma_fixed": "Pilot locks CUSUM k=0.7 and SMA(8,21) only. Full Step 2.5 candidate sets (multiple k, SMA pairs) run in the main grid sweep after pilot PASS (tracked in OPEN_ITEMS).",
     "output_authority": "pilot_summary.json is authoritative; pilot_summary.csv is a flattened convenience copy for spreadsheets.",
     "non_promotion": "Pilot results MUST NOT be promoted to production or wired into live signal authority.",
     "legacy_non_authority": "No legacy directional stack, fusion, multi_horizon_decision, call_engine trade semantics, outcome_*c labels, or prediction cards have authority over this pilot."
@@ -146,5 +146,5 @@
     "json_authoritative": true,
     "csv_convenience_only": true
   },
-  "content_hash": "fd2b1ab608e5bc5fabac62fe19c2cae0e792c7788c58133ee03e5c1fbd38b855"
+  "content_hash": "7ebd9b004c7f1e7ace178899ab42711b52edc27fdd119f3abc846a6d5d131195"
 }

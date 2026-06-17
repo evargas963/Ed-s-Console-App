@@ -8,12 +8,18 @@ from unittest.mock import patch
 
 import pytest
 
-from arch_competition.exceptions import PromotionGovernanceError
+from arch_competition.exceptions import (
+    PromotionGovernanceError,
+    PromotionGovernanceInvalidError,
+    PromotionGovernanceMissingError,
+)
 from arch_competition.scheduler_integration import (
     GOVERNED_ARCH_STATE_REQUIRED_KEYS,
     GOVERNED_ARCH_STATE_SCHEMA_VERSION,
+    _merge_summary_file,
     arch_competition_summary_path,
     assert_no_active_directory_write,
+    build_arch_competition_summary_tick,
     build_governed_arch_state_slice,
     evaluation_manifest_path,
     promotion_decision_path,
@@ -103,8 +109,16 @@ def _minimal_record():
     }
 
 
-def test_scheduler_auto_promote_defaults_off(monkeypatch):
-    monkeypatch.delenv("ED_ML_SCHEDULER_AUTO_PROMOTE_TO_ACTIVE", raising=False)
+def test_scheduler_auto_promote_defaults_on_panic_off(monkeypatch):
+    """Train-success-live: auto-promote defaults ON; panic opt-out turns it OFF."""
+    monkeypatch.delenv("ED_ML_SCHEDULER_AUTO_PROMOTE_TO_ACTIVE", raising=False)  # retired name, ignored
+    monkeypatch.delenv("ED_SCHEDULER_AUTO_PROMOTE", raising=False)
+    monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
+    assert scheduler_auto_promote_to_active_enabled() is True
+    monkeypatch.setenv("ED_DISABLE_AUTO_PROMOTE", "1")
+    assert scheduler_auto_promote_to_active_enabled() is False
+    monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
+    monkeypatch.setenv("ED_SCHEDULER_AUTO_PROMOTE", "0")
     assert scheduler_auto_promote_to_active_enabled() is False
 
 
@@ -135,8 +149,41 @@ def test_run_governed_writes_manifest_and_record(tmp_path: Path, monkeypatch):
 
 
 def test_validate_persisted_missing_file_fails(tmp_path: Path):
-    with pytest.raises(PromotionGovernanceError, match="missing evaluation manifest"):
+    with pytest.raises(PromotionGovernanceMissingError, match="missing evaluation manifest"):
         validate_persisted_governed_artifacts_or_raise(tmp_path, "1c", "SPY")
+
+
+def test_validate_persisted_raises_missing_subtype_when_promotion_absent(tmp_path: Path):
+    ev = evaluation_manifest_path(tmp_path, "1c", "SPY")
+    ev.parent.mkdir(parents=True)
+    ev.write_text(json.dumps({"schema_version": EVALUATION_MANIFEST_SCHEMA_VERSION}), encoding="utf-8")
+    with pytest.raises(PromotionGovernanceMissingError, match="missing promotion decision"):
+        validate_persisted_governed_artifacts_or_raise(tmp_path, "1c", "SPY")
+
+
+def test_validate_persisted_raises_invalid_subtype_on_corrupt_json(tmp_path: Path):
+    ev = evaluation_manifest_path(tmp_path, "1c", "SPY")
+    pr = promotion_decision_path(tmp_path, "1c", "SPY")
+    ev.parent.mkdir(parents=True)
+    ev.write_text("{bad", encoding="utf-8")
+    pr.write_text(json.dumps({"schema_version": PROMOTION_RECORD_SCHEMA_VERSION}), encoding="utf-8")
+    with pytest.raises(PromotionGovernanceInvalidError, match="invalid JSON"):
+        validate_persisted_governed_artifacts_or_raise(tmp_path, "1c", "SPY")
+
+
+def test_validate_persisted_raises_invalid_subtype_on_schema_mismatch(tmp_path: Path):
+    ev = evaluation_manifest_path(tmp_path, "1c", "SPY")
+    pr = promotion_decision_path(tmp_path, "1c", "SPY")
+    ev.parent.mkdir(parents=True)
+    ev.write_text(json.dumps({"schema_version": "wrong"}), encoding="utf-8")
+    pr.write_text(json.dumps({"schema_version": PROMOTION_RECORD_SCHEMA_VERSION}), encoding="utf-8")
+    with pytest.raises(PromotionGovernanceInvalidError, match="schema mismatch"):
+        validate_persisted_governed_artifacts_or_raise(tmp_path, "1c", "SPY")
+
+
+def test_validate_persisted_subtypes_inherit_parent():
+    assert issubclass(PromotionGovernanceMissingError, PromotionGovernanceError)
+    assert issubclass(PromotionGovernanceInvalidError, PromotionGovernanceError)
 
 
 def test_governed_arch_state_schema_stable():
@@ -151,6 +198,134 @@ def test_governed_arch_state_schema_stable():
     assert sl["production_write_held"] is True
     assert sl["latest_promotion_decision"] == "keep_incumbent"
     assert sl["blocked_promotion_flags"][0]["code"] == "PRIMARY_METRIC_INSUFFICIENT"
+
+
+def test_merge_summary_file_raises_on_corrupt_existing(tmp_path: Path):
+    path = tmp_path / "arch_competition" / "1c" / "arch_competition_summary.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{not valid json", encoding="utf-8")
+    tick = build_arch_competition_summary_tick(
+        ticker="QQQ",
+        ml_horizon_slug="1c",
+        manifest=_minimal_manifest(),
+        promotion_record=_minimal_record(),
+        paths={"evaluation_manifest": "/e", "promotion_decision": "/p"},
+    )
+    with pytest.raises(PromotionGovernanceError, match="invalid JSON"):
+        _merge_summary_file(path, "QQQ", tick)
+
+
+def test_merge_summary_file_raises_on_corrupt_tickers_field(tmp_path: Path):
+    path = tmp_path / "arch_competition" / "1c" / "arch_competition_summary.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"schema_version": "1", "tickers": ["SPY"]}),
+        encoding="utf-8",
+    )
+    tick = build_arch_competition_summary_tick(
+        ticker="QQQ",
+        ml_horizon_slug="1c",
+        manifest=_minimal_manifest(),
+        promotion_record=_minimal_record(),
+        paths={"evaluation_manifest": "/e", "promotion_decision": "/p"},
+    )
+    with pytest.raises(PromotionGovernanceError, match="non-dict 'tickers'"):
+        _merge_summary_file(path, "QQQ", tick)
+
+
+def test_merge_summary_file_preserves_other_tickers(tmp_path: Path):
+    path = tmp_path / "arch_competition" / "1c" / "arch_competition_summary.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "tickers": {"SPY": {"ticker": "SPY", "latest_promotion_decision": "keep_incumbent"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    tick = build_arch_competition_summary_tick(
+        ticker="QQQ",
+        ml_horizon_slug="1c",
+        manifest=_minimal_manifest(),
+        promotion_record=_minimal_record(),
+        paths={"evaluation_manifest": "/e", "promotion_decision": "/p"},
+    )
+    _merge_summary_file(path, "QQQ", tick)
+    merged = json.loads(path.read_text(encoding="utf-8"))
+    assert merged["tickers"]["SPY"]["ticker"] == "SPY"
+    assert merged["tickers"]["QQQ"]["ticker"] == "QQQ"
+
+
+def test_load_visibility_prefers_tick_summary_empty_blocked_list(tmp_path: Path):
+    hz_path = tmp_path / "arch_state.json"
+    hz_path.write_text(
+        json.dumps(
+            {
+                "SPY": {
+                    "active_architecture": "parallel",
+                    "governed_competition": {
+                        "latest_promotion_decision": "keep_incumbent",
+                        "blocked_promotion_flags": [{"code": "STALE_GV"}],
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "arch_competition" / "1c").mkdir(parents=True)
+    (tmp_path / "arch_competition" / "1c" / "arch_competition_summary.json").write_text(
+        json.dumps(
+            {
+                "tickers": {
+                    "SPY": {
+                        "blocked_promotion_flags": [],
+                        "manifest_paths": {"evaluation_manifest": "/e"},
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    v = load_architecture_competition_visibility(tmp_path, "1c", ticker="SPY")
+    assert v["blocked_reasons"] == []
+
+
+def test_validate_persisted_returns_parsed_artifacts(tmp_path: Path):
+    from arch_competition.eval_runner import EVALUATION_MANIFEST_SCHEMA_VERSION
+    from arch_competition.promotion_engine import PROMOTION_RECORD_SCHEMA_VERSION
+
+    ev = evaluation_manifest_path(tmp_path, "1c", "SPY")
+    pr = promotion_decision_path(tmp_path, "1c", "SPY")
+    ev.parent.mkdir(parents=True)
+    ev.write_text(json.dumps({"schema_version": EVALUATION_MANIFEST_SCHEMA_VERSION, "ticker": "SPY"}), encoding="utf-8")
+    pr.write_text(json.dumps({"schema_version": PROMOTION_RECORD_SCHEMA_VERSION, "ticker": "SPY"}), encoding="utf-8")
+    manifest, record = validate_persisted_governed_artifacts_or_raise(tmp_path, "1c", "SPY")
+    assert manifest["schema_version"] == EVALUATION_MANIFEST_SCHEMA_VERSION
+    assert record["schema_version"] == PROMOTION_RECORD_SCHEMA_VERSION
+
+
+def test_validate_persisted_schema_mismatch_includes_versions(tmp_path: Path):
+    ev = evaluation_manifest_path(tmp_path, "1c", "SPY")
+    pr = promotion_decision_path(tmp_path, "1c", "SPY")
+    ev.parent.mkdir(parents=True)
+    ev.write_text(json.dumps({"schema_version": "wrong"}), encoding="utf-8")
+    pr.write_text(json.dumps({"schema_version": PROMOTION_RECORD_SCHEMA_VERSION}), encoding="utf-8")
+    with pytest.raises(PromotionGovernanceInvalidError, match="expected='1' got='wrong'"):
+        validate_persisted_governed_artifacts_or_raise(tmp_path, "1c", "SPY")
+
+
+def test_build_summary_tick_surfaces_both_architecture_row_counts():
+    tick = build_arch_competition_summary_tick(
+        ticker="SPY",
+        ml_horizon_slug="1c",
+        manifest=_minimal_manifest(),
+        promotion_record=_minimal_record(),
+        paths={},
+    )
+    assert tick["n_rows_scored_parallel"] == 100
+    assert tick["n_rows_scored_cascade"] == 100
 
 
 def test_load_visibility_single_ticker(tmp_path: Path):
@@ -185,27 +360,30 @@ def test_load_visibility_single_ticker(tmp_path: Path):
     assert v["blocked_reasons"][0]["code"] == "X"
 
 
-def test_ml_scheduler_auto_promote_helper_false_by_default(monkeypatch):
-    monkeypatch.delenv("ED_ML_SCHEDULER_AUTO_PROMOTE_TO_ACTIVE", raising=False)
+def test_ml_scheduler_auto_promote_helper_true_by_default(monkeypatch):
+    """Train-success-live: helper mirrors policy default ON."""
+    monkeypatch.delenv("ED_SCHEDULER_AUTO_PROMOTE", raising=False)
+    monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
     from ml_scheduler import _scheduler_auto_promote_to_active
 
-    assert _scheduler_auto_promote_to_active() is False
+    assert _scheduler_auto_promote_to_active() is True
 
 
 def test_assert_no_active_directory_write_ok_when_env_off(monkeypatch):
-    monkeypatch.delenv("ED_ML_SCHEDULER_AUTO_PROMOTE_TO_ACTIVE", raising=False)
+    """With auto-promote panic-disabled, the no-active-write hook must not raise."""
+    monkeypatch.setenv("ED_DISABLE_AUTO_PROMOTE", "1")
     assert_no_active_directory_write()
 
 
-def test_run_base_models_once_unchanged_parallel(monkeypatch):
-    """Production default remains parallel; integration does not alter run_base_models_once."""
+def test_run_unified_stack_ml_once_unchanged_parallel(monkeypatch):
+    """Production default remains parallel; integration does not alter run_unified_stack_ml_once."""
     monkeypatch.delenv("ED_ML_SCHEDULER_AUTO_PROMOTE_TO_ACTIVE", raising=False)
     import inspect
-    from ml_predict import run_base_models_once
+    from ml_predict import run_unified_stack_ml_once
 
-    src = inspect.getsource(run_base_models_once)
+    src = inspect.getsource(run_unified_stack_ml_once)
     assert "parallel_runtime=True" in src
-    assert "def run_base_models_once" in src
+    assert "def run_unified_stack_ml_once" in src
 
 
 def test_ml_scheduler_invokes_governed_architecture_pass():
@@ -215,4 +393,71 @@ def test_ml_scheduler_invokes_governed_architecture_pass():
     src = (root / "ml_scheduler.py").read_text(encoding="utf-8")
     assert "run_governed_architecture_competition_pass" in src
     assert "governed_competition" in src
-    assert "scheduler does not copy to active/" in src
+    assert "execute_promotion_if_eligible" in src
+
+
+def test_resolve_ticker_outcome_eval_failed_on_governed_failed_closed():
+    from ml_scheduler import _resolve_ticker_outcome
+    from training_outcome import TrainingOutcome, compute_run_exit_code, outcome_entry
+
+    outcome, streak = _resolve_ticker_outcome(
+        ticker="SPY",
+        horizon="1c",
+        skip_governed_eval=False,
+        governed_slice={"failed_closed": True, "error": "boom"},
+        parallel_skip=False,
+        cascade_skip=False,
+        promoted=False,
+        consecutive_cache_skips=0,
+    )
+    assert outcome == TrainingOutcome.eval_failed.value
+    assert streak == 0
+    assert compute_run_exit_code(
+        [outcome_entry(ticker="SPY", horizon="1c", outcome=TrainingOutcome(outcome))]
+    ) == 1
+
+
+def test_resolve_ticker_outcome_non_core_partial_bundle_promote_skipped():
+    from ml_scheduler import _resolve_ticker_outcome
+    from training_outcome import TrainingOutcome, compute_run_exit_code, outcome_entry
+
+    outcome, streak = _resolve_ticker_outcome(
+        ticker="CRWD",
+        horizon="1c",
+        skip_governed_eval=True,
+        governed_slice={"failed_closed": True, "error": "partial_candidate_bundle"},
+        parallel_skip=False,
+        cascade_skip=False,
+        promoted=False,
+        consecutive_cache_skips=0,
+    )
+    assert outcome == TrainingOutcome.promote_skipped.value
+    assert compute_run_exit_code(
+        [outcome_entry(ticker="CRWD", horizon="1c", outcome=TrainingOutcome(outcome))]
+    ) == 0
+
+
+def test_resolve_ticker_outcome_cache_skipped_under_cap_exit_zero(monkeypatch, tmp_path: Path):
+    import training_pipeline_status as tps
+    from ml_scheduler import _resolve_ticker_outcome
+    from training_outcome import TrainingOutcome, compute_run_exit_code, outcome_entry
+    from training_pipeline_status import reset_cache_skip_streak
+
+    status_path = tmp_path / "training_pipeline_status.json"
+    monkeypatch.setattr(tps, "DEFAULT_STATUS_PATH", status_path)
+    reset_cache_skip_streak("SPY", "15c", path=status_path)
+
+    outcome, _ = _resolve_ticker_outcome(
+        ticker="SPY",
+        horizon="15c",
+        skip_governed_eval=False,
+        governed_slice={"failed_closed": False},
+        parallel_skip=True,
+        cascade_skip=True,
+        promoted=False,
+        consecutive_cache_skips=0,
+    )
+    assert outcome == TrainingOutcome.cache_skipped.value
+    assert compute_run_exit_code(
+        [outcome_entry(ticker="SPY", horizon="15c", outcome=TrainingOutcome(outcome))]
+    ) == 0

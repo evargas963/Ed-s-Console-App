@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `SCHWAB_REMEDIATION_S013_DATE_DIFF_DTE_SUBTRIAGE_V1.md`.
+
 # Schwab Remediation S013 — `DATE_DIFF_DTE` Sub-Triage V1
 
 **Status:** SUBTRIAGE_COMPLETE; **Bucket E IMPLEMENTED** (classifier tag-plausibility gate, 2026-05-08)  

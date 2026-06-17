@@ -1,4 +1,4 @@
-"""Parallel stack runtime: independent base models, schema, fusion inputs, fail-closed."""
+"""Parallel stack runtime: independent ML stack layers, schema, fusion inputs, fail-closed."""
 
 from __future__ import annotations
 
@@ -36,9 +36,9 @@ def _minimal_inf_v1():
     )
 
 
-def test_run_base_models_once_invokes_sequence_models_with_parallel_runtime():
+def test_run_unified_stack_ml_once_invokes_sequence_models_with_parallel_runtime():
     """LSTM/TR must receive parallel_runtime=True and no upstream prob arrays."""
-    from ml_predict import run_base_models_once
+    from ml_predict import run_unified_stack_ml_once
 
     snap = {"ticker": "SPY", "et_hour": 10}
     inf = _minimal_inf_v1()
@@ -56,9 +56,11 @@ def test_run_base_models_once_invokes_sequence_models_with_parallel_runtime():
     with patch("ml_predict._predict_xgb", return_value={"up": 0.35, "down": 0.32, "flat": 0.33}), patch(
         "ml_predict._predict_lstm", side_effect=cap_lstm
     ), patch("ml_predict._predict_transformer", side_effect=cap_tr), patch(
+        "ml_predict._predict_xgb_movement_heads", return_value={}
+    ), patch(
         "ml_predict._load_meta", return_value=False
     ):
-        out = run_base_models_once(snap, "SPY", MagicMock(), "wait", inference_snapshot_v1=inf)
+        out = run_unified_stack_ml_once(snap, "SPY", MagicMock(), "wait", inference_snapshot_v1=inf)
 
     assert lstm_kw.get("parallel_runtime") is True
     assert lstm_kw.get("xgb_probs_arr") is None
@@ -76,7 +78,7 @@ def test_run_base_models_once_invokes_sequence_models_with_parallel_runtime():
 
 def test_single_xgb_call_no_nested_xgb_from_sequence_models():
     """Parallel path must not call _predict_xgb from inside LSTM/Transformer."""
-    from ml_predict import run_base_models_once
+    from ml_predict import run_unified_stack_ml_once
 
     snap = {"ticker": "SPY"}
     inf = _minimal_inf_v1()
@@ -89,18 +91,20 @@ def test_single_xgb_call_no_nested_xgb_from_sequence_models():
     with patch("ml_predict._predict_xgb", side_effect=xgb), patch(
         "ml_predict._predict_lstm", return_value={"up": 0.3, "down": 0.3, "flat": 0.4}
     ), patch("ml_predict._predict_transformer", return_value={"up": 0.3, "down": 0.3, "flat": 0.4}), patch(
+        "ml_predict._predict_xgb_movement_heads", return_value={}
+    ), patch(
         "ml_predict._load_meta", return_value=False
     ):
-        run_base_models_once(snap, "SPY", MagicMock(), "wait", inference_snapshot_v1=inf)
+        run_unified_stack_ml_once(snap, "SPY", MagicMock(), "wait", inference_snapshot_v1=inf)
 
     assert calls.count("xgb") == 1
 
 
 def test_missing_inference_snapshot_raises():
-    from ml_predict import run_base_models_once
+    from ml_predict import run_unified_stack_ml_once
 
     with pytest.raises(ValueError, match="inference_snapshot_v1"):
-        run_base_models_once({"ticker": "SPY"}, "SPY", MagicMock(), inference_snapshot_v1=None)
+        run_unified_stack_ml_once({"ticker": "SPY"}, "SPY", MagicMock(), inference_snapshot_v1=None)
 
 
 def test_parallel_runtime_artifact_error_is_value_error():
@@ -144,7 +148,7 @@ def test_monte_carlo_receives_resolved_model_probs_for_drift():
     ), patch(
         "prediction_engine.build_fusion_model_overlay_for_stack",
         return_value={"ticker": "SPY"},
-    ), patch("ml_predict.run_base_models_once") as rbm, patch("monte_carlo.simulate", side_effect=fake_simulate):
+    ), patch("ml_predict.run_unified_stack_ml_once") as rbm, patch("monte_carlo.simulate", side_effect=fake_simulate):
         rbm.return_value = {
             "fusion": {
                 "xgb": {"available": True, "prob_up": 0.4, "prob_down": 0.3, "prob_flat": 0.3},

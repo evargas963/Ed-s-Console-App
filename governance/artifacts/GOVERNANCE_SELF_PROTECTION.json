@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "artifact": "governance/artifacts/GOVERNANCE_SELF_PROTECTION.json",
+  "surfaces_present": {
+    "governance/docs/AGENT_OPERATING_CONTRACT.md": true,
+    ".github/workflows/objective-audit.yml": true,
+    "governance/artifacts/BRANCH_PROTECTION_PROOF.json": true,
+    "governance/artifacts/REMOTE_ENFORCEMENT_EVIDENCE.json": true,
+    "governance/artifacts/REQUIRED_STATUS_CHECKS.json": true,
+    "governance/artifacts/GOVERNANCE_CRITICAL_FILES.json": true,
+    "governance/docs/NO_VERIFY_THREAT_MODEL.md": true,
+    "governance/artifacts/NO_VERIFY_RESISTANCE.json": true,
+    ".github/CODEOWNERS": true,
+    "tools/check_branch_protection_proof.py": true,
+    "tools/check_required_status_checks.py": true,
+    "tools/check_governance_critical_files.py": true,
+    "tools/check_no_verify_resistance.py": true,
+    "tools/check_governance_self_protection.py": true,
+    "tools/verify_remote_enforcement.py": true,
+    "tools/remote_enforcement_evidence.py": true,
+    "tools/_build_institutional_audit_phase3d.py": true
+  },
+  "preload_rules_present": {
+    ".cursor/rules/000-agent-operating-contract.mdc": true,
+    ".cursor/rules/010-definition-of-done.mdc": true,
+    ".cursor/rules/020-governance-maturity.mdc": true,
+    ".cursor/rules/030-repo-neatness.mdc": true,
+    ".cursor/rules/040-testing-and-artifacts.mdc": true
+  },
+  "maturity_truth_source": "governance/artifacts/SEVERITY_1_CONTROL_VALIDATION_REGISTER.json",
+  "maturity_truth_source_exists": true,
+  "l5_claim_without_proof_forbidden": true,
+  "external_enforcement_required": true,
+  "external_enforcement_proven": true,
+  "same_actor_mutation_status": "mitigated",
+  "remote_evidence": {
+    "evidence_source": "gh api + gh run list",
+    "evidence_timestamp": "2026-06-17T10:18:55+00:00",
+    "repository": "evargas963/Ed-s-Console-App",
+    "protected_branch": "main",
+    "required_status_checks": [
+      "objective-audit"
+    ],
+    "required_reviews": 1,
+    "allows_force_pushes": false,
+    "allows_deletions": false,
+    "bypass_actors": [],
+    "verification_method": "github_cli",
+    "verified_by": "tools/verify_remote_enforcement.py"
+  },
+  "verify_remote_enforcement_script": true,
+  "generated": "2026-06-17"
+}

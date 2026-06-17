@@ -10,8 +10,13 @@ multi-timeframe (derived from stacked 1m), participation.
 
 from __future__ import annotations
 
+import logging
 import math
 from typing import Any, Mapping, Optional, Sequence
+
+from numeric_contract import float_finite_or_none
+
+log = logging.getLogger(__name__)
 
 EPS = 1e-12
 DEFAULT_MAX_BARS = 256
@@ -30,17 +35,61 @@ W_RV = 30
 W_MTF5 = 30   # 30×1m ≈ 30m for 5m-like aggregation
 W_MTF15 = 45  # 15×1m bars aggregated as 15m proxy
 
+# Multi-horizon momentum lookbacks (1m bars). Intraday time-series momentum:
+# Moskowitz/Ooi/Pedersen (2012, JFE); Gao/Han/Li/Zhou (2018, JFE) intraday momentum.
+MOMENTUM_RETURN_LOOKBACKS_1M: tuple[int, ...] = (1, 3, 5, 15, 30, 60)
+
+# ── Snapshot persistence contract (operator 2026-06-11) ──────────────────────
+# Price-action primitives persisted to snapshots/snapshots_1m_normalized so the
+# ML cone can finally see price movement (not just options-structure distances).
+# One row per (snapshot column, signal-layer key). Producer: server.py snapshot
+# kwargs via compute_price_action_snapshot_columns; backfill: snapshot_normalizer.
+SNAPSHOT_PRICE_ACTION_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("pa_ret_1m_pct", "mom.ret_1m_pct"),
+    ("pa_ret_3m_pct", "mom.ret_3m_pct"),
+    ("pa_ret_5m_pct", "mom.ret_5m_pct"),
+    ("pa_ret_15m_pct", "mom.ret_15m_pct"),
+    ("pa_ret_30m_pct", "mom.ret_30m_pct"),
+    ("pa_ret_60m_pct", "mom.ret_60m_pct"),
+    ("pa_trend_slope_log20", "ps.rolling_trend_slope_log20"),
+    ("pa_trend_slope_log40", "ps.rolling_trend_slope_log40"),
+    ("pa_structure_state", "ps.hh_hl_lh_ll_state"),
+    ("pa_bos_up", "ps.break_of_structure_up"),
+    ("pa_bos_down", "ps.break_of_structure_down"),
+    ("pa_dist_swing_high_atr", "ps.dist_to_swing_high_atr"),
+    ("pa_dist_swing_low_atr", "ps.dist_to_swing_low_atr"),
+    ("pa_range_position_n20", "ps.range_position_n20"),
+    ("pa_vwap_zscore", "vl.vwap_zscore"),
+    ("pa_atr_pctile_60", "vol.atr_percentile_60"),
+    ("pa_atr_expansion_5_20", "vol.atr_expansion_ratio_5_20"),
+    ("pa_realized_vol_ann", "vol.realized_vol_annualized_proxy"),
+    ("pa_wick_asymmetry", "cnd.wick_asymmetry"),
+    ("pa_close_location", "cnd.close_location_in_bar"),
+    ("pa_impulse_run_signed", "cnd.consecutive_impulse_signed"),
+    ("pa_mtf_trend_1m", "mtf.trend_1m_sign"),
+    ("pa_mtf_trend_5m", "mtf.trend_5m_from_1m_sign"),
+    ("pa_mtf_bias_15m", "mtf.bias_15m_from_1m_sign"),
+    ("pa_mtf_alignment", "mtf.alignment_state"),
+    ("pa_relative_volume", "part.relative_volume"),
+    ("pa_move_efficiency", "part.move_efficiency_last_vs_tr5"),
+)
+
 
 def _f(x: Any) -> Optional[float]:
+    return float_finite_or_none(x)
+
+
+def meta_n_bars_int(layer: Mapping[str, Any]) -> int:
+    """Parse ``meta.n_bars`` without raising on corrupt bundle strings."""
+    raw = layer.get("meta.n_bars")
+    if raw is None or raw == "":
+        return 0
     try:
-        if x is None:
-            return None
-        v = float(x)
-        if math.isnan(v) or math.isinf(v):
-            return None
-        return v
+        n = int(raw)
     except (TypeError, ValueError):
-        return None
+        log.debug("meta_n_bars_int: unparseable meta.n_bars=%r", raw)
+        return 0
+    return n if n > 0 else 0
 
 
 def _clip(x: float, lo: float, hi: float) -> float:
@@ -281,6 +330,7 @@ def compute_signal_layer_v1(
 
     closes = [_f(b.get("close")) for b in bars]
     if not closes or closes[-1] is None:
+        out["meta.error"] = "missing_last_close"
         return out
 
     # ── A. Price structure ─────────────────────────────────────────────────
@@ -364,7 +414,12 @@ def compute_signal_layer_v1(
     vwap_roll = _safe_div(typ_vol_sum, vol_sum) if vol_sum > EPS else None
 
     vwap_inp = _f(getattr(inp, "vwap", None)) if inp is not None else None
-    vwap_use = vwap_inp if vwap_inp is not None else vwap_roll
+    if vwap_inp is not None:
+        vwap_use = vwap_inp
+        out["meta.vwap_source"] = "inp"
+    else:
+        vwap_use = vwap_roll
+        out["meta.vwap_source"] = "roll" if vwap_roll is not None else None
 
     if vwap_use is not None:
         out["vl.price_vs_vwap_pct"] = _safe_div(c_now - vwap_use, c_now) * 100.0
@@ -516,6 +571,8 @@ def compute_signal_layer_v1(
         else:
             break
     out["cnd.consecutive_impulse_count"] = float(min(impulse, 20))
+    # Signed run length: +n consecutive up closes, -n consecutive down closes.
+    out["cnd.consecutive_impulse_signed"] = float(min(impulse, 20)) * (dir_sign or 0.0)
 
     if len(bars) >= 2:
         prev_c = _f(bars[-2].get("close"))
@@ -535,6 +592,16 @@ def compute_signal_layer_v1(
     out["cnd.drive_flag"] = 1.0 if (isinstance(br, float) and br > 0.65) else 0.0
     out["cnd.stall_flag"] = 1.0 if (isinstance(br, float) and br < 0.25 and ic >= 3.0) else 0.0
 
+    # ── D2. Multi-horizon momentum returns ─────────────────────────────────
+    # Log return over each lookback, in percent. Intraday time-series momentum
+    # (Moskowitz/Ooi/Pedersen 2012; Gao/Han/Li/Zhou 2018). None when history short.
+    for k in MOMENTUM_RETURN_LOOKBACKS_1M:
+        key = f"mom.ret_{k}m_pct"
+        if len(closes) > k and closes[-1 - k] is not None and closes[-1 - k] > EPS and c_now > EPS:
+            out[key] = 100.0 * math.log(c_now / closes[-1 - k])
+        else:
+            out[key] = None
+
     # ── E. Multi-timeframe (from 1m only) ─────────────────────────────────
     out["mtf.trend_1m_sign"] = _sign_trend(sl)
     tail5 = bars[-(5 * 14) :] if len(bars) >= 5 * 6 else bars
@@ -544,7 +611,7 @@ def compute_signal_layer_v1(
         s5 = _ols_log_slope_close(c5)
         out["mtf.trend_5m_from_1m_sign"] = _sign_trend(s5)
     else:
-        out["mtf.trend_5m_from_1m_sign"] = 0.0
+        out["mtf.trend_5m_from_1m_sign"] = None
 
     tail15 = bars[-(15 * 8) :] if len(bars) >= 15 * 4 else bars
     agg15 = _aggregate_bars(tail15, 15)
@@ -553,18 +620,19 @@ def compute_signal_layer_v1(
         s15 = _ols_log_slope_close(c15)
         out["mtf.bias_15m_from_1m_sign"] = _sign_trend(s15)
     else:
-        out["mtf.bias_15m_from_1m_sign"] = 0.0
+        out["mtf.bias_15m_from_1m_sign"] = None
 
     s1 = out["mtf.trend_1m_sign"]
     s5 = out["mtf.trend_5m_from_1m_sign"]
     s15 = out["mtf.bias_15m_from_1m_sign"]
-    if s1 == s5 == s15 and s1 != 0.0:
-        align = 1.0
+    if s1 is None or s5 is None or s15 is None:
+        out["mtf.alignment_state"] = None
+    elif s1 == s5 == s15 and s1 != 0.0:
+        out["mtf.alignment_state"] = 1.0
     elif s1 != 0.0 and s5 != 0.0 and (s1 * s5 < 0 or s1 * s15 < 0):
-        align = -1.0
+        out["mtf.alignment_state"] = -1.0
     else:
-        align = 0.0
-    out["mtf.alignment_state"] = align
+        out["mtf.alignment_state"] = 0.0
 
     # ── F. Participation ─────────────────────────────────────────────────
     vols = [_f(b.get("volume")) for b in bars[-W_VOL_PART:]]
@@ -591,6 +659,22 @@ def compute_signal_layer_v1(
         out["part.move_efficiency_last_vs_tr5"] = None
 
     return out
+
+
+def compute_price_action_snapshot_columns(
+    bars: Sequence[Mapping[str, Any]],
+    *,
+    decision_ts_utc: float,
+    inp: Any | None = None,
+) -> dict[str, Optional[float]]:
+    """
+    Flat snapshot-column dict for the persisted price-action cone
+    (SNAPSHOT_PRICE_ACTION_COLUMNS). Missing history → None per column
+    (honest nulls — never fabricated fills).
+    """
+    closed = [b for b in bars if (_f(b.get("bar_end_ts_utc")) or 0.0) <= float(decision_ts_utc)]
+    layer = compute_signal_layer_v1(closed, decision_ts_utc=decision_ts_utc, inp=inp)
+    return {col: _f(layer.get(key)) for col, key in SNAPSHOT_PRICE_ACTION_COLUMNS}
 
 
 def compute_signal_layer_v1_from_db(
@@ -634,7 +718,7 @@ def compute_signal_layer_v1_for_calibration(
             if callable(close):
                 close()
         except Exception:
-            pass
+            log.debug("signal_layer_v1: connection close failed", exc_info=True)
 
 
 def layer_direction_policy(layer: Mapping[str, Any], *, thresh: float = 0.85) -> str:
@@ -651,6 +735,8 @@ def layer_direction_policy(layer: Mapping[str, Any], *, thresh: float = 0.85) ->
         s += _clip(float(vz) / 2.5, -1.25, 1.25)
     for k in ("mtf.trend_1m_sign", "mtf.trend_5m_from_1m_sign", "mtf.bias_15m_from_1m_sign"):
         v = layer.get(k)
+        if v is None:
+            continue
         if isinstance(v, (int, float)):
             s += float(v)
     if s > thresh:
@@ -660,15 +746,17 @@ def layer_direction_policy(layer: Mapping[str, Any], *, thresh: float = 0.85) ->
     return "wait"
 
 
-def signal_layer_v1_to_direction_probs(layer: Mapping[str, Any]) -> tuple[float, float, float]:
+def signal_layer_v1_to_direction_probs(
+    layer: Mapping[str, Any],
+) -> Optional[tuple[float, float, float]]:
     """
     Map numeric v1 layer to a calibrated (up, down, flat) triple for fusion blending.
     Uses directional score → softmax; flat mass rises when |score| is small.
+    Returns None when bar history is insufficient (no uniform 1/3 placeholder).
     """
     fn = flatten_numeric_features(layer)
-    if int(layer.get("meta.n_bars") or 0) < 25:
-        u = 1.0 / 3.0
-        return (u, u, u)
+    if meta_n_bars_int(layer) < 25:
+        return None
 
     score = 0.0
     s = fn.get("ps.rolling_trend_slope_log20")
@@ -677,9 +765,16 @@ def signal_layer_v1_to_direction_probs(layer: Mapping[str, Any]) -> tuple[float,
     vz = fn.get("vl.vwap_zscore")
     if vz is not None:
         score += float(vz) * 0.18
-    score += float(fn.get("mtf.trend_1m_sign", 0.0)) * 0.42
-    score += float(fn.get("mtf.trend_5m_from_1m_sign", 0.0)) * 0.38
-    score += float(fn.get("mtf.bias_15m_from_1m_sign", 0.0)) * 0.28
+    for k, w in (
+        ("mtf.trend_1m_sign", 0.42),
+        ("mtf.trend_5m_from_1m_sign", 0.38),
+        ("mtf.bias_15m_from_1m_sign", 0.28),
+    ):
+        v = layer.get(k)
+        if v is None:
+            continue
+        if isinstance(v, (int, float)):
+            score += float(v) * w
 
     score = max(-3.0, min(3.0, score))
 

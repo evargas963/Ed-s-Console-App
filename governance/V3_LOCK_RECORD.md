@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `V3_LOCK_RECORD.md`.
+
 # V3.0 Lock Record
 
 V3.0 is locked as of the effective date/time recorded at commit. V3.0 supersedes V1 and V2 as the authoritative institutional standard for this program and governs all subsequent system behavior. Amendments follow `governance/INSTITUTIONAL_STANDARD_V3.md` Section 20.

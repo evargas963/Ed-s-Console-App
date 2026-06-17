@@ -28,10 +28,10 @@ def _seed(conn, ticker: str, zone: str, vwap_side: str, ts: float, sess: str, vi
           ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
           zone, vwap_side, nearest_above_dist, nearest_below_dist,
           session_bucket, vix_bucket, regime_primary,
-          outcome_1c, outcome_3c, outcome_5c, outcome_8c, outcome_13c, outcome_15c, outcome_60c,
+          outcome_1c, outcome_5c, outcome_15c, outcome_60c,
           horizon_outcome_schema_version
         )
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             ticker,
@@ -49,9 +49,6 @@ def _seed(conn, ticker: str, zone: str, vwap_side: str, ts: float, sess: str, vi
             sess,
             vix_b,
             "pinning",
-            "up",
-            "up",
-            "up",
             "up",
             "up",
             "up",

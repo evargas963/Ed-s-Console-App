@@ -18,17 +18,9 @@ CURRENT_BASELINE_STRUCTURAL = frozenset(
 )
 POOL_GATE_FIELDS = frozenset({"ticker", "timeframe", "outcome_1c"})
 
-_OUTCOME_BASE = frozenset(
-    {
-        "outcome_1c",
-        "outcome_3c",
-        "outcome_5c",
-        "outcome_8c",
-        "outcome_13c",
-        "outcome_15c",
-        "outcome_60c",
-    }
-)
+from ml_horizon import PRIMARY_DECISION_HORIZONS
+
+_OUTCOME_BASE = frozenset(f"outcome_{hz}" for hz in PRIMARY_DECISION_HORIZONS)
 
 
 def _is_outcome_field(name: str) -> bool:

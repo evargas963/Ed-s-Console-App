@@ -9,30 +9,173 @@ The Call — implements STACK ORDER 8, 9, 10 (enforced in compute_call):
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+import math
+from typing import Optional
 
 from lifecycle_rule_core import derive_stop_distance_pct, derive_target_levels
 from multi_horizon_decision import MultiHorizonSynthesis
-from datetime import timezone, timedelta
-
 from math_exposure import (
     greek_bias,
     is_pin_zone,
     CONTINUATION_BLOCK_THRESHOLD,
     BREAKOUT_BLOCK_THRESHOLD,
 )
-from signal_types import SignalInput, RulesCard, PredictiveCard, TheCall, CanonicalForecast
+from fusion_contract import canonical_provenance_is_tradable, fusion_is_authoritative
+from time_et import RTH_OPEN_MINS
+from position_sizing_policy import regime_size_multiplier
+from replay_hold_bars import replay_max_hold_bars_for_setup
+from signal_types import (
+    SignalInput,
+    RulesCard,
+    PredictiveCard,
+    TheCall,
+    CanonicalForecast,
+)
 
 log = logging.getLogger(__name__)
-ET = timezone(timedelta(hours=-5))
+
+# ── STACK-WIRE-3: named thresholds (Phase 6 ablation surface) ──
+# Stack threshold (event-risk vs default)
+STACK_THRESHOLD_DEFAULT: int = 2
+STACK_THRESHOLD_EVENT_RISK: int = 3
+CONFLUENCE_TOTAL_SOURCES: int = 8
+
+# Conviction margin thresholds
+CONVICTION_HIGH_MARGIN_HIGH: float = 0.12
+CONVICTION_HIGH_MARGIN_MEDIUM: float = 0.06
+CONVICTION_MEDIUM_MARGIN: float = 0.10
+CONVICTION_NEUTRAL_DOM_PROB: float = 1.0 / 3.0
+
+# Time warnings (mins-to-close)
+MINS_TO_CLOSE_NO_NEW_ENTRIES: int = 30
+MINS_TO_CLOSE_HALVE_SIZE: int = 60
+MINS_TO_CLOSE_REDUCE_SIZE: int = 120
+
+# COH-I-M: time-warning visual prefixes. Kept in named constants so the unicode
+# symbols are grep-discoverable and can be swapped to ASCII tokens for downstream
+# consumers that don't render the emoji (terminals, JSON pretty-printers, etc).
+TIME_WARNING_PREFIX_STOP: str = "\U0001f6d1"  # 🛑  no-new-entries (≤30 min)
+TIME_WARNING_PREFIX_ALERT: str = "⏰"      # ⏰  reduce-size warning (≤120 min)
+
+# Validate trade gates
+WALL_TOO_CLOSE_PTS: float = 1.0
+CHOP_CONFLUENCE_MIN: int = 4
+CHOP_CONFLUENCE_MIN_WITH_PRED_AGREE: int = 3
+AGREE_THRESHOLD_UNSTABLE: float = 0.50
+AGREE_THRESHOLD_DEFAULT: float = 0.18
+CANONICAL_DOM_PROB_STACK_VOTE_MIN: float = 0.45
+CANONICAL_OPPOSE_THRESHOLD: float = 0.50
+REVERSAL_GATE_THRESHOLD: float = 0.50
+BREAKOUT_SUM_GATE: float = 0.60
+MC_EAE_GATE_DEFAULT: float = 2.0
+MC_EAE_GATE_EXPANSION: float = 2.5
+MC_EAE_GATE_EXPANSION_MID: float = 1.8
+MC_EAE_GATE_CONTAINED: float = 1.5
+MC_EAE_GATE_CONTAINED_MID: float = 1.0
+VIX_EXTREME_THRESHOLD: float = 35.0
+VIX_ELEVATED_THRESHOLD: float = 25.0
+COMPRESSION_BARS_RISK: int = 10
+
+# Sizing (compute_position_size)
+CONF_MULT_HIGH_WITH_CONFLUENCE: float = 1.00
+CONF_MULT_HIGH: float = 0.85
+CONF_MULT_MEDIUM: float = 0.70
+CONF_MULT_LOW: float = 0.45
+CONF_MULT_VERY_LOW: float = 0.25
+CONF_MULT_HIGH_CONFLUENCE_MIN: int = 3
+MODEL_AGREEMENT_BOOST_THRESHOLD: float = 0.80
+MODEL_AGREEMENT_CUT_THRESHOLD: float = 0.35
+MODEL_AGREEMENT_BOOST_FACTOR: float = 1.10
+MODEL_AGREEMENT_CUT_FACTOR: float = 0.80
+FUSION_CONF_BOOST_FACTOR: float = 1.10
+VIX_VOL_MULT_EXTREME_THRESHOLD: float = 35.0
+VIX_VOL_MULT_ELEVATED_THRESHOLD: float = 25.0
+VIX_VOL_MULT_HIGH_THRESHOLD: float = 20.0
+VIX_VOL_MULT_EXTREME_FACTOR: float = 0.50
+VIX_VOL_MULT_ELEVATED_FACTOR: float = 0.70
+VIX_VOL_MULT_HIGH_FACTOR: float = 0.85
+STOP_ATR_RATIO_TOO_TIGHT: float = 0.5
+STOP_ATR_RATIO_TOO_WIDE: float = 3.0
+STOP_ATR_TIGHT_FACTOR: float = 0.60
+STOP_ATR_WIDE_FACTOR: float = 0.70
+MC_EAE_SIZE_EXTREME_RATIO: float = 2.5
+MC_EAE_SIZE_EXTREME_FACTOR: float = 0.50
+MC_EAE_SIZE_EXPANSION_MID_RATIO: float = 1.8
+MC_EAE_SIZE_EXPANSION_MID_FACTOR: float = 0.75
+MC_EAE_SIZE_CONTAINED_RATIO: float = 1.5
+MC_EAE_SIZE_CONTAINED_FACTOR: float = 0.40
+MC_EAE_SIZE_CONTAINED_MID_FACTOR: float = 0.70
+MC_EAE_SIZE_DEFAULT_HIGH_FACTOR: float = 0.40
+MC_EAE_SIZE_DEFAULT_MID_FACTOR: float = 0.65
+MC_EAE_SIZE_DEFAULT_LOW_FACTOR: float = 0.85
+MC_CONTAINMENT_BREAKOUT_HIGH: float = 0.70
+MC_CONTAINMENT_BREAKOUT_FAIL_FACTOR: float = 0.60
+MC_EXPANSION_BREAKOUT_BOOST: float = 0.50
+MC_CONTAINMENT_PINNING_HIGH: float = 0.65
+MC_CONTAINMENT_PINNING_FACTOR: float = 0.75
+MC_EAE_EFE_REVERSAL_RATIO: float = 1.3
+MC_EAE_EFE_REVERSAL_FACTOR: float = 0.60
+MC_EFE_STOP_FLOOR_RATIO: float = 0.5
+MC_EFE_STOP_FLOOR_FACTOR: float = 0.70
+LEVEL_OPPOSING_WALL_VERY_CLOSE_PTS: float = 1.0
+LEVEL_OPPOSING_WALL_CLOSE_PTS: float = 2.0
+LEVEL_OPPOSING_WALL_CLOSE_FACTOR: float = 0.40
+LEVEL_OPPOSING_WALL_NEARBY_FACTOR: float = 0.70
+LEVEL_VOID_AHEAD_BOOST: float = 0.15
+RR_FLOOR_WEAK: float = 1.0
+RR_FLOOR_MARGINAL: float = 1.5
+RR_MULT_WEAK: float = 0.25
+RR_MULT_MARGINAL: float = 0.60
+TIME_MULT_CLOSING: float = 0.0
+TIME_MULT_ONE_HOUR: float = 0.40
+TIME_MULT_TWO_HOUR: float = 0.70
+R_UNITS_CAP: float = 1.25
+CONF_MULT_CAP_WITH_AGREEMENT: float = 1.25
+
+# Level proximity (readiness input)
+LEVEL_PROXIMITY_NEAR_PTS: float = 2.0
+LEVEL_PROXIMITY_MID_PTS: float = 5.0
+
+# Conviction downgrade triggers
+VOL_CONV_MULT_DOWNGRADE_THRESHOLD: float = 0.85
+VOL_CONV_MULT_DOUBLE_DOWNGRADE_THRESHOLD: float = 0.75
+ZONE_FRESH_BARS_DOWNGRADE_MAX: int = 2
+
+# Cross-instrument signal
+CROSS_INSTRUMENT_STRONG_THRESHOLD: float = 0.40
+CROSS_INSTRUMENT_WEAK_THRESHOLD: float = 0.10
+CROSS_INSTRUMENT_DIR_EPS: float = 0.10
+CROSS_INSTRUMENT_QQQ_LEAD_THRESHOLD: float = 0.20
+CROSS_INSTRUMENT_IWM_RISK_THRESHOLD: float = 0.50
+
+# MH size tier (sizing modifier)
+MH_SIZE_TIER_3_MAX_MOD: float = 0.30
+MH_SIZE_TIER_2_MAX_MOD: float = 0.45
+MH_SIZE_TIER_1_MAX_MOD: float = 0.80
+
+# WAIT_BLOCKER_REASON (FIND-WIRE3-4)
+WAIT_BLOCKER_REASON_CANONICAL_PROVENANCE = "canonical_provenance"
+WAIT_BLOCKER_REASON_MULTI_HORIZON_POLICY = "multi_horizon_policy"
+WAIT_BLOCKER_REASON_STACK = "stack"
+WAIT_BLOCKER_REASON_VOL_REGIME = "vol_regime"
+WAIT_BLOCKER_REASON_GATES = "gates"
+WAIT_BLOCKER_REASON_TIME = "time"
+
+
+def _readiness_canonical_fields(canonical: CanonicalForecast) -> tuple[str, float]:
+    """Withhold tradable direction/probability from readiness when canonical is non-tradable."""
+    prov = str(getattr(canonical, "provenance", "") or "")
+    if not canonical_provenance_is_tradable(prov):
+        return "flat", 0.0
+    return (canonical.direction or "flat", canonical.dominant_probability())
 
 
 def _mh_size_tier_from_modifier(mh_mod: float) -> int:
-    if mh_mod <= 0.30:
+    if mh_mod <= MH_SIZE_TIER_3_MAX_MOD:
         return 3
-    if mh_mod <= 0.45:
+    if mh_mod <= MH_SIZE_TIER_2_MAX_MOD:
         return 2
-    if mh_mod <= 0.80:
+    if mh_mod <= MH_SIZE_TIER_1_MAX_MOD:
         return 1
     return 0
 
@@ -77,7 +220,7 @@ def _classify_trade_type(micro_regime: str, zone: str, signal: str) -> str:
     from micro_structure import (
         R_TREND_UP, R_TREND_DOWN, R_BOS_UP, R_BOS_DOWN,
         R_CHOCH_BULL, R_CHOCH_BEAR, R_COMPRESSION, R_RANGE,
-        R_REVERSAL_UP, R_REVERSAL_DN, R_CHOP,
+        R_REVERSAL_UP, R_REVERSAL_DN,
     )
 
     if signal == "wait":
@@ -112,9 +255,7 @@ def _classify_trade_type(micro_regime: str, zone: str, signal: str) -> str:
 def _build_invalidation(micro, micro_regime, final_signal, trade_type, stop, inp) -> str:
     """Build plain English invalidation reason."""
     from micro_structure import (
-        R_TREND_UP, R_TREND_DOWN, R_BOS_UP, R_BOS_DOWN,
-        R_CHOCH_BULL, R_CHOCH_BEAR, R_COMPRESSION, R_RANGE,
-        R_REVERSAL_UP, R_REVERSAL_DN,
+        R_BOS_UP, R_BOS_DOWN,
     )
 
     if final_signal == "wait" or stop is None:
@@ -129,12 +270,11 @@ def _build_invalidation(micro, micro_regime, final_signal, trade_type, stop, inp
         elif final_signal == "short" and micro.structure_resist:
             parts.append(f"Invalid if 5min closes above {micro.structure_resist:.2f} swing high")
 
-    # Trade-type specific invalidation
+    # Trade-type specific invalidation (price-action only — operator 2026-06-11:
+    # gamma-wall hold clauses removed; plan invalidation never references key levels)
     if trade_type == "fade":
-        if final_signal == "short" and inp.call_gamma_wall:
-            parts.append(f"Invalid if price holds above {inp.call_gamma_wall:.2f} for 3+ bars")
-        elif final_signal == "long" and inp.put_gamma_wall:
-            parts.append(f"Invalid if price holds below {inp.put_gamma_wall:.2f} for 3+ bars")
+        side = "above" if final_signal == "short" else "below"
+        parts.append(f"Invalid if 1m closes hold {side} stop {stop:.2f} for 3+ bars")
     elif trade_type == "breakout" and micro_regime in (R_BOS_UP, R_BOS_DOWN):
         if micro and micro.bos:
             parts.append(f"Invalid if price falls back below {micro.bos.level:.2f} breakout level")
@@ -147,7 +287,7 @@ def _build_invalidation(micro, micro_regime, final_signal, trade_type, stop, inp
 
 def _time_qualifier(micro_regime: str, trade_type: str) -> str:
     """How long is this setup valid?"""
-    from micro_structure import R_COMPRESSION, R_RANGE, R_CHOP
+    from micro_structure import R_COMPRESSION, R_RANGE
 
     if trade_type == "none":
         return ""
@@ -168,31 +308,6 @@ def _time_qualifier(micro_regime: str, trade_type: str) -> str:
     return ""
 
 
-def replay_max_hold_bars_for_setup(micro_regime: str, trade_type: str) -> int:
-    """
-    Max 1m bars for historical replay time_expiry — branches stay aligned with _time_qualifier().
-    Canonical 1m snapshots: one bar ≈ one minute of RTH cadence in the training table.
-    """
-    from micro_structure import R_COMPRESSION, R_RANGE
-
-    if trade_type == "none":
-        return 0
-    if micro_regime == R_COMPRESSION:
-        return 15
-    if trade_type == "fade":
-        return 30
-    if trade_type == "breakout":
-        return 15
-    if trade_type == "reversal":
-        return 20
-    if trade_type == "trend_continuation":
-        return 60
-    if trade_type == "mean_reversion":
-        return 30
-    if micro_regime == R_RANGE:
-        return 30
-    return 30
-
 def _mc_reasoning_snippet(fusion, final_signal: str) -> str:
     """Build Monte Carlo snippet for call reasoning when MC is available and relevant."""
     if not fusion or not getattr(fusion, 'mc_available', False):
@@ -204,8 +319,18 @@ def _mc_reasoning_snippet(fusion, final_signal: str) -> str:
     # Fusion gets MC from bayesian_fusion which passes mc_out — fusion doesn't have sim_prob_*
     # We get mc_containment, mc_expansion from fusion. For directional: use fusion_dominant_direction
     # vs call. MC contributes containment/expansion to fusion evidence.
-    mode = "expansion" if (exp or 0) >= (cont or 0) else "containment"
-    pct = int(100 * (exp if (exp or 0) >= (cont or 0) else cont) or 0)
+    if exp is None and cont is None:
+        return ""
+    if exp is not None and cont is not None:
+        is_expansion = exp >= cont
+        mode = "expansion" if is_expansion else "containment"
+        pct = int(100 * (exp if is_expansion else cont))
+    elif exp is not None:
+        mode = "expansion"
+        pct = int(100 * exp)
+    else:
+        mode = "containment"
+        pct = int(100 * cont)
     # Directional: fusion has dominant_direction; MC's path outcomes inform fusion
     # Simple: state MC mode and whether it supports directional trade
     if final_signal == "wait":
@@ -222,7 +347,8 @@ def _build_call_headlines(final_signal, conviction, trade_type,
                            entry, stop, target, target2,
                            confluence_count, confluence_total, confluence_detail,
                            micro_regime, rules, pred, pred_agrees,
-                           fusion=None, wait_blocker: dict = None) -> tuple[str, str]:
+                           fusion=None, wait_blocker: dict = None,
+                           *, mh_promoted_directional: bool = False) -> tuple[str, str]:
     """Build headline and reasoning for The Call card. Driven by full stack result.
     wait_blocker: when final_signal=wait, dict with reason ('stack'|'vol_regime'|'gates'|'time'),
     and optional long_count, short_count, threshold, gate_reasons, vol_detail, detail, full_detail.
@@ -242,9 +368,9 @@ def _build_call_headlines(final_signal, conviction, trade_type,
             reasoning = (
                 f"Stack: {lc} long ({', '.join(ln) or '—'}), {sc} short ({', '.join(sn) or '—'}). "
                 f"Need at least {th} sources agreeing. "
-                "Note: stack uses 9 layers (micro, Greeks, spy_basket, qqq_basket, iwm_basket, regime, fusion, order_flow, multi_horizon); "
-                "each index basket vote is independent — no cross-ETF veto. "
-                "'5 of 5 agree' in fusion is model agreement inside fusion — separate from these votes."
+                "Note: stack uses 8 layers (micro, Greeks, spy_basket, qqq_basket, iwm_basket, "
+                "regime, order_flow, all_consolidated); each index basket vote is independent — "
+                "no cross-ETF veto. all_consolidated is the skill-weighted ALL pooled ML consensus."
             )
         elif reason == "vol_regime":
             detail = blocker.get("detail", "unstable — require stronger confirmation")
@@ -270,6 +396,8 @@ def _build_call_headlines(final_signal, conviction, trade_type,
     t1_s = f"{target:.2f}" if target else "—"
 
     headline = f"{dir_word} — {type_label}"
+    if mh_promoted_directional:
+        headline += " (ALL consolidated promoted over tape WAIT)"
     if entry:
         headline += f". Entry {e_s}"
     if stop:
@@ -299,6 +427,12 @@ def _build_call_headlines(final_signal, conviction, trade_type,
     if mc_snippet:
         reasoning = reasoning.rstrip(". ") + mc_snippet
 
+    if mh_promoted_directional:
+        reasoning = (
+            "ALL consolidated pooled consensus promoted this directional call over a tape-stack WAIT; "
+            f"conviction floored to {conviction}. {reasoning}"
+        )
+
     return headline, reasoning
 
 def _greek_notes(inp: SignalInput) -> list:
@@ -319,7 +453,7 @@ def _greek_notes(inp: SignalInput) -> list:
     elif inp.iv_direction == "contracting":
         notes.append("Volatility falling — moves may be smaller than expected")
 
-    if inp.vix_level and inp.vix_level > 25:
+    if inp.vix_level and inp.vix_level > VIX_ELEVATED_THRESHOLD:
         notes.append(f"VIX at {inp.vix_level:.1f} — high vol, widen stops")
 
     return notes
@@ -331,18 +465,29 @@ def _add_greek_color(detail: str, greek_notes: list) -> str:
     return detail
 
 def _canonical_stack_vote(canonical: CanonicalForecast) -> int:
-    """Stack vote from CanonicalForecast only (fusion forward triplet — Issue 13)."""
+    """Stack vote from CanonicalForecast only (fusion forward triplet — Issue 13).
+
+    LIVE-UI-A: dominant_probability() returns None for non-tradable canonicals;
+    treat that as a withholding (no vote) — placeholder 1/3-each must never
+    contribute to a stack vote even when conf is artificially elevated.
+    """
     pred_dir = str(getattr(canonical, "direction", "") or "").strip().lower()
     pred_conf = str(getattr(canonical, "confidence", "") or "").strip().lower()
     try:
-        dom_p = float(canonical.dominant_probability())
+        dom_p_raw = canonical.dominant_probability()
+    except (TypeError, ValueError):
+        dom_p_raw = None
+    if dom_p_raw is None:
+        return 0  # non-tradable canonical (or error) withholds its vote
+    try:
+        dom_p = float(dom_p_raw)
     except (TypeError, ValueError):
         dom_p = 0.0
     if pred_dir == "up":
-        if pred_conf != "low" or dom_p >= 0.45:
+        if pred_conf != "low" or dom_p >= CANONICAL_DOM_PROB_STACK_VOTE_MIN:
             return 1
     elif pred_dir == "down":
-        if pred_conf != "low" or dom_p >= 0.45:
+        if pred_conf != "low" or dom_p >= CANONICAL_DOM_PROB_STACK_VOTE_MIN:
             return -1
     return 0
 
@@ -351,12 +496,97 @@ def _fusion_authoritative_directional_vote(
     fusion_available: bool, fusion_dom_vote: int, canonical: CanonicalForecast
 ) -> int:
     """
-    Single model-direction slot: live fusion dominant when non-flat; else canonical weak-lean
-    (same lane as former duplicate 'prediction' + redundant fusion when both matched).
+    Legacy ML stack vote when mh_policy is absent (unit tests only).
+    Production always passes mh_policy from compute_multi_horizon_synthesis.
     """
     if fusion_available and fusion_dom_vote != 0:
         return fusion_dom_vote
     return _canonical_stack_vote(canonical)
+
+
+def _all_consolidated_stack_vote(
+    mh_policy: Optional[MultiHorizonSynthesis],
+    *,
+    fusion_available: bool,
+    fusion_dom_vote: int,
+    canonical: CanonicalForecast,
+) -> int:
+    """Single ML door: ALL pooled consensus when mh_policy present; legacy fusion/canonical otherwise."""
+    if mh_policy is not None:
+        return int(mh_policy.mh_directional_vote())
+    return _fusion_authoritative_directional_vote(fusion_available, fusion_dom_vote, canonical)
+
+
+def _stack_event_threshold(event_risk_level: str) -> int:
+    _evt = (event_risk_level or "none").strip().lower()
+    if _evt in ("elevated", "high"):
+        return STACK_THRESHOLD_EVENT_RISK
+    return STACK_THRESHOLD_DEFAULT
+
+
+def _stack_threshold_from_votes(
+    stack_votes: dict[str, int],
+    *,
+    event_risk_level: str,
+) -> tuple[str, int, int, list[str], list[str], int]:
+    """Return (signal, long_count, short_count, long_names, short_names, threshold)."""
+    long_names = [k for k, v in stack_votes.items() if v == 1]
+    short_names = [k for k, v in stack_votes.items() if v == -1]
+    long_count = len(long_names)
+    short_count = len(short_names)
+    threshold = _stack_event_threshold(event_risk_level)
+    if long_count >= threshold and long_count > short_count:
+        return "long", long_count, short_count, long_names, short_names, threshold
+    if short_count >= threshold and short_count > long_count:
+        return "short", long_count, short_count, long_names, short_names, threshold
+    return "wait", long_count, short_count, long_names, short_names, threshold
+
+
+def _resolve_call_direction_from_all_pool(
+    *,
+    mh_policy: MultiHorizonSynthesis,
+    tape_stack_signal: str,
+    canonical_provenance: str,
+) -> tuple[str, bool, Optional[dict]]:
+    """
+    Phase 3 — Call → ALL only: pooled multi-horizon consensus is the sole ML authority.
+    Tape/structure stack (non-ML votes) may promote or be vetoed; it cannot override ALL.
+    """
+    if mh_policy.final_tradeable_decision:
+        if not canonical_provenance_is_tradable(canonical_provenance):
+            return "wait", False, {
+                "reason": WAIT_BLOCKER_REASON_CANONICAL_PROVENANCE,
+                "provenance": canonical_provenance,
+                "detail": "fusion or canonical posterior unavailable — forced WAIT",
+            }
+        ml_sig = mh_policy.final_bias
+        if tape_stack_signal == "wait":
+            return ml_sig, True, None
+        if tape_stack_signal != ml_sig:
+            return "wait", False, {
+                "reason": WAIT_BLOCKER_REASON_MULTI_HORIZON_POLICY,
+                "detail": (
+                    f"ALL consolidated {ml_sig} disagrees with tape stack {tape_stack_signal}"
+                ),
+            }
+        return ml_sig, False, None
+    if tape_stack_signal in ("long", "short"):
+        return "wait", False, {
+            "reason": WAIT_BLOCKER_REASON_MULTI_HORIZON_POLICY,
+            "detail": (mh_policy.wait_reason or "ALL pooled evidence not tradeable"),
+        }
+    return "wait", False, None
+
+
+def _confluence_for_signal(stack_votes: dict[str, int], final_signal: str) -> tuple[int, str]:
+    if final_signal == "long":
+        names = [k for k, v in stack_votes.items() if v == 1]
+    elif final_signal == "short":
+        names = [k for k, v in stack_votes.items() if v == -1]
+    else:
+        names = []
+    detail = " + ".join(names) if names else "no stack alignment"
+    return len(names), detail
 
 
 def _index_basket_vote(
@@ -379,8 +609,10 @@ def _index_basket_vote(
                 return -1
         except (TypeError, ValueError):
             pass
+    if etf_chg_pct is None:
+        return 0
     try:
-        c = float(etf_chg_pct or 0.0)
+        c = float(etf_chg_pct)
     except (TypeError, ValueError):
         return 0
     if c > min_lean:
@@ -390,7 +622,7 @@ def _index_basket_vote(
     return 0
 
 
-def _cross_instrument_signal(inp: SignalInput) -> str:
+def _cross_instrument_signal(inp: SignalInput) -> str | None:
     """
     Continuous cross-instrument alignment score for **narrative / notes** only
     (e.g. `_cross_instrument_notes`, regime copy) — **not** used for stack_vote;
@@ -399,61 +631,60 @@ def _cross_instrument_signal(inp: SignalInput) -> str:
     Treats direction agreement × magnitude across SPY, QQQ, IWM. Full agreement is
     a strong contextual label; divergence is a warning in text — not a hard gate.
     """
-    spy = inp.spy_chg_pct or 0.0
-    qqq = inp.qqq_chg_pct or 0.0
-    iwm = inp.iwm_chg_pct or 0.0
+    spy = inp.spy_chg_pct
+    qqq = inp.qqq_chg_pct
+    iwm = inp.iwm_chg_pct
+    present = [v for v in (spy, qqq, iwm) if v is not None]
+    if len(present) < 2:
+        return None
 
-    # All three directions (chg_pct is in percentage points, e.g. -1.65 = -1.65%)
+    # Directions for instruments with data (chg_pct in percentage points)
     dirs = []
-    for v in (spy, qqq, iwm):
-        if v > 0.1:    dirs.append(1)     # > +0.1%
-        elif v < -0.1: dirs.append(-1)    # < -0.1%
-        else:          dirs.append(0)
+    for v in present:
+        if v > CROSS_INSTRUMENT_DIR_EPS:
+            dirs.append(1)
+        elif v < -CROSS_INSTRUMENT_DIR_EPS:
+            dirs.append(-1)
+        else:
+            dirs.append(0)
 
-    # Agreement: do they all point the same way?
     nonzero = [d for d in dirs if d != 0]
     if len(nonzero) < 2:
-        return "neutral"  # not enough movement to judge
+        return "neutral"
 
     all_same = len(set(nonzero)) == 1
     has_conflict = 1 in nonzero and -1 in nonzero
 
-    # Magnitude: average absolute move across instruments (in pct points)
-    avg_mag = (abs(spy) + abs(qqq) + abs(iwm)) / 3.0
-    STRONG_THRESHOLD = 0.40   # 0.4% average move = strong signal
-    WEAK_THRESHOLD   = 0.10   # 0.1% average move = barely moving
-
+    avg_mag = sum(abs(v) for v in present) / len(present)
     if has_conflict:
-        return "strong_diverge" if avg_mag >= STRONG_THRESHOLD else "diverging"
+        return "strong_diverge" if avg_mag >= CROSS_INSTRUMENT_STRONG_THRESHOLD else "diverging"
     elif all_same:
-        return "strong_confirm" if avg_mag >= STRONG_THRESHOLD else "confirming"
+        return "strong_confirm" if avg_mag >= CROSS_INSTRUMENT_STRONG_THRESHOLD else "confirming"
     return "neutral"
 
 def _cross_instrument_notes(inp: SignalInput) -> list:
     """Plain English notes from cross-instrument reads with magnitude context."""
     notes = []
 
-    spy = inp.spy_chg_pct or 0.0
-    qqq = inp.qqq_chg_pct or 0.0
-    iwm = inp.iwm_chg_pct or 0.0
+    spy = inp.spy_chg_pct
+    qqq = inp.qqq_chg_pct
+    iwm = inp.iwm_chg_pct
 
-    # QQQ vs SPY — magnitude matters (values in percentage points)
-    delta = qqq - spy
-    if abs(delta) > 0.20:  # meaningful divergence (0.2% spread)
-        if delta > 0:
-            notes.append(f"QQQ leading SPY by {abs(delta):.2f}% — tech pulling market up")
-        else:
-            notes.append(f"QQQ lagging SPY by {abs(delta):.2f}% — tech is a drag")
+    if spy is not None and qqq is not None:
+        delta = qqq - spy
+        if abs(delta) > CROSS_INSTRUMENT_QQQ_LEAD_THRESHOLD:
+            if delta > 0:
+                notes.append(f"QQQ leading SPY by {abs(delta):.2f}% — tech pulling market up")
+            else:
+                notes.append(f"QQQ lagging SPY by {abs(delta):.2f}% — tech is a drag")
 
-    # IWM — risk appetite with magnitude
-    if iwm < -0.50:
+    if iwm is not None and iwm < -CROSS_INSTRUMENT_IWM_RISK_THRESHOLD:
         notes.append(f"Small caps down {abs(iwm):.2f}% — risk-off, be careful with longs")
-    elif iwm > 0.50:
+    elif iwm is not None and iwm > CROSS_INSTRUMENT_IWM_RISK_THRESHOLD:
         notes.append(f"Small caps up {iwm:.2f}% — risk-on, longs favored")
 
-    # All three aligned strongly
     cross_sig = _cross_instrument_signal(inp)
-    if cross_sig == "strong_confirm":
+    if cross_sig == "strong_confirm" and spy is not None and qqq is not None and iwm is not None:
         avg_dir = "bullish" if (spy + qqq + iwm) > 0 else "bearish"
         notes.append(f"SPY/QQQ/IWM all moving strongly {avg_dir} — broad market conviction")
     elif cross_sig in ("diverging", "strong_diverge"):
@@ -461,17 +692,38 @@ def _cross_instrument_notes(inp: SignalInput) -> list:
 
     return notes
 
+# ATR-scaled stop multiple (operator 2026-06-11 price-action plan). Volatility-
+# scaled stops per Wilder (1978) ATR; standard institutional practice is a fixed
+# ATR multiple widened by regime risk_multiplier. VIX/time-decay percentage stop
+# remains the fail-closed fallback when no finite ATR is available.
+ATR_STOP_MULT: float = 1.5
+
+
 def _stop_distance(inp: SignalInput, risk_multiplier: float = 1.0) -> float:
     """
-    Time-aware, VIX-aware stop distance for 0DTE trading.
-    PERCENTAGE-BASED so it scales correctly across underlyings.
+    Volatility-scaled stop distance. Primary: ATR_STOP_MULT × ATR(1m) × regime
+    multiplier. Fallback (no ATR): time-aware, VIX-aware percentage of spot.
 
     risk_multiplier: from volatility regime — scales stop in expansion/unstable
     (e.g. 1.35 in unstable = wider stops). Default 1.0.
     """
+    atr = getattr(inp, "atr", None)
+    try:
+        atr_f = float(atr) if atr is not None else None
+    except (TypeError, ValueError):
+        atr_f = None
+    if atr_f is not None and math.isfinite(atr_f) and atr_f > 0.0:
+        return round(ATR_STOP_MULT * atr_f * float(risk_multiplier), 2)
+
     spot = inp.spot
-    mins_elapsed = inp.et_hour * 60 + inp.et_minute - 570  # mins since 9:30 AM
-    mins_elapsed = max(0, mins_elapsed)
+    if inp.et_hour is None or inp.et_minute is None:
+        log.debug(
+            "call_engine._stop_distance: et_hour/et_minute missing — using mins_elapsed=0 (open default)"
+        )
+        mins_elapsed = 0
+    else:
+        mins_elapsed = inp.et_hour * 60 + inp.et_minute - RTH_OPEN_MINS
+        mins_elapsed = max(0, mins_elapsed)
 
     stop_distance = derive_stop_distance_pct(
         spot=spot,
@@ -491,45 +743,27 @@ def _compute_levels(
     governed_zone: str,
 ):
     """
-    Compute entry, stop, target based on signal, zone, and key levels.
-    risk_multiplier: from volatility regime — scales stop distance.
-
-    TARGET PHILOSOPHY:
-    The primary target comes from the PREDICTION ENGINE (avg expected move
-    from similar historical setups). Structural levels (gamma walls, OI walls,
-    VWAP) act as CONFIRMATION — if a structural level is near the predicted
-    move, snap to it. If no structural level is nearby, use the predicted move.
-
-    This prevents the old bug where the call gamma wall at 595 becomes the
-    target when spot is 580, giving a fantasy 14:1 R:R on a 25-minute trade.
+    Price-action plan geometry (operator 2026-06-11 — key-level anchoring removed).
 
     RULES:
-    1. Entry is ALWAYS at or near spot (adjusted by zone anchor).
-    2. Stop = entry ± stop_dist (percentage-based, VIX-aware).
-    3. T1 = predicted avg move (5-bar horizon), snapped to nearby structural
-       level if one exists within ±30% of the predicted distance.
-    4. T2 = predicted move at **primary** horizons (15c / 60c empirical) only — not 3c/8c/13c secondary.
-    5. Maximum R:R cap = 5:1 for T1, 8:1 for T2. Anything beyond is unrealistic
-       for intraday scalps.
+    1. Entry = current price (market). No zone/gamma-wall anchor moves the entry.
+    2. Stop = entry ± volatility-scaled distance (ATR primary, VIX-pct fallback).
+    3. T1/T2 = prediction-engine expected moves (empirical move-size stats from
+       price history) with R-multiple caps — NO structural-level snapping.
+       Key levels / gamma walls are context display only, never plan anchors.
+    4. T2 = predicted move at **primary** horizons (15c / 60c empirical) only.
+    5. Maximum R:R cap = 5:1 for T1, 8:1 for T2 (unchanged).
+
+    governed_zone is retained for call-site/audit compatibility; it no longer
+    moves plan geometry.
     """
     spot      = inp.spot
-    cgw       = inp.call_gamma_wall
-    pgw       = inp.put_gamma_wall
-    coi       = inp.call_oi_wall
-    poi       = inp.put_oi_wall
-    vwap      = inp.vwap
-    zone      = (governed_zone or "").lower()
     stop_dist = _stop_distance(inp, risk_multiplier=risk_multiplier)
 
     # ── Prediction-based move distances (primary horizons for tradable targets only) ──
     avg5  = pred.avg_5c_pts  if pred and pred.avg_5c_pts is not None else None
     avg15 = pred.avg_15c_pts if pred and pred.avg_15c_pts is not None else None
     avg60 = pred.avg_60c_pts if pred and pred.avg_60c_pts is not None else None
-
-    def _structural_levels(direction):
-        if direction == "long":
-            return [level for level in (vwap, cgw, coi) if level and level > spot]
-        return [level for level in (vwap, pgw, poi) if level and level < spot]
 
     def _targets(entry, direction, risk):
         return derive_target_levels(
@@ -539,50 +773,26 @@ def _compute_levels(
             avg5=avg5,
             avg15=avg15,
             avg60=avg60,
-            structural_levels=_structural_levels(direction),
+            structural_levels=[],
         )
 
-    def _long_levels(anchor):
-        entry = round(max(anchor + 0.25, spot), 2)
+    if signal == "long":
+        entry = round(spot, 2)
         stop  = round(entry - stop_dist, 2)
         risk  = round(entry - stop, 2)
         if risk <= 0:
             risk = stop_dist
-
         targets = _targets(entry, "long", risk)
         return entry, stop, targets.target, targets.target2
 
-    def _short_levels(anchor):
-        entry = round(min(anchor - 0.25, spot), 2)
+    if signal == "short":
+        entry = round(spot, 2)
         stop  = round(entry + stop_dist, 2)
         risk  = round(stop - entry, 2)
         if risk <= 0:
             risk = stop_dist
-
         targets = _targets(entry, "short", risk)
         return entry, stop, targets.target, targets.target2
-
-    # ── PIN ZONE: fade the walls ──────────────────────────────────────────────
-    if signal == "short" and is_pin_zone(zone) and cgw:
-        return _short_levels(anchor=cgw)
-
-    if signal == "long" and is_pin_zone(zone) and pgw:
-        return _long_levels(anchor=pgw)
-
-    # ── BREAKOUT: momentum long above CGW ────────────────────────────────────
-    if signal == "long" and zone == "breakout" and cgw:
-        return _long_levels(anchor=cgw)
-
-    # ── BREAKDOWN: momentum short below PGW ──────────────────────────────────
-    if signal == "short" and zone == "breakdown" and pgw:
-        return _short_levels(anchor=pgw)
-
-    # ── Fallback: anchor to spot ──────────────────────────────────────────────
-    if signal == "short":
-        return _short_levels(anchor=spot + 0.25)
-
-    if signal == "long":
-        return _long_levels(anchor=spot - 0.25)
 
     return None, None, None, None
 
@@ -593,7 +803,7 @@ def _downgrade(conviction: str) -> str:
 
 
 # Issue 13 closeout: directional trades require a real posterior; uniform fallback is non-tradable.
-_NON_TRADABLE_CANONICAL_PROVENANCE = frozenset({"fusion_unavailable", "missing_canonical_fallback"})
+# Source of truth: signal_types.NON_TRADABLE_CANONICAL_PROVENANCE (includes fusion_directional_*).
 
 _CONV_ORDER = {"low": 0, "medium": 1, "high": 2}
 
@@ -613,18 +823,42 @@ def _conviction_from_canonical_forecast(
         return "low"
     c = str(getattr(canonical, "confidence", "low") or "low").strip().lower()
     if c not in _CONV_ORDER:
+        log.debug(
+            "call_engine._conviction_from_canonical_forecast: invalid confidence %r — using low",
+            getattr(canonical, "confidence", None),
+        )
         c = "low"
+    # LIVE-UI-A: dominant_probability() now returns Optional[float] (None for non-tradable);
+    # legacy test fixtures may still raise on the call itself — wrap both shapes.
     try:
-        dom_p = float(canonical.dominant_probability())
+        dom_p_raw = canonical.dominant_probability()
     except (TypeError, ValueError):
+        log.debug(
+            "call_engine._conviction_from_canonical_forecast: dominant_probability raised — using 1/3"
+        )
+        dom_p_raw = None
+    if dom_p_raw is None:
+        log.debug(
+            "call_engine._conviction_from_canonical_forecast: dominant_probability unavailable (non-tradable or error) — using 1/3"
+        )
         dom_p = 1.0 / 3.0
+    else:
+        try:
+            dom_p = float(dom_p_raw)
+        except (TypeError, ValueError):
+            log.debug(
+                "call_engine._conviction_from_canonical_forecast: dominant_probability coerce failed — using 1/3"
+            )
+            dom_p = 1.0 / 3.0
     margin = dom_p - (1.0 / 3.0)
     ceil_ord = _CONV_ORDER[c]
 
     if c == "high":
-        base_ord = 2 if margin >= 0.12 else (1 if margin >= 0.06 else 0)
+        base_ord = 2 if margin >= CONVICTION_HIGH_MARGIN_HIGH else (
+            1 if margin >= CONVICTION_HIGH_MARGIN_MEDIUM else 0
+        )
     elif c == "medium":
-        base_ord = 1 if margin >= 0.10 else 0
+        base_ord = 1 if margin >= CONVICTION_MEDIUM_MARGIN else 0
     else:
         base_ord = 0
 
@@ -635,11 +869,13 @@ def _conviction_from_canonical_forecast(
     return "low"
 
 
-def _size_note(conviction: str, mins_to_close: float, vix: Optional[float]) -> str:
+def _size_note(conviction: str, mins_to_close: float | None, vix: Optional[float]) -> str:
     """Plain English sizing guidance."""
-    if mins_to_close <= 30:
+    if mins_to_close is None:
+        return "Session close time unknown — size conservatively."
+    if mins_to_close <= MINS_TO_CLOSE_NO_NEW_ENTRIES:
         return "No new positions — too close to close."
-    elif mins_to_close <= 120:
+    elif mins_to_close <= MINS_TO_CLOSE_REDUCE_SIZE:
         base = "Quick trades only — half size, take profits fast."
     elif conviction == "high":
         base = "Full size appropriate — high conviction setup."
@@ -648,7 +884,7 @@ def _size_note(conviction: str, mins_to_close: float, vix: Optional[float]) -> s
     else:
         base = "Small size or skip — low conviction. Wait for better setup."
 
-    if vix and vix > 25:
+    if vix and vix > VIX_ELEVATED_THRESHOLD:
         base += f" VIX at {vix:.1f} — widen stops, reduce size further."
     return base
 
@@ -661,6 +897,19 @@ EXEC_MODES = {
     "STANDARD": (0.56, 1.00),
     "MAX":      (1.01, 1.25),
 }
+
+
+def _exec_mode_for_r_units(r_units: float) -> str:
+    """Map r_units to execution mode (chained <= semantics via EXEC_MODES upper bounds)."""
+    if r_units <= EXEC_MODES["NO_TRADE"][1]:
+        return "NO_TRADE"
+    if r_units <= EXEC_MODES["PROBE"][1]:
+        return "PROBE"
+    if r_units <= EXEC_MODES["REDUCED"][1]:
+        return "REDUCED"
+    if r_units <= EXEC_MODES["STANDARD"][1]:
+        return "STANDARD"
+    return "MAX"
 
 
 def compute_position_size(
@@ -692,9 +941,9 @@ def compute_position_size(
     has_void_ahead: bool = False,
     # Risk
     reward_risk: float | None = None,
-    validation_passed: bool = True,
+    validation_passed: Optional[bool] = None,
     # Time
-    mins_to_close: float = 390.0,
+    mins_to_close: float | None = None,
     # Volatility regime: risk_multiplier > 1 = wider stops → reduce position for same $ risk
     vol_regime_risk_multiplier: float = 1.0,
 ) -> dict:
@@ -719,54 +968,49 @@ def compute_position_size(
             "summary": "No trade.",
         }
 
+    if mins_to_close is None:
+        return {
+            "r_units": 0.0,
+            "execution_mode": "NO_TRADE",
+            "size_cue": "SKIP",
+            "multipliers": {},
+            "reduction_reasons": ["mins_to_close unavailable"],
+            "summary": "No trade — session close time unknown.",
+        }
+
     reasons = []
 
     # == 1. CONFIDENCE MULTIPLIER =============================================
+    # COH-SA queue: conf_mult buckets, VIX/ATR vol_mult, mc_mult branches — policy table slice next.
     # From fusion confidence + model agreement + confluence
-    if conviction == "high" and confluence_count >= 3:
-        conf_mult = 1.00
+    if conviction == "high" and confluence_count >= CONF_MULT_HIGH_CONFLUENCE_MIN:
+        conf_mult = CONF_MULT_HIGH_WITH_CONFLUENCE
     elif conviction == "high":
-        conf_mult = 0.85
+        conf_mult = CONF_MULT_HIGH
     elif conviction == "medium":
-        conf_mult = 0.70
+        conf_mult = CONF_MULT_MEDIUM
     elif conviction == "low":
-        conf_mult = 0.45
+        conf_mult = CONF_MULT_LOW
         reasons.append("low conviction")
     else:
-        conf_mult = 0.25
+        conf_mult = CONF_MULT_VERY_LOW
         reasons.append("very low conviction")
 
     # Model agreement boost/cut
-    if model_agreement is not None and n_models_active >= 2:
-        if model_agreement >= 0.80:
-            conf_mult = min(1.25, conf_mult * 1.10)
-        elif model_agreement < 0.35:
-            conf_mult *= 0.80
+    if model_agreement is not None and n_models_active is not None and n_models_active >= 2:
+        if model_agreement >= MODEL_AGREEMENT_BOOST_THRESHOLD:
+            conf_mult = min(CONF_MULT_CAP_WITH_AGREEMENT, conf_mult * MODEL_AGREEMENT_BOOST_FACTOR)
+        elif model_agreement < MODEL_AGREEMENT_CUT_THRESHOLD:
+            conf_mult *= MODEL_AGREEMENT_CUT_FACTOR
             reasons.append(f"model disagreement ({model_agreement:.0%})")
 
     # Fusion confidence boost
     if fusion_confidence == "high" and conf_mult < 1.0:
-        conf_mult = min(1.0, conf_mult * 1.10)
+        conf_mult = min(1.0, conf_mult * FUSION_CONF_BOOST_FACTOR)
 
     # == 2. REGIME MULTIPLIER =================================================
-    REGIME_MULT = {
-        "pinning":            0.60,
-        "mean_reversion":     0.60,
-        "reversal_prone":     0.50,
-        "vol_compression":    0.70,
-        "vol_expansion":      0.85,
-        "breakout":           0.90,
-        "acceleration":       0.90,
-        "trend_continuation": 1.00,
-        "unknown":            0.70,
-    }
-    regime_mult = REGIME_MULT.get(regime_label, 0.70)
-
-    # Regime confidence adjustment
-    if regime_confidence == "high" and regime_mult < 1.0:
-        regime_mult = min(1.0, regime_mult + 0.10)
-    elif regime_confidence == "low":
-        regime_mult = max(0.40, regime_mult - 0.10)
+    regime_mult = regime_size_multiplier(regime_label, regime_confidence)
+    if regime_confidence == "low":
         reasons.append("low regime confidence")
 
     if regime_label in ("pinning", "reversal_prone"):
@@ -777,79 +1021,86 @@ def compute_position_size(
 
     # VIX-based
     if vix is not None:
-        if vix > 35:
-            vol_mult *= 0.50
+        if vix > VIX_VOL_MULT_EXTREME_THRESHOLD:
+            vol_mult *= VIX_VOL_MULT_EXTREME_FACTOR
             reasons.append(f"VIX extreme ({vix:.0f})")
-        elif vix > 25:
-            vol_mult *= 0.70
+        elif vix > VIX_VOL_MULT_ELEVATED_THRESHOLD:
+            vol_mult *= VIX_VOL_MULT_ELEVATED_FACTOR
             reasons.append(f"VIX elevated ({vix:.0f})")
-        elif vix > 20:
-            vol_mult *= 0.85
+        elif vix > VIX_VOL_MULT_HIGH_THRESHOLD:
+            vol_mult *= VIX_VOL_MULT_HIGH_FACTOR
 
     # ATR-based: if stop distance < 0.5 ATR, trade is too tight
     if atr and stop_distance and atr > 0:
         stop_atr_ratio = stop_distance / atr
-        if stop_atr_ratio < 0.5:
-            vol_mult *= 0.60
+        if stop_atr_ratio < STOP_ATR_RATIO_TOO_TIGHT:
+            vol_mult *= STOP_ATR_TIGHT_FACTOR
             reasons.append(f"stop too tight ({stop_atr_ratio:.1f}x ATR)")
-        elif stop_atr_ratio > 3.0:
-            vol_mult *= 0.70
+        elif stop_atr_ratio > STOP_ATR_RATIO_TOO_WIDE:
+            vol_mult *= STOP_ATR_WIDE_FACTOR
             reasons.append(f"stop very wide ({stop_atr_ratio:.1f}x ATR)")
 
     # == 4. MONTE CARLO RISK MULTIPLIER (regime-aware v2) =======================
     mc_mult = 1.00
+
+    # COH-I-I: when all four MC inputs are None, MC simulation was unavailable for this
+    # tick — surface that to the operator via reduction_reasons (was a silent skip).
+    # The numeric size is unaffected (mc_mult stays 1.0), but the sizing summary now
+    # shows "MC unavailable — sizing without MC risk validation".
+    if mc_eae is None and mc_efe is None and mc_containment is None and mc_expansion is None:
+        reasons.append("MC unavailable — sizing without MC risk validation")
 
     if mc_eae is not None and stop_distance and stop_distance > 0:
         eae_ratio = mc_eae / stop_distance
         # Regime-aware EAE thresholds: expansion regimes tolerate more
         if regime_label in ("breakout", "acceleration", "vol_expansion"):
             # Wider tolerance — expansion paths are expected to have larger EAE
-            if eae_ratio > 2.5:
-                mc_mult *= 0.50
+            if eae_ratio > MC_EAE_SIZE_EXTREME_RATIO:
+                mc_mult *= MC_EAE_SIZE_EXTREME_FACTOR
                 reasons.append(f"MC EAE extreme ({eae_ratio:.1f}x stop) even for {regime_label}")
-            elif eae_ratio > 1.8:
-                mc_mult *= 0.75
+            elif eae_ratio > MC_EAE_SIZE_EXPANSION_MID_RATIO:
+                mc_mult *= MC_EAE_SIZE_EXPANSION_MID_FACTOR
         elif regime_label in ("pinning", "mean_reversion"):
             # Tighter tolerance — contained regimes shouldn't have large EAE
-            if eae_ratio > 1.5:
-                mc_mult *= 0.40
+            if eae_ratio > MC_EAE_SIZE_CONTAINED_RATIO:
+                mc_mult *= MC_EAE_SIZE_CONTAINED_FACTOR
                 reasons.append(f"MC EAE {eae_ratio:.1f}x stop in {regime_label} — risk elevated")
-            elif eae_ratio > 1.0:
-                mc_mult *= 0.70
+            elif eae_ratio > MC_EAE_GATE_CONTAINED_MID:
+                mc_mult *= MC_EAE_SIZE_CONTAINED_MID_FACTOR
         else:
             # Default thresholds
-            if eae_ratio > 2.0:
-                mc_mult *= 0.40
+            if eae_ratio > MC_EAE_GATE_DEFAULT:
+                mc_mult *= MC_EAE_SIZE_DEFAULT_HIGH_FACTOR
                 reasons.append(f"MC EAE 2x+ stop ({mc_eae:.1f} vs {stop_distance:.1f})")
-            elif eae_ratio > 1.5:
-                mc_mult *= 0.65
-            elif eae_ratio > 1.0:
-                mc_mult *= 0.85
+            elif eae_ratio > MC_EAE_GATE_CONTAINED:
+                mc_mult *= MC_EAE_SIZE_DEFAULT_MID_FACTOR
+            elif eae_ratio > MC_EAE_GATE_CONTAINED_MID:
+                mc_mult *= MC_EAE_SIZE_DEFAULT_LOW_FACTOR
 
     # Containment vs expansion — regime-aware interpretation
     if mc_containment is not None:
         if trade_type == "breakout":
             # For breakouts: high containment = bad (expansion needed)
-            if mc_containment > 0.70:
-                mc_mult *= 0.60
+            if mc_containment > MC_CONTAINMENT_BREAKOUT_HIGH:
+                mc_mult *= MC_CONTAINMENT_BREAKOUT_FAIL_FACTOR
                 reasons.append(f"MC containment {mc_containment:.0%} — expansion unlikely for breakout")
-            elif mc_expansion is not None and mc_expansion > 0.50:
-                mc_mult = min(1.0, mc_mult * 1.10)
+            elif mc_expansion is not None and mc_expansion > MC_EXPANSION_BREAKOUT_BOOST:
+                mc_mult = min(1.0, mc_mult * FUSION_CONF_BOOST_FACTOR)
         elif regime_label in ("pinning", "mean_reversion") and trade_type in ("trend_continuation", "breakout"):
             # Directional trade in pinning/MR: if containment is high, reduce size
-            if mc_containment > 0.65:
-                mc_mult *= 0.75
+            if mc_containment > MC_CONTAINMENT_PINNING_HIGH:
+                mc_mult *= MC_CONTAINMENT_PINNING_FACTOR
                 reasons.append(f"MC containment {mc_containment:.0%} in {regime_label} — range trade better")
         elif regime_label == "reversal_prone":
             # Large adverse tail → reduce aggressively
-            if mc_eae is not None and mc_efe is not None and mc_eae > mc_efe * 1.3:
-                mc_mult *= 0.60
+            if mc_eae is not None and mc_efe is not None and mc_eae > mc_efe * MC_EAE_EFE_REVERSAL_RATIO:
+                mc_mult *= MC_EAE_EFE_REVERSAL_FACTOR
                 reasons.append(f"MC EAE exceeds EFE by {(mc_eae/mc_efe - 1):.0%} — adverse tail risk")
 
     # EFE too low relative to stop
     if mc_efe is not None and stop_distance and stop_distance > 0:
-        if mc_efe < stop_distance * 0.5:
-            mc_mult *= 0.70
+        if mc_efe < stop_distance * MC_EFE_STOP_FLOOR_RATIO:
+            mc_mult *= MC_EFE_STOP_FLOOR_FACTOR
             reasons.append("MC EFE too low for target")
 
     # == 5. LEVEL QUALITY MULTIPLIER ==========================================
@@ -857,37 +1108,37 @@ def compute_position_size(
 
     # Opposing wall too close
     if dist_to_nearest_opposing_wall is not None:
-        if dist_to_nearest_opposing_wall < 1.0:
-            level_mult *= 0.40
+        if dist_to_nearest_opposing_wall < LEVEL_OPPOSING_WALL_VERY_CLOSE_PTS:
+            level_mult *= LEVEL_OPPOSING_WALL_CLOSE_FACTOR
             reasons.append(f"opposing wall {dist_to_nearest_opposing_wall:.1f}pts away")
-        elif dist_to_nearest_opposing_wall < 2.0:
-            level_mult *= 0.70
+        elif dist_to_nearest_opposing_wall < LEVEL_OPPOSING_WALL_CLOSE_PTS:
+            level_mult *= LEVEL_OPPOSING_WALL_NEARBY_FACTOR
             reasons.append(f"opposing wall nearby ({dist_to_nearest_opposing_wall:.1f}pts)")
 
     # Void ahead supports larger size
     if has_void_ahead and level_mult < 1.0:
-        level_mult = min(1.0, level_mult + 0.15)
+        level_mult = min(1.0, level_mult + LEVEL_VOID_AHEAD_BOOST)
 
     # == 6. RISK/REWARD FLOOR =================================================
     rr_mult = 1.00
     if reward_risk is not None:
-        if reward_risk < 1.0:
-            rr_mult = 0.25
+        if reward_risk < RR_FLOOR_WEAK:
+            rr_mult = RR_MULT_WEAK
             reasons.append(f"R:R below 1.0 ({reward_risk:.1f}x)")
-        elif reward_risk < 1.5:
-            rr_mult = 0.60
+        elif reward_risk < RR_FLOOR_MARGINAL:
+            rr_mult = RR_MULT_MARGINAL
             reasons.append(f"R:R marginal ({reward_risk:.1f}x)")
 
     # == 7. TIME ADJUSTMENT ===================================================
     time_mult = 1.00
-    if mins_to_close <= 30:
-        time_mult = 0.0
+    if mins_to_close <= MINS_TO_CLOSE_NO_NEW_ENTRIES:
+        time_mult = TIME_MULT_CLOSING
         reasons.append("market closing")
-    elif mins_to_close <= 60:
-        time_mult = 0.40
+    elif mins_to_close <= MINS_TO_CLOSE_HALVE_SIZE:
+        time_mult = TIME_MULT_ONE_HOUR
         reasons.append(f"{int(mins_to_close)}min to close")
-    elif mins_to_close <= 120:
-        time_mult = 0.70
+    elif mins_to_close <= MINS_TO_CLOSE_REDUCE_SIZE:
+        time_mult = TIME_MULT_TWO_HOUR
         reasons.append(f"{int(mins_to_close)}min to close")
 
     # == 8. VOLATILITY REGIME RISK MULTIPLIER ==================================
@@ -901,19 +1152,9 @@ def compute_position_size(
     # FINAL SIZE = product of all multipliers, clamped to 0-1.25
     # =========================================================================
     raw = conf_mult * regime_mult * vol_mult * mc_mult * level_mult * rr_mult * time_mult * vol_regime_mult
-    r_units = round(max(0.0, min(1.25, raw)), 2)
+    r_units = round(max(0.0, min(R_UNITS_CAP, raw)), 2)
 
-    # Map to execution mode
-    if r_units <= 0.0:
-        exec_mode = "NO_TRADE"
-    elif r_units <= 0.30:
-        exec_mode = "PROBE"
-    elif r_units <= 0.55:
-        exec_mode = "REDUCED"
-    elif r_units <= 1.00:
-        exec_mode = "STANDARD"
-    else:
-        exec_mode = "MAX"
+    exec_mode = _exec_mode_for_r_units(r_units)
 
     # Map to size cue for backward compatibility
     if exec_mode == "NO_TRADE":
@@ -977,8 +1218,7 @@ def _validate_trade(
     plus reason strings for each failed layer.
     """
     from micro_structure import (
-        R_BOS_UP, R_BOS_DOWN, R_CHOCH_BULL, R_CHOCH_BEAR,
-        R_CHOP, R_COMPRESSION, R_RANGE,
+        R_BOS_UP, R_BOS_DOWN, R_CHOP,
     )
 
     result = {
@@ -1011,12 +1251,12 @@ def _validate_trade(
     # 1a. Trading directly into a strong wall (long toward call wall, short toward put wall)
     if final_signal == "long" and inp.call_gamma_wall:
         dist_to_wall = inp.call_gamma_wall - spot
-        if 0 < dist_to_wall < 1.0:
+        if 0 < dist_to_wall < WALL_TOO_CLOSE_PTS:
             structure_fails.append(f"long into call wall ({inp.call_gamma_wall:.0f}) only {dist_to_wall:.1f}pts away")
 
     if final_signal == "short" and inp.put_gamma_wall:
         dist_to_wall = spot - inp.put_gamma_wall
-        if 0 < dist_to_wall < 1.0:
+        if 0 < dist_to_wall < WALL_TOO_CLOSE_PTS:
             structure_fails.append(f"short into put wall ({inp.put_gamma_wall:.0f}) only {dist_to_wall:.1f}pts away")
 
     # 1b. Pinning regime conflicting with breakout trade type
@@ -1025,7 +1265,9 @@ def _validate_trade(
 
     # 1c. Chop regime — low structure quality; allow strong stack to proceed
     if micro_regime == R_CHOP and final_signal in ("long", "short"):
-        _chop_ok = confluence_count >= 4 or (confluence_count >= 3 and pred_agrees)
+        _chop_ok = confluence_count >= CHOP_CONFLUENCE_MIN or (
+            confluence_count >= CHOP_CONFLUENCE_MIN_WITH_PRED_AGREE and pred_agrees
+        )
         if not _chop_ok:
             structure_fails.append(
                 "chop regime — need 4+ stack sources or 3+ with prediction agreement for a directional call"
@@ -1040,26 +1282,39 @@ def _validate_trade(
     # ══════════════════════════════════════════════════════════════════════════
     prob_fails = []
 
-    _fusion_available = fusion is not None and getattr(fusion, 'available', False)
+    _fusion_available = fusion_is_authoritative(fusion)
     _vol_unstable = vol_regime and getattr(vol_regime, 'vol_regime', '') == "unstable"
     # Slightly lenient in normal vol: 0.25 veto'd almost all multi-model splits; stack still needs 2+ votes.
-    _agree_threshold = 0.50 if _vol_unstable else 0.18
+    _agree_threshold = AGREE_THRESHOLD_UNSTABLE if _vol_unstable else AGREE_THRESHOLD_DEFAULT
 
     # 2a. Model agreement strongly disagrees (threshold raised in unstable vol regime)
     if _fusion_available:
-        agree = getattr(fusion, 'model_agreement', 0.5)
-        n_active = getattr(fusion, 'n_sources_active', 0)
-        if agree < _agree_threshold and n_active >= 2:
+        agree = getattr(fusion, 'model_agreement', None)
+        n_active = getattr(fusion, 'n_sources_active', None)
+        if (
+            agree is not None
+            and n_active is not None
+            and agree < _agree_threshold
+            and n_active >= 2
+        ):
             prob_fails.append(f"model agreement below threshold ({agree:.0%} < {_agree_threshold:.0%}) with {n_active} models active")
 
-    # 2b. Canonical forward forecast opposes the call with sufficient marginal probability
-    if canonical and str(canonical.confidence or "").lower() not in ("low", ""):
+    # 2b. Canonical forward forecast opposes the call with sufficient marginal probability.
+    # Provenance gate (LIVE-UI-A): non-tradable canonicals (fusion_unavailable /
+    # fusion_directional_missing / fusion_directional_invalid / debug_override:*) carry
+    # placeholder 1/3-each triplets — must not drive an opposes-call veto. Confidence
+    # alone is brittle (it's a side-effect of provenance, not the invariant).
+    if (
+        canonical
+        and canonical_provenance_is_tradable(getattr(canonical, "provenance", None))
+        and str(canonical.confidence or "").lower() not in ("low", "")
+    ):
         pdn = float(canonical.probability_down)
         pup = float(canonical.probability_up)
         cdir = str(canonical.direction or "flat").lower()
-        if final_signal == "long" and cdir == "down" and pdn >= 0.50:
+        if final_signal == "long" and cdir == "down" and pdn >= CANONICAL_OPPOSE_THRESHOLD:
             prob_fails.append(f"canonical forward DOWN {pdn:.0%} vs long call")
-        elif final_signal == "short" and cdir == "up" and pup >= 0.50:
+        elif final_signal == "short" and cdir == "up" and pup >= CANONICAL_OPPOSE_THRESHOLD:
             prob_fails.append(f"canonical forward UP {pup:.0%} vs short call")
 
     # 2c. Bayesian posterior strongly favors opposite outcome
@@ -1067,8 +1322,12 @@ def _validate_trade(
     if _fusion_available:
         try:
             if final_signal == "long":
-                reversal_p = getattr(fusion, 'reversal_posterior', 0.0)
-                if reversal_p and reversal_p > 0.50:
+                reversal_p = getattr(fusion, 'reversal_posterior', None)
+                if reversal_p is None:
+                    prob_fails.append(
+                        "fusion reversal posterior unavailable — cannot validate long safety"
+                    )
+                elif reversal_p > REVERSAL_GATE_THRESHOLD:
                     prob_fails.append(f"fusion reversal posterior {reversal_p:.0%} — high reversal risk for longs")
                     log.debug(
                         "validate_trade: reversal gate fired — %s "
@@ -1076,10 +1335,17 @@ def _validate_trade(
                         symbol, reversal_p, final_signal
                     )
             elif final_signal == "short":
-                continuation_p = getattr(fusion, 'continuation_posterior', 0.0)
-                breakout_p = getattr(fusion, 'breakout_posterior', 0.0)
-                if (continuation_p > CONTINUATION_BLOCK_THRESHOLD and breakout_p > BREAKOUT_BLOCK_THRESHOLD
-                        and (continuation_p + breakout_p) > 0.60):
+                continuation_p = getattr(fusion, 'continuation_posterior', None)
+                breakout_p = getattr(fusion, 'breakout_posterior', None)
+                if continuation_p is None or breakout_p is None:
+                    prob_fails.append(
+                        "fusion continuation/breakout posteriors unavailable — cannot validate short safety"
+                    )
+                elif (
+                    continuation_p > CONTINUATION_BLOCK_THRESHOLD
+                    and breakout_p > BREAKOUT_BLOCK_THRESHOLD
+                    and (continuation_p + breakout_p) > 0.60
+                ):
                     prob_fails.append(f"fusion continuation+breakout {(continuation_p+breakout_p):.0%} — strong upside momentum for shorts")
                     log.debug(
                         "validate_trade: continuation/breakout gate fired — %s "
@@ -1088,6 +1354,7 @@ def _validate_trade(
                     )
         except Exception as e:
             log.debug("validate_trade: probability gate 2c error — %s", e)
+            prob_fails.append("fusion posterior gate error — cannot validate")
 
     if prob_fails:
         result["probability_valid"] = False
@@ -1101,28 +1368,31 @@ def _validate_trade(
     # 3a. MC adverse excursion exceeds stop distance — regime-aware threshold
     if _fusion_available and getattr(fusion, 'mc_available', False):
         mc_eae = getattr(fusion, 'mc_eae', None)
-        stop_dist = _stop_distance(inp)
+        _risk_mult = 1.0
+        if vol_regime is not None:
+            _risk_mult = getattr(vol_regime, "risk_multiplier", 1.0) or 1.0
+        stop_dist = _stop_distance(inp, risk_multiplier=_risk_mult)
         if mc_eae is not None and stop_dist > 0:
             # Regime-aware EAE threshold: breakout/expansion tolerate larger EAE
-            eae_gate_mult = 2.0  # default: EAE > 2x stop = fail
+            eae_gate_mult = MC_EAE_GATE_DEFAULT
             if regime_label in ("breakout", "acceleration", "vol_expansion"):
-                eae_gate_mult = 2.5  # allow more room in expansion regimes
+                eae_gate_mult = MC_EAE_GATE_EXPANSION
             elif regime_label in ("pinning", "mean_reversion"):
-                eae_gate_mult = 1.5  # tighter gate in contained regimes
+                eae_gate_mult = MC_EAE_GATE_CONTAINED
             elif regime_label == "reversal_prone":
-                eae_gate_mult = 1.5  # reversals need tight risk
+                eae_gate_mult = MC_EAE_GATE_CONTAINED
             if mc_eae > stop_dist * eae_gate_mult:
                 risk_fails.append(f"MC EAE ({mc_eae:.1f}pts) exceeds {eae_gate_mult:.1f}x stop ({stop_dist:.1f}pts) for {regime_label} regime")
 
     # 3b. VIX extreme — risk environment hostile
     vix = inp.vix_level
-    if vix and vix > 35:
+    if vix and vix > VIX_EXTREME_THRESHOLD:
         risk_fails.append(f"VIX at {vix:.1f} — extreme volatility, reduced reliability")
 
     # 3c. Compression detected — risk of violent breakout in either direction
     if micro and getattr(micro, 'is_compressing', False):
-        comp_bars = getattr(micro, 'compression_bars', 0)
-        if comp_bars >= 10:
+        comp_bars = getattr(micro, 'compression_bars', None)
+        if comp_bars is not None and comp_bars >= COMPRESSION_BARS_RISK:
             risk_fails.append(f"compression ({comp_bars} bars) — risk of unpredictable breakout")
 
     if risk_fails:
@@ -1180,8 +1450,7 @@ def compute_call(
     from features.regime_mvp_context import mvp_nearest_distances_for_regime, mvp_zone
     from micro_structure import (
         R_TREND_UP, R_TREND_DOWN, R_BOS_UP, R_BOS_DOWN,
-        R_CHOCH_BULL, R_CHOCH_BEAR, R_COMPRESSION, R_RANGE,
-        R_REVERSAL_UP, R_REVERSAL_DN, R_CHOP, R_UNKNOWN,
+        R_UNKNOWN,
     )
 
     if canonical is None:
@@ -1213,10 +1482,11 @@ def compute_call(
     _vol_reversal_bias  = getattr(vol_regime, 'reversal_bias', 0.5) or 0.5
 
     # ══════════════════════════════════════════════════════════════════════════
-    # 1. STACK-DERIVED SIGNAL — full stack synthesis, no rules-first lock
-    # Every layer (1–7) contributes; final signal from stack consensus.
+    # 1. STACK-DERIVED SIGNAL — tape/structure votes + single ALL consolidated ML slot
+    # When mh_policy is present (production): pooled ALL consensus is the sole ML authority.
+    # Live-horizon fusion remains for MC/risk/sizing only — not a duplicate stack vote.
     # ══════════════════════════════════════════════════════════════════════════
-    _fusion_available = fusion is not None and getattr(fusion, 'available', False)
+    _fusion_available = fusion_is_authoritative(fusion)
     _regime_label = getattr(regime, 'primary', 'unknown') if regime else 'unknown'
     greek_b = greek_bias(inp.net_delta, inp.charm_direction, inp.put_call_oi_ratio,
                          dex_magnitude=inp.dex_magnitude or "moderate",
@@ -1232,71 +1502,71 @@ def compute_call(
     _of_dir = (inp.order_flow_direction or "").strip().lower()
     of_vote = 1 if _of_dir in ("bullish", "call", "long") else (-1 if _of_dir in ("bearish", "put", "short") else 0)
 
-    # Live-horizon Bayesian fusion dominant direction (authoritative model-stack direction; canonical triplet matches this path)
+    # Live-horizon fusion retained for MC/risk/sizing — not a separate stack vote (Phase 3).
     _fus_dir = getattr(fusion, 'fusion_dominant_direction', None) or getattr(fusion, 'dominant_direction', 'flat') if _fusion_available else "flat"
     _fus_dir = str(_fus_dir or "flat").strip().lower()
     _fus_dom_raw = 1 if _fus_dir == "up" else (-1 if _fus_dir == "down" else 0)
-    fus_vote = _fusion_authoritative_directional_vote(_fusion_available, _fus_dom_raw, canonical)
-
-    mh_vote = int(mh_policy.mh_directional_vote()) if mh_policy is not None else 0
-    _mh_promoted_directional = False
 
     # Regime + zone directional bias (breakout/breakdown from derive_zone)
-    nd = inp.net_delta or 0.0
+    nd = inp.net_delta
     regime_vote = 0
     if zone == "breakout":
         regime_vote = 1  # expansion up
     elif zone == "breakdown":
         regime_vote = -1  # expansion down
     elif _regime_label in ("trend_continuation", "breakout", "acceleration"):
-        regime_vote = 1 if nd >= 0 else (-1 if nd < 0 else 0)
+        if nd is not None:
+            regime_vote = 1 if nd >= 0 else (-1 if nd < 0 else 0)
 
-    # Stack votes: 1=long, -1=short, 0=abstain (9 sources; fusion slot = authoritative model dir, no duplicate canonical+fusion)
-    stack_votes = {
+    _mh_promoted_directional = False
+    _evt = (getattr(inp, "event_risk_level", None) or "none").strip().lower()
+
+    # Tape/structure votes (non-ML) — used for promote/veto alignment when mh_policy present.
+    tape_stack_votes = {
         "micro":   1 if rules_signal == "long" else (-1 if rules_signal == "short" else 0),
         "Greeks":  1 if greek_b == "bullish" else (-1 if greek_b == "bearish" else 0),
         "spy_basket": spy_basket_vote,
         "qqq_basket": qqq_basket_vote,
         "iwm_basket": iwm_basket_vote,
         "regime": regime_vote,
-        "fusion": fus_vote,
         "order_flow": of_vote,
-        "multi_horizon": mh_vote,
     }
-    long_count = sum(1 for v in stack_votes.values() if v == 1)
-    short_count = sum(1 for v in stack_votes.values() if v == -1)
-    long_names = [k for k, v in stack_votes.items() if v == 1]
-    short_names = [k for k, v in stack_votes.items() if v == -1]
+    all_vote = _all_consolidated_stack_vote(
+        mh_policy,
+        fusion_available=_fusion_available,
+        fusion_dom_vote=_fus_dom_raw,
+        canonical=canonical,
+    )
+    stack_votes = {**tape_stack_votes, "all_consolidated": all_vote}
 
-    # Stack-derived signal: stricter agreement on macro / issuer event sessions
-    _evt = (getattr(inp, "event_risk_level", None) or "none").strip().lower()
-    if _evt in ("elevated", "high"):
-        STACK_THRESHOLD = 3
-    else:
-        STACK_THRESHOLD = 2
-    if long_count >= STACK_THRESHOLD and long_count > short_count:
-        final_signal = "long"
-    elif short_count >= STACK_THRESHOLD and short_count > long_count:
-        final_signal = "short"
-    else:
-        final_signal = "wait"
+    tape_stack_signal, long_count, short_count, long_names, short_names, STACK_THRESHOLD = (
+        _stack_threshold_from_votes(tape_stack_votes, event_risk_level=_evt)
+        if mh_policy is not None
+        else _stack_threshold_from_votes(stack_votes, event_risk_level=_evt)
+    )
 
-    # Confluence: sources agreeing with the stack-derived final signal
-    confluence_sources = []
-    if final_signal == "long":
-        confluence_sources = [f"{n}" for n in long_names]
-    elif final_signal == "short":
-        confluence_sources = [f"{n}" for n in short_names]
-    confluence_total = 9  # micro, Greeks, spy/qqq/iwm, regime, fusion, order_flow, multi_horizon
-    confluence_count = len(confluence_sources)
-    confluence_detail = " + ".join(confluence_sources) if confluence_sources else "no stack alignment"
+    if mh_policy is not None:
+        final_signal, _mh_promoted_directional, _all_wait_blocker = _resolve_call_direction_from_all_pool(
+            mh_policy=mh_policy,
+            tape_stack_signal=tape_stack_signal,
+            canonical_provenance=str(getattr(canonical, "provenance", "") or ""),
+        )
+        wait_blocker = _all_wait_blocker
+    else:
+        final_signal = tape_stack_signal
+        wait_blocker = None
+
+    confluence_count, confluence_detail = _confluence_for_signal(stack_votes, final_signal)
+    if _mh_promoted_directional:
+        confluence_count = max(1, sum(1 for k in ("all_consolidated",) if stack_votes.get(k) != 0))
+        confluence_detail = "all_consolidated promoted directional"
+    confluence_total = CONFLUENCE_TOTAL_SOURCES
 
     # ── Fusion / canonical posterior policy (Issue 13): provenance drives behavior ──
     # Uniform max-entropy posterior is not a tradable forecast — force WAIT, not a parallel stack call.
-    wait_blocker = None
     _prov = str(getattr(canonical, "provenance", "") or "")
     if (
-        _prov in _NON_TRADABLE_CANONICAL_PROVENANCE
+        not canonical_provenance_is_tradable(_prov)
         and final_signal in ("long", "short")
     ):
         final_signal = "wait"
@@ -1304,7 +1574,7 @@ def compute_call(
             f"canonical provenance={_prov} — directional trades require an active fusion posterior"
         )
         wait_blocker = {
-            "reason": "canonical_provenance",
+            "reason": WAIT_BLOCKER_REASON_CANONICAL_PROVENANCE,
             "provenance": _prov,
             "detail": "fusion or canonical posterior unavailable — forced WAIT",
         }
@@ -1314,35 +1584,10 @@ def compute_call(
         final_signal == "short" and canonical.direction == "down"
     )
 
-    # ── Multi-horizon policy (pre-risk): veto or promote inside The Call (not post-hoc in signals) ─
-    if mh_policy is not None:
-        if mh_policy.mh_veto_stack_directional(final_signal):
-            final_signal = "wait"
-            wait_blocker = {
-                "reason": "multi_horizon_policy",
-                "detail": (mh_policy.wait_reason or "mh_veto_stack_directional"),
-            }
-            confluence_detail = (confluence_detail or "no stack alignment") + " | MH policy veto"
-        elif (
-            final_signal == "wait"
-            and mh_policy.final_tradeable_decision
-            and str(getattr(canonical, "provenance", "") or "") not in _NON_TRADABLE_CANONICAL_PROVENANCE
-        ):
-            _mh_promoted_directional = True
-            final_signal = "long" if mh_policy.final_bias == "long" else "short"
-            wait_blocker = None
-            confluence_sources = ["multi_horizon"]
-            confluence_count = 1
-            confluence_detail = "multi_horizon promoted directional"
-
-    pred_agrees = (final_signal == "long" and canonical.direction == "up") or (
-        final_signal == "short" and canonical.direction == "down"
-    )
-
     # Wait blocker: explicit reason for WAIT (stack / vol_regime / gates)
     if final_signal == "wait" and wait_blocker is None:
         wait_blocker = {
-            "reason": "stack",
+            "reason": WAIT_BLOCKER_REASON_STACK,
             "long_count": long_count, "short_count": short_count,
             "long_names": long_names, "short_names": short_names,
             "threshold": STACK_THRESHOLD,
@@ -1352,7 +1597,7 @@ def compute_call(
     # 2. CONVICTION — canonical forecast (confidence + marginal p) + env downgrades only
     # ══════════════════════════════════════════════════════════════════════════
     zone_fresh_bars_1m  = (inp.zone_since_bars_1m or inp.zone_since_bars) or 0   # execution timing
-    zone_stable_bars_5m = (inp.zone_since_bars_5m or 0)                          # structure persistence
+    zone_stable_bars_5m = inp.zone_since_bars_5m                                 # structure persistence (None if unknown)
     prev_z = (inp.prev_zone or "").lower()
 
     if final_signal == "wait":
@@ -1376,21 +1621,32 @@ def compute_call(
 
     # ── Volatility regime: conviction multiplier ──────────────────────────────
     # Policy layer — vol regime scales effective conviction (unstable = reduce)
-    if _vol_conv_mult < 0.75 and final_signal != "wait":
+    if _vol_conv_mult < VOL_CONV_MULT_DOUBLE_DOWNGRADE_THRESHOLD and final_signal != "wait":
         conviction = _downgrade(_downgrade(conviction))
-    elif _vol_conv_mult < 0.85 and final_signal != "wait":
+    elif _vol_conv_mult < VOL_CONV_MULT_DOWNGRADE_THRESHOLD and final_signal != "wait":
         conviction = _downgrade(conviction)
 
     # ── Zone transition: downgrades only (no confluence/fusion upgrades) ───────
-    if zone_fresh_bars_1m <= 2 and prev_z != zone and final_signal != "wait":
+    if zone_fresh_bars_1m <= ZONE_FRESH_BARS_DOWNGRADE_MAX and prev_z != zone and final_signal != "wait":
         if is_pin_zone(zone) and prev_z in ("breakout", "breakdown"):
             conviction = _downgrade(conviction)
 
     if _mh_promoted_directional:
         conviction = "low"
 
-    # Override logic removed — stack synthesis (all 9 sources) already determines
+    # Override logic removed — stack synthesis (all stack vote sources) already determines
     # direction. No single layer can veto; consensus of 2+ sources wins.
+
+    # ── Volatility regime: required for directional trades (Layer 5 CE6) ───────
+    if vol_regime is None and final_signal in ("long", "short"):
+        final_signal = "wait"
+        conviction = "low"
+        confluence_detail = (confluence_detail or "no stack alignment") + " | vol_regime unavailable"
+        wait_blocker = {
+            "reason": WAIT_BLOCKER_REASON_VOL_REGIME,
+            "detail": "vol_regime unavailable",
+            "full_detail": "Vol regime unavailable — no directional trade.",
+        }
 
     # ── Volatility regime: trade permissibility ───────────────────────────────
     # Policy layer — compression requires stronger breakout confirmation;
@@ -1408,7 +1664,7 @@ def compute_call(
                 final_signal = "wait"
                 conviction = "low"
                 confluence_detail = "vol regime: unstable — require stronger confirmation"
-                wait_blocker = {"reason": "vol_regime", "detail": "unstable — require 4+ confluence", "full_detail": "Vol regime: unstable — require 4+ confluence for directional trade."}
+                wait_blocker = {"reason": WAIT_BLOCKER_REASON_VOL_REGIME, "detail": "unstable — require 4+ confluence", "full_detail": "Vol regime: unstable — require 4+ confluence for directional trade."}
         elif _vol_regime == "compression" and _is_breakout_setup and _vol_breakout_bias < 0.5:
             # Compression + breakout setup: require stronger confirmation (breakout_bias low)
             if _vol_confluence_effective < 4:
@@ -1416,7 +1672,7 @@ def compute_call(
                 conviction = "low"
                 detail = f"compression + breakout needs {confluence_count}/4 confluence"
                 confluence_detail = (confluence_detail or "") + " [vol: breakout needs stronger confirmation]"
-                wait_blocker = {"reason": "vol_regime", "detail": detail, "full_detail": confluence_detail}
+                wait_blocker = {"reason": WAIT_BLOCKER_REASON_VOL_REGIME, "detail": detail, "full_detail": confluence_detail}
 
     # ══════════════════════════════════════════════════════════════════════════
     # STACK ORDER 9: Risk Engine ────────────────────────────────────────────────
@@ -1449,7 +1705,7 @@ def compute_call(
         if not gate_result["risk_valid"]:
             _gate_reasons.append(gate_result.get("risk_reason", "risk failed"))
         confluence_detail = "GATED: " + "; ".join(_gate_reasons)
-        wait_blocker = {"reason": "gates", "gate_reasons": _gate_reasons}
+        wait_blocker = {"reason": WAIT_BLOCKER_REASON_GATES, "gate_reasons": _gate_reasons}
 
     # ══════════════════════════════════════════════════════════════════════════
     # 3. TRADE TYPE — what kind of trade is this?
@@ -1527,7 +1783,9 @@ def compute_call(
         mc_expansion=getattr(fusion, 'mc_expansion', None) if _fusion_available else None,
         model_agreement=getattr(fusion, 'model_agreement', None) if _fusion_available else None,
         fusion_confidence=getattr(fusion, 'fusion_confidence', 'low') if _fusion_available else 'low',
-        n_models_active=getattr(fusion, 'n_sources_active', 0) if _fusion_available else 0,
+        n_models_active=(
+            getattr(fusion, 'n_sources_active', None) if _fusion_available else 0
+        ),
         dist_to_nearest_opposing_wall=_opp_wall_dist,
         has_void_ahead=_void_ahead,
         reward_risk=rr1,
@@ -1549,20 +1807,30 @@ def compute_call(
     # 8. TIME WARNING (market close) — MUST run before headlines so final_signal,
     #    wait_blocker, and display fields stay consistent. No new entries ≤30min.
     # ══════════════════════════════════════════════════════════════════════════
-    if inp.mins_to_close <= 30 and inp.mins_to_close > 0:
-        time_warning = f"🛑 Only {int(inp.mins_to_close)}min to close — no new entries."
+    if inp.mins_to_close is not None and inp.mins_to_close <= MINS_TO_CLOSE_NO_NEW_ENTRIES and inp.mins_to_close > 0:
+        time_warning = f"{TIME_WARNING_PREFIX_STOP} Only {int(inp.mins_to_close)}min to close — no new entries."
         final_signal = "wait"
         conviction   = "low"
         size_cue     = "SKIP"
         wait_blocker = {
-            "reason": "time",
+            "reason": WAIT_BLOCKER_REASON_TIME,
             "detail": f"≤{int(inp.mins_to_close)} min to close",
             "full_detail": f"Only {int(inp.mins_to_close)} min to close — no new entries.",
         }
-    elif inp.mins_to_close <= 120 and inp.mins_to_close > 0:
-        time_warning = f"⏰ {int(inp.mins_to_close)}min to close — reduce size, quick trades only."
+    elif inp.mins_to_close is not None and inp.mins_to_close <= MINS_TO_CLOSE_REDUCE_SIZE and inp.mins_to_close > 0:
+        time_warning = f"{TIME_WARNING_PREFIX_ALERT} {int(inp.mins_to_close)}min to close — reduce size, quick trades only."
         if size_cue == "FULL":
             size_cue = "HALF"
+    elif inp.mins_to_close is None and final_signal in ("long", "short"):
+        time_warning = "Session close time unknown — no new entries."
+        final_signal = "wait"
+        conviction = "low"
+        size_cue = "SKIP"
+        wait_blocker = {
+            "reason": WAIT_BLOCKER_REASON_TIME,
+            "detail": "mins_to_close unavailable",
+            "full_detail": "Session close time unknown — no new entries.",
+        }
     else:
         time_warning = None
 
@@ -1592,6 +1860,7 @@ def compute_call(
         pred_agrees=pred_agrees,
         fusion=fusion,
         wait_blocker=wait_blocker,
+        mh_promoted_directional=_mh_promoted_directional,
     )
 
     size_note = _size_note(conviction, inp.mins_to_close, inp.vix_level)
@@ -1616,31 +1885,34 @@ def compute_call(
                 _ad = abs(float(_d))
                 if _nearest_dist is None or _ad < _nearest_dist:
                     _nearest_dist = _ad
-        _level_prox = "near" if _nearest_dist is not None and _nearest_dist <= 2.0 else (
-            "mid" if _nearest_dist is not None and _nearest_dist <= 5.0 else "far"
+        _level_prox = "near" if _nearest_dist is not None and _nearest_dist <= LEVEL_PROXIMITY_NEAR_PTS else (
+            "mid" if _nearest_dist is not None and _nearest_dist <= LEVEL_PROXIMITY_MID_PTS else "far"
         )
+        _rdy_dir, _rdy_dom_p = _readiness_canonical_fields(canonical)
         _call_input = {
             "regime": _regime_label or "unknown",
             "trend": getattr(rules, "zone_label", "") or zone or "",
             "structure_confirmation": _tf.get("15m", ""),   # ~15m structure read
-            "structure_higher_tf": _tf.get("1h", ""),       # ~1h trend read
-            "prediction_direction": canonical.direction or "flat",
-            "prediction_dominant_prob": canonical.dominant_probability(),
-            "confluence_read": confluence_detail if confluence_sources else "no directional alignment",
+            "structure_higher_tf": _tf.get("60m", ""),      # ~60m trend read
+            "prediction_direction": _rdy_dir,
+            "prediction_dominant_prob": _rdy_dom_p,
+            "confluence_read": confluence_detail if confluence_count > 0 else "no directional alignment",
             "validation_passed": _post_gate_ok,
             "level_proximity": _level_prox,
-            "near_support": _nearest_dist is not None and _nearest_dist <= 2.0,
+            "near_support": _nearest_dist is not None and _nearest_dist <= LEVEL_PROXIMITY_NEAR_PTS,
             "breakout_ready": zone in ("breakout", "breakdown"),
         }
         _rdy = compute_call_readiness(_call_input)
-        _readiness_score = _rdy.get("readiness_score", 0)
+        _rs = _rdy.get("readiness_score")
+        if _rs is not None:
+            _readiness_score = _rs
         _readiness_call_state = _rdy.get("call_state", "WAIT")
         _readiness_forecast_state = _rdy.get("forecast_state", "dormant")
         _readiness_reasons = _rdy.get("reasons", []) or []
         _readiness_missing = _rdy.get("missing_conditions", []) or []
         _readiness_component_scores = _rdy.get("component_scores", {}) or {}
     except Exception as _re:
-        log.debug("call_readiness: %s", _re)
+        log.warning("call_readiness: %s", _re)
 
     # ══════════════════════════════════════════════════════════════════════════
     # 11. PUT READINESS (V1, bearish mirror)
@@ -1660,31 +1932,34 @@ def compute_call(
             _put_nearest = abs(float(_nearest_above))  # resistance above for puts
         elif _nearest_below is not None:
             _put_nearest = abs(float(_nearest_below))
-        _put_level_prox = "near" if _put_nearest is not None and _put_nearest <= 2.0 else (
-            "mid" if _put_nearest is not None and _put_nearest <= 5.0 else "far"
+        _put_level_prox = "near" if _put_nearest is not None and _put_nearest <= LEVEL_PROXIMITY_NEAR_PTS else (
+            "mid" if _put_nearest is not None and _put_nearest <= LEVEL_PROXIMITY_MID_PTS else "far"
         )
+        _rdy_dir, _rdy_dom_p = _readiness_canonical_fields(canonical)
         _put_input = {
             "regime": _regime_label or "unknown",
             "trend": getattr(rules, "zone_label", "") or zone or "",
             "structure_confirmation": _tf.get("15m", ""),   # ~15m structure read
-            "structure_higher_tf": _tf.get("1h", ""),       # ~1h trend read
-            "prediction_direction": canonical.direction or "flat",
-            "prediction_dominant_prob": canonical.dominant_probability(),
-            "confluence_read": confluence_detail if confluence_sources else "no directional alignment",
+            "structure_higher_tf": _tf.get("60m", ""),      # ~60m trend read
+            "prediction_direction": _rdy_dir,
+            "prediction_dominant_prob": _rdy_dom_p,
+            "confluence_read": confluence_detail if confluence_count > 0 else "no directional alignment",
             "validation_passed": _post_gate_ok,
             "level_proximity": _put_level_prox,
-            "near_resistance": _put_nearest is not None and _put_nearest <= 2.0,
+            "near_resistance": _put_nearest is not None and _put_nearest <= LEVEL_PROXIMITY_NEAR_PTS,
             "breakdown_ready": zone == "breakdown",
         }
         _prdy = compute_put_readiness(_put_input)
-        _put_score = _prdy.get("readiness_score", 0)
+        _ps = _prdy.get("readiness_score")
+        if _ps is not None:
+            _put_score = _ps
         _put_state = _prdy.get("call_state", "WAIT")
         _put_forecast = _prdy.get("forecast_state", "dormant")
         _put_reasons = _prdy.get("reasons", []) or []
         _put_missing = _prdy.get("missing_conditions", []) or []
         _put_component_scores = _prdy.get("component_scores", {}) or {}
     except Exception as _re:
-        log.debug("put_readiness: %s", _re)
+        log.warning("put_readiness: %s", _re)
 
     return TheCall(
         signal=final_signal, conviction=conviction,
@@ -1697,6 +1972,7 @@ def compute_call(
         confluence_count=confluence_count,
         confluence_total=confluence_total,
         confluence_detail=confluence_detail,
+        mh_promoted_directional=_mh_promoted_directional,
         time_qualifier=time_qualifier,
         size_cue=size_cue,
         rules_pred_agree=pred_agrees,

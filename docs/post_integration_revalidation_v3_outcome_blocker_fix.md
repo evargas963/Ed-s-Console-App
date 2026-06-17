@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/post_integration_revalidation_v3_outcome_blocker_fix.md`.
+
 # Post-Integration Revalidation v3 — Outcome Blocker Fix
 
 **Date:** 2026-04-11  

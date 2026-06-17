@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_logging_production_validation_v1.md`.
+
 # Calibration logging — production-path validation (v1)
 
 **FINAL: PASS**
@@ -23,7 +25,7 @@ Pass criteria for this document:
 **Alternate path / bypass**
 
 - If `compute_signals` **raises** before `_maybe_append_calibration_log` (e.g. fail-closed ML/input error), **no calibration row** is written — matching “no decision event completed.”
-- If `ED_CALIBRATION_LOG` is not `1`/`true`/`yes`/`on`, `_maybe_append_calibration_log` returns immediately — **by design** (logging off).
+- If `ED_CALIBRATION_LOG` is not `1`/`true`/`yes`/`on`, `_maybe_append_calibration_log` returns immediately — the documented env-gate contract (logging off).
 
 **Exception: `build_market_state` failure**
 
@@ -42,7 +44,7 @@ Pass criteria for this document:
 - Invokes **`compute_signals`** `N` times with distinct `refresh_ts_utc`.
 - Asserts `COUNT(calibration_decision_log)` increases by exactly `N`.
 
-**Controlled harness (optional, full ML stack):** `python -m calibration.validate_logging_e2e` — compares row delta to `--calls` when the environment can load the full parallel stack without raising (depends on local DB history / models). The **pytest** proof above is CI-stable and uses the **same** `compute_signals` entrypoint; only `ml_predict.run_base_models_once` is stubbed for determinism (see §G).
+**Controlled harness (optional, full ML stack):** `python -m calibration.validate_logging_e2e` — compares row delta to `--calls` when the environment can load the full parallel stack without raising (depends on local DB history / models). The **pytest** proof above is CI-stable and uses the **same** `compute_signals` entrypoint; only `ml_predict.run_unified_stack_ml_once` is stubbed for determinism (see §G).
 
 ---
 
@@ -107,7 +109,7 @@ SQLite serializes writes; `append_calibration_decision` retries on `locked`/`bus
 | silent failures (insert failure) | **0** (warning on `None` row id + writer warnings) |
 | **FINAL** | **PASS** |
 
-**Stub note:** Production tests stub **`ml_predict.run_base_models_once`** only so CI machines without 60+ snapshot rows or local artifacts still execute **`signals._compute_signals_impl` end-to-end** including **`_maybe_append_calibration_log`**. The **calibration hook and `calibration.writer` code paths are not stubbed.** A live server run uses the real `run_base_models_once` with the same call graph.
+**Stub note:** Production tests stub **`ml_predict.run_unified_stack_ml_once`** only so CI machines without 60+ snapshot rows or local artifacts still execute **`signals._compute_signals_impl` end-to-end** including **`_maybe_append_calibration_log`**. The **calibration hook and `calibration.writer` code paths are not stubbed.** A live server run uses the real `run_unified_stack_ml_once` with the same call graph.
 
 ---
 

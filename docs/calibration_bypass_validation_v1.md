@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_bypass_validation_v1.md`.
+
 # Calibration bypass validation v1
 
 Closure proof: no application path can bypass calibration constraints (`canonical_timeframe`, trusted study scope, writer-only inserts, backfill-only outcome writes) without going through controlled modules.

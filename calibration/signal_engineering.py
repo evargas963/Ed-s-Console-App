@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from arch_competition.atomic_io import write_json_file_atomically
+from numeric_contract import direction_from_normalized_triplet
 from calibration.analyze_phase4 import _directional_pnl
 from calibration.db_guard import enforce_resolved_path, register_allow_noncanonical_flag
 from calibration.edge_discovery import (
@@ -30,15 +32,17 @@ from calibration.edge_discovery import (
     run_discovery_rows,
 )
 from calibration.edge_validation import _effective_directional_signal
+from calibration.json_utils import parse_json_mapping
+from calibration.v2_a1_calibration import axis_reliability_bucket_value
 
 
-def _lj(s: str | None) -> dict[str, Any]:
-    if not s:
-        return {}
-    try:
-        return json.loads(s)
-    except Exception:
-        return {}
+def _lj(s: str | None, *, context: str = "signal_engineering") -> dict[str, Any]:
+    return parse_json_mapping(s, context=context)
+
+
+def _features(r: dict[str, Any]) -> dict[str, Any]:
+    f = r.get("_features")
+    return f if isinstance(f, dict) else {}
 
 
 # --- Alternative directional policies (break canonical tie → long) ---
@@ -73,8 +77,8 @@ def signal_fusion_margin_factory(margin: float) -> SignalFn:
         srt = sorted(probs, reverse=True)
         if srt[0] - srt[1] < margin:
             return "wait"
-        best = max([("up", float(pu)), ("down", float(pd)), ("flat", float(pf))], key=lambda x: x[1])
-        return {"up": "long", "down": "short", "flat": "wait"}[best[0]]
+        best_lab = direction_from_normalized_triplet(float(pu), float(pd), float(pf))
+        return {"up": "long", "down": "short", "flat": "wait"}[best_lab]
 
     _fn.__name__ = f"fusion_margin_{margin}"
     return _fn
@@ -105,7 +109,7 @@ def signal_model_stack_vote(r: dict[str, Any]) -> str:
     for name in ("xgb", "lstm", "transformer"):
         blk = mo.get(name)
         if isinstance(blk, str):
-            blk = _lj(blk)
+            blk = _lj(blk, context=f"signal_engineering:model_outputs.{name}")
         if not isinstance(blk, dict):
             continue
         dc = (blk.get("dominant_class") or blk.get("direction") or "").strip().lower()
@@ -202,7 +206,7 @@ def directional_diagnostics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         for name in ("xgb", "lstm", "transformer"):
             blk = mo.get(name)
             if isinstance(blk, str):
-                blk = _lj(blk)
+                blk = _lj(blk, context=f"signal_engineering:model_outputs.{name}")
             if not isinstance(blk, dict):
                 continue
             pu, pd, pf = blk.get("prob_up"), blk.get("prob_down"), blk.get("prob_flat")
@@ -231,7 +235,7 @@ def failure_identification(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "Canonical/fusion still encode direction probabilities but execution layer does not emit short without policy change.",
         ],
         "model_output_separation": [
-            "Fake run_base_models_once returns identical 0.34/0.33/0.33 per model → no cross-model disagreement for stack vote.",
+            "Fake run_unified_stack_ml_once returns identical 0.34/0.33/0.33 per model → no cross-model disagreement for stack vote.",
         ],
         "sample_fusion_keys": list(fj0.keys())[:25],
         "sample_canonical_keys": list(cj0.keys())[:25],
@@ -242,7 +246,7 @@ def failure_identification(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def filter_high_confidence_or_fusion(r: dict[str, Any]) -> bool:
-    ccb = r["_features"].get("canonical_confidence_bucket") or "low"
+    ccb = _features(r).get("canonical_confidence_bucket") or "low"
     if ccb == "high":
         return True
     fj = _lj(r.get("fusion_json"))
@@ -253,8 +257,12 @@ def filter_high_confidence_or_fusion(r: dict[str, Any]) -> bool:
 
 
 def filter_alignment_not_unusable(r: dict[str, Any]) -> bool:
-    st = (r["_features"].get("alignment_state") or "").upper()
-    return "UNUSABLE" not in st and st not in ("", "UNKNOWN")
+    st = (_features(r).get("alignment_state") or "").upper()
+    if "NO_PRIMARY" in st or "UNUSABLE" in st:
+        return False
+    if st in ("", "UNKNOWN", "__MISSING__"):
+        return False
+    return True
 
 
 def filter_regime_not_pinning(r: dict[str, Any]) -> bool:
@@ -262,23 +270,24 @@ def filter_regime_not_pinning(r: dict[str, Any]) -> bool:
 
 
 def filter_vol_known(r: dict[str, Any]) -> bool:
-    v = (r.get("vol_regime") or "unknown").strip().lower()
-    return v not in ("", "unknown")
+    v = axis_reliability_bucket_value(r.get("vol_regime")).strip().lower()
+    return v not in ("", "unknown", "__missing__")
 
 
 def filter_vix_bucket_set(r: dict[str, Any]) -> bool:
-    return (r.get("vix_bucket") or "") not in ("", None, "unknown")
+    v = axis_reliability_bucket_value(r.get("vix_bucket")).strip().lower()
+    return v not in ("", "unknown", "__missing__")
 
 
 def filter_utc_us_cash_hours(r: dict[str, Any]) -> bool:
     """Rough US equity session in UTC (not holiday-aware)."""
-    h = int(r["_features"].get("utc_hour") or 0)
+    h = int(_features(r).get("utc_hour") or 0)
     return 13 <= h <= 21
 
 
 def filter_utc_hour_0_5(r: dict[str, Any]) -> bool:
     """Matches harness DB where decision_ts maps to utc_hour==3."""
-    h = int(r["_features"].get("utc_hour") or 0)
+    h = int(_features(r).get("utc_hour") or 0)
     return 0 <= h <= 5
 
 
@@ -502,11 +511,12 @@ def main() -> int:
     rep = run_engineering(db)
     outp = ROOT / "data" / "calibration_signal_engineering_report.json"
     outp.parent.mkdir(parents=True, exist_ok=True)
-    outp.write_text(json.dumps(rep, indent=2), encoding="utf-8")
+    write_json_file_atomically(outp, rep, indent=2)
     md = ROOT / "docs" / "calibration_signal_engineering_v1.md"
     _write_md(rep, md)
-    print(json.dumps({"wrote": str(outp), "FINAL": rep["FINAL_SYSTEM"]["FINAL_RESULT"]}, indent=2))
-    return 0
+    final = rep["FINAL_SYSTEM"]["FINAL_RESULT"]
+    print(json.dumps({"wrote": str(outp), "FINAL": final}, indent=2))
+    return 0 if final == "EDGE" else 1
 
 
 if __name__ == "__main__":

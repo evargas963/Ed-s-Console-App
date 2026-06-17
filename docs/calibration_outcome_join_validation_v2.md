@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_outcome_join_validation_v2.md`.
+
 # Calibration outcome join validation v2 (scale proof)
 
 ## A. Exact files changed

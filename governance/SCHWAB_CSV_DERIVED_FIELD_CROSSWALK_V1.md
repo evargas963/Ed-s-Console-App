@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_V1.md`.
+
 # Schwab CSV Derived Field Crosswalk V1
 
 **Status:** CSV-authoritative inventory synthesized - remediation OPEN  

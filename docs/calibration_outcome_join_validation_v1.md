@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_outcome_join_validation_v1.md`.
+
 # Calibration outcome join validation (v1)
 
 Institutional proof that `calibration.backfill_outcomes` attaches snapshot outcomes in a **deterministic**, **auditable** way, with **no silent nearest-neighbor** when `--tol` is 0 (default).

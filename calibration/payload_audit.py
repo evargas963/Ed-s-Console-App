@@ -1,11 +1,14 @@
 """Duplicate/payload/timestamp stats for calibration_decision_log (JSON to stdout)."""
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sqlite3
 import statistics
 import sys
+from pathlib import Path
+from typing import Any
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -16,27 +19,29 @@ from calibration.canonical_enforcement import (
     CANONICAL_TIMEFRAME,
     enforce_calibration_decision_log_only_1m,
 )
+from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
+from calibration.json_utils import parse_json_mapping
+from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
 from calibration.statistical_integrity import (
     bucket_gate,
     verify_payload_audit_no_numeric_leak,
 )
 from calibration.trust import TRUSTED_PREDICATE_SQL
+from db import configure_sqlite_connection, get_snapshot_sql
 from math_probabilities import MIN_SAMPLES_STATISTICAL
-from db import DB_PATH, configure_sqlite_connection, get_snapshot_sql
 
 
-def main() -> int:
-    conn = sqlite3.connect(str(DB_PATH))
+def run_payload_audit(db_path: Path) -> dict[str, Any]:
+    conn = sqlite3.connect(str(db_path), timeout=60.0)
     configure_sqlite_connection(conn)
     conn.row_factory = sqlite3.Row
     try:
         ensure_calibration_schema(conn)
         enforce_calibration_decision_log_only_1m(conn)
-    except CalibrationCanonicalViolationError as e:
-        print(json.dumps({"error": str(e), "binary_pass": False}))
+    except CalibrationCanonicalViolationError:
         conn.close()
-        return 2
+        raise
 
     dups = conn.execute(
         f"""
@@ -65,18 +70,19 @@ def main() -> int:
         """
     ).fetchall()
 
-    def j(s):
-        try:
-            return json.loads(s) if s else {}
-        except Exception:
-            return {}
-
     issues = []
     prob_issues = 0
     for r in rows:
-        fus = j(r["fusion_json"])
-        can = j(r["canonical_json"])
-        mo = j(r["model_outputs_json"])
+        row_id = r["id"]
+        fus = parse_json_mapping(
+            r["fusion_json"], context=f"payload_audit:row_{row_id}:fusion_json"
+        )
+        can = parse_json_mapping(
+            r["canonical_json"], context=f"payload_audit:row_{row_id}:canonical_json"
+        )
+        mo = parse_json_mapping(
+            r["model_outputs_json"], context=f"payload_audit:row_{row_id}:model_outputs_json"
+        )
         missing = []
         if r["final_signal"] is None:
             missing.append("final_signal")
@@ -92,7 +98,7 @@ def main() -> int:
         if not all(k in fus for k in ("prob_up", "prob_down", "prob_flat")):
             prob_issues += 1
         if missing:
-            issues.append({"id": r["id"], "missing": missing})
+            issues.append({"id": row_id, "missing": missing})
 
     snap_deltas = []
     for r in conn.execute(
@@ -128,7 +134,7 @@ def main() -> int:
     else:
         dmin = dmed = dmax = None
 
-    out = {
+    out: dict[str, Any] = {
         "effective_timeframe": CANONICAL_TIMEFRAME,
         "source_tables": ["calibration_decision_log", "snapshots"],
         "binary_pass": True,
@@ -166,8 +172,27 @@ def main() -> int:
         ),
     }
     out["binary_pass"] = leak_ok
+    return out
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Calibration payload / join quality audit (JSON stdout)")
+    ap.add_argument("--db", type=Path, default=DEFAULT_DB)
+    register_allow_noncanonical_flag(ap)
+    args = ap.parse_args()
+    if not args.db.is_file():
+        print(json.dumps({"error": f"DB not found: {args.db}", "binary_pass": False}, indent=2))
+        return 2
+    require_canonical_db_target(
+        args, tool_name="calibration.payload_audit", write_capable=False
+    )
+    try:
+        out = run_payload_audit(args.db)
+    except CalibrationCanonicalViolationError as e:
+        print(json.dumps({"error": str(e), "binary_pass": False}, indent=2))
+        return 2
     print(json.dumps(out, indent=2))
-    return 0
+    return 0 if out.get("binary_pass") else 3
 
 
 if __name__ == "__main__":

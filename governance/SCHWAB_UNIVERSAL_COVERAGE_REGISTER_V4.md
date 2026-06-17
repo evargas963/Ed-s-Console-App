@@ -1,3 +1,5 @@
+> **Classification:** Operational Ledger | **Scope:** Governance register/inventory `SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.md`.
+
 # Schwab Universal Coverage Register — V4
 
 **Program status:** V4 contract **LOCKED** 2026-05-08 (gatekeeper Step 2).  

@@ -7,28 +7,27 @@ All results returned as a MarketContext dataclass — caller manages caching in 
 """
 
 from __future__ import annotations
+import math
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Callable, Optional, Any
+import logging
+
+log = logging.getLogger(__name__)
+
 
 
 def _positive_float_or_none(value) -> Optional[float]:
-    try:
-        if value is None:
-            return None
-        out = float(value)
-    except (TypeError, ValueError):
-        return None
-    return out if out > 0 else None
+    from numeric_contract import float_positive_or_none
+
+    return float_positive_or_none(value)
 
 
 def _float_or_none(value) -> Optional[float]:
-    try:
-        if value is None:
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    from numeric_contract import float_finite_or_none
+
+    return float_finite_or_none(value)
 
 
 def configured_index_futures_symbols() -> dict[str, str]:
@@ -232,7 +231,7 @@ class MarketContext:
     # Bond yields
     tnx_yield:       Optional[float] = None   # 10Y Treasury yield (e.g. 4.25)
     tnx_chg:         Optional[float] = None   # change today (basis points concept: 4.25 → 4.30 = +0.05)
-    bond_signal:     str             = "neutral"  # 'flight_to_safety', 'risk_on', 'neutral', 'rate_stress'
+    bond_signal:     Optional[str]   = None  # set when TNX move is known; 'flight_to_safety', 'risk_on', 'neutral', 'rate_stress'
 
     pcr:             Optional[float] = None
     pcr_arrow:       str             = "→"
@@ -240,8 +239,8 @@ class MarketContext:
     pcr_label:       str             = ""
 
     # Session label — derived once from ET clock, shared across all tickers.
-    # Values: "RTH" | "Pre-Market" | "After-Hours" | "Closed"
-    session_label:   str             = "Closed"
+    # Values: "RTH" | "Pre-Market" | "After-Hours" | "Closed" (None until _derive_session runs)
+    session_label:   Optional[str]   = None
 
     error:           str             = ""
 
@@ -395,6 +394,185 @@ def _build_iwm_confluence(sectors: list) -> ConfluenceRead:
     )
 
 
+# Snapshot column for each symbol used in confluence backfill / row recompute.
+SYMBOL_TO_SNAPSHOT_CHG_COL: dict[str, str] = {
+    "NVDA": "nvda_chg_pct",
+    "AAPL": "aapl_chg_pct",
+    "MSFT": "msft_chg_pct",
+    "AMZN": "amzn_chg_pct",
+    "GOOGL": "googl_chg_pct",
+    "GOOG": "googl_chg_pct",
+    "AVGO": "avgo_chg_pct",
+    "META": "meta_chg_pct",
+    "TSLA": "tsla_chg_pct",
+    "KRE": "kre_chg_pct",
+    "XBI": "xbi_chg_pct",
+    "PSCI": "psci_chg_pct",
+    "XRT": "xrt_chg_pct",
+}
+
+
+def _float_chg(v: Any) -> Optional[float]:
+    if v is None:
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(f):
+        return None
+    return f
+
+
+def weighted_push_from_constituents(
+    chg_by_symbol: Mapping[str, Optional[float]],
+    constituents: list[tuple[str, str, float]],
+    weight_sum_ref: float,
+) -> Optional[float]:
+    """Cap-weighted push from symbol→chg map (same math as ``_build_confluence``)."""
+    push = 0.0
+    weight_used = 0.0
+    for sym, _name, weight in constituents:
+        chg = _float_chg(chg_by_symbol.get(sym))
+        if chg is None:
+            continue
+        push += weight * chg
+        weight_used += weight
+    if weight_used <= 0:
+        return None
+    if weight_used < weight_sum_ref * 0.5:
+        push = push / weight_used * weight_sum_ref
+    return round(push, 3)
+
+
+def snapshot_row_chg_map(row: Mapping[str, Any]) -> dict[str, Optional[float]]:
+    """Build symbol→chg_pct from a snapshot / normalized row dict."""
+    out: dict[str, Optional[float]] = {}
+    for sym, col in SYMBOL_TO_SNAPSHOT_CHG_COL.items():
+        out[sym] = _float_chg(row.get(col))
+    return out
+
+
+IWM_BLEND_HOLDINGS_WEIGHT = 0.55
+IWM_BLEND_SECTOR_WEIGHT = 0.45
+
+
+def confluence_backfill_symbols() -> frozenset[str]:
+    """All symbols needed to recompute spy/qqq/iwm weighted_push (live-path parity)."""
+    out: set[str] = set()
+    for sym, _name, _w in SPY_TOP + QQQ_TOP + IWM_TOP_HOLDINGS + IWM_SECTORS:
+        out.add(sym.upper())
+    return frozenset(out)
+
+
+def symbols_without_snapshot_chg_col() -> frozenset[str]:
+    """Panel / QQQ / IWM names with no dedicated ``snapshots.*_chg_pct`` column."""
+    return confluence_backfill_symbols() - frozenset(SYMBOL_TO_SNAPSHOT_CHG_COL.keys())
+
+
+def merged_snapshot_chg_map(
+    row: Mapping[str, Any],
+    extra_chg: Mapping[str, Optional[float]] | None = None,
+) -> dict[str, Optional[float]]:
+    """Row chg map enriched with ``confluence_quote_ticks`` (or live quote) gaps."""
+    chg = snapshot_row_chg_map(row)
+    if not extra_chg:
+        return chg
+    for sym, raw in extra_chg.items():
+        s = (sym or "").upper().strip()
+        if not s:
+            continue
+        fv = _float_chg(raw)
+        if fv is None:
+            continue
+        col = SYMBOL_TO_SNAPSHOT_CHG_COL.get(s)
+        if col is None or chg.get(s) is None:
+            chg[s] = fv
+        elif s == "GOOG":
+            chg[s] = fv
+    return chg
+
+
+def blend_iwm_weighted_push(
+    holdings_push: Optional[float],
+    sector_push: Optional[float],
+) -> Optional[float]:
+    """Same 55/45 blend as ``iwm_blended_participation_push`` on scalar pushes."""
+    try:
+        if holdings_push is not None and sector_push is not None:
+            return round(
+                IWM_BLEND_HOLDINGS_WEIGHT * float(holdings_push)
+                + IWM_BLEND_SECTOR_WEIGHT * float(sector_push),
+                4,
+            )
+        if holdings_push is not None:
+            return round(float(holdings_push), 4)
+        if sector_push is not None:
+            return round(float(sector_push), 4)
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def weighted_pushes_from_snapshot_row(
+    row: Mapping[str, Any],
+    *,
+    extra_chg: Mapping[str, Optional[float]] | None = None,
+) -> dict[str, Optional[float]]:
+    """Recompute spy/qqq/iwm weighted_push columns (live-path parity).
+
+    QQQ needs symbols without snapshot columns (e.g. WMT) via ``extra_chg``.
+    IWM uses holdings + sector blend — not sector-only.
+    """
+    chg = merged_snapshot_chg_map(row, extra_chg)
+    spy = weighted_push_from_constituents(chg, SPY_TOP, SPY_TOP_WEIGHT_SUM)
+    qqq = weighted_push_from_constituents(chg, QQQ_TOP, QQQ_TOP_WEIGHT_SUM)
+    iwm_h = weighted_push_from_constituents(chg, IWM_TOP_HOLDINGS, IWM_HOLDINGS_WEIGHT_SUM)
+    iwm_s = weighted_push_from_constituents(
+        chg,
+        [(s, n, w) for s, n, w in IWM_SECTORS],
+        IWM_SECTOR_WEIGHT_SUM,
+    )
+    iwm = blend_iwm_weighted_push(iwm_h, iwm_s)
+    return {"spy_weighted_push": spy, "qqq_weighted_push": qqq, "iwm_weighted_push": iwm}
+
+
+def patch_context_confluence_from_quote_ticks(
+    ctx: MarketContext,
+    chg_by_ticker: Mapping[str, Optional[float]],
+) -> None:
+    """Fill missing constituent ``chg_pct`` from ``confluence_quote_ticks`` and rebuild reads."""
+    if not chg_by_ticker:
+        return
+
+    def _patch_list(items: list) -> None:
+        for item in items:
+            sym = str(getattr(item, "symbol", "") or "").upper()
+            if getattr(item, "chg_pct", None) is not None:
+                continue
+            chg = _float_chg(chg_by_ticker.get(sym))
+            if chg is not None:
+                item.chg_pct = chg
+
+    _patch_list(getattr(ctx, "constituents", None) or [])
+    _patch_list(getattr(ctx, "qqq_constituents", None) or [])
+    _patch_list(getattr(ctx, "iwm_holdings", None) or [])
+    for sq in getattr(ctx, "iwm_sectors", None) or []:
+        sym = str(getattr(sq, "symbol", "") or "").upper()
+        if getattr(sq, "chg_pct", None) is not None:
+            continue
+        chg = _float_chg(chg_by_ticker.get(sym))
+        if chg is not None:
+            sq.chg_pct = chg
+
+    ctx.confluence = _build_confluence(ctx.constituents, SPY_TOP_WEIGHT_SUM)
+    ctx.qqq_confluence = _build_confluence(ctx.qqq_constituents, QQQ_TOP_WEIGHT_SUM)
+    ctx.iwm_holdings_confluence = _build_confluence(
+        ctx.iwm_holdings, IWM_HOLDINGS_WEIGHT_SUM
+    )
+    ctx.iwm_confluence = _build_iwm_confluence(ctx.iwm_sectors)
+
+
 def iwm_blended_participation_push(ctx: MarketContext) -> Optional[float]:
     """
     Russell 2000 tape participation for the stack: blend top-holdings confluence
@@ -405,17 +583,7 @@ def iwm_blended_participation_push(ctx: MarketContext) -> Optional[float]:
     scf = getattr(ctx, "iwm_confluence", None)
     h = getattr(hcf, "weighted_push", None) if hcf is not None else None
     s = getattr(scf, "weighted_push", None) if scf is not None else None
-    wh, ws = 0.55, 0.45
-    try:
-        if h is not None and s is not None:
-            return round(wh * float(h) + ws * float(s), 4)
-        if h is not None:
-            return round(float(h), 4)
-        if s is not None:
-            return round(float(s), 4)
-    except (TypeError, ValueError):
-        pass
-    return None
+    return blend_iwm_weighted_push(h, s)
 
 
 def _derive_session() -> str:
@@ -429,9 +597,9 @@ def _derive_session() -> str:
       After-Hours: 16:00 – 19:59
       Closed:      20:00 – 03:59 (overnight)
     """
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-    now = datetime.now(ZoneInfo("America/New_York"))
+    from time_et import now_et
+
+    now = now_et()
     mins = now.hour * 60 + now.minute
     if 570 <= mins <= 959:    # 09:30 – 15:59
         return "RTH"
@@ -598,14 +766,20 @@ def fetch_market_context(client, safe_get_quote_fn,
     return ctx
 
 
-def proximity_alerts(spot: float, walls_rows: list, pins_rows: list,
-                     threshold_pct: float = 0.005) -> list[dict]:
+def proximity_alerts(
+    spot: Optional[float],
+    walls_rows: list,
+    pins_rows: list,
+    threshold_pct: float = 0.005,
+) -> list[dict]:
     """
     Return alert dicts for any wall/pin level within threshold_pct of spot.
     Works with WallRow / SummaryRow objects from math_exposure.
     """
+    if spot is None or spot <= 0:
+        return []
     alerts    = []
-    threshold = spot * threshold_pct
+    threshold = float(spot) * threshold_pct
 
     def _check(level_obj, name_hint):
         level = None
@@ -614,8 +788,8 @@ def proximity_alerts(spot: float, walls_rows: list, pins_rows: list,
             if v is not None:
                 try:
                     level = float(v); break
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug("strike level parse: %s", e, exc_info=True)
         if level is None:
             return
         dist = level - spot
@@ -801,14 +975,11 @@ def fetch_price_levels(
                Used for Tier 1 fallback (today open/high/low/PDC).
     include_extended_hours: if True, fetches pre-market for overnight high/low.
     """
-    from datetime import datetime, date, timezone, timedelta
-    from zoneinfo import ZoneInfo
+    from datetime import datetime, timezone
+
+    from time_et import ET, RTH_END_MINS, RTH_OPEN_MINS, now_et
 
     pl = PriceLevels(orb_minutes=orb_minutes)
-    ET = ZoneInfo("America/New_York")
-    RTH_OPEN_HOUR  = 9
-    RTH_OPEN_MIN   = 30
-    RTH_CLOSE_HOUR = 16
 
     # ── Tier 1: extract from quote{} ─────────────────────────────────────────
     if quote_raw:
@@ -816,8 +987,13 @@ def fetch_price_levels(
             sym_node = quote_raw.get(symbol.upper()) or quote_raw.get(symbol) or {}
             q = sym_node.get("quote", {}) or {}
             def _sf(key):
-                try: return float(q.get(key)) if q.get(key) is not None else None
-                except Exception: return None
+                # STACK-VERIFY-CAND-SILENT-FALLBACK-SWEEP: tighten exception scope to
+                # the actual float coercion failure modes; broad bare-except was hiding
+                # other bugs (AttributeError on q being non-dict, KeyError, etc.).
+                try:
+                    return float(q.get(key)) if q.get(key) is not None else None
+                except (TypeError, ValueError):
+                    return None
             pl.today_open = _sf("openPrice")
             pl.today_high = _sf("highPrice")
             pl.today_low  = _sf("lowPrice")
@@ -861,23 +1037,28 @@ def fetch_price_levels(
         if not candles:
             raise ValueError("empty candles")
 
-        today_date = datetime.now(ET).date()
+        today_date = now_et().date()
         today_bars = []
         prev_bars  = []
         overnight_bars = []
 
         for c in candles:
-            dt_ms  = c.get("datetime", 0)
+            dt_ms = c.get("datetime")
+            if dt_ms is None:
+                continue
+            try:
+                dt_ms = float(dt_ms)
+            except (TypeError, ValueError):
+                continue
+            if dt_ms <= 0:
+                continue
             dt_utc = datetime.fromtimestamp(dt_ms / 1000, tz=timezone.utc)
             dt_et  = dt_utc.astimezone(ET)
-            is_rth = (
-                dt_et.hour > RTH_OPEN_HOUR or
-                (dt_et.hour == RTH_OPEN_HOUR and dt_et.minute >= RTH_OPEN_MIN)
-            ) and dt_et.hour < RTH_CLOSE_HOUR
+            dt_mins = dt_et.hour * 60 + dt_et.minute
+            is_rth = RTH_OPEN_MINS <= dt_mins < RTH_END_MINS
             if not is_rth:
                 if include_extended_hours and dt_et.date() == today_date:
-                    mins = dt_et.hour * 60 + dt_et.minute
-                    if mins < RTH_OPEN_HOUR * 60 + RTH_OPEN_MIN:
+                    if dt_mins < RTH_OPEN_MINS:
                         overnight_bars.append((dt_et, c))
                 continue
             if dt_et.date() == today_date:
@@ -920,10 +1101,7 @@ def fetch_price_levels(
                     cum_vol += vol
 
                 # ORB: first orb_minutes of RTH
-                mins_since_open = (
-                    (dt_et.hour - RTH_OPEN_HOUR) * 60 +
-                    (dt_et.minute - RTH_OPEN_MIN)
-                )
+                mins_since_open = (dt_et.hour * 60 + dt_et.minute) - RTH_OPEN_MINS
                 if mins_since_open < orb_minutes and h is not None and l is not None:
                     orb_h = max(orb_h, h)
                     orb_l = min(orb_l, l)
@@ -945,3 +1123,64 @@ def fetch_price_levels(
         pl.error = (pl.error + f" | history: {err_str}").strip(" |")
 
     return pl
+
+
+def missing_confluence_weighted_pushes(ctx: MarketContext) -> list[str]:
+    """DB column names missing from MarketContext (empty = all three pushes present)."""
+    missing: list[str] = []
+    spy = getattr(getattr(ctx, "confluence", None), "weighted_push", None)
+    qqq = getattr(getattr(ctx, "qqq_confluence", None), "weighted_push", None)
+    iwm = iwm_blended_participation_push(ctx)
+    if spy is None:
+        missing.append("spy_weighted_push")
+    if qqq is None:
+        missing.append("qqq_weighted_push")
+    if iwm is None:
+        missing.append("iwm_weighted_push")
+    return missing
+
+
+def confluence_quote_rows_from_context(
+    ctx: MarketContext,
+    *,
+    ts_utc: float,
+    ts_et: str,
+) -> list[dict[str, Any]]:
+    """Thin quote rows for panel / constituent symbols (not full snapshots)."""
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def add(sym: str, last: Optional[float], chg: Optional[float]) -> None:
+        s = (sym or "").upper().strip()
+        if not s or s in seen:
+            return
+        seen.add(s)
+        rows.append(
+            {
+                "ticker": s,
+                "ts_utc": ts_utc,
+                "ts_et": ts_et,
+                "last_price": last,
+                "chg_pct": chg,
+            }
+        )
+
+    for sym, chg, last in (
+        ("SPY", ctx.spy_chg_pct, ctx.spy_last),
+        ("QQQ", ctx.qqq_chg_pct, ctx.qqq_last),
+        ("IWM", ctx.iwm_chg_pct, ctx.iwm_last),
+        ("$VIX", None, ctx.vix),
+    ):
+        add(sym, last, chg)
+    if ctx.tnx_yield is not None:
+        add("$TNX", ctx.tnx_yield, ctx.tnx_chg)
+    for cq in ctx.constituents or []:
+        add(cq.symbol, cq.last, cq.chg_pct)
+    for cq in ctx.qqq_constituents or []:
+        add(cq.symbol, cq.last, cq.chg_pct)
+    for cq in ctx.iwm_holdings or []:
+        add(cq.symbol, cq.last, cq.chg_pct)
+    for sq in ctx.iwm_sectors or []:
+        add(sq.symbol, sq.last, sq.chg_pct)
+    return rows
+

@@ -55,7 +55,7 @@ def analyze(db_path: Path) -> dict[str, Any]:
     # Legacy row subcategories (partition legacy; informational — all remain quarantined).
     legacy_pending = int(
         conn.execute(
-            f"""
+            """
             SELECT COUNT(*) FROM calibration_decision_log
             WHERE calibration_trust = ? AND outcome_5c IS NULL
             """,
@@ -88,7 +88,7 @@ def analyze(db_path: Path) -> dict[str, Any]:
 
     trusted_pending = int(
         conn.execute(
-            f"""
+            """
             SELECT COUNT(*) FROM calibration_decision_log
             WHERE calibration_trust = ? AND outcome_5c IS NULL
             """,
@@ -97,7 +97,7 @@ def analyze(db_path: Path) -> dict[str, Any]:
     )
     trusted_with_outcomes = int(
         conn.execute(
-            f"""
+            """
             SELECT COUNT(*) FROM calibration_decision_log
             WHERE calibration_trust = ? AND outcome_5c IS NOT NULL
             """,

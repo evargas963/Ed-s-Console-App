@@ -1,0 +1,2 @@
+# Governance JSON artifacts: canonical LF in git and on Linux CI (manifest SHA256 pins).
+governance/artifacts/*.json text eol=lf

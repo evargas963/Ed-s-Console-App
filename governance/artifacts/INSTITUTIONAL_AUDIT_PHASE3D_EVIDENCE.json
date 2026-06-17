@@ -1,0 +1,56 @@
+{
+  "schema_version": 2,
+  "artifact": "governance/artifacts/INSTITUTIONAL_AUDIT_PHASE3D_EVIDENCE.json",
+  "phase": "3D-Verification",
+  "label": "external enforcement verified for protected-branch merge path",
+  "ci_workflow_exists": true,
+  "objective_audit_in_ci": true,
+  "adversarial_tests_in_ci": true,
+  "required_checks_spec_exists": true,
+  "branch_protection_required": true,
+  "branch_protection_verified": true,
+  "required_status_checks_enforced": true,
+  "objective_audit_required_on_github": true,
+  "pull_request_review_required_on_github": true,
+  "pr_review_required_on_github": true,
+  "codeowners_exists": true,
+  "governance_critical_files_count": 46,
+  "no_verify_status": "mitigated",
+  "same_actor_mutation_status": "mitigated",
+  "external_enforcement_status": "verified",
+  "operator_action_required": false,
+  "objective_audit_check_name": "objective-audit",
+  "objective_audit_check_name_verified": true,
+  "remote_evidence": {
+    "evidence_source": "gh api + gh run list",
+    "evidence_timestamp": "2026-06-17T10:18:55+00:00",
+    "repository": "evargas963/Ed-s-Console-App",
+    "protected_branch": "main",
+    "required_status_checks": [
+      "objective-audit"
+    ],
+    "required_reviews": 1,
+    "allows_force_pushes": false,
+    "allows_deletions": false,
+    "bypass_actors": [],
+    "verification_method": "github_cli",
+    "verified_by": "tools/verify_remote_enforcement.py"
+  },
+  "phase3d_checker_tests": {
+    "exit_code": 0,
+    "summary": "18 passed in 51.17s",
+    "command": "C:\\Users\\evarg\\AppData\\Local\\Programs\\Python\\Python313\\python.exe -m pytest tests/test_branch_protection_proof.py tests/test_required_status_checks.py tests/test_governance_critical_files.py tests/test_no_verify_resistance.py tests/test_governance_self_protection.py tests/test_remote_enforcement_evidence.py -q"
+  },
+  "maturity_changes_proposed": [],
+  "maturity_changes_rejected": [
+    "L5 institutional enforcement \u2014 no adversarial bypass survival + external proof",
+    "Branch protection satisfied from docs/CODEOWNERS alone",
+    "No-verify mitigated from CI workflow file alone",
+    "Manual attestation treated as API verification"
+  ],
+  "remaining_gaps": [
+    "Objective Audit GitHub check name verified as 'objective-audit' \u2014 main branch protection must require this check (operator_action_required until API proof)",
+    "Manual DB/filesystem bypasses remain open (UNIVERSAL_BYPASS_REGISTER)"
+  ],
+  "generated": "2026-06-17"
+}

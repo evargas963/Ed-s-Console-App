@@ -33,9 +33,10 @@ from verification.daily_health import (  # noqa: E402
 
 def _et_hhmm(ts: float) -> str:
     from datetime import datetime, timezone
-    from zoneinfo import ZoneInfo
 
-    dt = datetime.fromtimestamp(float(ts), tz=timezone.utc).astimezone(ZoneInfo("America/New_York"))
+    from time_et import ET
+
+    dt = datetime.fromtimestamp(float(ts), tz=timezone.utc).astimezone(ET)
     return dt.strftime("%H:%M")
 
 

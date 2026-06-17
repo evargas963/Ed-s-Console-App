@@ -189,9 +189,6 @@ def _empty_pin_risk_health(strike: float | None) -> dict:
 
 
 def _num(value: Any) -> float | None:
-    try:
-        if value is None or value == "":
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    from numeric_contract import float_finite_or_none
+
+    return float_finite_or_none(value)

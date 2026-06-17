@@ -17,7 +17,7 @@ import sqlite3
 import sys
 
 # ---- CONFIG ----
-from db import DB_PATH
+from db import DB_PATH, get_snapshot_sql
 
 TEST_TICKER = "SPY"            # ticker to test
 from timeframe_config import CANONICAL_TIMEFRAME

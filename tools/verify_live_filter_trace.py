@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from db import get_db
+from db import get_db, get_snapshot_sql
 from timeframe_config import CANONICAL_TIMEFRAME
 from verification.similar_set_trace import full_similar_and_empirical_trace
 

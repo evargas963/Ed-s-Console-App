@@ -482,9 +482,6 @@ def _first_number(ms: dict[str, Any], *keys: str) -> float | None:
 
 
 def _float_or_none(value: Any) -> float | None:
-    try:
-        if value is None:
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    from numeric_contract import float_finite_or_none
+
+    return float_finite_or_none(value)

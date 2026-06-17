@@ -7,7 +7,7 @@ SignalInput is not read for structure / anchor / price MVP fields — no paralle
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from canonical_distances import canonicalize_distance_read
 
@@ -23,11 +23,13 @@ def require_mvp_features(mvp_features: dict[str, Any] | None, *, context: str) -
     return mvp_features
 
 
-def mvp_zone(mvp: dict[str, Any]) -> str:
+def mvp_zone(mvp: dict[str, Any]) -> Optional[str]:
+    """Canonical ``structure.zone`` or None when missing (no fabricated sentinel)."""
     v = mvp.get("structure.zone")
-    if v is not None:
-        return str(v).strip().lower()
-    return "unknown"
+    if v is None:
+        return None
+    s = str(v).strip().lower()
+    return s if s else None
 
 
 def mvp_spot(mvp: dict[str, Any]) -> float | None:
@@ -42,11 +44,12 @@ def mvp_spot(mvp: dict[str, Any]) -> float | None:
     return f if f > 0 else None
 
 
-def mvp_vwap_side(mvp: dict[str, Any]) -> str:
+def mvp_vwap_side(mvp: dict[str, Any]) -> Optional[str]:
     v = mvp.get("anchor.vwap_side")
-    if v is not None:
-        return str(v).strip().lower()
-    return "above"
+    if v is None:
+        return None
+    s = str(v).strip().lower()
+    return s if s in ("above", "below") else None
 
 
 def mvp_nearest_distances_for_regime(mvp: dict[str, Any]) -> tuple[Any, Any]:
@@ -56,5 +59,11 @@ def mvp_nearest_distances_for_regime(mvp: dict[str, Any]) -> tuple[Any, Any]:
     )
 
 
-def mvp_net_gamma(mvp: dict[str, Any]) -> Any:
-    return mvp.get("structure.net_gamma")
+def mvp_net_gamma(mvp: dict[str, Any]) -> float | None:
+    v = mvp.get("structure.net_gamma")
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None

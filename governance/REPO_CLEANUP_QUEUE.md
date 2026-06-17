@@ -1,8 +1,30 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `REPO_CLEANUP_QUEUE.md`.
+
 # Repo Cleanup Queue
 
 **Status:** Open cleanup queue  
 **Created:** 2026-05-06  
-**Policy reference:** `governance/ENGINEERING_GATEKEEPING_POLICY.md`
+**Policy reference:** `CLAUDE.md` § ENGINEERING GATEKEEPING (binding); this queue is tracking only.
+
+---
+
+## Governance reconciliation (2026-06-11)
+
+**Multi-month program:** long-tail cleanup (Schwab register, ablation grid, stack phases) is **fix-as-we-touch** — see `ACTIVE_PROGRAM.md` §Multi-month institutional program + `OPEN_ITEMS.md` `INST-PROGRAM-*` rows. No batch scanner sprints.
+
+**Inventory:** `governance/consolidation/reconciliation_worksheet.json` (107 top-level MDs bucketed).
+
+**Promoted to binding stack:** `AGENTS.md` §Governance document hierarchy + `check_governance_binding_contract()`; engineering gatekeeping authority → `CLAUDE.md`.
+
+**Archive batch 2 complete (2026-06-11):** 20 C-bucket MDs stubbed at `governance/`; full bodies under `governance/archive/2026-Q2/governance_md/` and `superseded_schwab_coverage/`. Locked by `check_governance_archive_batch2_contract()`.
+
+| Bucket | Count | Disposition |
+| --- | --- | --- |
+| A (active law) | 5 | Keep at `governance/` — cited from ACTIVE_PROGRAM / CLAUDE |
+| B (spec vault) | 80 | Not binding unless promoted; slice contracts + deferred INF |
+| C (archive candidate) | 20 | **Batch 2 complete** — stubs at `governance/`; bodies at `governance/archive/2026-Q2/governance_md/` + `superseded_schwab_coverage/` |
+| D (no refs) | 1 | `SCHWAB_FIELD_COVERAGE_REGISTER_V1.md` — archive batch 1 |
+| GAP (promoted) | 1 | `ENGINEERING_GATEKEEPING_POLICY.md` — demoted to CLAUDE reference |
 
 ---
 
@@ -41,7 +63,7 @@ archived
 
 | File path | Why flagged | Date flagged | Recommended resolution | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `governance/INSTITUTIONAL_STANDARD_WISHLIST.md` | V1 institutional standard wishlist appears superseded by later institutional standard governance. | 2026-05-06 | Move to `governance/archive/` if no live references or operator retention need exists. | open | Verify references before moving. |
+| `governance/SCHWAB_FIELD_COVERAGE_REGISTER_V1.md` | V1 field-first register; zero live refs; superseded by Schwab V4. | 2026-05-06 | Archived with stub @ 2026-06-11 reconciliation. | archived | Body at `governance/archive/2026-Q2/governance_md_reconciliation/`. |
 | `governance/INSTITUTIONAL_STANDARD_V2.md` | Superseded by `governance/INSTITUTIONAL_STANDARD_V3.md` / V3.1-era governance. | 2026-05-06 | Move to `governance/archive/` if no live references or operator retention need exists. | open | Verify references before moving. |
 | `governance/V3_CONFORMANCE_AUDIT_TEMPLATE.md` | Template appears redundant with completed `governance/V3_CONFORMANCE_AUDIT.md`. | 2026-05-06 | Move to `governance/archive/` or retain with explicit template reuse rationale. | open | Verify whether future audits still use the template. |
 | Dirty working tree files | Current working tree contains many modified and untracked files outside the v2 calibration commits. | 2026-05-06 | Separate operator disposition pass: keep, commit by topic, archive, or discard only with explicit approval. | resolved | Disposition completed in approved topic commits; generated reports ignored, rejected placeholder/NULL-skip hunks reverted, and follow-up workstreams retained below. |

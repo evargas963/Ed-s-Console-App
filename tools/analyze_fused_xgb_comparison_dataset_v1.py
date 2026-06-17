@@ -22,7 +22,7 @@ from ml_horizon import ML_HORIZON_SLUGS
 from timeframe_config import CANONICAL_TIMEFRAME
 
 # Strict prior v1 backfill shape (reference only — explains small-N bottleneck)
-from tools.backfill_fusion_policy_columns_v1 import GOV_WHERE as STRICT_GOV_WHERE
+from tools.legacy.horizon_7.backfill_fusion_policy_columns_v1 import GOV_WHERE as STRICT_GOV_WHERE
 
 
 def _policy_tickers(root: Path) -> list[str]:
@@ -61,8 +61,8 @@ def main() -> int:
     prior = STREAM_5M_LOOKBACK
 
     lstm_sub = (
-        f"(SELECT COUNT(*) FROM snapshots pr WHERE pr.ticker = snapshots.ticker "
-        f"AND pr.timeframe = ? AND pr.ts_utc < snapshots.ts_utc) >= ?"
+        "(SELECT COUNT(*) FROM snapshots pr WHERE pr.ticker = snapshots.ticker "
+        "AND pr.timeframe = ? AND pr.ts_utc < snapshots.ts_utc) >= ?"
     )
 
     total = _one(conn, "SELECT COUNT(*) FROM snapshots")

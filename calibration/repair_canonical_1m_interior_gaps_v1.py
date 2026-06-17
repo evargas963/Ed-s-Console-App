@@ -14,9 +14,9 @@ from __future__ import annotations
 import argparse
 import bisect
 import json
+import logging
 import sqlite3
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -27,12 +27,19 @@ if str(ROOT) not in sys.path:
 from calibration.canonical_1m_grid_scan import scan_db
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
-from db import EdDB, configure_sqlite_connection
+from calibration.repair_canonical_1m_shared import apply_repair_1m_bar_batch_writes, carry_basis_source_sql
+from db import configure_sqlite_connection
 from horizon_outcomes import SYNTHETIC_INTERIOR_GRID_REPAIR_V1
+
+log = logging.getLogger(__name__)
 
 try:
     from timeframe_config import CANONICAL_TIMEFRAME
-except Exception:
+except ImportError as e:
+    log.warning(
+        "timeframe_config.CANONICAL_TIMEFRAME not available — using literal '1m': %s",
+        e,
+    )
     CANONICAL_TIMEFRAME = "1m"
 
 
@@ -47,7 +54,11 @@ def _collect_interior_missing(db_path: Path, tz_now: float) -> list[tuple[str, f
 
     starts_by: dict[str, list[float]] = {}
     closes: dict[tuple[str, float], float] = {}
-    for r in conn.execute("SELECT ticker, bar_start_ts_utc, close FROM price_bars_1m"):
+    src_clause, src_params = carry_basis_source_sql()
+    for r in conn.execute(
+        f"SELECT ticker, bar_start_ts_utc, close FROM price_bars_1m WHERE {src_clause}",
+        src_params,
+    ):
         t = r["ticker"]
         s = float(r["bar_start_ts_utc"])
         starts_by.setdefault(t, []).append(s)
@@ -95,8 +106,17 @@ def run_repair(
     conn = sqlite3.connect(str(db_path), timeout=60.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
-    tz = float(conn.execute("SELECT MAX(bar_end_ts_utc) AS m FROM price_bars_1m").fetchone()["m"] or time.time())
+    tz_row = conn.execute("SELECT MAX(bar_end_ts_utc) AS m FROM price_bars_1m").fetchone()["m"]
     conn.close()
+    if tz_row is None:
+        return {
+            "schema": "repair_canonical_1m_interior_gaps_v1",
+            "db_path": str(db_path),
+            "dry_run": dry_run,
+            "error": "no_bars_in_price_bars_1m",
+            "bars_to_insert": 0,
+        }
+    tz = float(tz_row)
 
     planned = _collect_interior_missing(db_path, tz)
     rep: dict[str, Any] = {
@@ -110,7 +130,6 @@ def run_repair(
         rep["sample"] = [{"ticker": a[0], "bar_start": a[1], "interp": a[4]} for a in planned[:15]]
         return rep
 
-    db = EdDB(db_path, allow_noncanonical=allow_noncanonical)
     batch: dict[str, list[dict[str, Any]]] = {}
     for tkr, g, _lo, _hi, c_g in planned:
         batch.setdefault(tkr, []).append(
@@ -125,17 +144,25 @@ def run_repair(
             }
         )
 
-    n_written = 0
-    for tkr, bars in batch.items():
-        n_written += db.upsert_1m_bars(tkr, bars)
+    try:
+        n_written, n_tickers = apply_repair_1m_bar_batch_writes(
+            db_path,
+            batch,
+            tz=tz,
+            default_source=SYNTHETIC_INTERIOR_GRID_REPAIR_V1,
+        )
+    except Exception as e:
+        rep["error"] = f"repair_failed_rollback:{e!r}"
+        rep["rows_upserted"] = 0
+        rep["tickers_touched"] = 0
+        rep["governed_outcome_refresh_tickers"] = 0
+        rep["fill_outcomes_tickers"] = 0
+        return rep
+
     rep["rows_upserted"] = n_written
-    rep["tickers_touched"] = len(batch)
-
-    # Refresh outcomes for touched tickers
-    for tkr in batch:
-        db.fill_outcomes(tkr, CANONICAL_TIMEFRAME, tz)
-    rep["fill_outcomes_tickers"] = len(batch)
-
+    rep["tickers_touched"] = n_tickers
+    rep["governed_outcome_refresh_tickers"] = n_tickers
+    rep["fill_outcomes_tickers"] = n_tickers
     return rep
 
 
@@ -152,7 +179,7 @@ def main() -> int:
         allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
     )
     print(json.dumps(rep, indent=2))
-    return 0
+    return 1 if rep.get("error") else 0
 
 
 if __name__ == "__main__":

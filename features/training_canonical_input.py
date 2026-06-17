@@ -4,11 +4,20 @@ Canonical training-input boundary: DB rows → MVP contract → merged legacy-sh
 Single approved path for training-time MVP alignment with inference (see features.db_feature_adapter,
 features.lstm_sequence_input.merge_db_row_with_canonical_mvp).
 
+**DataFrame → row dict ingress (mandatory):** Any tabular training frame that feeds
+``build_db_mvp_feature_row`` or ``build_inference_snapshot_v1_from_db_row`` MUST use
+``records_for_mvp_from_dataframe(df)`` — never raw ``df.to_dict("records")``. Pandas
+``read_sql`` maps SQL NULL to float NaN; MVP coercion treats NaN as broken upstream
+compute. The ingress restores SQL NULL as Python ``None`` without weakening live
+inference (runtime dicts do not pass through this boundary).
+
 Does not widen the MVP feature set. Does not change live inference defaults.
 """
 
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping
 from typing import Any
 
 import pandas as pd
@@ -69,8 +78,66 @@ def training_snapshot_for_sequence_encode(snapshot_row: dict[str, Any]) -> dict[
     return merge_db_row_with_canonical_mvp(snapshot_row, canon)
 
 
+def normalize_pandas_sql_null_row_dict(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Restore SQL NULL semantics on one pandas ``to_dict('records')`` row.
+
+    SQLite NULL on numeric columns becomes float NaN when loaded through pandas.
+    ``read_optional_float`` treats NaN as broken upstream compute
+    (``MvpFeatureSourceError``), not missing. This helper is the per-row primitive;
+    callers building MVP row lists from DataFrames MUST use
+    ``records_for_mvp_from_dataframe`` instead of raw ``to_dict('records')``.
+
+    Live runtime dicts (not from pandas) must not pass through this boundary — real
+    upstream NaN still fails loudly at coercion.
+    """
+    out: dict[str, Any] = {}
+    for k, v in row.items():
+        if isinstance(v, float) and math.isnan(v):
+            out[k] = None
+        else:
+            out[k] = v
+    return out
+
+
+def records_for_mvp_from_dataframe(df: pd.DataFrame) -> list[dict[str, Any]]:
+    """Canonical ingress: tabular training frame → MVP-safe row dicts.
+
+    The ONLY approved way to obtain row dicts from a pandas DataFrame for
+    ``build_db_mvp_feature_row``, ``build_inference_snapshot_v1_from_db_row``,
+    ``training_snapshot_for_sequence_encode``, and tabular canonical validation.
+    """
+    return [normalize_pandas_sql_null_row_dict(r) for r in df.to_dict("records")]
+
+
 def _row_dict_from_df(df: pd.DataFrame, idx: int) -> dict[str, Any]:
-    return df.iloc[idx].to_dict()
+    """Convert DataFrame row to dict, mapping pandas NaN -> Python None.
+
+    SQLite stores numeric NULL as actual NULL; pandas read_sql converts NULL
+    in numeric columns to float NaN (numpy/pandas convention). The MVP
+    coercion contract in features.mvp_source_coercion.read_optional_float
+    distinguishes:
+      * missing data (None) -> canonical None (OK, downstream handles)
+      * non-finite numeric (NaN/Inf) -> MvpFeatureSourceError (broken
+        upstream compute)
+
+    Without this conversion, every snapshot row with a NULL numeric column
+    fails the non-finite check at row 0. Incident 2026-05-25: the scheduler
+    run failed 17 of 41 selected tickers (SPY, QQQ, IWM, AAPL, NVDA, META,
+    MSFT, AMZN, GOOG, GOOGL, AVGO, MRVL, PLTR, SMCI, TSL, TSLA, PCG) with
+    "row 0: MVP coercion failed: liquidity.absorption_score: non-finite
+    value nan" because 33% of SPY snapshots have NULL absorption_score
+    (and similar NULL distributions on other tickers / columns). Additional
+    11 tickers blocked across various row positions on structure.nearest_*
+    / anchor.vwap_dist_pts NaN -- same root cause.
+
+    NaN coming from a DataFrame at this boundary is always pandas-loaded
+    NULL: SQLite Python bindings cannot store NaN distinctly from NULL on
+    a numeric column. Converting NaN -> None here restores the source
+    semantics without weakening the contract for live inference (which
+    receives dicts directly from runtime compute, not via DataFrame, so
+    actual upstream NaN still raises as designed).
+    """
+    return normalize_pandas_sql_null_row_dict(df.iloc[idx].to_dict())
 
 
 def validate_tabular_training_dataframe_canonical(
@@ -102,6 +169,97 @@ def validate_tabular_training_dataframe_canonical(
         ok, errs = validate_feature_contract_row(canon)
         if not ok:
             raise TrainingCanonicalInputError(f"row {i}: canonical validation failed: {errs}")
+
+
+def preflight_tickers_for_training(
+    db_path: Any,
+    tickers: list[str],
+    *,
+    sample_rows: int = 100,
+    table: str = "snapshots_1m_normalized",
+    timeframe: str = "1m",
+) -> dict[str, Any]:
+    """Per-ticker MVP-coercion preflight gate.
+
+    Catches the row-0 NaN class of training failure in seconds instead of
+    after a multi-hour wall-time run. For each ticker, samples up to
+    ``sample_rows`` rows from the normalized training table and runs them
+    through ``validate_tabular_training_dataframe_canonical``.
+
+    Wired into ``ml_scheduler.run_once`` so the 2026-05-25 incident class
+    (41 selected, 38 train_failed) is caught + reported in <60 seconds.
+
+    Tickers that fail preflight are EXCLUDED from the training run with a
+    structured outcome; the run aborts only if no tickers survive — so a
+    partial good run isn't wasted by one bad ticker.
+
+    Returns::
+
+        {
+          'ok': bool,                  # True iff ALL probed tickers passed
+          'tickers_ok': [str, ...],
+          'tickers_failed': {ticker: error_str, ...},
+          'tickers_no_data': [ticker, ...],   # not blocking, separate bucket
+          'sample_rows_per_ticker': int,
+          'table': str,
+          'elapsed_sec': float,
+        }
+    """
+    import sqlite3
+    import time as _time
+
+    t0 = _time.time()
+    tickers_ok: list[str] = []
+    tickers_failed: dict[str, str] = {}
+    tickers_no_data: list[str] = []
+
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=10.0)
+    except sqlite3.Error as e:
+        return {
+            "ok": False,
+            "tickers_ok": [],
+            "tickers_failed": {t: f"db_open_error: {e!s}" for t in tickers},
+            "tickers_no_data": [],
+            "sample_rows_per_ticker": sample_rows,
+            "table": table,
+            "elapsed_sec": round(_time.time() - t0, 2),
+        }
+    try:
+        for t in tickers:
+            try:
+                df = pd.read_sql_query(
+                    f"SELECT * FROM {table} WHERE ticker = ? AND timeframe = ? "
+                    f"ORDER BY ts_utc ASC LIMIT ?",
+                    conn,
+                    params=(t, timeframe, int(sample_rows)),
+                )
+            except (sqlite3.Error, pd.errors.DatabaseError) as e:
+                tickers_failed[t] = f"sql_error: {type(e).__name__}: {str(e)[:160]}"
+                continue
+            if len(df) == 0:
+                tickers_no_data.append(t)
+                continue
+            try:
+                validate_tabular_training_dataframe_canonical(df, max_rows=int(sample_rows))
+                tickers_ok.append(t)
+            except TrainingCanonicalInputError as e:
+                tickers_failed[t] = str(e)[:200]
+    finally:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+
+    return {
+        "ok": len(tickers_failed) == 0,
+        "tickers_ok": tickers_ok,
+        "tickers_failed": tickers_failed,
+        "tickers_no_data": tickers_no_data,
+        "sample_rows_per_ticker": int(sample_rows),
+        "table": table,
+        "elapsed_sec": round(_time.time() - t0, 2),
+    }
 
 
 def assert_shared_feature_cache_keys_equal(a: str, b: str) -> None:

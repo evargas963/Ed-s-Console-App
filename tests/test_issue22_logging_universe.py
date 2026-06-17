@@ -4,6 +4,7 @@ Issue 22 — durable logging_universe enrollment (EdDB) and bounded user cap sem
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -386,3 +387,145 @@ def test_issue22_add_logger_no_eviction_when_fifo_disabled(monkeypatch, tmp_path
     assert "UOLD" in by_cat["user_persisted"]
     assert "UMID" in by_cat["user_persisted"]
     assert "UNEWO" in by_cat["user_persisted"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DB-WRITE-PATH-FIXES (d) — defer the heavy logging-universe DB load off module import
+# ─────────────────────────────────────────────────────────────────────────────
+def test_db_write_path_d_import_does_not_trigger_db_universe_load():
+    """DB-WRITE-PATH-FIXES (d), 2026-05-31: `import server` must NOT run the heavy DB-backed
+    logging-universe load (migrations / sync_core / prune / panel-sync). That work is deferred to
+    the FastAPI lifespan (start_logger -> _hydrate_logger_tickers_from_db). Verified in a CLEAN
+    subprocess so prior in-process lifespan/hydrate calls cannot pollute the guard counter."""
+    code = (
+        "import server;"
+        "assert server._LOGGING_UNIVERSE_DB_LOAD_COUNT == 0, server._LOGGING_UNIVERSE_DB_LOAD_COUNT;"
+        "assert (not server._HAS_SIGNALS) or server._logger_tickers == list(server.CORE_TICKERS),"
+        " server._logger_tickers;"
+        "print('IMPORT_DEFER_OK')"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert proc.returncode == 0, f"stdout={proc.stdout!r}\nstderr={proc.stderr!r}"
+    assert "IMPORT_DEFER_OK" in proc.stdout
+
+
+def test_db_write_path_d_deferred_loader_populates_and_counts(monkeypatch, tmp_path):
+    """DB-WRITE-PATH-FIXES (d): the loader the lifespan calls (start_logger ->
+    _hydrate_logger_tickers_from_db) still performs the full DB load — it populates user_persisted
+    tickers AND increments the import-defer guard counter. Proves the heavy work was MOVED, not
+    dropped."""
+    import db as dbmod
+    import server as srv
+
+    edb = EdDB(tmp_path / "deferd.db")
+    now = time.time()
+    edb.logging_universe_sync_core(["SPY"], now)
+    edb.logging_universe_upsert_user_persisted("XLF", "test_src", now + 1)
+    monkeypatch.setattr("db._db_instance", edb)
+    assert dbmod.get_db() is edb
+    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
+    monkeypatch.setattr(srv, "_run_legacy_logger_json_migration", lambda _db: None)
+    prev_core = list(srv.CORE_TICKERS)
+    before = srv._LOGGING_UNIVERSE_DB_LOAD_COUNT
+    try:
+        srv.CORE_TICKERS[:] = ["SPY"]
+        srv._hydrate_logger_tickers_from_db()
+        assert srv._LOGGING_UNIVERSE_DB_LOAD_COUNT == before + 1
+        with srv._logger_lock:
+            assert "XLF" in srv._logger_tickers
+            assert "SPY" in srv._logger_tickers
+    finally:
+        srv.CORE_TICKERS[:] = prev_core
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TICKER-PREVIEW-NO-ENROLL — viewing a symbol must not enroll it (operator 2026-05-31)
+# ─────────────────────────────────────────────────────────────────────────────
+def test_ticker_preview_view_touch_never_enrolls(monkeypatch, tmp_path):
+    """TICKER-PREVIEW-NO-ENROLL: _touch_tracked_ticker_view enrolls NOTHING. For an un-enrolled
+    symbol it is a pure no-op (no logging_universe row, no in-memory append); for an already-
+    enrolled symbol it only refreshes last_seen."""
+    import db as dbmod
+    import server as srv
+
+    edb = EdDB(tmp_path / "view.db")
+    now = time.time()
+    edb.logging_universe_sync_core(["SPY"], now)
+    monkeypatch.setattr("db._db_instance", edb)
+    assert dbmod.get_db() is edb
+    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
+
+    prev = None
+    with srv._logger_lock:
+        prev = list(srv._logger_tickers)
+        srv._logger_tickers[:] = ["SPY"]
+    try:
+        # Un-enrolled symbol: viewing must NOT create a row or append in memory.
+        srv._touch_tracked_ticker_view("ZVQ")
+        users = {r["ticker"].upper() for r in edb.logging_universe_list_rows()
+                 if r["category"] == "user_persisted"}
+        assert "ZVQ" not in users
+        with srv._logger_lock:
+            assert "ZVQ" not in srv._logger_tickers
+
+        # Already-enrolled symbol: touch refreshes last_seen, creates no new enrollment.
+        edb.logging_universe_upsert_user_persisted("XLF", "pretest", now)
+        with srv._logger_lock:
+            srv._logger_tickers.append("XLF")
+        ls0 = {r["ticker"].upper(): r for r in edb.logging_universe_list_rows()}["XLF"]["last_seen_ts_utc"]
+        srv._touch_tracked_ticker_view("XLF")
+        rows1 = {r["ticker"].upper(): r for r in edb.logging_universe_list_rows()}
+        users1 = {t for t, r in rows1.items() if r["category"] == "user_persisted"}
+        assert users1 == {"XLF"}, "no new user_persisted enrollment from a view-touch"
+        assert rows1["XLF"]["last_seen_ts_utc"] >= ls0
+    finally:
+        with srv._logger_lock:
+            srv._logger_tickers[:] = prev
+
+
+def test_ticker_preview_view_endpoint_no_enroll_track_enrolls(monkeypatch, tmp_path):
+    """TICKER-PREVIEW-NO-ENROLL: a VIEW endpoint (/api/accuracy) does NOT enroll an arbitrary
+    symbol; the explicit TRACK endpoint (/api/logger/add) DOES. Route functions are called
+    directly (sync handlers) to avoid full-lifespan flakiness while still exercising the real
+    enroll/no-enroll branch."""
+    import db as dbmod
+    import server as srv
+
+    edb = EdDB(tmp_path / "previewapi.db")
+    now = time.time()
+    edb.logging_universe_sync_core(["SPY"], now)
+    monkeypatch.setattr("db._db_instance", edb)
+    assert dbmod.get_db() is edb
+    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
+    monkeypatch.delenv("ED_LOGGING_UNIVERSE_FIFO_EVICTION", raising=False)
+    monkeypatch.setattr(srv, "_run_legacy_logger_json_migration", lambda _db: None)
+
+    prev_core = list(srv.CORE_TICKERS)
+    prev = None
+    with srv._logger_lock:
+        prev = list(srv._logger_tickers)
+        srv._logger_tickers[:] = ["SPY"]
+    try:
+        srv.CORE_TICKERS[:] = ["SPY"]
+
+        # VIEW: peek accuracy for an un-enrolled ticker → no enrollment.
+        srv.get_accuracy(ticker="ZVQ")
+        users = {r["ticker"].upper() for r in edb.logging_universe_list_rows()
+                 if r["category"] == "user_persisted"}
+        assert "ZVQ" not in users, "VIEW endpoint /api/accuracy must not enroll"
+
+        # TRACK: explicit add → enrolls.
+        srv.logger_add(ticker="ZTK")
+        users2 = {r["ticker"].upper() for r in edb.logging_universe_list_rows()
+                  if r["category"] == "user_persisted"}
+        assert "ZTK" in users2, "explicit track /api/logger/add must enroll"
+    finally:
+        srv.CORE_TICKERS[:] = prev_core
+        with srv._logger_lock:
+            srv._logger_tickers[:] = prev

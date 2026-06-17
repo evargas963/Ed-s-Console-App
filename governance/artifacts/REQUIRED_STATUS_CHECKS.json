@@ -1,0 +1,50 @@
+{
+  "artifact": "governance/artifacts/REQUIRED_STATUS_CHECKS.json",
+  "workflow_file": ".github/workflows/objective-audit.yml",
+  "workflow_exists": true,
+  "required_commands": [
+    "python tools/enforce_all_rules.py --objective-audit",
+    "python -m pytest tests/adversarial/",
+    "python -m pytest tests/decision_reconstruction/",
+    "python -m pytest tests/release_object/",
+    "python -m pytest tests/test_governance_consolidation.py",
+    "python -m pytest tests/test_agent_preload_contract.py",
+    "python tools/check_agent_preload_contract.py"
+  ],
+  "commands_in_workflow": {
+    "python tools/enforce_all_rules.py --objective-audit": true,
+    "python -m pytest tests/adversarial/": true,
+    "python -m pytest tests/decision_reconstruction/": true,
+    "python -m pytest tests/release_object/": true,
+    "python -m pytest tests/test_governance_consolidation.py": true,
+    "python -m pytest tests/test_agent_preload_contract.py": true,
+    "python tools/check_agent_preload_contract.py": true
+  },
+  "reason": "Workflow file proves CI specification; GitHub required-check enforcement is not proven locally.",
+  "schema_version": 2,
+  "remote_evidence": {
+    "evidence_source": "gh api + gh run list",
+    "evidence_timestamp": "2026-06-17T10:18:55+00:00",
+    "repository": "evargas963/Ed-s-Console-App",
+    "protected_branch": "main",
+    "required_status_checks": [
+      "objective-audit"
+    ],
+    "required_reviews": 1,
+    "allows_force_pushes": false,
+    "allows_deletions": false,
+    "bypass_actors": [],
+    "verification_method": "github_cli",
+    "verified_by": "tools/verify_remote_enforcement.py"
+  },
+  "required_checks": {
+    "enforced": true,
+    "objective_audit_required_on_github": true,
+    "required_status_checks_on_github": [
+      "objective-audit"
+    ]
+  },
+  "remote_enforcement_verified": true,
+  "verification_state": "verified",
+  "generated": "2026-06-17"
+}

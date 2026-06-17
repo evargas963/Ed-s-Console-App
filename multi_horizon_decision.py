@@ -6,16 +6,166 @@ canonical safety semantics (downgrades/blocks are allowed; synthetic conviction 
 """
 from __future__ import annotations
 
+import logging
+import math
 import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from fusion_contract import is_canonical_tradable
 from ml_horizon import PRIMARY_DECISION_HORIZONS
 from multi_horizon_ml_bundle import MultiHorizonMLFusionBundle
+from numeric_contract import direction_from_normalized_triplet, float_finite_or_none
+
+log = logging.getLogger(__name__)
+
+_TRIPLET_LABEL_TO_FORECAST = {"up": "long", "down": "short", "flat": "wait"}
 
 # Authoritative multi-horizon decision inputs only (must match PRIMARY_DECISION_HORIZONS).
 PRODUCT_HORIZONS: tuple[str, ...] = PRIMARY_DECISION_HORIZONS
-HORIZON_MINUTES: dict[str, int] = {"1c": 1, "5c": 5, "15c": 15, "60c": 60}
+HORIZON_MINUTES: dict[str, int] = {s: int(s[:-1]) for s in PRIMARY_DECISION_HORIZONS}
+
+# Per-mode primary-horizon search order (permutations of PRIMARY_DECISION_HORIZONS).
+PRIMARY_ORDER_BY_MODE: dict[str, tuple[str, ...]] = {
+    "scalp": ("1c", "5c", "15c", "60c"),
+    "intraday": ("15c", "5c", "1c", "60c"),
+    "session": ("60c", "15c", "5c", "1c"),
+}
+
+# ── Confidence / tradeable gates (FIND-WIRE2-2/3; Phase 6 ablation tune surface) ──
+TRADEABLE_DOM_MIN: float = 0.38
+TRADEABLE_MARGIN_MIN: float = 0.03
+ENTRY_CONFIRMATION_CONFIDENCE_MIN: float = 0.54
+WAIT_CONFIDENCE_CAP: float = 0.45
+
+# ── ALL-card pooled consensus (operator 2026-06-11) ──
+# Skill-weighted logarithmic opinion pool over the four horizon fusion triplets.
+# Forecast combination per Bates & Granger (1969); log pooling per Genest & Zidek
+# (1986). Replaces head-count voting ("2 of 4 agree"): every valid horizon
+# contributes its FULL probability triplet, weighted by rolling out-of-sample
+# skill (calibration.daily_scoreboard.horizon_skill_weights); a dissenting
+# horizon drags the pooled evidence down continuously instead of a binary veto.
+CONSENSUS_MIN_VALID_HORIZONS: int = 2
+POOL_PROB_FLOOR: float = 1e-6
+SKILL_WEIGHTS_TTL_SEC: float = 900.0
+
+# ── Quality ladder ──
+QUALITY_BOOST_FULLY_ALIGNED: float = 0.10
+QUALITY_BOOST_MOSTLY_ALIGNED: float = 0.05
+QUALITY_PENALTY_MIXED: float = 0.08
+QUALITY_PENALTY_CONTRADICTORY: float = 0.16
+QUALITY_PENALTY_STRUCTURAL_CONTRADICTION: float = 0.18
+QUALITY_PENALTY_TACTICAL_CONTRADICTION: float = 0.08
+QUALITY_THRESHOLD_A: float = 0.74
+QUALITY_THRESHOLD_B_PLUS: float = 0.66
+QUALITY_THRESHOLD_B: float = 0.58
+QUALITY_THRESHOLD_C: float = 0.50
+
+# ── Alignment state counts ──
+ALIGNMENT_FULLY_ALIGNED_MIN_SUPPORT: int = 2
+ALIGNMENT_CONTRADICTORY_MIN_COUNT: int = 2
+ALIGNMENT_WEAK_MIN_COUNT: int = 2
+STRUCTURAL_HORIZONS_FOR_CONTRADICTION: tuple[str, ...] = ("15c", "60c")
+
+# ── Multi-horizon vocabulary (wire/API snake_case; do not reuse across layers) ──
+# Trade decision: final_bias / call_signal → LONG | SHORT | WAIT
+# Per-horizon call (mhap_rows.call): LONG | SHORT | WAIT | UNAVAILABLE (missing data)
+# Per-horizon support (mhap_rows.row_state): primary | aligned | weak | contradictory | missing
+# Cross-horizon alignment (alignment_state_display): values below — NOT a trade direction
+ALIGNMENT_STATE_FULLY_ALIGNED: str = "fully_aligned"
+ALIGNMENT_STATE_MOSTLY_ALIGNED: str = "mostly_aligned"
+ALIGNMENT_STATE_MIXED: str = "mixed"
+ALIGNMENT_STATE_CONTRADICTORY: str = "contradictory"
+ALIGNMENT_STATE_WEAK: str = "weak"
+ALIGNMENT_STATE_NO_PRIMARY: str = "no_primary"  # primary horizon not tradeable; not UNAVAILABLE
+ALIGNMENT_STATES: tuple[str, ...] = (
+    ALIGNMENT_STATE_FULLY_ALIGNED,
+    ALIGNMENT_STATE_MOSTLY_ALIGNED,
+    ALIGNMENT_STATE_MIXED,
+    ALIGNMENT_STATE_CONTRADICTORY,
+    ALIGNMENT_STATE_WEAK,
+    ALIGNMENT_STATE_NO_PRIMARY,
+)
+# Legacy wire value (pre-2026-06): kept for calibration rows + filters only
+ALIGNMENT_STATE_UNUSABLE_LEGACY: str = "unusable"
+
+
+def alignment_state_operator_label(state: str | None) -> str:
+    """Operator-readable alignment label; internal wire stays snake_case."""
+    key = str(state or "").strip().lower()
+    if key in (ALIGNMENT_STATE_NO_PRIMARY, ALIGNMENT_STATE_UNUSABLE_LEGACY):
+        return "no primary edge"
+    if key in (ALIGNMENT_STATE_FULLY_ALIGNED, ALIGNMENT_STATE_MOSTLY_ALIGNED):
+        return "aligned"
+    if key == ALIGNMENT_STATE_CONTRADICTORY:
+        return "split"
+    if key == ALIGNMENT_STATE_WEAK:
+        return "weak support"
+    if key == ALIGNMENT_STATE_MIXED:
+        return "mixed"
+    return key or "unknown"
+
+
+def normalize_alignment_state(state: str | None) -> str:
+    """Map legacy ``unusable`` rows to ``no_primary``."""
+    key = str(state or "").strip().lower()
+    if key == ALIGNMENT_STATE_UNUSABLE_LEGACY:
+        return ALIGNMENT_STATE_NO_PRIMARY
+    return key
+
+# ── Trade mode boundaries (mins-to-close) ──
+TRADE_MODE_SCALP_MAX_MINS: int = 75
+TRADE_MODE_INTRADAY_MAX_MINS: int = 240
+
+# ── ML consensus voting ──
+CONSENSUS_MAJORITY_VOTE_MIN: int = 3
+CONSENSUS_DISSENT_VOTE_MAX: int = 1
+
+# ── Sizing modifier factors ──
+SIZING_STRUCTURAL_CONTRADICTION_FACTOR: float = 0.5
+SIZING_TACTICAL_CONTRADICTION_FACTOR: float = 0.75
+SIZING_WEAK_ALIGNMENT_FACTOR: float = 0.75
+SIZING_MIN_FLOOR: float = 0.25
+
+# ── Wait reasons (operator-visible; FIND-WIRE2-4; pooled consensus 2026-06-11) ──
+WAIT_REASON_INSUFFICIENT_VALID_HORIZONS = (
+    f"fewer than {CONSENSUS_MIN_VALID_HORIZONS} horizons with valid probability triplets"
+    " — insufficient evidence"
+)
+WAIT_REASON_POOLED_FLAT = "pooled stack evidence favors flat — no directional edge"
+WAIT_REASON_POOLED_INSUFFICIENT_TRADEABLE_ALIGNMENT = (
+    f"fewer than {CONSENSUS_MIN_VALID_HORIZONS} tradeable horizons align with pooled direction"
+    " — ALL synthesis withheld"
+)
+WAIT_REASON_CALL_ENGINE_VETO_PREFIX = "call engine veto"
+
+
+def _wait_reason_pooled_below_gate(dom: float, margin: float) -> str:
+    return (
+        f"pooled stack evidence below entry gate (top {dom:.2f}, margin {margin:.2f};"
+        f" need {TRADEABLE_DOM_MIN:.2f} / {TRADEABLE_MARGIN_MIN:.2f})"
+    )
+
+
+def _wait_reason_from_call_blocker(blocker: Any) -> str:
+    """Operator-visible wait_reason when execution stack vetoes a pooled directional setup."""
+    if not isinstance(blocker, dict) or not blocker:
+        return f"{WAIT_REASON_CALL_ENGINE_VETO_PREFIX} — execution stack WAIT"
+    reason = str(blocker.get("reason") or "unknown")
+    if reason == "gates":
+        gate_reasons = blocker.get("gate_reasons") or []
+        if gate_reasons:
+            return (
+                f"{WAIT_REASON_CALL_ENGINE_VETO_PREFIX} — gated: "
+                + "; ".join(str(g) for g in gate_reasons)
+            )
+    detail = blocker.get("detail") or blocker.get("full_detail")
+    if detail:
+        return f"{WAIT_REASON_CALL_ENGINE_VETO_PREFIX} — {detail}"
+    return f"{WAIT_REASON_CALL_ENGINE_VETO_PREFIX} — {reason}"
+
+# Stable reason codes for operator surfaces (mirrors arch_competition REASON_* pattern).
+REASON_PRIMARY_HORIZON_DATA_MISSING = "PRIMARY_HORIZON_DATA_MISSING"
 
 
 @dataclass
@@ -62,6 +212,8 @@ class SupportingHorizonAssessment:
     risk_modifier: bool
     effect: str
     row_state: str
+    missing: bool = False
+    reason_code: str = ""
     notes: list[str] = field(default_factory=list)
 
 
@@ -78,7 +230,7 @@ class HorizonAlignmentReport:
     mixed: bool
     contradictory: bool
     weak: bool
-    unusable: bool
+    no_primary: bool
     reasons: list[str] = field(default_factory=list)
 
 
@@ -191,8 +343,10 @@ def compute_multi_horizon_synthesis(
     pred,
     canonical,
     mh_ml_bundle: Optional[MultiHorizonMLFusionBundle] = None,
+    pool_weights: Optional[dict[str, float]] = None,
 ) -> MultiHorizonSynthesis:
-    mode = _infer_trade_mode(inp)
+    raw_mode = _infer_trade_mode(inp)
+    mode = raw_mode if raw_mode is not None else "unknown"
     hmap = {
         hz: _forecast_horizon_live(pred, inp, hz, canonical=canonical, mh_ml_bundle=mh_ml_bundle)
         for hz in PRODUCT_HORIZONS
@@ -224,6 +378,26 @@ def compute_multi_horizon_synthesis(
     assessments: list[SupportingHorizonAssessment] = []
     for hz in PRODUCT_HORIZONS:
         f = hmap[hz]
+        if f.missing:
+            assessments.append(
+                SupportingHorizonAssessment(
+                    horizon=hz,
+                    role="Unavailable",
+                    call="UNAVAILABLE",
+                    confidence=0.0,
+                    entry_ref=None,
+                    supports_primary=False,
+                    contradicts_primary=False,
+                    timing_only=False,
+                    risk_modifier=False,
+                    effect="Native horizon data missing",
+                    row_state="missing",
+                    missing=True,
+                    reason_code=REASON_PRIMARY_HORIZON_DATA_MISSING,
+                    notes=[f"predictive probs unavailable for {hz}"],
+                )
+            )
+            continue
         role, sup, con, tr = _support_role(mode, selected, hz, f, primary.direction)
         eff = "Governs" if role == "Primary" else "Conflicts" if con else "Supports" if sup else "Timing weak" if role == "Timing" else "Low conviction"
         assessments.append(
@@ -239,41 +413,47 @@ def compute_multi_horizon_synthesis(
                 risk_modifier=(role == "Risk"),
                 effect=eff,
                 row_state=_row_state(role, sup, con),
+                missing=False,
+                reason_code="",
             )
         )
 
     align = _alignment_state(primary, [a for a in assessments if a.horizon != selected])
-    final_bias = primary.direction
-    tradeable = primary.tradeable and final_bias in ("long", "short")
-    wait_reason = ""
-    if align.unusable or not tradeable:
-        final_bias = "wait"
-        tradeable = False
-        wait_reason = "no valid primary horizon"
-    elif align.contradiction_state == "structural":
-        final_bias = "wait"
-        tradeable = False
-        wait_reason = "severe structural contradiction"
-    elif align.alignment_state in ("weak", "mixed") and primary.confidence < 0.34:
-        final_bias = "wait"
-        tradeable = False
-        wait_reason = "weak multi-horizon support"
-    elif (
-        consensus_dir is not None
-        and primary.direction in ("long", "short")
-        and primary.direction != consensus_dir
-        and (cv_long >= 3 or cv_short >= 3)
-    ):
-        final_bias = "wait"
-        tradeable = False
-        wait_reason = "multi_horizon ML consensus disagrees with mode-selected primary"
 
-    conf = primary.confidence
-    conf += 0.04 * align.support_score
-    conf -= 0.08 * align.contradiction_score
-    conf = max(0.0, min(1.0, conf))
-    if final_bias == "wait":
-        conf = min(conf, 0.45)
+    # ALL-card pooled consensus (operator 2026-06-11): the consolidated bias is a
+    # skill-weighted logarithmic opinion pool over the four horizon triplets —
+    # never a relay of the mode-selected primary and never a head-count vote.
+    # The primary keeps the trade plan (entry/stop/targets/hold style) but does
+    # not own the headline direction.
+    if pool_weights is not None:
+        pw, pw_fallback = dict(pool_weights), False
+    else:
+        pw, pw_fallback = _horizon_skill_weights_cached()
+    pooled = _pooled_consensus(hmap, pw, pw_fallback)
+    final_bias, wait_reason = pooled.final_bias, pooled.wait_reason
+    pooled_aligned_tradeable = 0
+    if final_bias in ("long", "short"):
+        pooled_aligned_tradeable = sum(
+            1
+            for hz in PRODUCT_HORIZONS
+            if hmap[hz].tradeable and hmap[hz].direction == final_bias
+        )
+        if pooled_aligned_tradeable < CONSENSUS_MIN_VALID_HORIZONS:
+            final_bias = "wait"
+            wait_reason = WAIT_REASON_POOLED_INSUFFICIENT_TRADEABLE_ALIGNMENT
+    tradeable = final_bias in ("long", "short")
+
+    if tradeable:
+        # Confidence = pooled dominant probability (evidence strength of the
+        # combined forecast — breadth and dissent are already inside the pool).
+        conf = max(0.0, min(1.0, pooled.dominant_probability))
+    else:
+        base = (
+            pooled.dominant_probability
+            if pooled.prob_up is not None
+            else max(0.0, primary.confidence)
+        )
+        conf = min(max(0.0, base), WAIT_CONFIDENCE_CAP)
 
     qual = _quality_from_alignment(conf, align.alignment_state, align.contradiction_state)
     hold_style = (
@@ -282,16 +462,24 @@ def compute_multi_horizon_synthesis(
         else "Session continuation"
         if mode == "session"
         else "Intraday continuation"
+        if mode == "intraday"
+        else "Mode unknown — default intraday horizon stack"
     )
     if align.contradiction_state in ("structural", "tactical"):
         hold_style = "Tactical / reduced hold"
     size = 1.0
-    size *= 0.5 if align.contradiction_state == "structural" else 0.75 if align.contradiction_state == "tactical" else 1.0
+    size *= (
+        SIZING_STRUCTURAL_CONTRADICTION_FACTOR
+        if align.contradiction_state == "structural"
+        else SIZING_TACTICAL_CONTRADICTION_FACTOR
+        if align.contradiction_state == "tactical"
+        else 1.0
+    )
     if align.alignment_state == "fully_aligned":
         size *= 1.0
     elif align.alignment_state in ("weak", "mixed"):
-        size *= 0.75
-    size = max(0.25, min(1.0, size))
+        size *= SIZING_WEAK_ALIGNMENT_FACTOR
+    size = max(SIZING_MIN_FLOOR, min(1.0, size))
     if final_bias == "wait":
         size = 0.0
 
@@ -304,7 +492,7 @@ def compute_multi_horizon_synthesis(
         per_hz_audit[hz] = {
             "semantic_role": HORIZON_SEMANTIC_ROLE.get(hz, ""),
             "predictive_probability_source": mh_src.get(hz, "unknown"),
-            "fusion_ml_available": bool(snap and snap.fusion_available),
+            "fusion_ml_available": bool(snap and snap.horizon_fusion_available),
             "fusion_dominant_direction": getattr(snap, "dominant_direction", None) if snap else None,
             "fusion_top_probability": round(getattr(snap, "top_probability", 0.0), 4) if snap else None,
             "forecast_direction": hmap[hz].direction,
@@ -312,8 +500,23 @@ def compute_multi_horizon_synthesis(
             "tradeable": hmap[hz].tradeable,
         }
     ml_live_audit: dict[str, Any] = {
-        "contract": "mh_ml_primary_per_horizon_fusion; empirical_ED_MH_EMPIRICAL_SUPPORT; fallback_ED_MH_FALLBACK_CANONICAL_BLEND",
+        "contract": (
+            "mh_ml_primary_per_horizon_fusion; empirical_ED_MH_EMPIRICAL_SUPPORT;"
+            " fallback_ED_MH_FALLBACK_CANONICAL_BLEND;"
+            " all_card_skill_weighted_log_opinion_pool"
+        ),
         "per_horizon": per_hz_audit,
+        "all_card_pool": {
+            "prob_up": pooled.prob_up,
+            "prob_down": pooled.prob_down,
+            "prob_flat": pooled.prob_flat,
+            "dominant_probability": round(pooled.dominant_probability, 4),
+            "probability_margin": round(pooled.probability_margin, 4),
+            "eligible_horizons": list(pooled.eligible_horizons),
+            "weights": {h: round(w, 4) for h, w in pooled.weights.items()},
+            "weights_fallback_equal": pooled.weights_fallback_equal,
+            "tradeable_horizons_aligned_with_pooled_bias": pooled_aligned_tradeable,
+        },
         "consensus_direction": consensus_dir,
         "consensus_long_votes_tradeable": cv_long,
         "consensus_short_votes_tradeable": cv_short,
@@ -370,7 +573,18 @@ def finalize_multi_horizon_bundle(
     hold_style = synth.hold_style
     psel = synth.psel
     mode = synth.mode
-    ml_live_audit = synth.ml_live_audit
+    ml_live_audit = dict(synth.ml_live_audit)
+    call_signal = str(getattr(call, "signal", "wait") or "wait").lower()
+    call_engine_veto = tradeable and call_signal == "wait"
+    if call_engine_veto:
+        tradeable = False
+        wait_reason = _wait_reason_from_call_blocker(getattr(call, "wait_blocker", None))
+        size = 0.0
+    ml_live_audit["call_engine_veto"] = {
+        "applied": call_engine_veto,
+        "call_signal": call_signal,
+        "wait_blocker": getattr(call, "wait_blocker", None),
+    }
 
     e_state, e_px, e_txt = _entry_state_machine(
         final_bias,
@@ -384,25 +598,28 @@ def finalize_multi_horizon_bundle(
     target = getattr(call, "target", None)
     target2 = getattr(call, "target2", None)
     tlad = []
-    if target is not None:
-        tlad.append(f"T1: {float(target):.2f}")
+    t1 = _finite_price_optional(target)
+    if t1 is not None:
+        tlad.append(f"T1: {t1:.2f}")
     else:
         tlad.append("T1: —")
-    if target2 is not None:
-        tlad.append(f"T2: {float(target2):.2f}")
-        tlad.append(f"Runner: {float(target2):.2f}")
+    t2 = _finite_price_optional(target2)
+    if t2 is not None:
+        tlad.append(f"T2: {t2:.2f}")
+        tlad.append(f"Runner: {t2:.2f}")
     else:
         tlad.append("T2: —")
         tlad.append("Runner: —")
     tdisp = " | ".join(tlad)
-    sdisp = "—" if stop is None else f"{float(stop):.2f}"
+    stop_px = _finite_price_optional(stop)
+    sdisp = "—" if stop_px is None else f"{stop_px:.2f}"
     size_disp = "0.00x" if size <= 0 else f"{size:.2f}x"
 
     plan = FinalTradePlan(
         entry_state=e_state,
         entry=e_px,
         entry_display_text=e_txt,
-        stop=(float(stop) if stop is not None else None),
+        stop=stop_px,
         stop_display_text=sdisp if final_bias != "wait" else "—",
         target_ladder=tlad,
         targets_display=tdisp if final_bias != "wait" else "—",
@@ -460,25 +677,29 @@ def finalize_multi_horizon_bundle(
     )
 
 
-def _safe_prob(v: Optional[float], fallback: float = 1.0 / 3.0) -> float:
-    try:
-        x = float(v)
-    except Exception:
-        return fallback
-    if x < 0:
-        return 0.0
-    if x > 1:
-        return 1.0
+def _safe_prob_optional(v: Optional[float]) -> Optional[float]:
+    x = float_finite_or_none(v)
+    if x is None or not (0.0 <= x <= 1.0):
+        return None
     return x
 
 
-def _norm_triplet(u: Optional[float], d: Optional[float], f: Optional[float]) -> tuple[float, float, float]:
-    up = _safe_prob(u)
-    dn = _safe_prob(d)
-    fl = _safe_prob(f)
+def _finite_price_optional(v: Any) -> Optional[float]:
+    """Finite price for display/plan fields; rejects NaN/inf (FIND-MHD-6/7)."""
+    return float_finite_or_none(v)
+
+
+def _norm_triplet(
+    u: Optional[float], d: Optional[float], f: Optional[float]
+) -> Optional[tuple[float, float, float]]:
+    up = _safe_prob_optional(u)
+    dn = _safe_prob_optional(d)
+    fl = _safe_prob_optional(f)
+    if up is None or dn is None or fl is None:
+        return None
     s = up + dn + fl
-    if s <= 0:
-        return (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
+    if s <= 0 or not math.isfinite(s):
+        return None
     return (up / s, dn / s, fl / s)
 
 
@@ -486,35 +707,39 @@ def _confidence_from_probs(up: float, dn: float, fl: float) -> tuple[float, floa
     vals = sorted([up, dn, fl], reverse=True)
     top = vals[0]
     margin = top - vals[1]
-    # Slightly looser vs legacy so fusion+signal_layer canonical blends can resolve a side.
-    if top < 0.37 or margin < 0.025:
+    # Product-policy margin gates; direction from numeric_contract triplet authority.
+    if top < TRADEABLE_DOM_MIN or margin < TRADEABLE_MARGIN_MIN:
         return top, margin, "wait"
-    if up >= dn and up >= fl:
-        return top, margin, "long"
-    if dn >= up and dn >= fl:
-        return top, margin, "short"
-    return top, margin, "wait"
+    dom_label = direction_from_normalized_triplet(up, dn, fl)
+    call = _TRIPLET_LABEL_TO_FORECAST.get(dom_label, "wait")
+    if call == "wait":
+        return top, margin, "wait"
+    return top, margin, call
 
 
-def _infer_trade_mode(inp) -> str:
+def _infer_trade_mode(inp) -> Optional[str]:
     m2c = getattr(inp, "mins_to_close", None)
+    if m2c is None:
+        return None
     try:
         mins = float(m2c)
-    except Exception:
-        mins = 180.0
-    if mins <= 75:
+    except (TypeError, ValueError):
+        return None
+    if mins <= TRADE_MODE_SCALP_MAX_MINS:
         return "scalp"
-    if mins <= 240:
+    if mins <= TRADE_MODE_INTRADAY_MAX_MINS:
         return "intraday"
     return "session"
 
 
-def _primary_order_for_mode(mode: str) -> tuple[str, ...]:
+def _primary_order_for_mode(mode: Optional[str]) -> tuple[str, ...]:
     if mode == "scalp":
-        return ("1c", "5c", "15c", "60c")
+        return PRIMARY_ORDER_BY_MODE["scalp"]
     if mode == "session":
-        return ("60c", "15c", "5c", "1c")
-    return ("15c", "5c", "1c", "60c")
+        return PRIMARY_ORDER_BY_MODE["session"]
+    if mode == "intraday":
+        return PRIMARY_ORDER_BY_MODE["intraday"]
+    return PRIMARY_ORDER_BY_MODE["intraday"]
 
 
 HORIZON_SEMANTIC_ROLE: dict[str, str] = {
@@ -539,55 +764,94 @@ def _forecast_horizon_live(
     empirical-only triplets (default 0.0 — empirical + fusion per horizon only).
     """
     if hz == "1c":
-        up, dn, fl = _norm_triplet(
+        triplet = _norm_triplet(
             getattr(pred, "up_prob_1c", None),
             getattr(pred, "down_prob_1c", None),
             getattr(pred, "flat_prob_1c", None),
         )
-        # Expected-move context: use primary 5c empirical only — not secondary 3c.
         em = getattr(pred, "avg_5c_pts", None)
     elif hz == "5c":
-        up, dn, fl = _norm_triplet(
+        triplet = _norm_triplet(
             getattr(pred, "up_prob_5c", None),
             getattr(pred, "down_prob_5c", None),
             getattr(pred, "flat_prob_5c", None),
         )
         em = getattr(pred, "avg_5c_pts", None)
     elif hz == "15c":
-        up, dn, fl = _norm_triplet(
+        triplet = _norm_triplet(
             getattr(pred, "up_prob_15c", None),
             getattr(pred, "down_prob_15c", None),
             getattr(pred, "flat_prob_15c", None),
         )
         em = getattr(pred, "avg_15c_pts", None)
     else:
-        up, dn, fl = _norm_triplet(
+        triplet = _norm_triplet(
             getattr(pred, "up_prob_60c", None),
             getattr(pred, "down_prob_60c", None),
             getattr(pred, "flat_prob_60c", None),
         )
         em = getattr(pred, "avg_60c_pts", None)
 
+    if triplet is None:
+        miss = True
+        return HorizonForecast(
+            horizon=hz,
+            direction="wait",
+            probability_up=0.0,
+            probability_down=0.0,
+            probability_flat=0.0,
+            confidence=0.0,
+            provenance="predictive_probs_unavailable",
+            tradeable=False,
+            unavailable=True,
+            missing=True,
+            valid_contract=False,
+            dominant_probability=0.0,
+            probability_margin=0.0,
+            expected_move_pts=(float(em) if em is not None else None),
+            entry_ref=None,
+        )
+    up, dn, fl = triplet
+
     ml_snap = mh_ml_bundle.snapshot(hz) if mh_ml_bundle else None
-    fusion_ml = bool(ml_snap and ml_snap.fusion_available)
+    fusion_ml = bool(ml_snap and ml_snap.horizon_fusion_available)
     provenance = f"predictive_mh_fusion_primary_{hz}"
     if not fusion_ml:
+        env_blend = os.environ.get("ED_MH_FALLBACK_CANONICAL_BLEND", "0.0")
         try:
-            wfb = float(os.environ.get("ED_MH_FALLBACK_CANONICAL_BLEND", "0.0"))
+            wfb = float(env_blend)
         except ValueError:
+            log.debug(
+                "ED_MH_FALLBACK_CANONICAL_BLEND ignored (malformed) value=%r horizon=%s",
+                env_blend,
+                hz,
+            )
             wfb = 0.0
         wfb = max(0.0, min(1.0, wfb))
         if canonical is not None and wfb > 0.0:
-            cu = float(getattr(canonical, "probability_up", 1.0 / 3.0))
-            cd = float(getattr(canonical, "probability_down", 1.0 / 3.0))
-            cf = float(getattr(canonical, "probability_flat", 1.0 / 3.0))
-            up = (1.0 - wfb) * up + wfb * cu
-            dn = (1.0 - wfb) * dn + wfb * cd
-            fl = (1.0 - wfb) * fl + wfb * cf
-            s = up + dn + fl
-            if s > 0:
-                up, dn, fl = up / s, dn / s, fl / s
-            provenance = f"predictive_empirical_fallback_{hz}_stabilized"
+            # FIND-MHD-CANONICAL-PROV: gate blend on canonical provenance tradability.
+            # Non-tradable canonical (fusion_unavailable / fusion_directional_missing /
+            # fusion_directional_invalid / debug_override:*) carries max-entropy 1/3
+            # placeholder probs (signal_types.NON_TRADABLE_CANONICAL_PROVENANCE);
+            # blending them would inject synthetic conviction into the predictive triplet.
+            if not is_canonical_tradable(canonical):
+                provenance = f"predictive_empirical_fallback_{hz}_canonical_nontradable"
+            else:
+                cu = float_finite_or_none(getattr(canonical, "probability_up", None))
+                cd = float_finite_or_none(getattr(canonical, "probability_down", None))
+                cf = float_finite_or_none(getattr(canonical, "probability_flat", None))
+                if cu is not None and cd is not None and cf is not None:
+                    up = (1.0 - wfb) * up + wfb * cu
+                    dn = (1.0 - wfb) * dn + wfb * cd
+                    fl = (1.0 - wfb) * fl + wfb * cf
+                    s = up + dn + fl
+                    if s > 0 and math.isfinite(s):
+                        up, dn, fl = up / s, dn / s, fl / s
+                        provenance = f"predictive_empirical_fallback_{hz}_stabilized"
+                    else:
+                        provenance = f"predictive_empirical_fallback_{hz}_canonical_nonfinite"
+                else:
+                    provenance = f"predictive_empirical_fallback_{hz}_canonical_nonfinite"
         else:
             provenance = f"predictive_empirical_fallback_{hz}"
 
@@ -596,13 +860,16 @@ def _forecast_horizon_live(
     empirical_ok = (not miss) or fusion_ml or (canonical is not None)
     tradeable = (
         (call in ("long", "short"))
-        and dom >= 0.38
-        and margin >= 0.03
+        and dom >= TRADEABLE_DOM_MIN
+        and margin >= TRADEABLE_MARGIN_MIN
         and empirical_ok
     )
-    up_ref = getattr(inp, "nearest_below_val", None)
-    dn_ref = getattr(inp, "nearest_above_val", None)
-    entry_ref = up_ref if call == "long" else dn_ref if call == "short" else None
+    # Price-action contract (operator 2026-06-11): per-horizon entry reference is
+    # current price — never a key level (the old nearest_below/above reference
+    # tied horizon rows to options-structure levels).
+    entry_ref = (
+        float_finite_or_none(getattr(inp, "spot", None)) if call in ("long", "short") else None
+    )
     return HorizonForecast(
         horizon=hz,
         direction=call,
@@ -625,25 +892,25 @@ def _forecast_horizon_live(
 def _quality_from_alignment(base_conf: float, align_state: str, contradiction: str) -> str:
     score = base_conf
     if align_state == "fully_aligned":
-        score += 0.10
+        score += QUALITY_BOOST_FULLY_ALIGNED
     elif align_state == "mostly_aligned":
-        score += 0.05
+        score += QUALITY_BOOST_MOSTLY_ALIGNED
     elif align_state == "mixed":
-        score -= 0.08
+        score -= QUALITY_PENALTY_MIXED
     elif align_state == "contradictory":
-        score -= 0.16
+        score -= QUALITY_PENALTY_CONTRADICTORY
     if contradiction == "structural":
-        score -= 0.18
+        score -= QUALITY_PENALTY_STRUCTURAL_CONTRADICTION
     elif contradiction == "tactical":
-        score -= 0.08
+        score -= QUALITY_PENALTY_TACTICAL_CONTRADICTION
     score = max(0.0, min(1.0, score))
-    if score >= 0.74:
+    if score >= QUALITY_THRESHOLD_A:
         return "A"
-    if score >= 0.66:
+    if score >= QUALITY_THRESHOLD_B_PLUS:
         return "B+"
-    if score >= 0.58:
+    if score >= QUALITY_THRESHOLD_B:
         return "B"
-    if score >= 0.50:
+    if score >= QUALITY_THRESHOLD_C:
         return "C"
     return "D"
 
@@ -659,31 +926,37 @@ def _alignment_state(primary: HorizonForecast, supports: list[SupportingHorizonA
     support_score = sup / n
 
     if not primary.tradeable:
-        state = "unusable"
-    elif con == 0 and sup >= 2:
+        state = ALIGNMENT_STATE_NO_PRIMARY
+    elif con == 0 and sup >= ALIGNMENT_FULLY_ALIGNED_MIN_SUPPORT:
         state = "fully_aligned"
     elif con <= 1 and sup >= 1:
         state = "mostly_aligned"
-    elif con >= 2:
+    elif con >= ALIGNMENT_CONTRADICTORY_MIN_COUNT:
         state = "contradictory"
-    elif weak >= 2:
+    elif weak >= ALIGNMENT_WEAK_MIN_COUNT:
         state = "weak"
     else:
         state = "mixed"
 
     contradiction_state = "none"
-    if con >= 2 and primary.horizon in ("15c", "60c"):
+    if con >= ALIGNMENT_CONTRADICTORY_MIN_COUNT and primary.horizon in STRUCTURAL_HORIZONS_FOR_CONTRADICTION:
         contradiction_state = "structural"
     elif con >= 1:
         contradiction_state = "tactical"
-    elif weak >= 2:
+    elif weak >= ALIGNMENT_WEAK_MIN_COUNT:
         contradiction_state = "weakness"
 
     return HorizonAlignmentReport(
         alignment_score=round(align_score, 4),
         contradiction_score=round(contradiction_score, 4),
         support_score=round(support_score, 4),
-        conflict_level=("high" if con >= 2 else "medium" if con == 1 else "low"),
+        conflict_level=(
+            "high"
+            if con >= ALIGNMENT_CONTRADICTORY_MIN_COUNT
+            else "medium"
+            if con == 1
+            else "low"
+        ),
         alignment_state=state,
         contradiction_state=contradiction_state,
         fully_aligned=(state == "fully_aligned"),
@@ -691,7 +964,7 @@ def _alignment_state(primary: HorizonForecast, supports: list[SupportingHorizonA
         mixed=(state == "mixed"),
         contradictory=(state == "contradictory"),
         weak=(state == "weak"),
-        unusable=(state == "unusable"),
+        no_primary=(state == ALIGNMENT_STATE_NO_PRIMARY),
         reasons=[],
     )
 
@@ -736,27 +1009,162 @@ def _entry_state_machine(
     call_entry: Optional[float],
     call_state: str,
 ) -> tuple[str, Optional[float], str]:
+    """
+    Price-action entry states (operator 2026-06-11): timing comes from the 1c
+    model plus a volatility-scaled band around current price — never key-level
+    zones (the old nearest_below/nearest_above band was a key-level dependency).
+
+    filled    → call engine reports ACTIVE with an entry price.
+    forming   → 1c is tradeably AGAINST the pooled bias (counter-move running).
+    armed     → bias live, waiting on 1c confirmation.
+    confirmed → 1c agrees with bias at confirmation confidence.
+    """
     if final_bias == "wait" or not tradeable:
         return ("no_setup", None, "No valid setup")
-    zl = getattr(inp, "nearest_below_val", None)
-    zh = getattr(inp, "nearest_above_val", None)
-    spot = getattr(inp, "spot", None)
-    if zl is None or zh is None or spot is None:
-        return ("forming", None, "Wait for pullback into —\u2014—\n(1c confirmation required)")
-    lo = float(min(zl, zh))
-    hi = float(max(zl, zh))
-    in_zone = lo <= float(spot) <= hi
-    confirm_1c = one_c.direction == final_bias and one_c.confidence >= 0.54
+    spot = _finite_price_optional(getattr(inp, "spot", None))
+    if spot is None:
+        return ("no_setup", None, "missing or invalid spot")
     cs = str(call_state or "WAIT").upper()
-    if cs == "ACTIVE" and call_entry is not None:
-        return ("filled", float(call_entry), f"{float(call_entry):.2f} (FILLED)")
-    if not in_zone:
-        return ("forming", None, f"Wait for pullback into {lo:.2f}\u2013{hi:.2f}\n(1c confirmation required)")
-    if in_zone and not confirm_1c:
-        return ("armed", None, f"In zone ({lo:.2f}\u2013{hi:.2f})\nWaiting for 1c confirmation")
-    if call_entry is not None:
-        return ("confirmed", float(call_entry), f"{float(call_entry):.2f} (CONFIRMED)")
-    return ("confirmed", float(spot), f"{float(spot):.2f} (CONFIRMED)")
+    entry_px = _finite_price_optional(call_entry)
+    if cs == "ACTIVE" and entry_px is not None:
+        return ("filled", entry_px, f"{entry_px:.2f} (FILLED)")
+    atr = _finite_price_optional(getattr(inp, "atr", None))
+    band = f" (\u00b1{0.5 * atr:.2f})" if atr is not None and atr > 0.0 else ""
+    opposing_1c = (
+        one_c.tradeable
+        and one_c.direction in ("long", "short")
+        and one_c.direction != final_bias
+    )
+    if opposing_1c:
+        return ("forming", None, f"Counter-move on 1c \u2014 wait for 1c to turn {final_bias}")
+    confirm_1c = (
+        one_c.direction == final_bias
+        and one_c.confidence >= ENTRY_CONFIRMATION_CONFIDENCE_MIN
+    )
+    if not confirm_1c:
+        return ("armed", None, f"Near {spot:.2f}{band}\nAwaiting 1c confirmation")
+    if entry_px is not None:
+        return ("confirmed", entry_px, f"{entry_px:.2f} (CONFIRMED)")
+    return ("confirmed", spot, f"{spot:.2f} (CONFIRMED)")
+
+
+@dataclass
+class PooledConsensus:
+    """ALL-card pooled evidence (operator 2026-06-11) — see pooling constants."""
+
+    prob_up: Optional[float]
+    prob_down: Optional[float]
+    prob_flat: Optional[float]
+    dominant_probability: float
+    probability_margin: float
+    eligible_horizons: list[str]
+    weights: dict[str, float]
+    weights_fallback_equal: bool
+    final_bias: str  # long | short | wait
+    wait_reason: str
+
+
+def _pooled_consensus(
+    hmap: dict[str, HorizonForecast],
+    weights: dict[str, float],
+    weights_fallback_equal: bool,
+) -> PooledConsensus:
+    """
+    Logarithmic opinion pool over the valid horizon triplets: q_k ∝ Π p_hz,k^w_hz
+    (weights normalized over eligible horizons). Entry requires the pooled triplet
+    to pass the same dominance/margin gates as an individual horizon — evidence
+    strength, not head-count. Fail-closed WAIT when fewer than
+    CONSENSUS_MIN_VALID_HORIZONS horizons carry a valid triplet.
+    """
+    eligible: list[str] = []
+    triplets: dict[str, tuple[float, float, float]] = {}
+    for hz in PRODUCT_HORIZONS:
+        f = hmap[hz]
+        if f.missing or f.unavailable or not f.valid_contract:
+            continue
+        probs = [
+            float_finite_or_none(f.probability_up),
+            float_finite_or_none(f.probability_down),
+            float_finite_or_none(f.probability_flat),
+        ]
+        if any(p is None or p < 0.0 for p in probs) or sum(p for p in probs) <= 0.0:  # type: ignore[operator]
+            continue
+        eligible.append(hz)
+        triplets[hz] = (probs[0], probs[1], probs[2])  # type: ignore[assignment]
+
+    if len(eligible) < CONSENSUS_MIN_VALID_HORIZONS:
+        return PooledConsensus(
+            prob_up=None, prob_down=None, prob_flat=None,
+            dominant_probability=0.0, probability_margin=0.0,
+            eligible_horizons=eligible, weights={}, weights_fallback_equal=weights_fallback_equal,
+            final_bias="wait", wait_reason=WAIT_REASON_INSUFFICIENT_VALID_HORIZONS,
+        )
+
+    w_raw = {hz: max(0.0, float(weights.get(hz, 0.0))) for hz in eligible}
+    w_sum = sum(w_raw.values())
+    if w_sum <= 0.0:
+        w_norm = {hz: 1.0 / len(eligible) for hz in eligible}
+        weights_fallback_equal = True
+    else:
+        w_norm = {hz: w / w_sum for hz, w in w_raw.items()}
+
+    log_q = [0.0, 0.0, 0.0]
+    for hz in eligible:
+        for k in range(3):
+            log_q[k] += w_norm[hz] * math.log(max(triplets[hz][k], POOL_PROB_FLOOR))
+    m = max(log_q)
+    q_un = [math.exp(v - m) for v in log_q]
+    z = sum(q_un)
+    q = [v / z for v in q_un]
+    q_sorted = sorted(q, reverse=True)
+    dom = q_sorted[0]
+    margin = dom - q_sorted[1]
+    label = direction_from_normalized_triplet(q[0], q[1], q[2])
+
+    if label == "flat":
+        bias, reason = "wait", WAIT_REASON_POOLED_FLAT
+    elif dom < TRADEABLE_DOM_MIN or margin < TRADEABLE_MARGIN_MIN:
+        bias, reason = "wait", _wait_reason_pooled_below_gate(dom, margin)
+    else:
+        bias, reason = ("long" if label == "up" else "short"), ""
+    return PooledConsensus(
+        prob_up=q[0], prob_down=q[1], prob_flat=q[2],
+        dominant_probability=dom, probability_margin=margin,
+        eligible_horizons=eligible, weights=w_norm,
+        weights_fallback_equal=weights_fallback_equal,
+        final_bias=bias, wait_reason=reason,
+    )
+
+
+_skill_weights_cache: dict[str, Any] = {"ts": 0.0, "weights": None, "fallback": True}
+
+
+def _horizon_skill_weights_cached() -> tuple[dict[str, float], bool]:
+    """
+    Rolling skill weights from the calibration log (TTL-cached). Fail-closed to
+    equal weights when the calibration DB is unavailable or under-sampled.
+    """
+    import time
+
+    now = time.time()
+    if (
+        _skill_weights_cache["weights"] is not None
+        and (now - float(_skill_weights_cache["ts"])) < SKILL_WEIGHTS_TTL_SEC
+    ):
+        return _skill_weights_cache["weights"], bool(_skill_weights_cache["fallback"])
+    weights = {hz: 1.0 / len(PRODUCT_HORIZONS) for hz in PRODUCT_HORIZONS}
+    fallback = True
+    try:
+        from calibration.daily_scoreboard import horizon_skill_weights
+        from calibration.paths import DEFAULT_DB
+
+        res = horizon_skill_weights(DEFAULT_DB)
+        weights = dict(res["weights"])
+        fallback = bool(res["fallback_equal"])
+    except Exception as e:  # noqa: BLE001 — serve path must not die on calibration IO
+        log.debug("horizon skill weights unavailable — equal-weight pool: %s", e)
+    _skill_weights_cache.update({"ts": now, "weights": weights, "fallback": fallback})
+    return weights, fallback
 
 
 def _ml_consensus_vote(hmap: dict[str, HorizonForecast]) -> tuple[Optional[str], int, int]:
@@ -770,9 +1178,9 @@ def _ml_consensus_vote(hmap: dict[str, HorizonForecast]) -> tuple[Optional[str],
             long_v += 1
         else:
             short_v += 1
-    if long_v >= 3 and short_v <= 1:
+    if long_v >= CONSENSUS_MAJORITY_VOTE_MIN and short_v <= CONSENSUS_DISSENT_VOTE_MAX:
         return "long", long_v, short_v
-    if short_v >= 3 and long_v <= 1:
+    if short_v >= CONSENSUS_MAJORITY_VOTE_MIN and long_v <= CONSENSUS_DISSENT_VOTE_MAX:
         return "short", long_v, short_v
     return None, long_v, short_v
 

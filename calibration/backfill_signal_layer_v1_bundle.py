@@ -19,10 +19,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from calibration.canonical_enforcement import (
+    CalibrationCanonicalViolationError,
+    enforce_calibration_decision_log_only_1m,
+)
 from calibration.json_utils import dumps_compact
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
+from calibration.trust import TRUSTED_PREDICATE_SQL
 
 try:
     from db import EdDB, configure_sqlite_connection
@@ -39,7 +44,7 @@ def backfill(
     force: bool = False,
     allow_noncanonical: bool = False,
 ) -> dict[str, Any]:
-    from features.signal_layer_v1 import compute_signal_layer_v1_for_calibration
+    from features.signal_layer_v1 import compute_signal_layer_v1_for_calibration, meta_n_bars_int
 
     if not db_path.is_file():
         return {"error": "db_not_found", "path": str(db_path)}
@@ -49,9 +54,15 @@ def backfill(
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
     ensure_calibration_schema(conn)
+    enforce_calibration_decision_log_only_1m(conn)
 
     rows = conn.execute(
-        "SELECT id, ticker, decision_ts_utc, raw_bundle_json FROM calibration_decision_log ORDER BY id"
+        f"""
+        SELECT id, ticker, decision_ts_utc, raw_bundle_json
+        FROM calibration_decision_log
+        WHERE ({TRUSTED_PREDICATE_SQL})
+        ORDER BY id
+        """
     ).fetchall()
 
     updated = 0
@@ -70,10 +81,14 @@ def backfill(
                 continue
 
         if not force and bundle.get("signal_layer_v1") and isinstance(bundle["signal_layer_v1"], dict):
-            nb = int(bundle["signal_layer_v1"].get("meta.n_bars") or 0)
-            if nb > 0 or bundle["signal_layer_v1"].get("meta.error") is None:
+            sl = bundle["signal_layer_v1"]
+            raw_nb = sl.get("meta.n_bars")
+            nb = meta_n_bars_int(sl)
+            if nb > 0:
                 skipped_nonempty += 1
                 continue
+            if raw_nb is not None and str(raw_nb).strip() != "" and nb == 0:
+                errors.append({"id": rid, "error": "signal_layer_v1_invalid_meta_n_bars"})
 
         try:
             layer = compute_signal_layer_v1_for_calibration(
@@ -123,12 +138,16 @@ def main() -> int:
         tool_name="calibration.backfill_signal_layer_v1_bundle",
         write_capable=True,
     )
-    out = backfill(
-        args.db,
-        dry_run=args.dry_run,
-        force=args.force,
-        allow_noncanonical=args.allow_noncanonical_db,
-    )
+    try:
+        out = backfill(
+            args.db,
+            dry_run=args.dry_run,
+            force=args.force,
+            allow_noncanonical=args.allow_noncanonical_db,
+        )
+    except CalibrationCanonicalViolationError as e:
+        print(f"CANONICAL_ENFORCEMENT_FAIL: {e}", file=sys.stderr)
+        return 2
     print(json.dumps(out, indent=2))
     return 1 if out.get("errors") else 0
 

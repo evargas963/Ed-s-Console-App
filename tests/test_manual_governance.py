@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,7 @@ from arch_competition.manual_control import (
     MANUAL_PROMOTE_CASCADE_INTENT,
     MANUAL_PROMOTE_PARALLEL_INTENT,
     MANUAL_ROLLBACK_INTENT,
-    assert_active_mutation_only_via_manual_control,
+    arch_state_path_for_horizon,
     load_governance_visibility,
     manual_promote_to_active_explicit,
     manual_rollback_to_checkpoint_explicit,
@@ -31,6 +32,32 @@ def _dfp():
         "timeframe": "1m",
         "ticker": "SPY",
     }
+
+
+def _write_horizon_bundle(bundle_dir: Path, ticker: str, hz: str, *, xgb_payload: bytes = b"x") -> None:
+    from model_contract import contract_metadata_dict
+    from ml_horizon import target_definition as _hz_target_definition
+
+    t = ticker.upper()
+    contract = contract_metadata_dict()
+    for kind in ("xgb", "lstm", "transformer"):
+        ext = ".pkl" if kind == "xgb" else ".pt"
+        payload = xgb_payload if kind == "xgb" else b"z"
+        bundle_dir.joinpath(f"{kind}_{t}_{hz}{ext}").write_bytes(payload)
+        meta = {
+            **contract,
+            "features": ["f1"],
+            "training_timeframe": "1m",
+            "target_column": f"outcome_{hz}",
+            "target_definition": _hz_target_definition(hz),
+            "rows_used": 500,
+        }
+        if kind == "xgb":
+            meta["category_maps"] = {}
+            meta["vol_medians"] = {}
+            meta["impute_medians"] = {"f1": 0.0}
+        bundle_dir.joinpath(f"{kind}_{t}_{hz}_meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    bundle_dir.joinpath(f"meta_{t}_{hz}.pkl").write_bytes(b"meta-stack-test-stub")
 
 
 def _write_candidate_manifests(parallel_dir: Path, cascade_dir: Path):
@@ -54,8 +81,8 @@ def _minimal_governed_files(model_dir: Path, *, cascade_ok: bool = True):
     pdir.mkdir(parents=True)
     cdir.mkdir(parents=True)
     _write_candidate_manifests(pdir, cdir)
-    (pdir / "xgb_SPY_1c.pkl").write_bytes(b"x")
-    (cdir / "xgb_SPY_1c.pkl").write_bytes(b"y")
+    _write_horizon_bundle(pdir, tku, hz, xgb_payload=b"x")
+    _write_horizon_bundle(cdir, tku, hz, xgb_payload=b"y")
 
     ev = {
         "schema_version": "1",
@@ -75,8 +102,8 @@ def _minimal_governed_files(model_dir: Path, *, cascade_ok: bool = True):
             "canonical_timeframe": "1m",
         },
         "metrics": {
-            "parallel": {"n_rows_scored": 10, "realized_contract_metrics": {}},
-            "cascade": {"n_rows_scored": 10, "realized_contract_metrics": {}},
+            "parallel": {"n_rows_scored": 10, "accuracy": 0.45, "balanced_accuracy": 0.40, "realized_contract_metrics": {}},
+            "cascade": {"n_rows_scored": 10, "accuracy": 0.45, "balanced_accuracy": 0.40, "realized_contract_metrics": {}},
         },
         "rolling_oos_windows": [],
         "architecture_comparison_summary": {},
@@ -108,9 +135,11 @@ def _minimal_governed_files(model_dir: Path, *, cascade_ok: bool = True):
     (ed / "promotion_decision.json").write_text(json.dumps(pr), encoding="utf-8")
 
 
-def test_scheduler_never_auto_promotes():
-    assert scheduler_auto_promote_to_active_enabled() is False
-    assert _scheduler_auto_promote_to_active() is False
+def test_scheduler_auto_promote_enabled_by_default(monkeypatch):
+    monkeypatch.delenv("ED_SCHEDULER_AUTO_PROMOTE", raising=False)
+    monkeypatch.delenv("ED_DISABLE_AUTO_PROMOTE", raising=False)
+    assert scheduler_auto_promote_to_active_enabled() is True
+    assert _scheduler_auto_promote_to_active() is True
 
 
 def test_manual_promote_wrong_intent_fails(tmp_path: Path):
@@ -139,6 +168,49 @@ def test_manual_promote_cascade_blocked_by_record(tmp_path: Path):
         )
 
 
+def test_load_arch_state_rejects_corrupt_file(tmp_path: Path):
+    from arch_competition.manual_control import _load_arch_state
+
+    p = arch_state_path_for_horizon(tmp_path, "1c")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("{not valid json", encoding="utf-8")
+    with pytest.raises(ManualGovernanceError, match="arch_state at .* corrupt"):
+        _load_arch_state(tmp_path, "1c")
+    assert not p.is_file()
+    assert any(p.parent.glob("arch_state.json.corrupt.*"))
+
+
+def test_promote_copy_failure_leaves_prior_active_unchanged(tmp_path: Path, monkeypatch):
+    _minimal_governed_files(tmp_path, cascade_ok=True)
+    active = tmp_path / "active" / "SPY"
+    active.mkdir(parents=True)
+    (active / "stable.pkl").write_bytes(b"stable")
+
+    calls = {"n": 0}
+    real_copy2 = shutil.copy2
+
+    def flaky_copy2(src, dst):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise OSError("simulated disk full during staging copy")
+        return real_copy2(src, dst)
+
+    monkeypatch.setattr(shutil, "copy2", flaky_copy2)
+
+    with pytest.raises(ManualGovernanceError, match="promotion copy failed"):
+        manual_promote_to_active_explicit(
+            tmp_path,
+            "SPY",
+            "1c",
+            target_architecture="cascade",
+            operator_id="op1",
+            manual_intent=MANUAL_PROMOTE_CASCADE_INTENT,
+        )
+
+    assert (active / "stable.pkl").read_bytes() == b"stable"
+    assert not (active / "xgb_SPY_1c.pkl").exists()
+
+
 def test_manual_promote_cascade_success_writes_active_and_audit(tmp_path: Path):
     _minimal_governed_files(tmp_path, cascade_ok=True)
     active = tmp_path / "active" / "SPY"
@@ -156,6 +228,9 @@ def test_manual_promote_cascade_success_writes_active_and_audit(tmp_path: Path):
     assert (active / "xgb_SPY_1c.pkl").read_bytes() == b"y"
     assert (tmp_path / "arch_competition" / "governance_audit.jsonl").is_file()
     assert "checkpoint_id" in out
+    state = json.loads((tmp_path / "arch_state.json").read_text(encoding="utf-8"))
+    assert state["SPY"]["active_architecture"] == "cascade"
+    assert "promotion_pending" not in state["SPY"]
 
 
 def test_missing_governed_files_fail_closed(tmp_path: Path):
@@ -229,9 +304,6 @@ def test_load_governance_visibility(tmp_path: Path):
     assert "recent_audit_actions" in v
 
 
-def test_assert_active_mutation_guard():
-    assert_active_mutation_only_via_manual_control()
-
 
 def test_no_implicit_promote_without_operator(tmp_path: Path):
     _minimal_governed_files(tmp_path, cascade_ok=True)
@@ -246,11 +318,11 @@ def test_no_implicit_promote_without_operator(tmp_path: Path):
         )
 
 
-def test_run_base_models_once_still_parallel_default():
+def test_run_unified_stack_ml_once_still_parallel_default():
     import inspect
-    from ml_predict import run_base_models_once
+    from ml_predict import run_unified_stack_ml_once
 
-    assert "parallel_runtime=True" in inspect.getsource(run_base_models_once)
+    assert "parallel_runtime=True" in inspect.getsource(run_unified_stack_ml_once)
 
 
 def test_manual_rollback_restores_after_promote(tmp_path: Path):

@@ -24,9 +24,15 @@ def build_db_mvp_feature_row(snapshot_row: dict[str, Any]) -> dict[str, Any]:
     Raises:
         MvpFeatureSourceError: present-but-invalid column values.
     """
+    spread_pts = read_optional_float(snapshot_row, "spread", "price.spread_pts")
+    # Crossed/stale bid-ask artifacts can land as tiny negative spread in stored rows.
+    # Canonical contract requires spread_pts >= 0 when present — withhold instead of failing
+    # the whole LSTM/TR window (governed eval + META assembly walk full RTH history).
+    if spread_pts is not None and spread_pts < 0.0:
+        spread_pts = None
     out = {
         "price.spot": read_optional_float(snapshot_row, "spot", "price.spot"),
-        "price.spread_pts": read_optional_float(snapshot_row, "spread", "price.spread_pts"),
+        "price.spread_pts": spread_pts,
         "structure.zone": read_optional_zone(snapshot_row, "zone", "structure.zone"),
         "structure.nearest_above_dist": read_optional_float(
             snapshot_row, "nearest_above_dist", "structure.nearest_above_dist"

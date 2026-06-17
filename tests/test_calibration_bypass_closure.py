@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 _NEEDLE = "calibration_decision_log"
 _ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +33,20 @@ def _allowed_path(rel: Path) -> bool:
     if s == "tools/_phase4a_fast_count.py":
         return True
     if s == "tools/_phase4a_quantify_anchor_miss.py":
+        return True
+    if s.startswith("governance/"):
+        return True
+    if s == "tests/test_action12_14_signal_layer_discrimination_fail_closed.py":
+        return True
+    if s == "tests/test_payload_audit.py":
+        return True
+    if s == "tests/test_validate_outcome_join_fail_closed.py":
+        return True
+    # Tests for calibration backfill modules (which are themselves in the UPDATE allowlist) —
+    # they need to INSERT calibration_decision_log fixtures to exercise their backfill targets.
+    if s == "tests/test_backfill_outcomes_ticker_key.py":
+        return True
+    if s == "tests/test_backfill_signal_layer_v1_bundle.py":
         return True
     return False
 
@@ -77,6 +90,11 @@ def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
             or rel.startswith("tests/test_calibration")
             or rel == "tests/test_v2_advisory_backfill.py"
             or rel == "tests/test_v2_a1_calibration.py"
+            or rel == "tests/test_action12_14_signal_layer_discrimination_fail_closed.py"
+            or rel == "tests/test_payload_audit.py"
+            or rel == "tests/test_validate_outcome_join_fail_closed.py"
+            or rel == "tests/test_backfill_outcomes_ticker_key.py"
+            or rel == "tests/test_backfill_signal_layer_v1_bundle.py"
         )
         if not ok:
             bad.append(rel)

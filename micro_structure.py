@@ -384,9 +384,9 @@ def detect_choch(candles: list[Candle], structure: str,
 # SINGLE CANDLE PATTERN DETECTION
 # ════════════════════════════════════════════════════════════════════════════════
 
-def detect_candle_patterns(candles: list[Candle], spot: float = 500.0) -> list[CandlePattern]:
+def detect_candle_patterns(candles: list[Candle], spot: Optional[float] = None) -> list[CandlePattern]:
     """Detect single-candle patterns on the most recent 2-3 candles."""
-    if len(candles) < 2:
+    if spot is None or spot <= 0 or len(candles) < 2:
         return []
 
     patterns = []
@@ -537,8 +537,10 @@ def detect_chop(candles: list[Candle]) -> tuple[bool, float, int]:
     return is_chop, round(chop_score, 3), reversals
 
 
-def detect_flag(candles: list[Candle], spot: float = 500.0) -> Optional[MultiBarPattern]:
+def detect_flag(candles: list[Candle], spot: Optional[float] = None) -> Optional[MultiBarPattern]:
     """Detect bull and bear flags."""
+    if spot is None or spot <= 0:
+        return None
     n = len(candles)
     if n < FLAG_IMPULSE_MIN_BARS + FLAG_CONSOLIDATION_MIN:
         return None
@@ -836,7 +838,17 @@ def collapse_sweep_alerts(sweeps: list) -> list[str]:
     lines: list[str] = []
     for (direction, outcome), events in groups.items():
         count = len(events)
-        levels = [getattr(e, "level", 0.0) for e in events]
+        levels: list[float] = []
+        for e in events:
+            lv = getattr(e, "level", None)
+            if lv is None:
+                continue
+            try:
+                levels.append(float(lv))
+            except (TypeError, ValueError):
+                continue
+        if not levels:
+            continue
         price_lo = min(levels)
         price_hi = max(levels)
 
@@ -1187,7 +1199,7 @@ def _generate_text(regime, structure, bos, choch, candle_pats, multi_pats,
         flag_note = ""
         for mp in multi_pats:
             if mp.name == "bull_flag":
-                flag_note = f", bull flag forming"
+                flag_note = ", bull flag forming"
                 break
         headline_5m = (
             f"5min: {hl_count} higher low{'s' if hl_count != 1 else ''} — "
@@ -1204,7 +1216,7 @@ def _generate_text(regime, structure, bos, choch, candle_pats, multi_pats,
         flag_note = ""
         for mp in multi_pats:
             if mp.name == "bear_flag":
-                flag_note = f", bear flag forming"
+                flag_note = ", bear flag forming"
                 break
         headline_5m = (
             f"5min: {lh_count} lower high{'s' if lh_count != 1 else ''} — "

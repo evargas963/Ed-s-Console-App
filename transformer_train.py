@@ -1,7 +1,7 @@
 """
 transformer_train.py — Transformer Model Training Pipeline
 ===========================================================
-RULE 1: RTH data only, exponential decay weighting.
+RULE 1: RTH data only, uniform (unweighted) sample weighting — canonical per O-55.
 RULE 2: No gates — train if data exists, save always.
 Supports parallel (raw) and cascade (raw + 6 pred features from XGB+LSTM).
 """
@@ -23,6 +23,13 @@ from typing import Optional, Set, Tuple
 log = logging.getLogger("transformer_train")
 
 from ml_horizon import DEFAULT_ML_HORIZON_SLUG, normalize_ml_horizon_slug, outcome_column
+from training_cache_policy import (
+    EARLY_STOP_ENABLED,
+    EARLY_STOP_MIN_DELTA,
+    TRANSFORMER_EARLY_STOP_PATIENCE,
+    TRANSFORMER_TRAIN_EPOCHS,
+    should_early_stop,
+)
 
 MODELS_DIR = Path("models")
 
@@ -34,7 +41,7 @@ D_FF             = 128
 DROPOUT          = 0.15
 BATCH_SIZE       = 64
 LEARNING_RATE    = 1e-3
-EPOCHS           = 60
+EPOCHS           = TRANSFORMER_TRAIN_EPOCHS   # canonical 60; env ED_TRAIN_EPOCHS_TRANSFORMER overrides
 N_CLASSES        = 3
 
 
@@ -142,10 +149,12 @@ def prepare_transformer_data(
     min_snapshots_before_sample: Optional[int] = None,
     allowed_et_dates: Optional[Set[str]] = None,
     ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
+    confirm_drop_group_ids: Optional[list[str]] = None,
+    confirm_ablation_manifest: Optional[dict] = None,
 ):
+    from features.training_canonical_input import training_snapshot_for_sequence_encode
     from lstm_data import (
         extract_rth_snapshots,
-        encode_snapshot_5m,
         TARGET_CLASSES,
         DB_PATH,
         CANONICAL_TIMEFRAME,
@@ -162,9 +171,13 @@ def prepare_transformer_data(
     tickers = [ticker] if ticker else []
     if not tickers:
         try:
-            from scheduler_user_tickers import load_user_scheduler_tickers
+            from scheduler_user_tickers import (
+                load_user_scheduler_tickers_or_empty,
+                resolve_ml_training_roster,
+            )
 
-            tickers = load_user_scheduler_tickers()
+            enrolled = load_user_scheduler_tickers_or_empty()
+            tickers = resolve_ml_training_roster(enrolled, str(_db))
         except Exception:
             tickers = []
         tickers = [t for t in tickers if t and not str(t).startswith("$")]
@@ -172,6 +185,8 @@ def prepare_transformer_data(
     _min_hist = int(min_snapshots_before_sample) if min_snapshots_before_sample is not None else int(SEQUENCE_LENGTH)
     if _min_hist < SEQUENCE_LENGTH:
         _min_hist = SEQUENCE_LENGTH
+
+    from features.lstm_sequence_input import encode_lstm_structure_sequence_bar
 
     all_X, all_y, all_days, all_tickers = [], [], [], []
     for tkr in tickers:
@@ -182,6 +197,10 @@ def prepare_transformer_data(
             require_outcome=True,
             allowed_et_dates=allowed_et_dates,
             target_column=label_col,
+            model_family="transformer",
+            horizon_slug=hz,
+            confirm_drop_group_ids=confirm_drop_group_ids,
+            confirm_ablation_manifest=confirm_ablation_manifest,
         )
         for day_key, snapshots in sorted(days_data.items()):
             if len(snapshots) < _min_hist:
@@ -200,7 +219,12 @@ def prepare_transformer_data(
                     ref_spot = canonical_reference_spot_from_sequence_window_first_bar(window)
                 except ValueError:
                     continue
-                seq = [encode_snapshot_5m(snap, ref_spot) for snap in window]
+                seq = [
+                    encode_lstm_structure_sequence_bar(
+                        training_snapshot_for_sequence_encode(snap), ref_spot
+                    )
+                    for snap in window
+                ]
                 all_X.append(seq)
                 all_y.append(TARGET_CLASSES[target_str])
                 all_days.append(day_key)
@@ -287,7 +311,8 @@ def train_transformer(
     ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
 ) -> TransformerTrainResult:
     """
-    Train Transformer on full data with exponential decay weights.
+    Train Transformer on full data with equal/uniform sample weighting (O-55) — every row counts
+    the same; no recency decay, no toggle.
     xgb_lstm_probs: optional (N, 6) for cascade — [xgb_up, xgb_dn, xgb_fl, lstm_up, lstm_dn, lstm_fl]
     preloaded_sequences: optional (X, y, days, tickers_arr, n_features) from feature cache — skips DB scan.
     Resume: optional transformer_{TICKER}_train_resume.pt when scheduler_cache_key + data_fp match policy
@@ -296,7 +321,7 @@ def train_transformer(
     import torch
     import torch.nn as nn
     from torch.utils.data import TensorDataset, DataLoader
-    from ml_data_common import compute_exponential_weights
+    from ml_data_common import equal_sample_weights
 
     result = TransformerTrainResult()
     start_time = time.time()
@@ -332,29 +357,72 @@ def train_transformer(
         log.info("Cascade: added 6 XGB+LSTM pred features")
     result.n_features = n_features
 
-    # Normalize (after cascade concat if any)
-    flat = X.reshape(-1, X.shape[2])
-    mean = flat.mean(axis=0)
-    std = flat.std(axis=0)
+    # Workstream B3 — chronological inner holdout. Rows arrive in day order (prepare_transformer_data
+    # / OOF assembly preserve ascending session order), so the LAST rows are the most recent: hold
+    # them out as a strictly later val tail. Normalization mean/std AND the variance feature-mask are
+    # fit on the TRAIN partition only; best_state/early-stop is selected on val loss (not training
+    # loss); reported val_accuracy is out-of-sample. Thin tickers (no holdout) keep the legacy
+    # full-data / in-sample path (disclosed; A1/B1-gated).
+    from ml_data_common import time_ordered_tail_split
+
+    n_rows = len(y)
+    train_end, n_val = time_ordered_tail_split(n_rows)
+    has_holdout = n_val > 0
+    val_basis = "time_ordered_tail" if has_holdout else "in_sample_no_holdout"
+
+    # Normalize (after cascade concat if any) — stats fit on the train partition only.
+    fit_flat = (X[:train_end] if has_holdout else X).reshape(-1, X.shape[2])
+    mean = fit_flat.mean(axis=0)
+    std = fit_flat.std(axis=0)
     std[std < 1e-8] = 1.0
     X = (X - mean) / std
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
 
-    # Feature mask
-    var = X.reshape(-1, n_features).var(axis=0)
+    # Feature mask — variance computed on the train partition only.
+    fit_var_src = (X[:train_end] if has_holdout else X).reshape(-1, n_features)
+    var = fit_var_src.var(axis=0)
     feature_mask = var > 1e-8
     X = X[:, :, feature_mask]
     n_features = X.shape[2]
     result.n_features = n_features
 
-    # Exponential weights
-    exp_w = np.array(compute_exponential_weights(len(y), decay=2.0), dtype=np.float32)
-
-    train_ds = TensorDataset(
-        torch.from_numpy(X).float(),
-        torch.from_numpy(y).long(),
-        torch.from_numpy(exp_w).float(),
+    from arch_competition.stack_bundle_eval_v1 import (
+        ablation_survivors_training_enabled,
+        zero_ablated_sequence_channels_for_model,
     )
+    from lstm_data import ENCODED_FEATURES_1M, ENCODED_FEATURES_5M, FEATURES_1M, FEATURES_5M
+
+    if ablation_survivors_training_enabled():
+        _dummy_1m = np.zeros((X.shape[0], X.shape[1], 0), dtype=X.dtype)
+        X, _ = zero_ablated_sequence_channels_for_model(
+            X,
+            _dummy_1m,
+            feature_mask,
+            np.array([], dtype=bool),
+            model_family="transformer",
+            horizon_slug=normalize_ml_horizon_slug(ml_horizon_slug),
+            features_5m=FEATURES_5M,
+            features_1m=FEATURES_1M,
+            encoded_features_5m=ENCODED_FEATURES_5M,
+            encoded_features_1m=ENCODED_FEATURES_1M,
+        )
+
+    # O-55: equal/uniform sample weights only (all ones). No recency decay, no toggle.
+    sample_w = np.asarray(equal_sample_weights(n_rows), dtype=np.float32)
+
+    Xt = torch.from_numpy(X).float()
+    yt = torch.from_numpy(y).long()
+    wt = torch.from_numpy(sample_w).float()
+    full_ds = TensorDataset(Xt, yt, wt)
+    if has_holdout:
+        train_ds = TensorDataset(Xt[:train_end], yt[:train_end], wt[:train_end])
+        val_ds = TensorDataset(Xt[train_end:], yt[train_end:], wt[train_end:])
+        val_dl = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
+        y_val_np = y[train_end:]
+    else:
+        train_ds = full_ds
+        val_dl = None
+        y_val_np = y
     train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
 
     model = build_transformer(n_features).to(device)
@@ -362,8 +430,9 @@ def train_transformer(
     result.n_train = len(y)
 
     from collections import Counter
-    train_counts = Counter(y.tolist())
-    total = len(y)
+    _w_y = y[:train_end] if has_holdout else y
+    train_counts = Counter(_w_y.tolist())
+    total = len(_w_y)
     weights = torch.tensor(
         [total / (N_CLASSES * train_counts.get(i, 1)) for i in range(N_CLASSES)],
         dtype=torch.float32
@@ -426,6 +495,7 @@ def train_transformer(
                         best_loss = float("inf")
                         best_state = None
 
+    epochs_no_improve = 0  # early-stop counter (only meaningful when has_holdout)
     for epoch in range(start_epoch, EPOCHS + 1):
         model.train()
         train_loss = 0.0
@@ -444,12 +514,49 @@ def train_transformer(
             train_correct += (logits.argmax(dim=1) == yb).sum().item()
             train_total += len(yb)
         train_acc = train_correct / train_total if train_total else 0
-        if train_loss / train_total < best_loss:
-            best_loss = train_loss / train_total
+        # B3: select best_state on the held-out val tail (not training loss). Thin tickers with
+        # no holdout fall back to train-loss selection (in-sample, disclosed).
+        if has_holdout:
+            model.eval()
+            v_loss_sum = 0.0
+            v_total = 0
+            with torch.no_grad():
+                for vxb, vyb, _vwb in val_dl:
+                    vxb, vyb = vxb.to(device), vyb.to(device)
+                    v_logits = model(vxb)
+                    v_loss_sum += float(criterion(v_logits, vyb).item()) * len(vyb)
+                    v_total += len(vyb)
+            model.train()
+            sel_loss = v_loss_sum / max(1, v_total)
+        else:
+            sel_loss = train_loss / train_total
+        improved = sel_loss < (best_loss - EARLY_STOP_MIN_DELTA)
+        if sel_loss < best_loss:
+            best_loss = sel_loss
             best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
             result.best_epoch = epoch
+        epochs_no_improve = 0 if improved else epochs_no_improve + 1
         if epoch % 10 == 0 or epoch == 1:
-            log.info("Epoch %d: loss=%.4f acc=%.1f%%", epoch, train_loss / train_total, train_acc * 100)
+            log.info(
+                "Epoch %d: train_loss=%.4f acc=%.1f%% sel_loss=%.4f (%s)",
+                epoch, train_loss / train_total, train_acc * 100, sel_loss, val_basis,
+            )
+
+        # Early stop: only on a real held-out val signal (never on in-sample train loss). EPOCHS is
+        # the ceiling; best_state (best val epoch) is restored after the loop.
+        if should_early_stop(
+            enabled=EARLY_STOP_ENABLED,
+            has_holdout=has_holdout,
+            patience=TRANSFORMER_EARLY_STOP_PATIENCE,
+            epochs_no_improve=epochs_no_improve,
+        ):
+            log.info(
+                "Transformer early-stop at epoch %d/%d (no val improvement > %.4g for %d epochs; "
+                "best_epoch=%d best_sel_loss=%.4f)",
+                epoch, EPOCHS, EARLY_STOP_MIN_DELTA, epochs_no_improve,
+                result.best_epoch, best_loss,
+            )
+            break
 
         if (
             resume_path
@@ -481,14 +588,28 @@ def train_transformer(
         model.load_state_dict(best_state)
     model.eval()
 
-    eval_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=False)
+    # B3: honest out-of-sample accuracy on the held-out tail (full-data in-sample only when no
+    # holdout could be carved — disclosed via val_basis).
+    eval_dl = val_dl if has_holdout else DataLoader(full_ds, batch_size=BATCH_SIZE, shuffle=False)
     all_preds = []
     with torch.no_grad():
         for xb, yb, _ in eval_dl:
             xb = xb.to(device)
             preds = model(xb).argmax(dim=1)
             all_preds.extend(preds.cpu().numpy())
-    result.val_accuracy = float(np.mean(np.array(all_preds) == y))
+    result.val_accuracy = float(np.mean(np.array(all_preds) == y_val_np))
+
+    # Workstream B3+ degeneracy diagnostics on the same eval set (held-out tail when a holdout
+    # exists, else in-sample). single_class_collapse marks an all-flat base whose top-line
+    # accuracy is just the majority base rate — blocked from promotion by validate_for_promotion.
+    from ml_data_common import holdout_class_metrics
+    _tr_cls_names = ["up", "down", "flat"]  # TARGET_CLASSES {up:0,down:1,flat:2}
+    tr_deg = holdout_class_metrics(y_val_np, np.array(all_preds), N_CLASSES, _tr_cls_names)
+    log.info(
+        "Transformer degeneracy: balanced_acc=%s recall=%s%s",
+        tr_deg["balanced_accuracy"], tr_deg["per_class_recall"],
+        "  [SINGLE-CLASS COLLAPSE]" if tr_deg["single_class_collapse"] else "",
+    )
 
     save_ticker = ticker or (sorted(set(tickers_arr))[0] if len(tickers_arr) else "unknown")
 
@@ -499,6 +620,13 @@ def train_transformer(
         "ticker": save_ticker,
         "trained_at": datetime.now().isoformat(),
         "val_accuracy": round(result.val_accuracy, 4),
+        "val_basis": val_basis,
+        "balanced_accuracy": tr_deg["balanced_accuracy"],
+        "val_per_class_recall": tr_deg["per_class_recall"],
+        "val_single_class_collapse": bool(tr_deg["single_class_collapse"]),
+        "val_predicted_class_names": tr_deg["predicted_class_names"],
+        "n_val": int(n_val),
+        "best_epoch": result.best_epoch,
         "n_train": result.n_train,
         "n_params": result.n_params,
         "n_features": n_features,
@@ -518,6 +646,8 @@ def train_transformer(
     mean_masked = np.asarray(mean, dtype=np.float32)[feature_mask]
     std_masked = np.asarray(std, dtype=np.float32)[feature_mask]
 
+    from lstm_data import LSTM_ENCODER_SCHEMA_VERSION, encoded_width_5m
+
     torch.save({
         "model_state": best_state or model.state_dict(),
         "n_features": n_features,
@@ -526,6 +656,9 @@ def train_transformer(
         "n_heads": N_HEADS,
         "n_encoder_layers": N_ENCODER_LAYERS,
         "d_ff": D_FF,
+        "encoder_schema_version": LSTM_ENCODER_SCHEMA_VERSION,
+        "encoder_width_5m_pre_mask": encoded_width_5m(),
+        "sample_weight_mode": "equal",
         "feature_mask": feature_mask.tolist(),
         "norm_mean": mean_masked.tolist(),
         "norm_std": std_masked.tolist(),

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from v2_decision.a2_lifecycle_sidecar import LIFECYCLE_GAP_NAMES
+import v2_decision.a2_option_expression as a2oe
 from v2_decision.a2_option_expression import (
     A2_ADAPTER_GAP_REGISTRY,
     HARD_GATE_ACTION_POLICY,
@@ -15,9 +15,7 @@ from v2_decision.a2_option_expression import (
 from v2_decision.module_a_adapter import build_module_a_a1_decision
 
 
-ET = ZoneInfo("America/New_York")
-
-
+from time_et import ET
 def _epoch_ms_et(year: int, month: int, day: int, hour: int, minute: int) -> int:
     return int(datetime(year, month, day, hour, minute, tzinfo=ET).timestamp() * 1000)
 
@@ -27,6 +25,7 @@ def _sample_a1() -> dict:
         {
             "ticker": "SPY",
             "fusion_available": True,
+            "canonical_provenance": "bayesian_fusion",
             "fusion_dominant_direction": "up",
             "fusion_dominant_prob": 0.64,
             "fusion_confidence": "high",
@@ -97,7 +96,9 @@ def test_a2_option_expression_emits_mid_and_spread_provenance_tags():
     oe = a2["option_expression"]
     assert oe["mid"]["value"] == 1.25
     assert oe["mid_source"]["value"] == "derived_bid_ask_mid"
-    assert oe["spread_source"]["value"] == "schwab_ms_dict_spread"
+    assert oe["spread"]["value"] == 0.1
+    assert oe["spread_source"]["value"] == "schwab_chain_bid_ask_pts"
+    assert oe["underlying_spread_pts"]["value"] == 0.1
 
 
 def test_a2_option_expression_prefers_schwab_chain_last_over_bid_ask_mid():
@@ -291,9 +292,10 @@ def test_a2_proceeds_when_quote_age_within_o20_threshold():
 
 
 def test_a2_emits_wait_when_quote_timestamp_missing():
-    """Step 3.3 red: missing quote timestamp blocks A2 before staleness gate."""
+    """Step 3.3 red: missing quote and trade timestamps blocks A2 before staleness gate."""
     winner = _winner()
     winner["chain_row"].pop("quoteTimeInLong", None)
+    winner["chain_row"].pop("tradeTimeInLong", None)
 
     a2 = build_a2_option_expression(
         _ms(
@@ -418,13 +420,60 @@ def test_missing_bid_ask_blocks_trade_output():
 
 def test_missing_selected_expiry_blocks_trade_output():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L159 - missing selected expiry blocks trade."""
+    winner = _winner()
+    winner["chain_row"].pop("expirationDate", None)
     a2 = build_a2_option_expression(
-        _ms(selected_exp=None, call_option_expiry=None),
+        _ms(
+            selected_exp=None,
+            call_option_expiry=None,
+            option_chain_selection_proof={"status": "ok", "winner": winner},
+        ),
         _sample_a1(),
     )
 
     assert a2["option_expression"]["option_action"]["value"] == "WAIT"
     assert "missing_selected_expiry" in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_schwab_chain_expiration_satisfies_selected_expiry_hard_gate():
+    """Schwab-first: chain_row.expirationDate counts when ms_dict aliases are absent."""
+    winner = _winner()
+    a2 = build_a2_option_expression(
+        _ms(
+            selected_exp=None,
+            call_option_expiry=None,
+            option_chain_selection_proof={"status": "ok", "winner": winner},
+        ),
+        _sample_a1(),
+    )
+    assert a2["identity"]["selected_expiry"]["source"] == "v2_compliant"
+    assert a2["option_expression"]["option_action"]["value"] == "TRADE"
+    assert "missing_selected_expiry" not in a2["health"]["hard_gates_failed"]["value"]
+
+
+def test_liquidity_gate_pass_withheld_when_liq_ok_missing():
+    ms = _ms()
+    ms.pop("liq_ok", None)
+    a2 = build_a2_option_expression(ms, _sample_a1())
+    assert a2["execution"]["liquidity_gate_pass"] == {
+        "value": None,
+        "source": "not_implemented",
+    }
+    assert a2["execution"]["spread_quality"]["value"] == "unknown"
+
+
+def test_invalid_ask_blocks_spread_evaluation_fail_closed():
+    winner = _winner()
+    winner["chain_row"]["bid"] = 1.0
+    winner["chain_row"]["ask"] = 0.0
+    winner["chain_row"]["mark"] = None
+    winner["chain_row"]["last"] = None
+    a2 = build_a2_option_expression(
+        _ms(option_chain_selection_proof={"status": "ok", "winner": winner}),
+        _sample_a1(),
+    )
+    assert a2["option_expression"]["option_action"]["value"] == "WAIT"
+    assert "missing_bid_or_ask" in a2["health"]["hard_gates_failed"]["value"]
 
 
 def test_non_same_day_expiry_blocks_strict_0dte_output():
@@ -539,9 +588,22 @@ def test_missing_strike_or_right_blocks_trade_output():
     assert "missing_option_right" in gates
 
 
+def _wide_spread_ms(**overrides):
+    winner = _winner()
+    winner["chain_row"]["bid"] = 1.0
+    winner["chain_row"]["ask"] = 1.50
+    base = _ms(
+        spread=None,
+        liq_ok=False,
+        option_chain_selection_proof={"status": "ok", "winner": winner},
+    )
+    base.update(overrides)
+    return base
+
+
 def test_wide_spread_records_hard_gate_after_policy_bound():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L240 - wide spread records gate state."""
-    a2 = build_a2_option_expression(_ms(spread=0.35, liq_ok=False), _sample_a1())
+    a2 = build_a2_option_expression(_wide_spread_ms(), _sample_a1())
 
     assert a2["option_expression"]["option_action"]["value"] == "WAIT"
     assert "spread_exceeds_hard_threshold" in a2["health"]["hard_gates_failed"]["value"]
@@ -689,7 +751,7 @@ def test_a2_output_is_nested_under_v2_decision():
 def test_action_coherence_records_a1_a2_disagreement():
     """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L244 - A2 action is coherent with A1."""
     a1 = _sample_a1()
-    a2 = build_a2_option_expression(_ms(liq_ok=False, spread=0.5), a1)
+    a2 = build_a2_option_expression(_wide_spread_ms(), a1)
 
     assert a1["decision"]["action"]["value"] == "TRADE"
     assert a2["option_expression"]["option_action"]["value"] == "WAIT"
@@ -771,8 +833,9 @@ def test_a2_uses_raw_schwab_theta_as_transitional_bridge():
     }
 
 
-def test_a2_falls_back_to_bs_only_when_schwab_theta_missing():
-    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L119 - BS theta fallback is v1 approximation."""
+def test_a2_falls_back_to_bs_only_when_schwab_theta_missing(monkeypatch):
+    """Contract: PILOT_1B_A2_0DTE_CONTRACT.md L119 - BS theta fallback is governed v1 approximation."""
+    monkeypatch.setattr(a2oe, "_A2_THETA_BS_FALLBACK_GOVERNED", True)
     winner = _winner()
     winner["chain_row"].pop("theta")
 
@@ -784,12 +847,13 @@ def test_a2_falls_back_to_bs_only_when_schwab_theta_missing():
     assert a2["option_expression"]["option_action"]["value"] == "TRADE"
     assert "theta_unavailable" not in a2["health"]["hard_gates_failed"]["value"]
     assert a2["greeks"]["theta"]["source"] == "v1_approximation"
-    assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation"
+    assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation_governed"
     assert a2["greeks"]["theta"]["value"] < 0
     assert a2["greeks"]["theta"]["source"] != "v2_compliant"
 
 
-def test_theta_bs_fallback_uses_derived_mins_to_close_when_explicit_absent():
+def test_theta_bs_fallback_uses_derived_mins_to_close_when_explicit_absent(monkeypatch):
+    monkeypatch.setattr(a2oe, "_A2_THETA_BS_FALLBACK_GOVERNED", True)
     winner = _winner()
     winner["chain_row"].pop("theta")
 
@@ -804,7 +868,7 @@ def test_theta_bs_fallback_uses_derived_mins_to_close_when_explicit_absent():
 
     assert "theta_unavailable" not in a2["health"]["hard_gates_failed"]["value"]
     assert a2["greeks"]["theta"]["source"] == "v1_approximation"
-    assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation"
+    assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation_governed"
     assert a2["greeks"]["theta"]["value"] < 0
 
 
@@ -910,8 +974,9 @@ def test_a2_gamma_x_oi_attaches_derived_detail_when_computed():
     }
 
 
-def test_a2_theta_falls_back_to_bs_when_chain_theta_is_missing_sentinel():
-    """If Schwab returns theta=-999.0, treat it as missing and use the BS approximation."""
+def test_a2_theta_falls_back_to_bs_when_chain_theta_is_missing_sentinel(monkeypatch):
+    """If Schwab returns theta=-999.0, treat it as missing and use governed BS approximation."""
+    monkeypatch.setattr(a2oe, "_A2_THETA_BS_FALLBACK_GOVERNED", True)
     winner = _winner()
     winner["chain_row"]["theta"] = -999.0
 
@@ -922,7 +987,7 @@ def test_a2_theta_falls_back_to_bs_when_chain_theta_is_missing_sentinel():
 
     assert "theta_unavailable" not in a2["health"]["hard_gates_failed"]["value"]
     assert a2["greeks"]["theta"]["source"] == "v1_approximation"
-    assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation"
+    assert a2["greeks"]["theta"]["detail"] == "black_scholes_approximation_governed"
     assert a2["greeks"]["theta"]["value"] < 0
 
 
@@ -943,6 +1008,7 @@ def test_a2_theta_blocks_when_chain_theta_is_missing_sentinel_and_iv_unavailable
     assert a2["greeks"]["theta"] == {
         "value": None,
         "source": "not_implemented",
+        "detail": "schwab_theta_missing",
     }
 
 

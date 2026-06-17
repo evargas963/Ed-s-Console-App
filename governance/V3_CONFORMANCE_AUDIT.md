@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Point-in-time audit artifact `governance/V3_CONFORMANCE_AUDIT.md`.
+
 # V3.0 Conformance Audit
 
 - **Audit author:** Cursor (read-only assessment task)
@@ -110,8 +112,8 @@
 **Current state:** `DOES_NOT_CONFORM_NEW_GAP`
 
 **Evidence:**
-- Some payloads include schema fields (for example `run_base_models_once` returns `stack_schema_version` at `ml_predict.py:1179`, `1315`; cascade returns `schema_version` at `ml_predict.py:1466`).
-- No universal schema validator is called at every emission point in `run_base_models_once` / `run_cascade_models_once` before returning payloads (`ml_predict.py:1142-1316`, `1319-1474`).
+- Some payloads include schema fields (for example `run_unified_stack_ml_once` returns `stack_schema_version` at `ml_predict.py:1179`, `1315`; cascade returns `schema_version` at `ml_predict.py:1466`).
+- No universal schema validator is called at every emission point in `run_unified_stack_ml_once` / `run_cascade_models_once` before returning payloads (`ml_predict.py:1142-1316`, `1319-1474`).
 
 **If DOES_NOT_CONFORM_NEW_GAP:** gap description: schema presence exists but universal emission-time validation is not enforced; proposed remediation phase `G5`; urgency `MEDIUM`.
 
@@ -215,7 +217,7 @@
 **Current state:** `DOES_NOT_CONFORM_NEW_GAP`
 
 **Evidence:**
-- `run_base_models_once` returns model probabilities and stack output but no decomposition-trace schema recording transforms/composition chain for audit replay (`ml_predict.py:1255-1316`).
+- `run_unified_stack_ml_once` returns model probabilities and stack output but no decomposition-trace schema recording transforms/composition chain for audit replay (`ml_predict.py:1255-1316`).
 - No universal decision-log schema with decomposition fields surfaced in production decision emission path.
 
 **If DOES_NOT_CONFORM_NEW_GAP:** gap description: decomposition trace and reconstruction checks absent; proposed remediation phase `new phase TBD`; urgency `MEDIUM`.
@@ -386,7 +388,7 @@
 
 **Evidence:**
 - Some normalization exists in specific functions (for example `_apply_5c_xgb_plus_transformer_isotonic_calibration` clamps/renormalizes in `ml_predict.py:1121-1135`).
-- No global checklist gate enforcing all V3 output checks at every emission point (`run_base_models_once`, `run_cascade_models_once`) before release.
+- No global checklist gate enforcing all V3 output checks at every emission point (`run_unified_stack_ml_once`, `run_cascade_models_once`) before release.
 - Output-contract tightening is implicitly part of pending governance hardening phases.
 
 **If DOES_NOT_CONFORM_TRACKED:** assigned remediation phase `G3`/`G5`.

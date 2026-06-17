@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import pytest
 
+from calibration.v2_a1_calibration import A1_REGIME_AXIS_MISSING
+from calibration.statistical_integrity import bucket_gate
 from calibration.v2_a1_conformal import (
     A1_CONFORMAL_REGIME_AXES,
+    _regime_coverage,
+    _sample_gate,
     apply_a1_conformal_interval,
     build_a1_conformal_artifact,
 )
@@ -123,6 +127,51 @@ def test_conformal_warning_below_nominal_keeps_interval_model_with_explicit_stat
     assert artifact["evaluation_diagnostics"]["empirical_coverage"] == pytest.approx(0.87)
 
 
+def test_conformal_run_id_null_when_calibration_run_id_missing():
+    artifact = build_a1_conformal_artifact(
+        {
+            "holdout_predictions": _clean_rows(500),
+        }
+    )
+    assert artifact["calibration_run_id"] is None
+    assert artifact["conformal_run_id"] is None
+
+
+def test_conformal_module_ids_null_when_upstream_artifact_omits_them():
+    artifact = build_a1_conformal_artifact(
+        {
+            "calibration_run_id": "run-x",
+            "holdout_predictions": _clean_rows(500),
+        }
+    )
+    assert artifact["conformal_run_id"] == "run-x-conformal"
+    assert artifact["module_id"] is None
+    assert artifact["expression_profile_id"] is None
+
+
+def test_conformal_horizon_null_when_calibration_artifact_missing_horizon():
+    artifact = build_a1_conformal_artifact(
+        {
+            "calibration_run_id": "run-x",
+            "holdout_predictions": _clean_rows(500),
+        }
+    )
+    assert artifact["horizon"] is None
+
+
+def test_regime_coverage_separates_missing_from_unknown_vol_regime():
+    base = _prediction(0, probability=0.9, label=1)
+    rows = [
+        {**base, "volatility_regime": "unknown"},
+        {**base, "volatility_regime": None},
+    ]
+    coverage = _regime_coverage(None, rows, 0.85)
+    assert "volatility_regime:unknown" in coverage
+    assert f"volatility_regime:{A1_REGIME_AXIS_MISSING}" in coverage
+    assert coverage["volatility_regime:unknown"]["n"] == 1
+    assert coverage[f"volatility_regime:{A1_REGIME_AXIS_MISSING}"]["n"] == 1
+
+
 def test_conformal_regime_coverage_mirrors_a1_axes_and_withholds_sparse_cells():
     rows = [
         _prediction(i, probability=0.95, label=1, ticker="SPY", vol="normal")
@@ -181,3 +230,21 @@ def test_conformal_scaffold_does_not_change_runtime_probability_or_ev_fields():
     assert dec["p_high"]["source"] == "not_implemented"
     assert dec["EV_lower"]["source"] == "not_implemented"
     assert dec["EV_upper"]["source"] == "not_implemented"
+
+
+@pytest.mark.parametrize("n,min_required,expected_ok", [(29, 30, False), (30, 30, True)])
+def test_sample_gate_delegates_to_bucket_gate(n, min_required, expected_ok):
+    gate = _sample_gate(n, min_required, "O-23")
+    base = bucket_gate(n, min_required)
+    assert gate["n"] == base["n"]
+    assert gate["min_required"] == base["min_required"]
+    assert gate["sufficient_sample"] is expected_ok
+    assert gate["status"] == base["status"]
+    assert gate["operator_decision"] == "O-23"
+
+
+def test_sample_gate_coerces_negative_n_via_bucket_gate():
+    gate = _sample_gate(-5, 30, "O-23")
+    assert gate["n"] == 0
+    assert gate["sufficient_sample"] is False
+    assert gate["status"] == "insufficient_sample"

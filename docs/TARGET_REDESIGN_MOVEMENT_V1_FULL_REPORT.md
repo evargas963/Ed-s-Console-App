@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/TARGET_REDESIGN_MOVEMENT_V1_FULL_REPORT.md`.
+
 # Target redesign — movement v1 (conditional direction + movement) — full report
 
 **DB evaluated:** `data/ed_console.db` (governed anchor population per `load_rows` in `calibration/phase6_edge_discovery_governed_v1.py`).  

@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/_consolidation/restore/POST_RESTORE_VERIFICATION_SUMMARY.md`.
+
 # Post-Restore Verification Summary
 
 ## Pair status counts

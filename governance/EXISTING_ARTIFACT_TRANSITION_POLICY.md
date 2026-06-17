@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `EXISTING_ARTIFACT_TRANSITION_POLICY.md`.
+
 # Existing Artifact Transition Policy (Draft)
 
 **Status:** DRAFT  

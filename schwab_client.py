@@ -14,6 +14,10 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from schwab import auth
+import logging
+
+log = logging.getLogger(__name__)
+
 
 # schwab-py raises this when token expired/invalid
 try:
@@ -32,16 +36,27 @@ def _schwab_oauth_scope() -> str:
     return s if s else _DEFAULT_SCHWAB_OAUTH_SCOPE
 
 
-def _get_auth_context_with_scope(api_key, callback_url, state=None):
-    """Same as schwab.auth.get_auth_context but OAuth2Client includes explicit scope (scope= in authorize URL)."""
+def _get_auth_context_with_scope(api_key, callback_url, state=None, base_url=None):
+    """Same as schwab.auth.get_auth_context but OAuth2Client includes explicit scope (scope= in authorize URL).
+
+    Mirrors schwab.auth.get_auth_context across schwab-py versions: 1.5.x added the
+    ``base_url`` kwarg (the authorize endpoint is derived from it). We accept and honor
+    it (defaulting to the library's DEFAULT_BASE_URL when not supplied by an older
+    caller) so this override stays signature-compatible — the only behavioral delta vs
+    the upstream function is the explicit ``scope=`` on the OAuth2Client.
+    """
     from authlib.integrations.httpx_client import OAuth2Client
 
+    if base_url is None:
+        base_url = getattr(auth, "DEFAULT_BASE_URL", "https://api.schwabapi.com")
+    endpoint = (
+        auth._auth_endpoint(base_url)
+        if hasattr(auth, "_auth_endpoint")
+        else base_url.rstrip("/") + "/v1/oauth/authorize"
+    )
     scope = _schwab_oauth_scope()
     oauth = OAuth2Client(api_key, redirect_uri=callback_url, scope=scope)
-    authorization_url, new_state = oauth.create_authorization_url(
-        "https://api.schwabapi.com/v1/oauth/authorize",
-        state=state,
-    )
+    authorization_url, new_state = oauth.create_authorization_url(endpoint, state=state)
     print(f"[schwab_client DEBUG] OAuth authorization_url (scope={scope!r}):\n{authorization_url}")
     return auth.AuthContext(callback_url, authorization_url, new_state)
 
@@ -264,6 +279,7 @@ def run_login_flow(api_key: str, app_secret: str, callback_url: str, token_path:
                 token_path=token_path,
                 enforce_enums=False,
                 interactive=False,
+                callback_timeout=float(os.environ.get("SCHWAB_OAUTH_CALLBACK_TIMEOUT_SEC", "900")),
             )
         except BaseException as e:
             exc_holder.append(e)
@@ -321,17 +337,86 @@ def run_manual_flow(api_key: str, app_secret: str, callback_url: str, token_path
     except Exception as e:
         return False, f"OAuth flow failed: {e}"
 
+
+def complete_oauth_from_redirect_url(
+    redirect_url: str,
+    *,
+    api_key: str,
+    app_secret: str,
+    callback_url: str,
+    token_path: str,
+) -> tuple[bool, str]:
+    """
+    Finish OAuth when the browser already redirected but the local callback server
+    did not persist the token (common: self-signed cert warning on 127.0.0.1:8182).
+    """
+    from urllib.parse import parse_qs, urlparse
+
+    url = (redirect_url or "").strip()
+    if not url:
+        return False, "Redirect URL is empty."
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query)
+    state = (qs.get("state") or [None])[0]
+    if not (qs.get("code") or [None])[0]:
+        return False, "Redirect URL missing OAuth code query parameter."
+
+    resolved = _resolve_token_path(token_path)
+    auth_context = _get_auth_context_with_scope(api_key, callback_url, state=state)
+    token_write_func = auth.__make_update_token_func(resolved)
+    try:
+        auth.client_from_received_url(
+            api_key,
+            app_secret,
+            auth_context,
+            url,
+            token_write_func,
+            asyncio=False,
+            enforce_enums=False,
+        )
+    except Exception as e:
+        return False, f"OAuth token exchange failed: {e}"
+    if not os.path.isfile(resolved):
+        return False, f"Token exchange succeeded but file missing: {resolved}"
+    return True, f"Token created: {resolved}"
+
+class SchwabAuthError(Exception):
+    """Schwab OAuth / refresh token failure — fail fast; do not retry chain/quote for minutes."""
+
+    def __init__(self, message: str, *, remediation: str = "python reauth_schwab.py --manual"):
+        super().__init__(message)
+        self.remediation = remediation
+
+
+_schwab_auth_failure_until_mono: float = 0.0
+_SCHWAB_AUTH_FAILURE_LATCH_SEC = float(os.environ.get("ED_SCHWAB_AUTH_FAILURE_LATCH_SEC", "300"))
+
+
 def _is_token_error(exc: BaseException) -> bool:
     """True if exception indicates token expired/invalid."""
     name = type(exc).__name__
     msg = str(exc).lower()
     if "InvalidTokenError" in name or name == "InvalidTokenError":
         return True
-    if "token" in msg and ("invalid" in msg or "expired" in msg or "401" in msg):
+    if "invalid_grant" in msg or "unsupported_token_type" in msg:
+        return True
+    if "refresh token" in msg and ("invalid" in msg or "revoked" in msg or "expired" in msg):
+        return True
+    if "token" in msg and ("invalid" in msg or "expired" in msg or "401" in msg or "revoked" in msg):
         return True
     if "401" in msg or "unauthorized" in msg:
         return True
     return False
+
+
+def _raise_schwab_auth_error(exc: BaseException) -> None:
+    global _schwab_auth_failure_until_mono
+    _schwab_auth_failure_until_mono = time.monotonic() + _SCHWAB_AUTH_FAILURE_LATCH_SEC
+    raise SchwabAuthError(str(exc)) from exc
+
+
+def _schwab_auth_latched() -> bool:
+    return time.monotonic() < _schwab_auth_failure_until_mono
 
 
 def safe_get_quote(client, ticker: str, *, refresh_client_fn=None, attempt_hook=None):
@@ -345,8 +430,8 @@ def safe_get_quote(client, ticker: str, *, refresh_client_fn=None, attempt_hook=
     if attempt_hook is not None:
         try:
             attempt_hook()
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("quote attempt_hook: %s", e, exc_info=True)
     try:
         resp = client.get_quote(ticker)
         try:
@@ -364,8 +449,8 @@ def safe_get_quote(client, ticker: str, *, refresh_client_fn=None, attempt_hook=
                     if attempt_hook is not None:
                         try:
                             attempt_hook()
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            log.debug("quote attempt_hook: %s", e, exc_info=True)
                     resp = new_client.get_quote(ticker)
                     try:
                         from api_pressure import record_schwab_http_response
@@ -405,7 +490,11 @@ def safe_get_price_history(client, ticker: str, *, frequency_minutes: int = 5, p
             frequency=freq,
             need_extended_hours_data=False,
         )
-    except Exception:
+    except Exception as e_enum:
+        # STACK-VERIFY-CAND-SILENT-FALLBACK-SWEEP: legacy raw-kwargs fallback for
+        # older schwab-py versions; emit diagnostic so silent fallback to None on
+        # the second branch is visible to the operator instead of a black-box drop.
+        log.debug("safe_get_price_history: enum-API path failed (%s); trying raw kwargs", e_enum)
         try:
             return client.get_price_history(
                 ticker,
@@ -415,17 +504,31 @@ def safe_get_price_history(client, ticker: str, *, frequency_minutes: int = 5, p
                 frequency=frequency_minutes,
                 needExtendedHoursData=False,
             )
-        except Exception:
+        except Exception as e_raw:
+            log.warning(
+                "safe_get_price_history: both enum + raw kwargs failed for ticker=%s freq=%s days=%s "
+                "(enum_err=%r raw_err=%r); returning None",
+                ticker, frequency_minutes, period_days, e_enum, e_raw,
+            )
             return None
 
 def safe_get_chain(client, ticker: str, *, strike_count: int = 20, from_date=None, to_date=None):
     # schwab-py supports optional args; we keep them optional to reduce breakage.
+    if _schwab_auth_latched():
+        raise SchwabAuthError(
+            "Schwab auth latched after prior token failure — option chain withheld"
+        )
     kwargs = {"strike_count": strike_count, "include_underlying_quote": True}
     if from_date is not None:
         kwargs["from_date"] = from_date
     if to_date is not None:
         kwargs["to_date"] = to_date
-    resp = client.get_option_chain(ticker, **kwargs)
+    try:
+        resp = client.get_option_chain(ticker, **kwargs)
+    except Exception as e:
+        if _is_token_error(e):
+            _raise_schwab_auth_error(e)
+        raise
     try:
         from api_pressure import record_schwab_http_response
 

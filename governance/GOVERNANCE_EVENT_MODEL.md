@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `GOVERNANCE_EVENT_MODEL.md`.
+
 # Governance Event Model
 
 **Status:** **ACTIVE** — in-force operational authority for field semantics and payload shapes referenced by `PHASE_PLAN_INFRASTRUCTURE.md` §10 and bound by register entries **O-16**, **O-17**, **O-18**, and **O-19**. **ACTIVE** is not **LOCKED**; amendments follow register-coordinated updates (binding values remain upstream in `OPERATOR_DECISION_REGISTER.md` and the phase plan per **R-08** / **R-09**).  

@@ -12,16 +12,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import math
 import random
 import sqlite3
-import statistics
 import sys
 import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from arch_competition.atomic_io import write_json_file_atomically
 from calibration.anchor_audit import snapshot_has_bar_anchor
 from calibration.analyze_phase3 import (
     _brier_triplet,
@@ -29,17 +30,24 @@ from calibration.analyze_phase3 import (
     _confidence_bucket,
     _load_json_col,
 )
-from calibration.analyze_phase4 import _directional_pnl, _load_json
+from calibration.analyze_phase4 import _directional_pnl
 from calibration.canonical_enforcement import CANONICAL_TIMEFRAME, enforce_calibration_decision_log_only_1m
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
 from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL, bucket_gate
 from calibration.trust import TRUSTED_PREDICATE_SQL
+from calibration.v2_a1_calibration import axis_reliability_bucket_value
+
+log = logging.getLogger(__name__)
 
 try:
     from db import configure_sqlite_connection
-except Exception:
+except ImportError as e:
+    log.warning(
+        "db.configure_sqlite_connection not available — using no-op stub: %s",
+        e,
+    )
 
     def configure_sqlite_connection(conn, **kwargs):
         pass
@@ -142,8 +150,8 @@ def analyze_edge(db_path: Path) -> dict[str, Any]:
 
     rows_raw = conn.execute(
         f"""
-        SELECT final_signal, call_conviction, outcome_5c, outcome_5c_pts, canonical_json,
-               fusion_json, regime_primary, vol_regime, ticker, decision_ts_utc
+        SELECT final_signal, outcome_5c, outcome_5c_pts, canonical_json,
+               regime_primary, ticker, decision_ts_utc
         FROM calibration_decision_log
         WHERE outcome_5c IS NOT NULL AND canonical_timeframe=? AND ({TRUSTED_PREDICATE_SQL})
         """,
@@ -169,7 +177,6 @@ def analyze_edge(db_path: Path) -> dict[str, Any]:
     brier_terms: list[float] = []
     bucket_hits: dict[str, list[int]] = defaultdict(list)
 
-    recs: list[dict[str, Any]] = []
     for r in rows:
         pts = r["outcome_5c_pts"]
         oc = r["outcome_5c"]
@@ -197,20 +204,6 @@ def analyze_edge(db_path: Path) -> dict[str, Any]:
             cj = _load_json_col(r.get("canonical_json"))
             bkt = _confidence_bucket(cj.get("confidence"))
             bucket_hits[bkt].append(hit)
-
-        recs.append(
-            {
-                "ticker": r["ticker"],
-                "regime_primary": r["regime_primary"] or "unknown",
-                "decision_ts_utc": float(r["decision_ts_utc"]),
-                "final_signal": r.get("final_signal"),
-                "effective_signal_for_ev": sig,
-                "pnl_actual": pnl_a,
-                "pnl_long": pnl_l,
-                "pnl_short": pnl_s,
-                "pnl_random": random_pnls[-1],
-            }
-        )
 
     # Filter paired lists for bootstrap (exclude rows where actual is None — still compare to random where defined)
     paired_idx = [i for i in range(n) if actual_pnls[i] is not None and not math.isnan(random_pnls[i])]
@@ -313,7 +306,7 @@ def analyze_edge(db_path: Path) -> dict[str, Any]:
 
     by_rg: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in rows:
-        by_rg[r["regime_primary"] or "unknown"].append(r)
+        by_rg[axis_reliability_bucket_value(r.get("regime_primary"))].append(r)
     for rg, lst in sorted(by_rg.items()):
         out["by_regime_primary"][rg] = slice_metrics(f"regime:{rg}", lst)
 
@@ -407,7 +400,7 @@ def main() -> int:
     data = analyze_edge(args.db)
     outp = Path(__file__).resolve().parent.parent / "data" / "calibration_edge_validation_report.json"
     outp.parent.mkdir(parents=True, exist_ok=True)
-    outp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    write_json_file_atomically(outp, data, indent=2)
     print(json.dumps({"wrote": str(outp), "binary_pass": data.get("binary_pass")}, indent=2))
     return 0 if data.get("binary_pass") else 3
 

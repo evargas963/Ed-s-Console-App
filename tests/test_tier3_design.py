@@ -3,7 +3,6 @@ Tier 3 design artifacts — shadow / documentation only; production similarity u
 """
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -30,10 +29,10 @@ def _seed_ctx(conn, *, ticker: str, zone: str, vs: str, ts: float, rp: str, vb: 
           ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
           zone, vwap_side, nearest_above_dist, nearest_below_dist,
           regime_primary, vix_bucket,
-          outcome_1c, outcome_3c, outcome_5c, outcome_8c, outcome_13c, outcome_15c, outcome_60c,
+          outcome_1c, outcome_5c, outcome_15c, outcome_60c,
           horizon_outcome_schema_version
         )
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             ticker,
@@ -50,9 +49,6 @@ def _seed_ctx(conn, *, ticker: str, zone: str, vs: str, ts: float, rp: str, vb: 
             1.0,
             rp,
             vb,
-            "up",
-            "up",
-            "up",
             "up",
             "up",
             "up",

@@ -6,11 +6,11 @@ ML product horizons (Issue 15+): canonical slugs, DB outcome columns, artifact s
 
 Hard contract (two-tier):
 
-- ALL_GOVERNED_HORIZONS: every slug that may run the full inference stack (7).
+- ALL_GOVERNED_HORIZONS: every slug that may run the full inference stack (four primaries).
 
 - PRIMARY_DECISION_HORIZONS: only these may influence MH bundle, canonical policy, compute_call.
 
-- SECONDARY_SUPPORT_HORIZONS: computed/logged/diagnostics only — never authoritative for decisions.
+- SECONDARY_SUPPORT_HORIZONS: empty after Phase 3 C2; partition asserts remain for future extension.
 
 
 
@@ -28,27 +28,11 @@ from horizon_outcomes import OUTCOME_HORIZON_MINUTES
 
 # ── Authoritative two-tier contract (single source of truth) ──────────────────
 
-ALL_GOVERNED_HORIZONS: tuple[str, ...] = (
-
-    "1c",
-
-    "3c",
-
-    "5c",
-
-    "8c",
-
-    "13c",
-
-    "15c",
-
-    "60c",
-
-)
-
 PRIMARY_DECISION_HORIZONS: tuple[str, ...] = ("1c", "5c", "15c", "60c")
 
-SECONDARY_SUPPORT_HORIZONS: tuple[str, ...] = ("3c", "8c", "13c")
+SECONDARY_SUPPORT_HORIZONS: tuple[str, ...] = ()
+
+ALL_GOVERNED_HORIZONS: tuple[str, ...] = PRIMARY_DECISION_HORIZONS
 
 
 

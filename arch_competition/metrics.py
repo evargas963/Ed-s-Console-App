@@ -1,11 +1,45 @@
-"""Extended metrics for architecture comparison (calibration, stability, regime slices)."""
+"""Extended metrics for architecture comparison (calibration, stability, regime slices).
+
+VIX evaluation regime cuts (low/mid/high) are an evaluation-domain authority calibrated against
+PromotionPolicy.max_regime_balanced_accuracy_regression on the mid-VIX bucket. They are
+deliberately distinct from the production runtime VIX tier authority in math_volatility
+(vix_tier_token: 15/20/30 with four tiers low/normal/elevated/high) — different domain,
+different bucket count, different consumer. Locked here as named constants so both functions
+that bucket by VIX (regime_bucket_metrics, regime_conditional_calibration) share one source.
+"""
 
 from __future__ import annotations
 
 from typing import Any, Optional
 
 import numpy as np
-from sklearn.metrics import log_loss
+from sklearn.metrics import balanced_accuracy_score, log_loss
+
+# Eval-domain VIX regime cuts (NOT the runtime vix_tier_token 15/20/30 authority).
+# Promotion policy mid-VIX balanced_accuracy regression gate is calibrated against these.
+VIX_EVAL_REGIME_LOW_MAX: float = 16.0
+VIX_EVAL_REGIME_MID_MAX: float = 24.0
+
+
+def vix_eval_regime_token(vix: Any) -> str:
+    """Single authority for eval-domain VIX bucketing: 'low' | 'mid' | 'high' | 'missing'.
+
+    Returns 'missing' on None / non-numeric / NaN — consumers that need a numeric guard
+    should branch on the token before computing slice metrics.
+    """
+    if vix is None:
+        return "missing"
+    try:
+        v = float(vix)
+    except (TypeError, ValueError):
+        return "missing"
+    if v != v:  # NaN
+        return "missing"
+    if v < VIX_EVAL_REGIME_LOW_MAX:
+        return "low"
+    if v < VIX_EVAL_REGIME_MID_MAX:
+        return "mid"
+    return "high"
 
 
 def multiclass_brier_score(y_true: list[int], prob_rows: list[list[float]]) -> Optional[float]:
@@ -28,8 +62,6 @@ def half_split_log_loss_std(y_true: list[int], prob_rows: list[list[float]]) -> 
     y1, y2 = y_true[:mid], y_true[mid:]
     p1 = np.asarray(prob_rows[:mid], dtype=np.float64)
     p2 = np.asarray(prob_rows[mid:], dtype=np.float64)
-    if len(y1) < 5 or len(y2) < 5:
-        return None
     ll1 = float(log_loss(y1, p1, labels=[0, 1, 2]))
     ll2 = float(log_loss(y2, p2, labels=[0, 1, 2]))
     return float(np.std([ll1, ll2], ddof=0))
@@ -42,42 +74,41 @@ def regime_bucket_metrics(
     *,
     min_support: int = 5,
 ) -> dict[str, Any]:
-    """Slice balanced accuracy by coarse VIX bucket from row dict."""
-    buckets = {"low": [], "mid": [], "high": []}
+    """
+    Per VIX bucket slice metrics from row ``vix_level``.
+
+    - ``slice_accuracy``: plain argmax hit rate (majority-class dominated when skewed).
+    - ``balanced_accuracy``: sklearn macro-recall (promotion_engine REGIME_MID_BUCKET_REGRESSION).
+    """
+    buckets: dict[str, list[tuple[int, int]]] = {"low": [], "mid": [], "high": [], "missing": []}
     for yt, pr, row in zip(y_true, prob_rows, rows_used):
-        v = row.get("vix_level")
-        try:
-            vf = float(v) if v is not None else None
-        except (TypeError, ValueError):
-            vf = None
-        if vf is None:
-            key = "mid"
-        elif vf < 16:
-            key = "low"
-        elif vf < 24:
-            key = "mid"
-        else:
-            key = "high"
+        key = vix_eval_regime_token(row.get("vix_level"))
         pred = int(np.argmax(pr))
         buckets[key].append((yt, pred))
 
     out: dict[str, Any] = {}
     for name, pairs in buckets.items():
         if len(pairs) < min_support:
-            out[name] = {"n": len(pairs), "balanced_accuracy": None, "skipped_low_support": True}
+            out[name] = {
+                "n": len(pairs),
+                "slice_accuracy": None,
+                "balanced_accuracy": None,
+                "skipped_low_support": True,
+            }
             continue
         ys = [a for a, _ in pairs]
         ps = [b for _, b in pairs]
         correct = sum(1 for a, b in zip(ys, ps) if a == b)
         out[name] = {
             "n": len(pairs),
-            "balanced_accuracy": float(correct / len(pairs)),
+            "slice_accuracy": float(correct / len(pairs)),
+            "balanced_accuracy": float(balanced_accuracy_score(ys, ps)),
             "skipped_low_support": False,
         }
     return out
 
 
-def confidence_reliability_proxy(prob_rows: list[list[float]], y_true: list[int]) -> dict[str, float]:
+def confidence_reliability_proxy(prob_rows: list[list[float]], y_true: list[int]) -> dict[str, Any]:
     """Map max-prob 'confidence' bins to empirical hit rate (multiclass)."""
     if not prob_rows or len(prob_rows) != len(y_true):
         return {}
@@ -89,10 +120,9 @@ def confidence_reliability_proxy(prob_rows: list[list[float]], y_true: list[int]
         conf = float(np.max(p))
         edges.append(conf)
         hits.append(1.0 if pred == yt else 0.0)
-    # correlation between confidence and hit — simple proxy
     if len(edges) < 10:
-        return {"confidence_hit_correlation": 0.0, "mean_confidence": float(np.mean(edges))}
-    c = float(np.corrcoef(edges, hits)[0, 1]) if np.std(edges) > 1e-9 else 0.0
+        return {"confidence_hit_correlation": None, "mean_confidence": float(np.mean(edges))}
+    c = float(np.corrcoef(edges, hits)[0, 1]) if np.std(edges) > 1e-9 else None
     return {
         "confidence_hit_correlation": c,
         "mean_confidence": float(np.mean(edges)),
@@ -150,7 +180,7 @@ def max_calibration_error_bins(
         confs.append(float(np.max(p)))
         correct.append(1.0 if pred == yt else 0.0)
     edges = np.linspace(0.0, 1.0, n_bins + 1)
-    mce = 0.0
+    mce: Optional[float] = None
     for b in range(n_bins):
         lo, hi = edges[b], edges[b + 1]
         mask = [i for i, c in enumerate(confs) if (c >= lo if b == 0 else c > lo) and c <= hi]
@@ -158,8 +188,9 @@ def max_calibration_error_bins(
             continue
         acc_b = float(np.mean([correct[i] for i in mask]))
         conf_b = float(np.mean([confs[i] for i in mask]))
-        mce = max(mce, abs(acc_b - conf_b))
-    return float(mce)
+        gap = abs(acc_b - conf_b)
+        mce = gap if mce is None else max(mce, gap)
+    return mce
 
 
 def reliability_bins_table(
@@ -380,24 +411,13 @@ def regime_conditional_calibration(
         "low": ([], []),
         "mid": ([], []),
         "high": ([], []),
+        "missing": ([], []),
     }
-    for i, row in enumerate(rows_used):
-        v = row.get("vix_level")
-        try:
-            vf = float(v) if v is not None else None
-        except (TypeError, ValueError):
-            vf = None
-        if vf is None:
-            key = "mid"
-        elif vf < 16:
-            key = "low"
-        elif vf < 24:
-            key = "mid"
-        else:
-            key = "high"
-        yt, pr = buckets[key]
-        yt.append(y_true[i])
-        pr.append(prob_rows[i])
+    for yt, pr, row in zip(y_true, prob_rows, rows_used):
+        key = vix_eval_regime_token(row.get("vix_level"))
+        yt_l, pr_l = buckets[key]
+        yt_l.append(yt)
+        pr_l.append(pr)
 
     out: dict[str, Any] = {}
     for name, (yt_l, pr_l) in buckets.items():

@@ -24,16 +24,24 @@ def test_module_a_adapter_delegates_to_public_dominant_probability(monkeypatch):
 
 
 def test_dominant_probability_byte_equivalent_to_legacy_for_representative_inputs():
+    # WIRE-4 / FIND-FP1-3 tightened the fusion authority gate to require BOTH
+    # fusion_available AND canonical_provenance in TRADABLE_CANONICAL_PROVENANCE
+    # (= {"bayesian_fusion"}). Cases that exercise the fusion path now include
+    # canonical_provenance explicitly.
     cases = [
-        ({"fusion_available": True, "fusion_dominant_prob": "0.87654", "dominant_prob": 0.1}, 0.8765),
+        # Fusion authoritative + valid fusion_dominant_prob -> use it (rounded to 4 decimals)
+        ({"fusion_available": True, "canonical_provenance": "bayesian_fusion", "fusion_dominant_prob": "0.87654", "dominant_prob": 0.1}, 0.8765),
+        # fusion_available=False -> not authoritative -> fall through to dominant_prob
         ({"fusion_available": False, "fusion_dominant_prob": 0.9, "dominant_prob": "0.23456"}, 0.2346),
-        ({"fusion_available": True, "fusion_dominant_prob": "bad", "dominant_prob": 0.34567}, 0.3457),
-        ({"dominant_prob": None, "final_confidence": "0.45678"}, 0.4568),
-        ({"dominant_prob": object(), "final_confidence": 0.56789}, 0.5679),
+        # Fusion authoritative but fusion_dominant_prob INVALID -> fall through to dominant_prob
+        ({"fusion_available": True, "canonical_provenance": "bayesian_fusion", "fusion_dominant_prob": "bad", "dominant_prob": 0.34567}, 0.3457),
+        # No valid dominant_prob -> None (final_confidence is intentionally NOT a fallback)
+        ({"dominant_prob": None, "final_confidence": "0.45678"}, None),
+        ({"dominant_prob": object(), "final_confidence": 0.56789}, None),
     ]
 
     for ms_dict, expected in cases:
-        assert dominant_probability(ms_dict) == expected
+        assert dominant_probability(ms_dict) == expected, f"failed for {ms_dict}"
 
 
 def test_dominant_probability_returns_none_for_empty_ms_dict():

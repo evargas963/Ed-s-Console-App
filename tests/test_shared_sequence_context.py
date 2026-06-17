@@ -9,6 +9,9 @@ import pytest
 
 from features.shared_sequence_context import (
     SharedSequenceContext,
+    _max_transformer_seq_len_for_ticker,
+    _seq_len_from_transformer_meta,
+    build_shared_sequence_context,
     transformer_window_chronological,
 )
 
@@ -56,7 +59,7 @@ def test_build_shared_sequence_context_single_db_fetch(monkeypatch):
 
     monkeypatch.setattr(ssc, "_max_transformer_seq_len_for_ticker", _fake_max_seq)
 
-    rows = [{"ts_utc": 1000.0 + i, "spot": 450.0} for i in range(100)]
+    rows = [{"ts_utc": 2000.0 - i, "spot": 450.0} for i in range(100)]
     db = MagicMock()
     db.get_recent_snapshots.return_value = rows
 
@@ -87,6 +90,101 @@ def test_build_shared_sequence_context_insufficient_returns_none():
     assert err is not None
 
 
+def test_max_transformer_seq_len_rejects_empty_ticker():
+    with pytest.raises(ValueError, match="ticker is required"):
+        _max_transformer_seq_len_for_ticker("")
+    with pytest.raises(ValueError, match="ticker is required"):
+        _max_transformer_seq_len_for_ticker("   ")
+
+
+def test_build_shared_sequence_context_rejects_empty_ticker():
+    db = MagicMock()
+    with pytest.raises(ValueError, match="ticker is required"):
+        build_shared_sequence_context(db, "", {"as_of_ts": 10.0, "features": {}})
+
+
+def test_max_transformer_seq_len_warns_on_corrupt_meta(monkeypatch, tmp_path, caplog):
+    """Corrupt meta must not silently pretend seq_len was read; valid horizon still wins."""
+    from features import shared_sequence_context as ssc
+    import ml_predict
+
+    one_c_dir = tmp_path / "active_1c" / "SPY"
+    one_c_dir.mkdir(parents=True)
+    (one_c_dir / "transformer_SPY_1c_meta.json").write_text('{"seq_len": 48}', encoding="utf-8")
+    bad_dir = tmp_path / "active_5c" / "SPY"
+    bad_dir.mkdir(parents=True)
+    (bad_dir / "transformer_SPY_5c_meta.json").write_text("not-json", encoding="utf-8")
+
+    monkeypatch.setattr(ssc, "ALL_GOVERNED_HORIZONS", ("1c", "5c"))
+
+    def _fake_model_dir(ticker: str) -> Path:
+        hz = ml_predict.get_ml_infer_horizon_slug()
+        return tmp_path / f"active_{hz}" / ticker
+
+    monkeypatch.setattr(ml_predict, "_model_dir_for_ticker", _fake_model_dir)
+
+    with caplog.at_level("WARNING"):
+        assert _max_transformer_seq_len_for_ticker("SPY") == 48
+    assert any("JSON corrupt" in r.message or "corrupt" in r.message.lower() for r in caplog.records)
+
+
+def test_build_shared_sequence_context_rejects_missing_ts_utc_first_bound(monkeypatch):
+    from unittest.mock import patch
+
+    from features import shared_sequence_context as ssc
+    from tests.test_parallel_stack_runtime import _minimal_inf_v1
+
+    monkeypatch.setattr(ssc, "_max_transformer_seq_len_for_ticker", lambda _t: 20)
+    rows = [{"ts_utc": 2000.0 - i, "spot": 450.0} for i in range(100)]
+    rows[99]["ts_utc"] = None
+    db = MagicMock()
+    db.get_recent_snapshots.return_value = rows
+    mw = [{"ts_utc": float(i)} for i in range(60)]
+    md = [{"ts_utc": float(i)} for i in range(100)]
+    with patch(
+        "features.lstm_sequence_input.build_lstm_merged_windows",
+        return_value=(mw, md),
+    ):
+        ctx, err = ssc.build_shared_sequence_context(db, "SPY", _minimal_inf_v1())
+    assert ctx is None
+    assert err == "snapshot_ts_utc_missing"
+
+
+def test_build_shared_sequence_context_rejects_missing_ts_utc_last_bound(monkeypatch):
+    from unittest.mock import patch
+
+    from features import shared_sequence_context as ssc
+    from tests.test_parallel_stack_runtime import _minimal_inf_v1
+
+    monkeypatch.setattr(ssc, "_max_transformer_seq_len_for_ticker", lambda _t: 20)
+    rows = [{"ts_utc": 2000.0 - i, "spot": 450.0} for i in range(100)]
+    rows[0]["ts_utc"] = None
+    db = MagicMock()
+    db.get_recent_snapshots.return_value = rows
+    mw = [{"ts_utc": float(i)} for i in range(60)]
+    md = [{"ts_utc": float(i)} for i in range(100)]
+    with patch(
+        "features.lstm_sequence_input.build_lstm_merged_windows",
+        return_value=(mw, md),
+    ):
+        ctx, err = ssc.build_shared_sequence_context(db, "SPY", _minimal_inf_v1())
+    assert ctx is None
+    assert err == "snapshot_ts_utc_missing"
+
+
+def test_build_shared_sequence_context_rejects_non_chronological_rows(monkeypatch):
+    from features import shared_sequence_context as ssc
+    from tests.test_parallel_stack_runtime import _minimal_inf_v1
+
+    monkeypatch.setattr(ssc, "_max_transformer_seq_len_for_ticker", lambda _t: 20)
+    rows = [{"ts_utc": 1000.0 + i, "spot": 1.0} for i in range(100)]
+    db = MagicMock()
+    db.get_recent_snapshots.return_value = rows
+    ctx, err = build_shared_sequence_context(db, "SPY", _minimal_inf_v1())
+    assert ctx is None
+    assert err == "snapshot_order_not_chronological"
+
+
 def test_max_transformer_seq_len_skips_missing_secondary_active_bundle(monkeypatch, tmp_path):
     """Missing diagnostics-only active bundles must not abort shared-context fallback."""
     from features import shared_sequence_context as ssc
@@ -96,14 +194,45 @@ def test_max_transformer_seq_len_skips_missing_secondary_active_bundle(monkeypat
     one_c_dir.mkdir(parents=True)
     (one_c_dir / "transformer_SPY_1c_meta.json").write_text('{"seq_len": 48}', encoding="utf-8")
 
-    monkeypatch.setattr(ssc, "ALL_GOVERNED_HORIZONS", ("1c", "3c"))
+    monkeypatch.setattr(ssc, "ALL_GOVERNED_HORIZONS", ("1c", "5c"))
 
     def _fake_model_dir(ticker: str) -> Path:
         hz = ml_predict.get_ml_infer_horizon_slug()
-        if hz == "3c":
-            raise FileNotFoundError("no active 3c bundle")
+        if hz == "5c":
+            raise FileNotFoundError("no active 5c bundle")
         return one_c_dir
 
     monkeypatch.setattr(ml_predict, "_model_dir_for_ticker", _fake_model_dir)
 
     assert ssc._max_transformer_seq_len_for_ticker("SPY") == 48
+
+
+def test_seq_len_from_transformer_meta_accepts_sequence_length_key() -> None:
+    assert _seq_len_from_transformer_meta({"sequence_length": 20}) == 20
+    assert _seq_len_from_transformer_meta({"seq_len": 48}) == 48
+    assert _seq_len_from_transformer_meta({"sequence_length": 32, "seq_len": 48}) == 48
+
+
+def test_max_transformer_seq_len_reads_sequence_length_without_warning(
+    monkeypatch, tmp_path, caplog,
+):
+    """Production meta files use sequence_length (training export), not seq_len."""
+    from features import shared_sequence_context as ssc
+    import ml_predict
+
+    one_c_dir = tmp_path / "active_1c" / "SPY"
+    one_c_dir.mkdir(parents=True)
+    (one_c_dir / "transformer_SPY_1c_meta.json").write_text(
+        '{"sequence_length": 32}', encoding="utf-8"
+    )
+
+    monkeypatch.setattr(ssc, "ALL_GOVERNED_HORIZONS", ("1c",))
+
+    def _fake_model_dir(ticker: str) -> Path:
+        return one_c_dir
+
+    monkeypatch.setattr(ml_predict, "_model_dir_for_ticker", _fake_model_dir)
+
+    with caplog.at_level("WARNING"):
+        assert _max_transformer_seq_len_for_ticker("SPY") == 32
+    assert not any("missing seq_len key" in r.message for r in caplog.records)

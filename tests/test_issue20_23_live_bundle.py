@@ -59,7 +59,7 @@ def test_index_html_rejects_older_decision_generation():
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
     assert "_lastRenderedDecisionGen" in html
     assert "decision_generation_id" in html
-    assert "_decGen < _prevGen" in html
+    assert "_renderCoherenceGuards" in html and "reason: 'gen'" in html
     assert "canonical snapshot" in html.lower() or "render(d) only" in html
 
 
@@ -67,7 +67,7 @@ def test_index_html_render_return_gates_live_and_last_render_ts():
     """Issue 24: gated render() return — do not bump _lastRenderTs when render() drops a frame."""
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
     assert "return true" in html and "return false" in html
-    assert html.count("_lastRenderTs = Date.now()") == 3
+    assert html.count("_lastRenderTs = Date.now()") == 6
     for needle in ("if (_didRender) {", "if (_didRenderPoll) {", "if (_didRenderSse) {"):
         assert needle in html, f"missing {needle!r}"
 
@@ -297,12 +297,11 @@ def test_tick_trigger_nearest_wall_identity_change():
 def test_tick_trigger_session_bucket_boundary(monkeypatch):
     from datetime import datetime
 
-    from zoneinfo import ZoneInfo
 
     from live_decision_bundle import tick_triggers_coherent_refresh
 
     monkeypatch.setattr("market_context._derive_session", lambda: "Pre-Market")
-    ET = ZoneInfo("America/New_York")
+    from time_et import ET
     dec = datetime(2026, 1, 6, 9, 20, tzinfo=ET).timestamp()
     now = datetime(2026, 1, 6, 9, 35, tzinfo=ET).timestamp()
     md = {

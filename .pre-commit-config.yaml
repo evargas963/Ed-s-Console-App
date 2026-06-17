@@ -1,0 +1,58 @@
+repos:
+  - repo: local
+    hooks:
+      - id: prepush-fast-gate
+        name: prepush fast gate (clean working tree)
+        entry: python tools/check_prepush_fast_gate.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: generated-artifacts-clean-check
+        name: generated governance artifacts clean (check-only)
+        entry: python tools/check_governance_generated_artifacts_clean.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: fix-everything-we-touch-full-static
+        name: fix everything we touch full static (Tier 2)
+        entry: python tools/check_fix_everything_we_touch.py --full-static
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: governance-consolidation-tests
+        name: governance consolidation tests (check-only pytest)
+        entry: python -m pytest tests/test_governance_consolidation.py tests/test_forbidden_phrases.py tests/test_money_path_roster.py tests/test_check_no_deferral_language.py tests/test_check_fix_everything_we_touch.py tests/test_check_schwab_csv_first.py tests/test_ml_feature_schema_parity.py::test_ml_pipeline_efficiency_checker_green tests/test_ml_feature_schema_parity.py::test_ablation_parity_includes_bridge_and_backtest_hooks -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: no-grep-subprocess
+        name: no grep/rg subprocess in staged Python
+        entry: python tools/check_no_grep_subprocess.py
+        language: system
+        types: [python]
+      - id: no-deferral-language-msg
+        name: no deferral language in commit message
+        entry: python tools/check_no_deferral_language.py
+        language: system
+        stages: [commit-msg]
+      - id: no-deferral-language-files
+        name: no deferral language in staged source/test files
+        entry: python tools/check_no_deferral_language.py
+        language: system
+        types: [text]
+        exclude: '^(OPEN_ITEMS\.md|ACTIVE_PROGRAM\.md|MEMORY\.md|AGENTS\.md|CLAUDE\.md|governance/.*|tools/check_no_deferral_language\.py|tests/.*)$'
+      - id: fix-everything-we-touch-msg
+        name: fix everything we touch (commit message)
+        entry: python tools/check_fix_everything_we_touch.py
+        language: system
+        stages: [commit-msg]
+      - id: fix-everything-we-touch
+        name: fix everything we touch (V4 memo + staged py)
+        entry: python tools/check_fix_everything_we_touch.py
+        language: system
+        pass_filenames: false
+        always_run: true

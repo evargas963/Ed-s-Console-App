@@ -1,6 +1,25 @@
 # config.py
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parent
+
+
+def _load_dotenv_if_present() -> None:
+    """Load repo-root ``.env`` when present (host secrets; never committed)."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    env_path = _ROOT / ".env"
+    if env_path.is_file():
+        load_dotenv(env_path, override=False)
+
+
+def _ensure_dotenv_loaded() -> None:
+    _load_dotenv_if_present()
+
 
 # =========================================================
 # TICKER DEFAULT — used by API/CLI when no ticker specified
@@ -8,14 +27,18 @@ from dataclasses import dataclass
 # =========================================================
 DEFAULT_TICKER = "SPY"
 
-# =========================================================
-# 🔐 SCHWAB API CREDENTIALS (KEEP IN SCRIPT AS REQUESTED)
-# =========================================================
-SCHWAB_API_KEY = "A8y3Yf4jkAbJfavtb76VNbYimkSEk082"
-SCHWAB_APP_SECRET = "KdGkl1VGTOw9quy5"
-
-# Schwab Dev Portal requires HTTPS callback URL
+# Schwab Dev Portal requires HTTPS callback URL (non-secret default).
 SCHWAB_CALLBACK_URL = "https://127.0.0.1:8182"
+
+
+def _require_env(name: str) -> str:
+    val = os.getenv(name)
+    if val is None or not str(val).strip():
+        raise RuntimeError(
+            f"Missing required environment variable {name!r} — "
+            "set SCHWAB_API_KEY and SCHWAB_APP_SECRET before starting the server."
+        )
+    return str(val).strip()
 
 
 @dataclass(frozen=True)
@@ -37,6 +60,7 @@ class AppConfig:
 
 def build_config(app_dir: str) -> AppConfig:
     """Build config. token_path is always absolute regardless of launch context."""
+    _ensure_dotenv_loaded()
     # Env override for launch-method debugging / explicit path
     env_token = os.getenv("SCHWAB_TOKEN_PATH")
     if env_token:
@@ -52,10 +76,9 @@ def build_config(app_dir: str) -> AppConfig:
     barchart_output_dir = os.path.join(barchart_dir, "output")
     barchart_archive_dir = os.path.join(barchart_dir, "archive")
 
-    # Env vars (optional override), but we still default to hardcoded values above
-    api_key = os.getenv("SCHWAB_API_KEY", SCHWAB_API_KEY)
-    app_secret = os.getenv("SCHWAB_APP_SECRET", SCHWAB_APP_SECRET)
-    callback_url = os.getenv("SCHWAB_CALLBACK_URL", SCHWAB_CALLBACK_URL)
+    api_key = _require_env("SCHWAB_API_KEY")
+    app_secret = _require_env("SCHWAB_APP_SECRET")
+    callback_url = os.getenv("SCHWAB_CALLBACK_URL", SCHWAB_CALLBACK_URL).strip()
 
     return AppConfig(
         app_dir=app_dir,

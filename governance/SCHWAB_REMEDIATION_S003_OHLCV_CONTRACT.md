@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `SCHWAB_REMEDIATION_S003_OHLCV_CONTRACT.md`.
+
 # Schwab Remediation S003/S006 OHLCV Contract
 
 **Status:** IMPLEMENTED_IN_WORKING_TREE  

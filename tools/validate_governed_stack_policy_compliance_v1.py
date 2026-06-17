@@ -30,12 +30,12 @@ def main() -> int:
 
     policy_authority_files = [
         ROOT / "tools" / "run_phase8_calibration_global_v1.py",
-        ROOT / "tools" / "run_phase9_policy_remediation_v1.py",
-        ROOT / "tools" / "run_phase9_decision_policy_v1.py",
+        ROOT / "tools" / "legacy" / "horizon_7" / "run_phase9_policy_remediation_v1.py",
+        ROOT / "tools" / "legacy" / "horizon_7" / "run_phase9_decision_policy_v1.py",
         ROOT / "tools" / "run_phase10_reliability_enforcement_v1.py",
-        ROOT / "tools" / "run_phase11_monitoring_drift_live_readiness_v1.py",
-        ROOT / "tools" / "enforce_universal_ticker_readiness_v1.py",
-        ROOT / "tools" / "validate_movement_prediction_coverage_v1.py",
+        ROOT / "tools" / "legacy" / "horizon_7" / "run_phase11_monitoring_drift_live_readiness_v1.py",
+        ROOT / "tools" / "legacy" / "horizon_7" / "enforce_universal_ticker_readiness_v1.py",
+        ROOT / "tools" / "legacy" / "horizon_7" / "validate_movement_prediction_coverage_v1.py",
         ROOT / "calibration" / "eval_movement_targets_phase_style_v1.py",
     ]
     for fp in policy_authority_files:

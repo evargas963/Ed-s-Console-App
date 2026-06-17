@@ -1,0 +1,20 @@
+---
+description: Testing and artifacts — exact test, group, suite, audit before sign-off
+alwaysApply: true
+---
+
+# Testing and artifacts
+
+Before editing code, read and obey governance/docs/AGENT_OPERATING_CONTRACT.md. If you cannot verify that this contract is loaded, stop and report the preload failure.
+
+**Before sign-off, run in order:**
+
+1. Exact failing test: `python -m pytest path::test_name -q`
+2. Related group: `python -m pytest tests/<cone>/ -q`
+3. Broader governance: `python -m pytest tests/decision_reconstruction/ tests/release_object/ tests/test_governance_consolidation.py -q`
+4. Preload check: `python tools/check_agent_preload_contract.py`
+5. Objective audit: `python tools/enforce_all_rules.py --objective-audit`
+
+**Final report must include:** Files changed, Commands run, Exact failing test status:, Related test group status:, Broader suite status:, Artifacts regenerated:, Objective audit status:, Remaining Known Gaps:, Known bypasses still open:, Maturity changes proposed:, Maturity changes rejected:
+
+Do not claim complete without rerun proof.

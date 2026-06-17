@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `SCHWAB_REMEDIATION_S035_MECHANICAL_TAIL_SLICE_CONTRACT_V1.md`.
+
 # Schwab Remediation S035 Slice Contract — Mechanical Tail
 
 **Status:** FORMALLY_CLOSED_RECORDED  

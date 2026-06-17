@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/issue19_bar_rehydration_feasibility.md`.
+
 # Issue 19 — Historical 1-minute bar source + rehydration feasibility
 
 **Date:** 2026-04-03  

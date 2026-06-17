@@ -39,6 +39,10 @@ except Exception:
 
 from db import get_snapshot_sql
 from instrument_identity import ticker_storage_key
+import logging
+
+log = logging.getLogger(__name__)
+
 
 
 def _miss_rate_gated(miss: int, n: int) -> tuple[float | None, dict[str, Any]]:
@@ -97,17 +101,12 @@ def _classify_anchor_miss_root_cause(ends_norm: list[float], ts_utc: float) -> s
 def _snapshot_session_for_ts(
     conn: sqlite3.Connection, ticker_norm: str, ts_utc: float, canon_tf: str
 ) -> str | None:
-    r = conn.execute(
-        """
-        SELECT market_session FROM snapshots
-        WHERE ticker=? AND timeframe=? AND ABS(ts_utc - ?) < 1e-5
-        LIMIT 1
-        """,
-        (ticker_norm, canon_tf, ts_utc),
-    ).fetchone()
-    if r is None:
+    from ml_data_common import market_session_from_ts_utc
+
+    try:
+        return market_session_from_ts_utc(float(ts_utc))
+    except (TypeError, ValueError):
         return None
-    return r["market_session"]
 
 
 def _audit_trusted_calibration_anchors(
@@ -288,9 +287,8 @@ def run_anchor_audit(
 
     try:
         ensure_calibration_schema(conn)
-    except Exception:
-        pass
-
+    except Exception as e:
+        log.debug("anchor audit: %s", e, exc_info=True)
     # Population: all 1m snapshots (or sample)
     base_sql = get_snapshot_sql("calibration/anchor_audit.py:base_population")
     params: list[Any] = [CANONICAL_TIMEFRAME]
@@ -342,7 +340,9 @@ def run_anchor_audit(
     for r in rows:
         tk = r["ticker"]
         ts = float(r["ts_utc"])
-        sess = (r["market_session"] or "") or "unknown"
+        from ml_data_common import row_market_session_from_ts_utc
+
+        sess = row_market_session_from_ts_utc(r) or "unknown"
         by_sess[sess] += 1
         tnorm = ticker_storage_key(tk)
         by_ticker_n[tk] += 1
@@ -351,7 +351,7 @@ def run_anchor_audit(
         dkey = f"{day.tm_year:04d}-{day.tm_mon:02d}-{day.tm_mday:02d}"
         by_date_n[dkey] += 1
 
-        rb = _rth_flag(r["market_session"])
+        rb = _rth_flag(sess)
         by_rth_n[rb] += 1
 
         ends_norm = bar_ends_map.get(tnorm, [])

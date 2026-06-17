@@ -54,12 +54,18 @@ def _compute_then_log(inp, *, db_path: Path, edb: EdDB):
     return out
 
 
-def _fake_run_base_models_once(
-    snap, ticker, db, direction_hint: str = "wait", *, inference_snapshot_v1=None
+def _fake_run_unified_stack_ml_once(
+    snap,
+    ticker,
+    db,
+    direction_hint: str = "wait",
+    *,
+    inference_snapshot_v1=None,
+    **kwargs: object,
 ):
     """Deterministic parallel-stack output without on-disk models or snapshot history (CI-safe)."""
     from ml_predict import PARALLEL_STACK_SCHEMA_VERSION, stack_probs_bundle_key
-    from features.parallel_stack_schema import build_parallel_base_output
+    from features.parallel_stack_schema import build_unified_stack_layer_output
 
     probs = {"up": 0.34, "down": 0.33, "flat": 0.33}
 
@@ -78,7 +84,7 @@ def _fake_run_base_models_once(
     fusion_pack = {"xgb": _fusion_block(), "lstm": _fusion_block(), "transformer": _fusion_block()}
 
     def _mo():
-        r = build_parallel_base_output(probs=probs, approved=True)
+        r = build_unified_stack_layer_output(probs=probs, approved=True)
         r["up"] = r["prob_up"]
         r["down"] = r["prob_down"]
         r["flat"] = r["prob_flat"]
@@ -97,9 +103,9 @@ def _fake_run_base_models_once(
 
 @pytest.fixture
 def stub_parallel_stack_for_calibration_proofs(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Real `compute_signals` path; stub only `run_base_models_once` so empty DB + no artifacts still complete."""
+    """Real `compute_signals` path; stub only `run_unified_stack_ml_once` so empty DB + no artifacts still complete."""
     monkeypatch.setenv("ED_XGB_STRICT_ACTIVE_ONLY", "0")
-    monkeypatch.setattr("ml_predict.run_base_models_once", _fake_run_base_models_once)
+    monkeypatch.setattr("ml_predict.run_unified_stack_ml_once", _fake_run_unified_stack_ml_once)
 
 
 @pytest.fixture
@@ -343,3 +349,189 @@ def test_concurrent_identical_decision_key_single_row(
     assert after - before == 1
     assert n == 1
     assert dup == []
+
+
+# ───────────────────── Pass 3 — calibration rate health (forward-only) ─────────────────────
+
+
+def _seed_calibration_health_fixture(
+    db_path: Path,
+    *,
+    rows_last_24h: int,
+    rows_prior_24h: int,
+    enrolled_tickers: int,
+    now_ts: float,
+) -> None:
+    """Populate calibration_decision_log + logging_universe for deterministic counter tests."""
+    conn = sqlite3.connect(str(db_path))
+    configure_sqlite_connection(conn)
+    try:
+        ensure_calibration_schema(conn)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS logging_universe ("
+            "ticker TEXT PRIMARY KEY, active INTEGER NOT NULL DEFAULT 1)"
+        )
+        conn.executemany(
+            "INSERT OR REPLACE INTO logging_universe (ticker, active) VALUES (?, 1)",
+            [(f"FIX{i:02d}",) for i in range(enrolled_tickers)],
+        )
+        lo_24 = now_ts - 86400.0
+        lo_48 = now_ts - 2 * 86400.0
+        # Distribute rows across the windows so the COUNT filter matches.
+        for i in range(rows_last_24h):
+            conn.execute(
+                "INSERT INTO calibration_decision_log "
+                "(ticker, canonical_timeframe, decision_ts_utc) "
+                "VALUES (?, '1m', ?)",
+                (f"FIX{i % max(1, enrolled_tickers):02d}", lo_24 + 1.0 + i * 0.1),
+            )
+        for i in range(rows_prior_24h):
+            conn.execute(
+                "INSERT INTO calibration_decision_log "
+                "(ticker, canonical_timeframe, decision_ts_utc) "
+                "VALUES (?, '1m', ?)",
+                (f"FIX{i % max(1, enrolled_tickers):02d}", lo_48 + 1.0 + i * 0.1),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_calibration_rate_health_warn_fires_when_below_threshold(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Env on + rate < 0.5 * expected => warn=True (the silent-gap regression alarm)."""
+    from calibration.writer import (
+        EXPECTED_DECISIONS_PER_MINUTE_PER_TICKER,
+        SESSION_MINUTES_RTH,
+        CALIBRATION_RATE_WARN_RATIO,
+        compute_calibration_rate_health,
+    )
+
+    monkeypatch.setenv("ED_CALIBRATION_LOG", "1")
+    now_ts = 1_800_000_000.0
+    enrolled = 14
+    expected = enrolled * SESSION_MINUTES_RTH * EXPECTED_DECISIONS_PER_MINUTE_PER_TICKER
+    # Seed with 0.2x expected — clearly below 0.5x threshold.
+    below = max(1, int(expected * 0.2))
+    db_path = tmp_path / "cal_health_warn.db"
+    _seed_calibration_health_fixture(
+        db_path,
+        rows_last_24h=below,
+        rows_prior_24h=int(expected * 0.95),  # prior 24h was healthy
+        enrolled_tickers=enrolled,
+        now_ts=now_ts,
+    )
+
+    health = compute_calibration_rate_health(db_path, now_ts=now_ts)
+    assert health["table_present"] is True
+    assert health["env_enabled"] is True
+    assert health["enrolled_tickers"] == enrolled
+    assert health["expected_per_24h"] == pytest.approx(expected)
+    assert health["last_24h_count"] == below
+    assert health["ratio"] is not None and health["ratio"] < CALIBRATION_RATE_WARN_RATIO
+    assert health["warn"] is True
+
+
+def test_calibration_rate_health_warn_clears_when_above_threshold(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Env on + rate >= 0.5 * expected => warn=False (healthy fixture, no false positive)."""
+    from calibration.writer import (
+        EXPECTED_DECISIONS_PER_MINUTE_PER_TICKER,
+        SESSION_MINUTES_RTH,
+        CALIBRATION_RATE_WARN_RATIO,
+        compute_calibration_rate_health,
+    )
+
+    monkeypatch.setenv("ED_CALIBRATION_LOG", "1")
+    now_ts = 1_800_000_000.0
+    enrolled = 14
+    expected = enrolled * SESSION_MINUTES_RTH * EXPECTED_DECISIONS_PER_MINUTE_PER_TICKER
+    above = int(expected * 0.95)
+    db_path = tmp_path / "cal_health_ok.db"
+    _seed_calibration_health_fixture(
+        db_path,
+        rows_last_24h=above,
+        rows_prior_24h=above,
+        enrolled_tickers=enrolled,
+        now_ts=now_ts,
+    )
+
+    health = compute_calibration_rate_health(db_path, now_ts=now_ts)
+    assert health["ratio"] is not None and health["ratio"] >= CALIBRATION_RATE_WARN_RATIO
+    assert health["warn"] is False
+
+
+def test_calibration_rate_health_warn_off_when_env_off(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Env off => warn=False even when rate is zero. Boot WARN @ 79caa11 already covers
+    the env-off case; Pass 3 must not double-alarm."""
+    from calibration.writer import compute_calibration_rate_health
+
+    monkeypatch.delenv("ED_CALIBRATION_LOG", raising=False)
+    now_ts = 1_800_000_000.0
+    db_path = tmp_path / "cal_health_envoff.db"
+    _seed_calibration_health_fixture(
+        db_path,
+        rows_last_24h=0,
+        rows_prior_24h=0,
+        enrolled_tickers=14,
+        now_ts=now_ts,
+    )
+
+    health = compute_calibration_rate_health(db_path, now_ts=now_ts)
+    assert health["env_enabled"] is False
+    assert health["last_24h_count"] == 0
+    assert health["warn"] is False
+
+
+def test_calibration_rate_health_handles_missing_table(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Brand-new DB without calibration_decision_log => table_present=False, no crash, no warn."""
+    from calibration.writer import compute_calibration_rate_health
+
+    monkeypatch.setenv("ED_CALIBRATION_LOG", "1")
+    db_path = tmp_path / "cal_health_empty.db"
+    # Touch DB but don't create the table.
+    sqlite3.connect(str(db_path)).close()
+
+    health = compute_calibration_rate_health(db_path, now_ts=1_800_000_000.0)
+    assert health["table_present"] is False
+    assert health["last_24h_count"] == 0
+    assert health["warn"] is False  # can't distinguish probe failure from true zero-write
+
+
+def test_calibration_rate_health_enrolled_override_deterministic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """enrolled_tickers_override pins the universe size; fixture test stays deterministic
+    regardless of whether logging_universe is seeded."""
+    from calibration.writer import (
+        EXPECTED_DECISIONS_PER_MINUTE_PER_TICKER,
+        SESSION_MINUTES_RTH,
+        compute_calibration_rate_health,
+    )
+
+    monkeypatch.setenv("ED_CALIBRATION_LOG", "1")
+    db_path = tmp_path / "cal_health_override.db"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        ensure_calibration_schema(conn)
+    finally:
+        conn.close()
+
+    health = compute_calibration_rate_health(
+        db_path, now_ts=1_800_000_000.0, enrolled_tickers_override=20
+    )
+    assert health["enrolled_tickers"] == 20
+    assert health["expected_per_24h"] == pytest.approx(
+        20 * SESSION_MINUTES_RTH * EXPECTED_DECISIONS_PER_MINUTE_PER_TICKER
+    )

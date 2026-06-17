@@ -28,13 +28,14 @@ from __future__ import annotations
 import os
 import sqlite3
 import json
+import math
 import time as _wall_time
 import bisect
 import hashlib
 import logging
 import threading
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from db_authority import (
     assert_ed_console_db_env_resolves_safely,
@@ -43,7 +44,7 @@ from db_authority import (
     eddb_allow_noncanonical_path,
     is_canonical_db_path,
 )
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from typing import Any, Callable, Optional, TypeVar
 
 # ── Canonical timeframe (central config) ───────────────────────────────────
@@ -69,7 +70,7 @@ from movement_target_threshold import (
 # Direction classification, distance bucketing, and all thresholds live in
 # math_exposure.py. db.py MUST NOT define its own versions.
 from math_exposure import (
-    classify_direction as _classify_direction_central,
+    classify_direction_pts as _classify_direction_per_horizon,
     dist_bucket as _dist_bucket,
     bucket_lo as _bucket_lo,
     bucket_hi as _bucket_hi,
@@ -112,29 +113,34 @@ SQLITE_LOCK_WAIT_WARN_MS = float(os.environ.get("ED_SQLITE_LOCK_WAIT_WARN_MS", "
 SQLITE_WRITE_SLOW_MS = float(os.environ.get("ED_SQLITE_WRITE_SLOW_MS", "500"))
 
 
+def _sqlite_busy_or_locked(exc: sqlite3.OperationalError) -> bool:
+    code = getattr(exc, "sqlite_errorcode", None)
+    return code in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
+
+
 def configure_sqlite_connection(
     conn: sqlite3.Connection, *, busy_timeout_ms: int = 30000
 ) -> None:
     """
     Production pragmas for any sqlite3 connection touching the console DB.
     Safe to call on every new connection (WAL is idempotent once enabled on the file).
+
+    PRAGMA failures are rare (each pragma is well-formed) but possible if the DB file
+    is locked by a separate WAL-mode-incompatible client or filesystem permissions
+    block fsync. Log at debug so operators can spot pragmas silently degrading
+    (e.g. journal_mode falls back to DELETE under read-only mounts) instead of
+    inheriting whatever default the connection had.
     """
-    try:
-        conn.execute("PRAGMA journal_mode=WAL")
-    except sqlite3.Error:
-        pass
-    try:
-        conn.execute("PRAGMA synchronous=NORMAL")
-    except sqlite3.Error:
-        pass
-    try:
-        conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
-    except sqlite3.Error:
-        pass
-    try:
-        conn.execute("PRAGMA foreign_keys=ON")
-    except sqlite3.Error:
-        pass
+    for pragma in (
+        "PRAGMA journal_mode=WAL",
+        "PRAGMA synchronous=NORMAL",
+        f"PRAGMA busy_timeout={int(busy_timeout_ms)}",
+        "PRAGMA foreign_keys=ON",
+    ):
+        try:
+            conn.execute(pragma)
+        except sqlite3.Error as e:
+            log.debug("configure_sqlite_connection: %s failed: %s", pragma, e)
 
 
 def similarity_labeled_counts(rows: list) -> dict[str, int]:
@@ -179,14 +185,11 @@ def _resolve_console_db_path() -> Path:
 
 DB_PATH = _resolve_console_db_path()
 
-# ── ET timezone ───────────────────────────────────────────────────────────────
-ET = timezone(timedelta(hours=-5))   # EST; DST handled by using fixed offset + awareness
+# ── ET timezone (DST-aware; see time_et.py) ───────────────────────────────────
+from time_et import now_et  # noqa: E402  — re-export for legacy `from db import now_et`
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
-
-def now_et() -> datetime:
-    return datetime.now(ET)
 
 def utc_ts() -> float:
     return _wall_time.time()
@@ -226,6 +229,17 @@ class SnapshotRow:
     candle_body_pts:    Optional[float] = None  # abs(close - open)
     candle_range_pts:   Optional[float] = None  # high - low
     spread:             Optional[float] = None   # bid-ask spread (pts)
+
+    # ── Raw Schwab quote primitives (CSV-first leaves; not derived) ────────────
+    # quotes.{SYM}.bidPrice / askPrice / bidSize / askSize / lastSize / totalVolume.
+    # Logged so ablation can judge the primitives that spread / vol_oi_ratio were
+    # derived from (order-flow pressure: size imbalance, print size, volume rate).
+    bid_price:          Optional[float] = None
+    ask_price:          Optional[float] = None
+    bid_size:           Optional[float] = None
+    ask_size:           Optional[float] = None
+    last_size:          Optional[float] = None
+    total_volume:       Optional[float] = None
 
     # ── VWAP ─────────────────────────────────────────────────────────────────
     vwap:               Optional[float] = None
@@ -290,7 +304,9 @@ class SnapshotRow:
     iv_direction:       Optional[str] = None  # 'expanding', 'contracting', 'flat'
     charm_magnitude:    Optional[float] = None  # abs charm net, normalized
     session_bucket:     Optional[str] = None  # 'open', 'morning', 'midday', 'afternoon', 'close'
-    vix_bucket:         Optional[str] = None  # 'low', 'normal', 'elevated', 'high', 'extreme'
+    # vix_bucket: produced by math_volatility.vix_bucket → 'vix_low' | 'vix_normal' | 'vix_elevated' | 'vix_high' | None.
+    # COH-SA-VIX-TIER (commit 2c5cef5) consolidated the 15/20/30 cuts in math_volatility.vix_tier_token.
+    vix_bucket:         Optional[str] = None
     put_call_oi_ratio:  Optional[float] = None
     oi_center:          Optional[float] = None
     gamma_pin:          Optional[float] = None  # strike with highest gamma
@@ -356,18 +372,9 @@ class SnapshotRow:
     pred_1c_up_prob:    Optional[float] = None
     pred_1c_down_prob:  Optional[float] = None
     pred_1c_flat_prob:  Optional[float] = None
-    pred_3c_up_prob:    Optional[float] = None
-    pred_3c_down_prob:  Optional[float] = None
-    pred_3c_flat_prob:  Optional[float] = None
     pred_5c_up_prob:    Optional[float] = None
     pred_5c_down_prob:  Optional[float] = None
     pred_5c_flat_prob:  Optional[float] = None
-    pred_8c_up_prob:    Optional[float] = None
-    pred_8c_down_prob:  Optional[float] = None
-    pred_8c_flat_prob:  Optional[float] = None
-    pred_13c_up_prob:   Optional[float] = None
-    pred_13c_down_prob: Optional[float] = None
-    pred_13c_flat_prob: Optional[float] = None
     pred_15c_up_prob:   Optional[float] = None  # 15×1m forward — product 15m clock
     pred_15c_down_prob: Optional[float] = None
     pred_15c_flat_prob: Optional[float] = None
@@ -393,6 +400,38 @@ class SnapshotRow:
     regime_primary:         Optional[str]   = None  # pinning, acceleration, … (not pin_bull/pin_neutral)
     regime_confidence:      Optional[str]   = None  # 'low', 'medium', 'high'
     regime_score:           Optional[float] = None  # 0.0–1.0
+
+    # ── Price-action cone (operator 2026-06-11) — bar-derived primitives so the
+    # ML stack can see price movement, not just options-structure distances.
+    # Producer: features/signal_layer_v1.compute_price_action_snapshot_columns
+    # (leakage-guarded: completed 1m bars with bar_end <= ts_utc only). ─────────
+    pa_ret_1m_pct:          Optional[float] = None  # 1m log return ×100
+    pa_ret_3m_pct:          Optional[float] = None
+    pa_ret_5m_pct:          Optional[float] = None
+    pa_ret_15m_pct:         Optional[float] = None
+    pa_ret_30m_pct:         Optional[float] = None
+    pa_ret_60m_pct:         Optional[float] = None
+    pa_trend_slope_log20:   Optional[float] = None  # OLS slope of log close, 20 bars
+    pa_trend_slope_log40:   Optional[float] = None
+    pa_structure_state:     Optional[float] = None  # +1 HH/HL … -1 LH/LL
+    pa_bos_up:              Optional[float] = None  # break of structure above swing high
+    pa_bos_down:            Optional[float] = None
+    pa_dist_swing_high_atr: Optional[float] = None  # ATR-scaled distance to swing high
+    pa_dist_swing_low_atr:  Optional[float] = None
+    pa_range_position_n20:  Optional[float] = None  # close position in 20-bar range 0..1
+    pa_vwap_zscore:         Optional[float] = None
+    pa_atr_pctile_60:       Optional[float] = None
+    pa_atr_expansion_5_20:  Optional[float] = None
+    pa_realized_vol_ann:    Optional[float] = None  # annualized 1m realized vol proxy
+    pa_wick_asymmetry:      Optional[float] = None
+    pa_close_location:      Optional[float] = None  # close position within last bar 0..1
+    pa_impulse_run_signed:  Optional[float] = None  # ±consecutive close run length
+    pa_mtf_trend_1m:        Optional[float] = None  # sign of 1m trend slope
+    pa_mtf_trend_5m:        Optional[float] = None
+    pa_mtf_bias_15m:        Optional[float] = None
+    pa_mtf_alignment:       Optional[float] = None  # +1 aligned / -1 conflicted / 0 mixed
+    pa_relative_volume:     Optional[float] = None
+    pa_move_efficiency:     Optional[float] = None  # |body| vs 5-bar true-range sum
 
     # ── Bayesian fusion (from bayesian_fusion.py) ─────────────────────────────
     fusion_dominant:        Optional[str]   = None  # dominant outcome family
@@ -545,15 +584,9 @@ class SnapshotRow:
 
     # ── Outcomes (NULL until fill_outcomes — Issue 4 anchor + Issue 3 forward bar close) ─
     outcome_1c:         Optional[str]   = None  # 'up', 'down', 'flat'
-    outcome_3c:         Optional[str]   = None
     outcome_5c:         Optional[str]   = None
     outcome_1c_pts:     Optional[float] = None  # actual point move
-    outcome_3c_pts:     Optional[float] = None
     outcome_5c_pts:     Optional[float] = None
-    outcome_8c:         Optional[str]   = None
-    outcome_8c_pts:     Optional[float] = None
-    outcome_13c:        Optional[str]   = None
-    outcome_13c_pts:    Optional[float] = None
     outcome_15c:        Optional[str]   = None  # 15×1m bars — true 15m label
     outcome_15c_pts:    Optional[float] = None
     outcome_60c:        Optional[str]   = None  # 60×1m bars — true 60m label
@@ -562,18 +595,9 @@ class SnapshotRow:
     outcome_dir_1c:     Optional[str]   = None
     outcome_move_1c:    Optional[str]   = None
     outcome_move_thr_pts_1c: Optional[float] = None
-    outcome_dir_3c:     Optional[str]   = None
-    outcome_move_3c:    Optional[str]   = None
-    outcome_move_thr_pts_3c: Optional[float] = None
     outcome_dir_5c:     Optional[str]   = None
     outcome_move_5c:    Optional[str]   = None
     outcome_move_thr_pts_5c: Optional[float] = None
-    outcome_dir_8c:     Optional[str]   = None
-    outcome_move_8c:    Optional[str]   = None
-    outcome_move_thr_pts_8c: Optional[float] = None
-    outcome_dir_13c:    Optional[str]   = None
-    outcome_move_13c:   Optional[str]   = None
-    outcome_move_thr_pts_13c: Optional[float] = None
     outcome_dir_15c:    Optional[str]   = None
     outcome_move_15c:   Optional[str]   = None
     outcome_move_thr_pts_15c: Optional[float] = None
@@ -582,14 +606,8 @@ class SnapshotRow:
     outcome_move_thr_pts_60c: Optional[float] = None
     valid_dir_1c:       Optional[int]   = None
     threshold_move_1c:  Optional[float] = None
-    valid_dir_3c:       Optional[int]   = None
-    threshold_move_3c:  Optional[float] = None
     valid_dir_5c:       Optional[int]   = None
     threshold_move_5c:  Optional[float] = None
-    valid_dir_8c:       Optional[int]   = None
-    threshold_move_8c:  Optional[float] = None
-    valid_dir_13c:      Optional[int]   = None
-    threshold_move_13c: Optional[float] = None
     valid_dir_15c:      Optional[int]   = None
     threshold_move_15c: Optional[float] = None
     valid_dir_60c:      Optional[int]   = None
@@ -633,26 +651,11 @@ class SnapshotRow:
     fused_confidence_1c: Optional[float] = None
     fused_contributing_models_1c: Optional[str] = None
     fused_stack_status_1c: Optional[str] = None
-    fused_move_prob_3c: Optional[float] = None
-    fused_dir_up_prob_3c: Optional[float] = None
-    fused_confidence_3c: Optional[float] = None
-    fused_contributing_models_3c: Optional[str] = None
-    fused_stack_status_3c: Optional[str] = None
     fused_move_prob_5c: Optional[float] = None
     fused_dir_up_prob_5c: Optional[float] = None
     fused_confidence_5c: Optional[float] = None
     fused_contributing_models_5c: Optional[str] = None
     fused_stack_status_5c: Optional[str] = None
-    fused_move_prob_8c: Optional[float] = None
-    fused_dir_up_prob_8c: Optional[float] = None
-    fused_confidence_8c: Optional[float] = None
-    fused_contributing_models_8c: Optional[str] = None
-    fused_stack_status_8c: Optional[str] = None
-    fused_move_prob_13c: Optional[float] = None
-    fused_dir_up_prob_13c: Optional[float] = None
-    fused_confidence_13c: Optional[float] = None
-    fused_contributing_models_13c: Optional[str] = None
-    fused_stack_status_13c: Optional[str] = None
     fused_move_prob_15c: Optional[float] = None
     fused_dir_up_prob_15c: Optional[float] = None
     fused_confidence_15c: Optional[float] = None
@@ -691,38 +694,6 @@ class LevelCrossEvent:
     timeframe:      str
 
 
-@dataclass
-class ConfluenceLog:
-    """
-    Cross-instrument confluence state per refresh.
-    Stored separately so we can analyze confluence patterns.
-    """
-    ts_utc:             float
-    ts_et:              str
-    primary_ticker:     str
-
-    # Overall confluence signal
-    confluence_signal:  str         # 'bullish', 'bearish', 'neutral', 'mixed'
-    confluence_score:   float       # -1.0 to +1.0
-    instruments_agree:  int         # count of instruments pointing same way
-    instruments_total:  int
-
-    # Per instrument state (JSON strings)
-    spy_state:          str         # JSON: {zone, vwap_side, net_delta, chg_pct}
-    qqq_state:          str
-    iwm_state:          str
-    vix_state:          str
-
-    # Constituent state (JSON)
-    spy_constituents:   str         # JSON list of {ticker, chg_pct, direction}
-    iwm_sectors:        str         # JSON list of {ticker, chg_pct, direction}
-
-    # Weighted signals
-    spy_push:           Optional[float]
-    iwm_push:           Optional[float]
-    qqq_vs_spy_delta:   Optional[float]
-
-
 # ════════════════════════════════════════════════════════════════════════════════
 # DATABASE MANAGER
 # ════════════════════════════════════════════════════════════════════════════════
@@ -754,6 +725,7 @@ class EdDB:
                 self._migrate_schema()
                 self._ensure_logging_universe_table()
                 self._ensure_logging_universe_aux_tables()
+                self._ensure_confluence_quote_table()
                 self._ensure_normalized_table()
             finally:
                 self._bootstrap_sql_guard_suppress = False
@@ -821,8 +793,7 @@ class EdDB:
                 return out
             except sqlite3.OperationalError as e:
                 last_exc = e
-                em = str(e).lower()
-                retryable = "locked" in em or "busy" in em
+                retryable = _sqlite_busy_or_locked(e)
                 if not retryable or attempt >= SQLITE_BUSY_MAX_RETRIES:
                     log.error(
                         "sqlite_tier1_fail op=%s ticker=%s db_path=%s attempts=%s thread=%s err=%s",
@@ -1051,18 +1022,9 @@ class EdDB:
                 pred_1c_up_prob     REAL,
                 pred_1c_down_prob   REAL,
                 pred_1c_flat_prob   REAL,
-                pred_3c_up_prob     REAL,
-                pred_3c_down_prob   REAL,
-                pred_3c_flat_prob   REAL,
                 pred_5c_up_prob     REAL,
                 pred_5c_down_prob   REAL,
                 pred_5c_flat_prob   REAL,
-                pred_8c_up_prob     REAL,
-                pred_8c_down_prob   REAL,
-                pred_8c_flat_prob   REAL,
-                pred_13c_up_prob    REAL,
-                pred_13c_down_prob  REAL,
-                pred_13c_flat_prob  REAL,
                 pred_15c_up_prob    REAL,
                 pred_15c_down_prob  REAL,
                 pred_15c_flat_prob  REAL,
@@ -1207,15 +1169,9 @@ class EdDB:
 
                 -- Outcomes (NULL until filled)
                 outcome_1c          TEXT,
-                outcome_3c          TEXT,
                 outcome_5c          TEXT,
                 outcome_1c_pts      REAL,
-                outcome_3c_pts      REAL,
                 outcome_5c_pts      REAL,
-                outcome_8c          TEXT,
-                outcome_8c_pts      REAL,
-                outcome_13c         TEXT,
-                outcome_13c_pts     REAL,
                 outcome_15c         TEXT,
                 outcome_15c_pts     REAL,
                 outcome_60c         TEXT,
@@ -1276,30 +1232,6 @@ class EdDB:
             CREATE INDEX IF NOT EXISTS idx_cross_ticker_ts
                 ON level_crosses(ticker, ts_utc);
 
-            -- ── Confluence log ────────────────────────────────────────────────
-            CREATE TABLE IF NOT EXISTS confluence_log (
-                conf_id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts_utc              REAL    NOT NULL,
-                ts_et               TEXT    NOT NULL,
-                primary_ticker      TEXT    NOT NULL,
-                confluence_signal   TEXT,
-                confluence_score    REAL,
-                instruments_agree   INTEGER,
-                instruments_total   INTEGER,
-                spy_state           TEXT,
-                qqq_state           TEXT,
-                iwm_state           TEXT,
-                vix_state           TEXT,
-                spy_constituents    TEXT,
-                iwm_sectors         TEXT,
-                spy_push            REAL,
-                iwm_push            REAL,
-                qqq_vs_spy_delta    REAL,
-                created_at          TEXT DEFAULT (datetime('now'))
-            );
-            CREATE INDEX IF NOT EXISTS idx_conf_ts
-                ON confluence_log(ts_utc);
-
             -- ── Model accuracy tracking ───────────────────────────────────────
             CREATE TABLE IF NOT EXISTS model_accuracy (
                 acc_id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1314,31 +1246,6 @@ class EdDB:
                 avg_confidence      REAL,
                 computed_at         TEXT DEFAULT (datetime('now'))
             );
-
-            -- ── Session log ───────────────────────────────────────────────────
-            CREATE TABLE IF NOT EXISTS session_log (
-                session_id      INTEGER PRIMARY KEY AUTOINCREMENT,
-                ticker          TEXT,
-                started_at      TEXT DEFAULT (datetime('now')),
-                ended_at        TEXT,
-                snapshots_taken INTEGER DEFAULT 0,
-                crosses_logged  INTEGER DEFAULT 0
-            );
-
-            -- ── Breaking / notable news events (optional persistence) ────────
-            CREATE TABLE IF NOT EXISTS news_events (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp       TEXT    NOT NULL,
-                source          TEXT    NOT NULL,
-                ticker          TEXT,
-                headline        TEXT    NOT NULL,
-                sentiment_score REAL,
-                impact_level    TEXT,
-                url             TEXT,
-                raw_json        TEXT
-            );
-            CREATE INDEX IF NOT EXISTS idx_news_ticker_ts ON news_events(ticker, timestamp);
-            CREATE INDEX IF NOT EXISTS idx_news_impact_ts ON news_events(impact_level, timestamp);
 
             """)
         log.info("Schema initialized")
@@ -1390,10 +1297,156 @@ class EdDB:
                 """
             )
 
+    def _ensure_confluence_quote_table(self):
+        """Thin quote ticks for panel_auto / cross-instrument symbols (not full snapshots)."""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS confluence_quote_ticks (
+                    ticker      TEXT NOT NULL,
+                    ts_utc      REAL NOT NULL,
+                    ts_et       TEXT NOT NULL,
+                    last_price  REAL,
+                    chg_pct     REAL,
+                    PRIMARY KEY (ticker, ts_utc)
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_confluence_quote_ticks_ticker_ts "
+                "ON confluence_quote_ticks (ticker, ts_utc DESC)"
+            )
+
+    def upsert_confluence_quote_ticks(self, rows: list[dict[str, Any]]) -> int:
+        """Insert thin quote rows (panel / constituent symbols). Returns rows written."""
+        if not rows:
+            return 0
+        self._ensure_confluence_quote_table()
+
+        def _do() -> int:
+            n = 0
+            with self._connect() as conn:
+                for row in rows:
+                    ticker = str(row.get("ticker") or "").upper().strip()
+                    ts_utc = row.get("ts_utc")
+                    ts_et = row.get("ts_et")
+                    if not ticker or ts_utc is None or not ts_et:
+                        continue
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO confluence_quote_ticks
+                            (ticker, ts_utc, ts_et, last_price, chg_pct)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            ticker,
+                            float(ts_utc),
+                            str(ts_et),
+                            row.get("last_price"),
+                            row.get("chg_pct"),
+                        ),
+                    )
+                    n += 1
+            return n
+
+        return _do()
+
+    def confluence_quote_tick_inventory(self) -> dict[str, int]:
+        """Read-side inventory for panel_auto thin quotes (persistence consumer)."""
+        self._ensure_confluence_quote_table()
+
+        def _do() -> dict[str, int]:
+            with self._connect() as conn:
+                total = conn.execute(
+                    "SELECT COUNT(*) FROM confluence_quote_ticks"
+                ).fetchone()[0]
+                tickers = conn.execute(
+                    "SELECT COUNT(DISTINCT ticker) FROM confluence_quote_ticks"
+                ).fetchone()[0]
+            return {"total_rows": int(total), "distinct_tickers": int(tickers)}
+
+        return _do()
+
+    def fetch_latest_confluence_quote_chg(
+        self, tickers: list[str]
+    ) -> dict[str, Optional[float]]:
+        """Latest ``chg_pct`` per symbol from ``confluence_quote_ticks`` (thin quote store)."""
+        if not tickers:
+            return {}
+        self._ensure_confluence_quote_table()
+        want = [str(t).upper().strip() for t in tickers if str(t).strip()]
+        if not want:
+            return {}
+        out: dict[str, Optional[float]] = {t: None for t in want}
+
+        def _do() -> dict[str, Optional[float]]:
+            with self._connect() as conn:
+                for sym in want:
+                    row = conn.execute(
+                        """
+                        SELECT chg_pct FROM confluence_quote_ticks
+                        WHERE ticker = ? COLLATE NOCASE
+                        ORDER BY ts_utc DESC LIMIT 1
+                        """,
+                        (sym,),
+                    ).fetchone()
+                    if row is None or row[0] is None:
+                        continue
+                    try:
+                        v = float(row[0])
+                        if math.isfinite(v):
+                            out[sym] = v
+                    except (TypeError, ValueError):
+                        pass
+            return out
+
+        return _do()
+
+    def fetch_confluence_quote_chg_as_of(
+        self,
+        ts_utc: float,
+        tickers: list[str],
+    ) -> dict[str, Optional[float]]:
+        """``chg_pct`` per symbol at or before ``ts_utc`` from ``confluence_quote_ticks``."""
+        if not tickers:
+            return {}
+        self._ensure_confluence_quote_table()
+        want = [str(t).upper().strip() for t in tickers if str(t).strip()]
+        if not want:
+            return {}
+        out: dict[str, Optional[float]] = {t: None for t in want}
+
+        def _do() -> dict[str, Optional[float]]:
+            with self._connect() as conn:
+                for sym in want:
+                    row = conn.execute(
+                        """
+                        SELECT chg_pct FROM confluence_quote_ticks
+                        WHERE ticker = ? COLLATE NOCASE
+                          AND ts_utc <= ?
+                          AND chg_pct IS NOT NULL
+                        ORDER BY ts_utc DESC LIMIT 1
+                        """,
+                        (sym, float(ts_utc)),
+                    ).fetchone()
+                    if row is None or row[0] is None:
+                        continue
+                    try:
+                        v = float(row[0])
+                        if math.isfinite(v):
+                            out[sym] = v
+                    except (TypeError, ValueError):
+                        pass
+            return out
+
+        return _do()
+
     def logging_universe_sync_panel_auto(self, panel_candidates: list[str], now_ts: float) -> dict[str, Any]:
         """
-        Upsert ``panel_auto`` rows — symbols the app quotes every market-context refresh and must
-        therefore receive the same persistent snapshot / 1m pipeline as enrolled user tickers.
+        Upsert ``panel_auto`` rows — cross-instrument panel symbols for confluence quotes.
+
+        These symbols use the thin ``confluence_quote_ticks`` path (last + chg_pct) via
+        ``fetch_market_context``; they do NOT run the full option-chain snapshot logger.
 
         Does not alter existing ``core`` / ``user_persisted`` / ``pinned`` rows. Drops ``panel_auto``
         rows no longer in the desired panel list (e.g. holdings table refresh).
@@ -2206,19 +2259,9 @@ class EdDB:
             ("charm_magnitude",     "REAL"),
             ("session_bucket",      "TEXT"),
             ("vix_bucket",          "TEXT"),
-            ("pred_8c_up_prob",     "REAL"),
-            ("pred_8c_down_prob",   "REAL"),
-            ("pred_8c_flat_prob",   "REAL"),
-            ("pred_13c_up_prob",    "REAL"),
-            ("pred_13c_down_prob",  "REAL"),
-            ("pred_13c_flat_prob",  "REAL"),
             ("pred_15c_up_prob",    "REAL"),
             ("pred_15c_down_prob",  "REAL"),
             ("pred_15c_flat_prob",  "REAL"),
-            ("outcome_8c",          "TEXT"),
-            ("outcome_8c_pts",      "REAL"),
-            ("outcome_13c",         "TEXT"),
-            ("outcome_13c_pts",     "REAL"),
             ("outcome_15c",         "TEXT"),
             ("outcome_15c_pts",     "REAL"),
             ("outcome_60c",         "TEXT"),
@@ -2364,7 +2407,55 @@ class EdDB:
             ("breaking_news_headline",   "TEXT"),
             ("pre_market_sentiment",     "REAL"),
             ("qqq_weighted_push",        "REAL"),
+            # ── Raw Schwab quote primitives (2026-06-10, operator: log leaves, not
+            # only derivations — order-flow ablation candidates) ────────────────
+            ("bid_price",                "REAL"),
+            ("ask_price",                "REAL"),
+            ("bid_size",                 "REAL"),
+            ("ask_size",                 "REAL"),
+            ("last_size",                "REAL"),
+            ("total_volume",             "REAL"),
+            # ── SnapshotRow fields absent from fresh-DB schema (FIND 2026-06-10):
+            # insert_snapshot writes every dataclass field, so a fresh DB failed
+            # with "no column named pred_model_source". Canonical DB only worked
+            # because these columns were added historically outside this list. ──
+            ("pred_model_source",        "TEXT"),
+            ("pred_override_source",     "TEXT"),
+            ("reward_risk",              "REAL"),
+            ("reward_risk2",             "REAL"),
+            # ── Price-action cone (operator 2026-06-11) — see SnapshotRow pa_* block.
+            # Names must match features/signal_layer_v1.SNAPSHOT_PRICE_ACTION_COLUMNS.
+            ("pa_ret_1m_pct",            "REAL"),
+            ("pa_ret_3m_pct",            "REAL"),
+            ("pa_ret_5m_pct",            "REAL"),
+            ("pa_ret_15m_pct",           "REAL"),
+            ("pa_ret_30m_pct",           "REAL"),
+            ("pa_ret_60m_pct",           "REAL"),
+            ("pa_trend_slope_log20",     "REAL"),
+            ("pa_trend_slope_log40",     "REAL"),
+            ("pa_structure_state",       "REAL"),
+            ("pa_bos_up",                "REAL"),
+            ("pa_bos_down",              "REAL"),
+            ("pa_dist_swing_high_atr",   "REAL"),
+            ("pa_dist_swing_low_atr",    "REAL"),
+            ("pa_range_position_n20",    "REAL"),
+            ("pa_vwap_zscore",           "REAL"),
+            ("pa_atr_pctile_60",         "REAL"),
+            ("pa_atr_expansion_5_20",    "REAL"),
+            ("pa_realized_vol_ann",      "REAL"),
+            ("pa_wick_asymmetry",        "REAL"),
+            ("pa_close_location",        "REAL"),
+            ("pa_impulse_run_signed",    "REAL"),
+            ("pa_mtf_trend_1m",          "REAL"),
+            ("pa_mtf_trend_5m",          "REAL"),
+            ("pa_mtf_bias_15m",          "REAL"),
+            ("pa_mtf_alignment",         "REAL"),
+            ("pa_relative_volume",       "REAL"),
+            ("pa_move_efficiency",       "REAL"),
         ]
+        # Normalized training table must carry the same price-action columns or the
+        # normalizer's column-intersection INSERT silently drops them (Issue 16 class).
+        _PA_NEW_COLUMNS = [(c, t) for c, t in NEW_COLUMNS if c.startswith("pa_")]
 
         _snapshot_migration_pending = False
         if is_canonical_db_path(self.db_path) and not skip_automatic_backup():
@@ -2456,6 +2547,14 @@ class EdDB:
             for col_name, col_type in (
                 ("option_chain_json", "TEXT"),
                 ("replay_context_json", "TEXT"),
+                # Raw Schwab quote primitives — must exist here too or the
+                # normalizer's column-intersection INSERT silently drops them.
+                ("bid_price", "REAL"),
+                ("ask_price", "REAL"),
+                ("bid_size", "REAL"),
+                ("ask_size", "REAL"),
+                ("last_size", "REAL"),
+                ("total_volume", "REAL"),
             ):
                 try:
                     with self._connect() as conn:
@@ -2463,6 +2562,16 @@ class EdDB:
                     log.info("DB migration: added %s to %s", col_name, tbl)
                 except sqlite3.OperationalError:
                     pass
+
+        for col_name, col_type in _PA_NEW_COLUMNS:
+            try:
+                with self._connect() as conn:
+                    conn.execute(
+                        f"ALTER TABLE snapshots_1m_normalized ADD COLUMN {col_name} {col_type}"
+                    )
+                log.info("DB migration: added %s to snapshots_1m_normalized", col_name)
+            except sqlite3.OperationalError:
+                pass
 
         for col_name, col_type in (
             ("pressure_label", "TEXT"),
@@ -2568,6 +2677,9 @@ class EdDB:
 
         self._migrate_horizon_bar_contract_v1()
         self._migrate_outcome_anchor_bar_canonical()
+        self._migrate_drop_session_log_v1()
+        self._migrate_drop_confluence_log_v1()
+        self._migrate_drop_news_events_v1()
 
         if _counts_before and is_canonical_db_path(self.db_path) and not skip_automatic_backup():
             with self._connect() as _c1:
@@ -2620,16 +2732,14 @@ class EdDB:
                 "Rows set horizon_outcome_schema_version=%s.",
                 HORIZON_OUTCOME_SCHEMA_BAR_V1,
             )
+            _null_outcomes = ", ".join(
+                f"{odir} = NULL, {opt} = NULL"
+                for odir, opt, _n in OUTCOME_BAR_SPECS
+            )
             conn.execute(
                 f"""
                 UPDATE snapshots SET
-                    outcome_1c = NULL, outcome_1c_pts = NULL,
-                    outcome_3c = NULL, outcome_3c_pts = NULL,
-                    outcome_5c = NULL, outcome_5c_pts = NULL,
-                    outcome_8c = NULL, outcome_8c_pts = NULL,
-                    outcome_13c = NULL, outcome_13c_pts = NULL,
-                    outcome_15c = NULL, outcome_15c_pts = NULL,
-                    outcome_60c = NULL, outcome_60c_pts = NULL,
+                    {_null_outcomes},
                     outcome_filled = 0,
                     horizon_outcome_schema_version = {int(HORIZON_OUTCOME_SCHEMA_BAR_V1)}
                 """
@@ -2664,16 +2774,14 @@ class EdDB:
                 "Rows set horizon_outcome_schema_version=%s.",
                 HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
             )
+            _null_outcomes = ", ".join(
+                f"{odir} = NULL, {opt} = NULL"
+                for odir, opt, _n in OUTCOME_BAR_SPECS
+            )
             conn.execute(
                 f"""
                 UPDATE snapshots SET
-                    outcome_1c = NULL, outcome_1c_pts = NULL,
-                    outcome_3c = NULL, outcome_3c_pts = NULL,
-                    outcome_5c = NULL, outcome_5c_pts = NULL,
-                    outcome_8c = NULL, outcome_8c_pts = NULL,
-                    outcome_13c = NULL, outcome_13c_pts = NULL,
-                    outcome_15c = NULL, outcome_15c_pts = NULL,
-                    outcome_60c = NULL, outcome_60c_pts = NULL,
+                    {_null_outcomes},
                     outcome_filled = 0,
                     horizon_outcome_schema_version = {int(HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1)}
                 WHERE COALESCE(horizon_outcome_schema_version, 0) < {int(HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1)}
@@ -2717,6 +2825,56 @@ class EdDB:
             """)
             log.info("Created snapshots_1m_normalized table for resampled 1m training data")
 
+    def _migrate_drop_session_log_v1(self) -> None:
+        """Pass 6 — drop the session_log table.
+
+        session_log was scaffolded with start_session / end_session /
+        update_session_counts writers but zero production callers (one of the
+        4 originally-known dormants). verification/daily_health.py already
+        covers richer per-ticker session telemetry, so the table delivers
+        no incremental value. Drop is idempotent (IF EXISTS).
+        """
+        with self._connect() as conn:
+            try:
+                conn.execute("DROP TABLE IF EXISTS session_log")
+            except sqlite3.OperationalError as exc:
+                log.warning("drop session_log failed: %s", exc)
+
+    def _migrate_drop_news_events_v1(self) -> None:
+        """Pass 8 — drop the news_events table.
+
+        news_events was scaffolded with insert_news_event writer and a single
+        guarded call site in news_sentiment.py:refresh_and_context, but zero
+        production readers. Operator-authorized drop 2026-05-26 after Cursor
+        identified it as the only remaining table-level dormancy with a live
+        writer post-Pass 7. News headlines reach the operator UI via
+        ms.news_context (live aggregator), persistence added no value.
+        """
+        with self._connect() as conn:
+            try:
+                conn.execute("DROP INDEX IF EXISTS idx_news_ticker_ts")
+                conn.execute("DROP INDEX IF EXISTS idx_news_impact_ts")
+                conn.execute("DROP TABLE IF EXISTS news_events")
+            except sqlite3.OperationalError as exc:
+                log.warning("drop news_events failed: %s", exc)
+
+    def _migrate_drop_confluence_log_v1(self) -> None:
+        """Pass 7 — drop the confluence_log table.
+
+        confluence_log was scaffolded with log_confluence writer + ConfluenceLog
+        dataclass but zero production callers / zero readers. Cross-instrument
+        confluence state (spy_state / qqq_state / iwm_state / vix_state) is
+        already computed live per refresh in market_state and surfaced through
+        ms_dict for /api/state consumers; persisting it added no incremental
+        value because no analyzer ever read confluence_log rows back. Drop is
+        idempotent (IF EXISTS).
+        """
+        with self._connect() as conn:
+            try:
+                conn.execute("DROP TABLE IF EXISTS confluence_log")
+            except sqlite3.OperationalError as exc:
+                log.warning("drop confluence_log failed: %s", exc)
+
     # ════════════════════════════════════════════════════════════════════════
     # SNAPSHOT OPERATIONS
     # ════════════════════════════════════════════════════════════════════════
@@ -2753,46 +2911,6 @@ class EdDB:
                 return int(cur.lastrowid)
 
         return self._tier1_snapshot_write("insert_snapshot", tkr_w or None, _do)
-
-    def insert_news_event(
-        self,
-        *,
-        ts_iso: str,
-        source: str,
-        ticker: Optional[str],
-        headline: str,
-        sentiment_score: Optional[float] = None,
-        impact_level: str = "LOW",
-        url: str = "",
-        raw_json: str = "",
-    ) -> Optional[int]:
-        """Append one news row (dedupe by headline+timestamp optional at call site)."""
-        if not headline:
-            return None
-        params = (
-            ts_iso,
-            source[:64],
-            (ticker or "")[:32] or None,
-            headline[:2000],
-            sentiment_score,
-            impact_level[:32],
-            (url or "")[:2000],
-            (raw_json or "")[:16000],
-        )
-
-        def _do() -> Optional[int]:
-            with self._connect() as conn:
-                cur = conn.execute(
-                    """
-                    INSERT INTO news_events
-                      (timestamp, source, ticker, headline, sentiment_score, impact_level, url, raw_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    params,
-                )
-                return int(cur.lastrowid) if cur.lastrowid is not None else None
-
-        return _do()
 
     def upsert_1m_bars(
         self,
@@ -2837,10 +2955,9 @@ class EdDB:
             elif isinstance(b, dict):
                 raw_ts = b.get("datetime", b.get("ts", b.get("timestamp", b.get("_ts", 0))))
                 try:
-                    raw_ts = float(raw_ts)
+                    ts = float(raw_ts)
                 except (TypeError, ValueError):
                     continue
-                ts = raw_ts / 1000.0 if raw_ts > 1e10 else raw_ts
                 try:
                     o = float(b["open"])
                     h = float(b["high"])
@@ -2853,9 +2970,15 @@ class EdDB:
                     src = str(b["source"])
             else:
                 continue
+            # Unit normalization for BOTH input shapes (Candle objects and dicts): Schwab wire
+            # times are epoch ms; the canonical bar grid is epoch seconds. 2026-06-09 regression:
+            # Candle.ts arrived in ms via the object path (which previously skipped this), writing
+            # ms-grid rows that the outcome filler could never match.
             # Canonical 60s UTC grid: snap bar open to whole-minute epoch seconds (Schwab / adapters
             # may emit sub-second noise). Large drift (>30s from nearest minute) is rejected.
             raw_ts = float(ts)
+            if raw_ts > 1e10:
+                raw_ts = raw_ts / 1000.0
             grid_ts = round(raw_ts / 60.0) * 60.0
             if abs(raw_ts - grid_ts) > 30.0:
                 log.warning(
@@ -2921,7 +3044,10 @@ class EdDB:
         For each snapshot at time T (ts_utc):
           anchor_close = close of the last price_bars_1m row with bar_end_ts_utc <= T
           forward_close = close of the bar with bar_start_ts_utc = floor((T+N*60)/60)*60
-          outcome_Nc = classify_direction(forward_close - anchor_close, anchor_close)
+          outcome_Nc = classify_direction_pts(forward_close - anchor_close,
+                                              threshold_move_pts_for_slug(slug, anchor_close, atr))
+          (per-horizon ATR-scaled threshold — same scale as the v2 move gate, so
+           outcome_Nc is balanced on each horizon's own volatility, not a fixed 0.05% cut)
 
         Poll-window fills are not used. Rows must have horizon_outcome_schema_version = BAR_ANCHOR_V1.
 
@@ -3301,7 +3427,7 @@ class EdDB:
         return [dict(r) for r in rows]
 
     def get_similar_setups(self, ticker: str, timeframe: str,
-                            zone: str, vwap_side: str,
+                            zone: Optional[str], vwap_side: Optional[str],
                             nearest_above_dist: Optional[float],
                             nearest_below_dist: Optional[float],
                             n_similar: int = 500,
@@ -3485,101 +3611,111 @@ class EdDB:
             )
             return None
 
+        # When canonical zone/vwap are withheld, do not SQL-match fabricated sentinels.
+        if zone is None:
+            _start_tier = 5
+        elif vwap_side is None:
+            _start_tier = 4
+        else:
+            _start_tier = 1
+
         with self._connect() as conn:
 
-            # ── Tier 1: zone + vwap_side + both distance buckets ──────────
-            _p1 = (
-                ticker, timeframe, zone, vwap_side,
-                nearest_above_dist,
-                _bucket_lo(above_bucket), _bucket_hi(above_bucket),
-                nearest_below_dist,
-                _bucket_lo(below_bucket), _bucket_hi(below_bucket),
-            )
-            if as_of_ts_utc is not None:
-                _p1 = _p1 + (as_of_ts_utc, n_similar)
-            else:
-                _p1 = _p1 + (n_similar,)
-            rows = conn.execute("""
-                SELECT *, 1 as match_tier FROM snapshots
-                WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
-                  AND outcome_1c IS NOT NULL
-                  AND (
-                    (nearest_above_dist IS NULL AND ? IS NULL)
-                    OR (nearest_above_dist BETWEEN ? AND ?)
-                  )
-                  AND (
-                    (nearest_below_dist IS NULL AND ? IS NULL)
-                    OR (nearest_below_dist BETWEEN ? AND ?)
-                  )
-                """ + _asof_sql + """
-                ORDER BY ts_utc DESC LIMIT ?
-            """, _p1).fetchall()
+            if _start_tier <= 1:
+                # ── Tier 1: zone + vwap_side + both distance buckets ──────────
+                _p1 = (
+                    ticker, timeframe, zone, vwap_side,
+                    nearest_above_dist,
+                    _bucket_lo(above_bucket), _bucket_hi(above_bucket),
+                    nearest_below_dist,
+                    _bucket_lo(below_bucket), _bucket_hi(below_bucket),
+                )
+                if as_of_ts_utc is not None:
+                    _p1 = _p1 + (as_of_ts_utc, n_similar)
+                else:
+                    _p1 = _p1 + (n_similar,)
+                rows = conn.execute("""
+                    SELECT *, 1 as match_tier FROM snapshots
+                    WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
+                      AND outcome_1c IS NOT NULL
+                      AND (
+                        (nearest_above_dist IS NULL AND ? IS NULL)
+                        OR (nearest_above_dist BETWEEN ? AND ?)
+                      )
+                      AND (
+                        (nearest_below_dist IS NULL AND ? IS NULL)
+                        OR (nearest_below_dist BETWEEN ? AND ?)
+                      )
+                    """ + _asof_sql + """
+                    ORDER BY ts_utc DESC LIMIT ?
+                """, _p1).fetchall()
 
-            done = _maybe_return_tier(rows, 1)
-            if done is not None:
-                return done
+                done = _maybe_return_tier(rows, 1)
+                if done is not None:
+                    return done
 
-            # ── Tier 2: zone + vwap_side + above distance only ────────────
-            _p2 = (
-                ticker, timeframe, zone, vwap_side,
-                nearest_above_dist,
-                _bucket_lo(above_bucket), _bucket_hi(above_bucket),
-            )
-            if as_of_ts_utc is not None:
-                _p2 = _p2 + (as_of_ts_utc, n_similar)
-            else:
-                _p2 = _p2 + (n_similar,)
-            rows = conn.execute("""
-                SELECT *, 2 as match_tier FROM snapshots
-                WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
-                  AND outcome_1c IS NOT NULL
-                  AND (
-                    (nearest_above_dist IS NULL AND ? IS NULL)
-                    OR (nearest_above_dist BETWEEN ? AND ?)
-                  )
-                """ + _asof_sql + """
-                ORDER BY ts_utc DESC LIMIT ?
-            """, _p2).fetchall()
+                # ── Tier 2: zone + vwap_side + above distance only ────────────
+                _p2 = (
+                    ticker, timeframe, zone, vwap_side,
+                    nearest_above_dist,
+                    _bucket_lo(above_bucket), _bucket_hi(above_bucket),
+                )
+                if as_of_ts_utc is not None:
+                    _p2 = _p2 + (as_of_ts_utc, n_similar)
+                else:
+                    _p2 = _p2 + (n_similar,)
+                rows = conn.execute("""
+                    SELECT *, 2 as match_tier FROM snapshots
+                    WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
+                      AND outcome_1c IS NOT NULL
+                      AND (
+                        (nearest_above_dist IS NULL AND ? IS NULL)
+                        OR (nearest_above_dist BETWEEN ? AND ?)
+                      )
+                    """ + _asof_sql + """
+                    ORDER BY ts_utc DESC LIMIT ?
+                """, _p2).fetchall()
 
-            done = _maybe_return_tier(rows, 2)
-            if done is not None:
-                return done
+                done = _maybe_return_tier(rows, 2)
+                if done is not None:
+                    return done
 
-            # ── Tier 3: zone + vwap_side only ─────────────────────────────
-            _p3 = (ticker, timeframe, zone, vwap_side)
-            if as_of_ts_utc is not None:
-                _p3 = _p3 + (as_of_ts_utc, n_similar)
-            else:
-                _p3 = _p3 + (n_similar,)
-            rows = conn.execute("""
-                SELECT *, 3 as match_tier FROM snapshots
-                WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
-                  AND outcome_1c IS NOT NULL
-                """ + _asof_sql + """
-                ORDER BY ts_utc DESC LIMIT ?
-            """, _p3).fetchall()
+                # ── Tier 3: zone + vwap_side only ─────────────────────────────
+                _p3 = (ticker, timeframe, zone, vwap_side)
+                if as_of_ts_utc is not None:
+                    _p3 = _p3 + (as_of_ts_utc, n_similar)
+                else:
+                    _p3 = _p3 + (n_similar,)
+                rows = conn.execute("""
+                    SELECT *, 3 as match_tier FROM snapshots
+                    WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
+                      AND outcome_1c IS NOT NULL
+                    """ + _asof_sql + """
+                    ORDER BY ts_utc DESC LIMIT ?
+                """, _p3).fetchall()
 
-            done = _maybe_return_tier(rows, 3)
-            if done is not None:
-                return done
+                done = _maybe_return_tier(rows, 3)
+                if done is not None:
+                    return done
 
-            # ── Tier 4: zone only ─────────────────────────────────────────
-            _p4 = (ticker, timeframe, zone)
-            if as_of_ts_utc is not None:
-                _p4 = _p4 + (as_of_ts_utc, n_similar)
-            else:
-                _p4 = _p4 + (n_similar,)
-            rows = conn.execute("""
-                SELECT *, 4 as match_tier FROM snapshots
-                WHERE ticker = ? AND timeframe = ? AND zone = ?
-                  AND outcome_1c IS NOT NULL
-                """ + _asof_sql + """
-                ORDER BY ts_utc DESC LIMIT ?
-            """, _p4).fetchall()
+            if _start_tier <= 4:
+                # ── Tier 4: zone only ─────────────────────────────────────────
+                _p4 = (ticker, timeframe, zone)
+                if as_of_ts_utc is not None:
+                    _p4 = _p4 + (as_of_ts_utc, n_similar)
+                else:
+                    _p4 = _p4 + (n_similar,)
+                rows = conn.execute("""
+                    SELECT *, 4 as match_tier FROM snapshots
+                    WHERE ticker = ? AND timeframe = ? AND zone = ?
+                      AND outcome_1c IS NOT NULL
+                    """ + _asof_sql + """
+                    ORDER BY ts_utc DESC LIMIT ?
+                """, _p4).fetchall()
 
-            done = _maybe_return_tier(rows, 4)
-            if done is not None:
-                return done
+                done = _maybe_return_tier(rows, 4)
+                if done is not None:
+                    return done
 
             # ── Tier 5: all filled snapshots for this ticker ──────────────
             _p5 = (ticker, timeframe)
@@ -3654,9 +3790,9 @@ class EdDB:
 
         Returns:
           avg_1c_pts   : average move over next 1 candle (signed, +up/-down)
-          avg_3c_pts   : average move over next 3 candles
+          avg_5c_pts   : average move over next 5 candles (product 5m clock)
           median_1c_pts: median move
-          median_3c_pts: median
+          median_5c_pts: median over 5c window
           n            : sample count used
         """
         timeframe = require_snapshot_timeframe(timeframe, caller="EdDB.get_avg_move")
@@ -3668,9 +3804,9 @@ class EdDB:
             )
             return {
                 "avg_1c_pts": None,
-                "avg_3c_pts": None,
+                "avg_5c_pts": None,
                 "median_1c_pts": None,
-                "median_3c_pts": None,
+                "median_5c_pts": None,
                 "n": 0,
                 "reject_reason": "non_canonical_timeframe",
             }
@@ -3690,7 +3826,7 @@ class EdDB:
             if as_of_ts_utc is not None:
                 _params = _params + (as_of_ts_utc,)
             rows = conn.execute(f"""
-                SELECT outcome_1c_pts, outcome_3c_pts
+                SELECT outcome_1c_pts, outcome_5c_pts
                 FROM snapshots
                 WHERE ticker = ?
                   AND timeframe = ?
@@ -3711,11 +3847,11 @@ class EdDB:
             """, _params).fetchall()
 
         if not rows:
-            return {"avg_1c_pts": None, "avg_3c_pts": None,
-                    "median_1c_pts": None, "median_3c_pts": None, "n": 0}
+            return {"avg_1c_pts": None, "avg_5c_pts": None,
+                    "median_1c_pts": None, "median_5c_pts": None, "n": 0}
 
         pts1 = [r["outcome_1c_pts"] for r in rows if r["outcome_1c_pts"] is not None]
-        pts3 = [r["outcome_3c_pts"] for r in rows if r["outcome_3c_pts"] is not None]
+        pts5 = [r["outcome_5c_pts"] for r in rows if r["outcome_5c_pts"] is not None]
 
         def _avg(lst):
             return round(sum(lst) / len(lst), 2) if lst else None
@@ -3728,9 +3864,9 @@ class EdDB:
 
         return {
             "avg_1c_pts":    _avg(pts1),
-            "avg_3c_pts":    _avg(pts3),
+            "avg_5c_pts":    _avg(pts5),
             "median_1c_pts": _median(pts1),
-            "median_3c_pts": _median(pts3),
+            "median_5c_pts": _median(pts5),
             "n":             len(pts1),
         }
 
@@ -3754,6 +3890,87 @@ class EdDB:
 
         return _do()
 
+    # Pass 4: minimum seconds between two recorded crosses of the same
+    # (ticker, level_name, direction). Prevents tape-oscillation spam without
+    # losing signal when price genuinely reverses (an "up" cross does not
+    # debounce a subsequent "down" cross of the same level).
+    LEVEL_CROSS_DEBOUNCE_S: float = 60.0
+
+    def detect_and_log_level_crosses(
+        self,
+        *,
+        ticker: str,
+        prev_spot: float | None,
+        cur_spot: float | None,
+        levels: list[tuple[float, str]],
+        ts_utc: float,
+        ts_et: str,
+        timeframe: str = "1m",
+        zone_before: Optional[str] = None,
+        zone_after: Optional[str] = None,
+        debounce_s: Optional[float] = None,
+    ) -> list[dict]:
+        """Detect spot-vs-level crossings between two ticks and persist them.
+
+        Pass 4 wire from server tick path. For each (level_value, level_name)
+        in ``levels``, records a `level_crosses` row when prev_spot and cur_spot
+        sit on opposite sides of level_value, debounced by
+        (ticker, level_name, direction) within ``debounce_s`` seconds.
+
+        Returns the list of crosses actually logged (so the caller can emit
+        a single log line per cross — Pass 4 telemetry).
+        """
+        if prev_spot is None or cur_spot is None:
+            return []
+        if float(prev_spot) == float(cur_spot):
+            return []
+        direction = "up" if cur_spot > prev_spot else "down"
+        deb = float(debounce_s) if debounce_s is not None else self.LEVEL_CROSS_DEBOUNCE_S
+        debounce_since = float(ts_utc) - deb
+        logged: list[dict] = []
+        for raw_value, name in levels:
+            if raw_value is None or name is None:
+                continue
+            try:
+                value = float(raw_value)
+            except (TypeError, ValueError):
+                continue
+            crossed_up = float(prev_spot) < value <= float(cur_spot)
+            crossed_down = float(cur_spot) <= value < float(prev_spot)
+            if not (crossed_up or crossed_down):
+                continue
+            with self._connect() as conn:
+                last = conn.execute(
+                    "SELECT ts_utc FROM level_crosses "
+                    "WHERE ticker = ? AND level_name = ? AND direction = ? "
+                    "ORDER BY ts_utc DESC LIMIT 1",
+                    (ticker, name, direction),
+                ).fetchone()
+            if last is not None and float(last["ts_utc"]) >= debounce_since:
+                continue
+            event = LevelCrossEvent(
+                ticker=ticker,
+                ts_utc=float(ts_utc),
+                ts_et=str(ts_et),
+                level_name=str(name),
+                level_value=value,
+                direction=direction,
+                spot_at_cross=float(cur_spot),
+                zone_before=zone_before,
+                zone_after=zone_after,
+                timeframe=str(timeframe),
+            )
+            self.log_level_cross(event)
+            logged.append(
+                {
+                    "level_name": name,
+                    "level_value": value,
+                    "direction": direction,
+                    "spot_at_cross": float(cur_spot),
+                }
+            )
+        return logged
+
     def get_recent_crosses(self, ticker: str, n: int = 20) -> list:
         """Return most recent level crossing events."""
         with self._connect() as conn:
@@ -3764,6 +3981,27 @@ class EdDB:
                 LIMIT ?
             """, (ticker, n)).fetchall()
         return [dict(r) for r in rows]
+
+    def get_zone_distribution(self, ticker: str, timeframe: str) -> dict[str, int]:
+        """Count snapshots per zone for ticker/timeframe (debug / diagnostics)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT zone, COUNT(*) AS cnt
+                FROM snapshots
+                WHERE ticker = ? AND timeframe = ? AND zone IS NOT NULL
+                GROUP BY zone
+                ORDER BY cnt DESC
+                """,
+                (ticker, timeframe),
+            ).fetchall()
+        out: dict[str, int] = {}
+        for row in rows:
+            r = dict(row)
+            zone = r.get("zone")
+            if zone is not None:
+                out[str(zone)] = int(r.get("cnt") or 0)
+        return out
 
     def count_level_tests(self, ticker: str, level_name: str,
                            level_value: float, lookback_hours: float = 6.5) -> dict:
@@ -3792,31 +4030,6 @@ class EdDB:
         return result
 
     # ════════════════════════════════════════════════════════════════════════
-    # CONFLUENCE LOG OPERATIONS
-    # ════════════════════════════════════════════════════════════════════════
-
-    def log_confluence(self, conf: ConfluenceLog) -> int:
-        """Log confluence state."""
-        d = asdict(conf)
-        # Serialize any dict/list fields to JSON
-        for k in ("spy_state", "qqq_state", "iwm_state", "vix_state",
-                   "spy_constituents", "iwm_sectors"):
-            if isinstance(d.get(k), (dict, list)):
-                d[k] = json.dumps(d[k])
-        cols = ", ".join(d.keys())
-        placeholders = ", ".join("?" for _ in d)
-        sql = f"INSERT INTO confluence_log ({cols}) VALUES ({placeholders})"
-        vals = list(d.values())
-        pt = str(d.get("primary_ticker", "") or "")
-
-        def _do() -> int:
-            with self._connect() as conn:
-                cur = conn.execute(sql, vals)
-                return int(cur.lastrowid)
-
-        return _do()
-
-    # ════════════════════════════════════════════════════════════════════════
     # MODEL ACCURACY
     # ════════════════════════════════════════════════════════════════════════
 
@@ -3828,7 +4041,9 @@ class EdDB:
         """
         timeframe = require_snapshot_timeframe(timeframe, caller="EdDB.compute_accuracy")
         results = {}
-        for horizon in ("1c", "3c", "5c", "8c", "13c", "15c", "60c"):
+        from ml_horizon import PRIMARY_DECISION_HORIZONS
+
+        for horizon in PRIMARY_DECISION_HORIZONS:
             pred_col    = f"pred_{horizon}_up_prob"
             outcome_col = f"outcome_{horizon}"
 
@@ -3867,59 +4082,127 @@ class EdDB:
 
         return results
 
-    # ════════════════════════════════════════════════════════════════════════
-    # SESSION TRACKING
-    # ════════════════════════════════════════════════════════════════════════
+    # Pass 5a: minimum delta between two persisted accuracy rows for the same
+    # (ticker, timeframe, model_version, horizon). The accuracy_pct value
+    # itself only changes when new outcomes land, so equality of the value
+    # is the natural dedup signal — but small floating noise should not skip.
+    MODEL_ACCURACY_DEDUP_EPSILON: float = 0.05  # percentage points
 
-    def start_session(self, ticker: str) -> int:
-        tk = ticker
+    def log_model_accuracy(
+        self,
+        *,
+        ticker: str,
+        timeframe: str,
+        model_version: str,
+        horizon: str,
+        total_predictions: int,
+        correct_direction: Optional[int],
+        accuracy_pct: Optional[float],
+        avg_confidence: Optional[float] = None,
+        ts_utc: Optional[float] = None,
+    ) -> int:
+        """Pass 5a writer for model_accuracy.
+
+        Schema (see db.py:1247): one row per accuracy snapshot per
+        (ticker, timeframe, model_version, horizon, ts_utc). Caller is
+        expected to dedup via get_latest_model_accuracy before INSERT
+        (the accuracy value only changes when new outcomes land — natural
+        throttle).
+        """
+        ts = float(ts_utc) if ts_utc is not None else utc_ts()
+        cd = int(correct_direction) if correct_direction is not None else None
+        ap = float(accuracy_pct) if accuracy_pct is not None else None
+        ac = float(avg_confidence) if avg_confidence is not None else None
 
         def _do() -> int:
             with self._connect() as conn:
                 cur = conn.execute(
-                    "INSERT INTO session_log (ticker) VALUES (?)", (tk,)
+                    "INSERT INTO model_accuracy "
+                    "(ts_utc, ticker, timeframe, model_version, horizon, "
+                    " total_predictions, correct_direction, accuracy_pct, avg_confidence) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        ts, ticker, timeframe, model_version, horizon,
+                        int(total_predictions), cd, ap, ac,
+                    ),
                 )
                 return int(cur.lastrowid)
 
         return _do()
 
-    def end_session(self, session_id: int, snapshots: int, crosses: int):
-        sid = session_id
-        sn = snapshots
-        cr = crosses
+    def get_latest_model_accuracy(
+        self,
+        *,
+        ticker: str,
+        timeframe: str,
+        model_version: str,
+        horizon: str,
+    ) -> Optional[dict]:
+        """Pass 5a reader: latest row for (ticker, timeframe, model_version, horizon)."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM model_accuracy "
+                "WHERE ticker = ? AND timeframe = ? "
+                "  AND model_version = ? AND horizon = ? "
+                "ORDER BY ts_utc DESC LIMIT 1",
+                (ticker, timeframe, model_version, horizon),
+            ).fetchone()
+        return dict(row) if row is not None else None
 
-        def _do() -> None:
-            with self._connect() as conn:
-                conn.execute(
-                    """
-                    UPDATE session_log
-                    SET ended_at = datetime('now'),
-                        snapshots_taken = ?,
-                        crosses_logged = ?
-                    WHERE session_id = ?
-                    """,
-                    (sn, cr, sid),
-                )
+    def get_model_accuracy_history(
+        self,
+        *,
+        ticker: str,
+        timeframe: str,
+        model_version: str,
+        horizon: str,
+        limit: int = 50,
+    ) -> list[dict]:
+        """Pass 5a/5b reader: history of accuracy snapshots for chart / panel."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM model_accuracy "
+                "WHERE ticker = ? AND timeframe = ? "
+                "  AND model_version = ? AND horizon = ? "
+                "ORDER BY ts_utc DESC LIMIT ?",
+                (ticker, timeframe, model_version, horizon, int(limit)),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
-        _do()
+    def maybe_log_model_accuracy(
+        self,
+        *,
+        ticker: str,
+        timeframe: str,
+        model_version: str,
+        horizon: str,
+        total_predictions: int,
+        correct_direction: Optional[int],
+        accuracy_pct: Optional[float],
+        avg_confidence: Optional[float] = None,
+        ts_utc: Optional[float] = None,
+    ) -> Optional[int]:
+        """Pass 5a throttled writer: log only when accuracy_pct meaningfully changed
+        vs the latest persisted row for this (ticker, timeframe, model_version, horizon).
 
-    def update_session_counts(self, session_id: int, snapshots: int, crosses: int):
-        sid = session_id
-        sn = snapshots
-        cr = crosses
-
-        def _do() -> None:
-            with self._connect() as conn:
-                conn.execute(
-                    """
-                    UPDATE session_log
-                    SET snapshots_taken = ?, crosses_logged = ?
-                    WHERE session_id = ?
-                    """,
-                    (sn, cr, sid),
-                )
-
-        _do()
+        Returns the new row id when logged, or None when skipped (dedup or input None).
+        """
+        if accuracy_pct is None:
+            return None
+        latest = self.get_latest_model_accuracy(
+            ticker=ticker, timeframe=timeframe,
+            model_version=model_version, horizon=horizon,
+        )
+        if latest is not None:
+            prev = latest.get("accuracy_pct")
+            if prev is not None and abs(float(prev) - float(accuracy_pct)) < self.MODEL_ACCURACY_DEDUP_EPSILON:
+                return None
+        return self.log_model_accuracy(
+            ticker=ticker, timeframe=timeframe, model_version=model_version,
+            horizon=horizon, total_predictions=total_predictions,
+            correct_direction=correct_direction, accuracy_pct=accuracy_pct,
+            avg_confidence=avg_confidence, ts_utc=ts_utc,
+        )
 
     # ════════════════════════════════════════════════════════════════════════
     # UTILITY
@@ -3978,7 +4261,7 @@ class EdDB:
 # ════════════════════════════════════════════════════════════════════════════════
 
 # CENTRALIZED FUNCTIONS (imported from math_exposure at top of file):
-#   _classify_direction_central  — percentage-based direction classification
+#   _classify_direction_per_horizon  — points-threshold (per-horizon ATR-scaled) direction classification
 #   _dist_bucket                 — distance bucketing for similar-setup matching
 #   _bucket_lo / _bucket_hi     — bucket boundary helpers
 #
@@ -4160,11 +4443,11 @@ def _apply_bar_based_outcome_updates(
                     updates[legtcol] = None
                     continue
                 pts_move = fwd_close - anchor_close
-                updates[odir] = _classify_direction_central(pts_move, anchor_close)
-                updates[opt] = round(pts_move, 4)
                 thr = threshold_move_pts_for_slug(
                     slug, anchor_close=anchor_close, atr=atr_v, cfg=_mcfg
                 )
+                updates[odir] = _classify_direction_per_horizon(pts_move, thr)
+                updates[opt] = round(pts_move, 4)
                 dir_ok = not invalid_for_dir_target(slug, _mcfg)
                 dlab, mlab, vdi = directional_and_move_labels_v2(
                     pts_move, thr, dir_allowed=dir_ok
@@ -4202,11 +4485,11 @@ def _apply_bar_based_outcome_updates(
             if fwd_close is None:
                 continue
             pts_move = fwd_close - anchor_close
-            updates[odir] = _classify_direction_central(pts_move, anchor_close)
-            updates[opt] = round(pts_move, 4)
             thr = threshold_move_pts_for_slug(
                 slug, anchor_close=anchor_close, atr=atr_v, cfg=_mcfg
             )
+            updates[odir] = _classify_direction_per_horizon(pts_move, thr)
+            updates[opt] = round(pts_move, 4)
             dir_ok = not invalid_for_dir_target(slug, _mcfg)
             dlab, mlab, vdi = directional_and_move_labels_v2(
                 pts_move, thr, dir_allowed=dir_ok
@@ -4220,10 +4503,10 @@ def _apply_bar_based_outcome_updates(
         if not updates:
             continue
 
+        _outcome_dir_cols = ", ".join(s[0] for s in OUTCOME_BAR_SPECS)
         existing = conn.execute(
             f"""
-            SELECT outcome_1c, outcome_3c, outcome_5c,
-                   outcome_8c, outcome_13c, outcome_15c, outcome_60c
+            SELECT {_outcome_dir_cols}
             FROM snapshots WHERE {row_key_col} = ?
             """,
             (row_key,),

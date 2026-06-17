@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/issue19_ontology_repair_design.md`.
+
 # Issue 19 — Ontology repair design (root cause + durable fix plan)
 
 **Mode:** repair-design and root-cause only — **no retrieval patches, no calibration, no broad code changes** in this document.  

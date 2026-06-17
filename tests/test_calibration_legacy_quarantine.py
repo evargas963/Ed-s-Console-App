@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import sqlite3
 
-import pytest
 
 from calibration.analyze_phase3 import analyze as analyze_phase3
 from calibration.legacy_report import analyze as legacy_analyze

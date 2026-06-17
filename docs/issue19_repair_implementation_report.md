@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/issue19_repair_implementation_report.md`.
+
 # Issue 19 — Repair implementation report
 
 **Date:** 2026-04-03  

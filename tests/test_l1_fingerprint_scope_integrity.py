@@ -213,3 +213,17 @@ def test_runtime_drift_silent_for_union_of_material_and_known_non_material():
             p[k] = None
     drift = warn_l1_payload_key_drift(p, logger=logging.getLogger("test_drift"))
     assert drift == []
+
+
+def test_runtime_drift_silent_for_live_quote_overlay_provenance_keys():
+    """S009 overlay stamps spread_pts (material) + mid/spread provenance (non-material)."""
+    p = {
+        **_full_l1_payload(),
+        "spread_pts": 0.05,
+        "quote_mid": 500.25,
+        "mid_source": "derived_bid_ask_mid",
+        "spread_source": "schwab_quote",
+        "spread_pts_source": "schwab_quote",
+    }
+    drift = warn_l1_payload_key_drift(p, logger=logging.getLogger("test_drift"))
+    assert drift == []

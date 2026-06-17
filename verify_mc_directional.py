@@ -67,13 +67,13 @@ def _report_ticker(ticker: str, state: dict, mc_cap: dict):
         print(f"    model net (up-down) = {net_model:+.3f}")
         print(f"    MC upper range = {up_range:.2f}  MC lower range = {down_range:.2f}")
         if net_model > 0.05 and up_range > down_range * 1.1:
-            print(f"    => MC bands lean UP (consistent with model)")
+            print("    => MC bands lean UP (consistent with model)")
         elif net_model < -0.05 and down_range > up_range * 1.1:
-            print(f"    => MC bands lean DOWN (consistent with model)")
+            print("    => MC bands lean DOWN (consistent with model)")
         elif abs(net_model) < 0.05:
-            print(f"    => Model neutral; MC asymmetry reflects vol/regime")
+            print("    => Model neutral; MC asymmetry reflects vol/regime")
         else:
-            print(f"    => MC asymmetry not clearly aligned with model direction")
+            print("    => MC asymmetry not clearly aligned with model direction")
 
     print()
 

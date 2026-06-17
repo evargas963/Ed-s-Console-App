@@ -28,12 +28,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, DefaultDict, Iterable, TextIO
 
+from replay_bundle_coverage import REPLAY_BUNDLE_MIN_JSON_LENGTH
+
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
+from math_exposure import MISSING_GREEK_SENTINEL
 
 
 @dataclass
@@ -102,14 +105,14 @@ def _classify_theta(ct: dict) -> str:
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         if isinstance(v, float) and not math.isfinite(v):
             return "present_other"
-        if float(v) == -999.0:
+        if float(v) == MISSING_GREEK_SENTINEL:
             return "present_sentinel"
         return "present_numeric"
     try:
         f = float(v)
     except (TypeError, ValueError):
         return "present_other"
-    if f == -999.0:
+    if f == MISSING_GREEK_SENTINEL:
         return "present_sentinel"
     return "present_numeric"
 
@@ -207,7 +210,7 @@ def _load_rows(
         WHERE ticker IN ({placeholders})
           AND created_at > ?
           AND option_chain_json IS NOT NULL
-          AND length(option_chain_json) > 10
+          AND length(option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
         ORDER BY ticker ASC, created_at ASC
     """
     params = [*tickers, since]

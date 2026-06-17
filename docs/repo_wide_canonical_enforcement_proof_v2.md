@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/repo_wide_canonical_enforcement_proof_v2.md`.
+
 # Repo-wide canonical enforcement — verification proof (v2)
 
 **Date:** 2026-04-09  

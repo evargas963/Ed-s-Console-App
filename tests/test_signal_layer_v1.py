@@ -7,6 +7,9 @@ import math
 import pytest
 
 from features.signal_layer_v1 import (
+    MOMENTUM_RETURN_LOOKBACKS_1M,
+    SNAPSHOT_PRICE_ACTION_COLUMNS,
+    compute_price_action_snapshot_columns,
     compute_signal_layer_v1,
     flatten_numeric_features,
     load_bars_before_decision,
@@ -117,8 +120,8 @@ def test_missing_ohlc_does_not_create_synthetic_multiframe_bars() -> None:
 
     layer = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=None)
 
-    assert layer["mtf.trend_5m_from_1m_sign"] == 0.0
-    assert layer["mtf.bias_15m_from_1m_sign"] == 0.0
+    assert layer["mtf.trend_5m_from_1m_sign"] is None
+    assert layer["mtf.bias_15m_from_1m_sign"] is None
 
 
 def test_flatten_numeric_strips_meta() -> None:
@@ -126,3 +129,66 @@ def test_flatten_numeric_strips_meta() -> None:
     f = flatten_numeric_features(layer)
     assert "meta.n_bars" not in f
     assert "ps.rolling_trend_slope_log20" in f
+
+
+# ── Price-action persistence cone (operator 2026-06-11) ──────────────────────
+
+
+def test_momentum_returns_match_log_return_definition() -> None:
+    """mom.ret_{k}m_pct = 100·ln(close_now / close_{k bars back}) — exact."""
+    bars = _synth_bars(80)
+    decision_ts = float(bars[-1]["bar_end_ts_utc"])
+    layer = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=None)
+    closes = [b["close"] for b in bars]
+    for k in MOMENTUM_RETURN_LOOKBACKS_1M:
+        expected = 100.0 * math.log(closes[-1] / closes[-1 - k])
+        assert layer[f"mom.ret_{k}m_pct"] == pytest.approx(expected)
+
+
+def test_momentum_returns_honest_null_when_history_short() -> None:
+    bars = _synth_bars(10)
+    decision_ts = float(bars[-1]["bar_end_ts_utc"])
+    layer = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=None)
+    assert layer["mom.ret_5m_pct"] is not None
+    assert layer["mom.ret_15m_pct"] is None
+    assert layer["mom.ret_60m_pct"] is None
+
+
+def test_signed_impulse_run_carries_direction() -> None:
+    bars = _synth_bars(80)
+    # Force the last 4 closes strictly descending.
+    for i, px in enumerate((101.0, 100.5, 100.2, 100.0)):
+        bars[-4 + i]["close"] = px
+        bars[-4 + i]["open"] = px + 0.01
+        bars[-4 + i]["high"] = px + 0.05
+        bars[-4 + i]["low"] = px - 0.05
+    decision_ts = float(bars[-1]["bar_end_ts_utc"])
+    layer = compute_signal_layer_v1(bars, decision_ts_utc=decision_ts, inp=None)
+    assert layer["cnd.consecutive_impulse_signed"] is not None
+    assert layer["cnd.consecutive_impulse_signed"] <= -3.0
+
+
+def test_snapshot_price_action_columns_complete_and_leak_free() -> None:
+    """Every persisted pa_* column maps to a real layer key; future bars excluded."""
+    bars = _synth_bars(80)
+    decision_ts = float(bars[50]["bar_end_ts_utc"])
+    # Pass the FULL list — the function must drop bars ending after decision_ts.
+    cols = compute_price_action_snapshot_columns(bars, decision_ts_utc=decision_ts)
+    assert set(cols) == {c for c, _ in SNAPSHOT_PRICE_ACTION_COLUMNS}
+    leak_free = compute_price_action_snapshot_columns(bars[:51], decision_ts_utc=decision_ts)
+    assert cols == leak_free
+    # Uptrend drift → positive momentum and trend columns.
+    full = compute_price_action_snapshot_columns(bars, decision_ts_utc=float(bars[-1]["bar_end_ts_utc"]))
+    assert full["pa_ret_60m_pct"] is not None and full["pa_ret_60m_pct"] > 0.0
+    assert full["pa_trend_slope_log20"] is not None
+    assert full["pa_mtf_trend_1m"] in (-1.0, 0.0, 1.0)
+
+
+def test_snapshot_price_action_columns_honest_nulls_on_thin_history() -> None:
+    bars = _synth_bars(3)
+    cols = compute_price_action_snapshot_columns(
+        bars, decision_ts_utc=float(bars[-1]["bar_end_ts_utc"])
+    )
+    assert cols["pa_ret_60m_pct"] is None
+    assert cols["pa_atr_pctile_60"] is None
+    assert cols["pa_ret_1m_pct"] is not None

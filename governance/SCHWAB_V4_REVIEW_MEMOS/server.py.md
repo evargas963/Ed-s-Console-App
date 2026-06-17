@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `server.py.md`.
+
 > **FROZEN_SNAPSHOT (2026-05-10):** This V4 review memo audited Schwab wire-token sites in `server.py` against the call graph that flowed through `chains.py::parse_quote_payload`, `chains.py::contract_fields`, `chains.py::iter_contracts`, and `chains.QuoteBlock`. **`chains.py` and those helpers were subsequently removed in the Schwab-direct redesign**; quote payloads, contract dicts, and chain iteration are now read inline at the named line numbers using the same Schwab leaf names cited below. The provenance trace text in each S-section still names the historical helper as the boundary symbol; treat those mentions as "formerly `chains.py::<helper>` — removed in Schwab-direct redesign". Dispositions (`REPLACED`, `NOT_MARKET_DATA`) and Schwab `canonical_field` citations remain accurate.
 
 # Review memo — server.py
@@ -11,6 +13,14 @@
 **V4-B code landed (2026-05-10):** Non-canonical chain/quote fallbacks removed in repository: `market_state._oe_chain_row_snapshot` drops **`expiration`** and **`volume`** keys; `server._expiries_from_contracts`, `_selected_schwab_days_to_expiration`, and `_fetch_state` contract filter use **`expirationDate` only**; quote-volume coalesce **drops** `_quote_node["underlying"]["totalVolume"]** (dead arm). **`A2_MARKET_STATE_PROOF_ROW_COMPLETENESS_CONTRACT.md`** + **`tests/test_a2_market_state_proof_row_completeness.py`** updated to match.
 
 ---
+
+---
+
+## Gatekeeper CSV cross-check (retroactive @ 977e706, 2026-05-24)
+
+**Tool:** \python tools/check_schwab_csv_first.py --gatekeeper-crosscheck server.py\n**lexical_csv_collision_count:** 281
+
+Retroactive full-CSV AST cross-check. Prior memo dispositions unchanged; homonym collisions classified in original site sections. Zero new wire FIND from cross-check.
 
 ## Enumeration scope (completeness claim)
 

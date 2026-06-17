@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `signals.py.md`.
+
 > **FROZEN_SNAPSHOT (2026-05-10):** This V4 review memo audited `signals.py` against the call graph that flowed through `chains.py::parse_quote_payload` and related helpers. **`chains.py` and those helpers were subsequently removed in the Schwab-direct redesign**; quote / chain reads are now inline. Provenance-trace mentions of `parse_quote_payload` should be read as "formerly `chains.py::parse_quote_payload` — removed in Schwab-direct redesign". Dispositions and Schwab `canonical_field` citations remain accurate.
 
 # Review memo — signals.py
@@ -9,6 +11,14 @@
 **Evidence bar:** `governance/SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md` § **Evidence bar (V4-A enforcement)**
 
 ---
+
+---
+
+## Gatekeeper CSV cross-check (retroactive @ 977e706, 2026-05-24)
+
+**Tool:** \python tools/check_schwab_csv_first.py --gatekeeper-crosscheck signals.py\n**lexical_csv_collision_count:** 10
+
+Retroactive full-CSV AST cross-check. Prior memo dispositions unchanged; homonym collisions classified in original site sections. Zero new wire FIND from cross-check.
 
 ## Audit methodology (clause 4 — attribute / call / subscript)
 

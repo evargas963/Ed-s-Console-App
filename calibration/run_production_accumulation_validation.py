@@ -54,9 +54,9 @@ OUT_REPORT = ROOT / "data" / "calibration_accumulation_validation_report.json"
 
 def _stub_models() -> None:
     import ml_predict
-    from tests.test_calibration_logging_production_path import _fake_run_base_models_once
+    from tests.test_calibration_logging_production_path import _fake_run_unified_stack_ml_once
 
-    ml_predict.run_base_models_once = _fake_run_base_models_once
+    ml_predict.run_unified_stack_ml_once = _fake_run_unified_stack_ml_once
 
 
 def _outcome_row_for_index(i: int) -> tuple[str, str, str, str, float, float, float, float]:
@@ -179,7 +179,7 @@ def run() -> dict[str, Any]:
     warnings: list[str] = []
     import ml_predict
 
-    _orig_run_base = ml_predict.run_base_models_once
+    _orig_run_base = ml_predict.run_unified_stack_ml_once
     try:
         _stub_models()
 
@@ -329,7 +329,7 @@ def run() -> dict[str, Any]:
         }
         return report
     finally:
-        ml_predict.run_base_models_once = _orig_run_base
+        ml_predict.run_unified_stack_ml_once = _orig_run_base
 
 
 def main() -> int:

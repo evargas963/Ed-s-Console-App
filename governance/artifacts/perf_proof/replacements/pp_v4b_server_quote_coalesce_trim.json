@@ -32,14 +32,7 @@
     "platform_note": "Windows 10; Python 3.13; wall-clock subprocess; retroactive 2026-05-11"
   },
   "register_link": {
-    "status": "bound_retroactive",
-    "replaced_register_ids": [
-      "1cd307e938ab36e9cef7",
-      "406c78db9d558e7ada19",
-      "9701c3a704a28d9975b6",
-      "accb9be2be1ea1bf6958",
-      "ed7951c063bf0d5f2ca0",
-      "f9721ce87e339a2839ec"
-    ]
+    "status": "unbound",
+    "replaced_register_ids": []
   }
 }

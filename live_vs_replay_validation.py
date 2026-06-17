@@ -21,11 +21,13 @@ from typing import Any, Optional
 from market_state import recommend_option_expression
 from replay_bundle_coverage import (
     DEFAULT_MIN_REQUIRED_ROWS,
+    REPLAY_BUNDLE_MIN_JSON_LENGTH,
     build_replay_bundle_coverage,
 )
 from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
 
 from realized_contract_eval import (
+    STRIKE_MATCH_TOL_NICKEL,
     _expressions_match_live,
     _parse_expression,
     _walls_from_replay,
@@ -197,8 +199,8 @@ def run_live_vs_replay_validation(
         SELECT COUNT(*) AS c FROM {table}
         WHERE timeframe = ?
           AND {wh_t}
-          AND replay_context_json IS NOT NULL AND length(replay_context_json) > 10
-          AND option_chain_json IS NOT NULL AND length(option_chain_json) > 10
+          AND replay_context_json IS NOT NULL AND length(replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
+          AND option_chain_json IS NOT NULL AND length(option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
         """,
         tuple(params_count),
     ).fetchone()
@@ -217,8 +219,8 @@ def run_live_vs_replay_validation(
         FROM {table}
         WHERE timeframe = ?
           AND {wh_t}
-          AND replay_context_json IS NOT NULL AND length(replay_context_json) > 10
-          AND option_chain_json IS NOT NULL AND length(option_chain_json) > 10
+          AND replay_context_json IS NOT NULL AND length(replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
+          AND option_chain_json IS NOT NULL AND length(option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}
         ORDER BY ts_utc DESC
         LIMIT ?
     """
@@ -294,7 +296,7 @@ def run_live_vs_replay_validation(
             strike_hit = (
                 ls is not None
                 and rs is not None
-                and abs(float(ls) - float(rs)) < 0.021
+                and abs(float(ls) - float(rs)) < STRIKE_MATCH_TOL_NICKEL
             )
             live_exp = live["live_expiry_from_proof_chain"] or live["live_expiry_snapshot"]
             expiry_hit = bool(snap_exp) and live_exp == snap_exp
@@ -467,7 +469,7 @@ def run_live_vs_replay_validation(
             "contract_match": "strike within 0.02, side match, expiry(proof chain) aligns with snapshot expiry",
             "full_decision_match": "contract_match AND expression matches persisted proof AND rules_stop/target present when signal is long/short",
             "expiry_match": "live proof chain_row expiry (if any) agrees with snapshot expiry date prefix",
-            "full_bundle": "replay_context_json and option_chain_json non-null and length > 10",
+            "full_bundle": f"replay_context_json and option_chain_json non-null and length > {REPLAY_BUNDLE_MIN_JSON_LENGTH}",
             "validation_quality_status": {
                 "insufficient_sample": "Fewer full-bundle rows on this table than min_required_rows; cannot reach a trustworthy sample until more data exists.",
                 "provisional": "At least min_required_rows full-bundle rows exist, but fewer than min_required_rows were successfully evaluated (e.g. skips); rates are not certified.",

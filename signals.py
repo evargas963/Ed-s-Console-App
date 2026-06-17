@@ -43,6 +43,8 @@ from prediction_engine import (
     _empty_prediction,
 )
 from call_engine import compute_call
+from fusion_contract import fusion_is_authoritative, is_canonical_tradable
+from numeric_contract import float_finite_or_none, float_positive_or_none, direction_from_normalized_triplet
 from regime_engine import classify_regime
 from volatility_regime import classify_volatility_regime
 import bayesian_fusion
@@ -60,6 +62,31 @@ from features.stack_integrity_v1 import finalize_stack_integrity_v1, record_stac
 
 log = logging.getLogger(__name__)
 
+
+def canonical_forward_probs_for_display(
+    canonical: CanonicalForecast,
+) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """Withhold forward probability mass on the prediction card when canonical is non-tradable."""
+    if not is_canonical_tradable(canonical):
+        return None, None, None
+    return canonical.probability_up, canonical.probability_down, canonical.probability_flat
+
+
+def _unavailable_model_namespace():
+    """Fail-closed placeholder when a unified-stack ML layer fusion branch is missing or failed."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        available=False,
+        prob_up=None,
+        prob_down=None,
+        prob_flat=None,
+        dominant_class=None,
+        confidence_label=None,
+        continuation_support=None,
+        reversal_support=None,
+    )
+
 try:
     from crash_trace import step as _dstep, step_done as _ddone, trace_crash as _dcrash, _on as _don
 except ImportError:
@@ -69,7 +96,7 @@ except ImportError:
     def _dcrash(n, e, t=""): pass
 
 
-# Live LSTM/XGB/TR inference: ml_predict.run_base_models_once (single path per tick; Issue 13).
+# Live LSTM/XGB/TR inference: ml_predict.run_unified_stack_ml_once (single path per tick; Issue 13).
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -77,9 +104,15 @@ except ImportError:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def canonical_forecast_from_fusion(fusion) -> CanonicalForecast:
-    """Build CanonicalForecast from Bayesian fusion posterior (directional triplet)."""
+    """
+    Build CanonicalForecast from Bayesian fusion posterior (directional triplet).
+
+    When fusion is unavailable or directional probs are missing/invalid, returns a
+    max-entropy **placeholder** triplet (1/3 each) with non-tradable ``provenance``.
+    Consumers must gate on ``NON_TRADABLE_CANONICAL_PROVENANCE`` — not treat placeholders as signal.
+    """
     u = 1.0 / 3.0
-    if fusion is None or not getattr(fusion, "available", False):
+    if not fusion_is_authoritative(fusion):
         return CanonicalForecast(
             direction="flat",
             probability_up=u,
@@ -88,16 +121,37 @@ def canonical_forecast_from_fusion(fusion) -> CanonicalForecast:
             confidence="low",
             provenance="fusion_unavailable",
         )
-    pu = float(getattr(fusion, "prob_up", u))
-    pd = float(getattr(fusion, "prob_down", u))
-    pf = float(getattr(fusion, "prob_flat", u))
+    pu_raw = getattr(fusion, "prob_up", None)
+    pd_raw = getattr(fusion, "prob_down", None)
+    pf_raw = getattr(fusion, "prob_flat", None)
+    if pu_raw is None or pd_raw is None or pf_raw is None:
+        return CanonicalForecast(
+            direction="flat",
+            probability_up=u,
+            probability_down=u,
+            probability_flat=u,
+            confidence="low",
+            provenance="fusion_directional_missing",
+        )
+    pu, pd, pf = float(pu_raw), float(pd_raw), float(pf_raw)
     s = pu + pd + pf
     if s > 0:
         pu, pd, pf = pu / s, pd / s, pf / s
-    d = str(getattr(fusion, "dominant_direction", "flat") or "flat").strip().lower()
+    else:
+        return CanonicalForecast(
+            direction="flat",
+            probability_up=u,
+            probability_down=u,
+            probability_flat=u,
+            confidence="low",
+            provenance="fusion_directional_invalid",
+        )
+    d_raw = getattr(fusion, "dominant_direction", None)
+    d = str(d_raw).strip().lower() if d_raw is not None else None
     if d not in ("up", "down", "flat"):
-        d = "flat"
-    conf = str(getattr(fusion, "fusion_confidence", "low") or "low").strip().lower()
+        d = direction_from_normalized_triplet(pu, pd, pf)
+    conf_raw = getattr(fusion, "fusion_confidence", None)
+    conf = str(conf_raw).strip().lower() if conf_raw is not None else None
     if conf not in ("low", "medium", "high"):
         conf = "low"
     return CanonicalForecast(
@@ -186,6 +240,7 @@ def _log_decision_bundle(
             "canonical_confidence": canonical.confidence,
             "canonical_provenance": canonical.provenance,
             "fusion_available": fusion_avail,
+            "fusion_directionally_available": fusion_avail,
             "final_signal": final_signal,
             "call_conviction": call_conviction,
             "size_cue": size_cue,
@@ -256,22 +311,223 @@ def _spot_for_mc_fusion_adjustment(
     mc_spot_ctx: Optional[dict],
     inference_snapshot_v1: dict,
 ) -> Optional[float]:
-    """Canonical spot for post-fusion MC adjustment (same lineage as MC simulate)."""
-    if isinstance(mc_spot_ctx, dict):
-        try:
-            raw = mc_spot_ctx.get("spot")
-            sp = float(raw) if raw is not None else None
-            if sp > 0.0:
-                return sp
-        except (TypeError, ValueError):
-            pass
+    """Canonical spot for post-fusion MC adjustment (same numeric_contract authority as MC resolve)."""
+    if isinstance(mc_spot_ctx, dict) and "spot" in mc_spot_ctx:
+        return float_positive_or_none(mc_spot_ctx.get("spot"))
     feats = inference_snapshot_v1.get("features") or {}
+    return float_positive_or_none(feats.get("price.spot"))
+
+
+def production_fusion_payload_for_stack(
+    inp,
+    rules,
+    regime,
+    db=None,
+    *,
+    inference_snapshot_v1: dict,
+    fusion_overlay: Optional[dict[str, Any]] = None,
+    mc_spot_ctx: Optional[dict[str, Any]] = None,
+    mc_context_error: Optional[BaseException] = None,
+    xgb_pre_engineering_snapshot: Optional[dict[str, Any]] = None,
+    signal_layer_v1=None,
+    fusion_tick_cache=None,
+    shared_sequence_context=None,
+    stack_integrity_events=None,
+    meta_tabular_overlay: Optional[dict[str, Any]] = None,
+) -> tuple[Any, dict[str, Any]]:
+    """Single production fusion path: model stack → bayesian_fusion → MC adjustment.
+
+    Meta participates via ``ml_bundle`` stack_probs → ``mc_model_direction_inputs`` inside
+    ``_run_model_stack`` (same as live ``signals._compute_signals_impl``). Returns payload +
+    audit dict with **derived** ``stack_layers_scored`` (never hardcoded).
+    """
+    import bayesian_fusion
+    from governed_stack_contract import derive_stack_layers_scored
+    from mc_fusion_adjustment import fuse_payload_apply_mc_adjustment
+
+    xgb_out, lstm_out, transformer_out, mc_out, ml_bundle = _run_model_stack(
+        inp,
+        rules,
+        regime,
+        db,
+        inference_snapshot_v1=inference_snapshot_v1,
+        fusion_overlay=fusion_overlay,
+        mc_spot_ctx=mc_spot_ctx,
+        mc_context_error=mc_context_error,
+        xgb_pre_engineering_snapshot=xgb_pre_engineering_snapshot,
+        stack_integrity_events=stack_integrity_events,
+        shared_sequence_context=shared_sequence_context,
+        meta_tabular_overlay=meta_tabular_overlay,
+    )
+    _ftc = fusion_tick_cache
+    if _ftc is None:
+        _ftc = bayesian_fusion.build_fusion_tick_cache(regime, rules)
+    fusion_payload_base = bayesian_fusion.fuse(
+        regime,
+        xgb_out,
+        lstm_out,
+        transformer_out,
+        mc_out,
+        rules,
+        signal_layer_v1=signal_layer_v1,
+        fusion_tick_cache=_ftc,
+    )
+    fusion_payload_full = fusion_payload_base
     try:
-        raw = feats.get("price.spot")
-        sp = float(raw) if raw is not None else None
-        return sp if sp is not None and sp > 0.0 else None
-    except (TypeError, ValueError):
-        return None
+        _adj_spot = _spot_for_mc_fusion_adjustment(mc_spot_ctx, inference_snapshot_v1)
+        fusion_payload_full = fuse_payload_apply_mc_adjustment(
+            fusion_payload_base,
+            mc_out,
+            _adj_spot,
+        )
+    except Exception as e:
+        if stack_integrity_events is not None:
+            record_stack_degradation(
+                stack_integrity_events,
+                component="mc_fusion_payload_adjustment",
+                severity="warning",
+                reason="fuse_payload_apply_mc_adjustment_failed",
+                exc_type=type(e).__name__,
+                detail=str(e),
+                fallback_used=True,
+                authority_intact=False,
+                dedupe_key="mc_fusion_payload_adjustment",
+            )
+        log.warning(
+            "fuse_payload_apply_mc_adjustment failed (unadjusted fusion payload): %s",
+            e,
+            exc_info=True,
+        )
+    layers_scored = derive_stack_layers_scored(
+        xgb_out=xgb_out,
+        lstm_out=lstm_out,
+        transformer_out=transformer_out,
+        mc_out=mc_out,
+        ml_bundle=ml_bundle if isinstance(ml_bundle, dict) else {},
+        regime=regime,
+        fusion_payload=fusion_payload_full,
+    )
+    audit = {
+        "stack_layers_scored": layers_scored,
+        "mc_stack_probability_source": (
+            ml_bundle.get("mc_stack_probability_source")
+            if isinstance(ml_bundle, dict)
+            else None
+        ),
+        "xgb_out": xgb_out,
+        "lstm_out": lstm_out,
+        "transformer_out": transformer_out,
+        "mc_out": mc_out,
+        "ml_bundle": ml_bundle,
+    }
+    return fusion_payload_full, audit
+
+
+def production_fusion_triplet_from_payload(fusion_payload) -> list[float]:
+    """Directional triplet list [up, down, flat] from a FusionPayload."""
+    return [
+        float(fusion_payload.prob_up),
+        float(fusion_payload.prob_down),
+        float(fusion_payload.prob_flat),
+    ]
+
+
+def _compute_display_wall_clock_mc_excursions(
+    inp: SignalInput,
+    *,
+    regime,
+    mc_spot_ctx: Optional[dict[str, Any]],
+    mc_context_error: Optional[BaseException],
+    xgb_out,
+    lstm_out,
+    transformer_out,
+    ml_bundle: Optional[dict[str, Any]],
+) -> dict[str, Optional[float]]:
+    """
+    Display-only wall-clock EFE/EAE for Key Levels (5m / 15m rows).
+
+    Isolated from fusion posterior, sizing, and ML features. Uses
+    ``wall_clock_minutes_to_mc_bars`` so BAR_MINUTES=5 maps 5m→1 bar, 15m→3 bars.
+    Fail-closed: any blocked input => all keys None (UI omits rows).
+    """
+    keys = ("mc_efe_5m", "mc_eae_5m", "mc_efe_15m", "mc_eae_15m")
+    out: dict[str, Optional[float]] = {k: None for k in keys}
+    if mc_context_error is not None or not isinstance(mc_spot_ctx, dict):
+        return out
+    spot = float_positive_or_none(mc_spot_ctx.get("spot"))
+    iv = float_finite_or_none(inp.iv_level)
+    if spot is None or iv is None or iv <= 0:
+        return out
+
+    import monte_carlo
+    from governed_stack_contract import (
+        MC_DISPLAY_N_PATHS,
+        MC_DISPLAY_WALL_CLOCK_MINUTES,
+        mc_model_direction_inputs,
+        wall_clock_minutes_to_mc_bars,
+    )
+    from ml_predict import stack_probs_bundle_key
+
+    _mc_regime = getattr(regime, "primary", None) if regime else None
+    if _mc_regime == "unknown":
+        _mc_regime = None
+    _mc_regime_conf = getattr(regime, "confidence", None) if regime else None
+    _spk = stack_probs_bundle_key()
+    _m_up, _m_dn, _m_conf, _, _ = mc_model_direction_inputs(
+        xgb_out=xgb_out,
+        lstm_out=lstm_out,
+        transformer_out=transformer_out,
+        stack_probs=ml_bundle.get(_spk) if isinstance(ml_bundle, dict) else None,
+    )
+    garch_full = mc_spot_ctx.get("garch_sigma_bars")
+
+    for minutes in MC_DISPLAY_WALL_CLOCK_MINUTES:
+        try:
+            bars = wall_clock_minutes_to_mc_bars(minutes)
+        except ValueError:
+            continue
+        garch_slice = None
+        if garch_full is not None and len(garch_full) >= bars:
+            garch_slice = garch_full[:bars]
+        try:
+            mc_out = monte_carlo.simulate(
+                spot=spot,
+                iv=iv,
+                horizon_bars=bars,
+                n_paths=MC_DISPLAY_N_PATHS,
+                call_gamma_wall=mc_spot_ctx.get("call_gamma_wall"),
+                put_gamma_wall=mc_spot_ctx.get("put_gamma_wall"),
+                em_upper=mc_spot_ctx.get("em_upper"),
+                em_lower=mc_spot_ctx.get("em_lower"),
+                regime=_mc_regime,
+                regime_confidence=_mc_regime_conf,
+                realized_vol=mc_spot_ctx.get("realized_vol"),
+                atr=mc_spot_ctx.get("atr"),
+                model_prob_up=_m_up,
+                model_prob_down=_m_dn,
+                model_confidence=_m_conf,
+                fusion_dominant=None,
+                garch_sigma_bars=garch_slice,
+            )
+        except Exception as e:
+            log.warning(
+                "display wall-clock MC failed minutes=%s ticker=%s: %s",
+                minutes,
+                getattr(inp, "ticker", ""),
+                e,
+                exc_info=True,
+            )
+            continue
+        if not getattr(mc_out, "available", False) or not getattr(mc_out, "simulation_ok", False):
+            continue
+        suffix = f"{minutes}m"
+        out[f"mc_efe_{suffix}"] = float_finite_or_none(
+            getattr(mc_out, "expected_favorable_excursion", None)
+        )
+        out[f"mc_eae_{suffix}"] = float_finite_or_none(
+            getattr(mc_out, "expected_adverse_excursion", None)
+        )
+    return out
 
 
 def _run_model_stack(
@@ -287,14 +543,14 @@ def _run_model_stack(
     xgb_pre_engineering_snapshot: Optional[dict[str, Any]] = None,
     stack_integrity_events: Optional[list[dict[str, Any]]] = None,
     shared_sequence_context: Any = None,
+    meta_tabular_overlay: Optional[dict[str, Any]] = None,
 ):
     """
-    STACK ORDER 4, 5, 6: Feature Engineering → ML Models → Monte Carlo.
+    STACK ORDER 4, 5, 6: Feature Engineering → unified stack ML layers → Monte Carlo.
 
-    Base models run in **parallel** (no cross-model dependencies). Monte Carlo runs **after**
-    base models and consumes explicit `model_prob_up` / `model_prob_down` derived from the
-    meta/weighted stack triplet when present, otherwise from available base-model outputs
-    (never passed as None — uniform prior only when no tri-class signal exists).
+    The xgb/lstm/transformer layers run in parallel as one team (no solo-green MC when team
+    cannot authorize). Monte Carlo consumes stack/meta triplet inputs only when the team gate
+    passes; otherwise MC fails closed with the rest of the stack.
 
     When ``fusion_overlay`` is provided, skips ``build_fusion_model_overlay_for_stack`` (caller
     builds it once per tick — includes 1c and all horizon empirical columns from one DB pass).
@@ -303,7 +559,7 @@ def _run_model_stack(
     skips redundant ``resolve_monte_carlo_stack_inputs`` per horizon.
 
     When ``xgb_pre_engineering_snapshot`` is provided (from ``build_xgb_pre_engineering_snapshot_for_tick``),
-    ``run_base_models_once`` skips repeated MVP→overlay→m5 tabular prep for each horizon.
+    ``run_unified_stack_ml_once`` skips repeated MVP→overlay→m5 tabular prep for each horizon.
 
     When ``shared_sequence_context`` is provided (from ``build_shared_sequence_context``), LSTM and Transformer
     skip redundant ``get_recent_snapshots`` / LSTM window merges for that tick.
@@ -315,7 +571,7 @@ def _run_model_stack(
     from ml_predict import (
         ParallelRuntimeArtifactError,
         get_ml_infer_horizon_slug,
-        run_base_models_once,
+        run_unified_stack_ml_once,
         stack_probs_bundle_key,
     )
     from prediction_engine import build_fusion_model_overlay_for_stack
@@ -351,7 +607,7 @@ def _run_model_stack(
                 )
             snap = {"ticker": getattr(inp, "ticker", "") or ""}
 
-    # ── XGB, LSTM, Transformer — single run_base_models_once per tick (Issue 13)
+    # ── XGB, LSTM, Transformer — single run_unified_stack_ml_once per tick (Issue 13)
     xgb_out = lstm_out = transformer_out = None
 
     _spk = stack_probs_bundle_key()
@@ -360,7 +616,7 @@ def _run_model_stack(
         if _don():
             _dstep("model_stack_ml_models", ticker)
         from types import SimpleNamespace
-        _once = run_base_models_once(
+        _once = run_unified_stack_ml_once(
             snap,
             ticker,
             db,
@@ -368,6 +624,7 @@ def _run_model_stack(
             inference_snapshot_v1=inference_snapshot_v1,
             xgb_pre_engineering_snapshot=xgb_pre_engineering_snapshot,
             shared_sequence_context=shared_sequence_context,
+            meta_tabular_overlay=meta_tabular_overlay,
         )
         ml_bundle = {
             "model_outputs": _once.get("model_outputs"),
@@ -378,18 +635,15 @@ def _run_model_stack(
         if fused.get("xgb"):
             xgb_out = SimpleNamespace(**fused["xgb"])
         else:
-            xgb_out = SimpleNamespace(available=False, prob_up=0.33, prob_down=0.33, prob_flat=0.34,
-                dominant_class="flat", confidence_label="low", continuation_support=0.0, reversal_support=0.0)
+            xgb_out = _unavailable_model_namespace()
         if fused.get("lstm"):
             lstm_out = SimpleNamespace(**fused["lstm"])
         else:
-            lstm_out = SimpleNamespace(available=False, prob_up=0.33, prob_down=0.33, prob_flat=0.34,
-                dominant_class="flat", confidence_label="low", continuation_support=0.0, reversal_support=0.0)
+            lstm_out = _unavailable_model_namespace()
         if fused.get("transformer"):
             transformer_out = SimpleNamespace(**fused["transformer"])
         else:
-            transformer_out = SimpleNamespace(available=False, prob_up=0.33, prob_down=0.33, prob_flat=0.34,
-                dominant_class="flat", confidence_label="low", continuation_support=0.0, reversal_support=0.0)
+            transformer_out = _unavailable_model_namespace()
         if _don():
             _ddone("ml_models", ticker)
     except Exception as e:
@@ -409,33 +663,36 @@ def _run_model_stack(
         ) or (isinstance(e, ValueError) and "inference_snapshot_v1" in str(e)):
             raise
         if _don():
-            _dcrash("run_base_models_once", e, ticker)
-        log.warning("run_base_models_once failed (uniform prior fallback): %s", e, exc_info=True)
+            _dcrash("run_unified_stack_ml_once", e, ticker)
+        log.warning("run_unified_stack_ml_once failed (models marked unavailable): %s", e, exc_info=True)
         if stack_integrity_events is not None:
             record_stack_degradation(
                 stack_integrity_events,
-                component="run_base_models_once",
+                component="run_unified_stack_ml_once",
                 severity="warning",
-                reason="run_base_models_once_failed",
+                reason="run_unified_stack_ml_once_failed",
                 exc_type=type(e).__name__,
                 detail=str(e),
                 fallback_used=True,
                 authority_intact=False,
-                dedupe_key="run_base_models_once",
+                dedupe_key="run_unified_stack_ml_once",
             )
-        from types import SimpleNamespace
-        _fallback = SimpleNamespace(available=False, prob_up=0.33, prob_down=0.33, prob_flat=0.34,
-            dominant_class="flat", confidence_label="low", continuation_support=0.0, reversal_support=0.0)
+        _fallback = _unavailable_model_namespace()
         xgb_out = lstm_out = transformer_out = _fallback
         ml_bundle = {"model_outputs": None, _spk: None, "movement_head_probs": {}}
 
-    # ── STACK ORDER 6: Monte Carlo (after base models; consumes base / stack triplet) ─
+    # ── STACK ORDER 6: Monte Carlo (after unified stack ML team; team gate — no solo green) ─
     try:
         if _don():
             _dstep("model_stack_monte_carlo", ticker)
         import monte_carlo
         from features.monte_carlo_stack_input import MonteCarloStackInputError, resolve_monte_carlo_stack_inputs
-        from governed_stack_contract import horizon_slug_to_mc_bars, mc_model_direction_inputs
+        from governed_stack_contract import (
+            horizon_slug_to_mc_bars,
+            mc_model_direction_inputs,
+            mc_team_should_fail_closed,
+            unified_stack_team_can_authorize,
+        )
 
         if mc_context_error is not None:
             from monte_carlo import MonteCarloOutput
@@ -445,11 +702,11 @@ def _run_model_stack(
                 model_version=f"blocked ({mc_context_error})",
             )
         else:
-            iv = inp.iv_level
-            if iv is not None and iv > 5.0:
-                iv = iv / 100.0
-            _mc_regime = getattr(regime, 'primary', 'unknown') if regime else 'unknown'
-            _mc_regime_conf = getattr(regime, 'confidence', 'low') if regime else 'low'
+            iv = float_finite_or_none(inp.iv_level)
+            _mc_regime = getattr(regime, 'primary', None) if regime else None
+            if _mc_regime == 'unknown':
+                _mc_regime = None
+            _mc_regime_conf = getattr(regime, 'confidence', None) if regime else None
             _mc_ctx = (
                 mc_spot_ctx
                 if mc_spot_ctx is not None
@@ -458,44 +715,61 @@ def _run_model_stack(
             _hz = get_ml_infer_horizon_slug()
             _mc_bars = horizon_slug_to_mc_bars(_hz)
             _spk2 = stack_probs_bundle_key()
+            _stack_probs = ml_bundle.get(_spk2) if isinstance(ml_bundle, dict) else None
+            _team_ok, _team_reason = unified_stack_team_can_authorize(
+                xgb_out=xgb_out,
+                lstm_out=lstm_out,
+                transformer_out=transformer_out,
+                stack_probs=_stack_probs if isinstance(_stack_probs, dict) else None,
+            )
             _m_up, _m_dn, _m_conf, _avail_map, _mc_src = mc_model_direction_inputs(
                 xgb_out=xgb_out,
                 lstm_out=lstm_out,
                 transformer_out=transformer_out,
-                stack_probs=ml_bundle.get(_spk2) if isinstance(ml_bundle, dict) else None,
+                stack_probs=_stack_probs,
             )
             if isinstance(ml_bundle, dict):
                 ml_bundle["governed_horizon_slug"] = _hz
                 ml_bundle["mc_horizon_bars"] = _mc_bars
-                ml_bundle["base_model_availability"] = dict(_avail_map)
-                ml_bundle["mc_base_probability_source"] = _mc_src
+                ml_bundle["stack_layer_availability"] = dict(_avail_map)
+                ml_bundle["mc_stack_probability_source"] = _mc_src
                 ml_bundle["mc_model_prob_up"] = _m_up
                 ml_bundle["mc_model_prob_down"] = _m_dn
                 ml_bundle["mc_model_confidence"] = _m_conf
-            log.debug(
-                "MC_INPUT em_upper=%s em_lower=%s spot_canonical=%s",
-                inp.em_upper,
-                inp.em_lower,
-                _mc_ctx.get("spot"),
-            )
-            mc_out = monte_carlo.simulate(
-                spot=_mc_ctx["spot"],
-                iv=iv,
-                horizon_bars=_mc_bars,
-                call_gamma_wall=_mc_ctx.get("call_gamma_wall"),
-                put_gamma_wall=_mc_ctx.get("put_gamma_wall"),
-                em_upper=_mc_ctx.get("em_upper"),
-                em_lower=_mc_ctx.get("em_lower"),
-                regime=_mc_regime,
-                regime_confidence=_mc_regime_conf,
-                realized_vol=_mc_ctx.get("realized_vol"),
-                atr=_mc_ctx.get("atr"),
-                model_prob_up=_m_up,
-                model_prob_down=_m_dn,
-                model_confidence=_m_conf,
-                fusion_dominant=None,
-                garch_sigma_bars=_mc_ctx.get("garch_sigma_bars"),
-            )
+                ml_bundle["unified_stack_team_ok"] = _team_ok
+                ml_bundle["unified_stack_team_reason"] = _team_reason
+            if mc_team_should_fail_closed(_team_ok, _mc_src):
+                from monte_carlo import MonteCarloOutput
+
+                mc_out = MonteCarloOutput(
+                    available=False,
+                    model_version=f"blocked (unified_stack_team:{_team_reason})",
+                )
+            else:
+                log.debug(
+                    "MC_INPUT em_upper=%s em_lower=%s spot_canonical=%s",
+                    inp.em_upper,
+                    inp.em_lower,
+                    _mc_ctx.get("spot"),
+                )
+                mc_out = monte_carlo.simulate(
+                    spot=_mc_ctx["spot"],
+                    iv=iv,
+                    horizon_bars=_mc_bars,
+                    call_gamma_wall=_mc_ctx.get("call_gamma_wall"),
+                    put_gamma_wall=_mc_ctx.get("put_gamma_wall"),
+                    em_upper=_mc_ctx.get("em_upper"),
+                    em_lower=_mc_ctx.get("em_lower"),
+                    regime=_mc_regime,
+                    regime_confidence=_mc_regime_conf,
+                    realized_vol=_mc_ctx.get("realized_vol"),
+                    atr=_mc_ctx.get("atr"),
+                    model_prob_up=_m_up,
+                    model_prob_down=_m_dn,
+                    model_confidence=_m_conf,
+                    fusion_dominant=None,
+                    garch_sigma_bars=_mc_ctx.get("garch_sigma_bars"),
+                )
         if _don():
             _ddone("monte_carlo", ticker)
     except MonteCarloStackInputError as e:
@@ -693,14 +967,21 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
     def _model_stage(name, out, stage_id) -> StackStage:
         if not getattr(out, "available", False):
             return StackStage(stage_id=stage_id, status="inactive", note=f"{name}: inactive")
-        dom = getattr(out, "dominant_class", None) or getattr(out, "dominant_dir", "flat")
-        conf = getattr(out, "confidence_label", None) or getattr(out, "confidence", "low")
-        prob = getattr(out, "prob_up", 0.33)
+        pu = float_finite_or_none(getattr(out, "prob_up", None))
+        pd = float_finite_or_none(getattr(out, "prob_down", None))
+        pf = float_finite_or_none(getattr(out, "prob_flat", None))
+        dom = (
+            direction_from_normalized_triplet(pu, pd, pf)
+            if pu is not None and pd is not None and pf is not None
+            else None
+        )
+        conf = getattr(out, "confidence_label", None) or getattr(out, "confidence", None)
+        prob = getattr(out, "prob_up", None)
         if dom == "down":
-            prob = getattr(out, "prob_down", 0.33)
+            prob = getattr(out, "prob_down", None)
         elif dom == "flat":
-            prob = getattr(out, "prob_flat", 0.34)
-        note = f"{name}: {dom} ({conf})"
+            prob = getattr(out, "prob_flat", None)
+        note = f"{name}: {dom or '—'} ({conf})"
         return StackStage(stage_id=stage_id, status="active", direction=dom, confidence=conf, probability=prob, note=note)
 
     # 1. XGBoost
@@ -716,51 +997,110 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
     mc_avail = getattr(mc_out, "available", False)
     cont = getattr(mc_out, "containment_prob", None)
     exp = getattr(mc_out, "expansion_prob", None)
-    d_bias = float(getattr(mc_out, "directional_bias", None) or 0.0)
-    t_risk = float(getattr(mc_out, "tail_risk", None) or 0.0)
+    _d_bias_raw = getattr(mc_out, "directional_bias", None)
+    d_bias = float(_d_bias_raw) if _d_bias_raw is not None else None
+    _t_risk_raw = getattr(mc_out, "tail_risk", None)
+    t_risk = float(_t_risk_raw) if _t_risk_raw is not None else None
 
     if not mc_avail:
         mc_stage = StackStage(stage_id="monte_carlo", status="inactive", note="Monte Carlo: inactive")
     else:
-        is_expansion = (exp or 0) >= (cont or 0)
-        mode = "expansion" if is_expansion else "containment"
-        pct = int(100 * (exp if is_expansion else cont) or 0)
-        skew = "upside skew" if d_bias > 1e-4 else "downside skew" if d_bias < -1e-4 else "neutral"
-        call_sig = getattr(call, "signal", "wait")
-        mc_dir = "up" if d_bias > 1e-4 else "down" if d_bias < -1e-4 else "flat"
-        supports = (
-            (mc_dir == "up" and call_sig == "long") or
-            (mc_dir == "down" and call_sig == "short") or
-            (mc_dir == "flat" and call_sig == "wait")
-        )
-        contr = (
-            (mc_dir == "up" and call_sig == "short") or
-            (mc_dir == "down" and call_sig == "long")
-        )
-        support_note = "supports stack" if supports else "contradicts stack" if contr else "neutral"
-        note = f"Monte Carlo: {mode} {pct}% | {skew} | {support_note}"
+        mode = pct = None
+        if exp is not None and cont is not None:
+            is_expansion = exp >= cont
+            mode = "expansion" if is_expansion else "containment"
+            pct = int(100 * (exp if is_expansion else cont))
+        elif exp is not None:
+            mode = "expansion"
+            pct = int(100 * exp)
+        elif cont is not None:
+            mode = "containment"
+            pct = int(100 * cont)
+
+        if d_bias is None:
+            skew = None
+            mc_dir = None
+            support_note = None
+        else:
+            skew = (
+                "upside skew" if d_bias > 1e-4
+                else "downside skew" if d_bias < -1e-4
+                else "neutral"
+            )
+            call_sig = getattr(call, "signal", "wait")
+            mc_dir = "up" if d_bias > 1e-4 else "down" if d_bias < -1e-4 else "flat"
+            supports = (
+                (mc_dir == "up" and call_sig == "long")
+                or (mc_dir == "down" and call_sig == "short")
+                or (mc_dir == "flat" and call_sig == "wait")
+            )
+            contr = (
+                (mc_dir == "up" and call_sig == "short")
+                or (mc_dir == "down" and call_sig == "long")
+            )
+            if supports:
+                support_note = "supports stack"
+            elif contr:
+                support_note = "contradicts stack"
+            else:
+                support_note = "neutral"
+
+        note_parts = ["Monte Carlo: active"]
+        if mode is not None and pct is not None:
+            note_parts.append(f"{mode} {pct}%")
+        if skew is not None:
+            note_parts.append(skew)
+        if support_note is not None:
+            note_parts.append(support_note)
+        note = " | ".join(note_parts)
+
+        prob_val = None
+        if t_risk is not None and t_risk > 0:
+            prob_val = t_risk
+        elif mode == "expansion" and exp is not None:
+            prob_val = exp
+        elif mode == "containment" and cont is not None:
+            prob_val = cont
+
         mc_stage = StackStage(
             stage_id="monte_carlo",
             status="active",
             direction=mc_dir,
-            confidence="high" if pct > 60 else "medium" if pct > 40 else "low",
-            probability=t_risk if t_risk > 0 else (exp if is_expansion else cont),
+            confidence=(
+                "high" if pct is not None and pct > 60
+                else "medium" if pct is not None and pct > 40
+                else "low"
+            ),
+            probability=prob_val,
             note=note,
         )
 
     # 5. Fusion
-    fus_avail = fusion and getattr(fusion, "available", False)
+    fus_avail = fusion_is_authoritative(fusion)
     if not fus_avail:
         fus_stage = StackStage(stage_id="fusion", status="inactive", note="Fusion: inactive")
     else:
-        dom = getattr(fusion, "dominant_outcome", "unknown")
-        dom_dir = getattr(fusion, "dominant_direction", "flat")
-        prob = getattr(fusion, "dominant_probability", 0.0)
-        conf = getattr(fusion, "fusion_confidence", "low")
-        agree = getattr(fusion, "model_agreement", 0.0)
-        agree_pct = int(agree * 100) if agree is not None else 0
-        note = f"Fusion: {dom} ({conf}) | dir={dom_dir} @ {int(prob*100)}% | agreement {agree_pct}%"
-        fus_stage = StackStage(stage_id="fusion", status="active", direction=dom_dir, confidence=conf, probability=prob, note=note)
+        dom = getattr(fusion, "dominant_outcome", None)
+        dom_dir = getattr(fusion, "dominant_direction", None)
+        prob = getattr(fusion, "dominant_probability", None)
+        conf = getattr(fusion, "fusion_confidence", None)
+        agree = getattr(fusion, "model_agreement", None)
+        agree_pct = int(agree * 100) if agree is not None else None
+        dom_label = dom if dom is not None else "—"
+        conf_label = conf if conf is not None else "—"
+        dir_label = dom_dir if dom_dir is not None else "—"
+        prob_pct = int(prob * 100) if prob is not None else None
+        agree_suffix = f" | agreement {agree_pct}%" if agree_pct is not None else ""
+        prob_suffix = f" @ {prob_pct}%" if prob_pct is not None else ""
+        note = f"Fusion: {dom_label} ({conf_label}) | dir={dir_label}{prob_suffix}{agree_suffix}"
+        fus_stage = StackStage(
+            stage_id="fusion",
+            status="active",
+            direction=dom_dir,
+            confidence=conf,
+            probability=prob,
+            note=note,
+        )
 
     # 6. Final Call
     call_sig = getattr(call, "signal", "wait")
@@ -799,18 +1139,9 @@ def _build_snapshot_dict(inp: SignalInput, rules: RulesCard,
         "pred_1c_up_prob":      pred.up_prob_1c,
         "pred_1c_down_prob":    pred.down_prob_1c,
         "pred_1c_flat_prob":    pred.flat_prob_1c,
-        "pred_3c_up_prob":      pred.up_prob_3c,
-        "pred_3c_down_prob":    pred.down_prob_3c,
-        "pred_3c_flat_prob":    pred.flat_prob_3c,
         "pred_5c_up_prob":      pred.up_prob_5c,
         "pred_5c_down_prob":    pred.down_prob_5c,
         "pred_5c_flat_prob":    pred.flat_prob_5c,
-        "pred_8c_up_prob":      pred.up_prob_8c,
-        "pred_8c_down_prob":    pred.down_prob_8c,
-        "pred_8c_flat_prob":    pred.flat_prob_8c,
-        "pred_13c_up_prob":     pred.up_prob_13c,
-        "pred_13c_down_prob":   pred.down_prob_13c,
-        "pred_13c_flat_prob":   pred.flat_prob_13c,
         "pred_15c_up_prob":     pred.up_prob_15c,
         "pred_15c_down_prob":   pred.down_prob_15c,
         "pred_15c_flat_prob":   pred.flat_prob_15c,
@@ -937,16 +1268,23 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         _dstep("signals_model_stack", ticker)
     # ── STACK ORDER 4, 5, 6: Feature Engineering, ML Models, Monte Carlo ──────
     # One stack + fusion per **governed** horizon (slug sets MC horizon bars + model artifacts).
-    from governed_stack_contract import classify_stack_health
     from features.fusion_policy_contract import fusion_payload_to_policy_columns
     from features.monte_carlo_stack_input import MonteCarloStackInputError, resolve_monte_carlo_stack_inputs
     from ml_predict import (
         build_xgb_pre_engineering_snapshot_for_tick,
         get_ml_infer_horizon_slug,
+        ml_bundle_ticker_scope,
         reset_ml_infer_horizon_slug,
         set_ml_infer_horizon_slug,
     )
+    from governed_stack_contract import (
+        guest_anchor_context_scope,
+        remap_prob_sources_for_guest_anchor,
+        resolve_guest_anchor_for_ticker,
+    )
     from prediction_engine import build_fusion_model_overlay_for_stack
+
+    _guest_anchor = resolve_guest_anchor_for_ticker(ticker)
 
     shared_fusion_overlay: dict[str, Any]
     try:
@@ -1004,28 +1342,6 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
             dedupe_key="xgb_pre_engineering_tick",
         )
 
-    shared_sequence_context = None
-    if db is not None:
-        from features.shared_sequence_context import build_shared_sequence_context
-
-        _ctx, _ctx_err = build_shared_sequence_context(db, ticker, inference_snapshot_v1)
-        if _ctx is not None:
-            shared_sequence_context = _ctx
-        else:
-            log.warning(
-                "shared_sequence_context unavailable — per-horizon LSTM/Transformer DB reads (%s)",
-                _ctx_err,
-            )
-            record_stack_degradation(
-                stack_integrity_events,
-                component="shared_sequence_context",
-                severity="warning",
-                reason="shared_sequence_context_build_failed",
-                detail=_ctx_err or "",
-                fallback_used=True,
-                authority_intact=True,
-            )
-
     _live_hz = get_ml_infer_horizon_slug()
     fusion_policy_flat: dict[str, Any] = {}
     fusion_by_hz: dict[str, Any] = {}
@@ -1034,83 +1350,138 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
     mc_out = None
     ml_bundle: dict[str, Any] = {}
     fusion = None
-    live_stack_horizons, skipped_secondary_support = _live_model_stack_horizons(ticker)
-    secondary_support_fusion_audit.update(skipped_secondary_support)
 
-    for _hz in live_stack_horizons:
-        _tok = set_ml_infer_horizon_slug(_hz)
-        try:
-            _xgb, _lstm, _tf, _mc, _mb = _run_model_stack(
-                inp,
-                rules,
-                regime,
-                db,
-                inference_snapshot_v1=inference_snapshot_v1,
-                fusion_overlay=shared_fusion_overlay,
-                mc_spot_ctx=shared_mc_ctx,
-                mc_context_error=mc_ctx_err,
-                xgb_pre_engineering_snapshot=xgb_pre_eng,
-                stack_integrity_events=stack_integrity_events,
-                shared_sequence_context=shared_sequence_context,
+    with guest_anchor_context_scope(_guest_anchor), ml_bundle_ticker_scope(
+        _guest_anchor.anchor_ticker if _guest_anchor else None
+    ):
+        shared_sequence_context = None
+        _seq_ctx_err: Optional[str] = None
+        if db is not None:
+            from features.shared_sequence_context import (
+                build_guest_wire_sequence_context,
+                build_shared_sequence_context,
             )
-            _fus = bayesian_fusion.fuse(
-                regime,
-                _xgb,
-                _lstm,
-                _tf,
-                _mc,
-                rules,
-                signal_layer_v1=signal_layer_v1,
-                fusion_tick_cache=fusion_tick_cache,
+
+            _ctx, _seq_ctx_err = build_shared_sequence_context(db, ticker, inference_snapshot_v1)
+            if _ctx is not None:
+                shared_sequence_context = _ctx
+        if (
+            shared_sequence_context is None
+            and _guest_anchor is not None
+            and inference_snapshot_v1
+        ):
+            from features.shared_sequence_context import build_guest_wire_sequence_context
+
+            _wire_ctx, _wire_err = build_guest_wire_sequence_context(
+                inference_snapshot_v1,
+                inp=inp,
             )
+            if _wire_ctx is not None:
+                shared_sequence_context = _wire_ctx
+                _seq_ctx_err = None
+                log.info(
+                    "guest_wire_sequence_context guest=%s anchor=%s (provisional LSTM/TR surface)",
+                    ticker,
+                    _guest_anchor.anchor_ticker,
+                )
+            elif _wire_err:
+                _seq_ctx_err = _wire_err
+        if shared_sequence_context is None and _seq_ctx_err:
+            log.warning(
+                "shared_sequence_context unavailable — per-horizon LSTM/Transformer DB reads (%s)",
+                _seq_ctx_err,
+            )
+            record_stack_degradation(
+                stack_integrity_events,
+                component="shared_sequence_context",
+                severity="warning",
+                reason="shared_sequence_context_build_failed",
+                detail=_seq_ctx_err or "",
+                fallback_used=True,
+                authority_intact=True,
+            )
+
+        live_stack_horizons, skipped_secondary_support = _live_model_stack_horizons(ticker)
+        secondary_support_fusion_audit.update(skipped_secondary_support)
+
+        for _hz in live_stack_horizons:
+            _tok = set_ml_infer_horizon_slug(_hz)
             try:
-                from mc_fusion_adjustment import fuse_payload_apply_mc_adjustment
-
-                _adj_spot = _spot_for_mc_fusion_adjustment(shared_mc_ctx, inference_snapshot_v1)
-                _fus = fuse_payload_apply_mc_adjustment(_fus, _mc, _adj_spot)
+                _fus, _fusion_audit = production_fusion_payload_for_stack(
+                    inp,
+                    rules,
+                    regime,
+                    db,
+                    inference_snapshot_v1=inference_snapshot_v1,
+                    fusion_overlay=shared_fusion_overlay,
+                    mc_spot_ctx=shared_mc_ctx,
+                    mc_context_error=mc_ctx_err,
+                    xgb_pre_engineering_snapshot=xgb_pre_eng,
+                    signal_layer_v1=signal_layer_v1,
+                    fusion_tick_cache=fusion_tick_cache,
+                    stack_integrity_events=stack_integrity_events,
+                    shared_sequence_context=shared_sequence_context,
+                )
+                fusion_policy_flat.update(fusion_payload_to_policy_columns(_hz, _fus))
+                if _hz in SECONDARY_SUPPORT_HORIZONS:
+                    secondary_support_fusion_audit[_hz] = {
+                        "horizon_tier": "secondary_support",
+                        "non_authoritative": True,
+                        "provenance": "governed_stack_diagnostics_only",
+                        "fusion_available": fusion_is_authoritative(_fus),
+                        "dominant_direction": getattr(_fus, "dominant_direction", None),
+                        "prob_up": getattr(_fus, "prob_up", None),
+                        "prob_down": getattr(_fus, "prob_down", None),
+                        "prob_flat": getattr(_fus, "prob_flat", None),
+                    }
+                if _hz in PRIMARY_DECISION_HORIZONS:
+                    fusion_by_hz[_hz] = _fus
+                if _hz == _live_hz:
+                    xgb_out = _fusion_audit["xgb_out"]
+                    lstm_out = _fusion_audit["lstm_out"]
+                    transformer_out = _fusion_audit["transformer_out"]
+                    mc_out = _fusion_audit["mc_out"]
+                    ml_bundle = _fusion_audit.get("ml_bundle") or {}
+                    fusion = _fus
             except Exception as e:
-                log.warning(
-                    "fuse_payload_apply_mc_adjustment failed (unadjusted fusion payload): %s",
-                    e,
-                    exc_info=True,
-                )
-                record_stack_degradation(
-                    stack_integrity_events,
-                    component="mc_fusion_payload_adjustment",
-                    severity="warning",
-                    reason="fuse_payload_apply_mc_adjustment_failed",
-                    exc_type=type(e).__name__,
-                    detail=str(e),
-                    fallback_used=True,
-                    authority_intact=False,
-                    dedupe_key="mc_fusion_payload_adjustment",
-                )
-            fusion_policy_flat.update(fusion_payload_to_policy_columns(_hz, _fus))
-            if _hz in SECONDARY_SUPPORT_HORIZONS:
-                secondary_support_fusion_audit[_hz] = {
-                    "horizon_tier": "secondary_support",
-                    "non_authoritative": True,
-                    "provenance": "governed_stack_diagnostics_only",
-                    "fusion_available": bool(getattr(_fus, "available", False)),
-                    "dominant_direction": getattr(_fus, "dominant_direction", None),
-                    "prob_up": getattr(_fus, "prob_up", None),
-                    "prob_down": getattr(_fus, "prob_down", None),
-                    "prob_flat": getattr(_fus, "prob_flat", None),
-                }
-            if _hz in PRIMARY_DECISION_HORIZONS:
-                fusion_by_hz[_hz] = _fus
-            if _hz == _live_hz:
-                xgb_out, lstm_out, transformer_out, mc_out, ml_bundle = _xgb, _lstm, _tf, _mc, _mb
-                fusion = _fus
-        except Exception as e:
-            log.warning("signals: per-horizon stack+fusion failed hz=%s ticker=%s: %s", _hz, ticker, e)
-        finally:
-            reset_ml_infer_horizon_slug(_tok)
+                log.warning("signals: per-horizon stack+fusion failed hz=%s ticker=%s: %s", _hz, ticker, e)
+                from features.fusion_policy_contract import fusion_policy_columns_horizon_failed
 
-    if fusion is None or xgb_out is None:
-        raise RuntimeError(
-            f"signals: live horizon stack unavailable (live_hz={_live_hz!r} ticker={ticker!r})"
-        )
+                fusion_policy_flat.update(
+                    fusion_policy_columns_horizon_failed(_hz, reason=type(e).__name__)
+                )
+            finally:
+                reset_ml_infer_horizon_slug(_tok)
+
+        _missing_primary = [hz for hz in PRIMARY_DECISION_HORIZONS if hz not in fusion_by_hz]
+        if _missing_primary:
+            raise RuntimeError(
+                f"signals: incomplete primary fusion_by_hz missing={_missing_primary!r} "
+                f"ticker={ticker!r} live_hz={_live_hz!r}"
+            )
+
+        if fusion is None or xgb_out is None:
+            raise RuntimeError(
+                f"signals: live horizon stack unavailable (live_hz={_live_hz!r} ticker={ticker!r})"
+            )
+
+        if _guest_anchor is not None:
+            log.info(
+                "guest_anchor_inference guest=%s anchor=%s",
+                _guest_anchor.guest_ticker,
+                _guest_anchor.anchor_ticker,
+            )
+
+    mc_display_excursions = _compute_display_wall_clock_mc_excursions(
+        inp,
+        regime=regime,
+        mc_spot_ctx=shared_mc_ctx,
+        mc_context_error=mc_ctx_err,
+        xgb_out=xgb_out,
+        lstm_out=lstm_out,
+        transformer_out=transformer_out,
+        ml_bundle=ml_bundle,
+    )
 
     if _don():
         _ddone("model_stack", ticker)
@@ -1127,9 +1498,11 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         fusion_by_hz,
         live_canonical_horizon_slug=_live_hz,
     )
-    if __debug__:
-        assert set(fusion_by_hz.keys()) <= set(PRIMARY_DECISION_HORIZONS)
-        assert set(mh_ml_fusion_bundle.by_horizon.keys()) == set(PRIMARY_DECISION_HORIZONS)
+    if set(mh_ml_fusion_bundle.by_horizon.keys()) != set(PRIMARY_DECISION_HORIZONS):
+        raise RuntimeError(
+            f"signals: multi_horizon_ml_fusion_bundle incomplete "
+            f"ticker={ticker!r} keys={sorted(mh_ml_fusion_bundle.by_horizon.keys())!r}"
+        )
     if isinstance(ml_bundle, dict):
         ml_bundle["fusion_policy_snapshot_cols"] = fusion_policy_flat
         ml_bundle["horizon_governance_contract"] = {
@@ -1139,11 +1512,6 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         }
         ml_bundle["secondary_support_fusion_audit"] = secondary_support_fusion_audit
         ml_bundle["multi_horizon_ml_fusion_bundle"] = mh_ml_fusion_bundle
-        ml_bundle["stack_health"] = classify_stack_health(
-            fusion_available=bool(getattr(fusion, "available", False)),
-            mc_available=bool(getattr(mc_out, "available", False)),
-            n_base_available=_n_base_live,
-        )
         ml_bundle["fusion_contributing_models"] = list(getattr(fusion, "contributing_models", []) or [])
         ml_bundle["fusion_missing_models"] = list(getattr(fusion, "missing_models", []) or [])
         ml_bundle["stack_integrity_events"] = stack_integrity_events
@@ -1159,6 +1527,24 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
                 canonical = _debug_canonical_override(canonical, direction, src)
                 pred_override_applied = True
                 pred_override_source = src
+                if db is not None:
+                    try:
+                        from db import DB_PATH
+                        from override_registry import append_override_record
+                        from release_object import get_current_release
+
+                        rel = get_current_release(required=False)
+                        append_override_record(
+                            ticker=ticker,
+                            route="signals._compute_signals_impl",
+                            override_source=src,
+                            override_direction=direction,
+                            override_payload=dict(pred_override),
+                            db_path=DB_PATH,
+                            release_id=(rel or {}).get("release_id") if rel else None,
+                        )
+                    except Exception as oreg_exc:
+                        log.warning("override_registry append failed: %s", oreg_exc)
                 log.warning(
                     "ED_CONSOLE_ALLOW_PRED_OVERRIDE: canonical direction=%s source=%s (empirical histograms unchanged)",
                     direction,
@@ -1203,6 +1589,10 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
     if _don():
         _dstep("signals_compute_call", ticker)
     mh_syn = compute_multi_horizon_synthesis(inp, pred_for_stack, canonical, mh_ml_fusion_bundle)
+    if _guest_anchor is not None:
+        mh_syn.tradeable = False
+        mh_syn.size_modifier = 0.0
+        mh_syn.wait_reason = _guest_anchor.wait_reason
     call = compute_call(
         inp,
         rules,
@@ -1234,6 +1624,14 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
     else:
         pred = pred_core
 
+    if _guest_anchor is not None:
+        for _pred_obj in (pred_core, pred):
+            if _pred_obj is None:
+                continue
+            _src = getattr(_pred_obj, "mh_prob_source_by_horizon", None)
+            if isinstance(_src, dict):
+                _pred_obj.mh_prob_source_by_horizon = remap_prob_sources_for_guest_anchor(_src)
+
     _call_pre_mh = {
         "signal": call.signal,
         "conviction": call.conviction,
@@ -1256,10 +1654,12 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
     if _don():
         _ddone("post_stack", ticker)
 
+    from fusion_contract import fusion_has_tradable_direction
+
     _log_decision_bundle(
         ticker,
         canonical,
-        getattr(fusion, "available", False) if fusion is not None else False,
+        fusion_has_tradable_direction(fusion),
         final_signal=call.signal,
         call_conviction=call.conviction,
         size_cue=call.size_cue,
@@ -1320,7 +1720,7 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         )
     except Exception:
         # Optional dev-only diag hook; failures here must not affect the decision path.
-        pass
+        log.debug("emit_compute_signals_diag failed", exc_info=True)
 
     return SignalOutput(
         rules=rules,
@@ -1335,4 +1735,15 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         pred_override_source=pred_override_source,
         multi_horizon_bundle=mh_bundle,
         calibration_payload=calibration_payload,
+        mc_display_excursions=mc_display_excursions,
+        guest_anchor_active=_guest_anchor is not None,
+        guest_anchor_weights_ticker=(
+            _guest_anchor.anchor_ticker if _guest_anchor is not None else None
+        ),
+        guest_anchor_affiliation=(
+            _guest_anchor.affiliation if _guest_anchor is not None else None
+        ),
+        guest_anchor_rationale=(
+            _guest_anchor.rationale if _guest_anchor is not None else None
+        ),
     )

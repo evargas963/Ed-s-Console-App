@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `market_state.py.md`.
+
 > **FROZEN_SNAPSHOT (2026-05-10):** This V4 review memo audited `market_state.py` against the call graph that flowed through `chains.py::contract_fields` and `chains.py::iter_contracts`. **`chains.py` and those helpers were subsequently removed in the Schwab-direct redesign**; chain rows are now read inline. Provenance-trace mentions of `chains.contract_fields` / `iter_contracts(c_json)` should be read as "formerly `chains.py::<helper>` — removed in Schwab-direct redesign". Dispositions and Schwab `canonical_field` citations remain accurate.
 
 # Review memo — market_state.py
@@ -11,6 +13,14 @@
 **V4-B code (2026-05-10):** `_oe_chain_row_snapshot` **keys tuple** no longer includes non-CSV aliases **`expiration`** or **`volume`** — only **`expirationDate`** and **`totalVolume`** (see `A2_MARKET_STATE_PROOF_ROW_COMPLETENESS_CONTRACT.md`).
 
 ---
+
+---
+
+## Gatekeeper CSV cross-check (retroactive @ 977e706, 2026-05-24)
+
+**Tool:** \python tools/check_schwab_csv_first.py --gatekeeper-crosscheck market_state.py\n**lexical_csv_collision_count:** 90
+
+Retroactive full-CSV AST cross-check. Prior memo dispositions unchanged; homonym collisions classified in original site sections. Zero new wire FIND from cross-check.
 
 ## Enumeration completeness
 

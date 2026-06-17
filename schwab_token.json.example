@@ -1,0 +1,10 @@
+{
+  "_comment": "Placeholder only. Run: python reauth_schwab.py",
+  "_comment2": "Schwab OAuth writes the real token to schwab_token.json (gitignored).",
+  "_comment3": "Optional path override: SCHWAB_TOKEN_PATH env var.",
+  "token_type": "Bearer",
+  "access_token": "<from OAuth — do not commit>",
+  "refresh_token": "<from OAuth — do not commit>",
+  "expires_in": 0,
+  "scope": "<accounts and market data per app registration>"
+}

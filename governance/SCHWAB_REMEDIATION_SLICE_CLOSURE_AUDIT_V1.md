@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Governance audit/memo `SCHWAB_REMEDIATION_SLICE_CLOSURE_AUDIT_V1.md`.
+
 # Schwab Remediation Slice Closure Audit V1
 
 **Artifact role:** Closure-state register (evidence-of-record). **Do not merge into** `SCHWAB_REMEDIATION_SLICE_PLAN_V1.md` — the slice plan remains scope-of-work; this file answers “what is closed, under what proof, and what is next.”

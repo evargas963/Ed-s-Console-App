@@ -1,8 +1,12 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `CURSOR_V4_AGENT_BRIEF.md`.
+
 # Cursor — Schwab V4 Universal Coverage execution
 
 Canonical agent brief for V4 Schwab line-by-line work. Paste the whole document into a new Cursor thread when cold-starting, or point agents at this path.
 
-You are the **drafter and executor**. Claude is the **gatekeeper/verifier**; Ed signs off. You draft code, contracts, commit messages, and PRs; Claude reviews; Ed approves O-XX entries.
+You are the **drafter and executor**. Claude is the **gatekeeper/verifier** for Schwab disposition sign-off and O-XX; **Cursor gatekeeps Claude handoffs** the same way — re-Read at tip, refuse relay-only commits that skip fix-as-we-find. Ed signs off O-XX entries. Both agents are active participants per `AGENTS.md` § Active agent posture + mutual gatekeeping — not passive relays.
+
+**Top rule (overrides “investigation” framing):** `AGENTS.md` § **Fix everything we touch** — every Read lands fix+test in the same commit bundle; missed fixes trigger § Self-governance quality loop (OPEN_ITEMS + checker promotion).
 
 ## Authority and artifacts (read first)
 
@@ -36,11 +40,21 @@ You are the **drafter and executor**. Claude is the **gatekeeper/verifier**; Ed 
 ## Workflow per slice
 
 1. Pick a coherent slice (one module/concern, ≤ a few dozen rows).
-2. Draft code changes + register edits + any required O-XX narrative.
-3. For replacements, write a perf_proof bundle to `governance/artifacts/perf_proof/replacements/pp_*.json` with `verdict=PASS`, list affected **`register_id`**s under **`register_link.replaced_register_ids`**, and flip those register rows to **`REPLACED`** in the **same commit** (see `SCHWAB_REPLACEMENT_LOOP_PROTOCOL_V4.md` § Perf-proof bundle ↔ register).
-4. Run `pytest`; rerun scanner; rebuild scoreboard.
-5. **Hand off to Claude** with the slice handoff block below. Wait for gatekeeper accept before committing.
-6. After accept + Ed's O-XX sign-off (if applicable), commit and push.
+2. **Full Read** the file end-to-end; Read sibling memos if convention-driven directory.
+3. Draft **memo + code + tests together** when the Read surfaces a fix (REPLACED, removal, fail-closed). Do **not** land memo-only when `code edit` is known — `AGENTS.md` § Active agent posture overrides “wait for gatekeeper” for in-file fixes.
+4. **Gatekeeper CSV cross-check** before memo sign-off: `python tools/check_schwab_csv_first.py --gatekeeper-crosscheck <target.py>`; record `## Gatekeeper CSV cross-check` + `lexical_csv_collision_count` in the memo (pre-commit enforced).
+5. For register **replacements** (not memo walks): draft register edits + perf_proof; run pytest; rerun scanner; rebuild scoreboard.
+6. **Hand off to Claude** with the slice handoff block below when disposition sign-off or O-XX is needed **before merge**.
+7. After Claude accept + Ed's O-XX sign-off (if applicable), commit and push.
+
+**Two commit classes (do not conflate):**
+
+| Class | Contents | Gatekeeper before commit? |
+|-------|----------|---------------------------|
+| **A — fix-as-we-find** | Memo (if any) + code + paired test + memo update | No — land same turn; Claude re-verifies at tip after push |
+| **B — register / O-XX / perf-proof** | Register rows, `pp_*.json`, operator narrative | Yes — wait for Claude accept before commit |
+
+Review-memo walks (`SCHWAB_V4_REVIEW_MEMOS/`) are **Class A** when they contain actionable `code edit` or audit catches in the same file.
 
 ## Slice handoff block (paste verbatim to Claude)
 
@@ -57,7 +71,7 @@ You are the **drafter and executor**. Claude is the **gatekeeper/verifier**; Ed 
 
 ## Cursor never
 
-Self-authorize O-XX entries, self-authorize precedent inheritance, close rows on lexical match alone, or commit without Claude's gatekeeper accept.
+Self-authorize O-XX entries, self-authorize precedent inheritance, close rows on lexical match alone, commit **Class B** register/O-XX slices without Claude's gatekeeper accept, or **execute relay handoffs blind** when they violate `AGENTS.md` fix-as-we-find / memo+code same-commit rule.
 
 ## First task on pickup
 

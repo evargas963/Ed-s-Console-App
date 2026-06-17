@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from db_authority import canonical_console_db_path, is_canonical_db_path, project_root
+from db_authority import is_canonical_db_path, project_root
 
 DANGEROUS_SQL_UNRESTRICTED_ENV = "ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED"
 SKIP_AUTOMATIC_BACKUP_ENV = "ED_CONSOLE_SKIP_AUTOMATIC_BACKUP"
@@ -67,8 +67,17 @@ def default_backup_root() -> Path:
     return (project_root() / "backups" / "db").resolve()
 
 
-def preflight_exclusive_sqlite_write(db_path: Path, *, timeout_s: float = 2.0) -> tuple[bool, str | None]:
-    """Try BEGIN IMMEDIATE; fail fast if another writer holds the DB."""
+def preflight_exclusive_sqlite_write(db_path: Path, *, timeout_s: float = 30.0) -> tuple[bool, str | None]:
+    """Try BEGIN IMMEDIATE; wait up to ``timeout_s`` before declaring the DB locked.
+
+    DB-INIT FIX: was 2.0s — 15x shorter than the 30s busy_timeout every real connection
+    uses (db.py configure_sqlite_connection). At startup, when the live logger or a
+    concurrent retrain holds the write lock for >2s, this returned (False, 'database is
+    locked'), the migration preflight raised RuntimeError, and the logger-universe bootstrap
+    fell back to CORE+JSON — silently dropping the operator's pinned/user-persisted tickers
+    for that boot (surfaced only as the 'db load failed' warning). Aligning to 30s lets a
+    transient writer clear instead of spuriously failing the load.
+    """
     db_path = Path(db_path).resolve()
     try:
         conn = sqlite3.connect(str(db_path), timeout=float(timeout_s))

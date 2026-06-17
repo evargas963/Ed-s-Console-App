@@ -12,7 +12,7 @@ from calibration.canonical_enforcement import (
     CalibrationCanonicalViolationError,
     enforce_calibration_decision_log_only_1m,
 )
-from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
+from calibration.db_guard import require_canonical_db_target
 from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
 

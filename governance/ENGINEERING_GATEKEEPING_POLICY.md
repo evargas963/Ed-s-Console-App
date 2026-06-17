@@ -1,6 +1,10 @@
 # Engineering Gatekeeping Policy
 
-**Status:** Binding engineering operating policy  
+> **Binding authority:** [`CLAUDE.md`](../CLAUDE.md) § ENGINEERING GATEKEEPING (absorbed 2026-06-11). Agents must follow CLAUDE + `AGENTS.md`; this file is **reference detail and examples only** — not independent law.
+
+> **Body below:** Historical detail through § Status Language (dated 2026-05-09). **Do not** use dated GOVERNANCE/SYSTEM banners here for closure claims — use Tier A sign-off per `AGENTS.md` § Institutional sign-off contract.
+
+**Status:** Historical reference (superseded by CLAUDE.md § ENGINEERING GATEKEEPING)  
 **Created:** 2026-05-06  
 **Scope:** All code, data-plane, governance, model, calibration, and tooling changes  
 **Related references:** `governance/DERIVED_ANALYTICS_REGISTRY.md`, `docs/SCHWAB_FIELD_REFERENCE.md`, `schwab_field_inventory/schwab_field_dictionary.csv`  

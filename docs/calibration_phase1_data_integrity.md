@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/calibration_phase1_data_integrity.md`.
+
 # Phase 1 — Data integrity audit
 
 **Purpose:** Establish whether the SQLite feature store is fit for institutional calibration before trusting any threshold or decision-metrics.

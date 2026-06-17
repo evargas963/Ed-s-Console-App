@@ -1,14 +1,25 @@
-"""V4 Deliverables 17–18 — metrics JSON + O-XX validator."""
+"""V4 Deliverables 17–18 — metrics JSON + O-XX validator + register slice merge."""
 
 from __future__ import annotations
 
+import csv
 import json
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tools.schwab_coverage_v4_metrics import compute_full_metrics
-from tools.schwab_oxx_validator import validate_register_messages
+from tools.schwab_oxx_validator import validate_register_messages, validate_replaced_perf_bindings
+from tools.stream_revert_v4_register_and_sync_perf import (
+    export_register_baseline,
+    is_canonical_v4_register,
+    merge_register_slices,
+    site_key,
+    update_register_meta_if_canonical,
+)
+from tools.schwab_universal_coverage_scanner_v3.register import REGISTER_COLUMNS, RegisterRow
 
 
 def _op_with_narrative(oxx: str = "O-77") -> str:
@@ -210,6 +221,8 @@ def test_oxx_validator_subprocess(tmp_path: Path) -> None:
             str(reg),
             "--operator-register",
             str(op),
+            "--perf-dir",
+            str(tmp_path / "empty_perf"),
         ],
         cwd=Path(__file__).resolve().parents[1],
         capture_output=True,
@@ -217,3 +230,221 @@ def test_oxx_validator_subprocess(tmp_path: Path) -> None:
         check=False,
     )
     assert proc.returncode == 0, proc.stderr
+
+
+def test_register_slice_merge_by_site_key(tmp_path: Path) -> None:
+    reg = tmp_path / "reg.csv"
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    base = RegisterRow(
+        register_id="rid1",
+        language="python",
+        path="server.py",
+        line=10,
+        col=0,
+        pattern_kind="TEXT_LINE_MARKET_TOKEN",
+        surface_form="bid",
+        tokens="bid",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    with reg.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(base.as_csv_dict())
+    merged = RegisterRow(
+        **{
+            **base.as_csv_dict(),
+            "disposition": "REPLACED",
+            "canonical_field_citation": "quotes.quote.bidPrice",
+            "notes": "slice merge test",
+        }
+    )
+    with (slice_dir / "server_py.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(merged.as_csv_dict())
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] == 1
+    row = next(csv.DictReader(reg.open(encoding="utf-8")))
+    assert row["disposition"] == "REPLACED"
+    assert row["canonical_field_citation"] == "quotes.quote.bidPrice"
+
+
+def test_merge_slices_does_not_update_global_meta_for_tmp_register(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    meta = tmp_path / "meta.json"
+    meta.write_text(
+        json.dumps(
+            {
+                "register_content_sha256": "deadbeef",
+                "register_rows_written": 999999,
+                "register_size_bytes": 123,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "tools.stream_revert_v4_register_and_sync_perf.META_PATH",
+        meta,
+    )
+    reg = tmp_path / "reg.csv"
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    base = RegisterRow(
+        register_id="rid1",
+        language="python",
+        path="server.py",
+        line=10,
+        col=0,
+        pattern_kind="TEXT_LINE_MARKET_TOKEN",
+        surface_form="bid",
+        tokens="bid",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    with reg.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(base.as_csv_dict())
+    merged = RegisterRow(
+        **{
+            **base.as_csv_dict(),
+            "disposition": "REPLACED",
+            "canonical_field_citation": "quotes.quote.bidPrice",
+        }
+    )
+    with (slice_dir / "server_py.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(merged.as_csv_dict())
+    assert not is_canonical_v4_register(reg)
+    merge_register_slices(reg, slice_dir, dry_run=False)
+    doc = json.loads(meta.read_text(encoding="utf-8"))
+    assert doc["register_rows_written"] == 999999
+    assert doc["register_content_sha256"] == "deadbeef"
+
+
+def test_update_register_meta_if_canonical_skips_tmp_register(tmp_path: Path) -> None:
+    reg = tmp_path / "reg.csv"
+    reg.write_text("register_id\nx\n", encoding="utf-8")
+    assert (
+        update_register_meta_if_canonical(reg, "abc", 3, 1) is False
+    )
+
+
+def test_export_register_baseline_filters_path_and_lines(tmp_path: Path) -> None:
+    reg = tmp_path / "reg.csv"
+    out = tmp_path / "base.csv"
+    rows = [
+        RegisterRow(
+            register_id="a",
+            language="python",
+            path="call_engine.py",
+            line=5,
+            col=0,
+            pattern_kind="T",
+            surface_form="",
+            tokens="",
+            csv_candidates="",
+            csv_lexical_topk_note="",
+            v2_trace="",
+        ),
+        RegisterRow(
+            register_id="b",
+            language="python",
+            path="call_engine.py",
+            line=999,
+            col=0,
+            pattern_kind="T",
+            surface_form="",
+            tokens="",
+            csv_candidates="",
+            csv_lexical_topk_note="",
+            v2_trace="",
+        ),
+    ]
+    with reg.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        for r in rows:
+            w.writerow(r.as_csv_dict())
+    n = export_register_baseline(reg, path="call_engine.py", line_lo=1, line_hi=100, out=out)
+    assert n == 1
+    exported = list(csv.DictReader(out.open(encoding="utf-8")))
+    assert len(exported) == 1
+    assert exported[0]["register_id"] == "a"
+
+
+def test_replaced_perf_binding_validator_pass_and_fail(tmp_path: Path) -> None:
+    op = tmp_path / "op.md"
+    op.write_text(_op_with_narrative("O-93"), encoding="utf-8")
+    perf_dir = tmp_path / "perf"
+    perf_dir.mkdir()
+    proof_name = "pp_v4b_test_leaf_provenance.json"
+    proof_path = perf_dir / proof_name
+    proof_path.write_text(
+        json.dumps(
+            {
+                "perf_proof_id": "pp_v4b_test_leaf_provenance",
+                "register_link": {"status": "bound", "replaced_register_ids": ["rid_ok"]},
+            }
+        ),
+        encoding="utf-8",
+    )
+    gov_ref = f"governance/artifacts/perf_proof/replacements/{proof_name}"
+
+    def _row(**kw: str) -> dict[str, str]:
+        d = RegisterRow(
+            register_id="rid_ok",
+            language="python",
+            path="p.py",
+            line=1,
+            col=0,
+            pattern_kind="T",
+            surface_form="",
+            tokens="",
+            csv_candidates="",
+            csv_lexical_topk_note="",
+            v2_trace="",
+            disposition="REPLACED",
+            canonical_field_citation="quotes.quote.lastPrice",
+            governed_ref=gov_ref,
+        ).as_csv_dict()
+        d.update(kw)
+        return d
+
+    reg_ok = tmp_path / "ok.csv"
+    with reg_ok.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(_row())
+
+    assert validate_replaced_perf_bindings(reg_ok, perf_dir) == []
+
+    reg_bad = tmp_path / "bad.csv"
+    with reg_bad.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(_row(governed_ref="", register_id="rid_bad"))
+
+    msgs = validate_replaced_perf_bindings(reg_bad, perf_dir)
+    assert any("governed_ref" in m for m in msgs)
+
+
+def test_site_key_normalizes_path() -> None:
+    k = site_key(
+        {
+            "path": "server.py",
+            "line": "1",
+            "col": "0",
+            "pattern_kind": "T",
+            "language": "python",
+        }
+    )
+    assert k == ("server.py", 1, 0, "T", "python")

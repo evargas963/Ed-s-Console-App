@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `IMPLEMENTATION_BLUEPRINT_V2.md`.
+
 # Implementation Blueprint v2
 
 **Status:** DRAFT - implementation planning  

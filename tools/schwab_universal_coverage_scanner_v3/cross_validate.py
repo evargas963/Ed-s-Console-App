@@ -18,7 +18,8 @@ def lines_with_vocab_hits(source: str, idx: SchwabCsvIndex) -> set[int]:
 
 
 def covered_lines(rows: Iterable[RegisterRow], path: str) -> set[int]:
-    return {r.line for r in rows if r.path == path and r.language == "python"}
+    """Lines already represented by any scanner row (AST, catch-all, cross-validator)."""
+    return {r.line for r in rows if r.path == path}
 
 
 def cross_validate_python_file(

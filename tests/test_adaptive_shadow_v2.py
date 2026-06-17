@@ -43,10 +43,10 @@ def _insert_row(
           ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
           zone, vwap_side, nearest_above_dist, nearest_below_dist,
           regime_primary, vix_bucket, regime_confidence,
-          outcome_1c, outcome_3c, outcome_5c, outcome_8c, outcome_13c, outcome_15c, outcome_60c,
+          outcome_1c, outcome_5c, outcome_15c, outcome_60c,
           horizon_outcome_schema_version
         )
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             ticker,
@@ -64,9 +64,6 @@ def _insert_row(
             regime_primary,
             vix_bucket,
             regime_confidence,
-            "up",
-            "up",
-            "up",
             "up",
             "up",
             "up",

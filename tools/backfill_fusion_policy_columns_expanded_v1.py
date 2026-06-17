@@ -15,7 +15,6 @@ import argparse
 import json
 import sqlite3
 import sys
-import traceback
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -32,7 +31,10 @@ from ml_horizon import ML_HORIZON_SLUGS
 from signals import compute_fusion_policy_flat_for_replay
 from timeframe_config import CANONICAL_TIMEFRAME
 
-from tools.backfill_fusion_policy_columns_v1 import _classify_failure, _incomplete_fused_sql
+from tools.legacy.horizon_7.backfill_fusion_policy_columns_v1 import (
+    _classify_failure,
+    _incomplete_fused_sql,
+)
 
 
 def main() -> int:
@@ -56,11 +58,11 @@ def main() -> int:
     tf = CANONICAL_TIMEFRAME
     prior_n = STREAM_5M_LOOKBACK
     lstm_sub = (
-        f"(SELECT COUNT(*) FROM snapshots pr WHERE pr.ticker = snapshots.ticker "
-        f"AND pr.timeframe = ? AND pr.ts_utc < snapshots.ts_utc) >= ?"
+        "(SELECT COUNT(*) FROM snapshots pr WHERE pr.ticker = snapshots.ticker "
+        "AND pr.timeframe = ? AND pr.ts_utc < snapshots.ts_utc) >= ?"
     )
 
-    where_parts = [f"timeframe = ?", lstm_sub]
+    where_parts = ["timeframe = ?", lstm_sub]
     params_tail: list[Any] = [tf, tf, prior_n]
     if args.ticker:
         where_parts.append("ticker = ?")

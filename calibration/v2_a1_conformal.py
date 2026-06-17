@@ -15,9 +15,11 @@ from __future__ import annotations
 import math
 from typing import Any, Iterable
 
+from calibration.statistical_integrity import bucket_gate
 from calibration.v2_a1_calibration import (
     A1_CALIBRATION_AGGREGATE_HOLDOUT_MIN_SAMPLES,
     A1_CALIBRATION_PER_REGIME_MIN_SAMPLES,
+    axis_reliability_bucket_value,
 )
 
 A1_CONFORMAL_ARTIFACT_SCHEMA_VERSION = "1"
@@ -46,14 +48,16 @@ def build_a1_conformal_artifact(
     fit_rows = _usable_predictions(calibration_artifact.get("holdout_predictions") or [])
     eval_rows = _usable_predictions(evaluation_predictions if evaluation_predictions is not None else fit_rows)
     aggregate_gate = _sample_gate(len(fit_rows), min_holdout_samples, "O-24")
-    horizon = str(calibration_artifact.get("horizon") or "unknown")
+    horizon = calibration_artifact.get("horizon")
+    cal_run_id = calibration_artifact.get("calibration_run_id")
+    conformal_run_id = f"{cal_run_id}-conformal" if cal_run_id else None
     base = {
         "schema_version": A1_CONFORMAL_ARTIFACT_SCHEMA_VERSION,
-        "calibration_run_id": calibration_artifact.get("calibration_run_id"),
+        "calibration_run_id": cal_run_id,
         "calibration_window_id": calibration_artifact.get("calibration_window_id"),
-        "conformal_run_id": f"{calibration_artifact.get('calibration_run_id') or 'a1'}-conformal",
-        "module_id": calibration_artifact.get("module_id") or "A",
-        "expression_profile_id": calibration_artifact.get("expression_profile_id") or "A1",
+        "conformal_run_id": conformal_run_id,
+        "module_id": calibration_artifact.get("module_id"),
+        "expression_profile_id": calibration_artifact.get("expression_profile_id"),
         "horizon": horizon,
         "method": A1_CONFORMAL_METHOD,
         "nominal_coverage": float(nominal_coverage),
@@ -210,9 +214,9 @@ def _regime_coverage(
 ) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for axis in A1_CONFORMAL_REGIME_AXES:
-        values = sorted({str(row.get(axis) or "unknown") for row in rows})
+        values = sorted({axis_reliability_bucket_value(row.get(axis)) for row in rows})
         for value in values:
-            bucket = [row for row in rows if str(row.get(axis) or "unknown") == value]
+            bucket = [row for row in rows if axis_reliability_bucket_value(row.get(axis)) == value]
             gate = _sample_gate(len(bucket), A1_CALIBRATION_PER_REGIME_MIN_SAMPLES, "O-25")
             key = f"{axis}:{value}"
             entry = {
@@ -271,22 +275,13 @@ def _bounded_probability(value: float) -> float:
 
 
 def _sample_gate(n: int, min_required: int, operator_decision: str) -> dict[str, Any]:
-    return {
-        "n": int(n),
-        "min_required": int(min_required),
-        "sufficient_sample": int(n) >= int(min_required),
-        "status": "ok" if int(n) >= int(min_required) else "insufficient_sample",
-        "operator_decision": operator_decision,
-    }
+    return {**bucket_gate(n, min_required), "operator_decision": operator_decision}
 
 
 def _float_or_none(value: Any) -> float | None:
-    try:
-        if value is not None:
-            return float(value)
-    except (TypeError, ValueError):
-        return None
-    return None
+    from numeric_contract import float_finite_or_none
+
+    return float_finite_or_none(value)
 
 
 def _int_label_or_none(value: Any) -> int | None:

@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/issue19_canonical_timeframe_horizon_independence_audit.md`.
+
 # Issue 19 — Canonical timeframe + horizon independence audit
 
 **Date:** 2026-04-03  

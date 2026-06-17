@@ -11,6 +11,7 @@ from typing import Any
 
 from signal_types import SignalInput
 from timeframe_config import CANONICAL_TIMEFRAME
+from time_et import RTH_END_MINS
 
 
 def _positive_float_required(row: dict[str, Any], field: str) -> float:
@@ -60,4 +61,12 @@ def signal_input_from_snapshot_row_dict(row: dict[str, Any]) -> SignalInput:
             kw["refresh_ts_utc"] = float(ts)
         except (TypeError, ValueError):
             pass
+    if kw.get("mins_to_close") is None:
+        eh = kw.get("et_hour")
+        em = kw.get("et_minute")
+        if eh is not None and em is not None:
+            try:
+                kw["mins_to_close"] = max(0.0, float(RTH_END_MINS) - (int(eh) * 60 + int(em)))
+            except (TypeError, ValueError):
+                pass
     return SignalInput(**kw)

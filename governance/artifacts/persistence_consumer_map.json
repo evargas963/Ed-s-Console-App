@@ -1,0 +1,437 @@
+{
+  "schema_version": 1,
+  "generated_at": "stable",
+  "persistence_files": [
+    "db.py",
+    "calibration/writer.py"
+  ],
+  "writers": [
+    {
+      "writer_fn": "append_calibration_decision",
+      "file": "calibration/writer.py",
+      "line": 125,
+      "tables_written": [
+        "calibration_decision_log"
+      ],
+      "production_callers": [
+        "calibration/v2_live_logging.py"
+      ],
+      "read_consumers": {
+        "calibration_decision_log": [
+          "calibration/analyze_phase3.py",
+          "calibration/analyze_phase4.py",
+          "calibration/anchor_audit.py",
+          "calibration/backfill_outcomes.py",
+          "calibration/backfill_signal_layer_v1_bundle.py",
+          "calibration/canonical_1m_grid_scan.py",
+          "calibration/canonical_enforcement.py",
+          "calibration/daily_scoreboard.py",
+          "calibration/edge_discovery.py",
+          "calibration/edge_validation.py",
+          "calibration/fusion_temperature.py",
+          "calibration/legacy_report.py",
+          "calibration/payload_audit.py",
+          "calibration/run_production_accumulation_validation.py",
+          "calibration/schema.py",
+          "calibration/signal_layer_discrimination.py",
+          "calibration/v2_a1_calibration.py",
+          "calibration/v2_advisory_backfill.py",
+          "calibration/validate_logging.py",
+          "calibration/validate_logging_e2e.py",
+          "calibration/validate_outcome_join.py",
+          "calibration/writer.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB.set_schema_flag",
+      "file": "db.py",
+      "line": 841,
+      "tables_written": [
+        "ed_schema_flags"
+      ],
+      "production_callers": [
+        "bar_rehydration_issue19_v1.py",
+        "pin_neutral_outcome_repair_v1.py"
+      ],
+      "read_consumers": {
+        "ed_schema_flags": [
+          "db.py",
+          "distance_option_a_backfill_v1.py",
+          "normalized_training_sync.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB.upsert_confluence_quote_ticks",
+      "file": "db.py",
+      "line": 1320,
+      "tables_written": [
+        "confluence_quote_ticks"
+      ],
+      "production_callers": [
+        "server.py"
+      ],
+      "read_consumers": {
+        "confluence_quote_ticks": [
+          "backfill_snapshot_derived.py",
+          "db.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB.logging_universe_sync_panel_auto",
+      "file": "db.py",
+      "line": 1444,
+      "tables_written": [
+        "logging_universe"
+      ],
+      "production_callers": [
+        "server.py"
+      ],
+      "read_consumers": {
+        "logging_universe": [
+          "calibration/writer.py",
+          "db.py",
+          "scheduler_user_tickers.py",
+          "verification/daily_health.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB.logging_universe_sync_core",
+      "file": "db.py",
+      "line": 1511,
+      "tables_written": [
+        "logging_universe"
+      ],
+      "production_callers": [
+        "server.py"
+      ],
+      "read_consumers": {
+        "logging_universe": [
+          "calibration/writer.py",
+          "db.py",
+          "scheduler_user_tickers.py",
+          "verification/daily_health.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB.logging_universe_upsert_user_persisted",
+      "file": "db.py",
+      "line": 1535,
+      "tables_written": [
+        "logging_universe"
+      ],
+      "production_callers": [
+        "scheduler_user_tickers.py",
+        "server.py"
+      ],
+      "read_consumers": {
+        "logging_universe": [
+          "calibration/writer.py",
+          "db.py",
+          "scheduler_user_tickers.py",
+          "verification/daily_health.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB.logging_universe_upsert_pinned",
+      "file": "db.py",
+      "line": 1588,
+      "tables_written": [
+        "logging_universe"
+      ],
+      "production_callers": [
+        "server.py"
+      ],
+      "read_consumers": {
+        "logging_universe": [
+          "calibration/writer.py",
+          "db.py",
+          "scheduler_user_tickers.py",
+          "verification/daily_health.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB.logging_universe_record_eviction",
+      "file": "db.py",
+      "line": 1731,
+      "tables_written": [
+        "logging_universe_eviction_log"
+      ],
+      "production_callers": [
+        "server.py"
+      ],
+      "read_consumers": {
+        "logging_universe_eviction_log": [
+          "db.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB.logging_universe_migration_mark",
+      "file": "db.py",
+      "line": 1863,
+      "tables_written": [
+        "logging_universe_migration_log"
+      ],
+      "production_callers": [
+        "db.py",
+        "scheduler_user_tickers.py",
+        "server.py"
+      ],
+      "read_consumers": {
+        "logging_universe_migration_log": [
+          "db.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB.logging_universe_import_legacy_json_tickers",
+      "file": "db.py",
+      "line": 1879,
+      "tables_written": [
+        "logging_universe"
+      ],
+      "production_callers": [],
+      "read_consumers": {
+        "logging_universe": [
+          "calibration/writer.py",
+          "db.py",
+          "scheduler_user_tickers.py",
+          "verification/daily_health.py"
+        ]
+      },
+      "status": "dormant"
+    },
+    {
+      "writer_fn": "EdDB.logging_universe_migrate_legacy_json_file",
+      "file": "db.py",
+      "line": 1930,
+      "tables_written": [
+        "logging_universe",
+        "logging_universe_migration_log"
+      ],
+      "production_callers": [
+        "server.py"
+      ],
+      "read_consumers": {
+        "logging_universe": [
+          "calibration/writer.py",
+          "db.py",
+          "scheduler_user_tickers.py",
+          "verification/daily_health.py"
+        ],
+        "logging_universe_migration_log": [
+          "db.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB.logging_universe_migrate_scheduler_companion_json",
+      "file": "db.py",
+      "line": 2061,
+      "tables_written": [
+        "logging_universe",
+        "logging_universe_migration_log"
+      ],
+      "production_callers": [
+        "scheduler_user_tickers.py"
+      ],
+      "read_consumers": {
+        "logging_universe": [
+          "calibration/writer.py",
+          "db.py",
+          "scheduler_user_tickers.py",
+          "verification/daily_health.py"
+        ],
+        "logging_universe_migration_log": [
+          "db.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB._migrate_horizon_bar_contract_v1",
+      "file": "db.py",
+      "line": 2689,
+      "tables_written": [
+        "ed_schema_flags"
+      ],
+      "production_callers": [
+        "db.py"
+      ],
+      "read_consumers": {
+        "ed_schema_flags": [
+          "db.py",
+          "distance_option_a_backfill_v1.py",
+          "normalized_training_sync.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB._migrate_outcome_anchor_bar_canonical",
+      "file": "db.py",
+      "line": 2759,
+      "tables_written": [
+        "ed_schema_flags"
+      ],
+      "production_callers": [
+        "db.py"
+      ],
+      "read_consumers": {
+        "ed_schema_flags": [
+          "db.py",
+          "distance_option_a_backfill_v1.py",
+          "normalized_training_sync.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB.insert_snapshot",
+      "file": "db.py",
+      "line": 2882,
+      "tables_written": [
+        "snapshots"
+      ],
+      "production_callers": [
+        "calibration/validate_logging_e2e.py",
+        "server.py"
+      ],
+      "read_consumers": {
+        "snapshots": [
+          "audit_model_readiness.py",
+          "backfill_flow_imbalance.py",
+          "backfill_snapshot_derived.py",
+          "calibration/analyze_phase3.py",
+          "calibration/backfill_et_clock_from_ts_utc_v1.py",
+          "calibration/canonical_1m_grid_scan.py",
+          "calibration/phase6_edge_discovery_governed_v1.py",
+          "calibration/repair_anchor_coverage_pad_v1.py",
+          "calibration/repair_canonical_1m_bars_for_outcomes.py",
+          "calibration/v2_advisory_backfill.py",
+          "db.py",
+          "live_vs_replay_validation.py",
+          "replay_bundle_coverage.py",
+          "similarity_feature_search.py",
+          "snapshot_normalizer.py",
+          "verification/daily_health.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB.upsert_1m_bars",
+      "file": "db.py",
+      "line": 2915,
+      "tables_written": [
+        "price_bars_1m"
+      ],
+      "production_callers": [
+        "bar_rehydration_issue19_v1.py",
+        "calibration/repair_anchor_coverage_pad_v1.py",
+        "calibration/repair_canonical_1m_bars_for_outcomes.py",
+        "db.py",
+        "server.py"
+      ],
+      "read_consumers": {
+        "price_bars_1m": [
+          "calibration/anchor_audit.py",
+          "calibration/audit_phase1.py",
+          "calibration/backfill_signal_layer_v1_bundle.py",
+          "calibration/canonical_1m_grid_scan.py",
+          "calibration/phase6_edge_discovery_governed_v1.py",
+          "calibration/repair_anchor_coverage_pad_v1.py",
+          "calibration/repair_canonical_1m_bars_for_outcomes.py",
+          "calibration/repair_canonical_1m_edge_carry_v1.py",
+          "calibration/repair_canonical_1m_interior_gaps_v1.py",
+          "db.py",
+          "features/signal_layer_v1.py",
+          "governance/mega4_traceable_inventory.py",
+          "horizon_outcomes.py",
+          "snapshot_normalizer.py",
+          "verification/daily_health.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB.log_level_cross",
+      "file": "db.py",
+      "line": 3877,
+      "tables_written": [
+        "level_crosses"
+      ],
+      "production_callers": [
+        "db.py",
+        "server.py"
+      ],
+      "read_consumers": {
+        "level_crosses": [
+          "db.py"
+        ]
+      },
+      "status": "live"
+    },
+    {
+      "writer_fn": "EdDB.log_model_accuracy",
+      "file": "db.py",
+      "line": 4091,
+      "tables_written": [
+        "model_accuracy"
+      ],
+      "production_callers": [
+        "db.py",
+        "server.py"
+      ],
+      "read_consumers": {
+        "model_accuracy": [
+          "db.py"
+        ]
+      },
+      "status": "live"
+    }
+  ],
+  "writer_candidates": [
+    {
+      "candidate_fn": "compute_calibration_rate_health",
+      "file": "calibration/writer.py",
+      "line": 453,
+      "production_callers": [
+        "server.py"
+      ],
+      "recommended_hook_file": "server.py"
+    },
+    {
+      "candidate_fn": "EdDB.compute_accuracy",
+      "file": "db.py",
+      "line": 4036,
+      "production_callers": [
+        "server.py"
+      ],
+      "recommended_hook_file": "server.py"
+    }
+  ],
+  "summary": {
+    "writer_count": 18,
+    "live_count": 17,
+    "dormant_count": 1,
+    "table_count": 10
+  }
+}

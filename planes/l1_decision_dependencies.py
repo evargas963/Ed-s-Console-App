@@ -32,6 +32,7 @@ L1_DECISION_SCALAR_KEYS: Final[tuple[str, ...]] = (
     "bid_disp",
     "ask_disp",
     "spread",
+    "spread_pts",
     "quote_ingestion",
     "ticker",
     "selected_exp",
@@ -132,6 +133,10 @@ L1_KNOWN_NON_MATERIAL_TOP_LEVEL_KEYS: Final[frozenset[str]] = frozenset(
         "_live_plane_fast_ts",
         "_quote_authority",
         "l1_live_overlay_applied",
+        "quote_mid",
+        "mid_source",
+        "spread_source",
+        "spread_pts_source",
     }
 )
 

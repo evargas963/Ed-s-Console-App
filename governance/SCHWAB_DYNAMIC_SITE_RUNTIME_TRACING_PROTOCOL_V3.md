@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `SCHWAB_DYNAMIC_SITE_RUNTIME_TRACING_PROTOCOL_V3.md`.
+
 # Schwab dynamic-site runtime tracing protocol (V3-D / Deliverable 15)
 
 **Status:** Protocol definition — instrumentation may ship after scanner; disposition may use static allow-list or refactor instead.  

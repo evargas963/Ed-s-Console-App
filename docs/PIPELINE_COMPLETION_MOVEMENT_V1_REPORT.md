@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/PIPELINE_COMPLETION_MOVEMENT_V1_REPORT.md`.
+
 # Pipeline completion report (movement inference + persistence)
 
 ## 1. Schema updates

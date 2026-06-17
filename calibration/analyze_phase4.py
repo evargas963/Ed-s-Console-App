@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sqlite3
 import sys
 import time
@@ -16,6 +17,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from arch_competition.atomic_io import write_json_file_atomically
+from calibration.analyze_phase3 import _load_json_col as _load_json
 from calibration.anchor_audit import snapshot_has_bar_anchor
 from calibration.canonical_enforcement import (
     CalibrationCanonicalViolationError,
@@ -39,23 +42,24 @@ from calibration.statistical_integrity import (
     verify_phase4_no_numeric_leak,
 )
 
+log = logging.getLogger(__name__)
+
 try:
     from db import configure_sqlite_connection
-except Exception:
+except ImportError as e:
+    log.warning(
+        "db.configure_sqlite_connection not available — using no-op stub: %s",
+        e,
+    )
 
     def configure_sqlite_connection(conn, **kwargs):
         pass
 
 from db import get_snapshot_sql
 
-
-def _load_json(s: str | None) -> dict[str, Any]:
-    if not s:
-        return {}
-    try:
-        return json.loads(s)
-    except Exception:
-        return {}
+# multi_horizon_decision._alignment_state producer vocabulary (uppercased at parse time).
+_MHAP_ALIGNED_STATES = frozenset({"FULLY_ALIGNED", "MOSTLY_ALIGNED"})
+_MHAP_MISALIGNED_STATES = frozenset({"CONTRADICTORY", "WEAK", "MIXED"})
 
 
 def _directional_pnl(call_signal: str, outcome: str, pts: float | None) -> float | None:
@@ -226,9 +230,9 @@ def analyze(db_path: Path) -> dict[str, Any]:
         if pts is None:
             continue
         p = float(pts)
-        if "ALIGNED" in st or st == "ALIGNED":
+        if st in _MHAP_ALIGNED_STATES:
             aligned_pts.append(p)
-        elif st and st != "UNKNOWN":
+        elif st in _MHAP_MISALIGNED_STATES:
             misaligned_pts.append(p)
     al_m, al_g = gated_mean(aligned_pts, MIN_N_MHAP_BUCKET)
     mis_m, mis_g = gated_mean(misaligned_pts, MIN_N_MHAP_BUCKET)
@@ -277,21 +281,31 @@ def analyze(db_path: Path) -> dict[str, Any]:
     ).fetchall()
     conn.close()
 
-    always_up = [float(r["outcome_5c_pts"]) for r in snap if r["outcome_5c_pts"] is not None]
-    always_down = [-abs(float(r["outcome_5c_pts"])) for r in snap if r["outcome_5c_pts"] is not None]
-    # naive MR: if below vwap, bet up (simplified)
+    # outcome_5c_pts is signed (forward_close - anchor_close); see horizon_outcomes producer.
+    always_up: list[float] = []
+    always_down: list[float] = []
     mr_pts: list[float] = []
     for r in snap:
-        vs = (r["vwap_side"] or "").lower()
         pts = r["outcome_5c_pts"]
-        oc = (r["outcome_5c"] or "").lower()
         if pts is None:
             continue
         p = float(pts)
-        if vs == "below" and oc in ("up", "down", "flat"):
-            mr_pts.append(p if oc == "up" else (-p if oc == "down" else 0.0))
-        elif vs == "above" and oc in ("up", "down", "flat"):
-            mr_pts.append(-p if oc == "down" else (p if oc == "up" else 0.0))
+        oc = r["outcome_5c"]
+        up_pnl = _directional_pnl("long", oc, p)
+        dn_pnl = _directional_pnl("short", oc, p)
+        if up_pnl is not None:
+            always_up.append(up_pnl)
+        if dn_pnl is not None:
+            always_down.append(dn_pnl)
+        vs = (r["vwap_side"] or "").strip().lower()
+        if vs == "below":
+            mr = _directional_pnl("long", oc, p)
+        elif vs == "above":
+            mr = _directional_pnl("short", oc, p)
+        else:
+            mr = None
+        if mr is not None:
+            mr_pts.append(mr)
 
     up_m, up_g = gated_mean(always_up, MIN_N_BASELINE_COMPARISON)
     dn_m, dn_g = gated_mean(always_down, MIN_N_BASELINE_COMPARISON)
@@ -380,8 +394,7 @@ def main() -> int:
         print(json.dumps({"error": str(e), "binary_pass": False}))
         return 2
     outp = Path(__file__).resolve().parent.parent / "models" / "calibration_runs" / f"phase4_analysis_{int(time.time())}.json"
-    outp.parent.mkdir(parents=True, exist_ok=True)
-    outp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    write_json_file_atomically(outp, data, indent=2)
     print(
         json.dumps(
             {
@@ -391,7 +404,7 @@ def main() -> int:
             indent=2,
         )
     )
-    return 0
+    return 0 if data.get("statistical_integrity", {}).get("binary_pass") else 3
 
 
 if __name__ == "__main__":

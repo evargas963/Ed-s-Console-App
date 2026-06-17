@@ -20,7 +20,7 @@ from __future__ import annotations
 import math
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional
 
 import numpy as np
 
@@ -89,15 +89,21 @@ class MonteCarloOutput:
     assumptions:        dict  = field(default_factory=dict)
 
     def mc_feature_dict(self) -> dict[str, float | str]:
-        """Contract for fusion adjustment: numeric path features + bundle provenance (not Schwab quotes)."""
-        return {
-            "expected_move": float(self.expected_move or 0.0),
-            "volatility": float(self.volatility or 0.0),
-            "skew": float(self.skew or 0.0),
-            "tail_risk": float(self.tail_risk or 0.0),
-            "directional_bias": float(self.directional_bias or 0.0),
-            "source": "derived_mc_normalized",
-        }
+        """Contract for fusion adjustment: path features present on this run only (no fabricated zeros)."""
+        out: dict[str, float | str] = {"source": "derived_mc_normalized"}
+        for key, val in (
+            ("expected_move", self.expected_move),
+            ("volatility", self.volatility),
+            ("skew", self.skew),
+            ("tail_risk", self.tail_risk),
+            ("directional_bias", self.directional_bias),
+        ):
+            if val is not None:
+                try:
+                    out[key] = float(val)
+                except (TypeError, ValueError):
+                    pass
+        return out
 
 
 def _blend_sigma(iv, realized_vol, atr, spot):
@@ -156,8 +162,8 @@ def simulate(
     direction_threshold_pct: float = 0.0005,
     seed: Optional[int] = SEED,
     # v2 inputs
-    regime: str = "unknown",
-    regime_confidence: str = "low",
+    regime: Optional[str] = None,
+    regime_confidence: Optional[str] = None,
     realized_vol: Optional[float] = None,
     atr: Optional[float] = None,
     model_prob_up: Optional[float] = None,
@@ -186,14 +192,19 @@ def simulate(
     try:
         rng = np.random.default_rng(seed)
 
-        # Regime multiplier (applied to ALL sigma sources)
-        r_mult = REGIME_SIGMA_MULT.get(regime, 1.0)
+        # Regime multiplier (applied to ALL sigma sources); missing regime → baseline 1.0 (not "unknown")
+        if regime:
+            r_mult = REGIME_SIGMA_MULT.get(regime, 1.0)
+        else:
+            r_mult = 1.0
         if regime_confidence == "high":
             eff_mult = r_mult
         elif regime_confidence == "medium":
             eff_mult = 0.5 * r_mult + 0.5
-        else:
+        elif regime_confidence == "low":
             eff_mult = 0.25 * r_mult + 0.75
+        else:
+            eff_mult = r_mult
 
         # Determine sigma source: GARCH per-bar or flat blend
         use_garch = (garch_sigma_bars is not None and
@@ -328,7 +339,8 @@ def simulate(
         if prob_exceed_up is not None and prob_exceed_down is not None:
             tail_risk = float(max(prob_exceed_up, prob_exceed_down))
         elif prob_touch_upper is not None or prob_touch_lower is not None:
-            tail_risk = float(max(prob_touch_upper or 0.0, prob_touch_lower or 0.0))
+            _tail_parts = [p for p in (prob_touch_upper, prob_touch_lower) if p is not None]
+            tail_risk = float(max(_tail_parts)) if _tail_parts else None
         else:
             p95 = float(np.percentile(terminals, 95))
             p5 = float(np.percentile(terminals, 5))
@@ -354,12 +366,14 @@ def simulate(
             expected_move=round(expected_move, 6),
             volatility=round(volatility, 6),
             skew=round(skew, 6),
-            tail_risk=round(tail_risk, 6),
+            tail_risk=round(tail_risk, 6) if tail_risk is not None else None,
             directional_bias=round(dir_bias, 8),
             fallback_used=False, model_version="mc_v3_garch",
             assumptions={
                 "base_iv": round(iv, 4), "blended_sigma": round(base_sigma, 4),
-                "regime": regime, "regime_sigma_mult": round(eff_mult, 2),
+                "regime": regime,
+                "regime_confidence": regime_confidence,
+                "regime_sigma_mult": round(eff_mult, 2),
                 "scaled_sigma": round(scaled_sigma, 4),
                 "sigma_bar_avg": round(avg_sigma_bar, 6),
                 "per_bar_drift": round(per_bar_drift, 8),

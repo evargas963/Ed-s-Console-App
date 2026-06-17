@@ -6,7 +6,6 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Any
 
 from .a1_conformal_artifact_contract import current_pointer_path, is_eligible_for_current_pointer
 

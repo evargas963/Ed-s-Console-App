@@ -79,10 +79,7 @@ def main():
         samples_used=50,
         model_note="Stack test",
         timeframe_reads={},
-        up_prob_3c=0.58, down_prob_3c=0.24, flat_prob_3c=0.18,
         up_prob_5c=0.56, down_prob_5c=0.26, flat_prob_5c=0.18,
-        up_prob_8c=0.54, down_prob_8c=0.27, flat_prob_8c=0.19,
-        up_prob_13c=0.52, down_prob_13c=0.28, flat_prob_13c=0.20,
     )
 
     regime = SimpleNamespace(primary="trend_continuation", confidence="medium")

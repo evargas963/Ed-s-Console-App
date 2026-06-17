@@ -11,6 +11,7 @@ from calibration.v2_advisory_backfill import (
 )
 from calibration.v2_live_logging import (
     LIVE_ADVISORY_V2_DECISION_LOG_COLUMNS,
+    LIVE_ADVISORY_V2_SKIP_MISSING_DECISION_TS,
     LIVE_ADVISORY_V2_SKIP_NO_PAYLOAD,
     append_live_v2_calibration_decision,
 )
@@ -86,6 +87,33 @@ def test_live_v2_logging_inserts_single_row_with_v1_and_v2_metadata(tmp_path, mo
     assert payload["source"] == "live_tier_c_advisory"
     assert payload["adapter_version"] == ADVISORY_V2_ADAPTER_VERSION
     assert payload["v2_decision"]["authority"]["mode"] == "advisory_non_authoritative"
+
+
+def test_live_v2_logging_skips_when_refresh_ts_utc_missing(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    monkeypatch.setenv("ED_CALIBRATION_LOG", "1")
+    db_path, conn = _seed_db(tmp_path)
+    conn.close()
+    signal_output = _signal_output()
+    payload = dict(signal_output.calibration_payload)
+    payload["inp"] = replace(payload["inp"], refresh_ts_utc=None)
+
+    result = append_live_v2_calibration_decision(
+        db_path=db_path,
+        calibration_payload=payload,
+        v2_decision=_v2_decision(),
+    )
+
+    conn = sqlite3.connect(str(db_path))
+    n = conn.execute("SELECT COUNT(*) FROM calibration_decision_log").fetchone()[0]
+    conn.close()
+
+    assert result == {
+        "status": "skipped",
+        "reason": LIVE_ADVISORY_V2_SKIP_MISSING_DECISION_TS,
+    }
+    assert n == 0
 
 
 def test_live_v2_logging_skips_gracefully_without_signal_payload(tmp_path, monkeypatch):

@@ -1,5 +1,8 @@
 name: Schwab CSV First Guard
 
+# Per-change guard: diff CSV-first check + (on PR) diff-emission against pinned register.
+# D17 closure metrics (unreviewed_count == 0) live in schwab-v4-closure.yml — not here.
+
 on:
   pull_request:
   push:
@@ -18,7 +21,13 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Run Schwab CSV-first guard
+      - name: Install Schwab scanner dependencies (PR register generation)
+        if: github.event_name == 'pull_request'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Prepare PR diff for Schwab guards
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -27,7 +36,10 @@ jobs:
           else
             git diff HEAD~1..HEAD > /tmp/schwab_csv_first.diff
           fi
-          python tools/check_schwab_csv_first.py --diff-file /tmp/schwab_csv_first.diff
+
+      - name: Run Schwab CSV-first guard
+        shell: bash
+        run: python tools/check_schwab_csv_first.py --diff-file /tmp/schwab_csv_first.diff
 
       - name: Coherent Schwab meta vs scoreboard (committed artifacts)
         shell: bash
@@ -55,13 +67,12 @@ jobs:
           print("Committed meta/scoreboard register pin coherent", m_sha[:16])
           PY
 
-      # FOLLOW_UP: Schwab register pipeline — see OPEN_ITEMS.md (Schwab V4 Universal Coverage).
       - name: Generate V4 register (gitignored; pin in schwab_v4_register_build_meta.json)
+        if: github.event_name == 'pull_request'
         shell: bash
         run: |
           python -m tools.schwab_universal_coverage_scanner_v3 \
             --output governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv \
-            --max-files 400 \
             --embedding-mode mock
           python <<'PY'
           import csv, hashlib, json, pathlib, sys
@@ -82,52 +93,11 @@ jobs:
           print("V4 register pin OK", h[:16])
           PY
 
-      - name: Rebuild V4 scoreboard (D17 + register_build from current register/meta)
+      - name: V4 diff-emission register gate (PR 2)
+        if: github.event_name == 'pull_request'
         shell: bash
         run: |
-          python -m tools.schwab_v4_scoreboard
-
-      - name: Verify register file, meta, and scoreboard register_build SHA256 alignment
-        shell: bash
-        run: |
-          python <<'PY'
-          import csv, hashlib, json, pathlib, sys
-
-          reg = pathlib.Path("governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv")
-          meta = json.loads(
-              pathlib.Path("governance/artifacts/schwab_v4_register_build_meta.json").read_text(encoding="utf-8")
-          )
-          sb = json.loads(
-              pathlib.Path("governance/artifacts/schwab_v4_scoreboard.json").read_text(encoding="utf-8")
-          )
-          h = hashlib.sha256(reg.read_bytes()).hexdigest()
-          m_sha = meta.get("register_content_sha256")
-          s_sha = (sb.get("register_build") or {}).get("register_content_sha256")
-          if not (h == m_sha == s_sha):
-              print("SHA256 misalignment register/meta/scoreboard", h, m_sha, s_sha, file=sys.stderr)
-              sys.exit(1)
-          rep = sum(
-              1
-              for r in csv.DictReader(reg.open(newline="", encoding="utf-8"))
-              if (r.get("disposition") or "").strip() == "REPLACED"
-          )
-          rc = int((sb.get("d17") or {}).get("replaced_count", -1))
-          if rc != rep:
-              print("d17.replaced_count != CSV REPLACED row count", rc, rep, file=sys.stderr)
-              sys.exit(1)
-          print("triple SHA + replaced_count OK", h[:16], "replaced", rep)
-          PY
-
-      - name: Schwab V4 register O-XX validation
-        shell: bash
-        run: |
-          python -m tools.schwab_oxx_validator \
-            --register governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv \
-            --operator-register governance/OPERATOR_DECISION_REGISTER.md
-
-      - name: Schwab V4 closure metrics (non-zero exit if UNREVIEWED or bare GOVERNED_EXCEPTION)
-        shell: bash
-        run: |
-          python -m tools.schwab_coverage_v4_metrics \
-            --register governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv \
-            --operator-register governance/OPERATOR_DECISION_REGISTER.md
+          python tools/check_schwab_csv_first.py \
+            --diff-file /tmp/schwab_csv_first.diff \
+            --diff-emission-gate \
+            --register governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv

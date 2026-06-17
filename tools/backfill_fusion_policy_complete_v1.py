@@ -34,7 +34,11 @@ from ml_horizon import ML_HORIZON_SLUGS
 from signals import compute_fusion_policy_flat_for_replay
 from timeframe_config import CANONICAL_TIMEFRAME
 
-from tools.backfill_fusion_policy_columns_v1 import _incomplete_fused_sql
+from tools.legacy.horizon_7.backfill_fusion_policy_columns_v1 import _incomplete_fused_sql
+import logging
+
+log = logging.getLogger(__name__)
+
 
 
 def _sqlite_exec_retry(conn: sqlite3.Connection, sql: str, params: tuple, *, label: str = "") -> None:
@@ -137,8 +141,8 @@ def main() -> int:
     tf = CANONICAL_TIMEFRAME
     prior_n = STREAM_5M_LOOKBACK
     lstm_sub = (
-        f"(SELECT COUNT(*) FROM snapshots pr WHERE pr.ticker = snapshots.ticker "
-        f"AND pr.timeframe = ? AND pr.ts_utc < snapshots.ts_utc) >= ?"
+        "(SELECT COUNT(*) FROM snapshots pr WHERE pr.ticker = snapshots.ticker "
+        "AND pr.timeframe = ? AND pr.ts_utc < snapshots.ts_utc) >= ?"
     )
 
     conn = sqlite3.connect(str(args.db.resolve()))
@@ -154,7 +158,7 @@ def main() -> int:
         conn.close()
         return 0
 
-    where_parts = [f"timeframe = ?", lstm_sub]
+    where_parts = ["timeframe = ?", lstm_sub]
     params_tail: list[Any] = [tf, tf, prior_n]
     if args.ticker:
         where_parts.append("ticker = ?")
@@ -335,9 +339,8 @@ def main() -> int:
 
         try:
             conn.close()
-        except Exception:
-            pass
-
+        except Exception as e:
+            log.debug("conn close: %s", e, exc_info=True)
     print(json.dumps(summary, indent=2, default=str))
     return 0
 

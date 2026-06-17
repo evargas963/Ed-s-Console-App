@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `SCHWAB_REMEDIATION_SLICE_PLAN_V1.md`.
+
 # Schwab Remediation Slice Plan V1
 
 **Status:** System FAIL - closure roadmap active  

@@ -10,6 +10,7 @@ Endpoints:
   GET  /api/analytics/light       → L1 authoritative cache read (+ L0 overlay); full compute on cold miss / force; GET /api/diagnostics/l1
   GET  /api/analytics/light/stream → SSE: L1 payloads after authoritative builds (same as HTTP GET; no extra compute)
   GET  /api/analytics/state       → Tier C: full analytical MarketState (chain, exposures, fusion, DB, news)
+  POST /api/analytics/warm        → schedule Tier C refresh + optional ML artifact prewarm (UI-MAXIMIZE)
   GET  /api/state                 → legacy alias of Tier C (same payload as /api/analytics/state)
   GET  /api/expiries?ticker=SPY   → list of available expiry dates
   GET  /api/logger/status         → background logger status
@@ -38,13 +39,14 @@ import asyncio
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone
 from pathlib import Path
 from collections import OrderedDict, defaultdict
 from copy import deepcopy
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 from dataclasses import asdict
+
+from time_et import now_et, RTH_OPEN_MINS
 
 import html
 import hashlib
@@ -63,8 +65,80 @@ APP_DIR = str(Path(__file__).parent.resolve())
 sys.path.insert(0, APP_DIR)
 
 # ── Logging ──────────────────────────────────────────────────────────────────
-logging.basicConfig(level=logging.INFO)
+# Visual severity marker: WARNING / ERROR / CRITICAL get a bracket-tag prefix
+# (ANSI-colored on a TTY; plain ASCII otherwise) so operator-actionable events
+# stand out in the dense INFO/DEBUG console stream. Steady-state DEBUG/INFO
+# remain unmarked. The operator-flagged regression was post-LIVE-UI-A: charm/
+# IV/seq_len logs were correctly demoted to DEBUG, but the residual WARNINGs
+# then sat in the same visual stream as INFO — easy to miss.
+class _LevelMarkerFormatter(logging.Formatter):
+    _ANSI_BY_LEVEL = {
+        logging.WARNING:  "\033[33m[WARN]\033[0m ",   # yellow
+        logging.ERROR:    "\033[31m[ERR ]\033[0m ",   # red
+        logging.CRITICAL: "\033[1;31m[CRIT]\033[0m ", # bold red
+    }
+    _PLAIN_BY_LEVEL = {
+        logging.WARNING:  "[WARN] ",
+        logging.ERROR:    "[ERR ] ",
+        logging.CRITICAL: "[CRIT] ",
+    }
+
+    def __init__(self, fmt: str | None = None, *, use_ansi: bool = True) -> None:
+        super().__init__(fmt)
+        self.use_ansi = use_ansi
+
+    def format(self, record: logging.LogRecord) -> str:
+        table = self._ANSI_BY_LEVEL if self.use_ansi else self._PLAIN_BY_LEVEL
+        marker = table.get(record.levelno, "")
+        return marker + super().format(record)
+
+
+def _install_visual_severity_markers(level: int = logging.INFO) -> None:
+    """Replace any default root handlers with one that adds the level marker."""
+    use_ansi = bool(getattr(sys.stderr, "isatty", lambda: False)())
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        _LevelMarkerFormatter("%(levelname)s:%(name)s:%(message)s", use_ansi=use_ansi)
+    )
+    root = logging.getLogger()
+    for h in list(root.handlers):
+        root.removeHandler(h)
+    root.addHandler(handler)
+    root.setLevel(level)
+
+
+_install_visual_severity_markers(logging.INFO)
 log = logging.getLogger("ed_server")
+
+
+def _log_calibration_logging_state_at_boot() -> None:
+    """One-shot boot diagnostic: surface whether calibration writer is enabled.
+
+    Root cause of the 2026-04-12 → 2026-05-05 calibration_decision_log gap was the
+    writer being env-gated (ED_CALIBRATION_LOG default-OFF) with zero operator
+    visibility — silent return None on every call. Emit a clear WARNING (visible
+    via the level-marker formatter) at boot when the writer is disabled so the
+    operator never restarts into "writer silently dropping all rows" without
+    knowing it.
+    """
+    try:
+        from calibration.writer import calibration_logging_enabled
+    except ImportError:
+        log.warning(
+            "calibration writer import failed at boot — calibration_decision_log will be silent"
+        )
+        return
+    if calibration_logging_enabled():
+        log.info("calibration logging ENABLED (ED_CALIBRATION_LOG=on) — writer will persist decisions")
+    else:
+        log.warning(
+            "calibration logging DISABLED — ED_CALIBRATION_LOG not in {1,true,yes,on}; "
+            "calibration_decision_log writer will silently skip all rows. "
+            "Set ED_CALIBRATION_LOG=1 in .env to enable."
+        )
+
+
+_log_calibration_logging_state_at_boot()
 
 # ── Import all existing Ed Console modules (unchanged) ───────────────────────
 from config import build_config, DEFAULT_TICKER
@@ -75,8 +149,10 @@ from schwab_client import (
     safe_get_chain,
     safe_get_quote,
     safe_get_price_history,
+    SchwabAuthError,
 )
 from math_exposure import (
+    MISSING_GREEK_SENTINEL,
     _f,
     compute_exposures_by_strike,
     build_summary_rows,
@@ -85,15 +161,16 @@ from math_exposure import (
     session_bucket as _session_bucket,
     vix_bucket as _vix_bucket,
     classify_direction as _classify_direction,
-    compute_beta, compute_beta_residual, returns_from_candles,
     compute_expected_move_straddle, compute_expected_move_iv,
-    compute_em_progress, EM_STRADDLE_MULT,
-    compute_iv_skew, compute_realized_vol, compute_atr,
+    compute_em_progress, compute_iv_skew, compute_realized_vol, compute_atr,
     compute_iv_rank, compute_iv_percentile, compute_volatility_envelope,
     compute_garch_forecast, blend_garch_sigma,
     compute_iv_model_spread,
     compute_gamma_flip, compute_gamma_void_zones, compute_level_density,
-    compute_dealer_pressure_index, compute_hedging_flow_score,
+    compute_hvl, compute_max_pain, hvl_gamma_strength, max_pain_oi_strength,
+    pick_gamma_pin_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
+    aggregate_net_gex, total_gex_dollars_at_strike, total_gamma_raw_at_strike,
+    bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
     compute_gamma_gradient, compute_breakout_score,
     compute_pin_score, compute_vol_expansion_signal, compute_sweep_score,
     compute_sector_strength,
@@ -102,7 +179,6 @@ from math_exposure import (
     compute_smart_money_signal,
 )
 from math_snapshot_derive import derive_pressure_trend, derive_vwap_side
-from levels import to_display_rows, walls_to_df_rows, totals_to_df_rows
 from market_context import (
     fetch_market_context,
     fetch_price_levels,
@@ -113,14 +189,13 @@ from market_context import (
 from market_state import build_market_state, derive_zone
 from ml_horizon import PRIMARY_DECISION_HORIZONS, SECONDARY_SUPPORT_HORIZONS
 from realized_contract_eval import serialize_option_chain_for_eval, build_replay_context_payload
-from live_decision_bundle import stamp_decision_bundle, tick_triggers_coherent_refresh
+from live_decision_bundle import stamp_decision_bundle, tick_triggers_coherent_refresh, persist_stamped_decision
 from v2_decision import build_module_a_a1_decision
 from v2_decision.a1_conformal_artifact_attachment import attach_a1_conformal_artifact_to_ms_dict
 from v2_decision.a1_isotonic_calibration_attachment import attach_a1_isotonic_calibration_to_ms_dict
 
 try:
     from db import get_db
-    from signals import SignalInput, compute_signals
     _HAS_SIGNALS = True
 except Exception as e:
     _HAS_SIGNALS = False
@@ -224,6 +299,18 @@ CACHE_TTL = 5                     # seconds — default REST cache & idle SSE lo
 # Shorter intervals = fresher Right Now / WDS / Call at the cost of more Schwab API work.
 VIEWER_SSE_REFRESH_SEC: float = float(os.environ.get("ED_VIEWER_SSE_REFRESH_SEC", "1.0"))
 VIEWER_STATE_CACHE_TTL_SEC: float = float(os.environ.get("ED_VIEWER_STATE_CACHE_TTL_SEC", "1.0"))
+# UI-MAXIMIZE — panel warm list + binding SLA budgets (mirrored on /api/build + static ED_UI_MAXIMIZE_SLA_MS).
+UI_MAXIMIZE_PANEL_WARM_TICKERS: tuple[str, ...] = tuple(
+    t.strip().upper()
+    for t in os.environ.get("ED_UI_PANEL_WARM_TICKERS", "SPY,QQQ,IWM").split(",")
+    if t.strip()
+) or ("SPY", "QQQ", "IWM")
+UI_MAXIMIZE_WARM_STAGGER_SEC: float = float(os.environ.get("ED_UI_MAXIMIZE_WARM_STAGGER_SEC", "2.0"))
+UI_MAXIMIZE_SLA_MS: dict[str, int] = {
+    "first_quote": int(os.environ.get("ED_UI_SLA_FIRST_QUOTE_MS", "500")),
+    "fusion_cards_panel_warm": int(os.environ.get("ED_UI_SLA_FUSION_PANEL_MS", "2000")),
+    "fusion_cards_guest_cold": int(os.environ.get("ED_UI_SLA_FUSION_GUEST_MS", "15000")),
+}
 # Layer A: push in-memory live quote plane over SSE (no Schwab/DB) — sub-second feel vs analytical loop.
 LIVE_QUOTE_SSE_INTERVAL_SEC: float = float(os.environ.get("ED_LIVE_QUOTE_SSE_INTERVAL_SEC", "0.12"))
 
@@ -494,23 +581,42 @@ def _l1_put_thread_queue_notify(sk: tuple[str, str | None], env: dict) -> None:
                 return
 
 
-# /api/fast-quote uses its own pool: default executor is also used by SSE (N concurrent
-# _fetch_state) and tick coherent refresh — saturated pools would queue the lightweight quote.
-# Lazily created so repeated TestClient lifespans in the same process get a fresh pool after shutdown.
+# /api/fast-quote and /api/live/state use a dedicated quote-hot pool so Tier C / L1
+# route offloads cannot starve the price strip during ticker switches.
+_quote_hot_executor: Optional[ThreadPoolExecutor] = None
+_route_offload_executor: Optional[ThreadPoolExecutor] = None
+
+# Legacy name retained for call sites that still import the route pool.
 _fast_quote_executor: Optional[ThreadPoolExecutor] = None
 
 # Single worker: outcome backfill scans snapshots + bars — must not run on the hot _fetch_state path.
 _db_fill_outcomes_executor: Optional[ThreadPoolExecutor] = None
 
 
-def _get_fast_quote_executor() -> ThreadPoolExecutor:
-    global _fast_quote_executor
-    if _fast_quote_executor is None:
-        _fast_quote_executor = ThreadPoolExecutor(
-            max_workers=2,
-            thread_name_prefix="ed_fast_quote",
+def _get_quote_hot_executor() -> ThreadPoolExecutor:
+    """Tier A + fast-quote only — never queue behind Tier C JSON or L1 rebuilds."""
+    global _quote_hot_executor
+    if _quote_hot_executor is None:
+        _quote_hot_executor = ThreadPoolExecutor(
+            max_workers=4,
+            thread_name_prefix="ed_quote_hot",
         )
-    return _fast_quote_executor
+    return _quote_hot_executor
+
+
+def _get_route_offload_executor() -> ThreadPoolExecutor:
+    global _route_offload_executor
+    if _route_offload_executor is None:
+        _route_offload_executor = ThreadPoolExecutor(
+            max_workers=8,
+            thread_name_prefix="ed_route_offload",
+        )
+    return _route_offload_executor
+
+
+def _get_fast_quote_executor() -> ThreadPoolExecutor:
+    """Route-touch pool (Tier B/C JSON, streaming POST touch, L1 SSE subscribe)."""
+    return _get_route_offload_executor()
 
 
 def _get_db_fill_outcomes_executor() -> ThreadPoolExecutor:
@@ -523,18 +629,148 @@ def _get_db_fill_outcomes_executor() -> ThreadPoolExecutor:
     return _db_fill_outcomes_executor
 
 # Tier C — background _fetch_state only; HTTP handlers never await heavy work.
-_analytics_executor = ThreadPoolExecutor(
-    max_workers=4,
-    thread_name_prefix="ed_analytics_bg",
-)
+_analytics_executor: Optional[ThreadPoolExecutor] = None
+_analytics_bg_shutdown: bool = False
 _analytics_inflight: set[tuple] = set()
+_analytics_bg_fail_counts: dict[tuple, int] = {}
+_analytics_bg_last_error: dict[tuple, str] = {}
 _analytics_bg_lock = threading.Lock()
 _main_event_loop: Optional[asyncio.AbstractEventLoop] = None
+ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES = int(
+    os.environ.get("ED_ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES", "3")
+)
+
+
+def _get_analytics_executor() -> ThreadPoolExecutor:
+    global _analytics_executor
+    if _analytics_executor is None:
+        _analytics_executor = ThreadPoolExecutor(
+            max_workers=4,
+            thread_name_prefix="ed_analytics_bg",
+        )
+    return _analytics_executor
+
+
+def _startup_analytics_executor() -> None:
+    global _analytics_bg_shutdown
+    _analytics_bg_shutdown = False
+    _get_analytics_executor()
+
+
+def _shutdown_analytics_executor(*, wait: bool = True) -> None:
+    global _analytics_executor, _analytics_bg_shutdown
+    _analytics_bg_shutdown = True
+    with _analytics_bg_lock:
+        _analytics_inflight.clear()
+    ex = _analytics_executor
+    _analytics_executor = None
+    if ex is not None:
+        try:
+            ex.shutdown(wait=wait, cancel_futures=True)
+        except Exception as exc:
+            log.debug("analytics executor shutdown: %s", exc)
+
+
+def _analytics_executor_shutting_down() -> bool:
+    return _analytics_bg_shutdown
+
+
+def _submit_analytics_task(fn, *args, **kwargs):
+    if _analytics_bg_shutdown:
+        raise RuntimeError("analytics executor shutting down")
+    return _get_analytics_executor().submit(fn, *args, **kwargs)
 
 
 def _tier_c_inflight_key(ticker: str, expiry: Optional[str]) -> tuple:
     """Dedupe key for REST/SSE/tick refresh jobs (expiry None → '__auto__')."""
     return (ticker.upper().strip(), expiry if expiry is not None else "__auto__")
+
+
+def _invalidate_analytics_cache_after_bg_failures(
+    inflight_key: tuple,
+    ticker: str,
+    *,
+    reason: str,
+    failure_count: Optional[int] = None,
+    detail: str = "",
+) -> None:
+    """Mark cached Tier C payload stale after repeated background recompute failures.
+
+    Institutional rule: never drop the last good analytical bundle — serve stale with
+    an explicit operator-visible error instead of an empty pending shell.
+    """
+    t = ticker.upper().strip()
+    exp = inflight_key[1] if len(inflight_key) > 1 else "__auto__"
+    n_fail = (
+        failure_count
+        if failure_count is not None
+        else _analytics_bg_fail_counts.get(inflight_key, 0)
+    )
+    err_msg = (detail or _analytics_bg_last_error.get(inflight_key) or reason or "unknown").strip()
+    marked: list[tuple] = []
+    for key in list(_state_cache.keys()):
+        if not isinstance(key, tuple) or len(key) < 2 or key[0] != t:
+            continue
+        if exp != "__auto__" and key[1] != exp:
+            continue
+        ent = _state_cache.get(key)
+        if not ent or not isinstance(ent.get("ms_dict"), dict):
+            continue
+        md = dict(ent["ms_dict"])
+        md["state_error"] = "analytics_refresh_failed"
+        md["state_error_detail"] = (
+            f"Tier C refresh failed after {n_fail} attempt(s): {err_msg[:240]}"
+        )
+        md["analytics_last_error"] = err_msg[:500]
+        md["analytics_stale"] = True
+        md["analytics_refresh_in_progress"] = False
+        ent["ms_dict"] = md
+        marked.append(key)
+    if marked:
+        log.warning(
+            "analytics cache marked stale after bg failures ticker=%s exp=%s n=%s reason=%s keys=%s",
+            t,
+            exp,
+            n_fail,
+            reason,
+            marked,
+        )
+
+
+def _reset_analytics_bg_fail_count(inflight_key: tuple) -> None:
+    _analytics_bg_fail_counts.pop(inflight_key, None)
+    _analytics_bg_last_error.pop(inflight_key, None)
+
+
+def _record_analytics_bg_failure(
+    inflight_key: tuple,
+    ticker: str,
+    *,
+    reason: str,
+    detail: str = "",
+    token_invalid: bool = False,
+) -> None:
+    if detail:
+        _analytics_bg_last_error[inflight_key] = detail[:500]
+    n = _analytics_bg_fail_counts.get(inflight_key, 0) + 1
+    _analytics_bg_fail_counts[inflight_key] = n
+    exp = inflight_key[1] if len(inflight_key) > 1 and inflight_key[1] != "__auto__" else None
+    if token_invalid or n == 1:
+        _write_analytics_bg_error_shell(
+            ticker,
+            exp,
+            detail or reason,
+            token_invalid=token_invalid,
+        )
+    if n >= ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES:
+        _invalidate_analytics_cache_after_bg_failures(
+            inflight_key,
+            ticker,
+            reason=reason,
+            failure_count=n,
+            detail=detail,
+        )
+        _analytics_bg_fail_counts.pop(inflight_key, None)
 
 
 def _analytics_generated_ts(entry: dict) -> float:
@@ -562,7 +798,10 @@ def _attach_analytics_freshness_contract(
         gen_ts = _analytics_generated_ts(entry)
         age = max(0.0, now - gen_ts) if gen_ts > 0 else 0.0
         ver = int(entry.get("analytics_version", 0))
-        stale = bool(sse_live or (age >= ttl))
+        # Operator-facing stale = bundle age exceeded TTL or explicit error — NOT merely
+        # "SSE viewer connected" (that schedules refresh via need_refresh, not untrustworthy).
+        refresh_due = bool(sse_live or (age >= ttl))
+        stale = bool(age >= ttl) or bool(md.get("state_error"))
         iso = None
         if gen_ts > 0:
             iso = datetime.fromtimestamp(gen_ts, tz=timezone.utc).isoformat()
@@ -570,6 +809,7 @@ def _attach_analytics_freshness_contract(
         md["analytics_generated_at"] = iso
         md["analytics_age_sec"] = round(age, 3)
         md["analytics_stale"] = stale
+        md["analytics_refresh_due"] = refresh_due
         md["analytics_refresh_in_progress"] = bool(in_prog)
     else:
         md["analytics_version"] = 0
@@ -577,6 +817,9 @@ def _attach_analytics_freshness_contract(
         md["analytics_age_sec"] = None
         md["analytics_stale"] = True
         md["analytics_refresh_in_progress"] = bool(in_prog)
+        last_err = _analytics_bg_last_error.get(inflight_key)
+        if last_err:
+            md["analytics_last_error"] = last_err
 
 
 def _schedule_analytics_recompute(
@@ -589,7 +832,11 @@ def _schedule_analytics_recompute(
     Run _fetch_state in a thread pool; broadcast full snapshot on success.
     Dedupes identical (ticker, expiry|__auto__) jobs.
     """
+    if _analytics_bg_shutdown:
+        return
     with _analytics_bg_lock:
+        if _analytics_bg_shutdown:
+            return
         if inflight_key in _analytics_inflight:
             log.debug("analytics refresh already in flight %s", inflight_key)
             return
@@ -599,24 +846,57 @@ def _schedule_analytics_recompute(
         try:
             result = _fetch_state(ticker, expiry, update_source=update_source)
             if result:
+                _reset_analytics_bg_fail_count(inflight_key)
                 _stamp_analytics_freshness_on_completed_fetch(result, ticker, inflight_key)
                 try:
                     from planes.l1_events import notify_l2_snapshot_ready
 
                     notify_l2_snapshot_ready(ticker, result.get("selected_exp"))
-                except Exception:
-                    pass
-            if result and _main_event_loop is not None:
+                except Exception as e:
+                    log.debug("notify_l2_snapshot_ready failed ticker=%s: %s", ticker, e, exc_info=True)
+            if result and _main_event_loop is not None and not _main_event_loop.is_closed():
                 asyncio.run_coroutine_threadsafe(_broadcast_snapshot(result), _main_event_loop)
-        except HTTPException:
+        except HTTPException as ex:
             log.warning("analytics bg HTTPException for %s", inflight_key)
+            detail, token_invalid = _analytics_bg_error_detail(ex)
+            _record_analytics_bg_failure(
+                inflight_key,
+                ticker,
+                reason="http_exception",
+                detail=detail,
+                token_invalid=token_invalid,
+            )
+        except SchwabAuthError as ex:
+            log.warning("analytics bg SchwabAuthError for %s: %s", inflight_key, ex)
+            _record_analytics_bg_failure(
+                inflight_key,
+                ticker,
+                reason="schwab_auth",
+                detail=str(ex),
+                token_invalid=True,
+            )
         except Exception as ex:
-            log.error("analytics bg failed %s: %s", inflight_key, ex, exc_info=True)
+            if isinstance(ex, RuntimeError) and "shutdown" in str(ex).lower():
+                log.debug("analytics bg skipped during shutdown %s", inflight_key)
+            else:
+                log.error("analytics bg failed %s: %s", inflight_key, ex, exc_info=True)
+                detail, token_invalid = _analytics_bg_error_detail(ex)
+                _record_analytics_bg_failure(
+                    inflight_key,
+                    ticker,
+                    reason="generic_exception",
+                    detail=detail,
+                    token_invalid=token_invalid,
+                )
         finally:
             with _analytics_bg_lock:
                 _analytics_inflight.discard(inflight_key)
 
-    _analytics_executor.submit(_work)
+    try:
+        _submit_analytics_task(_work)
+    except RuntimeError:
+        with _analytics_bg_lock:
+            _analytics_inflight.discard(inflight_key)
 
 
 def _stamp_analytics_freshness_on_completed_fetch(
@@ -656,6 +936,77 @@ def _any_sse_viewer_for_ticker(ticker: str) -> bool:
         return any(tk == t and n > 0 for (tk, _), n in _sse_subscribers.items())
 
 
+def _analytics_bg_error_detail(exc: BaseException) -> tuple[str, bool]:
+    """Normalize bg failure text + whether this is a Schwab auth failure."""
+    if isinstance(exc, SchwabAuthError):
+        return (str(exc)[:500], True)
+    if isinstance(exc, HTTPException):
+        detail = exc.detail
+        if isinstance(detail, dict):
+            msg = str(
+                detail.get("remediation")
+                or detail.get("message")
+                or detail.get("error")
+                or detail
+            )
+            token_invalid = detail.get("error") == "token_invalid"
+            return (msg[:500], token_invalid)
+        msg = str(detail or exc)
+        token_invalid = "token" in msg.lower() and (
+            "invalid" in msg.lower() or "revoked" in msg.lower() or "expired" in msg.lower()
+        )
+        return (msg[:500], token_invalid)
+    msg = str(exc)
+    from schwab_client import _is_token_error
+
+    return (msg[:500], _is_token_error(exc))
+
+
+def _write_analytics_bg_error_shell(
+    ticker: str,
+    expiry: Optional[str],
+    detail: str,
+    *,
+    token_invalid: bool = False,
+) -> None:
+    """Cold-cache Tier C: persist operator-visible error instead of endless empty pending shell."""
+    t = ticker.upper().strip()
+    _, existing_key = _latest_cached_ms_and_key_for_ticker(t)
+    if existing_key is not None:
+        return
+    exp = expiry if expiry is not None else "__auth_error__"
+    ck = (t, exp)
+    now = time.time()
+    rem = "Schwab auth failed — run: python reauth_schwab.py --manual"
+    err_text = rem if token_invalid else (detail or "Tier C refresh failed")
+    md = _minimal_analytics_pending_dict(t, expiry)
+    md["analytics_pending_shell"] = False
+    md["state_error"] = "token_invalid" if token_invalid else "analytics_refresh_failed"
+    md["state_error_detail"] = err_text[:500]
+    md["analytics_last_error"] = (detail or err_text)[:500]
+    md["analytics_stale"] = True
+    md["analytics_refresh_in_progress"] = False
+    if token_invalid:
+        md["error"] = "token_invalid"
+        md["remediation"] = rem
+    md["call_signal"] = "wait"
+    md["fusion_available"] = False
+    md["mhap_rows"] = []
+    _lmp.merge_into_state(md, t)
+    _state_cache[ck] = {
+        "ts": now,
+        "generated_at": now,
+        "analytics_version": 0,
+        "ms_dict": md,
+        "pcr_val": None,
+        "spot_f": md.get("spot"),
+        "vix": None,
+        "price_levels": None,
+        "pl_date": "",
+        "pl_mono": None,
+    }
+
+
 def _minimal_analytics_pending_dict(ticker: str, expiry: Optional[str]) -> dict:
     """Empty Tier C shell when no cache — client keeps Tier A DOM until SSE/REST delivers full bundle."""
     t = ticker.upper().strip()
@@ -674,6 +1025,219 @@ def _minimal_analytics_pending_dict(ticker: str, expiry: Optional[str]) -> dict:
         "_pipeline_ms": 0,
         "_endpoint": "/api/analytics/state",
     }
+
+
+def _exposure_dataclass_rows_to_dict(rows) -> list[dict]:
+    out: list[dict] = []
+    for row in rows or []:
+        try:
+            out.append(asdict(row))
+        except TypeError:
+            if isinstance(row, dict):
+                out.append(dict(row))
+    return out
+
+
+def _float_key_level(v) -> Optional[float]:
+    try:
+        return round(float(v), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def _publish_progressive_tier_c_cache(
+    *,
+    ticker: str,
+    cache_key: tuple,
+    inflight_key: tuple,
+    selected_exp: str,
+    expiries: list[str],
+    today_str: str,
+    spot_f: float,
+    bid,
+    ask,
+    session_label: str,
+    rows,
+    walls,
+    totals,
+    consensus_summary,
+    exposures,
+    gamma_flip,
+    gamma_voids,
+    hvl,
+    max_pain,
+    charm_net,
+    charm_dir,
+    charm_toward,
+    pcr_val,
+    kl_expiry_source: str,
+    quote_spread_pts,
+    quote_spread_source: str,
+    update_source: Optional[str],
+) -> None:
+    """
+    After chain + exposures: publish a non-pending Tier C cache entry so REST/SSE
+    can render expiries, key levels, and exposure tables while ML/fusion completes.
+    """
+    prev_ent = _state_cache.get(cache_key) or {}
+    prev_md = prev_ent.get("ms_dict") if isinstance(prev_ent.get("ms_dict"), dict) else {}
+    if prev_md and not prev_md.get("analytics_pending_shell"):
+        if prev_md.get("mhap_rows") and prev_md.get("fusion_available"):
+            return
+
+    t = ticker.upper().strip()
+    w0 = walls[0] if walls else None
+    cs = consensus_summary
+    now = time.time()
+
+    md: dict[str, Any] = {
+        "_tier": "C_analytics",
+        "analytics_pending_shell": False,
+        "analytics_partial_tier_c": True,
+        "analytics_refresh_in_progress": True,
+        "ticker": t,
+        "selected_exp": selected_exp,
+        "expiries": [e for e in expiries if e >= today_str],
+        "spot": spot_f,
+        "spot_disp": f"{spot_f:.2f}",
+        "bid": bid,
+        "ask": ask,
+        "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
+        "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
+        "session_label": session_label,
+        "summary_rows": _exposure_dataclass_rows_to_dict(rows),
+        "walls": _exposure_dataclass_rows_to_dict(walls),
+        "totals_rows": _exposure_dataclass_rows_to_dict(totals),
+        "pcr_val": pcr_val,
+        "charm_net": charm_net,
+        "charm_direction": charm_dir,
+        "charm_drift_toward": charm_toward,
+        "kl_expiry_source": kl_expiry_source,
+        "kl_gamma_flip": _float_key_level(gamma_flip),
+        "kl_gamma_voids": gamma_voids or [],
+        "kl_hvl": _float_key_level(hvl),
+        "kl_max_pain": _float_key_level(max_pain),
+        "kl_call_gamma_wall": _float_key_level(getattr(w0, "call_gamma_wall", None)),
+        "kl_put_gamma_wall": _float_key_level(getattr(w0, "put_gamma_wall", None)),
+        "kl_gamma_inflection": _float_key_level(getattr(cs, "gamma_inflection", None)),
+        "kl_call_delta_wall": _float_key_level(getattr(w0, "call_delta_wall", None)),
+        "kl_put_delta_wall": _float_key_level(getattr(w0, "put_delta_wall", None)),
+        "kl_delta_inflection": _float_key_level(getattr(cs, "delta_inflection", None)),
+        "kl_call_oi_wall": _float_key_level(getattr(w0, "call_oi_wall", None)),
+        "kl_put_oi_wall": _float_key_level(getattr(w0, "put_oi_wall", None)),
+        "kl_gamma_pin": _float_key_level(getattr(cs, "gamma_pin", None)),
+        "kl_oi_center": _float_key_level(getattr(cs, "oi_center", None)),
+        "kl_metrics_dollarized": bool(exposures and exposures_have_dollar_gex(exposures)),
+        "spread": quote_spread_pts,
+        "spread_source": quote_spread_source,
+        "fusion_available": False,
+        "call_signal": "wait",
+        "call_conviction": "low",
+        "dominant_dir": "flat",
+        "mhap_rows": list(prev_md.get("mhap_rows") or []),
+        "state_error": None,
+        "_server_build_ts": now,
+        "_pipeline_ms": 0,
+        "_endpoint": "/api/analytics/state",
+    }
+    if update_source is not None:
+        md["_update_source"] = update_source
+    _lmp.merge_into_state(md, t)
+
+    _state_cache[cache_key] = {
+        "ts": now,
+        "generated_at": now,
+        "analytics_version": int(prev_ent.get("analytics_version", 0)),
+        "ms_dict": md,
+        "pcr_val": pcr_val,
+        "spot_f": spot_f,
+        "vix": prev_ent.get("vix"),
+        "price_levels": prev_ent.get("price_levels"),
+        "pl_date": prev_ent.get("pl_date", ""),
+        "pl_mono": prev_ent.get("pl_mono"),
+    }
+
+    if _main_event_loop is not None and not _main_event_loop.is_closed():
+        payload = dict(md)
+        sse_live = _sse_subscribers.get(cache_key, 0) > 0
+        _attach_analytics_freshness_contract(
+            payload,
+            data_cache_key=cache_key,
+            entry=_state_cache.get(cache_key),
+            now=now,
+            sse_live=sse_live,
+            inflight_key=inflight_key,
+        )
+        try:
+            asyncio.run_coroutine_threadsafe(_broadcast_snapshot(payload), _main_event_loop)
+        except Exception as e:
+            log.debug("progressive tier C broadcast failed ticker=%s: %s", t, e, exc_info=True)
+
+
+def _prewarm_inference_models_worker(ticker: str) -> None:
+    """Disk → in-memory ML registry load (all primary horizons); no inference."""
+    try:
+        from ml_predict import prewarm_inference_models_for_ticker
+
+        prewarm_inference_models_for_ticker(ticker)
+    except Exception as ex:
+        log.debug("inference prewarm failed ticker=%s: %s", ticker, ex, exc_info=True)
+
+
+def _schedule_analytics_warm(
+    ticker: str,
+    expiry: Optional[str] = None,
+    update_source: str = "client_warm",
+    *,
+    prewarm_models: bool = True,
+) -> dict[str, Any]:
+    """UI-MAXIMIZE: queue Tier C recompute + optional model registry prewarm."""
+    t = ticker.upper().strip()
+    inflight_key = _tier_c_inflight_key(t, expiry)
+    if prewarm_models and not _analytics_bg_shutdown:
+        try:
+            _submit_analytics_task(_prewarm_inference_models_worker, t)
+        except RuntimeError:
+            pass
+    _schedule_analytics_recompute(inflight_key, t, expiry, update_source)
+    return {
+        "ok": True,
+        "ticker": t,
+        "expiry": expiry,
+        "scheduled_refresh": True,
+        "prewarm_models": bool(prewarm_models),
+        "update_source": update_source,
+    }
+
+
+def _schedule_startup_analytics_warm() -> None:
+    """Cold start: warm SPY/QQQ/IWM Tier C (+ model prewarm) before logger hammers Schwab."""
+    tickers = UI_MAXIMIZE_PANEL_WARM_TICKERS
+    stagger = max(0.0, UI_MAXIMIZE_WARM_STAGGER_SEC)
+
+    def _warm_after_delay(ticker: str, delay_sec: float) -> None:
+        if delay_sec > 0:
+            time.sleep(delay_sec)
+        try:
+            _schedule_analytics_warm(ticker, None, "startup_warm", prewarm_models=True)
+            log.info("UI-MAXIMIZE startup warm scheduled for %s", ticker)
+        except Exception as e:
+            log.warning("startup Tier C warm scheduling failed %s: %s", ticker, e)
+
+    if _analytics_bg_shutdown or os.environ.get("ED_DISABLE_STARTUP_ANALYTICS_WARM", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return
+
+    for i, t in enumerate(tickers):
+        try:
+            _submit_analytics_task(_warm_after_delay, t, i * stagger)
+        except RuntimeError:
+            break
+    log.info("UI-MAXIMIZE startup warm queue: %s stagger=%ss", tickers, stagger)
 
 
 def _sse_viewer_cache_ttl(ticker: str, expiry: Optional[str]) -> float:
@@ -697,6 +1261,93 @@ def _evict_old_expiry_entries(ticker: str, keep_expiry: Optional[str]) -> None:
         del _state_cache[k]
 
 
+def _plane_fast_quote_has_spot(row: dict | None) -> bool:
+    if not row or not isinstance(row, dict):
+        return False
+    spot = row.get("spot")
+    if spot is None:
+        return False
+    try:
+        return float(spot) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _stale_fast_quote_carried_forward(prev: dict, tkr: str) -> dict:
+    out = dict(prev)
+    qsd = dict(out.get("quote_source_detail") or {})
+    qsd["carried_forward"] = True
+    qsd["schwab_auth_degraded"] = True
+    out["quote_source_detail"] = qsd
+    out["fast_generation_id"] = _lmp.next_fast_generation(tkr)
+    return out
+
+
+def _schwab_auth_http_unavailable(he: HTTPException) -> bool:
+    if he.status_code not in (401, 503):
+        return False
+    detail = str(he.detail or "").lower()
+    return "schwab auth" in detail or "token" in detail
+
+
+def _fast_quote_token_invalid_payload(detail: str) -> dict:
+    return {
+        "error": "token_invalid",
+        "detail": detail or "Schwab auth unavailable.",
+        "message": "Schwab authentication failed. Token missing, expired, or invalid.",
+        "remediation": "Run: python reauth_schwab.py --manual",
+    }
+
+
+def _record_rest_fast_quote_with_auth_fallback(
+    tkr: str, prev: dict | None, quote_ingestion: str
+) -> dict:
+    """REST fast quote; on Schwab auth failure serve last plane row when spot is present."""
+    from schwab_client import SchwabAuthError, _is_token_error, _schwab_auth_latched, _raise_schwab_auth_error
+
+    if _schwab_auth_latched():
+        if _plane_fast_quote_has_spot(prev):
+            log.warning(
+                "fast_quote auth latched ticker=%s — serving carried-forward plane quote",
+                tkr,
+            )
+            return _stale_fast_quote_carried_forward(prev, tkr)
+        raise SchwabAuthError("Schwab auth latched — fast quote withheld (no plane cache)")
+
+    try:
+        out = _build_rest_fast_quote_payload(tkr, quote_ingestion)
+        _lmp.record_quote(tkr, out)
+        return out
+    except HTTPException as he:
+        if not _schwab_auth_http_unavailable(he):
+            raise
+        try:
+            _raise_schwab_auth_error(Exception(str(he.detail)))
+        except SchwabAuthError:
+            pass
+        if _plane_fast_quote_has_spot(prev):
+            log.warning(
+                "fast_quote Schwab client unavailable ticker=%s — serving carried-forward plane quote",
+                tkr,
+            )
+            return _stale_fast_quote_carried_forward(prev, tkr)
+        raise SchwabAuthError(str(he.detail)) from he
+    except Exception as e:
+        if not (_is_token_error(e) or isinstance(e, SchwabAuthError)):
+            raise
+        try:
+            _raise_schwab_auth_error(e)
+        except SchwabAuthError:
+            pass
+        if _plane_fast_quote_has_spot(prev):
+            log.warning(
+                "fast_quote REST auth failed ticker=%s — serving carried-forward plane quote",
+                tkr,
+            )
+            return _stale_fast_quote_carried_forward(prev, tkr)
+        raise
+
+
 def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
     """Schwab REST quote → plane-shaped dict (does not record)."""
     t0 = time.perf_counter()
@@ -707,9 +1358,9 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
     t_sess0 = time.perf_counter()
     with _cached_mkt_ctx_lock:
         _cmc = _cached_mkt_ctx
-    session_label = getattr(_cmc, "session_label", "") if _cmc is not None else ""
-    if not (session_label or "").strip():
-        session_label = "Closed"
+    session_label = getattr(_cmc, "session_label", None) if _cmc is not None else None
+    if session_label is not None and not str(session_label).strip():
+        session_label = None
     t_sess1 = time.perf_counter()
     quote_attempts = 0
 
@@ -725,53 +1376,26 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
     q_json = q_resp.json()
     t_parse0 = time.perf_counter()
     _node = q_json.get(tkr.upper()) or q_json.get(tkr) or {}
-    _q = _node.get("quote") or {}
-    _ext = _node.get("extended") or {}
-    _reg = _node.get("regular") or {}
-    last = _safe_float_quote(_q.get("lastPrice"))
-    if last is None or last <= 0:
-        last = _safe_float_quote(_ext.get("lastPrice"))
-    if last is None or last <= 0:
-        last = _safe_float_quote(_reg.get("regularMarketLastPrice"))
-    mark = _safe_float_quote(_q.get("mark"))
-    if mark is None or mark <= 0:
-        mark = _safe_float_quote(_ext.get("mark"))
-    bid = _safe_float_quote(_q.get("bidPrice"))
-    if bid is None:
-        bid = _safe_float_quote(_ext.get("bidPrice"))
-    ask = _safe_float_quote(_q.get("askPrice"))
-    if ask is None:
-        ask = _safe_float_quote(_ext.get("askPrice"))
-    quote_time = _safe_float_quote(_q.get("quoteTime"))
-    if quote_time is None:
-        quote_time = _safe_float_quote(_ext.get("quoteTime"))
-    trade_time = _safe_float_quote(_q.get("tradeTime"))
-    if trade_time is None:
-        trade_time = _safe_float_quote(_ext.get("tradeTime"))
-    if trade_time is None:
-        trade_time = _safe_float_quote(_reg.get("regularMarketTradeTime"))
-    spot_source = "lastPrice" if last and last > 0 else ("mark" if mark and mark > 0 else None)
-    spot = last if spot_source == "lastPrice" else (mark if spot_source == "mark" else None)
-    try:
-        spot_f = float(spot) if spot and float(spot) > 0 else None
-    except (TypeError, ValueError):
-        spot_f = None
+    pq = _parse_quote_node_session_fields(_node)
+    spot_f = pq["spot"]
+    spot_source = pq["spot_source"]
+    bid = pq["bid"]
+    ask = pq["ask"]
+    quote_mid = pq["quote_mid"]
+    mid_source = pq["mid_source"]
     spread_frac = None
     spread_pts = None
-    quote_mid: float | None = None
-    mid_source: str | None = None
     try:
-        if mark is not None and mark > 0:
-            quote_mid = float(mark)
-            mid_source = "schwab_quote_mark"
         if quote_mid is not None and quote_mid > 0 and bid is not None and ask is not None:
             bf, af = float(bid), float(ask)
             spread_frac = (af - bf) / quote_mid
             spread_pts = round(af - bf, 4)
+            if spread_pts is not None and spread_pts < 0.0:
+                spread_pts = None
     except (TypeError, ValueError):
         pass
     t_parse1 = time.perf_counter()
-    quote_ts = quote_time or trade_time
+    quote_ts = pq["quote_ts"]
     server_received_ts = time.time()
     total_ms = (time.perf_counter() - t0) * 1000.0
     log.info(
@@ -799,6 +1423,7 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
         "quote_mid": quote_mid,
         "mid_source": mid_source,
         "spread": spread_frac,
+        "spread_semantic": "fraction",
         "spread_pts": spread_pts,
         "spread_source": (
             "derived_bid_ask_mid_fraction"
@@ -839,27 +1464,38 @@ def _fetch_fast_quote_payload(ticker: str) -> dict:
     prev = _lmp.get_quote(tkr)
 
     if auth == "streaming":
-        if prev and prev.get("quote_ingestion") == "schwab_streaming_level_one":
+        try:
+            from order_flow_streaming import streaming_l1_cache_usable
+        except ImportError:
+            streaming_l1_cache_usable = None  # type: ignore[misc, assignment]
+        if (
+            streaming_l1_cache_usable is not None
+            and prev
+            and prev.get("quote_ingestion") == "schwab_streaming_level_one"
+            and streaming_l1_cache_usable(tkr)
+        ):
             return dict(prev)
         if prev and prev.get("quote_ingestion") == "rest_bootstrap_pending_stream":
             return dict(prev)
-        out = _build_rest_fast_quote_payload(tkr, "rest_bootstrap_pending_stream")
-        _lmp.record_quote(tkr, out)
-        return out
+        if prev and prev.get("quote_ingestion") == "schwab_streaming_level_one":
+            return _record_rest_fast_quote_with_auth_fallback(
+                tkr, prev, "rest_fallback_explicit"
+            )
+        return _record_rest_fast_quote_with_auth_fallback(
+            tkr, prev, "rest_bootstrap_pending_stream"
+        )
 
     if auth == "rest_fallback_explicit":
-        out = _build_rest_fast_quote_payload(tkr, "rest_fallback_explicit")
-        _lmp.record_quote(tkr, out)
-        return out
+        return _record_rest_fast_quote_with_auth_fallback(
+            tkr, prev, "rest_fallback_explicit"
+        )
 
     if auth == "rest_mismatch":
-        out = _build_rest_fast_quote_payload(tkr, "rest_ticker_not_streamed")
-        _lmp.record_quote(tkr, out)
-        return out
+        return _record_rest_fast_quote_with_auth_fallback(
+            tkr, prev, "rest_ticker_not_streamed"
+        )
 
-    out = _build_rest_fast_quote_payload(tkr, "rest_fast_quote")
-    _lmp.record_quote(tkr, out)
-    return out
+    return _record_rest_fast_quote_with_auth_fallback(tkr, prev, "rest_fast_quote")
 
 
 async def _broadcast_snapshot(data: dict) -> None:
@@ -1019,6 +1655,7 @@ def _on_tick_broadcast_sync(symbol: str, main_loop: asyncio.AbstractEventLoop) -
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Market session boundaries (Eastern, minutes-since-midnight)
+# RTH_OPEN_MINS — single authority in time_et.py (STACK-WIRE-3)
 RTH_CLOSE_MINS:      int   = 960    # 4:00 PM ET  (used for mins_to_close calc)
 PRE_MARKET_MINS:     int   = 540    # 9:00 AM ET  (logger session buffer start)
 LOGGER_BUFFER_MINS:  int   = 990    # 4:30 PM ET  (logger session buffer end)
@@ -1031,6 +1668,12 @@ MARKET_CLOSE_HOUR:   float = 16.0   # 4:00 PM ET (used for hours-remaining calc)
 # Canonical timeframe: 1m. See timeframe_config.py for CANONICAL_TIMEFRAME.
 CANDLE_5M_SECONDS:   int   = 300    # 5-minute bar period (derived context)
 CANDLE_1M_SECONDS:   int   = 60     # 1-minute bar period (canonical)
+# Re-seed the in-memory 1m grid from Schwab pricehistory (canonical OHLCV leaf
+# pricehistory.candles[]) whenever the last completed bar is older than this gap.
+# Root cause (2026-06-11): seeding ran once per server lifetime, so background-logged
+# tickers (visited ~1×/15min) built ~6%-density tick grids — fill_outcomes could not
+# find forward bars at +1/+5/+15/+60m and the daily scoreboard never scored them.
+CANDLE_RESEED_GAP_SECONDS: float = 180.0  # 3 missed canonical bars → grid is stale
 
 # IV tracker
 IV_TRACKER_MAX_READINGS: int   = 6      # readings before direction is meaningful
@@ -1065,6 +1708,9 @@ PARITY_RESID_MIN:    float = 0.10   # ignore residuals smaller than 10 cents
 
 # Accuracy history display limit
 ACCURACY_HISTORY_LIMIT: int = 50    # rows returned by get_accuracy_history
+RECENT_CROSSES_DISPLAY_LIMIT: int = 5  # level-cross events in operator UI
+STATE_ERROR_DETAIL_MAX_CHARS: int = 120  # truncate exception detail strings for UI / log carry
+PRICE_LEVELS_CACHE_SEC: int = 15  # intraday VWAP refresh (process-local)
 # Builds OHLC bars from spot price ticks. Server polls every ~30s, so:
 #   5-min bars = ~10 ticks per bar
 #   1-min bars = ~2 ticks per bar
@@ -1072,17 +1718,18 @@ ACCURACY_HISTORY_LIMIT: int = 50    # rows returned by get_accuracy_history
 # ─────────────────────────────────────────────────────────────────────────────
 from math_exposure import CANDLE_5M_MAX_BARS, CANDLE_1M_MAX_BARS
 from micro_structure import Candle
-from timeframe_config import CANONICAL_TIMEFRAME, DERIVED_TIMEFRAME
+from timeframe_config import CANONICAL_TIMEFRAME
 
 class _CandleAccumulator:
     """Accumulate spot ticks into OHLCV candle bars."""
 
-    def __init__(self, bar_seconds: int, max_bars: int = 25):
+    def __init__(self, bar_seconds: int, max_bars: int):
         self.bar_seconds = bar_seconds
         self.max_bars = max_bars
         self._bars: dict[str, list[Candle]] = {}       # ticker -> completed bars
         self._current: dict[str, dict] = {}             # ticker -> {ts, o, h, l, c, v}
         self._prev_total_vol: dict[str, float] = {}    # ticker -> prior totalVolume for delta
+        self._bars_source: dict[str, str] = {}         # ticker -> provenance for VWAP path
 
     def _bar_start(self, epoch: float) -> float:
         """Round epoch down to bar boundary."""
@@ -1096,6 +1743,7 @@ class _CandleAccumulator:
         bar_ts = self._bar_start(ts)
         total_now = float(total_volume) if total_volume is not None else None
         prev = self._prev_total_vol.get(ticker)
+        vol_source = "schwab_quote_totalVolume_delta"
 
         # Compute volume delta; reset if value drops (new session)
         if total_now is not None and prev is not None:
@@ -1103,10 +1751,13 @@ class _CandleAccumulator:
             vol_delta = max(0.0, delta) if delta >= 0 else 0.0
             if delta < 0:
                 prev = None
+                vol_source = "schwab_quote_totalVolume_session_reset"
         else:
             vol_delta = None
         if total_now is not None:
             self._prev_total_vol[ticker] = total_now
+        if ticker not in self._bars_source or self._bars_source[ticker] != "schwab_pricehistory":
+            self._bars_source[ticker] = vol_source
 
         if ticker not in self._bars:
             self._bars[ticker] = []
@@ -1126,7 +1777,15 @@ class _CandleAccumulator:
                     self._bars[ticker] = self._bars[ticker][-self.max_bars:]
 
             # Start new bar (reset volume tracker for fresh delta on next tick)
-            self._current[ticker] = {"ts": bar_ts, "o": price, "h": price, "l": price, "c": price, "v": vol_delta}
+            self._current[ticker] = {
+                "ts": bar_ts,
+                "o": price,
+                "h": price,
+                "l": price,
+                "c": price,
+                "v": vol_delta,
+                "volume_source": vol_source,
+            }
         else:
             # Update current bar
             cur["h"] = max(cur["h"], price)
@@ -1134,10 +1793,15 @@ class _CandleAccumulator:
             cur["c"] = price
             if vol_delta is not None:
                 cur["v"] = (cur.get("v") or 0.0) + vol_delta
+            cur["volume_source"] = vol_source
 
     def get_bars(self, ticker: str) -> list[Candle]:
         """Return completed bars (not including the in-progress bar)."""
         return list(self._bars.get(ticker, []))
+
+    def get_bars_source(self, ticker: str) -> str:
+        """Provenance label for bars produced by this accumulator (VWAP / analytics)."""
+        return self._bars_source.get(ticker, "schwab_quote_totalVolume_delta")
 
     def seed(self, ticker: str, bars: list):
         """Seed completed bars from price history. Overwrites existing bars for this ticker."""
@@ -1149,8 +1813,15 @@ class _CandleAccumulator:
                 candles.append(b)
             elif isinstance(b, dict):
                 try:
+                    dt_raw = b.get("datetime")
+                    if dt_raw is None:
+                        continue
+                    dt_f = float(dt_raw)
+                    if dt_f <= 0:
+                        continue
+                    ts = dt_f / 1000.0 if dt_f > 1e10 else dt_f
                     candles.append(Candle(
-                        ts=float(b.get("datetime", 0)) / 1000.0 if b.get("datetime", 0) > 1e10 else float(b.get("datetime", 0)),
+                        ts=ts,
                         open=float(b["open"]),
                         high=float(b["high"]),
                         low=float(b["low"]),
@@ -1161,12 +1832,25 @@ class _CandleAccumulator:
                     continue
         if candles:
             self._bars[ticker] = candles[-self.max_bars:]
+            self._bars_source[ticker] = "schwab_pricehistory"
             # Set current bar from last candle so ticks extend properly
             last = candles[-1]
             self._current[ticker] = {
                 "ts": self._bar_start(last.ts),
                 "o": last.open, "h": last.high, "l": last.low, "c": last.close,
             }
+
+    def grid_stale(self, ticker: str, ts: float, gap_seconds: float) -> bool:
+        """True when the completed-bar grid is missing or has a gap vs ``ts``.
+
+        A stale grid means tick-built bars cannot represent the session (sparse
+        polling) and the canonical Schwab pricehistory leaf must re-seed it.
+        """
+        bars = self._bars.get(ticker)
+        if not bars:
+            return True
+        last_bar_end = float(bars[-1].ts) + float(self.bar_seconds)
+        return (float(ts) - last_bar_end) > float(gap_seconds)
 
     def has_bars(self, ticker: str) -> bool:
         """Return True if ticker has any completed bars."""
@@ -1281,6 +1965,7 @@ CORE_TICKERS:   list[str] = [
 ]
 LOG_INTERVAL:   int       = 30    # seconds — 12 tickers × 3 calls + 17 global ≈ 106/min
 STAGGER_SECS:   float     = 2.0  # seconds between each ticker fetch in a cycle
+LOGGER_STARTUP_DELAY_SEC: float = float(os.environ.get("ED_LOGGER_STARTUP_DELAY_SEC", "60"))
 RTH_ONLY:       bool      = True  # only log during RTH + 30min pre/post buffer
 
 # Issue 22 — persistent universe for non-core symbols (see logging_universe in EdDB).
@@ -1347,6 +2032,12 @@ def _user_persisted_enrollment_policy() -> dict:
 _TICKER_FILE = os.path.join(os.path.dirname(__file__), ".logger_tickers.json")
 _TICKER_ARCHIVE = _TICKER_FILE + ".migrated_issue22"
 
+# DB-WRITE-PATH-FIXES (d), 2026-05-31: import-time-defer guard. Counts how many times the
+# HEAVY DB-backed logging-universe load (migrations / sync_core / prune / panel-sync) has run.
+# The module-import path must NOT trigger it (that work belongs in the FastAPI lifespan); the
+# paired test asserts this counter is 0 immediately after `import server`.
+_LOGGING_UNIVERSE_DB_LOAD_COUNT = 0
+
 
 def _run_legacy_logger_json_migration(db) -> None:
     """Delegate to EdDB hardened migration (provably one-time, transactional)."""
@@ -1368,7 +2059,7 @@ def _load_persisted_tickers() -> list[str]:
     """Authoritative enrolled universe: CORE_TICKERS + logging_universe (pinned + user_persisted + panel_auto).
 
     ``panel_auto`` rows mirror ``market_context.py`` cross-panel quote symbols (excluding core duplicates)
-    so every name the app fetches for confluence UI also runs the persistent snapshot / 1m pipeline.
+    for enrollment tracking and thin ``confluence_quote_ticks`` logging — not full snapshot rotation.
 
     Distinct tickers appearing only in snapshots / normalized tables do not auto-enroll (Issue 22).
     ml_scheduler and train_all bulk paths use the same EdDB authority via scheduler_user_tickers.
@@ -1389,6 +2080,8 @@ def _load_persisted_tickers() -> list[str]:
             log.warning("fallback load .logger_tickers.json: %s", e)
         return tickers
     try:
+        global _LOGGING_UNIVERSE_DB_LOAD_COUNT
+        _LOGGING_UNIVERSE_DB_LOAD_COUNT += 1
         db = get_db()
         logging_universe_sync_wall_ts = time.time()
         _run_legacy_logger_json_migration(db)
@@ -1401,10 +2094,16 @@ def _load_persisted_tickers() -> list[str]:
             log.warning("Issue 22: logging_universe prune failed: %s", e)
         _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
         for row in db.logging_universe_list_rows():
-            if row.get("category") in ("user_persisted", "pinned", "panel_auto"):
+            if row.get("category") in ("user_persisted", "pinned"):
                 t = (row.get("ticker") or "").upper().strip()
                 if t and t not in tickers:
                     tickers.append(t)
+        try:
+            from scheduler_user_tickers import filter_tickers_for_background_logging
+
+            tickers = filter_tickers_for_background_logging(tickers, str(db.db_path))
+        except Exception as e:
+            log.warning("filter_tickers_for_background_logging: %s", e)
         log.info("Issue 22: loaded logging universe from DB — %d symbols", len(tickers))
         return tickers
     except Exception as e:
@@ -1425,11 +2124,12 @@ def _load_persisted_tickers() -> list[str]:
 
 
 def _hydrate_logger_tickers_from_db() -> None:
-    """Re-merge CORE + user_persisted + pinned + panel_auto from DB (startup / heal drift). Issue 22."""
-    global _logger_tickers
+    """Re-merge CORE + user_persisted + pinned from DB (startup / heal drift). Issue 22."""
+    global _logger_tickers, _LOGGING_UNIVERSE_DB_LOAD_COUNT
     if not _HAS_SIGNALS:
         return
     try:
+        _LOGGING_UNIVERSE_DB_LOAD_COUNT += 1
         db = get_db()
         logging_universe_sync_wall_ts = time.time()
         _run_legacy_logger_json_migration(db)
@@ -1443,16 +2143,29 @@ def _hydrate_logger_tickers_from_db() -> None:
         _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
         merged = list(CORE_TICKERS)
         for row in db.logging_universe_list_rows():
-            if row.get("category") in ("user_persisted", "pinned", "panel_auto"):
+            if row.get("category") in ("user_persisted", "pinned"):
                 t = (row.get("ticker") or "").upper().strip()
                 if t and t not in merged:
                     merged.append(t)
+        try:
+            from scheduler_user_tickers import filter_tickers_for_background_logging
+
+            merged = filter_tickers_for_background_logging(merged, str(db.db_path))
+        except Exception as e:
+            log.warning("filter_tickers_for_background_logging: %s", e)
         with _logger_lock:
             _logger_tickers = merged
     except Exception as e:
         log.warning("hydrate logger tickers from DB: %s", e)
 
-_logger_tickers:  list[str] = _load_persisted_tickers()
+# DB-WRITE-PATH-FIXES (d), 2026-05-31: do NOT run the heavy DB-backed logging-universe load
+# (migrations / sync_core / prune / panel-sync) on the module-import path. That work raced the
+# retrain write-lock and produced the slow init + the "db load failed" warning that dropped
+# pinned tickers. When signals/db are available, import-time init is core-only; the authoritative
+# universe is loaded in the FastAPI lifespan via start_logger() -> _hydrate_logger_tickers_from_db()
+# (server.py:_app_lifespan). The cheap JSON-file fallback (no DB) is retained for the degraded
+# no-signals path so its behavior is unchanged.
+_logger_tickers:  list[str] = list(CORE_TICKERS) if _HAS_SIGNALS else _load_persisted_tickers()
 _logger_stats:    dict      = {}  # ticker -> {last_logged, count, last_error}
 _accuracy_cache:  dict      = {}  # ticker -> {ts, results}
 ACCURACY_INTERVAL: int      = 600  # seconds between accuracy computations (~10 min)
@@ -1482,7 +2195,7 @@ def _is_loggable_session() -> bool:
     """
     if not RTH_ONLY:
         return True
-    et = datetime.now(ZoneInfo("America/New_York"))
+    et = now_et()
     mins = et.hour * 60 + et.minute
     return PRE_MARKET_MINS <= mins <= LOGGER_BUFFER_MINS
 
@@ -1506,8 +2219,13 @@ def _add_logger_ticker(ticker: str, *, enrollment_source: str = "ui_auto") -> bo
             if _HAS_SIGNALS:
                 try:
                     get_db().logging_universe_touch_seen(ticker, enrollment_touch_wall_ts)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug(
+                        "logging_universe_touch_seen failed ticker=%s: %s",
+                        ticker,
+                        e,
+                        exc_info=True,
+                    )
             return False
     if _HAS_SIGNALS and ticker not in CORE_TICKERS:
         try:
@@ -1584,9 +2302,34 @@ def _register_tracked_ticker(ticker: str, *, enrollment_source: str = "ui_auto")
         from scheduler_user_tickers import record_user_ticker
 
         record_user_ticker(t)
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("record_user_ticker failed ticker=%s: %s", t, e, exc_info=True)
     return added
+
+
+def _touch_tracked_ticker_view(ticker: str) -> None:
+    """VIEW-path last-seen touch — TICKER-PREVIEW-NO-ENROLL (operator 2026-05-31).
+
+    Merely looking up / viewing levels, quotes, or analytics for an arbitrary symbol must NOT
+    enroll it (no ``logging_universe`` row, no scheduler user-ticker file write) — enrollment
+    into the training roster is reserved for explicit track/pin actions (``/api/logger/add``,
+    ``/api/logger/pin``). For an ALREADY-enrolled ticker this refreshes ``last_seen`` (the same
+    update the old ``_register_tracked_ticker`` early-return branch did); for an un-enrolled
+    ticker it is a no-op and never writes. Safe to call from the offloaded SSE/async paths.
+    """
+    if not _HAS_SIGNALS:
+        return
+    t = (ticker or "").upper().strip()
+    if not t or len(t) > 10:
+        return
+    with _logger_lock:
+        enrolled = t in _logger_tickers
+    if not enrolled:
+        return
+    try:
+        get_db().logging_universe_touch_seen(t, time.time())
+    except Exception as e:
+        log.debug("view touch_seen failed ticker=%s: %s", t, e, exc_info=True)
 
 
 def _get_mkt_ctx(client, pcr=None, prev_pcr=None):
@@ -1633,7 +2376,63 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None):
     with _cached_mkt_ctx_lock:
         _cached_mkt_ctx = ctx
         _cached_mkt_ctx_ts = mkt_ctx_cache_eval_wall_ts
+    if _HAS_SIGNALS:
+        try:
+            from db import build_ts_et
+            from market_context import confluence_quote_rows_from_context
+            from time_et import now_et
+
+            _qrows = confluence_quote_rows_from_context(
+                ctx,
+                ts_utc=mkt_ctx_cache_eval_wall_ts,
+                ts_et=build_ts_et(now_et()),
+            )
+            if _qrows:
+                get_db().upsert_confluence_quote_ticks(_qrows)
+        except Exception as e:
+            log.debug("confluence_quote_ticks persist: %s", e, exc_info=True)
     return ctx
+
+
+def _ensure_mkt_ctx_confluence_complete(client, mkt_ctx, *, pcr=None, prev_pcr=None):
+    """One forced refresh when weighted_push fields are missing before snapshot persist."""
+    from market_context import missing_confluence_weighted_pushes, patch_context_confluence_from_quote_ticks
+
+    missing = missing_confluence_weighted_pushes(mkt_ctx)
+    if not missing:
+        return mkt_ctx
+    log.warning("Market context missing confluence fields %s — forcing refresh", missing)
+    global _cached_mkt_ctx_ts
+    with _cached_mkt_ctx_lock:
+        _cached_mkt_ctx_ts = 0.0
+    fresh = _get_mkt_ctx(client, pcr=pcr, prev_pcr=prev_pcr)
+    still = missing_confluence_weighted_pushes(fresh)
+    if still:
+        try:
+            from market_context import (
+                QQQ_TOP,
+                SPY_TOP,
+                IWM_SECTORS,
+                IWM_TOP_HOLDINGS,
+            )
+
+            tickers: set[str] = set()
+            for group in (SPY_TOP, QQQ_TOP, IWM_TOP_HOLDINGS):
+                tickers.update(sym for sym, _n, _w in group)
+            for sym, _n, _w in IWM_SECTORS:
+                tickers.add(sym)
+            chg_map = get_db().fetch_latest_confluence_quote_chg(sorted(tickers))
+            if chg_map:
+                patch_context_confluence_from_quote_ticks(fresh, chg_map)
+                still = missing_confluence_weighted_pushes(fresh)
+        except Exception as e:
+            log.debug("confluence_quote_ticks impute failed: %s", e, exc_info=True)
+    if still:
+        log.error(
+            "Confluence fields still missing after refresh: %s (qqq/spy/iwm weighted_push)",
+            still,
+        )
+    return fresh
 
 
 def _logger_fetch_and_log(ticker: str) -> str:
@@ -1647,12 +2446,15 @@ def _logger_fetch_and_log(ticker: str) -> str:
         if not _is_loggable_session():
             return "skipped:closed"
 
-        # Always run the logging fetch each logger cycle. Previously we skipped when the UI
-        # had recently stored a full ms_dict for this ticker (within LOG_INTERVAL). That
-        # suppressed most background inserts for the on-screen symbol (~1 row/minute) while
-        # other symbols (e.g. SPY first in cycle, rarely the focused ticker) kept ~30s cadence.
-        # Snapshots are append-only INSERTs; duplicate Schwab calls are the trade-off — watch
-        # rate limits if many tickers are viewed live.
+        try:
+            from scheduler_user_tickers import panel_auto_ticker_set
+
+            if ticker.upper() in panel_auto_ticker_set(str(get_db().db_path)):
+                return "skipped:confluence_quote_only"
+        except Exception as e:
+            log.debug("panel_auto logger skip check: %s", e, exc_info=True)
+
+        # Always run the logging fetch each logger cycle (append-only INSERTs).
 
         # Full pipeline fetch
         _fetch_state(ticker, expiry=None, log_only=True)
@@ -1668,13 +2470,18 @@ def _logger_fetch_and_log(ticker: str) -> str:
         if _HAS_SIGNALS:
             try:
                 get_db().logging_universe_touch_background_log(ticker, logger_cycle_touch_wall_ts)
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug(
+                    "logging_universe_touch_background_log failed ticker=%s: %s",
+                    ticker,
+                    e,
+                    exc_info=True,
+                )
 
         return "ok:fetch"
 
     except Exception as e:
-        err = str(e)[:120]
+        err = str(e)[:STATE_ERROR_DETAIL_MAX_CHARS]
         log.warning(f"Logger: {ticker} failed — {err}")
         with _logger_lock:
             _logger_stats.setdefault(ticker, {})
@@ -1698,17 +2505,21 @@ def _logger_loop():
     API budget: 17 (global) + 12×3 (per-ticker) = 53 calls / 30s ≈ 106/min
     Plus active UI ticker (if not in core): +6/min → ~112/min (limit: 120/min)
     """
-    global _logger_running
+    global _logger_running, _cached_mkt_ctx_ts
     log.info("Background multi-ticker logger started")
 
-    # Delay first cycle so server finishes startup; first HTTP request can init DB cleanly
-    time.sleep(10)
+    # Delay first cycle so startup warm + first UI request can finish Tier C without
+    # competing with 27-ticker logger _fetch_state storms (ED_LOGGER_STARTUP_DELAY_SEC).
+    time.sleep(LOGGER_STARTUP_DELAY_SEC)
 
     while _logger_running:
         cycle_start = time.monotonic()
 
         with _logger_lock:
             tickers_this_cycle = list(_logger_tickers)
+
+        with _cached_mkt_ctx_lock:
+            _cached_mkt_ctx_ts = 0.0
 
         log.info(f"Logger cycle: {len(tickers_this_cycle)} tickers — {tickers_this_cycle}")
 
@@ -1792,22 +2603,7 @@ def _ms_to_dict(ms) -> dict:
 # Trader-facing REST/SSE payload: primary decision horizons only (Issue 2 + tier contract).
 _TRADER_ACCURACY_HORIZONS_UI = frozenset(PRIMARY_DECISION_HORIZONS)
 _TRADER_UI_PRODUCT_HORIZONS = frozenset(PRIMARY_DECISION_HORIZONS)
-_TRADER_PAYLOAD_STRIP_HORIZON_KEYS = (
-    "up_prob_3c",
-    "down_prob_3c",
-    "flat_prob_3c",
-    "up_prob_8c",
-    "down_prob_8c",
-    "flat_prob_8c",
-    "up_prob_13c",
-    "down_prob_13c",
-    "flat_prob_13c",
-    "avg_3c_pts",
-    "avg_8c_pts",
-    "avg_13c_pts",
-    "median_3c_pts",
-)
-
+_PRIMARY_UI_HORIZON_MINUTES = frozenset(f"{int(s[:-1])}m" for s in PRIMARY_DECISION_HORIZONS)
 _TRADER_HIDDEN_BAR_HORIZONS = tuple(SECONDARY_SUPPORT_HORIZONS)
 
 
@@ -1845,11 +2641,19 @@ def _strip_trader_hidden_horizon_keys(ms_dict: dict) -> None:
     _scrub_mapping("fusion_policy_snapshot_cols")
 
 
+def _filter_horizon_prob_bars_primary_only(ms_dict: dict) -> None:
+    """Product UI keys only (1m/5m/15m/60m); drop legacy secondary bar keys if present."""
+    hpb = ms_dict.get("horizon_prob_bars")
+    if not isinstance(hpb, dict):
+        return
+    allow = _PRIMARY_UI_HORIZON_MINUTES
+    ms_dict["horizon_prob_bars"] = {k: v for k, v in hpb.items() if k in allow}
+
+
 def _apply_trader_horizon_contract(ms_dict: dict) -> None:
     """Strip legacy/non-product horizon fields from JSON sent to the browser."""
-    for _k in _TRADER_PAYLOAD_STRIP_HORIZON_KEYS:
-        ms_dict.pop(_k, None)
     _strip_trader_hidden_horizon_keys(ms_dict)
+    _filter_horizon_prob_bars_primary_only(ms_dict)
     _acc = ms_dict.get("accuracy")
     if isinstance(_acc, dict):
         _filt = {
@@ -1869,30 +2673,65 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
     """
     Small, UI-oriented bundle for decision surfaces (not a second truth).
 
-    - stack_runtime: fusion active, MC participation, coarse stack mode (FULL/PARTIAL/DEGRADED/INVALID)
+    - stack_runtime: fusion active, MC participation, coarse stack mode (FULL/INVALID)
     - stack_governance: architecture competition state from models/arch_state.json (when present)
     """
     try:
         from governed_stack_contract import classify_stack_health
     except Exception:
-        def classify_stack_health(*, fusion_available, mc_available, n_base_available):  # type: ignore
-            if not fusion_available or not mc_available:
+        def classify_stack_health(*, fusion_available, mc_available, n_ml_layers_available, unified_stack_team_ok=None):  # type: ignore
+            team_ok = unified_stack_team_ok
+            if team_ok is None:
+                team_ok = n_ml_layers_available >= 3 and fusion_available
+            if not team_ok or not fusion_available or not mc_available:
                 return "INVALID"
-            if n_base_available >= 3:
+            if n_ml_layers_available >= 3:
                 return "FULL"
-            if n_base_available >= 1:
-                return "PARTIAL"
-            return "DEGRADED"
+            return "INVALID"
 
-    fusion_ok = bool(ms_dict.get("fusion_available"))
+    # STACK-WIRE-4-CAND-MS-DICT-ADOPTION: tradability gate, not bare .available flag.
+    # fusion_available=True + canonical_provenance="canonical_forecast_missing" is a
+    # non-tradable split-brain state — surface it as fusion_active=False / stack_mode=INVALID.
+    from fusion_contract import is_ms_dict_fusion_authoritative
+    fusion_ok = is_ms_dict_fusion_authoritative(ms_dict)
     mc_ok = bool(ms_dict.get("mc_available"))
     xgb_ok = bool(ms_dict.get("xgb_available"))
     lstm_ok = bool(ms_dict.get("lstm_available"))
     trans_ok = bool(ms_dict.get("transformer_available"))
-    n_base = 0
+    n_ml_layers = 0
     for k in ("xgb_available", "lstm_available", "transformer_available"):
         if ms_dict.get(k):
-            n_base += 1
+            n_ml_layers += 1
+
+    from types import SimpleNamespace
+
+    from governed_stack_contract import unified_stack_team_can_authorize
+
+    def _layer_ns(layer: str):
+        probs = (ms_dict.get("ml_layer_probs") or {}).get(layer)
+        if isinstance(probs, dict) and probs.get("up") is not None:
+            return SimpleNamespace(
+                available=True,
+                prob_up=probs.get("up"),
+                prob_down=probs.get("down"),
+                prob_flat=probs.get("flat"),
+            )
+        avail = bool(ms_dict.get(f"{layer}_available"))
+        return SimpleNamespace(
+            available=avail,
+            prob_up=None,
+            prob_down=None,
+            prob_flat=None,
+        )
+
+    team_ok, team_reason = unified_stack_team_can_authorize(
+        xgb_out=_layer_ns("xgb"),
+        lstm_out=_layer_ns("lstm"),
+        transformer_out=_layer_ns("transformer"),
+        stack_probs=None,
+    )
+    ms_dict["unified_stack_team_ok"] = bool(team_ok)
+    ms_dict["unified_stack_team_reason"] = team_reason
 
     cm = ms_dict.get("fusion_contributing_models")
     if not isinstance(cm, list) or not cm:
@@ -1920,11 +2759,13 @@ def _attach_stack_runtime_and_governance(ms_dict: dict, *, ticker: str) -> None:
     ms_dict["stack_runtime"] = {
         "fusion_active": fusion_ok,
         "mc_participated": mc_ok,
-        "n_base_models_live": int(n_base),
+        "n_ml_layers_live": int(n_ml_layers),
+        "unified_stack_team_ok": bool(team_ok),
         "stack_mode": classify_stack_health(
             fusion_available=fusion_ok,
             mc_available=mc_ok,
-            n_base_available=n_base,
+            n_ml_layers_available=n_ml_layers,
+            unified_stack_team_ok=bool(team_ok),
         ),
         "contributing_models": cm,
     }
@@ -2065,6 +2906,38 @@ def _expiries_from_contracts(contracts: list) -> list[str]:
     return sorted(exps)
 
 
+def _filter_contracts_by_selected_expiry(
+    contracts: list,
+    selected_exp: str | None,
+) -> tuple[list[dict], str]:
+    """
+    Strict Schwab ``expirationDate`` slice for the selected expiry key.
+    No silent full-chain fallback (DFR-005 / OP-018).
+    """
+    exp_key = str(selected_exp or "")[:10]
+    if not exp_key or len(exp_key) != 10:
+        return [], "unavailable_missing_selected_expiry"
+    filtered = [
+        ct for ct in (contracts or [])
+        if str(ct.get("expirationDate") or "")[:10] == exp_key
+    ]
+    if not filtered:
+        return [], "unavailable_no_contracts_for_expiry"
+    return filtered, "schwab_expirationDate"
+
+
+def _kl_expiry_source_label(
+    *,
+    expiry_param: str | None,
+    slice_source: str,
+) -> str:
+    if slice_source != "schwab_expirationDate":
+        return slice_source
+    if expiry_param:
+        return "schwab_expirationDate_user"
+    return "schwab_expirationDate_default_nearest"
+
+
 def _selected_schwab_days_to_expiration(
     contracts: list,
     selected_exp: str | None,
@@ -2114,7 +2987,7 @@ def _snapshot_expiry_hours_from_schwab_dte(
 ) -> float | None:
     if schwab_dte is None:
         return None
-    market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
+    market_close = now_et.replace(hour=int(MARKET_CLOSE_HOUR), minute=0, second=0, microsecond=0)
     if schwab_dte == 0:
         secs = (market_close - now_et).total_seconds()
         return round(secs / 3600.0, 2) if secs > 0 else None
@@ -2153,7 +3026,7 @@ def _fetch_expiries_light(ticker: str) -> list[str]:
                         contracts_raw.append(_ct)
     contracts = [dict(ct) for ct in contracts_raw]
     expiries = _expiries_from_contracts(contracts)
-    today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    today = now_et().strftime("%Y-%m-%d")
     return [e for e in expiries if e >= today]
 
 
@@ -2161,7 +3034,7 @@ def _default_expiry(expiries: list[str], ticker: str = "?") -> Optional[str]:
     """Pick today's expiry if exists, else nearest future. Never returns a past date."""
     if not expiries:
         return None
-    today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    today = now_et().strftime("%Y-%m-%d")
     # Never return an expired date
     valid = [e for e in expiries if e >= today]
     if valid:
@@ -2189,6 +3062,90 @@ def _safe_float_quote(v) -> Optional[float]:
         return None
 
 
+def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
+    """
+    Canonical Schwab REST per-ticker quote node: quote → extended → regular fallbacks.
+    ``node`` is the ticker object from GET /quotes JSON (keys quote, extended, regular).
+    """
+    _q = node.get("quote") or {}
+    _ext = node.get("extended") or {}
+    _reg = node.get("regular") or {}
+    last = _safe_float_quote(_q.get("lastPrice"))
+    if last is None or last <= 0:
+        last = _safe_float_quote(_ext.get("lastPrice"))
+    if last is None or last <= 0:
+        last = _safe_float_quote(_reg.get("regularMarketLastPrice"))
+    mark = _safe_float_quote(_q.get("mark"))
+    if mark is None or mark <= 0:
+        mark = _safe_float_quote(_ext.get("mark"))
+    bid = _safe_float_quote(_q.get("bidPrice"))
+    if bid is None:
+        bid = _safe_float_quote(_ext.get("bidPrice"))
+    ask = _safe_float_quote(_q.get("askPrice"))
+    if ask is None:
+        ask = _safe_float_quote(_ext.get("askPrice"))
+    def _epoch_seconds(v: float | None) -> float | None:
+        # Schwab wire quoteTime/tradeTime are epoch MILLISECONDS; every downstream consumer
+        # (candle accumulators, fill_outcomes bar grid, as_of_ts_utc filters) expects seconds.
+        # 2026-06-09 regression: raw ms ticks built ms-grid bars in price_bars_1m, so the
+        # seconds-unit outcome filler matched zero bars and no snapshot got labeled all day.
+        return v / 1000.0 if v is not None and v > 1e10 else v
+
+    quote_time = _safe_float_quote(_q.get("quoteTime"))
+    if quote_time is None:
+        quote_time = _safe_float_quote(_ext.get("quoteTime"))
+    quote_time = _epoch_seconds(quote_time)
+    trade_time = _safe_float_quote(_q.get("tradeTime"))
+    if trade_time is None:
+        trade_time = _safe_float_quote(_ext.get("tradeTime"))
+    if trade_time is None:
+        trade_time = _safe_float_quote(_reg.get("regularMarketTradeTime"))
+    trade_time = _epoch_seconds(trade_time)
+    spot_source = "lastPrice" if last and last > 0 else ("mark" if mark and mark > 0 else None)
+    spot = last if spot_source == "lastPrice" else (mark if spot_source == "mark" else None)
+    try:
+        spot_f = float(spot) if spot and float(spot) > 0 else None
+    except (TypeError, ValueError):
+        spot_f = None
+    quote_mid: float | None = None
+    mid_source: str | None = None
+    if mark is not None and mark > 0:
+        quote_mid = float(mark)
+        mid_source = "schwab_quote_mark"
+    # Raw Schwab order-flow primitives (CSV-first: quotes.{SYM}.bidSize/askSize/lastSize/
+    # totalVolume). Persisted on the snapshot row so ablation can judge the primitives,
+    # not only derivations like spread / vol_oi_ratio. No engineered substitutes here.
+    bid_size = _safe_float_quote(_q.get("bidSize"))
+    if bid_size is None:
+        bid_size = _safe_float_quote(_ext.get("bidSize"))
+    ask_size = _safe_float_quote(_q.get("askSize"))
+    if ask_size is None:
+        ask_size = _safe_float_quote(_ext.get("askSize"))
+    last_size = _safe_float_quote(_q.get("lastSize"))
+    if last_size is None:
+        last_size = _safe_float_quote(_ext.get("lastSize"))
+    total_volume = _safe_float_quote(_q.get("totalVolume"))
+    if total_volume is None:
+        total_volume = _safe_float_quote(_ext.get("totalVolume"))
+    return {
+        "last": last,
+        "mark": mark,
+        "bid": bid,
+        "ask": ask,
+        "bid_size": bid_size,
+        "ask_size": ask_size,
+        "last_size": last_size,
+        "total_volume": total_volume,
+        "quote_time": quote_time,
+        "trade_time": trade_time,
+        "quote_ts": quote_time or trade_time,
+        "spot_source": spot_source,
+        "spot": spot_f,
+        "quote_mid": quote_mid,
+        "mid_source": mid_source,
+    }
+
+
 def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float | None:
     """
     Update and return REST-based cum_delta accumulator for ticker.
@@ -2198,7 +3155,7 @@ def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float 
     try:
         hour, minute = now_et.hour, now_et.minute
         mins = hour * 60 + minute
-        in_rth = 9 * 60 + 30 <= mins < 16 * 60 and now_et.weekday() < 5
+        in_rth = RTH_OPEN_MINS <= mins < RTH_CLOSE_MINS and now_et.weekday() < 5
         date_str = now_et.strftime("%Y-%m-%d")
         session_key = date_str if in_rth else f"{date_str}-premarket"
         if session_key != _rest_cum_delta_session:
@@ -2228,21 +3185,27 @@ def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float 
 # HELPER — compute VWAP from candle bars (seeded from price history)
 # Used as fallback when fetch_price_levels returns vwap=None (individual equities).
 # ─────────────────────────────────────────────────────────────────────────────
-def _compute_vwap_from_bars(bars: list) -> Optional[float]:
+def _compute_vwap_from_bars(
+    bars: list,
+    *,
+    source_bars: str = "schwab_quote_totalVolume_delta",
+) -> tuple[Optional[float], str]:
     """Compute VWAP = Σ(typical_price × volume) / Σ(volume) from completed bars.
-    Returns None if no bars have volume (live-tick-only bars carry no volume).
+
+    Returns (vwap, source_bars). ``source_bars`` documents Schwab leaf lineage
+    (pricehistory vs quote totalVolume delta per Day 1 OHLCV contract).
     """
     cum_tp_vol = 0.0
-    cum_vol    = 0.0
+    cum_vol = 0.0
     for b in bars:
         if b.volume is None or float(b.volume) <= 0:
             continue
         tp = (float(b.high) + float(b.low) + float(b.close)) / 3.0
         cum_tp_vol += tp * float(b.volume)
-        cum_vol    += float(b.volume)
+        cum_vol += float(b.volume)
     if cum_vol > 0:
-        return round(cum_tp_vol / cum_vol, 4)
-    return None
+        return round(cum_tp_vol / cum_vol, 4), source_bars
+    return None, source_bars
 
 
 # Per-ticker previous DPI normalized score (dealer pressure trend between refreshes)
@@ -2307,15 +3270,16 @@ def _l1_next_generation(key: tuple) -> int:
         prev = _l1_generation.get(key, 0)
         new_gen = prev + 1
         last = _l1_last_generation_seen.get(key)
-        if last is not None:
-            assert new_gen > last, (
+        if last is not None and new_gen <= last:
+            raise RuntimeError(
                 f"L1 generation regression or duplicate for scope {key!r}: "
                 f"next={new_gen} last_seen={last}"
             )
-        assert new_gen > prev, (
-            f"L1 generation non-monotonic increment for scope {key!r}: "
-            f"next={new_gen} prev={prev}"
-        )
+        if new_gen <= prev:
+            raise RuntimeError(
+                f"L1 generation non-monotonic increment for scope {key!r}: "
+                f"next={new_gen} prev={prev}"
+            )
         _l1_generation[key] = new_gen
         _l1_last_generation_seen[key] = new_gen
         _l1_instrumentation["l1_generation_assign_total"] = (
@@ -2790,43 +3754,39 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     tkr = ticker.upper().strip()
     sess = _derive_session()
     row = _lmp.get_quote(tkr)
-    client = get_client()
+    client = None
+    try:
+        client = get_client()
+    except HTTPException as he:
+        if not _plane_fast_quote_has_spot(row):
+            if _schwab_auth_http_unavailable(he):
+                return {
+                    "_tier": "A_live",
+                    "ticker": tkr,
+                    "selected_exp": expiry,
+                    "session_label": sess,
+                    "state_error": "token_invalid",
+                    "error": "token_invalid",
+                    "state_error_detail": str(he.detail or ""),
+                    "remediation": "Run: python reauth_schwab.py --manual",
+                    "_server_build_ts": time.time(),
+                    "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
+                    "_endpoint": "/api/live/state",
+                }
+            raise
     if (not row or row.get("spot") is None) and client:
         q_resp = _safe_get_quote_with_retry(client, tkr)
         if q_resp and q_resp.status_code == 200:
             q_json = q_resp.json()
             _node = q_json.get(tkr.upper()) or q_json.get(tkr) or {}
-            _q = _node.get("quote") or {}
-            _ext = _node.get("extended") or {}
-            _reg = _node.get("regular") or {}
-            pq_last = _safe_float_quote(_q.get("lastPrice"))
-            if pq_last is None or pq_last <= 0:
-                pq_last = _safe_float_quote(_ext.get("lastPrice"))
-            if pq_last is None or pq_last <= 0:
-                pq_last = _safe_float_quote(_reg.get("regularMarketLastPrice"))
-            pq_mark = _safe_float_quote(_q.get("mark"))
-            if pq_mark is None or pq_mark <= 0:
-                pq_mark = _safe_float_quote(_ext.get("mark"))
-            pq_bid = _safe_float_quote(_q.get("bidPrice"))
-            if pq_bid is None:
-                pq_bid = _safe_float_quote(_ext.get("bidPrice"))
-            pq_ask = _safe_float_quote(_q.get("askPrice"))
-            if pq_ask is None:
-                pq_ask = _safe_float_quote(_ext.get("askPrice"))
-            pq_quote_time = _safe_float_quote(_q.get("quoteTime"))
-            if pq_quote_time is None:
-                pq_quote_time = _safe_float_quote(_ext.get("quoteTime"))
-            pq_trade_time = _safe_float_quote(_q.get("tradeTime"))
-            if pq_trade_time is None:
-                pq_trade_time = _safe_float_quote(_ext.get("tradeTime"))
-            if pq_trade_time is None:
-                pq_trade_time = _safe_float_quote(_reg.get("regularMarketTradeTime"))
-            spot_source = "lastPrice" if pq_last and pq_last > 0 else ("mark" if pq_mark and pq_mark > 0 else None)
-            spot = pq_last if spot_source == "lastPrice" else (pq_mark if spot_source == "mark" else None)
-            bid, ask = pq_bid, pq_ask
+            pq = _parse_quote_node_session_fields(_node)
+            spot_source = pq["spot_source"]
+            spot = pq["spot"]
+            bid, ask = pq["bid"], pq["ask"]
+            pq_mark = pq["mark"]
             if spot and float(spot) > 0:
                 sf = float(spot)
-                quote_ts = pq_quote_time or pq_trade_time
+                quote_ts = pq["quote_ts"]
                 server_received_ts = time.time()
                 row = {
                     "ticker": tkr,
@@ -2852,11 +3812,8 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                         "carried_forward": False,
                     },
                 }
-                mid: float | None = None
-                mid_src: str | None = None
-                if pq_mark is not None and pq_mark > 0:
-                    mid = float(pq_mark)
-                    mid_src = "schwab_quote_mark"
+                mid = pq["quote_mid"]
+                mid_src = pq["mid_source"]
                 if mid is not None:
                     row["quote_mid"] = mid
                     row["mid_source"] = mid_src
@@ -2864,7 +3821,8 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                 if bid is not None and ask is not None:
                     try:
                         b_px, a_px = float(bid), float(ask)
-                        row["spread_pts"] = round(a_px - b_px, 4)
+                        raw_spread = round(a_px - b_px, 4)
+                        row["spread_pts"] = raw_spread if raw_spread >= 0.0 else None
                         row["spread_pts_source"] = "derived_bid_ask_pts"
                         if mid is not None and mid > 0:
                             row["spread"] = (a_px - b_px) / mid
@@ -2911,6 +3869,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         "quote_mid": row.get("quote_mid"),
         "mid_source": row.get("mid_source"),
         "spread": spread_dollar,
+        "spread_semantic": "dollar",
         "spread_pts": row.get("spread_pts"),
         "spread_source": (
             "derived_bid_ask_pts"
@@ -2975,6 +3934,19 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
 # When log_only=True: runs the full pipeline for DB logging but returns
 # a minimal dict (saves serialization overhead for background tickers).
 # ─────────────────────────────────────────────────────────────────────────────
+def _finalize_production_decision(ms_dict: dict, route: str) -> dict:
+    """Stamp immutable decision_id + release_id and persist for I-31 reconstruction."""
+    stamp_decision_bundle(ms_dict, route=route)
+    if _HAS_SIGNALS and ms_dict.get("decision_id"):
+        try:
+            from db import DB_PATH
+
+            persist_stamped_decision(ms_dict, route=route, db_path=DB_PATH)
+        except Exception as exc:
+            log.warning("production decision persist failed route=%s: %s", route, exc)
+    return ms_dict
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -2985,27 +3957,45 @@ def _fetch_state(
 ) -> dict:
     _fetch_start_mono = time.monotonic()
     _register_tracked_ticker(ticker)
+    _ed_db = get_db() if _HAS_SIGNALS else None
     try:
         from live_pipeline_diag import emit_fetch_state_start
 
         emit_fetch_state_start(ticker=ticker, log_only=log_only)
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("emit_fetch_state_start failed ticker=%s: %s", ticker, e, exc_info=True)
 
     client = get_client()
-    ET     = ZoneInfo("America/New_York")
-    now_et = datetime.now(ET)
+    from time_et import now_et as _eastern_now
+
+    now_et = _eastern_now()
 
     # ── Global market context — session_label before quote parse (shared across tickers) ──
     if mkt_ctx is None:
         mkt_ctx = _get_mkt_ctx(client)
     session_label = mkt_ctx.session_label   # "RTH" | "Pre-Market" | "After-Hours" | "Closed"
 
-    # ── Chain (no dependency on this ticker's equity quote; Schwab centers strikes server-side) ──
-    c_resp = safe_get_chain(
-        client, ticker,
-        strike_count=CHAIN_STRIKE_COUNT
-    )
+    # ── Chain + quote in parallel (independent Schwab calls — saves one RTT on cold Tier C) ──
+    try:
+        if _analytics_bg_shutdown:
+            c_resp = safe_get_chain(client, ticker, strike_count=CHAIN_STRIKE_COUNT)
+            q_resp = _safe_get_quote_with_retry(client, ticker)
+        else:
+            _chain_fut = _submit_analytics_task(
+                safe_get_chain, client, ticker, strike_count=CHAIN_STRIKE_COUNT
+            )
+            _quote_fut = _submit_analytics_task(_safe_get_quote_with_retry, client, ticker)
+            c_resp = _chain_fut.result()
+            q_resp = _quote_fut.result()
+    except SchwabAuthError as e:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "token_invalid",
+                "remediation": e.remediation,
+                "message": str(e),
+            },
+        ) from e
     if c_resp is None or c_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Chain fetch failed")
     c_json = c_resp.json()
@@ -3040,8 +4030,7 @@ def _fetch_state(
         if isinstance(_chain_underlying, dict):
             _total_vol = _safe_float_quote(_chain_underlying.get("totalVolume"))
 
-    # ── Quote AFTER chain so spot/bid/ask are not aged by chain RTT + earlier work (live vs charts) ──
-    q_resp = _safe_get_quote_with_retry(client, ticker)
+    # Quote fetched in parallel with chain above — parse here after chain JSON work.
     if q_resp is None or q_resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Quote fetch failed")
     q_json = q_resp.json()
@@ -3049,43 +4038,45 @@ def _fetch_state(
     _t_after_quote_wall = time.time()
 
     _node_q = q_json.get(ticker.upper()) or q_json.get(ticker) or {}
-    _q_q = _node_q.get("quote") or {}
-    _ext_q = _node_q.get("extended") or {}
-    _reg_q = _node_q.get("regular") or {}
-    parsed_last = _safe_float_quote(_q_q.get("lastPrice"))
-    if parsed_last is None or parsed_last <= 0:
-        parsed_last = _safe_float_quote(_ext_q.get("lastPrice"))
-    if parsed_last is None or parsed_last <= 0:
-        parsed_last = _safe_float_quote(_reg_q.get("regularMarketLastPrice"))
-    parsed_mark = _safe_float_quote(_q_q.get("mark"))
-    if parsed_mark is None or parsed_mark <= 0:
-        parsed_mark = _safe_float_quote(_ext_q.get("mark"))
-    parsed_bid = _safe_float_quote(_q_q.get("bidPrice"))
-    if parsed_bid is None:
-        parsed_bid = _safe_float_quote(_ext_q.get("bidPrice"))
-    parsed_ask = _safe_float_quote(_q_q.get("askPrice"))
-    if parsed_ask is None:
-        parsed_ask = _safe_float_quote(_ext_q.get("askPrice"))
-    parsed_quote_time = _safe_float_quote(_q_q.get("quoteTime"))
-    if parsed_quote_time is None:
-        parsed_quote_time = _safe_float_quote(_ext_q.get("quoteTime"))
-    parsed_trade_time = _safe_float_quote(_q_q.get("tradeTime"))
-    if parsed_trade_time is None:
-        parsed_trade_time = _safe_float_quote(_ext_q.get("tradeTime"))
-    if parsed_trade_time is None:
-        parsed_trade_time = _safe_float_quote(_reg_q.get("regularMarketTradeTime"))
-    spot   = parsed_last if parsed_last and parsed_last > 0 else (parsed_mark if parsed_mark and parsed_mark > 0 else None)
+    _session_q = _parse_quote_node_session_fields(_node_q)
+    parsed_last = _session_q["last"]
+    parsed_mark = _session_q["mark"]
+    parsed_bid = _session_q["bid"]
+    parsed_ask = _session_q["ask"]
+    parsed_quote_time = _session_q["quote_time"]
+    parsed_trade_time = _session_q["trade_time"]
+    spot = parsed_last if parsed_last and parsed_last > 0 else (
+        parsed_mark if parsed_mark and parsed_mark > 0 else None
+    )
     bid    = parsed_bid
     ask    = parsed_ask
 
     global _last_spread_by_ticker, _last_spread_ts_by_ticker
-    _quote_spread = (
+    _quote_spread_pts = (
         round(float(ask) - float(bid), 4) if (bid is not None and ask is not None) else None
     )
-    _quote_spread_source = "schwab_bid_ask_live" if _quote_spread is not None else "unavailable_missing_bid_or_ask"
-    _quote_spread_age_ms = 0 if _quote_spread is not None else None
-    if _quote_spread is not None:
-        _last_spread_by_ticker[ticker] = _quote_spread
+    _quote_mid_for_spread = None
+    if parsed_mark is not None and parsed_mark > 0:
+        _quote_mid_for_spread = float(parsed_mark)
+    _quote_spread_frac = (
+        round(_quote_spread_pts / _quote_mid_for_spread, 6)
+        if (
+            _quote_spread_pts is not None
+            and _quote_mid_for_spread is not None
+            and _quote_mid_for_spread > 0
+        )
+        else None
+    )
+    _quote_spread = _quote_spread_pts
+    _quote_spread_source = "schwab_bid_ask_live" if _quote_spread_pts is not None else "unavailable_missing_bid_or_ask"
+    _quote_spread_frac_source = (
+        "derived_bid_ask_fraction_schwab_mark_denom"
+        if _quote_spread_frac is not None
+        else None
+    )
+    _quote_spread_age_ms = 0 if _quote_spread_pts is not None else None
+    if _quote_spread_pts is not None:
+        _last_spread_by_ticker[ticker] = _quote_spread_pts
         _last_spread_ts_by_ticker[ticker] = _t_after_quote_wall
     elif ticker in _last_spread_by_ticker and ticker in _last_spread_ts_by_ticker:
         _quote_spread_source = "cached_last_valid_not_tradeable"
@@ -3093,17 +4084,19 @@ def _fetch_state(
 
     # Remaining volume fields from quote REST if stream + chain underlying had none
     if _total_vol is None:
-        _quote_node = q_json.get(ticker.upper()) or q_json.get(ticker) or {}
-        if not isinstance(_quote_node, dict):
-            if isinstance(q_json, list):
-                for item in q_json:
-                    if isinstance(item, dict) and (item.get("symbol") or item.get("key") or "").upper() == ticker.upper():
-                        _quote_node = item
-                        break
-            else:
-                _quote_node = {}
-        if not _quote_node and isinstance(q_json, dict) and (q_json.get("quote") or q_json.get("regular")):
-            _quote_node = q_json
+        _quote_node = _node_q if isinstance(_node_q, dict) else {}
+        if not (_quote_node.get("quote") or _quote_node.get("extended")):
+            _quote_node = q_json.get(ticker.upper()) or q_json.get(ticker) or {}
+            if not isinstance(_quote_node, dict):
+                if isinstance(q_json, list):
+                    for item in q_json:
+                        if isinstance(item, dict) and (item.get("symbol") or item.get("key") or "").upper() == ticker.upper():
+                            _quote_node = item
+                            break
+                else:
+                    _quote_node = {}
+            if not _quote_node and isinstance(q_json, dict) and (q_json.get("quote") or q_json.get("regular")):
+                _quote_node = q_json
         _quote_dict = _quote_node.get("quote") or {} if isinstance(_quote_node, dict) else {}
         _extended = _quote_node.get("extended") or {} if isinstance(_quote_node, dict) else {}
         _total_vol = (
@@ -3152,11 +4145,52 @@ def _fetch_state(
         _minimal["_compute_ms"] = round((_minimal_end_mono - _t_after_quote_mono) * 1000)
         if update_source is not None:
             _minimal["_update_source"] = update_source
+        from trade_impacting_gate import apply_trade_impacting_gate
+
+        apply_trade_impacting_gate(_minimal, route="server._fetch_state.no_valid_expiry")
         _lmp.merge_into_state(_minimal, ticker)
-        return stamp_decision_bundle(_minimal)
-    filtered     = [ct for ct in contracts
-                    if (ct.get("expirationDate") or "")[:10] == selected_exp]
-    contracts_use = filtered if filtered else contracts
+        return _finalize_production_decision(_minimal, "server._fetch_state.no_valid_expiry")
+    contracts_use, _exp_slice_source = _filter_contracts_by_selected_expiry(contracts, selected_exp)
+    _kl_expiry_source = _kl_expiry_source_label(
+        expiry_param=expiry,
+        slice_source=_exp_slice_source,
+    )
+    if not contracts_use:
+        log.warning(
+            "_fetch_state: no contracts for selected_exp=%s ticker=%s (strict expirationDate slice)",
+            selected_exp,
+            ticker,
+        )
+        try:
+            spot_disp = f"{float(spot):.2f}" if spot else "—"
+        except (TypeError, ValueError):
+            spot_disp = "—"
+        _exp_err = stamp_decision_bundle({
+            "ticker": ticker.upper(),
+            "selected_exp": selected_exp,
+            "expiries": [e for e in expiries if e >= _today_str],
+            "state_error": "expiry_slice_empty",
+            "state_error_detail": (
+                f"No option contracts with Schwab expirationDate={selected_exp}. "
+                "Refusing full-chain fallback for KEY LEVELS / exposures."
+            ),
+            "kl_expiry_source": _kl_expiry_source,
+            "spot": float(spot) if spot else None,
+            "spot_disp": spot_disp,
+            "bid_disp": "—",
+            "ask_disp": "—",
+            "session_label": session_label,
+            "call_signal": "wait",
+            "call_conviction": "low",
+            "fusion_available": False,
+            "dominant_dir": "flat",
+            "rules_headline": "—",
+        })
+        _exp_err["_server_build_ts"] = time.time()
+        if update_source is not None:
+            _exp_err["_update_source"] = update_source
+        _lmp.merge_into_state(_exp_err, ticker)
+        return _exp_err
 
     # ── Exposures ─────────────────────────────────────────────────────────────
     if spot is None:
@@ -3187,25 +4221,39 @@ def _fetch_state(
     # Feed tick into candle accumulators
     _tick_ts = parsed_quote_time or parsed_trade_time
 
-    # Seed candles from Schwab price history if this ticker has no bars yet.
+    # Seed candles from Schwab price history when the canonical 1m grid is stale —
+    # first visit OR a gap since the last completed bar (background-logged tickers
+    # are polled ~1×/15min; tick-built bars alone leave the outcome grid ~94% empty).
     # Canonical (1m) drives snapshot/state; 5m remains derived context.
-    if not _candles_1m.has_bars(ticker):
+    _seed_ref_ts = float(_tick_ts) if _tick_ts is not None else time.time()
+    if _candles_1m.grid_stale(ticker, _seed_ref_ts, CANDLE_RESEED_GAP_SECONDS):
+        def _seed_candles(freq_min: int) -> None:
+            resp = safe_get_price_history(client, ticker, frequency_minutes=freq_min, period_days=1)
+            if resp and resp.status_code == 200:
+                payload = resp.json()
+                if "candles" not in payload:
+                    raise ValueError(
+                        f"Schwab pricehistory response missing 'candles' key (status={resp.status_code})"
+                    )
+                raw_bars = payload["candles"]
+                if freq_min == 5:
+                    _candles_5m.seed(ticker, raw_bars)
+                    log.info("Seeded %s 5m candles: %d bars from price history", ticker, len(raw_bars))
+                else:
+                    _candles_1m.seed(ticker, raw_bars)
+                    log.info("Seeded %s 1m candles: %d bars from price history", ticker, len(raw_bars))
+
         try:
             client = get_client()
-            # 5-minute bars
-            resp_5m = safe_get_price_history(client, ticker, frequency_minutes=5, period_days=1)
-            if resp_5m and resp_5m.status_code == 200:
-                raw_bars = resp_5m.json().get("candles", [])
-                _candles_5m.seed(ticker, raw_bars)
-                log.info(f"Seeded {ticker} 5m candles: {len(raw_bars)} bars from price history")
-            # 1-minute bars
-            resp_1m = safe_get_price_history(client, ticker, frequency_minutes=1, period_days=1)
-            if resp_1m and resp_1m.status_code == 200:
-                raw_bars_1m = resp_1m.json().get("candles", [])
-                _candles_1m.seed(ticker, raw_bars_1m)
-                log.info(f"Seeded {ticker} 1m candles: {len(raw_bars_1m)} bars from price history")
+            # UI-MAXIMIZE: parallel seed — must NOT use _analytics_executor (same pool as
+            # _fetch_state worker); nested submit+.result() deadlocks all Tier C jobs.
+            _seed_pool = _get_route_offload_executor()
+            _f5 = _seed_pool.submit(_seed_candles, 5)
+            _f1 = _seed_pool.submit(_seed_candles, 1)
+            _f5.result(timeout=45)
+            _f1.result(timeout=45)
         except Exception as e:
-            log.debug(f"Candle seeding failed for {ticker}: {e}")
+            log.debug("Candle seeding failed for %s: %s", ticker, e)
 
     if _tick_ts is not None:
         _candles_5m.tick(ticker, spot_f, _tick_ts, total_volume=_total_vol)
@@ -3216,6 +4264,14 @@ def _fetch_state(
     log.info(f"Candles: {ticker} 5m={_bars_5m_count} bars, 1m={_bars_1m_count} bars")
 
     exposures, diag = compute_exposures_by_strike(contracts_use, spot=spot_f, require_oi=True)
+    from math_exposure_core import key_level_strikes_with_gamma
+    _cons_strikes = sorted(float(k) for k in exposures.keys())
+    _gamma_strikes = key_level_strikes_with_gamma(exposures) or _cons_strikes
+    _institutional_pin = (
+        pick_gamma_pin_strike(exposures, _gamma_strikes, institutional=True)
+        if _gamma_strikes
+        else None
+    )
 
     rows      = build_summary_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS)
     walls     = build_walls_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS)
@@ -3224,6 +4280,8 @@ def _fetch_state(
     # ── Gamma Flip + Void Zones ───────────────────────────────────────────────
     _gamma_flip = compute_gamma_flip(exposures, spot_f)
     _gamma_voids = compute_gamma_void_zones(exposures, spot_f)
+    _hvl = compute_hvl(exposures)
+    _max_pain = compute_max_pain(exposures)
 
     # Feed ATM IV into tracker for direction detection (vanna context)
     _t0 = totals[0] if totals else None
@@ -3237,27 +4295,45 @@ def _fetch_state(
     # receives real values. charm_direction uses raw strings "buying"/"selling"/"neutral"
     # which is what signals.py expects for Greek bias scoring.
     _charm_net    = None
-    _charm_dir    = "neutral"
+    _charm_dir    = None
     _charm_toward = None
-    _charm_mag    = "negligible"
+    _charm_mag    = None
     _charm_drivers = []
     try:
         from math_exposure import compute_net_charm
-        log.info(f"Charm: {ticker} calling compute_net_charm with {len(contracts_use)} contracts, exp={selected_exp}")
-        _charm_raw = compute_net_charm(contracts_use, spot_f, selected_exp)
+        # Per-tick diagnostic — demoted from INFO: fires every refresh regardless of
+        # outcome, no operator-actionable signal (success and failure logs below carry it).
+        log.debug(f"Charm: {ticker} calling compute_net_charm with {len(contracts_use)} contracts, exp={selected_exp}")
+        _charm_raw = compute_net_charm(
+            contracts_use, spot_f, selected_exp, drift_toward_strike=_institutional_pin
+        )
         _charm_used = _charm_raw.get("contracts_used", 0)
         _charm_err  = _charm_raw.get("error", "")
         if _charm_used > 0:
             _charm_net     = _charm_raw["net_charm_daily"]
             _charm_dir     = _charm_raw["charm_direction"]
             _charm_toward  = _charm_raw.get("drift_toward")
-            _charm_mag     = _charm_raw.get("charm_magnitude", "negligible")
+            _charm_mag     = _charm_raw.get("charm_magnitude")
             _charm_drivers = _charm_raw.get("top_drivers", [])
             log.info(f"Charm: {ticker} ✅ net={_charm_net:.0f} dir={_charm_dir} mag={_charm_mag} pin={_charm_toward} "
                      f"({_charm_used} contracts)")
         else:
-            log.warning(f"Charm: {ticker} ❌ 0 contracts matched. error='{_charm_err}' "
-                        f"input_contracts={len(contracts_use)} exp={selected_exp}")
+            from math_exposure_core import charm_compute_unavailable_log_level
+
+            _lvl = charm_compute_unavailable_log_level(_charm_err)
+            if _lvl == logging.DEBUG:
+                _log_fn = log.debug
+            elif _lvl == logging.INFO:
+                _log_fn = log.info
+            else:
+                _log_fn = log.warning
+            _log_fn(
+                "Charm: %s ❌ 0 contracts matched. error='%s' input_contracts=%s exp=%s",
+                ticker,
+                _charm_err,
+                len(contracts_use),
+                selected_exp,
+            )
     except Exception as _ce:
         import traceback
         log.warning(f"Charm: {ticker} 💥 EXCEPTION: {_ce}\n{traceback.format_exc()}")
@@ -3269,8 +4345,40 @@ def _fetch_state(
         if v is not None:
             pcr_val = float(v)
 
-    # ── Market context ────────────────────────────────────────────────────────
     _cache_key = (ticker, selected_exp)
+    _progressive_inflight_key = _tier_c_inflight_key(ticker, expiry)
+    if not log_only:
+        _publish_progressive_tier_c_cache(
+            ticker=ticker,
+            cache_key=_cache_key,
+            inflight_key=_progressive_inflight_key,
+            selected_exp=selected_exp,
+            expiries=expiries,
+            today_str=_today_str,
+            spot_f=spot_f,
+            bid=bid,
+            ask=ask,
+            session_label=session_label,
+            rows=rows,
+            walls=walls,
+            totals=totals,
+            consensus_summary=consensus_summary,
+            exposures=exposures,
+            gamma_flip=_gamma_flip,
+            gamma_voids=_gamma_voids,
+            hvl=_hvl,
+            max_pain=_max_pain,
+            charm_net=_charm_net,
+            charm_dir=_charm_dir,
+            charm_toward=_charm_toward,
+            pcr_val=pcr_val,
+            kl_expiry_source=_kl_expiry_source,
+            quote_spread_pts=_quote_spread,
+            quote_spread_source=_quote_spread_source,
+            update_source=update_source,
+        )
+
+    # ── Market context ────────────────────────────────────────────────────────
     prev_pcr  = _state_cache.get(_cache_key, {}).get("pcr_val")
     prev_spot = _state_cache.get(_cache_key, {}).get("spot_f")
 
@@ -3316,14 +4424,13 @@ def _fetch_state(
     _pl_cache_entry = _state_cache.get(_cache_key, {}).get("price_levels")
     _pl_cache_date  = _state_cache.get(_cache_key, {}).get("pl_date", "")
     _pl_cache_mono = _state_cache.get(_cache_key, {}).get("pl_mono", None)
-    _PL_CACHE_SEC   = 15  # within a day, refresh every 15s (for VWAP)
 
     _now_mono = time.monotonic()
     _pl_stale = (
         _pl_cache_entry is None
         or _pl_cache_date != _today_date_str          # new trading day → force refresh
         or _pl_cache_mono is None
-        or (_now_mono - float(_pl_cache_mono)) >= _PL_CACHE_SEC  # intraday VWAP refresh (process-local)
+        or (_now_mono - float(_pl_cache_mono)) >= PRICE_LEVELS_CACHE_SEC  # intraday VWAP refresh (process-local)
     )
 
     if not _pl_stale:
@@ -3350,9 +4457,18 @@ def _fetch_state(
     # ── Expected Move (straddle + IV-based) ──────────────────────────────────
     _em_straddle = {"straddle": None, "em_pts": None, "upper": None, "lower": None}
     _em_iv = {"em_pts": None, "upper": None, "lower": None}
-    _em_progress = {"progress_pct": None, "breached": False, "direction": None, "severity": "unknown"}
+    _em_progress = {
+        "progress_pct": None,
+        "breached": None,
+        "direction": None,
+        "severity": None,
+    }
     _em_up = None
     _em_lo = None
+    _hours_rem = max(0.0, (MARKET_CLOSE_HOUR * 60 - (now_et.hour * 60 + now_et.minute)) / 60.0)
+    _kl_em_anchor = "unavailable"
+    _mc_iv_level = None
+    _mc_iv_source = "unavailable"
 
     try:
         _today_open = getattr(price_levels, "today_open", None)
@@ -3365,12 +4481,20 @@ def _fetch_state(
         ))
         if _all_strikes and spot_f > 0:
             _atm_k = min(_all_strikes, key=lambda k: abs(k - spot_f))
-            _atm_calls = [ct for ct in contracts_use
-                          if str(ct.get("putCall", "")).upper() == "CALL"
-                          and abs(float(ct.get("strikePrice", 0)) - _atm_k) < 0.01]
-            _atm_puts = [ct for ct in contracts_use
-                         if str(ct.get("putCall", "")).upper() == "PUT"
-                         and abs(float(ct.get("strikePrice", 0)) - _atm_k) < 0.01]
+            _atm_calls = [
+                ct
+                for ct in contracts_use
+                if str(ct.get("putCall", "")).upper() == "CALL"
+                and (sp := _f(ct.get("strikePrice"))) is not None
+                and abs(sp - _atm_k) < 0.01
+            ]
+            _atm_puts = [
+                ct
+                for ct in contracts_use
+                if str(ct.get("putCall", "")).upper() == "PUT"
+                and (sp := _f(ct.get("strikePrice"))) is not None
+                and abs(sp - _atm_k) < 0.01
+            ]
             _c_mark = _f(_atm_calls[0].get("mark")) if _atm_calls else None
             _p_mark = _f(_atm_puts[0].get("mark")) if _atm_puts else None
 
@@ -3378,25 +4502,25 @@ def _fetch_state(
                 _em_straddle = compute_expected_move_straddle(_c_mark, _p_mark, _today_open)
 
         # IV-based EM (shrinks through the day)
-        _hours_rem = max(0.0, (MARKET_CLOSE_HOUR * 60 - (now_et.hour * 60 + now_et.minute)) / 60.0)
-        if _atm_iv and _atm_iv > 0 and spot_f > 0:
+        if _atm_iv and _atm_iv > 0 and spot_f > 0 and _hours_rem > 0:
             _em_iv = compute_expected_move_iv(spot_f, _atm_iv, _hours_rem)
 
-        # EM progress (use straddle EM if available, fall back to IV)
+        # EM progress (use straddle EM if available, fall back to IV) — no synthetic 6.5h session fill.
         _em_up = _em_straddle.get("upper") or _em_iv.get("upper")
         _em_lo = _em_straddle.get("lower") or _em_iv.get("lower")
-        # Fallback EM must still use Schwab IV; never synthesize IV when unavailable.
-        if (_em_up is None or _em_lo is None) and spot_f > 0 and _atm_iv and _atm_iv > 0:
-            try:
-                log.warning("MC_FALLBACK _atm_iv=%s _hours_rem=%s _em_up=%s _em_lo=%s", _atm_iv, _hours_rem, _em_up, _em_lo)  # FIX: MC em trace
-                _fallback_hours = max(_hours_rem, 6.5) if _hours_rem else 6.5
-                _em_mc = compute_expected_move_iv(spot_f, _atm_iv, _fallback_hours)
-                _em_up = _em_up or _em_mc.get("upper")
-                _em_lo = _em_lo or _em_mc.get("lower")
-            except Exception as ex:
-                log.debug("MC fallback EM failed: %s", ex)
         if _em_up and _em_lo and _today_open:
             _em_progress = compute_em_progress(spot_f, _today_open, _em_up, _em_lo)
+
+        from math_volatility import resolve_kl_em_anchor, resolve_mc_iv_for_kl_em_anchor
+
+        _kl_em_anchor = resolve_kl_em_anchor(_em_straddle, _em_iv)
+        _mc_iv_level, _mc_iv_source = resolve_mc_iv_for_kl_em_anchor(
+            kl_em_anchor=_kl_em_anchor,
+            atm_iv=_atm_iv,
+            spot=spot_f,
+            em_straddle=_em_straddle,
+            hours_remaining=_hours_rem,
+        )
 
     except Exception as e:
         log.warning(f"Expected move calc failed: {e}")
@@ -3434,8 +4558,13 @@ def _fetch_state(
                 if _iv_history:
                     _iv_rank = compute_iv_rank(_atm_iv, _iv_history)
                     _iv_percentile = compute_iv_percentile(_atm_iv, _iv_history)
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug(
+                    "IV rank/percentile history load failed ticker=%s: %s",
+                    ticker,
+                    e,
+                    exc_info=True,
+                )
     except Exception as e:
         log.debug(f"Volatility signals calc: {e}")
     if _atr is None and _bars:
@@ -3449,9 +4578,12 @@ def _fetch_state(
         if _closes and len(_closes) > 20:
             _garch_raw = compute_garch_forecast(_closes, horizon=GARCH_HORIZON_BARS)
             if _garch_raw:
-                _iv_dec = (_atm_iv / 100.0) if _atm_iv and _atm_iv > 1 else _atm_iv
+                from volatility_regime import vol_percent_to_decimal
+
+                _iv_dec = vol_percent_to_decimal(_atm_iv)
+                _rv_dec = vol_percent_to_decimal(_realized_vol)
                 _garch_sigma_bars = blend_garch_sigma(
-                    _garch_raw, _iv_dec, _realized_vol, spot_f
+                    _garch_raw, _iv_dec, _rv_dec, spot_f
                 )
     except Exception as e:
         log.debug(f"GARCH forecast calc: {e}")
@@ -3486,6 +4618,8 @@ def _fetch_state(
     _pin_score_val = {}
     _vol_expansion = {}
     _sweep_score = {}
+    # Sweep score post-build_market_state needs _void_factor even if Section 8 raised early.
+    _void_factor = 0.0
     def _bucket_total_oi(_bkt: dict) -> float | None:
         call_oi = _bkt.get("call_oi")
         put_oi = _bkt.get("put_oi")
@@ -3494,17 +4628,24 @@ def _fetch_state(
         return (float(call_oi) if call_oi is not None else 0.0) + (float(put_oi) if put_oi is not None else 0.0)
 
     try:
-        # Aggregate totals from exposures
-        _sum_gex = _sum_dex = 0.0
+        # Aggregate totals — same full-chain Σ net_gex_1pct as kl_net_gex / ExposureRow CONSENSUS
+        _sum_gex = float(aggregate_net_gex(exposures, _cons_strikes) or 0.0)
+        _sum_dex = 0.0
         _sum_oi = None
         _sum_vanna = 0.0
         for _bkt in exposures.values():
-            _sum_gex += float(_bkt.get("net_gex_1pct", 0) or 0)
-            _sum_dex += float(_bkt.get("net_dex_dollars", 0) or 0)
+            _dex = bucket_metric(_bkt, "net_dex_dollars")
+            if _dex is not None:
+                _sum_dex += _dex
             _bucket_oi = _bucket_total_oi(_bkt)
             if _bucket_oi is not None:
                 _sum_oi = (_sum_oi or 0.0) + _bucket_oi
-            _sum_vanna += float(_bkt.get("call_vanna", 0) or 0) + float(_bkt.get("put_vanna", 0) or 0)
+            _cv = bucket_metric(_bkt, "call_vanna")
+            _pv = bucket_metric(_bkt, "put_vanna")
+            if _cv is not None:
+                _sum_vanna += _cv
+            if _pv is not None:
+                _sum_vanna += _pv
 
         # 1. DPI
         _dpi = compute_dealer_pressure_index(_sum_dex, _sum_gex, _sum_oi)
@@ -3512,12 +4653,17 @@ def _fetch_state(
         # 2. Hedging Flow Score — normalize inputs to -1..+1
         _max_gex = max(abs(_sum_gex), 1.0)
         _max_dex = max(abs(_sum_dex), 1.0)
-        _max_charm = max(abs(_charm_net or 0), 1.0) if _charm_net else 1.0
+        _max_charm = max(abs(_charm_net), 1.0) if _charm_net is not None else 1.0
         _max_vanna = max(abs(_sum_vanna), 1.0)
+        _charm_norm = (
+            _charm_net / _max_charm
+            if _charm_net is not None and _max_charm > 0
+            else None
+        )
         _hedging_flow = compute_hedging_flow_score(
             net_gex_normalized=_sum_gex / _max_gex if _max_gex > 0 else 0,
             net_dex_normalized=_sum_dex / _max_dex if _max_dex > 0 else 0,
-            charm_normalized=(_charm_net or 0) / _max_charm if _max_charm > 0 else 0,
+            charm_normalized=_charm_norm,
             vanna_normalized=_sum_vanna / _max_vanna if _max_vanna > 0 else 0,
         )
 
@@ -3525,11 +4671,13 @@ def _fetch_state(
         _gamma_gradient = compute_gamma_gradient(exposures, spot_f)
 
         # 4. Breakout Score
-        _gex_near_spot = sum(
-            abs(float(b.get("net_gex_1pct", 0) or 0))
-            for k, b in exposures.items()
-            if abs(float(k) - spot_f) <= GEX_NEAR_SPOT_RADIUS
-        )
+        _gex_near_spot = 0.0
+        for k, b in exposures.items():
+            if abs(float(k) - spot_f) > GEX_NEAR_SPOT_RADIUS:
+                continue
+            _ng = bucket_metric(b, "net_gex_1pct")
+            if _ng is not None:
+                _gex_near_spot += abs(_ng)
         _void_factor = 0.0
         for _vz in (_gamma_voids or []):
             if _vz.get("contains_spot"):
@@ -3545,11 +4693,14 @@ def _fetch_state(
 
         # 5. Pin Score
         _pin_strike = getattr(consensus_summary, "gamma_pin", None) if consensus_summary else None
-        _gex_at_pin = 0.0
+        _gex_at_pin = None
         _oi_at_pin = None
         if _pin_strike and exposures:
             _pin_bkt = exposures.get(float(_pin_strike), {})
-            _gex_at_pin = abs(float(_pin_bkt.get("call_gamma", 0) or 0)) + abs(float(_pin_bkt.get("put_gamma", 0) or 0))
+            if exposures_have_dollar_gex(exposures):
+                _gex_at_pin = total_gex_dollars_at_strike(_pin_bkt)
+            else:
+                _gex_at_pin = total_gamma_raw_at_strike(_pin_bkt)
             _oi_at_pin = _bucket_total_oi(_pin_bkt)
         _oi_concentration = (_oi_at_pin / _sum_oi) if _oi_at_pin is not None and _sum_oi and _sum_oi > 0 else None
         try:
@@ -3562,18 +4713,11 @@ def _fetch_state(
         _iv_dir_num = 1.0 if _iv_direction == "expanding" else -1.0 if _iv_direction == "contracting" else 0.0
         _vol_expansion = compute_vol_expansion_signal(_sum_gex, _iv_dir_num, _gamma_gradient)
 
-        # 7. Sweep Score
-        _nearest_wall_dist = None
-        for _wname in ['nearest_above_dist', 'nearest_below_dist']:
-            _wd = getattr(ms, _wname, None) if 'ms' in dir() else None
-            if _wd is not None:
-                _wd = abs(float(_wd))
-                if _nearest_wall_dist is None or _wd < _nearest_wall_dist:
-                    _nearest_wall_dist = _wd
-        _momentum = 0.0
-        if _atr and _atr > 0 and _candle_body:
-            _momentum = min(1.0, abs(_candle_body) / _atr)
-        _sweep_score = compute_sweep_score(_nearest_wall_dist, _void_factor, _momentum)
+        # Sweep Score moved below: needs ms.nearest_above_dist / ms.nearest_below_dist
+        # which are only populated by build_market_state. The previous compute here read
+        # `getattr(ms, _wname, None) if 'ms' in dir() else None` — `ms` was undefined at
+        # this point in execution, so the loop always set _nearest_wall_dist=None and
+        # sweep_score was silently degraded every tick.
 
     except Exception as e:
         log.debug(f"Section 8 signals calc: {e}")
@@ -3613,7 +4757,7 @@ def _fetch_state(
         _idx_data = {}
         for _ik, _ig in [('SPY', mkt_ctx.spy_chg_pct), ('QQQ', mkt_ctx.qqq_chg_pct), ('IWM', mkt_ctx.iwm_chg_pct)]:
             if _ig is not None: _idx_data[_ik] = float(_ig)
-        _index_strength = compute_sector_strength(_idx_data) if _idx_data else {}
+        _index_strength = compute_sector_strength(_idx_data)
 
         # Group 2: SPY top holdings (from mkt_ctx.constituents)
         _spy_holdings = {}
@@ -3622,7 +4766,7 @@ def _fetch_state(
             _chg = getattr(_cq, 'chg_pct', None)
             if _sym and _chg is not None:
                 _spy_holdings[_sym] = float(_chg)
-        _spy_strength = compute_sector_strength(_spy_holdings) if _spy_holdings else {}
+        _spy_strength = compute_sector_strength(_spy_holdings)
 
         # Group 3: IWM sector proxies (from mkt_ctx.iwm_sectors)
         _sector_data = {}
@@ -3631,9 +4775,17 @@ def _fetch_state(
             _chg = getattr(_sq, 'chg_pct', None)
             if _sym and _chg is not None:
                 _sector_data[_sym] = float(_chg)
-        _sector_strength = compute_sector_strength(_sector_data) if _sector_data else {}
+        _sector_strength = compute_sector_strength(_sector_data)
 
-        # IWM deep confluence analysis
+        # IWM deep confluence analysis (VIX direction from $VIX tracker, not IV tracker)
+        if getattr(mkt_ctx, "vix", None) is not None:
+            try:
+                _vix_tracker.tick(float(mkt_ctx.vix))
+            except (TypeError, ValueError):
+                pass
+        _vix_dir_for_confluence = (
+            _vix_tracker.direction if getattr(mkt_ctx, "vix", None) is not None else None
+        )
         _iwm_deep = compute_iwm_confluence(
             spy_chg=mkt_ctx.spy_chg_pct,
             qqq_chg=mkt_ctx.qqq_chg_pct,
@@ -3643,7 +4795,7 @@ def _fetch_state(
             psci_chg=_sector_data.get('PSCI'),
             xrt_chg=_sector_data.get('XRT'),
             vix_level=mkt_ctx.vix,
-            vix_direction=_iv_direction,
+            vix_direction=_vix_dir_for_confluence,
         )
     except Exception as e:
         log.debug(f"Envelope/density/sector calc: {e}")
@@ -3684,11 +4836,6 @@ def _fetch_state(
 
     # ── DB counts + crosses ───────────────────────────────────────────────────
     if _diag_on():
-        _diag_step("pre_get_db", ticker)
-    _ed_db     = get_db() if _HAS_SIGNALS else None
-    if _diag_on():
-        _diag_done("get_db", ticker)
-    if _diag_on():
         _diag_step("pre_db_counts", ticker)
     db_counts  = {"total": 0, "filled": 0}
     ceil_tests = floor_tests = 0
@@ -3707,7 +4854,7 @@ def _fetch_state(
                 _floor = _ed_db.count_level_tests(ticker, "Put Gamma Wall", pgw)
                 _ft = _floor.get("total")
                 floor_tests = int(_ft) if _ft is not None else 0
-            rc = _ed_db.get_recent_crosses(ticker, n=5)
+            rc = _ed_db.get_recent_crosses(ticker, n=RECENT_CROSSES_DISPLAY_LIMIT)
             recent_cross_eval_wall_ts = time.time()
             for c in rc:
                 bars_ago = int(
@@ -3788,18 +4935,48 @@ def _fetch_state(
     # Candle volume priority: 1) Price history candles.*.volume (primary), 2) accumulator (secondary)
     # Use 1m price history to match canonical (1m) bar timestamps.
     _c_vol = None
-    # 1. Price history primary — direct per-bar RTH volume from Schwab
-    if ticker:
+    if _completed_for_vol:
+        _raw_vol = getattr(_completed_for_vol[-1], "volume", None)
+        if _raw_vol is not None:
+            try:
+                v = float(_raw_vol)
+                if v > 0:
+                    _c_vol = v
+            except (TypeError, ValueError):
+                pass
+    # Price history fetch only when accumulator has no usable volume (avoid duplicate Schwab RTT).
+    if _c_vol is None and ticker:
         try:
             resp_ph = safe_get_price_history(client, ticker, frequency_minutes=1, period_days=1)
             if (not resp_ph or resp_ph.status_code != 200 or not resp_ph.json().get("candles")) and ticker.startswith("$"):
                 resp_ph = safe_get_price_history(client, ticker[1:], frequency_minutes=1, period_days=1)
             if resp_ph and resp_ph.status_code == 200:
-                ph_candles = resp_ph.json().get("candles", [])
+                payload_ph = resp_ph.json()
+                if "candles" not in payload_ph:
+                    raise ValueError(
+                        f"Schwab pricehistory response missing 'candles' key (status={resp_ph.status_code})"
+                    )
+                ph_candles = payload_ph["candles"]
                 if ph_candles and _completed_for_vol:
                     last_ts = getattr(_completed_for_vol[-1], "ts", None)
-                    if last_ts is not None:
-                        best = min(ph_candles, key=lambda b: abs((b.get("datetime", 0) / 1000.0) - last_ts))
+
+                    def _ph_candle_ts_sec(bar: dict) -> Optional[float]:
+                        dt = bar.get("datetime")
+                        if dt is None:
+                            return None
+                        try:
+                            dt_f = float(dt)
+                        except (TypeError, ValueError):
+                            return None
+                        if dt_f <= 0:
+                            return None
+                        return dt_f / 1000.0 if dt_f > 1e10 else dt_f
+
+                    timed = [b for b in ph_candles if _ph_candle_ts_sec(b) is not None]
+                    if last_ts is not None and timed:
+                        best = min(timed, key=lambda b: abs(_ph_candle_ts_sec(b) - last_ts))
+                    elif timed:
+                        best = timed[-1]
                     else:
                         best = ph_candles[-1]
                     ph_vol = best.get("volume")
@@ -3836,7 +5013,6 @@ def _fetch_state(
         _diag_step("pre_build_market_state", ticker)
     from db import utc_ts as _utc_ts_refresh
     _refresh_ts_utc = _utc_ts_refresh()
-    log.warning("MC_EM_PRE_BMS em_upper=%s em_lower=%s spot=%s", _em_up, _em_lo, spot_f)  # FIX: MC em trace
     try:
         ms = build_market_state(
         ticker=ticker,
@@ -3875,6 +5051,9 @@ def _fetch_state(
         iv_direction=_iv_direction,
         em_upper=_em_up,
         em_lower=_em_lo,
+        mc_iv_level=_mc_iv_level,
+        mc_em_anchor=_kl_em_anchor,
+        mc_iv_source=_mc_iv_source,
         realized_vol=_realized_vol,
         atr=_atr,
         garch_sigma_bars=_garch_sigma_bars,
@@ -3895,6 +5074,28 @@ def _fetch_state(
         raise
     if _diag_on():
         _diag_done("build_market_state", ticker)
+
+    # ── Section 8 (post-build) — Sweep Score reads ms.nearest_above_dist/nearest_below_dist ──
+    # build_market_state populates these from walls + price_levels. Computing here (not in the
+    # Section 8 try block above) is the only point at which the inputs are actually available.
+    try:
+        _nearest_wall_dist = None
+        for _wname in ("nearest_above_dist", "nearest_below_dist"):
+            _wd = getattr(ms, _wname, None)
+            if _wd is None:
+                continue
+            try:
+                _wd_abs = abs(float(_wd))
+            except (TypeError, ValueError):
+                continue
+            if _nearest_wall_dist is None or _wd_abs < _nearest_wall_dist:
+                _nearest_wall_dist = _wd_abs
+        _momentum = 0.0
+        if _atr and _atr > 0 and _candle_body:
+            _momentum = min(1.0, abs(_candle_body) / _atr)
+        _sweep_score = compute_sweep_score(_nearest_wall_dist, _void_factor, _momentum) or {}
+    except Exception as _ss_e:
+        log.debug("sweep_score post build_market_state: %s", _ss_e)
 
     # REST fallback: when streamer has no tape, inject polling-based cum_delta.
     # Streamer value takes precedence when available.
@@ -3930,7 +5131,6 @@ def _fetch_state(
             ticker.upper(),
             db=_ed_db,
             throttle_sec=_news_throttle,
-            persist_events=True,
         )
     except Exception as _nc_e:
         log.debug("news_context: %s", _nc_e)
@@ -3941,7 +5141,7 @@ def _fetch_state(
         if _diag_on():
             _diag_step("pre_db_snapshot", ticker)
         try:
-            from db import SnapshotRow, build_ts_et, market_session as _ms_fn
+            from db import SnapshotRow, build_ts_et
             from math_exposure import _f as _mf
             _snap_ts = _refresh_ts_utc
             _do_insert = _snapshot_row_insert_allowed(ticker, _snap_ts)
@@ -3982,13 +5182,30 @@ def _fetch_state(
                 if _vwap_f is None:
                     _bars_for_vwap = _candles_1m.get_bars(ticker)
                     if _bars_for_vwap:
-                        _vwap_f = _compute_vwap_from_bars(_bars_for_vwap)
+                        _vwap_f, _vwap_source_bars = _compute_vwap_from_bars(
+                            _bars_for_vwap,
+                            source_bars=_candles_1m.get_bars_source(ticker),
+                        )
                         if _vwap_f is not None:
-                            log.debug(f"VWAP: {ticker} computed from accumulator bars: {_vwap_f:.4f}")
+                            log.debug(
+                                "VWAP: %s computed from %s bars: %.4f",
+                                ticker,
+                                _vwap_source_bars,
+                                _vwap_f,
+                            )
                 if _vwap_f is None:
                     _pl_vwap = getattr(price_levels, "vwap", None)
                     _n_bars = len(_bars_for_vwap) if _bars_for_vwap else 0
-                    log.warning(f"VWAP failed for {ticker}: price_levels={_pl_vwap} bars={_n_bars} — writing NULL")
+                    # Schwab index symbols ($SPX, $VIX, $NDX, etc.) don't carry intraday
+                    # volume data; VWAP (price × volume sum) cannot compute by definition.
+                    # Steady-state DEBUG for those; WARNING for real tickers where bars
+                    # present + VWAP failed indicates a data-quality issue.
+                    _is_index_symbol = isinstance(ticker, str) and ticker.startswith("$")
+                    _vwap_log = log.debug if _is_index_symbol else log.warning
+                    _vwap_log(
+                        "VWAP failed for %s: price_levels=%s bars=%s — writing NULL",
+                        ticker, _pl_vwap, _n_bars,
+                    )
                 _vwap_dist = round(spot_f - _vwap_f, 4) if _vwap_f else None
     
                 # VWAP side must follow the same vwap we persist (API VWAP or bar-derived fallback).
@@ -4011,7 +5228,7 @@ def _fetch_state(
                 if not _pressure_label_live and _hedging_flow:
                     _pressure_label_live = _hedging_flow.get("direction")
                 if not _pressure_label_live:
-                    _pressure_label_live = "neutral"
+                    _pressure_label_live = "unavailable_no_dpi_or_hedging_flow_direction"
     
                 # Wall absolute values
                 _cgw = _mf(getattr(walls[0], "call_gamma_wall", None)) if walls else None
@@ -4043,6 +5260,7 @@ def _fetch_state(
                 _pin_w = round(_cgw - _pgw, 4) if (_cgw and _pgw) else None
     
                 # Constituents from market context — wrap each fetch independently for partial results
+                mkt_ctx = _ensure_mkt_ctx_confluence_complete(client, mkt_ctx)
                 _const_map = {}
                 if hasattr(mkt_ctx, "constituents"):
                     for cq in mkt_ctx.constituents:
@@ -4096,7 +5314,32 @@ def _fetch_state(
                     if float(chg) < -ETF_ZONE_THRESHOLD_PCT: return "bearish_trend"
                     return "neutral"
 
+                # Price-action cone (operator 2026-06-11): persist bar-derived
+                # momentum/structure primitives from the in-memory 1m accumulator
+                # (completed bars only; bar_end <= ts_utc — leak-free). Honest
+                # nulls when history is short; never fabricated fills.
+                _pa_cols: dict[str, Any] = {}
+                try:
+                    from types import SimpleNamespace as _PA_NS
+                    from features.signal_layer_v1 import compute_price_action_snapshot_columns
+                    _pa_bars = [
+                        {
+                            "bar_start_ts_utc": float(_cb.ts),
+                            "bar_end_ts_utc": float(_cb.ts) + float(CANDLE_1M_SECONDS),
+                            "open": _cb.open, "high": _cb.high, "low": _cb.low,
+                            "close": _cb.close, "volume": _cb.volume,
+                        }
+                        for _cb in (_candles_1m.get_bars(ticker) or [])
+                    ]
+                    _pa_cols = compute_price_action_snapshot_columns(
+                        _pa_bars, decision_ts_utc=float(_snap_ts), inp=_PA_NS(vwap=_vwap_f),
+                    )
+                except Exception as e:
+                    log.warning("price-action snapshot columns failed (%s): %s", ticker, e)
+                    _pa_cols = {}
+
                 _snapshot_kwargs = dict(
+                    **_pa_cols,
                     ticker=ticker,
                     timeframe=CANONICAL_TIMEFRAME,
                     expiry=selected_exp,
@@ -4106,10 +5349,18 @@ def _fetch_state(
                     ts_et=build_ts_et(_et_now),
                     et_hour=et_h,
                     et_minute=et_m,
-                    market_session=session_label.lower().replace("-", ""),
+                    market_session=(session_label or "unknown").lower().replace("-", ""),
                     session_bucket=_session_bucket(et_h, et_m),
                     spot=spot_f,
                     spread=_quote_spread,
+                    # Raw Schwab quote primitives (same parsed node as bid/ask/spread):
+                    # quotes.{SYM}.bidPrice/askPrice/bidSize/askSize/lastSize/totalVolume.
+                    bid_price=parsed_bid,
+                    ask_price=parsed_ask,
+                    bid_size=_session_q.get("bid_size"),
+                    ask_size=_session_q.get("ask_size"),
+                    last_size=_session_q.get("last_size"),
+                    total_volume=(_total_vol if _total_vol is not None else _session_q.get("total_volume")),
                     candle_open=_c_open, candle_high=_c_high, candle_low=_c_low,
                     candle_close=_c_close, candle_volume=_c_vol, candle_direction=_candle_dir,
                     candle_body_pts=_candle_body, candle_range_pts=_c_range,
@@ -4149,7 +5400,7 @@ def _fetch_state(
                     net_vanna=getattr(ms, "net_vanna", None),
                     charm_net=_charm_net, charm_direction=_charm_dir, charm_drift_toward=_charm_toward,
                     charm_magnitude=_charm_mag,
-                    iv_level=(float(getattr(totals[0], "atm_iv")) if totals and getattr(totals[0], "atm_iv", None) is not None else None),
+                    iv_level=(float(getattr(totals[0], "atm_iv")) if totals and getattr(totals[0], "atm_iv", None) is not None else None),  # percent for DB / iv_rank history
                     iv_direction=getattr(ms, "iv_direction", None),
                     put_call_oi_ratio=pcr_val,
                     oi_center=getattr(consensus_summary, "oi_center", None) if consensus_summary else None,
@@ -4194,14 +5445,8 @@ def _fetch_state(
                     rules_summary=ms.rules_headline,
                     pred_1c_up_prob=ms.up_prob_1c, pred_1c_down_prob=ms.down_prob_1c,
                     pred_1c_flat_prob=ms.flat_prob_1c,
-                    pred_3c_up_prob=ms.up_prob_3c, pred_3c_down_prob=ms.down_prob_3c,
-                    pred_3c_flat_prob=ms.flat_prob_3c,
                     pred_5c_up_prob=ms.up_prob_5c, pred_5c_down_prob=ms.down_prob_5c,
                     pred_5c_flat_prob=ms.flat_prob_5c,
-                    pred_8c_up_prob=ms.up_prob_8c, pred_8c_down_prob=ms.down_prob_8c,
-                    pred_8c_flat_prob=ms.flat_prob_8c,
-                    pred_13c_up_prob=ms.up_prob_13c, pred_13c_down_prob=ms.down_prob_13c,
-                    pred_13c_flat_prob=ms.flat_prob_13c,
                     pred_15c_up_prob=ms.up_prob_15c, pred_15c_down_prob=ms.down_prob_15c,
                     pred_15c_flat_prob=ms.flat_prob_15c,
                     pred_60c_up_prob=getattr(ms, "up_prob_60c", None),
@@ -4284,13 +5529,13 @@ def _fetch_state(
                     last_sweep_held=getattr(ms, 'last_sweep_held', None),
                     n_sweeps_today=getattr(ms, 'n_sweeps_today', 0),
                     # ── Trade Validation Gate ──────────────────────────
-                    validation_passed=getattr(ms, 'validation_passed', True),
-                    structure_valid=getattr(ms, 'structure_valid', True),
-                    probability_valid=getattr(ms, 'probability_valid', True),
-                    risk_valid=getattr(ms, 'risk_valid', True),
+                    validation_passed=getattr(ms, 'validation_passed', None),
+                    structure_valid=getattr(ms, 'structure_valid', None),
+                    probability_valid=getattr(ms, 'probability_valid', None),
+                    risk_valid=getattr(ms, 'risk_valid', None),
                     validation_summary=getattr(ms, 'validation_summary', ''),
                     # ── Position Sizing ────────────────────────────────────
-                    r_units=getattr(ms, 'r_units', 0.0),
+                    r_units=getattr(ms, 'r_units', None),
                     execution_mode=getattr(ms, 'execution_mode', 'NO_TRADE'),
                     # ── Catalog signals ────────────────────────────────────
                     vol_env_upper=_vol_envelope.get("upper"),
@@ -4479,6 +5724,7 @@ def _fetch_state(
 
     # ── Build full API response dict ──────────────────────────────────────────
     ms_dict             = _ms_to_dict(ms)
+    ms_dict["analytics_partial_tier_c"] = False
     ms_dict["expiries"] = [e for e in expiries if e >= _today_str]
     ms_dict["selected_exp"] = selected_exp
     ms_dict["quote_source_detail"] = {
@@ -4489,8 +5735,30 @@ def _fetch_state(
         "spread_age_ms": _quote_spread_age_ms,
         "carried_forward": _quote_spread_source == "cached_last_valid_not_tradeable",
     }
+    ms_dict["spread"] = _quote_spread_pts
+    ms_dict["spread_frac"] = _quote_spread_frac
+    ms_dict["spread_pts"] = _quote_spread_pts
     ms_dict["spread_source"] = _quote_spread_source
+    ms_dict["spread_frac_source"] = _quote_spread_frac_source
+    ms_dict["spread_pts_source"] = (
+        "derived_bid_ask_pts_schwab_quote" if _quote_spread_pts is not None else None
+    )
     ms_dict["spread_age_ms"] = _quote_spread_age_ms
+    if mkt_ctx is not None and getattr(mkt_ctx, "vix", None) is not None:
+        try:
+            _vix_tracker.tick(float(mkt_ctx.vix))
+        except (TypeError, ValueError):
+            pass
+    _prev_vix_live = _state_cache.get(_cache_key, {}).get("vix")
+    ms_dict["vix"] = float(mkt_ctx.vix) if mkt_ctx and mkt_ctx.vix is not None else None
+    ms_dict["vix_direction"] = (
+        _vix_tracker.direction if mkt_ctx and mkt_ctx.vix is not None else None
+    )
+    ms_dict["vix_vs_prev"] = (
+        round(float(mkt_ctx.vix) - float(_prev_vix_live), 4)
+        if mkt_ctx and mkt_ctx.vix is not None and _prev_vix_live is not None
+        else None
+    )
     ms_dict["server_ts"]    = time.time()
     # Client diagnostics: when a tab has SSE open for this (ticker, expiry), full pipeline re-runs about this often.
     ms_dict["sse_viewer_refresh_sec"] = round(VIEWER_SSE_REFRESH_SEC, 3)
@@ -4520,8 +5788,10 @@ def _fetch_state(
     cs = consensus_summary
 
     def _fv(v):
-        try: return round(float(v), 2)
-        except: return None
+        try:
+            return round(float(v), 2)
+        except (TypeError, ValueError):
+            return None
 
     ms_dict["kl_call_gamma_wall"]  = _fv(getattr(w0, "call_gamma_wall",  None))
     ms_dict["kl_put_gamma_wall"]   = _fv(getattr(w0, "put_gamma_wall",   None))
@@ -4541,7 +5811,17 @@ def _fetch_state(
             if f >= 1_000_000: return f"${f/1_000_000:.1f}M/pt"
             if f >= 1_000:     return f"${f/1_000:.0f}K/pt"
             return f"${f:.0f}/pt"
-        except: return "—"
+        except (TypeError, ValueError):
+            return "—"
+
+    def _foi(v):
+        try:
+            f = float(v)
+            if f >= 1_000_000: return f"{f/1_000_000:.1f}M OI"
+            if f >= 1_000:     return f"{f/1_000:.0f}K OI"
+            return f"{f:.0f} OI"
+        except (TypeError, ValueError):
+            return "—"
 
     ms_dict["kl_call_gamma_str"]  = _fs(getattr(w0, "call_gamma_strength", None))
     ms_dict["kl_put_gamma_str"]   = _fs(getattr(w0, "put_gamma_strength",  None))
@@ -4554,25 +5834,88 @@ def _fetch_state(
 
     # ── New institutional levels ───────────────────────────────────────────────
     ms_dict["kl_gamma_pin"]    = _fv(getattr(cs, "gamma_pin", None))
+    ms_dict["kl_hvl"]          = _fv(_hvl)
+    ms_dict["kl_max_pain"]     = _fv(_max_pain)
+    ms_dict["kl_hvl_str"]      = _fs(hvl_gamma_strength(exposures, _hvl))
+    ms_dict["kl_max_pain_str"] = _foi(max_pain_oi_strength(exposures, _max_pain))
     ms_dict["kl_oi_center"]    = _fv(getattr(cs, "oi_center", None))
     ms_dict["kl_gamma_flip"]   = _fv(_gamma_flip)
-    ms_dict["kl_em_upper"]     = _fv(_em_straddle.get("upper")) or _fv(_em_iv.get("upper"))
-    ms_dict["kl_em_lower"]     = _fv(_em_straddle.get("lower")) or _fv(_em_iv.get("lower"))
+    _net_gex_raw = getattr(cs, "net_gamma", None) if cs else None
+    try:
+        _net_gex_f = float(_net_gex_raw) if _net_gex_raw is not None else None
+    except (TypeError, ValueError):
+        _net_gex_f = None
+    ms_dict["kl_net_gex"] = round(_net_gex_f, 2) if _net_gex_f is not None else None
+    if _net_gex_f is not None:
+        from math_exposure import fmt_money as _fmt_gex_money
+        ms_dict["kl_net_gex_disp"] = _fmt_gex_money(_net_gex_f)
+        ms_dict["kl_net_gex_mag"] = gex_magnitude_label(_net_gex_f)
+        ms_dict["kl_net_gex_regime"] = gex_regime_label(_net_gex_f)
+    else:
+        ms_dict["kl_net_gex_disp"] = "—"
+        ms_dict["kl_net_gex_mag"] = "negligible"
+        ms_dict["kl_net_gex_regime"] = "neutral"
+    ms_dict["kl_expiry_source"] = _kl_expiry_source
+    ms_dict["kl_level_window"] = "selected_expiry"
+    ms_dict["kl_metrics_dollarized"] = bool(exposures and exposures_have_dollar_gex(exposures))
+    ms_dict["kl_institutional_ready"] = ms_dict["kl_metrics_dollarized"]
+    _kl_contracts_total = max(int(getattr(diag, "contracts_total", 0) or 0), 1)
+    ms_dict["kl_gex_input_completeness"] = round(
+        float(getattr(diag, "contracts_used", 0) or 0) / _kl_contracts_total,
+        4,
+    )
+    _em_up_straddle = _fv(_em_straddle.get("upper"))
+    _em_lo_straddle = _fv(_em_straddle.get("lower"))
+    _em_up_iv = _fv(_em_iv.get("upper"))
+    _em_lo_iv = _fv(_em_iv.get("lower"))
+    ms_dict["kl_em_upper"] = _em_up_straddle or _em_up_iv
+    ms_dict["kl_em_lower"] = _em_lo_straddle or _em_lo_iv
+    ms_dict["kl_em_anchor"] = _kl_em_anchor
+    ms_dict["mc_em_anchor"] = _kl_em_anchor
+    ms_dict["mc_iv_source"] = _mc_iv_source
     ms_dict["kl_gamma_voids"]  = _gamma_voids or []
     if not _gamma_voids:
         # Diagnostic: why no voids?
         _n_strikes = len(exposures)
-        _max_gex = max((abs(float(b.get("call_gamma",0) or 0)) + abs(float(b.get("put_gamma",0) or 0)) for b in exposures.values()), default=0)
+        _gex_vals = [
+            v
+            for b in exposures.values()
+            if (v := total_gamma_raw_at_strike(b)) is not None
+        ]
+        _max_gex = max(_gex_vals, default=0)
         _oi_values = [_bucket_total_oi(b) for b in exposures.values()]
         _oi_values = [v for v in _oi_values if v is not None]
         _max_oi = max(_oi_values, default=0)
         log.debug(f"Gamma void: {_n_strikes} strikes, max_gex={_max_gex:.0f}, max_oi={_max_oi:.0f}, spot_passed={'yes' if spot_f else 'no'}")
         # Count how many strikes pass each threshold independently
-        _gex_low = sum(1 for b in exposures.values() if (abs(float(b.get("call_gamma",0) or 0)) + abs(float(b.get("put_gamma",0) or 0))) < _max_gex * 0.20) if _max_gex > 0 else 0
+        _gex_low = (
+            sum(
+                1
+                for b in exposures.values()
+                if (v := total_gamma_raw_at_strike(b)) is not None
+                and v < _max_gex * 0.20
+            )
+            if _max_gex > 0
+            else 0
+        )
         _oi_low = sum(1 for b in exposures.values() if (_bucket_total_oi(b) is not None and _bucket_total_oi(b) < _max_oi * 0.25)) if _max_oi > 0 else 0
-        _both_low = sum(1 for b in exposures.values() if
-            ((abs(float(b.get("call_gamma",0) or 0)) + abs(float(b.get("put_gamma",0) or 0))) < _max_gex * 0.20 if _max_gex > 0 else False) and
-            ((_bucket_total_oi(b) is not None and _bucket_total_oi(b) < _max_oi * 0.25) if _max_oi > 0 else False)
+        _both_low = sum(
+            1
+            for b in exposures.values()
+            if (
+                (
+                    (v := total_gamma_raw_at_strike(b)) is not None
+                    and v < _max_gex * 0.20
+                    if _max_gex > 0
+                    else False
+                )
+                and (
+                    _bucket_total_oi(b) is not None
+                    and _bucket_total_oi(b) < _max_oi * 0.25
+                    if _max_oi > 0
+                    else False
+                )
+            )
         ) if _max_gex > 0 else 0
         log.debug(f"Gamma void: gex_low={_gex_low}, oi_low={_oi_low}, both_low={_both_low} (need 2+ consecutive)")
 
@@ -4611,15 +5954,15 @@ def _fetch_state(
     ms_dict["em_iv_upper"]       = _fv(_em_iv.get("upper"))
     ms_dict["em_iv_lower"]       = _fv(_em_iv.get("lower"))
     ms_dict["em_progress_pct"]   = _em_progress.get("progress_pct")
-    ms_dict["em_breached"]       = _em_progress.get("breached", False)
+    ms_dict["em_breached"]       = _em_progress.get("breached")
     ms_dict["em_direction"]      = _em_progress.get("direction")
-    ms_dict["em_severity"]       = _em_progress.get("severity", "unknown")
+    ms_dict["em_severity"]       = _em_progress.get("severity")
     ms_dict["em_move_pts"]       = _em_progress.get("move_pts")
 
     # ── Volatility signals ────────────────────────────────────────────────────
     ms_dict["iv_skew"]           = _iv_skew.get("skew")
-    ms_dict["iv_skew_interp"]    = _iv_skew.get("interpretation", "")
-    ms_dict["realized_vol"]      = _realized_vol
+    ms_dict["iv_skew_interp"]    = _iv_skew.get("interpretation")
+    ms_dict["realized_vol"]      = _realized_vol  # percent (compute_realized_vol); SignalInput uses decimal via market_state stamp
     ms_dict["atr"]               = _atr
     ms_dict["iv_rank"]           = _iv_rank
     ms_dict["iv_percentile"]     = _iv_percentile
@@ -4627,20 +5970,22 @@ def _fetch_state(
     # ── Section 8 — Predictive Positioning Signals ────────────────────────────
     ms_dict["dpi_raw"]               = _dpi.get("raw")
     ms_dict["dpi_normalized"]        = _dpi.get("normalized")
-    ms_dict["dpi_direction"]         = _dpi.get("direction", "neutral")
-    ms_dict["dpi_magnitude"]         = _dpi.get("magnitude", "negligible")
+    # Fail-closed labels: helpers (Action 11.4) emit None when inputs absent; defaults removed
+    # so snapshots persist NULL (functional shift landed in 11.4, this pass is structural).
+    ms_dict["dpi_direction"]         = _dpi.get("direction")
+    ms_dict["dpi_magnitude"]         = _dpi.get("magnitude")
     ms_dict["hedging_flow_raw"]      = _hedging_flow.get("raw")
     ms_dict["hedging_flow_normalized"] = _hedging_flow.get("normalized")
-    ms_dict["hedging_flow_direction"]  = _hedging_flow.get("direction", "neutral")
+    ms_dict["hedging_flow_direction"]  = _hedging_flow.get("direction")
     ms_dict["gamma_gradient"]        = _gamma_gradient
     ms_dict["breakout_score"]        = _breakout_score.get("normalized")
-    ms_dict["breakout_label"]        = _breakout_score.get("label", "negligible")
+    ms_dict["breakout_label"]        = _breakout_score.get("label")
     ms_dict["pin_score"]             = _pin_score_val.get("normalized")
-    ms_dict["pin_label"]             = _pin_score_val.get("label", "negligible")
+    ms_dict["pin_label"]             = _pin_score_val.get("label")
     ms_dict["vol_expansion_score"]   = _vol_expansion.get("normalized")
-    ms_dict["vol_expansion_label"]   = _vol_expansion.get("label", "negligible")
+    ms_dict["vol_expansion_label"]   = _vol_expansion.get("label")
     ms_dict["sweep_score"]           = _sweep_score.get("normalized")
-    ms_dict["sweep_label"]           = _sweep_score.get("label", "negligible")
+    ms_dict["sweep_label"]           = _sweep_score.get("label")
 
     # ── Session levels + liquidity sweeps ─────────────────────────────────────
     ms_dict["session_high"]          = getattr(ms, "session_high", None)
@@ -4651,10 +5996,10 @@ def _fetch_state(
     ms_dict["n_sweeps_today"]        = getattr(ms, "n_sweeps_today", 0)
 
     # ── Trade Validation Gate ─────────────────────────────────────────────────
-    ms_dict["validation_passed"]     = getattr(ms, "validation_passed", True)
-    ms_dict["structure_valid"]       = getattr(ms, "structure_valid", True)
-    ms_dict["probability_valid"]     = getattr(ms, "probability_valid", True)
-    ms_dict["risk_valid"]            = getattr(ms, "risk_valid", True)
+    ms_dict["validation_passed"]     = getattr(ms, "validation_passed", None)
+    ms_dict["structure_valid"]       = getattr(ms, "structure_valid", None)
+    ms_dict["probability_valid"]     = getattr(ms, "probability_valid", None)
+    ms_dict["risk_valid"]            = getattr(ms, "risk_valid", None)
     ms_dict["validation_summary"]    = getattr(ms, "validation_summary", "")
 
     # ── Call Readiness (from MarketState; computed in call_engine.py) ──────────
@@ -4679,7 +6024,7 @@ def _fetch_state(
     }
 
     # ── Formal Position Sizing ────────────────────────────────────────────────
-    ms_dict["r_units"]               = getattr(ms, "r_units", 0.0)
+    ms_dict["r_units"]               = getattr(ms, "r_units", None)
     ms_dict["execution_mode"]        = getattr(ms, "execution_mode", "NO_TRADE")
     ms_dict["sizing_summary"]        = getattr(ms, "sizing_summary", "")
 
@@ -4689,59 +6034,59 @@ def _fetch_state(
     ms_dict["vol_env_width"]         = _vol_envelope.get("width_pts")
 
     # ── Level Density ─────────────────────────────────────────────────────────
-    ms_dict["level_density_count"]   = _level_density.get("count", 0)
-    ms_dict["level_density_label"]   = _level_density.get("density_label", "unknown")
-    ms_dict["level_density_names"]   = _level_density.get("level_names", [])
+    ms_dict["level_density_count"]   = _level_density.get("count")
+    ms_dict["level_density_label"]   = _level_density.get("density_label")
+    ms_dict["level_density_names"]   = _level_density.get("level_names")
 
     # ── Sector Strength (3 groups) ───────────────────────────────────────────
     ms_dict["index_leader"]          = _index_strength.get("leader")
     ms_dict["index_laggard"]         = _index_strength.get("laggard")
     ms_dict["index_breadth"]         = _index_strength.get("breadth")
-    ms_dict["index_risk_signal"]     = _index_strength.get("risk_signal", "unknown")
+    ms_dict["index_risk_signal"]     = _index_strength.get("risk_signal")
     ms_dict["index_spread"]          = _index_strength.get("spread")
 
     ms_dict["spy_holdings_leader"]   = _spy_strength.get("leader")
     ms_dict["spy_holdings_laggard"]  = _spy_strength.get("laggard")
     ms_dict["spy_holdings_breadth"]  = _spy_strength.get("breadth")
-    ms_dict["spy_holdings_risk"]     = _spy_strength.get("risk_signal", "unknown")
+    ms_dict["spy_holdings_risk"]     = _spy_strength.get("risk_signal")
     ms_dict["spy_holdings_spread"]   = _spy_strength.get("spread")
 
     ms_dict["sector_leader"]         = _sector_strength.get("leader")
     ms_dict["sector_laggard"]        = _sector_strength.get("laggard")
     ms_dict["sector_breadth"]        = _sector_strength.get("breadth")
-    ms_dict["sector_risk_signal"]    = _sector_strength.get("risk_signal", "unknown")
+    ms_dict["sector_risk_signal"]    = _sector_strength.get("risk_signal")
     ms_dict["sector_spread"]         = _sector_strength.get("spread")
 
     # ── IWM Deep Confluence ───────────────────────────────────────────────────
-    ms_dict["iwm_risk_regime"]       = _iwm_deep.get("risk_regime", "unknown")
-    ms_dict["iwm_risk_confidence"]   = _iwm_deep.get("risk_regime_confidence", "low")
-    ms_dict["spy_iwm_divergence"]    = _iwm_deep.get("spy_iwm_divergence", 0)
-    ms_dict["spy_iwm_div_label"]     = _iwm_deep.get("spy_iwm_divergence_label", "aligned")
-    ms_dict["spy_iwm_fragile"]       = _iwm_deep.get("spy_iwm_fragile", False)
-    ms_dict["qqq_iwm_spread"]        = _iwm_deep.get("qqq_iwm_spread", 0)
-    ms_dict["rotation_signal"]       = _iwm_deep.get("rotation_signal", "neutral")
-    ms_dict["sector_breadth_quality"] = _iwm_deep.get("sector_breadth_quality", "unknown")
-    ms_dict["iwm_early_warning"]     = _iwm_deep.get("early_warning", False)
+    ms_dict["iwm_risk_regime"]       = _iwm_deep.get("risk_regime")
+    ms_dict["iwm_risk_confidence"]   = _iwm_deep.get("risk_regime_confidence")
+    ms_dict["spy_iwm_divergence"]    = _iwm_deep.get("spy_iwm_divergence")
+    ms_dict["spy_iwm_div_label"]     = _iwm_deep.get("spy_iwm_divergence_label")
+    ms_dict["spy_iwm_fragile"]       = _iwm_deep.get("spy_iwm_fragile")
+    ms_dict["qqq_iwm_spread"]        = _iwm_deep.get("qqq_iwm_spread")
+    ms_dict["rotation_signal"]       = _iwm_deep.get("rotation_signal")
+    ms_dict["sector_breadth_quality"] = _iwm_deep.get("sector_breadth_quality")
+    ms_dict["iwm_early_warning"]     = _iwm_deep.get("early_warning")
     ms_dict["iwm_early_warning_type"] = _iwm_deep.get("early_warning_type")
-    ms_dict["iwm_risk_score"]        = _iwm_deep.get("risk_score", 50)
-    ms_dict["iwm_risk_score_label"]  = _iwm_deep.get("risk_score_label", "neutral")
-    ms_dict["iwm_confluence_summary"] = _iwm_deep.get("summary", "")
+    ms_dict["iwm_risk_score"]        = _iwm_deep.get("risk_score")
+    ms_dict["iwm_risk_score_label"]  = _iwm_deep.get("risk_score_label")
+    ms_dict["iwm_confluence_summary"] = _iwm_deep.get("summary")
 
     # ── Bond Yields ───────────────────────────────────────────────────────────
     ms_dict["tnx_yield"]             = getattr(mkt_ctx, "tnx_yield", None)
     ms_dict["tnx_chg"]              = getattr(mkt_ctx, "tnx_chg", None)
-    ms_dict["bond_signal"]          = getattr(mkt_ctx, "bond_signal", "neutral")
+    ms_dict["bond_signal"]          = getattr(mkt_ctx, "bond_signal", None)
 
     # ── Order Flow Signals ────────────────────────────────────────────────────
     ms_dict["vol_oi_ratio"]          = _vol_oi_ratio.get("ratio")
-    ms_dict["vol_oi_label"]          = _vol_oi_ratio.get("label", "unknown")
-    ms_dict["flow_imbalance"]        = _flow_imbalance.get("normalized", 0)
-    ms_dict["flow_imbalance_label"]  = _flow_imbalance.get("label", "unknown")
-    ms_dict["smart_money_score"]     = _smart_money.get("score", 0)
-    ms_dict["smart_money_direction"] = _smart_money.get("direction", "neutral")
-    ms_dict["smart_money_label"]     = _smart_money.get("label", "no_signal")
+    ms_dict["vol_oi_label"]          = _vol_oi_ratio.get("label")
+    ms_dict["flow_imbalance"]        = _flow_imbalance.get("normalized")
+    ms_dict["flow_imbalance_label"]  = _flow_imbalance.get("label")
+    ms_dict["smart_money_score"]     = _smart_money.get("score")
+    ms_dict["smart_money_direction"] = _smart_money.get("direction")
+    ms_dict["smart_money_label"]     = _smart_money.get("label")
     ms_dict["iv_model_spread"]       = _iv_model_spread.get("spread")
-    ms_dict["iv_model_spread_label"] = _iv_model_spread.get("label", "unknown")
+    ms_dict["iv_model_spread_label"] = _iv_model_spread.get("label")
 
     # ── Model Health Dashboard (per-ticker ML stack artifacts from active/) ─────────
     # Status semantics: LIVE = binary + meta + provenance compliant; NON-COMPLIANT = binary+meta, no provenance;
@@ -4758,10 +6103,10 @@ def _fetch_state(
     _dashboard_ticker = "SPY"
     if _arch_path.exists():
         try:
-            _arch = _json.loads(_arch_path.read_text())
+            _arch = json.loads(_arch_path.read_text())
             _dashboard_ticker = next((t for t in ("SPY", "QQQ", "IWM") if t in _arch), next(iter(_arch), "SPY"))
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("dashboard arch_state.json parse failed: %s", e, exc_info=True)
     _active_dir = _models_dir / "active" / _dashboard_ticker
 
     # Sync missing binaries: if active has meta but not .pt/.pkl, copy from parallel/cascade/flat.
@@ -4815,7 +6160,7 @@ def _fetch_state(
         from verify_active_models import check_artifact_compliance
         _comp = check_artifact_compliance(_dashboard_ticker)
     except Exception:
-        _comp = {"compliant": False, "artifacts": {}}
+        _comp = {"compliant": False, "artifacts": {}, "issues": None}
     _artifacts = _comp.get("artifacts", {})
 
     def _model_status_from_artifact(name: str, display_name: str, meta_path: Path, edge_key: str, version_key: str = "version") -> dict:
@@ -4829,7 +6174,7 @@ def _fetch_state(
             issues = "; ".join(art.get("issues", [])) or "Metadata lacks provenance"
             return {"model": display_name, "status": "NON-COMPLIANT", "status_reason": issues, "edge": 0, "version": "—", "ticker": _dashboard_ticker}
         try:
-            _m = _json.loads(meta_path.read_text())
+            _m = json.loads(meta_path.read_text())
             raw = _m.get(edge_key, _m.get("val_accuracy", 0))
             edge = float(raw) * 100 if edge_key == "val_accuracy" else float(raw or 0)
             version = _m.get(version_key, _m.get("model_version", "—"))
@@ -4861,7 +6206,7 @@ def _fetch_state(
     ms_dict["n_models_live"] = sum(1 for m in _model_health if m["status"] == "LIVE")
     ms_dict["model_sync_used"] = _sync_count > 0  # True when binaries were recovered via sync (publication problem)
     ms_dict["active_compliant"] = _comp.get("compliant")
-    ms_dict["active_compliance_issues"] = _comp.get("issues", [])
+    ms_dict["active_compliance_issues"] = _comp.get("issues")
 
     # ── Confluence (market context) ────────────────────────────────────────────
     ms_dict["spy_chg_pct"]    = getattr(mkt_ctx, "spy_chg_pct",  None)
@@ -4972,9 +6317,30 @@ def _fetch_state(
     else:
         ms_dict["accuracy"] = None
 
+    _events = list(getattr(ms, "stack_integrity_events", None) or [])
+    if _events:
+        try:
+            from features.stack_integrity_v1 import finalize_stack_integrity_v1
+
+            ms_dict["stack_integrity_events"] = _events
+            ms_dict["stack_integrity_v1"] = finalize_stack_integrity_v1(_events)
+        except Exception as e:
+            log.warning(
+                "finalize_stack_integrity_v1 failed ticker=%s: %s",
+                ticker,
+                e,
+                exc_info=True,
+            )
     _attach_stack_runtime_and_governance(ms_dict, ticker=ticker)
+    if ms_dict.get("signals_engine_failed"):
+        sr = ms_dict.get("stack_runtime")
+        if isinstance(sr, dict):
+            sr["signals_engine_failed"] = True
     _apply_trader_horizon_contract(ms_dict)
-    stamp_decision_bundle(ms_dict)
+    from trade_impacting_gate import resolve_fetch_state_decision_route
+
+    _decision_route = resolve_fetch_state_decision_route(update_source)
+    _finalize_production_decision(ms_dict, _decision_route)
     _t_pipeline_end_mono = time.monotonic()
     ms_dict["_server_build_ts"] = time.time()
     ms_dict["_pipeline_ms"] = round((_t_pipeline_end_mono - _fetch_start_mono) * 1000)
@@ -4996,6 +6362,41 @@ def _fetch_state(
     _prev_ent = _state_cache.get(_cache_key) or {}
     _gen_ts = time.time()
     _next_ver = int(_prev_ent.get("analytics_version", 0)) + 1
+
+    # ── Pass 4: level cross detection ─────────────────────────────────────────
+    # Writer for level_crosses, consumer at /api/level_crosses + Decision
+    # Command "third test of ceiling" pattern (db.count_level_tests). Debounced
+    # by (ticker, level_name, direction) per EdDB.LEVEL_CROSS_DEBOUNCE_S.
+    if _ed_db is not None:
+        try:
+            from live_decision_bundle import _key_levels_from_ms_dict as _kl_for_cross
+            _prev_spot_for_cross = _prev_ent.get("spot_f")
+            _levels_for_cross = _kl_for_cross(ms_dict)
+            if _prev_spot_for_cross is not None and spot_f is not None and _levels_for_cross:
+                _ts_et_str = _eastern_now().strftime("%Y-%m-%d %H:%M:%S ET")
+                _crosses = _ed_db.detect_and_log_level_crosses(
+                    ticker=ticker,
+                    prev_spot=float(_prev_spot_for_cross),
+                    cur_spot=float(spot_f),
+                    levels=_levels_for_cross,
+                    ts_utc=_gen_ts,
+                    ts_et=_ts_et_str,
+                    timeframe="1m",
+                    zone_before=(_prev_ent.get("ms_dict") or {}).get("zone"),
+                    zone_after=ms_dict.get("zone"),
+                )
+                for _xc in _crosses:
+                    log.info(
+                        "level_cross ticker=%s level=%s value=%.2f direction=%s spot=%.2f",
+                        ticker,
+                        _xc["level_name"],
+                        _xc["level_value"],
+                        _xc["direction"],
+                        _xc["spot_at_cross"],
+                    )
+        except Exception as _xce:
+            log.debug("level cross detection failed ticker=%s: %s", ticker, _xce)
+
     _state_cache[_cache_key] = {
         "ts": _gen_ts,
         "generated_at": _gen_ts,
@@ -5020,6 +6421,7 @@ from contextlib import asynccontextmanager
 async def _app_lifespan(app):
     """Startup and shutdown: logger, order flow, SSE, ML scheduler."""
     # ── Startup ─────────────────────────────────────────────────────────────
+    _startup_analytics_executor()
     # Schwab auth diagnostics (helps debug link vs manual launch)
     _log_schwab_startup_diagnostics()
 
@@ -5093,11 +6495,20 @@ async def _app_lifespan(app):
     except Exception as e:
         log.warning("Schwab auth check: %s", e)
 
+    try:
+        from release_object import initialize_release_at_startup
+
+        initialize_release_at_startup()
+    except Exception as rel_e:
+        log.error("release_object startup failed: %s — production decisions will not stamp release_id", rel_e)
+
     # Canonical 1m: snapshot inserts MUST use timeframe='1m'. Fail loudly if misconfigured.
     if CANONICAL_TIMEFRAME != "1m":
         log.error("CANONICAL_TIMEFRAME=%r != '1m' — snapshot inserts will use wrong timeframe!", CANONICAL_TIMEFRAME)
         raise RuntimeError(f"timeframe_config.CANONICAL_TIMEFRAME must be '1m', got {CANONICAL_TIMEFRAME!r}")
     log.info("Canonical timeframe: 1m (snapshot inserts enforced in db.insert_snapshot)")
+    # DB-WRITE-PATH-FIXES (d): start_logger() -> _hydrate_logger_tickers_from_db() performs the
+    # DB-backed logging-universe load here in the lifespan (kept off the module-import path).
     start_logger()
     log.info(f"Background logger started — core tickers: {CORE_TICKERS}")
 
@@ -5148,9 +6559,12 @@ async def _app_lifespan(app):
     asyncio.create_task(_l1_light_sse_dispatch_loop())
     log.info("SSE background loop + live quote SSE loop + L1 light SSE dispatch started")
 
+    _schedule_startup_analytics_warm()
+
     yield
 
     # ── Shutdown ───────────────────────────────────────────────────────────
+    _shutdown_analytics_executor(wait=True)
     # Schwab stream thread + websocket: must close before loop/thread teardown
     # (avoids pending websockets tasks destroyed with the event loop).
     try:
@@ -5161,10 +6575,14 @@ async def _app_lifespan(app):
         log.warning("Order flow streaming shutdown: %s", e)
 
     stop_logger()
-    global _fast_quote_executor, _db_fill_outcomes_executor
-    if _fast_quote_executor is not None:
-        _fast_quote_executor.shutdown(wait=True)
-        _fast_quote_executor = None
+    global _quote_hot_executor, _route_offload_executor, _fast_quote_executor, _db_fill_outcomes_executor
+    if _quote_hot_executor is not None:
+        _quote_hot_executor.shutdown(wait=True)
+        _quote_hot_executor = None
+    if _route_offload_executor is not None:
+        _route_offload_executor.shutdown(wait=True)
+        _route_offload_executor = None
+    _fast_quote_executor = None
     if _db_fill_outcomes_executor is not None:
         _db_fill_outcomes_executor.shutdown(wait=True)
         _db_fill_outcomes_executor = None
@@ -5182,7 +6600,7 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
-async def root():
+def root():
     html_path = static_dir / "index.html"
     if not html_path.exists():
         return HTMLResponse("<h1>static/index.html not found</h1>", status_code=404)
@@ -5197,13 +6615,13 @@ async def root():
 
 
 @app.get("/favicon.ico", include_in_schema=False)
-async def favicon():
+def favicon():
     """Browsers request this automatically; without a route they log 404 (harmless but noisy)."""
     return Response(status_code=204)
 
 
 @app.get("/guide/data-stewardship", response_class=HTMLResponse)
-async def guide_data_stewardship():
+def guide_data_stewardship():
     """Serve DATA_STEWARDSHIP.md in the browser (king / jewels / guards + runbook)."""
     md_path = Path(APP_DIR) / "DATA_STEWARDSHIP.md"
     if not md_path.exists():
@@ -5241,7 +6659,7 @@ async def guide_data_stewardship():
 
 
 @app.get("/guide/training-and-maintenance", response_class=HTMLResponse)
-async def guide_training_and_maintenance():
+def guide_training_and_maintenance():
     md_path = Path(APP_DIR) / "TRAINING_AND_MAINTENANCE.md"
     if not md_path.exists():
         return HTMLResponse(
@@ -5283,7 +6701,7 @@ async def guide_training_and_maintenance():
 
 
 @app.get("/guide/pipeline-quality", response_class=HTMLResponse)
-async def guide_pipeline_quality():
+def guide_pipeline_quality():
     """TQM-style checkpoints: ingest throttles, audits, normalized layer, readiness."""
     md_path = Path(APP_DIR) / "PIPELINE_QUALITY.md"
     if not md_path.exists():
@@ -5326,7 +6744,7 @@ async def guide_pipeline_quality():
 
 
 @app.get("/ops", response_class=HTMLResponse)
-async def ops_panel():
+def ops_panel():
     """Interactive maintenance/training launcher (requires ED_OPS_RUNNER for actions)."""
     p = static_dir / "ops.html"
     if not p.exists():
@@ -5335,7 +6753,7 @@ async def ops_panel():
 
 
 @app.get("/api/ops/status")
-async def api_ops_status():
+def api_ops_status():
     from ops_runner import allow_remote, is_ops_runner_enabled, jobs_public_list, sequences_public_list
 
     return JSONResponse(
@@ -5348,8 +6766,68 @@ async def api_ops_status():
     )
 
 
+@app.get("/api/level_crosses")
+def api_level_crosses(ticker: str = "SPY", n: int = 20, level_name: str | None = None,
+                            level_value: float | None = None, lookback_hours: float = 6.5):
+    """Pass 4 — read consumer for level_crosses table.
+
+    Two modes:
+      * ``ticker`` only -> last ``n`` crosses (recent breach log).
+      * ``ticker`` + ``level_name`` + ``level_value`` -> directional test count
+        within ``lookback_hours`` (Decision Command "third test of ceiling"
+        pattern, served by db.count_level_tests).
+    """
+    edb = get_db()
+    try:
+        if level_name is not None and level_value is not None:
+            counts = edb.count_level_tests(
+                ticker=ticker,
+                level_name=level_name,
+                level_value=float(level_value),
+                lookback_hours=float(lookback_hours),
+            )
+            return JSONResponse({"ok": True, "mode": "test_count", "ticker": ticker,
+                                 "level_name": level_name, "level_value": float(level_value),
+                                 "lookback_hours": float(lookback_hours), **counts})
+        rows = edb.get_recent_crosses(ticker=ticker, n=int(n))
+        return JSONResponse({"ok": True, "mode": "recent", "ticker": ticker,
+                             "n": int(n), "crosses": rows})
+    except Exception as exc:  # pragma: no cover — defensive ops surface
+        log.warning("api_level_crosses failed ticker=%s: %s", ticker, exc)
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
+
+
+@app.get("/api/ops/calibration_rowcount")
+def api_ops_calibration_rowcount():
+    """Pass 3 — forward-only calibration_decision_log rate health.
+
+    Surfaces last-24h vs prior-24h vs expected row counts so an
+    ED_CALIBRATION_LOG=1 environment with a silent gap (DB lock, gate-chain
+    bug, schema mismatch, etc.) becomes immediately visible on /ops. Without
+    this counter, the Apr 12 - May 5 calibration gap went 24 days
+    undetected. Reader for calibration_decision_log.
+    """
+    from calibration.writer import compute_calibration_rate_health
+    from db import DB_PATH as _calibration_db_path
+
+    try:
+        health = compute_calibration_rate_health(_calibration_db_path)
+    except Exception as exc:  # pragma: no cover — defensive ops surface
+        log.warning("calibration rowcount health probe failed: %s", exc)
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
+    if health.get("warn"):
+        log.warning(
+            "calibration_decision_log rate WARN: last_24h=%d expected=%.0f ratio=%.2f (threshold=%.2f)",
+            health.get("last_24h_count", 0),
+            health.get("expected_per_24h", 0.0),
+            health.get("ratio") or 0.0,
+            health.get("warn_ratio", 0.0),
+        )
+    return JSONResponse({"ok": True, **health})
+
+
 @app.post("/api/ops/run")
-async def api_ops_run(request: Request, payload: dict = Body(...)):
+def api_ops_run(request: Request, payload: dict = Body(...)):
     from ops_runner import (
         client_may_trigger,
         is_ops_runner_enabled,
@@ -5380,7 +6858,7 @@ async def api_ops_run(request: Request, payload: dict = Body(...)):
 
 
 @app.get("/governance", response_class=HTMLResponse)
-async def governance_visibility_page():
+def governance_visibility_page():
     """Architecture governance panel (read-only; manual actions gated on server)."""
     p = static_dir / "governance.html"
     if not p.exists():
@@ -5389,7 +6867,7 @@ async def governance_visibility_page():
 
 
 @app.get("/api/governance/panel")
-async def api_governance_panel(
+def api_governance_panel(
     ticker: str = Query("SPY", description="Ticker symbol"),
     horizon: str = Query("1c", description="ML horizon slug"),
     emit_notifications: bool = Query(
@@ -5414,8 +6892,78 @@ async def api_governance_panel(
     )
 
 
+@app.post("/api/internal/reload_models")
+def api_internal_reload_models(request: Request, payload: dict = Body(default={})):
+    """Evict in-memory model registries for promoted (ticker, horizon) tuples (PR4 P3-10)."""
+    from arch_competition.live_model_reload import RELOAD_SCHEMA_VERSION
+    from arch_competition.scheduler_auto_promote_policy import console_reload_token
+    from ml_predict import invalidate_model_registry
+
+    host = request.client.host if request.client else None
+    if host not in ("127.0.0.1", "::1", "localhost"):
+        return JSONResponse(
+            status_code=403,
+            content={"schema_version": RELOAD_SCHEMA_VERSION, "error": "non-loopback client forbidden"},
+        )
+    expected_tok = console_reload_token()
+    if expected_tok:
+        got = (request.headers.get("X-Reload-Token") or "").strip()
+        if got != expected_tok:
+            return JSONResponse(
+                status_code=403,
+                content={"schema_version": RELOAD_SCHEMA_VERSION, "error": "invalid or missing X-Reload-Token"},
+            )
+
+    body = payload or {}
+    reloads = body.get("reloads")
+    if not isinstance(reloads, list):
+        return JSONResponse(
+            status_code=400,
+            content={"schema_version": RELOAD_SCHEMA_VERSION, "error": "reloads must be a list"},
+        )
+
+    results: list[dict] = []
+    partial = False
+    for item in reloads:
+        if not isinstance(item, dict):
+            partial = True
+            results.append({"succeeded": False, "error": "invalid reload item"})
+            continue
+        ticker = str(item.get("ticker") or "").strip().upper()
+        hz = str(item.get("horizon") or item.get("ml_horizon_slug") or "").strip().lower()
+        if not ticker or not hz:
+            partial = True
+            results.append(
+                {
+                    "ticker": ticker or None,
+                    "horizon": hz or None,
+                    "succeeded": False,
+                    "error": "ticker and horizon required",
+                }
+            )
+            continue
+        try:
+            ok = invalidate_model_registry(ticker, hz)
+            results.append({"ticker": ticker, "horizon": hz, "succeeded": bool(ok)})
+            if not ok:
+                partial = True
+        except Exception as e:
+            partial = True
+            results.append(
+                {"ticker": ticker, "horizon": hz, "succeeded": False, "error": str(e)}
+            )
+
+    return JSONResponse(
+        {
+            "schema_version": RELOAD_SCHEMA_VERSION,
+            "results": results,
+            "partial_failure": partial,
+        }
+    )
+
+
 @app.post("/api/governance/manual-promote")
-async def api_governance_manual_promote(request: Request, payload: dict = Body(...)):
+def api_governance_manual_promote(request: Request, payload: dict = Body(...)):
     from pathlib import Path
 
     from arch_competition.exceptions import ManualGovernanceError
@@ -5475,7 +7023,7 @@ async def api_governance_manual_promote(request: Request, payload: dict = Body(.
 
 
 @app.post("/api/governance/manual-rollback")
-async def api_governance_manual_rollback(request: Request, payload: dict = Body(...)):
+def api_governance_manual_rollback(request: Request, payload: dict = Body(...)):
     from pathlib import Path
 
     from arch_competition.exceptions import ManualGovernanceError
@@ -5535,7 +7083,7 @@ async def api_governance_manual_rollback(request: Request, payload: dict = Body(
 
 
 @app.post("/api/ops/run-sequence")
-async def api_ops_run_sequence(request: Request, payload: dict = Body(...)):
+def api_ops_run_sequence(request: Request, payload: dict = Body(...)):
     from ops_runner import (
         client_may_trigger,
         is_ops_runner_enabled,
@@ -5579,9 +7127,9 @@ def _tier_c_analytics_json_response(
     immediately; heavy _fetch_state runs only in background threads.
     """
     ticker = ticker.upper().strip()
-    newly_added = _register_tracked_ticker(ticker)
-    if newly_added:
-        log.info(f"Auto-registered {ticker} with background logger (Tier C analytics)")
+    # TICKER-PREVIEW-NO-ENROLL: the Tier C analytics view must not enroll the symbol — only
+    # refresh last-seen if it is already tracked (enrollment is /api/logger/add|pin only).
+    _touch_tracked_ticker_view(ticker)
 
     inflight_key = _tier_c_inflight_key(ticker, expiry)
     now = time.time()
@@ -5628,8 +7176,8 @@ def _tier_c_analytics_json_response(
                 cache_hit=True,
                 ttl=ttl,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("emit_api_state_cache (hit) failed ticker=%s: %s", ticker, e, exc_info=True)
         md = dict(entry["ms_dict"])
         _lmp.merge_into_state(md, ticker)
         md["_tier"] = "C_analytics"
@@ -5644,6 +7192,13 @@ def _tier_c_analytics_json_response(
         )
         if need_refresh:
             _schedule_analytics_recompute(inflight_key, ticker, expiry, update_source)
+        from trade_impacting_gate import revalidate_cached_decision
+
+        md = revalidate_cached_decision(
+            md,
+            route="server._tier_c_analytics_json_response",
+            stale=bool(stale),
+        )
         return JSONResponse(md)
 
     log.info(
@@ -5655,9 +7210,14 @@ def _tier_c_analytics_json_response(
         from live_pipeline_diag import emit_api_state_cache
 
         emit_api_state_cache(ticker=ticker, expiry=expiry, cache_hit=False, ttl=None)
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("emit_api_state_cache (miss) failed ticker=%s: %s", ticker, e, exc_info=True)
     md = _minimal_analytics_pending_dict(ticker, expiry)
+    last_err = _analytics_bg_last_error.get(inflight_key)
+    if last_err:
+        md["analytics_last_error"] = last_err
+        md["state_error"] = "analytics_refresh_failed"
+        md["state_error_detail"] = last_err
     _lmp.merge_into_state(md, ticker)
     _attach_analytics_freshness_contract(
         md,
@@ -5671,18 +7231,39 @@ def _tier_c_analytics_json_response(
     return JSONResponse(md)
 
 
+def _resolve_ticker_param(
+    ticker: str,
+    symbol: Optional[str] = None,
+) -> str:
+    """Canonical query param is ``ticker``; ``symbol`` is a documented alias (audit/diag scripts)."""
+    raw = (symbol if symbol is not None and str(symbol).strip() else ticker) or DEFAULT_TICKER
+    return str(raw).upper().strip()
+
+
 @app.get("/api/live/state")
 async def get_live_state(
     ticker: str = Query(default=DEFAULT_TICKER),
+    symbol: Optional[str] = Query(default=None),
     expiry: Optional[str] = Query(default=None),
 ):
     """
     Tier A — instant live quote plane + session + identity. No chain, exposures, DB, news, or heavy compute.
     Primary driver for responsive UI; use GET /api/analytics/state for full analytical bundle.
     """
-    t = ticker.upper().strip()
-    _register_tracked_ticker(t)
-    return JSONResponse(_tier_a_live_state_dict(t, expiry))
+    t = _resolve_ticker_param(ticker, symbol)
+    # SWITCH-LATENCY FIX: this route is async, so ANY blocking work here stalls the whole
+    # event loop (all SSE streams, the fast-quote poll, every other request) until it
+    # returns — the root cause of slow ticker switches. Both _register_tracked_ticker
+    # (persists the symbol to the SQLite logging_universe — a DB write that contends with
+    # the live logger/retrain) and _tier_a_live_state_dict (blocking Schwab REST + retry on
+    # a cold ticker) must run OFF the loop. Offload to the thread pool, like /api/fast-quote.
+    def _build():
+        # TICKER-PREVIEW-NO-ENROLL: live-state view touches last-seen only, never enrolls.
+        _touch_tracked_ticker_view(t)
+        return _tier_a_live_state_dict(t, expiry)
+    loop = asyncio.get_event_loop()
+    payload = await loop.run_in_executor(_get_quote_hot_executor(), _build)
+    return JSONResponse(payload)
 
 
 @app.get("/api/analytics/light")
@@ -5699,10 +7280,17 @@ async def get_analytics_light(
     serve-age expiry, or force=true. Materiality-gated rebuilds run on quote/L2 hooks only.
     """
     t = ticker.upper().strip()
-    _register_tracked_ticker(t)
     from planes.l1_events import notify_ticker_expiry_changed
 
-    return JSONResponse(notify_ticker_expiry_changed(t, expiry, force=force))
+    # SWITCH-LATENCY FIX: async route — keep the symbol persist (DB write) and the L1
+    # projection build (a full recompute on a cold miss) OFF the event loop.
+    def _build():
+        # TICKER-PREVIEW-NO-ENROLL: L1 light view touches last-seen only, never enrolls.
+        _touch_tracked_ticker_view(t)
+        return notify_ticker_expiry_changed(t, expiry, force=force)
+    loop = asyncio.get_event_loop()
+    payload = await loop.run_in_executor(_get_fast_quote_executor(), _build)
+    return JSONResponse(payload)
 
 
 @app.get("/api/analytics/light/stream")
@@ -5716,7 +7304,9 @@ async def get_analytics_light_stream(
     Payload matches GET /api/analytics/light (uses _l1_http_get_projection — no duplicate compute path).
     """
     t = ticker.upper().strip()
-    _register_tracked_ticker(t)
+    # TICKER-PREVIEW-NO-ENROLL: an L1 SSE subscription is a VIEW (chart open), not a track —
+    # touch last-seen only. Offloaded because it may do a SQLite write for enrolled tickers.
+    await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _touch_tracked_ticker_view, t)
     exp_key = expiry if expiry is not None else "__auto__"
     key = (t, exp_key)
     q, rs_key = _l1_light_sse_try_reserve(request, key)
@@ -5746,6 +7336,7 @@ async def get_analytics_light_stream(
 @app.get("/api/analytics/state")
 async def get_analytics_state(
     ticker: str = Query(default=DEFAULT_TICKER),
+    symbol: Optional[str] = Query(default=None),
     expiry: Optional[str] = Query(default=None),
     force: bool = Query(default=False),
 ):
@@ -5753,24 +7344,60 @@ async def get_analytics_state(
     Tier C — full analytical pipeline (_fetch_state): chain, exposures, fusion, DB, news, model health.
     Not required for first paint; cache-first when TTL allows.
     """
-    return _tier_c_analytics_json_response(ticker, expiry, force, update_source="rest_analytics")
+    t = _resolve_ticker_param(ticker, symbol)
+    # SWITCH-LATENCY FIX: async route — the handler is stale-while-refresh (light), but it
+    # calls _register_tracked_ticker (SQLite write) on entry, which blocks the event loop
+    # during DB contention. Offload it; the heavy recompute it schedules already runs on
+    # its own thread pool.
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        _get_fast_quote_executor(),
+        lambda: _tier_c_analytics_json_response(t, expiry, force, "rest_analytics"),
+    )
+
+
+@app.post("/api/analytics/warm")
+async def post_analytics_warm(
+    ticker: str = Query(default=DEFAULT_TICKER),
+    symbol: Optional[str] = Query(default=None),
+    expiry: Optional[str] = Query(default=None),
+):
+    """
+    UI-MAXIMIZE — schedule Tier C background recompute + ML artifact prewarm (non-blocking).
+    Client fires on ticker switch / typeahead; does not await _fetch_state completion.
+    """
+    t = _resolve_ticker_param(ticker, symbol)
+
+    def _warm():
+        _touch_tracked_ticker_view(t)
+        return _schedule_analytics_warm(t, expiry, "client_warm_post", prewarm_models=True)
+
+    loop = asyncio.get_event_loop()
+    payload = await loop.run_in_executor(_get_route_offload_executor(), _warm)
+    return JSONResponse(payload)
 
 
 @app.get("/api/state")
-async def get_state(
+# SWITCH-LATENCY FIX: sync def → Starlette runs it in its worker threadpool, off the
+# event loop (this handler does blocking Tier C work and no await).
+def get_state(
     ticker: str = Query(default=DEFAULT_TICKER),
+    symbol: Optional[str] = Query(default=None),
     expiry: Optional[str] = Query(default=None),
     force: bool = Query(default=False),
 ):
     """
     Deprecated alias for GET /api/analytics/state (Tier C full bundle).
     Prefer /api/live/state + /api/analytics/state for real-time UX.
+    Query ``ticker=`` (preferred) or ``symbol=`` (alias).
     """
-    return _tier_c_analytics_json_response(ticker, expiry, force, update_source="rest_poll_legacy")
+    return _tier_c_analytics_json_response(
+        _resolve_ticker_param(ticker, symbol), expiry, force, update_source="rest_poll_legacy"
+    )
 
 
 @app.get("/api/live/plane")
-async def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
+def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
     """Diagnostics: Layer A row + streaming health — no Schwab REST quote call."""
     t = (ticker or DEFAULT_TICKER).upper().strip()
     row = _lmp.get_quote(t)
@@ -5790,8 +7417,13 @@ async def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
         if _scp is not None:
             base["stream_chg_pct"] = _scp
         base.update(get_top_of_book_sizes(t))
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning(
+            "order_flow_live_state merge failed for /api/state ticker=%s: %s",
+            t,
+            e,
+            exc_info=True,
+        )
     return JSONResponse(base)
 
 
@@ -5800,15 +7432,21 @@ async def post_streaming_active_ticker(payload: dict = Body(default={})):
     """Subscribe Schwab L1+book to the active UI ticker (dynamic; replaces prior subscription)."""
     t = (payload.get("ticker") or DEFAULT_TICKER)
     t = str(t).upper().strip()
-    try:
+    # SWITCH-LATENCY FIX (critical): set_streaming_active_ticker blocks on fut.result(timeout=30)
+    # while it does 6 websocket re-subscribe round-trips, and this endpoint fires on EVERY ticker
+    # switch. Running it on the async event loop froze the entire UI (all SSE/requests) for up to
+    # 30s per switch. Offload the whole blocking block to the thread pool; the loop stays free.
+    def _apply():
         from order_flow_streaming import set_streaming_active_ticker, get_streaming_diagnostics, get_plane_authority_for_ticker
 
         ok = set_streaming_active_ticker(t)
         _lmp.reset_sse_push_cursor(t)
         diag = get_streaming_diagnostics()
+        return {"ok": ok, "ticker": t, **diag, "plane_quote_authority": get_plane_authority_for_ticker(t)}
+    try:
+        out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e), "ticker": t}, status_code=500)
-    out = {"ok": ok, "ticker": t, **diag, "plane_quote_authority": get_plane_authority_for_ticker(t)}
     return JSONResponse(out)
 
 
@@ -5862,7 +7500,7 @@ def _l1_sse_light_diag_payload() -> dict[str, Any]:
 
 
 @app.get("/api/diagnostics/l1")
-async def get_l1_diagnostics():
+def get_l1_diagnostics():
     """
     L1 operational metrics: build counts, reason histogram, cache hits/skips, policy constants.
     For live validation and tuning materiality / TTL without log scraping.
@@ -5974,7 +7612,7 @@ async def get_l1_diagnostics():
 
 
 @app.post("/api/diagnostics/ticker-switch")
-async def post_ticker_switch_diagnostics(payload: dict = Body(default={})):
+def post_ticker_switch_diagnostics(payload: dict = Body(default={})):
     """Ingest client ticker-switch timing records into in-memory ring buffer."""
     from ticker_switch_diagnostics import record_switch_event
 
@@ -5983,7 +7621,7 @@ async def post_ticker_switch_diagnostics(payload: dict = Body(default={})):
 
 
 @app.get("/api/diagnostics/ticker-switch")
-async def get_ticker_switch_diagnostics(limit: int = Query(50, ge=1, le=200)):
+def get_ticker_switch_diagnostics(limit: int = Query(50, ge=1, le=200)):
     """Recent ticker-switch timing events (newest first)."""
     from ticker_switch_diagnostics import get_recent_events
 
@@ -6004,13 +7642,16 @@ async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
         ticker,
         asyncio_thread,
     )
-    newly = _register_tracked_ticker(ticker)
-    if newly:
-        log.debug(f"Auto-registered {ticker} with background logger (/api/fast-quote)")
     loop = asyncio.get_event_loop()
     submit_ts = time.perf_counter()
+    # SWITCH-LATENCY FIX: _register_tracked_ticker persists to the SQLite logging_universe
+    # (a DB write); keep it off the event loop alongside the quote fetch.
+    def _reg_and_fetch():
+        # TICKER-PREVIEW-NO-ENROLL: fast-quote view touches last-seen only, never enrolls.
+        _touch_tracked_ticker_view(ticker)
+        return _fetch_fast_quote_payload(ticker)
     try:
-        payload = await loop.run_in_executor(_get_fast_quote_executor(), _fetch_fast_quote_payload, ticker)
+        payload = await loop.run_in_executor(_get_quote_hot_executor(), _reg_and_fetch)
         after_exec = time.perf_counter()
         log.info(
             "fast_quote_route_done ticker=%s asyncio_thread=%s route_total_ms=%.2f await_executor_ms=%.2f",
@@ -6021,21 +7662,27 @@ async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
         )
         return JSONResponse(payload)
     except HTTPException as he:
-        # Rollout visibility: quote failures (e.g. 502) do not hit the generic branch below.
+        if _schwab_auth_http_unavailable(he):
+            stale = _lmp.get_quote(ticker)
+            if _plane_fast_quote_has_spot(stale):
+                return JSONResponse(_stale_fast_quote_carried_forward(stale, ticker))
+            return JSONResponse(
+                status_code=401,
+                content=_fast_quote_token_invalid_payload(str(he.detail or "")),
+            )
         if he.status_code >= 400:
             log.warning("Fast quote HTTP %s for %s: %s", he.status_code, ticker, he.detail)
         raise
     except Exception as e:
-        from schwab_client import _is_token_error
-        if _is_token_error(e):
+        from schwab_client import SchwabAuthError, _is_token_error
+
+        if _is_token_error(e) or isinstance(e, SchwabAuthError):
+            stale = _lmp.get_quote(ticker)
+            if _plane_fast_quote_has_spot(stale):
+                return JSONResponse(_stale_fast_quote_carried_forward(stale, ticker))
             return JSONResponse(
                 status_code=401,
-                content={
-                    "error": "token_invalid",
-                    "detail": "Schwab auth failed. Token may be expired. Run: python reauth_schwab.py",
-                    "message": "Schwab authentication failed. Token may be expired or invalid.",
-                    "remediation": "Run: python reauth_schwab.py",
-                },
+                content=_fast_quote_token_invalid_payload(str(e)),
             )
         log.error(f"Fast quote failed for {ticker}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -6053,9 +7700,9 @@ async def sse_stream(
     ticker = ticker.upper().strip()
     expiry = expiry or None
     key = (ticker, expiry)
-    newly = _register_tracked_ticker(ticker)
-    if newly:
-        log.info(f"Auto-registered {ticker} with background logger (SSE connect)")
+    # TICKER-PREVIEW-NO-ENROLL: an SSE stream connect is a VIEW subscription, not a track —
+    # touch last-seen only (offloaded; may do a SQLite write for an already-enrolled ticker).
+    await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _touch_tracked_ticker_view, ticker)
 
     stream_route_t0 = time.perf_counter()
 
@@ -6192,9 +7839,11 @@ async def _sse_background_loop() -> None:
 
 
 @app.get("/api/expiries")
-async def get_expiries(ticker: str = Query(default=DEFAULT_TICKER)):
+# SWITCH-LATENCY FIX: sync def → threadpool (DB write + Schwab expiry fetch, no await).
+def get_expiries(ticker: str = Query(default=DEFAULT_TICKER)):
     ticker = ticker.upper().strip()
-    _register_tracked_ticker(ticker)
+    # TICKER-PREVIEW-NO-ENROLL: listing expiries is a VIEW — touch last-seen only.
+    _touch_tracked_ticker_view(ticker)
     # Use any cached (ticker, expiry) entry — expiries list is same for all
     cached = next(
         (v for (t, e), v in _state_cache.items() if t == ticker and v.get("ms_dict")),
@@ -6211,7 +7860,7 @@ async def get_expiries(ticker: str = Query(default=DEFAULT_TICKER)):
 
 
 @app.get("/api/logger/status")
-async def logger_status():
+def logger_status():
     """Return background logger status — which tickers are being logged and their stats."""
     with _logger_lock:
         tickers = list(_logger_tickers)
@@ -6277,7 +7926,7 @@ async def logger_status():
 
 
 @app.get("/api/logger/universe")
-async def logger_universe():
+def logger_universe():
     """Issue 22 hardened — auditable logging_universe with eviction_status per row."""
     if not _HAS_SIGNALS:
         raise HTTPException(status_code=503, detail="database logging not available")
@@ -6312,7 +7961,7 @@ async def logger_universe():
 
 
 @app.get("/api/logger/universe/by-category")
-async def logger_universe_by_category(
+def logger_universe_by_category(
     category: str = Query(..., description="core | pinned | user_persisted"),
 ):
     if not _HAS_SIGNALS:
@@ -6332,7 +7981,7 @@ async def logger_universe_by_category(
 
 
 @app.post("/api/logger/pin")
-async def logger_pin(ticker: str = Query(..., description="Symbol to pin (non-core only)")):
+def logger_pin(ticker: str = Query(..., description="Symbol to pin (non-core only)")):
     if not _HAS_SIGNALS:
         raise HTTPException(status_code=503, detail="database logging not available")
     t = ticker.upper().strip()
@@ -6362,7 +8011,7 @@ async def logger_pin(ticker: str = Query(..., description="Symbol to pin (non-co
 
 
 @app.post("/api/logger/unpin")
-async def logger_unpin(ticker: str = Query(...)):
+def logger_unpin(ticker: str = Query(...)):
     if not _HAS_SIGNALS:
         raise HTTPException(status_code=503, detail="database logging not available")
     t = ticker.upper().strip()
@@ -6377,7 +8026,8 @@ async def logger_unpin(ticker: str = Query(...)):
 
 
 @app.post("/api/logger/add")
-async def logger_add(ticker: str = Query(..., description="Ticker to add to background logger")):
+# SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
+def logger_add(ticker: str = Query(..., description="Ticker to add to background logger")):
     """Manually add a ticker to the background logger."""
     ticker = ticker.upper().strip()
     if not ticker or len(ticker) > 10:
@@ -6389,7 +8039,7 @@ async def logger_add(ticker: str = Query(..., description="Ticker to add to back
 
 
 @app.post("/api/logger/remove")
-async def logger_remove(ticker: str = Query(..., description="Ticker to remove from logger")):
+def logger_remove(ticker: str = Query(..., description="Ticker to remove from logger")):
     """Remove a non-core ticker from the background logger and durable logging_universe."""
     ticker = ticker.upper().strip()
     if ticker in CORE_TICKERS:
@@ -6427,11 +8077,14 @@ async def logger_remove(ticker: str = Query(..., description="Ticker to remove f
 
 
 @app.post("/api/prediction/override")
-async def prediction_override(ticker: str = Query(...), direction: str = Query(...), source: str = Query("user")):
+# SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
+def prediction_override(ticker: str = Query(...), direction: str = Query(...), source: str = Query("user")):
     """Set manual override for prediction direction. direction: up|flat|down. source: user|manual."""
     ticker = ticker.upper().strip()
-    _register_tracked_ticker(ticker)
-    d = (direction or "flat").lower()
+    # TICKER-PREVIEW-NO-ENROLL (Decision 3): setting a prediction override acts on an existing
+    # tracked symbol; it must not silently enroll a new one into the training roster.
+    _touch_tracked_ticker_view(ticker)
+    d = (direction or "").strip().lower()
     if d not in ("up", "flat", "down"):
         raise HTTPException(status_code=400, detail="direction must be up, flat, or down")
     src = (source or "user").lower()
@@ -6440,10 +8093,12 @@ async def prediction_override(ticker: str = Query(...), direction: str = Query(.
 
 
 @app.post("/api/prediction/override/clear")
-async def prediction_override_clear(ticker: str = Query(...)):
+# SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
+def prediction_override_clear(ticker: str = Query(...)):
     """Clear prediction override for ticker."""
     ticker = ticker.upper().strip()
-    _register_tracked_ticker(ticker)
+    # TICKER-PREVIEW-NO-ENROLL (Decision 3): clearing an override must not enroll.
+    _touch_tracked_ticker_view(ticker)
     if ticker in _pred_overrides:
         del _pred_overrides[ticker]
         return JSONResponse({"ok": True, "ticker": ticker, "cleared": True})
@@ -6451,18 +8106,87 @@ async def prediction_override_clear(ticker: str = Query(...)):
 
 
 @app.get("/api/health")
-async def health():
+def health():
     with _logger_lock:
         running = _logger_running
         n       = len(_logger_tickers)
     return {"status": "ok", "time": datetime.now().isoformat(), "logger_running": running, "logger_tickers": n}
 
 
+def _repo_git_head_sha() -> Optional[str]:
+    """Best-effort repo tip for runtime-vs-disk checks (Meet-or-Exceed cycle)."""
+    import subprocess
+
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=APP_DIR,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=3.0,
+        )
+        sha = (proc.stdout or "").strip()
+        return sha or None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+@app.get("/api/release/current")
+def api_release_current():
+    """Current process release object (I-25)."""
+    from release_object import get_current_release, validate_release_for_emission
+
+    release = get_current_release(required=False)
+    ok, reason = validate_release_for_emission(release)
+    if not ok:
+        return JSONResponse({"ok": False, "reason": reason, "release": release}, status_code=503)
+    return {"ok": True, "release": release}
+
+
+@app.get("/api/decision/{decision_id}")
+def api_decision_by_id(decision_id: str):
+    """Retrieve immutable production decision by decision_id (I-31)."""
+    if not _HAS_SIGNALS:
+        return JSONResponse({"ok": False, "error": "db_unavailable"}, status_code=503)
+    from decision_record import get_production_decision_by_id, reconstruction_complete
+    from db import DB_PATH
+
+    payload = get_production_decision_by_id(decision_id, DB_PATH)
+    if payload is None:
+        return JSONResponse({"ok": False, "error": "not_found", "decision_id": decision_id}, status_code=404)
+    complete, missing = reconstruction_complete(payload)
+    return {
+        "ok": True,
+        "decision_id": decision_id,
+        "reconstruction_complete": complete,
+        "missing_fields": missing,
+        "decision": payload,
+    }
+
+
+@app.get("/api/build")
+def api_build():
+    """Runtime tip fingerprint — compare ``git_sha`` to ``git rev-parse HEAD`` after deploy/restart."""
+    from release_object import get_current_release
+
+    release = get_current_release(required=False)
+    return {
+        "git_sha": _repo_git_head_sha(),
+        "contract": "meet_or_exceed_v1",
+        "release_id": release.get("release_id") if release else None,
+        "ui_maximize_sla_ms": dict(UI_MAXIMIZE_SLA_MS),
+        "ui_maximize_panel_warm_tickers": list(UI_MAXIMIZE_PANEL_WARM_TICKERS),
+    }
+
+
 @app.get("/api/price-levels")
-async def get_price_levels(ticker: str = Query(default=DEFAULT_TICKER), extended_hours: bool = Query(default=True)):
+# SWITCH-LATENCY FIX: sync def → threadpool (Schwab quote + price-levels compute, no await).
+def get_price_levels(ticker: str = Query(default=DEFAULT_TICKER), extended_hours: bool = Query(default=True)):
     """Return PDH/PDL/PDC, POC/VAH/VAL, VWAP bands, ORB, overnight range as JSON."""
     try:
-        _register_tracked_ticker(ticker)
+        # TICKER-PREVIEW-NO-ENROLL: price-levels is a VIEW — touch last-seen only.
+        _touch_tracked_ticker_view(ticker)
         client = get_client()
         q_resp = _safe_get_quote_with_retry(client, ticker)
         q_json = q_resp.json() if q_resp and hasattr(q_resp, "json") else {}
@@ -6582,6 +8306,8 @@ def _liquidity_fusion_from_cache(
         (d.get("kl_gamma_inflection"), "GAMMA_INFLECTION"),
         (d.get("kl_delta_inflection"), "DELTA_INFLECTION"),
         (d.get("kl_gamma_pin"), "GAMMA_PIN"),
+        (d.get("kl_hvl"), "HVL"),
+        (d.get("kl_max_pain"), "MAX_PAIN"),
         (d.get("kl_gamma_flip"), "GAMMA_FLIP"),
         (d.get("kl_oi_center"), "OI_CENTER"),
         (d.get("kl_em_upper"), "EM_UPPER"),
@@ -6603,6 +8329,8 @@ def _liquidity_fusion_from_cache(
 
 def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
     """Add anchor, distance_to_spot, tradeable_score, options_level_count (mutates zp)."""
+    from liquidity_value_engine import liquidity_zone_tradeable_score
+
     tags = zp.get("source_tags") or []
     lo, hi = float(zp["zone_low"]), float(zp["zone_high"])
     mid = zp.get("zone_mid")
@@ -6618,7 +8346,9 @@ def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
     if spot is None:
         zp["distance_to_spot"] = None
         zp["spot_inside_zone"] = None
-        zp["tradeable_score"] = round(3.0 * len(tags) + 2.5 * n_opt, 2)
+        zp["tradeable_score"] = liquidity_zone_tradeable_score(
+            n_tags=len(tags), n_opt=n_opt, inside=False, dist_pen=0.0, spot=None
+        )
         return
     sf = float(spot)
     inside = lo <= sf <= hi
@@ -6628,12 +8358,17 @@ def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
         d = min(abs(sf - lo), abs(sf - hi))
     zp["distance_to_spot"] = round(d, 4)
     zp["spot_inside_zone"] = inside
-    dist_pen = min(d * 0.12, 10.0)
-    zp["tradeable_score"] = round(3.0 * len(tags) + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen, 2)
+    dist_pen = min((d / sf) * 12.0, 10.0)
+    zp["tradeable_score"] = liquidity_zone_tradeable_score(
+        n_tags=len(tags), n_opt=n_opt, inside=inside, dist_pen=dist_pen, spot=sf
+    )
 
 
 @app.get("/api/liquidity-snapshot")
-async def get_liquidity_snapshot(
+# SWITCH-LATENCY FIX: sync def → threadpool. This fires on every ticker switch (client
+# setTimeout pollLiquiditySnapshot) and every 60s; it does a blocking Schwab bar fetch with
+# no await, so as async it stalled the event loop on each switch.
+def get_liquidity_snapshot(
     ticker: str = Query(default=DEFAULT_TICKER),
     date: Optional[str] = Query(default=None, description="Session date YYYY-MM-DD (default: today ET)"),
     snapshot: str = Query(
@@ -6650,9 +8385,10 @@ async def get_liquidity_snapshot(
         from liquidity_value_engine import build_live_snapshot, generate_liquidity_value_snapshot
         from liquidity_models import SnapshotType, PlaybookConfig
 
-        session_date = date or datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+        session_date = date or now_et().strftime("%Y-%m-%d")
         ticker_upper = ticker.upper().strip()
-        _register_tracked_ticker(ticker_upper)
+        # TICKER-PREVIEW-NO-ENROLL: liquidity snapshot is a VIEW — touch last-seen only.
+        _touch_tracked_ticker_view(ticker_upper)
         client = get_client()
         from datetime import date as date_type
 
@@ -6673,7 +8409,7 @@ async def get_liquidity_snapshot(
         bar_merge_note = "schwab"
 
         if snap_raw == "live":
-            today_ld = datetime.now(ZoneInfo("America/New_York")).date()
+            today_ld = now_et().date()
             if session_date_obj == today_ld:
                 from liquidity_value_engine import merge_schwab_bars_with_live_overlay
 
@@ -6781,7 +8517,8 @@ async def get_liquidity_snapshot(
 
 
 @app.get("/api/liquidity-playbook-state")
-async def get_liquidity_playbook_state(
+# SWITCH-LATENCY FIX: sync def → threadpool (blocking Schwab bar fetch, no await).
+def get_liquidity_playbook_state(
     ticker: str = Query(default=DEFAULT_TICKER),
     date: Optional[str] = Query(default=None, description="Session date YYYY-MM-DD (default: today ET)"),
 ):
@@ -6792,9 +8529,10 @@ async def get_liquidity_playbook_state(
         from liquidity_value_engine import generate_playbook_state, playbook_state_to_dict
         from liquidity_models import PlaybookConfig
 
-        session_date = date or datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+        session_date = date or now_et().strftime("%Y-%m-%d")
         ticker_upper = ticker.upper().strip()
-        _register_tracked_ticker(ticker_upper)
+        # TICKER-PREVIEW-NO-ENROLL: playbook-state is a VIEW — touch last-seen only.
+        _touch_tracked_ticker_view(ticker_upper)
         client = get_client()
         from datetime import date as date_type
         session_date_obj = date_type.fromisoformat(session_date)
@@ -6820,13 +8558,14 @@ async def get_liquidity_playbook_state(
 
 
 @app.get("/api/debug/charm")
-async def debug_charm(ticker: str = DEFAULT_TICKER):
+# SWITCH-LATENCY FIX: sync def → threadpool (blocking chain fetch, no await).
+def debug_charm(ticker: str = DEFAULT_TICKER):
     """Diagnose why charm is not computing."""
     try:
         ticker = (ticker or DEFAULT_TICKER).upper().strip()
-        _register_tracked_ticker(ticker)
+        # TICKER-PREVIEW-NO-ENROLL: charm diagnostic is a VIEW — touch last-seen only.
+        _touch_tracked_ticker_view(ticker)
         from math_exposure import compute_net_charm
-        import datetime as _dt
         import math as _charm_math
 
         cl       = get_client()
@@ -6874,33 +8613,33 @@ async def debug_charm(ticker: str = DEFAULT_TICKER):
                 _g = float(ct.get("gamma")) if ct.get("gamma") is not None else None
             except (TypeError, ValueError):
                 _g = None
-            if _g is not None and _g != -999.0 and _charm_math.isfinite(_g):
+            if _g is not None and _g != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_g):
                 usable_gamma += 1
-            if ct.get("gamma") == -999.0:
+            if ct.get("gamma") == MISSING_GREEK_SENTINEL:
                 sentinel_gamma += 1
             try:
                 _d = float(ct.get("delta")) if ct.get("delta") is not None else None
             except (TypeError, ValueError):
                 _d = None
-            if _d is not None and _d != -999.0 and _charm_math.isfinite(_d):
+            if _d is not None and _d != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_d):
                 usable_delta += 1
             try:
                 _t = float(ct.get("theta")) if ct.get("theta") is not None else None
             except (TypeError, ValueError):
                 _t = None
-            if _t is not None and _t != -999.0 and _charm_math.isfinite(_t):
+            if _t is not None and _t != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_t):
                 usable_theta += 1
             try:
                 _v = float(ct.get("vega")) if ct.get("vega") is not None else None
             except (TypeError, ValueError):
                 _v = None
-            if _v is not None and _v != -999.0 and _charm_math.isfinite(_v):
+            if _v is not None and _v != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_v):
                 usable_vega += 1
             try:
                 _iv = float(ct.get("volatility")) if ct.get("volatility") is not None else None
             except (TypeError, ValueError):
                 _iv = None
-            if _iv is not None and _iv > 0 and _iv != -999.0 and _charm_math.isfinite(_iv):
+            if _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL and _charm_math.isfinite(_iv):
                 usable_iv += 1
             if ct.get("openInterest"):
                 has_oi += 1
@@ -6942,14 +8681,16 @@ async def debug_charm(ticker: str = DEFAULT_TICKER):
 
 
 @app.get("/api/accuracy")
-async def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
+# SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
+def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
     """Return prediction accuracy for a ticker.
 
     Returns cached results if available (updated every ~10 min),
     otherwise computes fresh. Also returns accuracy history for charting.
     """
     ticker = (ticker or DEFAULT_TICKER).upper().strip()
-    _register_tracked_ticker(ticker)
+    # TICKER-PREVIEW-NO-ENROLL: accuracy is a VIEW — touch last-seen only.
+    _touch_tracked_ticker_view(ticker)
 
     db = get_db() if _HAS_SIGNALS else None
     if not db:
@@ -6966,13 +8707,49 @@ async def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
         except Exception as e:
             return {"error": str(e)}
 
-    # Fetch history if the method exists (not yet implemented in db.py)
-    history = []
-    if hasattr(db, "get_accuracy_history"):
-        try:
-            history = db.get_accuracy_history(ticker, limit=ACCURACY_HISTORY_LIMIT)
-        except Exception:
-            history = []
+        # Pass 5a: persist accuracy snapshot per horizon when value
+        # meaningfully changed vs last logged row (db.maybe_log_model_accuracy
+        # handles the dedup epsilon). Throttled by the existing 10-min
+        # ACCURACY_INTERVAL cache above — at most one INSERT per ticker per
+        # horizon per ~10min.
+        for _hz, _hz_res in (results or {}).items():
+            if not isinstance(_hz_res, dict):
+                continue
+            try:
+                _new_id = db.maybe_log_model_accuracy(
+                    ticker=ticker,
+                    timeframe=CANONICAL_TIMEFRAME,
+                    model_version="statistical_v1",
+                    horizon=_hz,
+                    total_predictions=int(_hz_res.get("total", 0) or 0),
+                    correct_direction=_hz_res.get("correct"),
+                    accuracy_pct=_hz_res.get("accuracy"),
+                )
+                if _new_id is not None:
+                    log.info(
+                        "model_accuracy ticker=%s horizon=%s acc=%s%% n=%s",
+                        ticker, _hz,
+                        _hz_res.get("accuracy"),
+                        _hz_res.get("total"),
+                    )
+            except Exception as _mae:
+                log.debug("log_model_accuracy ticker=%s hz=%s failed: %s", ticker, _hz, _mae)
+
+    # Fetch history via Pass 5a reader (get_model_accuracy_history).
+    history: list[dict] = []
+    try:
+        from ml_horizon import PRIMARY_DECISION_HORIZONS
+        for _hz in PRIMARY_DECISION_HORIZONS:
+            rows = db.get_model_accuracy_history(
+                ticker=ticker,
+                timeframe=CANONICAL_TIMEFRAME,
+                model_version="statistical_v1",
+                horizon=_hz,
+                limit=int(ACCURACY_HISTORY_LIMIT),
+            )
+            history.extend(rows)
+    except Exception:
+        history = []
 
     return {
         "ticker": ticker,
@@ -6983,8 +8760,11 @@ async def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
 
 
 @app.get("/api/debug/prediction")
-async def debug_prediction(ticker: str = DEFAULT_TICKER):
-    """Show exactly what the prediction engine is querying."""
+# SWITCH-LATENCY FIX: sync def → threadpool (blocking full _fetch_state, no await).
+def debug_prediction(ticker: str = DEFAULT_TICKER):
+    """Show exactly what the prediction engine is querying — non-production debug surface (R-011)."""
+    if os.environ.get("ED_ALLOW_DEBUG_ENDPOINTS", "").strip().lower() not in ("1", "true", "yes"):
+        raise HTTPException(status_code=404, detail="debug endpoints disabled")
     try:
         state = _fetch_state(ticker, expiry=None, update_source="debug_endpoint")
         zone = state.get("zone", "?")
@@ -7005,9 +8785,7 @@ async def debug_prediction(ticker: str = DEFAULT_TICKER):
         if _HAS_SIGNALS:
             db = get_db()
             if db:
-                with db._connect() as conn:
-                    rows = conn.execute(get_snapshot_sql("server.py:6235"), (ticker, CANONICAL_TIMEFRAME)).fetchall()
-                    zone_counts = {r[0]: r[1] for r in rows}
+                zone_counts = db.get_zone_distribution(ticker, CANONICAL_TIMEFRAME)
 
         return {
             "current_query": {

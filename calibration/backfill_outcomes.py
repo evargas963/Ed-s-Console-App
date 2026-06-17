@@ -23,6 +23,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
+import logging
 import sqlite3
 import sys
 import time
@@ -37,14 +39,21 @@ from calibration.db_guard import register_allow_noncanonical_flag, require_canon
 from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
 
+log = logging.getLogger(__name__)
+
 try:
     from db import configure_sqlite_connection
-except Exception:
+except ImportError as e:
+    log.warning(
+        "db.configure_sqlite_connection not available — using no-op stub: %s",
+        e,
+    )
 
     def configure_sqlite_connection(conn, **kwargs):
         pass
 
 from db import get_snapshot_sql
+from instrument_identity import ticker_storage_key
 
 _BASE_SEL = get_snapshot_sql("calibration/backfill_outcomes.py:select_base")
 
@@ -71,6 +80,7 @@ def resolve_snapshot_for_backfill(
     skip_reason 'ok' means row is usable; otherwise skip_reason explains why we did not attach.
     join_method is 'exact' | 'nearest_within_tol' when row is returned.
     """
+    ticker = ticker_storage_key(ticker)
     n_exact = _count_snapshots_at_exact_ts(conn, ticker, decision_ts)
     if n_exact > 1:
         return None, "ambiguous_duplicate_snapshots", None
@@ -145,7 +155,7 @@ def backfill(db_path: Path, tol_sec: float = 0.0) -> dict[str, Any]:
 
     for row in pending:
         rid = int(row["id"])
-        tk = row["ticker"]
+        tk = ticker_storage_key(str(row["ticker"]))
         ts = float(row["decision_ts_utc"])
         snap, reason, method = resolve_snapshot_for_backfill(conn, tk, ts, tol_sec)
         if snap is None:
@@ -215,7 +225,7 @@ def _resync_existing_outcomes_from_snapshots(
     ).fetchall()
     for r in rows:
         rid = int(r["id"])
-        tk = r["ticker"]
+        tk = ticker_storage_key(str(r["ticker"]))
         key_ts = float(r["matched_snapshot_ts_utc"] if r["matched_snapshot_ts_utc"] is not None else r["decision_ts_utc"])
         dec_ts = float(r["decision_ts_utc"])
         n = _count_snapshots_at_exact_ts(conn, tk, key_ts)
@@ -288,7 +298,7 @@ def main() -> int:
     except CalibrationCanonicalViolationError as e:
         print(f"CANONICAL_ENFORCEMENT_FAIL: {e}", file=sys.stderr)
         return 2
-    print(s)
+    print(json.dumps(s, indent=2, default=str))
     return 0
 
 

@@ -20,19 +20,17 @@ wall choice, distance buckets, and session boundaries cannot drift across genera
 
 from __future__ import annotations
 
-
-
+import logging
 import os
-
 import threading
-
 import time
+
+log = logging.getLogger(__name__)
 
 from datetime import datetime, timezone
 
 from typing import Any, Optional, Tuple
 
-from zoneinfo import ZoneInfo
 
 from canonical_distances import canonical_nearest_distances
 
@@ -43,49 +41,122 @@ _next_generation_id: int = 0
 
 
 
-_ET = ZoneInfo("America/New_York")
+from time_et import ET as _ET
+
+# STACK-WIRE-6b FIND-WIRE6-7: tick-refresh thresholds for spot drift (env-overridable).
+TICK_REFRESH_SPOT_PCT_DEFAULT: float = 0.0003  # 3 bp percent move triggers full _fetch_state refresh
+TICK_REFRESH_SPOT_ABS_DEFAULT: float = 0.05    # nickel absolute move triggers full _fetch_state refresh
 
 
 
 
 
-def stamp_decision_bundle(ms_dict: dict) -> dict:
+def stamp_decision_bundle(ms_dict: dict, *, route: str = "unknown") -> dict:
+    """
+    Assign immutable decision_id, monotonic decision_generation_id, release_id, and timestamps.
 
-    """Assign monotonic decision_generation_id and decision_timestamp_utc (mutates ms_dict)."""
+    Keys decision_id, decision_generation_id, decision_timestamp_utc, release_id are present
+    on success paths. Values are None when signals_engine_failed or release unavailable.
+    """
+
+    if ms_dict.get("signals_engine_failed"):
+        ms_dict["decision_tick_kind"] = "signals_engine_error"
+        ms_dict["decision_generation_skipped"] = True
+        ms_dict["decision_id"] = None
+        ms_dict["decision_generation_id"] = None
+        ms_dict["decision_timestamp_utc"] = None
+        ms_dict["release_id"] = None
+        ms_dict["decision_route"] = route
+        return ms_dict
+
+    from trade_impacting_gate import apply_trade_impacting_gate
+
+    gate = apply_trade_impacting_gate(ms_dict, route=route)
+    if gate.quarantined or not gate.production_emission_allowed:
+        ms_dict["decision_tick_kind"] = "market_quarantine"
+        ms_dict["decision_generation_skipped"] = True
+        ms_dict["decision_id"] = None
+        ms_dict["decision_generation_id"] = None
+        ms_dict["decision_timestamp_utc"] = None
+        ms_dict["release_id"] = None
+        ms_dict["decision_route"] = route
+        ms_dict["decision_gate_blocked"] = True
+        ms_dict["decision_gate_reasons"] = gate.reasons
+        log.warning(
+            "stamp_decision_bundle: gate blocked route=%s class=%s reasons=%s",
+            route,
+            gate.route_class,
+            gate.reasons,
+        )
+        return ms_dict
+
+    from release_object import get_current_release, validate_release_for_emission
+
+    release = get_current_release(required=False)
+    ok, reason = validate_release_for_emission(release)
+    if not ok:
+        ms_dict["decision_tick_kind"] = "release_unavailable"
+        ms_dict["decision_generation_skipped"] = True
+        ms_dict["decision_id"] = None
+        ms_dict["decision_generation_id"] = None
+        ms_dict["decision_timestamp_utc"] = None
+        ms_dict["release_id"] = None
+        ms_dict["release_unavailable_reason"] = reason
+        ms_dict["decision_route"] = route
+        log.warning("stamp_decision_bundle: release gate blocked route=%s reason=%s", route, reason)
+        return ms_dict
+
+    from decision_record import new_decision_id
 
     global _next_generation_id
 
     with _lock:
-
         _next_generation_id += 1
-
         gid = _next_generation_id
 
+    ms_dict["decision_id"] = new_decision_id()
     ms_dict["decision_generation_id"] = int(gid)
-
     ms_dict["decision_timestamp_utc"] = float(time.time())
-
+    ms_dict["decision_tick_kind"] = "live"
+    ms_dict["decision_generation_skipped"] = False
+    ms_dict["release_id"] = release["release_id"]
+    ms_dict["release_object"] = release
+    ms_dict["decision_route"] = route
     return ms_dict
+
+
+def persist_stamped_decision(ms_dict: dict, *, route: str, db_path) -> Optional[str]:
+    """Persist immutable decision record after stamp_decision_bundle (I-31)."""
+    if ms_dict.get("decision_generation_skipped") or not ms_dict.get("decision_id"):
+        return None
+    if ms_dict.get("decision_gate_blocked"):
+        return None
+    from trade_impacting_gate import classify_route, production_emission_allowed
+
+    if not production_emission_allowed(ms_dict, route=route) or classify_route(route) != "production":
+        return None
+    quarantine = ms_dict.get("market_data_quarantine") or {}
+    if isinstance(quarantine, dict) and quarantine.get("active"):
+        return None
+    release = ms_dict.get("release_object")
+    if not isinstance(release, dict):
+        from release_object import get_current_release
+
+        release = get_current_release(required=False)
+    if not release:
+        return None
+    from decision_record import persist_production_decision
+
+    return persist_production_decision(ms_dict, route=route, release=release, db_path=db_path)
 
 
 
 
 
 def _float_or_none(x: Any) -> Optional[float]:
+    from numeric_contract import float_finite_or_none
 
-    if x is None:
-
-        return None
-
-    try:
-
-        v = float(x)
-
-    except (TypeError, ValueError):
-
-        return None
-
-    return v
+    return float_finite_or_none(x)
 
 
 
@@ -106,6 +177,10 @@ def _key_levels_from_ms_dict(ms_dict: dict) -> list[tuple[float, str]]:
         (ms_dict.get("kl_call_gamma_wall"), "Call g-Wall"),
 
         (ms_dict.get("kl_put_gamma_wall"), "Put g-Wall"),
+
+        (ms_dict.get("kl_hvl"), "HVL"),
+
+        (ms_dict.get("kl_max_pain"), "Max Pain"),
 
         (ms_dict.get("kl_gamma_inflection"), "g-Inflection"),
 
@@ -214,18 +289,18 @@ def _session_bucket_from_utc_ts(ts: float) -> str:
 
 
 def _live_session_label() -> Optional[str]:
+    """Fetch the live session label.
 
-    try:
+    Propagates exceptions to the caller — `tick_triggers_coherent_refresh`'s
+    outer try/except handles failures uniformly with every other check in
+    that function (warning log + refresh). Previously this wrapper swallowed
+    exceptions and returned None, causing the caller to silently skip the
+    session-label check on `market_context` outages (drift opposite to the
+    file's fail-closed-toward-refresh discipline).
+    """
+    from market_context import _derive_session
 
-        from market_context import _derive_session
-
-
-
-        return str(_derive_session())
-
-    except Exception:
-
-        return None
+    return str(_derive_session())
 
 
 
@@ -286,10 +361,8 @@ def tick_triggers_coherent_refresh(
             return True
 
     except Exception:
-
-        pass
-
-
+        log.warning("tick_triggers: zone integrity check failed — scheduling refresh", exc_info=True)
+        return True
 
     # ── Market session label (RTH / Pre / After / Closed) — ET clock boundary
 
@@ -306,10 +379,8 @@ def tick_triggers_coherent_refresh(
                 return True
 
     except Exception:
-
-        pass
-
-
+        log.warning("tick_triggers: session label check failed — scheduling refresh", exc_info=True)
+        return True
 
     # ── Intraday session_bucket vs bucket at decision stamp (signals time-of-day regime)
 
@@ -328,14 +399,12 @@ def tick_triggers_coherent_refresh(
                 return True
 
     except Exception:
+        log.warning("tick_triggers: session_bucket check failed — scheduling refresh", exc_info=True)
+        return True
 
-        pass
+    pct_thr = float(os.environ.get("ED_TICK_REFRESH_SPOT_PCT", str(TICK_REFRESH_SPOT_PCT_DEFAULT)))
 
-
-
-    pct_thr = float(os.environ.get("ED_TICK_REFRESH_SPOT_PCT", "0.0003"))
-
-    abs_thr = float(os.environ.get("ED_TICK_REFRESH_SPOT_ABS", "0.05"))
+    abs_thr = float(os.environ.get("ED_TICK_REFRESH_SPOT_ABS", str(TICK_REFRESH_SPOT_ABS_DEFAULT)))
 
 
 
@@ -404,10 +473,8 @@ def tick_triggers_coherent_refresh(
                     return True
 
         except Exception:
-
-            pass
-
-
+            log.warning("tick_triggers: vwap_side check failed — scheduling refresh", exc_info=True)
+            return True
 
         # Nearest wall identity + empirical distance buckets (tier / similar-set drivers)
 
@@ -440,10 +507,8 @@ def tick_triggers_coherent_refresh(
                 return True
 
         except Exception:
-
-            pass
-
-
+            log.warning("tick_triggers: nearest-wall bucket check failed — scheduling refresh", exc_info=True)
+            return True
 
     old_r = ms_dict.get("order_flow_regime")
 

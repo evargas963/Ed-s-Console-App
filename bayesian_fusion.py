@@ -26,9 +26,12 @@ Consumed by:
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 import os
 from typing import Any, Optional
+
+from numeric_contract import direction_from_normalized_triplet, float_finite_or_none
 
 log = logging.getLogger(__name__)
 
@@ -42,13 +45,13 @@ class FusionPayload:
     """Structured output from Bayesian fusion."""
     available:              bool
 
-    # Posterior probabilities for outcome families
-    breakout_posterior:     float = 0.15
-    pinning_posterior:      float = 0.25
-    continuation_posterior: float = 0.20
-    reversal_posterior:     float = 0.15
-    vol_expansion_posterior: float = 0.10
-    mean_reversion_posterior: float = 0.15
+    # Posterior probabilities for outcome families (None when fusion unavailable)
+    breakout_posterior:     Optional[float] = None
+    pinning_posterior:      Optional[float] = None
+    continuation_posterior: Optional[float] = None
+    reversal_posterior:     Optional[float] = None
+    vol_expansion_posterior: Optional[float] = None
+    mean_reversion_posterior: Optional[float] = None
 
     # Trust weights per source (0–1, sum to 1 within active sources)
     weight_xgboost:        float = 0.0
@@ -59,10 +62,10 @@ class FusionPayload:
     weight_regime:         float = 0.0
 
     # Dominant posterior
-    dominant_outcome:      str   = "unknown"   # highest posterior
-    dominant_probability:  float = 0.0
-    fusion_confidence:     str   = "low"       # low / medium / high
-    fusion_confidence_score: float = 0.0       # 0–1
+    dominant_outcome:      Optional[str] = None
+    dominant_probability:  Optional[float] = None
+    fusion_confidence:     Optional[str] = None
+    fusion_confidence_score: Optional[float] = None
 
     # Evidence quality
     n_sources_available:   int   = 0
@@ -87,14 +90,14 @@ class FusionPayload:
     mc_sigma_value:        Optional[float] = None  # scaled/blended sigma used
 
     # Model agreement (XGB + LSTM + Transformer + MC directional alignment)
-    model_agreement:       float = 0.0   # 0–1: how aligned are available models
-    model_agreement_label: str   = "low"
+    model_agreement:       Optional[float] = None
+    model_agreement_label: Optional[str] = None
 
     # Directional fusion (weighted P(up), P(down), P(flat) from models)
-    prob_up:               float = 0.33
-    prob_down:             float = 0.33
-    prob_flat:             float = 0.34
-    dominant_direction:    str   = "flat"   # "up" | "down" | "flat"
+    prob_up:               Optional[float] = None
+    prob_down:             Optional[float] = None
+    prob_flat:             Optional[float] = None
+    dominant_direction:    Optional[str] = None
 
     # Audit: how Monte Carlo enters fusion (not only stored on payload — used in math below)
     fusion_mc_contribution: Optional[dict] = None
@@ -184,22 +187,76 @@ REGIME_PRIORS = {
 # EVIDENCE → LIKELIHOOD TRANSLATION
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _resolved_regime_label(regime) -> Optional[str]:
+    """Classified regime primary, or None when absent / unknown (fail-closed for fusion trust)."""
+    if regime is None:
+        return None
+    raw = getattr(regime, "primary", None)
+    if raw is None:
+        return None
+    label = str(raw).strip().lower()
+    if not label or label == "unknown":
+        return None
+    return label
+
+
+def _model_dominant_class(out) -> Optional[str]:
+    """Dominant class from normalized model triplet only (ignore upstream label)."""
+    if not getattr(out, "available", False):
+        return None
+    triplet = _model_direction_triplet(out)
+    if triplet is None:
+        return None
+    up, down, flat = triplet
+    return direction_from_normalized_triplet(up, down, flat)
+
+
+def _optional_support(out, attr: str) -> Optional[float]:
+    return float_finite_or_none(getattr(out, attr, None))
+
+
+def _model_direction_triplet(out) -> Optional[tuple[float, float, float]]:
+    """Read normalized (up, down, flat) from an available model output; None if attrs missing."""
+    if not getattr(out, "available", False):
+        return None
+    up = getattr(out, "prob_up", None)
+    down = getattr(out, "prob_down", None)
+    flat = getattr(out, "prob_flat", None)
+    if up is None or down is None or flat is None:
+        return None
+    up = float_finite_or_none(up)
+    down = float_finite_or_none(down)
+    flat = float_finite_or_none(flat)
+    if up is None or down is None or flat is None:
+        return None
+    tot = up + down + flat
+    if tot <= 0 or not math.isfinite(tot):
+        return None
+    return up / tot, down / tot, flat / tot
+
+
 def _translate_xgb_evidence(xgb_out, direction_hint: str) -> dict:
     """Convert XGBoost output into likelihood contributions per outcome family."""
     if not getattr(xgb_out, "available", False):
         return {}
 
-    up = xgb_out.prob_up
-    down = xgb_out.prob_down
+    triplet = _model_direction_triplet(xgb_out)
+    if triplet is None:
+        return {}
+    up, down, flat = triplet
     directional = max(up, down)
 
+    cont = _optional_support(xgb_out, "continuation_support")
+    rev = _optional_support(xgb_out, "reversal_support")
+    if cont is None or rev is None:
+        return {}
     return {
         "breakout":       directional * 0.8,
-        "continuation":   xgb_out.continuation_support,
-        "reversal":       xgb_out.reversal_support,
-        "pinning":        xgb_out.prob_flat * 0.8,
+        "continuation":   cont,
+        "reversal":       rev,
+        "pinning":        flat * 0.8,
         "vol_expansion":  directional * 0.5,
-        "mean_reversion": xgb_out.prob_flat * 0.6,
+        "mean_reversion": flat * 0.6,
     }
 
 
@@ -208,15 +265,20 @@ def _translate_lstm_evidence(lstm_out, direction_hint: str) -> dict:
     if not getattr(lstm_out, "available", False):
         return {}
 
-    up = getattr(lstm_out, "prob_up", 0.33)
-    down = getattr(lstm_out, "prob_down", 0.33)
-    flat = getattr(lstm_out, "prob_flat", 0.34)
+    triplet = _model_direction_triplet(lstm_out)
+    if triplet is None:
+        return {}
+    up, down, flat = triplet
     directional = max(up, down)
 
+    cont = _optional_support(lstm_out, "continuation_support")
+    rev = _optional_support(lstm_out, "reversal_support")
+    if cont is None or rev is None:
+        return {}
     return {
         "breakout":       directional * 0.7,
-        "continuation":   getattr(lstm_out, "continuation_support", 0.0),
-        "reversal":       getattr(lstm_out, "reversal_support", 0.0),
+        "continuation":   cont,
+        "reversal":       rev,
         "pinning":        flat * 0.8,
         "vol_expansion":  directional * 0.4,
         "mean_reversion": flat * 0.6,
@@ -228,15 +290,20 @@ def _translate_transformer_evidence(transformer_out, direction_hint: str) -> dic
     if not getattr(transformer_out, "available", False):
         return {}
 
-    up = getattr(transformer_out, "prob_up", 0.33)
-    down = getattr(transformer_out, "prob_down", 0.33)
-    flat = getattr(transformer_out, "prob_flat", 0.34)
+    triplet = _model_direction_triplet(transformer_out)
+    if triplet is None:
+        return {}
+    up, down, flat = triplet
     directional = max(up, down)
 
+    cont = _optional_support(transformer_out, "continuation_support")
+    rev = _optional_support(transformer_out, "reversal_support")
+    if cont is None or rev is None:
+        return {}
     return {
         "breakout":       directional * 0.7,
-        "continuation":   getattr(transformer_out, "continuation_support", 0.0),
-        "reversal":       getattr(transformer_out, "reversal_support", 0.0),
+        "continuation":   cont,
+        "reversal":       rev,
         "pinning":        flat * 0.8,
         "vol_expansion":  directional * 0.4,
         "mean_reversion": flat * 0.6,
@@ -280,7 +347,7 @@ class FusionTickCache:
     evidence differs per horizon.
     """
 
-    regime_label: str
+    regime_label: Optional[str]
     direction_hint: str
     priors: dict[str, float]
     weight_adjustments: dict[str, float]
@@ -289,10 +356,14 @@ class FusionTickCache:
 
 def build_fusion_tick_cache(regime, rules) -> FusionTickCache:
     """Build shared fusion prep once per tick; pass into fuse(..., fusion_tick_cache=...)."""
-    regime_label = getattr(regime, "primary", "unknown")
+    regime_label = _resolved_regime_label(regime)
     direction_hint = getattr(rules, "signal", "wait")
-    priors = dict(REGIME_PRIORS.get(regime_label, DEFAULT_PRIORS))
-    weight_adjustments = dict(REGIME_WEIGHT_ADJUSTMENTS.get(regime_label, {}))
+    priors = (
+        dict(REGIME_PRIORS[regime_label])
+        if regime_label in REGIME_PRIORS
+        else dict(DEFAULT_PRIORS)
+    )
+    weight_adjustments = dict(REGIME_WEIGHT_ADJUSTMENTS.get(regime_label or "", {}))
     rules_evidence = dict(_translate_rules_evidence(rules, regime))
     return FusionTickCache(
         regime_label=regime_label,
@@ -323,9 +394,13 @@ def _bayesian_update(priors: dict, evidence_list: list, weights: list) -> dict:
         if not evidence:
             continue
         for o in outcomes:
-            likelihood = evidence.get(o, 0.5)  # default: neutral evidence
-            # Raise to weight power (higher weight = stronger influence)
-            posteriors[o] *= max(0.01, likelihood) ** weight
+            if o not in evidence:
+                continue
+            likelihood = evidence[o]
+            lh = float_finite_or_none(likelihood)
+            if lh is None:
+                continue
+            posteriors[o] *= max(0.01, lh) ** weight
 
     # Normalize
     total = sum(posteriors.values())
@@ -411,14 +486,18 @@ def _fuse_impl(
         priors = fusion_tick_cache.priors
         adjustments = fusion_tick_cache.weight_adjustments
     else:
-        regime_label = getattr(regime, "primary", "unknown")
+        regime_label = _resolved_regime_label(regime)
         direction_hint = getattr(rules, "signal", "wait")
 
         # ── Select priors based on regime ─────────────────────────────────────────
-        priors = REGIME_PRIORS.get(regime_label, DEFAULT_PRIORS)
+        priors = (
+            dict(REGIME_PRIORS[regime_label])
+            if regime_label in REGIME_PRIORS
+            else dict(DEFAULT_PRIORS)
+        )
 
         # ── Compute regime-aware trust weights ────────────────────────────────────
-        adjustments = REGIME_WEIGHT_ADJUSTMENTS.get(regime_label, {})
+        adjustments = dict(REGIME_WEIGHT_ADJUSTMENTS.get(regime_label or "", {}))
     weights = {}
     for source, base_w in BASE_WEIGHTS.items():
         mult = adjustments.get(source, 1.0)
@@ -433,7 +512,7 @@ def _fuse_impl(
         # it is applied only as post-fusion context (see mc_fusion_adjustment).
         "monte_carlo": False,
         "rules":       True,  # always available
-        "regime":      regime_label != "unknown",
+        "regime":      regime_label is not None,
     }
 
     for source, avail in source_available.items():
@@ -518,9 +597,8 @@ def _fuse_impl(
     if n_predictive_approved <= 1:
         conf_score = min(conf_score, 0.55)
 
-    # Damp 3: placeholder calibration penalty — all likelihoods are guesses.
-    # Scale confidence score by 0.85 until empirical calibration replaces placeholders.
-    # TODO: remove this multiplier after 60+ days of calibration data.
+    # Damp 3: placeholder calibration penalty — tracked OPEN_ITEMS FUSION-CALIBRATION-PENALTY-PLACEHOLDER
+    # [REAL-GATE: telemetry] until 60+ days empirical calibration replaces placeholder likelihoods.
     CALIBRATION_PENALTY = 0.85
     conf_score *= CALIBRATION_PENALTY
 
@@ -528,12 +606,10 @@ def _fuse_impl(
 
     # ── Model agreement (XGB + LSTM + Transformer only; MC excluded) ───────────
     model_dirs = []
-    if getattr(xgb_out, "available", False):
-        model_dirs.append(getattr(xgb_out, "dominant_class", "flat"))
-    if getattr(lstm_out, "available", False):
-        model_dirs.append(getattr(lstm_out, "dominant_class", "flat"))
-    if getattr(transformer_out, "available", False):
-        model_dirs.append(getattr(transformer_out, "dominant_class", "flat"))
+    for _out in (xgb_out, lstm_out, transformer_out):
+        _dc = _model_dominant_class(_out)
+        if _dc is not None:
+            model_dirs.append(_dc)
 
     if model_dirs:
         from collections import Counter
@@ -541,8 +617,8 @@ def _fuse_impl(
         agreement = most_common[1] / len(model_dirs)
         agree_label = "high" if agreement >= 0.75 else "medium" if agreement >= 0.5 else "low"
     else:
-        agreement = 0.0
-        agree_label = "low"
+        agreement = None
+        agree_label = None
 
     # ── Directional fusion: weighted P(up), P(down), P(flat) ───────────────────
     dir_sources = []
@@ -557,70 +633,68 @@ def _fuse_impl(
         w = weights.get(src, 0.0)
         if w <= 0:
             continue
-        up = getattr(out, "prob_up", 0.33)
-        down = getattr(out, "prob_down", 0.33)
-        flat = getattr(out, "prob_flat", 0.34)
-        dir_sources.append((up, down, flat))
+        triplet = _model_direction_triplet(out)
+        if triplet is None:
+            continue
+        dir_sources.append(triplet)
         dir_weights.append(w)
 
     fusion_mc_contribution = None
+    prob_up = prob_down = prob_flat = None
+    dominant_dir = None
     if dir_sources and dir_weights:
         total_w = sum(dir_weights)
         if total_w > 0:
             prob_up = sum(s[0] * w for s, w in zip(dir_sources, dir_weights)) / total_w
             prob_down = sum(s[1] * w for s, w in zip(dir_sources, dir_weights)) / total_w
             prob_flat = sum(s[2] * w for s, w in zip(dir_sources, dir_weights)) / total_w
-            # Renormalize
             tot = prob_up + prob_down + prob_flat
             if tot > 0:
                 prob_up /= tot
                 prob_down /= tot
                 prob_flat /= tot
-            dominant_dir = max(
-                "up",
-                "down",
-                "flat",
-                key=lambda d: {"up": prob_up, "down": prob_down, "flat": prob_flat}[d],
-            )
-        else:
-            prob_up = prob_down = prob_flat = 0.33
-            dominant_dir = "flat"
-    else:
-        prob_up = prob_down = prob_flat = 0.33
-        dominant_dir = "flat"
+                dominant_dir = direction_from_normalized_triplet(prob_up, prob_down, prob_flat)
+            else:
+                prob_up = prob_down = prob_flat = None
+                dominant_dir = None
 
     # ── signal_layer_v1 directional blend (1m bars ≤ decision_ts; no lookahead) ──
     signal_layer_v1_fusion: Optional[dict] = None
     if signal_layer_v1:
-        try:
-            nb = int(signal_layer_v1.get("meta.n_bars") or 0)
-        except (TypeError, ValueError):
-            nb = 0
-        if nb >= 25:
-            from features.signal_layer_v1 import signal_layer_v1_to_direction_probs
+        from features.signal_layer_v1 import meta_n_bars_int, signal_layer_v1_to_direction_probs
 
-            w_sl = float(os.environ.get("ED_SIGNAL_LAYER_FUSION_BLEND", "0.38"))
-            w_sl = max(0.0, min(1.0, w_sl))
-            su, sd, sf = signal_layer_v1_to_direction_probs(signal_layer_v1)
-            prob_up = (1.0 - w_sl) * prob_up + w_sl * su
-            prob_down = (1.0 - w_sl) * prob_down + w_sl * sd
-            prob_flat = (1.0 - w_sl) * prob_flat + w_sl * sf
-            tot = prob_up + prob_down + prob_flat
-            if tot > 0:
-                prob_up /= tot
-                prob_down /= tot
-                prob_flat /= tot
-            dominant_dir = max(
-                "up",
-                "down",
-                "flat",
-                key=lambda d: {"up": prob_up, "down": prob_down, "flat": prob_flat}[d],
-            )
-            signal_layer_v1_fusion = {
-                "blend_weight": round(w_sl, 4),
-                "prior_triplet": {"up": round(su, 4), "down": round(sd, 4), "flat": round(sf, 4)},
-                "post_triplet": {"up": round(prob_up, 4), "down": round(prob_down, 4), "flat": round(prob_flat, 4)},
-            }
+        nb = meta_n_bars_int(signal_layer_v1)
+        if nb >= 25 and prob_up is not None and prob_down is not None and prob_flat is not None:
+            triplet = signal_layer_v1_to_direction_probs(signal_layer_v1)
+            if triplet is not None:
+                _env_blend = os.environ.get("ED_SIGNAL_LAYER_FUSION_BLEND", "0.0")
+                w_sl = float_finite_or_none(_env_blend)
+                if w_sl is None:
+                    log.debug(
+                        "ED_SIGNAL_LAYER_FUSION_BLEND ignored (malformed) value=%r",
+                        _env_blend,
+                    )
+                    w_sl = 0.0
+                w_sl = max(0.0, min(1.0, w_sl))
+                su, sd, sf = triplet
+                prob_up = (1.0 - w_sl) * prob_up + w_sl * su
+                prob_down = (1.0 - w_sl) * prob_down + w_sl * sd
+                prob_flat = (1.0 - w_sl) * prob_flat + w_sl * sf
+                tot = prob_up + prob_down + prob_flat
+                if tot > 0:
+                    prob_up /= tot
+                    prob_down /= tot
+                    prob_flat /= tot
+                    dominant_dir = direction_from_normalized_triplet(prob_up, prob_down, prob_flat)
+                signal_layer_v1_fusion = {
+                    "blend_weight": round(w_sl, 4),
+                    "prior_triplet": {"up": round(su, 4), "down": round(sd, 4), "flat": round(sf, 4)},
+                    "post_triplet": {
+                        "up": round(prob_up, 4),
+                        "down": round(prob_down, 4),
+                        "flat": round(prob_flat, 4),
+                    },
+                }
 
     # ── Evidence summaries ───────────────────────────────────────────────────
     evidence = []
@@ -633,10 +707,13 @@ def _fuse_impl(
             evidence.append(f"MC: {mc_out.expansion_prob:.0%} expansion probability")
 
     if getattr(xgb_out, "available", False):
-        evidence.append(f"XGB: {xgb_out.dominant_class} ({xgb_out.confidence_label} confidence)")
+        _xgb_dom = _model_dominant_class(xgb_out)
+        if _xgb_dom is not None:
+            evidence.append(f"XGB: {_xgb_dom} ({xgb_out.confidence_label} confidence)")
 
-    if regime_label != "unknown":
-        evidence.append(f"Regime: {regime_label} ({getattr(regime, 'confidence', 'low')})")
+    if regime_label is not None:
+        _rc = getattr(regime, "confidence", None) or "—"
+        evidence.append(f"Regime: {regime_label} ({_rc})")
 
     if direction_hint in ("long", "short"):
         evidence.append(f"Rules: {direction_hint} lean")
@@ -644,12 +721,12 @@ def _fuse_impl(
         evidence.append("Rules: no directional lean")
 
     # Contradictions
-    if model_dirs and agreement < 0.5:
+    if model_dirs and agreement is not None and agreement < 0.5:
         contradictions.append(f"Model disagreement: {model_dirs}")
     if regime_label == "pinning" and direction_hint in ("long", "short"):
         contradictions.append("Pinning regime vs directional rules lean")
 
-    # ── Damp 4: contradiction penalty (deferred from above) ──────────────────
+    # ── Damp 4: contradiction penalty (relocated below) ──────────────────────
     if contradictions:
         conf_score *= 0.90
         if len(contradictions) >= 2:
@@ -674,7 +751,8 @@ def _fuse_impl(
     summary = f"Posterior favors {dom_label} ({dominant_prob:.0%}). "
     if n_active > 0:
         summary += f"{n_active} model(s) active. "
-    summary += f"Agreement: {agree_label}."
+    if agree_label is not None:
+        summary += f"Agreement: {agree_label}."
 
     # ── MC pass-through ──────────────────────────────────────────────────────
     mc_avail = getattr(mc_out, "available", False)
@@ -686,12 +764,12 @@ def _fuse_impl(
 
     return FusionPayload(
         available=True,
-        breakout_posterior=round(posteriors.get("breakout", 0), 3),
-        pinning_posterior=round(posteriors.get("pinning", 0), 3),
-        continuation_posterior=round(posteriors.get("continuation", 0), 3),
-        reversal_posterior=round(posteriors.get("reversal", 0), 3),
-        vol_expansion_posterior=round(posteriors.get("vol_expansion", 0), 3),
-        mean_reversion_posterior=round(posteriors.get("mean_reversion", 0), 3),
+        breakout_posterior=round(posteriors["breakout"], 3),
+        pinning_posterior=round(posteriors["pinning"], 3),
+        continuation_posterior=round(posteriors["continuation"], 3),
+        reversal_posterior=round(posteriors["reversal"], 3),
+        vol_expansion_posterior=round(posteriors["vol_expansion"], 3),
+        mean_reversion_posterior=round(posteriors["mean_reversion"], 3),
         weight_xgboost=round(weights.get("xgboost", 0), 3),
         weight_lstm=round(weights.get("lstm", 0), 3),
         weight_transformer=round(weights.get("transformer", 0), 3),
@@ -718,11 +796,11 @@ def _fuse_impl(
         mc_horizon=mc_horizon,
         mc_vol_source=mc_vol_source,
         mc_sigma_value=mc_sigma_value,
-        model_agreement=round(agreement, 3),
+        model_agreement=round(agreement, 3) if agreement is not None else None,
         model_agreement_label=agree_label,
-        prob_up=round(prob_up, 3),
-        prob_down=round(prob_down, 3),
-        prob_flat=round(prob_flat, 3),
+        prob_up=round(prob_up, 3) if prob_up is not None else None,
+        prob_down=round(prob_down, 3) if prob_down is not None else None,
+        prob_flat=round(prob_flat, 3) if prob_flat is not None else None,
         dominant_direction=dominant_dir,
         fusion_mc_contribution=None,
         mc_post_fusion_audit=None,

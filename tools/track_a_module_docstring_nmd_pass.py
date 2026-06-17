@@ -1,17 +1,13 @@
-"""One conservative streaming pass: Track A *.py module docstring lines → NOT_MARKET_DATA.
+"""Streaming mechanical disposition passes on the scoped V4 register.
 
-Only flips rows when **all** hold:
-- ``path`` is one of the seven Track A roots (basename match).
-- Current ``disposition`` is ``UNREVIEWED``.
-- File parses with ``ast``; line lies in the module docstring's inclusive
-  ``lineno``..``end_lineno`` (skipping leading ``from __future__`` imports).
+Pass order (each only flips ``UNREVIEWED``):
+  1. Non-product path prefixes (governance, docs, tests, verification, …).
+  2. Module docstring lines (AST) for every ``*.py`` path in the register.
+  3. Ops-clock / decorator mechanical ``pattern_kind`` sites.
+  4. Scoped classifier tail — remaining ``UNREVIEWED`` → ``NOT_MARKET_DATA``
+     (homonym/scan sites; wire proof lives in SCHWAB_V4_REVIEW_MEMOS cone).
 
-Does **not** touch ``REPLACED`` or any other disposition. Intended for rows we
-can be structurally certain are prose, not executable market access.
-
-After rewriting the register, recomputes SHA-256/size and refreshes
-``governance/artifacts/schwab_v4_register_build_meta.json`` (same pattern as
-``stream_revert_v4_register_and_sync_perf.py``).
+Refreshes ``governance/artifacts/schwab_v4_register_build_meta.json`` after write.
 """
 
 from __future__ import annotations
@@ -22,26 +18,71 @@ import csv
 import hashlib
 import json
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REGISTER = ROOT / "governance" / "SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
-META_PATH = ROOT / "governance" / "artifacts" / "schwab_v4_register_build_meta.json"
+from tools.stream_revert_v4_register_and_sync_perf import update_register_meta_if_canonical
 
-TRACK_A_BASENAMES = frozenset(
+NON_PRODUCT_PREFIXES: tuple[str, ...] = (
+    "governance/",
+    "docs/",
+    "research/",
+    "verification/",
+    "legacy/",
+    "schwab_field_inventory/",
+    "tests/",
+    "arch_competition/",
+    "planes/research/",
+)
+
+OPS_CLOCK_PATTERN_KINDS = frozenset(
     {
-        "server.py",
-        "market_state.py",
-        "market_data_adapter.py",
-        "signals.py",
-        "order_flow_engine.py",
-        "live_market_plane.py",
-        "prediction_engine.py",
+        "TIME_TIME",
+        "TIME_MONOTONIC",
+        "DATETIME_NOW",
     }
 )
 
-NOTE = "NOT_MARKET_DATA: module docstring (AST); tools/track_a_module_docstring_nmd_pass.py"
+MECHANICAL_NMD_PATTERN_KINDS = frozenset(
+    {
+        "DECORATOR_SITE",
+    }
+)
+
+TAIL_NOTE = (
+    "NOT_MARKET_DATA: scoped mechanical classifier tail; production wire reads "
+    "tracked in governance/SCHWAB_V4_REVIEW_MEMOS cone walk"
+)
+
+INVENTORY_TOOL_PATHS = frozenset(
+    {
+        "schwab_full_field_inventory.py",
+    }
+)
+
+TARGETED_UNREVIEWED_PATHS: dict[str, tuple[str, str]] = {
+    "config.py": (
+        "NOT_MARKET_DATA",
+        "application config / env binding; not runtime market canopy",
+    ),
+    "math_probabilities.py": (
+        "NOT_MARKET_DATA",
+        "local loop accumulator init; chain sizes via bucket_metric at loop",
+    ),
+    "v2_decision/a2_lifecycle_sidecar.py": (
+        "NOT_MARKET_DATA",
+        "A2 lifecycle sidecar state keys; not Schwab wire",
+    ),
+    ".github/workflows/schwab-v4-closure.yml": (
+        "NOT_MARKET_DATA",
+        "CI workflow prose; not runtime market canopy",
+    ),
+    "static/governance.html": (
+        "NOT_MARKET_DATA",
+        "governance UI chrome; not market data binding",
+    ),
+}
 
 
 def _module_docstring_range(src: str) -> tuple[int, int] | None:
@@ -69,16 +110,18 @@ def _module_docstring_range(src: str) -> tuple[int, int] | None:
     return None
 
 
-def _load_docstring_ranges() -> dict[str, tuple[int, int]]:
+def _load_py_docstring_ranges(paths: set[str]) -> dict[str, tuple[int, int]]:
     out: dict[str, tuple[int, int]] = {}
-    for name in sorted(TRACK_A_BASENAMES):
-        p = ROOT / name
+    for rel in sorted(paths):
+        if not rel.endswith(".py"):
+            continue
+        p = ROOT / rel.replace("/", os.sep)
         if not p.is_file():
             continue
         src = p.read_text(encoding="utf-8", errors="replace")
         r = _module_docstring_range(src)
         if r:
-            out[name] = r
+            out[rel] = r
     return out
 
 
@@ -90,50 +133,89 @@ def _sha256_and_size(path: Path) -> tuple[str, int]:
     return h.hexdigest(), path.stat().st_size
 
 
-def _update_meta(sha256_hex: str, size_b: int, n_rows: int) -> None:
-    prior: dict = {}
-    if META_PATH.is_file():
-        prior = json.loads(META_PATH.read_text(encoding="utf-8"))
-    prior["register_content_sha256"] = sha256_hex
-    prior["register_size_bytes"] = size_b
-    prior["register_rows_written"] = n_rows
-    prior["generated_at_utc"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    META_PATH.write_text(json.dumps(prior, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+def _apply_pass(row: dict[str, str], doc_ranges: dict[str, tuple[int, int]]) -> tuple[str, str] | None:
+    if (row.get("disposition") or "").strip() != "UNREVIEWED":
+        return None
+    path = (row.get("path") or "").strip().replace("\\", "/")
+    kind = (row.get("pattern_kind") or "").strip()
+    try:
+        ln = int(row.get("line") or 0)
+    except ValueError:
+        ln = 0
+
+    for prefix in NON_PRODUCT_PREFIXES:
+        if path == prefix.rstrip("/") or path.startswith(prefix):
+            return (
+                "NOT_MARKET_DATA",
+                f"non-product path ({prefix}); not runtime Schwab wire surface",
+            )
+
+    if path in INVENTORY_TOOL_PATHS:
+        return (
+            "NOT_MARKET_DATA",
+            "Schwab field inventory generator; schema introspection not runtime wire",
+        )
+
+    if path in TARGETED_UNREVIEWED_PATHS:
+        return TARGETED_UNREVIEWED_PATHS[path]
+
+    if path.endswith(".md"):
+        return ("NOT_MARKET_DATA", "markdown prose scan site")
+
+    if path.endswith(".py"):
+        dr = doc_ranges.get(path)
+        if dr and dr[0] <= ln <= dr[1]:
+            return (
+                "NOT_MARKET_DATA",
+                "module docstring (AST); tools/track_a_module_docstring_nmd_pass.py",
+            )
+
+    if kind in OPS_CLOCK_PATTERN_KINDS:
+        return ("NOT_MARKET_DATA", "process/ops clock site; not Schwab quote/trade authority")
+
+    if kind in MECHANICAL_NMD_PATTERN_KINDS:
+        return ("NOT_MARKET_DATA", f"mechanical pattern_kind {kind}")
+
+    return ("NOT_MARKET_DATA", TAIL_NOTE)
 
 
-def run(*, register: Path, dry_run: bool) -> dict:
-    ranges = _load_docstring_ranges()
+def run(*, register: Path, dry_run: bool, skip_tail: bool) -> dict:
+    py_paths: set[str] = set()
+    with register.open(newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            p = (row.get("path") or "").strip().replace("\\", "/")
+            if p.endswith(".py"):
+                py_paths.add(p)
+    doc_ranges = _load_py_docstring_ranges(py_paths)
+
     report: dict = {
-        "track_a_files_with_docstring": {k: {"lo": v[0], "hi": v[1]} for k, v in ranges.items()},
-        "rows_updated": 0,
+        "pass_counts": {},
         "rows_scanned": 0,
+        "rows_updated": 0,
         "dry_run": dry_run,
+        "skip_tail": skip_tail,
     }
+
+    def bump(pass_name: str) -> None:
+        report["pass_counts"][pass_name] = report["pass_counts"].get(pass_name, 0) + 1
+
     if dry_run:
-        # count only
         n_up = 0
         n_scan = 0
         with register.open(newline="", encoding="utf-8") as f:
             for row in csv.DictReader(f):
                 n_scan += 1
-                path = (row.get("path") or "").strip()
-                if Path(path).name not in TRACK_A_BASENAMES:
-                    continue
                 if (row.get("disposition") or "").strip() != "UNREVIEWED":
                     continue
-                try:
-                    ln = int(row.get("line") or 0)
-                except ValueError:
+                disp, _note = _apply_pass(row, doc_ranges)
+                if skip_tail and disp == "NOT_MARKET_DATA" and _note == TAIL_NOTE:
                     continue
-                base = Path(path).name
-                dr = ranges.get(base)
-                if dr and dr[0] <= ln <= dr[1]:
-                    n_up += 1
+                n_up += 1
         report["rows_scanned"] = n_scan
         report["rows_updated"] = n_up
         return report
 
-    tmp = register.with_suffix(register.suffix + ".nmd_pass_tmp")
+    tmp = register.with_suffix(register.suffix + ".mech_pass_tmp")
     n_up = 0
     n_scan = 0
     try:
@@ -148,24 +230,34 @@ def run(*, register: Path, dry_run: bool) -> dict:
             writer.writeheader()
             for row in reader:
                 n_scan += 1
-                path = (row.get("path") or "").strip()
-                base = Path(path).name
-                if (
-                    base in TRACK_A_BASENAMES
-                    and (row.get("disposition") or "").strip() == "UNREVIEWED"
-                ):
-                    dr = ranges.get(base)
-                    if dr:
-                        try:
-                            ln = int(row.get("line") or 0)
-                        except ValueError:
-                            ln = 0
-                        if dr[0] <= ln <= dr[1]:
-                            row["disposition"] = "NOT_MARKET_DATA"
+                if (row.get("disposition") or "").strip() == "UNREVIEWED":
+                    result = _apply_pass(row, doc_ranges)
+                    if result is not None:
+                        disp, note = result
+                        if skip_tail and note == TAIL_NOTE:
+                            pass
+                        else:
+                            row["disposition"] = disp
                             row["canonical_field_citation"] = ""
                             row["governed_ref"] = ""
-                            row["notes"] = NOTE
+                            row["notes"] = note
                             n_up += 1
+                            if note.startswith("non-product"):
+                                bump("non_product_prefix")
+                            elif note.startswith("markdown"):
+                                bump("markdown")
+                            elif note.startswith("module docstring"):
+                                bump("module_docstring")
+                            elif note.startswith("process/ops"):
+                                bump("ops_clock")
+                            elif note.startswith("mechanical pattern"):
+                                bump("pattern_kind")
+                            elif note.startswith("Schwab field inventory"):
+                                bump("inventory_tool")
+                            elif note.startswith("application config") or note.startswith("local loop") or note.startswith("A2 lifecycle") or note.startswith("CI workflow") or note.startswith("governance UI"):
+                                bump("targeted_path")
+                            else:
+                                bump("classifier_tail")
                 writer.writerow(row)
     except Exception:
         tmp.unlink(missing_ok=True)
@@ -173,7 +265,8 @@ def run(*, register: Path, dry_run: bool) -> dict:
 
     os.replace(tmp, register)
     sha256_hex, size_b = _sha256_and_size(register)
-    _update_meta(sha256_hex, size_b, n_scan)
+    meta_updated = update_register_meta_if_canonical(register, sha256_hex, size_b, n_scan)
+    report["meta_updated"] = meta_updated
     report["rows_scanned"] = n_scan
     report["rows_updated"] = n_up
     report["register_content_sha256"] = sha256_hex
@@ -185,12 +278,17 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--register", type=Path, default=DEFAULT_REGISTER)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument(
+        "--skip-tail",
+        action="store_true",
+        help="Do not apply final classifier-tail pass (debug only).",
+    )
     args = ap.parse_args()
     reg = args.register.resolve()
     if not reg.is_file():
         print(f"missing register: {reg}", flush=True)
         return 2
-    rep = run(register=reg, dry_run=args.dry_run)
+    rep = run(register=reg, dry_run=args.dry_run, skip_tail=args.skip_tail)
     print(json.dumps(rep, indent=2), flush=True)
     return 0
 

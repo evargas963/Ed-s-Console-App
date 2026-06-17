@@ -1,19 +1,30 @@
 {
   "embedding_mode": "mock",
-  "files_attempted": 400,
-  "generated_at_utc": "2026-05-14T11:16:11Z",
-  "max_files": 400,
-  "operator_note": "Full-repo closure complete; mock baseline at scanner commit 1bc08e0; rerun on scanner upgrades. Use --embedding-mode minilm for production top-K notes.",
-  "partial_scan": true,
-  "register_content_sha256": "4904abd70e254e27c33800abf015ea01d3c4e799fdbfe5378a0d606bd950cbe8",
+  "files_attempted": 1069,
+  "generated_at_utc": "2026-05-25T13:15:23Z",
+  "max_files": null,
+  "operator_note": "Scoped walk + slice merge @ 2026-05-25: 174459 rows; unreviewed_count=0; replaced_count=34 (18 server.py wire sites + 16 market_context.py); server chunk1/2 line realignment to _parse_quote_node_session_fields L2312+ and streaming L1003/1014.",
+  "partial_scan": false,
+  "register_content_sha256": "0c1a92c4db36a00704deec2c5dbbc270d2de5bc03068c9d8d74a84c40fdfcff1",
   "register_csv_path": "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv",
-  "register_rows_written": 82349,
-  "register_size_bytes": 54425966,
-  "scanner_commit_sha": "8651f13f4f5e0f06bc8c279c98fae778727c2e40",
+  "register_rows_written": 174459,
+  "register_size_bytes": 199049782,
+  "scanner_commit_sha": "554bb78af2420c10e42e8e13a093ff6c29ff7142",
   "scanner_flags": {
     "embedding_mode": "mock",
     "include_dot_claude": false,
-    "max_files": 400
+    "max_files": null,
+    "respect_gitignore": true,
+    "scope_exclude_prefixes": [
+      "governance/archive",
+      "models/active",
+      "models/active_5c",
+      "models/active_15c",
+      "models/active_60c",
+      "models/validation_runs",
+      "tools",
+      "calibration"
+    ]
   },
   "scanner_version": "3.0.0"
 }

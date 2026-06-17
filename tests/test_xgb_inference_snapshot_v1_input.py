@@ -110,11 +110,11 @@ def test_raw_l1_payload_rejected_at_guard():
         assert_not_raw_l1_payload({"liquidity_summary": {"absorption_score": 1.0}})
 
 
-def test_run_base_models_once_requires_inference_snapshot_v1():
-    from ml_predict import run_base_models_once
+def test_run_unified_stack_ml_once_requires_inference_snapshot_v1():
+    from ml_predict import run_unified_stack_ml_once
 
     with pytest.raises(ValueError, match="inference_snapshot_v1"):
-        run_base_models_once({"ticker": "SPY"}, "SPY", None, "wait")
+        run_unified_stack_ml_once({"ticker": "SPY"}, "SPY", None, "wait")
 
 
 def test_build_xgb_pre_engineering_snapshot_matches_manual_pipeline():
@@ -122,7 +122,7 @@ def test_build_xgb_pre_engineering_snapshot_matches_manual_pipeline():
         inference_snapshot_v1_to_engineering_snapshot,
         merge_xgb_fusion_overlay,
     )
-    from ml_data_common import snapshot_with_m5_additive
+    from ml_data_common import attach_net_gamma_prev_for_dgex
     from ml_train import DB_PATH as _ML_DB
     from ml_predict import build_xgb_pre_engineering_snapshot_for_tick
 
@@ -131,7 +131,7 @@ def test_build_xgb_pre_engineering_snapshot_matches_manual_pipeline():
     built = build_xgb_pre_engineering_snapshot_for_tick(snap, overlay)
     base = inference_snapshot_v1_to_engineering_snapshot(snap)
     merged = merge_xgb_fusion_overlay(base, overlay)
-    manual = snapshot_with_m5_additive(merged, _ML_DB)
+    manual = attach_net_gamma_prev_for_dgex(merged, _ML_DB)
     assert built == manual
 
 
@@ -214,6 +214,7 @@ def test_build_inference_snapshot_v1_from_signal_input_uses_adapter_only():
     snap = build_inference_snapshot_v1_from_signal_input(inp, as_of_ts=1_700_000_000.0)
     assert snap["snapshot_type"] == "InferenceSnapshotV1"
     assert snap["features"]["price.spot"] == 400.0
+    assert snap["features"]["price.spread_pts"] == 0.02
 
 
 def test_build_inference_snapshot_v1_from_signal_input_does_not_fabricate_as_of_ts():

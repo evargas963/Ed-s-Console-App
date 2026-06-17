@@ -23,7 +23,12 @@ from typing import Optional
 
 from canonical_distances import canonical_nearest_distances
 from math_probabilities import OE_SPREAD_TIGHT_MAX
+from fusion_contract import canonical_provenance_is_tradable, fusion_is_authoritative
+from numeric_contract import float_finite_or_none
 from timeframe_config import CANONICAL_TIMEFRAME
+from ml_horizon import PRIMARY_DECISION_HORIZONS
+from multi_horizon_decision import normalize_alignment_state
+from volatility_regime import vol_percent_to_decimal
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -50,8 +55,9 @@ def derive_zone(bias_signal: str | None, net_delta: float | None) -> str:
       pin_bear    — positive gamma pin with bearish lean (Bear, Tilt Bear)
       pin_neutral — positive gamma pin, balanced (Balanced, Neutral)
       pin_chaos   — very low pin strength, no structure (Chaos Zone)
-      breakout    — negative gamma, expansion up (net_delta >= 0)
-      breakdown   — negative gamma, expansion down (net_delta < 0)
+      breakout           — negative gamma, expansion up (net_delta >= 0)
+      breakdown          — negative gamma, expansion down (net_delta < 0)
+      expansion_unknown  — negative gamma, expansion bias but net_delta missing
 
     Why this matters: the prediction engine matches by zone. Old "pin" lumped
     bullish-pin against bearish-pin — fundamentally different setups treated
@@ -67,8 +73,9 @@ def derive_zone(bias_signal: str | None, net_delta: float | None) -> str:
     if b == "chaos zone":
         return "pin_chaos"
     if b == "expansion":
-        nd = net_delta or 0.0
-        return "breakout" if nd >= 0 else "breakdown"
+        if net_delta is None:
+            return "expansion_unknown"
+        return "breakout" if float(net_delta) >= 0 else "breakdown"
     return "pin_neutral"  # safe default
 
 
@@ -170,7 +177,7 @@ class MarketState:
     pcr_label:          str             = ""
 
     # ── IV Direction (for vanna context) ──────────────────────────────────────
-    iv_direction:       str             = "flat"     # expanding | contracting | flat
+    iv_direction:       Optional[str]   = None     # expanding | contracting | flat
 
     # ── Bias gate (single authoritative flag) ─────────────────────────────────
     bias_resolved:      bool            = False     # True only for Bull/Bear/Expansion
@@ -213,14 +220,14 @@ class MarketState:
     last_sweep_level:   Optional[float] = None
     last_sweep_held:    Optional[bool]  = None   # True = failed sweep (reversal)
     n_sweeps_today:     int             = 0
-    # Trade Validation Gate
-    validation_passed:  bool            = True
-    structure_valid:    bool            = True
-    probability_valid:  bool            = True
-    risk_valid:         bool            = True
+    # Trade Validation Gate — None until call_engine populates (no fabricated pass)
+    validation_passed:  Optional[bool]  = None
+    structure_valid:    Optional[bool]  = None
+    probability_valid:  Optional[bool]  = None
+    risk_valid:         Optional[bool]  = None
     validation_summary: str             = ""
     # Formal Position Sizing
-    r_units:            float           = 0.0
+    r_units:            Optional[float] = None
     execution_mode:     str             = "NO_TRADE"
     sizing_summary:     str             = ""
     # The Call card — entry/stop/target are THE authoritative values
@@ -244,8 +251,9 @@ class MarketState:
     trade_type_label:   str             = ""
     invalidation:       str             = ""
     confluence_count:   int             = 0
-    confluence_total:   int             = 4
+    confluence_total:   Optional[int]   = None
     confluence_detail:  str             = ""
+    mh_promoted_directional: bool      = False
     time_qualifier:     str             = ""
     replay_max_hold_bars: int           = 0   # 1m bars for eval time_expiry (Call policy)
     size_cue:           str             = "SKIP"
@@ -279,7 +287,7 @@ class MarketState:
     final_tradeable:     bool            = False
     primary_horizon:     str             = "1c"
     trade_mode:          str             = "intraday"
-    alignment_state_display: str         = "unusable"
+    alignment_state_display: str         = "no_primary"
     conflict_level_display: str          = "high"
     contradiction_state: str             = "none"
     supporting_horizon_summary: str      = ""
@@ -293,11 +301,17 @@ class MarketState:
     wait_reason:         str             = ""
     decision_provenance: str             = ""
     mhap_rows:           list            = field(default_factory=list)  # [{horizon, role, call, confidence, entry_ref, effect, row_state}]
+    # Guest anchor — provisional stack on non-authoritative tickers.
+    guest_anchor_active: bool            = False
+    guest_anchor_weights_ticker: Optional[str] = None
+    guest_anchor_affiliation: Optional[str] = None
+    guest_anchor_rationale: Optional[str] = None
     mhap_legend:         dict            = field(default_factory=lambda: {
         "primary": "Blue = Primary horizon",
         "aligned": "Green = Aligned/supportive",
-        "weak": "Yellow = Weak/mixed",
+        "weak": "Yellow = Weak/mixed (per-row support)",
         "contradictory": "Red = Contradictory",
+        "no_primary": "Gray = No tradeable primary (alignment N/A — not missing data)",
     })
 
     # What the Data Says — horizon bars (strict contract: only this card renders them)
@@ -312,18 +326,9 @@ class MarketState:
     up_prob_1c:         Optional[float] = None
     down_prob_1c:       Optional[float] = None
     flat_prob_1c:       Optional[float] = None
-    up_prob_3c:         Optional[float] = None
-    down_prob_3c:       Optional[float] = None
-    flat_prob_3c:       Optional[float] = None
     up_prob_5c:         Optional[float] = None
     down_prob_5c:       Optional[float] = None
     flat_prob_5c:       Optional[float] = None
-    up_prob_8c:         Optional[float] = None
-    down_prob_8c:       Optional[float] = None
-    flat_prob_8c:       Optional[float] = None
-    up_prob_13c:        Optional[float] = None
-    down_prob_13c:      Optional[float] = None
-    flat_prob_13c:      Optional[float] = None
     up_prob_15c:        Optional[float] = None
     down_prob_15c:      Optional[float] = None
     flat_prob_15c:      Optional[float] = None
@@ -336,25 +341,27 @@ class MarketState:
     # Predictive card — Issue 13: dominant_* = canonical forward (decision-aligned); historical_* = empirical 5c only
     dominant_dir:       Optional[str]   = None
     dominant_prob:      Optional[float] = None
-    confidence:         str             = "low"   # forward (fusion) confidence for trader-facing fallback
+    # CONFIDENCE-1a (canopy ms.confidence): canonical-forward / WTDS card confidence only.
+    # Not mhap_rows[h].confidence (per-horizon MHAP panel) nor
+    # fusion_policy_snapshot_cols["fused_confidence_<hz>"] (per-horizon fusion trunk).
+    # Set in build_market_state from canonical_forecast.confidence or pred.forward_confidence.
+    confidence:         str             = "low"
     historical_5c_dominant_dir: Optional[str] = None
     historical_5c_dominant_prob: Optional[float] = None
     empirical_confidence: str = "low"
-    forward_prob_up:    float = 0.33
-    forward_prob_down:  float = 0.33
-    forward_prob_flat:  float = 0.34
+    forward_prob_up:    Optional[float] = None
+    forward_prob_down:  Optional[float] = None
+    forward_prob_flat:  Optional[float] = None
     forward_provenance: str = ""
     canonical_provenance: str = ""  # SignalOutput.canonical_forecast.provenance (decision driver; fusion policy)
     samples_used:       int             = 0
     model_note:         str             = ""
     model_version:      str             = "rules_v1"
     pred_model_source:  Optional[str]   = None   # 'ml', 'rules', 'statistical' — which engine produced probs
+    mh_prob_source_by_horizon: Optional[dict] = None  # 1c/5c/15c/60c → empirical_histogram | fusion_ml_primary | ...
     pred_override_source: Optional[str] = None   # 'user', 'manual' — when user overrode prediction
     timeframe_reads:    dict            = field(default_factory=dict)
-    avg_3c_pts:         Optional[float] = None
     avg_5c_pts:         Optional[float] = None
-    avg_8c_pts:         Optional[float] = None
-    avg_13c_pts:        Optional[float] = None
     avg_15c_pts:        Optional[float] = None
     avg_60c_pts:        Optional[float] = None
 
@@ -367,31 +374,31 @@ class MarketState:
     # ── Volatility regime (from volatility_regime.py — policy layer) ─────────
     vol_regime:         str             = "unknown"  # compression | expansion | unstable
     vol_regime_summary: str             = ""
-    vol_regime_conviction_mult: float   = 1.0
-    vol_regime_risk_mult: float         = 1.0
+    vol_regime_conviction_mult: Optional[float] = None
+    vol_regime_risk_mult: Optional[float] = None
 
     # ── Order Flow (from order_flow_engine.py — inside Market Regime) ────────────
     order_flow_score:              Optional[float] = None
-    order_flow_direction:          str             = "neutral"
-    order_flow_regime:             str             = "neutral"
-    order_flow_readiness:          str             = "red"
+    order_flow_direction:          Optional[str]   = None
+    order_flow_regime:             Optional[str]   = None
+    order_flow_readiness:          Optional[str]   = None
     book_imbalance_5:              Optional[float] = None
     cum_delta_proxy:               Optional[float] = None
     options_flow_score:            Optional[float] = None
     institutional_flow_proxy_score: Optional[float] = None
     # Flow Verdict (composite headline)
-    order_flow_verdict:            str             = "FLOW NEUTRAL"
-    order_flow_verdict_color:      str             = "gray"
-    order_flow_arrow:              str             = "→"
-    order_flow_agreement:          str             = "weak | conflicted"
+    order_flow_verdict:            Optional[str]   = None
+    order_flow_verdict_color:      Optional[str]   = None
+    order_flow_arrow:              Optional[str]   = None
+    order_flow_agreement:          Optional[str]   = None
     # Per-field arrows and labels
-    order_flow_score_arrow:        str             = "→"
-    order_flow_score_label:        str             = "neutral"
-    order_flow_book_arrow:         str             = "→"
-    order_flow_book_label:         str             = "balanced"
-    order_flow_delta_arrow:        str             = "→"
-    order_flow_opt_arrow:          str             = "→"
-    order_flow_opt_label:          str             = "neutral"
+    order_flow_score_arrow:        Optional[str]   = None
+    order_flow_score_label:        Optional[str]   = None
+    order_flow_book_arrow:         Optional[str]   = None
+    order_flow_book_label:         Optional[str]   = None
+    order_flow_delta_arrow:        Optional[str]   = None
+    order_flow_opt_arrow:          Optional[str]   = None
+    order_flow_opt_label:          Optional[str]   = None
 
     # ── Market regime (from regime_engine.py) ─────────────────────────────────
     regime_primary:     str             = "unknown"  # pinning, acceleration, breakout, etc.
@@ -405,22 +412,22 @@ class MarketState:
     # ── Bayesian fusion (from bayesian_fusion.py) ─────────────────────────────
     fusion_available:       bool            = False
     fusion_dominant:        str             = "unknown"
-    fusion_dominant_prob:   float           = 0.0
+    fusion_dominant_prob:   Optional[float] = None
     fusion_confidence:      str             = "low"
-    fusion_confidence_score: float          = 0.0
+    fusion_confidence_score: Optional[float] = None
     fusion_summary:         str             = ""
-    fusion_breakout:        float           = 0.0
-    fusion_pinning:         float           = 0.0
-    fusion_continuation:    float           = 0.0
-    fusion_reversal:        float           = 0.0
-    fusion_vol_expansion:   float           = 0.0
-    fusion_mean_reversion:  float           = 0.0
-    fusion_model_agreement: float           = 0.0
+    fusion_breakout:        Optional[float] = None
+    fusion_pinning:         Optional[float] = None
+    fusion_continuation:    Optional[float] = None
+    fusion_reversal:        Optional[float] = None
+    fusion_vol_expansion:   Optional[float] = None
+    fusion_mean_reversion:  Optional[float] = None
+    fusion_model_agreement: Optional[float] = None
     fusion_agreement_label: str             = "low"
     fusion_n_models_active: int             = 0
-    fusion_prob_up:         float           = 0.33
-    fusion_prob_down:       float           = 0.33
-    fusion_prob_flat:       float           = 0.34
+    fusion_prob_up:         Optional[float] = None
+    fusion_prob_down:       Optional[float] = None
+    fusion_prob_flat:       Optional[float] = None
     fusion_dominant_direction: str          = "flat"
     fusion_evidence:        list            = field(default_factory=list)
     fusion_contradictions:  list            = field(default_factory=list)
@@ -439,6 +446,13 @@ class MarketState:
     mc_horizon:             Optional[int]   = None
     mc_vol_source:          Optional[str]   = None
     mc_sigma_value:         Optional[float] = None
+    mc_em_anchor:           Optional[str]   = None
+    mc_iv_source:           Optional[str]   = None
+    # Display-only wall-clock MC excursions (Key Levels); not used for sizing or fusion.
+    mc_efe_5m:              Optional[float] = None
+    mc_eae_5m:              Optional[float] = None
+    mc_efe_15m:             Optional[float] = None
+    mc_eae_15m:             Optional[float] = None
 
     # ── Individual model outputs (stack visibility from ml_predict) ───────────
     xgb_available:          Optional[bool]  = None
@@ -453,8 +467,8 @@ class MarketState:
     transformer_dominant:   Optional[str]   = None
     transformer_confidence: Optional[float] = None
     transformer_approved:   Optional[bool]  = None
-    # Raw P(up)/P(down)/P(flat) per base model for WDS mini-bars (JSON to UI)
-    layer1_probs: Optional[dict] = None  # {"xgb": {up,down,flat}|None, "lstm": ..., "transformer": ...}
+    # Raw P(up)/P(down)/P(flat) per xgb/lstm/transformer layer for WDS mini-bars (JSON to UI)
+    ml_layer_probs: Optional[dict] = None  # {"xgb": {up,down,flat}|None, "lstm": ..., "transformer": ...}
 
     # ── Stack decision path (ordered: XGB → LSTM → Transformer → MC → Fusion → Call) ───
     stack_decision_path:    Optional[list]  = None   # list of {stage_id, status, direction, confidence, probability, note}
@@ -474,14 +488,20 @@ class MarketState:
     # charm_direction is the raw signals-engine string: "buying" | "selling" | "neutral"
     # charm_direction_display is the UI string: "Bullish" | "Bearish" | "Neutral"
     charm_net:               Optional[float] = None
-    charm_direction:         str             = "neutral"
-    charm_direction_display: str             = "Neutral"
+    charm_direction:         Optional[str]   = None
+    charm_direction_display: str             = "—"
     charm_drift_toward:      Optional[float] = None
-    charm_magnitude:         str             = "negligible"  # large/moderate/small/negligible
+    charm_magnitude:         Optional[str]   = None  # large/moderate/small/negligible
     charm_top_drivers:       list            = field(default_factory=list)
 
     # ── Feed card ─────────────────────────────────────────────────────────────
     live_on:            bool            = False
+
+    # ── API / transport error contract (batch-2 COH-I-E reachability) ─────────
+    state_error:            Optional[str]   = None
+    state_error_detail:     Optional[str]   = None
+    signals_engine_failed:  bool            = False
+    stack_integrity_events: list            = field(default_factory=list)
 
     # ── Additive context (liquidity behavior + news/sentiment; non-authoritative) ──
     liquidity_behavior: Optional[dict] = None
@@ -493,9 +513,14 @@ class MarketState:
 # Direction driven exclusively by The Call signal (long/short/wait)
 # ─────────────────────────────────────────────────────────────────────────────
 def _f_ms(v):
-    """Safe float conversion."""
-    try: return float(v)
-    except: return None
+    """Safe float conversion (finite-only)."""
+    return float_finite_or_none(v)
+
+
+def _ms_price_disp(v) -> str:
+    """Format price for UI; non-finite → em dash (FIND-MS-7/8)."""
+    x = _f_ms(v)
+    return f"{x:.2f}" if x is not None else "—"
 
 
 def _oe_chain_row_snapshot(ct: dict | None) -> dict | None:
@@ -697,7 +722,7 @@ def recommend_option_expression(
             candidates.append(s)
 
     best_strike = None
-    best_score = -999.0
+    best_score = float("-inf")
     best_reasons: list[str] = []
     scored_rows: list[dict] = []
     pool_set = {float(x) for x in candidates}
@@ -790,11 +815,12 @@ def recommend_option_expression(
 
 
 def _oe_bid_ask_mid(contracts, strike: float, side: str):
+    """Return (bid, ask, mid, mid_source) with Schwab mark-first mid ladder (OP-006)."""
     su = str(side).upper().strip()
     try:
         kf = float(strike)
     except Exception:
-        return None, None, None
+        return None, None, None, None
     for ct in contracts or []:
         if str(ct.get("putCall", "")).upper().strip() != su:
             continue
@@ -812,16 +838,38 @@ def _oe_bid_ask_mid(contracts, strike: float, side: str):
         except (TypeError, ValueError):
             b = a = None
         mid: float | None = None
+        mid_source: str | None = None
         try:
             mark_raw = ct.get("mark")
             if mark_raw is not None:
                 mark_val = float(mark_raw)
                 if mark_val > 0:
                     mid = mark_val
+                    mid_source = "schwab_chain_mark"
         except (TypeError, ValueError):
             pass
-        return b, a, mid
-    return None, None, None
+        if mid is None:
+            try:
+                last_raw = ct.get("last")
+                if last_raw is not None:
+                    last_val = float(last_raw)
+                    if last_val > 0:
+                        mid = last_val
+                        mid_source = "schwab_chain_last"
+            except (TypeError, ValueError):
+                pass
+        if mid is None and b is not None and a is not None:
+            try:
+                bf, af = float(b), float(a)
+                if af > 0 and bf >= 0:
+                    calc = (af + bf) / 2.0
+                    if calc > 0:
+                        mid = round(calc, 4)
+                        mid_source = "derived_bid_ask_mid"
+            except (TypeError, ValueError):
+                pass
+        return b, a, mid, mid_source
+    return None, None, None, None
 
 
 def _schwab_days_to_expiration_for_contract(contracts, strike: float | None, side: str | None) -> int | None:
@@ -867,7 +915,7 @@ def _build_contract_context_ms(ms: "MarketState", contracts: list) -> str:
     except Exception:
         strike_disp = str(k)
     leg = f"{t} {str(exp)[:10]} {strike_disp}{'C' if side == 'CALL' else 'P'}{dte_part}"
-    bid, ask, mid = _oe_bid_ask_mid(contracts, float(k), side)
+    bid, ask, mid, mid_source = _oe_bid_ask_mid(contracts, float(k), side)
     try:
         spot_f = float(ms.spot) if ms.spot is not None else None
     except (TypeError, ValueError):
@@ -876,7 +924,8 @@ def _build_contract_context_ms(ms: "MarketState", contracts: list) -> str:
     if mid is not None and spot_f is not None:
         fk = float(k)
         be = fk + mid if side == "CALL" else fk - mid
-        parts.append(f"mid≈{mid:.2f} → BE≈{be:.2f} vs spot {spot_f:.2f}")
+        src = f" ({mid_source})" if mid_source else ""
+        parts.append(f"mid≈{mid:.2f}{src} → BE≈{be:.2f} vs spot {spot_f:.2f}")
     elif bid is not None and ask is not None:
         parts.append(f"bid/ask {bid:.2f}/{ask:.2f} (mid needed for breakeven)")
     else:
@@ -911,19 +960,18 @@ def build_market_state(
     recent_crosses: list = None,
     total_snapshots: int = 0,
     filled_snapshots: int = 0,
-    # Time
-    et_hour: int = 9,
-    et_minute: int = 30,
-    mins_to_close: float = 390.0,
+    # Time — None when caller has no session clock (no fabricated 9:30 / 390 min)
+    et_hour: Optional[int] = None,
+    et_minute: Optional[int] = None,
+    mins_to_close: Optional[float] = None,
     # Charm — computed by server BEFORE calling this function, passed in directly
-    # so the signals engine receives real charm values (not placeholders)
     charm_net: float | None = None,
-    charm_direction: str = "neutral",        # "buying" | "selling" | "neutral"
-    charm_drift_toward: float | None = None, # gamma pin strike
-    charm_magnitude: str = "negligible",     # "large" | "moderate" | "small" | "negligible"
-    charm_top_drivers: list | None = None,   # top 5 strikes driving charm flow
+    charm_direction: Optional[str] = None,   # "buying" | "selling" | "neutral"
+    charm_drift_toward: float | None = None,
+    charm_magnitude: Optional[str] = None,
+    charm_top_drivers: list | None = None,
     # IV direction — computed by server from _IVTracker
-    iv_direction: str = "flat",             # "expanding" | "contracting" | "flat"
+    iv_direction: Optional[str] = None,
     # Candle momentum — derived from prev_spot in server.py
     candle_direction: str | None = None,  # 'up', 'down', 'flat'
     candle_body_pts: float | None = None, # absolute point move since last refresh
@@ -933,6 +981,9 @@ def build_market_state(
     # Expected Move boundaries (for MC simulation)
     em_upper: float | None = None,
     em_lower: float | None = None,
+    mc_iv_level: float | None = None,
+    mc_em_anchor: str | None = None,
+    mc_iv_source: str | None = None,
     # Volatility context for MC v2
     realized_vol: float | None = None,
     atr: float | None = None,
@@ -960,8 +1011,6 @@ def build_market_state(
     """
     from math_exposure import (
         _f, score_option_expression,
-        OE_DELTA_GAMMA_RATIO_MIN, OE_DELTA_GAMMA_RATIO_MAX,
-        OE_VOL_OI_MIN,
         session_bucket as _sb_fn,
         vix_bucket as _vb_fn,
     )
@@ -979,10 +1028,10 @@ def build_market_state(
     ms.spot         = spot
     ms.bid          = bid
     ms.ask          = ask
-    ms.spot_disp    = f"{spot:.2f}" if spot is not None else "—"
-    ms.bid_disp     = f"{bid:.2f}"  if bid  is not None else "—"
-    ms.ask_disp     = f"{ask:.2f}"  if ask  is not None else "—"
-    spot_f          = float(spot) if spot is not None else 0.0
+    ms.spot_disp    = _ms_price_disp(spot)
+    ms.bid_disp     = _ms_price_disp(bid)
+    ms.ask_disp     = _ms_price_disp(ask)
+    spot_f          = _f_ms(spot)
 
     # ── 2. Regime — from consensus_summary ──────────────────────────────────
     if consensus_summary is not None:
@@ -992,7 +1041,11 @@ def build_market_state(
         _ng             = _f(getattr(consensus_summary, "net_gamma", None))
         ms.net_delta    = _nd
         ms.net_gamma    = _ng
-        ms.gex_magnitude = str(getattr(consensus_summary, "gex_magnitude", "negligible") or "negligible")
+        try:
+            from math_exposure_core import gex_magnitude_label
+            ms.gex_magnitude = gex_magnitude_label(_ng)
+        except Exception:
+            ms.gex_magnitude = str(getattr(consensus_summary, "gex_magnitude", "negligible") or "negligible")
         ms.dex_magnitude = str(getattr(consensus_summary, "dex_magnitude", "negligible") or "negligible")
     else:
         ms.bias_signal  = "Neutral"
@@ -1014,24 +1067,24 @@ def build_market_state(
             from order_flow_engine import OrderFlowEngine
             _of_result = OrderFlowEngine().compute(order_flow_data)
             ms.order_flow_score              = _of_result.get("order_flow_score")
-            ms.order_flow_direction          = _of_result.get("order_flow_direction") or "neutral"
-            ms.order_flow_regime             = _of_result.get("order_flow_regime") or "neutral"
-            ms.order_flow_readiness          = _of_result.get("order_flow_readiness") or "red"
+            ms.order_flow_direction          = _of_result.get("order_flow_direction")
+            ms.order_flow_regime             = _of_result.get("order_flow_regime")
+            ms.order_flow_readiness          = _of_result.get("order_flow_readiness")
             ms.book_imbalance_5              = _of_result.get("book_imbalance_5")
             ms.cum_delta_proxy               = _of_result.get("cum_delta_proxy")
             ms.options_flow_score            = _of_result.get("options_flow_score")
             ms.institutional_flow_proxy_score = _of_result.get("institutional_flow_proxy_score")
-            ms.order_flow_verdict             = _of_result.get("order_flow_verdict") or "FLOW NEUTRAL"
-            ms.order_flow_verdict_color       = _of_result.get("order_flow_verdict_color") or "gray"
-            ms.order_flow_arrow              = _of_result.get("order_flow_arrow") or "→"
-            ms.order_flow_agreement          = _of_result.get("order_flow_agreement") or "weak | conflicted"
-            ms.order_flow_score_arrow        = _of_result.get("order_flow_score_arrow") or "→"
-            ms.order_flow_score_label        = _of_result.get("order_flow_score_label") or "neutral"
-            ms.order_flow_book_arrow         = _of_result.get("order_flow_book_arrow") or "→"
-            ms.order_flow_book_label         = _of_result.get("order_flow_book_label") or "balanced"
-            ms.order_flow_delta_arrow        = _of_result.get("order_flow_delta_arrow") or "→"
-            ms.order_flow_opt_arrow          = _of_result.get("order_flow_opt_arrow") or "→"
-            ms.order_flow_opt_label          = _of_result.get("order_flow_opt_label") or "neutral"
+            ms.order_flow_verdict             = _of_result.get("order_flow_verdict")
+            ms.order_flow_verdict_color       = _of_result.get("order_flow_verdict_color")
+            ms.order_flow_arrow              = _of_result.get("order_flow_arrow")
+            ms.order_flow_agreement          = _of_result.get("order_flow_agreement")
+            ms.order_flow_score_arrow        = _of_result.get("order_flow_score_arrow")
+            ms.order_flow_score_label        = _of_result.get("order_flow_score_label")
+            ms.order_flow_book_arrow         = _of_result.get("order_flow_book_arrow")
+            ms.order_flow_book_label         = _of_result.get("order_flow_book_label")
+            ms.order_flow_delta_arrow        = _of_result.get("order_flow_delta_arrow")
+            ms.order_flow_opt_arrow          = _of_result.get("order_flow_opt_arrow")
+            ms.order_flow_opt_label          = _of_result.get("order_flow_opt_label")
         except Exception as _of_e:
             import logging
             logging.getLogger(__name__).warning(f"Order Flow Engine error: {_of_e}")
@@ -1046,7 +1099,11 @@ def build_market_state(
     ms.pcr_arrow       = getattr(mkt_ctx, "pcr_arrow",      "")
     ms.pcr_color       = getattr(mkt_ctx, "pcr_color",      "#9ca3af")
     ms.pcr_label       = getattr(mkt_ctx, "pcr_label",      "")
-    ms.iv_direction    = iv_direction or "flat"
+    ms.iv_direction = (
+        iv_direction if iv_direction in ("expanding", "contracting", "flat") else None
+    )
+    ms.mc_em_anchor    = mc_em_anchor
+    ms.mc_iv_source    = mc_iv_source
 
     # ── 5. Bias gate — exact match only ─────────────────────────────────────
     ms.bias_resolved = is_bias_actionable(ms.bias_signal)
@@ -1057,217 +1114,270 @@ def build_market_state(
     # ── 7. Signals engine: enforces STACK ORDER 1–10 ──────────────────────────
     # compute_signals runs: vol_regime → regime → model stack → fusion → call (8,9,10)
     _sig_out = None
-    _charm_dir = charm_direction if charm_direction in ("buying", "selling", "neutral") else "neutral"
-    try:
-        from crash_trace import step as _dstep, step_done as _ddone, trace_crash as _dcrash, _on as _don
-    except ImportError:
-        _don = lambda: False
-        _dstep = _ddone = lambda n, t="": None
-        def _dcrash(_sn, _ex, _t=""): pass
-    try:
-        if _don():
-            _dstep("market_state_pre_signals", ticker)
-        from signals import SignalInput, compute_signals
-        from market_context import iwm_blended_participation_push
+    _charm_dir = (
+        charm_direction
+        if charm_direction in ("buying", "selling", "neutral")
+        else None
+    )
+    if spot_f is None:
+        _spot_unavail = "Spot unavailable — no signals"
+        ms.rules_headline = f"⚠ {_spot_unavail}"
+        ms.rules_detail = "Quote/spot missing; cannot compute level distances or signal stack."
+        ms.rules_alerts = [_spot_unavail]
+        ms.call_headline = f"⚠ {_spot_unavail}"
+        ms.call_reasoning = "Cards degraded until Schwab quote provides a valid spot."
+        ms.pred_headline = f"⚠ {_spot_unavail}"
+        ms.zone_label = "—"
+        ms.zone_badge_css = "#374151"
+    else:
+        try:
+            from crash_trace import step as _dstep, step_done as _ddone, trace_crash as _dcrash, _on as _don
+        except ImportError:
+            _don = lambda: False
+            _dstep = _ddone = lambda n, t="": None
+            def _dcrash(_sn, _ex, _t=""): pass
+        try:
+            if _don():
+                _dstep("market_state_pre_signals", ticker)
+            # function-local import: signals → market_state cycle via derive_zone; keep local to avoid ImportError at module load.
+            from signals import SignalInput, compute_signals
+            from market_context import iwm_blended_participation_push
 
-        _vwap_val  = getattr(price_levels, "vwap", None)
-        _vwap_side = None
-        if _vwap_val and spot_f:
-            _vwap_side = "above" if spot_f > _vwap_val else "below"
+            _vwap_val  = getattr(price_levels, "vwap", None)
+            _vwap_side = None
+            if _vwap_val and spot_f:
+                _vwap_side = "above" if spot_f > _vwap_val else "below"
 
-        def _dist(lvl):
-            if lvl is None or spot_f is None: return None
-            return round(lvl - spot_f, 4)
+            def _dist(lvl):
+                if lvl is None or spot_f is None: return None
+                return round(lvl - spot_f, 4)
 
-        # Extract key levels from walls/price_levels
-        _cgw = _pgw = _gi = _cdw = _pdw = _di = _coi = _poi = _cvw = _pvw = None
-        if walls:
-            w0 = walls[0]
-            _cgw = _f(getattr(w0, "call_gamma_wall",  None))
-            _pgw = _f(getattr(w0, "put_gamma_wall",   None))
-            _cdw = _f(getattr(w0, "call_delta_wall",  None))
-            _pdw = _f(getattr(w0, "put_delta_wall",   None))
-            _coi = _f(getattr(w0, "call_oi_wall",     None))
-            _poi = _f(getattr(w0, "put_oi_wall",      None))
-            _cvw = _f(getattr(w0, "call_vanna_wall",  None))
-            _pvw = _f(getattr(w0, "put_vanna_wall",   None))
-        # Inflections come from ExposureRow (consensus_summary), not WallsRow
-        if consensus_summary is not None:
-            _gi = _f(getattr(consensus_summary, "gamma_inflection", None))
-            _di = _f(getattr(consensus_summary, "delta_inflection", None))
+            # Extract key levels from walls/price_levels
+            _cgw = _pgw = _gi = _cdw = _pdw = _di = _coi = _poi = _cvw = _pvw = None
+            if walls:
+                w0 = walls[0]
+                _cgw = _f(getattr(w0, "call_gamma_wall",  None))
+                _pgw = _f(getattr(w0, "put_gamma_wall",   None))
+                _cdw = _f(getattr(w0, "call_delta_wall",  None))
+                _pdw = _f(getattr(w0, "put_delta_wall",   None))
+                _coi = _f(getattr(w0, "call_oi_wall",     None))
+                _poi = _f(getattr(w0, "put_oi_wall",      None))
+                _cvw = _f(getattr(w0, "call_vanna_wall",  None))
+                _pvw = _f(getattr(w0, "put_vanna_wall",   None))
+            # Inflections come from ExposureRow (consensus_summary), not WallsRow
+            if consensus_summary is not None:
+                _gi = _f(getattr(consensus_summary, "gamma_inflection", None))
+                _di = _f(getattr(consensus_summary, "delta_inflection", None))
 
-        _pin_w = ((_cgw - _pgw) if _cgw and _pgw else None)
+            _pin_w = ((_cgw - _pgw) if _cgw and _pgw else None)
 
-        # Nearest above/below
-        _nearest_above_name = _nearest_above_val = None
-        _nearest_below_name = _nearest_below_val = None
-        _all_lvls = [
-            (_cgw, "Call g-Wall"), (_pgw, "Put g-Wall"),
-            (_gi,  "g-Inflection"), (_cdw, "Call d-Wall"),
-            (_pdw, "Put d-Wall"),  (_di,  "D-Inflection"),
-            (_coi, "Call OI Wall"),(_poi, "Put OI Wall"),
-            (_vwap_val, "VWAP"),
-        ]
-        for _lv, _ln in _all_lvls:
-            if _lv is None: continue
-            if _lv > spot_f:
-                if _nearest_above_val is None or _lv < _nearest_above_val:
-                    _nearest_above_val  = _lv
-                    _nearest_above_name = _ln
-            elif _lv < spot_f:
-                if _nearest_below_val is None or _lv > _nearest_below_val:
-                    _nearest_below_val  = _lv
-                    _nearest_below_name = _ln
+            # Nearest above/below
+            _nearest_above_name = _nearest_above_val = None
+            _nearest_below_name = _nearest_below_val = None
+            _all_lvls = [
+                (_cgw, "Call g-Wall"), (_pgw, "Put g-Wall"),
+                (_gi,  "g-Inflection"), (_cdw, "Call d-Wall"),
+                (_pdw, "Put d-Wall"),  (_di,  "D-Inflection"),
+                (_coi, "Call OI Wall"),(_poi, "Put OI Wall"),
+                (_vwap_val, "VWAP"),
+            ]
+            for _lv, _ln in _all_lvls:
+                if _lv is None: continue
+                if _lv > spot_f:
+                    if _nearest_above_val is None or _lv < _nearest_above_val:
+                        _nearest_above_val  = _lv
+                        _nearest_above_name = _ln
+                elif _lv < spot_f:
+                    if _nearest_below_val is None or _lv > _nearest_below_val:
+                        _nearest_below_val  = _lv
+                        _nearest_below_name = _ln
 
-        _nearest_above_dist, _nearest_below_dist = canonical_nearest_distances(
-            spot_f, _nearest_above_val, _nearest_below_val
-        )
+            _nearest_above_dist, _nearest_below_dist = canonical_nearest_distances(
+                spot_f, _nearest_above_val, _nearest_below_val
+            )
 
-        # ── Store nearest levels and vwap_side on MarketState for DB logging ──
-        ms.nearest_above_name = _nearest_above_name
-        ms.nearest_above_val  = _nearest_above_val
-        ms.nearest_above_dist = _nearest_above_dist
-        ms.nearest_below_name = _nearest_below_name
-        ms.nearest_below_val  = _nearest_below_val
-        ms.nearest_below_dist = _nearest_below_dist
-        ms.vwap_side          = _vwap_side
+            # ── Store nearest levels and vwap_side on MarketState for DB logging ──
+            ms.nearest_above_name = _nearest_above_name
+            ms.nearest_above_val  = _nearest_above_val
+            ms.nearest_above_dist = _nearest_above_dist
+            ms.nearest_below_name = _nearest_below_name
+            ms.nearest_below_val  = _nearest_below_val
+            ms.nearest_below_dist = _nearest_below_dist
+            ms.vwap_side          = _vwap_side
 
-        # Greeks — net gamma/delta from ExposureRow; charm passed in from server
-        _net_gamma = _net_delta_sig = _net_vanna = None
-        _iv_level  = _pcr_ratio = _oi_center = None
-        if consensus_summary is not None:
-            _oi_center = _f_ms(getattr(consensus_summary, "oi_center", None))
-        if consensus_summary:
-            _net_gamma     = _f(getattr(consensus_summary, "net_gamma", None)) or None
-            _net_delta_sig = _f(getattr(consensus_summary, "net_delta", None)) or None
-        if totals:
-            t0 = totals[0]
-            _iv_level  = _f(getattr(t0, "atm_iv", None)) or None
-            _pcr_ratio = _f(getattr(t0, "pcr_oi", None)) or None
-        # Charm: use values passed in from server (computed via compute_net_charm before this call)
-        # "neutral"/"buying"/"selling" — signals engine needs exact these strings
-        _charm_net = charm_net
-        _charm_dir = charm_direction if charm_direction in ("buying", "selling", "neutral") else "neutral"
-        _charm_toward = charm_drift_toward
+            # Greeks — net gamma/delta from ExposureRow; charm passed in from server
+            _net_gamma = _net_delta_sig = _net_vanna = None
+            _iv_level  = _pcr_ratio = _oi_center = None
+            if consensus_summary is not None:
+                _oi_center = _f_ms(getattr(consensus_summary, "oi_center", None))
+            if consensus_summary:
+                _net_gamma     = _f(getattr(consensus_summary, "net_gamma", None))
+                _net_delta_sig = _f(getattr(consensus_summary, "net_delta", None))
+            if mc_iv_level is not None and mc_iv_level > 0:
+                _iv_level = vol_percent_to_decimal(_f(mc_iv_level))
+            elif totals:
+                t0 = totals[0]
+                _iv_level = vol_percent_to_decimal(_f(getattr(t0, "atm_iv", None)))
+            _rv_level = vol_percent_to_decimal(_f(realized_vol))
+            if totals:
+                t0 = totals[0]
+                _pcr_ratio = _f(getattr(t0, "pcr_oi", None))
+            # Charm: use values passed in from server (computed via compute_net_charm before this call)
+            # "neutral"/"buying"/"selling" — signals engine needs exact these strings
+            _charm_net = charm_net
+            _charm_toward = charm_drift_toward
 
-        # Cross-instrument
-        _spy_chg  = getattr(mkt_ctx, "spy_chg_pct",  None) or 0
-        _qqq_chg  = getattr(mkt_ctx, "qqq_chg_pct",  None) or 0
-        _iwm_chg  = getattr(mkt_ctx, "iwm_chg_pct",  None) or 0
-        _qqq_delta = round(_qqq_chg - _spy_chg, 4) if (mkt_ctx.spy_chg_pct and mkt_ctx.qqq_chg_pct) else None
-        _qqq_vs_spy = (None if _qqq_delta is None else
-                       "leading" if _qqq_delta > 0.10 else
-                       "lagging" if _qqq_delta < -0.10 else "inline")
-        _iwm_risk = (None if mkt_ctx.iwm_chg_pct is None else
-                     "risk_on"  if _iwm_chg > 0.10 else
-                     "risk_off" if _iwm_chg < -0.10 else "neutral")
+            # Cross-instrument
+            _spy_chg  = getattr(mkt_ctx, "spy_chg_pct",  None)
+            _qqq_chg  = getattr(mkt_ctx, "qqq_chg_pct",  None)
+            _iwm_chg  = getattr(mkt_ctx, "iwm_chg_pct",  None)
+            _qqq_delta = (
+                round(_qqq_chg - _spy_chg, 4)
+                if (_spy_chg is not None and _qqq_chg is not None)
+                else None
+            )
+            _qqq_vs_spy = (None if _qqq_delta is None else
+                           "leading" if _qqq_delta > 0.10 else
+                           "lagging" if _qqq_delta < -0.10 else "inline")
+            _iwm_risk = (None if _iwm_chg is None else
+                         "risk_on"  if _iwm_chg > 0.10 else
+                         "risk_off" if _iwm_chg < -0.10 else "neutral")
 
-        # Time and volatility regime buckets for prediction matching
-        _session_bkt = _sb_fn(et_hour, et_minute)
-        _vix_bkt     = _vb_fn(mkt_ctx.vix) if mkt_ctx.vix is not None else None
+            # Time and volatility regime buckets for prediction matching
+            _session_bkt = (
+                _sb_fn(et_hour, et_minute)
+                if et_hour is not None and et_minute is not None
+                else None
+            )
+            _vix_bkt     = _vb_fn(mkt_ctx.vix) if mkt_ctx.vix is not None else None
 
-        sig_inp = SignalInput(
-            ticker=ticker, timeframe=CANONICAL_TIMEFRAME,
-            expiry=selected_exp, dte=None,
-            spot=spot_f,
-            candle_open=getattr(price_levels, "today_open", None),
-            candle_high=getattr(price_levels, "today_high", None),
-            candle_low=getattr(price_levels,  "today_low",  None),
-            candle_close=spot_f,
-            candle_direction=candle_direction, candle_body_pts=candle_body_pts, candle_range_pts=None,
-            vwap=_vwap_val, vwap_side=_vwap_side,
-            vwap_dist_pts=round(abs(spot_f - _vwap_val), 4) if _vwap_val else None,
-            zone=ms.zone, prev_zone=(prev_zone or ms.zone),
-            zone_since_bars=zone_since_bars,           # alias (model compat)
-            zone_since_bars_1m=zone_since_bars,        # execution-layer (1m)
-            zone_since_bars_5m=zone_since_bars_5m,     # 5m structure context
-            call_gamma_wall=_cgw, put_gamma_wall=_pgw,
-            call_delta_wall=_cdw, put_delta_wall=_pdw,
-            gamma_inflection=_gi, delta_inflection=_di,
-            call_oi_wall=_coi, put_oi_wall=_poi,
-            call_vanna_wall=_cvw, put_vanna_wall=_pvw,
-            pin_width_pts=_pin_w,
-            dist_call_gamma_wall=_dist(_cgw), dist_put_gamma_wall=_dist(_pgw),
-            dist_call_delta_wall=_dist(_cdw), dist_put_delta_wall=_dist(_pdw),
-            dist_gamma_inflection=_dist(_gi),  dist_delta_inflection=_dist(_di),
-            dist_call_oi_wall=_dist(_coi),     dist_put_oi_wall=_dist(_poi),
-            dist_call_vanna_wall=_dist(_cvw),  dist_put_vanna_wall=_dist(_pvw),
-            nearest_above_name=_nearest_above_name, nearest_above_val=_nearest_above_val,
-            nearest_above_dist=_nearest_above_dist,
-            nearest_below_name=_nearest_below_name, nearest_below_val=_nearest_below_val,
-            nearest_below_dist=_nearest_below_dist,
-            net_gamma=_net_gamma, net_delta=_net_delta_sig, net_vanna=_net_vanna,
-            charm_net=_charm_net, charm_direction=_charm_dir,
-            charm_drift_toward=_charm_toward,
-            charm_magnitude=charm_magnitude,      # use function param — ms.charm_magnitude not set yet at this point
-            dex_magnitude=ms.dex_magnitude,
-            iv_level=_iv_level, iv_direction=iv_direction,
-            realized_vol=realized_vol, atr=atr,
-            garch_sigma_bars=garch_sigma_bars,
-            put_call_oi_ratio=_pcr_ratio, oi_center=_oi_center,
-            recent_crosses=(recent_crosses or []),
-            ceiling_tests_today=ceiling_tests_today,
-            floor_tests_today=floor_tests_today,
-            spy_zone=None, spy_vwap_side=None,
-            spy_chg_pct=mkt_ctx.spy_chg_pct,
-            qqq_zone=None, qqq_vwap_side=None,
-            qqq_chg_pct=mkt_ctx.qqq_chg_pct,
-            qqq_vs_spy=_qqq_vs_spy, qqq_vs_spy_delta=_qqq_delta,
-            iwm_zone=None, iwm_vwap_side=None,
-            iwm_chg_pct=mkt_ctx.iwm_chg_pct,
-            iwm_risk_signal=_iwm_risk,
-            spy_weighted_push=getattr(getattr(mkt_ctx, "confluence", None), "weighted_push", None),
-            qqq_weighted_push=getattr(getattr(mkt_ctx, "qqq_confluence", None), "weighted_push", None),
-            iwm_weighted_push=iwm_blended_participation_push(mkt_ctx),
-            event_risk_level=ms.event_risk_level,
-            event_risk_detail=ms.event_risk_detail or "",
-            vix_level=mkt_ctx.vix, vix_direction=None,
-            et_hour=et_hour, et_minute=et_minute,
-            mins_to_close=mins_to_close,
-            session_bucket=_session_bkt,
-            vix_bucket=_vix_bkt,
-            refresh_ts_utc=refresh_ts_utc,
-            total_snapshots=total_snapshots,
-            filled_snapshots=filled_snapshots,
-            candles_5m=candles_5m or [],
-            candles_1m=candles_1m or [],
-            em_upper=em_upper,
-            em_lower=em_lower,
-            candle_volume=candle_volume,
-            flow_imbalance=flow_imbalance,
-            spread=spread,
-            order_flow_score=ms.order_flow_score,
-            order_flow_direction=ms.order_flow_direction,
-            order_flow_readiness=ms.order_flow_readiness,
-            iv_rank=iv_rank,
-            smart_money_score=smart_money_score,
-            breakout_score=breakout_score,
-            pin_score=pin_score,
-        )
+            sig_inp = SignalInput(
+                ticker=ticker, timeframe=CANONICAL_TIMEFRAME,
+                expiry=selected_exp, dte=None,
+                spot=spot_f,
+                candle_open=getattr(price_levels, "today_open", None),
+                candle_high=getattr(price_levels, "today_high", None),
+                candle_low=getattr(price_levels,  "today_low",  None),
+                candle_close=spot_f,
+                candle_direction=candle_direction, candle_body_pts=candle_body_pts, candle_range_pts=None,
+                vwap=_vwap_val, vwap_side=_vwap_side,
+                vwap_dist_pts=round(abs(spot_f - _vwap_val), 4) if _vwap_val else None,
+                zone=ms.zone, prev_zone=(prev_zone or ms.zone),
+                zone_since_bars=zone_since_bars,           # alias (model compat)
+                zone_since_bars_1m=zone_since_bars,        # execution-layer (1m)
+                zone_since_bars_5m=zone_since_bars_5m,     # 5m structure context
+                call_gamma_wall=_cgw, put_gamma_wall=_pgw,
+                call_delta_wall=_cdw, put_delta_wall=_pdw,
+                gamma_inflection=_gi, delta_inflection=_di,
+                call_oi_wall=_coi, put_oi_wall=_poi,
+                call_vanna_wall=_cvw, put_vanna_wall=_pvw,
+                pin_width_pts=_pin_w,
+                dist_call_gamma_wall=_dist(_cgw), dist_put_gamma_wall=_dist(_pgw),
+                dist_call_delta_wall=_dist(_cdw), dist_put_delta_wall=_dist(_pdw),
+                dist_gamma_inflection=_dist(_gi),  dist_delta_inflection=_dist(_di),
+                dist_call_oi_wall=_dist(_coi),     dist_put_oi_wall=_dist(_poi),
+                dist_call_vanna_wall=_dist(_cvw),  dist_put_vanna_wall=_dist(_pvw),
+                nearest_above_name=_nearest_above_name, nearest_above_val=_nearest_above_val,
+                nearest_above_dist=_nearest_above_dist,
+                nearest_below_name=_nearest_below_name, nearest_below_val=_nearest_below_val,
+                nearest_below_dist=_nearest_below_dist,
+                net_gamma=_net_gamma, net_delta=_net_delta_sig, net_vanna=_net_vanna,
+                charm_net=_charm_net, charm_direction=_charm_dir,
+                charm_drift_toward=_charm_toward,
+                charm_magnitude=charm_magnitude,      # use function param — ms.charm_magnitude not set yet at this point
+                dex_magnitude=ms.dex_magnitude,
+                iv_level=_iv_level, iv_direction=iv_direction,
+                realized_vol=_rv_level, atr=atr,
+                garch_sigma_bars=garch_sigma_bars,
+                put_call_oi_ratio=_pcr_ratio, oi_center=_oi_center,
+                recent_crosses=(recent_crosses or []),
+                ceiling_tests_today=ceiling_tests_today,
+                floor_tests_today=floor_tests_today,
+                spy_zone=None, spy_vwap_side=None,
+                spy_chg_pct=mkt_ctx.spy_chg_pct,
+                qqq_zone=None, qqq_vwap_side=None,
+                qqq_chg_pct=mkt_ctx.qqq_chg_pct,
+                qqq_vs_spy=_qqq_vs_spy, qqq_vs_spy_delta=_qqq_delta,
+                iwm_zone=None, iwm_vwap_side=None,
+                iwm_chg_pct=mkt_ctx.iwm_chg_pct,
+                iwm_risk_signal=_iwm_risk,
+                spy_weighted_push=getattr(getattr(mkt_ctx, "confluence", None), "weighted_push", None),
+                qqq_weighted_push=getattr(getattr(mkt_ctx, "qqq_confluence", None), "weighted_push", None),
+                iwm_weighted_push=iwm_blended_participation_push(mkt_ctx),
+                event_risk_level=ms.event_risk_level,
+                event_risk_detail=ms.event_risk_detail or "",
+                vix_level=mkt_ctx.vix, vix_direction=None,
+                et_hour=et_hour, et_minute=et_minute,
+                mins_to_close=mins_to_close,
+                session_bucket=_session_bkt,
+                vix_bucket=_vix_bkt,
+                refresh_ts_utc=refresh_ts_utc,
+                total_snapshots=total_snapshots,
+                filled_snapshots=filled_snapshots,
+                candles_5m=candles_5m or [],
+                candles_1m=candles_1m or [],
+                em_upper=em_upper,
+                em_lower=em_lower,
+                candle_volume=candle_volume,
+                flow_imbalance=flow_imbalance,
+                spread=spread,
+                order_flow_score=ms.order_flow_score,
+                order_flow_direction=ms.order_flow_direction,
+                order_flow_readiness=ms.order_flow_readiness,
+                iv_rank=iv_rank,
+                smart_money_score=smart_money_score,
+                breakout_score=breakout_score,
+                pin_score=pin_score,
+            )
 
-        _sig_out = compute_signals(sig_inp, db=db, pred_override=pred_override)
-        ms._calibration_payload = getattr(_sig_out, "calibration_payload", None)
-        if _don():
-            _ddone("compute_signals", ticker)
+            _sig_out = compute_signals(sig_inp, db=db, pred_override=pred_override)
+            ms._calibration_payload = getattr(_sig_out, "calibration_payload", None)
+            if _don():
+                _ddone("compute_signals", ticker)
 
-    except Exception as _e:
-        if _don():
-            _dcrash("compute_signals", _e, ticker)
-        import logging, traceback
-        _tb = traceback.format_exc()
-        logging.warning(f"market_state: signals engine error: {_e}\n{_tb}")
-        _sig_out = None
-        # Surface the crash on all three cards — silent WAIT is invisible and misleading
-        _err_short = f"{type(_e).__name__}: {str(_e)[:120]}"
-        ms.rules_headline  = f"⚠ Signal engine error: {_err_short}"
-        ms.rules_detail    = "Check server console for full traceback. Restart server if this persists."
-        ms.rules_alerts    = [f"ENGINE CRASH — {_err_short}"]
-        ms.call_headline   = f"⚠ Signal engine error: {_err_short}"
-        ms.call_reasoning  = "Cards in error state — no signals until engine recovers."
-        ms.pred_headline   = f"⚠ Signal engine error: {_err_short}"
-        ms.zone_label      = "ERROR"
-        ms.zone_badge_css  = "#dc2626"
-        ms._calibration_payload = None
+        except Exception as _e:
+            if _don():
+                _dcrash("compute_signals", _e, ticker)
+            import logging, traceback
+            _tb = traceback.format_exc()
+            logging.warning(f"market_state: signals engine error: {_e}\n{_tb}")
+            _sig_out = None
+            # Surface the crash on all three cards — silent WAIT is invisible and misleading
+            from server import STATE_ERROR_DETAIL_MAX_CHARS
+
+            _err_short = f"{type(_e).__name__}: {str(_e)[:STATE_ERROR_DETAIL_MAX_CHARS]}"
+            ms.rules_headline  = f"⚠ Signal engine error: {_err_short}"
+            ms.rules_detail    = "Check server console for full traceback. Restart server if this persists."
+            ms.rules_alerts    = [f"ENGINE CRASH — {_err_short}"]
+            ms.call_headline   = f"⚠ Signal engine error: {_err_short}"
+            ms.call_reasoning  = "Cards in error state — no signals until engine recovers."
+            ms.pred_headline   = f"⚠ Signal engine error: {_err_short}"
+            ms.zone_label      = "ERROR"
+            ms.zone_badge_css  = "#dc2626"
+            ms._calibration_payload = None
+            ms.state_error = "signals_engine_error"
+            ms.state_error_detail = _err_short
+            ms.signals_engine_failed = True
+            try:
+                from features.stack_integrity_v1 import record_stack_degradation
+
+                record_stack_degradation(
+                    ms.stack_integrity_events,
+                    component="signals_engine",
+                    severity="error",
+                    reason="compute_signals_failed",
+                    exc_type=type(_e).__name__,
+                    detail=_err_short,
+                    fallback_used=False,
+                    authority_intact=False,
+                    dedupe_key="signals_engine",
+                )
+            except Exception as _deg_e:
+                logging.warning(
+                    "market_state: record_stack_degradation failed after signals_engine_error: %s",
+                    _deg_e,
+                    exc_info=True,
+                )
 
     # ── 9. Populate card fields from signals output ──────────────────────────
     if _sig_out is not None:
@@ -1307,10 +1417,10 @@ def build_market_state(
             ms.target2          = _call.target2
             ms.reward_risk      = _call.reward_risk
             ms.reward_risk2     = getattr(_call, 'reward_risk2', None)
-            ms.entry_disp       = f"{_call.entry:.2f}"  if _call.entry  else "—"
-            ms.stop_disp        = f"{_call.stop:.2f}"   if _call.stop   else "—"
-            ms.target_disp      = f"{_call.target:.2f}" if _call.target else "—"
-            ms.target2_disp     = f"{_call.target2:.2f}" if _call.target2 else "—"
+            ms.entry_disp       = _ms_price_disp(_call.entry)
+            ms.stop_disp        = _ms_price_disp(_call.stop)
+            ms.target_disp      = _ms_price_disp(_call.target)
+            ms.target2_disp     = _ms_price_disp(_call.target2)
             ms.rr_disp          = f"{_call.reward_risk:.1f}x" if _call.reward_risk else "—"
             ms.rr2_disp         = f"{_call.reward_risk2:.1f}x" if getattr(_call, 'reward_risk2', None) else "—"
             ms.call_headline    = _call.headline
@@ -1320,22 +1430,23 @@ def build_market_state(
             ms.trade_type_label = _tt.replace('_', ' ').title() if _tt and _tt != 'none' else ''
             ms.invalidation     = getattr(_call, 'invalidation', '')
             ms.confluence_count = getattr(_call, 'confluence_count', 0)
-            ms.confluence_total = getattr(_call, 'confluence_total', 4)
+            ms.confluence_total = getattr(_call, 'confluence_total', None)
             ms.confluence_detail = getattr(_call, 'confluence_detail', '')
+            ms.mh_promoted_directional = bool(getattr(_call, 'mh_promoted_directional', False))
             ms.time_qualifier   = getattr(_call, 'time_qualifier', '')
             ms.replay_max_hold_bars = int(getattr(_call, 'replay_max_hold_bars', 0) or 0)
             ms.size_cue         = getattr(_call, 'size_cue', 'SKIP')
             ms.rules_pred_agree = _call.rules_pred_agree
             ms.time_warning     = _call.time_warning
             ms.size_note        = _call.size_note
-            # Validation gate
-            ms.validation_passed  = getattr(_call, 'validation_passed', True)
-            ms.structure_valid    = getattr(_call, 'structure_valid', True)
-            ms.probability_valid  = getattr(_call, 'probability_valid', True)
-            ms.risk_valid         = getattr(_call, 'risk_valid', True)
+            # Validation gate — fail-closed when call omits flags
+            ms.validation_passed  = getattr(_call, 'validation_passed', None)
+            ms.structure_valid    = getattr(_call, 'structure_valid', None)
+            ms.probability_valid  = getattr(_call, 'probability_valid', None)
+            ms.risk_valid         = getattr(_call, 'risk_valid', None)
             ms.validation_summary = getattr(_call, 'validation_summary', '')
             # Position sizing
-            ms.r_units          = getattr(_call, 'r_units', 0.0)
+            ms.r_units          = getattr(_call, 'r_units', None)
             ms.execution_mode   = getattr(_call, 'execution_mode', 'NO_TRADE')
             ms.sizing_summary   = getattr(_call, 'sizing_summary', '')
             # Call Readiness
@@ -1361,19 +1472,26 @@ def build_market_state(
             _mr = getattr(_mhd, "alignment_report", None)
             _pt = getattr(_mhd, "final_trade_plan", None)
             ms.final_bias = str(getattr(_mhd, "final_bias", "WAIT") or "WAIT")
-            ms.final_confidence = float(getattr(_mhd, "final_confidence", 0.0) or 0.0)
+            _fc = getattr(_mhd, "final_confidence", None)
+            ms.final_confidence = float_finite_or_none(_fc)
             ms.final_quality = str(getattr(_mhd, "final_quality", "D") or "D")
             ms.final_tradeable = bool(getattr(_mhd, "final_tradeable", False))
             ms.primary_horizon = str(getattr(_mhd, "primary_horizon", "1c") or "1c")
             ms.trade_mode = str(getattr(_mhd, "trade_mode", "intraday") or "intraday")
             ms.supporting_horizon_summary = str(getattr(_mhd, "supporting_horizon_summary", "") or "")
-            ms.alignment_state_display = str(getattr(_mhd, "alignment_state", "unusable") or "unusable")
+            ms.alignment_state_display = normalize_alignment_state(
+                getattr(_mhd, "alignment_state", None) or "no_primary"
+            )
             ms.contradiction_state = str(getattr(_mhd, "contradiction_state", "none") or "none")
             ms.conflict_level_display = str(getattr(_mr, "conflict_level", "high") or "high")
             ms.entry_state = str(getattr(_mhd, "entry_state", "no_setup") or "no_setup")
             ms.risk_note = str(getattr(_mhd, "risk_note", "") or "")
             ms.wait_reason = str(getattr(_mhd, "wait_reason", "") or "")
             ms.decision_provenance = str(getattr(_mhd, "decision_provenance", "") or "")
+            ms.guest_anchor_active = bool(getattr(_sig_out, "guest_anchor_active", False))
+            ms.guest_anchor_weights_ticker = getattr(_sig_out, "guest_anchor_weights_ticker", None)
+            ms.guest_anchor_affiliation = getattr(_sig_out, "guest_anchor_affiliation", None)
+            ms.guest_anchor_rationale = getattr(_sig_out, "guest_anchor_rationale", None)
             if _pt is not None:
                 ms.entry_display_text = str(getattr(_pt, "entry_display_text", ms.entry_display_text) or ms.entry_display_text)
                 ms.stop_display_text = str(getattr(_pt, "stop_display_text", "—") or "—")
@@ -1382,24 +1500,34 @@ def build_market_state(
                 ms.size_modifier_display = str(getattr(_pt, "size_modifier_display", "0.00x") or "0.00x")
             _rows = []
             for _a in list(getattr(_mhd, "supporting_assessments", []) or []):
+                _missing = bool(getattr(_a, "missing", False))
+                _hz = str(getattr(_a, "horizon", ""))
+                if _missing:
+                    _conf: float | None = None
+                else:
+                    _conf = float_finite_or_none(getattr(_a, "confidence", None))
                 _rows.append(
                     {
-                        "horizon": str(getattr(_a, "horizon", "")),
+                        "horizon": _hz,
                         "role": str(getattr(_a, "role", "")),
                         "call": str(getattr(_a, "call", "")),
-                        "confidence": float(getattr(_a, "confidence", 0.0) or 0.0),
+                        "confidence": _conf,
                         "entry_ref": getattr(_a, "entry_ref", None),
                         "effect": str(getattr(_a, "effect", "")),
-                        "row_state": str(getattr(_a, "row_state", "weak")),
+                        "row_state": "missing" if _missing else str(getattr(_a, "row_state", "weak")),
+                        "state": "missing" if _missing else "ok",
+                        "reason_code": str(getattr(_a, "reason_code", "") or ""),
+                        "missing_horizon": _hz if _missing else None,
                     }
                 )
-            _rank = {"1c": 0, "5c": 1, "15c": 2, "60c": 3}
+            _rank = {hz: i for i, hz in enumerate(PRIMARY_DECISION_HORIZONS)}
             _rows.sort(key=lambda x: _rank.get(x.get("horizon", ""), 99))
             ms.mhap_rows = _rows
 
         # What the Data Says
         _pred = _sig_out.predictive
         if _pred:
+            ms.stack_integrity_events.extend(getattr(_pred, "stack_integrity_events", None) or [])
             ms.horizon_prob_bars = getattr(_pred, "horizon_prob_bars", None)
             ms.eval_accuracy_oos = getattr(_pred, "eval_accuracy_oos", None)
             ms.eval_log_loss_oos = getattr(_pred, "eval_log_loss_oos", None)
@@ -1411,18 +1539,9 @@ def build_market_state(
             ms.up_prob_1c      = getattr(_pred, "up_prob_1c", None)
             ms.down_prob_1c    = getattr(_pred, "down_prob_1c", None)
             ms.flat_prob_1c    = getattr(_pred, "flat_prob_1c", None)
-            ms.up_prob_3c      = _pred.up_prob_3c
-            ms.down_prob_3c    = _pred.down_prob_3c
-            ms.flat_prob_3c    = _pred.flat_prob_3c
             ms.up_prob_5c      = _pred.up_prob_5c
             ms.down_prob_5c    = _pred.down_prob_5c
             ms.flat_prob_5c    = _pred.flat_prob_5c
-            ms.up_prob_8c      = _pred.up_prob_8c
-            ms.down_prob_8c    = _pred.down_prob_8c
-            ms.flat_prob_8c    = _pred.flat_prob_8c
-            ms.up_prob_13c     = _pred.up_prob_13c
-            ms.down_prob_13c   = _pred.down_prob_13c
-            ms.flat_prob_13c   = _pred.flat_prob_13c
             ms.up_prob_15c     = getattr(_pred, "up_prob_15c", None)
             ms.down_prob_15c   = getattr(_pred, "down_prob_15c", None)
             ms.flat_prob_15c   = getattr(_pred, "flat_prob_15c", None)
@@ -1434,38 +1553,46 @@ def build_market_state(
             ms.historical_5c_dominant_dir = _pred.historical_5c_dominant_dir
             ms.historical_5c_dominant_prob = _pred.historical_5c_dominant_prob
             ms.empirical_confidence = _pred.empirical_confidence
-            ms.forward_prob_up = float(_pred.forward_prob_up)
-            ms.forward_prob_down = float(_pred.forward_prob_down)
-            ms.forward_prob_flat = float(_pred.forward_prob_flat)
+            ms.forward_prob_up = float_finite_or_none(_pred.forward_prob_up)
+            ms.forward_prob_down = float_finite_or_none(_pred.forward_prob_down)
+            ms.forward_prob_flat = float_finite_or_none(_pred.forward_prob_flat)
             ms.forward_provenance = _pred.forward_provenance or ""
             _cf = getattr(_sig_out, "canonical_forecast", None)
             if _cf is not None:
                 ms.dominant_dir = _cf.direction
-                ms.dominant_prob = round(_cf.dominant_probability(), 4)
+                # LIVE-UI-A: gate dominant_prob on provenance — non-tradable canonicals
+                # carry placeholder 1/3-each triplets; stamping `dominant_probability()`
+                # as a real number leaks fake 0.3333 into ms_dict / Tier C payload. UI
+                # consumers that later read this field would surface the placeholder as
+                # a real prob. dominant_dir is left as-is (producer convention sets it
+                # to "flat" for non-tradable, which is the fail-closed display value).
+                _cf_prov = getattr(_cf, "provenance", None)
+                if canonical_provenance_is_tradable(_cf_prov):
+                    ms.dominant_prob = round(_cf.dominant_probability(), 4)
+                else:
+                    ms.dominant_prob = None
                 ms.confidence = _cf.confidence
-                ms.canonical_provenance = str(getattr(_cf, "provenance", "") or "")
+                ms.canonical_provenance = str(_cf_prov or "")
             else:
                 ms.dominant_dir = _pred.forward_direction
-                ms.dominant_prob = float(
-                    _pred.forward_prob_up
-                    if _pred.forward_direction == "up"
-                    else (
-                        _pred.forward_prob_down
-                        if _pred.forward_direction == "down"
-                        else _pred.forward_prob_flat
-                    )
-                )
+                _fwd_dir = _pred.forward_direction
+                if _fwd_dir == "up":
+                    _dom_p = _pred.forward_prob_up
+                elif _fwd_dir == "down":
+                    _dom_p = _pred.forward_prob_down
+                else:
+                    _dom_p = _pred.forward_prob_flat
+                ms.dominant_prob = float(_dom_p) if _dom_p is not None else None
                 ms.confidence = _pred.forward_confidence
-                ms.canonical_provenance = ms.forward_provenance or ""
+                ms.canonical_provenance = "canonical_forecast_missing"
             ms.samples_used    = _pred.samples_used
             ms.model_note      = _pred.model_note
             ms.model_version   = getattr(_pred, 'model_version', 'rules_v1')
             ms.pred_model_source = getattr(_pred, 'model_source', None)
+            _mh_src = getattr(_pred, "mh_prob_source_by_horizon", None)
+            ms.mh_prob_source_by_horizon = dict(_mh_src) if isinstance(_mh_src, dict) else None
             ms.pred_override_source = getattr(_sig_out, 'pred_override_source', None)
-            ms.avg_3c_pts      = _pred.avg_3c_pts
             ms.avg_5c_pts      = _pred.avg_5c_pts
-            ms.avg_8c_pts      = _pred.avg_8c_pts
-            ms.avg_13c_pts     = _pred.avg_13c_pts
             ms.avg_15c_pts     = getattr(_pred, "avg_15c_pts", None)
             ms.avg_60c_pts     = getattr(_pred, "avg_60c_pts", None)
             ms.timeframe_reads = dict(_pred.timeframe_reads or {})
@@ -1486,9 +1613,14 @@ def build_market_state(
                     u, dn, fl = z.get("up"), z.get("down"), z.get("flat")
                     if u is None or dn is None or fl is None:
                         return None
-                    return {"up": float(u), "down": float(dn), "flat": float(fl)}
+                    u_f = float_finite_or_none(u)
+                    dn_f = float_finite_or_none(dn)
+                    fl_f = float_finite_or_none(fl)
+                    if u_f is None or dn_f is None or fl_f is None:
+                        return None
+                    return {"up": u_f, "down": dn_f, "flat": fl_f}
 
-                ms.layer1_probs = {
+                ms.ml_layer_probs = {
                     "xgb": _pack_probs(_x),
                     "lstm": _pack_probs(_l),
                     "transformer": _pack_probs(_t),
@@ -1519,25 +1651,28 @@ def build_market_state(
 
         # Bayesian fusion
         _fusion = getattr(_sig_out, 'fusion', None)
-        if _fusion and getattr(_fusion, 'available', False):
+        if fusion_is_authoritative(_fusion):
+            def _fusion_f(name: str) -> Optional[float]:
+                return float_finite_or_none(getattr(_fusion, name, None))
+
             ms.fusion_available       = True
             ms.fusion_dominant        = getattr(_fusion, 'dominant_outcome', 'unknown')
-            ms.fusion_dominant_prob   = getattr(_fusion, 'dominant_probability', 0.0)
+            ms.fusion_dominant_prob   = _fusion_f('dominant_probability')
             ms.fusion_confidence      = getattr(_fusion, 'fusion_confidence', 'low')
-            ms.fusion_confidence_score = getattr(_fusion, 'fusion_confidence_score', 0.0)
+            ms.fusion_confidence_score = _fusion_f('fusion_confidence_score')
             ms.fusion_summary         = getattr(_fusion, 'fusion_summary', '')
-            ms.fusion_breakout        = getattr(_fusion, 'breakout_posterior', 0.0)
-            ms.fusion_pinning         = getattr(_fusion, 'pinning_posterior', 0.0)
-            ms.fusion_continuation    = getattr(_fusion, 'continuation_posterior', 0.0)
-            ms.fusion_reversal        = getattr(_fusion, 'reversal_posterior', 0.0)
-            ms.fusion_vol_expansion   = getattr(_fusion, 'vol_expansion_posterior', 0.0)
-            ms.fusion_mean_reversion  = getattr(_fusion, 'mean_reversion_posterior', 0.0)
-            ms.fusion_model_agreement = getattr(_fusion, 'model_agreement', 0.0)
+            ms.fusion_breakout        = _fusion_f('breakout_posterior')
+            ms.fusion_pinning         = _fusion_f('pinning_posterior')
+            ms.fusion_continuation    = _fusion_f('continuation_posterior')
+            ms.fusion_reversal        = _fusion_f('reversal_posterior')
+            ms.fusion_vol_expansion   = _fusion_f('vol_expansion_posterior')
+            ms.fusion_mean_reversion  = _fusion_f('mean_reversion_posterior')
+            ms.fusion_model_agreement = _fusion_f('model_agreement')
             ms.fusion_agreement_label = getattr(_fusion, 'model_agreement_label', 'low')
             ms.fusion_n_models_active = getattr(_fusion, 'n_sources_active', 0)
-            ms.fusion_prob_up         = getattr(_fusion, 'prob_up', 0.33)
-            ms.fusion_prob_down       = getattr(_fusion, 'prob_down', 0.33)
-            ms.fusion_prob_flat       = getattr(_fusion, 'prob_flat', 0.34)
+            ms.fusion_prob_up         = _fusion_f('prob_up')
+            ms.fusion_prob_down       = _fusion_f('prob_down')
+            ms.fusion_prob_flat       = _fusion_f('prob_flat')
             ms.fusion_dominant_direction = getattr(_fusion, 'dominant_direction', 'flat')
             ms.fusion_evidence        = list(getattr(_fusion, 'evidence_summary', []))
             ms.fusion_contradictions  = list(getattr(_fusion, 'contradiction_summary', []))
@@ -1555,13 +1690,22 @@ def build_market_state(
             ms.mc_vol_source    = getattr(_fusion, 'mc_vol_source', None)
             ms.mc_sigma_value   = getattr(_fusion, 'mc_sigma_value', None)
 
+        _disp_mc = getattr(_sig_out, "mc_display_excursions", None) or {}
+        if isinstance(_disp_mc, dict):
+            ms.mc_efe_5m = float_finite_or_none(_disp_mc.get("mc_efe_5m"))
+            ms.mc_eae_5m = float_finite_or_none(_disp_mc.get("mc_eae_5m"))
+            ms.mc_efe_15m = float_finite_or_none(_disp_mc.get("mc_efe_15m"))
+            ms.mc_eae_15m = float_finite_or_none(_disp_mc.get("mc_eae_15m"))
+
         # Volatility regime (policy layer — influences The Call)
         _vr = getattr(_sig_out, 'vol_regime', None)
         if _vr is not None:
             ms.vol_regime = getattr(_vr, 'vol_regime', 'unknown')
             ms.vol_regime_summary = getattr(_vr, 'summary', '')
-            ms.vol_regime_conviction_mult = getattr(_vr, 'conviction_multiplier', 1.0) or 1.0
-            ms.vol_regime_risk_mult = getattr(_vr, 'risk_multiplier', 1.0) or 1.0
+            _cvm = getattr(_vr, 'conviction_multiplier', None)
+            ms.vol_regime_conviction_mult = float_finite_or_none(_cvm)
+            _rmm = getattr(_vr, 'risk_multiplier', None)
+            ms.vol_regime_risk_mult = float_finite_or_none(_rmm)
 
         # Stack decision path (ordered: XGB → LSTM → Transformer → MC → Fusion → Call)
         _path = getattr(_sig_out, 'stack_decision_path', None)
@@ -1589,9 +1733,12 @@ def build_market_state(
     # ── 9b. Store charm on MarketState — single source for ms_dict ─────────
     ms.charm_net               = charm_net
     ms.charm_direction         = _charm_dir
-    ms.charm_direction_display = ("Bullish" if _charm_dir == "buying"
-                                  else "Bearish" if _charm_dir == "selling"
-                                  else "Neutral")
+    ms.charm_direction_display = (
+        "Bullish" if _charm_dir == "buying"
+        else "Bearish" if _charm_dir == "selling"
+        else "Neutral" if _charm_dir == "neutral"
+        else "—"
+    )
     ms.charm_drift_toward      = charm_drift_toward
     ms.charm_magnitude         = charm_magnitude
     ms.charm_top_drivers       = charm_top_drivers or []
@@ -1599,26 +1746,34 @@ def build_market_state(
     # ── 10. OE recommendation — direction from The Call, not bias ───────────
     # The Call has already run. Its signal (long/short/wait) drives OE direction.
     # This guarantees both cards always tell the same directional story.
-    try:
-        _reco, _, _oe_proof = recommend_option_expression(
-            contracts=contracts_use,
-            spot=spot_f,
-            call_signal=ms.call_signal,
-            walls=walls,
-            selected_expiry=selected_exp,
-        )
-        ms.option_chain_selection_proof = _oe_proof
-        _reco_str      = (_reco or "").strip()
-        ms.is_no_trade = _reco_str.upper().startswith("NO TRADE")
-        if not ms.is_no_trade:
-            _parts = _reco_str.split()
-            if len(_parts) >= 2:
-                ms.rec_strike = float(_parts[0])
-                ms.rec_side   = _parts[1].upper()
-    except Exception as _oe_e:
-        import logging
-        logging.warning(f"market_state: OE recommendation error: {_oe_e}")
+    if spot_f is None:
         ms.is_no_trade = True
+        ms.call_option_right = "WAIT"
+    else:
+        try:
+            _reco, _, _oe_proof = recommend_option_expression(
+                contracts=contracts_use,
+                spot=spot_f,
+                call_signal=ms.call_signal,
+                walls=walls,
+                selected_expiry=selected_exp,
+            )
+            ms.option_chain_selection_proof = _oe_proof
+            _reco_str      = (_reco or "").strip()
+            ms.is_no_trade = _reco_str.upper().startswith("NO TRADE")
+            if not ms.is_no_trade:
+                _parts = _reco_str.split()
+                if len(_parts) >= 2:
+                    _strike = float_finite_or_none(_parts[0])
+                    if _strike is None:
+                        ms.is_no_trade = True
+                    else:
+                        ms.rec_strike = _strike
+                        ms.rec_side = _parts[1].upper()
+        except Exception as _oe_e:
+            import logging
+            logging.warning(f"market_state: OE recommendation error: {_oe_e}")
+            ms.is_no_trade = True
 
     csig = (ms.call_signal or "wait").strip().lower()
     if csig == "wait" or ms.is_no_trade:
@@ -1633,7 +1788,7 @@ def build_market_state(
     ms.dte_warn, ms.dte_color = dte_style(_selected_dte)
 
     # ── 11. OE gate pill scoring ─────────────────────────────────────────────
-    if ms.rec_strike is not None and ms.rec_side is not None:
+    if spot_f is not None and ms.rec_strike is not None and ms.rec_side is not None:
         _oe_score = score_option_expression(
             contracts_use, spot_f, ms.rec_strike, ms.rec_side, walls=walls
         )

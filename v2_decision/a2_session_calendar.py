@@ -7,12 +7,9 @@ import logging
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
-from zoneinfo import ZoneInfo
-
+from time_et import ET, now_et
 
 logger = logging.getLogger(__name__)
-
-ET = ZoneInfo("America/New_York")
 CALENDAR_RELATIVE_PATH = Path("trading_calendar") / "us_equities.json"
 DEFAULT_DATA_ROOT = Path("data")
 
@@ -38,7 +35,7 @@ def load_a2_session_calendar(*, data_root: Path | None = None, now_et_date: date
             logger.debug("A2 session calendar invalid: %s", path)
             return None
         valid_through = _parse_iso_date(calendar.get("valid_through_date"))
-        current_date = now_et_date or datetime.now(ET).date()
+        current_date = now_et_date or now_et().date()
         if valid_through is None or current_date > valid_through:
             logger.debug("A2 session calendar stale: %s", path)
             return None

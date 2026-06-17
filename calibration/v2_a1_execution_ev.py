@@ -5,7 +5,8 @@ Schwab-normalized quote inputs and an explicitly supplied execution-cost model,
 then adjusts EV bounds by a declared R-multiple cost. It does not estimate fill,
 slippage, impact, adverse selection, or capacity terms from thin data.
 
-Runtime promotion is deferred: ``execution_adjusted_EV`` remains
+Runtime promotion is [REAL-GATE:accepted-design] deferred: ``execution_adjusted_EV`` remains
+unchanged at runtime until promotion gates are designed.
 ``not_implemented`` in v2 decision adapters until calibrated probability,
 conformal bounds, EV bounds, and execution-cost models all validate on real
 data.
@@ -16,7 +17,6 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from calibration.v2_a1_ev_bounds import A1_EV_BOUNDS_METHOD
 
 A1_EXECUTION_EV_ARTIFACT_SCHEMA_VERSION = "1"
 A1_EXECUTION_EV_METHOD = "a1_execution_adjusted_ev_scaffold"
@@ -59,23 +59,40 @@ def build_a1_execution_ev_artifact(
     quote_staleness_threshold_ms: int = A1_EXECUTION_EV_DEFAULT_QUOTE_STALENESS_MS,
 ) -> dict[str, Any]:
     """Build an execution-adjusted EV artifact without fabricating missing costs."""
-    ev_status = str(ev_bounds_artifact.get("status") or "unknown")
+    ev_status_raw = ev_bounds_artifact.get("status")
     ev_reason = ev_bounds_artifact.get("reason")
+    ev_bounds_run_id = ev_bounds_artifact.get("ev_bounds_run_id")
     base = {
         "schema_version": A1_EXECUTION_EV_ARTIFACT_SCHEMA_VERSION,
         "calibration_run_id": ev_bounds_artifact.get("calibration_run_id"),
         "calibration_window_id": ev_bounds_artifact.get("calibration_window_id"),
         "conformal_run_id": ev_bounds_artifact.get("conformal_run_id"),
-        "ev_bounds_run_id": ev_bounds_artifact.get("ev_bounds_run_id"),
-        "execution_ev_run_id": f"{ev_bounds_artifact.get('ev_bounds_run_id') or 'a1'}-execution-ev",
-        "module_id": ev_bounds_artifact.get("module_id") or "A",
-        "expression_profile_id": ev_bounds_artifact.get("expression_profile_id") or "A1",
-        "horizon": str(ev_bounds_artifact.get("horizon") or "unknown"),
+        "ev_bounds_run_id": ev_bounds_run_id,
+        "execution_ev_run_id": (
+            f"{ev_bounds_run_id}-execution-ev" if ev_bounds_run_id else None
+        ),
+        "module_id": ev_bounds_artifact.get("module_id"),
+        "expression_profile_id": ev_bounds_artifact.get("expression_profile_id"),
+        "horizon": ev_bounds_artifact.get("horizon"),
         "method": A1_EXECUTION_EV_METHOD,
-        "input_ev_bounds_status": ev_status,
+        "input_ev_bounds_status": ev_status_raw,
         "runtime_adapter_unchanged": True,
         "approximate_guarantee_disclosure": approximate_guarantee_disclosure(ev_bounds_artifact),
     }
+    if ev_status_raw is None or not str(ev_status_raw).strip():
+        return _skip_artifact(
+            base,
+            status="execution_ev_skipped_missing_upstream_status",
+            reason="ev_bounds_artifact_status_field_missing",
+        )
+    if not ev_bounds_run_id:
+        return _skip_artifact(
+            base,
+            status="execution_ev_skipped_missing_ev_bounds_run_id",
+            reason="ev_bounds_run_id_missing",
+        )
+    ev_status = str(ev_status_raw).strip()
+    base["input_ev_bounds_status"] = ev_status
     if ev_status.startswith("ev_bounds_skipped_"):
         return _skip_artifact(
             base,
@@ -215,7 +232,13 @@ def validate_execution_cost_model(model: dict[str, Any]) -> dict[str, Any]:
     """Validate that a supplied execution cost model is explicit and sufficiently warm."""
     entries = set(str(x) for x in (model.get("registry_entries") or []))
     missing_entries = [x for x in A1_EXECUTION_EV_REQUIRED_REGISTRY_ENTRIES if x not in entries]
-    min_fill_history_n = int(model.get("min_fill_history_n") or A1_EXECUTION_EV_DEFAULT_MIN_FILL_HISTORY_N)
+    if "min_fill_history_n" in model:
+        try:
+            min_fill_history_n = int(model["min_fill_history_n"])
+        except (TypeError, ValueError):
+            min_fill_history_n = -1
+    else:
+        min_fill_history_n = A1_EXECUTION_EV_DEFAULT_MIN_FILL_HISTORY_N
     fill_history_n = int(model.get("fill_history_n") or 0)
     base = {
         "model_id": model.get("model_id"),
@@ -225,6 +248,13 @@ def validate_execution_cost_model(model: dict[str, Any]) -> dict[str, Any]:
         "min_fill_history_n": min_fill_history_n,
         "fill_history_n": fill_history_n,
     }
+    if "min_fill_history_n" in model and min_fill_history_n <= 0:
+        return {
+            **base,
+            "ok": False,
+            "status": "execution_ev_skipped_missing_execution_cost_model",
+            "reason": "min_fill_history_n_explicit_zero_or_negative",
+        }
     if model.get("source") != "derived_because_schwab_does_not_provide":
         return {
             **base,
@@ -341,9 +371,6 @@ def _value_missing(value: Any) -> bool:
 
 
 def _float_or_none(value: Any) -> float | None:
-    try:
-        if value is not None:
-            return float(value)
-    except (TypeError, ValueError):
-        return None
-    return None
+    from numeric_contract import float_finite_or_none
+
+    return float_finite_or_none(value)

@@ -52,10 +52,10 @@ def _seed_audit_rows(conn, *, ticker: str, base_ts: float, n: int, zone: str) ->
             INSERT INTO snapshots (
               ticker, timeframe, ts_utc, ts_et, spot, zone, vwap_side,
               nearest_above_dist, nearest_below_dist,
-              outcome_1c, outcome_3c, outcome_5c, outcome_8c, outcome_13c, outcome_15c, outcome_60c,
+              outcome_1c, outcome_5c, outcome_15c, outcome_60c,
               horizon_outcome_schema_version
             )
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 ticker,
@@ -67,9 +67,6 @@ def _seed_audit_rows(conn, *, ticker: str, base_ts: float, n: int, zone: str) ->
                 "above",
                 1.0,
                 1.0,
-                "up",
-                "up",
-                "up",
                 "up",
                 "up",
                 "up",

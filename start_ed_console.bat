@@ -4,11 +4,10 @@ cd /d "%~dp0"
 
 echo.
 echo  ============================================
-echo   Ed Console — Starting...
+echo   Ed Console - Starting...
 echo  ============================================
 echo.
 
-:: Check Python is available
 python --version >nul 2>&1
 if errorlevel 1 (
     echo  ERROR: Python not found. Make sure Python is installed and on your PATH.
@@ -16,29 +15,32 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: Check uvicorn is available
 python -m uvicorn --version >nul 2>&1
 if errorlevel 1 (
     echo  Installing uvicorn...
-    pip install uvicorn[standard] fastapi
+    pip install "uvicorn[standard]" fastapi
 )
 
 echo  Starting server at http://localhost:8000
 echo  Press Ctrl+C to stop.
-echo  (CWD set to script dir — token path resolves from app dir)
+echo  (CWD set to script dir - token path resolves from app dir)
 echo  Ops panel /Run tasks/ click-to-run: ON  (localhost only unless ED_OPS_ALLOW_REMOTE=1)
+echo  Opening Microsoft Edge to http://localhost:8000 in a few seconds...
 echo.
 
-:: Enable /ops "Run tasks" buttons (whitelisted scripts only). Still localhost-only by default.
 set ED_OPS_RUNNER=1
-
-:: Enable live calibration_decision_log rows, including advisory v2 snapshots.
 set ED_CALIBRATION_LOG=1
 
-:: Open browser after a short delay (runs in background)
-start "" cmd /c "timeout /t 2 >nul && start http://localhost:8000"
+REM Stop any prior instance still bound to port 8000 (plain-line for /f — safe batch syntax)
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":8000" ^| findstr "LISTENING"') do taskkill /F /PID %%P 2>nul
 
-:: Start the server
+set "PF86=%ProgramFiles(x86)%"
+set "EDGE_EXE=%PF86%\Microsoft\Edge\Application\msedge.exe"
+if not exist "%EDGE_EXE%" set "EDGE_EXE=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
+
+REM Original working pattern: delayed open in background subprocess (Edge only, not Chrome)
+start "" cmd /c "timeout /t 2 /nobreak >nul & "%EDGE_EXE%" http://localhost:8000"
+
 python -m uvicorn server:app --host 0.0.0.0 --port 8000
 
 echo.

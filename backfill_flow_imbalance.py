@@ -48,13 +48,9 @@ ROOT = Path(__file__).resolve().parent
 
 
 def _positive_float_or_none(value):
-    try:
-        if value is None or value == "":
-            return None
-        f = float(value)
-    except (TypeError, ValueError):
-        return None
-    return f if f > 0 else None
+    from numeric_contract import float_positive_or_none
+
+    return float_positive_or_none(value)
 
 
 def _contracts_from_chain_json(raw: str) -> list[dict]:

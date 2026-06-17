@@ -11,11 +11,8 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
-from zoneinfo import ZoneInfo
-
 from planes.l1_runtime import L1_SPREAD_FRAC_ABS_EPS, L1_SPOT_REL_EPS
-
-_ET = ZoneInfo("America/New_York")
+from time_et import ET as _ET
 
 # --- Absolute bounds (guardrails) ---
 L1_SPOT_REL_EPS_MIN = 8e-5
@@ -120,15 +117,10 @@ def _session_bucket(session_label: Optional[str], now_ts: Optional[float]) -> st
 
 
 def _vol_regime(vix: Optional[float]) -> str:
-    if vix is None or vix <= 0 or math.isnan(vix):
-        return "unknown"
-    if vix < 15.0:
-        return "low"
-    if vix < 20.0:
-        return "normal"
-    if vix < 30.0:
-        return "elevated"
-    return "high"
+    """VIX regime label for adaptive materiality — delegates 15/20/30 cuts to math_volatility.vix_tier_token (single authority)."""
+    from math_volatility import vix_tier_token
+
+    return vix_tier_token(vix) or "unknown"
 
 
 def _piecewise_linear(x: float, anchors: list[tuple[float, float]]) -> float:
@@ -358,7 +350,7 @@ def resolve_l1_materiality_engine(
     mreg = _materiality_regime_label(vr, sb, stress_score)
 
     rules = (
-        f"engine=v1",
+        "engine=v1",
         f"instrument={kind}",
         f"price_tier={pt}",
         f"session_bucket={sb}",

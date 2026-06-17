@@ -7,12 +7,13 @@ Uses only approved loaders and on-disk artifacts — no ad hoc derivation of gov
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable
 
 from ml_horizon import normalize_ml_horizon_slug
 
-from arch_competition.audit import load_recent_audit_records
+from arch_competition.audit import governance_audit_log_path, load_recent_audit_records
 from arch_competition.exceptions import PromotionGovernanceError
 from arch_competition.manual_control import (
     MANUAL_PROMOTE_CASCADE_INTENT,
@@ -48,21 +49,49 @@ from arch_competition.scheduler_integration import (
 
 GOVERNANCE_PANEL_SCHEMA_VERSION = "1"
 
+# Parallel stack refresh is offered whenever governed artifacts validate (manual_control enforces intent).
+MANUAL_PARALLEL_PROMOTE_ELIGIBLE_WHEN_GOVERNED = True
 
-def _read_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+log = logging.getLogger(__name__)
 
 
-def _load_arch_state_ticker(model_dir: Path, ml_horizon_slug: str, ticker: str) -> dict[str, Any]:
+def _record_persistence_failure(base: dict[str, Any], operation: str, error: OSError) -> None:
+    log.warning("governance_visibility: %s failed: %s", operation, error)
+    failures = base.setdefault("persistence_failures", [])
+    failures.append({"operation": operation, "error": str(error)})
+
+
+def _run_persist_side_effect(base: dict[str, Any], operation: str, fn: Callable[[], Any]) -> None:
+    try:
+        fn()
+    except OSError as e:
+        _record_persistence_failure(base, operation, e)
+
+
+def _load_arch_state_ticker(
+    model_dir: Path,
+    ml_horizon_slug: str,
+    ticker: str,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
     p = arch_state_path_for_horizon(model_dir, ml_horizon_slug)
     if not p.is_file():
-        return {}
+        return {}, None
     try:
         st = json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+        log.warning(
+            "_load_arch_state_ticker: arch_state %s unreadable for %s: %s",
+            p,
+            ticker,
+            e,
+        )
+        return {}, {
+            "code": "ARCH_STATE_UNREADABLE",
+            "detail": str(e),
+            "path": str(p),
+        }
     ent = st.get(ticker.upper())
-    return ent if isinstance(ent, dict) else {}
+    return (ent if isinstance(ent, dict) else {}), None
 
 
 def _rollback_checkpoint_available(model_dir: Path, ml_horizon_slug: str, ticker: str) -> bool:
@@ -79,9 +108,95 @@ def _rollback_checkpoint_available(model_dir: Path, ml_horizon_slug: str, ticker
             m = json.loads(cm.read_text(encoding="utf-8"))
             if not m.get("snapshot_empty"):
                 return True
-        except Exception:
+        except (OSError, json.JSONDecodeError) as e:
+            log.warning(
+                "governance_visibility: skipping corrupt checkpoint manifest %s: %s",
+                cm,
+                e,
+            )
             continue
     return False
+
+
+def _attach_notification_delivery_visibility(
+    base: dict[str, Any],
+    *,
+    model_dir: Path,
+    hz: str,
+    tku: str,
+    op_payload: dict[str, Any] | None,
+    emit_notification_delivery: bool,
+) -> None:
+    nd_cfg = load_notification_delivery_config_from_env()
+    base["notification_delivery_config_effective"] = summarize_notification_config_safe(nd_cfg)
+    if emit_notification_delivery and op_payload is not None:
+        _run_persist_side_effect(
+            base,
+            "process_notification_deliveries",
+            lambda: process_notification_deliveries(
+                model_dir,
+                hz,
+                tku,
+                op_payload,
+                config=nd_cfg,
+            ),
+        )
+    base["recent_notification_deliveries"] = read_recent_notification_delivery_records(
+        model_dir, hz, tku, limit=50
+    )
+    base["notification_delivery_log_path"] = str(
+        notification_delivery_log_path(model_dir, hz, tku).resolve()
+    )
+
+
+def _attach_operational_policy_sections(
+    base: dict[str, Any],
+    *,
+    model_dir: Path,
+    hz: str,
+    tku: str,
+    include_live_drift: bool,
+    ld_payload: dict[str, Any] | None,
+    manifest: dict[str, Any] | None,
+    record: dict[str, Any] | None,
+    recent_audit_records: list[dict[str, Any]],
+    persist: bool,
+    include_notification_delivery_visibility: bool,
+    emit_notification_delivery: bool,
+) -> None:
+    op = build_operational_policy_payload(
+        model_dir=model_dir,
+        ml_horizon_slug=hz,
+        ticker=tku,
+        live_drift_monitoring=ld_payload if include_live_drift else None,
+        evaluation_manifest=manifest,
+        promotion_record=record,
+        recent_audit_records=recent_audit_records,
+        evaluation_manifest_path=evaluation_manifest_path(model_dir, hz, tku),
+        promotion_decision_path=promotion_decision_path(model_dir, hz, tku),
+    )
+    base["operational_policy"] = op
+    base["policy_evaluation_summary"] = build_recent_policy_evaluation_section(op)
+    if persist:
+        _run_persist_side_effect(
+            base,
+            "persist_operational_policy_payload",
+            lambda: persist_operational_policy_payload(model_dir, hz, tku, op),
+        )
+    if include_notification_delivery_visibility:
+        _attach_notification_delivery_visibility(
+            base,
+            model_dir=model_dir,
+            hz=hz,
+            tku=tku,
+            op_payload=op,
+            emit_notification_delivery=emit_notification_delivery,
+        )
+
+
+def _prune_empty_persistence_failures(base: dict[str, Any]) -> None:
+    if not base.get("persistence_failures"):
+        base.pop("persistence_failures", None)
 
 
 def build_governance_panel_payload(
@@ -101,6 +216,7 @@ def build_governance_panel_payload(
     Single payload for the governance visibility panel.
 
     On missing/invalid governed artifacts, returns ok=False and omits fabricated fields.
+    recent_audit_actions contains only records matching the requested ticker (may be empty).
     """
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
     tku = ticker.upper()
@@ -114,10 +230,11 @@ def build_governance_panel_payload(
         "live_drift_monitoring_schema_version": LIVE_DRIFT_MONITORING_SCHEMA_VERSION,
         "operational_policy_schema_version": OPERATIONAL_POLICY_SCHEMA_VERSION,
         "notification_delivery_schema_version": NOTIFICATION_DELIVERY_RECORD_SCHEMA_VERSION,
+        "persistence_failures": [],
     }
 
     try:
-        validate_persisted_governed_artifacts_or_raise(model_dir, hz, tku)
+        manifest, record = validate_persisted_governed_artifacts_or_raise(model_dir, hz, tku)
     except PromotionGovernanceError as e:
         base["error"] = str(e)
         base["actions_enabled"] = False
@@ -134,73 +251,49 @@ def build_governance_panel_payload(
             }
             base["live_drift_monitoring"] = ld_stub
         if include_operational_policy:
-            op = build_operational_policy_payload(
+            _attach_operational_policy_sections(
+                base,
                 model_dir=model_dir,
-                ml_horizon_slug=hz,
-                ticker=tku,
-                live_drift_monitoring=ld_stub if include_live_drift else None,
-                evaluation_manifest=None,
-                promotion_record=None,
+                hz=hz,
+                tku=tku,
+                include_live_drift=include_live_drift,
+                ld_payload=ld_stub,
+                manifest=None,
+                record=None,
                 recent_audit_records=[],
-                evaluation_manifest_path=evaluation_manifest_path(model_dir, hz, tku),
-                promotion_decision_path=promotion_decision_path(model_dir, hz, tku),
+                persist=True,
+                include_notification_delivery_visibility=include_notification_delivery_visibility,
+                emit_notification_delivery=emit_notification_delivery,
             )
-            base["operational_policy"] = op
-            base["policy_evaluation_summary"] = build_recent_policy_evaluation_section(op)
-            try:
-                persist_operational_policy_payload(model_dir, hz, tku, op)
-            except OSError:
-                pass
-            if include_notification_delivery_visibility:
-                nd_cfg = load_notification_delivery_config_from_env()
-                base["notification_delivery_config_effective"] = summarize_notification_config_safe(nd_cfg)
-                if emit_notification_delivery:
-                    try:
-                        process_notification_deliveries(
-                            model_dir,
-                            hz,
-                            tku,
-                            op,
-                            config=nd_cfg,
-                        )
-                    except OSError:
-                        pass
-                base["recent_notification_deliveries"] = read_recent_notification_delivery_records(
-                    model_dir, hz, tku, limit=50
-                )
-                base["notification_delivery_log_path"] = str(
-                    notification_delivery_log_path(model_dir, hz, tku).resolve()
-                )
         elif include_notification_delivery_visibility:
-            nd_cfg = load_notification_delivery_config_from_env()
-            base["notification_delivery_config_effective"] = summarize_notification_config_safe(nd_cfg)
-            base["recent_notification_deliveries"] = read_recent_notification_delivery_records(
-                model_dir, hz, tku, limit=50
+            _attach_notification_delivery_visibility(
+                base,
+                model_dir=model_dir,
+                hz=hz,
+                tku=tku,
+                op_payload=None,
+                emit_notification_delivery=False,
             )
-            base["notification_delivery_log_path"] = str(
-                notification_delivery_log_path(model_dir, hz, tku).resolve()
-            )
+        _prune_empty_persistence_failures(base)
         return base
 
     ev_path = evaluation_manifest_path(model_dir, hz, tku)
     pr_path = promotion_decision_path(model_dir, hz, tku)
-    manifest = _read_json(ev_path)
-    record = _read_json(pr_path)
 
-    arch_t = _load_arch_state_ticker(model_dir, hz, tku)
+    arch_t, arch_warning = _load_arch_state_ticker(model_dir, hz, tku)
+    if arch_warning is not None:
+        base["warnings"] = [arch_warning]
     gc = arch_t.get("governed_competition") if isinstance(arch_t.get("governed_competition"), dict) else None
 
     audits = load_recent_audit_records(model_dir, limit=audit_limit)
-    audits_ticker = [a for a in audits if str(a.get("ticker", "")).upper() == tku] if audits else []
+    audits_ticker = [a for a in audits if str(a.get("ticker", "")).upper() == tku]
 
     rollback_ok = _rollback_checkpoint_available(model_dir, hz, tku)
 
-    # Manual control eligibility (fail-closed: gated on governed artifacts + policy).
     prom_cascade = bool(
         record.get("would_promote_challenger")
         and record.get("promotion_decision") == "promote_cascade"
     )
-    prom_parallel = True  # explicit refresh of parallel stack to active; still requires valid artifacts (above).
 
     base.update(
         {
@@ -233,8 +326,8 @@ def build_governance_panel_payload(
                 "schema_version": record.get("schema_version"),
                 "created_at_utc": record.get("created_at_utc"),
             },
-            "recent_audit_actions": audits_ticker or audits,
-            "governance_audit_log_path": str((model_dir / "arch_competition" / "governance_audit.jsonl").resolve()),
+            "recent_audit_actions": audits_ticker,
+            "governance_audit_log_path": str(governance_audit_log_path(model_dir).resolve()),
             "manual_intent_constants": {
                 "promote_cascade": MANUAL_PROMOTE_CASCADE_INTENT,
                 "promote_parallel": MANUAL_PROMOTE_PARALLEL_INTENT,
@@ -242,7 +335,7 @@ def build_governance_panel_payload(
             },
             "actions_enabled": True,
             "manual_promote_cascade_enabled": prom_cascade,
-            "manual_promote_parallel_enabled": prom_parallel,
+            "manual_promote_parallel_enabled": MANUAL_PARALLEL_PROMOTE_ELIGIBLE_WHEN_GOVERNED,
             "manual_rollback_enabled": rollback_ok,
         }
     )
@@ -255,57 +348,36 @@ def build_governance_panel_payload(
             include_recent_slice_evaluation=include_live_drift_recent_slice,
         )
         base["live_drift_monitoring"] = ld
-        try:
-            persist_live_drift_monitoring(model_dir, hz, tku, ld)
-        except OSError:
-            pass
+        _run_persist_side_effect(
+            base,
+            "persist_live_drift_monitoring",
+            lambda: persist_live_drift_monitoring(model_dir, hz, tku, ld),
+        )
     if include_operational_policy:
-        op_payload = build_operational_policy_payload(
+        _attach_operational_policy_sections(
+            base,
             model_dir=model_dir,
-            ml_horizon_slug=hz,
-            ticker=tku,
-            live_drift_monitoring=base.get("live_drift_monitoring") if include_live_drift else None,
-            evaluation_manifest=manifest,
-            promotion_record=record,
-            recent_audit_records=audits_ticker or audits,
-            evaluation_manifest_path=ev_path,
-            promotion_decision_path=pr_path,
+            hz=hz,
+            tku=tku,
+            include_live_drift=include_live_drift,
+            ld_payload=base.get("live_drift_monitoring") if include_live_drift else None,
+            manifest=manifest,
+            record=record,
+            recent_audit_records=audits_ticker,
+            persist=True,
+            include_notification_delivery_visibility=include_notification_delivery_visibility,
+            emit_notification_delivery=emit_notification_delivery,
         )
-        base["operational_policy"] = op_payload
-        base["policy_evaluation_summary"] = build_recent_policy_evaluation_section(op_payload)
-        try:
-            persist_operational_policy_payload(model_dir, hz, tku, op_payload)
-        except OSError:
-            pass
-        if include_notification_delivery_visibility:
-            nd_cfg = load_notification_delivery_config_from_env()
-            base["notification_delivery_config_effective"] = summarize_notification_config_safe(nd_cfg)
-            if emit_notification_delivery:
-                try:
-                    process_notification_deliveries(
-                        model_dir,
-                        hz,
-                        tku,
-                        op_payload,
-                        config=nd_cfg,
-                    )
-                except OSError:
-                    pass
-            base["recent_notification_deliveries"] = read_recent_notification_delivery_records(
-                model_dir, hz, tku, limit=50
-            )
-            base["notification_delivery_log_path"] = str(
-                notification_delivery_log_path(model_dir, hz, tku).resolve()
-            )
     elif include_notification_delivery_visibility:
-        nd_cfg = load_notification_delivery_config_from_env()
-        base["notification_delivery_config_effective"] = summarize_notification_config_safe(nd_cfg)
-        base["recent_notification_deliveries"] = read_recent_notification_delivery_records(
-            model_dir, hz, tku, limit=50
+        _attach_notification_delivery_visibility(
+            base,
+            model_dir=model_dir,
+            hz=hz,
+            tku=tku,
+            op_payload=None,
+            emit_notification_delivery=False,
         )
-        base["notification_delivery_log_path"] = str(
-            notification_delivery_log_path(model_dir, hz, tku).resolve()
-        )
+    _prune_empty_persistence_failures(base)
     return base
 
 

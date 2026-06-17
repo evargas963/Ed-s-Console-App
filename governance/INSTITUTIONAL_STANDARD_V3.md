@@ -1,3 +1,7 @@
+> **Classification:** Policy Specification | **Scope:** Governance policy/contract `INSTITUTIONAL_STANDARD_V3.md`.
+>
+> **Binding tier:** Tier 5 spec vault — **§20 amendment-path reference only**. Day-to-day agent law is `AGENTS.md` + mechanical locks. **Do not** cite V3 clauses to override `check_*` gates or Tier A sign-off.
+
 # Institutional Standard V3 — Production ML for Trading Decisions (2026)
 
 This standard defines institutional quality for production ML trading decision systems. It is normative and portable: it does not assume any specific implementation stack. It is designed for systems that train multiple architectures across multiple horizons, use stacking/fusion/Monte Carlo layers, and serve outputs in production under governance.
@@ -287,6 +291,17 @@ Lineage and leakage control are mandatory.
 ### Invariant
 Immutable/raw authority + derived lineage + blocking leakage checks on material changes.
 
+### CAPS — silent default substitution (binding, repo-wide)
+
+#### Principle
+No silent default substitution on any Schwab-leaf-derived value anywhere in the repo.
+
+#### Invariant
+The silent-default pattern **family** is enumerated in `tools/anti_pattern_sweep.py` (read shapes: `dict.get(key, default)`, `dict.get(key) or default`, `int/float(x or default)`, `x if x is not None else default`, `getattr(..., default)`, `setdefault`, `next(iter, default)`, guarded `try/except` returns; default values: `0`, `0.0`, `1`, `1.0`, `100`, `6.5`, `"above"`, `"unknown"`, `"neutral"`, `"flat"`, `False`, `True`). Production `.py` outside `tests/` and `tools/` must have **zero** unallowlisted hits. Exceptions require an entry in `governance/SCHWAB_DERIVED_FIELD_REPLACEMENT_REGISTER_V1.md` CAPS allowlist (mirrored in `CAPS_PREFIX_ALLOWLIST` / `CAPS_LINE_ALLOWLIST`).
+
+#### Enforcement
+`tests/test_anti_pattern_family_repo_wide.py` runs on every commit; `python tools/anti_pattern_sweep.py` for human audit output.
+
 ### Enforcement
 Policy-as-code on feature/data changes, leakage suite evidence in tuple health.
 
@@ -300,6 +315,94 @@ Revision emits event. Artifacts trained on revised snapshot are auto-marked `POT
 
 #### Enforcement
 E2 on data revision workflows, E5 staleness monitor, V-DATA checks include snapshot currency status.
+
+### 8.2 Options key levels (derived dealer structure)
+
+#### Principle
+Charted key levels are derived from Schwab chain leaves (`delta`, `gamma`, `openInterest`, `strikePrice`, `multiplier`, `putCall`, `volatility`, `vega`, `daysToExpiration`, `expirationDate`). GEX$, DEX$, pin, HVL, max pain, flip, and inflection have no Schwab primitive; they must use one canonical derivation in `math_exposure_core` / `math_levels` and Schwab Field Precedence (`fb1e84c`).
+
+#### Invariant
+- Dollar GEX per 1%: `gamma × openInterest × multiplier × spot² × 0.01` aggregated per strike; net = call − put.
+- UI key levels use **full chain** strikes that passed OI and Greek validity gates at bucket build; no silent raw-γ fallback when spot/dollar GEX is unavailable (`kl_institutional_ready=false`).
+- Section 8 dealer aggregates and `kl_net_gex` use the same full-chain `aggregate_net_gex` helper.
+- Max pain uses `call_oi_mult` / `put_oi_mult` accumulated from Schwab `multiplier` only. Strikes with missing multiplier are excluded; no synthetic `*100` fallback in payout math.
+- KEY LEVELS exposures and dealer metrics use contracts filtered by Schwab `expirationDate` for `selected_exp` only; no silent full-chain fallback; `kl_expiry_source` documents user vs default-nearest selection.
+- IV expected move uses Schwab `volatility` and session hours only; no synthetic 20% IV or 6.5h session fill when Schwab inputs are absent (`kl_em_anchor=unavailable`).
+- Monte Carlo `SignalInput.iv_level` uses `resolve_mc_iv_for_kl_em_anchor` (straddle `em_pts` back-solve or IV-spot `atm_iv`); must match `kl_em_anchor` / `mc_em_anchor`.
+- UI utility/sidebar metrics reset to `—` with `stale-metric` when payload omits VIX/PCR/bid/ask; no sticky `window._lastData` reuse for bid/ask.
+- Derived GEX/DEX payloads include `kl_gex_input_completeness` (contracts_used / contracts_total).
+
+#### KEY LEVELS traceable closure (Mega 2 §D, SHA `a9208de`)
+
+KEY LEVELS YES is restored on **chain-of-trust**, not categorical inventory alone. Every function in `math_exposure_core.py`, `math_exposure.py`, `math_levels.py`, `math_volatility.py`, `math_probabilities.py`, and `levels.py` has a `Mega2TraceableDerivation` row; `governance/mega_chain_of_trust.py::assert_mega_chain_closes` walks Mega 1 + Mega 2 merged producer graphs. Example: `compute_max_pain` → `compute_exposures_by_strike` → `server.py:_fetch_state` → `schwab_client.py:safe_get_chain`. Prior `82615fa` remains a regression floor only.
+
+#### KEY LEVELS UI row registry (23 charted rows + metadata)
+
+| UI row | Payload | Basis in `feature/institutional-key-levels` |
+| --- | --- | --- |
+| Gamma Wall Call/Put | `kl_call/put_gamma_wall` | Dollar GEX$ pickers on CONSENSUS (`pick_gamma_wall_strikes`) |
+| Gamma Pin | `kl_gamma_pin` | `pick_gamma_pin_strike` → max \|net_gex_1pct\| |
+| HVL | `kl_hvl` | `pick_hvl_strike` → max (\|call_gex_1pct\|+\|put_gex_1pct\|) |
+| Max Pain | `kl_max_pain` | `compute_max_pain` on strike grid, OI×mult payout |
+| Gamma Flip | `kl_gamma_flip` | `net_gex_1pct` zero-cross first |
+| EM Upper/Lower | `kl_em_upper/lower` | Straddle EM (Schwab `mark`, open anchor) preferred; IV EM (`volatility`, spot anchor) fallback; `kl_em_anchor` documents which |
+| Charm Drift | `charm_net` + pin target | Flow from `compute_net_charm`; **target strike = `kl_gamma_pin`** when `kl_institutional_ready` |
+| Gamma Void above/below | `kl_gamma_voids[]` | Unified `_get_gex` for detection and `avg_gex_pct` |
+| Gamma/Delta inflection | `kl_*_inflection` | Dollar \|net_gex_1pct\| / \|net_dex_dollars\| when available |
+| Delta Wall Call/Put | `kl_call/put_delta_wall` | Dollar DEX$ pickers on CONSENSUS (`pick_delta_wall_strikes`) |
+| OI Wall Call/Put, OI Center | `kl_*_oi_*` | Schwab `openInterest` argmax / sum (no dollarization) |
+| Vanna Wall Call/Put | `kl_*_vanna_*` | Derived `(vega/(spot·iv/100))·OI·mult` per bucket |
+| Synthetic Forward | `kl_synth_fwd*` | Put-call parity on Schwab `mark`, ATM±2 strikes |
+| Net GEX (metric row) | `kl_net_gex*` | `aggregate_net_gex` full chain — same as Section 8 `_sum_gex` |
+| MC EFE/EAE/Containment/Expansion | `mc_*` | Monte Carlo IV follows `kl_em_anchor` (`mc_em_anchor`, `mc_iv_source` on payload); straddle path back-solves IV from `em_pts`, IV path uses Schwab `volatility` |
+
+Rows not dollarized by design: OI walls/center (Schwab-canonical OI). MC rows: path simulation, not exposure buckets.
+
+#### Enforcement
+`tests/test_institutional_key_levels.py`, `tests/test_math_levels_hvl_max_pain.py`; payload `kl_institutional_ready`, `kl_metrics_dollarized`, `kl_em_anchor`.
+
+### 8.3 OHLCV bar provenance (Schwab price history and snapshot synthesis)
+
+#### Principle
+Bars consumed by liquidity/ATR/VWAP/replay paths must declare provenance and reject corrupted or incomplete OHLC. Schwab `pricehistory.candles.*` is the authoritative OHLCV source when available; snapshot-derived 1m bars are explicitly synthetic.
+
+#### Invariant
+- OHLCV bars downstream of `market_data_adapter` carry `source` and `missing_fields` provenance. Bars with `close == 0` or any of OHLC missing are rejected (`None`); no zero-injection.
+- Synthetic 1m bars from `snapshot_normalizer.resample_to_1m` are tagged `synthetic = True` with `source = snapshot_synthetic` and are not eligible for training/replay paths that require Schwab candles without an explicit synthetic allowance.
+- Repo-wide enforcement: the **silent-zero pattern family** is forbidden over Schwab numeric leaves across the entire repo, not only adapters. Family members include ``(*.get(*, 0) or 0)``, ``(*.get(*) or 0)`` (no default arg), ``(*.get(*, None) or 0)``, and ``int(* or 0)`` / ``float(* or 0)`` on leaf reads. Exceptions require an explicit file- or line-level ALLOWLIST entry in `tests/test_ohlcv_schwab_first.py` with justification.
+
+#### Enforcement
+`tests/test_ohlcv_schwab_first.py`; `market_data_adapter.normalize_bar`, `schwab_candles_to_bars`, `snapshot_normalizer.resample_to_1m`.
+
+### 8.4 Order-flow and spread unit discipline
+
+#### Principle
+Order-flow metrics must use Schwab-native leaves with explicit provenance. Spread width is never unit-ambiguous: point width (`spread_pts`) and fractional width (`spread_frac`) are separate fields.
+
+#### Invariant
+- RVOL returns `None` with `rvol_unavailable_reason` when average volume is invalid; no `1.0` neutral fallback.
+- Order-flow spread emits `spread_pts` (ask − bid points) and `spread_frac` (pts ÷ midpoint) separately, each with `*_source` and Schwab bid/ask leaf labels.
+- Options flow uses `chains.*.totalVolume` by default; `lastSize` only when `options_flow_tick_mode` is set, labeled `schwab_chain_lastSize_tick_mode`.
+- Top-of-book pressure documents `top_book_pressure_source` (`schwab_stream`, `schwab_quote`, or `unavailable`).
+- Per-bar volume from `_CandleAccumulator` documents `schwab_quote_totalVolume_delta` or session-reset provenance; VWAP from bars declares `source_bars` (`schwab_pricehistory` vs quote-delta path).
+
+#### Enforcement
+`tests/test_order_flow_schwab_first.py`, `tests/test_order_flow_volume_contract.py`; `order_flow_engine.py`, `server.py` VWAP/accumulator/spread paths.
+
+### 8.5 ML feature provenance (inference snapshot and model inputs)
+
+#### Principle
+Model-facing features must declare per-field lineage and must not silently substitute missing market context with neutral defaults. Sequence encoders expose missingness explicitly.
+
+#### Invariant
+- `InferenceSnapshotV1` carries `feature_lineage` with `source`, `transform`, and `fallback_flag` for every MVP canonical feature key.
+- Fusion similarity filters use `unknown` (with `vwap_side_fallback` / `zone_fallback` flags) when canonical categoricals are missing — never `above`.
+- LSTM structure/micro encoders append canonical missingness mask channels; missing zone uses encoded sentinel `ZONE_MISSING_ENCODED` (not `pin_neutral`).
+- `attach_5m_additive_context` stamps `m5_source_timeframe = 1m_asof` when proxy columns are merged from canonical 1m snapshots (not native 5m history).
+- Calibration v2 advisory backfill stamps `live_ms_field_sources` / `reconstructed_from_snapshot` on reconstructed Tier C fields.
+
+#### Enforcement
+`tests/test_ml_feature_provenance.py`; `features/inference_snapshot.py`, `features/fusion_model_input.py`, `features/lstm_sequence_input.py`, `ml_data_common.py`, `calibration/v2_advisory_backfill.py`.
 
 ---
 

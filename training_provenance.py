@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import hashlib
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -40,12 +40,42 @@ from ml_horizon import (
 log = logging.getLogger("training_provenance")
 
 # ── Version constants (bump when features or preprocessing change) ─────────────
-FEATURE_SCHEMA_VERSION: str = "v4_canonical_1m"
+# v8 ("v8_price_action", +27 pa_* columns) flips ONLY in the same commit as the
+# retrained artifacts — bumping early fail-closed the whole live stack against
+# v7 bundles (2026-06-11 outage). [REAL-GATE: training-skew] PA-CONE-V8-RETRAIN.
+FEATURE_SCHEMA_VERSION: str = "v7_m5_strip"
+# v7 (FEATURE EPIC m5 strip, 2026-06-01): remove m5_* lagged duplicate block from engineer_features /
+# engineer_single_snapshot and load_data; train/serve symmetric via net_gamma_prev only (ΔGEX).
+# v6 (FEATURE EPIC Slice A, 2026-06-01): register tnx_yield/tnx_chg/qqq_vs_spy/spy_iwm_divergence;
+# engineer dgex/dgex_positive (first diff of net_gamma). Bundled into the next combined retrain.
+# v5 (SENTIMENT/NEWS FEATURE RETIRE, 2026-05-31): 6 non-Schwab news/sentiment features removed from
+# ml_train.SCALE_INVARIANT_COLS (sentiment_composite/_buzz/_finnhub/_av, breaking_news_flag,
+# pre_market_sentiment). The feature COLUMN SET changes, so this bump is correct here; and unlike
+# PREPROCESSING_VERSION, feature_schema_version IS a model_contract field (CONTRACT_FIELDS) checked by
+# meta_matches_system_contract → it fail-closes every shipped bundle until the one combined Stage-2
+# retrain (alongside LABEL_CONFIG_VERSION + PREPROCESSING_VERSION). Folds into that single retrain.
 # v3: tabular load_data uses per-ticker 1m-preferred m5_* additive merge (ml_data_common); invalidates scheduler/cache keys.
-PREPROCESSING_VERSION: str = "v3_rth_decay_m5_additive_canonical"
+# v4 (CORRECTNESS-CLOSEOUT #1, 2026-05-31): engineer_features now fits its stateful transforms on the
+# TRAIN partition only — per-(ticker,hr,min) volume median, category->code maps, AND the NaN column
+# filter — instead of the full df, so the chronological val tail no longer leaks into feature
+# computation or feature selection. Feature VALUES change, so this bump invalidates the training cache
+# and bypasses the XGB warm-continuation guard (ml_train.py keys incremental append on this string),
+# forcing a full refit on the next scheduler run. NOTE: preprocessing_version is NOT a model_contract
+# field, so this bump does not by itself fail-close serving bundles (unlike LABEL_CONFIG_VERSION). The
+# leaked-feature bundles are already fail-closed by Phase 1's LABEL_CONFIG_VERSION bump (the one clean
+# retrain has not run yet); making a preprocessing-only change fail-close serving is a contract-field
+# decision recorded in OPEN_ITEMS (closeout #1 row).
+PREPROCESSING_VERSION: str = "v5_no_m5_lag"
+# v5 (FEATURE EPIC m5 strip, 2026-06-01): load_data no longer merges m5_* via attach_5m_additive_context.
 # Bump when label column, horizon definition, or outcome filter semantics change (invalidates training cache).
 # Issue 15: 5c+ artifacts share this feature/label pipeline version; exact label column is in meta.target_column.
-LABEL_CONFIG_VERSION: str = "outcome_1c_filled_rth_v1"
+# Phase 1 (horizon-collapse fix): outcome_Nc now classified with a per-horizon ATR-scaled move
+# threshold (classify_direction_pts + threshold_move_pts_for_slug) instead of a fixed 0.05%-of-spot
+# cut, so each horizon is balanced on its own volatility scale. This is an outcome-filter semantics
+# change → version bumped to force full retrain on the rebalanced labels (the DB column must also be
+# refreshed via the force_refresh outcome backfill). horizon_outcome_schema_version (anchor/forward
+# bar mechanics) is unchanged and stays "bar_forward_close_v1".
+LABEL_CONFIG_VERSION: str = "outcome_perhorizon_volthr_v2"
 # Bump when ml_scheduler / stacked training orchestration or artifact set changes (invalidates skip-retrain).
 SCHEDULER_PIPELINE_VERSION: str = "scheduler_stack_v1"
 
@@ -56,6 +86,33 @@ MIN_PROMOTION_ACCURACY: float = 0.34       # above random (1/3)
 MIN_PROMOTION_BALANCED_ACC: float = 0.33   # per-class recall avg; slightly below accuracy when balanced
 MIN_ROWS_FOR_PROMOTION: int = 500         # minimum training rows for promotion
 MIN_PROMOTION_EDGE_PP: float = -5.0       # allow small negative edge for now
+# Per-ticker fail-closed DATA floor on the train→promote path (Workstream A1, operator brief
+# 2026-05-29). Distinct from rows_used (model samples): this is raw labeled-row + usable-day
+# availability in the DB. A "usable RTH day" has >= USABLE_RTH_DAY_MIN_ROWS labeled 1m rows —
+# enough to fill the LSTM structure window (STREAM_5M_LOOKBACK=60). Below floor → ticker stays
+# NON-COMPLIANT, no copy to models/active/, recorded (no silent skip).
+MIN_USABLE_DAYS_FOR_PROMOTION: int = 5
+USABLE_RTH_DAY_MIN_ROWS: int = 60
+
+
+def meets_per_ticker_data_floor(labeled_rows: int, usable_days: int) -> tuple[bool, str]:
+    """Fail-closed per-ticker data floor for promotion (A1).
+
+    Requires >= MIN_ROWS_FOR_PROMOTION labeled rows AND >= MIN_USABLE_DAYS_FOR_PROMOTION
+    usable RTH days (a usable day has >= USABLE_RTH_DAY_MIN_ROWS labeled 1m rows).
+    Returns (ok, reason). Both conditions reported together when both fail.
+    """
+    reasons: list[str] = []
+    if int(labeled_rows) < MIN_ROWS_FOR_PROMOTION:
+        reasons.append(f"labeled_rows={int(labeled_rows)} < {MIN_ROWS_FOR_PROMOTION}")
+    if int(usable_days) < MIN_USABLE_DAYS_FOR_PROMOTION:
+        reasons.append(
+            f"usable_days={int(usable_days)} < {MIN_USABLE_DAYS_FOR_PROMOTION} "
+            f"(usable = >= {USABLE_RTH_DAY_MIN_ROWS} labeled 1m rows/day)"
+        )
+    if reasons:
+        return False, "; ".join(reasons)
+    return True, "ok"
 
 
 @dataclass
@@ -156,6 +213,7 @@ def validate_for_promotion(
     balanced_accuracy: Optional[float] = None,
     force_replace_non_compliant: bool = False,
     horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
+    single_class_collapse: bool = False,
 ) -> tuple[bool, str]:
     """
     Validate whether a trained artifact may be promoted.
@@ -164,9 +222,20 @@ def validate_for_promotion(
     Promotion metrics:
       - promotion_metric: eval_accuracy (ensemble accuracy on full RTH)
       - balanced_accuracy: (recall_up + recall_down + recall_flat) / 3 when available
+      - single_class_collapse: True when the candidate predicted exactly ONE class across the
+        eval set (all-flat / majority collapse). Such a model's top-line accuracy is just the
+        majority base rate (balanced_accuracy ~ 1/n_classes = chance) — it is blocked regardless
+        of accuracy, because MIN_PROMOTION_BALANCED_ACC=0.33 does NOT catch a 3-class all-flat
+        model whose balanced_accuracy is exactly 0.333.
     """
     if not provenance:
         return False, "missing provenance"
+
+    if single_class_collapse:
+        return False, (
+            "single_class_collapse: candidate predicts one class on the eval set "
+            "(all-flat majority collapse) — blocked regardless of top-line accuracy"
+        )
 
     if not provenance.training_timeframe:
         return False, "missing training_timeframe in provenance"
@@ -257,6 +326,7 @@ def build_xgb_provenance(
         source_cache_key=cache_key(ticker, CANONICAL_TIMEFRAME, col, FEATURE_SCHEMA_VERSION, PREPROCESSING_VERSION, train_start[:10] if train_start else "", train_end[:10] if train_end else ""),
         promotion_metric="accuracy",
         promotion_score=float(meta.get("train_accuracy", 0)),
+        balanced_accuracy=meta.get("balanced_accuracy"),
     )
 
 
@@ -296,6 +366,7 @@ def build_lstm_provenance(
         source_cache_key=cache_key(ticker, tf, col, FEATURE_SCHEMA_VERSION, PREPROCESSING_VERSION, train_start[:10] if train_start else "", train_end[:10] if train_end else ""),
         promotion_metric="val_accuracy",
         promotion_score=float(meta.get("val_accuracy", 0)),
+        balanced_accuracy=meta.get("balanced_accuracy"),
     )
 
 
@@ -332,4 +403,5 @@ def build_transformer_provenance(
         source_cache_key=cache_key(ticker, CANONICAL_TIMEFRAME, col, FEATURE_SCHEMA_VERSION, PREPROCESSING_VERSION, train_start[:10] if train_start else "", train_end[:10] if train_end else ""),
         promotion_metric="val_accuracy",
         promotion_score=float(meta.get("val_accuracy", 0)),
+        balanced_accuracy=meta.get("balanced_accuracy"),
     )

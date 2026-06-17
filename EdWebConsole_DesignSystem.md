@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** UI design system reference.
+
 # EdWebConsole — Design System Reference
 # Lock this in. Apply consistently across ALL cards.
 

@@ -1,0 +1,205 @@
+{
+  "sweep_id": "error_propagation_v3",
+  "date_utc": "2026-05-20",
+  "slice": "REPO_SWEEP",
+  "parent_sweep": "error_propagation_v2",
+  "parent_baseline_silent_pass": 27,
+  "summary": {
+    "silent_exception_pass_before": 27,
+    "silent_exception_pass_after": 0,
+    "class_c_fixed_count": 27,
+    "class_b_accepted_documented": 0,
+    "critical_silent_pass_files_after": 13
+  },
+  "class_c_fixed": [
+    {
+      "id": "SWEEP-EP-21",
+      "file": "audit_snapshot_data.py",
+      "lines": "22",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-22",
+      "file": "verify_active_models.py",
+      "lines": "28",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-23",
+      "file": "levels.py",
+      "lines": "208",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-24",
+      "file": "levels.py",
+      "lines": "321",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-25",
+      "file": "live_market_plane.py",
+      "lines": "190",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-26",
+      "file": "live_market_plane.py",
+      "lines": "206",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-27",
+      "file": "market_context.py",
+      "lines": "619",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-28",
+      "file": "ml_predict.py",
+      "lines": "357",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-29",
+      "file": "normalized_training_sync.py",
+      "lines": "293",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-30",
+      "file": "polling_adapter.py",
+      "lines": "149",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-31",
+      "file": "scheduler_user_tickers.py",
+      "lines": "57",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-32",
+      "file": "schwab_client.py",
+      "lines": "351",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-33",
+      "file": "schwab_client.py",
+      "lines": "370",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-34",
+      "file": "schwab_full_accessible_field_inventory.py",
+      "lines": "158",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-35",
+      "file": "schwab_full_accessible_field_inventory.py",
+      "lines": "373",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-36",
+      "file": "schwab_full_accessible_field_inventory.py",
+      "lines": "389",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-37",
+      "file": "schwab_full_accessible_field_inventory.py",
+      "lines": "563",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-38",
+      "file": "schwab_full_field_inventory.py",
+      "lines": "435",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-39",
+      "file": "schwab_full_field_inventory.py",
+      "lines": "442",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-40",
+      "file": "snapshot_normalizer.py",
+      "lines": "541",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-41",
+      "file": "train_all.py",
+      "lines": "410",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-42",
+      "file": "calibration/anchor_audit.py",
+      "lines": "289",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-43",
+      "file": "calibration/audit_phase1.py",
+      "lines": "47",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-44",
+      "file": "calibration/audit_phase1.py",
+      "lines": "108",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-45",
+      "file": "calibration/json_utils.py",
+      "lines": "25",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-46",
+      "file": "calibration/json_utils.py",
+      "lines": "32",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    },
+    {
+      "id": "SWEEP-EP-47",
+      "file": "tools/backfill_fusion_policy_complete_v1.py",
+      "lines": "341",
+      "was": "except Exception: pass",
+      "fix": "log.debug with exc_info"
+    }
+  ]
+}

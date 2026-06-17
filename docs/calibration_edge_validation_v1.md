@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_edge_validation_v1.md`.
+
 # Calibration edge validation (v1)
 
 **Purpose:** Evaluate whether the calibration stack demonstrates a **real, statistically meaningful predictive edge** over naive baselines, using **same-sample** economics (not phase4’s cross-population snapshot baselines).

@@ -1,3 +1,5 @@
+> **Classification:** Policy Specification | **Scope:** Governance documentation `SCHWAB_REMEDIATION_S016_BLACK_SCHOLES_SUBTRIAGE_V1.md`.
+
 # Schwab Remediation S016 — `BLACK_SCHOLES` Sub-Triage V1
 
 **Status:** SUBTRIAGE_COMPLETE; **classifier tag-plausibility gate IMPLEMENTED** (2026-05-08)  

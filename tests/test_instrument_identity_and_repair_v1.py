@@ -3,12 +3,10 @@ from __future__ import annotations
 
 import inspect
 import time
-from pathlib import Path
 
 from adaptive_shadow_v2_calibration import load_survivorship_anchors_v1
 from db import EdDB, CANONICAL_TIMEFRAME, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1, get_snapshot_sql
 from timeframe_config import DERIVED_TIMEFRAME
-from horizon_outcomes import OUTCOME_BAR_SPECS
 from instrument_identity import ticker_storage_key
 from market_data_adapter import schwab_candles_to_bars
 

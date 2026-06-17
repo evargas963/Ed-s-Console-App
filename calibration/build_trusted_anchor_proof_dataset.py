@@ -44,9 +44,9 @@ AUDIT_JSON = ROOT / "data" / "calibration_anchor_proof_audit.json"
 
 def _stub_models() -> None:
     import ml_predict
-    from tests.test_calibration_logging_production_path import _fake_run_base_models_once
+    from tests.test_calibration_logging_production_path import _fake_run_unified_stack_ml_once
 
-    ml_predict.run_base_models_once = _fake_run_base_models_once
+    ml_predict.run_unified_stack_ml_once = _fake_run_unified_stack_ml_once
 
 
 def _seed_bars_and_snapshots(conn: sqlite3.Connection, plan: list[tuple[str, float]]) -> None:

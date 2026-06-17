@@ -1,0 +1,21 @@
+---
+description: Repo neatness — single truth sources, artifact regen commands
+alwaysApply: true
+---
+
+# Repo neatness
+
+Before editing code, read and obey governance/docs/AGENT_OPERATING_CONTRACT.md. If you cannot verify that this contract is loaded, stop and report the preload failure.
+
+- **One maturity truth source** — `SEVERITY_1_CONTROL_VALIDATION_REGISTER.json`; matrix is inventory only.
+- **No duplicate truth sources** — do not treat coverage matrix as enforcement proof.
+- **No orphaned governance** — new artifacts need owner, regen command, consumer.
+- **Generated artifacts** must have documented regen commands in `governance/README.md`.
+
+Regen institutional artifacts:
+
+```bash
+python tools/_build_institutional_audit_phase1.py
+python tools/_build_institutional_audit_phase2.py
+python tools/_build_institutional_audit_phase3.py
+```

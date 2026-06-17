@@ -6,7 +6,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -41,10 +40,10 @@ def _insert_full_row(conn, *, ticker: str, ts: float, zone: str, vwap_side: str,
         INSERT INTO snapshots (
           ticker, timeframe, ts_utc, ts_et, spot, zone, vwap_side,
           nearest_above_dist, nearest_below_dist,
-          outcome_1c, outcome_3c, outcome_5c, outcome_8c, outcome_13c, outcome_15c, outcome_60c,
+          outcome_1c, outcome_5c, outcome_15c, outcome_60c,
           horizon_outcome_schema_version
         )
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             ticker,
@@ -56,7 +55,7 @@ def _insert_full_row(conn, *, ticker: str, ts: float, zone: str, vwap_side: str,
             vwap_side,
             nad,
             nbd,
-            "up", "up", "up", "up", "up", "up", "up",
+            "up", "up", "up", "up",
             3,
         ),
     )

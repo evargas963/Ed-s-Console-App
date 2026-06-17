@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_phase4_decision_engine_validation.md`.
+
 # Phase 4 — Decision engine validation
 
 ## Script

@@ -1,0 +1,8 @@
+{
+  "compound_survivors": "VOID",
+  "voided_at": "2026-06-04T21:53:38.064236+00:00",
+  "reason": "compound_workbook_groups_retired_use_leaf_manifest",
+  "replacement_manifest": "governance\\artifacts\\feature_ablation_manifest_leaf.json",
+  "replacement_report": "governance\\artifacts\\feature_ablation_report_leaf.json",
+  "artifacts_stamped": []
+}

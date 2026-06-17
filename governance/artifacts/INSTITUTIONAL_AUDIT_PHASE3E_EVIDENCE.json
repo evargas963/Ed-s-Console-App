@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "artifact": "governance/artifacts/INSTITUTIONAL_AUDIT_PHASE3E_EVIDENCE.json",
+  "phase": "3E",
+  "generated": "2026-06-15",
+  "label": "live-path simulation proof + bypass reduction \u2014 not L5 or universal enforcement",
+  "live_decision_record_source": "live_path_simulation",
+  "live_decision_record_proof": "server._finalize_production_decision via decision_record.live_path_simulation_emission",
+  "live_decision_record_limitation": "No live Schwab wire traffic on this machine \u2014 honest label live_path_simulation",
+  "r004_status": "proven_gated",
+  "r031_status": "classified_non_production_diagnostic_only",
+  "manual_mutation_detection_status": "detected_not_prevented",
+  "env_override_inventory_count": 18,
+  "env_override_high_risk_count": 6,
+  "bypasses_open_before": 72,
+  "bypasses_open_after": 69,
+  "bypasses_reduced": 3,
+  "test_suites": {
+    "adversarial": {
+      "exit_code": 0,
+      "summary": "39 passed, 1 warning in 28.47s",
+      "command": "C:\\Users\\evarg\\AppData\\Local\\Programs\\Python\\Python313\\python.exe -m pytest tests/adversarial/ -q"
+    },
+    "runtime_proof": {
+      "exit_code": 0,
+      "summary": "8 passed, 1 warning in 6.52s",
+      "command": "C:\\Users\\evarg\\AppData\\Local\\Programs\\Python\\Python313\\python.exe -m pytest tests/runtime_proof/ -q"
+    },
+    "governance_mutation": {
+      "exit_code": 0,
+      "summary": "2 passed in 0.25s",
+      "command": "C:\\Users\\evarg\\AppData\\Local\\Programs\\Python\\Python313\\python.exe -m pytest tests/governance_mutation/ -q"
+    },
+    "decision_governance": {
+      "exit_code": 0,
+      "summary": "46 passed, 1 warning in 7.06s",
+      "command": "C:\\Users\\evarg\\AppData\\Local\\Programs\\Python\\Python313\\python.exe -m pytest tests/decision_reconstruction/ tests/release_object/ tests/test_governance_consolidation.py -q"
+    }
+  },
+  "maturity_changes_proposed": [],
+  "maturity_changes_rejected": [
+    "L5 institutional enforcement",
+    "Universal route enforcement",
+    "Live Schwab traffic proof without credentials",
+    "Remote GitHub enforcement verified",
+    "Manual mutation prevention claimed as blocked"
+  ],
+  "remaining_gaps": [
+    "live_schwab traffic proof (credentials/host)",
+    "R-012 route gap",
+    "GitHub branch protection API verification",
+    "git --no-verify external enforcement",
+    "Manual DB/filesystem mutation prevention (detection only)"
+  ]
+}

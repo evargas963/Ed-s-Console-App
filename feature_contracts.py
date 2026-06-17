@@ -159,8 +159,6 @@ def build_current_xgb_engineered_features() -> tuple[set[str], set[str], set[str
     import pandas as pd
     from ml_train import (
         CATEGORICALS,
-        M5_SCALE_INVARIANT_EXTRA,
-        M5_WALL_DISTANCE_COLS,
         SCALE_INVARIANT_COLS,
         WALL_DISTANCE_COLS,
         engineer_features,
@@ -177,10 +175,6 @@ def build_current_xgb_engineered_features() -> tuple[set[str], set[str], set[str
     for c in WALL_DISTANCE_COLS:
         row[c] = 1.0
     for c in SCALE_INVARIANT_COLS:
-        row[c] = 1.0
-    for c in M5_WALL_DISTANCE_COLS:
-        row[c] = 1.0
-    for c in M5_SCALE_INVARIANT_EXTRA:
         row[c] = 1.0
     row["candle_body_pts"] = 0.5
     row["candle_range_pts"] = 1.0
@@ -255,36 +249,150 @@ def build_xgb_registry(active_meta_features: set[str] | None = None) -> list[Fea
 
 
 def build_lstm_registry() -> list[FeatureContractEntry]:
-    from lstm_data import CONFLUENCE_FEATURES, FEATURES_1M, FEATURES_5M
+    from lstm_data import (
+        CONFLUENCE_FEATURES,
+        ENCODED_FEATURES_1M,
+        ENCODED_FEATURES_5M,
+        NULLABLE_NUMERIC_COLS_5M,
+        encoded_width_5m,
+        encoded_width_1m,
+    )
 
+    cross_asset_base = {
+        "spy_chg_pct",
+        "qqq_chg_pct",
+        "iwm_chg_pct",
+        "spy_weighted_push",
+        "qqq_weighted_push",
+        "iwm_weighted_push",
+        "vix_level",
+        "iv_level",
+    }
     out: list[FeatureContractEntry] = []
-    for f in sorted(set(FEATURES_5M) | set(FEATURES_1M) | set(CONFLUENCE_FEATURES)):
-        out.append(
+    seen: set[str] = set()
+
+    def add(entry: FeatureContractEntry) -> None:
+        if entry.feature_name in seen:
+            return
+        seen.add(entry.feature_name)
+        out.append(entry)
+
+    def stream_for_encoded(f: str, *, micro: bool) -> str:
+        if f.endswith("__present"):
+            base = f[: -len("__present")]
+            if base in cross_asset_base:
+                return "cross_asset"
+            return "micro_1m" if micro else "structure_5m"
+        if f in cross_asset_base:
+            return "cross_asset"
+        return "micro_1m" if micro else "structure_5m"
+
+    for f in ENCODED_FEATURES_5M:
+        if f.endswith("__present"):
+            add(
+                _build_entry(
+                    feature_name=f,
+                    layer="lstm",
+                    allowed=True,
+                    reason="Missingness mask for nullable numeric (1=present, 0=missing).",
+                    raw_or_derived="engineered",
+                    forbidden_if_applicable=False,
+                    notes=(
+                        f"stream={stream_for_encoded(f, micro=False)}; "
+                        f"pairs_with={f[: -len('__present')]}; encoder_width_5m={encoded_width_5m()}"
+                    ),
+                )
+            )
+            continue
+        add(
             _build_entry(
                 feature_name=f,
                 layer="lstm",
                 allowed=True,
-                reason="declared sequence encoder feature for LSTM training/inference path.",
-                raw_or_derived=("engineered" if f.startswith("cf_") else "raw"),
+                reason=(
+                    "LSTM cross-asset / vol context."
+                    if f in cross_asset_base
+                    else "LSTM structure stream (60×1m lookback)."
+                ),
+                raw_or_derived="raw",
                 forbidden_if_applicable=False,
+                notes=(
+                    f"stream={stream_for_encoded(f, micro=False)}; "
+                    f"nullable_numeric={f in NULLABLE_NUMERIC_COLS_5M}; "
+                    f"encoder_width_5m={encoded_width_5m()}"
+                ),
+            )
+        )
+    for f in ENCODED_FEATURES_1M:
+        if f.endswith("__present"):
+            add(
+                _build_entry(
+                    feature_name=f,
+                    layer="lstm",
+                    allowed=True,
+                    reason="Missingness mask for nullable numeric (1=present, 0=missing).",
+                    raw_or_derived="engineered",
+                    forbidden_if_applicable=False,
+                    notes=(
+                        f"stream={stream_for_encoded(f, micro=True)}; "
+                        f"pairs_with={f[: -len('__present')]}; encoder_width_1m={encoded_width_1m()}"
+                    ),
+                )
+            )
+            continue
+        add(
+            _build_entry(
+                feature_name=f,
+                layer="lstm",
+                allowed=True,
+                reason="LSTM micro stream (20×1m lookback).",
+                raw_or_derived="raw",
+                forbidden_if_applicable=False,
+                notes=f"stream={stream_for_encoded(f, micro=True)}; encoder_width_1m={encoded_width_1m()}",
+            )
+        )
+    for f in sorted(set(CONFLUENCE_FEATURES)):
+        add(
+            _build_entry(
+                feature_name=f,
+                layer="lstm",
+                allowed=True,
+                reason="Derived multi-timeframe confluence (cf_* from snapshot history).",
+                raw_or_derived="engineered",
+                forbidden_if_applicable=False,
+                notes="stream=derived_confluence; separate from raw cross-asset cols.",
             )
         )
     return out
 
 
 def build_transformer_registry() -> list[FeatureContractEntry]:
-    from lstm_data import FEATURES_5M
+    from lstm_data import ENCODED_FEATURES_5M, NULLABLE_NUMERIC_COLS_5M, encoded_width_5m
 
     rows: list[FeatureContractEntry] = []
-    for f in sorted(set(FEATURES_5M)):
+    for f in ENCODED_FEATURES_5M:
+        if f.endswith("__present"):
+            rows.append(
+                _build_entry(
+                    feature_name=f,
+                    layer="transformer",
+                    allowed=True,
+                    reason="Missingness mask for nullable numeric (1=present, 0=missing).",
+                    raw_or_derived="engineered",
+                    forbidden_if_applicable=False,
+                    notes=f"pairs_with={f[: -len('__present')]}; encoder_width_5m={encoded_width_5m()}",
+                )
+            )
+            continue
         rows.append(
             _build_entry(
                 feature_name=f,
                 layer="transformer",
                 allowed=True,
-                reason="Transformer base sequence feature via encode_snapshot_5m.",
+                reason="Transformer base sequence feature via encode_lstm_structure_sequence_bar.",
                 raw_or_derived="raw",
                 forbidden_if_applicable=False,
+                notes=f"nullable_numeric={f in NULLABLE_NUMERIC_COLS_5M}; encoder_width_5m={encoded_width_5m()}",
             )
         )
     for f in (
@@ -362,18 +470,9 @@ FUSION_OVERLAY_KEYS = [
     "pred_1c_up_prob",
     "pred_1c_down_prob",
     "pred_1c_flat_prob",
-    "pred_3c_up_prob",
-    "pred_3c_down_prob",
-    "pred_3c_flat_prob",
     "pred_5c_up_prob",
     "pred_5c_down_prob",
     "pred_5c_flat_prob",
-    "pred_8c_up_prob",
-    "pred_8c_down_prob",
-    "pred_8c_flat_prob",
-    "pred_13c_up_prob",
-    "pred_13c_down_prob",
-    "pred_13c_flat_prob",
     "pred_15c_up_prob",
     "pred_15c_down_prob",
     "pred_15c_flat_prob",

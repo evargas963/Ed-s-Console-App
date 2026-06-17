@@ -14,7 +14,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from horizon_outcomes import forward_bar_start_utc  # noqa: E402
-from math_exposure import classify_direction  # noqa: E402
+from math_exposure import classify_direction_pts  # noqa: E402
+from movement_target_threshold import (  # noqa: E402
+    load_movement_thresholds_by_horizon_v1,
+    threshold_move_pts_for_slug,
+)
 
 DEFAULT_DB = ROOT / "data" / "ed_console.db"
 
@@ -86,7 +90,7 @@ def main() -> None:
 
         dup_groups = int(
             conn.execute(
-                f"""
+                """
                 SELECT COUNT(*) FROM (
                   SELECT ticker, timeframe, ts_utc, COUNT(*) AS c FROM snapshots
                   WHERE timeframe = ?
@@ -121,7 +125,7 @@ def main() -> None:
         ocols = "outcome_1c, outcome_5c, outcome_15c"
         try:
             oc = conn.execute(
-                f"SELECT COUNT(*) AS n FROM snapshots WHERE timeframe = ? AND outcome_5c IS NOT NULL",
+                "SELECT COUNT(*) AS n FROM snapshots WHERE timeframe = ? AND outcome_5c IS NOT NULL",
                 (tf,),
             ).fetchone()["n"]
         except sqlite3.OperationalError:
@@ -205,8 +209,9 @@ def main() -> None:
                 "SELECT bar_start_ts_utc, close FROM price_bars_1m WHERE ticker = ?", (tkr,)
             )
         }
+        _mcfg = load_movement_thresholds_by_horizon_v1()
         for row in conn.execute(
-            "SELECT ts_utc, outcome_5c FROM snapshots WHERE ticker = ? AND timeframe = '5m' AND outcome_5c IS NOT NULL",
+            "SELECT ts_utc, atr, outcome_5c FROM snapshots WHERE ticker = ? AND timeframe = '5m' AND outcome_5c IS NOT NULL",
             (tkr,),
         ):
             ts = float(row["ts_utc"])
@@ -218,7 +223,14 @@ def main() -> None:
             fc = cbs.get(float(b5))
             if fc is None:
                 continue
-            exp = classify_direction(fc - ac, ac)
+            try:
+                _atr = float(row["atr"]) if row["atr"] is not None else None
+            except (TypeError, ValueError):
+                _atr = None
+            # Mirror the production writer (db._apply_bar_based_outcome_updates): per-horizon
+            # ATR-scaled threshold, not a fixed 0.05% cut, or this recompute reports false mismatches.
+            _thr = threshold_move_pts_for_slug("5c", anchor_close=ac, atr=_atr, cfg=_mcfg)
+            exp = classify_direction_pts(fc - ac, _thr)
             outcome_5m_vs_1m["5m_outcome_5c_cells_compared"] += 1
             if exp != row["outcome_5c"]:
                 outcome_5m_vs_1m["mismatches_vs_bar_anchor_recompute"] += 1
