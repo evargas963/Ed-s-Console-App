@@ -75,8 +75,26 @@ def test_tf_trade_signal_cards_keep_color_under_direction_withhold():
     h = _html()
     assert "card.setAttribute('data-tf-signal-dir', sigDir)" in h
     assert "tf-signal-card--trade-active" in h
+    assert "tf-signal-card--non-actionable" in h
     assert '[data-tf-signal-dir="long"]' in h
     assert '[data-tf-signal-dir="short"]' in h
+    assert "function resolveHorizonCardVisualState" in h
+    assert "window.resolveHorizonCardVisualState = resolveHorizonCardVisualState" in h
+
+
+def test_horizon_direction_decoupled_from_final_tradeable():
+    """Per-horizon pills must paint LONG/SHORT from mhap_rows.call — not final_tradeable."""
+    h = _html()
+    idx = h.find("function resolveHorizonCardVisualState")
+    assert idx != -1
+    chunk = h[idx : idx + 1200]
+    assert "isConsolidated" in chunk
+    assert "nonActionable" in chunk
+    assert "if (!tradeable) nonActionable = true" in chunk
+    row_idx = h.find("const visual = resolveHorizonCardVisualState")
+    assert row_idx != -1
+    assert "data-horizon-direction" in h[row_idx : row_idx + 800]
+    assert "data-horizon-actionability" in h[row_idx : row_idx + 800]
 
 
 def test_render_timeframe_signal_row_includes_consolidated_slug():
@@ -118,7 +136,11 @@ def test_all_and_plan_trust_engine_final_tradeable_only():
     assert "engineTradeableSetup" in plan_chunk
     idx_row = h.find("const tradeable = engineTradeableSetup(d)")
     assert idx_row != -1
-    assert "if (tradeable && dir === 'LONG')" in h[idx_row : idx_row + 2500]
+    vis_idx = h.find("function resolveHorizonCardVisualState")
+    assert vis_idx != -1
+    vis_chunk = h[vis_idx : vis_idx + 900]
+    assert "if (tradeable && dir === 'LONG')" in vis_chunk
+    assert "isConsolidated" in vis_chunk
     idx_cons = h.find("if (slug === 'consolidated') {\n      if (tradeable)")
     assert idx_cons != -1
     cons_chunk = h[idx_cons : idx_cons + 280]
