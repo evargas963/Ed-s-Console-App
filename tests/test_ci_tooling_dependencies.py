@@ -52,8 +52,13 @@ def test_build_feature_assignment_matrix_v2_imports_openpyxl() -> None:
     importlib.import_module("openpyxl")
 
 
+def test_pytest_conftest_sets_ci_schwab_placeholders() -> None:
+    """Adversarial server imports rely on tests/conftest.py module-level placeholders."""
+    assert os.environ.get("SCHWAB_API_KEY") == "ci-placeholder-api-key"
+    assert os.environ.get("SCHWAB_APP_SECRET") == "ci-placeholder-app-secret"
+    assert os.environ.get("SCHWAB_CALLBACK_URL") == "https://127.0.0.1:8182"
+
+
 def test_check_ci_tooling_dependencies_passes_on_current_repo() -> None:
-    os.environ.setdefault("SCHWAB_API_KEY", "ci-test-key-not-live")
-    os.environ.setdefault("SCHWAB_APP_SECRET", "ci-test-secret-not-live")
     errs = check_ci_tooling_dependencies()
     assert errs == [], errs
