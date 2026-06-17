@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 REPO = Path(__file__).resolve().parent.parent
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 # When none of these are newer than the artifact, skip expensive rebuild/compare.
 _PERSISTENCE_SOURCE_PATHS: tuple[Path, ...] = (
