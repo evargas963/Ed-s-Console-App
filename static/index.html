@@ -2457,9 +2457,16 @@
   /* Trade-signal horizon cards: keep LONG/SHORT color when lane is stale; STALE badge only */
   .tf-signal-card[data-direction-withhold][data-tf-signal-dir="long"],
   .tf-signal-card[data-direction-withhold][data-tf-signal-dir="short"],
-  .tf-signal-card.tf-signal-card--trade-active[data-direction-withhold] {
+  .tf-signal-card.tf-signal-card--trade-active[data-direction-withhold],
+  .tf-signal-card.tf-signal-card--non-actionable[data-tf-signal-dir="long"],
+  .tf-signal-card.tf-signal-card--non-actionable[data-tf-signal-dir="short"] {
     opacity: 1;
     filter: none;
+  }
+  /* Horizon opinion without ALL tradeability — direction visible, no entry-armed chrome */
+  .tf-signal-card.tf-signal-card--non-actionable.tf-state-up,
+  .tf-signal-card.tf-signal-card--non-actionable.tf-state-down {
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.35);
   }
   [data-direction-withhold]::after {
     content: "STALE";
@@ -4147,10 +4154,60 @@ try {
 /* renderSignalRailCard removed 2026-06-10 (operator): the ALL pill carries the
    consolidated verdict and the PLAN pill carries entry/stop/targets/size. */
 
+/**
+ * Horizon card render contract — direction vs actionability (operator 2026-06-11).
+ * Per-horizon pills (1M–60M): arrow/class follow mhap_rows[i].call (horizon_direction).
+ * ALL final_tradeable=false may dim actionability but must not erase horizon direction.
+ * ALL + PLAN: synthesis/entry only — still gated by engineTradeableSetup(d).
+ * @returns {{ state: 'up'|'down'|'dim', glow: string, sigDir: string, nonActionable: boolean }}
+ */
+function resolveHorizonCardVisualState(slug, dir, tradeable, confPct) {
+  const isConsolidated = slug === 'consolidated';
+  let state = 'dim';
+  let nonActionable = false;
+
+  if (isConsolidated) {
+    if (tradeable && dir === 'LONG') state = 'up';
+    else if (tradeable && dir === 'SHORT') state = 'down';
+  } else if (dir === 'LONG') {
+    state = 'up';
+    if (!tradeable) nonActionable = true;
+  } else if (dir === 'SHORT') {
+    state = 'down';
+    if (!tradeable) nonActionable = true;
+  } else if (dir === 'UNAVAILABLE') {
+    state = 'dim';
+  }
+
+  let glow = '';
+  if (state === 'up' || state === 'down') {
+    if (nonActionable) {
+      glow = 'tf-glow-1';
+    } else if (confPct != null && confPct >= 76) {
+      glow = 'tf-glow-3';
+    } else if (confPct != null && confPct >= 61) {
+      glow = 'tf-glow-2';
+    } else {
+      glow = 'tf-glow-1';
+    }
+  }
+
+  const sigDir =
+    dir === 'LONG' ? 'long'
+      : dir === 'SHORT' ? 'short'
+        : dir === 'UNAVAILABLE' ? 'unavailable'
+          : 'neutral';
+
+  return { state, glow, sigDir, nonActionable };
+}
+
+try { window.resolveHorizonCardVisualState = resolveHorizonCardVisualState; } catch (e) {}
+
 /** Stack honesty: 1M–60M = per-horizon fusion readouts; ALL = consolidated synthesis.
  *  Primary horizon pill tagged PRIMARY; others AGREE/CONFLICT vs primary (not vs ALL).
- *  ALL + PLAN only light when ≥2 horizon pills share the same directional call — a lone
- *  1M LONG must not arm ALL/PLAN while 5M/15M/60M stay NEUTRAL (matches backend gate). */
+ *  ALL + PLAN only light when engineTradeableSetup(d) — a lone 1M LONG must not arm
+ *  ALL/PLAN while 5M/15M/60M stay NEUTRAL (matches backend gate). Horizon pills still
+ *  show their own LONG/SHORT direction when ALL is WAIT (render contract). */
 function renderTimeframeSignalRow(d) {
   if (d == null || typeof d !== 'object') return;
   const row = document.getElementById('timeframe-signal-row');
@@ -4384,16 +4441,11 @@ function renderTimeframeSignalRow(d) {
       }
     }
 
-    let state = 'dim';
-    if (tradeable && dir === 'LONG') state = 'up';
-    else if (tradeable && dir === 'SHORT') state = 'down';
-
-    let glow = '';
-    if (state === 'up' || state === 'down') {
-      if (confPct != null && confPct >= 76) glow = 'tf-glow-3';
-      else if (confPct != null && confPct >= 61) glow = 'tf-glow-2';
-      else glow = 'tf-glow-1';
-    }
+    const visual = resolveHorizonCardVisualState(slug, dir, tradeable, confPct);
+    const state = visual.state;
+    let glow = visual.glow;
+    const sigDir = visual.sigDir;
+    const nonActionable = visual.nonActionable;
 
     const isPrimaryTrade =
       slug === 'consolidated' &&
@@ -4402,15 +4454,23 @@ function renderTimeframeSignalRow(d) {
       (state === 'up' || state === 'down');
     if (isPrimaryTrade && glow === 'tf-glow-1') glow = 'tf-glow-2';
 
-    const sigDir =
-      dir === 'LONG' ? 'long' : dir === 'SHORT' ? 'short' : dir === 'UNAVAILABLE' ? 'unavailable' : 'neutral';
     card.setAttribute('data-tf-signal-dir', sigDir);
+    card.setAttribute('data-horizon-direction', dir === 'FLAT' ? 'NEUTRAL' : dir);
+    if (nonActionable) {
+      card.setAttribute('data-horizon-actionability', 'NON_ACTIONABLE');
+      const why = d.wait_reason || d.validation_summary || 'ALL not tradeable — horizon opinion only';
+      card.title = String(why);
+    } else {
+      card.removeAttribute('data-horizon-actionability');
+      card.removeAttribute('title');
+    }
 
     card.className =
       'tf-signal-card tf-state-' +
       (state === 'up' ? 'up' : state === 'down' ? 'down' : 'dim') +
       (glow ? ' ' + glow : '') +
-      (isPrimaryTrade ? ' tf-signal-card--trade-active' : '');
+      (isPrimaryTrade ? ' tf-signal-card--trade-active' : '') +
+      (nonActionable ? ' tf-signal-card--non-actionable' : '');
 
     const dot = card.querySelector('.tf-dot');
     if (dot) {

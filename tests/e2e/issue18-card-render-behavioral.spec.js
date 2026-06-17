@@ -102,6 +102,50 @@ test('tf-signal cards reflect mhap_rows call direction + confidence band', async
   expect(c60Unav || '').not.toMatch(/tf-glow-[123]/);
 });
 
+test('1M LONG stays visually LONG when final_tradeable=false (ALL WAIT)', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () => typeof window.renderTimeframeSignalRow === 'function',
+    null,
+    { timeout: 30000 },
+  );
+
+  const payload = {
+    primary_horizon: '1c',
+    mhap_rows: [
+      { horizon: '1c', call: 'LONG', confidence: 0.41, row_state: 'primary' },
+      { horizon: '5c', call: 'WAIT', confidence: 0.35, row_state: 'secondary' },
+      { horizon: '15c', call: 'WAIT', confidence: 0.45, row_state: 'secondary' },
+      { horizon: '60c', call: 'WAIT', confidence: 0.35, row_state: 'secondary' },
+    ],
+    final_bias: 'WAIT',
+    final_tradeable: false,
+    final_confidence: 0.41,
+    entry_state: 'no_setup',
+    wait_reason: 'fewer than 2 tradeable horizons agree — insufficient confluence',
+    fusion_available: true,
+    canonical_provenance: 'bayesian_fusion',
+    stack_runtime: { fusion_active: true, stack_mode: 'FULL' },
+  };
+
+  await page.evaluate((d) => window.renderTimeframeSignalRow(d), payload);
+
+  const c1 = await page.getAttribute('#tf-signal-1c', 'class');
+  expect(c1).toContain('tf-state-up');
+  expect(c1).toContain('tf-signal-card--non-actionable');
+  expect(c1 || '').not.toContain('tf-signal-card--trade-active');
+  expect(await page.textContent('#tf-signal-1c .tf-dir')).toBe('LONG');
+  expect(await page.textContent('#tf-signal-1c .tf-arrow')).toBe('↑');
+  expect(await page.textContent('#tf-signal-1c .tf-pct')).toBe('41%');
+
+  const cAll = await page.getAttribute('#tf-signal-consolidated', 'class');
+  expect(cAll).toContain('tf-state-dim');
+  expect(await page.textContent('#tf-signal-consolidated .tf-dir')).toBe('NEUTRAL');
+
+  expect(await page.textContent('#tf-plan-state')).toBe('NO SETUP');
+  expect(await page.getAttribute('#tf-signal-plan', 'class')).toContain('tf-state-dim');
+});
+
 test('PLAN pill card renders from payload', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(
