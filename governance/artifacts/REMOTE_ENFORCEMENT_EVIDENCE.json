@@ -3,15 +3,17 @@
   "artifact": "governance/artifacts/REMOTE_ENFORCEMENT_EVIDENCE.json",
   "verification_method": "github_cli",
   "evidence_source": "gh api + gh run list",
-  "evidence_timestamp": "2026-06-17T03:35:41+00:00",
+  "evidence_timestamp": "2026-06-17T05:13:43+00:00",
   "repository": "evargas963/Ed-s-Console-App",
   "protected_branch": "main",
-  "required_status_checks": [],
-  "objective_audit_required": false,
-  "required_reviews": null,
-  "pr_review_required": false,
-  "allows_force_pushes": null,
-  "allows_deletions": null,
+  "required_status_checks": [
+    "objective-audit"
+  ],
+  "objective_audit_required": true,
+  "required_reviews": 1,
+  "pr_review_required": true,
+  "allows_force_pushes": false,
+  "allows_deletions": false,
   "bypass_actors": [],
   "verified_by": "tools/verify_remote_enforcement.py",
   "operator_attestation": false,
@@ -23,11 +25,72 @@
       "nameWithOwner": "evargas963/Ed-s-Console-App"
     },
     "branch_protection": {
-      "_error": "gh: Branch not protected (HTTP 404)",
-      "_exit_code": 1
+      "url": "https://api.github.com/repos/evargas963/Ed-s-Console-App/branches/main/protection",
+      "required_status_checks": {
+        "url": "https://api.github.com/repos/evargas963/Ed-s-Console-App/branches/main/protection/required_status_checks",
+        "strict": true,
+        "contexts": [
+          "objective-audit"
+        ],
+        "contexts_url": "https://api.github.com/repos/evargas963/Ed-s-Console-App/branches/main/protection/required_status_checks/contexts",
+        "checks": [
+          {
+            "context": "objective-audit",
+            "app_id": 15368
+          }
+        ]
+      },
+      "required_pull_request_reviews": {
+        "url": "https://api.github.com/repos/evargas963/Ed-s-Console-App/branches/main/protection/required_pull_request_reviews",
+        "dismiss_stale_reviews": false,
+        "require_code_owner_reviews": false,
+        "require_last_push_approval": false,
+        "required_approving_review_count": 1
+      },
+      "required_signatures": {
+        "url": "https://api.github.com/repos/evargas963/Ed-s-Console-App/branches/main/protection/required_signatures",
+        "enabled": false
+      },
+      "enforce_admins": {
+        "url": "https://api.github.com/repos/evargas963/Ed-s-Console-App/branches/main/protection/enforce_admins",
+        "enabled": false
+      },
+      "required_linear_history": {
+        "enabled": false
+      },
+      "allow_force_pushes": {
+        "enabled": false
+      },
+      "allow_deletions": {
+        "enabled": false
+      },
+      "block_creations": {
+        "enabled": false
+      },
+      "required_conversation_resolution": {
+        "enabled": false
+      },
+      "lock_branch": {
+        "enabled": false
+      },
+      "allow_fork_syncing": {
+        "enabled": false
+      }
     },
     "rulesets": [],
     "objective_audit_runs": [
+      {
+        "conclusion": "",
+        "databaseId": 27667323942,
+        "headBranch": "feature/institutional-key-levels",
+        "status": "in_progress"
+      },
+      {
+        "conclusion": "success",
+        "databaseId": 27664924771,
+        "headBranch": "feature/institutional-key-levels",
+        "status": "completed"
+      },
       {
         "conclusion": "success",
         "databaseId": 27662986304,
@@ -43,18 +106,6 @@
       {
         "conclusion": "failure",
         "databaseId": 27658325957,
-        "headBranch": "feature/institutional-key-levels",
-        "status": "completed"
-      },
-      {
-        "conclusion": "failure",
-        "databaseId": 27656868849,
-        "headBranch": "feature/institutional-key-levels",
-        "status": "completed"
-      },
-      {
-        "conclusion": "failure",
-        "databaseId": 27654343976,
         "headBranch": "feature/institutional-key-levels",
         "status": "completed"
       }
@@ -100,9 +151,9 @@
       "status_check_name_for_branch_protection": "objective-audit"
     }
   },
-  "branch_protection_verified": false,
-  "required_checks_enforced": false,
-  "operator_action_required": true,
+  "branch_protection_verified": true,
+  "required_checks_enforced": true,
+  "operator_action_required": false,
   "objective_audit_check_name": "objective-audit",
   "objective_audit_check_name_verified": true
 }

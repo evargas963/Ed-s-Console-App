@@ -127,13 +127,18 @@ def test_fetch_public_run_inspection_discovers_objective_audit_check_name() -> N
     assert OBJECTIVE_AUDIT_CHECK in names
 
 
-def test_fetch_github_without_cli_stays_pending() -> None:
-    from tools.remote_enforcement_evidence import fetch_github_evidence
+def test_fetch_github_without_cli_stays_pending(monkeypatch) -> None:
+    from tools.remote_enforcement_evidence import empty_remote_evidence, fetch_github_evidence
 
+    monkeypatch.setattr("tools.remote_enforcement_evidence._gh_available", lambda: False)
+    monkeypatch.setattr(
+        "tools.remote_enforcement_evidence.fetch_github_api_evidence",
+        lambda *a, **k: empty_remote_evidence(),
+    )
     ev = fetch_github_evidence(run_id=None)
-    if ev.get("verification_method") == "pending":
-        assert ev["branch_protection_verified"] is False
-    assert ev.get("operator_action_required") is True or ev.get("branch_protection_verified") is False
+    assert ev.get("verification_method") == "pending"
+    assert ev["branch_protection_verified"] is False
+    assert ev.get("operator_action_required") is True
 
 
 def test_artifacts_cannot_claim_verified_without_api_method(tmp_path: Path) -> None:

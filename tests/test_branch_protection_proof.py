@@ -15,7 +15,9 @@ def test_branch_protection_proof_passes_on_current_repo() -> None:
 
 
 def test_branch_protection_proof_honest_unverified() -> None:
-    proof = build_branch_protection_proof()
+    from tools.remote_enforcement_evidence import build_branch_protection_artifact, empty_remote_evidence
+
+    proof = build_branch_protection_artifact(empty_remote_evidence())
     assert proof["branch_protection"]["verified"] is False
     assert proof["external_enforcement_proven"] is False
     assert "GitHub API" in proof["branch_protection"]["reason"] or "without GitHub API" in proof["branch_protection"]["reason"]

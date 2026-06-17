@@ -72,6 +72,52 @@ def _legacy_build_governance_self_protection() -> dict:
     }
 
 
+def _external_enforcement_proven_consistent(data: dict) -> list[str]:
+    """external_enforcement_proven=true only when BRANCH_PROTECTION_PROOF is API-verified."""
+    errors: list[str] = []
+    if data.get("external_enforcement_proven") is not True:
+        return errors
+
+    bp_path = REPO_ROOT / "governance/artifacts/BRANCH_PROTECTION_PROOF.json"
+    if not bp_path.is_file():
+        errors.append(
+            f"{ARTIFACT}: external_enforcement_proven true but BRANCH_PROTECTION_PROOF.json missing"
+        )
+        return errors
+
+    try:
+        bp_data = json.loads(bp_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        errors.append(
+            f"{ARTIFACT}: external_enforcement_proven true but BRANCH_PROTECTION_PROOF unreadable ({exc})"
+        )
+        return errors
+
+    bp_verified = (bp_data.get("branch_protection") or {}).get("verified") is True
+    if not bp_verified:
+        errors.append(
+            f"{ARTIFACT}: external_enforcement_proven true but branch_protection.verified "
+            f"is not true in BRANCH_PROTECTION_PROOF.json"
+        )
+    if bp_data.get("external_enforcement_proven") is not True:
+        errors.append(
+            f"{ARTIFACT}: external_enforcement_proven true but "
+            f"BRANCH_PROTECTION_PROOF.external_enforcement_proven is not true"
+        )
+
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from tools.check_branch_protection_proof import run_branch_protection_proof_check
+
+    bp_errors = run_branch_protection_proof_check()
+    if bp_errors:
+        errors.append(
+            f"{ARTIFACT}: external_enforcement_proven true but branch protection proof invalid: "
+            f"{bp_errors[0]}"
+        )
+    return errors
+
+
 def run_governance_self_protection_check() -> list[str]:
     errors: list[str] = []
     for rel in REQUIRED_SURFACES + PRELOAD_RULES:
@@ -89,8 +135,7 @@ def run_governance_self_protection_check() -> list[str]:
         except (OSError, json.JSONDecodeError) as exc:
             errors.append(f"{ARTIFACT}: unreadable ({exc})")
         else:
-            if data.get("external_enforcement_proven") is True:
-                errors.append(f"{ARTIFACT}: external_enforcement_proven must not be true without proof")
+            errors.extend(_external_enforcement_proven_consistent(data))
             if data.get("l5_claim_without_proof_forbidden") is not True:
                 errors.append(f"{ARTIFACT}: must forbid L5 claims without adversarial + external proof")
 

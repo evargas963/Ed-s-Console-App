@@ -12,7 +12,9 @@ def test_required_status_checks_passes_on_current_repo() -> None:
 
 
 def test_required_status_checks_spec_honest_unverified() -> None:
-    spec = build_required_status_checks_spec()
+    from tools.remote_enforcement_evidence import build_required_status_checks_artifact, empty_remote_evidence
+
+    spec = build_required_status_checks_artifact(empty_remote_evidence())
     assert spec["workflow_exists"] is True
     assert spec["remote_enforcement_verified"] is False
     assert all(spec["commands_in_workflow"].values())

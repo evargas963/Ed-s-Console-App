@@ -24,23 +24,27 @@
   "schema_version": 2,
   "remote_evidence": {
     "evidence_source": "gh api + gh run list",
-    "evidence_timestamp": "2026-06-17T03:35:41+00:00",
+    "evidence_timestamp": "2026-06-17T05:13:43+00:00",
     "repository": "evargas963/Ed-s-Console-App",
     "protected_branch": "main",
-    "required_status_checks": [],
-    "required_reviews": null,
-    "allows_force_pushes": null,
-    "allows_deletions": null,
+    "required_status_checks": [
+      "objective-audit"
+    ],
+    "required_reviews": 1,
+    "allows_force_pushes": false,
+    "allows_deletions": false,
     "bypass_actors": [],
     "verification_method": "github_cli",
     "verified_by": "tools/verify_remote_enforcement.py"
   },
   "required_checks": {
-    "enforced": false,
-    "objective_audit_required_on_github": false,
-    "required_status_checks_on_github": []
+    "enforced": true,
+    "objective_audit_required_on_github": true,
+    "required_status_checks_on_github": [
+      "objective-audit"
+    ]
   },
-  "remote_enforcement_verified": false,
-  "verification_state": "unverified",
-  "generated": "2026-06-16"
+  "remote_enforcement_verified": true,
+  "verification_state": "verified",
+  "generated": "2026-06-17"
 }
