@@ -661,7 +661,6 @@ def build_phase3d_evidence_artifact(evidence: dict[str, Any], *, checker_tests: 
     wf = REPO_ROOT / ".github/workflows/objective-audit.yml"
     wf_text = wf.read_text(encoding="utf-8") if wf.is_file() else ""
     from tools.check_governance_critical_files import (
-        GOVERNANCE_CRITICAL_GLOBS,
         GOVERNANCE_CRITICAL_PATHS,
         _expand_glob_paths,
     )

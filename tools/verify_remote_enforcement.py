@@ -27,13 +27,11 @@ if str(REPO) not in sys.path:
 from tools.remote_enforcement_evidence import (  # noqa: E402
     ATTESTATION_TEMPLATE,
     DEFAULT_OBJECTIVE_AUDIT_RUN_ID,
-    EVIDENCE_PATH,
     apply_manual_attestation,
     build_phase3d_evidence_artifact,
     empty_remote_evidence,
     fetch_github_evidence,
     load_remote_evidence,
-    save_remote_evidence,
     write_all_artifacts,
 )
 

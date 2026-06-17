@@ -10,6 +10,12 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 REQUIREMENTS = REPO / "requirements.txt"
 REQUIREMENTS_DEV = REPO / "requirements-dev.txt"
+SCHWAB_CSV_FIRST_WORKFLOW = REPO / ".github/workflows/schwab-csv-first.yml"
+
+# Scanner v3 imports (PR register generation in schwab-csv-first.yml).
+CI_SCHWAB_SCANNER_IMPORT_MODULES: tuple[str, ...] = (
+    "tools.schwab_universal_coverage_scanner_v3.schwab_csv",
+)
 
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
@@ -48,6 +54,28 @@ def _ensure_ci_schwab_env() -> None:
     """Placeholder secrets so ``import server`` is CI-safe (no live auth at import)."""
     os.environ.setdefault("SCHWAB_API_KEY", "ci-placeholder-key")
     os.environ.setdefault("SCHWAB_APP_SECRET", "ci-placeholder-secret")
+
+
+def check_schwab_csv_first_workflow_installs_scanner_deps() -> list[str]:
+    """PR register-gen step needs requirements-dev (numpy) — push path skips scanner."""
+    errors: list[str] = []
+    if not SCHWAB_CSV_FIRST_WORKFLOW.is_file():
+        errors.append(".github/workflows/schwab-csv-first.yml: missing")
+        return errors
+    text = SCHWAB_CSV_FIRST_WORKFLOW.read_text(encoding="utf-8", errors="replace")
+    scanner_marker = "schwab_universal_coverage_scanner_v3"
+    idx = text.find(scanner_marker)
+    if idx < 0:
+        return errors
+    prefix = text[:idx]
+    if "pip install -r requirements-dev.txt" not in prefix:
+        errors.append(
+            "schwab-csv-first.yml: must run `pip install -r requirements-dev.txt` "
+            "before schwab_universal_coverage_scanner_v3 (PR register generation needs numpy)"
+        )
+    if "numpy" not in _requirements_text(REQUIREMENTS_DEV).lower():
+        errors.append("requirements-dev.txt: missing numpy pin for schwab scanner v3")
+    return errors
 
 
 def check_ci_tooling_dependencies() -> list[str]:
@@ -99,6 +127,17 @@ def check_ci_tooling_dependencies() -> list[str]:
                 f"CI app import {mod!r} failed ({exc}) — "
                 "ensure requirements.txt includes runtime deps (schwab-py) "
                 "and SCHWAB_* placeholder env is set"
+            )
+
+    errors.extend(check_schwab_csv_first_workflow_installs_scanner_deps())
+
+    for mod in CI_SCHWAB_SCANNER_IMPORT_MODULES:
+        try:
+            importlib.import_module(mod)
+        except ImportError as exc:
+            errors.append(
+                f"Schwab scanner import {mod!r} failed ({exc}) — "
+                "install requirements-dev.txt before CI scanner step"
             )
 
     return errors

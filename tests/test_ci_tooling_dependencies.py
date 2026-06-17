@@ -16,8 +16,10 @@ from tools.check_ci_tooling_dependencies import (  # noqa: E402
     CI_APP_IMPORT_MODULES,
     CI_GOVERNANCE_IMPORT_MODULES,
     CI_RUNTIME_DEPENDENCIES,
+    CI_SCHWAB_SCANNER_IMPORT_MODULES,
     CI_TOOLING_DEPENDENCIES,
     check_ci_tooling_dependencies,
+    check_schwab_csv_first_workflow_installs_scanner_deps,
 )
 
 
@@ -62,3 +64,16 @@ def test_pytest_conftest_sets_ci_schwab_placeholders() -> None:
 def test_check_ci_tooling_dependencies_passes_on_current_repo() -> None:
     errs = check_ci_tooling_dependencies()
     assert errs == [], errs
+
+
+def test_schwab_csv_first_workflow_installs_scanner_deps_before_register_gen() -> None:
+    wf = REPO / ".github/workflows/schwab-csv-first.yml"
+    text = wf.read_text(encoding="utf-8")
+    scanner_idx = text.index("schwab_universal_coverage_scanner_v3")
+    assert "pip install -r requirements-dev.txt" in text[:scanner_idx]
+    assert check_schwab_csv_first_workflow_installs_scanner_deps() == []
+
+
+@pytest.mark.parametrize("module", CI_SCHWAB_SCANNER_IMPORT_MODULES)
+def test_schwab_scanner_module_importable(module: str) -> None:
+    importlib.import_module(module)
