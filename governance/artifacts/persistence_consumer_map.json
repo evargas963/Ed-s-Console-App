@@ -39,7 +39,8 @@
           "calibration/validate_logging.py",
           "calibration/validate_logging_e2e.py",
           "calibration/validate_outcome_join.py",
-          "calibration/writer.py"
+          "calibration/writer.py",
+          "verification/base_ticker_observability.py"
         ]
       },
       "status": "live"
@@ -331,6 +332,7 @@
           "replay_bundle_coverage.py",
           "similarity_feature_search.py",
           "snapshot_normalizer.py",
+          "verification/base_ticker_observability.py",
           "verification/daily_health.py"
         ]
       },

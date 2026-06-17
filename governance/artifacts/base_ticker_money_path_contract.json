@@ -1,0 +1,68 @@
+{
+  "schema_version": "1",
+  "updated": "2026-06-17",
+  "purpose": "Base vs guest money-path ticker tiers and RTH observability minimums.",
+  "base_money_path_tickers": ["SPY", "QQQ", "IWM"],
+  "base_ticker_aliases": {
+    "training_anchor_tickers": "scheduler_user_tickers.TRAINING_ANCHOR_TICKERS",
+    "canonical_code": "money_path_ticker_tiers.BASE_MONEY_PATH_TICKERS"
+  },
+  "guest_ticker_policy": {
+    "definition": "Any symbol not in base_money_path_tickers unless explicitly promoted by coverage proof.",
+    "trust_class": "guest_unproven",
+    "ui_allowed": true,
+    "exploratory_allowed": true,
+    "universal_money_path_proof_allowed": false,
+    "must_surface_data_quality_warning_when_sparse": true
+  },
+  "promoted_guest_policy": {
+    "definition": "Operator-selected symbol that passes the same observability checker as a base ticker for a recent session window.",
+    "trust_class": "promoted_guest",
+    "promotion_requires": "check_base_ticker_observability PASS_BASE_OBSERVABILITY for named date range"
+  },
+  "base_ticker_requirements": {
+    "must_log_continuously_during_rth": true,
+    "must_have_replayable_snapshots": true,
+    "must_have_calibration_decision_records_when_ED_CALIBRATION_LOG": true,
+    "must_support_money_path_card_all_plan_audit": true,
+    "must_emit_data_quality_warning_when_coverage_insufficient": true
+  },
+  "rth_observability_thresholds": {
+    "rth_minutes_expected": 390,
+    "min_snapshot_rows_rth": 300,
+    "min_normalized_rows_rth": 300,
+    "max_median_gap_seconds": 90,
+    "max_gap_seconds": 300,
+    "calibration_log_parity_note": "When ED_CALIBRATION_LOG=1, calibration_decision_log rows should track full-pipeline fetches; may exceed snapshot count when throttle skips duplicate-minute inserts but calibration still logs."
+  },
+  "coverage_status_labels": [
+    "PASS_BASE_OBSERVABILITY",
+    "FAIL_SPARSE_SNAPSHOTS",
+    "FAIL_MISSING_CAL_LOG",
+    "FAIL_MISSING_NORMALIZED",
+    "INSUFFICIENT_EVIDENCE"
+  ],
+  "evidence_classification_note": "Universal money-path readiness requires PASS_BASE_OBSERVABILITY for every base ticker on the audit date. SPY-only proof does not generalize.",
+  "sparsity_investigation_2026_06_16": {
+    "summary": "Chronic snapshot row inequality — not a June-16-only query artifact.",
+    "spy_rth_rows": 368,
+    "qqq_rth_rows": 19,
+    "iwm_rth_rows": 19,
+    "qqq_median_gap_seconds_rth": 1287,
+    "iwm_median_gap_seconds_rth": 1277,
+    "cal_log_parity": "calibration_decision_log row counts match snapshot counts for QQQ/IWM (19=19) — logging is faithful to sparse full-pipeline fetches.",
+    "logging_universe": "SPY/QQQ/IWM all category=core in logging_universe.",
+    "documented_code_expectation": "server.py BACKGROUND MULTI-TICKER LOGGER comments note row-count inequality is expected when UI-heavy symbol (often SPY) drives Tier C fetches at ~1/min while others lag.",
+    "likely_mechanisms": [
+      "Full snapshot INSERT only on successful _fetch_state (quote+chain+signals); active SSE viewer on SPY drives ~1 insert/minute via ED_DB_SNAPSHOT_THROTTLE.",
+      "QQQ/IWM observed ~20min median gap — far below design logger cadence (~30s cycle) — indicates sustained full-pipeline persistence did not run at logger design rate for non-active base tickers on this deployment.",
+      "Lifetime DB pattern (June 2026): SPY ~380 rows/day avg vs QQQ ~90 vs IWM ~68 — systemic under-capture of base non-primary tickers."
+    ],
+    "ruled_out": [
+      "logging_universe exclusion",
+      "snapshots vs normalized mismatch",
+      "calibration logger filtering QQQ/IWM"
+    ],
+    "next_fix_direction": "Ensure background logger + base-ticker Tier C warm sustain full _fetch_state snapshot INSERT at SPY-parity cadence for all BASE_MONEY_PATH_TICKERS — file: server.py _logger_loop / _fetch_state / UI_MAXIMIZE panel warm."
+  }
+}

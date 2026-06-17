@@ -1,0 +1,1869 @@
+{
+  "meta": {
+    "date": "2026-06-16",
+    "rth_et": "09:30-16:00 ET",
+    "db_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\data\\ed_console.db",
+    "read_only": true,
+    "tickers": [
+      "SPY",
+      "QQQ",
+      "IWM"
+    ]
+  },
+  "data_coverage_table": [
+    {
+      "ticker": "SPY",
+      "snapshot_rows_rth": 368,
+      "normalized_rows_rth": 368,
+      "calibration_decision_log_rows_rth": 499,
+      "first_ts_et": "2026-06-16 09:30:46 ET",
+      "last_ts_et": "2026-06-16 15:59:47 ET",
+      "median_gap_seconds": 59.254491090774536,
+      "data_quality_notes": []
+    },
+    {
+      "ticker": "QQQ",
+      "snapshot_rows_rth": 19,
+      "normalized_rows_rth": 19,
+      "calibration_decision_log_rows_rth": 19,
+      "first_ts_et": "2026-06-16 09:30:26 ET",
+      "last_ts_et": "2026-06-16 15:48:06 ET",
+      "median_gap_seconds": 1287.4237871170044,
+      "data_quality_notes": [
+        "sparse snapshot coverage (19 rows; SPY baseline ~360+ for full session)",
+        "median inter-row gap 1287s (~21.5 min) \u2014 not 1m continuity"
+      ]
+    },
+    {
+      "ticker": "IWM",
+      "snapshot_rows_rth": 19,
+      "normalized_rows_rth": 19,
+      "calibration_decision_log_rows_rth": 19,
+      "first_ts_et": "2026-06-16 09:31:38 ET",
+      "last_ts_et": "2026-06-16 15:49:07 ET",
+      "median_gap_seconds": 1276.5942618846893,
+      "data_quality_notes": [
+        "sparse snapshot coverage (19 rows; SPY baseline ~360+ for full session)",
+        "median inter-row gap 1277s (~21.3 min) \u2014 not 1m continuity"
+      ]
+    }
+  ],
+  "tickers": {
+    "SPY": {
+      "coverage": {
+        "ticker": "SPY",
+        "snapshot_rows_rth": 368,
+        "normalized_rows_rth": 368,
+        "calibration_decision_log_rows_rth": 499,
+        "first_ts_et": "2026-06-16 09:30:46 ET",
+        "last_ts_et": "2026-06-16 15:59:47 ET",
+        "median_gap_seconds": 59.254491090774536,
+        "data_quality_notes": []
+      },
+      "calibration_log": {
+        "final_signal_counts": {
+          "wait": 495,
+          "long": 2,
+          "short": 2
+        },
+        "final_tradeable_true_count": 4,
+        "tradeable_windows": [
+          {
+            "ts_et": "2026-06-16 09:32:55 ET",
+            "ts_utc": 1781616775.9088762,
+            "final_signal": "long",
+            "final_tradeable": true,
+            "final_bias": "LONG",
+            "final_confidence": 0.418,
+            "primary_horizon": "5c",
+            "call_conviction": "low",
+            "entry_price": 755.18,
+            "stop_price": 754.43,
+            "target_price": 756.68,
+            "validation_summary": "all gates passed",
+            "wait_reason": ""
+          },
+          {
+            "ts_et": "2026-06-16 09:33:47 ET",
+            "ts_utc": 1781616827.0391173,
+            "final_signal": "long",
+            "final_tradeable": true,
+            "final_bias": "LONG",
+            "final_confidence": 0.4262,
+            "primary_horizon": "5c",
+            "call_conviction": "low",
+            "entry_price": 755.24,
+            "stop_price": 754.49,
+            "target_price": 756.74,
+            "validation_summary": "all gates passed",
+            "wait_reason": ""
+          },
+          {
+            "ts_et": "2026-06-16 12:08:42 ET",
+            "ts_utc": 1781626122.6785707,
+            "final_signal": "short",
+            "final_tradeable": true,
+            "final_bias": "SHORT",
+            "final_confidence": 0.3985,
+            "primary_horizon": "1c",
+            "call_conviction": "low",
+            "entry_price": 753.32,
+            "stop_price": 753.99,
+            "target_price": 751.98,
+            "validation_summary": "all gates passed",
+            "wait_reason": ""
+          },
+          {
+            "ts_et": "2026-06-16 12:09:16 ET",
+            "ts_utc": 1781626156.467432,
+            "final_signal": "short",
+            "final_tradeable": true,
+            "final_bias": "SHORT",
+            "final_confidence": 0.4096,
+            "primary_horizon": "1c",
+            "call_conviction": "low",
+            "entry_price": 753.32,
+            "stop_price": 753.99,
+            "target_price": 751.98,
+            "validation_summary": "all gates passed",
+            "wait_reason": ""
+          }
+        ]
+      },
+      "replays": [
+        {
+          "ticker": "SPY",
+          "ts_utc": 1781616646.4115286,
+          "ts_et": "2026-06-16 09:30:46 ET",
+          "spot": 754.51,
+          "zone": "pin_bull",
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.453,
+              "down": 0.347,
+              "flat": 0.2
+            },
+            "5m": {
+              "up": 0.449,
+              "down": 0.282,
+              "flat": 0.269
+            },
+            "15m": {
+              "up": 0.464,
+              "down": 0.184,
+              "flat": 0.352
+            },
+            "60m": {
+              "up": 0.491,
+              "down": 0.156,
+              "flat": 0.353
+            }
+          },
+          "fusion_available": true,
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.33833333833333834,
+              "down": 0.4016944016944017,
+              "flat": 0.25997225997226
+            },
+            "5c": {
+              "up": 0.377584,
+              "down": 0.244832,
+              "flat": 0.377584
+            },
+            "15c": {
+              "up": 0.268836,
+              "down": 0.263066,
+              "flat": 0.468098
+            },
+            "60c": {
+              "up": 0.200063,
+              "down": 0.29047,
+              "flat": 0.509467
+            }
+          },
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "SHORT",
+              "confidence": 0.4017
+            },
+            {
+              "horizon": "5c",
+              "call": "WAIT",
+              "confidence": 0.3776
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.4681
+            },
+            {
+              "horizon": "60c",
+              "call": "WAIT",
+              "confidence": 0.5095
+            }
+          ],
+          "final_bias": "WAIT",
+          "final_confidence": 0.3895,
+          "final_tradeable": false,
+          "wait_reason": "fewer than 2 tradeable horizons align with pooled direction \u2014 ALL synthesis withheld",
+          "call_signal": "wait",
+          "call_readiness": {
+            "wait_blocker": {
+              "reason": "stack",
+              "long_count": 2,
+              "short_count": 2,
+              "long_names": [
+                "Greeks",
+                "iwm_basket"
+              ],
+              "short_names": [
+                "spy_basket",
+                "qqq_basket"
+              ],
+              "threshold": 2
+            }
+          },
+          "entry_state": "no_setup",
+          "entry_display_text": "No valid setup",
+          "stop_display_text": "\u2014",
+          "targets_display": "\u2014",
+          "entry_price": null,
+          "stop_price": null,
+          "suppression_layer": "stack_vote_tie",
+          "ui_cards": {
+            "ALL_pill_direction": "FLAT",
+            "ALL_pill_visual_state": "dim/neutral",
+            "PLAN_pill_state": "NO SETUP"
+          },
+          "sample_label": "open"
+        },
+        {
+          "ticker": "SPY",
+          "ts_utc": 1781628600.5525074,
+          "ts_et": "2026-06-16 12:50:00 ET",
+          "spot": 752.71,
+          "zone": "breakout",
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.583,
+              "down": 0.313,
+              "flat": 0.104
+            },
+            "5m": {
+              "up": 0.563,
+              "down": 0.208,
+              "flat": 0.229
+            },
+            "15m": {
+              "up": 0.479,
+              "down": 0.083,
+              "flat": 0.437
+            },
+            "60m": {
+              "up": 0.479,
+              "down": 0.0,
+              "flat": 0.521
+            }
+          },
+          "fusion_available": true,
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.340495,
+              "down": 0.416501,
+              "flat": 0.243004
+            },
+            "5c": {
+              "up": 0.2781292781292781,
+              "down": 0.36093536093536094,
+              "flat": 0.36093536093536094
+            },
+            "15c": {
+              "up": 0.256231,
+              "down": 0.260957,
+              "flat": 0.482812
+            },
+            "60c": {
+              "up": 0.2087787912212088,
+              "down": 0.3957106042893957,
+              "flat": 0.39551060448939557
+            }
+          },
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "SHORT",
+              "confidence": 0.4165
+            },
+            {
+              "horizon": "5c",
+              "call": "WAIT",
+              "confidence": 0.3609
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.4828
+            },
+            {
+              "horizon": "60c",
+              "call": "WAIT",
+              "confidence": 0.3957
+            }
+          ],
+          "final_bias": "WAIT",
+          "final_confidence": 0.4132,
+          "final_tradeable": false,
+          "wait_reason": "fewer than 2 tradeable horizons align with pooled direction \u2014 ALL synthesis withheld",
+          "call_signal": "wait",
+          "call_readiness": {
+            "wait_blocker": {
+              "reason": "multi_horizon_policy",
+              "detail": "fewer than 2 tradeable horizons align with pooled direction \u2014 ALL synthesis withheld"
+            }
+          },
+          "entry_state": "no_setup",
+          "entry_display_text": "No valid setup",
+          "stop_display_text": "\u2014",
+          "targets_display": "\u2014",
+          "entry_price": null,
+          "stop_price": null,
+          "suppression_layer": "multi_horizon_alignment",
+          "ui_cards": {
+            "ALL_pill_direction": "FLAT",
+            "ALL_pill_visual_state": "dim/neutral",
+            "PLAN_pill_state": "NO SETUP"
+          },
+          "sample_label": "midday"
+        },
+        {
+          "ticker": "SPY",
+          "ts_utc": 1781639987.2555296,
+          "ts_et": "2026-06-16 15:59:47 ET",
+          "spot": 750.41,
+          "zone": "breakdown",
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.46,
+              "down": 0.456,
+              "flat": 0.084
+            },
+            "5m": {
+              "up": 0.459,
+              "down": 0.36,
+              "flat": 0.181
+            },
+            "15m": {
+              "up": 0.425,
+              "down": 0.395,
+              "flat": 0.18
+            },
+            "60m": {
+              "up": 0.387,
+              "down": 0.353,
+              "flat": 0.261
+            }
+          },
+          "fusion_available": true,
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.4104674104674105,
+              "down": 0.3451443451443451,
+              "flat": 0.24438824438824436
+            },
+            "5c": {
+              "up": 0.37612,
+              "down": 0.274718,
+              "flat": 0.349162
+            },
+            "15c": {
+              "up": 0.2535602535602536,
+              "down": 0.22857522857522858,
+              "flat": 0.5178645178645179
+            },
+            "60c": {
+              "up": 0.25035474964525034,
+              "down": 0.3748226251773748,
+              "flat": 0.3748226251773748
+            }
+          },
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4105
+            },
+            {
+              "horizon": "5c",
+              "call": "WAIT",
+              "confidence": 0.3761
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.5179
+            },
+            {
+              "horizon": "60c",
+              "call": "WAIT",
+              "confidence": 0.3748
+            }
+          ],
+          "final_bias": "WAIT",
+          "final_confidence": 0.4087,
+          "final_tradeable": false,
+          "wait_reason": "fewer than 2 tradeable horizons align with pooled direction \u2014 ALL synthesis withheld",
+          "call_signal": "wait",
+          "call_readiness": {
+            "wait_blocker": {
+              "reason": "time",
+              "detail": "\u22641 min to close",
+              "full_detail": "Only 1 min to close \u2014 no new entries."
+            }
+          },
+          "entry_state": "no_setup",
+          "entry_display_text": "No valid setup",
+          "stop_display_text": "\u2014",
+          "targets_display": "\u2014",
+          "entry_price": null,
+          "stop_price": null,
+          "suppression_layer": "time_gate",
+          "ui_cards": {
+            "ALL_pill_direction": "FLAT",
+            "ALL_pill_visual_state": "dim/neutral",
+            "PLAN_pill_state": "NO SETUP"
+          },
+          "sample_label": "near_close"
+        },
+        {
+          "ticker": "SPY",
+          "ts_utc": 1781616728.9044418,
+          "ts_et": "2026-06-16 09:32:08 ET",
+          "spot": 754.74,
+          "zone": "pin_bull",
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.457,
+              "down": 0.332,
+              "flat": 0.21
+            },
+            "5m": {
+              "up": 0.397,
+              "down": 0.276,
+              "flat": 0.328
+            },
+            "15m": {
+              "up": 0.335,
+              "down": 0.212,
+              "flat": 0.453
+            },
+            "60m": {
+              "up": 0.426,
+              "down": 0.05,
+              "flat": 0.524
+            }
+          },
+          "fusion_available": true,
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.334989,
+              "down": 0.416532,
+              "flat": 0.248479
+            },
+            "5c": {
+              "up": 0.387221,
+              "down": 0.255248,
+              "flat": 0.357531
+            },
+            "15c": {
+              "up": 0.258962,
+              "down": 0.26814,
+              "flat": 0.472898
+            },
+            "60c": {
+              "up": 0.185482,
+              "down": 0.320746,
+              "flat": 0.493772
+            }
+          },
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "SHORT",
+              "confidence": 0.4165
+            },
+            {
+              "horizon": "5c",
+              "call": "WAIT",
+              "confidence": 0.3872
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.4729
+            },
+            {
+              "horizon": "60c",
+              "call": "WAIT",
+              "confidence": 0.4938
+            }
+          ],
+          "final_bias": "WAIT",
+          "final_confidence": 0.404,
+          "final_tradeable": false,
+          "wait_reason": "fewer than 2 tradeable horizons align with pooled direction \u2014 ALL synthesis withheld",
+          "call_signal": "wait",
+          "call_readiness": {
+            "wait_blocker": {
+              "reason": "stack",
+              "long_count": 2,
+              "short_count": 2,
+              "long_names": [
+                "Greeks",
+                "iwm_basket"
+              ],
+              "short_names": [
+                "spy_basket",
+                "qqq_basket"
+              ],
+              "threshold": 2
+            }
+          },
+          "entry_state": "no_setup",
+          "entry_display_text": "No valid setup",
+          "stop_display_text": "\u2014",
+          "targets_display": "\u2014",
+          "entry_price": null,
+          "stop_price": null,
+          "suppression_layer": "stack_vote_tie",
+          "ui_cards": {
+            "ALL_pill_direction": "FLAT",
+            "ALL_pill_visual_state": "dim/neutral",
+            "PLAN_pill_state": "NO SETUP"
+          },
+          "sample_label": "live_tradeable_window",
+          "live_log": {
+            "ts_et": "2026-06-16 09:32:55 ET",
+            "ts_utc": 1781616775.9088762,
+            "final_signal": "long",
+            "final_tradeable": true,
+            "final_bias": "LONG",
+            "final_confidence": 0.418,
+            "primary_horizon": "5c",
+            "call_conviction": "low",
+            "entry_price": 755.18,
+            "stop_price": 754.43,
+            "target_price": 756.68,
+            "validation_summary": "all gates passed",
+            "wait_reason": ""
+          },
+          "replay_drift": true
+        },
+        {
+          "ticker": "SPY",
+          "ts_utc": 1781616827.0391173,
+          "ts_et": "2026-06-16 09:33:47 ET",
+          "spot": 755.2399,
+          "zone": "pin_bull",
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.504,
+              "down": 0.317,
+              "flat": 0.179
+            },
+            "5m": {
+              "up": 0.472,
+              "down": 0.22,
+              "flat": 0.308
+            },
+            "15m": {
+              "up": 0.497,
+              "down": 0.204,
+              "flat": 0.3
+            },
+            "60m": {
+              "up": 0.529,
+              "down": 0.095,
+              "flat": 0.376
+            }
+          },
+          "fusion_available": true,
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.426588,
+              "down": 0.336915,
+              "flat": 0.236497
+            },
+            "5c": {
+              "up": 0.3938103938103938,
+              "down": 0.25545625545625544,
+              "flat": 0.3507333507333507
+            },
+            "15c": {
+              "up": 0.377304,
+              "down": 0.245431,
+              "flat": 0.377265
+            },
+            "60c": {
+              "up": 0.191865,
+              "down": 0.30697,
+              "flat": 0.501165
+            }
+          },
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4266
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.3938
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.3773
+            },
+            {
+              "horizon": "60c",
+              "call": "WAIT",
+              "confidence": 0.5012
+            }
+          ],
+          "final_bias": "LONG",
+          "final_confidence": 0.4251,
+          "final_tradeable": true,
+          "wait_reason": "",
+          "call_signal": "long",
+          "call_readiness": {
+            "wait_blocker": null
+          },
+          "entry_state": "armed",
+          "entry_display_text": "Near 755.24 (\u00b10.22)\nAwaiting 1c confirmation",
+          "stop_display_text": "754.53",
+          "targets_display": "T1: 756.66 | T2: 757.37 | Runner: 757.37",
+          "entry_price": null,
+          "stop_price": 754.53,
+          "suppression_layer": "none_exposed",
+          "ui_cards": {
+            "ALL_pill_direction": "LONG",
+            "ALL_pill_visual_state": "directional",
+            "PLAN_pill_state": "ARMED"
+          },
+          "sample_label": "live_tradeable_window",
+          "live_log": {
+            "ts_et": "2026-06-16 09:33:47 ET",
+            "ts_utc": 1781616827.0391173,
+            "final_signal": "long",
+            "final_tradeable": true,
+            "final_bias": "LONG",
+            "final_confidence": 0.4262,
+            "primary_horizon": "5c",
+            "call_conviction": "low",
+            "entry_price": 755.24,
+            "stop_price": 754.49,
+            "target_price": 756.74,
+            "validation_summary": "all gates passed",
+            "wait_reason": ""
+          },
+          "replay_drift": false
+        },
+        {
+          "ticker": "SPY",
+          "ts_utc": 1781626122.6785707,
+          "ts_et": "2026-06-16 12:08:42 ET",
+          "spot": 753.32,
+          "zone": "pin_bull",
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.377,
+              "down": 0.369,
+              "flat": 0.254
+            },
+            "5m": {
+              "up": 0.246,
+              "down": 0.345,
+              "flat": 0.41
+            },
+            "15m": {
+              "up": 0.137,
+              "down": 0.234,
+              "flat": 0.629
+            },
+            "60m": {
+              "up": 0.097,
+              "down": 0.301,
+              "flat": 0.602
+            }
+          },
+          "fusion_available": true,
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.33262933262933264,
+              "down": 0.4236784236784237,
+              "flat": 0.24369224369224368
+            },
+            "5c": {
+              "up": 0.278413,
+              "down": 0.360814,
+              "flat": 0.360773
+            },
+            "15c": {
+              "up": 0.236753,
+              "down": 0.279764,
+              "flat": 0.483483
+            },
+            "60c": {
+              "up": 0.169438,
+              "down": 0.427245,
+              "flat": 0.403317
+            }
+          },
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "SHORT",
+              "confidence": 0.4237
+            },
+            {
+              "horizon": "5c",
+              "call": "WAIT",
+              "confidence": 0.3608
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.4835
+            },
+            {
+              "horizon": "60c",
+              "call": "WAIT",
+              "confidence": 0.4272
+            }
+          ],
+          "final_bias": "WAIT",
+          "final_confidence": 0.4198,
+          "final_tradeable": false,
+          "wait_reason": "fewer than 2 tradeable horizons align with pooled direction \u2014 ALL synthesis withheld",
+          "call_signal": "wait",
+          "call_readiness": {
+            "wait_blocker": {
+              "reason": "multi_horizon_policy",
+              "detail": "fewer than 2 tradeable horizons align with pooled direction \u2014 ALL synthesis withheld"
+            }
+          },
+          "entry_state": "no_setup",
+          "entry_display_text": "No valid setup",
+          "stop_display_text": "\u2014",
+          "targets_display": "\u2014",
+          "entry_price": null,
+          "stop_price": null,
+          "suppression_layer": "multi_horizon_alignment",
+          "ui_cards": {
+            "ALL_pill_direction": "FLAT",
+            "ALL_pill_visual_state": "dim/neutral",
+            "PLAN_pill_state": "NO SETUP"
+          },
+          "sample_label": "live_tradeable_window",
+          "live_log": {
+            "ts_et": "2026-06-16 12:08:42 ET",
+            "ts_utc": 1781626122.6785707,
+            "final_signal": "short",
+            "final_tradeable": true,
+            "final_bias": "SHORT",
+            "final_confidence": 0.3985,
+            "primary_horizon": "1c",
+            "call_conviction": "low",
+            "entry_price": 753.32,
+            "stop_price": 753.99,
+            "target_price": 751.98,
+            "validation_summary": "all gates passed",
+            "wait_reason": ""
+          },
+          "replay_drift": true
+        },
+        {
+          "ticker": "SPY",
+          "ts_utc": 1781626156.467432,
+          "ts_et": "2026-06-16 12:09:16 ET",
+          "spot": 753.32,
+          "zone": "pin_bull",
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.377,
+              "down": 0.369,
+              "flat": 0.254
+            },
+            "5m": {
+              "up": 0.246,
+              "down": 0.345,
+              "flat": 0.41
+            },
+            "15m": {
+              "up": 0.137,
+              "down": 0.234,
+              "flat": 0.629
+            },
+            "60m": {
+              "up": 0.097,
+              "down": 0.301,
+              "flat": 0.602
+            }
+          },
+          "fusion_available": true,
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.33551,
+              "down": 0.432091,
+              "flat": 0.232399
+            },
+            "5c": {
+              "up": 0.264562,
+              "down": 0.367719,
+              "flat": 0.367719
+            },
+            "15c": {
+              "up": 0.244303,
+              "down": 0.270688,
+              "flat": 0.485009
+            },
+            "60c": {
+              "up": 0.17055882944117057,
+              "down": 0.4226915773084227,
+              "flat": 0.40674959325040677
+            }
+          },
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "SHORT",
+              "confidence": 0.4321
+            },
+            {
+              "horizon": "5c",
+              "call": "WAIT",
+              "confidence": 0.3677
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.485
+            },
+            {
+              "horizon": "60c",
+              "call": "WAIT",
+              "confidence": 0.4227
+            }
+          ],
+          "final_bias": "WAIT",
+          "final_confidence": 0.4284,
+          "final_tradeable": false,
+          "wait_reason": "fewer than 2 tradeable horizons align with pooled direction \u2014 ALL synthesis withheld",
+          "call_signal": "wait",
+          "call_readiness": {
+            "wait_blocker": {
+              "reason": "multi_horizon_policy",
+              "detail": "fewer than 2 tradeable horizons align with pooled direction \u2014 ALL synthesis withheld"
+            }
+          },
+          "entry_state": "no_setup",
+          "entry_display_text": "No valid setup",
+          "stop_display_text": "\u2014",
+          "targets_display": "\u2014",
+          "entry_price": null,
+          "stop_price": null,
+          "suppression_layer": "multi_horizon_alignment",
+          "ui_cards": {
+            "ALL_pill_direction": "FLAT",
+            "ALL_pill_visual_state": "dim/neutral",
+            "PLAN_pill_state": "NO SETUP"
+          },
+          "sample_label": "live_tradeable_window",
+          "live_log": {
+            "ts_et": "2026-06-16 12:09:16 ET",
+            "ts_utc": 1781626156.467432,
+            "final_signal": "short",
+            "final_tradeable": true,
+            "final_bias": "SHORT",
+            "final_confidence": 0.4096,
+            "primary_horizon": "1c",
+            "call_conviction": "low",
+            "entry_price": 753.32,
+            "stop_price": 753.99,
+            "target_price": 751.98,
+            "validation_summary": "all gates passed",
+            "wait_reason": ""
+          },
+          "replay_drift": true
+        }
+      ],
+      "evidence_classification": [
+        "INSUFFICIENT_EVIDENCE_UI_LAYER_NOT_RUNTIME_TESTED",
+        "REPLAY_DRIFT_FROM_LIVE_POLICY",
+        "SIGNAL_EXPOSED"
+      ]
+    },
+    "QQQ": {
+      "coverage": {
+        "ticker": "QQQ",
+        "snapshot_rows_rth": 19,
+        "normalized_rows_rth": 19,
+        "calibration_decision_log_rows_rth": 19,
+        "first_ts_et": "2026-06-16 09:30:26 ET",
+        "last_ts_et": "2026-06-16 15:48:06 ET",
+        "median_gap_seconds": 1287.4237871170044,
+        "data_quality_notes": [
+          "sparse snapshot coverage (19 rows; SPY baseline ~360+ for full session)",
+          "median inter-row gap 1287s (~21.5 min) \u2014 not 1m continuity"
+        ]
+      },
+      "calibration_log": {
+        "final_signal_counts": {
+          "wait": 18,
+          "long": 1,
+          "short": 0
+        },
+        "final_tradeable_true_count": 1,
+        "tradeable_windows": [
+          {
+            "ts_et": "2026-06-16 10:17:42 ET",
+            "ts_utc": 1781619462.9322426,
+            "final_signal": "long",
+            "final_tradeable": true,
+            "final_bias": "LONG",
+            "final_confidence": 0.3974,
+            "primary_horizon": "60c",
+            "call_conviction": "low",
+            "entry_price": 741.68,
+            "stop_price": 740.84,
+            "target_price": 743.36,
+            "validation_summary": "all gates passed",
+            "wait_reason": ""
+          }
+        ]
+      },
+      "replays": [
+        {
+          "ticker": "QQQ",
+          "ts_utc": 1781616626.7093625,
+          "ts_et": "2026-06-16 09:30:26 ET",
+          "spot": 741.59,
+          "zone": "pin_bull",
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.479,
+              "down": 0.49,
+              "flat": 0.031
+            },
+            "5m": {
+              "up": 0.592,
+              "down": 0.231,
+              "flat": 0.177
+            },
+            "15m": {
+              "up": 0.605,
+              "down": 0.173,
+              "flat": 0.222
+            },
+            "60m": {
+              "up": 0.796,
+              "down": 0.023,
+              "flat": 0.181
+            }
+          },
+          "fusion_available": true,
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.444181,
+              "down": 0.281422,
+              "flat": 0.274397
+            },
+            "5c": {
+              "up": 0.2683632683632684,
+              "down": 0.36725336725336727,
+              "flat": 0.3643833643833644
+            },
+            "15c": {
+              "up": 0.383767,
+              "down": 0.240322,
+              "flat": 0.375911
+            },
+            "60c": {
+              "up": 0.420937420937421,
+              "down": 0.15815715815715817,
+              "flat": 0.4209054209054209
+            }
+          },
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4442
+            },
+            {
+              "horizon": "5c",
+              "call": "WAIT",
+              "confidence": 0.3673
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.3838
+            },
+            {
+              "horizon": "60c",
+              "call": "WAIT",
+              "confidence": 0.4209
+            }
+          ],
+          "final_bias": "WAIT",
+          "final_confidence": 0.4306,
+          "final_tradeable": false,
+          "wait_reason": "fewer than 2 tradeable horizons align with pooled direction \u2014 ALL synthesis withheld",
+          "call_signal": "wait",
+          "call_readiness": {
+            "wait_blocker": {
+              "reason": "stack",
+              "long_count": 2,
+              "short_count": 2,
+              "long_names": [
+                "Greeks",
+                "iwm_basket"
+              ],
+              "short_names": [
+                "spy_basket",
+                "qqq_basket"
+              ],
+              "threshold": 2
+            }
+          },
+          "entry_state": "no_setup",
+          "entry_display_text": "No valid setup",
+          "stop_display_text": "\u2014",
+          "targets_display": "\u2014",
+          "entry_price": null,
+          "stop_price": null,
+          "suppression_layer": "stack_vote_tie",
+          "ui_cards": {
+            "ALL_pill_direction": "FLAT",
+            "ALL_pill_visual_state": "dim/neutral",
+            "PLAN_pill_state": "NO SETUP"
+          },
+          "sample_label": "open"
+        },
+        {
+          "ticker": "QQQ",
+          "ts_utc": 1781628333.8357034,
+          "ts_et": "2026-06-16 12:45:33 ET",
+          "spot": 734.5056,
+          "zone": "breakdown",
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.514,
+              "down": 0.397,
+              "flat": 0.089
+            },
+            "5m": {
+              "up": 0.467,
+              "down": 0.446,
+              "flat": 0.087
+            },
+            "15m": {
+              "up": 0.393,
+              "down": 0.523,
+              "flat": 0.084
+            },
+            "60m": {
+              "up": 0.419,
+              "down": 0.379,
+              "flat": 0.202
+            }
+          },
+          "fusion_available": true,
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.41432841432841433,
+              "down": 0.31866331866331865,
+              "flat": 0.267008267008267
+            },
+            "5c": {
+              "up": 0.413436,
+              "down": 0.23131,
+              "flat": 0.355254
+            },
+            "15c": {
+              "up": 0.23599276400723598,
+              "down": 0.3191836808163192,
+              "flat": 0.44482355517644484
+            },
+            "60c": {
+              "up": 0.270393,
+              "down": 0.364993,
+              "flat": 0.364614
+            }
+          },
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4143
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4134
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.4448
+            },
+            {
+              "horizon": "60c",
+              "call": "WAIT",
+              "confidence": 0.365
+            }
+          ],
+          "final_bias": "LONG",
+          "final_confidence": 0.415,
+          "final_tradeable": false,
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "call_signal": "wait",
+          "call_readiness": {
+            "wait_blocker": {
+              "reason": "multi_horizon_policy",
+              "detail": "ALL consolidated long disagrees with tape stack short"
+            }
+          },
+          "entry_state": "no_setup",
+          "entry_display_text": "No valid setup",
+          "stop_display_text": "\u2014",
+          "targets_display": "T1: \u2014 | T2: \u2014 | Runner: \u2014",
+          "entry_price": null,
+          "stop_price": null,
+          "suppression_layer": "multi_horizon_alignment",
+          "ui_cards": {
+            "ALL_pill_direction": "FLAT",
+            "ALL_pill_visual_state": "dim/neutral",
+            "PLAN_pill_state": "NO SETUP"
+          },
+          "sample_label": "midday"
+        },
+        {
+          "ticker": "QQQ",
+          "ts_utc": 1781639286.8461564,
+          "ts_et": "2026-06-16 15:48:06 ET",
+          "spot": 732.09,
+          "zone": "breakdown",
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.467,
+              "down": 0.448,
+              "flat": 0.085
+            },
+            "5m": {
+              "up": 0.329,
+              "down": 0.619,
+              "flat": 0.051
+            },
+            "15m": {
+              "up": 0.382,
+              "down": 0.519,
+              "flat": 0.099
+            },
+            "60m": {
+              "up": 0.295,
+              "down": 0.535,
+              "flat": 0.17
+            }
+          },
+          "fusion_available": true,
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.407966,
+              "down": 0.339674,
+              "flat": 0.25236
+            },
+            "5c": {
+              "up": 0.247133,
+              "down": 0.395828,
+              "flat": 0.357039
+            },
+            "15c": {
+              "up": 0.27533,
+              "down": 0.362335,
+              "flat": 0.362335
+            },
+            "60c": {
+              "up": 0.18743200000000002,
+              "down": 0.40628400000000003,
+              "flat": 0.40628400000000003
+            }
+          },
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.408
+            },
+            {
+              "horizon": "5c",
+              "call": "SHORT",
+              "confidence": 0.3958
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.3623
+            },
+            {
+              "horizon": "60c",
+              "call": "WAIT",
+              "confidence": 0.4063
+            }
+          ],
+          "final_bias": "WAIT",
+          "final_confidence": 0.3954,
+          "final_tradeable": false,
+          "wait_reason": "fewer than 2 tradeable horizons align with pooled direction \u2014 ALL synthesis withheld",
+          "call_signal": "wait",
+          "call_readiness": {
+            "wait_blocker": {
+              "reason": "time",
+              "detail": "\u226413 min to close",
+              "full_detail": "Only 13 min to close \u2014 no new entries."
+            }
+          },
+          "entry_state": "no_setup",
+          "entry_display_text": "No valid setup",
+          "stop_display_text": "\u2014",
+          "targets_display": "\u2014",
+          "entry_price": null,
+          "stop_price": null,
+          "suppression_layer": "time_gate",
+          "ui_cards": {
+            "ALL_pill_direction": "FLAT",
+            "ALL_pill_visual_state": "dim/neutral",
+            "PLAN_pill_state": "NO SETUP"
+          },
+          "sample_label": "near_close"
+        },
+        {
+          "ticker": "QQQ",
+          "ts_utc": 1781619462.9322426,
+          "ts_et": "2026-06-16 10:17:42 ET",
+          "spot": 741.68,
+          "zone": "pin_bull",
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.331,
+              "down": 0.281,
+              "flat": 0.388
+            },
+            "5m": {
+              "up": 0.27,
+              "down": 0.163,
+              "flat": 0.567
+            },
+            "15m": {
+              "up": 0.312,
+              "down": 0.098,
+              "flat": 0.59
+            },
+            "60m": {
+              "up": 0.165,
+              "down": 0.134,
+              "flat": 0.701
+            }
+          },
+          "fusion_available": true,
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.405757,
+              "down": 0.299166,
+              "flat": 0.295077
+            },
+            "5c": {
+              "up": 0.42268357731642275,
+              "down": 0.2322767677232323,
+              "flat": 0.34503965496034505
+            },
+            "15c": {
+              "up": 0.3488393488393488,
+              "down": 0.3023233023233023,
+              "flat": 0.3488373488373488
+            },
+            "60c": {
+              "up": 0.4224535775464225,
+              "down": 0.18525781474218528,
+              "flat": 0.39228860771139235
+            }
+          },
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4058
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4227
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.3488
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.4225
+            }
+          ],
+          "final_bias": "LONG",
+          "final_confidence": 0.4073,
+          "final_tradeable": true,
+          "wait_reason": "",
+          "call_signal": "long",
+          "call_readiness": {
+            "wait_blocker": null
+          },
+          "entry_state": "armed",
+          "entry_display_text": "Near 741.68 (\u00b10.25)\nAwaiting 1c confirmation",
+          "stop_display_text": "740.93",
+          "targets_display": "T1: 743.18 | T2: 743.93 | Runner: 743.93",
+          "entry_price": null,
+          "stop_price": 740.93,
+          "suppression_layer": "none_exposed",
+          "ui_cards": {
+            "ALL_pill_direction": "LONG",
+            "ALL_pill_visual_state": "directional",
+            "PLAN_pill_state": "ARMED"
+          },
+          "sample_label": "live_tradeable_window",
+          "live_log": {
+            "ts_et": "2026-06-16 10:17:42 ET",
+            "ts_utc": 1781619462.9322426,
+            "final_signal": "long",
+            "final_tradeable": true,
+            "final_bias": "LONG",
+            "final_confidence": 0.3974,
+            "primary_horizon": "60c",
+            "call_conviction": "low",
+            "entry_price": 741.68,
+            "stop_price": 740.84,
+            "target_price": 743.36,
+            "validation_summary": "all gates passed",
+            "wait_reason": ""
+          },
+          "replay_drift": false
+        }
+      ],
+      "evidence_classification": [
+        "INSUFFICIENT_EVIDENCE_UI_LAYER_NOT_RUNTIME_TESTED",
+        "SIGNAL_EXPOSED",
+        "SIGNAL_MISSING_DUE_TO_DATA"
+      ]
+    },
+    "IWM": {
+      "coverage": {
+        "ticker": "IWM",
+        "snapshot_rows_rth": 19,
+        "normalized_rows_rth": 19,
+        "calibration_decision_log_rows_rth": 19,
+        "first_ts_et": "2026-06-16 09:31:38 ET",
+        "last_ts_et": "2026-06-16 15:49:07 ET",
+        "median_gap_seconds": 1276.5942618846893,
+        "data_quality_notes": [
+          "sparse snapshot coverage (19 rows; SPY baseline ~360+ for full session)",
+          "median inter-row gap 1277s (~21.3 min) \u2014 not 1m continuity"
+        ]
+      },
+      "calibration_log": {
+        "final_signal_counts": {
+          "wait": 18,
+          "long": 1,
+          "short": 0
+        },
+        "final_tradeable_true_count": 1,
+        "tradeable_windows": [
+          {
+            "ts_et": "2026-06-16 10:42:46 ET",
+            "ts_utc": 1781620966.6885943,
+            "final_signal": "long",
+            "final_tradeable": true,
+            "final_bias": "LONG",
+            "final_confidence": 0.3906,
+            "primary_horizon": "15c",
+            "call_conviction": "low",
+            "entry_price": 294.35,
+            "stop_price": 293.99,
+            "target_price": 295.07,
+            "validation_summary": "all gates passed",
+            "wait_reason": ""
+          }
+        ]
+      },
+      "replays": [
+        {
+          "ticker": "IWM",
+          "ts_utc": 1781616698.1022532,
+          "ts_et": "2026-06-16 09:31:38 ET",
+          "spot": 295.68,
+          "zone": "pin_bull",
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.403,
+              "down": 0.352,
+              "flat": 0.245
+            },
+            "5m": {
+              "up": 0.342,
+              "down": 0.236,
+              "flat": 0.422
+            },
+            "15m": {
+              "up": 0.25,
+              "down": 0.199,
+              "flat": 0.551
+            },
+            "60m": {
+              "up": 0.17,
+              "down": 0.127,
+              "flat": 0.703
+            }
+          },
+          "fusion_available": true,
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.344904,
+              "down": 0.310212,
+              "flat": 0.344884
+            },
+            "5c": {
+              "up": 0.235888,
+              "down": 0.290883,
+              "flat": 0.473229
+            },
+            "15c": {
+              "up": 0.267635,
+              "down": 0.254071,
+              "flat": 0.478294
+            },
+            "60c": {
+              "up": 0.224771,
+              "down": 0.210141,
+              "flat": 0.565088
+            }
+          },
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "WAIT",
+              "confidence": 0.3449
+            },
+            {
+              "horizon": "5c",
+              "call": "WAIT",
+              "confidence": 0.4732
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.4783
+            },
+            {
+              "horizon": "60c",
+              "call": "WAIT",
+              "confidence": 0.5651
+            }
+          ],
+          "final_bias": "WAIT",
+          "final_confidence": 0.3537,
+          "final_tradeable": false,
+          "wait_reason": "pooled stack evidence favors flat \u2014 no directional edge",
+          "call_signal": "wait",
+          "call_readiness": {
+            "wait_blocker": {
+              "reason": "stack",
+              "long_count": 2,
+              "short_count": 2,
+              "long_names": [
+                "Greeks",
+                "iwm_basket"
+              ],
+              "short_names": [
+                "spy_basket",
+                "qqq_basket"
+              ],
+              "threshold": 2
+            }
+          },
+          "entry_state": "no_setup",
+          "entry_display_text": "No valid setup",
+          "stop_display_text": "\u2014",
+          "targets_display": "\u2014",
+          "entry_price": null,
+          "stop_price": null,
+          "suppression_layer": "stack_vote_tie",
+          "ui_cards": {
+            "ALL_pill_direction": "FLAT",
+            "ALL_pill_visual_state": "dim/neutral",
+            "PLAN_pill_state": "NO SETUP"
+          },
+          "sample_label": "open"
+        },
+        {
+          "ticker": "IWM",
+          "ts_utc": 1781628371.3901803,
+          "ts_et": "2026-06-16 12:46:11 ET",
+          "spot": 293.445,
+          "zone": "breakdown",
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.465,
+              "down": 0.386,
+              "flat": 0.15
+            },
+            "5m": {
+              "up": 0.311,
+              "down": 0.375,
+              "flat": 0.314
+            },
+            "15m": {
+              "up": 0.265,
+              "down": 0.318,
+              "flat": 0.417
+            },
+            "60m": {
+              "up": 0.194,
+              "down": 0.384,
+              "flat": 0.422
+            }
+          },
+          "fusion_available": true,
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.352794,
+              "down": 0.300274,
+              "flat": 0.346932
+            },
+            "5c": {
+              "up": 0.26678526678526676,
+              "down": 0.27044827044827047,
+              "flat": 0.4627664627664627
+            },
+            "15c": {
+              "up": 0.141787,
+              "down": 0.35635,
+              "flat": 0.501863
+            },
+            "60c": {
+              "up": 0.23441823441823442,
+              "down": 0.24350924350924352,
+              "flat": 0.5220725220725221
+            }
+          },
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "WAIT",
+              "confidence": 0.3528
+            },
+            {
+              "horizon": "5c",
+              "call": "WAIT",
+              "confidence": 0.4628
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.5019
+            },
+            {
+              "horizon": "60c",
+              "call": "WAIT",
+              "confidence": 0.5221
+            }
+          ],
+          "final_bias": "WAIT",
+          "final_confidence": 0.3548,
+          "final_tradeable": false,
+          "wait_reason": "pooled stack evidence favors flat \u2014 no directional edge",
+          "call_signal": "wait",
+          "call_readiness": {
+            "wait_blocker": {
+              "reason": "multi_horizon_policy",
+              "detail": "pooled stack evidence favors flat \u2014 no directional edge"
+            }
+          },
+          "entry_state": "no_setup",
+          "entry_display_text": "No valid setup",
+          "stop_display_text": "\u2014",
+          "targets_display": "\u2014",
+          "entry_price": null,
+          "stop_price": null,
+          "suppression_layer": "multi_horizon_alignment",
+          "ui_cards": {
+            "ALL_pill_direction": "FLAT",
+            "ALL_pill_visual_state": "dim/neutral",
+            "PLAN_pill_state": "NO SETUP"
+          },
+          "sample_label": "midday"
+        },
+        {
+          "ticker": "IWM",
+          "ts_utc": 1781639347.0170035,
+          "ts_et": "2026-06-16 15:49:07 ET",
+          "spot": 292.32,
+          "zone": "breakdown",
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.465,
+              "down": 0.386,
+              "flat": 0.15
+            },
+            "5m": {
+              "up": 0.311,
+              "down": 0.375,
+              "flat": 0.314
+            },
+            "15m": {
+              "up": 0.265,
+              "down": 0.318,
+              "flat": 0.417
+            },
+            "60m": {
+              "up": 0.194,
+              "down": 0.384,
+              "flat": 0.422
+            }
+          },
+          "fusion_available": true,
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.285399,
+              "down": 0.357331,
+              "flat": 0.35727
+            },
+            "5c": {
+              "up": 0.188383,
+              "down": 0.320134,
+              "flat": 0.491483
+            },
+            "15c": {
+              "up": 0.152309,
+              "down": 0.326216,
+              "flat": 0.521475
+            },
+            "60c": {
+              "up": 0.153324,
+              "down": 0.22898,
+              "flat": 0.617696
+            }
+          },
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "WAIT",
+              "confidence": 0.3573
+            },
+            {
+              "horizon": "5c",
+              "call": "WAIT",
+              "confidence": 0.4915
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.5215
+            },
+            {
+              "horizon": "60c",
+              "call": "WAIT",
+              "confidence": 0.6177
+            }
+          ],
+          "final_bias": "WAIT",
+          "final_confidence": 0.3665,
+          "final_tradeable": false,
+          "wait_reason": "pooled stack evidence favors flat \u2014 no directional edge",
+          "call_signal": "wait",
+          "call_readiness": {
+            "wait_blocker": {
+              "reason": "time",
+              "detail": "\u226412 min to close",
+              "full_detail": "Only 12 min to close \u2014 no new entries."
+            }
+          },
+          "entry_state": "no_setup",
+          "entry_display_text": "No valid setup",
+          "stop_display_text": "\u2014",
+          "targets_display": "\u2014",
+          "entry_price": null,
+          "stop_price": null,
+          "suppression_layer": "time_gate",
+          "ui_cards": {
+            "ALL_pill_direction": "FLAT",
+            "ALL_pill_visual_state": "dim/neutral",
+            "PLAN_pill_state": "NO SETUP"
+          },
+          "sample_label": "near_close"
+        },
+        {
+          "ticker": "IWM",
+          "ts_utc": 1781620966.6885943,
+          "ts_et": "2026-06-16 10:42:46 ET",
+          "spot": 294.345,
+          "zone": "pin_bull",
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.35,
+              "down": 0.424,
+              "flat": 0.226
+            },
+            "5m": {
+              "up": 0.254,
+              "down": 0.171,
+              "flat": 0.575
+            },
+            "15m": {
+              "up": 0.236,
+              "down": 0.121,
+              "flat": 0.643
+            },
+            "60m": {
+              "up": 0.133,
+              "down": 0.053,
+              "flat": 0.814
+            }
+          },
+          "fusion_available": true,
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.396579,
+              "down": 0.299636,
+              "flat": 0.303785
+            },
+            "5c": {
+              "up": 0.262084,
+              "down": 0.266921,
+              "flat": 0.470995
+            },
+            "15c": {
+              "up": 0.446228,
+              "down": 0.156586,
+              "flat": 0.397186
+            },
+            "60c": {
+              "up": 0.261201,
+              "down": 0.228832,
+              "flat": 0.509967
+            }
+          },
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.3966
+            },
+            {
+              "horizon": "5c",
+              "call": "WAIT",
+              "confidence": 0.471
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4462
+            },
+            {
+              "horizon": "60c",
+              "call": "WAIT",
+              "confidence": 0.51
+            }
+          ],
+          "final_bias": "LONG",
+          "final_confidence": 0.3868,
+          "final_tradeable": true,
+          "wait_reason": "",
+          "call_signal": "long",
+          "call_readiness": {
+            "wait_blocker": null
+          },
+          "entry_state": "armed",
+          "entry_display_text": "Near 294.35 (\u00b10.12)\nAwaiting 1c confirmation",
+          "stop_display_text": "293.99",
+          "targets_display": "T1: 295.07 | T2: 295.43 | Runner: 295.43",
+          "entry_price": null,
+          "stop_price": 293.99,
+          "suppression_layer": "none_exposed",
+          "ui_cards": {
+            "ALL_pill_direction": "LONG",
+            "ALL_pill_visual_state": "directional",
+            "PLAN_pill_state": "ARMED"
+          },
+          "sample_label": "live_tradeable_window",
+          "live_log": {
+            "ts_et": "2026-06-16 10:42:46 ET",
+            "ts_utc": 1781620966.6885943,
+            "final_signal": "long",
+            "final_tradeable": true,
+            "final_bias": "LONG",
+            "final_confidence": 0.3906,
+            "primary_horizon": "15c",
+            "call_conviction": "low",
+            "entry_price": 294.35,
+            "stop_price": 293.99,
+            "target_price": 295.07,
+            "validation_summary": "all gates passed",
+            "wait_reason": ""
+          },
+          "replay_drift": false
+        }
+      ],
+      "evidence_classification": [
+        "INSUFFICIENT_EVIDENCE_UI_LAYER_NOT_RUNTIME_TESTED",
+        "SIGNAL_EXPOSED",
+        "SIGNAL_MISSING_DUE_TO_DATA"
+      ]
+    }
+  },
+  "ui_render_contract": {
+    "ALL_pill": "static/index.html renderTimeframeSignalRow + engineTradeableSetup",
+    "PLAN_pill": "static/index.html paintTradePlanCard + engineTradeableSetup",
+    "horizon_pills": "mhap_rows; deriveSourceForHorizon (fusion chip, not horizon_prob_bars)",
+    "histogram": "market_state.horizon_prob_bars \u2014 context rail only",
+    "api_fields": "market_state.py \u2014 final_tradeable, final_bias, mhap_rows, entry_display_text"
+  },
+  "contract_tests_proposed": [
+    {
+      "id": "all_directional_when_tradeable",
+      "owner": "tests/test_issue18_ui_contract.py"
+    },
+    {
+      "id": "all_plan_wait_when_not_tradeable",
+      "owner": "tests/test_issue18_ui_contract.py"
+    },
+    {
+      "id": "plan_same_gate_as_all",
+      "owner": "tests/test_issue18_ui_contract.py (exists)"
+    },
+    {
+      "id": "horizon_pills_mhap_not_histogram",
+      "owner": "tests/test_issue18_ui_contract.py (exists)"
+    },
+    {
+      "id": "histogram_context_only",
+      "owner": "tests/test_issue18_ui_contract.py deriveSourceForHorizon"
+    },
+    {
+      "id": "call_engine_veto_wait",
+      "owner": "multi_horizon_decision finalize_multi_horizon_bundle"
+    }
+  ]
+}
