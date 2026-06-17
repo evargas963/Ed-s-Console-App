@@ -2600,6 +2600,14 @@ def _base_money_path_logger_loop():
             status = _logger_fetch_and_log(ticker)
             log.info("Base money-path logger: %s → %s", ticker, status)
 
+        try:
+            from db import DB_PATH as _base_norm_db_path
+            from normalized_training_sync import schedule_debounced_base_money_path_normalized_refresh
+
+            schedule_debounced_base_money_path_normalized_refresh(_base_norm_db_path, logger=log)
+        except Exception as _bne:
+            log.warning("schedule base money-path normalized refresh: %s", _bne)
+
         elapsed = time.monotonic() - cycle_start
         wait = max(0.0, interval - elapsed)
         sleep_end = time.monotonic() + wait
