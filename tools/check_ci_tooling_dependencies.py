@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Verify CI / objective-audit governance tooling imports and requirements-dev pins."""
+"""Verify CI / objective-audit imports and requirements pins."""
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+REQUIREMENTS = REPO / "requirements.txt"
 REQUIREMENTS_DEV = REPO / "requirements-dev.txt"
 
 if str(REPO) not in sys.path:
@@ -19,27 +21,46 @@ CI_TOOLING_DEPENDENCIES: tuple[tuple[str, str], ...] = (
     ("pyyaml", "yaml"),
 )
 
+# Runtime deps from requirements.txt (server / Schwab client path).
+CI_RUNTIME_DEPENDENCIES: tuple[tuple[str, str], ...] = (
+    ("schwab-py", "schwab"),
+)
+
 # Governance modules imported during enforce_all_rules --objective-audit static locks.
 CI_GOVERNANCE_IMPORT_MODULES: tuple[str, ...] = (
     "tools.build_feature_assignment_matrix_v2",
 )
 
+# App modules adversarial / objective-audit jobs import without live Schwab credentials.
+CI_APP_IMPORT_MODULES: tuple[str, ...] = (
+    "schwab_client",
+    "server",
+)
 
-def _requirements_dev_text() -> str:
-    if not REQUIREMENTS_DEV.is_file():
+
+def _requirements_text(path: Path) -> str:
+    if not path.is_file():
         return ""
-    return REQUIREMENTS_DEV.read_text(encoding="utf-8", errors="replace")
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def _ensure_ci_schwab_env() -> None:
+    """Placeholder secrets so ``import server`` is CI-safe (no live auth at import)."""
+    os.environ.setdefault("SCHWAB_API_KEY", "ci-placeholder-key")
+    os.environ.setdefault("SCHWAB_APP_SECRET", "ci-placeholder-secret")
 
 
 def check_ci_tooling_dependencies() -> list[str]:
     errors: list[str] = []
-    req_text = _requirements_dev_text()
-    if not req_text.strip():
+    req_dev_text = _requirements_text(REQUIREMENTS_DEV)
+    req_runtime_text = _requirements_text(REQUIREMENTS)
+    if not req_dev_text.strip():
         errors.append("requirements-dev.txt: missing")
-        return errors
+    if not req_runtime_text.strip():
+        errors.append("requirements.txt: missing")
 
     for pkg_name, import_name in CI_TOOLING_DEPENDENCIES:
-        if pkg_name.lower() not in req_text.lower():
+        if pkg_name.lower() not in req_dev_text.lower():
             errors.append(f"requirements-dev.txt: missing package pin for {pkg_name!r}")
         try:
             importlib.import_module(import_name)
@@ -49,6 +70,17 @@ def check_ci_tooling_dependencies() -> list[str]:
                 f"install via requirements-dev.txt ({pkg_name})"
             )
 
+    for pkg_name, import_name in CI_RUNTIME_DEPENDENCIES:
+        if pkg_name.lower() not in req_runtime_text.lower():
+            errors.append(f"requirements.txt: missing package pin for {pkg_name!r}")
+        try:
+            importlib.import_module(import_name)
+        except ImportError as exc:
+            errors.append(
+                f"CI runtime import {import_name!r} failed ({exc}) — "
+                f"install via requirements.txt ({pkg_name})"
+            )
+
     for mod in CI_GOVERNANCE_IMPORT_MODULES:
         try:
             importlib.import_module(mod)
@@ -56,6 +88,17 @@ def check_ci_tooling_dependencies() -> list[str]:
             errors.append(
                 f"CI governance import {mod!r} failed ({exc}) — "
                 "ensure requirements-dev.txt lists all tooling deps"
+            )
+
+    _ensure_ci_schwab_env()
+    for mod in CI_APP_IMPORT_MODULES:
+        try:
+            importlib.import_module(mod)
+        except ImportError as exc:
+            errors.append(
+                f"CI app import {mod!r} failed ({exc}) — "
+                "ensure requirements.txt includes runtime deps (schwab-py) "
+                "and SCHWAB_* placeholder env is set"
             )
 
     return errors

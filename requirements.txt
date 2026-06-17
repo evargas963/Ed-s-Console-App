@@ -20,4 +20,5 @@ python-dateutil>=2.9
 pytz>=2025.2
 PyYAML>=6.0
 python-dotenv>=1.0
+schwab-py>=1.5
 torch>=2.10
