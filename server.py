@@ -1940,14 +1940,14 @@ _vix_tracker = _VIXTracker()
 # The logger runs every LOG_INTERVAL seconds, cycling through all tracked
 # tickers with a STAGGER_SECS delay between each to avoid rate-limit bursts.
 #
-# Row-count inequality across tickers is expected under normal operation:
-#   • UI-heavy / focused symbols (often SPY) may accumulate more 1m snapshot rows than others.
+# Base money-path tickers (SPY/QQQ/IWM) require equal RTH capture — not guest-style sparsity.
+#   • Dedicated ``_base_money_path_logger_loop`` sustains ~1 full snapshot/min per base symbol
+#     regardless of which ticker is active in the UI (see money_path_ticker_tiers.py).
 #   • ED_DB_SNAPSHOT_THROTTLE (default on): at most one INSERT per ticker per UTC-minute bucket.
-#   • Logger visits each enrolled symbol once per cycle; cycle length grows with symbol count.
-#   • RTH_ONLY may skip background _logger_fetch_and_log outside the ET session window; the
-#     active UI path may still fetch (still subject to throttle).
-#   • Briefly viewed symbols legitimately have fewer rows than core — check logging_universe
-#     membership and recent max(ts_utc), not row count alone (tools/_ticker_coverage_audit_v1.py).
+#   • The general logger still rotates mega-caps + user_persisted; cycle length grows with count.
+#   • RTH_ONLY may skip background fetches outside the ET session window.
+#   • Guest / briefly viewed symbols legitimately have fewer rows — base trio must not.
+#     Gate: ``python tools/check_base_ticker_observability.py --date YYYY-MM-DD``.
 #
 # Schwab rate limits: ~120 requests/min. Each ticker needs 2 calls (quote +
 # chain). 5 core tickers = 10 calls per 30s cycle = well within limits.
@@ -2447,9 +2447,12 @@ def _logger_fetch_and_log(ticker: str) -> str:
             return "skipped:closed"
 
         try:
+            from money_path_ticker_tiers import should_skip_background_full_snapshot
             from scheduler_user_tickers import panel_auto_ticker_set
 
-            if ticker.upper() in panel_auto_ticker_set(str(get_db().db_path)):
+            if should_skip_background_full_snapshot(
+                ticker, panel_auto_ticker_set(str(get_db().db_path))
+            ):
                 return "skipped:confluence_quote_only"
         except Exception as e:
             log.debug("panel_auto logger skip check: %s", e, exc_info=True)
@@ -2546,19 +2549,88 @@ def _logger_loop():
     log.info("Background multi-ticker logger stopped")
 
 
+_base_money_path_logger_running: bool = False
+_base_money_path_logger_thread: threading.Thread | None = None
+
+
+def base_money_path_logger_tickers() -> tuple[str, ...]:
+    """SPY/QQQ/IWM — dedicated RTH capture rotation independent of UI-active ticker."""
+    from money_path_ticker_tiers import BASE_MONEY_PATH_TICKERS
+
+    return BASE_MONEY_PATH_TICKERS
+
+
+def _base_money_path_logger_loop():
+    """
+    Dedicated base-ticker capture: SPY, QQQ, IWM at ~1 full snapshot/min each during RTH.
+
+    Runs alongside the general multi-ticker logger so base anchors are not starved when the
+    UI focuses one symbol or when the 12-ticker rotation cycle exceeds LOG_INTERVAL.
+    """
+    from money_path_ticker_tiers import base_money_path_capture_interval_sec
+
+    global _base_money_path_logger_running, _cached_mkt_ctx_ts
+    interval = base_money_path_capture_interval_sec()
+    tickers = base_money_path_logger_tickers()
+    log.info(
+        "Base money-path logger started — %s every %.0fs (UI-independent)",
+        list(tickers),
+        interval,
+    )
+
+    time.sleep(LOGGER_STARTUP_DELAY_SEC)
+
+    while _base_money_path_logger_running:
+        cycle_start = time.monotonic()
+
+        if not _is_loggable_session():
+            sleep_end = time.monotonic() + min(interval, 30.0)
+            while _base_money_path_logger_running and time.monotonic() < sleep_end:
+                time.sleep(1)
+            continue
+
+        with _cached_mkt_ctx_lock:
+            _cached_mkt_ctx_ts = 0.0
+
+        for i, ticker in enumerate(tickers):
+            if not _base_money_path_logger_running:
+                break
+            if i > 0:
+                time.sleep(STAGGER_SECS)
+            status = _logger_fetch_and_log(ticker)
+            log.info("Base money-path logger: %s → %s", ticker, status)
+
+        elapsed = time.monotonic() - cycle_start
+        wait = max(0.0, interval - elapsed)
+        sleep_end = time.monotonic() + wait
+        while _base_money_path_logger_running and time.monotonic() < sleep_end:
+            time.sleep(1)
+
+    log.info("Base money-path logger stopped")
+
+
 def start_logger():
     global _logger_running, _logger_thread
+    global _base_money_path_logger_running, _base_money_path_logger_thread
     if _logger_running:
         return
     _hydrate_logger_tickers_from_db()
     _logger_running = True
-    _logger_thread  = threading.Thread(target=_logger_loop, daemon=True, name="ed-ticker-logger")
+    _base_money_path_logger_running = True
+    _logger_thread = threading.Thread(target=_logger_loop, daemon=True, name="ed-ticker-logger")
+    _base_money_path_logger_thread = threading.Thread(
+        target=_base_money_path_logger_loop,
+        daemon=True,
+        name="ed-base-money-path-logger",
+    )
     _logger_thread.start()
+    _base_money_path_logger_thread.start()
 
 
 def stop_logger():
-    global _logger_running
+    global _logger_running, _base_money_path_logger_running
     _logger_running = False
+    _base_money_path_logger_running = False
 
 
 # ─────────────────────────────────────────────────────────────────────────────

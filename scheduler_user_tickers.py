@@ -122,8 +122,11 @@ def panel_auto_ticker_set(db_path: str) -> frozenset[str]:
 
 
 def filter_tickers_for_background_logging(tickers: list[str], db_path: str) -> list[str]:
-    """Drop panel_auto from background full-chain snapshot rotation (thin quote path only)."""
-    skip = panel_auto_ticker_set(db_path)
+    """Drop panel_auto from background full-chain snapshot rotation (thin quote path only).
+
+    Base money-path anchors (SPY/QQQ/IWM) are never excluded — they require full capture parity.
+    """
+    skip = panel_auto_ticker_set(db_path) - training_anchor_tickers_upper()
     if not skip:
         return list(tickers)
     out = [t for t in tickers if t.upper() not in skip]

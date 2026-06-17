@@ -1,0 +1,75 @@
+{
+  "meta": {
+    "date": "2026-06-16",
+    "rth_et": "09:30-16:00 ET",
+    "db_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\data\\ed_console.db",
+    "base_universe_ready": false,
+    "contract": "governance/artifacts/base_ticker_money_path_contract.json"
+  },
+  "tickers": [
+    {
+      "ticker": "SPY",
+      "snapshot_count_rth": 368,
+      "normalized_count_rth": 368,
+      "calibration_decision_count_rth": 499,
+      "first_ts_utc": 1781616646.4115286,
+      "last_ts_utc": 1781639987.2555296,
+      "first_ts_et": "2026-06-16 09:30:46 ET",
+      "last_ts_et": "2026-06-16 15:59:47 ET",
+      "median_gap_seconds": 59.254,
+      "max_gap_seconds": 254.038,
+      "coverage_status": "PASS_BASE_OBSERVABILITY",
+      "reason": "meets base RTH observability thresholds",
+      "thresholds_applied": {
+        "min_snapshot_rows_rth": 300,
+        "min_normalized_rows_rth": 300,
+        "max_median_gap_seconds": 90.0,
+        "max_gap_seconds": 300.0
+      }
+    },
+    {
+      "ticker": "QQQ",
+      "snapshot_count_rth": 19,
+      "normalized_count_rth": 19,
+      "calibration_decision_count_rth": 19,
+      "first_ts_utc": 1781616626.7093625,
+      "last_ts_utc": 1781639286.8461564,
+      "first_ts_et": "2026-06-16 09:30:26 ET",
+      "last_ts_et": "2026-06-16 15:48:06 ET",
+      "median_gap_seconds": 1287.424,
+      "max_gap_seconds": 1604.376,
+      "coverage_status": "FAIL_SPARSE_SNAPSHOTS",
+      "reason": "snapshot_rows_rth=19 normalized_rows_rth=19 below minimum 300; median_gap_seconds=1287.4 exceeds 90.0; max_gap_seconds=1604.4 exceeds 300.0",
+      "thresholds_applied": {
+        "min_snapshot_rows_rth": 300,
+        "min_normalized_rows_rth": 300,
+        "max_median_gap_seconds": 90.0,
+        "max_gap_seconds": 300.0
+      }
+    },
+    {
+      "ticker": "IWM",
+      "snapshot_count_rth": 19,
+      "normalized_count_rth": 19,
+      "calibration_decision_count_rth": 19,
+      "first_ts_utc": 1781616698.1022532,
+      "last_ts_utc": 1781639347.0170035,
+      "first_ts_et": "2026-06-16 09:31:38 ET",
+      "last_ts_et": "2026-06-16 15:49:07 ET",
+      "median_gap_seconds": 1276.594,
+      "max_gap_seconds": 1604.51,
+      "coverage_status": "FAIL_SPARSE_SNAPSHOTS",
+      "reason": "snapshot_rows_rth=19 normalized_rows_rth=19 below minimum 300; median_gap_seconds=1276.6 exceeds 90.0; max_gap_seconds=1604.5 exceeds 300.0",
+      "thresholds_applied": {
+        "min_snapshot_rows_rth": 300,
+        "min_normalized_rows_rth": 300,
+        "max_median_gap_seconds": 90.0,
+        "max_gap_seconds": 300.0
+      }
+    }
+  ],
+  "summary": {
+    "pass_count": 1,
+    "fail_count": 2
+  }
+}
