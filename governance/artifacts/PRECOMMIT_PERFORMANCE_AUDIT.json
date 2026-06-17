@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-06-16T19:47:59+00:00",
+  "generated_at_utc": "2026-06-17T05:01:22+00:00",
   "measurement_mode": "declared_policy_only",
   "total_measured_seconds": null,
   "slowest_hook": null,
@@ -8,7 +8,58 @@
     "0": "Tier 0 \u2014 Upfront gate (enforce_all_rules --upfront-gate before staging production paths)",
     "1": "Tier 1 \u2014 Pre-commit (staged + fast locks)",
     "2": "Tier 2 \u2014 Pre-push / explicit local audit",
-    "3": "Tier 3 \u2014 CI objective-audit + reviewer audit"
+    "3": "Tier 3 \u2014 CI objective-audit + reviewer audit",
+    "4": "Tier 4 \u2014 Full training/qualification \u2014 never pre-push"
+  },
+  "phase3k_governance_pre_push_optimization": {
+    "pre_push_bundle_seconds_before": 1265.0,
+    "pre_push_bundle_target_seconds": 600.0,
+    "static_profile_seconds_before": 103.0,
+    "dominant_subcheck_before": "check_ablation_seven_model_four_horizon_grid",
+    "dominant_subcheck_seconds_before": 99.4,
+    "test_file_share_before": {
+      "tests/test_check_fix_everything_we_touch.py": 0.99,
+      "tests/test_governance_consolidation.py": 3.0
+    },
+    "top_slow_tests_before": [
+      {
+        "test": "test_objective_code_audit_situational_runtime_dispatch",
+        "seconds": 240.7
+      },
+      {
+        "test": "test_ablation_legacy_report_runnable_inference_and_target",
+        "seconds": 180.8
+      },
+      {
+        "test": "test_ablation_grid_requires_all_seven_models_and_four_horizons",
+        "seconds": 126.8
+      },
+      {
+        "test": "test_run_objective_code_audit_static_passes",
+        "seconds": 124.4
+      }
+    ],
+    "pre_push_bundle_seconds_after": 576.24,
+    "test_check_fix_everything_seconds_after": 563.66,
+    "static_profile_seconds_after": 94.0,
+    "top_slow_tests_after": [
+      {
+        "test": "test_ablation_legacy_report_runnable_inference_and_target",
+        "seconds": 161.9
+      },
+      {
+        "test": "test_ablation_grid_requires_all_seven_models_and_four_horizons",
+        "seconds": 110.5
+      },
+      {
+        "test": "test_run_objective_code_audit_static_passes",
+        "seconds": 57.2
+      },
+      {
+        "test": "test_ablation_report_status_uses_runnable_denominator",
+        "seconds": 55.2
+      }
+    ]
   },
   "hooks": [
     {

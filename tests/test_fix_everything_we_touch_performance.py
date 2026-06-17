@@ -93,9 +93,60 @@ def test_objective_audit_uses_full_static_not_cache(monkeypatch):
         calls.append({"full_static": full_static, "use_cache": use_cache})
         return []
 
+    monkeypatch.delenv("ED_PYTEST_REUSE_STATIC_AUDIT", raising=False)
+    mod.reset_session_static_audit_cache_for_tests()
     monkeypatch.setattr(mod, "_run_repo_wide_static_check_funcs", capture)
     mod.run_repo_wide_static_audit(staged=set())
     assert calls == [{"full_static": True, "use_cache": False}]
+
+
+def test_pytest_session_static_audit_cache_reuses_result(monkeypatch):
+    """Phase 3K — read-only pytest tests must not rebuild repo-wide static audit."""
+    monkeypatch.setenv("ED_PYTEST_REUSE_STATIC_AUDIT", "1")
+    mod.reset_session_static_audit_cache_for_tests()
+    invocations: list[int] = []
+
+    def capture(*, staged=None, full_static=False, profile=None, use_cache=True):
+        invocations.append(1)
+        return []
+
+    monkeypatch.setattr(mod, "_run_repo_wide_static_check_funcs", capture)
+    mod.run_repo_wide_static_audit(staged=set())
+    mod.run_repo_wide_static_audit(staged=set())
+    assert invocations == [1]
+    cache = mod.session_static_audit_cache_for_tests()
+    assert cache is not None
+    assert tuple() in cache
+
+
+def test_force_fresh_static_audit_bypasses_session_cache(monkeypatch):
+    monkeypatch.setenv("ED_PYTEST_REUSE_STATIC_AUDIT", "1")
+    mod.reset_session_static_audit_cache_for_tests()
+    invocations: list[int] = []
+
+    def capture(*, staged=None, full_static=False, profile=None, use_cache=True):
+        invocations.append(1)
+        return []
+
+    monkeypatch.setattr(mod, "_run_repo_wide_static_check_funcs", capture)
+    mod.run_repo_wide_static_audit(staged=set())
+    mod.run_repo_wide_static_audit(staged=set(), force_fresh=True)
+    assert invocations == [1, 1]
+
+
+def test_ablation_static_index_reused_across_read_only_checks():
+    from tools.ablation_static_lock_index import (
+        get_ablation_static_lock_index,
+        get_ablation_static_lock_index_build_count,
+    )
+
+    before = get_ablation_static_lock_index_build_count()
+    idx = get_ablation_static_lock_index()
+    mod.check_ablation_seven_model_four_horizon_grid()
+    mod.check_ablation_equal_layer_consumers()
+    after = get_ablation_static_lock_index_build_count()
+    assert after == before
+    assert get_ablation_static_lock_index() is idx
 
 
 def test_profile_mode_writes_artifact(monkeypatch, tmp_path):

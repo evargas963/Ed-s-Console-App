@@ -35,6 +35,7 @@ class AblationStaticLockIndex:
     enriched: list[dict[str, Any]] | None
     specs: list[dict[str, Any]]
     spec_build_error: str | None
+    runnable_target: int = field(default=0)
     build_count: int = field(default=1)
 
 
@@ -113,6 +114,7 @@ def _build_index(
             specs=[],
             spec_build_error=None,
             build_count=build_count,
+            runnable_target=0,
         )
 
     if not mpath.is_file():
@@ -126,6 +128,7 @@ def _build_index(
             specs=[],
             spec_build_error=None,
             build_count=build_count,
+            runnable_target=0,
         )
 
     try:
@@ -141,6 +144,7 @@ def _build_index(
             specs=[],
             spec_build_error=None,
             build_count=build_count,
+            runnable_target=0,
         )
 
     if db_resolved is not None:
@@ -162,6 +166,8 @@ def _build_index(
             spec_build_error = str(exc)
             specs = []
 
+    runnable_target = sum(1 for s in specs if s.get("group_columns"))
+
     return AblationStaticLockIndex(
         manifest_path=mpath,
         db_path=db_resolved,
@@ -172,4 +178,5 @@ def _build_index(
         specs=specs,
         spec_build_error=spec_build_error,
         build_count=build_count,
+        runnable_target=runnable_target,
     )

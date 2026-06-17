@@ -23,11 +23,10 @@ from tools.ablation_static_lock_index import (  # noqa: E402
 )
 
 
-@pytest.fixture(autouse=True)
-def _reset_index():
-    reset_ablation_static_lock_index_for_tests()
+@pytest.fixture
+def _reset_index(fresh_ablation_static_lock_index):
+    """Backward-compatible alias — opt-in reset only (no autouse per Phase 3K)."""
     yield
-    reset_ablation_static_lock_index_for_tests()
 
 
 def test_shared_index_built_once_per_process():
@@ -92,7 +91,7 @@ def test_objective_audit_repo_wide_includes_both_ablation_checks():
     assert "check_ablation_equal_layer_consumers" in fe._REPO_WIDE_STATIC_CHECK_FUNCS
 
 
-def test_failure_in_one_check_does_not_hide_failure_in_the_other(monkeypatch):
+def test_failure_in_one_check_does_not_hide_failure_in_the_other(monkeypatch, fresh_ablation_static_lock_index):
     bad = AblationStaticLockIndex(
         manifest_path=REPO / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json",
         db_path=None,
@@ -102,6 +101,7 @@ def test_failure_in_one_check_does_not_hide_failure_in_the_other(monkeypatch):
         enriched=None,
         specs=[],
         spec_build_error=None,
+        runnable_target=0,
         build_count=1,
     )
 

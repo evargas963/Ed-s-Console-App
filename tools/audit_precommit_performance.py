@@ -87,6 +87,35 @@ TIER_LABELS = {
     1: "Tier 1 — Pre-commit (staged + fast locks)",
     2: "Tier 2 — Pre-push / explicit local audit",
     3: "Tier 3 — CI objective-audit + reviewer audit",
+    4: "Tier 4 — Full training/qualification — never pre-push",
+}
+
+# Phase 3K — measured pre-push bundle baseline (2026-06-11 profiling).
+PHASE3K_BASELINE = {
+    "pre_push_bundle_seconds_before": 1265.0,
+    "pre_push_bundle_target_seconds": 600.0,
+    "static_profile_seconds_before": 103.0,
+    "dominant_subcheck_before": "check_ablation_seven_model_four_horizon_grid",
+    "dominant_subcheck_seconds_before": 99.4,
+    "test_file_share_before": {
+        "tests/test_check_fix_everything_we_touch.py": 0.99,
+        "tests/test_governance_consolidation.py": 3.0,
+    },
+    "top_slow_tests_before": [
+        {"test": "test_objective_code_audit_situational_runtime_dispatch", "seconds": 240.7},
+        {"test": "test_ablation_legacy_report_runnable_inference_and_target", "seconds": 180.8},
+        {"test": "test_ablation_grid_requires_all_seven_models_and_four_horizons", "seconds": 126.8},
+        {"test": "test_run_objective_code_audit_static_passes", "seconds": 124.4},
+    ],
+    "pre_push_bundle_seconds_after": 576.24,
+    "test_check_fix_everything_seconds_after": 563.66,
+    "static_profile_seconds_after": 94.0,
+    "top_slow_tests_after": [
+        {"test": "test_ablation_legacy_report_runnable_inference_and_target", "seconds": 161.9},
+        {"test": "test_ablation_grid_requires_all_seven_models_and_four_horizons", "seconds": 110.5},
+        {"test": "test_run_objective_code_audit_static_passes", "seconds": 57.2},
+        {"test": "test_ablation_report_status_uses_runnable_denominator", "seconds": 55.2},
+    ],
 }
 
 
@@ -178,6 +207,7 @@ def build_audit(*, measure: bool = False, measure_timeout_sec: int = 600) -> dic
         "total_measured_seconds": round(total_measured, 3) if measure else None,
         "slowest_hook": slowest,
         "tier_labels": TIER_LABELS,
+        "phase3k_governance_pre_push_optimization": dict(PHASE3K_BASELINE),
         "hooks": hook_rows,
         "findings": _findings(hook_rows),
     }
@@ -237,6 +267,28 @@ def write_markdown(audit: dict) -> str:
         lines.append("")
         for f in findings:
             lines.append(f"- {f}")
+    lines.append("")
+    phase3k = audit.get("phase3k_governance_pre_push_optimization") or {}
+    if phase3k:
+        lines.append("## Phase 3K — governance pre-push optimization")
+        lines.append("")
+        lines.append(f"- Pre-push bundle before: **{phase3k.get('pre_push_bundle_seconds_before')}s**")
+        after = phase3k.get("pre_push_bundle_seconds_after")
+        if after is not None:
+            lines.append(f"- Pre-push bundle after: **{after}s** (~{100 * (1 - after / phase3k.get('pre_push_bundle_seconds_before', after)):.0f}% vs before)")
+        tcf_after = phase3k.get("test_check_fix_everything_seconds_after")
+        if tcf_after is not None:
+            lines.append(f"- `test_check_fix_everything_we_touch.py` after: **{tcf_after}s**")
+        static_after = phase3k.get("static_profile_seconds_after")
+        if static_after is not None:
+            lines.append(f"- Static profile after: **{static_after}s** (grid check still ~90s once per process)")
+        lines.append(f"- Target: **<{phase3k.get('pre_push_bundle_target_seconds', 600)}s**")
+        lines.append(
+            f"- Static profile before: **{phase3k.get('static_profile_seconds_before')}s** "
+            f"(dominant: `{phase3k.get('dominant_subcheck_before')}` "
+            f"~{phase3k.get('dominant_subcheck_seconds_before')}s once)"
+        )
+        lines.append("")
     lines.append("")
     return "\n".join(lines)
 

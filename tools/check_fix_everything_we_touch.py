@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -31,6 +32,24 @@ from typing import Any, Callable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MEMO_DIR = REPO_ROOT / "governance" / "SCHWAB_V4_REVIEW_MEMOS"
+
+# Phase 3K — pytest session reuse for expensive repo-wide static audit (pre-push bundle).
+_SESSION_STATIC_AUDIT_CACHE: dict[tuple[str, ...], list[str]] | None = None
+
+
+def _pytest_reuse_static_audit() -> bool:
+    return os.environ.get("ED_PYTEST_REUSE_STATIC_AUDIT") == "1"
+
+
+def reset_session_static_audit_cache_for_tests() -> None:
+    """Clear in-process static audit cache (tests only)."""
+    global _SESSION_STATIC_AUDIT_CACHE
+    _SESSION_STATIC_AUDIT_CACHE = None
+
+
+def session_static_audit_cache_for_tests() -> dict[tuple[str, ...], list[str]] | None:
+    """Expose cache for pytest cache-correctness assertions."""
+    return _SESSION_STATIC_AUDIT_CACHE
 
 CODE_EDIT_LINE = re.compile(
     r"^\s*-\s*\*\*code edit:\*\*\s*(.+)$",
@@ -2345,24 +2364,22 @@ def check_full_stack_ablation_coverage() -> list[str]:
     # (c) PER-FEATURE PLACEMENT — feature × all seven models × all four horizons.
     fusion_cells = rep.get("whole_stack_feature_cells") or rep.get("whole_stack_feature_group_cells") or []
     try:
+        from tools.ablation_static_lock_index import get_ablation_static_lock_index
         from tools.feature_curation_gate import (
             _ablation_pool_tickers,
             ablation_grid_groups,
-            load_ablation_manifest,
-            whole_stack_fusion_cell_target,
         )
         from governed_stack_contract import FULL_STACK_MODEL_LAYERS as _REQUIRED_MODELS
 
-        manifest_path = REPO_ROOT / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json"
-        if not manifest_path.is_file():
-            manifest_path = (
-                Path(__file__).resolve().parent.parent
-                / "governance"
-                / "artifacts"
-                / "feature_ablation_manifest_leaf.json"
+        idx = get_ablation_static_lock_index()
+        if idx.manifest_load_error or idx.manifest is None:
+            errors.append(
+                f"full-stack coverage: could not load placement manifest cone: "
+                f"{idx.manifest_load_error or 'manifest missing'}"
             )
-        manifest = load_ablation_manifest(manifest_path)
-        expected_target = whole_stack_fusion_cell_target(manifest)
+            return errors
+        manifest = idx.manifest
+        expected_target = idx.runnable_target
         expected_groups = {g["group_id"] for g in ablation_grid_groups(manifest)}
         expected_pool_tickers = _ablation_pool_tickers(manifest)
         required_models = list(_REQUIRED_MODELS)
@@ -4971,13 +4988,32 @@ def situational_audit_applies(
     return False
 
 
-def run_repo_wide_static_audit(*, staged: set[str] | None = None, full_static: bool = True) -> list[str]:
+def run_repo_wide_static_audit(
+    *,
+    staged: set[str] | None = None,
+    full_static: bool = True,
+    force_fresh: bool = False,
+) -> list[str]:
     """Repo-wide static locks — full strength for objective-audit / --enforce-static."""
-    return _run_repo_wide_static_check_funcs(
-        staged=staged,
+    global _SESSION_STATIC_AUDIT_CACHE
+    st = staged if staged is not None else set()
+    cache_key = tuple(sorted(st))
+    if _pytest_reuse_static_audit() and not force_fresh and _SESSION_STATIC_AUDIT_CACHE is not None:
+        cached = _SESSION_STATIC_AUDIT_CACHE.get(cache_key)
+        if cached is not None:
+            return list(cached)
+
+    errors = _run_repo_wide_static_check_funcs(
+        staged=st,
         full_static=True,
         use_cache=False,
     )
+
+    if _pytest_reuse_static_audit() and not force_fresh:
+        if _SESSION_STATIC_AUDIT_CACHE is None:
+            _SESSION_STATIC_AUDIT_CACHE = {}
+        _SESSION_STATIC_AUDIT_CACHE[cache_key] = list(errors)
+    return errors
 
 
 def run_situational_runtime_audits(
@@ -5082,10 +5118,11 @@ def run_objective_code_audit(
     staged: set[str] | None = None,
     runtime: bool = True,
     full_runtime: bool = False,
+    force_fresh_static: bool = False,
 ) -> dict:
     """Mandatory turn audit: repo-wide static locks + situational runtime where cone fits."""
     st = staged if staged is not None else _git_staged_paths()
-    static_errors = run_repo_wide_static_audit(staged=st)
+    static_errors = run_repo_wide_static_audit(staged=st, force_fresh=force_fresh_static)
 
     out: dict = {
         "audit": "objective_code_audit",

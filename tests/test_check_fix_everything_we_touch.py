@@ -868,7 +868,8 @@ def test_ablation_placement_validity_passes_after_fix2() -> None:
 
 
 def test_run_objective_code_audit_static_passes() -> None:
-    result = mod.run_objective_code_audit(staged=set(), runtime=False)
+    """Single full static integration — real repo-wide locks including ablation grid."""
+    result = mod.run_objective_code_audit(staged=set(), runtime=False, force_fresh_static=True)
     assert result["static_ok"] is True, result.get("static_errors")
     assert result["audit"] == "objective_code_audit"
     assert "full repo" in result.get("scope", "")
@@ -878,17 +879,22 @@ def test_objective_code_audit_universal_scope() -> None:
     assert mod.check_objective_code_audit_documentation() == []
 
 
-def test_objective_code_audit_situational_runtime_dispatch() -> None:
+def test_objective_code_audit_situational_runtime_dispatch(monkeypatch) -> None:
     """Unrelated staged path skips ablation runtime; ablation cone path triggers it."""
-    ui_only = mod.run_objective_code_audit(staged={"static/index.html"}, runtime=True)
-    assert "ablation_placement_validity" in (ui_only.get("skipped_runtime_audits") or [])
-    assert ui_only["static_ok"] is True, ui_only.get("static_errors")
+    monkeypatch.setattr(
+        mod,
+        "audit_ablation_placement_validity",
+        lambda **kw: {"ok": True, "stats": {}, "errors": []},
+    )
 
-    ml_staged = mod.run_objective_code_audit(staged={"ml_predict.py"}, runtime=True)
+    ui_only = mod.run_situational_runtime_audits(staged={"static/index.html"})
+    assert "ablation_placement_validity" in (ui_only.get("skipped_runtime_audits") or [])
+
+    ml_staged = mod.run_situational_runtime_audits(staged={"ml_predict.py"})
     assert "ablation_placement_validity" in (ml_staged.get("applied_runtime_audits") or [])
     assert "runtime_ok" in ml_staged
 
-    forced = mod.run_objective_code_audit(staged={"static/index.html"}, runtime=True, full_runtime=True)
+    forced = mod.run_situational_runtime_audits(staged={"static/index.html"}, force_all=True)
     assert "ablation_placement_validity" in (forced.get("applied_runtime_audits") or [])
 
 
@@ -1439,28 +1445,26 @@ def test_ablation_integrity_audit_static_passes():
 def test_ablation_grid_requires_all_seven_models_and_four_horizons():
     """Catalog grid 7840 slots; Stage 3 specs score DB-wire groups only; runnable from row fidelity."""
     from governed_stack_contract import FULL_STACK_MODEL_LAYERS, STAGE3_ABLATION_HORIZONS
+    from tools.ablation_static_lock_index import get_ablation_static_lock_index
     from tools.feature_curation_gate import (
         ablation_cell_accounting,
         ablation_grid_groups,
         ablation_scoring_groups,
-        ablation_whole_stack_feature_cell_specs,
-        build_ablation_enriched_row_sample,
-        load_ablation_manifest,
         whole_stack_catalog_cell_target,
         whole_stack_runnable_cell_target,
     )
 
     assert mod.check_ablation_seven_model_four_horizon_grid() == []
 
-    manifest = load_ablation_manifest()
+    idx = get_ablation_static_lock_index()
+    manifest = idx.manifest
+    assert manifest is not None
     dbp = REPO_ROOT / "data" / "ed_console.db"
     dbp_str = str(dbp) if dbp.is_file() else None
     scoring = ablation_scoring_groups(manifest, db_path=dbp_str)
-    specs = ablation_whole_stack_feature_cell_specs(manifest)
-    enriched = None
-    if dbp.is_file():
-        enriched = build_ablation_enriched_row_sample(db_path=str(dbp), manifest=manifest)
-    specs_fidelity = ablation_whole_stack_feature_cell_specs(manifest, enriched_rows=enriched or None)
+    specs = idx.specs
+    enriched = idx.enriched
+    specs_fidelity = specs
     accounting = ablation_cell_accounting(manifest, specs_fidelity, enriched_rows=enriched or None)
     grid_groups = ablation_grid_groups(manifest)
     catalog_groups = len(grid_groups)
@@ -1548,23 +1552,16 @@ def test_ablation_report_status_uses_runnable_denominator(tmp_path, monkeypatch)
 def test_ablation_equal_layer_consumers_fix1():
     """Fidelity-first: unified knockouts per feature across all seven layers (one cohesive stack)."""
     from governed_stack_contract import FULL_STACK_MODEL_LAYERS, STACK_AUTHORITY_LAYERS
-    from tools.feature_curation_gate import (
-        ablation_scoring_groups,
-        ablation_whole_stack_feature_cell_specs,
-        build_ablation_enriched_row_sample,
-        load_ablation_manifest,
-    )
+    from tools.ablation_static_lock_index import get_ablation_static_lock_index
+    from tools.feature_curation_gate import ablation_scoring_groups
 
     assert mod.check_ablation_equal_layer_consumers() == []
 
-    manifest = load_ablation_manifest()
-    dbp = mod.REPO_ROOT / "data" / "ed_console.db"
-    enriched = (
-        build_ablation_enriched_row_sample(db_path=str(dbp), manifest=manifest)
-        if dbp.is_file()
-        else None
-    )
-    specs = ablation_whole_stack_feature_cell_specs(manifest, enriched_rows=enriched)
+    idx = get_ablation_static_lock_index()
+    manifest = idx.manifest
+    assert manifest is not None
+    specs = idx.specs
+    enriched = idx.enriched
     upper = [s for s in specs if s["model_family"] in STACK_AUTHORITY_LAYERS]
     assert upper, "expected upper-layer placement cells"
     for s in upper:
@@ -1662,14 +1659,15 @@ def test_ablation_legacy_report_runnable_inference_and_target(tmp_path, monkeypa
     """Legacy checkpoints without runnable stamps still count for status/integrity."""
     import json
 
+    from tools.ablation_static_lock_index import get_ablation_static_lock_index
     from tools.feature_curation_gate import (
         ablation_report_status,
         build_ablation_experiment_integrity,
-        load_ablation_manifest,
-        whole_stack_fusion_cell_target,
     )
 
-    wire_runnable_target = whole_stack_fusion_cell_target(load_ablation_manifest())
+    idx = get_ablation_static_lock_index()
+    assert idx.manifest is not None
+    wire_runnable_target = idx.runnable_target
 
     report = {
         "source_manifest": "governance/artifacts/feature_ablation_manifest_leaf.json",
