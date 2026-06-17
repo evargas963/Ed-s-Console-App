@@ -17,8 +17,10 @@ from money_path_ticker_tiers import (
     ticker_trust_class,
 )
 from verification.base_ticker_observability import (
+    FAIL_MISSING_NORMALIZED,
     FAIL_SPARSE_SNAPSHOTS,
     PASS_BASE_OBSERVABILITY,
+    RAW_CAPTURE_PASS,
     base_ticker_observability_report,
     evaluate_ticker_observability,
     rth_window_utc,
@@ -269,3 +271,201 @@ def test_check_base_ticker_observability_cli_passes_on_dense_fixture(tmp_path: P
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "universe_ready=True" in proc.stdout
     assert "PASS_BASE_OBSERVABILITY" in proc.stdout
+
+
+def test_observability_dense_raw_zero_normalized_fails_with_raw_capture_pass(tmp_path: Path):
+    db = tmp_path / "raw_only.db"
+    conn = sqlite3.connect(db)
+    conn.executescript(
+        """
+        CREATE TABLE snapshots (ticker TEXT, ts_utc REAL);
+        CREATE TABLE snapshots_1m_normalized (ticker TEXT, ts_utc REAL);
+        CREATE TABLE calibration_decision_log (ticker TEXT, decision_ts_utc REAL);
+        """
+    )
+    day = datetime.date(2026, 6, 17)
+    start, end = rth_window_utc(day)
+    ts = start + 60
+    while ts < end and ts <= start + 300 * 60:
+        conn.execute("INSERT INTO snapshots VALUES ('SPY', ?)", (ts,))
+        conn.execute("INSERT INTO calibration_decision_log VALUES ('SPY', ?)", (ts,))
+        ts += 60
+    conn.commit()
+    row = evaluate_ticker_observability(conn, "SPY", start, end)
+    conn.close()
+    assert row["coverage_status"] == FAIL_MISSING_NORMALIZED
+    assert row["raw_capture_pass"] is True
+    assert row["normalized_pass"] is False
+    assert row["raw_only_status"] == RAW_CAPTURE_PASS
+
+
+def test_canonical_1m_snapshots_materialize_to_normalized(tmp_path: Path):
+    from db import EdDB
+    from normalized_training_sync import materialize_base_money_path_tickers
+    from snapshot_normalizer import load_normalized_rows
+    from timeframe_config import CANONICAL_TIMEFRAME as CF
+
+    db = EdDB(tmp_path / "mat.db")
+    day = datetime.date(2026, 6, 17)
+    start, _end = rth_window_utc(day)
+    ts = start + 60
+    rows = 0
+    while ts <= start + 300 * 60:
+        with db._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO snapshots (
+                    ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
+                    candle_open, candle_high, candle_low, candle_close, candle_volume
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "SPY",
+                    CF,
+                    ts,
+                    "2026-06-17 10:00:00 ET",
+                    10,
+                    0,
+                    "rth",
+                    500.0 + rows * 0.01,
+                    500.0 + rows * 0.01,
+                    500.1 + rows * 0.01,
+                    499.9 + rows * 0.01,
+                    500.0 + rows * 0.01,
+                    1000.0,
+                ),
+            )
+            conn.commit()
+        rows += 1
+        ts += 60
+
+    mat = materialize_base_money_path_tickers(db.db_path)
+    assert not mat.get("errors"), mat.get("errors")
+    assert mat["by_ticker"]["SPY"]["normalized"] == rows
+    norm = load_normalized_rows(Path(db.db_path), ticker="SPY")
+    assert len(norm) == rows
+    assert all(r["timeframe"] == "1m" for r in norm)
+
+
+def test_june_17_style_flat_1m_candles_normalize(tmp_path: Path):
+    from snapshot_normalizer import fetch_rows_for_normalization, resample_to_1m
+    from timeframe_config import CANONICAL_TIMEFRAME as CF
+
+    conn = sqlite3.connect(tmp_path / "flat.db")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE snapshots (
+            ticker TEXT, timeframe TEXT, ts_utc REAL, ts_et TEXT, et_hour INT, et_minute INT,
+            market_session TEXT, spot REAL, candle_open REAL, candle_high REAL,
+            candle_low REAL, candle_close REAL, candle_volume REAL
+        );
+        """
+    )
+    spot = 742.545
+    for i in range(5):
+        ts = 1_781_700_000.0 + i * 60.0
+        conn.execute(
+            """
+            INSERT INTO snapshots VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "SPY",
+                CF,
+                ts,
+                "2026-06-17 14:00:00 ET",
+                14,
+                i,
+                "rth",
+                spot,
+                spot,
+                spot,
+                spot,
+                spot,
+                100.0,
+            ),
+        )
+    conn.commit()
+    raw, tf = fetch_rows_for_normalization(conn, "SPY")
+    norm = resample_to_1m(raw, "SPY", normalized_from_subminute=0)
+    assert tf == CF
+    assert len(norm) == 5
+
+
+def test_base_materialize_does_not_touch_guest_ticker(tmp_path: Path):
+    from db import EdDB
+    from normalized_training_sync import materialize_base_money_path_tickers
+    from timeframe_config import CANONICAL_TIMEFRAME as CF
+
+    db = EdDB(tmp_path / "guest.db")
+    ts = 1_781_700_000.0
+    with db._connect() as conn:
+        for ticker in ("SPY", "NVDA"):
+            conn.execute(
+                """
+                INSERT INTO snapshots (
+                    ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
+                    candle_open, candle_high, candle_low, candle_close, candle_volume
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    ticker,
+                    CF,
+                    ts,
+                    "2026-06-17 14:00:00 ET",
+                    14,
+                    0,
+                    "rth",
+                    100.0,
+                    100.0,
+                    101.0,
+                    99.0,
+                    100.0,
+                    1.0,
+                ),
+            )
+        conn.execute(
+            "INSERT INTO snapshots_1m_normalized (ticker, timeframe, ts_utc, spot) VALUES ('NVDA', ?, ?, 1.0)",
+            (CF, ts + 9999.0),
+        )
+        conn.commit()
+
+    mat = materialize_base_money_path_tickers(db.db_path)
+    assert not mat.get("errors")
+    assert "SPY" in mat["by_ticker"]
+    assert "NVDA" not in mat.get("by_ticker", {})
+    with db._connect() as conn:
+        nvda_norm = conn.execute(
+            "SELECT COUNT(*) FROM snapshots_1m_normalized WHERE ticker='NVDA'"
+        ).fetchone()[0]
+        spy_norm = conn.execute(
+            "SELECT COUNT(*) FROM snapshots_1m_normalized WHERE ticker='SPY'"
+        ).fetchone()[0]
+    assert nvda_norm == 1
+    assert spy_norm == 1
+
+
+def test_schedule_debounced_base_money_path_refresh_materializes(monkeypatch, tmp_path: Path):
+    from normalized_training_sync import schedule_debounced_base_money_path_normalized_refresh
+
+    fired: list[Path] = []
+
+    class _ImmediateTimer:
+        def __init__(self, _delay, fn):
+            self._fn = fn
+
+        def start(self):
+            self._fn()
+
+        def cancel(self):
+            pass
+
+        daemon = True
+
+    monkeypatch.setattr("normalized_training_sync.threading.Timer", _ImmediateTimer)
+    monkeypatch.setattr(
+        "normalized_training_sync.materialize_base_money_path_tickers",
+        lambda p: fired.append(Path(p)) or {"errors": [], "normalized_rows": 1, "by_ticker": {}},
+    )
+    schedule_debounced_base_money_path_normalized_refresh(tmp_path / "x.db")
+    assert fired == [tmp_path / "x.db"]

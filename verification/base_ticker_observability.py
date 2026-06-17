@@ -9,6 +9,7 @@ from typing import Any, Optional
 from money_path_ticker_tiers import observability_thresholds
 
 PASS_BASE_OBSERVABILITY = "PASS_BASE_OBSERVABILITY"
+RAW_CAPTURE_PASS = "RAW_CAPTURE_PASS"
 FAIL_SPARSE_SNAPSHOTS = "FAIL_SPARSE_SNAPSHOTS"
 FAIL_MISSING_CAL_LOG = "FAIL_MISSING_CAL_LOG"
 FAIL_MISSING_NORMALIZED = "FAIL_MISSING_NORMALIZED"
@@ -136,11 +137,19 @@ def evaluate_ticker_observability(
     first_ts = norm_min or snap[1]
     last_ts = norm_max or snap[2]
 
+    raw_capture_pass = snap_count >= min_snap
+    normalized_pass = norm_count >= min_norm
+
     return {
         "ticker": t,
         "snapshot_count_rth": snap_count,
         "normalized_count_rth": norm_count,
         "calibration_decision_count_rth": cal_count,
+        "raw_capture_pass": raw_capture_pass,
+        "normalized_pass": normalized_pass,
+        "raw_only_status": RAW_CAPTURE_PASS
+        if raw_capture_pass and not normalized_pass
+        else None,
         "first_ts_utc": float(first_ts) if first_ts is not None else None,
         "last_ts_utc": float(last_ts) if last_ts is not None else None,
         "first_ts_et": ts_et_label(float(first_ts)) if first_ts is not None else None,
@@ -198,14 +207,15 @@ def format_observability_markdown(report: dict[str, Any]) -> str:
         "",
         f"Universe ready: **{report['meta']['base_universe_ready']}**",
         "",
-        "| Ticker | Snap RTH | Norm RTH | Cal RTH | Median gap | Max gap | Status | Reason |",
-        "|--------|----------|----------|---------|------------|---------|--------|--------|",
+        "| Ticker | Snap RTH | Norm RTH | Cal RTH | Median gap | Max gap | Status | Raw-only | Reason |",
+        "|--------|----------|----------|---------|------------|---------|--------|----------|--------|",
     ]
     for r in report["tickers"]:
         reason = str(r["reason"])[:80]
+        raw_only = r.get("raw_only_status") or "—"
         lines.append(
             f"| {r['ticker']} | {r['snapshot_count_rth']} | {r['normalized_count_rth']} | "
             f"{r['calibration_decision_count_rth']} | {r.get('median_gap_seconds') or '—'} | "
-            f"{r.get('max_gap_seconds') or '—'} | {r['coverage_status']} | {reason} |"
+            f"{r.get('max_gap_seconds') or '—'} | {r['coverage_status']} | {raw_only} | {reason} |"
         )
     return "\n".join(lines)

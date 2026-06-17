@@ -378,6 +378,72 @@ def ensure_normalized_training_table(
     return out
 
 
+_base_debounce_timer: Optional[threading.Timer] = None
+_base_debounce_lock = threading.Lock()
+
+
+def materialize_base_money_path_tickers(db_path: str | Path) -> dict[str, Any]:
+    """Per-ticker normalized refresh for SPY/QQQ/IWM only (live base capture path).
+
+    Does not advance the global training fingerprint — full ``ensure_normalized_training_table``
+    still owns the all-ticker sync before training. This keeps base money-path observability
+    current without requiring ``ED_LIVE_SNAPSHOT_MATERIALIZE=1`` for every snapshot insert.
+    """
+    from money_path_ticker_tiers import BASE_MONEY_PATH_TICKERS
+
+    return materialize_normalized_table(
+        Path(db_path),
+        tickers=list(BASE_MONEY_PATH_TICKERS),
+        clear_first=True,
+    )
+
+
+def schedule_debounced_base_money_path_normalized_refresh(
+    db_path: str | Path,
+    *,
+    delay_s: Optional[float] = None,
+    logger: Optional[logging.Logger] = None,
+) -> None:
+    """After base-ticker capture cycles, materialize SPY/QQQ/IWM into snapshots_1m_normalized."""
+    global _base_debounce_timer
+    lg = logger or _log
+    db_path = Path(db_path)
+    if delay_s is None:
+        delay_s = float(os.environ.get("ED_BASE_MONEY_PATH_NORMALIZE_DEBOUNCE_SEC", "120"))
+
+    def _fire() -> None:
+        global _base_debounce_timer
+        try:
+            mat = materialize_base_money_path_tickers(db_path)
+            if mat.get("errors"):
+                lg.warning(
+                    "base_money_path normalized refresh errors: %s",
+                    mat.get("errors"),
+                )
+            else:
+                lg.info(
+                    "base_money_path normalized refresh: rows=%s by_ticker=%s",
+                    mat.get("normalized_rows"),
+                    mat.get("by_ticker"),
+                )
+        except Exception as e:
+            lg.warning("base_money_path normalized refresh failed: %s", e)
+        finally:
+            with _base_debounce_lock:
+                _base_debounce_timer = None
+
+    t = threading.Timer(float(delay_s), _fire)
+    t.daemon = True
+    with _base_debounce_lock:
+        if _base_debounce_timer is not None:
+            try:
+                _base_debounce_timer.cancel()
+            except Exception as e:
+                _log.debug("base debounce timer cancel: %s", e, exc_info=True)
+        _base_debounce_timer = t
+    t.start()
+
+
 def schedule_debounced_normalized_refresh(
     db_path: str | Path,
     *,
