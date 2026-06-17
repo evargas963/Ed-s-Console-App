@@ -490,9 +490,28 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tickers", nargs="+", default=list(BASE_MONEY_PATH_TICKERS))
     ap.add_argument("--db", type=Path, default=Path(DB_PATH))
     ap.add_argument("--read-only", action="store_true", default=True)
+    ap.add_argument("--direction-integrity", action="store_true", help="Run card direction integrity audit")
+    ap.add_argument("--sample-stride", type=int, default=5, help="Decline-interval sample stride (direction audit)")
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--markdown", type=Path, default=None)
     args = ap.parse_args(argv)
+
+    if args.direction_integrity:
+        from tools.check_card_direction_integrity import format_markdown, run_direction_integrity_audit
+
+        report = run_direction_integrity_audit(
+            day=parse_date(args.date),
+            tickers=[t.upper() for t in args.tickers],
+            db_path=args.db,
+            sample_stride=max(1, args.sample_stride),
+        )
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+        md_path = args.markdown or args.output.with_suffix(".md")
+        md_path.write_text(format_markdown(report), encoding="utf-8")
+        print("Wrote", args.output)
+        print("Wrote", md_path)
+        return 0
 
     report = run_probe(day=parse_date(args.date), tickers=[t.upper() for t in args.tickers], db_path=args.db)
     args.output.parent.mkdir(parents=True, exist_ok=True)
