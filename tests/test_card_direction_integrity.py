@@ -131,3 +131,22 @@ def test_aggregate_horizon_metrics():
 def test_direction_sign_neutral():
     assert direction_sign("WAIT") == 0
     assert direction_sign("FLAT") == 0
+
+
+def test_load_price_series_falls_back_to_snapshots(tmp_path):
+    import sqlite3
+    from tools.check_card_direction_integrity import load_price_series
+
+    db = tmp_path / "audit.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE snapshots_1m_normalized (ticker TEXT, ts_utc REAL, spot REAL)")
+    conn.execute("CREATE TABLE snapshots (ticker TEXT, ts_utc REAL, spot REAL)")
+    conn.executemany(
+        "INSERT INTO snapshots (ticker, ts_utc, spot) VALUES (?,?,?)",
+        [("SPY", 1000.0, 500.0), ("SPY", 1060.0, 499.0)],
+    )
+    conn.commit()
+    ts_list, prices, _, source = load_price_series(conn, "SPY", 900.0, 1100.0)
+    assert source == "snapshots"
+    assert len(ts_list) == 2
+    assert prices[0] == 500.0

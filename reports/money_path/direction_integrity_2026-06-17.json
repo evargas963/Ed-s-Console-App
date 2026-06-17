@@ -1,0 +1,5286 @@
+{
+  "meta": {
+    "date": "2026-06-17",
+    "rth_et": "09:30-16:00 ET",
+    "db_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\data\\ed_console.db",
+    "read_only": true,
+    "audit_type": "card_direction_integrity",
+    "tickers": [
+      "SPY",
+      "QQQ",
+      "IWM"
+    ],
+    "base_universe_observability_ready": false,
+    "method_note": "Card direction from replayed mhap_rows; forward returns from price series and calibration outcome_*_pts when present. Trailing decline != automatic miss.",
+    "min_decline_minutes": 30
+  },
+  "base_ticker_observability": {
+    "meta": {
+      "date": "2026-06-17",
+      "rth_et": "09:30-16:00 ET",
+      "db_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\data\\ed_console.db",
+      "base_universe_ready": false,
+      "contract": "governance/artifacts/base_ticker_money_path_contract.json"
+    },
+    "tickers": [
+      {
+        "ticker": "SPY",
+        "snapshot_count_rth": 374,
+        "normalized_count_rth": 0,
+        "calibration_decision_count_rth": 488,
+        "first_ts_utc": 1781703031.15043,
+        "last_ts_utc": 1781726366.8986433,
+        "first_ts_et": "2026-06-17 09:30:31 ET",
+        "last_ts_et": "2026-06-17 15:59:26 ET",
+        "median_gap_seconds": 58.543,
+        "max_gap_seconds": 121.162,
+        "coverage_status": "FAIL_MISSING_NORMALIZED",
+        "reason": "zero normalized rows in RTH window",
+        "thresholds_applied": {
+          "min_snapshot_rows_rth": 300,
+          "min_normalized_rows_rth": 300,
+          "max_median_gap_seconds": 90.0,
+          "max_gap_seconds": 300.0
+        }
+      },
+      {
+        "ticker": "QQQ",
+        "snapshot_count_rth": 17,
+        "normalized_count_rth": 0,
+        "calibration_decision_count_rth": 17,
+        "first_ts_utc": 1781704079.2211185,
+        "last_ts_utc": 1781725131.762474,
+        "first_ts_et": "2026-06-17 09:47:59 ET",
+        "last_ts_et": "2026-06-17 15:38:51 ET",
+        "median_gap_seconds": 1313.506,
+        "max_gap_seconds": 1688.681,
+        "coverage_status": "FAIL_MISSING_NORMALIZED",
+        "reason": "zero normalized rows in RTH window; median_gap_seconds=1313.5 exceeds 90.0; max_gap_seconds=1688.7 exceeds 300.0",
+        "thresholds_applied": {
+          "min_snapshot_rows_rth": 300,
+          "min_normalized_rows_rth": 300,
+          "max_median_gap_seconds": 90.0,
+          "max_gap_seconds": 300.0
+        }
+      },
+      {
+        "ticker": "IWM",
+        "snapshot_count_rth": 17,
+        "normalized_count_rth": 17,
+        "calibration_decision_count_rth": 17,
+        "first_ts_utc": 1781704144.643701,
+        "last_ts_utc": 1781725193.708488,
+        "first_ts_et": "2026-06-17 09:49:04 ET",
+        "last_ts_et": "2026-06-17 15:39:53 ET",
+        "median_gap_seconds": 1304.79,
+        "max_gap_seconds": 1671.213,
+        "coverage_status": "FAIL_SPARSE_SNAPSHOTS",
+        "reason": "snapshot_rows_rth=17 normalized_rows_rth=17 below minimum 300; median_gap_seconds=1304.8 exceeds 90.0; max_gap_seconds=1671.2 exceeds 300.0",
+        "thresholds_applied": {
+          "min_snapshot_rows_rth": 300,
+          "min_normalized_rows_rth": 300,
+          "max_median_gap_seconds": 90.0,
+          "max_gap_seconds": 300.0
+        }
+      }
+    ],
+    "summary": {
+      "pass_count": 0,
+      "fail_count": 3
+    }
+  },
+  "tickers": {
+    "SPY": {
+      "ticker": "SPY",
+      "price_source": "snapshots",
+      "replay_source": "snapshots",
+      "price_rows_rth": 374,
+      "decline_intervals": [
+        {
+          "start_idx": 185,
+          "end_idx": 218,
+          "start_ts_utc": 1781714628.4590397,
+          "end_ts_utc": 1781716826.1612818,
+          "start_ts_et": "2026-06-17 12:43:48 ET",
+          "end_ts_et": "2026-06-17 13:20:26 ET",
+          "duration_minutes": 36.6,
+          "segment_return": -0.00084,
+          "segment_high": 750.275,
+          "segment_low": 749.09
+        },
+        {
+          "start_idx": 243,
+          "end_idx": 276,
+          "start_ts_utc": 1781718337.3333101,
+          "end_ts_utc": 1781720354.3960612,
+          "start_ts_et": "2026-06-17 13:45:37 ET",
+          "end_ts_et": "2026-06-17 14:19:14 ET",
+          "duration_minutes": 33.6,
+          "segment_return": -0.002149,
+          "segment_high": 750.54,
+          "segment_low": 744.98
+        },
+        {
+          "start_idx": 297,
+          "end_idx": 331,
+          "start_ts_utc": 1781721602.8315063,
+          "end_ts_utc": 1781723661.1362936,
+          "start_ts_et": "2026-06-17 14:40:02 ET",
+          "end_ts_et": "2026-06-17 15:14:21 ET",
+          "duration_minutes": 34.3,
+          "segment_return": -0.002605,
+          "segment_high": 749.92,
+          "segment_low": 744.45
+        },
+        {
+          "start_idx": 317,
+          "end_idx": 370,
+          "start_ts_utc": 1781722844.026067,
+          "end_ts_utc": 1781726165.5834205,
+          "start_ts_et": "2026-06-17 15:00:44 ET",
+          "end_ts_et": "2026-06-17 15:56:05 ET",
+          "duration_minutes": 55.4,
+          "segment_return": -0.007193,
+          "segment_high": 746.67,
+          "segment_low": 739.41
+        }
+      ],
+      "timeline_sample_count": 32,
+      "timeline": [
+        {
+          "ts_utc": 1781714628.4590397,
+          "ts_et": "2026-06-17 12:43:48 ET",
+          "ticker": "SPY",
+          "spot": 750.06,
+          "trailing_return_1m": -3.9995200576046073e-05,
+          "trailing_return_5m": -0.00022659717686585815,
+          "trailing_return_15m": -0.001145261812177081,
+          "trailing_return_60m": -0.0006794835924698623,
+          "drawdown_from_session_high": -0.002685884480374555,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4409
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.3972
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4534
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5087
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.44089,
+              "down": 0.355221,
+              "flat": 0.203889
+            },
+            "5c": {
+              "up": 0.3972,
+              "down": 0.294619,
+              "flat": 0.308181
+            },
+            "15c": {
+              "up": 0.45339554660445336,
+              "down": 0.14018585981414017,
+              "flat": 0.40641859358140636
+            },
+            "60c": {
+              "up": 0.508744,
+              "down": 0.085959,
+              "flat": 0.405297
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.264,
+              "down": 0.471,
+              "flat": 0.265
+            },
+            "5m": {
+              "up": 0.262,
+              "down": 0.474,
+              "flat": 0.264
+            },
+            "15m": {
+              "up": 0.457,
+              "down": 0.243,
+              "flat": 0.3
+            },
+            "60m": {
+              "up": 0.72,
+              "down": 0.207,
+              "flat": 0.073
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781714628.4590397,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "VALID_REVERSAL_FORECAST"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.0002866437351678957,
+            "trailing_realized_return": -3.9995200576046073e-05,
+            "trailing_realized_return_1m": -3.9995200576046073e-05,
+            "forecast_probability_up": 0.44089,
+            "forecast_probability_down": 0.355221,
+            "forecast_probability_flat": 0.203889,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 7.999360051203786e-05,
+            "trailing_realized_return": -0.00022659717686585815,
+            "trailing_realized_return_1m": -3.9995200576046073e-05,
+            "forecast_probability_up": 0.3972,
+            "forecast_probability_down": 0.294619,
+            "forecast_probability_flat": 0.308181,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.00037330346905577254,
+            "trailing_realized_return": -0.001145261812177081,
+            "trailing_realized_return_1m": -3.9995200576046073e-05,
+            "forecast_probability_up": 0.45339554660445336,
+            "forecast_probability_down": 0.14018585981414017,
+            "forecast_probability_flat": 0.40641859358140636,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0008932618723834882,
+            "trailing_realized_return": -0.0006794835924698623,
+            "trailing_realized_return_1m": -3.9995200576046073e-05,
+            "forecast_probability_up": 0.508744,
+            "forecast_probability_down": 0.085959,
+            "forecast_probability_flat": 0.405297,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781714902.3995135,
+          "ts_et": "2026-06-17 12:48:22 ET",
+          "ticker": "SPY",
+          "spot": 750.12,
+          "trailing_return_1m": 7.999360051203786e-05,
+          "trailing_return_5m": 7.999360051203786e-05,
+          "trailing_return_15m": -0.0005462806283559194,
+          "trailing_return_60m": -0.0002532286654848541,
+          "drawdown_from_session_high": -0.002606105733432662,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4567
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4092
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4465
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5173
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.45671654328345673,
+              "down": 0.3454036545963454,
+              "flat": 0.1978798021201979
+            },
+            "5c": {
+              "up": 0.409181,
+              "down": 0.286965,
+              "flat": 0.303854
+            },
+            "15c": {
+              "up": 0.446506,
+              "down": 0.142695,
+              "flat": 0.410799
+            },
+            "60c": {
+              "up": 0.517326,
+              "down": 0.093808,
+              "flat": 0.388866
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.264,
+              "down": 0.471,
+              "flat": 0.265
+            },
+            "5m": {
+              "up": 0.262,
+              "down": 0.474,
+              "flat": 0.264
+            },
+            "15m": {
+              "up": 0.457,
+              "down": 0.243,
+              "flat": 0.3
+            },
+            "60m": {
+              "up": 0.72,
+              "down": 0.207,
+              "flat": 0.073
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781714902.3995135,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.00018663680477788402,
+            "trailing_realized_return": 7.999360051203786e-05,
+            "trailing_realized_return_1m": 7.999360051203786e-05,
+            "forecast_probability_up": 0.45671654328345673,
+            "forecast_probability_down": 0.3454036545963454,
+            "forecast_probability_flat": 0.1978798021201979,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0002159654455287615,
+            "trailing_realized_return": 7.999360051203786e-05,
+            "trailing_realized_return_1m": 7.999360051203786e-05,
+            "forecast_probability_up": 0.409181,
+            "forecast_probability_down": 0.286965,
+            "forecast_probability_flat": 0.303854,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0008132032208180206,
+            "trailing_realized_return": -0.0005462806283559194,
+            "trailing_realized_return_1m": 7.999360051203786e-05,
+            "forecast_probability_up": 0.446506,
+            "forecast_probability_down": 0.142695,
+            "forecast_probability_flat": 0.410799,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -5.3324801365066414e-05,
+            "trailing_realized_return": -0.0002532286654848541,
+            "trailing_realized_return_1m": 7.999360051203786e-05,
+            "forecast_probability_up": 0.517326,
+            "forecast_probability_down": 0.093808,
+            "forecast_probability_flat": 0.388866,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781715260.8053672,
+          "ts_et": "2026-06-17 12:54:20 ET",
+          "ticker": "SPY",
+          "spot": 749.958,
+          "trailing_return_1m": -0.00018930809225443641,
+          "trailing_return_5m": -0.0002159654455287615,
+          "trailing_return_15m": -0.0003625554829852821,
+          "trailing_return_60m": -0.0009751029053272117,
+          "drawdown_from_session_high": -0.0028215083501756076,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4434
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4082
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4472
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5394
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.443402,
+              "down": 0.369313,
+              "flat": 0.187285
+            },
+            "5c": {
+              "up": 0.40817,
+              "down": 0.297027,
+              "flat": 0.294803
+            },
+            "15c": {
+              "up": 0.447222,
+              "down": 0.150858,
+              "flat": 0.40192
+            },
+            "60c": {
+              "up": 0.539435,
+              "down": 0.077635,
+              "flat": 0.38293
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.349,
+              "down": 0.448,
+              "flat": 0.203
+            },
+            "5m": {
+              "up": 0.354,
+              "down": 0.392,
+              "flat": 0.254
+            },
+            "15m": {
+              "up": 0.394,
+              "down": 0.282,
+              "flat": 0.324
+            },
+            "60m": {
+              "up": 0.684,
+              "down": 0.111,
+              "flat": 0.205
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781715260.8053672,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "VALID_MEAN_REVERSION_FORECAST",
+            "VALID_REVERSAL_FORECAST"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.00011600649636378182,
+            "trailing_realized_return": -0.00018930809225443641,
+            "trailing_realized_return_1m": -0.00018930809225443641,
+            "forecast_probability_up": 0.443402,
+            "forecast_probability_down": 0.369313,
+            "forecast_probability_flat": 0.187285,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.00023734662474431538,
+            "trailing_realized_return": -0.0002159654455287615,
+            "trailing_realized_return_1m": -0.00018930809225443641,
+            "forecast_probability_up": 0.40817,
+            "forecast_probability_down": 0.297027,
+            "forecast_probability_flat": 0.294803,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0006773712661241357,
+            "trailing_realized_return": -0.0003625554829852821,
+            "trailing_realized_return_1m": -0.00018930809225443641,
+            "forecast_probability_up": 0.447222,
+            "forecast_probability_down": 0.150858,
+            "forecast_probability_flat": 0.40192,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.0006093674579109679,
+            "trailing_realized_return": -0.0009751029053272117,
+            "trailing_realized_return_1m": -0.00018930809225443641,
+            "forecast_probability_up": 0.539435,
+            "forecast_probability_down": 0.077635,
+            "forecast_probability_flat": 0.38293,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781715709.1814318,
+          "ts_et": "2026-06-17 13:01:49 ET",
+          "ticker": "SPY",
+          "spot": 749.78,
+          "trailing_return_1m": -0.000186686579901838,
+          "trailing_return_5m": -0.00023734662474431538,
+          "trailing_return_15m": -0.00037330346905577254,
+          "trailing_return_60m": -0.0008927976547405859,
+          "drawdown_from_session_high": -0.0030581852994363205,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "WAIT",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4359
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4031
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.4296
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5615
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.4358635641364359,
+              "down": 0.35891264108735893,
+              "flat": 0.20522379477620523
+            },
+            "5c": {
+              "up": 0.403116,
+              "down": 0.291857,
+              "flat": 0.305027
+            },
+            "15c": {
+              "up": 0.4295925704074296,
+              "down": 0.15571884428115573,
+              "flat": 0.41468858531141467
+            },
+            "60c": {
+              "up": 0.5615025615025615,
+              "down": 0.07138107138107139,
+              "flat": 0.36711636711636714
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.349,
+              "down": 0.448,
+              "flat": 0.203
+            },
+            "5m": {
+              "up": 0.354,
+              "down": 0.392,
+              "flat": 0.254
+            },
+            "15m": {
+              "up": 0.394,
+              "down": 0.282,
+              "flat": 0.324
+            },
+            "60m": {
+              "up": 0.684,
+              "down": 0.111,
+              "flat": 0.205
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781715709.1814318,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "MISSING_PRICE_INTEGRITY_GUARD",
+            "MODEL_DIRECTION_DRIFT"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0002534076662486875,
+            "trailing_realized_return": -0.000186686579901838,
+            "trailing_realized_return_1m": -0.000186686579901838,
+            "forecast_probability_up": 0.4358635641364359,
+            "forecast_probability_down": 0.35891264108735893,
+            "forecast_probability_flat": 0.20522379477620523,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0003601056309850647,
+            "trailing_realized_return": -0.00023734662474431538,
+            "trailing_realized_return_1m": -0.000186686579901838,
+            "forecast_probability_up": 0.403116,
+            "forecast_probability_down": 0.291857,
+            "forecast_probability_flat": 0.305027,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "WAIT",
+            "forward_realized_return": -0.0009202699458507041,
+            "trailing_realized_return": -0.00037330346905577254,
+            "trailing_realized_return_1m": -0.000186686579901838,
+            "forecast_probability_up": 0.4295925704074296,
+            "forecast_probability_down": 0.15571884428115573,
+            "forecast_probability_flat": 0.41468858531141467,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": null,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.002774147083144292,
+            "trailing_realized_return": -0.0008927976547405859,
+            "trailing_realized_return_1m": -0.000186686579901838,
+            "forecast_probability_up": 0.5615025615025615,
+            "forecast_probability_down": 0.07138107138107139,
+            "forecast_probability_flat": 0.36711636711636714,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781716040.7538607,
+          "ts_et": "2026-06-17 13:07:20 ET",
+          "ticker": "SPY",
+          "spot": 749.51,
+          "trailing_return_1m": 0.00010674779499091434,
+          "trailing_return_5m": -0.0003601056309850647,
+          "trailing_return_15m": -0.0008132032208180206,
+          "trailing_return_60m": -0.0016781439959167462,
+          "drawdown_from_session_high": -0.003417189660674463,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4393
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4208
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4433
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5895
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.439346,
+              "down": 0.378171,
+              "flat": 0.182483
+            },
+            "5c": {
+              "up": 0.420841,
+              "down": 0.285348,
+              "flat": 0.293811
+            },
+            "15c": {
+              "up": 0.443265,
+              "down": 0.161036,
+              "flat": 0.395699
+            },
+            "60c": {
+              "up": 0.589471,
+              "down": 0.049681,
+              "flat": 0.360848
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.349,
+              "down": 0.448,
+              "flat": 0.203
+            },
+            "5m": {
+              "up": 0.354,
+              "down": 0.392,
+              "flat": 0.254
+            },
+            "15m": {
+              "up": 0.394,
+              "down": 0.282,
+              "flat": 0.324
+            },
+            "60m": {
+              "up": 0.684,
+              "down": 0.111,
+              "flat": 0.205
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781716040.7538607,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.00020013075209133604,
+            "trailing_realized_return": 0.00010674779499091434,
+            "trailing_realized_return_1m": 0.00010674779499091434,
+            "forecast_probability_up": 0.439346,
+            "forecast_probability_down": 0.378171,
+            "forecast_probability_flat": 0.182483,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -8.005230083647373e-05,
+            "trailing_realized_return": -0.0003601056309850647,
+            "trailing_realized_return_1m": 0.00010674779499091434,
+            "forecast_probability_up": 0.420841,
+            "forecast_probability_down": 0.285348,
+            "forecast_probability_flat": 0.293811,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -4.0026150418236866e-05,
+            "trailing_realized_return": -0.0008132032208180206,
+            "trailing_realized_return_1m": 0.00010674779499091434,
+            "forecast_probability_up": 0.443265,
+            "forecast_probability_down": 0.161036,
+            "forecast_probability_flat": 0.395699,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.004709743699216785,
+            "trailing_realized_return": -0.0016781439959167462,
+            "trailing_realized_return_1m": 0.00010674779499091434,
+            "forecast_probability_up": 0.589471,
+            "forecast_probability_down": 0.049681,
+            "forecast_probability_flat": 0.360848,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781716359.5991907,
+          "ts_et": "2026-06-17 13:12:39 ET",
+          "ticker": "SPY",
+          "spot": 749.45,
+          "trailing_return_1m": -0.00013341338136202928,
+          "trailing_return_5m": -8.005230083647373e-05,
+          "trailing_return_15m": -0.0006773712661241357,
+          "trailing_return_60m": -0.0017050071263969373,
+          "drawdown_from_session_high": -0.0034969684076162047,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4626
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4351
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4457
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.6043
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.46264,
+              "down": 0.35166400000000003,
+              "flat": 0.18569600000000003
+            },
+            "5c": {
+              "up": 0.435105,
+              "down": 0.274675,
+              "flat": 0.29022
+            },
+            "15c": {
+              "up": 0.44573944573944574,
+              "down": 0.1611741611741612,
+              "flat": 0.3930863930863931
+            },
+            "60c": {
+              "up": 0.604334,
+              "down": 0.043789,
+              "flat": 0.351877
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.349,
+              "down": 0.448,
+              "flat": 0.203
+            },
+            "5m": {
+              "up": 0.354,
+              "down": 0.392,
+              "flat": 0.254
+            },
+            "15m": {
+              "up": 0.394,
+              "down": 0.282,
+              "flat": 0.324
+            },
+            "60m": {
+              "up": 0.684,
+              "down": 0.111,
+              "flat": 0.205
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781716359.5991907,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "MISSING_PRICE_INTEGRITY_GUARD",
+            "MODEL_DIRECTION_DRIFT"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -4.0029354860346124e-05,
+            "trailing_realized_return": -0.00013341338136202928,
+            "trailing_realized_return_1m": -0.00013341338136202928,
+            "forecast_probability_up": 0.46264,
+            "forecast_probability_down": 0.35166400000000003,
+            "forecast_probability_flat": 0.18569600000000003,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0004803522583227882,
+            "trailing_realized_return": -8.005230083647373e-05,
+            "trailing_realized_return_1m": -0.00013341338136202928,
+            "forecast_probability_up": 0.435105,
+            "forecast_probability_down": 0.274675,
+            "forecast_probability_flat": 0.29022,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.0002802054840215127,
+            "trailing_realized_return": -0.0006773712661241357,
+            "trailing_realized_return_1m": -0.00013341338136202928,
+            "forecast_probability_up": 0.44573944573944574,
+            "forecast_probability_down": 0.1611741611741612,
+            "forecast_probability_flat": 0.3930863930863931,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0030956034425245844,
+            "trailing_realized_return": -0.0017050071263969373,
+            "trailing_realized_return_1m": -0.00013341338136202928,
+            "forecast_probability_up": 0.604334,
+            "forecast_probability_down": 0.043789,
+            "forecast_probability_flat": 0.351877,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781716636.1500077,
+          "ts_et": "2026-06-17 13:17:16 ET",
+          "ticker": "SPY",
+          "spot": 749.09,
+          "trailing_return_1m": -5.339527184862924e-05,
+          "trailing_return_5m": -0.0004803522583227882,
+          "trailing_return_15m": -0.0009202699458507041,
+          "trailing_return_60m": -0.0019718347389317695,
+          "drawdown_from_session_high": -0.003975640889267111,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "WAIT",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4473
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.413
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.4342
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.6239
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.447269,
+              "down": 0.352349,
+              "flat": 0.200382
+            },
+            "5c": {
+              "up": 0.412961412961413,
+              "down": 0.28567028567028563,
+              "flat": 0.3013683013683014
+            },
+            "15c": {
+              "up": 0.434158,
+              "down": 0.159474,
+              "flat": 0.406368
+            },
+            "60c": {
+              "up": 0.623903,
+              "down": 0.032688,
+              "flat": 0.343409
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.349,
+              "down": 0.448,
+              "flat": 0.203
+            },
+            "5m": {
+              "up": 0.354,
+              "down": 0.392,
+              "flat": 0.254
+            },
+            "15m": {
+              "up": 0.394,
+              "down": 0.282,
+              "flat": 0.324
+            },
+            "60m": {
+              "up": 0.684,
+              "down": 0.111,
+              "flat": 0.205
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781716636.1500077,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "VALID_REVERSAL_FORECAST"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 4.0048592291944514e-05,
+            "trailing_realized_return": -5.339527184862924e-05,
+            "trailing_realized_return_1m": -5.339527184862924e-05,
+            "forecast_probability_up": 0.447269,
+            "forecast_probability_down": 0.352349,
+            "forecast_probability_flat": 0.200382,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.000520631699795734,
+            "trailing_realized_return": -0.0004803522583227882,
+            "trailing_realized_return_1m": -5.339527184862924e-05,
+            "forecast_probability_up": 0.412961412961413,
+            "forecast_probability_down": 0.28567028567028563,
+            "forecast_probability_flat": 0.3013683013683014,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "WAIT",
+            "forward_realized_return": 0.00014017007302195755,
+            "trailing_realized_return": -0.0009202699458507041,
+            "trailing_realized_return_1m": -5.339527184862924e-05,
+            "forecast_probability_up": 0.434158,
+            "forecast_probability_down": 0.159474,
+            "forecast_probability_flat": 0.406368,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": null,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0022961192914069434,
+            "trailing_realized_return": -0.0019718347389317695,
+            "trailing_realized_return_1m": -5.339527184862924e-05,
+            "forecast_probability_up": 0.623903,
+            "forecast_probability_down": 0.032688,
+            "forecast_probability_flat": 0.343409,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781718337.3333101,
+          "ts_et": "2026-06-17 13:45:37 ET",
+          "ticker": "SPY",
+          "spot": 749.34,
+          "trailing_return_1m": 6.672983757966637e-05,
+          "trailing_return_5m": -0.0002401536983668881,
+          "trailing_return_15m": -0.0003135109895607693,
+          "trailing_return_60m": -0.0010664675927159657,
+          "drawdown_from_session_high": -0.0036432294436762164,
+          "card_direction_1M": "SHORT",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "WAIT",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "SHORT",
+              "confidence": 0.4414
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4217
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.4268
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.6339
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.361982,
+              "down": 0.44135,
+              "flat": 0.196668
+            },
+            "5c": {
+              "up": 0.42166642166642165,
+              "down": 0.28122828122828125,
+              "flat": 0.29710529710529715
+            },
+            "15c": {
+              "up": 0.42683,
+              "down": 0.172965,
+              "flat": 0.400205
+            },
+            "60c": {
+              "up": 0.633875,
+              "down": 0.023634,
+              "flat": 0.342491
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.349,
+              "down": 0.448,
+              "flat": 0.203
+            },
+            "5m": {
+              "up": 0.354,
+              "down": 0.392,
+              "flat": 0.254
+            },
+            "15m": {
+              "up": 0.394,
+              "down": 0.282,
+              "flat": 0.324
+            },
+            "60m": {
+              "up": 0.684,
+              "down": 0.111,
+              "flat": 0.205
+            }
+          },
+          "final_bias": "WAIT",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "fewer than 2 tradeable horizons align with pooled direction \u2014 ALL synthesis withheld",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781718337.3333101,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [],
+          "horizon_1c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": -1.3345077001082158e-05,
+            "trailing_realized_return": 6.672983757966637e-05,
+            "trailing_realized_return_1m": 6.672983757966637e-05,
+            "forecast_probability_up": 0.361982,
+            "forecast_probability_down": 0.44135,
+            "forecast_probability_flat": 0.196668,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.00048042277203941286,
+            "trailing_realized_return": -0.0002401536983668881,
+            "trailing_realized_return_1m": 6.672983757966637e-05,
+            "forecast_probability_up": 0.42166642166642165,
+            "forecast_probability_down": 0.28122828122828125,
+            "forecast_probability_flat": 0.29710529710529715,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "WAIT",
+            "forward_realized_return": -0.0007873595430646059,
+            "trailing_realized_return": -0.0003135109895607693,
+            "trailing_realized_return_1m": 6.672983757966637e-05,
+            "forecast_probability_up": 0.42683,
+            "forecast_probability_down": 0.172965,
+            "forecast_probability_flat": 0.400205,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": null,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 9.34155390075751e-05,
+            "trailing_realized_return": -0.0010664675927159657,
+            "trailing_realized_return_1m": 6.672983757966637e-05,
+            "forecast_probability_up": 0.633875,
+            "forecast_probability_down": 0.023634,
+            "forecast_probability_flat": 0.342491,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781718614.9343677,
+          "ts_et": "2026-06-17 13:50:14 ET",
+          "ticker": "SPY",
+          "spot": 749.7,
+          "trailing_return_1m": 0.0002801905295601494,
+          "trailing_return_5m": 0.00048042277203941286,
+          "trailing_return_15m": 0.0006940922074803058,
+          "trailing_return_60m": -0.00041332782229563,
+          "drawdown_from_session_high": -0.0031645569620253103,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "WAIT",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4522
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4295
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.4264
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.6251
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.45216654783345217,
+              "down": 0.34800065199934804,
+              "flat": 0.19983280016719987
+            },
+            "5c": {
+              "up": 0.4294774294774295,
+              "down": 0.2763002763002763,
+              "flat": 0.29422229422229423
+            },
+            "15c": {
+              "up": 0.426439,
+              "down": 0.175073,
+              "flat": 0.398488
+            },
+            "60c": {
+              "up": 0.625129,
+              "down": 0.024978,
+              "flat": 0.349893
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.349,
+              "down": 0.448,
+              "flat": 0.203
+            },
+            "5m": {
+              "up": 0.354,
+              "down": 0.392,
+              "flat": 0.254
+            },
+            "15m": {
+              "up": 0.394,
+              "down": 0.282,
+              "flat": 0.324
+            },
+            "60m": {
+              "up": 0.684,
+              "down": 0.111,
+              "flat": 0.205
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781718614.9343677,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 5.335467520336617e-05,
+            "trailing_realized_return": 0.0002801905295601494,
+            "trailing_realized_return_1m": 0.0002801905295601494,
+            "forecast_probability_up": 0.45216654783345217,
+            "forecast_probability_down": 0.34800065199934804,
+            "forecast_probability_flat": 0.19983280016719987,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.000987061491263184,
+            "trailing_realized_return": 0.00048042277203941286,
+            "trailing_realized_return_1m": 0.0002801905295601494,
+            "forecast_probability_up": 0.4294774294774295,
+            "forecast_probability_down": 0.2763002763002763,
+            "forecast_probability_flat": 0.29422229422229423,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "WAIT",
+            "forward_realized_return": -0.005762304921968854,
+            "trailing_realized_return": 0.0006940922074803058,
+            "trailing_realized_return_1m": 0.0002801905295601494,
+            "forecast_probability_up": 0.426439,
+            "forecast_probability_down": 0.175073,
+            "forecast_probability_flat": 0.398488,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": null,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0016673336001067093,
+            "trailing_realized_return": -0.00041332782229563,
+            "trailing_realized_return_1m": 0.0002801905295601494,
+            "forecast_probability_up": 0.625129,
+            "forecast_probability_down": 0.024978,
+            "forecast_probability_flat": 0.349893,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781718919.4316669,
+          "ts_et": "2026-06-17 13:55:19 ET",
+          "ticker": "SPY",
+          "spot": 750.44,
+          "trailing_return_1m": -6.662313954876751e-05,
+          "trailing_return_5m": 0.000987061491263184,
+          "trailing_return_15m": 0.0012274522360978663,
+          "trailing_return_60m": 0.0005599850670649752,
+          "drawdown_from_session_high": -0.0021806190830762503,
+          "card_direction_1M": "SHORT",
+          "card_direction_5M": "SHORT",
+          "card_direction_15M": "WAIT",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "SHORT",
+              "confidence": 0.4258
+            },
+            {
+              "horizon": "5c",
+              "call": "SHORT",
+              "confidence": 0.3971
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.4085
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.6249
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.3633806366193634,
+              "down": 0.42582257417742586,
+              "flat": 0.21079678920321082
+            },
+            "5c": {
+              "up": 0.29899200000000004,
+              "down": 0.397149,
+              "flat": 0.30385900000000005
+            },
+            "15c": {
+              "up": 0.408503,
+              "down": 0.183052,
+              "flat": 0.408445
+            },
+            "60c": {
+              "up": 0.624905,
+              "down": 0.018702,
+              "flat": 0.356393
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.313,
+              "down": 0.484,
+              "flat": 0.203
+            },
+            "5m": {
+              "up": 0.317,
+              "down": 0.529,
+              "flat": 0.154
+            },
+            "15m": {
+              "up": 0.218,
+              "down": 0.47,
+              "flat": 0.312
+            },
+            "60m": {
+              "up": 0.345,
+              "down": 0.414,
+              "flat": 0.241
+            }
+          },
+          "final_bias": "SHORT",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 gated: short into put wall (750) only 0.4pts away",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781718919.4316669,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [],
+          "horizon_1c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": -0.00015990618836949594,
+            "trailing_realized_return": -6.662313954876751e-05,
+            "trailing_realized_return_1m": -6.662313954876751e-05,
+            "forecast_probability_up": 0.3633806366193634,
+            "forecast_probability_down": 0.42582257417742586,
+            "forecast_probability_flat": 0.21079678920321082,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": -0.0022520121528703885,
+            "trailing_realized_return": 0.000987061491263184,
+            "trailing_realized_return_1m": -6.662313954876751e-05,
+            "forecast_probability_up": 0.29899200000000004,
+            "forecast_probability_down": 0.397149,
+            "forecast_probability_flat": 0.30385900000000005,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "WAIT",
+            "forward_realized_return": -0.005243590426949602,
+            "trailing_realized_return": 0.0012274522360978663,
+            "trailing_realized_return_1m": -6.662313954876751e-05,
+            "forecast_probability_up": 0.408503,
+            "forecast_probability_down": 0.183052,
+            "forecast_probability_flat": 0.408445,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": null,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.004257502265337735,
+            "trailing_realized_return": 0.0005599850670649752,
+            "trailing_realized_return_1m": -6.662313954876751e-05,
+            "forecast_probability_up": 0.624905,
+            "forecast_probability_down": 0.018702,
+            "forecast_probability_flat": 0.356393,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781719253.0776165,
+          "ts_et": "2026-06-17 14:00:53 ET",
+          "ticker": "SPY",
+          "spot": 748.75,
+          "trailing_return_1m": -0.0023849495030244406,
+          "trailing_return_5m": -0.0022520121528703885,
+          "trailing_return_15m": -0.0007873595430646059,
+          "trailing_return_60m": -0.0016799776002986507,
+          "drawdown_from_session_high": -0.00442772045527077,
+          "card_direction_1M": "SHORT",
+          "card_direction_5M": "SHORT",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "SHORT",
+              "confidence": 0.4966
+            },
+            {
+              "horizon": "5c",
+              "call": "SHORT",
+              "confidence": 0.4011
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4256
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.6339
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.331524,
+              "down": 0.496601,
+              "flat": 0.171875
+            },
+            "5c": {
+              "up": 0.300178,
+              "down": 0.401096,
+              "flat": 0.298726
+            },
+            "15c": {
+              "up": 0.425574,
+              "down": 0.182711,
+              "flat": 0.391715
+            },
+            "60c": {
+              "up": 0.633861,
+              "down": 0.018082,
+              "flat": 0.348057
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.506,
+              "down": 0.384,
+              "flat": 0.11
+            },
+            "5m": {
+              "up": 0.529,
+              "down": 0.365,
+              "flat": 0.106
+            },
+            "15m": {
+              "up": 0.464,
+              "down": 0.276,
+              "flat": 0.26
+            },
+            "60m": {
+              "up": 0.54,
+              "down": 0.179,
+              "flat": 0.281
+            }
+          },
+          "final_bias": "SHORT",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 unstable \u2014 require 4+ confluence",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781719253.0776165,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "MODEL_DIRECTION_DRIFT"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": -0.0008881469115191501,
+            "trailing_realized_return": -0.0023849495030244406,
+            "trailing_realized_return_1m": -0.0023849495030244406,
+            "forecast_probability_up": 0.331524,
+            "forecast_probability_down": 0.496601,
+            "forecast_probability_flat": 0.171875,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "LONG",
+            "direction_hit": true,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": -0.004500834724540908,
+            "trailing_realized_return": -0.0022520121528703885,
+            "trailing_realized_return_1m": -0.0023849495030244406,
+            "forecast_probability_up": 0.300178,
+            "forecast_probability_down": 0.401096,
+            "forecast_probability_flat": 0.298726,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "LONG",
+            "direction_hit": true,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.001429048414023439,
+            "trailing_realized_return": -0.0007873595430646059,
+            "trailing_realized_return_1m": -0.0023849495030244406,
+            "forecast_probability_up": 0.425574,
+            "forecast_probability_down": 0.182711,
+            "forecast_probability_flat": 0.391715,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.003232053422370563,
+            "trailing_realized_return": -0.0016799776002986507,
+            "trailing_realized_return_1m": -0.0023849495030244406,
+            "forecast_probability_up": 0.633861,
+            "forecast_probability_down": 0.018082,
+            "forecast_probability_flat": 0.348057,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781719511.3653264,
+          "ts_et": "2026-06-17 14:05:11 ET",
+          "ticker": "SPY",
+          "spot": 745.38,
+          "trailing_return_1m": -0.0011524442538593666,
+          "trailing_return_5m": -0.004500834724540908,
+          "trailing_return_15m": -0.005762304921968854,
+          "trailing_return_60m": -0.005345709687664264,
+          "drawdown_from_session_high": -0.008908626741836035,
+          "card_direction_1M": "SHORT",
+          "card_direction_5M": "SHORT",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "SHORT",
+          "PLAN_state": "ARMED",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "SHORT",
+              "confidence": 0.4885
+            },
+            {
+              "horizon": "5c",
+              "call": "SHORT",
+              "confidence": 0.4268
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4606
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.6081
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.332975,
+              "down": 0.488457,
+              "flat": 0.178568
+            },
+            "5c": {
+              "up": 0.300486,
+              "down": 0.426846,
+              "flat": 0.272668
+            },
+            "15c": {
+              "up": 0.460566,
+              "down": 0.155741,
+              "flat": 0.383693
+            },
+            "60c": {
+              "up": 0.608088,
+              "down": 0.007658,
+              "flat": 0.384254
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.462,
+              "down": 0.421,
+              "flat": 0.117
+            },
+            "5m": {
+              "up": 0.336,
+              "down": 0.428,
+              "flat": 0.236
+            },
+            "15m": {
+              "up": 0.269,
+              "down": 0.368,
+              "flat": 0.364
+            },
+            "60m": {
+              "up": 0.221,
+              "down": 0.31,
+              "flat": 0.469
+            }
+          },
+          "final_bias": "SHORT",
+          "final_tradeable": true,
+          "call_signal": "short",
+          "wait_reason": "",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781719511.3653264,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "SHORT",
+            "PLAN_state": "ARMED",
+            "ALL_visual_state": "directional"
+          },
+          "classifications": [
+            "VALID_MEAN_REVERSION_FORECAST"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": -0.0005366390297566038,
+            "trailing_realized_return": -0.0011524442538593666,
+            "trailing_realized_return_1m": -0.0011524442538593666,
+            "forecast_probability_up": 0.332975,
+            "forecast_probability_down": 0.488457,
+            "forecast_probability_flat": 0.178568,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "LONG",
+            "direction_hit": true,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": 0.0015092972711905337,
+            "trailing_realized_return": -0.004500834724540908,
+            "trailing_realized_return_1m": -0.0011524442538593666,
+            "forecast_probability_up": 0.300486,
+            "forecast_probability_down": 0.426846,
+            "forecast_probability_flat": 0.272668,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.0020392283130751857,
+            "trailing_realized_return": -0.005762304921968854,
+            "trailing_realized_return_1m": -0.0011524442538593666,
+            "forecast_probability_up": 0.460566,
+            "forecast_probability_down": 0.155741,
+            "forecast_probability_flat": 0.383693,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.0013013496471598746,
+            "trailing_realized_return": -0.005345709687664264,
+            "trailing_realized_return_1m": -0.0011524442538593666,
+            "forecast_probability_up": 0.608088,
+            "forecast_probability_down": 0.007658,
+            "forecast_probability_flat": 0.384254,
+            "fusion_direction": "LONG",
+            "histogram_direction": "FLAT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781719874.1996663,
+          "ts_et": "2026-06-17 14:11:14 ET",
+          "ticker": "SPY",
+          "spot": 746.505,
+          "trailing_return_1m": -0.0007295361756240668,
+          "trailing_return_5m": 0.0015092972711905337,
+          "trailing_return_15m": -0.005243590426949602,
+          "trailing_return_60m": -0.004089011032992322,
+          "drawdown_from_session_high": -0.0074127752366770095,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.5122
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4886
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4739
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5979
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.5121984878015122,
+              "down": 0.32342967657032345,
+              "flat": 0.16437183562816438
+            },
+            "5c": {
+              "up": 0.488556,
+              "down": 0.257603,
+              "flat": 0.253841
+            },
+            "15c": {
+              "up": 0.473886,
+              "down": 0.150153,
+              "flat": 0.375961
+            },
+            "60c": {
+              "up": 0.597933,
+              "down": 0.009155,
+              "flat": 0.392912
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.423,
+              "down": 0.495,
+              "flat": 0.082
+            },
+            "5m": {
+              "up": 0.418,
+              "down": 0.455,
+              "flat": 0.127
+            },
+            "15m": {
+              "up": 0.36,
+              "down": 0.39,
+              "flat": 0.25
+            },
+            "60m": {
+              "up": 0.401,
+              "down": 0.372,
+              "flat": 0.226
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781719874.1996663,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "VALID_REVERSAL_FORECAST"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.00046215363594353327,
+            "trailing_realized_return": -0.0007295361756240668,
+            "trailing_realized_return_1m": -0.0007295361756240668,
+            "forecast_probability_up": 0.5121984878015122,
+            "forecast_probability_down": 0.32342967657032345,
+            "forecast_probability_flat": 0.16437183562816438,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.0015740015137205438,
+            "trailing_realized_return": 0.0015092972711905337,
+            "trailing_realized_return_1m": -0.0007295361756240668,
+            "forecast_probability_up": 0.488556,
+            "forecast_probability_down": 0.257603,
+            "forecast_probability_flat": 0.253841,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0011386393929042977,
+            "trailing_realized_return": -0.005243590426949602,
+            "trailing_realized_return_1m": -0.0007295361756240668,
+            "forecast_probability_up": 0.473886,
+            "forecast_probability_down": 0.150153,
+            "forecast_probability_flat": 0.375961,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0015873972712841112,
+            "trailing_realized_return": -0.004089011032992322,
+            "trailing_realized_return_1m": -0.0007295361756240668,
+            "forecast_probability_up": 0.597933,
+            "forecast_probability_down": 0.009155,
+            "forecast_probability_flat": 0.392912,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781720190.6598773,
+          "ts_et": "2026-06-17 14:16:30 ET",
+          "ticker": "SPY",
+          "spot": 747.68,
+          "trailing_return_1m": 0.00037463205780033815,
+          "trailing_return_5m": 0.0015740015137205438,
+          "trailing_return_15m": -0.001429048414023439,
+          "trailing_return_60m": -0.002348420153714913,
+          "drawdown_from_session_high": -0.0058504414423998655,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "WAIT",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4777
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4713
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.4191
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.6057
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.477746,
+              "down": 0.338635,
+              "flat": 0.183619
+            },
+            "5c": {
+              "up": 0.47134547134547133,
+              "down": 0.2626172626172626,
+              "flat": 0.266037266037266
+            },
+            "15c": {
+              "up": 0.419103,
+              "down": 0.172652,
+              "flat": 0.408245
+            },
+            "60c": {
+              "up": 0.605651,
+              "down": 0.007794,
+              "flat": 0.386555
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.423,
+              "down": 0.495,
+              "flat": 0.082
+            },
+            "5m": {
+              "up": 0.418,
+              "down": 0.455,
+              "flat": 0.127
+            },
+            "15m": {
+              "up": 0.36,
+              "down": 0.39,
+              "flat": 0.25
+            },
+            "60m": {
+              "up": 0.401,
+              "down": 0.372,
+              "flat": 0.226
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781720190.6598773,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 5.349882302599683e-05,
+            "trailing_realized_return": 0.00037463205780033815,
+            "trailing_realized_return_1m": 0.00037463205780033815,
+            "forecast_probability_up": 0.477746,
+            "forecast_probability_down": 0.338635,
+            "forecast_probability_flat": 0.183619,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0010432270490048855,
+            "trailing_realized_return": 0.0015740015137205438,
+            "trailing_realized_return_1m": 0.00037463205780033815,
+            "forecast_probability_up": 0.47134547134547133,
+            "forecast_probability_down": 0.2626172626172626,
+            "forecast_probability_flat": 0.266037266037266,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "WAIT",
+            "forward_realized_return": -0.0024609458591909883,
+            "trailing_realized_return": -0.001429048414023439,
+            "trailing_realized_return_1m": 0.00037463205780033815,
+            "forecast_probability_up": 0.419103,
+            "forecast_probability_down": 0.172652,
+            "forecast_probability_flat": 0.408245,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": null,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0025144446822169854,
+            "trailing_realized_return": -0.002348420153714913,
+            "trailing_realized_return_1m": 0.00037463205780033815,
+            "forecast_probability_up": 0.605651,
+            "forecast_probability_down": 0.007794,
+            "forecast_probability_flat": 0.386555,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781721602.8315063,
+          "ts_et": "2026-06-17 14:40:02 ET",
+          "ticker": "SPY",
+          "spot": 748.62,
+          "trailing_return_1m": 0.0005747203250510565,
+          "trailing_return_5m": 0.003451534424867194,
+          "trailing_return_15m": 0.003727340984661553,
+          "trailing_return_60m": -0.0013073639274279857,
+          "drawdown_from_session_high": -0.004600574406978029,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "SHORT",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4681
+            },
+            {
+              "horizon": "5c",
+              "call": "SHORT",
+              "confidence": 0.4215
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4511
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5675
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.468135,
+              "down": 0.34627,
+              "flat": 0.185595
+            },
+            "5c": {
+              "up": 0.300046,
+              "down": 0.421474,
+              "flat": 0.27848
+            },
+            "15c": {
+              "up": 0.451128,
+              "down": 0.154913,
+              "flat": 0.393959
+            },
+            "60c": {
+              "up": 0.567456,
+              "down": 0.012291,
+              "flat": 0.420253
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.416,
+              "down": 0.522,
+              "flat": 0.063
+            },
+            "5m": {
+              "up": 0.426,
+              "down": 0.438,
+              "flat": 0.135
+            },
+            "15m": {
+              "up": 0.348,
+              "down": 0.394,
+              "flat": 0.258
+            },
+            "60m": {
+              "up": 0.311,
+              "down": 0.447,
+              "flat": 0.242
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781721602.8315063,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.00040087093585536467,
+            "trailing_realized_return": 0.0005747203250510565,
+            "trailing_realized_return_1m": 0.0005747203250510565,
+            "forecast_probability_up": 0.468135,
+            "forecast_probability_down": 0.34627,
+            "forecast_probability_flat": 0.185595,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": 0.0017365285458576507,
+            "trailing_realized_return": 0.003451534424867194,
+            "trailing_realized_return_1m": 0.0005747203250510565,
+            "forecast_probability_up": 0.300046,
+            "forecast_probability_down": 0.421474,
+            "forecast_probability_flat": 0.27848,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0010818572840693148,
+            "trailing_realized_return": 0.003727340984661553,
+            "trailing_realized_return_1m": 0.0005747203250510565,
+            "forecast_probability_up": 0.451128,
+            "forecast_probability_down": 0.154913,
+            "forecast_probability_flat": 0.393959,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.011941973230744642,
+            "trailing_realized_return": -0.0013073639274279857,
+            "trailing_realized_return_1m": 0.0005747203250510565,
+            "forecast_probability_up": 0.567456,
+            "forecast_probability_down": 0.012291,
+            "forecast_probability_flat": 0.420253,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781721918.2642136,
+          "ts_et": "2026-06-17 14:45:18 ET",
+          "ticker": "SPY",
+          "spot": 749.92,
+          "trailing_return_1m": 0.0009610250934328798,
+          "trailing_return_5m": 0.0017365285458576507,
+          "trailing_return_15m": 0.005200793523135483,
+          "trailing_return_60m": 0.0008407959535026431,
+          "drawdown_from_session_high": -0.002872034889905438,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "SHORT",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4467
+            },
+            {
+              "horizon": "5c",
+              "call": "SHORT",
+              "confidence": 0.4906
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4425
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5015
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.446703,
+              "down": 0.393969,
+              "flat": 0.159328
+            },
+            "5c": {
+              "up": 0.248558,
+              "down": 0.490646,
+              "flat": 0.260796
+            },
+            "15c": {
+              "up": 0.442531,
+              "down": 0.195277,
+              "flat": 0.362192
+            },
+            "60c": {
+              "up": 0.501466,
+              "down": 0.079835,
+              "flat": 0.418699
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.349,
+              "down": 0.448,
+              "flat": 0.203
+            },
+            "5m": {
+              "up": 0.354,
+              "down": 0.392,
+              "flat": 0.254
+            },
+            "15m": {
+              "up": 0.394,
+              "down": 0.282,
+              "flat": 0.324
+            },
+            "60m": {
+              "up": 0.684,
+              "down": 0.111,
+              "flat": 0.205
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781721918.2642136,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0006800725410710355,
+            "trailing_realized_return": 0.0009610250934328798,
+            "trailing_realized_return_1m": 0.0009610250934328798,
+            "forecast_probability_up": 0.446703,
+            "forecast_probability_down": 0.393969,
+            "forecast_probability_flat": 0.159328,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": -0.0016401749519947522,
+            "trailing_realized_return": 0.0017365285458576507,
+            "trailing_realized_return_1m": 0.0009610250934328798,
+            "forecast_probability_up": 0.248558,
+            "forecast_probability_down": 0.490646,
+            "forecast_probability_flat": 0.260796,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.004480477917644567,
+            "trailing_realized_return": 0.005200793523135483,
+            "trailing_realized_return_1m": 0.0009610250934328798,
+            "forecast_probability_up": 0.442531,
+            "forecast_probability_down": 0.195277,
+            "forecast_probability_flat": 0.362192,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.011908070194153944,
+            "trailing_realized_return": 0.0008407959535026431,
+            "trailing_realized_return_1m": 0.0009610250934328798,
+            "forecast_probability_up": 0.501466,
+            "forecast_probability_down": 0.079835,
+            "forecast_probability_flat": 0.418699,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": false,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781722227.8378313,
+          "ts_et": "2026-06-17 14:50:27 ET",
+          "ticker": "SPY",
+          "spot": 748.69,
+          "trailing_return_1m": 2.671403956362015e-05,
+          "trailing_return_5m": -0.0016401749519947522,
+          "trailing_return_15m": 0.003545362545154911,
+          "trailing_return_60m": -0.0010673924935622283,
+          "drawdown_from_session_high": -0.004507499202212512,
+          "card_direction_1M": "SHORT",
+          "card_direction_5M": "SHORT",
+          "card_direction_15M": "WAIT",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "SHORT",
+          "PLAN_state": "ARMED",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "SHORT",
+              "confidence": 0.467
+            },
+            {
+              "horizon": "5c",
+              "call": "SHORT",
+              "confidence": 0.4084
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.4066
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.4975
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.356888,
+              "down": 0.466966,
+              "flat": 0.176146
+            },
+            "5c": {
+              "up": 0.281271,
+              "down": 0.40845,
+              "flat": 0.310279
+            },
+            "15c": {
+              "up": 0.406564,
+              "down": 0.187311,
+              "flat": 0.406125
+            },
+            "60c": {
+              "up": 0.49745449745449744,
+              "down": 0.06747206747206747,
+              "flat": 0.43507343507343504
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.416,
+              "down": 0.522,
+              "flat": 0.063
+            },
+            "5m": {
+              "up": 0.426,
+              "down": 0.438,
+              "flat": 0.135
+            },
+            "15m": {
+              "up": 0.348,
+              "down": 0.394,
+              "flat": 0.258
+            },
+            "60m": {
+              "up": 0.311,
+              "down": 0.447,
+              "flat": 0.242
+            }
+          },
+          "final_bias": "SHORT",
+          "final_tradeable": true,
+          "call_signal": "short",
+          "wait_reason": "",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781722227.8378313,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "SHORT",
+            "PLAN_state": "ARMED",
+            "ALL_visual_state": "directional"
+          },
+          "classifications": [],
+          "horizon_1c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": -0.00032055991131177,
+            "trailing_realized_return": 2.671403956362015e-05,
+            "trailing_realized_return_1m": 2.671403956362015e-05,
+            "forecast_probability_up": 0.356888,
+            "forecast_probability_down": 0.466966,
+            "forecast_probability_flat": 0.176146,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": -0.0011752527748467596,
+            "trailing_realized_return": -0.0016401749519947522,
+            "trailing_realized_return_1m": 2.671403956362015e-05,
+            "forecast_probability_up": 0.281271,
+            "forecast_probability_down": 0.40845,
+            "forecast_probability_flat": 0.310279,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "WAIT",
+            "forward_realized_return": -0.003673082317113892,
+            "trailing_realized_return": 0.003545362545154911,
+            "trailing_realized_return_1m": 2.671403956362015e-05,
+            "forecast_probability_up": 0.406564,
+            "forecast_probability_down": 0.187311,
+            "forecast_probability_flat": 0.406125,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": null,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.01180729006664979,
+            "trailing_realized_return": -0.0010673924935622283,
+            "trailing_realized_return_1m": 2.671403956362015e-05,
+            "forecast_probability_up": 0.49745449745449744,
+            "forecast_probability_down": 0.06747206747206747,
+            "forecast_probability_flat": 0.43507343507343504,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781722530.3822417,
+          "ts_et": "2026-06-17 14:55:30 ET",
+          "ticker": "SPY",
+          "spot": 747.8101,
+          "trailing_return_1m": -0.000801565986558082,
+          "trailing_return_5m": -0.0011752527748467596,
+          "trailing_return_15m": -0.0010818572840693148,
+          "trailing_return_60m": -0.0035708670335380553,
+          "drawdown_from_session_high": -0.005677454526114252,
+          "card_direction_1M": "SHORT",
+          "card_direction_5M": "SHORT",
+          "card_direction_15M": "WAIT",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "SHORT",
+          "PLAN_state": "ARMED",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "SHORT",
+              "confidence": 0.4793
+            },
+            {
+              "horizon": "5c",
+              "call": "SHORT",
+              "confidence": 0.3951
+            },
+            {
+              "horizon": "15c",
+              "call": "WAIT",
+              "confidence": 0.4003
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.4886
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.34692034692034696,
+              "down": 0.4792884792884793,
+              "flat": 0.17379117379117381
+            },
+            "5c": {
+              "up": 0.304678,
+              "down": 0.395133,
+              "flat": 0.300189
+            },
+            "15c": {
+              "up": 0.400345,
+              "down": 0.19931,
+              "flat": 0.400345
+            },
+            "60c": {
+              "up": 0.488635,
+              "down": 0.063032,
+              "flat": 0.448333
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.462,
+              "down": 0.421,
+              "flat": 0.117
+            },
+            "5m": {
+              "up": 0.336,
+              "down": 0.428,
+              "flat": 0.236
+            },
+            "15m": {
+              "up": 0.269,
+              "down": 0.368,
+              "flat": 0.364
+            },
+            "60m": {
+              "up": 0.221,
+              "down": 0.31,
+              "flat": 0.469
+            }
+          },
+          "final_bias": "SHORT",
+          "final_tradeable": true,
+          "call_signal": "short",
+          "wait_reason": "",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781722530.3822417,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "SHORT",
+            "PLAN_state": "ARMED",
+            "ALL_visual_state": "directional"
+          },
+          "classifications": [
+            "INSUFFICIENT_EVIDENCE"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": -0.0007556731314541345,
+            "trailing_realized_return": -0.000801565986558082,
+            "trailing_realized_return_1m": -0.000801565986558082,
+            "forecast_probability_up": 0.34692034692034696,
+            "forecast_probability_down": 0.4792884792884793,
+            "forecast_probability_flat": 0.17379117379117381,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "LONG",
+            "direction_hit": true,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": -0.0016716810858800764,
+            "trailing_realized_return": -0.0011752527748467596,
+            "trailing_realized_return_1m": -0.000801565986558082,
+            "forecast_probability_up": 0.304678,
+            "forecast_probability_down": 0.395133,
+            "forecast_probability_flat": 0.300189,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "WAIT",
+            "forward_realized_return": -0.0025676304719607925,
+            "trailing_realized_return": -0.0010818572840693148,
+            "trailing_realized_return_1m": -0.000801565986558082,
+            "forecast_probability_up": 0.400345,
+            "forecast_probability_down": 0.19931,
+            "forecast_probability_flat": 0.400345,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": null,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.009093351373564014,
+            "trailing_realized_return": -0.0035708670335380553,
+            "trailing_realized_return_1m": -0.000801565986558082,
+            "forecast_probability_up": 0.488635,
+            "forecast_probability_down": 0.063032,
+            "forecast_probability_flat": 0.448333,
+            "fusion_direction": "LONG",
+            "histogram_direction": "FLAT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781722844.026067,
+          "ts_et": "2026-06-17 15:00:44 ET",
+          "ticker": "SPY",
+          "spot": 746.56,
+          "trailing_return_1m": 0.0006031282250605564,
+          "trailing_return_5m": -0.0016716810858800764,
+          "trailing_return_15m": -0.004480477917644567,
+          "trailing_return_60m": -0.005302848615663413,
+          "drawdown_from_session_high": -0.007339644718647079,
+          "card_direction_1M": "SHORT",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "SHORT",
+              "confidence": 0.4478
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4685
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4722
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5643
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.385656,
+              "down": 0.447788,
+              "flat": 0.166556
+            },
+            "5c": {
+              "up": 0.468487,
+              "down": 0.269031,
+              "flat": 0.262482
+            },
+            "15c": {
+              "up": 0.472231,
+              "down": 0.15995,
+              "flat": 0.367819
+            },
+            "60c": {
+              "up": 0.564318,
+              "down": 0.009581,
+              "flat": 0.426101
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.423,
+              "down": 0.495,
+              "flat": 0.082
+            },
+            "5m": {
+              "up": 0.418,
+              "down": 0.455,
+              "flat": 0.127
+            },
+            "15m": {
+              "up": 0.36,
+              "down": 0.39,
+              "flat": 0.25
+            },
+            "60m": {
+              "up": 0.401,
+              "down": 0.372,
+              "flat": 0.226
+            }
+          },
+          "final_bias": "WAIT",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "fewer than 2 tradeable horizons align with pooled direction \u2014 ALL synthesis withheld",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781722844.026067,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [],
+          "horizon_1c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": -0.0003080797256749685,
+            "trailing_realized_return": 0.0006031282250605564,
+            "trailing_realized_return_1m": 0.0006031282250605564,
+            "forecast_probability_up": 0.385656,
+            "forecast_probability_down": 0.447788,
+            "forecast_probability_flat": 0.166556,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0008304757822544616,
+            "trailing_realized_return": -0.0016716810858800764,
+            "trailing_realized_return_1m": 0.0006031282250605564,
+            "forecast_probability_up": 0.468487,
+            "forecast_probability_down": 0.269031,
+            "forecast_probability_flat": 0.262482,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0002946849549934548,
+            "trailing_realized_return": -0.004480477917644567,
+            "trailing_realized_return_1m": 0.0006031282250605564,
+            "forecast_probability_up": 0.472231,
+            "forecast_probability_down": 0.15995,
+            "forecast_probability_flat": 0.367819,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.005302848615663413,
+            "trailing_realized_return_1m": 0.0006031282250605564,
+            "forecast_probability_up": 0.564318,
+            "forecast_probability_down": 0.009581,
+            "forecast_probability_flat": 0.426101,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781723137.3000407,
+          "ts_et": "2026-06-17 15:05:37 ET",
+          "ticker": "SPY",
+          "spot": 745.94,
+          "trailing_return_1m": -0.0005895120448028362,
+          "trailing_return_5m": -0.0008304757822544616,
+          "trailing_return_15m": -0.003673082317113892,
+          "trailing_return_60m": -0.00040201543739273497,
+          "drawdown_from_session_high": -0.008164025103712353,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4759
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4462
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4872
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5547
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.47594,
+              "down": 0.34429400000000004,
+              "flat": 0.17976600000000004
+            },
+            "5c": {
+              "up": 0.446179,
+              "down": 0.277898,
+              "flat": 0.275923
+            },
+            "15c": {
+              "up": 0.487163,
+              "down": 0.149811,
+              "flat": 0.363026
+            },
+            "60c": {
+              "up": 0.554726,
+              "down": 0.008526,
+              "flat": 0.436748
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.462,
+              "down": 0.421,
+              "flat": 0.117
+            },
+            "5m": {
+              "up": 0.336,
+              "down": 0.428,
+              "flat": 0.236
+            },
+            "15m": {
+              "up": 0.269,
+              "down": 0.368,
+              "flat": 0.364
+            },
+            "60m": {
+              "up": 0.221,
+              "down": 0.31,
+              "flat": 0.469
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781723137.3000407,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "VALID_REVERSAL_FORECAST"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.0005496420623642225,
+            "trailing_realized_return": -0.0005895120448028362,
+            "trailing_realized_return_1m": -0.0005895120448028362,
+            "forecast_probability_up": 0.47594,
+            "forecast_probability_down": 0.34429400000000004,
+            "forecast_probability_flat": 0.17976600000000004,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -6.702951980061158e-05,
+            "trailing_realized_return": -0.0008304757822544616,
+            "trailing_realized_return_1m": -0.0005895120448028362,
+            "forecast_probability_up": 0.446179,
+            "forecast_probability_down": 0.277898,
+            "forecast_probability_flat": 0.275923,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0034587232217068945,
+            "trailing_realized_return": -0.003673082317113892,
+            "trailing_realized_return_1m": -0.0005895120448028362,
+            "forecast_probability_up": 0.487163,
+            "forecast_probability_down": 0.149811,
+            "forecast_probability_flat": 0.363026,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.00040201543739273497,
+            "trailing_realized_return_1m": -0.0005895120448028362,
+            "forecast_probability_up": 0.554726,
+            "forecast_probability_down": 0.008526,
+            "forecast_probability_flat": 0.436748,
+            "fusion_direction": "LONG",
+            "histogram_direction": "FLAT",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781723408.2837658,
+          "ts_et": "2026-06-17 15:10:08 ET",
+          "ticker": "SPY",
+          "spot": 745.89,
+          "trailing_return_1m": -0.0004422288333199873,
+          "trailing_return_5m": -6.702951980061158e-05,
+          "trailing_return_15m": -0.0025676304719607925,
+          "trailing_return_60m": -0.0015527742453650601,
+          "drawdown_from_session_high": -0.008230507392830622,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4508
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4308
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4569
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5688
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.450841,
+              "down": 0.351537,
+              "flat": 0.197622
+            },
+            "5c": {
+              "up": 0.43082143082143093,
+              "down": 0.27553727553727553,
+              "flat": 0.29364129364129365
+            },
+            "15c": {
+              "up": 0.4568704568704569,
+              "down": 0.14078714078714077,
+              "flat": 0.4023424023424023
+            },
+            "60c": {
+              "up": 0.568841,
+              "down": 0.020423,
+              "flat": 0.410736
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.386,
+              "down": 0.5,
+              "flat": 0.114
+            },
+            "5m": {
+              "up": 0.327,
+              "down": 0.457,
+              "flat": 0.216
+            },
+            "15m": {
+              "up": 0.336,
+              "down": 0.484,
+              "flat": 0.18
+            },
+            "60m": {
+              "up": 0.353,
+              "down": 0.474,
+              "flat": 0.173
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781723408.2837658,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "MISSING_PRICE_INTEGRITY_GUARD"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0007641877488636881,
+            "trailing_realized_return": -0.0004422288333199873,
+            "trailing_realized_return_1m": -0.0004422288333199873,
+            "forecast_probability_up": 0.450841,
+            "forecast_probability_down": 0.351537,
+            "forecast_probability_flat": 0.197622,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.0006033061175240926,
+            "trailing_realized_return": -6.702951980061158e-05,
+            "trailing_realized_return_1m": -0.0004422288333199873,
+            "forecast_probability_up": 0.43082143082143093,
+            "forecast_probability_down": 0.27553727553727553,
+            "forecast_probability_flat": 0.29364129364129365,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.004035447586105178,
+            "trailing_realized_return": -0.0025676304719607925,
+            "trailing_realized_return_1m": -0.0004422288333199873,
+            "forecast_probability_up": 0.4568704568704569,
+            "forecast_probability_down": 0.14078714078714077,
+            "forecast_probability_flat": 0.4023424023424023,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.0015527742453650601,
+            "trailing_realized_return_1m": -0.0004422288333199873,
+            "forecast_probability_up": 0.568841,
+            "forecast_probability_down": 0.020423,
+            "forecast_probability_flat": 0.410736,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781722844.026067,
+          "ts_et": "2026-06-17 15:00:44 ET",
+          "ticker": "SPY",
+          "spot": 746.56,
+          "trailing_return_1m": 0.0006031282250605564,
+          "trailing_return_5m": -0.0016716810858800764,
+          "trailing_return_15m": -0.004480477917644567,
+          "trailing_return_60m": -0.005302848615663413,
+          "drawdown_from_session_high": -0.007339644718647079,
+          "card_direction_1M": "SHORT",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "SHORT",
+              "confidence": 0.4476
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4684
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4723
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5647
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.384960384960385,
+              "down": 0.4476034476034476,
+              "flat": 0.16743616743616743
+            },
+            "5c": {
+              "up": 0.4684044684044684,
+              "down": 0.26966526966526966,
+              "flat": 0.2619302619302619
+            },
+            "15c": {
+              "up": 0.472335,
+              "down": 0.161132,
+              "flat": 0.366533
+            },
+            "60c": {
+              "up": 0.564668,
+              "down": 0.009231,
+              "flat": 0.426101
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.423,
+              "down": 0.495,
+              "flat": 0.082
+            },
+            "5m": {
+              "up": 0.418,
+              "down": 0.455,
+              "flat": 0.127
+            },
+            "15m": {
+              "up": 0.36,
+              "down": 0.39,
+              "flat": 0.25
+            },
+            "60m": {
+              "up": 0.401,
+              "down": 0.372,
+              "flat": 0.226
+            }
+          },
+          "final_bias": "WAIT",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "fewer than 2 tradeable horizons align with pooled direction \u2014 ALL synthesis withheld",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781722844.026067,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [],
+          "horizon_1c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": -0.0003080797256749685,
+            "trailing_realized_return": 0.0006031282250605564,
+            "trailing_realized_return_1m": 0.0006031282250605564,
+            "forecast_probability_up": 0.384960384960385,
+            "forecast_probability_down": 0.4476034476034476,
+            "forecast_probability_flat": 0.16743616743616743,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0008304757822544616,
+            "trailing_realized_return": -0.0016716810858800764,
+            "trailing_realized_return_1m": 0.0006031282250605564,
+            "forecast_probability_up": 0.4684044684044684,
+            "forecast_probability_down": 0.26966526966526966,
+            "forecast_probability_flat": 0.2619302619302619,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0002946849549934548,
+            "trailing_realized_return": -0.004480477917644567,
+            "trailing_realized_return_1m": 0.0006031282250605564,
+            "forecast_probability_up": 0.472335,
+            "forecast_probability_down": 0.161132,
+            "forecast_probability_flat": 0.366533,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.005302848615663413,
+            "trailing_realized_return_1m": 0.0006031282250605564,
+            "forecast_probability_up": 0.564668,
+            "forecast_probability_down": 0.009231,
+            "forecast_probability_flat": 0.426101,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781723137.3000407,
+          "ts_et": "2026-06-17 15:05:37 ET",
+          "ticker": "SPY",
+          "spot": 745.94,
+          "trailing_return_1m": -0.0005895120448028362,
+          "trailing_return_5m": -0.0008304757822544616,
+          "trailing_return_15m": -0.003673082317113892,
+          "trailing_return_60m": -0.00040201543739273497,
+          "drawdown_from_session_high": -0.008164025103712353,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4758
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4457
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4869
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.554
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.4758104758104758,
+              "down": 0.3452263452263452,
+              "flat": 0.17896317896317898
+            },
+            "5c": {
+              "up": 0.445666,
+              "down": 0.278872,
+              "flat": 0.275462
+            },
+            "15c": {
+              "up": 0.4868884868884869,
+              "down": 0.14774514774514774,
+              "flat": 0.3653663653663654
+            },
+            "60c": {
+              "up": 0.554024,
+              "down": 0.009228,
+              "flat": 0.436748
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.462,
+              "down": 0.421,
+              "flat": 0.117
+            },
+            "5m": {
+              "up": 0.336,
+              "down": 0.428,
+              "flat": 0.236
+            },
+            "15m": {
+              "up": 0.269,
+              "down": 0.368,
+              "flat": 0.364
+            },
+            "60m": {
+              "up": 0.221,
+              "down": 0.31,
+              "flat": 0.469
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781723137.3000407,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "VALID_REVERSAL_FORECAST"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.0005496420623642225,
+            "trailing_realized_return": -0.0005895120448028362,
+            "trailing_realized_return_1m": -0.0005895120448028362,
+            "forecast_probability_up": 0.4758104758104758,
+            "forecast_probability_down": 0.3452263452263452,
+            "forecast_probability_flat": 0.17896317896317898,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -6.702951980061158e-05,
+            "trailing_realized_return": -0.0008304757822544616,
+            "trailing_realized_return_1m": -0.0005895120448028362,
+            "forecast_probability_up": 0.445666,
+            "forecast_probability_down": 0.278872,
+            "forecast_probability_flat": 0.275462,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0034587232217068945,
+            "trailing_realized_return": -0.003673082317113892,
+            "trailing_realized_return_1m": -0.0005895120448028362,
+            "forecast_probability_up": 0.4868884868884869,
+            "forecast_probability_down": 0.14774514774514774,
+            "forecast_probability_flat": 0.3653663653663654,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.00040201543739273497,
+            "trailing_realized_return_1m": -0.0005895120448028362,
+            "forecast_probability_up": 0.554024,
+            "forecast_probability_down": 0.009228,
+            "forecast_probability_flat": 0.436748,
+            "fusion_direction": "LONG",
+            "histogram_direction": "FLAT",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781723408.2837658,
+          "ts_et": "2026-06-17 15:10:08 ET",
+          "ticker": "SPY",
+          "spot": 745.89,
+          "trailing_return_1m": -0.0004422288333199873,
+          "trailing_return_5m": -6.702951980061158e-05,
+          "trailing_return_15m": -0.0025676304719607925,
+          "trailing_return_60m": -0.0015527742453650601,
+          "drawdown_from_session_high": -0.008230507392830622,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4509
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4309
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4569
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5703
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.450879,
+              "down": 0.350983,
+              "flat": 0.198138
+            },
+            "5c": {
+              "up": 0.430883,
+              "down": 0.275113,
+              "flat": 0.294004
+            },
+            "15c": {
+              "up": 0.45691,
+              "down": 0.140734,
+              "flat": 0.402356
+            },
+            "60c": {
+              "up": 0.570338,
+              "down": 0.018926,
+              "flat": 0.410736
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.386,
+              "down": 0.5,
+              "flat": 0.114
+            },
+            "5m": {
+              "up": 0.327,
+              "down": 0.457,
+              "flat": 0.216
+            },
+            "15m": {
+              "up": 0.336,
+              "down": 0.484,
+              "flat": 0.18
+            },
+            "60m": {
+              "up": 0.353,
+              "down": 0.474,
+              "flat": 0.173
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781723408.2837658,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "MISSING_PRICE_INTEGRITY_GUARD"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0007641877488636881,
+            "trailing_realized_return": -0.0004422288333199873,
+            "trailing_realized_return_1m": -0.0004422288333199873,
+            "forecast_probability_up": 0.450879,
+            "forecast_probability_down": 0.350983,
+            "forecast_probability_flat": 0.198138,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.0006033061175240926,
+            "trailing_realized_return": -6.702951980061158e-05,
+            "trailing_realized_return_1m": -0.0004422288333199873,
+            "forecast_probability_up": 0.430883,
+            "forecast_probability_down": 0.275113,
+            "forecast_probability_flat": 0.294004,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.004035447586105178,
+            "trailing_realized_return": -0.0025676304719607925,
+            "trailing_realized_return_1m": -0.0004422288333199873,
+            "forecast_probability_up": 0.45691,
+            "forecast_probability_down": 0.140734,
+            "forecast_probability_flat": 0.402356,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.0015527742453650601,
+            "trailing_realized_return_1m": -0.0004422288333199873,
+            "forecast_probability_up": 0.570338,
+            "forecast_probability_down": 0.018926,
+            "forecast_probability_flat": 0.410736,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781723758.0011172,
+          "ts_et": "2026-06-17 15:15:58 ET",
+          "ticker": "SPY",
+          "spot": 746.34,
+          "trailing_return_1m": -0.00044196231266814957,
+          "trailing_return_5m": 0.0006033061175240926,
+          "trailing_return_15m": -0.0002946849549934548,
+          "trailing_return_60m": -0.0014182499331013452,
+          "drawdown_from_session_high": -0.007632166790766951,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.5008
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4316
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4784
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5415
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.5008265008265008,
+              "down": 0.33277233277233276,
+              "flat": 0.16640116640116637
+            },
+            "5c": {
+              "up": 0.431565,
+              "down": 0.29097300000000004,
+              "flat": 0.27746200000000004
+            },
+            "15c": {
+              "up": 0.478353,
+              "down": 0.147311,
+              "flat": 0.374336
+            },
+            "60c": {
+              "up": 0.5414745414745415,
+              "down": 0.035322035322035324,
+              "flat": 0.4232034232034232
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.412,
+              "down": 0.443,
+              "flat": 0.145
+            },
+            "5m": {
+              "up": 0.355,
+              "down": 0.434,
+              "flat": 0.211
+            },
+            "15m": {
+              "up": 0.377,
+              "down": 0.42,
+              "flat": 0.203
+            },
+            "60m": {
+              "up": 0.3,
+              "down": 0.513,
+              "flat": 0.188
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781723758.0011172,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "MISSING_PRICE_INTEGRITY_GUARD"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0007235308304527122,
+            "trailing_realized_return": -0.00044196231266814957,
+            "trailing_realized_return_1m": -0.00044196231266814957,
+            "forecast_probability_up": 0.5008265008265008,
+            "forecast_probability_down": 0.33277233277233276,
+            "forecast_probability_flat": 0.16640116640116637,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.003992818286571828,
+            "trailing_realized_return": 0.0006033061175240926,
+            "trailing_realized_return_1m": -0.00044196231266814957,
+            "forecast_probability_up": 0.431565,
+            "forecast_probability_down": 0.29097300000000004,
+            "forecast_probability_flat": 0.27746200000000004,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.006350992845084022,
+            "trailing_realized_return": -0.0002946849549934548,
+            "trailing_realized_return_1m": -0.00044196231266814957,
+            "forecast_probability_up": 0.478353,
+            "forecast_probability_down": 0.147311,
+            "forecast_probability_flat": 0.374336,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.0014182499331013452,
+            "trailing_realized_return_1m": -0.00044196231266814957,
+            "forecast_probability_up": 0.5414745414745415,
+            "forecast_probability_down": 0.035322035322035324,
+            "forecast_probability_flat": 0.4232034232034232,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781724066.2669249,
+          "ts_et": "2026-06-17 15:21:06 ET",
+          "ticker": "SPY",
+          "spot": 743.36,
+          "trailing_return_1m": -0.0016250990504587028,
+          "trailing_return_5m": -0.003992818286571828,
+          "trailing_return_15m": -0.0034587232217068945,
+          "trailing_return_60m": -0.005950709404795245,
+          "drawdown_from_session_high": -0.01159451122221044,
+          "card_direction_1M": "SHORT",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "SHORT",
+              "confidence": 0.4714
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4189
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4783
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5732
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.352991,
+              "down": 0.471371,
+              "flat": 0.175638
+            },
+            "5c": {
+              "up": 0.418935,
+              "down": 0.290002,
+              "flat": 0.291063
+            },
+            "15c": {
+              "up": 0.478274,
+              "down": 0.147064,
+              "flat": 0.374662
+            },
+            "60c": {
+              "up": 0.573188,
+              "down": 0.009564,
+              "flat": 0.417248
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.379,
+              "down": 0.451,
+              "flat": 0.17
+            },
+            "5m": {
+              "up": 0.366,
+              "down": 0.428,
+              "flat": 0.206
+            },
+            "15m": {
+              "up": 0.324,
+              "down": 0.398,
+              "flat": 0.278
+            },
+            "60m": {
+              "up": 0.424,
+              "down": 0.274,
+              "flat": 0.302
+            }
+          },
+          "final_bias": "WAIT",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "fewer than 2 tradeable horizons align with pooled direction \u2014 ALL synthesis withheld",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781724066.2669249,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "MISSING_PRICE_INTEGRITY_GUARD",
+            "MODEL_DIRECTION_DRIFT"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "SHORT",
+            "forward_realized_return": -0.0007129789065862741,
+            "trailing_realized_return": -0.0016250990504587028,
+            "trailing_realized_return_1m": -0.0016250990504587028,
+            "forecast_probability_up": 0.352991,
+            "forecast_probability_down": 0.471371,
+            "forecast_probability_flat": 0.175638,
+            "fusion_direction": "SHORT",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0006457167455876267,
+            "trailing_realized_return": -0.003992818286571828,
+            "trailing_realized_return_1m": -0.0016250990504587028,
+            "forecast_probability_up": 0.418935,
+            "forecast_probability_down": 0.290002,
+            "forecast_probability_flat": 0.291063,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0030537021093413443,
+            "trailing_realized_return": -0.0034587232217068945,
+            "trailing_realized_return_1m": -0.0016250990504587028,
+            "forecast_probability_up": 0.478274,
+            "forecast_probability_down": 0.147064,
+            "forecast_probability_flat": 0.374662,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.005950709404795245,
+            "trailing_realized_return_1m": -0.0016250990504587028,
+            "forecast_probability_up": 0.573188,
+            "forecast_probability_down": 0.009564,
+            "forecast_probability_flat": 0.417248,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781724408.688653,
+          "ts_et": "2026-06-17 15:26:48 ET",
+          "ticker": "SPY",
+          "spot": 742.88,
+          "trailing_return_1m": 0.0011320144466606004,
+          "trailing_return_5m": -0.0006457167455876267,
+          "trailing_return_15m": -0.004035447586105178,
+          "trailing_return_60m": -0.003968679609567784,
+          "drawdown_from_session_high": -0.01223274119774498,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4949
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4504
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4902
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.574
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.494906,
+              "down": 0.329491,
+              "flat": 0.175603
+            },
+            "5c": {
+              "up": 0.45043254956745044,
+              "down": 0.2757607242392758,
+              "flat": 0.27380672619327384
+            },
+            "15c": {
+              "up": 0.490219,
+              "down": 0.142403,
+              "flat": 0.367378
+            },
+            "60c": {
+              "up": 0.574003,
+              "down": 0.008671,
+              "flat": 0.417326
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.412,
+              "down": 0.443,
+              "flat": 0.145
+            },
+            "5m": {
+              "up": 0.355,
+              "down": 0.434,
+              "flat": 0.211
+            },
+            "15m": {
+              "up": 0.377,
+              "down": 0.42,
+              "flat": 0.203
+            },
+            "60m": {
+              "up": 0.3,
+              "down": 0.513,
+              "flat": 0.188
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 ALL consolidated long disagrees with tape stack short",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781724408.688653,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.00040383372819291746,
+            "trailing_realized_return": 0.0011320144466606004,
+            "trailing_realized_return_1m": 0.0011320144466606004,
+            "forecast_probability_up": 0.494906,
+            "forecast_probability_down": 0.329491,
+            "forecast_probability_flat": 0.175603,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0017230239069566723,
+            "trailing_realized_return": -0.0006457167455876267,
+            "trailing_realized_return_1m": 0.0011320144466606004,
+            "forecast_probability_up": 0.45043254956745044,
+            "forecast_probability_down": 0.2757607242392758,
+            "forecast_probability_flat": 0.27380672619327384,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.004307559767391834,
+            "trailing_realized_return": -0.004035447586105178,
+            "trailing_realized_return_1m": 0.0011320144466606004,
+            "forecast_probability_up": 0.490219,
+            "forecast_probability_down": 0.142403,
+            "forecast_probability_flat": 0.367378,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.003968679609567784,
+            "trailing_realized_return_1m": 0.0011320144466606004,
+            "forecast_probability_up": 0.574003,
+            "forecast_probability_down": 0.008671,
+            "forecast_probability_flat": 0.417326,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781724688.5646372,
+          "ts_et": "2026-06-17 15:31:28 ET",
+          "ticker": "SPY",
+          "spot": 741.6,
+          "trailing_return_1m": -0.00040436716538610936,
+          "trailing_return_5m": -0.0017230239069566723,
+          "trailing_return_15m": -0.006350992845084022,
+          "trailing_return_60m": -0.0059514235161652745,
+          "drawdown_from_session_high": -0.013934687799170325,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4428
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4432
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4869
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.598
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.442836,
+              "down": 0.377432,
+              "flat": 0.179732
+            },
+            "5c": {
+              "up": 0.4431784431784431,
+              "down": 0.27316427316427316,
+              "flat": 0.2836572836572836
+            },
+            "15c": {
+              "up": 0.4869385130614869,
+              "down": 0.14277385722614278,
+              "flat": 0.3702876297123703
+            },
+            "60c": {
+              "up": 0.597993,
+              "down": 0.008315,
+              "flat": 0.393692
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.379,
+              "down": 0.451,
+              "flat": 0.17
+            },
+            "5m": {
+              "up": 0.366,
+              "down": 0.428,
+              "flat": 0.206
+            },
+            "15m": {
+              "up": 0.324,
+              "down": 0.398,
+              "flat": 0.278
+            },
+            "60m": {
+              "up": 0.424,
+              "down": 0.274,
+              "flat": 0.302
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 \u226429 min to close",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781724688.5646372,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "VALID_REVERSAL_FORECAST"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.000492179072276172,
+            "trailing_realized_return": -0.00040436716538610936,
+            "trailing_realized_return_1m": -0.00040436716538610936,
+            "forecast_probability_up": 0.442836,
+            "forecast_probability_down": 0.377432,
+            "forecast_probability_flat": 0.179732,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.000687702265372156,
+            "trailing_realized_return": -0.0017230239069566723,
+            "trailing_realized_return_1m": -0.00040436716538610936,
+            "forecast_probability_up": 0.4431784431784431,
+            "forecast_probability_down": 0.27316427316427316,
+            "forecast_probability_flat": 0.2836572836572836,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0008226806903991216,
+            "trailing_realized_return": -0.006350992845084022,
+            "trailing_realized_return_1m": -0.00040436716538610936,
+            "forecast_probability_up": 0.4869385130614869,
+            "forecast_probability_down": 0.14277385722614278,
+            "forecast_probability_flat": 0.3702876297123703,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.0059514235161652745,
+            "trailing_realized_return_1m": -0.00040436716538610936,
+            "forecast_probability_up": 0.597993,
+            "forecast_probability_down": 0.008315,
+            "forecast_probability_flat": 0.393692,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781724969.8982317,
+          "ts_et": "2026-06-17 15:36:09 ET",
+          "ticker": "SPY",
+          "spot": 741.09,
+          "trailing_return_1m": -0.0002832861189800657,
+          "trailing_return_5m": -0.000687702265372156,
+          "trailing_return_15m": -0.0030537021093413443,
+          "trailing_return_60m": -0.006641690514647142,
+          "drawdown_from_session_high": -0.014612807148175738,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4706
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.453
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4818
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.6086
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.47055,
+              "down": 0.343597,
+              "flat": 0.185853
+            },
+            "5c": {
+              "up": 0.452963547036453,
+              "down": 0.26985073014926986,
+              "flat": 0.27718572281427717
+            },
+            "15c": {
+              "up": 0.48182648182648186,
+              "down": 0.1267671267671268,
+              "flat": 0.39140639140639144
+            },
+            "60c": {
+              "up": 0.608639,
+              "down": 0.008193,
+              "flat": 0.383168
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.379,
+              "down": 0.451,
+              "flat": 0.17
+            },
+            "5m": {
+              "up": 0.366,
+              "down": 0.428,
+              "flat": 0.206
+            },
+            "15m": {
+              "up": 0.324,
+              "down": 0.398,
+              "flat": 0.278
+            },
+            "60m": {
+              "up": 0.424,
+              "down": 0.274,
+              "flat": 0.302
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 \u226425 min to close",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781724969.8982317,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "VALID_REVERSAL_FORECAST"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.0007286564384892032,
+            "trailing_realized_return": -0.0002832861189800657,
+            "trailing_realized_return_1m": -0.0002832861189800657,
+            "forecast_probability_up": 0.47055,
+            "forecast_probability_down": 0.343597,
+            "forecast_probability_flat": 0.185853,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.001902602922722047,
+            "trailing_realized_return": -0.000687702265372156,
+            "trailing_realized_return_1m": -0.0002832861189800657,
+            "forecast_probability_up": 0.452963547036453,
+            "forecast_probability_down": 0.26985073014926986,
+            "forecast_probability_flat": 0.27718572281427717,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0016732110809753323,
+            "trailing_realized_return": -0.0030537021093413443,
+            "trailing_realized_return_1m": -0.0002832861189800657,
+            "forecast_probability_up": 0.48182648182648186,
+            "forecast_probability_down": 0.1267671267671268,
+            "forecast_probability_flat": 0.39140639140639144,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.006641690514647142,
+            "trailing_realized_return_1m": -0.0002832861189800657,
+            "forecast_probability_up": 0.608639,
+            "forecast_probability_down": 0.008193,
+            "forecast_probability_flat": 0.383168,
+            "fusion_direction": "LONG",
+            "histogram_direction": "LONG",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781725344.4750116,
+          "ts_et": "2026-06-17 15:42:24 ET",
+          "ticker": "SPY",
+          "spot": 739.68,
+          "trailing_return_1m": -0.00013517532239317465,
+          "trailing_return_5m": -0.001902602922722047,
+          "trailing_return_15m": -0.004307559767391834,
+          "trailing_return_60m": -0.011941973230744642,
+          "drawdown_from_session_high": -0.016487607701308492,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4525
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4826
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4823
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5908
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.452538,
+              "down": 0.362866,
+              "flat": 0.184596
+            },
+            "5c": {
+              "up": 0.482601,
+              "down": 0.263535,
+              "flat": 0.253864
+            },
+            "15c": {
+              "up": 0.4822944822944823,
+              "down": 0.151980151980152,
+              "flat": 0.3657253657253658
+            },
+            "60c": {
+              "up": 0.590792,
+              "down": 0.016261,
+              "flat": 0.392947
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.412,
+              "down": 0.443,
+              "flat": 0.145
+            },
+            "5m": {
+              "up": 0.355,
+              "down": 0.434,
+              "flat": 0.211
+            },
+            "15m": {
+              "up": 0.377,
+              "down": 0.42,
+              "flat": 0.203
+            },
+            "60m": {
+              "up": 0.3,
+              "down": 0.513,
+              "flat": 0.188
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 \u226419 min to close",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781725344.4750116,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "VALID_REVERSAL_FORECAST"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.0002568678347394205,
+            "trailing_realized_return": -0.00013517532239317465,
+            "trailing_realized_return_1m": -0.00013517532239317465,
+            "forecast_probability_up": 0.452538,
+            "forecast_probability_down": 0.362866,
+            "forecast_probability_flat": 0.184596,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.001770900930132063,
+            "trailing_realized_return": -0.001902602922722047,
+            "trailing_realized_return_1m": -0.00013517532239317465,
+            "forecast_probability_up": 0.482601,
+            "forecast_probability_down": 0.263535,
+            "forecast_probability_flat": 0.253864,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.0017980748431754828,
+            "trailing_realized_return": -0.004307559767391834,
+            "trailing_realized_return_1m": -0.00013517532239317465,
+            "forecast_probability_up": 0.4822944822944823,
+            "forecast_probability_down": 0.151980151980152,
+            "forecast_probability_flat": 0.3657253657253658,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.011941973230744642,
+            "trailing_realized_return_1m": -0.00013517532239317465,
+            "forecast_probability_up": 0.590792,
+            "forecast_probability_down": 0.016261,
+            "forecast_probability_flat": 0.392947,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781725683.4807656,
+          "ts_et": "2026-06-17 15:48:03 ET",
+          "ticker": "SPY",
+          "spot": 740.9899,
+          "trailing_return_1m": -6.760768649456092e-05,
+          "trailing_return_5m": 0.001770900930132063,
+          "trailing_return_15m": -0.0008226806903991216,
+          "trailing_return_60m": -0.011908070194153944,
+          "drawdown_from_session_high": -0.014745904690990328,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.471
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4691
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4697
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.5941
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.470982,
+              "down": 0.338365,
+              "flat": 0.190653
+            },
+            "5c": {
+              "up": 0.469098,
+              "down": 0.267996,
+              "flat": 0.262906
+            },
+            "15c": {
+              "up": 0.469732,
+              "down": 0.1571,
+              "flat": 0.373168
+            },
+            "60c": {
+              "up": 0.594052,
+              "down": 0.010883,
+              "flat": 0.395065
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.398,
+              "down": 0.421,
+              "flat": 0.18
+            },
+            "5m": {
+              "up": 0.289,
+              "down": 0.391,
+              "flat": 0.32
+            },
+            "15m": {
+              "up": 0.201,
+              "down": 0.341,
+              "flat": 0.458
+            },
+            "60m": {
+              "up": 0.145,
+              "down": 0.313,
+              "flat": 0.542
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 \u226413 min to close",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781725683.4807656,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "VALID_REVERSAL_FORECAST"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.0005197101876826739,
+            "trailing_realized_return": -6.760768649456092e-05,
+            "trailing_realized_return_1m": -6.760768649456092e-05,
+            "forecast_probability_up": 0.470982,
+            "forecast_probability_down": 0.338365,
+            "forecast_probability_flat": 0.190653,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": -0.0015383475537251066,
+            "trailing_realized_return": 0.001770900930132063,
+            "trailing_realized_return_1m": -6.760768649456092e-05,
+            "forecast_probability_up": 0.469098,
+            "forecast_probability_down": 0.267996,
+            "forecast_probability_flat": 0.262906,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": false,
+            "trailing_conflict": false,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.0008226806903991216,
+            "trailing_realized_return_1m": -6.760768649456092e-05,
+            "forecast_probability_up": 0.469732,
+            "forecast_probability_down": 0.1571,
+            "forecast_probability_flat": 0.373168,
+            "fusion_direction": "LONG",
+            "histogram_direction": "FLAT",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.011908070194153944,
+            "trailing_realized_return_1m": -6.760768649456092e-05,
+            "forecast_probability_up": 0.594052,
+            "forecast_probability_down": 0.010883,
+            "forecast_probability_flat": 0.395065,
+            "fusion_direction": "LONG",
+            "histogram_direction": "FLAT",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        },
+        {
+          "ts_utc": 1781725984.384091,
+          "ts_et": "2026-06-17 15:53:04 ET",
+          "ticker": "SPY",
+          "spot": 739.85,
+          "trailing_return_1m": -0.00011487495523244974,
+          "trailing_return_5m": -0.0015383475537251066,
+          "trailing_return_15m": -0.0016732110809753323,
+          "trailing_return_60m": -0.01180729006664979,
+          "drawdown_from_session_high": -0.016261567918306588,
+          "card_direction_1M": "LONG",
+          "card_direction_5M": "LONG",
+          "card_direction_15M": "LONG",
+          "card_direction_60M": "LONG",
+          "ALL_direction": "FLAT",
+          "PLAN_state": "NO SETUP",
+          "mhap_rows": [
+            {
+              "horizon": "1c",
+              "call": "LONG",
+              "confidence": 0.4182
+            },
+            {
+              "horizon": "5c",
+              "call": "LONG",
+              "confidence": 0.4501
+            },
+            {
+              "horizon": "15c",
+              "call": "LONG",
+              "confidence": 0.4485
+            },
+            {
+              "horizon": "60c",
+              "call": "LONG",
+              "confidence": 0.6138
+            }
+          ],
+          "fusion_triplets": {
+            "1c": {
+              "up": 0.418212,
+              "down": 0.366436,
+              "flat": 0.215352
+            },
+            "5c": {
+              "up": 0.45005,
+              "down": 0.282737,
+              "flat": 0.267213
+            },
+            "15c": {
+              "up": 0.448545,
+              "down": 0.163936,
+              "flat": 0.387519
+            },
+            "60c": {
+              "up": 0.613786,
+              "down": 0.032759,
+              "flat": 0.353455
+            }
+          },
+          "horizon_prob_bars": {
+            "1m": {
+              "up": 0.412,
+              "down": 0.443,
+              "flat": 0.145
+            },
+            "5m": {
+              "up": 0.355,
+              "down": 0.434,
+              "flat": 0.211
+            },
+            "15m": {
+              "up": 0.377,
+              "down": 0.42,
+              "flat": 0.203
+            },
+            "60m": {
+              "up": 0.3,
+              "down": 0.513,
+              "flat": 0.188
+            }
+          },
+          "final_bias": "LONG",
+          "final_tradeable": false,
+          "call_signal": "wait",
+          "wait_reason": "call engine veto \u2014 \u22648 min to close",
+          "fusion_available": true,
+          "cal_decision_ts_utc": 1781725984.384091,
+          "data_age_seconds": 0.0,
+          "payload_frozen": false,
+          "ui_card_state": {
+            "ALL_direction": "FLAT",
+            "PLAN_state": "NO SETUP",
+            "ALL_visual_state": "dim/neutral"
+          },
+          "classifications": [
+            "VALID_REVERSAL_FORECAST"
+          ],
+          "horizon_1c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 1.3516253294574447e-05,
+            "trailing_realized_return": -0.00011487495523244974,
+            "trailing_realized_return_1m": -0.00011487495523244974,
+            "forecast_probability_up": 0.418212,
+            "forecast_probability_down": 0.366436,
+            "forecast_probability_flat": 0.215352,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_5c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": 0.0015678853821720188,
+            "trailing_realized_return": -0.0015383475537251066,
+            "trailing_realized_return_1m": -0.00011487495523244974,
+            "forecast_probability_up": 0.45005,
+            "forecast_probability_down": 0.282737,
+            "forecast_probability_flat": 0.267213,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": true,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_15c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.0016732110809753323,
+            "trailing_realized_return_1m": -0.00011487495523244974,
+            "forecast_probability_up": 0.448545,
+            "forecast_probability_down": 0.163936,
+            "forecast_probability_flat": 0.387519,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          },
+          "horizon_60c": {
+            "displayed_direction": "LONG",
+            "forward_realized_return": null,
+            "trailing_realized_return": -0.01180729006664979,
+            "trailing_realized_return_1m": -0.00011487495523244974,
+            "forecast_probability_up": 0.613786,
+            "forecast_probability_down": 0.032759,
+            "forecast_probability_flat": 0.353455,
+            "fusion_direction": "LONG",
+            "histogram_direction": "SHORT",
+            "direction_hit": null,
+            "trailing_conflict": true,
+            "stale_conflict": false
+          }
+        }
+      ],
+      "horizon_metrics": {
+        "1c": {
+          "horizon": "1c",
+          "samples": 32,
+          "direction_hits": 23,
+          "direction_misses": 9,
+          "direction_hit_rate": 0.7188,
+          "trailing_conflict_count": 20,
+          "stale_conflict_count": 0
+        },
+        "5c": {
+          "horizon": "5c",
+          "samples": 32,
+          "direction_hits": 14,
+          "direction_misses": 18,
+          "direction_hit_rate": 0.4375,
+          "trailing_conflict_count": 22,
+          "stale_conflict_count": 0
+        },
+        "15c": {
+          "horizon": "15c",
+          "samples": 32,
+          "direction_hits": 3,
+          "direction_misses": 19,
+          "direction_hit_rate": 0.1364,
+          "trailing_conflict_count": 22,
+          "stale_conflict_count": 0
+        },
+        "60c": {
+          "horizon": "60c",
+          "samples": 32,
+          "direction_hits": 3,
+          "direction_misses": 15,
+          "direction_hit_rate": 0.1667,
+          "trailing_conflict_count": 30,
+          "stale_conflict_count": 0
+        }
+      },
+      "classification_counts": {
+        "VALID_REVERSAL_FORECAST": 11,
+        "VALID_MEAN_REVERSION_FORECAST": 2,
+        "MISSING_PRICE_INTEGRITY_GUARD": 6,
+        "MODEL_DIRECTION_DRIFT": 4,
+        "INSUFFICIENT_EVIDENCE": 1
+      },
+      "long_during_decline_samples": 30,
+      "payloads_fresh_in_decline": false,
+      "answers": {
+        "cards_updating_during_decline": true,
+        "mhap_timestamps_stale": false,
+        "fusion_stayed_long_pct": 0.7188,
+        "histogram_stayed_long_pct": 0.1562,
+        "shorter_horizons_forward_miss": 0.2812,
+        "longer_horizons_forward_hit": 0.1667,
+        "all_plan_non_tradeable_while_horizons_long": 0.9,
+        "missing_price_integrity_warning": true,
+        "primary_classification": "valid_forecast_explainability_gap"
+      }
+    },
+    "QQQ": {
+      "ticker": "QQQ",
+      "price_source": "snapshots",
+      "replay_source": "snapshots",
+      "price_rows_rth": 17,
+      "decline_intervals": [],
+      "timeline_sample_count": 0,
+      "timeline": [],
+      "horizon_metrics": {
+        "1c": {
+          "horizon": "1c",
+          "samples": 0,
+          "direction_hits": 0,
+          "direction_misses": 0,
+          "direction_hit_rate": null,
+          "trailing_conflict_count": 0,
+          "stale_conflict_count": 0
+        },
+        "5c": {
+          "horizon": "5c",
+          "samples": 0,
+          "direction_hits": 0,
+          "direction_misses": 0,
+          "direction_hit_rate": null,
+          "trailing_conflict_count": 0,
+          "stale_conflict_count": 0
+        },
+        "15c": {
+          "horizon": "15c",
+          "samples": 0,
+          "direction_hits": 0,
+          "direction_misses": 0,
+          "direction_hit_rate": null,
+          "trailing_conflict_count": 0,
+          "stale_conflict_count": 0
+        },
+        "60c": {
+          "horizon": "60c",
+          "samples": 0,
+          "direction_hits": 0,
+          "direction_misses": 0,
+          "direction_hit_rate": null,
+          "trailing_conflict_count": 0,
+          "stale_conflict_count": 0
+        }
+      },
+      "classification_counts": {},
+      "long_during_decline_samples": 0,
+      "payloads_fresh_in_decline": null,
+      "answers": {
+        "cards_updating": null,
+        "note": "no timeline samples in decline intervals"
+      }
+    },
+    "IWM": {
+      "ticker": "IWM",
+      "price_source": "snapshots_1m_normalized",
+      "replay_source": "snapshots_1m_normalized",
+      "price_rows_rth": 17,
+      "decline_intervals": [],
+      "timeline_sample_count": 0,
+      "timeline": [],
+      "horizon_metrics": {
+        "1c": {
+          "horizon": "1c",
+          "samples": 0,
+          "direction_hits": 0,
+          "direction_misses": 0,
+          "direction_hit_rate": null,
+          "trailing_conflict_count": 0,
+          "stale_conflict_count": 0
+        },
+        "5c": {
+          "horizon": "5c",
+          "samples": 0,
+          "direction_hits": 0,
+          "direction_misses": 0,
+          "direction_hit_rate": null,
+          "trailing_conflict_count": 0,
+          "stale_conflict_count": 0
+        },
+        "15c": {
+          "horizon": "15c",
+          "samples": 0,
+          "direction_hits": 0,
+          "direction_misses": 0,
+          "direction_hit_rate": null,
+          "trailing_conflict_count": 0,
+          "stale_conflict_count": 0
+        },
+        "60c": {
+          "horizon": "60c",
+          "samples": 0,
+          "direction_hits": 0,
+          "direction_misses": 0,
+          "direction_hit_rate": null,
+          "trailing_conflict_count": 0,
+          "stale_conflict_count": 0
+        }
+      },
+      "classification_counts": {},
+      "long_during_decline_samples": 0,
+      "payloads_fresh_in_decline": null,
+      "answers": {
+        "cards_updating": null,
+        "note": "no timeline samples in decline intervals"
+      }
+    }
+  },
+  "summary": {
+    "decline_intervals_found": 4,
+    "tickers_with_decline": [
+      "SPY"
+    ],
+    "long_during_decline_total_samples": 30
+  },
+  "data_limitations": {
+    "SPY": {
+      "price_source": "snapshots",
+      "replay_source": "snapshots",
+      "price_rows_rth": 374,
+      "observability_status": "FAIL_MISSING_NORMALIZED"
+    },
+    "QQQ": {
+      "price_source": "snapshots",
+      "replay_source": "snapshots",
+      "price_rows_rth": 17,
+      "observability_status": "FAIL_MISSING_NORMALIZED"
+    },
+    "IWM": {
+      "price_source": "snapshots_1m_normalized",
+      "replay_source": "snapshots_1m_normalized",
+      "price_rows_rth": 17,
+      "observability_status": "FAIL_SPARSE_SNAPSHOTS"
+    }
+  }
+}

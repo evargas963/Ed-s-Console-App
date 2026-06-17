@@ -69,7 +69,7 @@ def load_price_series(
     ticker: str,
     rth_start: float,
     rth_end: float,
-) -> tuple[list[float], list[float], list[dict[str, Any]]]:
+) -> tuple[list[float], list[float], list[dict[str, Any]], str]:
     tu = ticker.upper()
     rows = conn.execute(
         """
@@ -79,9 +79,46 @@ def load_price_series(
         """,
         (tu, rth_start, rth_end),
     ).fetchall()
-    ts_list = [float(r["ts_utc"]) for r in rows]
-    prices = [float(r["spot"]) for r in rows]
-    return ts_list, prices, [{"ts_utc": t, "spot": p} for t, p in zip(ts_list, prices)]
+    price_source = "snapshots_1m_normalized"
+    if not rows:
+        rows = conn.execute(
+            """
+            SELECT ts_utc, spot FROM snapshots
+            WHERE ticker=? AND ts_utc BETWEEN ? AND ? AND spot IS NOT NULL
+            ORDER BY ts_utc
+            """,
+            (tu, rth_start, rth_end),
+        ).fetchall()
+        price_source = "snapshots"
+    ts_list = [float(r["ts_utc"] if hasattr(r, "keys") else r[0]) for r in rows]
+    prices = [float(r["spot"] if hasattr(r, "keys") else r[1]) for r in rows]
+    return ts_list, prices, [{"ts_utc": t, "spot": p} for t, p in zip(ts_list, prices)], price_source
+
+
+def _load_replay_snapshot_rows(
+    conn: sqlite3.Connection,
+    ticker: str,
+    rth_start: float,
+    rth_end: float,
+) -> tuple[list[dict[str, Any]], str]:
+    tu = ticker.upper()
+    norm_rows = [
+        {k: r[k] for k in r.keys()}
+        for r in conn.execute(
+            "SELECT * FROM snapshots_1m_normalized WHERE ticker=? AND ts_utc BETWEEN ? AND ? ORDER BY ts_utc",
+            (tu, rth_start, rth_end),
+        ).fetchall()
+    ]
+    if norm_rows:
+        return norm_rows, "snapshots_1m_normalized"
+    raw_rows = [
+        {k: r[k] for k in r.keys()}
+        for r in conn.execute(
+            "SELECT * FROM snapshots WHERE ticker=? AND ts_utc BETWEEN ? AND ? ORDER BY ts_utc",
+            (tu, rth_start, rth_end),
+        ).fetchall()
+    ]
+    return raw_rows, "snapshots"
 
 
 def _nearest_snapshot_row(
@@ -290,14 +327,8 @@ def audit_ticker(
 
     rth_start, rth_end = rth_window_utc(day)
     conn = _connect_ro(db_path)
-    ts_list, prices, _ = load_price_series(conn, ticker, rth_start, rth_end)
-    norm_rows = [
-        {k: r[k] for k in r.keys()}
-        for r in conn.execute(
-            "SELECT * FROM snapshots_1m_normalized WHERE ticker=? AND ts_utc BETWEEN ? AND ? ORDER BY ts_utc",
-            (ticker.upper(), rth_start, rth_end),
-        ).fetchall()
-    ]
+    ts_list, prices, _, price_source = load_price_series(conn, ticker, rth_start, rth_end)
+    replay_rows, replay_source = _load_replay_snapshot_rows(conn, ticker, rth_start, rth_end)
 
     decline_intervals = find_decline_intervals(ts_list, prices, min_decline_minutes=min_decline_minutes)
     db = EdDB(str(db_path))
@@ -306,7 +337,7 @@ def audit_ticker(
 
     for interval in decline_intervals:
         for idx in range(int(interval["start_idx"]), int(interval["end_idx"]) + 1, max(1, sample_stride)):
-            snap = _nearest_snapshot_row(norm_rows, ts_list[idx])
+            snap = _nearest_snapshot_row(replay_rows, ts_list[idx])
             if snap is None:
                 continue
             try:
@@ -346,6 +377,8 @@ def audit_ticker(
 
     return {
         "ticker": ticker.upper(),
+        "price_source": price_source,
+        "replay_source": replay_source,
         "price_rows_rth": len(prices),
         "decline_intervals": decline_intervals,
         "timeline_sample_count": len(timeline),
@@ -504,6 +537,22 @@ def run_direction_integrity_audit(
                 block.get("long_during_decline_samples") or 0 for block in ticker_blocks.values()
             ),
         },
+        "data_limitations": {
+            t: {
+                "price_source": block.get("price_source"),
+                "replay_source": block.get("replay_source"),
+                "price_rows_rth": block.get("price_rows_rth"),
+                "observability_status": next(
+                    (
+                        row.get("coverage_status")
+                        for row in obs.get("tickers", [])
+                        if row.get("ticker") == t
+                    ),
+                    None,
+                ),
+            }
+            for t, block in ticker_blocks.items()
+        },
     }
 
 
@@ -532,8 +581,24 @@ def format_markdown(report: dict[str, Any]) -> str:
             f"({row.get('reason')})"
         )
     lines.append("")
+    limitations = report.get("data_limitations") or {}
+    if limitations:
+        lines.extend(["## Data limitations", ""])
+        for t, lim in limitations.items():
+            lines.append(
+                f"- **{t}**: price=`{lim.get('price_source')}` rows={lim.get('price_rows_rth')} "
+                f"observability={lim.get('observability_status')}"
+            )
+        lines.append(
+            "- SPY/QQQ normalized rows missing on 2026-06-17; audit used raw `snapshots` fallback. "
+            "PR #4 base capture loop requires server restart before post-merge dense rows appear."
+        )
+        lines.append("")
     for t, block in report["tickers"].items():
         lines.append(f"## {t}")
+        lines.append(
+            f"- Price series: `{block.get('price_source') or '—'}` · replay rows: `{block.get('replay_source') or '—'}`"
+        )
         for iv in block.get("decline_intervals") or []:
             lines.append(
                 f"- Decline {iv['start_ts_et']} → {iv['end_ts_et']} "
