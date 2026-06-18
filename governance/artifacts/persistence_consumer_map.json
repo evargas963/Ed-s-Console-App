@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "stable",
+  "generated_at": "2026-06-18T15:34:24Z",
   "persistence_files": [
     "db.py",
     "calibration/writer.py"
@@ -48,7 +48,7 @@
     {
       "writer_fn": "EdDB.set_schema_flag",
       "file": "db.py",
-      "line": 841,
+      "line": 842,
       "tables_written": [
         "ed_schema_flags"
       ],
@@ -68,7 +68,7 @@
     {
       "writer_fn": "EdDB.upsert_confluence_quote_ticks",
       "file": "db.py",
-      "line": 1320,
+      "line": 1321,
       "tables_written": [
         "confluence_quote_ticks"
       ],
@@ -86,7 +86,7 @@
     {
       "writer_fn": "EdDB.logging_universe_sync_panel_auto",
       "file": "db.py",
-      "line": 1444,
+      "line": 1445,
       "tables_written": [
         "logging_universe"
       ],
@@ -106,7 +106,7 @@
     {
       "writer_fn": "EdDB.logging_universe_sync_core",
       "file": "db.py",
-      "line": 1511,
+      "line": 1512,
       "tables_written": [
         "logging_universe"
       ],
@@ -126,7 +126,7 @@
     {
       "writer_fn": "EdDB.logging_universe_upsert_user_persisted",
       "file": "db.py",
-      "line": 1535,
+      "line": 1536,
       "tables_written": [
         "logging_universe"
       ],
@@ -147,7 +147,7 @@
     {
       "writer_fn": "EdDB.logging_universe_upsert_pinned",
       "file": "db.py",
-      "line": 1588,
+      "line": 1589,
       "tables_written": [
         "logging_universe"
       ],
@@ -167,7 +167,7 @@
     {
       "writer_fn": "EdDB.logging_universe_record_eviction",
       "file": "db.py",
-      "line": 1731,
+      "line": 1732,
       "tables_written": [
         "logging_universe_eviction_log"
       ],
@@ -184,7 +184,7 @@
     {
       "writer_fn": "EdDB.logging_universe_migration_mark",
       "file": "db.py",
-      "line": 1863,
+      "line": 1864,
       "tables_written": [
         "logging_universe_migration_log"
       ],
@@ -203,7 +203,7 @@
     {
       "writer_fn": "EdDB.logging_universe_import_legacy_json_tickers",
       "file": "db.py",
-      "line": 1879,
+      "line": 1880,
       "tables_written": [
         "logging_universe"
       ],
@@ -221,7 +221,7 @@
     {
       "writer_fn": "EdDB.logging_universe_migrate_legacy_json_file",
       "file": "db.py",
-      "line": 1930,
+      "line": 1931,
       "tables_written": [
         "logging_universe",
         "logging_universe_migration_log"
@@ -245,7 +245,7 @@
     {
       "writer_fn": "EdDB.logging_universe_migrate_scheduler_companion_json",
       "file": "db.py",
-      "line": 2061,
+      "line": 2062,
       "tables_written": [
         "logging_universe",
         "logging_universe_migration_log"
@@ -269,7 +269,7 @@
     {
       "writer_fn": "EdDB._migrate_horizon_bar_contract_v1",
       "file": "db.py",
-      "line": 2689,
+      "line": 2699,
       "tables_written": [
         "ed_schema_flags"
       ],
@@ -288,7 +288,7 @@
     {
       "writer_fn": "EdDB._migrate_outcome_anchor_bar_canonical",
       "file": "db.py",
-      "line": 2759,
+      "line": 2769,
       "tables_written": [
         "ed_schema_flags"
       ],
@@ -307,7 +307,7 @@
     {
       "writer_fn": "EdDB.insert_snapshot",
       "file": "db.py",
-      "line": 2882,
+      "line": 2892,
       "tables_written": [
         "snapshots"
       ],
@@ -341,7 +341,7 @@
     {
       "writer_fn": "EdDB.upsert_1m_bars",
       "file": "db.py",
-      "line": 2915,
+      "line": 2925,
       "tables_written": [
         "price_bars_1m"
       ],
@@ -376,7 +376,7 @@
     {
       "writer_fn": "EdDB.log_level_cross",
       "file": "db.py",
-      "line": 3877,
+      "line": 3887,
       "tables_written": [
         "level_crosses"
       ],
@@ -394,7 +394,7 @@
     {
       "writer_fn": "EdDB.log_model_accuracy",
       "file": "db.py",
-      "line": 4091,
+      "line": 4101,
       "tables_written": [
         "model_accuracy"
       ],
@@ -423,7 +423,7 @@
     {
       "candidate_fn": "EdDB.compute_accuracy",
       "file": "db.py",
-      "line": 4036,
+      "line": 4046,
       "production_callers": [
         "server.py"
       ],

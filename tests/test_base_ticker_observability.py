@@ -469,3 +469,122 @@ def test_schedule_debounced_base_money_path_refresh_materializes(monkeypatch, tm
     )
     schedule_debounced_base_money_path_normalized_refresh(tmp_path / "x.db")
     assert fired == [tmp_path / "x.db"]
+
+
+def test_resolve_logger_source_from_update_source():
+    from base_money_path_capture import (
+        LOGGER_SOURCE_BACKGROUND,
+        LOGGER_SOURCE_BASE_MONEY_PATH,
+        LOGGER_SOURCE_UI_REST,
+        LOGGER_SOURCE_UI_SSE,
+        resolve_logger_source_from_update_source,
+    )
+
+    assert resolve_logger_source_from_update_source("sse_loop") == LOGGER_SOURCE_UI_SSE
+    assert resolve_logger_source_from_update_source("rest_analytics") == LOGGER_SOURCE_UI_REST
+    assert resolve_logger_source_from_update_source("base_money_path") == LOGGER_SOURCE_BASE_MONEY_PATH
+    assert resolve_logger_source_from_update_source("background_logger") == LOGGER_SOURCE_BACKGROUND
+    assert resolve_logger_source_from_update_source(None) is None
+
+
+def test_build_lightweight_snapshot_row_sets_logger_source():
+    import datetime
+
+    from base_money_path_capture import (
+        LOGGER_SOURCE_BASE_MONEY_PATH,
+        build_lightweight_snapshot_row_from_quote,
+    )
+
+    et = datetime.datetime(2026, 6, 18, 10, 15, tzinfo=datetime.timezone(datetime.timedelta(hours=-4)))
+    row = build_lightweight_snapshot_row_from_quote(
+        "QQQ",
+        {"spot_f": 450.25, "bid": 450.2, "ask": 450.3},
+        ts_utc=1_781_800_000.0,
+        now_et=et,
+    )
+    assert row.ticker == "QQQ"
+    assert row.logger_source == LOGGER_SOURCE_BASE_MONEY_PATH
+    assert row.spot == 450.25
+
+
+def test_run_base_money_path_capture_cycle_attempts_all_three_concurrently():
+    import time
+
+    from base_money_path_capture import BaseCaptureAttempt, run_base_money_path_capture_cycle
+
+    attempted: list[str] = []
+
+    def _capture(ticker: str) -> BaseCaptureAttempt:
+        attempted.append(ticker)
+        if ticker == "SPY":
+            time.sleep(0.25)
+        return BaseCaptureAttempt(ticker, "ok:insert", 0.05)
+
+    results = run_base_money_path_capture_cycle(
+        ("SPY", "QQQ", "IWM"),
+        capture_one=_capture,
+        max_workers=3,
+        per_ticker_timeout_sec=5.0,
+    )
+    assert len(results) == 3
+    assert {r.ticker for r in results} == {"SPY", "QQQ", "IWM"}
+    assert set(attempted) == {"SPY", "QQQ", "IWM"}
+
+
+def test_insert_snapshot_persists_logger_source(tmp_path: Path):
+    from db import EdDB, SnapshotRow
+    from timeframe_config import CANONICAL_TIMEFRAME
+
+    db = EdDB(tmp_path / "src.db")
+    row = SnapshotRow(
+        ticker="IWM",
+        timeframe=CANONICAL_TIMEFRAME,
+        ts_utc=1_781_800_000.0,
+        ts_et="2026-06-18 10:00:00 ET",
+        et_hour=10,
+        et_minute=0,
+        market_session="rth",
+        spot=200.0,
+        logger_source="base_money_path",
+    )
+    db.insert_snapshot(row)
+    with db._connect() as conn:
+        src = conn.execute(
+            "SELECT logger_source FROM snapshots WHERE ticker='IWM'"
+        ).fetchone()[0]
+    assert src == "base_money_path"
+
+
+def test_observability_reports_base_money_path_counts(tmp_path: Path):
+    db = tmp_path / "base_src.db"
+    conn = sqlite3.connect(db)
+    conn.executescript(
+        """
+        CREATE TABLE snapshots (ticker TEXT, ts_utc REAL, logger_source TEXT);
+        CREATE TABLE snapshots_1m_normalized (ticker TEXT, ts_utc REAL);
+        CREATE TABLE calibration_decision_log (ticker TEXT, decision_ts_utc REAL);
+        """
+    )
+    day = datetime.date(2026, 6, 18)
+    start, end = rth_window_utc(day)
+    ts = start + 60
+    while ts <= start + 120 * 60:
+        for t in BASE_MONEY_PATH_TICKERS:
+            conn.execute(
+                "INSERT INTO snapshots VALUES (?, ?, 'base_money_path')",
+                (t, ts),
+            )
+            conn.execute("INSERT INTO snapshots_1m_normalized VALUES (?, ?)", (t, ts))
+            conn.execute("INSERT INTO calibration_decision_log VALUES (?, ?)", (t, ts))
+        ts += 60
+    conn.commit()
+    conn.close()
+
+    report = base_ticker_observability_report(
+        day=day,
+        tickers=list(BASE_MONEY_PATH_TICKERS),
+        db_path=db,
+    )
+    assert report["meta"]["base_capture_parity"]["parity_ok"] is True
+    for row in report["tickers"]:
+        assert row["base_money_path_snapshot_count_rth"] == row["snapshot_count_rth"]

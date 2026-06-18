@@ -1941,8 +1941,9 @@ _vix_tracker = _VIXTracker()
 # tickers with a STAGGER_SECS delay between each to avoid rate-limit bursts.
 #
 # Base money-path tickers (SPY/QQQ/IWM) require equal RTH capture — not guest-style sparsity.
-#   • Dedicated ``_base_money_path_logger_loop`` sustains ~1 full snapshot/min per base symbol
-#     regardless of which ticker is active in the UI (see money_path_ticker_tiers.py).
+#   • Dedicated ``_base_money_path_logger_loop`` sustains ~1 lightweight quote snapshot/min
+#     per base symbol via concurrent capture (logger_source=base_money_path), independent
+#     of which ticker is active in the UI (see money_path_ticker_tiers.py).
 #   • ED_DB_SNAPSHOT_THROTTLE (default on): at most one INSERT per ticker per UTC-minute bucket.
 #   • The general logger still rotates mega-caps + user_persisted; cycle length grows with count.
 #   • RTH_ONLY may skip background fetches outside the ET session window.
@@ -2460,7 +2461,14 @@ def _logger_fetch_and_log(ticker: str) -> str:
         # Always run the logging fetch each logger cycle (append-only INSERTs).
 
         # Full pipeline fetch
-        _fetch_state(ticker, expiry=None, log_only=True)
+        from base_money_path_capture import LOGGER_SOURCE_BACKGROUND
+
+        _fetch_state(
+            ticker,
+            expiry=None,
+            log_only=True,
+            logger_source=LOGGER_SOURCE_BACKGROUND,
+        )
 
         logger_cycle_touch_wall_ts = time.time()
         with _logger_lock:
@@ -2560,20 +2568,110 @@ def base_money_path_logger_tickers() -> tuple[str, ...]:
     return BASE_MONEY_PATH_TICKERS
 
 
+def _base_money_path_capture_one(ticker: str):
+    """Quote-only base capture — tagged logger_source=base_money_path (no full _fetch_state)."""
+    from base_money_path_capture import (
+        BaseCaptureAttempt,
+        LOGGER_SOURCE_BASE_MONEY_PATH,
+        build_lightweight_snapshot_row_from_quote,
+    )
+    from time_et import now_et as _eastern_now
+
+    t0 = time.monotonic()
+    t = ticker.upper().strip()
+    try:
+        if not _is_loggable_session():
+            return BaseCaptureAttempt(t, "skipped:closed", time.monotonic() - t0)
+
+        client = get_client()
+        if client is None:
+            return BaseCaptureAttempt(t, "error:no_client", time.monotonic() - t0)
+
+        q_resp = _safe_get_quote_with_retry(client, t)
+        if q_resp is None or getattr(q_resp, "status_code", None) != 200:
+            code = getattr(q_resp, "status_code", None)
+            return BaseCaptureAttempt(
+                t,
+                f"error:quote_{code if code is not None else 'none'}",
+                time.monotonic() - t0,
+            )
+
+        q_json = q_resp.json()
+        node = q_json.get(t) or q_json.get(ticker) or {}
+        session_q = _parse_quote_node_session_fields(node)
+        parsed_last = session_q.get("last")
+        parsed_mark = session_q.get("mark")
+        spot_f = parsed_last if parsed_last and parsed_last > 0 else (
+            parsed_mark if parsed_mark and parsed_mark > 0 else None
+        )
+        if spot_f is None or float(spot_f) <= 0:
+            return BaseCaptureAttempt(t, "error:no_spot", time.monotonic() - t0)
+
+        quote_fields = {
+            "spot_f": float(spot_f),
+            "bid": session_q.get("bid"),
+            "ask": session_q.get("ask"),
+            "bid_size": session_q.get("bid_size"),
+            "ask_size": session_q.get("ask_size"),
+            "last_size": session_q.get("last_size"),
+            "total_volume": session_q.get("total_volume"),
+        }
+
+        now_et = _eastern_now()
+        snap_ts = time.time()
+        if not _snapshot_row_insert_allowed(t, snap_ts):
+            return BaseCaptureAttempt(t, "skipped:throttle", time.monotonic() - t0)
+
+        if not _HAS_SIGNALS:
+            return BaseCaptureAttempt(t, "skipped:no_db", time.monotonic() - t0)
+
+        row = build_lightweight_snapshot_row_from_quote(
+            t, quote_fields, ts_utc=snap_ts, now_et=now_et
+        )
+        get_db().insert_snapshot(row)
+        _snapshot_row_insert_committed(t, snap_ts)
+
+        touch_ts = time.time()
+        if _HAS_SIGNALS:
+            try:
+                get_db().logging_universe_touch_background_log(t, touch_ts)
+            except Exception as e:
+                log.debug("base capture touch_background_log %s: %s", t, e)
+
+        with _logger_lock:
+            _logger_stats.setdefault(t, {})
+            _logger_stats[t]["last_logged"] = touch_ts
+            _logger_stats[t]["count"] = _logger_stats[t].get("count", 0) + 1
+            _logger_stats[t]["last_error"] = None
+            _logger_stats[t]["source"] = LOGGER_SOURCE_BASE_MONEY_PATH
+
+        return BaseCaptureAttempt(t, "ok:insert", time.monotonic() - t0)
+
+    except Exception as e:
+        err = str(e)[:STATE_ERROR_DETAIL_MAX_CHARS]
+        log.warning("Base money-path capture: %s failed — %s", t, err)
+        with _logger_lock:
+            _logger_stats.setdefault(t, {})
+            _logger_stats[t]["last_error"] = err
+        return BaseCaptureAttempt(t, f"error:{err}", time.monotonic() - t0)
+
+
 def _base_money_path_logger_loop():
     """
-    Dedicated base-ticker capture: SPY, QQQ, IWM at ~1 full snapshot/min each during RTH.
+    Dedicated base-ticker capture: SPY, QQQ, IWM at ~1 lightweight snapshot/min each during RTH.
 
-    Runs alongside the general multi-ticker logger so base anchors are not starved when the
-    UI focuses one symbol or when the 12-ticker rotation cycle exceeds LOG_INTERVAL.
+    Concurrent quote-only inserts (logger_source=base_money_path) — independent of UI-active
+    ticker and without full _fetch_state model/card compute.
     """
+    from base_money_path_capture import run_base_money_path_capture_cycle
     from money_path_ticker_tiers import base_money_path_capture_interval_sec
 
-    global _base_money_path_logger_running, _cached_mkt_ctx_ts
+    global _base_money_path_logger_running
     interval = base_money_path_capture_interval_sec()
     tickers = base_money_path_logger_tickers()
+    timeout_sec = float(os.environ.get("ED_BASE_CAPTURE_TIMEOUT_SEC", "45"))
     log.info(
-        "Base money-path logger started — %s every %.0fs (UI-independent)",
+        "Base money-path logger started — %s every %.0fs concurrent quote-only (UI-independent)",
         list(tickers),
         interval,
     )
@@ -2589,16 +2687,20 @@ def _base_money_path_logger_loop():
                 time.sleep(1)
             continue
 
-        with _cached_mkt_ctx_lock:
-            _cached_mkt_ctx_ts = 0.0
-
-        for i, ticker in enumerate(tickers):
-            if not _base_money_path_logger_running:
-                break
-            if i > 0:
-                time.sleep(STAGGER_SECS)
-            status = _logger_fetch_and_log(ticker)
-            log.info("Base money-path logger: %s → %s", ticker, status)
+        attempts = run_base_money_path_capture_cycle(
+            tickers,
+            capture_one=_base_money_path_capture_one,
+            max_workers=len(tickers),
+            per_ticker_timeout_sec=timeout_sec,
+            log=log,
+        )
+        for attempt in attempts:
+            log.info(
+                "Base money-path logger: %s → %s (%.2fs)",
+                attempt.ticker,
+                attempt.status,
+                attempt.duration_sec,
+            )
 
         try:
             from db import DB_PATH as _base_norm_db_path
@@ -4034,6 +4136,7 @@ def _fetch_state(
     mkt_ctx=None,
     *,
     update_source: Optional[str] = None,
+    logger_source: Optional[str] = None,
 ) -> dict:
     _fetch_start_mono = time.monotonic()
     _register_tracked_ticker(ticker)
@@ -5232,6 +5335,11 @@ def _fetch_state(
                 )
             if _do_insert:
                 _et_now = now_et
+                from base_money_path_capture import resolve_logger_source_from_update_source
+
+                _resolved_logger_source = logger_source or resolve_logger_source_from_update_source(
+                    update_source
+                )
 
                 # DTE is Schwab-native. Missing daysToExpiration fails closed for snapshot persistence.
                 _dte = _selected_schwab_days_to_expiration(
@@ -5535,6 +5643,7 @@ def _fetch_state(
                     pred_model_version=ms.model_version or "statistical_v1",
                     pred_model_source=getattr(ms, 'pred_model_source', None),
                     pred_override_source=getattr(ms, 'pred_override_source', None),
+                    logger_source=_resolved_logger_source,
                     pred_confidence=ms.confidence,
                     pred_samples_used=ms.samples_used,
                     prediction_direction=getattr(ms, 'dominant_dir', None),

@@ -8,6 +8,11 @@ from typing import Any, Optional
 
 from money_path_ticker_tiers import observability_thresholds
 
+try:
+    from base_money_path_capture import LOGGER_SOURCE_BASE_MONEY_PATH
+except ImportError:
+    LOGGER_SOURCE_BASE_MONEY_PATH = "base_money_path"
+
 PASS_BASE_OBSERVABILITY = "PASS_BASE_OBSERVABILITY"
 RAW_CAPTURE_PASS = "RAW_CAPTURE_PASS"
 FAIL_SPARSE_SNAPSHOTS = "FAIL_SPARSE_SNAPSHOTS"
@@ -34,6 +39,14 @@ def _connect_ro(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _snapshots_has_logger_source(conn: sqlite3.Connection) -> bool:
+    return bool(
+        conn.execute(
+            "SELECT 1 FROM pragma_table_info('snapshots') WHERE name='logger_source'"
+        ).fetchone()
+    )
 
 
 def _gap_stats(ts_list: list[float]) -> tuple[Optional[float], Optional[float]]:
@@ -93,6 +106,28 @@ def evaluate_ticker_observability(
         )
 
     snap_count = int(snap[0] or 0)
+    has_logger_source = _snapshots_has_logger_source(conn)
+    base_snap_count: Optional[int] = None
+    base_median_gap: Optional[float] = None
+    base_max_gap: Optional[float] = None
+    if has_logger_source:
+        base_snap_count = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM snapshots WHERE ticker=? AND ts_utc BETWEEN ? AND ? "
+                "AND logger_source=?",
+                (t, rth_start, rth_end, LOGGER_SOURCE_BASE_MONEY_PATH),
+            ).fetchone()[0]
+        )
+        base_ts_list = [
+            float(r[0])
+            for r in conn.execute(
+                "SELECT ts_utc FROM snapshots WHERE ticker=? AND ts_utc BETWEEN ? AND ? "
+                "AND logger_source=? ORDER BY ts_utc",
+                (t, rth_start, rth_end, LOGGER_SOURCE_BASE_MONEY_PATH),
+            ).fetchall()
+        ]
+        base_median_gap, base_max_gap = _gap_stats(base_ts_list)
+
     ts_list = [
         float(r[0])
         for r in conn.execute(
@@ -156,6 +191,12 @@ def evaluate_ticker_observability(
         "last_ts_et": ts_et_label(float(last_ts)) if last_ts is not None else None,
         "median_gap_seconds": round(median_gap, 3) if median_gap is not None else None,
         "max_gap_seconds": round(max_gap_obs, 3) if max_gap_obs is not None else None,
+        "logger_source_column_present": has_logger_source,
+        "base_money_path_snapshot_count_rth": base_snap_count,
+        "base_money_path_median_gap_seconds": round(base_median_gap, 3)
+        if base_median_gap is not None
+        else None,
+        "base_money_path_max_gap_seconds": round(base_max_gap, 3) if base_max_gap is not None else None,
         "coverage_status": status,
         "reason": "; ".join(reasons) if reasons else "meets base RTH observability thresholds",
         "thresholds_applied": {
@@ -184,12 +225,32 @@ def base_ticker_observability_report(
     ]
     conn.close()
     all_pass = all(r["coverage_status"] == PASS_BASE_OBSERVABILITY for r in rows)
+    base_counts = [
+        r.get("base_money_path_snapshot_count_rth")
+        for r in rows
+        if r.get("base_money_path_snapshot_count_rth") is not None
+    ]
+    parity: dict[str, Any] = {"logger_source_column_present": any(
+        r.get("logger_source_column_present") for r in rows
+    )}
+    if base_counts and all(c is not None for c in base_counts):
+        mn = min(base_counts)
+        mx = max(base_counts)
+        parity.update(
+            {
+                "min_base_rows": mn,
+                "max_base_rows": mx,
+                "ratio_max_to_min": round(mx / mn, 3) if mn > 0 else None,
+                "parity_ok": mn > 0 and mx <= max(mn * 1.25, mn + 1),
+            }
+        )
     return {
         "meta": {
             "date": day.isoformat(),
             "rth_et": "09:30-16:00 ET",
             "db_path": str(db_path.resolve()),
             "base_universe_ready": all_pass,
+            "base_capture_parity": parity,
             "contract": "governance/artifacts/base_ticker_money_path_contract.json",
         },
         "tickers": rows,
@@ -207,15 +268,29 @@ def format_observability_markdown(report: dict[str, Any]) -> str:
         "",
         f"Universe ready: **{report['meta']['base_universe_ready']}**",
         "",
-        "| Ticker | Snap RTH | Norm RTH | Cal RTH | Median gap | Max gap | Status | Raw-only | Reason |",
-        "|--------|----------|----------|---------|------------|---------|--------|----------|--------|",
     ]
+    parity = report["meta"].get("base_capture_parity") or {}
+    if parity.get("logger_source_column_present"):
+        lines.append(
+            f"Base capture parity (logger_source=base_money_path): **{parity.get('parity_ok')}** "
+            f"(min={parity.get('min_base_rows')} max={parity.get('max_base_rows')} "
+            f"ratio={parity.get('ratio_max_to_min')})"
+        )
+        lines.append("")
+    lines.extend(
+        [
+        "| Ticker | Snap RTH | Norm RTH | Cal RTH | Base RTH | Median gap | Max gap | Status | Raw-only | Reason |",
+        "|--------|----------|----------|---------|----------|------------|---------|--------|----------|--------|",
+        ]
+    )
     for r in report["tickers"]:
         reason = str(r["reason"])[:80]
         raw_only = r.get("raw_only_status") or "—"
+        base_rth = r.get("base_money_path_snapshot_count_rth")
+        base_disp = base_rth if base_rth is not None else "—"
         lines.append(
             f"| {r['ticker']} | {r['snapshot_count_rth']} | {r['normalized_count_rth']} | "
-            f"{r['calibration_decision_count_rth']} | {r.get('median_gap_seconds') or '—'} | "
+            f"{r['calibration_decision_count_rth']} | {base_disp} | {r.get('median_gap_seconds') or '—'} | "
             f"{r.get('max_gap_seconds') or '—'} | {r['coverage_status']} | {raw_only} | {reason} |"
         )
     return "\n".join(lines)
