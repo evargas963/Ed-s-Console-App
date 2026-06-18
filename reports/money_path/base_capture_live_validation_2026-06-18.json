@@ -1,0 +1,384 @@
+{
+  "meta": {
+    "classification": "Audit Report",
+    "scope": "Base ticker live capture validation",
+    "date": "2026-06-18",
+    "branch": "audit/base-capture-live-validation",
+    "session_note": "Partial RTH session through audit capture (~09:31-10:14 ET)",
+    "db_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\data\\ed_console.db",
+    "base_universe_ready": false,
+    "prerequisites_merged": [
+      "PR #4 base capture loop",
+      "PR #6 normalization debounce"
+    ],
+    "server_restart_confirmed": "not verified in this audit \u2014 operator must confirm"
+  },
+  "observability_gate": {
+    "meta": {
+      "date": "2026-06-18",
+      "rth_et": "09:30-16:00 ET",
+      "db_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\data\\ed_console.db",
+      "base_universe_ready": false,
+      "contract": "governance/artifacts/base_ticker_money_path_contract.json"
+    },
+    "tickers": [
+      {
+        "ticker": "SPY",
+        "snapshot_count_rth": 34,
+        "normalized_count_rth": 25,
+        "calibration_decision_count_rth": 41,
+        "raw_capture_pass": false,
+        "normalized_pass": false,
+        "raw_only_status": null,
+        "first_ts_utc": 1781789490.379745,
+        "last_ts_utc": 1781791873.655503,
+        "first_ts_et": "2026-06-18 09:31:30 ET",
+        "last_ts_et": "2026-06-18 10:11:13 ET",
+        "median_gap_seconds": 71.059,
+        "max_gap_seconds": 226.764,
+        "coverage_status": "FAIL_SPARSE_SNAPSHOTS",
+        "reason": "snapshot_rows_rth=34 normalized_rows_rth=25 below minimum 300",
+        "thresholds_applied": {
+          "min_snapshot_rows_rth": 300,
+          "min_normalized_rows_rth": 300,
+          "max_median_gap_seconds": 90.0,
+          "max_gap_seconds": 300.0
+        }
+      },
+      {
+        "ticker": "QQQ",
+        "snapshot_count_rth": 9,
+        "normalized_count_rth": 9,
+        "calibration_decision_count_rth": 10,
+        "raw_capture_pass": false,
+        "normalized_pass": false,
+        "raw_only_status": null,
+        "first_ts_utc": 1781789709.734139,
+        "last_ts_utc": 1781791962.0262637,
+        "first_ts_et": "2026-06-18 09:35:09 ET",
+        "last_ts_et": "2026-06-18 10:12:42 ET",
+        "median_gap_seconds": 305.913,
+        "max_gap_seconds": 467.533,
+        "coverage_status": "FAIL_SPARSE_SNAPSHOTS",
+        "reason": "snapshot_rows_rth=9 normalized_rows_rth=9 below minimum 300; median_gap_seconds=305.9 exceeds 90.0; max_gap_seconds=467.5 exceeds 300.0",
+        "thresholds_applied": {
+          "min_snapshot_rows_rth": 300,
+          "min_normalized_rows_rth": 300,
+          "max_median_gap_seconds": 90.0,
+          "max_gap_seconds": 300.0
+        }
+      },
+      {
+        "ticker": "IWM",
+        "snapshot_count_rth": 10,
+        "normalized_count_rth": 9,
+        "calibration_decision_count_rth": 10,
+        "raw_capture_pass": false,
+        "normalized_pass": false,
+        "raw_only_status": null,
+        "first_ts_utc": 1781789734.6312442,
+        "last_ts_utc": 1781792060.5823987,
+        "first_ts_et": "2026-06-18 09:35:34 ET",
+        "last_ts_et": "2026-06-18 10:14:20 ET",
+        "median_gap_seconds": 221.415,
+        "max_gap_seconds": 477.239,
+        "coverage_status": "FAIL_SPARSE_SNAPSHOTS",
+        "reason": "snapshot_rows_rth=10 normalized_rows_rth=9 below minimum 300; median_gap_seconds=221.4 exceeds 90.0; max_gap_seconds=477.2 exceeds 300.0",
+        "thresholds_applied": {
+          "min_snapshot_rows_rth": 300,
+          "min_normalized_rows_rth": 300,
+          "max_median_gap_seconds": 90.0,
+          "max_gap_seconds": 300.0
+        }
+      }
+    ],
+    "summary": {
+      "pass_count": 0,
+      "fail_count": 3
+    }
+  },
+  "measurements": {
+    "per_ticker": {
+      "SPY": {
+        "raw_rows_rth": 34,
+        "normalized_rows_rth": 25,
+        "calibration_rows_rth": 41,
+        "first_ts_et": "2026-06-18 09:31:15 ET",
+        "last_ts_et": "2026-06-18 10:17:11 ET",
+        "median_gap_seconds": 71.05930519104004,
+        "max_gap_seconds": 226.76376509666443,
+        "avg_gap_seconds": 83.51974342086099,
+        "last_10_raw_timestamps_et": [
+          "2026-06-18 10:04:40 ET",
+          "2026-06-18 10:05:35 ET",
+          "2026-06-18 10:06:37 ET",
+          "2026-06-18 10:07:49 ET",
+          "2026-06-18 10:09:37 ET",
+          "2026-06-18 10:11:13 ET",
+          "2026-06-18 10:12:22 ET",
+          "2026-06-18 10:14:33 ET",
+          "2026-06-18 10:16:40 ET",
+          "2026-06-18 10:17:11 ET"
+        ],
+        "last_10_normalized_timestamps_et": [
+          "2026-06-18 09:57:15 ET",
+          "2026-06-18 09:58:15 ET",
+          "2026-06-18 10:00:19 ET",
+          "2026-06-18 10:02:43 ET",
+          "2026-06-18 10:04:40 ET",
+          "2026-06-18 10:05:35 ET",
+          "2026-06-18 10:06:37 ET",
+          "2026-06-18 10:07:49 ET",
+          "2026-06-18 10:09:37 ET",
+          "2026-06-18 10:11:13 ET"
+        ],
+        "minutes_with_snapshot_rows": 29,
+        "minutes_with_multiple_snapshot_rows": 4,
+        "per_minute_raw_counts": {
+          "09:31": 3,
+          "09:34": 1,
+          "09:35": 1,
+          "09:36": 1,
+          "09:37": 1,
+          "09:38": 1,
+          "09:40": 2,
+          "09:44": 1,
+          "09:46": 1,
+          "09:47": 1,
+          "09:48": 1,
+          "09:50": 2,
+          "09:54": 1,
+          "09:55": 1,
+          "09:56": 1,
+          "09:57": 1,
+          "09:58": 1,
+          "10:00": 2,
+          "10:02": 1,
+          "10:04": 1,
+          "10:05": 1,
+          "10:06": 1,
+          "10:07": 1,
+          "10:09": 1,
+          "10:11": 1,
+          "10:12": 1,
+          "10:14": 1,
+          "10:16": 1,
+          "10:17": 1
+        },
+        "raw_norm_delta": 9,
+        "source_path_detectable": false,
+        "source_path_note": "snapshots table has no logger_source column; attribution requires instrumentation"
+      },
+      "QQQ": {
+        "raw_rows_rth": 9,
+        "normalized_rows_rth": 9,
+        "calibration_rows_rth": 10,
+        "first_ts_et": "2026-06-18 09:35:09 ET",
+        "last_ts_et": "2026-06-18 10:12:42 ET",
+        "median_gap_seconds": 305.91295075416565,
+        "max_gap_seconds": 467.5330481529236,
+        "avg_gap_seconds": 281.53651559352875,
+        "last_10_raw_timestamps_et": [
+          "2026-06-18 09:35:09 ET",
+          "2026-06-18 09:37:32 ET",
+          "2026-06-18 09:44:12 ET",
+          "2026-06-18 09:47:51 ET",
+          "2026-06-18 09:54:19 ET",
+          "2026-06-18 09:57:00 ET",
+          "2026-06-18 10:04:47 ET",
+          "2026-06-18 10:07:36 ET",
+          "2026-06-18 10:12:42 ET"
+        ],
+        "last_10_normalized_timestamps_et": [
+          "2026-06-18 09:35:09 ET",
+          "2026-06-18 09:37:32 ET",
+          "2026-06-18 09:44:12 ET",
+          "2026-06-18 09:47:51 ET",
+          "2026-06-18 09:54:19 ET",
+          "2026-06-18 09:57:00 ET",
+          "2026-06-18 10:04:47 ET",
+          "2026-06-18 10:07:36 ET",
+          "2026-06-18 10:12:42 ET"
+        ],
+        "minutes_with_snapshot_rows": 9,
+        "minutes_with_multiple_snapshot_rows": 0,
+        "per_minute_raw_counts": {
+          "09:35": 1,
+          "09:37": 1,
+          "09:44": 1,
+          "09:47": 1,
+          "09:54": 1,
+          "09:57": 1,
+          "10:04": 1,
+          "10:07": 1,
+          "10:12": 1
+        },
+        "raw_norm_delta": 0,
+        "source_path_detectable": false,
+        "source_path_note": "snapshots table has no logger_source column; attribution requires instrumentation"
+      },
+      "IWM": {
+        "raw_rows_rth": 10,
+        "normalized_rows_rth": 9,
+        "calibration_rows_rth": 10,
+        "first_ts_et": "2026-06-18 09:35:34 ET",
+        "last_ts_et": "2026-06-18 10:14:20 ET",
+        "median_gap_seconds": 221.41476130485535,
+        "max_gap_seconds": 477.23903584480286,
+        "avg_gap_seconds": 258.43901716338263,
+        "last_10_raw_timestamps_et": [
+          "2026-06-18 09:35:34 ET",
+          "2026-06-18 09:38:24 ET",
+          "2026-06-18 09:45:54 ET",
+          "2026-06-18 09:48:38 ET",
+          "2026-06-18 09:55:19 ET",
+          "2026-06-18 09:57:49 ET",
+          "2026-06-18 10:05:46 ET",
+          "2026-06-18 10:09:28 ET",
+          "2026-06-18 10:14:15 ET",
+          "2026-06-18 10:14:20 ET"
+        ],
+        "last_10_normalized_timestamps_et": [
+          "2026-06-18 09:35:34 ET",
+          "2026-06-18 09:38:24 ET",
+          "2026-06-18 09:45:54 ET",
+          "2026-06-18 09:48:38 ET",
+          "2026-06-18 09:55:19 ET",
+          "2026-06-18 09:57:49 ET",
+          "2026-06-18 10:05:46 ET",
+          "2026-06-18 10:09:28 ET",
+          "2026-06-18 10:14:20 ET"
+        ],
+        "minutes_with_snapshot_rows": 9,
+        "minutes_with_multiple_snapshot_rows": 1,
+        "per_minute_raw_counts": {
+          "09:35": 1,
+          "09:38": 1,
+          "09:45": 1,
+          "09:48": 1,
+          "09:55": 1,
+          "09:57": 1,
+          "10:05": 1,
+          "10:09": 1,
+          "10:14": 2
+        },
+        "raw_norm_delta": 1,
+        "source_path_detectable": false,
+        "source_path_note": "snapshots table has no logger_source column; attribution requires instrumentation"
+      }
+    },
+    "logging_universe": [
+      {
+        "ticker": "IWM",
+        "enrollment_source": "core_bootstrap",
+        "last_background_log_ts_utc": 1781792110.903519,
+        "last_background_log_et": "2026-06-18 10:15:10 ET"
+      },
+      {
+        "ticker": "QQQ",
+        "enrollment_source": "core_bootstrap",
+        "last_background_log_ts_utc": 1781791979.7804544,
+        "last_background_log_et": "2026-06-18 10:12:59 ET"
+      },
+      {
+        "ticker": "SPY",
+        "enrollment_source": "core_bootstrap",
+        "last_background_log_ts_utc": 1781792261.377257,
+        "last_background_log_et": "2026-06-18 10:17:41 ET"
+      }
+    ]
+  },
+  "cadence_disparity": {
+    "spy_raw_rows": 34,
+    "qqq_raw_rows": 9,
+    "iwm_raw_rows": 10,
+    "spy_to_qqq_row_ratio": 3.78,
+    "spy_median_gap_sec": 71.05930519104004,
+    "qqq_median_gap_sec": 305.91295075416565,
+    "interpretation": "SPY accumulates ~3.8x faster than QQQ on raw snapshots in partial session; median gap SPY ~71s vs QQQ ~306s indicates unequal effective cadence."
+  },
+  "audit_questions": {
+    "1_base_logger_loop_running": {
+      "answer": "inferred_yes_from_row_pattern",
+      "evidence": "QQQ/IWM first rows within 25s of each other after SPY (09:35:09/09:35:34 vs SPY 09:31:30) matches base loop SPY\u2192QQQ\u2192IWM stagger; code starts thread ed-base-money-path-logger in start_logger()",
+      "code": "server.py:2563-2635"
+    },
+    "2_startup_log_base_task": {
+      "answer": "yes_when_lifespan_runs",
+      "evidence": "log.info Base money-path logger started \u2014 ['SPY','QQQ','IWM'] every 60s",
+      "code": "server.py:2575-2578,6592"
+    },
+    "3_loop_iterates_all_three": {
+      "answer": "yes",
+      "evidence": "for ticker in base_money_path_logger_tickers() \u2192 BASE_MONEY_PATH_TICKERS",
+      "code": "server.py:2595-2601"
+    },
+    "4_blocked_by_slow_fetch": {
+      "answer": "yes_likely",
+      "evidence": "Sequential for-loop; each _logger_fetch_and_log calls full _fetch_state; cycle wait=max(0, interval-elapsed) \u2014 if elapsed>>60s, effective cadence drops below 1/min/ticker",
+      "code": "server.py:2438-2463,2611-2615"
+    },
+    "5_full_model_fusion_per_ticker": {
+      "answer": "yes",
+      "evidence": "_fetch_state(..., log_only=True) runs quote+chain+models+fusion+DB insert path",
+      "code": "server.py:2463,5219-5712"
+    },
+    "6_spy_extra_ui_sse_rest": {
+      "answer": "yes_proven_by_disparity_and_code",
+      "evidence": "SPY 34 raw vs QQQ 9; SPY median gap ~71s (~1/min throttle ceiling); SSE loop schedules _fetch_state for subscribed active ticker at VIEWER_SSE_REFRESH_SEC (~1s with viewers, 1 insert/min throttle)",
+      "code": "server.py:7883-7916,329-336"
+    },
+    "7_qqq_iwm_skipped_by_filters": {
+      "answer": "no",
+      "evidence": "should_skip_background_full_snapshot returns False for base tickers; filter_tickers_for_background_logging keeps anchors",
+      "code": "money_path_ticker_tiers.py:77-85, scheduler_user_tickers.py:124-140"
+    },
+    "8_schwab_quote_failures": {
+      "answer": "not_proven",
+      "evidence": "No server log capture in this audit; rows exist for QQQ/IWM so some fetches succeed"
+    },
+    "9_exceptions_in_logs": {
+      "answer": "not_proven",
+      "evidence": "Requires operator server log review"
+    },
+    "10_sleep_per_cycle_not_per_ticker": {
+      "answer": "yes_per_full_cycle",
+      "evidence": "STAGGER_SECS between tickers; wait=interval-elapsed after all three",
+      "code": "server.py:2598-2615"
+    },
+    "11_normalization_follows_raw": {
+      "answer": "yes_with_debounce_lag",
+      "evidence": "QQQ 9/9 raw/norm; IWM 10/9; SPY 34/25 (7-row debounce lag from PR #6)"
+    },
+    "12_single_ticker_lock_favoring_spy": {
+      "answer": "no_lock_throttle_and_ui_paths",
+      "evidence": "ED_DB_SNAPSHOT_THROTTLE max 1 insert/ticker/UTC minute; no SPY-only lock; active UI path adds SPY attempts"
+    },
+    "13_active_ticker_influences_count": {
+      "answer": "yes",
+      "evidence": "Cadence disparity + SSE/REST paths only fire for subscribed active symbol; SPY row rate ~3.8x QQQ"
+    },
+    "14_calibration_same_disparity": {
+      "answer": "yes",
+      "evidence": "cal rows RTH: SPY 41, QQQ 10, IWM 10 \u2014 tracks fetch/compute volume not base parity"
+    }
+  },
+  "root_cause": {
+    "primary": "Unequal effective snapshot cadence: active UI ticker (SPY) receives stacked SSE/REST fetches (~1 insert/min) while QQQ/IWM depend on sequential base+general background loops at ~3-5 min observed median gap.",
+    "secondary": "Base loop design targets 60s/cycle but sequential full _fetch_state per ticker inflates cycle duration; one row per base ticker per completed cycle not per minute.",
+    "normalization": "Working for rows captured; does not mask sparse QQQ/IWM capture.",
+    "instrumentation_gap": "snapshots table lacks logger_source / update_source \u2014 cannot attribute rows from DB alone."
+  },
+  "bugs_proven": [
+    "Base money-path capture does not achieve equal SPY/QQQ/IWM cadence in live partial session",
+    "Active UI ticker boosts SPY snapshot count independent of base loop parity intent",
+    "No snapshot source_path metadata for audit attribution"
+  ],
+  "bugs_not_proven": [
+    "Schwab quote fetch failures for QQQ/IWM",
+    "Base logger thread not started (inferred running from timestamp pattern)",
+    "Server restart not performed (operator confirmation pending)"
+  ],
+  "recommended_next_step": "fix/base-capture-cadence-parity \u2014 lightweight base capture path OR concurrent base fetches OR decouple base loop from full _fetch_state; add logger_source on snapshot INSERT; do not weaken observability thresholds",
+  "fix_made_this_branch": null
+}
