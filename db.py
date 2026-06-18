@@ -384,6 +384,7 @@ class SnapshotRow:
     pred_model_version: Optional[str] = None  # 'statistical_v1', 'xgb_v1', etc.
     pred_model_source:  Optional[str] = None  # 'ml', 'rules', 'statistical'
     pred_override_source: Optional[str] = None  # override source if user overrode
+    logger_source:      Optional[str] = None  # base_money_path | background_logger | ui_sse | ui_rest | manual_backfill
     pred_confidence:    Optional[str] = None  # 'low', 'medium', 'high'
     pred_samples_used:  Optional[int] = None  # how many historical snapshots used
     prediction_direction:   Optional[str]   = None  # PredictiveCard.dominant_dir
@@ -2577,6 +2578,15 @@ class EdDB:
             ("pressure_label", "TEXT"),
             ("pressure_trend", "TEXT"),
         ):
+            for tbl in ("snapshots", "snapshots_1m_normalized"):
+                try:
+                    with self._connect() as conn:
+                        conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {col_name} {col_type}")
+                    log.info("DB migration: added %s to %s", col_name, tbl)
+                except sqlite3.OperationalError:
+                    pass
+
+        for col_name, col_type in (("logger_source", "TEXT"),):
             for tbl in ("snapshots", "snapshots_1m_normalized"):
                 try:
                     with self._connect() as conn:
