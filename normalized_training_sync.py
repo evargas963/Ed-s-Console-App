@@ -382,6 +382,33 @@ _base_debounce_timer: Optional[threading.Timer] = None
 _base_debounce_lock = threading.Lock()
 
 
+def base_money_path_normalize_debounce_sec(
+    *,
+    capture_interval_sec: Optional[float] = None,
+    delay_s: Optional[float] = None,
+) -> float:
+    """Effective debounce delay — must stay below capture cadence or the timer never fires.
+
+    When the base logger schedules refresh every ~60s but debounce is 120s and each schedule
+    cancels the prior timer, materialization starves (norm rows freeze while raw rows grow).
+    """
+    if delay_s is not None:
+        return max(5.0, float(delay_s))
+    raw = os.environ.get("ED_BASE_MONEY_PATH_NORMALIZE_DEBOUNCE_SEC", "").strip()
+    if raw:
+        return max(5.0, float(raw))
+    if capture_interval_sec is None:
+        try:
+            from money_path_ticker_tiers import base_money_path_capture_interval_sec
+
+            capture_interval_sec = base_money_path_capture_interval_sec()
+        except Exception:
+            capture_interval_sec = 60.0
+    cycle = max(15.0, float(capture_interval_sec))
+    # Default: fire well before the next capture cycle can cancel this timer (~75% of cycle).
+    return max(15.0, min(90.0, cycle * 0.75))
+
+
 def materialize_base_money_path_tickers(db_path: str | Path) -> dict[str, Any]:
     """Per-ticker normalized refresh for SPY/QQQ/IWM only (live base capture path).
 
@@ -408,13 +435,22 @@ def schedule_debounced_base_money_path_normalized_refresh(
     global _base_debounce_timer
     lg = logger or _log
     db_path = Path(db_path)
-    if delay_s is None:
-        delay_s = float(os.environ.get("ED_BASE_MONEY_PATH_NORMALIZE_DEBOUNCE_SEC", "120"))
+    effective_delay = base_money_path_normalize_debounce_sec(delay_s=delay_s)
+
+    with _base_debounce_lock:
+        if _base_debounce_timer is not None:
+            lg.debug(
+                "base_money_path normalized refresh: timer already pending (debounce=%.1fs)",
+                effective_delay,
+            )
+            return
 
     def _fire() -> None:
         global _base_debounce_timer
         try:
-            mat = materialize_base_money_path_tickers(db_path)
+            with _materialize_lock:
+                with cross_process_materialize_lock(db_path):
+                    mat = materialize_base_money_path_tickers(db_path)
             if mat.get("errors"):
                 lg.warning(
                     "base_money_path normalized refresh errors: %s",
@@ -426,21 +462,22 @@ def schedule_debounced_base_money_path_normalized_refresh(
                     mat.get("normalized_rows"),
                     mat.get("by_ticker"),
                 )
+        except TimeoutError as e:
+            lg.warning("base_money_path normalized refresh lock timeout: %s", e)
         except Exception as e:
             lg.warning("base_money_path normalized refresh failed: %s", e)
         finally:
             with _base_debounce_lock:
                 _base_debounce_timer = None
 
-    t = threading.Timer(float(delay_s), _fire)
+    t = threading.Timer(float(effective_delay), _fire)
     t.daemon = True
     with _base_debounce_lock:
-        if _base_debounce_timer is not None:
-            try:
-                _base_debounce_timer.cancel()
-            except Exception as e:
-                _log.debug("base debounce timer cancel: %s", e, exc_info=True)
         _base_debounce_timer = t
+    lg.debug(
+        "base_money_path normalized refresh scheduled in %.1fs",
+        effective_delay,
+    )
     t.start()
 
 

@@ -1,6 +1,7 @@
 """Tests for base/guest ticker tiers and RTH observability checker."""
 from __future__ import annotations
 
+import contextlib
 import datetime
 import sqlite3
 import time
@@ -469,6 +470,62 @@ def test_schedule_debounced_base_money_path_refresh_materializes(monkeypatch, tm
     )
     schedule_debounced_base_money_path_normalized_refresh(tmp_path / "x.db")
     assert fired == [tmp_path / "x.db"]
+
+
+def test_base_normalize_debounce_default_below_capture_interval():
+    from normalized_training_sync import base_money_path_normalize_debounce_sec
+
+    delay = base_money_path_normalize_debounce_sec(capture_interval_sec=60.0)
+    assert delay < 60.0
+    assert delay >= 15.0
+
+
+def test_base_normalize_schedule_does_not_starve_when_cycles_reschedule(monkeypatch, tmp_path: Path):
+    """Repeated capture cycles must not cancel a pending debounce timer (PR8 norm freeze)."""
+    import normalized_training_sync as nts
+
+    fired: list[int] = []
+    pending: list[float] = []
+
+    class _RecordingTimer:
+        def __init__(self, delay, fn):
+            pending.append(float(delay))
+            self._fn = fn
+            self._delay = float(delay)
+
+        def start(self):
+            pass
+
+        def cancel(self):
+            pass
+
+        daemon = True
+
+    def _fake_materialize(_path):
+        fired.append(1)
+        return {"errors": [], "normalized_rows": 1, "by_ticker": {}}
+
+    monkeypatch.setattr(nts.threading, "Timer", _RecordingTimer)
+    monkeypatch.setattr(nts, "materialize_base_money_path_tickers", _fake_materialize)
+    monkeypatch.setattr(
+        nts,
+        "cross_process_materialize_lock",
+        lambda *_a, **_k: contextlib.nullcontext(),
+    )
+
+    nts._base_debounce_timer = None
+    nts.schedule_debounced_base_money_path_normalized_refresh(tmp_path / "a.db", delay_s=0.01)
+    assert len(pending) == 1
+    first_timer = nts._base_debounce_timer
+    assert first_timer is not None
+
+    # Second schedule while timer pending — must NOT replace timer (old bug cancelled it).
+    nts.schedule_debounced_base_money_path_normalized_refresh(tmp_path / "a.db", delay_s=0.01)
+    assert len(pending) == 1
+    assert nts._base_debounce_timer is first_timer
+
+    first_timer._fn()
+    assert len(fired) == 1
 
 
 def test_resolve_logger_source_from_update_source():
