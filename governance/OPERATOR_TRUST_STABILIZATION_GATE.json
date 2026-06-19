@@ -19,7 +19,7 @@
   "blocked_branches": [
     "fix/card-price-conflict-explainability"
   ],
-  "last_verified_commit": "c26d812",
+  "last_verified_commit": "230e8ae",
   "required_policy_docs": [
     "docs/OPEN_ITEMS_OPERATOR_TRUST.md",
     "docs/PR_REVIEW_STANDARD.md",
