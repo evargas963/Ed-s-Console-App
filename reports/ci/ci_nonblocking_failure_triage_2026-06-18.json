@@ -8,32 +8,32 @@
   "ci_triage_gate_pass": false,
   "next_allowed_step": "await_pr19_ci_results",
   "github_checks_last_observed": {
-    "commit": "6c5a782",
+    "commit": "999a4cd",
     "objective-audit": "pass",
-    "hardening": "fail",
+    "hardening": "pass",
     "pytest-full": "fail",
     "schwab-csv-first": "mixed"
   },
   "checks": {
     "hardening": {
-      "classification": "FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI",
+      "classification": "CLOSED_WITH_EVIDENCE",
       "root_cause": "openpyxl missing in hardening job; F401 also fixed",
       "fix_applied": "hardening.yml installs requirements-dev.txt",
-      "files_changed": [".github/workflows/hardening.yml"],
-      "closure_criteria": "hardening workflow green on GitHub PR #19"
+      "github_runs": ["27824991489", "27824992744"],
+      "closure_criteria": "hardening workflow green on GitHub PR #19 — met"
     },
     "pytest-full": {
       "classification": "OPEN_BLOCKING",
-      "root_cause": "webServer startup fixed; 49 test failures; Schwab paths without token",
-      "fix_applied": "ED_CI_OFFLINE + is_schwab_ci_offline_mode blocks live Schwab client/API in CI",
-      "files_changed": [".github/workflows/pytest.yml", "config.py", "schwab_client.py"],
+      "root_cause": "52 failures — mixed pre-existing suite debt + CI offline Schwab paths",
+      "fix_applied": "ED_CI_OFFLINE + is_schwab_ci_offline_mode blocks live Schwab client/API",
+      "github_runs": ["27824991443"],
       "closure_criteria": "pytest-full green on GitHub PR #19 or EXTERNAL_SECRET_REQUIRED_WITH_EVIDENCE"
     },
     "schwab-csv-first": {
       "classification": "FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI",
-      "root_cause": "diff-emission false positives; PR register pin step",
-      "fix_applied": "EMISSION_EXCLUDE_PATH_PREFIXES + AMBIGUOUS_MARKET_TOKENS",
-      "files_changed": ["tools/check_schwab_csv_first.py", "tests/test_check_schwab_csv_first.py"],
+      "root_cause": "diff-emission false positives on checker catalog + test fixtures",
+      "fix_applied": "homonym catalog skip + exclude tests/test_check_schwab_csv_first.py",
+      "github_runs": ["27824991460", "27824992738"],
       "closure_criteria": "schwab-csv-first green on GitHub PR #19"
     }
   },

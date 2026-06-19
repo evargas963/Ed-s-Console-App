@@ -2,38 +2,36 @@
 
 # CI non-blocking failure triage (2026-06-18)
 
-**Updated:** 2026-06-19 on branch `audit/ci-nonblocking-failures-triage` — awaiting GitHub PR #19 CI proof.
+**Updated:** 2026-06-19 on branch `audit/ci-nonblocking-failures-triage` @ `999a4cd` (+ pending schwab emission fix).
 
-Objective-audit remains the merge gate. Classifications below are **not** `CLOSED_WITH_EVIDENCE` until GitHub workflows green.
-
-**GitHub PR #19 checks (last observed @ `6c5a782`):**
+**GitHub PR #19 checks (@ `999a4cd`):**
 
 | Check | Status |
 |-------|--------|
 | objective-audit | pass |
-| hardening | fail — `ModuleNotFoundError: No module named 'openpyxl'` in enforce-static |
-| pytest-full | fail — 49 failed (webServer starts; Schwab token/API paths) |
-| schwab-csv-first | mixed — push pass; PR fail on register pin step |
+| hardening | **pass** (runs 27824991489, 27824992744) |
+| pytest-full | fail — `52 failed, 3729 passed` (mixed pre-existing + CI offline; run 27824991443) |
+| schwab-csv-first | mixed — push pass; PR fail on diff-emission false positives (run 27824992738) |
 
 ## hardening
 
 | Field | Value |
 |-------|-------|
-| **Classification** | `FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI` |
-| **CI link / log excerpt** | `enforce-static` → `check_zero_bias_ablation_contract` → `import openpyxl` → `ModuleNotFoundError` (run 27815811385) |
+| **Classification** | `CLOSED_WITH_EVIDENCE` |
+| **CI link / log excerpt** | GitHub hardening pass @ `999a4cd` (runs 27824991489, 27824992744) |
 | **Root cause** | Hardening job installed `requirements.txt` only; `enforce-static` imports `openpyxl` via `build_feature_assignment_matrix_v2.py` |
 | **Fix applied** | `.github/workflows/hardening.yml` adds `pip install -r requirements-dev.txt`; F401 cleanup retained |
 | **Files changed** | `.github/workflows/hardening.yml`, repo-wide F401 |
 | **Tests added** | hardening workflow ruff F401/F821/E9 + enforce-static |
 | **Residual risk** | F841/F811 lint debt still ratchet-only |
-| **Closure criteria** | `hardening` workflow green on GitHub PR #19 → `CLOSED_WITH_EVIDENCE` |
+| **Closure criteria** | `hardening` workflow green on GitHub PR #19 — **met** |
 
 ## pytest-full
 
 | Field | Value |
 |-------|-------|
 | **Classification** | `OPEN_BLOCKING` |
-| **CI link / log excerpt** | WebServer starts with placeholders; `49 failed, 3731 passed`; `Schwab client init failed: Token file not found` on `/api/liquidity-snapshot` (run 27815811424) |
+| **CI link / log excerpt** | WebServer starts; `52 failed, 3729 passed` @ `999a4cd` (run 27824991443); CI offline blocks live Schwab (proof: no network) |
 | **Root cause** | (1) Missing `SCHWAB_API_KEY` at startup — fixed with placeholders. (2) Tests hitting live Schwab paths without token still fail. |
 | **Fix applied** | `pytest.yml`: `ED_CI_OFFLINE=1`, `ci-not-live-placeholder` credentials; `config.is_schwab_ci_offline_mode()` blocks client build + `safe_get_*` API calls |
 | **Files changed** | `.github/workflows/pytest.yml`, `config.py`, `schwab_client.py` |
@@ -46,9 +44,9 @@ Objective-audit remains the merge gate. Classifications below are **not** `CLOSE
 | Field | Value |
 |-------|-------|
 | **Classification** | `FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI` |
-| **CI link / log excerpt** | Push event pass; PR event `register_content_sha256 mismatch` after V4 register generation (run 27815811429) |
-| **Root cause** | Diff-emission false positives on governance homonyms; PR-only register pin step |
-| **Fix applied** | `EMISSION_EXCLUDE_PATH_PREFIXES` + `AMBIGUOUS_MARKET_TOKENS` quoted-key rule |
+| **CI link / log excerpt** | PR diff-emission: `lastPrice` test fixtures + `AMBIGUOUS_MARKET_TOKENS` catalog line (run 27824992738) |
+| **Root cause** | Diff-emission false positives on checker self-definition and schwab test fixtures |
+| **Fix applied** | Exclude `tests/test_check_schwab_csv_first.py`; skip homonym catalog definition lines |
 | **Files changed** | `tools/check_schwab_csv_first.py`, `tests/test_check_schwab_csv_first.py` |
 | **Tests added** | homonym + operator-trust path exclusion tests |
 | **Residual risk** | PR register pin must match meta on merge |

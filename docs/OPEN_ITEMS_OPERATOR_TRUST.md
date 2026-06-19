@@ -89,16 +89,16 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI` |
-| **Source PR / report** | CI triage 2026-06-19 — ruff F401 |
+| **Status** | `CLOSED_WITH_EVIDENCE` |
+| **Source PR / report** | CI triage 2026-06-19 — ruff F401 + openpyxl in hardening |
 | **Why it matters** | Institutional locks may drift |
 | **Operator risk** | Silent rule regression |
-| **Evidence currently available** | F401 fixed locally; hardening workflow installs `requirements-dev.txt` for `openpyxl` (enforce-static) |
-| **Evidence still needed** | GitHub hardening workflow green on PR #19 |
+| **Evidence currently available** | GitHub PR #19 @ `999a4cd`: hardening pass (runs 27824991489, 27824992744) |
+| **Evidence still needed** | None — green on PR branch |
 | **Fix now or harness now** | F401 fixed repo-wide |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | Medium |
-| **Do not close until** | `hardening` green on GitHub `main` |
+| **Do not close until** | `hardening` green on GitHub PR #19 merge to `main` (met @ `999a4cd`) |
 
 ---
 

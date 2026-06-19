@@ -35,13 +35,16 @@ def test_schwab_client_imports_without_constructing_live_client() -> None:
     assert not hasattr(schwab_client, "_client")
 
 
-def test_build_client_from_token_fails_closed_without_token_file(tmp_path: Path) -> None:
+def test_build_client_from_token_fails_closed_without_token_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from schwab_client import build_client_from_token
 
+    monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
     state = build_client_from_token(
         str(tmp_path / "missing_token.json"),
-        api_key="fake-key",
-        app_secret="fake-secret",
+        api_key="fake-key-not-ci-placeholder",
+        app_secret="fake-secret-not-ci-placeholder",
     )
     assert state.ok is False
     assert state.client is None

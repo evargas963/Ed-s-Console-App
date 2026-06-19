@@ -105,9 +105,10 @@ def test_schedule_analytics_recompute_resets_counter_on_success(monkeypatch, _bg
     assert cache_key in srv._state_cache
 
 
-def test_safe_get_chain_raises_schwab_auth_error_on_invalid_grant():
+def test_safe_get_chain_raises_schwab_auth_error_on_invalid_grant(monkeypatch: pytest.MonkeyPatch):
     import schwab_client as sc
 
+    monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
     sc._schwab_auth_failure_until_mono = 0.0
 
     class _FakeClient:
@@ -121,9 +122,10 @@ def test_safe_get_chain_raises_schwab_auth_error_on_invalid_grant():
     assert sc._schwab_auth_latched()
 
 
-def test_safe_get_chain_latched_skips_second_call():
+def test_safe_get_chain_latched_skips_second_call(monkeypatch: pytest.MonkeyPatch):
     import schwab_client as sc
 
+    monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
     sc._schwab_auth_failure_until_mono = sc.time.monotonic() + 60.0
     calls = {"n": 0}
 

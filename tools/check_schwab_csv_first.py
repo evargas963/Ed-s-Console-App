@@ -113,6 +113,7 @@ EMISSION_EXCLUDE_PATH_PREFIXES: tuple[str, ...] = (
     "docs/NO_SILENT_DEGRADATION_POLICY.md",
     "governance/OPERATOR_TRUST_STABILIZATION_GATE.json",
     "tests/test_operator_trust_governance.py",
+    "tests/test_check_schwab_csv_first.py",
 )
 
 RISK_PATTERNS = (
@@ -291,7 +292,19 @@ def _is_market_surface(name: str) -> bool:
     return MARKET_SURFACE_EXTRA.search(name) is not None
 
 
+def _is_token_catalog_definition_line(line: str) -> bool:
+    """Skip homonym catalog / frozenset definitions — not market-fact emission."""
+    stripped = line.strip()
+    if "AMBIGUOUS_MARKET_TOKENS" in stripped:
+        return True
+    if re.match(r"^\w+\s*=\s*frozenset\s*\(", stripped):
+        return True
+    return False
+
+
 def _surfaces_from_line(line: str) -> list[str]:
+    if _is_token_catalog_definition_line(line):
+        return []
     found: list[str] = []
     for pat in EMISSION_EXTRACTORS:
         for m in pat.finditer(line):

@@ -275,6 +275,17 @@ def test_diff_emission_ignores_english_open_close_without_quoted_keys():
     assert sites == []
 
 
+def test_diff_emission_ignores_homonym_catalog_definition():
+    diff = "\n".join(
+        [
+            "+++ b/tools/check_schwab_csv_first.py",
+            '+AMBIGUOUS_MARKET_TOKENS = frozenset({"open", "close", "high", "low", "vix"})',
+        ]
+    )
+    sites = guard._extract_emission_sites(diff)
+    assert sites == []
+
+
 def test_diff_emission_still_flags_real_market_fact_emission():
     diff = "\n".join(
         [

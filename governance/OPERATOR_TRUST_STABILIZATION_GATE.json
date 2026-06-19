@@ -12,7 +12,6 @@
     "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN",
     "BASE_CAPTURE_NORMALIZATION_RTH_PROOF_NOT_COMPLETE",
     "RTH_VALIDATION_NOT_EXECUTED_AFTER_TRANSPORT_FIXES",
-    "HARDENING_CI_FAILING_NON_BLOCKING",
     "PYTEST_FULL_CI_FAILING_NON_BLOCKING",
     "SCHWAB_CSV_FIRST_FAILING_OR_MIXED_NON_BLOCKING"
   ],
@@ -21,7 +20,7 @@
   "blocked_branches": [
     "fix/card-price-conflict-explainability"
   ],
-  "last_verified_commit": "6c5a782",
+  "last_verified_commit": "999a4cd",
   "required_policy_docs": [
     "docs/OPEN_ITEMS_OPERATOR_TRUST.md",
     "docs/PR_REVIEW_STANDARD.md",
