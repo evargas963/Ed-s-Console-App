@@ -2,7 +2,7 @@
   "gate_name": "operator_trust_stabilization",
   "card_explainability_blocked_until_gate_passes": true,
   "status": "PASS",
-  "last_verified_commit": "",
+  "last_verified_commit": "cdda8cd",
   "required_policy_docs": [
     "docs/OPEN_ITEMS_OPERATOR_TRUST.md",
     "docs/PR_REVIEW_STANDARD.md",
