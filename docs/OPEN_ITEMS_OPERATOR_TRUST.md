@@ -11,9 +11,9 @@
 - `ci_triage_gate_pass: false` — PR #19 CI fixes landed; awaiting GitHub green.
 - `operator_readiness_gate_pass: false` — CI triage + RTH proof not complete.
 - `card_explainability_allowed: false` — **do not** start `fix/card-price-conflict-explainability`.
-- **Next allowed step:** `resolve_pytest_full_failures` — pytest-full **34-failure** matrix @ `e3ba4a9` run `27845075770` (ABLATION fix landed locally — expect **30** after GitHub re-run).
+- **Next allowed step:** `resolve_pytest_full_failures` — pytest-full **29-failure** matrix @ `704b4b9` run `27851943230`.
 
-**Planned sequence:** Merge stabilization (PR #18 ✅) → CI triage (PR #19, awaiting GitHub) → operator RTH validation → `fix/card-price-conflict-explainability` (only when `card_explainability_allowed: true`)
+**Planned sequence:** Merge stabilization (PR #18 ✅) → CI triage (PR #19, awaiting pytest-full) → operator RTH validation → `fix/card-price-conflict-explainability` (only when `card_explainability_allowed: true`)
 
 ---
 
@@ -21,16 +21,28 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI` |
-| **Source PR / report** | `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md`; objective-audit run `27847001817` @ `89837cd` |
-| **Why it matters** | objective-audit blocks merge; `whole_stack_fusion_cell_target` must equal `runnable_target` on CI empty DB |
+| **Status** | `CLOSED_WITH_EVIDENCE` |
+| **Source PR / report** | `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md`; GitHub @ `704b4b9` runs `27851943226` (objective-audit) + `27851943230` (pytest-full) |
+| **Why it matters** | objective-audit blocks merge; runnable accounting must agree on CI empty DB |
 | **Operator risk** | False ablation readiness if denominators diverge |
-| **Evidence currently available** | Root cause: `enriched or None` in `ablation_static_lock_index`; fix: `enriched_rows_for_spec_build`; local `enforce_all_rules --objective-audit` PASS |
-| **Evidence still needed** | GitHub objective-audit green; pytest-full re-run (expect 34→30 failures) |
-| **Fix now or harness now** | Code fix in `audit/ci-nonblocking-failures-triage` (uncommitted @ `89837cd`) |
+| **Evidence currently available** | Fix @ `704b4b9`: `resolve_ablation_enriched_row_sample` + `enriched_rows_for_spec_build`; GitHub objective-audit PASS; 4 ablation matrix tests green in pytest-full |
+| **Evidence still needed** | None — bucket closed |
+| **Fix now or harness now** | Landed @ `704b4b9` on `audit/ci-nonblocking-failures-triage` |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
-| **Blocking level** | High until GitHub objective-audit green |
-| **Do not close until** | objective-audit pass on GitHub PR #19 + 4 ablation matrix tests green in pytest-full |
+| **Blocking level** | Closed |
+| **Do not close until** | Met @ `704b4b9` |
+
+---
+
+### OBJECTIVE_AUDIT_CI
+
+| Field | Value |
+|-------|-------|
+| **Status** | `CLOSED_WITH_EVIDENCE` |
+| **Source PR / report** | GitHub run `27851943226` @ `704b4b9` |
+| **Why it matters** | Repo-wide static + situational runtime gate for merge |
+| **Evidence currently available** | objective-audit PASS push + pull_request @ `704b4b9` |
+| **Do not close until** | Met @ `704b4b9` |
 
 ---
 
@@ -89,16 +101,16 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `OPEN_BLOCKING` (partial — hardening + schwab-csv-first closed @ `6e3157c`) |
+| **Status** | `OPEN_BLOCKING` (partial — objective-audit + hardening + schwab-csv-first closed @ `704b4b9`) |
 | **Source PR / report** | `audit/ci-nonblocking-failures-triage`; `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` |
-| **Why it matters** | Only objective-audit trusted — repo health degraded |
+| **Why it matters** | pytest-full is merge gate; 29 failures remain |
 | **Operator risk** | Regressions hide in red checks |
-| **Evidence currently available** | Fixes landed: F401, schwab false-positive scope, pytest CI placeholders |
-| **Evidence still needed** | GitHub PR #19: `pytest-full` green OR operator sign-off on all 46 matrix rows (`hardening` + `schwab-csv-first` already green @ `6e3157c`) |
-| **Fix now or harness now** | Fixes in `audit/ci-nonblocking-failures-triage` |
+| **Evidence currently available** | GitHub @ `704b4b9`: objective-audit PASS; pytest-full `29 failed, 3757 passed, 7 skipped` run `27851943230` |
+| **Evidence still needed** | GitHub PR #19: `pytest-full` green OR operator sign-off on all open matrix rows |
+| **Fix now or harness now** | Next bucket: `MEGA_INVENTORY_CONTRACT_LOCK` (4 tests) |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | High until CI green on GitHub |
-| **Do not close until** | `pytest-full` green on GitHub PR #19 OR operator-signed acceptance of all 46 matrix rows @ `6e3157c` (`hardening` + `schwab-csv-first` met) |
+| **Do not close until** | `pytest-full` green on GitHub PR #19 OR operator-signed acceptance of all **29** open matrix rows @ `704b4b9` |
 
 ---
 
@@ -125,14 +137,14 @@
 |-------|-------|
 | **Status** | `OPEN_BLOCKING` |
 | **Source PR / report** | `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` — pytest-full failure matrix |
-| **Why it matters** | Full suite catches cone gaps; 34 failures categorized — not Schwab secrets |
+| **Why it matters** | Full suite catches cone gaps; 29 failures categorized @ `704b4b9` |
 | **Operator risk** | Regressions hide in uncategorized red check |
-| **Evidence currently available** | Matrix @ `e3ba4a9` run 27845075770: **34 failures**; MISSING_SNAPSHOTS snapshots scope **CLOSED** @ e3ba4a9 (12 tests cleared since 2007768) |
-| **Evidence still needed** | pytest-full green OR operator sign-off on every open matrix row; objective-audit green on GitHub (fix landed locally — push required) |
-| **Fix now or harness now** | `schwab_live_blocked_for()` credential scope; analytics executor fixture; ticker_switch logging |
+| **Evidence currently available** | Matrix @ `704b4b9` run 27851943230: **29 failed, 3757 passed, 7 skipped**; ABLATION + GOVERNANCE_MUTATION closed |
+| **Evidence still needed** | pytest-full green OR operator sign-off on every open matrix row |
+| **Fix now or harness now** | Recommended next: `MEGA_INVENTORY_CONTRACT_LOCK` (4 tests, `fix/mega-inventory-sync`) |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` (FIX_NOW); triage-owned groups in `ci_nonblocking_failure_triage_2026-06-18.json` |
 | **Blocking level** | High — blocks PR #19 merge |
-| **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all **34** open matrix rows @ `e3ba4a9` |
+| **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all **29** open matrix rows @ `704b4b9` |
 
 ---
 
