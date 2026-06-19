@@ -26,9 +26,9 @@ card_explainability_allowed: False
 - SCHWAB_CSV_FIRST_FAILING_OR_MIXED_NON_BLOCKING
 
 ## Next allowed step
-await_pr19_ci_results
+resolve_pytest_full_failures
 
-## After PR #19 CI green
+## After pytest-full resolved
 next_allowed_step: operator_rth_validation
 next_allowed_branch: audit/rth-operator-trust-validation
 

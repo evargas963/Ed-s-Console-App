@@ -187,9 +187,9 @@ def auth_is_refreshable(inspection: TokenInspectionResult) -> bool:
 
 def build_client_from_token(token_path: str, api_key: str, app_secret: str) -> SchwabClientState:
     """Build Schwab client from token file. token_path is normalized to absolute."""
-    from config import is_schwab_ci_offline_mode
+    from config import schwab_live_blocked_for
 
-    if is_schwab_ci_offline_mode():
+    if schwab_live_blocked_for(api_key=api_key, app_secret=app_secret):
         return SchwabClientState(
             ok=False,
             message=(
@@ -431,9 +431,9 @@ def _schwab_auth_latched() -> bool:
 
 
 def _block_live_schwab_in_ci_offline() -> None:
-    from config import is_schwab_ci_offline_mode
+    from config import schwab_live_blocked_for
 
-    if is_schwab_ci_offline_mode():
+    if schwab_live_blocked_for():
         raise RuntimeError(
             "Schwab CI offline mode — live API call blocked (ED_CI_OFFLINE or ci-placeholder credentials)"
         )

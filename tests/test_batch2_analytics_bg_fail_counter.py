@@ -66,6 +66,7 @@ def test_record_analytics_bg_failure_writes_cold_cache_error_shell(_bg_fail_spy)
 def test_schedule_analytics_recompute_wires_fail_counter(monkeypatch, _bg_fail_spy):
     ticker, expiry, cache_key, inflight_key, srv = _bg_fail_spy
     threshold = srv.ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES
+    srv._startup_analytics_executor()
 
     def _boom(*_a, **_k):
         raise RuntimeError("bg fetch failed")
@@ -85,6 +86,7 @@ def test_schedule_analytics_recompute_wires_fail_counter(monkeypatch, _bg_fail_s
 def test_schedule_analytics_recompute_resets_counter_on_success(monkeypatch, _bg_fail_spy):
     ticker, expiry, cache_key, inflight_key, srv = _bg_fail_spy
     calls = {"n": 0}
+    srv._startup_analytics_executor()
 
     def _flaky(*_a, **_k):
         calls["n"] += 1
@@ -108,6 +110,8 @@ def test_schedule_analytics_recompute_resets_counter_on_success(monkeypatch, _bg
 def test_safe_get_chain_raises_schwab_auth_error_on_invalid_grant(monkeypatch: pytest.MonkeyPatch):
     import schwab_client as sc
 
+    monkeypatch.setenv("SCHWAB_API_KEY", "unit-test-key-not-live")
+    monkeypatch.setenv("SCHWAB_APP_SECRET", "unit-test-secret-not-live")
     monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
     sc._schwab_auth_failure_until_mono = 0.0
 
@@ -125,6 +129,8 @@ def test_safe_get_chain_raises_schwab_auth_error_on_invalid_grant(monkeypatch: p
 def test_safe_get_chain_latched_skips_second_call(monkeypatch: pytest.MonkeyPatch):
     import schwab_client as sc
 
+    monkeypatch.setenv("SCHWAB_API_KEY", "unit-test-key-not-live")
+    monkeypatch.setenv("SCHWAB_APP_SECRET", "unit-test-secret-not-live")
     monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
     sc._schwab_auth_failure_until_mono = sc.time.monotonic() + 60.0
     calls = {"n": 0}

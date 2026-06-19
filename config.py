@@ -60,9 +60,24 @@ def schwab_credentials_are_ci_placeholders(api_key: str | None = None, app_secre
 
 def is_schwab_ci_offline_mode() -> bool:
     """Explicit CI/test offline — blocks live Schwab client construction and API calls."""
-    if os.getenv("ED_CI_OFFLINE", "").strip().lower() in ("1", "true", "yes"):
+    return schwab_live_blocked_for()
+
+
+def schwab_live_blocked_for(
+    *,
+    api_key: str | None = None,
+    app_secret: str | None = None,
+) -> bool:
+    """Block live Schwab when placeholder credentials are in use (env or explicit args).
+
+    ED_CI_OFFLINE with explicit non-placeholder credentials (unit tests) does not block.
+    """
+    if schwab_credentials_are_ci_placeholders(api_key, app_secret):
         return True
-    return schwab_credentials_are_ci_placeholders()
+    offline = os.getenv("ED_CI_OFFLINE", "").strip().lower() in ("1", "true", "yes")
+    if not offline:
+        return False
+    return api_key is None and app_secret is None
 
 
 @dataclass(frozen=True)

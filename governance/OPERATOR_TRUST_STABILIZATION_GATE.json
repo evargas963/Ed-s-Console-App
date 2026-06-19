@@ -1,12 +1,12 @@
 {
   "gate_name": "operator_trust_stabilization",
-  "schema_version": 3,
+  "schema_version": 4,
   "stabilization_artifacts_gate_pass": true,
   "ci_triage_gate_pass": false,
   "operator_readiness_gate_pass": false,
   "card_explainability_allowed": false,
   "card_explainability_block_reason": [
-    "CI triage PR #19 awaiting GitHub green",
+    "pytest-full 51 failures triaged — resolve or accept with evidence",
     "RTH validation not executed",
     "LIVE_GUEST_SLA_NOT_PROVEN",
     "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN",
@@ -14,12 +14,12 @@
     "RTH_VALIDATION_NOT_EXECUTED_AFTER_TRANSPORT_FIXES",
     "PYTEST_FULL_CI_FAILING_NON_BLOCKING"
   ],
-  "next_allowed_step": "await_pr19_ci_results",
+  "next_allowed_step": "resolve_pytest_full_failures",
   "next_allowed_branch_after_ci_green": "audit/rth-operator-trust-validation",
   "blocked_branches": [
     "fix/card-price-conflict-explainability"
   ],
-  "last_verified_commit": "0b48c6b",
+  "last_verified_commit": "9bdc864",
   "required_policy_docs": [
     "docs/OPEN_ITEMS_OPERATOR_TRUST.md",
     "docs/PR_REVIEW_STANDARD.md",
@@ -45,5 +45,5 @@
   "required_triage_reports": [
     "reports/ci/ci_nonblocking_failure_triage_2026-06-18.md"
   ],
-  "note": "ci_triage_gate_pass flips true only when hardening, schwab-csv-first, and pytest-full are green on GitHub main (or pytest-full formally EXTERNAL_SECRET_REQUIRED_WITH_EVIDENCE). Then next_allowed_step becomes operator_rth_validation."
+  "note": "hardening + schwab-csv-first CLOSED_WITH_EVIDENCE @ 9bdc864. pytest-full OPEN_BLOCKING with per-group matrix in ci_nonblocking_failure_triage_2026-06-18.{md,json}. ci_triage_gate_pass stays false until pytest-full green or every failure formally accepted."
 }

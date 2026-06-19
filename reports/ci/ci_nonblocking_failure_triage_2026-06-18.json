@@ -1,43 +1,329 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "audit_date": "2026-06-18",
   "updated": "2026-06-19",
   "branch": "audit/ci-nonblocking-failures-triage",
   "pr": 19,
   "merge_gate": "objective-audit",
   "ci_triage_gate_pass": false,
-  "next_allowed_step": "await_pr19_ci_results",
+  "next_allowed_step": "resolve_pytest_full_failures",
   "github_checks_last_observed": {
-    "commit": "0b48c6b",
+    "commit": "9bdc864",
     "objective-audit": "pass",
-    "hardening": "fail",
+    "hardening": "pass",
     "pytest-full": "fail",
-    "schwab-csv-first": "pass"
+    "schwab-csv-first": "pass",
+    "pytest_full_summary": "51 failed, 3731 passed, 6 skipped",
+    "pytest_full_run": "27827558746"
   },
   "checks": {
     "hardening": {
-      "classification": "FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI",
-      "root_cause": "F401 unused import os in test_ci_tooling_dependencies.py @ 0b48c6b",
-      "fix_applied": "remove unused import (pending push)",
-      "github_runs": ["27826523035"],
-      "closure_criteria": "hardening workflow green on GitHub PR #19"
-    },
-    "pytest-full": {
-      "classification": "OPEN_BLOCKING",
-      "root_cause": "51 failures — mixed pre-existing suite debt + CI offline Schwab paths",
-      "fix_applied": "ED_CI_OFFLINE + is_schwab_ci_offline_mode blocks live Schwab client/API",
-      "github_runs": ["27826523003"],
-      "closure_criteria": "pytest-full green on GitHub PR #19 or EXTERNAL_SECRET_REQUIRED_WITH_EVIDENCE"
+      "classification": "CLOSED_WITH_EVIDENCE",
+      "closure_criteria": "hardening green on GitHub PR #19 — met @ 9bdc864"
     },
     "schwab-csv-first": {
       "classification": "CLOSED_WITH_EVIDENCE",
-      "root_cause": "diff-emission false positives on checker catalog + test fixtures",
-      "fix_applied": "homonym catalog skip + exclude tests/test_check_schwab_csv_first.py",
-      "github_runs": ["27826522973", "27826524779"],
-      "closure_criteria": "schwab-csv-first green on GitHub PR #19 — met"
+      "closure_criteria": "schwab-csv-first green on GitHub PR #19 — met @ 9bdc864"
+    },
+    "pytest-full": {
+      "classification": "OPEN_BLOCKING",
+      "root_cause": "51 categorized failures — not Schwab secrets; see pytest_full_failure_matrix",
+      "fix_applied_in_branch": "credential-scoped CI offline block; analytics executor fixture; ticker_switch silent-except",
+      "closure_criteria": "pytest-full green OR every remaining failure PRE_EXISTING_AND_ACCEPTED_WITH_EVIDENCE with owner branch"
     }
   },
-  "recommended_next_step_after_ci_green": "operator_rth_validation",
-  "recommended_next_branch_after_ci_green": "audit/rth-operator-trust-validation",
+  "pytest_full_failure_matrix": [
+    {
+      "failure_group": "PR19_CI_SCHWAB_OFFLINE_CREDENTIAL_BLOCK",
+      "number_of_tests": 3,
+      "representative_tests": [
+        "tests/test_schwab_client_import_boundary.py::test_build_client_from_token_fails_closed_without_token_file",
+        "tests/test_batch2_analytics_bg_fail_counter.py::test_safe_get_chain_raises_schwab_auth_error_on_invalid_grant",
+        "tests/test_batch2_analytics_bg_fail_counter.py::test_safe_get_chain_latched_skips_second_call"
+      ],
+      "failure_message": "Schwab CI offline mode — live API call blocked",
+      "root_cause": "ED_CI_OFFLINE + ci-placeholder env blocked tests using explicit non-placeholder credentials",
+      "classification": "FIX_NOW",
+      "fix_now_or_defer": "fix_now",
+      "owner_branch_if_deferred": null,
+      "closure_criteria": "All three tests pass in CI with ED_CI_OFFLINE=1"
+    },
+    {
+      "failure_group": "PR19_ANALYTICS_EXECUTOR_NOT_STARTED",
+      "number_of_tests": 2,
+      "representative_tests": [
+        "tests/test_batch2_analytics_bg_fail_counter.py::test_schedule_analytics_recompute_wires_fail_counter",
+        "tests/test_batch2_analytics_bg_fail_counter.py::test_schedule_analytics_recompute_resets_counter_on_success"
+      ],
+      "failure_message": "AttributeError: None has no attribute 'submit'",
+      "root_cause": "Tests monkeypatch _analytics_executor.submit without calling _startup_analytics_executor()",
+      "classification": "FIX_NOW",
+      "fix_now_or_defer": "fix_now",
+      "owner_branch_if_deferred": null,
+      "closure_criteria": "Both tests pass after executor startup in fixture"
+    },
+    {
+      "failure_group": "PR18_SILENT_EXCEPT_TICKER_SWITCH",
+      "number_of_tests": 1,
+      "representative_tests": [
+        "tests/test_repo_sweep_error_propagation_v1.py::test_no_silent_exception_pass_in_production_tree"
+      ],
+      "failure_message": "silent except Exception: pass count 3 != baseline 0; hits include ticker_switch_diagnostics.py:24",
+      "root_cause": "PR #18 ticker_switch_diagnostics used bare except pass on enrich import",
+      "classification": "FIX_NOW",
+      "fix_now_or_defer": "fix_now",
+      "owner_branch_if_deferred": null,
+      "closure_criteria": "ticker_switch_diagnostics.py removed from silent-except hit list"
+    },
+    {
+      "failure_group": "ABLATION_GRID_RUNNABLE_ACCOUNTING",
+      "number_of_tests": 4,
+      "representative_tests": [
+        "tests/test_check_fix_everything_we_touch.py::test_ablation_grid_requires_all_seven_models_and_four_horizons",
+        "tests/test_check_fix_everything_we_touch.py::test_run_objective_code_audit_static_passes"
+      ],
+      "failure_message": "whole_stack_fusion_cell_target must equal runnable_target",
+      "root_cause": "Ablation enriched-row sample missing in CI — grid accounting denominator drift",
+      "classification": "PRE_EXISTING_BUT_BLOCKING",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/ablation-grid-runnable-accounting-ci",
+      "closure_criteria": "ablation_cell_accounting.runnable_target matches whole_stack_fusion_cell_target in CI objective-audit path"
+    },
+    {
+      "failure_group": "MEGA_INVENTORY_CONTRACT_LOCK",
+      "number_of_tests": 4,
+      "representative_tests": [
+        "tests/test_mega1_traceable_audit.py::test_mega1_inventory_covers_every_function",
+        "tests/test_mega4_traceable_audit.py::test_mega4_inventory_covers_every_function"
+      ],
+      "failure_message": "Section inventory coverage gaps",
+      "root_cause": "megaN_traceable_inventory.py rows lag new functions (not PR #18/#19)",
+      "classification": "INTENTIONAL_CONTRACT_LOCK",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/mega-inventory-sync",
+      "closure_criteria": "mega1–mega4 inventory tests pass after inventory row sync"
+    },
+    {
+      "failure_group": "MISSING_SNAPSHOTS_1M_NORMALIZED_FIXTURE",
+      "number_of_tests": 11,
+      "representative_tests": [
+        "tests/test_governance_dashboard.py::test_visibility_panel_reads_governed_fields",
+        "tests/test_live_drift_monitoring.py::test_governance_panel_includes_live_drift"
+      ],
+      "failure_message": "sqlite3.OperationalError: no such table: snapshots_1m_normalized",
+      "root_cause": "Tests assume DB schema without pytest fixture creating snapshots_1m_normalized",
+      "classification": "PRE_EXISTING_BUT_BLOCKING",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/ci-governance-db-fixture",
+      "closure_criteria": "Governance/drift tests use shared schema fixture; table exists before panel reads"
+    },
+    {
+      "failure_group": "PRODUCTION_DB_PRED_1C_ABSENT_IN_CI",
+      "number_of_tests": 2,
+      "representative_tests": [
+        "tests/test_pred_1c_eddb_and_audit_contract_v1.py::test_production_db_has_governed_pred_1c_when_expected",
+        "tests/test_pred_1c_eddb_and_audit_contract_v1.py::test_freshest_snapshot_row_with_pred_1c_readable"
+      ],
+      "failure_message": "assert 0 > 0 / no such table: snapshots",
+      "root_cause": "CI has no production data/ed_console.db with governed pred_1c rows",
+      "classification": "PRE_EXISTING_AND_ACCEPTED_WITH_EVIDENCE",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/ci-pred-1c-fixture-or-skip",
+      "closure_criteria": "Tests use hermetic DB fixture or skip when ED_CONSOLE_ALLOW_NONCANONICAL_DB without seed data"
+    },
+    {
+      "failure_group": "ACTIVE_BUNDLE_ENCODER_LAYOUT",
+      "number_of_tests": 3,
+      "representative_tests": [
+        "tests/test_active_bundle_contract_v1.py::test_check_active_bundle_rejects_stale_encoder_schema",
+        "tests/test_active_horizon_layout_pr3.py::test_ml_predict_strict_uses_canonical_only"
+      ],
+      "failure_message": "encoder_width_5m_pre_mask=88 != legacy v2 width 31 / FileNotFoundError strict bundle",
+      "root_cause": "CI checkout lacks complete active_5c/SPY bundle; encoder v2 width contract moved",
+      "classification": "PRE_EXISTING_BUT_BLOCKING",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/ci-active-bundle-fixture",
+      "closure_criteria": "CI carries minimal strict-bundle fixture or tests mock bundle paths"
+    },
+    {
+      "failure_group": "CALIBRATION_BYPASS_ALLOWLIST",
+      "number_of_tests": 2,
+      "representative_tests": [
+        "tests/test_calibration_bypass_closure.py::test_insert_into_calibration_decision_log_only_writer_and_tests",
+        "tests/test_calibration_bypass_closure.py::test_no_unauthorized_python_references_to_calibration_decision_log"
+      ],
+      "failure_message": "Unexpected INSERT / referenced outside controlled modules",
+      "root_cause": "New test modules not added to calibration bypass allowlist",
+      "classification": "PRE_EXISTING_BUT_BLOCKING",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/calibration-bypass-allowlist-sync",
+      "closure_criteria": "Allowlist includes test_base_ticker_observability, test_track_b_calibration_backfill_insert, test_fusion_temperature_calibration"
+    },
+    {
+      "failure_group": "ET_AUTHORITY_DAILY_SCOREBOARD",
+      "number_of_tests": 2,
+      "representative_tests": [
+        "tests/test_coh_sa2_et_authority.py::test_only_time_et_defines_ny_zoneinfo_literal",
+        "tests/test_coh_sa2_et_authority.py::test_no_module_level_et_zoneinfo_assignment_outside_time_et"
+      ],
+      "failure_message": "AssertionError: ['calibration/daily_scoreboard.py']",
+      "root_cause": "daily_scoreboard.py assigns ZoneInfo outside time_et.py",
+      "classification": "PRE_EXISTING_BUT_BLOCKING",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/daily-scoreboard-et-authority",
+      "closure_criteria": "daily_scoreboard imports NY zone from time_et only"
+    },
+    {
+      "failure_group": "ANTI_PATTERN_CAPS_VIOLATIONS",
+      "number_of_tests": 1,
+      "representative_tests": [
+        "tests/test_anti_pattern_family_repo_wide.py::test_no_unallowlisted_production_hits"
+      ],
+      "failure_message": "CAPS violations (fix or add allowlist)",
+      "root_cause": "Production CAPS pattern hits not in allowlist",
+      "classification": "PRE_EXISTING_BUT_BLOCKING",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/anti-pattern-caps-allowlist",
+      "closure_criteria": "CAPS allowlist updated or violations removed per test output"
+    },
+    {
+      "failure_group": "GOVERNANCE_MUTATION_CALIBRATION_LOG_ENV",
+      "number_of_tests": 1,
+      "representative_tests": [
+        "tests/test_governance_mutation_detection.py::test_objective_audit_does_not_mutate_governance_artifacts"
+      ],
+      "failure_message": "calibration logging ENABLED log line treated as mutation",
+      "root_cause": "CI/env ED_CALIBRATION_LOG differs from test expectation",
+      "classification": "INFRASTRUCTURE_FLAKE_WITH_EVIDENCE",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/governance-mutation-test-hermetic",
+      "closure_criteria": "Test isolates ED_CALIBRATION_LOG; no log side-effect false positive"
+    },
+    {
+      "failure_group": "LIVE_BUNDLE_SSE_CACHE",
+      "number_of_tests": 3,
+      "representative_tests": [
+        "tests/test_issue20_23_live_bundle.py::test_api_state_bypasses_cache_when_sse_subscribers",
+        "tests/test_issue20_23_live_bundle.py::test_stamp_decision_bundle_monotonic_and_spot_same_generation"
+      ],
+      "failure_message": "assert [('SPY', None)] == [] / assert False / assert 7 == 6",
+      "root_cause": "Live bundle / SSE subscriber state not hermetic in full-suite CI order",
+      "classification": "PRE_EXISTING_BUT_BLOCKING",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/live-bundle-test-isolation",
+      "closure_criteria": "issue20_23 tests pass with isolated server state fixture"
+    },
+    {
+      "failure_group": "UI_LEVEL_TEST_CHIP_CONTRACT",
+      "number_of_tests": 2,
+      "representative_tests": [
+        "tests/test_level_test_chip.py::test_chip_dom_element_present_in_decision_command_header",
+        "tests/test_level_test_chip.py::test_chip_severity_class_high_on_third_or_later_test"
+      ],
+      "failure_message": "Pass 4b chip missing from static/index.html",
+      "root_cause": "UI chip not implemented — intentional contract lock awaiting UI lane",
+      "classification": "INTENTIONAL_CONTRACT_LOCK",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/card-price-conflict-explainability",
+      "closure_criteria": "#dr-level-test-chip present in Decision Command header per test_issue18 contract"
+    },
+    {
+      "failure_group": "ML_PREDICT_STRICT_VERSION",
+      "number_of_tests": 1,
+      "representative_tests": [
+        "tests/test_ml_predict_fail_closed.py::test_get_model_version_fail_closed_when_strict_bundle_blocked"
+      ],
+      "failure_message": "assert 'stack(xgb_lstm_tr_meta)_1c' == 'rules_v1'",
+      "root_cause": "Strict-bundle-blocked path returns stack version not rules_v1",
+      "classification": "PRE_EXISTING_BUT_BLOCKING",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/ml-predict-strict-version-contract",
+      "closure_criteria": "Version string contract aligned with fail-closed strict bundle behavior"
+    },
+    {
+      "failure_group": "SILENT_EXCEPT_PASS_REMAINING",
+      "number_of_tests": 1,
+      "representative_tests": [
+        "tests/test_repo_sweep_error_propagation_v1.py::test_no_silent_exception_pass_in_production_tree"
+      ],
+      "failure_message": "silent except Exception: pass count 2 != 0 after ticker_switch fix",
+      "root_cause": "stack_bundle_eval_v1.py:185 and build_feature_assignment_matrix_v2.py:775",
+      "classification": "PRE_EXISTING_BUT_BLOCKING",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/silent-except-pass-sweep",
+      "closure_criteria": "repo_sweep silent-except baseline 0 in CI"
+    },
+    {
+      "failure_group": "STACK_WIRE_INTEGRITY",
+      "number_of_tests": 3,
+      "representative_tests": [
+        "tests/test_stack_wire_1_v1.py::test_decision_generation_id_always_present",
+        "tests/test_stack_integrity_v1.py::test_mh_overlay_records_when_by_horizon_property_raises"
+      ],
+      "failure_message": "assert False / ValueError: substring not found",
+      "root_cause": "Stack wire / build_ts contract drift in CI server responses",
+      "classification": "PRE_EXISTING_BUT_BLOCKING",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/stack-wire-ci-contract",
+      "closure_criteria": "stack_wire_1 and stack_integrity tests pass with hermetic server fixture"
+    },
+    {
+      "failure_group": "UI_V2_CONFIDENCE_LABELS",
+      "number_of_tests": 1,
+      "representative_tests": [
+        "tests/test_static_index_html_confidence_labels.py::test_track2_desk_confidence_headline_and_breakdown"
+      ],
+      "failure_message": "desk-confidence readout slot (v2-confidence) missing",
+      "root_cause": "static/index.html missing v2-confidence element",
+      "classification": "INTENTIONAL_CONTRACT_LOCK",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/ui-v2-confidence-readout",
+      "closure_criteria": "v2-confidence slot present in static/index.html"
+    },
+    {
+      "failure_group": "V2_CONFORMAL_TIER_C_PAYLOAD",
+      "number_of_tests": 2,
+      "representative_tests": [
+        "tests/test_v2_a1_conformal_artifact_attachment.py::test_server_response_path_invokes_attachment_before_v2_decision_build",
+        "tests/test_v2_tier_c_payload.py::test_tier_c_attaches_v2_decision_after_decision_bundle_stamp"
+      ],
+      "failure_message": "ValueError: substring not found",
+      "root_cause": "Tier C / conformal attachment markers absent in CI server response path",
+      "classification": "PRE_EXISTING_BUT_BLOCKING",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/v2-tier-c-ci-fixture",
+      "closure_criteria": "v2 attachment tests pass with mocked Tier C payload"
+    },
+    {
+      "failure_group": "XGB_CONFLUENCE_SNAPSHOT_PARITY",
+      "number_of_tests": 1,
+      "representative_tests": [
+        "tests/test_xgb_inference_snapshot_v1_input.py::test_build_xgb_pre_engineering_snapshot_matches_manual_pipeline"
+      ],
+      "failure_message": "AssertionError: dict mismatch on confluence fields",
+      "root_cause": "cf_* confluence feature columns differ between pipeline paths",
+      "classification": "PRE_EXISTING_BUT_BLOCKING",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/xgb-confluence-snapshot-parity",
+      "closure_criteria": "Manual vs build_xgb_pre_engineering_snapshot dicts match"
+    },
+    {
+      "failure_group": "AUDIT_CAND_SERVER_CI_OFFLINE",
+      "number_of_tests": 2,
+      "representative_tests": [
+        "tests/test_audit_cand_server_py_full_read_v1.py::test_spread_semantic_stamped_on_fast_quote_and_tier_a",
+        "tests/test_audit_cand_server_py_full_read_v1.py::test_debug_prediction_returns_populated_distribution"
+      ],
+      "failure_message": "assert None == 'dollar' / assert 404 == 200",
+      "root_cause": "Server fast-quote / debug paths need Schwab quote data; CI offline returns empty",
+      "classification": "PRE_EXISTING_BUT_BLOCKING",
+      "fix_now_or_defer": "defer",
+      "owner_branch_if_deferred": "fix/audit-cand-server-ci-mocks",
+      "closure_criteria": "Tests mock quote layer or skip when schwab_live_blocked_for()"
+    }
+  ],
+  "pytest_full_failure_count": 51,
+  "pytest_full_fix_now_count": 6,
+  "pytest_full_deferred_count": 45,
   "card_explainability_allowed": false
 }

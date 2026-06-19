@@ -115,9 +115,10 @@ def check_stabilization_gate_json() -> list[str]:
         errors.append("operator_trust: stabilization_artifacts_gate_pass must be true on this branch")
     ci_pass = data.get("ci_triage_gate_pass")
     next_step = str(data.get("next_allowed_step") or "")
-    if ci_pass is False and next_step != "await_pr19_ci_results":
+    if ci_pass is False and next_step not in ("await_pr19_ci_results", "resolve_pytest_full_failures"):
         errors.append(
-            "operator_trust: when ci_triage_gate_pass is false, next_allowed_step must be await_pr19_ci_results"
+            "operator_trust: when ci_triage_gate_pass is false, next_allowed_step must be "
+            "await_pr19_ci_results or resolve_pytest_full_failures"
         )
     if ci_pass is True and next_step != "operator_rth_validation":
         errors.append(
@@ -278,6 +279,8 @@ def check_ci_triage_report() -> list[str]:
     md = _read("reports/ci/ci_nonblocking_failure_triage_2026-06-18.md")
     if not md:
         return ["ci triage md: missing"]
+    if "pytest-full failure matrix" not in md.lower() and "pytest_full_failure_matrix" not in md.lower():
+        errors.append("ci triage: must include pytest-full failure matrix")
     for check in CI_CHECKS:
         if check not in md.lower():
             errors.append(f"ci triage: must name {check}")
@@ -304,6 +307,9 @@ def check_ci_triage_report() -> list[str]:
                 errors.append(f"ci triage json: {check} missing classification")
             if not row.get("closure_criteria"):
                 errors.append(f"ci triage json: {check} missing closure_criteria")
+        matrix = triage_json.get("pytest_full_failure_matrix") or []
+        if not matrix:
+            errors.append("ci triage json: pytest_full_failure_matrix missing or empty")
     return errors
 
 

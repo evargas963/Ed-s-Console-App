@@ -108,7 +108,7 @@ def test_adversarial_tests_can_import_server() -> None:
 
 
 def test_ci_offline_blocks_live_schwab_client_and_api(monkeypatch: pytest.MonkeyPatch) -> None:
-    from config import is_schwab_ci_offline_mode, schwab_credentials_are_ci_placeholders
+    from config import is_schwab_ci_offline_mode, schwab_credentials_are_ci_placeholders, schwab_live_blocked_for
     from schwab_client import build_client_from_token, safe_get_quote
 
     monkeypatch.setenv("ED_CI_OFFLINE", "1")
@@ -117,11 +117,19 @@ def test_ci_offline_blocks_live_schwab_client_and_api(monkeypatch: pytest.Monkey
 
     assert is_schwab_ci_offline_mode() is True
     assert schwab_credentials_are_ci_placeholders() is True
+    assert schwab_live_blocked_for() is True
+    assert schwab_live_blocked_for(api_key="fake-key-not-ci-placeholder", app_secret="fake-secret-not-ci-placeholder") is False
 
-    state = build_client_from_token("/tmp/missing.json", api_key="ci-not-live-placeholder", app_secret="ci-not-live-placeholder")
+    state = build_client_from_token("/tmp/missing.json", api_key="fake-key-not-ci-placeholder", app_secret="fake-secret-not-ci-placeholder")
     assert state.ok is False
-    assert "offline" in state.message.lower()
+    assert "not found" in state.message.lower()
     assert state.client is None
+
+    state_placeholder = build_client_from_token(
+        "/tmp/missing.json", api_key="ci-not-live-placeholder", app_secret="ci-not-live-placeholder"
+    )
+    assert state_placeholder.ok is False
+    assert "offline" in state_placeholder.message.lower()
 
     class _FakeClient:
         def get_quote(self, _ticker: str):
