@@ -89,12 +89,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `CLOSED_WITH_EVIDENCE` |
+| **Status** | `FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI` |
 | **Source PR / report** | CI triage 2026-06-19 — ruff F401 + openpyxl in hardening |
 | **Why it matters** | Institutional locks may drift |
 | **Operator risk** | Silent rule regression |
-| **Evidence currently available** | GitHub PR #19 @ `999a4cd`: hardening pass (runs 27824991489, 27824992744) |
-| **Evidence still needed** | None — green on PR branch |
+| **Evidence currently available** | Green @ `999a4cd`; regressed @ `0b48c6b` unused `import os` in test_ci_tooling_dependencies.py |
+| **Evidence still needed** | GitHub hardening green after F401 fix |
 | **Fix now or harness now** | F401 fixed repo-wide |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | Medium |
@@ -123,12 +123,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI` |
+| **Status** | `CLOSED_WITH_EVIDENCE` |
 | **Source PR / report** | CI triage 2026-06-19 — diff-emission false positives |
 | **Why it matters** | Schwab diff-emission gate for market fields |
 | **Operator risk** | New market reads without register row |
-| **Evidence currently available** | Scanner path exclusions + homonym tests; push event schwab-csv-first pass |
-| **Evidence still needed** | GitHub PR #19 schwab-csv-first green (PR register pin step) |
+| **Evidence currently available** | GitHub PR #19 @ `0b48c6b`: schwab-csv-first pass both runs (27826522973, 27826524779) |
+| **Evidence still needed** | None — green on PR branch |
 | **Fix now or harness now** | `check_schwab_csv_first.py` precision fix |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | Medium |

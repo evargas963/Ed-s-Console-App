@@ -12,15 +12,14 @@
     "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN",
     "BASE_CAPTURE_NORMALIZATION_RTH_PROOF_NOT_COMPLETE",
     "RTH_VALIDATION_NOT_EXECUTED_AFTER_TRANSPORT_FIXES",
-    "PYTEST_FULL_CI_FAILING_NON_BLOCKING",
-    "SCHWAB_CSV_FIRST_FAILING_OR_MIXED_NON_BLOCKING"
+    "PYTEST_FULL_CI_FAILING_NON_BLOCKING"
   ],
   "next_allowed_step": "await_pr19_ci_results",
   "next_allowed_branch_after_ci_green": "audit/rth-operator-trust-validation",
   "blocked_branches": [
     "fix/card-price-conflict-explainability"
   ],
-  "last_verified_commit": "999a4cd",
+  "last_verified_commit": "0b48c6b",
   "required_policy_docs": [
     "docs/OPEN_ITEMS_OPERATOR_TRUST.md",
     "docs/PR_REVIEW_STANDARD.md",

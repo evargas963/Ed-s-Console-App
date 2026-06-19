@@ -2,23 +2,23 @@
 
 # CI non-blocking failure triage (2026-06-18)
 
-**Updated:** 2026-06-19 on branch `audit/ci-nonblocking-failures-triage` @ `999a4cd` (+ pending schwab emission fix).
+**Updated:** 2026-06-19 on branch `audit/ci-nonblocking-failures-triage` @ `0b48c6b`.
 
-**GitHub PR #19 checks (@ `999a4cd`):**
+**GitHub PR #19 checks (@ `0b48c6b`):**
 
 | Check | Status |
 |-------|--------|
 | objective-audit | pass |
-| hardening | **pass** (runs 27824991489, 27824992744) |
-| pytest-full | fail — `52 failed, 3729 passed` (mixed pre-existing + CI offline; run 27824991443) |
-| schwab-csv-first | mixed — push pass; PR fail on diff-emission false positives (run 27824992738) |
+| hardening | fail — F401 unused `import os` (run 27826523035) |
+| pytest-full | fail — `51 failed, 3731 passed` (run 27826523003) |
+| schwab-csv-first | **pass** (runs 27826522973, 27826524779) |
 
 ## hardening
 
 | Field | Value |
 |-------|-------|
-| **Classification** | `CLOSED_WITH_EVIDENCE` |
-| **CI link / log excerpt** | GitHub hardening pass @ `999a4cd` (runs 27824991489, 27824992744) |
+| **Classification** | `FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI` |
+| **CI link / log excerpt** | Green @ `999a4cd`; F401 `import os` unused @ `0b48c6b` (run 27826523035) |
 | **Root cause** | Hardening job installed `requirements.txt` only; `enforce-static` imports `openpyxl` via `build_feature_assignment_matrix_v2.py` |
 | **Fix applied** | `.github/workflows/hardening.yml` adds `pip install -r requirements-dev.txt`; F401 cleanup retained |
 | **Files changed** | `.github/workflows/hardening.yml`, repo-wide F401 |
@@ -43,14 +43,14 @@
 
 | Field | Value |
 |-------|-------|
-| **Classification** | `FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI` |
-| **CI link / log excerpt** | PR diff-emission: `lastPrice` test fixtures + `AMBIGUOUS_MARKET_TOKENS` catalog line (run 27824992738) |
+| **Classification** | `CLOSED_WITH_EVIDENCE` |
+| **CI link / log excerpt** | GitHub schwab-csv-first pass @ `0b48c6b` (runs 27826522973, 27826524779) |
 | **Root cause** | Diff-emission false positives on checker self-definition and schwab test fixtures |
 | **Fix applied** | Exclude `tests/test_check_schwab_csv_first.py`; skip homonym catalog definition lines |
 | **Files changed** | `tools/check_schwab_csv_first.py`, `tests/test_check_schwab_csv_first.py` |
-| **Tests added** | homonym + operator-trust path exclusion tests |
-| **Residual risk** | PR register pin must match meta on merge |
-| **Closure criteria** | `schwab-csv-first` green on GitHub PR #19 → `CLOSED_WITH_EVIDENCE` |
+| **Tests added** | `test_diff_emission_ignores_homonym_catalog_definition` |
+| **Residual risk** | True market-fact emissions in money-path files still gated |
+| **Closure criteria** | `schwab-csv-first` green on GitHub PR #19 — **met** |
 
 ## Decision
 
