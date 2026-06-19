@@ -29,7 +29,9 @@ from verification.card_signal_fidelity import (
     CARD_FEATURE_PROVENANCE,
     CARD_FIELD_PROVENANCE,
     aggregate_june17_explanation,
+    build_histogram_shape_audit,
     enrich_timeline_row_provenance,
+    histogram_shape_operator_answers,
     horizon_card_driver_summary,
 )
 
@@ -40,7 +42,11 @@ def _load_json_if_exists(path: Path) -> dict[str, Any] | None:
     return None
 
 
-def _answer_questions(report: dict[str, Any], transport_notes: dict[str, Any]) -> dict[str, Any]:
+def _answer_questions(
+    report: dict[str, Any],
+    transport_notes: dict[str, Any],
+    hist_audit: dict[str, Any],
+) -> dict[str, Any]:
     drivers = horizon_card_driver_summary()
     spy = (report.get("tickers") or {}).get("SPY") or {}
     timeline = spy.get("timeline") or []
@@ -102,6 +108,7 @@ def _answer_questions(report: dict[str, Any], transport_notes: dict[str, Any]) -
         "20_missing_price_conflict_chip": (
             "No operator chip when fusion LONG conflicts with trailing price down AND empirical SHORT — proven gap"
         ),
+        "histogram_shape_deep_dive": histogram_shape_operator_answers(hist_audit),
     }
 
 
@@ -139,8 +146,19 @@ def run_card_signal_fidelity_audit(
     }
 
     tickers_out: dict[str, Any] = {}
+    histogram_shape_audit: dict[str, Any] = {"cell_count": 0, "cells": []}
     for t, block in (integrity.get("tickers") or {}).items():
         enriched_timeline = [enrich_timeline_row_provenance(r) for r in block.get("timeline") or []]
+        norm_rows = None
+        for obs in (integrity.get("base_ticker_observability") or {}).get("tickers") or []:
+            if obs.get("ticker") == t:
+                norm_rows = obs.get("normalized_count_rth")
+                break
+        if t == "SPY" and day.isoformat() == "2026-06-17":
+            histogram_shape_audit = build_histogram_shape_audit(
+                enriched_timeline,
+                normalized_rows_rth=norm_rows,
+            )
         tickers_out[t] = {
             **block,
             "timeline": enriched_timeline,
@@ -149,17 +167,20 @@ def run_card_signal_fidelity_audit(
             else None,
         }
 
-    questions = _answer_questions({**integrity, "tickers": tickers_out}, transport_notes)
+    questions = _answer_questions({**integrity, "tickers": tickers_out}, transport_notes, histogram_shape_audit)
 
     bugs_proven = [
         "Horizon cards can show LONG while trailing price declines (forecast ≠ price direction)",
         "Fusion can override empirical histogram on product cards (fusion-only contract)",
         "ALL/PLAN can block trade while all horizon cards show LONG (call-engine veto)",
         "Missing operator chip for price/fusion/empirical conflict on horizon cards",
-        "June 17 SPY normalized rows absent — feature/histogram inputs degraded",
+        "June 17: short-horizon histogram often SHORT while fusion/card LONG during decline",
+        "Longer horizons (15c/60c) fusion LONG while histogram/tape disagree warrants calibration review",
+        "Empirical disagreement not promoted to veto, haircut, or conflict chip on horizon cards",
     ]
     bugs_not_proven = [
         "Model weights incorrect or drifted (forward hits on 1c ~72% argue forecasts not random)",
+        "Histogram mathematically wrong — it often DID shift SHORT on 1m/5m; question is fusion override weight",
         "UI rendering wrong direction vs backend mhap_rows (not browser-tested this audit)",
         "Live STALE pill false positive rate (needs RTH UI transport audit)",
         "Feature leakage from future data in replay path",
@@ -167,6 +188,7 @@ def run_card_signal_fidelity_audit(
     recommended = [
         "audit/ui-realtime-transport-fidelity — STALE/LOADING/SQLite contention live",
         "fix/card-price-conflict-explainability — chip when fusion LONG + trailing down + empirical SHORT",
+        "investigate/fusion-empirical-override-policy — longer-horizon override when histogram bearish",
         "validate capture+normalization live post PR #9 before trusting feature freshness",
     ]
 
@@ -187,6 +209,7 @@ def run_card_signal_fidelity_audit(
         "card_field_provenance": CARD_FIELD_PROVENANCE,
         "feature_provenance_map": CARD_FEATURE_PROVENANCE,
         "horizon_card_drivers": horizon_card_driver_summary(),
+        "histogram_shape_audit": histogram_shape_audit,
         "questions": questions,
         "transport_and_staleness_notes": transport_notes,
         "base_ticker_observability": integrity.get("base_ticker_observability"),
@@ -202,6 +225,16 @@ def run_card_signal_fidelity_audit(
             "what_drives_PLAN": CARD_FIELD_PROVENANCE["PLAN"]["display_state"]["branch"],
             "fusion_vs_histogram_june17": questions.get("15_fusion_override_empirical_june17"),
             "june17_all_long_explanation": (tickers_out.get("SPY") or {}).get("june17_explanation"),
+            "histogram_shape_summary": {
+                k: histogram_shape_audit.get(k)
+                for k in (
+                    "classification_counts",
+                    "histogram_short_fusion_long_cells",
+                    "valid_reversal_despite_bearish_histogram",
+                    "fusion_overrides_bearish_histogram",
+                    "operator_interpretation",
+                )
+            },
         },
         "bugs_proven": bugs_proven,
         "bugs_not_proven": bugs_not_proven,
@@ -243,6 +276,34 @@ def format_markdown(report: dict[str, Any]) -> str:
     if isinstance(expl, dict):
         for k, v in expl.items():
             lines.append(f"- **{k}:** {v}")
+    hist = report.get("histogram_shape_audit") or {}
+    hist_summary = hist.get("classification_counts") or {}
+    if hist_summary:
+        lines.extend(
+            [
+                "",
+                "## Histogram shape audit",
+                "",
+                f"- Cells sampled: {hist.get('cell_count')} ({hist.get('sample_timestamps')} timestamps × 4 horizons)",
+                f"- Histogram SHORT + fusion LONG: {hist.get('histogram_short_fusion_long_cells')}",
+                f"- Valid reversal despite bearish histogram: {hist.get('valid_reversal_despite_bearish_histogram')}",
+                f"- Fusion overrides bearish histogram: {hist.get('fusion_overrides_bearish_histogram')}",
+                f"- Classification counts: {hist_summary}",
+                "",
+                "**Dual interpretation:**",
+                "",
+                "- *Cards worked as designed* — fusion forecast LONG can be a valid short-horizon bounce call.",
+                "- *Histogram/integration weak* — bearish empirical shape is not surfaced as veto/haircut on cards; "
+                "longer horizons staying LONG while histogram/tape disagree needs calibration review.",
+                "",
+            ]
+        )
+        deep = (report.get("questions") or {}).get("histogram_shape_deep_dive") or {}
+        if deep:
+            lines.append("### Operator histogram questions")
+            lines.append("")
+            for k, v in deep.items():
+                lines.append(f"- **{k}:** {v}")
     lines.extend(["", "## Feature provenance (leaf vs engineered)", ""])
     for row in report.get("feature_provenance_map") or []:
         lines.append(

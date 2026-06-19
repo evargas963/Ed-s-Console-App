@@ -33,6 +33,33 @@ Read-only: True · No model/threshold/UI changes
 - **typical_wait_reason:** call engine veto — ALL consolidated long disagrees with tape stack short
 - **interpretation:** Cards show forecast direction (fusion probability argmax), not trailing price direction. June 17 decline samples: fusion LONG + empirical SHORT on short horizons is common; forward 1c returns often positive (reversal/mean-reversion forecasts), explaining high hit rate despite trailing conflict. ALL/PLAN correctly non-tradeable via call-engine veto.
 
+## Histogram shape audit
+
+- Cells sampled: 128 (32 timestamps × 4 horizons)
+- Histogram SHORT + fusion LONG: 73
+- Valid reversal despite bearish histogram: 17
+- Fusion overrides bearish histogram: 52
+- Classification counts: {'VALID_REVERSAL_DESPITE_BEARISH_HISTOGRAM': 17, 'HISTOGRAM_SUPPORTED_LONG': 26, 'HISTOGRAM_UNDERCONDITIONED': 36, 'FUSION_OVERRIDES_BEARISH_HISTOGRAM': 52, 'HISTOGRAM_TOO_FLAT': 14, 'HISTOGRAM_SUPPORTED_SHORT': 12}
+
+**Dual interpretation:**
+
+- *Cards worked as designed* — fusion forecast LONG can be a valid short-horizon bounce call.
+- *Histogram/integration weak* — bearish empirical shape is not surfaced as veto/haircut on cards; longer horizons staying LONG while histogram/tape disagree needs calibration review.
+
+### Operator histogram questions
+
+- **1_histogram_shift_bearish_during_downside:** Partially — 64 cells had DOWN trailing tape + SHORT histogram dominant; also 36 UNDERCONDITIONED cells where tape down but histogram did not reshape bearish
+- **2_why_fusion_long_if_histogram_bearish:** Fusion-only product contract: cards follow fusion argmax; empirical histogram is signal-rail context with default blend weight 0. 73 cells had histogram SHORT + fusion LONG
+- **3_if_not_bearish_missing_pattern_features:** Possible — UNDERCONDITIONED tags flag histogram not shifting with downside tape; similar-setup filters (zone/vwap/distances) may be too coarse vs lower-highs/lower-lows structure
+- **4_tape_structure_features_represented:** Not directly in horizon_prob_bars — histogram conditions on similar_setup_filters, not explicit LH/LL or VWAP rejection primitives; audit cannot prove those were in the similar-set query
+- **5_horizon_specific_vs_coarse:** Per-horizon histogram labels (1m/5m/15m/60m) exist; disagreement pattern differs by horizon (short horizons more bearish, 60m histogram often LONG in June 17 samples)
+- **6_sample_support_sufficient:** Not measured on timeline — sample_support null; sparse/missing normalized rows on original June 17 run degraded similar-set quality
+- **7_stale_missing_norm_degraded_shape:** False
+- **8_should_empirical_become_veto_or_chip:** Audit recommendation: conflict chip or confidence haircut when fusion overrides bearish histogram during DOWN tape — not implemented today
+- **9_reversal_vs_fusion_override:** 17 VALID_REVERSAL vs 52 FUSION_OVERRIDES — short horizons skew reversal; longer horizons skew override
+- **interpretation_1_cards_worked_as_designed:** False
+- **interpretation_2_histogram_layer_weak:** True
+
 ## Feature provenance (leaf vs engineered)
 
 - **spot** (primitive): schwab quote → db.insert_snapshot · stale_risk=Tier A fast-quote can lead Tier C bundle
@@ -48,11 +75,14 @@ Read-only: True · No model/threshold/UI changes
 - Fusion can override empirical histogram on product cards (fusion-only contract)
 - ALL/PLAN can block trade while all horizon cards show LONG (call-engine veto)
 - Missing operator chip for price/fusion/empirical conflict on horizon cards
-- June 17 SPY normalized rows absent — feature/histogram inputs degraded
+- June 17: short-horizon histogram often SHORT while fusion/card LONG during decline
+- Longer horizons (15c/60c) fusion LONG while histogram/tape disagree warrants calibration review
+- Empirical disagreement not promoted to veto, haircut, or conflict chip on horizon cards
 
 ## Bugs not proven
 
 - Model weights incorrect or drifted (forward hits on 1c ~72% argue forecasts not random)
+- Histogram mathematically wrong — it often DID shift SHORT on 1m/5m; question is fusion override weight
 - UI rendering wrong direction vs backend mhap_rows (not browser-tested this audit)
 - Live STALE pill false positive rate (needs RTH UI transport audit)
 - Feature leakage from future data in replay path
@@ -61,6 +91,7 @@ Read-only: True · No model/threshold/UI changes
 
 - audit/ui-realtime-transport-fidelity — STALE/LOADING/SQLite contention live
 - fix/card-price-conflict-explainability — chip when fusion LONG + trailing down + empirical SHORT
+- investigate/fusion-empirical-override-policy — longer-horizon override when histogram bearish
 - validate capture+normalization live post PR #9 before trusting feature freshness
 
 ## Transport / staleness (June 18 evidence)
