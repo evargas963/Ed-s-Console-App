@@ -7817,6 +7817,18 @@ def get_ticker_switch_diagnostics(limit: int = Query(50, ge=1, le=200)):
     return JSONResponse({"events": get_recent_events(limit), "buffer_max": 100})
 
 
+@app.get("/api/diagnostics/sqlite-contention")
+def get_sqlite_contention_diagnostics():
+    """
+    Tier-1 SQLite lock-wait / busy / locked counters (process-local).
+
+    For operator trust audits — does not change retry policy. See Card Trust Contract §8.
+    """
+    from db import sqlite_contention_metrics_snapshot
+
+    return JSONResponse(sqlite_contention_metrics_snapshot())
+
+
 @app.get("/api/fast-quote")
 async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
     """

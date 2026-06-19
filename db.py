@@ -34,6 +34,7 @@ import bisect
 import hashlib
 import logging
 import threading
+from collections import deque
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -111,6 +112,100 @@ SQLITE_BUSY_BASE_SLEEP_SEC = float(os.environ.get("ED_SQLITE_BUSY_BASE_SLEEP_SEC
 SQLITE_BUSY_MAX_SLEEP_SEC = float(os.environ.get("ED_SQLITE_BUSY_MAX_SLEEP_SEC", "0.4"))
 SQLITE_LOCK_WAIT_WARN_MS = float(os.environ.get("ED_SQLITE_LOCK_WAIT_WARN_MS", "100"))
 SQLITE_WRITE_SLOW_MS = float(os.environ.get("ED_SQLITE_WRITE_SLOW_MS", "500"))
+
+# In-process tier-1 contention counters (audit/diagnostics; does not change retry policy).
+_SQLITE_CONTENTION_METRICS_LOCK = threading.Lock()
+_SQLITE_CONTENTION_RECENT_MAX = 500
+_sqlite_contention_recent: deque[dict[str, Any]] = deque(maxlen=_SQLITE_CONTENTION_RECENT_MAX)
+_sqlite_contention_totals: dict[str, Any] = {
+    "sqlite_lock_wait_count": 0,
+    "sqlite_lock_wait_total_ms": 0.0,
+    "sqlite_lock_wait_max_ms": 0.0,
+    "sqlite_busy_retry_count": 0,
+    "sqlite_database_locked_count": 0,
+    "sqlite_tier1_fail_count": 0,
+    "operations": {},
+    "tickers": {},
+    "threads": {},
+}
+
+
+def record_sqlite_contention_event(
+    *,
+    kind: str,
+    op: str,
+    ticker: Optional[str],
+    thread: str,
+    wait_ms: float = 0.0,
+    attempt: int = 0,
+    db_path: str = "",
+    error: str = "",
+) -> None:
+    """Record tier-1 SQLite contention for diagnostics (thread-safe, bounded ring)."""
+    ts = float(_wall_time.time())
+    row = {
+        "kind": kind,
+        "op": op,
+        "ticker": ticker,
+        "thread": thread,
+        "wait_ms": round(float(wait_ms), 3),
+        "attempt": int(attempt),
+        "ts_utc": ts,
+        "db_path": db_path,
+        "error": (error or "")[:200],
+    }
+    with _SQLITE_CONTENTION_METRICS_LOCK:
+        _sqlite_contention_recent.append(row)
+        totals = _sqlite_contention_totals
+        if kind == "lock_wait":
+            totals["sqlite_lock_wait_count"] = int(totals["sqlite_lock_wait_count"]) + 1
+            totals["sqlite_lock_wait_total_ms"] = float(totals["sqlite_lock_wait_total_ms"]) + float(
+                wait_ms
+            )
+            totals["sqlite_lock_wait_max_ms"] = max(
+                float(totals["sqlite_lock_wait_max_ms"]), float(wait_ms)
+            )
+        elif kind == "busy_retry":
+            totals["sqlite_busy_retry_count"] = int(totals["sqlite_busy_retry_count"]) + 1
+        elif kind in ("database_locked", "tier1_fail"):
+            totals["sqlite_database_locked_count"] = int(
+                totals["sqlite_database_locked_count"]
+            ) + 1
+            totals["sqlite_tier1_fail_count"] = int(totals["sqlite_tier1_fail_count"]) + 1
+        for bucket, key in (("operations", op), ("tickers", ticker or ""), ("threads", thread)):
+            if not key:
+                continue
+            sub = totals[bucket]
+            sub[key] = int(sub.get(key, 0)) + 1
+
+
+def sqlite_contention_metrics_snapshot() -> dict[str, Any]:
+    """Process-local tier-1 contention totals + recent events (for /api/diagnostics)."""
+    with _SQLITE_CONTENTION_METRICS_LOCK:
+        recent = list(_sqlite_contention_recent)[-50:]
+        totals = {
+            k: v
+            for k, v in _sqlite_contention_totals.items()
+            if k not in ("operations", "tickers", "threads")
+        }
+        return {
+            "sqlite_lock_wait_count": int(totals.get("sqlite_lock_wait_count", 0)),
+            "sqlite_lock_wait_total_ms": round(float(totals.get("sqlite_lock_wait_total_ms", 0.0)), 3),
+            "sqlite_lock_wait_max_ms": round(float(totals.get("sqlite_lock_wait_max_ms", 0.0)), 3),
+            "sqlite_busy_retry_count": int(totals.get("sqlite_busy_retry_count", 0)),
+            "sqlite_database_locked_count": int(totals.get("sqlite_database_locked_count", 0)),
+            "sqlite_tier1_fail_count": int(totals.get("sqlite_tier1_fail_count", 0)),
+            "operations_affected": dict(_sqlite_contention_totals.get("operations") or {}),
+            "tickers_affected": dict(_sqlite_contention_totals.get("tickers") or {}),
+            "threads_affected": dict(_sqlite_contention_totals.get("threads") or {}),
+            "recent_events": recent,
+            "config": {
+                "busy_timeout_ms": 30000,
+                "journal_mode": "WAL",
+                "busy_max_retries": SQLITE_BUSY_MAX_RETRIES,
+                "lock_wait_warn_ms": SQLITE_LOCK_WAIT_WARN_MS,
+            },
+        }
 
 
 def _sqlite_busy_or_locked(exc: sqlite3.OperationalError) -> bool:
@@ -758,6 +853,16 @@ class EdDB:
             _TIER1_SNAPSHOT_WRITE_LOCK.acquire()
             lock_wait_ms = (_wall_time.perf_counter() - lock_wait_t0) * 1000.0
             total_wait_lock_ms += lock_wait_ms
+            if lock_wait_ms > 0:
+                record_sqlite_contention_event(
+                    kind="lock_wait",
+                    op=op,
+                    ticker=ticker,
+                    thread=thread_name,
+                    wait_ms=lock_wait_ms,
+                    attempt=attempt,
+                    db_path=db_s,
+                )
             if lock_wait_ms >= SQLITE_LOCK_WAIT_WARN_MS:
                 log.warning(
                     "sqlite_tier1_lock_wait op=%s ticker=%s db_path=%s wait_ms=%.1f "
@@ -805,10 +910,30 @@ class EdDB:
                         thread_name,
                         e,
                     )
+                    record_sqlite_contention_event(
+                        kind="database_locked" if retryable else "tier1_fail",
+                        op=op,
+                        ticker=ticker,
+                        thread=thread_name,
+                        wait_ms=total_wait_lock_ms,
+                        attempt=attempt,
+                        db_path=db_s,
+                        error=str(e),
+                    )
                     raise
                 sleep_s = min(
                     SQLITE_BUSY_MAX_SLEEP_SEC,
                     SQLITE_BUSY_BASE_SLEEP_SEC * (2 ** (attempt - 1)),
+                )
+                record_sqlite_contention_event(
+                    kind="busy_retry",
+                    op=op,
+                    ticker=ticker,
+                    thread=thread_name,
+                    wait_ms=total_wait_lock_ms,
+                    attempt=attempt,
+                    db_path=db_s,
+                    error=str(e),
                 )
                 log.warning(
                     "sqlite_tier1_busy_retry op=%s ticker=%s db_path=%s attempt=%s/%s sleep_s=%.3f "
