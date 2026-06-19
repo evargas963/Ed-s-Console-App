@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-06-18T15:34:24Z",
+  "generated_at": "2026-06-19T04:00:42Z",
   "persistence_files": [
     "db.py",
     "calibration/writer.py"
@@ -48,7 +48,7 @@
     {
       "writer_fn": "EdDB.set_schema_flag",
       "file": "db.py",
-      "line": 842,
+      "line": 967,
       "tables_written": [
         "ed_schema_flags"
       ],
@@ -68,7 +68,7 @@
     {
       "writer_fn": "EdDB.upsert_confluence_quote_ticks",
       "file": "db.py",
-      "line": 1321,
+      "line": 1446,
       "tables_written": [
         "confluence_quote_ticks"
       ],
@@ -86,7 +86,7 @@
     {
       "writer_fn": "EdDB.logging_universe_sync_panel_auto",
       "file": "db.py",
-      "line": 1445,
+      "line": 1570,
       "tables_written": [
         "logging_universe"
       ],
@@ -106,7 +106,7 @@
     {
       "writer_fn": "EdDB.logging_universe_sync_core",
       "file": "db.py",
-      "line": 1512,
+      "line": 1637,
       "tables_written": [
         "logging_universe"
       ],
@@ -126,7 +126,7 @@
     {
       "writer_fn": "EdDB.logging_universe_upsert_user_persisted",
       "file": "db.py",
-      "line": 1536,
+      "line": 1661,
       "tables_written": [
         "logging_universe"
       ],
@@ -147,7 +147,7 @@
     {
       "writer_fn": "EdDB.logging_universe_upsert_pinned",
       "file": "db.py",
-      "line": 1589,
+      "line": 1714,
       "tables_written": [
         "logging_universe"
       ],
@@ -167,7 +167,7 @@
     {
       "writer_fn": "EdDB.logging_universe_record_eviction",
       "file": "db.py",
-      "line": 1732,
+      "line": 1857,
       "tables_written": [
         "logging_universe_eviction_log"
       ],
@@ -184,7 +184,7 @@
     {
       "writer_fn": "EdDB.logging_universe_migration_mark",
       "file": "db.py",
-      "line": 1864,
+      "line": 1989,
       "tables_written": [
         "logging_universe_migration_log"
       ],
@@ -203,7 +203,7 @@
     {
       "writer_fn": "EdDB.logging_universe_import_legacy_json_tickers",
       "file": "db.py",
-      "line": 1880,
+      "line": 2005,
       "tables_written": [
         "logging_universe"
       ],
@@ -221,7 +221,7 @@
     {
       "writer_fn": "EdDB.logging_universe_migrate_legacy_json_file",
       "file": "db.py",
-      "line": 1931,
+      "line": 2056,
       "tables_written": [
         "logging_universe",
         "logging_universe_migration_log"
@@ -245,7 +245,7 @@
     {
       "writer_fn": "EdDB.logging_universe_migrate_scheduler_companion_json",
       "file": "db.py",
-      "line": 2062,
+      "line": 2187,
       "tables_written": [
         "logging_universe",
         "logging_universe_migration_log"
@@ -269,7 +269,7 @@
     {
       "writer_fn": "EdDB._migrate_horizon_bar_contract_v1",
       "file": "db.py",
-      "line": 2699,
+      "line": 2824,
       "tables_written": [
         "ed_schema_flags"
       ],
@@ -288,7 +288,7 @@
     {
       "writer_fn": "EdDB._migrate_outcome_anchor_bar_canonical",
       "file": "db.py",
-      "line": 2769,
+      "line": 2894,
       "tables_written": [
         "ed_schema_flags"
       ],
@@ -307,7 +307,7 @@
     {
       "writer_fn": "EdDB.insert_snapshot",
       "file": "db.py",
-      "line": 2892,
+      "line": 3017,
       "tables_written": [
         "snapshots"
       ],
@@ -341,7 +341,7 @@
     {
       "writer_fn": "EdDB.upsert_1m_bars",
       "file": "db.py",
-      "line": 2925,
+      "line": 3050,
       "tables_written": [
         "price_bars_1m"
       ],
@@ -376,7 +376,7 @@
     {
       "writer_fn": "EdDB.log_level_cross",
       "file": "db.py",
-      "line": 3887,
+      "line": 4012,
       "tables_written": [
         "level_crosses"
       ],
@@ -394,7 +394,7 @@
     {
       "writer_fn": "EdDB.log_model_accuracy",
       "file": "db.py",
-      "line": 4101,
+      "line": 4226,
       "tables_written": [
         "model_accuracy"
       ],
@@ -421,9 +421,18 @@
       "recommended_hook_file": "server.py"
     },
     {
+      "candidate_fn": "record_sqlite_contention_event",
+      "file": "db.py",
+      "line": 133,
+      "production_callers": [
+        "db.py"
+      ],
+      "recommended_hook_file": "db.py"
+    },
+    {
       "candidate_fn": "EdDB.compute_accuracy",
       "file": "db.py",
-      "line": 4046,
+      "line": 4171,
       "production_callers": [
         "server.py"
       ],
