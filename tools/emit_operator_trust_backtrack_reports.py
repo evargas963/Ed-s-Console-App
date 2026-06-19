@@ -27,6 +27,8 @@ def main() -> None:
     lines = [
         "# PR completion audit",
         "",
+        "> **Classification:** Historical Record | **Scope:** PR #11–#16 completion reconciliation",
+        "",
         f"**Date:** {d}",
         "",
         "| PR | Claimed | Actual | Open risks | Correction |",
@@ -42,6 +44,7 @@ def main() -> None:
     dec = build_stabilization_decision(audit_date=d, gate_pass=True)
     (out / "stabilization_decision_2026-06-18.md").write_text(
         "# Stabilization decision\n\n"
+        "> **Classification:** Historical Record | **Scope:** Operator-trust backtrack gate decision\n\n"
         f"stabilization_gate_pass: {dec['stabilization_gate_pass']}\n"
         f"card_explainability_gate_unblocked: {dec['card_explainability_gate_unblocked']}\n"
         f"safe_to_proceed_card_explainability: {dec['safe_to_proceed_card_explainability']}\n\n"

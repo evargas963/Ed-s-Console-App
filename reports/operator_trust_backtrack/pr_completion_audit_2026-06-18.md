@@ -1,5 +1,7 @@
 # PR completion audit
 
+> **Classification:** Historical Record | **Scope:** PR #11–#16 completion reconciliation
+
 **Date:** 2026-06-18
 
 | PR | Claimed | Actual | Open risks | Correction |

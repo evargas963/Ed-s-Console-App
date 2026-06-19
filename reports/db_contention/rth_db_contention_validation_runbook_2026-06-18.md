@@ -1,5 +1,7 @@
 # RTH DB contention validation runbook
 
+> **Classification:** Operator Runbook | **Scope:** DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN — RTH closure harness
+
 **Harness:** `python tools/run_rth_db_contention_validation.py`  
 **Closure item:** `DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN`
 

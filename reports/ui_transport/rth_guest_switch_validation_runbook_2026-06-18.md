@@ -1,5 +1,7 @@
 # RTH guest switch validation runbook
 
+> **Classification:** Operator Runbook | **Scope:** LIVE_GUEST_SLA_NOT_PROVEN — RTH closure harness
+
 **Harness:** `python tools/run_rth_guest_switch_validation.py`  
 **Closure item:** `LIVE_GUEST_SLA_NOT_PROVEN` — **NEEDS_RTH_VALIDATION_WITH_HARNESS**
 

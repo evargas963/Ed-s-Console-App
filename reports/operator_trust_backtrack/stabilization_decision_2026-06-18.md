@@ -1,5 +1,7 @@
 # Stabilization decision
 
+> **Classification:** Historical Record | **Scope:** Operator-trust backtrack gate decision
+
 stabilization_gate_pass: True
 card_explainability_gate_unblocked: True
 safe_to_proceed_card_explainability: False

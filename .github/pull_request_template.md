@@ -1,3 +1,5 @@
+> **Classification:** Process Template | **Scope:** Required fields for every PR — no passive remaining risks
+
 ## What changed:
 <!-- code / docs / harness -->
 

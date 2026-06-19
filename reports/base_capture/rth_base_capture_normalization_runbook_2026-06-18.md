@@ -1,5 +1,7 @@
 # RTH base capture / normalization validation runbook
 
+> **Classification:** Operator Runbook | **Scope:** BASE_CAPTURE_NORMALIZATION_RTH_PROOF_NOT_COMPLETE — RTH closure harness
+
 **Harness:** `python tools/run_rth_base_capture_normalization_validation.py`  
 **Closure item:** `BASE_CAPTURE_NORMALIZATION_RTH_PROOF_NOT_COMPLETE`
 
