@@ -102,3 +102,27 @@ def test_adversarial_tests_can_import_server() -> None:
 
     assert hasattr(srv, "_finalize_production_decision")
     assert hasattr(srv, "app")
+
+
+def test_ci_offline_blocks_live_schwab_client_and_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    from config import is_schwab_ci_offline_mode, schwab_credentials_are_ci_placeholders
+    from schwab_client import build_client_from_token, safe_get_quote
+
+    monkeypatch.setenv("ED_CI_OFFLINE", "1")
+    monkeypatch.setenv("SCHWAB_API_KEY", "ci-not-live-placeholder")
+    monkeypatch.setenv("SCHWAB_APP_SECRET", "ci-not-live-placeholder")
+
+    assert is_schwab_ci_offline_mode() is True
+    assert schwab_credentials_are_ci_placeholders() is True
+
+    state = build_client_from_token("/tmp/missing.json", api_key="ci-not-live-placeholder", app_secret="ci-not-live-placeholder")
+    assert state.ok is False
+    assert "offline" in state.message.lower()
+    assert state.client is None
+
+    class _FakeClient:
+        def get_quote(self, _ticker: str):
+            raise AssertionError("live Schwab API must not be called in CI offline mode")
+
+    with pytest.raises(RuntimeError, match="offline"):
+        safe_get_quote(_FakeClient(), "SPY")

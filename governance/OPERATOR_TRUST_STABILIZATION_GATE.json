@@ -1,11 +1,12 @@
 {
   "gate_name": "operator_trust_stabilization",
-  "schema_version": 2,
+  "schema_version": 3,
   "stabilization_artifacts_gate_pass": true,
+  "ci_triage_gate_pass": false,
   "operator_readiness_gate_pass": false,
   "card_explainability_allowed": false,
   "card_explainability_block_reason": [
-    "CI non-blocking failures require triage",
+    "CI triage PR #19 awaiting GitHub green",
     "RTH validation not executed",
     "LIVE_GUEST_SLA_NOT_PROVEN",
     "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN",
@@ -15,11 +16,12 @@
     "PYTEST_FULL_CI_FAILING_NON_BLOCKING",
     "SCHWAB_CSV_FIRST_FAILING_OR_MIXED_NON_BLOCKING"
   ],
-  "next_allowed_branch": "audit/ci-nonblocking-failures-triage",
+  "next_allowed_step": "await_pr19_ci_results",
+  "next_allowed_branch_after_ci_green": "audit/rth-operator-trust-validation",
   "blocked_branches": [
     "fix/card-price-conflict-explainability"
   ],
-  "last_verified_commit": "230e8ae",
+  "last_verified_commit": "6c5a782",
   "required_policy_docs": [
     "docs/OPEN_ITEMS_OPERATOR_TRUST.md",
     "docs/PR_REVIEW_STANDARD.md",
@@ -45,5 +47,5 @@
   "required_triage_reports": [
     "reports/ci/ci_nonblocking_failure_triage_2026-06-18.md"
   ],
-  "note": "stabilization_artifacts_gate_pass means harnesses + checker exist. card_explainability_allowed stays false until operator_readiness_gate_pass is true."
+  "note": "ci_triage_gate_pass flips true only when hardening, schwab-csv-first, and pytest-full are green on GitHub main (or pytest-full formally EXTERNAL_SECRET_REQUIRED_WITH_EVIDENCE). Then next_allowed_step becomes operator_rth_validation."
 }

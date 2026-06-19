@@ -41,6 +41,30 @@ def _require_env(name: str) -> str:
     return str(val).strip()
 
 
+_CI_SCHWAB_PLACEHOLDER_PREFIXES: tuple[str, ...] = (
+    "ci-not-live-placeholder",
+    "ci-placeholder-",
+)
+
+
+def schwab_credentials_are_ci_placeholders(api_key: str | None = None, app_secret: str | None = None) -> bool:
+    """True when Schwab env vars are non-production CI placeholders (not live credentials)."""
+    key = (api_key if api_key is not None else os.getenv("SCHWAB_API_KEY") or "").strip()
+    secret = (app_secret if app_secret is not None else os.getenv("SCHWAB_APP_SECRET") or "").strip()
+    if not key or not secret:
+        return False
+    return any(key.startswith(p) for p in _CI_SCHWAB_PLACEHOLDER_PREFIXES) and any(
+        secret.startswith(p) for p in _CI_SCHWAB_PLACEHOLDER_PREFIXES
+    )
+
+
+def is_schwab_ci_offline_mode() -> bool:
+    """Explicit CI/test offline — blocks live Schwab client construction and API calls."""
+    if os.getenv("ED_CI_OFFLINE", "").strip().lower() in ("1", "true", "yes"):
+        return True
+    return schwab_credentials_are_ci_placeholders()
+
+
 @dataclass(frozen=True)
 class AppConfig:
     app_dir: str

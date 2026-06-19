@@ -88,11 +88,13 @@ def test_stabilization_gate_blocks_card_explainability():
         (ROOT / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json").read_text(encoding="utf-8")
     )
     assert gate.get("stabilization_artifacts_gate_pass") is True
+    assert gate.get("ci_triage_gate_pass") is False
     assert gate.get("operator_readiness_gate_pass") is False
     assert gate.get("card_explainability_allowed") is False
     assert "card_explainability_gate_unblocked" not in gate
     assert "fix/card-price-conflict-explainability" in (gate.get("blocked_branches") or [])
-    assert gate.get("next_allowed_branch") == "audit/ci-nonblocking-failures-triage"
+    assert gate.get("next_allowed_step") == "await_pr19_ci_results"
+    assert gate.get("next_allowed_branch") != "audit/ci-nonblocking-failures-triage"
 
 
 def test_gate_no_contradiction_unblocked_while_not_allowed():
@@ -116,11 +118,12 @@ def test_gate_artifacts_pass_does_not_allow_explainability():
     assert gate["card_explainability_allowed"] is False
 
 
-def test_next_allowed_branch_is_ci_triage():
+def test_next_allowed_step_awaits_pr19_ci():
     gate = json.loads(
         (ROOT / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json").read_text(encoding="utf-8")
     )
-    assert "ci-nonblocking-failures" in gate.get("next_allowed_branch", "")
+    assert gate.get("next_allowed_step") == "await_pr19_ci_results"
+    assert gate.get("ci_triage_gate_pass") is False
 
 
 def test_ci_triage_has_classifications_and_closure_criteria():
@@ -128,7 +131,7 @@ def test_ci_triage_has_classifications_and_closure_criteria():
     assert "failed as before" not in triage.lower()
     for check in ("hardening", "pytest-full", "schwab-csv-first"):
         assert check in triage.lower()
-    assert "FIXED_NOW" in triage
+    assert "FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI" in triage
     assert "closure criteria" in triage.lower()
 
 

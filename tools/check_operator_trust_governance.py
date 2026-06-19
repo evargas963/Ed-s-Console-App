@@ -49,7 +49,10 @@ PASSIVE_SCAN_GLOBS: tuple[str, ...] = (
 CI_CHECKS = ("hardening", "pytest-full", "schwab-csv-first")
 CI_CLASSIFICATIONS = (
     "FIXED_NOW",
+    "FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI",
+    "CLOSED_WITH_EVIDENCE",
     "EXTERNAL_SECRET_REQUIRED_WITH_EVIDENCE",
+    "OPEN_BLOCKING",
     "PRE_EXISTING_BUT_BLOCKING",
     "PRE_EXISTING_AND_ACCEPTED_WITH_REASON",
     "NOT_REPRODUCED",
@@ -95,8 +98,10 @@ def check_stabilization_gate_json() -> list[str]:
             )
     for key in (
         "stabilization_artifacts_gate_pass",
+        "ci_triage_gate_pass",
         "operator_readiness_gate_pass",
         "card_explainability_allowed",
+        "next_allowed_step",
     ):
         if key not in data:
             errors.append(f"operator_trust: gate missing required field {key}")
@@ -108,10 +113,21 @@ def check_stabilization_gate_json() -> list[str]:
         )
     if data.get("stabilization_artifacts_gate_pass") is not True:
         errors.append("operator_trust: stabilization_artifacts_gate_pass must be true on this branch")
-    next_branch = str(data.get("next_allowed_branch") or "")
-    if "ci-nonblocking-failures" not in next_branch:
+    ci_pass = data.get("ci_triage_gate_pass")
+    next_step = str(data.get("next_allowed_step") or "")
+    if ci_pass is False and next_step != "await_pr19_ci_results":
         errors.append(
-            "operator_trust: next_allowed_branch must be audit/ci-nonblocking-failures-triage while CI items open"
+            "operator_trust: when ci_triage_gate_pass is false, next_allowed_step must be await_pr19_ci_results"
+        )
+    if ci_pass is True and next_step != "operator_rth_validation":
+        errors.append(
+            "operator_trust: when ci_triage_gate_pass is true, next_allowed_step must be operator_rth_validation"
+        )
+    legacy_branch = str(data.get("next_allowed_branch") or "")
+    if legacy_branch == "audit/ci-nonblocking-failures-triage":
+        errors.append(
+            "operator_trust: next_allowed_branch must not self-reference audit/ci-nonblocking-failures-triage "
+            "(use next_allowed_step)"
         )
     blocked = data.get("blocked_branches") or data.get("blocked_branches_until_pass") or []
     if "fix/card-price-conflict-explainability" not in blocked:

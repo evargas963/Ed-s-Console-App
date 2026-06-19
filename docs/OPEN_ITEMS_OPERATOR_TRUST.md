@@ -4,15 +4,16 @@
 
 **Purpose:** No passive **known remaining risks**. Every item has status, owner branch, and **Do not close until**.
 
-**Allowed statuses only:** `OPEN_BLOCKING` | `NEEDS_RTH_VALIDATION_WITH_HARNESS` | `FIXED_IN_THIS_BRANCH` | `COMPLETION_BRANCH_REQUIRED` | `ACCEPTED_WITH_EVIDENCE` | `CLOSED_WITH_EVIDENCE`
+**Allowed statuses only:** `OPEN_BLOCKING` | `NEEDS_RTH_VALIDATION_WITH_HARNESS` | `FIXED_IN_THIS_BRANCH` | `FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI` | `COMPLETION_BRANCH_REQUIRED` | `ACCEPTED_WITH_EVIDENCE` | `CLOSED_WITH_EVIDENCE`
 
 **Gate semantics (machine-readable — `governance/OPERATOR_TRUST_STABILIZATION_GATE.json`):**
 - `stabilization_artifacts_gate_pass: true` — harnesses, checker, and closure docs exist on disk.
+- `ci_triage_gate_pass: false` — PR #19 CI fixes landed; awaiting GitHub green.
 - `operator_readiness_gate_pass: false` — CI triage + RTH proof not complete.
 - `card_explainability_allowed: false` — **do not** start `fix/card-price-conflict-explainability`.
-- **Next allowed branch:** `audit/ci-nonblocking-failures-triage` (then operator RTH validation).
+- **Next allowed step:** `await_pr19_ci_results` → after CI green, `operator_rth_validation` on branch `audit/rth-operator-trust-validation`.
 
-**Planned sequence:** Merge stabilization → `audit/ci-nonblocking-failures-triage` → operator RTH validation → `fix/card-price-conflict-explainability` (only when `card_explainability_allowed: true`)
+**Planned sequence:** Merge stabilization (PR #18 ✅) → CI triage (PR #19, awaiting GitHub) → operator RTH validation → `fix/card-price-conflict-explainability` (only when `card_explainability_allowed: true`)
 
 ---
 
@@ -71,16 +72,16 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `FIXED_IN_THIS_BRANCH` |
+| **Status** | `FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI` |
 | **Source PR / report** | `audit/ci-nonblocking-failures-triage`; `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` |
 | **Why it matters** | Only objective-audit trusted — repo health degraded |
 | **Operator risk** | Regressions hide in red checks |
 | **Evidence currently available** | Fixes landed: F401, schwab false-positive scope, pytest CI placeholders |
-| **Evidence still needed** | GitHub `main` push: all three workflows green |
+| **Evidence still needed** | GitHub PR #19: `hardening`, `pytest-full`, `schwab-csv-first` green (or pytest-full `EXTERNAL_SECRET_REQUIRED_WITH_EVIDENCE`) |
 | **Fix now or harness now** | Fixes in `audit/ci-nonblocking-failures-triage` |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | High until CI green on GitHub |
-| **Do not close until** | `hardening`, `pytest-full`, `schwab-csv-first` green on `main` CI |
+| **Do not close until** | All three workflows green on GitHub PR #19 merge to `main` |
 
 ---
 
@@ -88,12 +89,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `FIXED_IN_THIS_BRANCH` |
+| **Status** | `FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI` |
 | **Source PR / report** | CI triage 2026-06-19 — ruff F401 |
 | **Why it matters** | Institutional locks may drift |
 | **Operator risk** | Silent rule regression |
-| **Evidence currently available** | `ruff check . --select F401,F821,E9` exit 0 locally |
-| **Evidence still needed** | GitHub hardening workflow green |
+| **Evidence currently available** | F401 fixed locally; hardening workflow installs `requirements-dev.txt` for `openpyxl` (enforce-static) |
+| **Evidence still needed** | GitHub hardening workflow green on PR #19 |
 | **Fix now or harness now** | F401 fixed repo-wide |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | Medium |
@@ -105,16 +106,16 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `FIXED_IN_THIS_BRANCH` |
+| **Status** | `OPEN_BLOCKING` |
 | **Source PR / report** | CI triage 2026-06-19 — SCHWAB_API_KEY at webServer startup |
 | **Why it matters** | Full suite catches cone gaps |
 | **Operator risk** | Production-only test failures |
-| **Evidence currently available** | `pytest.yml` CI placeholder env (not live credentials) |
-| **Evidence still needed** | GitHub pytest-full workflow green |
+| **Evidence currently available** | `pytest.yml` CI placeholders + `ED_CI_OFFLINE=1`; `config.is_schwab_ci_offline_mode()` blocks live Schwab client/API |
+| **Evidence still needed** | GitHub pytest-full green; startup no longer fails on missing env; live-call safety proven in CI |
 | **Fix now or harness now** | CI env placeholders |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | Medium |
-| **Do not close until** | `pytest-full` green on GitHub `main` |
+| **Do not close until** | `pytest-full` green on GitHub PR #19 |
 
 ---
 
@@ -122,16 +123,16 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `FIXED_IN_THIS_BRANCH` |
+| **Status** | `FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI` |
 | **Source PR / report** | CI triage 2026-06-19 — diff-emission false positives |
 | **Why it matters** | Schwab diff-emission gate for market fields |
 | **Operator risk** | New market reads without register row |
-| **Evidence currently available** | Scanner path exclusions + homonym tests |
-| **Evidence still needed** | GitHub schwab-csv-first green on this PR |
+| **Evidence currently available** | Scanner path exclusions + homonym tests; push event schwab-csv-first pass |
+| **Evidence still needed** | GitHub PR #19 schwab-csv-first green (PR register pin step) |
 | **Fix now or harness now** | `check_schwab_csv_first.py` precision fix |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | Medium |
-| **Do not close until** | `schwab-csv-first` green on GitHub `main` |
+| **Do not close until** | `schwab-csv-first` green on GitHub PR #19 merge |
 
 ---
 
