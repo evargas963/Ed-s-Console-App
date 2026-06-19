@@ -11,7 +11,7 @@
 - `ci_triage_gate_pass: false` — PR #19 CI fixes landed; awaiting GitHub green.
 - `operator_readiness_gate_pass: false` — CI triage + RTH proof not complete.
 - `card_explainability_allowed: false` — **do not** start `fix/card-price-conflict-explainability`.
-- **Next allowed step:** `resolve_pytest_full_failures` — pytest-full **46-failure** matrix @ `6e3157c` run `27829108946` in `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md`.
+- **Next allowed step:** `resolve_pytest_full_failures` — pytest-full **34-failure** matrix @ `e3ba4a9` run `27845075770`.
 
 **Planned sequence:** Merge stabilization (PR #18 ✅) → CI triage (PR #19, awaiting GitHub) → operator RTH validation → `fix/card-price-conflict-explainability` (only when `card_explainability_allowed: true`)
 
@@ -108,14 +108,14 @@
 |-------|-------|
 | **Status** | `OPEN_BLOCKING` |
 | **Source PR / report** | `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` — pytest-full failure matrix |
-| **Why it matters** | Full suite catches cone gaps; 46 failures categorized — not Schwab secrets |
+| **Why it matters** | Full suite catches cone gaps; 34 failures categorized — not Schwab secrets |
 | **Operator risk** | Regressions hide in uncategorized red check |
-| **Evidence currently available** | Matrix @ `6e3157c` run 27829108946: **46 failures** in 18 groups; 5 tests fixed since `9bdc864` (51→46) |
-| **Evidence still needed** | pytest-full green OR operator sign-off on every matrix row with `requires_operator_sign_off_for_merge` |
+| **Evidence currently available** | Matrix @ `e3ba4a9` run 27845075770: **34 failures**; MISSING_SNAPSHOTS snapshots scope **CLOSED** @ e3ba4a9 (12 tests cleared since 2007768) |
+| **Evidence still needed** | pytest-full green OR operator sign-off on every open matrix row; objective-audit green on GitHub |
 | **Fix now or harness now** | `schwab_live_blocked_for()` credential scope; analytics executor fixture; ticker_switch logging |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` (FIX_NOW); triage-owned groups in `ci_nonblocking_failure_triage_2026-06-18.json` |
 | **Blocking level** | High — blocks PR #19 merge |
-| **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all 46 matrix rows @ `6e3157c` |
+| **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all **34** open matrix rows @ `e3ba4a9` |
 
 ---
 

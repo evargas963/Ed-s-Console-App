@@ -6,7 +6,8 @@
   "operator_readiness_gate_pass": false,
   "card_explainability_allowed": false,
   "card_explainability_block_reason": [
-    "pytest-full 46 failures @ 2007768 — resolve or operator-sign-off per matrix row",
+    "pytest-full 34 failures @ e3ba4a9 — resolve or operator-sign-off per matrix row",
+    "objective-audit fail on GitHub @ e3ba4a9 (ablation grid static on CI)",
     "RTH validation not executed",
     "LIVE_GUEST_SLA_NOT_PROVEN",
     "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN",
@@ -19,10 +20,12 @@
   "blocked_branches": [
     "fix/card-price-conflict-explainability"
   ],
-  "last_verified_commit": "2007768",
-  "pytest_full_matrix_commit": "2007768",
-  "pytest_full_matrix_run": "27832239335",
-  "pytest_full_failure_count": 46,
+  "last_verified_commit": "e3ba4a9",
+  "pytest_full_matrix_commit": "e3ba4a9",
+  "pytest_full_matrix_run": "27845075770",
+  "pytest_full_failure_count": 34,
+  "objective_audit_last_run": "27845075765",
+  "objective_audit_status": "fail",
   "required_policy_docs": [
     "docs/OPEN_ITEMS_OPERATOR_TRUST.md",
     "docs/PR_REVIEW_STANDARD.md",
@@ -48,5 +51,5 @@
   "required_triage_reports": [
     "reports/ci/ci_nonblocking_failure_triage_2026-06-18.md"
   ],
-  "note": "Merge decision basis: pytest_full @ 2007768 run 27832239335 — 46 failed, 3737 passed. MISSING_SNAPSHOTS_1M_NORMALIZED_FIXTURE still OPEN (conftest-only @ 2007768 insufficient on GitHub). FIX_NOW: ensure_console_db_training_schema + db_training_fingerprint fail-closed landed after 2007768 CI."
+  "note": "Merge basis @ e3ba4a9: pytest-full 34 failed (run 27845075770); objective-audit fail (run 27845075765 ablation static). MISSING_SNAPSHOTS_1M_NORMALIZED_FIXTURE CLOSED_WITH_EVIDENCE (snapshots scope). hardening + schwab-csv-first green."
 }

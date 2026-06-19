@@ -8,13 +8,15 @@
   "ci_triage_gate_pass": false,
   "next_allowed_step": "resolve_pytest_full_failures",
   "github_checks_last_observed": {
-    "commit": "2007768",
-    "objective-audit": "pass",
+    "commit": "e3ba4a9",
+    "objective-audit": "fail",
+    "objective_audit_run": "27845075765",
+    "objective_audit_root_cause": "ablation grid static: whole_stack_fusion_cell_target != runnable_target (CI DB enriched-row sample)",
     "hardening": "pass",
     "schwab-csv-first": "pass",
     "pytest-full": "fail",
-    "pytest_full_summary": "46 failed, 3737 passed, 6 skipped",
-    "pytest_full_run": "27832239335"
+    "pytest_full_summary": "34 failed, 3750 passed, 7 skipped",
+    "pytest_full_run": "27845075770"
   },
   "pytest_full_matrix_history": [
     {
@@ -33,8 +35,28 @@
       "commit": "2007768",
       "pytest_full_run": "27832239335",
       "failed_count": 46,
-      "note": "conftest-only schema fixture — governance bucket still open on GitHub; FIX_NOW bootstrap in flight"
+      "note": "conftest-only — superseded by e3ba4a9"
+    },
+    {
+      "commit": "e3ba4a9",
+      "pytest_full_run": "27845075770",
+      "failed_count": 34,
+      "note": "bootstrap schema fix — 12 tests cleared; objective-audit red on CI ablation static"
     }
+  ],
+  "pytest_full_fixed_at_e3ba4a9": [
+    "tests/test_governance_dashboard.py::test_visibility_panel_reads_governed_fields",
+    "tests/test_governance_dashboard.py::test_blocked_reasons_when_not_promotable",
+    "tests/test_governance_dashboard.py::test_production_default_parallel_in_panel",
+    "tests/test_governance_ui_dashboard.py::test_api_governance_panel_emit_notifications_query",
+    "tests/test_live_drift_monitoring.py::test_missing_model_dirs_emits_warning_and_unavailable_summary",
+    "tests/test_live_drift_monitoring.py::test_persist_live_drift_uses_atomic_write_helper",
+    "tests/test_live_drift_monitoring.py::test_corrupt_scheduler_manifest_emits_invalid_signal",
+    "tests/test_live_drift_monitoring.py::test_malformed_created_at_utc_logs_warning",
+    "tests/test_live_drift_monitoring.py::test_persist_live_drift_atomic_preserves_prior_on_replace_failure",
+    "tests/test_live_drift_monitoring.py::test_persist_artifact_path",
+    "tests/test_live_drift_monitoring.py::test_governance_panel_includes_live_drift",
+    "tests/test_pred_1c_eddb_and_audit_contract_v1.py::test_freshest_snapshot_row_with_pred_1c_readable"
   ],
   "pytest_full_fixed_at_6e3157c": [
     "tests/test_schwab_client_import_boundary.py::test_build_client_from_token_fails_closed_without_token_file",
@@ -50,11 +72,16 @@
     },
     "schwab-csv-first": {
       "classification": "CLOSED_WITH_EVIDENCE",
-      "closure_criteria": "schwab-csv-first green on GitHub PR #19 — met @ 6e3157c"
+      "closure_criteria": "schwab-csv-first green on GitHub PR #19 — met @ e3ba4a9"
+    },
+    "objective-audit": {
+      "classification": "OPEN_BLOCKING",
+      "root_cause": "CI static ablation grid accounting @ e3ba4a9 run 27845075765",
+      "closure_criteria": "objective-audit green on GitHub PR #19 (local pass @ e3ba4a9 with operator DB — CI lacks enriched-row accounting)"
     },
     "pytest-full": {
       "classification": "OPEN_BLOCKING",
-      "root_cause": "46 failures @ 2007768 CI — test/fixture/contract; not Schwab secrets (+1 passed vs 6e3157c, failure count unchanged)",
+      "root_cause": "34 failures @ e3ba4a9 CI (46→34; MISSING_SNAPSHOTS snapshots_1m_normalized scope cleared)",
       "closure_criteria": "pytest-full green OR every row in pytest_full_failure_matrix accepted with operator sign-off"
     }
   },
@@ -91,24 +118,26 @@
     },
     {
       "failure_group": "MISSING_SNAPSHOTS_1M_NORMALIZED_FIXTURE",
-      "number_of_tests": 11,
-      "bucket_status": "OPEN",
+      "number_of_tests": 0,
+      "bucket_status": "CLOSED_WITH_EVIDENCE",
+      "cleared_at_commit": "e3ba4a9",
+      "cleared_at_run": "27845075770",
       "representative_tests": [
         "tests/test_governance_dashboard.py::test_visibility_panel_reads_governed_fields",
         "tests/test_live_drift_monitoring.py::test_governance_panel_includes_live_drift"
       ],
       "failure_message": "sqlite3.OperationalError: no such table: snapshots_1m_normalized",
-      "root_cause": "Governance/objective-audit paths read DB before schema bootstrap; 2007768 conftest-only fix insufficient on GitHub (12 governance tests still red @ 27832239335)",
+      "root_cause": "Cleared @ e3ba4a9 — ensure_console_db_training_schema + db_training_fingerprint fail-closed (10 tests). Residual mutation test reclassified to GOVERNANCE_MUTATION_CALIBRATION_LOG_ENV.",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
-      "fix_now_or_defer": "fix_now",
+      "fix_now_or_defer": "closed",
       "fix_classification": "FIX_NOW",
       "owner_branch": "fix/ci-governance-db-fixture",
       "owner_branch_blocked": false,
-      "closure_criteria": "GitHub pytest-full: governance cone green; db_training_fingerprint fail-closed; ensure_console_db_training_schema before objective-audit"
+      "closure_criteria": "GitHub pytest-full @ e3ba4a9: governance_dashboard + governance_ui_dashboard + live_drift green — met"
     },
     {
       "failure_group": "PRODUCTION_DB_PRED_1C_ABSENT_IN_CI",
-      "number_of_tests": 2,
+      "number_of_tests": 1,
       "representative_tests": [
         "tests/test_pred_1c_eddb_and_audit_contract_v1.py::test_production_db_has_governed_pred_1c_when_expected",
         "tests/test_pred_1c_eddb_and_audit_contract_v1.py::test_freshest_snapshot_row_with_pred_1c_readable"
@@ -187,8 +216,8 @@
       "representative_tests": [
         "tests/test_governance_mutation_detection.py::test_objective_audit_does_not_mutate_governance_artifacts"
       ],
-      "failure_message": "calibration logging ENABLED log line treated as mutation",
-      "root_cause": "CI/env ED_CALIBRATION_LOG differs from test expectation",
+      "failure_message": "subprocess objective-audit exit != 0 when pytest has ED_CALIBRATION_LOG=on",
+      "root_cause": "test_objective_audit_does_not_mutate_governance_artifacts: subprocess env not hermetic for ED_CALIBRATION_LOG (not snapshots_1m_normalized)",
       "classification": "INFRASTRUCTURE_FLAKE_WITH_EVIDENCE",
       "fix_now_or_defer": "triage_owned",
       "owner_branch": "fix/governance-mutation-test-hermetic",
@@ -333,15 +362,17 @@
       "closure_criteria": "Tests mock quote layer or skip when schwab_live_blocked_for()"
     }
   ],
-  "pytest_full_failure_count": 46,
+  "pytest_full_failure_count": 34,
   "pytest_full_classification_totals": {
-    "PRE_EXISTING_BUT_BLOCKING": 32,
+    "PRE_EXISTING_BUT_BLOCKING": 25,
     "INTENTIONAL_CONTRACT_LOCK": 7,
-    "PRE_EXISTING_AND_ACCEPTED_WITH_EVIDENCE": 2,
+    "PRE_EXISTING_AND_ACCEPTED_WITH_EVIDENCE": 1,
     "INFRASTRUCTURE_FLAKE_WITH_EVIDENCE": 1,
     "FIX_NOW": 0,
-    "OBSOLETE_TEST_UPDATE_REQUIRED": 0
+    "OBSOLETE_TEST_UPDATE_REQUIRED": 0,
+    "CLOSED_WITH_EVIDENCE": 11
   },
   "pytest_full_fixed_count_at_6e3157c": 5,
+  "pytest_full_fixed_count_at_e3ba4a9": 12,
   "card_explainability_allowed": false
 }

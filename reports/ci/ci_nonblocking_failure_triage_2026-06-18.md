@@ -2,24 +2,31 @@
 
 # CI non-blocking failure triage (2026-06-18)
 
-**Updated:** 2026-06-19 @ **`2007768`** — GitHub pytest-full observed; matrix count unchanged at 46.
+**Updated:** 2026-06-19 @ **`e3ba4a9`** — GitHub CI observed (run **27845075770**).
 
-## GitHub PR #19 checks (@ `2007768`)
+## GitHub PR #19 checks (@ `e3ba4a9`)
 
 | Check | Status |
 |-------|--------|
-| objective-audit | pass |
-| hardening | **CLOSED_WITH_EVIDENCE** |
-| schwab-csv-first | **CLOSED_WITH_EVIDENCE** |
-| pytest-full | **OPEN_BLOCKING** — `46 failed, 3737 passed` (run **27832239335**) |
+| objective-audit | **OPEN_BLOCKING** — fail [27845075765](https://github.com/evargas963/Ed-s-Console-App/actions/runs/27845075765) (ablation grid static on CI) |
+| hardening | **CLOSED_WITH_EVIDENCE** — pass |
+| schwab-csv-first | **CLOSED_WITH_EVIDENCE** — pass |
+| pytest-full | **OPEN_BLOCKING** — `34 failed, 3750 passed, 7 skipped` (run **27845075770**) |
 
-**Merge decision basis:** current matrix (`2007768` / 46 failures). Historical runs in JSON `pytest_full_matrix_history` only.
+**Merge decision basis:** current matrix (`e3ba4a9` / **34** failures). Historical runs in JSON `pytest_full_matrix_history` only.
 
-**`2007768` result:** +1 passed vs `6e3157c` (3736→3737); **failure count unchanged at 46**. `MISSING_SNAPSHOTS_1M_NORMALIZED_FIXTURE` **not closed** — governance cone still red on GitHub.
+**Delta vs `2007768`:** 46→**34** failed (+13 passed, +1 skipped). **12 tests cleared** @ `e3ba4a9`.
 
-**Empty DB / objective-audit:** **FIX_NOW** (not dismissed) — `docs/RUNTIME_EVIDENCE_ENV_CONTRACT.md` documents in-scope bootstrap; `ensure_console_db_training_schema` + `db_training_fingerprint` fail-closed follow `2007768`.
+### `MISSING_SNAPSHOTS_1M_NORMALIZED_FIXTURE` — **CLOSED_WITH_EVIDENCE** (snapshots scope)
 
-**Not EXTERNAL_SECRET_REQUIRED:** Schwab credentials/startup resolved. Remaining failures are test/fixture/contract.
+| File | GitHub @ `e3ba4a9` |
+|------|---------------------|
+| `test_governance_dashboard.py` | **green** (3 tests) |
+| `test_governance_ui_dashboard.py` | **green** (`test_api_governance_panel_emit_notifications_query`) |
+| `test_live_drift_monitoring.py` | **green** (7 tests) |
+| `test_governance_mutation_detection.py::test_objective_audit_does_not_mutate_governance_artifacts` | **still red** — reclassified to `GOVERNANCE_MUTATION_CALIBRATION_LOG_ENV` (ED_CALIBRATION_LOG subprocess env, not missing table) |
+
+**Not EXTERNAL_SECRET_REQUIRED:** Schwab credentials resolved. Remaining failures are test/fixture/contract.
 
 ### Fixed @ `6e3157c` (5 tests — no longer in failure set)
 
@@ -39,10 +46,11 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 
 | Classification | Tests |
 |----------------|-------|
-| PRE_EXISTING_BUT_BLOCKING | 36 |
+| PRE_EXISTING_BUT_BLOCKING | 25 |
 | INTENTIONAL_CONTRACT_LOCK | 7 |
-| PRE_EXISTING_AND_ACCEPTED_WITH_EVIDENCE | 2 |
+| PRE_EXISTING_AND_ACCEPTED_WITH_EVIDENCE | 1 |
 | INFRASTRUCTURE_FLAKE_WITH_EVIDENCE | 1 |
+| CLOSED_WITH_EVIDENCE | 11 |
 | FIX_NOW | 0 |
 | OBSOLETE_TEST_UPDATE_REQUIRED | 0 |
 
@@ -52,8 +60,8 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 |---------------|---|----------------|--------------|----------------|------------------------------|
 | ABLATION_GRID_RUNNABLE_ACCOUNTING | 4 | PRE_EXISTING_BUT_BLOCKING | `fix/ablation-grid-runnable-accounting-ci` | no | no |
 | MEGA_INVENTORY_CONTRACT_LOCK | 4 | INTENTIONAL_CONTRACT_LOCK | `fix/mega-inventory-sync` | no | no |
-| MISSING_SNAPSHOTS_1M_NORMALIZED_FIXTURE | 11 | PRE_EXISTING_BUT_BLOCKING **OPEN** | `fix/ci-governance-db-fixture` | no | no |
-| PRODUCTION_DB_PRED_1C_ABSENT_IN_CI | 2 | PRE_EXISTING_AND_ACCEPTED_WITH_EVIDENCE | `fix/ci-pred-1c-fixture-or-skip` | no | **yes** |
+| MISSING_SNAPSHOTS_1M_NORMALIZED_FIXTURE | 0 | **CLOSED_WITH_EVIDENCE** @ `e3ba4a9` | `fix/ci-governance-db-fixture` | no | no |
+| PRODUCTION_DB_PRED_1C_ABSENT_IN_CI | 1 | PRE_EXISTING_AND_ACCEPTED_WITH_EVIDENCE | `fix/ci-pred-1c-fixture-or-skip` | no | **yes** |
 | ACTIVE_BUNDLE_ENCODER_LAYOUT | 3 | PRE_EXISTING_BUT_BLOCKING | `fix/ci-active-bundle-fixture` | no | no |
 | CALIBRATION_BYPASS_ALLOWLIST | 2 | PRE_EXISTING_BUT_BLOCKING | `fix/calibration-bypass-allowlist-sync` | no | no |
 | ET_AUTHORITY_DAILY_SCOREBOARD | 2 | PRE_EXISTING_BUT_BLOCKING | `fix/daily-scoreboard-et-authority` | no | no |
@@ -97,6 +105,6 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 
 - `ci_triage_gate_pass: false`
 - `next_allowed_step: resolve_pytest_full_failures`
-- `last_verified_commit: 2007768`
+- `last_verified_commit: e3ba4a9`
 - `card_explainability_allowed: false`
 - **Do not merge** until pytest-full green or operator accepts every remaining row with evidence.
