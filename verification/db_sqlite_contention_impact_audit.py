@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -222,6 +223,103 @@ def merge_runtime_metrics(
     return metrics
 
 
+DB_OPERATOR_STATES = frozenset({"OK", "DB_WAITING", "DB_DEGRADED", "DB_LOCKED"})
+
+_DB_STATE_COPY: dict[str, tuple[str, str]] = {
+    "OK": ("", ""),
+    "DB_WAITING": ("DB WAITING", "snapshot writes delayed"),
+    "DB_DEGRADED": ("DB DEGRADED", "cards may lag"),
+    "DB_LOCKED": ("DB LOCKED", "analytics freshness at risk"),
+}
+
+
+def derive_db_contention_operator_status(
+    metrics: dict[str, Any],
+    *,
+    now_utc: float | None = None,
+    recent_window_sec: float = 120.0,
+) -> dict[str, Any]:
+    """
+    Map tier-1 SQLite contention counters to operator-facing transport warning (not model verdict).
+    """
+    now = float(time.time() if now_utc is None else now_utc)
+    recent = [
+        e
+        for e in (metrics.get("recent_events") or [])
+        if isinstance(e, dict) and float(e.get("ts_utc") or 0) >= now - float(recent_window_sec)
+    ]
+    recent_kinds = {str(e.get("kind") or "") for e in recent}
+
+    lock_wait_count = int(metrics.get("sqlite_lock_wait_count") or 0)
+    lock_wait_max = float(metrics.get("sqlite_lock_wait_max_ms") or 0.0)
+    busy_retry = int(metrics.get("sqlite_busy_retry_count") or 0)
+    db_locked = int(metrics.get("sqlite_database_locked_count") or 0)
+    tier1_fail = int(metrics.get("sqlite_tier1_fail_count") or 0)
+    cfg = metrics.get("config") if isinstance(metrics.get("config"), dict) else {}
+    warn_ms = float(cfg.get("lock_wait_warn_ms") or 100.0)
+
+    state = "OK"
+    if (
+        db_locked > 0
+        or tier1_fail > 0
+        or "database_locked" in recent_kinds
+        or "tier1_fail" in recent_kinds
+    ):
+        state = "DB_LOCKED"
+    elif lock_wait_max >= 500.0 or lock_wait_count >= 3 or busy_retry >= 2:
+        state = "DB_DEGRADED"
+    elif (
+        lock_wait_count > 0
+        or busy_retry > 0
+        or lock_wait_max >= warn_ms
+        or "lock_wait" in recent_kinds
+        or "busy_retry" in recent_kinds
+    ):
+        state = "DB_WAITING"
+
+    headline, detail = _DB_STATE_COPY[state]
+    label = f"{headline} — {detail}" if headline and detail else headline
+    last_ts = max((float(e.get("ts_utc") or 0) for e in recent), default=None)
+
+    return {
+        "state": state,
+        "show": state != "OK",
+        "label": label,
+        "headline": headline,
+        "detail": detail,
+        "severity": (
+            "bad" if state == "DB_LOCKED" else "warn" if state != "OK" else "none"
+        ),
+        "operator_message": (
+            "Data/transport layer may be delayed — not a model verdict."
+            if state != "OK"
+            else ""
+        ),
+        "metrics_summary": {
+            "sqlite_lock_wait_count": lock_wait_count,
+            "sqlite_lock_wait_max_ms": round(lock_wait_max, 3),
+            "sqlite_busy_retry_count": busy_retry,
+            "sqlite_database_locked_count": db_locked,
+            "sqlite_tier1_fail_count": tier1_fail,
+        },
+        "last_event_ts_utc": last_ts,
+        "recent_window_sec": float(recent_window_sec),
+    }
+
+
+def build_db_contention_operator_surface(metrics: dict[str, Any]) -> dict[str, Any]:
+    """Full operator + diagnostics payload for API and Tier C attach."""
+    status = derive_db_contention_operator_status(metrics)
+    return {
+        **status,
+        "diagnostics_source": "/api/diagnostics/sqlite-contention",
+        "operations_affected": dict(metrics.get("operations_affected") or {}),
+        "tickers_affected": dict(metrics.get("tickers_affected") or {}),
+        "threads_affected": dict(metrics.get("threads_affected") or {}),
+        "recent_events_sample": list(metrics.get("recent_events") or [])[-10:],
+    }
+
+
 def lock_wait_is_harmless_classification(classifications: list[str]) -> bool:
     """Lock wait / locked errors must never be classified as harmless by default."""
     if not classifications:
@@ -360,8 +458,9 @@ def scan_ui_db_degraded_surfaces() -> dict[str, Any]:
     )
     html_hits = [t for t in operator_tokens if t.lower() in html.lower()]
     server_diag = "/api/diagnostics/sqlite-contention" in server
+    operator_surface = bool(html_hits) or "ub-pill-db" in html or "dr-db-contention-chip" in html
     return {
-        "operator_db_degraded_surface": bool(html_hits),
+        "operator_db_degraded_surface": operator_surface,
         "index_html_sqlite_tokens": html_hits,
         "server_sqlite_diagnostics_route": server_diag,
         "diagnostics_api_only_not_operator_surface": server_diag and not html_hits,

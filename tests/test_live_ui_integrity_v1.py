@@ -76,6 +76,7 @@ def test_index_html_live_ui_integrity_dom_and_hook():
     assert "_updateCoherenceHeadline(integrity)" in ae
     assert "_updateStackModeChip(integrity)" in ae
     assert "_updateLaneStaleChip(integrity)" in ae
+    assert "_updateDbContentionChip()" in ae
     assert "_refreshLiveUiIntegrityDerivations(opts)" in ae
 
 
@@ -705,3 +706,51 @@ def test_index_html_tier_c_dedup_hooks_present():
     assert "_shouldSkipTierCCardRender(d)" in html
     assert "_resetTierCCardRenderDedup()" in html.split("function setActiveTicker(")[1]
     assert "window._tierCCardRenderFingerprint = _tierCCardRenderFingerprint" in html
+
+
+def test_db_contention_operator_dom_and_client_hooks():
+    html = _html()
+    assert 'id="ub-pill-db"' in html
+    assert 'id="dr-db-contention-chip"' in html
+    assert "function paintDbContentionPill(" in html
+    assert "function pollDbContentionDiagnostics(" in html
+    assert "function startDbContentionPoll(" in html
+    assert "/api/diagnostics/sqlite-contention" in html
+    assert "not a model verdict" in html.lower()
+    paint_body = html.split("function paintDbContentionPill(")[1].split("let _dbContentionPollTid")[0]
+    assert "mhap_rows" not in paint_body
+    assert "final_bias" not in paint_body
+
+
+def test_db_degraded_coexists_with_lane_stale_integrity():
+    from verification.db_sqlite_contention_impact_audit import derive_db_contention_operator_status
+
+    db = derive_db_contention_operator_status(
+        {"sqlite_lock_wait_count": 1, "sqlite_lock_wait_max_ms": 150.0, "recent_events": []}
+    )
+    integrity = _derive_integrity(
+        last_fast_ts=100.0,
+        last_render_ts=50.0,
+        bundle_ts=40.0,
+        decision_generation_id=5,
+        tier_c_painted_at_gen=3,
+        pending_full_analytics=True,
+        stack_mode="OK",
+    )
+    assert db["show"] is True
+    assert _lane_stale_chip_label(integrity) is not None
+
+
+def test_core_and_guest_share_db_contention_surface_attach():
+    import copy
+
+    from server import _attach_db_contention_operator_surface
+
+    for ticker in ("SPY", "NVDA"):
+        ms = {"ticker": ticker, "mhap_rows": [{"horizon": "1c", "call": "LONG"}]}
+        before = copy.deepcopy(ms)
+        _attach_db_contention_operator_surface(ms)
+        assert ms["mhap_rows"] == before["mhap_rows"]
+        op = ms["db_contention_operator"]
+        assert op["diagnostics_source"] == "/api/diagnostics/sqlite-contention"
+        assert "state" in op

@@ -370,6 +370,15 @@
     background: rgba(0, 170, 255, 0.07);
     border: 1px solid rgba(0, 170, 255, 0.25);
   }
+  .utility-bar .ub-pill-db {
+    background: rgba(251, 146, 60, 0.08);
+    border: 1px solid rgba(251, 146, 60, 0.35);
+    display: none;
+  }
+  .utility-bar .ub-pill-db.ub-pill-db--locked {
+    background: rgba(255, 68, 68, 0.10);
+    border: 1px solid rgba(255, 68, 68, 0.45);
+  }
   .utility-bar .ub-pill-top {
     display: flex;
     align-items: center;
@@ -2604,6 +2613,13 @@
         </div>
         <div class="ub-pill-sub" id="ub-ui-detail" style="color:#7dd3fc">—</div>
       </div>
+      <div class="ub-pill ub-pill-db" id="ub-pill-db" title="SQLite contention — data/transport layer, not model verdict" style="display:none">
+        <div class="ub-pill-top">
+          <span class="ub-pill-dot" id="ub-db-dot" style="background:#fb923c"></span>
+          <span class="ub-pill-label" id="ub-db-label" style="color:#fb923c">DB</span>
+        </div>
+        <div class="ub-pill-sub" id="ub-db-detail" style="color:#fdba74">—</div>
+      </div>
     </div>
 
     <div class="ub-spacer" aria-hidden="true"></div>
@@ -2949,6 +2965,7 @@
             <span class="decision-chip dim" id="dr-mh-promotion-chip" title="Multi-horizon policy promoted WAIT→directional (conviction floored low)" style="display:none">MH —</span>
             <span class="decision-chip dim" id="dr-session-boundary-chip" title="Session close boundary — time_warning from call_engine" style="display:none">SESSION —</span>
             <span class="decision-chip dim" id="dr-lane-stale-chip" title="Fast lane ahead of analytical paint or cards repainting" style="display:none">LANE —</span>
+            <span class="decision-chip dim" id="dr-db-contention-chip" title="SQLite contention — snapshot/analytics transport may lag (not a model verdict)" style="display:none">DB —</span>
           </div>
           <div class="signal-card-body">
             <div class="signal-chain-bar" id="dr-signal-chain-host" aria-label="Signal chain status"></div>
@@ -6967,6 +6984,12 @@ function render(d, fullRenderSource) {
     if (d.analytics_version != null) window._lastUiVersion = String(d.analytics_version);
   } catch (e) {}
   try { _syncQuoteLaneFromMergedState(d); } catch (eSync) {}
+  try {
+    if (d && d.db_contention_operator) {
+      window._dbContentionOperator = d.db_contention_operator;
+      paintDbContentionPill(d.db_contention_operator);
+    }
+  } catch (eDb) {}
   try { refreshUtilityBar(); } catch (e2) {}
   _commitTierCCardRenderFingerprint(d);
   return true;
@@ -7796,8 +7819,13 @@ function _updateLiveUiAe(opts) {
   _updateMhPromotionChip(integrity);
   _updateSessionBoundaryChip(integrity);
   _updateLaneStaleChip(integrity);
+  _updateDbContentionChip();
   // Pass 4b — async; fire-and-forget, errors swallowed inside.
   _updateLevelTestChip();
+}
+
+function _updateDbContentionChip() {
+  paintDbContentionPill(_resolveDbContentionOperatorSurface());
 }
 
 /** Fast-lane rollout counters (no console spam). Inspect: window._edFastRollout */
@@ -8396,6 +8424,94 @@ function getCurrentFeedState() {
   });
 }
 
+/** Resolve DB contention operator surface from diagnostics poll or Tier C payload. */
+function _resolveDbContentionOperatorSurface() {
+  if (window._dbContentionOperator && typeof window._dbContentionOperator === 'object') {
+    return window._dbContentionOperator;
+  }
+  const d = window._lastData;
+  if (d && d.db_contention_operator && typeof d.db_contention_operator === 'object') {
+    return d.db_contention_operator;
+  }
+  return { state: 'OK', show: false };
+}
+
+function _dbContentionColors(state) {
+  if (state === 'DB_LOCKED') return { main: '#ff4444', sub: '#fca5a5' };
+  if (state === 'DB_DEGRADED') return { main: '#fb923c', sub: '#fdba74' };
+  if (state === 'DB_WAITING') return { main: '#fbbf24', sub: '#fde68a' };
+  return { main: '#6b7280', sub: '#9ca3af' };
+}
+
+/** Paint utility-bar DB pill + decision-rail chip — transport warning only. */
+function paintDbContentionPill(surface) {
+  const op = surface || _resolveDbContentionOperatorSurface();
+  try { window._dbContentionOperator = op; } catch (e) {}
+  const show = op && op.show === true && op.state && op.state !== 'OK';
+  const pill = $('ub-pill-db');
+  const labelEl = $('ub-db-label');
+  const dotEl = $('ub-db-dot');
+  const detailEl = $('ub-db-detail');
+  const chipEl = $('dr-db-contention-chip');
+  const colors = _dbContentionColors(op.state || 'OK');
+  if (pill) {
+    pill.style.display = show ? '' : 'none';
+    pill.classList.toggle('ub-pill-db--locked', op.state === 'DB_LOCKED');
+  }
+  if (labelEl) {
+    labelEl.textContent = (op.headline || op.state || 'DB').toUpperCase();
+    labelEl.style.color = colors.main;
+  }
+  if (dotEl) {
+    dotEl.style.background = colors.main;
+    dotEl.classList.toggle('ub-blink', op.state === 'DB_LOCKED');
+  }
+  if (detailEl) {
+    const detail = op.detail || '';
+    detailEl.textContent = detail || (op.operator_message || '—');
+    detailEl.style.color = colors.sub;
+  }
+  if (pill && show) {
+    pill.title = (op.label || op.headline || 'DB contention') + ' — ' + (op.operator_message || 'transport layer');
+  }
+  if (chipEl) {
+    if (!show) {
+      chipEl.style.display = 'none';
+      chipEl.textContent = 'DB —';
+      chipEl.className = 'decision-chip dim';
+      return;
+    }
+    chipEl.style.display = '';
+    chipEl.textContent = op.label || op.headline || op.state;
+    chipEl.className = op.state === 'DB_LOCKED' ? 'decision-chip bad' : 'decision-chip dim';
+    chipEl.title = (op.operator_message || 'Data/transport may lag') + ' · ' + (op.diagnostics_source || '/api/diagnostics/sqlite-contention');
+  }
+}
+
+let _dbContentionPollTid = null;
+async function pollDbContentionDiagnostics() {
+  try {
+    const resp = await fetchJsonWithTimeout('/api/diagnostics/sqlite-contention', {}, 2500);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const op = (data && data.operator) ? data.operator : (data && data.state ? data : null);
+    if (op && typeof op === 'object') {
+      paintDbContentionPill(op);
+    }
+  } catch (e) {
+    if (typeof DIAG !== 'undefined' && DIAG) console.warn('[pollDbContention]', e.message || e);
+  }
+}
+
+function startDbContentionPoll() {
+  if (_dbContentionPollTid) clearInterval(_dbContentionPollTid);
+  pollDbContentionDiagnostics();
+  _dbContentionPollTid = setInterval(pollDbContentionDiagnostics, 5000);
+}
+
+try { window.paintDbContentionPill = paintDbContentionPill; } catch (e) {}
+try { window._resolveDbContentionOperatorSurface = _resolveDbContentionOperatorSurface; } catch (e) {}
+
 function _formatFeedDetailLine(fs) {
   const tr = fs.transport === 'L1' ? 'L1' : fs.transport === 'SUB' ? 'SUB' : fs.transport === 'REST' ? 'REST' : 'NONE';
   const a = fs.age_sec;
@@ -8605,6 +8721,7 @@ function refreshUtilityBar() {
   }
 
   paintUtilityFeedPill();
+  paintDbContentionPill(_resolveDbContentionOperatorSurface());
 }
 
 async function refreshStreamingDiagnostics() {
@@ -9567,6 +9684,7 @@ setTimeout(function () {
 }, 4000);
 _edTransportSync({ boot: true });
 setInterval(refreshStreamingDiagnostics, 2000);
+startDbContentionPoll();
 // Tick bundle-age + transport badge between render paths (event-driven updates also run on each render/SSE).
 setInterval(function () { _updateLiveUiAe(); }, 1000);
 startLiquidityMapPoll();

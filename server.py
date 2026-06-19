@@ -1027,6 +1027,26 @@ def _minimal_analytics_pending_dict(ticker: str, expiry: Optional[str]) -> dict:
     }
 
 
+def _attach_db_contention_operator_surface(ms_dict: dict) -> None:
+    """Operator-visible DB transport warning — does not change model/card direction."""
+    try:
+        from db import sqlite_contention_metrics_snapshot
+        from verification.db_sqlite_contention_impact_audit import (
+            build_db_contention_operator_surface,
+        )
+
+        ms_dict["db_contention_operator"] = build_db_contention_operator_surface(
+            sqlite_contention_metrics_snapshot()
+        )
+    except Exception as e:
+        log.debug("attach db_contention_operator failed: %s", e)
+        ms_dict["db_contention_operator"] = {
+            "state": "OK",
+            "show": False,
+            "diagnostics_source": "/api/diagnostics/sqlite-contention",
+        }
+
+
 def _exposure_dataclass_rows_to_dict(rows) -> list[dict]:
     out: list[dict] = []
     for row in rows or []:
@@ -6597,6 +6617,7 @@ def _fetch_state(
         "pl_mono":      _prev_ent.get("pl_mono"),
     }
     _evict_old_expiry_entries(ticker, selected_exp)
+    _attach_db_contention_operator_surface(ms_dict)
     return ms_dict
 
 
@@ -7388,6 +7409,7 @@ def _tier_c_analytics_json_response(
             route="server._tier_c_analytics_json_response",
             stale=bool(stale),
         )
+        _attach_db_contention_operator_surface(md)
         return JSONResponse(md)
 
     log.info(
@@ -7417,6 +7439,7 @@ def _tier_c_analytics_json_response(
         inflight_key=inflight_key,
     )
     _schedule_analytics_recompute(inflight_key, ticker, expiry, update_source)
+    _attach_db_contention_operator_surface(md)
     return JSONResponse(md)
 
 
@@ -7825,8 +7848,17 @@ def get_sqlite_contention_diagnostics():
     For operator trust audits — does not change retry policy. See Card Trust Contract §8.
     """
     from db import sqlite_contention_metrics_snapshot
+    from verification.db_sqlite_contention_impact_audit import (
+        build_db_contention_operator_surface,
+    )
 
-    return JSONResponse(sqlite_contention_metrics_snapshot())
+    metrics = sqlite_contention_metrics_snapshot()
+    return JSONResponse(
+        {
+            **metrics,
+            "operator": build_db_contention_operator_surface(metrics),
+        }
+    )
 
 
 @app.get("/api/fast-quote")
