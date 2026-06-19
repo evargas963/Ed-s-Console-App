@@ -6,7 +6,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -15,12 +14,10 @@ if str(ROOT) not in sys.path:
 from tools.check_operator_trust_governance import (
     check_card_explainability_permission,
     check_operator_trust_governance,
-    check_passive_risk_language,
     check_stabilization_gate_json,
 )
 from verification.operator_trust_rth_validation import (
     build_dry_run_report,
-    capture_runtime_env,
     run_guest_switch_validation,
 )
 
@@ -124,6 +121,15 @@ def test_next_allowed_branch_is_ci_triage():
         (ROOT / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json").read_text(encoding="utf-8")
     )
     assert "ci-nonblocking-failures" in gate.get("next_allowed_branch", "")
+
+
+def test_ci_triage_has_classifications_and_closure_criteria():
+    triage = (ROOT / "reports/ci/ci_nonblocking_failure_triage_2026-06-18.md").read_text(encoding="utf-8")
+    assert "failed as before" not in triage.lower()
+    for check in ("hardening", "pytest-full", "schwab-csv-first"):
+        assert check in triage.lower()
+    assert "FIXED_NOW" in triage
+    assert "closure criteria" in triage.lower()
 
 
 def test_pr_completion_audit_mentions_pr16_incomplete():

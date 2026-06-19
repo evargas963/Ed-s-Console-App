@@ -829,7 +829,6 @@ def xgb_engineered_members_to_raw_snapshot(engineered: list[str]) -> list[str]:
 def group_snapshot_columns(group: dict, enriched_rows: list[dict] | None = None) -> list[str]:
     """Union of knockout columns for one atomic feature — fidelity-first, not registry-partitioned."""
     from tools.feature_curation_gate import (
-        _atomic_column_for_group,
         _whole_stack_knockout_columns,
     )
 

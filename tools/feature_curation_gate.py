@@ -43,7 +43,6 @@ import statistics
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root on path
 
@@ -54,7 +53,7 @@ from scipy.spatial.distance import squareform
 from scipy.stats import spearmanr
 
 from db import DB_PATH
-from governed_stack_contract import FEATURE_ABLATION_ML_STACK_LAYERS, FULL_STACK_MODEL_LAYERS
+from governed_stack_contract import FULL_STACK_MODEL_LAYERS
 
 # Leakage class = the CANONICAL forbidden families from feature_contracts (single source of
 # truth — do NOT maintain a divergent list here; an earlier divergent list missed combined_*,
@@ -3174,7 +3173,6 @@ def _prepare_xgb_holdout(
         load_data,
     )
     from arch_competition.stack_bundle_eval_v1 import (
-        drop_ablated_xgb_engineered_columns,
         null_snapshot_dataframe_for_drop_groups,
     )
 
@@ -4311,7 +4309,6 @@ def _holdout_multiclass_log_loss_xgb(prepared: dict) -> tuple[float | None, int]
 
 
 def _holdout_multiclass_log_loss_lstm(prepared: dict) -> tuple[float | None, int]:
-    import numpy as np
     from sklearn.metrics import log_loss
 
     if prepared.get("status") != "ok":
@@ -4971,8 +4968,6 @@ def build_survivor_retrain_monitor_report(
     tickers: list[str] | None = None,
 ) -> str:
     """Human-readable O-56 retrain status for periodic operator/agent monitoring."""
-    import subprocess
-    import sys
     from datetime import datetime, timezone
 
     from active_bundle_contract import check_active_bundle_complete, scheduler_active_root

@@ -4,7 +4,6 @@ from __future__ import annotations
 import inspect
 import json
 import pickle
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -1790,7 +1789,6 @@ def test_confirm_fresh_start_refuses_partial_v2(tmp_path):
 
 
 def test_ablation_report_status_includes_confirm_progress(tmp_path, monkeypatch):
-    from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
     from tools.feature_curation_gate import (
         PER_MODEL_CONFIRM_CELL_TARGET,
         ablation_report_status,

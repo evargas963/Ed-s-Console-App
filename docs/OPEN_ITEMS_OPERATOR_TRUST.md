@@ -71,16 +71,16 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `OPEN_BLOCKING` |
-| **Source PR / report** | PRs #14–#16 merges; `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` |
+| **Status** | `FIXED_IN_THIS_BRANCH` |
+| **Source PR / report** | `audit/ci-nonblocking-failures-triage`; `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` |
 | **Why it matters** | Only objective-audit trusted — repo health degraded |
 | **Operator risk** | Regressions hide in red checks |
-| **Evidence currently available** | CI triage report with classifications |
-| **Evidence still needed** | Green runs or `ACCEPTED_WITH_EVIDENCE` per check |
-| **Fix now or harness now** | Triage in stabilization; fix branch next |
+| **Evidence currently available** | Fixes landed: F401, schwab false-positive scope, pytest CI placeholders |
+| **Evidence still needed** | GitHub `main` push: all three workflows green |
+| **Fix now or harness now** | Fixes in `audit/ci-nonblocking-failures-triage` |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
-| **Blocking level** | High before long feature work |
-| **Do not close until** | Each check has FIX_NOW or accepted reason |
+| **Blocking level** | High until CI green on GitHub |
+| **Do not close until** | `hardening`, `pytest-full`, `schwab-csv-first` green on `main` CI |
 
 ---
 
@@ -88,16 +88,16 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `OPEN_BLOCKING` |
-| **Source PR / report** | CI triage 2026-06-18 |
+| **Status** | `FIXED_IN_THIS_BRANCH` |
+| **Source PR / report** | CI triage 2026-06-19 — ruff F401 |
 | **Why it matters** | Institutional locks may drift |
 | **Operator risk** | Silent rule regression |
-| **Evidence currently available** | `gh pr checks` failures |
-| **Evidence still needed** | Root cause + green or accepted |
-| **Fix now or harness now** | Classified in CI triage |
+| **Evidence currently available** | `ruff check . --select F401,F821,E9` exit 0 locally |
+| **Evidence still needed** | GitHub hardening workflow green |
+| **Fix now or harness now** | F401 fixed repo-wide |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | Medium |
-| **Do not close until** | `hardening` green or `PRE_EXISTING_AND_ACCEPTED_WITH_REASON` |
+| **Do not close until** | `hardening` green on GitHub `main` |
 
 ---
 
@@ -105,16 +105,16 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `OPEN_BLOCKING` |
-| **Source PR / report** | CI triage 2026-06-18 |
+| **Status** | `FIXED_IN_THIS_BRANCH` |
+| **Source PR / report** | CI triage 2026-06-19 — SCHWAB_API_KEY at webServer startup |
 | **Why it matters** | Full suite catches cone gaps |
 | **Operator risk** | Production-only test failures |
-| **Evidence currently available** | CI logs (ModuleNotFoundError schwab, secrets) |
-| **Evidence still needed** | Classified fix path |
-| **Fix now or harness now** | CI triage report |
+| **Evidence currently available** | `pytest.yml` CI placeholder env (not live credentials) |
+| **Evidence still needed** | GitHub pytest-full workflow green |
+| **Fix now or harness now** | CI env placeholders |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | Medium |
-| **Do not close until** | `pytest-full` green or external-secret documented |
+| **Do not close until** | `pytest-full` green on GitHub `main` |
 
 ---
 
@@ -122,16 +122,16 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `OPEN_BLOCKING` |
-| **Source PR / report** | CI triage 2026-06-18 |
+| **Status** | `FIXED_IN_THIS_BRANCH` |
+| **Source PR / report** | CI triage 2026-06-19 — diff-emission false positives |
 | **Why it matters** | Schwab diff-emission gate for market fields |
 | **Operator risk** | New market reads without register row |
-| **Evidence currently available** | schwab-csv-first workflow failures |
-| **Evidence still needed** | Per-failure disposition |
-| **Fix now or harness now** | CI triage |
+| **Evidence currently available** | Scanner path exclusions + homonym tests |
+| **Evidence still needed** | GitHub schwab-csv-first green on this PR |
+| **Fix now or harness now** | `check_schwab_csv_first.py` precision fix |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | Medium |
-| **Do not close until** | Green or `EXTERNAL_SECRET_REQUIRED` with evidence |
+| **Do not close until** | `schwab-csv-first` green on GitHub `main` |
 
 ---
 

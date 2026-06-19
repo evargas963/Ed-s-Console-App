@@ -8,7 +8,7 @@ from __future__ import annotations
 import math
 import os
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from numeric_contract import float_finite_or_none
 

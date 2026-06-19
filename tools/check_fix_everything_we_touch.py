@@ -2227,7 +2227,6 @@ def check_production_fusion_score_path_contract() -> list[str]:
     """
     from governed_stack_contract import (
         FULL_STACK_MODEL_LAYERS,
-        PRODUCTION_FUSION_ABLATION_ENTRYPOINT,
         PRODUCTION_FUSION_FINAL_PREDICTION,
         PRODUCTION_FUSION_LIVE_ENTRYPOINT,
         PRODUCTION_FUSION_SCORE_LAYERS,

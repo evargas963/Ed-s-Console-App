@@ -6,7 +6,6 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any
 
 _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:
@@ -49,8 +48,8 @@ PASSIVE_SCAN_GLOBS: tuple[str, ...] = (
 
 CI_CHECKS = ("hardening", "pytest-full", "schwab-csv-first")
 CI_CLASSIFICATIONS = (
-    "FIX_NOW",
-    "EXTERNAL_SECRET_REQUIRED",
+    "FIXED_NOW",
+    "EXTERNAL_SECRET_REQUIRED_WITH_EVIDENCE",
     "PRE_EXISTING_BUT_BLOCKING",
     "PRE_EXISTING_AND_ACCEPTED_WITH_REASON",
     "NOT_REPRODUCED",
@@ -244,7 +243,7 @@ def check_admin_bypass_register() -> list[str]:
     text = _read("docs/ADMIN_BYPASS_REGISTER.md")
     if not text:
         return ["docs/ADMIN_BYPASS_REGISTER.md: missing"]
-    for pr in ("#14", "#15", "#16"):
+    for pr in ("#14", "#15", "#16", "#18"):
         if pr not in text and f"PR {pr[1:]}" not in text:
             errors.append(f"ADMIN_BYPASS_REGISTER: missing entry for PR {pr[1:]}")
     for field in (
@@ -266,8 +265,29 @@ def check_ci_triage_report() -> list[str]:
     for check in CI_CHECKS:
         if check not in md.lower():
             errors.append(f"ci triage: must name {check}")
-    if not any(c in md for c in CI_CLASSIFICATIONS):
-        errors.append("ci triage: must classify failures (FIX_NOW / EXTERNAL_SECRET_REQUIRED / …)")
+    if "closure criteria" not in md.lower():
+        errors.append("ci triage: must include Closure criteria per check")
+    for check in CI_CHECKS:
+        section = re.search(rf"## {re.escape(check)}\s+(.*?)(?=\n## |\Z)", md, re.S | re.I)
+        if not section:
+            errors.append(f"ci triage: missing section for {check}")
+            continue
+        body = section.group(1)
+        if not any(c in body for c in CI_CLASSIFICATIONS):
+            errors.append(f"ci triage: {check} missing allowed classification")
+        if "closure criteria" not in body.lower():
+            errors.append(f"ci triage: {check} missing closure criteria")
+    try:
+        triage_json = json.loads(_read("reports/ci/ci_nonblocking_failure_triage_2026-06-18.json") or "{}")
+    except json.JSONDecodeError as e:
+        errors.append(f"ci triage json invalid: {e}")
+    else:
+        for check in CI_CHECKS:
+            row = (triage_json.get("checks") or {}).get(check) or {}
+            if not row.get("classification"):
+                errors.append(f"ci triage json: {check} missing classification")
+            if not row.get("closure_criteria"):
+                errors.append(f"ci triage json: {check} missing closure_criteria")
     return errors
 
 

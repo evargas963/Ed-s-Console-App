@@ -4,15 +4,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from tools.remote_enforcement_evidence import (
-    API_VERIFIED_METHODS,
     _parse_rulesets_enforcement,
     apply_manual_attestation,
     derive_statuses,
     empty_remote_evidence,
-    fetch_github_cli_evidence,
     validate_verified_claims,
 )
 

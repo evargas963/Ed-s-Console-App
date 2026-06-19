@@ -20,13 +20,11 @@ from arch_competition.encoder_lineage_v2 import (
     encode_snapshot_5m_v2,
     resolve_encoder_lineage,
 )
-from arch_competition.stack_bundle_eval_v1 import ablation_scoring_pass_active
 from lstm_data import (
     CONFLUENCE_FEATURES,
     STREAM_1M_LOOKBACK,
     STREAM_5M_LOOKBACK,
     canonical_reference_spot_from_merged_window,
-    compute_confluence_features,
 )
 from ml_horizon import normalize_ml_horizon_slug
 

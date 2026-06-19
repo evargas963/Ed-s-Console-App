@@ -7,7 +7,6 @@ no artifact / failed gate / insufficient samples => raw triplet served unchanged
 from __future__ import annotations
 
 import json
-import math
 import sqlite3
 import sys
 from pathlib import Path

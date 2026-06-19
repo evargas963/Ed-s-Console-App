@@ -18,12 +18,11 @@ Outputs:
 from __future__ import annotations
 
 import json
-import random
 import re
 import sqlite3
 import sys
 import time
-from datetime import date, datetime, timezone
+from datetime import date
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent

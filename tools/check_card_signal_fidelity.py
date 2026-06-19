@@ -23,7 +23,6 @@ if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
 from db import DB_PATH
-from money_path_ticker_tiers import BASE_MONEY_PATH_TICKERS
 from tools.check_card_direction_integrity import run_direction_integrity_audit
 from verification.card_signal_fidelity import (
     CARD_FEATURE_PROVENANCE,

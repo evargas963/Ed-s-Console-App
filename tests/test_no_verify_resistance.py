@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from tools.check_no_verify_resistance import (
-    build_no_verify_resistance,
     run_no_verify_resistance_check,
 )
 

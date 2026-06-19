@@ -1,21 +1,32 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "audit_date": "2026-06-18",
+  "updated": "2026-06-19",
+  "branch": "audit/ci-nonblocking-failures-triage",
+  "merge_gate": "objective-audit",
   "checks": {
     "hardening": {
-      "classification": "PRE_EXISTING_BUT_BLOCKING",
-      "non_blocking": true
+      "classification": "FIXED_NOW",
+      "root_cause": "F401 unused imports (55 repo-wide; PR #18 cone)",
+      "fix_applied": "ruff F401 --fix + manual import cleanup",
+      "files_changed": ["verification/operator_trust_rth_validation.py", "tests/test_operator_trust_governance.py", "tools/check_operator_trust_governance.py", "verification/db_sqlite_contention_impact_audit.py"],
+      "closure_criteria": "hardening workflow ruff F401/F821/E9 step green on main"
     },
     "pytest-full": {
-      "classification": "EXTERNAL_SECRET_REQUIRED",
-      "non_blocking": true
+      "classification": "FIXED_NOW",
+      "root_cause": "SCHWAB_API_KEY missing at uvicorn startup in Playwright webServer",
+      "fix_applied": "CI placeholder env in pytest.yml (ci-not-live-placeholder)",
+      "files_changed": [".github/workflows/pytest.yml"],
+      "closure_criteria": "pytest-full webServer starts without missing-env RuntimeError"
     },
     "schwab-csv-first": {
-      "classification": "FIX_NOW",
-      "non_blocking": true
+      "classification": "FIXED_NOW",
+      "root_cause": "diff-emission false positives on governance homonyms open/close/VIX",
+      "fix_applied": "EMISSION_EXCLUDE_PATH_PREFIXES + AMBIGUOUS_MARKET_TOKENS quoted-key rule",
+      "files_changed": ["tools/check_schwab_csv_first.py", "tests/test_check_schwab_csv_first.py"],
+      "closure_criteria": "schwab-csv-first diff-emission gate green on operator-trust diffs"
     }
   },
-  "merge_gate": "objective-audit",
-  "recommended_next_branch": "audit/ci-nonblocking-failures-triage",
-  "closure_criteria": "Each check green or ACCEPTED_WITH_EVIDENCE with documented reason"
+  "recommended_next_branch": "operator RTH validation (harness dry-run + live when market open)",
+  "card_explainability_allowed": false
 }

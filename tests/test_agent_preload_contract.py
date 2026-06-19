@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from tools.check_agent_preload_contract import (
     CANONICAL_CONTRACT,

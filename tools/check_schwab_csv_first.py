@@ -91,6 +91,30 @@ EMISSION_SCAN_SUFFIXES = (
     ".j2",
 )
 
+# Homonyms / English — require quoted market-key context unless extracted as emission surface.
+AMBIGUOUS_MARKET_TOKENS = frozenset({"open", "close", "high", "low", "vix"})
+
+# Operator-trust / governance tooling — not market-fact emission paths (PR #18 stabilization cone).
+EMISSION_EXCLUDE_PATH_PREFIXES: tuple[str, ...] = (
+    "tools/check_operator_trust_governance.py",
+    "tools/emit_operator_trust_backtrack_reports.py",
+    "tools/run_rth_",
+    "verification/operator_trust_",
+    "reports/operator_trust_backtrack/",
+    "reports/ci/",
+    "reports/rth_validation/",
+    "reports/ui_transport/rth_guest_switch_validation_runbook",
+    "reports/db_contention/rth_db_contention_validation_runbook",
+    "reports/base_capture/rth_base_capture_normalization_runbook",
+    "docs/OPEN_ITEMS_OPERATOR_TRUST.md",
+    "docs/ADMIN_BYPASS_REGISTER.md",
+    "docs/PR_REVIEW_STANDARD.md",
+    "docs/RUNTIME_EVIDENCE_ENV_CONTRACT.md",
+    "docs/NO_SILENT_DEGRADATION_POLICY.md",
+    "governance/OPERATOR_TRUST_STABILIZATION_GATE.json",
+    "tests/test_operator_trust_governance.py",
+)
+
 RISK_PATTERNS = (
     re.compile(r"\bor\s+0(?:\.0)?\b"),
     re.compile(r"\bor\s+1(?:\.0)?\b"),
@@ -229,9 +253,24 @@ def _is_emission_scannable_path(path: str) -> bool:
         return False
     if path.startswith("schwab_field_inventory/"):
         return False
+    norm = path.replace("\\", "/")
+    if any(norm == p or norm.startswith(p) for p in EMISSION_EXCLUDE_PATH_PREFIXES):
+        return False
     if any(path.endswith(suf) for suf in EMISSION_SCAN_SUFFIXES):
         return True
     return path.startswith("templates/")
+
+
+def _ambiguous_token_is_quoted_market_key(line: str, start: int, end: int) -> bool:
+    """True when open/close/high/low/vix appear as quoted dict/JSON keys, not English or methods."""
+    before = line[:start]
+    after = line[end:]
+    if before.endswith(("'", '"')) and after.startswith(("'", '"', ":", " ")):
+        return True
+    # ms_dict['open'] style already handled by extractors; skip .close() method calls
+    if after.startswith("("):
+        return False
+    return False
 
 
 def _has_marker(diff_text: str) -> bool:
@@ -261,7 +300,11 @@ def _surfaces_from_line(line: str) -> list[str]:
                 found.append(surf)
     if MARKET_NAMES.search(line):
         for m in MARKET_NAMES.finditer(line):
-            found.append(m.group(1))
+            token = m.group(1)
+            if token.lower() in AMBIGUOUS_MARKET_TOKENS:
+                if not _ambiguous_token_is_quoted_market_key(line, m.start(), m.end()):
+                    continue
+            found.append(token)
     # de-dupe preserving order
     seen: set[str] = set()
     out: list[str] = []

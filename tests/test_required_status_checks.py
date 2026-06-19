@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from tools.check_required_status_checks import (
-    build_required_status_checks_spec,
     run_required_status_checks_check,
 )
 
