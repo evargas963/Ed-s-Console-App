@@ -118,3 +118,11 @@ docs/CARD_TRUST_CONTRACT.md §8 freshness; §13 must not imply STALE=model wrong
 - sqlite_tier1_ok op=insert_snapshot ticker=SPY attempts=1 exec_ms=33.5 lock_wait_ms_total=748.6
 - sqlite3.OperationalError: database is locked
 - STALE pills intermittent; LOADING sometimes long; ticker switch sometimes slow
+
+## Follow-up — `fix/db-sqlite-contention-surface` (2026-06-11)
+
+**UI_DEGRADED_STATE_MISSING:** fixed by operator-visible DB degraded status (`ub-pill-db` utility bar + `dr-db-contention-chip` decision rail). States: `OK`, `DB_WAITING`, `DB_DEGRADED`, `DB_LOCKED` derived from `GET /api/diagnostics/sqlite-contention` and attached on Tier C `/api/state` as `db_contention_operator`.
+
+- No SQLite architecture changes on this branch.
+- No card/model/fusion/histogram/direction semantics changes.
+- Live RTH impact correlation still requires validation (see Live RTH validation required above).

@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import sqlite3
 
+from pathlib import Path
+
 import pytest
 
 from db import EdDB, _sqlite_busy_or_locked
+
+ROOT = Path(__file__).resolve().parent.parent
+INDEX_HTML = ROOT / "static" / "index.html"
 
 
 @pytest.fixture
@@ -167,15 +172,155 @@ def test_contention_metrics_preserve_operation_ticker_thread():
 def test_report_flags_ui_degraded_state_missing():
     from verification.db_sqlite_contention_impact_audit import (
         build_contention_impact_report,
+        classify_contention_findings,
         scan_ui_db_degraded_surfaces,
+        SqliteContentionMetrics,
     )
 
     ui = scan_ui_db_degraded_surfaces()
-    assert ui.get("lane_stale_without_db_cause") is True
+    assert ui.get("operator_db_degraded_surface") is True
+    assert "ub-pill-db" in INDEX_HTML.read_text(encoding="utf-8")
+    assert "dr-db-contention-chip" in INDEX_HTML.read_text(encoding="utf-8")
+    tags = classify_contention_findings(
+        SqliteContentionMetrics(sqlite_lock_wait_count=1),
+        ui_surfaces=ui,
+        writer_map={"tier_c_reads_db": True},
+        correlation={"offline_correlation_gap": True},
+    )
+    assert "UI_DEGRADED_STATE_MISSING" not in tags
     report = build_contention_impact_report(
         audit_date="2026-06-18",
         log_text="",
         log_paths=[],
         db_path=None,
     )
-    assert "UI_DEGRADED_STATE_MISSING" in report.get("classifications", [])
+    assert "UI_DEGRADED_STATE_MISSING" not in report.get("classifications", [])
+
+
+def test_no_contention_operator_status_ok():
+    from verification.db_sqlite_contention_impact_audit import derive_db_contention_operator_status
+
+    status = derive_db_contention_operator_status(
+        {
+            "sqlite_lock_wait_count": 0,
+            "sqlite_lock_wait_max_ms": 0.0,
+            "sqlite_busy_retry_count": 0,
+            "sqlite_database_locked_count": 0,
+            "sqlite_tier1_fail_count": 0,
+            "recent_events": [],
+        }
+    )
+    assert status["state"] == "OK"
+    assert status["show"] is False
+
+
+def test_lock_wait_event_yields_db_waiting():
+    from verification.db_sqlite_contention_impact_audit import derive_db_contention_operator_status
+
+    status = derive_db_contention_operator_status(
+        {
+            "sqlite_lock_wait_count": 1,
+            "sqlite_lock_wait_max_ms": 120.0,
+            "sqlite_busy_retry_count": 0,
+            "sqlite_database_locked_count": 0,
+            "sqlite_tier1_fail_count": 0,
+            "recent_events": [],
+            "config": {"lock_wait_warn_ms": 100.0},
+        }
+    )
+    assert status["state"] == "DB_WAITING"
+    assert status["show"] is True
+    assert "snapshot writes delayed" in status["detail"]
+
+
+def test_high_lock_wait_yields_db_degraded():
+    from verification.db_sqlite_contention_impact_audit import derive_db_contention_operator_status
+
+    status = derive_db_contention_operator_status(
+        {
+            "sqlite_lock_wait_count": 3,
+            "sqlite_lock_wait_max_ms": 748.6,
+            "sqlite_busy_retry_count": 0,
+            "sqlite_database_locked_count": 0,
+            "sqlite_tier1_fail_count": 0,
+            "recent_events": [],
+        }
+    )
+    assert status["state"] == "DB_DEGRADED"
+    assert "cards may lag" in status["detail"]
+
+
+def test_database_locked_yields_db_locked():
+    from verification.db_sqlite_contention_impact_audit import derive_db_contention_operator_status
+
+    status = derive_db_contention_operator_status(
+        {
+            "sqlite_lock_wait_count": 0,
+            "sqlite_lock_wait_max_ms": 0.0,
+            "sqlite_busy_retry_count": 0,
+            "sqlite_database_locked_count": 1,
+            "sqlite_tier1_fail_count": 1,
+            "recent_events": [{"kind": "database_locked", "ts_utc": 1_700_000_000.0}],
+        },
+        now_utc=1_700_000_060.0,
+    )
+    assert status["state"] == "DB_LOCKED"
+    assert "analytics freshness at risk" in status["detail"]
+
+
+def test_build_db_contention_operator_surface_preserves_metadata():
+    from verification.db_sqlite_contention_impact_audit import build_db_contention_operator_surface
+
+    metrics = {
+        "sqlite_lock_wait_count": 1,
+        "sqlite_lock_wait_max_ms": 200.0,
+        "operations_affected": {"insert_snapshot": 1},
+        "tickers_affected": {"SPY": 1},
+        "threads_affected": {"ed-base-money-path-logger": 1},
+        "recent_events": [
+            {
+                "kind": "lock_wait",
+                "op": "insert_snapshot",
+                "ticker": "SPY",
+                "thread": "ed-base-money-path-logger",
+                "ts_utc": 1.0,
+            }
+        ],
+    }
+    surface = build_db_contention_operator_surface(metrics)
+    assert surface["operations_affected"]["insert_snapshot"] == 1
+    assert surface["tickers_affected"]["SPY"] == 1
+    assert surface["threads_affected"]["ed-base-money-path-logger"] == 1
+    assert surface["recent_events_sample"][-1]["op"] == "insert_snapshot"
+    assert surface["diagnostics_source"] == "/api/diagnostics/sqlite-contention"
+
+
+def test_attach_db_contention_operator_surface_preserves_mhap_rows():
+    import copy
+
+    from server import _attach_db_contention_operator_surface
+
+    for ticker in ("SPY", "NVDA"):
+        ms = {
+            "ticker": ticker,
+            "mhap_rows": [{"horizon": "1c", "call": "LONG", "conf": 0.82}],
+        }
+        before = copy.deepcopy(ms["mhap_rows"])
+        _attach_db_contention_operator_surface(ms)
+        assert ms["mhap_rows"] == before
+        assert "db_contention_operator" in ms
+        assert ms["db_contention_operator"].get("diagnostics_source")
+
+
+def test_sqlite_contention_diagnostics_route_includes_operator():
+    from fastapi.testclient import TestClient
+
+    from server import app
+
+    client = TestClient(app)
+    resp = client.get("/api/diagnostics/sqlite-contention")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "operator" in body
+    assert body["operator"]["state"] in {"OK", "DB_WAITING", "DB_DEGRADED", "DB_LOCKED"}
+    assert body["operator"]["diagnostics_source"] == "/api/diagnostics/sqlite-contention"
