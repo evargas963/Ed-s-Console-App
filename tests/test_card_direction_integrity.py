@@ -150,3 +150,148 @@ def test_load_price_series_falls_back_to_snapshots(tmp_path):
     assert source == "snapshots"
     assert len(ts_list) == 2
     assert prices[0] == 500.0
+
+
+def test_fusion_override_empirical_classification():
+    from verification.card_signal_fidelity import (
+        CLASS_EMPIRICAL_CONFLICTS_SIGNAL,
+        CLASS_FUSION_OVERRIDE_EMPIRICAL,
+        fusion_vs_empirical_classification,
+    )
+
+    tags = fusion_vs_empirical_classification(
+        fusion_direction="LONG",
+        histogram_direction="SHORT",
+        displayed_direction="LONG",
+    )
+    assert CLASS_FUSION_OVERRIDE_EMPIRICAL in tags
+    assert CLASS_EMPIRICAL_CONFLICTS_SIGNAL in tags
+
+
+def test_trailing_price_conflict_semantics_reversal_long():
+    from verification.card_signal_fidelity import CLASS_REVERSAL_LONG, classify_signal_semantics
+
+    tags = classify_signal_semantics(
+        displayed_direction="LONG",
+        trailing_return_1m=-0.002,
+        trailing_return_60m=-0.01,
+        forward_return_1m=0.003,
+        fusion_direction="LONG",
+        histogram_direction="SHORT",
+    )
+    assert CLASS_REVERSAL_LONG in tags
+
+
+def test_all_plan_blocked_while_horizon_long_not_ui_bug():
+    from verification.card_signal_fidelity import CLASS_PLAN_CORRECTLY_BLOCKED, enrich_timeline_row_provenance
+
+    row = enrich_timeline_row_provenance(
+        {
+            "final_tradeable": False,
+            "horizon_1c": {"displayed_direction": "LONG", "fusion_direction": "LONG"},
+            "horizon_5c": {"displayed_direction": "LONG"},
+            "horizon_15c": {"displayed_direction": "LONG"},
+            "horizon_60c": {"displayed_direction": "LONG"},
+            "trailing_return_1m": -0.001,
+            "trailing_return_60m": -0.005,
+            "horizon_prob_bars": {"1m": {"up": 0.2, "down": 0.6, "flat": 0.2}},
+            "payload_frozen": False,
+            "data_age_seconds": 30,
+        }
+    )
+    assert row.get("plan_block_classification") == CLASS_PLAN_CORRECTLY_BLOCKED
+
+
+def test_stale_feature_timestamp_classification():
+    from verification.card_signal_fidelity import CLASS_STALE_FEATURE_RISK, classify_stale_feature_risk
+
+    assert classify_stale_feature_risk(data_age_seconds=300, payload_frozen=False) is True
+    assert classify_stale_feature_risk(data_age_seconds=30, payload_frozen=True) is True
+    assert classify_stale_feature_risk(data_age_seconds=30, payload_frozen=False) is False
+
+
+def test_fusion_overrides_bearish_histogram_classification():
+    from verification.card_signal_fidelity import (
+        HIST_FUSION_OVERRIDES_BEARISH,
+        HIST_VALID_REVERSAL_DESPITE_BEARISH,
+        classify_histogram_shape_cell,
+    )
+
+    override = classify_histogram_shape_cell(
+        trailing_tape="DOWN",
+        histogram_dominant="SHORT",
+        fusion_dominant="LONG",
+        card_direction="LONG",
+        forward_realized_return=-0.001,
+        histogram_flat=False,
+        data_degraded=False,
+        stale_feature_risk=False,
+    )
+    assert HIST_FUSION_OVERRIDES_BEARISH in override
+
+    reversal = classify_histogram_shape_cell(
+        trailing_tape="DOWN",
+        histogram_dominant="SHORT",
+        fusion_dominant="LONG",
+        card_direction="LONG",
+        forward_realized_return=0.002,
+        histogram_flat=False,
+        data_degraded=False,
+        stale_feature_risk=False,
+    )
+    assert HIST_VALID_REVERSAL_DESPITE_BEARISH in reversal
+
+
+def test_histogram_underconditioned_when_tape_down_hist_not_short():
+    from verification.card_signal_fidelity import HIST_UNDERCONDITIONED, classify_histogram_shape_cell
+
+    tags = classify_histogram_shape_cell(
+        trailing_tape="DOWN",
+        histogram_dominant="LONG",
+        fusion_dominant="LONG",
+        card_direction="LONG",
+        forward_realized_return=-0.001,
+        histogram_flat=False,
+        data_degraded=False,
+        stale_feature_risk=False,
+    )
+    assert HIST_UNDERCONDITIONED in tags
+
+
+def test_histogram_shape_audit_builds_cells():
+    from verification.card_signal_fidelity import (
+        HIST_FUSION_OVERRIDES_BEARISH,
+        build_histogram_shape_audit,
+        enrich_timeline_row_provenance,
+    )
+
+    row = enrich_timeline_row_provenance(
+        {
+            "ts_et": "2026-06-17 12:43:48 ET",
+            "ts_utc": 1.0,
+            "trailing_return_1m": -0.002,
+            "trailing_return_5m": -0.003,
+            "trailing_return_15m": -0.004,
+            "trailing_return_60m": -0.005,
+            "horizon_prob_bars": {"1m": {"up": 0.2, "down": 0.6, "flat": 0.2}},
+            "fusion_triplets": {"1c": {"up": 0.5, "down": 0.3, "flat": 0.2}},
+            "mhap_rows": [{"horizon": "1c", "call": "LONG", "confidence": 0.44}],
+            "horizon_1c": {
+                "displayed_direction": "LONG",
+                "fusion_direction": "LONG",
+                "histogram_direction": "SHORT",
+                "forward_realized_return": -0.001,
+            },
+            "horizon_5c": {"displayed_direction": "LONG"},
+            "horizon_15c": {"displayed_direction": "LONG"},
+            "horizon_60c": {"displayed_direction": "LONG"},
+            "payload_frozen": False,
+            "data_age_seconds": 30,
+        }
+    )
+    audit = build_histogram_shape_audit([row], normalized_rows_rth=374)
+    assert audit["cell_count"] == 4
+    one_c = next(c for c in audit["cells"] if c["horizon"] == "1c")
+    assert one_c["histogram_dominant"] == "SHORT"
+    assert one_c["fusion_dominant"] == "LONG"
+    assert HIST_FUSION_OVERRIDES_BEARISH in one_c["classifications"]
