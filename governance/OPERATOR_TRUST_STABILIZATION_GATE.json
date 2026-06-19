@@ -7,7 +7,7 @@
   "card_explainability_allowed": false,
   "card_explainability_block_reason": [
     "pytest-full 34 failures @ e3ba4a9 — resolve or operator-sign-off per matrix row",
-    "objective-audit fail on GitHub @ e3ba4a9 (ablation grid static on CI)",
+    "objective-audit fix landed locally (ABLATION enriched=[] coercion) — awaiting GitHub CI",
     "RTH validation not executed",
     "LIVE_GUEST_SLA_NOT_PROVEN",
     "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN",
@@ -22,10 +22,13 @@
   ],
   "last_verified_commit": "e3ba4a9",
   "pytest_full_matrix_commit": "e3ba4a9",
+  "objective_audit_observed_commit": "89837cd",
   "pytest_full_matrix_run": "27845075770",
   "pytest_full_failure_count": 34,
-  "objective_audit_last_run": "27845075765",
+  "objective_audit_last_run": "27847001817",
   "objective_audit_status": "fail",
+  "objective_audit_fix_status": "FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI",
+  "objective_audit_fix_summary": "enriched_rows_for_spec_build: stop collapsing enriched=[] to None in ablation_static_lock_index",
   "required_policy_docs": [
     "docs/OPEN_ITEMS_OPERATOR_TRUST.md",
     "docs/PR_REVIEW_STANDARD.md",
@@ -51,5 +54,5 @@
   "required_triage_reports": [
     "reports/ci/ci_nonblocking_failure_triage_2026-06-18.md"
   ],
-  "note": "Merge basis @ e3ba4a9: pytest-full 34 failed (run 27845075770); objective-audit fail (run 27845075765 ablation static). MISSING_SNAPSHOTS_1M_NORMALIZED_FIXTURE CLOSED_WITH_EVIDENCE (snapshots scope). hardening + schwab-csv-first green."
+  "note": "Merge basis @ e3ba4a9: pytest-full 34 failed (run 27845075770). objective-audit fail @ 89837cd run 27847001817 (ABLATION_GRID_RUNNABLE_ACCOUNTING). Fix landed locally uncommitted — enriched=[] must not coerce to None. Gates stay false until GitHub green."
 }

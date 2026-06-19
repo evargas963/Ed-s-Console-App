@@ -2,16 +2,40 @@
 
 # CI non-blocking failure triage (2026-06-18)
 
-**Updated:** 2026-06-19 @ **`e3ba4a9`** — GitHub CI observed (run **27845075770**).
+**Updated:** 2026-06-19 @ **`89837cd`** — GitHub CI observed (objective-audit fail run **27847001817**); ABLATION fix landed locally (uncommitted).
 
-## GitHub PR #19 checks (@ `e3ba4a9`)
+## GitHub PR #19 checks (@ `89837cd`)
 
 | Check | Status |
 |-------|--------|
-| objective-audit | **OPEN_BLOCKING** — fail [27845075765](https://github.com/evargas963/Ed-s-Console-App/actions/runs/27845075765) (ablation grid static on CI) |
+| objective-audit | **FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI** — fail [27847001817](https://github.com/evargas963/Ed-s-Console-App/actions/runs/27847001817) (`ABLATION_GRID_RUNNABLE_ACCOUNTING`; fix uncommitted on disk) |
 | hardening | **CLOSED_WITH_EVIDENCE** — pass |
 | schwab-csv-first | **CLOSED_WITH_EVIDENCE** — pass |
-| pytest-full | **OPEN_BLOCKING** — `34 failed, 3750 passed, 7 skipped` (run **27845075770**) |
+| pytest-full | **OPEN_BLOCKING** — `34 failed, 3750 passed, 7 skipped` @ `e3ba4a9` (run **27845075770**); pending re-run after push |
+
+**Merge decision basis:** current matrix (`e3ba4a9` / **34** failures until GitHub re-run). Expected **30** failures after ABLATION fix clears 4 tests.
+
+### `ABLATION_GRID_RUNNABLE_ACCOUNTING` — fix landed (awaiting GitHub)
+
+**GitHub failure excerpt (objective-audit @ `89837cd`, run 27847001817):**
+
+```text
+enforce_all_rules --objective-audit: FAIL (audit_status=DEFECTS)
+static_errors: [
+  "ablation grid: whole_stack_fusion_cell_target must equal runnable_target (enriched row sample required for fidelity-first runnable count)"
+]
+```
+
+| Field | Value |
+|-------|-------|
+| Checker | `check_ablation_seven_model_four_horizon_grid()` in `tools/check_fix_everything_we_touch.py` |
+| Manifest | `governance/artifacts/feature_ablation_manifest_leaf.json` |
+| CI DB | `data/ed_console.db` (`ensure_console_db_training_schema` — schema only, zero snapshot rows) |
+| Enriched sample | `build_ablation_enriched_row_sample()` → `[]` on CI |
+| At fail | `whole_stack_fusion_cell_target=0`, `runnable_target=2044` |
+| Root cause | `enriched or None` collapsed `[]` to `None` in `ablation_static_lock_index` — specs used candidate knockout path |
+| Fix | `enriched_rows_for_spec_build()` preserves `[]`; grid check always requires fusion==runnable |
+| Local verify | `enforce_all_rules --objective-audit` PASS; 6 ablation accounting tests PASS |
 
 **Merge decision basis:** current matrix (`e3ba4a9` / **34** failures). Historical runs in JSON `pytest_full_matrix_history` only.
 
@@ -58,7 +82,7 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 
 | Failure group | # | Classification | Owner branch | Blocked owner? | Operator sign-off for merge? |
 |---------------|---|----------------|--------------|----------------|------------------------------|
-| ABLATION_GRID_RUNNABLE_ACCOUNTING | 4 | PRE_EXISTING_BUT_BLOCKING | `fix/ablation-grid-runnable-accounting-ci` | no | no |
+| ABLATION_GRID_RUNNABLE_ACCOUNTING | 4 | **FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI** | `audit/ci-nonblocking-failures-triage` | no | no |
 | MEGA_INVENTORY_CONTRACT_LOCK | 4 | INTENTIONAL_CONTRACT_LOCK | `fix/mega-inventory-sync` | no | no |
 | MISSING_SNAPSHOTS_1M_NORMALIZED_FIXTURE | 0 | **CLOSED_WITH_EVIDENCE** @ `e3ba4a9` | `fix/ci-governance-db-fixture` | no | no |
 | PRODUCTION_DB_PRED_1C_ABSENT_IN_CI | 1 | PRE_EXISTING_AND_ACCEPTED_WITH_EVIDENCE | `fix/ci-pred-1c-fixture-or-skip` | no | **yes** |

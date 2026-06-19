@@ -1442,10 +1442,66 @@ def test_ablation_integrity_audit_static_passes():
     assert result["audit"] == "ablation_full_stack_non_negotiable"
 
 
+def test_ablation_ci_empty_enriched_sample_fusion_equals_runnable(tmp_path, monkeypatch) -> None:
+    """CI bootstrap DB: schema present, zero snapshot rows → enriched=[] stays fidelity-first."""
+    from db import ensure_console_db_training_schema
+    from tools.ablation_static_lock_index import (
+        get_ablation_static_lock_index as _get_ablation_index,
+        reset_ablation_static_lock_index_for_tests,
+    )
+    from tools.feature_curation_gate import (
+        ablation_cell_accounting,
+        load_ablation_manifest,
+        whole_stack_fusion_cell_target,
+    )
+
+    ci_db = tmp_path / "ed_console.db"
+    ensure_console_db_training_schema(db_path=ci_db)
+    monkeypatch.setattr("db.DB_PATH", str(ci_db))
+    monkeypatch.setattr("tools.feature_curation_gate.DB_PATH", str(ci_db))
+
+    def _ci_ablation_index(**kwargs):
+        if kwargs.get("db_path") is None:
+            kwargs = {**kwargs, "db_path": ci_db}
+        return _get_ablation_index(**kwargs)
+
+    monkeypatch.setattr(
+        "tools.ablation_static_lock_index.get_ablation_static_lock_index",
+        _ci_ablation_index,
+    )
+    reset_ablation_static_lock_index_for_tests()
+    try:
+        idx = _ci_ablation_index()
+        assert idx.enriched == []
+        assert idx.runnable_target == 0
+        manifest = load_ablation_manifest()
+        accounting = ablation_cell_accounting(manifest, idx.specs, enriched_rows=[])
+        assert accounting["runnable_target"] == 0
+        assert whole_stack_fusion_cell_target(manifest) == 0
+        assert mod.check_ablation_seven_model_four_horizon_grid() == []
+    finally:
+        reset_ablation_static_lock_index_for_tests()
+
+
+def test_ablation_fusion_runnable_target_divergence_fails_grid_check(monkeypatch) -> None:
+    """Regression: objective-audit must fail when fusion and runnable denominators diverge."""
+    monkeypatch.setattr(
+        "tools.feature_curation_gate.whole_stack_fusion_cell_target",
+        lambda manifest=None: 999_999,
+    )
+    errors = mod.check_ablation_seven_model_four_horizon_grid()
+    assert any(
+        "whole_stack_fusion_cell_target must equal runnable_target" in e for e in errors
+    ), errors
+
+
 def test_ablation_grid_requires_all_seven_models_and_four_horizons():
     """Catalog grid 7840 slots; Stage 3 specs score DB-wire groups only; runnable from row fidelity."""
     from governed_stack_contract import FULL_STACK_MODEL_LAYERS, STAGE3_ABLATION_HORIZONS
-    from tools.ablation_static_lock_index import get_ablation_static_lock_index
+    from tools.ablation_static_lock_index import (
+        get_ablation_static_lock_index,
+        reset_ablation_static_lock_index_for_tests,
+    )
     from tools.feature_curation_gate import (
         ablation_cell_accounting,
         ablation_grid_groups,
@@ -1454,6 +1510,7 @@ def test_ablation_grid_requires_all_seven_models_and_four_horizons():
         whole_stack_runnable_cell_target,
     )
 
+    reset_ablation_static_lock_index_for_tests()
     assert mod.check_ablation_seven_model_four_horizon_grid() == []
 
     idx = get_ablation_static_lock_index()
@@ -1465,7 +1522,11 @@ def test_ablation_grid_requires_all_seven_models_and_four_horizons():
     specs = idx.specs
     enriched = idx.enriched
     specs_fidelity = specs
-    accounting = ablation_cell_accounting(manifest, specs_fidelity, enriched_rows=enriched or None)
+    from tools.ablation_static_lock_index import enriched_rows_for_spec_build
+
+    accounting = ablation_cell_accounting(
+        manifest, specs_fidelity, enriched_rows=enriched_rows_for_spec_build(enriched)
+    )
     grid_groups = ablation_grid_groups(manifest)
     catalog_groups = len(grid_groups)
     manifest_in_cone = len(
@@ -1552,9 +1613,13 @@ def test_ablation_report_status_uses_runnable_denominator(tmp_path, monkeypatch)
 def test_ablation_equal_layer_consumers_fix1():
     """Fidelity-first: unified knockouts per feature across all seven layers (one cohesive stack)."""
     from governed_stack_contract import FULL_STACK_MODEL_LAYERS, STACK_AUTHORITY_LAYERS
-    from tools.ablation_static_lock_index import get_ablation_static_lock_index
+    from tools.ablation_static_lock_index import (
+        get_ablation_static_lock_index,
+        reset_ablation_static_lock_index_for_tests,
+    )
     from tools.feature_curation_gate import ablation_scoring_groups
 
+    reset_ablation_static_lock_index_for_tests()
     assert mod.check_ablation_equal_layer_consumers() == []
 
     idx = get_ablation_static_lock_index()
@@ -1584,16 +1649,17 @@ def test_ablation_equal_layer_consumers_fix1():
         if s["model_family"] == "meta"
         and s.get("group_columns")
     ]
-    assert regime_cols, "regime layer must resolve knockout columns for row-present features"
-    assert fusion_cols, "fusion layer must resolve knockout columns for row-present features"
-    assert meta_cols, "meta layer must resolve knockout columns for row-present features"
-    assert len(meta_cols) == len(fusion_cols) == len(regime_cols)
-    runnable_by_model = {
-        m: sum(1 for s in specs if s.get("model_family") == m and s.get("runnable"))
-        for m in FULL_STACK_MODEL_LAYERS
-    }
-    assert len(set(runnable_by_model.values())) == 1, runnable_by_model
-    assert runnable_by_model["xgb"] <= len(ablation_scoring_groups(manifest)) * 4
+    if enriched:
+        assert regime_cols, "regime layer must resolve knockout columns for row-present features"
+        assert fusion_cols, "fusion layer must resolve knockout columns for row-present features"
+        assert meta_cols, "meta layer must resolve knockout columns for row-present features"
+        assert len(meta_cols) == len(fusion_cols) == len(regime_cols)
+        runnable_by_model = {
+            m: sum(1 for s in specs if s.get("model_family") == m and s.get("runnable"))
+            for m in FULL_STACK_MODEL_LAYERS
+        }
+        assert len(set(runnable_by_model.values())) == 1, runnable_by_model
+        assert runnable_by_model["xgb"] <= len(ablation_scoring_groups(manifest)) * 4
 
 
 def test_graphrag_fidelity_ablation_contract():
@@ -1659,15 +1725,21 @@ def test_ablation_legacy_report_runnable_inference_and_target(tmp_path, monkeypa
     """Legacy checkpoints without runnable stamps still count for status/integrity."""
     import json
 
-    from tools.ablation_static_lock_index import get_ablation_static_lock_index
+    from tools.ablation_static_lock_index import (
+        get_ablation_static_lock_index,
+        reset_ablation_static_lock_index_for_tests,
+    )
     from tools.feature_curation_gate import (
         ablation_report_status,
         build_ablation_experiment_integrity,
+        whole_stack_runnable_cell_target,
     )
 
+    reset_ablation_static_lock_index_for_tests()
     idx = get_ablation_static_lock_index()
     assert idx.manifest is not None
-    wire_runnable_target = idx.runnable_target
+    wire_runnable_target = whole_stack_runnable_cell_target(idx.manifest)
+    assert wire_runnable_target == idx.runnable_target
 
     report = {
         "source_manifest": "governance/artifacts/feature_ablation_manifest_leaf.json",

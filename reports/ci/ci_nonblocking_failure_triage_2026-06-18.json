@@ -9,13 +9,21 @@
   "next_allowed_step": "resolve_pytest_full_failures",
   "github_checks_last_observed": {
     "commit": "e3ba4a9",
+    "objective_audit_observed_commit": "89837cd",
     "objective-audit": "fail",
-    "objective_audit_run": "27845075765",
-    "objective_audit_root_cause": "ablation grid static: whole_stack_fusion_cell_target != runnable_target (CI DB enriched-row sample)",
+    "objective_audit_run": "27847001817",
+    "objective_audit_failure_excerpt": "enforce_all_rules --objective-audit: FAIL (audit_status=DEFECTS); static_errors: ablation grid: whole_stack_fusion_cell_target must equal runnable_target (enriched row sample required for fidelity-first runnable count)",
+    "objective_audit_root_cause": "enriched or None collapsed CI empty enriched sample [] to None — index specs used candidate knockout path (runnable_target≈2044) while whole_stack_fusion_cell_target used fidelity [] path (0)",
+    "objective_audit_fix_status": "FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI",
+    "objective_audit_fix_files": [
+      "tools/ablation_static_lock_index.py",
+      "tools/check_fix_everything_we_touch.py",
+      "tests/test_check_fix_everything_we_touch.py"
+    ],
     "hardening": "pass",
     "schwab-csv-first": "pass",
-    "pytest-full": "fail",
-    "pytest_full_summary": "34 failed, 3750 passed, 7 skipped",
+    "pytest-full": "pending_at_last_observation",
+    "pytest_full_summary": "34 failed, 3750 passed, 7 skipped @ e3ba4a9 run 27845075770",
     "pytest_full_run": "27845075770"
   },
   "pytest_full_matrix_history": [
@@ -75,9 +83,9 @@
       "closure_criteria": "schwab-csv-first green on GitHub PR #19 — met @ e3ba4a9"
     },
     "objective-audit": {
-      "classification": "OPEN_BLOCKING",
-      "root_cause": "CI static ablation grid accounting @ e3ba4a9 run 27845075765",
-      "closure_criteria": "objective-audit green on GitHub PR #19 (local pass @ e3ba4a9 with operator DB — CI lacks enriched-row accounting)"
+      "classification": "FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI",
+      "root_cause": "enriched or None collapsed [] to None in ablation_static_lock_index spec build @ CI empty DB",
+      "closure_criteria": "objective-audit green on GitHub PR #19 after push; local enforce_all_rules --objective-audit PASS verified"
     },
     "pytest-full": {
       "classification": "OPEN_BLOCKING",
@@ -91,15 +99,24 @@
       "number_of_tests": 4,
       "representative_tests": [
         "tests/test_check_fix_everything_we_touch.py::test_ablation_grid_requires_all_seven_models_and_four_horizons",
-        "tests/test_check_fix_everything_we_touch.py::test_run_objective_code_audit_static_passes"
+        "tests/test_check_fix_everything_we_touch.py::test_run_objective_code_audit_static_passes",
+        "tests/test_check_fix_everything_we_touch.py::test_ablation_ci_empty_enriched_sample_fusion_equals_runnable",
+        "tests/test_check_fix_everything_we_touch.py::test_ablation_fusion_runnable_target_divergence_fails_grid_check"
       ],
       "failure_message": "whole_stack_fusion_cell_target must equal runnable_target",
-      "root_cause": "Ablation enriched-row sample missing in CI — grid accounting denominator drift",
-      "classification": "PRE_EXISTING_BUT_BLOCKING",
-      "fix_now_or_defer": "triage_owned",
-      "owner_branch": "fix/ablation-grid-runnable-accounting-ci",
+      "root_cause": "enriched or None in ablation_static_lock_index collapsed CI empty enriched sample [] to None — specs used candidate knockouts (runnable_target high) while whole_stack_fusion_cell_target used fidelity [] path (0)",
+      "classification": "FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI",
+      "fix_now_or_defer": "fix_landed_awaiting_ci",
+      "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "ablation_cell_accounting.runnable_target matches whole_stack_fusion_cell_target in CI objective-audit path"
+      "fix_files": [
+        "tools/ablation_static_lock_index.py::enriched_rows_for_spec_build",
+        "tools/check_fix_everything_we_touch.py::check_ablation_seven_model_four_horizon_grid"
+      ],
+      "ci_db_fixture": "data/ed_console.db (ensure_console_db_training_schema — schema only, zero snapshot rows)",
+      "whole_stack_fusion_cell_target_at_fail": 0,
+      "runnable_target_at_fail": 2044,
+      "closure_criteria": "objective-audit + 4 matrix tests green on GitHub; expected pytest-full failure count 34→30 after CI"
     },
     {
       "failure_group": "MEGA_INVENTORY_CONTRACT_LOCK",
