@@ -6,7 +6,13 @@
 
 **Allowed statuses only:** `OPEN_BLOCKING` | `NEEDS_RTH_VALIDATION_WITH_HARNESS` | `FIXED_IN_THIS_BRANCH` | `COMPLETION_BRANCH_REQUIRED` | `ACCEPTED_WITH_EVIDENCE` | `CLOSED_WITH_EVIDENCE`
 
-**Planned sequence:** RTH validation (operator host) → `fix/ci-nonblocking-failures-triage` → `fix/card-price-conflict-explainability` (blocked until stabilization gate PASS)
+**Gate semantics (machine-readable — `governance/OPERATOR_TRUST_STABILIZATION_GATE.json`):**
+- `stabilization_artifacts_gate_pass: true` — harnesses, checker, and closure docs exist on disk.
+- `operator_readiness_gate_pass: false` — CI triage + RTH proof not complete.
+- `card_explainability_allowed: false` — **do not** start `fix/card-price-conflict-explainability`.
+- **Next allowed branch:** `audit/ci-nonblocking-failures-triage` (then operator RTH validation).
+
+**Planned sequence:** Merge stabilization → `audit/ci-nonblocking-failures-triage` → operator RTH validation → `fix/card-price-conflict-explainability` (only when `card_explainability_allowed: true`)
 
 ---
 
@@ -190,10 +196,10 @@
 | **Operator risk** | Price down, cards up — trust erosion |
 | **Evidence currently available** | `docs/CARD_TRUST_CONTRACT.md` |
 | **Evidence still needed** | UI implementation + tests |
-| **Fix now or harness now** | Blocked until stabilization gate PASS |
-| **Owner branch** | `fix/card-price-conflict-explainability` |
+| **Fix now or harness now** | Blocked — `card_explainability_allowed: false` per stabilization gate |
+| **Owner branch** | `fix/card-price-conflict-explainability` (after `operator_readiness_gate_pass`) |
 | **Blocking level** | High — primary operator trust gap |
-| **Do not close until** | Branch merged with paired tests |
+| **Do not close until** | `card_explainability_allowed: true` in gate JSON and branch merged with paired tests |
 
 ---
 

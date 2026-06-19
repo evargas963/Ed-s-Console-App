@@ -12,6 +12,9 @@ _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
+from verification.operator_trust_backtrack import (
+    CARD_EXPLAINABILITY_BLOCKING_OPEN_ITEMS,
+)
 from verification.operator_trust_rth_validation import (
     ALLOWED_OPEN_ITEM_STATUSES,
     CLOSURE_HANDLING_PHRASES,
@@ -74,19 +77,105 @@ def check_stabilization_gate_json() -> list[str]:
     path = _REPO / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json"
     if not path.is_file():
         return ["operator_trust: missing governance/OPERATOR_TRUST_STABILIZATION_GATE.json"]
+    raw = path.read_text(encoding="utf-8")
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(raw)
     except json.JSONDecodeError as e:
         return [f"operator_trust: stabilization gate invalid JSON: {e}"]
-    if not data.get("card_explainability_blocked_until_gate_passes"):
-        errors.append("operator_trust: gate must block card explainability until PASS")
+    banned_fields = (
+        "card_explainability_gate_unblocked",
+        "safe_to_proceed_card_explainability",
+        "stabilization_gate_pass",
+    )
+    for field in banned_fields:
+        if field in raw:
+            errors.append(
+                f"operator_trust: gate uses banned ambiguous field {field!r} — "
+                "use stabilization_artifacts_gate_pass / operator_readiness_gate_pass / "
+                "card_explainability_allowed"
+            )
+    for key in (
+        "stabilization_artifacts_gate_pass",
+        "operator_readiness_gate_pass",
+        "card_explainability_allowed",
+    ):
+        if key not in data:
+            errors.append(f"operator_trust: gate missing required field {key}")
+    if data.get("card_explainability_allowed") is True:
+        errors.append("operator_trust: card_explainability_allowed must be false until readiness gate passes")
+    if data.get("operator_readiness_gate_pass") is False and data.get("card_explainability_allowed") is True:
+        errors.append(
+            "operator_trust: card_explainability_allowed cannot be true when operator_readiness_gate_pass is false"
+        )
+    if data.get("stabilization_artifacts_gate_pass") is not True:
+        errors.append("operator_trust: stabilization_artifacts_gate_pass must be true on this branch")
+    next_branch = str(data.get("next_allowed_branch") or "")
+    if "ci-nonblocking-failures" not in next_branch:
+        errors.append(
+            "operator_trust: next_allowed_branch must be audit/ci-nonblocking-failures-triage while CI items open"
+        )
+    blocked = data.get("blocked_branches") or data.get("blocked_branches_until_pass") or []
+    if "fix/card-price-conflict-explainability" not in blocked:
+        errors.append("operator_trust: fix/card-price-conflict-explainability must remain in blocked_branches")
     for key in ("required_artifacts", "required_harnesses", "required_policy_docs"):
         items = data.get(key) or []
         for rel in items:
             if not (_REPO / rel).is_file():
                 errors.append(f"operator_trust: gate lists missing {rel}")
-    if data.get("status") not in ("PASS", "FAIL"):
-        errors.append("operator_trust: gate status must be PASS or FAIL")
+    return errors
+
+
+def _open_item_status(open_items_text: str, item_id: str) -> str | None:
+    """Return status slug for ### ITEM_ID section, or None if missing."""
+    m = re.search(
+        rf"### {re.escape(item_id)}\s+.*?\*\*Status\*\*\s*\|\s*`([^`]+)`",
+        open_items_text,
+        re.S,
+    )
+    return m.group(1) if m else None
+
+
+def check_card_explainability_permission() -> list[str]:
+    errors: list[str] = []
+    gate_path = _REPO / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json"
+    decision_path = _REPO / "reports/operator_trust_backtrack/stabilization_decision_2026-06-18.md"
+    for rel in (
+        "governance/OPERATOR_TRUST_STABILIZATION_GATE.json",
+        "reports/operator_trust_backtrack/stabilization_decision_2026-06-18.md",
+    ):
+        text = _read(rel)
+        for banned in (
+            "card_explainability_gate_unblocked",
+            "safe_to_proceed_card_explainability: true",
+            "safe_to_proceed_card_explainability: True",
+        ):
+            if banned.lower() in text.lower():
+                errors.append(f"{rel}: banned contradictory field {banned!r}")
+    if not gate_path.is_file():
+        return errors
+    data = json.loads(gate_path.read_text(encoding="utf-8"))
+    open_items = _read("docs/OPEN_ITEMS_OPERATOR_TRUST.md")
+    blocking_open: list[str] = []
+    for item in CARD_EXPLAINABILITY_BLOCKING_OPEN_ITEMS:
+        status = _open_item_status(open_items, item)
+        if status is None:
+            errors.append(f"OPEN_ITEMS_OPERATOR_TRUST.md: missing blocking item {item}")
+            continue
+        if status not in ("CLOSED_WITH_EVIDENCE",):
+            blocking_open.append(item)
+    if data.get("card_explainability_allowed") is True and blocking_open:
+        errors.append(
+            "operator_trust: card_explainability_allowed true while blocking items remain open: "
+            + ", ".join(blocking_open)
+        )
+    if decision_path.is_file():
+        dec_text = decision_path.read_text(encoding="utf-8")
+        if "card_explainability_allowed: True" in dec_text:
+            errors.append("stabilization_decision: card_explainability_allowed must be False")
+        if "operator_readiness_gate_pass: True" in dec_text and blocking_open:
+            errors.append(
+                "stabilization_decision: operator_readiness_gate_pass cannot be True while blocking items open"
+            )
     return errors
 
 
@@ -201,21 +290,6 @@ def check_rth_harnesses_reference_endpoints() -> list[str]:
     return errors
 
 
-def check_card_explainability_gate() -> list[str]:
-    """If stabilization gate not PASS, card explainability branch references must not land alone."""
-    errors: list[str] = []
-    gate_path = _REPO / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json"
-    if not gate_path.is_file():
-        return errors
-    data = json.loads(gate_path.read_text(encoding="utf-8"))
-    if data.get("status") != "PASS":
-        for rel in ("ACTIVE_PROGRAM.md", "OPEN_ITEMS.md"):
-            t = _read(rel)
-            if "fix/card-price-conflict-explainability" in t and "BLOCKED" not in t:
-                pass
-    return errors
-
-
 def check_operator_trust_governance() -> list[str]:
     errors: list[str] = []
     errors.extend(check_required_artifacts())
@@ -225,7 +299,7 @@ def check_operator_trust_governance() -> list[str]:
     errors.extend(check_admin_bypass_register())
     errors.extend(check_ci_triage_report())
     errors.extend(check_rth_harnesses_reference_endpoints())
-    errors.extend(check_card_explainability_gate())
+    errors.extend(check_card_explainability_permission())
     return errors
 
 

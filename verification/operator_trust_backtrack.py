@@ -101,19 +101,33 @@ def build_pr_completion_audit(*, audit_date: str) -> dict[str, Any]:
     }
 
 
-def build_stabilization_decision(*, audit_date: str, gate_pass: bool) -> dict[str, Any]:
+# Open items that mechanically block card explainability until closed or accepted.
+CARD_EXPLAINABILITY_BLOCKING_OPEN_ITEMS: tuple[str, ...] = (
+    "LIVE_GUEST_SLA_NOT_PROVEN",
+    "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN",
+    "BASE_CAPTURE_NORMALIZATION_RTH_PROOF_NOT_COMPLETE",
+    "RTH_VALIDATION_NOT_EXECUTED_AFTER_TRANSPORT_FIXES",
+    "HARDENING_CI_FAILING_NON_BLOCKING",
+    "PYTEST_FULL_CI_FAILING_NON_BLOCKING",
+    "SCHWAB_CSV_FIRST_FAILING_OR_MIXED_NON_BLOCKING",
+)
+
+CARD_EXPLAINABILITY_BLOCK_REASONS: tuple[str, ...] = (
+    "CI non-blocking failures require triage",
+    "RTH validation not executed",
+    *CARD_EXPLAINABILITY_BLOCKING_OPEN_ITEMS,
+)
+
+
+def build_stabilization_decision(*, audit_date: str, artifacts_gate_pass: bool) -> dict[str, Any]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "audit_date": audit_date,
-        "stabilization_gate_pass": gate_pass,
-        "safe_to_proceed_card_explainability": False,
-        "card_explainability_gate_unblocked": gate_pass,
-        "blocking_items": [
-            "LIVE_GUEST_SLA_NOT_PROVEN",
-            "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN",
-            "BASE_CAPTURE_NORMALIZATION_RTH_PROOF_NOT_COMPLETE",
-            "RTH_VALIDATION_NOT_EXECUTED_AFTER_TRANSPORT_FIXES",
-        ],
+        "stabilization_artifacts_gate_pass": artifacts_gate_pass,
+        "operator_readiness_gate_pass": False,
+        "card_explainability_allowed": False,
+        "card_explainability_block_reason": list(CARD_EXPLAINABILITY_BLOCK_REASONS),
+        "blocking_items": list(CARD_EXPLAINABILITY_BLOCKING_OPEN_ITEMS),
         "fixed_in_stabilization_branch": [
             "Runnable RTH validation harnesses (dry-run + live)",
             "OPEN_ITEMS_OPERATOR_TRUST closure matrix",
@@ -129,12 +143,14 @@ def build_stabilization_decision(*, audit_date: str, gate_pass: bool) -> dict[st
             "BASE_CAPTURE_NORMALIZATION_RTH_PROOF_NOT_COMPLETE",
         ],
         "ci_still_red": ["hardening", "pytest-full", "schwab-csv-first"],
-        "recommended_next_branch": (
-            "fix/ci-nonblocking-failures-triage"
-            if gate_pass
+        "next_allowed_branch": (
+            "audit/ci-nonblocking-failures-triage"
+            if artifacts_gate_pass
             else "stabilize/operator-trust-backtrack"
         ),
-        "card_explainability_blocked_until": (
-            "governance/OPERATOR_TRUST_STABILIZATION_GATE.json status PASS"
+        "blocked_branches": ["fix/card-price-conflict-explainability"],
+        "operator_note": (
+            "Stabilization artifacts exist and mechanical checks are installed. "
+            "Card explainability is NOT allowed yet. RTH validation remains required after CI triage."
         ),
     }

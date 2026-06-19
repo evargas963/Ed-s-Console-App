@@ -41,17 +41,24 @@ def main() -> None:
             f"| {r['pr']} | {r['claimed_completion']} | {r['actual_completion_status']} | {risks} | {corr} |"
         )
     (out / "pr_completion_audit_2026-06-18.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    dec = build_stabilization_decision(audit_date=d, gate_pass=True)
+    dec = build_stabilization_decision(audit_date=d, artifacts_gate_pass=True)
+    (out / "stabilization_decision_2026-06-18.json").write_text(
+        json.dumps(dec, indent=2), encoding="utf-8"
+    )
     (out / "stabilization_decision_2026-06-18.md").write_text(
         "# Stabilization decision\n\n"
         "> **Classification:** Historical Record | **Scope:** Operator-trust backtrack gate decision\n\n"
-        f"stabilization_gate_pass: {dec['stabilization_gate_pass']}\n"
-        f"card_explainability_gate_unblocked: {dec['card_explainability_gate_unblocked']}\n"
-        f"safe_to_proceed_card_explainability: {dec['safe_to_proceed_card_explainability']}\n\n"
-        "## Blocking (RTH proof still required)\n"
+        f"stabilization_artifacts_gate_pass: {dec['stabilization_artifacts_gate_pass']}\n"
+        f"operator_readiness_gate_pass: {dec['operator_readiness_gate_pass']}\n"
+        f"card_explainability_allowed: {dec['card_explainability_allowed']}\n\n"
+        "## card_explainability_block_reason\n"
+        + "\n".join(f"- {x}" for x in dec["card_explainability_block_reason"])
+        + "\n\n## Blocking open items\n"
         + "\n".join(f"- {x}" for x in dec["blocking_items"])
-        + "\n\n## Recommended next branch\n"
-        + dec["recommended_next_branch"]
+        + "\n\n## Next allowed branch\n"
+        + dec["next_allowed_branch"]
+        + "\n\n## Operator note\n"
+        + dec["operator_note"]
         + "\n",
         encoding="utf-8",
     )

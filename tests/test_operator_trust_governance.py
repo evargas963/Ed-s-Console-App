@@ -13,8 +13,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.check_operator_trust_governance import (
+    check_card_explainability_permission,
     check_operator_trust_governance,
     check_passive_risk_language,
+    check_stabilization_gate_json,
 )
 from verification.operator_trust_rth_validation import (
     build_dry_run_report,
@@ -88,8 +90,40 @@ def test_stabilization_gate_blocks_card_explainability():
     gate = json.loads(
         (ROOT / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json").read_text(encoding="utf-8")
     )
-    assert gate.get("card_explainability_blocked_until_gate_passes") is True
-    assert "fix/card-price-conflict-explainability" in (gate.get("blocked_branches_until_pass") or [])
+    assert gate.get("stabilization_artifacts_gate_pass") is True
+    assert gate.get("operator_readiness_gate_pass") is False
+    assert gate.get("card_explainability_allowed") is False
+    assert "card_explainability_gate_unblocked" not in gate
+    assert "fix/card-price-conflict-explainability" in (gate.get("blocked_branches") or [])
+    assert gate.get("next_allowed_branch") == "audit/ci-nonblocking-failures-triage"
+
+
+def test_gate_no_contradiction_unblocked_while_not_allowed():
+    decision = (
+        ROOT / "reports/operator_trust_backtrack/stabilization_decision_2026-06-18.md"
+    ).read_text(encoding="utf-8")
+    assert "card_explainability_gate_unblocked" not in decision
+    assert "card_explainability_allowed: False" in decision
+    assert "operator_readiness_gate_pass: False" in decision
+    errors = check_card_explainability_permission()
+    assert errors == [], "\n".join(errors)
+
+
+def test_gate_artifacts_pass_does_not_allow_explainability():
+    errors = check_stabilization_gate_json()
+    assert errors == [], "\n".join(errors)
+    gate = json.loads(
+        (ROOT / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json").read_text(encoding="utf-8")
+    )
+    assert gate["stabilization_artifacts_gate_pass"] is True
+    assert gate["card_explainability_allowed"] is False
+
+
+def test_next_allowed_branch_is_ci_triage():
+    gate = json.loads(
+        (ROOT / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json").read_text(encoding="utf-8")
+    )
+    assert "ci-nonblocking-failures" in gate.get("next_allowed_branch", "")
 
 
 def test_pr_completion_audit_mentions_pr16_incomplete():
