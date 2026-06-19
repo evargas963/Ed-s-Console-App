@@ -1,0 +1,565 @@
+{
+  "schema_version": 1,
+  "classification": "Audit Report",
+  "scope": "UI real-time transport fidelity",
+  "audit_date": "2026-06-18",
+  "branch": "audit/ui-realtime-transport-fidelity",
+  "market_session": "offline_static",
+  "transport_mechanisms": {
+    "classification": "hybrid",
+    "card_drivers": {
+      "tier_c_full_cards": [
+        "GET /api/analytics/state (REST, primary on switch + poll fallback)",
+        "GET /api/state (legacy alias)",
+        "SSE GET /api/stream onmessage \u2192 render(data,'sse')"
+      ],
+      "tier_b_context": [
+        "GET /api/analytics/light (REST opportunistic)",
+        "SSE GET /api/analytics/light/stream l1_projection \u2192 renderTierBLight"
+      ],
+      "tier_a_quote_strip": [
+        "GET /api/live/state (REST concurrent on switch)",
+        "SSE live_quote events \u2192 _livePlaneApplyCore",
+        "GET /api/fast-quote poll \u2192 renderFast"
+      ]
+    },
+    "price_header_drivers": [
+      "window._fastLaneSpot/_fastLaneSpotDisp (fast lane)",
+      "refreshUtilityBar() reads owned plane + _lastData when ticker matches",
+      "GET /api/live/plane diagnostics for streaming authority"
+    ],
+    "feed_live_ui_active": {
+      "feed_pill": "computeFeedState \u2192 paintUtilityFeedPill (FEED LIVE/SYNCED/DELAY/STALE/DOWN)",
+      "ui_active": "ub-ui-detail shows analytics_version from last accepted Tier C payload",
+      "status_dot": "status-dot + status-label (LIVE / ANALYTICS\u2026 / ERROR)",
+      "sse_badge": "_setSseUi phases CONNECTING/CONN/LIVE/RETRY/OFFLINE"
+    },
+    "stale_drivers": {
+      "lane_stale_chip": "laneStaleOperatorLabel \u2014 quote ahead, gen behind cards, pending analytics, syncing within trust window",
+      "feed_stale": "computeFeedState age_sec > ED_FEED_STALE_SEC (30s)",
+      "card_stale_css": "data-direction-withhold + data-lane-stale on horizon cards",
+      "analytics_stale_flag": "payload.analytics_stale + analytics_refresh_in_progress"
+    },
+    "loading_drivers": {
+      "refresh_btn": "\u21bb LOADING while fetchState in flight (Tier C force path)",
+      "status_label": "ANALYTICS\u2026 on ticker switch",
+      "analytics_freshness_el": "Analytics: loading\u2026 when analytics_pending_shell",
+      "loading_overlay": "hidden on switch intentionally \u2014 not a blocking spinner",
+      "tier_c_backoff": "_tierCBackoffUntilMs 800ms after pending shell"
+    },
+    "ownership_guards": [
+      "requestGeneration increment on setActiveTicker",
+      "SSE sseGen !== requestGeneration \u2192 discard",
+      "REST myGen !== requestGeneration \u2192 discard",
+      "ticker mismatch discard on REST/SSE/fast poll",
+      "_renderCoherenceGuards ticker + decision_generation_id + _server_build_ts",
+      "_commitPlaneDiagnosticsIfCurrent gen+ticker"
+    ],
+    "ticker_switch_clear": [
+      "requestGeneration++ resets quote lane timestamps",
+      "lastRenderTimestamp=0, _lastRenderedDecisionGen=0",
+      "stale-while-revalidate via _snapshotCacheRestore (marks analytics_stale)",
+      "runTickerLiveAcquisition before Tier C (SSE + L1 + fast quote, non-blocking Tier C)"
+    ],
+    "sqlite_contention": {
+      "producer": "db.py EdDB._tier1_snapshot_write \u2014 logs sqlite_tier1_lock_wait / busy_retry",
+      "consumer_risk": "Tier C _fetch_state DB reads + snapshot inserts during live capture"
+    },
+    "instrumentation_present": [
+      "window.__edSwitchDiag + POST /api/diagnostics/ticker-switch",
+      "window._edFastRollout counters",
+      "window._edRtDiag",
+      "ED_SWITCH_TIMING console lines",
+      "server payload fields _pipeline_ms, _compute_ms, _quote_ms, _from_cache"
+    ],
+    "instrumentation_gaps": [
+      "No unified server-side transport audit ring buffer (switch diag is client-posted only)",
+      "Tier C SSE lacks fingerprint dedup before render (L1 SSE has l1_payload_fingerprint)",
+      "No built-in click-to-card-render histogram in production UI without ED_SWITCH_TIMING",
+      "startup_time_to_shell requires browser Performance API capture (not persisted server-side)",
+      "sqlite lock counts require log scrape unless ED_SQLITE_METRICS export added",
+      "No per-tier switch SLA breakdown (core vs guest) in switch diag schema"
+    ],
+    "ticker_switch_scope": {
+      "core_money_path": [
+        "SPY",
+        "QQQ",
+        "IWM"
+      ],
+      "guest_examples": [
+        "NVDA",
+        "AAPL",
+        "MSFT",
+        "AMZN",
+        "META",
+        "TSLA",
+        "GOOGL",
+        "AVGO",
+        "MRVL",
+        "PLTR",
+        "CIFR"
+      ],
+      "special_index": [
+        "SPX",
+        "$SPX",
+        "$VIX",
+        "$TNX",
+        "VIX"
+      ],
+      "requirement": "Switching must be seamless, guarded, and fast for core AND guest \u2014 guest lacks base capture parity but still requires immediate degraded state, no wrong-ticker overwrite, and visible explanation when data is incomplete."
+    }
+  },
+  "metrics": {
+    "startup_time_to_shell_ms": null,
+    "startup_time_to_first_payload_ms": null,
+    "startup_time_to_first_card_render_ms": null,
+    "ticker_switch_click_to_loading_ms_p50": null,
+    "ticker_switch_click_to_request_ms_p50": null,
+    "ticker_switch_request_to_response_ms_p50": null,
+    "ticker_switch_response_to_render_ms_p50": null,
+    "ticker_switch_click_to_card_render_ms_p50": null,
+    "stale_pill_count": 0,
+    "stale_pill_duration_ms_sum": 0,
+    "loading_duration_ms_sum": 0,
+    "old_ticker_payload_count": 0,
+    "out_of_order_payload_count": 0,
+    "duplicate_payload_count": 0,
+    "payload_without_ticker_count": 0,
+    "payload_without_timestamp_count": 0,
+    "payload_without_generation_id_count": 0,
+    "sqlite_lock_wait_count": 0,
+    "sqlite_database_locked_count": 0,
+    "backend_compute_ms_p50": null,
+    "frontend_render_ms_p50": null,
+    "sample_counts": {
+      "switch_events": 0,
+      "backend_compute_samples": 0
+    }
+  },
+  "sqlite_log_scan": {
+    "paths": [
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\ablation_confirm_post_primary.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\ablation_confirm_v2.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\ablation_confirm_v2_resume.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\arch_competition_ablated_20260609.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\daily_scoreboard_2026-06-10.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\daily_scoreboard_2026-06-11.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\daily_scoreboard_2026-06-12.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\daily_scoreboard_2026-06-15.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\daily_scoreboard_2026-06-16.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\daily_scoreboard_2026-06-17.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\daily_scoreboard_2026-06-18.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\expand_leaf_manifest.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\qqq_iwm_bundle_retrain.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\scheduler_monitor_2026-06-02_190032.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\scheduler_monitor_2026-06-02_190344.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\scheduler_monitor_2026-06-02_191927.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\server_diag_20260609.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\server_diag_20260609b.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\server_diag_20260609c.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\survivor_edge_probe.log",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\logs\\survivor_retrain_gate_2026-06-02_190630.err",
+      "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\enforce_all_out.txt"
+    ],
+    "sqlite_lock_wait_count": 0,
+    "sqlite_busy_retry_count": 0,
+    "sqlite_database_locked_count": 0,
+    "sqlite_tier1_fail_count": 0
+  },
+  "switch_diag_events_in_memory": 0,
+  "switch_diag_sample": [],
+  "audit_questions": {
+    "1_live_card_transport": "Hybrid: Tier C REST + SSE /api/stream + pollStateFallback; cards from render() on Tier C payloads with mhap_rows",
+    "2_price_header_transport": [
+      "window._fastLaneSpot/_fastLaneSpotDisp (fast lane)",
+      "refreshUtilityBar() reads owned plane + _lastData when ticker matches",
+      "GET /api/live/plane diagnostics for streaming authority"
+    ],
+    "3_feed_live_ui_active": {
+      "feed_pill": "computeFeedState \u2192 paintUtilityFeedPill (FEED LIVE/SYNCED/DELAY/STALE/DOWN)",
+      "ui_active": "ub-ui-detail shows analytics_version from last accepted Tier C payload",
+      "status_dot": "status-dot + status-label (LIVE / ANALYTICS\u2026 / ERROR)",
+      "sse_badge": "_setSseUi phases CONNECTING/CONN/LIVE/RETRY/OFFLINE"
+    },
+    "4_stale_drivers": {
+      "lane_stale_chip": "laneStaleOperatorLabel \u2014 quote ahead, gen behind cards, pending analytics, syncing within trust window",
+      "feed_stale": "computeFeedState age_sec > ED_FEED_STALE_SEC (30s)",
+      "card_stale_css": "data-direction-withhold + data-lane-stale on horizon cards",
+      "analytics_stale_flag": "payload.analytics_stale + analytics_refresh_in_progress"
+    },
+    "5_loading_drivers": {
+      "refresh_btn": "\u21bb LOADING while fetchState in flight (Tier C force path)",
+      "status_label": "ANALYTICS\u2026 on ticker switch",
+      "analytics_freshness_el": "Analytics: loading\u2026 when analytics_pending_shell",
+      "loading_overlay": "hidden on switch intentionally \u2014 not a blocking spinner",
+      "tier_c_backoff": "_tierCBackoffUntilMs 800ms after pending shell"
+    },
+    "6_ticker_switch_clears_state": [
+      "requestGeneration++ resets quote lane timestamps",
+      "lastRenderTimestamp=0, _lastRenderedDecisionGen=0",
+      "stale-while-revalidate via _snapshotCacheRestore (marks analytics_stale)",
+      "runTickerLiveAcquisition before Tier C (SSE + L1 + fast quote, non-blocking Tier C)"
+    ],
+    "7_old_ticker_overwrite_risk": "Low for accepted renders \u2014 guards discard wrong ticker and superseded generation; residual risk: stale-while-revalidate cache paints old ticker cards until refresh completes",
+    "8_payload_metadata": {
+      "tier_c_required": [
+        "ticker",
+        "_server_build_ts",
+        "decision_generation_id",
+        "_update_source"
+      ],
+      "fast_required": [
+        "ticker",
+        "fast_server_ts",
+        "fast_generation_id"
+      ],
+      "note": "decision_generation_id on Tier C; fast_generation_id on quote lane"
+    },
+    "9_frontend_rejects_stale_oob": [
+      "requestGeneration increment on setActiveTicker",
+      "SSE sseGen !== requestGeneration \u2192 discard",
+      "REST myGen !== requestGeneration \u2192 discard",
+      "ticker mismatch discard on REST/SSE/fast poll",
+      "_renderCoherenceGuards ticker + decision_generation_id + _server_build_ts",
+      "_commitPlaneDiagnosticsIfCurrent gen+ticker"
+    ],
+    "10_backend_blocks_ui": "Tier C compute can block force refresh; switch path fires Tier C async (non-blocking). SQLite lock waits on snapshot writes can delay Tier C cache refresh.",
+    "11_sync_on_switch": "runTickerLiveAcquisition is sync setup only; Tier C REST not awaited on switch; model/fusion runs server-side inside _fetch_state / analytics cache refresh",
+    "12_sqlite_evidence": {
+      "sqlite_lock_wait_count": 0,
+      "sqlite_busy_retry_count": 0,
+      "sqlite_database_locked_count": 0,
+      "sqlite_tier1_fail_count": 0
+    },
+    "13_rest_sse_consistency": "Same ms_dict builder for REST and SSE stream; both carry ticker, _server_build_ts, _update_source, decision_generation_id when Tier C complete",
+    "14_duplicate_payload_renders": "L1 SSE has fingerprint dedup; Tier C SSE/REST lack render-skip dedup \u2014 duplicate identical payloads may re-render",
+    "15_click_to_card_delay_measurable": "Yes with ED_SWITCH_TIMING=1 and __edSwitchDiag; not on by default. p50_switch_ms=None",
+    "16_stale_meaning": "FEED STALE = quote age >30s or plane not aligned; LANE STALE = quote ahead of bundle or cards painting behind decision gen",
+    "17_loading_persist_causes": {
+      "refresh_btn": "\u21bb LOADING while fetchState in flight (Tier C force path)",
+      "status_label": "ANALYTICS\u2026 on ticker switch",
+      "analytics_freshness_el": "Analytics: loading\u2026 when analytics_pending_shell",
+      "loading_overlay": "hidden on switch intentionally \u2014 not a blocking spinner",
+      "tier_c_backoff": "_tierCBackoffUntilMs 800ms after pending shell"
+    },
+    "18_active_ticker_preference": "POST /api/streaming/active-ticker + SSE scoped to activeTicker; poll uses activeTicker only",
+    "19_errors_swallowed": "Many streaming/ plane fetch errors are catch-and-ignore; surfaced via status-dot ERROR and error-bar on Tier C failure",
+    "20_operator_should_see_when_delayed": "ANALYTICS\u2026 status, SYNCING ANALYTICS\u2026 lane chip, DELAY/STALE feed pill, analytics_pending_shell message in error-bar",
+    "21_core_and_guest_ticker_switch_safe": "Static: guards are tier-agnostic (no is_base_money_path in render guards). Guest tickers use same metadata contract and wrong-ticker discard. Live: not proven for guest warm-switch SLA \u2014 see core_vs_guest_ticker_switching.",
+    "market_session_note": "offline_static",
+    "static_scan": {
+      "checks": {
+        "render_coherence_guards": true,
+        "connect_sse": true,
+        "connect_l1_light_sse": true,
+        "poll_fallback": true,
+        "switch_diag_post": true,
+        "analytics_state_endpoint": true,
+        "stream_endpoint": true,
+        "light_stream_endpoint": true,
+        "fast_quote_endpoint": true,
+        "sqlite_tier1_lock_wait_log": true
+      },
+      "all_pass": true
+    }
+  },
+  "core_vs_guest_ticker_switching": {
+    "operator_requirement": "Ticker switching must be seamless, guarded, and fast for core money-path tickers (SPY/QQQ/IWM) and guest tickers (NVDA, AAPL, \u2026) alike. Guest tickers may lack full base capture parity but must not show old cards, wrong-ticker payloads, or long unexplained loading.",
+    "core_tickers": [
+      "SPY",
+      "QQQ",
+      "IWM"
+    ],
+    "guest_sample_tickers": [
+      "NVDA",
+      "AAPL",
+      "MSFT",
+      "AMZN",
+      "META",
+      "TSLA",
+      "GOOGL",
+      "AVGO",
+      "MRVL",
+      "PLTR",
+      "CIFR"
+    ],
+    "special_index_tickers": [
+      "SPX",
+      "$SPX",
+      "$VIX",
+      "$TNX",
+      "VIX"
+    ],
+    "special_storage_keys": [
+      "$SPX",
+      "$TNX",
+      "$VIX"
+    ],
+    "transport_guards_tier_agnostic": true,
+    "active_ticker_ownership_guest_safe": true,
+    "wrong_ticker_discarded_all_pairs": true,
+    "cache_restore_stale_all_pairs": true,
+    "guest_payload_metadata_required_same_as_core": true,
+    "guest_can_show_pending_shell": true,
+    "guest_missing_data_visible": true,
+    "guest_loading_explained_via": [
+      "status-label ANALYTICS\u2026 on switch",
+      "analytics_pending_shell + error-bar remediation text",
+      "updateAnalyticsFreshnessUI Analytics: loading\u2026",
+      "laneStaleOperatorLabel SYNCING / PENDING when applicable"
+    ],
+    "core_cards_can_persist_after_guest_switch_risk": "Stale-while-revalidate restores per-ticker cache only when revisiting same symbol; switching core\u2192guest without guest cache uses pending shell. Residual risk: guest cache hit could show prior guest cards with analytics_stale until refresh \u2014 not core ticker bleed if guards hold.",
+    "switch_pair_matrix": {
+      "SPY->QQQ": {
+        "pair": "core_to_core",
+        "old_ticker": "SPY",
+        "new_ticker": "QQQ",
+        "storage_key": "QQQ",
+        "trust_class": "base_money_path",
+        "wrong_ticker_discarded": true,
+        "wrong_ticker_discard_reason": "ticker_mismatch",
+        "superseded_generation_discarded": true,
+        "cache_restore_marks_stale": true,
+        "cache_not_pending_shell": true,
+        "guest_payload_guard_accepts_matching_ticker": true,
+        "guest_metadata": {
+          "tier": "C",
+          "missing_fields": [],
+          "complete": true,
+          "ticker": "QQQ",
+          "timestamp": 1710000000.0,
+          "generation_id": 3,
+          "source": "rest_manual"
+        }
+      },
+      "QQQ->IWM": {
+        "pair": "core_to_core",
+        "old_ticker": "QQQ",
+        "new_ticker": "IWM",
+        "storage_key": "IWM",
+        "trust_class": "base_money_path",
+        "wrong_ticker_discarded": true,
+        "wrong_ticker_discard_reason": "ticker_mismatch",
+        "superseded_generation_discarded": true,
+        "cache_restore_marks_stale": true,
+        "cache_not_pending_shell": true,
+        "guest_payload_guard_accepts_matching_ticker": true,
+        "guest_metadata": {
+          "tier": "C",
+          "missing_fields": [],
+          "complete": true,
+          "ticker": "IWM",
+          "timestamp": 1710000000.0,
+          "generation_id": 3,
+          "source": "rest_manual"
+        }
+      },
+      "SPY->NVDA": {
+        "pair": "core_to_guest",
+        "old_ticker": "SPY",
+        "new_ticker": "NVDA",
+        "storage_key": "NVDA",
+        "trust_class": "guest_unproven",
+        "wrong_ticker_discarded": true,
+        "wrong_ticker_discard_reason": "ticker_mismatch",
+        "superseded_generation_discarded": true,
+        "cache_restore_marks_stale": true,
+        "cache_not_pending_shell": true,
+        "guest_payload_guard_accepts_matching_ticker": true,
+        "guest_metadata": {
+          "tier": "C",
+          "missing_fields": [],
+          "complete": true,
+          "ticker": "NVDA",
+          "timestamp": 1710000000.0,
+          "generation_id": 3,
+          "source": "rest_manual"
+        }
+      },
+      "IWM->AAPL": {
+        "pair": "core_to_guest",
+        "old_ticker": "IWM",
+        "new_ticker": "AAPL",
+        "storage_key": "AAPL",
+        "trust_class": "guest_unproven",
+        "wrong_ticker_discarded": true,
+        "wrong_ticker_discard_reason": "ticker_mismatch",
+        "superseded_generation_discarded": true,
+        "cache_restore_marks_stale": true,
+        "cache_not_pending_shell": true,
+        "guest_payload_guard_accepts_matching_ticker": true,
+        "guest_metadata": {
+          "tier": "C",
+          "missing_fields": [],
+          "complete": true,
+          "ticker": "AAPL",
+          "timestamp": 1710000000.0,
+          "generation_id": 3,
+          "source": "rest_manual"
+        }
+      },
+      "NVDA->TSLA": {
+        "pair": "guest_to_guest",
+        "old_ticker": "NVDA",
+        "new_ticker": "TSLA",
+        "storage_key": "TSLA",
+        "trust_class": "guest_unproven",
+        "wrong_ticker_discarded": true,
+        "wrong_ticker_discard_reason": "ticker_mismatch",
+        "superseded_generation_discarded": true,
+        "cache_restore_marks_stale": true,
+        "cache_not_pending_shell": true,
+        "guest_payload_guard_accepts_matching_ticker": true,
+        "guest_metadata": {
+          "tier": "C",
+          "missing_fields": [],
+          "complete": true,
+          "ticker": "TSLA",
+          "timestamp": 1710000000.0,
+          "generation_id": 3,
+          "source": "rest_manual"
+        }
+      },
+      "PLTR->MSFT": {
+        "pair": "guest_to_guest",
+        "old_ticker": "PLTR",
+        "new_ticker": "MSFT",
+        "storage_key": "MSFT",
+        "trust_class": "guest_unproven",
+        "wrong_ticker_discarded": true,
+        "wrong_ticker_discard_reason": "ticker_mismatch",
+        "superseded_generation_discarded": true,
+        "cache_restore_marks_stale": true,
+        "cache_not_pending_shell": true,
+        "guest_payload_guard_accepts_matching_ticker": true,
+        "guest_metadata": {
+          "tier": "C",
+          "missing_fields": [],
+          "complete": true,
+          "ticker": "MSFT",
+          "timestamp": 1710000000.0,
+          "generation_id": 3,
+          "source": "rest_manual"
+        }
+      },
+      "SPY->SPX": {
+        "pair": "core_to_guest",
+        "old_ticker": "SPY",
+        "new_ticker": "SPX",
+        "storage_key": "$SPX",
+        "trust_class": "guest_unproven",
+        "wrong_ticker_discarded": true,
+        "wrong_ticker_discard_reason": "ticker_mismatch",
+        "superseded_generation_discarded": true,
+        "cache_restore_marks_stale": true,
+        "cache_not_pending_shell": true,
+        "guest_payload_guard_accepts_matching_ticker": true,
+        "guest_metadata": {
+          "tier": "C",
+          "missing_fields": [],
+          "complete": true,
+          "ticker": "SPX",
+          "timestamp": 1710000000.0,
+          "generation_id": 3,
+          "source": "rest_manual"
+        }
+      },
+      "$VIX->SPY": {
+        "pair": "guest_to_core",
+        "old_ticker": "$VIX",
+        "new_ticker": "SPY",
+        "storage_key": "SPY",
+        "trust_class": "base_money_path",
+        "wrong_ticker_discarded": true,
+        "wrong_ticker_discard_reason": "ticker_mismatch",
+        "superseded_generation_discarded": true,
+        "cache_restore_marks_stale": true,
+        "cache_not_pending_shell": true,
+        "guest_payload_guard_accepts_matching_ticker": true,
+        "guest_metadata": {
+          "tier": "C",
+          "missing_fields": [],
+          "complete": true,
+          "ticker": "SPY",
+          "timestamp": 1710000000.0,
+          "generation_id": 3,
+          "source": "rest_manual"
+        }
+      }
+    },
+    "question_21_answer": "Transport guards are tier-agnostic in static code \u2014 same requestGeneration, ticker mismatch discard, and _renderCoherenceGuards for core and guest. NOT YET PROVEN LIVE for guest warm-switch SLA or guest cold-start without visible degraded state; core has stronger capture parity but UI contract applies to all symbols.",
+    "live_validation_required_guest": [
+      "core\u2192guest and guest\u2192core switch with ED_SWITCH_TIMING under RTH",
+      "guest cold start (no cache) shows pending shell not prior core cards",
+      "SPX/$VIX/$TNX switch if operator uses them in UI"
+    ]
+  },
+  "bugs": {
+    "bugs_proven": [
+      "Hybrid transport with multiple lanes can show LANE STALE \u2014 QUOTE AHEAD while cards still show prior bundle (by coherence rules, not necessarily wrong ticker)",
+      "Ticker switch intentionally uses stale-while-revalidate cache \u2014 can show prior-ticker cards briefly with analytics_stale flag",
+      "Transport ownership guards are tier-agnostic in static code \u2014 core and guest share requestGeneration + ticker mismatch discard"
+    ],
+    "bugs_not_proven": [
+      "SQLite contention impact on UI latency (no log samples in audit bundle)",
+      "Guest ticker warm switch meets <2s payload SLA (guest may cold-start slower \u2014 needs RTH matrix)",
+      "Core ticker cards cannot persist after switch to guest without visible stale marker (needs live core\u2192guest trace)",
+      "Old ticker payload overwriting selected ticker after guards (requires live RTH switch capture)",
+      "LOADING overlay persistence (overlay hidden on switch; operator may mean ANALYTICS\u2026 status \u2014 needs live trace)",
+      "Warm ticker switch SLA breach (<2s) \u2014 no switch diag samples in this audit run"
+    ]
+  },
+  "recommended_fix_branches": [
+    {
+      "branch": "fix/ui-transport-tier-c-dedup",
+      "reason": "Add Tier C payload fingerprint skip before render (mirror L1 SSE) to cut redundant card paints"
+    },
+    {
+      "branch": "fix/ui-transport-sqlite-readiness",
+      "reason": "Surface sqlite_tier1_lock_wait counts on /api/diagnostics/transport-health when contention delays analytics cache"
+    },
+    {
+      "branch": "fix/card-price-conflict-explainability",
+      "reason": "After transport trust proven \u2014 operator-facing reconciliation chips (per PR #10 plan)"
+    },
+    {
+      "branch": "fix/ui-transport-guest-switch-sla",
+      "reason": "Per-tier switch diag + guest cold-start degraded UX when models/DB sparse"
+    }
+  ],
+  "acceptance_standards": {
+    "ui_loading_on_switch_ms": 100,
+    "warm_first_payload_ms": 2000,
+    "warm_full_card_render_ms": 3000,
+    "no_old_ticker_overwrite": true,
+    "payload_must_include_ticker_timestamp": true
+  },
+  "instrumentation_gaps": [
+    "No unified server-side transport audit ring buffer (switch diag is client-posted only)",
+    "Tier C SSE lacks fingerprint dedup before render (L1 SSE has l1_payload_fingerprint)",
+    "No built-in click-to-card-render histogram in production UI without ED_SWITCH_TIMING",
+    "startup_time_to_shell requires browser Performance API capture (not persisted server-side)",
+    "sqlite lock counts require log scrape unless ED_SQLITE_METRICS export added",
+    "No per-tier switch SLA breakdown (core vs guest) in switch diag schema"
+  ],
+  "static_surface_scan": {
+    "checks": {
+      "render_coherence_guards": true,
+      "connect_sse": true,
+      "connect_l1_light_sse": true,
+      "poll_fallback": true,
+      "switch_diag_post": true,
+      "analytics_state_endpoint": true,
+      "stream_endpoint": true,
+      "light_stream_endpoint": true,
+      "fast_quote_endpoint": true,
+      "sqlite_tier1_lock_wait_log": true
+    },
+    "all_pass": true
+  },
+  "live_validation_required": [
+    "Warm ticker switch latency under RTH with ED_SWITCH_TIMING=1",
+    "STALE pill timeline correlation with feed state + lane stale chip",
+    "SQLite lock wait impact on Tier C refresh during concurrent base capture"
+  ]
+}
