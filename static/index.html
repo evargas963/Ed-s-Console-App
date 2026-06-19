@@ -3468,6 +3468,7 @@ function setActiveTicker(rawTicker, rawExpiry) {
     try { window._l1FreshnessPaintByScope = {}; } catch (e) {}
     window._lastRenderedDecisionGen = 0;
     window._tierCCardsPaintedAtGen = 0;
+    _resetTierCCardRenderDedup();
     lastFastGen = 0;
     lastFastTs = 0;
     _quoteLaneRejectLogCount = 0;
@@ -5869,6 +5870,81 @@ function _commitAnalyticalRenderTimestampAndGen(d) {
   }
 }
 
+/** Tier C card-render dedup scope — ticker + UI request generation (tier-agnostic). */
+function _tierCCardRenderScopeKey() {
+  return String(activeTicker || '').toUpperCase() + '|g' + String(requestGeneration);
+}
+
+/** Fingerprint of Tier C fields that drive horizon / ALL / PLAN card paint (transport-only). */
+function _tierCCardRenderFingerprint(d) {
+  d = d || {};
+  const mhapSig = (Array.isArray(d.mhap_rows) ? d.mhap_rows : [])
+    .map(function (row) {
+      if (!row || typeof row !== 'object') return null;
+      return {
+        horizon: row.horizon,
+        call: row.call,
+        confidence: row.confidence,
+        missing: row.missing,
+        row_state: row.row_state,
+      };
+    })
+    .filter(Boolean)
+    .sort(function (a, b) {
+      return String(a.horizon || '').localeCompare(String(b.horizon || ''));
+    });
+  const body = {
+    ticker: String(d.ticker || '').toUpperCase(),
+    selected_exp: d.selected_exp,
+    decision_generation_id: d.decision_generation_id,
+    _server_build_ts: d._server_build_ts,
+    analytics_version: d.analytics_version,
+    analytics_stale: d.analytics_stale,
+    analytics_refresh_in_progress: d.analytics_refresh_in_progress,
+    analytics_pending_shell: d.analytics_pending_shell,
+    analytics_partial_tier_c: d.analytics_partial_tier_c,
+    final_bias: d.final_bias,
+    entry_state: d.entry_state,
+    validation_passed: d.validation_passed,
+    wait_reason: d.wait_reason,
+    call_signal: d.call_signal,
+    entry_display_text: d.entry_display_text,
+    stop_display_text: d.stop_display_text,
+    targets_display: d.targets_display,
+    invalidation: d.invalidation,
+    size_modifier_display: d.size_modifier_display,
+    mhap_rows: mhapSig,
+    horizon_prob_bars: d.horizon_prob_bars,
+    _update_source: d._update_source,
+  };
+  return JSON.stringify(body);
+}
+
+function _resetTierCCardRenderDedup() {
+  window._tierCLastCardRenderFingerprint = null;
+  window._tierCLastCardRenderScope = null;
+}
+
+function _shouldSkipTierCCardRender(d) {
+  const scope = _tierCCardRenderScopeKey();
+  const fp = _tierCCardRenderFingerprint(d);
+  if (window._tierCLastCardRenderScope === scope
+      && window._tierCLastCardRenderFingerprint != null
+      && window._tierCLastCardRenderFingerprint === fp) {
+    return true;
+  }
+  return false;
+}
+
+function _commitTierCCardRenderFingerprint(d) {
+  window._tierCLastCardRenderScope = _tierCCardRenderScopeKey();
+  window._tierCLastCardRenderFingerprint = _tierCCardRenderFingerprint(d);
+}
+
+window._tierCCardRenderFingerprint = _tierCCardRenderFingerprint;
+window._shouldSkipTierCCardRender = _shouldSkipTierCCardRender;
+window._resetTierCCardRenderDedup = _resetTierCCardRenderDedup;
+
 function _commitQuoteLaneTimestamps(d) {
   /** Quote-lane clock only — never use analytical _server_build_ts (always newer than Schwab quote time). */
   const ftsRaw = d && d.fast_server_ts != null ? d.fast_server_ts
@@ -6086,6 +6162,20 @@ function render(d, fullRenderSource) {
       console.warn('[render] REJECTED', guard.reason, { incoming: d.ticker, active: activeTicker });
     }
     return false;
+  }
+  if (_shouldSkipTierCCardRender(d)) {
+    if (typeof DIAG !== 'undefined' && DIAG) {
+      console.log('[render] SKIP duplicate Tier C card fingerprint', {
+        ticker: d.ticker,
+        gen: d.decision_generation_id,
+        source: fullRenderSource || null,
+      });
+    }
+    try {
+      const n = (window._edRtDiag && window._edRtDiag.tierCDedupSkipped) || 0;
+      window._edRtDiag = Object.assign(window._edRtDiag || {}, { tierCDedupSkipped: n + 1 });
+    } catch (e) {}
+    return true;
   }
   if (d._update_source) {
     window._lastPayloadUpdateSource = d._update_source;
@@ -6878,6 +6968,7 @@ function render(d, fullRenderSource) {
   } catch (e) {}
   try { _syncQuoteLaneFromMergedState(d); } catch (eSync) {}
   try { refreshUtilityBar(); } catch (e2) {}
+  _commitTierCCardRenderFingerprint(d);
   return true;
 }
 
