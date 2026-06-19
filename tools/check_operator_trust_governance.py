@@ -113,6 +113,15 @@ def check_stabilization_gate_json() -> list[str]:
         )
     if data.get("stabilization_artifacts_gate_pass") is not True:
         errors.append("operator_trust: stabilization_artifacts_gate_pass must be true on this branch")
+    matrix_commit = str(data.get("pytest_full_matrix_commit") or "")
+    last_commit = str(data.get("last_verified_commit") or "")
+    if matrix_commit and last_commit and matrix_commit != last_commit:
+        errors.append(
+            "operator_trust: last_verified_commit must match pytest_full_matrix_commit"
+        )
+    fail_count = data.get("pytest_full_failure_count")
+    if fail_count is not None and not isinstance(fail_count, int):
+        errors.append("operator_trust: pytest_full_failure_count must be an integer when set")
     ci_pass = data.get("ci_triage_gate_pass")
     next_step = str(data.get("next_allowed_step") or "")
     if ci_pass is False and next_step not in ("await_pr19_ci_results", "resolve_pytest_full_failures"):
@@ -279,7 +288,11 @@ def check_ci_triage_report() -> list[str]:
     md = _read("reports/ci/ci_nonblocking_failure_triage_2026-06-18.md")
     if not md:
         return ["ci triage md: missing"]
-    if "pytest-full failure matrix" not in md.lower() and "pytest_full_failure_matrix" not in md.lower():
+    if (
+        "pytest-full failure matrix" not in md.lower()
+        and "failure matrix (pytest-full)" not in md.lower()
+        and "pytest_full_failure_matrix" not in md.lower()
+    ):
         errors.append("ci triage: must include pytest-full failure matrix")
     for check in CI_CHECKS:
         if check not in md.lower():
@@ -287,7 +300,11 @@ def check_ci_triage_report() -> list[str]:
     if "closure criteria" not in md.lower():
         errors.append("ci triage: must include Closure criteria per check")
     for check in CI_CHECKS:
-        section = re.search(rf"## {re.escape(check)}\s+(.*?)(?=\n## |\Z)", md, re.S | re.I)
+        section = re.search(
+            rf"^## {re.escape(check)}\s*$\n?(.*?)(?=^## |\Z)",
+            md,
+            re.S | re.I | re.M,
+        )
         if not section:
             errors.append(f"ci triage: missing section for {check}")
             continue
@@ -310,6 +327,41 @@ def check_ci_triage_report() -> list[str]:
         matrix = triage_json.get("pytest_full_failure_matrix") or []
         if not matrix:
             errors.append("ci triage json: pytest_full_failure_matrix missing or empty")
+        else:
+            obs_commit = (triage_json.get("github_checks_last_observed") or {}).get("commit")
+            gate_path = _REPO / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json"
+            if gate_path.is_file():
+                gate = json.loads(gate_path.read_text(encoding="utf-8"))
+                gate_commit = gate.get("last_verified_commit")
+                if obs_commit and gate_commit and obs_commit != gate_commit:
+                    errors.append(
+                        "ci triage: github_checks_last_observed.commit must match gate last_verified_commit"
+                    )
+            want = triage_json.get("pytest_full_failure_count")
+            if want is not None:
+                got = sum(int((row or {}).get("number_of_tests") or 0) for row in matrix)
+                if got != want:
+                    errors.append(
+                        f"ci triage json: pytest_full_failure_count {want} != matrix sum {got}"
+                    )
+            blocked = set(
+                (json.loads((_REPO / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json").read_text(encoding="utf-8"))
+                 .get("blocked_branches") or [])
+                if (_REPO / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json").is_file()
+                else []
+            )
+            for row in matrix:
+                branch = str((row or {}).get("owner_branch") or "")
+                if branch in blocked and not (row or {}).get("owner_branch_blocked"):
+                    errors.append(
+                        f"ci triage matrix: {row.get('failure_group')} uses blocked branch {branch!r} "
+                        "without owner_branch_blocked: true"
+                    )
+                if branch in blocked and not (row or {}).get("requires_operator_sign_off_for_merge"):
+                    errors.append(
+                        f"ci triage matrix: {row.get('failure_group')} blocked branch {branch!r} "
+                        "requires requires_operator_sign_off_for_merge: true"
+                    )
     return errors
 
 

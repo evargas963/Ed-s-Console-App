@@ -95,6 +95,7 @@ def test_stabilization_gate_blocks_card_explainability():
     assert "fix/card-price-conflict-explainability" in (gate.get("blocked_branches") or [])
     assert gate.get("next_allowed_step") == "resolve_pytest_full_failures"
     assert gate.get("next_allowed_branch") != "audit/ci-nonblocking-failures-triage"
+    assert gate.get("pytest_full_matrix_run") == "27829108946"
 
 
 def test_gate_no_contradiction_unblocked_while_not_allowed():
@@ -132,7 +133,11 @@ def test_ci_triage_has_classifications_and_closure_criteria():
     for check in ("hardening", "pytest-full", "schwab-csv-first"):
         assert check in triage.lower()
     assert "FIX_NOW" in triage or "FIX_NOW" in triage.upper()
-    assert "pytest-full failure matrix" in triage.lower()
+    assert (
+        "pytest-full failure matrix" in triage.lower()
+        or "failure matrix (pytest-full)" in triage.lower()
+        or "pytest_full_failure_matrix" in triage.lower()
+    )
     assert "closure criteria" in triage.lower()
 
 

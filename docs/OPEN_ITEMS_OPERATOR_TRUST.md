@@ -11,7 +11,7 @@
 - `ci_triage_gate_pass: false` — PR #19 CI fixes landed; awaiting GitHub green.
 - `operator_readiness_gate_pass: false` — CI triage + RTH proof not complete.
 - `card_explainability_allowed: false` — **do not** start `fix/card-price-conflict-explainability`.
-- **Next allowed step:** `resolve_pytest_full_failures` (pytest-full 51-failure matrix in `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md`).
+- **Next allowed step:** `resolve_pytest_full_failures` — pytest-full **46-failure** matrix @ `6e3157c` run `27829108946` in `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md`.
 
 **Planned sequence:** Merge stabilization (PR #18 ✅) → CI triage (PR #19, awaiting GitHub) → operator RTH validation → `fix/card-price-conflict-explainability` (only when `card_explainability_allowed: true`)
 
@@ -72,16 +72,16 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI` |
+| **Status** | `OPEN_BLOCKING` (partial — hardening + schwab-csv-first closed @ `6e3157c`) |
 | **Source PR / report** | `audit/ci-nonblocking-failures-triage`; `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` |
 | **Why it matters** | Only objective-audit trusted — repo health degraded |
 | **Operator risk** | Regressions hide in red checks |
 | **Evidence currently available** | Fixes landed: F401, schwab false-positive scope, pytest CI placeholders |
-| **Evidence still needed** | GitHub PR #19: `hardening`, `pytest-full`, `schwab-csv-first` green (or pytest-full `EXTERNAL_SECRET_REQUIRED_WITH_EVIDENCE`) |
+| **Evidence still needed** | GitHub PR #19: `pytest-full` green OR operator sign-off on all 46 matrix rows (`hardening` + `schwab-csv-first` already green @ `6e3157c`) |
 | **Fix now or harness now** | Fixes in `audit/ci-nonblocking-failures-triage` |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | High until CI green on GitHub |
-| **Do not close until** | All three workflows green on GitHub PR #19 merge to `main` |
+| **Do not close until** | `pytest-full` green on GitHub PR #19 OR operator-signed acceptance of all 46 matrix rows @ `6e3157c` (`hardening` + `schwab-csv-first` met) |
 
 ---
 
@@ -93,12 +93,12 @@
 | **Source PR / report** | CI triage 2026-06-19 — ruff F401 + openpyxl in hardening |
 | **Why it matters** | Institutional locks may drift |
 | **Operator risk** | Silent rule regression |
-| **Evidence currently available** | GitHub PR #19 @ `9bdc864`: hardening pass (runs 27827560146, 27827558762) |
+| **Evidence currently available** | GitHub PR #19 @ `6e3157c`: hardening pass |
 | **Evidence still needed** | None — green on PR branch |
 | **Fix now or harness now** | `hardening.yml` installs `requirements-dev.txt` |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | Medium |
-| **Do not close until** | `hardening` green on GitHub PR #19 merge to `main` (met @ `9bdc864`) |
+| **Do not close until** | `hardening` green on GitHub PR #19 merge to `main` (met @ `6e3157c`) |
 
 ---
 
@@ -108,14 +108,14 @@
 |-------|-------|
 | **Status** | `OPEN_BLOCKING` |
 | **Source PR / report** | `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` — pytest-full failure matrix |
-| **Why it matters** | Full suite catches cone gaps; 51 failures must not stay a blob |
+| **Why it matters** | Full suite catches cone gaps; 46 failures categorized — not Schwab secrets |
 | **Operator risk** | Regressions hide in uncategorized red check |
-| **Evidence currently available** | Matrix: 6 FIX_NOW (PR #18/#19), 45 triage-owned groups with owner branches; GitHub `51 failed, 3731 passed` @ `9bdc864` |
-| **Evidence still needed** | pytest-full green OR operator acceptance of all triage-owned matrix rows |
+| **Evidence currently available** | Matrix @ `6e3157c` run 27829108946: **46 failures** in 18 groups; 5 tests fixed since `9bdc864` (51→46) |
+| **Evidence still needed** | pytest-full green OR operator sign-off on every matrix row with `requires_operator_sign_off_for_merge` |
 | **Fix now or harness now** | `schwab_live_blocked_for()` credential scope; analytics executor fixture; ticker_switch logging |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` (FIX_NOW); triage-owned groups in `ci_nonblocking_failure_triage_2026-06-18.json` |
 | **Blocking level** | High — blocks PR #19 merge |
-| **Do not close until** | pytest-full green on GitHub PR #19 OR every triage-owned row `PRE_EXISTING_AND_ACCEPTED_WITH_EVIDENCE` |
+| **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all 46 matrix rows @ `6e3157c` |
 
 ---
 
@@ -127,7 +127,7 @@
 | **Source PR / report** | CI triage 2026-06-19 — diff-emission false positives |
 | **Why it matters** | Schwab diff-emission gate for market fields |
 | **Operator risk** | New market reads without register row |
-| **Evidence currently available** | GitHub PR #19 @ `9bdc864`: schwab-csv-first pass (runs 27827560058, 27827558742) |
+| **Evidence currently available** | GitHub PR #19 @ `6e3157c`: schwab-csv-first pass |
 | **Evidence still needed** | None — green on PR branch |
 | **Fix now or harness now** | `check_schwab_csv_first.py` precision fix |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
