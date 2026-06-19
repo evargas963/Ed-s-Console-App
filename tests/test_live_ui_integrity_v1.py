@@ -754,3 +754,159 @@ def test_core_and_guest_share_db_contention_surface_attach():
         op = ms["db_contention_operator"]
         assert op["diagnostics_source"] == "/api/diagnostics/sqlite-contention"
         assert "state" in op
+
+
+def test_switch_operator_states_dom_and_hooks():
+    html = _html()
+    assert 'id="dr-switch-state-chip"' in html
+    assert "function deriveSwitchOperatorState(" in html
+    assert "function paintSwitchStateChip(" in html
+    assert "GUEST DATA WARMING" in html
+    assert "wrong_ticker_payload_rejected_count" in html
+    assert "stale_generation_payload_rejected_count" in html
+    paint_body = html.split("function paintSwitchStateChip(")[1].split("function _bumpSwitchDiagRejection")[0]
+    assert "mhap_rows" not in paint_body
+    assert "final_bias" not in paint_body
+
+
+@pytest.mark.parametrize(
+    "pair,expected_kind",
+    [
+        (("SPY", "QQQ"), "core_to_core"),
+        (("SPY", "NVDA"), "core_to_guest"),
+        (("PLTR", "IWM"), "guest_to_core"),
+        (("NVDA", "TSLA"), "guest_to_guest"),
+    ],
+)
+def test_switch_timing_diag_pair_classification(pair, expected_kind):
+    from verification.ui_realtime_transport_audit import (
+        enrich_switch_diag_record,
+        ticker_switch_pair_kind,
+    )
+
+    old_t, new_t = pair
+    assert ticker_switch_pair_kind(old_t, new_t) == expected_kind
+    rec = enrich_switch_diag_record(
+        {
+            "old_ticker": old_t,
+            "new_ticker": new_t,
+            "request_generation": 7,
+            "client_wall_start_ms": 1_710_000_000_000,
+            "first_quote_ms": 120.0,
+            "first_full_state_ms": 800.0,
+            "cards_first_render_ms": 900.0,
+        }
+    )
+    assert rec["pair_kind"] == expected_kind
+    assert rec["is_core"] == (new_t in ("SPY", "QQQ", "IWM"))
+    assert rec["is_guest"] == (new_t not in ("SPY", "QQQ", "IWM"))
+    assert rec["fast_quote_first_seen_ms"] == 120.0
+    assert rec["tier_c_first_seen_ms"] == 800.0
+
+
+def test_special_index_switch_storage_key_in_diag():
+    from verification.ui_realtime_transport_audit import (
+        enrich_switch_diag_record,
+        is_special_index_ticker,
+        ticker_storage_key,
+    )
+
+    assert is_special_index_ticker("SPX") is True
+    assert is_special_index_ticker("$VIX") is True
+    rec = enrich_switch_diag_record({"old_ticker": "SPY", "new_ticker": "$VIX"})
+    assert rec["is_special_index"] is True
+    assert rec["storage_key"] == "$VIX"
+    assert rec["selected_ticker"] == "$VIX"
+
+
+def test_wrong_ticker_and_stale_generation_rejection_counted():
+    from verification.ui_realtime_transport_audit import simulate_switch_guard_matrix
+
+    wrong = simulate_switch_guard_matrix("SPY", "NVDA", stale_payload_ticker="SPY")
+    assert wrong["wrong_ticker_payload_rejected_count"] == 1
+    assert wrong["stale_generation_payload_rejected_count"] == 1
+
+
+def test_no_contention_switch_operator_ok_state():
+    from verification.ui_realtime_transport_audit import derive_switch_operator_state
+
+    op = derive_switch_operator_state(
+        {
+            "is_guest": False,
+            "db_contention_state_at_switch": "OK",
+            "stale_cache_restored": False,
+            "analytics_pending": False,
+            "cards_first_render_ms": 500.0,
+        }
+    )
+    assert op["state"] == "READY"
+    assert op["show"] is False
+
+
+def test_guest_stale_cache_switch_state():
+    from verification.ui_realtime_transport_audit import derive_switch_operator_state
+
+    op = derive_switch_operator_state(
+        {
+            "is_guest": True,
+            "stale_cache_restored": True,
+            "db_contention_state_at_switch": "OK",
+            "analytics_pending": False,
+        }
+    )
+    assert op["state"] == "CACHE STALE — REFRESHING"
+
+
+def test_guest_incomplete_switch_state():
+    from verification.ui_realtime_transport_audit import derive_switch_operator_state
+
+    op = derive_switch_operator_state(
+        {
+            "is_guest": True,
+            "guest_incomplete_reason": "guest_mhap_missing",
+            "db_contention_state_at_switch": "OK",
+        }
+    )
+    assert op["state"] == "GUEST DATA INCOMPLETE"
+
+
+def test_db_degraded_coexists_with_switch_pending():
+    from verification.ui_realtime_transport_audit import derive_switch_operator_state
+
+    op = derive_switch_operator_state(
+        {
+            "is_guest": True,
+            "db_contention_state_at_switch": "DB_DEGRADED",
+            "analytics_pending": True,
+            "analytics_light_first_seen_ms": None,
+        }
+    )
+    assert op["state"] == "DB DEGRADED — CARDS MAY LAG"
+
+
+def test_switch_operator_state_does_not_imply_model_wrong():
+    from verification.ui_realtime_transport_audit import derive_switch_operator_state
+
+    op = derive_switch_operator_state(
+        {
+            "is_guest": False,
+            "analytics_pending": True,
+            "analytics_light_first_seen_ms": 100.0,
+        }
+    )
+    msg = (op.get("operator_message") or "").lower()
+    assert "not a model verdict" in msg
+    assert op["state"] == "ANALYTICS PENDING"
+
+
+def test_guest_switch_sla_report_classifications():
+    from verification.ui_realtime_transport_audit import (
+        GUEST_SWITCH_SLA_CLASSIFICATIONS,
+        build_guest_switch_sla_report,
+    )
+
+    report = build_guest_switch_sla_report(audit_date="2026-06-18")
+    for tag in report.get("classifications", []):
+        assert tag in GUEST_SWITCH_SLA_CLASSIFICATIONS
+    assert "GUEST_COLD_START_UX_GAP_FIXED" in report["classifications"]
+    assert "LIVE_GUEST_SLA_NOT_PROVEN" in report["classifications"]

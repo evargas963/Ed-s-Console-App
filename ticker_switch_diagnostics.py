@@ -17,6 +17,12 @@ _lock = threading.Lock()
 def record_switch_event(payload: dict[str, Any]) -> None:
     """Append one completed (or partial) switch record. Server adds receipt timestamp."""
     row = dict(payload) if isinstance(payload, dict) else {}
+    try:
+        from verification.ui_realtime_transport_audit import enrich_switch_diag_record
+
+        row = enrich_switch_diag_record(row)
+    except Exception:
+        pass
     row["server_received_ts"] = time.time()
     with _lock:
         _buffer.appendleft(row)
