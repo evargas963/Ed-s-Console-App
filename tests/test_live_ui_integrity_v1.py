@@ -350,8 +350,10 @@ from verification.ui_realtime_transport_audit import (
     parse_sqlite_contention_from_text,
     render_coherence_guard,
     should_discard_inflight_response,
+    should_skip_tier_c_duplicate_render,
     simulate_switch_guard_matrix,
     snapshot_cache_restore_marks_stale,
+    tier_c_card_render_fingerprint,
     ticker_switch_pair_kind,
     tier_c_payload_fingerprint,
 )
@@ -570,3 +572,136 @@ def test_set_active_ticker_does_not_branch_on_base_tier_in_html():
     body = html.split("function setActiveTicker(")[1].split("function _scheduleServerAnalyticsWarm")[0]
     assert "is_base_money_path" not in body
     assert "is_guest_ticker" not in body
+
+
+def _sample_tier_c_payload(**overrides):
+    base = {
+        "ticker": "SPY",
+        "decision_generation_id": 5,
+        "_server_build_ts": 1_710_000_000.0,
+        "analytics_version": 12,
+        "analytics_stale": False,
+        "analytics_refresh_in_progress": False,
+        "analytics_pending_shell": False,
+        "final_bias": "LONG",
+        "entry_state": "watching",
+        "validation_passed": False,
+        "wait_reason": "tape stack disagrees",
+        "mhap_rows": [
+            {"horizon": "1c", "call": "LONG", "confidence": 0.71},
+            {"horizon": "5c", "call": "LONG", "confidence": 0.65},
+        ],
+        "horizon_prob_bars": {"1m": {"up": 0.2, "down": 0.6, "flat": 0.2}},
+        "_update_source": "sse",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_duplicate_tier_c_payload_skips_redundant_render():
+    payload = _sample_tier_c_payload()
+    fp = tier_c_card_render_fingerprint(payload)
+    skip, reason = should_skip_tier_c_duplicate_render(
+        payload,
+        active_ticker="SPY",
+        request_generation=3,
+        last_fingerprint=fp,
+        last_scope=("SPY", 3),
+    )
+    assert skip is True
+    assert reason == "duplicate_fingerprint"
+
+
+def test_changed_decision_generation_id_triggers_render():
+    payload = _sample_tier_c_payload(decision_generation_id=6)
+    prev = tier_c_card_render_fingerprint(_sample_tier_c_payload(decision_generation_id=5))
+    skip, _ = should_skip_tier_c_duplicate_render(
+        payload,
+        active_ticker="SPY",
+        request_generation=3,
+        last_fingerprint=prev,
+        last_scope=("SPY", 3),
+    )
+    assert skip is False
+
+
+def test_changed_ticker_scope_resets_dedup():
+    payload = _sample_tier_c_payload(ticker="NVDA")
+    fp = tier_c_card_render_fingerprint(payload)
+    skip, reason = should_skip_tier_c_duplicate_render(
+        payload,
+        active_ticker="NVDA",
+        request_generation=4,
+        last_fingerprint=fp,
+        last_scope=("SPY", 3),
+    )
+    assert skip is False
+    assert reason == "scope_changed"
+
+
+def test_changed_stale_flag_triggers_render():
+    payload = _sample_tier_c_payload(analytics_stale=True)
+    prev = tier_c_card_render_fingerprint(_sample_tier_c_payload(analytics_stale=False))
+    skip, _ = should_skip_tier_c_duplicate_render(
+        payload,
+        active_ticker="SPY",
+        request_generation=3,
+        last_fingerprint=prev,
+        last_scope=("SPY", 3),
+    )
+    assert skip is False
+
+
+def test_changed_mhap_direction_triggers_render():
+    payload = _sample_tier_c_payload(
+        mhap_rows=[{"horizon": "1c", "call": "SHORT", "confidence": 0.71}],
+    )
+    prev = tier_c_card_render_fingerprint(_sample_tier_c_payload())
+    skip, _ = should_skip_tier_c_duplicate_render(
+        payload,
+        active_ticker="SPY",
+        request_generation=3,
+        last_fingerprint=prev,
+        last_scope=("SPY", 3),
+    )
+    assert skip is False
+
+
+def test_wrong_ticker_rejected_before_dedup_helper():
+    payload = _sample_tier_c_payload(ticker="QQQ")
+    guard = render_coherence_guard(payload, active_ticker="SPY")
+    assert guard.ok is False
+    skip, reason = should_skip_tier_c_duplicate_render(
+        payload,
+        active_ticker="SPY",
+        request_generation=3,
+        last_fingerprint=tier_c_card_render_fingerprint(payload),
+        last_scope=("SPY", 3),
+    )
+    assert skip is False
+    assert reason == "wrong_ticker"
+
+
+@pytest.mark.parametrize("ticker", ["SPY", "NVDA", "PLTR", "VIX"])
+def test_core_and_guest_share_tier_c_dedup_rules(ticker):
+    payload = _sample_tier_c_payload(ticker=ticker)
+    fp = tier_c_card_render_fingerprint(payload)
+    skip, _ = should_skip_tier_c_duplicate_render(
+        payload,
+        active_ticker=ticker,
+        request_generation=1,
+        last_fingerprint=fp,
+        last_scope=(ticker.upper(), 1),
+    )
+    assert skip is True
+
+
+def test_index_html_tier_c_dedup_hooks_present():
+    html = _html()
+    assert "function _tierCCardRenderFingerprint(" in html
+    assert "function _shouldSkipTierCCardRender(" in html
+    assert "function _resetTierCCardRenderDedup(" in html
+    assert "function _commitTierCCardRenderFingerprint(" in html
+    assert "_shouldSkipTierCCardRender(d)" in html
+    assert "_resetTierCCardRenderDedup()" in html.split("function setActiveTicker(")[1]
+    assert "window._tierCCardRenderFingerprint = _tierCCardRenderFingerprint" in html

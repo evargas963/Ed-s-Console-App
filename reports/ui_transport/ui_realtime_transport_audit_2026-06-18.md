@@ -190,3 +190,15 @@ Static: guards are tier-agnostic (no is_base_money_path in render guards). Guest
 - core→guest and guest→core switch with ED_SWITCH_TIMING under RTH
 - guest cold start (no cache) shows pending shell not prior core cards
 - SPX/$VIX/$TNX switch if operator uses them in UI
+
+## Follow-up: Tier C duplicate render skip (fix/ui-transport-tier-c-dedup)
+
+| Item | Status |
+|------|--------|
+| Tier C duplicate render skip gap | **Fixed** |
+| Scope | Render dedup only — no card meaning / fusion / model changes |
+| Mechanism | `_tierCCardRenderFingerprint` + `_shouldSkipTierCCardRender` before full Tier C `render()` DOM path |
+| Reset on switch | `_resetTierCCardRenderDedup()` on `setActiveTicker` / `requestGeneration++` |
+| Tier coverage | Core and guest tickers share identical dedup rules |
+
+**Remaining risks:** Live RTH proof that dedup reduces perceived slowness; SQLite contention; guest switch SLA; card explainability layer not yet built.

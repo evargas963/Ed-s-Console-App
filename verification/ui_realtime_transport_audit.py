@@ -358,23 +358,86 @@ def compute_feed_state(
     }
 
 
+def tier_c_card_render_fingerprint(payload: dict[str, Any]) -> str:
+    """Stable fingerprint of Tier C fields that drive horizon/ALL/PLAN card paint."""
+    mhap_sig: list[dict[str, Any]] = []
+    for row in payload.get("mhap_rows") or []:
+        if not isinstance(row, dict):
+            continue
+        mhap_sig.append(
+            {
+                "horizon": row.get("horizon"),
+                "call": row.get("call"),
+                "confidence": row.get("confidence"),
+                "missing": row.get("missing"),
+                "row_state": row.get("row_state"),
+            }
+        )
+    mhap_sig.sort(key=lambda r: str(r.get("horizon") or ""))
+
+    body = {
+        "ticker": (payload.get("ticker") or "").upper(),
+        "selected_exp": payload.get("selected_exp"),
+        "decision_generation_id": payload.get("decision_generation_id"),
+        "_server_build_ts": payload.get("_server_build_ts"),
+        "analytics_version": payload.get("analytics_version"),
+        "analytics_stale": payload.get("analytics_stale"),
+        "analytics_refresh_in_progress": payload.get("analytics_refresh_in_progress"),
+        "analytics_pending_shell": payload.get("analytics_pending_shell"),
+        "analytics_partial_tier_c": payload.get("analytics_partial_tier_c"),
+        "final_bias": payload.get("final_bias"),
+        "entry_state": payload.get("entry_state"),
+        "validation_passed": payload.get("validation_passed"),
+        "wait_reason": payload.get("wait_reason"),
+        "call_signal": payload.get("call_signal"),
+        "entry_display_text": payload.get("entry_display_text"),
+        "stop_display_text": payload.get("stop_display_text"),
+        "targets_display": payload.get("targets_display"),
+        "invalidation": payload.get("invalidation"),
+        "size_modifier_display": payload.get("size_modifier_display"),
+        "mhap_rows": mhap_sig,
+        "horizon_prob_bars": payload.get("horizon_prob_bars"),
+        "_update_source": payload.get("_update_source"),
+    }
+    return json.dumps(body, sort_keys=True, default=str)
+
+
 def tier_c_payload_fingerprint(payload: dict[str, Any]) -> str:
-    """Stable identity for duplicate Tier C payload detection."""
-    keys = (
-        payload.get("ticker"),
-        payload.get("decision_generation_id"),
-        payload.get("_server_build_ts"),
-        payload.get("analytics_version"),
-        payload.get("_update_source"),
-    )
-    return json.dumps(keys, sort_keys=True, default=str)
+    """Alias — card-render fingerprint supersedes minimal transport fingerprint."""
+    return tier_c_card_render_fingerprint(payload)
+
+
+def should_skip_tier_c_duplicate_render(
+    payload: dict[str, Any],
+    *,
+    active_ticker: str,
+    request_generation: int,
+    last_fingerprint: Optional[str],
+    last_scope: Optional[tuple[str, int]] = None,
+) -> tuple[bool, str]:
+    """
+    True when card-driving Tier C payload is unchanged for current ticker scope.
+
+    Scope = (active_ticker, request_generation). Wrong-ticker payloads must be
+    rejected by render_coherence_guard before calling this helper.
+    """
+    ticker = (payload.get("ticker") or "").upper()
+    if ticker and ticker != (active_ticker or "").upper():
+        return False, "wrong_ticker"
+    scope = ((active_ticker or "").upper(), int(request_generation))
+    if last_scope is not None and last_scope != scope:
+        return False, "scope_changed"
+    fp = tier_c_card_render_fingerprint(payload)
+    if last_fingerprint is not None and fp == last_fingerprint:
+        return True, "duplicate_fingerprint"
+    return False, "render_required"
 
 
 def is_duplicate_tier_c_payload(
     payload: dict[str, Any],
     last_fingerprint: Optional[str],
 ) -> bool:
-    fp = tier_c_payload_fingerprint(payload)
+    fp = tier_c_card_render_fingerprint(payload)
     return last_fingerprint is not None and fp == last_fingerprint
 
 
@@ -689,7 +752,6 @@ def static_transport_mechanisms() -> dict[str, Any]:
         ],
         "instrumentation_gaps": [
             "No unified server-side transport audit ring buffer (switch diag is client-posted only)",
-            "Tier C SSE lacks fingerprint dedup before render (L1 SSE has l1_payload_fingerprint)",
             "No built-in click-to-card-render histogram in production UI without ED_SWITCH_TIMING",
             "startup_time_to_shell requires browser Performance API capture (not persisted server-side)",
             "sqlite lock counts require log scrape unless ED_SQLITE_METRICS export added",
@@ -811,7 +873,9 @@ def answer_audit_questions(
             "_update_source, decision_generation_id when Tier C complete"
         ),
         "14_duplicate_payload_renders": (
-            "L1 SSE has fingerprint dedup; Tier C SSE/REST lack render-skip dedup — duplicate identical payloads may re-render"
+            "Tier C card-render fingerprint dedup skips redundant full render when "
+            "card-driving fields unchanged (fix/ui-transport-tier-c-dedup). L1 SSE retains "
+            "separate l1_payload_fingerprint identity check."
         ),
         "15_click_to_card_delay_measurable": (
             "Yes with ED_SWITCH_TIMING=1 and __edSwitchDiag; not on by default. "
@@ -887,7 +951,8 @@ def recommended_fix_branches() -> list[dict[str, str]]:
     return [
         {
             "branch": "fix/ui-transport-tier-c-dedup",
-            "reason": "Add Tier C payload fingerprint skip before render (mirror L1 SSE) to cut redundant card paints",
+            "reason": "LANDED — Tier C card-render fingerprint skip before full render (mirror L1 SSE)",
+            "status": "fixed",
         },
         {
             "branch": "fix/ui-transport-sqlite-readiness",
