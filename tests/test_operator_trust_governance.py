@@ -95,7 +95,8 @@ def test_stabilization_gate_blocks_card_explainability():
     assert "fix/card-price-conflict-explainability" in (gate.get("blocked_branches") or [])
     assert gate.get("next_allowed_step") == "resolve_pytest_full_failures"
     assert gate.get("next_allowed_branch") != "audit/ci-nonblocking-failures-triage"
-    assert gate.get("pytest_full_matrix_run") == "27829108946"
+    assert gate.get("pytest_full_matrix_run") == "27832239335"
+    assert gate.get("last_verified_commit") == "2007768"
 
 
 def test_gate_no_contradiction_unblocked_while_not_allowed():

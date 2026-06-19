@@ -55,24 +55,18 @@ def _equal_mh_pool_weights(monkeypatch):
 
 @pytest.fixture(scope="session", autouse=True)
 def _ensure_console_db_snapshots_1m_normalized_schema():
-    """Hermetic pytest/CI: governance live-drift reads ``db_training_fingerprint`` on ``DB_PATH``.
+    """Hermetic pytest/CI: governance live-drift reads ``db_training_fingerprint`` on ``DB_PATH``."""
+    from db import ensure_console_db_training_schema
 
-    CI may ship an empty console DB file (or none). Without ``snapshots_1m_normalized``,
-    governance panel tests raise ``OperationalError`` instead of exercising governed payloads.
-    """
-    import sqlite3
-    from pathlib import Path
+    ensure_console_db_training_schema()
 
-    from db import DB_PATH, EdDB
 
-    path = Path(DB_PATH)
-    if path.is_file():
-        with sqlite3.connect(str(path)) as conn:
-            if conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='snapshots_1m_normalized'"
-            ).fetchone():
-                return
-    EdDB(path)
+@pytest.fixture(autouse=True)
+def _ensure_console_db_schema_before_each_test():
+    """Playwright / early tests may touch ``data/ed_console.db`` without normalized schema."""
+    from db import ensure_console_db_training_schema
+
+    ensure_console_db_training_schema()
 
 
 @pytest.fixture(scope="session", autouse=True)

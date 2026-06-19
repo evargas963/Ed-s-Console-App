@@ -8,20 +8,32 @@
   "ci_triage_gate_pass": false,
   "next_allowed_step": "resolve_pytest_full_failures",
   "github_checks_last_observed": {
-    "commit": "6e3157c",
+    "commit": "2007768",
     "objective-audit": "pass",
     "hardening": "pass",
     "schwab-csv-first": "pass",
     "pytest-full": "fail",
-    "pytest_full_summary": "46 failed, 3736 passed, 6 skipped",
-    "pytest_full_run": "27829108946"
+    "pytest_full_summary": "46 failed, 3737 passed, 6 skipped",
+    "pytest_full_run": "27832239335"
   },
   "pytest_full_matrix_history": [
     {
       "commit": "9bdc864",
       "pytest_full_run": "27827558746",
       "failed_count": 51,
-      "note": "Superseded by 6e3157c matrix — retained for audit trail only"
+      "note": "Superseded — audit trail only"
+    },
+    {
+      "commit": "6e3157c",
+      "pytest_full_run": "27829108946",
+      "failed_count": 46,
+      "note": "Matrix pin commit — superseded by 2007768 CI observation"
+    },
+    {
+      "commit": "2007768",
+      "pytest_full_run": "27832239335",
+      "failed_count": 46,
+      "note": "conftest-only schema fixture — governance bucket still open on GitHub; FIX_NOW bootstrap in flight"
     }
   ],
   "pytest_full_fixed_at_6e3157c": [
@@ -42,7 +54,7 @@
     },
     "pytest-full": {
       "classification": "OPEN_BLOCKING",
-      "root_cause": "46 remaining failures @ 6e3157c — test/fixture/contract; not Schwab secrets",
+      "root_cause": "46 failures @ 2007768 CI — test/fixture/contract; not Schwab secrets (+1 passed vs 6e3157c, failure count unchanged)",
       "closure_criteria": "pytest-full green OR every row in pytest_full_failure_matrix accepted with operator sign-off"
     }
   },
@@ -80,17 +92,19 @@
     {
       "failure_group": "MISSING_SNAPSHOTS_1M_NORMALIZED_FIXTURE",
       "number_of_tests": 11,
+      "bucket_status": "OPEN",
       "representative_tests": [
         "tests/test_governance_dashboard.py::test_visibility_panel_reads_governed_fields",
         "tests/test_live_drift_monitoring.py::test_governance_panel_includes_live_drift"
       ],
       "failure_message": "sqlite3.OperationalError: no such table: snapshots_1m_normalized",
-      "root_cause": "Tests assume DB schema without pytest fixture creating snapshots_1m_normalized",
+      "root_cause": "Governance/objective-audit paths read DB before schema bootstrap; 2007768 conftest-only fix insufficient on GitHub (12 governance tests still red @ 27832239335)",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
-      "fix_now_or_defer": "triage_owned",
+      "fix_now_or_defer": "fix_now",
+      "fix_classification": "FIX_NOW",
       "owner_branch": "fix/ci-governance-db-fixture",
       "owner_branch_blocked": false,
-      "closure_criteria": "Governance/drift tests use shared schema fixture; table exists before panel reads"
+      "closure_criteria": "GitHub pytest-full: governance cone green; db_training_fingerprint fail-closed; ensure_console_db_training_schema before objective-audit"
     },
     {
       "failure_group": "PRODUCTION_DB_PRED_1C_ABSENT_IN_CI",

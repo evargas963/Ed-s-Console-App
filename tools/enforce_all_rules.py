@@ -467,6 +467,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.objective_audit:
         if str(REPO) not in sys.path:
             sys.path.insert(0, str(REPO))
+        from db import ensure_console_db_training_schema
+
+        ensure_console_db_training_schema()
         from tools.check_fix_everything_we_touch import _git_staged_paths, run_objective_code_audit
 
         staged = _git_staged_paths()
