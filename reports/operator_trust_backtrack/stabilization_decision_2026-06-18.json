@@ -1,0 +1,51 @@
+{
+  "schema_version": 2,
+  "audit_date": "2026-06-18",
+  "stabilization_artifacts_gate_pass": true,
+  "operator_readiness_gate_pass": false,
+  "card_explainability_allowed": false,
+  "card_explainability_block_reason": [
+    "CI non-blocking failures require triage",
+    "RTH validation not executed",
+    "LIVE_GUEST_SLA_NOT_PROVEN",
+    "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN",
+    "BASE_CAPTURE_NORMALIZATION_RTH_PROOF_NOT_COMPLETE",
+    "RTH_VALIDATION_NOT_EXECUTED_AFTER_TRANSPORT_FIXES",
+    "HARDENING_CI_FAILING_NON_BLOCKING",
+    "PYTEST_FULL_CI_FAILING_NON_BLOCKING",
+    "SCHWAB_CSV_FIRST_FAILING_OR_MIXED_NON_BLOCKING"
+  ],
+  "blocking_items": [
+    "LIVE_GUEST_SLA_NOT_PROVEN",
+    "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN",
+    "BASE_CAPTURE_NORMALIZATION_RTH_PROOF_NOT_COMPLETE",
+    "RTH_VALIDATION_NOT_EXECUTED_AFTER_TRANSPORT_FIXES",
+    "HARDENING_CI_FAILING_NON_BLOCKING",
+    "PYTEST_FULL_CI_FAILING_NON_BLOCKING",
+    "SCHWAB_CSV_FIRST_FAILING_OR_MIXED_NON_BLOCKING"
+  ],
+  "fixed_in_stabilization_branch": [
+    "Runnable RTH validation harnesses (dry-run + live)",
+    "OPEN_ITEMS_OPERATOR_TRUST closure matrix",
+    "Mechanical check_operator_trust_governance.py",
+    "PR completion audit",
+    "CI triage report",
+    "Admin bypass register",
+    "Runtime evidence env contract"
+  ],
+  "blocked_by_rth_with_harness": [
+    "LIVE_GUEST_SLA_NOT_PROVEN",
+    "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN",
+    "BASE_CAPTURE_NORMALIZATION_RTH_PROOF_NOT_COMPLETE"
+  ],
+  "ci_still_red": [
+    "hardening",
+    "pytest-full",
+    "schwab-csv-first"
+  ],
+  "next_allowed_branch": "audit/ci-nonblocking-failures-triage",
+  "blocked_branches": [
+    "fix/card-price-conflict-explainability"
+  ],
+  "operator_note": "Stabilization artifacts exist and mechanical checks are installed. Card explainability is NOT allowed yet. RTH validation remains required after CI triage."
+}

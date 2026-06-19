@@ -35,4 +35,12 @@ Static transport guards remain tier-agnostic for core and guest tickers. This br
 - SPX/$VIX/$TNX switch if operator uses them in UI
 - correlate switch diag timings with `/api/diagnostics/ticker-switch` buffer
 
-**Recommended next branch:** `fix/card-price-conflict-explainability`
+**Recommended next branch:** `fix/card-price-conflict-explainability` (blocked until stabilization gate PASS)
+
+## Stabilization follow-up (PR #16 completion)
+
+`LIVE_GUEST_SLA_NOT_PROVEN` is **not closed** by PR #16. Status: `NEEDS_RTH_VALIDATION_WITH_HARNESS`.
+
+**Owner branch:** `stabilize/operator-trust-backtrack` — adds `tools/run_rth_guest_switch_validation.py` and runbook.
+
+**Closure criteria:** RTH run produces PASS with `ED_CALIBRATION_LOG=1`. Runnable validation harness: `run_rth_guest_switch_validation`.

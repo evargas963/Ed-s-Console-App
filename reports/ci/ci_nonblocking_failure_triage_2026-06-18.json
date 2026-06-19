@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "audit_date": "2026-06-18",
+  "checks": {
+    "hardening": {
+      "classification": "PRE_EXISTING_BUT_BLOCKING",
+      "non_blocking": true
+    },
+    "pytest-full": {
+      "classification": "EXTERNAL_SECRET_REQUIRED",
+      "non_blocking": true
+    },
+    "schwab-csv-first": {
+      "classification": "FIX_NOW",
+      "non_blocking": true
+    }
+  },
+  "merge_gate": "objective-audit",
+  "recommended_next_branch": "audit/ci-nonblocking-failures-triage",
+  "closure_criteria": "Each check green or ACCEPTED_WITH_EVIDENCE with documented reason"
+}

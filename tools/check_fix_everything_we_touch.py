@@ -3165,6 +3165,7 @@ _REPO_WIDE_STATIC_CHECK_FUNCS: tuple[str, ...] = (
     "check_governance_generated_artifacts_clean",
     "check_ci_tooling_dependencies",
     "check_check_stack_rightsizing",
+    "check_operator_trust_governance",
 )
 
 # Pre-commit staged / commit-msg locks (cannot run repo-wide without staged paths).
@@ -3423,6 +3424,13 @@ def check_ci_tooling_dependencies() -> list[str]:
 def check_check_stack_rightsizing() -> list[str]:
     """Phase 3I — check stack inventory, tier policy, runtime budgets."""
     from tools.check_check_stack_rightsizing import check_check_stack_rightsizing as _check
+
+    return _check()
+
+
+def check_operator_trust_governance() -> list[str]:
+    """Operator-trust stabilization artifacts, harnesses, passive-risk closure matrix."""
+    from tools.check_operator_trust_governance import check_operator_trust_governance as _check
 
     return _check()
 

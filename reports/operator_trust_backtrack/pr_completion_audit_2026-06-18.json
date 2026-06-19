@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "classification": "PR Completion Audit",
+  "audit_date": "2026-06-18",
+  "branch": "stabilize/operator-trust-backtrack",
+  "prs_reviewed": [
+    11,
+    12,
+    13,
+    14,
+    15,
+    16
+  ],
+  "rows": [
+    {
+      "pr": 11,
+      "title": "UI real-time transport audit",
+      "claimed_completion": "Static guard map, core/guest switch contract",
+      "actual_completion_status": "AUDIT_ONLY",
+      "open_risks_left_behind": [
+        "LIVE_RTH_VALIDATION_NOT_COMPLETE"
+      ],
+      "missing_proof": "Live switch SLA, STALE/LOADING correlation",
+      "missing_harness": "RTH guest switch + master runbook",
+      "required_correction": "Stabilization harness (this branch)",
+      "status_after_branch": "NEEDS_RTH_VALIDATION_WITH_HARNESS"
+    },
+    {
+      "pr": 12,
+      "title": "Tier C duplicate render dedup",
+      "claimed_completion": "Duplicate Tier C fingerprint skip",
+      "actual_completion_status": "CLOSED_WITH_EVIDENCE",
+      "open_risks_left_behind": [],
+      "missing_proof": null,
+      "missing_harness": null,
+      "required_correction": null,
+      "status_after_branch": "CLOSED_WITH_EVIDENCE"
+    },
+    {
+      "pr": 13,
+      "title": "Card Trust Contract",
+      "claimed_completion": "Governing doc for card meaning",
+      "actual_completion_status": "DOCS_ONLY",
+      "open_risks_left_behind": [
+        "CARD_EXPLAINABILITY_NOT_IMPLEMENTED"
+      ],
+      "missing_proof": "UI behavior unchanged",
+      "missing_harness": "Card conflict explainability branch blocked",
+      "required_correction": "fix/card-price-conflict-explainability after stabilization",
+      "status_after_branch": "COMPLETION_BRANCH_REQUIRED"
+    },
+    {
+      "pr": 14,
+      "title": "SQLite contention impact audit",
+      "claimed_completion": "Instrumentation + classifications",
+      "actual_completion_status": "AUDIT_AND_INSTRUMENTATION",
+      "open_risks_left_behind": [
+        "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN"
+      ],
+      "missing_proof": "Lock-wait vs STALE/LOADING causality",
+      "missing_harness": "run_rth_db_contention_validation.py",
+      "required_correction": "Stabilization harness (this branch)",
+      "status_after_branch": "NEEDS_RTH_VALIDATION_WITH_HARNESS"
+    },
+    {
+      "pr": 15,
+      "title": "DB contention operator surface",
+      "claimed_completion": "DB WAITING/DEGRADED/LOCKED visibility",
+      "actual_completion_status": "SURFACE_ONLY",
+      "open_risks_left_behind": [
+        "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN"
+      ],
+      "missing_proof": "Visibility \u2260 root cause proven",
+      "missing_harness": "DB RTH correlation harness",
+      "required_correction": "Do not label DB fixed \u2014 correlation harness required",
+      "status_after_branch": "NEEDS_RTH_VALIDATION_WITH_HARNESS"
+    },
+    {
+      "pr": 16,
+      "title": "Guest switch SLA diagnostics",
+      "claimed_completion": "Per-tier switch timing + switch-state chip",
+      "actual_completion_status": "INCOMPLETE",
+      "open_risks_left_behind": [
+        "LIVE_GUEST_SLA_NOT_PROVEN"
+      ],
+      "missing_proof": "Live RTH guest switch SLA",
+      "missing_harness": "run_rth_guest_switch_validation.py (added in stabilization)",
+      "required_correction": "PR merged without runnable closure harness \u2014 completion via stabilization branch",
+      "status_after_branch": "NEEDS_RTH_VALIDATION_WITH_HARNESS",
+      "ci_failures_at_merge": [
+        "hardening",
+        "pytest-full",
+        "schwab-csv-first"
+      ],
+      "admin_bypass": "objective-audit-only gate; other checks red"
+    }
+  ],
+  "summary": "PRs #11\u2013#16 improved audits, diagnostics, and surfaces but left proof gaps. PR #16 was incomplete: LIVE_GUEST_SLA_NOT_PROVEN had no runnable harness at merge.",
+  "blocked_branches_until_gate_passes": [
+    "fix/card-price-conflict-explainability"
+  ],
+  "allowed_next_after_stabilization": [
+    "RTH validation run (operator host)",
+    "fix/ci-nonblocking-failures-triage",
+    "fix/card-price-conflict-explainability"
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "harness": "guest_switch_sla",
+  "audit_date": "2026-06-19",
+  "classification": "RTH_VALIDATION_NOT_RUN",
+  "pass": false,
+  "dry_run": true,
+  "runtime_env": {
+    "git_commit": "b621075f567f043712571733bacf17e954701d42",
+    "branch": "",
+    "captured_at_utc": "2026-06-19T06:19:19.395065+00:00",
+    "market_session_mode": "unknown",
+    "ED_CALIBRATION_LOG": "",
+    "ED_CALIBRATION_LOG_enabled": false,
+    "schwab_mode": "unknown",
+    "db_path": "C:\\Users\\evarg\\Documents\\Trading\\EdWebConsole\\data\\ed_console.db",
+    "server_pid": 57296,
+    "ticker_universe_note": "operator-selected during RTH matrix"
+  },
+  "operator_note": "Dry run only \u2014 RTH validation not executed. Run during RTH with server live and browser switch matrix.",
+  "calibration_evidence_gap": "EVIDENCE_GAP_ED_CALIBRATION_LOG_DISABLED",
+  "switch_matrix_required": [
+    [
+      "SPY",
+      "QQQ"
+    ],
+    [
+      "QQQ",
+      "IWM"
+    ],
+    [
+      "SPY",
+      "NVDA"
+    ],
+    [
+      "NVDA",
+      "IWM"
+    ],
+    [
+      "PLTR",
+      "AAPL"
+    ],
+    [
+      "SPY",
+      "SPX"
+    ],
+    [
+      "SPY",
+      "$VIX"
+    ]
+  ],
+  "endpoints": {
+    "ticker_switch": "/api/diagnostics/ticker-switch",
+    "sqlite_contention": "/api/diagnostics/sqlite-contention"
+  },
+  "pass_fail_rules": [
+    "wrong ticker accepted: FAIL",
+    "stale generation accepted: FAIL",
+    "cache restored as fresh: FAIL",
+    "guest incomplete without visible reason: FAIL",
+    "cards_first_render_ms missing after timeout: FAIL",
+    "DB degraded present but not surfaced: FAIL",
+    "final_switch_state never READY or explicit degraded: FAIL"
+  ]
+}

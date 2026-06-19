@@ -1,0 +1,49 @@
+{
+  "gate_name": "operator_trust_stabilization",
+  "schema_version": 2,
+  "stabilization_artifacts_gate_pass": true,
+  "operator_readiness_gate_pass": false,
+  "card_explainability_allowed": false,
+  "card_explainability_block_reason": [
+    "CI non-blocking failures require triage",
+    "RTH validation not executed",
+    "LIVE_GUEST_SLA_NOT_PROVEN",
+    "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN",
+    "BASE_CAPTURE_NORMALIZATION_RTH_PROOF_NOT_COMPLETE",
+    "RTH_VALIDATION_NOT_EXECUTED_AFTER_TRANSPORT_FIXES",
+    "HARDENING_CI_FAILING_NON_BLOCKING",
+    "PYTEST_FULL_CI_FAILING_NON_BLOCKING",
+    "SCHWAB_CSV_FIRST_FAILING_OR_MIXED_NON_BLOCKING"
+  ],
+  "next_allowed_branch": "audit/ci-nonblocking-failures-triage",
+  "blocked_branches": [
+    "fix/card-price-conflict-explainability"
+  ],
+  "last_verified_commit": "230e8ae",
+  "required_policy_docs": [
+    "docs/OPEN_ITEMS_OPERATOR_TRUST.md",
+    "docs/PR_REVIEW_STANDARD.md",
+    "docs/ADMIN_BYPASS_REGISTER.md",
+    "docs/RUNTIME_EVIDENCE_ENV_CONTRACT.md",
+    "docs/NO_SILENT_DEGRADATION_POLICY.md"
+  ],
+  "required_harnesses": [
+    "tools/run_rth_guest_switch_validation.py",
+    "tools/run_rth_db_contention_validation.py",
+    "tools/run_rth_base_capture_normalization_validation.py",
+    "reports/ui_transport/rth_guest_switch_validation_runbook_2026-06-18.md",
+    "reports/db_contention/rth_db_contention_validation_runbook_2026-06-18.md",
+    "reports/base_capture/rth_base_capture_normalization_runbook_2026-06-18.md"
+  ],
+  "required_artifacts": [
+    "reports/rth_validation/RTH_OPERATOR_TRUST_VALIDATION_RUNBOOK.md",
+    "reports/operator_trust_backtrack/pr_completion_audit_2026-06-18.json",
+    "reports/operator_trust_backtrack/stabilization_decision_2026-06-18.md",
+    "reports/ci/ci_nonblocking_failure_triage_2026-06-18.json",
+    ".github/pull_request_template.md"
+  ],
+  "required_triage_reports": [
+    "reports/ci/ci_nonblocking_failure_triage_2026-06-18.md"
+  ],
+  "note": "stabilization_artifacts_gate_pass means harnesses + checker exist. card_explainability_allowed stays false until operator_readiness_gate_pass is true."
+}
