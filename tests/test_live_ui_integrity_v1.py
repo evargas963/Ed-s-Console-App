@@ -8,6 +8,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 INDEX = ROOT / "static" / "index.html"
 
@@ -335,3 +337,236 @@ def test_live_ui_a_no_dominant_prob_renders_in_js():
             "this binding would render '0' or empty for withheld (None) values without an "
             "explicit withhold helper. Add a withhold check or use a provenance-aware accessor."
         )
+
+
+# ── UI transport fidelity (audit/ui-realtime-transport-fidelity) ─────────────
+
+from verification.ui_realtime_transport_audit import (
+    audit_payload_metadata,
+    audit_core_vs_guest_ticker_switching,
+    compute_feed_state,
+    is_duplicate_tier_c_payload,
+    lane_stale_operator_label,
+    parse_sqlite_contention_from_text,
+    render_coherence_guard,
+    should_discard_inflight_response,
+    simulate_switch_guard_matrix,
+    snapshot_cache_restore_marks_stale,
+    ticker_switch_pair_kind,
+    tier_c_payload_fingerprint,
+)
+from instrument_identity import ticker_storage_key
+
+
+def test_render_coherence_guard_rejects_wrong_ticker():
+    payload = {"ticker": "QQQ", "_server_build_ts": 1000.0, "decision_generation_id": 2}
+    guard = render_coherence_guard(
+        payload,
+        active_ticker="SPY",
+        last_render_timestamp=0,
+        last_rendered_decision_gen=0,
+    )
+    assert guard.ok is False
+    assert guard.reason == "ticker"
+
+
+def test_render_coherence_guard_rejects_older_generation_id():
+    payload = {"ticker": "SPY", "_server_build_ts": 2000.0, "decision_generation_id": 3}
+    guard = render_coherence_guard(
+        payload,
+        active_ticker="SPY",
+        last_render_timestamp=0,
+        last_rendered_decision_gen=5,
+    )
+    assert guard.ok is False
+    assert guard.reason == "gen"
+
+
+def test_render_coherence_guard_accepts_newer_gen_when_ts_regresses():
+    """Newer decision_generation_id may accept even if _server_build_ts regresses (Tier C cache)."""
+    payload = {"ticker": "SPY", "_server_build_ts": 900.0, "decision_generation_id": 8}
+    guard = render_coherence_guard(
+        payload,
+        active_ticker="SPY",
+        last_render_timestamp=1000.0,
+        last_rendered_decision_gen=7,
+    )
+    assert guard.ok is True
+
+
+def test_should_discard_inflight_when_generation_superseded():
+    discard, reason = should_discard_inflight_response(
+        my_generation=2,
+        request_generation=5,
+        payload_ticker="SPY",
+        active_ticker="SPY",
+    )
+    assert discard is True
+    assert reason == "generation_superseded"
+
+
+def test_should_discard_inflight_on_ticker_mismatch():
+    discard, reason = should_discard_inflight_response(
+        my_generation=5,
+        request_generation=5,
+        payload_ticker="IWM",
+        active_ticker="SPY",
+    )
+    assert discard is True
+    assert reason == "ticker_mismatch"
+
+
+def test_ticker_switch_enters_analytics_loading_state_in_html():
+    html = _html()
+    fetch_fn = html.split("async function fetchState(")[1].split("async function pollStateFallback(")[0]
+    assert "ANALYTICS" in fetch_fn
+    assert "FETCHING" in fetch_fn
+    assert "loading-overlay" in fetch_fn
+    assert "willChange" in fetch_fn
+
+
+def test_duplicate_tier_c_payload_fingerprint_detects_repeat():
+    payload = {
+        "ticker": "SPY",
+        "decision_generation_id": 4,
+        "_server_build_ts": 1710000000.0,
+        "analytics_version": 12,
+        "_update_source": "sse",
+    }
+    fp = tier_c_payload_fingerprint(payload)
+    assert is_duplicate_tier_c_payload(payload, fp) is True
+    assert is_duplicate_tier_c_payload(payload, None) is False
+
+
+def test_compute_feed_state_stale_follows_age_rules():
+    now_ms = 1_710_000_000_000
+    stale = compute_feed_state(
+        sse_phase="live",
+        last_fast_ts=now_ms / 1000.0 - 45,
+        now_ms=now_ms,
+        plane_authority="streaming",
+        plane_gen_ok=True,
+        streaming_connected=True,
+    )
+    assert stale["state"] == "STALE"
+    fresh = compute_feed_state(
+        sse_phase="live",
+        last_fast_ts=now_ms / 1000.0 - 1,
+        now_ms=now_ms,
+        plane_authority="streaming",
+        plane_gen_ok=True,
+        streaming_connected=True,
+    )
+    assert fresh["state"] == "LIVE"
+
+
+def test_lane_stale_syncing_within_trust_window():
+    now_ms = 1_710_000_000_000
+    bundle_ts = now_ms / 1000.0 - 10
+    label = lane_stale_operator_label(
+        last_fast_ts=bundle_ts + 2,
+        last_render_ts=bundle_ts,
+        bundle_ts=bundle_ts,
+        decision_generation_id=10,
+        tier_c_painted_at_gen=5,
+        pending_full_analytics=False,
+        payload={
+            "mhap_rows": [{"horizon": "1c", "call": "LONG"}],
+            "analytics_refresh_in_progress": True,
+        },
+        now_ms=now_ms,
+    )
+    assert label["show"] is True
+    assert label["label"] == "SYNCING ANALYTICS…"
+
+
+def test_audit_payload_metadata_flags_missing_generation_id():
+    meta = audit_payload_metadata({"ticker": "SPY", "_server_build_ts": 1.0}, tier="C")
+    assert meta["complete"] is False
+    assert "decision_generation_id" in meta["missing_fields"]
+
+
+def test_rest_sse_metadata_contract_in_html_and_server():
+    html = _html()
+    server = (ROOT / "server.py").read_text(encoding="utf-8", errors="replace")
+    assert "decision_generation_id" in html
+    assert "_server_build_ts" in html
+    assert "_update_source" in html
+    assert "decision_generation_id" in server or "_server_build_ts" in server
+
+
+def test_sqlite_lock_event_counter_from_log_sample():
+    sample = (
+        "sqlite_tier1_lock_wait op=insert_snapshot ticker=SPY\n"
+        "database is locked\n"
+        "sqlite_tier1_busy_retry op=insert_snapshot\n"
+    )
+    counts = parse_sqlite_contention_from_text(sample)
+    assert counts["sqlite_lock_wait_count"] == 1
+    assert counts["sqlite_database_locked_count"] == 1
+    assert counts["sqlite_busy_retry_count"] == 1
+
+
+@pytest.mark.parametrize(
+    "old_t,new_t,expected_pair",
+    [
+        ("SPY", "QQQ", "core_to_core"),
+        ("SPY", "NVDA", "core_to_guest"),
+        ("TSLA", "IWM", "guest_to_core"),
+        ("NVDA", "AAPL", "guest_to_guest"),
+    ],
+)
+def test_ticker_switch_pair_classification(old_t, new_t, expected_pair):
+    assert ticker_switch_pair_kind(old_t, new_t) == expected_pair
+
+
+@pytest.mark.parametrize(
+    "old_t,new_t",
+    [
+        ("SPY", "QQQ"),
+        ("SPY", "NVDA"),
+        ("PLTR", "IWM"),
+        ("NVDA", "TSLA"),
+    ],
+)
+def test_wrong_ticker_payload_rejected_after_switch(old_t, new_t):
+    result = simulate_switch_guard_matrix(old_t, new_t, stale_payload_ticker=old_t)
+    assert result["wrong_ticker_discarded"] is True
+    assert result["wrong_ticker_discard_reason"] == "ticker_mismatch"
+
+
+def test_guest_stale_cache_restore_only_with_degraded_markers():
+    cached = {
+        "ticker": "NVDA",
+        "mhap_rows": [{"horizon": "1c", "call": "LONG"}],
+        "analytics_stale": False,
+    }
+    restored = snapshot_cache_restore_marks_stale(cached)
+    assert restored["analytics_stale"] is True
+    assert restored["analytics_refresh_in_progress"] is True
+    assert restored["_update_source"] == "client_ticker_cache"
+    assert restored["analytics_pending_shell"] is False
+
+
+def test_special_index_ticker_storage_keys():
+    assert ticker_storage_key("SPX") == "$SPX"
+    assert ticker_storage_key("$SPX") == "$SPX"
+    assert ticker_storage_key("$VIX") == "$VIX"
+    assert ticker_storage_key("VIX") == "$VIX"
+
+
+def test_core_vs_guest_audit_reports_tier_agnostic_guards():
+    audit = audit_core_vs_guest_ticker_switching()
+    assert audit["transport_guards_tier_agnostic"] is True
+    assert audit["wrong_ticker_discarded_all_pairs"] is True
+    assert audit["cache_restore_stale_all_pairs"] is True
+    assert "SPY" in audit["core_tickers"]
+    assert "NVDA" in audit["guest_sample_tickers"]
+    assert "21" in audit["question_21_answer"] or "tier-agnostic" in audit["question_21_answer"]
+
+
+def test_set_active_ticker_does_not_branch_on_base_tier_in_html():
+    html = _html()
+    body = html.split("function setActiveTicker(")[1].split("function _scheduleServerAnalyticsWarm")[0]
+    assert "is_base_money_path" not in body
+    assert "is_guest_ticker" not in body
