@@ -2966,6 +2966,7 @@
             <span class="decision-chip dim" id="dr-session-boundary-chip" title="Session close boundary — time_warning from call_engine" style="display:none">SESSION —</span>
             <span class="decision-chip dim" id="dr-lane-stale-chip" title="Fast lane ahead of analytical paint or cards repainting" style="display:none">LANE —</span>
             <span class="decision-chip dim" id="dr-db-contention-chip" title="SQLite contention — snapshot/analytics transport may lag (not a model verdict)" style="display:none">DB —</span>
+            <span class="decision-chip dim" id="dr-switch-state-chip" title="Ticker switch transport state — data timing, not model direction" style="display:none">SWITCH —</span>
           </div>
           <div class="signal-card-body">
             <div class="signal-chain-bar" id="dr-signal-chain-host" aria-label="Signal chain status"></div>
@@ -3499,6 +3500,10 @@ function setActiveTicker(rawTicker, rawExpiry) {
     window._prevOfChartSpotFast = null;
     const restored = _snapshotCacheRestore(t);
     if (restored) {
+      if (_switchDiagSession) {
+        _switchDiagSession.stale_cache_restored = true;
+        _switchDiagSession.guest_incomplete_reason = _deriveGuestIncompleteReasonFromPayload(restored, t);
+      }
       window._lastData = restored;
       lastRenderTimestamp = 0;
       _commitQuoteLaneFromPayload(restored);
@@ -3560,6 +3565,7 @@ function _switchDiagRecordFirstQuote(sourceTag, f) {
   let norm = sourceTag === 'sse_live_plane' ? 'sse_live_plane' : (sourceTag === 'http_fast_quote' ? 'http_fast_quote' : 'other');
   s.first_quote_ms = now - t0;
   s.first_quote_source = norm;
+  _recordSwitchLaneTiming('fast_quote');
   s.sse_connected_at_first_quote = !!(_eventSource && _eventSource.readyState === 1);
   const j = window._lastPlaneDiag;
   if (j && typeof j === 'object' && !Array.isArray(j) && _planeDiagnosticsOwned()) {
@@ -3741,20 +3747,36 @@ function _finalizeSwitchDiag(extra) {
   const verdict = _buildTickerSwitchTradeabilityAnswers(s, extra, src);
 
   const rec = {
-    schema_version: 1,
+    schema_version: 2,
     switch_id: s.switch_id,
     old_ticker: s.old_ticker,
     new_ticker: s.new_ticker,
+    selected_ticker: s.new_ticker,
+    previous_ticker: s.old_ticker,
     old_expiry: s.old_expiry,
     new_expiry: s.new_expiry,
+    is_core: _isCoreMoneyPathTicker(s.new_ticker),
+    is_guest: _isGuestTickerSymbol(s.new_ticker),
+    is_special_index: _isSpecialIndexTickerSymbol(s.new_ticker),
+    request_generation: requestGeneration,
+    switch_started_at: s.wall_start_ms,
     client_wall_start_ms: s.wall_start_ms,
     ui_committed_ms: s.ui_committed_ms,
+    fast_quote_first_seen_ms: s.fast_quote_first_seen_ms != null ? s.fast_quote_first_seen_ms : s.first_quote_ms,
     first_quote_ms: s.first_quote_ms,
+    analytics_light_first_seen_ms: s.analytics_light_first_seen_ms,
+    tier_c_first_seen_ms: s.tier_c_first_seen_ms != null ? s.tier_c_first_seen_ms : s.first_full_state_ms,
+    cards_first_render_ms: s.cards_first_render_ms,
     first_quote_source: src,
     first_full_state_ms: s.first_full_state_ms,
     complete_ms: completeMs,
     full_complete_ms: completeMs,
     aborted_prior_fetch_count: s.aborted_prior_fetch_count || 0,
+    stale_cache_restored: !!s.stale_cache_restored,
+    guest_incomplete_reason: s.guest_incomplete_reason || _deriveGuestIncompleteReasonFromPayload(window._lastData, s.new_ticker),
+    db_contention_state_at_switch: s.db_contention_state_at_switch || (_resolveDbContentionOperatorSurface().state || 'OK'),
+    wrong_ticker_payload_rejected_count: s.wrong_ticker_payload_rejected_count || 0,
+    stale_generation_payload_rejected_count: s.stale_generation_payload_rejected_count || 0,
     sse_connected_at_first_quote: s.sse_connected_at_first_quote,
     schwab_streaming_connected_at_first_quote: s.streaming_connected_at_first_quote,
     plane_quote_authority_at_first_quote: s.plane_quote_authority_at_first_quote,
@@ -3766,6 +3788,11 @@ function _finalizeSwitchDiag(extra) {
     server_plane_snapshot_at_first_quote: s.server_plane_snapshot_at_first_quote || null,
     ...verdict,
   };
+  try {
+    const op = deriveSwitchOperatorState(rec);
+    rec.final_switch_state = op.state;
+    rec.switch_operator = op;
+  } catch (e) {}
   _pushSwitchDiagLocal(rec);
   void _postSwitchDiagToServer(rec);
   _switchDiagSession = null;
@@ -6991,6 +7018,13 @@ function render(d, fullRenderSource) {
     }
   } catch (eDb) {}
   try { refreshUtilityBar(); } catch (e2) {}
+  if (Array.isArray(d.mhap_rows) && d.mhap_rows.length) {
+    _recordSwitchLaneTiming('cards');
+    if (_switchDiagSession) {
+      _switchDiagSession.guest_incomplete_reason = _deriveGuestIncompleteReasonFromPayload(d, d.ticker || activeTicker);
+    }
+  }
+  try { paintSwitchStateChip(); } catch (eSw) {}
   _commitTierCCardRenderFingerprint(d);
   return true;
 }
@@ -7820,12 +7854,17 @@ function _updateLiveUiAe(opts) {
   _updateSessionBoundaryChip(integrity);
   _updateLaneStaleChip(integrity);
   _updateDbContentionChip();
+  _updateSwitchStateChip();
   // Pass 4b — async; fire-and-forget, errors swallowed inside.
   _updateLevelTestChip();
 }
 
 function _updateDbContentionChip() {
   paintDbContentionPill(_resolveDbContentionOperatorSurface());
+}
+
+function _updateSwitchStateChip() {
+  paintSwitchStateChip();
 }
 
 /** Fast-lane rollout counters (no console spam). Inspect: window._edFastRollout */
@@ -7897,11 +7936,13 @@ async function _fetchTierCRestAndApply(ctx) {
 
     if (myGen !== requestGeneration) {
       if (DIAG) console.warn('[fetchState] DISCARDED — generation superseded', { myGen, current: requestGeneration, ticker });
+      _bumpSwitchDiagRejection('stale_generation');
       if (willChange) _finalizeSwitchDiag({ generation_superseded: true });
       return;
     }
     if (data.ticker && data.ticker.toUpperCase() !== activeTicker) {
       if (DIAG) console.warn('[fetchState] DISCARDED — ticker mismatch', { requested: ticker, received: data.ticker, active: activeTicker });
+      _bumpSwitchDiagRejection('wrong_ticker');
       if (willChange) _finalizeSwitchDiag({ ticker_mismatch_discarded: true });
       return;
     }
@@ -7939,6 +7980,7 @@ async function _fetchTierCRestAndApply(ctx) {
         _switchDiagSession.first_full_state_ms = t0 != null
           ? ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0)
           : null;
+        _recordSwitchLaneTiming('tier_c');
         if (window.ED_SWITCH_TIMING === true && _switchDiagSession.first_full_state_ms != null) {
           console.log('[SWITCH_TIMING] first_full_state_ms=', Math.round(_switchDiagSession.first_full_state_ms), 'ticker=', activeTicker, 'gen=', myGen);
         }
@@ -8015,9 +8057,18 @@ async function fetchState(forceOrOpts) {
       wall_start_ms: Date.now(),
       aborted_prior_fetch_count: hadPriorFetch ? 1 : 0,
       ui_committed_ms: null,
+      fast_quote_first_seen_ms: null,
       first_quote_ms: null,
       first_quote_source: null,
+      analytics_light_first_seen_ms: null,
+      tier_c_first_seen_ms: null,
+      cards_first_render_ms: null,
       first_full_state_ms: null,
+      stale_cache_restored: false,
+      guest_incomplete_reason: null,
+      db_contention_state_at_switch: (_resolveDbContentionOperatorSurface().state || 'OK'),
+      wrong_ticker_payload_rejected_count: 0,
+      stale_generation_payload_rejected_count: 0,
       streaming_connected_at_first_quote: null,
       plane_quote_authority_at_first_quote: null,
       rest_fallback_used: null,
@@ -8031,6 +8082,7 @@ async function fetchState(forceOrOpts) {
   if (willChange && _switchDiagSession) {
     _switchDiagSession.ui_committed_ms = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _switchDiagSession.t0;
     _logTickerSwitch('UI_COMMITTED', { gen: requestGeneration });
+    try { paintSwitchStateChip(deriveSwitchOperatorState(_buildSwitchOperatorOptsFromSession())); } catch (e) {}
   }
 
   // Stage 2 — SSE + Schwab L1 + fast quote BEFORE Tier C analytics (critical for sub-second ticker switch).
@@ -8104,6 +8156,7 @@ async function fetchState(forceOrOpts) {
             const ms = t0 != null ? ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0) : null;
             console.log('[SWITCH_TIMING] first_light_panel_ms=', ms != null ? Math.round(ms) : null, 'ticker=', activeTicker, 'gen=', myGen);
           }
+          if (didB && _switchDiagSession) _recordSwitchLaneTiming('analytics_light');
         }
       } catch (e) {
         if (DIAG && e && e.name !== 'AbortError') console.warn('[fetchState] tierB opportunistic skipped', e.message || e);
@@ -8223,10 +8276,12 @@ async function pollStateFallback() {
     // ── Response ownership validation — identical contract to fetchState ────────
     if (myGen !== requestGeneration) {
       if (DIAG) console.warn('[pollFallback] DISCARDED — generation superseded', { myGen, current: requestGeneration });
+      _bumpSwitchDiagRejection('stale_generation');
       return;
     }
     if (data.ticker && data.ticker.toUpperCase() !== activeTicker) {
       if (DIAG) console.warn('[pollFallback] DISCARDED — ticker mismatch', { fetched: ticker, received: data.ticker, active: activeTicker });
+      _bumpSwitchDiagRejection('wrong_ticker');
       return;
     }
 
@@ -8511,6 +8566,119 @@ function startDbContentionPoll() {
 
 try { window.paintDbContentionPill = paintDbContentionPill; } catch (e) {}
 try { window._resolveDbContentionOperatorSurface = _resolveDbContentionOperatorSurface; } catch (e) {}
+
+const _CORE_MONEY_PATH_TICKERS = new Set(['SPY', 'QQQ', 'IWM']);
+const _SPECIAL_INDEX_TICKERS = new Set(['SPX', '$SPX', '$VIX', '$TNX', 'VIX']);
+
+function _isCoreMoneyPathTicker(t) {
+  return _CORE_MONEY_PATH_TICKERS.has((t || '').trim().toUpperCase());
+}
+function _isGuestTickerSymbol(t) {
+  return !_isCoreMoneyPathTicker(t);
+}
+function _isSpecialIndexTickerSymbol(t) {
+  const u = (t || '').trim().toUpperCase();
+  if (!u) return false;
+  if (_SPECIAL_INDEX_TICKERS.has(u)) return true;
+  if (u.startsWith('$')) return _SPECIAL_INDEX_TICKERS.has(u);
+  return u === 'SPX' || u === 'VIX' || _SPECIAL_INDEX_TICKERS.has('$' + u);
+}
+
+function _deriveGuestIncompleteReasonFromPayload(d, ticker) {
+  if (!_isGuestTickerSymbol(ticker)) return null;
+  if (!d || typeof d !== 'object') return 'guest_payload_missing';
+  if (d.analytics_pending_shell) return 'guest_analytics_pending_shell';
+  if (!(Array.isArray(d.mhap_rows) && d.mhap_rows.length)) return 'guest_mhap_missing';
+  if ((d.guest_trust_class || 'guest_unproven') === 'guest_unproven') return 'guest_capture_unproven';
+  return null;
+}
+
+/** Transport-only switch operator label — does not change card direction. */
+function deriveSwitchOperatorState(opts) {
+  const o = opts || {};
+  const dbState = o.db_contention_state_at_switch || (_resolveDbContentionOperatorSurface().state || 'OK');
+  const staleCache = !!o.stale_cache_restored;
+  const guestInc = o.guest_incomplete_reason || null;
+  const isGuest = o.is_guest != null ? !!o.is_guest : _isGuestTickerSymbol(o.selected_ticker || activeTicker);
+  const pending = !!o.analytics_pending;
+  const cardsMs = o.cards_first_render_ms;
+  const ready = cardsMs != null && !pending && !guestInc && dbState === 'OK' && !staleCache;
+
+  let state = 'SWITCHING';
+  if (dbState && dbState !== 'OK') state = 'DB DEGRADED — CARDS MAY LAG';
+  else if (staleCache) state = 'CACHE STALE — REFRESHING';
+  else if (guestInc) state = 'GUEST DATA INCOMPLETE';
+  else if (isGuest && (o.analytics_light_first_seen_ms == null || pending)) state = 'GUEST DATA WARMING';
+  else if (pending) state = 'ANALYTICS PENDING';
+  else if (ready) state = 'READY';
+
+  return {
+    state,
+    show: state !== 'READY',
+    label: state,
+    operator_message: state === 'READY' ? '' : 'Data/transport timing — not a model verdict.',
+  };
+}
+
+function _buildSwitchOperatorOptsFromSession() {
+  const s = _switchDiagSession;
+  const d = window._lastData;
+  const tk = activeTicker || (s && s.new_ticker) || '';
+  return {
+    selected_ticker: tk,
+    is_core: _isCoreMoneyPathTicker(tk),
+    is_guest: _isGuestTickerSymbol(tk),
+    is_special_index: _isSpecialIndexTickerSymbol(tk),
+    stale_cache_restored: !!(s && s.stale_cache_restored),
+    analytics_pending: !!(d && (d.analytics_pending_shell || d.analytics_refresh_in_progress)),
+    guest_incomplete_reason: (s && s.guest_incomplete_reason) || _deriveGuestIncompleteReasonFromPayload(d, tk),
+    db_contention_state_at_switch: (s && s.db_contention_state_at_switch) || (_resolveDbContentionOperatorSurface().state || 'OK'),
+    analytics_light_first_seen_ms: s && s.analytics_light_first_seen_ms,
+    cards_first_render_ms: s && s.cards_first_render_ms,
+    switch_started_at: s && s.wall_start_ms,
+  };
+}
+
+function paintSwitchStateChip(surface) {
+  const op = surface || deriveSwitchOperatorState(_buildSwitchOperatorOptsFromSession());
+  try { window._switchOperatorState = op; } catch (e) {}
+  const chipEl = $('dr-switch-state-chip');
+  if (!chipEl) return;
+  if (!op.show) {
+    chipEl.style.display = 'none';
+    chipEl.textContent = 'SWITCH —';
+    chipEl.className = 'decision-chip dim';
+    return;
+  }
+  chipEl.style.display = '';
+  chipEl.textContent = op.label;
+  chipEl.className = op.state.indexOf('DB DEGRADED') === 0 ? 'decision-chip bad' : 'decision-chip dim';
+  chipEl.title = (op.operator_message || 'Transport timing') + ' — not model direction';
+}
+
+function _bumpSwitchDiagRejection(kind) {
+  const s = _switchDiagSession;
+  if (!s) return;
+  if (kind === 'wrong_ticker') {
+    s.wrong_ticker_payload_rejected_count = (s.wrong_ticker_payload_rejected_count || 0) + 1;
+  } else if (kind === 'stale_generation') {
+    s.stale_generation_payload_rejected_count = (s.stale_generation_payload_rejected_count || 0) + 1;
+  }
+}
+
+function _recordSwitchLaneTiming(lane) {
+  const s = _switchDiagSession;
+  if (!s || s.t0 == null) return;
+  const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const ms = now - s.t0;
+  if (lane === 'fast_quote' && s.fast_quote_first_seen_ms == null) s.fast_quote_first_seen_ms = ms;
+  if (lane === 'analytics_light' && s.analytics_light_first_seen_ms == null) s.analytics_light_first_seen_ms = ms;
+  if (lane === 'tier_c' && s.tier_c_first_seen_ms == null) s.tier_c_first_seen_ms = ms;
+  if (lane === 'cards' && s.cards_first_render_ms == null) s.cards_first_render_ms = ms;
+}
+
+try { window.deriveSwitchOperatorState = deriveSwitchOperatorState; } catch (e) {}
+try { window.paintSwitchStateChip = paintSwitchStateChip; } catch (e) {}
 
 function _formatFeedDetailLine(fs) {
   const tr = fs.transport === 'L1' ? 'L1' : fs.transport === 'SUB' ? 'SUB' : fs.transport === 'REST' ? 'REST' : 'NONE';

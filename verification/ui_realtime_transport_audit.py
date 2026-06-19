@@ -569,7 +569,9 @@ def simulate_switch_guard_matrix(
         "trust_class": ticker_trust_class(active),
         "wrong_ticker_discarded": discard,
         "wrong_ticker_discard_reason": discard_reason,
+        "wrong_ticker_payload_rejected_count": 1 if discard else 0,
         "superseded_generation_discarded": superseded_discard,
+        "stale_generation_payload_rejected_count": 1 if superseded_discard else 0,
         "cache_restore_marks_stale": restored.get("analytics_stale") is True
         and restored.get("analytics_refresh_in_progress") is True
         and restored.get("_update_source") == "client_ticker_cache",
@@ -947,6 +949,203 @@ def bugs_proven_and_unproven(
     return {"bugs_proven": proven, "bugs_not_proven": not_proven}
 
 
+GUEST_SWITCH_SLA_CLASSIFICATIONS = frozenset(
+    {
+        "CORE_SWITCH_STATIC_MET",
+        "GUEST_SWITCH_STATIC_MET",
+        "SPECIAL_INDEX_SWITCH_STATIC_MET",
+        "LIVE_GUEST_SLA_NOT_PROVEN",
+        "GUEST_COLD_START_UX_GAP_FIXED",
+        "WRONG_TICKER_REJECTION_COUNTED",
+        "STALE_GENERATION_REJECTION_COUNTED",
+        "DB_DEGRADED_DURING_SWITCH_SURFACED",
+    }
+)
+
+SWITCH_OPERATOR_STATES = frozenset(
+    {
+        "SWITCHING",
+        "GUEST DATA WARMING",
+        "GUEST DATA INCOMPLETE",
+        "ANALYTICS PENDING",
+        "CACHE STALE — REFRESHING",
+        "DB DEGRADED — CARDS MAY LAG",
+        "READY",
+    }
+)
+
+
+def is_special_index_ticker(ticker: str) -> bool:
+    raw = (ticker or "").strip().upper()
+    key = ticker_storage_key(ticker)
+    bare = {t.upper().lstrip("$") for t in SPECIAL_INDEX_TICKERS}
+    keys = {t.upper() for t in SPECIAL_INDEX_TICKERS} | {k.upper() for k in SPECIAL_INDEX_TICKERS}
+    return raw in bare or raw in keys or key.upper() in keys or key in SPECIAL_INDEX_TICKERS
+
+
+def switch_tier_flags(ticker: str) -> dict[str, bool]:
+    t = (ticker or "").strip().upper() or "SPY"
+    return {
+        "is_core": is_base_money_path_ticker(t),
+        "is_guest": is_guest_ticker(t),
+        "is_special_index": is_special_index_ticker(t),
+    }
+
+
+def derive_guest_incomplete_reason(
+    payload: dict[str, Any] | None,
+    *,
+    selected_ticker: str,
+) -> Optional[str]:
+    if not is_guest_ticker(selected_ticker):
+        return None
+    p = payload if isinstance(payload, dict) else {}
+    if p.get("analytics_pending_shell"):
+        return "guest_analytics_pending_shell"
+    rows = p.get("mhap_rows")
+    if not (isinstance(rows, list) and rows):
+        return "guest_mhap_missing"
+    trust = p.get("guest_trust_class") or ticker_trust_class(selected_ticker)
+    if trust == TRUST_GUEST_UNPROVEN:
+        return "guest_capture_unproven"
+    return None
+
+
+def derive_switch_operator_state(session: dict[str, Any]) -> dict[str, Any]:
+    """Transport-only switch label — never implies model direction is wrong."""
+    db_state = str(session.get("db_contention_state_at_switch") or "OK")
+    stale_cache = bool(session.get("stale_cache_restored"))
+    guest_inc = session.get("guest_incomplete_reason")
+    is_guest = bool(session.get("is_guest"))
+    pending = bool(session.get("analytics_pending"))
+    cards_ms = session.get("cards_first_render_ms")
+    ready = (
+        cards_ms is not None
+        and not pending
+        and not guest_inc
+        and db_state == "OK"
+        and not stale_cache
+    )
+
+    state = "SWITCHING"
+    if db_state not in ("", "OK"):
+        state = "DB DEGRADED — CARDS MAY LAG"
+    elif stale_cache:
+        state = "CACHE STALE — REFRESHING"
+    elif guest_inc:
+        state = "GUEST DATA INCOMPLETE"
+    elif is_guest and (session.get("analytics_light_first_seen_ms") is None or pending):
+        state = "GUEST DATA WARMING"
+    elif pending:
+        state = "ANALYTICS PENDING"
+    elif ready:
+        state = "READY"
+
+    operator_message = (
+        "Data/transport timing — not a model verdict."
+        if state != "READY"
+        else ""
+    )
+    return {
+        "state": state,
+        "show": state != "READY",
+        "label": state,
+        "operator_message": operator_message,
+    }
+
+
+def enrich_switch_diag_record(raw: dict[str, Any]) -> dict[str, Any]:
+    """Normalize client switch diagnostics for server buffer and offline audits."""
+    row = dict(raw) if isinstance(raw, dict) else {}
+    selected = str(row.get("selected_ticker") or row.get("new_ticker") or "").strip().upper()
+    previous = str(row.get("previous_ticker") or row.get("old_ticker") or "").strip().upper()
+    flags = switch_tier_flags(selected)
+    row.update(flags)
+    row["selected_ticker"] = selected
+    row["previous_ticker"] = previous
+    row["storage_key"] = ticker_storage_key(selected) if selected else ""
+    row["schema_version"] = max(int(row.get("schema_version") or 1), 2)
+    row["switch_started_at"] = row.get("switch_started_at") or row.get("client_wall_start_ms")
+    row["fast_quote_first_seen_ms"] = row.get("fast_quote_first_seen_ms")
+    if row["fast_quote_first_seen_ms"] is None:
+        row["fast_quote_first_seen_ms"] = row.get("first_quote_ms")
+    row["analytics_light_first_seen_ms"] = row.get("analytics_light_first_seen_ms")
+    if row["analytics_light_first_seen_ms"] is None and row.get("first_light_ms") is not None:
+        row["analytics_light_first_seen_ms"] = row.get("first_light_ms")
+    row["tier_c_first_seen_ms"] = row.get("tier_c_first_seen_ms")
+    if row["tier_c_first_seen_ms"] is None:
+        row["tier_c_first_seen_ms"] = row.get("first_full_state_ms")
+    row["cards_first_render_ms"] = row.get("cards_first_render_ms")
+    if row["cards_first_render_ms"] is None:
+        row["cards_first_render_ms"] = row.get("first_card_render_ms")
+    row["wrong_ticker_payload_rejected_count"] = int(
+        row.get("wrong_ticker_payload_rejected_count")
+        or (1 if row.get("ticker_mismatch_discarded") else 0)
+    )
+    row["stale_generation_payload_rejected_count"] = int(
+        row.get("stale_generation_payload_rejected_count")
+        or (1 if row.get("generation_superseded") else 0)
+    )
+    if previous and selected:
+        row["pair_kind"] = ticker_switch_pair_kind(previous, selected)
+    if not row.get("final_switch_state"):
+        op = derive_switch_operator_state(row)
+        row["final_switch_state"] = op["state"]
+    row["switch_operator"] = derive_switch_operator_state(row)
+    return row
+
+
+def build_guest_switch_sla_report(
+    *,
+    audit_date: str,
+    switch_events: Optional[list[dict[str, Any]]] = None,
+    market_session: str = "offline_static",
+) -> dict[str, Any]:
+    """Offline guest/core switch SLA audit — static guards + diag schema; live SLA not proven."""
+    html = INDEX_HTML.read_text(encoding="utf-8", errors="replace")
+    core_vs_guest = audit_core_vs_guest_ticker_switching()
+    events = [enrich_switch_diag_record(e) for e in (switch_events or [])]
+    pair_matrix = core_vs_guest.get("switch_pair_matrix") or {}
+
+    classifications: list[str] = []
+    if core_vs_guest.get("wrong_ticker_discarded_all_pairs"):
+        classifications.append("CORE_SWITCH_STATIC_MET")
+        classifications.append("GUEST_SWITCH_STATIC_MET")
+    if all(
+        simulate_switch_guard_matrix("SPY", sym).get("storage_key") == ticker_storage_key(sym)
+        for sym in SPECIAL_INDEX_TICKERS[:4]
+    ):
+        classifications.append("SPECIAL_INDEX_SWITCH_STATIC_MET")
+    if (
+        "wrong_ticker_payload_rejected_count" in html
+        and "stale_generation_payload_rejected_count" in html
+    ):
+        classifications.append("WRONG_TICKER_REJECTION_COUNTED")
+        classifications.append("STALE_GENERATION_REJECTION_COUNTED")
+    if "dr-switch-state-chip" in html and "GUEST DATA WARMING" in html:
+        classifications.append("GUEST_COLD_START_UX_GAP_FIXED")
+    if "db_contention_state_at_switch" in html:
+        classifications.append("DB_DEGRADED_DURING_SWITCH_SURFACED")
+    classifications.append("LIVE_GUEST_SLA_NOT_PROVEN")
+
+    return {
+        "schema_version": 1,
+        "classification": "Audit Report",
+        "scope": "Guest/core ticker switch SLA and transport visibility",
+        "audit_date": audit_date,
+        "branch": "fix/ui-transport-guest-switch-sla",
+        "market_session": market_session,
+        "classifications": sorted(set(classifications)),
+        "core_vs_guest_ticker_switching": core_vs_guest,
+        "switch_pair_matrix_sample": pair_matrix,
+        "switch_diag_events_sample": events[:10],
+        "switch_diag_event_count": len(events),
+        "operator_states": sorted(SWITCH_OPERATOR_STATES),
+        "live_rth_validation_required": core_vs_guest.get("live_validation_required_guest", []),
+        "recommended_next_branch": "fix/card-price-conflict-explainability",
+    }
+
+
 def recommended_fix_branches() -> list[dict[str, str]]:
     return [
         {
@@ -964,6 +1163,7 @@ def recommended_fix_branches() -> list[dict[str, str]]:
         },
         {
             "branch": "fix/ui-transport-guest-switch-sla",
-            "reason": "Per-tier switch diag + guest cold-start degraded UX when models/DB sparse",
+            "reason": "LANDED — per-tier switch diag + guest cold-start degraded UX + rejection counters",
+            "status": "fixed",
         },
     ]
