@@ -1,0 +1,35 @@
+{
+  "gate_name": "operator_trust_stabilization",
+  "card_explainability_blocked_until_gate_passes": true,
+  "status": "PASS",
+  "last_verified_commit": "",
+  "required_policy_docs": [
+    "docs/OPEN_ITEMS_OPERATOR_TRUST.md",
+    "docs/PR_REVIEW_STANDARD.md",
+    "docs/ADMIN_BYPASS_REGISTER.md",
+    "docs/RUNTIME_EVIDENCE_ENV_CONTRACT.md",
+    "docs/NO_SILENT_DEGRADATION_POLICY.md"
+  ],
+  "required_harnesses": [
+    "tools/run_rth_guest_switch_validation.py",
+    "tools/run_rth_db_contention_validation.py",
+    "tools/run_rth_base_capture_normalization_validation.py",
+    "reports/ui_transport/rth_guest_switch_validation_runbook_2026-06-18.md",
+    "reports/db_contention/rth_db_contention_validation_runbook_2026-06-18.md",
+    "reports/base_capture/rth_base_capture_normalization_runbook_2026-06-18.md"
+  ],
+  "required_artifacts": [
+    "reports/rth_validation/RTH_OPERATOR_TRUST_VALIDATION_RUNBOOK.md",
+    "reports/operator_trust_backtrack/pr_completion_audit_2026-06-18.json",
+    "reports/operator_trust_backtrack/stabilization_decision_2026-06-18.md",
+    "reports/ci/ci_nonblocking_failure_triage_2026-06-18.json",
+    ".github/pull_request_template.md"
+  ],
+  "required_triage_reports": [
+    "reports/ci/ci_nonblocking_failure_triage_2026-06-18.md"
+  ],
+  "blocked_branches_until_pass": [
+    "fix/card-price-conflict-explainability"
+  ],
+  "note": "Gate PASS means artifacts + mechanical checker green. RTH proof runs still required to close NEEDS_RTH_VALIDATION_WITH_HARNESS items."
+}
