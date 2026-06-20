@@ -34,6 +34,9 @@ from calibration.backfill_outcomes import backfill
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
+# SCHWAB_CSV_CHECKED: COH-SA-2 timezone-authority redirect only.
+# This edit reads, derives, renames, emits, and maps no Schwab market-data field;
+# CSV row authority does not apply to this non-market-field change.
 from time_et import ET  # COH-SA-2: America/New_York ZoneInfo authority lives only in time_et.py
 
 log = logging.getLogger(__name__)
