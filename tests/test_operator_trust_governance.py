@@ -95,9 +95,23 @@ def test_stabilization_gate_blocks_card_explainability():
     assert "fix/card-price-conflict-explainability" in (gate.get("blocked_branches") or [])
     assert gate.get("next_allowed_step") == "resolve_pytest_full_failures"
     assert gate.get("next_allowed_branch") != "audit/ci-nonblocking-failures-triage"
-    assert gate.get("pytest_full_matrix_run") == "27857853572"
-    assert gate.get("last_verified_commit") == "a72ed54"
-    assert gate.get("pytest_full_failure_count") == 25
+    # Explicit, non-overloaded commit/count semantics (see gate field docs).
+    # Current GitHub CI observation @ ab7029a.
+    assert gate.get("current_ci_verified_commit") == "ab7029a"
+    assert gate.get("current_ci_pytest_full_run") == "27871627823"
+    assert gate.get("current_ci_pytest_full_failure_count") == 27
+    # Product matrix baseline (distinct from the CI-observed commit).
+    assert gate.get("pytest_full_matrix_verified_commit") == "a72ed54"
+    assert gate.get("pytest_full_product_matrix_failure_count") == 25
+    # The +2 delta is governance meta-artifact drift, not product/Schwab/ACTIVE_BUNDLE.
+    assert gate.get("meta_artifact_drift_failure_count") == 2
+    # After this pin-drift fix pushes, the next GitHub run is expected at the 25
+    # product matrix — NOT 22 (22 only follows a later ACTIVE_BUNDLE clear).
+    assert gate.get("expected_after_pending_push") == 25
+    # Legacy fields must stay honest to the cited run, not a prediction.
+    assert gate.get("pytest_full_failure_count") == gate.get("current_ci_pytest_full_failure_count")
+    assert gate.get("last_verified_commit") == gate.get("current_ci_verified_commit")
+    assert gate.get("pytest_full_matrix_commit") == gate.get("last_verified_commit")
 
 
 def test_gate_no_contradiction_unblocked_while_not_allowed():
