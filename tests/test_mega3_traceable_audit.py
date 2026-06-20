@@ -49,7 +49,7 @@ CATEGORICAL_JUST_RE = re.compile(
     r"no single schwab|reads or composes market fields)\b",
     re.I,
 )
-MEGA3_ROW_COUNT = 133  # 131 + vol_percent_to_decimal + _seq_len_from_transformer_meta
+MEGA3_ROW_COUNT = 148  # inventory sync @ fix/mega-inventory-sync: +15 NONE stubs (features cone)
 _PRIOR_MEGA_FILES = MEGA1_FILES | MEGA2_FILES
 
 
