@@ -6,7 +6,7 @@
   "operator_readiness_gate_pass": false,
   "card_explainability_allowed": false,
   "card_explainability_block_reason": [
-    "pytest-full: GitHub showed 18 failed @ afb361d run 27882570666 (product matrix only; meta-artifact drift + ACTIVE_BUNDLE_ENCODER_LAYOUT + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD all CLOSED_WITH_EVIDENCE); resolve product matrix or operator-sign-off per matrix row",
+    "pytest-full: GitHub showed 17 failed @ 8c22aa9 run 27884930874 (product matrix only; meta-artifact drift + ACTIVE_BUNDLE_ENCODER_LAYOUT + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD + ANTI_PATTERN_CAPS_VIOLATIONS all CLOSED_WITH_EVIDENCE); resolve product matrix or operator-sign-off per matrix row",
     "RTH validation not executed",
     "LIVE_GUEST_SLA_NOT_PROVEN",
     "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN",
@@ -19,16 +19,16 @@
   "blocked_branches": [
     "fix/card-price-conflict-explainability"
   ],
-  "last_verified_commit": "afb361d",
-  "pytest_full_matrix_commit": "afb361d",
-  "current_ci_verified_commit": "afb361d",
-  "current_ci_pytest_full_run": "27882570666",
-  "current_ci_pytest_full_failure_count": 18,
-  "current_ci_pytest_full_passed_count": 3769,
+  "last_verified_commit": "8c22aa9",
+  "pytest_full_matrix_commit": "8c22aa9",
+  "current_ci_verified_commit": "8c22aa9",
+  "current_ci_pytest_full_run": "27884930874",
+  "current_ci_pytest_full_failure_count": 17,
+  "current_ci_pytest_full_passed_count": 3770,
   "current_ci_pytest_full_skipped_count": 7,
-  "pytest_full_matrix_verified_commit": "afb361d",
-  "pytest_full_matrix_verified_run": "27882570666",
-  "pytest_full_product_matrix_failure_count": 18,
+  "pytest_full_matrix_verified_commit": "8c22aa9",
+  "pytest_full_matrix_verified_run": "27884930874",
+  "pytest_full_product_matrix_failure_count": 17,
   "meta_artifact_drift_failure_count": 0,
   "meta_artifact_drift_tests": [],
   "meta_artifact_drift_status": "CLOSED_WITH_EVIDENCE @ 5c6e967 run 27875496094 — both tests/test_operator_trust_governance.py meta-tests pass on GitHub; pytest-full 27 -> 25",
@@ -38,14 +38,14 @@
   "calibration_bypass_local_fix_note": "CALIBRATION_BYPASS_ALLOWLIST CLOSED_WITH_EVIDENCE @ 7bf369c run 27878597275 — both tests cleared on GitHub; pytest-full 22 -> 20.",
   "et_authority_local_fix_pending_github_proof": false,
   "et_authority_local_fix_note": "ET_AUTHORITY_DAILY_SCOREBOARD CLOSED_WITH_EVIDENCE @ afb361d run 27882570666 — both ET-authority tests cleared on GitHub (daily_scoreboard imports ET from time_et + Schwab CSV-first declaration); pytest-full 20 -> 18; schwab-csv-first back to PASS.",
-  "anti_pattern_caps_local_fix_pending_github_proof": true,
-  "anti_pattern_caps_local_fix_note": "ANTI_PATTERN_CAPS_VIOLATIONS (1 test) fixed locally — 15 reviewed non-market-leaf hits across 8 files exempted via exact file+line+variant entries in CAPS_LINE_ALLOWLIST (no whole-file prefix; money-path-adjacent files line-level only). Register CAPS block mirrors. No detection regex / DEFAULT_VALUE_RE / runtime change. 9/9 anti-pattern tests pass locally. Pending GitHub proof of pytest-full 18 -> 17; still counted at 1 until proven.",
+  "anti_pattern_caps_local_fix_pending_github_proof": false,
+  "anti_pattern_caps_local_fix_note": "ANTI_PATTERN_CAPS_VIOLATIONS CLOSED_WITH_EVIDENCE @ 8c22aa9 run 27884930874 — test_no_unallowlisted_production_hits absent on GitHub; pytest-full 18 -> 17. 15 reviewed non-market-leaf hits exempted via exact file+line+variant CAPS_LINE_ALLOWLIST entries; register mirrors; no detection/runtime change.",
   "expected_after_pending_push": 17,
-  "latest_artifact_update_commit": "afb361d",
-  "pytest_full_failure_count": 18,
-  "pytest_full_failure_count_semantics": "Observed CI failures at current_ci_pytest_full_run 27882570666 @ afb361d = pytest_full_product_matrix_failure_count (18); meta_artifact_drift 0; ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD CLOSED. ANTI_PATTERN_CAPS_VIOLATIONS (1) is now fixed locally and still counted at 1 until GitHub proves 18 -> 17. expected_after_pending_push = 17 is a PROJECTION, not asserted as observed.",
-  "pytest_full_matrix_run": "27882570666",
-  "pytest_full_passed_count": 3769,
+  "latest_artifact_update_commit": "8c22aa9",
+  "pytest_full_failure_count": 17,
+  "pytest_full_failure_count_semantics": "Observed CI failures at current_ci_pytest_full_run 27884930874 @ 8c22aa9 = pytest_full_product_matrix_failure_count (17); meta_artifact_drift 0; ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD + ANTI_PATTERN_CAPS_VIOLATIONS CLOSED. Artifact sync only — no pending local fix in this commit, so expected_after_pending_push == observed (17). Next bucket not yet started; lower counts are projections only until GitHub proves them.",
+  "pytest_full_matrix_run": "27884930874",
+  "pytest_full_passed_count": 3770,
   "pytest_full_skipped_count": 7,
   "objective_audit_last_run": "27851943226",
   "objective_audit_status": "pass",
@@ -75,5 +75,5 @@
   "required_triage_reports": [
     "reports/ci/ci_nonblocking_failure_triage_2026-06-18.md"
   ],
-  "note": "Observed @ afb361d (run 27882570666) = 18 failed (3769 passed, 7 skipped) = product matrix only; meta-artifact drift + ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD all CLOSED_WITH_EVIDENCE. ANTI_PATTERN_CAPS_VIOLATIONS (1 test) now fixed locally (15 reviewed hits exempted via exact line+variant CAPS_LINE_ALLOWLIST entries; register mirrors; 9/9 anti-pattern tests pass locally); expected_after_pending_push = 17 is a PROJECTION pending GitHub proof — observed stays 18 and the matrix still counts ANTI_PATTERN at 1 until proven. Gates stay false until pytest-full green or operator sign-off."
+  "note": "Observed @ 8c22aa9 (run 27884930874) = 17 failed (3770 passed, 7 skipped) = product matrix only; meta-artifact drift + ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD + ANTI_PATTERN_CAPS_VIOLATIONS all CLOSED_WITH_EVIDENCE. Artifact sync only — no new fix in this commit, so expected_after_pending_push = 17 (= observed). Next bucket not yet started (operator to select from remaining matrix). Gates stay false until pytest-full green or operator sign-off."
 }

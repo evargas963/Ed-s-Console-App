@@ -96,20 +96,20 @@ def test_stabilization_gate_blocks_card_explainability():
     assert gate.get("next_allowed_step") == "resolve_pytest_full_failures"
     assert gate.get("next_allowed_branch") != "audit/ci-nonblocking-failures-triage"
     # Explicit, non-overloaded commit/count semantics (see gate field docs).
-    # Current GitHub CI observation @ afb361d (ET_AUTHORITY proven, 20 -> 18).
-    assert gate.get("current_ci_verified_commit") == "afb361d"
-    assert gate.get("current_ci_pytest_full_run") == "27882570666"
-    assert gate.get("current_ci_pytest_full_failure_count") == 18
+    # Current GitHub CI observation @ 8c22aa9 (ANTI_PATTERN proven, 18 -> 17).
+    assert gate.get("current_ci_verified_commit") == "8c22aa9"
+    assert gate.get("current_ci_pytest_full_run") == "27884930874"
+    assert gate.get("current_ci_pytest_full_failure_count") == 17
     # Product matrix verified at the same proven commit.
-    assert gate.get("pytest_full_matrix_verified_commit") == "afb361d"
-    assert gate.get("pytest_full_product_matrix_failure_count") == 18
-    # Meta-artifact drift, ACTIVE_BUNDLE, CALIBRATION_BYPASS, and ET_AUTHORITY all closed.
+    assert gate.get("pytest_full_matrix_verified_commit") == "8c22aa9"
+    assert gate.get("pytest_full_product_matrix_failure_count") == 17
+    # All five buckets closed to date.
     assert gate.get("meta_artifact_drift_failure_count") == 0
     assert gate.get("active_bundle_local_fix_pending_github_proof") is False
     assert gate.get("calibration_bypass_local_fix_pending_github_proof") is False
     assert gate.get("et_authority_local_fix_pending_github_proof") is False
-    # ANTI_PATTERN_CAPS_VIOLATIONS fixed locally; observed stays 18, expected 17 is a projection.
-    assert gate.get("anti_pattern_caps_local_fix_pending_github_proof") is True
+    assert gate.get("anti_pattern_caps_local_fix_pending_github_proof") is False
+    # Artifact sync only — no pending local fix — so expected == observed (17).
     assert gate.get("expected_after_pending_push") == 17
     # Legacy fields must stay honest to the cited run, not a prediction.
     assert gate.get("pytest_full_failure_count") == gate.get("current_ci_pytest_full_failure_count")
