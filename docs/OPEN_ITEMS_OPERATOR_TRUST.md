@@ -169,16 +169,17 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `CLOSED_WITH_EVIDENCE` |
-| **Source PR / report** | CI triage 2026-06-19 — diff-emission false positives |
-| **Why it matters** | Schwab diff-emission gate for market fields |
-| **Operator risk** | New market reads without register row |
-| **Evidence currently available** | GitHub PR #19 @ `6e3157c`: schwab-csv-first pass |
-| **Evidence still needed** | None — green on PR branch |
-| **Fix now or harness now** | `check_schwab_csv_first.py` precision fix |
+| **Status** | `OPEN_BLOCKING` (reopened — PR path red @ `a72ed54`) |
+| **Also tracked as** | `SCHWAB_CSV_FIRST_CI_MIXED_OR_FAILING_NON_BLOCKING` |
+| **Source PR / report** | GitHub run `27857853589` (PR) vs `27857852538` (push) @ `a72ed54` |
+| **Why it matters** | Merge gate is `pull_request` workflow; push-only pass is not merge sign-off |
+| **Operator risk** | New market reads ship without V4 register row |
+| **Evidence currently available** | CSV-first guard **passed** on both paths; **V4 diff-emission register gate (PR 2)** failed on PR run — 35 false sites from `governance/mega*_traceable_inventory.py` |
+| **Evidence still needed** | GitHub `schwab-csv-first` **pull_request** green after fix |
+| **Fix now or harness now** | `check_schwab_csv_first.py`: exclude mega traceable inventory paths from emission scan |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
-| **Blocking level** | Medium |
-| **Do not close until** | `schwab-csv-first` green on GitHub PR #19 merge |
+| **Blocking level** | High — blocks PR #19 merge |
+| **Do not close until** | `schwab-csv-first` green on GitHub PR #19 **pull_request** event with no unexplained paired failure |
 
 ---
 

@@ -94,6 +94,17 @@ EMISSION_SCAN_SUFFIXES = (
 # Homonyms / English — require quoted market-key context unless extracted as emission surface.
 AMBIGUOUS_MARKET_TOKENS = frozenset({"open", "close", "high", "low", "vix"})
 
+# Mega traceable inventories — disposition ledger rows cite Schwab leaves in metadata;
+# not runtime market-fact emission (diff-emission gate targets product canopy/trunk).
+TRACEABLE_INVENTORY_PATHS: frozenset[str] = frozenset(
+    {
+        "governance/mega1_traceable_inventory.py",
+        "governance/mega2_traceable_inventory.py",
+        "governance/mega3_traceable_inventory.py",
+        "governance/mega4_traceable_inventory.py",
+    }
+)
+
 # Operator-trust / governance tooling — not market-fact emission paths (PR #18 stabilization cone).
 EMISSION_EXCLUDE_PATH_PREFIXES: tuple[str, ...] = (
     "tools/check_operator_trust_governance.py",
@@ -247,7 +258,14 @@ def _is_market_data_path(path: str) -> bool:
     return any(path == prefix or path.startswith(prefix) for prefix in MARKET_DATA_PATHS)
 
 
+def _is_traceable_inventory_path(path: str) -> bool:
+    norm = path.replace("\\", "/")
+    return norm in TRACEABLE_INVENTORY_PATHS
+
+
 def _is_emission_scannable_path(path: str) -> bool:
+    if _is_traceable_inventory_path(path):
+        return False
     if path == REGISTER_CSV_NAME or path.endswith(".csv") and "REGISTER" in path.upper():
         return False
     if any(part in path for part in (".git/", "node_modules/", "backups/", "__pycache__/")):

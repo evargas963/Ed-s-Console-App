@@ -6,7 +6,8 @@
   "operator_readiness_gate_pass": false,
   "card_explainability_allowed": false,
   "card_explainability_block_reason": [
-    "pytest-full 25 failures expected @ bc2e8a9 (29 @ 704b4b9 GitHub) — resolve or operator-sign-off per matrix row",
+    "pytest-full 25 failures @ a72ed54 run 27857853572 — resolve or operator-sign-off per matrix row",
+    "schwab-csv-first PR path OPEN @ run 27857853589 (push pass not sufficient)",
     "RTH validation not executed",
     "LIVE_GUEST_SLA_NOT_PROVEN",
     "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN",
@@ -19,10 +20,10 @@
   "blocked_branches": [
     "fix/card-price-conflict-explainability"
   ],
-  "last_verified_commit": "bc2e8a9",
-  "pytest_full_matrix_commit": "bc2e8a9",
-  "pytest_full_expected_at_commit": "bc2e8a9",
-  "pytest_full_matrix_run": "27856663391",
+  "last_verified_commit": "a72ed54",
+  "pytest_full_matrix_commit": "a72ed54",
+  "pytest_full_expected_at_commit": "a72ed54",
+  "pytest_full_matrix_run": "27857853572",
   "pytest_full_failure_count": 25,
   "pytest_full_passed_count": 3761,
   "pytest_full_skipped_count": 7,

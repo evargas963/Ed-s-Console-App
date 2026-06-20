@@ -286,6 +286,19 @@ def test_diff_emission_ignores_homonym_catalog_definition():
     assert sites == []
 
 
+def test_diff_emission_skips_mega_traceable_inventory_paths():
+    diff = "\n".join(
+        [
+            "+++ b/governance/mega1_traceable_inventory.py",
+            '+    Mega1TraceableDerivation("server.py", 2295, "_parse_quote_node_session_fields", "DERIVED", None, ("schwab_client.py:safe_get_quote",), None, "Reads Schwab quote leaves (lastPrice / mark / bid / ask / quoteTime / tradeTime + extended + regular variants) and derives spot."),',
+            "+++ b/governance/mega2_traceable_inventory.py",
+            '+    Mega2TraceableDerivation("math_levels.py", 10, "_resolve_bid_ask_prices", "DERIVED", None, (), None, "gamma openInterest volatility mark bid ask"),',
+        ]
+    )
+    sites = guard._extract_emission_sites(diff)
+    assert sites == []
+
+
 def test_diff_emission_still_flags_real_market_fact_emission():
     diff = "\n".join(
         [
