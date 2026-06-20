@@ -156,9 +156,9 @@
 | **Source PR / report** | `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` — pytest-full failure matrix |
 | **Why it matters** | Full suite catches cone gaps; 25 product matrix failures @ `a72ed54` |
 | **Operator risk** | Regressions hide in uncategorized red check |
-| **Evidence currently available** | GitHub @ `7bf369c` run 27878597275: **20 failed, 3767 passed, 7 skipped** = product matrix only. CLOSED_WITH_EVIDENCE on GitHub: governance meta-artifact pin drift (27 → 25), `ACTIVE_BUNDLE_ENCODER_LAYOUT` (25 → 22), `CALIBRATION_BYPASS_ALLOWLIST` (22 → 20) |
+| **Evidence currently available** | GitHub @ `afb361d` run 27882570666: **18 failed, 3769 passed, 7 skipped** = product matrix only. CLOSED_WITH_EVIDENCE on GitHub: governance meta-artifact pin drift (27 → 25), `ACTIVE_BUNDLE_ENCODER_LAYOUT` (25 → 22), `CALIBRATION_BYPASS_ALLOWLIST` (22 → 20), `ET_AUTHORITY_DAILY_SCOREBOARD` (20 → 18); schwab-csv-first back to PASS |
 | **Evidence still needed** | pytest-full green OR operator sign-off on every open product matrix row |
-| **Fix now or harness now** | In progress: `ET_AUTHORITY_DAILY_SCOREBOARD` (2 tests) — `calibration/daily_scoreboard.py` now imports `ET` from `time_et` (4/4 ET-authority tests pass locally), pending GitHub proof 20 → 18; next after proof: `ANTI_PATTERN_CAPS_VIOLATIONS` (1 test) |
+| **Fix now or harness now** | Next: `ANTI_PATTERN_CAPS_VIOLATIONS` (1 test) — remove production CAPS hits or update the allowlist per test output; projected 18 → 17 (unproven until GitHub) |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` (FIX_NOW); triage-owned groups in `ci_nonblocking_failure_triage_2026-06-18.json` |
 | **Blocking level** | High — blocks PR #19 merge |
 | **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all **25** open product matrix rows @ `a72ed54` |

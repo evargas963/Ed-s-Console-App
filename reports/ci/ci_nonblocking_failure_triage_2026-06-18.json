@@ -7,23 +7,22 @@
   "merge_gate": "pytest-full",
   "ci_triage_gate_pass": false,
   "next_allowed_step": "resolve_pytest_full_failures",
-  "recommended_next_bucket": "ANTI_PATTERN_CAPS_VIOLATIONS (1 test, after ET_AUTHORITY_DAILY_SCOREBOARD GitHub proof 20 -> 18)",
-  "in_progress_bucket": "ET_AUTHORITY_DAILY_SCOREBOARD (daily_scoreboard ET redirect landed locally, pending GitHub proof)",
+  "recommended_next_bucket": "ANTI_PATTERN_CAPS_VIOLATIONS (1 test)",
   "github_checks_last_observed": {
-    "commit": "7bf369c",
+    "commit": "afb361d",
     "objective-audit": "pass",
-    "objective_audit_run": "27878597277",
+    "objective_audit_run": "27882570653",
     "objective_audit_closed_at_commit": "704b4b9",
     "hardening": "pass",
     "schwab-csv-first": "pass",
     "schwab_csv_first_closed_at_commit": "741091b",
-    "schwab_csv_first_push_run": "27870946302",
-    "schwab_csv_first_pr_run": "27870946980",
+    "schwab_csv_first_push_run": "27882569786",
+    "schwab_csv_first_pr_run": "27882570654",
     "schwab_csv_first_pr_status": "pass",
     "pytest-full": "fail",
-    "pytest_full_summary": "20 failed, 3767 passed, 7 skipped",
-    "pytest_full_run": "27878597275",
-    "pytest_full_count_breakdown": "20 observed = product matrix only; CALIBRATION_BYPASS_ALLOWLIST (2) cleared (22 -> 20); ACTIVE_BUNDLE + meta-artifact drift CLOSED"
+    "pytest_full_summary": "18 failed, 3769 passed, 7 skipped",
+    "pytest_full_run": "27882570666",
+    "pytest_full_count_breakdown": "18 observed = product matrix only; ET_AUTHORITY_DAILY_SCOREBOARD (2) cleared (20 -> 18); ACTIVE_BUNDLE + CALIBRATION_BYPASS + meta-artifact drift CLOSED"
   },
   "pytest_full_matrix_history": [
     {
@@ -107,6 +106,22 @@
       "passed_count": 3767,
       "skipped_count": 7,
       "note": "CALIBRATION_BYPASS_ALLOWLIST CLOSED_WITH_EVIDENCE — both calibration tests cleared on GitHub (22 -> 20); 20 = product matrix only"
+    },
+    {
+      "commit": "ad96844",
+      "pytest_full_run": "27881266148",
+      "failed_count": 18,
+      "passed_count": 3769,
+      "skipped_count": 7,
+      "note": "ET_AUTHORITY_DAILY_SCOREBOARD cleared (20 -> 18) but the ET commit regressed schwab-csv-first (daily_scoreboard market-data file changed without CSV-first declaration); fixed-forward in afb361d"
+    },
+    {
+      "commit": "afb361d",
+      "pytest_full_run": "27882570666",
+      "failed_count": 18,
+      "passed_count": 3769,
+      "skipped_count": 7,
+      "note": "ET_AUTHORITY_DAILY_SCOREBOARD CLOSED_WITH_EVIDENCE — both ET tests absent; pytest-full holds at 18; schwab-csv-first back to PASS (run 27882570654). 18 = product matrix only"
     }
   ],
   "pytest_full_fixed_at_bc2e8a9": [
@@ -160,7 +175,7 @@
     },
     "pytest-full": {
       "classification": "OPEN_BLOCKING",
-      "root_cause": "20 failed @ 7bf369c run 27878597275 = product matrix only. CALIBRATION_BYPASS_ALLOWLIST (2 tests) CLOSED_WITH_EVIDENCE on GitHub (22 -> 20); ACTIVE_BUNDLE + governance meta-artifact pin drift remain CLOSED",
+      "root_cause": "18 failed @ afb361d run 27882570666 = product matrix only. ET_AUTHORITY_DAILY_SCOREBOARD (2 tests) CLOSED_WITH_EVIDENCE on GitHub (20 -> 18); ACTIVE_BUNDLE + CALIBRATION_BYPASS + governance meta-artifact pin drift remain CLOSED; schwab-csv-first back to PASS",
       "closure_criteria": "pytest-full green OR every row in pytest_full_failure_matrix accepted with operator sign-off"
     }
   },
@@ -275,21 +290,21 @@
     },
     {
       "failure_group": "ET_AUTHORITY_DAILY_SCOREBOARD",
-      "number_of_tests": 2,
-      "local_fix_status": "FIXED_LOCAL_PENDING_GITHUB_PROOF",
-      "local_fix_note": "calibration/daily_scoreboard.py now imports ET from time_et (COH-SA-2 canonical) instead of assigning ZoneInfo('America/New_York'); the UTC ZoneInfo elsewhere in the file is unchanged. daily_scoreboard.ET is time_et.ET; tests/test_coh_sa2_et_authority.py passes locally (4/4). number_of_tests stays 2 until GitHub proves 20 -> 18.",
-      "expected_clear_count": 2,
+      "number_of_tests": 0,
+      "bucket_status": "CLOSED_WITH_EVIDENCE",
+      "cleared_at_commit": "afb361d",
+      "cleared_at_run": "27882570666",
       "representative_tests": [
         "tests/test_coh_sa2_et_authority.py::test_only_time_et_defines_ny_zoneinfo_literal",
         "tests/test_coh_sa2_et_authority.py::test_no_module_level_et_zoneinfo_assignment_outside_time_et"
       ],
       "failure_message": "AssertionError: ['calibration/daily_scoreboard.py']",
-      "root_cause": "daily_scoreboard.py assigned its own ET = ZoneInfo('America/New_York') at module level, outside the canonical time_et.py. Fix: import ET from time_et (same redirect pattern as polling_adapter / live_decision_bundle / v2_decision). Production-equivalent zone; single ET authority.",
+      "root_cause": "Cleared @ ad96844 + afb361d — calibration/daily_scoreboard.py imports ET from time_et (COH-SA-2 canonical) instead of assigning ZoneInfo('America/New_York'); the ET commit's market-data-file change required a CSV-first declaration (added in afb361d). Both ET tests cleared on GitHub run 27882570666 (20 -> 18); schwab-csv-first back to PASS.",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
-      "fix_now_or_defer": "fix_now",
+      "fix_now_or_defer": "closed",
       "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "daily_scoreboard imports NY zone from time_et only; closure on GitHub pytest-full 20 -> 18"
+      "closure_criteria": "GitHub pytest-full @ afb361d: 2 ET-authority tests green + schwab-csv-first PASS — met (20 -> 18)"
     },
     {
       "failure_group": "ANTI_PATTERN_CAPS_VIOLATIONS",
@@ -460,18 +475,18 @@
       "closure_criteria": "Tests mock quote layer or skip when schwab_live_blocked_for()"
     }
   ],
-  "pytest_full_failure_count": 20,
-  "pytest_full_failure_count_semantics": "product matrix failure count = sum(pytest_full_failure_matrix[].number_of_tests) = 20 = current_ci_pytest_full_failure_count (20) at 7bf369c; meta_artifact_drift 0; ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST CLOSED (0). Artifact sync only — no pending local fix in this commit. Next bucket ET_AUTHORITY_DAILY_SCOREBOARD projects 18, only after its fix lands locally and only as a projection until GitHub proves it.",
-  "pytest_full_product_matrix_failure_count": 20,
-  "pytest_full_passed_count": 3767,
+  "pytest_full_failure_count": 18,
+  "pytest_full_failure_count_semantics": "product matrix failure count = sum(pytest_full_failure_matrix[].number_of_tests) = 18 = current_ci_pytest_full_failure_count (18) at afb361d; meta_artifact_drift 0; ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD CLOSED (0). Artifact sync only — no pending local fix in this commit. Next bucket ANTI_PATTERN_CAPS_VIOLATIONS projects 17, only after its fix lands locally and only as a projection until GitHub proves it.",
+  "pytest_full_product_matrix_failure_count": 18,
+  "pytest_full_passed_count": 3769,
   "pytest_full_skipped_count": 7,
-  "pytest_full_matrix_verified_commit": "7bf369c",
-  "pytest_full_matrix_verified_run": "27878597275",
-  "pytest_full_expected_at_commit": "7bf369c",
-  "current_ci_verified_commit": "7bf369c",
-  "current_ci_pytest_full_run": "27878597275",
-  "current_ci_pytest_full_failure_count": 20,
-  "current_ci_pytest_full_passed_count": 3767,
+  "pytest_full_matrix_verified_commit": "afb361d",
+  "pytest_full_matrix_verified_run": "27882570666",
+  "pytest_full_expected_at_commit": "afb361d",
+  "current_ci_verified_commit": "afb361d",
+  "current_ci_pytest_full_run": "27882570666",
+  "current_ci_pytest_full_failure_count": 18,
+  "current_ci_pytest_full_passed_count": 3769,
   "current_ci_pytest_full_skipped_count": 7,
   "meta_artifact_drift_failure_count": 0,
   "meta_artifact_drift_tests": [],
@@ -480,8 +495,8 @@
   "active_bundle_status": "CLOSED_WITH_EVIDENCE @ 0068226 run 27877046342 (25 -> 22)",
   "calibration_bypass_local_fix_pending_github_proof": false,
   "calibration_bypass_status": "CLOSED_WITH_EVIDENCE @ 7bf369c run 27878597275 (22 -> 20)",
-  "et_authority_local_fix_pending_github_proof": true,
-  "et_authority_local_fix_note": "calibration/daily_scoreboard.py imports ET from time_et (canonical); 4/4 ET-authority tests pass locally; pending GitHub proof 20 -> 18.",
+  "et_authority_local_fix_pending_github_proof": false,
+  "et_authority_status": "CLOSED_WITH_EVIDENCE @ afb361d run 27882570666 (20 -> 18); schwab-csv-first regression from ad96844 fixed-forward in afb361d",
   "expected_after_pending_push": 18,
   "pytest_full_classification_totals": {
     "PRE_EXISTING_BUT_BLOCKING": 21,
@@ -490,8 +505,13 @@
     "INFRASTRUCTURE_FLAKE_WITH_EVIDENCE": 0,
     "FIX_NOW": 0,
     "OBSOLETE_TEST_UPDATE_REQUIRED": 0,
-    "CLOSED_WITH_EVIDENCE": 22
+    "CLOSED_WITH_EVIDENCE": 23
   },
+  "pytest_full_fixed_at_afb361d": [
+    "tests/test_coh_sa2_et_authority.py::test_only_time_et_defines_ny_zoneinfo_literal",
+    "tests/test_coh_sa2_et_authority.py::test_no_module_level_et_zoneinfo_assignment_outside_time_et"
+  ],
+  "pytest_full_fixed_count_at_afb361d": 2,
   "pytest_full_fixed_at_0068226": [
     "tests/test_active_bundle_contract_v1.py::test_check_active_bundle_rejects_stale_encoder_schema",
     "tests/test_active_horizon_layout_pr3.py::test_ml_predict_strict_uses_canonical_only",
