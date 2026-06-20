@@ -11,7 +11,7 @@
 - `ci_triage_gate_pass: false` — PR #19 CI fixes landed; awaiting GitHub green.
 - `operator_readiness_gate_pass: false` — CI triage + RTH proof not complete.
 - `card_explainability_allowed: false` — **do not** start `fix/card-price-conflict-explainability`.
-- **Next allowed step:** `resolve_pytest_full_failures` — pytest-full **29-failure** matrix @ `704b4b9` run `27851943230`.
+- **Next allowed step:** `resolve_pytest_full_failures` — pytest-full **25-failure** matrix expected @ `bc2e8a9` (29 @ `704b4b9` GitHub run `27851943230`).
 
 **Planned sequence:** Merge stabilization (PR #18 ✅) → CI triage (PR #19, awaiting pytest-full) → operator RTH validation → `fix/card-price-conflict-explainability` (only when `card_explainability_allowed: true`)
 
@@ -31,6 +31,23 @@
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | Closed |
 | **Do not close until** | Met @ `704b4b9` |
+
+---
+
+### MEGA_INVENTORY_CONTRACT_LOCK_CI
+
+| Field | Value |
+|-------|-------|
+| **Status** | `CLOSED_WITH_EVIDENCE` (local @ `bc2e8a9`; GitHub pytest-full not yet observed) |
+| **Source PR / report** | `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md`; commit `bc2e8a9` |
+| **Why it matters** | mega1–mega4 inventory gate blocks merge when production defs lack rows |
+| **Operator risk** | Untraced market-field derivations in new functions |
+| **Evidence currently available** | Fix @ `bc2e8a9`: `sync_traceable_inventory_to_ast` + NONE stubs; row counts 383/211/148/1014; local mega audit **35/35** |
+| **Evidence still needed** | GitHub pytest-full @ `bc2e8a9` confirms 4 mega tests green in full suite |
+| **Fix now or harness now** | Landed @ `bc2e8a9` on `audit/ci-nonblocking-failures-triage` |
+| **Owner branch** | `fix/mega-inventory-sync` |
+| **Blocking level** | Closed locally — awaiting GitHub pytest-full observation |
+| **Do not close until** | GitHub pytest-full @ `bc2e8a9` shows mega inventory tests green |
 
 ---
 
@@ -103,14 +120,14 @@
 |-------|-------|
 | **Status** | `OPEN_BLOCKING` (partial — objective-audit + hardening + schwab-csv-first closed @ `704b4b9`) |
 | **Source PR / report** | `audit/ci-nonblocking-failures-triage`; `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` |
-| **Why it matters** | pytest-full is merge gate; 29 failures remain |
+| **Why it matters** | pytest-full is merge gate; 25 failures expected @ `bc2e8a9` (29 @ `704b4b9` GitHub) |
 | **Operator risk** | Regressions hide in red checks |
-| **Evidence currently available** | GitHub @ `704b4b9`: objective-audit PASS; pytest-full `29 failed, 3757 passed, 7 skipped` run `27851943230` |
+| **Evidence currently available** | GitHub @ `704b4b9`: pytest-full `29 failed`; local @ `bc2e8a9`: MEGA cleared (35/35 mega audit) |
 | **Evidence still needed** | GitHub PR #19: `pytest-full` green OR operator sign-off on all open matrix rows |
-| **Fix now or harness now** | Next bucket: `MEGA_INVENTORY_CONTRACT_LOCK` (4 tests) |
+| **Fix now or harness now** | Next bucket: `ACTIVE_BUNDLE_ENCODER_LAYOUT` (3 tests) |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | High until CI green on GitHub |
-| **Do not close until** | `pytest-full` green on GitHub PR #19 OR operator-signed acceptance of all **29** open matrix rows @ `704b4b9` |
+| **Do not close until** | `pytest-full` green on GitHub PR #19 OR operator-signed acceptance of all **25** open matrix rows @ `bc2e8a9` |
 
 ---
 
@@ -137,14 +154,14 @@
 |-------|-------|
 | **Status** | `OPEN_BLOCKING` |
 | **Source PR / report** | `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` — pytest-full failure matrix |
-| **Why it matters** | Full suite catches cone gaps; 29 failures categorized @ `704b4b9` |
+| **Why it matters** | Full suite catches cone gaps; 25 failures expected @ `bc2e8a9` |
 | **Operator risk** | Regressions hide in uncategorized red check |
-| **Evidence currently available** | Matrix @ `704b4b9` run 27851943230: **29 failed, 3757 passed, 7 skipped**; ABLATION + GOVERNANCE_MUTATION closed |
+| **Evidence currently available** | Matrix @ `704b4b9` run 27851943230: **29 failed**; MEGA cleared locally @ `bc2e8a9` |
 | **Evidence still needed** | pytest-full green OR operator sign-off on every open matrix row |
-| **Fix now or harness now** | Recommended next: `MEGA_INVENTORY_CONTRACT_LOCK` (4 tests, `fix/mega-inventory-sync`) |
+| **Fix now or harness now** | Recommended next: `ACTIVE_BUNDLE_ENCODER_LAYOUT` (3 tests, `fix/ci-active-bundle-fixture`) |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` (FIX_NOW); triage-owned groups in `ci_nonblocking_failure_triage_2026-06-18.json` |
 | **Blocking level** | High — blocks PR #19 merge |
-| **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all **29** open matrix rows @ `704b4b9` |
+| **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all **25** open matrix rows @ `bc2e8a9` |
 
 ---
 

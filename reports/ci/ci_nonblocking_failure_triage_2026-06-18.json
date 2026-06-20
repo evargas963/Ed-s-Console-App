@@ -7,17 +7,17 @@
   "merge_gate": "pytest-full",
   "ci_triage_gate_pass": false,
   "next_allowed_step": "resolve_pytest_full_failures",
-  "recommended_next_bucket": "MEGA_INVENTORY_CONTRACT_LOCK",
+  "recommended_next_bucket": "ACTIVE_BUNDLE_ENCODER_LAYOUT",
   "github_checks_last_observed": {
-    "commit": "704b4b9",
+    "commit": "bc2e8a9",
     "objective-audit": "pass",
-    "objective_audit_run": "27851943226",
+    "objective_audit_run": "awaiting_github",
     "objective_audit_closed_at_commit": "704b4b9",
     "hardening": "pass",
     "schwab-csv-first": "pass",
     "pytest-full": "fail",
-    "pytest_full_summary": "29 failed, 3757 passed, 7 skipped",
-    "pytest_full_run": "27851943230"
+    "pytest_full_summary": "25 failed expected (29 @ 704b4b9 run 27851943230); GitHub run awaiting observation",
+    "pytest_full_run": "awaiting_github"
   },
   "pytest_full_matrix_history": [
     {
@@ -53,7 +53,21 @@
       "passed_count": 3757,
       "skipped_count": 7,
       "note": "ABLATION_GRID_RUNNABLE_ACCOUNTING closed (4); GOVERNANCE_MUTATION_CALIBRATION_LOG_ENV closed (1); objective-audit PASS"
+    },
+    {
+      "commit": "bc2e8a9",
+      "pytest_full_run": "awaiting_github",
+      "failed_count": 25,
+      "passed_count": 3761,
+      "skipped_count": 7,
+      "note": "MEGA_INVENTORY_CONTRACT_LOCK closed (4) — local mega audit 35/35; awaiting GitHub pytest-full"
     }
+  ],
+  "pytest_full_fixed_at_bc2e8a9": [
+    "tests/test_mega1_traceable_audit.py::test_mega1_inventory_covers_every_function",
+    "tests/test_mega2_traceable_audit.py::test_mega2_inventory_covers_every_function",
+    "tests/test_mega3_traceable_audit.py::test_mega3_inventory_covers_every_function",
+    "tests/test_mega4_traceable_audit.py::test_mega4_inventory_covers_every_function"
   ],
   "pytest_full_fixed_at_704b4b9": [
     "tests/test_check_fix_everything_we_touch.py::test_ablation_grid_requires_all_seven_models_and_four_horizons",
@@ -99,7 +113,7 @@
     },
     "pytest-full": {
       "classification": "OPEN_BLOCKING",
-      "root_cause": "29 failures @ 704b4b9 CI (34→29; ABLATION + GOVERNANCE_MUTATION cleared)",
+      "root_cause": "29 failures @ 704b4b9 CI (34→29; ABLATION + GOVERNANCE_MUTATION cleared); local @ bc2e8a9 expects 25 after MEGA sync",
       "closure_criteria": "pytest-full green OR every row in pytest_full_failure_matrix accepted with operator sign-off"
     }
   },
@@ -124,18 +138,21 @@
     },
     {
       "failure_group": "MEGA_INVENTORY_CONTRACT_LOCK",
-      "number_of_tests": 4,
+      "number_of_tests": 0,
+      "bucket_status": "CLOSED_WITH_EVIDENCE",
+      "cleared_at_commit": "bc2e8a9",
+      "cleared_at_run": "local_mega_audit_35_of_35",
       "representative_tests": [
         "tests/test_mega1_traceable_audit.py::test_mega1_inventory_covers_every_function",
         "tests/test_mega4_traceable_audit.py::test_mega4_inventory_covers_every_function"
       ],
       "failure_message": "Section inventory coverage gaps",
-      "root_cause": "megaN_traceable_inventory.py rows lag new functions",
+      "root_cause": "Cleared @ bc2e8a9 — sync_traceable_inventory_to_ast + NONE stubs; row counts 383/211/148/1014",
       "classification": "INTENTIONAL_CONTRACT_LOCK",
-      "fix_now_or_defer": "triage_owned",
+      "fix_now_or_defer": "closed",
       "owner_branch": "fix/mega-inventory-sync",
       "owner_branch_blocked": false,
-      "closure_criteria": "mega1–mega4 inventory tests pass after inventory row sync"
+      "closure_criteria": "mega1–mega4 inventory tests pass — met locally @ bc2e8a9 (35/35); GitHub pytest-full awaiting observation"
     },
     {
       "failure_group": "MISSING_SNAPSHOTS_1M_NORMALIZED_FIXTURE",
@@ -386,20 +403,22 @@
       "closure_criteria": "Tests mock quote layer or skip when schwab_live_blocked_for()"
     }
   ],
-  "pytest_full_failure_count": 29,
-  "pytest_full_passed_count": 3757,
+  "pytest_full_failure_count": 25,
+  "pytest_full_passed_count": 3761,
   "pytest_full_skipped_count": 7,
+  "pytest_full_expected_at_commit": "bc2e8a9",
   "pytest_full_classification_totals": {
     "PRE_EXISTING_BUT_BLOCKING": 21,
-    "INTENTIONAL_CONTRACT_LOCK": 7,
+    "INTENTIONAL_CONTRACT_LOCK": 3,
     "PRE_EXISTING_AND_ACCEPTED_WITH_EVIDENCE": 1,
     "INFRASTRUCTURE_FLAKE_WITH_EVIDENCE": 0,
     "FIX_NOW": 0,
     "OBSOLETE_TEST_UPDATE_REQUIRED": 0,
-    "CLOSED_WITH_EVIDENCE": 16
+    "CLOSED_WITH_EVIDENCE": 20
   },
   "pytest_full_fixed_count_at_6e3157c": 5,
   "pytest_full_fixed_count_at_e3ba4a9": 12,
   "pytest_full_fixed_count_at_704b4b9": 5,
+  "pytest_full_fixed_count_at_bc2e8a9": 4,
   "card_explainability_allowed": false
 }
