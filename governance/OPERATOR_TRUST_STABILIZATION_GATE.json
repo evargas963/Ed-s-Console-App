@@ -38,10 +38,12 @@
   "calibration_bypass_local_fix_note": "CALIBRATION_BYPASS_ALLOWLIST CLOSED_WITH_EVIDENCE @ 7bf369c run 27878597275 — both tests cleared on GitHub; pytest-full 22 -> 20.",
   "et_authority_local_fix_pending_github_proof": false,
   "et_authority_local_fix_note": "ET_AUTHORITY_DAILY_SCOREBOARD CLOSED_WITH_EVIDENCE @ afb361d run 27882570666 — both ET-authority tests cleared on GitHub (daily_scoreboard imports ET from time_et + Schwab CSV-first declaration); pytest-full 20 -> 18; schwab-csv-first back to PASS.",
-  "expected_after_pending_push": 18,
+  "anti_pattern_caps_local_fix_pending_github_proof": true,
+  "anti_pattern_caps_local_fix_note": "ANTI_PATTERN_CAPS_VIOLATIONS (1 test) fixed locally — 15 reviewed non-market-leaf hits across 8 files exempted via exact file+line+variant entries in CAPS_LINE_ALLOWLIST (no whole-file prefix; money-path-adjacent files line-level only). Register CAPS block mirrors. No detection regex / DEFAULT_VALUE_RE / runtime change. 9/9 anti-pattern tests pass locally. Pending GitHub proof of pytest-full 18 -> 17; still counted at 1 until proven.",
+  "expected_after_pending_push": 17,
   "latest_artifact_update_commit": "afb361d",
   "pytest_full_failure_count": 18,
-  "pytest_full_failure_count_semantics": "Observed CI failures at current_ci_pytest_full_run 27882570666 @ afb361d = pytest_full_product_matrix_failure_count (18); meta_artifact_drift 0; ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD CLOSED. Artifact sync only — no pending local fix in this commit, so expected_after_pending_push == observed (18). Next bucket ANTI_PATTERN_CAPS_VIOLATIONS projects 17, only after its fix lands locally and only as a projection until GitHub proves it.",
+  "pytest_full_failure_count_semantics": "Observed CI failures at current_ci_pytest_full_run 27882570666 @ afb361d = pytest_full_product_matrix_failure_count (18); meta_artifact_drift 0; ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD CLOSED. ANTI_PATTERN_CAPS_VIOLATIONS (1) is now fixed locally and still counted at 1 until GitHub proves 18 -> 17. expected_after_pending_push = 17 is a PROJECTION, not asserted as observed.",
   "pytest_full_matrix_run": "27882570666",
   "pytest_full_passed_count": 3769,
   "pytest_full_skipped_count": 7,
@@ -73,5 +75,5 @@
   "required_triage_reports": [
     "reports/ci/ci_nonblocking_failure_triage_2026-06-18.md"
   ],
-  "note": "Observed @ afb361d (run 27882570666) = 18 failed (3769 passed, 7 skipped) = product matrix only; meta-artifact drift + ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD all CLOSED_WITH_EVIDENCE; schwab-csv-first back to PASS. Artifact sync only — no new fix in this commit, so expected_after_pending_push = 18 (= observed). Next bucket ANTI_PATTERN_CAPS_VIOLATIONS (1 test) projects 17 once its fix lands locally (projection until GitHub proves it). Gates stay false until pytest-full green or operator sign-off."
+  "note": "Observed @ afb361d (run 27882570666) = 18 failed (3769 passed, 7 skipped) = product matrix only; meta-artifact drift + ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD all CLOSED_WITH_EVIDENCE. ANTI_PATTERN_CAPS_VIOLATIONS (1 test) now fixed locally (15 reviewed hits exempted via exact line+variant CAPS_LINE_ALLOWLIST entries; register mirrors; 9/9 anti-pattern tests pass locally); expected_after_pending_push = 17 is a PROJECTION pending GitHub proof — observed stays 18 and the matrix still counts ANTI_PATTERN at 1 until proven. Gates stay false until pytest-full green or operator sign-off."
 }

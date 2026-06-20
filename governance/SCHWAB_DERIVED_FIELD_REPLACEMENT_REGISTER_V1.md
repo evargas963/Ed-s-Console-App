@@ -789,7 +789,7 @@ Regression gate: `tests/test_anti_pattern_family_repo_wide.py` (production `.py`
 | `ml_predict.py` | * | * | inference orchestration derived defaults |
 | `live_pipeline_diag.py` | * | * | live pipeline diagnostic counters |
 | `lstm_model.py` | * | * | LSTM model wrapper derived defaults |
-| `lstm_data.py` | * | * | training dataset builder — zone/vwap sentinels; non-leaf session fields |
+| `lstm_data.py` | * | * | training dataset builder — non-leaf time/session fields |
 | `transformer_model.py` | * | * | transformer wrapper derived defaults |
 | `transformer_train.py` | * | * | transformer training script counters |
 | `train_all.py` | * | * | training driver counters |
@@ -852,6 +852,23 @@ Regression gate: `tests/test_anti_pattern_family_repo_wide.py` (production `.py`
 | `verify_snapshot_pipeline.py` | * | * | snapshot pipeline verification counters |
 | `xgboost_model.py` | * | * | XGB model prob triplet defaults when partial dict |
 | `calibration/v2_advisory_backfill.py` | * | SETDEFAULT | reconstructed Tier C ms dict setdefault for optional blocks |
+| `fusion_contract.py` | * | GETATTR_DEFAULT | duck-typing on fusion + CanonicalForecast objects (FusionOutput.available, CanonicalForecast.provenance); not a silent-default fabrication |
+| `numeric_contract.py` | * | GETATTR_DEFAULT | duck-typing on base-model output objects (prob_up/prob_down/prob_flat, dominant_class/dominant_dir); not a silent-default fabrication |
+| `decision_record.py` | 305 | IF_TRUTHY_ELSE | explicit fail-closed no-payload result |
+| `decision_record.py` | 375 | IF_TRUTHY_ELSE | explicit fail-closed no-payload result |
+| `money_path_ticker_tiers.py` | 66 | GET_WITH_DEFAULT | env config only |
+| `override_registry.py` | 85 | IF_TRUTHY_ELSE | SQL COUNT(*) aggregate coercion |
+| `release_object.py` | 35 | GET_WITH_DEFAULT | env config only |
+| `release_object.py` | 106 | GET_WITH_DEFAULT | env config only |
+| `release_object.py` | 107 | GET_WITH_DEFAULT | env config only |
+| `scheduler_user_tickers.py` | 60 | GET_WITH_DEFAULT | env config only |
+| `schwab_client.py` | 51 | GETATTR_DEFAULT | constant base URL only |
+| `schwab_client.py` | 293 | GET_WITH_DEFAULT | OAuth/config timeout only |
+| `schwab_client.py` | 371 | GET_OR_DEFAULT | parse_qs indexing idiom only |
+| `schwab_client.py` | 372 | GET_OR_DEFAULT | parse_qs indexing idiom only |
+| `schwab_client.py` | 403 | GET_WITH_DEFAULT | OAuth/config timeout only |
+| `timing_probe2.py` | 23 | GET_WITH_DEFAULT | diagnostic probe display fallback |
+| `trade_impacting_gate.py` | 218 | GET_WITH_DEFAULT | env config only |
 <!-- CAPS_ALLOWLIST_END -->
 
 ---

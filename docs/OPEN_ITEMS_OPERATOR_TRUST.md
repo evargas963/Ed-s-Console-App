@@ -158,7 +158,7 @@
 | **Operator risk** | Regressions hide in uncategorized red check |
 | **Evidence currently available** | GitHub @ `afb361d` run 27882570666: **18 failed, 3769 passed, 7 skipped** = product matrix only. CLOSED_WITH_EVIDENCE on GitHub: governance meta-artifact pin drift (27 → 25), `ACTIVE_BUNDLE_ENCODER_LAYOUT` (25 → 22), `CALIBRATION_BYPASS_ALLOWLIST` (22 → 20), `ET_AUTHORITY_DAILY_SCOREBOARD` (20 → 18); schwab-csv-first back to PASS |
 | **Evidence still needed** | pytest-full green OR operator sign-off on every open product matrix row |
-| **Fix now or harness now** | Next: `ANTI_PATTERN_CAPS_VIOLATIONS` (1 test) — remove production CAPS hits or update the allowlist per test output; projected 18 → 17 (unproven until GitHub) |
+| **Fix now or harness now** | In progress: `ANTI_PATTERN_CAPS_VIOLATIONS` (1 test) — 15 reviewed non-market-leaf hits exempted via exact file+line+variant `CAPS_LINE_ALLOWLIST` entries (register mirrors; 9/9 anti-pattern tests pass locally), pending GitHub proof 18 → 17; next after proof: `ML_PREDICT_STRICT_VERSION` / `SILENT_EXCEPT_PASS_REMAINING` |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` (FIX_NOW); triage-owned groups in `ci_nonblocking_failure_triage_2026-06-18.json` |
 | **Blocking level** | High — blocks PR #19 merge |
 | **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all **25** open product matrix rows @ `a72ed54` |

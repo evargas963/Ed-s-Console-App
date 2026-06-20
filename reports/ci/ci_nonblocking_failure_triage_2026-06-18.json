@@ -7,7 +7,8 @@
   "merge_gate": "pytest-full",
   "ci_triage_gate_pass": false,
   "next_allowed_step": "resolve_pytest_full_failures",
-  "recommended_next_bucket": "ANTI_PATTERN_CAPS_VIOLATIONS (1 test)",
+  "recommended_next_bucket": "ML_PREDICT_STRICT_VERSION / SILENT_EXCEPT_PASS_REMAINING (after ANTI_PATTERN_CAPS_VIOLATIONS GitHub proof 18 -> 17)",
+  "in_progress_bucket": "ANTI_PATTERN_CAPS_VIOLATIONS (line-level CAPS allowlist landed locally, pending GitHub proof)",
   "github_checks_last_observed": {
     "commit": "afb361d",
     "objective-audit": "pass",
@@ -309,16 +310,19 @@
     {
       "failure_group": "ANTI_PATTERN_CAPS_VIOLATIONS",
       "number_of_tests": 1,
+      "local_fix_status": "FIXED_LOCAL_PENDING_GITHUB_PROOF",
+      "local_fix_note": "15 reviewed non-market-leaf hits across 8 files exempted via exact file+line+variant entries in tools/anti_pattern_sweep.py CAPS_LINE_ALLOWLIST (tightest supported form; no whole-file prefix — money-path-adjacent files line-level only). Categories: env config only, OAuth/config timeout only, constant base URL only, parse_qs indexing idiom only, explicit fail-closed no-payload result, SQL COUNT(*) aggregate coercion, diagnostic probe display fallback. Register CAPS block regenerated to mirror. No detection regex / DEFAULT_VALUE_RE / runtime change. 9/9 anti-pattern tests pass locally. number_of_tests stays 1 until GitHub proves 18 -> 17.",
+      "expected_clear_count": 1,
       "representative_tests": [
         "tests/test_anti_pattern_family_repo_wide.py::test_no_unallowlisted_production_hits"
       ],
       "failure_message": "CAPS violations (fix or add allowlist)",
-      "root_cause": "Production CAPS pattern hits not in allowlist",
+      "root_cause": "15 silent-default-FAMILY hits across 8 files (decision_record, money_path_ticker_tiers, override_registry, release_object, scheduler_user_tickers, schwab_client, timing_probe2, trade_impacting_gate) were not yet allowlisted. Each traced to source and verified non-market-leaf (env/config/constant/parse-idiom/fail-closed/COUNT/diagnostic). Fix is exact line+variant allowlist + register mirror only; no production code change.",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
-      "fix_now_or_defer": "triage_owned",
-      "owner_branch": "fix/anti-pattern-caps-allowlist",
+      "fix_now_or_defer": "fix_now",
+      "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "CAPS allowlist updated or violations removed per test output"
+      "closure_criteria": "Exact line+variant allowlist covers all 15 reviewed hits; closure on GitHub pytest-full 18 -> 17"
     },
     {
       "failure_group": "GOVERNANCE_MUTATION_CALIBRATION_LOG_ENV",
@@ -497,7 +501,9 @@
   "calibration_bypass_status": "CLOSED_WITH_EVIDENCE @ 7bf369c run 27878597275 (22 -> 20)",
   "et_authority_local_fix_pending_github_proof": false,
   "et_authority_status": "CLOSED_WITH_EVIDENCE @ afb361d run 27882570666 (20 -> 18); schwab-csv-first regression from ad96844 fixed-forward in afb361d",
-  "expected_after_pending_push": 18,
+  "anti_pattern_caps_local_fix_pending_github_proof": true,
+  "anti_pattern_caps_local_fix_note": "15 reviewed hits exempted via exact line+variant CAPS_LINE_ALLOWLIST entries; register mirrors; 9/9 anti-pattern tests pass locally; pending GitHub proof 18 -> 17.",
+  "expected_after_pending_push": 17,
   "pytest_full_classification_totals": {
     "PRE_EXISTING_BUT_BLOCKING": 21,
     "INTENTIONAL_CONTRACT_LOCK": 3,

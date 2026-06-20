@@ -46,9 +46,13 @@
 
 Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` → `pytest_full_failure_matrix` (sum of `number_of_tests` = 18 = `pytest_full_product_matrix_failure_count` = current observed).
 
-### Recommended next unblocked pytest bucket
+### In-progress pytest bucket
 
-**`ANTI_PATTERN_CAPS_VIOLATIONS`** — 1 test, `audit/ci-nonblocking-failures-triage`, not branch-blocked. **FIX_NOW** — production CAPS pattern hits not in the allowlist; closure on removing the hits or updating the allowlist per the test output. Expected (projection, unproven until GitHub): 18 → 17.
+**`ANTI_PATTERN_CAPS_VIOLATIONS`** — 1 test, `audit/ci-nonblocking-failures-triage`, not branch-blocked. Fix **landed locally**: 15 reviewed non-market-leaf hits across 8 files exempted via **exact file+line+variant** entries in `CAPS_LINE_ALLOWLIST` (no whole-file prefix; money-path-adjacent files line-level only); register CAPS block mirrors. No detection regex / `DEFAULT_VALUE_RE` / runtime change. 9/9 anti-pattern tests pass locally. Expected (projection, unproven until GitHub): 18 → 17.
+
+### Recommended next unblocked pytest bucket (after ANTI_PATTERN GitHub proof)
+
+**`ML_PREDICT_STRICT_VERSION`** (1 test) / **`SILENT_EXCEPT_PASS_REMAINING`** (1 test). **FIX_NOW** candidates per the matrix.
 
 ---
 
@@ -60,7 +64,7 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 - `next_allowed_step: resolve_pytest_full_failures`
 - `current_ci_verified_commit: afb361d` (run 27882570666, 18 failed — product matrix only)
 - `pytest_full_matrix_verified_commit: afb361d`
-- `expected_after_pending_push: 18` (artifact sync only; no pending local fix in this commit)
+- `expected_after_pending_push: 17` (ANTI_PATTERN_CAPS_VIOLATIONS line-level allowlist landed locally; projection, unproven until GitHub)
 - **Do not merge** PR #19 until pytest-full green on GitHub PR #19 **and** schwab-csv-first `pull_request` green, with no unexplained paired failure.
 
 ---
