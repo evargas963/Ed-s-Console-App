@@ -36,10 +36,12 @@
   "active_bundle_local_fix_note": "ACTIVE_BUNDLE_ENCODER_LAYOUT CLOSED_WITH_EVIDENCE @ 0068226 run 27877046342 — all 3 tests cleared on GitHub; pytest-full 25 -> 22.",
   "calibration_bypass_local_fix_pending_github_proof": false,
   "calibration_bypass_local_fix_note": "CALIBRATION_BYPASS_ALLOWLIST CLOSED_WITH_EVIDENCE @ 7bf369c run 27878597275 — both tests cleared on GitHub; pytest-full 22 -> 20.",
-  "expected_after_pending_push": 20,
+  "et_authority_local_fix_pending_github_proof": true,
+  "et_authority_local_fix_note": "ET_AUTHORITY_DAILY_SCOREBOARD (2 tests) fixed locally — calibration/daily_scoreboard.py now imports ET from time_et (COH-SA-2 canonical) instead of assigning ZoneInfo('America/New_York'); the UTC ZoneInfo elsewhere is unchanged. tests/test_coh_sa2_et_authority.py passes locally (4/4); daily_scoreboard.ET is time_et.ET. Pending GitHub proof of pytest-full 20 -> 18; still counted at 2 until proven.",
+  "expected_after_pending_push": 18,
   "latest_artifact_update_commit": "7bf369c",
   "pytest_full_failure_count": 20,
-  "pytest_full_failure_count_semantics": "Observed CI failures at current_ci_pytest_full_run 27878597275 @ 7bf369c = pytest_full_product_matrix_failure_count (20); meta_artifact_drift 0; ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST CLOSED. Artifact sync only — no pending local fix in this commit, so expected_after_pending_push == observed (20). Next bucket ET_AUTHORITY_DAILY_SCOREBOARD projects 18, only after its fix lands locally and only as a projection until GitHub proves it.",
+  "pytest_full_failure_count_semantics": "Observed CI failures at current_ci_pytest_full_run 27878597275 @ 7bf369c = pytest_full_product_matrix_failure_count (20); meta_artifact_drift 0; ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST CLOSED. ET_AUTHORITY_DAILY_SCOREBOARD (2) is now fixed locally and still counted at 2 until GitHub proves 20 -> 18. expected_after_pending_push = 18 is a PROJECTION, not asserted as observed.",
   "pytest_full_matrix_run": "27878597275",
   "pytest_full_passed_count": 3767,
   "pytest_full_skipped_count": 7,
@@ -71,5 +73,5 @@
   "required_triage_reports": [
     "reports/ci/ci_nonblocking_failure_triage_2026-06-18.md"
   ],
-  "note": "Observed @ 7bf369c (run 27878597275) = 20 failed (3767 passed, 7 skipped) = product matrix only; meta-artifact drift + ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST all CLOSED_WITH_EVIDENCE. Artifact sync only — no new fix in this commit, so expected_after_pending_push = 20 (= observed). Next bucket ET_AUTHORITY_DAILY_SCOREBOARD (2 tests) projects 18 once its fix lands locally (projection until GitHub proves it). Gates stay false until pytest-full green or operator sign-off."
+  "note": "Observed @ 7bf369c (run 27878597275) = 20 failed (3767 passed, 7 skipped) = product matrix only; meta-artifact drift + ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST all CLOSED_WITH_EVIDENCE. ET_AUTHORITY_DAILY_SCOREBOARD (2 tests) now fixed locally (calibration/daily_scoreboard.py imports ET from time_et; 4/4 ET-authority tests pass locally); expected_after_pending_push = 18 is a PROJECTION pending GitHub proof — observed stays 20 and the matrix still counts ET_AUTHORITY at 2 until proven. Gates stay false until pytest-full green or operator sign-off."
 }

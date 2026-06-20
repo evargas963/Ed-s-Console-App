@@ -158,7 +158,7 @@
 | **Operator risk** | Regressions hide in uncategorized red check |
 | **Evidence currently available** | GitHub @ `7bf369c` run 27878597275: **20 failed, 3767 passed, 7 skipped** = product matrix only. CLOSED_WITH_EVIDENCE on GitHub: governance meta-artifact pin drift (27 → 25), `ACTIVE_BUNDLE_ENCODER_LAYOUT` (25 → 22), `CALIBRATION_BYPASS_ALLOWLIST` (22 → 20) |
 | **Evidence still needed** | pytest-full green OR operator sign-off on every open product matrix row |
-| **Fix now or harness now** | Next: `ET_AUTHORITY_DAILY_SCOREBOARD` (2 tests) — `calibration/daily_scoreboard.py` must import the NY zone from `time_et` only; projected 20 → 18 (unproven until GitHub) |
+| **Fix now or harness now** | In progress: `ET_AUTHORITY_DAILY_SCOREBOARD` (2 tests) — `calibration/daily_scoreboard.py` now imports `ET` from `time_et` (4/4 ET-authority tests pass locally), pending GitHub proof 20 → 18; next after proof: `ANTI_PATTERN_CAPS_VIOLATIONS` (1 test) |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` (FIX_NOW); triage-owned groups in `ci_nonblocking_failure_triage_2026-06-18.json` |
 | **Blocking level** | High — blocks PR #19 merge |
 | **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all **25** open product matrix rows @ `a72ed54` |

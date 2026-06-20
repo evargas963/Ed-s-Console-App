@@ -7,7 +7,8 @@
   "merge_gate": "pytest-full",
   "ci_triage_gate_pass": false,
   "next_allowed_step": "resolve_pytest_full_failures",
-  "recommended_next_bucket": "ET_AUTHORITY_DAILY_SCOREBOARD (2 tests)",
+  "recommended_next_bucket": "ANTI_PATTERN_CAPS_VIOLATIONS (1 test, after ET_AUTHORITY_DAILY_SCOREBOARD GitHub proof 20 -> 18)",
+  "in_progress_bucket": "ET_AUTHORITY_DAILY_SCOREBOARD (daily_scoreboard ET redirect landed locally, pending GitHub proof)",
   "github_checks_last_observed": {
     "commit": "7bf369c",
     "objective-audit": "pass",
@@ -275,17 +276,20 @@
     {
       "failure_group": "ET_AUTHORITY_DAILY_SCOREBOARD",
       "number_of_tests": 2,
+      "local_fix_status": "FIXED_LOCAL_PENDING_GITHUB_PROOF",
+      "local_fix_note": "calibration/daily_scoreboard.py now imports ET from time_et (COH-SA-2 canonical) instead of assigning ZoneInfo('America/New_York'); the UTC ZoneInfo elsewhere in the file is unchanged. daily_scoreboard.ET is time_et.ET; tests/test_coh_sa2_et_authority.py passes locally (4/4). number_of_tests stays 2 until GitHub proves 20 -> 18.",
+      "expected_clear_count": 2,
       "representative_tests": [
         "tests/test_coh_sa2_et_authority.py::test_only_time_et_defines_ny_zoneinfo_literal",
         "tests/test_coh_sa2_et_authority.py::test_no_module_level_et_zoneinfo_assignment_outside_time_et"
       ],
       "failure_message": "AssertionError: ['calibration/daily_scoreboard.py']",
-      "root_cause": "daily_scoreboard.py assigns ZoneInfo outside time_et.py",
+      "root_cause": "daily_scoreboard.py assigned its own ET = ZoneInfo('America/New_York') at module level, outside the canonical time_et.py. Fix: import ET from time_et (same redirect pattern as polling_adapter / live_decision_bundle / v2_decision). Production-equivalent zone; single ET authority.",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
-      "fix_now_or_defer": "triage_owned",
-      "owner_branch": "fix/daily-scoreboard-et-authority",
+      "fix_now_or_defer": "fix_now",
+      "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "daily_scoreboard imports NY zone from time_et only"
+      "closure_criteria": "daily_scoreboard imports NY zone from time_et only; closure on GitHub pytest-full 20 -> 18"
     },
     {
       "failure_group": "ANTI_PATTERN_CAPS_VIOLATIONS",
@@ -476,7 +480,9 @@
   "active_bundle_status": "CLOSED_WITH_EVIDENCE @ 0068226 run 27877046342 (25 -> 22)",
   "calibration_bypass_local_fix_pending_github_proof": false,
   "calibration_bypass_status": "CLOSED_WITH_EVIDENCE @ 7bf369c run 27878597275 (22 -> 20)",
-  "expected_after_pending_push": 20,
+  "et_authority_local_fix_pending_github_proof": true,
+  "et_authority_local_fix_note": "calibration/daily_scoreboard.py imports ET from time_et (canonical); 4/4 ET-authority tests pass locally; pending GitHub proof 20 -> 18.",
+  "expected_after_pending_push": 18,
   "pytest_full_classification_totals": {
     "PRE_EXISTING_BUT_BLOCKING": 21,
     "INTENTIONAL_CONTRACT_LOCK": 3,

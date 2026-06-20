@@ -34,10 +34,10 @@ from calibration.backfill_outcomes import backfill
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
+from time_et import ET  # COH-SA-2: America/New_York ZoneInfo authority lives only in time_et.py
 
 log = logging.getLogger(__name__)
 
-ET = ZoneInfo("America/New_York")
 HORIZON_SLUGS = ("1c", "5c", "15c", "60c")
 # ALL-card pseudo-horizon: the consolidated entry signal (multi_horizon final_bias),
 # scored against the outcome label of the logged primary (trade-plan) horizon.

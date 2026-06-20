@@ -107,8 +107,9 @@ def test_stabilization_gate_blocks_card_explainability():
     assert gate.get("meta_artifact_drift_failure_count") == 0
     assert gate.get("active_bundle_local_fix_pending_github_proof") is False
     assert gate.get("calibration_bypass_local_fix_pending_github_proof") is False
-    # Artifact sync only — no pending local fix — so expected == observed (20).
-    assert gate.get("expected_after_pending_push") == 20
+    # ET_AUTHORITY_DAILY_SCOREBOARD fixed locally; observed stays 20, expected 18 is a projection.
+    assert gate.get("et_authority_local_fix_pending_github_proof") is True
+    assert gate.get("expected_after_pending_push") == 18
     # Legacy fields must stay honest to the cited run, not a prediction.
     assert gate.get("pytest_full_failure_count") == gate.get("current_ci_pytest_full_failure_count")
     assert gate.get("last_verified_commit") == gate.get("current_ci_verified_commit")

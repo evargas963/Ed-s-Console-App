@@ -43,9 +43,13 @@
 
 Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` → `pytest_full_failure_matrix` (sum of `number_of_tests` = 20 = `pytest_full_product_matrix_failure_count` = current observed).
 
-### Recommended next unblocked pytest bucket
+### In-progress pytest bucket
 
-**`ET_AUTHORITY_DAILY_SCOREBOARD`** — 2 tests, `audit/ci-nonblocking-failures-triage`, not branch-blocked. **FIX_NOW** — `calibration/daily_scoreboard.py` assigns `ZoneInfo` outside `time_et.py`; closure on importing the NY zone from `time_et` only. Expected (projection, unproven until GitHub): 20 → 18.
+**`ET_AUTHORITY_DAILY_SCOREBOARD`** — 2 tests, `audit/ci-nonblocking-failures-triage`, not branch-blocked. Fix **landed locally**: `calibration/daily_scoreboard.py` now imports `ET` from `time_et` (COH-SA-2 canonical) instead of assigning `ZoneInfo("America/New_York")`; the UTC `ZoneInfo` elsewhere is unchanged. 4/4 `test_coh_sa2_et_authority.py` pass locally. Expected (projection, unproven until GitHub): 20 → 18.
+
+### Recommended next unblocked pytest bucket (after ET_AUTHORITY GitHub proof)
+
+**`ANTI_PATTERN_CAPS_VIOLATIONS`** — 1 test. **FIX_NOW** — production CAPS pattern hits not in allowlist; closure on removing the hits or updating the allowlist per the test output.
 
 ---
 
@@ -57,7 +61,7 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 - `next_allowed_step: resolve_pytest_full_failures`
 - `current_ci_verified_commit: 7bf369c` (run 27878597275, 20 failed — product matrix only)
 - `pytest_full_matrix_verified_commit: 7bf369c`
-- `expected_after_pending_push: 20` (artifact sync only; no pending local fix in this commit)
+- `expected_after_pending_push: 18` (ET_AUTHORITY_DAILY_SCOREBOARD fix landed locally; projection, unproven until GitHub)
 - **Do not merge** PR #19 until pytest-full green on GitHub PR #19 **and** schwab-csv-first `pull_request` green, with no unexplained paired failure.
 
 ---
