@@ -34,10 +34,12 @@
   "meta_artifact_drift_status": "CLOSED_WITH_EVIDENCE @ 5c6e967 run 27875496094 — both tests/test_operator_trust_governance.py meta-tests pass on GitHub; pytest-full 27 -> 25",
   "active_bundle_local_fix_pending_github_proof": false,
   "active_bundle_local_fix_note": "ACTIVE_BUNDLE_ENCODER_LAYOUT CLOSED_WITH_EVIDENCE @ 0068226 run 27877046342 — all 3 tests cleared on GitHub; pytest-full 25 -> 22.",
-  "expected_after_pending_push": 22,
+  "calibration_bypass_local_fix_pending_github_proof": true,
+  "calibration_bypass_local_fix_note": "CALIBRATION_BYPASS_ALLOWLIST (2 tests) fixed locally — controlled-surface allowlist extended in tests/test_calibration_bypass_closure.py (server.py log/probe strings, read-only audit tooling + verification modules, 3 test fixtures). 2/2 calibration tests pass locally. Pending GitHub proof of pytest-full 22 -> 20; still counted at 2 in the matrix until proven.",
+  "expected_after_pending_push": 20,
   "latest_artifact_update_commit": "0068226",
   "pytest_full_failure_count": 22,
-  "pytest_full_failure_count_semantics": "Observed CI failures at current_ci_pytest_full_run 27877046342 @ 0068226 = pytest_full_product_matrix_failure_count (22); meta_artifact_drift 0; ACTIVE_BUNDLE CLOSED. No pending local fix in this sync commit, so expected_after_pending_push == observed (22). The next bucket (CALIBRATION_BYPASS_ALLOWLIST) projects 20, but only after its fix lands locally and only as a projection until GitHub proves it.",
+  "pytest_full_failure_count_semantics": "Observed CI failures at current_ci_pytest_full_run 27877046342 @ 0068226 = pytest_full_product_matrix_failure_count (22); meta_artifact_drift 0; ACTIVE_BUNDLE CLOSED. CALIBRATION_BYPASS_ALLOWLIST (2) is now fixed locally and still counted at 2 until GitHub proves 22 -> 20. expected_after_pending_push = 20 is a PROJECTION, not asserted as observed.",
   "pytest_full_matrix_run": "27877046342",
   "pytest_full_passed_count": 3765,
   "pytest_full_skipped_count": 7,
@@ -69,5 +71,5 @@
   "required_triage_reports": [
     "reports/ci/ci_nonblocking_failure_triage_2026-06-18.md"
   ],
-  "note": "ACTIVE_BUNDLE_ENCODER_LAYOUT CLOSED_WITH_EVIDENCE @ 0068226: GitHub pytest-full run 27877046342 = 22 failed (3765 passed, 7 skipped) = product matrix only; all 3 active-bundle tests cleared (25 -> 22). +2 governance meta-artifact drift remains CLOSED. Artifact sync only — no new fix in this commit, so expected_after_pending_push = 22 (= observed). Next bucket CALIBRATION_BYPASS_ALLOWLIST (2 tests) projects 20 once its fix lands locally (projection until GitHub proves it). Gates stay false until pytest-full green or operator sign-off."
+  "note": "Observed @ 0068226 (run 27877046342) = 22 failed (3765 passed, 7 skipped) = product matrix only; ACTIVE_BUNDLE + meta-artifact drift CLOSED. CALIBRATION_BYPASS_ALLOWLIST (2 tests) now fixed locally (controlled-surface allowlist extended; 2/2 pass locally); expected_after_pending_push = 20 is a PROJECTION pending GitHub proof — observed count stays 22 and the matrix still counts CALIBRATION at 2 until proven. Gates stay false until pytest-full green or operator sign-off."
 }

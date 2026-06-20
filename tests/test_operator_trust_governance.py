@@ -106,8 +106,9 @@ def test_stabilization_gate_blocks_card_explainability():
     # Governance meta-artifact drift remains closed; ACTIVE_BUNDLE now closed too.
     assert gate.get("meta_artifact_drift_failure_count") == 0
     assert gate.get("active_bundle_local_fix_pending_github_proof") is False
-    # Artifact sync only — no pending local fix — so expected == observed (22).
-    assert gate.get("expected_after_pending_push") == 22
+    # CALIBRATION_BYPASS_ALLOWLIST fixed locally; observed stays 22, expected 20 is a projection.
+    assert gate.get("calibration_bypass_local_fix_pending_github_proof") is True
+    assert gate.get("expected_after_pending_push") == 20
     # Legacy fields must stay honest to the cited run, not a prediction.
     assert gate.get("pytest_full_failure_count") == gate.get("current_ci_pytest_full_failure_count")
     assert gate.get("last_verified_commit") == gate.get("current_ci_verified_commit")

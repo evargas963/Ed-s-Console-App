@@ -44,9 +44,13 @@
 
 Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` → `pytest_full_failure_matrix` (sum of `number_of_tests` = 22 = `pytest_full_product_matrix_failure_count` = current observed).
 
-### Recommended next unblocked pytest bucket
+### In-progress pytest bucket
 
-**`CALIBRATION_BYPASS_ALLOWLIST`** — 2 tests, `audit/ci-nonblocking-failures-triage`, not branch-blocked. **FIX_NOW** — new controlled-surface modules (observability/audit tooling, read-only probes, and three test fixtures) reference `calibration_decision_log` but are not yet in the allowlist in `tests/test_calibration_bypass_closure.py`. Expected (projection, unproven until GitHub): 22 → 20.
+**`CALIBRATION_BYPASS_ALLOWLIST`** — 2 tests, `audit/ci-nonblocking-failures-triage`, not branch-blocked. Allowlist fix **landed locally** in `tests/test_calibration_bypass_closure.py` (server.py log/probe strings, read-only audit/observability tooling + verification modules, and three test fixtures — all verified non-INSERT/UPDATE in production). 2/2 calibration tests pass locally. Expected (projection, unproven until GitHub): 22 → 20.
+
+### Recommended next unblocked pytest bucket (after CALIBRATION GitHub proof)
+
+**`ET_AUTHORITY_DAILY_SCOREBOARD`** — 2 tests. **FIX_NOW** — `calibration/daily_scoreboard.py` assigns `ZoneInfo` outside `time_et.py`; closure on importing the NY zone from `time_et` only.
 
 ---
 
@@ -58,7 +62,7 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 - `next_allowed_step: resolve_pytest_full_failures`
 - `current_ci_verified_commit: 0068226` (run 27877046342, 22 failed — product matrix only)
 - `pytest_full_matrix_verified_commit: 0068226`
-- `expected_after_pending_push: 22` (artifact sync only; no pending local fix in this commit)
+- `expected_after_pending_push: 20` (CALIBRATION_BYPASS_ALLOWLIST fix landed locally; projection, unproven until GitHub)
 - **Do not merge** PR #19 until pytest-full green on GitHub PR #19 **and** schwab-csv-first `pull_request` green, with no unexplained paired failure.
 
 ---

@@ -158,7 +158,7 @@
 | **Operator risk** | Regressions hide in uncategorized red check |
 | **Evidence currently available** | GitHub @ `0068226` run 27877046342: **22 failed, 3765 passed, 7 skipped** = product matrix only. CLOSED_WITH_EVIDENCE on GitHub: +2 governance meta-artifact pin drift (27 → 25) and `ACTIVE_BUNDLE_ENCODER_LAYOUT` 3 tests (25 → 22) |
 | **Evidence still needed** | pytest-full green OR operator sign-off on every open product matrix row |
-| **Fix now or harness now** | Next: `CALIBRATION_BYPASS_ALLOWLIST` (2 tests) — extend the controlled-surface allowlist in `tests/test_calibration_bypass_closure.py`; projected 22 → 20 (unproven until GitHub) |
+| **Fix now or harness now** | In progress: `CALIBRATION_BYPASS_ALLOWLIST` (2 tests) — controlled-surface allowlist extended in `tests/test_calibration_bypass_closure.py` (2/2 pass locally), pending GitHub proof 22 → 20; next after proof: `ET_AUTHORITY_DAILY_SCOREBOARD` (2 tests) |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` (FIX_NOW); triage-owned groups in `ci_nonblocking_failure_triage_2026-06-18.json` |
 | **Blocking level** | High — blocks PR #19 merge |
 | **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all **25** open product matrix rows @ `a72ed54` |

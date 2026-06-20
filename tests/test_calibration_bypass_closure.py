@@ -48,6 +48,35 @@ def _allowed_path(rel: Path) -> bool:
         return True
     if s == "tests/test_backfill_signal_layer_v1_bundle.py":
         return True
+    # server.py: table name only in boot diagnostic log strings + the read-only
+    # /api/ops/calibration_rowcount health probe, which delegates the SELECT to
+    # calibration.writer.compute_calibration_rate_health (no SQL in server.py).
+    if s == "server.py":
+        return True
+    # Read-only audit / observability tooling and probes (SELECT/COUNT, sqlite_master,
+    # or table name in help/provenance/audit strings — never INSERT/UPDATE).
+    if s == "tools/check_base_ticker_observability.py":
+        return True
+    if s == "tools/check_card_direction_integrity.py":
+        return True
+    if s == "tools/check_card_signal_fidelity.py":
+        return True
+    if s == "tools/replay_money_path_probe.py":
+        return True
+    if s == "tools/_build_institutional_audit_phase2.py":
+        return True
+    if s == "verification/base_ticker_observability.py":
+        return True
+    if s == "verification/db_sqlite_contention_impact_audit.py":
+        return True
+    # Tests that seed throwaway calibration_decision_log fixtures in in-test sqlite DBs
+    # (same controlled-fixture class as the test_backfill_* / test_v2_* tests above).
+    if s == "tests/test_base_ticker_observability.py":
+        return True
+    if s == "tests/test_fusion_temperature_calibration.py":
+        return True
+    if s == "tests/test_track_b_calibration_backfill_insert.py":
+        return True
     return False
 
 
@@ -95,6 +124,9 @@ def test_insert_into_calibration_decision_log_only_writer_and_tests() -> None:
             or rel == "tests/test_validate_outcome_join_fail_closed.py"
             or rel == "tests/test_backfill_outcomes_ticker_key.py"
             or rel == "tests/test_backfill_signal_layer_v1_bundle.py"
+            or rel == "tests/test_base_ticker_observability.py"
+            or rel == "tests/test_fusion_temperature_calibration.py"
+            or rel == "tests/test_track_b_calibration_backfill_insert.py"
         )
         if not ok:
             bad.append(rel)

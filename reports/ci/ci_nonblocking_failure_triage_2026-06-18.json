@@ -7,7 +7,8 @@
   "merge_gate": "pytest-full",
   "ci_triage_gate_pass": false,
   "next_allowed_step": "resolve_pytest_full_failures",
-  "recommended_next_bucket": "CALIBRATION_BYPASS_ALLOWLIST (2 tests)",
+  "recommended_next_bucket": "ET_AUTHORITY_DAILY_SCOREBOARD (2 tests, after CALIBRATION_BYPASS_ALLOWLIST GitHub proof 22 -> 20)",
+  "in_progress_bucket": "CALIBRATION_BYPASS_ALLOWLIST (allowlist fix landed locally, pending GitHub proof)",
   "github_checks_last_observed": {
     "commit": "0068226",
     "objective-audit": "pass",
@@ -249,17 +250,20 @@
     {
       "failure_group": "CALIBRATION_BYPASS_ALLOWLIST",
       "number_of_tests": 2,
+      "local_fix_status": "FIXED_LOCAL_PENDING_GITHUB_PROOF",
+      "local_fix_note": "Controlled-surface allowlist extended in tests/test_calibration_bypass_closure.py. Verified-legitimate references added: server.py (boot log strings + read-only /api/ops/calibration_rowcount probe delegating SELECT to calibration.writer), read-only audit/observability tooling (tools/check_base_ticker_observability, tools/check_card_direction_integrity, tools/check_card_signal_fidelity, tools/replay_money_path_probe, tools/_build_institutional_audit_phase2), verification/base_ticker_observability + verification/db_sqlite_contention_impact_audit, and 3 test fixtures (tests/test_base_ticker_observability, tests/test_fusion_temperature_calibration, tests/test_track_b_calibration_backfill_insert). None INSERT/UPDATE in production. 2/2 calibration tests pass locally. number_of_tests stays 2 until GitHub proves 22 -> 20.",
+      "expected_clear_count": 2,
       "representative_tests": [
         "tests/test_calibration_bypass_closure.py::test_insert_into_calibration_decision_log_only_writer_and_tests",
         "tests/test_calibration_bypass_closure.py::test_no_unauthorized_python_references_to_calibration_decision_log"
       ],
-      "failure_message": "Unexpected INSERT / referenced outside controlled modules",
-      "root_cause": "New test modules not added to calibration bypass allowlist",
+      "failure_message": "Unexpected INSERT into calibration_decision_log + referenced outside controlled modules (11 reference offenders, 3 INSERT offenders)",
+      "root_cause": "Legitimate new controlled-surface modules (read-only audit/observability tooling, server.py log/probe strings, and 3 test fixtures) reference calibration_decision_log but were not yet in the allowlist. Fix is an allowlist extension only; no production code change. INSERT/UPDATE scanners still independently guard writes.",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
-      "fix_now_or_defer": "triage_owned",
-      "owner_branch": "fix/calibration-bypass-allowlist-sync",
+      "fix_now_or_defer": "fix_now",
+      "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "Allowlist includes test_base_ticker_observability, test_track_b_calibration_backfill_insert, test_fusion_temperature_calibration"
+      "closure_criteria": "Allowlist covers all verified-legitimate references; closure on GitHub pytest-full 22 -> 20"
     },
     {
       "failure_group": "ET_AUTHORITY_DAILY_SCOREBOARD",
@@ -463,7 +467,9 @@
   "meta_artifact_drift_status": "CLOSED_WITH_EVIDENCE @ 5c6e967 run 27875496094",
   "active_bundle_local_fix_pending_github_proof": false,
   "active_bundle_status": "CLOSED_WITH_EVIDENCE @ 0068226 run 27877046342 (25 -> 22)",
-  "expected_after_pending_push": 22,
+  "calibration_bypass_local_fix_pending_github_proof": true,
+  "calibration_bypass_local_fix_note": "Allowlist extended in tests/test_calibration_bypass_closure.py; 2/2 calibration tests pass locally; pending GitHub proof 22 -> 20.",
+  "expected_after_pending_push": 20,
   "pytest_full_classification_totals": {
     "PRE_EXISTING_BUT_BLOCKING": 21,
     "INTENTIONAL_CONTRACT_LOCK": 3,
