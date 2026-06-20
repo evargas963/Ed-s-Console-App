@@ -7,17 +7,17 @@
   "merge_gate": "pytest-full",
   "ci_triage_gate_pass": false,
   "next_allowed_step": "resolve_pytest_full_failures",
-  "recommended_next_bucket": "SCHWAB_V4_DIFF_EMISSION_PR_GATE",
+  "recommended_next_bucket": "ACTIVE_BUNDLE_ENCODER_LAYOUT",
   "github_checks_last_observed": {
-    "commit": "a72ed54",
+    "commit": "741091b",
     "objective-audit": "pass",
-    "objective_audit_run": "27857853561",
+    "objective_audit_run": "27870946978",
     "objective_audit_closed_at_commit": "704b4b9",
     "hardening": "pass",
-    "schwab-csv-first": "mixed",
-    "schwab_csv_first_push_run": "27857852538",
-    "schwab_csv_first_pr_run": "27857853589",
-    "schwab_csv_first_pr_status": "fail",
+    "schwab-csv-first": "pass",
+    "schwab_csv_first_push_run": "27870946302",
+    "schwab_csv_first_pr_run": "27870946980",
+    "schwab_csv_first_pr_status": "pass",
     "pytest-full": "fail",
     "pytest_full_summary": "25 failed, 3761 passed, 7 skipped",
     "pytest_full_run": "27857853572"
@@ -114,9 +114,9 @@
       "closure_criteria": "hardening green on GitHub PR #19 — met @ 6e3157c"
     },
     "schwab-csv-first": {
-      "classification": "OPEN_BLOCKING",
-      "root_cause": "PR path @ a72ed54 run 27857853589: V4 diff-emission gate failed — 35 false positives from mega traceable inventory schwab_leaf citations in diff",
-      "closure_criteria": "schwab-csv-first green on GitHub PR #19 pull_request event (push-only pass not sufficient); fix landed excludes governance/megaN_traceable_inventory.py from emission scan"
+      "classification": "CLOSED_WITH_EVIDENCE",
+      "root_cause": "PR path @ a72ed54 run 27857853589: 35 false positives from mega inventory — fixed @ 741091b",
+      "closure_criteria": "schwab-csv-first green on GitHub PR #19 pull_request @ 741091b runs 27870946980 + push 27870946302"
     },
     "objective-audit": {
       "classification": "CLOSED_WITH_EVIDENCE",
@@ -436,16 +436,18 @@
   "workflow_gate_matrix": [
     {
       "failure_group": "SCHWAB_V4_DIFF_EMISSION_PR_GATE",
-      "classification": "OPEN_BLOCKING",
-      "bucket_status": "OPEN_BLOCKING",
+      "classification": "CLOSED_WITH_EVIDENCE",
+      "bucket_status": "CLOSED_WITH_EVIDENCE",
       "failed_at_run": "27857853589",
+      "cleared_at_run": "27870946980",
+      "cleared_at_commit": "741091b",
       "failed_at_commit": "a72ed54",
-      "push_run_pass": "27857852538",
+      "push_run_pass": "27870946302",
       "failure_step": "V4 diff-emission register gate (PR 2)",
       "root_cause": "Mega inventory sync diff added 35 false emission sites (schwab_leaf tokens in MegaNTraceableDerivation rows); CSV-first guard passed",
       "fix_direction": "Exclude governance/megaN_traceable_inventory.py from diff-emission scan — disposition ledger, not runtime emission",
       "owner_branch": "audit/ci-nonblocking-failures-triage",
-      "closure_criteria": "pull_request schwab-csv-first green on GitHub PR #19 with both push and PR paths pass"
+      "closure_criteria": "pull_request schwab-csv-first green @ 741091b — met (runs 27870946980 PR + 27870946302 push)"
     }
   ]
 }

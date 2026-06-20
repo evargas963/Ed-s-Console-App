@@ -169,17 +169,17 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `OPEN_BLOCKING` (reopened — PR path red @ `a72ed54`) |
+| **Status** | `CLOSED_WITH_EVIDENCE` @ `741091b` |
 | **Also tracked as** | `SCHWAB_CSV_FIRST_CI_MIXED_OR_FAILING_NON_BLOCKING` |
-| **Source PR / report** | GitHub run `27857853589` (PR) vs `27857852538` (push) @ `a72ed54` |
+| **Source PR / report** | GitHub PR runs `27870946980` + push `27870946302` @ `741091b` |
 | **Why it matters** | Merge gate is `pull_request` workflow; push-only pass is not merge sign-off |
 | **Operator risk** | New market reads ship without V4 register row |
-| **Evidence currently available** | CSV-first guard **passed** on both paths; **V4 diff-emission register gate (PR 2)** failed on PR run — 35 false sites from `governance/mega*_traceable_inventory.py` |
-| **Evidence still needed** | GitHub `schwab-csv-first` **pull_request** green after fix |
-| **Fix now or harness now** | `check_schwab_csv_first.py`: exclude mega traceable inventory paths from emission scan |
+| **Evidence currently available** | PR path red @ `a72ed54` run `27857853589` (35 mega-inventory false positives); fixed @ `741091b`; both PR + push green |
+| **Evidence still needed** | None — schwab-csv-first closed @ `741091b` |
+| **Fix now or harness now** | Landed @ `741091b`: exclude `governance/megaN_traceable_inventory.py` from diff-emission scan |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
-| **Blocking level** | High — blocks PR #19 merge |
-| **Do not close until** | `schwab-csv-first` green on GitHub PR #19 **pull_request** event with no unexplained paired failure |
+| **Blocking level** | Closed |
+| **Do not close until** | Met @ `741091b` |
 
 ---
 
