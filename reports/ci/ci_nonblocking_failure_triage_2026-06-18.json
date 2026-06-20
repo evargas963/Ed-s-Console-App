@@ -7,12 +7,11 @@
   "merge_gate": "pytest-full",
   "ci_triage_gate_pass": false,
   "next_allowed_step": "resolve_pytest_full_failures",
-  "recommended_next_bucket": "CALIBRATION_BYPASS_ALLOWLIST (after ACTIVE_BUNDLE_ENCODER_LAYOUT GitHub proof 25 -> 22)",
-  "in_progress_bucket": "ACTIVE_BUNDLE_ENCODER_LAYOUT (local fix landed, pending GitHub proof)",
+  "recommended_next_bucket": "CALIBRATION_BYPASS_ALLOWLIST (2 tests)",
   "github_checks_last_observed": {
-    "commit": "5c6e967",
+    "commit": "0068226",
     "objective-audit": "pass",
-    "objective_audit_run": "27870946978",
+    "objective_audit_run": "27877046331",
     "objective_audit_closed_at_commit": "704b4b9",
     "hardening": "pass",
     "schwab-csv-first": "pass",
@@ -21,9 +20,9 @@
     "schwab_csv_first_pr_run": "27870946980",
     "schwab_csv_first_pr_status": "pass",
     "pytest-full": "fail",
-    "pytest_full_summary": "25 failed, 3762 passed, 7 skipped",
-    "pytest_full_run": "27875496094",
-    "pytest_full_count_breakdown": "25 observed = 25 product matrix + 0 governance meta-artifact drift (drift CLOSED_WITH_EVIDENCE @ 5c6e967)"
+    "pytest_full_summary": "22 failed, 3765 passed, 7 skipped",
+    "pytest_full_run": "27877046342",
+    "pytest_full_count_breakdown": "22 observed = product matrix only; ACTIVE_BUNDLE_ENCODER_LAYOUT (3) cleared (25 -> 22); governance meta-artifact drift CLOSED"
   },
   "pytest_full_matrix_history": [
     {
@@ -91,6 +90,14 @@
       "passed_count": 3762,
       "skipped_count": 7,
       "note": "+2 governance meta-artifact pin drift CLOSED_WITH_EVIDENCE (27 -> 25); 25 = product matrix only. ACTIVE_BUNDLE_ENCODER_LAYOUT fix landed locally next; expected 25 -> 22 pending GitHub proof"
+    },
+    {
+      "commit": "0068226",
+      "pytest_full_run": "27877046342",
+      "failed_count": 22,
+      "passed_count": 3765,
+      "skipped_count": 7,
+      "note": "ACTIVE_BUNDLE_ENCODER_LAYOUT CLOSED_WITH_EVIDENCE — all 3 active-bundle tests cleared on GitHub (25 -> 22); 22 = product matrix only"
     }
   ],
   "pytest_full_fixed_at_bc2e8a9": [
@@ -144,7 +151,7 @@
     },
     "pytest-full": {
       "classification": "OPEN_BLOCKING",
-      "root_cause": "25 failed @ 5c6e967 run 27875496094 = product matrix only (+2 governance meta-artifact pin drift CLOSED_WITH_EVIDENCE 27 -> 25). ACTIVE_BUNDLE_ENCODER_LAYOUT (3 tests) fixed locally and pending GitHub proof; expected 25 -> 22",
+      "root_cause": "22 failed @ 0068226 run 27877046342 = product matrix only. ACTIVE_BUNDLE_ENCODER_LAYOUT (3 tests) CLOSED_WITH_EVIDENCE on GitHub (25 -> 22); +2 governance meta-artifact pin drift remains CLOSED",
       "closure_criteria": "pytest-full green OR every row in pytest_full_failure_matrix accepted with operator sign-off"
     }
   },
@@ -222,22 +229,22 @@
     },
     {
       "failure_group": "ACTIVE_BUNDLE_ENCODER_LAYOUT",
-      "number_of_tests": 3,
-      "local_fix_status": "FIXED_LOCAL_PENDING_GITHUB_PROOF",
-      "local_fix_note": "Fixture/contract fix applied in tests/test_active_bundle_contract_v1.py + tests/test_active_horizon_layout_pr3.py; 10/10 active-bundle tests pass locally. number_of_tests stays 3 until GitHub proves pytest-full 25 -> 22 (not counted as cleared on a prediction).",
-      "expected_clear_count": 3,
+      "number_of_tests": 0,
+      "bucket_status": "CLOSED_WITH_EVIDENCE",
+      "cleared_at_commit": "0068226",
+      "cleared_at_run": "27877046342",
       "representative_tests": [
         "tests/test_active_bundle_contract_v1.py::test_check_active_bundle_rejects_stale_encoder_schema",
         "tests/test_active_horizon_layout_pr3.py::test_ml_predict_strict_uses_canonical_only",
         "tests/test_active_horizon_layout_pr3.py::test_strict_active_bundle_dir_single_canonical_root"
       ],
       "failure_message": "encoder_width_5m_pre_mask=88 != legacy v2 width 31 / FileNotFoundError strict bundle",
-      "root_cause": "CI checkout lacks complete active_5c/SPY bundle; encoder v2 width contract moved. Local fix: tests build real strict-bundle stubs (torch.save seq stub with current encoder widths + pickled meta) and assert v1<minimum-v2 rejection.",
+      "root_cause": "Cleared @ 0068226 — tests build real strict-bundle stubs (torch.save seq stub with current encoder widths + pickled meta) and assert v1<minimum-v2 rejection; all 3 cleared on GitHub run 27877046342 (25 -> 22).",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
-      "fix_now_or_defer": "fix_now",
+      "fix_now_or_defer": "closed",
       "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "CI carries minimal strict-bundle fixture or tests mock bundle paths — local fix landed; closure on GitHub pytest-full 25 -> 22"
+      "closure_criteria": "GitHub pytest-full @ 0068226: 3 active-bundle tests green — met (25 -> 22)"
     },
     {
       "failure_group": "CALIBRATION_BYPASS_ALLOWLIST",
@@ -438,23 +445,24 @@
       "closure_criteria": "Tests mock quote layer or skip when schwab_live_blocked_for()"
     }
   ],
-  "pytest_full_failure_count": 25,
-  "pytest_full_failure_count_semantics": "product matrix failure count = sum(pytest_full_failure_matrix[].number_of_tests) = 25 = current_ci_pytest_full_failure_count (25) at 5c6e967; meta_artifact_drift now 0. ACTIVE_BUNDLE_ENCODER_LAYOUT (3) is fixed locally but still counted here (3) until GitHub proves 25 -> 22 — 22 is NOT written as observed.",
-  "pytest_full_product_matrix_failure_count": 25,
-  "pytest_full_passed_count": 3762,
+  "pytest_full_failure_count": 22,
+  "pytest_full_failure_count_semantics": "product matrix failure count = sum(pytest_full_failure_matrix[].number_of_tests) = 22 = current_ci_pytest_full_failure_count (22) at 0068226; meta_artifact_drift 0; ACTIVE_BUNDLE_ENCODER_LAYOUT CLOSED (0). Artifact sync only — no pending local fix in this commit. Next bucket CALIBRATION_BYPASS_ALLOWLIST projects 20, only after its fix lands locally and only as a projection until GitHub proves it.",
+  "pytest_full_product_matrix_failure_count": 22,
+  "pytest_full_passed_count": 3765,
   "pytest_full_skipped_count": 7,
-  "pytest_full_matrix_verified_commit": "5c6e967",
-  "pytest_full_matrix_verified_run": "27875496094",
-  "pytest_full_expected_at_commit": "5c6e967",
-  "current_ci_verified_commit": "5c6e967",
-  "current_ci_pytest_full_run": "27875496094",
-  "current_ci_pytest_full_failure_count": 25,
-  "current_ci_pytest_full_passed_count": 3762,
+  "pytest_full_matrix_verified_commit": "0068226",
+  "pytest_full_matrix_verified_run": "27877046342",
+  "pytest_full_expected_at_commit": "0068226",
+  "current_ci_verified_commit": "0068226",
+  "current_ci_pytest_full_run": "27877046342",
+  "current_ci_pytest_full_failure_count": 22,
+  "current_ci_pytest_full_passed_count": 3765,
   "current_ci_pytest_full_skipped_count": 7,
   "meta_artifact_drift_failure_count": 0,
   "meta_artifact_drift_tests": [],
   "meta_artifact_drift_status": "CLOSED_WITH_EVIDENCE @ 5c6e967 run 27875496094",
-  "active_bundle_local_fix_pending_github_proof": true,
+  "active_bundle_local_fix_pending_github_proof": false,
+  "active_bundle_status": "CLOSED_WITH_EVIDENCE @ 0068226 run 27877046342 (25 -> 22)",
   "expected_after_pending_push": 22,
   "pytest_full_classification_totals": {
     "PRE_EXISTING_BUT_BLOCKING": 21,
@@ -463,8 +471,14 @@
     "INFRASTRUCTURE_FLAKE_WITH_EVIDENCE": 0,
     "FIX_NOW": 0,
     "OBSOLETE_TEST_UPDATE_REQUIRED": 0,
-    "CLOSED_WITH_EVIDENCE": 20
+    "CLOSED_WITH_EVIDENCE": 21
   },
+  "pytest_full_fixed_at_0068226": [
+    "tests/test_active_bundle_contract_v1.py::test_check_active_bundle_rejects_stale_encoder_schema",
+    "tests/test_active_horizon_layout_pr3.py::test_ml_predict_strict_uses_canonical_only",
+    "tests/test_active_horizon_layout_pr3.py::test_strict_active_bundle_dir_single_canonical_root"
+  ],
+  "pytest_full_fixed_count_at_0068226": 3,
   "pytest_full_fixed_count_at_6e3157c": 5,
   "pytest_full_fixed_count_at_e3ba4a9": 12,
   "pytest_full_fixed_count_at_704b4b9": 5,

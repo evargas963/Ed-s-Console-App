@@ -96,18 +96,17 @@ def test_stabilization_gate_blocks_card_explainability():
     assert gate.get("next_allowed_step") == "resolve_pytest_full_failures"
     assert gate.get("next_allowed_branch") != "audit/ci-nonblocking-failures-triage"
     # Explicit, non-overloaded commit/count semantics (see gate field docs).
-    # Current GitHub CI observation @ 5c6e967 (the +2 meta drift fix, proven 27 -> 25).
-    assert gate.get("current_ci_verified_commit") == "5c6e967"
-    assert gate.get("current_ci_pytest_full_run") == "27875496094"
-    assert gate.get("current_ci_pytest_full_failure_count") == 25
+    # Current GitHub CI observation @ 0068226 (ACTIVE_BUNDLE proven, 25 -> 22).
+    assert gate.get("current_ci_verified_commit") == "0068226"
+    assert gate.get("current_ci_pytest_full_run") == "27877046342"
+    assert gate.get("current_ci_pytest_full_failure_count") == 22
     # Product matrix verified at the same proven commit.
-    assert gate.get("pytest_full_matrix_verified_commit") == "5c6e967"
-    assert gate.get("pytest_full_product_matrix_failure_count") == 25
-    # Governance meta-artifact drift is now closed.
+    assert gate.get("pytest_full_matrix_verified_commit") == "0068226"
+    assert gate.get("pytest_full_product_matrix_failure_count") == 22
+    # Governance meta-artifact drift remains closed; ACTIVE_BUNDLE now closed too.
     assert gate.get("meta_artifact_drift_failure_count") == 0
-    # ACTIVE_BUNDLE_ENCODER_LAYOUT is fixed locally and pending GitHub proof; the
-    # next run is expected at 22 — NOT yet asserted as observed.
-    assert gate.get("active_bundle_local_fix_pending_github_proof") is True
+    assert gate.get("active_bundle_local_fix_pending_github_proof") is False
+    # Artifact sync only — no pending local fix — so expected == observed (22).
     assert gate.get("expected_after_pending_push") == 22
     # Legacy fields must stay honest to the cited run, not a prediction.
     assert gate.get("pytest_full_failure_count") == gate.get("current_ci_pytest_full_failure_count")

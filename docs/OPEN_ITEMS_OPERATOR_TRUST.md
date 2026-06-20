@@ -156,9 +156,9 @@
 | **Source PR / report** | `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` — pytest-full failure matrix |
 | **Why it matters** | Full suite catches cone gaps; 25 product matrix failures @ `a72ed54` |
 | **Operator risk** | Regressions hide in uncategorized red check |
-| **Evidence currently available** | GitHub @ `5c6e967` run 27875496094: **25 failed, 3762 passed, 7 skipped** = product matrix only; +2 governance meta-artifact pin drift CLOSED_WITH_EVIDENCE (27 → 25). `ACTIVE_BUNDLE_ENCODER_LAYOUT` (3 tests) fixed locally (10/10 active-bundle tests pass locally), pending GitHub proof of 25 → 22 |
-| **Evidence still needed** | pytest-full green OR operator sign-off on every open product matrix row; GitHub proof of ACTIVE_BUNDLE 25 → 22 |
-| **Fix now or harness now** | In progress: `ACTIVE_BUNDLE_ENCODER_LAYOUT` (3 tests) — local strict-bundle fixture fix landed, pending GitHub proof; next after proof: `CALIBRATION_BYPASS_ALLOWLIST` (2 tests) |
+| **Evidence currently available** | GitHub @ `0068226` run 27877046342: **22 failed, 3765 passed, 7 skipped** = product matrix only. CLOSED_WITH_EVIDENCE on GitHub: +2 governance meta-artifact pin drift (27 → 25) and `ACTIVE_BUNDLE_ENCODER_LAYOUT` 3 tests (25 → 22) |
+| **Evidence still needed** | pytest-full green OR operator sign-off on every open product matrix row |
+| **Fix now or harness now** | Next: `CALIBRATION_BYPASS_ALLOWLIST` (2 tests) — extend the controlled-surface allowlist in `tests/test_calibration_bypass_closure.py`; projected 22 → 20 (unproven until GitHub) |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` (FIX_NOW); triage-owned groups in `ci_nonblocking_failure_triage_2026-06-18.json` |
 | **Blocking level** | High — blocks PR #19 merge |
 | **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all **25** open product matrix rows @ `a72ed54` |

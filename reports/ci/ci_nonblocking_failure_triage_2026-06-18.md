@@ -2,33 +2,33 @@
 
 # CI non-blocking failure triage (2026-06-18)
 
-**Updated:** 2026-06-20 @ **`5c6e967`** — GitHub `pytest-full` showed **25 failed, 3762 passed, 7 skipped** (run **27875496094**) = **product matrix only**. The +2 governance meta-artifact pin drift is **CLOSED_WITH_EVIDENCE** (27 → 25). The next bucket, `ACTIVE_BUNDLE_ENCODER_LAYOUT` (3 tests), is **fixed locally and pending GitHub proof** (expected 25 → 22).
+**Updated:** 2026-06-20 @ **`0068226`** — GitHub `pytest-full` showed **22 failed, 3765 passed, 7 skipped** (run **27877046342**) = **product matrix only**. `ACTIVE_BUNDLE_ENCODER_LAYOUT` (3 tests) is **CLOSED_WITH_EVIDENCE** (25 → 22); the +2 governance meta-artifact pin drift remains CLOSED.
 
-## GitHub PR #19 checks (@ `5c6e967`)
+## GitHub PR #19 checks (@ `0068226`)
 
 | Check | Status |
 |-------|--------|
 | objective-audit | **CLOSED_WITH_EVIDENCE** — pass |
 | hardening | **CLOSED_WITH_EVIDENCE** — pass |
 | schwab-csv-first | **CLOSED_WITH_EVIDENCE** — push [27870946302](https://github.com/evargas963/Ed-s-Console-App/actions/runs/27870946302) + PR [27870946980](https://github.com/evargas963/Ed-s-Console-App/actions/runs/27870946980) @ `741091b` |
-| pytest-full | **OPEN_BLOCKING** — `25 failed, 3762 passed, 7 skipped` (run **27875496094** @ `5c6e967`) = **product matrix only** |
+| pytest-full | **OPEN_BLOCKING** — `22 failed, 3765 passed, 7 skipped` (run **27877046342** @ `0068226`) = **product matrix only** |
 
-**Merge gate:** `pytest-full` (25 open product matrix rows). **Do not merge** PR #19 until pytest-full is green on GitHub OR every open product matrix row carries operator sign-off.
+**Merge gate:** `pytest-full` (22 open product matrix rows). **Do not merge** PR #19 until pytest-full is green on GitHub OR every open product matrix row carries operator sign-off.
 
-### `27 → 25` delta — CLOSED
+### Closure ladder (proven on GitHub)
 
-The +2 added at `ab7029a` were both meta-tests guarding the triage/gate artifacts (`test_operator_trust_governance.py::test_stabilization_gate_blocks_card_explainability` and `::test_ci_triage_has_classifications_and_closure_criteria`). They were governance meta-artifact pin drift — not product, Schwab, or `ACTIVE_BUNDLE` regressions. Fixed at `5c6e967` (artifacts + meta-test pins resynced together); GitHub run `27875496094` confirms **25** with both meta-tests passing.
+| Bucket | Tests | Cleared @ | Run | Delta |
+|--------|-------|-----------|-----|-------|
+| `PYTEST_GOVERNANCE_META_PIN_DRIFT` | 2 | `5c6e967` | 27875496094 | 27 → 25 |
+| `ACTIVE_BUNDLE_ENCODER_LAYOUT` | 3 | `0068226` | 27877046342 | 25 → 22 |
 
-### `25 → 22` in progress — `ACTIVE_BUNDLE_ENCODER_LAYOUT` (local fix pending GitHub proof)
-
-`ACTIVE_BUNDLE_ENCODER_LAYOUT` (3 tests) is fixed locally in `tests/test_active_bundle_contract_v1.py` + `tests/test_active_horizon_layout_pr3.py` (real strict-bundle stubs: `torch.save` seq stub with current encoder widths + pickled meta; v1 < minimum-v2 rejection assertions). **10/10 active-bundle tests pass locally.** The bucket stays counted at 3 in the product matrix until GitHub proves the drop — **22 is a projection, not written as an observed count** until a future GitHub run produces it.
+`ACTIVE_BUNDLE_ENCODER_LAYOUT` is now `number_of_tests: 0` in the matrix; its three tests are absent from the GitHub failure list at `0068226`.
 
 ### Workflow gate (non-pytest)
 
 | Failure group | Classification | Run | Notes |
 |---------------|----------------|-----|-------|
 | `SCHWAB_V4_DIFF_EMISSION_PR_GATE` | **CLOSED_WITH_EVIDENCE** @ `741091b` | PR 27870946980 + push 27870946302 | Excluded `governance/megaN_traceable_inventory.py` from diff-emission scan |
-| `PYTEST_GOVERNANCE_META_PIN_DRIFT` | **CLOSED_WITH_EVIDENCE** @ `5c6e967` | 27875496094 | +2 meta-artifact pin drift; proven 27 → 25 |
 
 ### Cleared @ `bc2e8a9` / `704b4b9`
 
@@ -40,13 +40,13 @@ The +2 added at `ab7029a` were both meta-tests guarding the triage/gate artifact
 
 ---
 
-## Failure matrix (pytest-full) — 25 product tests (observed @ `5c6e967`)
+## Failure matrix (pytest-full) — 22 product tests (observed @ `0068226`)
 
-Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` → `pytest_full_failure_matrix` (sum of `number_of_tests` = 25 = `pytest_full_product_matrix_failure_count` = current observed). `ACTIVE_BUNDLE_ENCODER_LAYOUT` carries `local_fix_status: FIXED_LOCAL_PENDING_GITHUB_PROOF` and stays counted at 3 until GitHub proves 22.
+Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` → `pytest_full_failure_matrix` (sum of `number_of_tests` = 22 = `pytest_full_product_matrix_failure_count` = current observed).
 
 ### Recommended next unblocked pytest bucket
 
-**`ACTIVE_BUNDLE_ENCODER_LAYOUT`** — 3 tests, `audit/ci-nonblocking-failures-triage`, not branch-blocked. **FIX_NOW** — local strict-bundle fixture fix landed; closure on GitHub pytest-full 25 → 22. After GitHub proof, the next bucket is `CALIBRATION_BYPASS_ALLOWLIST` (2 tests).
+**`CALIBRATION_BYPASS_ALLOWLIST`** — 2 tests, `audit/ci-nonblocking-failures-triage`, not branch-blocked. **FIX_NOW** — new controlled-surface modules (observability/audit tooling, read-only probes, and three test fixtures) reference `calibration_decision_log` but are not yet in the allowlist in `tests/test_calibration_bypass_closure.py`. Expected (projection, unproven until GitHub): 22 → 20.
 
 ---
 
@@ -56,9 +56,9 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 - `operator_readiness_gate_pass: false`
 - `card_explainability_allowed: false`
 - `next_allowed_step: resolve_pytest_full_failures`
-- `current_ci_verified_commit: 5c6e967` (run 27875496094, 25 failed — product matrix only)
-- `pytest_full_matrix_verified_commit: 5c6e967`
-- `expected_after_pending_push: 22` (ACTIVE_BUNDLE local fix; unproven until a future GitHub run)
+- `current_ci_verified_commit: 0068226` (run 27877046342, 22 failed — product matrix only)
+- `pytest_full_matrix_verified_commit: 0068226`
+- `expected_after_pending_push: 22` (artifact sync only; no pending local fix in this commit)
 - **Do not merge** PR #19 until pytest-full green on GitHub PR #19 **and** schwab-csv-first `pull_request` green, with no unexplained paired failure.
 
 ---
@@ -83,5 +83,5 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 | Field | Value |
 |-------|-------|
 | **Classification** | `OPEN_BLOCKING` |
-| **CI link** | run **27875496094** @ `5c6e967` — `25 failed, 3762 passed, 7 skipped` = product matrix only (+2 meta-artifact drift CLOSED_WITH_EVIDENCE) |
+| **CI link** | run **27877046342** @ `0068226` — `22 failed, 3765 passed, 7 skipped` = product matrix only (ACTIVE_BUNDLE + meta-artifact drift CLOSED_WITH_EVIDENCE) |
 | **Closure criteria** | pytest-full green OR every product matrix row accepted with operator sign-off |
