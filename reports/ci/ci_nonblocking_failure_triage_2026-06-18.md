@@ -76,7 +76,7 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 
 ### Recommended next largest unblocked bucket
 
-**`ACTIVE_BUNDLE_ENCODER_LAYOUT`** — 3 tests, `fix/ci-active-bundle-fixture`, not branch-blocked.
+**`ACTIVE_BUNDLE_ENCODER_LAYOUT`** — 3 tests, `fix/ci-active-bundle-fixture`, not branch-blocked. **FIX_NOW** — CI lacks complete `active_5c/SPY` strict bundle fixture.
 
 ---
 
