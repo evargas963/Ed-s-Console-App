@@ -102,10 +102,13 @@ def test_check_active_bundle_rejects_stale_encoder_schema(tmp_path: Path):
     from active_bundle_contract import check_active_bundle_complete
 
     bd = tmp_path / "active" / "SPY"
-    _write_minimal_bundle(bd, "SPY", "1c", encoder_schema_version=2)
+    # v1 predates LEGACY_ENCODER_SCHEMA_VERSION (2); v2 with current widths is width-mismatch only.
+    _write_minimal_bundle(bd, "SPY", "1c", encoder_schema_version=1)
     r = check_active_bundle_complete("SPY", "1c", bundle_dir=bd, models_dir=tmp_path)
     assert r["compliant"] is False
     lstm_issues = " ".join(r["artifacts"]["lstm"]["issues"])
     tr_issues = " ".join(r["artifacts"]["transformer"]["issues"])
-    assert "encoder schema v2" in lstm_issues
-    assert "encoder schema v2" in tr_issues
+    assert "encoder schema v1" in lstm_issues
+    assert "minimum v2" in lstm_issues
+    assert "encoder schema v1" in tr_issues
+    assert "minimum v2" in tr_issues

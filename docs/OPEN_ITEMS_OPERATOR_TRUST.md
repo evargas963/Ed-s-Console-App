@@ -156,9 +156,9 @@
 | **Source PR / report** | `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` — pytest-full failure matrix |
 | **Why it matters** | Full suite catches cone gaps; 25 product matrix failures @ `a72ed54` |
 | **Operator risk** | Regressions hide in uncategorized red check |
-| **Evidence currently available** | GitHub @ `ab7029a` run 27871627823: **27 failed, 3760 passed, 7 skipped** = 25 product matrix + 2 governance meta-artifact pin drift (`test_operator_trust_governance.py`, fixed in +2 commit); product baseline 25 verified @ `a72ed54` run 27857853572 |
-| **Evidence still needed** | pytest-full green OR operator sign-off on every open product matrix row |
-| **Fix now or harness now** | Recommended next: `ACTIVE_BUNDLE_ENCODER_LAYOUT` (3 tests, `fix/ci-active-bundle-fixture`) — separate commit, not part of the +2 pin-drift fix |
+| **Evidence currently available** | GitHub @ `5c6e967` run 27875496094: **25 failed, 3762 passed, 7 skipped** = product matrix only; +2 governance meta-artifact pin drift CLOSED_WITH_EVIDENCE (27 → 25). `ACTIVE_BUNDLE_ENCODER_LAYOUT` (3 tests) fixed locally (10/10 active-bundle tests pass locally), pending GitHub proof of 25 → 22 |
+| **Evidence still needed** | pytest-full green OR operator sign-off on every open product matrix row; GitHub proof of ACTIVE_BUNDLE 25 → 22 |
+| **Fix now or harness now** | In progress: `ACTIVE_BUNDLE_ENCODER_LAYOUT` (3 tests) — local strict-bundle fixture fix landed, pending GitHub proof; next after proof: `CALIBRATION_BYPASS_ALLOWLIST` (2 tests) |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` (FIX_NOW); triage-owned groups in `ci_nonblocking_failure_triage_2026-06-18.json` |
 | **Blocking level** | High — blocks PR #19 merge |
 | **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all **25** open product matrix rows @ `a72ed54` |

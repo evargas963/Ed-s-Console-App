@@ -10,12 +10,26 @@ def _write_minimal_bundle(bundle_dir: Path, ticker: str, hz: str) -> None:
     bundle_dir.mkdir(parents=True, exist_ok=True)
     t = ticker.upper()
     contract = contract_metadata_dict()
+    feats = ["f1"]
+    import torch
+    from lstm_data import LSTM_ENCODER_SCHEMA_VERSION, encoded_width_5m, encoded_width_1m
+
+    seq_stub = {
+        "encoder_schema_version": LSTM_ENCODER_SCHEMA_VERSION,
+        "encoder_width_5m_pre_mask": encoded_width_5m(),
+        "encoder_width_1m_pre_mask": encoded_width_1m(),
+        "n_features": encoded_width_5m(),
+    }
     for kind in ("xgb", "lstm", "transformer"):
         ext = ".pkl" if kind == "xgb" else ".pt"
-        bundle_dir.joinpath(f"{kind}_{t}_{hz}{ext}").write_bytes(b"x")
+        model_name = f"{kind}_{t}_{hz}{ext}"
+        if kind == "xgb":
+            bundle_dir.joinpath(model_name).write_bytes(b"x")
+        else:
+            torch.save(seq_stub, str(bundle_dir / model_name))
         meta = {
             **contract,
-            "features": ["f1"],
+            "features": feats,
             "training_timeframe": "1m",
             "target_column": f"outcome_{hz}",
             "target_definition": f"outcome ~{hz}",
@@ -29,7 +43,11 @@ def _write_minimal_bundle(bundle_dir: Path, ticker: str, hz: str) -> None:
             __import__("json").dumps(meta),
             encoding="utf-8",
         )
-    bundle_dir.joinpath(f"meta_{t}_{hz}.pkl").write_bytes(b"meta-stack-test-stub")
+    import pickle
+
+    bundle_dir.joinpath(f"meta_{t}_{hz}.pkl").write_bytes(
+        pickle.dumps({"meta_stack_test_stub": True}, protocol=pickle.HIGHEST_PROTOCOL)
+    )
 
 
 def test_strict_active_bundle_dir_single_canonical_root(tmp_path: Path):

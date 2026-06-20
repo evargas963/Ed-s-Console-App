@@ -6,7 +6,7 @@
   "operator_readiness_gate_pass": false,
   "card_explainability_allowed": false,
   "card_explainability_block_reason": [
-    "pytest-full: GitHub showed 27 failed @ ab7029a run 27871627823 = 25 product matrix + 2 governance meta-artifact pin drift; resolve product matrix or operator-sign-off per matrix row",
+    "pytest-full: GitHub showed 25 failed @ 5c6e967 run 27875496094 (product matrix only; +2 governance meta-artifact drift CLOSED_WITH_EVIDENCE). ACTIVE_BUNDLE_ENCODER_LAYOUT fix is local-only pending GitHub proof (expected 25 -> 22); resolve product matrix or operator-sign-off per matrix row",
     "RTH validation not executed",
     "LIVE_GUEST_SLA_NOT_PROVEN",
     "DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN",
@@ -19,27 +19,27 @@
   "blocked_branches": [
     "fix/card-price-conflict-explainability"
   ],
-  "last_verified_commit": "ab7029a",
-  "pytest_full_matrix_commit": "ab7029a",
-  "current_ci_verified_commit": "ab7029a",
-  "current_ci_pytest_full_run": "27871627823",
-  "current_ci_pytest_full_failure_count": 27,
-  "current_ci_pytest_full_passed_count": 3760,
+  "last_verified_commit": "5c6e967",
+  "pytest_full_matrix_commit": "5c6e967",
+  "current_ci_verified_commit": "5c6e967",
+  "current_ci_pytest_full_run": "27875496094",
+  "current_ci_pytest_full_failure_count": 25,
+  "current_ci_pytest_full_passed_count": 3762,
   "current_ci_pytest_full_skipped_count": 7,
-  "pytest_full_matrix_verified_commit": "a72ed54",
-  "pytest_full_matrix_verified_run": "27857853572",
+  "pytest_full_matrix_verified_commit": "5c6e967",
+  "pytest_full_matrix_verified_run": "27875496094",
   "pytest_full_product_matrix_failure_count": 25,
-  "meta_artifact_drift_failure_count": 2,
-  "meta_artifact_drift_tests": [
-    "tests/test_operator_trust_governance.py::test_stabilization_gate_blocks_card_explainability",
-    "tests/test_operator_trust_governance.py::test_ci_triage_has_classifications_and_closure_criteria"
-  ],
-  "expected_after_pending_push": 25,
-  "latest_artifact_update_commit": "ab7029a",
-  "pytest_full_failure_count": 27,
-  "pytest_full_failure_count_semantics": "Observed CI failures at current_ci_pytest_full_run 27871627823 @ ab7029a = pytest_full_product_matrix_failure_count (25) + meta_artifact_drift_failure_count (2). 22 is a FUTURE projection only after ACTIVE_BUNDLE_ENCODER_LAYOUT clears on a later GitHub run; not asserted here.",
-  "pytest_full_matrix_run": "27871627823",
-  "pytest_full_passed_count": 3760,
+  "meta_artifact_drift_failure_count": 0,
+  "meta_artifact_drift_tests": [],
+  "meta_artifact_drift_status": "CLOSED_WITH_EVIDENCE @ 5c6e967 run 27875496094 — both tests/test_operator_trust_governance.py meta-tests pass on GitHub; pytest-full 27 -> 25",
+  "active_bundle_local_fix_pending_github_proof": true,
+  "active_bundle_local_fix_note": "ACTIVE_BUNDLE_ENCODER_LAYOUT (3 tests) fixed locally; 10/10 active-bundle tests pass locally; pending GitHub proof of pytest-full 25 -> 22. Not counted as cleared in the product matrix until GitHub proves it.",
+  "expected_after_pending_push": 22,
+  "latest_artifact_update_commit": "5c6e967",
+  "pytest_full_failure_count": 25,
+  "pytest_full_failure_count_semantics": "Observed CI failures at current_ci_pytest_full_run 27875496094 @ 5c6e967 = pytest_full_product_matrix_failure_count (25); meta_artifact_drift now 0. 22 is a FUTURE projection only after ACTIVE_BUNDLE_ENCODER_LAYOUT clears on the next GitHub run; NOT asserted as observed here.",
+  "pytest_full_matrix_run": "27875496094",
+  "pytest_full_passed_count": 3762,
   "pytest_full_skipped_count": 7,
   "objective_audit_last_run": "27851943226",
   "objective_audit_status": "pass",
@@ -69,5 +69,5 @@
   "required_triage_reports": [
     "reports/ci/ci_nonblocking_failure_triage_2026-06-18.md"
   ],
-  "note": "+2 governance meta-test pin drift triaged @ ab7029a: GitHub pytest-full run 27871627823 = 27 failed (3760 passed, 7 skipped) = 25 product matrix (baseline verified @ a72ed54 run 27857853572) + 2 meta-artifact drift in tests/test_operator_trust_governance.py. Pin drift fixed in this commit; product matrix unchanged at 25. expected_after_pending_push = 25 (NOT 22 — 22 is a later projection only after ACTIVE_BUNDLE_ENCODER_LAYOUT clears on a future GitHub run). Gates stay false until pytest-full green or operator sign-off."
+  "note": "+2 governance meta-test pin drift CLOSED_WITH_EVIDENCE @ 5c6e967: GitHub pytest-full run 27875496094 = 25 failed (3762 passed, 7 skipped) = product matrix only; both tests/test_operator_trust_governance.py meta-tests now pass (27 -> 25). Next bucket ACTIVE_BUNDLE_ENCODER_LAYOUT (3 tests) fixed locally (10/10 active-bundle tests pass locally) and is pending GitHub proof; expected_after_pending_push = 22 (NOT written as observed until a future GitHub run proves it). Gates stay false until pytest-full green or operator sign-off."
 }
