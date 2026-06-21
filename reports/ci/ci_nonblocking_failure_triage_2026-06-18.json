@@ -7,7 +7,8 @@
   "merge_gate": "pytest-full",
   "ci_triage_gate_pass": false,
   "next_allowed_step": "resolve_pytest_full_failures",
-  "recommended_next_bucket": "AUDIT_CAND_SERVER_CI_OFFLINE (2 tests)",
+  "recommended_next_bucket": "V2_CONFORMAL_TIER_C_PAYLOAD (2) after AUDIT_CAND_SERVER_CI_OFFLINE GitHub proof 11 -> 9",
+  "in_progress_bucket": "AUDIT_CAND_SERVER_CI_OFFLINE (2 test-only fixes landed locally, pending GitHub proof)",
   "github_checks_last_observed": {
     "commit": "d55dd5d",
     "objective-audit": "pass",
@@ -496,21 +497,24 @@
     {
       "failure_group": "AUDIT_CAND_SERVER_CI_OFFLINE",
       "number_of_tests": 2,
+      "local_fix_status": "FIXED_LOCAL_PENDING_GITHUB_PROOF",
+      "local_fix_note": "Test-only, no production change. test_debug_prediction: the /api/debug/prediction route is fail-closed gated (R-011, server.py:8999) → 404 unless ED_ALLOW_DEBUG_ENDPOINTS enabled; test now sets it via monkeypatch (test-only; production gate unchanged) → 200 + populated distribution. test_spread_semantic: stale mocks — production refactored both quote paths to get_client() + _safe_get_quote_with_retry() and _parse_quote_node_session_fields expects the nested Schwab quote envelope; test now uses one shared patch context (get_client + _safe_get_quote_with_retry) with a nested-quote mock, and drops the stale _build_rest_fast_quote_payload mock. No real Schwab/OAuth call. 22/22 audit_cand tests pass locally. number_of_tests stays 2 until GitHub proves 11 -> 9.",
+      "expected_clear_count": 2,
       "representative_tests": [
         "tests/test_audit_cand_server_py_full_read_v1.py::test_spread_semantic_stamped_on_fast_quote_and_tier_a",
         "tests/test_audit_cand_server_py_full_read_v1.py::test_debug_prediction_returns_populated_distribution"
       ],
       "failure_message": "assert None == 'dollar' / assert 404 == 200",
-      "root_cause": "Server fast-quote / debug paths need quote data; CI offline returns empty",
+      "root_cause": "Test-only (CI hermeticity + stale mocks/fixtures), no product bug: (1) test_debug_prediction missing ED_ALLOW_DEBUG_ENDPOINTS enable for the R-011 fail-closed debug gate (404); (2) test_spread_semantic patched stale entry points (safe_get_quote / _build_rest_fast_quote_payload) after a refactor to get_client()+_safe_get_quote_with_retry() and used a flat quote node that _parse_quote_node_session_fields can't parse (needs nested 'quote' envelope) -> real OAuth + no parsed spot.",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
-      "fix_now_or_defer": "triage_owned",
-      "owner_branch": "fix/audit-cand-server-ci-mocks",
+      "fix_now_or_defer": "fix_now",
+      "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "Tests mock quote layer or skip when schwab_live_blocked_for()"
+      "closure_criteria": "test-only: enable debug-endpoint env (test-only) + repoint mocks to current quote entry points with nested-quote envelope; closure on GitHub pytest-full 11 -> 9"
     }
   ],
   "pytest_full_failure_count": 11,
-  "pytest_full_failure_count_semantics": "product matrix failure count = sum(pytest_full_failure_matrix[].number_of_tests) = 11 = current_ci_pytest_full_failure_count (11) at d55dd5d; meta_artifact_drift 0; ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD + ANTI_PATTERN_CAPS_VIOLATIONS + STACK_WIRE_INTEGRITY + LIVE_BUNDLE_SSE_CACHE CLOSED (0). Artifact sync only — no pending local fix in this commit. Next bucket AUDIT_CAND_SERVER_CI_OFFLINE projects 9, only after its fix lands locally and only as a projection until GitHub proves it.",
+  "pytest_full_failure_count_semantics": "product matrix failure count = sum(pytest_full_failure_matrix[].number_of_tests) = 11 = current_ci_pytest_full_failure_count (11) at d55dd5d; meta_artifact_drift 0; ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD + ANTI_PATTERN_CAPS_VIOLATIONS + STACK_WIRE_INTEGRITY + LIVE_BUNDLE_SSE_CACHE CLOSED (0). AUDIT_CAND_SERVER_CI_OFFLINE (2) is now fixed locally (test-only) and still counted at 2 until GitHub proves 11 -> 9. expected_after_pending_push = 9 is a PROJECTION, not asserted as observed.",
   "pytest_full_product_matrix_failure_count": 11,
   "pytest_full_passed_count": 3776,
   "pytest_full_skipped_count": 7,
@@ -537,7 +541,9 @@
   "stack_wire_integrity_status": "CLOSED_WITH_EVIDENCE @ b44d5ab run 27888713242 (17 -> 14); stale tests realigned to fail-closed contracts (test-only)",
   "live_bundle_sse_cache_local_fix_pending_github_proof": false,
   "live_bundle_sse_cache_status": "CLOSED_WITH_EVIDENCE @ d55dd5d run 27890689248 (14 -> 11); heterogeneous test-only fix",
-  "expected_after_pending_push": 11,
+  "audit_cand_server_ci_offline_local_fix_pending_github_proof": true,
+  "audit_cand_server_ci_offline_local_fix_note": "Test-only fix landed locally (debug-endpoint env enable + shared patch context with nested-quote mock); 22/22 audit_cand tests pass locally; pending GitHub proof 11 -> 9.",
+  "expected_after_pending_push": 9,
   "pytest_full_classification_totals": {
     "PRE_EXISTING_BUT_BLOCKING": 21,
     "INTENTIONAL_CONTRACT_LOCK": 3,

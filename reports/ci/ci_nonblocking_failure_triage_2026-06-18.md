@@ -31,7 +31,7 @@
 
 | Bucket | Tests | Status / note |
 |--------|-------|---------------|
-| `AUDIT_CAND_SERVER_CI_OFFLINE` | **2** | open, not blocked — fast-quote/debug need quote data; CI offline |
+| `AUDIT_CAND_SERVER_CI_OFFLINE` | **2** | **in progress** (test-only fix landed locally, pending GitHub proof) — debug-endpoint env enable + nested-quote mock repoint |
 | `V2_CONFORMAL_TIER_C_PAYLOAD` | **2** | open, not blocked — Tier C / conformal attachment markers absent in CI |
 | `UI_LEVEL_TEST_CHIP` | **2** | **BLOCKED** — INTENTIONAL_CONTRACT_LOCK, card-explainability lane (do not start) |
 | `ML_PREDICT_STRICT_VERSION` | **1** | open, not blocked |
@@ -60,9 +60,13 @@
 
 Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` → `pytest_full_failure_matrix` (sum of `number_of_tests` = 11 = `pytest_full_product_matrix_failure_count` = current observed).
 
-### Recommended next unblocked pytest bucket
+### In-progress pytest bucket
 
-**`AUDIT_CAND_SERVER_CI_OFFLINE`** — 2 tests, `audit/ci-nonblocking-failures-triage`, not branch-blocked. **FIX_NOW** — server fast-quote / debug-prediction paths need quote data; CI offline returns empty. Projected (unproven until GitHub): 11 → 9.
+**`AUDIT_CAND_SERVER_CI_OFFLINE`** — 2 tests, fix **landed locally** (test-only, no production change): `test_debug_prediction` now enables the R-011 fail-closed debug gate via `monkeypatch.setenv("ED_ALLOW_DEBUG_ENDPOINTS","1")` (test-only; production gate unchanged); `test_spread_semantic` uses one shared patch context (`get_client` + `_safe_get_quote_with_retry`) with a **nested** Schwab quote-envelope mock (`_parse_quote_node_session_fields` needs `node["quote"][...]`), dropping the stale `_build_rest_fast_quote_payload` mock. No real Schwab/OAuth. 22/22 `audit_cand` tests pass locally. Projected (unproven until GitHub): 11 → 9.
+
+### Recommended next unblocked pytest bucket (after AUDIT_CAND GitHub proof)
+
+**`V2_CONFORMAL_TIER_C_PAYLOAD`** (2). **FIX_NOW** — Tier C / conformal attachment markers absent in CI server response path.
 
 ---
 
@@ -74,7 +78,7 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 - `next_allowed_step: resolve_pytest_full_failures`
 - `current_ci_verified_commit: d55dd5d` (run 27890689248, 11 failed — product matrix only)
 - `pytest_full_matrix_verified_commit: d55dd5d`
-- `expected_after_pending_push: 11` (artifact sync only; no pending local fix in this commit)
+- `expected_after_pending_push: 9` (AUDIT_CAND_SERVER_CI_OFFLINE test-only fix landed locally; projection, unproven until GitHub)
 - **Do not merge** PR #19 until pytest-full green on GitHub PR #19 **and** schwab-csv-first `pull_request` green, with no unexplained paired failure.
 
 ---
