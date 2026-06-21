@@ -110,18 +110,59 @@ def test_rulesets_payload_parses_required_checks() -> None:
     assert parsed["allows_deletions"] is False
 
 
-def test_fetch_public_run_inspection_discovers_objective_audit_check_name() -> None:
+def test_fetch_public_run_inspection_discovers_objective_audit_check_name(monkeypatch) -> None:
+    # Hermetic: the unauthenticated live GitHub REST calls are rate-limited and
+    # nondeterministic on CI (they intermittently return empty jobs/check-runs).
+    # Freeze the transport so this test validates the parse/extract logic only,
+    # never live GitHub availability. _github_rest_request is the single network
+    # entrypoint used by fetch_public_actions_run_inspection for all three GETs.
+    import tools.remote_enforcement_evidence as ree
     from tools.remote_enforcement_evidence import (
         DEFAULT_OBJECTIVE_AUDIT_RUN_ID,
         OBJECTIVE_AUDIT_CHECK,
         fetch_public_actions_run_inspection,
     )
 
+    head_sha = "b084e7100000000000000000000000000000aaaa"
+    calls: list[str] = []
+
+    def _frozen_request(method, url, *, token=None, body=None):
+        calls.append(url)
+        assert method == "GET"
+        if url.endswith(f"/actions/runs/{DEFAULT_OBJECTIVE_AUDIT_RUN_ID}"):
+            return 200, {
+                "name": "Objective Audit",
+                "path": ".github/workflows/objective-audit.yml",
+                "status": "completed",
+                "conclusion": "success",
+                "head_branch": "feature/institutional-key-levels",
+                "head_sha": head_sha,
+            }
+        if url.endswith(f"/actions/runs/{DEFAULT_OBJECTIVE_AUDIT_RUN_ID}/jobs"):
+            return 200, {
+                "jobs": [
+                    {"name": OBJECTIVE_AUDIT_CHECK, "status": "completed", "conclusion": "success"},
+                ]
+            }
+        if url.endswith(f"/commits/{head_sha}/check-runs"):
+            return 200, {
+                "check_runs": [
+                    {"name": OBJECTIVE_AUDIT_CHECK, "status": "completed", "conclusion": "success"},
+                ]
+            }
+        raise AssertionError(f"unexpected URL (no live call allowed): {url}")
+
+    monkeypatch.setattr(ree, "_github_rest_request", _frozen_request)
+
     inspection = fetch_public_actions_run_inspection(DEFAULT_OBJECTIVE_AUDIT_RUN_ID)
     assert inspection.get("conclusion") == "success"
     assert inspection.get("status_check_name_for_branch_protection") == OBJECTIVE_AUDIT_CHECK
     names = [cr.get("name") for cr in inspection.get("check_runs") or []]
     assert OBJECTIVE_AUDIT_CHECK in names
+    # Proof the extractor ran entirely on frozen payloads (no live GitHub availability):
+    # all three endpoints were served by the monkeypatched transport.
+    assert any(u.endswith(f"/actions/runs/{DEFAULT_OBJECTIVE_AUDIT_RUN_ID}") for u in calls)
+    assert any(u.endswith(f"/commits/{head_sha}/check-runs") for u in calls)
 
 
 def test_fetch_github_without_cli_stays_pending(monkeypatch) -> None:
