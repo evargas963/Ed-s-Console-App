@@ -96,14 +96,14 @@ def test_stabilization_gate_blocks_card_explainability():
     assert gate.get("next_allowed_step") == "resolve_pytest_full_failures"
     assert gate.get("next_allowed_branch") != "audit/ci-nonblocking-failures-triage"
     # Explicit, non-overloaded commit/count semantics (see gate field docs).
-    # Current GitHub CI observation @ 78c9192 (AUDIT_CAND proven, 11 -> 9).
-    assert gate.get("current_ci_verified_commit") == "78c9192"
-    assert gate.get("current_ci_pytest_full_run") == "27896087973"
-    assert gate.get("current_ci_pytest_full_failure_count") == 9
+    # Current GitHub CI observation @ 0edb7ac (V2_CONFORMAL proven, 9 -> 7).
+    assert gate.get("current_ci_verified_commit") == "0edb7ac"
+    assert gate.get("current_ci_pytest_full_run") == "27903963832"
+    assert gate.get("current_ci_pytest_full_failure_count") == 7
     # Product matrix verified at the same proven commit.
-    assert gate.get("pytest_full_matrix_verified_commit") == "78c9192"
-    assert gate.get("pytest_full_product_matrix_failure_count") == 9
-    # All eight buckets closed to date.
+    assert gate.get("pytest_full_matrix_verified_commit") == "0edb7ac"
+    assert gate.get("pytest_full_product_matrix_failure_count") == 7
+    # All nine buckets closed to date.
     assert gate.get("meta_artifact_drift_failure_count") == 0
     assert gate.get("active_bundle_local_fix_pending_github_proof") is False
     assert gate.get("calibration_bypass_local_fix_pending_github_proof") is False
@@ -112,8 +112,8 @@ def test_stabilization_gate_blocks_card_explainability():
     assert gate.get("stack_wire_integrity_local_fix_pending_github_proof") is False
     assert gate.get("live_bundle_sse_cache_local_fix_pending_github_proof") is False
     assert gate.get("audit_cand_server_ci_offline_local_fix_pending_github_proof") is False
-    # V2_CONFORMAL_TIER_C_PAYLOAD fixed locally (test-only); observed stays 9, expected 7 is a projection.
-    assert gate.get("v2_conformal_tier_c_payload_local_fix_pending_github_proof") is True
+    assert gate.get("v2_conformal_tier_c_payload_local_fix_pending_github_proof") is False
+    # Artifact sync only — no pending local fix — so expected == observed (7).
     assert gate.get("expected_after_pending_push") == 7
     # Legacy fields must stay honest to the cited run, not a prediction.
     assert gate.get("pytest_full_failure_count") == gate.get("current_ci_pytest_full_failure_count")
