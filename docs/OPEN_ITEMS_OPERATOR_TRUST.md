@@ -156,9 +156,9 @@
 | **Source PR / report** | `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` — pytest-full failure matrix |
 | **Why it matters** | Full suite catches cone gaps; 25 product matrix failures @ `a72ed54` |
 | **Operator risk** | Regressions hide in uncategorized red check |
-| **Evidence currently available** | GitHub @ `b44d5ab` run 27888713242: **14 failed, 3773 passed, 7 skipped** = product matrix only. CLOSED_WITH_EVIDENCE on GitHub: governance meta-artifact pin drift (27 → 25), `ACTIVE_BUNDLE_ENCODER_LAYOUT` (25 → 22), `CALIBRATION_BYPASS_ALLOWLIST` (22 → 20), `ET_AUTHORITY_DAILY_SCOREBOARD` (20 → 18), `ANTI_PATTERN_CAPS_VIOLATIONS` (18 → 17), `STACK_WIRE_INTEGRITY` (17 → 14); schwab-csv-first PASS |
+| **Evidence currently available** | GitHub @ `d55dd5d` run 27890689248: **11 failed, 3776 passed, 7 skipped** = product matrix only. CLOSED_WITH_EVIDENCE on GitHub: governance meta-artifact pin drift (27 → 25), `ACTIVE_BUNDLE_ENCODER_LAYOUT` (25 → 22), `CALIBRATION_BYPASS_ALLOWLIST` (22 → 20), `ET_AUTHORITY_DAILY_SCOREBOARD` (20 → 18), `ANTI_PATTERN_CAPS_VIOLATIONS` (18 → 17), `STACK_WIRE_INTEGRITY` (17 → 14), `LIVE_BUNDLE_SSE_CACHE` (14 → 11); schwab-csv-first PASS |
 | **Evidence still needed** | pytest-full green OR operator sign-off on every open product matrix row |
-| **Fix now or harness now** | In progress: `LIVE_BUNDLE_SSE_CACHE` (3) — heterogeneous test-only fix (A stale-gate fixture, B UI count drift 6→7 all bumps gated, C ticker-scoped hermeticity); 15/15 issue20_23 pass locally; pending GitHub proof 14 → 11; next after proof: `AUDIT_CAND_SERVER_CI_OFFLINE` (2) / `V2_CONFORMAL_TIER_C_PAYLOAD` (2). `UI_*` contract-locked — do not start |
+| **Fix now or harness now** | Next: `AUDIT_CAND_SERVER_CI_OFFLINE` (2) — server fast-quote/debug paths need quote data; CI offline; projected 11 → 9 (unproven until GitHub); then `V2_CONFORMAL_TIER_C_PAYLOAD` (2). `UI_*` contract-locked — do not start |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` (FIX_NOW); triage-owned groups in `ci_nonblocking_failure_triage_2026-06-18.json` |
 | **Blocking level** | High — blocks PR #19 merge |
 | **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all **25** open product matrix rows @ `a72ed54` |

@@ -7,22 +7,21 @@
   "merge_gate": "pytest-full",
   "ci_triage_gate_pass": false,
   "next_allowed_step": "resolve_pytest_full_failures",
-  "recommended_next_bucket": "AUDIT_CAND_SERVER_CI_OFFLINE (2) / V2_CONFORMAL_TIER_C_PAYLOAD (2) after LIVE_BUNDLE_SSE_CACHE GitHub proof 14 -> 11",
-  "in_progress_bucket": "LIVE_BUNDLE_SSE_CACHE (3 heterogeneous test-only fixes landed locally, pending GitHub proof)",
+  "recommended_next_bucket": "AUDIT_CAND_SERVER_CI_OFFLINE (2 tests)",
   "github_checks_last_observed": {
-    "commit": "b44d5ab",
+    "commit": "d55dd5d",
     "objective-audit": "pass",
-    "objective_audit_run": "27888713246",
+    "objective_audit_run": "27890689276",
     "objective_audit_closed_at_commit": "704b4b9",
     "hardening": "pass",
     "schwab-csv-first": "pass",
     "schwab_csv_first_closed_at_commit": "741091b",
-    "schwab_csv_first_run": "27888713241",
+    "schwab_csv_first_run": "27890689256",
     "schwab_csv_first_pr_status": "pass",
     "pytest-full": "fail",
-    "pytest_full_summary": "14 failed, 3773 passed, 7 skipped",
-    "pytest_full_run": "27888713242",
-    "pytest_full_count_breakdown": "14 observed = product matrix only; STACK_WIRE_INTEGRITY (3) cleared (17 -> 14); ACTIVE_BUNDLE + CALIBRATION_BYPASS + ET_AUTHORITY + ANTI_PATTERN_CAPS + meta-artifact drift CLOSED"
+    "pytest_full_summary": "11 failed, 3776 passed, 7 skipped",
+    "pytest_full_run": "27890689248",
+    "pytest_full_count_breakdown": "11 observed = product matrix only; LIVE_BUNDLE_SSE_CACHE (3) cleared (14 -> 11); ACTIVE_BUNDLE + CALIBRATION_BYPASS + ET_AUTHORITY + ANTI_PATTERN_CAPS + STACK_WIRE + meta-artifact drift CLOSED"
   },
   "pytest_full_matrix_history": [
     {
@@ -138,6 +137,14 @@
       "passed_count": 3773,
       "skipped_count": 7,
       "note": "STACK_WIRE_INTEGRITY CLOSED_WITH_EVIDENCE — all 3 stack-wire tests absent on GitHub (17 -> 14); stale tests realigned to fail-closed contracts (test-only). 14 = product matrix only"
+    },
+    {
+      "commit": "d55dd5d",
+      "pytest_full_run": "27890689248",
+      "failed_count": 11,
+      "passed_count": 3776,
+      "skipped_count": 7,
+      "note": "LIVE_BUNDLE_SSE_CACHE CLOSED_WITH_EVIDENCE — all 3 issue20_23 tests absent on GitHub (14 -> 11); heterogeneous test-only fix (A fixture realign, B count 6->7 all bumps gated, C ticker-scoped hermeticity). 11 = product matrix only"
     }
   ],
   "pytest_full_fixed_at_bc2e8a9": [
@@ -191,7 +198,7 @@
     },
     "pytest-full": {
       "classification": "OPEN_BLOCKING",
-      "root_cause": "14 failed @ b44d5ab run 27888713242 = product matrix only. STACK_WIRE_INTEGRITY (3 tests) CLOSED_WITH_EVIDENCE on GitHub (17 -> 14); ACTIVE_BUNDLE + CALIBRATION_BYPASS + ET_AUTHORITY + ANTI_PATTERN_CAPS + governance meta-artifact pin drift remain CLOSED; schwab-csv-first PASS",
+      "root_cause": "11 failed @ d55dd5d run 27890689248 = product matrix only. LIVE_BUNDLE_SSE_CACHE (3 tests) CLOSED_WITH_EVIDENCE on GitHub (14 -> 11); ACTIVE_BUNDLE + CALIBRATION_BYPASS + ET_AUTHORITY + ANTI_PATTERN_CAPS + STACK_WIRE_INTEGRITY + governance meta-artifact pin drift remain CLOSED; schwab-csv-first PASS",
       "closure_criteria": "pytest-full green OR every row in pytest_full_failure_matrix accepted with operator sign-off"
     }
   },
@@ -358,22 +365,22 @@
     },
     {
       "failure_group": "LIVE_BUNDLE_SSE_CACHE",
-      "number_of_tests": 3,
-      "local_fix_status": "FIXED_LOCAL_PENDING_GITHUB_PROOF",
-      "local_fix_note": "HETEROGENEOUS bucket — three distinct causes, all test-only (no production change), all fail in isolation (matrix 'non-hermetic full-suite order' was inaccurate). (A) test_stamp_decision_bundle_monotonic: stale test behind fail-closed gate / fixture missing current required fields — realigned to add ticker + release-gate setup (preserves monotonic generation + spot-tied coverage). (B) test_index_html_render_return_gates: UI render-timestamp guard COUNT DRIFT (not a regression) — all 7 _lastRenderTs bumps verified on did-render/did-paint success paths (3 behind _didRender*; one precedes return true; rest on L1/merged/sidebar paint success); git blame: all 7 at branch baseline a645a89; count updated 6 -> 7. (C) test_api_state_bypasses_cache: test hermeticity from unrelated SPY background startup fetch — assertion made ticker-scoped. 15/15 issue20_23 tests pass locally. number_of_tests stays 3 until GitHub proves 14 -> 11.",
-      "expected_clear_count": 3,
+      "number_of_tests": 0,
+      "bucket_status": "CLOSED_WITH_EVIDENCE",
+      "cleared_at_commit": "d55dd5d",
+      "cleared_at_run": "27890689248",
       "representative_tests": [
         "tests/test_issue20_23_live_bundle.py::test_api_state_bypasses_cache_when_sse_subscribers",
         "tests/test_issue20_23_live_bundle.py::test_index_html_render_return_gates_live_and_last_render_ts",
         "tests/test_issue20_23_live_bundle.py::test_stamp_decision_bundle_monotonic_and_spot_same_generation"
       ],
       "failure_message": "assert [('SPY', None)] == [] / assert 7 == 6 / assert isinstance(None, int)",
-      "root_cause": "HETEROGENEOUS (all test-only, fail in isolation): (A) stale test behind fail-closed stamp gate (fixture missing ticker/release); (B) UI render-timestamp guard count drift 6->7, all 7 bumps gated on did-render/did-paint (NOT an Issue-24 regression); (C) test hermeticity — unrelated SPY background warm-up fetch polluted a ticker-agnostic assertion. No production change.",
+      "root_cause": "Cleared @ d55dd5d — HETEROGENEOUS, all test-only, all failed in isolation (matrix 'non-hermetic full-suite' note was inaccurate): (A) stale test behind fail-closed stamp gate (fixture realigned + ticker/release); (B) UI render-timestamp guard count drift 6->7, all 7 bumps verified gated on did-render/did-paint (git blame: all at baseline a645a89; NOT an Issue-24 regression); (C) test hermeticity — ticker-scoped assertion vs background SPY warm-up fetch. No production change. All 3 absent on GitHub run 27890689248 (14 -> 11).",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
-      "fix_now_or_defer": "fix_now",
+      "fix_now_or_defer": "closed",
       "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "3 issue20_23 tests realigned (A fixture, B count 6->7, C ticker-scoped); closure on GitHub pytest-full 14 -> 11"
+      "closure_criteria": "GitHub pytest-full @ d55dd5d: 3 issue20_23 tests green — met (14 -> 11)"
     },
     {
       "failure_group": "UI_LEVEL_TEST_CHIP_CONTRACT",
@@ -502,18 +509,18 @@
       "closure_criteria": "Tests mock quote layer or skip when schwab_live_blocked_for()"
     }
   ],
-  "pytest_full_failure_count": 14,
-  "pytest_full_failure_count_semantics": "product matrix failure count = sum(pytest_full_failure_matrix[].number_of_tests) = 14 = current_ci_pytest_full_failure_count (14) at b44d5ab; meta_artifact_drift 0; ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD + ANTI_PATTERN_CAPS_VIOLATIONS + STACK_WIRE_INTEGRITY CLOSED (0). Artifact sync only — no pending local fix in this commit. Next bucket LIVE_BUNDLE_SSE_CACHE projects 11, only after its fix lands locally and only as a projection until GitHub proves it.",
-  "pytest_full_product_matrix_failure_count": 14,
-  "pytest_full_passed_count": 3773,
+  "pytest_full_failure_count": 11,
+  "pytest_full_failure_count_semantics": "product matrix failure count = sum(pytest_full_failure_matrix[].number_of_tests) = 11 = current_ci_pytest_full_failure_count (11) at d55dd5d; meta_artifact_drift 0; ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD + ANTI_PATTERN_CAPS_VIOLATIONS + STACK_WIRE_INTEGRITY + LIVE_BUNDLE_SSE_CACHE CLOSED (0). Artifact sync only — no pending local fix in this commit. Next bucket AUDIT_CAND_SERVER_CI_OFFLINE projects 9, only after its fix lands locally and only as a projection until GitHub proves it.",
+  "pytest_full_product_matrix_failure_count": 11,
+  "pytest_full_passed_count": 3776,
   "pytest_full_skipped_count": 7,
-  "pytest_full_matrix_verified_commit": "b44d5ab",
-  "pytest_full_matrix_verified_run": "27888713242",
-  "pytest_full_expected_at_commit": "b44d5ab",
-  "current_ci_verified_commit": "b44d5ab",
-  "current_ci_pytest_full_run": "27888713242",
-  "current_ci_pytest_full_failure_count": 14,
-  "current_ci_pytest_full_passed_count": 3773,
+  "pytest_full_matrix_verified_commit": "d55dd5d",
+  "pytest_full_matrix_verified_run": "27890689248",
+  "pytest_full_expected_at_commit": "d55dd5d",
+  "current_ci_verified_commit": "d55dd5d",
+  "current_ci_pytest_full_run": "27890689248",
+  "current_ci_pytest_full_failure_count": 11,
+  "current_ci_pytest_full_passed_count": 3776,
   "current_ci_pytest_full_skipped_count": 7,
   "meta_artifact_drift_failure_count": 0,
   "meta_artifact_drift_tests": [],
@@ -528,8 +535,8 @@
   "anti_pattern_caps_status": "CLOSED_WITH_EVIDENCE @ 8c22aa9 run 27884930874 (18 -> 17); exact line+variant CAPS_LINE_ALLOWLIST",
   "stack_wire_integrity_local_fix_pending_github_proof": false,
   "stack_wire_integrity_status": "CLOSED_WITH_EVIDENCE @ b44d5ab run 27888713242 (17 -> 14); stale tests realigned to fail-closed contracts (test-only)",
-  "live_bundle_sse_cache_local_fix_pending_github_proof": true,
-  "live_bundle_sse_cache_local_fix_note": "Heterogeneous test-only fix (A stale-gate fixture realign, B UI count drift 6->7 all bumps gated, C ticker-scoped hermeticity); 15/15 issue20_23 tests pass locally; pending GitHub proof 14 -> 11.",
+  "live_bundle_sse_cache_local_fix_pending_github_proof": false,
+  "live_bundle_sse_cache_status": "CLOSED_WITH_EVIDENCE @ d55dd5d run 27890689248 (14 -> 11); heterogeneous test-only fix",
   "expected_after_pending_push": 11,
   "pytest_full_classification_totals": {
     "PRE_EXISTING_BUT_BLOCKING": 21,
@@ -538,8 +545,14 @@
     "INFRASTRUCTURE_FLAKE_WITH_EVIDENCE": 0,
     "FIX_NOW": 0,
     "OBSOLETE_TEST_UPDATE_REQUIRED": 0,
-    "CLOSED_WITH_EVIDENCE": 25
+    "CLOSED_WITH_EVIDENCE": 26
   },
+  "pytest_full_fixed_at_d55dd5d": [
+    "tests/test_issue20_23_live_bundle.py::test_stamp_decision_bundle_monotonic_and_spot_same_generation",
+    "tests/test_issue20_23_live_bundle.py::test_index_html_render_return_gates_live_and_last_render_ts",
+    "tests/test_issue20_23_live_bundle.py::test_api_state_bypasses_cache_when_sse_subscribers"
+  ],
+  "pytest_full_fixed_count_at_d55dd5d": 3,
   "pytest_full_fixed_at_b44d5ab": [
     "tests/test_stack_wire_1_v1.py::test_decision_generation_id_always_present",
     "tests/test_stack_wire_1_v1.py::test_server_build_ts_always_set",
