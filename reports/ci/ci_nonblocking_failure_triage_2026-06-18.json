@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "audit_date": "2026-06-18",
   "updated": "2026-06-20",
   "branch": "audit/ci-nonblocking-failures-triage",
@@ -28,19 +28,19 @@
       "commit": "9bdc864",
       "pytest_full_run": "27827558746",
       "failed_count": 51,
-      "note": "Superseded — audit trail only"
+      "note": "Superseded \u2014 audit trail only"
     },
     {
       "commit": "6e3157c",
       "pytest_full_run": "27829108946",
       "failed_count": 46,
-      "note": "Matrix pin commit — superseded by 2007768 CI observation"
+      "note": "Matrix pin commit \u2014 superseded by 2007768 CI observation"
     },
     {
       "commit": "2007768",
       "pytest_full_run": "27832239335",
       "failed_count": 46,
-      "note": "conftest-only — superseded by e3ba4a9"
+      "note": "conftest-only \u2014 superseded by e3ba4a9"
     },
     {
       "commit": "e3ba4a9",
@@ -48,7 +48,7 @@
       "failed_count": 34,
       "passed_count": 3750,
       "skipped_count": 7,
-      "note": "bootstrap schema fix — 12 tests cleared; objective-audit red on CI ablation static"
+      "note": "bootstrap schema fix \u2014 12 tests cleared; objective-audit red on CI ablation static"
     },
     {
       "commit": "704b4b9",
@@ -64,7 +64,7 @@
       "failed_count": 27,
       "passed_count": 3759,
       "skipped_count": 7,
-      "note": "MEGA closed (4); +2 stale test_operator_trust_governance pins — product matrix 25"
+      "note": "MEGA closed (4); +2 stale test_operator_trust_governance pins \u2014 product matrix 25"
     },
     {
       "commit": "01bb41f",
@@ -72,7 +72,7 @@
       "failed_count": 27,
       "passed_count": 3759,
       "skipped_count": 7,
-      "note": "same run as bc2e8a9 push — governance test pin drift"
+      "note": "same run as bc2e8a9 push \u2014 governance test pin drift"
     },
     {
       "commit": "ab7029a",
@@ -96,7 +96,7 @@
       "failed_count": 22,
       "passed_count": 3765,
       "skipped_count": 7,
-      "note": "ACTIVE_BUNDLE_ENCODER_LAYOUT CLOSED_WITH_EVIDENCE — all 3 active-bundle tests cleared on GitHub (25 -> 22); 22 = product matrix only"
+      "note": "ACTIVE_BUNDLE_ENCODER_LAYOUT CLOSED_WITH_EVIDENCE \u2014 all 3 active-bundle tests cleared on GitHub (25 -> 22); 22 = product matrix only"
     },
     {
       "commit": "7bf369c",
@@ -104,7 +104,7 @@
       "failed_count": 20,
       "passed_count": 3767,
       "skipped_count": 7,
-      "note": "CALIBRATION_BYPASS_ALLOWLIST CLOSED_WITH_EVIDENCE — both calibration tests cleared on GitHub (22 -> 20); 20 = product matrix only"
+      "note": "CALIBRATION_BYPASS_ALLOWLIST CLOSED_WITH_EVIDENCE \u2014 both calibration tests cleared on GitHub (22 -> 20); 20 = product matrix only"
     },
     {
       "commit": "ad96844",
@@ -120,7 +120,7 @@
       "failed_count": 18,
       "passed_count": 3769,
       "skipped_count": 7,
-      "note": "ET_AUTHORITY_DAILY_SCOREBOARD CLOSED_WITH_EVIDENCE — both ET tests absent; pytest-full holds at 18; schwab-csv-first back to PASS (run 27882570654). 18 = product matrix only"
+      "note": "ET_AUTHORITY_DAILY_SCOREBOARD CLOSED_WITH_EVIDENCE \u2014 both ET tests absent; pytest-full holds at 18; schwab-csv-first back to PASS (run 27882570654). 18 = product matrix only"
     },
     {
       "commit": "8c22aa9",
@@ -128,7 +128,7 @@
       "failed_count": 17,
       "passed_count": 3770,
       "skipped_count": 7,
-      "note": "ANTI_PATTERN_CAPS_VIOLATIONS CLOSED_WITH_EVIDENCE — test_no_unallowlisted_production_hits absent on GitHub (18 -> 17); line-level CAPS allowlist; schwab-csv-first stayed PASS. 17 = product matrix only"
+      "note": "ANTI_PATTERN_CAPS_VIOLATIONS CLOSED_WITH_EVIDENCE \u2014 test_no_unallowlisted_production_hits absent on GitHub (18 -> 17); line-level CAPS allowlist; schwab-csv-first stayed PASS. 17 = product matrix only"
     },
     {
       "commit": "b44d5ab",
@@ -136,7 +136,7 @@
       "failed_count": 14,
       "passed_count": 3773,
       "skipped_count": 7,
-      "note": "STACK_WIRE_INTEGRITY CLOSED_WITH_EVIDENCE — all 3 stack-wire tests absent on GitHub (17 -> 14); stale tests realigned to fail-closed contracts (test-only). 14 = product matrix only"
+      "note": "STACK_WIRE_INTEGRITY CLOSED_WITH_EVIDENCE \u2014 all 3 stack-wire tests absent on GitHub (17 -> 14); stale tests realigned to fail-closed contracts (test-only). 14 = product matrix only"
     },
     {
       "commit": "d55dd5d",
@@ -144,7 +144,7 @@
       "failed_count": 11,
       "passed_count": 3776,
       "skipped_count": 7,
-      "note": "LIVE_BUNDLE_SSE_CACHE CLOSED_WITH_EVIDENCE — all 3 issue20_23 tests absent on GitHub (14 -> 11); heterogeneous test-only fix (A fixture realign, B count 6->7 all bumps gated, C ticker-scoped hermeticity). 11 = product matrix only"
+      "note": "LIVE_BUNDLE_SSE_CACHE CLOSED_WITH_EVIDENCE \u2014 all 3 issue20_23 tests absent on GitHub (14 -> 11); heterogeneous test-only fix (A fixture realign, B count 6->7 all bumps gated, C ticker-scoped hermeticity). 11 = product matrix only"
     },
     {
       "commit": "78c9192",
@@ -152,7 +152,7 @@
       "failed_count": 9,
       "passed_count": 3778,
       "skipped_count": 7,
-      "note": "AUDIT_CAND_SERVER_CI_OFFLINE CLOSED_WITH_EVIDENCE — both audit_cand tests (test_debug_prediction, test_spread_semantic) absent on GitHub (11 -> 9); test-only fix (R-011 debug-gate env enable via monkeypatch + shared patch context with nested Schwab quote-envelope mock); no production change, no real Schwab/OAuth. 9 = product matrix only"
+      "note": "AUDIT_CAND_SERVER_CI_OFFLINE CLOSED_WITH_EVIDENCE \u2014 both audit_cand tests (test_debug_prediction, test_spread_semantic) absent on GitHub (11 -> 9); test-only fix (R-011 debug-gate env enable via monkeypatch + shared patch context with nested Schwab quote-envelope mock); no production change, no real Schwab/OAuth. 9 = product matrix only"
     },
     {
       "commit": "0edb7ac",
@@ -160,7 +160,7 @@
       "failed_count": 7,
       "passed_count": 3780,
       "skipped_count": 7,
-      "note": "V2_CONFORMAL_TIER_C_PAYLOAD CLOSED_WITH_EVIDENCE — both v2 tests (test_server_response_path_invokes_attachment_before_v2_decision_build, test_tier_c_attaches_v2_decision_after_decision_bundle_stamp) absent on GitHub (9 -> 7); test-only fix (re-anchored stamp_idx to _finalize_production_decision(ms_dict, _decision_route), the response-path wrapper of stamp_decision_bundle); ordering invariant preserved; no production change. 7 = product matrix only"
+      "note": "V2_CONFORMAL_TIER_C_PAYLOAD CLOSED_WITH_EVIDENCE \u2014 both v2 tests (test_server_response_path_invokes_attachment_before_v2_decision_build, test_tier_c_attaches_v2_decision_after_decision_bundle_stamp) absent on GitHub (9 -> 7); test-only fix (re-anchored stamp_idx to _finalize_production_decision(ms_dict, _decision_route), the response-path wrapper of stamp_decision_bundle); ordering invariant preserved; no production change. 7 = product matrix only"
     },
     {
       "commit": "4e252b3",
@@ -168,7 +168,7 @@
       "failed_count": 7,
       "passed_count": 3780,
       "skipped_count": 7,
-      "note": "REMOTE_ENFORCEMENT_EVIDENCE_LIVE_API CLOSED_WITH_EVIDENCE (governance/external-flake blocker, NOT a product-matrix row) — test_fetch_public_run_inspection_discovers_objective_audit_check_name made unauthenticated live GitHub REST calls (rate-limited, nondeterministic) that intermittently flipped objective-audit red and added a transient 8th pytest-full row at ae81509; test-only hermetic mock of _github_rest_request restores determinism. objective-audit restored PASS; product matrix unchanged at 7 with the flaky test absent. 7 = product matrix only"
+      "note": "REMOTE_ENFORCEMENT_EVIDENCE_LIVE_API CLOSED_WITH_EVIDENCE (governance/external-flake blocker, NOT a product-matrix row) \u2014 test_fetch_public_run_inspection_discovers_objective_audit_check_name made unauthenticated live GitHub REST calls (rate-limited, nondeterministic) that intermittently flipped objective-audit red and added a transient 8th pytest-full row at ae81509; test-only hermetic mock of _github_rest_request restores determinism. objective-audit restored PASS; product matrix unchanged at 7 with the flaky test absent. 7 = product matrix only"
     }
   ],
   "pytest_full_fixed_at_bc2e8a9": [
@@ -208,17 +208,17 @@
   "checks": {
     "hardening": {
       "classification": "CLOSED_WITH_EVIDENCE",
-      "closure_criteria": "hardening green on GitHub PR #19 — met @ 6e3157c"
+      "closure_criteria": "hardening green on GitHub PR #19 \u2014 met @ 6e3157c"
     },
     "schwab-csv-first": {
       "classification": "CLOSED_WITH_EVIDENCE",
-      "root_cause": "PR path @ a72ed54 run 27857853589: 35 false positives from mega inventory — fixed @ 741091b",
+      "root_cause": "PR path @ a72ed54 run 27857853589: 35 false positives from mega inventory \u2014 fixed @ 741091b",
       "closure_criteria": "schwab-csv-first green on GitHub PR #19 pull_request @ 741091b runs 27870946980 + push 27870946302"
     },
     "objective-audit": {
       "classification": "CLOSED_WITH_EVIDENCE",
-      "root_cause": "enriched or None collapsed [] to None — fixed @ 704b4b9 via resolve_ablation_enriched_row_sample + enriched_rows_for_spec_build",
-      "closure_criteria": "objective-audit green on GitHub PR #19 — met @ 704b4b9 run 27851943226"
+      "root_cause": "enriched or None collapsed [] to None \u2014 fixed @ 704b4b9 via resolve_ablation_enriched_row_sample + enriched_rows_for_spec_build",
+      "closure_criteria": "objective-audit green on GitHub PR #19 \u2014 met @ 704b4b9 run 27851943226"
     },
     "pytest-full": {
       "classification": "OPEN_BLOCKING",
@@ -238,12 +238,44 @@
         "tests/test_check_fix_everything_we_touch.py::test_run_objective_code_audit_static_passes"
       ],
       "failure_message": "whole_stack_fusion_cell_target must equal runnable_target",
-      "root_cause": "Cleared @ 704b4b9 — unified enriched-row resolution (preserve [] vs None) across index, whole_stack_runnable_cell_target, and static locks",
+      "root_cause": "Cleared @ 704b4b9 \u2014 unified enriched-row resolution (preserve [] vs None) across index, whole_stack_runnable_cell_target, and static locks",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
       "fix_now_or_defer": "closed",
       "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "GitHub pytest-full @ 704b4b9: 4 ablation matrix tests green — met"
+      "closure_criteria": "GitHub pytest-full @ 704b4b9: 4 ablation matrix tests green \u2014 met",
+      "universality_closure": {
+        "bucket_name": "ABLATION_GRID_RUNNABLE_ACCOUNTING",
+        "changed_files": [
+          "arch_competition/stack_bundle_eval_v1.py",
+          "tools/check_fix_everything_we_touch.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": false,
+        "variation_axes": [],
+        "universal_classification": "NOT_TICKER_RELATED",
+        "universal_proof_type": "not_applicable",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "Ablation accounting static lock; no ticker axis.",
+        "parameterized_coverage": "",
+        "construction_proof": "",
+        "mechanical_lock_status": "PASS",
+        "closure_allowed": true,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": true,
+        "github_pr_run_id": "27851943230",
+        "github_pr_commit": "704b4b9",
+        "github_pr_failure_count": 29,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      }
     },
     {
       "failure_group": "MEGA_INVENTORY_CONTRACT_LOCK",
@@ -256,12 +288,44 @@
         "tests/test_mega4_traceable_audit.py::test_mega4_inventory_covers_every_function"
       ],
       "failure_message": "Section inventory coverage gaps",
-      "root_cause": "Cleared @ bc2e8a9 — sync_traceable_inventory_to_ast + NONE stubs; row counts 383/211/148/1014",
+      "root_cause": "Cleared @ bc2e8a9 \u2014 sync_traceable_inventory_to_ast + NONE stubs; row counts 383/211/148/1014",
       "classification": "INTENTIONAL_CONTRACT_LOCK",
       "fix_now_or_defer": "closed",
       "owner_branch": "fix/mega-inventory-sync",
       "owner_branch_blocked": false,
-      "closure_criteria": "mega1–mega4 inventory tests pass — met @ a72ed54 GitHub pytest-full 27857853572"
+      "closure_criteria": "mega1\u2013mega4 inventory tests pass \u2014 met @ a72ed54 GitHub pytest-full 27857853572",
+      "universality_closure": {
+        "bucket_name": "MEGA_INVENTORY_CONTRACT_LOCK",
+        "changed_files": [
+          "governance/mega1_traceable_inventory.py",
+          "tests/test_mega1_traceable_audit.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": false,
+        "variation_axes": [],
+        "universal_classification": "NOT_TICKER_RELATED",
+        "universal_proof_type": "not_applicable",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "Inventory contract is repo-wide; no ticker axis.",
+        "parameterized_coverage": "",
+        "construction_proof": "",
+        "mechanical_lock_status": "PASS",
+        "closure_allowed": true,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": true,
+        "github_pr_run_id": "27857853572",
+        "github_pr_commit": "bc2e8a9",
+        "github_pr_failure_count": 27,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      }
     },
     {
       "failure_group": "MISSING_SNAPSHOTS_1M_NORMALIZED_FIXTURE",
@@ -274,13 +338,45 @@
         "tests/test_live_drift_monitoring.py::test_governance_panel_includes_live_drift"
       ],
       "failure_message": "sqlite3.OperationalError: no such table: snapshots_1m_normalized",
-      "root_cause": "Cleared @ e3ba4a9 — ensure_console_db_training_schema + db_training_fingerprint fail-closed (10 tests). Residual mutation test reclassified to GOVERNANCE_MUTATION_CALIBRATION_LOG_ENV.",
+      "root_cause": "Cleared @ e3ba4a9 \u2014 ensure_console_db_training_schema + db_training_fingerprint fail-closed (10 tests). Residual mutation test reclassified to GOVERNANCE_MUTATION_CALIBRATION_LOG_ENV.",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
       "fix_now_or_defer": "closed",
       "fix_classification": "FIX_NOW",
       "owner_branch": "fix/ci-governance-db-fixture",
       "owner_branch_blocked": false,
-      "closure_criteria": "GitHub pytest-full @ e3ba4a9: governance_dashboard + governance_ui_dashboard + live_drift green — met"
+      "closure_criteria": "GitHub pytest-full @ e3ba4a9: governance_dashboard + governance_ui_dashboard + live_drift green \u2014 met",
+      "universality_closure": {
+        "bucket_name": "MISSING_SNAPSHOTS_1M_NORMALIZED_FIXTURE",
+        "changed_files": [
+          "tests/conftest.py",
+          "tests/test_governance_dashboard.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": false,
+        "variation_axes": [],
+        "universal_classification": "NOT_TICKER_RELATED",
+        "universal_proof_type": "not_applicable",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "DB fixture bootstrap; no ticker axis.",
+        "parameterized_coverage": "",
+        "construction_proof": "",
+        "mechanical_lock_status": "PASS",
+        "closure_allowed": true,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": true,
+        "github_pr_run_id": "27845075770",
+        "github_pr_commit": "e3ba4a9",
+        "github_pr_failure_count": 34,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      }
     },
     {
       "failure_group": "PRODUCTION_DB_PRED_1C_ABSENT_IN_CI",
@@ -296,7 +392,39 @@
       "owner_branch": "fix/ci-pred-1c-fixture-or-skip",
       "owner_branch_blocked": false,
       "requires_operator_sign_off_for_merge": true,
-      "closure_criteria": "Tests use hermetic DB fixture or skip when no seed data — operator accepts CI cannot mount prod DB"
+      "closure_criteria": "Tests use hermetic DB fixture or skip when no seed data \u2014 operator accepts CI cannot mount prod DB",
+      "universality_closure": {
+        "bucket_name": "PRODUCTION_DB_PRED_1C_ABSENT_IN_CI",
+        "changed_files": [
+          "tests/test_pred_1c_eddb_and_audit_contract_v1.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": false,
+        "variation_axes": [],
+        "universal_classification": "NOT_PROVEN",
+        "universal_proof_type": "not_applicable",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "CI lacks production DB; hermetic fixture or skip not yet proven universal.",
+        "parameterized_coverage": "",
+        "construction_proof": "",
+        "mechanical_lock_status": "OPEN",
+        "closure_allowed": false,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": false,
+        "github_pr_run_id": "",
+        "github_pr_commit": "",
+        "github_pr_failure_count": null,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      },
+      "bucket_status": "OPEN"
     },
     {
       "failure_group": "ACTIVE_BUNDLE_ENCODER_LAYOUT",
@@ -310,12 +438,49 @@
         "tests/test_active_horizon_layout_pr3.py::test_strict_active_bundle_dir_single_canonical_root"
       ],
       "failure_message": "encoder_width_5m_pre_mask=88 != legacy v2 width 31 / FileNotFoundError strict bundle",
-      "root_cause": "Cleared @ 0068226 — tests build real strict-bundle stubs (torch.save seq stub with current encoder widths + pickled meta) and assert v1<minimum-v2 rejection; all 3 cleared on GitHub run 27877046342 (25 -> 22).",
+      "root_cause": "Cleared @ 0068226 \u2014 tests build real strict-bundle stubs (torch.save seq stub with current encoder widths + pickled meta) and assert v1<minimum-v2 rejection; all 3 cleared on GitHub run 27877046342 (25 -> 22).",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
       "fix_now_or_defer": "closed",
       "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "GitHub pytest-full @ 0068226: 3 active-bundle tests green — met (25 -> 22)"
+      "closure_criteria": "GitHub pytest-full @ 0068226: 3 active-bundle tests green \u2014 met (25 -> 22)",
+      "universality_closure": {
+        "bucket_name": "ACTIVE_BUNDLE_ENCODER_LAYOUT",
+        "changed_files": [
+          "tests/test_active_bundle_contract_v1.py",
+          "tests/test_active_horizon_layout_pr3.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": true,
+        "variation_axes": [
+          "ticker",
+          "horizon",
+          "model_dir",
+          "encoder_schema"
+        ],
+        "universal_classification": "UNIVERSAL_BY_CONSTRUCTION",
+        "universal_proof_type": "construction",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "SPY tests are one instance of universal contract functions.",
+        "parameterized_coverage": "",
+        "construction_proof": "active_bundle_dir(ticker, hz) and check_active_bundle_complete(ticker, hz) are parameterized by ticker.upper() with no SPY-only branch.",
+        "mechanical_lock_status": "PASS",
+        "closure_allowed": true,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": true,
+        "github_pr_run_id": "27877046342",
+        "github_pr_commit": "0068226",
+        "github_pr_failure_count": 22,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      }
     },
     {
       "failure_group": "CALIBRATION_BYPASS_ALLOWLIST",
@@ -328,12 +493,43 @@
         "tests/test_calibration_bypass_closure.py::test_no_unauthorized_python_references_to_calibration_decision_log"
       ],
       "failure_message": "Unexpected INSERT into calibration_decision_log + referenced outside controlled modules (11 reference offenders, 3 INSERT offenders)",
-      "root_cause": "Cleared @ 7bf369c — controlled-surface allowlist extended in tests/test_calibration_bypass_closure.py for verified read-only / fixture references (server.py log+probe strings, read-only audit/observability tooling + verification modules, 3 test fixtures). No production code change; INSERT/UPDATE scanners still guard writes. Both tests cleared on GitHub run 27878597275 (22 -> 20).",
+      "root_cause": "Cleared @ 7bf369c \u2014 controlled-surface allowlist extended in tests/test_calibration_bypass_closure.py for verified read-only / fixture references (server.py log+probe strings, read-only audit/observability tooling + verification modules, 3 test fixtures). No production code change; INSERT/UPDATE scanners still guard writes. Both tests cleared on GitHub run 27878597275 (22 -> 20).",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
       "fix_now_or_defer": "closed",
       "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "GitHub pytest-full @ 7bf369c: 2 calibration tests green — met (22 -> 20)"
+      "closure_criteria": "GitHub pytest-full @ 7bf369c: 2 calibration tests green \u2014 met (22 -> 20)",
+      "universality_closure": {
+        "bucket_name": "CALIBRATION_BYPASS_ALLOWLIST",
+        "changed_files": [
+          "tests/test_calibration_bypass_closure.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": false,
+        "variation_axes": [],
+        "universal_classification": "NOT_TICKER_RELATED",
+        "universal_proof_type": "not_applicable",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "Static allowlist scan; no ticker axis.",
+        "parameterized_coverage": "",
+        "construction_proof": "",
+        "mechanical_lock_status": "PASS",
+        "closure_allowed": true,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": true,
+        "github_pr_run_id": "27878597275",
+        "github_pr_commit": "7bf369c",
+        "github_pr_failure_count": 20,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      }
     },
     {
       "failure_group": "ET_AUTHORITY_DAILY_SCOREBOARD",
@@ -346,12 +542,44 @@
         "tests/test_coh_sa2_et_authority.py::test_no_module_level_et_zoneinfo_assignment_outside_time_et"
       ],
       "failure_message": "AssertionError: ['calibration/daily_scoreboard.py']",
-      "root_cause": "Cleared @ ad96844 + afb361d — calibration/daily_scoreboard.py imports ET from time_et (COH-SA-2 canonical) instead of assigning ZoneInfo('America/New_York'); the ET commit's market-data-file change required a CSV-first declaration (added in afb361d). Both ET tests cleared on GitHub run 27882570666 (20 -> 18); schwab-csv-first back to PASS.",
+      "root_cause": "Cleared @ ad96844 + afb361d \u2014 calibration/daily_scoreboard.py imports ET from time_et (COH-SA-2 canonical) instead of assigning ZoneInfo('America/New_York'); the ET commit's market-data-file change required a CSV-first declaration (added in afb361d). Both ET tests cleared on GitHub run 27882570666 (20 -> 18); schwab-csv-first back to PASS.",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
       "fix_now_or_defer": "closed",
       "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "GitHub pytest-full @ afb361d: 2 ET-authority tests green + schwab-csv-first PASS — met (20 -> 18)"
+      "closure_criteria": "GitHub pytest-full @ afb361d: 2 ET-authority tests green + schwab-csv-first PASS \u2014 met (20 -> 18)",
+      "universality_closure": {
+        "bucket_name": "ET_AUTHORITY_DAILY_SCOREBOARD",
+        "changed_files": [
+          "calibration/daily_scoreboard.py",
+          "tests/test_coh_sa2_et_authority.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": false,
+        "variation_axes": [],
+        "universal_classification": "NOT_TICKER_RELATED",
+        "universal_proof_type": "not_applicable",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "ET authority import discipline; no ticker axis.",
+        "parameterized_coverage": "",
+        "construction_proof": "",
+        "mechanical_lock_status": "PASS",
+        "closure_allowed": true,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": true,
+        "github_pr_run_id": "27882570666",
+        "github_pr_commit": "afb361d",
+        "github_pr_failure_count": 18,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      }
     },
     {
       "failure_group": "ANTI_PATTERN_CAPS_VIOLATIONS",
@@ -363,12 +591,43 @@
         "tests/test_anti_pattern_family_repo_wide.py::test_no_unallowlisted_production_hits"
       ],
       "failure_message": "CAPS violations (fix or add allowlist)",
-      "root_cause": "Cleared @ 8c22aa9 — 15 silent-default-FAMILY hits across 8 files traced to source and verified non-market-leaf (env/config/constant/parse-idiom/fail-closed/COUNT/diagnostic), exempted via exact file+line+variant CAPS_LINE_ALLOWLIST entries (no whole-file prefix; money-path-adjacent line-level only). Register mirrors; no detection regex / DEFAULT_VALUE_RE / runtime change. test_no_unallowlisted_production_hits absent on GitHub run 27884930874 (18 -> 17).",
+      "root_cause": "Cleared @ 8c22aa9 \u2014 15 silent-default-FAMILY hits across 8 files traced to source and verified non-market-leaf (env/config/constant/parse-idiom/fail-closed/COUNT/diagnostic), exempted via exact file+line+variant CAPS_LINE_ALLOWLIST entries (no whole-file prefix; money-path-adjacent line-level only). Register mirrors; no detection regex / DEFAULT_VALUE_RE / runtime change. test_no_unallowlisted_production_hits absent on GitHub run 27884930874 (18 -> 17).",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
       "fix_now_or_defer": "closed",
       "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "GitHub pytest-full @ 8c22aa9: test_no_unallowlisted_production_hits green — met (18 -> 17)"
+      "closure_criteria": "GitHub pytest-full @ 8c22aa9: test_no_unallowlisted_production_hits green \u2014 met (18 -> 17)",
+      "universality_closure": {
+        "bucket_name": "ANTI_PATTERN_CAPS_VIOLATIONS",
+        "changed_files": [
+          "tests/test_anti_pattern_family_repo_wide.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": false,
+        "variation_axes": [],
+        "universal_classification": "NOT_TICKER_RELATED",
+        "universal_proof_type": "not_applicable",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "Repo-wide CAPS scan; no ticker axis.",
+        "parameterized_coverage": "",
+        "construction_proof": "",
+        "mechanical_lock_status": "PASS",
+        "closure_allowed": true,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": true,
+        "github_pr_run_id": "27884930874",
+        "github_pr_commit": "8c22aa9",
+        "github_pr_failure_count": 17,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      }
     },
     {
       "failure_group": "GOVERNANCE_MUTATION_CALIBRATION_LOG_ENV",
@@ -380,17 +639,49 @@
         "tests/test_governance_mutation_detection.py::test_objective_audit_does_not_mutate_governance_artifacts"
       ],
       "failure_message": "subprocess objective-audit exit != 0 when pytest has ED_CALIBRATION_LOG=on",
-      "root_cause": "Cleared @ 704b4b9 — objective-audit subprocess green after ablation accounting fix (was failing on ablation static, not ED_CALIBRATION_LOG alone)",
+      "root_cause": "Cleared @ 704b4b9 \u2014 objective-audit subprocess green after ablation accounting fix (was failing on ablation static, not ED_CALIBRATION_LOG alone)",
       "classification": "INFRASTRUCTURE_FLAKE_WITH_EVIDENCE",
       "fix_now_or_defer": "closed",
       "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "test_objective_audit_does_not_mutate_governance_artifacts green @ 704b4b9 — met"
+      "closure_criteria": "test_objective_audit_does_not_mutate_governance_artifacts green @ 704b4b9 \u2014 met",
+      "universality_closure": {
+        "bucket_name": "GOVERNANCE_MUTATION_CALIBRATION_LOG_ENV",
+        "changed_files": [
+          "tests/test_governance_mutation_detection.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": false,
+        "variation_axes": [],
+        "universal_classification": "NOT_TICKER_RELATED",
+        "universal_proof_type": "not_applicable",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "Governance mutation test; no ticker axis.",
+        "parameterized_coverage": "",
+        "construction_proof": "",
+        "mechanical_lock_status": "PASS",
+        "closure_allowed": true,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": true,
+        "github_pr_run_id": "27851943230",
+        "github_pr_commit": "704b4b9",
+        "github_pr_failure_count": 29,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      }
     },
     {
       "failure_group": "LIVE_BUNDLE_SSE_CACHE",
       "number_of_tests": 0,
-      "bucket_status": "CLOSED_WITH_EVIDENCE",
+      "reopened_for_universality_test_count": 3,
+      "bucket_status": "REOPENED",
       "cleared_at_commit": "d55dd5d",
       "cleared_at_run": "27890689248",
       "representative_tests": [
@@ -399,12 +690,48 @@
         "tests/test_issue20_23_live_bundle.py::test_stamp_decision_bundle_monotonic_and_spot_same_generation"
       ],
       "failure_message": "assert [('SPY', None)] == [] / assert 7 == 6 / assert isinstance(None, int)",
-      "root_cause": "Cleared @ d55dd5d — HETEROGENEOUS, all test-only, all failed in isolation (matrix 'non-hermetic full-suite' note was inaccurate): (A) stale test behind fail-closed stamp gate (fixture realigned + ticker/release); (B) UI render-timestamp guard count drift 6->7, all 7 bumps verified gated on did-render/did-paint (git blame: all at baseline a645a89; NOT an Issue-24 regression); (C) test hermeticity — ticker-scoped assertion vs background SPY warm-up fetch. No production change. All 3 absent on GitHub run 27890689248 (14 -> 11).",
+      "root_cause": "Cleared @ d55dd5d \u2014 HETEROGENEOUS, all test-only, all failed in isolation (matrix 'non-hermetic full-suite' note was inaccurate): (A) stale test behind fail-closed stamp gate (fixture realigned + ticker/release); (B) UI render-timestamp guard count drift 6->7, all 7 bumps verified gated on did-render/did-paint (git blame: all at baseline a645a89; NOT an Issue-24 regression); (C) test hermeticity \u2014 ticker-scoped assertion vs background SPY warm-up fetch. No production change. All 3 absent on GitHub run 27890689248 (14 -> 11).",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
-      "fix_now_or_defer": "closed",
+      "fix_now_or_defer": "reopened_universality",
       "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "GitHub pytest-full @ d55dd5d: 3 issue20_23 tests green — met (14 -> 11)"
+      "closure_criteria": "REOPENED for universality proof — GitHub pytest-full @ d55dd5d had 3 issue20_23 tests green (14 -> 11) but representative-only proof insufficient; does not count toward product matrix failure sum",
+      "universality_closure": {
+        "bucket_name": "LIVE_BUNDLE_SSE_CACHE",
+        "changed_files": [
+          "tests/test_issue20_23_live_bundle.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": true,
+        "variation_axes": [
+          "ticker_symbol",
+          "cache_key",
+          "sse_subscriber_set",
+          "expiry"
+        ],
+        "universal_classification": "REPRESENTATIVE_ONLY_NOT_ENOUGH",
+        "universal_proof_type": "representative_test_only",
+        "representative_only_used": true,
+        "why_representative_is_sufficient_or_not": "NOT SUFFICIENT \u2014 single synthetic ticker ZZZ_ISSUE20_23; no cross-ticker SSE/cache isolation proof.",
+        "parameterized_coverage": "",
+        "construction_proof": "",
+        "mechanical_lock_status": "REOPENED",
+        "closure_allowed": false,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": true,
+        "github_pr_run_id": "",
+        "github_pr_commit": "",
+        "github_pr_failure_count": null,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      }
     },
     {
       "failure_group": "UI_LEVEL_TEST_CHIP_CONTRACT",
@@ -414,7 +741,7 @@
         "tests/test_level_test_chip.py::test_chip_severity_class_high_on_third_or_later_test"
       ],
       "failure_message": "Pass 4b chip missing from static/index.html",
-      "root_cause": "UI chip not implemented — contract lock awaiting UI/explainability lane",
+      "root_cause": "UI chip not implemented \u2014 contract lock awaiting UI/explainability lane",
       "classification": "INTENTIONAL_CONTRACT_LOCK",
       "fix_now_or_defer": "triage_owned",
       "owner_branch": "fix/card-price-conflict-explainability",
@@ -422,11 +749,44 @@
       "blocked_until": "operator_readiness_gate_pass == true AND card_explainability_allowed == true",
       "not_allowed_as_pr19_deferral_without_operator_sign_off": true,
       "requires_operator_sign_off_for_merge": true,
-      "closure_criteria": "#dr-level-test-chip present in Decision Command header — only after readiness gate unblocks explainability branch"
+      "closure_criteria": "#dr-level-test-chip present in Decision Command header \u2014 only after readiness gate unblocks explainability branch",
+      "universality_closure": {
+        "bucket_name": "UI_LEVEL_TEST_CHIP_CONTRACT",
+        "changed_files": [
+          "tests/test_level_test_chip.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": false,
+        "variation_axes": [],
+        "universal_classification": "NOT_PROVEN",
+        "universal_proof_type": "not_applicable",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "Contract-locked UI; explicit operator authorization required before closure.",
+        "parameterized_coverage": "",
+        "construction_proof": "",
+        "mechanical_lock_status": "OPEN",
+        "closure_allowed": false,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": false,
+        "github_pr_run_id": "",
+        "github_pr_commit": "",
+        "github_pr_failure_count": null,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": true,
+        "touches_rth_validation": false,
+        "touches_card_explainability": true,
+        "explicit_operator_authorization": false
+      },
+      "bucket_status": "OPEN"
     },
     {
       "failure_group": "ML_PREDICT_STRICT_VERSION",
       "number_of_tests": 1,
+      "bucket_status": "HOLD",
       "representative_tests": [
         "tests/test_ml_predict_fail_closed.py::test_get_model_version_fail_closed_when_strict_bundle_blocked"
       ],
@@ -436,7 +796,45 @@
       "fix_now_or_defer": "triage_owned",
       "owner_branch": "fix/ml-predict-strict-version-contract",
       "owner_branch_blocked": false,
-      "closure_criteria": "Version string contract aligned with fail-closed strict bundle behavior"
+      "closure_criteria": "Version string contract aligned with fail-closed strict bundle behavior",
+      "universality_closure": {
+        "bucket_name": "ML_PREDICT_STRICT_VERSION",
+        "changed_files": [
+          "tests/test_ml_predict_fail_closed.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": true,
+        "variation_axes": [
+          "ticker",
+          "guest_anchor",
+          "model_dir",
+          "cache_key",
+          "horizon"
+        ],
+        "universal_classification": "NOT_PROVEN",
+        "universal_proof_type": "not_applicable",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "Strict version fail-closed proof not yet universal; bucket on HOLD.",
+        "parameterized_coverage": "",
+        "construction_proof": "",
+        "mechanical_lock_status": "HOLD",
+        "closure_allowed": false,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": false,
+        "github_pr_run_id": "",
+        "github_pr_commit": "",
+        "github_pr_failure_count": null,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      },
+      "bucket_status": "HOLD"
     },
     {
       "failure_group": "SILENT_EXCEPT_PASS_REMAINING",
@@ -450,7 +848,40 @@
       "fix_now_or_defer": "triage_owned",
       "owner_branch": "fix/silent-except-pass-sweep",
       "owner_branch_blocked": false,
-      "closure_criteria": "repo_sweep silent-except baseline 0 in CI"
+      "closure_criteria": "repo_sweep silent-except baseline 0 in CI",
+      "universality_closure": {
+        "bucket_name": "SILENT_EXCEPT_PASS_REMAINING",
+        "changed_files": [
+          "tests/test_repo_sweep_error_propagation_v1.py",
+          "arch_competition/stack_bundle_eval_v1.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": false,
+        "variation_axes": [],
+        "universal_classification": "NOT_PROVEN",
+        "universal_proof_type": "not_applicable",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "Repo-wide silent-except sweep; fix not yet landed.",
+        "parameterized_coverage": "",
+        "construction_proof": "",
+        "mechanical_lock_status": "OPEN",
+        "closure_allowed": false,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": false,
+        "github_pr_run_id": "",
+        "github_pr_commit": "",
+        "github_pr_failure_count": null,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      },
+      "bucket_status": "OPEN"
     },
     {
       "failure_group": "STACK_WIRE_INTEGRITY",
@@ -464,12 +895,48 @@
         "tests/test_stack_integrity_v1.py::test_mh_overlay_records_when_by_horizon_property_raises"
       ],
       "failure_message": "assert False / ValueError: substring not found",
-      "root_cause": "Cleared @ b44d5ab — STALE TESTS behind added fail-closed production gates/contracts (NOT a hermetic-fixture issue, NOT a product bug): (1) stamp_decision_bundle trade-impacting+release gates block a bare dict; (2) the ms_dict stamp moved upstream of server._fetch_state; (3) the MH overlay withholds (fusion_unavailable) on bundle failure per the fusion-only contract. Realigned the 3 tests (test-only, no production change); positive-path decision_generation_id retained via tests/test_batch2_signals_engine_error.py. All 3 absent on GitHub run 27888713242 (17 -> 14).",
+      "root_cause": "Cleared @ b44d5ab \u2014 STALE TESTS behind added fail-closed production gates/contracts (NOT a hermetic-fixture issue, NOT a product bug): (1) stamp_decision_bundle trade-impacting+release gates block a bare dict; (2) the ms_dict stamp moved upstream of server._fetch_state; (3) the MH overlay withholds (fusion_unavailable) on bundle failure per the fusion-only contract. Realigned the 3 tests (test-only, no production change); positive-path decision_generation_id retained via tests/test_batch2_signals_engine_error.py. All 3 absent on GitHub run 27888713242 (17 -> 14).",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
       "fix_now_or_defer": "closed",
       "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "GitHub pytest-full @ b44d5ab: 3 stack-wire/stack-integrity tests green — met (17 -> 14)"
+      "closure_criteria": "GitHub pytest-full @ b44d5ab: 3 stack-wire/stack-integrity tests green \u2014 met (17 -> 14)",
+      "universality_closure": {
+        "bucket_name": "STACK_WIRE_INTEGRITY",
+        "changed_files": [
+          "tests/test_stack_wire_1_v1.py",
+          "tests/test_stack_integrity_v1.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": true,
+        "variation_axes": [
+          "ticker",
+          "route",
+          "payload_shape"
+        ],
+        "universal_classification": "UNIVERSAL_BY_CONSTRUCTION",
+        "universal_proof_type": "construction",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "SPY fixtures exercise universal gate predicates.",
+        "parameterized_coverage": "",
+        "construction_proof": "stamp_decision_bundle and fusion withhold gates are predicate-based on ms_dict fields, not ticker allowlists.",
+        "mechanical_lock_status": "PASS",
+        "closure_allowed": true,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": true,
+        "github_pr_run_id": "27888713242",
+        "github_pr_commit": "b44d5ab",
+        "github_pr_failure_count": 14,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      }
     },
     {
       "failure_group": "UI_V2_CONFIDENCE_LABELS",
@@ -478,7 +945,7 @@
         "tests/test_static_index_html_confidence_labels.py::test_track2_desk_confidence_headline_and_breakdown"
       ],
       "failure_message": "desk-confidence readout slot (v2-confidence) missing",
-      "root_cause": "static/index.html missing v2-confidence element — UI lane not authorized in PR #19",
+      "root_cause": "static/index.html missing v2-confidence element \u2014 UI lane not authorized in PR #19",
       "classification": "INTENTIONAL_CONTRACT_LOCK",
       "fix_now_or_defer": "triage_owned",
       "owner_branch": "fix/ui-v2-confidence-readout",
@@ -486,15 +953,46 @@
       "blocked_until": "operator_readiness_gate_pass == true (UI lane; not card-explainability branch)",
       "requires_operator_sign_off_for_merge": true,
       "not_allowed_as_pr19_deferral_without_operator_sign_off": true,
-      "closure_criteria": "v2-confidence slot present in static/index.html after UI lane authorization"
+      "closure_criteria": "v2-confidence slot present in static/index.html after UI lane authorization",
+      "universality_closure": {
+        "bucket_name": "UI_V2_CONFIDENCE_LABELS",
+        "changed_files": [
+          "tests/test_static_index_html_confidence_labels.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": false,
+        "variation_axes": [],
+        "universal_classification": "NOT_PROVEN",
+        "universal_proof_type": "not_applicable",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "Contract-locked UI lane; not authorized.",
+        "parameterized_coverage": "",
+        "construction_proof": "",
+        "mechanical_lock_status": "OPEN",
+        "closure_allowed": false,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": false,
+        "github_pr_run_id": "",
+        "github_pr_commit": "",
+        "github_pr_failure_count": null,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": true,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      },
+      "bucket_status": "OPEN"
     },
     {
       "failure_group": "V2_CONFORMAL_TIER_C_PAYLOAD",
       "number_of_tests": 0,
-      "local_fix_status": "CLOSED_WITH_EVIDENCE",
       "closed_at_commit": "0edb7ac",
       "closed_at_run": "27903963832",
-      "local_fix_note": "CLOSED_WITH_EVIDENCE @ 0edb7ac run 27903963832 — both v2 tests absent from GitHub failure list; pytest-full 9 -> 7. Test-only, no production change. Both tests anchored on the literal response-path call stamp_decision_bundle(ms_dict), which a production refactor wrapped in _finalize_production_decision(ms_dict, _decision_route) (server.py:6552) whose body calls stamp_decision_bundle(ms_dict, route=route) (server.py:4141) -> .index() raised ValueError: substring not found. Re-anchored stamp_idx in both tests to _finalize_production_decision(ms_dict, _decision_route); attach_idx/build_idx/merge_idx and the ordering asserts unchanged. Ordering invariant (decision-bundle stamp -> conformal attach -> v2 build -> merge) preserved (6552 < 6566 < 6568 < 6569).",
+      "local_fix_note": "CLOSED_WITH_EVIDENCE @ 0edb7ac run 27903963832 \u2014 both v2 tests absent from GitHub failure list; pytest-full 9 -> 7. Test-only, no production change. Both tests anchored on the literal response-path call stamp_decision_bundle(ms_dict), which a production refactor wrapped in _finalize_production_decision(ms_dict, _decision_route) (server.py:6552) whose body calls stamp_decision_bundle(ms_dict, route=route) (server.py:4141) -> .index() raised ValueError: substring not found. Re-anchored stamp_idx in both tests to _finalize_production_decision(ms_dict, _decision_route); attach_idx/build_idx/merge_idx and the ordering asserts unchanged. Ordering invariant (decision-bundle stamp -> conformal attach -> v2 build -> merge) preserved (6552 < 6566 < 6568 < 6569).",
       "expected_clear_count": 2,
       "representative_tests": [
         "tests/test_v2_a1_conformal_artifact_attachment.py::test_server_response_path_invokes_attachment_before_v2_decision_build",
@@ -506,7 +1004,40 @@
       "fix_now_or_defer": "fix_now",
       "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "test-only: re-anchor stamp_idx to the response-path wrapper _finalize_production_decision(ms_dict, _decision_route); closure on GitHub pytest-full 9 -> 7"
+      "closure_criteria": "test-only: re-anchor stamp_idx to the response-path wrapper _finalize_production_decision(ms_dict, _decision_route); closure on GitHub pytest-full 9 -> 7",
+      "universality_closure": {
+        "bucket_name": "V2_CONFORMAL_TIER_C_PAYLOAD",
+        "changed_files": [
+          "tests/test_v2_a1_conformal_artifact_attachment.py",
+          "tests/test_v2_tier_c_payload.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": false,
+        "variation_axes": [],
+        "universal_classification": "NOT_TICKER_RELATED",
+        "universal_proof_type": "not_applicable",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "Response-path ordering invariant; no ticker axis.",
+        "parameterized_coverage": "",
+        "construction_proof": "",
+        "mechanical_lock_status": "PASS",
+        "closure_allowed": true,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": true,
+        "github_pr_run_id": "27903963832",
+        "github_pr_commit": "0edb7ac",
+        "github_pr_failure_count": 7,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      },
+      "bucket_status": "CLOSED_WITH_EVIDENCE"
     },
     {
       "failure_group": "XGB_CONFLUENCE_SNAPSHOT_PARITY",
@@ -520,15 +1051,50 @@
       "fix_now_or_defer": "triage_owned",
       "owner_branch": "fix/xgb-confluence-snapshot-parity",
       "owner_branch_blocked": false,
-      "closure_criteria": "Manual vs build_xgb_pre_engineering_snapshot dicts match"
+      "closure_criteria": "Manual vs build_xgb_pre_engineering_snapshot dicts match",
+      "universality_closure": {
+        "bucket_name": "XGB_CONFLUENCE_SNAPSHOT_PARITY",
+        "changed_files": [
+          "tests/test_xgb_inference_snapshot_v1_input.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": true,
+        "variation_axes": [
+          "ticker",
+          "db_confluence_history",
+          "payload_shape"
+        ],
+        "universal_classification": "NOT_PROVEN",
+        "universal_proof_type": "not_applicable",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "Confluence attach is ticker-DB-dependent; parity not proven.",
+        "parameterized_coverage": "",
+        "construction_proof": "",
+        "mechanical_lock_status": "OPEN",
+        "closure_allowed": false,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": false,
+        "github_pr_run_id": "",
+        "github_pr_commit": "",
+        "github_pr_failure_count": null,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      },
+      "bucket_status": "OPEN"
     },
     {
       "failure_group": "AUDIT_CAND_SERVER_CI_OFFLINE",
       "number_of_tests": 0,
-      "local_fix_status": "CLOSED_WITH_EVIDENCE",
       "closed_at_commit": "78c9192",
       "closed_at_run": "27896087973",
-      "local_fix_note": "CLOSED_WITH_EVIDENCE @ 78c9192 run 27896087973 — both tests (test_debug_prediction, test_spread_semantic) absent from GitHub failure list; pytest-full 11 -> 9. Test-only, no production change. test_debug_prediction: the /api/debug/prediction route is fail-closed gated (R-011, server.py:8999) → 404 unless ED_ALLOW_DEBUG_ENDPOINTS enabled; test sets it via monkeypatch (test-only; production gate unchanged) → 200 + populated distribution. test_spread_semantic: production refactored both quote paths to get_client() + _safe_get_quote_with_retry() and _parse_quote_node_session_fields expects the nested Schwab quote envelope; test uses one shared patch context with a nested-quote mock and drops the stale _build_rest_fast_quote_payload mock. No real Schwab/OAuth call.",
+      "local_fix_note": "CLOSED_WITH_EVIDENCE @ 78c9192 run 27896087973 \u2014 both tests (test_debug_prediction, test_spread_semantic) absent from GitHub failure list; pytest-full 11 -> 9. Test-only, no production change. test_debug_prediction: the /api/debug/prediction route is fail-closed gated (R-011, server.py:8999) \u2192 404 unless ED_ALLOW_DEBUG_ENDPOINTS enabled; test sets it via monkeypatch (test-only; production gate unchanged) \u2192 200 + populated distribution. test_spread_semantic: production refactored both quote paths to get_client() + _safe_get_quote_with_retry() and _parse_quote_node_session_fields expects the nested Schwab quote envelope; test uses one shared patch context with a nested-quote mock and drops the stale _build_rest_fast_quote_payload mock. No real Schwab/OAuth call.",
       "expected_clear_count": 2,
       "representative_tests": [
         "tests/test_audit_cand_server_py_full_read_v1.py::test_spread_semantic_stamped_on_fast_quote_and_tier_a",
@@ -540,11 +1106,47 @@
       "fix_now_or_defer": "fix_now",
       "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "test-only: enable debug-endpoint env (test-only) + repoint mocks to current quote entry points with nested-quote envelope; closure on GitHub pytest-full 11 -> 9"
+      "closure_criteria": "test-only: enable debug-endpoint env (test-only) + repoint mocks to current quote entry points with nested-quote envelope; closure on GitHub pytest-full 11 -> 9",
+      "universality_closure": {
+        "bucket_name": "AUDIT_CAND_SERVER_CI_OFFLINE",
+        "changed_files": [
+          "tests/test_audit_cand_server_py_full_read_v1.py"
+        ],
+        "runtime_or_static": "static",
+        "ticker_dependent": true,
+        "variation_axes": [
+          "ticker",
+          "quote_schema",
+          "route"
+        ],
+        "universal_classification": "UNIVERSAL_BY_CONSTRUCTION",
+        "universal_proof_type": "construction",
+        "representative_only_used": false,
+        "why_representative_is_sufficient_or_not": "SPY mock is one instance of universal quote-envelope contract.",
+        "parameterized_coverage": "",
+        "construction_proof": "spread_semantic stamping uses function identity (fraction vs dollar), not ticker-specific branches; quote fetch path is get_client()+_safe_get_quote_with_retry for all tickers.",
+        "mechanical_lock_status": "PASS",
+        "closure_allowed": true,
+        "code_change_approved": false,
+        "artifact_change_approved": false,
+        "commit_approved": false,
+        "push_approved": false,
+        "merge_approved": false,
+        "github_pr_path_required": true,
+        "github_pr_run_id": "27896087973",
+        "github_pr_commit": "78c9192",
+        "github_pr_failure_count": 9,
+        "local_only_pass": false,
+        "touches_contract_locked_ui": false,
+        "touches_rth_validation": false,
+        "touches_card_explainability": false,
+        "explicit_operator_authorization": false
+      },
+      "bucket_status": "CLOSED_WITH_EVIDENCE"
     }
   ],
   "pytest_full_failure_count": 7,
-  "pytest_full_failure_count_semantics": "product matrix failure count = sum(pytest_full_failure_matrix[].number_of_tests) = 7 = current_ci_pytest_full_failure_count (7) at 4e252b3 run 27910195029; meta_artifact_drift 0; ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD + ANTI_PATTERN_CAPS_VIOLATIONS + STACK_WIRE_INTEGRITY + LIVE_BUNDLE_SSE_CACHE + AUDIT_CAND_SERVER_CI_OFFLINE + V2_CONFORMAL_TIER_C_PAYLOAD CLOSED (0). REMOTE_ENFORCEMENT_EVIDENCE_LIVE_API CLOSED_WITH_EVIDENCE (governance/external-flake, NOT a product row) -> objective-audit restored PASS; product matrix unchanged at 7. Artifact sync only — no pending local fix in this commit, so expected_after_pending_push == observed (7). Next bucket ML_PREDICT_STRICT_VERSION projects 6, only after its fix lands locally and only as a projection until GitHub proves it.",
+  "pytest_full_failure_count_semantics": "product matrix failure count = sum(pytest_full_failure_matrix[].number_of_tests) = 7 = current_ci_pytest_full_failure_count (7) at 4e252b3 run 27910195029; LIVE_BUNDLE_SSE_CACHE REOPENED for universality proof (reopened_for_universality_test_count=3, number_of_tests=0 — tests pass on CI, proof insufficient). Next bucket ML_PREDICT_STRICT_VERSION on HOLD.",
   "pytest_full_product_matrix_failure_count": 7,
   "pytest_full_passed_count": 3780,
   "pytest_full_skipped_count": 7,
@@ -569,14 +1171,14 @@
   "anti_pattern_caps_status": "CLOSED_WITH_EVIDENCE @ 8c22aa9 run 27884930874 (18 -> 17); exact line+variant CAPS_LINE_ALLOWLIST",
   "stack_wire_integrity_local_fix_pending_github_proof": false,
   "stack_wire_integrity_status": "CLOSED_WITH_EVIDENCE @ b44d5ab run 27888713242 (17 -> 14); stale tests realigned to fail-closed contracts (test-only)",
-  "live_bundle_sse_cache_local_fix_pending_github_proof": false,
-  "live_bundle_sse_cache_status": "CLOSED_WITH_EVIDENCE @ d55dd5d run 27890689248 (14 -> 11); heterogeneous test-only fix",
+  "live_bundle_sse_cache_local_fix_pending_github_proof": true,
+  "live_bundle_sse_cache_status": "REOPENED @ universality drift audit \u2014 prior GitHub close d55dd5d; representative-only proof insufficient",
   "audit_cand_server_ci_offline_local_fix_pending_github_proof": false,
   "audit_cand_server_ci_offline_status": "CLOSED_WITH_EVIDENCE @ 78c9192 run 27896087973 (11 -> 9); both audit_cand tests absent on GitHub; test-only fix (R-011 debug-gate env enable + nested-quote-envelope mock), no production change",
   "v2_conformal_tier_c_payload_local_fix_pending_github_proof": false,
   "v2_conformal_tier_c_payload_status": "CLOSED_WITH_EVIDENCE @ 0edb7ac run 27903963832 (9 -> 7); both v2 tests absent on GitHub; test-only re-anchor of stamp_idx to _finalize_production_decision(ms_dict, _decision_route) (response-path wrapper of stamp_decision_bundle); ordering invariant preserved; no production change",
   "remote_enforcement_evidence_live_api_local_fix_pending_github_proof": false,
-  "remote_enforcement_evidence_live_api_status": "CLOSED_WITH_EVIDENCE @ 4e252b3 run 27910195029 — governance/external-flake blocker (NOT a product-matrix row). Live unauthenticated GitHub REST flake in test_fetch_public_run_inspection_discovers_objective_audit_check_name intermittently flipped objective-audit red + added a transient 8th pytest-full row; test-only hermetic mock of _github_rest_request restores determinism. objective-audit restored PASS; product matrix unchanged at 7; the flaky test absent from the failure list",
+  "remote_enforcement_evidence_live_api_status": "CLOSED_WITH_EVIDENCE @ 4e252b3 run 27910195029 \u2014 governance/external-flake blocker (NOT a product-matrix row). Live unauthenticated GitHub REST flake in test_fetch_public_run_inspection_discovers_objective_audit_check_name intermittently flipped objective-audit red + added a transient 8th pytest-full row; test-only hermetic mock of _github_rest_request restores determinism. objective-audit restored PASS; product matrix unchanged at 7; the flaky test absent from the failure list",
   "expected_after_pending_push": 7,
   "pytest_full_classification_totals": {
     "PRE_EXISTING_BUT_BLOCKING": 17,
@@ -644,9 +1246,12 @@
       "push_run_pass": "27870946302",
       "failure_step": "V4 diff-emission register gate (PR 2)",
       "root_cause": "Mega inventory sync diff added 35 false emission sites (schwab_leaf tokens in MegaNTraceableDerivation rows); CSV-first guard passed",
-      "fix_direction": "Exclude governance/megaN_traceable_inventory.py from diff-emission scan — disposition ledger, not runtime emission",
+      "fix_direction": "Exclude governance/megaN_traceable_inventory.py from diff-emission scan \u2014 disposition ledger, not runtime emission",
       "owner_branch": "audit/ci-nonblocking-failures-triage",
-      "closure_criteria": "pull_request schwab-csv-first green @ 741091b — met (runs 27870946980 PR + 27870946302 push)"
+      "closure_criteria": "pull_request schwab-csv-first green @ 741091b \u2014 met (runs 27870946980 PR + 27870946302 push)"
     }
-  ]
+  ],
+  "merge_approved": false,
+  "universality_drift_gate_pass": false,
+  "universality_drift_note": "true when every CLOSED_WITH_EVIDENCE row has closure_allowed=true and valid closure classification + GitHub proof where required"
 }

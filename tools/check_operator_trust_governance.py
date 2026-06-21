@@ -350,6 +350,9 @@ def check_ci_triage_report() -> list[str]:
                 if (_REPO / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json").is_file()
                 else []
             )
+            from tools.check_universality_drift_closure import check_universality_drift_closure
+
+            errors.extend(check_universality_drift_closure())
             for row in matrix:
                 branch = str((row or {}).get("owner_branch") or "")
                 if branch in blocked and not (row or {}).get("owner_branch_blocked"):
