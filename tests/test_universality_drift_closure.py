@@ -1,11 +1,8 @@
 """Mechanical locks for universality drift closure state machine."""
 from __future__ import annotations
 
-import pytest
-
 from verification.universality_drift_closure import (
     CLOSED_BUCKET_STATUS,
-    validate_triage_universality_closure,
     validate_universality_closure_row,
 )
 
