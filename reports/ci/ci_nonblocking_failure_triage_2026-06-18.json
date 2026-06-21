@@ -7,7 +7,8 @@
   "merge_gate": "pytest-full",
   "ci_triage_gate_pass": false,
   "next_allowed_step": "resolve_pytest_full_failures",
-  "recommended_next_bucket": "LIVE_BUNDLE_SSE_CACHE (3 tests)",
+  "recommended_next_bucket": "AUDIT_CAND_SERVER_CI_OFFLINE (2) / V2_CONFORMAL_TIER_C_PAYLOAD (2) after LIVE_BUNDLE_SSE_CACHE GitHub proof 14 -> 11",
+  "in_progress_bucket": "LIVE_BUNDLE_SSE_CACHE (3 heterogeneous test-only fixes landed locally, pending GitHub proof)",
   "github_checks_last_observed": {
     "commit": "b44d5ab",
     "objective-audit": "pass",
@@ -358,17 +359,21 @@
     {
       "failure_group": "LIVE_BUNDLE_SSE_CACHE",
       "number_of_tests": 3,
+      "local_fix_status": "FIXED_LOCAL_PENDING_GITHUB_PROOF",
+      "local_fix_note": "HETEROGENEOUS bucket — three distinct causes, all test-only (no production change), all fail in isolation (matrix 'non-hermetic full-suite order' was inaccurate). (A) test_stamp_decision_bundle_monotonic: stale test behind fail-closed gate / fixture missing current required fields — realigned to add ticker + release-gate setup (preserves monotonic generation + spot-tied coverage). (B) test_index_html_render_return_gates: UI render-timestamp guard COUNT DRIFT (not a regression) — all 7 _lastRenderTs bumps verified on did-render/did-paint success paths (3 behind _didRender*; one precedes return true; rest on L1/merged/sidebar paint success); git blame: all 7 at branch baseline a645a89; count updated 6 -> 7. (C) test_api_state_bypasses_cache: test hermeticity from unrelated SPY background startup fetch — assertion made ticker-scoped. 15/15 issue20_23 tests pass locally. number_of_tests stays 3 until GitHub proves 14 -> 11.",
+      "expected_clear_count": 3,
       "representative_tests": [
         "tests/test_issue20_23_live_bundle.py::test_api_state_bypasses_cache_when_sse_subscribers",
+        "tests/test_issue20_23_live_bundle.py::test_index_html_render_return_gates_live_and_last_render_ts",
         "tests/test_issue20_23_live_bundle.py::test_stamp_decision_bundle_monotonic_and_spot_same_generation"
       ],
-      "failure_message": "assert [('SPY', None)] == [] / assert False / assert 7 == 6",
-      "root_cause": "Live bundle / SSE subscriber state not hermetic in full-suite CI order",
+      "failure_message": "assert [('SPY', None)] == [] / assert 7 == 6 / assert isinstance(None, int)",
+      "root_cause": "HETEROGENEOUS (all test-only, fail in isolation): (A) stale test behind fail-closed stamp gate (fixture missing ticker/release); (B) UI render-timestamp guard count drift 6->7, all 7 bumps gated on did-render/did-paint (NOT an Issue-24 regression); (C) test hermeticity — unrelated SPY background warm-up fetch polluted a ticker-agnostic assertion. No production change.",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
-      "fix_now_or_defer": "triage_owned",
-      "owner_branch": "fix/live-bundle-test-isolation",
+      "fix_now_or_defer": "fix_now",
+      "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "issue20_23 tests pass with isolated server state fixture"
+      "closure_criteria": "3 issue20_23 tests realigned (A fixture, B count 6->7, C ticker-scoped); closure on GitHub pytest-full 14 -> 11"
     },
     {
       "failure_group": "UI_LEVEL_TEST_CHIP_CONTRACT",
@@ -523,7 +528,9 @@
   "anti_pattern_caps_status": "CLOSED_WITH_EVIDENCE @ 8c22aa9 run 27884930874 (18 -> 17); exact line+variant CAPS_LINE_ALLOWLIST",
   "stack_wire_integrity_local_fix_pending_github_proof": false,
   "stack_wire_integrity_status": "CLOSED_WITH_EVIDENCE @ b44d5ab run 27888713242 (17 -> 14); stale tests realigned to fail-closed contracts (test-only)",
-  "expected_after_pending_push": 14,
+  "live_bundle_sse_cache_local_fix_pending_github_proof": true,
+  "live_bundle_sse_cache_local_fix_note": "Heterogeneous test-only fix (A stale-gate fixture realign, B UI count drift 6->7 all bumps gated, C ticker-scoped hermeticity); 15/15 issue20_23 tests pass locally; pending GitHub proof 14 -> 11.",
+  "expected_after_pending_push": 11,
   "pytest_full_classification_totals": {
     "PRE_EXISTING_BUT_BLOCKING": 21,
     "INTENTIONAL_CONTRACT_LOCK": 3,

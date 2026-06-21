@@ -30,7 +30,7 @@
 
 | Bucket | Tests | Status / note |
 |--------|-------|---------------|
-| `LIVE_BUNDLE_SSE_CACHE` | **3** | open, not blocked — `issue20_23_live_bundle` ×3 (SSE/cache/bundle-stamp) |
+| `LIVE_BUNDLE_SSE_CACHE` | **3** | **in progress** (heterogeneous test-only fix landed locally, pending GitHub proof) — `issue20_23_live_bundle` ×3 |
 | `AUDIT_CAND_SERVER_CI_OFFLINE` | **2** | open, not blocked — fast-quote/debug need quote data; CI offline |
 | `V2_CONFORMAL_TIER_C_PAYLOAD` | **2** | open, not blocked — Tier C / conformal attachment markers absent in CI |
 | `UI_LEVEL_TEST_CHIP` | **2** | **BLOCKED** — INTENTIONAL_CONTRACT_LOCK, card-explainability lane (do not start) |
@@ -60,9 +60,13 @@
 
 Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` → `pytest_full_failure_matrix` (sum of `number_of_tests` = 14 = `pytest_full_product_matrix_failure_count` = current observed).
 
-### Recommended next unblocked pytest bucket
+### In-progress pytest bucket
 
-**`LIVE_BUNDLE_SSE_CACHE`** — 3 tests, `audit/ci-nonblocking-failures-triage`, not branch-blocked. **FIX_NOW** — `issue20_23` live-bundle / SSE subscriber state not hermetic in full-suite order. Projected (unproven until GitHub): 14 → 11.
+**`LIVE_BUNDLE_SSE_CACHE`** — 3 tests, fix **landed locally** (heterogeneous, all test-only; all fail in isolation so the matrix "non-hermetic full-suite" note was inaccurate): **(A)** `test_stamp_decision_bundle_monotonic` — stale test behind the fail-closed stamp gate; fixture realigned (add ticker + release-gate setup), monotonic+spot-tied coverage preserved. **(B)** `test_index_html_render_return_gates` — UI render-timestamp guard **count drift** (not a regression); all 7 `_lastRenderTs` bumps verified on did-render/did-paint success paths (git blame: all 7 at baseline `a645a89`); count updated 6 → 7. **(C)** `test_api_state_bypasses_cache` — test hermeticity; assertion made ticker-scoped vs the background SPY warm-up fetch. 15/15 `issue20_23` tests pass locally. Projected (unproven until GitHub): 14 → 11.
+
+### Recommended next unblocked pytest bucket (after LIVE_BUNDLE GitHub proof)
+
+**`AUDIT_CAND_SERVER_CI_OFFLINE`** (2) / **`V2_CONFORMAL_TIER_C_PAYLOAD`** (2). **FIX_NOW** candidates per the matrix.
 
 ---
 
@@ -74,7 +78,7 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 - `next_allowed_step: resolve_pytest_full_failures`
 - `current_ci_verified_commit: b44d5ab` (run 27888713242, 14 failed — product matrix only)
 - `pytest_full_matrix_verified_commit: b44d5ab`
-- `expected_after_pending_push: 14` (artifact sync only; no pending local fix in this commit)
+- `expected_after_pending_push: 11` (LIVE_BUNDLE_SSE_CACHE heterogeneous test-only fix landed locally; projection, unproven until GitHub)
 - **Do not merge** PR #19 until pytest-full green on GitHub PR #19 **and** schwab-csv-first `pull_request` green, with no unexplained paired failure.
 
 ---

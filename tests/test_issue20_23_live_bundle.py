@@ -17,17 +17,26 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def test_stamp_decision_bundle_monotonic_and_spot_same_generation():
+def test_stamp_decision_bundle_monotonic_and_spot_same_generation(monkeypatch):
+    # Exercise the current positive gated stamp path: trade-impacting gate needs
+    # ticker + price (spot), and the release gate needs a valid release. Same setup as
+    # tests/test_batch2_signals_engine_error.py::test_stamp_decision_bundle_increments_on_success.
+    monkeypatch.setenv("ED_BUILD_GENERATION", "deadbeef" * 5)
+    from release_object import initialize_release_at_startup
+
+    initialize_release_at_startup(force=True)
     from live_decision_bundle import stamp_decision_bundle
 
-    d = {"spot": 100.0, "zone": "test_zone", "vwap_side": "above"}
-    stamp_decision_bundle(d)
+    d = {"ticker": "SPY", "spot": 100.0, "zone": "test_zone", "vwap_side": "above",
+         "call_signal": "wait", "validation_summary": "issue20_23_monotonic"}
+    stamp_decision_bundle(d, route="server._fetch_state")
     g0 = d["decision_generation_id"]
     ts0 = d["decision_timestamp_utc"]
     assert isinstance(g0, int) and g0 > 0
     assert isinstance(ts0, float) and ts0 > 0
-    d2 = {"spot": 101.0, "zone": "other"}
-    stamp_decision_bundle(d2)
+    d2 = {"ticker": "SPY", "spot": 101.0, "zone": "other",
+          "call_signal": "wait", "validation_summary": "issue20_23_monotonic_2"}
+    stamp_decision_bundle(d2, route="server._fetch_state")
     assert d2["decision_generation_id"] > g0
     assert d["decision_generation_id"] == g0
     assert d["spot"] == 100.0 and d["zone"] == "test_zone"
@@ -67,7 +76,11 @@ def test_index_html_render_return_gates_live_and_last_render_ts():
     """Issue 24: gated render() return — do not bump _lastRenderTs when render() drops a frame."""
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
     assert "return true" in html and "return false" in html
-    assert html.count("_lastRenderTs = Date.now()") == 6
+    # 7 render/paint-lane timestamp bumps, each on a did-render/did-paint success path:
+    # the 3 main render() lanes are behind _didRender / _didRenderPoll / _didRenderSse;
+    # the others bump only after a successful L1/merged/sidebar paint (one precedes `return true`).
+    # None fires on a dropped frame (Issue-24 invariant preserved). Count was stale at 6.
+    assert html.count("_lastRenderTs = Date.now()") == 7
     for needle in ("if (_didRender) {", "if (_didRenderPoll) {", "if (_didRenderSse) {"):
         assert needle in html, f"missing {needle!r}"
 
@@ -198,7 +211,9 @@ def test_api_state_bypasses_cache_when_sse_subscribers(monkeypatch, _cache_test_
         assert r_hit.status_code == 200
         body = r_hit.json()
         assert body.get("spot") == 1.0
-        assert calls == []
+        # Ticker-scoped: the server's background analytics warm-up may fetch the default
+        # ticker (e.g. SPY) on TestClient startup; only assert no fetch for THIS test key.
+        assert (ticker, exp) not in calls
 
         srv._sse_subscribers[key] = 1
         r_miss = client.get("/api/state", params={"ticker": ticker, "expiry": exp})
