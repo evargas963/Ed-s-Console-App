@@ -96,21 +96,21 @@ def test_stabilization_gate_blocks_card_explainability():
     assert gate.get("next_allowed_step") == "resolve_pytest_full_failures"
     assert gate.get("next_allowed_branch") != "audit/ci-nonblocking-failures-triage"
     # Explicit, non-overloaded commit/count semantics (see gate field docs).
-    # Current GitHub CI observation @ 8c22aa9 (ANTI_PATTERN proven, 18 -> 17).
-    assert gate.get("current_ci_verified_commit") == "8c22aa9"
-    assert gate.get("current_ci_pytest_full_run") == "27884930874"
-    assert gate.get("current_ci_pytest_full_failure_count") == 17
+    # Current GitHub CI observation @ b44d5ab (STACK_WIRE proven, 17 -> 14).
+    assert gate.get("current_ci_verified_commit") == "b44d5ab"
+    assert gate.get("current_ci_pytest_full_run") == "27888713242"
+    assert gate.get("current_ci_pytest_full_failure_count") == 14
     # Product matrix verified at the same proven commit.
-    assert gate.get("pytest_full_matrix_verified_commit") == "8c22aa9"
-    assert gate.get("pytest_full_product_matrix_failure_count") == 17
-    # All five buckets closed to date.
+    assert gate.get("pytest_full_matrix_verified_commit") == "b44d5ab"
+    assert gate.get("pytest_full_product_matrix_failure_count") == 14
+    # All six buckets closed to date.
     assert gate.get("meta_artifact_drift_failure_count") == 0
     assert gate.get("active_bundle_local_fix_pending_github_proof") is False
     assert gate.get("calibration_bypass_local_fix_pending_github_proof") is False
     assert gate.get("et_authority_local_fix_pending_github_proof") is False
     assert gate.get("anti_pattern_caps_local_fix_pending_github_proof") is False
-    # STACK_WIRE_INTEGRITY fixed locally (test realignment); observed stays 17, expected 14 is a projection.
-    assert gate.get("stack_wire_integrity_local_fix_pending_github_proof") is True
+    assert gate.get("stack_wire_integrity_local_fix_pending_github_proof") is False
+    # Artifact sync only — no pending local fix — so expected == observed (14).
     assert gate.get("expected_after_pending_push") == 14
     # Legacy fields must stay honest to the cited run, not a prediction.
     assert gate.get("pytest_full_failure_count") == gate.get("current_ci_pytest_full_failure_count")

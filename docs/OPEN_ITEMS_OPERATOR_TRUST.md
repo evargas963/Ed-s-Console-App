@@ -156,9 +156,9 @@
 | **Source PR / report** | `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` — pytest-full failure matrix |
 | **Why it matters** | Full suite catches cone gaps; 25 product matrix failures @ `a72ed54` |
 | **Operator risk** | Regressions hide in uncategorized red check |
-| **Evidence currently available** | GitHub @ `8c22aa9` run 27884930874: **17 failed, 3770 passed, 7 skipped** = product matrix only. CLOSED_WITH_EVIDENCE on GitHub: governance meta-artifact pin drift (27 → 25), `ACTIVE_BUNDLE_ENCODER_LAYOUT` (25 → 22), `CALIBRATION_BYPASS_ALLOWLIST` (22 → 20), `ET_AUTHORITY_DAILY_SCOREBOARD` (20 → 18), `ANTI_PATTERN_CAPS_VIOLATIONS` (18 → 17); schwab-csv-first PASS |
+| **Evidence currently available** | GitHub @ `b44d5ab` run 27888713242: **14 failed, 3773 passed, 7 skipped** = product matrix only. CLOSED_WITH_EVIDENCE on GitHub: governance meta-artifact pin drift (27 → 25), `ACTIVE_BUNDLE_ENCODER_LAYOUT` (25 → 22), `CALIBRATION_BYPASS_ALLOWLIST` (22 → 20), `ET_AUTHORITY_DAILY_SCOREBOARD` (20 → 18), `ANTI_PATTERN_CAPS_VIOLATIONS` (18 → 17), `STACK_WIRE_INTEGRITY` (17 → 14); schwab-csv-first PASS |
 | **Evidence still needed** | pytest-full green OR operator sign-off on every open product matrix row |
-| **Fix now or harness now** | In progress: `STACK_WIRE_INTEGRITY` (3) — stale tests realigned to current fail-closed contracts (test-only; 18/18 stack-wire + positive-path pass locally), pending GitHub proof 17 → 14; next after proof: `LIVE_BUNDLE_SSE_CACHE` (3). `UI_*` buckets contract-locked — do not start |
+| **Fix now or harness now** | Next: `LIVE_BUNDLE_SSE_CACHE` (3) — `issue20_23` live-bundle/SSE subscriber state not hermetic in full-suite order; projected 14 → 11 (unproven until GitHub). `UI_*` buckets contract-locked — do not start |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` (FIX_NOW); triage-owned groups in `ci_nonblocking_failure_triage_2026-06-18.json` |
 | **Blocking level** | High — blocks PR #19 merge |
 | **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all **25** open product matrix rows @ `a72ed54` |
