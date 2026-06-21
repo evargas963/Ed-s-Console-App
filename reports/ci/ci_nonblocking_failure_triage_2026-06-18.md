@@ -32,7 +32,7 @@
 
 | Bucket | Tests | Status / note |
 |--------|-------|---------------|
-| `V2_CONFORMAL_TIER_C_PAYLOAD` | **2** | open, not blocked — Tier C / conformal attachment markers absent in CI |
+| `V2_CONFORMAL_TIER_C_PAYLOAD` | **2** | **in progress** (test-only re-anchor landed locally, pending GitHub proof) — `stamp_idx` re-anchored to `_finalize_production_decision(ms_dict, _decision_route)` |
 | `UI_LEVEL_TEST_CHIP` | **2** | **BLOCKED** — INTENTIONAL_CONTRACT_LOCK, card-explainability lane (do not start) |
 | `ML_PREDICT_STRICT_VERSION` | **1** | open, not blocked |
 | `PRODUCTION_DB_PRED_1C_ABSENT_IN_CI` | **1** | PRE_EXISTING_AND_ACCEPTED — needs hermetic fixture/skip + operator sign-off |
@@ -60,9 +60,13 @@
 
 Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` → `pytest_full_failure_matrix` (sum of `number_of_tests` = 9 = `pytest_full_product_matrix_failure_count` = current observed).
 
-### Recommended next unblocked pytest bucket
+### In-progress pytest bucket
 
-**`V2_CONFORMAL_TIER_C_PAYLOAD`** (2). **FIX_NOW** — Tier C / conformal attachment markers absent in CI server response path. Projected (unproven until GitHub): 9 → 7.
+**`V2_CONFORMAL_TIER_C_PAYLOAD`** — 2 tests, fix **landed locally** (test-only, no production change). Stale tests anchored on the literal response-path call `stamp_decision_bundle(ms_dict)`, which a production refactor wrapped in `_finalize_production_decision(ms_dict, _decision_route)` (server.py:6552; helper body calls `stamp_decision_bundle(ms_dict, route=route)` at server.py:4141) — `.index()` raised `ValueError: substring not found`. Re-anchored `stamp_idx` in both tests; ordering invariant (stamp → conformal attach → v2 build → merge) and all other anchors/asserts unchanged. 13/13 v2 tests pass locally. Projected (unproven until GitHub): 9 → 7.
+
+### Recommended next unblocked pytest bucket (after V2 GitHub proof)
+
+**`ML_PREDICT_STRICT_VERSION`** (1). **FIX_NOW** — `test_get_model_version_fail_closed_when_strict_bundle_blocked`.
 
 ---
 
@@ -74,7 +78,7 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 - `next_allowed_step: resolve_pytest_full_failures`
 - `current_ci_verified_commit: 78c9192` (run 27896087973, 9 failed — product matrix only)
 - `pytest_full_matrix_verified_commit: 78c9192`
-- `expected_after_pending_push: 9` (artifact sync only; observed == projected; V2_CONFORMAL_TIER_C_PAYLOAD projects 7 only after its fix lands, unproven until GitHub)
+- `expected_after_pending_push: 7` (V2_CONFORMAL_TIER_C_PAYLOAD test-only fix landed locally; projection, unproven until GitHub; observed stays 9)
 - **Do not merge** PR #19 until pytest-full green on GitHub PR #19 **and** schwab-csv-first `pull_request` green, with no unexplained paired failure.
 
 ---

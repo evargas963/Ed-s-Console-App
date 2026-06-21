@@ -158,7 +158,7 @@
 | **Operator risk** | Regressions hide in uncategorized red check |
 | **Evidence currently available** | GitHub @ `78c9192` run 27896087973: **9 failed, 3778 passed, 7 skipped** = product matrix only. CLOSED_WITH_EVIDENCE on GitHub: governance meta-artifact pin drift (27 → 25), `ACTIVE_BUNDLE_ENCODER_LAYOUT` (25 → 22), `CALIBRATION_BYPASS_ALLOWLIST` (22 → 20), `ET_AUTHORITY_DAILY_SCOREBOARD` (20 → 18), `ANTI_PATTERN_CAPS_VIOLATIONS` (18 → 17), `STACK_WIRE_INTEGRITY` (17 → 14), `LIVE_BUNDLE_SSE_CACHE` (14 → 11), `AUDIT_CAND_SERVER_CI_OFFLINE` (11 → 9); schwab-csv-first PASS |
 | **Evidence still needed** | pytest-full green OR operator sign-off on every open product matrix row |
-| **Fix now or harness now** | Next candidate: `V2_CONFORMAL_TIER_C_PAYLOAD` (2) — Tier C / conformal attachment markers absent in CI; projected 9 → 7 (unproven until GitHub). `UI_*` contract-locked — do not start |
+| **Fix now or harness now** | In progress: `V2_CONFORMAL_TIER_C_PAYLOAD` (2) — test-only re-anchor of `stamp_idx` to `_finalize_production_decision(ms_dict, _decision_route)`; 13/13 v2 tests pass locally; pending GitHub proof 9 → 7; next after proof: `ML_PREDICT_STRICT_VERSION` (1). `UI_*` contract-locked — do not start |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` (FIX_NOW); triage-owned groups in `ci_nonblocking_failure_triage_2026-06-18.json` |
 | **Blocking level** | High — blocks PR #19 merge |
 | **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all **25** open product matrix rows @ `a72ed54` |

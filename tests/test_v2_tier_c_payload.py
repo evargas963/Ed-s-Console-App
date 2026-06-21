@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_tier_c_attaches_v2_decision_after_decision_bundle_stamp():
     server_source = (ROOT / "server.py").read_text(encoding="utf-8")
 
-    stamp_idx = server_source.index("stamp_decision_bundle(ms_dict)")
+    stamp_idx = server_source.index("_finalize_production_decision(ms_dict, _decision_route)")
     attach_idx = server_source.index('ms_dict["v2_decision"] = _v2_decision_for_response')
     merge_idx = server_source.index("_lmp.merge_into_state(ms_dict, ticker)", attach_idx)
 
