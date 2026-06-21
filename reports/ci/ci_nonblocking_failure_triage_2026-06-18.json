@@ -7,7 +7,8 @@
   "merge_gate": "pytest-full",
   "ci_triage_gate_pass": false,
   "next_allowed_step": "resolve_pytest_full_failures",
-  "recommended_next_bucket": "operator to select from remaining matrix (largest open non-blocked: STACK_WIRE_INTEGRITY 3 / LIVE_BUNDLE_SSE_CACHE 3)",
+  "recommended_next_bucket": "LIVE_BUNDLE_SSE_CACHE (3) after STACK_WIRE_INTEGRITY GitHub proof 17 -> 14",
+  "in_progress_bucket": "STACK_WIRE_INTEGRITY (3 stale tests realigned to fail-closed contracts, pending GitHub proof)",
   "github_checks_last_observed": {
     "commit": "8c22aa9",
     "objective-audit": "pass",
@@ -411,17 +412,21 @@
     {
       "failure_group": "STACK_WIRE_INTEGRITY",
       "number_of_tests": 3,
+      "local_fix_status": "FIXED_LOCAL_PENDING_GITHUB_PROOF",
+      "local_fix_note": "Test-only realignment to current fail-closed contracts (3 tests). decision_generation_id: bare dict gate-blocked by trade-impacting gate -> generation_id None + decision_gate_blocked; positive path covered by tests/test_batch2_signals_engine_error.py::test_stamp_decision_bundle_increments_on_success. server_build_ts: assert current invariants (_fetch_state sets _server_build_ts; ms_dict stamped via stamp_decision_bundle(ms_dict, route=route)) not stale single-function source ordering. mh_overlay: assert fail-closed withhold (src=fusion_unavailable, out=(None,None,None), fallback_used True) not empirical fabrication. 18/18 stack-wire + positive-path tests pass locally. number_of_tests stays 3 until GitHub proves 17 -> 14.",
+      "expected_clear_count": 3,
       "representative_tests": [
         "tests/test_stack_wire_1_v1.py::test_decision_generation_id_always_present",
+        "tests/test_stack_wire_1_v1.py::test_server_build_ts_always_set",
         "tests/test_stack_integrity_v1.py::test_mh_overlay_records_when_by_horizon_property_raises"
       ],
       "failure_message": "assert False / ValueError: substring not found",
-      "root_cause": "Stack wire / build_ts contract drift in CI server responses",
+      "root_cause": "STALE TESTS behind added fail-closed production gates/contracts (NOT a hermetic-fixture issue, NOT a product bug): (1) stamp_decision_bundle now runs trade-impacting + release gates, so a bare dict is correctly gate-blocked (no generation_id); (2) the ms_dict stamp call moved upstream of server._fetch_state, invalidating the old single-function source-order check; (3) _overlay_multi_horizon_ml_on_product_triplets withholds (fusion_unavailable) on bundle failure per the fusion-only contract instead of empirical fallback. Fix = realign the 3 tests; no production change.",
       "classification": "PRE_EXISTING_BUT_BLOCKING",
-      "fix_now_or_defer": "triage_owned",
-      "owner_branch": "fix/stack-wire-ci-contract",
+      "fix_now_or_defer": "fix_now",
+      "owner_branch": "audit/ci-nonblocking-failures-triage",
       "owner_branch_blocked": false,
-      "closure_criteria": "stack_wire_1 and stack_integrity tests pass with hermetic server fixture"
+      "closure_criteria": "3 stack-wire/stack-integrity tests realigned to current fail-closed contracts; closure on GitHub pytest-full 17 -> 14"
     },
     {
       "failure_group": "UI_V2_CONFIDENCE_LABELS",
@@ -509,7 +514,9 @@
   "et_authority_status": "CLOSED_WITH_EVIDENCE @ afb361d run 27882570666 (20 -> 18); schwab-csv-first regression from ad96844 fixed-forward in afb361d",
   "anti_pattern_caps_local_fix_pending_github_proof": false,
   "anti_pattern_caps_status": "CLOSED_WITH_EVIDENCE @ 8c22aa9 run 27884930874 (18 -> 17); exact line+variant CAPS_LINE_ALLOWLIST",
-  "expected_after_pending_push": 17,
+  "stack_wire_integrity_local_fix_pending_github_proof": true,
+  "stack_wire_integrity_local_fix_note": "3 stale tests realigned to current fail-closed contracts (test-only, no product change); 18/18 stack-wire + positive-path tests pass locally; pending GitHub proof 17 -> 14.",
+  "expected_after_pending_push": 14,
   "pytest_full_classification_totals": {
     "PRE_EXISTING_BUT_BLOCKING": 21,
     "INTENTIONAL_CONTRACT_LOCK": 3,

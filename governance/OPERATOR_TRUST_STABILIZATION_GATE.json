@@ -40,10 +40,12 @@
   "et_authority_local_fix_note": "ET_AUTHORITY_DAILY_SCOREBOARD CLOSED_WITH_EVIDENCE @ afb361d run 27882570666 — both ET-authority tests cleared on GitHub (daily_scoreboard imports ET from time_et + Schwab CSV-first declaration); pytest-full 20 -> 18; schwab-csv-first back to PASS.",
   "anti_pattern_caps_local_fix_pending_github_proof": false,
   "anti_pattern_caps_local_fix_note": "ANTI_PATTERN_CAPS_VIOLATIONS CLOSED_WITH_EVIDENCE @ 8c22aa9 run 27884930874 — test_no_unallowlisted_production_hits absent on GitHub; pytest-full 18 -> 17. 15 reviewed non-market-leaf hits exempted via exact file+line+variant CAPS_LINE_ALLOWLIST entries; register mirrors; no detection/runtime change.",
-  "expected_after_pending_push": 17,
+  "stack_wire_integrity_local_fix_pending_github_proof": true,
+  "stack_wire_integrity_local_fix_note": "STACK_WIRE_INTEGRITY (3 tests) fixed locally — stale tests realigned to current fail-closed production contracts (NOT a hermetic-fixture issue, NOT a product bug). test_decision_generation_id_always_present: bare dict is gate-blocked (trade-impacting gate) -> generation_id None + decision_gate_blocked; positive path covered by tests/test_batch2_signals_engine_error.py::test_stamp_decision_bundle_increments_on_success. test_server_build_ts_always_set: assert current invariants (_fetch_state sets _server_build_ts; ms_dict stamped via stamp_decision_bundle(ms_dict, route=route)) instead of stale single-function source ordering. test_mh_overlay...: assert fail-closed withhold (src=fusion_unavailable, out=(None,None,None), fallback_used True) instead of empirical_histogram fabrication. Test-only; 18/18 stack-wire + positive-path tests pass locally. Pending GitHub proof 17 -> 14; still counted at 3 until proven.",
+  "expected_after_pending_push": 14,
   "latest_artifact_update_commit": "8c22aa9",
   "pytest_full_failure_count": 17,
-  "pytest_full_failure_count_semantics": "Observed CI failures at current_ci_pytest_full_run 27884930874 @ 8c22aa9 = pytest_full_product_matrix_failure_count (17); meta_artifact_drift 0; ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD + ANTI_PATTERN_CAPS_VIOLATIONS CLOSED. Artifact sync only — no pending local fix in this commit, so expected_after_pending_push == observed (17). Next bucket not yet started; lower counts are projections only until GitHub proves them.",
+  "pytest_full_failure_count_semantics": "Observed CI failures at current_ci_pytest_full_run 27884930874 @ 8c22aa9 = pytest_full_product_matrix_failure_count (17); meta_artifact_drift 0; ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD + ANTI_PATTERN_CAPS_VIOLATIONS CLOSED. STACK_WIRE_INTEGRITY (3) is now fixed locally (test-only realignment) and still counted at 3 until GitHub proves 17 -> 14. expected_after_pending_push = 14 is a PROJECTION, not asserted as observed.",
   "pytest_full_matrix_run": "27884930874",
   "pytest_full_passed_count": 3770,
   "pytest_full_skipped_count": 7,
@@ -75,5 +77,5 @@
   "required_triage_reports": [
     "reports/ci/ci_nonblocking_failure_triage_2026-06-18.md"
   ],
-  "note": "Observed @ 8c22aa9 (run 27884930874) = 17 failed (3770 passed, 7 skipped) = product matrix only; meta-artifact drift + ACTIVE_BUNDLE + CALIBRATION_BYPASS_ALLOWLIST + ET_AUTHORITY_DAILY_SCOREBOARD + ANTI_PATTERN_CAPS_VIOLATIONS all CLOSED_WITH_EVIDENCE. Artifact sync only — no new fix in this commit, so expected_after_pending_push = 17 (= observed). Next bucket not yet started (operator to select from remaining matrix). Gates stay false until pytest-full green or operator sign-off."
+  "note": "Observed @ 8c22aa9 (run 27884930874) = 17 failed (3770 passed, 7 skipped) = product matrix only; 5 buckets CLOSED_WITH_EVIDENCE to date. STACK_WIRE_INTEGRITY (3 tests) now fixed locally — stale tests realigned to current fail-closed production contracts (NOT hermetic-fixture, NOT product bug); test-only; 18/18 stack-wire + positive-path tests pass locally; expected_after_pending_push = 14 is a PROJECTION pending GitHub proof — observed stays 17 and the matrix still counts STACK_WIRE at 3 until proven. Gates stay false until pytest-full green or operator sign-off."
 }

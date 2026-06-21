@@ -29,7 +29,7 @@
 
 | Bucket | Tests | Notes |
 |--------|-------|-------|
-| `STACK_WIRE_INTEGRITY` | 3 | stack_wire_1 ×2 + stack_integrity ×1 — server build_ts / decision_generation_id / mh_overlay contract drift in CI |
+| `STACK_WIRE_INTEGRITY` | 3 | **in progress** (test-only realignment landed locally, pending GitHub proof) — stale tests behind added fail-closed gates/contracts; stack_wire_1 ×2 + stack_integrity ×1 |
 | `LIVE_BUNDLE_SSE_CACHE` | 3 | issue20_23 live bundle / SSE subscriber state not hermetic in full-suite order |
 | `AUDIT_CAND_SERVER_CI_OFFLINE` | 2 | fast-quote / debug-prediction need quote data; CI offline |
 | `UI_LEVEL_TEST_CHIP` | 2 | **BLOCKED** — INTENTIONAL_CONTRACT_LOCK; requires card-explainability lane (do not start) |
@@ -54,9 +54,13 @@ Largest open **non-blocked** buckets: `STACK_WIRE_INTEGRITY` (3) and `LIVE_BUNDL
 
 Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` → `pytest_full_failure_matrix` (sum of `number_of_tests` = 17 = `pytest_full_product_matrix_failure_count` = current observed).
 
-### Recommended next unblocked pytest bucket
+### In-progress pytest bucket
 
-**FIX_NOW** candidates (operator to select; not started): `STACK_WIRE_INTEGRITY` (3) or `LIVE_BUNDLE_SSE_CACHE` (3) — largest open non-blocked buckets.
+**`STACK_WIRE_INTEGRITY`** — 3 tests, fix **landed locally** (test-only). Root cause: **stale tests behind added fail-closed production gates/contracts** (NOT a hermetic-fixture issue, NOT a product bug) — (1) `stamp_decision_bundle` now runs trade-impacting + release gates so a bare dict is correctly gate-blocked; (2) the `ms_dict` stamp moved upstream of `server._fetch_state`, invalidating the old single-function source-order check; (3) `_overlay_multi_horizon_ml_on_product_triplets` withholds (`fusion_unavailable`) on bundle failure per the fusion-only contract, not empirical fallback. Realigned the 3 tests to the current contracts; positive-path `decision_generation_id` coverage retained via `test_batch2_signals_engine_error.py::test_stamp_decision_bundle_increments_on_success`. 18/18 stack-wire + positive-path tests pass locally. Expected (projection, unproven until GitHub): 17 → 14.
+
+### Recommended next unblocked pytest bucket (after STACK_WIRE GitHub proof)
+
+**`LIVE_BUNDLE_SSE_CACHE`** (3) — **FIX_NOW** — next largest open non-blocked bucket; `issue20_23` live-bundle / SSE subscriber state not hermetic in full-suite order.
 
 ---
 
@@ -68,7 +72,7 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 - `next_allowed_step: resolve_pytest_full_failures`
 - `current_ci_verified_commit: 8c22aa9` (run 27884930874, 17 failed — product matrix only)
 - `pytest_full_matrix_verified_commit: 8c22aa9`
-- `expected_after_pending_push: 17` (artifact sync only; no pending local fix in this commit)
+- `expected_after_pending_push: 14` (STACK_WIRE_INTEGRITY test realignment landed locally; projection, unproven until GitHub)
 - **Do not merge** PR #19 until pytest-full green on GitHub PR #19 **and** schwab-csv-first `pull_request` green, with no unexplained paired failure.
 
 ---

@@ -25,8 +25,12 @@ def test_mh_overlay_records_when_by_horizon_property_raises():
     out, src, events = _overlay_multi_horizon_ml_on_product_triplets(_uniform_empirical(), BadBundle())
     assert any(e.get("component") == "mh_ml_product_overlay" for e in events)
     assert any(e.get("authority_intact") is False for e in events)
-    assert all(src[hz] == "empirical_histogram" for hz in PRIMARY_DECISION_HORIZONS)
-    assert out["1c"] == out["5c"]  # empirical-only fallback
+    assert any(e.get("fallback_used") is True for e in events)
+    # Fail-closed fusion contract: a broken ML bundle WITHHOLDS product triplets — it never
+    # fabricates an empirical_histogram fallback (empirical is signal-rail context only, blend
+    # opt-in via ED_MH_EMPIRICAL_SUPPORT). Every horizon resolves to fusion_unavailable + withheld.
+    assert all(src[hz] == "fusion_unavailable" for hz in PRIMARY_DECISION_HORIZONS)
+    assert all(out[hz] == (None, None, None) for hz in PRIMARY_DECISION_HORIZONS)
 
 
 def test_mh_overlay_records_non_dict_by_horizon():
