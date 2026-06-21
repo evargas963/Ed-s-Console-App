@@ -2,18 +2,18 @@
 
 # CI non-blocking failure triage (2026-06-18)
 
-**Updated:** 2026-06-20 @ **`d55dd5d`** — GitHub `pytest-full` showed **11 failed, 3776 passed, 7 skipped** (run **27890689248**) = **product matrix only**. `LIVE_BUNDLE_SSE_CACHE` (3 tests) is **CLOSED_WITH_EVIDENCE** (14 → 11); six prior buckets remain CLOSED; schwab-csv-first PASS.
+**Updated:** 2026-06-21 @ **`78c9192`** — GitHub `pytest-full` showed **9 failed, 3778 passed, 7 skipped** (run **27896087973**) = **product matrix only**. `AUDIT_CAND_SERVER_CI_OFFLINE` (2 tests) is **CLOSED_WITH_EVIDENCE** (11 → 9); seven prior buckets remain CLOSED; schwab-csv-first PASS.
 
-## GitHub PR #19 checks (@ `d55dd5d`)
+## GitHub PR #19 checks (@ `78c9192`)
 
 | Check | Status |
 |-------|--------|
-| objective-audit | **CLOSED_WITH_EVIDENCE** — pass (run 27890689276) |
+| objective-audit | **CLOSED_WITH_EVIDENCE** — pass (run 27896087986) |
 | hardening | **CLOSED_WITH_EVIDENCE** — pass |
-| schwab-csv-first | **CLOSED_WITH_EVIDENCE** — pass (run 27890689256 @ `d55dd5d`; first closed @ `741091b`) |
-| pytest-full | **OPEN_BLOCKING** — `11 failed, 3776 passed, 7 skipped` (run **27890689248** @ `d55dd5d`) = **product matrix only** |
+| schwab-csv-first | **CLOSED_WITH_EVIDENCE** — pass (run 27896087988 @ `78c9192`; first closed @ `741091b`) |
+| pytest-full | **OPEN_BLOCKING** — `9 failed, 3778 passed, 7 skipped` (run **27896087973** @ `78c9192`) = **product matrix only** |
 
-**Merge gate:** `pytest-full` (11 open product matrix rows). **Do not merge** PR #19 until pytest-full is green on GitHub OR every open product matrix row carries operator sign-off.
+**Merge gate:** `pytest-full` (9 open product matrix rows). **Do not merge** PR #19 until pytest-full is green on GitHub OR every open product matrix row carries operator sign-off.
 
 ### Closure ladder (proven on GitHub)
 
@@ -26,12 +26,12 @@
 | `ANTI_PATTERN_CAPS_VIOLATIONS` | 1 | `8c22aa9` | 27884930874 | 18 → 17 |
 | `STACK_WIRE_INTEGRITY` | 3 | `b44d5ab` | 27888713242 | 17 → 14 |
 | `LIVE_BUNDLE_SSE_CACHE` | 3 | `d55dd5d` | 27890689248 | 14 → 11 |
+| `AUDIT_CAND_SERVER_CI_OFFLINE` | 2 | `78c9192` | 27896087973 | 11 → 9 |
 
-### Remaining open product matrix buckets (11 tests, largest first)
+### Remaining open product matrix buckets (9 tests, largest first)
 
 | Bucket | Tests | Status / note |
 |--------|-------|---------------|
-| `AUDIT_CAND_SERVER_CI_OFFLINE` | **2** | **in progress** (test-only fix landed locally, pending GitHub proof) — debug-endpoint env enable + nested-quote mock repoint |
 | `V2_CONFORMAL_TIER_C_PAYLOAD` | **2** | open, not blocked — Tier C / conformal attachment markers absent in CI |
 | `UI_LEVEL_TEST_CHIP` | **2** | **BLOCKED** — INTENTIONAL_CONTRACT_LOCK, card-explainability lane (do not start) |
 | `ML_PREDICT_STRICT_VERSION` | **1** | open, not blocked |
@@ -56,17 +56,13 @@
 
 ---
 
-## Failure matrix (pytest-full) — 11 product tests (observed @ `d55dd5d`)
+## Failure matrix (pytest-full) — 9 product tests (observed @ `78c9192`)
 
-Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` → `pytest_full_failure_matrix` (sum of `number_of_tests` = 11 = `pytest_full_product_matrix_failure_count` = current observed).
+Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` → `pytest_full_failure_matrix` (sum of `number_of_tests` = 9 = `pytest_full_product_matrix_failure_count` = current observed).
 
-### In-progress pytest bucket
+### Recommended next unblocked pytest bucket
 
-**`AUDIT_CAND_SERVER_CI_OFFLINE`** — 2 tests, fix **landed locally** (test-only, no production change): `test_debug_prediction` now enables the R-011 fail-closed debug gate via `monkeypatch.setenv("ED_ALLOW_DEBUG_ENDPOINTS","1")` (test-only; production gate unchanged); `test_spread_semantic` uses one shared patch context (`get_client` + `_safe_get_quote_with_retry`) with a **nested** Schwab quote-envelope mock (`_parse_quote_node_session_fields` needs `node["quote"][...]`), dropping the stale `_build_rest_fast_quote_payload` mock. No real Schwab/OAuth. 22/22 `audit_cand` tests pass locally. Projected (unproven until GitHub): 11 → 9.
-
-### Recommended next unblocked pytest bucket (after AUDIT_CAND GitHub proof)
-
-**`V2_CONFORMAL_TIER_C_PAYLOAD`** (2). **FIX_NOW** — Tier C / conformal attachment markers absent in CI server response path.
+**`V2_CONFORMAL_TIER_C_PAYLOAD`** (2). **FIX_NOW** — Tier C / conformal attachment markers absent in CI server response path. Projected (unproven until GitHub): 9 → 7.
 
 ---
 
@@ -76,9 +72,9 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 - `operator_readiness_gate_pass: false`
 - `card_explainability_allowed: false`
 - `next_allowed_step: resolve_pytest_full_failures`
-- `current_ci_verified_commit: d55dd5d` (run 27890689248, 11 failed — product matrix only)
-- `pytest_full_matrix_verified_commit: d55dd5d`
-- `expected_after_pending_push: 9` (AUDIT_CAND_SERVER_CI_OFFLINE test-only fix landed locally; projection, unproven until GitHub)
+- `current_ci_verified_commit: 78c9192` (run 27896087973, 9 failed — product matrix only)
+- `pytest_full_matrix_verified_commit: 78c9192`
+- `expected_after_pending_push: 9` (artifact sync only; observed == projected; V2_CONFORMAL_TIER_C_PAYLOAD projects 7 only after its fix lands, unproven until GitHub)
 - **Do not merge** PR #19 until pytest-full green on GitHub PR #19 **and** schwab-csv-first `pull_request` green, with no unexplained paired failure.
 
 ---
@@ -95,7 +91,7 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 | Field | Value |
 |-------|-------|
 | **Classification** | `CLOSED_WITH_EVIDENCE` |
-| **CI link** | pass run [27890689256](https://github.com/evargas963/Ed-s-Console-App/actions/runs/27890689256) @ `d55dd5d` (first closed @ `741091b`) |
+| **CI link** | pass run [27896087988](https://github.com/evargas963/Ed-s-Console-App/actions/runs/27896087988) @ `78c9192` (first closed @ `741091b`) |
 | **Closure criteria** | schwab-csv-first green on PR #19 — met (run matches `ci_nonblocking_failure_triage_2026-06-18.json` `github_checks_last_observed`) |
 
 ## pytest-full
@@ -103,5 +99,5 @@ Machine-readable: `reports/ci/ci_nonblocking_failure_triage_2026-06-18.json` →
 | Field | Value |
 |-------|-------|
 | **Classification** | `OPEN_BLOCKING` |
-| **CI link** | run **27890689248** @ `d55dd5d` — `11 failed, 3776 passed, 7 skipped` = product matrix only (7 buckets CLOSED_WITH_EVIDENCE to date) |
+| **CI link** | run **27896087973** @ `78c9192` — `9 failed, 3778 passed, 7 skipped` = product matrix only (8 buckets CLOSED_WITH_EVIDENCE to date) |
 | **Closure criteria** | pytest-full green OR every product matrix row accepted with operator sign-off |
