@@ -96,12 +96,12 @@ def test_stabilization_gate_blocks_card_explainability():
     assert gate.get("next_allowed_step") == "resolve_pytest_full_failures"
     assert gate.get("next_allowed_branch") != "audit/ci-nonblocking-failures-triage"
     # Explicit, non-overloaded commit/count semantics (see gate field docs).
-    # Current GitHub CI observation @ 0edb7ac (V2_CONFORMAL proven, 9 -> 7).
-    assert gate.get("current_ci_verified_commit") == "0edb7ac"
-    assert gate.get("current_ci_pytest_full_run") == "27903963832"
+    # Current GitHub CI observation @ 4e252b3 (REMOTE_ENFORCEMENT flake closed, objective-audit restored; product matrix unchanged at 7).
+    assert gate.get("current_ci_verified_commit") == "4e252b3"
+    assert gate.get("current_ci_pytest_full_run") == "27910195029"
     assert gate.get("current_ci_pytest_full_failure_count") == 7
     # Product matrix verified at the same proven commit.
-    assert gate.get("pytest_full_matrix_verified_commit") == "0edb7ac"
+    assert gate.get("pytest_full_matrix_verified_commit") == "4e252b3"
     assert gate.get("pytest_full_product_matrix_failure_count") == 7
     # All nine buckets closed to date.
     assert gate.get("meta_artifact_drift_failure_count") == 0
@@ -113,8 +113,12 @@ def test_stabilization_gate_blocks_card_explainability():
     assert gate.get("live_bundle_sse_cache_local_fix_pending_github_proof") is False
     assert gate.get("audit_cand_server_ci_offline_local_fix_pending_github_proof") is False
     assert gate.get("v2_conformal_tier_c_payload_local_fix_pending_github_proof") is False
+    assert gate.get("remote_enforcement_evidence_live_api_local_fix_pending_github_proof") is False
     # Artifact sync only — no pending local fix — so expected == observed (7).
     assert gate.get("expected_after_pending_push") == 7
+    # Governance/external-flake bucket closed; objective-audit restored to PASS at the proven commit.
+    assert gate.get("objective_audit_status") == "pass"
+    assert gate.get("objective_audit_closed_at_commit") == "4e252b3"
     # Legacy fields must stay honest to the cited run, not a prediction.
     assert gate.get("pytest_full_failure_count") == gate.get("current_ci_pytest_full_failure_count")
     assert gate.get("last_verified_commit") == gate.get("current_ci_verified_commit")
