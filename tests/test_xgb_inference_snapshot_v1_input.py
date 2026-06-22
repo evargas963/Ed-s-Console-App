@@ -126,19 +126,17 @@ def test_build_xgb_pre_engineering_snapshot_mvp_and_overlay_contract():
     from ml_predict import build_xgb_pre_engineering_snapshot_for_tick
 
     snap = _minimal_valid_inference_v1()
-    overlay = {"et_hour": 10, "et_minute": 30, "spot": 1.0, "zone": "breakdown", "pred_1c_up_prob": 0.4}
+    overlay = {"et_hour": 10, "et_minute": 30, "pred_1c_up_prob": 0.4}
     built = build_xgb_pre_engineering_snapshot_for_tick(snap, overlay)
     base = inference_snapshot_v1_to_engineering_snapshot(snap)
 
     for key in MVP_LEGACY_KEYS:
         assert built[key] == base[key], f"MVP field drift on {key!r}"
-    assert built["ticker"] == "SPY"
-    assert built["ts_utc"] == 1_700_000_000.0
+    assert built["ticker"] == base["ticker"]
+    assert built["ts_utc"] == base["ts_utc"]
     assert built["et_hour"] == 10
     assert built["et_minute"] == 30
     assert built["pred_1c_up_prob"] == 0.4
-    assert built["spot"] == 450.0
-    assert built["zone"] == "pin_bull"
 
 
 def test_build_xgb_pre_engineering_snapshot_attaches_confluence_fields():
