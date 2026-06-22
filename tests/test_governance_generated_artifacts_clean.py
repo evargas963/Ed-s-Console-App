@@ -9,7 +9,6 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from tools.check_governance_generated_artifacts_clean import (  # noqa: E402
-    check_governance_generated_artifacts_clean,
     regeneration_commands,
 )
 

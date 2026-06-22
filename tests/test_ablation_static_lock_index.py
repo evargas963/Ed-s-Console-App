@@ -19,7 +19,6 @@ from tools.ablation_static_lock_index import (  # noqa: E402
     AblationStaticLockIndex,
     get_ablation_static_lock_index,
     get_ablation_static_lock_index_build_count,
-    reset_ablation_static_lock_index_for_tests,
 )
 
 

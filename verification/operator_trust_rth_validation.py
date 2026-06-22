@@ -4,11 +4,10 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import time
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -79,6 +78,7 @@ ALLOWED_OPEN_ITEM_STATUSES: frozenset[str] = frozenset(
         "OPEN_BLOCKING",
         "NEEDS_RTH_VALIDATION_WITH_HARNESS",
         "FIXED_IN_THIS_BRANCH",
+        "FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI",
         "COMPLETION_BRANCH_REQUIRED",
         "ACCEPTED_WITH_EVIDENCE",
         "CLOSED_WITH_EVIDENCE",

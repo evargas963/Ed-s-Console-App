@@ -6,7 +6,6 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any
 
 _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:
@@ -49,8 +48,11 @@ PASSIVE_SCAN_GLOBS: tuple[str, ...] = (
 
 CI_CHECKS = ("hardening", "pytest-full", "schwab-csv-first")
 CI_CLASSIFICATIONS = (
-    "FIX_NOW",
-    "EXTERNAL_SECRET_REQUIRED",
+    "FIXED_NOW",
+    "FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI",
+    "CLOSED_WITH_EVIDENCE",
+    "EXTERNAL_SECRET_REQUIRED_WITH_EVIDENCE",
+    "OPEN_BLOCKING",
     "PRE_EXISTING_BUT_BLOCKING",
     "PRE_EXISTING_AND_ACCEPTED_WITH_REASON",
     "NOT_REPRODUCED",
@@ -96,8 +98,10 @@ def check_stabilization_gate_json() -> list[str]:
             )
     for key in (
         "stabilization_artifacts_gate_pass",
+        "ci_triage_gate_pass",
         "operator_readiness_gate_pass",
         "card_explainability_allowed",
+        "next_allowed_step",
     ):
         if key not in data:
             errors.append(f"operator_trust: gate missing required field {key}")
@@ -109,10 +113,31 @@ def check_stabilization_gate_json() -> list[str]:
         )
     if data.get("stabilization_artifacts_gate_pass") is not True:
         errors.append("operator_trust: stabilization_artifacts_gate_pass must be true on this branch")
-    next_branch = str(data.get("next_allowed_branch") or "")
-    if "ci-nonblocking-failures" not in next_branch:
+    matrix_commit = str(data.get("pytest_full_matrix_commit") or "")
+    last_commit = str(data.get("last_verified_commit") or "")
+    if matrix_commit and last_commit and matrix_commit != last_commit:
         errors.append(
-            "operator_trust: next_allowed_branch must be audit/ci-nonblocking-failures-triage while CI items open"
+            "operator_trust: last_verified_commit must match pytest_full_matrix_commit"
+        )
+    fail_count = data.get("pytest_full_failure_count")
+    if fail_count is not None and not isinstance(fail_count, int):
+        errors.append("operator_trust: pytest_full_failure_count must be an integer when set")
+    ci_pass = data.get("ci_triage_gate_pass")
+    next_step = str(data.get("next_allowed_step") or "")
+    if ci_pass is False and next_step not in ("await_pr19_ci_results", "resolve_pytest_full_failures"):
+        errors.append(
+            "operator_trust: when ci_triage_gate_pass is false, next_allowed_step must be "
+            "await_pr19_ci_results or resolve_pytest_full_failures"
+        )
+    if ci_pass is True and next_step != "operator_rth_validation":
+        errors.append(
+            "operator_trust: when ci_triage_gate_pass is true, next_allowed_step must be operator_rth_validation"
+        )
+    legacy_branch = str(data.get("next_allowed_branch") or "")
+    if legacy_branch == "audit/ci-nonblocking-failures-triage":
+        errors.append(
+            "operator_trust: next_allowed_branch must not self-reference audit/ci-nonblocking-failures-triage "
+            "(use next_allowed_step)"
         )
     blocked = data.get("blocked_branches") or data.get("blocked_branches_until_pass") or []
     if "fix/card-price-conflict-explainability" not in blocked:
@@ -244,7 +269,7 @@ def check_admin_bypass_register() -> list[str]:
     text = _read("docs/ADMIN_BYPASS_REGISTER.md")
     if not text:
         return ["docs/ADMIN_BYPASS_REGISTER.md: missing"]
-    for pr in ("#14", "#15", "#16"):
+    for pr in ("#14", "#15", "#16", "#18"):
         if pr not in text and f"PR {pr[1:]}" not in text:
             errors.append(f"ADMIN_BYPASS_REGISTER: missing entry for PR {pr[1:]}")
     for field in (
@@ -263,11 +288,83 @@ def check_ci_triage_report() -> list[str]:
     md = _read("reports/ci/ci_nonblocking_failure_triage_2026-06-18.md")
     if not md:
         return ["ci triage md: missing"]
+    if (
+        "pytest-full failure matrix" not in md.lower()
+        and "failure matrix (pytest-full)" not in md.lower()
+        and "pytest_full_failure_matrix" not in md.lower()
+    ):
+        errors.append("ci triage: must include pytest-full failure matrix")
     for check in CI_CHECKS:
         if check not in md.lower():
             errors.append(f"ci triage: must name {check}")
-    if not any(c in md for c in CI_CLASSIFICATIONS):
-        errors.append("ci triage: must classify failures (FIX_NOW / EXTERNAL_SECRET_REQUIRED / …)")
+    if "closure criteria" not in md.lower():
+        errors.append("ci triage: must include Closure criteria per check")
+    for check in CI_CHECKS:
+        section = re.search(
+            rf"^## {re.escape(check)}\s*$\n?(.*?)(?=^## |\Z)",
+            md,
+            re.S | re.I | re.M,
+        )
+        if not section:
+            errors.append(f"ci triage: missing section for {check}")
+            continue
+        body = section.group(1)
+        if not any(c in body for c in CI_CLASSIFICATIONS):
+            errors.append(f"ci triage: {check} missing allowed classification")
+        if "closure criteria" not in body.lower():
+            errors.append(f"ci triage: {check} missing closure criteria")
+    try:
+        triage_json = json.loads(_read("reports/ci/ci_nonblocking_failure_triage_2026-06-18.json") or "{}")
+    except json.JSONDecodeError as e:
+        errors.append(f"ci triage json invalid: {e}")
+    else:
+        for check in CI_CHECKS:
+            row = (triage_json.get("checks") or {}).get(check) or {}
+            if not row.get("classification"):
+                errors.append(f"ci triage json: {check} missing classification")
+            if not row.get("closure_criteria"):
+                errors.append(f"ci triage json: {check} missing closure_criteria")
+        matrix = triage_json.get("pytest_full_failure_matrix") or []
+        if not matrix:
+            errors.append("ci triage json: pytest_full_failure_matrix missing or empty")
+        else:
+            obs_commit = (triage_json.get("github_checks_last_observed") or {}).get("commit")
+            gate_path = _REPO / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json"
+            if gate_path.is_file():
+                gate = json.loads(gate_path.read_text(encoding="utf-8"))
+                gate_commit = gate.get("last_verified_commit")
+                if obs_commit and gate_commit and obs_commit != gate_commit:
+                    errors.append(
+                        "ci triage: github_checks_last_observed.commit must match gate last_verified_commit"
+                    )
+            want = triage_json.get("pytest_full_failure_count")
+            if want is not None:
+                got = sum(int((row or {}).get("number_of_tests") or 0) for row in matrix)
+                if got != want:
+                    errors.append(
+                        f"ci triage json: pytest_full_failure_count {want} != matrix sum {got}"
+                    )
+            blocked = set(
+                (json.loads((_REPO / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json").read_text(encoding="utf-8"))
+                 .get("blocked_branches") or [])
+                if (_REPO / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json").is_file()
+                else []
+            )
+            from tools.check_universality_drift_closure import check_universality_drift_closure
+
+            errors.extend(check_universality_drift_closure())
+            for row in matrix:
+                branch = str((row or {}).get("owner_branch") or "")
+                if branch in blocked and not (row or {}).get("owner_branch_blocked"):
+                    errors.append(
+                        f"ci triage matrix: {row.get('failure_group')} uses blocked branch {branch!r} "
+                        "without owner_branch_blocked: true"
+                    )
+                if branch in blocked and not (row or {}).get("requires_operator_sign_off_for_merge"):
+                    errors.append(
+                        f"ci triage matrix: {row.get('failure_group')} blocked branch {branch!r} "
+                        "requires requires_operator_sign_off_for_merge: true"
+                    )
     return errors
 
 

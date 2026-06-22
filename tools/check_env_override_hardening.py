@@ -2,7 +2,6 @@
 """Inventory and gate high-impact ED_* environment overrides — Phase 3E."""
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path

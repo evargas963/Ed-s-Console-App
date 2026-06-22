@@ -6,7 +6,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -15,12 +14,10 @@ if str(ROOT) not in sys.path:
 from tools.check_operator_trust_governance import (
     check_card_explainability_permission,
     check_operator_trust_governance,
-    check_passive_risk_language,
     check_stabilization_gate_json,
 )
 from verification.operator_trust_rth_validation import (
     build_dry_run_report,
-    capture_runtime_env,
     run_guest_switch_validation,
 )
 
@@ -91,11 +88,41 @@ def test_stabilization_gate_blocks_card_explainability():
         (ROOT / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json").read_text(encoding="utf-8")
     )
     assert gate.get("stabilization_artifacts_gate_pass") is True
+    assert gate.get("ci_triage_gate_pass") is False
     assert gate.get("operator_readiness_gate_pass") is False
     assert gate.get("card_explainability_allowed") is False
     assert "card_explainability_gate_unblocked" not in gate
     assert "fix/card-price-conflict-explainability" in (gate.get("blocked_branches") or [])
-    assert gate.get("next_allowed_branch") == "audit/ci-nonblocking-failures-triage"
+    assert gate.get("next_allowed_step") == "resolve_pytest_full_failures"
+    assert gate.get("next_allowed_branch") != "audit/ci-nonblocking-failures-triage"
+    # Explicit, non-overloaded commit/count semantics (see gate field docs).
+    # Current GitHub CI observation @ 4e252b3 (REMOTE_ENFORCEMENT flake closed, objective-audit restored; product matrix unchanged at 7).
+    assert gate.get("current_ci_verified_commit") == "4e252b3"
+    assert gate.get("current_ci_pytest_full_run") == "27910195029"
+    assert gate.get("current_ci_pytest_full_failure_count") == 7
+    # Product matrix verified at the same proven commit.
+    assert gate.get("pytest_full_matrix_verified_commit") == "4e252b3"
+    assert gate.get("pytest_full_product_matrix_failure_count") == 7
+    # All nine buckets closed to date.
+    assert gate.get("meta_artifact_drift_failure_count") == 0
+    assert gate.get("active_bundle_local_fix_pending_github_proof") is False
+    assert gate.get("calibration_bypass_local_fix_pending_github_proof") is False
+    assert gate.get("et_authority_local_fix_pending_github_proof") is False
+    assert gate.get("anti_pattern_caps_local_fix_pending_github_proof") is False
+    assert gate.get("stack_wire_integrity_local_fix_pending_github_proof") is False
+    assert gate.get("live_bundle_sse_cache_local_fix_pending_github_proof") is False
+    assert gate.get("audit_cand_server_ci_offline_local_fix_pending_github_proof") is False
+    assert gate.get("v2_conformal_tier_c_payload_local_fix_pending_github_proof") is False
+    assert gate.get("remote_enforcement_evidence_live_api_local_fix_pending_github_proof") is False
+    # Artifact sync only — no pending local fix — so expected == observed (7).
+    assert gate.get("expected_after_pending_push") == 7
+    # Governance/external-flake bucket closed; objective-audit restored to PASS at the proven commit.
+    assert gate.get("objective_audit_status") == "pass"
+    assert gate.get("objective_audit_closed_at_commit") == "4e252b3"
+    # Legacy fields must stay honest to the cited run, not a prediction.
+    assert gate.get("pytest_full_failure_count") == gate.get("current_ci_pytest_full_failure_count")
+    assert gate.get("last_verified_commit") == gate.get("current_ci_verified_commit")
+    assert gate.get("pytest_full_matrix_commit") == gate.get("last_verified_commit")
 
 
 def test_gate_no_contradiction_unblocked_while_not_allowed():
@@ -119,11 +146,26 @@ def test_gate_artifacts_pass_does_not_allow_explainability():
     assert gate["card_explainability_allowed"] is False
 
 
-def test_next_allowed_branch_is_ci_triage():
+def test_next_allowed_step_resolves_pytest_full():
     gate = json.loads(
         (ROOT / "governance/OPERATOR_TRUST_STABILIZATION_GATE.json").read_text(encoding="utf-8")
     )
-    assert "ci-nonblocking-failures" in gate.get("next_allowed_branch", "")
+    assert gate.get("next_allowed_step") == "resolve_pytest_full_failures"
+    assert gate.get("ci_triage_gate_pass") is False
+
+
+def test_ci_triage_has_classifications_and_closure_criteria():
+    triage = (ROOT / "reports/ci/ci_nonblocking_failure_triage_2026-06-18.md").read_text(encoding="utf-8")
+    assert "failed as before" not in triage.lower()
+    for check in ("hardening", "pytest-full", "schwab-csv-first"):
+        assert check in triage.lower()
+    assert "FIX_NOW" in triage or "FIX_NOW" in triage.upper()
+    assert (
+        "pytest-full failure matrix" in triage.lower()
+        or "failure matrix (pytest-full)" in triage.lower()
+        or "pytest_full_failure_matrix" in triage.lower()
+    )
+    assert "closure criteria" in triage.lower()
 
 
 def test_pr_completion_audit_mentions_pr16_incomplete():

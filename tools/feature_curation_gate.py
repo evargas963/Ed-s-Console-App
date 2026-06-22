@@ -43,7 +43,6 @@ import statistics
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root on path
 
@@ -54,7 +53,40 @@ from scipy.spatial.distance import squareform
 from scipy.stats import spearmanr
 
 from db import DB_PATH
-from governed_stack_contract import FEATURE_ABLATION_ML_STACK_LAYERS, FULL_STACK_MODEL_LAYERS
+from governed_stack_contract import FULL_STACK_MODEL_LAYERS
+
+_UNSET: object = object()
+
+
+def enriched_rows_for_spec_build(
+    enriched: list[dict] | None,
+) -> list[dict] | None:
+    """Preserve ``[]`` (empty CI/DB sample) vs ``None`` (unsampled) for knockout fidelity."""
+    if enriched is None:
+        return None
+    return enriched
+
+
+def resolve_ablation_enriched_row_sample(
+    manifest: dict,
+    *,
+    db_path: str | Path | None = None,
+    tickers: list[str] | None = None,
+) -> list[dict] | None:
+    """Row-fidelity sample for knockout resolution — ``None`` if no DB, ``[]`` if schema-only/empty."""
+    dbp = str(db_path if db_path is not None else DB_PATH)
+    if not Path(dbp).is_file():
+        return None
+    return build_ablation_enriched_row_sample(
+        db_path=dbp,
+        manifest=manifest,
+        tickers=tickers,
+    )
+
+
+def ablation_row_fidelity_sample_active(enriched: list[dict] | None) -> bool:
+    """True when enriched rows exist for fidelity-first knockout checks (non-empty sample)."""
+    return bool(enriched)
 
 # Leakage class = the CANONICAL forbidden families from feature_contracts (single source of
 # truth — do NOT maintain a divergent list here; an earlier divergent list missed combined_*,
@@ -100,13 +132,14 @@ def ablation_whole_stack_runnable_specs(
     manifest: dict,
     tickers: list[str] | None = None,
     *,
-    enriched_rows: list[dict] | None = None,
+    enriched_rows: list[dict] | None | object = _UNSET,
 ) -> list[dict]:
     """Specs that will actually score — blank-slate row fidelity when enriched_rows supplied."""
-    if enriched_rows is None and Path(DB_PATH).is_file():
-        enriched_rows = build_ablation_enriched_row_sample(
-            db_path=str(DB_PATH), manifest=manifest, tickers=tickers
-        )
+    if enriched_rows is _UNSET:
+        enriched_rows = resolve_ablation_enriched_row_sample(manifest, tickers=tickers)
+    enriched_rows = enriched_rows_for_spec_build(
+        enriched_rows if isinstance(enriched_rows, list) or enriched_rows is None else None
+    )
     return [
         s
         for s in ablation_whole_stack_feature_cell_specs(
@@ -116,11 +149,25 @@ def ablation_whole_stack_runnable_specs(
     ]
 
 
-def whole_stack_runnable_cell_target(manifest: dict | None = None) -> int:
+def whole_stack_runnable_cell_target(
+    manifest: dict | None = None,
+    *,
+    enriched_rows: list[dict] | None | object = _UNSET,
+    db_path: str | Path | None = None,
+) -> int:
     """Scored-ablation denominator — wire columns present on blank-slate enriched rows only."""
     if manifest is None:
         manifest = load_ablation_manifest()
-    return len(ablation_whole_stack_runnable_specs(manifest))
+    if enriched_rows is _UNSET:
+        enriched_rows = resolve_ablation_enriched_row_sample(manifest, db_path=db_path)
+    enriched_rows = enriched_rows_for_spec_build(
+        enriched_rows if isinstance(enriched_rows, list) or enriched_rows is None else None
+    )
+    return len(
+        ablation_whole_stack_runnable_specs(
+            manifest, enriched_rows=enriched_rows
+        )
+    )
 
 
 def ablation_cell_accounting(
@@ -131,7 +178,11 @@ def ablation_cell_accounting(
 ) -> dict:
     """Catalog vs runnable counts — trustworthy progress/stats denominators (operator binding)."""
     if specs is None:
-        specs = ablation_whole_stack_feature_cell_specs(manifest, enriched_rows=enriched_rows)
+        if enriched_rows is None:
+            enriched_rows = resolve_ablation_enriched_row_sample(manifest)
+        specs = ablation_whole_stack_feature_cell_specs(
+            manifest, enriched_rows=enriched_rows_for_spec_build(enriched_rows)
+        )
     catalog = whole_stack_catalog_cell_target(manifest)
     runnable = sum(1 for s in specs if s.get("group_columns"))
     skip_by_reason: dict[str, int] = {}
@@ -3174,7 +3225,6 @@ def _prepare_xgb_holdout(
         load_data,
     )
     from arch_competition.stack_bundle_eval_v1 import (
-        drop_ablated_xgb_engineered_columns,
         null_snapshot_dataframe_for_drop_groups,
     )
 
@@ -4311,7 +4361,6 @@ def _holdout_multiclass_log_loss_xgb(prepared: dict) -> tuple[float | None, int]
 
 
 def _holdout_multiclass_log_loss_lstm(prepared: dict) -> tuple[float | None, int]:
-    import numpy as np
     from sklearn.metrics import log_loss
 
     if prepared.get("status") != "ok":
@@ -4971,8 +5020,6 @@ def build_survivor_retrain_monitor_report(
     tickers: list[str] | None = None,
 ) -> str:
     """Human-readable O-56 retrain status for periodic operator/agent monitoring."""
-    import subprocess
-    import sys
     from datetime import datetime, timezone
 
     from active_bundle_contract import check_active_bundle_complete, scheduler_active_root

@@ -1,7 +1,6 @@
 """Operator-trust backtrack audit builders (PR #11–#16 reconciliation)."""
 from __future__ import annotations
 
-from datetime import date
 from typing import Any
 
 PR_COMPLETION_ROWS: list[dict[str, Any]] = [

@@ -196,6 +196,18 @@ def test_preflight_buckets_tickers_with_no_rows_separately(tmp_path):
     assert result["tickers_failed"] == {}
 
 
+def test_db_training_fingerprint_fail_closed_when_table_missing(tmp_path):
+    """Empty console DB files are in-scope: governed empty fingerprint, not OperationalError."""
+    from training_cache import db_training_fingerprint
+
+    db = tmp_path / "touch.db"
+    db.write_bytes(b"")
+    fp = db_training_fingerprint(str(db), "SPY")
+    assert fp["row_count"] == 0
+    assert fp["schema_absent"] is True
+    assert fp["table"] == "snapshots_1m_normalized"
+
+
 def test_preflight_returns_structured_error_when_table_missing(tmp_path):
     """If snapshots_1m_normalized doesn't exist, preflight should mark every
     ticker as sql_error (so wire-in caller can decide whether to abort)."""

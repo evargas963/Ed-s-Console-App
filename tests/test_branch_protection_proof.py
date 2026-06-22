@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 from tools.check_branch_protection_proof import (
-    build_branch_protection_proof,
     run_branch_protection_proof_check,
 )
 

@@ -237,27 +237,35 @@ def test_rth_open_mins_constant_exists_and_used():
 def test_spread_semantic_stamped_on_fast_quote_and_tier_a():
     import server
 
-    with patch.object(server, "get_client") as gc:
+    # Both quote paths now fetch via get_client() + _safe_get_quote_with_retry()
+    # (production refactor). Patch both, in one shared context covering both asserts, so
+    # no real Schwab/OAuth call occurs offline. The fraction-vs-dollar distinction comes
+    # from the two functions (_build_rest_fast_quote_payload stamps "fraction";
+    # _tier_a_live_state_dict hardcodes "dollar"), not from two quote shapes.
+    _quote = MagicMock(
+        status_code=200,
+        json=lambda: {
+            "SPY": {
+                "quote": {
+                    "lastPrice": 100.0,
+                    "bidPrice": 99.9,
+                    "askPrice": 100.1,
+                    "mark": 100.0,
+                    "totalVolume": 1000,
+                }
+            }
+        },
+    )
+    with patch.object(server, "get_client") as gc, \
+         patch.object(server, "_safe_get_quote_with_retry") as sgq:
         gc.return_value = MagicMock()
-        with patch.object(server, "safe_get_quote") as sgq:
-            sgq.return_value = MagicMock(
-                status_code=200,
-                json=lambda: {
-                    "SPY": {
-                        "lastPrice": 100.0,
-                        "bidPrice": 99.9,
-                        "askPrice": 100.1,
-                        "totalVolume": 1000,
-                    }
-                },
-            )
-            payload = server._build_rest_fast_quote_payload("SPY", "test")
-    assert payload.get("spread_semantic") == "fraction"
+        sgq.return_value = _quote
 
-    with patch.object(server, "_build_rest_fast_quote_payload") as br:
-        br.return_value = {"spread": 0.05, "spread_pts": 0.05}
+        payload = server._build_rest_fast_quote_payload("SPY", "test")
+        assert payload.get("spread_semantic") == "fraction"
+
         tier = server._tier_a_live_state_dict("SPY", None)
-    assert tier.get("spread_semantic") == "dollar"
+        assert tier.get("spread_semantic") == "dollar"
 
 
 # FIND-SERVERPY-6
@@ -388,10 +396,15 @@ def test_tradeable_score_calls_liquidity_engine_authority():
 
 
 # FIND-SERVERPY-19
-def test_debug_prediction_returns_populated_distribution():
+def test_debug_prediction_returns_populated_distribution(monkeypatch):
     from fastapi.testclient import TestClient
 
     import server
+
+    # /api/debug/prediction is fail-closed gated (R-011): it 404s unless
+    # ED_ALLOW_DEBUG_ENDPOINTS is enabled. Enable it for this test only
+    # (monkeypatch auto-reverts) — the production gate is unchanged.
+    monkeypatch.setenv("ED_ALLOW_DEBUG_ENDPOINTS", "1")
 
     client = TestClient(server.app)
     with patch.object(server, "_fetch_state") as fs:

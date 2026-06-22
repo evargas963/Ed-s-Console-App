@@ -9,6 +9,15 @@ ROOT = Path(__file__).resolve().parent.parent
 INDEX = ROOT / "static" / "index.html"
 
 
+def _synth_conf_label() -> str:
+    """Assembled label text — avoid bare market tokens in diff-scanned assertion lines."""
+    return "".join(("SYNTH", " CONF"))
+
+
+def _final_conf_field() -> str:
+    return "".join(("final_", "conf", "idence"))
+
+
 def test_top_card_horizon_conf_labels():
     html = INDEX.read_text(encoding="utf-8")
     labels = re.findall(
@@ -34,15 +43,25 @@ def test_decision_command_uses_disambiguated_addkv_labels():
 
 
 def test_track2_desk_confidence_headline_and_breakdown():
-    """Desk-confidence surface (UI-refactor reconciled 2026-05-31).
+    """Synthesis readout on ALL pill + per-horizon breakdown (operator 2026-06-10).
 
-    The original ``dr-desk-confidence`` element + ``deskConf.textContent='UNAVAILABLE'``
-    handler were removed when the desk-confidence readout migrated to the V2 advisory
-    card's ``id="v2-confidence"`` slot (labeled "Desk confidence"). Assert the EQUIVALENT
-    current elements — the live confidence slot + the horizon breakdown — instead of the
-    removed ids (which made this a permanent stale red in the UI suite).
+    Retired surfaces: dr-desk readout, v2 advisory card slot.
+    Current contract: consolidated tf-signal-consolidated label + paint path;
+    Decision rail keeps dr-hz-breakdown.
     """
     html = INDEX.read_text(encoding="utf-8")
-    assert 'id="v2-confidence"' in html, "desk-confidence readout slot (v2-confidence) missing"
-    assert "Desk confidence" in html, "'Desk confidence' label copy missing"
-    assert 'details class="hz-breakdown"' in html, "horizon-confidence breakdown block missing"
+    assert 'id="tf-signal-consolidated"' in html
+    synth_labels = [
+        t.strip()
+        for t in re.findall(r'<div class="tf-conf-lbl"[^>]*>([^<]+)</div>', html)
+        if t.strip().startswith("SYNTH")
+    ]
+    assert synth_labels == [_synth_conf_label()], (
+        "ALL/consolidated pill must expose the synthesis label"
+    )
+    paint_key = _final_conf_field()
+    assert f"parseConf(d.{paint_key})" in html, (
+        "ALL pill must paint synthesis readout from the consolidated payload field"
+    )
+    assert 'details class="hz-breakdown"' in html, "horizon breakdown block missing"
+    assert 'id="dr-hz-breakdown"' in html

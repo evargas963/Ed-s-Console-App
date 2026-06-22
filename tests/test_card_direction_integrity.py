@@ -203,7 +203,7 @@ def test_all_plan_blocked_while_horizon_long_not_ui_bug():
 
 
 def test_stale_feature_timestamp_classification():
-    from verification.card_signal_fidelity import CLASS_STALE_FEATURE_RISK, classify_stale_feature_risk
+    from verification.card_signal_fidelity import classify_stale_feature_risk
 
     assert classify_stale_feature_risk(data_age_seconds=300, payload_frozen=False) is True
     assert classify_stale_feature_risk(data_age_seconds=30, payload_frozen=True) is True

@@ -25,6 +25,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install ruff bandit pip-audit
           python -m pip install -r requirements.txt
+          python -m pip install -r requirements-dev.txt
 
       # --- BLOCKING: correctness lint (undefined names, unused imports, syntax) — all at 0 today ---
       - name: ruff (correctness rules — blocking)

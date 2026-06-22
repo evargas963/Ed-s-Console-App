@@ -280,6 +280,24 @@ def _resolve_console_db_path() -> Path:
 
 DB_PATH = _resolve_console_db_path()
 
+
+def ensure_console_db_training_schema(db_path: Path | None = None) -> Path:
+    """Idempotent: console DB must expose ``snapshots_1m_normalized`` for training fingerprints.
+
+    Used by pytest, CI objective-audit, and governance live-drift reads. An empty or
+    schema-less console DB file is in-scope — bootstrap via ``EdDB`` rather than
+    surfacing raw ``OperationalError`` from ad-hoc SQL.
+    """
+    path = Path(db_path if db_path is not None else DB_PATH).resolve()
+    if path.is_file():
+        with sqlite3.connect(str(path)) as conn:
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='snapshots_1m_normalized'"
+            ).fetchone():
+                return path
+    EdDB(path)
+    return path
+
 # ── ET timezone (DST-aware; see time_et.py) ───────────────────────────────────
 from time_et import now_et  # noqa: E402  — re-export for legacy `from db import now_et`
 

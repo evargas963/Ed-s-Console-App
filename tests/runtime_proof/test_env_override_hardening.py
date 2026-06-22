@@ -1,7 +1,6 @@
 """Runtime proof — ED_* env override inventory and production gate."""
 from __future__ import annotations
 
-import pytest
 
 from tools.check_env_override_hardening import (
     ENV_OVERRIDE_INVENTORY,

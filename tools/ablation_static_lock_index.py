@@ -18,6 +18,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MANIFEST_PATH = REPO_ROOT / "governance" / "artifacts" / "feature_ablation_manifest_leaf.json"
 DEFAULT_DB_PATH = REPO_ROOT / "data" / "ed_console.db"
 
+
+def enriched_rows_for_spec_build(
+    enriched: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]] | None:
+    """Re-export — canonical definition in tools.feature_curation_gate."""
+    from tools.feature_curation_gate import enriched_rows_for_spec_build as _f
+
+    return _f(enriched)
+
+
 _lock = threading.Lock()
 _index: AblationStaticLockIndex | None = None
 _build_count = 0
@@ -100,8 +110,9 @@ def _build_index(
     try:
         from tools.feature_curation_gate import (
             ablation_whole_stack_feature_cell_specs,
-            build_ablation_enriched_row_sample,
+            enriched_rows_for_spec_build,
             load_ablation_manifest,
+            resolve_ablation_enriched_row_sample,
         )
     except Exception as exc:  # pragma: no cover - defensive
         return AblationStaticLockIndex(
@@ -149,18 +160,18 @@ def _build_index(
 
     if db_resolved is not None:
         try:
-            enriched = build_ablation_enriched_row_sample(
+            enriched = resolve_ablation_enriched_row_sample(
+                manifest,
                 db_path=str(db_resolved),
-                manifest=manifest,
             )
         except Exception as exc:  # pragma: no cover - defensive
-            spec_build_error = f"build_ablation_enriched_row_sample: {exc}"
+            spec_build_error = f"resolve_ablation_enriched_row_sample: {exc}"
 
     if spec_build_error is None:
         try:
             specs = ablation_whole_stack_feature_cell_specs(
                 manifest,
-                enriched_rows=enriched or None,
+                enriched_rows=enriched_rows_for_spec_build(enriched),
             )
         except Exception as exc:  # pragma: no cover - defensive
             spec_build_error = str(exc)

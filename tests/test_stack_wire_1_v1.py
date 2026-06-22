@@ -21,22 +21,34 @@ def test_decision_generation_id_always_present():
     assert failed["decision_generation_skipped"] is True
     assert failed["decision_tick_kind"] == "signals_engine_error"
 
-    ok = {"signals_engine_failed": False}
-    stamp_decision_bundle(ok)
-    assert isinstance(ok["decision_generation_id"], int)
-    assert ok["decision_generation_id"] > 0
-    assert isinstance(ok["decision_timestamp_utc"], float)
-    assert ok["decision_generation_skipped"] is False
-    assert ok["decision_tick_kind"] == "live"
+    # Fail-closed contract: a bare dict missing ticker/price/release is blocked by the
+    # trade-impacting gate (added after this test was written) — no decision_generation_id is
+    # minted. Positive path (valid bundle + passing gates -> int decision_generation_id, tick
+    # kind "live") is covered by
+    # tests/test_batch2_signals_engine_error.py::test_stamp_decision_bundle_increments_on_success.
+    blocked = {"signals_engine_failed": False}
+    stamp_decision_bundle(blocked)
+    assert blocked["decision_generation_id"] is None
+    assert blocked["decision_generation_skipped"] is True
+    assert blocked["decision_gate_blocked"] is True
+    reasons = blocked.get("decision_gate_reasons") or []
+    assert "missing_ticker" in reasons
+    assert "missing_price" in reasons
+    assert blocked["decision_tick_kind"] == "market_quarantine"
 
 
 def test_server_build_ts_always_set():
     import server
 
-    src = inspect.getsource(server._fetch_state)
-    stamp_idx = src.rindex("stamp_decision_bundle(ms_dict)")
-    ts_idx = src.rindex('ms_dict["_server_build_ts"] = time.time()')
-    assert stamp_idx < ts_idx
+    # Current invariant (stamp call moved upstream of _fetch_state): _fetch_state stamps the
+    # build timestamp on the bundle it returns, and the ms_dict decision bundle is stamped
+    # through the canonical stamper with an explicit route in the server path. We assert the
+    # stable current shape, not the old single-function source ordering.
+    fetch_src = inspect.getsource(server._fetch_state)
+    assert 'ms_dict["_server_build_ts"] = time.time()' in fetch_src
+
+    server_src = inspect.getsource(server)
+    assert "stamp_decision_bundle(ms_dict, route=route)" in server_src
 
 
 def test_stack_runtime_fields_propagate():

@@ -4,15 +4,62 @@
 
 **Purpose:** No passive **known remaining risks**. Every item has status, owner branch, and **Do not close until**.
 
-**Allowed statuses only:** `OPEN_BLOCKING` | `NEEDS_RTH_VALIDATION_WITH_HARNESS` | `FIXED_IN_THIS_BRANCH` | `COMPLETION_BRANCH_REQUIRED` | `ACCEPTED_WITH_EVIDENCE` | `CLOSED_WITH_EVIDENCE`
+**Allowed statuses only:** `OPEN_BLOCKING` | `NEEDS_RTH_VALIDATION_WITH_HARNESS` | `FIXED_IN_THIS_BRANCH` | `FIXED_IN_THIS_BRANCH_AWAITING_GITHUB_CI` | `COMPLETION_BRANCH_REQUIRED` | `ACCEPTED_WITH_EVIDENCE` | `CLOSED_WITH_EVIDENCE`
 
 **Gate semantics (machine-readable — `governance/OPERATOR_TRUST_STABILIZATION_GATE.json`):**
 - `stabilization_artifacts_gate_pass: true` — harnesses, checker, and closure docs exist on disk.
+- `ci_triage_gate_pass: false` — PR #19 CI fixes landed; awaiting GitHub green.
 - `operator_readiness_gate_pass: false` — CI triage + RTH proof not complete.
 - `card_explainability_allowed: false` — **do not** start `fix/card-price-conflict-explainability`.
-- **Next allowed branch:** `audit/ci-nonblocking-failures-triage` (then operator RTH validation).
+- **Next allowed step:** `resolve_pytest_full_failures` — pytest-full **25-failure** matrix expected @ `bc2e8a9` (29 @ `704b4b9` GitHub run `27851943230`).
 
-**Planned sequence:** Merge stabilization → `audit/ci-nonblocking-failures-triage` → operator RTH validation → `fix/card-price-conflict-explainability` (only when `card_explainability_allowed: true`)
+**Planned sequence:** Merge stabilization (PR #18 ✅) → CI triage (PR #19, awaiting pytest-full) → operator RTH validation → `fix/card-price-conflict-explainability` (only when `card_explainability_allowed: true`)
+
+---
+
+### ABLATION_GRID_RUNNABLE_ACCOUNTING_CI
+
+| Field | Value |
+|-------|-------|
+| **Status** | `CLOSED_WITH_EVIDENCE` |
+| **Source PR / report** | `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md`; GitHub @ `704b4b9` runs `27851943226` (objective-audit) + `27851943230` (pytest-full) |
+| **Why it matters** | objective-audit blocks merge; runnable accounting must agree on CI empty DB |
+| **Operator risk** | False ablation readiness if denominators diverge |
+| **Evidence currently available** | Fix @ `704b4b9`: `resolve_ablation_enriched_row_sample` + `enriched_rows_for_spec_build`; GitHub objective-audit PASS; 4 ablation matrix tests green in pytest-full |
+| **Evidence still needed** | None — bucket closed |
+| **Fix now or harness now** | Landed @ `704b4b9` on `audit/ci-nonblocking-failures-triage` |
+| **Owner branch** | `audit/ci-nonblocking-failures-triage` |
+| **Blocking level** | Closed |
+| **Do not close until** | Met @ `704b4b9` |
+
+---
+
+### MEGA_INVENTORY_CONTRACT_LOCK_CI
+
+| Field | Value |
+|-------|-------|
+| **Status** | `CLOSED_WITH_EVIDENCE` (local @ `bc2e8a9`; GitHub pytest-full not yet observed) |
+| **Source PR / report** | `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md`; commit `bc2e8a9` |
+| **Why it matters** | mega1–mega4 inventory gate blocks merge when production defs lack rows |
+| **Operator risk** | Untraced market-field derivations in new functions |
+| **Evidence currently available** | Fix @ `bc2e8a9`: `sync_traceable_inventory_to_ast` + NONE stubs; row counts 383/211/148/1014; local mega audit **35/35** |
+| **Evidence still needed** | GitHub pytest-full @ `bc2e8a9` confirms 4 mega tests green in full suite |
+| **Fix now or harness now** | Landed @ `bc2e8a9` on `audit/ci-nonblocking-failures-triage` |
+| **Owner branch** | `fix/mega-inventory-sync` |
+| **Blocking level** | Closed locally — awaiting GitHub pytest-full observation |
+| **Do not close until** | GitHub pytest-full @ `bc2e8a9` shows mega inventory tests green |
+
+---
+
+### OBJECTIVE_AUDIT_CI
+
+| Field | Value |
+|-------|-------|
+| **Status** | `CLOSED_WITH_EVIDENCE` |
+| **Source PR / report** | GitHub run `27851943226` @ `704b4b9` |
+| **Why it matters** | Repo-wide static + situational runtime gate for merge |
+| **Evidence currently available** | objective-audit PASS push + pull_request @ `704b4b9` |
+| **Do not close until** | Met @ `704b4b9` |
 
 ---
 
@@ -71,16 +118,16 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `OPEN_BLOCKING` |
-| **Source PR / report** | PRs #14–#16 merges; `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` |
-| **Why it matters** | Only objective-audit trusted — repo health degraded |
+| **Status** | `OPEN_BLOCKING` (partial — objective-audit + hardening + schwab-csv-first closed @ `704b4b9`) |
+| **Source PR / report** | `audit/ci-nonblocking-failures-triage`; `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` |
+| **Why it matters** | pytest-full is merge gate; 25 failures expected @ `bc2e8a9` (29 @ `704b4b9` GitHub) |
 | **Operator risk** | Regressions hide in red checks |
-| **Evidence currently available** | CI triage report with classifications |
-| **Evidence still needed** | Green runs or `ACCEPTED_WITH_EVIDENCE` per check |
-| **Fix now or harness now** | Triage in stabilization; fix branch next |
+| **Evidence currently available** | GitHub @ `704b4b9`: pytest-full `29 failed`; local @ `bc2e8a9`: MEGA cleared (35/35 mega audit) |
+| **Evidence still needed** | GitHub PR #19: `pytest-full` green OR operator sign-off on all open matrix rows |
+| **Fix now or harness now** | Next bucket: `ACTIVE_BUNDLE_ENCODER_LAYOUT` (3 tests) |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
-| **Blocking level** | High before long feature work |
-| **Do not close until** | Each check has FIX_NOW or accepted reason |
+| **Blocking level** | High until CI green on GitHub |
+| **Do not close until** | `pytest-full` green on GitHub PR #19 OR operator-signed acceptance of all **25** open matrix rows @ `bc2e8a9` |
 
 ---
 
@@ -88,16 +135,16 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `OPEN_BLOCKING` |
-| **Source PR / report** | CI triage 2026-06-18 |
+| **Status** | `CLOSED_WITH_EVIDENCE` |
+| **Source PR / report** | CI triage 2026-06-19 — ruff F401 + openpyxl in hardening |
 | **Why it matters** | Institutional locks may drift |
 | **Operator risk** | Silent rule regression |
-| **Evidence currently available** | `gh pr checks` failures |
-| **Evidence still needed** | Root cause + green or accepted |
-| **Fix now or harness now** | Classified in CI triage |
+| **Evidence currently available** | GitHub PR #19 @ `6e3157c`: hardening pass |
+| **Evidence still needed** | None — green on PR branch |
+| **Fix now or harness now** | `hardening.yml` installs `requirements-dev.txt` |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
 | **Blocking level** | Medium |
-| **Do not close until** | `hardening` green or `PRE_EXISTING_AND_ACCEPTED_WITH_REASON` |
+| **Do not close until** | `hardening` green on GitHub PR #19 merge to `main` (met @ `6e3157c`) |
 
 ---
 
@@ -106,15 +153,15 @@
 | Field | Value |
 |-------|-------|
 | **Status** | `OPEN_BLOCKING` |
-| **Source PR / report** | CI triage 2026-06-18 |
-| **Why it matters** | Full suite catches cone gaps |
-| **Operator risk** | Production-only test failures |
-| **Evidence currently available** | CI logs (ModuleNotFoundError schwab, secrets) |
-| **Evidence still needed** | Classified fix path |
-| **Fix now or harness now** | CI triage report |
-| **Owner branch** | `audit/ci-nonblocking-failures-triage` |
-| **Blocking level** | Medium |
-| **Do not close until** | `pytest-full` green or external-secret documented |
+| **Source PR / report** | `reports/ci/ci_nonblocking_failure_triage_2026-06-18.md` — pytest-full failure matrix |
+| **Why it matters** | Full suite catches cone gaps; 25 product matrix failures @ `a72ed54` |
+| **Operator risk** | Regressions hide in uncategorized red check |
+| **Evidence currently available** | GitHub @ `4e252b3` run 27910195029: **7 failed, 3780 passed, 7 skipped** = product matrix only. CLOSED_WITH_EVIDENCE on GitHub: governance meta-artifact pin drift (27 → 25), `ACTIVE_BUNDLE_ENCODER_LAYOUT` (25 → 22), `CALIBRATION_BYPASS_ALLOWLIST` (22 → 20), `ET_AUTHORITY_DAILY_SCOREBOARD` (20 → 18), `ANTI_PATTERN_CAPS_VIOLATIONS` (18 → 17), `STACK_WIRE_INTEGRITY` (17 → 14), `LIVE_BUNDLE_SSE_CACHE` (14 → 11), `AUDIT_CAND_SERVER_CI_OFFLINE` (11 → 9), `V2_CONFORMAL_TIER_C_PAYLOAD` (9 → 7), `REMOTE_ENFORCEMENT_EVIDENCE_LIVE_API` (governance/flake — objective-audit red → green, product matrix unchanged at 7); objective-audit + hardening + schwab-csv-first PASS |
+| **Evidence still needed** | pytest-full green OR operator sign-off on every open product matrix row |
+| **Fix now or harness now** | Next candidate: `ML_PREDICT_STRICT_VERSION` (1) — `test_get_model_version_fail_closed_when_strict_bundle_blocked`; projected 7 → 6 (unproven until GitHub). Alternatives: `SILENT_EXCEPT_PASS_REMAINING` (1), `XGB_CONFLUENCE_SNAPSHOT_PARITY` (1). `UI_*` contract-locked — do not start |
+| **Owner branch** | `audit/ci-nonblocking-failures-triage` (FIX_NOW); triage-owned groups in `ci_nonblocking_failure_triage_2026-06-18.json` |
+| **Blocking level** | High — blocks PR #19 merge |
+| **Do not close until** | pytest-full green on GitHub PR #19 OR operator-signed acceptance of all **25** open product matrix rows @ `a72ed54` |
 
 ---
 
@@ -122,16 +169,17 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | `OPEN_BLOCKING` |
-| **Source PR / report** | CI triage 2026-06-18 |
-| **Why it matters** | Schwab diff-emission gate for market fields |
-| **Operator risk** | New market reads without register row |
-| **Evidence currently available** | schwab-csv-first workflow failures |
-| **Evidence still needed** | Per-failure disposition |
-| **Fix now or harness now** | CI triage |
+| **Status** | `CLOSED_WITH_EVIDENCE` @ `741091b` |
+| **Also tracked as** | `SCHWAB_CSV_FIRST_CI_MIXED_OR_FAILING_NON_BLOCKING` |
+| **Source PR / report** | GitHub PR runs `27870946980` + push `27870946302` @ `741091b` |
+| **Why it matters** | Merge gate is `pull_request` workflow; push-only pass is not merge sign-off |
+| **Operator risk** | New market reads ship without V4 register row |
+| **Evidence currently available** | PR path red @ `a72ed54` run `27857853589` (35 mega-inventory false positives); fixed @ `741091b`; both PR + push green |
+| **Evidence still needed** | None — schwab-csv-first closed @ `741091b` |
+| **Fix now or harness now** | Landed @ `741091b`: exclude `governance/megaN_traceable_inventory.py` from diff-emission scan |
 | **Owner branch** | `audit/ci-nonblocking-failures-triage` |
-| **Blocking level** | Medium |
-| **Do not close until** | Green or `EXTERNAL_SECRET_REQUIRED` with evidence |
+| **Blocking level** | Closed |
+| **Do not close until** | Met @ `741091b` |
 
 ---
 

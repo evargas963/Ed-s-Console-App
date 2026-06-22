@@ -39,3 +39,15 @@
 | **Risk accepted** | `LIVE_GUEST_SLA_NOT_PROVEN` left without harness at merge — **process miss** |
 | **Follow-up branch** | `stabilize/operator-trust-backtrack` |
 | **Closure criteria** | `tools/run_rth_guest_switch_validation.py` + RTH run PASS evidence |
+
+## PR #18 — Operator-trust stabilization backtrack
+
+| Field | Value |
+|-------|-------|
+| **PR number** | 18 |
+| **Checks failing** | hardening, pytest-full, schwab-csv-first (mixed) |
+| **Required check status** | objective-audit PASS |
+| **Reason merge proceeded** | Stabilization mechanics (harnesses + checker + gate); objective-audit green |
+| **Risk accepted** | CI checks red/mixed — fixes required in `audit/ci-nonblocking-failures-triage` |
+| **Follow-up branch** | `audit/ci-nonblocking-failures-triage` |
+| **Closure criteria** | Each CI check `FIXED_NOW` verified green on GitHub `main` |

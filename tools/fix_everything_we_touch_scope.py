@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CACHE_PATH = REPO_ROOT / ".cursor" / "cache" / "fix_everything_we_touch_cache.json"

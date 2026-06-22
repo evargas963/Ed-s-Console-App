@@ -117,22 +117,55 @@ def test_run_unified_stack_ml_once_requires_inference_snapshot_v1():
         run_unified_stack_ml_once({"ticker": "SPY"}, "SPY", None, "wait")
 
 
-def test_build_xgb_pre_engineering_snapshot_matches_manual_pipeline():
+def test_build_xgb_pre_engineering_snapshot_mvp_and_overlay_contract():
+    """Builder must preserve MVP map + safe overlay merge (no second manual orchestration)."""
     from features.xgb_model_input import (
+        MVP_LEGACY_KEYS,
         inference_snapshot_v1_to_engineering_snapshot,
-        merge_xgb_fusion_overlay,
     )
-    from ml_data_common import attach_net_gamma_prev_for_dgex
-    from ml_train import DB_PATH as _ML_DB
+    from ml_predict import build_xgb_pre_engineering_snapshot_for_tick
+
+    snap = _minimal_valid_inference_v1()
+    overlay = {"et_hour": 10, "et_minute": 30, "pred_1c_up_prob": 0.4}
+    built = build_xgb_pre_engineering_snapshot_for_tick(snap, overlay)
+    base = inference_snapshot_v1_to_engineering_snapshot(snap)
+
+    for key in MVP_LEGACY_KEYS:
+        assert built[key] == base[key], f"MVP field drift on {key!r}"
+    assert built["ticker"] == base["ticker"]
+    assert built["ts_utc"] == base["ts_utc"]
+    assert built["et_hour"] == 10
+    assert built["et_minute"] == 30
+    assert built["pred_1c_up_prob"] == 0.4
+
+
+def test_build_xgb_pre_engineering_snapshot_attaches_confluence_fields():
+    """Production builder attaches all cf_* fields; thin history fail-closes to 0.0."""
+    from lstm_data import CONFLUENCE_FEATURES
     from ml_predict import build_xgb_pre_engineering_snapshot_for_tick
 
     snap = _minimal_valid_inference_v1()
     overlay = {"et_hour": 10, "et_minute": 30}
     built = build_xgb_pre_engineering_snapshot_for_tick(snap, overlay)
-    base = inference_snapshot_v1_to_engineering_snapshot(snap)
-    merged = merge_xgb_fusion_overlay(base, overlay)
-    manual = attach_net_gamma_prev_for_dgex(merged, _ML_DB)
-    assert built == manual
+
+    for cf in CONFLUENCE_FEATURES:
+        assert cf in built, f"missing confluence field {cf!r}"
+        assert built[cf] == 0.0, f"thin-history fail-closed expected 0.0 for {cf!r}"
+
+
+def test_build_xgb_pre_engineering_snapshot_net_gamma_prev_contract(monkeypatch):
+    """Builder delegates net_gamma_prev attach for ΔGEX support."""
+    from ml_predict import build_xgb_pre_engineering_snapshot_for_tick
+
+    snap = _minimal_valid_inference_v1()
+    overlay = {"et_hour": 10, "et_minute": 30}
+
+    monkeypatch.setattr(
+        "ml_data_common.fetch_prior_net_gamma",
+        lambda _ticker, _ts, _db_path: 123.0,
+    )
+    built = build_xgb_pre_engineering_snapshot_for_tick(snap, overlay)
+    assert built["net_gamma_prev"] == 123.0
 
 
 def test_predict_xgb_pre_engineering_snapshot_matches_inline(monkeypatch):

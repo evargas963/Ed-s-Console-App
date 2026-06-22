@@ -20,7 +20,6 @@ _PRODUCTION_ROUTE = "server._fetch_state"
 
 
 def test_decision_id_is_uuid_hex_and_unique(release_ready):
-    from decision_record import new_decision_id
     from live_decision_bundle import stamp_decision_bundle
 
     base = {"ticker": "SPY", "spot": 500.0, "call_signal": "wait", "validation_summary": "ok"}
@@ -33,7 +32,6 @@ def test_decision_id_is_uuid_hex_and_unique(release_ready):
 
 def test_missing_release_blocks_decision_emission(monkeypatch):
     monkeypatch.delenv("ED_BUILD_GENERATION", raising=False)
-    from release_object import _cached_release
     import release_object as ro
 
     ro._cached_release = None

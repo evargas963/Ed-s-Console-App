@@ -367,6 +367,24 @@ CAPS_LINE_ALLOWLIST: tuple[tuple[str, int | str, str, str], ...] = (
     ("calibration/v2_advisory_backfill.py", "*", "SETDEFAULT", "reconstructed Tier C ms dict setdefault for optional blocks"),
     ("fusion_contract.py", "*", "GETATTR_DEFAULT", "duck-typing on fusion + CanonicalForecast objects (FusionOutput.available, CanonicalForecast.provenance); not a silent-default fabrication"),
     ("numeric_contract.py", "*", "GETATTR_DEFAULT", "duck-typing on base-model output objects (prob_up/prob_down/prob_flat, dominant_class/dominant_dir); not a silent-default fabrication"),
+    # ANTI_PATTERN_CAPS_VIOLATIONS bucket — exact line+variant exemptions for reviewed
+    # non-market-leaf hits (no whole-file prefix; any future hit on another line/variant
+    # in these files is still caught). Reasons state the reviewed category.
+    ("decision_record.py", 305, "IF_TRUTHY_ELSE", "explicit fail-closed no-payload result"),
+    ("decision_record.py", 375, "IF_TRUTHY_ELSE", "explicit fail-closed no-payload result"),
+    ("money_path_ticker_tiers.py", 66, "GET_WITH_DEFAULT", "env config only"),
+    ("override_registry.py", 85, "IF_TRUTHY_ELSE", "SQL COUNT(*) aggregate coercion"),
+    ("release_object.py", 35, "GET_WITH_DEFAULT", "env config only"),
+    ("release_object.py", 106, "GET_WITH_DEFAULT", "env config only"),
+    ("release_object.py", 107, "GET_WITH_DEFAULT", "env config only"),
+    ("scheduler_user_tickers.py", 60, "GET_WITH_DEFAULT", "env config only"),
+    ("schwab_client.py", 51, "GETATTR_DEFAULT", "constant base URL only"),
+    ("schwab_client.py", 293, "GET_WITH_DEFAULT", "OAuth/config timeout only"),
+    ("schwab_client.py", 371, "GET_OR_DEFAULT", "parse_qs indexing idiom only"),
+    ("schwab_client.py", 372, "GET_OR_DEFAULT", "parse_qs indexing idiom only"),
+    ("schwab_client.py", 403, "GET_WITH_DEFAULT", "OAuth/config timeout only"),
+    ("timing_probe2.py", 23, "GET_WITH_DEFAULT", "diagnostic probe display fallback"),
+    ("trade_impacting_gate.py", 218, "GET_WITH_DEFAULT", "env config only"),
 )
 
 

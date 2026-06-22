@@ -77,6 +77,23 @@ def test_governance_artifact_bytes_helper_lf_only():
     assert _governance_artifact_bytes(p) == git_bytes
 
 
+def test_objective_audit_bootstraps_empty_console_db(tmp_path, monkeypatch):
+    """FIX_NOW: empty ED_CONSOLE_DB is in-scope for --objective-audit (schema bootstrap)."""
+    import sqlite3
+
+    from db import ensure_console_db_training_schema
+
+    db = tmp_path / "empty_console.db"
+    db.write_bytes(b"")
+    monkeypatch.setenv("ED_CONSOLE_DB", str(db))
+    monkeypatch.setenv("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
+    ensure_console_db_training_schema(db)
+    with sqlite3.connect(str(db)) as conn:
+        assert conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='snapshots_1m_normalized'"
+        ).fetchone()
+
+
 def test_objective_audit_does_not_mutate_governance_artifacts():
     """enforce_all_rules --objective-audit is check-only for manifest-tracked JSON."""
     before = {rel: _sha256_file(REPO / rel) for rel in GOVERNANCE_ARTIFACT_PATHS}

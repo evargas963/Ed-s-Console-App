@@ -14,6 +14,7 @@ from arch_competition.governance_visibility import (
     build_governance_panel_payload,
     is_governance_ui_actions_enabled,
 )
+from arch_competition.live_drift_monitoring import LIVE_DRIFT_MONITORING_SCHEMA_VERSION
 from arch_competition.manual_control import MANUAL_PROMOTE_CASCADE_INTENT
 
 
@@ -119,6 +120,18 @@ def _minimal_governed_files(model_dir: Path, *, cascade_ok: bool = True):
         + "\n",
         encoding="utf-8",
     )
+
+
+def test_build_governance_panel_live_drift_with_minimal_console_db(tmp_path: Path):
+    """CI/hermetic: live-drift attach must not require operator production DB rows."""
+    from db import EdDB
+
+    db_path = tmp_path / "gov_console.db"
+    EdDB(db_path)
+    _minimal_governed_files(tmp_path, cascade_ok=True)
+    p = build_governance_panel_payload(tmp_path, "1c", "SPY", db_path=db_path)
+    assert p["ok"] is True
+    assert p["live_drift_monitoring"]["schema_version"] == LIVE_DRIFT_MONITORING_SCHEMA_VERSION
 
 
 def test_visibility_panel_reads_governed_fields(tmp_path: Path):

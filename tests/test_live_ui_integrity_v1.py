@@ -808,7 +808,6 @@ def test_special_index_switch_storage_key_in_diag():
     from verification.ui_realtime_transport_audit import (
         enrich_switch_diag_record,
         is_special_index_ticker,
-        ticker_storage_key,
     )
 
     assert is_special_index_ticker("SPX") is True

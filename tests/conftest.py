@@ -54,6 +54,22 @@ def _equal_mh_pool_weights(monkeypatch):
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _ensure_console_db_snapshots_1m_normalized_schema():
+    """Hermetic pytest/CI: governance live-drift reads ``db_training_fingerprint`` on ``DB_PATH``."""
+    from db import ensure_console_db_training_schema
+
+    ensure_console_db_training_schema()
+
+
+@pytest.fixture(autouse=True)
+def _ensure_console_db_schema_before_each_test():
+    """Playwright / early tests may touch ``data/ed_console.db`` without normalized schema."""
+    from db import ensure_console_db_training_schema
+
+    ensure_console_db_training_schema()
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _phase3k_governance_perf_session():
     """Phase 3K — warm ablation static index once; reuse repo-wide static audit in pytest."""
     os.environ["ED_PYTEST_REUSE_STATIC_AUDIT"] = "1"

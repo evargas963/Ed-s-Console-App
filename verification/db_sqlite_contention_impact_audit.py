@@ -383,7 +383,6 @@ def scan_db_configuration(db_path: Optional[Path]) -> dict[str, Any]:
     try:
         from db import (
             SQLITE_BUSY_MAX_RETRIES,
-            configure_sqlite_connection,
         )
 
         cfg["busy_max_retries"] = SQLITE_BUSY_MAX_RETRIES

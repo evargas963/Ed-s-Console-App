@@ -248,3 +248,64 @@ def test_fusion_policy_contract_memo_gatekeeper_section_passes():
     memo = ROOT / "governance/SCHWAB_V4_REVIEW_MEMOS/features/fusion_policy_contract.py.md"
     errs = guard.check_v4_memo_gatekeeper_csv(memo, repo_root=ROOT)
     assert errs == []
+
+
+def test_diff_emission_skips_operator_trust_governance_paths():
+    diff = "\n".join(
+        [
+            "+++ b/tools/check_operator_trust_governance.py",
+            '+        errors.append("operator_trust: next_allowed_branch must be audit/ci-nonblocking-failures-triage while CI items open")',
+            "+++ b/verification/operator_trust_rth_validation.py",
+            '+    ("SPY", "$VIX"),',
+        ]
+    )
+    sites = guard._extract_emission_sites(diff)
+    assert sites == []
+
+
+def test_diff_emission_ignores_english_open_close_without_quoted_keys():
+    diff = "\n".join(
+        [
+            "+++ b/tools/some_helper.py",
+            '+    conn.close()',
+            '+    # items still open for triage',
+        ]
+    )
+    sites = guard._extract_emission_sites(diff)
+    assert sites == []
+
+
+def test_diff_emission_ignores_homonym_catalog_definition():
+    diff = "\n".join(
+        [
+            "+++ b/tools/check_schwab_csv_first.py",
+            '+AMBIGUOUS_MARKET_TOKENS = frozenset({"open", "close", "high", "low", "vix"})',
+        ]
+    )
+    sites = guard._extract_emission_sites(diff)
+    assert sites == []
+
+
+def test_diff_emission_skips_mega_traceable_inventory_paths():
+    diff = "\n".join(
+        [
+            "+++ b/governance/mega1_traceable_inventory.py",
+            '+    Mega1TraceableDerivation("server.py", 2295, "_parse_quote_node_session_fields", "DERIVED", None, ("schwab_client.py:safe_get_quote",), None, "Reads Schwab quote leaves (lastPrice / mark / bid / ask / quoteTime / tradeTime + extended + regular variants) and derives spot."),',
+            "+++ b/governance/mega2_traceable_inventory.py",
+            '+    Mega2TraceableDerivation("math_levels.py", 10, "_resolve_bid_ask_prices", "DERIVED", None, (), None, "gamma openInterest volatility mark bid ask"),',
+        ]
+    )
+    sites = guard._extract_emission_sites(diff)
+    assert sites == []
+
+
+def test_diff_emission_still_flags_real_market_fact_emission():
+    diff = "\n".join(
+        [
+            "+++ b/server.py",
+            '+    ms_dict["lastPrice"] = row.get("lastPrice")',
+        ]
+    )
+    sites = guard._extract_emission_sites(diff)
+    assert sites
+    assert any("lastPrice" in s.surfaces for s in sites)

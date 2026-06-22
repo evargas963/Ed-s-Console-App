@@ -187,6 +187,17 @@ def auth_is_refreshable(inspection: TokenInspectionResult) -> bool:
 
 def build_client_from_token(token_path: str, api_key: str, app_secret: str) -> SchwabClientState:
     """Build Schwab client from token file. token_path is normalized to absolute."""
+    from config import schwab_live_blocked_for
+
+    if schwab_live_blocked_for(api_key=api_key, app_secret=app_secret):
+        return SchwabClientState(
+            ok=False,
+            message=(
+                "Schwab CI offline mode (ED_CI_OFFLINE or ci-placeholder credentials) — "
+                "live client construction blocked; no Schwab API calls."
+            ),
+            client=None,
+        )
     resolved = _resolve_token_path(token_path)
     inv = inspect_token_file(resolved)
     if not inv.file_exists:
@@ -419,6 +430,15 @@ def _schwab_auth_latched() -> bool:
     return time.monotonic() < _schwab_auth_failure_until_mono
 
 
+def _block_live_schwab_in_ci_offline() -> None:
+    from config import schwab_live_blocked_for
+
+    if schwab_live_blocked_for():
+        raise RuntimeError(
+            "Schwab CI offline mode — live API call blocked (ED_CI_OFFLINE or ci-placeholder credentials)"
+        )
+
+
 def safe_get_quote(client, ticker: str, *, refresh_client_fn=None, attempt_hook=None):
     """
     Fetch quote. On InvalidTokenError: if refresh_client_fn provided, rebuild client
@@ -427,6 +447,7 @@ def safe_get_quote(client, ticker: str, *, refresh_client_fn=None, attempt_hook=
     attempt_hook: optional callable invoked immediately before each get_quote attempt
     (primary and token-refresh retry) for timing / observability.
     """
+    _block_live_schwab_in_ci_offline()
     if attempt_hook is not None:
         try:
             attempt_hook()
@@ -465,6 +486,7 @@ def safe_get_quote(client, ticker: str, *, refresh_client_fn=None, attempt_hook=
 
 def safe_get_price_history(client, ticker: str, *, frequency_minutes: int = 5, period_days: int = 1):
     """Fetch intraday price history from Schwab. Returns response or None."""
+    _block_live_schwab_in_ci_offline()
     try:
         import schwab as _schwab
         PH = _schwab.client.Client.PriceHistory
@@ -514,6 +536,7 @@ def safe_get_price_history(client, ticker: str, *, frequency_minutes: int = 5, p
 
 def safe_get_chain(client, ticker: str, *, strike_count: int = 20, from_date=None, to_date=None):
     # schwab-py supports optional args; we keep them optional to reduce breakage.
+    _block_live_schwab_in_ci_offline()
     if _schwab_auth_latched():
         raise SchwabAuthError(
             "Schwab auth latched after prior token failure — option chain withheld"

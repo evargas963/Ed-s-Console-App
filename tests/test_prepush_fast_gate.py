@@ -5,7 +5,6 @@ import sys
 import time
 from pathlib import Path
 
-import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:

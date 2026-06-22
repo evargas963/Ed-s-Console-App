@@ -1,13 +1,11 @@
-"""Pass 4b — Decision Command "Nth test of <level>" chip.
+"""Pass 4b — Signals Rail "Nth test of <level>" slot (slt-level-test).
 
-Source-level lock for the chip + helper + dispatch wire in static/index.html.
-The chip reads /api/level_crosses (Pass 4 endpoint, `cfbff0f`) using
-EdDB.count_level_tests under the hood; this Pass 4b adds the trader-visible
-surface on the Decision Command rail.
-
-Per AGENTS No-new-files: new test file is allowed (new topic; existing
-tests/test_live_ui_*.py own per-horizon withhold + integrity behavior; none
-owns the level-test chip).
+Source-level lock for the slot + helper + dispatch wire in static/index.html.
+The surface reads /api/level_crosses (Pass 4 endpoint) using
+EdDB.count_level_tests under the hood. Operator 2026-06-10 migrated the
+trader-visible surface from the retired Decision Command header chip
+(#dr-level-test-chip) to #signals-rail / #slt-level-test — see
+tests/test_issue18_ui_contract.py for the authoritative negative lock.
 """
 
 from __future__ import annotations
@@ -22,30 +20,25 @@ def _read_index() -> str:
     return INDEX_HTML.read_text(encoding="utf-8")
 
 
-def test_chip_dom_element_present_in_decision_command_header() -> None:
-    """Lock the chip's DOM id + initial state on the Decision Command card."""
+def test_level_test_slot_present_in_signals_rail() -> None:
+    """Lock the slot DOM id + initial hidden state on the Signals Rail."""
     html = _read_index()
-    assert 'id="dr-level-test-chip"' in html, (
-        "Pass 4b chip missing from static/index.html — Decision Command header "
-        "must carry #dr-level-test-chip alongside the other dr-* chips"
+    assert 'id="slt-level-test"' in html, (
+        "Pass 4b level-test slot missing — Signals Rail must carry "
+        "#slt-level-test (operator 2026-06-10 migration)"
     )
-    # Initial state should be hidden + dim until first refresh resolves data.
-    assert 'id="dr-level-test-chip"' in html
-    # The chip element must be on a line that also sets display:none initially
-    # (matches the existing dr-* chip pattern).
     for line in html.splitlines():
-        if 'id="dr-level-test-chip"' in line:
-            assert 'display:none' in line, (
-                "Pass 4b chip must start hidden (display:none) — uncovered chip "
-                "would render placeholder 'TEST —' before fetch resolves"
+        if 'id="slt-level-test"' in line and "signal-slot" in line:
+            assert "display:none" in line, (
+                "slt-level-test must start hidden — quiet state hides until "
+                "level is under pressure (≥2 prior tests)"
             )
-            assert 'decision-chip' in line, (
-                "Pass 4b chip must use decision-chip class for visual parity "
-                "with sibling chips (LANE, MH, SESSION, etc.)"
+            assert "signal-slot--quiet" in line, (
+                "slt-level-test must use signal-slot severity vocabulary"
             )
             break
-    else:  # pragma: no cover — guarded by the assert above
-        raise AssertionError("chip line not located")
+    else:  # pragma: no cover — guarded by assert above
+        raise AssertionError("slt-level-test opening tag not located")
 
 
 def test_chip_helper_functions_defined() -> None:
@@ -156,12 +149,13 @@ def test_chip_pickNearest_logic_prefers_closer_distance() -> None:
     assert "Math.abs(belowDist)" in body
 
 
-def test_chip_severity_class_high_on_third_or_later_test() -> None:
-    """Chip color should escalate to 'bad' (red-ish) at >=3 tests — that's
-    the "third test of ceiling" pattern the chip is named for."""
+def test_chip_severity_escalates_on_third_or_later_test() -> None:
+    """Severity bands: quiet (≤1 prior), building (2nd), hot (≥3 prior tests)."""
     html = _read_index()
-    assert "total >= 3 ? 'decision-chip bad' : 'decision-chip dim'" in html, (
-        "Pass 4b chip should switch to 'bad' severity at >=3 tests — that "
-        "matches the trader pattern (3rd test of a level often breaks). "
-        "If the threshold needs to change, update this lock in the same commit."
+    assert "if (total >= 3) severity = 'hot'" in html, (
+        "Pass 4b slot must escalate to hot at >=3 prior tests"
     )
+    assert "else if (total === 2) severity = 'building'" in html
+    assert "signal-slot--' + severity" in html or (
+        "slot.className = 'signal-slot signal-slot--' + severity" in html
+    ), "severity must map to signal-slot--{quiet|building|hot} classes"

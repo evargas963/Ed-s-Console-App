@@ -3,17 +3,17 @@
 > **Classification:** Historical Record | **Scope:** Operator-trust backtrack gate decision
 
 stabilization_artifacts_gate_pass: True
+ci_triage_gate_pass: False
 operator_readiness_gate_pass: False
 card_explainability_allowed: False
 
 ## card_explainability_block_reason
-- CI non-blocking failures require triage
+- CI triage PR #19 awaiting GitHub green
 - RTH validation not executed
 - LIVE_GUEST_SLA_NOT_PROVEN
 - DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN
 - BASE_CAPTURE_NORMALIZATION_RTH_PROOF_NOT_COMPLETE
 - RTH_VALIDATION_NOT_EXECUTED_AFTER_TRANSPORT_FIXES
-- HARDENING_CI_FAILING_NON_BLOCKING
 - PYTEST_FULL_CI_FAILING_NON_BLOCKING
 - SCHWAB_CSV_FIRST_FAILING_OR_MIXED_NON_BLOCKING
 
@@ -22,12 +22,15 @@ card_explainability_allowed: False
 - DB_CONTENTION_RTH_CORRELATION_NOT_PROVEN
 - BASE_CAPTURE_NORMALIZATION_RTH_PROOF_NOT_COMPLETE
 - RTH_VALIDATION_NOT_EXECUTED_AFTER_TRANSPORT_FIXES
-- HARDENING_CI_FAILING_NON_BLOCKING
 - PYTEST_FULL_CI_FAILING_NON_BLOCKING
 - SCHWAB_CSV_FIRST_FAILING_OR_MIXED_NON_BLOCKING
 
-## Next allowed branch
-audit/ci-nonblocking-failures-triage
+## Next allowed step
+resolve_pytest_full_failures
+
+## After pytest-full resolved
+next_allowed_step: operator_rth_validation
+next_allowed_branch: audit/rth-operator-trust-validation
 
 ## Operator note
-Stabilization artifacts exist and mechanical checks are installed. Card explainability is NOT allowed yet. RTH validation remains required after CI triage.
+Stabilization artifacts exist and mechanical checks are installed. PR #19 is the CI triage branch — do not merge until GitHub proves hardening, schwab-csv-first, and pytest-full. Card explainability is NOT allowed yet.

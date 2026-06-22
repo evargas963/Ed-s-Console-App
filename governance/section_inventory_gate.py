@@ -197,3 +197,113 @@ def assert_inventory_covers_module_functions(
     **kwargs: object,
 ) -> None:
     assert_inventory_covers_all_functions(repo_root, section_files, inventory, **kwargs)
+
+
+_NONE_STUB_JUSTIFICATION = (
+    "No market-field derivation: No Schwab market-field derivation in function body."
+)
+_NESTED_STUB_JUSTIFICATION = (
+    "No market-field derivation: Nested helper; parent row owns derivation semantics."
+)
+
+
+def _format_producer_refs(refs: tuple[str, ...]) -> str:
+    if not refs:
+        return "()"
+    return "(" + ", ".join(f'"{r}"' for r in refs) + ",)"
+
+
+def format_traceable_derivation_row(row_class_name: str, row: object) -> str:
+    """Serialize one MegaNTraceableDerivation row for inventory modules."""
+    leaf = "None" if row.schwab_leaf is None else repr(row.schwab_leaf)
+    allow = "None" if row.allowlist_id is None else repr(row.allowlist_id)
+    refs = _format_producer_refs(tuple(row.producer_refs))
+    just = str(row.justification).replace("\\", "\\\\").replace('"', '\\"')
+    return (
+        f'    {row_class_name}("{row.file}", {row.line}, "{row.derivation}", '
+        f'"{row.disposition}", {leaf}, {refs}, {allow}, "{just}"),'
+    )
+
+
+def sync_traceable_inventory_to_ast(
+    repo_root: Path,
+    section_files: frozenset[str],
+    inventory: tuple,
+    row_class: type,
+) -> tuple:
+    """Drop stale rows; append NONE stubs for every AST ``def`` missing from inventory."""
+    required_by_key: dict[tuple[str, str], FunctionRef] = {}
+    for rel in section_files:
+        for fn in all_functions_in_file(repo_root, rel):
+            required_by_key[(rel, fn.qualified_name)] = fn
+
+    kept: dict[tuple[str, str], object] = {}
+    for row in inventory:
+        key = (row.file, row.derivation)
+        if key in required_by_key:
+            kept[key] = row
+
+    for key, fn in required_by_key.items():
+        if key in kept:
+            continue
+        justification = (
+            _NESTED_STUB_JUSTIFICATION if fn.scope == "nested" else _NONE_STUB_JUSTIFICATION
+        )
+        kept[key] = row_class(key[0], fn.line, key[1], "NONE", None, (), None, justification)
+
+    return tuple(sorted(kept.values(), key=lambda r: (r.file, r.line, r.derivation)))
+
+
+def rewrite_mega_inventory_tuple(
+    module_path: Path,
+    *,
+    inventory_attr: str,
+    row_class_name: str,
+    rows: tuple,
+) -> None:
+    """Replace the inventory tuple body in a governance/megaN_traceable_inventory.py file."""
+    text = module_path.read_text(encoding="utf-8")
+    marker = f"{inventory_attr}: tuple"
+    start = text.index(marker)
+    open_paren = text.index("(", start)
+    close_paren = text.rindex("\n)\n")
+    header = text[: open_paren + 1]
+    footer = text[close_paren:]
+    body_lines = [format_traceable_derivation_row(row_class_name, row) for row in rows]
+    module_path.write_text(
+        header + "\n" + "\n".join(body_lines) + footer,
+        encoding="utf-8",
+    )
+
+
+def sync_all_mega_inventories(repo_root: Path | None = None) -> dict[str, int]:
+    """Sync Mega 1–4 inventory tuples to current AST coverage (NONE stubs for new defs)."""
+    root = repo_root or Path(__file__).resolve().parent.parent
+    from governance import (
+        mega1_traceable_inventory as m1,
+        mega2_traceable_inventory as m2,
+        mega3_traceable_inventory as m3,
+        mega4_traceable_inventory as m4,
+    )
+
+    specs = (
+        ("mega1", m1, "MEGA1_TRACEABLE_INVENTORY", "Mega1TraceableDerivation"),
+        ("mega2", m2, "MEGA2_TRACEABLE_INVENTORY", "Mega2TraceableDerivation"),
+        ("mega3", m3, "MEGA3_TRACEABLE_INVENTORY", "Mega3TraceableDerivation"),
+        ("mega4", m4, "MEGA4_TRACEABLE_INVENTORY", "Mega4TraceableDerivation"),
+    )
+    counts: dict[str, int] = {}
+    for label, mod, inv_attr, cls_name in specs:
+        n = label[-1]
+        files = getattr(mod, f"MEGA{n}_FILES")
+        inventory = getattr(mod, inv_attr)
+        row_class = getattr(mod, cls_name)
+        synced = sync_traceable_inventory_to_ast(root, files, inventory, row_class)
+        rewrite_mega_inventory_tuple(
+            root / "governance" / f"{label}_traceable_inventory.py",
+            inventory_attr=inv_attr,
+            row_class_name=cls_name,
+            rows=synced,
+        )
+        counts[label] = len(synced)
+    return counts

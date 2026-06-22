@@ -44,5 +44,10 @@ jobs:
       - name: Run Playwright E2E then full pytest
         env:
           CI: "true"
+          ED_CI_OFFLINE: "1"
           ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
+          # Placeholders satisfy config startup in CI — not live Schwab credentials.
+          # ED_CI_OFFLINE + config.is_schwab_ci_offline_mode() block live API calls.
+          SCHWAB_API_KEY: "ci-not-live-placeholder"
+          SCHWAB_APP_SECRET: "ci-not-live-placeholder"
         run: npm run test:all

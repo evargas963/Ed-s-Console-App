@@ -1490,7 +1490,11 @@ def check_ablation_seven_model_four_horizon_grid() -> list[str]:
     captured = ablation_grid_groups(manifest)
     dbp_str = str(idx.db_path) if idx.db_path is not None else None
     scoring = ablation_scoring_groups(manifest, db_path=dbp_str)
-    accounting = ablation_cell_accounting(manifest, specs, enriched_rows=enriched or None)
+    from tools.ablation_static_lock_index import enriched_rows_for_spec_build
+
+    accounting = ablation_cell_accounting(
+        manifest, specs, enriched_rows=enriched_rows_for_spec_build(enriched)
+    )
     catalog_target = whole_stack_catalog_cell_target(manifest)
     runnable_target = int(accounting.get("runnable_target") or 0)
     catalog_formula = len(captured) * len(required_models) * len(required_horizons)
@@ -1502,7 +1506,7 @@ def check_ablation_seven_model_four_horizon_grid() -> list[str]:
             f"features({len(captured)})×models({len(required_models)})×"
             f"horizons({len(required_horizons)})={catalog_formula}"
         )
-    if whole_stack_fusion_cell_target(manifest) != runnable_target and not enriched:
+    if whole_stack_fusion_cell_target(manifest) != runnable_target:
         errors.append(
             "ablation grid: whole_stack_fusion_cell_target must equal runnable_target "
             "(enriched row sample required for fidelity-first runnable count)"
@@ -1636,6 +1640,7 @@ def check_ablation_equal_layer_consumers() -> list[str]:
     try:
         from governed_stack_contract import FULL_STACK_MODEL_LAYERS, STACK_AUTHORITY_LAYERS
         from tools.ablation_static_lock_index import get_ablation_static_lock_index
+        from tools.feature_curation_gate import ablation_row_fidelity_sample_active
     except Exception as exc:  # pragma: no cover
         errors.append(f"ablation equal-layer: import failed ({exc})")
         return errors
@@ -1656,6 +1661,7 @@ def check_ablation_equal_layer_consumers() -> list[str]:
         return errors
 
     specs = idx.specs
+    fidelity_active = ablation_row_fidelity_sample_active(idx.enriched)
 
     multi_base_upper = [
         s
@@ -1694,7 +1700,7 @@ def check_ablation_equal_layer_consumers() -> list[str]:
     regime_fusion_scorable = [
         s for s in in_cone if s.get("model_family") in ("regime", "fusion", "meta") and s.get("group_columns")
     ]
-    if not regime_fusion_scorable:
+    if fidelity_active and not regime_fusion_scorable:
         errors.append(
             "ablation equal-layer: zero in_cone regime/fusion/meta cells with group_columns — "
             "upper-layer registries may be empty or miswired"
@@ -1719,7 +1725,7 @@ def check_ablation_equal_layer_consumers() -> list[str]:
             mf = str(s.get("model_family") or "")
             runnable_by_model[mf] = runnable_by_model.get(mf, 0) + 1
     counts = [runnable_by_model.get(m, 0) for m in FULL_STACK_MODEL_LAYERS]
-    if len(set(counts)) > 1:
+    if fidelity_active and len(set(counts)) > 1:
         errors.append(
             f"ablation ZERO-BIAS: unequal runnable counts per model (pre-placement) — {runnable_by_model}"
         )
@@ -1729,7 +1735,11 @@ def check_ablation_equal_layer_consumers() -> list[str]:
         if s.get("group_id") == "reg__atomic__net_gamma"
         and s.get("horizon_slug") == "1c"
     ]
-    if ng_cells and not all(s.get("runnable") for s in ng_cells if s.get("ingest_status") == "in_cone"):
+    if (
+        fidelity_active
+        and ng_cells
+        and not all(s.get("runnable") for s in ng_cells if s.get("ingest_status") == "in_cone")
+    ):
         errors.append(
             "ablation ZERO-BIAS: reg__atomic__net_gamma must be runnable on all seven models @1c"
         )
@@ -1978,7 +1988,11 @@ def audit_ablation_placement_validity(
                     col = _atomic_column_for_group(g)
                     if not col:
                         continue
-                    if not _whole_stack_knockout_columns(g, enriched or None):
+                    from tools.ablation_static_lock_index import enriched_rows_for_spec_build
+
+                    if not _whole_stack_knockout_columns(
+                        g, enriched_rows_for_spec_build(enriched)
+                    ):
                         continue
                     lstm_cols = offline_v2_knockout_snapshot_columns(col, "lstm")
                     if lstm_cols:
@@ -2227,7 +2241,6 @@ def check_production_fusion_score_path_contract() -> list[str]:
     """
     from governed_stack_contract import (
         FULL_STACK_MODEL_LAYERS,
-        PRODUCTION_FUSION_ABLATION_ENTRYPOINT,
         PRODUCTION_FUSION_FINAL_PREDICTION,
         PRODUCTION_FUSION_LIVE_ENTRYPOINT,
         PRODUCTION_FUSION_SCORE_LAYERS,

@@ -79,6 +79,28 @@ def xgb_meta_content_sha256(meta_path: Path) -> str:
     return file_sha256_hex(meta_path)
 
 
+def _snapshots_1m_normalized_table_exists(conn: sqlite3.Connection) -> bool:
+    return bool(
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='snapshots_1m_normalized'"
+        ).fetchone()
+    )
+
+
+def _empty_db_training_fingerprint(ticker: str) -> dict[str, Any]:
+    from timeframe_config import CANONICAL_TIMEFRAME
+
+    return {
+        "table": "snapshots_1m_normalized",
+        "timeframe": CANONICAL_TIMEFRAME,
+        "ticker": str(ticker),
+        "min_ts_utc": None,
+        "max_ts_utc": None,
+        "row_count": 0,
+        "schema_absent": True,
+    }
+
+
 def db_training_fingerprint(
     db_path: str, ticker: str, *, label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
 ) -> dict[str, Any]:
@@ -91,6 +113,9 @@ def db_training_fingerprint(
 
     t = ticker
     conn = sqlite3.connect(db_path)
+    if not _snapshots_1m_normalized_table_exists(conn):
+        conn.close()
+        return _empty_db_training_fingerprint(t)
     where = training_base_where_clause(label_column, include_ticker=True)
     rows = conn.execute(
         f"SELECT ts_utc FROM snapshots_1m_normalized WHERE {where}",
@@ -134,6 +159,15 @@ def db_training_floor_stats(
     from training_provenance import USABLE_RTH_DAY_MIN_ROWS
 
     conn = sqlite3.connect(db_path)
+    if not _snapshots_1m_normalized_table_exists(conn):
+        conn.close()
+        return {
+            "ticker": str(ticker),
+            "labeled_rows": 0,
+            "usable_days": 0,
+            "label_column": label_column,
+            "schema_absent": True,
+        }
     where = training_base_where_clause(label_column, include_ticker=True)
     rows = conn.execute(
         f"SELECT ts_utc, ts_et FROM snapshots_1m_normalized WHERE {where}",

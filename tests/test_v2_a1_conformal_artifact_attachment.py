@@ -109,7 +109,7 @@ def test_server_response_path_invokes_attachment_before_v2_decision_build():
     end = source.index("_lmp.merge_into_state", build_pos)
     window = source[start:end]
 
-    stamp_idx = window.index("stamp_decision_bundle(ms_dict)")
+    stamp_idx = window.index("_finalize_production_decision(ms_dict, _decision_route)")
     attach_idx = window.index("attach_a1_conformal_artifact_to_ms_dict(ms_dict, ticker=ticker)")
     build_idx = window.index(build_anchor)
 
