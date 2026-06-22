@@ -1,8 +1,74 @@
 """Fail-closed contracts for ml_predict model-probability → fusion/UI conversion."""
 from __future__ import annotations
 
-import ml_predict as mp
+import json
 from pathlib import Path
+
+import pytest
+
+import ml_predict as mp
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+STRICT_BUNDLE_BLOCK_TICKERS = (
+    "SPY",
+    "QQQ",
+    "IWM",
+    "NVDA",
+    "BE",
+    "ZZZ_ML_PREDICT_STRICT",
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_ml_predict_bundle_cache():
+    mp._active_bundle_dir_cache.clear()
+    mp._strict_bundle_warned.clear()
+    yield
+    mp._active_bundle_dir_cache.clear()
+    mp._strict_bundle_warned.clear()
+
+
+def _strict_bundle_block(monkeypatch) -> None:
+    def _raise(_ticker: str) -> Path:
+        raise FileNotFoundError("strict bundle blocked")
+
+    monkeypatch.setattr(mp, "_model_dir_for_ticker", _raise)
+
+
+def _write_fake_stack_artifacts(bundle_dir: Path, ticker: str, hz: str = "1c") -> None:
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    for name in (
+        f"xgb_{ticker}_{hz}.pkl",
+        f"lstm_{ticker}_{hz}.pt",
+        f"transformer_{ticker}_{hz}.pt",
+        f"meta_{ticker}_{hz}.pkl",
+    ):
+        (bundle_dir / name).write_bytes(b"x")
+
+
+def _resolve_bundle_dir_for_ticker(ticker: str, tmp_path: Path) -> Path:
+    repo_active = REPO_ROOT / "models" / "active" / ticker
+    if repo_active.is_dir() and any(repo_active.glob(f"xgb_{ticker}_1c.pkl")):
+        return repo_active
+    bundle_dir = tmp_path / "bundles" / ticker
+    _write_fake_stack_artifacts(bundle_dir, ticker)
+    return bundle_dir
+
+
+def _seed_stale_bundle_cache(ticker: str, bundle_dir: Path, hz: str = "1c") -> None:
+    mp._active_bundle_dir_cache[mp._model_registry_key(ticker, hz)] = bundle_dir
+
+
+def _seed_index_682_spy_pollution_cache() -> None:
+    """Mirror cache keys left by index-682 live v2 logging polluter (SPY, all horizons)."""
+    for hz, rel in (
+        ("1c", "models/active/SPY"),
+        ("5c", "models/active_5c/SPY"),
+        ("15c", "models/active_15c/SPY"),
+        ("60c", "models/active_60c/SPY"),
+    ):
+        mp._active_bundle_dir_cache[mp._model_registry_key("SPY", hz)] = REPO_ROOT / rel
 
 
 def test_require_direction_probability_triplet_none_input():
@@ -68,10 +134,35 @@ def test_model_probs_to_ui_output_none_input():
 
 
 def test_get_model_version_fail_closed_when_strict_bundle_blocked(monkeypatch):
-    def _raise(_ticker: str) -> Path:
-        raise FileNotFoundError("strict bundle blocked")
+    _strict_bundle_block(monkeypatch)
+    mp._active_bundle_dir_cache.clear()
+    mp._strict_bundle_warned.clear()
+    assert mp.get_model_version("SPY") == "rules_v1"
 
-    monkeypatch.setattr(mp, "_model_dir_for_ticker", _raise)
+
+@pytest.mark.parametrize("ticker", STRICT_BUNDLE_BLOCK_TICKERS)
+def test_get_model_version_fail_closed_when_strict_bundle_blocked_ticker_agnostic(
+    ticker, tmp_path, monkeypatch
+):
+    bundle_dir = _resolve_bundle_dir_for_ticker(ticker, tmp_path)
+    _seed_stale_bundle_cache(ticker, bundle_dir)
+    _strict_bundle_block(monkeypatch)
+    polluted = mp.get_model_version(ticker)
+    assert polluted != "rules_v1"
+    assert polluted.startswith("stack(")
+    mp._active_bundle_dir_cache.clear()
+    mp._strict_bundle_warned.clear()
+    assert mp.get_model_version(ticker) == "rules_v1"
+
+
+def test_get_model_version_fail_closed_survives_compute_signals_cache_pollution(monkeypatch):
+    _seed_index_682_spy_pollution_cache()
+    _strict_bundle_block(monkeypatch)
+    polluted = mp.get_model_version("SPY")
+    assert polluted != "rules_v1"
+    assert polluted.startswith("stack(")
+    mp._active_bundle_dir_cache.clear()
+    mp._strict_bundle_warned.clear()
     assert mp.get_model_version("SPY") == "rules_v1"
 
 
@@ -160,9 +251,6 @@ def test_ensemble_parallel_probs_fail_closed_on_partial_stack():
 
 
 # ── CLOSEOUT #3 — fusion meta<bases: collapsed-base exclusion in the combiner ──────────
-import json
-
-import pytest
 
 
 def test_weighted_average_backcompat_identical_without_collapse():
