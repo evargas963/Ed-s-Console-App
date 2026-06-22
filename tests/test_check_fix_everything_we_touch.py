@@ -1040,6 +1040,55 @@ def test_zero_bias_transformer_ingest_mapping_is_5m_stream_only():
     assert "lstm_1m" not in mod.ZERO_BIAS_FEATURE_MODEL_INGEST_FAMILIES["transformer"]
 
 
+def test_write_feature_ablation_manifest_skips_reconcile_when_db_missing(monkeypatch, tmp_path):
+    """Missing DB_PATH file: manifest write proceeds without DB-wire reconcile."""
+    import build_feature_assignment_matrix_v2 as fam
+
+    payload = {"groups": [{"group_id": "g1", "ingest_status": "not_wired"}]}
+    monkeypatch.setattr(fam, "resolve_ablation_universe", lambda **kw: payload)
+    monkeypatch.setattr(
+        fam,
+        "write_feature_ablation_universe_xlsx",
+        lambda **kw: tmp_path / "universe.xlsx",
+    )
+    monkeypatch.setattr("db.DB_PATH", str(tmp_path / "missing.db"))
+    out = tmp_path / "manifest.json"
+    fam.write_feature_ablation_manifest(out)
+    assert out.is_file()
+    written = __import__("json").loads(out.read_text(encoding="utf-8"))
+    assert written["groups"][0]["ingest_status"] == "not_wired"
+
+
+def test_write_feature_ablation_manifest_fails_closed_when_db_reconcile_raises(
+    monkeypatch, tmp_path
+):
+    """Existing DB + reconcile failure must raise — no silent degraded manifest."""
+    import build_feature_assignment_matrix_v2 as fam
+
+    payload = {"groups": []}
+    monkeypatch.setattr(fam, "resolve_ablation_universe", lambda **kw: payload)
+    monkeypatch.setattr(
+        fam,
+        "write_feature_ablation_universe_xlsx",
+        lambda **kw: tmp_path / "universe.xlsx",
+    )
+    db_file = tmp_path / "ed_console.db"
+    db_file.write_bytes(b"sqlite")
+    monkeypatch.setattr("db.DB_PATH", str(db_file))
+
+    def _boom(_manifest, _db_path):
+        raise RuntimeError("reconcile failed")
+
+    monkeypatch.setattr(
+        "tools.feature_curation_gate.reconcile_manifest_ingest_status_to_db_wire",
+        _boom,
+    )
+    out = tmp_path / "manifest.json"
+    with pytest.raises(RuntimeError, match="reconcile failed"):
+        fam.write_feature_ablation_manifest(out)
+    assert not out.is_file()
+
+
 def test_reconcile_manifest_preserves_registered_engineered_in_cone():
     """Registered engineer_features columns stay in_cone even when absent from DB wire."""
     from tools.feature_curation_gate import reconcile_manifest_ingest_status_to_db_wire

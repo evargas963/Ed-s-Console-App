@@ -766,14 +766,11 @@ def resolve_ablation_universe(*, write_registry: bool = False) -> dict[str, Any]
 def write_feature_ablation_manifest(path: Path | None = None) -> Path:
     out_path = path or EXPANDED_ABLATION_MANIFEST_PATH
     payload = resolve_ablation_universe(write_registry=True)
-    try:
-        from db import DB_PATH
-        from tools.feature_curation_gate import reconcile_manifest_ingest_status_to_db_wire
+    from db import DB_PATH
+    from tools.feature_curation_gate import reconcile_manifest_ingest_status_to_db_wire
 
-        if Path(DB_PATH).is_file():
-            payload = reconcile_manifest_ingest_status_to_db_wire(payload, str(DB_PATH))
-    except Exception:
-        pass
+    if Path(DB_PATH).is_file():
+        payload = reconcile_manifest_ingest_status_to_db_wire(payload, str(DB_PATH))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     write_feature_ablation_universe_xlsx(payload=payload)

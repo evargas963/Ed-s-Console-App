@@ -179,11 +179,7 @@ def _weighted_blend_probs(
         wa = mp._weighted_average(ticker, xgb_d, lstm_d, tr_d, collapsed=collapsed)
         return _dict_to_probs(wa)
 
-    collapsed: set = set()
-    try:
-        collapsed = mp._active_base_collapse_flags(ticker)
-    except Exception:
-        pass
+    collapsed = mp._active_base_collapse_flags(ticker)
 
     base_weights = (
         ("xgb", xgb_d, 0.40),

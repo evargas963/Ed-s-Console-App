@@ -58,6 +58,14 @@ def test_weighted_blend_probs_partial_xgb_lstm_renormalizes():
     assert abs(out[0] - expected_up) < 1e-9
 
 
+def test_weighted_blend_probs_partial_drops_collapsed_base(monkeypatch):
+    xgb = {"up": 0.8, "down": 0.1, "flat": 0.1}
+    lstm = {"up": 0.2, "down": 0.5, "flat": 0.3}
+    monkeypatch.setattr(mp, "_active_base_collapse_flags", lambda _t: {"lstm"})
+    out = _weighted_blend_probs(mp, "SPY", xgb_d=xgb, lstm_d=lstm, tr_d=None)
+    assert out == [0.8, 0.1, 0.1]
+
+
 def test_weighted_blend_probs_full_triple_delegates_to_weighted_average(monkeypatch):
     xgb = {"up": 0.4, "down": 0.3, "flat": 0.3}
     lstm = {"up": 0.4, "down": 0.3, "flat": 0.3}
