@@ -34,15 +34,17 @@ def test_decision_command_uses_disambiguated_addkv_labels():
 
 
 def test_track2_desk_confidence_headline_and_breakdown():
-    """Desk-confidence surface (UI-refactor reconciled 2026-05-31).
+    """Synthesis confidence on ALL pill + per-horizon breakdown (operator 2026-06-10).
 
-    The original ``dr-desk-confidence`` element + ``deskConf.textContent='UNAVAILABLE'``
-    handler were removed when the desk-confidence readout migrated to the V2 advisory
-    card's ``id="v2-confidence"`` slot (labeled "Desk confidence"). Assert the EQUIVALENT
-    current elements — the live confidence slot + the horizon breakdown — instead of the
-    removed ids (which made this a permanent stale red in the UI suite).
+    Retired surfaces: ``dr-desk-confidence``, ``v2-confidence`` / V2 advisory card.
+    Current contract: consolidated ``tf-signal-consolidated`` shows ``SYNTH CONF``
+    and paints ``d.final_confidence``; Decision rail keeps ``dr-hz-breakdown``.
     """
     html = INDEX.read_text(encoding="utf-8")
-    assert 'id="v2-confidence"' in html, "desk-confidence readout slot (v2-confidence) missing"
-    assert "Desk confidence" in html, "'Desk confidence' label copy missing"
+    assert 'id="tf-signal-consolidated"' in html
+    assert "SYNTH CONF" in html, "ALL/consolidated pill must label synthesis confidence"
+    assert "parseConf(d.final_confidence)" in html, (
+        "ALL pill must paint desk/synthesis confidence from final_confidence"
+    )
     assert 'details class="hz-breakdown"' in html, "horizon-confidence breakdown block missing"
+    assert 'id="dr-hz-breakdown"' in html
