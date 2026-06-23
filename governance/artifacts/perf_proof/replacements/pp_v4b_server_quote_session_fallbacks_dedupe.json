@@ -31,15 +31,16 @@
   "register_link": {
     "status": "bound",
     "replaced_register_ids": [
-      "01f924fe881200e61e01",
-      "2b4cefb2fe34e4803e0c",
+      "06c76d6c5d41603257bb",
+      "212ddc0f871f558d3328",
+      "2789d873ea43c94c29e9",
+      "2afcd5b0c88f835e4cc9",
       "2b4f2601ed5cc488589e",
+      "2e67acf6b344d7a2a337",
       "470637eb66940f03db05",
-      "4ed834710a46acd780df",
-      "7166143143790c944ce4",
-      "952fcc764111dd0df079",
-      "96176ddb8c86b717d28d",
-      "acb26ab574bc6bde237d"
+      "572e0e8ca13b86de5d8c",
+      "cf60620fed4e9bc065ba",
+      "ff0c47a9cc7b8a5edf7f"
     ]
   }
 }
