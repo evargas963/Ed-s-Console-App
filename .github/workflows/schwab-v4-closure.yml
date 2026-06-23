@@ -30,6 +30,11 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Install Schwab scanner dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
       - name: Generate V4 register (gitignored; pin in schwab_v4_register_build_meta.json)
         shell: bash
         run: |
