@@ -927,3 +927,107 @@ def test_write_register_build_meta_writes_canonical_output(tmp_path: Path) -> No
     assert meta["register_rows_written"] == 1
     assert meta["register_csv_path"] == CANONICAL_REGISTER_REL
     assert meta["scanner_flags"]["scope_exclude_prefixes"] == ["governance/archive"]
+
+
+def test_phase2_contract_test_denylist_count() -> None:
+    from governance.phase2_d17_contract_test_denylist import PHASE2_CONTRACT_TEST_DENYLIST
+
+    assert len(PHASE2_CONTRACT_TEST_DENYLIST) == 107
+
+
+def test_phase2_slice_files_scope_and_dispositions() -> None:
+    import csv
+    from pathlib import Path
+
+    from governance.phase2_d17_contract_test_denylist import (
+        MEGA_INVENTORY_PATHS,
+        MONEY_PATH_PATHS,
+        PHASE2_CONTRACT_TEST_DENYLIST,
+        ROOT_PROGRAM_LAW_PATHS,
+    )
+
+    root = Path(__file__).resolve().parents[1]
+    slice_dir = root / "governance" / "register_slices"
+    expected = {
+        "phase2_governance_md_not_market_data.csv": 4170,
+        "phase2_docs_md_not_market_data.csv": 4040,
+        "phase2_mega_inventories_not_market_data.csv": 3038,
+        "phase2_tests_non_contract_not_market_data.csv": 14772,
+    }
+    forbidden_runtime = {
+        "server.py",
+        "db.py",
+        "market_state.py",
+        "schwab_client.py",
+        "live_market_plane.py",
+    } | set(MONEY_PATH_PATHS)
+    for name, want in expected.items():
+        path = slice_dir / name
+        assert path.is_file(), name
+        rows = list(csv.DictReader(path.open(newline="", encoding="utf-8")))
+        assert len(rows) == want, name
+        for row in rows:
+            assert (row.get("disposition") or "").strip() == "NOT_MARKET_DATA", name
+            rel = (row.get("path") or "").replace("\\", "/")
+            assert rel not in ROOT_PROGRAM_LAW_PATHS, rel
+            assert rel not in forbidden_runtime, rel
+            assert not rel.startswith("features/"), rel
+            assert not rel.startswith("static/"), rel
+            if name == "phase2_tests_non_contract_not_market_data.csv":
+                assert rel.startswith("tests/"), rel
+                assert rel not in PHASE2_CONTRACT_TEST_DENYLIST, rel
+            if name == "phase2_governance_md_not_market_data.csv":
+                assert rel.startswith("governance/") and rel.endswith(".md"), rel
+            if name == "phase2_mega_inventories_not_market_data.csv":
+                assert rel in MEGA_INVENTORY_PATHS, rel
+
+
+def test_phase2_slice_merge_leaves_contract_tests_unreviewed(tmp_path: Path) -> None:
+    import csv
+    import shutil
+
+    from governance.phase2_d17_contract_test_denylist import (
+        MONEY_PATH_PATHS,
+        PHASE2_CONTRACT_TEST_DENYLIST,
+    )
+    from tools.stream_revert_v4_register_and_sync_perf import merge_register_slices
+
+    repo = Path(__file__).resolve().parents[1]
+    src_reg = repo / "governance" / "SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
+    if not src_reg.is_file():
+        pytest.skip("canonical register not generated locally")
+
+    reg = tmp_path / "register.csv"
+    shutil.copy2(src_reg, reg)
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    for name in (
+        "phase2_governance_md_not_market_data.csv",
+        "phase2_docs_md_not_market_data.csv",
+        "phase2_mega_inventories_not_market_data.csv",
+        "phase2_tests_non_contract_not_market_data.csv",
+    ):
+        shutil.copy2(repo / "governance" / "register_slices" / name, slice_dir / name)
+
+    def _count(pred) -> int:
+        n = 0
+        with reg.open(newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                if (row.get("disposition") or "").strip() != "UNREVIEWED":
+                    continue
+                p = (row.get("path") or "").replace("\\", "/")
+                if pred(p):
+                    n += 1
+        return n
+
+    money_before = _count(lambda p: p in MONEY_PATH_PATHS)
+    deny_before = _count(lambda p: p in PHASE2_CONTRACT_TEST_DENYLIST)
+    assert deny_before > 0
+
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] == 26020
+
+    assert _count(lambda p: p in MONEY_PATH_PATHS) == money_before
+    assert _count(lambda p: p in PHASE2_CONTRACT_TEST_DENYLIST) == deny_before
+    assert _count(lambda p: p.startswith("governance/") and p.endswith(".md")) == 0
+    assert _count(lambda p: p.startswith("tests/") and p not in PHASE2_CONTRACT_TEST_DENYLIST) == 0

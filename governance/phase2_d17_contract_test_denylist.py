@@ -1,0 +1,151 @@
+"""Phase 2 D17 — contract/wire-adjacent test paths excluded from bulk NOT_MARKET_DATA."""
+
+from __future__ import annotations
+
+# Frozen at Phase 2 investigation (main post PR #24): 107 paths matching wire/Schwab/UI contract tests.
+PHASE2_CONTRACT_TEST_DENYLIST: frozenset[str] = frozenset(
+    {
+        "tests/archive/legacy_section_audits_v1/test_section10_schwab_derivation_audit.py",
+        "tests/archive/legacy_section_audits_v1/test_section11_schwab_derivation_audit.py",
+        "tests/archive/legacy_section_audits_v1/test_section12_schwab_derivation_audit.py",
+        "tests/archive/legacy_section_audits_v1/test_section13_schwab_derivation_audit.py",
+        "tests/archive/legacy_section_audits_v1/test_section14_schwab_derivation_audit.py",
+        "tests/archive/legacy_section_audits_v1/test_section15_schwab_derivation_audit.py",
+        "tests/archive/legacy_section_audits_v1/test_section16_schwab_derivation_audit.py",
+        "tests/archive/legacy_section_audits_v1/test_section1_schwab_derivation_audit.py",
+        "tests/archive/legacy_section_audits_v1/test_section2_schwab_derivation_audit.py",
+        "tests/archive/legacy_section_audits_v1/test_section3_schwab_derivation_audit.py",
+        "tests/archive/legacy_section_audits_v1/test_section4_schwab_derivation_audit.py",
+        "tests/archive/legacy_section_audits_v1/test_section5_schwab_derivation_audit.py",
+        "tests/archive/legacy_section_audits_v1/test_section6_schwab_derivation_audit.py",
+        "tests/archive/legacy_section_audits_v1/test_section7_schwab_derivation_audit.py",
+        "tests/archive/legacy_section_audits_v1/test_section8_schwab_derivation_audit.py",
+        "tests/archive/legacy_section_audits_v1/test_section9_schwab_derivation_audit.py",
+        "tests/e2e/issue18-card-render-behavioral.spec.js",
+        "tests/e2e/stack-wire-3-ui-phase3-behavioral.spec.js",
+        "tests/e2e/stack-wire-4-cand-ui-fusion-gate.spec.js",
+        "tests/test_a2_market_state_proof_row_completeness.py",
+        "tests/test_a2_theta_schwab_first.py",
+        "tests/test_action11_2_order_flow_verdict_fail_closed.py",
+        "tests/test_action11_3_server_ms_dict_fail_closed.py",
+        "tests/test_action11_8_signals_mc_fusion_fail_closed.py",
+        "tests/test_action11_9_call_engine_fail_closed.py",
+        "tests/test_action12_7_market_state_fail_closed.py",
+        "tests/test_action12_8_fusion_policy_fail_closed.py",
+        "tests/test_active_horizon_layout_pr3.py",
+        "tests/test_audit_cand_server_py_full_read_v1.py",
+        "tests/test_bayesian_fusion_fail_closed.py",
+        "tests/test_bayesian_fusion_numeric_contract_v1.py",
+        "tests/test_build_market_state_spot_fail_closed.py",
+        "tests/test_call_engine_chunk1_fail_closed.py",
+        "tests/test_call_engine_layer5_chunk2b.py",
+        "tests/test_call_engine_layer5_chunk2c.py",
+        "tests/test_call_engine_lifecycle_rewire.py",
+        "tests/test_call_prediction_vote.py",
+        "tests/test_check_schwab_csv_first.py",
+        "tests/test_classify_schwab_csv_crosswalk.py",
+        "tests/test_fusion_contract.py",
+        "tests/test_fusion_model_input.py",
+        "tests/test_fusion_model_input_layer5_chunk1.py",
+        "tests/test_fusion_policy_contract_fail_closed.py",
+        "tests/test_fusion_policy_contract_layer5_chunk1.py",
+        "tests/test_fusion_stack_status_ui.py",
+        "tests/test_fusion_temperature_calibration.py",
+        "tests/test_fusion_tick_cache.py",
+        "tests/test_issue18_multi_horizon_decision.py",
+        "tests/test_issue18_ui_contract.py",
+        "tests/test_issue20_23_live_bundle.py",
+        "tests/test_iv_schwab_primary.py",
+        "tests/test_key_levels_schwab_zero_open_sweep.py",
+        "tests/test_level_crosses_wire.py",
+        "tests/test_live_market_plane_streaming.py",
+        "tests/test_live_ui_a_e.py",
+        "tests/test_live_ui_integrity_v1.py",
+        "tests/test_market_state_final_confidence_none_preserved.py",
+        "tests/test_market_state_numeric_contract_v1.py",
+        "tests/test_mc_fusion_adjustment.py",
+        "tests/test_mc_fusion_adjustment_chunk1_fail_closed.py",
+        "tests/test_mc_fusion_adjustment_layer5_mcf1.py",
+        "tests/test_mc_fusion_fail_closed.py",
+        "tests/test_mcsi_spot_fusion_adjustment.py",
+        "tests/test_ml_predict_chunk1_fail_closed.py",
+        "tests/test_ml_predict_fail_closed.py",
+        "tests/test_ml_predict_horizon_registry.py",
+        "tests/test_model_accuracy_wire.py",
+        "tests/test_money_path_roster.py",
+        "tests/test_ohlcv_schwab_first.py",
+        "tests/test_order_flow_engine_chunk1_fail_closed.py",
+        "tests/test_order_flow_engine_chunk2_or_fallthrough.py",
+        "tests/test_order_flow_engine_chunk3_present_weighted.py",
+        "tests/test_order_flow_engine_chunk4_label_defaults.py",
+        "tests/test_order_flow_live_state_tape_contract.py",
+        "tests/test_order_flow_schwab_first.py",
+        "tests/test_order_flow_streaming_disconnect.py",
+        "tests/test_order_flow_tape_contract.py",
+        "tests/test_order_flow_volume_contract.py",
+        "tests/test_prediction_engine_chunk1_fail_closed.py",
+        "tests/test_prediction_engine_layer5_mcf2.py",
+        "tests/test_realized_contract_lifecycle_rewire.py",
+        "tests/test_replay_money_path_probe.py",
+        "tests/test_schwab_auth_context_scope.py",
+        "tests/test_schwab_client_import_boundary.py",
+        "tests/test_schwab_coverage_v4_tools.py",
+        "tests/test_schwab_days_to_expiration_contract.py",
+        "tests/test_schwab_gate_fail_closed_working_sync_v1.py",
+        "tests/test_schwab_market_derivation_catalog_v1.py",
+        "tests/test_schwab_scanner_v3_static_lists.py",
+        "tests/test_schwab_universal_coverage_scanner_v3.py",
+        "tests/test_schwab_v4_scoreboard_prior_git.py",
+        "tests/test_server_iv_fail_closed.py",
+        "tests/test_server_quote_source_contract.py",
+        "tests/test_server_rest_cum_delta_contract.py",
+        "tests/test_server_schwab_dte_snapshot.py",
+        "tests/test_server_sweep_score_post_build_market_state.py",
+        "tests/test_stack_wire_0_v1.py",
+        "tests/test_stack_wire_1_v1.py",
+        "tests/test_stack_wire_2_v1.py",
+        "tests/test_stack_wire_3_ui_phase3_closure.py",
+        "tests/test_stack_wire_3_v1.py",
+        "tests/test_stack_wire_4_cand_ui_fusion_gate.py",
+        "tests/test_stack_wire_4_v1.py",
+        "tests/test_stack_wire_5_v1.py",
+        "tests/test_stack_wire_6_v1.py",
+        "tests/test_stack_wire_6b_v1.py",
+        "tests/test_stack_wire_6c_v1.py",
+    }
+)
+
+ROOT_PROGRAM_LAW_PATHS: frozenset[str] = frozenset(
+    {
+        "OPEN_ITEMS.md",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "ACTIVE_PROGRAM.md",
+    }
+)
+
+MEGA_INVENTORY_PATHS: frozenset[str] = frozenset(
+    {
+        f"governance/mega{i}_traceable_inventory.py" for i in range(1, 5)
+    }
+)
+
+MONEY_PATH_PATHS: frozenset[str] = frozenset(
+    {
+        "signals.py",
+        "call_engine.py",
+        "prediction_engine.py",
+        "realized_contract_eval.py",
+        "bayesian_fusion.py",
+        "mc_fusion_adjustment.py",
+        "market_state.py",
+        "live_decision_bundle.py",
+        "features/signal_layer_v1.py",
+        "features/inference_snapshot.py",
+        "features/fusion_policy_contract.py",
+    }
+)
+
+PHASE2_NMD_NOTE = (
+    "Phase 2 D17 bulk NOT_MARKET_DATA — lexical non-wire surface (tests/governance/docs/mega inventories)"
+)
