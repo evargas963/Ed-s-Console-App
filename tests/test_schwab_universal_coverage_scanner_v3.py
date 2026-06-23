@@ -498,6 +498,47 @@ def test_scope_exclude_tools_prefix(tmp_path: Path) -> None:
     assert any(b.dir_kind == "scan_scope_exclude" for b in batches)
 
 
+def test_d17_scope_excludes_generated_surfaces_but_keeps_money_path(tmp_path: Path) -> None:
+    from tools.schwab_universal_coverage_scanner_v3.paths import SCAN_SCOPE_EXCLUDE_PREFIXES
+
+    (tmp_path / "server.py").write_text("bid = 1\n", encoding="utf-8")
+    (tmp_path / "market_state.py").write_text("ask = 1\n", encoding="utf-8")
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "audit.json").write_text('{"bid": 1}\n', encoding="utf-8")
+    artifacts = tmp_path / "governance" / "artifacts"
+    artifacts.mkdir(parents=True)
+    (artifacts / "REPO_HYGIENE_INVENTORY.json").write_text('{"bid": 1}\n', encoding="utf-8")
+    slices = tmp_path / "governance" / "register_slices"
+    slices.mkdir(parents=True)
+    (slices / "server_py.csv").write_text("register_id\nx\n", encoding="utf-8")
+    (tmp_path / "governance" / "SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv").write_text(
+        "canonical_field\nquotes.quote.bidPrice\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "governance" / "SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md").write_text(
+        "# program law\n",
+        encoding="utf-8",
+    )
+
+    files = {
+        p.relative_to(tmp_path).as_posix()
+        for p in walk_workspace_files(
+            tmp_path,
+            on_prune=lambda _b: None,
+            respect_gitignore=False,
+            scope_exclude_prefixes=SCAN_SCOPE_EXCLUDE_PREFIXES,
+        )
+    }
+    assert "server.py" in files
+    assert "market_state.py" in files
+    assert "governance/SCHWAB_UNIVERSAL_COVERAGE_PROGRAM_V4.md" in files
+    assert "reports/audit.json" not in files
+    assert "governance/artifacts/REPO_HYGIENE_INVENTORY.json" not in files
+    assert "governance/register_slices/server_py.csv" not in files
+    assert "governance/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv" not in files
+
+
 def test_gitignore_excludes_ignored_subtree(tmp_path: Path) -> None:
     import subprocess
 
