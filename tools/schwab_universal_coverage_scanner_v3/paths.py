@@ -30,8 +30,21 @@ PRUNE_SUBTREE_PREFIXES: tuple[str, ...] = (
 
 # Tracked-but-non-product subtrees — not market-field disposition surfaces (2026-05-24 scope diet).
 # Combined with .gitignore-aware walk to drop generated/untracked bloat from register cardinality.
+#
+# D17 canonical scope (2026-06-23): exclude generated inventories, audit outputs, and derived
+# register exports from the walk. Money-path/runtime source (server.py, market_state.py, static/,
+# templates/, features/, schwab_client.py, etc.) remains scanned. governance/*.md program law and
+# producer Python under governance/ (mega inventories, section gates) remain scanned.
+# schwab_field_inventory/schwab_field_dictionary.csv is still G1.1 skip_dictionary, not walked out.
 SCAN_SCOPE_EXCLUDE_PREFIXES: tuple[str, ...] = (
     "governance/archive",
+    "governance/artifacts",
+    "governance/register_slices",
+    "governance/SCHWAB_CSV_DERIVED_FIELD_",
+    "governance/SCHWAB_COVERAGE_CATALOG_",
+    "reports",
+    "schwab_field_inventory/schwab_field_dictionary_grouped",
+    "schwab_field_inventory/schwab_canonical_fields",
     "models/active",
     "models/active_5c",
     "models/active_15c",
@@ -91,7 +104,18 @@ class PruneBatch:
 def rel_matches_prefix(rel_posix: str, prefix: str) -> bool:
     rl = rel_posix.replace("\\", "/")
     pre = prefix.replace("\\", "/").strip("/")
-    return rl == pre or rl.startswith(pre + "/")
+    if rl == pre:
+        return True
+    if rl.startswith(pre + "/"):
+        return True
+    # File-level inventory prefixes (e.g. governance/SCHWAB_CSV_DERIVED_FIELD_*.csv).
+    if pre.endswith("_") and rl.startswith(pre):
+        return True
+    if rl.startswith(pre) and "." in rl[len(pre) :]:
+        tail = rl[len(pre) :]
+        if tail.startswith(".") or (not tail.startswith("/") and "/" not in tail):
+            return True
+    return False
 
 
 def rel_matches_any_prefix(rel_posix: str, prefixes: Sequence[str]) -> bool:
@@ -245,5 +269,7 @@ def walk_workspace_files(
         for fn in sorted(filenames):
             rel_file = (rel_parent / fn).as_posix().replace("\\", "/")
             if git_scope.is_ignored(rel_file):
+                continue
+            if rel_matches_any_prefix(rel_file, scope_prefixes):
                 continue
             yield dirpath_p / fn
