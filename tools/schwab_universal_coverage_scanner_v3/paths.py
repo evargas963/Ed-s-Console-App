@@ -36,6 +36,11 @@ PRUNE_SUBTREE_PREFIXES: tuple[str, ...] = (
 # templates/, features/, schwab_client.py, etc.) remains scanned. governance/*.md program law and
 # producer Python under governance/ (mega inventories, section gates) remain scanned.
 # schwab_field_inventory/schwab_field_dictionary.csv is still G1.1 skip_dictionary, not walked out.
+#
+# Phase 1 (2026-06-23): verification/*.json audit outputs excluded via rel_is_scope_excluded_file
+# (generated calibration/audit JSON — not operator wire). verification/*.py audit scripts remain scanned.
+VERIFICATION_AUDIT_JSON_PREFIX = "verification/"
+
 SCAN_SCOPE_EXCLUDE_PREFIXES: tuple[str, ...] = (
     "governance/archive",
     "governance/artifacts",
@@ -120,6 +125,19 @@ def rel_matches_prefix(rel_posix: str, prefix: str) -> bool:
 
 def rel_matches_any_prefix(rel_posix: str, prefixes: Sequence[str]) -> bool:
     return any(rel_matches_prefix(rel_posix, p) for p in prefixes)
+
+
+def is_verification_audit_json(rel_posix: str) -> bool:
+    """True for generated audit JSON under verification/ (not verification/*.py source)."""
+    rl = rel_posix.replace("\\", "/")
+    return rl.startswith(VERIFICATION_AUDIT_JSON_PREFIX) and rl.endswith(".json")
+
+
+def rel_is_scope_excluded_file(rel_posix: str, scope_prefixes: Sequence[str]) -> bool:
+    """Directory-prefix excludes plus file-level verification audit JSON."""
+    if rel_matches_any_prefix(rel_posix, scope_prefixes):
+        return True
+    return is_verification_audit_json(rel_posix)
 
 
 def git_work_tree(root: Path) -> bool:
@@ -270,6 +288,6 @@ def walk_workspace_files(
             rel_file = (rel_parent / fn).as_posix().replace("\\", "/")
             if git_scope.is_ignored(rel_file):
                 continue
-            if rel_matches_any_prefix(rel_file, scope_prefixes):
+            if rel_is_scope_excluded_file(rel_file, scope_prefixes):
                 continue
             yield dirpath_p / fn

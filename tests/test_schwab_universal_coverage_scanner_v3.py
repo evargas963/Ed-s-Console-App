@@ -17,6 +17,8 @@ from tools.schwab_universal_coverage_scanner_v3.html_scanner import scan_html_fi
 from tools.schwab_universal_coverage_scanner_v3.js_ts_scanner import scan_js_ts_text
 from tools.schwab_universal_coverage_scanner_v3.paths import (
     is_binary_sample,
+    is_verification_audit_json,
+    rel_is_scope_excluded_file,
     try_decode_utf8,
     walk_workspace_files,
     PruneBatch,
@@ -537,6 +539,36 @@ def test_d17_scope_excludes_generated_surfaces_but_keeps_money_path(tmp_path: Pa
     assert "governance/artifacts/REPO_HYGIENE_INVENTORY.json" not in files
     assert "governance/register_slices/server_py.csv" not in files
     assert "governance/SCHWAB_CSV_DERIVED_FIELD_CROSSWALK_WORKING.csv" not in files
+
+
+def test_d17_scope_excludes_verification_audit_json_keeps_verification_py(tmp_path: Path) -> None:
+    from tools.schwab_universal_coverage_scanner_v3.paths import SCAN_SCOPE_EXCLUDE_PREFIXES
+
+    ver = tmp_path / "verification"
+    ver.mkdir()
+    (ver / "adaptive_shadow_v2_calibration.json").write_text('{"bid": 1}\n', encoding="utf-8")
+    (ver / "daily_health.py").write_text("bid = 1\n", encoding="utf-8")
+    (tmp_path / "server.py").write_text("ask = 1\n", encoding="utf-8")
+
+    files = {
+        p.relative_to(tmp_path).as_posix()
+        for p in walk_workspace_files(
+            tmp_path,
+            on_prune=lambda _b: None,
+            respect_gitignore=False,
+            scope_exclude_prefixes=SCAN_SCOPE_EXCLUDE_PREFIXES,
+        )
+    }
+    assert "verification/daily_health.py" in files
+    assert "verification/adaptive_shadow_v2_calibration.json" not in files
+    assert "server.py" in files
+    assert is_verification_audit_json("verification/adaptive_shadow_v2_calibration.json")
+    assert not is_verification_audit_json("verification/daily_health.py")
+    assert rel_is_scope_excluded_file(
+        "verification/adaptive_shadow_v2_calibration.json",
+        SCAN_SCOPE_EXCLUDE_PREFIXES,
+    )
+    assert not rel_is_scope_excluded_file("verification/daily_health.py", SCAN_SCOPE_EXCLUDE_PREFIXES)
 
 
 def test_gitignore_excludes_ignored_subtree(tmp_path: Path) -> None:
