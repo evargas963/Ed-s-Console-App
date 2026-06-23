@@ -35,12 +35,56 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
 
-      - name: Generate V4 register (gitignored; pin in schwab_v4_register_build_meta.json)
+      - name: Generate V4 register (gitignored; slice reconciliation follows)
         shell: bash
         run: |
           python -m tools.schwab_universal_coverage_scanner_v3 \
             --output governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv \
             --embedding-mode mock
+
+      - name: Merge register_slices dispositions into generated register
+        shell: bash
+        run: |
+          python tools/stream_revert_v4_register_and_sync_perf.py --merge-slices
+
+      - name: Revert slice-bleed REPLACED rows (no perf_proof governed_ref)
+        shell: bash
+        run: |
+          python <<'PY'
+          import csv
+          import re
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          pp = re.compile(r"pp_[^/\\]+\.json")
+          ids: list[str] = []
+          reg = Path("governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv")
+          with reg.open(newline="", encoding="utf-8") as f:
+              for row in csv.DictReader(f):
+                  if (row.get("disposition") or "").strip() != "REPLACED":
+                      continue
+                  ref = (row.get("governed_ref") or "").strip()
+                  if not pp.search(ref):
+                      ids.append((row.get("register_id") or "").strip())
+          if not ids:
+              print("no slice-bleed REPLACED rows to revert")
+              sys.exit(0)
+          print("reverting", len(ids), "register_ids without pp governed_ref")
+          subprocess.run(
+              [
+                  sys.executable,
+                  "tools/stream_revert_v4_register_and_sync_perf.py",
+                  "--revert-ids",
+                  ",".join(ids),
+              ],
+              check=True,
+          )
+          PY
+
+      - name: Verify reconciled register pin matches schwab_v4_register_build_meta.json
+        shell: bash
+        run: |
           python <<'PY'
           import csv, hashlib, json, pathlib, sys
           meta = json.loads(pathlib.Path("governance/artifacts/schwab_v4_register_build_meta.json").read_text(encoding="utf-8"))
@@ -57,13 +101,48 @@ jobs:
               if n != want_rows:
                   print("register_rows_written mismatch", n, want_rows, file=sys.stderr)
                   sys.exit(1)
-          print("V4 register pin OK", h[:16])
+          print("V4 reconciled register pin OK", h[:16])
           PY
 
       - name: Rebuild V4 scoreboard (D17 + register_build from current register/meta)
         shell: bash
         run: |
           python -m tools.schwab_v4_scoreboard
+
+      - name: Fail if reconciliation changed unexpected tracked files
+        shell: bash
+        run: |
+          python <<'PY'
+          import subprocess
+          import sys
+
+          allowed_prefixes = (
+              "governance/artifacts/schwab_v4_register_build_meta.json",
+              "governance/artifacts/schwab_v4_scoreboard.json",
+              "governance/artifacts/perf_proof/",
+          )
+          proc = subprocess.run(
+              ["git", "diff", "--name-only"],
+              check=True,
+              capture_output=True,
+              text=True,
+          )
+          changed = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
+          unexpected = sorted(
+              p
+              for p in changed
+              if not any(p == pref or p.startswith(pref) for pref in allowed_prefixes)
+          )
+          if unexpected:
+              print("unexpected tracked file changes after reconciliation:", file=sys.stderr)
+              for p in unexpected:
+                  print(" ", p, file=sys.stderr)
+              sys.exit(1)
+          if changed:
+              print("tracked reconciliation touch OK:", ", ".join(changed))
+          else:
+              print("no tracked file drift after reconciliation")
+          PY
 
       - name: Verify register file, meta, and scoreboard register_build SHA256 alignment
         shell: bash
