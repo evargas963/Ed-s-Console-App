@@ -1208,3 +1208,114 @@ def test_phase3_wire_denylist_rows_not_in_lexical_nmd_slice() -> None:
     }
     assert not PHASE3_ADAPTER_WIRE_DENYLIST & lex_ids
     assert not PHASE3_LEXICAL_KEEP_DERIVED_DENYLIST & lex_ids
+
+
+def test_phase4_market_state_lexical_denylist_count() -> None:
+    from governance.phase4_d17_market_state_boundary import (
+        PHASE4_LEXICAL_REGISTER_DENYLIST,
+        PHASE4_LEXICAL_WIRE_LINE_DENYLIST,
+    )
+
+    assert len(PHASE4_LEXICAL_REGISTER_DENYLIST) == 35
+    assert len(PHASE4_LEXICAL_WIRE_LINE_DENYLIST) == 35
+
+
+def test_phase4_slice_files_scope_and_dispositions() -> None:
+    import csv
+    from pathlib import Path
+
+    from governance.phase3_d17_adapter_boundary import WIRE_PATTERN_KINDS
+    from governance.phase4_d17_market_state_boundary import (
+        PHASE4_LEXICAL_PATTERN_KINDS,
+        PHASE4_LEXICAL_REGISTER_DENYLIST,
+        PHASE4_LEXICAL_WIRE_LINE_DENYLIST,
+        PHASE4_MARKET_STATE_PATH,
+    )
+
+    root = Path(__file__).resolve().parents[1]
+    slice_name = "phase4_market_state_lexical_not_market_data.csv"
+    path = root / "governance" / "register_slices" / slice_name
+    assert path.is_file(), slice_name
+
+    rows = list(csv.DictReader(path.open(newline="", encoding="utf-8")))
+    assert len(rows) == 424, slice_name
+
+    for row in rows:
+        assert (row.get("disposition") or "").strip() == "NOT_MARKET_DATA", slice_name
+        rel = (row.get("path") or "").replace("\\", "/")
+        assert rel == PHASE4_MARKET_STATE_PATH, rel
+        pk = (row.get("pattern_kind") or "").strip()
+        assert pk in PHASE4_LEXICAL_PATTERN_KINDS, pk
+        assert pk not in WIRE_PATTERN_KINDS, pk
+        rid = (row.get("register_id") or "").strip()
+        assert rid not in PHASE4_LEXICAL_REGISTER_DENYLIST, rid
+        line = (row.get("line") or "").strip()
+        assert line not in PHASE4_LEXICAL_WIRE_LINE_DENYLIST, line
+        disp = (row.get("disposition") or "").strip()
+        assert disp not in {"REPLACED", "KEEP_DERIVED", "GOVERNED_EXCEPTION"}, rid
+
+
+def test_phase4_slice_merge_leaves_wire_rows_unreviewed(tmp_path: Path) -> None:
+    import csv
+    import shutil
+
+    from governance.phase4_d17_market_state_boundary import (
+        PHASE4_LEXICAL_PATTERN_KINDS,
+        PHASE4_LEXICAL_REGISTER_DENYLIST,
+        PHASE4_MARKET_STATE_PATH,
+    )
+    from tools.stream_revert_v4_register_and_sync_perf import merge_register_slices
+
+    repo = Path(__file__).resolve().parents[1]
+    src_reg = repo / "governance" / "SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
+    if not src_reg.is_file():
+        pytest.skip("canonical register not generated locally")
+
+    reg = tmp_path / "register.csv"
+    shutil.copy2(src_reg, reg)
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    shutil.copy2(
+        repo / "governance" / "register_slices" / "phase4_market_state_lexical_not_market_data.csv",
+        slice_dir / "phase4_market_state_lexical_not_market_data.csv",
+    )
+
+    def _count_ms(pred) -> int:
+        n = 0
+        with reg.open(newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                if (row.get("disposition") or "").strip() != "UNREVIEWED":
+                    continue
+                p = (row.get("path") or "").replace("\\", "/")
+                if p != PHASE4_MARKET_STATE_PATH:
+                    continue
+                if pred(row):
+                    n += 1
+        return n
+
+    ms_before = _count_ms(lambda _row: True)
+    non_lexical_before = _count_ms(
+        lambda row: (row.get("pattern_kind") or "").strip() not in PHASE4_LEXICAL_PATTERN_KINDS
+    )
+    deny_before = _count_ms(
+        lambda row: (row.get("register_id") or "").strip() in PHASE4_LEXICAL_REGISTER_DENYLIST
+    )
+    assert ms_before == 657
+    assert non_lexical_before == 198
+    assert deny_before == 35
+
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] >= 424
+
+    ms_after = _count_ms(lambda _row: True)
+    non_lexical_after = _count_ms(
+        lambda row: (row.get("pattern_kind") or "").strip() not in PHASE4_LEXICAL_PATTERN_KINDS
+    )
+    deny_after = _count_ms(
+        lambda row: (row.get("register_id") or "").strip() in PHASE4_LEXICAL_REGISTER_DENYLIST
+    )
+
+    assert ms_after == 233
+    assert ms_before - ms_after == 424
+    assert non_lexical_after == non_lexical_before
+    assert deny_after == deny_before
