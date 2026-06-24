@@ -1391,7 +1391,6 @@ def test_phase5a_slice_merge_reduces_only_structural_rows(tmp_path: Path) -> Non
 
     from governance.phase3_d17_adapter_boundary import WIRE_PATTERN_KINDS
     from governance.phase4_d17_market_state_boundary import (
-        PHASE4_LEXICAL_PATTERN_KINDS,
         PHASE4_LEXICAL_REGISTER_DENYLIST,
         PHASE4_LEXICAL_WIRE_LINE_DENYLIST,
         PHASE4_MARKET_STATE_PATH,
