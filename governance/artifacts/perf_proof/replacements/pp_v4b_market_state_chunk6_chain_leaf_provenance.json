@@ -29,8 +29,13 @@
     "platform_note": "Windows; chunk-6 market_state 2026-05-19"
   },
   "register_link": {
-    "status": "unbound",
-    "replaced_register_ids": [],
+    "status": "bound",
+    "replaced_register_ids": [
+      "2e4a9afa89d73f43d796",
+      "987eafc3688833ed87b8",
+      "c51b40b24d6c6d7839f4",
+      "ed514964d625ac27d90b"
+    ],
     "producer_note": "contracts from server safe_get_chain flatten"
   }
 }

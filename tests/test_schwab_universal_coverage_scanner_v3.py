@@ -1031,3 +1031,180 @@ def test_phase2_slice_merge_leaves_contract_tests_unreviewed(tmp_path: Path) -> 
     assert _count(lambda p: p in PHASE2_CONTRACT_TEST_DENYLIST) == deny_before
     assert _count(lambda p: p.startswith("governance/") and p.endswith(".md")) == 0
     assert _count(lambda p: p.startswith("tests/") and p not in PHASE2_CONTRACT_TEST_DENYLIST) == 0
+
+
+def test_phase3_adapter_wire_denylist_count() -> None:
+    from governance.phase3_d17_adapter_boundary import (
+        PHASE3_ADAPTER_WIRE_DENYLIST,
+        PHASE3_WIRE_DISPOSITIONS,
+        WIRE_PATTERN_KINDS,
+    )
+
+    assert len(PHASE3_ADAPTER_WIRE_DENYLIST) == 65
+    assert PHASE3_ADAPTER_WIRE_DENYLIST == set(PHASE3_WIRE_DISPOSITIONS)
+    for rid, spec in PHASE3_WIRE_DISPOSITIONS.items():
+        assert spec.disposition in {
+            "REPLACED",
+            "KEEP_DERIVED",
+            "NOT_MARKET_DATA",
+            "GOVERNED_EXCEPTION",
+        }, rid
+        if spec.disposition == "REPLACED":
+            assert spec.canonical_field_citation, rid
+            assert spec.governed_ref.endswith(".json"), rid
+    assert WIRE_PATTERN_KINDS  # imported contract surface frozen in boundary module
+
+
+def test_phase3_slice_files_scope_and_dispositions() -> None:
+    import csv
+    from pathlib import Path
+
+    from governance.phase2_d17_contract_test_denylist import MONEY_PATH_PATHS
+    from governance.phase3_d17_adapter_boundary import (
+        PHASE3_ADAPTER_PATHS,
+        PHASE3_ADAPTER_WIRE_DENYLIST,
+        PHASE3_LEXICAL_KEEP_DERIVED_DENYLIST,
+        WIRE_PATTERN_KINDS,
+    )
+
+    root = Path(__file__).resolve().parents[1]
+    slice_dir = root / "governance" / "register_slices"
+    lexical_name = "phase3_adapter_lexical_not_market_data.csv"
+    wire_name = "phase3_adapter_wire_disposition.csv"
+    forbidden_runtime = {
+        "server.py",
+        "db.py",
+        "market_state.py",
+    } | set(MONEY_PATH_PATHS)
+
+    lex_path = slice_dir / lexical_name
+    wire_path = slice_dir / wire_name
+    assert lex_path.is_file(), lexical_name
+    assert wire_path.is_file(), wire_name
+
+    lex_rows = list(csv.DictReader(lex_path.open(newline="", encoding="utf-8")))
+    wire_rows = list(csv.DictReader(wire_path.open(newline="", encoding="utf-8")))
+    assert len(lex_rows) == 548, lexical_name
+    assert len(wire_rows) == 73, wire_name
+
+    wire_ids_in_slice = set()
+    for row in wire_rows:
+        rid = (row.get("register_id") or "").strip()
+        wire_ids_in_slice.add(rid)
+        disp = (row.get("disposition") or "").strip()
+        assert disp in {"REPLACED", "KEEP_DERIVED", "NOT_MARKET_DATA"}, wire_name
+        rel = (row.get("path") or "").replace("\\", "/")
+        assert rel in PHASE3_ADAPTER_PATHS, rel
+        assert rel not in forbidden_runtime, rel
+        pk = (row.get("pattern_kind") or "").strip()
+        if rid in PHASE3_ADAPTER_WIRE_DENYLIST:
+            assert pk in WIRE_PATTERN_KINDS, rid
+        if rid in PHASE3_LEXICAL_KEEP_DERIVED_DENYLIST:
+            assert disp == "KEEP_DERIVED", rid
+        assert rid not in PHASE3_ADAPTER_WIRE_DENYLIST or rid in wire_ids_in_slice
+
+    assert PHASE3_ADAPTER_WIRE_DENYLIST <= wire_ids_in_slice
+    assert PHASE3_LEXICAL_KEEP_DERIVED_DENYLIST <= wire_ids_in_slice
+
+    for row in lex_rows:
+        assert (row.get("disposition") or "").strip() == "NOT_MARKET_DATA", lexical_name
+        rel = (row.get("path") or "").replace("\\", "/")
+        assert rel in PHASE3_ADAPTER_PATHS, rel
+        assert rel not in forbidden_runtime, rel
+        rid = (row.get("register_id") or "").strip()
+        assert rid not in PHASE3_ADAPTER_WIRE_DENYLIST, rid
+        assert rid not in PHASE3_LEXICAL_KEEP_DERIVED_DENYLIST, rid
+        pk = (row.get("pattern_kind") or "").strip()
+        assert pk not in WIRE_PATTERN_KINDS, rid
+
+
+def test_phase3_slice_merge_leaves_money_path_and_runtime_untouched(tmp_path: Path) -> None:
+    import csv
+    import shutil
+
+    from governance.phase2_d17_contract_test_denylist import MONEY_PATH_PATHS
+    from governance.phase3_d17_adapter_boundary import PHASE3_ADAPTER_PATHS
+    from tools.stream_revert_v4_register_and_sync_perf import merge_register_slices
+
+    repo = Path(__file__).resolve().parents[1]
+    src_reg = repo / "governance" / "SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
+    if not src_reg.is_file():
+        pytest.skip("canonical register not generated locally")
+
+    reg = tmp_path / "register.csv"
+    shutil.copy2(src_reg, reg)
+
+    # Repo register may already include Phase 3 merges; reset adapter trio for isolated merge proof.
+    fieldnames: list[str] | None = None
+    reset_rows: list[dict[str, str]] = []
+    with reg.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        fieldnames = list(reader.fieldnames or [])
+        for row in reader:
+            p = (row.get("path") or "").replace("\\", "/")
+            if p in PHASE3_ADAPTER_PATHS:
+                row["disposition"] = "UNREVIEWED"
+                row["canonical_field_citation"] = ""
+                row["governed_ref"] = ""
+                row["notes"] = ""
+                row["v2_trace"] = ""
+            reset_rows.append(row)
+    assert fieldnames
+    with reg.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(reset_rows)
+
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    for name in (
+        "phase3_adapter_lexical_not_market_data.csv",
+        "phase3_adapter_wire_disposition.csv",
+    ):
+        shutil.copy2(repo / "governance" / "register_slices" / name, slice_dir / name)
+
+    def _count(pred) -> int:
+        n = 0
+        with reg.open(newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                if (row.get("disposition") or "").strip() != "UNREVIEWED":
+                    continue
+                p = (row.get("path") or "").replace("\\", "/")
+                if pred(p):
+                    n += 1
+        return n
+
+    adapter_before = _count(lambda p: p in PHASE3_ADAPTER_PATHS)
+    money_before = _count(lambda p: p in MONEY_PATH_PATHS)
+    server_before = _count(lambda p: p == "server.py")
+    db_before = _count(lambda p: p == "db.py")
+    market_state_before = _count(lambda p: p == "market_state.py")
+    assert adapter_before == 621
+
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] == 621
+
+    assert _count(lambda p: p in PHASE3_ADAPTER_PATHS) == 0
+    assert _count(lambda p: p in MONEY_PATH_PATHS) == money_before
+    assert _count(lambda p: p == "server.py") == server_before
+    assert _count(lambda p: p == "db.py") == db_before
+    assert _count(lambda p: p == "market_state.py") == market_state_before
+
+
+def test_phase3_wire_denylist_rows_not_in_lexical_nmd_slice() -> None:
+    import csv
+    from pathlib import Path
+
+    from governance.phase3_d17_adapter_boundary import (
+        PHASE3_ADAPTER_WIRE_DENYLIST,
+        PHASE3_LEXICAL_KEEP_DERIVED_DENYLIST,
+    )
+
+    root = Path(__file__).resolve().parents[1]
+    lex_path = root / "governance" / "register_slices" / "phase3_adapter_lexical_not_market_data.csv"
+    lex_ids = {
+        (row.get("register_id") or "").strip()
+        for row in csv.DictReader(lex_path.open(newline="", encoding="utf-8"))
+    }
+    assert not PHASE3_ADAPTER_WIRE_DENYLIST & lex_ids
+    assert not PHASE3_LEXICAL_KEEP_DERIVED_DENYLIST & lex_ids
