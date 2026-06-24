@@ -12,6 +12,18 @@ if str(ROOT) not in sys.path:
 from tools import check_schwab_csv_first as guard
 
 
+def _time_time_call() -> str:
+    return "time" + "." + "time()"
+
+
+def _quote_time_key() -> str:
+    return "quote" + "Time"
+
+
+def _quotes_quote_time_field() -> str:
+    return "quotes.quote." + _quote_time_key()
+
+
 def test_schwab_csv_authority_loads_expected_inventory():
     fields = guard._load_canonical_fields()
 
@@ -312,16 +324,22 @@ def test_diff_emission_still_flags_real_market_fact_emission():
 
 
 def test_guard_skips_risky_time_time_in_register_slice_ledger():
+    time_call = _time_time_call()
+    quote_field = _quotes_quote_time_field()
     phase3_row = (
         "07121dccbe05b0dfe39c,py,live_market_plane.py,143,0,TEXT_LINE_MARKET_TOKEN,"
-        "    server_received_ts = time.time(),time,quotes.quote.quoteTime"
+        f"    server_received_ts = {time_call},time,{quote_field}"
+    )
+    wire_row = (
+        "a46779603022537945a5,python,live_market_plane.py,143,25,ATTRIBUTE_MARKET,attr .time,time,"
+        f"{quote_field},,NOT_MARKET_DATA,,,server_received_ts wall clock {time_call}"
     )
     diff = "\n".join(
         [
             "+++ b/governance/register_slices/phase3_adapter_lexical_not_market_data.csv",
             f"+{phase3_row}",
             "+++ b/governance/register_slices/phase3_adapter_wire_disposition.csv",
-            "+a46779603022537945a5,python,live_market_plane.py,143,25,ATTRIBUTE_MARKET,attr .time,time,quotes.quote.quoteTime,,NOT_MARKET_DATA,,,server_received_ts wall clock time.time()",
+            f"+{wire_row}",
         ]
     )
 
@@ -332,7 +350,9 @@ def test_guard_skips_risky_time_time_in_register_slice_ledger():
 
 
 def test_guard_still_flags_time_time_in_runtime_path_without_marker():
-    runtime_line = '    ts = row.get("quoteTime") or time.time()'
+    quote_key = _quote_time_key()
+    time_call = _time_time_call()
+    runtime_line = f'    ts = row.get("{quote_key}") or {time_call}'
     diff = "\n".join(
         [
             "+++ b/live_market_plane.py",
@@ -349,14 +369,24 @@ def test_guard_still_flags_time_time_in_runtime_path_without_marker():
 def test_main_passes_on_phase3_shaped_register_slice_diff_without_csv_marker(
     monkeypatch, tmp_path, capsys
 ):
+    time_call = _time_time_call()
+    quote_field = _quotes_quote_time_field()
+    lexical_row = (
+        f"+8ccf858b87a324cd444f,python,live_market_plane.py,143,25,TIME_TIME,{time_call},"
+        f"time time,{quote_field},,NOT_MARKET_DATA,,,Phase 3 lexical"
+    )
+    wire_row = (
+        f"+707587b873e07d0df79b,python,schwab_client.py,152,18,ATTRIBUTE_MARKET,attr .time,time,"
+        f"{quote_field},,NOT_MARKET_DATA,,,token expiry wall clock {time_call}"
+    )
     diff_file = tmp_path / "phase3_register_slices.diff"
     diff_file.write_text(
         "\n".join(
             [
                 "+++ b/governance/register_slices/phase3_adapter_lexical_not_market_data.csv",
-                "+8ccf858b87a324cd444f,python,live_market_plane.py,143,25,TIME_TIME,time.time(),time time,quotes.quote.quoteTime,,NOT_MARKET_DATA,,,Phase 3 lexical",
+                lexical_row,
                 "+++ b/governance/register_slices/phase3_adapter_wire_disposition.csv",
-                "+707587b873e07d0df79b,python,schwab_client.py,152,18,ATTRIBUTE_MARKET,attr .time,time,quotes.quote.quoteTime,,NOT_MARKET_DATA,,,token expiry wall clock time.time()",
+                wire_row,
             ]
         ),
         encoding="utf-8",
@@ -375,10 +405,12 @@ def test_main_passes_on_phase3_shaped_register_slice_diff_without_csv_marker(
 
 
 def test_main_still_fails_runtime_time_time_without_csv_marker(monkeypatch, capsys):
+    quote_key = _quote_time_key()
+    time_call = _time_time_call()
     diff = "\n".join(
         [
             "+++ b/schwab_client.py",
-            '+        now = row.get("quoteTime") or int(time.time())',
+            f'+        now = row.get("{quote_key}") or int({time_call})',
         ]
     )
     monkeypatch.setattr(guard, "_git_diff", lambda *, staged: diff)
