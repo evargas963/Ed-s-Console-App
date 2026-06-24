@@ -1319,3 +1319,162 @@ def test_phase4_slice_merge_leaves_wire_rows_unreviewed(tmp_path: Path) -> None:
     assert ms_before - ms_after == 424
     assert non_lexical_after == non_lexical_before
     assert deny_after == deny_before
+
+
+def test_phase5a_structural_boundary_frozen_scope() -> None:
+    from governance.phase4_d17_market_state_boundary import PHASE4_LEXICAL_WIRE_LINE_DENYLIST
+    from governance.phase5a_d17_market_state_structural_boundary import (
+        PHASE5A_STRUCTURAL_LINES,
+        PHASE5A_STRUCTURAL_PATTERN_KINDS,
+        PHASE5A_STRUCTURAL_REGISTER_IDS,
+    )
+
+    assert len(PHASE5A_STRUCTURAL_REGISTER_IDS) == 3
+    assert PHASE5A_STRUCTURAL_LINES == frozenset({"133", "631", "812"})
+    assert PHASE5A_STRUCTURAL_PATTERN_KINDS == frozenset(
+        {"DECORATOR_SITE", "REGISTRY_DISPATCH"}
+    )
+    assert not PHASE5A_STRUCTURAL_LINES & PHASE4_LEXICAL_WIRE_LINE_DENYLIST
+
+
+def test_phase5a_slice_files_scope_and_dispositions() -> None:
+    import csv
+    from pathlib import Path
+
+    from governance.phase3_d17_adapter_boundary import WIRE_PATTERN_KINDS
+    from governance.phase4_d17_market_state_boundary import (
+        PHASE4_LEXICAL_REGISTER_DENYLIST,
+        PHASE4_LEXICAL_WIRE_LINE_DENYLIST,
+    )
+    from governance.phase5a_d17_market_state_structural_boundary import (
+        PHASE5A_MARKET_STATE_PATH,
+        PHASE5A_STRUCTURAL_LINES,
+        PHASE5A_STRUCTURAL_PATTERN_KINDS,
+        PHASE5A_STRUCTURAL_REGISTER_IDS,
+    )
+
+    root = Path(__file__).resolve().parents[1]
+    slice_name = "phase5a_market_state_structural_not_market_data.csv"
+    path = root / "governance" / "register_slices" / slice_name
+    assert path.is_file(), slice_name
+
+    rows = list(csv.DictReader(path.open(newline="", encoding="utf-8")))
+    assert len(rows) == 3, slice_name
+
+    seen_ids: set[str] = set()
+    seen_lines: set[str] = set()
+    for row in rows:
+        assert (row.get("disposition") or "").strip() == "NOT_MARKET_DATA", slice_name
+        rel = (row.get("path") or "").replace("\\", "/")
+        assert rel == PHASE5A_MARKET_STATE_PATH, rel
+        pk = (row.get("pattern_kind") or "").strip()
+        assert pk in PHASE5A_STRUCTURAL_PATTERN_KINDS, pk
+        assert pk not in WIRE_PATTERN_KINDS, pk
+        rid = (row.get("register_id") or "").strip()
+        assert rid in PHASE5A_STRUCTURAL_REGISTER_IDS, rid
+        seen_ids.add(rid)
+        line = (row.get("line") or "").strip()
+        assert line in PHASE5A_STRUCTURAL_LINES, line
+        seen_lines.add(line)
+        assert line not in PHASE4_LEXICAL_WIRE_LINE_DENYLIST, line
+        assert rid not in PHASE4_LEXICAL_REGISTER_DENYLIST, rid
+        disp = (row.get("disposition") or "").strip()
+        assert disp not in {"REPLACED", "KEEP_DERIVED", "PASS_THROUGH", "GOVERNED_EXCEPTION"}, rid
+
+    assert seen_ids == set(PHASE5A_STRUCTURAL_REGISTER_IDS)
+    assert seen_lines == set(PHASE5A_STRUCTURAL_LINES)
+
+
+def test_phase5a_slice_merge_reduces_only_structural_rows(tmp_path: Path) -> None:
+    import csv
+    import shutil
+
+    from governance.phase3_d17_adapter_boundary import WIRE_PATTERN_KINDS
+    from governance.phase4_d17_market_state_boundary import (
+        PHASE4_LEXICAL_PATTERN_KINDS,
+        PHASE4_LEXICAL_REGISTER_DENYLIST,
+        PHASE4_LEXICAL_WIRE_LINE_DENYLIST,
+        PHASE4_MARKET_STATE_PATH,
+    )
+    from governance.phase5a_d17_market_state_structural_boundary import (
+        PHASE5A_STRUCTURAL_LINES,
+        PHASE5A_STRUCTURAL_REGISTER_IDS,
+    )
+    from tools.stream_revert_v4_register_and_sync_perf import merge_register_slices
+
+    repo = Path(__file__).resolve().parents[1]
+    src_reg = repo / "governance" / "SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
+    if not src_reg.is_file():
+        pytest.skip("canonical register not generated locally")
+
+    reg = tmp_path / "register.csv"
+    shutil.copy2(src_reg, reg)
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    shutil.copy2(
+        repo / "governance" / "register_slices" / "phase5a_market_state_structural_not_market_data.csv",
+        slice_dir / "phase5a_market_state_structural_not_market_data.csv",
+    )
+
+    mixed_lines = set(PHASE4_LEXICAL_WIRE_LINE_DENYLIST)
+
+    def _count_ms(pred) -> int:
+        n = 0
+        with reg.open(newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                p = (row.get("path") or "").replace("\\", "/")
+                if p != PHASE4_MARKET_STATE_PATH:
+                    continue
+                if pred(row):
+                    n += 1
+        return n
+
+    structural_before = _count_ms(
+        lambda row: (row.get("register_id") or "").strip() in PHASE5A_STRUCTURAL_REGISTER_IDS
+        and (row.get("disposition") or "").strip() == "UNREVIEWED"
+    )
+    wire_unrev_before = _count_ms(
+        lambda row: (row.get("disposition") or "").strip() == "UNREVIEWED"
+        and (row.get("pattern_kind") or "").strip() in WIRE_PATTERN_KINDS
+    )
+    deny_unrev_before = _count_ms(
+        lambda row: (row.get("disposition") or "").strip() == "UNREVIEWED"
+        and (row.get("register_id") or "").strip() in PHASE4_LEXICAL_REGISTER_DENYLIST
+    )
+    binop_mixed_before = _count_ms(
+        lambda row: (row.get("disposition") or "").strip() == "UNREVIEWED"
+        and (row.get("pattern_kind") or "").strip() == "BINOP_MARKET_IDENT"
+        and (row.get("line") or "").strip() in mixed_lines
+    )
+    ms_unrev_before = _count_ms(lambda row: (row.get("disposition") or "").strip() == "UNREVIEWED")
+
+    assert structural_before == 3
+    assert not (set(PHASE5A_STRUCTURAL_LINES) & mixed_lines)
+
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] == 3
+
+    structural_nmd_after = _count_ms(
+        lambda row: (row.get("register_id") or "").strip() in PHASE5A_STRUCTURAL_REGISTER_IDS
+        and (row.get("disposition") or "").strip() == "NOT_MARKET_DATA"
+    )
+    wire_unrev_after = _count_ms(
+        lambda row: (row.get("disposition") or "").strip() == "UNREVIEWED"
+        and (row.get("pattern_kind") or "").strip() in WIRE_PATTERN_KINDS
+    )
+    deny_unrev_after = _count_ms(
+        lambda row: (row.get("disposition") or "").strip() == "UNREVIEWED"
+        and (row.get("register_id") or "").strip() in PHASE4_LEXICAL_REGISTER_DENYLIST
+    )
+    binop_mixed_after = _count_ms(
+        lambda row: (row.get("disposition") or "").strip() == "UNREVIEWED"
+        and (row.get("pattern_kind") or "").strip() == "BINOP_MARKET_IDENT"
+        and (row.get("line") or "").strip() in mixed_lines
+    )
+    ms_unrev_after = _count_ms(lambda row: (row.get("disposition") or "").strip() == "UNREVIEWED")
+
+    assert structural_nmd_after == 3
+    assert ms_unrev_before - ms_unrev_after == 3
+    assert wire_unrev_after == wire_unrev_before
+    assert deny_unrev_after == deny_unrev_before
+    assert binop_mixed_after == binop_mixed_before
