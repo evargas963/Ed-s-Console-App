@@ -105,6 +105,9 @@ TRACEABLE_INVENTORY_PATHS: frozenset[str] = frozenset(
     }
 )
 
+# V4 disposition-ledger slice CSVs — cite scanner surface_form/notes; not runtime emission.
+REGISTER_SLICE_LEDGER_PREFIX = "governance/register_slices/"
+
 # Operator-trust / governance tooling — not market-fact emission paths (PR #18 stabilization cone).
 EMISSION_EXCLUDE_PATH_PREFIXES: tuple[str, ...] = (
     "tools/check_operator_trust_governance.py",
@@ -263,6 +266,11 @@ def _is_traceable_inventory_path(path: str) -> bool:
     return norm in TRACEABLE_INVENTORY_PATHS
 
 
+def _is_register_slice_ledger_path(path: str) -> bool:
+    norm = path.replace("\\", "/")
+    return norm.startswith(REGISTER_SLICE_LEDGER_PREFIX)
+
+
 def _is_emission_scannable_path(path: str) -> bool:
     if _is_traceable_inventory_path(path):
         return False
@@ -300,6 +308,15 @@ def _is_risky(line: str) -> bool:
     if not MARKET_NAMES.search(line):
         return False
     return any(pattern.search(line) for pattern in RISK_PATTERNS)
+
+
+def _risky_added_lines(diff_text: str) -> list[tuple[str, str]]:
+    """Added diff lines that match risky market-data heuristics (runtime paths only)."""
+    return [
+        (path, line)
+        for path, line in _added_lines(diff_text)
+        if not _is_register_slice_ledger_path(path) and _is_risky(line)
+    ]
 
 
 def _is_market_surface(name: str) -> bool:
@@ -587,7 +604,7 @@ def main() -> int:
                 f"({n} emission site(s) checked, register loaded)."
             )
 
-    risky = [(path, line) for path, line in _added_lines(diff_text) if _is_risky(line)]
+    risky = _risky_added_lines(diff_text)
     changed_market_paths = sorted(p for p in _changed_paths(diff_text) if _is_market_data_path(p))
     if args.diff_emission_gate and exit_code != 0:
         return exit_code

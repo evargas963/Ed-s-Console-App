@@ -309,3 +309,84 @@ def test_diff_emission_still_flags_real_market_fact_emission():
     sites = guard._extract_emission_sites(diff)
     assert sites
     assert any("lastPrice" in s.surfaces for s in sites)
+
+
+def test_guard_skips_risky_time_time_in_register_slice_ledger():
+    phase3_row = (
+        "07121dccbe05b0dfe39c,py,live_market_plane.py,143,0,TEXT_LINE_MARKET_TOKEN,"
+        "    server_received_ts = time.time(),time,quotes.quote.quoteTime"
+    )
+    diff = "\n".join(
+        [
+            "+++ b/governance/register_slices/phase3_adapter_lexical_not_market_data.csv",
+            f"+{phase3_row}",
+            "+++ b/governance/register_slices/phase3_adapter_wire_disposition.csv",
+            "+a46779603022537945a5,python,live_market_plane.py,143,25,ATTRIBUTE_MARKET,attr .time,time,quotes.quote.quoteTime,,NOT_MARKET_DATA,,,server_received_ts wall clock time.time()",
+        ]
+    )
+
+    assert guard._is_register_slice_ledger_path(
+        "governance/register_slices/phase3_adapter_wire_disposition.csv"
+    )
+    assert guard._risky_added_lines(diff) == []
+
+
+def test_guard_still_flags_time_time_in_runtime_path_without_marker():
+    runtime_line = '    ts = row.get("quoteTime") or time.time()'
+    diff = "\n".join(
+        [
+            "+++ b/live_market_plane.py",
+            f"+{runtime_line}",
+        ]
+    )
+
+    risky = guard._risky_added_lines(diff)
+
+    assert risky == [("live_market_plane.py", runtime_line)]
+    assert guard._has_marker(diff) is False
+
+
+def test_main_passes_on_phase3_shaped_register_slice_diff_without_csv_marker(
+    monkeypatch, tmp_path, capsys
+):
+    diff_file = tmp_path / "phase3_register_slices.diff"
+    diff_file.write_text(
+        "\n".join(
+            [
+                "+++ b/governance/register_slices/phase3_adapter_lexical_not_market_data.csv",
+                "+8ccf858b87a324cd444f,python,live_market_plane.py,143,25,TIME_TIME,time.time(),time time,quotes.quote.quoteTime,,NOT_MARKET_DATA,,,Phase 3 lexical",
+                "+++ b/governance/register_slices/phase3_adapter_wire_disposition.csv",
+                "+707587b873e07d0df79b,python,schwab_client.py,152,18,ATTRIBUTE_MARKET,attr .time,time,quotes.quote.quoteTime,,NOT_MARKET_DATA,,,token expiry wall clock time.time()",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["check_schwab_csv_first.py", "--diff-file", str(diff_file)],
+    )
+
+    rc = guard.main()
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "no risky market-data additions found" in out
+
+
+def test_main_still_fails_runtime_time_time_without_csv_marker(monkeypatch, capsys):
+    diff = "\n".join(
+        [
+            "+++ b/schwab_client.py",
+            '+        now = row.get("quoteTime") or int(time.time())',
+        ]
+    )
+    monkeypatch.setattr(guard, "_git_diff", lambda *, staged: diff)
+    monkeypatch.setattr(sys, "argv", ["check_schwab_csv_first.py"])
+
+    rc = guard.main()
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "Schwab CSV-first guard FAILED" in out
+    assert "schwab_client.py" in out
