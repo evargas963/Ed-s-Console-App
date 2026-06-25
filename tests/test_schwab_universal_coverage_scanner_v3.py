@@ -1255,6 +1255,36 @@ def test_phase4_slice_files_scope_and_dispositions() -> None:
         assert disp not in {"REPLACED", "KEEP_DERIVED", "GOVERNED_EXCEPTION"}, rid
 
 
+def _reset_market_state_register_rows_unreviewed(reg: Path) -> None:
+    """Hermetic baseline: UNREVIEWED market_state.py rows in an isolated register copy.
+
+    Simulates fresh scanner output for the market_state cone so slice-merge tests do
+    not depend on mutable on-disk merged register state from prior local merges.
+    """
+    import csv
+
+    from governance.phase4_d17_market_state_boundary import PHASE4_MARKET_STATE_PATH
+
+    merge_clear = ("canonical_field_citation", "governed_ref", "notes", "v2_trace")
+    tmp = reg.with_suffix(reg.suffix + ".ms_reset_tmp")
+    with reg.open(newline="", encoding="utf-8") as fin, tmp.open(
+        "w", newline="", encoding="utf-8"
+    ) as fout:
+        reader = csv.DictReader(fin)
+        fieldnames = reader.fieldnames
+        if not fieldnames:
+            raise AssertionError("register missing header")
+        writer = csv.DictWriter(fout, fieldnames=fieldnames, lineterminator="\n")
+        writer.writeheader()
+        for row in reader:
+            if (row.get("path") or "").replace("\\", "/") == PHASE4_MARKET_STATE_PATH:
+                row["disposition"] = "UNREVIEWED"
+                for field in merge_clear:
+                    row[field] = ""
+            writer.writerow(row)
+    tmp.replace(reg)
+
+
 def test_phase4_slice_merge_leaves_wire_rows_unreviewed(tmp_path: Path) -> None:
     import csv
     import shutil
@@ -1271,20 +1301,29 @@ def test_phase4_slice_merge_leaves_wire_rows_unreviewed(tmp_path: Path) -> None:
     if not src_reg.is_file():
         pytest.skip("canonical register not generated locally")
 
+    phase4_slice_path = (
+        repo / "governance" / "register_slices" / "phase4_market_state_lexical_not_market_data.csv"
+    )
+    phase4_slice_rows = list(csv.DictReader(phase4_slice_path.open(newline="", encoding="utf-8")))
+    phase4_slice_ids = {(row.get("register_id") or "").strip() for row in phase4_slice_rows}
+    assert len(phase4_slice_ids) == 424
+
     reg = tmp_path / "register.csv"
     shutil.copy2(src_reg, reg)
+    _reset_market_state_register_rows_unreviewed(reg)
+
     slice_dir = tmp_path / "slices"
     slice_dir.mkdir()
     shutil.copy2(
-        repo / "governance" / "register_slices" / "phase4_market_state_lexical_not_market_data.csv",
+        phase4_slice_path,
         slice_dir / "phase4_market_state_lexical_not_market_data.csv",
     )
 
-    def _count_ms(pred) -> int:
+    def _count_ms(pred, *, disposition: str = "UNREVIEWED") -> int:
         n = 0
         with reg.open(newline="", encoding="utf-8") as f:
             for row in csv.DictReader(f):
-                if (row.get("disposition") or "").strip() != "UNREVIEWED":
+                if (row.get("disposition") or "").strip() != disposition:
                     continue
                 p = (row.get("path") or "").replace("\\", "/")
                 if p != PHASE4_MARKET_STATE_PATH:
@@ -1300,12 +1339,17 @@ def test_phase4_slice_merge_leaves_wire_rows_unreviewed(tmp_path: Path) -> None:
     deny_before = _count_ms(
         lambda row: (row.get("register_id") or "").strip() in PHASE4_LEXICAL_REGISTER_DENYLIST
     )
-    assert ms_before == 657
-    assert non_lexical_before == 198
-    assert deny_before == 35
+    slice_unreviewed_before = _count_ms(
+        lambda row: (row.get("register_id") or "").strip() in phase4_slice_ids
+    )
+
+    assert deny_before == len(PHASE4_LEXICAL_REGISTER_DENYLIST)
+    assert slice_unreviewed_before == len(phase4_slice_ids)
+    assert ms_before > non_lexical_before
+    assert ms_before - non_lexical_before >= len(phase4_slice_ids)
 
     rep = merge_register_slices(reg, slice_dir, dry_run=False)
-    assert rep["rows_updated"] >= 424
+    assert rep["rows_updated"] == len(phase4_slice_ids)
 
     ms_after = _count_ms(lambda _row: True)
     non_lexical_after = _count_ms(
@@ -1314,9 +1358,13 @@ def test_phase4_slice_merge_leaves_wire_rows_unreviewed(tmp_path: Path) -> None:
     deny_after = _count_ms(
         lambda row: (row.get("register_id") or "").strip() in PHASE4_LEXICAL_REGISTER_DENYLIST
     )
+    slice_nmd_after = _count_ms(
+        lambda row: (row.get("register_id") or "").strip() in phase4_slice_ids,
+        disposition="NOT_MARKET_DATA",
+    )
 
-    assert ms_after == 233
-    assert ms_before - ms_after == 424
+    assert ms_before - ms_after == len(phase4_slice_ids)
+    assert slice_nmd_after == len(phase4_slice_ids)
     assert non_lexical_after == non_lexical_before
     assert deny_after == deny_before
 
@@ -1477,3 +1525,282 @@ def test_phase5a_slice_merge_reduces_only_structural_rows(tmp_path: Path) -> Non
     assert wire_unrev_after == wire_unrev_before
     assert deny_unrev_after == deny_unrev_before
     assert binop_mixed_after == binop_mixed_before
+
+
+def test_load_slice_skips_path_line_index_when_register_id_present(tmp_path: Path) -> None:
+    import csv
+
+    from tools.schwab_universal_coverage_scanner_v3.register import REGISTER_COLUMNS
+    from tools.stream_revert_v4_register_and_sync_perf import load_slice_disposition_maps
+
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    with_id = {
+        "register_id": "rid_with_id",
+        "language": "python",
+        "path": "market_state.py",
+        "line": "702",
+        "col": "0",
+        "pattern_kind": "TEXT_LINE_MARKET_TOKEN",
+        "surface_form": "lexical",
+        "tokens": "",
+        "csv_candidates": "",
+        "csv_lexical_topk_note": "",
+        "v2_trace": "",
+        "disposition": "NOT_MARKET_DATA",
+        "canonical_field_citation": "",
+        "governed_ref": "",
+        "notes": "",
+    }
+    without_id = {
+        **with_id,
+        "register_id": "",
+        "line": "800",
+        "surface_form": "legacy",
+    }
+    slice_path = slice_dir / "mixed.csv"
+    with slice_path.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(with_id)
+        w.writerow(without_id)
+
+    _by_site, by_id, by_path_line = load_slice_disposition_maps(slice_dir)
+    assert "rid_with_id" in by_id
+    assert ("market_state.py", 702) not in by_path_line
+    assert ("market_state.py", 800) in by_path_line
+    assert by_path_line[("market_state.py", 800)]["surface_form"] == "legacy"
+
+
+def test_merge_register_id_on_mixed_line_no_collateral(tmp_path: Path) -> None:
+    import csv
+
+    from tools.schwab_universal_coverage_scanner_v3.register import REGISTER_COLUMNS, RegisterRow
+    from tools.stream_revert_v4_register_and_sync_perf import merge_register_slices
+
+    reg = tmp_path / "register.csv"
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+
+    lexical = RegisterRow(
+        register_id="lex_rid_702",
+        language="python",
+        path="market_state.py",
+        line=702,
+        col=0,
+        pattern_kind="TEXT_LINE_MARKET_TOKEN",
+        surface_form="lexical line",
+        tokens="",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    wire = RegisterRow(
+        register_id="wire_rid_702",
+        language="python",
+        path="market_state.py",
+        line=702,
+        col=28,
+        pattern_kind="SUBSCRIPT_MARKET_KEY",
+        surface_form="wire subscript",
+        tokens="",
+        csv_candidates="",
+        csv_lexical_topk_note="",
+        v2_trace="",
+        disposition="UNREVIEWED",
+    )
+    with reg.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(lexical.as_csv_dict())
+        w.writerow(wire.as_csv_dict())
+
+    slice_row = {
+        **lexical.as_csv_dict(),
+        "disposition": "NOT_MARKET_DATA",
+        "notes": "phase5b fixture",
+        "v2_trace": "phase5b fixture",
+    }
+    with (slice_dir / "phase5b_fixture.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=REGISTER_COLUMNS)
+        w.writeheader()
+        w.writerow(slice_row)
+
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] == 1
+
+    rows = list(csv.DictReader(reg.open(newline="", encoding="utf-8")))
+    by_id = {(r.get("register_id") or "").strip(): r for r in rows}
+    assert by_id["lex_rid_702"]["disposition"] == "NOT_MARKET_DATA"
+    assert by_id["wire_rid_702"]["disposition"] == "UNREVIEWED"
+
+
+def test_phase5b_mixed_line_boundary_frozen_scope() -> None:
+    from governance.phase4_d17_market_state_boundary import (
+        PHASE4_LEXICAL_REGISTER_DENYLIST,
+        PHASE4_LEXICAL_WIRE_LINE_DENYLIST,
+    )
+    from governance.phase5b_d17_market_state_mixed_line_boundary import (
+        PHASE5B_EXCLUDED_ALREADY_REPLACED_REGISTER_ID,
+        PHASE5B_LINE702_LEXICAL_REGISTER_ID,
+        PHASE5B_LINE702_WIRE_REGISTER_ID,
+        PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS,
+    )
+
+    assert len(PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS) == 34
+    assert PHASE5B_EXCLUDED_ALREADY_REPLACED_REGISTER_ID in PHASE4_LEXICAL_REGISTER_DENYLIST
+    assert PHASE5B_EXCLUDED_ALREADY_REPLACED_REGISTER_ID not in PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS
+    assert PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS == (
+        PHASE4_LEXICAL_REGISTER_DENYLIST - {PHASE5B_EXCLUDED_ALREADY_REPLACED_REGISTER_ID}
+    )
+    assert PHASE5B_LINE702_LEXICAL_REGISTER_ID in PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS
+    assert PHASE5B_LINE702_WIRE_REGISTER_ID not in PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS
+    for rid in PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS:
+        assert rid not in {PHASE5B_LINE702_WIRE_REGISTER_ID}
+
+
+def test_phase5b_slice_files_scope_and_dispositions() -> None:
+    import csv
+    from pathlib import Path
+
+    from governance.phase3_d17_adapter_boundary import WIRE_PATTERN_KINDS
+    from governance.phase4_d17_market_state_boundary import PHASE4_LEXICAL_PATTERN_KINDS
+    from governance.phase5b_d17_market_state_mixed_line_boundary import (
+        PHASE5B_MARKET_STATE_PATH,
+        PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS,
+    )
+
+    root = Path(__file__).resolve().parents[1]
+    slice_name = "phase5b_market_state_mixed_line_lexical_not_market_data.csv"
+    path = root / "governance" / "register_slices" / slice_name
+    assert path.is_file(), slice_name
+
+    rows = list(csv.DictReader(path.open(newline="", encoding="utf-8")))
+    assert len(rows) == 34, slice_name
+
+    seen_ids: set[str] = set()
+    for row in rows:
+        assert (row.get("disposition") or "").strip() == "NOT_MARKET_DATA", slice_name
+        rel = (row.get("path") or "").replace("\\", "/")
+        assert rel == PHASE5B_MARKET_STATE_PATH, rel
+        pk = (row.get("pattern_kind") or "").strip()
+        assert pk in PHASE4_LEXICAL_PATTERN_KINDS, pk
+        assert pk not in WIRE_PATTERN_KINDS, pk
+        rid = (row.get("register_id") or "").strip()
+        assert rid in PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS, rid
+        seen_ids.add(rid)
+        disp = (row.get("disposition") or "").strip()
+        assert disp not in {"REPLACED", "KEEP_DERIVED", "PASS_THROUGH", "GOVERNED_EXCEPTION"}, rid
+
+    assert seen_ids == set(PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS)
+
+
+def test_phase5b_mixed_line_lexical_slice_merge(tmp_path: Path) -> None:
+    import csv
+    import shutil
+
+    from governance.phase3_d17_adapter_boundary import WIRE_PATTERN_KINDS
+    from governance.phase4_d17_market_state_boundary import (
+        PHASE4_LEXICAL_WIRE_LINE_DENYLIST,
+        PHASE4_MARKET_STATE_PATH,
+    )
+    from governance.phase5b_d17_market_state_mixed_line_boundary import (
+        PHASE5B_LINE702_LEXICAL_REGISTER_ID,
+        PHASE5B_LINE702_WIRE_REGISTER_ID,
+        PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS,
+    )
+    from tools.stream_revert_v4_register_and_sync_perf import merge_register_slices
+
+    repo = Path(__file__).resolve().parents[1]
+    src_reg = repo / "governance" / "SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
+    if not src_reg.is_file():
+        pytest.skip("canonical register not generated locally")
+
+    reg = tmp_path / "register.csv"
+    shutil.copy2(src_reg, reg)
+    slice_dir = tmp_path / "slices"
+    slice_dir.mkdir()
+    shutil.copy2(
+        repo
+        / "governance"
+        / "register_slices"
+        / "phase5b_market_state_mixed_line_lexical_not_market_data.csv",
+        slice_dir / "phase5b_market_state_mixed_line_lexical_not_market_data.csv",
+    )
+
+    mixed_lines = set(PHASE4_LEXICAL_WIRE_LINE_DENYLIST)
+    colocated_pattern_kinds = WIRE_PATTERN_KINDS | {"BINOP_MARKET_IDENT"}
+
+    def _count_ms(pred) -> int:
+        n = 0
+        with reg.open(newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                p = (row.get("path") or "").replace("\\", "/")
+                if p != PHASE4_MARKET_STATE_PATH:
+                    continue
+                if pred(row):
+                    n += 1
+        return n
+
+    target_unrev_before = _count_ms(
+        lambda row: (row.get("register_id") or "").strip() in PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS
+        and (row.get("disposition") or "").strip() == "UNREVIEWED"
+    )
+    colocated_before = _count_ms(
+        lambda row: (row.get("disposition") or "").strip() == "UNREVIEWED"
+        and (row.get("line") or "").strip() in mixed_lines
+        and (row.get("register_id") or "").strip() not in PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS
+    )
+    colocated_nmd_before = _count_ms(
+        lambda row: (row.get("disposition") or "").strip() == "NOT_MARKET_DATA"
+        and (row.get("line") or "").strip() in mixed_lines
+        and (row.get("register_id") or "").strip() not in PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS
+        and (row.get("pattern_kind") or "").strip() in colocated_pattern_kinds
+    )
+    line702_lex_before = _count_ms(
+        lambda row: (row.get("register_id") or "").strip() == PHASE5B_LINE702_LEXICAL_REGISTER_ID
+        and (row.get("disposition") or "").strip() == "UNREVIEWED"
+    )
+    line702_wire_before = _count_ms(
+        lambda row: (row.get("register_id") or "").strip() == PHASE5B_LINE702_WIRE_REGISTER_ID
+        and (row.get("disposition") or "").strip() == "UNREVIEWED"
+    )
+
+    assert target_unrev_before == 34
+    assert colocated_before == 47
+    assert line702_lex_before == 1
+    assert line702_wire_before == 1
+
+    rep = merge_register_slices(reg, slice_dir, dry_run=False)
+    assert rep["rows_updated"] == 34
+
+    target_nmd_after = _count_ms(
+        lambda row: (row.get("register_id") or "").strip() in PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS
+        and (row.get("disposition") or "").strip() == "NOT_MARKET_DATA"
+    )
+    colocated_unrev_after = _count_ms(
+        lambda row: (row.get("disposition") or "").strip() == "UNREVIEWED"
+        and (row.get("line") or "").strip() in mixed_lines
+        and (row.get("register_id") or "").strip() not in PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS
+    )
+    colocated_nmd_after = _count_ms(
+        lambda row: (row.get("disposition") or "").strip() == "NOT_MARKET_DATA"
+        and (row.get("line") or "").strip() in mixed_lines
+        and (row.get("register_id") or "").strip() not in PHASE5B_MIXED_LINE_LEXICAL_REGISTER_IDS
+        and (row.get("pattern_kind") or "").strip() in colocated_pattern_kinds
+    )
+    line702_lex_after = _count_ms(
+        lambda row: (row.get("register_id") or "").strip() == PHASE5B_LINE702_LEXICAL_REGISTER_ID
+        and (row.get("disposition") or "").strip() == "NOT_MARKET_DATA"
+    )
+    line702_wire_after = _count_ms(
+        lambda row: (row.get("register_id") or "").strip() == PHASE5B_LINE702_WIRE_REGISTER_ID
+        and (row.get("disposition") or "").strip() == "UNREVIEWED"
+    )
+
+    assert target_nmd_after == 34
+    assert colocated_unrev_after == colocated_before
+    assert colocated_nmd_after == colocated_nmd_before
+    assert line702_lex_after == 1
+    assert line702_wire_after == 1

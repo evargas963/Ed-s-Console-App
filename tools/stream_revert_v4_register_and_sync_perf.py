@@ -245,6 +245,10 @@ def load_slice_disposition_maps(slice_dir: Path) -> tuple[
                 rid = (row.get("register_id") or "").strip()
                 if rid:
                     by_id[rid] = row
+                # register_id rows merge exactly via by_id / by_site; path+line would
+                # collateral-disposition co-located wire/BINOP rows on mixed lines.
+                if rid:
+                    continue
                 pl = path_line_key(row)
                 prev = by_path_line.get(pl)
                 if prev is None or _disp_rank(disp) >= _disp_rank(prev.get("disposition") or ""):
