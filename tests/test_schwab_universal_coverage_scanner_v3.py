@@ -1801,3 +1801,71 @@ def test_phase5b_mixed_line_lexical_slice_merge(tmp_path: Path) -> None:
     assert colocated_nmd_after == colocated_nmd_before
     assert line702_lex_after == 1
     assert line702_wire_after == 1
+
+
+def test_oxx_perf_proof_reconciliation_slice_and_composite_union() -> None:
+    """O-XX lane: perf-proof register_link must match post-merge REPLACED rows only."""
+    import csv
+    import json
+    from pathlib import Path
+
+    from tools.schwab_oxx_validator import (
+        collect_replaced_perf_violations,
+        perf_proof_basename,
+    )
+
+    root = Path(__file__).resolve().parents[1]
+    oxx_slice = root / "governance/register_slices/phase_oxx_perf_proof_lexical_not_market_data.csv"
+    assert oxx_slice.is_file()
+    oxx_rows = list(csv.DictReader(oxx_slice.open(encoding="utf-8", newline="")))
+    assert len(oxx_rows) == 46
+    assert all(r["disposition"] == "NOT_MARKET_DATA" for r in oxx_rows)
+    assert all((r.get("register_id") or "").strip() for r in oxx_rows)
+
+    mc_slice = root / "governance/register_slices/market_context_py_1_961.csv"
+    mc_by_line = {
+        int(r["line"]): r
+        for r in csv.DictReader(mc_slice.open(encoding="utf-8", newline=""))
+        if int(r["line"]) in (671, 672, 673, 926)
+    }
+    for line in (671, 672, 673, 926):
+        assert mc_by_line[line]["disposition"] == "NOT_MARKET_DATA"
+        assert not (mc_by_line[line].get("governed_ref") or "").strip()
+
+    perf_dir = root / "governance/artifacts/perf_proof/replacements"
+    wrapped = [
+        "pp_v4b_market_context_quote_pricehistory_leaf_provenance.json",
+        "pp_v4b_server_expiration_date_only.json",
+        "pp_v4b_server_fast_quote_leaf_provenance.json",
+        "pp_v4b_server_quote_session_fallbacks_dedupe.json",
+    ]
+    union: set[str] = set()
+    for name in wrapped:
+        doc = json.loads((perf_dir / name).read_text(encoding="utf-8"))
+        linked = set(doc["register_link"]["replaced_register_ids"])
+        union |= linked
+        assert name != "pp_v4b_server_expiration_date_only.json" or linked == set()
+        assert name != "pp_v4b_market_context_quote_pricehistory_leaf_provenance.json" or len(linked) == 33
+
+    composite = json.loads(
+        (perf_dir / "pp_v4b_schwab_gate_eleven_test_bundle.json").read_text(encoding="utf-8")
+    )
+    rl = composite["register_link"]
+    assert rl["replaced_register_ids"] == sorted(union)
+    assert set(rl["wrapped_proof_ids"]) == set(wrapped)
+    assert len(union) == 46
+
+    reg = root / "governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
+    if reg.is_file():
+        replaced_by_proof: dict[str, set[str]] = {}
+        for row in csv.DictReader(reg.open(encoding="utf-8", newline="")):
+            if row.get("disposition") != "REPLACED":
+                continue
+            proof = perf_proof_basename(row.get("governed_ref") or "")
+            if proof in wrapped:
+                replaced_by_proof.setdefault(proof, set()).add(row["register_id"])
+        for name in wrapped:
+            doc = json.loads((perf_dir / name).read_text(encoding="utf-8"))
+            linked = set(doc["register_link"]["replaced_register_ids"])
+            assert linked == replaced_by_proof.get(name, set())
+        assert collect_replaced_perf_violations(reg, perf_dir) == []
