@@ -1637,10 +1637,7 @@ def test_merge_register_id_on_mixed_line_no_collateral(tmp_path: Path) -> None:
 
 
 def test_phase5b_mixed_line_boundary_frozen_scope() -> None:
-    from governance.phase4_d17_market_state_boundary import (
-        PHASE4_LEXICAL_REGISTER_DENYLIST,
-        PHASE4_LEXICAL_WIRE_LINE_DENYLIST,
-    )
+    from governance.phase4_d17_market_state_boundary import PHASE4_LEXICAL_REGISTER_DENYLIST
     from governance.phase5b_d17_market_state_mixed_line_boundary import (
         PHASE5B_EXCLUDED_ALREADY_REPLACED_REGISTER_ID,
         PHASE5B_LINE702_LEXICAL_REGISTER_ID,
