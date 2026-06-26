@@ -3449,7 +3449,13 @@ def check_operator_trust_governance() -> list[str]:
 
 
 def check_precommit_performance_contract() -> list[str]:
-    """Pre-commit tier policy — consolidation pytest on pre-push, artifact pinned."""
+    """Pre-commit tier policy — lightweight-only local pre-push, consolidation in CI.
+
+    Phase 2B (2026-06-26): local pre-push is the two fast gates only
+    (prepush-fast-gate -> generated-artifacts-clean-check). The repo-wide governance
+    consolidation pytest suite is NOT a local pre-push hook — required CI 'pytest-full'
+    owns it. The performance artifact records that move under ci_backed_suites.
+    """
     errors: list[str] = []
     audit_py = REPO_ROOT / "tools" / "audit_precommit_performance.py"
     audit_json = REPO_ROOT / "governance" / "artifacts" / "PRECOMMIT_PERFORMANCE_AUDIT.json"
@@ -3474,36 +3480,25 @@ def check_precommit_performance_contract() -> list[str]:
                 "stages: [pre-push] — repo-wide static is required CI objective-audit only"
             )
 
-    idx = pc.find("id: governance-consolidation-tests")
-    if idx < 0:
-        errors.append(".pre-commit-config.yaml: missing governance-consolidation-tests hook")
-    else:
-        # Entry line can exceed 500 chars — scan until next hook id or EOF.
-        rest = pc[idx:]
-        next_hook = rest.find("\n      - id:", len("id: governance-consolidation-tests"))
-        block = rest if next_hook < 0 else rest[:next_hook]
-        if "pre-push" not in block:
-            errors.append(
-                ".pre-commit-config.yaml: governance-consolidation-tests must use stages: [pre-push] "
-                "(Tier 2 — not every commit)"
-            )
-        if re.search(r"stages:\s*\[\s*pre-commit\s*\]", block):
-            errors.append(
-                ".pre-commit-config.yaml: governance-consolidation-tests must not run on pre-commit"
-            )
+    # Phase 2B: the repo-wide consolidation pytest suite must NOT be a local pre-push
+    # hook — required CI ('pytest-full') owns it. Its presence anywhere in the local
+    # hook config means heavy coverage leaked back under the local budget.
+    if pc.find("id: governance-consolidation-tests") >= 0:
+        errors.append(
+            ".pre-commit-config.yaml: governance-consolidation-tests must NOT be a local hook "
+            "(Phase 2B: repo-wide pytest is required-CI 'pytest-full' only)"
+        )
     idx_fast = pc.find("id: prepush-fast-gate")
     idx_art = pc.find("id: generated-artifacts-clean-check")
-    idx_gct = pc.find("id: governance-consolidation-tests")
     if idx_fast < 0:
         errors.append(".pre-commit-config.yaml: missing prepush-fast-gate hook")
     if idx_art < 0:
         errors.append(".pre-commit-config.yaml: missing generated-artifacts-clean-check hook")
-    if idx_fast >= 0 and idx_art >= 0 and idx_gct >= 0:
-        if not (idx_fast < idx_art < idx_gct):
+    if idx_fast >= 0 and idx_art >= 0:
+        if not (idx_fast < idx_art):
             errors.append(
                 ".pre-commit-config.yaml: pre-push hook order must be "
-                "prepush-fast-gate → generated-artifacts-clean-check → "
-                "governance-consolidation-tests"
+                "prepush-fast-gate → generated-artifacts-clean-check"
             )
     wf = REPO_ROOT / ".github" / "workflows" / "objective-audit.yml"
     if not wf.is_file():
@@ -3516,13 +3511,23 @@ def check_precommit_performance_contract() -> list[str]:
     if audit_json.is_file():
         try:
             audit = json.loads(audit_json.read_text(encoding="utf-8"))
-            hooks = {h.get("id"): h for h in audit.get("hooks") or []}
-            gct = hooks.get("governance-consolidation-tests")
-            if not gct:
-                errors.append("PRECOMMIT_PERFORMANCE_AUDIT.json: missing governance-consolidation-tests row")
-            elif gct.get("keep_in_precommit"):
+            hook_ids = {h.get("id") for h in audit.get("hooks") or []}
+            if "governance-consolidation-tests" in hook_ids:
                 errors.append(
-                    "PRECOMMIT_PERFORMANCE_AUDIT.json: governance-consolidation-tests keep_in_precommit must be false"
+                    "PRECOMMIT_PERFORMANCE_AUDIT.json: governance-consolidation-tests must not be a "
+                    "local hook row (Phase 2B: required-CI 'pytest-full' owns it)"
+                )
+            ci_backed = audit.get("ci_backed_suites") or {}
+            gct_ci = ci_backed.get("governance-consolidation-tests")
+            if not gct_ci:
+                errors.append(
+                    "PRECOMMIT_PERFORMANCE_AUDIT.json: missing ci_backed_suites["
+                    "'governance-consolidation-tests'] (required-CI owner record)"
+                )
+            elif gct_ci.get("required_ci_check") != "pytest-full":
+                errors.append(
+                    "PRECOMMIT_PERFORMANCE_AUDIT.json: governance-consolidation-tests "
+                    "required_ci_check must be 'pytest-full'"
                 )
         except (OSError, json.JSONDecodeError) as exc:
             errors.append(f"PRECOMMIT_PERFORMANCE_AUDIT.json: unreadable — {exc}")

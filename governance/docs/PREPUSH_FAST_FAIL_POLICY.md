@@ -12,25 +12,27 @@
 
 | Layer | Authority | What it runs |
 |-------|-----------|--------------|
-| **Local pre-commit** | Every commit | Staged `fix-everything-we-touch`, deferral/grep locks |
-| **Local pre-push** | Fast guard before push | Dirty tree, generated-artifact freshness, consolidation pytest |
-| **Required CI `objective-audit`** | Branch protection on `main` | Full repo-wide static locks + governance/adversarial pytest |
+| **Local pre-commit** | Every commit | Staged `fix-everything-we-touch`, deferral/grep locks (lightweight string/AST/config) |
+| **Local pre-push** | Fast guard before push | Dirty tree + generated-artifact freshness only (lightweight-only) |
+| **Required CI `objective-audit`** | Branch protection on `main` | Full repo-wide static locks |
+| **Required CI `pytest-full`** | Branch protection on `main` | Repo-wide governance consolidation pytest suite |
 
 ## Problem
 
-Pre-push previously ran the ~296-test governance consolidation suite **first**, spending 20–50 minutes before failing on a dirty tree or stale generated artifact. It also ran `fix-everything-we-touch --full-static` (~3–5 min) duplicating required CI coverage.
+Pre-push previously ran the ~296-test governance consolidation suite, spending 18–26 minutes before push. Phase 2B measured each candidate "lightweight" test file at **54–64s** (the test bodies do repo-wide / app-importing scans; pytest startup itself is only ~1.2s), so no pytest selection can satisfy the local budget. It also ran `fix-everything-we-touch --full-static` (~3–5 min) duplicating required CI coverage.
 
-## Required pre-push order
+## Required pre-push order (lightweight-only — Phase 2B, 2026-06-26)
 
 | # | Hook id | Purpose | Typical runtime |
 |---|---------|---------|-----------------|
 | 1 | `prepush-fast-gate` | Dirty working tree → fail in **<5s** | <1s |
-| 2 | `generated-artifacts-clean-check` | Stale governance JSON → fail **before pytest** | 5–60s |
-| 3 | `governance-consolidation-tests` | Pytest consolidation (check-only) | ~10–25 min |
+| 2 | `generated-artifacts-clean-check` | Stale governance JSON → fail fast | <1–60s |
 
-**Removed from local pre-push (2026-06-26):** `fix-everything-we-touch-full-static` — authoritative full-repo static proof is **required CI `objective-audit` only**.
+**Local pre-push budget:** hard ceiling **≤60s**, target **≤30s**. Measured lightweight pre-push ≈ a few seconds.
 
-The consolidation suite **must not start** until hooks 1–2 pass.
+**Moved to required CI (2026-06-26):**
+- `fix-everything-we-touch-full-static` → required CI `objective-audit` (repo-wide static).
+- `governance-consolidation-tests` (repo-wide pytest suite, ~18–26 min) → required CI **`pytest-full`** (`.github/workflows/pytest.yml`, required + green on `main`). It is no longer a local hook.
 
 ## Non-mutating verification
 
@@ -38,7 +40,6 @@ The consolidation suite **must not start** until hooks 1–2 pass.
 |-------|---------------|------------------------|
 | `check_prepush_fast_gate.py` | No | N/A |
 | `check_governance_generated_artifacts_clean.py` | **No** | See commands below |
-| `governance-consolidation-tests` | No (pytest) | N/A |
 
 ### Explicit regeneration (never run during pre-push verify)
 
@@ -61,9 +62,9 @@ Commit or stash before push. Gitignored runtime artifacts (models, logs, backups
 ## Governance not weakened
 
 - Full repo-wide static locks run on **required CI `objective-audit`** (not local pre-push)
-- Staged `fix-everything-we-touch` still runs on **every pre-commit**
-- Consolidation pytest still runs on local pre-push (hook 3)
-- Fast gates add **early failure**, not fewer checks
+- The repo-wide consolidation pytest suite runs on **required CI `pytest-full`** (required + green on `main`) — moved off local pre-push, not dropped
+- Staged `fix-everything-we-touch` + deferral/grep locks (lightweight string/AST/config) still run on **every pre-commit**
+- Lightweight-only pre-push adds **early failure**, not fewer checks — heavy coverage is required-CI-owned
 
 ## Mtime-gated deep checks (fast pre-push)
 

@@ -21,13 +21,27 @@ SCHEMA_VERSION = 1
 RUNTIME_BUDGETS_SEC = {
     "precommit_normal": 60,
     "precommit_governance": 180,
-    "prepush_normal": 600,
+    # Phase 2B (2026-06-26): local pre-push is lightweight-only (two fast gates).
+    # prepush_normal IS the local lightweight hard ceiling (60s); target 30s.
+    # prepush_governance is the historical reference for the repo-wide consolidation
+    # suite that now lives in required CI 'pytest-full' (no longer on local pre-push).
+    "prepush_normal": 60,
     "prepush_governance": 1200,
+    "prepush_local_lightweight_hard": 60,
+    "prepush_local_lightweight_target": 30,
     "ci_objective_audit": None,
+    "ci_pytest_full": None,
     "reviewer_audit": None,
 }
 
-MEASURED_PREPUSH_SEC = 1440  # 24 min from PERF2-1 push observation
+# Lightweight-only local pre-push: prepush-fast-gate (~0.1s) +
+# generated-artifacts-clean-check (~0.2s) + <5s dirty-tree probe. The repo-wide
+# consolidation pytest suite (~18-26 min) is no longer local — required CI owns it.
+MEASURED_PREPUSH_SEC = 5  # lightweight two-gate local pre-push (Phase 2B)
+# Historical runtime of the repo-wide consolidation suite now owned by required CI
+# 'pytest-full'. Recorded as a pre-push over-budget row (documented, not silently
+# accepted) explaining WHY it is no longer a local pre-push hook.
+CONSOLIDATION_SUITE_SEC = 1440
 
 
 def _parse_precommit_hooks() -> list[dict[str, Any]]:
@@ -219,6 +233,30 @@ def build_inventory() -> dict[str, Any]:
             }
         )
 
+    if "governance-consolidation-tests" not in hook_ids:
+        checks.append(
+            {
+                "check_id": "governance-consolidation-tests",
+                "command": "python -m pytest (governance consolidation suite) — required CI pytest-full",
+                "tier": 3,
+                "runtime_seconds": CONSOLIDATION_SUITE_SEC,
+                "scope": "repo-wide governance consolidation pytest suite (required CI 'pytest-full')",
+                "files_or_modules_covered": "full repo (test_governance_consolidation, test_check_fix_everything_we_touch, test_ml_feature_schema_parity, test_check_schwab_csv_first, test_forbidden_phrases, test_money_path_roster, test_check_no_deferral_language)",
+                "risk_addressed": "governance enforcement",
+                "evidence_artifact": ".github/workflows/pytest.yml",
+                "must_run_precommit": False,
+                "must_run_prepush": False,
+                "must_run_ci": True,
+                "can_be_cached": False,
+                "can_be_incremental": False,
+                "can_be_parallelized": True,
+                "can_be_removed": False,
+                "removal_risk": "critical",
+                "recommendation": "keep_ci_only",
+                "overlap_with_other_checks": [],
+            }
+        )
+
     for lock in _repo_wide_locks():
         checks.append(
             {
@@ -313,17 +351,36 @@ def build_inventory() -> dict[str, Any]:
     ablation_layer = profile.get("check_ablation_equal_layer_consumers")
 
     over_budget: list[dict[str, Any]] = []
-    if MEASURED_PREPUSH_SEC > RUNTIME_BUDGETS_SEC["prepush_governance"]:
+    # Documented (not silently accepted): the repo-wide governance consolidation pytest
+    # suite exceeds the local lightweight pre-push budget, which is WHY Phase 2B moved it
+    # off local pre-push to required CI 'pytest-full'. Recorded as a pre-push over-budget
+    # row so the relocation stays auditable.
+    over_budget.append(
+        {
+            "path": "pre-push",
+            "measured_seconds": CONSOLIDATION_SUITE_SEC,
+            "budget_seconds": RUNTIME_BUDGETS_SEC["prepush_local_lightweight_hard"],
+            "documented_reason": (
+                "governance consolidation pytest suite (~18-26 min; each candidate file "
+                "54-64s, repo-wide/app-importing test bodies) exceeds the local "
+                "lightweight pre-push budget (60s) — moved to required CI 'pytest-full' "
+                "(.github/workflows/pytest.yml). It is no longer a local pre-push hook; "
+                "current lightweight local pre-push measures ~%ss." % MEASURED_PREPUSH_SEC
+            ),
+            "recommendation": "required_ci_owned — keep off local pre-push (pytest-full backs it)",
+        }
+    )
+    if MEASURED_PREPUSH_SEC > RUNTIME_BUDGETS_SEC["prepush_local_lightweight_hard"]:
         over_budget.append(
             {
-                "path": "pre-push",
+                "path": "pre-push-local-lightweight",
                 "measured_seconds": MEASURED_PREPUSH_SEC,
-                "budget_seconds": RUNTIME_BUDGETS_SEC["prepush_governance"],
+                "budget_seconds": RUNTIME_BUDGETS_SEC["prepush_local_lightweight_hard"],
                 "documented_reason": (
-                    "governance-consolidation-tests pytest suite dominates (~26 min); "
-                    "ablation grid lock ~146s after PERF2-1 shared index"
+                    "local lightweight pre-push exceeded the 60s ceiling — a heavy / repo-wide "
+                    "selection leaked back onto pre-push (must be required-CI-owned)"
                 ),
-                "recommendation": "candidate_for_retier and make_incremental — do not remove checks without risk proof",
+                "recommendation": "move the offending hook to required CI (pytest-full / objective-audit)",
             }
         )
 
@@ -375,14 +432,14 @@ def _render_md(inv: dict[str, Any]) -> str:
         "|------|--------|-------------------|",
         f"| Pre-commit normal | {RUNTIME_BUDGETS_SEC['precommit_normal']}s | under budget after Perf1 |",
         f"| Pre-commit governance | {RUNTIME_BUDGETS_SEC['precommit_governance']}s | scoped path |",
-        f"| Pre-push governance | {RUNTIME_BUDGETS_SEC['prepush_governance']}s | **OVER** — {MEASURED_PREPUSH_SEC}s measured |",
+        f"| Pre-push local (lightweight) | {RUNTIME_BUDGETS_SEC['prepush_local_lightweight_hard']}s hard / {RUNTIME_BUDGETS_SEC['prepush_local_lightweight_target']}s target | ~{MEASURED_PREPUSH_SEC}s measured — **under budget** (Phase 2B) |",
         "",
         "## Tier model",
         "",
         "- **Tier 0** — upfront gate (`enforce_all_rules --upfront-gate`)",
-        "- **Tier 1** — pre-commit (staged + fast)",
-        "- **Tier 2** — pre-push (fast gates + consolidation pytest)",
-        "- **Tier 3** — CI objective-audit (repo-wide full-static authority)",
+        "- **Tier 1** — pre-commit (staged + fast lightweight string/AST/config checks)",
+        "- **Tier 2** — pre-push (lightweight fast gates only: prepush-fast-gate + generated-artifacts-clean-check)",
+        "- **Tier 3** — required CI: objective-audit (repo-wide static) + pytest-full (repo-wide consolidation suite) + hardening + schwab-csv-first",
         "- **Tier 4** — reviewer audit (`run_reviewer_audit.py`)",
         "",
         "## Over budget (recorded, not silently accepted)",

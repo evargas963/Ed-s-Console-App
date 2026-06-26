@@ -58,23 +58,21 @@ def test_precommit_performance_artifact_exists():
     audit = json.loads(p.read_text(encoding="utf-8"))
     assert audit.get("schema_version") == 1
     hooks = {h["id"]: h for h in audit.get("hooks") or []}
-    assert "governance-consolidation-tests" in hooks
-    gct = hooks["governance-consolidation-tests"]
-    assert gct.get("keep_in_precommit") is False
-    assert gct.get("proposed_location") == "prepush"
-    assert "pre-commit" not in (gct.get("stages") or [])
+    # Phase 2B: the repo-wide consolidation pytest suite is required-CI-owned, not a hook.
+    assert "governance-consolidation-tests" not in hooks
     assert "fix-everything-we-touch-full-static" not in hooks
+    ci_backed = audit.get("ci_backed_suites") or {}
+    gct = ci_backed.get("governance-consolidation-tests")
+    assert gct, "ci_backed_suites must record governance-consolidation-tests"
+    assert gct.get("required_ci_check") == "pytest-full"
+    assert audit.get("local_prepush_mode") == "lightweight_only"
+    assert audit.get("local_prepush_budget_hard_seconds") <= 60.0
 
 
-def test_governance_consolidation_not_on_precommit_stage():
+def test_governance_consolidation_not_a_local_hook():
+    # Phase 2B: the repo-wide consolidation pytest suite must not be any local hook.
     cfg = (REPO / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    idx = cfg.find("id: governance-consolidation-tests")
-    assert idx != -1
-    rest = cfg[idx:]
-    next_hook = rest.find("\n      - id:", len("id: governance-consolidation-tests"))
-    block = rest if next_hook < 0 else rest[:next_hook]
-    assert "pre-push" in block
-    assert "stages:" in block
+    assert cfg.find("id: governance-consolidation-tests") == -1
 
 
 def test_precommit_performance_contract_checker():

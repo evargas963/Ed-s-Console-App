@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-06-26T03:39:44+00:00",
+  "generated_at_utc": "2026-06-26T11:34:10+00:00",
   "measurement_mode": "declared_policy_only",
   "total_measured_seconds": null,
   "slowest_hook": null,
@@ -61,6 +61,26 @@
       }
     ]
   },
+  "local_prepush_mode": "lightweight_only",
+  "local_prepush_budget_hard_seconds": 60.0,
+  "local_prepush_budget_target_seconds": 30.0,
+  "ci_backed_suites": {
+    "governance-consolidation-tests": {
+      "former_location": "prepush",
+      "moved_to": "required_ci",
+      "required_ci_check": "pytest-full",
+      "workflow": ".github/workflows/pytest.yml",
+      "reason": "repo-wide / app-importing test bodies (~18-26 min) exceed local pre-push budget",
+      "local_budget_hard_seconds": 60.0,
+      "local_budget_target_seconds": 30.0,
+      "required_ci_stack": [
+        "objective-audit",
+        "pytest-full",
+        "hardening",
+        "schwab-csv-first"
+      ]
+    }
+  },
   "hooks": [
     {
       "name": "prepush fast gate (clean working tree)",
@@ -87,20 +107,6 @@
       "scope": "check-only staleness for generated governance JSON",
       "tier": 2,
       "recommendation": "Non-mutating compare vs sources \u2014 fail before long pytest when artifacts stale.",
-      "keep_in_precommit": false,
-      "proposed_location": "prepush"
-    },
-    {
-      "name": "governance consolidation tests (check-only pytest)",
-      "id": "governance-consolidation-tests",
-      "command": "python -m pytest tests/test_governance_consolidation.py tests/test_forbidden_phrases.py tests/test_money_path_roster.py tests/test_check_no_deferral_language.py tests/test_check_fix_everything_we_touch.py tests/test_check_schwab_csv_first.py tests/test_ml_feature_schema_parity.py::test_ml_pipeline_efficiency_checker_green tests/test_ml_feature_schema_parity.py::test_ablation_parity_includes_bridge_and_backtest_hooks -q",
-      "stages": [
-        "pre-push"
-      ],
-      "runtime_seconds": null,
-      "scope": "repo-wide pytest consolidation suite",
-      "tier": 2,
-      "recommendation": "Move to pre-push; full suite belongs in Tier 2, not every commit.",
       "keep_in_precommit": false,
       "proposed_location": "prepush"
     },

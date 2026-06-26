@@ -18,24 +18,48 @@ AUDIT_PATH = REPO / "governance" / "artifacts" / "PREPUSH_FAST_FAIL_AUDIT.json"
 POLICY_MD = REPO / "governance" / "docs" / "PREPUSH_FAST_FAIL_POLICY.md"
 PRE_COMMIT_CFG = REPO / ".pre-commit-config.yaml"
 
-# Pre-push hooks must run in this order (YAML declaration order among pre-push stages).
+# Local pre-push is LIGHTWEIGHT-ONLY (Phase 2B, 2026-06-26): fast gates only.
 # Repo-wide --full-static is NOT local pre-push — required CI objective-audit owns it.
+# The repo-wide governance consolidation pytest suite is NOT local pre-push either —
+# required CI "pytest-full" (.github/workflows/pytest.yml) owns it. Measured: that
+# suite is ~18-26 min (each candidate file 54-64s; bodies do repo-wide/app-importing
+# scans), so it cannot live under the local pre-push budget below.
 EXPECTED_PREPUSH_HOOK_ORDER: tuple[str, ...] = (
     "prepush-fast-gate",
     "generated-artifacts-clean-check",
+)
+
+# These hook ids must NOT appear on local pre-push — they are required-CI-owned.
+_FORBIDDEN_PREPUSH_HOOK_IDS: tuple[str, ...] = (
+    "fix-everything-we-touch-full-static",
     "governance-consolidation-tests",
 )
 
-_FORBIDDEN_PREPUSH_HOOK_IDS: tuple[str, ...] = ("fix-everything-we-touch-full-static",)
+# Local pre-push budget (hard ceiling / desired target). The lightweight gates above
+# measure ~0.1-0.2s each plus a <5s dirty-tree probe — well inside these bounds.
+PREPUSH_LOCAL_BUDGET_HARD_SEC = 60.0
+PREPUSH_LOCAL_BUDGET_TARGET_SEC = 30.0
 
-# Consolidation hook must be pytest verification only — no artifact writers.
-_CONSOLIDATION_FORBIDDEN_SUBSTRINGS: tuple[str, ...] = (
-    "--write",
-    "build_repo_hygiene_inventory.py",
-    "build_check_stack_inventory.py",
-    "audit_persistence_consumers.py",
-    "audit_precommit_performance.py --write",
-    "check_governance_generated_artifacts_clean.py --write",
+# Any pre-push hook entry token matching these means a heavy / repo-wide / app-importing
+# selection leaked back onto local pre-push (must be required-CI-owned instead).
+_PREPUSH_FORBIDDEN_ENTRY_SUBSTRINGS: tuple[str, ...] = (
+    "pytest",
+    "tests/test_",
+    "--full-static",
+    "run_objective_code_audit",
+    "passes_on_current_repo",
+    "full_stack_ablation_coverage",
+    "universal_code_quality_audit",
+    "ablation_integrity_audit",
+    "ablation_score_path_bias",
+)
+
+# Required-CI checks that back the heavy coverage moved off local pre-push.
+_REQUIRED_CI_BACKING_CHECKS: tuple[str, ...] = (
+    "objective-audit",
+    "pytest-full",
+    "hardening",
+    "schwab-csv-first",
 )
 
 _DIRTY_TREE_BUDGET_SEC = 5.0
@@ -64,15 +88,36 @@ def _parse_prepush_hook_ids(cfg_text: str) -> list[str]:
     return [hid for stages, hid in hooks if "pre-push" in stages]
 
 
-def _consolidation_hook_entry(cfg_text: str) -> str | None:
-    idx = cfg_text.find("id: governance-consolidation-tests")
-    if idx < 0:
-        return None
-    rest = cfg_text[idx:]
-    next_hook = rest.find("\n      - id:", len("id: governance-consolidation-tests"))
-    block = rest if next_hook < 0 else rest[:next_hook]
-    m = re.search(r"entry:\s*(.+)", block)
-    return m.group(1).strip() if m else None
+def _prepush_hook_entries(cfg_text: str) -> list[tuple[str, str]]:
+    """Return (id, entry) for every pre-push-staged hook, declaration order."""
+    rows: list[tuple[str, str]] = []
+    current_id: str | None = None
+    current_entry: str = ""
+    current_stages: list[str] = ["pre-commit"]
+
+    def _flush() -> None:
+        if current_id and "pre-push" in current_stages:
+            rows.append((current_id, current_entry))
+
+    for line in cfg_text.splitlines():
+        m_id = re.match(r"\s*-\s*id:\s*(\S+)", line)
+        if m_id:
+            _flush()
+            current_id = m_id.group(1)
+            current_entry = ""
+            current_stages = ["pre-commit"]
+            continue
+        if current_id is None:
+            continue
+        m_entry = re.match(r"\s*entry:\s*(.+)", line)
+        if m_entry:
+            current_entry = m_entry.group(1).strip()
+            continue
+        m_stages = re.match(r"\s*stages:\s*\[(.+)\]", line)
+        if m_stages:
+            current_stages = [s.strip() for s in m_stages.group(1).split(",")]
+    _flush()
+    return rows
 
 
 def check_prepush_no_full_static_hook() -> list[str]:
@@ -120,25 +165,50 @@ def check_prepush_hook_order() -> list[str]:
     return errors
 
 
-def check_consolidation_entry_check_only() -> list[str]:
-    """Governance consolidation pre-push entry must be pytest-only (no writers)."""
+def check_prepush_lightweight_only() -> list[str]:
+    """Local pre-push hooks must be lightweight only — no pytest / repo-wide selections.
+
+    Phase 2B: the repo-wide governance consolidation pytest suite is required-CI-owned
+    ("pytest-full"), not a local pre-push hook. Any pytest / test-file / repo-wide audit
+    token on a pre-push entry means heavy coverage leaked back below the local budget.
+    """
     errors: list[str] = []
     if not PRE_COMMIT_CFG.is_file():
         return errors
     cfg = PRE_COMMIT_CFG.read_text(encoding="utf-8", errors="replace")
-    entry = _consolidation_hook_entry(cfg)
-    if not entry:
-        errors.append(".pre-commit-config.yaml: governance-consolidation-tests entry missing")
-        return errors
-    if "pytest" not in entry:
-        errors.append(
-            "governance-consolidation-tests: entry must invoke pytest (check-only verification)"
-        )
-    for bad in _CONSOLIDATION_FORBIDDEN_SUBSTRINGS:
-        if bad in entry:
-            errors.append(
-                f"governance-consolidation-tests: forbidden mutating token {bad!r} in entry"
-            )
+    for hid, entry in _prepush_hook_entries(cfg):
+        for bad in _PREPUSH_FORBIDDEN_ENTRY_SUBSTRINGS:
+            if bad in entry:
+                errors.append(
+                    f"{hid}: pre-push entry contains heavy/repo-wide token {bad!r} — "
+                    "local pre-push is lightweight-only; move it to required CI "
+                    "(pytest-full / objective-audit)"
+                )
+    return errors
+
+
+def check_required_ci_backing() -> list[str]:
+    """The heavy coverage moved off local pre-push must be backed by required CI.
+
+    pytest-full (.github/workflows/pytest.yml) owns the governance consolidation suite;
+    objective-audit owns repo-wide static. Both workflow files must exist and declare
+    their job so the required-status-check stack on main keeps catching what local
+    pre-push no longer runs.
+    """
+    errors: list[str] = []
+    wf_dir = REPO / ".github" / "workflows"
+    pytest_wf = wf_dir / "pytest.yml"
+    if not pytest_wf.is_file():
+        errors.append(".github/workflows/pytest.yml: missing (required-CI pytest-full backing)")
+    else:
+        text = pytest_wf.read_text(encoding="utf-8", errors="replace")
+        if "pytest" not in text:
+            errors.append(".github/workflows/pytest.yml: does not invoke pytest")
+    objective_wf = wf_dir / "objective-audit.yml"
+    if not objective_wf.is_file():
+        errors.append(".github/workflows/objective-audit.yml: missing (required-CI static backing)")
+    elif "--objective-audit" not in objective_wf.read_text(encoding="utf-8", errors="replace"):
+        errors.append(".github/workflows/objective-audit.yml: missing --objective-audit")
     return errors
 
 
@@ -165,7 +235,8 @@ def check_prepush_fast_gate_policy() -> list[str]:
     """Static policy wiring — safe for objective-audit (no dirty-tree probe)."""
     errors: list[str] = []
     errors.extend(check_prepush_hook_order())
-    errors.extend(check_consolidation_entry_check_only())
+    errors.extend(check_prepush_lightweight_only())
+    errors.extend(check_required_ci_backing())
     errors.extend(check_prepush_fast_fail_policy_artifacts())
     return errors
 

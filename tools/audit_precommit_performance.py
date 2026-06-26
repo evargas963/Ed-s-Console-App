@@ -14,14 +14,32 @@ REPO = Path(__file__).resolve().parent.parent
 OUT_JSON = REPO / "governance" / "artifacts" / "PRECOMMIT_PERFORMANCE_AUDIT.json"
 OUT_MD = REPO / "governance" / "docs" / "PRECOMMIT_PERFORMANCE_AUDIT.md"
 
+# Repo-wide pytest suites moved OFF local pre-push to required CI (Phase 2B, 2026-06-26).
+# Measured: the consolidation suite is ~18-26 min (each candidate file 54-64s) because
+# the test bodies do repo-wide / app-importing scans; pytest startup itself is ~1.2s.
+# Local pre-push cannot host this under its <=60s (target <=30s) budget, so required CI
+# 'pytest-full' (.github/workflows/pytest.yml, required + green on main) owns it.
+CI_BACKED_SUITES: dict[str, dict] = {
+    "governance-consolidation-tests": {
+        "former_location": "prepush",
+        "moved_to": "required_ci",
+        "required_ci_check": "pytest-full",
+        "workflow": ".github/workflows/pytest.yml",
+        "reason": "repo-wide / app-importing test bodies (~18-26 min) exceed local pre-push budget",
+        "local_budget_hard_seconds": 60.0,
+        "local_budget_target_seconds": 30.0,
+        "required_ci_stack": ["objective-audit", "pytest-full", "hardening", "schwab-csv-first"],
+    },
+}
+
 # Declared tier policy (authoritative for mechanical lock).
 HOOK_TIER_POLICY: dict[str, dict] = {
     "governance-consolidation-tests": {
-        "tier": 2,
-        "scope": "repo-wide pytest consolidation suite",
+        "tier": 3,
+        "scope": "repo-wide pytest consolidation suite — required CI 'pytest-full' only (Phase 2B)",
         "keep_in_precommit": False,
-        "proposed_location": "prepush",
-        "recommendation": "Move to pre-push; full suite belongs in Tier 2, not every commit.",
+        "proposed_location": "ci_pytest_full",
+        "recommendation": "Required CI pytest-full owns it; NOT a local hook (each file 54-64s; suite ~18-26 min).",
     },
     "no-grep-subprocess": {
         "tier": 1,
@@ -207,6 +225,10 @@ def build_audit(*, measure: bool = False, measure_timeout_sec: int = 600) -> dic
         "slowest_hook": slowest,
         "tier_labels": TIER_LABELS,
         "phase3k_governance_pre_push_optimization": dict(PHASE3K_BASELINE),
+        "local_prepush_mode": "lightweight_only",
+        "local_prepush_budget_hard_seconds": 60.0,
+        "local_prepush_budget_target_seconds": 30.0,
+        "ci_backed_suites": dict(CI_BACKED_SUITES),
         "hooks": hook_rows,
         "findings": _findings(hook_rows),
     }

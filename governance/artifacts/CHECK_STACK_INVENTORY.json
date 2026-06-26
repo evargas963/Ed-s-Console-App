@@ -1,18 +1,21 @@
 {
   "schema_version": 1,
   "phase": "3I-CheckStack",
-  "generated_at_utc": "2026-06-26T03:39:44+00:00",
+  "generated_at_utc": "2026-06-26T11:57:52+00:00",
   "policy": "governance/docs/CHECK_STACK_RIGHTSIZING.md",
   "runtime_budgets_seconds": {
     "precommit_normal": 60,
     "precommit_governance": 180,
-    "prepush_normal": 600,
+    "prepush_normal": 60,
     "prepush_governance": 1200,
+    "prepush_local_lightweight_hard": 60,
+    "prepush_local_lightweight_target": 30,
     "ci_objective_audit": null,
+    "ci_pytest_full": null,
     "reviewer_audit": null
   },
   "measured": {
-    "prepush_seconds": 1440,
+    "prepush_seconds": 5,
     "ablation_grid_seconds": 89.9832,
     "ablation_equal_layer_seconds": 0.004
   },
@@ -20,9 +23,9 @@
     {
       "path": "pre-push",
       "measured_seconds": 1440,
-      "budget_seconds": 1200,
-      "documented_reason": "governance-consolidation-tests pytest suite dominates (~26 min); ablation grid lock ~146s after PERF2-1 shared index",
-      "recommendation": "candidate_for_retier and make_incremental \u2014 do not remove checks without risk proof"
+      "budget_seconds": 60,
+      "documented_reason": "governance consolidation pytest suite (~18-26 min; each candidate file 54-64s, repo-wide/app-importing test bodies) exceeds the local lightweight pre-push budget (60s) \u2014 moved to required CI 'pytest-full' (.github/workflows/pytest.yml). It is no longer a local pre-push hook; current lightweight local pre-push measures ~5s.",
+      "recommendation": "required_ci_owned \u2014 keep off local pre-push (pytest-full backs it)"
     }
   ],
   "check_count": 63,
@@ -30,18 +33,6 @@
     {
       "check_a": "prepush-fast-gate",
       "check_b": "generated-artifacts-clean-check",
-      "classification": "candidate_for_merge",
-      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
-    },
-    {
-      "check_a": "prepush-fast-gate",
-      "check_b": "governance-consolidation-tests",
-      "classification": "candidate_for_merge",
-      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
-    },
-    {
-      "check_a": "generated-artifacts-clean-check",
-      "check_b": "governance-consolidation-tests",
       "classification": "candidate_for_merge",
       "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
     },
@@ -104,6 +95,12 @@
       "check_b": "fix-everything-we-touch",
       "classification": "unintentional_duplicate",
       "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
+    },
+    {
+      "check_a": "fix-everything-we-touch-full-static",
+      "check_b": "governance-consolidation-tests",
+      "classification": "candidate_for_merge",
+      "note": "Review before merge/remove \u2014 slowness alone is not removal grounds"
     }
   ],
   "recommendations": {
@@ -116,11 +113,11 @@
     ],
     "move_to_prepush": [
       "prepush-fast-gate",
-      "generated-artifacts-clean-check",
-      "governance-consolidation-tests"
+      "generated-artifacts-clean-check"
     ],
     "move_to_ci_only": [
       "fix-everything-we-touch-full-static",
+      "governance-consolidation-tests",
       "check_mvp_dataframe_ingress",
       "check_institutional_contract",
       "check_fusion_only_card_contract",
@@ -213,35 +210,12 @@
       "removal_risk": "high",
       "recommendation": "move_to_prepush",
       "overlap_with_other_checks": [
-        "generated-artifacts-clean-check",
-        "governance-consolidation-tests"
+        "generated-artifacts-clean-check"
       ]
     },
     {
       "check_id": "generated-artifacts-clean-check",
       "command": "python tools/check_governance_generated_artifacts_clean.py",
-      "tier": 2,
-      "runtime_seconds": null,
-      "scope": "pre-commit hook",
-      "files_or_modules_covered": "staged or repo per hook",
-      "risk_addressed": "governance enforcement",
-      "evidence_artifact": "governance/artifacts/PRECOMMIT_PERFORMANCE_AUDIT.json",
-      "must_run_precommit": false,
-      "must_run_prepush": true,
-      "must_run_ci": false,
-      "can_be_cached": false,
-      "can_be_incremental": false,
-      "can_be_parallelized": false,
-      "can_be_removed": false,
-      "removal_risk": "high",
-      "recommendation": "move_to_prepush",
-      "overlap_with_other_checks": [
-        "governance-consolidation-tests"
-      ]
-    },
-    {
-      "check_id": "governance-consolidation-tests",
-      "command": "python -m pytest tests/test_governance_consolidation.py tests/test_forbidden_phrases.py tests/test_money_path_roster.py tests/test_check_no_deferral_language.py tests/test_check_fix_everything_we_touch.py tests/test_check_schwab_csv_first.py tests/test_ml_feature_schema_parity.py::test_ml_pipeline_efficiency_checker_green tests/test_ml_feature_schema_parity.py::test_ablation_parity_includes_bridge_and_backtest_hooks -q",
       "tier": 2,
       "runtime_seconds": null,
       "scope": "pre-commit hook",
@@ -392,8 +366,29 @@
       "removal_risk": "critical",
       "recommendation": "keep_ci_only",
       "overlap_with_other_checks": [
-        "enforce_all_rules_objective_audit"
+        "enforce_all_rules_objective_audit",
+        "governance-consolidation-tests"
       ]
+    },
+    {
+      "check_id": "governance-consolidation-tests",
+      "command": "python -m pytest (governance consolidation suite) \u2014 required CI pytest-full",
+      "tier": 3,
+      "runtime_seconds": 1440,
+      "scope": "repo-wide governance consolidation pytest suite (required CI 'pytest-full')",
+      "files_or_modules_covered": "full repo (test_governance_consolidation, test_check_fix_everything_we_touch, test_ml_feature_schema_parity, test_check_schwab_csv_first, test_forbidden_phrases, test_money_path_roster, test_check_no_deferral_language)",
+      "risk_addressed": "governance enforcement",
+      "evidence_artifact": ".github/workflows/pytest.yml",
+      "must_run_precommit": false,
+      "must_run_prepush": false,
+      "must_run_ci": true,
+      "can_be_cached": false,
+      "can_be_incremental": false,
+      "can_be_parallelized": true,
+      "can_be_removed": false,
+      "removal_risk": "critical",
+      "recommendation": "keep_ci_only",
+      "overlap_with_other_checks": []
     },
     {
       "check_id": "check_mvp_dataframe_ingress",
