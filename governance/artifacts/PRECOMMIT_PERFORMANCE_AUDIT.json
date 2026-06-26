@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-06-17T05:15:59+00:00",
+  "generated_at_utc": "2026-06-26T03:39:44+00:00",
   "measurement_mode": "declared_policy_only",
   "total_measured_seconds": null,
   "slowest_hook": null,
@@ -87,20 +87,6 @@
       "scope": "check-only staleness for generated governance JSON",
       "tier": 2,
       "recommendation": "Non-mutating compare vs sources \u2014 fail before long pytest when artifacts stale.",
-      "keep_in_precommit": false,
-      "proposed_location": "prepush"
-    },
-    {
-      "name": "fix everything we touch full static (Tier 2)",
-      "id": "fix-everything-we-touch-full-static",
-      "command": "python tools/check_fix_everything_we_touch.py --full-static",
-      "stages": [
-        "pre-push"
-      ],
-      "runtime_seconds": null,
-      "scope": "full repo-wide static locks",
-      "tier": 2,
-      "recommendation": "Pre-push runs all repo-wide locks; populates local cache for fast commits.",
       "keep_in_precommit": false,
       "proposed_location": "prepush"
     },

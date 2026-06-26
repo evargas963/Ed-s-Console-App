@@ -164,6 +164,7 @@ def build_inventory() -> dict[str, Any]:
     profile = _profile_seconds()
     checks: list[dict[str, Any]] = []
 
+    hook_ids = {str(h["check_id"]) for h in _parse_precommit_hooks()}
     for hook in _parse_precommit_hooks():
         cid = str(hook["check_id"])
         stages = hook.get("stages") or ["pre-commit"]
@@ -194,6 +195,30 @@ def build_inventory() -> dict[str, Any]:
             }
         )
 
+    if "fix-everything-we-touch-full-static" not in hook_ids:
+        checks.append(
+            {
+                "check_id": "fix-everything-we-touch-full-static",
+                "command": "python tools/check_fix_everything_we_touch.py --full-static",
+                "tier": 3,
+                "runtime_seconds": profile.get("repo_wide_static_aggregate"),
+                "scope": "repo-wide static locks (CI objective-audit)",
+                "files_or_modules_covered": "full repo",
+                "risk_addressed": "governance enforcement",
+                "evidence_artifact": ".github/workflows/objective-audit.yml",
+                "must_run_precommit": False,
+                "must_run_prepush": False,
+                "must_run_ci": True,
+                "can_be_cached": False,
+                "can_be_incremental": False,
+                "can_be_parallelized": False,
+                "can_be_removed": False,
+                "removal_risk": "critical",
+                "recommendation": "keep_ci_only",
+                "overlap_with_other_checks": ["enforce_all_rules_objective_audit"],
+            }
+        )
+
     for lock in _repo_wide_locks():
         checks.append(
             {
@@ -206,7 +231,7 @@ def build_inventory() -> dict[str, Any]:
                 "risk_addressed": lock.replace("check_", "").replace("_", " "),
                 "evidence_artifact": "governance/artifacts/FIX_EVERYTHING_WE_TOUCH_PROFILE.json",
                 "must_run_precommit": False,
-                "must_run_prepush": True,
+                "must_run_prepush": False,
                 "must_run_ci": True,
                 "can_be_cached": lock
                 in {
@@ -217,7 +242,7 @@ def build_inventory() -> dict[str, Any]:
                 "can_be_parallelized": False,
                 "can_be_removed": False,
                 "removal_risk": "high",
-                "recommendation": "keep_in_prepush",
+                "recommendation": "keep_ci_only",
                 "overlap_with_other_checks": [],
             }
         )
@@ -356,8 +381,8 @@ def _render_md(inv: dict[str, Any]) -> str:
         "",
         "- **Tier 0** — upfront gate (`enforce_all_rules --upfront-gate`)",
         "- **Tier 1** — pre-commit (staged + fast)",
-        "- **Tier 2** — pre-push (full static + consolidation pytest)",
-        "- **Tier 3** — CI objective-audit",
+        "- **Tier 2** — pre-push (fast gates + consolidation pytest)",
+        "- **Tier 3** — CI objective-audit (repo-wide full-static authority)",
         "- **Tier 4** — reviewer audit (`run_reviewer_audit.py`)",
         "",
         "## Over budget (recorded, not silently accepted)",

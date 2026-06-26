@@ -71,5 +71,6 @@ def test_governance_consolidation_runs_after_fast_gates_in_yaml():
     idx_artifacts = cfg.find("id: generated-artifacts-clean-check")
     idx_static = cfg.find("id: fix-everything-we-touch-full-static")
     idx_consolidation = cfg.find("id: governance-consolidation-tests")
-    assert -1 not in (idx_fast, idx_artifacts, idx_static, idx_consolidation)
-    assert idx_fast < idx_artifacts < idx_static < idx_consolidation
+    assert -1 not in (idx_fast, idx_artifacts, idx_consolidation)
+    assert idx_static < 0, "fix-everything-we-touch-full-static must not be on pre-push"
+    assert idx_fast < idx_artifacts < idx_consolidation

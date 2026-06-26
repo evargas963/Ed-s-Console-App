@@ -8,7 +8,6 @@
   "expected_prepush_hook_order": [
     "prepush-fast-gate",
     "generated-artifacts-clean-check",
-    "fix-everything-we-touch-full-static",
     "governance-consolidation-tests"
   ],
   "dirty_tree_budget_seconds": 5.0,

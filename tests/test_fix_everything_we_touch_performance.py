@@ -171,7 +171,13 @@ def test_profile_mode_writes_artifact(monkeypatch, tmp_path):
     assert isinstance(art.get("subchecks"), list)
 
 
-def test_precommit_config_has_full_static_pre_push_hook():
+def test_precommit_config_has_no_full_static_pre_push_hook():
     cfg = (REPO / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    assert "fix-everything-we-touch-full-static" in cfg
-    assert "--full-static" in cfg
+    idx = cfg.find("id: fix-everything-we-touch-full-static")
+    if idx >= 0:
+        rest = cfg[idx:]
+        next_hook = rest.find("\n      - id:", len("id: fix-everything-we-touch-full-static"))
+        block = rest if next_hook < 0 else rest[:next_hook]
+        assert "pre-push" not in block
+    else:
+        assert "fix-everything-we-touch-full-static" not in cfg

@@ -12,7 +12,7 @@ Authoritative rule source: AGENTS.md (§ Do not lie to the operator, § Fix ever
 
 Usage:
   python tools/check_fix_everything_we_touch.py              # pre-commit scoped (fast path)
-  python tools/check_fix_everything_we_touch.py --full-static  # pre-push / full repo-wide locks
+  python tools/check_fix_everything_we_touch.py --full-static  # manual / CI objective-audit (not local pre-push)
   python tools/check_fix_everything_we_touch.py --profile      # per-subcheck timings artifact
   python tools/check_fix_everything_we_touch.py path [path]  # explicit paths
   python tools/check_fix_everything_we_touch.py --commit-msg .git/COMMIT_EDITMSG
@@ -3463,16 +3463,15 @@ def check_precommit_performance_contract() -> list[str]:
         errors.append(".pre-commit-config.yaml: missing")
         return errors
     pc = precommit.read_text(encoding="utf-8", errors="replace")
-    idx = pc.find("id: fix-everything-we-touch-full-static")
-    if idx < 0:
-        errors.append(".pre-commit-config.yaml: missing fix-everything-we-touch-full-static pre-push hook")
-    else:
-        rest = pc[idx:]
+    idx_static = pc.find("id: fix-everything-we-touch-full-static")
+    if idx_static >= 0:
+        rest = pc[idx_static:]
         next_hook = rest.find("\n      - id:", len("id: fix-everything-we-touch-full-static"))
         block = rest if next_hook < 0 else rest[:next_hook]
-        if "pre-push" not in block:
+        if "pre-push" in block:
             errors.append(
-                ".pre-commit-config.yaml: fix-everything-we-touch-full-static must use stages: [pre-push]"
+                ".pre-commit-config.yaml: fix-everything-we-touch-full-static must not use "
+                "stages: [pre-push] — repo-wide static is required CI objective-audit only"
             )
 
     idx = pc.find("id: governance-consolidation-tests")
@@ -3494,19 +3493,26 @@ def check_precommit_performance_contract() -> list[str]:
             )
     idx_fast = pc.find("id: prepush-fast-gate")
     idx_art = pc.find("id: generated-artifacts-clean-check")
-    idx_static = pc.find("id: fix-everything-we-touch-full-static")
     idx_gct = pc.find("id: governance-consolidation-tests")
     if idx_fast < 0:
         errors.append(".pre-commit-config.yaml: missing prepush-fast-gate hook")
     if idx_art < 0:
         errors.append(".pre-commit-config.yaml: missing generated-artifacts-clean-check hook")
-    if idx_fast >= 0 and idx_art >= 0 and idx_static >= 0 and idx_gct >= 0:
-        if not (idx_fast < idx_art < idx_static < idx_gct):
+    if idx_fast >= 0 and idx_art >= 0 and idx_gct >= 0:
+        if not (idx_fast < idx_art < idx_gct):
             errors.append(
                 ".pre-commit-config.yaml: pre-push hook order must be "
                 "prepush-fast-gate → generated-artifacts-clean-check → "
-                "fix-everything-we-touch-full-static → governance-consolidation-tests"
+                "governance-consolidation-tests"
             )
+    wf = REPO_ROOT / ".github" / "workflows" / "objective-audit.yml"
+    if not wf.is_file():
+        errors.append(".github/workflows/objective-audit.yml: missing (CI full-static authority)")
+    elif "--objective-audit" not in wf.read_text(encoding="utf-8", errors="replace"):
+        errors.append(
+            ".github/workflows/objective-audit.yml: missing --objective-audit "
+            "(required CI repo-wide static authority)"
+        )
     if audit_json.is_file():
         try:
             audit = json.loads(audit_json.read_text(encoding="utf-8"))

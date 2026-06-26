@@ -19,12 +19,14 @@ POLICY_MD = REPO / "governance" / "docs" / "PREPUSH_FAST_FAIL_POLICY.md"
 PRE_COMMIT_CFG = REPO / ".pre-commit-config.yaml"
 
 # Pre-push hooks must run in this order (YAML declaration order among pre-push stages).
+# Repo-wide --full-static is NOT local pre-push — required CI objective-audit owns it.
 EXPECTED_PREPUSH_HOOK_ORDER: tuple[str, ...] = (
     "prepush-fast-gate",
     "generated-artifacts-clean-check",
-    "fix-everything-we-touch-full-static",
     "governance-consolidation-tests",
 )
+
+_FORBIDDEN_PREPUSH_HOOK_IDS: tuple[str, ...] = ("fix-everything-we-touch-full-static",)
 
 # Consolidation hook must be pytest verification only — no artifact writers.
 _CONSOLIDATION_FORBIDDEN_SUBSTRINGS: tuple[str, ...] = (
@@ -73,6 +75,32 @@ def _consolidation_hook_entry(cfg_text: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
+def check_prepush_no_full_static_hook() -> list[str]:
+    """Local pre-push must not run repo-wide --full-static (CI objective-audit owns it)."""
+    errors: list[str] = []
+    if not PRE_COMMIT_CFG.is_file():
+        return errors
+    cfg = PRE_COMMIT_CFG.read_text(encoding="utf-8", errors="replace")
+    order = _parse_prepush_hook_ids(cfg)
+    for forbidden in _FORBIDDEN_PREPUSH_HOOK_IDS:
+        if forbidden in order:
+            errors.append(
+                f".pre-commit-config.yaml: {forbidden!r} must not run on pre-push "
+                f"(repo-wide static → required CI objective-audit)"
+            )
+    wf = REPO / ".github" / "workflows" / "objective-audit.yml"
+    if wf.is_file():
+        wf_text = wf.read_text(encoding="utf-8", errors="replace")
+        if "--objective-audit" not in wf_text:
+            errors.append(
+                ".github/workflows/objective-audit.yml: missing --objective-audit "
+                "(required CI full-repo static authority)"
+            )
+    else:
+        errors.append(".github/workflows/objective-audit.yml: missing")
+    return errors
+
+
 def check_prepush_hook_order() -> list[str]:
     errors: list[str] = []
     if not PRE_COMMIT_CFG.is_file():
@@ -88,6 +116,7 @@ def check_prepush_hook_order() -> list[str]:
             "pre-push hook order must be "
             f"{expected!r} first — got {order!r}"
         )
+    errors.extend(check_prepush_no_full_static_hook())
     return errors
 
 

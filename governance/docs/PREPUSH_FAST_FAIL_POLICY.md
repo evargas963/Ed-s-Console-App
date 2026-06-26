@@ -4,9 +4,21 @@
 
 **Status:** Active policy | **Mechanical lock:** `tools/check_prepush_fast_gate.py` + `tools/check_governance_generated_artifacts_clean.py`
 
+## Local vs remote responsibility split
+
+**Local pre-push is a fast gate.** It catches dirty trees and stale generated artifacts in seconds to minutes — not full-repo static proof.
+
+**Repo-wide full-static enforcement is performed by required CI `objective-audit`** (`python tools/enforce_all_rules.py --objective-audit` → `run_repo_wide_static_audit()`). This is **not coverage removal**; it is a local/remote responsibility split.
+
+| Layer | Authority | What it runs |
+|-------|-----------|--------------|
+| **Local pre-commit** | Every commit | Staged `fix-everything-we-touch`, deferral/grep locks |
+| **Local pre-push** | Fast guard before push | Dirty tree, generated-artifact freshness, consolidation pytest |
+| **Required CI `objective-audit`** | Branch protection on `main` | Full repo-wide static locks + governance/adversarial pytest |
+
 ## Problem
 
-Pre-push previously ran the ~296-test governance consolidation suite **first**, spending 20–50 minutes before failing on a dirty tree or stale generated artifact.
+Pre-push previously ran the ~296-test governance consolidation suite **first**, spending 20–50 minutes before failing on a dirty tree or stale generated artifact. It also ran `fix-everything-we-touch --full-static` (~3–5 min) duplicating required CI coverage.
 
 ## Required pre-push order
 
@@ -14,10 +26,11 @@ Pre-push previously ran the ~296-test governance consolidation suite **first**, 
 |---|---------|---------|-----------------|
 | 1 | `prepush-fast-gate` | Dirty working tree → fail in **<5s** | <1s |
 | 2 | `generated-artifacts-clean-check` | Stale governance JSON → fail **before pytest** | 5–60s |
-| 3 | `fix-everything-we-touch-full-static` | Full repo-wide static locks | ~3–5 min |
-| 4 | `governance-consolidation-tests` | Pytest consolidation (check-only) | ~10–25 min |
+| 3 | `governance-consolidation-tests` | Pytest consolidation (check-only) | ~10–25 min |
 
-The consolidation suite **must not start** until hooks 1–3 pass.
+**Removed from local pre-push (2026-06-26):** `fix-everything-we-touch-full-static` — authoritative full-repo static proof is **required CI `objective-audit` only**.
+
+The consolidation suite **must not start** until hooks 1–2 pass.
 
 ## Non-mutating verification
 
@@ -25,7 +38,6 @@ The consolidation suite **must not start** until hooks 1–3 pass.
 |-------|---------------|------------------------|
 | `check_prepush_fast_gate.py` | No | N/A |
 | `check_governance_generated_artifacts_clean.py` | **No** | See commands below |
-| `fix-everything-we-touch --full-static` | Cache only (`.cursor/cache/`, gitignored) | N/A |
 | `governance-consolidation-tests` | No (pytest) | N/A |
 
 ### Explicit regeneration (never run during pre-push verify)
@@ -48,9 +60,9 @@ Commit or stash before push. Gitignored runtime artifacts (models, logs, backups
 
 ## Governance not weakened
 
-- Full static locks still run on pre-push (hook 3)
-- Consolidation pytest still runs on pre-push (hook 4)
-- CI / `enforce_all_rules.py --objective-audit` unchanged in strength
+- Full repo-wide static locks run on **required CI `objective-audit`** (not local pre-push)
+- Staged `fix-everything-we-touch` still runs on **every pre-commit**
+- Consolidation pytest still runs on local pre-push (hook 3)
 - Fast gates add **early failure**, not fewer checks
 
 ## Mtime-gated deep checks (fast pre-push)

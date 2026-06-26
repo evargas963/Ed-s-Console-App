@@ -59,11 +59,11 @@ HOOK_TIER_POLICY: dict[str, dict] = {
         "recommendation": "Fast path: staged checks + cache hit skips repo-wide; governance path expands.",
     },
     "fix-everything-we-touch-full-static": {
-        "tier": 2,
+        "tier": 3,
         "scope": "full repo-wide static locks",
         "keep_in_precommit": False,
-        "proposed_location": "prepush",
-        "recommendation": "Pre-push runs all repo-wide locks; populates local cache for fast commits.",
+        "proposed_location": "ci_objective_audit",
+        "recommendation": "Required CI objective-audit only — removed from local pre-push (2026-06-26).",
     },
     "prepush-fast-gate": {
         "tier": 2,

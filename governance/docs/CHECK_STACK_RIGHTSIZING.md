@@ -2,7 +2,7 @@
 
 **Scope:** Phase 3I — inventory, tier policy, duplication analysis, runtime budgets. No check removal in this phase.
 
-Generated: `2026-06-19T06:21:53+00:00`
+Generated: `2026-06-26T03:39:44+00:00`
 
 ## Runtime budget targets (seconds)
 
@@ -16,8 +16,8 @@ Generated: `2026-06-19T06:21:53+00:00`
 
 - **Tier 0** — upfront gate (`enforce_all_rules --upfront-gate`)
 - **Tier 1** — pre-commit (staged + fast)
-- **Tier 2** — pre-push (full static + consolidation pytest)
-- **Tier 3** — CI objective-audit
+- **Tier 2** — pre-push (fast gates + consolidation pytest)
+- **Tier 3** — CI objective-audit (repo-wide full-static authority)
 - **Tier 4** — reviewer audit (`run_reviewer_audit.py`)
 
 ## Over budget (recorded, not silently accepted)
@@ -27,11 +27,8 @@ Generated: `2026-06-19T06:21:53+00:00`
 ## Duplication analysis
 
 - `prepush-fast-gate` ↔ `generated-artifacts-clean-check`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
-- `prepush-fast-gate` ↔ `fix-everything-we-touch-full-static`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `prepush-fast-gate` ↔ `governance-consolidation-tests`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
-- `generated-artifacts-clean-check` ↔ `fix-everything-we-touch-full-static`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `generated-artifacts-clean-check` ↔ `governance-consolidation-tests`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
-- `fix-everything-we-touch-full-static` ↔ `governance-consolidation-tests`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-grep-subprocess` ↔ `no-deferral-language-msg`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-grep-subprocess` ↔ `no-deferral-language-files`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds
 - `no-grep-subprocess` ↔ `fix-everything-we-touch-msg`: **candidate_for_merge** — Review before merge/remove — slowness alone is not removal grounds

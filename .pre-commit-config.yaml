@@ -15,13 +15,6 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-push]
-      - id: fix-everything-we-touch-full-static
-        name: fix everything we touch full static (Tier 2)
-        entry: python tools/check_fix_everything_we_touch.py --full-static
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]
       - id: governance-consolidation-tests
         name: governance consolidation tests (check-only pytest)
         entry: python -m pytest tests/test_governance_consolidation.py tests/test_forbidden_phrases.py tests/test_money_path_roster.py tests/test_check_no_deferral_language.py tests/test_check_fix_everything_we_touch.py tests/test_check_schwab_csv_first.py tests/test_ml_feature_schema_parity.py::test_ml_pipeline_efficiency_checker_green tests/test_ml_feature_schema_parity.py::test_ablation_parity_includes_bridge_and_backtest_hooks -q

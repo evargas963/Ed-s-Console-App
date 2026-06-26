@@ -1888,3 +1888,48 @@ def test_unified_stack_canonical_vocabulary_checker():
 
 def test_unified_stack_producer_language_checker():
     assert mod.check_unified_stack_producer_language() == []
+
+
+def test_prepush_does_not_include_full_static_hook():
+    """Local pre-push must not run repo-wide --full-static (CI objective-audit owns it)."""
+    cfg = (REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    idx = cfg.find("id: fix-everything-we-touch-full-static")
+    if idx >= 0:
+        rest = cfg[idx:]
+        next_hook = rest.find("\n      - id:", len("id: fix-everything-we-touch-full-static"))
+        block = rest if next_hook < 0 else rest[:next_hook]
+        assert "pre-push" not in block
+    assert mod.check_precommit_performance_contract() == []
+
+
+def test_precommit_staged_fix_everything_we_touch_retained():
+    cfg = (REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    assert "id: fix-everything-we-touch" in cfg
+    idx = cfg.find("id: fix-everything-we-touch\n")
+    if idx < 0:
+        idx = cfg.find("id: fix-everything-we-touch-msg")
+    assert idx >= 0
+    assert "id: fix-everything-we-touch-msg" in cfg
+
+
+def test_prepush_fast_gate_and_generated_artifacts_retained():
+    cfg = (REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    for hook_id in ("prepush-fast-gate", "generated-artifacts-clean-check"):
+        assert f"id: {hook_id}" in cfg
+        idx = cfg.find(f"id: {hook_id}")
+        rest = cfg[idx:]
+        next_hook = rest.find("\n      - id:", len(f"id: {hook_id}"))
+        block = rest if next_hook < 0 else rest[:next_hook]
+        assert "pre-push" in block
+
+
+def test_objective_audit_ci_full_static_documented_in_prepush_policy():
+    policy = (REPO_ROOT / "governance" / "docs" / "PREPUSH_FAST_FAIL_POLICY.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Local pre-push is a fast gate" in policy
+    assert "objective-audit" in policy
+    assert "not coverage removal" in policy.lower()
+    wf = REPO_ROOT / ".github" / "workflows" / "objective-audit.yml"
+    assert wf.is_file()
+    assert "--objective-audit" in wf.read_text(encoding="utf-8")
