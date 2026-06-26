@@ -10,11 +10,14 @@
   },
   "remote_evidence": {
     "evidence_source": "gh api + gh run list",
-    "evidence_timestamp": "2026-06-26T02:17:40+00:00",
+    "evidence_timestamp": "2026-06-26T06:29:16+00:00",
     "repository": "evargas963/Ed-s-Console-App",
     "protected_branch": "main",
     "required_status_checks": [
-      "objective-audit"
+      "objective-audit",
+      "pytest-full",
+      "hardening",
+      "schwab-csv-first"
     ],
     "required_reviews": 0,
     "allows_force_pushes": false,
@@ -40,12 +43,27 @@
         "url": "https://api.github.com/repos/evargas963/Ed-s-Console-App/branches/main/protection/required_status_checks",
         "strict": true,
         "contexts": [
-          "objective-audit"
+          "objective-audit",
+          "pytest-full",
+          "hardening",
+          "schwab-csv-first"
         ],
         "contexts_url": "https://api.github.com/repos/evargas963/Ed-s-Console-App/branches/main/protection/required_status_checks/contexts",
         "checks": [
           {
             "context": "objective-audit",
+            "app_id": 15368
+          },
+          {
+            "context": "pytest-full",
+            "app_id": 15368
+          },
+          {
+            "context": "hardening",
+            "app_id": 15368
+          },
+          {
+            "context": "schwab-csv-first",
             "app_id": 15368
           }
         ]
@@ -91,6 +109,18 @@
     "objective_audit_runs": [
       {
         "conclusion": "success",
+        "databaseId": 28219598117,
+        "headBranch": "main",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "databaseId": 28214305530,
+        "headBranch": "main",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
         "databaseId": 28210918549,
         "headBranch": "main",
         "status": "completed"
@@ -104,18 +134,6 @@
       {
         "conclusion": "success",
         "databaseId": 28182140764,
-        "headBranch": "main",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "databaseId": 28171042576,
-        "headBranch": "main",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "databaseId": 28145368747,
         "headBranch": "main",
         "status": "completed"
       }
@@ -161,5 +179,5 @@
       "status_check_name_for_branch_protection": "objective-audit"
     }
   },
-  "generated": "2026-06-25"
+  "generated": "2026-06-26"
 }

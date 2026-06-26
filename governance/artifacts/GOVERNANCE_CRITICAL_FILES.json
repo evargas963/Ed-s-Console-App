@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "artifact": "governance/artifacts/GOVERNANCE_CRITICAL_FILES.json",
-  "generated": "2026-06-17",
+  "generated": "2026-06-26",
   "paths": [
     "AGENTS.md",
     "CLAUDE.md",
@@ -36,9 +36,13 @@
     "tools/_build_institutional_audit_phase3e.py",
     "tools/check_ablation_pipeline_parity.py",
     "tools/check_agent_preload_contract.py",
+    "tools/check_base_ticker_observability.py",
     "tools/check_branch_protection_proof.py",
+    "tools/check_card_direction_integrity.py",
+    "tools/check_card_signal_fidelity.py",
     "tools/check_check_stack_rightsizing.py",
     "tools/check_ci_tooling_dependencies.py",
+    "tools/check_db_sqlite_contention_impact_audit.py",
     "tools/check_encoder_cone_tests.py",
     "tools/check_env_override_hardening.py",
     "tools/check_fix_everything_we_touch.py",
@@ -49,12 +53,15 @@
     "tools/check_no_deferral_language.py",
     "tools/check_no_grep_subprocess.py",
     "tools/check_no_verify_resistance.py",
+    "tools/check_operator_trust_governance.py",
     "tools/check_prepush_fast_gate.py",
     "tools/check_repo_hygiene_policy.py",
     "tools/check_required_status_checks.py",
     "tools/check_reviewer_evidence_index.py",
     "tools/check_schwab_csv_first.py",
-    "tools/check_source_control_hygiene.py"
+    "tools/check_source_control_hygiene.py",
+    "tools/check_ui_realtime_transport_audit.py",
+    "tools/check_universality_drift_closure.py"
   ],
-  "count": 46
+  "count": 53
 }

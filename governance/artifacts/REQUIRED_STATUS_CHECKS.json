@@ -24,11 +24,14 @@
   "schema_version": 2,
   "remote_evidence": {
     "evidence_source": "gh api + gh run list",
-    "evidence_timestamp": "2026-06-26T02:17:40+00:00",
+    "evidence_timestamp": "2026-06-26T06:29:16+00:00",
     "repository": "evargas963/Ed-s-Console-App",
     "protected_branch": "main",
     "required_status_checks": [
-      "objective-audit"
+      "objective-audit",
+      "pytest-full",
+      "hardening",
+      "schwab-csv-first"
     ],
     "required_reviews": 0,
     "allows_force_pushes": false,
@@ -41,10 +44,13 @@
     "enforced": true,
     "objective_audit_required_on_github": true,
     "required_status_checks_on_github": [
-      "objective-audit"
+      "objective-audit",
+      "pytest-full",
+      "hardening",
+      "schwab-csv-first"
     ]
   },
   "remote_enforcement_verified": true,
   "verification_state": "verified",
-  "generated": "2026-06-25"
+  "generated": "2026-06-26"
 }
