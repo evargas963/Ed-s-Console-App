@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -10,6 +11,52 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 HARNESS = ROOT / "tools" / "run_universal_card_fidelity_runtime.py"
+CARD_CONSUMER_CONTRACT = ROOT / "governance" / "artifacts" / "CARD_CONSUMER_CONTRACT_V1.json"
+
+_REQUIRED_FIELD_KEYS = frozenset(
+    {
+        "field_name",
+        "category",
+        "backend_source",
+        "api_key",
+        "consumer_surface",
+        "operator_relevance",
+        "allowed_type",
+        "allowed_values",
+        "nullable",
+        "fallback_behavior",
+        "stale_behavior",
+        "pending_behavior",
+        "ticker_agnostic_rule",
+        "test_required",
+        "decision_status",
+    }
+)
+
+_VALID_DECISION_STATUSES = frozenset(
+    {"PROVEN", "NOT_PROVEN", "OPERATOR_DECISION_REQUIRED", "BACKEND_ONLY"}
+)
+
+_VALID_OPERATOR_SURFACES = frozenset(
+    {
+        "horizon_pill",
+        "all_card",
+        "plan_card",
+        "execution_chip",
+        "explanation_rail",
+        "risk_rail",
+        "probability_rail",
+        "em_band",
+        "freshness_banner",
+        "backend_only",
+        "removed",
+        "operator_decision_required",
+    }
+)
+
+
+def _load_card_consumer_contract() -> dict:
+    return json.loads(CARD_CONSUMER_CONTRACT.read_text(encoding="utf-8"))
 
 
 def _load_harness_module():
@@ -308,3 +355,87 @@ def test_z_score_and_expected_move_absent_classification(ucf):
     table = ucf.build_orphan_table({}, {})
     assert table["z_score"] == "ABSENT"
     assert table["expected_move"] == "ABSENT"
+
+
+def test_card_consumer_contract_v1_registry_exists_and_schema():
+    assert CARD_CONSUMER_CONTRACT.is_file()
+    reg = _load_card_consumer_contract()
+    assert reg["schema_version"] == 1
+    assert reg["artifact"] == "governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json"
+    assert len(reg.get("contract_rules") or []) >= 10
+    fields = reg.get("fields") or []
+    assert len(fields) >= 20
+    for row in fields:
+        missing = _REQUIRED_FIELD_KEYS - set(row)
+        assert not missing, f"{row.get('field_name')}: missing {missing}"
+
+
+def test_card_consumer_contract_no_speculative_meta_label_fields():
+    reg = _load_card_consumer_contract()
+    forbidden = set(reg["execution_channel"]["forbidden_speculative_contract_fields"])
+    assert forbidden == {
+        "meta_label_size",
+        "triple_barrier_label",
+        "meta_label_probability",
+        "foundation_model_signal",
+    }
+    field_names = {row["field_name"] for row in reg["fields"]}
+    assert field_names.isdisjoint(forbidden)
+    for row in reg["fields"]:
+        assert row["decision_status"] in _VALID_DECISION_STATUSES
+
+
+def test_card_consumer_contract_execution_channel_meta_label_ready():
+    reg = _load_card_consumer_contract()
+    ch = reg["execution_channel"]
+    assert ch["meta_label_ready"] is True
+    assert ch["primary_field_today"] == "call_state"
+    assert set(ch["vocabulary"]) == {"WAIT", "WATCH", "ACTIVE"}
+    supporting = set(ch["supporting_fields_today"])
+    assert {"call_signal", "final_tradeable", "entry_state", "wait_reason"} <= supporting
+    assert "call_forecast_state" in ch["backend_only_fields_today"]
+    forecast = next(r for r in reg["fields"] if r["field_name"] == "call_forecast_state")
+    assert forecast["consumer_surface"] == "backend_only"
+
+
+def test_card_consumer_contract_operator_relevant_fields_have_disposition():
+    reg = _load_card_consumer_contract()
+    for row in reg["fields"]:
+        if row["operator_relevance"] in ("high", "medium"):
+            assert row["consumer_surface"] in _VALID_OPERATOR_SURFACES
+            assert row["decision_status"] in _VALID_DECISION_STATUSES
+            assert row["decision_status"] != "BACKEND_ONLY" or row["operator_relevance"] == "backend_only"
+
+
+def test_card_consumer_contract_orphan_fields_tracked_in_registry():
+    reg = _load_card_consumer_contract()
+    by_name = {row["field_name"]: row for row in reg["fields"]}
+    for orphan in (
+        "pred_headline",
+        "reversal_risk",
+        "reversal_label",
+        "call_headline",
+        "call_signal",
+        "call_state",
+    ):
+        assert orphan in by_name
+        assert by_name[orphan]["decision_status"] == "OPERATOR_DECISION_REQUIRED"
+
+
+def test_card_consumer_contract_future_lane_recorded():
+    reg = _load_card_consumer_contract()
+    lanes = reg.get("future_lanes") or []
+    assert any(l.get("lane_id") == "future_execution_state_sophistication" for l in lanes)
+    lane = next(l for l in lanes if l["lane_id"] == "future_execution_state_sophistication")
+    assert lane["status"] == "FUTURE_LANE_WITH_REASON"
+    assert "triple-barrier" in lane["description"].lower()
+    assert "meta-label" in lane["description"].lower()
+
+
+def test_card_consumer_contract_horizon_vs_execution_separation():
+    reg = _load_card_consumer_contract()
+    by_name = {row["field_name"]: row for row in reg["fields"]}
+    assert by_name["mhap_rows[].call"]["consumer_surface"] == "horizon_pill"
+    assert by_name["call_state"]["consumer_surface"] == "execution_chip"
+    assert by_name["call_state"]["category"] == "execution_state"
+    assert by_name["final_tradeable"]["consumer_surface"] == "execution_chip"

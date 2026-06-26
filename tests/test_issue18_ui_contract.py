@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+CARD_CONSUMER_CONTRACT = ROOT / "governance" / "artifacts" / "CARD_CONSUMER_CONTRACT_V1.json"
+CARD_TRUST_CONTRACT = ROOT / "docs" / "CARD_TRUST_CONTRACT.md"
 
 
 def _html() -> str:
@@ -647,3 +652,54 @@ def test_ui_maximize_contract_sla_warm_and_partial_render():
     assert pending_idx != -1
     pending_chunk = h[pending_idx : pending_idx + 400]
     assert "analytics_partial_tier_c" in pending_chunk
+
+
+def test_card_consumer_contract_registry_file_exists():
+    assert CARD_CONSUMER_CONTRACT.is_file()
+    reg = json.loads(CARD_CONSUMER_CONTRACT.read_text(encoding="utf-8"))
+    assert reg["schema_version"] == 1
+    assert "execution_channel" in reg
+
+
+def test_card_trust_contract_references_consumer_registry():
+    body = CARD_TRUST_CONTRACT.read_text(encoding="utf-8")
+    assert "CARD_CONSUMER_CONTRACT_V1.json" in body
+    assert "meta-label-ready" in body.lower() or "meta-label-ready" in body
+    assert "FUTURE_LANE_WITH_REASON" in body
+    assert "call_state" in body
+
+
+def test_card_consumer_contract_execution_separated_from_horizon_in_ui():
+    """Registry rule: horizon pills = forecast; execution = final_tradeable + call_state channel."""
+    h = _html()
+    assert "function engineTradeableSetup" in h
+    assert "function resolveHorizonCardVisualState" in h
+    idx = h.find("function resolveHorizonCardVisualState")
+    chunk = h[idx : idx + 1200]
+    assert "nonActionable" in chunk
+    assert "isConsolidated" in chunk
+    row_idx = h.find("const tradeable = engineTradeableSetup(d)")
+    assert row_idx != -1
+    assert "const mhap = Array.isArray(d.mhap_rows)" in h
+
+
+def test_card_consumer_contract_stale_and_pending_hooks_in_ui():
+    h = _html()
+    assert "analytics_pending_shell" in h
+    assert "tf-signal-card--analytics-loading" in h
+    assert "function updateAnalyticsFreshnessUI" in h
+    assert "analytics_stale" in h
+    assert "function bundleDirectionWithheld" in h
+    assert "data-direction-withhold" in h
+
+
+def test_card_consumer_contract_final_tradeable_gates_all_plan():
+    h = _html()
+    idx = h.find("function engineTradeableSetup")
+    assert idx != -1
+    chunk = h[idx : idx + 380]
+    assert "d.final_tradeable" in chunk
+    idx_cons = h.find("if (slug === 'consolidated') {\n      if (tradeable)")
+    assert idx_cons != -1
+    cons_chunk = h[idx_cons : idx_cons + 280]
+    assert "dir = 'FLAT'" in cons_chunk

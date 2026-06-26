@@ -291,6 +291,52 @@ Every card-driving payload must carry (transport audit):
 
 ---
 
+## 15. Declarative card consumer registry (v1)
+
+**Machine-readable source of truth:** `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json`
+
+Each row declares: `field_name`, `category`, `backend_source`, `api_key`, `consumer_surface`, `operator_relevance`, allowed type/values, nullability, stale/pending/fallback behavior, ticker-agnostic rule, `test_required`, and `decision_status`.
+
+**Binding fidelity rules (encoded in registry `contract_rules`):**
+
+1. Horizon pills = forecast/direction evidence — not trade permission.
+2. `WAIT` / `WATCH` / `ACTIVE` = execution readiness — separate from horizon direction.
+3. Direction must not imply permission to trade.
+4. `final_tradeable=false` forbids ACTIVE / actionable paint.
+5. `analytics_stale=true` requires explicit stale state and suppresses actionable paint.
+6. `analytics_pending_shell=true` renders loading/skeleton — no fake numeric defaults.
+7. `call_state` is the **primary** execution-state field today.
+8. `call_signal` may support execution state but must not duplicate horizon direction on pills.
+9. `call_forecast_state` is `backend_only` until operator approves a subtitle surface.
+10. Future learned meta-labeling may feed the **same execution channel** later — **no speculative contract fields** in v1.
+
+**Execution channel (meta-label-ready, not meta-label-implemented):**
+
+| Role | Fields |
+|------|--------|
+| Primary today | `call_state` (`WAIT` \| `WATCH` \| `ACTIVE`) |
+| Supporting today | `call_signal`, `final_tradeable`, `entry_state`, `wait_reason` |
+| Backend-only today | `call_forecast_state` |
+| Producers | `call_engine.py` → `signals.py` → `market_state.py` → `/api/analytics/state` |
+
+The vocabulary is stable so a future learned meta-label can map into `call_state` (or a documented successor key) **without** horizon-pill re-architecture. This lane does **not** add triple-barrier, meta-label, or foundation-model contract fields.
+
+**Mechanical locks:** `tests/test_universal_card_fidelity_runtime.py`, `tests/test_issue18_ui_contract.py` — registry schema, no speculative fields, execution-channel separation.
+
+**Regen:** manual edit of `CARD_CONSUMER_CONTRACT_V1.json` with paired test updates (no standalone builder in v1).
+
+---
+
+## 16. Future execution-state sophistication (not in v1)
+
+| Lane | Status | Reason |
+|------|--------|--------|
+| **Future execution-state sophistication lane:** Evaluate triple-barrier labels and learned meta-labeling as challenger inputs to the `WAIT`/`WATCH`/`ACTIVE` execution channel. | `FUTURE_LANE_WITH_REASON` | Card fidelity, stale/fallback honesty, ticker-agnostic runtime proof, and RTH switch proof must be trusted before changing model semantics. |
+
+**Excluded from card consumer v1:** triple-barrier labeling, learned meta-labeling, foundation-model additions, and speculative registry keys (`meta_label_size`, `triple_barrier_label`, `meta_label_probability`, `foundation_model_signal`).
+
+---
+
 ## Amendment path
 
 Changes to this contract require:
@@ -298,5 +344,6 @@ Changes to this contract require:
 1. Named fix branch citing section(s) amended.
 2. Paired test or audit artifact where behavior changes.
 3. No silent drift — card meaning changes must be explicit in PR body and operator release notes.
+4. Registry row updates in `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` when field disposition changes.
 
 **This document does not authorize model, threshold, fusion-weight, or rendering changes by itself.**
