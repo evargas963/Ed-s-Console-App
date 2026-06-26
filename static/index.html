@@ -4199,6 +4199,152 @@ try {
 /* renderSignalRailCard removed 2026-06-10 (operator): the ALL pill carries the
    consolidated verdict and the PLAN pill carries entry/stop/targets/size. */
 
+/** Card actionability trust — fail-closed gate for Horizon / ALL / PLAN paint (2026-06-26). */
+const CARD_TRUST_REQUIRED_HORIZON_COUNT = 4;
+const CARD_TRUST_REQUIRED_HORIZONS = ['1c', '5c', '15c', '60c'];
+
+/**
+ * Canonical card bundle trust gate — single authority for actionable card paint.
+ * @returns {{ trusted: boolean, reason: string|null }}
+ */
+function analyticsCardTrustGate(d, opts) {
+  opts = opts || {};
+  if (d == null || typeof d !== 'object' || Array.isArray(d)) {
+    return { trusted: false, reason: 'no_payload' };
+  }
+  if (opts.checkTicker !== false) {
+    const pt = d.ticker != null ? String(d.ticker).trim().toUpperCase() : '';
+    const at = (typeof activeTicker !== 'undefined' ? activeTicker : '') || '';
+    if (pt && at && pt !== String(at).trim().toUpperCase()) {
+      return { trusted: false, reason: 'ticker_mismatch' };
+    }
+  }
+  if (d.analytics_stale === true) return { trusted: false, reason: 'analytics_stale' };
+  if (d.analytics_pending_shell === true) return { trusted: false, reason: 'pending_shell' };
+  if (d.analytics_partial_tier_c === true) return { trusted: false, reason: 'partial_tier_c' };
+  const src = String(d._update_source || '');
+  if (d.analytics_refresh_in_progress === true && src === 'client_ticker_cache') {
+    return { trusted: false, reason: 'cache_refresh_in_progress' };
+  }
+  const mhap = Array.isArray(d.mhap_rows) ? d.mhap_rows : null;
+  if (!mhap || mhap.length === 0) return { trusted: false, reason: 'mhap_missing' };
+  if (mhap.length < CARD_TRUST_REQUIRED_HORIZON_COUNT) {
+    return { trusted: false, reason: 'mhap_incomplete' };
+  }
+  for (let i = 0; i < CARD_TRUST_REQUIRED_HORIZONS.length; i++) {
+    const slug = CARD_TRUST_REQUIRED_HORIZONS[i];
+    const row = mhap.find(function (r) {
+      return r && String(r.horizon || '').toLowerCase() === slug;
+    });
+    if (!row) return { trusted: false, reason: 'mhap_horizon_missing_' + slug };
+  }
+  if (d.fusion_available === false) return { trusted: false, reason: 'fusion_unavailable' };
+  const si = d.stack_integrity_v1;
+  if (si && typeof si === 'object' && si.degraded === true) {
+    return { trusted: false, reason: 'stack_integrity_degraded' };
+  }
+  const rt = (d.stack_runtime && typeof d.stack_runtime === 'object') ? d.stack_runtime : {};
+  if (rt.signals_engine_failed === true) return { trusted: false, reason: 'signals_engine_failed' };
+  if (String(rt.stack_mode || '').toUpperCase() === 'INVALID') {
+    return { trusted: false, reason: 'stack_invalid' };
+  }
+  if (d.state_error) return { trusted: false, reason: 'state_error' };
+  if (d.error === 'token_invalid') return { trusted: false, reason: 'token_invalid' };
+  return { trusted: true, reason: null };
+}
+
+function cardTrustOperatorLabel(reason) {
+  const r = String(reason || '').toLowerCase();
+  if (r === 'analytics_stale' || r === 'cache_refresh_in_progress') return 'STALE';
+  if (r === 'pending_shell' || r === 'partial_tier_c' || r === 'mhap_missing') return 'PENDING';
+  if (r === 'mhap_incomplete' || r.indexOf('mhap_horizon_missing_') === 0) return 'WITHHELD';
+  if (r === 'fusion_unavailable' || r === 'stack_integrity_degraded' || r === 'signals_engine_failed' || r === 'stack_invalid') {
+    return 'DEGRADED';
+  }
+  if (r === 'state_error' || r === 'token_invalid') return 'UNAVAILABLE';
+  return 'WITHHELD';
+}
+
+/** Engine ALL/PLAN eligibility — requires trusted card bundle + final_tradeable. */
+function engineTradeableSetup(d) {
+  if (!analyticsCardTrustGate(d, { checkTicker: false }).trusted) return false;
+  const bias = String((d && d.final_bias) || 'WAIT').toUpperCase();
+  return !!(d && d.final_tradeable) && (bias === 'LONG' || bias === 'SHORT');
+}
+
+function paintUntrustedTimeframeCardRow(d, reason) {
+  const label = cardTrustOperatorLabel(reason);
+  const slugs = [
+    { slug: '1c', ui: '1M' },
+    { slug: '5c', ui: '5M' },
+    { slug: '15c', ui: '15M' },
+    { slug: '60c', ui: '60M' },
+    { slug: 'consolidated', ui: 'ALL' },
+  ];
+  slugs.forEach(function ({ slug, ui }) {
+    const card = document.getElementById('tf-signal-' + slug);
+    if (!card) return;
+    card.setAttribute('data-tf-signal-dir', 'neutral');
+    card.setAttribute('data-horizon-direction', 'NEUTRAL');
+    card.setAttribute('data-horizon-actionability', 'NON_ACTIONABLE');
+    card.setAttribute('data-card-trust-withhold', String(reason || 'untrusted'));
+    card.removeAttribute('title');
+    card.className = 'tf-signal-card tf-state-dim tf-signal-card--non-actionable tf-signal-card--card-trust-withheld';
+    const dot = card.querySelector('.tf-dot');
+    if (dot) dot.className = 'tf-dot tf-dot--dim';
+    const tfEl = card.querySelector('.tf-timeframe');
+    if (tfEl) tfEl.textContent = ui;
+    const arr = card.querySelector('.tf-arrow');
+    if (arr) arr.textContent = '→';
+    const dirEl = card.querySelector('.tf-dir');
+    if (dirEl) dirEl.textContent = label;
+    const pctEl = card.querySelector('.tf-pct');
+    if (pctEl) {
+      pctEl.textContent = label;
+      pctEl.title = 'Card bundle not trusted for actionable display: ' + String(reason || 'untrusted');
+    }
+    const tagEl = card.querySelector('.tf-tag');
+    if (tagEl) {
+      tagEl.className = 'tf-tag tf-tag--hidden';
+      tagEl.textContent = '—';
+      tagEl.setAttribute('aria-hidden', 'true');
+    }
+    const srcEl = card.querySelector('.tf-source-chip');
+    if (srcEl) {
+      srcEl.className = 'tf-source-chip tf-source-chip--unavailable';
+      srcEl.textContent = '—';
+      srcEl.title = sourceChipTitle('UNAVAILABLE');
+    }
+    const detEl = card.querySelector('.tf-source-detail');
+    if (detEl) detEl.textContent = '—';
+  });
+  const planCard = document.getElementById('tf-signal-plan');
+  if (planCard) {
+    const stEl = document.getElementById('tf-plan-state');
+    const eEl = document.getElementById('tf-plan-entry');
+    const sEl = document.getElementById('tf-plan-stop');
+    const tEl = document.getElementById('tf-plan-targets');
+    const iEl = document.getElementById('tf-plan-invalidation');
+    const zEl = document.getElementById('tf-plan-size');
+    planCard.setAttribute('data-tf-signal-dir', 'neutral');
+    planCard.setAttribute('data-card-trust-withhold', String(reason || 'untrusted'));
+    planCard.className = 'tf-signal-card tf-state-dim tf-signal-card--non-actionable tf-signal-card--card-trust-withheld';
+    const dot = planCard.querySelector('.tf-dot');
+    if (dot) dot.className = 'tf-dot tf-dot--dim';
+    const arr = planCard.querySelector('.tf-arrow');
+    if (arr) arr.textContent = '→';
+    if (stEl) stEl.textContent = label === 'STALE' ? 'STALE' : (label === 'PENDING' ? 'PENDING' : 'NO SETUP');
+    [eEl, sEl, tEl, iEl, zEl].forEach(function (n) { if (n) n.textContent = '—'; });
+  }
+}
+
+try {
+  window.analyticsCardTrustGate = analyticsCardTrustGate;
+  window.engineTradeableSetup = engineTradeableSetup;
+  window.cardTrustOperatorLabel = cardTrustOperatorLabel;
+  window.paintUntrustedTimeframeCardRow = paintUntrustedTimeframeCardRow;
+} catch (e) {}
+
 /**
  * Horizon card render contract — direction vs actionability (operator 2026-06-11).
  * Per-horizon pills (1M–60M): arrow/class follow mhap_rows[i].call (horizon_direction).
@@ -4286,13 +4432,6 @@ function renderTimeframeSignalRow(d) {
     const n = Number(cv);
     if (n >= 0 && n <= 1) return Math.round(n * 100);
     return Math.round(Math.min(100, Math.max(0, n)));
-  }
-
-  // Engine owns ALL/PLAN eligibility (multi_horizon_decision.final_tradeable) — UI must not
-  // re-count mhap rows with a different predicate (drift caused ALL/PLAN vs 1M desync).
-  function engineTradeableSetup(d) {
-    const bias = String((d && d.final_bias) || 'WAIT').toUpperCase();
-    return !!(d && d.final_tradeable) && (bias === 'LONG' || bias === 'SHORT');
   }
 
   // PLAN card — trade plan (entry/stop/targets/size) promoted out of the Decision
@@ -4431,6 +4570,11 @@ function renderTimeframeSignalRow(d) {
     paintTradePlanCard(loadHint);
     return;
   }
+  const cardTrust = analyticsCardTrustGate(d);
+  if (!cardTrust.trusted) {
+    paintUntrustedTimeframeCardRow(d, cardTrust.reason);
+    return;
+  }
   const prim = String(d.primary_horizon || '').toLowerCase();
   const finalBias = String(d.final_bias || 'WAIT').toUpperCase();
   const tradeable = engineTradeableSetup(d);
@@ -4501,6 +4645,7 @@ function renderTimeframeSignalRow(d) {
 
     card.setAttribute('data-tf-signal-dir', sigDir);
     card.setAttribute('data-horizon-direction', dir === 'FLAT' ? 'NEUTRAL' : dir);
+    card.removeAttribute('data-card-trust-withhold');
     if (nonActionable) {
       card.setAttribute('data-horizon-actionability', 'NON_ACTIONABLE');
       const why = d.wait_reason || d.validation_summary || 'ALL not tradeable — horizon opinion only';
@@ -4938,6 +5083,8 @@ function renderDecisionCommandRail(d) {
   const root = $('decision-rail-card');
   if (!root) return;
 
+  const cardTrust = analyticsCardTrustGate(d);
+
   const fusionPol = (d.fusion_policy_snapshot_cols && typeof d.fusion_policy_snapshot_cols === 'object')
     ? d.fusion_policy_snapshot_cols
     : {};
@@ -5127,6 +5274,31 @@ function renderDecisionCommandRail(d) {
     };
 
     hzOrder.forEach(({ slug, label }) => {
+      if (!cardTrust.trusted) {
+        const wlabel = cardTrustOperatorLabel(cardTrust.reason);
+        const wrap = document.createElement('div');
+        wrap.className = 'hz-panel';
+        wrap.dataset.hz = label;
+        const top = document.createElement('div');
+        top.className = 'hz-panel-top';
+        const title = document.createElement('div');
+        title.className = 'hz-panel-title';
+        title.textContent = label;
+        const ag = document.createElement('div');
+        ag.className = 'hz-panel-agree mix';
+        ag.textContent = wlabel;
+        ag.title = 'Card bundle not trusted: ' + String(cardTrust.reason || 'untrusted');
+        top.appendChild(title);
+        top.appendChild(ag);
+        const grid = document.createElement('div');
+        grid.className = 'hz-mini-kv';
+        addKV(grid, 'Bias', wlabel, { cls: 'bias-withheld', title: ag.title });
+        addKV(grid, 'Eligibility', wlabel, { cls: 'bias-withheld', title: ag.title });
+        wrap.appendChild(top);
+        wrap.appendChild(grid);
+        panels.appendChild(wrap);
+        return;
+      }
       const row = rows.find(r => String(r.horizon || '').toLowerCase() === slug) || null;
       const empKey = ({ '1c': '1m', '5c': '5m', '15c': '15m', '60c': '60m' })[slug];
       const emp = hp && typeof hp === 'object' ? hp[empKey] : null;
@@ -7028,6 +7200,7 @@ function render(d, fullRenderSource) {
   _commitTierCCardRenderFingerprint(d);
   return true;
 }
+try { window.render = render; } catch (e) {}
 
 // ── Liquidity Map ─────────────────────────────────────────────────────────────
 function getETMinutes() {
@@ -7438,6 +7611,17 @@ function bundleDirectionWithheld(integrity, d, nowMs) {
   const ld = (d && typeof d === 'object') ? d : window._lastData;
   if (ld && ld.analytics_pending_shell === true) return { withheld: true, reason: 'pending_shell' };
   if (!ld) return { withheld: true, reason: 'no_payload' };
+  const cardBundleActive =
+    (Array.isArray(ld.mhap_rows) && ld.mhap_rows.length > 0)
+    || ld.analytics_stale === true
+    || ld.analytics_refresh_in_progress === true
+    || ld.analytics_partial_tier_c === true;
+  if (cardBundleActive) {
+    const cardTrust = analyticsCardTrustGate(ld, { checkTicker: false });
+    if (!cardTrust.trusted) {
+      return { withheld: true, reason: cardTrust.reason || 'card_trust_failed' };
+    }
+  }
   // Same institutional trust window as laneStaleOperatorLabel: trusted mhap within
   // INSTITUTIONAL_BUNDLE_TRUST_SEC is not STALE on tf-signal cards merely because
   // the fast quote lane moved first or Tier C is refreshing.

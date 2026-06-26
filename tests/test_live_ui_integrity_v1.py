@@ -13,6 +13,89 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 INDEX = ROOT / "static" / "index.html"
 
+CARD_TRUST_REQUIRED_HORIZONS = ("1c", "5c", "15c", "60c")
+CARD_TRUST_REQUIRED_HORIZON_COUNT = 4
+
+
+def analytics_card_trust_gate(
+    payload: dict,
+    *,
+    active_ticker: str | None = None,
+    check_ticker: bool = True,
+) -> dict[str, object]:
+    """Mirror analyticsCardTrustGate in static/index.html."""
+    if not payload or not isinstance(payload, dict):
+        return {"trusted": False, "reason": "no_payload"}
+    if check_ticker:
+        incoming = (payload.get("ticker") or "").upper()
+        active = (active_ticker or "").upper()
+        if incoming and active and incoming != active:
+            return {"trusted": False, "reason": "ticker_mismatch"}
+    if payload.get("analytics_stale") is True:
+        return {"trusted": False, "reason": "analytics_stale"}
+    if payload.get("analytics_pending_shell") is True:
+        return {"trusted": False, "reason": "pending_shell"}
+    if payload.get("analytics_partial_tier_c") is True:
+        return {"trusted": False, "reason": "partial_tier_c"}
+    src = str(payload.get("_update_source") or "")
+    if payload.get("analytics_refresh_in_progress") is True and src == "client_ticker_cache":
+        return {"trusted": False, "reason": "cache_refresh_in_progress"}
+    mhap = payload.get("mhap_rows")
+    if not isinstance(mhap, list) or len(mhap) == 0:
+        return {"trusted": False, "reason": "mhap_missing"}
+    if len(mhap) < CARD_TRUST_REQUIRED_HORIZON_COUNT:
+        return {"trusted": False, "reason": "mhap_incomplete"}
+    for slug in CARD_TRUST_REQUIRED_HORIZONS:
+        if not any(
+            isinstance(r, dict) and str(r.get("horizon") or "").lower() == slug for r in mhap
+        ):
+            return {"trusted": False, "reason": f"mhap_horizon_missing_{slug}"}
+    if payload.get("fusion_available") is False:
+        return {"trusted": False, "reason": "fusion_unavailable"}
+    si = payload.get("stack_integrity_v1")
+    if isinstance(si, dict) and si.get("degraded") is True:
+        return {"trusted": False, "reason": "stack_integrity_degraded"}
+    rt = payload.get("stack_runtime") if isinstance(payload.get("stack_runtime"), dict) else {}
+    if rt.get("signals_engine_failed") is True:
+        return {"trusted": False, "reason": "signals_engine_failed"}
+    if str(rt.get("stack_mode") or "").upper() == "INVALID":
+        return {"trusted": False, "reason": "stack_invalid"}
+    if payload.get("state_error"):
+        return {"trusted": False, "reason": "state_error"}
+    if payload.get("error") == "token_invalid":
+        return {"trusted": False, "reason": "token_invalid"}
+    return {"trusted": True, "reason": None}
+
+
+def engine_tradeable_setup(payload: dict) -> bool:
+    """Mirror engineTradeableSetup in static/index.html."""
+    if not analytics_card_trust_gate(payload, check_ticker=False)["trusted"]:
+        return False
+    bias = str(payload.get("final_bias") or "WAIT").upper()
+    return bool(payload.get("final_tradeable")) and bias in ("LONG", "SHORT")
+
+
+def _full_trusted_card_payload(ticker: str = "SPY", **overrides) -> dict:
+    base = {
+        "ticker": ticker,
+        "analytics_stale": False,
+        "analytics_pending_shell": False,
+        "analytics_refresh_in_progress": False,
+        "analytics_partial_tier_c": False,
+        "final_tradeable": True,
+        "final_bias": "LONG",
+        "entry_state": "confirmed",
+        "fusion_available": True,
+        "mhap_rows": [
+            {"horizon": "1c", "call": "LONG", "confidence": 0.71},
+            {"horizon": "5c", "call": "LONG", "confidence": 0.65},
+            {"horizon": "15c", "call": "LONG", "confidence": 0.62},
+            {"horizon": "60c", "call": "WAIT", "confidence": 0.50},
+        ],
+    }
+    base.update(overrides)
+    return base
+
 
 def _html() -> str:
     return INDEX.read_text(encoding="utf-8", errors="replace")
@@ -909,3 +992,113 @@ def test_guest_switch_sla_report_classifications():
         assert tag in GUEST_SWITCH_SLA_CLASSIFICATIONS
     assert "GUEST_COLD_START_UX_GAP_FIXED" in report["classifications"]
     assert "LIVE_GUEST_SLA_NOT_PROVEN" in report["classifications"]
+
+
+@pytest.mark.parametrize("ticker", ["SPY", "QQQ", "IWM"])
+def test_analytics_stale_suppresses_engine_tradeable_setup(ticker):
+    payload = _full_trusted_card_payload(ticker, analytics_stale=True)
+    assert analytics_card_trust_gate(payload, active_ticker=ticker)["trusted"] is False
+    assert engine_tradeable_setup(payload) is False
+
+
+@pytest.mark.parametrize("ticker", ["SPY", "QQQ", "IWM"])
+def test_pending_shell_suppresses_engine_tradeable_setup(ticker):
+    payload = _full_trusted_card_payload(ticker, analytics_pending_shell=True)
+    assert analytics_card_trust_gate(payload, active_ticker=ticker)["trusted"] is False
+    assert engine_tradeable_setup(payload) is False
+
+
+@pytest.mark.parametrize("ticker", ["SPY", "QQQ", "IWM"])
+def test_cache_restore_stale_suppresses_engine_tradeable_setup(ticker):
+    cached = _full_trusted_card_payload(ticker, analytics_stale=False)
+    restored = snapshot_cache_restore_marks_stale(cached)
+    assert restored["analytics_stale"] is True
+    assert analytics_card_trust_gate(restored, active_ticker=ticker)["trusted"] is False
+    assert engine_tradeable_setup(restored) is False
+
+
+@pytest.mark.parametrize("ticker", ["SPY", "QQQ", "IWM"])
+def test_partial_mhap_suppresses_engine_tradeable_setup(ticker):
+    payload = _full_trusted_card_payload(
+        ticker,
+        mhap_rows=[
+            {"horizon": "1c", "call": "LONG", "confidence": 0.71},
+            {"horizon": "5c", "call": "LONG", "confidence": 0.65},
+        ],
+    )
+    assert analytics_card_trust_gate(payload, active_ticker=ticker)["trusted"] is False
+    assert engine_tradeable_setup(payload) is False
+
+
+@pytest.mark.parametrize("ticker", ["SPY", "QQQ", "IWM"])
+def test_ticker_mismatch_fails_card_trust_gate(ticker):
+    payload = _full_trusted_card_payload(ticker)
+    result = analytics_card_trust_gate(payload, active_ticker="OTHER")
+    assert result["trusted"] is False
+    assert result["reason"] == "ticker_mismatch"
+
+
+@pytest.mark.parametrize("ticker", ["SPY", "QQQ", "IWM"])
+def test_trusted_full_payload_passes_card_trust_gate(ticker):
+    payload = _full_trusted_card_payload(ticker)
+    result = analytics_card_trust_gate(payload, active_ticker=ticker)
+    assert result["trusted"] is True
+    assert engine_tradeable_setup(payload) is True
+
+
+def test_fusion_unavailable_fails_card_trust_gate():
+    payload = _full_trusted_card_payload("SPY", fusion_available=False)
+    assert analytics_card_trust_gate(payload, active_ticker="SPY")["trusted"] is False
+    assert analytics_card_trust_gate(payload, active_ticker="SPY")["reason"] == "fusion_unavailable"
+
+
+def test_wrong_ticker_render_coherence_guard_blocks_before_card_paint():
+    payload = _full_trusted_card_payload("QQQ")
+    guard = render_coherence_guard(payload, active_ticker="SPY")
+    assert guard.ok is False
+    assert guard.reason == "ticker"
+    assert analytics_card_trust_gate(payload, active_ticker="SPY")["trusted"] is False
+
+
+def test_index_html_exports_card_trust_gate_helpers():
+    html = _html()
+    assert "window.analyticsCardTrustGate = analyticsCardTrustGate" in html
+    assert "window.engineTradeableSetup = engineTradeableSetup" in html
+    assert "window.paintUntrustedTimeframeCardRow = paintUntrustedTimeframeCardRow" in html
+    assert "window.render = render" in html
+
+
+def test_quote_plane_hypothetical_fields_do_not_affect_card_trust_gate():
+    """Even if plane keys appear on ms_dict, card trust ignores them (not gate inputs)."""
+    payload = _full_trusted_card_payload("SPY")
+    payload["plane_quote_authority"] = "rest_fallback_explicit"
+    payload["streaming_fallback_explicit"] = True
+    payload["rest_fallback_explicit"] = True
+    assert analytics_card_trust_gate(payload, active_ticker="SPY")["trusted"] is True
+    assert engine_tradeable_setup(payload) is True
+
+
+def test_syncing_non_cache_refresh_in_progress_still_passes_card_trust_gate():
+    """Server refresh without client cache restore: last trusted bundle may paint (SYNCING)."""
+    payload = _full_trusted_card_payload(
+        "SPY",
+        analytics_refresh_in_progress=True,
+        analytics_stale=False,
+        _update_source="sse_tier_c",
+    )
+    gate = analytics_card_trust_gate(payload, active_ticker="SPY")
+    assert gate["trusted"] is True
+    assert engine_tradeable_setup(payload) is True
+
+
+def test_client_ticker_cache_refresh_fail_closed_vs_syncing_non_cache():
+    cached = _full_trusted_card_payload("SPY", analytics_stale=False)
+    restored = snapshot_cache_restore_marks_stale(cached)
+    assert analytics_card_trust_gate(restored, active_ticker="SPY")["trusted"] is False
+    syncing = _full_trusted_card_payload(
+        "SPY",
+        analytics_refresh_in_progress=True,
+        analytics_stale=False,
+        _update_source="sse_tier_c",
+    )
+    assert analytics_card_trust_gate(syncing, active_ticker="SPY")["trusted"] is True

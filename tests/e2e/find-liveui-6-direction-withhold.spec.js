@@ -473,7 +473,17 @@ test('tf-signal cards withhold STALE outside institutional trust window', async 
     window._priceAheadOfBundle = true;
     return window.horizonDirectionWithheld(
       { bundleTs, quoteAhead: true, slowStaleVsFast: true, genStale: false, pending: false },
-      { mhap_rows: [{ horizon: '60c', call: 'LONG' }] },
+      {
+        mhap_rows: [
+          { horizon: '1c', call: 'LONG', confidence: 0.62 },
+          { horizon: '5c', call: 'LONG', confidence: 0.81 },
+          { horizon: '15c', call: 'LONG', confidence: 0.55 },
+          { horizon: '60c', call: 'LONG', confidence: 0.45 },
+        ],
+        fusion_available: true,
+        final_tradeable: true,
+        final_bias: 'LONG',
+      },
       '60c',
       nowMs,
     );

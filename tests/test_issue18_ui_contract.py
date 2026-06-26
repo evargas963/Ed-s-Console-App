@@ -210,7 +210,7 @@ def test_institutional_lane_stale_coherence_hooks():
     assert "bundleWithinTrustWindow(integrity, ld" in h
     assert "function bundleDirectionWithheld(integrity, d, nowMs)" in h
     idx = h.find("function bundleDirectionWithheld")
-    chunk = h[idx : idx + 900]
+    chunk = h[idx : idx + 1400]
     assert "bundleWithinTrustWindow(integrity, ld, nowMs)" in chunk
 
 
@@ -697,9 +697,117 @@ def test_card_consumer_contract_final_tradeable_gates_all_plan():
     h = _html()
     idx = h.find("function engineTradeableSetup")
     assert idx != -1
-    chunk = h[idx : idx + 380]
+    chunk = h[idx : idx + 520]
     assert "d.final_tradeable" in chunk
+    assert "analyticsCardTrustGate" in chunk
     idx_cons = h.find("if (slug === 'consolidated') {\n      if (tradeable)")
     assert idx_cons != -1
     cons_chunk = h[idx_cons : idx_cons + 280]
     assert "dir = 'FLAT'" in cons_chunk
+
+
+def test_analytics_card_trust_gate_canonical_function_present():
+    h = _html()
+    assert "function analyticsCardTrustGate(d, opts)" in h
+    assert "window.analyticsCardTrustGate = analyticsCardTrustGate" in h
+    assert "CARD_TRUST_REQUIRED_HORIZON_COUNT = 4" in h
+    idx = h.find("function analyticsCardTrustGate")
+    chunk = h[idx : idx + 2200]
+    assert "analytics_stale" in chunk
+    assert "analytics_pending_shell" in chunk
+    assert "analytics_partial_tier_c" in chunk
+    assert "mhap_incomplete" in chunk
+    assert "client_ticker_cache" in chunk
+
+
+def test_card_trust_gate_wired_before_trusted_timeframe_paint():
+    h = _html()
+    assert "const cardTrust = analyticsCardTrustGate(d)" in h
+    row_idx = h.find("function renderTimeframeSignalRow")
+    trust_idx = h.find("const cardTrust = analyticsCardTrustGate(d)")
+    assert row_idx != -1 and trust_idx > row_idx
+    assert "paintUntrustedTimeframeCardRow(d, cardTrust.reason)" in h
+    assert "tf-signal-card--card-trust-withheld" in h
+    assert "tf-signal-card--trade-active" in h
+    untrusted_idx = h.find("function paintUntrustedTimeframeCardRow")
+    untrusted_chunk = h[untrusted_idx : untrusted_idx + 1800]
+    assert "tf-signal-card--trade-active" not in untrusted_chunk
+
+
+def test_engine_tradeable_setup_requires_card_trust():
+    h = _html()
+    idx = h.find("function engineTradeableSetup")
+    chunk = h[idx : idx + 420]
+    assert "analyticsCardTrustGate(d, { checkTicker: false }).trusted" in chunk
+
+
+def test_bundle_direction_withheld_uses_card_trust_gate():
+    h = _html()
+    idx = h.find("function bundleDirectionWithheld")
+    chunk = h[idx : idx + 900]
+    assert "cardBundleActive" in chunk
+    assert "analyticsCardTrustGate(ld, { checkTicker: false })" in chunk
+
+
+def test_decision_rail_withholds_when_card_trust_fails():
+    h = _html()
+    idx = h.find("function renderDecisionCommandRail")
+    chunk = h[idx : idx + 12000]
+    assert "const cardTrust = analyticsCardTrustGate(d)" in chunk
+    assert "!cardTrust.trusted" in chunk
+
+
+def test_render_exported_for_e2e_full_pipeline():
+    h = _html()
+    assert "window.render = render" in h
+
+
+def test_quote_plane_fields_absent_from_card_trust_gate():
+    """Quote-plane L1 diagnostics must not be card-trust inputs (separate transport)."""
+    h = _html()
+    idx = h.find("function analyticsCardTrustGate")
+    assert idx != -1
+    chunk = h[idx : idx + 2600]
+    for token in (
+        "plane_quote_authority",
+        "streaming_fallback",
+        "streaming_fallback_explicit",
+        "_lastPlaneDiag",
+        "rest_fallback_explicit",
+        "_quote_authority",
+        "getCurrentFeedState",
+        "computeFeedState",
+    ):
+        assert token not in chunk, f"analyticsCardTrustGate must not read {token}"
+
+
+def test_full_render_analytical_path_does_not_consume_plane_diag_for_cards():
+    h = _html()
+    render_idx = h.find("function render(d, fullRenderSource)")
+    assert render_idx != -1
+    render_end = h.find("\n// ── Liquidity Map", render_idx)
+    assert render_end != -1
+    chunk = h[render_idx:render_end]
+    assert "renderTimeframeSignalRow(d)" in chunk
+    assert "renderDecisionCommandRail(d)" in chunk
+    assert "_lastPlaneDiag" not in chunk
+
+
+def test_live_plane_apply_core_does_not_mutate_card_decision_fields():
+    h = _html()
+    idx = h.find("function _livePlaneApplyCore")
+    assert idx != -1
+    chunk = h[idx : idx + 900]
+    for field in ("final_tradeable", "final_bias", "final_confidence", "mhap_rows"):
+        assert field not in chunk, f"_livePlaneApplyCore must not write {field}"
+
+
+def test_plane_diag_commit_does_not_touch_last_data_card_fields():
+    h = _html()
+    idx = h.find("function _commitPlaneDiagnosticsIfCurrent")
+    assert idx != -1
+    chunk = h[idx : idx + 700]
+    assert "window._lastPlaneDiag = j" in chunk
+    assert "window._lastData" not in chunk
+    assert "mhap_rows" not in chunk
+    assert "final_tradeable" not in chunk

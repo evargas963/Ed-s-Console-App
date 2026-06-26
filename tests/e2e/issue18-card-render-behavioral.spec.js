@@ -205,13 +205,13 @@ test('ALL pill withholds with WAIT reason on split-brain payload (WIRE-4-CAND �
   };
   await page.evaluate((d) => window.renderTimeframeSignalRow(d), splitBrain);
 
+  const cAllInvalid = await page.getAttribute('#tf-signal-consolidated', 'class');
+  expect(cAllInvalid).toContain('tf-signal-card--card-trust-withheld');
+  expect(cAllInvalid || '').not.toContain('tf-signal-card--trade-active');
   const chipInvalid = await page.textContent('#tf-signal-consolidated .tf-source-chip');
-  expect(chipInvalid).toBe('UNAVAILABLE');
+  expect(chipInvalid).toBe('—');
   const detail = await page.textContent('#tf-signal-consolidated .tf-source-detail');
-  expect(detail).toBe('WAIT — fewer than 2 tradeable horizons agree — insufficient confluence');
-  // Full reason also on hover (detail line truncates on the narrow pill).
-  const detailTitle = await page.getAttribute('#tf-signal-consolidated .tf-source-detail', 'title');
-  expect(detailTitle).toBe(detail);
+  expect(detail).toBe('—');
 
   // Bugbot 2026-06-11: empirical consensus WITHOUT fusion authority must not
   // borrow the ML FUSION chip. multi_horizon LONG can form from
@@ -230,7 +230,9 @@ test('ALL pill withholds with WAIT reason on split-brain payload (WIRE-4-CAND �
   };
   await page.evaluate((d) => window.renderTimeframeSignalRow(d), empiricalConsensus);
   const chipEmpirical = await page.textContent('#tf-signal-consolidated .tf-source-chip');
-  expect(chipEmpirical).toBe('UNAVAILABLE');
+  expect(chipEmpirical).toBe('—');
+  const cEmp = await page.getAttribute('#tf-signal-consolidated', 'class');
+  expect(cEmp).toContain('tf-signal-card--card-trust-withheld');
 
   // Counter-case: fusion authoritative + multi_horizon directional consensus but
   // entry-gated (final_tradeable=false) keeps the honest ML FUSION provenance chip.
