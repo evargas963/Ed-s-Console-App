@@ -4199,6 +4199,18 @@ try {
 /* renderSignalRailCard removed 2026-06-10 (operator): the ALL pill carries the
    consolidated verdict and the PLAN pill carries entry/stop/targets/size. */
 
+/**
+ * Schwab CSV-first declaration (card-trust UI slice — static/index.html only):
+ * Schwab CSV authority checked: yes
+ * CSV row(s): NO_SCHWAB_EQUIVALENT — analyticsCardTrustGate consumes existing Tier C ms_dict
+ *   transport flags (analytics_stale, analytics_pending_shell, mhap_rows, final_tradeable,
+ *   fusion_available); introduces no new market-data authority or alternate quote source.
+ * Derived-field disposition: GATE_FAIL_CLOSED — withhold actionable Horizon/ALL/PLAN paint when
+ *   bundle is stale/pending/partial/mismatch/untrusted; Schwab CSV remains wire authority.
+ * All consumers checked: yes — renderTimeframeSignalRow, renderDecisionCommandRail,
+ *   engineTradeableSetup, bundleDirectionWithheld (cardBundleActive path).
+ * SCHWAB_CSV_CHECKED
+ */
 /** Card actionability trust — fail-closed gate for Horizon / ALL / PLAN paint (2026-06-26). */
 const CARD_TRUST_REQUIRED_HORIZON_COUNT = 4;
 const CARD_TRUST_REQUIRED_HORIZONS = ['1c', '5c', '15c', '60c'];
