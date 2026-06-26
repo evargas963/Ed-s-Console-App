@@ -15,7 +15,6 @@ from tools.governance_mutation_detection import (  # noqa: E402
     _governance_artifact_bytes,
     _sha256_file,
     verify_governance_manifest,
-    write_governance_manifest,
 )
 
 
@@ -26,10 +25,29 @@ def test_governance_manifest_verifies_on_current_repo():
     assert result["missing"] == []
 
 
-def test_write_governance_manifest_refreshes_pins():
-    manifest = write_governance_manifest()
-    assert len(manifest.get("entries") or []) == len(GOVERNANCE_ARTIFACT_PATHS)
-    assert verify_governance_manifest(manifest)["ok"] is True
+def test_write_governance_manifest_refreshes_pins(tmp_path, monkeypatch):
+    """Refresh pins in an isolated manifest — must not touch tracked GOVERNANCE_ARTIFACT_MANIFEST.json."""
+    from tools import governance_mutation_detection as gmd
+
+    real_manifest = REPO / "governance/artifacts/GOVERNANCE_ARTIFACT_MANIFEST.json"
+    before_bytes = real_manifest.read_bytes()
+
+    art = tmp_path / "governance" / "artifacts"
+    art.mkdir(parents=True)
+    for rel in gmd.GOVERNANCE_ARTIFACT_PATHS:
+        sample = tmp_path / rel
+        sample.parent.mkdir(parents=True, exist_ok=True)
+        sample.write_bytes(b"{}\n")
+
+    monkeypatch.setattr(gmd, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(gmd, "ART", art)
+    monkeypatch.setattr(gmd, "MANIFEST_PATH", art / "GOVERNANCE_ARTIFACT_MANIFEST.json")
+
+    manifest = gmd.write_governance_manifest()
+    assert len(manifest.get("entries") or []) == len(gmd.GOVERNANCE_ARTIFACT_PATHS)
+    assert gmd.verify_governance_manifest(manifest)["ok"] is True
+    assert gmd.MANIFEST_PATH.is_file()
+    assert real_manifest.read_bytes() == before_bytes
 
 
 def test_manifest_hashes_match_git_head_lf_blobs():
