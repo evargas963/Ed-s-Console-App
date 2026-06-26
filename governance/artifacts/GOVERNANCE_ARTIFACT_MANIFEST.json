@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "artifact": "governance/artifacts/GOVERNANCE_ARTIFACT_MANIFEST.json",
-  "generated_at_utc": "2026-06-17T10:19:49+00:00",
+  "generated_at_utc": "2026-06-26T02:23:33+00:00",
   "generated_by": "tools/governance_mutation_detection.py",
   "entries": [
     {
@@ -19,14 +19,14 @@
     {
       "path": "governance/artifacts/REMOTE_ENFORCEMENT_EVIDENCE.json",
       "present": true,
-      "sha256": "e70a52e6461dcabcb51af8aaf808f88781a29489e4d4f654268edd5784f87b62",
-      "size_bytes": 4896
+      "sha256": "0c992cc1c82a7af4592a622cff5e97f7b97f739e56ba75f9aeb5de41cfaef729",
+      "size_bytes": 4756
     },
     {
       "path": "governance/artifacts/INSTITUTIONAL_AUDIT_PHASE3D_EVIDENCE.json",
       "present": true,
-      "sha256": "edd0168fb7c38eda68016eabd791ec6a4bf58eada334cbabdc129882ddda79fc",
-      "size_bytes": 2485
+      "sha256": "87a37dada9f89b0580e0737a3e401e60e7e633cd687ecba6061735e1f8cf26bf",
+      "size_bytes": 2495
     },
     {
       "path": "governance/artifacts/INSTITUTIONAL_AUDIT_PHASE3C_EVIDENCE.json",
