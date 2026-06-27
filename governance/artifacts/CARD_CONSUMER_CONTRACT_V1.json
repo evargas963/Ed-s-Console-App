@@ -90,6 +90,73 @@
     "reversal_pair_cannot_downgrade_active": true,
     "reversal_pair_must_stay_together": true
   },
+  "fidelity_classification_v1": {
+    "lane_id": "TRUST_AWARE_HARNESS_CLASSIFICATION",
+    "status": "HARNESS_IMPLEMENTED_NOT_RUNTIME_PROVEN",
+    "display_trust_gate": "analyticsCardTrustGate",
+    "harness_module": "tools/run_universal_card_fidelity_runtime.py",
+    "card_fidelity_overall": "NOT_PROVEN",
+    "universal_runtime_live_proof": "NOT_PROVEN",
+    "real_money_readiness": "NOT_PROVEN",
+    "parity_status_vocabulary": [
+      "PARITY",
+      "TRUST_WITHHELD",
+      "STALE_WITHHELD",
+      "PENDING_WITHHELD",
+      "DEGRADED_WITHHELD",
+      "TICKER_MISMATCH_WITHHELD",
+      "MISSING_MHAP_WITHHELD",
+      "DOM_MISMATCH",
+      "RENDERED",
+      "DESIGN_APPROVED_PENDING_UI"
+    ],
+    "trust_gate_failure_reasons": [
+      "no_payload",
+      "ticker_mismatch",
+      "analytics_stale",
+      "pending_shell",
+      "partial_tier_c",
+      "cache_refresh_in_progress",
+      "mhap_missing",
+      "mhap_incomplete",
+      "mhap_horizon_missing_1c",
+      "mhap_horizon_missing_5c",
+      "mhap_horizon_missing_15c",
+      "mhap_horizon_missing_60c",
+      "fusion_unavailable",
+      "stack_integrity_degraded",
+      "signals_engine_failed",
+      "stack_invalid",
+      "state_error",
+      "token_invalid"
+    ],
+    "reason_to_withheld_status": {
+      "analytics_stale": "STALE_WITHHELD",
+      "cache_refresh_in_progress": "STALE_WITHHELD",
+      "pending_shell": "PENDING_WITHHELD",
+      "partial_tier_c": "DEGRADED_WITHHELD",
+      "ticker_mismatch": "TICKER_MISMATCH_WITHHELD",
+      "mhap_missing": "MISSING_MHAP_WITHHELD",
+      "mhap_incomplete": "MISSING_MHAP_WITHHELD",
+      "mhap_horizon_missing_1c": "MISSING_MHAP_WITHHELD",
+      "mhap_horizon_missing_5c": "MISSING_MHAP_WITHHELD",
+      "mhap_horizon_missing_15c": "MISSING_MHAP_WITHHELD",
+      "mhap_horizon_missing_60c": "MISSING_MHAP_WITHHELD",
+      "fusion_unavailable": "DEGRADED_WITHHELD",
+      "stack_integrity_degraded": "DEGRADED_WITHHELD",
+      "signals_engine_failed": "DEGRADED_WITHHELD",
+      "stack_invalid": "DEGRADED_WITHHELD",
+      "state_error": "TRUST_WITHHELD",
+      "token_invalid": "TRUST_WITHHELD",
+      "no_payload": "TRUST_WITHHELD"
+    },
+    "acceptance_semantics": {
+      "trust_withheld_ui_fidelity": "PASS",
+      "stale_withheld_non_rth_closure": "NOT_ADMISSIBLE",
+      "stale_withheld_rth_freshness": "FAIL",
+      "true_dom_mismatch": "FAIL"
+    }
+  },
   "fields": [
     {
       "field_name": "ticker",

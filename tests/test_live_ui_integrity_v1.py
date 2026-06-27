@@ -8,71 +8,29 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import importlib.util
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 INDEX = ROOT / "static" / "index.html"
+HARNESS = ROOT / "tools" / "run_universal_card_fidelity_runtime.py"
 
 CARD_TRUST_REQUIRED_HORIZONS = ("1c", "5c", "15c", "60c")
 CARD_TRUST_REQUIRED_HORIZON_COUNT = 4
 
 
-def analytics_card_trust_gate(
-    payload: dict,
-    *,
-    active_ticker: str | None = None,
-    check_ticker: bool = True,
-) -> dict[str, object]:
-    """Mirror analyticsCardTrustGate in static/index.html."""
-    if not payload or not isinstance(payload, dict):
-        return {"trusted": False, "reason": "no_payload"}
-    if check_ticker:
-        incoming = (payload.get("ticker") or "").upper()
-        active = (active_ticker or "").upper()
-        if incoming and active and incoming != active:
-            return {"trusted": False, "reason": "ticker_mismatch"}
-    if payload.get("analytics_stale") is True:
-        return {"trusted": False, "reason": "analytics_stale"}
-    if payload.get("analytics_pending_shell") is True:
-        return {"trusted": False, "reason": "pending_shell"}
-    if payload.get("analytics_partial_tier_c") is True:
-        return {"trusted": False, "reason": "partial_tier_c"}
-    src = str(payload.get("_update_source") or "")
-    if payload.get("analytics_refresh_in_progress") is True and src == "client_ticker_cache":
-        return {"trusted": False, "reason": "cache_refresh_in_progress"}
-    mhap = payload.get("mhap_rows")
-    if not isinstance(mhap, list) or len(mhap) == 0:
-        return {"trusted": False, "reason": "mhap_missing"}
-    if len(mhap) < CARD_TRUST_REQUIRED_HORIZON_COUNT:
-        return {"trusted": False, "reason": "mhap_incomplete"}
-    for slug in CARD_TRUST_REQUIRED_HORIZONS:
-        if not any(
-            isinstance(r, dict) and str(r.get("horizon") or "").lower() == slug for r in mhap
-        ):
-            return {"trusted": False, "reason": f"mhap_horizon_missing_{slug}"}
-    if payload.get("fusion_available") is False:
-        return {"trusted": False, "reason": "fusion_unavailable"}
-    si = payload.get("stack_integrity_v1")
-    if isinstance(si, dict) and si.get("degraded") is True:
-        return {"trusted": False, "reason": "stack_integrity_degraded"}
-    rt = payload.get("stack_runtime") if isinstance(payload.get("stack_runtime"), dict) else {}
-    if rt.get("signals_engine_failed") is True:
-        return {"trusted": False, "reason": "signals_engine_failed"}
-    if str(rt.get("stack_mode") or "").upper() == "INVALID":
-        return {"trusted": False, "reason": "stack_invalid"}
-    if payload.get("state_error"):
-        return {"trusted": False, "reason": "state_error"}
-    if payload.get("error") == "token_invalid":
-        return {"trusted": False, "reason": "token_invalid"}
-    return {"trusted": True, "reason": None}
+def _load_harness_module():
+    name = "run_universal_card_fidelity_runtime_for_live_ui_integrity"
+    spec = importlib.util.spec_from_file_location(name, HARNESS)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod
 
 
-def engine_tradeable_setup(payload: dict) -> bool:
-    """Mirror engineTradeableSetup in static/index.html."""
-    if not analytics_card_trust_gate(payload, check_ticker=False)["trusted"]:
-        return False
-    bias = str(payload.get("final_bias") or "WAIT").upper()
-    return bool(payload.get("final_tradeable")) and bias in ("LONG", "SHORT")
+_HARNESS = _load_harness_module()
+analytics_card_trust_gate = _HARNESS.analytics_card_trust_gate
+engine_tradeable_setup = _HARNESS.engine_tradeable_setup
 
 
 def _full_trusted_card_payload(ticker: str = "SPY", **overrides) -> dict:

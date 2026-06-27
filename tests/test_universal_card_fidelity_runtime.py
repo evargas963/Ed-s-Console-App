@@ -311,13 +311,42 @@ def test_institutional_pass_impossible_without_live_transport(ucf):
     assert any("live_transport" in r for r in proof["reasons"])
 
 
-def test_dom_parity_compare_horizon_and_plan(ucf):
-    payload = {
-        "mhap_rows": [{"horizon": "1c", "call": "LONG", "confidence": 0.61}],
+def _trusted_payload(**overrides) -> dict:
+    base = {
+        "ticker": "SPY",
+        "analytics_stale": False,
+        "analytics_pending_shell": False,
+        "fusion_available": True,
+        "mhap_rows": [
+            {"horizon": "1c", "call": "LONG", "confidence": 0.61},
+            {"horizon": "5c", "call": "WAIT", "confidence": 0.40},
+            {"horizon": "15c", "call": "WAIT", "confidence": 0.45},
+            {"horizon": "60c", "call": "WAIT", "confidence": 0.50},
+        ],
         "final_bias": "WAIT",
         "final_tradeable": False,
         "entry_state": "no_setup",
     }
+    base.update(overrides)
+    return base
+
+
+def _withheld_dom(label: str) -> dict:
+    dim = "tf-signal-card tf-state-dim tf-signal-card--non-actionable tf-signal-card--card-trust-withheld"
+    card = {"class": dim, "dir": label, "pct": label}
+    plan_state = "STALE" if label == "STALE" else ("PENDING" if label == "PENDING" else "NO SETUP")
+    return {
+        "1c": dict(card),
+        "5c": dict(card),
+        "15c": dict(card),
+        "60c": dict(card),
+        "consolidated": {"class": dim, "dir": label, "pct": label},
+        "plan_state": plan_state,
+    }
+
+
+def test_dom_parity_compare_horizon_and_plan(ucf):
+    payload = _trusted_payload()
     expectations = ucf.derive_card_parity_expectations(payload)
     dom = {
         "1c": {"class": "tf-signal-card tf-state-up tf-glow-1", "dir": "LONG", "pct": "61%"},
@@ -327,7 +356,12 @@ def test_dom_parity_compare_horizon_and_plan(ucf):
         "consolidated": {"class": "tf-signal-card tf-state-dim", "dir": "NEUTRAL"},
         "plan_state": "NO SETUP",
     }
-    rows = ucf.compare_dom_to_expectations(expectations, dom)
+    rows = ucf.compare_dom_to_expectations(
+        expectations,
+        dom,
+        payload=payload,
+        active_ticker="SPY",
+    )
     assert rows[0]["parity_status"] == "PARITY"
     assert any(r["field"] == "PLAN_entry_state" and r["parity_status"] == "PARITY" for r in rows)
 
@@ -711,4 +745,218 @@ def test_harness_ui_dom_ids_not_wired_for_pending_surfaces(ucf):
     assert "#tf-reversal-risk-chip" not in src
     assert "tf-explanation-rail" not in ucf.DOM_CARD_IDS.values()
     assert "tf-reversal-risk-chip" not in ucf.DOM_CARD_IDS.values()
+
+
+def test_analytics_card_trust_gate_mirrors_ui_failure_reasons(ucf):
+    reasons = {
+        "no_payload": ucf.analytics_card_trust_gate(None)["reason"],
+        "ticker_mismatch": ucf.analytics_card_trust_gate(
+            {"ticker": "QQQ", "mhap_rows": [{}] * 4},
+            active_ticker="SPY",
+        )["reason"],
+        "analytics_stale": ucf.analytics_card_trust_gate(
+            _trusted_payload(analytics_stale=True), check_ticker=False
+        )["reason"],
+        "pending_shell": ucf.analytics_card_trust_gate(
+            _trusted_payload(analytics_pending_shell=True), check_ticker=False
+        )["reason"],
+        "partial_tier_c": ucf.analytics_card_trust_gate(
+            _trusted_payload(analytics_partial_tier_c=True), check_ticker=False
+        )["reason"],
+        "cache_refresh_in_progress": ucf.analytics_card_trust_gate(
+            _trusted_payload(
+                analytics_refresh_in_progress=True,
+                _update_source="client_ticker_cache",
+            ),
+            check_ticker=False,
+        )["reason"],
+        "mhap_missing": ucf.analytics_card_trust_gate(
+            _trusted_payload(mhap_rows=[]), check_ticker=False
+        )["reason"],
+        "fusion_unavailable": ucf.analytics_card_trust_gate(
+            _trusted_payload(fusion_available=False), check_ticker=False
+        )["reason"],
+    }
+    assert set(reasons.values()) == set(reasons.keys())
+
+
+def test_stale_withheld_not_dom_mismatch_when_dom_matches_contract(ucf):
+    payload = _trusted_payload(analytics_stale=True)
+    expectations = ucf.derive_card_parity_expectations(payload)
+    rows = ucf.compare_dom_to_expectations(
+        expectations,
+        _withheld_dom("STALE"),
+        payload=payload,
+        active_ticker="SPY",
+    )
+    assert all(r["parity_status"] == ucf.PARITY_STATUS_STALE_WITHHELD for r in rows)
+    assert ucf.parity_status_passes_ui_fidelity(ucf.PARITY_STATUS_STALE_WITHHELD)
+
+
+def test_pending_withheld_not_dom_mismatch(ucf):
+    payload = _trusted_payload(analytics_pending_shell=True)
+    expectations = ucf.derive_card_parity_expectations(payload)
+    rows = ucf.compare_dom_to_expectations(
+        expectations,
+        _withheld_dom("PENDING"),
+        payload=payload,
+        active_ticker="SPY",
+    )
+    assert all(r["parity_status"] == ucf.PARITY_STATUS_PENDING_WITHHELD for r in rows)
+
+
+def test_degraded_withheld_for_fusion_unavailable(ucf):
+    payload = _trusted_payload(fusion_available=False)
+    expectations = ucf.derive_card_parity_expectations(payload)
+    rows = ucf.compare_dom_to_expectations(
+        expectations,
+        _withheld_dom("DEGRADED"),
+        payload=payload,
+        active_ticker="SPY",
+    )
+    assert all(r["parity_status"] == ucf.PARITY_STATUS_DEGRADED_WITHHELD for r in rows)
+
+
+def test_ticker_mismatch_withheld_classification(ucf):
+    payload = _trusted_payload(ticker="QQQ")
+    expectations = ucf.derive_card_parity_expectations(payload)
+    rows = ucf.compare_dom_to_expectations(
+        expectations,
+        _withheld_dom("WITHHELD"),
+        payload=payload,
+        active_ticker="SPY",
+    )
+    assert all(r["parity_status"] == ucf.PARITY_STATUS_TICKER_MISMATCH_WITHHELD for r in rows)
+
+
+def test_missing_mhap_withheld_classification(ucf):
+    payload = _trusted_payload(mhap_rows=[])
+    expectations = ucf.derive_card_parity_expectations(payload)
+    rows = ucf.compare_dom_to_expectations(
+        expectations,
+        _withheld_dom("PENDING"),
+        payload=payload,
+        active_ticker="SPY",
+    )
+    assert all(r["parity_status"] == ucf.PARITY_STATUS_MISSING_MHAP_WITHHELD for r in rows)
+
+
+def test_trusted_dom_mismatch_remains_fail(ucf):
+    payload = _trusted_payload()
+    expectations = ucf.derive_card_parity_expectations(payload)
+    dom = {
+        "1c": {"class": "tf-signal-card tf-state-down", "dir": "SHORT", "pct": "61%"},
+        "5c": {"class": "tf-signal-card tf-state-dim", "dir": "NEUTRAL", "pct": "—"},
+        "15c": {"class": "tf-signal-card tf-state-dim", "dir": "NEUTRAL", "pct": "—"},
+        "60c": {"class": "tf-signal-card tf-state-dim", "dir": "NEUTRAL", "pct": "—"},
+        "consolidated": {"class": "tf-signal-card tf-state-dim", "dir": "NEUTRAL"},
+        "plan_state": "NO SETUP",
+    }
+    rows = ucf.compare_dom_to_expectations(
+        expectations,
+        dom,
+        payload=payload,
+        active_ticker="SPY",
+    )
+    assert rows[0]["parity_status"] == ucf.PARITY_STATUS_DOM_MISMATCH
+    assert not ucf.parity_status_passes_ui_fidelity(rows[0]["parity_status"])
+
+
+def test_untrusted_bad_withheld_dom_remains_dom_mismatch(ucf):
+    payload = _trusted_payload(analytics_stale=True)
+    expectations = ucf.derive_card_parity_expectations(payload)
+    dom = _withheld_dom("STALE")
+    dom["1c"] = {"class": "tf-signal-card tf-state-up", "dir": "LONG", "pct": "44%"}
+    rows = ucf.compare_dom_to_expectations(
+        expectations,
+        dom,
+        payload=payload,
+        active_ticker="SPY",
+    )
+    assert rows[0]["parity_status"] == ucf.PARITY_STATUS_DOM_MISMATCH
+
+
+def test_stale_withheld_blocks_institutional_proof_non_rth(ucf):
+    parity = [{"parity_status": ucf.PARITY_STATUS_STALE_WITHHELD} for _ in range(6)]
+    tickers = ["SPY", "QQQ", "IWM", "NVDA"]
+    results = {
+        t: {
+            "stability": {
+                "status": "STABLE",
+                "consecutive_stable_reads": 3,
+                "payload": {"session_label": "After-Hours"},
+            },
+            "browser_dom": {
+                "status": "OK",
+                "live_transport": "CAPTURED",
+                "parity_rows": parity,
+                "session_label": "After-Hours",
+            },
+        }
+        for t in tickers
+    }
+    proof = ucf.evaluate_institutional_proof(
+        tickers=tickers,
+        ticker_results=results,
+        require_browser_dom=True,
+        require_live_transport=True,
+        stable_reads_required=3,
+    )
+    assert proof["institutional_proof_status"] == "NOT_PROVEN"
+    assert any("stale_withheld_non_rth_not_admissible" in r for r in proof["reasons"])
+    assert not any("dom_parity_mismatch" in r for r in proof["reasons"])
+
+
+def test_stale_withheld_rth_counts_as_freshness_fail(ucf):
+    parity = [{"parity_status": ucf.PARITY_STATUS_STALE_WITHHELD} for _ in range(6)]
+    tickers = ["SPY", "QQQ", "IWM", "NVDA"]
+    results = {
+        t: {
+            "stability": {
+                "status": "STABLE",
+                "consecutive_stable_reads": 3,
+                "payload": {"session_label": "Regular Trading Hours"},
+            },
+            "browser_dom": {
+                "status": "OK",
+                "live_transport": "CAPTURED",
+                "parity_rows": parity,
+                "session_label": "Regular Trading Hours",
+            },
+        }
+        for t in tickers
+    }
+    proof = ucf.evaluate_institutional_proof(
+        tickers=tickers,
+        ticker_results=results,
+        require_browser_dom=True,
+        require_live_transport=True,
+        stable_reads_required=3,
+    )
+    assert any("stale_withheld_rth_freshness_expected" in r for r in proof["reasons"])
+
+
+def test_trust_aware_acceptance_semantics_documented(ucf):
+    sem = ucf.TRUST_AWARE_ACCEPTANCE_SEMANTICS
+    assert sem["trust_withheld_ui_fidelity"] == "PASS"
+    assert sem["stale_withheld_non_rth_closure"] == "NOT_ADMISSIBLE"
+    assert sem["stale_withheld_rth_freshness"] == "FAIL"
+    assert sem["true_dom_mismatch"] == "FAIL"
+    assert sem["card_fidelity_overall"] == "NOT_PROVEN"
+
+
+def test_card_consumer_contract_fidelity_classification_v1(ucf):
+    reg = _load_card_consumer_contract()
+    fc = reg.get("fidelity_classification_v1") or {}
+    assert fc.get("card_fidelity_overall") == "NOT_PROVEN"
+    assert ucf.PARITY_STATUS_STALE_WITHHELD in (fc.get("parity_status_vocabulary") or [])
+    assert fc.get("acceptance_semantics", {}).get("true_dom_mismatch") == "FAIL"
+
+
+def test_harness_source_declares_trust_aware_compare():
+    src = _harness_source()
+    assert "analytics_card_trust_gate" in src
+    assert "STALE_WITHHELD" in src
+    assert "compare_dom_to_expectations" in src
+    assert "trust_reason_to_withheld_parity_status" in src
 

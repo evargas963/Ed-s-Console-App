@@ -83,6 +83,43 @@ ORPHAN_PAYLOAD_HANDLING_OVERALL_STATUS: str = "NOT_PROVEN"
 
 DISPLAY_TRUST_GATE: str = "analyticsCardTrustGate"
 
+CARD_TRUST_REQUIRED_HORIZONS: tuple[str, ...] = HORIZON_SLUGS
+CARD_TRUST_REQUIRED_HORIZON_COUNT: int = 4
+
+# Trust-aware DOM parity / withhold statuses (mirror static/index.html analyticsCardTrustGate).
+PARITY_STATUS_PARITY: str = "PARITY"
+PARITY_STATUS_DOM_MISMATCH: str = "DOM_MISMATCH"
+PARITY_STATUS_TRUST_WITHHELD: str = "TRUST_WITHHELD"
+PARITY_STATUS_STALE_WITHHELD: str = "STALE_WITHHELD"
+PARITY_STATUS_PENDING_WITHHELD: str = "PENDING_WITHHELD"
+PARITY_STATUS_DEGRADED_WITHHELD: str = "DEGRADED_WITHHELD"
+PARITY_STATUS_TICKER_MISMATCH_WITHHELD: str = "TICKER_MISMATCH_WITHHELD"
+PARITY_STATUS_MISSING_MHAP_WITHHELD: str = "MISSING_MHAP_WITHHELD"
+
+UI_FIDELITY_PASS_PARITY_STATUSES: frozenset[str] = frozenset(
+    {
+        PARITY_STATUS_PARITY,
+        PARITY_STATUS_TRUST_WITHHELD,
+        PARITY_STATUS_STALE_WITHHELD,
+        PARITY_STATUS_PENDING_WITHHELD,
+        PARITY_STATUS_DEGRADED_WITHHELD,
+        PARITY_STATUS_TICKER_MISMATCH_WITHHELD,
+        PARITY_STATUS_MISSING_MHAP_WITHHELD,
+    }
+)
+
+# Acceptance semantics — harness classification only; does not close card fidelity / RTH / real-money.
+TRUST_AWARE_ACCEPTANCE_SEMANTICS: dict[str, str] = {
+    "trust_withheld_ui_fidelity": "PASS",
+    "stale_withheld_non_rth_closure": "NOT_ADMISSIBLE",
+    "stale_withheld_rth_freshness": "FAIL",
+    "true_dom_mismatch": "FAIL",
+    "card_fidelity_overall": "NOT_PROVEN",
+    "universal_runtime_live_proof": "NOT_PROVEN",
+    "real_money_readiness": "NOT_PROVEN",
+    "rth_dom_parity_proof": "NOT_PROVEN_BY_THIS_CHANGE",
+}
+
 BACKEND_ONLY_ORPHAN_FIELDS: frozenset[str] = frozenset(
     {
         "call_headline",
@@ -143,7 +180,138 @@ def parse_confidence_pct(conf: Any) -> Optional[int]:
     return round(min(100, max(0, n)))
 
 
+def analytics_card_trust_gate(
+    payload: Optional[dict[str, Any]],
+    *,
+    active_ticker: Optional[str] = None,
+    check_ticker: bool = True,
+) -> dict[str, Any]:
+    """Mirror analyticsCardTrustGate in static/index.html."""
+    if payload is None or not isinstance(payload, dict):
+        return {"trusted": False, "reason": "no_payload"}
+    if check_ticker:
+        incoming = str(payload.get("ticker") or "").strip().upper()
+        active = str(active_ticker or "").strip().upper()
+        if incoming and active and incoming != active:
+            return {"trusted": False, "reason": "ticker_mismatch"}
+    if payload.get("analytics_stale") is True:
+        return {"trusted": False, "reason": "analytics_stale"}
+    if payload.get("analytics_pending_shell") is True:
+        return {"trusted": False, "reason": "pending_shell"}
+    if payload.get("analytics_partial_tier_c") is True:
+        return {"trusted": False, "reason": "partial_tier_c"}
+    src = str(payload.get("_update_source") or "")
+    if payload.get("analytics_refresh_in_progress") is True and src == "client_ticker_cache":
+        return {"trusted": False, "reason": "cache_refresh_in_progress"}
+    mhap = payload.get("mhap_rows")
+    if not isinstance(mhap, list) or len(mhap) == 0:
+        return {"trusted": False, "reason": "mhap_missing"}
+    if len(mhap) < CARD_TRUST_REQUIRED_HORIZON_COUNT:
+        return {"trusted": False, "reason": "mhap_incomplete"}
+    for slug in CARD_TRUST_REQUIRED_HORIZONS:
+        if not any(
+            isinstance(r, dict) and str(r.get("horizon") or "").lower() == slug for r in mhap
+        ):
+            return {"trusted": False, "reason": f"mhap_horizon_missing_{slug}"}
+    if payload.get("fusion_available") is False:
+        return {"trusted": False, "reason": "fusion_unavailable"}
+    si = payload.get("stack_integrity_v1")
+    if isinstance(si, dict) and si.get("degraded") is True:
+        return {"trusted": False, "reason": "stack_integrity_degraded"}
+    rt = payload.get("stack_runtime") if isinstance(payload.get("stack_runtime"), dict) else {}
+    if rt.get("signals_engine_failed") is True:
+        return {"trusted": False, "reason": "signals_engine_failed"}
+    if str(rt.get("stack_mode") or "").upper() == "INVALID":
+        return {"trusted": False, "reason": "stack_invalid"}
+    if payload.get("state_error"):
+        return {"trusted": False, "reason": "state_error"}
+    if payload.get("error") == "token_invalid":
+        return {"trusted": False, "reason": "token_invalid"}
+    return {"trusted": True, "reason": None}
+
+
+def card_trust_operator_label(reason: Optional[str]) -> str:
+    """Mirror cardTrustOperatorLabel in static/index.html."""
+    r = str(reason or "").lower()
+    if r in ("analytics_stale", "cache_refresh_in_progress"):
+        return "STALE"
+    if r in ("pending_shell", "partial_tier_c", "mhap_missing"):
+        return "PENDING"
+    if r == "mhap_incomplete" or r.startswith("mhap_horizon_missing_"):
+        return "WITHHELD"
+    if r in (
+        "fusion_unavailable",
+        "stack_integrity_degraded",
+        "signals_engine_failed",
+        "stack_invalid",
+    ):
+        return "DEGRADED"
+    if r in ("state_error", "token_invalid"):
+        return "UNAVAILABLE"
+    return "WITHHELD"
+
+
+def trust_reason_to_withheld_parity_status(reason: Optional[str]) -> str:
+    """Map analyticsCardTrustGate reason → harness parity_status for correct withhold."""
+    r = str(reason or "").lower()
+    if r in ("analytics_stale", "cache_refresh_in_progress"):
+        return PARITY_STATUS_STALE_WITHHELD
+    if r in ("pending_shell",):
+        return PARITY_STATUS_PENDING_WITHHELD
+    if r == "partial_tier_c":
+        return PARITY_STATUS_DEGRADED_WITHHELD
+    if r == "ticker_mismatch":
+        return PARITY_STATUS_TICKER_MISMATCH_WITHHELD
+    if r in ("mhap_missing", "mhap_incomplete") or r.startswith("mhap_horizon_missing_"):
+        return PARITY_STATUS_MISSING_MHAP_WITHHELD
+    if r in (
+        "fusion_unavailable",
+        "stack_integrity_degraded",
+        "signals_engine_failed",
+        "stack_invalid",
+    ):
+        return PARITY_STATUS_DEGRADED_WITHHELD
+    return PARITY_STATUS_TRUST_WITHHELD
+
+
+def expected_plan_state_for_withheld_label(label: str) -> str:
+    if label == "STALE":
+        return "STALE"
+    if label == "PENDING":
+        return "PENDING"
+    return "NO SETUP"
+
+
+def dom_horizon_card_matches_withheld(card: dict[str, Any], label: str) -> bool:
+    cls = str(card.get("class") or "")
+    if "tf-state-dim" not in cls:
+        return False
+    dir_ok = str(card.get("dir") or "") == label
+    pct = card.get("pct")
+    if pct is None:
+        return dir_ok
+    return dir_ok and str(pct) == label
+
+
+def is_rth_session_label(session_label: Any) -> bool:
+    """Conservative session gate for stale-withheld RTH freshness semantics."""
+    s = str(session_label or "").lower()
+    if not s:
+        return False
+    if "after" in s or "closed" in s or "pre-market" in s or "pre market" in s:
+        return False
+    if "regular" in s or "rth" in s:
+        return True
+    return False
+
+
+def parity_status_passes_ui_fidelity(status: str) -> bool:
+    return status in UI_FIDELITY_PASS_PARITY_STATUSES
+
+
 def engine_tradeable_setup(payload: dict[str, Any]) -> bool:
+    if not analytics_card_trust_gate(payload, check_ticker=False)["trusted"]:
+        return False
     bias = str(payload.get("final_bias") or "WAIT").upper()
     return bool(payload.get("final_tradeable")) and bias in ("LONG", "SHORT")
 
@@ -347,56 +515,144 @@ def build_orphan_table(payload: dict[str, Any], dom_snapshot: dict[str, Any]) ->
 def compare_dom_to_expectations(
     expectations: list[dict[str, Any]],
     dom_cards: dict[str, Any],
+    *,
+    payload: Optional[dict[str, Any]] = None,
+    active_ticker: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    slug_to_key = {"ALL": "consolidated", "PLAN": "plan"}
+    trust: Optional[dict[str, Any]] = None
+    withheld_label: Optional[str] = None
+    withheld_status: Optional[str] = None
+    if payload is not None:
+        trust = analytics_card_trust_gate(payload, active_ticker=active_ticker, check_ticker=True)
+        if not trust.get("trusted"):
+            withheld_label = card_trust_operator_label(str(trust.get("reason")))
+            withheld_status = trust_reason_to_withheld_parity_status(str(trust.get("reason")))
 
     for exp in expectations:
         field = exp.get("field", "")
+        trust_reason = trust.get("reason") if trust else None
         if field.startswith("mhap_"):
             slug = field.replace("mhap_", "")
             card = dom_cards.get(slug) or {}
             cls = str(card.get("class") or "")
             exp_state = exp.get("expected_state")
+            exp_pct = exp.get("expected_pct")
+            if withheld_status:
+                if dom_horizon_card_matches_withheld(card, withheld_label or ""):
+                    status = withheld_status
+                else:
+                    status = PARITY_STATUS_DOM_MISMATCH
+                rows.append(
+                    {
+                        "field": field,
+                        "payload_value": f"{exp.get('payload_call')}@{exp_pct}%",
+                        "dom_value": f"{cls} dir={card.get('dir')} pct={card.get('pct')}",
+                        "parity_status": status,
+                        "trust_gate_reason": trust_reason,
+                        "expected_withheld_label": withheld_label,
+                    }
+                )
+                continue
             parity = f"tf-state-{exp_state}" in cls if exp_state else False
             pct = card.get("pct")
-            exp_pct = exp.get("expected_pct")
             pct_ok = exp_pct is None or pct == f"{exp_pct}%" or pct == str(exp_pct)
-            status = "PARITY" if parity and pct_ok else "MISMATCH"
+            status = PARITY_STATUS_PARITY if parity and pct_ok else PARITY_STATUS_DOM_MISMATCH
             rows.append(
                 {
                     "field": field,
                     "payload_value": f"{exp.get('payload_call')}@{exp_pct}%",
                     "dom_value": f"{cls} dir={card.get('dir')} pct={pct}",
                     "parity_status": status,
+                    "trust_gate_reason": None,
                 }
             )
         elif field == "ALL_final_bias":
             card = dom_cards.get("consolidated") or {}
             cls = str(card.get("class") or "")
             exp_state = exp.get("expected_state")
-            status = "PARITY" if f"tf-state-{exp_state}" in cls else "MISMATCH"
+            if withheld_status:
+                if dom_horizon_card_matches_withheld(card, withheld_label or ""):
+                    status = withheld_status
+                else:
+                    status = PARITY_STATUS_DOM_MISMATCH
+                rows.append(
+                    {
+                        "field": field,
+                        "payload_value": exp.get("payload_value"),
+                        "dom_value": f"{cls} dir={card.get('dir')}",
+                        "parity_status": status,
+                        "trust_gate_reason": trust_reason,
+                        "expected_withheld_label": withheld_label,
+                    }
+                )
+                continue
+            status = PARITY_STATUS_PARITY if f"tf-state-{exp_state}" in cls else PARITY_STATUS_DOM_MISMATCH
             rows.append(
                 {
                     "field": field,
                     "payload_value": exp.get("payload_value"),
                     "dom_value": f"{cls} dir={card.get('dir')}",
                     "parity_status": status,
+                    "trust_gate_reason": None,
                 }
             )
         elif field == "PLAN_entry_state":
             dom_state = dom_cards.get("plan_state")
             exp_state = exp.get("expected_plan_state")
-            status = "PARITY" if dom_state == exp_state else "MISMATCH"
+            if withheld_status:
+                expected_plan = expected_plan_state_for_withheld_label(withheld_label or "")
+                status = (
+                    PARITY_STATUS_DOM_MISMATCH
+                    if dom_state != expected_plan
+                    else withheld_status
+                )
+                rows.append(
+                    {
+                        "field": field,
+                        "payload_value": exp.get("payload_entry_state"),
+                        "dom_value": dom_state,
+                        "parity_status": status,
+                        "trust_gate_reason": trust_reason,
+                        "expected_withheld_plan_state": expected_plan,
+                    }
+                )
+                continue
+            status = PARITY_STATUS_PARITY if dom_state == exp_state else PARITY_STATUS_DOM_MISMATCH
             rows.append(
                 {
                     "field": field,
                     "payload_value": exp.get("payload_entry_state"),
                     "dom_value": dom_state,
                     "parity_status": status,
+                    "trust_gate_reason": None,
                 }
             )
     return rows
+
+
+def _institutional_proof_parity_failure(
+    parity_rows: list[dict[str, Any]],
+    *,
+    session_label: Any,
+    ticker: str,
+) -> list[str]:
+    """Return institutional-proof blockers from parity rows (UI fidelity vs closure admissibility)."""
+    blockers: list[str] = []
+    for row in parity_rows:
+        status = str(row.get("parity_status") or "")
+        if status == PARITY_STATUS_DOM_MISMATCH:
+            blockers.append(f"{ticker}_dom_parity_mismatch")
+            continue
+        if not parity_status_passes_ui_fidelity(status):
+            blockers.append(f"{ticker}_dom_parity_unknown:{status}")
+            continue
+        if status == PARITY_STATUS_STALE_WITHHELD:
+            if is_rth_session_label(session_label):
+                blockers.append(f"{ticker}_stale_withheld_rth_freshness_expected")
+            else:
+                blockers.append(f"{ticker}_stale_withheld_non_rth_not_admissible")
+    return blockers
 
 
 def evaluate_institutional_proof(
@@ -430,8 +686,17 @@ def evaluate_institutional_proof(
             if dom.get("status") != "OK":
                 reasons.append(f"{t}_browser_dom:{dom.get('status')}")
             parity_rows = dom.get("parity_rows") or []
-            if any(r.get("parity_status") != "PARITY" for r in parity_rows):
-                reasons.append(f"{t}_dom_parity_mismatch")
+            session_label = dom.get("session_label")
+            if session_label is None:
+                payload = (stab.get("payload") or {}) if isinstance(stab.get("payload"), dict) else {}
+                session_label = payload.get("session_label")
+            reasons.extend(
+                _institutional_proof_parity_failure(
+                    parity_rows,
+                    session_label=session_label,
+                    ticker=t,
+                )
+            )
             if require_live_transport and dom.get("live_transport") != "CAPTURED":
                 reasons.append(f"{t}_live_transport:{dom.get('live_transport')}")
 
@@ -441,6 +706,7 @@ def evaluate_institutional_proof(
         "reasons": reasons,
         "base_tickers_present": bases_present,
         "guest_tickers_present": guests_present,
+        "trust_aware_acceptance": TRUST_AWARE_ACCEPTANCE_SEMANTICS,
     }
 
 
@@ -598,6 +864,7 @@ def _node_playwright_script(base_url: str, ticker: str, timeout_ms: int) -> str:
                 pct: el.querySelector('.tf-pct')?.textContent?.trim() || null,
                 dataDir: el.getAttribute('data-tf-signal-dir'),
                 withhold: el.getAttribute('data-direction-withhold'),
+                cardTrustWithhold: el.getAttribute('data-card-trust-withhold'),
               }};
             }};
             const cards = {{
@@ -806,8 +1073,21 @@ def run_harness(args: argparse.Namespace) -> dict[str, Any]:
                 cards["plan_state"] = snap.get("plan_state")
                 render_payload = snap.get("last_data") if isinstance(snap.get("last_data"), dict) else payload
                 expectations = derive_card_parity_expectations(render_payload)
-                parity_rows = compare_dom_to_expectations(expectations, cards)
+                parity_rows = compare_dom_to_expectations(
+                    expectations,
+                    cards,
+                    payload=render_payload,
+                    active_ticker=ticker,
+                )
+                trust = analytics_card_trust_gate(render_payload, active_ticker=ticker, check_ticker=True)
                 browser["parity_rows"] = parity_rows
+                browser["card_trust"] = trust
+                browser["trust_gate_reason"] = trust.get("reason")
+                browser["session_label"] = render_payload.get("session_label")
+                browser["ui_fidelity_pass"] = all(
+                    parity_status_passes_ui_fidelity(str(r.get("parity_status") or ""))
+                    for r in parity_rows
+                )
                 browser["orphan_table"] = build_orphan_table(render_payload, snap)
                 browser["stale_pending"] = {
                     "analytics_stale_payload": render_payload.get("analytics_stale"),

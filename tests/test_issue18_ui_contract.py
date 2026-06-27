@@ -654,6 +654,20 @@ def test_ui_maximize_contract_sla_warm_and_partial_render():
     assert "analytics_partial_tier_c" in pending_chunk
 
 
+def test_card_consumer_contract_fidelity_classification_v1_recorded():
+    reg = json.loads(CARD_CONSUMER_CONTRACT.read_text(encoding="utf-8"))
+    fc = reg.get("fidelity_classification_v1") or {}
+    assert fc.get("display_trust_gate") == "analyticsCardTrustGate"
+    assert fc.get("card_fidelity_overall") == "NOT_PROVEN"
+    assert fc.get("universal_runtime_live_proof") == "NOT_PROVEN"
+    assert "STALE_WITHHELD" in (fc.get("parity_status_vocabulary") or [])
+    assert "DOM_MISMATCH" in (fc.get("parity_status_vocabulary") or [])
+    sem = fc.get("acceptance_semantics") or {}
+    assert sem.get("trust_withheld_ui_fidelity") == "PASS"
+    assert sem.get("stale_withheld_non_rth_closure") == "NOT_ADMISSIBLE"
+    assert sem.get("true_dom_mismatch") == "FAIL"
+
+
 def test_card_consumer_contract_explainability_surface_design_recorded():
     reg = json.loads(CARD_CONSUMER_CONTRACT.read_text(encoding="utf-8"))
     exp = reg.get("explainability_surface_v1") or {}
