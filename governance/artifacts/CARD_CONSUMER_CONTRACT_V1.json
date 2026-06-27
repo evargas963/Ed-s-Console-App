@@ -261,12 +261,12 @@
       "allowed_type": "string",
       "allowed_values": "WAIT|WATCH|ACTIVE",
       "nullable": "no",
-      "fallback_behavior": "ACTIVE forbidden when final_tradeable=false",
-      "stale_behavior": "must not show ACTIVE when stale without explicit stale state",
-      "pending_behavior": "WAIT or loading — no ACTIVE",
+      "fallback_behavior": "omit chip when call_state missing; WITHHELD when analyticsCardTrustGate fails (ACTIVE never trusted while stale/pending)",
+      "stale_behavior": "chip shows WITHHELD for ACTIVE or untrusted vocabulary; does not imply trade permission",
+      "pending_behavior": "chip withheld/degraded — no trusted ACTIVE",
       "ticker_agnostic_rule": "primary execution channel field — meta-label-ready vocabulary",
-      "test_required": "tests/test_universal_card_fidelity_runtime.py",
-      "decision_status": "OPERATOR_DECISION_REQUIRED"
+      "test_required": "tests/test_universal_card_fidelity_runtime.py::test_execution_call_state_orphan_rendered_when_chip_matches",
+      "decision_status": "PROVEN"
     },
     {
       "field_name": "call_signal",

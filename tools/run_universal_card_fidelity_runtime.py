@@ -223,7 +223,26 @@ def classify_orphan_field(
     *,
     dom_body: str = "",
     card_dom_text: str = "",
+    dom_snapshot: Optional[dict[str, Any]] = None,
 ) -> str:
+    if field_name == "call_state":
+        val = payload.get(field_name)
+        if val is None or val == "":
+            return "ABSENT"
+        snap = dom_snapshot or {}
+        expected = str(val).strip().upper()
+        chip_state = str(snap.get("execution_chip_call_state") or "").upper()
+        chip_text = str(snap.get("execution_chip_text") or "").upper()
+        chip_trusted = str(snap.get("execution_chip_trusted") or "").lower()
+        if chip_state == expected:
+            if expected in ("WAIT", "WATCH") and chip_text == expected:
+                return "RENDERED"
+            if expected == "ACTIVE" and chip_trusted == "true" and chip_text == "ACTIVE":
+                return "RENDERED"
+            if expected == "ACTIVE" and chip_trusted == "false" and chip_text == "WITHHELD":
+                return "RENDERED"
+        return "OPERATOR_DECISION_REQUIRED"
+
     if field_name in EM_BOUND_FIELDS:
         present = any(payload.get(k) not in (None, "") for k in EM_BOUND_FIELDS if k.startswith("em_") or k.startswith("kl_em_"))
         if not present:
@@ -254,7 +273,13 @@ def build_orphan_table(payload: dict[str, Any], dom_snapshot: dict[str, Any]) ->
     combined = body + "\n" + card_text
     table: dict[str, str] = {}
     for name in ORPHAN_FIELD_NAMES:
-        table[name] = classify_orphan_field(name, payload, dom_body=combined, card_dom_text=card_text)
+        table[name] = classify_orphan_field(
+            name,
+            payload,
+            dom_body=combined,
+            card_dom_text=card_text,
+            dom_snapshot=dom_snapshot,
+        )
     em_vals = {k: payload.get(k) for k in EM_BOUND_FIELDS}
     has_em = any(v not in (None, "") for v in em_vals.values())
     table["EM_bounds"] = "BACKEND_ONLY" if has_em else "ABSENT"
@@ -532,6 +557,7 @@ def _node_playwright_script(base_url: str, ticker: str, timeout_ms: int) -> str:
             const src = window._lastPayloadUpdateSource || window._lastFullRenderSource || transport.lastFullRenderSource || '';
             const cardIds = ['tf-signal-1c','tf-signal-5c','tf-signal-15c','tf-signal-60c','tf-signal-consolidated','tf-signal-plan'];
             const card_text = cardIds.map(id => document.getElementById(id)?.textContent || '').join(' ');
+            const execChip = document.getElementById('tf-execution-state-chip');
             return {{
               cards,
               plan_state: planState,
@@ -545,6 +571,9 @@ def _node_playwright_script(base_url: str, ticker: str, timeout_ms: int) -> str:
               transport_mode: transport.mode,
               body_text: document.body.innerText.slice(0, 120000),
               card_text,
+              execution_chip_text: execChip ? execChip.textContent : null,
+              execution_chip_call_state: execChip ? execChip.getAttribute('data-call-state') : null,
+              execution_chip_trusted: execChip ? execChip.getAttribute('data-call-state-trusted') : null,
               stale_label: staleLabel,
             }};
           }});
@@ -719,10 +748,26 @@ def run_harness(args: argparse.Namespace) -> dict[str, Any]:
                 }
                 call_state = render_payload.get("call_state")
                 body = snap.get("body_text") or ""
+                chip_state = snap.get("execution_chip_call_state")
+                chip_text = str(snap.get("execution_chip_text") or "")
+                chip_trusted = str(snap.get("execution_chip_trusted") or "")
+                exec_visible = True
+                if call_state:
+                    cs = str(call_state).strip().upper()
+                    if chip_state and str(chip_state).upper() == cs:
+                        if cs == "ACTIVE" and chip_trusted == "false":
+                            exec_visible = chip_text.upper() == "WITHHELD"
+                        else:
+                            exec_visible = cs in chip_text.upper() or chip_trusted == "true"
+                    else:
+                        exec_visible = cs in body.upper()
                 browser["wait_watch_active"] = {
                     "call_state_payload": call_state,
-                    "visible_in_body": call_state in (None, "") or str(call_state).upper() in body.upper(),
-                    "status": "NOT_PROVEN" if call_state and str(call_state).upper() not in body.upper() else "PROVEN",
+                    "execution_chip_call_state": chip_state,
+                    "execution_chip_text": chip_text,
+                    "execution_chip_trusted": chip_trusted,
+                    "visible_in_body": exec_visible,
+                    "status": "NOT_PROVEN" if call_state and not exec_visible else "PROVEN",
                 }
         tr["browser_dom"] = browser
         tr["api_orphan_table"] = build_orphan_table(payload, {})

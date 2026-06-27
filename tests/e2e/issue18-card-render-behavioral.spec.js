@@ -128,7 +128,10 @@ test('1M LONG stays visually LONG when final_tradeable=false (ALL WAIT)', async 
     stack_runtime: { fusion_active: true, stack_mode: 'FULL' },
   };
 
-  await page.evaluate((d) => window.renderTimeframeSignalRow(d), payload);
+  await page.evaluate((d) => {
+    window.activeTicker = 'SPY';
+    window.renderTimeframeSignalRow(d);
+  }, payload);
 
   const c1 = await page.getAttribute('#tf-signal-1c', 'class');
   expect(c1).toContain('tf-state-up');
@@ -256,4 +259,127 @@ test('ALL pill withholds with WAIT reason on split-brain payload (WIRE-4-CAND �
   expect(chipFusionWait).toBe('ML FUSION');
   const detailFusionWait = await page.textContent('#tf-signal-consolidated .tf-source-detail');
   expect(detailFusionWait).toBe('WAIT — fewer than 2 tradeable horizons agree — insufficient confluence');
+});
+
+function trustedExecutionPayload(callState, ticker = 'SPY', overrides = {}) {
+  return {
+    ticker,
+    primary_horizon: '5c',
+    mhap_rows: [
+      { horizon: '1c', call: 'LONG', confidence: 0.62, row_state: 'secondary' },
+      { horizon: '5c', call: 'LONG', confidence: 0.81, row_state: 'primary' },
+      { horizon: '15c', call: 'LONG', confidence: 0.55, row_state: 'secondary' },
+      { horizon: '60c', call: 'LONG', confidence: 0.45, row_state: 'secondary' },
+    ],
+    final_bias: 'WAIT',
+    final_tradeable: false,
+    entry_state: 'no_setup',
+    call_state: callState,
+    fusion_available: true,
+    canonical_provenance: 'bayesian_fusion',
+    stack_runtime: { fusion_active: true, stack_mode: 'FULL', mc_participated: true },
+    ...overrides,
+  };
+}
+
+async function readExecutionChip(page) {
+  return page.evaluate(() => {
+    const el = document.getElementById('tf-execution-state-chip');
+    if (!el) return null;
+    return {
+      text: el.textContent,
+      callState: el.getAttribute('data-call-state'),
+      trusted: el.getAttribute('data-call-state-trusted'),
+      className: el.className,
+    };
+  });
+}
+
+for (const ticker of ['SPY', 'QQQ', 'IWM']) {
+  for (const execState of ['WAIT', 'WATCH', 'ACTIVE']) {
+    test(`execution chip renders payload.call_state=${execState} for ${ticker}`, async ({ page }) => {
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(
+        () => typeof window.renderTimeframeSignalRow === 'function',
+        null,
+        { timeout: 30000 },
+      );
+      const payload = trustedExecutionPayload(execState, ticker);
+      await page.evaluate(({ d, sym }) => {
+        if (typeof window.setActiveTicker === 'function') {
+          window.setActiveTicker(sym, null);
+        } else {
+          window.activeTicker = sym;
+        }
+        window.renderTimeframeSignalRow(d);
+      }, { d: payload, sym: ticker });
+      const chip = await readExecutionChip(page);
+      expect(chip).not.toBeNull();
+      expect(chip.callState).toBe(execState);
+      expect(chip.text).toBe(execState);
+      expect(chip.trusted).toBe('true');
+      expect(chip.className).toContain('tf-exec-chip--trusted');
+      expect(await page.textContent('#tf-signal-1c .tf-dir')).toBe('LONG');
+    });
+  }
+}
+
+test('execution chip WITHHELD when analytics_stale with call_state ACTIVE', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () => typeof window.renderTimeframeSignalRow === 'function',
+    null,
+    { timeout: 30000 },
+  );
+  const payload = trustedExecutionPayload('ACTIVE', 'SPY', { analytics_stale: true });
+  await page.evaluate((d) => {
+    window.activeTicker = 'SPY';
+    window.renderTimeframeSignalRow(d);
+  }, payload);
+  const chip = await readExecutionChip(page);
+  expect(chip.text).toBe('WITHHELD');
+  expect(chip.callState).toBe('ACTIVE');
+  expect(chip.trusted).toBe('false');
+  expect(chip.className).toContain('tf-exec-chip--withheld');
+  const c1 = await page.getAttribute('#tf-signal-1c', 'class');
+  expect(c1).toContain('tf-signal-card--card-trust-withheld');
+});
+
+test('execution chip WITHHELD when analytics_pending_shell with call_state ACTIVE', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () => typeof window.renderTimeframeSignalRow === 'function',
+    null,
+    { timeout: 30000 },
+  );
+  const payload = trustedExecutionPayload('ACTIVE', 'SPY', {
+    analytics_pending_shell: true,
+    mhap_rows: [],
+  });
+  await page.evaluate((d) => {
+    window.activeTicker = 'SPY';
+    window.renderTimeframeSignalRow(d);
+  }, payload);
+  const chip = await readExecutionChip(page);
+  expect(chip.text).toBe('WITHHELD');
+  expect(chip.trusted).toBe('false');
+});
+
+test('missing call_state shows unknown chip without inventing ACTIVE', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () => typeof window.renderTimeframeSignalRow === 'function',
+    null,
+    { timeout: 30000 },
+  );
+  const payload = trustedExecutionPayload(undefined, 'SPY');
+  delete payload.call_state;
+  await page.evaluate((d) => {
+    window.activeTicker = 'SPY';
+    window.renderTimeframeSignalRow(d);
+  }, payload);
+  const chip = await readExecutionChip(page);
+  expect(chip.text).toBe('—');
+  expect(chip.callState).toBe('');
+  expect(chip.className).toContain('tf-exec-chip--unknown');
 });

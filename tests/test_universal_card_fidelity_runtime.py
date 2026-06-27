@@ -181,6 +181,7 @@ def test_orphan_field_table_includes_all_required_fields(ucf):
         if name in payload and payload[name] not in (None, ""):
             assert table[name] != "ABSENT", name
     assert table["pred_headline"] == "OPERATOR_DECISION_REQUIRED"
+    assert table["call_state"] == "OPERATOR_DECISION_REQUIRED"
     assert table["EM_bounds"] == "BACKEND_ONLY"
 
 
@@ -416,10 +417,53 @@ def test_card_consumer_contract_orphan_fields_tracked_in_registry():
         "reversal_label",
         "call_headline",
         "call_signal",
-        "call_state",
     ):
         assert orphan in by_name
         assert by_name[orphan]["decision_status"] == "OPERATOR_DECISION_REQUIRED"
+    assert by_name["call_state"]["decision_status"] == "PROVEN"
+
+
+def test_execution_call_state_orphan_rendered_when_chip_matches(ucf):
+    payload = {"call_state": "WATCH"}
+    assert ucf.classify_orphan_field("call_state", payload, dom_snapshot={}) == "OPERATOR_DECISION_REQUIRED"
+    snap = {
+        "execution_chip_call_state": "WATCH",
+        "execution_chip_text": "WATCH",
+        "execution_chip_trusted": "true",
+    }
+    assert ucf.classify_orphan_field("call_state", payload, dom_snapshot=snap) == "RENDERED"
+    active_payload = {"call_state": "ACTIVE"}
+    withheld_snap = {
+        "execution_chip_call_state": "ACTIVE",
+        "execution_chip_text": "WITHHELD",
+        "execution_chip_trusted": "false",
+    }
+    assert ucf.classify_orphan_field("call_state", active_payload, dom_snapshot=withheld_snap) == "RENDERED"
+
+
+def test_orphan_field_table_call_state_not_operator_decision_when_rendered(ucf):
+    payload = {
+        "pred_headline": "Fusion: UP",
+        "reversal_risk": 0.33,
+        "reversal_label": "moderate",
+        "call_headline": "WAIT — insufficient",
+        "call_signal": "wait",
+        "call_state": "WATCH",
+        "em_straddle_upper": 100.0,
+        "em_straddle_lower": 99.0,
+    }
+    table = ucf.build_orphan_table(
+        payload,
+        {
+            "body_text": "",
+            "card_text": "",
+            "execution_chip_call_state": "WATCH",
+            "execution_chip_text": "WATCH",
+            "execution_chip_trusted": "true",
+        },
+    )
+    assert table["call_state"] == "RENDERED"
+    assert table["pred_headline"] == "OPERATOR_DECISION_REQUIRED"
 
 
 def test_card_consumer_contract_future_lane_recorded():
@@ -438,4 +482,5 @@ def test_card_consumer_contract_horizon_vs_execution_separation():
     assert by_name["mhap_rows[].call"]["consumer_surface"] == "horizon_pill"
     assert by_name["call_state"]["consumer_surface"] == "execution_chip"
     assert by_name["call_state"]["category"] == "execution_state"
+    assert by_name["call_state"]["decision_status"] == "PROVEN"
     assert by_name["final_tradeable"]["consumer_surface"] == "execution_chip"

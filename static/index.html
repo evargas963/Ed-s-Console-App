@@ -722,9 +722,72 @@
        plan values were ellipsizing) — so 984px + 40px = 1024px. */
     max-width: min(1024px, 77vw);
     display: flex;
+    flex-direction: column;
     justify-content: flex-start;
     align-self: flex-start;
+    gap: 6px;
     box-sizing: border-box;
+  }
+  .tf-exec-state-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 6px 2px 6px;
+    font-family: var(--mono);
+    font-size: 10px;
+    line-height: 1.2;
+  }
+  .tf-exec-state-lbl {
+    color: var(--text3);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    flex: 0 0 auto;
+  }
+  /* Execution channel chip — payload.call_state only (WAIT/WATCH/ACTIVE); not forecast direction. */
+  .tf-exec-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 52px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    border: 1px solid #475569;
+    background: #1e293b;
+    color: #cbd5e1;
+    box-sizing: border-box;
+  }
+  .tf-exec-chip--hidden,
+  .tf-exec-chip--unknown {
+    opacity: 0.55;
+    border-style: dashed;
+  }
+  .tf-exec-chip--trusted.tf-exec-chip--wait {
+    border-color: #64748b;
+    background: #243552;
+    color: #b8d4f5;
+  }
+  .tf-exec-chip--trusted.tf-exec-chip--watch {
+    border-color: #d97706;
+    background: #422006;
+    color: #fcd34d;
+  }
+  .tf-exec-chip--trusted.tf-exec-chip--active {
+    border-color: #00e676;
+    background: #091812;
+    color: #86efac;
+    box-shadow: 0 0 8px rgba(0, 230, 118, 0.2);
+  }
+  .tf-exec-chip--withheld {
+    border-style: dashed;
+    opacity: 0.88;
+    box-shadow: none !important;
+  }
+  .tf-exec-chip--withheld.tf-exec-chip--active {
+    border-color: #64748b;
+    background: #1a2840;
+    color: #94a3b8;
   }
   #timeframe-signal-row {
     display: grid;
@@ -2856,6 +2919,10 @@
       <div class="layout-left">
       <div class="top-stack-row">
       <div class="tf-signal-row-outer">
+        <div class="tf-exec-state-bar" aria-label="Execution readiness channel (call_state)">
+          <span class="tf-exec-state-lbl">EXEC</span>
+          <span id="tf-execution-state-chip" class="tf-exec-chip tf-exec-chip--hidden" data-call-state="" aria-label="Execution state from payload.call_state">—</span>
+        </div>
         <div id="timeframe-signal-row" aria-label="Timeframe signals">
           <div class="tf-signal-card tf-state-dim" id="tf-signal-1c" role="group" aria-label="1 minute horizon">
             <span class="tf-dot tf-dot--dim"></span>
@@ -4208,7 +4275,8 @@ try {
  * Derived-field disposition: GATE_FAIL_CLOSED — withhold actionable Horizon/ALL/PLAN paint when
  *   bundle is stale/pending/partial/mismatch/untrusted; Schwab CSV remains wire authority.
  * All consumers checked: yes — renderTimeframeSignalRow, renderDecisionCommandRail,
- *   engineTradeableSetup, bundleDirectionWithheld (cardBundleActive path).
+ *   engineTradeableSetup, bundleDirectionWithheld (cardBundleActive path),
+ *   paintExecutionStateChip (#tf-execution-state-chip, payload.call_state only).
  * SCHWAB_CSV_CHECKED
  */
 /** Card actionability trust — fail-closed gate for Horizon / ALL / PLAN paint (2026-06-26). */
@@ -4284,6 +4352,63 @@ function engineTradeableSetup(d) {
   return !!(d && d.final_tradeable) && (bias === 'LONG' || bias === 'SHORT');
 }
 
+/** Normalize payload.call_state to execution-channel vocabulary only — never infer from direction. */
+function normalizeExecutionCallState(raw) {
+  const u = String(raw != null ? raw : '').trim().toUpperCase();
+  if (u === 'WAIT' || u === 'WATCH' || u === 'ACTIVE') return u;
+  return null;
+}
+
+/**
+ * Paint execution readiness chip from payload.call_state (WAIT/WATCH/ACTIVE).
+ * Forecast direction lives on horizon pills; this chip is the separate execution channel.
+ */
+function paintExecutionStateChip(d) {
+  const chip = document.getElementById('tf-execution-state-chip');
+  if (!chip) return;
+  if (d == null || typeof d !== 'object' || Array.isArray(d)) {
+    chip.className = 'tf-exec-chip tf-exec-chip--hidden tf-exec-chip--unknown';
+    chip.textContent = '—';
+    chip.setAttribute('data-call-state', '');
+    chip.removeAttribute('data-call-state-trusted');
+    chip.title = 'Execution state unavailable';
+    return;
+  }
+  const execState = normalizeExecutionCallState(d.call_state);
+  const trust = analyticsCardTrustGate(d);
+  if (!execState) {
+    chip.className = 'tf-exec-chip tf-exec-chip--unknown';
+    chip.textContent = '—';
+    chip.setAttribute('data-call-state', '');
+    chip.removeAttribute('data-call-state-trusted');
+    chip.title = 'Execution state not provided (call_state missing or unknown)';
+    return;
+  }
+  chip.setAttribute('data-call-state', execState);
+  if (!trust.trusted) {
+    chip.className = 'tf-exec-chip tf-exec-chip--withheld tf-exec-chip--' + execState.toLowerCase();
+    chip.setAttribute('data-call-state-trusted', 'false');
+    if (execState === 'ACTIVE') {
+      chip.textContent = 'WITHHELD';
+      chip.title = 'Execution ACTIVE withheld — bundle not trusted: ' + String(trust.reason || 'untrusted');
+    } else {
+      chip.textContent = execState;
+      chip.title = 'Execution ' + execState + ' (bundle not trusted for action): ' + String(trust.reason || 'untrusted');
+    }
+    return;
+  }
+  chip.className = 'tf-exec-chip tf-exec-chip--trusted tf-exec-chip--' + execState.toLowerCase();
+  chip.setAttribute('data-call-state-trusted', 'true');
+  chip.textContent = execState;
+  if (execState === 'ACTIVE') {
+    chip.title = 'Execution channel: ACTIVE (payload.call_state; trade paint still gated by final_tradeable)';
+  } else if (execState === 'WATCH') {
+    chip.title = 'Execution channel: WATCH (payload.call_state)';
+  } else {
+    chip.title = 'Execution channel: WAIT (payload.call_state)';
+  }
+}
+
 function paintUntrustedTimeframeCardRow(d, reason) {
   const label = cardTrustOperatorLabel(reason);
   const slugs = [
@@ -4353,6 +4478,8 @@ function paintUntrustedTimeframeCardRow(d, reason) {
 try {
   window.analyticsCardTrustGate = analyticsCardTrustGate;
   window.engineTradeableSetup = engineTradeableSetup;
+  window.normalizeExecutionCallState = normalizeExecutionCallState;
+  window.paintExecutionStateChip = paintExecutionStateChip;
   window.cardTrustOperatorLabel = cardTrustOperatorLabel;
   window.paintUntrustedTimeframeCardRow = paintUntrustedTimeframeCardRow;
 } catch (e) {}
@@ -4415,6 +4542,7 @@ function renderTimeframeSignalRow(d) {
   if (d == null || typeof d !== 'object') return;
   const row = document.getElementById('timeframe-signal-row');
   if (!row) return;
+  paintExecutionStateChip(d);
 
   const slugs = [
     { slug: '1c', ui: '1M' },

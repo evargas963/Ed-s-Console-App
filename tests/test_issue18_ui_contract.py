@@ -811,3 +811,35 @@ def test_plane_diag_commit_does_not_touch_last_data_card_fields():
     assert "window._lastData" not in chunk
     assert "mhap_rows" not in chunk
     assert "final_tradeable" not in chunk
+
+
+def test_execution_state_chip_consumer_present():
+    h = _html()
+    assert 'id="tf-execution-state-chip"' in h
+    assert "function paintExecutionStateChip(d)" in h
+    assert "function normalizeExecutionCallState(raw)" in h
+    assert "window.paintExecutionStateChip = paintExecutionStateChip" in h
+    idx = h.find("function renderTimeframeSignalRow")
+    row_chunk = h[idx : idx + 400]
+    assert "paintExecutionStateChip(d)" in row_chunk
+    paint_idx = h.find("function paintExecutionStateChip")
+    paint_chunk = h[paint_idx : paint_idx + 2200]
+    assert "d.call_state" in paint_chunk
+    assert "normalizeExecutionCallState" in paint_chunk
+    assert "analyticsCardTrustGate" in paint_chunk
+    assert "d.final_bias" not in paint_chunk
+    assert "d.final_tradeable" not in paint_chunk
+    assert "d.mhap_rows" not in paint_chunk
+
+
+def test_execution_state_chip_distinct_from_forecast_direction():
+    h = _html()
+    assert "tf-exec-chip" in h
+    assert "tf-exec-state-bar" in h
+    idx = h.find("function paintExecutionStateChip")
+    chunk = h[max(0, idx - 280) : idx + 400]
+    assert "separate execution channel" in chunk
+    setup_idx = h.find("function setupForecastSentence")
+    assert setup_idx != -1
+    setup_use = h.count("setupForecastSentence(")
+    assert setup_use == 1, "setupForecastSentence remains defined-only (not execution chip path)"
