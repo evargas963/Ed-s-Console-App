@@ -9,11 +9,17 @@ on:
     branches:
       - main
     paths:
-      - governance/artifacts/**
       - governance/SCHWAB_*
       - governance/OPERATOR_DECISION_REGISTER.md
+      - governance/register_slices/**
+      - governance/artifacts/schwab_v4_*
+      - governance/artifacts/schwab_ablation_field_registry.json
+      - governance/artifacts/perf_proof/**
       - tools/schwab_*
       - tools/check_schwab_csv_first.py
+      - tools/stream_revert_v4_register_and_sync_perf.py
+      - tests/test_schwab_*
+      - tests/test_check_schwab_csv_first.py
       - .github/workflows/schwab-v4-closure.yml
 
 jobs:
