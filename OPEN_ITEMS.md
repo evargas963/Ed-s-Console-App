@@ -17,7 +17,54 @@
 
 > **[O-56 SURVIVOR CONSUMER — FIXED + remaining slice] (2026-06-03, Claude):** the train/serve survivor consumer was applying a WRONG flat 22-group rollup (or a fabricated 12-group DEFAULT that dropped volume/vwap/iv) when a complete report existed. **FIXED:** `resolve_ablation_drop_group_ids()` now (a) requires the full 828-cell matrix (not 276), (b) **fails closed to the full feature set** unless drops are confirm-verified, (c) uses the **intersection** of confirm-verified per-cell drops for the shared snapshot, (d) DEFAULT tuple removed. New per-cell API `confirmed_drop_group_ids_by_model_horizon()` + `globally_safe_drop_group_ids()`; serve-side silent `except: pass` now logs (train/serve-skew visible). Mask test rewritten + 2 new locks; O-56 row added to AGENTS enforcement table. **Net: production retrain is READY on the FULL feature set today (survivors correctly OFF/fail-closed).** REMAINING to actually APPLY O-56 survivors in training: (1) run `--ablation-confirm` (drop-and-refit; populates confirm_pass — currently a status string, confirm_drop_cells=0); (2) per-model feature-assembly masking (each model trains on its own survivor set) — the shared snapshot mask can only do the conservative global intersection. Neither blocks the full-feature retrain.
 
-**Last reviewed:** 2026-06-11 — Schwab work bound by [`CLAUDE.md`](CLAUDE.md) (Schwab law) + [`AGENTS.md`](AGENTS.md) §Fix everything we touch / §Active agent posture (always-on agent rules). **Multi-month program (2026-06-11):** large tails (Schwab register, ablation grid, stack phases) close **fix-as-we-touch** — see `ACTIVE_PROGRAM.md` §Multi-month institutional program + rows `INST-PROGRAM-*` below. **D17 closure scope amended @ `25cb2e3`:** `unreviewed_count == 0` on the **scoped** register (gitignore-aware walk + `SCAN_SCOPE_EXCLUDE_PREFIXES`) — not the legacy full-disk walk. The prior three-PR gate (governance pin → CI diff-emission gate → full-tree scanner regen) is superseded for closure admissibility; CI diff-emission gate (`schwab-csv-first.yml`) remains in force for new market-fact sites per PR. Scoped register at local tip: `closure_admissible: true` (174,459 rows, 34 REPLACED, 0 UNREVIEWED, 0 bare GOVERNED_EXCEPTION) — wire-true REPLACED still concentrated in `market_context.py` (16) + `server.py` (18); other product files with Schwab wire reads await slice-line reconciliation.
+**Last reviewed:** 2026-06-11 — Schwab work bound by [`CLAUDE.md`](CLAUDE.md) (Schwab law) + [`AGENTS.md`](AGENTS.md) §Fix everything we touch / §Active agent posture (always-on agent rules). **Multi-month program (2026-06-11):** large tails (Schwab register, ablation grid, stack phases) close **fix-as-we-touch** — see `ACTIVE_PROGRAM.md` §Multi-month institutional program + rows `INST-PROGRAM-*` below. **D17 closure scope amended @ `25cb2e3`:** `unreviewed_count == 0` on the **scoped** register (gitignore-aware walk + `SCAN_SCOPE_EXCLUDE_PREFIXES`) — not the legacy full-disk walk. The prior three-PR gate (governance pin → CI diff-emission gate → full-tree scanner regen) is superseded for closure admissibility; CI diff-emission gate (`schwab-csv-first.yml`) remains in force for new market-fact sites per PR. Scoped register at local tip: `closure_admissible: true` (174,459 rows, 34 REPLACED, 0 UNREVIEWED, 0 bare GOVERNED_EXCEPTION) — wire-true REPLACED still concentrated in `market_context.py` (16) + `server.py` (18); other product files with Schwab wire reads await slice-line reconciliation. **D17 wording (2026-06-27):** `closure_admissible: true` on the scoped register is **not** **D17 full closure** — full program closure remains **NOT_CLOSED** until wire-true disposition + bare GOVERNED_EXCEPTION closure across the epic (`governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md` §Current status facts).
+
+---
+
+## Institutional Master Checklist
+
+The complete institutional/MIT/Bloomberg-terminal roadmap is tracked in:
+
+- `governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md`
+
+`OPEN_ITEMS.md` remains the active execution queue. Do not duplicate the full master checklist here. Promote items from the master checklist into this file only when they become active lanes.
+
+Current high-priority future lanes preserved in the master checklist:
+
+- FEATURE_LINEAGE_AND_LOOKAHEAD_BIAS_AUDIT_V1
+- DECISION_LEDGER_AND_REPLAY_V1
+- SIGNAL_OUTCOME_VALIDATION_V1
+- BACKTEST_TO_LIVE_PARITY_V1
+- MARKET_DATA_QUALITY_AND_CORPORATE_ACTIONS_V1
+- RISK_ENGINE_AND_POSITION_SIZING_AUDIT_V1
+- EXECUTION_ASSUMPTIONS_AND_SLIPPAGE_MODEL_V1
+- MODEL_PROMOTION_AND_DEMOTION_GOVERNANCE_V1
+- FAILURE_MODE_AND_KILL_SWITCH_AUDIT_V1
+- DEAD_CODE_AND_RETIREMENT_GOVERNANCE_V1
+- USER_TRUST_AND_VISUAL_SEMANTICS_AUDIT_V1
+- OBSERVABILITY_AND_PRODUCTION_MONITORING_V1
+
+---
+
+## Active near-term lanes — card fidelity / institutional pointers (2026-06-27)
+
+**Authority:** phased roadmap in `governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md`. These rows are the **active execution queue** only — not a duplicate of the master checklist.
+
+- [ ] **CARD-ORPHAN-PRED-HEADLINE** — **Phase 1 · P0.** `pred_headline`: backend-produced, transported, **no DOM consumer** (`OPERATOR_DECISION_REQUIRED`). **Fix direction:** operator chooses explanation-rail consumer vs `backend_only` deprecation — one field per lane; cite master checklist Phase 1. **Closes when:** contract row + harness disposition landed with SHA. **Do not combine** with RTH universal parity lane.
+
+- [ ] **CARD-ORPHAN-REVERSAL-RISK-LABEL** — **Phase 1 · P0.** `reversal_risk` + `reversal_label`: backend-produced, transported, **no DOM consumer** (`OPERATOR_DECISION_REQUIRED`). **Fix direction:** operator chooses risk-rail consumer vs `backend_only` (paired disposition). **Closes when:** contract + harness for both fields @ SHA.
+
+- [ ] **EXPLAINABILITY_AND_OPERATOR_DECISION_SURFACE_V1** — **Phase 1 (active subset) · P0.** Umbrella for orphan fields + operator-readable decision copy (`wait_reason` live; `pred_headline` / `reversal_*` open). Full program remains master backlog; this row tracks **near-term orphan disposition only**. **Dependencies:** CARD-ORPHAN-* rows. **Closes when:** orphan payload handling overall moves off **NOT_PROVEN**.
+
+- [ ] **RTH_ALL_SUPPORTED_TICKER_AUDIT** — **Phase 2 · P0 · BLOCKED.** `session_gate.loggable_now:false` — inadmissible to treat non-RTH harness runs as fix evidence. **Closes when:** RTH session + harness all enrolled tickers with stable reads. **Blocked until:** market session gate allows logging.
+
+- [ ] **UNIVERSAL_RUNTIME_LIVE_PROOF** — **Phase 2 · P0 · NOT_PROVEN.** RTH harness: all enrolled tickers, `--require-browser-dom`, `--require-live-transport`, stable reads. **Dependencies:** RTH_ALL_SUPPORTED_TICKER_AUDIT unblocked. **Closes when:** universal runtime report + operator sign-off @ SHA.
+
+- [ ] **CARD-FIDELITY-TRUST-AWARE-HARNESS** — **Phase 2 · P1 · NOT_PROVEN.** Trust-aware harness must distinguish **stale withhold** (trusted, intentional) from **true payload mismatch** (bug). Separate from trusted PLAN/horizon failure classes. **Fix direction:** harness + report semantics; paired test when implemented. **Master ref:** Phase 2 trust-aware row.
+
+- [ ] **CARD-FIDELITY-LIVE-UI-F-STACK-WIRE-6-RECONCILIATION** — **Docs + scope hygiene · P1.** `[x] STACK-WIRE-6` @ `9d4c8a4` closed **ms_dict reconstruction parity** (6a/6b/6c). Legacy `[ ] LIVE-UI-F` row (COHERENCE-AUDIT block) still lists open — **reconciled status:** ms_dict replay reconstruction **CLOSED_WITH_EVIDENCE**; any remaining LIVE-UI-F scope = **runtime A2/module parity beyond reconstruction** (OBS-A2OE1 class) — **separate lane**, not a duplicate open STACK-WIRE-6 item. **Action:** treat STACK-WIRE-6 as closed; narrow LIVE-UI-F to A2 runtime parity or close with REAL-GATE when operator accepts reconstruction-only closure.
+
+**Current composite (preserve @ `216702c`):** orphan payload handling overall = **NOT_PROVEN**; card fidelity overall = **NOT_PROVEN**; universal runtime live proof = **NOT_PROVEN**; real-money readiness = **NOT_PROVEN**; D17 full closure = **NOT_CLOSED**. Closed with evidence: stale/fallback, execution channel, `call_signal` reclassification, `call_headline` deprecation.
 
 ---
 
