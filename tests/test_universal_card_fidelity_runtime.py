@@ -34,7 +34,13 @@ _REQUIRED_FIELD_KEYS = frozenset(
 )
 
 _VALID_DECISION_STATUSES = frozenset(
-    {"PROVEN", "NOT_PROVEN", "OPERATOR_DECISION_REQUIRED", "BACKEND_ONLY"}
+    {
+        "PROVEN",
+        "NOT_PROVEN",
+        "OPERATOR_DECISION_REQUIRED",
+        "BACKEND_ONLY",
+        "DESIGN_APPROVED_PENDING_UI",
+    }
 )
 
 _VALID_OPERATOR_SURFACES = frozenset(
@@ -46,6 +52,7 @@ _VALID_OPERATOR_SURFACES = frozenset(
         "decision_rail_chip",
         "explanation_rail",
         "risk_rail",
+        "risk_rail_paired",
         "probability_rail",
         "em_band",
         "freshness_banner",
@@ -181,7 +188,9 @@ def test_orphan_field_table_includes_all_required_fields(ucf):
         assert name in table
         if name in payload and payload[name] not in (None, ""):
             assert table[name] != "ABSENT", name
-    assert table["pred_headline"] == "OPERATOR_DECISION_REQUIRED"
+    assert table["pred_headline"] == ucf.DESIGN_APPROVED_PENDING_EXPLANATION_RAIL
+    assert table["reversal_risk"] == ucf.DESIGN_APPROVED_PENDING_RISK_RAIL
+    assert table["reversal_label"] == ucf.DESIGN_APPROVED_PENDING_RISK_RAIL
     assert table["call_headline"] == "BACKEND_ONLY"
     assert table["call_signal"] == "SUPPORTING_UNRENDERED"
     assert table["call_state"] == "OPERATOR_DECISION_REQUIRED"
@@ -414,14 +423,10 @@ def test_card_consumer_contract_operator_relevant_fields_have_disposition():
 def test_card_consumer_contract_orphan_fields_tracked_in_registry():
     reg = _load_card_consumer_contract()
     by_name = {row["field_name"]: row for row in reg["fields"]}
-    for orphan in (
-        "pred_headline",
-        "reversal_risk",
-        "reversal_label",
-        "call_signal",
-    ):
+    for orphan in ("pred_headline", "reversal_risk", "reversal_label"):
         assert orphan in by_name
-        assert by_name[orphan]["decision_status"] == "OPERATOR_DECISION_REQUIRED"
+        assert by_name[orphan]["decision_status"] == "DESIGN_APPROVED_PENDING_UI"
+    assert by_name["call_signal"]["decision_status"] == "OPERATOR_DECISION_REQUIRED"
     assert by_name["call_headline"]["decision_status"] == "PROVEN"
     assert by_name["call_headline"]["consumer_surface"] == "backend_only"
     assert by_name["call_state"]["decision_status"] == "PROVEN"
@@ -469,7 +474,9 @@ def test_orphan_field_table_call_state_not_operator_decision_when_rendered(ucf):
     assert table["call_state"] == "RENDERED"
     assert table["call_headline"] == "BACKEND_ONLY"
     assert table["call_signal"] == "SUPPORTING_UNRENDERED"
-    assert table["pred_headline"] == "OPERATOR_DECISION_REQUIRED"
+    assert table["pred_headline"] == ucf.DESIGN_APPROVED_PENDING_EXPLANATION_RAIL
+    assert table["reversal_risk"] == ucf.DESIGN_APPROVED_PENDING_RISK_RAIL
+    assert table["reversal_label"] == ucf.DESIGN_APPROVED_PENDING_RISK_RAIL
 
 
 def test_card_consumer_contract_future_lane_recorded():
@@ -529,6 +536,19 @@ def test_call_signal_mh_promotion_path_classified(ucf):
     assert ucf.classify_orphan_field("call_signal", wait_payload, dom_snapshot={}) == "SUPPORTING_UNRENDERED"
 
 
+def test_design_approved_pending_fields_not_rendered(ucf):
+    payload = {
+        "pred_headline": "Fusion: UP",
+        "reversal_risk": 0.33,
+        "reversal_label": "moderate",
+    }
+    table = ucf.build_orphan_table(payload, {"body_text": "", "card_text": ""})
+    for field in ("pred_headline", "reversal_risk", "reversal_label"):
+        status = table[field]
+        assert status.startswith("DESIGN_APPROVED_PENDING_"), field
+        assert status != "RENDERED", field
+
+
 def test_non_target_orphan_fields_remain_operator_decision_required(ucf):
     payload = {
         "pred_headline": "Fusion: UP",
@@ -538,8 +558,6 @@ def test_non_target_orphan_fields_remain_operator_decision_required(ucf):
         "call_signal": "wait",
     }
     table = ucf.build_orphan_table(payload, {"body_text": "", "card_text": ""})
-    for field in ("pred_headline", "reversal_risk", "reversal_label"):
-        assert table[field] == "OPERATOR_DECISION_REQUIRED", field
     assert table["call_headline"] == "BACKEND_ONLY"
     assert table["call_signal"] == "SUPPORTING_UNRENDERED"
 
@@ -563,8 +581,8 @@ def test_call_headline_does_not_close_orphan_handling_overall(ucf):
             "browser_dom": {
                 "orphan_table": {
                     "call_headline": "BACKEND_ONLY",
-                    "pred_headline": "OPERATOR_DECISION_REQUIRED",
-                    "reversal_risk": "OPERATOR_DECISION_REQUIRED",
+                    "pred_headline": ucf.DESIGN_APPROVED_PENDING_EXPLANATION_RAIL,
+                    "reversal_risk": ucf.DESIGN_APPROVED_PENDING_RISK_RAIL,
                 }
             }
         }
@@ -572,7 +590,7 @@ def test_call_headline_does_not_close_orphan_handling_overall(ucf):
     assert ucf.evaluate_overall_card_fidelity(ticker_results) == "NOT_PROVEN"
     defects = ucf.collect_confirmed_defects(ticker_results)
     assert not any("call_headline=" in d for d in defects)
-    assert any("pred_headline=OPERATOR_DECISION_REQUIRED" in d for d in defects)
+    assert any("pred_headline=DESIGN_APPROVED_PENDING_EXPLANATION_RAIL" in d for d in defects)
 
 
 def test_call_signal_reclassification_remains_closed():
@@ -590,7 +608,7 @@ def test_orphan_payload_handling_overall_stays_not_proven(ucf):
         "SPY": {
             "browser_dom": {
                 "orphan_table": {
-                    "pred_headline": "OPERATOR_DECISION_REQUIRED",
+                    "pred_headline": ucf.DESIGN_APPROVED_PENDING_EXPLANATION_RAIL,
                     "call_signal": "SUPPORTING_UNRENDERED",
                     "call_state": "RENDERED",
                 }
@@ -599,5 +617,98 @@ def test_orphan_payload_handling_overall_stays_not_proven(ucf):
     }
     assert ucf.evaluate_overall_card_fidelity(ticker_results) == "NOT_PROVEN"
     defects = ucf.collect_confirmed_defects(ticker_results)
-    assert any("pred_headline=OPERATOR_DECISION_REQUIRED" in d for d in defects)
+    assert any("pred_headline=DESIGN_APPROVED_PENDING_EXPLANATION_RAIL" in d for d in defects)
     assert not any("call_signal=" in d for d in defects)
+
+
+def test_pred_headline_design_approved_pending_explanation_rail(ucf):
+    reg = _load_card_consumer_contract()
+    row = next(r for r in reg["fields"] if r["field_name"] == "pred_headline")
+    assert row["consumer_surface"] == "explanation_rail"
+    assert row["decision_status"] == "DESIGN_APPROVED_PENDING_UI"
+    dr = row["design_record"]
+    assert dr["proposed_dom_id"] == "#tf-explanation-rail"
+    assert dr["authority"] == "supplemental_non_authoritative"
+    assert dr["display_trust_gate"] == "analyticsCardTrustGate"
+    assert dr["ui_status"] == "pending"
+    assert dr["rendered"] is False
+    assert ucf.classify_orphan_field("pred_headline", {"pred_headline": "Fusion: UP"}) == (
+        ucf.DESIGN_APPROVED_PENDING_EXPLANATION_RAIL
+    )
+
+
+def test_reversal_pair_design_approved_pending_risk_rail(ucf):
+    reg = _load_card_consumer_contract()
+    risk = next(r for r in reg["fields"] if r["field_name"] == "reversal_risk")
+    label = next(r for r in reg["fields"] if r["field_name"] == "reversal_label")
+    for row in (risk, label):
+        assert row["consumer_surface"] == "risk_rail_paired"
+        assert row["decision_status"] == "DESIGN_APPROVED_PENDING_UI"
+        assert row["design_record"]["proposed_dom_id"] == "#tf-reversal-risk-chip"
+        assert row["design_record"]["display_trust_gate"] == "analyticsCardTrustGate"
+        assert row["design_record"]["rendered"] is False
+    assert risk["design_record"]["must_pair_with"] == "reversal_label"
+    assert label["design_record"]["cannot_render_independently"] is True
+    payload = {"reversal_risk": 0.31, "reversal_label": "moderate"}
+    assert ucf.classify_orphan_field("reversal_risk", payload) == ucf.DESIGN_APPROVED_PENDING_RISK_RAIL
+    assert ucf.classify_orphan_field("reversal_label", payload) == ucf.DESIGN_APPROVED_PENDING_RISK_RAIL
+
+
+def test_reversal_label_cannot_close_independently(ucf):
+    """Label without risk remains DESIGN_APPROVED_PENDING_RISK_RAIL — not independently PROVEN/CLOSED."""
+    assert (
+        ucf.classify_orphan_field("reversal_label", {"reversal_label": "high"}, dom_snapshot={})
+        == ucf.DESIGN_APPROVED_PENDING_RISK_RAIL
+    )
+    reg = _load_card_consumer_contract()
+    label = next(r for r in reg["fields"] if r["field_name"] == "reversal_label")
+    assert label["design_record"]["derivative_of"] == "reversal_risk"
+    assert label["decision_status"] != "PROVEN"
+
+
+def test_explainability_authority_hierarchy_recorded():
+    reg = _load_card_consumer_contract()
+    exp = reg["explainability_surface_v1"]
+    assert exp["display_trust_gate"] == "analyticsCardTrustGate"
+    assert exp["execution_authority_field"] == "call_state"
+    assert exp["wait_explanation_authority_field"] == "wait_reason"
+    assert exp["orphan_payload_handling_overall"] == "NOT_PROVEN"
+    assert exp["ui_implementation_approved"] is False
+    assert exp["reversal_pair_veto_authority"] is False
+    assert exp["reversal_pair_must_stay_together"] is True
+    assert "pred_headline" in exp["supplemental_explanation_fields"]
+    assert set(exp["supplemental_risk_fields"]) == {"reversal_risk", "reversal_label"}
+    assert "call_state" in exp["pred_headline_cannot_override"]
+
+
+def test_pred_headline_cannot_override_execution_or_wait_authority():
+    reg = _load_card_consumer_contract()
+    exp = reg["explainability_surface_v1"]
+    pred = next(r for r in reg["fields"] if r["field_name"] == "pred_headline")
+    blocked = set(exp["pred_headline_cannot_override"])
+    assert {"call_state", "wait_reason", "validation_summary", "mhap_rows"} <= blocked
+    assert pred["design_record"]["authority"] == "supplemental_non_authoritative"
+
+
+def test_reversal_pair_no_veto_and_cannot_downgrade_active():
+    reg = _load_card_consumer_contract()
+    exp = reg["explainability_surface_v1"]
+    assert exp["reversal_pair_veto_authority"] is False
+    assert exp["reversal_pair_cannot_downgrade_active"] is True
+    risk = next(r for r in reg["fields"] if r["field_name"] == "reversal_risk")
+    assert risk["design_record"]["veto_authority"] is False
+    assert risk["design_record"]["cannot_downgrade_active"] is True
+
+
+def test_orphan_payload_handling_overall_constant(ucf):
+    assert ucf.ORPHAN_PAYLOAD_HANDLING_OVERALL_STATUS == "NOT_PROVEN"
+    assert ucf.orphan_payload_handling_overall_status() == "NOT_PROVEN"
+
+
+def test_harness_ui_dom_ids_not_wired_for_pending_surfaces(ucf):
+    src = _harness_source()
+    assert "#tf-explanation-rail" not in src
+    assert "#tf-reversal-risk-chip" not in src
+    assert "tf-explanation-rail" not in ucf.DOM_CARD_IDS.values()
+    assert "tf-reversal-risk-chip" not in ucf.DOM_CARD_IDS.values()
+

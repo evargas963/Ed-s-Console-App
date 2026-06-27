@@ -63,13 +63,25 @@ EM_BOUND_FIELDS: tuple[str, ...] = (
 
 OPERATOR_DECISION_ORPHANS: frozenset[str] = frozenset(
     {
-        "pred_headline",
-        "reversal_risk",
-        "reversal_label",
         "call_state",
         "call_forecast_state",
     }
 )
+
+# Design approved @ EXPLAINABILITY_AND_OPERATOR_DECISION_SURFACE_V1 — DOM not wired yet.
+DESIGN_APPROVED_PENDING_EXPLANATION_RAIL: str = "DESIGN_APPROVED_PENDING_EXPLANATION_RAIL"
+DESIGN_APPROVED_PENDING_RISK_RAIL: str = "DESIGN_APPROVED_PENDING_RISK_RAIL"
+
+PENDING_EXPLANATION_RAIL_FIELDS: frozenset[str] = frozenset({"pred_headline"})
+PENDING_RISK_RAIL_PAIRED_FIELDS: frozenset[str] = frozenset({"reversal_risk", "reversal_label"})
+
+DESIGN_APPROVED_PENDING_UI_FIELDS: frozenset[str] = (
+    PENDING_EXPLANATION_RAIL_FIELDS | PENDING_RISK_RAIL_PAIRED_FIELDS
+)
+
+ORPHAN_PAYLOAD_HANDLING_OVERALL_STATUS: str = "NOT_PROVEN"
+
+DISPLAY_TRUST_GATE: str = "analyticsCardTrustGate"
 
 BACKEND_ONLY_ORPHAN_FIELDS: frozenset[str] = frozenset(
     {
@@ -270,6 +282,24 @@ def classify_orphan_field(
         if val is None or val == "":
             return "ABSENT"
         return "BACKEND_ONLY"
+
+    if field_name in PENDING_EXPLANATION_RAIL_FIELDS:
+        val = payload.get(field_name)
+        if val is None or val == "":
+            return "ABSENT"
+        return DESIGN_APPROVED_PENDING_EXPLANATION_RAIL
+
+    if field_name in PENDING_RISK_RAIL_PAIRED_FIELDS:
+        if field_name == "reversal_risk":
+            risk = payload.get("reversal_risk")
+            if risk is None or risk == "":
+                return "ABSENT"
+            return DESIGN_APPROVED_PENDING_RISK_RAIL
+        # reversal_label — derivative; never independently closable
+        label = payload.get("reversal_label")
+        if not label:
+            return "ABSENT"
+        return DESIGN_APPROVED_PENDING_RISK_RAIL
 
     if field_name in EM_BOUND_FIELDS:
         present = any(payload.get(k) not in (None, "") for k in EM_BOUND_FIELDS if k.startswith("em_") or k.startswith("kl_em_"))
@@ -685,7 +715,12 @@ def collect_confirmed_defects(ticker_results: dict[str, Any]) -> list[str]:
     for ticker, tr in ticker_results.items():
         ot = (tr.get("browser_dom") or {}).get("orphan_table") or tr.get("api_orphan_table") or {}
         for field, status in ot.items():
-            if status in ("ORPHANED", "OPERATOR_DECISION_REQUIRED"):
+            if status in (
+                "ORPHANED",
+                "OPERATOR_DECISION_REQUIRED",
+                DESIGN_APPROVED_PENDING_EXPLANATION_RAIL,
+                DESIGN_APPROVED_PENDING_RISK_RAIL,
+            ):
                 defects.append(f"{ticker}:{field}={status}")
     if defects:
         defects.append("rth_guest_switch_events_not_captured")
@@ -694,7 +729,13 @@ def collect_confirmed_defects(ticker_results: dict[str, Any]) -> list[str]:
 
 def evaluate_overall_card_fidelity(ticker_results: dict[str, Any]) -> str:
     """Overall card fidelity stays NOT_PROVEN while orphan operator fields remain unresolved."""
-    return "NOT_PROVEN"
+    _ = ticker_results
+    return ORPHAN_PAYLOAD_HANDLING_OVERALL_STATUS
+
+
+def orphan_payload_handling_overall_status() -> str:
+    """Explicit overall orphan disposition — never PROVEN until RTH DOM closure for all fields."""
+    return ORPHAN_PAYLOAD_HANDLING_OVERALL_STATUS
 
 
 def run_harness(args: argparse.Namespace) -> dict[str, Any]:

@@ -654,6 +654,17 @@ def test_ui_maximize_contract_sla_warm_and_partial_render():
     assert "analytics_partial_tier_c" in pending_chunk
 
 
+def test_card_consumer_contract_explainability_surface_design_recorded():
+    reg = json.loads(CARD_CONSUMER_CONTRACT.read_text(encoding="utf-8"))
+    exp = reg.get("explainability_surface_v1") or {}
+    assert exp.get("status") == "DESIGN_APPROVED_PENDING_UI"
+    assert exp.get("display_trust_gate") == "analyticsCardTrustGate"
+    assert exp.get("ui_implementation_approved") is False
+    by_name = {row["field_name"]: row for row in reg["fields"]}
+    assert by_name["pred_headline"]["decision_status"] == "DESIGN_APPROVED_PENDING_UI"
+    assert by_name["reversal_risk"]["decision_status"] == "DESIGN_APPROVED_PENDING_UI"
+
+
 def test_card_consumer_contract_registry_file_exists():
     assert CARD_CONSUMER_CONTRACT.is_file()
     reg = json.loads(CARD_CONSUMER_CONTRACT.read_text(encoding="utf-8"))
