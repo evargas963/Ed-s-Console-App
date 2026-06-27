@@ -67,7 +67,6 @@ OPERATOR_DECISION_ORPHANS: frozenset[str] = frozenset(
         "reversal_risk",
         "reversal_label",
         "call_headline",
-        "call_signal",
         "call_state",
         "call_forecast_state",
     }
@@ -242,6 +241,24 @@ def classify_orphan_field(
             if expected == "ACTIVE" and chip_trusted == "false" and chip_text == "WITHHELD":
                 return "RENDERED"
         return "OPERATOR_DECISION_REQUIRED"
+
+    if field_name == "call_signal":
+        val = payload.get(field_name)
+        if val is None or val == "":
+            return "ABSENT"
+        sig = str(val).strip().lower()
+        snap = dom_snapshot or {}
+        promoted = payload.get("mh_promoted_directional") is True or snap.get(
+            "mh_promotion_chip_visible"
+        ) in ("true", True)
+        chip_text = str(snap.get("mh_promotion_chip_text") or "").upper()
+        if promoted and sig in ("long", "short"):
+            expected = f"MH PROMOTED {sig.upper()}"
+            if chip_text == expected or expected in chip_text:
+                return "RENDERED"
+            return "OPERATOR_DECISION_REQUIRED"
+        # Supporting directional — not primary execution readiness; intentionally unrendered when not promoted.
+        return "SUPPORTING_UNRENDERED"
 
     if field_name in EM_BOUND_FIELDS:
         present = any(payload.get(k) not in (None, "") for k in EM_BOUND_FIELDS if k.startswith("em_") or k.startswith("kl_em_"))
@@ -558,6 +575,8 @@ def _node_playwright_script(base_url: str, ticker: str, timeout_ms: int) -> str:
             const cardIds = ['tf-signal-1c','tf-signal-5c','tf-signal-15c','tf-signal-60c','tf-signal-consolidated','tf-signal-plan'];
             const card_text = cardIds.map(id => document.getElementById(id)?.textContent || '').join(' ');
             const execChip = document.getElementById('tf-execution-state-chip');
+            const mhChip = document.getElementById('dr-mh-promotion-chip');
+            const mhVisible = mhChip && mhChip.style.display !== 'none' && mhChip.textContent?.trim();
             return {{
               cards,
               plan_state: planState,
@@ -574,6 +593,8 @@ def _node_playwright_script(base_url: str, ticker: str, timeout_ms: int) -> str:
               execution_chip_text: execChip ? execChip.textContent : null,
               execution_chip_call_state: execChip ? execChip.getAttribute('data-call-state') : null,
               execution_chip_trusted: execChip ? execChip.getAttribute('data-call-state-trusted') : null,
+              mh_promotion_chip_text: mhChip ? mhChip.textContent?.trim() : null,
+              mh_promotion_chip_visible: mhVisible ? 'true' : 'false',
               stale_label: staleLabel,
             }};
           }});

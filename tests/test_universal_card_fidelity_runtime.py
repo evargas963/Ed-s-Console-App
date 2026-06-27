@@ -43,6 +43,7 @@ _VALID_OPERATOR_SURFACES = frozenset(
         "all_card",
         "plan_card",
         "execution_chip",
+        "decision_rail_chip",
         "explanation_rail",
         "risk_rail",
         "probability_rail",
@@ -181,6 +182,7 @@ def test_orphan_field_table_includes_all_required_fields(ucf):
         if name in payload and payload[name] not in (None, ""):
             assert table[name] != "ABSENT", name
     assert table["pred_headline"] == "OPERATOR_DECISION_REQUIRED"
+    assert table["call_signal"] == "SUPPORTING_UNRENDERED"
     assert table["call_state"] == "OPERATOR_DECISION_REQUIRED"
     assert table["EM_bounds"] == "BACKEND_ONLY"
 
@@ -463,6 +465,7 @@ def test_orphan_field_table_call_state_not_operator_decision_when_rendered(ucf):
         },
     )
     assert table["call_state"] == "RENDERED"
+    assert table["call_signal"] == "SUPPORTING_UNRENDERED"
     assert table["pred_headline"] == "OPERATOR_DECISION_REQUIRED"
 
 
@@ -484,3 +487,73 @@ def test_card_consumer_contract_horizon_vs_execution_separation():
     assert by_name["call_state"]["category"] == "execution_state"
     assert by_name["call_state"]["decision_status"] == "PROVEN"
     assert by_name["final_tradeable"]["consumer_surface"] == "execution_chip"
+
+
+def test_call_signal_decision_rail_not_primary_execution_chip():
+    reg = _load_card_consumer_contract()
+    by_name = {row["field_name"]: row for row in reg["fields"]}
+    call_signal = by_name["call_signal"]
+    call_state = by_name["call_state"]
+    ch = reg["execution_channel"]
+    assert ch["primary_field_today"] == "call_state"
+    assert call_signal["consumer_surface"] == "decision_rail_chip"
+    assert call_signal["consumer_surface"] != "execution_chip"
+    assert call_state["consumer_surface"] == "execution_chip"
+    assert call_state["decision_status"] == "PROVEN"
+    assert "call_signal" in ch["supporting_fields_today"]
+    assert call_signal["category"] == "direction_support"
+
+
+def test_call_state_remains_primary_execution_chip_field():
+    reg = _load_card_consumer_contract()
+    ch = reg["execution_channel"]
+    by_name = {row["field_name"]: row for row in reg["fields"]}
+    assert ch["primary_field_today"] == "call_state"
+    assert by_name["call_state"]["consumer_surface"] == "execution_chip"
+    assert by_name["call_state"]["decision_status"] == "PROVEN"
+    assert by_name["call_signal"]["consumer_surface"] != "execution_chip"
+
+
+def test_call_signal_mh_promotion_path_classified(ucf):
+    payload = {"call_signal": "long", "mh_promoted_directional": True}
+    assert ucf.classify_orphan_field("call_signal", payload, dom_snapshot={}) == "OPERATOR_DECISION_REQUIRED"
+    snap = {
+        "mh_promotion_chip_visible": "true",
+        "mh_promotion_chip_text": "MH PROMOTED LONG",
+    }
+    assert ucf.classify_orphan_field("call_signal", payload, dom_snapshot=snap) == "RENDERED"
+    wait_payload = {"call_signal": "wait", "mh_promoted_directional": False}
+    assert ucf.classify_orphan_field("call_signal", wait_payload, dom_snapshot={}) == "SUPPORTING_UNRENDERED"
+
+
+def test_non_target_orphan_fields_remain_operator_decision_required(ucf):
+    payload = {
+        "pred_headline": "Fusion: UP",
+        "reversal_risk": 0.33,
+        "reversal_label": "moderate",
+        "call_headline": "WAIT — insufficient",
+        "call_signal": "wait",
+    }
+    table = ucf.build_orphan_table(payload, {"body_text": "", "card_text": ""})
+    for field in ("pred_headline", "reversal_risk", "reversal_label", "call_headline"):
+        assert table[field] == "OPERATOR_DECISION_REQUIRED", field
+    assert table["call_signal"] == "SUPPORTING_UNRENDERED"
+
+
+def test_orphan_payload_handling_overall_stays_not_proven(ucf):
+    assert ucf.evaluate_overall_card_fidelity({}) == "NOT_PROVEN"
+    ticker_results = {
+        "SPY": {
+            "browser_dom": {
+                "orphan_table": {
+                    "pred_headline": "OPERATOR_DECISION_REQUIRED",
+                    "call_signal": "SUPPORTING_UNRENDERED",
+                    "call_state": "RENDERED",
+                }
+            }
+        }
+    }
+    assert ucf.evaluate_overall_card_fidelity(ticker_results) == "NOT_PROVEN"
+    defects = ucf.collect_confirmed_defects(ticker_results)
+    assert any("pred_headline=OPERATOR_DECISION_REQUIRED" in d for d in defects)
+    assert not any("call_signal=" in d for d in defects)
