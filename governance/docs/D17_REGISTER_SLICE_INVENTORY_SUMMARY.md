@@ -2,8 +2,9 @@
 >
 > **Status:** Inventory only — **does not** close D17, Schwab V4 Register Closure, card fidelity, or real-money readiness.
 >
-> **Aligned SHA:** `ed555f7226850d82f995f50fe99cf0946dca6eb1`
+> **Aligned SHA:** `62797052d2d460348c363ca0074ab9f67b5f56d2`
 > **Generated:** 2026-06-27 (read-only analysis; no register/slice edits)
+> **Amended:** 2026-06-27 — post-inventory `D17_MECHANICAL_NO_OPERATOR_JUDGMENT_SLICE_1` merge-slices proof (docs correction only)
 > **Regen command:** Re-run read-only analysis at tip (same SHA) with:
 > `python -m tools.schwab_coverage_v4_metrics --register governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv --operator-register governance/OPERATOR_DECISION_REGISTER.md`
 > plus register/slice CSV analysis scripts — **do not** run scanner regen or `--merge-slices` for inventory regen.
@@ -29,12 +30,15 @@
 | Slice files | 85 |
 | Slice rows (total) | 66,692 |
 | Slice UNREVIEWED rows | **0** |
-| **Merge-lag** (UNREVIEWED register + slice disposition exists) | **6,286** |
-| **No-slice gap** (UNREVIEWED + no slice key) | **45,951** |
+| **Path/line overlap** (UNREVIEWED register + slice disposition at same `(path, line)`) | **6,286** |
+| **Tool merge-eligible** (`register_id` / `site_key` resolver match on UNREVIEWED rows) | **0** |
+| **No-slice gap** (UNREVIEWED + no `(path, line)` in slices; path/line accounting only) | **45,951** |
 
-**Primary D17 blocker:** `unreviewed_count > 0`. No bare GOVERNED_EXCEPTION, no pin/scoreboard/O-XX defects on pinned register.
+**Primary D17 blocker:** `unreviewed_count > 0`. No bare GOVERNED_EXCEPTION, no pin/scoreboard/O-XX defects on pinned register. **No D17 metric movement has been achieved** (post-merge proof: still 52,237 UNREVIEWED).
 
-**Key finding:** 6,286 rows already have human/phase dispositions in `governance/register_slices/**` but the **pinned gitignored register** was not reconciled via `--merge-slices` at last pin (2026-06-25). A mechanical merge lane can absorb these without new operator judgment — **operator approval required before execution**.
+**Key finding (original inventory):** 6,286 rows show path/line overlap between UNREVIEWED register rows and non-UNREVIEWED slice dispositions.
+
+**Key finding (post-merge proof):** Those overlaps are **not** currently mergeable by `stream_revert_v4_register_and_sync_perf.py --merge-slices` because the resolver matches **`register_id` / `site_key` only** — not ranked `(path, line)` fallback. Reclassify as **`path_line_overlap_requires_identity_reconciliation`**. **Identity reconciliation audit required before any merge/repin lane.**
 
 ---
 
@@ -73,7 +77,7 @@ Command: `python -m tools.schwab_coverage_v4_metrics ...` → exit **1** (EXPECT
 |-------|------|----------|------|
 | Pin + build recipe | `governance/artifacts/schwab_v4_register_build_meta.json` | yes | SHA256 authority; `partial_scan: false` |
 | Reconciled register | `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` | **gitignored** | Row-level dispositions; must match pin |
-| Human overlays | `governance/register_slices/*.csv` | yes | Disposition merges by `(path, line)` |
+| Human overlays | `governance/register_slices/*.csv` | yes | Dispositions authored per slice; **merge tool** applies via `register_id` / `site_key` (see §3.7) |
 | D17 summary | `governance/artifacts/schwab_v4_scoreboard.json` | yes | Metrics snapshot; regen after reconciliation |
 | Scanner output | `tools/schwab_universal_coverage_scanner_v3/` | yes | Regenerates register rows (forbidden in inventory lane) |
 
@@ -160,15 +164,18 @@ Command: `python -m tools.schwab_coverage_v4_metrics ...` → exit **1** (EXPECT
 
 ---
 
-## 3. Merge-lag inventory
+## 3. Path/line overlap inventory (formerly “merge-lag”)
 
-**Definition:** Pinned register row has `disposition=UNREVIEWED`, but a slice row exists for the same `(path, line)` with a non-UNREVIEWED disposition.
+**Definition (inventory accounting):** Pinned register row has `disposition=UNREVIEWED`, but a slice row exists for the same `(path, line)` with a non-UNREVIEWED disposition.
+
+**Tool eligibility (corrected post-proof):** This count is **path/line overlap only**. It is **not** the count of rows the current `--merge-slices` resolver will update on UNREVIEWED register rows (**tool merge-eligible = 0**; see §3.7).
 
 ### 3.1 Totals
 
 | Measure | Value |
 |---------|------:|
-| **Merge-lag row count** | **6,286** |
+| **Path/line overlap row count** | **6,286** |
+| **Tool merge-eligible (UNREVIEWED + resolver match)** | **0** |
 | Includes money-path files (AGENTS roster) | 2,755 |
 
 ### 3.2 By slice disposition (what merge would apply)
@@ -248,20 +255,46 @@ Command: `python -m tools.schwab_coverage_v4_metrics ...` → exit **1** (EXPECT
 - `server_py_3001_4500_scanner_baseline.csv` — 254
 - `server_py_6001_7323_scanner_baseline.csv` — 253
 
-### 3.6 Mechanical lane safety
+### 3.6 Mechanical lane safety (superseded by §3.7)
 
-| Question | Answer |
+| Question | Answer (pre-proof estimate — **superseded**) |
 |----------|--------|
-| Safe for mechanical merge (no new operator judgment)? | **YES with operator approval** — dispositions already authored in slices |
-| Caveats | 37 REPLACED + 9 GOVERNED_EXCEPTION merge-lag rows need perf-proof / O-XX evidence already in slices; 363 cross-slice disposition conflicts resolved by rank |
-| Recommended cap (lane 1) | **6,286** (full merge-lag set) OR phased: **5,941** NOT_MARKET_DATA-only first, then 345 REPLACED/GOVERNED/KEEP/PASS in lane 1b |
-| Expected metric movement | `unreviewed_count`: 52,237 → **45,951** (−6,286); `not_market_data_count` increases accordingly |
+| Safe for mechanical merge without new operator judgment? | **Was estimated YES** — dispositions already in slices |
+| Post-proof status | **`D17_MECHANICAL_NO_OPERATOR_JUDGMENT_SLICE_1` = NOT_PROVEN / NOT_READY_FOR_COMMIT** |
+
+### 3.7 Post-inventory merge-slices proof result
+
+Local execution **after** this inventory doc (@ `62797052d2d460348c363ca0074ab9f67b5f56d2`):
+
+1. **`D17_MECHANICAL_NO_OPERATOR_JUDGMENT_SLICE_1`** was attempted locally after the inventory doc landed.
+2. Command: `python tools/stream_revert_v4_register_and_sync_perf.py --merge-slices` — **completed cleanly** (exit 0).
+3. **`unreviewed_count` remained 52,237** (no change).
+4. **Actual metric delta = 0**, not the expected ~6,286.
+5. **`register_content_sha256` unchanged** (`2017b18f…55303e`). Tool reported `rows_updated: 31,069` on non-UNREVIEWED `register_id` matches (metadata-only / no disposition change).
+6. Timestamp-only **`schwab_v4_register_build_meta.json` drift** (`generated_at_utc`) was **reverted**; working tree returned clean except pre-existing untracked `reports/`.
+7. The inventory **6,286** figure is **path/line overlap**, not current merge-tool eligibility.
+8. The existing merge-slices resolver matches by **`register_id`**, then **`site_key` (path, line, col, pattern_kind, language)** — see `load_slice_disposition_maps` / `_resolve_slice_row` in `tools/stream_revert_v4_register_and_sync_perf.py`.
+9. **`by_path_line` resolver coverage = 0 keys** — all slice rows carry `register_id`, so path/line maps are not populated for merge.
+10. On UNREVIEWED pinned-register rows, **`_resolve_slice_row` matched 0** rows; **6,282** path/line overlaps have **different `register_id` values** than slice rows at the same site (scanner identity drift).
+11. Therefore the mechanical merge-lag lane is **`NOT_PROVEN`** and **`NOT_READY_FOR_COMMIT`**.
+12. Reclassification: **6,286** rows → **`path_line_overlap_requires_identity_reconciliation`** (not “mechanically mergeable”).
+13. **D17 remains NOT_CLOSED.**
+14. **Schwab V4 Register Closure remains NOT_CLOSED.**
+15. **No D17 metric movement has been achieved.**
+
+| Proof metric | Value |
+|--------------|------:|
+| Post-merge `unreviewed_count` | 52,237 |
+| `unreviewed_count` delta | 0 |
+| `bare_governed_exception_count` | 0 (unchanged) |
+| `closure_admissible` | false (unchanged) |
+| Tool merge-eligible UNREVIEWED rows | **0** |
 
 ---
 
 ## 4. No-slice gap inventory
 
-**Definition:** Register `UNREVIEWED` with **no** matching `(path, line)` in any slice file.
+**Definition:** Register `UNREVIEWED` with **no** matching `(path, line)` in any slice file. **Path/line accounting only** — not the same as tool-admissible residual after identity reconciliation.
 
 ### 4.1 Totals
 
@@ -348,34 +381,42 @@ Command: `python -m tools.schwab_coverage_v4_metrics ...` → exit **1** (EXPECT
 
 ---
 
-## 5. Recommended priority queue
+## 5. Recommended priority queue (updated post-merge proof)
 
 ### Lane sequence (safest order)
 
-| Order | Lane | Scope | Cap | Expected Δ unreviewed |
-|------:|------|-------|-----|----------------------:|
-| **1** | **D17_MECHANICAL_NO_OPERATOR_JUDGMENT_SLICE_1** | `--merge-slices` on pinned register + repin meta/scoreboard | 6,286 (or 5,941 NMD-only phase) | −6,286 → 45,951 |
-| 2 | D17_SCANNER_FALSE_POSITIVE_TRIAGE | `pattern_kind_miss` cross-validator / scanner fixes | TBD after triage | reduces regen inflation (CI +978 vs local) |
-| 3 | D17_REGISTER_SLICE_EXPORT_PHASE3 | Export no-slice docs/tests clusters to new `phase*_not_market_data.csv` slices | ≤5k rows/PR | variable |
-| 4 | D17_SOURCE_CODE_ALIGNMENT_QUEUE | Money-path producer cone wire fixes + REPLACED | ~30–80 files cone; ≤500 register rows/PR | variable |
-| 5 | D17_OPERATOR_DECISION_REGISTER_RECONCILIATION | O-NN for retained derivations | per-row | variable |
+| Order | Lane | Scope | Notes |
+|------:|------|-------|-------|
+| **1** | **D17_SLICE_IDENTITY_RECONCILIATION_AUDIT** | **READ_ONLY** | **Required before any merge/repin lane** — see below |
+| 2 | D17_MECHANICAL_NO_OPERATOR_JUDGMENT_SLICE_1 | REGISTER_SLICE_ONLY | **Demoted** — blocked until identity reconciliation resolves path/line vs register_id mismatch |
+| 3 | D17_SCANNER_FALSE_POSITIVE_TRIAGE | Tooling / read-only triage | `pattern_kind_miss` clusters |
+| 4 | D17_REGISTER_SLICE_EXPORT_PHASE3 | Slice export | New phase slices from register baseline |
+| 5 | D17_SOURCE_CODE_ALIGNMENT_QUEUE | Source + test | Money-path wire fixes |
+| 6 | D17_OPERATOR_DECISION_REGISTER_RECONCILIATION | Operator narrative | O-NN for retained derivations |
 
-### Lane 1 detail — D17_MECHANICAL_NO_OPERATOR_JUDGMENT_SLICE_1
+### Lane 1 detail — D17_SLICE_IDENTITY_RECONCILIATION_AUDIT (recommended next)
 
 | Field | Value |
 |-------|-------|
-| **Scope** | Apply existing slice dispositions to gitignored register via merge pipeline only |
-| **Allowed files** | `tools/stream_revert_v4_register_and_sync_perf.py` (invoke only), `governance/artifacts/schwab_v4_register_build_meta.json`, `governance/artifacts/schwab_v4_scoreboard.json`, `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` (generated output), paired tests under `tests/test_schwab_*` if metrics assertions change |
-| **Forbidden** | Hand-editing register CSV, editing slice CSVs in same PR unless fixing conflicts, card UI, harness, money-path code, scanner changes |
-| **Proof commands** | `python tools/stream_revert_v4_register_and_sync_perf.py --merge-slices`; `python -m tools.schwab_coverage_v4_metrics`; `python -m tools.schwab_oxx_validator --register ...`; pin SHA verify; `python tools/enforce_all_rules.py --objective-audit` |
-| **Remote CI** | Objective Audit, Pytest Full Suite, Hardening Gates, Schwab CSV First Guard; Schwab V4 Register Closure still fails until unreviewed=0 |
-| **Rollback** | Restore register bytes matching prior `register_content_sha256`; revert meta/scoreboard pins |
+| **Scope** | **READ_ONLY** |
+| **Purpose** | Determine the safe path before any merge/repin execution |
+| **Inspect (read-only)** | `governance/register_slices/**`, gitignored `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv`, `tools/stream_revert_v4_register_and_sync_perf.py`, `governance/artifacts/schwab_v4_register_build_meta.json`, `governance/artifacts/schwab_v4_scoreboard.json` |
+| **Decision options** | **A.** Re-export slices keyed to current register IDs · **B.** Extend merge-slices with ranked `(path, line)` fallback under strict conflict controls (separate tooling lane) · **C.** CI-style scanner regen + merge pipeline and repin · **D.** Stop for operator decision · **E.** Not proven |
+| **Proof commands** | Read-only resolver analysis; `python -m tools.schwab_coverage_v4_metrics` (exit 1 EXPECTED_OPEN_D17); no `--merge-slices` unless separately approved |
+| **Forbidden until audit completes** | `--merge-slices`, scanner regen, scoreboard regen, slice CSV edits, D17 closure claims |
 
-**Operator approval required** before Lane 1 execution.
+### Lane 2 detail — D17_MECHANICAL_NO_OPERATOR_JUDGMENT_SLICE_1 (demoted)
 
-### Lane 2 detail — D17_SCANNER_FALSE_POSITIVE_TRIAGE
+| Field | Value |
+|-------|-------|
+| **Status** | **NOT_PROVEN / NOT_READY_FOR_COMMIT** (Slice 1 local proof @ `6279705`) |
+| **Prior expectation** | −6,286 UNREVIEWED → ~45,951 |
+| **Actual result** | Δ = **0** |
+| **Blocked until** | `D17_SLICE_IDENTITY_RECONCILIATION_AUDIT` selects path A, B, or C |
 
-Focus: 15,590 no-slice + 2,316 merge-lag `pattern_kind_miss` rows. Top paths: `server.py`, `db.py`, `arch_competition/stack_bundle_eval_v1.py`. Proof: scanner test suite + regen diff shows miss count drop without disposition theater.
+### Lane 3 detail — D17_SCANNER_FALSE_POSITIVE_TRIAGE
+
+Focus: 15,590 no-slice + 2,316 path/line-overlap `pattern_kind_miss` rows. Top paths: `server.py`, `db.py`, `arch_competition/stack_bundle_eval_v1.py`. Proof: scanner test suite + regen diff shows miss count drop without disposition theater.
 
 ---
 
@@ -402,8 +443,8 @@ All must hold before any D17 / Schwab V4 Register Closure claim:
 - **No Schwab V4 Register Closure claim** as program complete
 - **No real-money readiness claim** from register walk-down
 - **No card-fidelity claim** — orthogonal program
-- **Operator approval** before merge-lag mechanical lane
-- **Does not affect** closed card/harness lanes (trust-aware harness, workflow trigger narrowing @ `ed555f7`)
+- **Operator approval** before any merge/repin mechanical lane — **blocked until identity reconciliation audit**
+- **Does not affect** closed card/harness lanes (trust-aware harness, workflow trigger narrowing @ `ed555f7`; inventory doc @ `6279705`)
 
 ---
 
@@ -512,8 +553,10 @@ All must hold before any D17 / Schwab V4 Register Closure claim:
 
 ## Appendix B — Analysis provenance
 
-- Read-only Python analysis @ `ed555f7226850d82f995f50fe99cf0946dca6eb1`
-- Merge key: `(path, line)` normalized per `stream_revert_v4_register_and_sync_perf.py`
+- Read-only Python analysis @ `62797052d2d460348c363ca0074ab9f67b5f56d2`
+- Inventory merge key (accounting): `(path, line)` normalized
+- Tool merge key (actual): `register_id` → `site_key`; `by_path_line` inactive when slice rows carry `register_id`
+- Slice 1 local proof: `--merge-slices` @ `6279705`; `unreviewed_count` delta **0**
 - Metrics: `python -m tools.schwab_coverage_v4_metrics` (exit 1 EXPECTED_OPEN_D17)
 - Governance: `check_agent_preload_contract` PASS; `--objective-audit` PASS; O-XX validator PASS
-- **No files modified** except this document (pending operator commit review)
+- **Amendment only** — this document (pending operator commit review). D17 / Schwab V4 Register Closure **NOT_CLOSED**.
