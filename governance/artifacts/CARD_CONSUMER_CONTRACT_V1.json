@@ -305,19 +305,19 @@
     {
       "field_name": "call_headline",
       "category": "explanation",
-      "backend_source": "call_engine.py",
+      "backend_source": "call_engine.py → market_state.py",
       "api_key": "call_headline",
-      "consumer_surface": "operator_decision_required",
-      "operator_relevance": "high",
+      "consumer_surface": "backend_only",
+      "operator_relevance": "backend_only",
       "allowed_type": "string",
       "allowed_values": "free text",
       "nullable": "yes",
-      "fallback_behavior": "orphan until wired to explanation rail or removed",
-      "stale_behavior": "hide when stale",
+      "fallback_behavior": "omit from operator cards — canonical visible WAIT explanation is wait_reason / validation_summary via sourceOperatorText and ALL title; legacy briefWhyWait path has zero call sites",
+      "stale_behavior": "omit",
       "pending_behavior": "omit",
-      "ticker_agnostic_rule": "payload only",
-      "test_required": "tests/test_universal_card_fidelity_runtime.py",
-      "decision_status": "OPERATOR_DECISION_REQUIRED"
+      "ticker_agnostic_rule": "backend diagnostic / legacy call-engine narrative only — not card consumer",
+      "test_required": "tests/test_universal_card_fidelity_runtime.py::test_call_headline_backend_only_not_operator_orphan",
+      "decision_status": "PROVEN"
     },
     {
       "field_name": "pred_headline",

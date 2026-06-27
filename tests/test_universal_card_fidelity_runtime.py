@@ -182,6 +182,7 @@ def test_orphan_field_table_includes_all_required_fields(ucf):
         if name in payload and payload[name] not in (None, ""):
             assert table[name] != "ABSENT", name
     assert table["pred_headline"] == "OPERATOR_DECISION_REQUIRED"
+    assert table["call_headline"] == "BACKEND_ONLY"
     assert table["call_signal"] == "SUPPORTING_UNRENDERED"
     assert table["call_state"] == "OPERATOR_DECISION_REQUIRED"
     assert table["EM_bounds"] == "BACKEND_ONLY"
@@ -417,11 +418,12 @@ def test_card_consumer_contract_orphan_fields_tracked_in_registry():
         "pred_headline",
         "reversal_risk",
         "reversal_label",
-        "call_headline",
         "call_signal",
     ):
         assert orphan in by_name
         assert by_name[orphan]["decision_status"] == "OPERATOR_DECISION_REQUIRED"
+    assert by_name["call_headline"]["decision_status"] == "PROVEN"
+    assert by_name["call_headline"]["consumer_surface"] == "backend_only"
     assert by_name["call_state"]["decision_status"] == "PROVEN"
 
 
@@ -465,6 +467,7 @@ def test_orphan_field_table_call_state_not_operator_decision_when_rendered(ucf):
         },
     )
     assert table["call_state"] == "RENDERED"
+    assert table["call_headline"] == "BACKEND_ONLY"
     assert table["call_signal"] == "SUPPORTING_UNRENDERED"
     assert table["pred_headline"] == "OPERATOR_DECISION_REQUIRED"
 
@@ -535,9 +538,50 @@ def test_non_target_orphan_fields_remain_operator_decision_required(ucf):
         "call_signal": "wait",
     }
     table = ucf.build_orphan_table(payload, {"body_text": "", "card_text": ""})
-    for field in ("pred_headline", "reversal_risk", "reversal_label", "call_headline"):
+    for field in ("pred_headline", "reversal_risk", "reversal_label"):
         assert table[field] == "OPERATOR_DECISION_REQUIRED", field
+    assert table["call_headline"] == "BACKEND_ONLY"
     assert table["call_signal"] == "SUPPORTING_UNRENDERED"
+
+
+def test_call_headline_backend_only_not_operator_orphan(ucf):
+    reg = _load_card_consumer_contract()
+    row = next(r for r in reg["fields"] if r["field_name"] == "call_headline")
+    assert row["consumer_surface"] == "backend_only"
+    assert row["operator_relevance"] == "backend_only"
+    assert row["decision_status"] == "PROVEN"
+    payload = {"call_headline": "WAIT — insufficient confirmation."}
+    assert ucf.classify_orphan_field("call_headline", payload, dom_snapshot={}) == "BACKEND_ONLY"
+    assert ucf.classify_orphan_field("call_headline", {}, dom_snapshot={}) == "ABSENT"
+    table = ucf.build_orphan_table(payload, {"body_text": "WAIT — insufficient confirmation.", "card_text": ""})
+    assert table["call_headline"] == "BACKEND_ONLY"
+
+
+def test_call_headline_does_not_close_orphan_handling_overall(ucf):
+    ticker_results = {
+        "SPY": {
+            "browser_dom": {
+                "orphan_table": {
+                    "call_headline": "BACKEND_ONLY",
+                    "pred_headline": "OPERATOR_DECISION_REQUIRED",
+                    "reversal_risk": "OPERATOR_DECISION_REQUIRED",
+                }
+            }
+        }
+    }
+    assert ucf.evaluate_overall_card_fidelity(ticker_results) == "NOT_PROVEN"
+    defects = ucf.collect_confirmed_defects(ticker_results)
+    assert not any("call_headline=" in d for d in defects)
+    assert any("pred_headline=OPERATOR_DECISION_REQUIRED" in d for d in defects)
+
+
+def test_call_signal_reclassification_remains_closed():
+    reg = _load_card_consumer_contract()
+    by_name = {row["field_name"]: row for row in reg["fields"]}
+    assert by_name["call_signal"]["consumer_surface"] == "decision_rail_chip"
+    assert by_name["call_signal"]["decision_status"] == "OPERATOR_DECISION_REQUIRED"
+    assert by_name["call_state"]["consumer_surface"] == "execution_chip"
+    assert reg["execution_channel"]["primary_field_today"] == "call_state"
 
 
 def test_orphan_payload_handling_overall_stays_not_proven(ucf):

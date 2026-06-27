@@ -66,9 +66,14 @@ OPERATOR_DECISION_ORPHANS: frozenset[str] = frozenset(
         "pred_headline",
         "reversal_risk",
         "reversal_label",
-        "call_headline",
         "call_state",
         "call_forecast_state",
+    }
+)
+
+BACKEND_ONLY_ORPHAN_FIELDS: frozenset[str] = frozenset(
+    {
+        "call_headline",
     }
 )
 
@@ -259,6 +264,12 @@ def classify_orphan_field(
             return "OPERATOR_DECISION_REQUIRED"
         # Supporting directional — not primary execution readiness; intentionally unrendered when not promoted.
         return "SUPPORTING_UNRENDERED"
+
+    if field_name in BACKEND_ONLY_ORPHAN_FIELDS:
+        val = payload.get(field_name)
+        if val is None or val == "":
+            return "ABSENT"
+        return "BACKEND_ONLY"
 
     if field_name in EM_BOUND_FIELDS:
         present = any(payload.get(k) not in (None, "") for k in EM_BOUND_FIELDS if k.startswith("em_") or k.startswith("kl_em_"))
