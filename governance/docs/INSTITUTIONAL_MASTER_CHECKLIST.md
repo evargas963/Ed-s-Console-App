@@ -62,8 +62,8 @@ D17 full closure = NOT_CLOSED
 | Wave 2 | `bccc18e` | 3 | 26 | **CLOSED_WITH_EVIDENCE** |
 | Wave 3 | `b03f042` | 2 | 43 | **CLOSED_WITH_EVIDENCE** |
 | Wave 4 | `03a3eaa` | 1 | 51 | **CLOSED_WITH_EVIDENCE** |
-| Wave 5 | `9cb0f65` | 2 | 18 | **CLOSED_WITH_EVIDENCE** |
-| Wave 6 | `77675a6` | 4 | 11 | **CLOSED_WITH_EVIDENCE** |
+| Wave 5 | `9cb0f65` | 2 | 18 (9 unique targets) | **CLOSED_WITH_EVIDENCE** |
+| Wave 6 | `77675a6` | 4 | 11 (8 unique targets) | **CLOSED_WITH_EVIDENCE** |
 
 | Path-A totals | Value |
 |---------------|------:|

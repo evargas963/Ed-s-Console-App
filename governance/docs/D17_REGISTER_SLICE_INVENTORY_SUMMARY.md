@@ -441,7 +441,7 @@ Focus: 15,590 no-slice + 2,316 path/line-overlap `pattern_kind_miss` rows. Top p
 | Money-path rows | 0 |
 | Pinned register changed | **no** |
 | Temp-merge proof only | **yes** |
-| Temp-merge deduped unreviewed drop (unique targets) | 143 |
+| Temp-merge deduped unreviewed drop (unique targets) | 143 (sandbox temp-merge only; pinned register unchanged) |
 | Production `--merge-slices` | **no** |
 | Register repin | **NOT_APPROVED** |
 
