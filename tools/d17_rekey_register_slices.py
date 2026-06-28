@@ -22,8 +22,30 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.schwab_oxx_validator import perf_proof_basename
-from tools.schwab_universal_coverage_scanner_v3.register import REGISTER_COLUMNS
-from tools.stream_revert_v4_register_and_sync_perf import merge_register_slices
+from tools.schwab_universal_coverage_scanner_v3.register import (
+    REGISTER_COLUMNS,
+    DOC_SCOPE,
+    FILE_SCOPE,
+    GENERATED_ARTIFACT_SCOPE,
+    LINE_SCOPE,
+    SITE_SCOPE,
+    UNKNOWN_SCOPE,
+    classify_disposition_scope,
+    compute_line_text_hash,
+    compute_stable_semantic_key,
+    file_classification_from_slice_basename,
+    line_scope_disposition_admissible,
+    normalize_register_path,
+    read_source_line_text,
+    site_scope_disposition_admissible,
+)
+from tools.stream_revert_v4_register_and_sync_perf import merge_register_slices, site_key
+from governance.phase3_d17_adapter_boundary import WIRE_PATTERN_KINDS
+from governance.phase4_d17_market_state_boundary import (
+    PHASE4_LEXICAL_PATTERN_KINDS,
+    PHASE4_LEXICAL_WIRE_LINE_DENYLIST,
+    PHASE4_MARKET_STATE_PATH,
+)
 
 DEFAULT_REGISTER = ROOT / "governance" / "SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv"
 DEFAULT_SLICE_DIR = ROOT / "governance" / "register_slices"
@@ -31,6 +53,8 @@ DEFAULT_SCRATCH = ROOT / "reports" / "d17_rekey_prototype"
 DEFAULT_OUT_SLICES = DEFAULT_SCRATCH / "register_slices_rekeyed"
 DEFAULT_SUMMARY_JSON = DEFAULT_SCRATCH / "d17_rekey_summary.json"
 DEFAULT_SUMMARY_MD = DEFAULT_SCRATCH / "d17_rekey_summary.md"
+DEFAULT_SEMANTIC_SUMMARY_JSON = DEFAULT_SCRATCH / "d17_stable_semantic_summary.json"
+DEFAULT_SEMANTIC_SUMMARY_MD = DEFAULT_SCRATCH / "d17_stable_semantic_summary.md"
 
 MONEY_PATH = {
     "signals.py",
@@ -68,7 +92,7 @@ OXX_IN_REF = re.compile(r"\b(O-\d+)\b", re.IGNORECASE)
 
 
 def norm_path(path: str) -> str:
-    return (path or "").strip().replace("\\", "/")
+    return normalize_register_path(path)
 
 
 def path_line_key(row: dict[str, str]) -> tuple[str, int]:
@@ -464,6 +488,360 @@ def run_rekey(
     return summary
 
 
+def _is_lexical_pattern_kind(pattern_kind: str) -> bool:
+    pk = (pattern_kind or "").strip()
+    return pk in PHASE4_LEXICAL_PATTERN_KINDS
+
+
+def _is_wire_pattern_kind(pattern_kind: str) -> bool:
+    return (pattern_kind or "").strip() in WIRE_PATTERN_KINDS
+
+
+def _line_is_mixed(unreviewed_at_line: list[dict[str, str]]) -> bool:
+    if len(unreviewed_at_line) <= 1:
+        return False
+    has_wire = any(_is_wire_pattern_kind(r.get("pattern_kind") or "") for r in unreviewed_at_line)
+    has_lexical = any(_is_lexical_pattern_kind(r.get("pattern_kind") or "") for r in unreviewed_at_line)
+    return has_wire and has_lexical
+
+
+def _line_scope_register_targets(
+    slice_row: dict[str, str],
+    unreviewed_at_line: list[dict[str, str]],
+    *,
+    line_text_hash: str,
+) -> tuple[list[dict[str, str]], str | None]:
+    """Return admissible register targets for a LINE_SCOPE slice row; reason if blocked."""
+    path = norm_path(slice_row.get("path"))
+    line = int(slice_row.get("line") or 0)
+    disp = (slice_row.get("disposition") or "").strip()
+    if not line_scope_disposition_admissible(disp):
+        if disp.startswith("GOVERNED_EXCEPTION"):
+            return [], "governed_exception_line_scope"
+        return [], "line_scope_disposition_forbidden"
+
+    if line_text_hash in ("MISSING", "EMPTY"):
+        return [], "line_text_hash_missing"
+
+    mixed = _line_is_mixed(unreviewed_at_line)
+    targets: list[dict[str, str]] = []
+    for reg in unreviewed_at_line:
+        pk = (reg.get("pattern_kind") or "").strip()
+        if _is_wire_pattern_kind(pk):
+            continue
+        if path in MONEY_PATH and not _is_lexical_pattern_kind(pk):
+            continue
+        if path == PHASE4_MARKET_STATE_PATH and str(line) in PHASE4_LEXICAL_WIRE_LINE_DENYLIST:
+            return [], "mixed_line_money_path_denylist"
+        targets.append(reg)
+
+    if not targets:
+        if path in MONEY_PATH:
+            return [], "money_path_no_lexical_targets"
+        if any(_is_wire_pattern_kind(r.get("pattern_kind") or "") for r in unreviewed_at_line):
+            return [], "wire_only_line"
+        return [], "no_lexical_targets"
+
+    if mixed and path in MONEY_PATH and path == PHASE4_MARKET_STATE_PATH:
+        if str(line) in PHASE4_LEXICAL_WIRE_LINE_DENYLIST:
+            return [], "mixed_line_money_path_denylist"
+
+    return targets, None
+
+
+def _site_scope_register_targets(
+    slice_row: dict[str, str],
+    site_key_index: dict[tuple[str, int, int, str, str], list[dict[str, str]]],
+    stable_key_index: dict[str, list[dict[str, str]]],
+    slice_stable_key: str,
+) -> tuple[list[dict[str, str]], str | None]:
+    disp = (slice_row.get("disposition") or "").strip()
+    if not site_scope_disposition_admissible(disp):
+        return [], "unreviewed_slice"
+    ok, reason = disposition_proof_admissible(slice_row)
+    if not ok:
+        return [], reason
+
+    sk = site_key(slice_row)
+    by_site = site_key_index.get(sk, [])
+    if len(by_site) == 1:
+        return by_site, None
+    if len(by_site) > 1:
+        return [], "site_key_ambiguous"
+
+    by_stable = stable_key_index.get(slice_stable_key, [])
+    if len(by_stable) == 1:
+        return by_stable, None
+    if len(by_stable) > 1:
+        return [], "stable_key_ambiguous"
+    return [], "no_site_or_stable_match"
+
+
+def run_stable_semantic_prototype_analysis(
+    *,
+    register: Path,
+    slice_dir: Path,
+    repo_root: Path,
+    summary_json: Path,
+    summary_md: Path,
+) -> dict[str, Any]:
+    """Scratch-only stable semantic key eligibility report (no register/slice writes)."""
+    unreviewed, _ = load_unreviewed_register(register)
+    by_pl = build_path_line_unreviewed_index(unreviewed)
+    unreviewed_ids = {(r.get("register_id") or "").strip() for r in unreviewed}
+
+    reg_by_site: dict[tuple[str, int, int, str, str], list[dict[str, str]]] = defaultdict(list)
+    reg_by_stable: dict[str, list[dict[str, str]]] = defaultdict(list)
+    line_hash_cache: dict[tuple[str, int], str] = {}
+
+    def _line_hash(path: str, line: int) -> str:
+        pl = (norm_path(path), line)
+        cached = line_hash_cache.get(pl)
+        if cached is not None:
+            return cached
+        lt = read_source_line_text(repo_root, pl[0], pl[1])
+        cached = compute_line_text_hash(lt)
+        line_hash_cache[pl] = cached
+        return cached
+
+    for reg in unreviewed:
+        reg_by_site[site_key(reg)].append(reg)
+        scope = classify_disposition_scope(reg)
+        if scope == UNKNOWN_SCOPE:
+            scope = SITE_SCOPE
+        pl = path_line_key(reg)
+        ssk = compute_stable_semantic_key(reg, scope, line_text_hash=_line_hash(pl[0], pl[1]))
+        if ssk:
+            reg_by_stable[ssk].append(reg)
+
+    stats: dict[str, Any] = {
+        "scope": "STABLE_SEMANTIC_PROTOTYPE_ONLY",
+        "register": str(register),
+        "slice_dir": str(slice_dir),
+        "stable_key_candidate_count": 0,
+        "stable_key_collision_count": 0,
+        "line_scope_candidate_count": 0,
+        "site_scope_candidate_count": 0,
+        "file_scope_candidate_count": 0,
+        "doc_scope_candidate_count": 0,
+        "generated_artifact_scope_candidate_count": 0,
+        "unknown_scope_count": 0,
+        "line_scope_safe_nmd_count": 0,
+        "line_scope_blocked_wire_count": 0,
+        "line_scope_blocked_money_path_count": 0,
+        "line_scope_blocked_mixed_line_count": 0,
+        "line_scope_blocked_ambiguous_count": 0,
+        "line_scope_blocked_line_hash_count": 0,
+        "governed_exception_blocked_line_scope_count": 0,
+        "line_scope_forbidden_disposition_count": 0,
+        "site_scope_safe_count": 0,
+        "site_scope_blocked_count": 0,
+        "expected_merge_eligible_register_ids": set(),
+        "tier_register_id_count": 0,
+        "tier_site_key_count": 0,
+        "tier_stable_key_count": 0,
+    }
+    slice_key_claims: dict[str, tuple[str, ...]] = {}
+    collisions: list[dict[str, str]] = []
+    ambiguities: list[dict[str, str]] = []
+    examples: dict[str, list[dict[str, str]]] = defaultdict(list)
+    transitions: Counter = Counter()
+    by_path: Counter = Counter()
+
+    def _add_example(bucket: str, row: dict[str, str], extra: dict[str, str] | None = None) -> None:
+        if len(examples[bucket]) >= 5:
+            return
+        item = {
+            "path": norm_path(row.get("path")),
+            "line": row.get("line"),
+            "pattern_kind": row.get("pattern_kind"),
+            "disposition": row.get("disposition"),
+        }
+        if extra:
+            item.update(extra)
+        examples[bucket].append(item)
+
+    for slice_path, rows in load_slice_files(slice_dir):
+        basename = slice_path.name
+        fc = file_classification_from_slice_basename(basename)
+        for slice_row in rows:
+            disp = (slice_row.get("disposition") or "").strip()
+            if not disp or disp == "UNREVIEWED":
+                continue
+
+            scope = classify_disposition_scope(slice_row, slice_basename=basename)
+            pl = path_line_key(slice_row)
+            lth = _line_hash(pl[0], pl[1])
+            ssk = compute_stable_semantic_key(
+                slice_row,
+                scope,
+                line_text_hash=lth,
+                file_classification=fc,
+            )
+
+            if scope == UNKNOWN_SCOPE:
+                stats["unknown_scope_count"] += 1
+                _add_example("unknown_scope", slice_row, {"stable_key": ssk})
+                continue
+
+            if ssk:
+                stats["stable_key_candidate_count"] += 1
+                prior = slice_key_claims.get(ssk)
+                bundle = disposition_bundle(slice_row)
+                if prior is not None and prior != bundle:
+                    stats["stable_key_collision_count"] += 1
+                    collisions.append(
+                        {
+                            "stable_key": ssk,
+                            "scope": scope,
+                            "path": pl[0],
+                            "line": str(pl[1]),
+                            "disposition": disp,
+                        }
+                    )
+                else:
+                    slice_key_claims[ssk] = bundle
+
+            if scope == LINE_SCOPE:
+                stats["line_scope_candidate_count"] += 1
+                spk = (slice_row.get("pattern_kind") or "").strip()
+                regs_at_pl = by_pl.get(pl, [])
+                if regs_at_pl:
+                    top_rpk = Counter((r.get("pattern_kind") or "").strip() for r in regs_at_pl).most_common(1)[0][0]
+                    transitions[(spk, top_rpk)] += 1
+
+                if disp.startswith("GOVERNED_EXCEPTION"):
+                    stats["governed_exception_blocked_line_scope_count"] += 1
+                    continue
+                if not line_scope_disposition_admissible(disp):
+                    stats["line_scope_forbidden_disposition_count"] += 1
+                    _add_example("line_scope_forbidden_disp", slice_row)
+                    continue
+
+                targets, block_reason = _line_scope_register_targets(
+                    slice_row, regs_at_pl, line_text_hash=lth
+                )
+                if block_reason == "line_text_hash_missing":
+                    stats["line_scope_blocked_line_hash_count"] += 1
+                elif block_reason == "money_path_no_lexical_targets":
+                    stats["line_scope_blocked_money_path_count"] += 1
+                elif block_reason == "mixed_line_money_path_denylist":
+                    stats["line_scope_blocked_mixed_line_count"] += 1
+                elif block_reason == "wire_only_line":
+                    stats["line_scope_blocked_wire_count"] += 1
+                elif block_reason in ("site_key_ambiguous", "stable_key_ambiguous"):
+                    stats["line_scope_blocked_ambiguous_count"] += 1
+
+                if targets:
+                    stats["line_scope_safe_nmd_count"] += 1
+                    for t in targets:
+                        rid = (t.get("register_id") or "").strip()
+                        if rid:
+                            stats["expected_merge_eligible_register_ids"].add(rid)
+                            stats["tier_stable_key_count"] += 1
+                            by_path[norm_path(slice_row.get("path"))] += 1
+                    _add_example("line_scope_safe", slice_row, {"targets": str(len(targets))})
+                elif block_reason:
+                    _add_example(f"line_scope_blocked_{block_reason}", slice_row)
+
+            elif scope == SITE_SCOPE:
+                stats["site_scope_candidate_count"] += 1
+                targets, block_reason = _site_scope_register_targets(
+                    slice_row, reg_by_site, reg_by_stable, ssk
+                )
+                if targets:
+                    stats["site_scope_safe_count"] += 1
+                    rid = (targets[0].get("register_id") or "").strip()
+                    if rid:
+                        stats["expected_merge_eligible_register_ids"].add(rid)
+                        if site_key(slice_row) in reg_by_site and len(reg_by_site[site_key(slice_row)]) == 1:
+                            stats["tier_site_key_count"] += 1
+                        else:
+                            stats["tier_stable_key_count"] += 1
+                        by_path[norm_path(slice_row.get("path"))] += 1
+                    _add_example("site_scope_safe", slice_row)
+                else:
+                    stats["site_scope_blocked_count"] += 1
+                    if block_reason and "ambiguous" in block_reason:
+                        stats["line_scope_blocked_ambiguous_count"] += 1
+                        ambiguities.append(
+                            {
+                                "scope": SITE_SCOPE,
+                                "reason": block_reason,
+                                "path": pl[0],
+                                "line": str(pl[1]),
+                                "stable_key": ssk,
+                            }
+                        )
+
+            elif scope == FILE_SCOPE:
+                stats["file_scope_candidate_count"] += 1
+            elif scope == DOC_SCOPE:
+                stats["doc_scope_candidate_count"] += 1
+            elif scope == GENERATED_ARTIFACT_SCOPE:
+                stats["generated_artifact_scope_candidate_count"] += 1
+
+            rid = (slice_row.get("register_id") or "").strip()
+            if rid and rid in unreviewed_ids:
+                stats["tier_register_id_count"] += 1
+                stats["expected_merge_eligible_register_ids"].add(rid)
+                by_path[norm_path(slice_row.get("path"))] += 1
+
+    eligible_ids = stats.pop("expected_merge_eligible_register_ids")
+    expected_merge = len(eligible_ids)
+    stats["expected_merge_eligible_count"] = expected_merge
+    stats["expected_unreviewed_drop_if_applied"] = expected_merge
+
+    summary: dict[str, Any] = {
+        **stats,
+        "by_path_top20": by_path.most_common(20),
+        "pattern_kind_transitions_top20": transitions.most_common(20),
+        "collision_examples": collisions[:20],
+        "ambiguity_examples": ambiguities[:20],
+        "examples_by_class": dict(examples),
+        "proof": {
+            "register_id_preserved": True,
+            "site_key_preserved": True,
+            "path_line_only_disabled_in_prototype": True,
+            "tracked_slices_unmodified": True,
+        },
+    }
+
+    summary_json.parent.mkdir(parents=True, exist_ok=True)
+    summary_json.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    summary_md.write_text(_render_semantic_summary_md(summary), encoding="utf-8")
+    return summary
+
+
+def _render_semantic_summary_md(summary: dict[str, Any]) -> str:
+    lines = [
+        "# D17 Stable Semantic Key Prototype Summary",
+        "",
+        "**Scope:** STABLE_SEMANTIC_PROTOTYPE_ONLY — scratch report; no tracked register/slice changes.",
+        "",
+        "## Counts",
+        "",
+        f"- stable_key_candidate_count: {summary.get('stable_key_candidate_count')}",
+        f"- stable_key_collision_count: {summary.get('stable_key_collision_count')}",
+        f"- line_scope_candidate_count: {summary.get('line_scope_candidate_count')}",
+        f"- site_scope_candidate_count: {summary.get('site_scope_candidate_count')}",
+        f"- unknown_scope_count: {summary.get('unknown_scope_count')}",
+        f"- line_scope_safe_nmd_count: {summary.get('line_scope_safe_nmd_count')}",
+        f"- site_scope_safe_count: {summary.get('site_scope_safe_count')}",
+        f"- expected_merge_eligible_count: {summary.get('expected_merge_eligible_count')}",
+        f"- expected_unreviewed_drop_if_applied: {summary.get('expected_unreviewed_drop_if_applied')}",
+        "",
+        "## Blocks",
+        "",
+        f"- line_scope_blocked_wire_count: {summary.get('line_scope_blocked_wire_count')}",
+        f"- line_scope_blocked_money_path_count: {summary.get('line_scope_blocked_money_path_count')}",
+        f"- line_scope_blocked_mixed_line_count: {summary.get('line_scope_blocked_mixed_line_count')}",
+        f"- line_scope_blocked_ambiguous_count: {summary.get('line_scope_blocked_ambiguous_count')}",
+        "",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def _render_summary_md(summary: dict[str, Any]) -> str:
     t = summary["totals"]
     p = summary["proof"]
@@ -529,6 +907,21 @@ def main() -> int:
         action="store_true",
         help="Skip temp-register merge simulation after scratch output.",
     )
+    ap.add_argument(
+        "--semantic-prototype-report",
+        action="store_true",
+        help="Emit stable semantic key scratch report only (no re-key output).",
+    )
+    ap.add_argument(
+        "--semantic-summary-json",
+        type=Path,
+        default=DEFAULT_SEMANTIC_SUMMARY_JSON,
+    )
+    ap.add_argument(
+        "--semantic-summary-md",
+        type=Path,
+        default=DEFAULT_SEMANTIC_SUMMARY_MD,
+    )
     args = ap.parse_args()
 
     if not args.register.is_file():
@@ -537,6 +930,17 @@ def main() -> int:
     if not args.slice_dir.is_dir():
         print(f"slice dir not found: {args.slice_dir}", file=sys.stderr)
         return 1
+
+    if args.semantic_prototype_report:
+        sem = run_stable_semantic_prototype_analysis(
+            register=args.register,
+            slice_dir=args.slice_dir,
+            repo_root=ROOT,
+            summary_json=args.semantic_summary_json,
+            summary_md=args.semantic_summary_md,
+        )
+        print(json.dumps({k: sem[k] for k in sem if k != "examples_by_class"}, indent=2))
+        return 0
 
     summary = run_rekey(
         register=args.register,

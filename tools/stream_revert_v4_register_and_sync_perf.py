@@ -262,6 +262,25 @@ def _apply_slice_to_row(row: dict[str, str], slice_row: dict[str, str]) -> None:
             row[field] = slice_row[field]
 
 
+def resolve_slice_row_prototype(
+    row: dict[str, str],
+    by_id: dict[str, dict[str, str]],
+    by_site: dict[tuple[str, int, int, str, str], dict[str, str]],
+    by_stable_key: dict[str, dict[str, str]],
+) -> tuple[dict[str, str] | None, str]:
+    """Prototype resolver: register_id → site_key → stable_semantic_key (never path+line-only)."""
+    rid = (row.get("register_id") or "").strip()
+    if rid and rid in by_id:
+        return by_id[rid], "register_id"
+    sk = site_key(row)
+    if sk in by_site:
+        return by_site[sk], "site_key"
+    ssk = (row.get("_stable_semantic_key") or "").strip()
+    if ssk and ssk in by_stable_key:
+        return by_stable_key[ssk], "stable_semantic_key"
+    return None, "none"
+
+
 def _resolve_slice_row(
     row: dict[str, str],
     by_id: dict[str, dict[str, str]],
