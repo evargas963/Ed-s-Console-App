@@ -262,6 +262,22 @@ def _apply_slice_to_row(row: dict[str, str], slice_row: dict[str, str]) -> None:
             row[field] = slice_row[field]
 
 
+def line_scope_production_merge_blocked(
+    slice_row: dict[str, str],
+    *,
+    slice_basename: str = "",
+) -> tuple[bool, str | None]:
+    """True when automated LINE_SCOPE must not run in production merge (Policy A + scratch-only)."""
+    from tools.d17_rekey_register_slices import line_scope_automation_eligible
+    from tools.schwab_universal_coverage_scanner_v3.register import classify_disposition_scope
+
+    scope = classify_disposition_scope(slice_row, slice_basename=slice_basename)
+    ok, reason = line_scope_automation_eligible(slice_row, scope, production=True)
+    if not ok:
+        return True, reason
+    return False, None
+
+
 def resolve_slice_row_prototype(
     row: dict[str, str],
     by_id: dict[str, dict[str, str]],

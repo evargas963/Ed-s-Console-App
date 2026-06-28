@@ -70,6 +70,11 @@ MONEY_PATH = {
     "features/fusion_policy_contract.py",
 }
 
+# Policy A — no automated LINE_SCOPE NOT_MARKET_DATA on AGENTS money-path roster files.
+MONEY_PATH_LINE_SCOPE_BLOCKED = "MONEY_PATH_LINE_SCOPE_BLOCKED"
+LINE_SCOPE_SCRATCH_ONLY = "LINE_SCOPE_SCRATCH_ONLY"
+EXPECTED_PRODUCTION_METRIC_MOVEMENT = "NONE"
+
 DISPOSITION_FIELDS = (
     "disposition",
     "canonical_field_citation",
@@ -505,13 +510,39 @@ def _line_is_mixed(unreviewed_at_line: list[dict[str, str]]) -> bool:
     return has_wire and has_lexical
 
 
-def _line_scope_register_targets(
+def is_d17_money_path(path: str) -> bool:
+    return norm_path(path) in MONEY_PATH
+
+
+def line_scope_policy_a_blocks(path: str) -> bool:
+    """Policy A: block all automated LINE_SCOPE on money-path files."""
+    return is_d17_money_path(path)
+
+
+def line_scope_automation_eligible(
+    slice_row: dict[str, str],
+    scope: str,
+    *,
+    production: bool = False,
+) -> tuple[bool, str | None]:
+    """Gate automated LINE_SCOPE application (Policy A + scratch-only for production)."""
+    if scope != LINE_SCOPE:
+        return True, None
+    path = norm_path(slice_row.get("path"))
+    if line_scope_policy_a_blocks(path):
+        return False, MONEY_PATH_LINE_SCOPE_BLOCKED
+    if production:
+        return False, LINE_SCOPE_SCRATCH_ONLY
+    return True, None
+
+
+def _line_scope_lexical_targets(
     slice_row: dict[str, str],
     unreviewed_at_line: list[dict[str, str]],
     *,
     line_text_hash: str,
 ) -> tuple[list[dict[str, str]], str | None]:
-    """Return admissible register targets for a LINE_SCOPE slice row; reason if blocked."""
+    """Lexical/wire filters only — does not apply Policy A (used for policy-audit hypotheticals)."""
     path = norm_path(slice_row.get("path"))
     line = int(slice_row.get("line") or 0)
     disp = (slice_row.get("disposition") or "").strip()
@@ -547,6 +578,28 @@ def _line_scope_register_targets(
             return [], "mixed_line_money_path_denylist"
 
     return targets, None
+
+
+def _line_scope_register_targets(
+    slice_row: dict[str, str],
+    unreviewed_at_line: list[dict[str, str]],
+    *,
+    line_text_hash: str,
+    apply_policy_a: bool = True,
+) -> tuple[list[dict[str, str]], str | None]:
+    """Return scratch-eligible register targets for LINE_SCOPE; Policy A blocks money-path."""
+    path = norm_path(slice_row.get("path"))
+    if apply_policy_a and line_scope_policy_a_blocks(path):
+        disp = (slice_row.get("disposition") or "").strip()
+        if not line_scope_disposition_admissible(disp):
+            if disp.startswith("GOVERNED_EXCEPTION"):
+                return [], "governed_exception_line_scope"
+            return [], "line_scope_disposition_forbidden"
+        return [], MONEY_PATH_LINE_SCOPE_BLOCKED
+
+    return _line_scope_lexical_targets(
+        slice_row, unreviewed_at_line, line_text_hash=line_text_hash
+    )
 
 
 def _site_scope_register_targets(
@@ -621,6 +674,14 @@ def run_stable_semantic_prototype_analysis(
         "stable_key_candidate_count": 0,
         "stable_key_collision_count": 0,
         "line_scope_candidate_count": 0,
+        "line_scope_total_count": 0,
+        "line_scope_money_path_count": 0,
+        "line_scope_money_path_blocked_count": 0,
+        "line_scope_non_money_count": 0,
+        "line_scope_non_money_scratch_eligible_count": 0,
+        "line_scope_site_conflict_blocked_count": 0,
+        "policy_a_block_count": 0,
+        "expected_production_metric_movement": EXPECTED_PRODUCTION_METRIC_MOVEMENT,
         "site_scope_candidate_count": 0,
         "file_scope_candidate_count": 0,
         "doc_scope_candidate_count": 0,
@@ -704,6 +765,11 @@ def run_stable_semantic_prototype_analysis(
 
             if scope == LINE_SCOPE:
                 stats["line_scope_candidate_count"] += 1
+                stats["line_scope_total_count"] += 1
+                if is_d17_money_path(pl[0]):
+                    stats["line_scope_money_path_count"] += 1
+                else:
+                    stats["line_scope_non_money_count"] += 1
                 spk = (slice_row.get("pattern_kind") or "").strip()
                 regs_at_pl = by_pl.get(pl, [])
                 if regs_at_pl:
@@ -721,6 +787,18 @@ def run_stable_semantic_prototype_analysis(
                 targets, block_reason = _line_scope_register_targets(
                     slice_row, regs_at_pl, line_text_hash=lth
                 )
+                hypo_targets, _ = _line_scope_register_targets(
+                    slice_row, regs_at_pl, line_text_hash=lth, apply_policy_a=False
+                )
+                if block_reason == MONEY_PATH_LINE_SCOPE_BLOCKED:
+                    stats["line_scope_money_path_blocked_count"] += 1
+                    stats["policy_a_block_count"] += 1
+                    if hypo_targets:
+                        _add_example(
+                            "line_scope_blocked_policy_a",
+                            slice_row,
+                            {"hypothetical_targets": str(len(hypo_targets))},
+                        )
                 if block_reason == "line_text_hash_missing":
                     stats["line_scope_blocked_line_hash_count"] += 1
                 elif block_reason == "money_path_no_lexical_targets":
@@ -731,9 +809,13 @@ def run_stable_semantic_prototype_analysis(
                     stats["line_scope_blocked_wire_count"] += 1
                 elif block_reason in ("site_key_ambiguous", "stable_key_ambiguous"):
                     stats["line_scope_blocked_ambiguous_count"] += 1
+                elif block_reason == "site_scope_conflict":
+                    stats["line_scope_site_conflict_blocked_count"] += 1
 
                 if targets:
                     stats["line_scope_safe_nmd_count"] += 1
+                    if not is_d17_money_path(pl[0]):
+                        stats["line_scope_non_money_scratch_eligible_count"] += 1
                     for t in targets:
                         rid = (t.get("register_id") or "").strip()
                         if rid:
@@ -804,6 +886,9 @@ def run_stable_semantic_prototype_analysis(
             "site_key_preserved": True,
             "path_line_only_disabled_in_prototype": True,
             "tracked_slices_unmodified": True,
+            "policy_a_money_path_line_scope_blocked": True,
+            "production_semantic_key_merge_unchanged": True,
+            "expected_production_metric_movement": EXPECTED_PRODUCTION_METRIC_MOVEMENT,
         },
     }
 
@@ -827,6 +912,13 @@ def _render_semantic_summary_md(summary: dict[str, Any]) -> str:
         f"- site_scope_candidate_count: {summary.get('site_scope_candidate_count')}",
         f"- unknown_scope_count: {summary.get('unknown_scope_count')}",
         f"- line_scope_safe_nmd_count: {summary.get('line_scope_safe_nmd_count')}",
+        f"- line_scope_total_count: {summary.get('line_scope_total_count')}",
+        f"- line_scope_money_path_count: {summary.get('line_scope_money_path_count')}",
+        f"- line_scope_money_path_blocked_count: {summary.get('line_scope_money_path_blocked_count')}",
+        f"- line_scope_non_money_count: {summary.get('line_scope_non_money_count')}",
+        f"- line_scope_non_money_scratch_eligible_count: {summary.get('line_scope_non_money_scratch_eligible_count')}",
+        f"- policy_a_block_count: {summary.get('policy_a_block_count')}",
+        f"- expected_production_metric_movement: {summary.get('expected_production_metric_movement')}",
         f"- site_scope_safe_count: {summary.get('site_scope_safe_count')}",
         f"- expected_merge_eligible_count: {summary.get('expected_merge_eligible_count')}",
         f"- expected_unreviewed_drop_if_applied: {summary.get('expected_unreviewed_drop_if_applied')}",

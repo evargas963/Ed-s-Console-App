@@ -208,28 +208,26 @@ def test_line_scope_blocks_ambiguous_mixed_line_money_path() -> None:
         line_text_hash="abc123",
     )
     assert targets == []
-    assert reason == "mixed_line_money_path_denylist"
+    assert reason == "MONEY_PATH_LINE_SCOPE_BLOCKED"
 
 
-def test_line_scope_money_path_requires_lexical_targets() -> None:
+def test_line_scope_money_path_blocked_by_policy_a_even_with_lexical_targets() -> None:
     slice_row = _row(
         path="signals.py",
         pattern_kind="FORMAL_NMD",
         disposition="NOT_MARKET_DATA",
     )
     reg = _row(
-        register_id="w",
+        register_id="l",
         disposition="UNREVIEWED",
         path="signals.py",
-        pattern_kind="PYTHON_GETATTR_SETATTR",
-        surface_form="z",
-        tokens="z",
+        pattern_kind="TEXT_LINE_MARKET_TOKEN",
     )
     targets, reason = _line_scope_register_targets(
         slice_row, [reg], line_text_hash="abc123"
     )
     assert targets == []
-    assert reason in ("wire_only_line", "money_path_no_lexical_targets")
+    assert reason == "MONEY_PATH_LINE_SCOPE_BLOCKED"
 
 
 def test_line_scope_safe_lexical_target() -> None:
