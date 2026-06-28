@@ -6,7 +6,7 @@
 
 **Authority:** This document is a **program tracker**. Mechanical truth for agent behavior remains `governance/docs/AGENT_OPERATING_CONTRACT.md`, `AGENTS.md`, and `governance/artifacts/SEVERITY_1_CONTROL_VALIDATION_REGISTER.json`. Maturity is **not** upgraded by adding rows here alone.
 
-**Last aligned SHA:** `216702cea25d4b33fa46a3580c5297f446d271ac`  
+**Last aligned SHA:** `77675a60de5f57a0de36090718eee273e4cd386d`  
 **Regen / update:** Manual edit when lane status changes; cite commit SHA + remote CI run ids in closure rows.
 
 **Related (inspect only — do not treat as duplicate truth):**
@@ -20,7 +20,7 @@
 
 ---
 
-## Current status facts @ `216702c` (preserve exactly)
+## Current status facts @ `77675a6` (preserve exactly)
 
 ```
 card stale/fallback lane = CLOSED_WITH_EVIDENCE
@@ -50,7 +50,30 @@ D17 full closure = NOT_CLOSED
 | Real-money readiness | **NOT_PROVEN** |
 | D17 full closure | **NOT_CLOSED** |
 
-**D17 wording (do not conflate):** scoped register `closure_admissible: true` and `unreviewed_count == 0` on the **scoped** walk is **not** the same as **D17 full closure**. Full closure requires wire-true disposition across the program plus bare GOVERNED_EXCEPTION closure — tracked separately under the Schwab epic in `OPEN_ITEMS.md`, not mixed into card-fidelity lanes.
+**D17 wording (do not conflate):** pinned register @ `77675a6` has `closure_admissible: false` and `unreviewed_count` = 52,237 — **not** D17 full closure. **HISTORICAL/SUPERSEDED:** prior scoped-register snapshot (174,459 rows / 0 UNREVIEWED / `closure_admissible: true` @ `25cb2e3` era) is not current pinned truth. Full closure requires wire-true disposition across the program plus bare GOVERNED_EXCEPTION closure — tracked separately under the Schwab epic in `OPEN_ITEMS.md`, not mixed into card-fidelity lanes.
+
+### D17 Path-A wave train status board @ `77675a6`
+
+**Wave train:** D17 strict non-money LINE_SCOPE NMD identity rekeys — **COMPLETE_WITH_EVIDENCE**. Does **not** close D17 or Schwab V4.
+
+| Wave | SHA | Files | Rows | Status |
+|------|-----|------:|-----:|--------|
+| Pilot | `2e29f12` | 3 | 6 | **CLOSED_WITH_EVIDENCE** |
+| Wave 2 | `bccc18e` | 3 | 26 | **CLOSED_WITH_EVIDENCE** |
+| Wave 3 | `b03f042` | 2 | 43 | **CLOSED_WITH_EVIDENCE** |
+| Wave 4 | `03a3eaa` | 1 | 51 | **CLOSED_WITH_EVIDENCE** |
+| Wave 5 | `9cb0f65` | 2 | 18 | **CLOSED_WITH_EVIDENCE** |
+| Wave 6 | `77675a6` | 4 | 11 | **CLOSED_WITH_EVIDENCE** |
+
+| Path-A totals | Value |
+|---------------|------:|
+| Tracked slice files | 15 |
+| `register_id` row changes | 155 |
+| Pinned register changed | **no** |
+| Register repin | **NOT_APPROVED** |
+| Production semantic-key merge | **NOT_APPROVED** |
+| D17 full closure | **NOT_CLOSED** |
+| Schwab V4 Register Closure | **NOT_CLOSED** |
 
 ---
 

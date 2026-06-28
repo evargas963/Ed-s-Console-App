@@ -280,7 +280,7 @@ Local execution **after** this inventory doc (@ `62797052d2d460348c363ca0074ab9f
 12. Reclassification: **6,286** rows → **`path_line_overlap_requires_identity_reconciliation`** (not “mechanically mergeable”).
 13. **D17 remains NOT_CLOSED.**
 14. **Schwab V4 Register Closure remains NOT_CLOSED.**
-15. **No D17 metric movement has been achieved.**
+15. **No pinned-register metric movement; 155 tracked slice identity rekeys landed** (Path-A waves @ `77675a6` — pinned register unchanged; temp-merge proof only).
 
 | Proof metric | Value |
 |--------------|------:|
@@ -403,20 +403,51 @@ Local execution **after** this inventory doc (@ `62797052d2d460348c363ca0074ab9f
 | **Inspect (read-only)** | `governance/register_slices/**`, gitignored `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv`, `tools/stream_revert_v4_register_and_sync_perf.py`, `governance/artifacts/schwab_v4_register_build_meta.json`, `governance/artifacts/schwab_v4_scoreboard.json` |
 | **Decision options** | **A.** Re-export slices keyed to current register IDs · **B.** Extend merge-slices with ranked `(path, line)` fallback under strict conflict controls (separate tooling lane) · **C.** CI-style scanner regen + merge pipeline and repin · **D.** Stop for operator decision · **E.** Not proven |
 | **Proof commands** | Read-only resolver analysis; `python -m tools.schwab_coverage_v4_metrics` (exit 1 EXPECTED_OPEN_D17); no `--merge-slices` unless separately approved |
-| **Forbidden until audit completes** | `--merge-slices`, scanner regen, scoreboard regen, slice CSV edits, D17 closure claims |
+| **Forbidden until audit completes** | `--merge-slices`, scanner regen, scoreboard regen, slice CSV edits, D17 closure claims — **SUPERSEDED_BY_PATH_A_WAVES** for slice CSV identity edits: Path-A waves 1–6 @ `77675a6` landed 155 identity-only rekeys under strict non-money LINE_SCOPE NMD policy; production `--merge-slices` and register repin remain **NOT_APPROVED** |
 
 ### Lane 2 detail — D17_MECHANICAL_NO_OPERATOR_JUDGMENT_SLICE_1 (demoted)
 
 | Field | Value |
 |-------|-------|
-| **Status** | **NOT_PROVEN / NOT_READY_FOR_COMMIT** (Slice 1 local proof @ `6279705`) |
+| **Status** | **NOT_PROVEN / NOT_READY_FOR_COMMIT** (Slice 1 local proof @ `6279705`) — **SUPERSEDED_BY_PATH_A_WAVES** for merge-slices Δ=0 gate: Path-A identity rekeys @ `77675a6` proved temp-merge only; pinned register metrics unchanged |
 | **Prior expectation** | −6,286 UNREVIEWED → ~45,951 |
-| **Actual result** | Δ = **0** |
-| **Blocked until** | `D17_SLICE_IDENTITY_RECONCILIATION_AUDIT` selects path A, B, or C |
+| **Actual result** | Δ = **0** (historical @ `6279705`; pinned register `unreviewed_count` still 52,237 @ `77675a6`) |
+| **Blocked until** | `D17_SLICE_IDENTITY_RECONCILIATION_AUDIT` selects path A, B, or C — Path A waves 1–6 **COMPLETE_WITH_EVIDENCE**; production semantic-key merge and register repin remain **NOT_APPROVED** |
 
 ### Lane 3 detail — D17_SCANNER_FALSE_POSITIVE_TRIAGE
 
 Focus: 15,590 no-slice + 2,316 path/line-overlap `pattern_kind_miss` rows. Top paths: `server.py`, `db.py`, `arch_competition/stack_bundle_eval_v1.py`. Proof: scanner test suite + regen diff shows miss count drop without disposition theater.
+
+---
+
+## Path-A wave train summary (COMPLETE_WITH_EVIDENCE @ `77675a6`)
+
+**Scope:** D17 strict non-money LINE_SCOPE NMD tracked slice identity rewrite (Policy A). Identity-only rekeys in tracked slice CSVs; no pinned register repin; no production `--merge-slices`.
+
+| Wave | Commit SHA | Files | Row changes | Status |
+|------|------------|------:|------------:|--------|
+| Pilot | `2e29f12` | 3 | 6 | **CLOSED_WITH_EVIDENCE** |
+| Wave 2 | `bccc18e` | 3 | 26 | **CLOSED_WITH_EVIDENCE** |
+| Wave 3 | `b03f042` | 2 | 43 | **CLOSED_WITH_EVIDENCE** |
+| Wave 4 | `03a3eaa` | 1 | 51 | **CLOSED_WITH_EVIDENCE** |
+| Wave 5 | `9cb0f65` | 2 | 18 (9 unique targets) | **CLOSED_WITH_EVIDENCE** |
+| Wave 6 | `77675a6` | 4 | 11 (8 unique targets) | **CLOSED_WITH_EVIDENCE** |
+
+| Path-A total | Value |
+|--------------|------:|
+| Tracked slice files | 15 |
+| `register_id` row changes | 155 |
+| Forbidden-field drift | 0 |
+| Money-path rows | 0 |
+| Pinned register changed | **no** |
+| Temp-merge proof only | **yes** |
+| Temp-merge deduped unreviewed drop (unique targets) | 143 |
+| Production `--merge-slices` | **no** |
+| Register repin | **NOT_APPROVED** |
+
+**Pinned register truth @ `77675a6` (unchanged by waves):** rows = 83,587; `unreviewed_count` = 52,237; `closure_admissible` = false; `bare_governed_exception_count` = 0; `replaced_count` = 50; content SHA = `2017b18f24870bdf8fa1c9153c4aca4b3e137ebd1167a9b260ed766fd455303e`.
+
+**Preserved:** D17 full closure = **NOT_CLOSED**; Schwab V4 Register Closure = **NOT_CLOSED**; register repin = **NOT_APPROVED**; production semantic-key merge = **NOT_APPROVED**.
 
 ---
 

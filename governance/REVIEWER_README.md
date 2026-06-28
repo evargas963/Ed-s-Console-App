@@ -157,6 +157,29 @@ Until step 4 succeeds with API evidence, `branch_protection_verified` remains **
 
 ---
 
+## D17 wave train + pinned register pointers (2026-06-27)
+
+**D17 wave-train status** lives in:
+
+- `OPEN_ITEMS.md` — §D17 Path-A wave train (Waves 1–6 **CLOSED_WITH_EVIDENCE** board)
+- `governance/docs/D17_REGISTER_SLICE_INVENTORY_SUMMARY.md` — §Path-A wave train summary
+
+**Pinned register truth** (local read-only; waves did **not** repin):
+
+- `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` — rows, `unreviewed_count`, `closure_admissible`, content SHA @ tip
+- `governance/artifacts/schwab_v4_register_build_meta.json` — numeric `register_rows_written` is authoritative; `operator_note` row-count prose may be stale
+
+**Preserved (do not conflate wave completion with program closure):**
+
+| Status | Value |
+|--------|-------|
+| D17 full closure | **NOT_CLOSED** |
+| Schwab V4 Register Closure | **NOT_CLOSED** |
+| Register repin | **NOT_APPROVED** |
+| Production semantic-key merge | **NOT_APPROVED** |
+
+---
+
 ## Directory map for reviewers
 
 ```

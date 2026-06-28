@@ -17,7 +17,7 @@
 
 > **[O-56 SURVIVOR CONSUMER — FIXED + remaining slice] (2026-06-03, Claude):** the train/serve survivor consumer was applying a WRONG flat 22-group rollup (or a fabricated 12-group DEFAULT that dropped volume/vwap/iv) when a complete report existed. **FIXED:** `resolve_ablation_drop_group_ids()` now (a) requires the full 828-cell matrix (not 276), (b) **fails closed to the full feature set** unless drops are confirm-verified, (c) uses the **intersection** of confirm-verified per-cell drops for the shared snapshot, (d) DEFAULT tuple removed. New per-cell API `confirmed_drop_group_ids_by_model_horizon()` + `globally_safe_drop_group_ids()`; serve-side silent `except: pass` now logs (train/serve-skew visible). Mask test rewritten + 2 new locks; O-56 row added to AGENTS enforcement table. **Net: production retrain is READY on the FULL feature set today (survivors correctly OFF/fail-closed).** REMAINING to actually APPLY O-56 survivors in training: (1) run `--ablation-confirm` (drop-and-refit; populates confirm_pass — currently a status string, confirm_drop_cells=0); (2) per-model feature-assembly masking (each model trains on its own survivor set) — the shared snapshot mask can only do the conservative global intersection. Neither blocks the full-feature retrain.
 
-**Last reviewed:** 2026-06-11 — Schwab work bound by [`CLAUDE.md`](CLAUDE.md) (Schwab law) + [`AGENTS.md`](AGENTS.md) §Fix everything we touch / §Active agent posture (always-on agent rules). **Multi-month program (2026-06-11):** large tails (Schwab register, ablation grid, stack phases) close **fix-as-we-touch** — see `ACTIVE_PROGRAM.md` §Multi-month institutional program + rows `INST-PROGRAM-*` below. **D17 closure scope amended @ `25cb2e3`:** `unreviewed_count == 0` on the **scoped** register (gitignore-aware walk + `SCAN_SCOPE_EXCLUDE_PREFIXES`) — not the legacy full-disk walk. The prior three-PR gate (governance pin → CI diff-emission gate → full-tree scanner regen) is superseded for closure admissibility; CI diff-emission gate (`schwab-csv-first.yml`) remains in force for new market-fact sites per PR. Scoped register at local tip: `closure_admissible: true` (174,459 rows, 34 REPLACED, 0 UNREVIEWED, 0 bare GOVERNED_EXCEPTION) — wire-true REPLACED still concentrated in `market_context.py` (16) + `server.py` (18); other product files with Schwab wire reads await slice-line reconciliation. **D17 wording (2026-06-27):** `closure_admissible: true` on the scoped register is **not** **D17 full closure** — full program closure remains **NOT_CLOSED** until wire-true disposition + bare GOVERNED_EXCEPTION closure across the epic (`governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md` §Current status facts).
+**Last reviewed:** 2026-06-27 — Schwab work bound by [`CLAUDE.md`](CLAUDE.md) (Schwab law) + [`AGENTS.md`](AGENTS.md) §Fix everything we touch / §Active agent posture (always-on agent rules). **Multi-month program (2026-06-11):** large tails (Schwab register, ablation grid, stack phases) close **fix-as-we-touch** — see `ACTIVE_PROGRAM.md` §Multi-month institutional program + rows `INST-PROGRAM-*` below. **D17 closure scope amended @ `25cb2e3`:** `unreviewed_count == 0` on the **scoped** register (gitignore-aware walk + `SCAN_SCOPE_EXCLUDE_PREFIXES`) — not the legacy full-disk walk. The prior three-PR gate (governance pin → CI diff-emission gate → full-tree scanner regen) is superseded for closure admissibility; CI diff-emission gate (`schwab-csv-first.yml`) remains in force for new market-fact sites per PR. **Pinned register truth @ `77675a6` (local read-only):** `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` — rows = **83,587**; `unreviewed_count` = **52,237**; `closure_admissible` = **false**; `bare_governed_exception_count` = **0**; `replaced_count` = **50**; content SHA = `2017b18f24870bdf8fa1c9153c4aca4b3e137ebd1167a9b260ed766fd455303e`. Build meta numeric `register_rows_written: 83587` is authoritative; `operator_note` prose citing "311893 rows" is **HISTORICAL/SUPERSEDED** stale prose until a separately approved register regen lane. **HISTORICAL/SUPERSEDED:** prior scoped-register snapshot citing 174,459 rows / 0 UNREVIEWED / `closure_admissible: true` @ `25cb2e3` era is **not** current pinned truth. Wire-true REPLACED still concentrated in `market_context.py` (16) + `server.py` (18); other product files with Schwab wire reads await slice-line reconciliation. **D17 wording (2026-06-27):** pinned register `closure_admissible: false` with `unreviewed_count > 0` — **D17 full closure** = **NOT_CLOSED**; **Schwab V4 Register Closure** = **NOT_CLOSED**; register repin = **NOT_APPROVED**; production semantic-key merge = **NOT_APPROVED** — full program closure remains **NOT_CLOSED** until wire-true disposition + bare GOVERNED_EXCEPTION closure across the epic (`governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md` §Current status facts).
 
 ---
 
@@ -65,6 +65,52 @@ Current high-priority future lanes preserved in the master checklist:
 - [ ] **CARD-FIDELITY-LIVE-UI-F-STACK-WIRE-6-RECONCILIATION** — **Docs + scope hygiene · P1.** `[x] STACK-WIRE-6` @ `9d4c8a4` closed **ms_dict reconstruction parity** (6a/6b/6c). Legacy `[ ] LIVE-UI-F` row (COHERENCE-AUDIT block) still lists open — **reconciled status:** ms_dict replay reconstruction **CLOSED_WITH_EVIDENCE**; any remaining LIVE-UI-F scope = **runtime A2/module parity beyond reconstruction** (OBS-A2OE1 class) — **separate lane**, not a duplicate open STACK-WIRE-6 item. **Action:** treat STACK-WIRE-6 as closed; narrow LIVE-UI-F to A2 runtime parity or close with REAL-GATE when operator accepts reconstruction-only closure.
 
 **Current composite (preserve @ `216702c`):** orphan payload handling overall = **NOT_PROVEN**; card fidelity overall = **NOT_PROVEN**; universal runtime live proof = **NOT_PROVEN**; real-money readiness = **NOT_PROVEN**; D17 full closure = **NOT_CLOSED**. Closed with evidence: stale/fallback, execution channel, `call_signal` reclassification, `call_headline` deprecation.
+
+---
+
+## D17 Path-A wave train — strict non-money LINE_SCOPE NMD (2026-06-27)
+
+**Status:** D17 strict non-money LINE_SCOPE NMD tracked slice identity rewrite (Policy A) — **COMPLETE_WITH_EVIDENCE** @ `77675a60de5f57a0de36090718eee273e4cd386d`. Identity-only `register_id` rekeys in tracked `governance/register_slices/*.csv`; no pinned register repin; no production `--merge-slices`. Does **not** close D17 full closure or Schwab V4 register closure.
+
+### Wave board (CLOSED_WITH_EVIDENCE)
+
+| Wave | Commit SHA | Files | Row changes | Status |
+|------|------------|------:|------------:|--------|
+| Pilot | `2e29f12` | 3 | 6 | **CLOSED_WITH_EVIDENCE** |
+| Wave 2 | `bccc18e` | 3 | 26 | **CLOSED_WITH_EVIDENCE** |
+| Wave 3 | `b03f042` | 2 | 43 | **CLOSED_WITH_EVIDENCE** |
+| Wave 4 | `03a3eaa` | 1 | 51 | **CLOSED_WITH_EVIDENCE** |
+| Wave 5 | `9cb0f65` | 2 | 18 (9 unique targets) | **CLOSED_WITH_EVIDENCE** |
+| Wave 6 | `77675a6` | 4 | 11 (8 unique targets) | **CLOSED_WITH_EVIDENCE** |
+
+### Path-A wave scope totals
+
+| Metric | Value |
+|--------|------:|
+| Tracked slice files touched | 15 |
+| `register_id` row changes | 155 |
+| Forbidden-field drift | 0 |
+| Money-path rows | 0 |
+| Pinned register changed | **no** |
+| Temp-merge proof only | **yes** |
+| Temp-merge deduped unreviewed drop (unique targets) | 143 |
+| Production `--merge-slices` | **no** |
+| Register repin | **NOT_APPROVED** |
+
+### Preserved statuses (do not conflate wave completion with program closure)
+
+| Status | Value |
+|--------|-------|
+| D17 full closure | **NOT_CLOSED** |
+| Schwab V4 Register Closure | **NOT_CLOSED** |
+| Register repin | **NOT_APPROVED** |
+| Production semantic-key merge | **NOT_APPROVED** |
+| Real-money readiness | **NOT_PROVEN** |
+| Card fidelity overall | **NOT_PROVEN** |
+| Universal runtime live proof | **NOT_PROVEN** |
+| Field lineage deep audit | **NOT_STARTED** |
+
+**Detail authority:** `governance/docs/D17_REGISTER_SLICE_INVENTORY_SUMMARY.md` §Path-A wave train.
 
 ---
 

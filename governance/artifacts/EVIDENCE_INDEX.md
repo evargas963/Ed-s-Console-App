@@ -34,3 +34,18 @@
 - **explicitly_rejected** — claim must not be made
 
 Regenerate: `python tools/_build_evidence_index.py`
+
+---
+
+## D17 Path-A wave train — prose pointer only (2026-06-27)
+
+**Not a maturity claim. Not a closure claim. JSON not regenerated.**
+
+D17 strict non-money LINE_SCOPE NMD tracked slice identity rewrite (Policy A) wave train status is recorded in:
+
+- `OPEN_ITEMS.md` — §D17 Path-A wave train (wave board + preserved NOT_CLOSED statuses)
+- `governance/docs/D17_REGISTER_SLICE_INVENTORY_SUMMARY.md` — §Path-A wave train summary
+
+**Pinned register truth (local read-only @ `77675a6`):** `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` — rows 83,587; `unreviewed_count` 52,237; `closure_admissible` false. Build meta numeric `register_rows_written: 83587` is authoritative over stale `operator_note` prose.
+
+**Preserved:** D17 full closure = **NOT_CLOSED**; Schwab V4 Register Closure = **NOT_CLOSED**; register repin = **NOT_APPROVED**.
