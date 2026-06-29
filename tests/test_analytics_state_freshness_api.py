@@ -1,4 +1,4 @@
-"""S2A — Tier C /api/analytics/state card_freshness_v1 nested metadata contract tests."""
+"""S2A/S2B — Tier C /api/analytics/state card_freshness_v1 + operator mirror contract tests."""
 
 from __future__ import annotations
 
@@ -33,6 +33,23 @@ _CARD_FRESHNESS_V1_REQUIRED_KEYS = frozenset(
         "quote_source_detail.carried_forward",
         "quote_source_detail.schwab_auth_degraded",
     }
+)
+
+_OPERATOR_MIRROR_KEYS = frozenset(
+    {
+        "operator_card_actionable",
+        "operator_card_trust_state",
+        "operator_stale_reason_codes",
+        "operator_actionability_reason",
+    }
+)
+
+_RAW_TRADE_FIELDS = (
+    "final_tradeable",
+    "call_signal",
+    "call_state",
+    "validation_passed",
+    "analytics_stale",
 )
 
 
@@ -94,6 +111,185 @@ def _seed_cache(srv, ticker: str, expiry: str, ms_dict: dict, *, age_sec: float 
 
 def _response_body(resp) -> dict:
     return json.loads(resp.body)
+
+
+def _operator_mirrors(body: dict) -> dict:
+    return {k: body.get(k) for k in _OPERATOR_MIRROR_KEYS}
+
+
+def _assert_operator_mirrors_nested(body: dict) -> None:
+    block = body["card_freshness_v1"]
+    assert body["operator_card_actionable"] is block["card_actionable"]
+    assert body["operator_card_trust_state"] == block["card_trust_state"]
+    assert body["operator_stale_reason_codes"] == block["stale_reason_codes"]
+    if block["card_actionable"]:
+        assert body["operator_actionability_reason"] is None
+    else:
+        assert body["operator_actionability_reason"] is not None
+
+
+def test_operator_mirror_fields_present_on_analytics_state(tier_c_cache_spy):
+    srv = tier_c_cache_spy
+    ticker = "ZZZ_OP_PRESENT"
+    expiry = "2099-12-10"
+    _seed_cache(srv, ticker, expiry, _trusted_ms_dict(ticker=ticker), age_sec=1.0)
+    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
+    assert _OPERATOR_MIRROR_KEYS <= set(body.keys())
+    _assert_operator_mirrors_nested(body)
+
+
+def test_operator_mirrors_equal_nested_card_freshness_v1(tier_c_cache_spy):
+    srv = tier_c_cache_spy
+    ticker = "ZZZ_OP_MIRROR"
+    expiry = "2099-12-11"
+    _seed_cache(srv, ticker, expiry, _trusted_ms_dict(ticker=ticker), age_sec=1.0)
+    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
+    _assert_operator_mirrors_nested(body)
+
+
+def test_operator_card_actionable_true_on_trusted_payload(tier_c_cache_spy, monkeypatch):
+    srv = tier_c_cache_spy
+    ticker = "ZZZ_OP_TRUE"
+    expiry = "2099-12-12"
+    now = time.time()
+    _seed_cache(
+        srv,
+        ticker,
+        expiry,
+        _trusted_ms_dict(ticker=ticker, bundle_ts=now - 2.0),
+        age_sec=1.0,
+    )
+    monkeypatch.setattr(
+        srv._lmp,
+        "get_quote",
+        lambda t: {
+            "fast_server_ts": now - 3.0,
+            "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
+        },
+    )
+    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
+    assert body["operator_card_actionable"] is True
+    assert body["operator_actionability_reason"] is None
+    _assert_operator_mirrors_nested(body)
+
+
+def test_operator_card_actionable_false_on_analytics_stale(tier_c_cache_spy):
+    srv = tier_c_cache_spy
+    ticker = "ZZZ_OP_ASTALE"
+    expiry = "2099-12-13"
+    md = _trusted_ms_dict(ticker=ticker)
+    md["analytics_stale"] = True
+    _seed_cache(srv, ticker, expiry, md, age_sec=srv.CACHE_TTL + 2.0)
+    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
+    assert body["operator_card_actionable"] is False
+    assert body["operator_actionability_reason"] is not None
+    assert "analytics_stale" in body["operator_stale_reason_codes"]
+    _assert_operator_mirrors_nested(body)
+
+
+def test_operator_card_actionable_false_on_revalidate_quarantine(tier_c_cache_spy, monkeypatch):
+    srv = tier_c_cache_spy
+    ticker = "ZZZ_OP_RQ"
+    expiry = "2099-12-14"
+    now = time.time()
+    md = _trusted_ms_dict(ticker=ticker, bundle_ts=now - 2.0)
+    _seed_cache(srv, ticker, expiry, md, age_sec=1.0)
+    monkeypatch.setattr(
+        srv._lmp,
+        "get_quote",
+        lambda t: {
+            "fast_server_ts": now - 1.0,
+            "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
+        },
+    )
+
+    import trade_impacting_gate as tig
+
+    def _quarantine(ms_dict, *, route, stale):
+        out = dict(ms_dict)
+        out["tier_c_cache_gate_ok"] = False
+        return out
+
+    monkeypatch.setattr(tig, "revalidate_cached_decision", _quarantine)
+    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
+    assert body["operator_card_actionable"] is False
+    assert "revalidate_quarantine" in body["operator_stale_reason_codes"]
+    _assert_operator_mirrors_nested(body)
+
+
+def test_operator_card_actionable_false_on_quote_newer_than_signal(tier_c_cache_spy, monkeypatch):
+    srv = tier_c_cache_spy
+    ticker = "ZZZ_OP_QN"
+    expiry = "2099-12-15"
+    now = time.time()
+    _seed_cache(
+        srv,
+        ticker,
+        expiry,
+        _trusted_ms_dict(ticker=ticker, bundle_ts=now - 120.0),
+        age_sec=1.0,
+    )
+    monkeypatch.setattr(
+        srv._lmp,
+        "get_quote",
+        lambda t: {"fast_server_ts": now - 5.0, "quote_source_detail": {"carried_forward": False}},
+    )
+    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
+    assert body["operator_card_actionable"] is False
+    assert "quote_newer_than_signal" in body["operator_stale_reason_codes"]
+    _assert_operator_mirrors_nested(body)
+
+
+def test_operator_card_actionable_false_on_quote_carried_forward(tier_c_cache_spy, monkeypatch):
+    srv = tier_c_cache_spy
+    ticker = "ZZZ_OP_CFW"
+    expiry = "2099-12-16"
+    now = time.time()
+    _seed_cache(srv, ticker, expiry, _trusted_ms_dict(ticker=ticker, bundle_ts=now - 2.0), age_sec=1.0)
+    monkeypatch.setattr(
+        srv._lmp,
+        "get_quote",
+        lambda t: {
+            "fast_server_ts": now - 1.0,
+            "quote_source_detail": {"carried_forward": True, "schwab_auth_degraded": False},
+        },
+    )
+    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
+    assert body["operator_card_actionable"] is False
+    assert "quote_carried_forward" in body["operator_stale_reason_codes"]
+    _assert_operator_mirrors_nested(body)
+
+
+def test_regression_raw_trade_fields_unchanged_via_tier_c_response(tier_c_cache_spy, monkeypatch):
+    srv = tier_c_cache_spy
+    ticker = "ZZZ_OP_RAW"
+    expiry = "2099-12-17"
+    now = time.time()
+    md = {
+        "ticker": ticker,
+        "final_tradeable": True,
+        "call_signal": "wait",
+        "call_state": "WATCH",
+        "validation_passed": True,
+        "analytics_stale": False,
+        "fusion_available": True,
+        "mhap_rows": _mhap_four(),
+        "_server_build_ts": now - 2.0,
+    }
+    expected_raw = {k: md[k] for k in _RAW_TRADE_FIELDS}
+    _seed_cache(srv, ticker, expiry, md, age_sec=1.0)
+    monkeypatch.setattr(
+        srv._lmp,
+        "get_quote",
+        lambda t: {
+            "fast_server_ts": now - 1.0,
+            "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
+        },
+    )
+    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
+    for key in _RAW_TRADE_FIELDS:
+        assert body[key] == expected_raw[key]
+    assert _OPERATOR_MIRROR_KEYS <= set(body.keys())
 
 
 def test_card_freshness_v1_block_present_on_analytics_state(tier_c_cache_spy):

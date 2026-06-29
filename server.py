@@ -825,7 +825,7 @@ def _attach_analytics_freshness_contract(
 # Schwab CSV authority checked: yes
 # CSV row(s): NO_SCHWAB_EQUIVALENT — card_freshness_v1 is descriptive Tier C metadata only; reads existing plane quote via _lmp.get_quote(ticker) and existing md analytics/freshness fields; no new Schwab wire fetch or leaf derivation
 # Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE — quote_age_sec/bundle_age_sec/stale_reason_codes computed from existing fast_server_ts, _server_build_ts, quote_source_detail.carried_forward, quote_source_detail.schwab_auth_degraded
-# All consumers checked: yes — Tier C /api/analytics/state nested block only; no trade gates; UI lane S3
+# All consumers checked: yes — Tier C /api/analytics/state nested block + S2B-1 operator_* mirrors only; no trade gates; UI lane S3
 # card_freshness_v1 — S2A descriptive thresholds (nested API metadata only; not trade gates).
 _CARD_FRESHNESS_V1_QUOTE_STALE_SEC = 30.0
 _CARD_FRESHNESS_V1_BUNDLE_TRUST_SEC = 45.0
@@ -1094,6 +1094,21 @@ def _attach_card_freshness_v1_block(
         "quote_source_detail.carried_forward": carried_forward,
         "quote_source_detail.schwab_auth_degraded": schwab_auth_degraded,
     }
+
+    # S2B-1 — top-level operator mirrors for API consumers (nested card_freshness_v1 authoritative).
+    if card_actionable:
+        operator_actionability_reason: Optional[str] = None
+    elif stale_reason_codes:
+        operator_actionability_reason = stale_reason_codes[0]
+    elif trust_reason:
+        operator_actionability_reason = trust_reason
+    else:
+        operator_actionability_reason = "not_actionable"
+
+    md["operator_card_actionable"] = bool(card_actionable)
+    md["operator_card_trust_state"] = card_trust_state
+    md["operator_stale_reason_codes"] = list(stale_reason_codes)
+    md["operator_actionability_reason"] = operator_actionability_reason
 
 
 def _schedule_analytics_recompute(
