@@ -160,6 +160,22 @@ Operator-facing explanation (reason class + provenance)
 | **LOADING** | Tier C pending, partial shell, refresh in progress | `analytics_pending_shell`, status `ANALYTICS…` |
 | **Direction withheld** | Do not paint direction as authoritative | `data-direction-withhold`, bundle trust window |
 
+### 8.1 Target hybrid freshness model (`card_freshness_v1` — design only, S1)
+
+**Status:** Design block in `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `card_freshness_v1`. **Non-binding on production** until LANE S2+ wires producers/consumers. Does **not** close card fidelity or RTH stale-withheld proof.
+
+**Design recommendation:** **HYBRID** — preserve read-only context when stale; fail-closed any actionability / tradeable / ACTIVE styling; surface stale reason codes and operator labels; restore active/tradeable paint only after all freshness gates pass.
+
+**Canonical freshness layers (target):** quote freshness · snapshot freshness · analytics bundle freshness · decision bundle freshness · transport freshness · fallback/carry-forward freshness · UI render freshness.
+
+**Target operator labels:** LIVE · SYNCED · REFRESHING · STALE · LANE STALE · FEED STALE · CARRIED FORWARD · AUTH FALLBACK · ANALYTICS OLD · QUOTE NEWER THAN SIGNAL · NOT ACTIONABLE · WITHHELD · PENDING · DEGRADED · UNAVAILABLE.
+
+**Target backend contract fields (S2+):** `card_trust_state`, `card_actionable`, `analytics_age_sec`, `quote_age_sec`, `bundle_age_sec`, `analytics_ttl_sec`, `quote_stale_sec`, `bundle_trust_sec`, `fallback_status`, `carry_forward_status`, `source_freshness`, `stale_reason_codes`, `quote_ts`, `bundle_ts`, `mhap_bundle_ts`, plus existing `analytics_stale`, `analytics_generated_at`, `analytics_refresh_in_progress`, `quote_source_detail.carried_forward`, `quote_source_detail.schwab_auth_degraded`.
+
+**Fail-closed when stale (target):** ACTIVE exec paint · authoritative `final_tradeable` · PLAN armed/confirmed · `tf-signal-card--trade-active` · authoritative horizon confidence % · ALL trade-active glow · `engineTradeableSetup` true path · actionable `call_signal` · PLAN entry/stop/targets/size.
+
+**Explicit non-closure (S1):** `card_fidelity_overall=NOT_PROVEN` · `universal_runtime_live_proof=NOT_PROVEN` · `stale_withheld_rth_freshness=FAIL` · `real_money_readiness=NOT_PROVEN`.
+
 **Transport audits (PR #11, PR #12):**
 
 - Hybrid SSE + REST + poll; tier-agnostic ticker guards.

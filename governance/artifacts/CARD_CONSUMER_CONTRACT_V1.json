@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "artifact": "governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json",
-  "updated": "2026-06-27",
+  "updated": "2026-06-29",
   "purpose": "Declarative card consumer contract — payload field dispositions, execution channel vocabulary, and fidelity rules. Registry only; no UI wire-up or model changes in v1.",
   "regen_command": "Manual edit with paired tests in tests/test_universal_card_fidelity_runtime.py and tests/test_issue18_ui_contract.py",
   "consumers": [
@@ -156,6 +156,201 @@
       "stale_withheld_rth_freshness": "FAIL",
       "true_dom_mismatch": "FAIL"
     }
+  },
+  "card_freshness_v1": {
+    "lane_id": "STALE_CARD_REMEDIATION_S1",
+    "status": "DESIGN_ONLY_NOT_WIRED",
+    "implementation_lane": "LANE S1 — Freshness contract design/constants only",
+    "binding_on_production": false,
+    "design_recommendation": "HYBRID",
+    "card_fidelity_overall": "NOT_PROVEN",
+    "universal_runtime_live_proof": "NOT_PROVEN",
+    "stale_withheld_rth_freshness": "FAIL",
+    "real_money_readiness": "NOT_PROVEN",
+    "canonical_freshness_layers": [
+      {
+        "layer": "quote_freshness",
+        "authority": "L1 plane / GET /api/fast-quote / Tier A live",
+        "primary_signals": ["fast_server_ts", "quote_age_sec", "quote_source_detail.carried_forward"],
+        "consumer": "spot rail, FEED pill, card-trust input"
+      },
+      {
+        "layer": "snapshot_freshness",
+        "authority": "DB snapshot / order-flow strip",
+        "primary_signals": ["order_flow_stale", "order_flow_age_sec"],
+        "consumer": "decision rail OF block — not horizon pills"
+      },
+      {
+        "layer": "analytics_bundle_freshness",
+        "authority": "Tier C cache entry",
+        "primary_signals": ["analytics_generated_at", "analytics_age_sec", "analytics_stale"],
+        "consumer": "analyticsCardTrustGate, analytics-freshness banner"
+      },
+      {
+        "layer": "decision_bundle_freshness",
+        "authority": "decision_generation_id, _server_build_ts",
+        "primary_signals": ["bundle_age_sec", "decision_generation_id vs painted gen"],
+        "consumer": "LANE STALE chip, direction withhold"
+      },
+      {
+        "layer": "transport_freshness",
+        "authority": "client transport layer",
+        "primary_signals": ["_update_source", "sse_phase", "poll_age_sec"],
+        "consumer": "__edTransport, switch chip"
+      },
+      {
+        "layer": "fallback_carry_forward_freshness",
+        "authority": "Schwab auth / plane fallback paths",
+        "primary_signals": ["carried_forward", "schwab_auth_degraded", "cached_spread_fallback"],
+        "consumer": "fallback_status, carry_forward_status chips"
+      },
+      {
+        "layer": "ui_render_freshness",
+        "authority": "client paint clock",
+        "primary_signals": ["lastRenderTs", "tierCCardsPaintedAtGen", "data-card-trust-withhold"],
+        "consumer": "card paint, e2e proof"
+      }
+    ],
+    "backend_contract_fields": [
+      "card_trust_state",
+      "card_actionable",
+      "analytics_age_sec",
+      "quote_age_sec",
+      "bundle_age_sec",
+      "analytics_ttl_sec",
+      "quote_stale_sec",
+      "bundle_trust_sec",
+      "fallback_status",
+      "carry_forward_status",
+      "source_freshness",
+      "stale_reason_codes",
+      "quote_ts",
+      "bundle_ts",
+      "mhap_bundle_ts",
+      "tier_c_cache_revalidated",
+      "tier_c_cache_gate_ok",
+      "analytics_stale",
+      "analytics_generated_at",
+      "analytics_refresh_in_progress",
+      "quote_source_detail.carried_forward",
+      "quote_source_detail.schwab_auth_degraded"
+    ],
+    "card_trust_state_vocabulary": [
+      "TRUSTED",
+      "STALE",
+      "REFRESHING",
+      "DEGRADED",
+      "UNAVAILABLE"
+    ],
+    "ui_labels": [
+      "LIVE",
+      "SYNCED",
+      "REFRESHING",
+      "STALE",
+      "LANE STALE",
+      "FEED STALE",
+      "CARRIED FORWARD",
+      "AUTH FALLBACK",
+      "ANALYTICS OLD",
+      "QUOTE NEWER THAN SIGNAL",
+      "NOT ACTIONABLE",
+      "WITHHELD",
+      "PENDING",
+      "DEGRADED",
+      "UNAVAILABLE"
+    ],
+    "stale_reason_codes": [
+      "analytics_stale",
+      "analytics_age_exceeded",
+      "quote_age_exceeded",
+      "bundle_age_exceeded",
+      "quote_newer_than_signal",
+      "mhap_older_than_quote",
+      "quote_carried_forward",
+      "auth_fallback",
+      "auth_degraded",
+      "tier_c_cache_stale_serve",
+      "cache_refresh_in_progress",
+      "revalidate_quarantine",
+      "lane_stale",
+      "feed_stale",
+      "quote_ahead",
+      "gen_stale",
+      "pending_shell",
+      "partial_tier_c",
+      "pending_full_analytics",
+      "slow_stale_vs_fast",
+      "transport_down",
+      "transport_delay",
+      "missing_quote_ts",
+      "missing_bundle_ts",
+      "ticker_mismatch",
+      "token_invalid",
+      "fusion_unavailable",
+      "stack_integrity_degraded",
+      "signals_engine_failed",
+      "stack_invalid",
+      "state_error",
+      "cached_spread_fallback"
+    ],
+    "fail_closed_fields": [
+      "call_state ACTIVE paint",
+      "final_tradeable authoritative display",
+      "entry_state armed/confirmed on PLAN",
+      "tf-signal-card--trade-active class",
+      "horizon confidence pct as authoritative",
+      "ALL consolidated trade-active glow",
+      "engineTradeableSetup true path",
+      "call_signal long/short on actionable surfaces",
+      "plan entry/stop/targets/size when untrusted"
+    ],
+    "hybrid_render_policy": {
+      "preserve_read_only_when_stale": true,
+      "read_only_surfaces": [
+        "spot",
+        "session",
+        "levels",
+        "order_flow_context",
+        "dim_non_authoritative_horizon_context"
+      ],
+      "fail_closed_actionability_when_stale": true,
+      "fail_closed_surfaces": [
+        "call_state ACTIVE paint",
+        "final_tradeable authoritative display",
+        "entry_state armed/confirmed on PLAN",
+        "tf-signal-card--trade-active class",
+        "horizon confidence pct as authoritative",
+        "ALL consolidated trade-active glow",
+        "engineTradeableSetup true path",
+        "call_signal long/short on actionable surfaces",
+        "plan entry/stop/targets/size when untrusted"
+      ],
+      "require_explicit_stale_labels": true,
+      "restore_active_paint_requires_all_gates": true,
+      "restore_gates": [
+        "fresh_quote_not_carried_forward",
+        "fresh_tier_c_bundle",
+        "decision_generation_aligned",
+        "no_lane_stale",
+        "card_trust_state TRUSTED",
+        "card_actionable true only when all freshness layers pass"
+      ]
+    },
+    "default_threshold_constants_design": {
+      "note": "Design defaults for S2+ implementation — not enforced in production until wired",
+      "analytics_ttl_sec_default": 28.0,
+      "quote_stale_sec_default": 30.0,
+      "bundle_trust_sec_default": 45.0,
+      "feed_fresh_sec_default": 3.0
+    },
+    "future_implementation_lanes": [
+      "LANE S2 — Backend/API stale reason codes",
+      "LANE S3 — UI fail-closed card trust rendering",
+      "LANE S4 — Tier A/Tier C merge invalidation",
+      "LANE S5 — Fast quote carry-forward operator disclosure",
+      "LANE S6 — RTH DOM/e2e proof",
+      "LANE S7 — Card consumer contract closure proof"
+    ]
   },
   "fields": [
     {

@@ -410,11 +410,179 @@ def test_card_consumer_contract_v1_registry_exists_and_schema():
     assert reg["schema_version"] == 1
     assert reg["artifact"] == "governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json"
     assert len(reg.get("contract_rules") or []) >= 10
+    assert "card_freshness_v1" in reg
     fields = reg.get("fields") or []
     assert len(fields) >= 20
     for row in fields:
         missing = _REQUIRED_FIELD_KEYS - set(row)
         assert not missing, f"{row.get('field_name')}: missing {missing}"
+
+
+_CARD_FRESHNESS_V1_REQUIRED_BACKEND_FIELDS = frozenset(
+    {
+        "card_trust_state",
+        "card_actionable",
+        "analytics_age_sec",
+        "quote_age_sec",
+        "bundle_age_sec",
+        "analytics_ttl_sec",
+        "quote_stale_sec",
+        "bundle_trust_sec",
+        "fallback_status",
+        "carry_forward_status",
+        "source_freshness",
+        "stale_reason_codes",
+        "quote_ts",
+        "bundle_ts",
+        "mhap_bundle_ts",
+        "tier_c_cache_revalidated",
+        "tier_c_cache_gate_ok",
+        "analytics_stale",
+        "analytics_generated_at",
+        "analytics_refresh_in_progress",
+        "quote_source_detail.carried_forward",
+        "quote_source_detail.schwab_auth_degraded",
+    }
+)
+
+_CARD_FRESHNESS_V1_REQUIRED_UI_LABELS = frozenset(
+    {
+        "LIVE",
+        "SYNCED",
+        "REFRESHING",
+        "STALE",
+        "LANE STALE",
+        "FEED STALE",
+        "CARRIED FORWARD",
+        "AUTH FALLBACK",
+        "ANALYTICS OLD",
+        "QUOTE NEWER THAN SIGNAL",
+        "NOT ACTIONABLE",
+        "WITHHELD",
+        "PENDING",
+        "DEGRADED",
+        "UNAVAILABLE",
+    }
+)
+
+_CARD_FRESHNESS_V1_REQUIRED_STALE_REASON_CODES = frozenset(
+    {
+        "analytics_stale",
+        "analytics_age_exceeded",
+        "quote_age_exceeded",
+        "bundle_age_exceeded",
+        "quote_newer_than_signal",
+        "mhap_older_than_quote",
+        "quote_carried_forward",
+        "auth_fallback",
+        "auth_degraded",
+        "tier_c_cache_stale_serve",
+        "cache_refresh_in_progress",
+        "revalidate_quarantine",
+        "lane_stale",
+        "feed_stale",
+        "quote_ahead",
+        "gen_stale",
+        "pending_shell",
+        "partial_tier_c",
+        "pending_full_analytics",
+        "slow_stale_vs_fast",
+        "transport_down",
+        "transport_delay",
+        "missing_quote_ts",
+        "missing_bundle_ts",
+        "ticker_mismatch",
+        "token_invalid",
+        "fusion_unavailable",
+        "stack_integrity_degraded",
+        "signals_engine_failed",
+        "stack_invalid",
+        "state_error",
+        "cached_spread_fallback",
+    }
+)
+
+_CARD_FRESHNESS_V1_REQUIRED_FAIL_CLOSED_FIELDS = frozenset(
+    {
+        "call_state ACTIVE paint",
+        "final_tradeable authoritative display",
+        "entry_state armed/confirmed on PLAN",
+        "tf-signal-card--trade-active class",
+        "horizon confidence pct as authoritative",
+        "ALL consolidated trade-active glow",
+        "engineTradeableSetup true path",
+        "call_signal long/short on actionable surfaces",
+        "plan entry/stop/targets/size when untrusted",
+    }
+)
+
+
+def _load_card_freshness_v1() -> dict:
+    return _load_card_consumer_contract()["card_freshness_v1"]
+
+
+def test_card_freshness_v1_design_block_present():
+    cf = _load_card_freshness_v1()
+    assert cf["lane_id"] == "STALE_CARD_REMEDIATION_S1"
+    assert cf["status"] == "DESIGN_ONLY_NOT_WIRED"
+    assert cf["binding_on_production"] is False
+    assert cf["design_recommendation"] == "HYBRID"
+    layers = cf.get("canonical_freshness_layers") or []
+    assert len(layers) == 7
+    layer_ids = {row["layer"] for row in layers}
+    assert "quote_freshness" in layer_ids
+    assert "ui_render_freshness" in layer_ids
+
+
+def test_card_freshness_v1_stale_reason_codes_complete():
+    cf = _load_card_freshness_v1()
+    codes = set(cf.get("stale_reason_codes") or [])
+    assert _CARD_FRESHNESS_V1_REQUIRED_STALE_REASON_CODES <= codes
+
+
+def test_card_freshness_v1_ui_labels_complete():
+    cf = _load_card_freshness_v1()
+    labels = set(cf.get("ui_labels") or [])
+    assert _CARD_FRESHNESS_V1_REQUIRED_UI_LABELS <= labels
+
+
+def test_card_freshness_v1_fail_closed_fields_documented():
+    cf = _load_card_freshness_v1()
+    documented = set(cf.get("fail_closed_fields") or [])
+    assert _CARD_FRESHNESS_V1_REQUIRED_FAIL_CLOSED_FIELDS <= documented
+
+
+def test_card_freshness_v1_hybrid_policy_documented():
+    cf = _load_card_freshness_v1()
+    policy = cf.get("hybrid_render_policy") or {}
+    assert policy.get("preserve_read_only_when_stale") is True
+    assert policy.get("fail_closed_actionability_when_stale") is True
+    assert policy.get("require_explicit_stale_labels") is True
+    assert policy.get("restore_active_paint_requires_all_gates") is True
+    fail_closed = set(policy.get("fail_closed_surfaces") or [])
+    assert _CARD_FRESHNESS_V1_REQUIRED_FAIL_CLOSED_FIELDS <= fail_closed
+    backend = set(cf.get("backend_contract_fields") or [])
+    assert _CARD_FRESHNESS_V1_REQUIRED_BACKEND_FIELDS <= backend
+
+
+def test_card_freshness_v1_fidelity_still_not_proven():
+    cf = _load_card_freshness_v1()
+    reg = _load_card_consumer_contract()
+    fc = reg.get("fidelity_classification_v1") or {}
+    assert cf["card_fidelity_overall"] == "NOT_PROVEN"
+    assert cf["universal_runtime_live_proof"] == "NOT_PROVEN"
+    assert cf["real_money_readiness"] == "NOT_PROVEN"
+    assert fc["card_fidelity_overall"] == "NOT_PROVEN"
+    assert fc["universal_runtime_live_proof"] == "NOT_PROVEN"
+    assert fc["real_money_readiness"] == "NOT_PROVEN"
+
+
+def test_card_freshness_v1_stale_withheld_rth_still_fail():
+    cf = _load_card_freshness_v1()
+    reg = _load_card_consumer_contract()
+    fc = reg.get("fidelity_classification_v1") or {}
+    assert cf["stale_withheld_rth_freshness"] == "FAIL"
+    assert fc.get("acceptance_semantics", {}).get("stale_withheld_rth_freshness") == "FAIL"
 
 
 def test_card_consumer_contract_no_speculative_meta_label_fields():
