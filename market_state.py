@@ -1811,3 +1811,10 @@ def build_market_state(
     ms.contract_context = _build_contract_context_ms(ms, contracts_use)
 
     return ms
+
+
+def attach_operator_visible_field_lineage(md: dict) -> None:
+    """Attach additive operator-visible ``field_lineage`` to Tier-C payload (Lane A — metadata only)."""
+    from features.inference_snapshot import attach_operator_field_lineage
+
+    attach_operator_field_lineage(md)

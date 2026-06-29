@@ -255,3 +255,213 @@ def _assert_inference_snapshot_v1(snap: dict[str, Any]) -> None:
             raise ValueError(
                 f"InferenceSnapshotV1: feature_lineage[{key!r}].fallback_flag inconsistent with features"
             )
+
+
+# ── Operator-visible Tier-C field lineage (Lane A — metadata only, no calc change) ──
+
+LINEAGE_CLASS_SCHWAB_NATIVE_FIELD = "SCHWAB_NATIVE_FIELD"
+LINEAGE_CLASS_SCHWAB_NATIVE_ALIAS_OR_NORMALIZATION = "SCHWAB_NATIVE_ALIAS_OR_NORMALIZATION"
+LINEAGE_CLASS_LEGITIMATE_ENGINEERED_FIELD = "LEGITIMATE_ENGINEERED_FIELD"
+LINEAGE_CLASS_SUSPICIOUS_ENGINEERED_FIELD_NATIVE_MAY_EXIST = "SUSPICIOUS_ENGINEERED_FIELD_NATIVE_MAY_EXIST"
+LINEAGE_CLASS_DANGEROUS_PROXY_FIELD = "DANGEROUS_PROXY_FIELD"
+LINEAGE_CLASS_FALLBACK_FIELD = "FALLBACK_FIELD"
+LINEAGE_CLASS_UNKNOWN_LINEAGE_FIELD = "UNKNOWN_LINEAGE_FIELD"
+
+OPERATOR_FIELD_LINEAGE_CLASSES: frozenset[str] = frozenset(
+    {
+        LINEAGE_CLASS_SCHWAB_NATIVE_FIELD,
+        LINEAGE_CLASS_SCHWAB_NATIVE_ALIAS_OR_NORMALIZATION,
+        LINEAGE_CLASS_LEGITIMATE_ENGINEERED_FIELD,
+        LINEAGE_CLASS_SUSPICIOUS_ENGINEERED_FIELD_NATIVE_MAY_EXIST,
+        LINEAGE_CLASS_DANGEROUS_PROXY_FIELD,
+        LINEAGE_CLASS_FALLBACK_FIELD,
+        LINEAGE_CLASS_UNKNOWN_LINEAGE_FIELD,
+    }
+)
+
+_SCHWAB_QUOTE_LEAF_BY_DETAIL: dict[str, str] = {
+    "lastPrice": "quotes.*.lastPrice",
+    "mark": "quotes.*.mark",
+    "bidPrice": "quotes.*.bidPrice",
+    "askPrice": "quotes.*.askPrice",
+}
+
+_PRIMARY_DECISION_HORIZONS = ("1c", "5c", "15c", "60c")
+
+
+def _lineage_entry(
+    lineage_class: str,
+    *,
+    detail: str,
+    producer: str = "",
+    schwab_leaf: str | None = None,
+    emitted: bool = True,
+) -> dict[str, Any]:
+    if lineage_class not in OPERATOR_FIELD_LINEAGE_CLASSES:
+        raise ValueError(f"invalid lineage_class: {lineage_class!r}")
+    out: dict[str, Any] = {
+        "lineage_class": lineage_class,
+        "detail": detail,
+        "emitted": bool(emitted),
+    }
+    if producer:
+        out["producer"] = producer
+    if schwab_leaf:
+        out["schwab_leaf"] = schwab_leaf
+    return out
+
+
+def _quote_field_lineage(
+    field: str,
+    *,
+    value: Any,
+    quote_detail: dict[str, Any],
+    spread_source: str | None,
+) -> dict[str, Any]:
+    if quote_detail.get("carried_forward"):
+        return _lineage_entry(
+            LINEAGE_CLASS_FALLBACK_FIELD,
+            detail=f"{field}_carried_forward_cached_quote",
+            producer="server.py::_fetch_state",
+        )
+    src = str(quote_detail.get(field) or "")
+    if value is None or src.startswith("unavailable"):
+        return _lineage_entry(
+            LINEAGE_CLASS_UNKNOWN_LINEAGE_FIELD,
+            detail=src or f"{field}_missing",
+            producer="server.py::_fetch_state",
+            emitted=value is not None,
+        )
+    leaf = _SCHWAB_QUOTE_LEAF_BY_DETAIL.get(src)
+    if leaf:
+        return _lineage_entry(
+            LINEAGE_CLASS_SCHWAB_NATIVE_ALIAS_OR_NORMALIZATION,
+            detail=src,
+            producer="server.py::_fetch_state",
+            schwab_leaf=leaf,
+        )
+    if field == "spread" and spread_source == "cached_last_valid_not_tradeable":
+        return _lineage_entry(
+            LINEAGE_CLASS_FALLBACK_FIELD,
+            detail=spread_source,
+            producer="server.py::_fetch_state",
+        )
+    return _lineage_entry(
+        LINEAGE_CLASS_UNKNOWN_LINEAGE_FIELD,
+        detail=src or f"{field}_unmapped_source",
+        producer="server.py::_fetch_state",
+    )
+
+
+def build_operator_field_lineage(md: dict[str, Any]) -> dict[str, Any]:
+    """
+    Trade-determinative Tier-C lineage map (additive metadata only).
+
+    Does not read or mutate field values — classification uses existing payload keys only.
+    """
+    quote_detail = dict(md.get("quote_source_detail") or {})
+    spread_source = md.get("spread_source")
+    lineage: dict[str, Any] = {}
+
+    lineage["spot"] = _quote_field_lineage(
+        "spot", value=md.get("spot"), quote_detail=quote_detail, spread_source=spread_source
+    )
+    lineage["bid"] = _quote_field_lineage(
+        "bid", value=md.get("bid"), quote_detail=quote_detail, spread_source=spread_source
+    )
+    lineage["ask"] = _quote_field_lineage(
+        "ask", value=md.get("ask"), quote_detail=quote_detail, spread_source=spread_source
+    )
+
+    call_state_val = md.get("call_state")
+    if call_state_val is None:
+        cr = md.get("call_readiness")
+        if isinstance(cr, dict):
+            call_state_val = cr.get("call_state")
+    lineage["call_state"] = _lineage_entry(
+        LINEAGE_CLASS_LEGITIMATE_ENGINEERED_FIELD,
+        detail="call_engine.py::setup_readiness → market_state.call_state",
+        producer="call_engine.py → market_state.py → server.py::_ms_to_dict",
+        emitted=call_state_val is not None,
+    )
+
+    mhap = md.get("mhap_rows")
+    mhap_list = mhap if isinstance(mhap, list) else None
+    mhap_emitted = bool(mhap_list)
+    if not mhap_emitted:
+        mhap_class = LINEAGE_CLASS_UNKNOWN_LINEAGE_FIELD
+        mhap_detail = "mhap_rows_missing_or_not_array"
+    elif md.get("signals_engine_failed"):
+        mhap_class = LINEAGE_CLASS_UNKNOWN_LINEAGE_FIELD
+        mhap_detail = "signals_engine_failed"
+    else:
+        mhap_class = LINEAGE_CLASS_LEGITIMATE_ENGINEERED_FIELD
+        mhap_detail = "multi_horizon_decision → fusion-backed horizon assessments"
+    lineage["mhap_rows"] = _lineage_entry(
+        mhap_class,
+        detail=mhap_detail,
+        producer="signals.py → market_state.py",
+        emitted=mhap_emitted,
+    )
+
+    fusion_horizons: dict[str, Any] = {}
+    fusion_available = bool(md.get("fusion_available"))
+    for hz in _PRIMARY_DECISION_HORIZONS:
+        triplet = {
+            "up": md.get(f"up_prob_{hz}"),
+            "down": md.get(f"down_prob_{hz}"),
+            "flat": md.get(f"flat_prob_{hz}"),
+        }
+        emitted_hz = any(v is not None for v in triplet.values())
+        if not emitted_hz:
+            hz_class = LINEAGE_CLASS_UNKNOWN_LINEAGE_FIELD
+            hz_detail = f"fusion_triplet_{hz}_withheld"
+        elif fusion_available:
+            hz_class = LINEAGE_CLASS_LEGITIMATE_ENGINEERED_FIELD
+            hz_detail = f"bayesian_fusion posterior {hz}"
+        else:
+            hz_class = LINEAGE_CLASS_UNKNOWN_LINEAGE_FIELD
+            hz_detail = f"fusion_unavailable_{hz}"
+        fusion_horizons[hz] = _lineage_entry(
+            hz_class,
+            detail=hz_detail,
+            producer="bayesian_fusion.py → signals.py",
+            emitted=emitted_hz,
+        )
+    lineage["fusion_triplets"] = fusion_horizons
+
+    wait_reason = md.get("wait_reason")
+    wait_emitted = wait_reason is not None and str(wait_reason).strip() != ""
+    lineage["wait_reason"] = _lineage_entry(
+        LINEAGE_CLASS_LEGITIMATE_ENGINEERED_FIELD if wait_emitted else LINEAGE_CLASS_UNKNOWN_LINEAGE_FIELD,
+        detail="multi_horizon_decision.wait_reason" if wait_emitted else "wait_reason_empty_or_absent",
+        producer="signals.py → market_state.py",
+        emitted=wait_emitted,
+    )
+
+    em_val = md.get("kl_em_upper")
+    if em_val is None:
+        em_val = md.get("em_upper")
+    em_emitted = em_val is not None
+    lineage["expected_move"] = _lineage_entry(
+        LINEAGE_CLASS_LEGITIMATE_ENGINEERED_FIELD if em_emitted else LINEAGE_CLASS_UNKNOWN_LINEAGE_FIELD,
+        detail="math_expected_move from Schwab chain marks/IV" if em_emitted else "expected_move_not_emitted",
+        producer="server.py::_fetch_state → math_probabilities",
+        emitted=em_emitted,
+    )
+
+    if "analytics_stale" in md:
+        lineage["analytics_stale"] = _lineage_entry(
+            LINEAGE_CLASS_LEGITIMATE_ENGINEERED_FIELD,
+            detail="server.py::_attach_analytics_freshness_contract bundle age vs TTL",
+            producer="server.py::_attach_analytics_freshness_contract",
+            emitted=True,
+        )
+
+    return lineage
+
+
+def attach_operator_field_lineage(md: dict[str, Any]) -> None:
+    """Attach operator-visible field_lineage map to a Tier-C / analytics payload (in-place)."""
+    md["field_lineage"] = build_operator_field_lineage(md)
+

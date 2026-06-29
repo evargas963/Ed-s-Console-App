@@ -868,3 +868,92 @@ def test_execution_state_chip_distinct_from_forecast_direction():
     assert setup_idx != -1
     setup_use = h.count("setupForecastSentence(")
     assert setup_use == 1, "setupForecastSentence remains defined-only (not execution chip path)"
+
+
+def test_card_contract_documents_field_lineage_vocabulary():
+    data = json.loads(CARD_CONSUMER_CONTRACT.read_text(encoding="utf-8"))
+    vocab = data.get("field_lineage_vocabulary_v1")
+    assert isinstance(vocab, dict), "field_lineage_vocabulary_v1 missing"
+    classes = vocab.get("lineage_classes")
+    assert isinstance(classes, list) and len(classes) == 7
+    for name in (
+        "SCHWAB_NATIVE_FIELD",
+        "SCHWAB_NATIVE_ALIAS_OR_NORMALIZATION",
+        "LEGITIMATE_ENGINEERED_FIELD",
+        "SUSPICIOUS_ENGINEERED_FIELD_NATIVE_MAY_EXIST",
+        "DANGEROUS_PROXY_FIELD",
+        "FALLBACK_FIELD",
+        "UNKNOWN_LINEAGE_FIELD",
+    ):
+        assert name in classes
+    minimum = vocab.get("trade_determinative_minimum_fields")
+    assert "call_state" in minimum
+    assert "mhap_rows" in minimum
+    assert "fusion_triplets" in minimum
+
+
+def test_attach_operator_field_lineage_additive_only():
+    from features.inference_snapshot import attach_operator_field_lineage
+
+    md = {
+        "spot": 501.25,
+        "bid": 501.2,
+        "ask": 501.3,
+        "call_state": "WAIT",
+        "mhap_rows": [{"horizon": "1c", "call": "WAIT", "confidence": None}],
+        "up_prob_1c": 0.4,
+        "down_prob_1c": 0.3,
+        "flat_prob_1c": 0.3,
+        "fusion_available": True,
+        "wait_reason": "no_primary",
+        "kl_em_upper": 505.0,
+        "analytics_stale": False,
+        "quote_source_detail": {
+            "spot": "mark",
+            "bid": "bidPrice",
+            "ask": "askPrice",
+            "spread": "schwab_bid_ask_live",
+            "carried_forward": False,
+        },
+        "spread_source": "schwab_bid_ask_live",
+    }
+    before = {k: v for k, v in md.items()}
+    attach_operator_field_lineage(md)
+    assert "field_lineage" in md
+    for key, val in before.items():
+        assert md[key] == val
+
+
+def test_attach_operator_field_lineage_trade_determinative_minimum():
+    from features.inference_snapshot import (
+        OPERATOR_FIELD_LINEAGE_CLASSES,
+        attach_operator_field_lineage,
+    )
+
+    md = {
+        "spot": 500.0,
+        "bid": 499.9,
+        "ask": 500.1,
+        "call_state": "WATCH",
+        "mhap_rows": [],
+        "fusion_available": False,
+        "wait_reason": "",
+        "analytics_stale": True,
+        "quote_source_detail": {
+            "spot": "lastPrice",
+            "bid": "bidPrice",
+            "ask": "askPrice",
+            "carried_forward": False,
+        },
+    }
+    attach_operator_field_lineage(md)
+    fl = md["field_lineage"]
+    for key in ("call_state", "mhap_rows", "spot", "bid", "ask", "wait_reason", "expected_move", "analytics_stale"):
+        assert key in fl
+    assert "fusion_triplets" in fl
+    for hz in ("1c", "5c", "15c", "60c"):
+        assert hz in fl["fusion_triplets"]
+        assert fl["fusion_triplets"][hz]["lineage_class"] in OPERATOR_FIELD_LINEAGE_CLASSES
+    assert fl["spot"]["lineage_class"] == "SCHWAB_NATIVE_ALIAS_OR_NORMALIZATION"
+    assert fl["spot"]["schwab_leaf"] == "quotes.*.lastPrice"
+    assert fl["wait_reason"]["lineage_class"] == "UNKNOWN_LINEAGE_FIELD"

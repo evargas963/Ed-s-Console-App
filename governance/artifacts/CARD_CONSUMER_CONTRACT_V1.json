@@ -681,5 +681,42 @@
       "test_required": "tests/test_issue18_ui_contract.py",
       "decision_status": "PROVEN"
     }
-  ]
+  ],
+  "field_lineage_vocabulary_v1": {
+    "lane_id": "OPERATOR_VISIBLE_FIELD_LINEAGE_V1",
+    "status": "ADDITIVE_METADATA_LANE_A",
+    "implementation_type": "SOURCE_BEHAVIOR_NO_CALC_CHANGE",
+    "payload_key": "field_lineage",
+    "purpose": "Operator-visible lineage classes for trade-determinative Tier-C fields. Metadata only — does not change numeric values or decision logic.",
+    "lineage_classes": [
+      "SCHWAB_NATIVE_FIELD",
+      "SCHWAB_NATIVE_ALIAS_OR_NORMALIZATION",
+      "LEGITIMATE_ENGINEERED_FIELD",
+      "SUSPICIOUS_ENGINEERED_FIELD_NATIVE_MAY_EXIST",
+      "DANGEROUS_PROXY_FIELD",
+      "FALLBACK_FIELD",
+      "UNKNOWN_LINEAGE_FIELD"
+    ],
+    "entry_shape": {
+      "lineage_class": "one of lineage_classes",
+      "detail": "human-readable classification note",
+      "emitted": "bool — whether the field is present on payload",
+      "producer": "optional producer chain",
+      "schwab_leaf": "optional Schwab dictionary leaf when proven"
+    },
+    "trade_determinative_minimum_fields": [
+      "call_state",
+      "mhap_rows",
+      "spot",
+      "bid",
+      "ask",
+      "fusion_triplets",
+      "wait_reason",
+      "expected_move",
+      "analytics_stale"
+    ],
+    "unknown_when_unproven": true,
+    "producer_authority": "features/inference_snapshot.py::build_operator_field_lineage",
+    "attach_authority": "market_state.py::attach_operator_visible_field_lineage"
+  }
 }

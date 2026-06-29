@@ -6618,6 +6618,9 @@ def _fetch_state(
     }
     _evict_old_expiry_entries(ticker, selected_exp)
     _attach_db_contention_operator_surface(ms_dict)
+    from market_state import attach_operator_visible_field_lineage
+
+    attach_operator_visible_field_lineage(ms_dict)
     return ms_dict
 
 
@@ -7410,6 +7413,9 @@ def _tier_c_analytics_json_response(
             stale=bool(stale),
         )
         _attach_db_contention_operator_surface(md)
+        from market_state import attach_operator_visible_field_lineage
+
+        attach_operator_visible_field_lineage(md)
         return JSONResponse(md)
 
     log.info(
@@ -7440,6 +7446,9 @@ def _tier_c_analytics_json_response(
     )
     _schedule_analytics_recompute(inflight_key, ticker, expiry, update_source)
     _attach_db_contention_operator_surface(md)
+    from market_state import attach_operator_visible_field_lineage
+
+    attach_operator_visible_field_lineage(md)
     return JSONResponse(md)
 
 

@@ -960,3 +960,13 @@ def test_harness_source_declares_trust_aware_compare():
     assert "compare_dom_to_expectations" in src
     assert "trust_reason_to_withheld_parity_status" in src
 
+
+def test_card_consumer_contract_field_lineage_vocabulary_v1(ucf):
+    reg = _load_card_consumer_contract()
+    vocab = reg.get("field_lineage_vocabulary_v1") or {}
+    assert vocab.get("payload_key") == "field_lineage"
+    assert vocab.get("unknown_when_unproven") is True
+    minimum = vocab.get("trade_determinative_minimum_fields") or []
+    assert "mhap_rows" in minimum
+    assert "fusion_triplets" in minimum
+
