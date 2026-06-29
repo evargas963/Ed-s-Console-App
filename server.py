@@ -822,6 +822,10 @@ def _attach_analytics_freshness_contract(
             md["analytics_last_error"] = last_err
 
 
+# Schwab CSV authority checked: yes
+# CSV row(s): NO_SCHWAB_EQUIVALENT — card_freshness_v1 is descriptive Tier C metadata only; reads existing plane quote via _lmp.get_quote(ticker) and existing md analytics/freshness fields; no new Schwab wire fetch or leaf derivation
+# Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE — quote_age_sec/bundle_age_sec/stale_reason_codes computed from existing fast_server_ts, _server_build_ts, quote_source_detail.carried_forward, quote_source_detail.schwab_auth_degraded
+# All consumers checked: yes — Tier C /api/analytics/state nested block only; no trade gates; UI lane S3
 # card_freshness_v1 — S2A descriptive thresholds (nested API metadata only; not trade gates).
 _CARD_FRESHNESS_V1_QUOTE_STALE_SEC = 30.0
 _CARD_FRESHNESS_V1_BUNDLE_TRUST_SEC = 45.0
