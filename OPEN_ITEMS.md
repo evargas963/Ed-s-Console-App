@@ -32,6 +32,7 @@ The complete institutional/MIT/Bloomberg-terminal roadmap is tracked in:
 Current high-priority future lanes preserved in the master checklist:
 
 - FEATURE_LINEAGE_AND_LOOKAHEAD_BIAS_AUDIT_V1
+- VOLATILITY_INDEX_CONFLUENCE_AND_CALL_PUT_SIGNAL_CORRECTNESS_AUDIT_V1
 - DECISION_LEDGER_AND_REPLAY_V1
 - SIGNAL_OUTCOME_VALIDATION_V1
 - BACKTEST_TO_LIVE_PARITY_V1
@@ -65,6 +66,18 @@ Current high-priority future lanes preserved in the master checklist:
 - [ ] **CARD-FIDELITY-LIVE-UI-F-STACK-WIRE-6-RECONCILIATION** — **Docs + scope hygiene · P1.** `[x] STACK-WIRE-6` @ `9d4c8a4` closed **ms_dict reconstruction parity** (6a/6b/6c). Legacy `[ ] LIVE-UI-F` row (COHERENCE-AUDIT block) still lists open — **reconciled status:** ms_dict replay reconstruction **CLOSED_WITH_EVIDENCE**; any remaining LIVE-UI-F scope = **runtime A2/module parity beyond reconstruction** (OBS-A2OE1 class) — **separate lane**, not a duplicate open STACK-WIRE-6 item. **Action:** treat STACK-WIRE-6 as closed; narrow LIVE-UI-F to A2 runtime parity or close with REAL-GATE when operator accepts reconstruction-only closure.
 
 **Current composite (preserve @ `216702c`):** orphan payload handling overall = **NOT_PROVEN**; card fidelity overall = **NOT_PROVEN**; universal runtime live proof = **NOT_PROVEN**; real-money readiness = **NOT_PROVEN**; D17 full closure = **NOT_CLOSED**. Closed with evidence: stale/fallback, execution channel, `call_signal` reclassification, `call_headline` deprecation.
+
+---
+
+## Lane A — operator field lineage labeling (2026-06-29)
+
+**LANE_A_LINEAGE_LABELING = CLOSED_WITH_EVIDENCE** · **LANE_A_CLOSURE_SHA = `eceb500848ed9ad55a0e1903b98a8d9d63d50d2f`**. **Commits:** `c919639` (source/metadata) + `eceb500` (governance/inventory CI fix). **Remote CI @ `eceb500` (all PASS):** Objective Audit run `28367401453` · Pytest Full Suite run `28367401475` · Hardening Gates run `28367401430` · Schwab CSV First Guard run `28367401481`. **Scope closed:** additive operator-visible `field_lineage` metadata only — no numeric/decision/model-input change. **Field lineage deep audit (`FEATURE_LINEAGE_AND_LOOKAHEAD_BIAS_AUDIT_V1`):** **NOT_STARTED** (separate program lane).
+
+---
+
+## Volatility index confluence + call/put signal correctness (2026-06-29)
+
+- [ ] **VOLATILITY_INDEX_CONFLUENCE_AND_CALL_PUT_SIGNAL_CORRECTNESS_AUDIT_V1** — **STATUS = OPEN** · **P1** · repo-wide read-only audit + remediation design only (no same-session live trading fix). **Purpose:** Track that volatility-index usage and call/put signal transforms must be audited repo-wide under institutional standards; remediate only after evidence and operator approval. **Repo-wide volatility confluence scope (minimum):** SPY ↔ **VIX** · QQQ ↔ **VXN** · IWM ↔ **RVX**. **Current concern:** SPY should use **VIX** as the native volatility/fear gauge; **QQQ** should be investigated against **VXN** (Nasdaq-100 vol); **IWM** against **RVX** (Russell 2000 vol); current repo usage may use **VIX as a shared proxy** across SPY/QQQ/IWM; current usage may not distinguish volatility **level**, volatility **change**, and directional equity signal. **Call/put:** call signals and put signals must be audited repo-wide; signal transforms must be symmetric and correct for both calls and puts. **Ticker-specific behavior:** allowed only after extensive evidence and operator approval — not by assumption. **Required audit questions:** Is VIX correct for SPY? Is VIX incorrectly proxied for QQQ/IWM where VXN/RVX may be more appropriate? Are VXN/RVX available via Schwab or another approved source? Are VIX/VXN/RVX used as raw ML features, deterministic risk overlays, direction-change inputs, or UI explanations? Are vol-index changes interpreted as risk-off/risk-on context rather than blind directional alpha? Are call signals and put signals correct repo-wide? Are signal transforms symmetric and correct for calls and puts? Are ticker-specific exceptions justified by evidence? **Required standards:** repo-wide (not SPY-only); SPY/QQQ/IWM minimum; ticker-specific behavior only after evidence + operator approval; extensive research before implementation; no same-session live trading fix without read-only audit → design → tests → local proof → commit proof → push proof → remote CI proof; align with Bloomberg-terminal / MIT / institutional / world-class bar. **RTH timing constraint:** `MARKET_OPEN_CT = 08:30` — prior RTH work exists and timing matters; any same-session behavior fix requires full proof chain; **`SAME_SESSION_BEHAVIOR_FIX_REQUIRES_FULL_PROOF = YES`**; **`SAME_SESSION_FIX_APPROVED = NO`**. **Governance instruction:** if the work cannot be completed safely before the trading session, the correct action is **wait**. **Future lanes (design only until approved):** A) read-only repo audit of volatility-index usage; B) external research on VIX/VXN/RVX institutional usage and correlations; C) data-source availability proof; D) call/put signal symmetry audit repo-wide; E) remediation design only; F) separate implementation lanes after approval. **Status fields:** `SOURCE_CODE_CHANGE_APPROVED = NO` · `LIVE_TRADING_FIX_APPROVED = NO` · `SAME_SESSION_FIX_APPROVED = NO` · `RESEARCH_REQUIRED = YES` · `READ_ONLY_AUDIT_REQUIRED = YES` · `REMEDIATION_DESIGN_REQUIRED = YES` · `REAL_MONEY_READINESS_IMPACT = YES` · `D17_CLOSURE_STATUS = NOT_CLOSED` · `SCHWAB_V4_REGISTER_CLOSURE_STATUS = NOT_CLOSED`. **Closes when:** lanes A–E complete with evidence @ SHA + operator approval before any lane F implementation.
 
 ---
 
@@ -109,8 +122,23 @@ Current high-priority future lanes preserved in the master checklist:
 | Card fidelity overall | **NOT_PROVEN** |
 | Universal runtime live proof | **NOT_PROVEN** |
 | Field lineage deep audit | **NOT_STARTED** |
+| Lane A operator field lineage labeling | **CLOSED_WITH_EVIDENCE** @ `eceb500` |
 
 **Detail authority:** `governance/docs/D17_REGISTER_SLICE_INVENTORY_SUMMARY.md` §Path-A wave train.
+
+---
+
+## Lane A — operator field lineage labeling @ `eceb500` (closed)
+
+| Fact | Status |
+|------|--------|
+| `LANE_A_LINEAGE_LABELING` | **CLOSED_WITH_EVIDENCE** |
+| Closure SHA | `eceb500848ed9ad55a0e1903b98a8d9d63d50d2f` |
+| Objective Audit | **PASS** (run `28367401453`) |
+| Pytest Full Suite | **PASS** (run `28367401475`) |
+| Hardening Gates | **PASS** (run `28367401430`) |
+| Schwab CSV First Guard | **PASS** (run `28367401481`) |
+| Scope | Additive `field_lineage` metadata only — no calc/decision change |
 
 ---
 

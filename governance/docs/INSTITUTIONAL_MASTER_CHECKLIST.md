@@ -143,6 +143,8 @@ Execute in phase order unless operator explicitly preempts. Non-RTH live parity 
 | Lane | Status | Phase | Priority | Dependencies | Why it matters | OPEN_ITEMS now? |
 |------|--------|-------|----------|--------------|----------------|-----------------|
 | `FEATURE_LINEAGE_AND_LOOKAHEAD_BIAS_AUDIT_V1` | **NOT_STARTED** | 4 | P1 | Phase 3 data truth | Train-serve identity, causal ordering | NO (master backlog; pointer in cross-link) |
+| Lane A operator field lineage labeling | **CLOSED_WITH_EVIDENCE** @ `eceb500` | 4 | — | — | Additive `field_lineage` metadata; remote CI green | NO (closed) |
+| `VOLATILITY_INDEX_CONFLUENCE_AND_CALL_PUT_SIGNAL_CORRECTNESS_AUDIT_V1` | **OPEN** | 4 | **P1** | Phase 3 data truth; RTH timing | SPY↔VIX · QQQ↔VXN · IWM↔RVX + call/put symmetry | YES |
 | Train-serve parity (I-05) | **ENFORCED** | 4 | P0 | — | Encoder cone mechanical lock | NO |
 | ZERO-BIAS ablation placement | **ENFORCED** (mechanical) | 4 | P1 | Runnable grid | No pre-decided feature routing | YES (`INST-PROGRAM-ABLATION-RUNNABLE`) |
 | Ablation ingest purity | **ENFORCED** | 4 | P1 | — | Wire-only scoring path | NO |
@@ -239,6 +241,7 @@ Explicit lane IDs — **not** closed by card contract work @ `216702c`:
 | `DECISION_LEDGER_AND_REPLAY_V1` | **NOT_STARTED** | 13 | High | Phase 5 | Immutable audit trail | NO |
 | `MARKET_DATA_QUALITY_AND_CORPORATE_ACTIONS_V1` | **NOT_STARTED** | 13 | High | Phase 3 | Corp actions + quote quality | NO |
 | `FEATURE_LINEAGE_AND_LOOKAHEAD_BIAS_AUDIT_V1` | **NOT_STARTED** | 13 | High | Phase 4 | Leakage + train-serve audit | NO |
+| `VOLATILITY_INDEX_CONFLUENCE_AND_CALL_PUT_SIGNAL_CORRECTNESS_AUDIT_V1` | **OPEN** | 13 | **High** | Phase 3–4; `MARKET_OPEN_CT=08:30` | SPY↔VIX · QQQ↔VXN · IWM↔RVX; call/put audit; wait if unsafe before session | YES |
 | `BACKTEST_TO_LIVE_PARITY_V1` | **NOT_STARTED** | 13 | High | Phase 7 | Simulation ≡ live path | NO |
 | `EXECUTION_ASSUMPTIONS_AND_SLIPPAGE_MODEL_V1` | **NOT_STARTED** | 13 | High | Phase 8 | Tradability realism | NO |
 | `RISK_ENGINE_AND_POSITION_SIZING_AUDIT_V1` | **NOT_STARTED** | 13 | High | Phase 8 | Limits supersede model | NO |
