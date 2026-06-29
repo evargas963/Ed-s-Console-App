@@ -160,7 +160,7 @@ def test_mega1_inventory_covers_every_function():
 def test_mega1_scope_complete():
     inv_files = {r.file for r in MEGA1_TRACEABLE_INVENTORY}
     assert inv_files == set(MEGA1_FILES)
-    assert len(MEGA1_TRACEABLE_INVENTORY) == 383  # inventory sync @ fix/mega-inventory-sync: +65 NONE stubs for new production defs
+    assert len(MEGA1_TRACEABLE_INVENTORY) == 384  # inventory sync @ Lane A CI fix: +1 NONE attach_operator_visible_field_lineage
 
 
 def test_mega1_row_schema_valid():
