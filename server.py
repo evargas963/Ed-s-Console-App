@@ -822,6 +822,276 @@ def _attach_analytics_freshness_contract(
             md["analytics_last_error"] = last_err
 
 
+# card_freshness_v1 — S2A descriptive thresholds (nested API metadata only; not trade gates).
+_CARD_FRESHNESS_V1_QUOTE_STALE_SEC = 30.0
+_CARD_FRESHNESS_V1_BUNDLE_TRUST_SEC = 45.0
+_CARD_FRESHNESS_V1_TRUST_HORIZONS: tuple[str, ...] = ("1c", "5c", "15c", "60c")
+# S2A-approved stale_reason_codes only — horizon-specific mhap_* reserved for LANE S4.
+_CARD_FRESHNESS_V1_S2A_STALE_REASON_CODES: frozenset[str] = frozenset(
+    {
+        "analytics_stale",
+        "analytics_age_exceeded",
+        "quote_age_exceeded",
+        "bundle_age_exceeded",
+        "quote_newer_than_signal",
+        "mhap_older_than_quote",
+        "quote_carried_forward",
+        "auth_fallback",
+        "auth_degraded",
+        "tier_c_cache_stale_serve",
+        "cache_refresh_in_progress",
+        "pending_shell",
+        "partial_tier_c",
+        "pending_full_analytics",
+        "state_error",
+        "revalidate_quarantine",
+        "fusion_unavailable",
+        "stack_integrity_degraded",
+        "signals_engine_failed",
+        "stack_invalid",
+        "ticker_mismatch",
+        "token_invalid",
+        "missing_quote_ts",
+        "missing_bundle_ts",
+    }
+)
+
+
+def _card_freshness_trust_reason(
+    md: dict,
+    *,
+    active_ticker: str,
+) -> Optional[str]:
+    """Mirror analyticsCardTrustGate / tools.run_universal_card_fidelity_runtime (read-only)."""
+    if not isinstance(md, dict):
+        return "no_payload"
+    incoming = str(md.get("ticker") or "").strip().upper()
+    active = str(active_ticker or "").strip().upper()
+    if incoming and active and incoming != active:
+        return "ticker_mismatch"
+    if md.get("analytics_stale") is True:
+        return "analytics_stale"
+    if md.get("analytics_pending_shell") is True:
+        return "pending_shell"
+    if md.get("analytics_partial_tier_c") is True:
+        return "partial_tier_c"
+    src = str(md.get("_update_source") or "")
+    if md.get("analytics_refresh_in_progress") is True and src == "client_ticker_cache":
+        return "cache_refresh_in_progress"
+    mhap = md.get("mhap_rows")
+    if not isinstance(mhap, list) or len(mhap) == 0:
+        return "mhap_missing"
+    if len(mhap) < len(_CARD_FRESHNESS_V1_TRUST_HORIZONS):
+        return "mhap_incomplete"
+    for slug in _CARD_FRESHNESS_V1_TRUST_HORIZONS:
+        if not any(
+            isinstance(r, dict) and str(r.get("horizon") or "").lower() == slug for r in mhap
+        ):
+            return f"mhap_horizon_missing_{slug}"
+    if md.get("fusion_available") is False:
+        return "fusion_unavailable"
+    si = md.get("stack_integrity_v1")
+    if isinstance(si, dict) and si.get("degraded") is True:
+        return "stack_integrity_degraded"
+    rt = md.get("stack_runtime") if isinstance(md.get("stack_runtime"), dict) else {}
+    if rt.get("signals_engine_failed") is True:
+        return "signals_engine_failed"
+    if str(rt.get("stack_mode") or "").upper() == "INVALID":
+        return "stack_invalid"
+    if md.get("state_error"):
+        return "state_error"
+    if md.get("error") == "token_invalid":
+        return "token_invalid"
+    return None
+
+
+def _card_freshness_trust_state(
+    *,
+    trust_reason: Optional[str],
+    stale_reason_codes: list[str],
+    analytics_refresh_in_progress: bool,
+) -> str:
+    if trust_reason in ("state_error", "token_invalid", "no_payload"):
+        return "UNAVAILABLE"
+    if analytics_refresh_in_progress and trust_reason not in (
+        "analytics_stale",
+        "state_error",
+        "token_invalid",
+    ):
+        return "REFRESHING"
+    if trust_reason in (
+        "fusion_unavailable",
+        "stack_integrity_degraded",
+        "signals_engine_failed",
+        "stack_invalid",
+        "partial_tier_c",
+    ):
+        return "DEGRADED"
+    if trust_reason or stale_reason_codes:
+        return "STALE"
+    return "TRUSTED"
+
+
+def _attach_card_freshness_v1_block(
+    md: dict,
+    *,
+    ticker: str,
+    now: float,
+    analytics_ttl_sec: float,
+    tier_c_cache_stale_serve: bool,
+    plane_quote: Optional[dict],
+) -> None:
+    """Attach nested card_freshness_v1 — descriptive metadata only; no trade-field mutation."""
+    active = str(ticker or md.get("ticker") or "").upper().strip()
+    trust_reason = _card_freshness_trust_reason(md, active_ticker=active)
+
+    qsd_plane = (plane_quote or {}).get("quote_source_detail") if plane_quote else {}
+    if not isinstance(qsd_plane, dict):
+        qsd_plane = {}
+    carried_forward = bool(qsd_plane.get("carried_forward"))
+    schwab_auth_degraded = bool(qsd_plane.get("schwab_auth_degraded"))
+
+    quote_ts_raw = None
+    if plane_quote and plane_quote.get("fast_server_ts") is not None:
+        quote_ts_raw = plane_quote.get("fast_server_ts")
+    elif md.get("fast_server_ts") is not None:
+        quote_ts_raw = md.get("fast_server_ts")
+
+    bundle_ts_raw = md.get("_server_build_ts")
+    mhap_bundle_ts_raw = bundle_ts_raw
+
+    quote_age_sec: Optional[float] = None
+    if quote_ts_raw is not None:
+        try:
+            quote_age_sec = round(max(0.0, now - float(quote_ts_raw)), 3)
+        except (TypeError, ValueError):
+            quote_age_sec = None
+
+    bundle_age_sec: Optional[float] = None
+    if bundle_ts_raw is not None:
+        try:
+            bundle_age_sec = round(max(0.0, now - float(bundle_ts_raw)), 3)
+        except (TypeError, ValueError):
+            bundle_age_sec = None
+
+    analytics_age_sec = md.get("analytics_age_sec")
+    try:
+        analytics_age_f = float(analytics_age_sec) if analytics_age_sec is not None else None
+    except (TypeError, ValueError):
+        analytics_age_f = None
+
+    stale_reason_codes: list[str] = []
+
+    def _add(code: str) -> None:
+        if code and code not in stale_reason_codes:
+            stale_reason_codes.append(code)
+
+    if md.get("analytics_stale") is True:
+        _add("analytics_stale")
+    if analytics_age_f is not None and analytics_age_f >= float(analytics_ttl_sec):
+        _add("analytics_age_exceeded")
+    if quote_age_sec is not None and quote_age_sec >= _CARD_FRESHNESS_V1_QUOTE_STALE_SEC:
+        _add("quote_age_exceeded")
+    if bundle_age_sec is not None and bundle_age_sec >= _CARD_FRESHNESS_V1_BUNDLE_TRUST_SEC:
+        _add("bundle_age_exceeded")
+
+    if quote_ts_raw is not None and bundle_ts_raw is not None:
+        try:
+            if float(quote_ts_raw) > float(bundle_ts_raw):
+                _add("quote_newer_than_signal")
+                _add("mhap_older_than_quote")
+        except (TypeError, ValueError):
+            pass
+
+    if carried_forward:
+        _add("quote_carried_forward")
+        _add("auth_fallback")
+    if schwab_auth_degraded:
+        _add("auth_degraded")
+    if tier_c_cache_stale_serve:
+        _add("tier_c_cache_stale_serve")
+
+    src = str(md.get("_update_source") or "")
+    if md.get("analytics_refresh_in_progress") is True and src == "client_ticker_cache":
+        _add("cache_refresh_in_progress")
+
+    if md.get("analytics_pending_shell") is True:
+        _add("pending_shell")
+        _add("pending_full_analytics")
+    if md.get("analytics_partial_tier_c") is True:
+        _add("partial_tier_c")
+    if md.get("state_error"):
+        _add("state_error")
+    if md.get("tier_c_cache_gate_ok") is False:
+        _add("revalidate_quarantine")
+
+    if trust_reason and trust_reason in _CARD_FRESHNESS_V1_S2A_STALE_REASON_CODES:
+        _add(trust_reason)
+
+    if quote_ts_raw is None:
+        _add("missing_quote_ts")
+    if bundle_ts_raw is None:
+        _add("missing_bundle_ts")
+
+    card_trust_state = _card_freshness_trust_state(
+        trust_reason=trust_reason,
+        stale_reason_codes=stale_reason_codes,
+        analytics_refresh_in_progress=bool(md.get("analytics_refresh_in_progress")),
+    )
+    card_actionable = (
+        trust_reason is None
+        and not carried_forward
+        and not stale_reason_codes
+        and md.get("tier_c_cache_gate_ok") is not False
+    )
+
+    if carried_forward:
+        fallback_status = "auth_carried_forward"
+        carry_forward_status = "carried_forward"
+    elif schwab_auth_degraded:
+        fallback_status = "auth_degraded"
+        carry_forward_status = "fresh"
+    else:
+        fallback_status = "none"
+        carry_forward_status = "fresh"
+
+    if card_trust_state == "TRUSTED":
+        source_freshness = "trusted"
+    elif card_trust_state == "REFRESHING":
+        source_freshness = "refreshing"
+    elif card_trust_state == "DEGRADED":
+        source_freshness = "degraded"
+    elif card_trust_state == "UNAVAILABLE":
+        source_freshness = "unavailable"
+    else:
+        source_freshness = "stale"
+
+    md["card_freshness_v1"] = {
+        "card_trust_state": card_trust_state,
+        "card_actionable": bool(card_actionable),
+        "analytics_age_sec": analytics_age_sec,
+        "quote_age_sec": quote_age_sec,
+        "bundle_age_sec": bundle_age_sec,
+        "analytics_ttl_sec": round(float(analytics_ttl_sec), 3),
+        "quote_stale_sec": _CARD_FRESHNESS_V1_QUOTE_STALE_SEC,
+        "bundle_trust_sec": _CARD_FRESHNESS_V1_BUNDLE_TRUST_SEC,
+        "fallback_status": fallback_status,
+        "carry_forward_status": carry_forward_status,
+        "source_freshness": source_freshness,
+        "stale_reason_codes": stale_reason_codes,
+        "quote_ts": quote_ts_raw,
+        "bundle_ts": bundle_ts_raw,
+        "mhap_bundle_ts": mhap_bundle_ts_raw,
+        "tier_c_cache_revalidated": md.get("tier_c_cache_revalidated"),
+        "tier_c_cache_gate_ok": md.get("tier_c_cache_gate_ok"),
+        "analytics_stale": md.get("analytics_stale"),
+        "analytics_generated_at": md.get("analytics_generated_at"),
+        "analytics_refresh_in_progress": md.get("analytics_refresh_in_progress"),
+        "quote_source_detail.carried_forward": carried_forward,
+        "quote_source_detail.schwab_auth_degraded": schwab_auth_degraded,
+    }
+
+
 def _schedule_analytics_recompute(
     inflight_key: tuple,
     ticker: str,
@@ -7412,6 +7682,14 @@ def _tier_c_analytics_json_response(
             route="server._tier_c_analytics_json_response",
             stale=bool(stale),
         )
+        _attach_card_freshness_v1_block(
+            md,
+            ticker=ticker,
+            now=now,
+            analytics_ttl_sec=ttl,
+            tier_c_cache_stale_serve=bool(stale and has_body),
+            plane_quote=_lmp.get_quote(ticker),
+        )
         _attach_db_contention_operator_surface(md)
         from market_state import attach_operator_visible_field_lineage
 
@@ -7443,6 +7721,14 @@ def _tier_c_analytics_json_response(
         now=now,
         sse_live=sse_live,
         inflight_key=inflight_key,
+    )
+    _attach_card_freshness_v1_block(
+        md,
+        ticker=ticker,
+        now=now,
+        analytics_ttl_sec=ttl,
+        tier_c_cache_stale_serve=False,
+        plane_quote=_lmp.get_quote(ticker),
     )
     _schedule_analytics_recompute(inflight_key, ticker, expiry, update_source)
     _attach_db_contention_operator_surface(md)
