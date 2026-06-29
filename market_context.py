@@ -195,6 +195,10 @@ class MarketContext:
     vix_color:       str             = "#9ca3af"
     vix_implication: str             = ""
 
+    # Vol-index lane V1 — additive fetch-only; not routed to SignalInput/ms_dict until V3/V5.
+    vxn:             Optional[float] = None   # $VXN — Nasdaq-100 native vol (QQQ confluence)
+    rvx:             Optional[float] = None   # $RVX — Russell 2000 native vol (IWM confluence)
+
     spy_last:        Optional[float] = None
     spy_chg_pct:     Optional[float] = None
     qqq_last:        Optional[float] = None
@@ -640,12 +644,23 @@ def fetch_market_context(client, safe_get_quote_fn,
                 return stream_chg
         return rest_chg
 
-    # VIX
+    # VIX — macro fear gauge; legacy ctx.vix semantics frozen (DUAL_GAUGE_HYBRID macro arm).
     vix_json = _fetch("$VIX")
     vix_last, _ = _extract_quote("$VIX", vix_json)
     if vix_last:
         ctx.vix = vix_last
         ctx.vix_regime, ctx.vix_color, ctx.vix_implication = _vix_regime(vix_last)
+
+    # VXN / RVX — native vol indices (fetch-only; no consumer routing in V1 lane).
+    vxn_json = _fetch("$VXN")
+    vxn_last, _ = _extract_quote("$VXN", vxn_json)
+    if vxn_last:
+        ctx.vxn = vxn_last
+
+    rvx_json = _fetch("$RVX")
+    rvx_last, _ = _extract_quote("$RVX", rvx_json)
+    if rvx_last:
+        ctx.rvx = rvx_last
 
     # SPY
     spy_json = _fetch("SPY")

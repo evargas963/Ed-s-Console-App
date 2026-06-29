@@ -78,6 +78,18 @@ def test_ticker_storage_key_preserves_spx_prefix():
     assert ticker_storage_key("vix") == "$VIX"
 
 
+def test_ticker_storage_key_vxn_rvx_broker_index_roots():
+    """Vol-index lane V1: VXN/RVX bare roots map to broker $ prefix (same as VIX/SPX)."""
+    assert ticker_storage_key("VXN") == "$VXN"
+    assert ticker_storage_key("vxn") == "$VXN"
+    assert ticker_storage_key("$VXN") == "$VXN"
+    assert ticker_storage_key("RVX") == "$RVX"
+    assert ticker_storage_key("rvx") == "$RVX"
+    assert ticker_storage_key("$RVX") == "$RVX"
+    assert ticker_storage_key("VIX") == "$VIX"
+    assert ticker_storage_key("$VIX") == "$VIX"
+
+
 def test_survivorship_anchor_ticker_matches_snapshots_row(tmp_path):
     """Regression: anchors must use same key as snapshots for $SPX (no SPX-only form)."""
     p = tmp_path / "surv.json"

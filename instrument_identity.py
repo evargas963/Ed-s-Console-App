@@ -13,13 +13,13 @@ P1 repair: some Schwab **index** symbols are persisted with a leading `$` while 
 APIs, or human input use the bare root (`SPX` vs `$SPX`). For exact SQLite joins with
 `price_bars_1m`, bare roots listed in ``BROKER_INDEX_BARE_ROOTS`` map to the stored form.
 Source: ``schwab_full_field_inventory.py`` fallback index tuple labels SPX/DJI/COMPX;
-``market_context.py`` uses ``$VIX`` for fetches.
+``market_context.py`` uses ``$VIX`` / ``$VXN`` / ``$RVX`` for vol-index fetches.
 """
 from __future__ import annotations
 
 # Uppercase roots (no `$`) that must resolve to broker-prefixed keys in DB.
 BROKER_INDEX_BARE_ROOTS: frozenset[str] = frozenset(
-    {"SPX", "DJI", "COMPX", "VIX"},
+    {"SPX", "DJI", "COMPX", "VIX", "VXN", "RVX"},
 )
 
 
