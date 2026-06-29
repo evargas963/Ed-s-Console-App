@@ -1,0 +1,12 @@
+---
+description: Proof-label ladder — reported vs verified vs remote CI (pointer only)
+alwaysApply: true
+---
+
+# Proof-label taxonomy (pointer only)
+
+Before editing code, read and obey [`governance/docs/AGENT_OPERATING_CONTRACT.md`](governance/docs/AGENT_OPERATING_CONTRACT.md). If preload cannot be verified, stop and report the preload failure.
+
+**Proof-label ladder (binding):** Agent proof packets are **evidence inputs, not absolute proof**. Use ladder labels only with matching evidence: `REPORTED_PROVEN_NOT_INDEPENDENTLY_VERIFIED` → `LOCAL_GIT_VERIFIED` → `PRE_PUSH_VERIFIED` → `PUSHED_PROVEN` → `REMOTE_CI_PROVEN` → `CLOSED_WITH_EVIDENCE`. Bare `PROVEN` / `APPROVED` / `CLOSED` without the ladder label and evidence is rejection-grade. Overstated labels must be **downgraded immediately**.
+
+Full table and downgrade rule: contract § Proof-label ladder. Behavior law also in `AGENTS.md` § Proof-label ladder. Do not duplicate full rule text here.

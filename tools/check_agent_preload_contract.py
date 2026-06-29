@@ -30,6 +30,19 @@ CURSOR_RULE_FILES: tuple[str, ...] = (
     "020-governance-maturity.mdc",
     "030-repo-neatness.mdc",
     "040-testing-and-artifacts.mdc",
+    "050-proof-label-taxonomy.mdc",
+)
+
+PROOF_LABEL_LADDER_MARKERS: tuple[str, ...] = (
+    "Proof-label ladder",
+    "REPORTED_PROVEN_NOT_INDEPENDENTLY_VERIFIED",
+    "LOCAL_GIT_VERIFIED",
+    "PRE_PUSH_VERIFIED",
+    "PUSHED_PROVEN",
+    "REMOTE_CI_PROVEN",
+    "CLOSED_WITH_EVIDENCE",
+    "evidence inputs, not absolute proof",
+    "downgrade immediately",
 )
 
 CONTRACT_MARKERS: tuple[str, ...] = (
@@ -46,12 +59,15 @@ CONTRACT_MARKERS: tuple[str, ...] = (
     "not institutional enforcement by itself",
     "RERUN EXACT",
     "fix incomplete because X",
-)
+) + PROOF_LABEL_LADDER_MARKERS
 
 AGENTS_MARKERS: tuple[str, ...] = (
     CANONICAL_CONTRACT,
     "Definition of Done for Fixes",
     "exact failing test",
+    "Proof-label ladder",
+    "REPORTED_PROVEN_NOT_INDEPENDENTLY_VERIFIED",
+    "evidence inputs, not absolute proof",
 )
 
 CLAUDE_MARKERS: tuple[str, ...] = (
@@ -87,6 +103,12 @@ CURSOR_RULE_MARKERS: dict[str, tuple[str, ...]] = {
         "check_agent_preload_contract.py",
         "objective-audit",
         "Exact failing test status:",
+    ),
+    "050-proof-label-taxonomy.mdc": (
+        CANONICAL_CONTRACT,
+        "Proof-label ladder",
+        "REPORTED_PROVEN_NOT_INDEPENDENTLY_VERIFIED",
+        "evidence inputs, not absolute proof",
     ),
 }
 

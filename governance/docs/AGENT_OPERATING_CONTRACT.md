@@ -84,6 +84,25 @@ Preload improves compliance; it is not institutional enforcement by itself.
 
 ---
 
+## Proof-label ladder (binding)
+
+Agent proof packets are **evidence inputs, not absolute proof**. Use only the label that matches the evidence class present in the same turn. Bare `PROVEN`, bare `APPROVED`, or bare `CLOSED` without the ladder label and matching evidence is **rejection-grade**.
+
+| Label | Admissible when |
+|-------|-----------------|
+| `REPORTED_PROVEN_NOT_INDEPENDENTLY_VERIFIED` | Agent ran commands in-session; operator or peer has not recomputed git / diff / CI state |
+| `LOCAL_GIT_VERIFIED` | Independent `git status`, `git diff`, file-list, and command output recomputed at stated HEAD |
+| `PRE_PUSH_VERIFIED` | `LOCAL_GIT_VERIFIED` + `origin/main..HEAD` matches approved scope; no extra tracked dirty state |
+| `PUSHED_PROVEN` | `PRE_PUSH_VERIFIED` + `git ls-remote origin main` equals the pushed commit SHA |
+| `REMOTE_CI_PROVEN` | `PUSHED_PROVEN` + all lane-required GitHub checks **success** at **exact** pushed SHA |
+| `CLOSED_WITH_EVIDENCE` | `REMOTE_CI_PROVEN` when CI is in the lane gate **and** lane-specific closure gates satisfied |
+
+**Downgrade rule:** If a proof label is later found overstated, **downgrade immediately** to the highest supportable ladder label. Do not silently carry forward the higher label. Record the correction in the active lane packet or drift recovery note.
+
+**Honest limit:** Preload and marker checks assert ladder text is present in binding surfaces; they do not verify chat compliance. Peer recomputation remains required for `REMOTE_CI_PROVEN` and `CLOSED_WITH_EVIDENCE`.
+
+---
+
 ## Required final report format
 
 Every fix or implementation sign-off must include:

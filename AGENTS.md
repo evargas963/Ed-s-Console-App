@@ -15,6 +15,16 @@ Current program: [`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md).
 
 ---
 
+## Proof-label ladder (canonical pointer — drift recovery 2026-06-29)
+
+Canonical ladder: [`governance/docs/AGENT_OPERATING_CONTRACT.md`](governance/docs/AGENT_OPERATING_CONTRACT.md) § Proof-label ladder.
+
+Agent proof packets are **evidence inputs, not absolute proof**. Labels: `REPORTED_PROVEN_NOT_INDEPENDENTLY_VERIFIED` → `LOCAL_GIT_VERIFIED` → `PRE_PUSH_VERIFIED` → `PUSHED_PROVEN` → `REMOTE_CI_PROVEN` → `CLOSED_WITH_EVIDENCE`. Do not use bare `PROVEN`, bare `APPROVED`, or bare `CLOSED` unless the required evidence class for that ladder step is shown in the same turn. If a label is overstated, **downgrade immediately** — do not carry the higher label forward.
+
+Extends [§Do not lie to the operator](#do-not-lie-to-the-operator-promoted-2026-05-24--binding-hard-rule-no-exceptions). Mechanical lock: `tools/check_agent_preload_contract.py` proof-label ladder markers — paired `tests/test_agent_preload_contract.py`.
+
+---
+
 ## World-class / institutional code gate `[PROMOTED]` (2026-05-27 — operator binding, top rule)
 
 **Before writing or landing code:** research when uncertain (Read end-to-end, trace producer→consumer, check enrollment and data contracts). Then ask:
