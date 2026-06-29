@@ -15,6 +15,20 @@
 
 ---
 
+## Schwab CSV-first declaration (CI / PR2 gate)
+
+Schwab CSV authority checked: yes
+
+CSV row(s): quotes.quote.lastPrice ($VXN via `_extract_quote`); quotes.quote.lastPrice ($RVX via `_extract_quote`)
+
+Derived-field disposition: REPLACE_WITH_SCHWAB
+
+All consumers checked: no — V1 lane fetch-only (`ctx.vxn` / `ctx.rvx` in-memory); SignalInput / `ms_dict` / DB / UI are V3/V5 lane scope
+
+REGISTER_ROW: f71114faa5593111d243, c03a3d4963e22eded241
+
+---
+
 ## Gatekeeper CSV cross-check
 
 **Tool:** `python tools/check_schwab_csv_first.py --gatekeeper-crosscheck market_context.py`

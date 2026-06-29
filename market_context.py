@@ -652,6 +652,11 @@ def fetch_market_context(client, safe_get_quote_fn,
         ctx.vix_regime, ctx.vix_color, ctx.vix_implication = _vix_regime(vix_last)
 
     # VXN / RVX — native vol indices (fetch-only; no consumer routing in V1 lane).
+    # Schwab CSV authority checked: yes
+    # CSV row(s): quotes.quote.lastPrice ($VXN); quotes.quote.lastPrice ($RVX)
+    # Derived-field disposition: REPLACE_WITH_SCHWAB via _extract_quote wire-first chain
+    # All consumers checked: no — V1 fetch-only; SignalInput/ms_dict routing is V3/V5 lane scope
+    # REGISTER_ROW: f71114faa5593111d243, c03a3d4963e22eded241
     vxn_json = _fetch("$VXN")
     vxn_last, _ = _extract_quote("$VXN", vxn_json)
     if vxn_last:
