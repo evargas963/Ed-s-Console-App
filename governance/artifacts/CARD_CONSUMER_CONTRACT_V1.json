@@ -187,7 +187,22 @@
       "operator_card_actionable=false hard-vetoes PLAN armed/active styling even when final_tradeable=true",
       "operator_card_actionable=false hard-vetoes ALL-card actionability while preserving raw bias/direction when safe",
       "final_tradeable=true cannot override operator_card_actionable=false"
-    ]
+    ],
+    "schwab_csv_first_declaration": {
+      "lane_id": "S3A_SCHWAB_CSV_FIRST_GUARD_REPAIR_V1",
+      "Schwab CSV authority checked": "yes",
+      "CSV row(s)": "NO_SCHWAB_EQUIVALENT",
+      "fields": [
+        "operator_card_actionable",
+        "operator_card_trust_state",
+        "operator_stale_reason_codes",
+        "operator_actionability_reason"
+      ],
+      "Derived-field disposition": "GATE_FAIL_CLOSED",
+      "All consumers checked": "yes — UI consumer wiring only; no new Schwab wire reads",
+      "SCHWAB_CSV_CHECKED": true,
+      "notes": "static/index.html S3A slice consumes existing Tier C operator mirrors; no Schwab leaf add/replace"
+    }
   },
   "card_freshness_v1": {
     "lane_id": "STALE_CARD_REMEDIATION_S1",

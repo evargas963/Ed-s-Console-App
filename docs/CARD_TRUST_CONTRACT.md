@@ -368,6 +368,18 @@ When Tier C payload includes S2B-1 operator mirrors (`operator_card_actionable`,
 
 **Registry:** `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `operator_mirror_actionability_v1`.
 
+### Schwab CSV-first declaration (S3A `static/index.html` consumer slice — governance artifact)
+
+Schwab CSV authority checked: yes
+
+CSV row(s): NO_SCHWAB_EQUIVALENT — `operator_card_actionable`, `operator_card_trust_state`, `operator_stale_reason_codes`, and `operator_actionability_reason` are internal operator-trust mirror fields on the existing Tier C bundle; they are not Schwab wire leaves. S3A does not introduce, modify, consume, derive, rename, or replace Schwab market-data fields in `static/index.html`.
+
+Derived-field disposition: GATE_FAIL_CLOSED — UI consumer veto only when operator mirrors or existing `analyticsCardTrustGate` withhold actionability; Schwab CSV remains wire authority.
+
+All consumers checked: yes — limited to UI consumer wiring (`resolveCardTrustGate`, `hasOperatorCardMirrorFields`, `renderTimeframeSignalRow`, `paintTradePlanCard`, `engineTradeableSetup`, `paintExecutionStateChip`).
+
+SCHWAB_CSV_CHECKED
+
 ---
 
 ## Amendment path
