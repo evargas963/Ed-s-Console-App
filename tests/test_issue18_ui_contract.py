@@ -148,7 +148,7 @@ def test_all_and_plan_trust_engine_final_tradeable_only():
     assert "isConsolidated" in vis_chunk
     idx_cons = h.find("if (slug === 'consolidated') {\n      if (tradeable)")
     assert idx_cons != -1
-    cons_chunk = h[idx_cons : idx_cons + 280]
+    cons_chunk = h[idx_cons : idx_cons + 520]
     assert "dir = 'FLAT'" in cons_chunk
 
 
@@ -282,7 +282,7 @@ def test_trade_plan_card_sits_beside_all_card_with_same_chrome():
     # Reads the bundle's plan fields — no parallel derivation.
     for field in ("entry_display_text", "stop_display_text", "targets_display", "invalidation", "size_modifier_display", "entry_state"):
         idx = h.find("function paintTradePlanCard(loadingHint)")
-        assert f"d.{field}" in h[idx : idx + 3600], f"PLAN card must read d.{field}"
+        assert f"d.{field}" in h[idx : idx + 4500], f"PLAN card must read d.{field}"
     # No-wrap contract: plan values stay on one line (ellipsis + title tooltip).
     plan_css = h.find(".tf-plan-kv .tf-plan-v")
     assert plan_css != -1
@@ -724,10 +724,10 @@ def test_card_consumer_contract_final_tradeable_gates_all_plan():
     assert idx != -1
     chunk = h[idx : idx + 520]
     assert "d.final_tradeable" in chunk
-    assert "analyticsCardTrustGate" in chunk
+    assert "resolveCardTrustGate" in chunk
     idx_cons = h.find("if (slug === 'consolidated') {\n      if (tradeable)")
     assert idx_cons != -1
-    cons_chunk = h[idx_cons : idx_cons + 280]
+    cons_chunk = h[idx_cons : idx_cons + 520]
     assert "dir = 'FLAT'" in cons_chunk
 
 
@@ -747,9 +747,9 @@ def test_analytics_card_trust_gate_canonical_function_present():
 
 def test_card_trust_gate_wired_before_trusted_timeframe_paint():
     h = _html()
-    assert "const cardTrust = analyticsCardTrustGate(d)" in h
+    assert "const cardTrust = resolveCardTrustGate(d)" in h
     row_idx = h.find("function renderTimeframeSignalRow")
-    trust_idx = h.find("const cardTrust = analyticsCardTrustGate(d)")
+    trust_idx = h.find("const cardTrust = resolveCardTrustGate(d)")
     assert row_idx != -1 and trust_idx > row_idx
     assert "paintUntrustedTimeframeCardRow(d, cardTrust.reason)" in h
     assert "tf-signal-card--card-trust-withheld" in h
@@ -763,7 +763,7 @@ def test_engine_tradeable_setup_requires_card_trust():
     h = _html()
     idx = h.find("function engineTradeableSetup")
     chunk = h[idx : idx + 420]
-    assert "analyticsCardTrustGate(d, { checkTicker: false }).trusted" in chunk
+    assert "resolveCardTrustGate(d, { checkTicker: false }).trusted" in chunk
 
 
 def test_bundle_direction_withheld_uses_card_trust_gate():
@@ -771,14 +771,15 @@ def test_bundle_direction_withheld_uses_card_trust_gate():
     idx = h.find("function bundleDirectionWithheld")
     chunk = h[idx : idx + 900]
     assert "cardBundleActive" in chunk
-    assert "analyticsCardTrustGate(ld, { checkTicker: false })" in chunk
+    assert "analyticsCardTrustGate(ld, { checkTicker: false })" not in chunk
+    assert "resolveCardTrustGate(ld, { checkTicker: false })" in chunk
 
 
 def test_decision_rail_withholds_when_card_trust_fails():
     h = _html()
     idx = h.find("function renderDecisionCommandRail")
     chunk = h[idx : idx + 12000]
-    assert "const cardTrust = analyticsCardTrustGate(d)" in chunk
+    assert "const cardTrust = resolveCardTrustGate(d)" in chunk
     assert "!cardTrust.trusted" in chunk
 
 
@@ -851,7 +852,7 @@ def test_execution_state_chip_consumer_present():
     paint_chunk = h[paint_idx : paint_idx + 2200]
     assert "d.call_state" in paint_chunk
     assert "normalizeExecutionCallState" in paint_chunk
-    assert "analyticsCardTrustGate" in paint_chunk
+    assert "resolveCardTrustGate" in paint_chunk
     assert "d.final_bias" not in paint_chunk
     assert "d.final_tradeable" not in paint_chunk
     assert "d.mhap_rows" not in paint_chunk
@@ -957,3 +958,102 @@ def test_attach_operator_field_lineage_trade_determinative_minimum():
     assert fl["spot"]["lineage_class"] == "SCHWAB_NATIVE_ALIAS_OR_NORMALIZATION"
     assert fl["spot"]["schwab_leaf"] == "quotes.*.lastPrice"
     assert fl["wait_reason"]["lineage_class"] == "UNKNOWN_LINEAGE_FIELD"
+
+
+def test_operator_mirror_resolver_present_and_exported():
+    h = _html()
+    assert "function resolveCardTrustGate(d, opts)" in h
+    assert "function hasOperatorCardMirrorFields(d)" in h
+    assert "window.resolveCardTrustGate = resolveCardTrustGate" in h
+    idx = h.find("function resolveCardTrustGate")
+    chunk = h[idx : idx + 1400]
+    assert "operator_card_actionable" in chunk
+    assert "authority: 'operator_mirror'" in chunk
+    assert "analyticsCardTrustGate(d, opts)" in chunk
+
+
+def test_operator_actionable_false_vetoes_trade_active_class():
+    h = _html()
+    idx = h.find("function renderTimeframeSignalRow")
+    chunk = h[idx : idx + 9000]
+    assert "operatorMirrorVeto" in chunk
+    assert "!operatorMirrorVeto &&" in h
+    assert "tf-signal-card--trade-active" in h
+    assert "data-operator-actionability-veto" in h
+
+
+def test_operator_actionable_false_vetoes_plan_active_even_when_final_tradeable():
+    h = _html()
+    idx = h.find("function paintTradePlanCard")
+    chunk = h[idx : idx + 3200]
+    assert "engineTradeableSetup(d)" in chunk
+    assert "opVeto" in chunk
+    assert "tf-signal-card--operator-actionability-veto" in chunk
+    assert "tf-glow-3" in chunk
+    assert "!opVeto" in chunk
+
+
+def test_operator_actionable_false_preserves_all_bias_with_non_actionable():
+    h = _html()
+    idx = h.find("else if (operatorMirrorVeto)")
+    assert idx != -1
+    chunk = h[idx : idx + 400]
+    assert "final_bias" in chunk
+    assert "tf-signal-card--non-actionable" in h
+
+
+def test_operator_trust_reason_surfaced_in_ui():
+    h = _html()
+    assert "function operatorActionabilityReasonText(d, trust)" in h
+    assert "operator_actionability_reason" in h
+    assert "operator_stale_reason_codes" in h
+    assert "Not actionable:" in h
+
+
+def test_mirror_absent_falls_back_to_analytics_card_trust_gate():
+    h = _html()
+    idx = h.find("function resolveCardTrustGate")
+    chunk = h[idx : idx + 1600]
+    assert "hasOperatorCardMirrorFields(d)" in chunk
+    assert "authority: 'analyticsCardTrustGate'" in chunk
+    assert "function analyticsCardTrustGate(d, opts)" in h
+
+
+def test_final_tradeable_cannot_override_operator_false():
+    h = _html()
+    idx = h.find("function engineTradeableSetup")
+    chunk = h[idx : idx + 520]
+    assert "resolveCardTrustGate" in chunk
+    assert "d.final_tradeable" in chunk
+    gate_idx = h.find("function resolveCardTrustGate")
+    gate_chunk = h[gate_idx : gate_idx + 1200]
+    assert "operator_card_actionable === true" in gate_chunk
+
+
+def test_tier_c_fingerprint_includes_operator_mirror_fields():
+    h = _html()
+    idx = h.find("function _tierCCardRenderFingerprint")
+    chunk = h[idx : idx + 1800]
+    assert "operator_card_actionable" in chunk
+    assert "operator_card_trust_state" in chunk
+    assert "operator_stale_reason_codes" in chunk
+    assert "operator_actionability_reason" in chunk
+    assert "final_tradeable" in chunk
+
+
+def test_card_consumer_contract_operator_mirror_s3a_recorded():
+    reg = json.loads(CARD_CONSUMER_CONTRACT.read_text(encoding="utf-8"))
+    s3a = reg.get("operator_mirror_actionability_v1") or {}
+    assert s3a.get("lane_id") == "S3A_OPERATOR_ACTIONABILITY_UI_FAIL_CLOSED_V1"
+    assert s3a.get("ui_resolver") == "resolveCardTrustGate"
+    assert s3a.get("card_fidelity_overall") == "NOT_CLOSED_NOT_PROVEN"
+    assert s3a.get("stale_withheld_rth_freshness") == "FAIL"
+    assert "operator_card_actionable" in (s3a.get("authority_when_mirrors_present") or [])
+
+
+def test_card_trust_contract_documents_s3a_operator_mirrors():
+    body = CARD_TRUST_CONTRACT.read_text(encoding="utf-8")
+    assert "S3A operator mirror UI fail-closed" in body
+    assert "resolveCardTrustGate" in body
+    assert "operator_card_actionable" in body
+    assert "does not" in body.lower() or "does **not**" in body

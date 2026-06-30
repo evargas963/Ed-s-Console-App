@@ -94,6 +94,8 @@
     "lane_id": "TRUST_AWARE_HARNESS_CLASSIFICATION",
     "status": "HARNESS_IMPLEMENTED_NOT_RUNTIME_PROVEN",
     "display_trust_gate": "analyticsCardTrustGate",
+    "display_trust_gate_when_operator_mirrors_absent": "analyticsCardTrustGate",
+    "display_trust_gate_when_operator_mirrors_present": "resolveCardTrustGate",
     "harness_module": "tools/run_universal_card_fidelity_runtime.py",
     "card_fidelity_overall": "NOT_PROVEN",
     "universal_runtime_live_proof": "NOT_PROVEN",
@@ -156,6 +158,36 @@
       "stale_withheld_rth_freshness": "FAIL",
       "true_dom_mismatch": "FAIL"
     }
+  },
+  "operator_mirror_actionability_v1": {
+    "lane_id": "S3A_OPERATOR_ACTIONABILITY_UI_FAIL_CLOSED_V1",
+    "status": "LOCAL_DIFF_NOT_CLOSED",
+    "ui_implementation_approved": "S3A_LOCAL_DIFF_ONLY",
+    "card_fidelity_overall": "NOT_CLOSED_NOT_PROVEN",
+    "stale_withheld_rth_freshness": "FAIL",
+    "universal_runtime_live_proof": "NOT_PROVEN",
+    "real_money_readiness": "NOT_PROVEN",
+    "authority_when_mirrors_present": [
+      "operator_card_actionable",
+      "operator_card_trust_state",
+      "operator_stale_reason_codes",
+      "operator_actionability_reason"
+    ],
+    "authority_when_mirrors_absent": "analyticsCardTrustGate",
+    "ui_resolver": "resolveCardTrustGate",
+    "scope": "UI consumer fail-closed wiring only — no backend payload or trade-gate changes",
+    "does_not_close": [
+      "card_fidelity_overall",
+      "stale_withheld_rth_freshness",
+      "universal_runtime_live_proof",
+      "real_money_readiness"
+    ],
+    "veto_rules": [
+      "operator_card_actionable=false hard-vetoes trade-active glow",
+      "operator_card_actionable=false hard-vetoes PLAN armed/active styling even when final_tradeable=true",
+      "operator_card_actionable=false hard-vetoes ALL-card actionability while preserving raw bias/direction when safe",
+      "final_tradeable=true cannot override operator_card_actionable=false"
+    ]
   },
   "card_freshness_v1": {
     "lane_id": "STALE_CARD_REMEDIATION_S1",

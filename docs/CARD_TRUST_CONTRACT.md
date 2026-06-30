@@ -353,6 +353,23 @@ The vocabulary is stable so a future learned meta-label can map into `call_state
 
 ---
 
+## 17. S3A operator mirror UI fail-closed (local diff — not closure)
+
+**Lane:** `S3A_OPERATOR_ACTIONABILITY_UI_FAIL_CLOSED_V1`  
+**Status:** UI consumer wiring only — **does not** close card fidelity overall, runtime RTH freshness, universal live proof, or real-money readiness.
+
+When Tier C payload includes S2B-1 operator mirrors (`operator_card_actionable`, `operator_card_trust_state`, `operator_stale_reason_codes`, `operator_actionability_reason`), the UI **must** treat them as actionability authority via `resolveCardTrustGate` in `static/index.html`.
+
+| Rule | Behavior |
+|------|----------|
+| Mirrors **present** | `operator_card_actionable === false` is a hard veto on trade-active glow, ALL actionability, and PLAN armed styling — even when `final_tradeable === true`. Raw horizon/bias context may remain visible when safe (hybrid withhold). |
+| Mirrors **absent** | Fall back to existing `analyticsCardTrustGate` — unchanged legacy path. |
+| Mechanism vs runtime | Closed stale/fallback **mechanism** lanes prove withhold paint only; they do **not** prove runtime freshness (2026-06-29 RTH observation remains FAIL until separately closed). |
+
+**Registry:** `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `operator_mirror_actionability_v1`.
+
+---
+
 ## Amendment path
 
 Changes to this contract require:

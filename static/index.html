@@ -4333,6 +4333,76 @@ function analyticsCardTrustGate(d, opts) {
   return { trusted: true, reason: null };
 }
 
+/** True when Tier C payload carries S2B-1 operator mirror fields (boolean actionable). */
+function hasOperatorCardMirrorFields(d) {
+  return d != null && typeof d === 'object' && !Array.isArray(d)
+    && typeof d.operator_card_actionable === 'boolean';
+}
+
+/**
+ * Card trust gate — operator mirrors are authority when present; else analyticsCardTrustGate.
+ * @returns {{ trusted: boolean, reason: string|null, authority: string, trustState: string|null, staleReasonCodes: string[] }}
+ */
+function resolveCardTrustGate(d, opts) {
+  opts = opts || {};
+  if (hasOperatorCardMirrorFields(d)) {
+    const actionable = d.operator_card_actionable === true;
+    let reason = null;
+    if (!actionable) {
+      if (d.operator_actionability_reason != null && String(d.operator_actionability_reason).trim() !== '') {
+        reason = String(d.operator_actionability_reason).trim();
+      } else if (Array.isArray(d.operator_stale_reason_codes) && d.operator_stale_reason_codes.length > 0) {
+        reason = String(d.operator_stale_reason_codes[0]);
+      } else if (d.operator_card_trust_state != null) {
+        reason = String(d.operator_card_trust_state);
+      } else {
+        reason = 'not_actionable';
+      }
+    }
+    return {
+      trusted: actionable,
+      reason: reason,
+      authority: 'operator_mirror',
+      trustState: d.operator_card_trust_state != null ? String(d.operator_card_trust_state) : null,
+      staleReasonCodes: Array.isArray(d.operator_stale_reason_codes)
+        ? d.operator_stale_reason_codes.map(function (c) { return String(c); })
+        : [],
+    };
+  }
+  const leg = analyticsCardTrustGate(d, opts);
+  return {
+    trusted: leg.trusted,
+    reason: leg.reason,
+    authority: 'analyticsCardTrustGate',
+    trustState: null,
+    staleReasonCodes: [],
+  };
+}
+
+/** Operator-mirror withhold chip label (STALE/PENDING/DEGRADED/WITHHELD). */
+function operatorMirrorWithholdLabel(trust) {
+  if (!trust || trust.authority !== 'operator_mirror' || trust.trusted) return null;
+  const ts = trust.trustState ? String(trust.trustState).toUpperCase() : '';
+  if (ts.indexOf('STALE') >= 0) return 'STALE';
+  if (ts.indexOf('PENDING') >= 0) return 'PENDING';
+  if (ts.indexOf('DEGRADED') >= 0) return 'DEGRADED';
+  if (trust.reason) return cardTrustOperatorLabel(trust.reason);
+  return 'WITHHELD';
+}
+
+/** Operator-facing actionability reason text for tooltips / chips. */
+function operatorActionabilityReasonText(d, trust) {
+  trust = trust || (hasOperatorCardMirrorFields(d) ? resolveCardTrustGate(d, { checkTicker: false }) : null);
+  if (!trust || trust.trusted) return null;
+  if (d && d.operator_actionability_reason != null && String(d.operator_actionability_reason).trim() !== '') {
+    return String(d.operator_actionability_reason).trim();
+  }
+  if (trust.staleReasonCodes && trust.staleReasonCodes.length) {
+    return trust.staleReasonCodes.join(', ');
+  }
+  return trust.reason || 'Card not actionable';
+}
+
 function cardTrustOperatorLabel(reason) {
   const r = String(reason || '').toLowerCase();
   if (r === 'analytics_stale' || r === 'cache_refresh_in_progress') return 'STALE';
@@ -4342,12 +4412,14 @@ function cardTrustOperatorLabel(reason) {
     return 'DEGRADED';
   }
   if (r === 'state_error' || r === 'token_invalid') return 'UNAVAILABLE';
+  if (r === 'quote_newer_than_signal' || r === 'quote_carried_forward') return 'STALE';
+  if (r === 'revalidate_quarantine') return 'WITHHELD';
   return 'WITHHELD';
 }
 
 /** Engine ALL/PLAN eligibility — requires trusted card bundle + final_tradeable. */
 function engineTradeableSetup(d) {
-  if (!analyticsCardTrustGate(d, { checkTicker: false }).trusted) return false;
+  if (!resolveCardTrustGate(d, { checkTicker: false }).trusted) return false;
   const bias = String((d && d.final_bias) || 'WAIT').toUpperCase();
   return !!(d && d.final_tradeable) && (bias === 'LONG' || bias === 'SHORT');
 }
@@ -4375,7 +4447,7 @@ function paintExecutionStateChip(d) {
     return;
   }
   const execState = normalizeExecutionCallState(d.call_state);
-  const trust = analyticsCardTrustGate(d);
+  const trust = resolveCardTrustGate(d);
   if (!execState) {
     chip.className = 'tf-exec-chip tf-exec-chip--unknown';
     chip.textContent = '—';
@@ -4477,6 +4549,10 @@ function paintUntrustedTimeframeCardRow(d, reason) {
 
 try {
   window.analyticsCardTrustGate = analyticsCardTrustGate;
+  window.resolveCardTrustGate = resolveCardTrustGate;
+  window.hasOperatorCardMirrorFields = hasOperatorCardMirrorFields;
+  window.operatorMirrorWithholdLabel = operatorMirrorWithholdLabel;
+  window.operatorActionabilityReasonText = operatorActionabilityReasonText;
   window.engineTradeableSetup = engineTradeableSetup;
   window.normalizeExecutionCallState = normalizeExecutionCallState;
   window.paintExecutionStateChip = paintExecutionStateChip;
@@ -4599,20 +4675,41 @@ function renderTimeframeSignalRow(d) {
     }
     const planRows = Array.isArray(d.mhap_rows) ? d.mhap_rows : [];
     const dir = normDir(d.final_bias || 'WAIT');
+    const opTrust = hasOperatorCardMirrorFields(d) ? resolveCardTrustGate(d, { checkTicker: false }) : null;
+    const opVeto = opTrust && opTrust.authority === 'operator_mirror' && !opTrust.trusted;
     const planTradeable = engineTradeableSetup(d);
     const planDir = planTradeable ? dir : 'FLAT';
     const entryStateRaw = String(d.entry_state || 'no_setup').toLowerCase();
     const entryState = planTradeable ? entryStateRaw : 'no_setup';
     const state = planDir === 'LONG' ? 'up' : planDir === 'SHORT' ? 'down' : 'dim';
     let glow = '';
-    if (state !== 'dim') {
+    if (state !== 'dim' && !opVeto) {
       glow = (entryState === 'confirmed' || entryState === 'filled') ? ' tf-glow-3' : ' tf-glow-1';
     }
     card.setAttribute('data-tf-signal-dir', state === 'up' ? 'long' : state === 'down' ? 'short' : 'neutral');
-    card.className = 'tf-signal-card tf-state-' + state + glow;
+    if (opVeto) {
+      card.setAttribute('data-operator-actionability-veto', 'true');
+      card.setAttribute('data-card-trust-withhold', String(opTrust.reason || 'not_actionable'));
+      card.className = 'tf-signal-card tf-state-' + state + ' tf-signal-card--non-actionable tf-signal-card--operator-actionability-veto';
+    } else {
+      card.removeAttribute('data-operator-actionability-veto');
+      card.removeAttribute('data-card-trust-withhold');
+      card.className = 'tf-signal-card tf-state-' + state + glow;
+    }
     if (dot) dot.className = 'tf-dot ' + (state === 'dim' ? 'tf-dot--dim' : (state === 'up' ? 'tf-dot--up tf-dot--blink' : 'tf-dot--down tf-dot--blink'));
     if (arr) arr.textContent = state === 'dim' ? '→' : (state === 'up' ? '↑' : '↓');
-    if (stEl) stEl.textContent = entryState === 'no_setup' ? 'NO SETUP' : entryState.replace(/_/g, ' ').toUpperCase();
+    if (stEl) {
+      if (opVeto) {
+        const vl = operatorMirrorWithholdLabel(opTrust) || 'NO SETUP';
+        stEl.textContent = vl === 'STALE' ? 'STALE' : (vl === 'PENDING' ? 'PENDING' : 'NO SETUP');
+        const opTxt = operatorActionabilityReasonText(d, opTrust);
+        if (opTxt) stEl.title = 'Not actionable: ' + opTxt;
+        else stEl.removeAttribute('title');
+      } else {
+        stEl.textContent = entryState === 'no_setup' ? 'NO SETUP' : entryState.replace(/_/g, ' ').toUpperCase();
+        stEl.removeAttribute('title');
+      }
+    }
     // Single-line values (CSS nowrap + ellipsis): fold any multi-line plan text
     // onto one line and keep the full text reachable via the title tooltip.
     const planTxt = (v) => {
@@ -4710,11 +4807,14 @@ function renderTimeframeSignalRow(d) {
     paintTradePlanCard(loadHint);
     return;
   }
-  const cardTrust = analyticsCardTrustGate(d);
-  if (!cardTrust.trusted) {
+  const cardTrust = resolveCardTrustGate(d);
+  const operatorMirrorVeto = hasOperatorCardMirrorFields(d) && d.operator_card_actionable === false;
+  const preserveRawContext = operatorMirrorVeto && mhap.length > 0;
+  if (!cardTrust.trusted && !preserveRawContext) {
     paintUntrustedTimeframeCardRow(d, cardTrust.reason);
     return;
   }
+  const operatorReasonText = operatorMirrorVeto ? operatorActionabilityReasonText(d, cardTrust) : null;
   const prim = String(d.primary_horizon || '').toLowerCase();
   const finalBias = String(d.final_bias || 'WAIT').toUpperCase();
   const tradeable = engineTradeableSetup(d);
@@ -4750,6 +4850,15 @@ function renderTimeframeSignalRow(d) {
       if (tradeable) {
         dir = normDir(d.final_bias || 'WAIT');
         tag = deriveTag(slug, dir);
+      } else if (operatorMirrorVeto) {
+        const biasDir = normDir(d.final_bias || 'WAIT');
+        if (biasDir !== 'FLAT') {
+          dir = biasDir;
+          tag = deriveTag(slug, dir);
+        } else {
+          dir = 'FLAT';
+          tag = null;
+        }
       } else {
         dir = 'FLAT';
         tag = null;
@@ -4779,6 +4888,7 @@ function renderTimeframeSignalRow(d) {
     const isPrimaryTrade =
       slug === 'consolidated' &&
       tradeable &&
+      !operatorMirrorVeto &&
       dir === finalBias &&
       (state === 'up' || state === 'down');
     if (isPrimaryTrade && glow === 'tf-glow-1') glow = 'tf-glow-2';
@@ -4786,9 +4896,11 @@ function renderTimeframeSignalRow(d) {
     card.setAttribute('data-tf-signal-dir', sigDir);
     card.setAttribute('data-horizon-direction', dir === 'FLAT' ? 'NEUTRAL' : dir);
     card.removeAttribute('data-card-trust-withhold');
-    if (nonActionable) {
+    if (nonActionable || operatorMirrorVeto) {
       card.setAttribute('data-horizon-actionability', 'NON_ACTIONABLE');
-      const why = d.wait_reason || d.validation_summary || 'ALL not tradeable — horizon opinion only';
+      const why = operatorMirrorVeto && operatorReasonText
+        ? operatorReasonText
+        : (d.wait_reason || d.validation_summary || 'ALL not tradeable — horizon opinion only');
       card.title = String(why);
     } else {
       card.removeAttribute('data-horizon-actionability');
@@ -4800,7 +4912,15 @@ function renderTimeframeSignalRow(d) {
       (state === 'up' ? 'up' : state === 'down' ? 'down' : 'dim') +
       (glow ? ' ' + glow : '') +
       (isPrimaryTrade ? ' tf-signal-card--trade-active' : '') +
-      (nonActionable ? ' tf-signal-card--non-actionable' : '');
+      (nonActionable || operatorMirrorVeto ? ' tf-signal-card--non-actionable' : '') +
+      (operatorMirrorVeto ? ' tf-signal-card--operator-actionability-veto' : '');
+
+    if (operatorMirrorVeto) {
+      card.setAttribute('data-operator-actionability-veto', 'true');
+      card.setAttribute('data-card-trust-withhold', String(cardTrust.reason || 'not_actionable'));
+    } else {
+      card.removeAttribute('data-operator-actionability-veto');
+    }
 
     const dot = card.querySelector('.tf-dot');
     if (dot) {
@@ -4834,6 +4954,10 @@ function renderTimeframeSignalRow(d) {
       } else {
         pctEl.textContent = confPct + '%';
         pctEl.removeAttribute('title');
+      }
+      if (operatorMirrorVeto && operatorReasonText) {
+        const baseTitle = pctEl.getAttribute('title') || '';
+        pctEl.title = 'Not actionable: ' + operatorReasonText + (baseTitle ? ' · ' + baseTitle : '');
       }
     }
 
@@ -5223,7 +5347,7 @@ function renderDecisionCommandRail(d) {
   const root = $('decision-rail-card');
   if (!root) return;
 
-  const cardTrust = analyticsCardTrustGate(d);
+  const cardTrust = resolveCardTrustGate(d);
 
   const fusionPol = (d.fusion_policy_snapshot_cols && typeof d.fusion_policy_snapshot_cols === 'object')
     ? d.fusion_policy_snapshot_cols
@@ -5415,7 +5539,10 @@ function renderDecisionCommandRail(d) {
 
     hzOrder.forEach(({ slug, label }) => {
       if (!cardTrust.trusted) {
-        const wlabel = cardTrustOperatorLabel(cardTrust.reason);
+        const wlabel = cardTrust.authority === 'operator_mirror'
+          ? (operatorMirrorWithholdLabel(cardTrust) || 'WITHHELD')
+          : cardTrustOperatorLabel(cardTrust.reason);
+        const reasonTxt = operatorActionabilityReasonText(d, cardTrust) || String(cardTrust.reason || 'untrusted');
         const wrap = document.createElement('div');
         wrap.className = 'hz-panel';
         wrap.dataset.hz = label;
@@ -5427,7 +5554,7 @@ function renderDecisionCommandRail(d) {
         const ag = document.createElement('div');
         ag.className = 'hz-panel-agree mix';
         ag.textContent = wlabel;
-        ag.title = 'Card bundle not trusted: ' + String(cardTrust.reason || 'untrusted');
+        ag.title = 'Card not actionable: ' + reasonTxt;
         top.appendChild(title);
         top.appendChild(ag);
         const grid = document.createElement('div');
@@ -6260,6 +6387,14 @@ function _tierCCardRenderFingerprint(d) {
     analytics_pending_shell: d.analytics_pending_shell,
     analytics_partial_tier_c: d.analytics_partial_tier_c,
     final_bias: d.final_bias,
+    final_tradeable: d.final_tradeable,
+    fusion_available: d.fusion_available,
+    operator_card_actionable: d.operator_card_actionable,
+    operator_card_trust_state: d.operator_card_trust_state,
+    operator_stale_reason_codes: Array.isArray(d.operator_stale_reason_codes)
+      ? d.operator_stale_reason_codes.slice().sort()
+      : d.operator_stale_reason_codes,
+    operator_actionability_reason: d.operator_actionability_reason,
     entry_state: d.entry_state,
     validation_passed: d.validation_passed,
     wait_reason: d.wait_reason,
@@ -7757,7 +7892,7 @@ function bundleDirectionWithheld(integrity, d, nowMs) {
     || ld.analytics_refresh_in_progress === true
     || ld.analytics_partial_tier_c === true;
   if (cardBundleActive) {
-    const cardTrust = analyticsCardTrustGate(ld, { checkTicker: false });
+    const cardTrust = resolveCardTrustGate(ld, { checkTicker: false });
     if (!cardTrust.trusted) {
       return { withheld: true, reason: cardTrust.reason || 'card_trust_failed' };
     }
