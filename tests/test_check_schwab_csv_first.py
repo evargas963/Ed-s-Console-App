@@ -187,6 +187,31 @@ def test_t2_static_index_raf_scheduler_passes_with_governance_csv_declaration(tm
     assert "static/index.html" in out or "1 market-data file(s)" in out
 
 
+def test_t3_static_index_monotonic_gate_passes_with_governance_csv_declaration(tmp_path, capsys):
+    """T3 class: static/index.html monotonic gate without +line CSV markers if declaration is in governance diff."""
+    diff = "\n".join(
+        [
+            "+++ b/docs/CARD_TRUST_CONTRACT.md",
+            "+Schwab CSV authority checked: yes",
+            "+CSV row(s): NO_SCHWAB_EQUIVALENT",
+            "+Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE",
+            "+All consumers checked: yes",
+            "+SCHWAB_CSV_CHECKED",
+            "+++ b/static/index.html",
+            "+function acceptAndScheduleMoneyPathRender(d, fullRenderSource, onComplete) {",
+            "+function acceptMoneyPathPayload(d, source) {",
+        ]
+    )
+    diff_file = tmp_path / "t3_repair.diff"
+    diff_file.write_text(diff, encoding="utf-8")
+    sys.argv = ["check_schwab_csv_first.py", "--diff-file", str(diff_file)]
+    rc = guard.main()
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "passed with declaration marker" in out
+    assert "static/index.html" in out or "1 market-data file(s)" in out
+
+
 def test_s3a_static_index_ui_slice_passes_with_governance_csv_declaration(tmp_path, capsys):
     """S3A class: static/index.html changed without +line CSV markers if declaration is in governance diff."""
     diff = "\n".join(

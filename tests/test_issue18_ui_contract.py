@@ -1156,7 +1156,7 @@ def test_t0_schwab_csv_first_declaration_in_contract():
 
 def test_t0_sse_transport_result_accounted_once_per_outcome():
     h = _html()
-    idx = h.find("scheduleMoneyPathRender(data, 'sse'")
+    idx = h.find("acceptAndScheduleMoneyPathRender(data, 'sse'")
     assert idx != -1
     chunk = h[idx : idx + 500]
     assert chunk.count("_edMplOnSseTransportResult") == 1
@@ -1276,14 +1276,14 @@ def test_t2_raf_scheduler_coalesces_and_latest_wins():
 
 def test_t2_transport_entry_points_use_scheduler_not_direct_render():
     h = _html()
-    sse_idx = h.find("scheduleMoneyPathRender(data, 'sse'")
+    sse_idx = h.find("acceptAndScheduleMoneyPathRender(data, 'sse'")
     assert sse_idx != -1
     sse_chunk = h[sse_idx : sse_idx + 400]
     assert "_edMplOnSseTransportResult" in sse_chunk
     assert "render(data, 'sse')" not in h
-    poll_idx = h.find("scheduleMoneyPathRender(data, 'rest_poll'")
+    poll_idx = h.find("acceptAndScheduleMoneyPathRender(data, 'rest_poll'")
     assert poll_idx != -1
-    manual_idx = h.find("scheduleMoneyPathRender(data, 'rest_manual'")
+    manual_idx = h.find("acceptAndScheduleMoneyPathRender(data, 'rest_manual'")
     assert manual_idx != -1
 
 
@@ -1383,3 +1383,143 @@ def test_t1_contract_still_preserves_t1_non_implementation_list():
     assert "latest_quote_age_ms" in t1["t0_diagnostic_mapping"]
     assert "browser WebSocket" in t1["does_not_implement"]
     assert "lag_fix" in t1["does_not_close"]
+
+
+def _t3_contract_chunk(body: str) -> str:
+    idx = body.find("## 21. T3 monotonic money-path")
+    assert idx != -1, "T3 contract section missing"
+    return body[idx : idx + 4500]
+
+
+def test_t3_monotonic_gate_functions_exist():
+    h = _html()
+    assert "function acceptMoneyPathPayload" in h
+    assert "function acceptAndScheduleMoneyPathRender" in h
+    assert "function _edMplMonotonicGateEvaluate" in h
+    idx = h.find("function acceptAndScheduleMoneyPathRender")
+    chunk = h[idx : idx + 600]
+    assert "acceptMoneyPathPayload" in chunk
+    assert "scheduleMoneyPathRender" in chunk
+
+
+def test_t3_reject_before_raf_schedule():
+    h = _html()
+    idx = h.find("function acceptAndScheduleMoneyPathRender")
+    chunk = h[idx : idx + 600]
+    assert chunk.index("acceptMoneyPathPayload") < chunk.index("scheduleMoneyPathRender")
+    gate_idx = h.find("function _edMplMonotonicGateEvaluate")
+    gate_chunk = h[gate_idx : gate_idx + 2200]
+    assert "duplicate" in gate_chunk
+    assert "gen_regression" in gate_chunk or "ts_regression" in gate_chunk
+
+
+def test_t3_ordering_key_uses_decision_generation_and_server_build_ts():
+    h = _html()
+    idx = h.find("function _edMplOrderingKeyFromPayload")
+    chunk = h[idx : idx + 1200]
+    assert "decision_generation_id" in chunk
+    assert "_server_build_ts" in chunk or "_validServerBuildTs" in chunk
+
+
+def test_t3_missing_key_fallback_defined():
+    h = _html()
+    idx = h.find("function _edMplMonotonicGateEvaluate")
+    chunk = h[idx : idx + 2200]
+    assert "missing_key_fallback" in chunk
+    assert "monotonic_missing_key_count" in chunk
+
+
+def test_t3_monotonic_diagnostic_fields_initialized():
+    h = _html()
+    idx = h.find("function _edMplInit")
+    chunk = h[idx : idx + 2200]
+    for field in (
+        "monotonic_gate_enabled",
+        "monotonic_accept_count",
+        "monotonic_reject_count",
+        "monotonic_missing_key_count",
+        "monotonic_invalid_key_count",
+        "monotonic_last_accept_key",
+        "monotonic_last_reject_key",
+        "monotonic_last_reject_reason",
+        "monotonic_latest_source",
+        "out_of_order_reject_count",
+    ):
+        assert field in chunk, f"missing T3 diagnostic field {field}"
+
+
+def test_t3_transport_entry_points_use_monotonic_wrapper():
+    h = _html()
+    for needle in (
+        "acceptAndScheduleMoneyPathRender(data, 'sse'",
+        "acceptAndScheduleMoneyPathRender(data, 'rest_poll'",
+        "acceptAndScheduleMoneyPathRender(data, 'rest_manual'",
+        "acceptAndScheduleMoneyPathRender(restored, 'ticker_cache_restore'",
+    ):
+        assert needle in h, f"missing transport wrapper {needle}"
+
+
+def test_t3_preserves_t2_scheduler_and_card_trust():
+    h = _html()
+    assert "function scheduleMoneyPathRender" in h
+    assert "function _renderMoneyPathCore" in h
+    assert "function analyticsCardTrustGate(d, opts)" in h
+    assert "function resolveCardTrustGate(d, opts)" in h
+    assert "d.final_tradeable" in h
+
+
+def test_t3_does_not_introduce_forbidden_primitives():
+    h = _html()
+    assert "money_path_snapshot" not in h
+    assert "sequence_id" not in h
+    assert "WebSocket" not in h
+    idx = h.find("function acceptAndScheduleMoneyPathRender")
+    chunk = h[idx : idx + 800]
+    assert "money_path_snapshot" not in chunk
+    assert "sequence_id" not in chunk
+
+
+def test_t3_contract_non_closure_caveats_preserved():
+    chunk = _t3_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    assert "stale_withheld_rth_freshness" in chunk
+    assert "real-money readiness" in chunk.lower() or "real_money_readiness" in chunk
+    assert "does not close card fidelity" in chunk.lower() or "does **not** close card fidelity" in chunk
+
+
+def test_t3_schwab_csv_first_declaration_in_contract():
+    chunk = _t3_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    assert "Schwab CSV authority checked: yes" in chunk
+    assert "CSV row(s): NO_SCHWAB_EQUIVALENT" in chunk
+    assert "SCHWAB_CSV_CHECKED" in chunk
+    assert "monotonic acceptance/rejection gating only" in chunk.lower() or "monotonic acceptance" in chunk.lower()
+
+
+def test_t3_registry_monotonic_sequence_gating_v1():
+    import json
+
+    reg = json.loads(
+        (ROOT / "governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8")
+    )
+    t3 = reg["monotonic_sequence_gating_v1"]
+    assert t3["lane_id"] == "T3_MONOTONIC_SEQUENCE_GATING_V1"
+    assert "decision_generation_id" in t3["ordering_key_fields"]
+    assert "monotonic_accept_count" in t3["t0_monotonic_diagnostics"]
+    assert "money_path_snapshot" in t3["does_not_implement"]
+    assert t3["schwab_csv_first_declaration"]["SCHWAB_CSV_CHECKED"] is True
+
+
+def test_t3_html_schwab_csv_checked_marker_present():
+    h = _html()
+    idx = h.find("T3 monotonic gate slice")
+    assert idx != -1
+    chunk = h[idx : idx + 900]
+    assert "Schwab CSV authority checked: yes" in chunk
+    assert "NO_SCHWAB_EQUIVALENT" in chunk
+    assert "SCHWAB_CSV_CHECKED" in chunk
+
+
+def test_t3_ticker_switch_resets_monotonic_gate():
+    h = _html()
+    idx = h.find("requestGeneration++;")
+    chunk = h[idx : idx + 800]
+    assert "_edMplMonotonicGateReset" in chunk

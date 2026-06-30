@@ -354,6 +354,62 @@
       "notes": "static/index.html T2 slice adds rAF scheduler + raf_* diagnostics only; no Schwab leaf add/replace"
     }
   },
+  "monotonic_sequence_gating_v1": {
+    "lane_id": "T3_MONOTONIC_SEQUENCE_GATING_V1",
+    "status": "LOCAL_DIFF_NOT_CLOSED",
+    "ui_implementation_approved": "T3_LOCAL_DIFF_ONLY",
+    "card_fidelity_overall": "NOT_CLOSED_NOT_PROVEN",
+    "stale_withheld_rth_freshness": "FAIL",
+    "universal_runtime_live_proof": "NOT_PROVEN",
+    "real_money_readiness": "NOT_PROVEN",
+    "scope": "Browser monotonic money-path payload acceptance gating before T2 rAF scheduler",
+    "surface": "acceptMoneyPathPayload + acceptAndScheduleMoneyPathRender + window.__edMoneyPathLatency.monotonic_*",
+    "ordering_key_fields": [
+      "decision_generation_id",
+      "_server_build_ts",
+      "fast_server_ts",
+      "_live_plane_fast_ts"
+    ],
+    "t0_monotonic_diagnostics": [
+      "monotonic_gate_enabled",
+      "monotonic_accept_count",
+      "monotonic_reject_count",
+      "monotonic_missing_key_count",
+      "monotonic_invalid_key_count",
+      "monotonic_last_accept_key",
+      "monotonic_last_reject_key",
+      "monotonic_last_reject_reason",
+      "monotonic_latest_source",
+      "out_of_order_reject_count"
+    ],
+    "does_not_implement": [
+      "browser WebSocket",
+      "money_path_snapshot",
+      "sequence_id",
+      "T4 fail-closed freshness UI",
+      "transport cadence change",
+      "card actionability change",
+      "final_tradeable change",
+      "fail_closed behavior change",
+      "Schwab ingestion change"
+    ],
+    "does_not_close": [
+      "card_fidelity_overall",
+      "stale_withheld_rth_freshness",
+      "universal_runtime_live_proof",
+      "real_money_readiness",
+      "lag_fix"
+    ],
+    "schwab_csv_first_declaration": {
+      "lane_id": "T3_SCHWAB_CSV_FIRST_GUARD_V1",
+      "Schwab CSV authority checked": "yes",
+      "CSV row(s)": "NO_SCHWAB_EQUIVALENT",
+      "Derived-field disposition": "KEEP_DERIVED_WITH_PROVENANCE",
+      "All consumers checked": "yes — UI ordering diagnostics only; no Schwab wire reads or ingestion changes",
+      "SCHWAB_CSV_CHECKED": true,
+      "notes": "static/index.html T3 slice adds monotonic gate + monotonic_* diagnostics only; no Schwab leaf add/replace"
+    }
+  },
   "card_freshness_v1": {
     "lane_id": "STALE_CARD_REMEDIATION_S1",
     "status": "DESIGN_ONLY_NOT_WIRED",

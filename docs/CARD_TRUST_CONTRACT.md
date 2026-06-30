@@ -558,3 +558,34 @@ Consumers checked: UI scheduler diagnostics only (`raf_*` counters on `window.__
 SCHWAB_CSV_CHECKED
 
 **Closure caveat:** this declaration does not fix lag, does not close card fidelity overall, does not close `stale_withheld_rth_freshness`, does not prove universal runtime live proof, and does not prove real-money readiness.
+
+---
+
+## 21. T3 monotonic money-path payload acceptance gating (local diff — not closure)
+
+**Lane:** `T3_MONOTONIC_SEQUENCE_GATING_V1`  
+**Status:** UI ordering lane — **does not** fix lag, wire unified `money_path_snapshot`, implement T4 fail-closed freshness UI, change card actionability/`final_tradeable`/fail-closed semantics, change transport cadence, close card fidelity overall, close `stale_withheld_rth_freshness`, prove universal runtime live proof, or real-money readiness.
+
+T3 gates money-path transport payloads before the T2 `scheduleMoneyPathRender()` rAF scheduler. Ordering prefers `decision_generation_id` (monotonic) with `_server_build_ts` as secondary tie-break; quote-tier payloads use quote-lane timestamps when analytical timestamps are absent. Newer payloads are accepted and forwarded to T2; older, duplicate, or regressive payloads are rejected without scheduling rAF or painting cards. Missing or invalid ordering keys preserve existing fail-open fallback behavior with explicit diagnostics.
+
+**Registry:** `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `monotonic_sequence_gating_v1`.
+
+### Monotonic observability (T0 extension)
+
+Read-only fields on `window.__edMoneyPathLatency`: `monotonic_gate_enabled`, `monotonic_accept_count`, `monotonic_reject_count`, `monotonic_missing_key_count`, `monotonic_invalid_key_count`, `monotonic_last_accept_key`, `monotonic_last_reject_key`, `monotonic_last_reject_reason`, `monotonic_latest_source`, `out_of_order_reject_count`. Diagnostics only — not inputs to trade/actionability logic.
+
+### Explicit non-implementation in T3
+
+No browser WebSocket, no unified `money_path_snapshot`, no T4 fail-closed freshness UI merge, no transport cadence change, no `sequence_id` wire field, no card actionability/`final_tradeable`/fail-closed behavior change, no Schwab ingestion or data-source change, no stale/frozen label hiding.
+
+### Schwab CSV-first declaration (T3 `static/index.html` monotonic gate slice — governance artifact)
+
+Schwab CSV authority checked: yes
+
+CSV row(s): NO_SCHWAB_EQUIVALENT — T3 adds browser-side monotonic acceptance/rejection gating only via `acceptMoneyPathPayload()` / `acceptAndScheduleMoneyPathRender()` and read-only `monotonic_*` diagnostics on `window.__edMoneyPathLatency`. These are not Schwab wire leaves. T3 does not introduce, modify, consume, derive, rename, or replace Schwab-native market-data fields. No pricing, volume, quote, bid/ask, option-chain, open-interest, Greeks, or market-data authority field is changed. No Schwab ingestion or data-source behavior is changed.
+
+Consumers checked: UI ordering diagnostics only (`monotonic_*` counters on `window.__edMoneyPathLatency`).
+
+SCHWAB_CSV_CHECKED
+
+**Closure caveat:** this declaration does not fix lag, does not close card fidelity overall, does not close `stale_withheld_rth_freshness`, does not prove universal runtime live proof, and does not prove real-money readiness.

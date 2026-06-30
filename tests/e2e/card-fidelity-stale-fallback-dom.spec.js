@@ -347,6 +347,43 @@ test('T2 rAF latest-wins scheduler exposes observational diagnostics', async ({ 
   });
 });
 
+test('T3 monotonic gate accepts newer and rejects older out-of-order payloads', async ({ page }) => {
+  await gotoCardTrustSurface(page);
+  const result = await page.evaluate(() => {
+    if (typeof window._edMplMonotonicGateReset === 'function') window._edMplMonotonicGateReset();
+    const base = {
+      ticker: typeof activeTicker !== 'undefined' ? activeTicker : 'SPY',
+      decision_generation_id: 100,
+      _server_build_ts: 1000,
+      _tier: 'C_analytics',
+    };
+    const acceptNewer = window.acceptMoneyPathPayload(Object.assign({}, base), 'e2e_t3');
+    const rejectOlder = window.acceptMoneyPathPayload(
+      Object.assign({}, base, { decision_generation_id: 99, _server_build_ts: 999 }),
+      'e2e_t3'
+    );
+    const rejectDuplicate = window.acceptMoneyPathPayload(Object.assign({}, base), 'e2e_t3');
+    const mpl = window.__edMoneyPathLatency;
+    return {
+      acceptNewer,
+      rejectOlder,
+      rejectDuplicate,
+      monotonic_accept_count: mpl.monotonic_accept_count,
+      monotonic_reject_count: mpl.monotonic_reject_count,
+      monotonic_last_reject_reason: mpl.monotonic_last_reject_reason,
+      out_of_order_reject_count: mpl.out_of_order_reject_count,
+      hasMonotonicFn: typeof window.acceptMoneyPathPayload === 'function',
+    };
+  });
+  expect(result.hasMonotonicFn).toBe(true);
+  expect(result.acceptNewer).toBe(true);
+  expect(result.rejectOlder).toBe(false);
+  expect(result.rejectDuplicate).toBe(false);
+  expect(result.monotonic_accept_count).toBeGreaterThanOrEqual(1);
+  expect(result.monotonic_reject_count).toBeGreaterThanOrEqual(2);
+  expect(result.out_of_order_reject_count).toBeGreaterThanOrEqual(2);
+});
+
 // ── Direct renderer path (subordinate — same card-trust gate) ─────────────────
 
 for (const ticker of ANCHOR_TICKERS) {

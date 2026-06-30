@@ -3553,6 +3553,7 @@ function setActiveTicker(rawTicker, rawExpiry) {
     try { window._l1FreshnessPaintByScope = {}; } catch (e) {}
     window._lastRenderedDecisionGen = 0;
     window._tierCCardsPaintedAtGen = 0;
+    _edMplMonotonicGateReset();
     _resetTierCCardRenderDedup();
     lastFastGen = 0;
     lastFastTs = 0;
@@ -3574,7 +3575,7 @@ function setActiveTicker(rawTicker, rawExpiry) {
       window._lastData = restored;
       lastRenderTimestamp = 0;
       _commitQuoteLaneFromPayload(restored);
-      try { scheduleMoneyPathRender(restored, 'ticker_cache_restore'); _syncAnalyticsPollCadence(); } catch (e) {}
+      try { acceptAndScheduleMoneyPathRender(restored, 'ticker_cache_restore'); _syncAnalyticsPollCadence(); } catch (e) {}
     } else {
       window._lastData = {
         ticker: t,
@@ -6358,6 +6359,15 @@ function _edMplInit() {
     raf_latest_wins_supersede_count: 0,
     raf_last_source: null,
     raf_pending: false,
+    monotonic_gate_enabled: false,
+    monotonic_accept_count: 0,
+    monotonic_reject_count: 0,
+    monotonic_missing_key_count: 0,
+    monotonic_invalid_key_count: 0,
+    monotonic_last_accept_key: null,
+    monotonic_last_reject_key: null,
+    monotonic_last_reject_reason: null,
+    monotonic_latest_source: null,
   };
   window.__edMoneyPathLatency = o;
   _edMplInstallLongTaskObserver();
@@ -6476,6 +6486,141 @@ function _edMplOnSseTransportResult(accepted) {
 
 _edMplInit();
 try { window._edMplInit = _edMplInit; } catch (e) {}
+
+/**
+ * Schwab CSV-first declaration (T3 monotonic gate slice — static/index.html only):
+ * Schwab CSV authority checked: yes
+ * CSV row(s): NO_SCHWAB_EQUIVALENT — T3 adds browser-side monotonic acceptance/rejection gating only
+ *   (decision_generation_id / _server_build_ts ordering before T2 rAF scheduler); no Schwab wire reads.
+ * All consumers checked: yes — UI ordering diagnostics only (monotonic_* on window.__edMoneyPathLatency).
+ * SCHWAB_CSV_CHECKED
+ */
+/** T3 — monotonic money-path payload acceptance gating (before T2 rAF scheduler). */
+let _edMplMonotonicLastAccepted = null;
+
+function _edMplMonotonicGateReset() {
+  _edMplMonotonicLastAccepted = null;
+  const mpl = _edMplInit();
+  mpl.monotonic_last_accept_key = null;
+  mpl.monotonic_last_reject_key = null;
+  mpl.monotonic_last_reject_reason = null;
+  mpl.monotonic_latest_source = null;
+}
+
+function _edMplOrderingKeyFromPayload(d) {
+  if (d == null || typeof d !== 'object' || Array.isArray(d)) {
+    return { gen: null, ts: null, missing: true, invalid: false, canonical: null };
+  }
+  const rawGen = d.decision_generation_id != null ? Number(d.decision_generation_id) : NaN;
+  const gen = Number.isFinite(rawGen) ? rawGen : null;
+  const isQuoteTier = d._tier === 'A_live' || d._tier === 'B_light' || d.plane === 'L1_context';
+  let ts = isQuoteTier ? _validQuoteLaneTs(d) : _validServerBuildTs(d);
+  if (ts == null && !isQuoteTier) ts = _validQuoteLaneTs(d);
+  if (ts == null && isQuoteTier) ts = _validServerBuildTs(d);
+  const missing = gen == null && ts == null;
+  const invalid = gen != null && gen < 0;
+  let canonical = null;
+  if (gen != null) canonical = 'g:' + gen;
+  if (ts != null) canonical = (canonical ? canonical + '|' : '') + 'ts:' + ts;
+  return { gen, ts, missing, invalid, canonical };
+}
+
+function _edMplCompareOrdering(incoming, last) {
+  if (!last) return 1;
+  if (incoming.gen != null && last.gen != null) {
+    if (incoming.gen < last.gen) return -1;
+    if (incoming.gen > last.gen) return 1;
+    if (incoming.ts != null && last.ts != null) {
+      if (incoming.ts < last.ts) return -1;
+      if (incoming.ts > last.ts) return 1;
+      return 0;
+    }
+    return 0;
+  }
+  if (incoming.ts != null && last.ts != null) {
+    if (incoming.ts < last.ts) return -1;
+    if (incoming.ts > last.ts) return 1;
+    return 0;
+  }
+  return null;
+}
+
+function _edMplMonotonicGateEvaluate(d, source) {
+  const mpl = _edMplInit();
+  mpl.monotonic_gate_enabled = true;
+  const key = _edMplOrderingKeyFromPayload(d);
+  if (d == null || typeof d !== 'object' || Array.isArray(d)) {
+    return { accept: false, reason: 'null', key: key.canonical, source };
+  }
+  if (d.ticker && d.ticker.toUpperCase() !== activeTicker) {
+    return { accept: false, reason: 'ticker', key: key.canonical, source };
+  }
+  if (key.missing) {
+    mpl.monotonic_missing_key_count++;
+    return { accept: true, reason: 'missing_key_fallback', key: key.canonical, source, fallback: true };
+  }
+  if (key.invalid) {
+    mpl.monotonic_invalid_key_count++;
+    return { accept: true, reason: 'invalid_key_fallback', key: key.canonical, source, fallback: true };
+  }
+  const cmp = _edMplCompareOrdering(key, _edMplMonotonicLastAccepted);
+  if (cmp === null) {
+    mpl.monotonic_missing_key_count++;
+    return { accept: true, reason: 'incomparable_fallback', key: key.canonical, source, fallback: true };
+  }
+  if (cmp < 0) {
+    const reason = key.gen != null && _edMplMonotonicLastAccepted && key.gen < _edMplMonotonicLastAccepted.gen
+      ? 'gen_regression' : 'ts_regression';
+    return { accept: false, reason, key: key.canonical, source };
+  }
+  if (cmp === 0) {
+    return { accept: false, reason: 'duplicate', key: key.canonical, source };
+  }
+  return { accept: true, reason: 'newer', key: key.canonical, source };
+}
+
+function _edMplMonotonicGateRecordAccept(d, gate) {
+  const mpl = _edMplInit();
+  mpl.monotonic_accept_count++;
+  mpl.monotonic_latest_source = gate.source || null;
+  mpl.monotonic_last_accept_key = gate.key || null;
+  if (!gate.fallback) {
+    const key = _edMplOrderingKeyFromPayload(d);
+    _edMplMonotonicLastAccepted = { gen: key.gen, ts: key.ts, canonical: key.canonical };
+  }
+}
+
+function _edMplMonotonicGateRecordReject(gate) {
+  const mpl = _edMplInit();
+  mpl.monotonic_reject_count++;
+  mpl.monotonic_last_reject_key = gate.key || null;
+  mpl.monotonic_last_reject_reason = gate.reason || null;
+  mpl.out_of_order_reject_count++;
+}
+
+function acceptMoneyPathPayload(d, source) {
+  const gate = _edMplMonotonicGateEvaluate(d, source);
+  if (!gate.accept) {
+    _edMplMonotonicGateRecordReject(gate);
+    return false;
+  }
+  _edMplMonotonicGateRecordAccept(d, gate);
+  return true;
+}
+
+function acceptAndScheduleMoneyPathRender(d, fullRenderSource, onComplete) {
+  if (!acceptMoneyPathPayload(d, fullRenderSource)) {
+    if (typeof onComplete === 'function') onComplete(false, d, fullRenderSource);
+    return false;
+  }
+  return scheduleMoneyPathRender(d, fullRenderSource, onComplete);
+}
+try {
+  window.acceptMoneyPathPayload = acceptMoneyPathPayload;
+  window.acceptAndScheduleMoneyPathRender = acceptAndScheduleMoneyPathRender;
+  window._edMplMonotonicGateEvaluate = _edMplMonotonicGateEvaluate;
+  window._edMplMonotonicGateReset = _edMplMonotonicGateReset;
+} catch (e) {}
 
 /** T2 — rAF latest-wins money-path render scheduler (coalesces transport bursts; observational diagnostics only). */
 let _edMplRafHandle = null;
@@ -8653,7 +8798,7 @@ async function _fetchTierCRestAndApply(ctx) {
     _consecutiveFailures = 0;
     if (DIAG) console.log('[fetchState] ACCEPTED', { ticker: data.ticker, gen: myGen, pipeline_ms: data._pipeline_ms, from_cache: data._from_cache, quote_ms: data._quote_ms, chain_ms: data._chain_ms, compute_ms: data._compute_ms });
     _edMplNoteEventReceived('rest');
-    scheduleMoneyPathRender(data, 'rest_manual', function (_didRender) {
+    acceptAndScheduleMoneyPathRender(data, 'rest_manual', function (_didRender) {
       _edMplOnRestTransportResult('rest_manual', _didRender);
       if (_didRender) {
         _lastRenderTs = Date.now();
@@ -8829,7 +8974,7 @@ async function fetchState(forceOrOpts) {
               && myGen === requestGeneration
               && (!ld.ticker || ld.ticker.toUpperCase() === activeTicker)
               && ld._tier === 'A_live') {
-            scheduleMoneyPathRender(ld, 'rest_manual');
+            acceptAndScheduleMoneyPathRender(ld, 'rest_manual');
             if (dot) dot.className = 'status-dot live';
             if (label) label.textContent = 'LIVE';
             const ovl = $('loading-overlay');
@@ -8855,7 +9000,7 @@ async function fetchState(forceOrOpts) {
             && (bd._tier === 'B_light' || bd.plane === 'L1_context')
             && myGen === requestGeneration
             && (!bd.ticker || bd.ticker.toUpperCase() === activeTicker)) {
-          scheduleMoneyPathRender(bd, 'rest_manual', function (didB) {
+          acceptAndScheduleMoneyPathRender(bd, 'rest_manual', function (didB) {
             if (didB && willChange && _switchDiagSession && !_switchDiagSession._timingLightPaint && window.ED_SWITCH_TIMING === true) {
               _switchDiagSession._timingLightPaint = true;
               const t0 = _switchDiagSession.t0;
@@ -9000,7 +9145,7 @@ async function pollStateFallback() {
     _consecutiveFailures = 0;
     if (DIAG) console.log('[pollFallback] ACCEPTED', { ticker: data.ticker, gen: myGen, pipeline_ms: data._pipeline_ms, round_trip_ms: Date.now() - _t0, from_cache: data._from_cache });
     _edMplNoteEventReceived('rest');
-    scheduleMoneyPathRender(data, 'rest_poll', function (_didRenderPoll) {
+    acceptAndScheduleMoneyPathRender(data, 'rest_poll', function (_didRenderPoll) {
       _edMplOnRestTransportResult('rest_poll', _didRenderPoll);
       if (_didRenderPoll) {
         _lastRenderTs = Date.now();
@@ -10173,7 +10318,7 @@ function connectSSE(opts) {
       if (typeof DIAG !== 'undefined' && DIAG) {
         console.log(`SSE_ONMESSAGE_ACCEPTED generation=${sseGen} ticker=${data.ticker} pipeline_ms=${data._pipeline_ms != null ? data._pipeline_ms : ''} _update_source=${data._update_source || ''}`);
       }
-      scheduleMoneyPathRender(data, 'sse', function (_didRenderSse) {
+      acceptAndScheduleMoneyPathRender(data, 'sse', function (_didRenderSse) {
         _edMplOnSseTransportResult(_didRenderSse);
         if (_didRenderSse) {
           _lastRenderTs = Date.now();
