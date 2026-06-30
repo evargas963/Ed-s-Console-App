@@ -56,7 +56,7 @@ def test_tier_a_does_not_advance_analytical_last_render_timestamp():
     assert "function _commitAnalyticalRenderTimestampAndGen(" in html
     assert "_commitQuoteLaneTimestamps(d)" in html
     assert "timestampLane: 'quote'" in html
-    tier_a = html.split("function renderTierALive")[1].split("function render(")[0]
+    tier_a = html.split("function renderTierALive")[1].split("function _renderMoneyPathCore(")[0]
     assert "lastRenderTimestamp" not in tier_a
     assert "_commitAnalyticalRenderTimestampAndGen" not in tier_a
 

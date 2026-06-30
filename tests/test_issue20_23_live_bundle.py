@@ -92,7 +92,7 @@ def test_index_html_sse_badge_conn_on_open_live_after_payload():
     assert "lbl.textContent = 'CONN'" in html
     start = html.find("es.onmessage = (event)")
     assert start != -1
-    needle = "const _didRenderSse = render(data, 'sse')"
+    needle = "scheduleMoneyPathRender(data, 'sse'"
     end = html.find(needle, start)
     assert end != -1
     assert "_setSseUi('live'" in html[start:end]
