@@ -86,16 +86,24 @@ def test_index_html_render_return_gates_live_and_last_render_ts():
 
 
 def test_index_html_sse_badge_conn_on_open_live_after_payload():
-    """SSE badge: CONNECTING/CONN while handshake or socket-only; LIVE only after payload passes guards."""
+    """SSE badge: CONNECTING/CONN while handshake or socket-only; LIVE only after payload passes guards.
+
+    T4 structural alignment: Tier C money-path SSE entry is ingestMoneyPathSnapshot(snap, 'sse')
+    (was acceptAndScheduleMoneyPathRender(data, 'sse')). Ordering invariant unchanged:
+    _setSseUi('live', …) must still precede the money-path ingest entry inside es.onmessage.
+    """
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8", errors="replace")
     assert "_setSseUi('socket_open'" in html
     assert "lbl.textContent = 'CONN'" in html
     start = html.find("es.onmessage = (event)")
     assert start != -1
-    needle = "acceptAndScheduleMoneyPathRender(data, 'sse'"
+    needle = "ingestMoneyPathSnapshot(snap, 'sse'"
     end = html.find(needle, start)
-    assert end != -1
-    assert "_setSseUi('live'" in html[start:end]
+    assert end != -1, "T4 money-path SSE entry must remain inside es.onmessage"
+    live_before_ingest = html[start:end]
+    assert "_setSseUi('live'" in live_before_ingest
+    assert "extractMoneyPathSnapshot(data)" in live_before_ingest
+    assert "acceptAndScheduleMoneyPathRender(data, 'sse'" not in live_before_ingest
 
 
 def test_client_render_ordering_logic():

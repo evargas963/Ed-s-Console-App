@@ -410,6 +410,61 @@
       "notes": "static/index.html T3 slice adds monotonic gate + monotonic_* diagnostics only; no Schwab leaf add/replace"
     }
   },
+  "unified_money_path_snapshot_freshness_v1": {
+    "lane_id": "T4_UNIFIED_MONEY_PATH_SNAPSHOT_SSE_AND_FAIL_CLOSED_FRESHNESS_UI_V1",
+    "status": "LOCAL_DIFF_NOT_CLOSED",
+    "ui_implementation_approved": "T4_LOCAL_DIFF_ONLY",
+    "card_fidelity_overall": "NOT_CLOSED_NOT_PROVEN",
+    "stale_withheld_rth_freshness": "FAIL",
+    "universal_runtime_live_proof": "NOT_PROVEN",
+    "real_money_readiness": "NOT_PROVEN",
+    "scope": "Unified money_path_snapshot SSE envelope + T1 fail-closed freshness UI before T2/T3 money-path paint",
+    "surface": "extractMoneyPathSnapshot + ingestMoneyPathSnapshot + _edMplFreshness* + server._attach_money_path_snapshot_envelope",
+    "freshness_thresholds_ms": {
+      "quote_fresh": 3000,
+      "quote_aging": 10000,
+      "bundle_fresh": 15000,
+      "bundle_aging": 45000,
+      "bundle_stale": 120000
+    },
+    "t0_t4_diagnostics": [
+      "money_path_snapshot_seen_count",
+      "money_path_snapshot_accept_count",
+      "money_path_snapshot_reject_count",
+      "latest_money_path_snapshot_age_ms",
+      "freshness_gate_enabled",
+      "freshness_state",
+      "quote_freshness_state",
+      "bundle_freshness_state",
+      "stale_actionability_veto_count",
+      "frozen_actionability_veto_count",
+      "last_freshness_veto_reason"
+    ],
+    "does_not_implement": [
+      "browser WebSocket",
+      "transport cadence change",
+      "Schwab ingestion change",
+      "trading decision logic change",
+      "model signal change",
+      "RTH proof"
+    ],
+    "does_not_close": [
+      "card_fidelity_overall",
+      "stale_withheld_rth_freshness",
+      "universal_runtime_live_proof",
+      "real_money_readiness",
+      "lag_fix"
+    ],
+    "schwab_csv_first_declaration": {
+      "lane_id": "T4_SCHWAB_CSV_FIRST_GUARD_V1",
+      "Schwab CSV authority checked": "yes",
+      "CSV row(s)": "NO_SCHWAB_EQUIVALENT",
+      "Derived-field disposition": "KEEP_DERIVED_WITH_PROVENANCE",
+      "All consumers checked": "yes — UI freshness/transport diagnostics only; no Schwab wire reads or ingestion changes",
+      "SCHWAB_CSV_CHECKED": true,
+      "notes": "static/index.html T4 slice + server read-only SSE envelope; no Schwab leaf add/replace"
+    }
+  },
   "card_freshness_v1": {
     "lane_id": "STALE_CARD_REMEDIATION_S1",
     "status": "DESIGN_ONLY_NOT_WIRED",

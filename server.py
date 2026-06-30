@@ -1807,6 +1807,20 @@ def _fetch_fast_quote_payload(ticker: str) -> dict:
     return _record_rest_fast_quote_with_auth_fallback(tkr, prev, "rest_fast_quote")
 
 
+def _attach_money_path_snapshot_envelope(payload: dict) -> dict:
+    """T4 read-only SSE envelope — nested money_path_snapshot; top-level Tier C fields unchanged."""
+    out = dict(payload)
+    tier_c = (
+        out.get("mhap_rows") is not None
+        or out.get("decision_generation_id") is not None
+        or out.get("_server_build_ts") is not None
+    )
+    if tier_c:
+        out["money_path_snapshot"] = dict(out)
+        out["money_path_snapshot_kind"] = "tier_c"
+    return out
+
+
 async def _broadcast_snapshot(data: dict) -> None:
     """Broadcast snapshot to all connected SSE clients. Remove queues that are full."""
     try:
@@ -1816,6 +1830,7 @@ async def _broadcast_snapshot(data: dict) -> None:
             if src == "rest_poll":
                 payload_in["_update_source"] = "sse_fanout_rest"
             payload_in["_sse_delivery"] = True
+            payload_in = _attach_money_path_snapshot_envelope(payload_in)
         dead = []
         with _sse_lock:
             clients = list(_sse_clients)

@@ -131,7 +131,7 @@ def test_all_and_plan_trust_engine_final_tradeable_only():
     assert "function engineTradeableSetup" in h
     idx = h.find("function engineTradeableSetup")
     assert idx != -1
-    chunk = h[idx : idx + 380]
+    chunk = h[idx : idx + 520]
     assert "d.final_tradeable" in chunk
     assert "MIN_TRADEABLE_HORIZONS_FOR_ALL_PLAN" not in h
     assert "function alignedDirectionalHorizonCount" not in h
@@ -1156,7 +1156,7 @@ def test_t0_schwab_csv_first_declaration_in_contract():
 
 def test_t0_sse_transport_result_accounted_once_per_outcome():
     h = _html()
-    idx = h.find("acceptAndScheduleMoneyPathRender(data, 'sse'")
+    idx = h.find("ingestMoneyPathSnapshot(snap, 'sse'")
     assert idx != -1
     chunk = h[idx : idx + 500]
     assert chunk.count("_edMplOnSseTransportResult") == 1
@@ -1238,12 +1238,12 @@ def test_t1_contract_downstream_t2_t3_t4_t5_requirements():
 
 def test_t1_contract_no_implementation_of_forbidden_transport_primitives():
     h = _html()
-    assert "money_path_snapshot" not in h
     assert "sequence_id" not in h
     assert "WebSocket" not in h
     chunk = _t1_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
     assert "no browser WebSocket" in chunk.lower() or "no `money_path_snapshot`" in chunk
     assert "no rAF scheduler" in chunk.lower() or "no raf scheduler" in chunk.lower()
+    assert "function ingestMoneyPathSnapshot" in h
 
 
 def _t2_contract_chunk(body: str) -> str:
@@ -1276,7 +1276,7 @@ def test_t2_raf_scheduler_coalesces_and_latest_wins():
 
 def test_t2_transport_entry_points_use_scheduler_not_direct_render():
     h = _html()
-    sse_idx = h.find("acceptAndScheduleMoneyPathRender(data, 'sse'")
+    sse_idx = h.find("ingestMoneyPathSnapshot(snap, 'sse'")
     assert sse_idx != -1
     sse_chunk = h[sse_idx : sse_idx + 400]
     assert "_edMplOnSseTransportResult" in sse_chunk
@@ -1289,13 +1289,11 @@ def test_t2_transport_entry_points_use_scheduler_not_direct_render():
 
 def test_t2_scheduler_does_not_introduce_forbidden_primitives():
     h = _html()
-    assert "money_path_snapshot" not in h
     assert "sequence_id" not in h
     assert "WebSocket" not in h
     idx = h.find("function scheduleMoneyPathRender")
     chunk = h[idx : idx + 2200]
     assert "sequence_id" not in chunk
-    assert "money_path_snapshot" not in chunk
     assert "WebSocket" not in chunk
 
 
@@ -1451,7 +1449,7 @@ def test_t3_monotonic_diagnostic_fields_initialized():
 def test_t3_transport_entry_points_use_monotonic_wrapper():
     h = _html()
     for needle in (
-        "acceptAndScheduleMoneyPathRender(data, 'sse'",
+        "ingestMoneyPathSnapshot(snap, 'sse'",
         "acceptAndScheduleMoneyPathRender(data, 'rest_poll'",
         "acceptAndScheduleMoneyPathRender(data, 'rest_manual'",
         "acceptAndScheduleMoneyPathRender(restored, 'ticker_cache_restore'",
@@ -1470,12 +1468,10 @@ def test_t3_preserves_t2_scheduler_and_card_trust():
 
 def test_t3_does_not_introduce_forbidden_primitives():
     h = _html()
-    assert "money_path_snapshot" not in h
     assert "sequence_id" not in h
     assert "WebSocket" not in h
     idx = h.find("function acceptAndScheduleMoneyPathRender")
     chunk = h[idx : idx + 800]
-    assert "money_path_snapshot" not in chunk
     assert "sequence_id" not in chunk
 
 
@@ -1523,3 +1519,224 @@ def test_t3_ticker_switch_resets_monotonic_gate():
     idx = h.find("requestGeneration++;")
     chunk = h[idx : idx + 800]
     assert "_edMplMonotonicGateReset" in chunk
+
+
+def _t4_contract_chunk(body: str) -> str:
+    idx = body.find("## 22. T4 unified money_path_snapshot")
+    assert idx != -1, "T4 contract section missing"
+    return body[idx : idx + 6500]
+
+
+def test_t4_extract_money_path_snapshot_envelope_and_legacy():
+    h = _html()
+    assert "function extractMoneyPathSnapshot(raw)" in h
+    assert "raw.money_path_snapshot" in h
+    assert "raw.mhap_rows" in h
+
+
+def test_t4_ingest_flows_through_t3_gate_and_t2_scheduler():
+    h = _html()
+    idx = h.find("function ingestMoneyPathSnapshot")
+    chunk = h[idx : idx + 900]
+    assert "acceptAndScheduleMoneyPathRender(snapshot, source" in chunk
+
+
+def test_t4_server_broadcast_attaches_snapshot_envelope():
+    body = (ROOT / "server.py").read_text(encoding="utf-8")
+    assert "def _attach_money_path_snapshot_envelope" in body
+    idx = body.find("async def _broadcast_snapshot")
+    chunk = body[idx : idx + 600]
+    assert "_attach_money_path_snapshot_envelope" in chunk
+
+
+def test_t4_sse_handler_uses_ingest_money_path_snapshot():
+    h = _html()
+    start = h.find("es.onmessage = (event)")
+    assert start != -1
+    chunk = h[start : start + 2800]
+    assert "extractMoneyPathSnapshot(data)" in chunk
+    assert "ingestMoneyPathSnapshot(snap, 'sse'" in chunk
+
+
+def test_t4_freshness_threshold_constants():
+    h = _html()
+    assert "_ED_MPL_QUOTE_FRESH_MS = 3000" in h
+    assert "_ED_MPL_QUOTE_AGING_MS = 10000" in h
+    assert "_ED_MPL_BUNDLE_FRESH_MS = 15000" in h
+    assert "_ED_MPL_BUNDLE_AGING_MS = 45000" in h
+    assert "_ED_MPL_BUNDLE_STALE_MS = 120000" in h
+
+
+def test_t4_freshness_classifiers():
+    h = _html()
+    assert "function _edMplClassifyQuoteFreshness" in h
+    assert "function _edMplClassifyBundleFreshness" in h
+    assert "return 'frozen'" in h[h.find("function _edMplClassifyBundleFreshness") : h.find("function _edMplClassifyBundleFreshness") + 400]
+
+
+def test_t4_stale_and_frozen_labels_on_dom():
+    h = _html()
+    idx = h.find("function _edMplApplyFreshnessUiLabels")
+    chunk = h[idx : idx + 1800]
+    assert "data-bundle-freshness-state" in chunk
+    assert "FROZEN" in chunk
+    assert "STALE" in chunk
+    assert "tf-signal-card--trade-active" in chunk
+
+
+def test_t4_engine_tradeable_freshness_veto():
+    h = _html()
+    idx = h.find("function engineTradeableSetup")
+    chunk = h[idx : idx + 450]
+    assert "_edMplFreshnessActionabilityBlocked" in chunk
+    assert "_edMplRecordFreshnessVeto" in chunk
+
+
+def test_t4_quote_context_cannot_arm_stale_money_path_cards():
+    """Quote/read-only SSE lane must not arm stale/frozen money-path cards (T4 fail-closed)."""
+    h = _html()
+
+    lq_start = h.find("es.addEventListener('live_quote'")
+    assert lq_start != -1
+    lq_end = h.find("es.onmessage = (event)", lq_start)
+    live_quote_chunk = h[lq_start:lq_end]
+    assert "_livePlaneApplyCore(p, 'sse_live_plane')" in live_quote_chunk
+    assert "_commitQuoteLaneFromPayload(p)" in live_quote_chunk
+    assert "p._plane_layer !== 'tick'" in live_quote_chunk
+    for forbidden in (
+        "ingestMoneyPathSnapshot",
+        "acceptAndScheduleMoneyPathRender",
+        "acceptMoneyPathPayload",
+        "engineTradeableSetup",
+        "_renderMoneyPathCore",
+        "renderTimeframeSignalRow",
+        "scheduleMoneyPathRender",
+    ):
+        assert forbidden not in live_quote_chunk, f"live_quote must not call {forbidden}"
+
+    lpc_idx = h.find("function _livePlaneApplyCore")
+    lpc_end = h.find("\n/** True when quote fields should paint", lpc_idx)
+    assert lpc_end != -1
+    lpc_chunk = h[lpc_idx:lpc_end]
+    assert "scheduleMtmSpotDerivedCardsRefresh()" in lpc_chunk
+    for forbidden in (
+        "ingestMoneyPathSnapshot",
+        "engineTradeableSetup",
+        "_renderMoneyPathCore",
+        "renderTimeframeSignalRow",
+        "scheduleMoneyPathRender",
+        "acceptMoneyPathPayload",
+        "_server_build_ts",
+        "final_tradeable",
+        "mhap_rows",
+    ):
+        assert forbidden not in lpc_chunk, f"_livePlaneApplyCore must not re-arm {forbidden}"
+
+    mtm_idx = h.find("function scheduleMtmSpotDerivedCardsRefresh")
+    mtm_chunk = h[mtm_idx : mtm_idx + 450]
+    assert "engineTradeableSetup" not in mtm_chunk
+    assert "ingestMoneyPathSnapshot" not in mtm_chunk
+    assert "renderTimeframeSignalRow" not in mtm_chunk
+    assert "__renderKeyLevelsLive" in mtm_chunk
+
+    ets_idx = h.find("function engineTradeableSetup")
+    ets_chunk = h[ets_idx : ets_idx + 520]
+    fresh_pos = ets_chunk.find("_edMplFreshnessActionabilityBlocked")
+    trust_pos = ets_chunk.find("resolveCardTrustGate")
+    trade_pos = ets_chunk.find("d.final_tradeable")
+    assert fresh_pos != -1 and trust_pos != -1 and trade_pos != -1
+    assert fresh_pos < trust_pos < trade_pos
+    fresh_veto = ets_chunk[fresh_pos:trust_pos]
+    assert "return false" in fresh_veto
+
+    fresh_block_idx = h.find("function _edMplFreshnessActionabilityBlocked")
+    fresh_block_chunk = h[fresh_block_idx : fresh_block_idx + 400]
+    assert "bundle_freshness_state" in fresh_block_chunk
+    assert "=== 'stale'" in fresh_block_chunk or "== 'stale'" in fresh_block_chunk
+    assert "=== 'frozen'" in fresh_block_chunk or "== 'frozen'" in fresh_block_chunk
+
+    age_idx = h.find("function _edMplFreshnessAgeMsFromPayload")
+    age_chunk = h[age_idx : age_idx + 650]
+    assert "lane === 'quote'" in age_chunk
+    assert "_validServerBuildTs" in age_chunk
+    assert "_validQuoteLaneTs" in age_chunk
+
+    gate_idx = h.find("function resolveCardTrustGate")
+    gate_chunk = h[gate_idx : gate_idx + 1200]
+    assert "operator_card_actionable === true" in gate_chunk
+    assert "trusted: actionable" in gate_chunk or "trusted: actionable," in gate_chunk.replace(" ", "")
+
+
+def test_t4_diagnostic_fields_initialized():
+    h = _html()
+    idx = h.find("function _edMplInit")
+    chunk = h[idx : idx + 2200]
+    for field in (
+        "money_path_snapshot_seen_count",
+        "money_path_snapshot_accept_count",
+        "money_path_snapshot_reject_count",
+        "latest_money_path_snapshot_age_ms",
+        "freshness_gate_enabled",
+        "freshness_state",
+        "quote_freshness_state",
+        "bundle_freshness_state",
+        "stale_actionability_veto_count",
+        "frozen_actionability_veto_count",
+        "last_freshness_veto_reason",
+    ):
+        assert field in chunk, f"missing T4 diagnostic field {field}"
+
+
+def test_t4_preserves_t2_t3_scheduler_and_monotonic():
+    h = _html()
+    assert "function scheduleMoneyPathRender" in h
+    assert "function acceptMoneyPathPayload" in h
+    assert "function acceptAndScheduleMoneyPathRender" in h
+    assert "raf_latest_wins_supersede_count" in h
+    assert "monotonic_reject_count" in h
+
+
+def test_t4_no_websocket_no_transport_cadence_change():
+    h = _html()
+    idx = h.find("function ingestMoneyPathSnapshot")
+    chunk = h[idx : idx + 1200]
+    assert "WebSocket" not in chunk
+    assert "setInterval" not in chunk
+    assert "ANALYTICS_POLL" not in chunk
+
+
+def test_t4_schwab_csv_first_declaration_in_contract():
+    chunk = _t4_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    assert "Schwab CSV authority checked: yes" in chunk
+    assert "NO_SCHWAB_EQUIVALENT" in chunk
+    assert "SCHWAB_CSV_CHECKED" in chunk
+    assert "fail-closed freshness ui" in chunk.lower()
+
+
+def test_t4_html_schwab_csv_checked_marker_present():
+    h = _html()
+    idx = h.find("T4 unified snapshot + freshness fail-closed slice")
+    assert idx != -1
+    chunk = h[idx : idx + 900]
+    assert "Schwab CSV authority checked: yes" in chunk
+    assert "NO_SCHWAB_EQUIVALENT" in chunk
+    assert "SCHWAB_CSV_CHECKED" in chunk
+
+
+def test_t4_registry_unified_money_path_snapshot_freshness_v1():
+    import json
+
+    reg = json.loads(
+        (ROOT / "governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8")
+    )
+    t4 = reg["unified_money_path_snapshot_freshness_v1"]
+    assert t4["lane_id"] == "T4_UNIFIED_MONEY_PATH_SNAPSHOT_SSE_AND_FAIL_CLOSED_FRESHNESS_UI_V1"
+    assert "money_path_snapshot_seen_count" in t4["t0_t4_diagnostics"]
+    assert t4["schwab_csv_first_declaration"]["SCHWAB_CSV_CHECKED"] is True
+
+
+def test_t4_contract_non_closure_caveats_preserved():
+    chunk = _t4_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    assert "stale_withheld_rth_freshness" in chunk
+    assert "real-money readiness" in chunk.lower() or "real_money_readiness" in chunk
+    assert "does not close card fidelity" in chunk.lower()

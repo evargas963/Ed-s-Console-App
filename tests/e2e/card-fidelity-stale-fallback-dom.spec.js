@@ -384,6 +384,89 @@ test('T3 monotonic gate accepts newer and rejects older out-of-order payloads', 
   expect(result.out_of_order_reject_count).toBeGreaterThanOrEqual(2);
 });
 
+test('T4 freshness fail-closed blocks engineTradeableSetup on stale bundle', async ({ page }) => {
+  await gotoCardTrustSurface(page);
+  const result = await page.evaluate(() => {
+    const nowSec = Date.now() / 1000;
+    const staleTs = nowSec - 60;
+    const d = {
+      ticker: typeof activeTicker !== 'undefined' ? activeTicker : 'SPY',
+      final_tradeable: true,
+      final_bias: 'LONG',
+      decision_generation_id: 500,
+      _server_build_ts: staleTs,
+      mhap_rows: [{ horizon: '1c', call: 'LONG', confidence: 0.8 }],
+      operator_card_actionable: true,
+      operator_card_trust_state: 'TRUSTED',
+    };
+    window._edMplMonotonicGateReset && window._edMplMonotonicGateReset();
+    window._lastData = d;
+    const blocked = window._edMplFreshnessActionabilityBlocked(d);
+    const tradeable = window.engineTradeableSetup(d);
+    const mpl = window.__edMoneyPathLatency;
+    return {
+      blocked,
+      tradeable,
+      bundle_freshness_state: mpl.bundle_freshness_state,
+      stale_actionability_veto_count: mpl.stale_actionability_veto_count,
+    };
+  });
+  expect(result.blocked).toBe(true);
+  expect(result.tradeable).toBe(false);
+  expect(result.bundle_freshness_state).toBe('stale');
+});
+
+test('T4 money_path_snapshot envelope extracts nested payload', async ({ page }) => {
+  await gotoCardTrustSurface(page);
+  const result = await page.evaluate(() => {
+    const inner = {
+      ticker: 'SPY',
+      decision_generation_id: 1,
+      _server_build_ts: Date.now() / 1000,
+      mhap_rows: [],
+    };
+    const wrapped = { money_path_snapshot: inner, ticker: 'SPY' };
+    const legacy = inner;
+    return {
+      wrapped: window.extractMoneyPathSnapshot(wrapped) === inner,
+      legacy: window.extractMoneyPathSnapshot(legacy) === legacy,
+      nullForTick: window.extractMoneyPathSnapshot({ _plane_layer: 'tick' }) === null,
+    };
+  });
+  expect(result.wrapped).toBe(true);
+  expect(result.legacy).toBe(true);
+  expect(result.nullForTick).toBe(true);
+});
+
+test('T4 monotonic gate rejects older money_path_snapshot before paint', async ({ page }) => {
+  await gotoCardTrustSurface(page);
+  const result = await page.evaluate(() => {
+    if (typeof window._edMplMonotonicGateReset === 'function') window._edMplMonotonicGateReset();
+    const base = {
+      ticker: typeof activeTicker !== 'undefined' ? activeTicker : 'SPY',
+      decision_generation_id: 50,
+      _server_build_ts: Date.now() / 1000,
+    };
+    const accept = window.ingestMoneyPathSnapshot(base, 'e2e_t4', () => {});
+    const reject = window.ingestMoneyPathSnapshot(
+      Object.assign({}, base, { decision_generation_id: 49 }),
+      'e2e_t4',
+      () => {}
+    );
+    const mpl = window.__edMoneyPathLatency;
+    return {
+      accept,
+      reject,
+      seen: mpl.money_path_snapshot_seen_count,
+      reject_count: mpl.money_path_snapshot_reject_count,
+    };
+  });
+  expect(result.accept).toBe(true);
+  expect(result.reject).toBe(false);
+  expect(result.seen).toBeGreaterThanOrEqual(2);
+  expect(result.reject_count).toBeGreaterThanOrEqual(1);
+});
+
 // ── Direct renderer path (subordinate — same card-trust gate) ─────────────────
 
 for (const ticker of ANCHOR_TICKERS) {

@@ -4420,6 +4420,11 @@ function cardTrustOperatorLabel(reason) {
 
 /** Engine ALL/PLAN eligibility — requires trusted card bundle + final_tradeable. */
 function engineTradeableSetup(d) {
+  if (_edMplFreshnessActionabilityBlocked(d)) {
+    const st = _edMplInit().bundle_freshness_state;
+    if (st === 'stale' || st === 'frozen') _edMplRecordFreshnessVeto(d, st);
+    return false;
+  }
   if (!resolveCardTrustGate(d, { checkTicker: false }).trusted) return false;
   const bias = String((d && d.final_bias) || 'WAIT').toUpperCase();
   return !!(d && d.final_tradeable) && (bias === 'LONG' || bias === 'SHORT');
@@ -6368,6 +6373,17 @@ function _edMplInit() {
     monotonic_last_reject_key: null,
     monotonic_last_reject_reason: null,
     monotonic_latest_source: null,
+    money_path_snapshot_seen_count: 0,
+    money_path_snapshot_accept_count: 0,
+    money_path_snapshot_reject_count: 0,
+    latest_money_path_snapshot_age_ms: null,
+    freshness_gate_enabled: false,
+    freshness_state: null,
+    quote_freshness_state: null,
+    bundle_freshness_state: null,
+    stale_actionability_veto_count: 0,
+    frozen_actionability_veto_count: 0,
+    last_freshness_veto_reason: null,
   };
   window.__edMoneyPathLatency = o;
   _edMplInstallLongTaskObserver();
@@ -6622,6 +6638,151 @@ try {
   window._edMplMonotonicGateReset = _edMplMonotonicGateReset;
 } catch (e) {}
 
+/** T1/T4 freshness thresholds (ms) — CARD_TRUST_CONTRACT §19; observational gate only. */
+const _ED_MPL_QUOTE_FRESH_MS = 3000;
+const _ED_MPL_QUOTE_AGING_MS = 10000;
+const _ED_MPL_BUNDLE_FRESH_MS = 15000;
+const _ED_MPL_BUNDLE_AGING_MS = 45000;
+const _ED_MPL_BUNDLE_STALE_MS = 120000;
+
+function _edMplClassifyQuoteFreshness(ageMs) {
+  if (ageMs == null || !Number.isFinite(ageMs)) return 'unknown';
+  if (ageMs <= _ED_MPL_QUOTE_FRESH_MS) return 'fresh';
+  if (ageMs <= _ED_MPL_QUOTE_AGING_MS) return 'aging';
+  return 'stale';
+}
+
+function _edMplClassifyBundleFreshness(ageMs) {
+  if (ageMs == null || !Number.isFinite(ageMs)) return 'unknown';
+  if (ageMs <= _ED_MPL_BUNDLE_FRESH_MS) return 'fresh';
+  if (ageMs <= _ED_MPL_BUNDLE_AGING_MS) return 'aging';
+  if (ageMs <= _ED_MPL_BUNDLE_STALE_MS) return 'stale';
+  return 'frozen';
+}
+
+function _edMplFreshnessAgeMsFromPayload(d, lane) {
+  if (!d || typeof d !== 'object') return null;
+  const nowSec = Date.now() / 1000;
+  if (lane === 'quote') {
+    const qts = _validQuoteLaneTs(d);
+    return qts != null ? Math.max(0, Math.round((nowSec - qts) * 1000)) : null;
+  }
+  const bts = _validServerBuildTs(d);
+  return bts != null ? Math.max(0, Math.round((nowSec - bts) * 1000)) : null;
+}
+
+function _edMplUpdateFreshnessStates(d) {
+  const mpl = _edMplInit();
+  mpl.freshness_gate_enabled = true;
+  const quoteAge = _edMplFreshnessAgeMsFromPayload(d, 'quote');
+  const bundleAge = _edMplFreshnessAgeMsFromPayload(d, 'bundle');
+  if (quoteAge != null) mpl.latest_quote_age_ms = quoteAge;
+  if (bundleAge != null) {
+    mpl.latest_bundle_age_ms = bundleAge;
+    mpl.latest_money_path_snapshot_age_ms = bundleAge;
+  }
+  mpl.quote_freshness_state = _edMplClassifyQuoteFreshness(quoteAge);
+  mpl.bundle_freshness_state = _edMplClassifyBundleFreshness(bundleAge);
+  const bundle = mpl.bundle_freshness_state;
+  mpl.freshness_state = bundle === 'unknown' ? mpl.quote_freshness_state : bundle;
+  return mpl;
+}
+
+function _edMplFreshnessActionabilityBlocked(d) {
+  const mpl = _edMplUpdateFreshnessStates(d || window._lastData || {});
+  const bundle = mpl.bundle_freshness_state;
+  return bundle === 'stale' || bundle === 'frozen';
+}
+
+function _edMplRecordFreshnessVeto(d, reason) {
+  const mpl = _edMplInit();
+  mpl.last_freshness_veto_reason = reason || null;
+  if (reason === 'frozen') mpl.frozen_actionability_veto_count++;
+  else if (reason === 'stale') mpl.stale_actionability_veto_count++;
+}
+
+function _edMplApplyFreshnessUiLabels(d) {
+  const mpl = _edMplUpdateFreshnessStates(d);
+  const bundle = mpl.bundle_freshness_state;
+  const quote = mpl.quote_freshness_state;
+  try { document.body.setAttribute('data-bundle-freshness-state', bundle); } catch (e) {}
+  try { document.body.setAttribute('data-quote-freshness-state', quote); } catch (e) {}
+  try { document.body.setAttribute('data-freshness-state', mpl.freshness_state); } catch (e) {}
+  const fp = $('dr-freshness-pill');
+  if (fp) {
+    let label = 'FRESH';
+    let cls = 'conviction-pill high';
+    if (bundle === 'frozen') { label = 'FROZEN'; cls = 'conviction-pill low'; }
+    else if (bundle === 'stale') { label = 'STALE'; cls = 'conviction-pill low'; }
+    else if (bundle === 'aging') { label = 'AGING'; cls = 'conviction-pill medium'; }
+    else if (mpl.latest_bundle_age_ms != null) {
+      label = 'FRESH ' + Math.round(mpl.latest_bundle_age_ms / 1000) + 's';
+    }
+    fp.textContent = label;
+    fp.className = cls;
+    fp.setAttribute('data-bundle-freshness-state', bundle);
+    fp.setAttribute('data-quote-freshness-state', quote);
+  }
+  const slugs = ['1c', '5c', '15c', '60c', 'consolidated', 'plan'];
+  slugs.forEach(function (slug) {
+    const card = document.getElementById('tf-signal-' + slug);
+    if (!card) return;
+    card.setAttribute('data-bundle-freshness-state', bundle);
+    if (bundle === 'stale' || bundle === 'frozen') {
+      card.setAttribute('data-freshness-fail-closed', bundle);
+      card.classList.remove('tf-signal-card--trade-active');
+    } else {
+      card.removeAttribute('data-freshness-fail-closed');
+    }
+  });
+}
+
+function extractMoneyPathSnapshot(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  if (raw.money_path_snapshot && typeof raw.money_path_snapshot === 'object' && !Array.isArray(raw.money_path_snapshot)) {
+    return raw.money_path_snapshot;
+  }
+  if (raw.mhap_rows || raw.decision_generation_id != null || raw._server_build_ts != null) {
+    return raw;
+  }
+  return null;
+}
+
+function ingestMoneyPathSnapshot(snapshot, source, onComplete) {
+  const mpl = _edMplInit();
+  mpl.money_path_snapshot_seen_count = (mpl.money_path_snapshot_seen_count || 0) + 1;
+  if (!snapshot) {
+    mpl.money_path_snapshot_reject_count = (mpl.money_path_snapshot_reject_count || 0) + 1;
+    if (typeof onComplete === 'function') onComplete(false);
+    return false;
+  }
+  _edMplUpdateFreshnessStates(snapshot);
+  const scheduled = acceptAndScheduleMoneyPathRender(snapshot, source, function (didRender) {
+    if (didRender) mpl.money_path_snapshot_accept_count = (mpl.money_path_snapshot_accept_count || 0) + 1;
+    else mpl.money_path_snapshot_reject_count = (mpl.money_path_snapshot_reject_count || 0) + 1;
+    if (typeof onComplete === 'function') onComplete(didRender);
+  });
+  if (!scheduled) mpl.money_path_snapshot_reject_count = (mpl.money_path_snapshot_reject_count || 0) + 1;
+  return scheduled;
+}
+
+/**
+ * Schwab CSV-first declaration (T4 unified snapshot + freshness fail-closed slice — static/index.html only):
+ * Schwab CSV authority checked: yes
+ * CSV row(s): NO_SCHWAB_EQUIVALENT — T4 adds browser unified money_path_snapshot consumption and fail-closed freshness UI only.
+ * All consumers checked: yes — UI freshness/transport diagnostics only (money_path_snapshot_* + freshness_* on window.__edMoneyPathLatency).
+ * SCHWAB_CSV_CHECKED
+ */
+try {
+  window.extractMoneyPathSnapshot = extractMoneyPathSnapshot;
+  window.ingestMoneyPathSnapshot = ingestMoneyPathSnapshot;
+  window._edMplFreshnessActionabilityBlocked = _edMplFreshnessActionabilityBlocked;
+  window._edMplUpdateFreshnessStates = _edMplUpdateFreshnessStates;
+  window._edMplApplyFreshnessUiLabels = _edMplApplyFreshnessUiLabels;
+  window._edMplClassifyQuoteFreshness = _edMplClassifyQuoteFreshness;
+  window._edMplClassifyBundleFreshness = _edMplClassifyBundleFreshness;
+} catch (e) {}
+
 /** T2 — rAF latest-wins money-path render scheduler (coalesces transport bursts; observational diagnostics only). */
 let _edMplRafHandle = null;
 let _edMplRafPending = null;
@@ -6649,7 +6810,7 @@ function scheduleMoneyPathRender(d, fullRenderSource, onComplete) {
   }
   _edMplRafPending = { data: d, source: fullRenderSource, onComplete: onComplete };
   mpl.raf_pending = true;
-  if (_edMplRafHandle != null) return;
+  if (_edMplRafHandle != null) return true;
   _edMplRafHandle = requestAnimationFrame(function _edMplRafFlush() {
     _edMplRafHandle = null;
     const job = _edMplRafPending;
@@ -6666,6 +6827,7 @@ function scheduleMoneyPathRender(d, fullRenderSource, onComplete) {
       try { job.onComplete(did, job.data, job.source); } catch (e) {}
     }
   });
+  return true;
 }
 try { window.scheduleMoneyPathRender = scheduleMoneyPathRender; } catch (e) {}
 
@@ -7051,6 +7213,7 @@ function _renderMoneyPathCore(d, fullRenderSource) {
   const _mplRenderStart = _edMplNow();
   _edMplOnRenderStart(fullRenderSource);
   _edMplUpdatePayloadAges(d);
+  _edMplApplyFreshnessUiLabels(d);
   if (d._update_source) {
     window._lastPayloadUpdateSource = d._update_source;
   }
@@ -10318,7 +10481,9 @@ function connectSSE(opts) {
       if (typeof DIAG !== 'undefined' && DIAG) {
         console.log(`SSE_ONMESSAGE_ACCEPTED generation=${sseGen} ticker=${data.ticker} pipeline_ms=${data._pipeline_ms != null ? data._pipeline_ms : ''} _update_source=${data._update_source || ''}`);
       }
-      acceptAndScheduleMoneyPathRender(data, 'sse', function (_didRenderSse) {
+      const snap = extractMoneyPathSnapshot(data);
+      if (!snap) return;
+      ingestMoneyPathSnapshot(snap, 'sse', function (_didRenderSse) {
         _edMplOnSseTransportResult(_didRenderSse);
         if (_didRenderSse) {
           _lastRenderTs = Date.now();

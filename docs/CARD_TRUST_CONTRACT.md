@@ -589,3 +589,43 @@ Consumers checked: UI ordering diagnostics only (`monotonic_*` counters on `wind
 SCHWAB_CSV_CHECKED
 
 **Closure caveat:** this declaration does not fix lag, does not close card fidelity overall, does not close `stale_withheld_rth_freshness`, does not prove universal runtime live proof, and does not prove real-money readiness.
+
+---
+
+## 22. T4 unified money_path_snapshot SSE + fail-closed freshness UI (local diff — not closure)
+
+**Lane:** `T4_UNIFIED_MONEY_PATH_SNAPSHOT_SSE_AND_FAIL_CLOSED_FRESHNESS_UI_V1`  
+**Status:** UI transport/freshness lane — **does not** fix lag, prove RTH freshness, close card fidelity overall, close `stale_withheld_rth_freshness`, prove universal runtime live proof, or real-money readiness.
+
+T4 unifies browser money-path SSE consumption around an explicit `money_path_snapshot` envelope (nested in Tier C SSE payloads from `server.py::_attach_money_path_snapshot_envelope`) with legacy top-level fallback. Snapshots flow through T3 `acceptMoneyPathPayload` / `ingestMoneyPathSnapshot` → T2 `scheduleMoneyPathRender`. Fail-closed freshness UI applies T1 quote/bundle thresholds before actionable card styling.
+
+**Registry:** `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `unified_money_path_snapshot_freshness_v1`.
+
+### Freshness fail-closed semantics (T1 thresholds wired)
+
+| Layer | fresh | aging | stale | frozen |
+|-------|-------|-------|-------|--------|
+| Quote | ≤ 3s | 3–10s | > 10s | — |
+| Card/bundle | ≤ 15s | 15–45s | 45–120s | > 120s |
+
+Stale/frozen bundle state: no new actionable styling; visible `data-bundle-freshness-state` / `dr-freshness-pill` labels; `engineTradeableSetup` hard-veto; `final_tradeable=true` cannot override.
+
+### T4 observability (T0 extension)
+
+Read-only fields on `window.__edMoneyPathLatency`: `money_path_snapshot_seen_count`, `money_path_snapshot_accept_count`, `money_path_snapshot_reject_count`, `latest_money_path_snapshot_age_ms`, `freshness_gate_enabled`, `freshness_state`, `quote_freshness_state`, `bundle_freshness_state`, `stale_actionability_veto_count`, `frozen_actionability_veto_count`, `last_freshness_veto_reason`.
+
+### Explicit non-implementation in T4
+
+No browser WebSocket, no transport cadence change, no Schwab ingestion/data-source change, no trading/model decision logic change, no RTH proof claim.
+
+### Schwab CSV-first declaration (T4 slice — governance artifact)
+
+Schwab CSV authority checked: yes
+
+CSV row(s): NO_SCHWAB_EQUIVALENT — T4 adds browser unified money-path snapshot consumption and fail-closed freshness UI only. No Schwab-native market-data field is introduced or replaced. No Schwab ingestion/data-source behavior is changed.
+
+Consumers checked: UI freshness/transport diagnostics only.
+
+SCHWAB_CSV_CHECKED
+
+**Closure caveat:** T4 does not close card fidelity overall, `stale_withheld_rth_freshness`, universal runtime live proof, or real-money readiness.
