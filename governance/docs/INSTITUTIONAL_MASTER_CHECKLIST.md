@@ -6,8 +6,10 @@
 
 **Authority:** This document is a **program tracker**. Mechanical truth for agent behavior remains `governance/docs/AGENT_OPERATING_CONTRACT.md`, `AGENTS.md`, and `governance/artifacts/SEVERITY_1_CONTROL_VALIDATION_REGISTER.json`. Maturity is **not** upgraded by adding rows here alone.
 
-**Last aligned SHA:** `77675a60de5f57a0de36090718eee273e4cd386d`  
+**Last aligned SHA:** `caf15635d67939a012114cde47ac0f500b66e30d`  
 **Regen / update:** Manual edit when lane status changes; cite commit SHA + remote CI run ids in closure rows.
+
+**Alignment note:** Card-freshness / proof-drift reconciliation in this file is aligned through `caf15635`. Historical rows anchored at `77675a6` or `216702c` remain **preserved** unless this section explicitly re-records them with a newer SHA. **Do not** infer every historical lane was revalidated at `caf15635`.
 
 **Related (inspect only — do not treat as duplicate truth):**
 - `governance/REVIEWER_README.md` — reviewer reproduction entry point
@@ -20,7 +22,54 @@
 
 ---
 
-## Current status facts @ `77675a6` (preserve exactly)
+## Current status facts @ `caf15635` (card-freshness reconciliation aligned through this SHA)
+
+**Composite non-closure (explicit — do not upgrade):**
+
+| Fact | Status |
+|------|--------|
+| `CARD_FIDELITY_OVERALL_STATUS` | **NOT_CLOSED** / **NOT_PROVEN** |
+| `STALE_WITHHELD_RTH_FRESHNESS_STATUS` | **FAIL** |
+| `UNIVERSAL_RUNTIME_LIVE_PROOF_STATUS` | **NOT_PROVEN** |
+| `REAL_MONEY_READINESS_STATUS` | **NOT_PROVEN** |
+| `UNIVERSAL_CLOSURE_CLAIMED` | **NO** |
+
+### Card-freshness / proof-drift program lanes (`STALE_CARDS_RTH_CARD_FIDELITY_AUDIT_V1`)
+
+| Lane | Status | Evidence SHA / note |
+|------|--------|-------------------|
+| S1 — stale-card contract / design | **CLOSED_WITH_EVIDENCE** | `0745484` (`docs/CARD_TRUST_CONTRACT.md`, `CARD_CONSUMER_CONTRACT_V1.json`) |
+| S2A — additive backend/API `card_freshness_v1` | **CLOSED_WITH_EVIDENCE** | `0a9a6c0` (remote CI green @ S2A CI fix) |
+| S2B-1 — top-level operator actionability mirrors | **CLOSED_WITH_EVIDENCE** | `50f07aa2308512c0117a39646e902885acac78b5` (remote CI green) |
+| S2B-2 | **NOT_APPROVED** | — |
+| S2C — trade-gate consumer wiring | **NOT_APPROVED** | — |
+| S3 — UI fail-closed design review | **REPORTED_COMPLETE_READ_ONLY** | design only |
+| S3A — UI operator-mirror local diff | **NOT_APPROVED** | operator authorization required — drift repair **PUSHED_PROVEN** @ `caf15635` |
+| S3 implementation | **NOT_APPROVED** | — |
+| `DRIFT_RECOVERY_AND_PROOF_STANDARD_REPAIR_V1` | **PUSHED_PROVEN** @ `caf15635` · **REMOTE_CI_NOT_PROVEN** · **NOT_CLOSED** | Proof-label ladder; await remote CI @ `caf15635` before `CLOSED_WITH_EVIDENCE` |
+
+**Git history (card-freshness cone, `77675a6`..`50f07aa`):** `0745484` contract · `f837c8c` analytics freshness metadata · `0a9a6c0` S2A governance/CI · `50f07aa` S2B-1 operator mirrors.
+
+### Stale mechanism closed vs runtime freshness FAIL (do not conflate)
+
+Closed stale/fallback **mechanism** lanes (`CARD_FIDELITY_STALE_FALLBACK_LANE`, `analyticsCardTrustGate`, card-trust withhold paint) prove the **withhold/trust-gate mechanism only**. They **do not** close runtime freshness. The **2026-06-29 RTH observation** remains **FAIL** / **SAMPLE_OBSERVED_NOT_UNIVERSAL**: analytics/card bundle stale while quote was current; cards are **not** safe as live parity when stale/quote-ahead warning is present.
+
+### Preserved composite @ prior anchors (mechanism lanes — not runtime closure)
+
+| Fact | Status |
+|------|--------|
+| Card stale/fallback **mechanism** lane | **CLOSED_WITH_EVIDENCE** (historical — `@77675a6` era) |
+| Execution channel surface lane | **CLOSED_WITH_EVIDENCE** |
+| `call_signal` reclassification lane | **CLOSED_WITH_EVIDENCE** |
+| `call_headline` deprecation lane | **CLOSED_WITH_EVIDENCE** |
+| Remaining operator orphans | `pred_headline`, `reversal_risk`, `reversal_label` |
+| Orphan payload field handling overall | **NOT_PROVEN** |
+| RTH all-supported-ticker audit | **BLOCKED** |
+| D17 full closure | **NOT_CLOSED** |
+
+---
+
+## Historical status facts @ `77675a6` (preserved — not revalidated @ `caf15635`)
 
 ```
 card stale/fallback lane = CLOSED_WITH_EVIDENCE
@@ -89,7 +138,7 @@ Execute in phase order unless operator explicitly preempts. Non-RTH live parity 
 | Fix loop + Tier 0 / Tier A sign-off | **ENFORCED** | 0 | P0 | — | Prevents “green CI” without proof | YES (`INST-PROGRAM-TIER-A-HABIT`) |
 | Maturity truth (`SEVERITY_1_CONTROL_VALIDATION_REGISTER.json`) | **BINDING** | 0 | P0 | — | No inflation from docs alone | NO |
 | MIT / world-class gate | **BINDING** | 0 | P0 | — | Correctness bar before ship | NO |
-| Remote CI (Objective Audit, Pytest, Hardening, Schwab CSV First) | **PROVEN** @ `216702c` | 0 | P0 | Push to main | Baseline repo health | NO |
+| Remote CI (Objective Audit, Pytest, Hardening, Schwab CSV First) | **PROVEN** @ `216702c` (baseline); **REMOTE_CI_NOT_PROVEN** @ `caf15635` (drift repair — await CI) | 0 | P0 | Push to main | Baseline repo health | NO |
 | GitHub branch protection API proof | **NOT_PROVEN** | 0 | P1 | Authenticated `gh` | External enforcement gap | NO |
 | Live Schwab traffic proof | **NOT_PROVEN** | 0 | P2 | Operator host + auth | Cannot claim live wire proof from simulation | NO |
 | Mechanical rules / no prose-only promotions | **ENFORCED** | 0 | P1 | — | Rules must have checkers | YES (`INST-PROGRAM-MECH-RULES`) |
@@ -98,11 +147,15 @@ Execute in phase order unless operator explicitly preempts. Non-RTH live parity 
 
 | Lane | Status | Phase | Priority | Dependencies | Why it matters | OPEN_ITEMS now? |
 |------|--------|-------|----------|--------------|----------------|-----------------|
-| `CARD_FIDELITY_STALE_FALLBACK_LANE` | **CLOSED_WITH_EVIDENCE** | 1 | — | — | Stale/partial withhold on cards | NO (closed) |
+| `CARD_FIDELITY_STALE_FALLBACK_LANE` | **CLOSED_WITH_EVIDENCE** (mechanism only) | 1 | — | — | Stale/partial withhold on cards — **not** runtime RTH parity | NO (closed) |
 | `EXECUTION_CHANNEL_SURFACE_LANE` (`call_state` chip) | **CLOSED_WITH_EVIDENCE** | 1 | — | — | Execution readiness visible | NO (closed) |
 | `CALL_SIGNAL_RECLASSIFICATION_LANE` | **CLOSED_WITH_EVIDENCE** | 1 | — | — | MH promotion chip contract | NO (closed) |
 | `CALL_HEADLINE_DEPRECATION_LANE` | **CLOSED_WITH_EVIDENCE** | 1 | — | — | Dead headline path retired | NO (closed) |
-| Card trust gate (`analyticsCardTrustGate`) | **CLOSED_WITH_EVIDENCE** | 1 | — | — | STALE/PENDING/DEGRADED withhold | NO (closed) |
+| S2A `card_freshness_v1` nested metadata | **CLOSED_WITH_EVIDENCE** @ `0a9a6c0` | 1 | — | S1 contract | Tier C descriptive freshness block | NO (closed) |
+| S2B-1 operator actionability mirrors | **CLOSED_WITH_EVIDENCE** @ `50f07aa` | 1 | — | S2A | Top-level `operator_*` mirrors on Tier C | NO (closed) |
+| Card trust gate (`analyticsCardTrustGate`) | **CLOSED_WITH_EVIDENCE** (mechanism only) | 1 | — | — | STALE/PENDING/DEGRADED withhold — UI still client-side until S3 | NO (closed) |
+| S3 UI fail-closed (operator mirrors) | **NOT_APPROVED** | 1 | **P0** | S2B-1 + drift repair | UI must read `operator_card_actionable` | YES (pointer below) |
+| Proof-label drift repair | **PUSHED_PROVEN** @ `caf15635` / **NOT_CLOSED** | 0 | P0 | — | Agent packet ladder; remote CI pending | YES |
 | Orphan payload field handling (overall) | **NOT_PROVEN** | 1 | **P0** | Per-field disposition | Backend fields without honest UI contract | YES |
 | `pred_headline` disposition | **OPERATOR_DECISION_REQUIRED** | 1 | **P0** | Operator choice | Explanation rail vs `backend_only` | YES |
 | `reversal_risk` / `reversal_label` disposition | **OPERATOR_DECISION_REQUIRED** | 1 | **P0** | Operator choice | Risk rail vs `backend_only` | YES |

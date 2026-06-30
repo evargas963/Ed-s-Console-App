@@ -17,7 +17,7 @@
 
 > **[O-56 SURVIVOR CONSUMER — FIXED + remaining slice] (2026-06-03, Claude):** the train/serve survivor consumer was applying a WRONG flat 22-group rollup (or a fabricated 12-group DEFAULT that dropped volume/vwap/iv) when a complete report existed. **FIXED:** `resolve_ablation_drop_group_ids()` now (a) requires the full 828-cell matrix (not 276), (b) **fails closed to the full feature set** unless drops are confirm-verified, (c) uses the **intersection** of confirm-verified per-cell drops for the shared snapshot, (d) DEFAULT tuple removed. New per-cell API `confirmed_drop_group_ids_by_model_horizon()` + `globally_safe_drop_group_ids()`; serve-side silent `except: pass` now logs (train/serve-skew visible). Mask test rewritten + 2 new locks; O-56 row added to AGENTS enforcement table. **Net: production retrain is READY on the FULL feature set today (survivors correctly OFF/fail-closed).** REMAINING to actually APPLY O-56 survivors in training: (1) run `--ablation-confirm` (drop-and-refit; populates confirm_pass — currently a status string, confirm_drop_cells=0); (2) per-model feature-assembly masking (each model trains on its own survivor set) — the shared snapshot mask can only do the conservative global intersection. Neither blocks the full-feature retrain.
 
-**Last reviewed:** 2026-06-27 — Schwab work bound by [`CLAUDE.md`](CLAUDE.md) (Schwab law) + [`AGENTS.md`](AGENTS.md) §Fix everything we touch / §Active agent posture (always-on agent rules). **Multi-month program (2026-06-11):** large tails (Schwab register, ablation grid, stack phases) close **fix-as-we-touch** — see `ACTIVE_PROGRAM.md` §Multi-month institutional program + rows `INST-PROGRAM-*` below. **D17 closure scope amended @ `25cb2e3`:** `unreviewed_count == 0` on the **scoped** register (gitignore-aware walk + `SCAN_SCOPE_EXCLUDE_PREFIXES`) — not the legacy full-disk walk. The prior three-PR gate (governance pin → CI diff-emission gate → full-tree scanner regen) is superseded for closure admissibility; CI diff-emission gate (`schwab-csv-first.yml`) remains in force for new market-fact sites per PR. **Pinned register truth @ `77675a6` (local read-only):** `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` — rows = **83,587**; `unreviewed_count` = **52,237**; `closure_admissible` = **false**; `bare_governed_exception_count` = **0**; `replaced_count` = **50**; content SHA = `2017b18f24870bdf8fa1c9153c4aca4b3e137ebd1167a9b260ed766fd455303e`. Build meta numeric `register_rows_written: 83587` is authoritative; `operator_note` prose citing "311893 rows" is **HISTORICAL/SUPERSEDED** stale prose until a separately approved register regen lane. **HISTORICAL/SUPERSEDED:** prior scoped-register snapshot citing 174,459 rows / 0 UNREVIEWED / `closure_admissible: true` @ `25cb2e3` era is **not** current pinned truth. Wire-true REPLACED still concentrated in `market_context.py` (16) + `server.py` (18); other product files with Schwab wire reads await slice-line reconciliation. **D17 wording (2026-06-27):** pinned register `closure_admissible: false` with `unreviewed_count > 0` — **D17 full closure** = **NOT_CLOSED**; **Schwab V4 Register Closure** = **NOT_CLOSED**; register repin = **NOT_APPROVED**; production semantic-key merge = **NOT_APPROVED** — full program closure remains **NOT_CLOSED** until wire-true disposition + bare GOVERNED_EXCEPTION closure across the epic (`governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md` §Current status facts).
+**Last reviewed:** 2026-06-29 — checklist reconciliation aligned through `caf15635` (card-freshness / proof-drift). Schwab work bound by [`CLAUDE.md`](CLAUDE.md) (Schwab law) + [`AGENTS.md`](AGENTS.md) §Fix everything we touch / §Active agent posture (always-on agent rules). **Multi-month program (2026-06-11):** large tails (Schwab register, ablation grid, stack phases) close **fix-as-we-touch** — see `ACTIVE_PROGRAM.md` §Multi-month institutional program + rows `INST-PROGRAM-*` below. **D17 closure scope amended @ `25cb2e3`:** `unreviewed_count == 0` on the **scoped** register (gitignore-aware walk + `SCAN_SCOPE_EXCLUDE_PREFIXES`) — not the legacy full-disk walk. The prior three-PR gate (governance pin → CI diff-emission gate → full-tree scanner regen) is superseded for closure admissibility; CI diff-emission gate (`schwab-csv-first.yml`) remains in force for new market-fact sites per PR. **Pinned register truth @ `77675a6` (local read-only):** `governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv` — rows = **83,587**; `unreviewed_count` = **52,237**; `closure_admissible` = **false**; `bare_governed_exception_count` = **0**; `replaced_count` = **50**; content SHA = `2017b18f24870bdf8fa1c9153c4aca4b3e137ebd1167a9b260ed766fd455303e`. Build meta numeric `register_rows_written: 83587` is authoritative; `operator_note` prose citing "311893 rows" is **HISTORICAL/SUPERSEDED** stale prose until a separately approved register regen lane. **HISTORICAL/SUPERSEDED:** prior scoped-register snapshot citing 174,459 rows / 0 UNREVIEWED / `closure_admissible: true` @ `25cb2e3` era is **not** current pinned truth. Wire-true REPLACED still concentrated in `market_context.py` (16) + `server.py` (18); other product files with Schwab wire reads await slice-line reconciliation. **D17 wording (2026-06-27):** pinned register `closure_admissible: false` with `unreviewed_count > 0` — **D17 full closure** = **NOT_CLOSED**; **Schwab V4 Register Closure** = **NOT_CLOSED**; register repin = **NOT_APPROVED**; production semantic-key merge = **NOT_APPROVED** — full program closure remains **NOT_CLOSED** until wire-true disposition + bare GOVERNED_EXCEPTION closure across the epic (`governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md` §Current status facts).
 
 ---
 
@@ -40,10 +40,50 @@ Current high-priority future lanes preserved in the master checklist:
 - RISK_ENGINE_AND_POSITION_SIZING_AUDIT_V1
 - EXECUTION_ASSUMPTIONS_AND_SLIPPAGE_MODEL_V1
 - MODEL_PROMOTION_AND_DEMOTION_GOVERNANCE_V1
+- MODEL_DRIFT_AND_REGIME_DECAY_MONITORING_V1
 - FAILURE_MODE_AND_KILL_SWITCH_AUDIT_V1
+- SECURITY_AND_SECRET_HANDLING_AUDIT_V1
 - DEAD_CODE_AND_RETIREMENT_GOVERNANCE_V1
 - USER_TRUST_AND_VISUAL_SEMANTICS_AUDIT_V1
 - OBSERVABILITY_AND_PRODUCTION_MONITORING_V1
+- PERFORMANCE_AND_LATENCY_BUDGET_V1
+- EXPLAINABILITY_AND_OPERATOR_DECISION_SURFACE_V1
+
+---
+
+## Active card-freshness / drift-recovery queue (2026-06-29)
+
+**Alignment SHA:** `caf15635d67939a012114cde47ac0f500b66e30d` (master checklist + this block). **Authority:** `governance/docs/INSTITUTIONAL_MASTER_CHECKLIST.md` §Current status facts @ `caf15635`.
+
+**Program lanes (`STALE_CARDS_RTH_CARD_FIDELITY_AUDIT_V1`):**
+
+| Lane | Status |
+|------|--------|
+| S1 — stale-card contract / design | **CLOSED_WITH_EVIDENCE** |
+| S2A — additive backend/API `card_freshness_v1` | **CLOSED_WITH_EVIDENCE** |
+| S2B-1 — top-level operator actionability mirrors | **CLOSED_WITH_EVIDENCE** @ `50f07aa2308512c0117a39646e902885acac78b5` |
+| S2B-2 | **NOT_APPROVED** |
+| S2C | **NOT_APPROVED** |
+| S3 design review | **REPORTED_COMPLETE_READ_ONLY** |
+| S3A local diff | **NOT_APPROVED** |
+| S3 implementation | **NOT_APPROVED** |
+| `DRIFT_RECOVERY_AND_PROOF_STANDARD_REPAIR_V1` | **PUSHED_PROVEN** @ `caf15635d67939a012114cde47ac0f500b66e30d` · **REMOTE_CI_NOT_PROVEN** · **NOT_CLOSED** |
+
+**Composite non-closure (explicit):**
+
+| Fact | Status |
+|------|--------|
+| `CARD_FIDELITY_OVERALL_STATUS` | **NOT_CLOSED** / **NOT_PROVEN** |
+| `STALE_WITHHELD_RTH_FRESHNESS_STATUS` | **FAIL** |
+| `UNIVERSAL_RUNTIME_LIVE_PROOF_STATUS` | **NOT_PROVEN** |
+| `REAL_MONEY_READINESS_STATUS` | **NOT_PROVEN** |
+| `UNIVERSAL_CLOSURE_CLAIMED` | **NO** |
+
+**Stale mechanism vs runtime (cross-reference):** Closed stale/fallback **mechanism** lanes prove the withhold/trust-gate mechanism only. They **do not** close runtime freshness. The **2026-06-29 RTH observation** remains **FAIL** / **SAMPLE_OBSERVED_NOT_UNIVERSAL**: analytics/card bundle stale while quote was current; cards are **not** safe as live parity when stale/quote-ahead warning is present.
+
+- [ ] **DRIFT-RECOVERY-PROOF-V1** — **PUSHED_PROVEN** @ `caf15635` · **REMOTE_CI_NOT_PROVEN** · **NOT_CLOSED**. Proof-label ladder in `AGENT_OPERATING_CONTRACT.md` + preload markers. **Closes when:** all four required GitHub checks **success** at exact SHA `caf15635` → `REMOTE_CI_PROVEN` → operator may record `CLOSED_WITH_EVIDENCE` for this lane only.
+
+- [ ] **STALE-CARD-S3A-UI-FAIL-CLOSED** — **NOT_APPROVED**. S3 design review complete (read-only). UI must consume `operator_card_actionable` / `operator_card_trust_state` on Tier C payload — **no** `static/index.html` work until operator authorizes S3A. **Does not** close card fidelity overall or RTH runtime FAIL.
 
 ---
 
@@ -65,7 +105,7 @@ Current high-priority future lanes preserved in the master checklist:
 
 - [ ] **CARD-FIDELITY-LIVE-UI-F-STACK-WIRE-6-RECONCILIATION** — **Docs + scope hygiene · P1.** `[x] STACK-WIRE-6` @ `9d4c8a4` closed **ms_dict reconstruction parity** (6a/6b/6c). Legacy `[ ] LIVE-UI-F` row (COHERENCE-AUDIT block) still lists open — **reconciled status:** ms_dict replay reconstruction **CLOSED_WITH_EVIDENCE**; any remaining LIVE-UI-F scope = **runtime A2/module parity beyond reconstruction** (OBS-A2OE1 class) — **separate lane**, not a duplicate open STACK-WIRE-6 item. **Action:** treat STACK-WIRE-6 as closed; narrow LIVE-UI-F to A2 runtime parity or close with REAL-GATE when operator accepts reconstruction-only closure.
 
-**Current composite (preserve @ `216702c`):** orphan payload handling overall = **NOT_PROVEN**; card fidelity overall = **NOT_PROVEN**; universal runtime live proof = **NOT_PROVEN**; real-money readiness = **NOT_PROVEN**; D17 full closure = **NOT_CLOSED**. Closed with evidence: stale/fallback, execution channel, `call_signal` reclassification, `call_headline` deprecation.
+**Current composite @ `caf15635` alignment:** orphan payload handling overall = **NOT_PROVEN**; card fidelity overall = **NOT_CLOSED** / **NOT_PROVEN**; `STALE_WITHHELD_RTH_FRESHNESS_STATUS` = **FAIL**; universal runtime live proof = **NOT_PROVEN**; real-money readiness = **NOT_PROVEN**; `UNIVERSAL_CLOSURE_CLAIMED` = **NO**; D17 full closure = **NOT_CLOSED**. **Mechanism closed (not runtime):** stale/fallback withhold, execution channel, `call_signal` reclassification, `call_headline` deprecation. **Backend card-freshness closed:** S2A @ `0a9a6c0`, S2B-1 @ `50f07aa`. **Historical composite @ `216702c` superseded for card-freshness facts by this block.**
 
 ---
 
