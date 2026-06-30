@@ -430,3 +430,100 @@ All consumers checked: yes — limited to UI diagnostics only (`window.__edMoney
 SCHWAB_CSV_CHECKED
 
 **Closure caveat:** this declaration does not fix lag, does not close card fidelity overall, does not close `stale_withheld_rth_freshness`, does not prove universal runtime live proof, and does not prove real-money readiness.
+
+---
+
+## 19. T1 stale-label and latency contract (local diff — not closure)
+
+**Lane:** `T1_STALE_LABEL_AND_LATENCY_CONTRACT_V1`  
+**Status:** Contract/spec/test lane only — **does not** fix lag, wire UI behavior, close card fidelity overall, close `stale_withheld_rth_freshness`, prove universal runtime live proof, or real-money readiness.
+
+T1 defines operator-facing freshness/latency semantics and acceptance criteria that downstream implementation lanes (T2–T5) must satisfy. T0 `window.__edMoneyPathLatency` is the diagnostic surface; T1 maps those metrics to contract labels and proof gates.
+
+**Registry:** `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `stale_label_latency_contract_v1`.
+
+### Quote freshness states (Tier A / spot rail)
+
+| State | Age threshold | Operator meaning |
+|-------|---------------|------------------|
+| **fresh** | ≤ 3s | Quote strip may update; read as current L1 context |
+| **aging** | > 3s and ≤ 10s | Quote visible with aging label/chip when surfaced |
+| **stale** | > 10s | Quote must not be presented as live; explicit stale label required when shown |
+
+Authority signals: `fast_server_ts`, `quote_age_sec`, `latest_quote_age_ms` (T0 diagnostic).
+
+### Card/bundle freshness states (Tier C money-path cards)
+
+| State | Age threshold | Operator meaning |
+|-------|---------------|------------------|
+| **fresh** | ≤ 15s | Cards may reflect current bundle if trust gates pass |
+| **aging** | > 15s and ≤ 45s | Cards may show context with explicit aging label |
+| **stale** | > 45s and ≤ 120s | Cards must not look actionable; stale label required |
+| **frozen** | > 120s | Cards withheld from actionable styling; last-known context only if explicitly labeled frozen/stale |
+
+Authority signals: `_server_build_ts`, `bundle_age_sec`, `analytics_stale`, `latest_bundle_age_ms` (T0 diagnostic).
+
+### Quote-ahead semantics (quote newer than signal)
+
+When quote age is **fresh** but bundle/card age is **stale** or **frozen**:
+
+- Price/spot strip **may** update as **read-only context**.
+- Money-path horizon/ALL/PLAN cards **must not** become newly actionable solely because the quote updated.
+- `quote_ahead_seen_count` (T0) documents occurrences; T2–T4 must not treat quote freshness as permission to re-arm cards.
+
+### Frozen card semantics
+
+- Frozen cards may preserve raw last-known direction/context **only** when explicitly labeled **frozen** or **stale**.
+- Frozen cards **must not** show trade-active glow, PLAN armed styling, or ALL actionability.
+- Silent frozen/stale cards (no visible or mechanically testable label) are **not acceptable** under this contract.
+
+### Stale label visibility requirement
+
+Operator-facing stale/aging/frozen state must be **visible** (DOM label, chip, pill, or `data-*` attribute) or **mechanically testable** in Playwright/pytest. Withholding actionable paint without a stale/frozen surface is insufficient.
+
+### Render and event-to-paint budgets
+
+| Surface | Budget |
+|---------|--------|
+| Money-path card island render | ≤ 8 ms/frame (target) |
+| Full Tier C render | ≤ 16 ms (target) |
+| SSE receive → painted (event-to-paint) | ≤ 50 ms p95 |
+
+T0 diagnostics: `last_money_path_render_ms`, `last_render_ms`, `render_duration_exceeds_16ms_count`, `last_event_to_paint_ms`.
+
+### T0 diagnostic mapping
+
+| T0 field | Contract use |
+|----------|--------------|
+| `latest_quote_age_ms` | Quote fresh/aging/stale classification |
+| `latest_bundle_age_ms` | Card/bundle fresh/aging/stale/frozen classification |
+| `quote_ahead_seen_count` | Quote-ahead read-only violation detector |
+| `last_event_to_paint_ms` | Event-to-paint p95 proof (T5) |
+| `last_money_path_render_ms` | Money-path island ≤ 8 ms budget |
+| `last_render_ms` | Full render ≤ 16 ms budget |
+| `render_duration_exceeds_16ms_count` | Render budget exceedance counter |
+| `out_of_order_reject_count` | Zero out-of-order paints goal (T5) |
+| `server_build_ts_regression_seen_count` | Stale-overwrite / ordering regression detector |
+| `decision_generation_accept_count` | Gen-short-circuit accept audit (must not mask frozen cards as actionable) |
+
+### RTH proof goals (T5 — not satisfied by T1)
+
+- p95 `last_event_to_paint_ms` < 50 ms across SPY/QQQ/IWM RTH sessions
+- zero out-of-order paints (`out_of_order_reject_count` stable under load)
+- zero stale-overwrites (bundle regression without label transition)
+- card **frozen** surfaced within ≤ 1 refresh after bundle age crosses 120s
+
+### Downstream lane requirements (T1 defines; does not implement)
+
+| Lane | Requirement |
+|------|-------------|
+| **T2** | rAF latest-wins render coalescing — **must not** change actionability/trust/fail-closed semantics |
+| **T3** | Monotonic `sequence_id` gating — **must not** change card actionability semantics |
+| **T4** | Unified `money_path_snapshot` SSE + fail-closed freshness UI merge |
+| **T5** | RTH browser proof across SPY/QQQ/IWM against budgets and goals above |
+
+**Explicit non-implementation in T1:** no browser WebSocket, no `money_path_snapshot`, no `sequence_id`, no rAF scheduler, no transport cadence change, no render accept/reject change, no `resolveCardTrustGate` / `final_tradeable` / fail-closed behavior change.
+
+### Non-closure
+
+T1 is admissible as contract-only. It does **not** fix lag, does **not** close card fidelity overall, does **not** close `stale_withheld_rth_freshness`, does **not** prove universal runtime live proof, and does **not** prove real-money readiness.

@@ -1161,3 +1161,101 @@ def test_t0_sse_transport_result_accounted_once_per_outcome():
     chunk = h[idx : idx + 500]
     assert chunk.count("_edMplOnSseTransportResult") == 1
     assert "_edMplOnSseTransportResult(_didRenderSse)" in chunk
+
+
+def _t1_contract_chunk(body: str) -> str:
+    idx = body.find("## 19. T1 stale-label and latency contract")
+    assert idx != -1, "T1 contract section missing"
+    return body[idx : idx + 6500]
+
+
+def test_t1_contract_quote_freshness_thresholds_defined():
+    chunk = _t1_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    assert "≤ 3s" in chunk or "<= 3s" in chunk
+    assert "10s" in chunk
+    assert "fresh" in chunk.lower()
+    assert "aging" in chunk.lower()
+    assert "stale" in chunk.lower()
+
+
+def test_t1_contract_card_bundle_freshness_thresholds_defined():
+    chunk = _t1_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    assert "15s" in chunk
+    assert "45s" in chunk
+    assert "120s" in chunk
+    assert "frozen" in chunk.lower()
+
+
+def test_t1_contract_quote_ahead_read_only_semantics():
+    chunk = _t1_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    assert "quote-ahead" in chunk.lower() or "quote newer" in chunk.lower() or "Quote-ahead" in chunk
+    assert "read-only" in chunk.lower()
+    assert "must not" in chunk.lower() or "must **not**" in chunk
+
+
+def test_t1_contract_frozen_card_non_actionable_semantics():
+    chunk = _t1_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    assert "frozen" in chunk.lower()
+    assert "actionable" in chunk.lower()
+    assert "trade-active" in chunk.lower() or "armed" in chunk.lower()
+
+
+def test_t1_contract_stale_label_visibility_requirement():
+    chunk = _t1_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    assert "mechanically testable" in chunk.lower() or "visible" in chunk.lower()
+    assert "silent" in chunk.lower()
+
+
+def test_t1_contract_t0_diagnostic_mapping_defined():
+    chunk = _t1_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    for field in (
+        "latest_quote_age_ms",
+        "latest_bundle_age_ms",
+        "quote_ahead_seen_count",
+        "last_event_to_paint_ms",
+        "out_of_order_reject_count",
+        "server_build_ts_regression_seen_count",
+    ):
+        assert field in chunk
+
+
+def test_t1_contract_non_closure_caveats_preserved():
+    chunk = _t1_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    assert "does not fix lag" in chunk.lower() or "does **not** fix lag" in chunk
+    assert "stale_withheld_rth_freshness" in chunk
+    assert "real-money readiness" in chunk.lower() or "real_money_readiness" in chunk
+
+
+def test_t1_contract_downstream_t2_t3_t4_t5_requirements():
+    chunk = _t1_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    assert "T2" in chunk
+    assert "T3" in chunk
+    assert "T4" in chunk
+    assert "T5" in chunk
+    assert "rAF" in chunk or "sequence_id" in chunk
+    assert "money_path_snapshot" in chunk
+
+
+def test_t1_contract_no_implementation_of_forbidden_transport_primitives():
+    h = _html()
+    assert "money_path_snapshot" not in h
+    assert "sequence_id" not in h
+    assert "requestAnimationFrame" not in h
+    assert "WebSocket" not in h
+    chunk = _t1_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    assert "no browser WebSocket" in chunk.lower() or "no `money_path_snapshot`" in chunk
+
+
+def test_t1_registry_stale_label_latency_contract_v1():
+    import json
+
+    reg = json.loads(
+        (ROOT / "governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8")
+    )
+    t1 = reg["stale_label_latency_contract_v1"]
+    assert t1["lane_id"] == "T1_STALE_LABEL_AND_LATENCY_CONTRACT_V1"
+    assert t1["quote_freshness_states"]["fresh_ms_max"] == 3000
+    assert t1["card_bundle_freshness_states"]["frozen_ms_min"] == 120000
+    assert "latest_quote_age_ms" in t1["t0_diagnostic_mapping"]
+    assert "browser WebSocket" in t1["does_not_implement"]
+    assert "lag_fix" in t1["does_not_close"]

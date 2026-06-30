@@ -230,6 +230,77 @@
       "notes": "static/index.html T0 slice adds __edMoneyPathLatency and performance marks only; no Schwab leaf add/replace"
     }
   },
+  "stale_label_latency_contract_v1": {
+    "lane_id": "T1_STALE_LABEL_AND_LATENCY_CONTRACT_V1",
+    "status": "LOCAL_DIFF_NOT_CLOSED",
+    "binding_on_production": false,
+    "scope": "Stale-label and latency contract/spec only — no UI wire-up or transport behavior change",
+    "card_fidelity_overall": "NOT_CLOSED_NOT_PROVEN",
+    "stale_withheld_rth_freshness": "FAIL",
+    "universal_runtime_live_proof": "NOT_PROVEN",
+    "real_money_readiness": "NOT_PROVEN",
+    "quote_freshness_states": {
+      "fresh_ms_max": 3000,
+      "aging_ms_max": 10000,
+      "stale_ms_min": 10000
+    },
+    "card_bundle_freshness_states": {
+      "fresh_ms_max": 15000,
+      "aging_ms_max": 45000,
+      "stale_ms_max": 120000,
+      "frozen_ms_min": 120000
+    },
+    "render_budgets_ms": {
+      "money_path_island_max": 8,
+      "full_render_max": 16,
+      "event_to_paint_p95_max": 50
+    },
+    "quote_ahead_rule": "Quote fresh + bundle stale/frozen: spot read-only; cards must not become newly actionable from quote alone",
+    "frozen_card_rule": "Frozen cards withhold actionable styling; explicit frozen/stale label required",
+    "stale_label_visibility": "Operator stale/aging/frozen must be visible or mechanically testable — silent stale unacceptable",
+    "t0_diagnostic_mapping": [
+      "latest_quote_age_ms",
+      "latest_bundle_age_ms",
+      "quote_ahead_seen_count",
+      "last_event_to_paint_ms",
+      "last_money_path_render_ms",
+      "last_render_ms",
+      "render_duration_exceeds_16ms_count",
+      "out_of_order_reject_count",
+      "server_build_ts_regression_seen_count",
+      "decision_generation_accept_count"
+    ],
+    "rth_proof_goals_t5": {
+      "event_to_paint_p95_ms_max": 50,
+      "out_of_order_paints": 0,
+      "stale_overwrites": 0,
+      "frozen_label_within_refreshes_after_120s": 1
+    },
+    "downstream_lanes": {
+      "T2": "rAF latest-wins without actionability semantic change",
+      "T3": "monotonic sequence_id gating",
+      "T4": "unified money_path_snapshot SSE + fail-closed freshness UI",
+      "T5": "RTH browser proof SPY/QQQ/IWM"
+    },
+    "does_not_implement": [
+      "browser WebSocket",
+      "money_path_snapshot",
+      "sequence_id",
+      "rAF scheduler",
+      "transport cadence change",
+      "render accept/reject change",
+      "card actionability change",
+      "final_tradeable change",
+      "fail_closed behavior change"
+    ],
+    "does_not_close": [
+      "card_fidelity_overall",
+      "stale_withheld_rth_freshness",
+      "universal_runtime_live_proof",
+      "real_money_readiness",
+      "lag_fix"
+    ]
+  },
   "card_freshness_v1": {
     "lane_id": "STALE_CARD_REMEDIATION_S1",
     "status": "DESIGN_ONLY_NOT_WIRED",
