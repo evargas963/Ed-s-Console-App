@@ -204,6 +204,32 @@
       "notes": "static/index.html S3A slice consumes existing Tier C operator mirrors; no Schwab leaf add/replace"
     }
   },
+  "money_path_latency_instrumentation_v1": {
+    "lane_id": "T0_MONEY_PATH_UI_LATENCY_AND_ORDERING_INSTRUMENTATION_V1",
+    "status": "LOCAL_DIFF_NOT_CLOSED",
+    "ui_implementation_approved": "T0_LOCAL_DIFF_ONLY",
+    "card_fidelity_overall": "NOT_CLOSED_NOT_PROVEN",
+    "stale_withheld_rth_freshness": "FAIL",
+    "universal_runtime_live_proof": "NOT_PROVEN",
+    "real_money_readiness": "NOT_PROVEN",
+    "scope": "Read-only UI latency/ordering instrumentation only — no transport, trust, or fail-closed behavior changes",
+    "surface": "window.__edMoneyPathLatency",
+    "does_not_close": [
+      "card_fidelity_overall",
+      "stale_withheld_rth_freshness",
+      "universal_runtime_live_proof",
+      "real_money_readiness"
+    ],
+    "schwab_csv_first_declaration": {
+      "lane_id": "T0_SCHWAB_CSV_FIRST_GUARD_REPAIR_V1",
+      "Schwab CSV authority checked": "yes",
+      "CSV row(s)": "NO_SCHWAB_EQUIVALENT",
+      "Derived-field disposition": "KEEP_DERIVED_WITH_PROVENANCE",
+      "All consumers checked": "yes — UI diagnostics only; no Schwab wire reads or ingestion changes",
+      "SCHWAB_CSV_CHECKED": true,
+      "notes": "static/index.html T0 slice adds __edMoneyPathLatency and performance marks only; no Schwab leaf add/replace"
+    }
+  },
   "card_freshness_v1": {
     "lane_id": "STALE_CARD_REMEDIATION_S1",
     "status": "DESIGN_ONLY_NOT_WIRED",

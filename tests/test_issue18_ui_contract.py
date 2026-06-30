@@ -1057,3 +1057,107 @@ def test_card_trust_contract_documents_s3a_operator_mirrors():
     assert "resolveCardTrustGate" in body
     assert "operator_card_actionable" in body
     assert "does not" in body.lower() or "does **not**" in body
+
+
+def test_t0_money_path_latency_object_initialized():
+    h = _html()
+    assert "window.__edMoneyPathLatency" in h
+    assert "initialized: true" in h
+    assert "last_render_ms" in h
+    assert "last_event_to_paint_ms" in h
+    assert "rest_poll_overlap_count" in h
+    assert "rest_poll_in_flight" in h
+    assert "server_build_ts_regression_seen_count" in h
+    assert "latest_quote_age_ms" in h
+    assert "latest_bundle_age_ms" in h
+    assert "quote_ahead_seen_count" in h
+    assert "long_task_count" in h
+    assert "last_long_task_ms" in h
+
+
+def test_t0_performance_marks_and_measures_present():
+    h = _html()
+    for mark in (
+        "money_path_sse_received",
+        "money_path_rest_received",
+        "money_path_render_scheduled",
+        "money_path_render_started",
+        "money_path_render_completed",
+        "money_path_horizon_cards_painted",
+        "money_path_plan_painted",
+        "money_path_all_card_painted",
+        "money_path_fast_quote_received",
+    ):
+        assert mark in h, f"missing Performance mark {mark}"
+
+
+def test_t0_render_coherence_guard_instruments_ts_regression_without_behavior_change():
+    h = _html()
+    idx = h.find("function _renderCoherenceGuards")
+    chunk = h[idx : idx + 2200]
+    assert "server_build_ts_regression_seen_count" in chunk
+    assert "out_of_order_accept_via_gen_despite_ts_regression_count" in chunk
+    assert "decision_generation_accept_count" in chunk
+    assert "out_of_order_reject_count" in chunk
+    assert "Intentional: newer decision_generation_id accepts even when _server_build_ts regresses" in chunk
+
+
+def test_t0_poll_overlap_instrumentation_present():
+    h = _html()
+    idx = h.find("async function pollStateFallback")
+    assert idx != -1
+    fin = h.find("\nfunction startStatePollFallback", idx)
+    chunk = h[idx : fin if fin != -1 else idx + 8000]
+    assert "rest_poll_start_count" in chunk
+    assert "rest_poll_overlap_count" in chunk
+    assert "rest_poll_in_flight" in chunk
+    assert "rest_poll_complete_count" in chunk
+
+
+def test_t0_long_task_observer_fail_safe():
+    h = _html()
+    idx = h.find("function _edMplInstallLongTaskObserver")
+    chunk = h[idx : idx + 900]
+    assert "PerformanceObserver" in chunk
+    assert "longtask" in chunk
+    assert "catch (e)" in chunk
+
+
+def test_t0_instrumentation_does_not_remove_card_trust_gate():
+    h = _html()
+    assert "function analyticsCardTrustGate(d, opts)" in h
+    assert "function resolveCardTrustGate(d, opts)" in h
+    assert "function engineTradeableSetup(d)" in h
+    idx = h.find("function engineTradeableSetup")
+    chunk = h[idx : idx + 520]
+    assert "resolveCardTrustGate" in chunk
+    assert "d.final_tradeable" in chunk
+
+
+def test_card_trust_contract_documents_t0_instrumentation_lane():
+    body = CARD_TRUST_CONTRACT.read_text(encoding="utf-8")
+    assert "T0 money-path latency" in body
+    assert "__edMoneyPathLatency" in body
+    assert "does not" in body.lower() or "does **not**" in body
+    assert "NOT_PROVEN" in body or "not closure" in body.lower()
+
+
+def test_t0_schwab_csv_first_declaration_in_contract():
+    body = CARD_TRUST_CONTRACT.read_text(encoding="utf-8")
+    idx = body.find("## 18. T0 money-path latency")
+    assert idx != -1
+    chunk = body[idx : idx + 2800]
+    assert "Schwab CSV authority checked: yes" in chunk
+    assert "CSV row(s): NO_SCHWAB_EQUIVALENT" in chunk
+    assert "SCHWAB_CSV_CHECKED" in chunk
+    assert "__edMoneyPathLatency" in chunk
+    assert "does not fix lag" in chunk.lower() or "does not close card fidelity" in chunk.lower()
+
+
+def test_t0_sse_transport_result_accounted_once_per_outcome():
+    h = _html()
+    idx = h.find("const _didRenderSse = render(data, 'sse');")
+    assert idx != -1
+    chunk = h[idx : idx + 500]
+    assert chunk.count("_edMplOnSseTransportResult") == 1
+    assert "_edMplOnSseTransportResult(_didRenderSse)" in chunk

@@ -309,6 +309,17 @@ test('[render] plane diag on _lastPlaneDiag does not alter card paint when ms_di
   await assertTrustedActionablePaint(page);
 });
 
+test('T0 __edMoneyPathLatency diagnostics object is initialized on load', async ({ page }) => {
+  await gotoCardTrustSurface(page);
+  const diag = await page.evaluate(() => {
+    const o = window.__edMoneyPathLatency;
+    return o && typeof o === 'object'
+      ? { initialized: o.initialized, hasRenderMs: 'last_render_ms' in o, hasOverlap: 'rest_poll_overlap_count' in o }
+      : null;
+  });
+  expect(diag).toEqual({ initialized: true, hasRenderMs: true, hasOverlap: true });
+});
+
 // ── Direct renderer path (subordinate — same card-trust gate) ─────────────────
 
 for (const ticker of ANCHOR_TICKERS) {

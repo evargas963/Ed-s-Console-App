@@ -392,3 +392,41 @@ Changes to this contract require:
 4. Registry row updates in `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` when field disposition changes.
 
 **This document does not authorize model, threshold, fusion-weight, or rendering changes by itself.**
+
+---
+
+## 18. T0 money-path latency and ordering instrumentation (local diff — not closure)
+
+**Lane:** `T0_MONEY_PATH_UI_LATENCY_AND_ORDERING_INSTRUMENTATION_V1`  
+**Status:** Read-only instrumentation only — **does not** fix lag, close card fidelity overall, prove runtime RTH freshness, universal live proof, or real-money readiness.
+
+T0 exposes `window.__edMoneyPathLatency` in `static/index.html` to measure:
+
+| Signal | Purpose |
+|--------|---------|
+| Event-to-paint latency | Server SSE/REST receive → DOM paint completion |
+| Full render duration | `render()` wall time on Tier C analytical path |
+| Money-path card render duration | `renderTimeframeSignalRow` wall time |
+| Poll overlap / in-flight | REST `/api/analytics/state` poll pileup detection |
+| SSE vs REST accept/reject | Transport source accounting |
+| Out-of-order reject / gen-short-circuit accept | `_renderCoherenceGuards` counters including `_server_build_ts` regression with `decision_generation_id` accept |
+| Quote age vs bundle age | `latest_quote_age_ms`, `latest_bundle_age_ms`, `quote_ahead_seen_count` |
+| Long main-thread tasks | `PerformanceObserver` longtask when supported; render >16ms counter |
+
+T0 is prerequisite evidence before transport contract (T1), SSE card-state hardening (T2), rAF render coalescing (T3), and stale fail-closed UI merge (T4). Target architecture remains SSE-first hybrid — not browser WebSocket rewrite.
+
+**Registry:** `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `money_path_latency_instrumentation_v1`.
+
+### Schwab CSV-first declaration (T0 `static/index.html` instrumentation slice — governance artifact)
+
+Schwab CSV authority checked: yes
+
+CSV row(s): NO_SCHWAB_EQUIVALENT — T0 adds internal UI latency/ordering diagnostics only through `window.__edMoneyPathLatency` and performance marks (`money_path_*`). These are not Schwab wire leaves. T0 does not introduce, modify, consume, derive, rename, or replace Schwab-native market-data fields in `static/index.html`. No pricing, volume, option-chain, quote, bid/ask, open interest, Greeks, or market-data authority field is changed. No Schwab ingestion or data-source behavior is changed.
+
+Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE — internal UI diagnostic counters and performance marks only; Schwab CSV remains wire authority for all market facts.
+
+All consumers checked: yes — limited to UI diagnostics only (`window.__edMoneyPathLatency`, `_edMpl*` hooks in `static/index.html`); no backend, model, signal, or Schwab ingestion changes.
+
+SCHWAB_CSV_CHECKED
+
+**Closure caveat:** this declaration does not fix lag, does not close card fidelity overall, does not close `stale_withheld_rth_freshness`, does not prove universal runtime live proof, and does not prove real-money readiness.

@@ -4615,6 +4615,7 @@ try { window.resolveHorizonCardVisualState = resolveHorizonCardVisualState; } ca
  *  ALL/PLAN while 5M/15M/60M stay NEUTRAL (matches backend gate). Horizon pills still
  *  show their own LONG/SHORT direction when ALL is WAIT (render contract). */
 function renderTimeframeSignalRow(d) {
+  _edMplOnMoneyPathRowStart();
   if (d == null || typeof d !== 'object') return;
   const row = document.getElementById('timeframe-signal-row');
   if (!row) return;
@@ -4727,6 +4728,7 @@ function renderTimeframeSignalRow(d) {
     setPlanVal(tEl, d.targets_display);
     setPlanVal(iEl, d.invalidation);
     setPlanVal(zEl, d.size_modifier_display);
+    _edMplOnPlanPainted();
   }
 
   // Per-pill chip painter — uses top-level deriveSourceForHorizon helpers so
@@ -4989,8 +4991,10 @@ function renderTimeframeSignalRow(d) {
     }
 
     paintSourceChip(card, d, slug, dir);
+    if (slug === 'consolidated') _edMplOnAllCardPainted();
   });
   paintTradePlanCard(null);
+  _edMplOnMoneyPathRowComplete();
 }
 
 // STACK-WIRE-3-UI-SPREAD-SEMANTIC: testable dispatcher mirror used by render() at the
@@ -5877,6 +5881,7 @@ function renderFast(f, laneGenCapture) {
   _commitQuoteLaneFromPayload(f);
 
   _livePlaneApplyCore(f, 'http_fast_quote');
+  _edMplNoteEventReceived('fast_quote');
 
   if (typeof DIAG !== 'undefined' && DIAG) {
     console.log('[renderFast] OK', {
@@ -6302,6 +6307,169 @@ function _updateErrorBarFromPayload(d) {
   }
 }
 
+/** T0 — read-only money-path latency/ordering instrumentation (no paint/transport behavior change). */
+let _edMplRestPollInFlight = false;
+let _edMplPendingEventPaintTs = null;
+let _edMplLongTaskObserverInstalled = false;
+
+function _edMplNow() {
+  return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+}
+
+function _edMplInit() {
+  if (window.__edMoneyPathLatency && window.__edMoneyPathLatency.initialized) {
+    return window.__edMoneyPathLatency;
+  }
+  const o = {
+    initialized: true,
+    last_render_source: null,
+    last_render_started_at: null,
+    last_render_completed_at: null,
+    last_render_ms: null,
+    last_money_path_render_ms: null,
+    last_event_to_paint_ms: null,
+    render_count: 0,
+    render_skip_count: 0,
+    sse_event_count: 0,
+    sse_accept_count: 0,
+    sse_reject_count: 0,
+    rest_poll_start_count: 0,
+    rest_poll_complete_count: 0,
+    rest_accept_count: 0,
+    rest_reject_count: 0,
+    rest_poll_in_flight: false,
+    rest_poll_overlap_count: 0,
+    out_of_order_reject_count: 0,
+    out_of_order_accept_via_gen_despite_ts_regression_count: 0,
+    server_build_ts_regression_seen_count: 0,
+    decision_generation_accept_count: 0,
+    latest_decision_generation_id: null,
+    latest_server_build_ts: null,
+    latest_quote_age_ms: null,
+    latest_bundle_age_ms: null,
+    quote_ahead_seen_count: 0,
+    long_task_count: 0,
+    last_long_task_ms: null,
+    render_duration_exceeds_16ms_count: 0,
+  };
+  window.__edMoneyPathLatency = o;
+  _edMplInstallLongTaskObserver();
+  return o;
+}
+
+function _edMplMark(name) {
+  try {
+    if (typeof performance !== 'undefined' && performance.mark) performance.mark(name);
+  } catch (e) { /* fail-safe */ }
+}
+
+function _edMplInstallLongTaskObserver() {
+  if (_edMplLongTaskObserverInstalled) return;
+  _edMplLongTaskObserverInstalled = true;
+  try {
+    if (typeof PerformanceObserver === 'undefined') return;
+    const obs = new PerformanceObserver(function (list) {
+      const mpl = _edMplInit();
+      list.getEntries().forEach(function (entry) {
+        if (entry.entryType !== 'longtask') return;
+        mpl.long_task_count++;
+        mpl.last_long_task_ms = entry.duration;
+      });
+    });
+    obs.observe({ entryTypes: ['longtask'] });
+  } catch (e) { /* unsupported or blocked — fail gracefully */ }
+}
+
+function _edMplUpdatePayloadAges(d) {
+  const mpl = _edMplInit();
+  if (!d || typeof d !== 'object') return;
+  const nowSec = Date.now() / 1000;
+  const qts = _validQuoteLaneTs(d);
+  const bts = _validServerBuildTs(d);
+  if (qts != null) mpl.latest_quote_age_ms = Math.max(0, Math.round((nowSec - qts) * 1000));
+  if (bts != null) mpl.latest_bundle_age_ms = Math.max(0, Math.round((nowSec - bts) * 1000));
+  if (qts != null && bts != null && qts > bts) mpl.quote_ahead_seen_count++;
+  const decGen = d.decision_generation_id != null ? Number(d.decision_generation_id) : NaN;
+  if (Number.isFinite(decGen)) mpl.latest_decision_generation_id = decGen;
+  if (bts != null) mpl.latest_server_build_ts = bts;
+}
+
+function _edMplNoteEventReceived(sourceKind) {
+  const mpl = _edMplInit();
+  const t = _edMplNow();
+  _edMplPendingEventPaintTs = t;
+  if (sourceKind === 'sse') _edMplMark('money_path_sse_received');
+  else if (sourceKind === 'rest') _edMplMark('money_path_rest_received');
+  else if (sourceKind === 'fast_quote') _edMplMark('money_path_fast_quote_received');
+  _edMplMark('money_path_render_scheduled');
+}
+
+function _edMplOnRenderStart(source) {
+  const mpl = _edMplInit();
+  const t = _edMplNow();
+  mpl.last_render_source = source || null;
+  mpl.last_render_started_at = t;
+  _edMplMark('money_path_render_started');
+}
+
+function _edMplOnRenderComplete(source, startedAt, moneyPathMs) {
+  const mpl = _edMplInit();
+  const t = _edMplNow();
+  mpl.last_render_completed_at = t;
+  if (startedAt != null) {
+    mpl.last_render_ms = t - startedAt;
+    if (mpl.last_render_ms > 16) mpl.render_duration_exceeds_16ms_count++;
+  }
+  if (moneyPathMs != null) mpl.last_money_path_render_ms = moneyPathMs;
+  if (_edMplPendingEventPaintTs != null) {
+    mpl.last_event_to_paint_ms = t - _edMplPendingEventPaintTs;
+    _edMplPendingEventPaintTs = null;
+  }
+  mpl.render_count++;
+  _edMplMark('money_path_render_completed');
+  try {
+    if (typeof performance !== 'undefined' && performance.measure) {
+      performance.measure('money_path_render_completed', 'money_path_render_started', 'money_path_render_completed');
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function _edMplOnMoneyPathRowStart() {
+  _edMplInit()._moneyPathRowStart = _edMplNow();
+}
+
+function _edMplOnMoneyPathRowComplete() {
+  const mpl = _edMplInit();
+  if (mpl._moneyPathRowStart != null) {
+    mpl.last_money_path_render_ms = _edMplNow() - mpl._moneyPathRowStart;
+    mpl._moneyPathRowStart = null;
+  }
+  _edMplMark('money_path_horizon_cards_painted');
+}
+
+function _edMplOnPlanPainted() {
+  _edMplMark('money_path_plan_painted');
+}
+
+function _edMplOnAllCardPainted() {
+  _edMplMark('money_path_all_card_painted');
+}
+
+function _edMplOnRestTransportResult(source, accepted) {
+  const mpl = _edMplInit();
+  if (accepted) mpl.rest_accept_count++;
+  else mpl.rest_reject_count++;
+}
+
+function _edMplOnSseTransportResult(accepted) {
+  const mpl = _edMplInit();
+  if (accepted) mpl.sse_accept_count++;
+  else mpl.sse_reject_count++;
+}
+
+_edMplInit();
+try { window._edMplInit = _edMplInit; } catch (e) {}
+
 function _validServerBuildTs(d) {
   const raw = d && d._server_build_ts != null ? Number(d._server_build_ts) : NaN;
   return Number.isFinite(raw) && raw > 0 ? raw : null;
@@ -6319,24 +6487,36 @@ function _renderCoherenceGuards(d, opts) {
   opts = opts || {};
   const checkGen = opts.checkDecisionGen !== false;
   const tsLane = opts.timestampLane || 'analytical';
+  const mpl = _edMplInit();
+  const incomingTs = _validServerBuildTs(d);
+  const prevAnalyticalTs = lastRenderTimestamp || 0;
+  const tsRegressedAnalytical = incomingTs != null && tsLane === 'analytical' && incomingTs < prevAnalyticalTs;
+  if (tsRegressedAnalytical) mpl.server_build_ts_regression_seen_count++;
   if (d == null || typeof d !== 'object' || Array.isArray(d)) return { ok: false, reason: 'null' };
   if (d.ticker && d.ticker.toUpperCase() !== activeTicker) return { ok: false, reason: 'ticker' };
   if (checkGen) {
     const decGen = d.decision_generation_id != null ? Number(d.decision_generation_id) : NaN;
     if (Number.isFinite(decGen)) {
       const prev = window._lastRenderedDecisionGen ?? 0;
-      if (decGen < prev) return { ok: false, reason: 'gen' };
+      if (decGen < prev) {
+        mpl.out_of_order_reject_count++;
+        return { ok: false, reason: 'gen' };
+      }
       // Intentional: newer decision_generation_id accepts even when _server_build_ts regresses (slow Tier C / cache).
+      if (tsRegressedAnalytical) mpl.out_of_order_accept_via_gen_despite_ts_regression_count++;
+      mpl.decision_generation_accept_count++;
       return { ok: true };
     }
   }
-  const ts = _validServerBuildTs(d);
+  const ts = incomingTs;
   if (ts != null && tsLane === 'analytical' && ts < lastRenderTimestamp) {
+    mpl.out_of_order_reject_count++;
     return { ok: false, reason: 'ts' };
   }
   if (tsLane === 'quote' || tsLane === 'fast') {
     const qts = _validQuoteLaneTs(d);
     if (qts != null && qts < lastFastTs) {
+      mpl.out_of_order_reject_count++;
       return { ok: false, reason: 'ts_quote' };
     }
     return { ok: true };
@@ -6666,8 +6846,12 @@ function render(d, fullRenderSource) {
       const n = (window._edRtDiag && window._edRtDiag.tierCDedupSkipped) || 0;
       window._edRtDiag = Object.assign(window._edRtDiag || {}, { tierCDedupSkipped: n + 1 });
     } catch (e) {}
+    _edMplInit().render_skip_count++;
     return true;
   }
+  const _mplRenderStart = _edMplNow();
+  _edMplOnRenderStart(fullRenderSource);
+  _edMplUpdatePayloadAges(d);
   if (d._update_source) {
     window._lastPayloadUpdateSource = d._update_source;
   }
@@ -7473,6 +7657,7 @@ function render(d, fullRenderSource) {
   }
   try { paintSwitchStateChip(); } catch (eSw) {}
   _commitTierCCardRenderFingerprint(d);
+  _edMplOnRenderComplete(fullRenderSource, _mplRenderStart, null);
   return true;
 }
 try { window.render = render; } catch (e) {}
@@ -8408,7 +8593,9 @@ async function _fetchTierCRestAndApply(ctx) {
 
     _consecutiveFailures = 0;
     if (DIAG) console.log('[fetchState] ACCEPTED', { ticker: data.ticker, gen: myGen, pipeline_ms: data._pipeline_ms, from_cache: data._from_cache, quote_ms: data._quote_ms, chain_ms: data._chain_ms, compute_ms: data._compute_ms });
+    _edMplNoteEventReceived('rest');
     const _didRender = render(data, 'rest_manual');
+    _edMplOnRestTransportResult('rest_manual', _didRender);
     if (_didRender) {
       _lastRenderTs = Date.now();
       _snapshotCacheStore(data);
@@ -8709,6 +8896,11 @@ async function pollStateFallback() {
   }
   const _t0 = Date.now();
   _transportPollRuns++;
+  const mplPoll = _edMplInit();
+  mplPoll.rest_poll_start_count++;
+  if (_edMplRestPollInFlight) mplPoll.rest_poll_overlap_count++;
+  _edMplRestPollInFlight = true;
+  mplPoll.rest_poll_in_flight = true;
   if (DIAG) console.log('[pollFallback] run', { ticker, gen: myGen, sseOpen });
 
   try {
@@ -8746,7 +8938,9 @@ async function pollStateFallback() {
 
     _consecutiveFailures = 0;
     if (DIAG) console.log('[pollFallback] ACCEPTED', { ticker: data.ticker, gen: myGen, pipeline_ms: data._pipeline_ms, round_trip_ms: Date.now() - _t0, from_cache: data._from_cache });
+    _edMplNoteEventReceived('rest');
     const _didRenderPoll = render(data, 'rest_poll');
+    _edMplOnRestTransportResult('rest_poll', _didRenderPoll);
     if (_didRenderPoll) {
       _lastRenderTs = Date.now();
       _snapshotCacheStore(data);
@@ -8780,6 +8974,11 @@ async function pollStateFallback() {
     }
   } catch (e) {
     if (DIAG) console.warn('[pollFallback] error', e.message);
+  } finally {
+    _edMplRestPollInFlight = false;
+    const mplFin = _edMplInit();
+    mplFin.rest_poll_in_flight = false;
+    mplFin.rest_poll_complete_count++;
   }
 }
 
@@ -9849,6 +10048,7 @@ function connectSSE(opts) {
       if (sseGen !== requestGeneration) return;
       if ((p.ticker || '').toUpperCase() !== activeTicker) return;
       if (!_quoteLaneShouldApply(p)) return;
+      _edMplNoteEventReceived('fast_quote');
       _commitQuoteLaneFromPayload(p);
       _lastSsePayloadAcceptedMs = Date.now();
       _setSseUi('live', { reason: 'live_plane_tick', update_source: p._update_source || 'live_plane_sse' });
@@ -9905,10 +10105,14 @@ function connectSSE(opts) {
         pipeline_ms: data._pipeline_ms,
       });
       _edTransportSync({ ssePhase: 'payload_ok' });
+      const mplSse = _edMplInit();
+      mplSse.sse_event_count++;
+      _edMplNoteEventReceived('sse');
       if (typeof DIAG !== 'undefined' && DIAG) {
         console.log(`SSE_ONMESSAGE_ACCEPTED generation=${sseGen} ticker=${data.ticker} pipeline_ms=${data._pipeline_ms != null ? data._pipeline_ms : ''} _update_source=${data._update_source || ''}`);
       }
       const _didRenderSse = render(data, 'sse');
+      _edMplOnSseTransportResult(_didRenderSse);
       if (_didRenderSse) {
         _lastRenderTs = Date.now();
         _snapshotCacheStore(data);
