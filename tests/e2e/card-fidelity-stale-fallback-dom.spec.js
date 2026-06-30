@@ -320,6 +320,33 @@ test('T0 __edMoneyPathLatency diagnostics object is initialized on load', async 
   expect(diag).toEqual({ initialized: true, hasRenderMs: true, hasOverlap: true });
 });
 
+test('T2 rAF latest-wins scheduler exposes observational diagnostics', async ({ page }) => {
+  await gotoCardTrustSurface(page);
+  const diag = await page.evaluate(() => {
+    const o = window.__edMoneyPathLatency;
+    return o && typeof o === 'object'
+      ? {
+          hasSchedulerFn: typeof window.scheduleMoneyPathRender === 'function',
+          rafEnabled: 'raf_scheduler_enabled' in o,
+          rafSchedule: 'raf_schedule_count' in o,
+          rafCoalesce: 'raf_coalesce_count' in o,
+          rafFlush: 'raf_flush_count' in o,
+          rafSupersede: 'raf_latest_wins_supersede_count' in o,
+          rafPending: 'raf_pending' in o,
+        }
+      : null;
+  });
+  expect(diag).toMatchObject({
+    hasSchedulerFn: true,
+    rafEnabled: true,
+    rafSchedule: true,
+    rafCoalesce: true,
+    rafFlush: true,
+    rafSupersede: true,
+    rafPending: true,
+  });
+});
+
 // ── Direct renderer path (subordinate — same card-trust gate) ─────────────────
 
 for (const ticker of ANCHOR_TICKERS) {

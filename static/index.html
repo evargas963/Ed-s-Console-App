@@ -3574,7 +3574,7 @@ function setActiveTicker(rawTicker, rawExpiry) {
       window._lastData = restored;
       lastRenderTimestamp = 0;
       _commitQuoteLaneFromPayload(restored);
-      try { render(restored, 'ticker_cache_restore'); _syncAnalyticsPollCadence(); } catch (e) {}
+      try { scheduleMoneyPathRender(restored, 'ticker_cache_restore'); _syncAnalyticsPollCadence(); } catch (e) {}
     } else {
       window._lastData = {
         ticker: t,
@@ -6351,6 +6351,13 @@ function _edMplInit() {
     long_task_count: 0,
     last_long_task_ms: null,
     render_duration_exceeds_16ms_count: 0,
+    raf_scheduler_enabled: false,
+    raf_schedule_count: 0,
+    raf_coalesce_count: 0,
+    raf_flush_count: 0,
+    raf_latest_wins_supersede_count: 0,
+    raf_last_source: null,
+    raf_pending: false,
   };
   window.__edMoneyPathLatency = o;
   _edMplInstallLongTaskObserver();
@@ -6469,6 +6476,53 @@ function _edMplOnSseTransportResult(accepted) {
 
 _edMplInit();
 try { window._edMplInit = _edMplInit; } catch (e) {}
+
+/** T2 — rAF latest-wins money-path render scheduler (coalesces transport bursts; observational diagnostics only). */
+let _edMplRafHandle = null;
+let _edMplRafPending = null;
+
+function scheduleMoneyPathRender(d, fullRenderSource, onComplete) {
+  const mpl = _edMplInit();
+  mpl.raf_scheduler_enabled = true;
+  mpl.raf_schedule_count++;
+  mpl.raf_last_source = fullRenderSource || null;
+  if (d == null || typeof d !== 'object' || Array.isArray(d)) {
+    if (typeof onComplete === 'function') onComplete(false, d, fullRenderSource);
+    return false;
+  }
+  if (typeof requestAnimationFrame !== 'function') {
+    mpl.raf_pending = false;
+    mpl.raf_flush_count++;
+    let did = false;
+    try { did = _renderMoneyPathCore(d, fullRenderSource); } catch (e) { console.error('[scheduleMoneyPathRender] sync fallback', e); }
+    if (typeof onComplete === 'function') onComplete(did, d, fullRenderSource);
+    return did;
+  }
+  if (_edMplRafPending) {
+    mpl.raf_coalesce_count++;
+    mpl.raf_latest_wins_supersede_count++;
+  }
+  _edMplRafPending = { data: d, source: fullRenderSource, onComplete: onComplete };
+  mpl.raf_pending = true;
+  if (_edMplRafHandle != null) return;
+  _edMplRafHandle = requestAnimationFrame(function _edMplRafFlush() {
+    _edMplRafHandle = null;
+    const job = _edMplRafPending;
+    _edMplRafPending = null;
+    const mplFlush = _edMplInit();
+    mplFlush.raf_pending = false;
+    mplFlush.raf_flush_count++;
+    if (!job || job.data == null) return;
+    let did = false;
+    try { did = _renderMoneyPathCore(job.data, job.source); } catch (err) {
+      console.error('[scheduleMoneyPathRender] flush error', err);
+    }
+    if (typeof job.onComplete === 'function') {
+      try { job.onComplete(did, job.data, job.source); } catch (e) {}
+    }
+  });
+}
+try { window.scheduleMoneyPathRender = scheduleMoneyPathRender; } catch (e) {}
 
 function _validServerBuildTs(d) {
   const raw = d && d._server_build_ts != null ? Number(d._server_build_ts) : NaN;
@@ -6812,7 +6866,7 @@ function renderTierALive(d, fullRenderSource) {
 
 /** @returns {boolean} true if the snapshot was accepted and the DOM was updated
  *  @param {string} [fullRenderSource] sse | rest_poll | rest_manual — for window.__edTransport diagnostics */
-function render(d, fullRenderSource) {
+function _renderMoneyPathCore(d, fullRenderSource) {
   if (d == null || typeof d !== 'object' || Array.isArray(d)) return false;
   if (d.error && d.error === 'token_invalid') return false;
   if (d._tier === 'A_live') {
@@ -7660,7 +7714,12 @@ function render(d, fullRenderSource) {
   _edMplOnRenderComplete(fullRenderSource, _mplRenderStart, null);
   return true;
 }
-try { window.render = render; } catch (e) {}
+
+/** Synchronous money-path render — same core as transport scheduler flush (Playwright / direct callers). */
+function render(d, fullRenderSource) {
+  return _renderMoneyPathCore(d, fullRenderSource);
+}
+try { window.render = render; window._renderMoneyPathCore = _renderMoneyPathCore; } catch (e) {}
 
 // ── Liquidity Map ─────────────────────────────────────────────────────────────
 function getETMinutes() {
@@ -8594,44 +8653,45 @@ async function _fetchTierCRestAndApply(ctx) {
     _consecutiveFailures = 0;
     if (DIAG) console.log('[fetchState] ACCEPTED', { ticker: data.ticker, gen: myGen, pipeline_ms: data._pipeline_ms, from_cache: data._from_cache, quote_ms: data._quote_ms, chain_ms: data._chain_ms, compute_ms: data._compute_ms });
     _edMplNoteEventReceived('rest');
-    const _didRender = render(data, 'rest_manual');
-    _edMplOnRestTransportResult('rest_manual', _didRender);
-    if (_didRender) {
-      _lastRenderTs = Date.now();
-      _snapshotCacheStore(data);
-      _syncAnalyticsPollCadence();
-    } else if (DIAG) {
-      console.warn('[fetchState] render skipped (gating) — status unchanged', { ticker: data.ticker, gen: myGen });
-    }
-    if (_didRender || window._lastData) {
-      if (dot) dot.className = 'status-dot live';
-      if (label) label.textContent = 'LIVE';
-    }
+    scheduleMoneyPathRender(data, 'rest_manual', function (_didRender) {
+      _edMplOnRestTransportResult('rest_manual', _didRender);
+      if (_didRender) {
+        _lastRenderTs = Date.now();
+        _snapshotCacheStore(data);
+        _syncAnalyticsPollCadence();
+      } else if (DIAG) {
+        console.warn('[fetchState] render skipped (gating) — status unchanged', { ticker: data.ticker, gen: myGen });
+      }
+      if (_didRender || window._lastData) {
+        if (dot) dot.className = 'status-dot live';
+        if (label) label.textContent = 'LIVE';
+      }
 
-    const overlay = $('loading-overlay');
-    if (overlay) overlay.classList.add('hidden');
+      const overlay = $('loading-overlay');
+      if (overlay) overlay.classList.add('hidden');
 
-    const _anMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _analyticsT0;
-    if (_didRender) {
-      _logTickerSwitch('FIRST_FULL_STATE_APPLIED', {
-        pipeline_ms: data._pipeline_ms,
-        fetch_ms: Math.round(_anMs),
-        tier: data._tier || '',
-        spot_disp: data.spot_disp || null,
-        fast_rollout: window._edFastRollout || null,
-        fast_lane_spot: window._fastLaneSpotDisp || null,
-      });
-      if (willChange && _switchDiagSession && _switchDiagSession.first_full_state_ms == null && data._tier !== 'A_live' && !data.analytics_pending_shell && !(data.analytics_partial_tier_c && !hasTrustedMhapBundle(data))) {
-        const t0 = _switchDiagSession.t0;
-        _switchDiagSession.first_full_state_ms = t0 != null
-          ? ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0)
-          : null;
-        _recordSwitchLaneTiming('tier_c');
-        if (window.ED_SWITCH_TIMING === true && _switchDiagSession.first_full_state_ms != null) {
+      const _anMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _analyticsT0;
+      if (_didRender) {
+        _logTickerSwitch('FIRST_FULL_STATE_APPLIED', {
+          pipeline_ms: data._pipeline_ms,
+          fetch_ms: Math.round(_anMs),
+          tier: data._tier || '',
+          spot_disp: data.spot_disp || null,
+          fast_rollout: window._edFastRollout || null,
+          fast_lane_spot: window._fastLaneSpotDisp || null,
+        });
+        if (willChange && _switchDiagSession && _switchDiagSession.first_full_state_ms == null && data._tier !== 'A_live' && !data.analytics_pending_shell && !(data.analytics_partial_tier_c && !hasTrustedMhapBundle(data))) {
+          const t0 = _switchDiagSession.t0;
+          _switchDiagSession.first_full_state_ms = t0 != null
+            ? ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0)
+            : null;
+          _recordSwitchLaneTiming('tier_c');
+        }
+        if (window.ED_SWITCH_TIMING === true && _switchDiagSession && _switchDiagSession.first_full_state_ms != null) {
           console.log('[SWITCH_TIMING] first_full_state_ms=', Math.round(_switchDiagSession.first_full_state_ms), 'ticker=', activeTicker, 'gen=', myGen);
         }
       }
-    }
+    });
     setTimeout(() => { try { pollLiquiditySnapshot(); } catch (e) {} }, 0);
   } catch (e) {
     const aborted = e.name === 'AbortError' || (e.message && String(e.message).includes('aborted'));
@@ -8769,7 +8829,7 @@ async function fetchState(forceOrOpts) {
               && myGen === requestGeneration
               && (!ld.ticker || ld.ticker.toUpperCase() === activeTicker)
               && ld._tier === 'A_live') {
-            render(ld, 'rest_manual');
+            scheduleMoneyPathRender(ld, 'rest_manual');
             if (dot) dot.className = 'status-dot live';
             if (label) label.textContent = 'LIVE';
             const ovl = $('loading-overlay');
@@ -8795,14 +8855,15 @@ async function fetchState(forceOrOpts) {
             && (bd._tier === 'B_light' || bd.plane === 'L1_context')
             && myGen === requestGeneration
             && (!bd.ticker || bd.ticker.toUpperCase() === activeTicker)) {
-          const didB = render(bd, 'rest_manual');
-          if (didB && willChange && _switchDiagSession && !_switchDiagSession._timingLightPaint && window.ED_SWITCH_TIMING === true) {
-            _switchDiagSession._timingLightPaint = true;
-            const t0 = _switchDiagSession.t0;
-            const ms = t0 != null ? ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0) : null;
-            console.log('[SWITCH_TIMING] first_light_panel_ms=', ms != null ? Math.round(ms) : null, 'ticker=', activeTicker, 'gen=', myGen);
-          }
-          if (didB && _switchDiagSession) _recordSwitchLaneTiming('analytics_light');
+          scheduleMoneyPathRender(bd, 'rest_manual', function (didB) {
+            if (didB && willChange && _switchDiagSession && !_switchDiagSession._timingLightPaint && window.ED_SWITCH_TIMING === true) {
+              _switchDiagSession._timingLightPaint = true;
+              const t0 = _switchDiagSession.t0;
+              const ms = t0 != null ? ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0) : null;
+              console.log('[SWITCH_TIMING] first_light_panel_ms=', ms != null ? Math.round(ms) : null, 'ticker=', activeTicker, 'gen=', myGen);
+            }
+            if (didB && _switchDiagSession) _recordSwitchLaneTiming('analytics_light');
+          });
         }
       } catch (e) {
         if (DIAG && e && e.name !== 'AbortError') console.warn('[fetchState] tierB opportunistic skipped', e.message || e);
@@ -8939,26 +9000,27 @@ async function pollStateFallback() {
     _consecutiveFailures = 0;
     if (DIAG) console.log('[pollFallback] ACCEPTED', { ticker: data.ticker, gen: myGen, pipeline_ms: data._pipeline_ms, round_trip_ms: Date.now() - _t0, from_cache: data._from_cache });
     _edMplNoteEventReceived('rest');
-    const _didRenderPoll = render(data, 'rest_poll');
-    _edMplOnRestTransportResult('rest_poll', _didRenderPoll);
-    if (_didRenderPoll) {
-      _lastRenderTs = Date.now();
-      _snapshotCacheStore(data);
-      _syncAnalyticsPollCadence();
-      const dot = $('status-dot'); const label = $('status-label');
-      if (dot) dot.className = 'status-dot live';
-      if (label) label.textContent = 'LIVE';
-      const eb = $('error-bar');
-      if (eb && !data.state_error) eb.style.display = 'none';
-      if (typeof DIAG !== 'undefined' && DIAG) {
-        const rs = _eventSource ? _eventSource.readyState : -1;
-        const rsName = rs === 0 ? 'CONNECTING' : rs === 1 ? 'OPEN' : rs === 2 ? 'CLOSED' : 'NONE';
-        const lbl = $('sse-label');
-        console.log(`POLL_SUCCESS_UI_UPDATED while_sse_state=${rsName}(${rs}) sse_label=${lbl ? lbl.textContent : '?'} generation=${myGen}`);
+    scheduleMoneyPathRender(data, 'rest_poll', function (_didRenderPoll) {
+      _edMplOnRestTransportResult('rest_poll', _didRenderPoll);
+      if (_didRenderPoll) {
+        _lastRenderTs = Date.now();
+        _snapshotCacheStore(data);
+        _syncAnalyticsPollCadence();
+        const dot = $('status-dot'); const label = $('status-label');
+        if (dot) dot.className = 'status-dot live';
+        if (label) label.textContent = 'LIVE';
+        const eb = $('error-bar');
+        if (eb && !data.state_error) eb.style.display = 'none';
+        if (typeof DIAG !== 'undefined' && DIAG) {
+          const rs = _eventSource ? _eventSource.readyState : -1;
+          const rsName = rs === 0 ? 'CONNECTING' : rs === 1 ? 'OPEN' : rs === 2 ? 'CLOSED' : 'NONE';
+          const lbl = $('sse-label');
+          console.log(`POLL_SUCCESS_UI_UPDATED while_sse_state=${rsName}(${rs}) sse_label=${lbl ? lbl.textContent : '?'} generation=${myGen}`);
+        }
+      } else if (DIAG) {
+        console.warn('[pollFallback] render skipped (gating)', { ticker: data.ticker, gen: myGen });
       }
-    } else if (DIAG) {
-      console.warn('[pollFallback] render skipped (gating)', { ticker: data.ticker, gen: myGen });
-    }
+    });
     // When SSE is not OPEN, ensure a connection attempt exists. connectSSE() is idempotent:
     // it no-ops if the same URL is already CONNECTING or OPEN, so the 2s poll cannot abort
     // an in-flight handshake (see connectSSE / _sseStreamUrl).
@@ -10111,17 +10173,18 @@ function connectSSE(opts) {
       if (typeof DIAG !== 'undefined' && DIAG) {
         console.log(`SSE_ONMESSAGE_ACCEPTED generation=${sseGen} ticker=${data.ticker} pipeline_ms=${data._pipeline_ms != null ? data._pipeline_ms : ''} _update_source=${data._update_source || ''}`);
       }
-      const _didRenderSse = render(data, 'sse');
-      _edMplOnSseTransportResult(_didRenderSse);
-      if (_didRenderSse) {
-        _lastRenderTs = Date.now();
-        _snapshotCacheStore(data);
-        _syncAnalyticsPollCadence();
-        const dot = $('status-dot');
-        if (dot) dot.className = 'status-dot live';
-      } else if (typeof DIAG !== 'undefined' && DIAG) {
-        console.warn(`SSE_ONMESSAGE_REJECTED reason=render_gated ticker=${data.ticker} generation=${sseGen}`);
-      }
+      scheduleMoneyPathRender(data, 'sse', function (_didRenderSse) {
+        _edMplOnSseTransportResult(_didRenderSse);
+        if (_didRenderSse) {
+          _lastRenderTs = Date.now();
+          _snapshotCacheStore(data);
+          _syncAnalyticsPollCadence();
+          const dot = $('status-dot');
+          if (dot) dot.className = 'status-dot live';
+        } else if (typeof DIAG !== 'undefined' && DIAG) {
+          console.warn(`SSE_ONMESSAGE_REJECTED reason=render_gated ticker=${data.ticker} generation=${sseGen}`);
+        }
+      });
     } catch (err) {
       console.warn('SSE parse error:', err);
     }

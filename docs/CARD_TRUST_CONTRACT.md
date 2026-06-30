@@ -527,3 +527,34 @@ T0 diagnostics: `last_money_path_render_ms`, `last_render_ms`, `render_duration_
 ### Non-closure
 
 T1 is admissible as contract-only. It does **not** fix lag, does **not** close card fidelity overall, does **not** close `stale_withheld_rth_freshness`, does **not** prove universal runtime live proof, and does **not** prove real-money readiness.
+
+---
+
+## 20. T2 rAF latest-wins money-path render scheduler (local diff — not closure)
+
+**Lane:** `T2_RAF_LATEST_WINS_RENDER_SCHEDULER_V1`  
+**Status:** UI scheduling lane — **does not** fix lag, wire T3 `sequence_id`, wire T4 `money_path_snapshot`, change card actionability/`final_tradeable`/fail-closed semantics, close card fidelity overall, close `stale_withheld_rth_freshness`, prove universal runtime live proof, or real-money readiness.
+
+T2 coalesces money-path render requests from SSE/REST transport entry points through `scheduleMoneyPathRender()` using `requestAnimationFrame` latest-wins semantics: multiple pending requests before the scheduled frame keep only the latest payload/source; exactly one flush paints the survivor. Synchronous `render()` / `_renderMoneyPathCore()` preserves existing acceptance/rejection, coherence guards, and card trust behavior for Playwright and direct callers.
+
+**Registry:** `governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json` → `raf_latest_wins_render_scheduler_v1`.
+
+### Scheduler observability (T0 extension)
+
+Read-only fields on `window.__edMoneyPathLatency`: `raf_scheduler_enabled`, `raf_schedule_count`, `raf_coalesce_count`, `raf_flush_count`, `raf_latest_wins_supersede_count`, `raf_last_source`, `raf_pending`. These are diagnostics only — not inputs to trade/actionability logic.
+
+### Explicit non-implementation in T2
+
+No browser WebSocket, no `money_path_snapshot`, no `sequence_id`, no T3 monotonic sequence gating, no T4 fail-closed freshness UI merge, no transport cadence change, no render accept/reject rule change, no `resolveCardTrustGate` / `final_tradeable` / fail-closed behavior change, no stale/frozen label hiding.
+
+### Schwab CSV-first declaration (T2 `static/index.html` scheduler slice — governance artifact)
+
+Schwab CSV authority checked: yes
+
+CSV row(s): NO_SCHWAB_EQUIVALENT — T2 adds browser-side `requestAnimationFrame` render scheduling only via `scheduleMoneyPathRender()` and read-only `raf_*` diagnostics on `window.__edMoneyPathLatency`. These are not Schwab wire leaves. T2 does not introduce, modify, consume, derive, rename, or replace Schwab-native market-data fields. No pricing, volume, option-chain, quote, bid/ask, open interest, Greeks, or market-data authority field is changed. No Schwab ingestion or data-source behavior is changed.
+
+Consumers checked: UI scheduler diagnostics only (`raf_*` counters on `window.__edMoneyPathLatency`).
+
+SCHWAB_CSV_CHECKED
+
+**Closure caveat:** this declaration does not fix lag, does not close card fidelity overall, does not close `stale_withheld_rth_freshness`, does not prove universal runtime live proof, and does not prove real-money readiness.

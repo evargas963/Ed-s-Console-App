@@ -301,6 +301,59 @@
       "lag_fix"
     ]
   },
+  "raf_latest_wins_render_scheduler_v1": {
+    "lane_id": "T2_RAF_LATEST_WINS_RENDER_SCHEDULER_V1",
+    "status": "LOCAL_DIFF_NOT_CLOSED",
+    "ui_implementation_approved": "T2_LOCAL_DIFF_ONLY",
+    "card_fidelity_overall": "NOT_CLOSED_NOT_PROVEN",
+    "stale_withheld_rth_freshness": "FAIL",
+    "universal_runtime_live_proof": "NOT_PROVEN",
+    "real_money_readiness": "NOT_PROVEN",
+    "scope": "Browser rAF latest-wins money-path render scheduler — coalesces transport bursts without trust/actionability semantic change",
+    "surface": "scheduleMoneyPathRender + window.__edMoneyPathLatency.raf_*",
+    "scheduler_semantics": {
+      "transport": "requestAnimationFrame",
+      "coalesce": "multiple requests before flush keep latest payload/source only",
+      "core_render": "_renderMoneyPathCore (preserves existing render acceptance/rejection)"
+    },
+    "t0_raf_diagnostics": [
+      "raf_scheduler_enabled",
+      "raf_schedule_count",
+      "raf_coalesce_count",
+      "raf_flush_count",
+      "raf_latest_wins_supersede_count",
+      "raf_last_source",
+      "raf_pending"
+    ],
+    "does_not_implement": [
+      "browser WebSocket",
+      "money_path_snapshot",
+      "sequence_id",
+      "T3 sequence gating",
+      "T4 fail-closed freshness UI",
+      "transport cadence change",
+      "render accept/reject change",
+      "card actionability change",
+      "final_tradeable change",
+      "fail_closed behavior change"
+    ],
+    "does_not_close": [
+      "card_fidelity_overall",
+      "stale_withheld_rth_freshness",
+      "universal_runtime_live_proof",
+      "real_money_readiness",
+      "lag_fix"
+    ],
+    "schwab_csv_first_declaration": {
+      "lane_id": "T2_SCHWAB_CSV_FIRST_GUARD_V1",
+      "Schwab CSV authority checked": "yes",
+      "CSV row(s)": "NO_SCHWAB_EQUIVALENT",
+      "Derived-field disposition": "KEEP_DERIVED_WITH_PROVENANCE",
+      "All consumers checked": "yes — UI scheduler diagnostics only; no Schwab wire reads or ingestion changes",
+      "SCHWAB_CSV_CHECKED": true,
+      "notes": "static/index.html T2 slice adds rAF scheduler + raf_* diagnostics only; no Schwab leaf add/replace"
+    }
+  },
   "card_freshness_v1": {
     "lane_id": "STALE_CARD_REMEDIATION_S1",
     "status": "DESIGN_ONLY_NOT_WIRED",

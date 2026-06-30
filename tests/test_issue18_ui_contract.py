@@ -644,7 +644,7 @@ def test_ui_maximize_contract_sla_warm_and_partial_render():
     assert "__renderKeyLevelsLive" in partial_chunk
     assert "renderTimeframeSignalRow" in partial_chunk
     assert "renderKind: 'tier_c_partial_analytics'" in partial_chunk
-    render_idx = h.find("function render(d, fullRenderSource)")
+    render_idx = h.find("function _renderMoneyPathCore(d, fullRenderSource)")
     assert render_idx != -1
     render_chunk = h[render_idx : render_idx + 600]
     assert "renderTierCPartialAnalytics" in render_chunk
@@ -809,9 +809,9 @@ def test_quote_plane_fields_absent_from_card_trust_gate():
 
 def test_full_render_analytical_path_does_not_consume_plane_diag_for_cards():
     h = _html()
-    render_idx = h.find("function render(d, fullRenderSource)")
+    render_idx = h.find("function _renderMoneyPathCore(d, fullRenderSource)")
     assert render_idx != -1
-    render_end = h.find("\n// ── Liquidity Map", render_idx)
+    render_end = h.find("\n/** Synchronous money-path render", render_idx)
     assert render_end != -1
     chunk = h[render_idx:render_end]
     assert "renderTimeframeSignalRow(d)" in chunk
@@ -1156,7 +1156,7 @@ def test_t0_schwab_csv_first_declaration_in_contract():
 
 def test_t0_sse_transport_result_accounted_once_per_outcome():
     h = _html()
-    idx = h.find("const _didRenderSse = render(data, 'sse');")
+    idx = h.find("scheduleMoneyPathRender(data, 'sse'")
     assert idx != -1
     chunk = h[idx : idx + 500]
     assert chunk.count("_edMplOnSseTransportResult") == 1
@@ -1240,13 +1240,137 @@ def test_t1_contract_no_implementation_of_forbidden_transport_primitives():
     h = _html()
     assert "money_path_snapshot" not in h
     assert "sequence_id" not in h
-    assert "requestAnimationFrame" not in h
     assert "WebSocket" not in h
     chunk = _t1_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
     assert "no browser WebSocket" in chunk.lower() or "no `money_path_snapshot`" in chunk
+    assert "no rAF scheduler" in chunk.lower() or "no raf scheduler" in chunk.lower()
 
 
-def test_t1_registry_stale_label_latency_contract_v1():
+def _t2_contract_chunk(body: str) -> str:
+    idx = body.find("## 20. T2 rAF latest-wins")
+    assert idx != -1, "T2 contract section missing"
+    return body[idx : idx + 4500]
+
+
+def test_t2_raf_scheduler_function_exists():
+    h = _html()
+    assert "function scheduleMoneyPathRender" in h
+    assert "function _renderMoneyPathCore" in h
+    idx = h.find("function scheduleMoneyPathRender")
+    chunk = h[idx : idx + 2200]
+    assert "requestAnimationFrame" in chunk
+    assert "raf_latest_wins_supersede_count" in chunk
+    assert "raf_coalesce_count" in chunk
+    assert "raf_flush_count" in chunk
+
+
+def test_t2_raf_scheduler_coalesces_and_latest_wins():
+    h = _html()
+    idx = h.find("function scheduleMoneyPathRender")
+    chunk = h[idx : idx + 2200]
+    assert "_edMplRafPending" in chunk
+    assert "raf_latest_wins_supersede_count" in chunk
+    assert "_renderMoneyPathCore(job.data, job.source)" in chunk
+    assert chunk.count("requestAnimationFrame") >= 1
+
+
+def test_t2_transport_entry_points_use_scheduler_not_direct_render():
+    h = _html()
+    sse_idx = h.find("scheduleMoneyPathRender(data, 'sse'")
+    assert sse_idx != -1
+    sse_chunk = h[sse_idx : sse_idx + 400]
+    assert "_edMplOnSseTransportResult" in sse_chunk
+    assert "render(data, 'sse')" not in h
+    poll_idx = h.find("scheduleMoneyPathRender(data, 'rest_poll'")
+    assert poll_idx != -1
+    manual_idx = h.find("scheduleMoneyPathRender(data, 'rest_manual'")
+    assert manual_idx != -1
+
+
+def test_t2_scheduler_does_not_introduce_forbidden_primitives():
+    h = _html()
+    assert "money_path_snapshot" not in h
+    assert "sequence_id" not in h
+    assert "WebSocket" not in h
+    idx = h.find("function scheduleMoneyPathRender")
+    chunk = h[idx : idx + 2200]
+    assert "sequence_id" not in chunk
+    assert "money_path_snapshot" not in chunk
+    assert "WebSocket" not in chunk
+
+
+def test_t2_preserves_card_trust_and_fail_closed_surface():
+    h = _html()
+    assert "function analyticsCardTrustGate(d, opts)" in h
+    assert "function resolveCardTrustGate(d, opts)" in h
+    assert "function engineTradeableSetup(d)" in h
+    idx = h.find("function _renderMoneyPathCore")
+    end = h.find("/** Synchronous money-path render", idx)
+    chunk = h[idx : end if end != -1 else idx + 9000]
+    assert "_renderCoherenceGuards" in chunk
+    idx2 = h.find("function engineTradeableSetup")
+    chunk2 = h[idx2 : idx2 + 520]
+    assert "resolveCardTrustGate" in chunk2
+    assert "d.final_tradeable" in chunk2
+
+
+def test_t2_raf_t0_diagnostic_fields_initialized():
+    h = _html()
+    idx = h.find("function _edMplInit")
+    chunk = h[idx : idx + 1800]
+    for field in (
+        "raf_scheduler_enabled",
+        "raf_schedule_count",
+        "raf_coalesce_count",
+        "raf_flush_count",
+        "raf_latest_wins_supersede_count",
+        "raf_last_source",
+        "raf_pending",
+    ):
+        assert field in chunk, f"missing T2 diagnostic field {field}"
+
+
+def test_t2_synchronous_render_alias_preserved_for_playwright():
+    h = _html()
+    assert "function render(d, fullRenderSource)" in h
+    assert "return _renderMoneyPathCore(d, fullRenderSource)" in h
+    assert "window.render = render" in h
+    assert "window._renderMoneyPathCore = _renderMoneyPathCore" in h
+
+
+def test_t2_contract_non_closure_caveats_preserved():
+    chunk = _t2_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    assert "does not fix lag" in chunk.lower() or "does **not** fix lag" in chunk
+    assert "stale_withheld_rth_freshness" in chunk
+    assert "real-money readiness" in chunk.lower() or "real_money_readiness" in chunk
+
+
+def test_t2_schwab_csv_first_declaration_in_contract():
+    chunk = _t2_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    assert "Schwab CSV authority checked: yes" in chunk
+    assert "CSV row(s): NO_SCHWAB_EQUIVALENT" in chunk
+    assert "SCHWAB_CSV_CHECKED" in chunk
+    assert "scheduleMoneyPathRender" in chunk
+    assert "browser render scheduling only" in chunk.lower() or "render scheduling only" in chunk.lower()
+
+
+def test_t2_registry_raf_latest_wins_render_scheduler_v1():
+    import json
+
+    reg = json.loads(
+        (ROOT / "governance/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8")
+    )
+    t2 = reg["raf_latest_wins_render_scheduler_v1"]
+    assert t2["lane_id"] == "T2_RAF_LATEST_WINS_RENDER_SCHEDULER_V1"
+    assert "raf_schedule_count" in t2["t0_raf_diagnostics"]
+    assert "sequence_id" in t2["does_not_implement"]
+    assert "money_path_snapshot" in t2["does_not_implement"]
+    assert t2["schwab_csv_first_declaration"]["SCHWAB_CSV_CHECKED"] is True
+
+
+def test_t1_contract_still_preserves_t1_non_implementation_list():
+    chunk = _t1_contract_chunk(CARD_TRUST_CONTRACT.read_text(encoding="utf-8"))
+    assert "no rAF scheduler" in chunk.lower() or "no raf scheduler" in chunk.lower()
     import json
 
     reg = json.loads(
