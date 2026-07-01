@@ -299,6 +299,17 @@ CACHE_TTL = 5                     # seconds — default REST cache & idle SSE lo
 # Shorter intervals = fresher Right Now / WDS / Call at the cost of more Schwab API work.
 VIEWER_SSE_REFRESH_SEC: float = float(os.environ.get("ED_VIEWER_SSE_REFRESH_SEC", "1.0"))
 VIEWER_STATE_CACHE_TTL_SEC: float = float(os.environ.get("ED_VIEWER_STATE_CACHE_TTL_SEC", "1.0"))
+# T5 SSE repair — Schwab CSV-first slice declaration (transport-only; no wire/ingestion change):
+# Schwab CSV authority checked: yes
+# CSV row(s): NO_SCHWAB_EQUIVALENT
+# Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE
+# All consumers checked: yes — SSE Tier C cache fanout / bounded recompute only; no Schwab wire,
+# ingestion, auth/token, CSV parsing, market-data source priority, model/signal, or trading change.
+# SCHWAB_CSV_CHECKED
+# T5 — bounded SSE recompute wait; cache fanout keeps Tier C SSE alive when _fetch_state is slow.
+SSE_RECOMPUTE_FETCH_TIMEOUT_SEC: float = float(
+    os.environ.get("ED_SSE_RECOMPUTE_FETCH_TIMEOUT_SEC", "12.0")
+)
 # UI-MAXIMIZE — panel warm list + binding SLA budgets (mirrored on /api/build + static ED_UI_MAXIMIZE_SLA_MS).
 UI_MAXIMIZE_PANEL_WARM_TICKERS: tuple[str, ...] = tuple(
     t.strip().upper()
@@ -636,6 +647,7 @@ _analytics_bg_fail_counts: dict[tuple, int] = {}
 _analytics_bg_last_error: dict[tuple, str] = {}
 _analytics_bg_lock = threading.Lock()
 _main_event_loop: Optional[asyncio.AbstractEventLoop] = None
+_sse_fetch_timeout_executor: Optional[ThreadPoolExecutor] = None
 ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES = int(
     os.environ.get("ED_ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES", "3")
 )
@@ -649,6 +661,17 @@ def _get_analytics_executor() -> ThreadPoolExecutor:
             thread_name_prefix="ed_analytics_bg",
         )
     return _analytics_executor
+
+
+def _get_sse_fetch_timeout_executor() -> ThreadPoolExecutor:
+    """Isolated pool so SSE bounded waits do not nest-block the analytics bg pool."""
+    global _sse_fetch_timeout_executor
+    if _sse_fetch_timeout_executor is None:
+        _sse_fetch_timeout_executor = ThreadPoolExecutor(
+            max_workers=2,
+            thread_name_prefix="ed_sse_fetch_timeout",
+        )
+    return _sse_fetch_timeout_executor
 
 
 def _startup_analytics_executor() -> None:
@@ -1111,6 +1134,117 @@ def _attach_card_freshness_v1_block(
     md["operator_actionability_reason"] = operator_actionability_reason
 
 
+def _resolve_tier_c_cache_entry_for_sse(
+    ticker: str, expiry: Optional[str]
+) -> tuple[Optional[tuple], Optional[dict]]:
+    """Resolve cached Tier C entry for SSE cache fanout (mirrors REST cache lookup)."""
+    t = ticker.upper().strip()
+    if expiry is not None:
+        ck = (t, expiry)
+        ent = _state_cache.get(ck)
+        if ent and ent.get("ms_dict"):
+            return ck, ent
+        return ck, None
+    hit = _latest_cache_entry_for_ticker(t)
+    if hit:
+        return hit[0], hit[1]
+    return None, None
+
+
+def _build_sse_cache_fanout_payload(
+    ticker: str,
+    expiry: Optional[str],
+    *,
+    inflight_key: tuple,
+    fanout_reason: str,
+) -> Optional[dict]:
+    """
+    Clone cached Tier C bundle for SSE delivery with honest stale/fail-closed metadata.
+    Full ms_dict only — never partial patches (Issue 20/23).
+    """
+    data_cache_key, entry = _resolve_tier_c_cache_entry_for_sse(ticker, expiry)
+    if not entry or not entry.get("ms_dict"):
+        return None
+    t = ticker.upper().strip()
+    ck = data_cache_key or (t, entry["ms_dict"].get("selected_exp"))
+    now = time.time()
+    md = dict(entry["ms_dict"])
+    _lmp.merge_into_state(md, t)
+    md["_tier"] = "C_analytics"
+    md["_endpoint"] = "/api/analytics/state"
+    md["_update_source"] = "sse_cache_fanout"
+    md["_sse_cache_fanout_reason"] = fanout_reason
+    sse_live = bool(ck and _sse_subscribers.get(ck, 0) > 0) or _any_sse_viewer_for_ticker(t)
+    _attach_analytics_freshness_contract(
+        md,
+        data_cache_key=ck or (t, expiry),
+        entry=entry,
+        now=now,
+        sse_live=sse_live,
+        inflight_key=inflight_key,
+    )
+    from trade_impacting_gate import revalidate_cached_decision
+
+    md = revalidate_cached_decision(
+        md,
+        route="server._build_sse_cache_fanout_payload",
+        stale=bool(md.get("analytics_stale")),
+    )
+    ttl = _sse_viewer_cache_ttl(ck[0], ck[1]) if ck else CACHE_TTL
+    _attach_card_freshness_v1_block(
+        md,
+        ticker=t,
+        now=now,
+        analytics_ttl_sec=ttl,
+        tier_c_cache_stale_serve=bool(md.get("analytics_stale")),
+        plane_quote=_lmp.get_quote(t),
+    )
+    _attach_db_contention_operator_surface(md)
+    return md
+
+
+def _schedule_sse_broadcast(payload: dict) -> None:
+    if not payload or _main_event_loop is None or _main_event_loop.is_closed():
+        return
+    asyncio.run_coroutine_threadsafe(_broadcast_snapshot(payload), _main_event_loop)
+
+
+def _maybe_broadcast_sse_cache_fanout(
+    ticker: str,
+    expiry: Optional[str],
+    *,
+    inflight_key: tuple,
+    fanout_reason: str,
+) -> bool:
+    payload = _build_sse_cache_fanout_payload(
+        ticker,
+        expiry,
+        inflight_key=inflight_key,
+        fanout_reason=fanout_reason,
+    )
+    if not payload:
+        return False
+    _schedule_sse_broadcast(payload)
+    return True
+
+
+def _fetch_state_sse_bounded(
+    ticker: str,
+    expiry: Optional[str],
+    *,
+    update_source: str,
+    timeout_sec: float,
+) -> Optional[dict]:
+    """Run _fetch_state on an isolated worker with a hard wall-clock timeout."""
+    fut = _get_sse_fetch_timeout_executor().submit(
+        _fetch_state, ticker, expiry, update_source=update_source
+    )
+    try:
+        return fut.result(timeout=max(0.5, float(timeout_sec)))
+    except TimeoutError:
+        return None
+
+
 def _schedule_analytics_recompute(
     inflight_key: tuple,
     ticker: str,
@@ -1120,20 +1254,54 @@ def _schedule_analytics_recompute(
     """
     Run _fetch_state in a thread pool; broadcast full snapshot on success.
     Dedupes identical (ticker, expiry|__auto__) jobs.
+
+    SSE loop path (update_source=sse_loop): cache fanout on each cadence / while in-flight
+    so Tier C SSE is not starved by slow _fetch_state or DB lock contention (T5).
     """
     if _analytics_bg_shutdown:
         return
+    sse_loop = update_source == "sse_loop"
     with _analytics_bg_lock:
         if _analytics_bg_shutdown:
             return
         if inflight_key in _analytics_inflight:
+            if sse_loop:
+                _maybe_broadcast_sse_cache_fanout(
+                    ticker,
+                    expiry,
+                    inflight_key=inflight_key,
+                    fanout_reason="fetch_in_flight",
+                )
             log.debug("analytics refresh already in flight %s", inflight_key)
             return
         _analytics_inflight.add(inflight_key)
 
     def _work() -> None:
         try:
-            result = _fetch_state(ticker, expiry, update_source=update_source)
+            if sse_loop:
+                timeout_sec = max(0.5, float(SSE_RECOMPUTE_FETCH_TIMEOUT_SEC))
+                result = _fetch_state_sse_bounded(
+                    ticker,
+                    expiry,
+                    update_source=update_source,
+                    timeout_sec=timeout_sec,
+                )
+                if result is None:
+                    log.info(
+                        "sse_loop fetch timeout ticker=%s expiry=%s timeout_s=%.1f",
+                        ticker,
+                        expiry,
+                        timeout_sec,
+                    )
+                    _maybe_broadcast_sse_cache_fanout(
+                        ticker,
+                        expiry,
+                        inflight_key=inflight_key,
+                        fanout_reason="fetch_timeout",
+                    )
+                    return
+            else:
+                result = _fetch_state(ticker, expiry, update_source=update_source)
             if result:
                 _reset_analytics_bg_fail_count(inflight_key)
                 _stamp_analytics_freshness_on_completed_fetch(result, ticker, inflight_key)
@@ -1144,7 +1312,7 @@ def _schedule_analytics_recompute(
                 except Exception as e:
                     log.debug("notify_l2_snapshot_ready failed ticker=%s: %s", ticker, e, exc_info=True)
             if result and _main_event_loop is not None and not _main_event_loop.is_closed():
-                asyncio.run_coroutine_threadsafe(_broadcast_snapshot(result), _main_event_loop)
+                _schedule_sse_broadcast(result)
         except HTTPException as ex:
             log.warning("analytics bg HTTPException for %s", inflight_key)
             detail, token_invalid = _analytics_bg_error_detail(ex)
@@ -8366,6 +8534,8 @@ async def _sse_background_loop() -> None:
     """Layer C: on each cadence, schedule background _fetch_state for active SSE keys (deduped).
 
     HTTP and this loop share the same thread-pool refresh — no synchronous chain work here.
+    Cache fanout runs first each tick so SSE clients receive Tier C payloads even when
+    _fetch_state is blocked on DB lock contention (T5).
     """
     global _sse_cadence_diag_last_log_mono
     while True:
@@ -8380,6 +8550,12 @@ async def _sse_background_loop() -> None:
             _loop_t0 = time.perf_counter()
             for (t, e) in subs:
                 ik = _tier_c_inflight_key(t, e)
+                _maybe_broadcast_sse_cache_fanout(
+                    t,
+                    e,
+                    inflight_key=ik,
+                    fanout_reason="sse_loop_cadence",
+                )
                 _schedule_analytics_recompute(ik, t, e, update_source="sse_loop")
             _loop_wall_ms = (time.perf_counter() - _loop_t0) * 1000.0
             _now_m = time.monotonic()

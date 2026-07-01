@@ -50,18 +50,25 @@ def test_tick_partial_patch_helpers_removed_from_server():
     assert "sse_live = _sse_subscribers.get" in src
 
 
-def test_sse_broadcast_only_passes_full_fetch_result():
-    """No alternate partial payload may be queued to SSE clients (Issue 20/23)."""
+def test_sse_broadcast_only_passes_full_tier_c_payload():
+    """SSE clients receive full Tier C ms_dict only — fetch result or cache fanout, never partial patches."""
     import re
 
     src = (ROOT / "server.py").read_text(encoding="utf-8", errors="replace")
+    assert "_patch_snapshot_with_fresh_order_flow" not in src
+    assert "_build_sse_cache_fanout_payload" in src
+    assert "_attach_money_path_snapshot_envelope" in src
     pat = re.compile(r"_broadcast_snapshot\s*\(\s*result\s*\)")
     hits = [
         ln
         for ln in src.splitlines()
         if pat.search(ln) and "def _broadcast_snapshot" not in ln and "async def _broadcast_snapshot" not in ln
     ]
-    assert len(hits) == 1, f"expected exactly 1 _broadcast_snapshot(result) call site (Tier C bg worker), got {hits!r}"
+    assert len(hits) == 0, (
+        "Tier C SSE must broadcast via _schedule_sse_broadcast (full fetch or cache fanout), "
+        f"found legacy direct calls: {hits!r}"
+    )
+    assert "_schedule_sse_broadcast" in src
 
 
 def test_index_html_rejects_older_decision_generation():
