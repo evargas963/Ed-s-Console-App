@@ -220,6 +220,7 @@ MEGA1_TRACEABLE_INVENTORY: tuple[Mega1TraceableDerivation, ...] = (
     Mega1TraceableDerivation("server.py", 704, "_build_rest_fast_quote_payload", "DERIVED", None, ("schwab_client.py:safe_get_quote",), None, "Fail-closed Schwab leaf read: quotes.quote.mark."),
     Mega1TraceableDerivation("server.py", 720, "_build_rest_fast_quote_payload._attempt_hook", "NONE", None, (), None, "No market-field derivation: Nested helper inside _build_rest_fast_quote_payload; parent row owns derivation semantics."),
     Mega1TraceableDerivation("server.py", 833, "_fetch_fast_quote_payload", "ALLOWLISTED", None, (), 'mega1_sqlite_internal', "Reads persisted snapshot SQLite rows, not Schwab wire JSON (_fetch_fast_quote_payload)."),
+    Mega1TraceableDerivation("server.py", 1810, "_attach_money_path_snapshot_envelope", "NONE", None, (), None, "No market-field derivation: T4 read-only SSE envelope wraps Tier C payload dict with nested money_path_snapshot; no Schwab wire read."),
     Mega1TraceableDerivation("server.py", 869, "_broadcast_snapshot", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega1TraceableDerivation("server.py", 905, "_get_prediction_override", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega1TraceableDerivation("server.py", 919, "_latest_cached_ms_and_key_for_ticker", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
