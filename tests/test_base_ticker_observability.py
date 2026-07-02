@@ -645,3 +645,86 @@ def test_observability_reports_base_money_path_counts(tmp_path: Path):
     assert report["meta"]["base_capture_parity"]["parity_ok"] is True
     for row in report["tickers"]:
         assert row["base_money_path_snapshot_count_rth"] == row["snapshot_count_rth"]
+
+
+# ── LIVE_OPERATOR_MODE_RESET_V1 Step 1 — RTH viewer gate on the background logger ──
+
+
+def _fixed_et(year: int, month: int, day: int, hour: int, minute: int):
+    """Naive stand-in for time_et.now_et — the gate only reads hour/minute/weekday."""
+    return datetime.datetime(year, month, day, hour, minute)
+
+
+def test_live_operator_mode_requires_rth_and_viewer(monkeypatch):
+    import server as srv
+
+    tier_c_viewer = {("SPY", None): 1}
+
+    # Tuesday 2026-06-16 10:30 ET (RTH) + Tier C SSE subscriber → active.
+    monkeypatch.setattr(srv, "now_et", lambda: _fixed_et(2026, 6, 16, 10, 30))
+    monkeypatch.setattr(srv, "_sse_subscribers", dict(tier_c_viewer))
+    monkeypatch.setattr(srv, "_l1_light_sse_clients", [])
+    assert srv._live_operator_mode_active() is True
+
+    # RTH clock but no viewer transport connected → inactive.
+    monkeypatch.setattr(srv, "_sse_subscribers", {})
+    assert srv._live_operator_mode_active() is False
+
+    # L1 light SSE client alone (Tier C stream down/reconnecting) → active.
+    monkeypatch.setattr(srv, "_l1_light_sse_clients", [(object(), ("SPY", "__auto__"))])
+    assert srv._live_operator_mode_active() is True
+
+    # Viewer connected but pre-market (08:00 ET) → inactive.
+    monkeypatch.setattr(srv, "_sse_subscribers", dict(tier_c_viewer))
+    monkeypatch.setattr(srv, "now_et", lambda: _fixed_et(2026, 6, 16, 8, 0))
+    assert srv._live_operator_mode_active() is False
+
+    # Viewer connected at RTH wall-clock on Saturday 2026-06-20 → inactive.
+    monkeypatch.setattr(srv, "now_et", lambda: _fixed_et(2026, 6, 20, 10, 30))
+    assert srv._live_operator_mode_active() is False
+
+    # 16:00 ET close boundary is outside RTH → inactive.
+    monkeypatch.setattr(srv, "now_et", lambda: _fixed_et(2026, 6, 16, 16, 0))
+    assert srv._live_operator_mode_active() is False
+
+
+def _run_logger_fetch(monkeypatch, ticker: str, *, live_mode: bool):
+    """Drive _logger_fetch_and_log with the gate forced and _fetch_state recorded."""
+    import server as srv
+
+    calls: list[tuple[str, bool]] = []
+
+    def _fake_fetch_state(t, expiry=None, log_only=False, **kwargs):
+        calls.append((t, log_only))
+        return {}
+
+    def _no_db():
+        raise RuntimeError("no db in this unit test")
+
+    monkeypatch.setattr(srv, "_is_loggable_session", lambda: True)
+    monkeypatch.setattr(srv, "_live_operator_mode_active", lambda: live_mode)
+    monkeypatch.setattr(srv, "_fetch_state", _fake_fetch_state)
+    # Keep panel_auto skip check + touch_background_log off the real DB (both wrap
+    # get_db() in try/except and degrade gracefully).
+    monkeypatch.setattr(srv, "get_db", _no_db)
+    status = srv._logger_fetch_and_log(ticker)
+    return status, calls
+
+
+def test_logger_skips_non_trio_full_fetch_in_live_operator_mode(monkeypatch):
+    status, calls = _run_logger_fetch(monkeypatch, "NVDA", live_mode=True)
+    assert status == "skipped:live_operator_mode"
+    assert calls == []
+
+
+def test_logger_trio_full_fetch_unchanged_in_live_operator_mode(monkeypatch):
+    for anchor in BASE_MONEY_PATH_TICKERS:
+        status, calls = _run_logger_fetch(monkeypatch, anchor, live_mode=True)
+        assert status == "ok:fetch"
+        assert calls == [(anchor, True)]
+
+
+def test_logger_full_fetch_when_no_live_operator_mode(monkeypatch):
+    status, calls = _run_logger_fetch(monkeypatch, "NVDA", live_mode=False)
+    assert status == "ok:fetch"
+    assert calls == [("NVDA", True)]

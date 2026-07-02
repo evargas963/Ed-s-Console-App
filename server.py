@@ -2447,6 +2447,8 @@ _vix_tracker = _VIXTracker()
 #   • ED_DB_SNAPSHOT_THROTTLE (default on): at most one INSERT per ticker per UTC-minute bucket.
 #   • The general logger still rotates mega-caps + user_persisted; cycle length grows with count.
 #   • RTH_ONLY may skip background fetches outside the ET session window.
+#   • Live Operator Mode (Step 1): during RTH with any SSE viewer connected, non-trio
+#     rotation returns skipped:live_operator_mode — see _live_operator_mode_active.
 #   • Guest / briefly viewed symbols legitimately have fewer rows — base trio must not.
 #     Gate: ``python tools/check_base_ticker_observability.py --date YYYY-MM-DD``.
 #
@@ -2936,11 +2938,32 @@ def _ensure_mkt_ctx_confluence_complete(client, mkt_ctx, *, pcr=None, prev_pcr=N
     return fresh
 
 
+def _live_operator_mode_active() -> bool:
+    """
+    LIVE_OPERATOR_MODE_RESET_V1 Step 1 — True only when the ET clock is inside RTH on a
+    weekday AND at least one operator/viewer transport is connected (a Tier C
+    /api/stream subscriber or an L1 light /api/analytics/light/stream client).
+
+    Consumed by _logger_fetch_and_log: while the operator is live, non-trio background
+    rotation must not run full _fetch_state (chain + ML stack + DB writes would compete
+    with the live path for the analytics pool, the Schwab request budget, and SQLite).
+    """
+    et = now_et()
+    mins = et.hour * 60 + et.minute
+    if et.weekday() >= 5 or not (RTH_OPEN_MINS <= mins < RTH_CLOSE_MINS):
+        return False
+    with _sse_lock:
+        if any(n > 0 for n in _sse_subscribers.values()):
+            return True
+    with _l1_light_sse_lock:
+        return len(_l1_light_sse_clients) > 0
+
+
 def _logger_fetch_and_log(ticker: str) -> str:
     """
     Fetch data for one ticker and log a snapshot to the DB.
-    Returns 'ok:fetch', 'skipped:closed', 'skipped:recent', or 'error:<msg>'.
-    Skips if the UI already fetched this ticker recently (avoids duplicate snapshots).
+    Returns 'ok:fetch', 'skipped:closed', 'skipped:confluence_quote_only',
+    'skipped:live_operator_mode', or 'error:<msg>'.
     Never raises — always returns a status string.
     """
     try:
@@ -2957,6 +2980,14 @@ def _logger_fetch_and_log(ticker: str) -> str:
                 return "skipped:confluence_quote_only"
         except Exception as e:
             log.debug("panel_auto logger skip check: %s", e, exc_info=True)
+
+        # LIVE_OPERATOR_MODE_RESET_V1 Step 1 — hard skip: non-trio full capture defers
+        # to no-viewer windows (Research Mode). SPY/QQQ/IWM are never gated here and
+        # keep full rotation capture plus the dedicated base money-path logger.
+        from money_path_ticker_tiers import is_base_money_path_ticker
+
+        if not is_base_money_path_ticker(ticker) and _live_operator_mode_active():
+            return "skipped:live_operator_mode"
 
         # Always run the logging fetch each logger cycle (append-only INSERTs).
 
