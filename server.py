@@ -1204,7 +1204,15 @@ def _build_sse_cache_fanout_payload(
 
 
 def _schedule_sse_broadcast(payload: dict) -> None:
+    """Queue Tier C snapshot for all SSE clients (thread-safe from analytics workers)."""
     if not payload or _main_event_loop is None or _main_event_loop.is_closed():
+        return
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+    if running is _main_event_loop:
+        asyncio.ensure_future(_broadcast_snapshot(payload))
         return
     asyncio.run_coroutine_threadsafe(_broadcast_snapshot(payload), _main_event_loop)
 
@@ -8450,6 +8458,28 @@ async def sse_stream(
             expiry,
             (time.perf_counter() - stream_route_t0) * 1000.0,
         )
+        # T5 RTH repair — subscribe_connect fanout (transport-only; no Schwab wire change):
+        # Schwab CSV authority checked: yes | CSV row(s): NO_SCHWAB_EQUIVALENT | SCHWAB_CSV_CHECKED
+        # Immediate Tier C cache fanout + refresh kick so clients get default `data:` frames
+        # without waiting for background cadence or a slow _fetch_state (T5 RTH proof).
+        ik = _tier_c_inflight_key(ticker, expiry)
+        fanout_payload = _build_sse_cache_fanout_payload(
+            ticker,
+            expiry,
+            inflight_key=ik,
+            fanout_reason="subscribe_connect",
+        )
+        if fanout_payload is not None:
+            await _broadcast_snapshot(fanout_payload)
+            with _sse_lock:
+                n_clients = len(_sse_clients)
+            log.info(
+                "sse_subscribe_cache_fanout ticker=%s expiry=%s clients=%s",
+                ticker,
+                expiry,
+                n_clients,
+            )
+        _schedule_analytics_recompute(ik, ticker, expiry, update_source="sse_loop")
         try:
             while True:
                 try:
@@ -8550,12 +8580,14 @@ async def _sse_background_loop() -> None:
             _loop_t0 = time.perf_counter()
             for (t, e) in subs:
                 ik = _tier_c_inflight_key(t, e)
-                _maybe_broadcast_sse_cache_fanout(
+                fanout_payload = _build_sse_cache_fanout_payload(
                     t,
                     e,
                     inflight_key=ik,
                     fanout_reason="sse_loop_cadence",
                 )
+                if fanout_payload is not None:
+                    await _broadcast_snapshot(fanout_payload)
                 _schedule_analytics_recompute(ik, t, e, update_source="sse_loop")
             _loop_wall_ms = (time.perf_counter() - _loop_t0) * 1000.0
             _now_m = time.monotonic()

@@ -65,3 +65,12 @@ def test_track2_desk_confidence_headline_and_breakdown():
     )
     assert 'details class="hz-breakdown"' in html, "horizon breakdown block missing"
     assert 'id="dr-hz-breakdown"' in html
+
+
+def test_t5_fetch_state_uses_force_tier_c_not_bare_force():
+    html = INDEX.read_text(encoding="utf-8")
+    assert "if (!force && Date.now() < _tierCBackoffUntilMs)" not in html
+    assert "if (!forceTierC && Date.now() < _tierCBackoffUntilMs)" in html
+    idx = html.find("async function fetchState")
+    chunk = html[idx : idx + 12000]
+    assert "const forceTierC" in chunk

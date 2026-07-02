@@ -1584,6 +1584,18 @@ def test_t4_stale_and_frozen_labels_on_dom():
     assert "tf-signal-card--trade-active" in chunk
 
 
+def test_t5_freshness_pill_bundle_state_overrides_fresh_dash():
+    """T5 repair: periodic bundle-age UI must not clobber stale/frozen mpl labels."""
+    h = _html()
+    idx = h.find("function _updateDecisionBundleAgeUI")
+    assert idx != -1
+    chunk = h[idx : idx + 2400]
+    assert "bundle_freshness_state" in chunk
+    assert "_edMplApplyFreshnessUiLabels" in chunk
+    assert "FRESH —" in chunk
+    assert "bundleState === 'unknown'" in chunk or 'bundleState === "unknown"' in chunk
+
+
 def test_t4_engine_tradeable_freshness_veto():
     h = _html()
     idx = h.find("function engineTradeableSetup")
