@@ -3876,13 +3876,6 @@ function runTickerLiveAcquisition(reason, opts) {
   const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   if (_tickerSwitchT0 <= 0) _tickerSwitchT0 = t0;
   _logTickerSwitch('STREAM_SUB_REQUESTED', { reason, force: !!force });
-  // T5 RTH repair — force ticker-switch stream teardown (transport-only; SCHWAB_CSV_CHECKED / NO_SCHWAB_EQUIVALENT)
-  if (force) {
-    _clearSseReconnectTimer();
-    _clearL1LightReconnectTimer();
-    if (_eventSource) _tearDownEventSource(_eventSource, reason + ': force_preamble');
-    if (_l1LightEventSource) _tearDownL1LightEventSource(_l1LightEventSource, reason + ': force_preamble');
-  }
   try {
     connectSSE(force ? { force: true } : undefined);
   } catch (e) {
@@ -3893,12 +3886,7 @@ function runTickerLiveAcquisition(reason, opts) {
   } catch (e) {
     _logTickerSwitch('STREAM_SUB_ERROR', { err: 'l1_light:' + String(e && e.message) });
   }
-  const pendingSseUrl = _buildSseStreamUrl(activeTicker, activeExpiry);
-  _logTickerSwitch('STREAM_ACTIVE', {
-    sseUrl: _sseStreamUrl || pendingSseUrl,
-    l1LightUrl: _l1LightStreamUrl || '',
-    ssePendingUrl: pendingSseUrl,
-  });
+  _logTickerSwitch('STREAM_ACTIVE', { sseUrl: _sseStreamUrl || '', l1LightUrl: _l1LightStreamUrl || '' });
   _tickerSwitchAwaitingQuote = true;
   // Tier-1: never block first fast quote on streaming POST or /api/live/plane (those were serializing the critical path).
   if (window.ED_SWITCH_TIMING === true) {
@@ -8555,30 +8543,13 @@ function _updateDecisionBundleAgeUI(opts) {
   if (bel) bel.textContent = ageText || 'Built —';
   const integrity = window._liveUiIntegrity || _refreshLiveUiIntegrityDerivations(opts);
   const ld = window._lastData || {};
-  const mpl = typeof _edMplUpdateFreshnessStates === 'function'
-    ? _edMplUpdateFreshnessStates(ld)
-    : (window.__edMoneyPathLatency || {});
-  const bundleState = mpl.bundle_freshness_state;
-  const quoteState = mpl.quote_freshness_state;
   const priceAhead = window._priceAheadOfBundle === true;
   const withinTrust = bundleWithinTrustWindow(integrity, ld);
   const fp = $('dr-freshness-pill');
   if (fp) {
-    // T5 RTH repair — bundle/actionability freshness wins over quote-age FRESH default (SCHWAB_CSV_CHECKED)
-    // Bundle/actionability freshness wins over quote-age FRESH default (T5 false-pill fix).
-    if (bundleState === 'frozen' || bundleState === 'stale' || bundleState === 'aging') {
-      _edMplApplyFreshnessUiLabels(ld);
-      if (quoteState === 'fresh' && (bundleState === 'stale' || bundleState === 'frozen')) {
-        const cur = (fp.textContent || '').trim();
-        if (cur && !cur.includes('QUOTE')) {
-          fp.textContent = cur + ' · QUOTE FRESH';
-        }
-      }
-      return;
-    }
     let pillText;
     if (!ageText) {
-      pillText = bundleState === 'unknown' ? 'BUNDLE —' : 'FRESH —';
+      pillText = 'FRESH —';
       fp.className = 'conviction-pill low';
     } else {
       const ageSec = Math.max(0, Math.round((Date.now() / 1000) - Number(ts)));
@@ -8588,8 +8559,6 @@ function _updateDecisionBundleAgeUI(opts) {
     if (priceAhead && withinTrust) pillText += ' · SYNCING';
     else if (priceAhead) pillText += ' · PRICE AHEAD';
     fp.textContent = pillText;
-    fp.setAttribute('data-bundle-freshness-state', bundleState || '');
-    fp.setAttribute('data-quote-freshness-state', quoteState || '');
   }
 }
 
@@ -9210,7 +9179,7 @@ async function fetchState(forceOrOpts) {
     })();
 
     const _analyticsT0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    if (!forceTierC && Date.now() < _tierCBackoffUntilMs) {
+    if (!force && Date.now() < _tierCBackoffUntilMs) {
       if (DIAG) console.log('[fetchState] Tier C backoff active', { wait_ms: _tierCBackoffUntilMs - Date.now() });
       const ovlBackoff = $('loading-overlay');
       if (ovlBackoff) ovlBackoff.classList.add('hidden');
@@ -10395,11 +10364,7 @@ function connectSSE(opts) {
     _tearDownEventSource(es0, 'replace for new subscription or CLOSED');
   } else if (es0 && force) {
     _clearSseReconnectTimer();
-    _clearL1LightReconnectTimer();
     _tearDownEventSource(es0, 'force replace');
-    if (_l1LightEventSource) {
-      _tearDownL1LightEventSource(_l1LightEventSource, 'force replace with main SSE');
-    }
   }
 
   // Capture the generation at the moment this SSE connection is created.
@@ -10423,7 +10388,7 @@ function connectSSE(opts) {
   let loggedFirstDataEvent = false;
   const es = new EventSource(wantUrl);
   _eventSource = es;
-  _sseStreamUrl = null;
+  _sseStreamUrl = wantUrl;
 
   es.onopen = () => {
     if (_eventSource !== es) {
@@ -10432,7 +10397,6 @@ function connectSSE(opts) {
       }
       return;
     }
-    _sseStreamUrl = es.url || wantUrl;
     _clearSseReconnectTimer();
     const msSinceCreate = (typeof performance !== 'undefined' && performance.now)
       ? (performance.now() - _ssePerfCreateMs).toFixed(2)

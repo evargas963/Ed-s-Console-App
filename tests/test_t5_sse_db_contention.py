@@ -123,13 +123,14 @@ def test_t5_sse_loop_cadence_calls_cache_fanout_before_recompute(srv_module, mon
     ticker, expiry, ck = _seed_spy_cache(srv)
     order: list[str] = []
 
-    async def _fanout_broadcast(data):
+    def _fanout(*a, **k):
         order.append("fanout")
+        return False
 
     def _recompute(*a, **k):
         order.append("recompute")
 
-    monkeypatch.setattr(srv, "_broadcast_snapshot", _fanout_broadcast)
+    monkeypatch.setattr(srv, "_maybe_broadcast_sse_cache_fanout", _fanout)
     monkeypatch.setattr(srv, "_schedule_analytics_recompute", _recompute)
     with srv._sse_lock:
         srv._sse_subscribers[ck] = 1
@@ -139,11 +140,9 @@ def test_t5_sse_loop_cadence_calls_cache_fanout_before_recompute(srv_module, mon
             subs = list(srv._sse_subscribers.keys())
         for (t, e) in subs:
             ik = srv._tier_c_inflight_key(t, e)
-            fanout_payload = srv._build_sse_cache_fanout_payload(
+            srv._maybe_broadcast_sse_cache_fanout(
                 t, e, inflight_key=ik, fanout_reason="sse_loop_cadence"
             )
-            if fanout_payload is not None:
-                await srv._broadcast_snapshot(fanout_payload)
             srv._schedule_analytics_recompute(ik, t, e, update_source="sse_loop")
 
     asyncio.get_event_loop_policy().new_event_loop().run_until_complete(_one_tick())

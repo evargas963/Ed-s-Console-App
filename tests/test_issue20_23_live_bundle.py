@@ -58,8 +58,6 @@ def test_sse_broadcast_only_passes_full_tier_c_payload():
     assert "_patch_snapshot_with_fresh_order_flow" not in src
     assert "_build_sse_cache_fanout_payload" in src
     assert "_attach_money_path_snapshot_envelope" in src
-    assert "subscribe_connect" in src
-    assert "await _broadcast_snapshot(fanout_payload)" in src
     pat = re.compile(r"_broadcast_snapshot\s*\(\s*result\s*\)")
     hits = [
         ln
