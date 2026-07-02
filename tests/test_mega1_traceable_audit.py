@@ -160,7 +160,7 @@ def test_mega1_inventory_covers_every_function():
 def test_mega1_scope_complete():
     inv_files = {r.file for r in MEGA1_TRACEABLE_INVENTORY}
     assert inv_files == set(MEGA1_FILES)
-    assert len(MEGA1_TRACEABLE_INVENTORY) == 395  # inventory sync @ T5 mega1 repair: +6 NONE SSE cache fanout helpers
+    assert len(MEGA1_TRACEABLE_INVENTORY) == 396  # inventory sync @ Step 1 live operator mode: +1 NONE _live_operator_mode_active
 
 
 def test_mega1_row_schema_valid():
