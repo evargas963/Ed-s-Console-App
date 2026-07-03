@@ -9199,7 +9199,11 @@ async function fetchState(forceOrOpts) {
     })();
 
     const _analyticsT0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    if (!force && Date.now() < _tierCBackoffUntilMs) {
+    // SCHWAB_CSV_CHECKED — REST Tier C backoff guard fix (bare force → forceTierC):
+    // Schwab CSV authority checked: yes
+    // CSV row(s): NO_SCHWAB_EQUIVALENT — in-scope JS flag correction only; no market
+    //   field read, derivation, or emission changed.
+    if (!forceTierC && Date.now() < _tierCBackoffUntilMs) {
       if (DIAG) console.log('[fetchState] Tier C backoff active', { wait_ms: _tierCBackoffUntilMs - Date.now() });
       const ovlBackoff = $('loading-overlay');
       if (ovlBackoff) ovlBackoff.classList.add('hidden');

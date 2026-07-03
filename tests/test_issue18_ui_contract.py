@@ -640,6 +640,26 @@ def test_step2_rest_poll_suppressed_while_sse_healthy():
     assert "single Tier C owner" in h
 
 
+def test_rest_tier_c_backoff_uses_in_scope_force_flag():
+    """REST Tier C fallback regression lock (post-Step 3 micro-slice, 2026-07-03).
+
+    fetchState(forceOrOpts) defines forceTierC; the b481 revert (f52ef8d) reinstated a
+    bare `force` in the Tier C backoff guard, throwing ReferenceError on every REST
+    fetchState invocation — the REST fallback died whenever SSE was unavailable
+    (off-hours harness caught 5 console errors at index.html:9202). The backoff guard
+    must read the in-scope forceTierC flag; the bare-force form must never return.
+    """
+    h = _html()
+    start = h.find("async function fetchState(forceOrOpts)")
+    assert start != -1
+    body = h[start : start + 12000]
+    assert "const forceTierC" in body, "fetchState must derive forceTierC from forceOrOpts"
+    assert "if (!forceTierC && Date.now() < _tierCBackoffUntilMs)" in h
+    assert "if (!force && Date.now() < _tierCBackoffUntilMs)" not in h, (
+        "bare `force` in fetchState backoff guard — ReferenceError kills REST Tier C fallback"
+    )
+
+
 def test_step2_fresh_pill_cannot_override_stale_or_frozen_bundle():
     """FRESH pill follows bundle/actionability truth — never FRESH while stale/frozen/aging."""
     h = _html()
