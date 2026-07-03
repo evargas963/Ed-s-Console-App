@@ -254,20 +254,43 @@ def test_recent_high_lock_wait_yields_db_degraded():
     )
     assert big["state"] == "DB_DEGRADED"
     assert "cards may lag" in big["detail"]
-    # Ticker-agnostic / process-global: three small waits across trio AND guest tickers.
+    # Ticker-agnostic / process-global: three MEANINGFUL waits across trio AND guest tickers.
     many = derive_db_contention_operator_status(
         {
             "sqlite_lock_wait_count": 3,
-            "sqlite_lock_wait_max_ms": 40.0,
+            "sqlite_lock_wait_max_ms": 180.0,
             "recent_events": [
-                {"kind": "lock_wait", "wait_ms": 30.0, "ticker": "SPY", "ts_utc": now - 30.0},
-                {"kind": "lock_wait", "wait_ms": 35.0, "ticker": "QQQ", "ts_utc": now - 20.0},
-                {"kind": "lock_wait", "wait_ms": 40.0, "ticker": "XLE", "ts_utc": now - 10.0},
+                {"kind": "lock_wait", "wait_ms": 150.0, "ticker": "SPY", "ts_utc": now - 30.0},
+                {"kind": "lock_wait", "wait_ms": 160.0, "ticker": "QQQ", "ts_utc": now - 20.0},
+                {"kind": "lock_wait", "wait_ms": 180.0, "ticker": "XLE", "ts_utc": now - 10.0},
             ],
         },
         now_utc=now,
     )
     assert many["state"] == "DB_DEGRADED"
+
+
+def test_sub_warn_write_telemetry_never_classifies():
+    """The tier-1 recorder emits a lock_wait event for EVERY write (sub-ms uncontended
+    acquires included) — normal per-minute trio writes must read OK, not DB_DEGRADED.
+    This was the pill's permanent-degraded artifact: any 3 recorded writes tripped it."""
+    from verification.db_sqlite_contention_impact_audit import derive_db_contention_operator_status
+
+    now = 1_700_000_100.0
+    status = derive_db_contention_operator_status(
+        {
+            "sqlite_lock_wait_count": 6,
+            "sqlite_lock_wait_max_ms": 0.02,
+            "recent_events": [
+                {"kind": "lock_wait", "wait_ms": 0.002, "ticker": t, "ts_utc": now - i * 10.0}
+                for i, t in enumerate(("SPY", "SPY", "QQQ", "QQQ", "IWM", "IWM"))
+            ],
+        },
+        now_utc=now,
+    )
+    assert status["state"] == "OK"
+    assert status["show"] is False
+    assert status["recent_window_summary"]["lock_wait_count"] == 0
 
 
 def test_lifetime_counters_alone_recover_to_ok_after_window_clears():
@@ -302,6 +325,66 @@ def test_lifetime_counters_alone_recover_to_ok_after_window_clears():
     assert status["metrics_summary"]["sqlite_lock_wait_max_ms"] == 3617.439
     assert status["metrics_summary"]["sqlite_busy_retry_count"] == 2
     assert status["recent_window_summary"]["lock_wait_count"] == 0
+
+
+def test_live_bar_upsert_is_incremental_bulk_path_full(tmp_path):
+    """Console usability slice 2026-07-03: the live path must not rewrite the whole
+    multi-day bars list every cycle (17.8s first-cycle exec observed live) — only bars
+    at/after (per-ticker MAX bar_start − overlap) are written. Bulk backfills
+    (refresh_governed_outcomes=False) keep the full write for hole repairs."""
+    from db import EdDB, LIVE_BARS_REUPSERT_OVERLAP_SEC
+
+    db = EdDB(tmp_path / "bars.db")
+    t0 = 1_020_000.0
+    bars = [
+        {"datetime": t0 + i * 60.0, "open": 100.0, "high": 101.0,
+         "low": 99.0, "close": 100.0 + 0.1 * i, "volume": 1.0}
+        for i in range(100)
+    ]
+    # First live write: ticker has no rows -> full backfill lands.
+    assert db.upsert_1m_bars("SPY", bars) == 100
+
+    # Second live write, same list + one new bar: only the overlap tail + the new bar.
+    bars2 = bars + [{"datetime": t0 + 100 * 60.0, "open": 100.0, "high": 101.0,
+                     "low": 99.0, "close": 110.0, "volume": 1.0}]
+    n2 = db.upsert_1m_bars("SPY", bars2)
+    expected_tail = int(LIVE_BARS_REUPSERT_OVERLAP_SEC // 60) + 1 + 1  # overlap bars + db-max bar + new
+    assert n2 <= expected_tail, f"live re-upsert must be tail-only, wrote {n2}"
+    with db._connect() as conn:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM price_bars_1m WHERE ticker='SPY'"
+        ).fetchone()[0]
+    assert total == 101, "the new bar must land; persisted history stays intact"
+
+    # Bulk path: full rewrite preserved (hole repair semantics).
+    n3 = db.upsert_1m_bars("SPY", bars2, refresh_governed_outcomes=False)
+    assert n3 == 101
+
+
+def test_live_bar_upsert_covers_downtime_gap(tmp_path):
+    """Bars above the persisted MAX (server downtime) must all land incrementally."""
+    from db import EdDB
+
+    db = EdDB(tmp_path / "gap.db")
+    t0 = 1_020_000.0
+    early = [
+        {"datetime": t0 + i * 60.0, "open": 100.0, "high": 101.0,
+         "low": 99.0, "close": 100.0, "volume": 1.0}
+        for i in range(10)
+    ]
+    assert db.upsert_1m_bars("QQQ", early) == 10
+    # 2h downtime, then the accumulator re-seeds the full history including the gap.
+    late = early + [
+        {"datetime": t0 + (120 + i) * 60.0, "open": 100.0, "high": 101.0,
+         "low": 99.0, "close": 101.0, "volume": 1.0}
+        for i in range(10)
+    ]
+    db.upsert_1m_bars("QQQ", late)
+    with db._connect() as conn:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM price_bars_1m WHERE ticker='QQQ'"
+        ).fetchone()[0]
+    assert total == 20, "gap bars above the persisted MAX must all land"
 
 
 def test_db_locked_not_weakened_by_window_decay():

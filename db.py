@@ -112,6 +112,10 @@ SQLITE_BUSY_BASE_SLEEP_SEC = float(os.environ.get("ED_SQLITE_BUSY_BASE_SLEEP_SEC
 SQLITE_BUSY_MAX_SLEEP_SEC = float(os.environ.get("ED_SQLITE_BUSY_MAX_SLEEP_SEC", "0.4"))
 SQLITE_LOCK_WAIT_WARN_MS = float(os.environ.get("ED_SQLITE_LOCK_WAIT_WARN_MS", "100"))
 SQLITE_WRITE_SLOW_MS = float(os.environ.get("ED_SQLITE_WRITE_SLOW_MS", "500"))
+# Live bar-upsert incremental window: closed bars already persisted are immutable on the
+# live path; only the in-progress bar plus this overlap is rewritten each cycle. Three
+# minutes covers the in-flight bar and clock skew between the accumulator and the DB grid.
+LIVE_BARS_REUPSERT_OVERLAP_SEC = 180.0
 
 # In-process tier-1 contention counters (audit/diagnostics; does not change retry policy).
 _SQLITE_CONTENTION_METRICS_LOCK = threading.Lock()
@@ -3160,6 +3164,53 @@ class EdDB:
 
         def _do() -> int:
             with self._connect() as conn:
+                write_rows = rows_tuple
+                if refresh_governed_outcomes:
+                    # LIVE-path incremental write (2026-07-03 console usability): the in-memory
+                    # accumulator re-seeds days of Schwab pricehistory, and rewriting the whole
+                    # list every cycle held the tier-1 write lock for seconds (17.8s first-cycle
+                    # exec observed live; ~0.6s every cycle after) and recomputed governed
+                    # outcomes for EVERY bar. A bar is written only when it is MISSING from the
+                    # DB, its values CHANGED (mutation → governed-outcome refresh contract), or
+                    # it sits in the recent overlap window (in-progress bar). Identical
+                    # re-upserts of persisted history are no-ops. One narrow index-range read
+                    # replaces thousands of redundant writes. Bulk backfills pass
+                    # refresh_governed_outcomes=False and keep the unconditional full write.
+                    lo = min(float(t[1]) for t in rows_tuple)
+                    hi = max(float(t[1]) for t in rows_tuple)
+                    existing: dict[float, tuple] = {
+                        float(er[0]): (
+                            float(er[1]), float(er[2]), float(er[3]), float(er[4]),
+                            None if er[5] is None else float(er[5]),
+                        )
+                        for er in conn.execute(
+                            "SELECT bar_start_ts_utc, open, high, low, close, volume "
+                            "FROM price_bars_1m WHERE ticker = ? "
+                            "AND bar_start_ts_utc BETWEEN ? AND ?",
+                            (tkr, lo, hi),
+                        ).fetchall()
+                    }
+                    r = conn.execute(
+                        "SELECT MAX(bar_start_ts_utc) FROM price_bars_1m WHERE ticker = ?",
+                        (tkr,),
+                    ).fetchone()
+                    db_max = float(r[0]) if r is not None and r[0] is not None else None
+                    if db_max is not None:
+                        cutoff = db_max - LIVE_BARS_REUPSERT_OVERLAP_SEC
+
+                        def _needs_write(t: tuple) -> bool:
+                            bs = float(t[1])
+                            if bs >= cutoff:
+                                return True
+                            prev = existing.get(bs)
+                            if prev is None:
+                                return True  # mid-history hole — repair it
+                            # (open, high, low, close, volume) — REAL round-trips exactly.
+                            return prev != (t[3], t[4], t[5], t[6], t[7])
+
+                        write_rows = [t for t in rows_tuple if _needs_write(t)]
+                if not write_rows:
+                    return 0
                 conn.executemany(
                     """
                     INSERT INTO price_bars_1m (ticker, bar_start_ts_utc, bar_end_ts_utc,
@@ -3174,11 +3225,11 @@ class EdDB:
                         volume = excluded.volume,
                         source = excluded.source
                     """,
-                    rows_tuple,
+                    write_rows,
                 )
-                n_written = len(rows_tuple)
+                n_written = len(write_rows)
                 if refresh_governed_outcomes:
-                    changed_bar_starts = {float(r[1]) for r in rows_tuple}
+                    changed_bar_starts = {float(r[1]) for r in write_rows}
                     tz_eval = float(_wall_time.time())
                     _refresh_governed_outcomes_after_bar_mutation(
                         conn,

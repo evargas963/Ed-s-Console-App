@@ -409,12 +409,25 @@ def base_money_path_normalize_debounce_sec(
     return max(15.0, min(90.0, cycle * 0.75))
 
 
+# Incremental refresh window for the live base path: must cover the longest outcome
+# backfill horizon (outcome_60c ≈ 60 minutes after the row lands) plus margin, so
+# fill_outcomes updates reach normalized rows exactly as under a full rebuild. Rows
+# older than this window carry final outcomes and never change on the live path.
+BASE_NORMALIZE_INCREMENTAL_LOOKBACK_SEC: float = 75.0 * 60.0
+
+
 def materialize_base_money_path_tickers(db_path: str | Path) -> dict[str, Any]:
     """Per-ticker normalized refresh for SPY/QQQ/IWM only (live base capture path).
 
     Does not advance the global training fingerprint — full ``ensure_normalized_training_table``
     still owns the all-ticker sync before training. This keeps base money-path observability
     current without requiring ``ED_LIVE_SNAPSHOT_MATERIALIZE=1`` for every snapshot insert.
+
+    INCREMENTAL on this path (2026-07-03): the previous full clear+rebuild re-read the entire
+    multi-GB snapshots history and rewrote every trio row each ~60s cycle, holding the
+    SQLite write lock 5-22s and starving live snapshot/bar inserts (the observed
+    DB DEGRADED incident). Only the trailing outcome window is replaced per cycle now;
+    training's full-history rebuild is untouched.
     """
     from money_path_ticker_tiers import BASE_MONEY_PATH_TICKERS
 
@@ -422,6 +435,7 @@ def materialize_base_money_path_tickers(db_path: str | Path) -> dict[str, Any]:
         Path(db_path),
         tickers=list(BASE_MONEY_PATH_TICKERS),
         clear_first=True,
+        incremental_lookback_sec=BASE_NORMALIZE_INCREMENTAL_LOOKBACK_SEC,
     )
 
 
