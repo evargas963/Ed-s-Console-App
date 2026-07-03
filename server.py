@@ -336,6 +336,13 @@ LIVE_QUOTE_SSE_INTERVAL_SEC: float = float(os.environ.get("ED_LIVE_QUOTE_SSE_INT
 # At most one INSERT per ticker per UTC-minute bucket (matches normalized 1m bucketing).
 # Bars persist + outcome backfill ride the same throttle (Step 3, live-path write
 # pressure). Set ED_DB_SNAPSHOT_THROTTLE=0 to restore per-fetch writes.
+#
+# SCHWAB_CSV_CHECKED — Step 3 live-path stall/write-pressure changes:
+# Schwab CSV authority checked: yes
+# CSV row(s): NO_SCHWAB_EQUIVALENT — no new market-field site; lock order,
+#   write throttling, view-touch enrollment, and live-mode scheduling only.
+# Derived-field disposition: none required.
+# All consumers checked: yes — no Schwab field read, derivation, or emission changed.
 _db_snapshot_minute_bucket: dict[str, int] = {}
 _db_snapshot_gate_lock = threading.Lock()
 
