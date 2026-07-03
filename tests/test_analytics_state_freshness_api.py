@@ -179,7 +179,15 @@ def test_operator_card_actionable_false_on_analytics_stale(tier_c_cache_spy):
     expiry = "2099-12-13"
     md = _trusted_ms_dict(ticker=ticker)
     md["analytics_stale"] = True
-    _seed_cache(srv, ticker, expiry, md, age_sec=srv.CACHE_TTL + 2.0)
+    # Step 2 honest staleness: analytics_stale is recomputed from age — seed past the
+    # missed-cycle grace window (TTL × ANALYTICS_STALE_GRACE_CYCLES), not one beat.
+    _seed_cache(
+        srv,
+        ticker,
+        expiry,
+        md,
+        age_sec=srv.CACHE_TTL * srv.ANALYTICS_STALE_GRACE_CYCLES + 2.0,
+    )
     body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
     assert body["operator_card_actionable"] is False
     assert body["operator_actionability_reason"] is not None

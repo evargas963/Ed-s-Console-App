@@ -614,15 +614,45 @@ def test_ui_latency_contract_nonblocking_tier_c_and_analytics_poll():
     assert "_lastSsePayloadAcceptedMs < SSE_POLL_SUPPRESS_MS" not in h
     poll_idx = h.find("function pollStateFallback")
     assert poll_idx != -1
-    poll_chunk = h[poll_idx : poll_idx + 1200]
+    poll_chunk = h[poll_idx : poll_idx + 1600]
     assert "_lastSseAnalyticsPayloadMs" in poll_chunk
-    assert "_analyticsUiPending()" in poll_chunk
+    # Step 2 single Tier C owner: pending analytics must NOT un-suppress a healthy
+    # SSE transport — the suppress gate keys on sseOpen + payload recency only.
+    assert "_analyticsUiPending()" not in poll_chunk
+    assert "ssePollSuppress" in poll_chunk
     assert "await fetchJsonWithTimeout(url, { signal: fetchAbortSignal }, 120000)" not in h
     assert "_slowFetchAc && _slowFetchAc.abort()" not in h
     tier_idx = h.find("async function _fetchTierCRestAndApply")
     assert tier_idx != -1
     tier_chunk = h[tier_idx : tier_idx + 900]
     assert "tierCSignal" in tier_chunk
+
+
+def test_step2_rest_poll_suppressed_while_sse_healthy():
+    """LIVE_OPERATOR_MODE_RESET_V1 Step 2 — REST fallback must not compete with healthy SSE."""
+    h = _html()
+    assert "const SSE_POLL_SUPPRESS_MS = 15000" in h
+    idx = h.find("function _syncAnalyticsPollCadence")
+    assert idx != -1
+    chunk = h[idx : idx + 700]
+    assert "readyState === 1" in chunk
+    assert "!sseOpenNow && _analyticsUiPending()" in chunk
+    assert "single Tier C owner" in h
+
+
+def test_step2_fresh_pill_cannot_override_stale_or_frozen_bundle():
+    """FRESH pill follows bundle/actionability truth — never FRESH while stale/frozen/aging."""
+    h = _html()
+    idx = h.find("function _updateDecisionBundleAgeUI")
+    assert idx != -1
+    chunk = h[idx : idx + 2600]
+    assert "bundle_freshness_state" in chunk
+    assert "analytics_stale === true" in chunk
+    assert "_edMplApplyFreshnessUiLabels(ld)" in chunk
+    # The stale/frozen/aging override must return before any FRESH text paints.
+    override_pos = chunk.find("_edMplApplyFreshnessUiLabels(ld)")
+    fresh_pos = chunk.find("pillText = ageSec <= 1 ? 'FRESH <2s'")
+    assert override_pos != -1 and fresh_pos != -1 and override_pos < fresh_pos
 
 
 def test_ui_maximize_contract_sla_warm_and_partial_render():

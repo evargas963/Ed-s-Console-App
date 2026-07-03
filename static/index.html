@@ -8235,12 +8235,14 @@ function startLiquidityMapPoll() {
 // ── State update tracking (for diagnostics and stale detection) ─────────────────
 let _lastRenderTs = 0;
 let _consecutiveFailures = 0;
-// When SSE drops or is stale, poll /api/analytics/state this often. While SSE delivers fresh payloads, poll is skipped so the UI follows push cadence (~ED_VIEWER_SSE_REFRESH_SEC) instead of this interval.
+// When SSE drops or is stale, poll /api/analytics/state this often. Step 2 single Tier C
+// owner: while SSE is OPEN and delivering inside the healthy window, poll is fully
+// suppressed — the server _sse_background_loop owns viewed-key recompute cadence.
 const POLL_FALLBACK_MS = 2000;
-/** Faster REST poll while Tier C analytics (mhap/fusion) is still in flight — UI_LATENCY_CONTRACT / UI_MAXIMIZE. */
+/** Faster REST poll while Tier C analytics is in flight AND the SSE transport is down — UI_LATENCY_CONTRACT / UI_MAXIMIZE. */
 const ANALYTICS_PENDING_POLL_MS = 800;
-/** Skip REST poll while a full Tier C SSE snapshot was accepted within this window (ms). */
-const SSE_POLL_SUPPRESS_MS = 12000;
+/** Healthy-SSE window: 3× the server viewer cadence (5s) — poll suppressed inside it. */
+const SSE_POLL_SUPPRESS_MS = 15000;
 let _statePollTid = null;
 let _statePollIntervalMs = POLL_FALLBACK_MS;
 const DIAG = typeof window._edDiag !== 'undefined' && window._edDiag;
@@ -8265,7 +8267,10 @@ function _analyticsUiPending() {
 }
 
 function _syncAnalyticsPollCadence() {
-  const want = _analyticsUiPending() ? ANALYTICS_PENDING_POLL_MS : POLL_FALLBACK_MS;
+  // Step 2 single Tier C owner: the fast pending cadence applies only when the SSE
+  // transport is down — while SSE is OPEN the server loop pushes pending states.
+  const sseOpenNow = _eventSource && _eventSource.readyState === 1;
+  const want = (!sseOpenNow && _analyticsUiPending()) ? ANALYTICS_PENDING_POLL_MS : POLL_FALLBACK_MS;
   if (want === _statePollIntervalMs && _statePollTid) return;
   _statePollIntervalMs = want;
   if (_statePollTid) clearInterval(_statePollTid);
@@ -8547,9 +8552,23 @@ function _updateDecisionBundleAgeUI(opts) {
   const withinTrust = bundleWithinTrustWindow(integrity, ld);
   const fp = $('dr-freshness-pill');
   if (fp) {
+    // Step 2 — bundle truth wins over raw age: a stale/frozen/aging bundle (client
+    // bands) or the server analytics_stale flag must never paint as FRESH.
+    const mpl = _edMplUpdateFreshnessStates(ld);
+    const bundleState = mpl.bundle_freshness_state;
+    const serverStale = ld.analytics_stale === true;
+    if (bundleState === 'frozen' || bundleState === 'stale' || bundleState === 'aging' || serverStale) {
+      _edMplApplyFreshnessUiLabels(ld);
+      if (serverStale && bundleState !== 'frozen' && bundleState !== 'stale') {
+        fp.textContent = 'STALE';
+        fp.className = 'conviction-pill low';
+        fp.setAttribute('data-bundle-freshness-state', bundleState || 'unknown');
+      }
+      return;
+    }
     let pillText;
     if (!ageText) {
-      pillText = 'FRESH —';
+      pillText = bundleState === 'unknown' ? 'BUNDLE —' : 'FRESH —';
       fp.className = 'conviction-pill low';
     } else {
       const ageSec = Math.max(0, Math.round((Date.now() / 1000) - Number(ts)));
@@ -8559,6 +8578,7 @@ function _updateDecisionBundleAgeUI(opts) {
     if (priceAhead && withinTrust) pillText += ' · SYNCING';
     else if (priceAhead) pillText += ' · PRICE AHEAD';
     fp.textContent = pillText;
+    fp.setAttribute('data-bundle-freshness-state', bundleState || '');
   }
 }
 
@@ -9246,9 +9266,11 @@ async function pollStateFallback() {
   const ticker = activeTicker;
   const expiry = activeExpiry;
   const sseOpen = _eventSource && _eventSource.readyState === 1;
+  // Step 2 single Tier C owner: healthy SSE (OPEN + payload inside the window) fully
+  // suppresses the REST poll — pending analytics no longer un-suppresses it, because
+  // the server loop pushes pending states and REST reads are cache-only for viewed keys.
   const ssePollSuppress =
     sseOpen &&
-    !_analyticsUiPending() &&
     _lastSseAnalyticsPayloadMs > 0 &&
     Date.now() - _lastSseAnalyticsPayloadMs < SSE_POLL_SUPPRESS_MS;
   if (ssePollSuppress) {

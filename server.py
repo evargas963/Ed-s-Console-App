@@ -296,9 +296,16 @@ _zone_tracker: dict = {}          # ticker -> {zone, since_bars_1m, since_bars_5
 _order_flow_engine = None  # singleton OrderFlowEngine, avoid per-tick instantiation
 CACHE_TTL = 5                     # seconds — default REST cache & idle SSE loop when nobody is streaming
 # Active browser tab opens SSE /api/stream?ticker=&expiry= → that (ticker, expiry) is "viewed".
-# Shorter intervals = fresher Right Now / WDS / Call at the cost of more Schwab API work.
-VIEWER_SSE_REFRESH_SEC: float = float(os.environ.get("ED_VIEWER_SSE_REFRESH_SEC", "1.0"))
-VIEWER_STATE_CACHE_TTL_SEC: float = float(os.environ.get("ED_VIEWER_STATE_CACHE_TTL_SEC", "1.0"))
+# LIVE_OPERATOR_MODE_RESET_V1 Step 2 — single Tier C owner + honest cadence: the SSE
+# background loop is the only steady-state recompute scheduler for viewed keys, at a
+# cadence the full pipeline (2–8s chain+quote+ML+DB) can actually sustain. TTL equals
+# the cadence so "stale" is a truth statement, not a 1s fantasy.
+VIEWER_SSE_REFRESH_SEC: float = float(os.environ.get("ED_VIEWER_SSE_REFRESH_SEC", "5.0"))
+VIEWER_STATE_CACHE_TTL_SEC: float = float(os.environ.get("ED_VIEWER_STATE_CACHE_TTL_SEC", "5.0"))
+# A viewed bundle is STALE only after a full recompute cycle was missed:
+# age >= ANALYTICS_STALE_GRACE_CYCLES × TTL. Drives analytics_stale and the
+# card_freshness_v1 analytics_age_exceeded stale-reason code (one authority).
+ANALYTICS_STALE_GRACE_CYCLES: float = 2.0
 # T5 SSE repair — Schwab CSV-first slice declaration (transport-only; no wire/ingestion change):
 # Schwab CSV authority checked: yes
 # CSV row(s): NO_SCHWAB_EQUIVALENT
@@ -821,16 +828,18 @@ def _attach_analytics_freshness_contract(
         gen_ts = _analytics_generated_ts(entry)
         age = max(0.0, now - gen_ts) if gen_ts > 0 else 0.0
         ver = int(entry.get("analytics_version", 0))
-        # Operator-facing stale = bundle age exceeded TTL or explicit error — NOT merely
-        # "SSE viewer connected" (that schedules refresh via need_refresh, not untrustworthy).
+        # Operator-facing stale = a recompute cycle was MISSED (age past the grace
+        # window) or explicit error — not merely "older than one cadence beat".
+        stale_after = float(ttl) * ANALYTICS_STALE_GRACE_CYCLES
         refresh_due = bool(sse_live or (age >= ttl))
-        stale = bool(age >= ttl) or bool(md.get("state_error"))
+        stale = bool(age >= stale_after) or bool(md.get("state_error"))
         iso = None
         if gen_ts > 0:
             iso = datetime.fromtimestamp(gen_ts, tz=timezone.utc).isoformat()
         md["analytics_version"] = ver
         md["analytics_generated_at"] = iso
         md["analytics_age_sec"] = round(age, 3)
+        md["analytics_stale_after_sec"] = round(stale_after, 3)
         md["analytics_stale"] = stale
         md["analytics_refresh_due"] = refresh_due
         md["analytics_refresh_in_progress"] = bool(in_prog)
@@ -1015,7 +1024,8 @@ def _attach_card_freshness_v1_block(
 
     if md.get("analytics_stale") is True:
         _add("analytics_stale")
-    if analytics_age_f is not None and analytics_age_f >= float(analytics_ttl_sec):
+    _analytics_stale_after = float(analytics_ttl_sec) * ANALYTICS_STALE_GRACE_CYCLES
+    if analytics_age_f is not None and analytics_age_f >= _analytics_stale_after:
         _add("analytics_age_exceeded")
     if quote_age_sec is not None and quote_age_sec >= _CARD_FRESHNESS_V1_QUOTE_STALE_SEC:
         _add("quote_age_exceeded")
@@ -1100,6 +1110,7 @@ def _attach_card_freshness_v1_block(
         "quote_age_sec": quote_age_sec,
         "bundle_age_sec": bundle_age_sec,
         "analytics_ttl_sec": round(float(analytics_ttl_sec), 3),
+        "analytics_stale_after_sec": round(_analytics_stale_after, 3),
         "quote_stale_sec": _CARD_FRESHNESS_V1_QUOTE_STALE_SEC,
         "bundle_trust_sec": _CARD_FRESHNESS_V1_BUNDLE_TRUST_SEC,
         "fallback_status": fallback_status,
@@ -2110,6 +2121,10 @@ def _on_tick_broadcast_sync(symbol: str, main_loop: asyncio.AbstractEventLoop) -
 
     On meaningful stream change vs last coherent bundle, schedule a full _fetch_state
     and broadcast the new monotonic decision_generation_id payload.
+
+    LIVE_OPERATOR_MODE_RESET_V1 Step 2: no longer registered as the streaming on-tick
+    callback (see _app_lifespan) — _sse_background_loop is the single Tier C recompute
+    owner for viewed keys. Retained for unit tests and reference.
     """
     global _last_tick_coherent_gate_mono
     try:
@@ -7258,9 +7273,12 @@ async def _app_lifespan(app):
             if account_id:
                 from order_flow_streaming import start_order_flow_stream
 
-                main_loop = asyncio.get_running_loop()
-                on_tick = lambda sym: _on_tick_broadcast_sync(sym, main_loop)
-                start_order_flow_stream(client, account_id, DEFAULT_TICKER, on_tick_callback=on_tick)
+                # LIVE_OPERATOR_MODE_RESET_V1 Step 2 — single Tier C owner: the
+                # tick-coherent recompute callback (_on_tick_broadcast_sync) is no
+                # longer registered; _sse_background_loop owns viewed-key cadence.
+                # The quote lane (live_market_plane → live_quote SSE) still updates
+                # per tick via record_from_level_one_equity.
+                start_order_flow_stream(client, account_id, DEFAULT_TICKER)
             else:
                 log.info("Order flow streaming: no account_id, running REST-only")
     except ImportError as ie:
@@ -7876,11 +7894,19 @@ def _tier_c_analytics_json_response(
         age = max(0.0, now - _analytics_generated_ts(entry))
 
     has_body = bool(entry and entry.get("ms_dict"))
-    stale = True
-    if has_body:
-        stale = bool(sse_live or (age >= ttl))
+    # Stale-serve marker follows the honest grace window (missed cycle), same
+    # authority as _attach_analytics_freshness_contract.
+    stale = bool(
+        (not has_body) or (age >= float(ttl) * ANALYTICS_STALE_GRACE_CYCLES)
+    )
 
-    need_refresh = bool(force or (not has_body) or stale)
+    # LIVE_OPERATOR_MODE_RESET_V1 Step 2 — single Tier C owner: when a live SSE
+    # viewer owns this scope, _sse_background_loop is the only recompute scheduler
+    # and REST is a read-only cache view. force=true (manual REFRESH) and the
+    # cold/no-viewer poll path still self-schedule.
+    need_refresh = bool(
+        force or (not has_body) or ((not sse_live) and (age >= ttl))
+    )
 
     if has_body:
         try:

@@ -2,7 +2,9 @@
 Issue 20 / 23 — coherent live decision bundle (transport + ordering guards).
 
 Proves: monotonic stamping ties spot + decision fields; tick partial-patch helpers stay removed;
-/api/state TTL bypass when SSE subscribers exist; client HTML generation-order guard present.
+client HTML generation-order guard present. Step 2 (LIVE_OPERATOR_MODE_RESET_V1): with an SSE
+viewer, /api/state is a read-only cache view (the SSE background loop owns recompute); the
+no-viewer stale REST path still self-schedules (cold/poll-only fallback).
 """
 from __future__ import annotations
 
@@ -262,9 +264,13 @@ def _assert_sse_cache_bypass_for_key(
     expiry: str | None,
     cache_key: tuple[str, str | None],
 ) -> None:
-    """With active SSE for (ticker, expiry), REST stale-while-refresh schedules background fetch."""
+    """Step 2 single Tier C owner: viewer-owned REST reads serve cache WITHOUT scheduling;
+    the no-viewer stale path still self-schedules; the stale-serve label stays honest."""
+    # Keep the owner loop asleep (huge idle/subscribed intervals) so this test isolates
+    # the REST path; honest small TTL comes from the ttl resolver, not CACHE_TTL.
     monkeypatch.setattr(srv, "VIEWER_SSE_REFRESH_SEC", 99999.0)
     monkeypatch.setattr(srv, "CACHE_TTL", 99999.0)
+    monkeypatch.setattr(srv, "_sse_viewer_cache_ttl", lambda t, e: 0.5)
     calls: list[tuple[str, str | None]] = []
 
     def fake_fetch(t: str, e: str | None, **kwargs):
@@ -288,26 +294,28 @@ def _assert_sse_cache_bypass_for_key(
         return out
 
     monkeypatch.setattr(srv, "_fetch_state", fake_fetch)
-    _now = time.time()
-    _seed_issue20_state_cache(srv, cache_key, 1.0, ts=_now)
-    stale = srv._state_cache[cache_key]["ms_dict"]
+    # Seed an old bundle (well past the 2×TTL grace window at TTL=0).
+    _seed_issue20_state_cache(srv, cache_key, 1.0, ts=time.time() - 60.0)
 
     from starlette.testclient import TestClient
 
     fetch_key = _fetch_call_key(ticker, expiry)
     with TestClient(srv.app) as client:
-        r_hit = client.get("/api/state", params=_state_api_params(ticker, expiry))
-        assert r_hit.status_code == 200
-        body = r_hit.json()
-        assert body.get(_ISSUE20_SPOT) == 1.0
-        assert fetch_key not in calls
-
+        # Viewer-owned: SSE subscriber present → REST serves the stale-labeled cache
+        # and must NOT schedule a recompute (loop owns the key).
         srv._sse_subscribers[cache_key] = 1
-        r_miss = client.get("/api/state", params=_state_api_params(ticker, expiry))
-        assert r_miss.status_code == 200
-        body2 = r_miss.json()
-        assert body2.get(_ISSUE20_SPOT) == 1.0
-        assert body2.get("analytics_stale") is True
+        r_owned = client.get("/api/state", params=_state_api_params(ticker, expiry))
+        assert r_owned.status_code == 200
+        body = r_owned.json()
+        assert body.get(_ISSUE20_SPOT) == 1.0
+        assert body.get("analytics_stale") is True
+        time.sleep(0.3)
+        assert fetch_key not in calls, "viewer-owned REST read must not schedule recompute"
+
+        # No viewer: the stale REST read self-schedules (cold/poll-only fallback).
+        srv._sse_subscribers.pop(cache_key, None)
+        r_cold = client.get("/api/state", params=_state_api_params(ticker, expiry))
+        assert r_cold.status_code == 200
         for _ in range(100):
             time.sleep(0.02)
             if calls:
@@ -316,8 +324,24 @@ def _assert_sse_cache_bypass_for_key(
         r3 = client.get("/api/state", params=_state_api_params(ticker, expiry))
         assert r3.status_code == 200
         body3 = r3.json()
-        assert body3.get(_ISSUE20_SPOT, 0) > stale[_ISSUE20_SPOT]
+        assert body3.get(_ISSUE20_SPOT, 0) > 1.0
         assert body3.get("decision_generation_id", 0) >= 424201
+
+        # force=true is the manual override — schedules even when viewer-owned.
+        srv._sse_subscribers[cache_key] = 1
+        with srv._analytics_bg_lock:
+            srv._analytics_inflight.clear()
+        n_before = len(calls)
+        params_force = dict(_state_api_params(ticker, expiry))
+        params_force["force"] = "true"
+        r_force = client.get("/api/state", params=params_force)
+        assert r_force.status_code == 200
+        for _ in range(100):
+            time.sleep(0.02)
+            if len(calls) > n_before:
+                break
+        assert len(calls) > n_before, "force=true must schedule despite viewer ownership"
+        srv._sse_subscribers.pop(cache_key, None)
 
 
 def test_api_analytics_light_is_tier_b_fast_path():
@@ -341,8 +365,8 @@ def test_api_analytics_light_is_tier_b_fast_path():
         assert "tier_b_structural" in j
 
 
-def test_api_state_bypasses_cache_when_sse_subscribers(monkeypatch, _cache_test_key):
-    """With active SSE for (ticker, expiry), REST returns stale-while-refresh and schedules background fetch."""
+def test_api_state_viewer_owned_serves_cache_without_scheduling(monkeypatch, _cache_test_key):
+    """Step 2: viewer-owned REST = read-only cache view; no-viewer stale REST self-schedules; force overrides."""
     key, srv = _cache_test_key
     ticker, exp = key
     _assert_sse_cache_bypass_for_key(
@@ -373,7 +397,8 @@ def test_api_state_sse_cache_bypass_universal_parametric(monkeypatch, ticker, ex
 
 
 def test_api_state_cache_isolation_across_ticker_expiry_keys(monkeypatch):
-    """SSE subscriber on key A must schedule fetch for A only — key B cache/fetch stay isolated."""
+    """Step 2: viewer-owned key A serves cache without scheduling; stale no-viewer key B
+    self-schedules for B only — A's cache/fetch stay isolated."""
     import server as srv
 
     (ticker_a, exp_a), (ticker_b, exp_b) = SSE_CACHE_ISOLATION_PAIR
@@ -384,6 +409,7 @@ def test_api_state_cache_isolation_across_ticker_expiry_keys(monkeypatch):
 
     monkeypatch.setattr(srv, "VIEWER_SSE_REFRESH_SEC", 99999.0)
     monkeypatch.setattr(srv, "CACHE_TTL", 99999.0)
+    monkeypatch.setattr(srv, "_sse_viewer_cache_ttl", lambda t, e: 0.5)
     calls: list[tuple[str, str | None]] = []
 
     def fake_fetch(t: str, e: str | None, **kwargs):
@@ -407,9 +433,9 @@ def test_api_state_cache_isolation_across_ticker_expiry_keys(monkeypatch):
         return out
 
     monkeypatch.setattr(srv, "_fetch_state", fake_fetch)
-    _now = time.time()
-    _seed_issue20_state_cache(srv, key_a, 1.0, ts=_now)
-    _seed_issue20_state_cache(srv, key_b, 2.0, ts=_now)
+    _old = time.time() - 60.0
+    _seed_issue20_state_cache(srv, key_a, 1.0, ts=_old)
+    _seed_issue20_state_cache(srv, key_b, 2.0, ts=_old)
 
     from starlette.testclient import TestClient
 
@@ -421,13 +447,15 @@ def test_api_state_cache_isolation_across_ticker_expiry_keys(monkeypatch):
             r_a = client.get("/api/state", params=_state_api_params(ticker_a, exp_a))
             assert r_a.status_code == 200
             assert r_a.json().get(_ISSUE20_SPOT) == 1.0
+            r_b = client.get("/api/state", params=_state_api_params(ticker_b, exp_b))
+            assert r_b.status_code == 200
             for _ in range(100):
                 time.sleep(0.02)
                 if calls:
                     break
-            assert fetch_a in calls
-            assert fetch_b not in calls
-            assert srv._state_cache[key_b]["ms_dict"][_ISSUE20_SPOT] == 2.0
+            assert fetch_b in calls, "stale no-viewer key B must self-schedule"
+            assert fetch_a not in calls, "viewer-owned key A must not schedule from REST"
+            assert srv._state_cache[key_a]["ms_dict"][_ISSUE20_SPOT] == 1.0
     finally:
         for key in (key_a, key_b):
             _reset_sse_cache_key_state(srv, key)

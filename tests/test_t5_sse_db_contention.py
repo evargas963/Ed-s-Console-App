@@ -107,15 +107,65 @@ def test_t5_sse_timeout_preserves_money_path_snapshot_envelope(srv_module, monke
     assert enveloped.get("_sse_cache_fanout_reason") == "unit_test"
 
 
-def test_t5_sse_repair_does_not_change_transport_cadence():
+def test_step2_honest_viewer_cadence_and_no_websocket():
+    """LIVE_OPERATOR_MODE_RESET_V1 Step 2 — single Tier C owner runs at an honest 5s
+    cadence with TTL == cadence and stale only after a missed cycle (grace 2×)."""
     import server as srv
 
+    _env = __import__("os").environ
     assert srv.VIEWER_SSE_REFRESH_SEC == float(
-        __import__("os").environ.get("ED_VIEWER_SSE_REFRESH_SEC", "1.0")
+        _env.get("ED_VIEWER_SSE_REFRESH_SEC", "5.0")
     )
+    assert srv.VIEWER_STATE_CACHE_TTL_SEC == float(
+        _env.get("ED_VIEWER_STATE_CACHE_TTL_SEC", "5.0")
+    )
+    assert srv.ANALYTICS_STALE_GRACE_CYCLES == 2.0
     src = (ROOT / "server.py").read_text(encoding="utf-8", errors="replace")
     assert "@app.websocket" not in src
     assert "WebSocketRoute" not in src
+
+
+def test_step2_freshness_contract_stale_only_after_missed_cycle(srv_module, monkeypatch):
+    """analytics_stale is a missed-cycle statement: age < 2×TTL is NOT stale."""
+    srv = srv_module
+    monkeypatch.setattr(srv, "VIEWER_STATE_CACHE_TTL_SEC", 5.0)
+    monkeypatch.setattr(srv, "CACHE_TTL", 5.0)
+    key = ("SPY", "2099-01-01")
+    inflight_key = srv._tier_c_inflight_key(*key)
+    now = time.time()
+
+    md_fresh: dict = {}
+    srv._attach_analytics_freshness_contract(
+        md_fresh,
+        data_cache_key=key,
+        entry={"ms_dict": {"ticker": "SPY"}, "generated_at": now - 7.0, "analytics_version": 3},
+        now=now,
+        sse_live=True,
+        inflight_key=inflight_key,
+    )
+    assert md_fresh["analytics_stale"] is False  # 7s < 10s grace window
+    assert md_fresh["analytics_stale_after_sec"] == 10.0
+    assert md_fresh["analytics_refresh_due"] is True
+
+    md_stale: dict = {}
+    srv._attach_analytics_freshness_contract(
+        md_stale,
+        data_cache_key=key,
+        entry={"ms_dict": {"ticker": "SPY"}, "generated_at": now - 11.0, "analytics_version": 3},
+        now=now,
+        sse_live=True,
+        inflight_key=inflight_key,
+    )
+    assert md_stale["analytics_stale"] is True  # missed a full 5s cycle
+
+
+def test_step2_tick_coherent_callback_not_registered_in_lifespan():
+    """Single Tier C owner: lifespan must not wire _on_tick_broadcast_sync into the stream."""
+    src = (ROOT / "server.py").read_text(encoding="utf-8", errors="replace")
+    assert "on_tick_callback=on_tick" not in src
+    assert "on_tick = lambda" not in src
+    # Function retained (unit-tested tick logic lives in live_decision_bundle).
+    assert "def _on_tick_broadcast_sync" in src
 
 
 def test_t5_sse_loop_cadence_calls_cache_fanout_before_recompute(srv_module, monkeypatch):
