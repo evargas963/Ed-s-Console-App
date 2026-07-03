@@ -34,7 +34,16 @@ jobs:
             git fetch origin "${{ github.base_ref }}" --depth=1
             git diff "origin/${{ github.base_ref }}"...HEAD > /tmp/schwab_csv_first.diff
           else
-            git diff HEAD~1..HEAD > /tmp/schwab_csv_first.diff
+            # Multi-commit push coverage: diff the WHOLE pushed range, not just the tip
+            # commit — HEAD~1..HEAD let every non-tip commit of a multi-commit push skip
+            # the CSV-first guard entirely (observed: a 3-commit push where only the
+            # governance tip was scanned). Fall back to HEAD~1 for force-pushes/new
+            # branches where the before-SHA is null or unknown.
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BEFORE" 2>/dev/null; then
+              BEFORE="$(git rev-parse HEAD~1)"
+            fi
+            git diff "$BEFORE"..HEAD > /tmp/schwab_csv_first.diff
           fi
 
       - name: Run Schwab CSV-first guard
@@ -71,26 +80,40 @@ jobs:
         if: github.event_name == 'pull_request'
         shell: bash
         run: |
-          python -m tools.schwab_universal_coverage_scanner_v3 \
+          # NON-CIRCULAR pin check (2026-07-03): the scanner OVERWRITES the meta file it
+          # generates, so comparing against the workspace meta after scanning validated
+          # the scanner against itself and could never detect drift. Preserve the
+          # COMMITTED pin before scanning and compare against that copy.
+          cp governance/artifacts/schwab_v4_register_build_meta.json /tmp/committed_register_meta.json
+          # Crash diagnostics: the 2026-07-03 PR runs died with a bare SIGSEGV (exit 139)
+          # and no frame; faulthandler + an unlimited stack make the next crash name its
+          # location instead of failing silently.
+          ulimit -s unlimited || true
+          python -X faulthandler -m tools.schwab_universal_coverage_scanner_v3 \
             --output governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv \
             --embedding-mode mock
           python <<'PY'
           import csv, hashlib, json, pathlib, sys
-          meta = json.loads(pathlib.Path("governance/artifacts/schwab_v4_register_build_meta.json").read_text(encoding="utf-8"))
+          meta = json.loads(pathlib.Path("/tmp/committed_register_meta.json").read_text(encoding="utf-8"))
           p = pathlib.Path("governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv")
           h = hashlib.sha256(p.read_bytes()).hexdigest()
           exp = meta.get("register_content_sha256")
           if not exp or h != exp:
-              print("register_content_sha256 mismatch", h, exp, file=sys.stderr)
+              print(
+                  "register_content_sha256 mismatch vs COMMITTED pin", h, exp,
+                  "- a PR that changes scanned sources must regenerate and commit "
+                  "schwab_v4_register_build_meta.json + scoreboard in the same PR",
+                  file=sys.stderr,
+              )
               sys.exit(1)
           want_rows = meta.get("register_rows_written")
           if want_rows:
               with p.open(newline="", encoding="utf-8") as f:
                   n = sum(1 for _ in csv.DictReader(f))
               if n != want_rows:
-                  print("register_rows_written mismatch", n, want_rows, file=sys.stderr)
+                  print("register_rows_written mismatch vs COMMITTED pin", n, want_rows, file=sys.stderr)
                   sys.exit(1)
-          print("V4 register pin OK", h[:16])
+          print("V4 register pin OK (non-circular)", h[:16])
           PY
 
       - name: V4 diff-emission register gate (PR 2)

@@ -529,6 +529,41 @@ def test_main_passes_on_phase3_shaped_register_slice_diff_without_csv_marker(
     assert "no risky market-data additions found" in out
 
 
+def test_workflow_pin_check_is_non_circular_and_covers_multi_commit_push():
+    """PR-lane repair locks (2026-07-03):
+
+    1. NON-CIRCULAR pin: the scanner OVERWRITES schwab_v4_register_build_meta.json, so
+       the old workflow compared the regenerated CSV against the meta the scanner had
+       just written — a self-comparison that could never detect drift. The workflow must
+       preserve the COMMITTED meta before scanning and compare against that copy.
+    2. MULTI-COMMIT push coverage: HEAD~1..HEAD let every non-tip commit of a
+       multi-commit push skip the guard; push mode must diff github.event.before..HEAD.
+    3. CRASH DIAGNOSTICS: the 2026-07-03 PR runs segfaulted with no frame; the scanner
+       must run under faulthandler so the next native crash names its location.
+    """
+    wf = (ROOT / ".github" / "workflows" / "schwab-csv-first.yml").read_text(encoding="utf-8")
+    # (1) committed meta preserved before the scan, and the pin compare reads the copy.
+    cp_pos = wf.find(
+        "cp governance/artifacts/schwab_v4_register_build_meta.json /tmp/committed_register_meta.json"
+    )
+    scan_pos = wf.find("-m tools.schwab_universal_coverage_scanner_v3")
+    assert cp_pos != -1, "workflow must preserve the committed meta before scanning"
+    assert scan_pos != -1
+    assert cp_pos < scan_pos, "meta copy must happen BEFORE the scanner can overwrite it"
+    assert '"/tmp/committed_register_meta.json"' in wf, (
+        "pin compare must read the preserved committed meta, not the workspace file"
+    )
+    assert 'pathlib.Path("governance/artifacts/schwab_v4_register_build_meta.json").read_text' not in wf.split(
+        "Generate V4 register"
+    )[1], "pin compare must not read the scanner-overwritten workspace meta"
+    # (2) push mode diffs the full pushed range with a null-sha/new-branch fallback.
+    assert "github.event.before" in wf
+    assert '"$BEFORE"..HEAD' in wf
+    assert "0000000000000000000000000000000000000000" in wf
+    # (3) faulthandler on the scanner invocation.
+    assert "python -X faulthandler -m tools.schwab_universal_coverage_scanner_v3" in wf
+
+
 def test_main_still_fails_runtime_time_time_without_csv_marker(monkeypatch, capsys):
     quote_key = _quote_time_key()
     time_call = _time_time_call()
