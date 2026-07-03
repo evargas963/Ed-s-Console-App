@@ -3876,6 +3876,15 @@ function runTickerLiveAcquisition(reason, opts) {
   const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   if (_tickerSwitchT0 <= 0) _tickerSwitchT0 = t0;
   _logTickerSwitch('STREAM_SUB_REQUESTED', { reason, force: !!force });
+  if (force) {
+    // Deterministic teardown of BOTH streams + BOTH reconnect timers before reconnect:
+    // connectL1LightSSE can return before its force branch (guards missing), leaving the
+    // old ticker's L1 stream and backoff timer alive across a forced switch.
+    _clearSseReconnectTimer();
+    _clearL1LightReconnectTimer();
+    if (_eventSource) _tearDownEventSource(_eventSource, reason + ': force_preamble');
+    if (_l1LightEventSource) _tearDownL1LightEventSource(_l1LightEventSource, reason + ': force_preamble');
+  }
   try {
     connectSSE(force ? { force: true } : undefined);
   } catch (e) {
@@ -3886,7 +3895,15 @@ function runTickerLiveAcquisition(reason, opts) {
   } catch (e) {
     _logTickerSwitch('STREAM_SUB_ERROR', { err: 'l1_light:' + String(e && e.message) });
   }
-  _logTickerSwitch('STREAM_ACTIVE', { sseUrl: _sseStreamUrl || '', l1LightUrl: _l1LightStreamUrl || '' });
+  // Stream URLs commit in onopen; during the handshake the pending URL is the truth.
+  const pendingSseUrl = _buildSseStreamUrl(activeTicker, activeExpiry);
+  const pendingL1Url = _buildL1LightSseUrl(activeTicker, activeExpiry);
+  _logTickerSwitch('STREAM_ACTIVE', {
+    sseUrl: _sseStreamUrl || pendingSseUrl,
+    l1LightUrl: _l1LightStreamUrl || pendingL1Url,
+    ssePendingUrl: pendingSseUrl,
+    l1PendingUrl: pendingL1Url,
+  });
   _tickerSwitchAwaitingQuote = true;
   // Tier-1: never block first fast quote on streaming POST or /api/live/plane (those were serializing the critical path).
   if (window.ED_SWITCH_TIMING === true) {
@@ -9355,12 +9372,13 @@ async function pollStateFallback() {
         console.warn('[pollFallback] render skipped (gating)', { ticker: data.ticker, gen: myGen });
       }
     });
-    // When SSE is not OPEN, ensure a connection attempt exists. connectSSE() is idempotent:
-    // it no-ops if the same URL is already CONNECTING or OPEN, so the 2s poll cannot abort
-    // an in-flight handshake (see connectSSE / _sseStreamUrl).
+    // When SSE is not OPEN, ensure a connection attempt exists. connectSSE() no-ops only
+    // for a same-URL stream that has OPENED (_sseStreamUrl commits in onopen); a handshake
+    // that never opens keeps the URL null, so the poll replaces it instead of waiting on a
+    // wedged CONNECTING stream forever (bounded: at most one recreate per poll tick).
     if (!sseOpen) {
       if (DIAG && _eventSource && _eventSource.readyState === 0) {
-        console.log('[pollFallback] ensureSSE — already CONNECTING, connectSSE will noop', {
+        console.log('[pollFallback] ensureSSE — CONNECTING; replaced if handshake never opened', {
           ticker,
           gen: myGen,
           url: _sseStreamUrl,
@@ -10049,6 +10067,12 @@ function manualFullRefresh() { fetchState(true); }
 // ── SSE (Server-Sent Events) — lifecycle + single UI surface ───────────────────
 // We explicitly es.close() on error, so the browser does NOT auto-reconnect; all
 // reconnects are manual via one debounced timer (_sseReconnectTid).
+//
+// SCHWAB_CSV_CHECKED — SSE lifecycle hygiene slice (stream teardown, set-on-open URLs,
+//   reconnect-timer clears):
+// Schwab CSV authority checked: yes
+// CSV row(s): NO_SCHWAB_EQUIVALENT — transport lifecycle only; no market field read,
+//   derivation, or emission changed.
 
 function _buildSseStreamUrl(ticker, expiry) {
   const t = (ticker || '').trim().toUpperCase() || 'SPY';
@@ -10169,10 +10193,15 @@ function connectL1LightSSE(opts) {
 
   const es = new EventSource(wantUrl);
   _l1LightEventSource = es;
-  _l1LightStreamUrl = wantUrl;
+  // Mirror of connectSSE: URL commits in onopen only, so a never-opening handshake
+  // is replaced by the next acquisition pass instead of no-oping forever (L1 has no
+  // poll-ensure path — this is its only zombie recovery).
+  _l1LightStreamUrl = null;
 
   es.onopen = () => {
     if (_l1LightEventSource !== es) return;
+    // Relative wantUrl, not es.url — see connectSSE onopen.
+    _l1LightStreamUrl = wantUrl;
     _l1LightReconnectAttempt = 0;
     _clearL1LightReconnectTimer();
     try {
@@ -10350,8 +10379,12 @@ function _tearDownEventSource(es, reason) {
 
 /**
  * Ensure an EventSource for (activeTicker, activeExpiry).
- * Idempotent: does not close/replace if the same stream URL is already OPEN or CONNECTING.
- * Pass { force: true } to always replace (reserved for future use).
+ * Idempotent only for a stream that has OPENED for the same URL: _sseStreamUrl commits
+ * in onopen, so a CONNECTING stream that never opened has a null URL, falls to the
+ * replace branch, and gets recreated — a handshake the server accepted but never
+ * answered cannot wedge the stream forever. (The CONNECTING no-op branch still covers
+ * the browser's native retry window on a previously-OPEN stream.)
+ * Pass { force: true } to always replace.
  */
 function connectSSE(opts) {
   const force = opts && opts.force;
@@ -10390,7 +10423,11 @@ function connectSSE(opts) {
     _tearDownEventSource(es0, 'replace for new subscription or CLOSED');
   } else if (es0 && force) {
     _clearSseReconnectTimer();
+    _clearL1LightReconnectTimer();
     _tearDownEventSource(es0, 'force replace');
+    if (_l1LightEventSource) {
+      _tearDownL1LightEventSource(_l1LightEventSource, 'force replace with main SSE');
+    }
   }
 
   // Capture the generation at the moment this SSE connection is created.
@@ -10414,7 +10451,9 @@ function connectSSE(opts) {
   let loggedFirstDataEvent = false;
   const es = new EventSource(wantUrl);
   _eventSource = es;
-  _sseStreamUrl = wantUrl;
+  // URL commits in onopen only — a CONNECTING-but-never-opened stream must not
+  // satisfy the idempotency guard (zombie-handshake wedge, observed live 2026-06-29).
+  _sseStreamUrl = null;
 
   es.onopen = () => {
     if (_eventSource !== es) {
@@ -10423,6 +10462,9 @@ function connectSSE(opts) {
       }
       return;
     }
+    // Store the RELATIVE wantUrl (not es.url, which serializes absolute and would
+    // fail the same-URL idempotency compare, churning a healthy OPEN stream).
+    _sseStreamUrl = wantUrl;
     _clearSseReconnectTimer();
     const msSinceCreate = (typeof performance !== 'undefined' && performance.now)
       ? (performance.now() - _ssePerfCreateMs).toFixed(2)

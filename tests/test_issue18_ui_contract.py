@@ -660,6 +660,74 @@ def test_rest_tier_c_backoff_uses_in_scope_force_flag():
     )
 
 
+def test_sse_force_acquisition_tears_down_both_streams_and_timers():
+    """SSE lifecycle hygiene (b481 re-land): a forced stream acquisition must clear BOTH
+    reconnect timers and tear down BOTH event sources up front — connectL1LightSSE can
+    return before its force branch (guards missing), leaving the old ticker's L1 stream
+    and its backoff timer alive across a forced switch. connectSSE's force branch is the
+    defense-in-depth copy for force calls that bypass runTickerLiveAcquisition."""
+    h = _html()
+    idx = h.find("function runTickerLiveAcquisition")
+    assert idx != -1
+    chunk = h[idx : idx + 2000]
+    assert "force_preamble" in chunk
+    assert "_clearSseReconnectTimer();" in chunk
+    assert "_clearL1LightReconnectTimer();" in chunk
+    assert "_tearDownEventSource(_eventSource" in chunk
+    assert "_tearDownL1LightEventSource(_l1LightEventSource" in chunk
+    force_idx = h.find("} else if (es0 && force) {", h.find("function connectSSE"))
+    assert force_idx != -1
+    force_chunk = h[force_idx : force_idx + 480]
+    assert "_clearL1LightReconnectTimer();" in force_chunk
+    assert "'force replace with main SSE'" in force_chunk
+
+
+def test_sse_stream_active_diag_logs_pending_url():
+    """STREAM_ACTIVE must log the pending stream URL: URLs commit in onopen, so during
+    the handshake `_sseStreamUrl || ''` logged an empty sseUrl on every switch — feeding
+    misleading records into the switch-diag pipeline and RTH validation reports."""
+    h = _html()
+    idx = h.find("function runTickerLiveAcquisition")
+    assert idx != -1
+    chunk = h[idx : idx + 2000]
+    assert "const pendingSseUrl = _buildSseStreamUrl(activeTicker, activeExpiry)" in chunk
+    assert "const pendingL1Url = _buildL1LightSseUrl(activeTicker, activeExpiry)" in chunk
+    assert "sseUrl: _sseStreamUrl || pendingSseUrl" in chunk
+    assert "l1LightUrl: _l1LightStreamUrl || pendingL1Url" in chunk
+    assert "ssePendingUrl: pendingSseUrl" in chunk
+    assert "l1PendingUrl: pendingL1Url" in chunk
+    assert "sseUrl: _sseStreamUrl || ''" not in chunk
+    assert "l1LightUrl: _l1LightStreamUrl || ''" not in chunk
+
+
+def test_sse_stream_urls_commit_on_open_not_at_creation():
+    """Zombie-handshake wedge lock (2026-06-29 frozen-cards class): stream URLs are
+    recorded ONLY in onopen for BOTH the main SSE and the L1 light mirror. A stream
+    stuck CONNECTING that never opened keeps a null URL, so the idempotency guards
+    replace it on the next acquisition pass instead of no-oping forever."""
+    h = _html()
+    for fn, url_var in (
+        ("function connectSSE", "_sseStreamUrl"),
+        ("function connectL1LightSSE", "_l1LightStreamUrl"),
+    ):
+        fn_idx = h.find(fn)
+        assert fn_idx != -1, fn
+        chunk = h[fn_idx : fn_idx + 6000]
+        pos_null = chunk.find(f"{url_var} = null;")
+        pos_onopen = chunk.find("es.onopen")
+        pos_commit = chunk.find(f"{url_var} = wantUrl;")
+        assert pos_null != -1, f"{fn}: URL must be nulled at EventSource creation"
+        assert pos_onopen != -1, fn
+        assert pos_commit != -1, f"{fn}: URL must commit to the RELATIVE wantUrl in onopen"
+        assert pos_null < pos_onopen < pos_commit, (
+            f"{fn}: URL commit must live INSIDE onopen, after creation-time null "
+            f"(null@{pos_null}, onopen@{pos_onopen}, commit@{pos_commit})"
+        )
+        # es.url serializes ABSOLUTE and would fail the relative same-URL guard,
+        # churning a healthy OPEN stream on every non-force acquisition pass.
+        assert f"{url_var} = es.url" not in chunk
+
+
 def test_step2_fresh_pill_cannot_override_stale_or_frozen_bundle():
     """FRESH pill follows bundle/actionability truth — never FRESH while stale/frozen/aging."""
     h = _html()

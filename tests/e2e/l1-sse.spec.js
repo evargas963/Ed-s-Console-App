@@ -48,6 +48,15 @@ test('L1 stream URL updates after ticker switch', async ({ page }) => {
     null,
     { timeout: 90000 },
   );
+  // Stream URL commits in onopen (zombie-handshake fix) — wait for it, not just the flip.
+  await page.waitForFunction(
+    () => {
+      const u = window.__edTestHooks.getL1LightStreamUrl();
+      return !!(u && u.includes('ticker=QQQ'));
+    },
+    null,
+    { timeout: 90000 },
+  );
   const url = await page.evaluate(() => window.__edTestHooks.getL1LightStreamUrl());
   expect(url).toContain('ticker=QQQ');
 });
@@ -120,6 +129,15 @@ test('L1 stream URL includes expiry after synthetic expiry commit', async ({ pag
   });
   await page.waitForFunction(
     () => window.__edTestHooks.getActiveExpiry() === '2026-12-19',
+    null,
+    { timeout: 90000 },
+  );
+  // Stream URL commits in onopen (zombie-handshake fix) — wait for it, not just the flip.
+  await page.waitForFunction(
+    () => {
+      const u = window.__edTestHooks.getL1LightStreamUrl();
+      return !!(u && u.includes('expiry=2026-12-19'));
+    },
     null,
     { timeout: 90000 },
   );
