@@ -766,8 +766,16 @@ def test_db_contention_operator_dom_and_client_hooks():
 def test_db_degraded_coexists_with_lane_stale_integrity():
     from verification.db_sqlite_contention_impact_audit import derive_db_contention_operator_status
 
+    _now = 1_700_000_100.0
     db = derive_db_contention_operator_status(
-        {"sqlite_lock_wait_count": 1, "sqlite_lock_wait_max_ms": 150.0, "recent_events": []}
+        {
+            "sqlite_lock_wait_count": 1,
+            "sqlite_lock_wait_max_ms": 150.0,
+            "recent_events": [
+                {"kind": "lock_wait", "wait_ms": 150.0, "ts_utc": _now - 10.0}
+            ],
+        },
+        now_utc=_now,
     )
     integrity = _derive_integrity(
         last_fast_ts=100.0,

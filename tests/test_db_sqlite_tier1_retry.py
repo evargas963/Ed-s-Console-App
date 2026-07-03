@@ -214,9 +214,11 @@ def test_no_contention_operator_status_ok():
     assert status["show"] is False
 
 
-def test_lock_wait_event_yields_db_waiting():
+def test_recent_lock_wait_event_yields_db_waiting():
+    """DB pill truth decay fix: WAITING derives from recent-window events, not lifetime."""
     from verification.db_sqlite_contention_impact_audit import derive_db_contention_operator_status
 
+    now = 1_700_000_100.0
     status = derive_db_contention_operator_status(
         {
             "sqlite_lock_wait_count": 1,
@@ -224,30 +226,103 @@ def test_lock_wait_event_yields_db_waiting():
             "sqlite_busy_retry_count": 0,
             "sqlite_database_locked_count": 0,
             "sqlite_tier1_fail_count": 0,
-            "recent_events": [],
-            "config": {"lock_wait_warn_ms": 100.0},
-        }
+            "recent_events": [
+                {"kind": "lock_wait", "wait_ms": 120.0, "ts_utc": now - 10.0}
+            ],
+        },
+        now_utc=now,
     )
     assert status["state"] == "DB_WAITING"
     assert status["show"] is True
     assert "snapshot writes delayed" in status["detail"]
 
 
-def test_high_lock_wait_yields_db_degraded():
+def test_recent_high_lock_wait_yields_db_degraded():
+    """Recent contention still degrades: one >=500ms wait OR >=3 waits in the window."""
     from verification.db_sqlite_contention_impact_audit import derive_db_contention_operator_status
 
-    status = derive_db_contention_operator_status(
+    now = 1_700_000_100.0
+    big = derive_db_contention_operator_status(
+        {
+            "sqlite_lock_wait_count": 1,
+            "sqlite_lock_wait_max_ms": 748.6,
+            "recent_events": [
+                {"kind": "lock_wait", "wait_ms": 748.6, "ts_utc": now - 5.0}
+            ],
+        },
+        now_utc=now,
+    )
+    assert big["state"] == "DB_DEGRADED"
+    assert "cards may lag" in big["detail"]
+    # Ticker-agnostic / process-global: three small waits across trio AND guest tickers.
+    many = derive_db_contention_operator_status(
         {
             "sqlite_lock_wait_count": 3,
-            "sqlite_lock_wait_max_ms": 748.6,
-            "sqlite_busy_retry_count": 0,
+            "sqlite_lock_wait_max_ms": 40.0,
+            "recent_events": [
+                {"kind": "lock_wait", "wait_ms": 30.0, "ticker": "SPY", "ts_utc": now - 30.0},
+                {"kind": "lock_wait", "wait_ms": 35.0, "ticker": "QQQ", "ts_utc": now - 20.0},
+                {"kind": "lock_wait", "wait_ms": 40.0, "ticker": "XLE", "ts_utc": now - 10.0},
+            ],
+        },
+        now_utc=now,
+    )
+    assert many["state"] == "DB_DEGRADED"
+
+
+def test_lifetime_counters_alone_recover_to_ok_after_window_clears():
+    """Truth decay fix: historical contention must not pin the pill degraded forever.
+
+    Lifetime counters (21 waits, 3.6s max — the 2026-07-03 live incident shape) with no
+    event inside the 120s window -> OK, while the cumulative numbers stay visible in
+    metrics_summary for diagnostics.
+    """
+    from verification.db_sqlite_contention_impact_audit import derive_db_contention_operator_status
+
+    now = 1_700_000_600.0
+    status = derive_db_contention_operator_status(
+        {
+            "sqlite_lock_wait_count": 21,
+            "sqlite_lock_wait_max_ms": 3617.439,
+            "sqlite_busy_retry_count": 2,
             "sqlite_database_locked_count": 0,
             "sqlite_tier1_fail_count": 0,
-            "recent_events": [],
-        }
+            "recent_events": [
+                # Real events, but all older than the 120s recovery window.
+                {"kind": "lock_wait", "wait_ms": 3617.439, "ts_utc": now - 300.0},
+                {"kind": "busy_retry", "ts_utc": now - 280.0},
+            ],
+        },
+        now_utc=now,
     )
-    assert status["state"] == "DB_DEGRADED"
-    assert "cards may lag" in status["detail"]
+    assert status["state"] == "OK"
+    assert status["show"] is False
+    # Cumulative diagnostics preserved — recovery is decay, not suppression.
+    assert status["metrics_summary"]["sqlite_lock_wait_count"] == 21
+    assert status["metrics_summary"]["sqlite_lock_wait_max_ms"] == 3617.439
+    assert status["metrics_summary"]["sqlite_busy_retry_count"] == 2
+    assert status["recent_window_summary"]["lock_wait_count"] == 0
+
+
+def test_db_locked_not_weakened_by_window_decay():
+    """DB_LOCKED stays strict: lifetime locked/tier1-fail counters flag even with an
+    empty recent window (a proven locked/failed write is a hard process flag)."""
+    from verification.db_sqlite_contention_impact_audit import derive_db_contention_operator_status
+
+    now = 1_700_000_600.0
+    status = derive_db_contention_operator_status(
+        {
+            "sqlite_lock_wait_count": 0,
+            "sqlite_lock_wait_max_ms": 0.0,
+            "sqlite_busy_retry_count": 0,
+            "sqlite_database_locked_count": 1,
+            "sqlite_tier1_fail_count": 0,
+            "recent_events": [],
+        },
+        now_utc=now,
+    )
+    assert status["state"] == "DB_LOCKED"
+    assert status["severity"] == "bad"
 
 
 def test_database_locked_yields_db_locked():

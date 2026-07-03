@@ -241,6 +241,13 @@ def derive_db_contention_operator_status(
 ) -> dict[str, Any]:
     """
     Map tier-1 SQLite contention counters to operator-facing transport warning (not model verdict).
+
+    DB_WAITING / DB_DEGRADED derive from the RECENT event window (default 120s) so the
+    pill reports current transport health and recovers honestly once contention stops —
+    process-lifetime counters previously pinned the pill degraded forever after 3 waits.
+    Lifetime counters stay in metrics_summary for diagnostics. DB_LOCKED stays strict:
+    lifetime locked/tier1-fail counters OR recent locked events (never weakened — a
+    proven locked/failed write is a hard flag for the process).
     """
     now = float(time.time() if now_utc is None else now_utc)
     recent = [
@@ -255,8 +262,12 @@ def derive_db_contention_operator_status(
     busy_retry = int(metrics.get("sqlite_busy_retry_count") or 0)
     db_locked = int(metrics.get("sqlite_database_locked_count") or 0)
     tier1_fail = int(metrics.get("sqlite_tier1_fail_count") or 0)
-    cfg = metrics.get("config") if isinstance(metrics.get("config"), dict) else {}
-    warn_ms = float(cfg.get("lock_wait_warn_ms") or 100.0)
+
+    recent_lock_waits = [e for e in recent if str(e.get("kind") or "") == "lock_wait"]
+    recent_busy_retries = [e for e in recent if str(e.get("kind") or "") == "busy_retry"]
+    recent_wait_max = max(
+        (float(e.get("wait_ms") or 0.0) for e in recent_lock_waits), default=0.0
+    )
 
     state = "OK"
     if (
@@ -266,15 +277,13 @@ def derive_db_contention_operator_status(
         or "tier1_fail" in recent_kinds
     ):
         state = "DB_LOCKED"
-    elif lock_wait_max >= 500.0 or lock_wait_count >= 3 or busy_retry >= 2:
-        state = "DB_DEGRADED"
     elif (
-        lock_wait_count > 0
-        or busy_retry > 0
-        or lock_wait_max >= warn_ms
-        or "lock_wait" in recent_kinds
-        or "busy_retry" in recent_kinds
+        recent_wait_max >= 500.0
+        or len(recent_lock_waits) >= 3
+        or len(recent_busy_retries) >= 2
     ):
+        state = "DB_DEGRADED"
+    elif recent_lock_waits or recent_busy_retries:
         state = "DB_WAITING"
 
     headline, detail = _DB_STATE_COPY[state]
@@ -301,6 +310,11 @@ def derive_db_contention_operator_status(
             "sqlite_busy_retry_count": busy_retry,
             "sqlite_database_locked_count": db_locked,
             "sqlite_tier1_fail_count": tier1_fail,
+        },
+        "recent_window_summary": {
+            "lock_wait_count": len(recent_lock_waits),
+            "lock_wait_max_ms": round(recent_wait_max, 3),
+            "busy_retry_count": len(recent_busy_retries),
         },
         "last_event_ts_utc": last_ts,
         "recent_window_sec": float(recent_window_sec),
