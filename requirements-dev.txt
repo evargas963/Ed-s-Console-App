@@ -1,9 +1,15 @@
 # Dev / test dependencies (optional). Install: pip install -r requirements-dev.txt
+#
+# Native wheels are PINNED (2026-07-03): the PR-lane register scanner segfaulted on the
+# CI runner inside numpy matmul/argsort (faulthandler frame: schwab_csv.py:147,
+# candidates_embedding_topk) with the floating ">=" resolution, while the same content
+# passes locally on the versions below. Bump these deliberately, with a green
+# schwab-csv-first PR run as the acceptance test.
 pytest>=8.0
-numpy>=1.24
+numpy==2.3.5
 pyyaml>=6.0
 openpyxl>=3.1
-tree-sitter>=0.25
-tree-sitter-typescript>=0.23
-tree-sitter-html>=0.23
+tree-sitter==0.25.2
+tree-sitter-typescript==0.23.2
+tree-sitter-html==0.23.2
 sentence-transformers>=2.6
