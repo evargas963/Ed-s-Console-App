@@ -207,6 +207,7 @@ MEGA1_TRACEABLE_INVENTORY: tuple[Mega1TraceableDerivation, ...] = (
     Mega1TraceableDerivation("server.py", 1212, "_maybe_broadcast_sse_cache_fanout", "NONE", None, (), None, "No market-field derivation: optional SSE cache fanout when recompute blocked; no Schwab wire read."),
     Mega1TraceableDerivation("server.py", 1231, "_fetch_state_sse_bounded", "NONE", None, (), None, "No market-field derivation: bounded wall-clock wrapper around _fetch_state for sse_loop; no new market-field derivation."),
     Mega1TraceableDerivation("server.py", 2933, "_live_operator_mode_active", "NONE", None, (), None, "No market-field derivation: RTH clock + SSE viewer presence gate for the background logger; no Schwab wire read."),
+    Mega1TraceableDerivation("server.py", 3204, "_maybe_schedule_base_normalized_refresh", "NONE", None, (), None, "No market-field derivation: gates base trio normalized-materialize scheduling on live operator mode; no Schwab wire read."),
     Mega1TraceableDerivation("server.py", 550, "_invalidate_analytics_cache_after_bg_failures", "NONE", None, (), None, "Internal analytics cache invalidation control flow. No market-field derivation."),
     Mega1TraceableDerivation("server.py", 584, "_reset_analytics_bg_fail_count", "NONE", None, (), None, "Internal counter reset. No market-field derivation."),
     Mega1TraceableDerivation("server.py", 586, "_schedule_analytics_recompute", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),

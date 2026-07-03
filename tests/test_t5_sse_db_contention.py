@@ -168,6 +168,43 @@ def test_step2_tick_coherent_callback_not_registered_in_lifespan():
     assert "def _on_tick_broadcast_sync" in src
 
 
+def test_step3_inflight_fanout_runs_outside_analytics_bg_lock(srv_module, monkeypatch):
+    """LIVE_OPERATOR_MODE_RESET_V1 Step 3 — deadlock regression lock.
+
+    The in-flight SSE-loop branch must invoke the cache fanout AFTER releasing
+    _analytics_bg_lock: the fanout chain re-acquires that same non-reentrant lock
+    via _attach_analytics_freshness_contract, which self-deadlocked the event loop
+    (py-spy proof 2026-07-02). On the pre-fix code the probe below cannot acquire
+    the lock (held by the caller) and this test fails; on the fixed code it passes.
+    """
+    srv = srv_module
+    ticker, expiry, ck = _seed_spy_cache(srv)
+    inflight_key = srv._tier_c_inflight_key(ticker, expiry)
+    with srv._analytics_bg_lock:
+        srv._analytics_inflight.add(inflight_key)
+    with srv._sse_lock:
+        srv._sse_subscribers[ck] = 1
+
+    probe: dict = {"called": False, "lock_acquirable": None, "fanout_reason": None}
+
+    def _probe_fanout(t, e, *, inflight_key, fanout_reason):
+        probe["called"] = True
+        probe["fanout_reason"] = fanout_reason
+        acquired = srv._analytics_bg_lock.acquire(blocking=False)
+        probe["lock_acquirable"] = acquired
+        if acquired:
+            srv._analytics_bg_lock.release()
+        return True
+
+    monkeypatch.setattr(srv, "_maybe_broadcast_sse_cache_fanout", _probe_fanout)
+    srv._schedule_analytics_recompute(inflight_key, ticker, expiry, "sse_loop")
+    assert probe["called"] is True
+    assert probe["fanout_reason"] == "fetch_in_flight"
+    assert probe["lock_acquirable"] is True, (
+        "fanout invoked while _analytics_bg_lock held — event-loop self-deadlock shape"
+    )
+
+
 def test_t5_sse_loop_cadence_calls_cache_fanout_before_recompute(srv_module, monkeypatch):
     srv = srv_module
     ticker, expiry, ck = _seed_spy_cache(srv)

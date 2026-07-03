@@ -334,7 +334,8 @@ LIVE_QUOTE_SSE_INTERVAL_SEC: float = float(os.environ.get("ED_LIVE_QUOTE_SSE_INT
 
 # ── DB snapshot insert throttle (TQM: bound raw row explosion from SSE + logger) ─
 # At most one INSERT per ticker per UTC-minute bucket (matches normalized 1m bucketing).
-# Outcome backfill still runs every fetch. Set ED_DB_SNAPSHOT_THROTTLE=0 to disable.
+# Bars persist + outcome backfill ride the same throttle (Step 3, live-path write
+# pressure). Set ED_DB_SNAPSHOT_THROTTLE=0 to restore per-fetch writes.
 _db_snapshot_minute_bucket: dict[str, int] = {}
 _db_snapshot_gate_lock = threading.Lock()
 
@@ -1272,20 +1273,27 @@ def _schedule_analytics_recompute(
     if _analytics_bg_shutdown:
         return
     sse_loop = update_source == "sse_loop"
+    # LIVE_OPERATOR_MODE_RESET_V1 Step 3 — deadlock fix: decide the in-flight branch
+    # under _analytics_bg_lock, then RELEASE before fanning out. The fanout chain
+    # re-enters this same non-reentrant lock via _attach_analytics_freshness_contract,
+    # which self-deadlocked the event loop (py-spy proof:
+    # reports/ui_transport/step1_2_proof_wedge_pyspy_dump_20260702.txt).
     with _analytics_bg_lock:
         if _analytics_bg_shutdown:
             return
-        if inflight_key in _analytics_inflight:
-            if sse_loop:
-                _maybe_broadcast_sse_cache_fanout(
-                    ticker,
-                    expiry,
-                    inflight_key=inflight_key,
-                    fanout_reason="fetch_in_flight",
-                )
-            log.debug("analytics refresh already in flight %s", inflight_key)
-            return
-        _analytics_inflight.add(inflight_key)
+        in_flight = inflight_key in _analytics_inflight
+        if not in_flight:
+            _analytics_inflight.add(inflight_key)
+    if in_flight:
+        if sse_loop:
+            _maybe_broadcast_sse_cache_fanout(
+                ticker,
+                expiry,
+                inflight_key=inflight_key,
+                fanout_reason="fetch_in_flight",
+            )
+        log.debug("analytics refresh already in flight %s", inflight_key)
+        return
 
     def _work() -> None:
         try:
@@ -3194,6 +3202,26 @@ def _base_money_path_capture_one(ticker: str):
         return BaseCaptureAttempt(t, f"error:{err}", time.monotonic() - t0)
 
 
+def _maybe_schedule_base_normalized_refresh() -> None:
+    """
+    LIVE_OPERATOR_MODE_RESET_V1 Step 3 — base trio normalized materialize is skipped
+    while the operator is live: materialize_normalized_table is a long clear+rebuild
+    write transaction on the single SQLite file and must not contend with the live
+    path. Raw base capture is unaffected; the first non-live cycle schedules the
+    debounced refresh exactly as before.
+    """
+    if _live_operator_mode_active():
+        log.debug("base normalized refresh skipped (live operator mode)")
+        return
+    try:
+        from db import DB_PATH as _base_norm_db_path
+        from normalized_training_sync import schedule_debounced_base_money_path_normalized_refresh
+
+        schedule_debounced_base_money_path_normalized_refresh(_base_norm_db_path, logger=log)
+    except Exception as _bne:
+        log.warning("schedule base money-path normalized refresh: %s", _bne)
+
+
 def _base_money_path_logger_loop():
     """
     Dedicated base-ticker capture: SPY, QQQ, IWM at ~1 lightweight snapshot/min each during RTH.
@@ -3240,13 +3268,7 @@ def _base_money_path_logger_loop():
                 attempt.duration_sec,
             )
 
-        try:
-            from db import DB_PATH as _base_norm_db_path
-            from normalized_training_sync import schedule_debounced_base_money_path_normalized_refresh
-
-            schedule_debounced_base_money_path_normalized_refresh(_base_norm_db_path, logger=log)
-        except Exception as _bne:
-            log.warning("schedule base money-path normalized refresh: %s", _bne)
+        _maybe_schedule_base_normalized_refresh()
 
         elapsed = time.monotonic() - cycle_start
         wait = max(0.0, interval - elapsed)
@@ -4677,7 +4699,10 @@ def _fetch_state(
     logger_source: Optional[str] = None,
 ) -> dict:
     _fetch_start_mono = time.monotonic()
-    _register_tracked_ticker(ticker)
+    # LIVE_OPERATOR_MODE_RESET_V1 Step 3 — TICKER-PREVIEW-NO-ENROLL applies here too:
+    # a Tier C recompute for a viewed symbol refreshes last-seen only. Enrollment into
+    # logging_universe is explicit (/api/logger/add | /api/logger/pin).
+    _touch_tracked_ticker_view(ticker)
     _ed_db = get_db() if _HAS_SIGNALS else None
     try:
         from live_pipeline_diag import emit_fetch_state_start
@@ -5858,7 +5883,7 @@ def _fetch_state(
         ms.news_context = None
 
     # ── DB snapshot logging ───────────────────────────────────────────────────
-    if _ed_db:  # snapshot INSERT throttled (see ED_DB_SNAPSHOT_THROTTLE); outcomes still backfilled each fetch
+    if _ed_db:  # snapshot INSERT, bars persist + outcome backfill all throttled (see ED_DB_SNAPSHOT_THROTTLE)
         if _diag_on():
             _diag_step("pre_db_snapshot", ticker)
         try:
@@ -6357,24 +6382,30 @@ def _fetch_state(
                 _snap = SnapshotRow(**{k: v for k, v in _snapshot_kwargs.items() if k in _snapshotrow_field_names})
                 _ed_db.insert_snapshot(_snap)
                 _snapshot_row_insert_committed(ticker, _snap_ts)
-            try:
-                _bars_persist = _candles_1m.get_bars(ticker)
-                if _bars_persist:
-                    _ed_db.upsert_1m_bars(ticker, _bars_persist)
-            except Exception as _pe:
-                log.warning("upsert_1m_bars %s: %s", ticker, _pe)
-            def _bg_fill_outcomes() -> None:
+            # LIVE_OPERATOR_MODE_RESET_V1 Step 3 — bars persist + outcome backfill ride
+            # the snapshot throttle (1/min/ticker): per-refresh writes contended with the
+            # live path; bars re-seed from Schwab pricehistory after any gap and labels
+            # only advance when new rows exist.
+            if _do_insert:
                 try:
-                    get_db().fill_outcomes(ticker, CANONICAL_TIMEFRAME, _snap_ts)
-                except Exception as ex:
-                    log.warning(
-                        "fill_outcomes_bg failed ticker=%s thread=%s: %s",
-                        ticker,
-                        threading.current_thread().name,
-                        ex,
-                    )
+                    _bars_persist = _candles_1m.get_bars(ticker)
+                    if _bars_persist:
+                        _ed_db.upsert_1m_bars(ticker, _bars_persist)
+                except Exception as _pe:
+                    log.warning("upsert_1m_bars %s: %s", ticker, _pe)
 
-            _get_db_fill_outcomes_executor().submit(_bg_fill_outcomes)
+                def _bg_fill_outcomes() -> None:
+                    try:
+                        get_db().fill_outcomes(ticker, CANONICAL_TIMEFRAME, _snap_ts)
+                    except Exception as ex:
+                        log.warning(
+                            "fill_outcomes_bg failed ticker=%s thread=%s: %s",
+                            ticker,
+                            threading.current_thread().name,
+                            ex,
+                        )
+
+                _get_db_fill_outcomes_executor().submit(_bg_fill_outcomes)
             # Heavy normalized-table materialize must not run from every snapshot by default;
             # set ED_LIVE_SNAPSHOT_MATERIALIZE=1 to re-enable debounced refresh on this path, or use ml_scheduler/CLI.
             if os.environ.get("ED_LIVE_SNAPSHOT_MATERIALIZE", "0").strip().lower() in (

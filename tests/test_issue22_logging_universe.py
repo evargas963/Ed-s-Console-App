@@ -394,7 +394,7 @@ def test_issue22_add_logger_no_eviction_when_fifo_disabled(monkeypatch, tmp_path
 # ─────────────────────────────────────────────────────────────────────────────
 def test_db_write_path_d_import_does_not_trigger_db_universe_load():
     """DB-WRITE-PATH-FIXES (d), 2026-05-31: `import server` must NOT run the heavy DB-backed
-    logging-universe load (migrations / sync_core / prune / panel-sync). That work is deferred to
+    logging-universe load (migrations / sync_core / prune / panel-sync). That work moves to
     the FastAPI lifespan (start_logger -> _hydrate_logger_tickers_from_db). Verified in a CLEAN
     subprocess so prior in-process lifespan/hydrate calls cannot pollute the guard counter."""
     code = (
@@ -415,7 +415,7 @@ def test_db_write_path_d_import_does_not_trigger_db_universe_load():
     assert "IMPORT_DEFER_OK" in proc.stdout
 
 
-def test_db_write_path_d_deferred_loader_populates_and_counts(monkeypatch, tmp_path):
+def test_db_write_path_d_lifespan_loader_populates_and_counts(monkeypatch, tmp_path):
     """DB-WRITE-PATH-FIXES (d): the loader the lifespan calls (start_logger ->
     _hydrate_logger_tickers_from_db) still performs the full DB load — it populates user_persisted
     tickers AND increments the import-defer guard counter. Proves the heavy work was MOVED, not
@@ -529,3 +529,19 @@ def test_ticker_preview_view_endpoint_no_enroll_track_enrolls(monkeypatch, tmp_p
         srv.CORE_TICKERS[:] = prev_core
         with srv._logger_lock:
             srv._logger_tickers[:] = prev
+
+
+def test_step3_fetch_state_does_not_enroll_viewed_ticker():
+    """LIVE_OPERATOR_MODE_RESET_V1 Step 3: a Tier C recompute (_fetch_state) is a VIEW —
+    it touches last-seen only (no-op for un-enrolled symbols, proven by
+    test_ticker_preview_view_touch_never_enrolls). Enrollment stays explicit via
+    /api/logger/add | /api/logger/pin."""
+    import inspect
+
+    import server as srv
+
+    src = inspect.getsource(srv._fetch_state)
+    assert "_register_tracked_ticker(" not in src, "_fetch_state must not auto-enroll viewed tickers"
+    assert "_touch_tracked_ticker_view(ticker)" in src
+    add_src = inspect.getsource(srv.logger_add)
+    assert "_register_tracked_ticker(" in add_src, "explicit track route remains the enrollment path"

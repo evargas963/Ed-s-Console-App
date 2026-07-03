@@ -728,3 +728,47 @@ def test_logger_full_fetch_when_no_live_operator_mode(monkeypatch):
     status, calls = _run_logger_fetch(monkeypatch, "NVDA", live_mode=False)
     assert status == "ok:fetch"
     assert calls == [("NVDA", True)]
+
+
+# ── LIVE_OPERATOR_MODE_RESET_V1 Step 3 — live-path DB write gating ──
+
+
+def test_step3_bars_and_outcomes_ride_snapshot_throttle():
+    """upsert_1m_bars + fill_outcomes submit must sit inside the _do_insert throttle."""
+    import inspect
+
+    import server as srv
+
+    src = inspect.getsource(srv._fetch_state)
+    marker = src.find("bars persist + outcome backfill ride")
+    assert marker != -1, "Step 3 throttle block missing from _fetch_state"
+    block = src[marker : marker + 1400]
+    assert "if _do_insert:" in block
+    guard = block[block.find("if _do_insert:") :]
+    assert "upsert_1m_bars" in guard
+    assert "_get_db_fill_outcomes_executor().submit" in guard
+    # No unthrottled duplicate CALL SITES outside the guard ("(" excludes the
+    # warning-log format string "upsert_1m_bars %s" on the except path).
+    assert src.count("upsert_1m_bars(") == 1
+    assert src.count("_get_db_fill_outcomes_executor().submit") == 1
+
+
+def test_step3_base_normalized_refresh_skipped_in_live_operator_mode(monkeypatch):
+    import server as srv
+
+    calls: list[str] = []
+    import normalized_training_sync as nts
+
+    monkeypatch.setattr(
+        nts,
+        "schedule_debounced_base_money_path_normalized_refresh",
+        lambda p, logger=None: calls.append(str(p)),
+    )
+
+    monkeypatch.setattr(srv, "_live_operator_mode_active", lambda: True)
+    srv._maybe_schedule_base_normalized_refresh()
+    assert calls == [], "live operator mode must skip base normalized scheduling"
+
+    monkeypatch.setattr(srv, "_live_operator_mode_active", lambda: False)
+    srv._maybe_schedule_base_normalized_refresh()
+    assert len(calls) == 1, "non-live cycle must schedule the debounced refresh as before"
