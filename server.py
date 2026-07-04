@@ -7281,13 +7281,30 @@ async def _app_lifespan(app):
     start_logger()
     log.info(f"Background logger started — core tickers: {CORE_TICKERS}")
 
-    # ML scheduler first (runs nightly at 16:15 ET) — start before any client code that could fail
-    try:
-        from ml_scheduler import start_background_scheduler
-        start_background_scheduler()
-        log.info("ML scheduler started — next run at 16:15 ET")
-    except Exception as e:
-        log.warning(f"ML scheduler not started: {e}")
+    # ML scheduler is OPT-IN for the operator console (2026-07-03): the unconditional
+    # nightly 16:15 ET run trained/promoted models from whatever console instance was
+    # open — an ungoverned writer into models/active (operator ruling: BLESS_RUN=NO,
+    # MODELS_ACTIVE_AS_OUTPUT_LANE=NOT_APPROVED), it spawned multiprocess workers that
+    # outlive console crashes, and it contended with the live DB during operator use.
+    # Training hosts opt in explicitly; `python ml_scheduler.py --run-now` is unchanged.
+    #
+    # SCHWAB_CSV_CHECKED — console usability slice (scheduler gate + incremental
+    #   normalized materialize):
+    # Schwab CSV authority checked: yes
+    # CSV row(s): NO_SCHWAB_EQUIVALENT — process scheduling and DB write batching only;
+    #   no market field read, derivation, or emission changed.
+    if os.environ.get("ED_ENABLE_BACKGROUND_SCHEDULER", "0").strip().lower() in ("1", "true", "yes", "on"):
+        try:
+            from ml_scheduler import start_background_scheduler
+            start_background_scheduler()
+            log.info("ML scheduler started — next run at 16:15 ET (ED_ENABLE_BACKGROUND_SCHEDULER on)")
+        except Exception as e:
+            log.warning(f"ML scheduler not started: {e}")
+    else:
+        log.info(
+            "ML scheduler NOT started — operator console default "
+            "(set ED_ENABLE_BACKGROUND_SCHEDULER=1 on a training host to opt in)"
+        )
 
     # Order flow streaming (nasdaq_book, nyse_book, level_one_equity)
     try:

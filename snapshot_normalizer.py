@@ -220,14 +220,25 @@ def resolve_source_timeframe(conn: sqlite3.Connection, ticker: str) -> str:
 
 
 def fetch_rows_for_normalization(
-    conn: sqlite3.Connection, ticker: str
+    conn: sqlite3.Connection, ticker: str, since_ts_utc: Optional[float] = None
 ) -> tuple[list[dict[str, Any]], str]:
-    """Load source rows and the timeframe they came from."""
+    """Load source rows and the timeframe they came from.
+
+    since_ts_utc: when set, only rows with ts_utc >= since_ts_utc are read
+    (index-served via idx_snap_ticker_tf_ts) — the incremental live path must not
+    re-read the full multi-GB snapshots history every cycle.
+    """
     tf = resolve_source_timeframe(conn, ticker)
-    rows = conn.execute(
-        get_snapshot_sql("snapshot_normalizer.py:210"),
-        (ticker, tf),
-    ).fetchall()
+    if since_ts_utc is not None:
+        rows = conn.execute(
+            get_snapshot_sql("snapshot_normalizer.py:fetch_window"),
+            (ticker, tf, float(since_ts_utc)),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            get_snapshot_sql("snapshot_normalizer.py:210"),
+            (ticker, tf),
+        ).fetchall()
     return [dict(r) for r in rows], tf
 
 
@@ -279,6 +290,7 @@ def materialize_normalized_table(
     db_path: Path = DB_PATH,
     tickers: Optional[list[str]] = None,
     clear_first: bool = True,
+    incremental_lookback_sec: Optional[float] = None,
 ) -> dict[str, Any]:
     """
     Resample sub-minute snapshots into snapshots_1m_normalized table.
@@ -288,6 +300,18 @@ def materialize_normalized_table(
         db_path: Path to the database.
         tickers: List of tickers to process. None = all tickers with 1m or legacy 5m rows.
         clear_first: If True, delete existing rows before insert (default).
+        incremental_lookback_sec: When set, a ticker that already has normalized rows is
+            refreshed INCREMENTALLY: only raw rows newer than
+            (MAX(normalized ts_utc) - lookback) are re-read, and only that window's
+            normalized rows are replaced, in one bounded transaction. The lookback must
+            cover the outcome backfill horizon (60c ≈ 60 minutes) so fill_outcomes
+            updates land in normalized rows exactly as under a full rebuild; rows older
+            than the window have final outcomes and never change on the live path.
+            The full clear+rebuild against the multi-GB snapshots table held the SQLite
+            write lock for 5-22s EVERY cycle (2026-07-03 live incident) — the live
+            observability path must never do that. Training's full-history rebuild
+            (ensure_normalized_training_table) is unchanged. A ticker with no
+            normalized rows falls back to the full path automatically.
 
     Returns:
         Dict with counts: raw_rows, normalized_rows, by_ticker, errors.
@@ -337,7 +361,24 @@ def materialize_normalized_table(
             ).fetchone()
             next_sid = int(row_mx[0] if row_mx and row_mx[0] is not None else 0)
 
-            raw, source_tf = fetch_rows_for_normalization(conn, ticker)
+            # Incremental window: replace only [cutoff, now) when the ticker already has
+            # normalized rows; a ticker with none takes the full path (first materialize).
+            window_cutoff: Optional[float] = None
+            if incremental_lookback_sec is not None:
+                row_ts = conn.execute(
+                    "SELECT MAX(ts_utc) FROM snapshots_1m_normalized WHERE ticker = ?",
+                    (ticker,),
+                ).fetchone()
+                last_norm_ts = _safe_float(row_ts[0] if row_ts else None)
+                if last_norm_ts is not None:
+                    # Align to a minute boundary so the boundary bucket is replaced whole.
+                    window_cutoff = float(
+                        _minute_bucket(last_norm_ts - float(incremental_lookback_sec)) * 60
+                    )
+
+            raw, source_tf = fetch_rows_for_normalization(
+                conn, ticker, since_ts_utc=window_cutoff
+            )
             result["raw_rows"] += len(raw)
             if not raw:
                 continue
@@ -349,6 +390,7 @@ def materialize_normalized_table(
                 "raw": len(raw),
                 "normalized": len(normalized),
                 "source_timeframe": source_tf,
+                "mode": "incremental" if window_cutoff is not None else "full",
             }
             result["normalized_rows"] += len(normalized)
             batch = []
@@ -362,7 +404,14 @@ def materialize_normalized_table(
                 # ONE transaction (single commit), so a concurrent reader sees either the old SPY
                 # rows or the new ones — never an empty SPY. Per-ticker commit still bounds WAL
                 # growth and releases the write lock between tickers (DB-WRITE-PATH-FIXES intent).
-                if clear_first:
+                # Incremental mode deletes only the refresh window — the bounded transaction that
+                # keeps the live write lock hold in milliseconds instead of seconds.
+                if window_cutoff is not None:
+                    conn.execute(
+                        "DELETE FROM snapshots_1m_normalized WHERE ticker = ? AND ts_utc >= ?",
+                        (ticker, window_cutoff),
+                    )
+                elif clear_first:
                     conn.execute("DELETE FROM snapshots_1m_normalized WHERE ticker = ?", (ticker,))
                 conn.executemany(insert_sql, batch)
                 conn.commit()

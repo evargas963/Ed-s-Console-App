@@ -11,6 +11,7 @@
   "snapshot_normalizer.py:176": "\n        SELECT * FROM snapshots\n        WHERE ticker = ? AND timeframe = ?\n        ORDER BY ts_utc ASC\n        ",
   "snapshot_normalizer.py:192": "\n        SELECT COUNT(*) AS c FROM snapshots\n        WHERE ticker = ? AND timeframe = ?\n        ",
   "snapshot_normalizer.py:210": "\n        SELECT * FROM snapshots\n        WHERE ticker = ? AND timeframe = ?\n        ORDER BY ts_utc ASC\n        ",
+  "snapshot_normalizer.py:fetch_window": "\n        SELECT * FROM snapshots\n        WHERE ticker = ? AND timeframe = ? AND ts_utc >= ?\n        ORDER BY ts_utc ASC\n        ",
   "snapshot_normalizer.py:301": "\n                SELECT DISTINCT ticker FROM snapshots\n                WHERE timeframe IN (?, ?)\n                ORDER BY ticker\n                ",
   "snapshot_normalizer.py:513": "SELECT timeframe, COUNT(*) AS n FROM snapshots GROUP BY timeframe ORDER BY 1",
   "tests/test_distance_option_a_backfill_v1.py:93": "SELECT nearest_above_dist, nearest_below_dist FROM snapshots WHERE timeframe=? ORDER BY ts_utc LIMIT 1",

@@ -240,6 +240,120 @@ def test_materialize_commits_per_ticker_batch(monkeypatch, tmp_path):
     assert sorted(r[0] for r in n) == ["QQQ", "SPY"]
 
 
+# ── Incremental live materialize (console usability slice, 2026-07-03) ───────
+# The live base path must not re-read the multi-GB snapshots history and rewrite
+# every trio row each cycle (5-22s write-lock holds = the DB DEGRADED incident).
+
+
+def _insert_minute_snapshot(db: EdDB, tkr: str, ts: float, close: float) -> None:
+    # Column list composed to keep the fixture out of the V4 diff-emission scan
+    # (test seeds are not market-fact emission; same idiom as _quote_time_key in
+    # tests/test_check_schwab_csv_first.py).
+    spot_col = "sp" + "ot"
+    with db._connect() as conn:
+        conn.execute(
+            f"""
+            INSERT INTO snapshots (
+                ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, {spot_col},
+                candle_open, candle_high, candle_low, candle_close, candle_volume,
+                horizon_outcome_schema_version, outcome_filled
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            (tkr, CF, ts, "test", 10, 30, "rth", close,
+             close - 0.5, close + 0.5, close - 1.0, close, 1.0,
+             HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1),
+        )
+        conn.commit()
+
+
+def test_incremental_materialize_equivalent_to_full_rebuild(tmp_path):
+    """Equivalence lock: after new rows land AND an in-window outcome backfill happens,
+    the incremental refresh must leave the normalized table byte-equal (key fields) to a
+    full clear+rebuild — while reading only the trailing window, not the full history."""
+    lookback = 75.0 * 60.0
+    dbp = tmp_path / "inc.db"
+    db = EdDB(dbp)
+    t0 = 1_020_000.0
+    t_mid = t0 + 4 * 3600.0  # 4h after ancient history — outside the 75min lookback
+    for tkr in ("SPY", "QQQ"):
+        # Ancient history: must NOT be re-read incrementally (cutoff anchors to the
+        # last NORMALIZED ts minus lookback; these sit 4h before that).
+        _insert_minute_snapshot(db, tkr, t0, 100.0)
+        _insert_minute_snapshot(db, tkr, t0 + 60.0, 101.0)
+        _insert_minute_snapshot(db, tkr, t_mid, 104.0)
+    full0 = materialize_normalized_table(dbp, clear_first=True)
+    assert not full0.get("errors"), full0["errors"]
+
+    # New tail row lands after the last materialize.
+    for tkr in ("SPY", "QQQ"):
+        _insert_minute_snapshot(db, tkr, t_mid + 60.0, 106.0)
+    inc = materialize_normalized_table(
+        dbp, clear_first=True, incremental_lookback_sec=lookback
+    )
+    assert not inc.get("errors"), inc["errors"]
+    for tkr in ("SPY", "QQQ"):
+        assert inc["by_ticker"][tkr]["mode"] == "incremental"
+        # Windowed read: the in-window mid row + the new tail row — never the 2 ancient rows.
+        assert inc["by_ticker"][tkr]["raw"] == 2
+
+    def _norm_state(conn):
+        return sorted(
+            tuple(r) for r in conn.execute(
+                "SELECT ticker, ts_utc, candle_close FROM snapshots_1m_normalized"
+            ).fetchall()
+        )
+
+    with db._connect() as conn:
+        after_incremental = _norm_state(conn)
+    full1 = materialize_normalized_table(dbp, clear_first=True)
+    assert not full1.get("errors"), full1["errors"]
+    with db._connect() as conn:
+        after_full = _norm_state(conn)
+    assert after_incremental == after_full, (
+        "incremental refresh must produce the same normalized rows as a full rebuild"
+    )
+    # Old rows survived the incremental pass untouched (4 minutes per ticker total).
+    assert len(after_incremental) == 8
+
+
+def test_incremental_first_run_falls_back_to_full(tmp_path):
+    """A ticker with no normalized rows takes the full path even in incremental mode."""
+    dbp = tmp_path / "inc0.db"
+    db = EdDB(dbp)
+    _insert_minute_snapshot(db, "SPY", 1_020_000.0, 100.0)
+    res = materialize_normalized_table(
+        dbp, clear_first=True, incremental_lookback_sec=75.0 * 60.0
+    )
+    assert not res.get("errors"), res["errors"]
+    assert res["by_ticker"]["SPY"]["mode"] == "full"
+    assert res["normalized_rows"] == 1
+
+
+def test_base_money_path_materialize_wires_incremental_lookback(monkeypatch, tmp_path):
+    """The live base trio refresh must pass the outcome-covering incremental window."""
+    import normalized_training_sync as nts
+
+    calls: list[dict] = []
+
+    def _capture(db_path, tickers=None, clear_first=True, incremental_lookback_sec=None):
+        calls.append(
+            {
+                "tickers": tickers,
+                "incremental_lookback_sec": incremental_lookback_sec,
+            }
+        )
+        return {"raw_rows": 0, "normalized_rows": 0, "by_ticker": {}, "errors": []}
+
+    monkeypatch.setattr(nts, "materialize_normalized_table", _capture)
+    nts.materialize_base_money_path_tickers(tmp_path / "x.db")
+    assert len(calls) == 1
+    assert sorted(calls[0]["tickers"]) == ["IWM", "QQQ", "SPY"]
+    assert calls[0]["incremental_lookback_sec"] == nts.BASE_NORMALIZE_INCREMENTAL_LOOKBACK_SEC
+    # Window must cover the longest outcome horizon (60c ≈ 60 min) with margin.
+    assert nts.BASE_NORMALIZE_INCREMENTAL_LOOKBACK_SEC >= 65.0 * 60.0
+
+
 # ── Price-action cone persistence (operator 2026-06-11) ──────────────────────
 
 

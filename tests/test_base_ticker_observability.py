@@ -772,3 +772,24 @@ def test_step3_base_normalized_refresh_skipped_in_live_operator_mode(monkeypatch
     monkeypatch.setattr(srv, "_live_operator_mode_active", lambda: False)
     srv._maybe_schedule_base_normalized_refresh()
     assert len(calls) == 1, "non-live cycle must schedule the debounced refresh as before"
+
+
+def test_console_ml_scheduler_is_opt_in():
+    """Console usability slice 2026-07-03: the operator console must NOT self-start the
+    nightly ML scheduler — the unconditional start made every open console an ungoverned
+    models/active writer (operator ruling: BLESS_RUN=NO, MODELS_ACTIVE_AS_OUTPUT_LANE=
+    NOT_APPROVED), spawned multiprocess workers that outlive console crashes, and
+    contended with the live DB. Training hosts opt in via ED_ENABLE_BACKGROUND_SCHEDULER=1."""
+    from pathlib import Path as _P
+
+    src = (_P(__file__).resolve().parent.parent / "server.py").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    gate = src.find('os.environ.get("ED_ENABLE_BACKGROUND_SCHEDULER", "0")')
+    assert gate != -1, "scheduler opt-in gate missing (default must be OFF)"
+    start = src.find("start_background_scheduler()")
+    assert start != -1
+    assert gate < start, "the env gate must guard the scheduler start call"
+    assert src.count("start_background_scheduler()") == 1, (
+        "no unconditional scheduler start path may remain"
+    )

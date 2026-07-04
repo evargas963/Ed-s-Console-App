@@ -10,7 +10,13 @@ from timeframe_config import CANONICAL_TIMEFRAME as CF
 
 
 def test_upsert_1m_bars_recomputes_affected_governed_outcomes(tmp_path):
-    """After ON CONFLICT bar update, stored outcomes matching changed bars are refreshed."""
+    """After ON CONFLICT bar update, stored outcomes matching changed bars are refreshed.
+
+    2026-07-03 console usability slice: the live upsert path skips bars byte-identical to
+    persisted history (no-op re-seeds must not rewrite + re-refresh the whole day), so this
+    test performs a GENUINE mutation — a changed close — which must still trigger the
+    governed refresh. The +0.001 nudge is far below the outcome threshold, so the
+    recomputed classification equals the original correct label."""
     db = EdDB(tmp_path / "gov.db")
     t0 = 1_020_000.0
     t_snap = t0 + 90.0
@@ -59,7 +65,7 @@ def test_upsert_1m_bars_recomputes_affected_governed_outcomes(tmp_path):
             ("up" if correct_5c != "up" else "down", CF),
         )
 
-    db.upsert_1m_bars(
+    n_written = db.upsert_1m_bars(
         "SPY",
         [
             {
@@ -67,11 +73,12 @@ def test_upsert_1m_bars_recomputes_affected_governed_outcomes(tmp_path):
                 "open": float(bar_row["open"]),
                 "high": float(bar_row["high"]),
                 "low": float(bar_row["low"]),
-                "close": float(bar_row["close"]),
+                "close": float(bar_row["close"]) + 0.001,  # genuine mutation
                 "volume": float(bar_row["volume"]),
             }
         ],
     )
+    assert n_written == 1, "a mutated historical bar must be written on the live path"
 
     with db._connect() as conn:
         row2 = conn.execute(
@@ -84,7 +91,7 @@ def test_upsert_1m_bars_recomputes_affected_governed_outcomes(tmp_path):
 
 def test_upsert_1m_bars_can_defer_governed_outcome_refresh_for_bulk_backfill(tmp_path):
     """Bulk backfill can skip per-window refresh, then repair labels with the explicit bulk refresh."""
-    db = EdDB(tmp_path / "gov_deferred.db")
+    db = EdDB(tmp_path / "gov_bulk.db")
     t0 = 1_520_000.0
     t_snap = t0 + 90.0
     with db._connect() as conn:
