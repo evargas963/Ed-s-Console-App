@@ -143,7 +143,15 @@ class SchwabCsvIndex:
             )[0].astype(np.float64)
             q = q / (np.linalg.norm(q) + 1e-9)
         sims = self._embed_matrix @ q
-        order = np.argsort(-sims)[:k]
+        # Platform-stable ranking (2026-07-03): raw argsort ordered ties by BLAS
+        # floating-point noise, which differs across CPU microarchitectures — two CI
+        # runner hosts produced byte-different registers for identical input (rows
+        # equal, topk note order flipped). Round away kernel noise and break ties
+        # lexicographically so the register is byte-identical on every host.
+        order = sorted(
+            range(len(sims)),
+            key=lambda i: (-round(float(sims[i]), 6), self._embed_canonical_fields[i]),
+        )[:k]
         return [self._embed_canonical_fields[i] for i in order]
 
 
