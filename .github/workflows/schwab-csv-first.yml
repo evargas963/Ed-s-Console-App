@@ -91,30 +91,47 @@ jobs:
           ulimit -s unlimited || true
           python -X faulthandler -m tools.schwab_universal_coverage_scanner_v3 \
             --output governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv \
-            --embedding-mode mock
+            --embedding-mode mock > /tmp/scanner_stdout.json
+
+      - name: Verify V4 register pin (non-circular, vs committed baseline)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          # Separate step so the 3-line verdict is never drowned by scanner stdout.
+          # The runner (Linux checkout) is the PIN AUTHORITY: pins generated on other
+          # platforms/working trees may not byte-match (CRLF, untracked files) — on
+          # mismatch, adopt the meta uploaded by the artifact step below.
           python <<'PY'
           import csv, hashlib, json, pathlib, sys
           meta = json.loads(pathlib.Path("/tmp/committed_register_meta.json").read_text(encoding="utf-8"))
           p = pathlib.Path("governance/SCHWAB_UNIVERSAL_COVERAGE_REGISTER_V4.csv")
           h = hashlib.sha256(p.read_bytes()).hexdigest()
           exp = meta.get("register_content_sha256")
+          with p.open(newline="", encoding="utf-8") as f:
+              n = sum(1 for _ in csv.DictReader(f))
+          print(f"runner regenerated: sha256={h} rows={n}")
+          print(f"committed pin:      sha256={exp} rows={meta.get('register_rows_written')}")
           if not exp or h != exp:
               print(
-                  "register_content_sha256 mismatch vs COMMITTED pin", h, exp,
-                  "- a PR that changes scanned sources must regenerate and commit "
-                  "schwab_v4_register_build_meta.json + scoreboard in the same PR",
+                  "register_content_sha256 MISMATCH vs COMMITTED pin - a PR that changes "
+                  "scanned sources must repin from the runner-regenerated meta "
+                  "(download the v4-register-meta artifact of this run).",
                   file=sys.stderr,
               )
               sys.exit(1)
-          want_rows = meta.get("register_rows_written")
-          if want_rows:
-              with p.open(newline="", encoding="utf-8") as f:
-                  n = sum(1 for _ in csv.DictReader(f))
-              if n != want_rows:
-                  print("register_rows_written mismatch vs COMMITTED pin", n, want_rows, file=sys.stderr)
-                  sys.exit(1)
+          if meta.get("register_rows_written") and n != meta["register_rows_written"]:
+              print("register_rows_written MISMATCH vs COMMITTED pin", file=sys.stderr)
+              sys.exit(1)
           print("V4 register pin OK (non-circular)", h[:16])
           PY
+
+      - name: Upload runner-regenerated register meta (pin authority)
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-register-meta
+          path: governance/artifacts/schwab_v4_register_build_meta.json
+          if-no-files-found: ignore
 
       - name: V4 diff-emission register gate (PR 2)
         if: github.event_name == 'pull_request'
