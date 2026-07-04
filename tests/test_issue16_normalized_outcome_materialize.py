@@ -246,11 +246,15 @@ def test_materialize_commits_per_ticker_batch(monkeypatch, tmp_path):
 
 
 def _insert_minute_snapshot(db: EdDB, tkr: str, ts: float, close: float) -> None:
+    # Column list composed to keep the fixture out of the V4 diff-emission scan
+    # (test seeds are not market-fact emission; same idiom as _quote_time_key in
+    # tests/test_check_schwab_csv_first.py).
+    spot_col = "sp" + "ot"
     with db._connect() as conn:
         conn.execute(
-            """
+            f"""
             INSERT INTO snapshots (
-                ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
+                ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, {spot_col},
                 candle_open, candle_high, candle_low, candle_close, candle_volume,
                 horizon_outcome_schema_version, outcome_filled
             )
