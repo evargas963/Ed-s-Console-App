@@ -742,9 +742,12 @@ def test_step3_bars_and_outcomes_ride_snapshot_throttle():
     src = inspect.getsource(srv._fetch_state)
     marker = src.find("bars persist + outcome backfill ride")
     assert marker != -1, "Step 3 throttle block missing from _fetch_state"
-    block = src[marker : marker + 1400]
-    assert "if _do_insert:" in block
-    guard = block[block.find("if _do_insert:") :]
+    # Anchor on the guard itself, not a fixed-size window: the lane-4 CSV-first
+    # declaration comment sits between the Step 3 comment and the guard, and any
+    # future comment growth must not break this lock's semantic assertion.
+    guard_idx = src.find("if _do_insert:", marker)
+    assert guard_idx != -1, "Step 3 _do_insert guard missing after throttle comment"
+    guard = src[guard_idx:]
     assert "upsert_1m_bars" in guard
     assert "_get_db_fill_outcomes_executor().submit" in guard
     # No unthrottled duplicate CALL SITES outside the guard ("(" excludes the
