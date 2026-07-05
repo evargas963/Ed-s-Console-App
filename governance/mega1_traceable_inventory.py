@@ -180,6 +180,7 @@ MEGA1_TRACEABLE_INVENTORY: tuple[Mega1TraceableDerivation, ...] = (
     Mega1TraceableDerivation("server.py", 213, "_safe_get_quote_with_retry", "DERIVED", None, ("schwab_client.py:safe_get_quote",), None, "Schwab get_quote wrapper with token retry."),
     Mega1TraceableDerivation("server.py", 241, "_snapshot_throttle_enabled", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega1TraceableDerivation("server.py", 246, "_snapshot_row_insert_allowed", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
+    Mega1TraceableDerivation("server.py", 254, "_snapshot_row_insert_release", "NONE", None, (), None, "No market-field derivation: releases a failed insert's minute reservation (snapshot throttle lifecycle); no Schwab field read, derivation, or emission."),
     Mega1TraceableDerivation("server.py", 255, "_snapshot_row_insert_committed", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega1TraceableDerivation("server.py", 309, "_l1_sse_remote_key", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega1TraceableDerivation("server.py", 319, "_l1_light_sse_count_by_scope", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),

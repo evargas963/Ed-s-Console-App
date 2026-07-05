@@ -320,6 +320,74 @@ def test_get_recent_iv_levels_matches_full_read(tmp_path) -> None:
     assert db.get_recent_iv_levels("SPY", CANONICAL_TIMEFRAME, n=2) == [18.0, 33.25]
 
 
+# ── Audit lock — snapshot minute gate must reserve atomically + durably ─────
+
+
+def test_snapshot_minute_gate_atomic_reserve_and_durable_probe(tmp_path, monkeypatch) -> None:
+    """Repo-wide audit (2026-07-05): the check-only gate leaked duplicate
+    (ticker, minute) snapshot rows two ways — concurrent callers both passed
+    before either committed, and process restarts began with an empty bucket
+    (4,783 duplicate groups on disk; SPY dups written same-day). The gate must
+    reserve AT CHECK TIME, release on failed insert, and consult the durable
+    same-minute existence probe so restarts cannot re-insert a written minute."""
+    import server as srv
+    from db import EdDB
+    from timeframe_config import CANONICAL_TIMEFRAME
+
+    monkeypatch.setenv("ED_DB_SNAPSHOT_THROTTLE", "1")
+    saved = dict(srv._db_snapshot_minute_bucket)
+    srv._db_snapshot_minute_bucket.clear()
+    try:
+        ts = 6_000_000.0  # minute bucket 100000
+        # 1. Atomic reserve: second concurrent caller in the same minute is blocked
+        #    BEFORE any insert commits.
+        assert srv._snapshot_row_insert_allowed("SPY", ts) is True
+        assert srv._snapshot_row_insert_allowed("SPY", ts + 5.0) is False
+        # 2. Failed insert releases the minute for a same-minute retry.
+        srv._snapshot_row_insert_release("SPY", ts)
+        assert srv._snapshot_row_insert_allowed("SPY", ts + 10.0) is True
+        # 3. Committed keeps the minute closed; release after commit-era bucket
+        #    of a DIFFERENT minute is a no-op.
+        srv._snapshot_row_insert_committed("SPY", ts)
+        assert srv._snapshot_row_insert_allowed("SPY", ts + 20.0) is False
+        # 4. Next minute opens normally.
+        assert srv._snapshot_row_insert_allowed("SPY", ts + 60.0) is True
+        # 5. Restart simulation: fresh (empty) bucket, but the DB already holds a
+        #    row for the minute — the durable probe must block the re-insert.
+        db = EdDB(tmp_path / "gate.db")
+        with db._connect() as conn:
+            conn.execute(
+                "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot)"
+                " VALUES (?,?,?,?,?)",
+                ("SPY", CANONICAL_TIMEFRAME, ts + 3.0, "test", 450.0),
+            )
+        srv._db_snapshot_minute_bucket.clear()  # simulate process restart
+        assert db.snapshot_exists_in_minute("SPY", CANONICAL_TIMEFRAME, int(ts // 60)) is True
+        assert srv._snapshot_row_insert_allowed("SPY", ts + 30.0, db=db) is False
+        # 6. A minute with no durable row still opens after restart.
+        assert srv._snapshot_row_insert_allowed("SPY", ts + 120.0, db=db) is True
+    finally:
+        srv._db_snapshot_minute_bucket.clear()
+        srv._db_snapshot_minute_bucket.update(saved)
+
+
+def test_snapshot_insert_sites_release_reservation_on_failure() -> None:
+    """Both production insert sites must pass the db handle to the gate and
+    release the reservation when the insert path fails."""
+    fn = _find_function(SERVER_TREE, "_fetch_state")
+    assert fn is not None
+    seg = ast.get_source_segment(SERVER_SRC, fn) or ""
+    assert "_snapshot_row_insert_allowed(ticker, _snap_ts, db=_ed_db)" in seg, (
+        "_fetch_state gate call lost the durable-probe db handle"
+    )
+    assert "_snapshot_row_insert_release(ticker, _snap_ts)" in seg, (
+        "_fetch_state no longer releases a failed reservation"
+    )
+    assert "db=get_db()" in SERVER_SRC and "_snapshot_row_insert_release(t, snap_ts)" in SERVER_SRC, (
+        "base money-path capture site lost the durable probe or failure release"
+    )
+
+
 # ── Lock 4 — SSE completed-fetch mirror parity ──────────────────────────────
 
 

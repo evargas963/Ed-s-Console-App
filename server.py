@@ -352,13 +352,56 @@ def _snapshot_throttle_enabled() -> bool:
     return v not in ("0", "false", "no", "off")
 
 
-def _snapshot_row_insert_allowed(ticker: str, ts_utc: float) -> bool:
+def _snapshot_row_insert_allowed(ticker: str, ts_utc: float, db=None) -> bool:
+    """Atomically RESERVE this ticker's UTC-minute snapshot slot (contract:
+    max 1 insert/ticker/UTC minute).
+
+    Repo-wide audit 2026-07-05: the previous check-only gate leaked duplicates
+    two ways — (a) concurrent callers (viewer _fetch_state + base money-path
+    capture) both passed before either committed, because the bucket only
+    updated AFTER a successful insert; (b) every process restart began with an
+    empty bucket and re-inserted a minute the previous process had written
+    (4,783 duplicate (ticker,minute) groups on disk; SPY dups written same-day).
+    Reserving AT CHECK TIME closes (a); the durable same-minute existence probe
+    (idx_snap_ticker_tf_ts, ~0.06ms) closes (b). A failed insert must call
+    _snapshot_row_insert_release so a later tick in the same minute can retry —
+    the pre-fix retry-within-minute semantics are preserved.
+
+    Schwab CSV authority checked: yes
+    CSV row(s): NO_SCHWAB_EQUIVALENT — persistence throttle lifecycle only; no
+      market field read, derivation, emission, or actionability logic changed.
+    Derived-field disposition: none required.
+    All consumers checked: yes — both insert sites (fetch_state + base capture)
+      updated in this change set; row contents unchanged.
+    SCHWAB_CSV_CHECKED
+    """
     if not _snapshot_throttle_enabled():
         return True
     t = ticker.upper().strip()
     b = int(ts_utc // 60)
     with _db_snapshot_gate_lock:
-        return _db_snapshot_minute_bucket.get(t) != b
+        if _db_snapshot_minute_bucket.get(t) == b:
+            return False
+        if db is not None:
+            try:
+                if db.snapshot_exists_in_minute(ticker, CANONICAL_TIMEFRAME, b):
+                    _db_snapshot_minute_bucket[t] = b
+                    return False
+            except Exception as _probe_e:
+                # Probe failure degrades to the in-process gate (pre-fix behavior),
+                # never blocks the insert path.
+                log.debug("snapshot minute-existence probe failed %s: %s", t, _probe_e)
+        _db_snapshot_minute_bucket[t] = b
+        return True
+
+
+def _snapshot_row_insert_release(ticker: str, ts_utc: float) -> None:
+    """Release a reservation after a FAILED insert (same-minute retry allowed)."""
+    t = ticker.upper().strip()
+    b = int(ts_utc // 60)
+    with _db_snapshot_gate_lock:
+        if _db_snapshot_minute_bucket.get(t) == b:
+            _db_snapshot_minute_bucket.pop(t, None)
 
 
 def _snapshot_row_insert_committed(ticker: str, ts_utc: float) -> None:
@@ -3204,16 +3247,19 @@ def _base_money_path_capture_one(ticker: str):
 
         now_et = _eastern_now()
         snap_ts = time.time()
-        if not _snapshot_row_insert_allowed(t, snap_ts):
-            return BaseCaptureAttempt(t, "skipped:throttle", time.monotonic() - t0)
-
         if not _HAS_SIGNALS:
             return BaseCaptureAttempt(t, "skipped:no_db", time.monotonic() - t0)
+        if not _snapshot_row_insert_allowed(t, snap_ts, db=get_db()):
+            return BaseCaptureAttempt(t, "skipped:throttle", time.monotonic() - t0)
 
-        row = build_lightweight_snapshot_row_from_quote(
-            t, quote_fields, ts_utc=snap_ts, now_et=now_et
-        )
-        get_db().insert_snapshot(row)
+        try:
+            row = build_lightweight_snapshot_row_from_quote(
+                t, quote_fields, ts_utc=snap_ts, now_et=now_et
+            )
+            get_db().insert_snapshot(row)
+        except BaseException:
+            _snapshot_row_insert_release(t, snap_ts)
+            raise
         _snapshot_row_insert_committed(t, snap_ts)
 
         touch_ts = time.time()
@@ -5971,11 +6017,17 @@ def _fetch_state(
     if _ed_db:  # snapshot INSERT, bars persist + outcome backfill all throttled (see ED_DB_SNAPSHOT_THROTTLE)
         if _diag_on():
             _diag_step("pre_db_snapshot", ticker)
+        # Reservation lifecycle: released in the except below iff the insert never
+        # landed (failure between reserve and insert must not burn the minute;
+        # releasing after a landed insert would re-open it). Initialized before
+        # the try so the handler can never NameError.
+        _snap_ts = _refresh_ts_utc
+        _do_insert = False
+        _snap_insert_landed = False
         try:
             from db import SnapshotRow, build_ts_et
             from math_exposure import _f as _mf
-            _snap_ts = _refresh_ts_utc
-            _do_insert = _snapshot_row_insert_allowed(ticker, _snap_ts)
+            _do_insert = _snapshot_row_insert_allowed(ticker, _snap_ts, db=_ed_db)
             if not _do_insert:
                 log.debug(
                     "DB snapshot insert skipped (throttle: max 1 insert/ticker/UTC minute; set ED_DB_SNAPSHOT_THROTTLE=0 to disable): %s",
@@ -6467,6 +6519,7 @@ def _fetch_state(
                 _snap = SnapshotRow(**{k: v for k, v in _snapshot_kwargs.items() if k in _snapshotrow_field_names})
                 _ed_db.insert_snapshot(_snap)
                 _snapshot_row_insert_committed(ticker, _snap_ts)
+                _snap_insert_landed = True
             # LIVE_OPERATOR_MODE_RESET_V1 Step 3 — bars persist + outcome backfill ride
             # the snapshot throttle (1/min/ticker): per-refresh writes contended with the
             # live path; bars re-seed from Schwab pricehistory after any gap and labels
@@ -6539,6 +6592,8 @@ def _fetch_state(
                 except Exception as _ae:
                     log.warning(f"Accuracy computation failed: {_ae}")
         except Exception as e:
+            if _do_insert and not _snap_insert_landed:
+                _snapshot_row_insert_release(ticker, _snap_ts)
             _diag_crash("db_snapshot", e, ticker)
             import traceback as _tb
             log.warning(f"Snapshot log failed: {e}\n{_tb.format_exc()}")

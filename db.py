@@ -4013,6 +4013,26 @@ class EdDB:
                     )
             return _finish(rows, 5, stop_reason="max_tier_broadest_pool_forced")
 
+    def snapshot_exists_in_minute(self, ticker: str, timeframe: str, minute_bucket: int) -> bool:
+        """True when a snapshot row already exists for (ticker, timeframe) in the
+        given UTC minute bucket (int(ts_utc // 60)).
+
+        Repo-wide audit 2026-07-05: durable half of the 1-insert/ticker/minute
+        throttle (server._snapshot_row_insert_allowed). The in-process bucket
+        cannot survive restarts and raced concurrent callers — 4,783 duplicate
+        (ticker, minute) groups accumulated on disk. Uses idx_snap_ticker_tf_ts
+        (~0.06ms measured). Ticker is matched EXACTLY as insert_snapshot writes
+        it (no storage-key normalization) so probe and write key identically.
+        """
+        lo = float(minute_bucket) * 60.0
+        with self._connect() as conn:
+            r = conn.execute(
+                "SELECT 1 FROM snapshots WHERE ticker = ? AND timeframe = ?"
+                " AND ts_utc >= ? AND ts_utc < ? LIMIT 1",
+                (ticker, timeframe, lo, lo + 60.0),
+            ).fetchone()
+        return r is not None
+
     def count_snapshots(self, ticker: str, timeframe: str) -> dict:
         """Return snapshot counts for UI display.
 
