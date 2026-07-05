@@ -388,6 +388,41 @@ def test_snapshot_insert_sites_release_reservation_on_failure() -> None:
     )
 
 
+# ── Audit lock — accuracy must be computed for the SERVING model version ────
+
+
+def test_accuracy_callers_use_serving_model_version() -> None:
+    """Repo-wide audit (2026-07-05): compute_accuracy / accuracy-history callers
+    hardcoded the legacy 'statistical_v1' version, which matches ZERO persisted
+    rows — the accuracy payload block and history were silently empty forever.
+    Every accuracy caller must resolve the serving version via
+    _current_pred_model_version (the same source that stamps rows)."""
+    helper = _find_function(SERVER_TREE, "_current_pred_model_version")
+    assert helper is not None, "server._current_pred_model_version not found"
+    seg = ast.get_source_segment(SERVER_SRC, helper) or ""
+    assert "get_model_version" in seg, (
+        "_current_pred_model_version no longer resolves via ml_predict.get_model_version"
+    )
+    assert '"statistical_v1"' not in seg
+    # No accuracy call site may pass the dead literal anywhere in server.py.
+    for n in ast.walk(SERVER_TREE):
+        if not isinstance(n, ast.Call):
+            continue
+        callee = n.func.attr if isinstance(n.func, ast.Attribute) else (
+            n.func.id if isinstance(n.func, ast.Name) else None
+        )
+        if callee in ("compute_accuracy", "maybe_log_model_accuracy", "get_model_accuracy_history"):
+            for k in n.keywords:
+                if k.arg == "model_version":
+                    assert not (
+                        isinstance(k.value, ast.Constant) and k.value.value == "statistical_v1"
+                    ), f"dead 'statistical_v1' literal at server.py:{n.lineno} ({callee})"
+            if callee == "compute_accuracy":
+                assert any(k.arg == "model_version" for k in n.keywords), (
+                    f"compute_accuracy at server.py:{n.lineno} relies on the dead default"
+                )
+
+
 # ── Lock 4 — SSE completed-fetch mirror parity ──────────────────────────────
 
 

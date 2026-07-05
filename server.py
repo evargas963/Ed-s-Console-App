@@ -3719,6 +3719,33 @@ def _trader_accuracy_subset(results: dict) -> dict:
     return {hz: results[hz] for hz in _TRADER_ACCURACY_HORIZONS_UI if hz in results}
 
 
+def _current_pred_model_version(ticker: str) -> str:
+    """Version string the serving stack stamps on snapshot rows (pred_model_version).
+
+    Repo-wide audit 2026-07-05: accuracy callers defaulted to the legacy
+    'statistical_v1' literal, which matches ZERO persisted rows (live stamps on
+    SPY: stack(xgb_lstm_tr_meta)_1c 28,647 / rules_v1 908 / stack(xgb_lstm_tr)_1c
+    649) — the accuracy payload block and accuracy history were silently empty
+    ("Accuracy computed: 0 predictions" every cycle). Accuracy must be computed
+    for the version that actually stamps rows; ml_predict.get_model_version is
+    that same source. Fallback mirrors its own no-bundle fallback (rules_v1),
+    never the dead literal.
+    Schwab CSV authority checked: yes
+    CSV row(s): NO_SCHWAB_EQUIVALENT — model-version selector for persisted
+      prediction-accuracy reads; no market field derivation changed.
+    Derived-field disposition: none required.
+    All consumers checked: yes — both compute_accuracy callers and the
+      accuracy-history writer updated in this change set.
+    SCHWAB_CSV_CHECKED
+    """
+    try:
+        from ml_predict import get_model_version
+
+        return get_model_version(ticker)
+    except Exception:
+        return "rules_v1"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPER — parse expiries from chain
 # ─────────────────────────────────────────────────────────────────────────────
@@ -6340,7 +6367,7 @@ def _fetch_state(
                     pred_60c_up_prob=getattr(ms, "up_prob_60c", None),
                     pred_60c_down_prob=getattr(ms, "down_prob_60c", None),
                     pred_60c_flat_prob=getattr(ms, "flat_prob_60c", None),
-                    pred_model_version=ms.model_version or "statistical_v1",
+                    pred_model_version=ms.model_version or "rules_v1",
                     pred_model_source=getattr(ms, 'pred_model_source', None),
                     pred_override_source=getattr(ms, 'pred_override_source', None),
                     logger_source=_resolved_logger_source,
@@ -6584,7 +6611,10 @@ def _fetch_state(
             _last_acc = _accuracy_cache.get(ticker, {}).get("ts", 0)
             if time.time() - _last_acc > ACCURACY_INTERVAL and db_counts["filled"] >= 50:
                 try:
-                    acc = _ed_db.compute_accuracy(ticker, CANONICAL_TIMEFRAME)
+                    acc = _ed_db.compute_accuracy(
+                        ticker, CANONICAL_TIMEFRAME,
+                        model_version=_current_pred_model_version(ticker),
+                    )
                     _accuracy_cache[ticker] = {"ts": time.time(), "results": acc}
                     _acc_5c = acc.get("5c", {}).get("accuracy")
                     _acc_n  = acc.get("5c", {}).get("total", 0)
@@ -9711,12 +9741,15 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
         return {"error": "Database not connected"}
 
     # Use cache if fresh enough
+    _serving_version = _current_pred_model_version(ticker)
     cached = _accuracy_cache.get(ticker, {})
     if cached and time.time() - cached.get("ts", 0) < ACCURACY_INTERVAL:
         results = cached["results"]
     else:
         try:
-            results = db.compute_accuracy(ticker, CANONICAL_TIMEFRAME)
+            results = db.compute_accuracy(
+                ticker, CANONICAL_TIMEFRAME, model_version=_serving_version
+            )
             _accuracy_cache[ticker] = {"ts": time.time(), "results": results}
         except Exception as e:
             return {"error": str(e)}
@@ -9733,7 +9766,7 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
                 _new_id = db.maybe_log_model_accuracy(
                     ticker=ticker,
                     timeframe=CANONICAL_TIMEFRAME,
-                    model_version="statistical_v1",
+                    model_version=_serving_version,
                     horizon=_hz,
                     total_predictions=int(_hz_res.get("total", 0) or 0),
                     correct_direction=_hz_res.get("correct"),
@@ -9757,7 +9790,7 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
             rows = db.get_model_accuracy_history(
                 ticker=ticker,
                 timeframe=CANONICAL_TIMEFRAME,
-                model_version="statistical_v1",
+                model_version=_serving_version,
                 horizon=_hz,
                 limit=int(ACCURACY_HISTORY_LIMIT),
             )
@@ -9767,7 +9800,7 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
 
     return {
         "ticker": ticker,
-        "model_version": "statistical_v1",
+        "model_version": _serving_version,
         "current": _trader_accuracy_subset(results),
         "history": history,
     }

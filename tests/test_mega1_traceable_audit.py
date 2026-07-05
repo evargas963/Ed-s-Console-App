@@ -160,7 +160,7 @@ def test_mega1_inventory_covers_every_function():
 def test_mega1_scope_complete():
     inv_files = {r.file for r in MEGA1_TRACEABLE_INVENTORY}
     assert inv_files == set(MEGA1_FILES)
-    assert len(MEGA1_TRACEABLE_INVENTORY) == 398  # inventory sync @ snapshot minute-gate audit fix: +1 NONE _snapshot_row_insert_release
+    assert len(MEGA1_TRACEABLE_INVENTORY) == 399  # inventory sync @ audit fixes: +1 _snapshot_row_insert_release, +1 _current_pred_model_version
 
 
 def test_mega1_row_schema_valid():
