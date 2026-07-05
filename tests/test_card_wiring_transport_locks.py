@@ -63,6 +63,33 @@ def test_fetch_state_never_submits_to_analytics_pool() -> None:
     )
 
 
+# ── Lane-3 lock — compute-stage instrumentation must stay stamped ────────────
+
+
+def test_fetch_state_stamps_compute_breakdown() -> None:
+    """Lane-3 (2026-07-05): the Tier C pipeline must attribute its compute time.
+    _fetch_state marks named stages and stamps _compute_breakdown on the payload;
+    without it the 13–27s _compute_ms is unattributable and cadence/staleness
+    policy decisions lose their evidence base."""
+    fn = _find_function(SERVER_TREE, "_fetch_state")
+    assert fn is not None, "server._fetch_state not found"
+    mark_calls = sum(
+        1
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Name)
+        and n.func.id == "_mark_stage"
+    )
+    assert mark_calls >= 8, (
+        f"_fetch_state has only {mark_calls} _mark_stage calls — compute-stage "
+        "instrumentation regressed (need the named stage marks)."
+    )
+    seg = ast.get_source_segment(SERVER_SRC, fn) or ""
+    assert '"_compute_breakdown"' in seg, (
+        "_fetch_state no longer stamps _compute_breakdown on the payload"
+    )
+
+
 # ── Lock 4 — SSE completed-fetch mirror parity ──────────────────────────────
 
 

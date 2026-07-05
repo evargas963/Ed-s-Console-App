@@ -4835,6 +4835,24 @@ def _fetch_state(
     _t_after_quote_mono = time.monotonic()
     _t_after_quote_wall = time.time()
 
+    # ── Compute-stage instrumentation (lane 3, 2026-07-05) — diagnostic only.
+    # The transport audit measured _compute_ms at 13–27s but could not attribute it;
+    # these perf_counter deltas split the compute segment into named stages, stamped on the
+    # payload as _compute_breakdown. No decision logic, cadence, or gate reads them.
+    # Schwab CSV authority checked: yes
+    # CSV row(s): NO_SCHWAB_EQUIVALENT — diagnostic timing capture only; no market
+    #   field read, derivation, emission, or actionability logic changed.
+    # Derived-field disposition: none required.
+    # All consumers checked: yes — payload diagnostic key + one log line only.
+    # SCHWAB_CSV_CHECKED
+    _stage_prev = [time.perf_counter()]
+    _stage_ms: dict[str, float] = {}
+
+    def _mark_stage(name: str) -> None:
+        _now_pc = time.perf_counter()
+        _stage_ms[name] = round((_now_pc - _stage_prev[0]) * 1000.0, 1)
+        _stage_prev[0] = _now_pc
+
     _node_q = q_json.get(ticker.upper()) or q_json.get(ticker) or {}
     _session_q = _parse_quote_node_session_fields(_node_q)
     parsed_last = _session_q["last"]
@@ -5088,6 +5106,7 @@ def _fetch_state(
     _iv_direction = _iv_tracker.direction(ticker)
 
     consensus_summary = rows[0] if rows else None
+    _mark_stage("exposures_key_levels")
 
     # ── Charm — computed HERE, before build_market_state, so signals engine
     # receives real values. charm_direction uses raw strings "buying"/"selling"/"neutral"
@@ -5142,6 +5161,8 @@ def _fetch_state(
         v = getattr(totals[0], "pcr_oi", None)
         if v is not None:
             pcr_val = float(v)
+
+    _mark_stage("charm_pcr")
 
     _cache_key = (ticker, selected_exp)
     _progressive_inflight_key = _tier_c_inflight_key(ticker, expiry)
@@ -5251,6 +5272,7 @@ def _fetch_state(
         _sc["pl_date"]      = _today_date_str
         _sc["pl_mono"]      = time.monotonic()
         _state_cache[_cache_key] = _sc
+    _mark_stage("progressive_publish_price_levels")
 
     # ── Expected Move (straddle + IV-based) ──────────────────────────────────
     _em_straddle = {"straddle": None, "em_pts": None, "upper": None, "lower": None}
@@ -5597,6 +5619,7 @@ def _fetch_state(
         )
     except Exception as e:
         log.debug(f"Envelope/density/sector calc: {e}")
+    _mark_stage("vol_flow_signals")
 
     # ── Zone tracking ─────────────────────────────────────────────────────────
     # zone_since_bars_1m = execution-layer recency (canonical 1m bars) — primary for models/features.
@@ -5807,6 +5830,7 @@ def _fetch_state(
             except (TypeError, ValueError):
                 pass
     # ── Build MarketState ─────────────────────────────────────────────────────
+    _mark_stage("db_reads_orderflow_input")
     if _diag_on():
         _diag_step("pre_build_market_state", ticker)
     from db import utc_ts as _utc_ts_refresh
@@ -5870,6 +5894,7 @@ def _fetch_state(
     except Exception as _bms_e:
         _diag_crash("build_market_state", _bms_e, ticker)
         raise
+    _mark_stage("signals_engine_build_market_state")
     if _diag_on():
         _diag_done("build_market_state", ticker)
 
@@ -5933,6 +5958,7 @@ def _fetch_state(
     except Exception as _nc_e:
         log.debug("news_context: %s", _nc_e)
         ms.news_context = None
+    _mark_stage("context_news")
 
     # ── DB snapshot logging ───────────────────────────────────────────────────
     if _ed_db:  # snapshot INSERT, bars persist + outcome backfill all throttled (see ED_DB_SNAPSHOT_THROTTLE)
@@ -6493,6 +6519,7 @@ def _fetch_state(
             log.warning(f"Snapshot log failed: {e}\n{_tb.format_exc()}")
         if _diag_on():
             _diag_done("db_snapshot", ticker)
+    _mark_stage("db_snapshot_write_accuracy")
 
     _v2_decision_for_response = None
     try:
@@ -6519,6 +6546,7 @@ def _fetch_state(
             log.debug("live v2 calibration logging skipped: %s", _v2_log_result)
     except Exception as _v2_log_e:
         log.warning("live v2 calibration logging failed: %s", _v2_log_e)
+    _mark_stage("v2_calibration_logging")
 
     # ── If log_only, cache minimal state and return early ─────────────────────
     if log_only:
@@ -7151,16 +7179,22 @@ def _fetch_state(
 
     _decision_route = resolve_fetch_state_decision_route(update_source)
     _finalize_production_decision(ms_dict, _decision_route)
+    _mark_stage("payload_assembly_model_health_finalize")
     _t_pipeline_end_mono = time.monotonic()
     ms_dict["_server_build_ts"] = time.time()
     ms_dict["_pipeline_ms"] = round((_t_pipeline_end_mono - _fetch_start_mono) * 1000)
     ms_dict["_chain_ms"] = round((_t_after_chain_mono - _fetch_start_mono) * 1000)
     ms_dict["_quote_ms"] = round((_t_after_quote_mono - _t_after_chain_mono) * 1000)
     ms_dict["_compute_ms"] = round((_t_pipeline_end_mono - _t_after_quote_mono) * 1000)
+    # Lane-3 diagnostic: stage split of _compute_ms (+ chain/quote copies for one-stop reads).
+    _stage_ms["schwab_chain_ms"] = float(ms_dict["_chain_ms"])
+    _stage_ms["schwab_quote_ms"] = float(ms_dict["_quote_ms"])
+    ms_dict["_compute_breakdown"] = dict(_stage_ms)
     log.info(
         f"_fetch_state: {ticker} pipeline_ms={ms_dict['_pipeline_ms']} "
         f"quote_ms={ms_dict['_quote_ms']} chain_ms={ms_dict['_chain_ms']} compute_ms={ms_dict['_compute_ms']} expiry={expiry}"
     )
+    log.info("_fetch_state_breakdown: %s %s", ticker, json.dumps(_stage_ms, sort_keys=True))
     if update_source is not None:
         ms_dict["_update_source"] = update_source
 
