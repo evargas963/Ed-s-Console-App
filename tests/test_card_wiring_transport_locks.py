@@ -216,6 +216,57 @@ def test_similar_setups_shared_dedups_exact_args_only() -> None:
     assert len(calls) == 3 and d
 
 
+# ── Burndown lock — IV history must stay a narrow projection ────────────────
+
+
+def test_fetch_state_iv_history_uses_narrow_projection() -> None:
+    """Burndown (2026-07-05): the IV rank/percentile history load pulled 5,000
+    FULL-WIDTH snapshot rows (200+ cols incl. option_chain_json blobs) per tick
+    per ticker to read one float each — 1,258/3,062 py-spy samples; the narrow
+    twin measured 152x faster with identical values against the live DB. The
+    hot loop must never regress to the full-width read for IV history."""
+    fn = _find_function(SERVER_TREE, "_fetch_state")
+    assert fn is not None, "server._fetch_state not found"
+    calls = _called_names(fn)
+    assert "get_recent_iv_levels" in calls, (
+        "_fetch_state no longer uses the narrow iv_level projection — the IV "
+        "rank/percentile path regressed to a full-width snapshot read."
+    )
+    seg = ast.get_source_segment(SERVER_SRC, fn) or ""
+    idx = seg.find("IV Rank/Percentile")
+    assert idx != -1, "IV rank/percentile block not found in _fetch_state"
+    block = seg[idx : idx + 1500]
+    assert "get_recent_iv_levels(" in block, "narrow projection call missing from IV block"
+    assert "get_recent_snapshots(" not in block, (
+        "full-width get_recent_snapshots( call is back inside the IV-history block"
+    )
+
+
+def test_get_recent_iv_levels_matches_full_read(tmp_path) -> None:
+    """Parity half: the narrow projection must return exactly the iv_level
+    sequence the full-width read returns (same window, order, as-of cutoff)."""
+    from db import EdDB
+    from timeframe_config import CANONICAL_TIMEFRAME
+
+    db = EdDB(tmp_path / "iv_parity.db")
+    with db._connect() as conn:
+        for i, iv in enumerate([21.5, None, 0.0, 33.25, 18.0]):
+            conn.execute(
+                "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot, iv_level)"
+                " VALUES (?,?,?,?,?,?)",
+                ("SPY", CANONICAL_TIMEFRAME, 1000.0 + i, "test", 450.0, iv),
+            )
+    full = [
+        r.get("iv_level")
+        for r in db.get_recent_snapshots(
+            "SPY", CANONICAL_TIMEFRAME, n=10, filled_only=False, as_of_ts_utc=1004.0
+        )
+    ]
+    narrow = db.get_recent_iv_levels("SPY", CANONICAL_TIMEFRAME, n=10, as_of_ts_utc=1004.0)
+    assert narrow == full == [33.25, 0.0, None, 21.5]
+    assert db.get_recent_iv_levels("SPY", CANONICAL_TIMEFRAME, n=2) == [18.0, 33.25]
+
+
 # ── Lock 4 — SSE completed-fetch mirror parity ──────────────────────────────
 
 

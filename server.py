@@ -5359,18 +5359,28 @@ def _fetch_state(
                 _realized_vol = compute_realized_vol(_closes)
             _atr = compute_atr(_bars)
         # IV Rank/Percentile from DB historical iv_level
+        # Burndown (2026-07-05): narrow iv_level projection — the full-width
+        # get_recent_snapshots read (5,000 rows x 200+ cols incl. chain blobs)
+        # was ~all of the vol_flow_signals stage (py-spy 1,258/3,062 samples).
+        # Same row window/order/as-of as before; values identical.
+        # Schwab CSV authority checked: yes
+        # CSV row(s): NO_SCHWAB_EQUIVALENT — persisted-snapshot SQLite read
+        #   (iv_level history for rank/percentile); no market field derivation,
+        #   emission, or actionability logic changed.
+        # Derived-field disposition: none required.
+        # All consumers checked: yes — _iv_history filter semantics unchanged.
+        # SCHWAB_CSV_CHECKED
         if _atm_iv and _ed_db and _tick_ts is not None:
             try:
-                _iv_hist_rows = _ed_db.get_recent_snapshots(
+                _iv_hist_vals = _ed_db.get_recent_iv_levels(
                     ticker,
                     CANONICAL_TIMEFRAME,
                     n=IV_HISTORY_LOOKBACK,
-                    filled_only=False,
                     as_of_ts_utc=_tick_ts,
                 )
                 _iv_history = [
-                    float(r.get("iv_level")) for r in _iv_hist_rows
-                    if r.get("iv_level") is not None and float(r.get("iv_level", 0)) > 0
+                    float(v) for v in _iv_hist_vals
+                    if v is not None and float(v) > 0
                 ]
                 if _iv_history:
                     _iv_rank = compute_iv_rank(_atm_iv, _iv_history)

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-03T21:16:27Z",
+  "generated_at": "2026-07-05T21:29:38Z",
   "persistence_files": [
     "db.py",
     "calibration/writer.py"
@@ -376,7 +376,7 @@
     {
       "writer_fn": "EdDB.log_level_cross",
       "file": "db.py",
-      "line": 4081,
+      "line": 4120,
       "tables_written": [
         "level_crosses"
       ],
@@ -394,7 +394,7 @@
     {
       "writer_fn": "EdDB.log_model_accuracy",
       "file": "db.py",
-      "line": 4295,
+      "line": 4334,
       "tables_written": [
         "model_accuracy"
       ],
@@ -432,7 +432,7 @@
     {
       "candidate_fn": "EdDB.compute_accuracy",
       "file": "db.py",
-      "line": 4240,
+      "line": 4279,
       "production_callers": [
         "server.py"
       ],

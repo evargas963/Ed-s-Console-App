@@ -3630,6 +3630,45 @@ class EdDB:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_recent_iv_levels(
+        self,
+        ticker: str,
+        timeframe: str,
+        n: int = 5000,
+        *,
+        as_of_ts_utc: Optional[float] = None,
+    ) -> list:
+        """iv_level column of the N most recent snapshots (DESC by ts_utc).
+
+        Narrow projection twin of get_recent_snapshots for the live IV rank /
+        percentile path (burndown 2026-07-05): the hot loop pulled 5,000
+        FULL-WIDTH rows (200+ columns including the option_chain_json /
+        replay_context_json blobs) per tick per ticker and read exactly one
+        float from each — py-spy attributed 1,258 of 3,062 samples to that
+        read. Same row window, ordering, and as-of visibility as
+        get_recent_snapshots(filled_only=False); only the projection narrows,
+        so consumer-visible iv_level values are identical.
+        """
+        timeframe = require_snapshot_timeframe(timeframe, caller="EdDB.get_recent_iv_levels")
+        ticker = ticker_storage_key(ticker)
+        asof_clause = " AND ts_utc < ? " if as_of_ts_utc is not None else ""
+        params: tuple = (ticker, timeframe)
+        if as_of_ts_utc is not None:
+            params = params + (float(as_of_ts_utc),)
+        params = params + (n,)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT iv_level FROM snapshots
+                WHERE ticker = ? AND timeframe = ?
+                {asof_clause}
+                ORDER BY ts_utc DESC
+                LIMIT ?
+            """,
+                params,
+            ).fetchall()
+        return [r["iv_level"] for r in rows]
+
     def get_similar_setups(self, ticker: str, timeframe: str,
                             zone: Optional[str], vwap_side: Optional[str],
                             nearest_above_dist: Optional[float],
