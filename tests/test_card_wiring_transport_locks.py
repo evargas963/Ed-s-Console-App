@@ -73,16 +73,20 @@ def test_fetch_state_stamps_compute_breakdown() -> None:
     policy decisions lose their evidence base."""
     fn = _find_function(SERVER_TREE, "_fetch_state")
     assert fn is not None, "server._fetch_state not found"
+    # Def-free marks (the mega1 section-inventory gate counts every def, so the
+    # instrumentation appends (stage, perf_counter) pairs instead of calling a helper).
     mark_calls = sum(
         1
         for n in ast.walk(fn)
         if isinstance(n, ast.Call)
-        and isinstance(n.func, ast.Name)
-        and n.func.id == "_mark_stage"
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr == "append"
+        and isinstance(n.func.value, ast.Name)
+        and n.func.value.id == "_stage_marks"
     )
     assert mark_calls >= 8, (
-        f"_fetch_state has only {mark_calls} _mark_stage calls — compute-stage "
-        "instrumentation regressed (need the named stage marks)."
+        f"_fetch_state has only {mark_calls} _stage_marks.append(...) marks — "
+        "compute-stage instrumentation regressed (need the named stage marks)."
     )
     seg = ast.get_source_segment(SERVER_SRC, fn) or ""
     assert '"_compute_breakdown"' in seg, (
