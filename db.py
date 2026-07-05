@@ -3676,7 +3676,8 @@ class EdDB:
                             n_similar: int = 500,
                             *,
                             return_trace: bool = False,
-                            as_of_ts_utc: Optional[float] = None) -> list | tuple[list, dict]:
+                            as_of_ts_utc: Optional[float] = None,
+                            exclude_heavy_json_columns: bool = False) -> list | tuple[list, dict]:
         """
         Find historical snapshots similar to current setup.
         Uses PROGRESSIVE RELAXATION — tries tight match first, then
@@ -3705,6 +3706,14 @@ class EdDB:
         as_of_ts_utc: when set (e.g. replay), only rows with ts_utc < as_of_ts_utc are
         considered. Default None is identical to historical behavior (all history visible).
         Production callers do not pass this.
+
+        exclude_heavy_json_columns (burndown 2026-07-05): opt-in projection that
+        drops option_chain_json / replay_context_json from the SELECT. The live
+        similarity consumers (fusion overlay, prediction core, enrichment,
+        similarity_labeled_counts) read only outcome_*, outcome_*_pts, ts_utc,
+        and match_tier — enumerated end-to-end before this landed — while the
+        two blobs dominate row width. Default False is byte-identical for every
+        other caller (audit / replay / verification tools keep full rows).
         """
         timeframe = require_snapshot_timeframe(timeframe, caller="EdDB.get_similar_setups")
         ticker = ticker_storage_key(ticker)
@@ -3863,6 +3872,15 @@ class EdDB:
             _start_tier = 1
 
         with self._connect() as conn:
+            _sel = "*"
+            if exclude_heavy_json_columns:
+                _all_cols = [
+                    r["name"] for r in conn.execute("PRAGMA table_info(snapshots)")
+                ]
+                _sel = ", ".join(
+                    c for c in _all_cols
+                    if c not in ("option_chain_json", "replay_context_json")
+                )
 
             if _start_tier <= 1:
                 # ── Tier 1: zone + vwap_side + both distance buckets ──────────
@@ -3877,8 +3895,8 @@ class EdDB:
                     _p1 = _p1 + (as_of_ts_utc, n_similar)
                 else:
                     _p1 = _p1 + (n_similar,)
-                rows = conn.execute("""
-                    SELECT *, 1 as match_tier FROM snapshots
+                rows = conn.execute(f"""
+                    SELECT {_sel}, 1 as match_tier FROM snapshots
                     WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
                       AND outcome_1c IS NOT NULL
                       AND (
@@ -3907,8 +3925,8 @@ class EdDB:
                     _p2 = _p2 + (as_of_ts_utc, n_similar)
                 else:
                     _p2 = _p2 + (n_similar,)
-                rows = conn.execute("""
-                    SELECT *, 2 as match_tier FROM snapshots
+                rows = conn.execute(f"""
+                    SELECT {_sel}, 2 as match_tier FROM snapshots
                     WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
                       AND outcome_1c IS NOT NULL
                       AND (
@@ -3929,8 +3947,8 @@ class EdDB:
                     _p3 = _p3 + (as_of_ts_utc, n_similar)
                 else:
                     _p3 = _p3 + (n_similar,)
-                rows = conn.execute("""
-                    SELECT *, 3 as match_tier FROM snapshots
+                rows = conn.execute(f"""
+                    SELECT {_sel}, 3 as match_tier FROM snapshots
                     WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
                       AND outcome_1c IS NOT NULL
                     """ + _asof_sql + """
@@ -3948,8 +3966,8 @@ class EdDB:
                     _p4 = _p4 + (as_of_ts_utc, n_similar)
                 else:
                     _p4 = _p4 + (n_similar,)
-                rows = conn.execute("""
-                    SELECT *, 4 as match_tier FROM snapshots
+                rows = conn.execute(f"""
+                    SELECT {_sel}, 4 as match_tier FROM snapshots
                     WHERE ticker = ? AND timeframe = ? AND zone = ?
                       AND outcome_1c IS NOT NULL
                     """ + _asof_sql + """
@@ -3966,8 +3984,8 @@ class EdDB:
                 _p5 = _p5 + (as_of_ts_utc, n_similar)
             else:
                 _p5 = _p5 + (n_similar,)
-            rows = conn.execute("""
-                SELECT *, 5 as match_tier FROM snapshots
+            rows = conn.execute(f"""
+                SELECT {_sel}, 5 as match_tier FROM snapshots
                 WHERE ticker = ? AND timeframe = ?
                   AND outcome_1c IS NOT NULL
                 """ + _asof_sql + """

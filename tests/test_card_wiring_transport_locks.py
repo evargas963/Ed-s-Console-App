@@ -242,6 +242,59 @@ def test_fetch_state_iv_history_uses_narrow_projection() -> None:
     )
 
 
+def test_similarity_hot_path_projection_drops_only_blob_columns(tmp_path) -> None:
+    """Burndown (2026-07-05): the hot-path similarity read opts into a projection
+    that drops ONLY option_chain_json / replay_context_json (no live consumer
+    reads them — enumerated across overlay/core/enrichment/labeled-counts).
+    Every other column, row order, tier semantics, and match_tier must be
+    identical to the default full-width read; default callers stay full-width."""
+    from db import EdDB
+    from timeframe_config import CANONICAL_TIMEFRAME
+
+    db = EdDB(tmp_path / "sim_projection.db")
+    with db._connect() as conn:
+        for i in range(3):
+            conn.execute(
+                "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot, zone,"
+                " vwap_side, nearest_above_dist, nearest_below_dist, outcome_1c,"
+                " outcome_5c, outcome_15c, option_chain_json, replay_context_json)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("SPY", CANONICAL_TIMEFRAME, 1000.0 + i, "test", 450.0, "pin",
+                 "above", 1.0, 1.0, "up", "up", "up", '{"big":"blob"}', '{"ctx":1}'),
+            )
+    kw = dict(ticker="SPY", timeframe=CANONICAL_TIMEFRAME, zone="pin",
+              vwap_side="above", nearest_above_dist=1.0, nearest_below_dist=1.0)
+    full = db.get_similar_setups(**kw)
+    slim = db.get_similar_setups(**kw, exclude_heavy_json_columns=True)
+    assert len(full) == len(slim) == 3
+    assert set(full[0]) - set(slim[0]) == {"option_chain_json", "replay_context_json"}
+    for f, s in zip(full, slim):
+        assert {k: f[k] for k in s} == dict(s), "projected rows diverge from full rows"
+    assert all(s["match_tier"] == f["match_tier"] for f, s in zip(full, slim))
+    assert full[0]["option_chain_json"] == '{"big":"blob"}', "default read lost blobs"
+
+
+def test_prediction_hot_path_opts_into_similarity_projection() -> None:
+    """Both hot-path similarity call sites must pass exclude_heavy_json_columns=True
+    (and identically, so the same-tick dedup ctx key still matches)."""
+    src = (ROOT / "prediction_engine.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    hits = 0
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_similar_setups_shared"
+        ):
+            kws = {k.arg for k in node.keywords}
+            assert "exclude_heavy_json_columns" in kws, (
+                f"_similar_setups_shared call at prediction_engine.py:{node.lineno} "
+                "lost the hot-path projection opt-in"
+            )
+            hits += 1
+    assert hits >= 2, "expected both hot-path similarity call sites"
+
+
 def test_get_recent_iv_levels_matches_full_read(tmp_path) -> None:
     """Parity half: the narrow projection must return exactly the iv_level
     sequence the full-width read returns (same window, order, as-of cutoff)."""

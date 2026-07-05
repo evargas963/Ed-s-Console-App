@@ -547,6 +547,16 @@ def build_fusion_model_overlay_for_stack(
                 nearest_above_dist=_filters["nearest_above_dist"],
                 nearest_below_dist=_filters["nearest_below_dist"],
                 as_of_ts_utc=_asof_sim,
+                # Hot-path projection: live consumers read outcome_*/ts_utc/match_tier
+                # only (enumerated 2026-07-05); the two JSON blobs are dropped.
+                # Schwab CSV authority checked: yes
+                # CSV row(s): NO_SCHWAB_EQUIVALENT — persisted-snapshot similarity
+                #   retrieval (SQLite projection); no market field derivation changed.
+                # Derived-field disposition: none required.
+                # All consumers checked: yes — overlay/core/enrichment/labeled-counts
+                #   consume outcome_*, outcome_*_pts, ts_utc, match_tier only.
+                # SCHWAB_CSV_CHECKED
+                exclude_heavy_json_columns=True,
             )
             probs_1c, _, _, _ = _literal_empirical_horizon(similar, "outcome_1c", 1)
             probs_5c, _, _, _ = _literal_empirical_horizon(similar, "outcome_5c", 5)
@@ -792,6 +802,9 @@ def compute_prediction_core(
                 nearest_above_dist=_nad,
                 nearest_below_dist=_nbd,
                 as_of_ts_utc=_asof_sim,
+                # Hot-path projection (see overlay call site) — same key member, so
+                # the same-tick ctx still matches between the two call sites.
+                exclude_heavy_json_columns=True,
             )
             avg_move = db.get_avg_move(
                 ticker=inp.ticker,
