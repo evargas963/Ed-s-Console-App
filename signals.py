@@ -1286,10 +1286,17 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
 
     _guest_anchor = resolve_guest_anchor_for_ticker(ticker)
 
+    # Same-tick similarity dedup (burndown 2026-07-05): the fusion overlay and
+    # compute_prediction_core below run an identical tiered get_similar_setups;
+    # this ctx lets the second call reuse the first result when — and only when —
+    # the exact query args match (prediction_engine._similar_setups_shared).
+    _similar_tick_ctx: dict[str, Any] = {}
+
     shared_fusion_overlay: dict[str, Any]
     try:
         shared_fusion_overlay = build_fusion_model_overlay_for_stack(
-            inp, db, rules, inference_snapshot_v1=inference_snapshot_v1
+            inp, db, rules, inference_snapshot_v1=inference_snapshot_v1,
+            similar_ctx=_similar_tick_ctx,
         )
     except Exception as e:
         log.warning(
@@ -1572,6 +1579,7 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
             ml_bundle=ml_bundle,
             multi_horizon_ml_bundle=mh_ml_fusion_bundle,
             inference_snapshot_v1=inference_snapshot_v1,
+            similar_ctx=_similar_tick_ctx,
         )
     else:
         pred_core = _empty_prediction(

@@ -153,6 +153,69 @@ def test_fill_outcomes_executor_is_single_worker() -> None:
     )
 
 
+# ── Burndown lock — same-tick similarity dedup must stay wired ──────────────
+
+SIGNALS_SRC = (ROOT / "signals.py").read_text(encoding="utf-8")
+SIGNALS_TREE = ast.parse(SIGNALS_SRC)
+
+
+def test_signals_tick_shares_similarity_context() -> None:
+    """Burndown (2026-07-05): the fusion overlay and compute_prediction_core ran an
+    identical tiered get_similar_setups in the same tick — 57% of the signals-engine
+    stage (py-spy: 692/1,214 build_market_state samples). Both hot-path call sites
+    must pass the shared per-tick ctx or the duplicate DB retrieval returns."""
+    fn = _find_function(SIGNALS_TREE, "_compute_signals_impl")
+    assert fn is not None, "signals._compute_signals_impl not found"
+    wired = {"build_fusion_model_overlay_for_stack": False, "compute_prediction_core": False}
+    for n in ast.walk(fn):
+        if not isinstance(n, ast.Call):
+            continue
+        callee = n.func.id if isinstance(n.func, ast.Name) else (
+            n.func.attr if isinstance(n.func, ast.Attribute) else None
+        )
+        if callee in wired and any(k.arg == "similar_ctx" for k in n.keywords):
+            wired[callee] = True
+    assert all(wired.values()), (
+        f"similar_ctx not passed at hot-path call site(s) {sorted(k for k, v in wired.items() if not v)} "
+        "— the same-tick similarity dedup is unwired (duplicate get_similar_setups per tick)."
+    )
+
+
+def test_similar_setups_shared_dedups_exact_args_only() -> None:
+    """Functional half: identical kwargs + shared ctx → one DB call, value-equal
+    rows, mutation-isolated copies; different kwargs → fresh DB call."""
+    from prediction_engine import _similar_setups_shared
+
+    calls: list[dict] = []
+
+    class _Db:
+        def get_similar_setups(self, **kw):
+            calls.append(kw)
+            return [{"match_tier": 1, "outcome_5c": "up"}]
+
+    ctx: dict = {}
+    a = _similar_setups_shared(_Db(), ctx, ticker="SPY", timeframe="1m", zone="pin",
+                               vwap_side="above", nearest_above_dist=1.0,
+                               nearest_below_dist=2.0, as_of_ts_utc=100.0)
+    b = _similar_setups_shared(_Db(), ctx, ticker="SPY", timeframe="1m", zone="pin",
+                               vwap_side="above", nearest_above_dist=1.0,
+                               nearest_below_dist=2.0, as_of_ts_utc=100.0)
+    assert len(calls) == 1, "identical same-tick query was not deduplicated"
+    assert a == b
+    b[0]["outcome_5c"] = "down"
+    assert a[0]["outcome_5c"] == "up", "reused rows are not mutation-isolated copies"
+    c = _similar_setups_shared(_Db(), ctx, ticker="SPY", timeframe="1m", zone="pin",
+                               vwap_side="above", nearest_above_dist=1.0,
+                               nearest_below_dist=2.0, as_of_ts_utc=200.0)
+    assert len(calls) == 2, "changed args must fall back to a fresh DB query"
+    assert c == a
+    # No ctx → passthrough, no caching side effects.
+    d = _similar_setups_shared(_Db(), None, ticker="QQQ", timeframe="1m", zone="pin",
+                               vwap_side="above", nearest_above_dist=1.0,
+                               nearest_below_dist=2.0, as_of_ts_utc=100.0)
+    assert len(calls) == 3 and d
+
+
 # ── Lock 4 — SSE completed-fetch mirror parity ──────────────────────────────
 
 

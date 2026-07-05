@@ -476,12 +476,44 @@ def _get_all_recent(
         return []
 
 
+def _similar_setups_shared(db, similar_ctx: Optional[dict], **query_kwargs) -> list:
+    """Same-tick dedup for db.get_similar_setups (burndown 2026-07-05).
+
+    build_fusion_model_overlay_for_stack and compute_prediction_core each ran an
+    identical tiered similarity retrieval in the same compute_signals tick — the
+    two calls were 57% of the signals-engine stage in the py-spy profile (692 of
+    1,214 build_market_state samples). ``similar_ctx`` is a per-tick dict owned by
+    signals._compute_signals_impl; the retrieval is keyed on the EXACT query args,
+    so any drift between the two call sites falls back to a fresh DB query and
+    behavior is preserved by construction. A hit returns fresh ``dict(r)`` copies —
+    byte-identical to what a second get_similar_setups call returns (it builds
+    ``[dict(r) for r in rows]`` itself), so consumers stay mutation-isolated.
+    No similarity semantics, tiers, filters, or as-of visibility change.
+    Schwab CSV authority checked: yes
+    CSV row(s): NO_SCHWAB_EQUIVALENT — persisted-snapshot similarity retrieval
+    (SQLite), not a Schwab wire read; no market field derivation changed.
+    Derived-field disposition: none required.
+    All consumers checked: yes — both call sites receive value-identical rows.
+    SCHWAB_CSV_CHECKED
+    """
+    key = tuple(sorted(query_kwargs.items()))
+    if similar_ctx is not None and similar_ctx.get("key") == key:
+        return [dict(r) for r in similar_ctx["rows"]]
+    rows = db.get_similar_setups(**query_kwargs)
+    if similar_ctx is not None:
+        similar_ctx["key"] = key
+        similar_ctx["rows"] = rows
+        return [dict(r) for r in rows]
+    return rows
+
+
 def build_fusion_model_overlay_for_stack(
     inp: SignalInput,
     db,
     rules=None,
     *,
     inference_snapshot_v1: dict,
+    similar_ctx: Optional[dict] = None,
 ) -> dict:
     """
     Non-MVP overlay for the ML stack: pred_*, walls, session, cross-asset, candle context, etc.
@@ -505,7 +537,9 @@ def build_fusion_model_overlay_for_stack(
     _asof_sim = _as_of_ts_utc_for_similarity(inp, inference_snapshot_v1)
     if db is not None:
         try:
-            similar = db.get_similar_setups(
+            similar = _similar_setups_shared(
+                db,
+                similar_ctx,
                 ticker=inp.ticker,
                 timeframe=inp.timeframe or CANONICAL_TIMEFRAME,
                 zone=_filters["zone"],
@@ -711,6 +745,7 @@ def compute_prediction_core(
     *,
     multi_horizon_ml_bundle: Optional[Any] = None,
     inference_snapshot_v1: Optional[dict[str, Any]] = None,
+    similar_ctx: Optional[dict] = None,
 ) -> tuple[PredictiveCard, PredictionEnrichmentState]:
     """
     Hot path: similar-set retrieval, primary empirical horizons (1c/5c/15c/60c), MH ML overlay,
@@ -747,7 +782,9 @@ def compute_prediction_core(
     _asof_sim = _as_of_ts_utc_for_similarity(inp, inference_snapshot_v1)
     if db is not None:
         try:
-            similar = db.get_similar_setups(
+            similar = _similar_setups_shared(
+                db,
+                similar_ctx,
                 ticker=inp.ticker,
                 timeframe=timeframe,
                 zone=_zone,
