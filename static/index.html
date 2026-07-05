@@ -6619,7 +6619,15 @@ function _edMplMonotonicGateRecordAccept(d, gate) {
   mpl.monotonic_last_accept_key = gate.key || null;
   if (!gate.fallback) {
     const key = _edMplOrderingKeyFromPayload(d);
-    _edMplMonotonicLastAccepted = { gen: key.gen, ts: key.ts, canonical: key.canonical };
+    // Only gen-bearing Tier C decision bundles advance the ordering cursor. Quote-tier
+    // (A_live/B_light/L1) and pending-shell payloads carry fresher wall-clock
+    // _server_build_ts but no decision_generation_id; committing their timestamp as the
+    // cursor makes the gate reject a valid cached Tier C bundle on ticker switch as
+    // ts_regression (cards wedge at LOADING — audit 2026-07-04). Tier A/B keep their own
+    // lane guards (quote-lane ts in renderTierALive, l1_generation in renderTierBLight).
+    if (key.gen != null) {
+      _edMplMonotonicLastAccepted = { gen: key.gen, ts: key.ts, canonical: key.canonical };
+    }
   }
 }
 
@@ -9087,9 +9095,19 @@ async function fetchState(forceOrOpts) {
   isLoading = true;
 
   const domTicker = ($('ticker-input')?.value || '').trim().toUpperCase() || 'SPY';
-  const domExpiry = $('expiry-select')?.value || null;
+  let domExpiry = $('expiry-select')?.value || null;
   const prevT = activeTicker;
   const prevE = activeExpiry;
+  if (domTicker !== prevT) {
+    // Ticker switch: the expiry select still holds the PRIOR ticker's expiries; carrying
+    // that value requests the new ticker at an expiry it may not have (single names lack
+    // the index M/W weeklies), wedging every (ticker, wrong-expiry) surface at
+    // pending/expiry_slice_empty. Reset to server-default expiry and clear the select so
+    // render() repopulates it from the new ticker's own chain.
+    domExpiry = null;
+    const _expSel = $('expiry-select');
+    if (_expSel) _expSel.innerHTML = '';
+  }
   const willChange = domTicker !== prevT || (domExpiry || null) !== (prevE || null);
 
   if (willChange) {

@@ -1331,6 +1331,29 @@ def _schedule_analytics_recompute(
             if result:
                 _reset_analytics_bg_fail_count(inflight_key)
                 _stamp_analytics_freshness_on_completed_fetch(result, ticker, inflight_key)
+                # S2B-1 transport parity: REST serve and SSE cache-fanout attach
+                # card_freshness_v1 + operator_card_* mirrors, but this completed-fetch
+                # broadcast reached SSE clients WITHOUT them — in a fresh-bundle /
+                # stale-quote window an SSE-fed card could paint actionable while REST
+                # clients are withheld (quote_age_exceeded). Attach the same block so
+                # both transports carry identical actionability truth (audit 2026-07-04).
+                try:
+                    _attach_card_freshness_v1_block(
+                        result,
+                        ticker=ticker,
+                        now=time.time(),
+                        analytics_ttl_sec=_sse_viewer_cache_ttl(
+                            ticker.upper().strip(), result.get("selected_exp")
+                        ),
+                        tier_c_cache_stale_serve=False,
+                        plane_quote=_lmp.get_quote(ticker.upper().strip()),
+                    )
+                except Exception as _cf_e:
+                    log.debug(
+                        "card_freshness attach on completed fetch failed ticker=%s: %s",
+                        ticker,
+                        _cf_e,
+                    )
                 try:
                     from planes.l1_events import notify_l2_snapshot_ready
 
@@ -4729,15 +4752,22 @@ def _fetch_state(
     session_label = mkt_ctx.session_label   # "RTH" | "Pre-Market" | "After-Hours" | "Closed"
 
     # ── Chain + quote in parallel (independent Schwab calls — saves one RTT on cold Tier C) ──
+    # These futures must NOT run on _analytics_executor: _fetch_state itself occupies an
+    # analytics worker, so nested submit+.result() on the same 4-worker pool self-deadlocks
+    # once ≥3 Tier C jobs run concurrently (all workers block at .result() while their
+    # chain/quote tasks sit queued behind them — py-spy proof 2026-07-04, all four
+    # ed_analytics_bg threads parked here). Same class as the candle-seeding fix below;
+    # use the route-offload pool, whose tasks never submit back into the analytics pool.
     try:
         if _analytics_bg_shutdown:
             c_resp = safe_get_chain(client, ticker, strike_count=CHAIN_STRIKE_COUNT)
             q_resp = _safe_get_quote_with_retry(client, ticker)
         else:
-            _chain_fut = _submit_analytics_task(
+            _cq_pool = _get_route_offload_executor()
+            _chain_fut = _cq_pool.submit(
                 safe_get_chain, client, ticker, strike_count=CHAIN_STRIKE_COUNT
             )
-            _quote_fut = _submit_analytics_task(_safe_get_quote_with_retry, client, ticker)
+            _quote_fut = _cq_pool.submit(_safe_get_quote_with_retry, client, ticker)
             c_resp = _chain_fut.result()
             q_resp = _quote_fut.result()
     except SchwabAuthError as e:
