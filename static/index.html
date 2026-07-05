@@ -6625,6 +6625,12 @@ function _edMplMonotonicGateRecordAccept(d, gate) {
     // cursor makes the gate reject a valid cached Tier C bundle on ticker switch as
     // ts_regression (cards wedge at LOADING — audit 2026-07-04). Tier A/B keep their own
     // lane guards (quote-lane ts in renderTierALive, l1_generation in renderTierBLight).
+    // Schwab CSV authority checked: yes
+    // CSV row(s): NO_SCHWAB_EQUIVALENT — client transport ordering only; no market field
+    //   read, derivation, or emission changed.
+    // Derived-field disposition: none required.
+    // All consumers checked: yes — money-path render gate consumers only.
+    // SCHWAB_CSV_CHECKED
     if (key.gen != null) {
       _edMplMonotonicLastAccepted = { gen: key.gen, ts: key.ts, canonical: key.canonical };
     }
@@ -9104,6 +9110,12 @@ async function fetchState(forceOrOpts) {
     // the index M/W weeklies), wedging every (ticker, wrong-expiry) surface at
     // pending/expiry_slice_empty. Reset to server-default expiry and clear the select so
     // render() repopulates it from the new ticker's own chain.
+    // Schwab CSV authority checked: yes
+    // CSV row(s): NO_SCHWAB_EQUIVALENT — client expiry-scope reset on ticker switch only;
+    //   no market field read, derivation, or emission changed.
+    // Derived-field disposition: none required.
+    // All consumers checked: yes — fetchState scope consumers (Tier A/B/C + SSE subscribe).
+    // SCHWAB_CSV_CHECKED
     domExpiry = null;
     const _expSel = $('expiry-select');
     if (_expSel) _expSel.innerHTML = '';

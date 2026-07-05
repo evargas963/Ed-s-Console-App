@@ -1337,6 +1337,15 @@ def _schedule_analytics_recompute(
                 # stale-quote window an SSE-fed card could paint actionable while REST
                 # clients are withheld (quote_age_exceeded). Attach the same block so
                 # both transports carry identical actionability truth (audit 2026-07-04).
+                # Schwab CSV authority checked: yes
+                # CSV row(s): NO_SCHWAB_EQUIVALENT — attaches existing card_freshness_v1 /
+                #   operator mirrors to an already-built Tier C payload; no market field
+                #   read, derivation, or emission changed.
+                # Derived-field disposition: GATE_FAIL_CLOSED (actionability withheld on
+                #   stale quote/bundle).
+                # All consumers checked: yes — SSE onmessage → resolveCardTrustGate consumers;
+                #   REST + SSE cache-fanout already attach the same block.
+                # SCHWAB_CSV_CHECKED
                 try:
                     _attach_card_freshness_v1_block(
                         result,
@@ -4758,6 +4767,12 @@ def _fetch_state(
     # chain/quote tasks sit queued behind them — py-spy proof 2026-07-04, all four
     # ed_analytics_bg threads parked here). Same class as the candle-seeding fix below;
     # use the route-offload pool, whose tasks never submit back into the analytics pool.
+    # Schwab CSV authority checked: yes
+    # CSV row(s): NO_SCHWAB_EQUIVALENT — executor-pool scheduling only; the Schwab chain and
+    #   quote reads themselves (safe_get_chain / _safe_get_quote_with_retry) are unchanged.
+    # Derived-field disposition: none required (no derived field touched).
+    # All consumers checked: yes — c_resp/q_resp consumed identically downstream.
+    # SCHWAB_CSV_CHECKED
     try:
         if _analytics_bg_shutdown:
             c_resp = safe_get_chain(client, ticker, strike_count=CHAIN_STRIKE_COUNT)
