@@ -14,6 +14,24 @@ test('measure simultaneous EventSource connections (same ticker)', async ({ page
   const url = `${origin}/api/analytics/light/stream?ticker=SPY`;
 
   const rows = await page.evaluate(async (streamUrl) => {
+    // Warm-wait (cold-boot stability, audit 2026-07-04): when this spec runs first,
+    // the webServer is still executing its startup Tier C warms and the first SSE
+    // ": ok" byte can exceed the fixed 1500ms settle below — N=1 then reads
+    // opened=0 and the soft sanity assertion flakes. Probe until one EventSource
+    // reaches OPEN (60s deadline) before measuring anything.
+    {
+      const deadline = Date.now() + 60000;
+      let warm = false;
+      while (!warm && Date.now() < deadline) {
+        const probe = new EventSource(streamUrl);
+        for (let i = 0; i < 20 && probe.readyState !== 1; i += 1) {
+          await new Promise((r) => setTimeout(r, 250));
+        }
+        warm = probe.readyState === 1;
+        probe.close();
+        if (!warm) await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
     /** @type {{ connections: number, opened: number, connecting: number, closed: number }[]} */
     const out = [];
     for (let n = 1; n <= 10; n += 1) {
