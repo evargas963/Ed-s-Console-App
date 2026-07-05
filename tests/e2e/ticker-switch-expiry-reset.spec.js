@@ -35,6 +35,27 @@ test('ticker switch resets expiry scope and clears the stale select', async ({ p
   expect(committed.selectValue).not.toBe('2099-01-02');
 });
 
+test('transport diag lastFullRenderSource leaves init after a full render and persists across syncs', async ({ page }) => {
+  // Lane-2 lock: pre-fix, render wrote only window._lastFullRenderSource while
+  // _edTransportSync rebuilt __edTransport from the module-level variable, so the
+  // field reverted to 'init' on the next sync (SSE tick / poll skip) and stayed
+  // there forever. Post-fix it must reflect the last accepted full render source
+  // and persist across later syncs.
+  await page.evaluate(() => {
+    const p = window.__edTestHooks.fetchState(false); // default SPY — warmed at server boot
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  });
+  await page.waitForFunction(() => {
+    const t = window.__edTransport || {};
+    return !!t.lastFullRenderSource && t.lastFullRenderSource !== 'init';
+  }, undefined, { timeout: 110000 });
+  // Let SSE/poll syncs run — pre-fix these reverted the field to 'init'.
+  await page.waitForTimeout(4000);
+  const src = await page.evaluate(() => (window.__edTransport || {}).lastFullRenderSource);
+  expect(src).not.toBe('init');
+  expect(['rest_manual', 'rest_poll', 'sse', 'sse_fanout_rest']).toContain(src);
+});
+
 test('ordering cursor advanced only by gen-bearing Tier C bundles', async ({ page }) => {
   const r = await page.evaluate(() => {
     window._edMplMonotonicGateReset();

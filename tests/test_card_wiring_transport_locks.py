@@ -118,6 +118,22 @@ def test_client_ordering_cursor_commits_gen_bearing_only() -> None:
     ), "cursor assignment escaped the gen-bearing guard"
 
 
+def test_client_render_updates_module_level_render_source_diag() -> None:
+    """Lane-2 diagnostic lock: _edTransportSync reads the module-level
+    _lastFullRenderSource; render must assign it (not only the window property),
+    or __edTransport.lastFullRenderSource reverts to 'init' on the next sync."""
+    marker = "if (fullRenderSource) {"
+    assert marker in INDEX_SRC, "render fullRenderSource block not found in index.html"
+    body = INDEX_SRC[INDEX_SRC.index(marker) : INDEX_SRC.index(marker) + 700]
+    assert "_lastFullRenderSource = fullRenderSource;" in body, (
+        "render no longer assigns the module-level _lastFullRenderSource — "
+        "__edTransport.lastFullRenderSource sticks at 'init' (lane-2 regression)."
+    )
+    assert "window._lastFullRenderSource = fullRenderSource;" in body, (
+        "window._lastFullRenderSource mirror removed — external consumers lose it"
+    )
+
+
 def test_client_ticker_switch_resets_expiry_scope() -> None:
     marker = "async function fetchState"
     assert marker in INDEX_SRC, "fetchState not found in index.html"

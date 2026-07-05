@@ -8028,6 +8028,10 @@ function _renderMoneyPathCore(d, fullRenderSource) {
   _updateTierCLaneStaleMarkers();
   _updateLiveUiAe({ serverTs: d._server_build_ts });
   if (fullRenderSource) {
+    // Diagnostic truth: _edTransportSync reads the module-level _lastFullRenderSource;
+    // writing only the window property left __edTransport.lastFullRenderSource stuck
+    // at 'init' after the next sync (pre-RTH audit 2026-07-04, lane 2 fix).
+    _lastFullRenderSource = fullRenderSource;
     window._lastFullRenderSource = fullRenderSource;
     _edTransportSync({ lastFullRenderSource: fullRenderSource });
   }
