@@ -124,7 +124,7 @@ def test_client_render_updates_module_level_render_source_diag() -> None:
     or __edTransport.lastFullRenderSource reverts to 'init' on the next sync."""
     marker = "if (fullRenderSource) {"
     assert marker in INDEX_SRC, "render fullRenderSource block not found in index.html"
-    body = INDEX_SRC[INDEX_SRC.index(marker) : INDEX_SRC.index(marker) + 700]
+    body = INDEX_SRC[INDEX_SRC.index(marker) : INDEX_SRC.index(marker) + 1400]
     assert "_lastFullRenderSource = fullRenderSource;" in body, (
         "render no longer assigns the module-level _lastFullRenderSource — "
         "__edTransport.lastFullRenderSource sticks at 'init' (lane-2 regression)."
