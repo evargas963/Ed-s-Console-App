@@ -6461,15 +6461,33 @@ def _fetch_state(
             # the snapshot throttle (1/min/ticker): per-refresh writes contended with the
             # live path; bars re-seed from Schwab pricehistory after any gap and labels
             # only advance when new rows exist.
+            #
+            # Lane-4 (2026-07-05): the bars upsert measured 8,090.8ms of the 10,760ms
+            # db_snapshot_write_accuracy stage (sqlite_tier1_ok op=upsert_1m_bars
+            # ticker=SPY exec_ms=8090.8; warm ~0.5s) while its return value is never
+            # read by the live payload. Bars persist + outcome backfill now run as ONE
+            # ordered task on the single-worker fill-outcomes executor: bars are durable
+            # before labels advance (same relative order as the previous synchronous
+            # form), the Tier C payload no longer blocks on persistence, and a dropped
+            # write self-heals via the re-seed contract above. _bars_persist is a fresh
+            # list copy (get_bars) of immutable completed Candles — race-free handoff.
+            # Schwab CSV authority checked: yes
+            # CSV row(s): pricehistory.candles[].open/high/low/close/volume — persistence
+            #   scheduling only; no market field read, derivation, emission, or
+            #   actionability logic changed; bar values and their Schwab leaf unchanged.
+            # Derived-field disposition: none required.
+            # All consumers checked: yes — upsert return value unread at this call site;
+            #   fill_outcomes ordering preserved by the max_workers=1 executor.
+            # SCHWAB_CSV_CHECKED
             if _do_insert:
-                try:
-                    _bars_persist = _candles_1m.get_bars(ticker)
-                    if _bars_persist:
-                        _ed_db.upsert_1m_bars(ticker, _bars_persist)
-                except Exception as _pe:
-                    log.warning("upsert_1m_bars %s: %s", ticker, _pe)
+                _bars_persist = _candles_1m.get_bars(ticker)
 
-                def _bg_fill_outcomes() -> None:
+                def _bg_persist_bars_then_fill_outcomes() -> None:
+                    try:
+                        if _bars_persist:
+                            get_db().upsert_1m_bars(ticker, _bars_persist)
+                    except Exception as _pe:
+                        log.warning("upsert_1m_bars %s: %s", ticker, _pe)
                     try:
                         get_db().fill_outcomes(ticker, CANONICAL_TIMEFRAME, _snap_ts)
                     except Exception as ex:
@@ -6480,7 +6498,7 @@ def _fetch_state(
                             ex,
                         )
 
-                _get_db_fill_outcomes_executor().submit(_bg_fill_outcomes)
+                _get_db_fill_outcomes_executor().submit(_bg_persist_bars_then_fill_outcomes)
             # Heavy normalized-table materialize must not run from every snapshot by default;
             # set ED_LIVE_SNAPSHOT_MATERIALIZE=1 to re-enable debounced refresh on this path, or use ml_scheduler/CLI.
             if os.environ.get("ED_LIVE_SNAPSHOT_MATERIALIZE", "0").strip().lower() in (

@@ -94,6 +94,65 @@ def test_fetch_state_stamps_compute_breakdown() -> None:
     )
 
 
+# ── Lane-4 lock — bars persistence must stay off the synchronous hot path ───
+
+
+def test_fetch_state_bars_persist_offloaded_and_ordered() -> None:
+    """Lane-4 (2026-07-05): upsert_1m_bars measured 8,090.8ms of the synchronous
+    db_snapshot_write_accuracy stage while its result is never read by the live
+    payload. It must run ONLY inside the ordered background task (upsert before
+    fill_outcomes, single-worker executor) — never inline in _fetch_state."""
+    fn = _find_function(SERVER_TREE, "_fetch_state")
+    assert fn is not None, "server._fetch_state not found"
+    bg = _find_function(fn, "_bg_persist_bars_then_fill_outcomes")
+    assert bg is not None, (
+        "_bg_persist_bars_then_fill_outcomes not found — bars persistence has "
+        "been moved out of the ordered background task (lane-4 regression)."
+    )
+    # Every upsert_1m_bars call in _fetch_state must live inside the bg task.
+    upsert_lines = [
+        n.lineno
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr == "upsert_1m_bars"
+    ]
+    assert upsert_lines, "_fetch_state no longer persists 1m bars at all"
+    for ln in upsert_lines:
+        assert bg.lineno <= ln <= (bg.end_lineno or bg.lineno), (
+            f"upsert_1m_bars called at server.py:{ln} outside the background task — "
+            "the 1m-bars write is back on the synchronous Tier C hot path."
+        )
+    # Ordering inside the task: bars durable before labels advance.
+    fill_lines = [
+        n.lineno
+        for n in ast.walk(bg)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr == "fill_outcomes"
+    ]
+    assert fill_lines, "background task no longer runs fill_outcomes"
+    assert min(upsert_lines) < min(fill_lines), (
+        "fill_outcomes precedes upsert_1m_bars in the background task — labels "
+        "could advance before their bars are durable."
+    )
+    assert "_get_db_fill_outcomes_executor" in _called_names(fn), (
+        "_fetch_state no longer submits to the fill-outcomes executor"
+    )
+
+
+def test_fill_outcomes_executor_is_single_worker() -> None:
+    """The upsert→fill ordering guarantee rests on max_workers=1; two workers
+    would let a newer cycle's bars land before an older cycle's fill reads them."""
+    fn = _find_function(SERVER_TREE, "_get_db_fill_outcomes_executor")
+    assert fn is not None, "server._get_db_fill_outcomes_executor not found"
+    seg = ast.get_source_segment(SERVER_SRC, fn) or ""
+    assert "max_workers=1" in seg, (
+        "fill-outcomes executor is no longer single-worker — cross-cycle "
+        "persist/fill ordering is no longer guaranteed."
+    )
+
+
 # ── Lock 4 — SSE completed-fetch mirror parity ──────────────────────────────
 
 
