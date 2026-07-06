@@ -808,6 +808,7 @@ def _invalidate_analytics_cache_after_bg_failures(
         ent["ms_dict"] = md
         marked.append(key)
     if marked:
+        _analytics_cache_observability["bg_failure_stale_marks"] += len(marked)
         log.warning(
             "analytics cache marked stale after bg failures ticker=%s exp=%s n=%s reason=%s keys=%s",
             t,
@@ -1313,6 +1314,18 @@ def _fetch_state_sse_bounded(
 # staleness budget). Observability only; no freshness/actionability influence.
 _analytics_recompute_last_duration_sec: dict[str, float] = {}
 
+# TIER_C_STAGE_TIMER_INSTRUMENTATION_V1 (passive observation only): Tier C cache
+# lifecycle counters — pending shells built, bg-failure stale-marks, expiry
+# evictions, and cold (version-reset) cache writes. Complements the existing
+# _stage_marks/_compute_breakdown stage timers in _fetch_state. Nothing reads
+# these for freshness, trust, actionability, sizing, or synthesis decisions.
+_analytics_cache_observability: dict[str, int] = {
+    "pending_shell_builds": 0,
+    "bg_failure_stale_marks": 0,
+    "expiry_evictions": 0,
+    "cold_entry_writes": 0,
+}
+
 
 def _schedule_analytics_recompute(
     inflight_key: tuple,
@@ -1354,6 +1367,7 @@ def _schedule_analytics_recompute(
 
     def _work() -> None:
         try:
+            executor_queue_wait_sec = round(max(0.0, time.monotonic() - _submitted_monotonic), 3)
             fetch_started_monotonic = time.monotonic()
             if sse_loop:
                 timeout_sec = max(0.5, float(SSE_RECOMPUTE_FETCH_TIMEOUT_SEC))
@@ -1383,13 +1397,15 @@ def _schedule_analytics_recompute(
                 recompute_duration_sec = round(time.monotonic() - fetch_started_monotonic, 3)
                 _analytics_recompute_last_duration_sec[ticker.upper().strip()] = recompute_duration_sec
                 result["analytics_recompute_duration_sec"] = recompute_duration_sec
+                result["analytics_executor_queue_wait_sec"] = executor_queue_wait_sec
                 stale_budget_sec = float(CACHE_TTL) * ANALYTICS_STALE_GRACE_CYCLES
                 if recompute_duration_sec >= stale_budget_sec:
                     log.info(
                         "analytics recompute exceeded staleness budget ticker=%s "
-                        "duration=%.3fs budget=%.1fs source=%s",
+                        "duration=%.3fs queue_wait=%.3fs budget=%.1fs source=%s",
                         ticker,
                         recompute_duration_sec,
+                        executor_queue_wait_sec,
                         stale_budget_sec,
                         update_source,
                     )
@@ -1471,6 +1487,7 @@ def _schedule_analytics_recompute(
             with _analytics_bg_lock:
                 _analytics_inflight.discard(inflight_key)
 
+    _submitted_monotonic = time.monotonic()
     try:
         _submit_analytics_task(_work)
     except RuntimeError:
@@ -1588,6 +1605,7 @@ def _write_analytics_bg_error_shell(
 
 def _minimal_analytics_pending_dict(ticker: str, expiry: Optional[str]) -> dict:
     """Empty Tier C shell when no cache — client keeps Tier A DOM until SSE/REST delivers full bundle."""
+    _analytics_cache_observability["pending_shell_builds"] += 1
     t = ticker.upper().strip()
     pending_shell_ingestion_wall_ts = time.time()
     return {
@@ -1921,6 +1939,7 @@ def _evict_old_expiry_entries(ticker: str, keep_expiry: Optional[str]) -> None:
         k for k in list(_state_cache)
         if k[0] == ticker and k[1] != keep_expiry
     ]
+    _analytics_cache_observability["expiry_evictions"] += len(keys_to_remove)
     for k in keys_to_remove:
         del _state_cache[k]
 
@@ -7438,6 +7457,7 @@ def _fetch_state(
                 exc_info=True,
             )
     _attach_stack_runtime_and_governance(ms_dict, ticker=ticker)
+    _stage_marks.append(("stack_runtime_governance_attach", time.perf_counter()))
     if ms_dict.get("signals_engine_failed"):
         sr = ms_dict.get("stack_runtime")
         if isinstance(sr, dict):
@@ -7479,6 +7499,9 @@ def _fetch_state(
     _prev_ent = _state_cache.get(_cache_key) or {}
     _gen_ts = time.time()
     _next_ver = int(_prev_ent.get("analytics_version", 0)) + 1
+    if not _prev_ent:
+        # Version restarts at 1 — a cold entry write (fresh key or prior eviction).
+        _analytics_cache_observability["cold_entry_writes"] += 1
 
     # ── Pass 4: level cross detection ─────────────────────────────────────────
     # Writer for level_crosses, consumer at /api/level_crosses + Decision
@@ -7529,6 +7552,11 @@ def _fetch_state(
     from market_state import attach_operator_visible_field_lineage
 
     attach_operator_visible_field_lineage(ms_dict)
+    # TIER_C_STAGE_TIMER_INSTRUMENTATION_V1 — post-pipeline tail (merge_into_state,
+    # level-cross detection, cache write, eviction, lineage) runs AFTER _pipeline_ms
+    # stops; time it separately so cycle totals attribute fully. Passive observation.
+    ms_dict["_finalize_tail_ms"] = round((time.monotonic() - _t_pipeline_end_mono) * 1000)
+    ms_dict["analytics_cache_observability_v1"] = dict(_analytics_cache_observability)
     return ms_dict
 
 

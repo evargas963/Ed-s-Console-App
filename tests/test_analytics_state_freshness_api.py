@@ -605,3 +605,132 @@ def test_analytics_recompute_duration_instrumentation_recorded(monkeypatch):
     assert stamped.get("analytics_recompute_duration_sec") == dur
     with srv._analytics_bg_lock:
         assert key not in srv._analytics_inflight
+
+
+# ── TIER_C_STAGE_TIMER_INSTRUMENTATION_V1 — stage timing + cache observability locks ──
+
+
+def test_executor_queue_wait_recorded_on_completed_recompute(monkeypatch):
+    """Completed recompute carries analytics_executor_queue_wait_sec (>= 0, additive)."""
+    import server as srv
+
+    ticker = "ZZZ_QWAIT"
+    stamped: dict = {}
+    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
+    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: fn(*a, **k))
+    monkeypatch.setattr(
+        srv,
+        "_fetch_state",
+        lambda t, e, update_source=None: {"ticker": t, "selected_exp": None},
+    )
+    monkeypatch.setattr(
+        srv,
+        "_stamp_analytics_freshness_on_completed_fetch",
+        lambda md, t, k: stamped.update(md),
+    )
+    monkeypatch.setattr(srv, "_attach_card_freshness_v1_block", lambda *a, **k: None)
+    key = srv._tier_c_inflight_key(ticker, None)
+    srv._schedule_analytics_recompute(key, ticker, None, "sse_loop_test")
+    assert "analytics_executor_queue_wait_sec" in stamped
+    assert stamped["analytics_executor_queue_wait_sec"] >= 0.0
+    assert "analytics_recompute_duration_sec" in stamped
+    with srv._analytics_bg_lock:
+        assert key not in srv._analytics_inflight
+
+
+def test_cache_observability_counters_are_passive_observation_only():
+    """Shell builds / expiry evictions / bg-failure stale-marks increment counters without behavior change."""
+    import server as srv
+
+    before = dict(srv._analytics_cache_observability)
+
+    shell = srv._minimal_analytics_pending_dict("ZZZ_OBS1", None)
+    assert shell["analytics_pending_shell"] is True
+    assert (
+        srv._analytics_cache_observability["pending_shell_builds"]
+        == before["pending_shell_builds"] + 1
+    )
+
+    srv._state_cache[("ZZZ_OBS2", "2099-01-01")] = {"ms_dict": {"ticker": "ZZZ_OBS2"}}
+    srv._state_cache[("ZZZ_OBS2", "2099-02-01")] = {"ms_dict": {"ticker": "ZZZ_OBS2"}}
+    try:
+        srv._evict_old_expiry_entries("ZZZ_OBS2", "2099-01-01")
+        assert ("ZZZ_OBS2", "2099-02-01") not in srv._state_cache
+        assert ("ZZZ_OBS2", "2099-01-01") in srv._state_cache
+        assert (
+            srv._analytics_cache_observability["expiry_evictions"]
+            == before["expiry_evictions"] + 1
+        )
+
+        srv._invalidate_analytics_cache_after_bg_failures(
+            ("ZZZ_OBS2", "2099-01-01"), "ZZZ_OBS2", reason="test_reason"
+        )
+        marked = srv._state_cache[("ZZZ_OBS2", "2099-01-01")]["ms_dict"]
+        assert marked["analytics_stale"] is True
+        assert (
+            srv._analytics_cache_observability["bg_failure_stale_marks"]
+            == before["bg_failure_stale_marks"] + 1
+        )
+    finally:
+        srv._state_cache.pop(("ZZZ_OBS2", "2099-01-01"), None)
+        srv._state_cache.pop(("ZZZ_OBS2", "2099-02-01"), None)
+
+
+def test_executor_sizing_unchanged_by_stage_timer_slice():
+    """Hard constraint: analytics executor stays at 4 workers (no sizing change in this slice)."""
+    import server as srv
+
+    assert srv._get_analytics_executor()._max_workers == 4
+
+
+def test_timing_fields_do_not_affect_trust_or_actionability(tier_c_cache_spy, monkeypatch):
+    """Identical payloads with/without timing fields produce identical operator actionability."""
+    srv = tier_c_cache_spy
+    now = time.time()
+    monkeypatch.setattr(
+        srv._lmp,
+        "get_quote",
+        lambda t: {
+            "fast_server_ts": now - 1.0,
+            "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
+        },
+    )
+    plain = _trusted_ms_dict(ticker="ZZZ_TIM1", bundle_ts=now - 2.0)
+    timed = _trusted_ms_dict(ticker="ZZZ_TIM2", bundle_ts=now - 2.0)
+    timed.update(
+        {
+            "analytics_recompute_duration_sec": 42.0,
+            "analytics_executor_queue_wait_sec": 9.5,
+            "_finalize_tail_ms": 1234,
+            "_compute_breakdown": {"schwab_chain_ms": 9000.0},
+            "analytics_cache_observability_v1": {"pending_shell_builds": 99},
+        }
+    )
+    _seed_cache(srv, "ZZZ_TIM1", "2099-12-20", plain, age_sec=1.0)
+    _seed_cache(srv, "ZZZ_TIM2", "2099-12-21", timed, age_sec=1.0)
+    body_plain = _response_body(
+        srv._tier_c_analytics_json_response("ZZZ_TIM1", "2099-12-20", False, "test_timing")
+    )
+    body_timed = _response_body(
+        srv._tier_c_analytics_json_response("ZZZ_TIM2", "2099-12-21", False, "test_timing")
+    )
+    assert body_plain["operator_card_actionable"] == body_timed["operator_card_actionable"]
+    assert body_plain["operator_card_trust_state"] == body_timed["operator_card_trust_state"]
+    assert body_plain["analytics_stale"] == body_timed["analytics_stale"]
+
+
+def test_stage_timer_surfaces_present_in_fetch_state_source():
+    """Source lock: stage marks + additive timing fields exist in the Tier C recompute path."""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    for needle in (
+        '_stage_marks.append(("stack_runtime_governance_attach"',
+        '_stage_marks.append(("db_snapshot_write_accuracy"',
+        '_stage_marks.append(("signals_engine_build_market_state"',
+        'ms_dict["_compute_breakdown"]',
+        'ms_dict["_finalize_tail_ms"]',
+        'result["analytics_executor_queue_wait_sec"]',
+        'ms_dict["analytics_cache_observability_v1"]',
+    ):
+        assert needle in src, f"missing stage-timer surface: {needle}"
