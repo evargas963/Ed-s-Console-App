@@ -495,10 +495,27 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
+        # STACK_SCOPE_CLOSURE_GOVERNANCE_LOCK_V1 (operator-approved 2026-07-06):
+        # parent/composite lane closures must cover code-derived layer/ticker/
+        # horizon authorities at the required environment rung; scoped or
+        # caveated children cannot close parents. Additive check; fails the
+        # objective audit on violation.
+        from tools.check_lane_closure_scopes import run_check as run_lane_scope_check
+
+        lane_scope = run_lane_scope_check()
+        if not lane_scope.get("ok"):
+            print(
+                "enforce_all_rules --objective-audit: FAIL "
+                "(STACK_SCOPE_CLOSURE_GOVERNANCE_LOCK_V1)\n- "
+                + "\n- ".join(lane_scope.get("errors") or []),
+                file=sys.stderr,
+            )
+            return 1
         print(
             "enforce_all_rules --objective-audit: PASS (AUDIT: CLEAN — "
             "repo-wide static + situational runtime where cone fits; "
-            f"applied={result.get('applied_runtime_audits')!r})"
+            f"applied={result.get('applied_runtime_audits')!r}; "
+            "lane-closure scope lock PASS)"
         )
         return 0
     if args.ablation_bias:
