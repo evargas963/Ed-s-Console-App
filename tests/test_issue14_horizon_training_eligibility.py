@@ -177,3 +177,90 @@ def test_d2_builder_opens_production_read_only():
     assert "?mode=ro" in src and "uri=True" in src, (
         "d2 scratch builder no longer opens the production DB read-only"
     )
+
+
+# ── D2 matrix runner + scratch normalized-carry locks (2026-07-06) ───────────
+
+
+def test_production_normalizer_is_intersection_driven_and_tb_free():
+    """The production materializer must stay schema-intersection-driven and must
+    never name TB research columns — the scratch carry works ONLY because the
+    scratch normalized table adds the columns; production stays TB-free."""
+    for fname in ("snapshot_normalizer.py", "normalized_training_sync.py"):
+        src = (ROOT / fname).read_text(encoding="utf-8", errors="replace")
+        assert "outcome_tb" not in src and "tb_touch" not in src, (
+            f"{fname} names TB research columns — production normalization must "
+            "not carry them"
+        )
+    sn = (ROOT / "snapshot_normalizer.py").read_text(encoding="utf-8", errors="replace")
+    assert "_normalized_insert_columns" in sn and "c in norm" in sn, (
+        "normalizer insert-column intersection design changed — re-audit the "
+        "scratch carry assumption"
+    )
+
+
+def test_d2_matrix_runner_guards():
+    """Isolation guards: production DB refused; models/ output refused; output
+    outside data/research refused; label mapping explicit; promotion disabled."""
+    import pytest
+    from tools.research.d2_run_dual_label_matrix import (
+        MatrixGuardError, guard_paths, label_column_for,
+    )
+
+    research_out = ROOT / "data" / "research" / "d2_models"
+    with pytest.raises(SystemExit):
+        guard_paths(ROOT / "data" / "ed_console.db", research_out)
+    scratch = ROOT / "data" / "research" / "d2_dual_label.db"
+    for bad in (ROOT / "models", ROOT / "models" / "parallel",
+                ROOT / "models" / "cascade", ROOT / "models" / "active",
+                ROOT / "reports" / "d2_out"):
+        with pytest.raises(SystemExit):
+            guard_paths(scratch, bad)
+    guard_paths(scratch, research_out)  # must not raise
+    assert label_column_for("fixed", "5c") == "outcome_5c"
+    assert label_column_for("tb", "5c") == "outcome_tb_5c"
+    with pytest.raises(SystemExit):
+        label_column_for("prod", "5c")
+    src = (ROOT / "tools" / "research" / "d2_run_dual_label_matrix.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'os.environ["ED_SCHEDULER_AUTO_PROMOTE"] = "0"' in src, (
+        "matrix runner no longer disables promotion"
+    )
+
+
+def test_scratch_normalized_carry_via_unchanged_materializer(tmp_path):
+    """The UNCHANGED production materializer carries a TB column when (and only
+    when) the target normalized table has it — proven on a tmp mini-DB."""
+    import sqlite3
+    from snapshot_normalizer import materialize_normalized_table
+
+    db = tmp_path / "carry.db"
+    conn = sqlite3.connect(db)
+    cols = ("ticker TEXT, timeframe TEXT, ts_utc REAL, ts_et TEXT, spot REAL,"
+            " candle_open REAL, candle_high REAL, candle_low REAL, candle_close REAL,"
+            " candle_volume REAL, vwap REAL, outcome_tb_5c TEXT")
+    conn.execute(f"CREATE TABLE snapshots (snapshot_id INTEGER PRIMARY KEY, {cols})")
+    conn.execute(
+        "CREATE TABLE snapshots_1m_normalized (snapshot_id INTEGER PRIMARY KEY,"
+        f" {cols}, normalized_from_subminute INTEGER, source TEXT, synthetic INTEGER,"
+        " missing_fields TEXT, candle_direction TEXT, candle_body_pts REAL,"
+        " candle_range_pts REAL, vwap_side TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot, candle_open,"
+        " candle_high, candle_low, candle_close, candle_volume, vwap, outcome_tb_5c)"
+        " VALUES ('SPY','1m',1783000000,'t',450.0,450.0,450.5,449.5,450.2,100.0,450.1,'up')"
+    )
+    conn.commit()
+    conn.close()
+    res = materialize_normalized_table(db_path=db, tickers=["SPY"])
+    assert not res["errors"], res["errors"]
+    conn = sqlite3.connect(db)
+    row = conn.execute(
+        "SELECT outcome_tb_5c FROM snapshots_1m_normalized WHERE ticker='SPY'"
+    ).fetchone()
+    conn.close()
+    assert row is not None and row[0] == "up", (
+        "TB column was not carried by the intersection-driven materializer"
+    )

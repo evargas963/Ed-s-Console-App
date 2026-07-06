@@ -304,6 +304,44 @@ def main() -> int:
         },
         "elapsed_s": round(time.time() - t0, 1),
     }
+    # ── Scratch-only normalized carry (operator approval 2026-07-06) ─────────
+    # Create snapshots_1m_normalized INSIDE THE SCRATCH DB from the production
+    # DDL plus the 16 TB research columns, then run the UNCHANGED production
+    # materializer against the scratch DB. The production normalizer's insert
+    # list is the name-intersection of snapshots vs snapshots_1m_normalized
+    # (snapshot_normalizer._normalized_insert_columns), so the TB columns are
+    # carried automatically here and NEVER in production (whose normalized
+    # table has no TB columns). Zero production code or schema change.
+    ddl_row = src.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='snapshots_1m_normalized'"
+    ).fetchone()
+    if ddl_row and ddl_row["sql"]:
+        dst.execute(ddl_row["sql"])
+        for hz in HORIZONS:
+            for cdef in (
+                f"outcome_tb_{hz} TEXT", f"tb_touch_{hz} TEXT",
+                f"tb_barrier_pts_{hz} REAL", f"tb_truncated_{hz} INTEGER",
+            ):
+                dst.execute(f"ALTER TABLE snapshots_1m_normalized ADD COLUMN {cdef}")
+        dst.commit()
+        dst.close()
+        from snapshot_normalizer import materialize_normalized_table
+
+        norm_res = materialize_normalized_table(db_path=args.out, tickers=list(args.tickers))
+        dst = sqlite3.connect(str(args.out))
+        dst.row_factory = sqlite3.Row
+        norm_tb = dst.execute(
+            "SELECT COUNT(*) FROM snapshots_1m_normalized WHERE outcome_tb_5c IS NOT NULL"
+        ).fetchone()[0]
+        manifest["normalized_carry"] = {
+            "normalized_rows": norm_res.get("normalized_rows"),
+            "normalized_errors": norm_res.get("errors"),
+            "normalized_rows_with_tb_5c": norm_tb,
+            "tb_columns_added": 16,
+        }
+    else:
+        manifest["normalized_carry"] = {"error": "source normalized DDL not found"}
+
     manifest_path = args.out.with_suffix(".manifest.json")
     manifest_path.write_text(json.dumps(manifest, indent=1), encoding="utf-8")
     src.close()
