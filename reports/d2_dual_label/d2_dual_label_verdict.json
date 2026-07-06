@@ -1,0 +1,51 @@
+{
+ "cells": {
+  "IWM_15c": {
+   "delta": 0.2561,
+   "mcc_fixed": 0.0401,
+   "mcc_tb": 0.2962,
+   "tb_dir_prec_above_base": true,
+   "tb_ece_no_worse": true
+  },
+  "IWM_5c": {
+   "delta": 0.2822,
+   "mcc_fixed": 0.0183,
+   "mcc_tb": 0.3005,
+   "tb_dir_prec_above_base": true,
+   "tb_ece_no_worse": true
+  },
+  "QQQ_15c": {
+   "delta": 0.5598,
+   "mcc_fixed": -0.0744,
+   "mcc_tb": 0.4854,
+   "tb_dir_prec_above_base": true,
+   "tb_ece_no_worse": true
+  },
+  "QQQ_5c": {
+   "delta": 0.5089,
+   "mcc_fixed": -0.028,
+   "mcc_tb": 0.4809,
+   "tb_dir_prec_above_base": true,
+   "tb_ece_no_worse": true
+  },
+  "SPY_15c": {
+   "delta": 0.3714,
+   "mcc_fixed": 0.0307,
+   "mcc_tb": 0.4021,
+   "tb_dir_prec_above_base": true,
+   "tb_ece_no_worse": true
+  },
+  "SPY_5c": {
+   "delta": 0.3891,
+   "mcc_fixed": -0.0024,
+   "mcc_tb": 0.3867,
+   "tb_dir_prec_above_base": true,
+   "tb_ece_no_worse": true
+  }
+ },
+ "per_hz_base_ticker_wins": {
+  "15c": 3,
+  "5c": 3
+ },
+ "verdict": "ADOPT_SIGNAL"
+}

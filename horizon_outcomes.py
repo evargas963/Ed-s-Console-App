@@ -84,6 +84,19 @@ OUTCOME_MOVE_HORIZON_MINUTES: dict[str, int] = {s[1]: s[5] for s in OUTCOME_MOVE
 VALID_DIR_HORIZON_MINUTES: dict[str, int] = {s[2]: s[5] for s in OUTCOME_MOVEMENT_V1_SPECS}
 THRESHOLD_MOVE_HORIZON_MINUTES: dict[str, int] = {s[3]: s[5] for s in OUTCOME_MOVEMENT_V1_SPECS}
 
+# D2 dual-label backtest (operator-approved research, 2026-07-06): triple-barrier
+# label columns that exist ONLY in the scratch research DB
+# (data/research/d2_dual_label.db). Registered here so the training loaders'
+# allowed-label validation accepts them when pointed at the scratch DB with
+# label_column=outcome_tb_{hz}. ADDITIVE ONLY: these columns are never written
+# to the production DB, never appear in OUTCOME_BAR_SPECS (the production
+# outcome writer), and DEFAULT_TRAINING_LABEL_COLUMN is unchanged — both facts
+# are test-locked.
+TB_RESEARCH_LABEL_COLUMNS: dict[str, int] = {
+    f"outcome_tb_{_outcome_slug(odir)}": int(n_min)
+    for odir, _opt, n_min in OUTCOME_BAR_SPECS
+}
+
 
 def forward_bar_start_utc(ts_snapshot: float, n_minutes: int) -> float:
     """UTC start (epoch seconds) of the 1m bar whose close labels the T+N horizon."""

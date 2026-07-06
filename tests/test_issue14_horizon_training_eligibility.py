@@ -3,7 +3,7 @@ Issue 14 — per-horizon training eligibility independent of outcome_filled / ot
 
 Root cause was: ml_data_common.outcome_where_clause required outcome_filled=1, while db.fill_outcomes
 only sets outcome_filled=1 when ALL OUTCOME_BAR_SPECS columns are populated — excluding rows that
-already have valid outcome_1c (or 5c, etc.) while longer horizons are still pending.
+already have valid outcome_1c (or 5c, etc.) before longer horizons have filled.
 """
 from __future__ import annotations
 
@@ -111,3 +111,69 @@ def test_transformer_uses_same_lstm_extract_and_target():
     assert "target_column=" in src_prepare
     assert "outcome_filled" not in src_prepare
 
+
+
+# ── D2 dual-label research registry locks (2026-07-06) ───────────────────────
+
+
+def test_tb_research_labels_registered_additively_only():
+    """D2 (operator-approved): outcome_tb_{hz} label columns are accepted by the
+    training loaders for SCRATCH-DB research runs — additively. Production
+    defaults and the production outcome writer must be untouched:
+      - DEFAULT_TRAINING_LABEL_COLUMN stays outcome_1c
+      - OUTCOME_BAR_SPECS (production writer) carries no TB columns
+      - TB registry is exactly the four research columns
+    """
+    from horizon_outcomes import OUTCOME_BAR_SPECS, TB_RESEARCH_LABEL_COLUMNS
+    from ml_data_common import training_label_where_clause
+    from ml_horizon import DEFAULT_TRAINING_LABEL_COLUMN
+
+    assert DEFAULT_TRAINING_LABEL_COLUMN == "outcome_1c", (
+        "production default training label changed — D2 must be additive-only"
+    )
+    assert TB_RESEARCH_LABEL_COLUMNS == {
+        "outcome_tb_1c": 1, "outcome_tb_5c": 5,
+        "outcome_tb_15c": 15, "outcome_tb_60c": 60,
+    }
+    for col in TB_RESEARCH_LABEL_COLUMNS:
+        assert training_label_where_clause(col) == f"{col} IS NOT NULL"
+    writer_cols = {s[0] for s in OUTCOME_BAR_SPECS} | {s[1] for s in OUTCOME_BAR_SPECS}
+    assert not any("tb" in c.split("_") for c in writer_cols), (
+        "TB columns leaked into the production outcome writer specs"
+    )
+
+
+def test_tb_label_core_policies():
+    """D2 generator core (pure function): PT/SL touch, ambiguous close-side with
+    tag, vertical flat, and session-truncation flag — the approved policies."""
+    from tools.research.d2_build_dual_label_scratch_db import tb_label_for_window
+
+    bars_up = [(1.0, 105.0, 99.5, 104.0)]
+    assert tb_label_for_window(100.0, bars_up, 2.0, 5) == ("up", "pt_up", 0)
+    bars_dn = [(1.0, 100.4, 95.0, 96.0)]
+    assert tb_label_for_window(100.0, bars_dn, 2.0, 5) == ("down", "sl_down", 0)
+    # ambiguous: both barriers inside one bar -> close side + 'ambiguous'
+    bars_amb_up = [(1.0, 103.0, 97.0, 101.0)]
+    assert tb_label_for_window(100.0, bars_amb_up, 2.0, 5) == ("up", "ambiguous", 0)
+    bars_amb_dn = [(1.0, 103.0, 97.0, 99.0)]
+    assert tb_label_for_window(100.0, bars_amb_dn, 2.0, 5) == ("down", "ambiguous", 0)
+    # vertical: full window, no touch -> flat, not truncated
+    quiet = [(float(i), 100.5, 99.5, 100.1) for i in range(5)]
+    assert tb_label_for_window(100.0, quiet, 2.0, 5) == ("flat", "vertical", 0)
+    # truncated: session cut the window short with no touch -> flat + truncated flag
+    short = quiet[:3]
+    assert tb_label_for_window(100.0, short, 2.0, 5) == ("flat", "vertical_truncated", 1)
+    # first-touch order: barrier hit in bar 2 wins over later bars
+    seq = [(1.0, 100.5, 99.5, 100.2), (2.0, 102.5, 99.8, 102.2), (3.0, 100.0, 95.0, 96.0)]
+    assert tb_label_for_window(100.0, seq, 2.0, 5) == ("up", "pt_up", 0)
+
+
+def test_d2_builder_opens_production_read_only():
+    """The scratch builder must open the source DB via sqlite URI mode=ro —
+    production mutation impossible by construction."""
+    src = (ROOT / "tools" / "research" / "d2_build_dual_label_scratch_db.py").read_text(
+        encoding="utf-8"
+    )
+    assert "?mode=ro" in src and "uri=True" in src, (
+        "d2 scratch builder no longer opens the production DB read-only"
+    )

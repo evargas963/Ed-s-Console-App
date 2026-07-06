@@ -167,6 +167,7 @@ def training_label_where_clause(label_column: str | None = None) -> str:
         OUTCOME_DIR_HORIZON_MINUTES,
         OUTCOME_HORIZON_MINUTES,
         OUTCOME_MOVE_HORIZON_MINUTES,
+        TB_RESEARCH_LABEL_COLUMNS,
         THRESHOLD_MOVE_HORIZON_MINUTES,
         VALID_DIR_HORIZON_MINUTES,
     )
@@ -179,6 +180,17 @@ def training_label_where_clause(label_column: str | None = None) -> str:
         | set(OUTCOME_MOVE_HORIZON_MINUTES)
         | set(VALID_DIR_HORIZON_MINUTES)
         | set(THRESHOLD_MOVE_HORIZON_MINUTES)
+        # D2 research labels (scratch DB only; additive — default unchanged).
+        # Schwab CSV authority checked: yes
+        # CSV row(s): NO_SCHWAB_EQUIVALENT — training label-column allow-list
+        #   extension for scratch-DB research; no market field derivation,
+        #   emission, or production label behavior changed (default pinned by
+        #   tests/test_issue14_horizon_training_eligibility.py).
+        # Derived-field disposition: none required.
+        # All consumers checked: yes — loaders validate-only; production writer
+        #   specs (OUTCOME_BAR_SPECS) untouched.
+        # SCHWAB_CSV_CHECKED
+        | set(TB_RESEARCH_LABEL_COLUMNS)
     )
     if col not in _allowed:
         raise ValueError(
