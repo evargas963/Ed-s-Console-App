@@ -67,6 +67,19 @@ Closed stale/fallback **mechanism** lanes (`CARD_FIDELITY_STALE_FALLBACK_LANE`, 
 | RTH all-supported-ticker audit | **BLOCKED** |
 | D17 full closure | **NOT_CLOSED** |
 
+### D2 dual-label research board @ `623e088f` (lint-green tip `c74da7a`; scratch-scoped — production untouched)
+
+| Lane | Status | Evidence |
+|------|--------|----------|
+| NORMALIZER_COLUMN_CARRY (scratch-only) | **CLOSED_WITH_EVIDENCE** | `623e088f` — scratch `snapshots_1m_normalized` created from production DDL + 16 TB columns; unchanged production materializer carried 31,662 `outcome_tb_5c` rows (intersection-driven insert list) |
+| SCRATCH_NORMALIZED_TB_COLUMNS | **PROVEN** | scratch manifest `normalized_rows=66887`, `normalized_rows_with_tb_5c=31662`, zero errors |
+| PRODUCTION_NORMALIZER_UNCHANGED | **PROVEN** | source TB-free lock (`test_production_normalizer_is_intersection_driven_and_tb_free`) + production PRAGMA: zero TB columns on `snapshots` and `snapshots_1m_normalized` |
+| MATRIX_RUNNER_ARTIFACT_ISOLATION | **PROVEN** | `tools/research/d2_run_dual_label_matrix.py` guards exercised live + locked: production DB refused, `models/*` outputs refused, out forced under `data/research/`, promotion disabled |
+| PRODUCTION_MODEL_TREE_UNTOUCHED | **PROVEN** | outputs only under gitignored `data/research/d2_models/`; nothing staged/modified under `models/` |
+| D2_XGB_DUAL_LABEL_MATRIX | **READY_FOR_OPERATOR_POWERSHELL** | command file `data/research/d2_models/d2_matrix_commands.ps1` (12 xgb cells); production-fidelity pilot: SPY 5c fixed balanced-acc 0.3357 vs TB 0.5215 through unchanged `train_ticker` |
+
+**Preserved (do not upgrade):** `FULL_DUAL_LABEL_MATRIX` = **PARTIAL / XGB_READY / SEQUENCE_FAMILIES_BLOCKED_PENDING_LABEL_THREADING_APPROVAL** · `TRIPLE_BARRIER_ADOPTION` = **NOT_APPROVED_FOR_PRODUCTION** · `MODEL_PROMOTION` = **NOT_APPROVED** · `MODEL_REAL_MONEY_EDGE` = **NOT_PROVEN** · `REAL_MONEY_READINESS` = **NOT_PROVEN** · `MONDAY_RTH_PROOF` = **WAITING_FOR_MARKET**.
+
 ---
 
 ## Historical status facts @ `77675a6` (preserved — not revalidated @ `caf15635`)
