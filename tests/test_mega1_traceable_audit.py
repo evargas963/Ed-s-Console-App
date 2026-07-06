@@ -160,7 +160,7 @@ def test_mega1_inventory_covers_every_function():
 def test_mega1_scope_complete():
     inv_files = {r.file for r in MEGA1_TRACEABLE_INVENTORY}
     assert inv_files == set(MEGA1_FILES)
-    assert len(MEGA1_TRACEABLE_INVENTORY) == 402  # inventory sync @ SESSION_OPEN_ANCHOR_WARM_SLICE_V1: +4 session-open warm defs, -1 stale nested _schedule_startup_analytics_warm._warm_after_delay
+    assert len(MEGA1_TRACEABLE_INVENTORY) == 403  # inventory sync @ TIER_C_CHAIN_FETCH_GATE_IMPLEMENTATION_V1: +1 _gated_safe_get_chain (prior sync @ SESSION_OPEN_ANCHOR_WARM_SLICE_V1: 402)
 
 
 def test_mega1_row_schema_valid():

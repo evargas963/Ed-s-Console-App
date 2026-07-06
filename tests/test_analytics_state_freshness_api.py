@@ -702,7 +702,8 @@ def test_timing_fields_do_not_affect_trust_or_actionability(tier_c_cache_spy, mo
             "analytics_recompute_duration_sec": 42.0,
             "analytics_executor_queue_wait_sec": 9.5,
             "_finalize_tail_ms": 1234,
-            "_compute_breakdown": {"schwab_chain_ms": 9000.0},
+            "_compute_breakdown": {"schwab_chain_ms": 9000.0, "chain_gate_wait_ms": 3200.0},
+            "chain_gate_wait_sec": 3.2,
             "analytics_cache_observability_v1": {"pending_shell_builds": 99},
         }
     )
@@ -734,3 +735,89 @@ def test_stage_timer_surfaces_present_in_fetch_state_source():
         'ms_dict["analytics_cache_observability_v1"]',
     ):
         assert needle in src, f"missing stage-timer surface: {needle}"
+
+
+# ── TIER_C_CHAIN_FETCH_GATE_IMPLEMENTATION_V1 — chain-fetch gate locks ────────
+
+
+def test_chain_fetch_gate_serializes_concurrent_fetches(monkeypatch):
+    """Three threads through _gated_safe_get_chain never overlap inside safe_get_chain."""
+    import threading as th
+
+    import server as srv
+
+    windows: list[tuple[float, float]] = []
+    win_lock = th.Lock()
+
+    def _slow_chain(client, ticker, *, strike_count):
+        entered = time.monotonic()
+        time.sleep(0.15)
+        with win_lock:
+            windows.append((entered, time.monotonic()))
+        return f"RESP_{ticker}"
+
+    monkeypatch.setattr(srv, "safe_get_chain", _slow_chain)
+    threads = [
+        th.Thread(target=srv._gated_safe_get_chain, args=(None, f"ZZZ_G{i}"), kwargs={"strike_count": 5})
+        for i in range(3)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    assert len(windows) == 3
+    ordered = sorted(windows)
+    for (_, a_end), (b_start, _) in zip(ordered, ordered[1:]):
+        assert b_start >= a_end - 0.01, "chain fetches overlapped — gate did not serialize"
+
+
+def test_chain_fetch_gate_fail_open_on_timeout(monkeypatch):
+    """Gate held elsewhere + short timeout: fetch still executes; timeout counter increments."""
+    import server as srv
+
+    monkeypatch.setattr(srv, "CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC", 0.05)
+    calls: list[str] = []
+    monkeypatch.setattr(
+        srv,
+        "safe_get_chain",
+        lambda client, ticker, *, strike_count: (calls.append(ticker), "RESP")[1],
+    )
+    assert srv._schwab_chain_fetch_gate.acquire(timeout=1)
+    try:
+        before = srv._chain_fetch_gate_timeout_count
+        resp, gate_wait_sec, fetch_sec = srv._gated_safe_get_chain(None, "ZZZ_TMO", strike_count=5)
+        assert resp == "RESP"
+        assert calls == ["ZZZ_TMO"]
+        assert srv._chain_fetch_gate_timeout_count == before + 1
+        assert gate_wait_sec >= 0.05
+        assert fetch_sec >= 0.0
+    finally:
+        srv._schwab_chain_fetch_gate.release()
+    # Timeout path must not double-release: gate is acquirable exactly once now.
+    assert srv._schwab_chain_fetch_gate.acquire(timeout=1)
+    srv._schwab_chain_fetch_gate.release()
+
+
+def test_chain_fetch_gate_returns_timings_on_normal_path(monkeypatch):
+    """Uncontended gate: response + non-negative gate wait + fetch duration."""
+    import server as srv
+
+    monkeypatch.setattr(srv, "safe_get_chain", lambda client, ticker, *, strike_count: "OK")
+    resp, gate_wait_sec, fetch_sec = srv._gated_safe_get_chain(None, "ZZZ_NORM", strike_count=5)
+    assert resp == "OK"
+    assert gate_wait_sec >= 0.0
+    assert fetch_sec >= 0.0
+    # Gate released: immediately acquirable.
+    assert srv._schwab_chain_fetch_gate.acquire(timeout=1)
+    srv._schwab_chain_fetch_gate.release()
+
+
+def test_chain_fetch_call_shape_and_gated_site_source_lock():
+    """Fidelity lock: helper preserves the exact Schwab call shape; _fetch_state routes through it."""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    assert "resp = safe_get_chain(client, ticker, strike_count=strike_count)" in src
+    assert "_gated_safe_get_chain, client, ticker, strike_count=CHAIN_STRIKE_COUNT" in src
+    assert 'ms_dict["chain_gate_wait_sec"]' in src
+    assert '_stage_ms["chain_gate_wait_ms"]' in src

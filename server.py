@@ -290,6 +290,52 @@ def _safe_get_quote_with_retry(client, ticker: str, *, attempt_hook=None):
         attempt_hook=attempt_hook,
     )
 
+
+# ── TIER_C_CHAIN_FETCH_GATE_IMPLEMENTATION_V1 — serialize Schwab chain fetches ──
+# Root cause (TIER_C_RECOMPUTE_LATENCY_V1 stage-split sample 2026-07-06): three
+# concurrent Tier C recomputes stretch safe_get_chain from ~1-3s solo to 10-22s,
+# alone exceeding the 10s freshness budget. The gate lives at the _fetch_state
+# call site so it covers EVERY trigger source (warm / SSE loop / viewer / force /
+# harness) — all converge there. Fail-open: acquire timeout logs loudly and
+# proceeds ungated; chain data semantics are untouched either way. The gate is
+# held only around the network call — nothing submits into any pool under it.
+# Schwab CSV authority checked: yes
+# CSV row(s): chains.* via schwab_client.safe_get_chain — call shape unchanged
+#   (safe_get_chain(client, ticker, strike_count=CHAIN_STRIKE_COUNT)); this is
+#   scheduling-only serialization, no field read/derivation/emission change.
+# Derived-field disposition: none required (no derived field touched);
+#   chain_gate_wait_sec is passive observability only.
+# All consumers checked: yes — c_resp consumed identically downstream in
+#   _fetch_state; other safe_get_chain call sites intentionally not gated
+#   (approved scope: _fetch_state site only).
+# SCHWAB_CSV_CHECKED
+_schwab_chain_fetch_gate = threading.Semaphore(1)
+CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC: float = 30.0
+_chain_fetch_gate_timeout_count: int = 0
+
+
+def _gated_safe_get_chain(client, ticker: str, *, strike_count):
+    """safe_get_chain serialized behind the chain gate → (resp, gate_wait_sec, fetch_sec)."""
+    global _chain_fetch_gate_timeout_count
+    wait_started = time.monotonic()
+    acquired = _schwab_chain_fetch_gate.acquire(timeout=CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC)
+    gate_wait_sec = round(time.monotonic() - wait_started, 3)
+    if not acquired:
+        _chain_fetch_gate_timeout_count += 1
+        log.warning(
+            "chain_gate_timeout ticker=%s waited=%.3fs count=%s — proceeding ungated (fail-open)",
+            ticker,
+            gate_wait_sec,
+            _chain_fetch_gate_timeout_count,
+        )
+    fetch_started = time.monotonic()
+    try:
+        resp = safe_get_chain(client, ticker, strike_count=strike_count)
+    finally:
+        if acquired:
+            _schwab_chain_fetch_gate.release()
+    return resp, gate_wait_sec, round(time.monotonic() - fetch_started, 3)
+
 # ── Server-side state cache (avoids re-fetching everything on each poll) ─────
 _state_cache: dict = {}           # (ticker, expiry) -> {ts, ms_dict}
 _zone_tracker: dict = {}          # ticker -> {zone, since_bars_1m, since_bars_5m, prev_zone, last_bar_ts_1m, last_bar_ts_5m}
@@ -4960,17 +5006,23 @@ def _fetch_state(
     # Derived-field disposition: none required (no derived field touched).
     # All consumers checked: yes — c_resp/q_resp consumed identically downstream.
     # SCHWAB_CSV_CHECKED
+    # TIER_C_CHAIN_FETCH_GATE_IMPLEMENTATION_V1: chain call routed through
+    # _gated_safe_get_chain (same call shape, serialized cross-ticker; fail-open).
+    _chain_gate_wait_sec: float = 0.0
+    _chain_fetch_pure_sec: Optional[float] = None
     try:
         if _analytics_bg_shutdown:
-            c_resp = safe_get_chain(client, ticker, strike_count=CHAIN_STRIKE_COUNT)
+            c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _gated_safe_get_chain(
+                client, ticker, strike_count=CHAIN_STRIKE_COUNT
+            )
             q_resp = _safe_get_quote_with_retry(client, ticker)
         else:
             _cq_pool = _get_route_offload_executor()
             _chain_fut = _cq_pool.submit(
-                safe_get_chain, client, ticker, strike_count=CHAIN_STRIKE_COUNT
+                _gated_safe_get_chain, client, ticker, strike_count=CHAIN_STRIKE_COUNT
             )
             _quote_fut = _cq_pool.submit(_safe_get_quote_with_retry, client, ticker)
-            c_resp = _chain_fut.result()
+            c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _chain_fut.result()
             q_resp = _quote_fut.result()
     except SchwabAuthError as e:
         raise HTTPException(
@@ -7489,8 +7541,16 @@ def _fetch_state(
     for _stage_name, _stage_pc in _stage_marks:
         _stage_ms[_stage_name] = round((_stage_pc - _stage_prev_pc) * 1000.0, 1)
         _stage_prev_pc = _stage_pc
-    _stage_ms["schwab_chain_ms"] = float(ms_dict["_chain_ms"])
+    # Chain gate: schwab_chain_ms is the PURE Schwab fetch (helper-measured);
+    # gate wait is split out; _chain_ms keeps its wall-clock-to-chain meaning.
+    _stage_ms["schwab_chain_ms"] = (
+        round(_chain_fetch_pure_sec * 1000.0, 1)
+        if _chain_fetch_pure_sec is not None
+        else float(ms_dict["_chain_ms"])
+    )
+    _stage_ms["chain_gate_wait_ms"] = round(_chain_gate_wait_sec * 1000.0, 1)
     _stage_ms["schwab_quote_ms"] = float(ms_dict["_quote_ms"])
+    ms_dict["chain_gate_wait_sec"] = _chain_gate_wait_sec
     ms_dict["_compute_breakdown"] = dict(_stage_ms)
     log.info(
         f"_fetch_state: {ticker} pipeline_ms={ms_dict['_pipeline_ms']} "

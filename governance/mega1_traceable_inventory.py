@@ -178,6 +178,7 @@ MEGA1_TRACEABLE_INVENTORY: tuple[Mega1TraceableDerivation, ...] = (
     Mega1TraceableDerivation("server.py", 187, "reset_schwab_client", "ALLOWLISTED", None, (), 'mega1_sqlite_internal', "Reads persisted snapshot SQLite rows, not Schwab wire JSON (reset_schwab_client)."),
     Mega1TraceableDerivation("server.py", 194, "get_client", "ALLOWLISTED", None, (), 'mega1_sqlite_internal', "Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_client)."),
     Mega1TraceableDerivation("server.py", 213, "_safe_get_quote_with_retry", "DERIVED", None, ("schwab_client.py:safe_get_quote",), None, "Schwab get_quote wrapper with token retry."),
+    Mega1TraceableDerivation("server.py", 296, "_gated_safe_get_chain", "DERIVED", None, ("schwab_client.py:safe_get_chain",), None, "Schwab get_chain wrapper serialized behind the chain-fetch gate; call shape unchanged, fail-open on gate timeout."),
     Mega1TraceableDerivation("server.py", 241, "_snapshot_throttle_enabled", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega1TraceableDerivation("server.py", 246, "_snapshot_row_insert_allowed", "NONE", None, (), None, "No market-field derivation: No Schwab market-field derivation in function body."),
     Mega1TraceableDerivation("server.py", 254, "_snapshot_row_insert_release", "NONE", None, (), None, "No market-field derivation: releases a failed insert's minute reservation (snapshot throttle lifecycle); no Schwab field read, derivation, or emission."),
