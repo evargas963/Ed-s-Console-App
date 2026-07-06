@@ -1319,6 +1319,15 @@ _analytics_recompute_last_duration_sec: dict[str, float] = {}
 # evictions, and cold (version-reset) cache writes. Complements the existing
 # _stage_marks/_compute_breakdown stage timers in _fetch_state. Nothing reads
 # these for freshness, trust, actionability, sizing, or synthesis decisions.
+# Schwab CSV authority checked: yes
+# CSV row(s): NO_SCHWAB_EQUIVALENT — timing/counter observability around existing
+#   Tier C calls; no market field read, derivation, or emission changed.
+# Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE (observability only).
+# All consumers checked: yes — additive fields (_finalize_tail_ms,
+#   analytics_executor_queue_wait_sec, analytics_cache_observability_v1) are
+#   diagnostics/log surfaces; trust/freshness/actionability unchanged (lock:
+#   test_timing_fields_do_not_affect_trust_or_actionability).
+# SCHWAB_CSV_CHECKED
 _analytics_cache_observability: dict[str, int] = {
     "pending_shell_builds": 0,
     "bg_failure_stale_marks": 0,
