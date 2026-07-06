@@ -1,3 +1,5 @@
+> **Classification:** Evidence Artifact | **Scope:** MONDAY_RTH_PROOF_V1 RTH proof 2026-07-06 @ `3a4a308d` — FAIL / NOT_CLOSED (SPY/QQQ/IWM; RTH analytics stale + stale-withhold contract divergence; full detail in the paired `.json`).
+
 # Universal card fidelity runtime — 2026-07-06
 
 - harness_result: **FAIL**
