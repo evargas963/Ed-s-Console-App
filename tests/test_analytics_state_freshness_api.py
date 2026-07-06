@@ -471,3 +471,137 @@ def test_regression_existing_trade_fields_unchanged(tier_c_cache_spy):
     for key, value in before.items():
         assert md[key] == value
     assert isinstance(md.get("card_freshness_v1"), dict)
+
+
+# ── SESSION_OPEN_ANCHOR_WARM_SLICE_V1 — RTH-open anchor warm locks ───────────
+
+
+def test_session_open_anchor_warm_schedules_all_base_anchors(monkeypatch):
+    """Warm queues SPY/QQQ/IWM through the shared panel-warm worker with the session source."""
+    import server as srv
+
+    submitted: list[tuple] = []
+    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: submitted.append((fn, a)))
+    srv._run_session_open_anchor_warm()
+    assert srv.UI_MAXIMIZE_PANEL_WARM_TICKERS == ("SPY", "QQQ", "IWM")
+    assert [a[0] for _fn, a in submitted] == ["SPY", "QQQ", "IWM"]
+    for fn, args in submitted:
+        assert fn is srv._warm_panel_ticker_after_delay
+        assert args[2] == srv.SESSION_OPEN_ANCHOR_WARM_UPDATE_SOURCE == "session_open_anchor_warm"
+
+
+def test_session_open_anchor_warm_uses_existing_recompute_path_and_mutates_no_cache(monkeypatch):
+    """Warm delegates to _schedule_analytics_recompute (existing dedupe cone); no direct state writes."""
+    import server as srv
+
+    scheduled: list[tuple] = []
+    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: fn(*a, **k))
+    monkeypatch.setattr(srv, "_prewarm_inference_models_worker", lambda t: None)
+    monkeypatch.setattr(
+        srv,
+        "_schedule_analytics_recompute",
+        lambda key, t, e, src: scheduled.append((key, t, e, src)),
+    )
+    cache_before = dict(srv._state_cache)
+    srv._run_session_open_anchor_warm()
+    assert scheduled == [
+        (srv._tier_c_inflight_key(t, None), t, None, "session_open_anchor_warm")
+        for t in ("SPY", "QQQ", "IWM")
+    ]
+    assert srv._state_cache == cache_before
+
+
+def test_session_open_anchor_warm_respects_inflight_dedupe(monkeypatch):
+    """An in-flight recompute for the same key absorbs the warm — no duplicate storm."""
+    import server as srv
+
+    submitted: list = []
+    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
+    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: submitted.append(fn))
+    key = srv._tier_c_inflight_key("SPY", None)
+    with srv._analytics_bg_lock:
+        srv._analytics_inflight.add(key)
+    try:
+        srv._schedule_analytics_recompute(key, "SPY", None, "session_open_anchor_warm")
+        assert submitted == []
+    finally:
+        with srv._analytics_bg_lock:
+            srv._analytics_inflight.discard(key)
+    # Control: with the key no longer in flight, the same call DOES submit work.
+    srv._schedule_analytics_recompute(key, "SPY", None, "session_open_anchor_warm")
+    try:
+        assert len(submitted) == 1
+    finally:
+        with srv._analytics_bg_lock:
+            srv._analytics_inflight.discard(key)
+
+
+def test_session_open_anchor_warm_due_predicate_rth_gate_and_daily_latch():
+    """Due only on ET weekdays inside RTH, and only once per ET date."""
+    import server as srv
+    from datetime import datetime
+
+    from time_et import ET
+
+    rth_monday = datetime(2026, 7, 6, 9, 31, tzinfo=ET)
+    pre_open = datetime(2026, 7, 6, 9, 29, tzinfo=ET)
+    post_close = datetime(2026, 7, 6, 16, 30, tzinfo=ET)
+    saturday = datetime(2026, 7, 4, 10, 0, tzinfo=ET)
+    assert srv._session_open_anchor_warm_due(rth_monday, None) is True
+    assert srv._session_open_anchor_warm_due(rth_monday, "2026-07-05") is True
+    assert srv._session_open_anchor_warm_due(rth_monday, "2026-07-06") is False
+    assert srv._session_open_anchor_warm_due(pre_open, None) is False
+    assert srv._session_open_anchor_warm_due(post_close, None) is False
+    assert srv._session_open_anchor_warm_due(saturday, None) is False
+
+
+def test_startup_warm_unchanged_uses_startup_source(monkeypatch):
+    """Regression: startup warm still queues the same anchors with update_source=startup_warm."""
+    import server as srv
+
+    submitted: list[tuple] = []
+    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
+    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: submitted.append((fn, a)))
+    srv._schedule_startup_analytics_warm()
+    assert [a[0] for _fn, a in submitted] == ["SPY", "QQQ", "IWM"]
+    for fn, args in submitted:
+        assert fn is srv._warm_panel_ticker_after_delay
+        assert args[2] == "startup_warm"
+
+
+def test_freshness_constants_unchanged_by_warm_slice():
+    """TTL / grace semantics are untouched by SESSION_OPEN_ANCHOR_WARM_SLICE_V1."""
+    import server as srv
+
+    assert srv.CACHE_TTL == 5
+    assert srv.VIEWER_STATE_CACHE_TTL_SEC == 5.0
+    assert srv.ANALYTICS_STALE_GRACE_CYCLES == 2.0
+
+
+def test_analytics_recompute_duration_instrumentation_recorded(monkeypatch):
+    """Completed recompute records additive duration (module dict + payload field) pre-stamp."""
+    import server as srv
+
+    ticker = "ZZZ_WARMDUR"
+    stamped: dict = {}
+    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
+    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: fn(*a, **k))
+    monkeypatch.setattr(
+        srv,
+        "_fetch_state",
+        lambda t, e, update_source=None: {"ticker": t, "selected_exp": None},
+    )
+    monkeypatch.setattr(
+        srv,
+        "_stamp_analytics_freshness_on_completed_fetch",
+        lambda md, t, k: stamped.update(md),
+    )
+    monkeypatch.setattr(srv, "_attach_card_freshness_v1_block", lambda *a, **k: None)
+    srv._analytics_recompute_last_duration_sec.pop(ticker, None)
+    key = srv._tier_c_inflight_key(ticker, None)
+    srv._schedule_analytics_recompute(key, ticker, None, "session_open_anchor_warm")
+    dur = srv._analytics_recompute_last_duration_sec.get(ticker)
+    assert dur is not None and dur >= 0.0
+    assert stamped.get("analytics_recompute_duration_sec") == dur
+    with srv._analytics_bg_lock:
+        assert key not in srv._analytics_inflight

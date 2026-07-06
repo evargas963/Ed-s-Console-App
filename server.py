@@ -46,7 +46,7 @@ from copy import deepcopy
 from typing import Any, Dict, Optional
 from dataclasses import asdict
 
-from time_et import now_et, RTH_OPEN_MINS
+from time_et import now_et, RTH_OPEN_MINS, RTH_END_MINS
 
 import html
 import hashlib
@@ -1307,6 +1307,13 @@ def _fetch_state_sse_bounded(
         return None
 
 
+# SESSION_OPEN_ANCHOR_WARM_SLICE_V1 (additive instrumentation): last completed
+# Tier C recompute duration per ticker — proves/refutes the RTH-open latency
+# composition (root-cause packet 2026-07-06: cycles ran 15–21s vs the 10s
+# staleness budget). Observability only; no freshness/actionability influence.
+_analytics_recompute_last_duration_sec: dict[str, float] = {}
+
+
 def _schedule_analytics_recompute(
     inflight_key: tuple,
     ticker: str,
@@ -1347,6 +1354,7 @@ def _schedule_analytics_recompute(
 
     def _work() -> None:
         try:
+            fetch_started_monotonic = time.monotonic()
             if sse_loop:
                 timeout_sec = max(0.5, float(SSE_RECOMPUTE_FETCH_TIMEOUT_SEC))
                 result = _fetch_state_sse_bounded(
@@ -1372,6 +1380,19 @@ def _schedule_analytics_recompute(
             else:
                 result = _fetch_state(ticker, expiry, update_source=update_source)
             if result:
+                recompute_duration_sec = round(time.monotonic() - fetch_started_monotonic, 3)
+                _analytics_recompute_last_duration_sec[ticker.upper().strip()] = recompute_duration_sec
+                result["analytics_recompute_duration_sec"] = recompute_duration_sec
+                stale_budget_sec = float(CACHE_TTL) * ANALYTICS_STALE_GRACE_CYCLES
+                if recompute_duration_sec >= stale_budget_sec:
+                    log.info(
+                        "analytics recompute exceeded staleness budget ticker=%s "
+                        "duration=%.3fs budget=%.1fs source=%s",
+                        ticker,
+                        recompute_duration_sec,
+                        stale_budget_sec,
+                        update_source,
+                    )
                 _reset_analytics_bg_fail_count(inflight_key)
                 _stamp_analytics_freshness_on_completed_fetch(result, ticker, inflight_key)
                 # S2B-1 transport parity: REST serve and SSE cache-fanout attach
@@ -1788,19 +1809,21 @@ def _schedule_analytics_warm(
     }
 
 
+def _warm_panel_ticker_after_delay(ticker: str, delay_sec: float, update_source: str) -> None:
+    """Shared staggered panel-anchor warm worker (startup + session-open paths)."""
+    if delay_sec > 0:
+        time.sleep(delay_sec)
+    try:
+        _schedule_analytics_warm(ticker, None, update_source, prewarm_models=True)
+        log.info("panel anchor warm scheduled for %s (%s)", ticker, update_source)
+    except Exception as e:
+        log.warning("panel anchor warm scheduling failed %s (%s): %s", ticker, update_source, e)
+
+
 def _schedule_startup_analytics_warm() -> None:
     """Cold start: warm SPY/QQQ/IWM Tier C (+ model prewarm) before logger hammers Schwab."""
     tickers = UI_MAXIMIZE_PANEL_WARM_TICKERS
     stagger = max(0.0, UI_MAXIMIZE_WARM_STAGGER_SEC)
-
-    def _warm_after_delay(ticker: str, delay_sec: float) -> None:
-        if delay_sec > 0:
-            time.sleep(delay_sec)
-        try:
-            _schedule_analytics_warm(ticker, None, "startup_warm", prewarm_models=True)
-            log.info("UI-MAXIMIZE startup warm scheduled for %s", ticker)
-        except Exception as e:
-            log.warning("startup Tier C warm scheduling failed %s: %s", ticker, e)
 
     if _analytics_bg_shutdown or os.environ.get("ED_DISABLE_STARTUP_ANALYTICS_WARM", "").strip().lower() in (
         "1",
@@ -1812,10 +1835,73 @@ def _schedule_startup_analytics_warm() -> None:
 
     for i, t in enumerate(tickers):
         try:
-            _submit_analytics_task(_warm_after_delay, t, i * stagger)
+            _submit_analytics_task(_warm_panel_ticker_after_delay, t, i * stagger, "startup_warm")
         except RuntimeError:
             break
     log.info("UI-MAXIMIZE startup warm queue: %s stagger=%ss", tickers, stagger)
+
+
+# ── SESSION_OPEN_ANCHOR_WARM_SLICE_V1 — RTH-open anchor bundle warm ──────────
+# Root cause (RTH_ANALYTICS_STALENESS_ROOT_CAUSE_V1): anchor Tier C bundles were
+# cold/demand-created after the 09:30 ET open (proof 2026-07-06: QQQ/IWM
+# analytics_version=1 only at 08:33 CT via harness warm). Startup warm covers
+# process start only; this loop re-warms the same panel anchors once per ET
+# trading day at the first observed instant inside RTH, through the SAME
+# recompute path (_schedule_analytics_warm → _schedule_analytics_recompute
+# in-flight dedupe) — no parallel analytics engine, no TTL/grace change.
+# Schwab CSV authority checked: yes
+# CSV row(s): NO_SCHWAB_EQUIVALENT — session-clock scheduling of the existing
+#   Tier C recompute; no market field read, derivation, or emission changed.
+# Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE (scheduling only).
+# All consumers checked: yes — delegates to the existing warm/recompute cone;
+#   analytics_stale semantics (_attach_analytics_freshness_contract) untouched.
+# SCHWAB_CSV_CHECKED
+SESSION_OPEN_ANCHOR_WARM_POLL_SEC: float = 15.0
+SESSION_OPEN_ANCHOR_WARM_UPDATE_SOURCE: str = "session_open_anchor_warm"
+_session_open_anchor_warm_last_date: Optional[str] = None
+_session_open_anchor_warm_stop = threading.Event()
+
+
+def _session_open_anchor_warm_due(et_now: datetime, last_warmed_et_date: Optional[str]) -> bool:
+    """True once per ET trading day when the wall clock is inside RTH (09:30–16:00 ET)."""
+    if et_now.weekday() >= 5:
+        return False
+    mins = et_now.hour * 60 + et_now.minute
+    if not (RTH_OPEN_MINS <= mins < RTH_END_MINS):
+        return False
+    return et_now.strftime("%Y-%m-%d") != last_warmed_et_date
+
+
+def _run_session_open_anchor_warm() -> None:
+    """Queue the RTH-open anchor warm — same roster, stagger, and dedupe as startup warm."""
+    stagger = max(0.0, UI_MAXIMIZE_WARM_STAGGER_SEC)
+    for i, t in enumerate(UI_MAXIMIZE_PANEL_WARM_TICKERS):
+        try:
+            _submit_analytics_task(
+                _warm_panel_ticker_after_delay, t, i * stagger, SESSION_OPEN_ANCHOR_WARM_UPDATE_SOURCE
+            )
+        except RuntimeError:
+            break
+    log.info(
+        "session-open anchor warm queued: %s stagger=%ss",
+        UI_MAXIMIZE_PANEL_WARM_TICKERS,
+        stagger,
+    )
+
+
+def _session_open_anchor_warm_loop() -> None:
+    """Daemon loop: fire _run_session_open_anchor_warm once per ET trading day in RTH."""
+    global _session_open_anchor_warm_last_date
+    while not _session_open_anchor_warm_stop.wait(SESSION_OPEN_ANCHOR_WARM_POLL_SEC):
+        if _analytics_bg_shutdown:
+            continue
+        try:
+            et = now_et()
+            if _session_open_anchor_warm_due(et, _session_open_anchor_warm_last_date):
+                _session_open_anchor_warm_last_date = et.strftime("%Y-%m-%d")
+                _run_session_open_anchor_warm()
+        except Exception as e:
+            log.warning("session-open anchor warm loop error: %s", e)
 
 
 def _sse_viewer_cache_ttl(ticker: str, expiry: Optional[str]) -> float:
@@ -7616,9 +7702,18 @@ async def _app_lifespan(app):
 
     _schedule_startup_analytics_warm()
 
+    _session_open_anchor_warm_stop.clear()
+    threading.Thread(
+        target=_session_open_anchor_warm_loop,
+        name="ed_session_open_anchor_warm",
+        daemon=True,
+    ).start()
+    log.info("session-open anchor warm loop started (poll=%ss)", SESSION_OPEN_ANCHOR_WARM_POLL_SEC)
+
     yield
 
     # ── Shutdown ───────────────────────────────────────────────────────────
+    _session_open_anchor_warm_stop.set()
     _shutdown_analytics_executor(wait=True)
     # Schwab stream thread + websocket: must close before loop/thread teardown
     # (avoids pending websockets tasks destroyed with the event loop).
