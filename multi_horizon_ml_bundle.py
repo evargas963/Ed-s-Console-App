@@ -53,6 +53,25 @@ def _applied_fusion_temperatures() -> dict[str, float]:
     return _calibration_cache["temps"]
 
 
+def fusion_calibration_status() -> dict[str, Any]:
+    """Host-visible calibration provenance (ticker-agnostic lock, 2026-07-06).
+
+    The temperature artifact is host-local (models/** is gitignored), so a
+    production host could silently serve raw probabilities if the artifact was
+    never fitted there. This accessor exposes the loader state for the payload
+    diagnostic block: artifact_loaded=False + applied_horizons=[] IS the
+    fail-closed raw-serving state, made observable instead of silent.
+    Horizon-keyed only — there is no per-ticker calibration surface.
+    """
+    temps = _applied_fusion_temperatures()
+    return {
+        "artifact_loaded": bool(temps),
+        "applied_horizons": sorted(temps.keys()),
+        "applied_temperatures": {k: float(v) for k, v in sorted(temps.items())},
+        "keying": "horizon_only",
+    }
+
+
 def _unavailable_horizon_snapshot(hz: str, *, provenance: str) -> HorizonMLFusionSnapshot:
     t = 1.0 / 3.0
     return HorizonMLFusionSnapshot(

@@ -7315,6 +7315,28 @@ def _fetch_state(
     else:
         ms_dict["accuracy_all_hours"] = None
 
+    # ── Fusion-calibration provenance (ticker-agnostic lock, 2026-07-06) ──────
+    # The temperature artifact is host-local (models/** gitignored): a host that
+    # never ran `python -m calibration.fusion_temperature` silently serves RAW
+    # fusion probabilities (fail-closed identity). This block makes that state
+    # observable per payload — artifact_loaded=false IS the raw-serving signal.
+    # Horizon-keyed only; no per-ticker calibration surface exists.
+    # Schwab CSV authority checked: yes
+    # CSV row(s): NO_SCHWAB_EQUIVALENT — calibration-artifact load-state
+    #   diagnostic; no market field read, derivation, emission, or
+    #   actionability logic changed.
+    # Derived-field disposition: none required.
+    # All consumers checked: yes — new additive diagnostic key; probability
+    #   values themselves unchanged by this block.
+    # SCHWAB_CSV_CHECKED
+    try:
+        from multi_horizon_ml_bundle import fusion_calibration_status
+
+        ms_dict["fusion_calibration_v1"] = fusion_calibration_status()
+    except Exception as _fcs_e:
+        log.debug("fusion_calibration_status attach failed: %s", _fcs_e)
+        ms_dict["fusion_calibration_v1"] = None
+
     _events = list(getattr(ms, "stack_integrity_events", None) or [])
     if _events:
         try:
