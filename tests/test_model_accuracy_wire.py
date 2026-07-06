@@ -151,6 +151,82 @@ def test_history_limit_respected(tmp_path: Path) -> None:
 # ───────────────────── Pass 5b — ops.html surface presence ─────────────────────
 
 
+def _insert_pred_row(db: EdDB, *, et_hour: int, et_minute: int, ts: float,
+                     up: float, down: float, flat: float, outcome: str) -> None:
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot,"
+            " et_hour, et_minute, pred_model_version,"
+            " pred_5c_up_prob, pred_5c_down_prob, pred_5c_flat_prob, outcome_5c)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("SPY", "1m", ts, "test", 450.0, et_hour, et_minute, "vtest",
+             up, down, flat, outcome),
+        )
+
+
+def test_compute_accuracy_rth_scope_and_baseline_fields(tmp_path: Path) -> None:
+    """RTH-scoped accuracy (operator decision 2026-07-06): the all-hours metric
+    flattered tradeable-session performance (SPY 5c 40.1%% all-hours vs 34.5%%
+    RTH against a 38.1%% RTH baseline). rth_only=True must count ONLY rows
+    stamped inside 09:30-16:00 ET, carry the same-scope majority baseline and
+    edge, and FAIL CLOSED (accuracy None) when the scope is empty — never
+    silently widening to all-hours."""
+    edb = _new_db(tmp_path)
+    # Two RTH rows: one correct 'up' call, one wrong (predicts up, outcome down).
+    _insert_pred_row(edb, et_hour=10, et_minute=0, ts=1000.0,
+                     up=0.6, down=0.2, flat=0.2, outcome="up")
+    _insert_pred_row(edb, et_hour=15, et_minute=59, ts=2000.0,
+                     up=0.6, down=0.2, flat=0.2, outcome="down")
+    # Off-hours row (correct) — must be excluded from the RTH scope.
+    _insert_pred_row(edb, et_hour=18, et_minute=30, ts=3000.0,
+                     up=0.6, down=0.2, flat=0.2, outcome="up")
+    rth = edb.compute_accuracy("SPY", "1m", model_version="vtest", rth_only=True)
+    ah = edb.compute_accuracy("SPY", "1m", model_version="vtest", rth_only=False)
+    assert rth["5c"]["total"] == 2 and rth["5c"]["accuracy"] == 50.0
+    assert rth["5c"]["scope"] == "rth_0930_1600_et"
+    # baseline: outcomes in RTH scope = {up:1, down:1} — majority share 50.0
+    assert rth["5c"]["baseline_pct"] == 50.0
+    assert rth["5c"]["edge_vs_baseline_pp"] == 0.0
+    assert ah["5c"]["total"] == 3 and ah["5c"]["accuracy"] == 66.7
+    assert ah["5c"]["scope"] == "all_hours"
+    # Fail-closed: no rows for a version in RTH scope -> accuracy None + scope
+    empty = edb.compute_accuracy("SPY", "1m", model_version="missing", rth_only=True)
+    assert empty["5c"]["total"] == 0 and empty["5c"]["accuracy"] is None
+    assert empty["5c"]["scope"] == "rth_0930_1600_et"
+
+
+def test_server_accuracy_surfaces_are_rth_primary() -> None:
+    """Wire lock: the trading-facing accuracy surfaces must be RTH-primary with
+    all-hours as labeled audit context — all-hours numbers must not be able to
+    masquerade as RTH edge."""
+    import ast as _ast
+    repo_root = Path(__file__).resolve().parent.parent
+    src = (repo_root / "server.py").read_text(encoding="utf-8")
+    tree = _ast.parse(src)
+    rth_flags = []
+    for n in _ast.walk(tree):
+        if isinstance(n, _ast.Call):
+            callee = n.func.attr if isinstance(n.func, _ast.Attribute) else None
+            if callee == "compute_accuracy":
+                kw = {k.arg: k.value for k in n.keywords}
+                assert "rth_only" in kw, (
+                    f"compute_accuracy at server.py:{n.lineno} does not declare its "
+                    "scope — implicit all-hours can masquerade as RTH edge"
+                )
+                v = kw["rth_only"]
+                rth_flags.append(isinstance(v, _ast.Constant) and v.value is True)
+    assert any(rth_flags), "no RTH-primary compute_accuracy call remains in server.py"
+    assert '"accuracy_scope"' in src and 'rth_0930_1600_et' in src, (
+        "payload/API accuracy scope stamp missing"
+    )
+    ops = (repo_root / "static" / "ops.html").read_text(encoding="utf-8")
+    assert "RTH 9:30" in ops, "ops panel lost the RTH scope label"
+    assert "all-hours (audit context)" in ops, (
+        "ops panel lost the all-hours audit-context labeling"
+    )
+    assert "edge_vs_baseline_pp" in ops, "ops panel no longer shows edge vs baseline"
+
+
 def test_ops_html_has_model_accuracy_panel() -> None:
     """Lock the ops.html Model accuracy section + JS refresh wire so a
     future ops.html refactor can't silently regress Pass 5b."""

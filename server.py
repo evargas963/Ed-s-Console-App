@@ -6611,14 +6611,29 @@ def _fetch_state(
             _last_acc = _accuracy_cache.get(ticker, {}).get("ts", 0)
             if time.time() - _last_acc > ACCURACY_INTERVAL and db_counts["filled"] >= 50:
                 try:
+                    # RTH-scoped accuracy is the trading-relevance primary
+                    # (operator decision 2026-07-06); all-hours kept as audit
+                    # context only. Fail-closed: an empty RTH scope yields
+                    # accuracy None — never silently widened to all-hours.
+                    _acc_version = _current_pred_model_version(ticker)
                     acc = _ed_db.compute_accuracy(
                         ticker, CANONICAL_TIMEFRAME,
-                        model_version=_current_pred_model_version(ticker),
+                        model_version=_acc_version, rth_only=True,
                     )
-                    _accuracy_cache[ticker] = {"ts": time.time(), "results": acc}
+                    _acc_all_hours = _ed_db.compute_accuracy(
+                        ticker, CANONICAL_TIMEFRAME,
+                        model_version=_acc_version, rth_only=False,
+                    )
+                    _accuracy_cache[ticker] = {
+                        "ts": time.time(), "results": acc, "all_hours": _acc_all_hours,
+                    }
                     _acc_5c = acc.get("5c", {}).get("accuracy")
                     _acc_n  = acc.get("5c", {}).get("total", 0)
-                    log.info(f"Accuracy computed: {ticker} 5c={_acc_5c}% ({_acc_n} predictions)")
+                    _acc_edge = acc.get("5c", {}).get("edge_vs_baseline_pp")
+                    log.info(
+                        f"Accuracy computed (RTH scope): {ticker} 5c={_acc_5c}% "
+                        f"({_acc_n} predictions, edge_vs_baseline={_acc_edge}pp)"
+                    )
                 except Exception as _ae:
                     log.warning(f"Accuracy computation failed: {_ae}")
         except Exception as e:
@@ -7256,14 +7271,49 @@ def _fetch_state(
     ms_dict["filled_snapshots"] = db_counts.get("filled", 0)
 
     # ── Accuracy (from cache — never blocks the main response) ────────────────
+    # Primary block is RTH-scoped with baseline edge (operator decision
+    # 2026-07-06: all-hours accuracy flattered tradeable-session performance —
+    # SPY 5c 40.1%% all-hours vs 34.5%% RTH against a 38.1%% RTH baseline).
+    # All-hours rides as a separate audit-context block; a missing RTH scope
+    # fails closed to None here rather than borrowing the all-hours numbers.
+    # Schwab CSV authority checked: yes
+    # CSV row(s): NO_SCHWAB_EQUIVALENT — persisted-snapshot prediction-accuracy
+    #   scoping/provenance only; no market field read, derivation, emission, or
+    #   actionability logic changed; model outputs untouched.
+    # Derived-field disposition: none required.
+    # All consumers checked: yes — payload block, /api/accuracy, history writer,
+    #   ops.html panel all updated in this change set.
+    # SCHWAB_CSV_CHECKED
     _acc = _accuracy_cache.get(ticker, {}).get("results")
     if _acc:
         ms_dict["accuracy"] = {
-            hz: {"accuracy": v.get("accuracy"), "total": v.get("total")}
+            hz: {
+                "accuracy": v.get("accuracy"),
+                "total": v.get("total"),
+                "baseline_pct": v.get("baseline_pct"),
+                "edge_vs_baseline_pp": v.get("edge_vs_baseline_pp"),
+                "scope": v.get("scope"),
+            }
             for hz, v in _acc.items() if v.get("accuracy") is not None
         }
+        ms_dict["accuracy_scope"] = "rth_0930_1600_et"
     else:
         ms_dict["accuracy"] = None
+        ms_dict["accuracy_scope"] = None
+    _acc_ah = _accuracy_cache.get(ticker, {}).get("all_hours")
+    if _acc_ah:
+        ms_dict["accuracy_all_hours"] = {
+            hz: {
+                "accuracy": v.get("accuracy"),
+                "total": v.get("total"),
+                "baseline_pct": v.get("baseline_pct"),
+                "edge_vs_baseline_pp": v.get("edge_vs_baseline_pp"),
+                "scope": v.get("scope"),
+            }
+            for hz, v in _acc_ah.items() if v.get("accuracy") is not None
+        }
+    else:
+        ms_dict["accuracy_all_hours"] = None
 
     _events = list(getattr(ms, "stack_integrity_events", None) or [])
     if _events:
@@ -9745,12 +9795,23 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
     cached = _accuracy_cache.get(ticker, {})
     if cached and time.time() - cached.get("ts", 0) < ACCURACY_INTERVAL:
         results = cached["results"]
+        all_hours = cached.get("all_hours")
     else:
         try:
+            # RTH-scoped is the trading-relevance primary; all-hours is audit
+            # context (operator decision 2026-07-06). Empty RTH scope fails
+            # closed (accuracy None) — never widened to all-hours silently.
             results = db.compute_accuracy(
-                ticker, CANONICAL_TIMEFRAME, model_version=_serving_version
+                ticker, CANONICAL_TIMEFRAME, model_version=_serving_version,
+                rth_only=True,
             )
-            _accuracy_cache[ticker] = {"ts": time.time(), "results": results}
+            all_hours = db.compute_accuracy(
+                ticker, CANONICAL_TIMEFRAME, model_version=_serving_version,
+                rth_only=False,
+            )
+            _accuracy_cache[ticker] = {
+                "ts": time.time(), "results": results, "all_hours": all_hours,
+            }
         except Exception as e:
             return {"error": str(e)}
 
@@ -9801,7 +9862,12 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
     return {
         "ticker": ticker,
         "model_version": _serving_version,
+        # Trading-relevance primary: RTH-scoped, with per-horizon baseline +
+        # edge fields so raw accuracy cannot read as edge.
+        "accuracy_scope": "rth_0930_1600_et",
         "current": _trader_accuracy_subset(results),
+        # Audit context only — measured over every session the logger ran.
+        "all_hours": _trader_accuracy_subset(all_hours or {}),
         "history": history,
     }
 

@@ -196,10 +196,20 @@ def _load_canonical_fields() -> set[str]:
 
 
 def _git_diff(*, staged: bool) -> str:
+    # encoding must be explicit: git emits UTF-8, but text=True decodes with the
+    # locale codec — on Windows (cp1252) a multibyte UTF-8 diff byte (e.g. 0x90)
+    # kills the subprocess reader thread and proc.stdout comes back None, which
+    # crashed this guard with a NoneType error (2026-07-06). errors="replace"
+    # keeps the guard fail-closed on any residual mojibake instead of dying.
     args = ["git", "diff", "--cached" if staged else "--"]
-    proc = subprocess.run(args, cwd=ROOT, text=True, capture_output=True, check=False)
+    proc = subprocess.run(
+        args, cwd=ROOT, capture_output=True, check=False,
+        encoding="utf-8", errors="replace",
+    )
     if proc.returncode != 0:
-        raise SystemExit(proc.stderr.strip() or "git diff failed")
+        raise SystemExit((proc.stderr or "").strip() or "git diff failed")
+    if proc.stdout is None:
+        raise SystemExit("git diff produced no decodable output — guard cannot evaluate the diff")
     return proc.stdout
 
 

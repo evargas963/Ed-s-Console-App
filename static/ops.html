@@ -235,17 +235,42 @@
           detail.textContent = 'Run /api/accuracy?ticker=<X> to seed';
           return;
         }
-        title.textContent = (d.ticker || 'SPY') + ' · ' + (d.model_version || 'statistical_v1');
-        title.style.color = 'var(--green)';
+        // RTH-scoped primary (operator decision 2026-07-06): all-hours accuracy
+        // flattered tradeable-session performance. Edge vs the same-scope
+        // majority baseline is what matters — never imply edge when <= 0.
+        // Schwab CSV authority checked: yes
+        // CSV row(s): NO_SCHWAB_EQUIVALENT — accuracy provenance display only;
+        //   consumes /api/accuracy fields; no market field derivation changed.
+        // Derived-field disposition: none required.
+        // All consumers checked: yes — this panel is the only /api/accuracy UI.
+        // SCHWAB_CSV_CHECKED
+        const scopeLabel = d.accuracy_scope === 'rth_0930_1600_et' ? 'RTH 9:30–16:00 ET' : (d.accuracy_scope || 'unknown scope');
+        title.textContent = (d.ticker || 'SPY') + ' · ' + (d.model_version || '—') + ' · ' + scopeLabel;
+        const edges = horizons
+          .map((hz) => (current[hz] || {}).edge_vs_baseline_pp)
+          .filter((e) => e !== null && e !== undefined);
+        const anyEdge = edges.some((e) => e > 0);
+        const allEdge = edges.length > 0 && edges.every((e) => e > 0);
+        title.style.color = allEdge ? 'var(--green)' : (anyEdge ? 'var(--amber, #d8a03d)' : 'var(--red)');
         const parts = horizons.map((hz) => {
           const v = current[hz] || {};
           const acc = v.accuracy === null || v.accuracy === undefined ? '—' : v.accuracy + '%';
           const n = v.total || 0;
-          return hz + ': ' + acc + ' (n=' + n + ')';
+          const edge = v.edge_vs_baseline_pp;
+          const edgeTxt = edge === null || edge === undefined
+            ? ''
+            : ' ' + (edge > 0 ? '+' : '') + edge + 'pp vs ' + (v.baseline_pct != null ? v.baseline_pct + '% base' : 'base');
+          return hz + ': ' + acc + edgeTxt + ' (n=' + n + ')';
         });
         line.textContent = parts.join('  ·  ');
+        const ah = d.all_hours || {};
+        const ahParts = Object.keys(ah).map((hz) => {
+          const v = ah[hz] || {};
+          return hz + ': ' + (v.accuracy != null ? v.accuracy + '%' : '—');
+        });
         const histN = Array.isArray(d.history) ? d.history.length : 0;
-        detail.textContent = 'history rows: ' + histN + ' · source: db.model_accuracy via /api/accuracy';
+        detail.textContent = 'all-hours (audit context): ' + (ahParts.length ? ahParts.join(' · ') : '—')
+          + ' · history rows: ' + histN + ' · source: db.model_accuracy via /api/accuracy';
       } catch (e) {
         title.textContent = 'Model accuracy probe failed';
         title.style.color = 'var(--red)';

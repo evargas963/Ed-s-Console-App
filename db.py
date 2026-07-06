@@ -4314,15 +4314,39 @@ class EdDB:
     # MODEL ACCURACY
     # ════════════════════════════════════════════════════════════════════════
 
+    # RTH window for accuracy scoping: 9:30 (570 min) inclusive to 16:00 (960 min)
+    # exclusive, using the row's stamped et_hour/et_minute.
+    ACCURACY_RTH_START_MIN: int = 570
+    ACCURACY_RTH_END_MIN: int = 960
+
     def compute_accuracy(self, ticker: str, timeframe: str,
-                          model_version: str = "statistical_v1") -> dict:
+                          model_version: str = "statistical_v1",
+                          *, rth_only: bool = False) -> dict:
         """
         Compute prediction accuracy for a given model version.
         Compares pred_Nc_up/down/flat_prob to actual outcome_Nc.
+
+        rth_only (2026-07-06 operator decision): restrict to rows stamped inside
+        RTH (09:30–16:00 ET). The model-accuracy audit measured SPY 5c at 40.1%
+        all-hours but 34.5% RTH-only vs a 38.1% RTH majority baseline — the
+        all-hours number flatters tradeable-session performance, so trading-facing
+        surfaces read rth_only=True and keep all-hours as audit context only.
+
+        Each horizon entry also carries the majority-class baseline of the SAME
+        row set (baseline_pct / baseline_label / edge_vs_baseline_pp) so raw
+        accuracy can never masquerade as edge, plus a scope stamp.
         """
         timeframe = require_snapshot_timeframe(timeframe, caller="EdDB.compute_accuracy")
         results = {}
         from ml_horizon import PRIMARY_DECISION_HORIZONS
+
+        scope = "rth_0930_1600_et" if rth_only else "all_hours"
+        rth_clause = ""
+        if rth_only:
+            rth_clause = (
+                f" AND (et_hour * 60 + COALESCE(et_minute, 0)) >= {self.ACCURACY_RTH_START_MIN}"
+                f" AND (et_hour * 60 + COALESCE(et_minute, 0)) < {self.ACCURACY_RTH_END_MIN} "
+            )
 
         for horizon in PRIMARY_DECISION_HORIZONS:
             pred_col    = f"pred_{horizon}_up_prob"
@@ -4338,13 +4362,17 @@ class EdDB:
                       AND pred_model_version = ?
                       AND {pred_col} IS NOT NULL
                       AND {outcome_col} IS NOT NULL
+                      {rth_clause}
                 """, (ticker, timeframe, model_version)).fetchall()
 
             if not rows:
-                results[horizon] = {"total": 0, "accuracy": None}
+                # Fail closed: no rows in scope -> accuracy None (consumers drop the
+                # horizon); NEVER silently widen the scope to all-hours.
+                results[horizon] = {"total": 0, "accuracy": None, "scope": scope}
                 continue
 
             correct = 0
+            outcome_counts: dict[str, int] = {}
             for row in rows:
                 # Predicted direction = argmax of up/down/flat probs
                 probs = {
@@ -4354,12 +4382,25 @@ class EdDB:
                 }
                 predicted = max(probs, key=probs.get)
                 actual    = row[outcome_col]
+                outcome_counts[actual] = outcome_counts.get(actual, 0) + 1
                 if predicted == actual:
                     correct += 1
 
             total    = len(rows)
             accuracy = round(correct / total * 100, 1) if total > 0 else None
-            results[horizon] = {"total": total, "correct": correct, "accuracy": accuracy}
+            baseline_label = max(outcome_counts, key=outcome_counts.get)
+            baseline_pct = round(outcome_counts[baseline_label] / total * 100, 1)
+            results[horizon] = {
+                "total": total,
+                "correct": correct,
+                "accuracy": accuracy,
+                "scope": scope,
+                "baseline_pct": baseline_pct,
+                "baseline_label": baseline_label,
+                "edge_vs_baseline_pp": (
+                    round(accuracy - baseline_pct, 1) if accuracy is not None else None
+                ),
+            }
 
         return results
 

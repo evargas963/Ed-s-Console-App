@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-05T23:07:17Z",
+  "generated_at": "2026-07-06T01:07:30Z",
   "persistence_files": [
     "db.py",
     "calibration/writer.py"
@@ -394,7 +394,7 @@
     {
       "writer_fn": "EdDB.log_model_accuracy",
       "file": "db.py",
-      "line": 4372,
+      "line": 4413,
       "tables_written": [
         "model_accuracy"
       ],
@@ -432,7 +432,7 @@
     {
       "candidate_fn": "EdDB.compute_accuracy",
       "file": "db.py",
-      "line": 4317,
+      "line": 4322,
       "production_callers": [
         "server.py"
       ],
