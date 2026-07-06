@@ -57,12 +57,11 @@ RTH_START_MIN, RTH_END_MIN = 570, 960  # 09:30-16:00 ET
 
 
 def et_minutes(ts_utc: float) -> tuple[str, int]:
-    """(et_date, minutes_since_midnight_et) for a UTC epoch."""
-    import datetime
-    from zoneinfo import ZoneInfo
+    """(et_date, minutes_since_midnight_et) via the canonical time_et authority
+    (repo lock: only time_et.py may hold the NY ZoneInfo literal)."""
+    from time_et import et_date_str_from_ts_utc, et_minute_total_from_ts_utc
 
-    dt = datetime.datetime.fromtimestamp(float(ts_utc), ZoneInfo("America/New_York"))
-    return dt.strftime("%Y-%m-%d"), dt.hour * 60 + dt.minute
+    return et_date_str_from_ts_utc(float(ts_utc)), et_minute_total_from_ts_utc(float(ts_utc))
 
 
 def tb_label_for_window(
