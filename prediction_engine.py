@@ -330,6 +330,20 @@ def _pack_horizon_row(
         row["up"] = u
         row["down"] = d
         row["flat"] = f
+        # Card-fidelity audit (2026-07-05): labeled_count was stamped ONLY on the
+        # withheld branch, so the EMPIRICAL source chip's operator text could
+        # never render its sample count ("N similar setups") for a POPULATED
+        # histogram — the count exists server-side (lit_*[3]) and the client
+        # already consumes hp.labeled_count. Additive field; probs unchanged.
+        # Schwab CSV authority checked: yes
+        # CSV row(s): NO_SCHWAB_EQUIVALENT — persisted-snapshot empirical
+        #   histogram sample count; no market field derivation changed.
+        # Derived-field disposition: none required.
+        # All consumers checked: yes — all readers use .get("labeled_count")
+        #   (None-tolerant); populated-branch test asserts withhold_reason
+        #   absence only.
+        # SCHWAB_CSV_CHECKED
+        row["labeled_count"] = labeled_count
     return row
 
 

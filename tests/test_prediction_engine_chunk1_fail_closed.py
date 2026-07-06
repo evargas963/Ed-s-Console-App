@@ -77,6 +77,11 @@ def test_pack_horizon_row_no_withhold_reason_when_probs_present():
     assert "withhold_reason" not in row, (
         f"withhold_reason leaked into non-withhold row: {row!r}"
     )
+    # Card-fidelity lock (2026-07-05): populated rows must carry their sample
+    # count too — the EMPIRICAL chip's "N similar setups" operator text reads
+    # hp.labeled_count and was permanently generic while only withheld rows
+    # stamped it.
+    assert row["labeled_count"] == 50
 
 
 def test_overlay_withholds_product_triplets_when_fusion_missing(monkeypatch):
