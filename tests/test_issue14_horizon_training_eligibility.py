@@ -203,9 +203,7 @@ def test_d2_matrix_runner_guards():
     """Isolation guards: production DB refused; models/ output refused; output
     outside data/research refused; label mapping explicit; promotion disabled."""
     import pytest
-    from tools.research.d2_run_dual_label_matrix import (
-        MatrixGuardError, guard_paths, label_column_for,
-    )
+    from tools.research.d2_run_dual_label_matrix import guard_paths, label_column_for
 
     research_out = ROOT / "data" / "research" / "d2_models"
     with pytest.raises(SystemExit):
