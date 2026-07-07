@@ -398,6 +398,16 @@ def compute_iv_skew(contracts: List[dict], spot: float) -> dict:
 
 # ── Realized Volatility ─────────────────────────────────────────────────────
 
+# FORMULA_P1A_REALIZED_VOL_ANNUALIZATION_FIX_V1 (2026-07-06)
+# Schwab CSV authority checked: yes
+# CSV row(s): NO_SCHWAB_EQUIVALENT — statistical annualization constant on a
+#   derived realized-volatility estimator; no market field read, derivation
+#   source, or emission changed (closes remain pricehistory-fed candle closes).
+# Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE (bars_per_year now
+#   interval-aware: 1m RTH = 252*390, 5m RTH = 252*78).
+# All consumers checked: yes — single call site (server.py 1m candle path,
+#   AST-scanned) now passes bar_minutes=1.0; output shape unchanged.
+# SCHWAB_CSV_CHECKED
 RV_TRADING_DAYS_PER_YEAR: int = 252
 RV_RTH_MINUTES_PER_DAY: int = 390
 
