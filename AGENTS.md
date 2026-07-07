@@ -378,6 +378,29 @@ Pre-commit runs static locks on every commit; `--code-quality` is the explicit f
 
 ---
 
+## Ticker universality contract `[PROMOTED]` (2026-07-07 — operator binding; UNIVERSAL_TICKER_MECHANICAL_LOCK_V1)
+
+**Base anchors are the minimum live proof surface, never the universal proof boundary.**
+
+- `BASE_TICKERS (SPY/QQQ/IWM)` = minimum live anchor proof only — required but **not sufficient**.
+- `UNIVERSAL_TICKER_AGNOSTIC_BEHAVIOR` = the closure standard for ticker-affecting work.
+- `BASE_TICKER_ONLY_CLOSURE = FORBIDDEN`. A packet whose evidence is only base anchors must be labeled `BASE_ANCHOR_EVIDENCED_ONLY`, never universal/proven/closed.
+- `REPRESENTATIVE_ONLY_PROOF = NOT_PROVEN`. Representative samples require explicit downgrade language (`REPRESENTATIVE_ONLY_NOT_PROVEN`).
+
+**Universal closure of ticker-affecting work requires either:**
+(a) a full configured/supported ticker-universe matrix, **or**
+(b) mechanical proof the changed code path is ticker-agnostic by construction **plus** base-anchor live proof **plus** guest/enrolled fixture proof.
+
+**Ticker literal policy (production Python):** locked ticker literals (`SPY QQQ IWM NVDA AAPL MSFT AMZN META TSLA GOOGL AVGO PLTR $SPX SPX CIFR MRVL` at minimum) may appear in module-level config lists, function-signature defaults, test fixtures, docs/examples, and data inventories — never inside production function bodies (decision, card scoring, analytics freshness, quote-lane, cache, model/promotion, persistence logic) unless allowlisted in `tools/check_universal_ticker_lock.py::TICKER_LITERAL_ALLOWLIST` with a Read-verified rationale.
+
+**Required final-packet fields for ticker-affecting lanes:** `TICKER_UNIVERSE_ENUMERATED`, `BASE_ANCHOR_MATRIX_SPY_QQQ_IWM`, `SUPPORTED_UNIVERSE_MATRIX_OR_REASON_NOT_AVAILABLE`, `GUEST_TICKER_PROOF`, `TICKER_AGNOSTIC_CONSTRUCTION_PROOF`, `TICKER_LITERAL_SEARCH_OUTPUT`, `CONFIRMATION_NO_TICKER_SPECIAL_CASES`, `UNIVERSALITY_CLASSIFICATION`.
+
+**Allowed classifications:** `UNIVERSAL_TICKER_AGNOSTIC_PROVEN` · `BASE_ANCHOR_EVIDENCED_ONLY` · `SUPPORTED_UNIVERSE_PARTIAL` · `REPRESENTATIVE_ONLY_NOT_PROVEN` · `INSUFFICIENT_UNIVERSE_EVIDENCE`.
+
+**Mechanical lock:** `tools/check_universal_ticker_lock.py::run_check` — wired into `enforce_all_rules --objective-audit` (same pattern as the lane-closure scope lock). Fails on: in-function production ticker literals outside the governed allowlist; universal claims resting on base-anchor evidence; missing required packet fields under a `UNIVERSAL_TICKER_AGNOSTIC_PROVEN` classification; guarded parent lanes (`CARD_FIDELITY_OVERALL`, `MODEL_REAL_MONEY_EDGE`, `UNIVERSAL_RUNTIME_LIVE_PROOF`, `REAL_MONEY_READINESS`) assigned closed-class values without a fully-fielded universal packet; representative proof without downgrade language. Paired: `tests/test_check_universal_ticker_lock.py`.
+
+---
+
 ## Fusion-only horizon cards `[PROMOTED]` (2026-06-06 — operator binding)
 
 **One door out:** horizon product triplets on cards come from **per-horizon stack fusion only**. Empirical histograms stay on the signal rail for context — they do **not** fill product triplets unless the operator explicitly opts in.

@@ -511,11 +511,26 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
+        # UNIVERSAL_TICKER_MECHANICAL_LOCK_V1 (operator-approved 2026-07-07):
+        # base anchors are the minimum live proof surface, never the universal
+        # proof boundary; production ticker literals and base-only universal
+        # closure claims fail the objective audit.
+        from tools.check_universal_ticker_lock import run_check as run_universal_ticker_check
+
+        ticker_lock = run_universal_ticker_check()
+        if not ticker_lock.get("ok"):
+            print(
+                "enforce_all_rules --objective-audit: FAIL "
+                "(UNIVERSAL_TICKER_MECHANICAL_LOCK_V1)\n- "
+                + "\n- ".join(ticker_lock.get("errors") or []),
+                file=sys.stderr,
+            )
+            return 1
         print(
             "enforce_all_rules --objective-audit: PASS (AUDIT: CLEAN — "
             "repo-wide static + situational runtime where cone fits; "
             f"applied={result.get('applied_runtime_audits')!r}; "
-            "lane-closure scope lock PASS)"
+            "lane-closure scope lock PASS; universal ticker lock PASS)"
         )
         return 0
     if args.ablation_bias:

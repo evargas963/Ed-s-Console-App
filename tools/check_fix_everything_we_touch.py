@@ -2248,7 +2248,6 @@ def check_production_fusion_score_path_contract() -> list[str]:
 
     errors: list[str] = []
     seven = list(FULL_STACK_MODEL_LAYERS)
-    seven_path = "→".join(FULL_STACK_MODEL_LAYERS)
 
     eval_py = REPO_ROOT / "arch_competition" / "stack_bundle_eval_v1.py"
     sig_py = REPO_ROOT / "signals.py"
@@ -3209,6 +3208,13 @@ _PROMOTED_AGENTS_RULE_LOCKS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Full stack", ("check_full_stack_models_contract",)),
     ("Fusion-only horizon cards", ("check_fusion_only_card_contract",)),
     ("Training anchor roster", ("check_training_anchor_roster_contract",)),
+    (
+        "Ticker universality contract",
+        (
+            "external:tools/check_universal_ticker_lock.py",
+            "external:tests/test_check_universal_ticker_lock.py",
+        ),
+    ),
     ("Ablation grid", ("check_ablation_seven_model_four_horizon_grid", "check_ablation_full_stack_non_negotiable", "check_ablation_denominator_vocabulary")),
     (
         "GraphRAG fidelity-first",
