@@ -111,3 +111,76 @@ def test_unknown_default_not_trade_permissive() -> None:
     )
     assert out.vol_regime == "unknown"
     assert out.trade_permissive is False
+
+
+# ── FORMULA_P1A_REALIZED_VOL_ANNUALIZATION_FIX_V1 — timeframe-aware RV locks ──
+
+
+def _rv_closes(n: int = 40) -> list[float]:
+    # Deterministic alternating log-return series with nonzero variance.
+    closes = [100.0]
+    for i in range(1, n):
+        closes.append(closes[-1] * (1.001 if i % 2 else 0.999))
+    return closes
+
+
+def _rv_per_bar_unrounded(closes: list[float]) -> float:
+    import numpy as np
+
+    prices = np.array(closes, dtype=np.float64)
+    return float(np.std(np.diff(np.log(prices)), ddof=1))
+
+
+def test_realized_vol_1m_annualizes_with_252x390():
+    import math
+
+    from math_volatility import compute_realized_vol
+
+    closes = _rv_closes()
+    expected = _rv_per_bar_unrounded(closes) * math.sqrt(252 * 390) * 100.0
+    rv_1m = compute_realized_vol(closes, bar_minutes=1.0)
+    assert rv_1m is not None
+    assert rv_1m == pytest.approx(expected, rel=0.001)
+
+
+def test_realized_vol_5m_preserves_252x78():
+    import math
+
+    from math_volatility import compute_realized_vol
+
+    closes = _rv_closes()
+    expected = _rv_per_bar_unrounded(closes) * math.sqrt(252 * 78) * 100.0
+    rv_5m = compute_realized_vol(closes, bar_minutes=5.0)
+    assert rv_5m is not None
+    assert rv_5m == pytest.approx(expected, rel=0.001)
+
+
+def test_realized_vol_sqrt5_underscale_regression_lock():
+    """The old defect: 1m closes annualized with the 5m factor = sqrt(5) under-scale."""
+    import math
+
+    from math_volatility import compute_realized_vol
+
+    closes = _rv_closes()
+    rv_1m = compute_realized_vol(closes, bar_minutes=1.0)
+    rv_legacy_default = compute_realized_vol(closes)  # legacy 5m default factor
+    assert rv_1m is not None and rv_legacy_default is not None
+    assert rv_1m == pytest.approx(rv_legacy_default * math.sqrt(5.0), rel=0.01)
+    assert rv_1m > rv_legacy_default  # the corrected 1m value is strictly larger
+
+
+def test_realized_vol_invalid_bar_minutes_fails_closed():
+    from math_volatility import compute_realized_vol
+
+    closes = _rv_closes()
+    assert compute_realized_vol(closes, bar_minutes=0) is None
+    assert compute_realized_vol(closes, bar_minutes=-1.0) is None
+
+
+def test_server_realized_vol_call_site_passes_1m_interval():
+    """Source lock: the 1m candle path must pass bar_minutes=1.0."""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    assert "compute_realized_vol(_closes, bar_minutes=1.0)" in src
+    assert "compute_realized_vol(_closes)\n" not in src

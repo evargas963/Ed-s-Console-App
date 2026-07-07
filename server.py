@@ -5610,7 +5610,9 @@ def _fetch_state(
         if _bars:
             _closes = [float(b.close) for b in _bars if b.close is not None]
             if _closes:
-                _realized_vol = compute_realized_vol(_closes)
+                # FORMULA_P1A: closes are 1-minute bars — annualize as 252×390
+                # (the prior implicit 5m factor under-scaled RV by sqrt(5)).
+                _realized_vol = compute_realized_vol(_closes, bar_minutes=1.0)
             _atr = compute_atr(_bars)
         # IV Rank/Percentile from DB historical iv_level
         # Burndown (2026-07-05): narrow iv_level projection — the full-width

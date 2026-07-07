@@ -398,23 +398,37 @@ def compute_iv_skew(contracts: List[dict], spot: float) -> dict:
 
 # ── Realized Volatility ─────────────────────────────────────────────────────
 
-def compute_realized_vol(closes: List[float], *, annualize: bool = True) -> float | None:
+RV_TRADING_DAYS_PER_YEAR: int = 252
+RV_RTH_MINUTES_PER_DAY: int = 390
+
+
+def compute_realized_vol(
+    closes: List[float], *, annualize: bool = True, bar_minutes: float = 5.0
+) -> float | None:
     """
     Realized (historical) volatility from close prices.
 
-    Formula: RV = std(log_returns) × sqrt(annualization_factor)
+    Formula: RV = std(log_returns) × sqrt(bars_per_year)
 
-    For 5-min bars: annualization = sqrt(252 × 78) where 78 = bars per RTH day
-    For daily bars: annualization = sqrt(252)
+    bars_per_year depends on the bar interval (FORMULA_P1A, 2026-07-06 —
+    the prior hardcoded 252×78 under-scaled 1-minute inputs by sqrt(5)):
+      1m RTH bars: 252 × 390
+      5m RTH bars: 252 × 78
+      general:     252 × (390 / bar_minutes)
 
     Args:
-        closes:    list of close prices (chronological order)
-        annualize: if True, annualize; if False, return per-bar vol
+        closes:      list of close prices (chronological order)
+        annualize:   if True, annualize; if False, return per-bar vol
+        bar_minutes: bar interval in minutes for the annualization factor
+                     (callers must pass the interval their closes come from;
+                     default 5.0 preserves the legacy 5-minute factor)
 
     Returns annualized realized volatility as percentage (e.g. 18.5 for 18.5%),
     or None if insufficient data.
     """
     if not closes or len(closes) < 5:
+        return None
+    if bar_minutes is None or float(bar_minutes) <= 0:
         return None
 
     import numpy as np
@@ -429,8 +443,8 @@ def compute_realized_vol(closes: List[float], *, annualize: bool = True) -> floa
 
     vol = float(np.std(log_returns, ddof=1))
     if annualize:
-        # Assume 5-min bars: 78 bars per 6.5hr RTH day × 252 days
-        bars_per_year = 252 * 78
+        bars_per_day = RV_RTH_MINUTES_PER_DAY / float(bar_minutes)
+        bars_per_year = RV_TRADING_DAYS_PER_YEAR * bars_per_day
         vol *= math.sqrt(bars_per_year)
 
     return round(vol * 100, 2)  # as percentage
